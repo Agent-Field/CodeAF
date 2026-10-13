@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"net/url"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -78,8 +79,8 @@ type Config struct {
 	// Name is the factory's display name. Empty uses the first watched
 	// repository's owner, or this machine's short hostname without repositories.
 	Name string
-	// ServedBy is "tui" when a window is serving and "factory" when
-	// `codeaf factory` is. Empty is derived from the access token.
+	// ServedBy is tui, app or factory. App requires the per-launch host token
+	// on every person route, including about, and never trusts loopback.
 	ServedBy string
 	// Access is loopback, token or tailnet. Empty is derived.
 	Access string
@@ -121,6 +122,9 @@ type Handler struct {
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
 func New(seam factory.Seam, config Config) *Handler {
+	if config.ServedBy == "app" {
+		config.Access = "token"
+	}
 	if config.Version == "" {
 		config.Version = buildinfo.String()
 	}
@@ -213,6 +217,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Over plain HTTP the header means nothing and is not sent.
 	if secureRequest(r) {
 		w.Header().Set("Strict-Transport-Security", hstsValue)
+	}
+	if h.config.ServedBy == "app" && !workerPath(r.URL.Path) && !h.floorToken(bearer(r)) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
+		h.fail(w, http.StatusUnauthorized, "the app bearer token is required")
+		return
 	}
 	if workerPath(r.URL.Path) {
 		var ok bool
@@ -318,7 +327,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 		if !match(it) {
 			continue
 		}
-		if !strings.Contains(query, "is:dismissed") && factory.IsDismissed(it, handle) {
+		if !slices.Contains(strings.Fields(strings.ToLower(query)), "is:dismissed") && factory.IsDismissed(it, handle) {
 			continue
 		}
 		items = append(items, it)

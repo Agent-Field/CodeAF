@@ -83,10 +83,30 @@ it retries; it never claims the branch was deleted before success. Run and
 Run again cannot revive Drop.
 
 `assign_to_me`, `change_assignee` (`{"assignee":"mei"}`), and `unassign` change
-ownership. Changing Running work stops it first; Unassign leaves Backlog with
+ownership. Assign to me works only when unassigned, including refusing a job
+already assigned to you. Only the current assignee can Change assignee or
+Unassign; other people cannot reassign in the app. Changing Running work stops it first; Unassign leaves Backlog with
 no assignee. Assignment is mirrored to GitHub. `nudge` sends a person-facing
 Activity event to the assignee, never a steer to their AI. `run_again` retries failed work or queues
 a PR closed without merge; it refuses merged or dropped work.
+
+## factory app access token and hand-off from an agent
+
+An app-hosted factory identifies itself with `served_by: app` and
+`access: token`. Its per-launch bearer token is required even on loopback,
+including `/v1/about`; another local process and a browser cookie are not
+the owner. Runner credentials still authenticate the runner protocol.
+The factory mount and app hand-off card are supplied by the app integration
+lane; this factory API support alone does not connect an app factory.
+
+`POST /v1/jobs` accepts repo, title, text, `source: hand-off`,
+`from_ref: {kind:"agent", id, title}`, assignee and start. The originating
+agent ref is kept under `ask.from_ref`. `start: now` queues with precedence;
+`queued` joins the ordinary queue; `backlog` runs nothing. A start applies
+the pipeline's default budget. An explicitly empty team assignee is allowed
+only for Backlog. Invalid source/ref/start and combining start with legacy
+autostart are refused before creation. Repeated Idempotency-Key sends return
+the original response. New metadata requires a store-backed factory.
 
 ## factory v2 Activity and compatible runner fields
 
@@ -2226,8 +2246,9 @@ event is written. A plan approval writes `approved` only after the answer door
 accepts.
 
 A question carries `kind`: `step`, `cap`, `max_rounds`, `plan`, `proof` or
-`out_of_attempts`. `plan` is an approve step. `max_rounds` is an older rounds
-question. `out_of_attempts` is the current one, and its options are
+`out_of_attempts`. These are compatible stored question kinds; the Contract 2
+needs-you kind is `out_of_rounds`. `plan` is an approve step. `max_rounds` is an
+older rounds question. `out_of_attempts` is the stored one, and its options are
 `try_once_more`, `send_back` and `cancel_job`. `options` lists the choices
 that step offered. A cap question also carries `limit`, `spent` and
 `next_limit`, and `next_limit` is the cap a yes would allow.
@@ -2247,25 +2268,26 @@ An answer keeps the sentence `only @sam can answer this`. A job in the wrong
 state is still HTTP 409. Take of a job someone else holds stays HTTP 409
 `already taken by @mei`. Release of someone else's take stays `not_allowed`.
 
-## needs you — six kinds, and who may answer
+## needs you — Contract 2 kinds, failed, changes requested, conflict and who may answer
 
 A waiting job carries `needs_you`: `kind`, `since`, `who_can_answer`, and
-`question` when the wait is a question. The kinds are `approve_plan`,
-`approve_proof`, `question`, `spending_limit`, `out_of_attempts` and
-`publish_failed`. The queue groups jobs by that kind. Adding a kind is a
+`question` when the wait is a question. The Contract 2 kinds are `approve_start`, `approve_plan`,
+`approve_proof`, `question`, `budget`, `out_of_rounds`, `publish_failed`,
+`runner_offline`, `failed`, `changes_requested` and `conflict`. The queue groups jobs by that kind. Adding a kind is a
 change to codeaf, not a value an app can invent.
 
 `question` is `id`, `kind` (`text`, `yes_no` or `options`), `text`, `options`,
 `from_step`, `asks` (a handle) and `who_can_answer`. A free question's
 `who_can_answer` is `anyone_with_repo`. Plan approval, proof approval, a
-spending limit, out of attempts and a failed publish are `job_person`. When
+budget, out of rounds, failures, PR review/conflict and runner-offline
+attention are `job_person`. When
 the job has a person, someone else gets HTTP 403 `only @raj can answer this`.
 A job with no person yet can still be answered. `answered` is `{by, text, at, event}`
 once it has been answered.
 
 ## a spending limit is an answer, not a setting
 
-When a job reaches its cap it waits as `spending_limit`: `limit`, `spent`,
+When a job reaches its cap it waits as `budget`; the compatible `spending_limit` object carries: `limit`, `spent`,
 `next_limit` and `currency` (`USD`). The run asks `budget of $5 reached · $5 more, or stop?`.
 Answering `continue`, or yes, raises this one job to `next_limit`. That number
 is codeaf's: the cap doubled. The app does not send it, and a body that tries
@@ -2275,7 +2297,7 @@ not a setting, and it does not change any other job.
 ## out of attempts, and a step that failed
 
 A step that used its rounds without its until holding asks
-`try once more, send it back, or cancel the job?`. That is `out_of_attempts`,
+`try once more, send it back, or cancel the job?`. That is needs-you `out_of_rounds`,
 a question, options `try_once_more`, `send_back` and `cancel_job`. Only the
 job's person answers. `send_back` needs a reason (`send back requires a reason`
 otherwise) and returns to the previous step. `cancel_job`, or no, stops the job.
@@ -2291,9 +2313,10 @@ after the lease expired — is `failure` on the job and on that step: `step`,
 `code`, `detail`, `attempts`, `machine`, `next` and `at`. `code` is `crash`,
 `tool_error`, `provider_error` or `machine_lost`. `next` is `stopped` or
 `requeued`. `attempts` is how many tries that step had made. `machine` is the
-one that was holding the work. It is not a question. The job does not ask
-to skip the step. A lost machine requeues the job and leaves the step runnable.
-Any other error stops it. The record says `step_failed`.
+one that was holding the work. It is not a question. A stopped step appears in Needs you as `failed`; a
+lost runner appears as `runner_offline` with “Runner went offline mid-step”.
+It waits for the assignee rather than silently requeuing. The record says
+`step_failed`.
 
 A publish that fails stays in needs you as `publish_failed`, in the same place
 as the other waits, with `could not publish: …` on its log and `publish_error`
@@ -2303,7 +2326,8 @@ Retry publishing does not write a second approval.
 ## a job without a GitHub issue
 
 Work typed in the app or in the terminal carries `ask`: `text`, `by`, `at` and
-`source`. `source` is `app` or `tui`. A job that started from a GitHub issue
+`source`. `source` is `app`, `tui` or `hand-off`. A hand-off also carries
+`ask.from_ref: {kind:"agent", id, title}` so the brief links back to its chat. A job that started from a GitHub issue
 carries `ask` with `issue` (`number`, `url`, `title`) and `text`, and does not
 also store a typed ask. The pull request body starts with that ask, then
 `Closes #12.` when the job closes an issue. A job with no ask text leaves the
@@ -2498,16 +2522,19 @@ within 100ms even during continuous writes. A missing watch falls back to a
 2-second root scan.
 
 Typed JSON events also arrive with `id: live_<number>`:
-- `needs_you {job, kind, since}`: approve_plan, approve_proof, question,
-  spending_limit, out_of_attempts or publish_failed; empty kind removes the job from Needs you.
+- `job.state {job, state, reason}` names creation and every projected state or
+  reason change, including PR review/conflict; an empty reason clears it.
+- `needs_you {job, kind, since}` uses the Contract 2 needs-you kinds; an empty
+  kind removes the job from Needs you.
 - `question {job, kind}`, `approved {job, by}` and `taken {job, by}` name a
   changed ask or the person whose accepted action moved the job. Free asks use
   text, yes_no or options; approval asks use their Needs you kind.
 - `publishing {job, state}` sends queued, pushing, opened and failed transitions;
   `published {job, pr}` carries `{number,url}` for a PR (null for a comment);
   `publish_failed {job, reason}` carries the failure code, or detail without one.
-- `machine {name, status}` names busy, idle or offline. Silence sends offline
-  after the heartbeat deadline without the app polling.
+- `runner {runner, owner, state, last_seen}` names idle, busy, offline or asleep;
+  `activity` carries each recorded action. The older `machine` event remains
+  compatible. Silence sends offline at the 60-second deadline.
 
 The factory saves every typed transition before returning from its write, so
 rapid publishing changes survive batching. The last 200 typed events survive a

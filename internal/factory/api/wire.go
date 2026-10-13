@@ -379,11 +379,12 @@ type Can struct {
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.
 // Work typed in the app or the TUI fills text, by, at and source.
 type JobAsk struct {
-	Text   string     `json:"text,omitempty"`
-	By     string     `json:"by,omitempty"`
-	At     *time.Time `json:"at,omitempty"`
-	Source string     `json:"source,omitempty"`
-	Issue  *AskIssue  `json:"issue,omitempty"`
+	Text    string             `json:"text,omitempty"`
+	By      string             `json:"by,omitempty"`
+	At      *time.Time         `json:"at,omitempty"`
+	Source  string             `json:"source,omitempty"`
+	FromRef *factory.SourceRef `json:"from_ref,omitempty"`
+	Issue   *AskIssue          `json:"issue,omitempty"`
 }
 
 // AskIssue is the GitHub issue a job was started from.
@@ -692,6 +693,9 @@ type Approve struct {
 // LiveEvent is the small typed JSON payload on GET /v1/events. The SSE event
 // name selects its fields; the durable id rides in the frame's id line.
 type LiveEvent = live.Payload
+
+// JobStateEvent names a projected job state and its current explanation.
+type JobStateEvent = live.StatePayload
 
 // PublishedEvent is the PR receipt, with pr null for an issue comment.
 type PublishedEvent = live.PublishedPayload

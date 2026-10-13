@@ -7,33 +7,37 @@ import (
 )
 
 // Needs-you kinds on the wire. ADDING A KIND IS A DELIBERATE CHANGE: add it
-// here and to TestNeedsYouKindsAreTheSix in the same commit. The queue groups
+// here and to TestNeedsYouKindsContractTwo in the same commit. The queue groups
 // jobs by this list, in this order.
 const (
-	NeedsApproveStart  = "approval_start"
+	NeedsApproveStart  = "approve_start"
 	NeedsApprovePlan   = "approve_plan"
 	NeedsApproveProof  = "approve_proof"
 	NeedsQuestion      = "question"
 	NeedsRunnerOffline = "runner_offline"
-	NeedsSpendingLimit = "spending_limit"
-	NeedsOutOfAttempts = "out_of_attempts"
+	NeedsSpendingLimit = "budget"
+	NeedsOutOfAttempts = "out_of_rounds"
 	NeedsPublishFailed = "publish_failed"
-	QKindOutOfAttempts = NeedsOutOfAttempts
-	WhoAnyoneWithRepo  = "anyone_with_repo"
-	WhoJobPerson       = "job_person"
-	QuestionText       = "text"
-	AskYesNo           = "yes_no"
-	AskOptions         = "options"
-	ChoiceContinue     = "continue"
-	ChoiceTryOnceMore  = "try_once_more"
-	ChoiceSendBack     = "send_back"
-	ChoiceCancel       = "cancel_job"
-	CodeToolError      = "tool_error"
-	CodeProviderError  = "provider_error"
-	CodeCrash          = "crash"
-	CodeMachineLost    = "machine_lost"
-	FailureRequeued    = "requeued"
-	FailureStopped     = "stopped"
+	// Persisted question kinds keep their bytes across wire contracts.
+	QKindOutOfAttempts    = "out_of_attempts"
+	NeedsFailed           = "failed"
+	NeedsChangesRequested = "changes_requested"
+	NeedsConflict         = "conflict"
+	WhoAnyoneWithRepo     = "anyone_with_repo"
+	WhoJobPerson          = "job_person"
+	QuestionText          = "text"
+	AskYesNo              = "yes_no"
+	AskOptions            = "options"
+	ChoiceContinue        = "continue"
+	ChoiceTryOnceMore     = "try_once_more"
+	ChoiceSendBack        = "send_back"
+	ChoiceCancel          = "cancel_job"
+	CodeToolError         = "tool_error"
+	CodeProviderError     = "provider_error"
+	CodeCrash             = "crash"
+	CodeMachineLost       = "machine_lost"
+	FailureRequeued       = "requeued"
+	FailureStopped        = "stopped"
 	// RoundLinesMost is how many per-round lines one step keeps. A loop's
 	// own max is the bound when it is smaller. The list cannot grow with a
 	// report that names a huge round.
@@ -57,6 +61,9 @@ var NeedsYouKinds = []string{
 	NeedsOutOfAttempts,
 	NeedsPublishFailed,
 	NeedsRunnerOffline,
+	NeedsFailed,
+	NeedsChangesRequested,
+	NeedsConflict,
 }
 
 // OutOfAttemptOptions are the only answers when a step used its rounds
@@ -68,10 +75,18 @@ var OutOfAttemptOptions = []string{ChoiceTryOnceMore, ChoiceSendBack, ChoiceCanc
 // GitHub issue. A job that did keeps the issue on the wire and leaves this
 // empty, so the two cannot be stored twice.
 type JobAsk struct {
-	Text   string    `json:",omitempty"`
-	By     string    `json:",omitempty"`
-	At     time.Time `json:",omitempty"`
-	Source string    `json:",omitempty"` // app or tui
+	Text    string     `json:",omitempty"`
+	By      string     `json:",omitempty"`
+	At      time.Time  `json:",omitempty"`
+	Source  string     `json:",omitempty"` // app, tui or hand-off
+	FromRef *SourceRef `json:",omitempty"`
+}
+
+// SourceRef links a hand-off back to its originating agent.
+type SourceRef struct {
+	Kind  string `json:"kind"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 // Failure is a step that errored. It is not a question and it does not wait
@@ -179,14 +194,22 @@ func SendBackReason(words string) string {
 // A publish that failed stays landed, and that kind wins over proof approval
 // so the same commit is not approved twice.
 func NeedsKind(it Item) string {
-	waiting := it.State == StateNeedsYou || it.State == StateLanded
-	if !waiting {
+	if JobState(it) != "needs_you" {
 		return ""
 	}
-	if publishFailed(it) {
+	if it.PublishError != "" || (it.PublishStatus != nil && it.PublishStatus.State == "failed") {
 		return NeedsPublishFailed
 	}
 	switch {
+	case it.Failure != nil:
+		if it.Failure.Code == CodeMachineLost {
+			return NeedsRunnerOffline
+		}
+		return NeedsFailed
+	case it.PullRequest != nil && it.PullRequest.Conflict:
+		return NeedsConflict
+	case it.PullRequest != nil && it.PullRequest.ReviewDecision == "changes_requested":
+		return NeedsChangesRequested
 	case it.QKind == QKindAskFirst:
 		return NeedsApproveStart
 	case it.State == StateLanded:
@@ -222,7 +245,7 @@ func publishFailed(it Item) bool {
 // A free question is anyone who can see the repository.
 func JobPersonOnly(kind string) bool {
 	switch kind {
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
 		return true
 	default:
 		return false
@@ -281,6 +304,9 @@ func yesNoOptions(options []string) bool {
 // NeedsSince is when this wait started: the landed stream's end, the ask's
 // clock, the current step's clock, then the job's own stamps.
 func NeedsSince(it Item) time.Time {
+	if it.Failure != nil && !it.Failure.At.IsZero() {
+		return it.Failure.At
+	}
 	if it.State == StateLanded && it.Stream != nil && !it.Stream.Ended.IsZero() {
 		return it.Stream.Ended
 	}

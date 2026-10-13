@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -103,5 +104,91 @@ func TestRefusedJobWriteRestoresReplayRecord(t *testing.T) {
 	events, cursor, err := live.Read(root)
 	if err != nil || len(events) != 1 || events[0].Kind != "taken" || cursor != "live_1" {
 		t.Fatalf("refused transition persisted: %+v %s %v", events, cursor, err)
+	}
+}
+
+func TestJobStateRecordsReasonChangesAndSkipsUnchangedFacts(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it, err := st.Create(factory.Item{State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []factory.State{factory.StateQueued, factory.StateRunning, factory.StateShipped} {
+		if err := st.Update(it.ID, func(cur *factory.Item) error {
+			cur.State = state
+			if state == factory.StateShipped {
+				cur.PullRequest = &factory.PullRequest{State: factory.PROpen}
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.Update(it.ID, func(cur *factory.Item) error { cur.PullRequest.ReviewDecision = "changes_requested"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(it.ID, func(cur *factory.Item) error { cur.PullRequest.Conflict = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(it.ID, func(cur *factory.Item) error { cur.Title = "Unrelated edit"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(it.ID, func(cur *factory.Item) error {
+		cur.PullRequest = &factory.PullRequest{State: factory.PRMerged}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	events, _, err := live.Read(st.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []live.StatePayload
+	for _, e := range events {
+		if e.Kind == "job.state" {
+			var p live.StatePayload
+			if err := json.Unmarshal(e.Data, &p); err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, p)
+		}
+	}
+	want := []live.StatePayload{{it.ID, "backlog", ""}, {it.ID, "queued", ""}, {it.ID, "running", "step"}, {it.ID, "running", "github"}, {it.ID, "needs_you", "changes_requested"}, {it.ID, "needs_you", "conflict"}, {it.ID, "done", ""}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("transitions %+v", got)
+	}
+}
+
+func TestInPlaceFailureCodeEmitsNewJobReason(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it, err := st.Create(factory.Item{State: factory.StateNew, Failure: &factory.Failure{Code: factory.CodeMachineLost}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(it.ID, func(cur *factory.Item) error { cur.Failure.Code = factory.CodeToolError; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	events, _, err := live.Read(st.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var states []live.StatePayload
+	for _, e := range events {
+		if e.Kind == "job.state" {
+			var p live.StatePayload
+			if err := json.Unmarshal(e.Data, &p); err != nil {
+				t.Fatal(err)
+			}
+			states = append(states, p)
+		}
+	}
+	if len(states) != 2 || states[0].Reason != "runner_offline" || states[1].State != "needs_you" || states[1].Reason != "failed" {
+		t.Fatalf("in-place failure %+v", states)
 	}
 }

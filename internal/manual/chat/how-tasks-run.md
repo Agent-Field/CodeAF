@@ -47,7 +47,7 @@ So a conversation opened in your home directory that has spent an hour reading
 `~/code/thing` sends its task to `~/code/thing`, and not to the empty workspace beside the
 session.
 
-## Why am I asked which project a task is about — and am I asked again
+## Why am I asked which project a task is about — the contract names my repo path, and am I asked again
 
 **Once per folder, and then not again.** A ground the conversation resolved is kept on it,
 so the answer you gave the first time is the answer the next task starts from. That covers

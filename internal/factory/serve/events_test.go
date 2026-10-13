@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -54,9 +55,18 @@ func TestStoreWriteProducesOneChangedEvent(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("a store write produced no changed event")
 	}
+	if !strings.Contains(got, "event: job.state\n") || !strings.Contains(got, fmt.Sprintf(`"job":%d,"state":"backlog","reason":""`, made.ID)) {
+		t.Fatalf("missing typed creation event: %q", got)
+	}
+	select {
+	case got = <-events:
+	case <-time.After(3 * time.Second):
+		t.Fatal("a store write produced no changed event")
+	}
 	want := "event: changed\ndata: " + strconv.Itoa(made.ID) + "\n"
-	if got != want {
-		t.Fatalf("event = %q, want %q", got, want)
+	// The job document and its replay record can coalesce into a floor refresh.
+	if got != want && got != "event: changed\ndata: *\n" {
+		t.Fatalf("event = %q, want %q or a floor refresh", got, want)
 	}
 	select {
 	case extra := <-events:

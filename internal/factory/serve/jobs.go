@@ -143,7 +143,7 @@ func (h *Handler) assignToMe(w http.ResponseWriter, r *http.Request, it factory.
 	if h.failed(w, err) {
 		return
 	}
-	if it.Person() != "" && it.Person() != who {
+	if it.Person() != "" {
 		h.taken(w, it)
 		return
 	}
@@ -155,10 +155,23 @@ func (h *Handler) changeAssignee(w http.ResponseWriter, r *http.Request, it fact
 		Assignee string      `json:"assignee"`
 		Expect   *api.Expect `json:"expect,omitempty"`
 	}
-	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "change_assignee", body.Expect) || !h.owns(w, r, it) {
+	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "change_assignee", body.Expect) || !h.assigneeOnly(w, r, it) {
 		return
 	}
 	h.assignJob(w, r, it, factory.NormalizeHandle(body.Assignee))
+}
+
+// Reassignment belongs to the current assignee even while a job is in backlog.
+func (h *Handler) assigneeOnly(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	who, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return false
+	}
+	if it.Person() != "" && factory.NormalizeHandle(who) == it.Person() {
+		return true
+	}
+	h.notJobPerson(w, it, it.Person())
+	return false
 }
 
 func (h *Handler) assignJob(w http.ResponseWriter, r *http.Request, it factory.Item, who string) {
@@ -192,7 +205,7 @@ func (h *Handler) unassignJob(w http.ResponseWriter, r *http.Request, it factory
 	var body struct {
 		Expect *api.Expect `json:"expect,omitempty"`
 	}
-	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "unassign", body.Expect) {
+	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "unassign", body.Expect) || !h.assigneeOnly(w, r, it) {
 		return
 	}
 	if h.config.ChangeAssignee != nil {

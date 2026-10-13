@@ -11,6 +11,10 @@ import (
 // Each store write records its transition so a fast publish cannot skip pushing.
 func Changes(before, after factory.Item, now time.Time) []Event {
 	var out []Event
+	state, reason := factory.JobState(after), factory.JobReason(after)
+	if before.ID == 0 || state != factory.JobState(before) || reason != factory.JobReason(before) {
+		out = append(out, New("job.state", after.ID, StatePayload{Job: after.ID, State: state, Reason: reason}))
+	}
 	p, old := after.PublishStatus, before.PublishStatus
 	if p != nil && !reflect.DeepEqual(p, old) {
 		out = append(out, New("publishing", after.ID, Payload{Job: after.ID, State: p.State}))

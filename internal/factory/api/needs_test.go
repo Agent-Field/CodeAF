@@ -8,9 +8,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
-func TestNeedsYouKindsAreTheSix(t *testing.T) {
+func TestNeedsYouKindsContractTwo(t *testing.T) {
 	want := []string{
-		"approval_start", "approve_plan", "approve_proof", "question", "spending_limit", "out_of_attempts", "publish_failed", "runner_offline",
+		"approve_start", "approve_plan", "approve_proof", "question", "budget", "out_of_rounds", "publish_failed", "runner_offline", "failed", "changes_requested", "conflict",
 	}
 	if !reflect.DeepEqual(factory.NeedsYouKinds, want) {
 		t.Fatalf("kinds = %v", factory.NeedsYouKinds)
@@ -116,7 +116,7 @@ func TestOutOfAttemptsIsAQuestionAndFailureIsNot(t *testing.T) {
 		}}},
 	})
 	failed.Can = CanFor(factory.Item{Assignee: "sam"}, "mei")
-	if failed.NeedsYou != nil || len(failed.Questions) != 0 {
+	if failed.NeedsYou == nil || failed.NeedsYou.Kind != factory.NeedsFailed || failed.NeedsYou.Question != nil || len(failed.Questions) != 0 {
 		t.Fatalf("a failure became a question: %+v %+v", failed.NeedsYou, failed.Questions)
 	}
 	if failed.Failure == nil || failed.Failure.Code != factory.CodeToolError || failed.Failure.Next != factory.FailureStopped || failed.Failure.Attempts != 2 || failed.Failure.Machine != "box" || !failed.Failure.At.Equal(when) {
@@ -217,7 +217,7 @@ func TestFixtureNeedsYouAndAsks(t *testing.T) {
 	if len(q.Jobs) != 10 {
 		t.Fatalf("jobs = %d", len(q.Jobs))
 	}
-	if len(q.NeedsYou) != 2 || q.NeedsYou[0].Kind != factory.NeedsApprovePlan || q.NeedsYou[1].Kind != factory.NeedsApproveProof {
+	if len(q.NeedsYou) != 3 || q.NeedsYou[0].Kind != factory.NeedsApprovePlan || q.NeedsYou[1].Kind != factory.NeedsApproveProof || q.NeedsYou[2].Kind != factory.NeedsFailed {
 		t.Fatalf("fixture groups = %+v", q.NeedsYou)
 	}
 }

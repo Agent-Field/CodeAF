@@ -52,7 +52,11 @@ func TestIdempotencySurvivesRestartSerializesServersAndExpiresAt24Hours(t *testi
 	var clock atomic.Int64
 	clock.Store(now.UnixNano())
 	var calls atomic.Int64
-	s := factory.Seam{New: func(string, string) (int, error) { return int(calls.Add(1)), nil }}
+	s := factory.Seam{New: func(repo, words string) (int, error) {
+		calls.Add(1)
+		it, err := st.Create(factory.Item{Repo: repo, Title: words, State: factory.StateNew})
+		return it.ID, err
+	}}
 	cfg := serve.Config{Store: st, LeaseOptions: lease.Options{Now: func() time.Time { return time.Unix(0, clock.Load()) }}}
 	a, b := serve.New(s, cfg), serve.New(s, cfg)
 	body := `{"repo":"owner/repo","title":"fix"}`

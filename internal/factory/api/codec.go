@@ -227,7 +227,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	return Can{
 		Run: owner && state == StateBacklog, StartNow: owner && state == StateBacklog,
 		Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
-		ChangeAssignee: owner, Unassign: owner && person != "", Nudge: person != "", RaiseBudget: owner,
+		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner,
 		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)),
 		Approve: approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: a.Answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
@@ -238,7 +238,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 // and is not written back, so a round trip cannot invent a second copy.
 func jobAsk(it factory.Item) *JobAsk {
 	if it.Ask != nil {
-		a := &JobAsk{Text: it.Ask.Text, By: it.Ask.By, Source: it.Ask.Source}
+		a := &JobAsk{Text: it.Ask.Text, By: it.Ask.By, Source: it.Ask.Source, FromRef: it.Ask.FromRef}
 		if !it.Ask.At.IsZero() {
 			at := it.Ask.At
 			a.At = &at
@@ -284,7 +284,7 @@ func ToItem(j Job) factory.Item {
 	it.AskedFirstReason = j.AskedFirstReason
 	it.PublishError = j.PublishError
 	if a := j.Ask; a != nil && a.Issue == nil {
-		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source}
+		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source, FromRef: a.FromRef}
 		if a.At != nil {
 			it.Ask.At = *a.At
 		}

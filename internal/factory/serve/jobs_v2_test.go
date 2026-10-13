@@ -195,6 +195,8 @@ func TestV2PriorityBudgetAndAssignmentTransitions(t *testing.T) {
 	if j := f.read(t, it); j.State != "backlog" || j.AssignedTo != "" {
 		t.Fatalf("unassign %+v", j)
 	}
+	f.post(t, it, "change_assignee", `{"assignee":"mei"}`, 403)
+	f.post(t, it, "assign_to_me", "", 200)
 	f.post(t, it, "change_assignee", `{"assignee":"mei"}`, 200)
 	f.post(t, it, "nudge", `{"words":"please look"}`, 200)
 	events, _ := f.rec.Since(context.Background(), time.Time{})

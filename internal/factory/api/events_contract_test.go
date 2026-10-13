@@ -17,6 +17,14 @@ func TestLiveEventsKeepContractOneAndSmallPayloads(t *testing.T) {
 	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 	seen := map[string]bool{}
 	for _, e := range FixtureLiveEvents(now) {
+		if e.Kind == "job.state" {
+			var payload live.StatePayload
+			if err := json.Unmarshal(e.Data, &payload); err != nil || payload.Job == 0 || payload.State == "" {
+				t.Fatalf("bad job state: %s", e.Data)
+			}
+			seen[e.Kind] = true
+			continue
+		}
 		var payload LiveEvent
 		if err := json.Unmarshal(e.Data, &payload); err != nil {
 			t.Fatal(err)
@@ -27,7 +35,7 @@ func TestLiveEventsKeepContractOneAndSmallPayloads(t *testing.T) {
 		}
 		seen[e.Kind] = true
 	}
-	for _, kind := range []string{"needs_you", "question", "approved", "taken", "publishing", "published", "publish_failed", "machine"} {
+	for _, kind := range []string{"job.state", "needs_you", "question", "approved", "taken", "publishing", "published", "publish_failed", "machine"} {
 		if !seen[kind] {
 			t.Fatalf("fixture lacks %s", kind)
 		}
@@ -35,6 +43,12 @@ func TestLiveEventsKeepContractOneAndSmallPayloads(t *testing.T) {
 	for _, kind := range factory.NeedsYouKinds {
 		it := factory.Item{ID: 7, State: factory.StateNeedsYou, Question: "continue?", Changed: now}
 		switch kind {
+		case factory.NeedsFailed:
+			it.Failure = &factory.Failure{Code: factory.CodeToolError}
+		case factory.NeedsConflict:
+			it.State, it.PullRequest = factory.StateShipped, &factory.PullRequest{State: factory.PROpen, Conflict: true}
+		case factory.NeedsChangesRequested:
+			it.State, it.PullRequest = factory.StateShipped, &factory.PullRequest{State: factory.PROpen, ReviewDecision: "changes_requested"}
 		case factory.NeedsApprovePlan:
 			it.QKind = factory.QKindApprove
 		case factory.NeedsApproveStart:

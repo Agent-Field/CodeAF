@@ -326,6 +326,15 @@ func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) er
 		}
 		it := current.Item
 		before := current.Item
+		// In-place PR and failure edits must not rewrite the prior event facts.
+		if before.PullRequest != nil {
+			prior := *before.PullRequest
+			before.PullRequest = &prior
+		}
+		if before.Failure != nil {
+			prior := *before.Failure
+			before.Failure = &prior
+		}
 		// The callback can edit an ask in place; retain its old notification facts.
 		if before.Asking != nil {
 			copy := *before.Asking

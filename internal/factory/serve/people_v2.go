@@ -41,7 +41,7 @@ func (h *Handler) isOperator(r *http.Request) bool {
 		return session.profile != nil && session.profile.Handle != "" && session.profile.Handle == h.operatorLogin(r)
 	}
 	_, cookieErr := r.Cookie(accessCookieName)
-	return bearer(r) == "" && cookieErr != nil && loopbackRequest(r)
+	return bearer(r) == "" && cookieErr != nil && h.loopbackOwner(r)
 }
 
 func (h *Handler) requireOperator(w http.ResponseWriter, r *http.Request) bool {

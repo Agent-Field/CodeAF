@@ -38,13 +38,24 @@ func TestEventReplayUsesLastIDAndViewerFilter(t *testing.T) {
 		}
 	}
 	root := h.eventRoot()
-	for _, e := range []live.Event{
+	var beforeCursor, afterCursor string
+	for i, e := range []live.Event{
 		live.New("approved", 1, api.LiveEvent{Job: 1, By: "before"}),
 		live.New("taken", 2, api.LiveEvent{Job: 2, By: "hidden"}),
 		live.New("approved", 1, api.LiveEvent{Job: 1, By: "after"}),
 	} {
 		if err := live.Append(root, e); err != nil {
 			t.Fatal(err)
+		}
+		_, cursor, err := live.Read(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			beforeCursor = cursor
+		}
+		if i == 2 {
+			afterCursor = cursor
 		}
 	}
 	replay := func(cursor string) string {
@@ -61,8 +72,8 @@ func TestEventReplayUsesLastIDAndViewerFilter(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	body := replay("live_1")
-	if strings.Contains(body, "before") || strings.Contains(body, "hidden") || !strings.Contains(body, "id: live_3\nevent: approved\ndata: {\"job\":1,\"by\":\"after\"}") {
+	body := replay(beforeCursor)
+	if strings.Contains(body, "before") || strings.Contains(body, "hidden") || !strings.Contains(body, "id: "+afterCursor+"\nevent: approved\ndata: {\"job\":1,\"by\":\"after\"}") {
 		t.Fatalf("filtered replay: %s", body)
 	}
 	// The same ids survive a new reader; an unknown cursor gets a refresh tick.

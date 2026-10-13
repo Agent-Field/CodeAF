@@ -48,7 +48,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "approve" || verb == "retry_publish" || verb == "answer" || verb == "undo" {
+			if verb == "approve" || verb == "retry_publish" || verb == "answer" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "unassign" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -585,18 +585,50 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.seam.New != nil) {
 		return
 	}
-	var body struct {
-		Repo      string `json:"repo"`
-		Title     string `json:"title"`
-		Text      string `json:"text"`
-		Autostart bool   `json:"autostart"`
-	}
+	var body api.NewJob
 	if !h.decode(w, r, &body, false) {
 		return
 	}
 	if strings.TrimSpace(body.Repo) == "" || strings.TrimSpace(body.Title) == "" {
 		h.fail(w, http.StatusUnprocessableEntity, "new job requires repo and title")
 		return
+	}
+	switch body.Source {
+	case "", factory.AskApp, factory.AskTUI, "hand-off":
+	default:
+		h.fail(w, 422, "source must be app, tui or hand-off")
+		return
+	}
+	if body.Source == "hand-off" {
+		if body.FromRef == nil || body.FromRef.Kind != "agent" || strings.TrimSpace(body.FromRef.ID) == "" || strings.TrimSpace(body.FromRef.Title) == "" {
+			h.fail(w, 422, "hand-off requires from_ref with agent kind, id and title")
+			return
+		}
+	} else if body.FromRef != nil {
+		h.fail(w, 422, "from_ref requires source hand-off")
+		return
+	}
+	if body.Start != "" && body.Autostart {
+		h.fail(w, 422, "start and autostart cannot be combined")
+		return
+	}
+	switch body.Start {
+	case "", "backlog":
+	case "now", "queued":
+		body.Autostart = true
+	default:
+		h.fail(w, 422, "start must be now, queued or backlog")
+		return
+	}
+	if (body.Source != "" || body.FromRef != nil || body.Assignee != nil || body.Start != "") && !h.requireVerb(w, h.config.Store != nil) {
+		return
+	}
+	if body.Assignee != nil {
+		*body.Assignee = factory.NormalizeHandle(*body.Assignee)
+		if body.Autostart && *body.Assignee == "" && h.mode() == api.FactoryTeam {
+			h.fail(w, 422, "starting a team job requires an assignee")
+			return
+		}
 	}
 	visible := h.repoVisible(r, body.Repo)
 	if h.authFailed(w, r) {
@@ -619,7 +651,15 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.stampAsk(r, id, body.Title, body.Text)
+	if h.failed(w, h.stampAsk(r, id, body)) {
+		return
+	}
+	if body.Autostart && h.config.Store != nil {
+		it, err := h.config.Store.Get(id)
+		if h.failed(w, err) || h.failed(w, h.ensureBudget(r, it)) {
+			return
+		}
+	}
 	if body.Autostart && h.failed(w, h.recordAction(r, factory.Item{ID: id}, record.AutoStarted, "", func() error { return h.seam.Launch(id) })) {
 		return
 	}
@@ -631,29 +671,38 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 
 // stampAsk records the app's ask on a job this factory's store holds.
 // The body carries the person's words, never a cap.
-func (h *Handler) stampAsk(r *http.Request, id int, title, text string) {
+func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	if h.config.Store == nil {
-		return
-	}
-	if _, err := h.config.Store.Get(id); err != nil {
-		return
+		return nil
 	}
 	by, err := h.callerHandle(r)
 	if err != nil {
-		return
+		return err
 	}
-	ask := strings.TrimSpace(text)
+	ask := strings.TrimSpace(body.Text)
 	if ask == "" {
-		ask = strings.TrimSpace(title)
+		ask = strings.TrimSpace(body.Title)
 	}
-	now := time.Now()
-	if h.workers != nil {
-		now = h.workers.now()
+	now := h.clock()
+	source := body.Source
+	if source == "" {
+		source = factory.AskApp
 	}
-	_ = h.config.Store.Update(id, func(it *factory.Item) error {
-		it.Ask = &factory.JobAsk{Text: ask, By: by, At: now, Source: factory.AskApp}
+	return h.config.Store.Update(id, func(it *factory.Item) error {
+		if body.Source == "hand-off" {
+			it.Title = body.Title
+		}
+		if body.Start == "now" {
+			it.Marked = true
+		}
+		it.Ask = &factory.JobAsk{Text: ask, By: by, At: now, Source: source, FromRef: body.FromRef}
 		if it.Starter == "" && by != "" {
 			it.Starter = by
+		}
+		if body.Assignee != nil {
+			it.Assignee = *body.Assignee
+			it.Starter = ""
+			it.Taker = ""
 		}
 		if strings.TrimSpace(it.Body) == "" {
 			it.Body = ask

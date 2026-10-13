@@ -163,3 +163,10 @@ type FailedPayload struct {
 	Job    int    `json:"job"`
 	Reason string `json:"reason"`
 }
+
+// StatePayload names every projected job transition, including a cleared reason.
+type StatePayload struct {
+	Job    int    `json:"job"`
+	State  string `json:"state"`
+	Reason string `json:"reason"`
+}
