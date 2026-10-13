@@ -1,2 +1,4 @@
-// Package store owns app folders under $CODEAF_HOME/apps/<id>: definition files, state (planning → kept), Keep as v1 and Discard. Lane B1.
+// Package store owns the personal app registry, draft definition repositories,
+// numbered versions and lifecycle metadata under $CODEAF_HOME/apps/<id>.
+// Records remain outside git and belong to the records service. Lane B1.
 package store
