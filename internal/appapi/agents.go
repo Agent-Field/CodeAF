@@ -79,6 +79,7 @@ type AgentOpenRequest struct {
 }
 
 type AgentConnection struct {
+	processes   *processObserver
 	Engine      AgentEngine
 	SessionFile string
 	Workspace   string
@@ -146,6 +147,8 @@ func (a *AgentRegistry) Close() {
 		if live.longTimer != nil {
 			live.longTimer.Stop()
 		}
+		_ = stopEngineProcesses(live.conn.Engine)
+		a.syncProcessEventsLocked(id, live.conn)
 		if live.conn.Close != nil {
 			live.conn.Close()
 		}

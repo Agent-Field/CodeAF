@@ -21,7 +21,7 @@ type turnSavedReceipt struct {
 func (a *AgentRegistry) turnReceipt(record *agentRecord, text string, link *SourceRef) DisplayEntry {
 	at := a.now().UTC()
 	entry := DisplayEntry{ID: fmt.Sprintf("receipt_%d", len(record.Receipts)), Kind: "receipt", Role: "note", Text: text, By: "you", At: &at, Link: link}
-	record.Receipts = append(record.Receipts, turnSavedReceipt{Entry: entry, AtEntry: len(a.turnEntries(*record)) - len(record.Receipts)})
+	record.Receipts = append(record.Receipts, turnSavedReceipt{Entry: entry, AtEntry: len(a.turnBaseEntries(*record)) - len(record.Receipts)})
 	return entry
 }
 
@@ -58,6 +58,9 @@ func turnEntry(entry session.DisplayEntry, index int) DisplayEntry {
 	return DisplayEntry{ID: fmt.Sprintf("entry_%d", index), Kind: kind, Role: entry.Role, Text: entry.Text, Tool: entry.Tool, CallID: entry.CallID, Args: entry.Args, Output: entry.Output, Answered: entry.Answered}
 }
 func (a *AgentRegistry) turnEntries(record agentRecord) []DisplayEntry {
+	return mergeProcessEndEntries(a.turnBaseEntries(record), a.endedProcessEntries(record.Agent.ID, record.SessionFile))
+}
+func (a *AgentRegistry) turnBaseEntries(record agentRecord) []DisplayEntry {
 	saved := session.ReadTranscript(record.SessionFile)
 	entries, earlier, floor := saved.Entries, saved.Earlier, saved.Floor
 	if live := a.live[record.Agent.ID]; live != nil {

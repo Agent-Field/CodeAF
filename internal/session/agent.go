@@ -2618,6 +2618,7 @@ func (a *Agent) Close() error {
 	if a.jobs != nil {
 		a.jobs.shutdown(jobShutdownGrace)
 	}
+	a.finishProcessRecords()
 
 	// AND THE SESSION STOPS SAYING IT IS HERE, and takes its presence file with
 	// it (taskpresence.go). It happens after the jobs round because work still

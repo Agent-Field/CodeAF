@@ -905,3 +905,27 @@ only derives a selection flag and never closes anything.
 The TUI calls a task's worker/planner/checker models `/seats`. `/crew` is an
 alias for one release, in both home and conversation dispatch. Go internals
 retain their existing crew names; the app's crews mean groups of agents.
+
+
+## The v2 app process shelf
+
+`internal/appapi/process*.go` projects session background commands as processes.
+The public handle encodes the owning agent and its local process number, so a
+stop never treats an operating-system pid or another agent's number as identity.
+Start remains the agent's existing tool; rerun takes its command from the engine's
+saved shelf. Additive `Process.List` and `Process.Rerun` remote doors expose that
+shelf without introducing an arbitrary command field on the app API.
+
+The session saves `processes.json` beside its transcript at process updates.
+Ended records preserve command, timing, exit code, URL and output truncation;
+output expiry never removes their history. App-mode sinks preserve their leased
+inode while dropping oldest lines from a single 10 MiB log. Completed managed
+logs expire after seven days; active writer leases prevent deletion. Terminal
+spools retain their existing chunk and directory limits.
+
+The app observes the process shelf independently of the turn lane's task
+subscription. State changes publish `process.changed`; one stable end notice
+also reaches `turn.entry` and the agent's snapshot. Live output has a separate
+follow response, bounded reads and write deadlines. Closing an agent and app
+shutdown stop its processes before releasing the connection; the factory power
+lane calls `AgentRegistry.StopAllProcesses` for sleep.

@@ -1476,3 +1476,32 @@ including compacted history; default limit 100, maximum 500. GET `/tools/{call_i
 reads a recorded tool result, capped at 1 MiB. The caller supplies a call id,
 never a path. Missing calls return 404; unfinished calls return 409. Full saved
 results must belong to this conversation's tool records.
+
+
+## Processes in the desktop app: start, live output, stop, rerun and retention
+
+In the desktop app, a long background command is a **process**. Ask an agent to
+start a dev server, watcher or build with its existing background-command tool.
+It keeps running after the reply. The Processes panel can list Running and Ended,
+open live output, Stop one, or Stop all for that agent. Closing the agent with
+running work asks first; closing it or quitting the app stops its processes.
+
+An ended shell command can be run again with **Rerun**. That uses the saved command
+and creates a new process. A command still running must be stopped first. Watches,
+renders and a process whose command was not saved cannot be rerun this way; reopen
+a closed agent before running its command again. Its ending has one notice with
+Output, and a failed ending includes its exit code and Rerun.
+
+App-created output keeps at most **10 MiB** per process in one file. Oldest lines
+are dropped first in batches; a line larger than the limit is cut by bytes. Reads
+say when output was truncated. Completed output expires after **seven days**;
+active writers are protected. Ended records and their notices remain. The terminal's
+background commands keep the existing two-chunk 8 MiB spool and completed-log
+budget described above.
+
+The API is `GET /app/v1/processes`, `GET /app/v1/processes/{pid}/output`,
+`POST /app/v1/processes/{pid}/stop`, `POST /app/v1/processes/{pid}/rerun`, and
+`POST /app/v1/agents/{id}/processes/stop-all`. Output defaults to a 64 KiB tail;
+`tail` can request up to 10 MiB, and `follow=1` streams new output until the
+process ends. All routes require the app's launch credential. Process handles
+are opaque; they are not operating-system process ids.

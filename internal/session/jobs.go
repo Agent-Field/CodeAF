@@ -63,6 +63,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
@@ -259,11 +260,13 @@ type job struct {
 // jobInfo is a job's status copied out from under its lock, so rendering never
 // holds it.
 type jobInfo struct {
-	id      int
-	command string
-	kind    jobKind
-	label   string
-	detail  string
+	outputTruncated bool
+	url             string
+	id              int
+	command         string
+	kind            jobKind
+	label           string
+	detail          string
 	// name is the short name the job is CALLED — the label where the registry
 	// minted one, and otherwise whatever the cheap namer answered (jobname.go).
 	// It is empty until there is one: naming is an errand and the work never
@@ -289,12 +292,18 @@ type jobInfo struct {
 func (j *job) info() jobInfo {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	truncated := false
+	url := ""
+	if j.sink != nil {
+		truncated = j.sink.notice() != ""
+		url = j.sink.processURL()
+	}
 	elapsed := time.Since(j.started)
 	if j.state != jobRunning {
 		elapsed = j.ended.Sub(j.started)
 	}
 	return jobInfo{
-		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail,
+		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail, outputTruncated: truncated, url: url,
 		name:    j.name,
 		logPath: j.logPath,
 		dir:     j.dir,
@@ -658,6 +667,10 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		done:    make(chan struct{}),
 	}
 	started.sink = newJobSink(logFile, spoolPath)
+	if config.AppMode() {
+		started.sink.appWindow = true
+		started.sink.chunkBytes = AppProcessOutputBytes
+	}
 	// THE ORIGIN IS TAKEN AT LAUNCH, ONCE. A job's real ending may arrive long
 	// after the turn that started it, and it must be stamped with the turn that
 	// owns it rather than the one that happens to be live when it settles.
@@ -1407,6 +1420,8 @@ type jobSink struct {
 	file            *os.File
 	closed          bool
 	base            string
+	url             string
+	appWindow       bool
 	chunkBytes      int64
 	spoolBytes      int64
 	spoolBroken     bool
@@ -1441,6 +1456,7 @@ func newJobSink(file *os.File, base string) *jobSink {
 func (s *jobSink) Write(data []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.captureProcessURLLocked(data)
 	if s.file != nil && !s.closed {
 		s.spoolLocked(data)
 	}
@@ -1510,6 +1526,9 @@ func (s *jobSink) spoolWriteLocked(piece []byte) (int, error) {
 // previous backup is removed before the copy, so even during rotation there
 // are at most two chunks. A backup is only removed if this sink created it.
 func (s *jobSink) rotateLocked() bool {
+	if s.appWindow {
+		return s.trimAppWindowLocked()
+	}
 	root, err := os.OpenRoot(filepath.Dir(s.base))
 	if err != nil {
 		s.breakSpoolLocked(err)

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
@@ -15,8 +16,8 @@ const (
 	DefaultDayCapUSD           = config.AppDefaultDayCap
 	DefaultStandingRunUSD      = standing.DefaultPerRunUSD
 	QuestionClock              = config.AppDefaultQuestionClockMinutes * time.Minute
-	ProcessOutputRetention     = 7 * 24 * time.Hour
-	MaxProcessOutputBytes      = 10 << 20
+	ProcessOutputRetention     = session.AppProcessOutputRetention
+	MaxProcessOutputBytes      = session.AppProcessOutputBytes
 	QuickTaskFileLimit         = 30
 	IdleAgentAfter             = config.AppDefaultIdleDays * 24 * time.Hour
 )

@@ -109,6 +109,11 @@ func (s JobState) Over() bool { return s != JobRunning }
 // the difference between this and what it replaces — the packed report was the
 // engine choosing a surface's wording, and it fitted no width in particular.
 type JobNotice struct {
+	// OutputTruncated survives an ended process's shelf so a later full-window
+	// read still discloses that older output was discarded or could not be kept.
+	OutputTruncated bool
+	// URL keeps the first local server address even after its output line expires.
+	URL string
 	// ID is the job's own number, and it is the ONLY id it has. It is what
 	// `jobs output 3` and `jobs kill 3` take, what [Agent.Cancel] takes as
 	// `job:3`, and what a person reads on the row. One thing, one number.
@@ -181,17 +186,19 @@ func (n JobNotice) Label() string {
 // the one place the two vocabularies meet.
 func noticeOf(info jobInfo) JobNotice {
 	return JobNotice{
-		ID:       info.id,
-		Name:     jobNameOf(info),
-		Command:  info.command,
-		Detail:   info.detail,
-		Kind:     jobKindWord(info.kind),
-		State:    jobStateWord(info),
-		LogPath:  info.logPath,
-		Started:  info.started,
-		Elapsed:  info.elapsed,
-		ExitCode: info.code,
-		Ticks:    info.ticks,
+		ID:              info.id,
+		OutputTruncated: info.outputTruncated,
+		URL:             info.url,
+		Name:            jobNameOf(info),
+		Command:         info.command,
+		Detail:          info.detail,
+		Kind:            jobKindWord(info.kind),
+		State:           jobStateWord(info),
+		LogPath:         info.logPath,
+		Started:         info.started,
+		Elapsed:         info.elapsed,
+		ExitCode:        info.code,
+		Ticks:           info.ticks,
 	}
 }
 

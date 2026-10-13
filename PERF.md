@@ -2923,3 +2923,26 @@ receipts are atomically replaced and synced before committing deletion. Startup 
 walks only the two saved-conversation directory levels, without following symlinked buckets.
 `internal/session/deletion_revision_test.go` drives completion and timeout with held
 channels and a zero test grace rather than sleeping for the production deadline.
+
+
+## App process output retention
+
+App mode uses `session.AppProcessOutputBytes` (**10 MiB**) and
+`session.AppProcessOutputRetention` (**seven days**), re-exported by appapi's
+policy constants. Its single leased log is compacted in place when full, dropping
+a batch targeting one eighth of the window, completing the oldest line. An
+unfinished tail first loses any complete old lines; an overlong line is cut by
+bytes. Boundary scans read at most the window through a 32 KiB buffer. Each compaction copies at most the retained window in 32 KiB pieces;
+a huge write never allocates a matching temporary. The 64 KiB model ring stays.
+The app's completed logs use age expiry rather than the terminal's 128 MiB/64-group
+budget, so that budget cannot silently shorten their seven-day lifetime.
+
+The process shelf is persisted on state/name updates, never on every output write.
+Each open app connection has one 250 ms state observer, canceled on detach, and
+an output follow has a 100 ms poll and a 4096-byte anchor. Ordinary follows read
+only the appended bytes; compaction recovery reads at most 10 MiB. The state
+observer does not subscribe to or replace the turn lane's task feed. End notices
+share one observer state across polls and lifecycle mutations so shutdown cannot
+lose them or send them twice. `app_processes_test.go` and `processes_test.go` pin
+the output cap, writer identity, age expiry, live follow, process ownership and
+lifecycle stops.

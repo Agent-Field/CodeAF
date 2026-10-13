@@ -168,5 +168,8 @@ func (s *Server) Close() {
 		s.signIn.flow = nil
 	}
 	s.signIn.key = ""
+	if s.options.Agents != nil {
+		s.options.Agents.Close()
+	}
 	s.events.Close()
 }

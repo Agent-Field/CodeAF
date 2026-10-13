@@ -400,6 +400,7 @@ func (a *AgentRegistry) create(ctx context.Context, d *agentDisk, body agentMuta
 		}
 		agent.LastMessageAt, agent.State, agent.Glyph = &now, "running", "running"
 	}
+	a.watchProcesses(agent.ID, &conn)
 	a.live[agent.ID] = &agentLive{conn: conn, running: events != nil, generation: 1}
 	record := agentRecord{Agent: agent, SessionFile: conn.SessionFile, Workspace: conn.Workspace, Approvals: body.Approvals}
 	if events != nil {
@@ -428,6 +429,7 @@ func (a *AgentRegistry) connect(ctx context.Context, record agentRecord) (*agent
 		}
 		return nil, errors.New("agent engine opened a different transcript")
 	}
+	a.watchProcesses(record.Agent.ID, &conn)
 	live := &agentLive{conn: conn}
 	a.live[record.Agent.ID] = live
 	return live, nil
@@ -504,6 +506,10 @@ func (a *AgentRegistry) mutate(ctx context.Context, d *agentDisk, id, action str
 			}
 		}
 		if live := a.live[id]; live != nil {
+			if err := stopEngineProcesses(live.conn.Engine); err != nil {
+				return Agent{}, nil, err
+			}
+			a.syncProcessEventsLocked(id, live.conn)
 			if live.conn.End != nil {
 				if err := live.conn.End(); err != nil {
 					return Agent{}, nil, agentError(409, "conflict", "the agent engine could not be closed")
@@ -574,6 +580,19 @@ func (a *AgentRegistry) running(record agentRecord) agentRunning {
 		counts.Tasks = len(presence.RunningTasks)
 	}
 	if live := a.live[record.Agent.ID]; live != nil {
+		if door, ok := live.conn.Engine.(processListDoor); ok {
+			if rows, err := door.JobNotices(); err == nil {
+				count := 0
+				for _, n := range rows {
+					if n.State == session.JobRunning && n.Kind != session.JobKindTask {
+						count++
+					}
+				}
+				if count > counts.Processes {
+					counts.Processes = count
+				}
+			}
+		}
 		n := 0
 		for _, task := range live.conn.Engine.PlanTasks() {
 			if task.Status == "running" || task.Status == "claimed" || task.Running > 0 {
