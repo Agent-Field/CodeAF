@@ -42,7 +42,7 @@ func TestGoldenCRMSeed(t *testing.T) {
 				if err != nil || def.App.ID != "crm" || def.App.Version != 1 {
 					t.Fatalf("definition during seed = %+v, %v", def, err)
 				}
-				if len(rows["deal"]) != 6 || rows["deal"][0].ID == "" || rows["deal"][0].Fields["name"] == nil {
+				if len(rows["deal"]) != 10 || rows["deal"][0].ID == "" || rows["deal"][0].Fields["name"] == nil {
 					t.Fatalf("seed rows = %+v", rows)
 				}
 				return nil

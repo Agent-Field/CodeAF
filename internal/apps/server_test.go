@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
@@ -120,8 +121,47 @@ func TestBridgeServesTheGoldenCRM(t *testing.T) {
 	if err := c.call("crm", bridge.MethodRecordsQuery, bridge.QueryParams{Type: "deal", Query: "sort:-amount", CountBy: "stage"}, &page); err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 6 || page.Rows[0].ID != "dl_northwind" || page.Counts["Proposal"] != 2 {
+	if page.Total != 10 || page.Rows[0].ID != "dl_northwind" || page.Counts["Proposal"] != 2 {
 		t.Fatalf("page = %+v", page)
+	}
+}
+
+func TestGoldenCRMNewDealInputsCreateARecord(t *testing.T) {
+	files, _ := spec.GoldenCRM()
+	definition, err := spec.Decode(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var create bridge.CreateRecordParams
+	definition.Screens["pipeline"].Walk(func(node *spec.Node) {
+		if node.Label == "New deal" {
+			if err := json.Unmarshal(node.On["click"][0][spec.VerbRecordsCreate], &create); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	input := map[string]any{
+		"name": "Support team rollout", "company": "co_northwind",
+		"amount": float64(18000), "stage": "Lead", "next_step": "Book discovery with Priya",
+	}
+	for name, value := range create.Set {
+		if ref, ok := value.(string); ok && strings.HasPrefix(ref, "$input.") {
+			create.Set[name] = input[strings.TrimPrefix(ref, "$input.")]
+		}
+	}
+	c := dial(t)
+	var created bridge.Record
+	if err := c.call("crm", bridge.MethodRecordsCreate, create, &created); err != nil {
+		t.Fatal(err)
+	}
+	var saved bridge.Record
+	if err := c.call("crm", bridge.MethodRecordsGet, bridge.GetRecordParams{Type: "deal", ID: created.ID}, &saved); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range input {
+		if saved.Fields[name] != want {
+			t.Errorf("saved %s = %v, want %v", name, saved.Fields[name], want)
+		}
 	}
 }
 

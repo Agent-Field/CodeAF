@@ -1,20 +1,30 @@
 {
   "$schema": "https://codeaf.dev/schema/screen/1.json",
   "screen": "deal",
-  "title": "Deal",
-  "params": ["id"],
+  "title": "Deals",
+  "params": [
+    "id"
+  ],
   "nav": {
     "part": "SectionTabs",
     "label": "CRM sections",
-    "props": { "items": ["Pipeline", "Contacts"] }
+    "props": {
+      "items": [
+        "Pipeline",
+        "Contacts"
+      ]
+    }
   },
   "body": {
     "part": "Stack",
     "children": [
       {
         "part": "RecordPage",
-        "label": "Deal",
-        "bind": { "record": "$params.id", "type": "deal" },
+        "label": "Deals › {{record.name}}",
+        "bind": {
+          "record": "$params.id",
+          "type": "deal"
+        },
         "props": {
           "fields": [
             "name",
@@ -26,9 +36,9 @@
             "owner",
             "last_touch",
             "weighted",
-            "likely"
+            "likely",
+            "next_step"
           ],
-          "actions": ["follow-up", "mark-won"],
           "history": true
         }
       },
@@ -42,15 +52,24 @@
               "click": [
                 {
                   "runs.start": "follow-up",
-                  "params": { "deals": ["$params.id"] }
+                  "params": {
+                    "deals": [
+                      "$params.id"
+                    ]
+                  }
                 }
               ]
+            },
+            "props": {
+              "kind": "primary"
             }
           },
           {
             "part": "Button",
             "label": "Ask CRM agent about this deal",
-            "props": { "kind": "quiet" },
+            "props": {
+              "kind": "quiet"
+            },
             "on": {
               "click": [
                 {
@@ -62,28 +81,89 @@
           },
           {
             "part": "Button",
-            "label": "Delete deal…",
-            "props": { "kind": "destructive" },
+            "label": "Mark won…",
+            "props": {
+              "kind": "secondary"
+            },
+            "when": "$record.stage != 'Won'",
             "on": {
               "click": [
                 {
-                  "records.delete": { "id": "$params.id" },
-                  "confirm": "Delete {{record.name}}? It can be restored for 30 days."
-                },
-                { "open": "pipeline" }
+                  "records.update": {
+                    "id": "$params.id",
+                    "set": {
+                      "stage": "Won"
+                    }
+                  },
+                  "confirm": "Mark {{record.name}} won?"
+                }
               ]
             }
+          },
+          {
+            "part": "Button",
+            "label": "Back to deals",
+            "props": {
+              "kind": "quiet"
+            },
+            "on": {
+              "click": [
+                {
+                  "open": "pipeline"
+                }
+              ]
+            }
+          },
+          {
+            "part": "Menu",
+            "label": "More deal actions",
+            "children": [
+              {
+                "part": "Button",
+                "label": "Delete deal…",
+                "props": {
+                  "kind": "destructive"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "records.delete": {
+                        "id": "$params.id"
+                      },
+                      "confirm": "Delete {{record.name}}?"
+                    },
+                    {
+                      "open": "pipeline"
+                    }
+                  ]
+                }
+              }
+            ]
           }
         ]
       },
       {
         "part": "Text",
-        "props": { "text": "Approvals", "size": "small", "tone": "neutral" }
+        "props": {
+          "text": "Approvals",
+          "size": "small",
+          "tone": "neutral"
+        }
       },
       {
         "part": "ApprovalCard",
         "label": "Approvals for this app",
-        "bind": { "approvals": "open" }
+        "bind": {
+          "approvals": "open"
+        },
+        "slots": {
+          "empty": {
+            "part": "Empty",
+            "props": {
+              "text": "No approvals waiting. Draft a follow-up to prepare an email for approval."
+            }
+          }
+        }
       },
       {
         "part": "Text",
@@ -95,7 +175,18 @@
       },
       {
         "part": "RunTimeline",
-        "bind": { "run": "follow-up", "for": "$params.id" }
+        "bind": {
+          "run": "follow-up",
+          "for": "$params.id"
+        },
+        "slots": {
+          "empty": {
+            "part": "Empty",
+            "props": {
+              "text": "No follow-up runs yet. Choose Draft follow-up to start one."
+            }
+          }
+        }
       }
     ]
   }
