@@ -19,6 +19,13 @@ These land first. **connect, crews and shape code against them.** Until a
 service is real, its stub returns the Personal answer (one member `me`,
 workspace Owner, app Editor, audit appended to `apps/audit.db`).
 
+- `space.OnMemberGone(h func(ctx context.Context, member string))` in
+  `internal/apps/space/hooks.go` registers member-data cleanup hooks in a
+  mutex-guarded package registry; nil hooks are ignored. `memberGone(ctx,
+  member)` invokes a snapshot of the hooks synchronously in registration
+  order with the supplied context and member, outside the registry lock.
+  No service caller is wired yet; b1 calls it from Remove and Leave.
+
 ### Caller (svc.go, two added lines)
 
 ```go
