@@ -236,15 +236,45 @@ files, never on the wire (architecture: Secrets). Per app
 `$CODEAF_HOME/apps/<id>/imports/<import_id>.json`: mapping, created record
 ids and their versions at import time (for Undo).
 
-Credentials (manager ruling, 2026-10-13): one credential store per server,
-nothing flows between hosts. Personal-space apps use the personal server's
-`internal/connect` tokens. For a workspace app, **Allow** connects the
-member's account on that workspace server: if the server holds no token for
-that member + service, Allow runs the service sign-in (internal/connect auth)
-there, then saves the grant. The token is stored encrypted on the workspace
-server, scoped to that member and that app grant, and is deleted on Revoke
-(Settings → Accounts). `AllowParams` gains `sign_in?: bool` in the result path:
-`connect.allow` answers `{grant}` or `{sign_in_url}` when a sign-in is needed.
+Credentials (manager ruling 2026-10-13, matching board 11; replaces the
+earlier ruling). No server-to-server delegation: **the desktop app is the only
+thing that moves a credential.**
+
+- A person's connections live with them: signed in once in Settings →
+  Accounts, held by the desktop app (Keychain / Secret Service, through the
+  personal sidecar's `internal/connect` store). That is "yours, in every space".
+- Personal-space apps use those tokens directly. No Allow.
+- **Allow** for a workspace app: the desktop asks its personal sidecar for that
+  service's credential (`connect.credential.export {service, space, app}` →
+  `{credential}`: a refresh token, or a token minted for this grant where the
+  provider supports it), then calls `connect.allow {service, answer: "allow",
+  credential}` on the workspace server over the authenticated bridge. The
+  workspace server stores it encrypted (internal/connect key/keyref
+  encryption), scoped to member × app grant, and deletes it on Revoke or when
+  the member leaves the workspace (`Grants.ForgetMember(member)`, called by
+  the spaces track's Leave path with one line).
+- `connect.credential.export` exists only on the personal sidecar, only for
+  the desktop's own session token; it never runs on a workspace server and is
+  never callable by screens, custom code, runs or agents (Caps denies it for
+  every app scope). Credentials are never logged, never in app files, never
+  returned by any other method.
+- **Missing connection:** if the person has not connected the service,
+  `AllowSheet.missing = true` and the sheet offers "Connect Gmail" first (the
+  normal Settings → Accounts sign-in on the personal sidecar), then Allow. This
+  is a missing-connection state, not a step on the normal path.
+- **Expired:** Reconnect signs in again on the personal sidecar, then the
+  desktop re-sends the fresh credential to every space that holds a grant for
+  that service (`connect.allow` again with `answer: "refresh"`), and the
+  waiting step runs at once.
+- Settings → Accounts: connections come from the personal sidecar; "Apps that
+  act as you" merges `connect.accounts` grants from every space the desktop is
+  connected to.
+
+Wire additions: `AllowParams {service, answer: allow|not_now|refresh,
+credential?: {kind: refresh|grant, token, expires_at?}}` (credential required
+for allow/refresh in a workspace, absent in Personal) · `AllowSheet.missing:
+bool` · method `connect.credential.export` (personal sidecar only, global) ·
+`Grants.ForgetMember(ctx, member) error` on the seam.
 
 ## 7 · Lanes
 
