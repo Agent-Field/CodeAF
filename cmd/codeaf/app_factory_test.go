@@ -57,6 +57,10 @@ func TestAppFactorySoloSharesListenerAndTerminalDiscovery(t *testing.T) {
 	if !ok || target.url != server.URL || target.token != "launch-token" {
 		t.Fatal(target, ok)
 	}
+	discovery, err := os.ReadFile(filepath.Join(root, "v3", "factory", "serve.json"))
+	if err != nil || strings.Contains(string(discovery), "launch-token") {
+		t.Fatal("app launch bearer was persisted", err)
+	}
 	response, err = http.Get(server.URL + "/v1/about")
 	if err != nil {
 		t.Fatal(err)
@@ -107,6 +111,10 @@ func TestAppFactoryProxyKeepsIssuedRunnerCredentials(t *testing.T) {
 
 // This fixture starts only the service, leaving election and model work absent.
 func (h *appFactoryHost) closeSoloForTest() {
+	if h.closeDiscovery != nil {
+		h.closeDiscovery()
+		h.closeDiscovery = nil
+	}
 	if h.handler != nil {
 		h.handler.Close()
 		h.handler = nil

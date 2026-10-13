@@ -35,7 +35,8 @@ const factoryDefaultListen = "127.0.0.1:7420"
 type factoryDiscovery struct {
 	URL   string `json:"url"`
 	PID   int    `json:"pid"`
-	Token string `json:"token"`
+	Token string `json:"token,omitempty"`
+	App   bool   `json:"app,omitempty"`
 }
 
 func runFactory(args []string) error {

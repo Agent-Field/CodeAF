@@ -16,3 +16,5 @@ The solo mount preserves runner credentials through its proxy and takes over
 when the previous solo host closes. Task hand-off decodes the task resource's
 opaque id before graph or plan cancellation and refuses a changed source task
 before creating a job.
+App solo discovery shares its launch bearer through a private runtime socket;
+serve.json contains only the address, process id and app marker.

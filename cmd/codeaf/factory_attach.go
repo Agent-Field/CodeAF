@@ -150,6 +150,13 @@ func liveFactoryDiscovery() (factoryTarget, bool) {
 	if json.Unmarshal(body, &d) != nil || d.PID <= 0 || !processgroup.ProcessAlive(d.PID) {
 		return factoryTarget{}, false
 	}
+	if d.App {
+		live, err := appFactoryDiscovery(v3FactoryRoot())
+		if err != nil || live.URL != d.URL || live.PID != d.PID || live.Token == "" {
+			return factoryTarget{}, false
+		}
+		d.Token = live.Token
+	}
 	base, err := factoryURL(d.URL)
 	if err != nil {
 		return factoryTarget{}, false

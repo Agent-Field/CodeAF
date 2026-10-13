@@ -48,6 +48,7 @@ type appFactoryHost struct {
 	credentials                        *config.AppCredentials
 	handler                            *serve.Handler
 	release                            func()
+	closeDiscovery                     func()
 }
 
 func newAppFactoryHost(ctx context.Context, root, address, token string, credentials *config.AppCredentials) (*appFactoryHost, error) {
@@ -74,6 +75,9 @@ func (h *appFactoryHost) close() {
 		if json.Unmarshal(body, &saved) == nil && saved.URL == h.address && saved.PID == os.Getpid() {
 			_ = os.Remove(path)
 		}
+	}
+	if h.closeDiscovery != nil {
+		h.closeDiscovery()
 	}
 	if h.release != nil {
 		h.release()
@@ -109,13 +113,21 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		},
 		ChangeAssignee: factorygithub.JobWrites{Token: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }}.Assign,
 		PersonProfile:  factoryPeople().Profile, CodeOwners: factoryPeople().Owners})
-	data, _ := json.Marshal(factoryDiscovery{URL: h.address, PID: os.Getpid(), Token: h.token})
-	if err = writeFactoryPrivate(filepath.Join(h.floor.Root(), "serve.json"), append(data, '\n')); err != nil {
+	closeDiscovery, err := serveAppFactoryDiscovery(h.floor.Root(), factoryTarget{h.address, h.token})
+	if err != nil {
 		handler.Close()
 		release()
 		return nil, err
 	}
+	data, _ := json.Marshal(factoryDiscovery{URL: h.address, PID: os.Getpid(), App: true})
+	if err = writeFactoryPrivate(filepath.Join(h.floor.Root(), "serve.json"), append(data, '\n')); err != nil {
+		handler.Close()
+		closeDiscovery()
+		release()
+		return nil, err
+	}
 	h.handler, h.release = handler, release
+	h.closeDiscovery = closeDiscovery
 	startFactoryTriage(h.ctx, h.floor)
 	guard.Go("app/factory poll", func() {
 		token := func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, h.profile); return t }
