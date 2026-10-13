@@ -1,0 +1,52 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "pipeline",
+  "title": "Pipeline",
+  "params": ["view"],
+  "nav": { "part": "SectionTabs", "label": "CRM sections", "props": { "items": ["Pipeline", "Contacts"] } },
+  "body": {
+    "part": "Row",
+    "children": [
+      {
+        "part": "Stack",
+        "children": [
+          {
+            "part": "Row",
+            "children": [
+              { "part": "Text", "props": { "text": "Deals", "size": "title" } },
+              {
+                "part": "Button", "label": "New deal", "props": { "kind": "primary" },
+                "on": { "click": [ { "records.create": { "type": "deal", "set": { "name": "$input.name", "stage": "Lead" } }, "ask": { "name": "text" } } ] }
+              }
+            ]
+          },
+          {
+            "part": "RecordList", "id": "deals", "label": "Deals",
+            "bind": { "records": "deal", "query": "stage:-Lost sort:-amount" },
+            "props": { "views": ["Board by stage", "List"], "meter": "stage", "groupBy": "stage", "columns": ["name", "company", "stage", "amount", "likely"] },
+            "on": { "open": [ { "open": "deal", "id": "$row.id" } ] },
+            "slots": { "empty": { "part": "Empty", "props": { "text": "No deals yet" } } }
+          },
+          {
+            "part": "BulkBar", "when": "$selection.deals.count > 0", "props": { "list": "deals" },
+            "children": [
+              { "part": "Button", "label": "Move to…",
+                "on": { "click": [ { "records.update": { "ids": "$selection.deals.ids", "set": { "stage": "$input.stage" } }, "ask": { "stage": "enum" } } ] } },
+              { "part": "Button", "label": "Draft follow-ups",
+                "on": { "click": [ { "runs.start": "follow-up", "params": { "deals": "$selection.deals.ids" } } ] } },
+              { "part": "Button", "label": "Likely to close · AI",
+                "on": { "click": [ { "ai.sort": "deals", "field": "likely" } ] } }
+            ]
+          }
+        ]
+      },
+      {
+        "part": "Panel", "label": "Selected deal", "when": "$selection.deals.count == 1",
+        "children": [
+          { "part": "RecordPage", "bind": { "record": "$selection.deals.id", "type": "deal" },
+            "props": { "fields": ["stage", "amount", "close_on", "owner", "weighted", "likely"], "actions": ["follow-up", "mark-won"] } }
+        ]
+      }
+    ]
+  }
+}

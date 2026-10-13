@@ -1,0 +1,28 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "deal",
+  "title": "Deal",
+  "params": ["id"],
+  "nav": { "part": "SectionTabs", "label": "CRM sections", "props": { "items": ["Pipeline", "Contacts"] } },
+  "body": {
+    "part": "Stack",
+    "children": [
+      { "part": "RecordPage", "label": "Deal", "bind": { "record": "$params.id", "type": "deal" },
+        "props": { "fields": ["name", "company", "contacts", "stage", "amount", "close_on", "owner", "last_touch", "weighted", "likely"], "actions": ["follow-up", "mark-won"], "history": true } },
+      { "part": "Row",
+        "children": [
+          { "part": "Button", "label": "Draft follow-up",
+            "on": { "click": [ { "runs.start": "follow-up", "params": { "deals": ["$params.id"] } } ] } },
+          { "part": "Button", "label": "Ask CRM agent about this deal", "props": { "kind": "quiet" },
+            "on": { "click": [ { "agent.ask": "Summarise this deal and suggest the next step.", "record": "$params.id" } ] } },
+          { "part": "Button", "label": "Delete deal…", "props": { "kind": "destructive" },
+            "on": { "click": [ { "records.delete": { "id": "$params.id" }, "confirm": "Delete {{record.name}}? It can be restored for 30 days." }, { "open": "pipeline" } ] } }
+        ]
+      },
+      { "part": "Text", "props": { "text": "Approvals", "size": "small", "tone": "neutral" } },
+      { "part": "ApprovalCard", "label": "Approvals for this app", "bind": { "approvals": "open" } },
+      { "part": "Text", "props": { "text": "Follow-up runs", "size": "small", "tone": "neutral" } },
+      { "part": "RunTimeline", "bind": { "run": "follow-up", "for": "$params.id" } }
+    ]
+  }
+}

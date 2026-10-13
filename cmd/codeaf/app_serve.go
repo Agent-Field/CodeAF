@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
+	"github.com/Agent-Field/codeaf/internal/apps"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -125,6 +126,7 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 	defer agents.Close()
 	api := appapi.New(token, appapi.Options{Version: buildinfo.String(), Epoch: epoch, Shutdown: cancel, Credentials: credentials, ProfileDir: config.ProfilePath(config.ProfileDir(), ""), Context: ctx, Agents: agents, StandingTick: appStandingTick})
 	defer api.Close()
+	apps.Mount(ctx, api, apps.Wire(ctx, options.home))
 	factories, err := newAppFactoryHost(ctx, options.home, "http://"+listener.Addr().String(), token, credentials)
 	if err != nil {
 		return err

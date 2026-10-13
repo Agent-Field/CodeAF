@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 )
 
 const foreignOriginSentence = "this connection is only for the codeaf app"
@@ -92,15 +94,39 @@ func Guard(token string, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		authorization := r.Header.Values("Authorization")
-		if token == "" || len(authorization) != 1 || !strings.HasPrefix(authorization[0], "Bearer ") ||
-			subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(authorization[0], "Bearer ")), []byte(token)) != 1 {
+		if !authorized(r, token) {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			fail(w, http.StatusUnauthorized, "not_allowed", "engine connection required")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// authorized accepts exactly one bearer credential. The Apps bridge socket
+// may carry it as the subprotocol "bearer.<token>", because browsers cannot
+// set headers on a WebSocket; every other route takes only the header.
+func authorized(r *http.Request, token string) bool {
+	authorization := r.Header.Values("Authorization")
+	presented, ok := "", false
+	switch {
+	case len(authorization) == 1 && strings.HasPrefix(authorization[0], "Bearer "):
+		presented, ok = strings.TrimPrefix(authorization[0], "Bearer "), true
+	case len(authorization) == 0 && r.URL.Path == bridge.Path:
+		presented, ok = socketBearer(r)
+	}
+	return ok && token != "" && subtle.ConstantTimeCompare([]byte(presented), []byte(token)) == 1
+}
+
+func socketBearer(r *http.Request) (string, bool) {
+	for _, header := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, protocol := range strings.Split(header, ",") {
+			if value, found := strings.CutPrefix(strings.TrimSpace(protocol), bridge.BearerProtocol); found {
+				return value, true
+			}
+		}
+	}
+	return "", false
 }
 
 // FactoryWorkerPath names routes that authenticate with a runner credential.

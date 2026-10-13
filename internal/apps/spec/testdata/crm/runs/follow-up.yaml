@@ -1,0 +1,26 @@
+run: follow-up
+title: Follow up on deals
+budget: { per_run: 0.50 }
+params:
+  deals: { type: refs, to: deal, default: "stage:Proposal,Negotiation last_touch<-14d" }
+steps:
+  - id: each
+    loop: { over: $params.deals, as: deal, max: 25 }
+    steps:
+      - id: deal
+        records.query: { type: deal, query: "id:{{deal}}", limit: 1 }
+      - id: draft
+        agent: CRM agent
+        prompt: "Draft a short, plain follow-up email for {{steps.deal.output.name}} at stage {{steps.deal.output.stage}}."
+        output:
+          type: object
+          required: [subject, body]
+          properties: { subject: { type: string }, body: { type: string } }
+        retry: { max: 2, backoff: 30s }
+      - id: send
+        gate: { approval: send, who: $me, title: "Approval needed: send email" }
+        tool: gmail.send
+        as: $me
+        args: { subject: $steps.draft.output.subject, body: $steps.draft.output.body }
+      - id: touch
+        records.update: { type: deal, id: $deal, set: { last_touch: $now } }

@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/app/1.json",
+  "title": "codeaf app definition (app.json)",
+  "type": "object",
+  "required": ["id", "name", "agent", "records", "capabilities", "budget"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": { "$ref": "#/$defs/slug" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "description": { "type": "string" },
+    "space": { "type": "string" },
+    "version": { "type": "integer", "minimum": 0 },
+    "kit": { "type": "integer", "minimum": 1 },
+    "agent": {
+      "type": "object",
+      "required": ["name", "file"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "file": { "const": "agent.md" },
+        "model": { "type": "string" }
+      }
+    },
+    "records": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/slug" },
+      "additionalProperties": { "$ref": "#/$defs/recordType" }
+    },
+    "capabilities": { "$ref": "#/$defs/capabilities" },
+    "triggers": { "type": "array", "items": { "$ref": "#/$defs/trigger" } },
+    "commands": { "type": "array", "items": { "$ref": "#/$defs/command" } },
+    "budget": { "$ref": "#/$defs/budget" }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
+    "recordType": {
+      "type": "object",
+      "required": ["title", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "plural": { "type": "string" },
+        "title": { "type": "string", "description": "Field shown as the record's name." },
+        "fields": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/slug" },
+          "additionalProperties": { "$ref": "#/$defs/field" }
+        },
+        "constants": { "type": "object" },
+        "freeze": { "type": "array", "items": { "$ref": "#/$defs/freeze" } }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": ["text", "longtext", "number", "money", "date", "datetime", "duration", "enum", "enums", "bool",
+                   "person", "people", "ref", "refs", "email", "phone", "url", "file", "files", "place"]
+        },
+        "label": { "type": "string" },
+        "required": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "index": { "type": "boolean" },
+        "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "default": {},
+        "to": { "$ref": "#/$defs/slug" },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "masked": { "type": "boolean" },
+        "computed": { "type": "string", "minLength": 1 },
+        "ai": { "type": "string", "minLength": 1 },
+        "blind": {
+          "type": "object",
+          "required": ["until"],
+          "additionalProperties": false,
+          "properties": { "until": { "const": "submitted" }, "per": { "type": "string" } }
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "enum": ["enum", "enums"] } } }, "then": { "required": ["values"] } },
+        { "if": { "properties": { "type": { "enum": ["ref", "refs"] } } }, "then": { "required": ["to"] } }
+      ]
+    },
+    "freeze": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "when": { "type": "string" },
+        "except": { "type": "array", "items": { "type": "string" } },
+        "unfreeze": { "enum": ["Editor"] },
+        "period": { "enum": ["month", "quarter", "year"] },
+        "field": { "type": "string" },
+        "after": { "type": "string" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["records"],
+      "additionalProperties": false,
+      "properties": {
+        "records": {
+          "type": "object",
+          "additionalProperties": { "enum": ["r", "rw"] }
+        },
+        "connectors": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["as", "can"],
+            "additionalProperties": false,
+            "properties": {
+              "as": { "enum": ["member", "workspace"] },
+              "account": { "type": "string" },
+              "can": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "approve": { "type": "array", "items": { "type": "string" } },
+              "channels": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "ai": { "type": "array", "items": { "enum": ["sort", "summarise", "draft", "extract"] } },
+        "tools": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "required": ["id", "on", "run"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "on": { "enum": ["schedule", "record.created", "record.changed", "record.deleted", "connector"] },
+        "run": { "$ref": "#/$defs/slug" },
+        "type": { "$ref": "#/$defs/slug" },
+        "when": { "type": "string" },
+        "cron": { "type": "string" },
+        "connector": { "type": "string" },
+        "event": { "type": "string" },
+        "params": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "properties": { "on": { "const": "schedule" } } }, "then": { "required": ["cron"] } },
+        { "if": { "properties": { "on": { "enum": ["record.created", "record.changed", "record.deleted"] } } }, "then": { "required": ["type"] } },
+        { "if": { "properties": { "on": { "const": "connector" } } }, "then": { "required": ["connector", "event"] } }
+      ]
+    },
+    "command": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "label": { "type": "string", "minLength": 1 },
+        "for": { "$ref": "#/$defs/slug" },
+        "key": { "type": "string" },
+        "confirm": { "type": "string" },
+        "run": { "$ref": "#/$defs/slug" },
+        "params": { "type": "object" },
+        "do": { "type": "array", "items": { "$ref": "https://codeaf.dev/schema/screen/1.json#/$defs/action" } }
+      },
+      "oneOf": [ { "required": ["run"] }, { "required": ["do"] } ]
+    },
+    "budget": {
+      "type": "object",
+      "required": ["month"],
+      "additionalProperties": false,
+      "properties": {
+        "month": { "type": "number", "minimum": 0 },
+        "currency": { "const": "USD" },
+        "per_run": { "type": "number", "minimum": 0 },
+        "at_cap": { "enum": ["ask", "stop"] },
+        "models": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

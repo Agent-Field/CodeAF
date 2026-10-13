@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/screen/1.json",
+  "title": "codeaf screen (screens/<id>.json): a tree of kit parts with bindings",
+  "type": "object",
+  "required": ["screen", "title", "body"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "screen": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$", "description": "Equals the file name without .json." },
+    "title": { "type": "string", "minLength": 1 },
+    "params": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "nav": { "$ref": "#/$defs/node" },
+    "body": { "$ref": "#/$defs/node" }
+  },
+  "$defs": {
+    "expr": { "type": "string", "minLength": 1, "description": "CEL subset (S-A2 Expressions)." },
+    "ref": { "type": "string", "pattern": "^\\$[a-z_][a-zA-Z0-9_.]*$", "description": "$me $space $params.x $record $row $selection.<id>.ids|id|count $input.x $now" },
+    "value": { "description": "A literal, a $reference or a {{template}} string." },
+    "ids": { "oneOf": [ { "$ref": "#/$defs/ref" }, { "type": "array", "items": { "type": "string" } } ] },
+    "node": {
+      "type": "object",
+      "required": ["part"],
+      "additionalProperties": false,
+      "properties": {
+        "part": { "type": "string", "pattern": "^[A-Z][A-Za-z]+$", "description": "A kit part name from kit.json." },
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
+        "label": { "type": "string", "minLength": 1 },
+        "props": { "type": "object" },
+        "bind": { "$ref": "#/$defs/binding" },
+        "on": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-zA-Z]*$" },
+          "additionalProperties": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/action" } }
+        },
+        "when": { "$ref": "#/$defs/expr" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "slots": {
+          "type": "object",
+          "propertyNames": { "enum": ["row", "empty"] },
+          "additionalProperties": { "$ref": "#/$defs/node" }
+        }
+      }
+    },
+    "binding": {
+      "oneOf": [
+        { "type": "object", "required": ["records"], "additionalProperties": false,
+          "properties": { "records": { "type": "string" }, "query": { "type": "string" } } },
+        { "type": "object", "required": ["record"], "additionalProperties": false,
+          "properties": { "record": { "type": "string" }, "type": { "type": "string" } } },
+        { "type": "object", "required": ["run"], "additionalProperties": false,
+          "properties": { "run": { "type": "string" }, "for": { "type": "string" } } },
+        { "type": "object", "required": ["runs"], "additionalProperties": false,
+          "properties": { "runs": { "type": "string" } } },
+        { "type": "object", "required": ["approvals"], "additionalProperties": false,
+          "properties": { "approvals": { "enum": ["open", "all"] } } },
+        { "type": "object", "required": ["selection"], "additionalProperties": false,
+          "properties": { "selection": { "type": "string" } } }
+      ]
+    },
+    "modifiers": {
+      "confirm": { "type": "string", "minLength": 1 },
+      "ask": { "type": "object", "additionalProperties": { "type": "string" } }
+    },
+    "action": {
+      "oneOf": [
+        { "type": "object", "required": ["open"], "additionalProperties": false,
+          "properties": { "open": { "type": "string" }, "id": { "type": "string" }, "params": { "type": "object" }, "beside": { "type": "boolean" } } },
+        { "type": "object", "required": ["records.create"], "additionalProperties": false,
+          "properties": {
+            "records.create": { "type": "object", "required": ["type"], "additionalProperties": false,
+              "properties": { "type": { "type": "string" }, "set": { "type": "object" } } },
+            "confirm": { "$ref": "#/$defs/modifiers/confirm" }, "ask": { "$ref": "#/$defs/modifiers/ask" } } },
+        { "type": "object", "required": ["records.update"], "additionalProperties": false,
+          "properties": {
+            "records.update": { "type": "object", "required": ["set"], "additionalProperties": false,
+              "properties": { "id": { "type": "string" }, "ids": { "$ref": "#/$defs/ids" }, "set": { "type": "object" } } },
+            "confirm": { "$ref": "#/$defs/modifiers/confirm" }, "ask": { "$ref": "#/$defs/modifiers/ask" } } },
+        { "type": "object", "required": ["records.delete", "confirm"], "additionalProperties": false,
+          "properties": {
+            "records.delete": { "type": "object", "additionalProperties": false,
+              "properties": { "id": { "type": "string" }, "ids": { "$ref": "#/$defs/ids" } } },
+            "confirm": { "$ref": "#/$defs/modifiers/confirm" } } },
+        { "type": "object", "required": ["runs.start"], "additionalProperties": false,
+          "properties": { "runs.start": { "type": "string" }, "params": { "type": "object" },
+            "confirm": { "$ref": "#/$defs/modifiers/confirm" }, "ask": { "$ref": "#/$defs/modifiers/ask" } } },
+        { "type": "object", "required": ["approve", "answer"], "additionalProperties": false,
+          "properties": { "approve": { "type": "string" }, "answer": { "enum": ["yes", "no"] } } },
+        { "type": "object", "required": ["tools.call"], "additionalProperties": false,
+          "properties": { "tools.call": { "type": "array", "prefixItems": [ { "type": "string" }, { "type": "string" }, { "type": "object" } ], "minItems": 2, "maxItems": 3 } } },
+        { "type": "object", "required": ["ai.sort", "field"], "additionalProperties": false,
+          "properties": { "ai.sort": { "type": "string" }, "field": { "type": "string" } } },
+        { "type": "object", "required": ["agent.ask"], "additionalProperties": false,
+          "properties": { "agent.ask": { "type": "string", "minLength": 1 }, "record": { "type": "string" } } }
+      ]
+    }
+  }
+}

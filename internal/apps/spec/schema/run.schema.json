@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/run/1.json",
+  "title": "codeaf run (runs/<id>.yaml, parsed to JSON first)",
+  "type": "object",
+  "required": ["run", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "run": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$", "description": "Equals the file name without .yaml." },
+    "title": { "type": "string" },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "per_run": { "type": "number", "minimum": 0 } }
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object", "required": ["type"], "additionalProperties": false,
+        "properties": {
+          "type": { "enum": ["text", "number", "bool", "date", "ref", "refs", "person", "enum"] },
+          "to": { "type": "string" },
+          "values": { "type": "array", "items": { "type": "string" } },
+          "default": {}
+        }
+      }
+    },
+    "steps": { "$ref": "#/$defs/steps" }
+  },
+  "$defs": {
+    "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
+    "duration": { "type": "string", "pattern": "^[0-9]+(s|m|h|d)$" },
+    "records": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "query": { "type": "string" },
+        "id": { "type": "string" },
+        "ids": {},
+        "set": { "type": "object" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 500 }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
+        "title": { "type": "string" },
+        "if": { "type": "string" },
+        "on_error": { "type": "string", "pattern": "^(stop|continue|goto [a-z][a-z0-9_-]*)$" },
+        "retry": {
+          "type": "object", "required": ["max"], "additionalProperties": false,
+          "properties": { "max": { "type": "integer", "minimum": 1, "maximum": 5 }, "backoff": { "$ref": "#/$defs/duration" } }
+        },
+        "agent": { "type": "string", "description": "AI step: the app agent's name. Output is labelled AI." },
+        "prompt": { "type": "string" },
+        "output": { "type": "object", "description": "JSON Schema the AI output must match." },
+        "tool": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*\\.[a-z][a-z0-9_.]*$", "description": "connector.verb, e.g. gmail.send" },
+        "as": { "type": "string" },
+        "args": { "type": "object" },
+        "gate": {
+          "type": "object", "required": ["approval"], "additionalProperties": false,
+          "properties": {
+            "approval": { "enum": ["plan", "proof", "start", "send"] },
+            "who": { "type": "string" },
+            "title": { "type": "string" }
+          }
+        },
+        "records.query": { "$ref": "#/$defs/records" },
+        "records.create": { "$ref": "#/$defs/records" },
+        "records.update": { "$ref": "#/$defs/records" },
+        "records.delete": { "$ref": "#/$defs/records" },
+        "wait": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "for": { "type": "string" },
+            "until": { "type": "string" },
+            "thread": { "type": "string" },
+            "timeout": { "$ref": "#/$defs/duration" }
+          }
+        },
+        "on_timeout": { "enum": ["fail", "continue"] },
+        "loop": {
+          "type": "object", "required": ["max"], "additionalProperties": false,
+          "properties": {
+            "over": { "type": "string" }, "as": { "type": "string" },
+            "until": { "type": "string" }, "max": { "type": "integer", "minimum": 1, "maximum": 1000 }
+          }
+        },
+        "steps": { "$ref": "#/$defs/steps" },
+        "workspace": { "const": "repo" },
+        "repo": { "type": "string" },
+        "branch": { "type": "string" },
+        "shell": { "type": "string" }
+      },
+      "dependentRequired": { "prompt": ["agent"], "output": ["agent"], "args": ["tool"], "as": ["tool"], "on_timeout": ["wait"], "shell": ["workspace"] },
+      "anyOf": [
+        { "required": ["agent"] }, { "required": ["tool"] }, { "required": ["gate"] },
+        { "required": ["records.query"] }, { "required": ["records.create"] },
+        { "required": ["records.update"] }, { "required": ["records.delete"] },
+        { "required": ["wait"] }, { "required": ["steps"] }, { "required": ["shell"] }
+      ]
+    }
+  }
+}
