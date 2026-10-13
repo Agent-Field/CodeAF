@@ -41,3 +41,5 @@ internal/manual/pages.pack.gz
 .furrow/
 bench/idle-surface/runs/
 work/
+# App-agent measurements contain generated replies and private fixture snapshots.
+/.tmp/agentbench/
