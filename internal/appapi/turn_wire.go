@@ -55,6 +55,10 @@ type TurnResponse struct {
 	Accepted bool   `json:"accepted"`
 	TurnID   string `json:"turn_id"`
 }
+type ReorderQueueRequest struct {
+	Order  []string     `json:"order"`
+	Expect *AgentExpect `json:"expect,omitempty"`
+}
 type QueueItem struct {
 	ID      string         `json:"id"`
 	Text    string         `json:"text"`
@@ -98,5 +102,5 @@ type TitleChangedEvent struct {
 }
 
 func turnContract() resourceContract {
-	return resourceContract{Name: "turn", Types: []any{DisplayEntry{}, AgentResponse{}, AgentSnapshot{}, Usage{}, TurnRequest{}, TurnFile{}, TurnResponse{}, QueueItem{}, MoveReplyResponse{}, EntriesResponse{}, ToolResponse{}, TurnLifecycleEvent{}, TurnEntryEvent{}, TurnLongEvent{}, QueueChangedEvent{}, TitleChangedEvent{}, TurnDeltaEvent{}}, Routes: turnContractRoutes, Events: []eventContract{{"turn.started", TurnLifecycleEvent{}}, {"turn.ended", TurnLifecycleEvent{}}, {"turn.delta", TurnDeltaEvent{}}, {"turn.entry", TurnEntryEvent{}}, {"turn.long", TurnLongEvent{}}, {"queue.changed", QueueChangedEvent{}}, {"title.changed", TitleChangedEvent{}}}}
+	return resourceContract{Name: "turn", Types: []any{DisplayEntry{}, AgentResponse{}, AgentSnapshot{}, Usage{}, TurnRequest{}, TurnFile{}, TurnResponse{}, ReorderQueueRequest{}, QueueItem{}, MoveReplyResponse{}, EntriesResponse{}, ToolResponse{}, TurnLifecycleEvent{}, TurnEntryEvent{}, TurnLongEvent{}, QueueChangedEvent{}, TitleChangedEvent{}, TurnDeltaEvent{}}, Routes: turnContractRoutes, Events: []eventContract{{"turn.started", TurnLifecycleEvent{}}, {"turn.ended", TurnLifecycleEvent{}}, {"turn.delta", TurnDeltaEvent{}}, {"turn.entry", TurnEntryEvent{}}, {"turn.long", TurnLongEvent{}}, {"queue.changed", QueueChangedEvent{}}, {"title.changed", TitleChangedEvent{}}}}
 }

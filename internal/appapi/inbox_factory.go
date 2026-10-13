@@ -166,12 +166,19 @@ func (f *FactoryInboxSource) InboxItems(ctx context.Context) ([]InboxItem, error
 				continue
 			}
 			by := ""
+			var answer *InboxAnswerRequest
+			var receipt *DisplayEntry
+			link := SourceRef{Kind: "job", ID: job.JobID, Factory: f.ID}
 			if job.Approval != nil && job.Approval.State == "approved" {
 				by = job.Approval.DecidedBy
+				answer = &InboxAnswerRequest{Verb: "approve", Words: job.Approval.Words}
+				receipt = &DisplayEntry{Kind: "receipt", Text: "Approved", By: by, At: &job.Approval.At, Link: &link}
 			}
 			for _, question := range job.Questions {
 				if question.Answer != nil && !question.Answer.At.Before(old.NeedsYou.Since) {
 					by = question.Answer.By
+					answer = &InboxAnswerRequest{Words: question.Answer.Text}
+					receipt = &DisplayEntry{Kind: "receipt", Text: question.Answer.Text, By: by, At: &question.Answer.At, Link: &link}
 				}
 			}
 			if by != "" {
@@ -179,7 +186,7 @@ func (f *FactoryInboxSource) InboxItems(ctx context.Context) ([]InboxItem, error
 				if by == queue.Me {
 					how = "in_place"
 				}
-				f.resolutions[id] = inboxSourceResolution{how, by}
+				f.resolutions[id] = inboxSourceResolution{how: how, by: by, answer: answer, receipt: receipt}
 			}
 		}
 	}
@@ -402,4 +409,13 @@ func (f *FactoryInboxSource) SnapshotInboxAnswer(item InboxItem, answer InboxAns
 	}
 	answer.Expect = &expect
 	return answer
+}
+
+// The latest source sample supplies the canonical factory answer rather than
+// attributing an outside decision to a locally pending approval.
+func (f *FactoryInboxSource) InboxResult(item InboxItem) (*InboxAnswerRequest, *DisplayEntry) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	result := f.resolutions[item.ID]
+	return result.answer, result.receipt
 }

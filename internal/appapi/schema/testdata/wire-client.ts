@@ -8,6 +8,10 @@ import type {
 const contract: 1 = APP_CONTRACT;
 const create: AppRequest<"POST /app/v1/agents"> = { start: "empty" };
 const request: CreateAgentRequest = create;
+const reorder: AppRequest<"PUT /app/v1/agents/{id}/queue"> = { order: ["queued-id"] };
+declare const inboxItem: AppResponse<"GET /app/v1/inbox/{id}">;
+const answerWords: string | undefined = inboxItem.answer?.words;
+const receiptText: string | undefined = inboxItem.receipt?.text;
 const patch: PatchAgentRequest = { pinned: false, expect: { version: 0 } };
 const money: Money = { usd: "4.20" };
 const setup: SetupResponse = { step: 1, has_key: false, day_cap: null, complete: false };

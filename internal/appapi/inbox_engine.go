@@ -267,22 +267,45 @@ func (e *engineInboxSource) watch(id string, engine AgentEngine) {
 				if !ok {
 					return
 				}
-				if event.Question == nil {
-					continue
-				}
-				how, by := "no_longer_needed", ""
-				switch event.Kind {
-				case session.EventQuestionAnswered:
-					how, by = "in_place", "you"
-					if event.Answer != nil && event.Answer.From == "inbox" {
-						how = "here"
-					}
-				case session.EventQuestionWithdrawn:
-				default:
-					continue
-				}
-				e.s.ResolveInbox(inboxQuestionID(id, *event.Question), how, by)
+				e.s.resolveInboxQuestion(id, event)
 			}
 		}
 	}()
+}
+
+// The engine's answer event keeps its words and receipt after the question
+// leaves OpenQuestions, including decisions made in another surface.
+func (s *Server) resolveInboxQuestion(agent string, event session.Event) {
+	if event.Question == nil {
+		return
+	}
+	q := *event.Question
+	how, by := "no_longer_needed", ""
+	var answer *InboxAnswerRequest
+	var receipt *DisplayEntry
+	switch event.Kind {
+	case session.EventQuestionAnswered:
+		how, by = "in_place", "you"
+		if event.Answer != nil {
+			answer = &InboxAnswerRequest{Choice: event.Answer.Key, Words: event.Answer.Change}
+			text, person, _ := askResolution(q, event.Answer)
+			at := event.Answer.At
+			if at.IsZero() {
+				at = s.inbox.now().UTC()
+			}
+			receipt = &DisplayEntry{ID: "receipt_" + askID(agent, q), Kind: "receipt", Role: "note", Text: text, By: person, At: &at, Link: &SourceRef{Kind: "ask", ID: askID(agent, q)}}
+			if strings.HasPrefix(event.Answer.From, "rule:") {
+				receipt.Link = &SourceRef{Kind: "rule", ID: strings.TrimPrefix(event.Answer.From, "rule:")}
+			}
+			if event.Answer.From == "inbox" {
+				how = "here"
+			} else {
+				by = person
+			}
+		}
+	case session.EventQuestionWithdrawn:
+	default:
+		return
+	}
+	s.resolveInbox(inboxQuestionID(agent, q), how, by, answer, receipt)
 }

@@ -468,7 +468,7 @@ func TestInboxFactorySomeoneElseAnswerHasOneResolution(t *testing.T) {
 	}
 	queue.Jobs[0].NeedsYou = nil
 	queue.Jobs[0].Can.Answer = false
-	queue.Jobs[0].Questions = []factory.Question{{State: "answered", Answer: &factory.Answer{By: "raj", At: c.at.Add(time.Second)}}}
+	queue.Jobs[0].Questions = []factory.Question{{State: "answered", Answer: &factory.Answer{By: "raj", Text: "use v2", At: c.at.Add(time.Second)}}}
 	if len(inboxItems(t, s)) != 0 {
 		t.Fatal("answer remained")
 	}
@@ -477,6 +477,10 @@ func TestInboxFactorySomeoneElseAnswerHasOneResolution(t *testing.T) {
 	_ = json.Unmarshal(events[len(events)-1].data, &resolution)
 	if resolution.How != "someone_else" || resolution.By != "raj" {
 		t.Fatalf("resolution %s", events[len(events)-1].data)
+	}
+	item := readInboxItem(t, s, resolution.Item)
+	if item.Answer == nil || item.Answer.Words != "use v2" || item.Receipt == nil || item.Receipt.By != "raj" || item.Receipt.Text != "use v2" {
+		t.Fatalf("factory answer detail: %+v", item)
 	}
 }
 
@@ -559,5 +563,70 @@ func TestInboxFactoryUndoForwardsSourceExpect(t *testing.T) {
 	err := source.UndoInbox(context.Background(), InboxItem{ID: "one"}, &AgentExpect{State: &state, Version: &version})
 	if err != nil || received.State != state || received.Version == nil || *received.Version != 9 {
 		t.Fatal("Undo dropped source expectation", err)
+	}
+}
+
+func readInboxItem(t *testing.T, s *Server, id string) InboxItem {
+	t.Helper()
+	w := inboxReq(t, s, "GET", "/app/v1/inbox/"+url.PathEscape(id), "")
+	if w.Code != 200 {
+		t.Fatalf("item: %d %s", w.Code, w.Body)
+	}
+	var item InboxItem
+	if err := json.Unmarshal(w.Body.Bytes(), &item); err != nil {
+		t.Fatal(err)
+	}
+	return item
+}
+
+func TestInboxItemReadRetainsAnswerReceiptAfterHoldAndExpires(t *testing.T) {
+	s, c := inboxTestServer(t)
+	source := &inboxFake{items: []InboxItem{{ID: "ask:one", Kind: "clarification", Title: "Which API?"}}}
+	s.SetInboxSource("engine", source)
+	item := readInboxItem(t, s, "ask:one")
+	if item.Title != "Which API?" || item.Answer != nil || item.Receipt != nil || item.Resolved != nil {
+		t.Fatalf("waiting item: %+v", item)
+	}
+	turnStatus(t, inboxReq(t, s, "POST", "/app/v1/inbox/ask:one/answer", `{"words":"keep v2"}`), 200)
+	if readInboxItem(t, s, "ask:one").Resolved != nil {
+		t.Fatal("held answer marked done before delivery")
+	}
+	turnStatus(t, inboxReq(t, s, "POST", "/app/v1/inbox/ask:one/undo", `{}`), 200)
+	if readInboxItem(t, s, "ask:one").Answer != nil {
+		t.Fatal("Undo retained an unsent answer")
+	}
+	turnStatus(t, inboxReq(t, s, "POST", "/app/v1/inbox/ask:one/answer", `{"words":"keep v2"}`), 200)
+	c.at = c.at.Add(inboxAnswerHold)
+	c.callbacks[1]()
+	if len(inboxItems(t, s)) != 0 {
+		t.Fatal("answered item remains in waiting list")
+	}
+	item = readInboxItem(t, s, "ask:one")
+	if item.Answer == nil || item.Answer.Words != "keep v2" || item.Receipt == nil || item.Receipt.Text != "Answered · keep v2" || item.Resolved == nil || item.Resolved.How != "here" {
+		t.Fatalf("resolved detail: %+v", item)
+	}
+	turnStatus(t, inboxReq(t, s, "POST", "/app/v1/inbox/ask:one/answer", `{"words":"again"}`), 409)
+	c.at = c.at.Add(inboxResolvedHold)
+	turnStatus(t, inboxReq(t, s, "GET", "/app/v1/inbox/ask:one", ""), 404)
+	turnStatus(t, inboxReq(t, s, "GET", "/app/v1/inbox/unknown", ""), 404)
+	turnStatus(t, inboxReq(t, s, "PUT", "/app/v1/inbox/unknown", `{}`), 405)
+	w := request(t, s, "GET", "/app/v1/inbox/unknown", "", nil, "127.0.0.1:4000")
+	if w.Code != 401 {
+		t.Fatalf("unguarded item route: %d", w.Code)
+	}
+}
+
+func TestInboxItemReadKeepsOutsideEngineAnswerAndCanonicalReceipt(t *testing.T) {
+	s, c := inboxTestServer(t)
+	q := session.Question{ID: 1, Kind: session.QuestionAsk, Head: "Which file?", Asked: c.at}
+	id := inboxQuestionID("agent", q)
+	source := &inboxFake{items: []InboxItem{{ID: id, Kind: "question"}}}
+	s.SetInboxSource("engine", source)
+	_ = readInboxItem(t, s, id)
+	source.items = nil
+	s.resolveInboxQuestion("agent", session.Event{Kind: session.EventQuestionAnswered, Question: &q, Answer: &session.Answer{Change: "src/api.go", From: "sam", DecidedBy: session.DecidedByPerson, At: c.at}})
+	item := readInboxItem(t, s, id)
+	if item.Answer == nil || item.Answer.Words != "src/api.go" || item.Receipt == nil || item.Receipt.By != "sam" || item.Receipt.Link == nil || item.Receipt.Link.Kind != "ask" || item.Resolved.By != "sam" {
+		t.Fatalf("outside answer: %+v", item)
 	}
 }

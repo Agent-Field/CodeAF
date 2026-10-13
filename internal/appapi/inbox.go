@@ -2,6 +2,7 @@ package appapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"sync"
@@ -9,6 +10,9 @@ import (
 )
 
 const inboxAnswerHold = 5 * time.Second
+
+// Resolved snapshots cover Done today without retaining an unbounded history.
+const inboxResolvedHold = 24 * time.Hour
 
 // InboxSource owns its waiting set and its resolver. A source must reject a
 // stale answer itself; the derived list is never authority to resume work.
@@ -26,7 +30,11 @@ type inboxNativeHold interface {
 type inboxValidator interface {
 	ValidateInbox(context.Context, InboxItem, InboxAnswerRequest) error
 }
-type inboxSourceResolution struct{ how, by string }
+type inboxSourceResolution struct {
+	how, by string
+	answer  *InboxAnswerRequest
+	receipt *DisplayEntry
+}
 
 type inboxRow struct {
 	item   InboxItem
@@ -34,24 +42,26 @@ type inboxRow struct {
 	key    string
 }
 type inboxPending struct {
-	row    inboxRow
-	answer InboxAnswerRequest
-	until  time.Time
-	timer  *time.Timer
-	native bool
+	row     inboxRow
+	answer  InboxAnswerRequest
+	until   time.Time
+	timer   *time.Timer
+	native  bool
+	receipt *DisplayEntry
 }
 type inboxState struct {
 	sync.Mutex
-	sources map[string]InboxSource
-	rows    map[string]inboxRow
-	pending map[string]*inboxPending
-	now     func() time.Time
-	after   func(time.Duration, func()) *time.Timer
-	closed  bool
-	done    chan struct{}
-	cancel  context.CancelFunc
-	ctx     context.Context
-	watches map[string]context.CancelFunc
+	sources  map[string]InboxSource
+	resolved map[string]InboxItem
+	rows     map[string]inboxRow
+	pending  map[string]*inboxPending
+	now      func() time.Time
+	after    func(time.Duration, func()) *time.Timer
+	closed   bool
+	done     chan struct{}
+	cancel   context.CancelFunc
+	ctx      context.Context
+	watches  map[string]context.CancelFunc
 }
 
 func (s *Server) startInbox() {
@@ -60,7 +70,7 @@ func (s *Server) startInbox() {
 		ctx = context.Background()
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	s.inbox = &inboxState{sources: map[string]InboxSource{}, rows: map[string]inboxRow{}, pending: map[string]*inboxPending{}, now: time.Now, after: time.AfterFunc, done: make(chan struct{}), cancel: cancel, ctx: ctx, watches: map[string]context.CancelFunc{}}
+	s.inbox = &inboxState{sources: map[string]InboxSource{}, rows: map[string]inboxRow{}, resolved: map[string]InboxItem{}, pending: map[string]*inboxPending{}, now: time.Now, after: time.AfterFunc, done: make(chan struct{}), cancel: cancel, ctx: ctx, watches: map[string]context.CancelFunc{}}
 	if s.options.Agents != nil {
 		s.inbox.sources["engine"] = &engineInboxSource{s: s, a: s.options.Agents}
 	}
@@ -104,6 +114,7 @@ func (s *Server) SetInboxSource(key string, source InboxSource) {
 	}
 	for id, row := range s.inbox.rows {
 		if row.key == key {
+			s.retainInbox(row, nil, nil, "no_longer_needed", "")
 			delete(s.inbox.rows, id)
 			_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, "no_longer_needed", "", s.inbox.now().UTC()})
 		}
@@ -216,18 +227,26 @@ func (s *Server) RefreshInbox(ctx context.Context) ([]InboxItem, error) {
 					how, by = source.ResolvedInbox(row.item)
 				}
 			}
+			var answer *InboxAnswerRequest
+			var receipt *DisplayEntry
 			if p := state.pending[id]; p != nil {
 				if p.timer != nil {
 					p.timer.Stop()
 				}
-				if p.native {
+				if p.native && how != "someone_else" {
+					if p.answer.Choice != "" || p.answer.Words != "" || p.answer.Verb != "" || len(p.answer.Items) > 0 {
+						answer = &p.answer
+					}
+					receipt = p.receipt
 					how, by = "here", "you"
 				}
 				delete(state.pending, id)
 			}
+			s.retainInbox(row, answer, receipt, how, by)
 			_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, how, by, state.now().UTC()})
 		}
 	}
+	s.pruneInbox()
 	state.rows = next
 	out := make([]InboxItem, 0, len(next))
 	for _, row := range next {
@@ -299,6 +318,7 @@ func (s *Server) AnswerInbox(ctx context.Context, id string, answer InboxAnswerR
 		}
 		p.until = *reply.UndoUntil
 		p.native = true
+		p.receipt = reply.Receipt
 		state.pending[id] = p
 		_, _ = s.events.Publish(EventInboxUndoWindow, InboxUndoWindowEvent{id, p.until})
 		return reply, nil
@@ -342,6 +362,7 @@ func (s *Server) finishInbox(id string, p *inboxPending) {
 		_, _ = s.events.Publish(EventInboxAdded, InboxAddedEvent{id, p.row.item.Kind})
 		return
 	}
+	s.retainInbox(p.row, &p.answer, reply.Receipt, "here", "you")
 	delete(state.rows, id)
 	_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, "here", "you", state.now().UTC()})
 }
@@ -377,12 +398,26 @@ func (s *Server) UndoInbox(ctx context.Context, id string, expect *AgentExpect) 
 	return nil
 }
 
-// ResolveInbox reports source answers and withdrawals without a second answer
-// store. Source lanes call this after their canonical resolver succeeds.
+// ResolveInbox retains a read-only snapshot after the canonical resolver
+// succeeds. It never admits an answer or changes the source waiting set.
 func (s *Server) ResolveInbox(id, how, by string) {
+	s.resolveInbox(id, how, by, nil, nil)
+}
+
+func (s *Server) resolveInbox(id, how, by string, answer *InboxAnswerRequest, receipt *DisplayEntry) {
 	s.inbox.Lock()
 	defer s.inbox.Unlock()
-	if _, ok := s.inbox.rows[id]; !ok {
+	row, ok := s.inbox.rows[id]
+	if !ok {
+		// A source event can arrive after the hold callback stored its reply.
+		// Enrich that snapshot without restarting its retention clock.
+		if item, exists := s.inbox.resolved[id]; exists && receipt != nil {
+			if item.Answer == nil {
+				item.Answer = answer
+			}
+			item.Receipt = receipt
+			s.inbox.resolved[id] = item
+		}
 		return
 	}
 	if p := s.inbox.pending[id]; p != nil {
@@ -391,6 +426,69 @@ func (s *Server) ResolveInbox(id, how, by string) {
 		}
 		delete(s.inbox.pending, id)
 	}
+	s.retainInbox(row, answer, receipt, how, by)
 	delete(s.inbox.rows, id)
 	_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, how, by, s.inbox.now().UTC()})
+}
+
+// ReadInbox includes resolved snapshots while the list remains waiting-only.
+// The source is still the sole authority for answering and Undo.
+func (s *Server) ReadInbox(ctx context.Context, id string) (InboxItem, error) {
+	if _, err := s.RefreshInbox(ctx); err != nil {
+		return InboxItem{}, err
+	}
+	s.inbox.Lock()
+	defer s.inbox.Unlock()
+	if row, ok := s.inbox.rows[id]; ok {
+		return row.item, nil
+	}
+	if item, ok := s.inbox.resolved[id]; ok {
+		return item, nil
+	}
+	return InboxItem{}, agentError(404, "not_found", "that Inbox item is unavailable")
+}
+
+// Callers hold the Inbox lock, so resolution and the retained detail become
+// visible together. A copied wire snapshot cannot retain a source credential.
+func (s *Server) retainInbox(row inboxRow, answer *InboxAnswerRequest, receipt *DisplayEntry, how, by string) {
+	if source, ok := row.source.(interface {
+		InboxResult(InboxItem) (*InboxAnswerRequest, *DisplayEntry)
+	}); ok {
+		sourceAnswer, sourceReceipt := source.InboxResult(row.item)
+		if answer == nil {
+			answer = sourceAnswer
+		}
+		if receipt == nil {
+			receipt = sourceReceipt
+		}
+	}
+	at := s.inbox.now().UTC()
+	item := row.item
+	item.Answer, item.Receipt = answer, receipt
+	item.Resolved = &InboxResolvedEvent{item.ID, how, by, at}
+	if item.Receipt == nil && answer != nil {
+		text := answer.Words
+		if text == "" {
+			text = answer.Choice
+		}
+		if text == "" {
+			text = answer.Verb
+		}
+		item.Receipt = &DisplayEntry{Kind: "receipt", Text: "Answered · " + text, By: by, At: &at, Link: &item.Source}
+	}
+	// Marshal through the public shape so a producer's later edits cannot
+	// rewrite the receipt a person has already opened.
+	raw, _ := json.Marshal(item)
+	var snapshot InboxItem
+	_ = json.Unmarshal(raw, &snapshot)
+	s.inbox.resolved[item.ID] = snapshot
+	s.pruneInbox()
+}
+
+func (s *Server) pruneInbox() {
+	for id, item := range s.inbox.resolved {
+		if item.Resolved != nil && !s.inbox.now().Before(item.Resolved.At.Add(inboxResolvedHold)) {
+			delete(s.inbox.resolved, id)
+		}
+	}
 }

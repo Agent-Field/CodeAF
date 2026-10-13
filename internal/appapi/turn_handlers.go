@@ -17,6 +17,7 @@ import (
 
 // This table belongs to the resource lane, so implementing it needs no shared router edit.
 var turnContractRoutes = []contractRoute{
+	{RouteContract: RouteContract{Method: "PUT", Path: "/app/v1/agents/{id}/queue", Request: "ReorderQueueRequest", Response: "ActionResponse"}, handle: (*Server).turnHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/agents/{id}/turn", Request: "TurnRequest", Response: "TurnResponse"}, handle: (*Server).turnHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/agents/{id}/queue/{qid}", Request: "TextRequest", Response: "ActionResponse"}, handle: (*Server).turnHandler},
 	{RouteContract: RouteContract{Method: "DELETE", Path: "/app/v1/agents/{id}/queue/{qid}", Request: "ExpectRequest", Response: "ActionResponse"}, handle: (*Server).turnHandler},
@@ -162,6 +163,28 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request) {
 			now := a.now().UTC()
 			record.Agent.LastMessageAt = &now
 			record.Agent.Context = append(record.Agent.Context, ask.Context...)
+		case action == "queue":
+			if len(request.Order) != len(record.Queue) {
+				return agentError(409, "conflict", "the queue changed; include every queued message once")
+			}
+			remaining := make(map[string]QueueItem, len(record.Queue))
+			for _, item := range record.Queue {
+				remaining[item.ID] = item
+			}
+			reordered := make([]QueueItem, 0, len(record.Queue))
+			for _, qid := range request.Order {
+				item, ok := remaining[qid]
+				if !ok {
+					return agentError(409, "conflict", "the queue changed; include every queued message once")
+				}
+				reordered = append(reordered, item)
+				delete(remaining, qid)
+			}
+			// Validate the whole order before replacing rows, so a stale drag
+			// cannot drop a newly queued message or restore an admitted one.
+			record.Queue = reordered
+			queueChanged = true
+			result = ActionResponse{OK: true}
 		case strings.HasPrefix(action, "queue/"):
 			pos := -1
 			for i, item := range record.Queue {
@@ -291,7 +314,8 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request) {
 type turnFailedMove struct{ Error, Reason string }
 type turnMutation struct {
 	TurnRequest
-	Model string `json:"model"`
+	Model string   `json:"model"`
+	Order []string `json:"order"`
 }
 
 func decodeTurn(w http.ResponseWriter, r *http.Request, body *turnMutation, action string) bool {
@@ -306,6 +330,9 @@ func decodeTurn(w http.ResponseWriter, r *http.Request, body *turnMutation, acti
 		return false
 	}
 	allowed := "expect"
+	if action == "queue" {
+		allowed += " order"
+	}
 	if action == "turn" {
 		allowed += " text mode context files"
 	}
@@ -355,6 +382,20 @@ func decodeTurn(w http.ResponseWriter, r *http.Request, body *turnMutation, acti
 	if strings.HasPrefix(action, "queue/") && r.Method == "POST" && strings.TrimSpace(body.Text) == "" {
 		fail(w, 422, "bad_input", "a queued message cannot be empty")
 		return false
+	}
+	if action == "queue" {
+		if body.Order == nil {
+			fail(w, 422, "bad_input", "order must be an array of queued message ids")
+			return false
+		}
+		seen := map[string]bool{}
+		for _, qid := range body.Order {
+			if strings.TrimSpace(qid) == "" || seen[qid] {
+				fail(w, 422, "bad_input", "order must name each queued message once")
+				return false
+			}
+			seen[qid] = true
+		}
 	}
 	if action == "switch-model" && strings.TrimSpace(body.Model) == "" {
 		fail(w, 422, "bad_input", "model must name a model")

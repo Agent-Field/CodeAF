@@ -6,15 +6,18 @@ import (
 
 // These wire types reserve the app vocabulary before this resource has behaviour.
 type InboxItem struct {
-	ID           string       `json:"id"`
-	Kind         string       `json:"kind" jsonschema:"enum=question,enum=clarification,enum=permission,enum=your_call,enum=approval_plan,enum=approval_proof,enum=approval_start,enum=budget,enum=out_of_rounds,enum=failed,enum=changes_requested,enum=conflict,enum=publish_failed,enum=runner_offline,enum=order_ask,enum=reminder"`
-	Source       SourceRef    `json:"source"`
-	Title        string       `json:"title"`
-	Path         []SourceRef  `json:"path"`
-	CreatedAt    time.Time    `json:"created_at"`
-	Context      InboxContext `json:"context"`
-	Verbs        []string     `json:"verbs"`
-	WhoCanAnswer []string     `json:"who_can_answer"`
+	Answer       *InboxAnswerRequest `json:"answer,omitempty"`
+	Receipt      *DisplayEntry       `json:"receipt,omitempty"`
+	Resolved     *InboxResolvedEvent `json:"resolved,omitempty"`
+	ID           string              `json:"id"`
+	Kind         string              `json:"kind" jsonschema:"enum=question,enum=clarification,enum=permission,enum=your_call,enum=approval_plan,enum=approval_proof,enum=approval_start,enum=budget,enum=out_of_rounds,enum=failed,enum=changes_requested,enum=conflict,enum=publish_failed,enum=runner_offline,enum=order_ask,enum=reminder"`
+	Source       SourceRef           `json:"source"`
+	Title        string              `json:"title"`
+	Path         []SourceRef         `json:"path"`
+	CreatedAt    time.Time           `json:"created_at"`
+	Context      InboxContext        `json:"context"`
+	Verbs        []string            `json:"verbs"`
+	WhoCanAnswer []string            `json:"who_can_answer"`
 }
 type InboxContext struct {
 	Before []DisplayEntry `json:"before" jsonschema:"minItems=2,maxItems=2"`

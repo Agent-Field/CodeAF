@@ -1460,7 +1460,12 @@ receipt therefore reports the work's paid calls as well as its failure reason.
 Steer puts words into that reply. Queue keeps messages behind it; while idle,
 Queue starts immediately. Pending messages survive restart without starting on
 their own. Edit uses POST `/queue/{qid}` with `text`; Remove uses DELETE there
-with `{}`. An admitted row says `that message has already been sent`.
+with `{}`. PUT `/app/v1/agents/{id}/queue` takes `order: [qid]` with every
+queued id exactly once and optional `expect`. The binary saves the order and
+emits `queue.changed`; messages keep their text, context and files. Missing,
+null, duplicate or empty ids return 422. An incomplete or outdated order
+returns 409 without changing the queue. An admitted row says
+`that message has already been sent`.
 
 Context chips remain references. Files take absolute regular-file paths and
 plain names, with an 8 MiB total limit. Queue reads file bytes when the message
@@ -1525,6 +1530,11 @@ approval_proof, approval_start, budget, out_of_rounds, failed, changes_requested
 conflict, publish_failed, runner_offline, order_ask and reminder. Resource
 producers supply their own waiting state; the Inbox does not create questions.
 Later and Done today are kept by the app for each person.
+GET `/app/v1/inbox/{id}` reads one item, including its `answer`, `receipt`
+and `resolved` event after the source settles. The binary retains resolved
+snapshots for 24 hours in this launch; restarting clears those snapshots.
+The waiting list excludes resolved items. Unknown or expired ids return 404
+`that Inbox item is unavailable`. Undo leaves no sent answer or receipt.
 
 POST `/app/v1/inbox/{id}/answer` forwards the choice, words or action to its
 source. Engine answers wait **five seconds** before being sent. The response

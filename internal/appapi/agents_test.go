@@ -290,6 +290,8 @@ func TestAgentPOSTIdempotencyAcrossRegistryInstances(t *testing.T) {
 		t.Fatal("replay opened another engine")
 		return AgentConnection{}, nil
 	})
+	// Both launches share a clock so the replay does not expire with the date.
+	secondRegistry.now = f.registry.now
 	defer secondRegistry.Close()
 	two := request(t, New(testToken, Options{Agents: secondRegistry}), "POST", "/app/v1/agents", `{"start":"empty"}`, headers, "127.0.0.1:4000")
 	if one.Body.String() != two.Body.String() || two.Code != 201 {

@@ -37,21 +37,7 @@ func (s *Server) observeInboxAsks(id string, o *askObserver) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.inbox = func(event session.Event) {
-		if event.Question == nil {
-			return
-		}
-		how, by := "no_longer_needed", ""
-		switch event.Kind {
-		case session.EventQuestionAnswered:
-			how, by = "in_place", "you"
-			if event.Answer != nil && event.Answer.From == "inbox" {
-				how = "here"
-			}
-		case session.EventQuestionWithdrawn:
-		default:
-			return
-		}
-		s.ResolveInbox(inboxQuestionID(id, *event.Question), how, by)
+		s.resolveInboxQuestion(id, event)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 // This table belongs to the resource lane, so implementing it needs no shared router edit.
 var inboxContractRoutes = []contractRoute{
+	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/inbox/{id}", Response: "InboxItem"}, handle: (*Server).inboxHandler},
 	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/inbox", Response: "InboxResponse"}, handle: (*Server).inboxHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/inbox/{id}/answer", Request: "InboxAnswerRequest", Response: "InboxAnswerResponse"}, handle: (*Server).inboxHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/inbox/{id}/undo", Request: "ExpectRequest", Response: "ActionResponse"}, handle: (*Server).inboxHandler},
@@ -22,6 +23,15 @@ func (s *Server) inboxHandler(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) serveInbox(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
+		if id := r.PathValue("id"); id != "" {
+			item, err := s.ReadInbox(r.Context(), id)
+			if err != nil {
+				agentFailure(w, err)
+				return
+			}
+			write(w, 200, item)
+			return
+		}
 		items, err := s.RefreshInbox(r.Context())
 		if err != nil {
 			agentFailure(w, err)

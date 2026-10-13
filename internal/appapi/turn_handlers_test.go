@@ -316,7 +316,11 @@ func TestTurnValidationExpectationsAndEveryRouteGuard(t *testing.T) {
 		t.Run(route.Method+route.Path, func(t *testing.T) {
 			denied := request(t, f.server, route.Method, path, `{}`, nil, "127.0.0.1:4000")
 			turnStatus(t, denied, 401)
-			wrong := request(t, f.server, "PUT", path, `{}`, bearer(), "127.0.0.1:4000")
+			wrongMethod := "PUT"
+			if route.Method == wrongMethod {
+				wrongMethod = "POST"
+			}
+			wrong := request(t, f.server, wrongMethod, path, `{}`, bearer(), "127.0.0.1:4000")
 			turnStatus(t, wrong, 405)
 			missingPath := strings.Replace(path, f.id, "missing", 1)
 			missing := request(t, f.server, route.Method, missingPath, `{"mode":"send","text":"x","model":"test/model"}`, bearer(), "127.0.0.1:4000")
@@ -328,6 +332,9 @@ func TestTurnValidationExpectationsAndEveryRouteGuard(t *testing.T) {
 			}
 			if route.Request == "TurnRequest" {
 				missing = request(t, f.server, route.Method, missingPath, `{"mode":"send","text":"x"}`, bearer(), "127.0.0.1:4000")
+			}
+			if route.Request == "ReorderQueueRequest" {
+				missing = request(t, f.server, route.Method, missingPath, `{"order":[]}`, bearer(), "127.0.0.1:4000")
 			}
 			if route.Request == "ModelRequest" {
 				missing = request(t, f.server, route.Method, missingPath, `{"model":"test/model"}`, bearer(), "127.0.0.1:4000")
@@ -463,4 +470,76 @@ func TestTurnToolOutputBoundsAndSymlinkEscapes(t *testing.T) {
 	}
 	f.engine.entries[0].Output = "[tool: read · full: " + link + "]"
 	turnStatus(t, f.action(t, "GET", "/tools/bounded", ""), 409)
+}
+
+func TestTurnQueueReorderPersistsPublishesAndDrainsInOrder(t *testing.T) {
+	f := newTurnFixture(t)
+	turnStatus(t, f.action(t, "POST", "/turn", `{"text":"first","mode":"send"}`), 200)
+	for _, text := range []string{"second", "third", "fourth"} {
+		turnStatus(t, f.action(t, "POST", "/turn", fmt.Sprintf(`{"text":%q,"mode":"queue","context":[{"kind":"file","path":"/tmp/%s.go"}]}`, text, text)), 200)
+	}
+	before := f.snapshot(t)
+	queue := before.Snapshot.Queue
+	order := []string{queue[2].ID, queue[0].ID, queue[1].ID}
+	body, _ := json.Marshal(ReorderQueueRequest{Order: order, Expect: &AgentExpect{Version: &before.Version}})
+	turnStatus(t, f.action(t, "PUT", "/queue", string(body)), 200)
+	got := f.snapshot(t)
+	if got.Version != before.Version+1 || got.Snapshot.Queue[0].Text != "fourth" || got.Snapshot.Queue[0].Context[0].Path != "/tmp/fourth.go" {
+		t.Fatalf("reordered snapshot: %+v", got)
+	}
+	f.registry.mu.Lock()
+	err := f.registry.disk(func(d *agentDisk) error {
+		if d.Records[f.id].Queue[0].ID != order[0] {
+			t.Error("reorder was not saved")
+		}
+		return nil
+	}, false)
+	f.registry.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, _, _, _, _ := f.server.events.read(0)
+	var changed QueueChangedEvent
+	for _, event := range events {
+		if event.kind == EventQueueChanged {
+			if err := json.Unmarshal(event.data, &changed); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(changed.Queue) != 3 || changed.Queue[0].ID != order[0] {
+		t.Fatalf("queue event: %+v", changed)
+	}
+	turnStatus(t, f.action(t, "PUT", "/queue", string(body)), 409)
+	for i, text := range []string{"fourth", "second", "third"} {
+		f.engine.stream(i) <- session.Event{Kind: session.EventTurnDone}
+		close(f.engine.stream(i))
+		turnWait(t, func() bool { return len(f.snapshot(t).Snapshot.Queue) == 2-i })
+		entries := f.engine.Transcript()
+		if entries[len(entries)-1].Text != contextMessage(text, []AgentContext{{Kind: "file", Path: "/tmp/" + text + ".go"}}) {
+			t.Fatalf("admitted wrong message: %+v", entries)
+		}
+	}
+	turnStatus(t, f.action(t, "PUT", "/queue", `{"order":[]}`), 200)
+}
+
+func TestTurnQueueReorderRejectsInvalidAndStaleOrdersAtomically(t *testing.T) {
+	f := newTurnFixture(t)
+	turnStatus(t, f.action(t, "POST", "/turn", `{"text":"first","mode":"send"}`), 200)
+	for _, text := range []string{"second", "third"} {
+		turnStatus(t, f.action(t, "POST", "/turn", fmt.Sprintf(`{"text":%q,"mode":"queue"}`, text)), 200)
+	}
+	before := f.snapshot(t)
+	queue := before.Snapshot.Queue
+	for _, body := range []string{`{}`, `{"order":null}`, `{"order":"bad"}`, `{"order":[""]}`, fmt.Sprintf(`{"order":[%q,%q]}`, queue[0].ID, queue[0].ID), `{"order":[],"text":"no"}`, `{"order":[]} {}`} {
+		turnStatus(t, f.action(t, "PUT", "/queue", body), 422)
+	}
+	for _, body := range []string{`{"order":[]}`, fmt.Sprintf(`{"order":[%q]}`, queue[0].ID), fmt.Sprintf(`{"order":[%q,"already-sent"]}`, queue[1].ID)} {
+		turnStatus(t, f.action(t, "PUT", "/queue", body), 409)
+	}
+	after := f.snapshot(t)
+	if after.Version != before.Version || after.Snapshot.Queue[0].ID != queue[0].ID || after.Snapshot.Queue[1].ID != queue[1].ID {
+		t.Fatalf("refused reorder mutated queue: %+v", after)
+	}
+	turnStatus(t, f.action(t, "POST", "/queue", `{"order":[]}`), 405)
 }
