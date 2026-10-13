@@ -28,13 +28,21 @@ func (f fakeStore) Definition(context.Context, string) (*spec.Bundle, error) { r
 type fakeRecords struct {
 	svc.Records
 	mu      sync.Mutex
+	rows    []bridge.Record
 	updates []bridge.UpdateRecordParams
 	scopes  []svc.Scope
 }
 
 func (f *fakeRecords) Query(context.Context, svc.Scope, bridge.QueryParams) (bridge.QueryResult, error) {
-	row := bridge.Record{ID: "ct_1", Type: "contact", Fields: map[string]any{"name": "Ada", "phone": "+1 555 0100"}}
-	return bridge.QueryResult{Rows: []bridge.Record{row}, Total: 1}, nil
+	rows := f.rows
+	if rows == nil {
+		rows = []bridge.Record{{ID: "ct_1", Type: "contact", Fields: map[string]any{"name": "Ada", "phone": "+1 555 0100"}}}
+	}
+	return bridge.QueryResult{Rows: rows, Total: len(rows)}, nil
+}
+
+func (f *fakeRecords) Get(_ context.Context, _ svc.Scope, p bridge.GetRecordParams) (bridge.Record, error) {
+	return bridge.Record{ID: p.ID, Type: p.Type, Fields: map[string]any{"name": "Hooli"}}, nil
 }
 
 func (f *fakeRecords) Update(_ context.Context, scope svc.Scope, p bridge.UpdateRecordParams) (bridge.UpdateRecordResult, error) {
@@ -177,7 +185,7 @@ func TestToolsPassTheCheckerAndMaskedValuesStayHidden(t *testing.T) {
 			r := newRig(t, tc.tool, `{"say":"ok"}`)
 			r.ask(t, "go")
 			feedback := r.model.calls[1].Messages[len(r.model.calls[1].Messages)-1]
-			if feedback.Role != "tool" || !strings.Contains(feedback.Text, tc.wantInFeedback) {
+			if feedback.Role != "user" || !strings.Contains(feedback.Text, tc.wantInFeedback) {
 				t.Fatalf("feedback = %+v", feedback)
 			}
 			if strings.Contains(feedback.Text, "555") {
@@ -291,4 +299,78 @@ func toStrings(kinds []bridge.AgentEventKind) []string {
 		out[i] = string(k)
 	}
 	return out
+}
+
+// Results go back as user turns: the model answers in JSON text, so there is
+// no tool_call_id for a "tool" message, and the API refuses one without it.
+func TestToolResultsGoBackAsUserTurnsNamingTheTool(t *testing.T) {
+	r := newRig(t,
+		`{"tool":"records.query","args":{"type":"contact"}}`,
+		`{"tool":"records.get","args":{"type":"contact","id":"ct_1"}}`,
+		`{"say":"Done."}`)
+	r.ask(t, "look around")
+	final := r.model.calls[2].Messages
+	var results []string
+	for _, m := range final {
+		if m.Role == "tool" {
+			t.Fatalf("tool message in the request: %+v", m)
+		}
+		if strings.HasPrefix(m.Text, "Result of ") {
+			if m.Role != "user" {
+				t.Fatalf("result role = %s", m.Role)
+			}
+			results = append(results, strings.SplitN(m.Text, ":", 2)[0])
+		}
+	}
+	if got := strings.Join(results, ","); got != "Result of records.query,Result of records.get" {
+		t.Fatalf("results = %s", got)
+	}
+}
+
+func TestErrorsAreLabelledAsTheAppAgent(t *testing.T) {
+	r := newRig(t, `{"say":"ok"}`)
+	r.ask(t, "hi")
+	if got := r.model.calls[0].Role; got != "app agent" {
+		t.Fatalf("role = %q", got)
+	}
+}
+
+func TestTheStreamHasPlainSummariesNotCallJSON(t *testing.T) {
+	r := newRig(t,
+		`{"tool":"records.query","args":{"type":"contact","limit":50,"query":"sort:-amount"}}`,
+		"**Ada** is your biggest contact.")
+	events := r.ask(t, "who is biggest?")
+	if events[0].Kind != bridge.AgentTool || events[0].Summary != "Looked up 1 contact" {
+		t.Fatalf("tool event = %+v", events[0])
+	}
+	for _, e := range events {
+		if strings.ContainsAny(e.Text+e.Summary, "{}") {
+			t.Fatalf("raw JSON reached the person: %+v", e)
+		}
+	}
+	if events[1].Kind != bridge.AgentDelta || events[1].Text != "**Ada** is your biggest contact." {
+		t.Fatalf("answer = %+v", events[1])
+	}
+}
+
+func TestRefFieldsComeWithTheTitleOfWhatTheyPointAt(t *testing.T) {
+	r := newRig(t, `{"tool":"records.query","args":{"type":"contact"}}`, `{"say":"ok"}`)
+	r.records.rows = []bridge.Record{{ID: "ct_1", Type: "contact", Fields: map[string]any{"name": "Ada", "company": "co_hooli"}}}
+	r.ask(t, "who works where?")
+	msgs := r.model.calls[1].Messages
+	if feedback := msgs[len(msgs)-1].Text; !strings.Contains(feedback, `"company_title":"Hooli"`) {
+		t.Fatalf("feedback = %s", feedback)
+	}
+}
+
+func TestThreadsSavedWithToolMessagesLoadAsUserTurns(t *testing.T) {
+	store := newThreadStore(t.TempDir())
+	old := &thread{ID: "t1", Messages: []svc.ModelMessage{{Role: "user", Text: "hi"}, {Role: "tool", Text: "{}"}}}
+	if err := store.save("crm", old); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.load("crm", "t1")
+	if err != nil || got.Messages[1].Role != "user" {
+		t.Fatalf("loaded %+v, %v", got, err)
+	}
 }

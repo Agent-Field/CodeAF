@@ -2,7 +2,6 @@ package agent
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -40,9 +39,4 @@ func parseAction(text string) action {
 		return action{Say: strings.TrimSpace(text)}
 	}
 	return a
-}
-
-func summarize(tool string, args map[string]any) string {
-	raw, _ := json.Marshal(args)
-	return fmt.Sprintf("%s %s", tool, raw)
 }

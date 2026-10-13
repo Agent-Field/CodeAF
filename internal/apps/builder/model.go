@@ -38,24 +38,32 @@ func (m *Model) Complete(ctx context.Context, call svc.ModelCall) (svc.ModelRepl
 	if model == "" {
 		model = DefaultModel
 	}
+	role := roleOf(call)
 	configured := clientConfig(model)
 	client, err := provider.NewClient(configured)
 	if err != nil {
-		return svc.ModelReply{}, fmt.Errorf("builder model %s: %w", model, err)
+		return svc.ModelReply{}, fmt.Errorf("%s model %s: %w", role, model, err)
 	}
 	var billed float64
 	ctx = provider.WithBilling(ctx, func(b provider.Billed) { billed += b.Cost })
 	ctx = provider.WithoutStream(provider.WithReasoningEffort(ctx, provider.EffortOff))
-	ctx = provider.WithCallTag(ctx, "apps.builder")
+	ctx = provider.WithCallTag(ctx, "apps."+strings.ReplaceAll(role, " ", "-"))
 	response, err := client.CompleteWithMessages(ctx, messagesOf(call),
 		ai.WithModel(configured.Model), ai.WithMaxTokens(maxReplyTokens))
 	if err != nil {
-		return svc.ModelReply{}, fmt.Errorf("builder model %s: %w", model, err)
+		return svc.ModelReply{}, fmt.Errorf("%s model %s: %w", role, model, err)
 	}
 	if billed == 0 && response.Usage != nil && response.Usage.Cost != nil {
 		billed = *response.Usage.Cost
 	}
 	return svc.ModelReply{Text: response.Text(), Cost: billed}, nil
+}
+
+func roleOf(call svc.ModelCall) string {
+	if call.Role == "" {
+		return "builder"
+	}
+	return call.Role
 }
 
 // clientConfig is appapi's AI routing for one model: the app's profile, its

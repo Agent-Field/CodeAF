@@ -63,7 +63,19 @@ func (s *threadStore) load(app, id string) (*thread, error) {
 	if err := json.Unmarshal(data, t); err != nil {
 		return nil, err
 	}
+	t.Messages = withoutToolRole(t.Messages)
 	return t, nil
+}
+
+// withoutToolRole turns "tool" messages saved by older builds into user turns:
+// they carry no call id, so the API refuses them as they are.
+func withoutToolRole(messages []svc.ModelMessage) []svc.ModelMessage {
+	for i, m := range messages {
+		if m.Role == "tool" {
+			messages[i] = svc.ModelMessage{Role: "user", Text: "Result:\n" + m.Text}
+		}
+	}
+	return messages
 }
 
 func (s *threadStore) save(app string, t *thread) error {

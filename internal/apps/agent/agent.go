@@ -146,7 +146,7 @@ func (t *turn) loop(th *thread) error {
 		}
 		reply, err := t.svc.all.Model.Complete(t.svc.ctx, svc.ModelCall{
 			Model: t.model(), System: system, Messages: th.Messages,
-			Schema: actionSchema, App: t.scope.App,
+			Schema: actionSchema, App: t.scope.App, Role: "app agent",
 		})
 		if err != nil {
 			return err
@@ -179,13 +179,22 @@ func (t *turn) step(tb *toolbox, th *thread, a action) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	th.Messages = append(th.Messages, svc.ModelMessage{Role: "tool", Text: feedback})
+	th.Messages = append(th.Messages, svc.ModelMessage{Role: "user", Text: resultText(a.Tool, feedback)})
 	return false, nil
 }
 
+// resultText is how a tool's result goes back to the model. Actions are JSON
+// in text, not native tool calls, so there is no tool_call_id for a "tool"
+// message to carry and the API refuses one: the result is sent as a user turn.
+func resultText(tool, feedback string) string {
+	return "Result of " + tool + ":\n" + feedback
+}
+
+// useTool runs one action and tells the person what it did in plain words,
+// never the call's JSON.
 func (t *turn) useTool(tb *toolbox, a action) (string, error) {
-	t.emit(bridge.AgentEvent{Kind: bridge.AgentTool, Tool: a.Tool, Summary: summarize(a.Tool, a.Args)})
 	out, err := tb.call(t.svc.ctx, a.Tool, a.Args)
+	t.emit(bridge.AgentEvent{Kind: bridge.AgentTool, Tool: a.Tool, Summary: summarize(tb.bundle, a.Tool, a.Args, out, err)})
 	if err != nil {
 		return toolFailure(err)
 	}

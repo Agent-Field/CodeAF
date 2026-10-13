@@ -138,6 +138,7 @@ type ModelCall struct {
 	Messages []ModelMessage
 	Schema   json.RawMessage // optional JSON Schema the reply must match
 	App      string          // charged to this app's budget
+	Role     string          // who is asking, for error messages and call tags: "builder" (default) or "app agent"
 }
 
 // ModelMessage is one chat message.

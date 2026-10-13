@@ -94,13 +94,13 @@ func decode[P any](raw json.RawMessage, fn func(context.Context, P) (outcome, er
 
 func (tb *toolbox) query(ctx context.Context, p bridge.QueryParams) (outcome, error) {
 	res, err := tb.all.Records.Query(ctx, tb.scope, p)
-	res.Rows = tb.hideMasked(res.Rows)
+	res.Rows = tb.withTitles(ctx, tb.hideMasked(res.Rows))
 	return outcome{result: res}, err
 }
 
 func (tb *toolbox) get(ctx context.Context, p bridge.GetRecordParams) (outcome, error) {
 	row, err := tb.all.Records.Get(ctx, tb.scope, p)
-	return outcome{result: tb.hideMasked([]bridge.Record{row})[0]}, err
+	return outcome{result: tb.withTitles(ctx, tb.hideMasked([]bridge.Record{row}))[0]}, err
 }
 
 func (tb *toolbox) create(ctx context.Context, p bridge.CreateRecordParams) (outcome, error) {
@@ -130,7 +130,7 @@ func (tb *toolbox) connector(ctx context.Context, tool string, args map[string]a
 		App:     tb.scope.App,
 		Kind:    "send",
 		Title:   "Approval needed: " + strings.Replace(tool, ".", " ", 1),
-		Summary: summarize(tool, args),
+		Summary: describeArgs(args),
 		Tool:    tool,
 		Payload: args,
 		Who:     tb.scope.Caller.Member,
@@ -173,4 +173,61 @@ func toolFailure(err error) (string, error) {
 		return fmt.Sprintf(`{"error":%q,"code":%q}`, typed.Message, typed.Code), nil
 	}
 	return fmt.Sprintf(`{"error":%q}`, err.Error()), nil
+}
+
+// withTitles adds "<field>_title" beside every ref field, so the model can
+// name a related record by its title and never has to show an id.
+func (tb *toolbox) withTitles(ctx context.Context, rows []bridge.Record) []bridge.Record {
+	titles := map[string]string{}
+	for _, row := range rows {
+		rt := tb.bundle.App.Records[row.Type]
+		if rt == nil {
+			continue
+		}
+		for name, f := range rt.Fields {
+			if title := tb.refTitle(ctx, f, row.Fields[name], titles); title != nil && title != "" {
+				row.Fields[name+"_title"] = title
+			}
+		}
+	}
+	return rows
+}
+
+// refTitle is the title of what a ref or refs value points at, or nil when the
+// field is not a relation or the agent may not read the target.
+func (tb *toolbox) refTitle(ctx context.Context, f *spec.Field, value any, cache map[string]string) any {
+	switch f.Type {
+	case spec.FieldRef:
+		id, _ := value.(string)
+		return tb.titleOfRef(ctx, f.To, id, cache)
+	case spec.FieldRefs:
+		ids, _ := value.([]any)
+		var out []string
+		for _, id := range ids {
+			s, _ := id.(string)
+			out = append(out, tb.titleOfRef(ctx, f.To, s, cache))
+		}
+		return out
+	}
+	return nil
+}
+
+func (tb *toolbox) titleOfRef(ctx context.Context, recordType, id string, cache map[string]string) string {
+	if id == "" {
+		return ""
+	}
+	key := recordType + "/" + id
+	if title, ok := cache[key]; ok {
+		return title
+	}
+	params := bridge.GetRecordParams{Type: recordType, ID: id}
+	raw, _ := json.Marshal(params)
+	title := ""
+	if tb.all.Caps.Allow(ctx, tb.scope, bridge.MethodRecordsGet, raw) == nil {
+		if row, err := tb.all.Records.Get(ctx, tb.scope, params); err == nil {
+			title = titleOf(tb.bundle, tb.hideMasked([]bridge.Record{row})[0])
+		}
+	}
+	cache[key] = title
+	return title
 }
