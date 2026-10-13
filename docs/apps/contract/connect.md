@@ -236,10 +236,15 @@ files, never on the wire (architecture: Secrets). Per app
 `$CODEAF_HOME/apps/<id>/imports/<import_id>.json`: mapping, created record
 ids and their versions at import time (for Undo).
 
-Open item (raised to the manager): a workspace server reaching a member's
-personal token across hosts. Wave 2 resolves personal credentials from the
-`internal/connect` store on the server the call runs on; a cross-host
-delegate is a follow-up.
+Credentials (manager ruling, 2026-10-13): one credential store per server,
+nothing flows between hosts. Personal-space apps use the personal server's
+`internal/connect` tokens. For a workspace app, **Allow** connects the
+member's account on that workspace server: if the server holds no token for
+that member + service, Allow runs the service sign-in (internal/connect auth)
+there, then saves the grant. The token is stored encrypted on the workspace
+server, scoped to that member and that app grant, and is deleted on Revoke
+(Settings → Accounts). `AllowParams` gains `sign_in?: bool` in the result path:
+`connect.allow` answers `{grant}` or `{sign_in_url}` when a sign-in is needed.
 
 ## 7 · Lanes
 
@@ -247,7 +252,7 @@ delegate is a follow-up.
 | --- | --- | --- | --- |
 | w2connect-b0-wire | codex@spark | proto_connect.go, svc_connect.go, gateway/connect.go, stubs, registration lines | c0 |
 | w2connect-b1-door | codex@studio | internal/apps/connect, runs/connector_hook.go | b0 |
-| w2connect-b2-grants | codex@spark | internal/apps/grants | b0 |
+| w2connect-b2-grants | codex@studio | internal/apps/grants | b0 |
 | w2connect-b3-import | codex@studio | internal/apps/imports | b0 |
 | w2connect-d0-types | codex@studio | apps-connect.ts, mock-connect.ts + its registration line | c0 |
 | w2connect-d1-consent | cursor@spark | src/features/app-connect | d0 |
