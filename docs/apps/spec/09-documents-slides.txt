@@ -1,0 +1,191 @@
+
+L12 · Shape in detail
+L12 · Shape in detail CRM · Editors shape a draft with the Builder · migration · replay · failed checks · custom code · personal apps · Users · handover
+acme
+Inbox
+Crews
+Release
+Pricing page
+jev prototype
+Agents
+api-docs
+CRM agent
+Why is CI slow?
+Apps
+acme
+CRM
+Support
+Hiring
+New app…
+Archived 2
+All crews and agents ⌘⇧P
+Release
+acme
+CRM
+Inbox
+CRM Workspace app · v12 · your draft Use Shape Agent App
+Draft · 2 changes · “rename Value to Amount” · “add a last reply column to the pipeline” Show diff Apply Discard Versions
+Data
+deal record · 9 fields · 312
+company record · 6 fields · 86
+contact record · 7 fields · 540
+Automation
+log email new email from a contact
+stale digest every Monday 09:00
+follow-up deal quiet 7 days · paused
+Screens 4
+Pipeline RecordList · lens · AI sort
+Deal RecordPage · Thread
+Companies RecordList
+Contacts RecordList
+Agent
+CRM agent DS Flash · up to $20 a month
+Needs
+7 capabilities records · Gmail as you · AI
+v12 · applied by @mona · 10:40
+Screens Pipeline · running as your draft reads real data · saves to a scratch copy Open files
+Pipeline Companies Contacts Likely to close AI New deal
+28 open deals · likely to close ↓ change 1 · Amount · change 2 · Last reply
+Company Deal Stage Last reply Amount
+Globex Annual renewal · 120 seats Proposal S Yesterday $48,000
+Northwind Team plan · 40 seats Talking C Today 09:12 $14,400
+Initech Pilot for the ops team Proposal M Tue $9,000
+Hooli Expansion · EU region Talking J Mon $22,500
+Umbrella Starter plan Lead C none in 8d $3,600
+Vandelay Import tooling seats Talking R Fri $6,800
+Acme Retail Store managers rollout Lead C none in 8d $12,000
+Stark Labs Research team · 15 seats Lead M Thu $5,400
+Pied Piper Annual · 25 seats Proposal S Wed $10,500
+Initech Support add-on Talking R Tue $2,400
+Builder · shaping the app
+The Builder, CodeAF’s own agent, changes the app as a draft only you see. Turn Shape off to talk to the CRM agent about deals.
+rename Value to Amount
+Builder · 11:01
+Plan · Data › deal · rename a field
+Wrote app.json · alias value → amount
+Check passed · change 1 · Show diff 11:02
+Amount replaces Value on every screen. 312 deals keep their numbers; the old name stays as an alias, so filters and runs that say value: still work.
+add a last reply column to the pipeline
+Builder · 11:05
+Wrote screens/pipeline.json
+Rendered 4 screens on sample data
+Behaviour check · 3 runs on connector fakes
+Check passed · change 2 · Show diff 11:06
+Last reply shows the newest email from the deal’s contacts, from Gmail threads CRM already reads. No new Needs.
+Ask Builder to shape the app
+Shape · Pipeline GLM 5.3
+1
+2
+3
+4
+5
+6
+1 Use · Shape. Shape is enabled for Editors only. Switching on keeps your place: the screen you were on opens in the centre, the pane becomes the Builder · shaping the app , and the draft bar appears. Switching back to Use keeps the draft for later (it survives restarts).
+2 Draft bar : Draft · 2 changes · the quoted requests · Show diff · Apply · Discard · Versions. Apply opens the Apply sheet (migration preview when a field changes; card below); its sub-line says “everyone in acme gets v13”. Discard drops every change after one confirm.
+3 The plan as a menu : Data · Automation · Screens · Agent · Needs. Click a screen to run it in the centre; click a record type or run to see it in plain words and edit a line in place (that edit becomes a change in the draft). A line the draft changes shows new .
+4 Your draft, running. The centre is the real Pipeline with the draft applied, on real records. reads real data · saves to a scratch copy : moving a deal here writes to a scratch overlay only you see; connectors run as fakes, so nothing is sent.
+5 Each request is one change , stored as the request text plus its diff. Every change runs Check (schema · kit law · render every screen · behaviour on connector fakes) before it joins the draft. A failing check goes back to the Builder, max 3 rounds, then shows to you.
+6 Teammates keep using v12 while your draft is open. Several people may have drafts at once; whoever applies first wins and the others get their requests replayed (cards below).
+Apply and drafts migration preview · two drafts at once · replay · conflict
+Migration preview before Apply
+Apply sheet when a field is renamed or removed.
+Apply CRM · v12 → v13
+Changes 2 · “rename Value to Amount” · “remove the Source field”
+Who gets it everyone in acme gets v13
+Needs no change
+Migration checked on all 312 deals
+Rename “Value” to “Amount” · 312 deals nothing deleted · old name kept as alias · value: filters and runs keep working
+Remove field “Source” · 204 deals have a value hidden, restorable · values stay stored · Restore v12 brings it back
+No data is removed Cancel Apply
+S Santosh shaped CRM · v13 “rename Value to Amount” · 11:12
+View Undo
+The migration section appears only when a field is added, renamed or removed. Counts are real (all records, not the sample). CodeAF never deletes a stored value on Apply; Undo writes v14 with the old shape.
+Two drafts · replayed
+@raj applied first. Your requests are replayed on his version.
+CRM Workspace app · v13 · your draft
+@raj applied v13 while you shaped Your 2 requests were replayed on v13 Show diff
+Draft · 2 changes · “rename Value to Amount” · “add a last reply column” Show diff Apply Discard Versions
+Company Stage Last reply Amount
+Globex Proposal S Yesterday $48,000
+Northwind Talking C Today 09:12 $14,400
+Initech Proposal M Tue $9,000
+CodeAF sees v13 land, rebuilds your draft on it by sending each stored request to the Builder again, in order, and checks each one. If all pass the bar turns green-tinted for one look; Show diff shows what changed compared to your draft before. Dismiss the line with ×; Apply now produces v14.
+Two drafts · conflict
+A request that no longer fits. The Builder asks one question.
+1 request could not be replayed · Builder needs you Answer
+Builder · shaping the app replay on v13
+“rename Value to Amount” · replayed
+“group the pipeline by source” · could not be replayed
+@raj removed the Source field in v13, so I can’t group by it. How should the pipeline be grouped?
+By owner one group per person
+By stage Lead · Talking · Proposal · Won · Lost
+Drop this request keep the other change
+The draft bar turns amber and Apply is disabled until you answer. The question also lands in Inbox (“CRM · Builder needs you”). Your answer replaces the request text, so the stored change stays replayable.
+When something fails a behaviour check fails in the draft · a change breaks the app after Apply
+Behaviour check failed
+In the Builder pane, after 3 rounds.
+Builder · shaping the app change 3
+when a deal is Won create an invoice
+Builder · 3 rounds · 11:20
+Schema · app.json valid
+Kit law · tokens only, one navigation row
+Rendered 5 screens on sample data
+Check failed : moving a deal to Won should create an invoice record — no run handles it round 3 of 3
+I added the invoice record but no run fires on Won. I tried 3 times.
+Fix it Cancel this change
+The behaviour check runs every run on sample records against connector fakes and compares with what the request promised. Fix it puts “Fix: …” in the composer so you can add a hint; the Builder gets 3 more rounds. Cancel this change removes only change 3; changes 1 and 2 stay in the draft. A failed change never reaches Apply.
+This change broke CRM
+After Apply, on real records.
+CRM Workspace app · v13
+This change broke CRM · v13 · “add a last reply column” Fix it Revert
+Last reply: thread has no date · 3 real deals · screens/pipeline.json:42
+Company Deal Stage Value
+Globex Annual renewal · 120 seats Proposal S $48,000
+Northwind Team plan · 40 seats Talking C $14,400
+Initech Pilot for the ops team Proposal M $9,000
+Showing v12, the last working version · read-only until fixed or reverted
+A change can pass Check on sample data and still fail on real records. Then the card shows the last working version dimmed and read-only for everyone. Editors see Fix it (opens Shape with the error handed to the Builder) and Revert (writes v14 equal to v12 at once). Users and Viewers see the bar without buttons; every Editor gets one Inbox line.
+Other ways in custom code · personal apps · Users · the app agent hands over
+Custom code
+The labelled escape hatch: custom/pricing-calc.tsx.
+Screens · 5
+Pipeline RecordList · lens · AI sort
+Deal RecordPage · Thread
+Price calculator custom custom/pricing-calc.tsx · custom · sandboxed
+custom
+Seats 40
+Plan Team
+Annual discount 15%
+Quote $14,400
+No kit part does tiered seat pricing. I can write it as custom code: sandboxed, no network, reads deals through the bridge only.
+Write custom code Not now
+Custom code is the escape hatch, never the default. The Builder asks before writing a custom/*.tsx file. The file shows with an amber custom chip in the plan menu, in Open files, and at the corner of the part in Use, so everyone can see which part is not kit. It runs in its own sandbox: kit and bridge only, no network.
+Shape a personal app
+Dashboards: changes apply at once, with Undo.
+Dashboards Personal app · v8 · only you Use Shape
+add a weekly signups chart
+Check passed · applied as v9 11:31
+Dashboards is now v9 Undo
+In a personal app you are the only user, so there is no draft bar: each change applies as soon as its Check passes, as a new version. Undo on the toast (or in Versions) goes back one version. Migration still asks first when a field is renamed or removed.
+A User tries Shape
+@raj is a User of CRM.
+CRM Workspace app · v12 Use Shape Agent App
+Only editors can shape CRM
+You are a User. Editors: @mona, @santosh. M Ask @mona
+R @raj asks for a change to CRM “add a column for the renewal date” · in Mona’s Inbox
+Shape this Decline
+For Users and Viewers the Shape segment is dimmed with a lock. Click shows the tip; Ask @mona (the Editor who shaped it last) opens a one-line field for the request and sends it to her Inbox. Shape this opens Shape with Raj’s words pre-filled.
+The app agent hands over
+That changes the app · Shape this.
+C CRM agent Use
+also add a column for last reply
+That changes the app, not the deals. The Builder does that in Shape.
+Shape this your words go with it
+Builder · shaping the app Shape · Pipeline
+Shape opened from the CRM agent. Press ↵ to send.
+add a column for last reply
+from CRM agent chat GLM 5.3
+The app’s agent works on content only. Asked to change the app, it answers “That changes the app” with Shape this . For an Editor the click switches the header to Shape and puts the words in the Builder’s composer, not sent. For a User the button reads Ask @mona and sends the words to her Inbox.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

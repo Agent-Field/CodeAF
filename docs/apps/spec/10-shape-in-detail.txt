@@ -1,0 +1,150 @@
+
+Connectors
+L10 · Connectors personal connections travel with you · workspace connections belong to acme · an app acts as you only after you allow it · fakes until Apply
+a acme Workspace
+Inbox
+Crews
+Release
+Pricing page
+Agents
+api-docs
+CRM agent
+Apps
+acme
+CRM
+Slides
+Support
+New app…
+All crews and agents ⌘⇧P
+CRM
+Support
+Inbox
+CRM Workspace app · acme · v12 · you: Editor Use Shape Agent App
+stage: open owner: team Search deals · company: value: touched: Likely to close AI Views
+Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
+28 open deals · likely to close ↓ j / k · ↵ open
+Company Deal Stage Next step Value Touch
+Globex Annual renewal · 120 seats Proposal S Send revised quote $48,000 1d
+Northwind Team plan · 40 seats Talking C Follow-up drafted · waiting on you $14,400 2h
+Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
+Hooli Expansion · EU region Talking J Book a demo with their CTO $22,500 1d
+Umbrella Starter plan Lead C Follow-up drafted · quiet 7d $3,600 7d
+Vandelay Import tooling seats Talking R Send case study $6,800 2d
+Acme Retail Store managers rollout Lead C Follow-up drafted · quiet 8d $12,000 8d
+Stark Labs Research team · 15 seats Lead M Intro call Mon $5,400 4d
+Pied Piper Annual · 25 seats Proposal S Waiting on legal $10,500 5d
+CRM may send email as Mona Gmail · first time
+from mona@acme.com . You approved the follow-up to Priya Shah (Northwind). To send it, CRM needs your Gmail. You allow this once for CRM; other apps ask on their own.
+CRM can
+Send email from mona@acme.com each email still waits for your approval first
+Read replies in threads CRM started and email from addresses in CRM's contacts
+Add the label "CRM" to those threads
+CRM can't
+Read your other email, delete email or change Gmail settings
+Show your inbox to anyone in acme only what CRM saves to a deal is shared
+Revoke anytime in Settings → Accounts. Not now Allow
+1
+2
+3
+4
+5
+6 Settings → Accounts
+Mona's personal connections and the apps she allowed.
+Accounts
+General Models Spending Memory Permissions Accounts Factory Advanced
+Your connections yours, in every space
+Gmail mona@acme.com · since 2 Sep
+Connected Disconnect
+Calendar mona@acme.com · since 2 Sep
+Connected Disconnect
+Slack acme.slack.com · expired yesterday
+Expired Reconnect
+GitHub mona-k · read and push in 6 repos
+Connected Disconnect
+Connect an account
+Apps that act as you you allowed each one
+CRM · acme
+Gmail: send email, read replies · allowed today
+Revoke
+Support · acme
+Gmail: read support threads · Slack: post · allowed 12 Sep
+Revoke
+Slides · acme
+Calendar: read free/busy · allowed 20 Sep
+Revoke
+Advanced MCP servers · what agents may use
+7 Workspace settings → Connections
+acme · Admin view (@mona).
+acme · Connections
+General Members Connections Spending Apps
+Workspace connections belong to acme · Admins only
+support@acme.com · Gmail added by @mona · used by Support
+Chosen apps · 1
+Stripe acme live account · used by Support, CRM
+Chosen apps · 2
+GitHub · acme org acme/api, acme/web, acme/infra · used by acme Factory
+All apps
+Add connection… Gmail, Calendar, Slack, GitHub, Stripe, any MCP server
+Who can use Stripe
+All apps Chosen apps
+Support CRM Add app
+An app not on the list can't use Stripe; its Needs shows "Stripe · ask an Admin".
+8 The app's Needs
+Which connections CRM uses, and as whom.
+CRM · Needs App ⌄ → Needs
+Connections
+Gmail as each person send follow-ups · read replies
+you · 3 of 4 allowed
+Calendar as each person book calls on deals
+you: not yet Allow
+Stripe acme workspace read invoices for won deals
+set by Admin
+Also
+Records deals, companies, contacts Trigger new email · Gmail Budget up to $20 a month · $6.40 spent
+9 Shape and Preview use fakes
+Mona shapes CRM; the draft runs the follow-up rule.
+CRM · Shape
+Inbox
+CRM Workspace app · draft on v12 Use Shape Agent App
+Draft · 2 changes · "follow up after 5 quiet days" Show diff Apply Discard Versions
+Gmail is a fake in this draft · nothing is sent Stripe · Calendar fakes too
+Would send · Re: Team plan for 40 seats to Priya Shah · from mona@acme.com · run on the draft, 10:42
+fake
+Would read · 2 replies sample replies made by the fake
+fake
+Would charge · nothing Stripe fake · read only in this app
+fake
+10 Admin removes a connection
+Workspace settings → Connections → Stripe ⋯ → Remove….
+Remove Stripe from acme?
+2 apps use it. Their steps that use Stripe will wait and ask an Admin for a connection. Records already saved stay.
+Support refunds · 3 runs this week
+CRM reads invoices for won deals
+Cancel Remove Stripe
+11 An expired connection breaks a run
+Mona's Gmail token expired between approval and send.
+The run · CRM → Runs
+Deal quiet 7 days · Northwind 10:00
+Draft follow-up · CRM agent 10:01
+Approval needed: send email · @mona approved 10:20
+Send · waiting for Mona's Gmail expired
+Mona's Inbox
+CRM can't send: Mona's Gmail expired Re: Team plan for 40 seats → Priya Shah · approved 10:20
+Reconnect
+Support can't post: Mona's Slack expired 1 message waiting
+Reconnect
+Reconnect opens Google sign-in for mona@acme.com; when it returns, the step runs at once and the Inbox line moves to Done today. The rail row of CRM shows the amber dot meanwhile.
+1 The consent sheet opens the first time a workspace app acts as you through one of your personal connections: here @mona approved an email and CRM needs her Gmail. It is asked once per person, per app, per connection. The title always names the app, the action and the person: "CRM may send email as Mona".
+2 CRM can / can't is written from the app's Needs (app.json capabilities), never by the app's agent. Sending still goes through "Approval needed: send email" every time; Allow only lets CRM use the account.
+3 Allow saves the permission for Mona + CRM + Gmail and the approved email sends at once (5-second Undo). Not now keeps the email waiting; Mona's Inbox gets "CRM wants to send email as you · Allow". Other people's use of CRM is not affected.
+4 Revoke anytime in Settings → Accounts → Apps that act as you (see 6). After a revoke the sheet shows again the next time CRM needs it.
+5 Same sheet for every personal connection (Calendar, Slack, GitHub). In Personal there is no sheet: Personal apps use your accounts directly, because only you are there.
+6 Settings → Accounts (the app's own Settings, ⌘,) lists your personal connections, the same in every space: status Connected or Expired · Reconnect (red glyph, Reconnect is the primary button). Disconnect asks first and lists the apps that will stop acting as you. Apps that act as you lists every Allow, with its space; Revoke takes effect at once and the app asks again next time.
+7 Workspace settings → Connections holds the accounts that belong to acme (support@, Stripe, the GitHub org). Members see the list; only Admins and Owners add, change or remove. Add connection… signs in to the service as the workspace and asks who can use it: All apps or Chosen apps . Apps use a workspace connection with no per-person sheet; sending still needs approval.
+8 Needs shows every connection the app uses and as whom : "as each person" (a personal connection, each person allows once) or "acme workspace" (a workspace connection). Your own status sits on the right with an Allow button; Editors also see "3 of 4 allowed". A run that needs a person who hasn't allowed waits in that person's Inbox.
+9 Fakes. Every connector has a fake. Preview (when making an app), Shape drafts and Check always run against fakes: the bar says "Gmail is a fake in this draft · nothing is sent", and what would have happened is listed with a striped fake tag. Real connections are used only after Apply, by the applied version.
+10 Removing a workspace connection (Admin, ⋯ → Remove…) always shows this dialog listing every app that uses it, with what for. Remove signs CodeAF out of the service, writes one Activity line "Mona removed Stripe · used by 2 apps", and those apps' Needs show "Stripe · ask an Admin". With no apps using it, the dialog is a plain confirm.
+11 An expired connection never fails a run silently. The step that needs it waits (amber) and the connection's owner gets one Inbox line: "CRM can't send: Mona's Gmail expired · Reconnect". A personal connection → that person; a workspace connection → every Admin. After 7 days of waiting the run stops and moves to Done with "stopped · Gmail expired". Other people's runs keep going.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

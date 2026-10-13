@@ -1,0 +1,304 @@
+
+L7 · App gallery 1/2 · 14 apps built from kit v2
+L7 · App gallery 1/2 · 14 apps built from kit v2
+Seven apps from seven kinds of team, each drawn as its app would render: the CodeAF window and app header, then the app's main screen in real HTML on CodeAF tokens. Under each, every kit part the screen uses, by tier, and the kit v2 part, feature or rule that covers each further need, or Backlog. On screen, a green outline marks a kit v2 part and a grey outline a backlog item. Shape mode, the plan card and the draft bar build every app, so they are not listed per app.
+Seven apps two per row · Slides spans the last row kit v2 · 59 parts · 6 surfaces · 13 patterns · 12 data blocks · 28 primitives
+1 Bank · KYC review queue 23 parts · 2 shell · 3 via v2
+maker-checker · masked IDs · document evidence · risk score A checker works the queue of cases a maker has prepared: masked identity fields, the risk score and why, the evidence files, the checklist, then approve or return.
+KYC review
+Inbox
+acme
+KYC review Workspace app · v9 · shaped by @mona Use Shape Agent App
+Queue My checks Done 5 wait for a checker
+stage: checker risk: high Search name · case · PAN
+New 12 Maker 8 Checker 5 Customer 3 Done 41
+Arjun Mehta KYC-4471 · periodic · @mona 72
+Lakshmi Traders LLP KYC-4468 · onboarding · @jm 64
+Zenith Exports KYC-4466 · onboarding · @raj 58
+Rohan Kapoor KYC-4463 · periodic · @jm 41
+Meera Iyer KYC-4459 · address change 35
+KYC-4471 · Arjun Mehta Periodic review
+Reveal asks a reason · logged PAN •••••••21F Reveal Passport Z••••4821 Reveal Born •• ••• 1986
+Risk score · rules v7 was 48 in 2025
+72 High
+Cash business 30 Adverse media 22 Country 20 PEP 0
+Evidence 3 files
+passport.pdf 1 / 2
+Z 7704821 P<INDMEHTA<<ARJUN<<<<<<<< Z7704821<4IND8603117M3
+1
+kit v2 · FileViewer · region masking
+ID valid · face match @mona · 10:02
+Address proof < 3 months pin 1 · flat no. differs
+Sanctions · no hit screened 09:40
+Source of funds evidence missing Ask
+M Maker · @mona signed 10:02
+Checker · you anyone but @mona Approve Return to maker
+Built from dark = surface · outlined = shell-owned 23 of 59
+Surfaces none
+Patterns 6 States SectionTabs QueryField StateMeter Panel Checklist
+Data blocks 4 RecordList Chart FileViewer SignOff
+Primitives 13 Masked Token Chip Button IconButton Avatar StateGlyph Tooltip Signature Icon Text Stack Row
+Shell 2 Inbox Activity
+Kit v2 and backlog green on screen = part added in kit v2 · grey = backlog 3
+Covered in kit v2 by FileViewer · region masking Region masking in files. Mark a region on a scan; it stays hidden until revealed, and every reveal is logged.
+Covered in kit v2 by Sign-off roles (shell) Sign-off roles. The app names signatories (“Checker”, “Quality lead”); SignOff keeps the maker out of their own check.
+Covered in kit v2 by Audit log (shell) Backlog · audit pack export Audit export. Every reveal, signature and change is in the audit log.
+2 Aerospace · Non-conformance report 20 parts · 2 shell · 2 via v2
+drawing markup · trace to parts and lots · sign-off chain One NCR: the drawing with the measured feature pinned, the measurements, what else the bad lot touched, the disposition, and the chain of signatures that releases it.
+NCR-031
+Quality
+Inbox
+Quality Workspace app · v14 · shaped by @raj Use Shape Agent App
+NCRs Lots MRB NCRs › NCR-031
+NCR-031 · Bracket hole out of tolerance Awaiting MRB
+Major B-114 rev C Lot 2291 · 3 of 40 affected Kestrel Machining
+Drawing rev C rev B kit v2 · FileViewer · revision compare
+B-114 rev C.pdf sheet 1 / 2
+94.0 Ø12.2 ±0.1 ×2 160.0 B-114 · C 1 Ø12.4 measured · @raj 2
+# Characteristic Nominal Tol Measured Result 1 Hole A diameter 12.20 ±0.10 12.41 fail 2 Hole B diameter 12.20 ±0.10 12.24 ok 3 Hole pitch 94.00 ±0.20 94.06 ok
+Trace · links between records
+NCR-031 this report
+B-114 rev C part
+Lot 2291 40 pcs · Kestrel
+SN 0412–0415 shipped · 4 assys
+NCR-027 same jig J-14
+Disposition Rework · ream to Ø12.5 + bush Cause Worn drill jig J-14
+Containment
+Quarantine rest of lot 2291 @raj · 37 pcs tagged
+Check SN 0412–0415 at customer 4 assemblies shipped
+R Inspector @raj · 08:14
+M Quality lead M. Rao
+MRB · you sign to release Sign
+Customer only if use-as-is
+Built from dark = surface · outlined = shell-owned 20 of 59
+Surfaces 1 Graph
+Patterns 4 States SectionTabs Table Checklist
+Data blocks 4 RecordPage FileViewer Form SignOff
+Primitives 11 Chip Select Segmented Button Avatar StateGlyph Signature Icon Text Stack Row
+Shell 2 Inbox Activity
+Kit v2 and backlog green on screen = part added in kit v2 · grey = backlog 2
+Covered in kit v2 by FileViewer · revision compare File compare. Rev C over rev B on one drawing, changes highlighted.
+Covered in kit v2 by Sign-off roles (shell) Sign-off roles. The app names signatories (“Checker”, “Quality lead”); SignOff keeps the maker out of their own check.
+3 Manufacturing · Line dashboard and shift handover 17 parts · 2 shell · 1 backlog
+live sensor charts · shift schedule · handover note · checklist The handover screen of one line: how the shift went and what the presses are doing now, who is on next, the outgoing lead's note, the checklist, and both signatures.
+Line 4
+Inbox
+Maintenance
+Line 4 Workspace app · v6 · shaped by @jm Use Shape Agent App
+Live Handover Downtime Line 4 running · shift A ends 14:00
+This shift
+OEE · shift 81% target 85%
+Good parts 1,240 of 1,400 plan
+Scrap 1.6% over 1.0% limit
+Downtime 22 min die change 18
+Press 4 · hydraulic pressure bar · live · limit 200
+06:00 08:00 10:00 12:00 13:40
+Trim station · die temp °C · live
+06:00 10:00 13:40
+Blank Press 4 Trim · temp Pack
+Shifts · today
+06 12 18 24 06
+R A · @raj 06–14
+M B · @mona 14–22
+J C · @jm 22–06
+13:40
+Handover · A → B · @raj is editing R M
+Die 7 changed at 11:40, first-off passed. Trim station die runs hot since 12:30, holding at 66 °C; keep it under 70 or stop and call maintenance. Scrap is all burrs from the trim station.
+Guards and light curtains checked R
+Die log updated · die 7 R
+Open downtime handed over 1 open · trim temp Sign
+R Outgoing @raj
+Incoming @mona Accept
+Backlog · phone & browser surface
+Built from dark = surface · outlined = shell-owned 17 of 59
+Surfaces 2 Timeline Text
+Patterns 3 States SectionTabs Checklist
+Data blocks 2 Chart SignOff
+Primitives 10 Chip StateGlyph Avatar Button Signature FileDrop Icon Text Stack Row
+Shell 2 Inbox Activity
+Kit v2 and backlog green on screen = part added in kit v2 · grey = backlog 1
+Backlog · phone & browser surface Phone and browser surface. v1 is the desktop app (Mac, Linux).
+4 Logistics · Dispatch and delivery tracking 12 parts · 2 shell · 1 via v2 · 1 backlog
+drivers · routes · live positions · ETAs The dispatcher's day: where every van is, who is late and by how much, each van's stops on the clock, and the late notice to customers waiting for approval.
+Dispatch
+Inbox
+Dispatch agent
+Dispatch Workspace app · v11 · shaped by @santosh Use Shape Agent App
+Today Drivers Exceptions Assign stop
+V7 · Arun · 14:20 V3 · Sana · +18 min V9 · Dev Depot
+kit v2 · Map · live positions
+Drivers · 4 on the road by ETA
+S Sana · V3 stop 6 of 12 · Kalyani Nagar +18 min
+A Arun · V7 stop 9 of 14 · Baner 14:20
+D Dev · V9 stop 3 of 10 · Aundh 14:05
+K Kiran · V2 back at depot done
+Stops by van · today
+10:00 12:00 14:00 16:00 18:00
+V3
+V7
+V9
+14:02
+Approval needed: send SMS leaves the workspace
+To 6 customers on V3: “Your delivery is running late, new time 16:10–16:40.”
+Approve Edit Skip
+Built from dark = surface · outlined = shell-owned 12 of 59
+Surfaces 1 Timeline
+Patterns 2 States SectionTabs
+Data blocks 2 RecordList ApprovalCard
+Primitives 7 Button Avatar StateGlyph Icon Text Stack Row
+Shell 2 Inbox AgentPane
+Kit v2 and backlog green on screen = part added in kit v2 · grey = backlog 2
+Covered in kit v2 by Map (surface) Map. Places, routes and live positions on streets.
+Backlog · phone & browser surface Phone and browser surface. v1 is the desktop app (Mac, Linux).
+5 Law firm · Contract review 16 parts · 3 shell · 3 via v2
+clause library · redlines · partner approval An associate reviews the counterparty's markup of an MSA clause by clause, checks it against the firm's standard positions, and sends the redline once a partner approves.
+Globex MSA
+Contracts
+Inbox
+Contracts Workspace app · v5 · shaped by @mona Use Shape Agent App
+Review Clause library Approvals M S Export
+Globex MSA · 14
+1 Definitions
+4 Fees
+5 Service levels M
+7 Liability agent
+9 Term 2
+12 Governing law
+§7 · Contracts agent is editing · v6 M S
+7 · Limitation of liability
+7.1 Each party's total liability under this Agreement is limited to the fees paid in the twenty-four (24) twelve (12) Globex months before the claim.
+7.2 The cap in 7.1 does not apply to breach of clause 10 (Confidentiality) , data protection Globex or to fraud.
+kit v2 · Text · track changes
+7.3 Neither party is liable for indirect or consequential loss, including loss of profit.
+7.4 Nothing in this clause limits liability for death or personal injury caused by negligence.
+Clause library · liability
+std 12 months of fees our standard · 31 uses
+fb1 2× annual fees fallback · partner OK
+no Uncapped walk away
+7.2 vs standard +1 −1
+2 - …clause 10, data protection or fraud.
+2 + …clause 10 or fraud.
+Approval needed: send redline
+To Globex counsel · approver M @mona, partner
+Approve Skip
+Built from dark = surface · outlined = shell-owned 16 of 59
+Surfaces 1 Text
+Patterns 4 States SectionTabs Pages List
+Data blocks 2 DiffViewer ApprovalCard
+Primitives 9 Button Chip Avatar StateGlyph Menu Icon Text Stack Row
+Shell 3 AgentPane Inbox Versions
+Kit v2 and backlog green on screen = part added in kit v2 · grey = backlog 3
+Covered in kit v2 by Text · track changes Track changes. Each insertion and deletion kept with its author; accept or reject one by one.
+Covered in kit v2 by Text · .docx import / export Backlog · Word round-trip beyond import / export Word round-trip. Read the counterparty’s .docx in and send one back.
+Covered in kit v2 by Text · clause numbering Clause numbering. Numbered clauses and cross-references renumber when a clause moves.
+6 Retail · Inventory and purchase orders 20 parts · 1 shell · 3 backlog
+stock levels · reorder rules · supplier POs · barcode receiving A store manager sees what is running low, tunes the reorder rule for one item, sends the purchase order once approved, and receives yesterday's delivery by scanning.
+Stock
+Inbox
+acme
+Stock Workspace app · v8 · shaped by @jm Use Shape Agent App
+Stock Purchase orders Receiving New PO
+store: Store 12 stock: low Search SKU · name · supplier
+Out 4 Low 17 OK 312 Over 9
+SKU Item On hand Min Order
+40417 Oat milk 1L Northwind Foods 18 40 0
+40102 Basmati rice 5kg Globex Grains 0 24 48
+51190 Dish soap 750ml Initech Home 11 30 0
+40688 Greek yoghurt 400g Northwind Foods 26 36 0
+62004 AA batteries ×4 Hooli Retail 9 20 40
+40731 Almond butter 340g Umbrella Foods 7 12 0
+Oat milk 1L 40417
+On hand · 30 days min 40
+Reorder rule
+Min · Max 40 · 120 Lead time 6 days Supplier Northwind Foods
+Add to PO-2232
+Receiving PO-2231 · Globex Grains · 4 of 6 lines Scan or type barcode Backlog · camera scan
+Print shelf labels Backlog · label printing
+Approval needed: send PO-2232 to Northwind Foods
+6 lines · $1,842.60 · deliver Thu Approve
+Built from dark = surface · outlined = shell-owned 20 of 59
+Surfaces none
+Patterns 5 States SectionTabs QueryField StateMeter Panel
+Data blocks 4 RecordList Chart Form ApprovalCard
+Primitives 11 Field Select Token Button IconButton StateGlyph Code Icon Text Stack Row
+Shell 1 Inbox
+Kit v2 and backlog green on screen = part added in kit v2 · grey = backlog 3
+Backlog · camera scan Camera barcode scan. A USB scanner types into Field on the Mac.
+Backlog · label printing Label printing.
+Backlog · phone & browser surface Phone and browser surface. v1 is the desktop app (Mac, Linux).
+7 Slides · the workspace deck app from L6 18 parts · 5 shell · 1 via v2
+decks list · parts strip · Canvas 16:9 · Present · Share The control: the app the kit was shaped around. The decks list (RecordList with QueryField and StateMeter, L6) and one deck open on slide 3 with a comment pinned on the chart.
+Q4 board deck
+Slides
+Inbox
+Slides Workspace app · v4 · shaped by @raj Use Shape Agent App
+Decks Templates Decks › Q4 board deck
+Q4 board deck 8 slides · 3 here S M R Ask Nudge Comment Present Share Export
+Acme · Board meeting
+Q4 board deck
+14 November · for the board
+1 · Final
+02
+Where we are
+End of Q3, against plan
+$4.2M Annual recurring revenue +18% vs Q2
+128 Paying customers +21 this quarter
+112% Net revenue retention plan was 108%
+2 · Final
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+3 · In review M 2
+04
+Revenue
+ARR by quarter, $M · last 8 quarters
+Q4 Q1 Q2 Q3 Q4 Q1 Q2 Q3
+4 · Draft
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+R
+R @raj on the chart
+use annual numbers
+Send to agent Reply
+Acme brand · masters kit v2 · Canvas · themes
+slide-3.json · v5 · Versions
+Built from dark = surface · outlined = shell-owned 18 of 59
+Surfaces 1 Canvas
+Patterns 5 States SectionTabs QueryField StateMeter Pages
+Data blocks 2 RecordList ApprovalCard
+Primitives 10 Button Segmented Avatar StateGlyph Menu Chip Icon Text Stack Row
+Shell 5 AgentPane Inbox Share sheet Versions Activity
+Kit v2 and backlog green on screen = part added in kit v2 · grey = backlog 1
+Covered in kit v2 by Canvas · themes Deck themes. Brand fonts, colours and masters every slide inherits.
+Summary app → kit parts used → covered in kit v2 · backlog spec/l7_usage.json
+App Kit parts used Surface Covered in kit v2 · Backlog Bank · KYC review 23 / 59 · +2 shell none · easy parts Covered in kit v2 by FileViewer · region masking Covered in kit v2 by Sign-off roles (shell) Covered in kit v2 by Audit log (shell) Backlog · audit pack export Aerospace · NCR 20 / 59 · +2 shell Graph Covered in kit v2 by FileViewer · revision compare Covered in kit v2 by Sign-off roles (shell) Manufacturing · Line + handover 17 / 59 · +2 shell Timeline · Text Backlog · phone & browser surface Logistics · Dispatch 12 / 59 · +2 shell Timeline Covered in kit v2 by Map (surface) Backlog · phone & browser surface Law firm · Contract review 16 / 59 · +3 shell Text Covered in kit v2 by Text · track changes Covered in kit v2 by Text · .docx import / export Backlog · Word round-trip beyond import / export Covered in kit v2 by Text · clause numbering Retail · Inventory + POs 20 / 59 · +1 shell none · easy parts Backlog · camera scan Backlog · label printing Backlog · phone & browser surface Slides 18 / 59 · +5 shell Canvas Covered in kit v2 by Canvas · themes All seven 40 / 59 distinct 5 of 7 use a surface 12 needs · 9 covered in kit v2
+How kit v2 covers them, by how often 12 needs · green = kit v2 · grey = backlog Phone and browser surface
+Manufacturing · Logistics · Retail ×3 Backlog · phone & browser surface Sign-off roles
+Bank · Aerospace ×2 Covered in kit v2 by Sign-off roles (shell) Region masking in files
+Bank ×1 Covered in kit v2 by FileViewer · region masking Audit export
+Bank ×1 Covered in kit v2 by Audit log (shell) Backlog · audit pack export File compare
+Aerospace ×1 Covered in kit v2 by FileViewer · revision compare Map
+Logistics ×1 Covered in kit v2 by Map (surface) Track changes
+Law firm ×1 Covered in kit v2 by Text · track changes Word round-trip
+Law firm ×1 Covered in kit v2 by Text · .docx import / export Backlog · Word round-trip beyond import / export Clause numbering
+Law firm ×1 Covered in kit v2 by Text · clause numbering Camera barcode scan
+Retail ×1 Backlog · camera scan Label printing
+Retail ×1 Backlog · label printing Deck themes
+Slides ×1 Covered in kit v2 by Canvas · themes
+Sign-off roles and the audit log are shell-owned in kit v2. The phone & browser surface (with camera scan and label printing) and the audit pack export are backlog: v1 is the desktop app.
+Kit parts these seven apps never used 18 of 59 Grid Board BulkBar Compare Thread RunTimeline LogStream ProofList Media Toggle Sheet Dialog Toast Kbd Divider DatePicker PeoplePicker Timer
+The run parts belong to factory-style apps and Grid to Budget (L4 compositions); none of these seven screens needed them. Media, Compare and Timer serve gallery 2 (L8). States, Icon, Text, Stack and Row are in every app.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

@@ -1,0 +1,159 @@
+
+Crews and apps
+L13 · Crews and apps a crew discusses, the app holds the records · the CRM agent as a member · link, never copy · report links every record
+Inbox
+Crews
+Release
+Pricing push
+Q4 review
+Agents
+api-docs
+Why is CI slow?
+Apps
+acme
+CRM
+Slides
+Support
+Hiring
+New app…
+All crews and agents ⌘⇧P
+Release
+Pricing push
+CRM
+Slides
+Inbox
+Pricing push New prices for the Q4 renewals
+1 needs you Crew ⌄
+Globex, Northwind and Initech are waiting on Q4 quotes. Agree the new tiers, put them in the deck, and get follow-ups out to all three.
+P @pricing · worked 46s
+analyst is checking the tiers against last quarter's wins, copywriter owns slide 4 of the deck, and I've added the CRM agent so it can read the three deals and draft the emails.
+C CRM agent from CRM · can read deals, draft emails · worked 4s
+Read 3 linked deals: Globex · renewal $48,000 Northwind · team plan $14,400 Initech · pilot $9,000 . Northwind last replied 9 days ago; the other two asked for pricing this week.
+P @pricing → CRM agent · 10:12
+Tiers are agreed (slide 4). Draft follow-ups for these 3 deals with the new price, and set each next step.
+C CRM agent → @pricing · worked 22s
+Changed in CRM through the CRM agent 3 records · 3 drafts
+Globex · renewal next step Send revised quote → Follow-up drafted CRM v12
+Northwind · team plan next step Chase pricing → Follow-up drafted CRM v12
+Initech · pilot new email draft · Re: Pilot pricing for Q4 CRM v12
+Waiting on you: Approval needed: send email · 3 · also in Inbox
+Approval needed: send email · CRM agent · leaves the workspace 1 of 3
+To Priya Shah, Northwind · Re: Team plan for 40 seats
+Approve Edit Skip sends as you · Gmail
+Message @pricing , the manager
+Manager · GLM 5.3
+Team Items Log 6 linked
+Records · CRM linked, not copied
+Globex · renewal Proposal · $48,000 · changed here
+10:13
+Northwind · team plan Talking · $14,400 · email waits on you
+10:13
+Initech · pilot Proposal · $9,000 · email waits on you
+10:13
+Documents · Slides
+Q4 pricing deck 12 slides · copywriter is editing slide 4
+Files
+tiers.md analyst · 3 tiers · 09:58
+Factory work
+web#2110 · New pricing page copy job · queued · linked by @pricing
+Link a record, document or job 6
+1
+2
+3
+4
+5
+6
+7
+1 · Discuss in a crew
+On any record: Actions ⌄ → Discuss in a crew… (⇧⌘D). Choose an existing crew or start one.
+CRM / Deals / Northwind · team plan Actions
+Stage Talking Value $14,400
+Edit fields E
+Draft an email
+Discuss in a crew… ⇧⌘D
+Copy link
+Discuss Northwind · team plan CRM deal
+The crew gets a link to this deal, never a copy. Changes still happen in CRM.
+Pricing push @pricing · 3 records linked
+Q4 review @review · 8 records linked
+Start a new crew manager + CRM agent
+Crews you are in · newest first Cancel Link to crew
+2 · The manager asks, CRM changes, Inbox asks you
+Records are created and changed through the CRM agent; sending waits for you.
+Log Pricing push
+P @pricing → CRM agent Draft follow-ups for these 3 deals with the new price, and set each next step.
+10:12
+C CRM agent → @pricing 3 drafts written in CRM. Sending waits on @santosh.
+10:13
+Inbox · Waiting 3 new
+Approval needed: send email · Northwind Pricing push · CRM
+Approval needed: send email · Initech Pricing push · CRM
+Approval needed: send email · Globex Pricing push · CRM
+Each row names the crew that asked and the app that holds the record. Approving here, in the crew or in CRM is the same answer. Skip leaves the draft on the deal; nothing is sent.
+3 · A deal shows its crews
+The record page lists every crew that discussed it.
+CRM / Deals / Northwind · team plan CRM v12
+Stage Talking
+Owner M @mona
+Value $14,400
+Next step Follow-up drafted · waiting on you
+Discussed in Pricing push now Q4 review Tue
+C CRM agent drafted a follow-up · for Pricing push 10:13
+M @mona moved to Talking Mon
+Discussed in is a CodeAF field on every record page; the app does not build it. A chip opens the crew. A finished crew keeps its chip with "finished" and opens its report.
+4 · What the app's agent cannot do in a crew
+It is limited to CRM's capabilities and content only.
+@CRM agent add a "pricing tier" field to deals
+C CRM agent from CRM · can read deals, draft emails
+That changes the app, not the deals. The Builder does that in Shape.
+Shape this opens CRM in Shape · your words go with it
+In a crew it can
+read deals, companies, contacts
+draft emails
+create and change records, with CRM's approvals
+It cannot
+change the app (fields, screens, runs)
+send anything without approval
+use another app's records or connectors
+manage the crew
+5 · Team · an app's agent as a member
+Same Team view as any crew; the badge names the app and what it may do.
+Team Items Log 4 members
+P @pricing Manager · keeps the plan, talks to you
+a analyst tiers.md · done
+w copywriter Q4 pricing deck · slide 4
+C CRM agent from CRM · can read deals, draft emails
+Add a member
+Add a member lists agents, roles and apps' agents (CRM agent · Slides agent · Support agent) for apps you can use. An app's agent joins with that app's capabilities and your app role: a Viewer of CRM adds a CRM agent that only reads.
+6 · Rules
+Final behaviour for links between crews and apps.
+Link, never copy Items hold links to records, documents and jobs. Nothing is duplicated into the crew; edits always go to the app.
+Who can see A linked item shows to crew viewers only if they can open it in its app; otherwise the row reads "CRM record · no access".
+Record deleted The row stays, dimmed: "Deleted in CRM". Archived app: "CRM is archived · Restore" (Owner/Admin).
+Unlink Right-click a row → Unlink. The record and its "Discussed in" history stay.
+Finish crew Stops members, the app's agent leaves the crew, links stay on the records as "Discussed in: Pricing push · finished".
+Approvals Approvals raised by an app's agent go to the person who asked the crew for the work (here you), never to the manager.
+7 · Finish crew
+The manager's report links every record, document, file and job the crew touched. Finish crew then closes the crew.
+P Report · Pricing push Mon 12 → Wed 14 Oct · finished by you
+Q4 tiers agreed; Globex and Northwind have the new quote
+Three tiers from tiers.md, slide 4 of the Q4 pricing deck rewritten, two follow-ups sent. Initech's email was skipped and stays as a draft on the deal.
+Everything it touched 6 · each opens in its app
+Globex · renewal next step changed · email sent, approved by you CRM · View Northwind · team plan next step changed · email sent, approved by you CRM · View Initech · pilot email draft created · skipped by you, still a draft CRM · View Q4 pricing deck slide 4 rewritten · v8 Slides · View tiers.md new file · analyst Open web#2110 linked job · still queued, stays in the factory acme · View
+Decisions you made Three tiers · skip Initech for now Cost $4.10 crew · $0.62 CRM agent (CRM budget)
+Finish crew Keep going Copy as Markdown Crew ⌄ → Finish crew…
+8 · After Finish crew
+What changes in the apps.
+CRM / Deals / Northwind · team plan
+Discussed in Pricing push finished · report Q4 review Tue
+The CRM agent's copy in the crew stops; CRM's own agent keeps working in CRM. Records keep every change the crew made. The crew moves to ⌘⇧P · Closed; its Items list stays readable there. Reopening a finished crew relinks nothing new: the same links come back.
+1 A crew is a crew. Pricing push (sage) is an ordinary crew: a manager (@pricing), members, the window frame tinted sage. Its job here is unstructured work: talking through prices, deciding, writing. Apps hold the structured records; the crew links them.
+2 An app's agent can be a crew member. The CRM agent shows its badge on every turn: from CRM · can read deals, draft emails . The badge lists the CRM app's capabilities that it has; nothing else. One live copy per crew, like any member; it spends from CRM's budget, not the crew's.
+3 The manager asks, the app's agent does. @pricing → CRM agent is a normal member-to-member message (also in Log). The CRM agent creates and changes records through CRM , under CRM's rules and record history; each change is listed with the app version it ran on.
+4 Normal approvals. Sending email leaves the workspace, so each draft waits: Approval needed: send email , here, in Inbox and on the CRM rail row. The same approval card everywhere; answer it once. Approve sends as you with a 5-second Undo.
+5 Items shows what the crew links: CRM records (deal rows), a Slides deck, files the crew made and factory jobs. A click opens the record or deck in its own app tab (CRM, Slides), never inside the crew. Records show their current state, read live from the app.
+6 Link a record, document or job opens ⌘K filtered to apps' records and documents plus factory jobs. Linking never copies: remove the link and the record is untouched.
+7 Crew ⌄ : Rename… · Change tint · Add a member… (agents and apps' agents) · Replace manager… · Finish crew… . Finish crew is enabled once nothing waits on you.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

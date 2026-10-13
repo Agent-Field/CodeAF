@@ -1,0 +1,425 @@
+
+L6 · Journey · @santosh builds a Slides app, then the team uses it
+L6 · Journey · @santosh builds a Slides app, then the team uses it describe → plan → build → Shape → Apply · then Mona, Raj and the agent use it every day
+Phase A · Build S Santosh, alone · everything is a draft only he sees A1 → A6 · about 20 minutes
+A1 An empty Apps section S @santosh · alone
+acme
+Inbox
+Crews
+Release
+Pricing page
+Agents
+api-docs
+Triage flaky tests
+Apps
+acme
+New app…
+All crews and agents ⌘⇧P
+acme
+Inbox
+acme CodeAF’s prebuilt app · v3 Agent App
+api#1498 Retry webhook deliveries with backoff
+api#1530 Webhook signatures fail over 1 MB
+web#2104 Orders table jumps on filter
+api#1527 Idempotency keys for invoices
+infra#318 Alert on old job queue
+web#2099 Dark mode for invoices PDF
+Santosh’s rail has one app, acme (the factory), and the quiet last row New app… . He clicks it. ⌘K → "New app…" does the same.
+Built from: CodeAF (shell) rail · Apps section · New app… row
+A2 Describe it S @santosh
+New app ⌘K · New app…
+Say what it is for and who uses it. The Builder writes the app from this; the app gets its own agent for the content.
+A place for our team’s decks. The agent drafts slides from notes or a doc. Mona reviews before anything is presented.
+Records, screens, what the agent does, what needs your approval ⇧↵ new line
+Home Personal acme workspace you are its Editor · other members get User
+Budget up to $20 a month the app’s agent spends from this
+Connectors Add none needed
+App agent model GLM 5.3
+Nothing is shown to acme until you apply it. Cancel Create app ↵
+Three sentences in his own words. Home: acme , so the workspace can use it later; up to $20 a month for the app’s agent. Create app ↵ opens the tab "Slides · planning".
+Built from: CodeAF (shell) New app sheet
+A3 The plan card S @santosh · reads it, removes one line
+acme
+Slides · planning
+Inbox
+Slides Workspace app · planning · only you see it Use Shape Agent App
+Builder · plan · nothing written yet · click any line to change it Plan Write Check Preview
+Data record deck title · owner · status · notes removed by you · Undo status: Draft · In review · Final documents slides one file per slide on a Canvas, 16:9 · slides/*.json · speaker notes inside each slide
+Automation run review started by moving a deck to In review · no budget, no shell status → In review approval: present · by @mona status → Final
+Screens Decks New deck
+status: any Search decks
+Draft 1 In review 1 Final 2
+Sample deck Draft
+Kickoff S In review
+Board update S Final
+Webinar S Final
+Decks list screens/decks.json
+Sample deck Ask Nudge Comment Present
+1 Sample · preview data
+Sample deck
+14 November · for the board
+2 02
+Where we are
+End of Q3, against plan
+$4.2M Annual recurring revenue +18% vs Q2
+128 Paying customers +21 this quarter
+112% Net revenue retention plan was 108%
+3 03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+4 04
+Revenue
+ARR by quarter, $M · last 8 quarters
+Q4 Q1 Q2 Q3 Q4 Q1 Q2 Q3
+Sample · preview data
+Sample deck
+14 November · for the board
+Speaker notes
+Open with the one number that matters.
+Deck · Pages + Canvas + notes screens/deck.json
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+3 / 8 ← → esc
+Present screens/present.json
+Agent Slides agent · GLM 5.3 · drafts a deck from notes or a doc · edits one slide at a time
+Needs Records Documents · Canvas Approvals AI worked out by CodeAF from the sections above · acme · up to $20 a month
+Write it ↵ Just build it Change plan Write it builds here, phase by phase · Just build it builds in the background; Inbox says when the preview is ready
+The Builder , CodeAF’s own agent, answers with plan.json ; CodeAF draws this card from it. The Agent line describes the Slides agent it will write. The three screens are sketched with the real kit on sample data. Santosh clicks the record line and removes notes : notes live inside each slide. Then Write it .
+Built from: CodeAF (shell) plan card · Needs computed | sketches with RecordList · Pages · Canvas
+A4 Building → Check → Preview S @santosh · watches
+Plan Write Check Preview
+Plan edited by @santosh · 1 line removed 0:22
+Write app.json · runs/review.yaml · 3 screens · agent.md 1:31
+Check round 1 passed · schema · kit law · render 0:39
+Preview 1 sample deck, 4 slides
+Builder · building $1.06 of $20
+Slides · preview
+Inbox
+Preview · sample data · only you Keep Discard
+Slides Workspace app · preview Use Shape Agent App
+Sample deck 4 slides · Draft Ask Nudge Comment Present
+1 Draft Sample · preview data
+Sample deck
+14 November · for the board
+2 Draft 02
+Where we are
+End of Q3, against plan
+$4.2M Annual recurring revenue +18% vs Q2
+128 Paying customers +21 this quarter
+112% Net revenue retention plan was 108%
+3 Draft 03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+4 Draft 04
+Revenue
+ARR by quarter, $M · last 8 quarters
+Q4 Q1 Q2 Q3 Q4 Q1 Q2 Q3
+Sample · preview data
+Sample deck
+14 November · for the board
+Speaker notes · slide 1
+Sample deck the Builder adds so every screen has something to show.
+Write and Check run in the tab; Check passed on round 1. The preview opens the Deck screen on one sample deck. Keep writes v1 , still only his: a new workspace app stays private until its first Apply.
+Built from: CodeAF (shell) phases · checks · preview bar | patterns Pages | surface Canvas
+A5 Shape mode Santosh shapes the app before anyone sees it: one draft, two changes, each checked S @santosh · alone
+acme
+Inbox
+Crews
+Release
+Pricing page
+Agents
+api-docs
+Slides agent
+Apps
+acme
+Slides
+New app…
+All crews and agents ⌘⇧P
+acme
+Slides
+Inbox
+Slides Workspace app · v1 · only you see it Use Shape Agent App
+Draft · 2 changes · “add a Templates screen” · “use our brand fonts on every slide” Show diff Apply Discard Versions
+Data
+deck record · title, owner, status
+slides documents · Canvas 16:9
+Automation
+review run · approval by @mona
+Screens 4
+Decks RecordList · New deck
+Deck Pages · Canvas · notes
+Present full screen · Share link
+Templates new draft · added by you
+Agent
+Slides agent GLM 5.3 · up to $20 a month
+Needs
+4 capabilities records · documents · approvals · AI
+v1 · kept 10:44 · only you
+Screens Deck · running as your draft reads real decks · saves to a scratch copy Open files
+Decks Templates new SectionTabs · change 1
+Sample deck 4 slides · Draft Ask Nudge Comment Present Share
+1 Draft Sample · preview data
+Sample deck
+14 November · for the board
+2 Draft 02
+Where we are
+End of Q3, against plan
+$4.2M Annual recurring revenue +18% vs Q2
+128 Paying customers +21 this quarter
+112% Net revenue retention plan was 108%
+3 Draft 03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+4 Draft 04
+Revenue
+ARR by quarter, $M · last 8 quarters
+Q4 Q1 Q2 Q3 Q4 Q1 Q2 Q3
+5 Draft 05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Jan
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+slides/3.json headings in Acme Serif change 2 · slides/theme.json
+Speaker notes · slide 3 inside slides/3.json
+Team is the default for new customers. Say why Business costs twice Team.
+Builder · shaping the app
+Shape is on: the Builder, CodeAF’s own agent, changes the app as a draft only you see. Turn Shape off to ask the Slides agent about decks.
+add a Templates screen
+Builder · 10:50
+Plan · + Screens › Templates
+Wrote screens/templates.json · SectionTabs
+Check passed · change 1 · Show diff 10:51
+Templates sits next to Decks. A template is a deck marked as one; Use template copies it into a new Draft deck.
+use our brand fonts on every slide
+Builder · 10:55
+Changed slides/theme.json
+Rendered 4 sample slides · all fit 16:9
+Check passed · change 2 · Show diff 10:56
+Headings use Acme Serif and body text Acme Sans on every slide, in every deck. No slide was rewritten.
+Ask Builder to change the app
+Shape · Deck GLM 5.3
+1
+2
+3
+4
+5
+6
+1 Use · Shape is the switch in every app’s header line (CodeAF-owned). Use works in the app: the pane is the Slides agent and changes content (decks, slides). Shape changes the app itself: the pane becomes the Builder (CodeAF’s own agent), which writes screens/*.json , app.json and runs; the draft bar appears and the plan opens on the left. Flipping back to Use keeps the draft.
+2 Draft bar. Each ask in Shape is one change. The bar counts them and quotes the words. Show diff lists changed files; Apply writes the next version; Discard drops every change in the draft; Versions lists applied versions with Restore.
+3 The plan as a menu. Same sections as the plan card: Data · Automation · Screens · Agent · Needs. Clicking a screen shows it in the centre (here Screens › Deck). Every line edits in place, as on the plan card. Needs is computed by CodeAF; a change that adds a capability shows in it as new.
+4 The running app, as a draft. The centre is the real Deck screen running with the draft applied, on this app’s data (here the sample deck). It is fully clickable; the label reads real decks · saves to a scratch copy means trying it never changes a real deck. Change 1 added the Templates tab; change 2 put the brand fonts on every slide.
+5 Builder · shaping the app. The pane is titled with the CodeAF mark, the same Builder in every app, never the Slides agent. Each change runs Check (schema, kit law, render, behaviour on connector fakes) before it lands in the draft; a failed check stays in the pane and never reaches the team.
+6 Who sees what. Only Santosh sees the draft. Once Slides is applied, members of acme keep using the applied version while anyone’s draft is open (B5).
+Built from: CodeAF (shell) Use · Shape switch · plan menu · draft bar · Versions · Builder pane | patterns SectionTabs · Pages | surface Canvas
+A6 Apply → v2 S @santosh → acme
+Apply Slides · v1 → v2
+Changes 2 · “add a Templates screen”, “use our brand fonts on every slide”
+Who sees it Everyone in acme gets v2 as User; you stay Editor. First apply: Slides joins their rail.
+Needs records · documents · approvals · AI · no change
+Migration none · no fields renamed
+Budget up to $20 a month
+No data is removed Cancel Apply
+Activity · acme
+S Santosh shaped Slides · v2 Templates screen · brand fonts · 11:02
+View Undo
+Slides agent joined Agents the app’s own agent · 11:02
+View
+Agents
+api-docs
+Slides agent
+Apps
+acme
+Slides new
+New app…
+M Mona’s rail, a moment later
+Apply writes v2 and makes Slides a workspace app. Everyone sees one Activity line, Santosh shaped Slides · v2 , with View and Undo, and a Slides row in their rail.
+Built from: CodeAF (shell) Apply sheet · Versions · Activity · rail
+Phase B · Use M R J acme, every day · Use mode changes decks, Shape changes the app B1 → B5
+B1 Mona opens Slides M @mona · Monday
+Slides
+Inbox
+Slides v2 Use Shape Agent App
+Decks Templates New deck
+status: any Search decks
+Draft 2 In review 1 Final 3
+Deck Status Edited
+Q4 board deck agent drafting · 3 of 8 M Draft now
+Sales kickoff R In review 1h
+Hiring update J Draft 3h
+Customer webinar J Final 2d
+Board update Q3 S Final 1w
+Pricing changes M Final 2w
+Slides agent
+Use asks here make and edit decks, not the app.
+Q4 plan.md
+draft the Q4 deck from this doc
+Slides agent · 09:12
+New deck “Q4 board deck” · Draft
+slides 1–3 written 0:48
+Eight slides from the doc, one file each. I’ll tell you when all eight are in.
+Ask Slides agent
+GLM 5.3
+The Decks list, with New deck . Mona attaches the Q4 plan and asks the agent to draft from it. Use mode: the agent writes content (a new deck), never the app.
+Built from: patterns SectionTabs · QueryField · StateMeter | data block RecordList | primitives Button · Avatar | CodeAF (shell) AgentPane
+B2 The deck, three people and the agent R M @raj · @mona · Tuesday
+Slides
+Q4 board deck
+Slides v2 Use Shape Agent App
+Q4 board deck M R S Ask Nudge Comment Present
+1 Draft Acme · Board meeting
+Q4 board deck
+14 November · for the board
+2 Draft 02
+Where we are
+End of Q3, against plan
+$4.2M Annual recurring revenue +18% vs Q2
+128 Paying customers +21 this quarter
+112% Net revenue retention plan was 108%
+M 1
+3 Draft 03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+R
+4 Draft 04
+Revenue
+ARR by quarter, $M · last 8 quarters
+Q4 Q1 Q2 Q3 Q4 Q1 Q2 Q3
+5 agent 05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Jan
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+agent is editing
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+Raj · Nudge
+slides/3.json v2 Raj holds slide 3 while nudging Done ↵
+M @mona · on slide 2 · the ARR tile for a person
+Use the audited number here, $4.2M.
+Raj’s view. Slide 5 is locked, agent is editing ; Raj nudges one word on slide 3; Mona left a comment on slide 2. Avatars show who is on which slide. One writer per slide, so nobody waits.
+Built from: surface Canvas | its services Ask · Nudge · Comment · lock · presence | patterns Pages | primitives Avatar · Segmented
+B3 The review run S M @santosh → @mona · Wednesday
+review · Q4 board deck · run 1 runs/review.yaml
+status → In review moved by @santosh · 15:20
+approval: present · by @mona waiting in Mona’s Inbox 15:20
+status → Final after approval
+Inbox · Mona · Waiting M
+Approval needed: present deck Slides · 15:20
+Acme · Board meeting
+Q4 board deck
+14 November · for the board
+Q4 board deck · 8 slides
+from @santosh · 1 comment resolved
+Approve Open deck Request changes…
+Q4 board deck approved by @mona · 15:31 M Final now
+Santosh moves the deck to In review ; that starts the review run. Mona gets Approval needed: present deck in her Inbox and approves, with the usual 5-second Undo. The run sets the deck to Final .
+Built from: data blocks ApprovalCard · RecordList | primitives StateGlyph | CodeAF (shell) runs engine · Inbox
+B4 Present and share M @mona · Thursday, board meeting
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+3 / 8 · Pricing ← → N notes esc
+Share “Q4 board deck” acme’s codeaf server
+Members of acme signed in to acme’s codeaf server · comments on
+codeaf.acme.dev/d/q4-board-deck Copy link
+Present (⌘↵) plays every slide full screen at its current version. Share gives a link for members of acme, served by acme’s codeaf server; it always shows the latest slides.
+Built from: surface Canvas · Present · Share link | CodeAF (shell) Share sheet
+B5 A week later, Raj shapes the app R @raj · Shape · his own draft
+Slides
+Inbox
+Slides v3 · draft Use Shape Agent App
+Draft · 1 change · “add a speaker timer to Present” Show diff Apply Discard Versions
+Screens 4
+Decks RecordList
+Deck Pages · Canvas
+Present shaped full screen · timer
+Templates RecordList
+Data · Automation · Agent · Needs
+v3 · by @santosh
+Screens Present · your draft
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+3 / 8 04:12 ← → esc
+Builder · shaping the app
+add a speaker timer to Present
+Builder · 10:05
+Changed screens/present.json
+Check passed · change 1 10:06
+The timer starts on the first slide; T pauses it.
+Your request was replayed on v3
+Santosh applied v3 first · Check passed again
+Ask Builder to change the app
+GLM 5.3
+Slides
+Slides v3 Use Shape Agent App
+M Mona presents the sales review · v3 · no timer
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+3 / 8 ← → esc
+Raj’s draft is invisible here until he applies it. Then Activity: “Raj shaped Slides · v4”.
+Editors shape an app; Santosh, the maker, made Raj an Editor in App ⌄ → Members (everyone else is User). Raj flips Shape and asks the Builder for a speaker timer. It becomes his own draft ; everyone else, Mona included, keeps using the applied version until he presses Apply. Santosh applied v3 meanwhile, so the Builder replays Raj’s request on v3 and says so in a quiet notice.
+Built from: CodeAF (shell) Shape mode · draft bar · Versions · Activity | surface Canvas · Present
+Who owns what CodeAF owns the frame and the build loop; the Builder writes screens/*.json from the kit; people and the Slides agent make the decks
+Part Owned by What it is · how it changes New app sheet CodeAF (shell) The same in every app. Describe, Home, budget, model. Plan card CodeAF (shell) Drawn from plan.json ; every line edits in place; Needs computed by CodeAF. Checks CodeAF (shell) Schema check, kit law, render with sample data, behaviour check on connector fakes. Before every preview and every change. Use · Shape · draft bar CodeAF (shell) Show diff · Apply · Discard. One draft per person per app; only its author sees it. Versions · Activity CodeAF (shell) One version per apply, one Activity line with View and Undo. Builder · agent pane · Inbox · approvals CodeAF (shell) The Builder (Shape) is CodeAF’s own agent and changes the app. The Slides agent (Use) is a normal CodeAF agent and changes content only. The review run is runs/review.yaml on the runs engine. The app’s screens Generated from the kit screens/*.json Decks · Deck · Present · Templates, from: surface Canvas · patterns SectionTabs QueryField StateMeter Pages · data blocks RecordList ApprovalCard · primitives Button Avatar Segmented Decks and slides Canvas surface content slides/*.json one file per slide, plus a deck record. Changed by Ask · Nudge · Comment, versions per slide.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

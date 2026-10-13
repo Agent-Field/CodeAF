@@ -1,0 +1,348 @@
+
+L5 · Agent-first documents · Slides
+L5 · Agent-first documents · Slides Workspace app “Slides” · one deck = parts · Ask · Nudge · Comment · one writer per part · versions per part · Present · Share · Export
+acme
+Inbox
+Crews
+Release
+Pricing page
+jev prototype
+Agents
+api-docs
+Slides agent
+Why is CI slow?
+Apps
+acme
+CRM
+Slides
+Support
+Hiring
+New app…
+All crews and agents ⌘⇧P
+Release
+acme
+Q4 board deck
+Inbox
+Slides Workspace app · v4 · shaped by @raj Shape Agent App
+Q4 board deck 8 slides · 3 here now S M R Ask Nudge Comment Present Share Export
+Slides 8 · drag to reorder
+1 Final
+Acme · Board meeting
+Q4 board deck
+14 November · for the board
+2 Final
+02
+Where we are
+End of Q3, against plan
+$4.2M Annual recurring revenue +18% vs Q2
+128 Paying customers +21 this quarter
+112% Net revenue retention plan was 108%
+3 In review
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+M 2
+4 Draft
+04
+Revenue
+ARR by quarter, $M · last 8 quarters
+Q4 Q1 Q2 Q3 Q4 Q1 Q2 Q3
+5 Agent
+editing
+05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Jan
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+agent is editing
+6 Draft
+06
+Roadmap
+Next four quarters
+Q1 SSO for all plans asked by 9 of top 10
+Q2 EU region data stays in Frankfurt
+Q3 Mobile app approvals on the go
+Q4 Marketplace partner add-ons
+R
+7 In review
+07
+Risks
+What could move the plan
+Two top-10 customers renew in Q1 high
+EU region launch depends on one platform hire medium
+Sales cycle in EMEA is 30 days longer than US medium
+1
+8 Draft
+08
+Ask
+$12M
+Series B · 18 months of runway · hire 14 people
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+Nudge · edits slides/3.json R
+R @raj on the chart · 10:12
+use annual numbers
+Send to agent Reply
+slides/3.json v5 In review M also here you hold the lock while nudging Done ↵ Versions 5
+Comments on slide 3 2 open
+R use annual numbers @raj · pinned on the chart · 10:12
+Send to agent Resolve
+M Can the Team tier say “most picked”? It is true for Q3. @mona · pinned on the Team tier · for a person · 10:05
+Reply Resolve
+Speaker notes · slide 3 Markdown, in the same part
+Team is the default for new customers since August. Say why Business costs twice Team: EU region and a named contact.
+Slides agent GLM 5.3 · $3.10 of $20
+draft the deck from the Q3 report, 8 slides
+Slides agent · yesterday
+Wrote 8 slides, one file each, all v1 and Draft.
+slide 5
+make slide 5 about hiring plan, 3 roles, shorter
+Slides agent · 10:21
+Editing slide 5 · others can keep working 0:41
+Done · slide 5 v3 · Show diff 10:22
+05
+Team
+We are 34 people today across engineering, product, design, sales and support, up from 27 at the start of the year
+Engineering is 18 people in four teams; platform is the most stretched and owns on-call for the EU region
+Sales has 6 people; EMEA pipeline is growing faster than we can cover from London
+Design is one person shared across all product work, which slows the roadmap
+We plan to hire several roles next year, timing depends on the Series B
+05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Jan
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+Slide 5 is now “Hiring plan”: three roles with team and start month, 34 words instead of 96. The lock is released.
+R @raj commented · slide 3 · the chart 10:12
+use annual numbers
+Send to agent Leave for a person
+Ask Slides agent about this slide
+slide 3 GLM 5.3
+1
+2
+3
+4
+5
+6
+The flow · one change, end to end slide 5 of the Q4 board deck, from an ask to a shared link · four people, one part, no conflicts
+1 Ask on slide 5
+05
+Team
+We are 34 people today across engineering, product, design, sales and support, up from 27 at the start of the year
+Engineering is 18 people in four teams; platform is the most stretched and owns on-call for the EU region
+Sales has 6 people; EMEA pipeline is growing faster than we can cover from London
+Design is one person shared across all product work, which slows the roadmap
+We plan to hire several roles next year, timing depends on the Series B
+make slide 5 about hiring plan, 3 roles, shorter
+slide 5
+@santosh selects slide 5 and asks the Slides agent. The ask carries the part: slides/5.json v2.
+2 Lock appears for everyone
+05
+Team
+We are 34 people today across engineering, product, design, sales and support, up from 27 at the start of the year
+Engineering is 18 people in four teams; platform is the most stretched and owns on-call for the EU region
+Sales has 6 people; EMEA pipeline is growing faster than we can cover from London
+Design is one person shared across all product work, which slows the roadmap
+We plan to hire several roles next year, timing depends on the Series B
+agent is editing
+your view
+05
+Team
+We are 34 people today across engineering, product, design, sales and support, up from 27 at the start of the year
+Engineering is 18 people in four teams; platform is the most stretched and owns on-call for the EU region
+Sales has 6 people; EMEA pipeline is growing faster than we can cover from London
+Design is one person shared across all product work, which slows the roadmap
+We plan to hire several roles next year, timing depends on the Series B
+agent is editing M
+Mona’s view
+M Mona keeps editing slide 7
+Slide 5 dims with a shimmer on every screen. Nudge and Ask are off for it; Comment still works. The other 7 slides stay open.
+3 Agent writes slides/5.json
+slides/5.json · boxes
+- "title": "Team"
+- {"type":"text","x":64,…}
++ "title": "Hiring plan"
++ {"type":"shape","x":32,…}
++ {"type":"shape","x":232,…}
++ {"type":"shape","x":432,…}
+writing · 0:41 · $0.18
+The agent edits only that file: content boxes, with the deck theme. The Canvas renders it and checks every box fits the 16:9 frame before it lands.
+4 Part version v3
+05
+Team
+We are 34 people today across engineering, product, design, sales and support, up from 27 at the start of the year
+Engineering is 18 people in four teams; platform is the most stretched and owns on-call for the EU region
+Sales has 6 people; EMEA pipeline is growing faster than we can cover from London
+Design is one person shared across all product work, which slows the roadmap
+We plan to hire several roles next year, timing depends on the Series B
+v2 · before
+05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Jan
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+v3 · after
+Show diff Restore v2
+The lock releases. Slide 5 is v3 ; everyone sees it at once. Activity: "Slides agent changed slide 5 · v3".
+5 Mona comments on an element
+05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Jan
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+M
+M @mona Staff engineer
+start in Feb, not Jan
+Send to agent For a person
+C, then click the role card. The pin sticks to that element. For a person leaves it for a member of acme; Send to agent turns it into an Ask.
+6 Raj nudges a word in place
+Staff engineer Platform · on-call for EU Starts Feb
+Nudge · edits slides/5.json - "text":"Starts Jan "
++ "text":"Starts Feb "
+Raj double-clicks "Jan", types Feb, presses ↵. No agent, no cost. Slide 5 is v4 and Mona’s comment resolves with it.
+7 Present · Share link · Export
+05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Feb
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+5 / 8 ← → esc
+Present Share link PDF · PPTX
+Present plays the current version of every slide. The share link always shows the latest; exports are a snapshot.
+What acme saw in Activity
+S Santosh asked about slide 5 10:21
+Slides agent changed slide 5 · v3 10:22
+M Mona commented on slide 5 10:30
+R Raj nudged slide 5 · v4 10:34
+S Santosh shared a link 10:40
+One line per change, each with View and Undo. Undo on a part writes a new version of that part only.
+a · Versions of one part
+App ⌄ is for the app; versions of a slide live on the slide: Versions in the part bar.
+05
+Team
+We are 34 people today across engineering, product, design, sales and support, up from 27 at the start of the year
+Engineering is 18 people in four teams; platform is the most stretched and owns on-call for the EU region
+Sales has 6 people; EMEA pipeline is growing faster than we can cover from London
+Design is one person shared across all product work, which slows the roadmap
+We plan to hire several roles next year, timing depends on the Series B
+v2 · Santosh · 9 Nov
+05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Feb
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+v4 · current
+Versions slide 5 · slides/5.json
+v4 R Nudge · Jan → Feb @raj · 10:34
+current
+v3 “hiring plan, 3 roles, shorter” Slides agent · asked by you · 10:22
+Restore
+v2 S Team page, first draft you · 9 Nov
+Restore
+v1 “draft the deck from the Q3 report” Slides agent · 8 Nov
+Restore
+Click a row to see it beside the current one. Restore writes a new version (v5) of this slide only; other slides do not move.
+b · What a nudge is
+The small labelled edit, shown as the line it changes in the part’s file.
+05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Jan
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+before
+05
+Hiring plan
+3 roles in Q1, all funded by the plan
+Staff engineer Platform · on-call for EU Starts Feb
+Product designer All product work Starts Feb
+Account executive EMEA · London Starts Mar
+after · one word
+slides/5.json · box 4 · nudge by @raj · v3 → v4
+{"type":"text","x":64,"y":212,"text":"Starts Jan"}
+{"type":"text","x":64,"y":212,"text":"Starts Feb"}
+slides/3.json · box "chart" · drag · v5 → v6
+"x": 432,
+"x": 448,
+A nudge is a small edit you make by hand: change words, or drag or resize a box. CodeAF writes it straight into the box in the part’s JSON, labels it "Nudge" and makes it a version. No agent, no budget. Anything bigger goes through Ask.
+c · Lock rules
+One writer per part. The lock is light: it shows who, and it lets go on its own.
+06
+Roadmap
+Next four quarters
+Q1 SSO for all plans asked by 9 of top 10
+Q2 EU region data stays in Frankfurt
+Q3 Mobile app approvals on the go
+Q4 Marketplace partner add-ons
+M Mona is editing
+Ask to take over Mona sees: "Santosh wants slide 6 · Keep · Hand over". No answer in 30 seconds hands it over.
+Who An Editor or User of the app, or the app’s agent. One holder per part.
+Taken by Starting a nudge, or an Ask on that part. Viewing and commenting never take it.
+Released On Done ↵ or Esc, when the agent finishes, or after 2 minutes idle .
+Agent lock Ask to take over reads "Stop the agent". The agent stops; its unfinished edit is not written.
+Offline A holder who goes offline loses the lock at once; unsaved words stay in their draft.
+d · Present and share link
+Present (⌘↵) goes full screen from the selected slide. Share opens this sheet.
+Share “Q4 board deck”
+Members of acme signed in to acme’s codeaf server · comments on
+codeaf.acme.dev/d/q4-board-deck Copy link
+Export PDF Export PPTX Done
+03
+Pricing
+Three plans, billed per seat
+Starter $12 / seat Up to 10 seats Email support
+Team $29 / seat SSO, audit log Most picked
+Business $59 / seat EU region Named contact
+New ARR by plan monthly, $k
+Q1 Q2 Q3 Q4
+3 / 8 · Pricing ← → N notes esc
+Approval needed: send email leaves the workspace
+The Slides agent wants to email the PDF to board@northwind.com.
+Approve Skip
+acme’s codeaf server serves the link to members of acme and always shows the latest version of each slide. Turning the link off (Share → Stop sharing) breaks it at once. PDF and PPTX are a snapshot of the current versions; PPTX keeps each slide editable as text and shapes. Anything that leaves the workspace, such as the agent emailing the PDF, waits for approval.
+e · Same surfaces, other apps
+Slides and Design use the Canvas surface, Docs the Text surface. All get the same services.
+Docs · Workspace app · “Q4 plan” · 5 sections
+1 Summary
+2 Goals M
+3 Hiring
+4 Budget
+5 Risks
+Goals
+Reach $5.5M ARR by the end of Q1 with net retention above 110%.
+Ship SSO for all plans and open the EU region by March .
+3 · Hiring · agent is editing
+Design · Workspace app · “Checkout v2” · 6 artboards
+J
+Sign in
+agent is editing
+Cart
+M
+Payment
+section-2.md artboards/cart.json A Docs page splits into sections (Markdown, Text surface); a Design app into artboards (positioned boxes, Canvas surface, like slides). Same parts strip, same Ask · Nudge · Comment, same lock, presence and versions per part, same Present · Share · Export.
+1 Parts make it collaborative. A document is a list of parts; here each slide is one part = one file ( slides/3.json , positioned boxes: text, image, shape, chart) + one record (status Draft · In review · Final, owner, comments). The Canvas surface renders it; the deck is a record of the Slides app. Drag a thumbnail to reorder; ⌥-drag duplicates.
+2 Ask · Nudge · Comment are the only three ways to change a part. Ask hands the selected part to the app's agent, the Slides agent (pane on the right, ⌘L); it changes content only, never the app. Nudge (N, or double-click text) edits words in place or drags a box. Comment (C, then click an element) pins a note on that element.
+3 One writer per part. The writer holds a light lock: the thumbnail dims with a slow shimmer and reads "agent is editing" or "Mona is editing". Everyone else keeps working on the other parts. Presence avatars show who is looking at which part; looking never locks.
+4 Versions per part. Every Ask, Nudge or Restore writes a new version of that one file (slide 3 is at v5). Versions shows before/after thumbnails with Restore. The deck itself has no version number.
+5 Out: Present (full screen, ⌘↵), Share (a link for members of acme, served by acme’s codeaf server) and Export ⌄ PDF · PPTX. Export renders every part as it is now.
+6 No live co-typing, on purpose. Two people never type in the same part at once. A nudge holds the lock only until Done ↵ (or 2 minutes idle); then the next person can take it. Comments never lock.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

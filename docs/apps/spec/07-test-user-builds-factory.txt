@@ -1,0 +1,137 @@
+
+L2 · Inside an app · CRM
+L2 · Inside an app · CRM CodeAF header + generated content · labelled AI sort · docked agent with a budget · Shape makes drafts
+acme
+Inbox
+Crews
+Release
+Pricing page
+jev prototype
+Agents
+api-docs
+CRM agent
+Why is CI slow?
+Apps
+acme
+CRM
+Support
+Hiring
+New app…
+Archived 2
+All crews and agents ⌘⇧P
+Release
+acme
+CRM
+Inbox
+CRM Workspace app · v12 · shaped by @mona
+Shape Agent App
+stage: open owner: team Search deals · company: value: touched: Likely to close AI Views
+Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
+28 open deals · likely to close ↓ · your pin first j / k · ↵ open · P pin
+Company Deal Stage Next step Value Touch
+Globex Annual renewal · 120 seats pinned by you Proposal S Send revised quote $48,000 1d
+Northwind Team plan · 40 seats Talking C Follow-up drafted · waiting on you $14,400 2h Why it ranks here · AI Replied twice this week; asked for pricing
+Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
+Hooli Expansion · EU region Talking J Book a demo with their CTO $22,500 1d
+Umbrella Starter plan Lead C Follow-up drafted · quiet 7d $3,600 7d
+Vandelay Import tooling seats Talking R Send case study $6,800 2d
+Acme Retail Store managers rollout Lead C Follow-up drafted · quiet 8d $12,000 8d
+Stark Labs Research team · 15 seats Lead M Intro call Mon $5,400 4d
+Pied Piper Annual · 25 seats Proposal S Waiting on legal $10,500 5d
+C CRM agent DS Flash · $6.40 of $20
+which deals went quiet this week?
+C worked 40s · this morning
+I drafted follow-ups for 3 deals that have been quiet for 7 days: Northwind, Umbrella and Acme Retail. Each one waits for your approval.
+Approval needed: send email leaves the workspace
+To Priya Shah, Northwind
+Re: Team plan for 40 seats Hi Priya, following up on pricing for the team plan. I've attached the 40-seat quote we discussed and can walk your team through it this week…
+Approve Edit Skip 1 of 3
+also add a column for last reply
+C worked 3s
+That changes the app, not the deals. The Builder does that in Shape.
+Shape this your words go with it
+Ask CRM agent
+DS Flash
+1
+2
+3
+4
+5
+Shape draft
+The Builder made it in Shape. Each person has one draft per app; only you see yours. The bar stays across the card until you Apply or Discard. The draft reads real data and saves to a scratch copy.
+CRM Workspace app · v12 draft · only you
+Draft · 3 changes · “add a last-reply column” Show diff Apply Discard
+Builder · made this draft · Shape
+Company Stage Last reply · new Value
+Globex Proposal S Yesterday $48,000
+Northwind Talking C Today 09:12 $14,400
+Initech Proposal M Tue $9,000
+Umbrella Lead C none in 8d $3,600
+Show diff
+A sheet over the card: the change by file, the needs change and a migration preview for changed fields. Apply: everyone in acme gets v13.
+Draft changes · CRM 3 changes · v12 → draft
+Builder · wrote these changes
+screens/deals.json +4 −0
+RecordList · columns
+{ "field": "stage", "label": "Stage" },
+{ "field": "owner", "as": "Avatar" },
+{ "field": "lastReply.at", "label": "Last reply",
+"as": "Text", "format": "when" },
+{ "field": "next", "label": "Next step" },
+app.json +3 −0 · deal.lastReply
+Needs · nothing new · reads Gmail threads it already has
+38 deals affected · nothing deleted · everyone in acme gets v13 Discard Apply
+A change broke the app
+If the draft throws, the card keeps the last working version, dimmed, with the error line. Fix it hands the error to the Builder.
+CRM Workspace app · v12
+This change broke CRM Fix it Revert
+Unknown field “lastReply” on record deal
+screens/deals.json:42 · column Last reply
+Globex Proposal S $48,000
+Northwind Talking C $14,400
+Initech Proposal M $9,000
+Showing v12, the last working version · read-only until fixed or reverted
+Versions
+App ⌄ → Versions…: every applied change, who made it and its words. One-click Restore.
+Versions…
+Open files
+Make my copy
+Needs
+Triggers
+Budget
+Members
+Move to workspace…
+Archive app…
+Delete app…
+Versions CRM
+v12 M “add last reply column” @mona · today 10:40
+current
+v11 S “group by owner” you · Fri
+Restore
+v10 J “Gmail trigger” @jm · 2 Oct
+Restore
+Restore writes a new version (v13). Data is never lost.
+Activity line
+Members of acme see one line per applied change, with View and Undo. Editors of the app may undo.
+M Mona shaped CRM v12 · “add last reply column” · 10:40
+View Undo
+C CRM agent sent an email to Priya Shah, Northwind · approved by you · 09:58
+View
+J @jm moved Hooli to Talking record change · 09:20
+View
+Activity is append-only. Undo on an app change writes a new version that puts the old screens back; it never deletes records.
+Budget reached
+At the monthly budget the agent pauses and asks in Inbox. The app stays usable.
+CRM agent paused reached up to $20 this month · CRM app
+now
+Raise budget Leave paused
+Likely to close AI · last order frozen at the last AI order
+While paused, AI sort keeps its last order and new deals land at the bottom; pins still win. Drafted emails wait. Records, filters and the rest of the app keep working.
+1 CodeAF owns the header line : app icon, name, home and version, who shaped it last, then Shape, Agent and App ⌄. Everything under the hairline is the app's generated content, built from the CodeAF kit (lens, rows, chips).
+2 AI sort is labelled on its chip: Likely to close · AI. Hover a row for the one-line reason. A row you pin (P) or drag stays where you put it; the AI order fills in around it.
+3 The docked agent is a normal CodeAF agent : listed under Agents, asks in Inbox, spends from the app's monthly budget ($6.40 of up to $20). Agent toggles the pane; ⌥⌘A from the keyboard.
+4 Anything that leaves the workspace waits for approval : Approval needed: send email. Approve sends it as you with a 5-second Undo; Edit opens the draft; Skip drops it.
+5 The CRM agent works on content only (deals, contacts, emails). Asked for a new column it answers "That changes the app" with Shape this , which opens Shape with the request pre-filled for the Builder , CodeAF's own agent. Shape in the header does the same. The change is a draft only you see; teammates keep using v12 until you Apply.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

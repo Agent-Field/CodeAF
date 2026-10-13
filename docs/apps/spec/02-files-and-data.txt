@@ -1,0 +1,93 @@
+
+A3 · Apps · architecture
+A3 · Apps · architecture
+How Apps are built: the desktop app, the codeaf server (the same binary for personal and workspace spaces) and runners; the three main flows step by step; the library per surface; security, the Builder quality loop and performance.
+System three parts · the server is the codeaf binary
+Desktop app Mac, Linux · one per person · talks to each space's server Tauri 2 shell Native window, menus, Keychain, deep links codeaf:// , auto-update. Starts the personal codeaf server as a sidecar. Rust · tauri 2
+React shell Rail, tabs, Apps section, plan card, Building, Shape (draft bar), Versions, Inbox, AgentPane. React 18 · TypeScript
+Kit v2 · 59 parts Primitives, patterns, 6 surfaces, data blocks. Tokens only. @codeaf/kit
+Screen runtime Reads screens/*.json, resolves bindings, runs CEL when , renders kit parts, sends actions through the bridge. @codeaf/runtime
+Bridge client Typed calls + subscriptions over one WebSocket per space. Local cache of the last pages for offline reading. @codeaf/bridge
+Sandbox iframe Only for custom/*.tsx : sandbox="allow-scripts" , CSP default-src 'none' , bridge by postMessage. labelled “custom”
+bridge calls · subscriptions HTTPS + WSS
+codeaf server the same codeaf binary · personal: sidecar on 127.0.0.1 · workspace: codeaf serve on a team box · Go, Apache 2.0 API gateway HTTPS + WebSocket. Session tokens per member; every call carries space, app, member. net/http · coder/websocket
+Capability checker Runs on every bridge call before anything else: app capabilities × app role × record rules. Deny = typed error, logged. internal/apps/caps
+Records One SQLite file per app; JSON columns with generated, indexed columns for index: true fields. History rows per change. modernc.org/sqlite
+Query compiler QueryField tokens → AST → parameterised SQL. Injects permission filters, blind and masked rules. Keyset pagination. internal/apps/query
+Runs engine Executes runs/*.yaml as steps on the durable journal ; gates, waits and retries are journal entries; durable timers for waits and cron. internal/journal · standing orders cron
+Realtime Pub/sub by topic ( app/crm/deal/* , run/… , lock/part/… ). Locks, presence, live query updates (row diffs), version pushes. in-process hub
+Connectors Gmail, Calendar, Slack, MCP from internal/connect ; each has a fake used in Preview, drafts and Check. Approval policy on outbound. internal/connect · fakes
+Builder service CodeAF's agent. Writes the definition only; no record or content read API exists for it. internal/apps/builder
+Check pipeline Schema → kit law → render every screen headless → behaviour on fakes. Max 3 rounds back to the Builder. internal/apps/check
+Versions · git definition/ and content/ repos per app; migrations; drafts as worktrees + overlay.db. go-git
+Audit log Append-only: every call that writes, reveals, sends, approves or denies. journal store
+step leases · logs HTTPS long-poll
+Runners for workspace: repo steps only Runner Leases steps over HTTPS long-poll; fresh checkout, branch, shell; streams logs back. codeaf runner
+Personal Your Mac is your runner.
+Workspace Admin registers runners; members' keys and caps apply per run.
+One desktop app connects to several servers at once (Personal · acme · globex), one WebSocket each. Screens and custom code never reach a server except through the bridge; the bridge never reaches the network except its own space's server. External services are reached only by the server's connectors.
+Built on the codeaf repo Go · Apache 2.0
+codeaf already has Apps use it as internal/connect · Gmail, Calendar, Slack, MCP Connectors. Each gets a fake with the same interface (records calls, returns canned replies) for Preview, drafts and Check. Approval policy Outbound gates and capability denials; the same Inbox items. Durable journal store Runs engine state, gates, waits, durable timers, audit log. Recorded task runs Behaviour checks replay recorded connector exchanges; failed runs keep their record for the Builder's fix round. Standing orders with cron Schedule triggers in app.json use the same cron scheduler. modernc pure-Go SQLite records.db, overlay.db, and the server's own tables. No cgo; one static binary for Mac and Linux.
+Flows numbered steps · amber = a person acts
+(a) New app → preview plan · write · check · preview
+Schema JSON Schema 2020-12
+Kit law parts, tokens, labels, one nav
+Render every screen, sample data
+Behaviour runs on fakes
+1 You New app… sheet: one paragraph ( “A CRM for acme…” ) · space · Make plan .
+2 Builder Writes plan.json on a draft branch. Server computes Needs from it.
+3 Desktop Plan card draws plan.json; screen sketches render with the kit on sample data. You edit lines → requests → step 2 again. Write it .
+4 Builder Write : app.json, screens/*.json, runs/*.yaml, agent.md. Building shows Plan · Write · Check · Preview.
+5 Check Schema (JSON Schema) → kit law → render every screen headless with generated sample records → behaviour : each run on sample data against connector fakes.
+6 Builder On failure, gets the check report and fixes. Max 3 rounds; then “Check failed · Fix it · Cancel” to you.
+7 Desktop Preview in a tab on sample data, fakes only. Keep → v1, private to you until the first Apply.
+(b) Shape draft → Apply migration · version · realtime
+1 Editor Header switch Use · Shape → server creates the draft (worktree + overlay.db) on vN.
+2 Builder Each request → diff on the draft branch → Check (same 4 checks). Centre shows the draft; it reads real records, writes to the overlay.
+3 Server On Apply : schema diff → generated migration → dry run on a copy → sheet “38 deals affected · nothing deleted” .
+4 Editor Confirms Apply ( “everyone in acme gets v12” ).
+5 Server One transaction: merge draft → tag v12, run migration on records.db, write the version (request + diff + who) and the audit line.
+6 Realtime Publishes app/crm/version = 12 to all members. Each desktop fetches the changed screens, swaps them in place, keeps selection and scroll.
+7 Members Activity: “Mona shaped CRM · v12 · View · Undo” . Open drafts by others get replayed on v12.
+(c) A bridge call from a screen capability · SQL / connector · approval
+1 Screen Click Draft follow-ups → action runs.start with params → bridge call over WSS.
+2 Server Capability check : app may start follow-up ? member's app role ≥ User? deals readable? Deny → typed error → Toast “CRM can't do that · Needs” .
+3 Server Cost check from the budget → desktop shows “Run · up to $0.50 · Start” .
+4 Runs Steps on the journal. gmail.search → capability check again → connector as the owner (per-app allow on file, else “CRM may read email as Mona · Allow · Not now” ).
+5 Records records.update → query compiler → SQL with permission filters → history row → realtime row diff to subscribers.
+6 Approval gmail.send is outbound → gate “Approval needed: send” in the owner's Inbox. Nothing leaves the workspace until Approve .
+7 Audit Every call above appends one audit line (call, app, member, decision).
+Libraries one per surface · final
+Surface or part Library Use Text ProseMirror via Tiptap Markdown in/out with part markers; merge fields; track changes; .docx import/export. Grid IronCalc Formula engine (Excel syntax) compiled to WASM in the desktop, native Rust on export; deal.field ranges resolved through the bridge. Graph React Flow + elkjs Nodes and links from graph/*.json; elk layered layout; nodes may bind live records. Map MapLibre GL places/*.json (GeoJSON); vector tiles from the workspace's configured tile URL. Charts Vega-Lite Chart part and Canvas chart boxes; specs stored as files; data from bindings. Media hls.js + WebVTT Media part and Canvas media boxes; chapters and captions as .vtt. Files PDF.js · pdfium (server) Viewing and pinned markup in the desktop; region masking/redaction burned in on the server with pdfium before a file is shared or exported. Canvas own box model + react-moveable + pptxgenjs Boxes from slides/*.json rendered as HTML; drag/resize/snap with react-moveable; PPTX export with pptxgenjs, PDF from the same HTML. Timeline own renderer on the kit plan/*.json items on a time axis; free/busy from the Calendar connector. Lists TanStack Virtual RecordList, Table, Board columns.
+Security
+Sandbox
+custom/*.tsx runs in an iframe with sandbox="allow-scripts" (no same-origin), CSP default-src 'none'; script-src 'self' ; no network, no storage, no top navigation. It talks only through the postMessage bridge, which forwards typed calls to the server.
+Server-side capabilities
+The desktop never decides. Every bridge call (screens, custom code, runs, the app's agent) is checked on the server against app.json capabilities, the member's app role and record rules. A capability not in app.json does not exist for that app.
+Builder never reads content
+The Builder service has no API for records or content files. It sees app files, the plan, check reports and generated sample records only.
+Outbound approvals
+Send, post, pay and any tool marked outbound create an approval; nothing leaves the workspace before a named person approves. Connector fakes are used in Preview, drafts and Check.
+Prompt-injection containment
+Content (emails, records, docs) reaches only the app's agent, whose tools are the app's capabilities and nothing else. It cannot change the app ( “That changes the app · Shape this” ), cannot reveal masked or blind values, and its outbound actions hit approvals.
+Personal connectors
+A workspace app acts as you only after you allow it once for that app; revoke in Settings → Accounts or App ⌄ → Needs. Workspace connections: Admins only.
+Audit log
+Append-only, on the journal store: writes, reveals, sends, approvals, denials, Apply, migration, role changes. Kept forever; export UI is backlog, the log exists in v1.
+Secrets
+Connector tokens live in the server's keystore (workspace) or the macOS Keychain / Secret Service (personal). Never in app files, never sent to the desktop.
+Builder quality loop an eval suite, not opinions
+Suite
+120 app descriptions: the 14-app gallery, the industry set (startup, tech team, bank, aerospace, manufacturing) and every description that failed in the field (anonymised, descriptions only).
+Run
+Each goes New app → plan → write → check → preview on fakes, headless. Every kit change and every model change runs the full suite; nightly runs it on the current release.
+Scores
+check passes within 3 rounds · kit law clean · behaviour tests pass · screen renders compared with the last accepted snapshot · Builder cost and rounds.
+Gate
+A kit or model change ships only if pass rate does not drop and no description that passed before now fails. Results are a board in the CodeAF repo's CI.
+Performance how it is built
+Lists Virtualised (TanStack Virtual); only visible rows are in the DOM. Queries Run on the server, never filtered in the client. Paginated 100 rows, keyset on the sort key. StateMeter counts are a separate COUNT … GROUP BY. Indexes index: true fields, refs and enums get a generated column and an index at migration time. Live updates Realtime sends row diffs for subscribed queries, not whole pages. Presence and locks are in memory only.
+Screens screens/*.json are cached per version in the desktop; a new version fetches only changed files. Writes SQLite in WAL mode, one writer goroutine per app database, readers in parallel. Runs Steps are journal entries; a server restart resumes every run at its last completed step. Timers fire from the journal, not from memory. Custom code One iframe per custom part, created when it scrolls into view and destroyed when it leaves.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

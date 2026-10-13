@@ -1,0 +1,131 @@
+
+L1 · The rail with apps
+L1 · The rail with apps Apps is a rail section · a space switcher on top · Factory is CodeAF’s prebuilt app · New app… describes one, the Builder builds it
+acme
+Inbox
+Crews
+Release
+Pricing page
+jev prototype
+Agents
+api-docs
+Triage flaky tests
+Why is CI slow?
+Apps
+acme
+CRM
+Support
+Hiring
+New app…
+Archived 2
+All crews and agents ⌘⇧P
+Release
+acme
+CRM
+Inbox
+acme CodeAF’s prebuilt app · acme · v3 · shaped by @santosh Shape Agent App
+Jobs Repos Pipelines Runners People Activity New job
+assignee: me Search or filter · state: repo: label: priority: Priority Views
+Needs you 2 Running 12 Queued 4 Backlog 182 Done 9 this week
+7 assigned to you · priority ↓ j / k · ↵ open
+api#1498 Retry webhook deliveries with backoff Approval needed: proof M S 58m
+api#1530 Webhook signatures fail for payloads over 1 MB code ↔ test · round 1 of 3 S S 12m
+web#2104 Orders table jumps when filters change test XS S 40m
+api#1527 Add idempotency keys to POST /invoices queued · runner santosh-mbp M S 1h
+infra#318 Alert when the job queue is older than 1h queued S S 5h
+web#2099 Dark mode for invoices PDF preview backlog M S 1d
+New app ⌘K · New app…
+Say what it is for and who uses it. The Builder writes the app from this; the app gets its own agent for the content.
+A CRM for our sales pipeline: companies, deals and contacts. The agent drafts follow-ups when a deal goes quiet for a week; I approve every email before it sends.
+Records, screens, what the agent does, what needs your approval ⇧↵ new line
+Home Personal acme workspace you are its Editor · other members of acme get User
+Budget up to $20 a month the app's agent spends from this; at the cap it pauses and asks
+Connectors Gmail Calendar Add from Settings → Accounts
+App agent model GLM 5.3
+The Builder writes the app. You'll see it running before you keep it. Cancel Create app ↵
+1
+2
+3
+4
+5
+6
+1 · Building
+After Create app: a new tab; the Builder works through five steps.
+acme
+CRM · building
+Inbox
+CRM Workspace app · building · only you see it Shape Agent App
+Brief 3 record types · 1 agent rule · 1 approval 0:12
+Records deals, companies, contacts · 14 fields 0:41
+Screens screens/*.json · pipeline board · deal page · contacts list running
+App agent agent.md · drafts a follow-up after 7 quiet days
+Checks opens every screen with sample data
+Spent $1.12 of $20 Watch the Builder Cancel
+The tab and the rail row show a spinner until Checks pass. Watch the Builder docks the Builder pane (CodeAF's own agent, "Builder · shaping the app") on the right. The app's agent only starts once the app is kept. You can switch tabs; when it is ready, Inbox gets one line "CRM is ready to preview". A failed step shows Fix it · Cancel .
+2 · Preview, then keep
+When Checks pass, the app runs in its tab as a preview with sample records.
+acme
+CRM · preview
+Inbox
+Preview · CRM · only you see it until you keep it Keep Shape more Discard
+CRM Workspace app · preview · v1 Shape Agent App
+Pipeline Companies Contacts Likely to close AI New deal
+Lead 4
+Hooli · 40 seats @mona · 2d
+Umbrella · pilot @raj · 5d
+Qualified 3
+Globex · renewal @jm · today
+Initech · 12 seats @santosh · 9d quiet
+Proposal 2
+Northwind · annual @mona · follow-up drafted
+Won 1
+Globex · pilot @jm · 1 Oct
+Uses Records · deals, companies, contacts Agents Inbox Approvals Gmail Calendar AI sort AI
+Trigger new email · Gmail matches the sender to a contact, moves the deal's last-reply date
+The preview runs on sample records; nothing is sent. Keep writes v1, lists these needs in App ⌄ → Needs; the app stays private to you until your first Apply. Shape more keeps the preview and opens the Builder pane. Discard removes the app and its rail row.
+3 · App menu
+App ⌄ in the header line, here on CRM.
+CRM Workspace app · v12 · shaped by @mona Shape Agent App
+Versions… v12
+Open files ⌥⌘U
+Make my copy
+Needs 8
+Triggers 1 on
+Budget $6.20 of $20
+Members 4
+Move to workspace…
+Archive app…
+Delete app…
+Same menu in the menu bar (App) and on right-click of the rail row. Versions… lists every applied change with who made it and one-click Restore. Members sets app roles (Editor · User · Viewer); the maker is Editor, other members of acme get User. Archive app… moves the row into the collapsed Archived group at the bottom of Apps and keeps its records; restore any time. Delete app… (Owner or Admin) asks first; records are kept for 30 days.
+4 · Rail row states
+An app row shows at most one thing at its right edge.
+CRM
+Idle. Nothing running, nothing waiting.
+Support
+Running. Its agent or a trigger is working.
+CRM
+Needs you. An approval waits, e.g. Approval needed: send email. Also in Inbox.
+Support paused · budget
+Paused. The month's budget is reached; triggers wait. Raise it in App ⌄ → Budget.
+Archived 2
+Archived. A collapsed group at the bottom of Apps. Personal apps live in your Personal space — switch with the space switcher at the top of the rail.
+acme
+Factory running. The icon animates while jobs run.
+5 · ⌘K
+Typing new l.
+new l ⌘K
+Commands
+New app… ↵
+CRM: New deal CRM app
+Apps
+CRM workspace app
+"New app…" opens the New app sheet. Each app adds its own commands as App: Command ; they show in ⌘K for everyone who sees the app.
+1 Apps is the fourth rail section, after Crews and Agents. The rail shows the space picked in the switcher at the top (acme ⌄; Personal · acme · globex). Inside acme every row is a workspace app: acme (the factory) first, then the others (CRM, Support, Hiring) by name; drag to reorder. Inbox shows the current space only; an amber dot on the switcher means another space needs you. Archived apps sit in a collapsed Archived group at the bottom of the section. Each row is a 16px glyph with no tint square (squares mean crews). The right edge shows one state glyph: amber needs you, accent running, nothing when idle. Click opens the app in a tab, or brings its tab forward.
+2 No personal rows in acme. Personal apps live in your Personal space — switch with the space switcher at the top of the rail. Workspace apps carry no glyph; the right edge shows only the state glyph.
+3 New app… is always the last app row, above the collapsed Archived group, quiet (--ink-3, plus icon), no state glyph. Click, or ⌘K → "New app…" , opens this sheet over the current card. The sheet hangs from the top of the card, 600px wide; Esc or Cancel closes it and nothing is created.
+4 Factory is CodeAF’s prebuilt app. acme opens like every app: CodeAF's header line (glyph, name, "CodeAF’s prebuilt app · v3 · shaped by @santosh", Shape · Agent · App ⌄), then the app's own content. Its icon is live (animated) while jobs run.
+5 Only the card content is generated. Everything below the header line (here Jobs · Repos · …, the query field, the job list) is the app's code, built from the CodeAF kit and tokens. Window, rail, tab strip, header line, Inbox, ⌘K, menus and shortcuts are CodeAF's and look the same in every app.
+6 Create app ↵ (⌘↵ from the field) is enabled once the description has 12 or more words. It opens a new tab "CRM · building", adds the row to the rail and starts the Builder. Home defaults to the space open in the switcher (here acme); in the Personal space it is Personal. Budget defaults to "up to $20 a month"; connectors list only accounts already connected in Settings → Accounts.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

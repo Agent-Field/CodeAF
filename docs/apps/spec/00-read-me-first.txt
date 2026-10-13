@@ -1,0 +1,152 @@
+
+S-A1 · Apps · the model
+Apps · the model
+Spaces, the parts of an app, its two agents, roles and lifecycles, drawn. Words follow the S-A0 glossary.
+1 · Spaces Personal · Workspace · one person in several
+A space is one codeaf server and everything on it. Personal is the server inside your own desktop app. A workspace is the same codeaf binary, run by a company. You can belong to several; the switcher at the top of the rail picks one.
+Your Mac · CodeAF desktop app
+Personal a codeaf server inside the app
+only you · your own accounts
+apps Dashboards · connections your Gmail, Calendar
+signed in as @santosh
+acme · company codeaf server · self-hosted
+Workspace acme same codeaf binary · members invited by an Admin
+members @santosh · @mona Admin · @raj · @jm
+apps CRM · Slides · Support · Factory “acme”
+connections support@ · Stripe · GitHub org
+globex · another company's server
+Workspace globex you are a Member here too
+acme ⌄
+Personal
+acme
+globex
+Apps · acme
+CRM
+Slides
+Support
+Factory “acme”
++ New app…
+Like GitHub. Personal is your account; each workspace is an org you were invited to.
+The switcher sits at the top of the rail and picks the space the Apps section shows.
+Runs always run on the space's codeaf server: yours for Personal, the workspace's for acme.
+Within the workspace only. No outside guests in v1.
+Move to workspace… moves a personal app (files and records) into a workspace you belong to.
+2 · Anatomy of an app files → kit + bridge → shell → server → runners and connectors
+An app is files. CodeAF renders the screens from them with kit parts; every action goes through the bridge to the space's server, which checks it against app.json and the caller's role before it touches records, runs or connectors.
+1 · Files Builder writes
+app.json schema · record rules · capabilities · triggers · commands · budget
+plan.json what the plan card shows
+screens/*.json tree of kit parts + bindings
+runs/*.yaml steps · loops · gates
+agent.md the app agent
+content files slides/3.json · docs/*.md · sheets/*.csv · plan/ · graph/ · places/
+custom/*.tsx escape hatch · sandboxed · labelled
+rendered
+2 · Kit + bridge
+@codeaf/kit 59 parts · tokens only
+@codeaf/bridge hooks useRecords · useRun · usePeople actions records.update · runs.start · approve · tools.call
+Screens are data, not code: the shell renders the tree with kit parts and wires the bindings to the bridge.
+inside
+3 · Shell CodeAF
+CodeAF window rail · tab · header line
+Use · Shape switch in the header · App ⌄
+AgentPane app agent in Use · Builder in Shape
+Plan card · draft bar Versions · Activity · Inbox
+bridge calls
+4 · codeaf server of the space Personal or workspace
+Gate every bridge call checked against app.json + the caller's role
+Records store record rules: Freeze · Blind · Computed
+Runs engine triggers · budgets · gates
+Versions · Activity · audit log
+runs
+5 · Runners · connectors
+Runners shells and checkouts · only runs reach them
+Connectors internal/connect Gmail · Calendar · Slack · MCP
+Fakes a dry-run double per connector · Preview, drafts, checks
+Approval needed before anything leaves the workspace
+3 · Two agents per app who may read and write what
+Use always talks to the app's agent; Shape always talks to the Builder. Content can carry prompt injection, so the agent that reads content can never change the app, and the agent that changes the app never reads content.
+The app's agent “CRM agent” · defined by agent.md
+Works on content. Docked in Use; can join a crew as a member.
+Reads records and content the person talking to it may see · comments · the screen in view
+Writes records through the bridge · parts (Ask, under the part lock) · drafts of emails and posts, which wait for approval
+Never app.json · screens/ · runs/ · agent.md · anything outside the app's Needs
+Runs as the person talking to it, with their app role; limited to the app's capabilities
+“Add a field for renewal date” asked in Use
+CRM agent replies
+“That changes the app”
+Shape this
+opens Shape request pre-filled
+Builder takes the request
+in your draft
+Builder CodeAF's agent · the same for every app
+Changes the app. Appears in the plan card, Building and Shape (pane “Builder · shaping the app”).
+Reads the app's files · the kit · sample records · check results · your request
+Writes plan.json app.json screens/*.json runs/*.yaml agent.md ( custom/*.tsx ), into a draft or a new app only
+Never records · content files · comments · run history · real connectors · Apply (people apply)
+Runs as CodeAF, on the space's server, inside the app's budget
+4 · Roles workspace roles × actions · app roles × actions · signatories
+Two independent levels. A workspace role says what you may do in the space; an app role says what you may do in one app. Dot = allowed, dash = not allowed.
+Workspace action Owner Admin Member Pay, change plan, delete the workspace — — Invite and remove members — Change a member's workspace role except Owner — Add or remove a workspace connection — Set budgets (workspace, per app) — New app… Delete app… (records kept 30 days) — Archive or restore any app app Editors only Allow a personal connection for an app own own own See the audit log —
+App action Editor User Viewer Open the app, read records and content Use: create and edit records — Ask · Nudge · Comment on parts — Export PDF / PPTX / CSV · Present Share link (workspace members) — Approve “Approval needed” on own actions — Shape (draft) — — Apply · Undo · restore a version — — Add a connector to the app (Needs) in Shape — — Triggers in Shape — — Members (app roles, signatories) — — Archive app… · restore — — Move to workspace… (personal app) — — Make my copy — Change the app's budget Admin Admin Admin
+Signatories
+Named roles an app declares in app.json for SignOff chains.
+Examples: “Quality lead” , “Second checker” . An Editor assigns people in App ⌄ → Members.
+A chain asks each signatory in order; each sees it in the Inbox as “Approval needed: sign-off” .
+The person who made a record can never sign it.
+A signatory needs at least User on the app. Being one grants nothing else.
+Defaults
+Whoever makes an app is its Editor . A new workspace app gives every other member User ; Editors change it in Members.
+Owner and Admin are not Editors by role: to Shape they need Editor like anyone.
+A workspace has exactly one Owner; the Owner can hand it to an Admin.
+In Personal you are Owner and Editor of everything; no roles are shown.
+5 · Lifecycle of an app
+Planning plan card
+edit any line
+Write it
+Building Plan · Write
+Check · Preview
+passes
+Preview sample data · fakes
+Keep · Discard
+Keep
+v1 · private only its maker
+real records
+first Apply
+v2 · v3 … everyone
+each Apply +1
+Archive…
+Archived records kept
+Restore any time
+Delete…
+Deleted records kept
+30 days
+Check fails 3 rounds. Building stops and shows the error: Fix it (one more round with your words) · Cancel (back to Planning).
+Discard in Preview. Nothing is kept: no app, no records. The tab closes.
+A change breaks the app. The card keeps the last working version, dimmed: “This change broke CRM · Fix it · Revert” .
+Delete from any state after v1. Owner or Admin only, through a Dialog. Records stay 30 days, then are removed.
+Archived apps leave the rail and are listed under Archived at the bottom of the Apps section; Restore from there.
+In Personal Apply makes the next version for you alone. Move to workspace… brings files and records into a workspace as that app's next version.
+6 · Lifecycle of a draft Shape · Editors only
+One draft per person per app. A draft is stored as requests + diff , so it can be replayed. It survives quitting the app and stays until Applied or Discarded. A replay that cannot be applied stays Open and names the request that failed.
+Open you ask the Builder
+“Draft · 2 changes”
+each change
+Checking schema · kit law · render
+runs on fakes · Apply off
+pass
+Ready Show diff · Apply
+migration preview if fields
+Apply
+Applied new version for everyone
+Activity · View · Undo
+from Open, Checking or Ready
+Discarded Discard on the draft bar · scratch copy deleted · nothing else changes
+from Open or Ready
+Replayed someone applied first · your requests run again on the new version → Checking
+“Your request was replayed on v13”
+from Checking · check fails
+Back to Open Builder retries up to 3 rounds, then shows the error with Fix it · Discard. Apply stays off.
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}

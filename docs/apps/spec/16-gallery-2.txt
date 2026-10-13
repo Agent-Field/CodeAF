@@ -1,0 +1,41 @@
+
+A9 · Apps · scope and backlog
+A9 · Apps · scope and backlog
+What the Apps feature ships in v1, what waits for later and why, and what Apps will never do. Nothing in the backlog or non-goals is built in v1.
+Ships in v1 16 items
+Spaces. Personal (your own codeaf server, only you) and Workspace (a codeaf server a team runs). Switcher at the top of the rail: Personal · acme · globex.
+Roles. Workspace Owner · Admin · Member. Per app Editor · User · Viewer. Named signatories for SignOff chains.
+Connectors, two levels. Personal connections act as you only after "Allow" once per app; workspace connections are added by Admins. Every connector has a fake for Preview, Shape drafts and checks.
+Two agents per app. The Builder (CodeAF's, writes the app files) and the app's agent (content only, from agent.md; "That changes the app · Shape this").
+Create. New app sheet → plan card → Building (Plan · Write · Check · Preview) → Preview on sample data → Keep (v1).
+Check. Schema check, kit law, every screen rendered with sample data, runs executed against connector fakes. Max 3 Builder rounds, then Fix it · Cancel.
+Shape. Editors only. Plan menu · running draft (reads real data, saves to a scratch copy) · Builder · draft bar. Migration preview, replay on a newer version, "This change broke CRM · Fix it · Revert".
+Use. The app's screens with the docked app agent. AI always labelled, pins win. Anything leaving the workspace waits for "Approval needed: …".
+Surfaces. Text · Canvas · Grid · Timeline · Graph · Map, each with Ask · Nudge · Comment, one writer per part, presence, versions per part, Present · Share link · Export PDF/PPTX/CSV.
+Kit. 59 parts: 28 primitives, 13 patterns, 6 surfaces, 12 data blocks. Screens are declarative screens/*.json ; custom/*.tsx only as a labelled escape hatch.
+Crews and apps. "Discuss in a crew" on any record (a link, never a copy); an app's agent as a crew member; records changed through the app's agent with normal approvals; "Discussed in" on the record (L13).
+App settings. App ⌄: Versions… · Open files · Make my copy · Needs · Triggers · Budget · Members · Move to workspace… · Archive app… · Delete app…
+Imports. Import from CSV / Airtable / HubSpot: map fields to records with a preview; runs once.
+Factory. Ships as CodeAF's prebuilt app, in the Apps section like any other app.
+Audit log. Append-only Activity and audit log for every app change, record change and approval.
+Platforms. The desktop app on Mac and Linux. Runs always run on a codeaf server, yours or the workspace's.
+Not in v1 each with why it waits and what exists instead
+Item Why it waits What exists instead
+Phone & browser surface v1 is the desktop app. A second client needs its own sign-in, layout and offline story. Approvals in Inbox on the desktop app; Share link lets workspace members read a document.
+Camera scan Needs the phone surface. FileDrop takes photos and files; Checklist accepts photo or file evidence.
+Label printing Needs the phone surface and printer handling per site. Export PDF from a record or screen and print it from the Mac.
+Guest access for outsiders Apps live within the workspace only; outsiders need their own identity and permission model. Anything leaving the workspace goes through "Approval needed: send email"; Export PDF/PPTX/CSV.
+App marketplace Apps written by someone else need review, trust and a way to pay. Make my copy; Move to workspace…; the app files (app.json, screens/*.json) stay in your workspace.
+Live co-typing One writer per part keeps people and the agent from overwriting each other. Light lock ("Mona is editing"), presence, Ask · Nudge · Comment, versions per part.
+Audit pack export UI Packaging evidence for auditors is its own product. The audit log exists and is append-only; Activity and Export CSV.
+Word round-trip beyond import/export Track changes and styles both ways cannot be kept faithful yet. Text imports .docx and exports .docx and PDF.
+Apps talking to apps beyond links One app's agent acting in another app needs cross-app capabilities and approvals. Links between records; a crew with several apps' agents as members, each limited to its own app.
+App templates gallery Every app in v1 starts from a description, so the plan fits the team. New app sheet → plan card; Make my copy of an existing app; Factory as the prebuilt app.
+Non-goals never, not later
+No app-specific blocks No Slides block, Docs block or CRM block. We build six surfaces once and the Builder composes every app from the 59 parts. Instead: surfaces + data blocks
+No drag-and-drop UI builder Screens are declarative files the Builder writes. You change an app by saying what you want in Shape. Instead: Shape with the Builder, Show diff, Apply
+No external analytics ingestion Charts read the app's own records and runs. Outside data comes in as records through connectors, runs or a one-time import. Instead: Chart over records; Import from CSV / Airtable / HubSpot
+No AI deciding in Factory AI never starts, approves, assigns or ranks jobs. The only AI in an app's lists is a sort labelled AI, and pins win. Instead: manual Priority, rules in factory.yaml, labelled AI sorts
+class Component extends DCLogic {
+renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
+}
