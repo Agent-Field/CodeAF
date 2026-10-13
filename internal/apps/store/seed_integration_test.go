@@ -80,16 +80,42 @@ func TestKeptDemoRecordsPersist(t *testing.T) {
 			if err != nil || page.Total != 6 || len(page.Rows) != 6 || page.Rows[0].ID != "dl_northwind" || page.Counts["Proposal"] != 2 {
 				t.Fatalf("kept demo records = %+v, %v", page, err)
 			}
+			_, sample := spec.GoldenCRM()
+			var rows map[string][]bridge.Record
+			if err := json.Unmarshal(sample, &rows); err != nil {
+				t.Fatal(err)
+			}
+			for typ, records := range rows {
+				for _, record := range records {
+					row, err := all.Records.Get(ctx, scope, bridge.GetRecordParams{Type: typ, ID: record.ID})
+					if err != nil || row.ID != record.ID {
+						t.Fatalf("demo %s %s = %+v, %v", typ, record.ID, row, err)
+					}
+				}
+			}
 			if _, err := all.Records.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Qualified"}}); err != nil {
+				t.Fatal(err)
+			}
+			sampleScope := scope
+			sampleScope.Data = svc.DataSample
+			row, err := all.Records.Get(ctx, sampleScope, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
+			if err != nil || row.Fields["stage"] != "Lead" {
+				t.Fatalf("real write changed sample = %+v, %v", row, err)
+			}
+			if _, err := all.Records.Update(ctx, sampleScope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Won"}}); err != nil {
 				t.Fatal(err)
 			}
 			all.Store, all.Records = store.New(cfg, all), records.New(cfg, all)
 			if err := all.Store.(*store.Service).SeedGoldenCRM(ctx); err != nil {
 				t.Fatal(err)
 			}
-			row, err := all.Records.Get(ctx, scope, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
+			row, err = all.Records.Get(ctx, scope, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
 			if err != nil || row.Fields["stage"] != "Qualified" {
 				t.Fatalf("restarted demo = %+v, %v", row, err)
+			}
+			row, err = all.Records.Get(ctx, sampleScope, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
+			if err != nil || row.Fields["stage"] != "Won" {
+				t.Fatalf("restarted sample = %+v, %v", row, err)
 			}
 		})
 	}

@@ -6,7 +6,10 @@ registry installs the golden CRM as kept v1 so the owner can open a demo.
 Constructors do no I/O and peers are read at call time. `NewWithOptions` with
 `Options{WithoutDemo: true}` leaves a new registry empty. `SeedGoldenCRM(ctx)`
 explicitly installs the same demo in an empty registry, including its sample
-records through `Services.Records.Seed`. Existing apps and modified records
+records through `Services.Records.Seed`. Since that interface seeds sample data,
+the first-run bootstrap moves the closed seeded database to `records.db`, then
+seeds a separate `sample.db`. The records service owns both databases' schemas
+and all subsequent reads and writes. Existing apps and modified records
 are never replaced by repeated seeding. Ordinary Keep still leaves real records
 empty; the demo's sample seed does not change that rule.
 
@@ -58,7 +61,5 @@ single store instance. This is not a multi-process registry or a cross-filesyste
 transaction. No git executable, network remote or cgo is used.
 
 Bridge and gateway tests provision their CRM explicitly with `SeedGoldenCRM`.
-The current records skeleton also loads the golden rows into its real mode;
-`svc.Records.Seed` only writes sample mode. A durable records implementation
-must preserve the demo's real-mode fixture loading if kept demos should retain
-those exact record ids; the store never writes a records database itself.
+The bootstrap preserves every fixture id and relation in both data modes without
+depending on the records service's former walking-skeleton fixture loading.

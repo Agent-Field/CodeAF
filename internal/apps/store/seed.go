@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -74,7 +75,7 @@ func (s *Service) seedGoldenCRM(ctx context.Context) error {
 		var rows map[string][]bridge.Record
 		err = json.Unmarshal(sample, &rows)
 		if err == nil {
-			err = s.all.Records.Seed(ctx, m.ID, rows)
+			err = s.seedDemoRecords(ctx, m.ID, rows)
 		}
 		if err != nil {
 			s.mu.Lock()
@@ -85,6 +86,20 @@ func (s *Service) seedGoldenCRM(ctx context.Context) error {
 	}
 	s.publish(m.AppSummary)
 	return nil
+}
+
+func (s *Service) seedDemoRecords(ctx context.Context, app string, rows map[string][]bridge.Record) error {
+	if err := s.all.Records.Seed(ctx, app, rows); err != nil {
+		return err
+	}
+	// Seed owns the schema and closes its database before returning. Only the
+	// first-run demo adopts that database as real content; ordinary Keep does not.
+	dir := s.appDir(app)
+	if err := os.Rename(filepath.Join(dir, "sample.db"), filepath.Join(dir, "records.db")); err != nil {
+		return err
+	}
+	// A separate sample database keeps preview writes away from demo content.
+	return s.all.Records.Seed(ctx, app, rows)
 }
 
 func (s *Service) installGoldenCRM(ctx context.Context) (*metadata, error) {

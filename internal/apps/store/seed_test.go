@@ -17,10 +17,14 @@ import (
 type seedRecords struct {
 	svc.Records
 	seed func(context.Context, string, map[string][]bridge.Record) error
+	root string
 }
 
 func (r seedRecords) Seed(ctx context.Context, app string, rows map[string][]bridge.Record) error {
-	return r.seed(ctx, app, rows)
+	if err := r.seed(ctx, app, rows); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(r.root, app, "sample.db"), []byte("seeded records"), 0600)
 }
 
 func TestGoldenCRMSeed(t *testing.T) {
@@ -32,7 +36,7 @@ func TestGoldenCRMSeed(t *testing.T) {
 			all.Store = s
 			s.now = func() time.Time { return testTime }
 			var calls int
-			all.Records = seedRecords{seed: func(ctx context.Context, app string, rows map[string][]bridge.Record) error {
+			all.Records = seedRecords{root: s.root, seed: func(ctx context.Context, app string, rows map[string][]bridge.Record) error {
 				calls++
 				def, err := all.Store.Definition(ctx, app)
 				if err != nil || def.App.ID != "crm" || def.App.Version != 1 {
@@ -80,15 +84,15 @@ func TestGoldenCRMSeed(t *testing.T) {
 				t.Fatal(err)
 			}
 			archived, err := reopened.Get(testCtx, "crm")
-			if err != nil || archived.State != StateArchived || calls != 1 {
+			if err != nil || archived.State != StateArchived || calls != 2 {
 				t.Fatalf("reseed = %+v, %v, calls=%d", archived, err, calls)
 			}
 			if len(hub.events) != 2 || hub.events[0].Topic != bridge.TopicState("crm") || hub.events[0].Data.(bridge.AppSummary) != apps[0] {
 				t.Fatalf("seed events = %+v", hub.events)
 			}
 			for _, name := range []string{"records.db", "sample.db"} {
-				if _, err := os.Stat(filepath.Join(s.appDir("crm"), name)); !errors.Is(err, os.ErrNotExist) {
-					t.Fatalf("store wrote records file %s: %v", name, err)
+				if data, err := os.ReadFile(filepath.Join(s.appDir("crm"), name)); err != nil || string(data) != "seeded records" {
+					t.Fatalf("records service's seed missing from %s: %q, %v", name, data, err)
 				}
 			}
 		})
@@ -132,23 +136,27 @@ func TestSeedLeavesNonemptyRegistryAlone(t *testing.T) {
 }
 
 func TestSeedFailureCanRetry(t *testing.T) {
-	s, hub := newStore(t)
-	failure := errors.New("seed failed")
-	var calls int
-	s.all.Records = seedRecords{seed: func(context.Context, string, map[string][]bridge.Record) error {
-		calls++
-		if calls == 1 {
-			return failure
-		}
-		return nil
-	}}
-	if err := s.SeedGoldenCRM(testCtx); !errors.Is(err, failure) {
-		t.Fatalf("seed error = %v", err)
-	}
-	if _, err := os.Stat(s.appDir("crm")); !errors.Is(err, os.ErrNotExist) || len(hub.events) != 0 {
-		t.Fatalf("failed seed survived: %v, events=%v", err, hub.events)
-	}
-	if err := s.SeedGoldenCRM(testCtx); err != nil || calls != 2 || len(hub.events) != 1 {
-		t.Fatalf("retry = %v, calls=%d, events=%v", err, calls, hub.events)
+	for _, failAt := range []int{1, 2} {
+		t.Run(map[int]string{1: "initial seed", 2: "separate sample seed"}[failAt], func(t *testing.T) {
+			s, hub := newStore(t)
+			failure := errors.New("seed failed")
+			var calls int
+			s.all.Records = seedRecords{root: s.root, seed: func(context.Context, string, map[string][]bridge.Record) error {
+				calls++
+				if calls == failAt {
+					return failure
+				}
+				return nil
+			}}
+			if err := s.SeedGoldenCRM(testCtx); !errors.Is(err, failure) {
+				t.Fatalf("seed error = %v", err)
+			}
+			if _, err := os.Stat(s.appDir("crm")); !errors.Is(err, os.ErrNotExist) || len(hub.events) != 0 {
+				t.Fatalf("failed seed survived: %v, events=%v", err, hub.events)
+			}
+			if err := s.SeedGoldenCRM(testCtx); err != nil || calls != failAt+2 || len(hub.events) != 1 {
+				t.Fatalf("retry = %v, calls=%d, events=%v", err, calls, hub.events)
+			}
+		})
 	}
 }

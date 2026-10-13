@@ -99,12 +99,13 @@ func testServices(t *testing.T) *svc.Services {
 	cfg := svc.Config{Root: t.TempDir()}
 	all := &svc.Services{}
 	all.Store = store.New(cfg, all)
-	all.Hub = realtime.New(cfg, all)
 	all.Caps = caps.New(cfg, all)
 	all.Records = records.New(cfg, all)
 	if err := all.Store.(*store.Service).SeedGoldenCRM(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	// Install fixture records before starting the stream whose sequence is tested.
+	all.Hub = realtime.New(cfg, all)
 	return all
 }
 
