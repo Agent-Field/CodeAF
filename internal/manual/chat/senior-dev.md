@@ -1053,7 +1053,7 @@ A crew model senior-dev's model catalog cannot size is left out, and its log say
 and so is one known to hold 32,768 tokens or fewer; if that leaves no working model, it
 uses its own list instead.
 
-## senior-dev cannot work with my custom model — unknown window, missing context length, senior-dev.json
+## senior-dev cannot work with my custom model — unknown window, context length, senior-dev.json
 
 A connected custom service can list a model that works in chat without publishing its
 context-window size. senior-dev needs that size to keep a long run's history in it.
