@@ -47,7 +47,7 @@ func TestAQuorumVerifierThatFallsSaysNoRatherThanHanging(t *testing.T) {
 	defer log.SetOutput(os.Stderr)
 
 	clients := newMessageClientPool(config.Config{})
-	clients.Adopt("deepseek/deepseek-v4-flash", &fallingVerifierClient{})
+	clients.Adopt(config.DefaultLowModel, &fallingVerifierClient{})
 
 	type outcome struct {
 		accepts int
