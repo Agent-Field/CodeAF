@@ -176,7 +176,7 @@ func (s *session) resolveScope(scope svc.Scope, global bool) (svc.Scope, error) 
 	return scope, err
 }
 
-func (s *session) wave1TopicScope(in bridge.Envelope, method string) (svc.Scope, error) {
+func (s *session) topicScope(in bridge.Envelope, method string) (svc.Scope, error) {
 	app, ok := topicApp(in.Topic)
 	if !ok {
 		return svc.Scope{}, bridge.Errorf(bridge.CodeInvalid, "topics look like app/<id>/...")

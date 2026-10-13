@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/connect"
 	"github.com/Agent-Field/codeaf/internal/apps/grants"
 	"github.com/Agent-Field/codeaf/internal/apps/imports"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
@@ -50,11 +53,11 @@ func TestConnectMethodsRouteToServices(t *testing.T) {
 	all := &svc.Services{Connect: stubConnectServices()}
 	for _, tt := range connectMethodCases {
 		t.Run(tt.name, func(t *testing.T) {
-			entry, ok := methods[tt.name]
-			if !ok || entry.global != tt.global {
-				t.Fatalf("registered=%v global=%v, want global=%v", ok, entry.global, tt.global)
+			entry, ok := lookupMethod(tt.name)
+			if !ok || entry.Global != tt.global {
+				t.Fatalf("registered=%v global=%v, want global=%v", ok, entry.Global, tt.global)
 			}
-			_, err := entry.run(context.Background(), all, ownerScope(connectTestApp(tt.global)), json.RawMessage(tt.params))
+			_, err := entry.Handle(context.Background(), all, connectScope(connectTestApp(tt.global)), json.RawMessage(tt.params))
 			var typed *bridge.Error
 			if !errors.As(err, &typed) || typed.Code != connectTestCode(tt.name) {
 				t.Fatalf("%s returned %v, want its service error", tt.name, err)
@@ -67,7 +70,7 @@ func TestConnectMethodsDecodeBeforeDispatch(t *testing.T) {
 	for _, tt := range connectMethodCases {
 		t.Run(tt.name, func(t *testing.T) {
 			// Missing services make an accidental dispatch fail immediately.
-			_, err := methods[tt.name].run(context.Background(), &svc.Services{}, ownerScope("crm"), json.RawMessage(`[]`))
+			_, err := connectEntry(t, tt.name).Handle(context.Background(), &svc.Services{}, connectScope("crm"), json.RawMessage(`[]`))
 			var typed *bridge.Error
 			if !errors.As(err, &typed) || typed.Code != bridge.CodeInvalid {
 				t.Fatalf("invalid params returned %v", err)
@@ -82,13 +85,20 @@ type connectCheck struct {
 	seenScope  svc.Scope
 	seenParams json.RawMessage
 	err        error
+	delegate   svc.Caps
 }
 
-func (c *connectCheck) Allow(_ context.Context, scope svc.Scope, method string, raw json.RawMessage) error {
+func (c *connectCheck) Allow(ctx context.Context, scope svc.Scope, method string, raw json.RawMessage) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.seenMethod, c.seenScope, c.seenParams = method, scope, append(json.RawMessage(nil), raw...)
-	return c.err
+	if c.err != nil {
+		return c.err
+	}
+	if c.delegate != nil {
+		return c.delegate.Allow(ctx, scope, method, raw)
+	}
+	return nil
 }
 
 func (c *connectCheck) checkedMethod() string {
@@ -106,21 +116,20 @@ func (c *connectCheck) checkedParams() json.RawMessage {
 func TestConnectCallsUseGatewayDispatch(t *testing.T) {
 	all := testServices(t)
 	all.Connect = stubConnectServices()
-	checker := &connectCheck{}
+	checker := &connectCheck{delegate: all.Caps}
 	all.Caps = checker
+	ctx, url := testServer(t, all)
+	client := dialSocket(t, ctx, url)
 	for _, tt := range connectMethodCases {
 		t.Run(tt.name, func(t *testing.T) {
-			app := "crm"
-			if tt.global {
-				app = ""
-			}
-			s := newSession(context.Background(), nil, all)
-			defer s.cancel()
-			s.call(bridge.Envelope{ID: "connect-test", Type: bridge.TypeCall, Method: tt.name, App: app, Params: json.RawMessage(tt.params)})
-			reply := <-s.out
-			if reply.ID != "connect-test" || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != connectTestCode(tt.name) {
+			app := connectTestApp(tt.global)
+			id := client.send(bridge.TypeCall, app, tt.name, "", json.RawMessage(tt.params))
+			reply := client.read()
+			if reply.ID != id || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != connectTestCode(tt.name) {
 				t.Fatalf("reply=%+v", reply)
 			}
+			checker.mu.Lock()
+			defer checker.mu.Unlock()
 			if checker.seenMethod != tt.name || checker.seenScope.App != app || string(checker.seenParams) != tt.params {
 				t.Fatalf("capability check=%+v", checker)
 			}
@@ -132,7 +141,7 @@ func TestConnectCallsRespectCapabilityDenial(t *testing.T) {
 	for _, tt := range connectMethodCases {
 		t.Run(tt.name, func(t *testing.T) {
 			checker := &connectCheck{err: bridge.Errorf(bridge.CodeDenied, "test denial")}
-			s := newSession(context.Background(), nil, &svc.Services{Caps: checker})
+			s := newSession(context.Background(), nil, &svc.Services{Caps: checker}, nil)
 			defer s.cancel()
 			s.call(bridge.Envelope{ID: "denied", Type: bridge.TypeCall, Method: tt.name, App: "crm", Params: json.RawMessage(tt.params)})
 			reply := <-s.out
@@ -149,7 +158,7 @@ func TestConnectOptionalQueriesStayNotBuilt(t *testing.T) {
 	all.Connect.Grants = struct{ svc.Grants }{all.Connect.Grants}
 	for _, name := range []string{bridge.MethodConnectAllowSheet, bridge.MethodConnectWaits, bridge.MethodConnectFakes} {
 		t.Run(name, func(t *testing.T) {
-			_, err := methods[name].run(context.Background(), all, ownerScope("crm"), json.RawMessage(`{}`))
+			_, err := connectEntry(t, name).Handle(context.Background(), all, connectScope("crm"), json.RawMessage(`{}`))
 			var typed *bridge.Error
 			if !errors.As(err, &typed) || typed.Code != bridge.CodeNotBuilt {
 				t.Fatalf("missing optional query returned %v", err)
@@ -165,7 +174,7 @@ func TestConnectSubscriptionsUseGatewaySubPath(t *testing.T) {
 	} {
 		t.Run(topic, func(t *testing.T) {
 			all := testServices(t)
-			checker := &connectCheck{}
+			checker := &connectCheck{delegate: all.Caps}
 			all.Caps = checker
 			ctx, url := testServer(t, all)
 			c := dialSocket(t, ctx, url)
@@ -215,12 +224,12 @@ func TestConnectTopicAuthorization(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			all := testServices(t)
-			checker := &connectCheck{}
+			checker := &connectCheck{delegate: all.Caps}
 			if tt.deny {
 				checker.err = bridge.Errorf(bridge.CodeDenied, "test denial")
 			}
 			all.Caps = checker
-			s := newSession(context.Background(), nil, all)
+			s := newSession(context.Background(), nil, all, nil)
 			defer s.cancel()
 			scope, err := s.topicScope(bridge.Envelope{Topic: tt.topic, App: tt.app}, "sub")
 			if tt.code == "" {
@@ -271,7 +280,7 @@ func TestConnectDispatchPreservesScopeAndParams(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := methods[tt.name].run(context.Background(), all, scope, raw); err != nil {
+			if _, err := connectEntry(t, tt.name).Handle(context.Background(), all, scope, raw); err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(probe.params, tt.params) || (tt.global && probe.caller != scope.Caller) || (!tt.global && probe.scope != scope) {
@@ -296,13 +305,115 @@ func connectTestApp(global bool) string {
 	return "crm"
 }
 
-func TestCredentialExportRejectsAppThroughGateway(t *testing.T) {
-	all := &svc.Services{Connect: stubConnectServices(), Caps: &connectCheck{}}
-	session := newSession(context.Background(), nil, all)
-	defer session.cancel()
-	session.call(bridge.Envelope{ID: "export", Type: bridge.TypeCall, Method: bridge.MethodConnectCredentialExport, App: "crm", Params: json.RawMessage(`{"service":"gmail","space":"acme","app":"crm"}`)})
-	reply := <-session.out
-	if reply.Error == nil || reply.Error.Code != bridge.CodeDenied {
-		t.Fatalf("app export reply=%v", reply)
+func TestCredentialExportDeniedThroughGateway(t *testing.T) {
+	for _, tt := range []struct {
+		name, app, space string
+		caller           svc.Caller
+	}{
+		{"app", "crm", "personal", svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}},
+		{"draft app", "crm@draft", "personal", svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}},
+		{"app viewer", "crm", "personal", svc.Caller{Member: svc.Owner, Role: svc.RoleViewer}},
+		{"agent", "", "personal", svc.Caller{Member: svc.Owner, Role: svc.RoleEditor, Agent: true}},
+		{"other member", "", "personal", svc.Caller{Member: "mona", Role: svc.RoleEditor}},
+		{"workspace", "", "acme", svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resetCallerResolver(t)
+			SetCallerResolver(func(context.Context, *http.Request, string) svc.Caller { return tt.caller })
+			all := testServices(t)
+			// App and agent cases have no exporter, so only the caps rule can refuse them.
+			if tt.space != "personal" {
+				service := grants.NewWithOptions(svc.Config{Root: filepath.Join(t.TempDir(), "apps")}, all, grants.Options{Space: tt.space})
+				t.Cleanup(func() { _ = service.Close() })
+				all.Connect.Grants = service
+			}
+			ctx, url := testServer(t, all)
+			client := dialSocket(t, ctx, url)
+			id := client.send(bridge.TypeCall, tt.app, bridge.MethodConnectCredentialExport, "", bridge.CredentialExportParams{Service: "gmail", Space: "acme", App: "crm"})
+			reply := client.read()
+			if reply.ID != id || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != bridge.CodeDenied {
+				t.Fatalf("export reply=%+v", reply)
+			}
+			if tt.space == "personal" && reply.Error.Message != "Only your desktop session can export a connection" {
+				t.Fatalf("export did not reach the caps rule: %+v", reply)
+			}
+		})
+	}
+}
+
+func connectEntry(t *testing.T, name string) Method {
+	t.Helper()
+	entry, ok := lookupMethod(name)
+	if !ok {
+		t.Fatalf("method %s is not registered", name)
+	}
+	return entry
+}
+func connectScope(app string) svc.Scope {
+	return svc.Scope{App: app, Caller: PersonalCaller(context.Background(), nil, app), Data: svc.DataSample}
+}
+
+func TestConnectorActivityMethodsUseDoor(t *testing.T) {
+	ctx := context.Background()
+	all := &svc.Services{Connect: stubConnectServices()}
+	door := connect.New(svc.Config{Root: filepath.Join(t.TempDir(), "apps")}, all)
+	defer door.Close()
+	all.Connectors = door
+	scope := connectScope("crm")
+	scope.Data = svc.DataSample
+	if _, err := door.Call(connect.WithInvocation(ctx, "run-1", "read"), scope, "gmail.read", map[string]any{"id": "message"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct{ method, params string }{{bridge.MethodConnectFakes, `{"run_id":"run-1"}`}, {bridge.MethodConnectWaits, `{}`}} {
+		t.Run(tt.method, func(t *testing.T) {
+			result, err := connectEntry(t, tt.method).Handle(ctx, all, scope, json.RawMessage(tt.params))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.method == bridge.MethodConnectFakes {
+				calls := result.(bridge.ConnectFakesResult).Calls
+				if len(calls) != 1 || calls[0].RunID != "run-1" {
+					t.Fatalf("result=%+v", result)
+				}
+			} else if len(result.(bridge.ConnectWaitsResult).Waits) != 0 {
+				t.Fatalf("result=%+v", result)
+			}
+		})
+	}
+}
+
+func TestConnectSubscriptionsUseResolvedMember(t *testing.T) {
+	for _, tt := range []struct {
+		name, topic string
+		caller      svc.Caller
+		code        bridge.ErrorCode
+	}{
+		{"own allow", "connect/mona/allow", svc.Caller{Member: "mona"}, ""},
+		{"own waits", "connect/mona/waits", svc.Caller{Member: "mona"}, ""},
+		{"other allow", "connect/me/allow", svc.Caller{Member: "mona"}, bridge.CodeDenied},
+		{"other waits", "connect/me/waits", svc.Caller{Member: "mona"}, bridge.CodeDenied},
+		{"workspace member", "connect/workspace", svc.Caller{Member: "mona"}, ""},
+		{"workspace guest", "connect/workspace", svc.Caller{}, bridge.CodeDenied},
+		{"fakes viewer", "app/crm/fakes", svc.Caller{Member: "mona", Role: svc.RoleViewer}, ""},
+		{"fakes without role", "app/crm/fakes", svc.Caller{Member: "mona"}, bridge.CodeDenied},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resetCallerResolver(t)
+			SetCallerResolver(func(context.Context, *http.Request, string) svc.Caller { return tt.caller })
+			all := testServices(t)
+			ctx, url := testServer(t, all)
+			client := dialSocket(t, ctx, url)
+			for _, kind := range []bridge.MessageType{bridge.TypeSub, bridge.TypeUnsub} {
+				id := client.send(kind, "", "", tt.topic, nil)
+				reply := client.read()
+				if tt.code == "" {
+					if reply.ID != id || reply.Type != bridge.TypeResult {
+						t.Fatalf("%s reply=%+v", kind, reply)
+					}
+				} else if reply.ID != id || reply.Error == nil || reply.Error.Code != tt.code {
+					t.Fatalf("%s reply=%+v, want %s", kind, reply, tt.code)
+				}
+			}
+		})
 	}
 }

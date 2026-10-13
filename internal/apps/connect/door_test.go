@@ -95,7 +95,7 @@ func testScope(mode svc.DataMode) svc.Scope {
 	return svc.Scope{App: "crm", Data: mode, Caller: svc.Caller{Member: "mona", Role: svc.RoleUser}}
 }
 func TestNonRealScopesAlwaysUseFakes(t *testing.T) {
-	for _, mode := range []svc.DataMode{svc.DataSample, "draft", "future", ""} {
+	for _, mode := range []svc.DataMode{svc.DataSample, svc.DataDraft, "future", ""} {
 		for _, service := range []string{"gmail", "calendar", "slack", "mcp", "mcp:custom", "github", "stripe", "airtable", "hubspot"} {
 			t.Run(string(mode)+"/"+service, func(t *testing.T) {
 				s, g, a, all, _ := testDoor(t)
@@ -139,7 +139,7 @@ func TestRealResolvesBeforeAdapter(t *testing.T) {
 	}
 }
 func TestOutboundRequiresRunPermit(t *testing.T) {
-	for _, mode := range []svc.DataMode{svc.DataReal, svc.DataSample, "draft"} {
+	for _, mode := range []svc.DataMode{svc.DataReal, svc.DataSample, svc.DataDraft} {
 		for _, tool := range []string{"gmail.send", "slack.post", "slack.reply", "stripe.pay", "stripe.charge", "calendar.create", "github.create"} {
 			t.Run(string(mode)+"/"+tool, func(t *testing.T) {
 				s, g, a, _, _ := testDoor(t)
@@ -252,7 +252,7 @@ func TestAdapterExpiryBecomesWait(t *testing.T) {
 }
 
 func TestCapsDenialPrecedesEveryConnectorPath(t *testing.T) {
-	for _, mode := range []svc.DataMode{svc.DataReal, svc.DataSample, "draft"} {
+	for _, mode := range []svc.DataMode{svc.DataReal, svc.DataSample, svc.DataDraft} {
 		t.Run(string(mode), func(t *testing.T) {
 			s, g, a, all, _ := testDoor(t)
 			check := &capsStub{err: bridge.Errorf(bridge.CodeDenied, "not allowed")}
