@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -152,5 +153,57 @@ func TestMemoryAdditionSwitchKeepsExplicitSavesAndExistingReads(t *testing.T) {
 	a.learnFromTurn("Invent another fact", "Keep it")
 	if rows, err := brain.ListMemories(nil, 0); err != nil || len(rows) != 1 {
 		t.Fatalf("automatic write %v %v", rows, err)
+	}
+}
+
+func TestAppHelpersAndRestoredTaskGuardsShareLiveRaises(t *testing.T) {
+	profile := t.TempDir()
+	a := &Agent{config: Config{ProfileDir: profile, AppSpending: true}}
+	r := &TaskCrewRecord{Version: 1, Routed: true, Guard: &crewGuardRecord{TaskCap: 2, TaskSpent: 2}, Original: map[crewroute.Seat]string{}}
+	for _, seat := range crewroute.Seats {
+		r.Original[seat] = "unknown"
+		r.Decision.Crew = append(r.Decision.Crew, crewroute.Pick{Seat: seat, Send: "unknown"})
+	}
+	crew, err := a.restoreTaskCrew(1, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := a.helperGuard(crew)
+	if helper.Limits == nil || helper.Task != crew.guard.Task {
+		t.Fatal("helper lost its restored task scope")
+	}
+	if _, err := helper.before(context.Background(), "unknown", nil, nil); err == nil {
+		t.Fatal("helper escaped task cap")
+	}
+	if err := config.RaiseAppCap(profile, "task", config.AppTaskCapID("unfiled", "1"), 2, 3, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := helper.before(context.Background(), "unknown", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if crew.guard.Task.Total() != 2 {
+		t.Fatal("restore or raise erased the tally")
+	}
+}
+
+func TestAppBindingRefreshesTaskGuardsRestoredBeforeAttachment(t *testing.T) {
+	profile := t.TempDir()
+	a := &Agent{config: Config{ProfileDir: profile}}
+	guard := &SpendGuard{Day: NewSpendDay(0), Task: &SpendTask{spent: 2}, TaskCap: 2}
+	a.crews.put(1, &taskCrew{guard: guard})
+	if err := a.SetAppBudget(5); err != nil {
+		t.Fatal(err)
+	}
+	if guard.liveLimits() == nil {
+		t.Fatal("app attachment left the restored guard frozen")
+	}
+	if err := config.RaiseAppCap(profile, "task", config.AppTaskCapID("unfiled", "1"), 2, 3, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guard.before(context.Background(), "unknown", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if guard.Task.Total() != 2 {
+		t.Fatal("attachment reset task spending")
 	}
 }

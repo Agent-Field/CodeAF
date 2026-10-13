@@ -42,7 +42,29 @@ func (s *Server) startSpendingWatch() {
 type spendingAsk struct {
 	Ask   Ask    `json:"ask"`
 	Scope string `json:"scope"`
+	Day   string `json:"day"`
+	Cap   Money  `json:"cap"`
 	Owner string `json:"owner"`
+}
+
+type spendingAskState struct {
+	Next  uint64                 `json:"next"`
+	Items map[string]spendingAsk `json:"items"`
+}
+
+// Early app launches stored a bare map; reading it does not discard waiting ids.
+func readSpendingAskState(raw []byte) (spendingAskState, error) {
+	var state spendingAskState
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return state, err
+	}
+	if state.Items == nil {
+		state.Items = map[string]spendingAsk{}
+		if err := json.Unmarshal(raw, &state.Items); err != nil {
+			return state, err
+		}
+	}
+	return state, nil
 }
 
 // SpendingBudgetAsks is the typed resource boundary for asks and Inbox. The
@@ -50,11 +72,11 @@ type spendingAsk struct {
 func (s *Server) SpendingBudgetAsks() ([]Ask, error) {
 	result := []Ask{}
 	err := resourceDisk(s.resourceHome(), "spending-asks", map[string]spendingAsk{}, func(raw []byte) (any, error) {
-		var held map[string]spendingAsk
-		if err := json.Unmarshal(raw, &held); err != nil {
+		held, err := readSpendingAskState(raw)
+		if err != nil {
 			return nil, err
 		}
-		for _, row := range held {
+		for _, row := range held.Items {
 			result = append(result, row.Ask)
 		}
 		return held, nil
@@ -116,13 +138,27 @@ func (s *Server) RefreshSpending(ctx context.Context) error {
 		if usd <= 0 || total < usd {
 			continue
 		}
-		row.Ask = Ask{ID: "budget:" + day + ":" + key, Kind: "budget", Source: row.Ask.Source, Path: []SourceRef{row.Ask.Source}, State: "waiting", Title: fmt.Sprintf("%s cap reached · $%.2f spent of $%s", row.Scope, total, cap.USD), Options: []AskOption{{ID: "raise", Label: "Raise the cap"}, {ID: "stop", Label: "Stop"}}, Before: []DisplayEntry{{Kind: "notice", Text: "Work paused at its cap"}, {Kind: "notice", Text: "Raise the cap before continuing"}}}
+		row.Day, row.Cap = day, cap
+		if row.Scope == "task" {
+			row.Day = ""
+		}
+		row.Ask = Ask{Kind: "budget", Source: row.Ask.Source, Path: []SourceRef{row.Ask.Source}, State: "waiting", Title: fmt.Sprintf("%s cap reached · $%.2f spent of $%s", row.Scope, total, cap.USD), Options: []AskOption{{ID: "raise", Label: "Raise the cap"}, {ID: "stop", Label: "Stop"}}, Before: []DisplayEntry{{Kind: "notice", Text: "Work paused at its cap"}, {Kind: "notice", Text: "Raise the cap before continuing"}}}
 		active[key] = row
 	}
 	err = resourceDisk(s.resourceHome(), "spending-asks", map[string]spendingAsk{}, func(raw []byte) (any, error) {
-		var old map[string]spendingAsk
-		if err := json.Unmarshal(raw, &old); err != nil {
+		state, err := readSpendingAskState(raw)
+		if err != nil {
 			return nil, err
+		}
+		old := state.Items
+		for key, row := range active {
+			if prev, ok := old[key]; ok && prev.Day == row.Day && prev.Cap == row.Cap {
+				row.Ask.ID = prev.Ask.ID
+			} else {
+				state.Next++
+				row.Ask.ID = fmt.Sprintf("budget:%d:%s", state.Next, key)
+			}
+			active[key] = row
 		}
 		for key, row := range old {
 			if next, ok := active[key]; !ok || next.Ask.ID != row.Ask.ID {
@@ -137,7 +173,8 @@ func (s *Server) RefreshSpending(ctx context.Context) error {
 			_, _ = s.events.Publish(EventAskCreated, AskEvent{Ask: row.Ask.ID, Kind: "budget", Agent: row.Owner})
 			_, _ = s.events.Publish(EventInboxAdded, InboxAddedEvent{Item: row.Ask.ID, Kind: "budget"})
 		}
-		return active, nil
+		state.Items = active
+		return state, nil
 	})
 	if err != nil {
 		return err

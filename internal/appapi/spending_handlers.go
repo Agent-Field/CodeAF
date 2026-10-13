@@ -391,6 +391,11 @@ func (n nativeSpending) RaiseCap(ctx context.Context, body RaiseCapRequest, now 
 			if err != nil {
 				return err
 			}
+			// The profile compares once more under its own lock, including a
+			// raise from another execution owner since the registry read.
+			if err := config.RaiseAppCap(n.s.options.ProfileDir, "agent", body.ID, base, usd, false, now); err != nil {
+				return err
+			}
 			if err := bindAppAgentBudget(live.conn.Engine, usd); err != nil {
 				return err
 			}
@@ -419,6 +424,7 @@ func (n nativeSpending) RaiseCap(ctx context.Context, body RaiseCapRequest, now 
 // the task's whole history. Callers must also reserve in-flight provider costs
 // in their existing SpendGuard; this reading does not allocate a second ledger.
 func (s *Server) CheckSpending(ctx context.Context, agent, task string) error {
+	task = strings.TrimPrefix(task, agent+":")
 	backend := s.spendingBackend()
 	rows, err := backend.SpendingRows(ctx)
 	if err != nil {
@@ -432,6 +438,9 @@ func (s *Server) CheckSpending(ctx context.Context, agent, task string) error {
 		cost, err := measuredCost(row)
 		if err != nil {
 			return err
+		}
+		if row.At.After(now) {
+			continue
 		}
 		if !row.At.Before(start) && row.At.Before(end) {
 			daySpent += cost
@@ -457,7 +466,7 @@ func (s *Server) CheckSpending(ctx context.Context, agent, task string) error {
 		checks = append(checks, struct {
 			scope, id string
 			spent     float64
-		}{"task", task, taskSpent})
+		}{"task", config.AppTaskCapID(agent, task), taskSpent})
 	}
 	for _, check := range checks {
 		cap, err := backend.SpendingCap(ctx, check.scope, check.id)

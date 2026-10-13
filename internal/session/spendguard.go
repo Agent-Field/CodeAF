@@ -277,9 +277,9 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 	}
 	capUSD, taskCap := g.Cap, g.TaskCap
 	capAction, taskAction := g.CapAction, g.TaskAction
-	if g.Limits != nil {
+	if limits := g.liveLimits(); limits != nil {
 		var err error
-		capUSD, taskCap, err = g.Limits()
+		capUSD, taskCap, err = limits()
 		if err != nil {
 			return 0, err
 		}
@@ -443,3 +443,10 @@ type guardedChain struct {
 }
 
 func (c guardedChain) FallbackModels(model string) []string { return c.chain.FallbackModels(model) }
+
+// Binding an app to a live TUI host can install its cap reader during work.
+func (g *SpendGuard) liveLimits() func() (float64, float64, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.Limits
+}

@@ -157,7 +157,7 @@ type nativeMemory struct {
 
 func memoryView(row store.Memory) MemoryItem {
 	made := row.SourceSession
-	return MemoryItem{ID: row.ID, Text: row.Text, Shelf: row.Owner, MadeBy: made, At: row.UpdatedAt}
+	return MemoryItem{State: row.Status, Version: uint64(row.UpdatedSeq), ID: row.ID, Text: row.Text, Shelf: row.Owner, MadeBy: made, At: row.UpdatedAt}
 }
 func (n nativeMemory) ReadMemory(context.Context) (MemoryResponse, error) {
 	rows, err := n.db.ListMemories(nil, 0)

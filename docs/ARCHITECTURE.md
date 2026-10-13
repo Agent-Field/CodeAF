@@ -818,8 +818,8 @@ The authenticated native core claims the key once for Keychain or Secret
 Service; ordinary GETs stay masked, and no app credential reaches the profile.
 Cancel and engine exit close pending listeners, and a newer key replacement
 or removal cannot be undone by a late browser callback. Other providers have
-no app browser flow. New settings' live permission, memory, agent-budget and
-factory enforcement remains with those resource lanes.
+no app browser flow. Memory additions and daily agent budgets are enforced by
+A11b. New app permission and factory enforcement remains with those resource lanes.
 
 The first stdin line supplies provider
 keys and factory sessions to `config.AppCredentials`, a synchronized memory

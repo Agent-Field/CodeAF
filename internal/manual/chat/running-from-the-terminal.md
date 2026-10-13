@@ -1631,7 +1631,8 @@ POST to a memory's `/forget` removes it from retrieval immediately. Its
 window or after restart in the same home. At five seconds it says
 "the five-second memory undo window has ended". A retry does not extend the
 window. An intervening terminal restore/forget invalidates the old Undo.
-Edits compare `expect.state` and `expect.version` inside the store transaction.
+Memory rows expose `state` and `version`. Edits compare `expect.state` and
+`expect.version` inside the store transaction.
 
 ## Agents may add to shelves — memory additions off
 

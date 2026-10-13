@@ -213,3 +213,27 @@ func TestMemoryCrewShelvesAndMovesUseNativeMembership(t *testing.T) {
 		t.Fatal("crew shelf lost the memory")
 	}
 }
+
+func TestMemoryHTTPVersionCanBeUsedForAConditionalEdit(t *testing.T) {
+	home, now := t.TempDir(), time.Now()
+	row := seedMemory(t, home, "Monday release", store.OwnerUser)
+	s := resourceServer(t, home, &now, nil)
+	var view MemoryResponse
+	w := resourceRequest(s, "GET", "/app/v1/memory", "", "")
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &view) != nil || len(view.Items) != 1 {
+		t.Fatal(w.Body.String())
+	}
+	item := view.Items[0]
+	if item.State != "active" || item.Version == 0 {
+		t.Fatal(item)
+	}
+	body, _ := json.Marshal(PatchMemoryRequest{Text: resourceString("Tuesday release"), Expect: &AgentExpect{Version: &item.Version, State: &item.State}})
+	w = resourceRequest(s, "PATCH", "/app/v1/memory/"+row.ID, string(body), "")
+	if w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if w := resourceRequest(s, "PATCH", "/app/v1/memory/"+row.ID, string(body), ""); w.Code != 409 {
+		t.Fatal(w.Body.String())
+	}
+}
+func resourceString(s string) *string { return &s }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/filememo"
@@ -36,6 +37,15 @@ func DailyBudgetUSDAt(profileDir string) (float64, error) {
 	var value float64
 	if err := json.Unmarshal(encoded, &value); err != nil {
 		return 0, fmt.Errorf("read budget config: %s: %w", KeyDailyBudget, err)
+	}
+	// A shared-home temporary raise reaches terminal and background daily
+	// readers too, while the persisted default stays unchanged.
+	caps, err := appCapsFrom(values)
+	if err != nil {
+		return 0, err
+	}
+	if raised := caps["day:"]; time.Now().Before(raised.Until) {
+		value = max(value, raised.TodayUSD)
 	}
 	return validateDailyBudget(value, KeyDailyBudget)
 }

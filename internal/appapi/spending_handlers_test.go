@@ -365,3 +365,61 @@ func TestSpendingBudgetQuestionsResolveOnlyActualWaitingItems(t *testing.T) {
 		t.Fatal("waiting budget question was not resolved")
 	}
 }
+
+func TestSpendingASecondCapQuestionGetsAFreshID(t *testing.T) {
+	now := time.Now()
+	backend := &fakeResourceSpending{cap: usdMoney(20), rows: []MeasuredSpendingRow{{SpendingRow: SpendingRow{At: now, Who: SpendingWho{Kind: "system"}}, USD: 20}}}
+	s := resourceServer(t, t.TempDir(), &now, WithSpendingBackend(context.Background(), backend))
+	if err := s.RefreshSpending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.SpendingBudgetAsks()
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first %v %v", first, err)
+	}
+	backend.cap = usdMoney(30)
+	if err := s.RefreshSpending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	backend.rows[0].USD = 30
+	if err := s.RefreshSpending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.SpendingBudgetAsks()
+	if err != nil || len(second) != 1 || first[0].ID == second[0].ID {
+		t.Fatalf("reused question id: %v %v %v", first, second, err)
+	}
+}
+
+func TestSpendingAdmissionUsesTheAgentWhenTaskNumbersRepeat(t *testing.T) {
+	home, now := t.TempDir(), time.Now()
+	registry := NewAgentRegistry(home, nil)
+	registry.now = func() time.Time { return now }
+	for _, id := range []string{"a", "b"} {
+		registry.live[id] = &agentLive{conn: AgentConnection{Engine: &fakeAgentEngine{tasks: []session.PlanTaskRow{{ID: "1", Status: "running"}}}}}
+	}
+	registry.mu.Lock()
+	err := registry.disk(func(d *agentDisk) error {
+		for _, id := range []string{"a", "b"} {
+			d.Records[id] = agentRecord{Agent: Agent{ID: id, State: "idle", Budget: usdMoney(5), Version: 1}}
+		}
+		return nil
+	}, true)
+	registry.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeResourceLedger(t, home, []session.UsageLine{{At: now, Session: "a", Task: "1", USD: 2}})
+	s := New("test-resource-token", Options{ProfileDir: home, Agents: registry})
+	t.Cleanup(s.Close)
+	if err := s.CheckSpending(context.Background(), "a", "1"); err == nil || !strings.Contains(err.Error(), "task cap reached") {
+		t.Fatal(err)
+	}
+	if err := s.CheckSpending(context.Background(), "b", "b:1"); err != nil {
+		t.Fatal(err)
+	}
+	w := resourceRequest(s, "POST", "/app/v1/caps/raise", `{"scope":"task","id":"1","to":{"usd":"3.00"},"for":"for_good"}`, "")
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "needs its agent id") {
+		t.Fatal(w.Body.String())
+	}
+}

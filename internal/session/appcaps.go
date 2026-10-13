@@ -19,6 +19,17 @@ func (a *Agent) SetAppBudget(usd float64) error {
 		return err
 	}
 	a.appSpending.Store(true)
+	// A joined host may have restored task guards before the app attached.
+	// Bind their readers without replacing tallies or in-flight reservations.
+	a.crews.mu.Lock()
+	guards := make(map[uint64]*SpendGuard, len(a.crews.rows))
+	for row, crew := range a.crews.rows {
+		guards[row] = crew.guard
+	}
+	a.crews.mu.Unlock()
+	for row, guard := range guards {
+		a.bindAppGuard(guard, usageTaskID(row))
+	}
 	return nil
 }
 
@@ -125,6 +136,8 @@ func (a *Agent) bindAppGuard(guard *SpendGuard, task string) {
 	a.mu.Lock()
 	owner := a.appAgentIDLocked()
 	a.mu.Unlock()
+	guard.mu.Lock()
+	defer guard.mu.Unlock()
 	guard.Limits = func() (float64, float64, error) {
 		now := time.Now()
 		day, err := config.AppCapAt(a.config.ProfileDir, "day", "", config.AppDefaultDayCap, now)

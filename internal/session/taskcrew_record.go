@@ -153,6 +153,7 @@ func (a *Agent) restoreTaskCrew(row uint64, r *TaskCrewRecord) (*taskCrew, error
 	for seat, spent := range s.SeatSpent {
 		c.guard.seatSpent[seat] = &SpendTask{spent: spent}
 	}
+	a.bindAppGuard(c.guard, usageTaskID(row))
 	a.bindCrewCheckpoint(row, c)
 	a.crews.put(row, c)
 	return c, nil

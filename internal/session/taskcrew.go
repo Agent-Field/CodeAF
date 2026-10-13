@@ -615,8 +615,10 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 	if crew != nil && crew.guard != nil {
 		guard.TaskCap, guard.TaskAction, guard.Task = crew.guard.TaskCap, crew.guard.TaskAction, crew.guard.tally()
 		guard.Cap, guard.CapAction = crew.guard.Cap, crew.guard.CapAction
+		guard.Limits = crew.guard.liveLimits()
+	} else {
+		a.bindAppGuard(guard, a.usageNode())
 	}
-	a.bindAppGuard(guard, a.usageNode())
 	return guard
 }
 

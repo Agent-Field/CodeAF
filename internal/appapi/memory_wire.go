@@ -10,11 +10,14 @@ type MemoryShelf struct {
 	Name string `json:"name"`
 }
 type MemoryItem struct {
-	ID     string    `json:"id"`
-	Text   string    `json:"text"`
-	Shelf  string    `json:"shelf"`
-	MadeBy string    `json:"made_by"`
-	At     time.Time `json:"at"`
+	// Native status and journal sequence make conditional edits usable by clients.
+	State   string    `json:"state" jsonschema:"enum=active,enum=forgotten,enum=superseded"`
+	Version uint64    `json:"version"`
+	ID      string    `json:"id"`
+	Text    string    `json:"text"`
+	Shelf   string    `json:"shelf"`
+	MadeBy  string    `json:"made_by"`
+	At      time.Time `json:"at"`
 }
 type MemoryResponse struct {
 	Shelves []MemoryShelf `json:"shelves"`

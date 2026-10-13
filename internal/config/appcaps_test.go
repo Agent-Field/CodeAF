@@ -100,3 +100,34 @@ func TestAppAgentBindingPreservesTemporaryRaiseAndUnrelatedSettings(t *testing.T
 		t.Fatalf("day %v %v", day, err)
 	}
 }
+
+func TestTemporaryDayRaiseReachesNativeDailyReadersWithoutChangingTheDefault(t *testing.T) {
+	profile, now := t.TempDir(), time.Now()
+	if err := WriteDailyBudgetUSD(profile, 20); err != nil {
+		t.Fatal(err)
+	}
+	if err := RaiseAppCap(profile, "day", "", 20, 30, true, now); err != nil {
+		t.Fatal(err)
+	}
+	if cap, err := DailyBudgetUSDAt(profile); err != nil || cap != 30 {
+		t.Fatalf("native daily cap %v %v", cap, err)
+	}
+	values, err := readProfileConfig(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var base float64
+	if err := json.Unmarshal(values[KeyDailyBudget], &base); err != nil || base != 20 {
+		t.Fatalf("base %v %v", base, err)
+	}
+	other := t.TempDir()
+	if err := WriteDailyBudgetUSD(other, 20); err != nil {
+		t.Fatal(err)
+	}
+	if err := RaiseAppCap(other, "day", "", 20, 30, true, now.AddDate(0, 0, -1)); err != nil {
+		t.Fatal(err)
+	}
+	if cap, err := DailyBudgetUSDAt(other); err != nil || cap != 20 {
+		t.Fatalf("expired native daily cap %v %v", cap, err)
+	}
+}
