@@ -14,6 +14,8 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/store"
+	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
 const testToken = "apps-bridge-test-token-0123456789abcdef"
@@ -25,13 +27,22 @@ type client struct {
 	next int
 }
 
+func testServices(t *testing.T, ctx context.Context) *svc.Services {
+	t.Helper()
+	all := Wire(ctx, t.TempDir())
+	if err := all.Store.(*store.Service).SeedGoldenCRM(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return all
+}
+
 func dial(t *testing.T) *client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 	api := appapi.New(testToken, appapi.Options{Context: ctx})
 	t.Cleanup(api.Close)
-	Mount(ctx, api, Wire(ctx, t.TempDir()))
+	Mount(ctx, api, testServices(t, ctx))
 	server := httptest.NewServer(api.Handler())
 	t.Cleanup(server.Close)
 	url := "ws" + strings.TrimPrefix(server.URL, "http") + bridge.Path
@@ -160,7 +171,7 @@ func TestBridgeNeedsTheToken(t *testing.T) {
 	defer cancel()
 	api := appapi.New(testToken, appapi.Options{Context: ctx})
 	defer api.Close()
-	Mount(ctx, api, Wire(ctx, t.TempDir()))
+	Mount(ctx, api, testServices(t, ctx))
 	server := httptest.NewServer(api.Handler())
 	defer server.Close()
 	url := "ws" + strings.TrimPrefix(server.URL, "http") + bridge.Path
