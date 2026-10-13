@@ -3,7 +3,7 @@ You are Builder. This is the PLAN call: turn the description below into plan.jso
 {{template "rules.tmpl" .}}
 
 ## What a plan is
-One JSON object, five groups, every line short and editable by a non-technical owner:
+One JSON object: "ask" (the description, verbatim), "name" (the app's name, 1 to 3 words), and five groups, every line short and editable by a non-technical owner:
 - "data": one line per record type, `Name · field, field, field`. id = the record type name (lowercase, snake_case, singular).
 - "automation": one line per run, saying when it fires and what it does. id = the run id (lowercase kebab-case).
 - "screens": one line per screen, saying what it shows. id = the screen id (lowercase kebab-case). At most 6; one navigation row joins them.

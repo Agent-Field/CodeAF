@@ -1,7 +1,7 @@
 {
   "$schema": "https://codeaf.dev/schema/app/1.json",
   "id": "crm", "name": "CRM", "space": "acme", "version": 1, "kit": 2,
-  "agent": { "name": "CRM agent", "file": "agent.md", "model": "DS Flash" },
+  "agent": { "name": "CRM agent", "file": "agent.md", "model": "deepseek/deepseek-v4.1-flash" },
   "records": {
     "company": { "title": "name", "fields": {
       "name": { "type": "text", "required": true, "unique": true },
@@ -29,5 +29,5 @@
   },
   "triggers": [{ "id": "quiet", "on": "schedule", "cron": "0 9 * * 1-5", "run": "follow-up" }],
   "commands": [{ "id": "follow-up", "label": "Draft follow-up", "for": "deal", "run": "follow-up", "params": { "deals": "$selection.ids" } }],
-  "budget": { "month": 20, "currency": "USD", "per_run": 0.5, "at_cap": "ask", "models": ["DS Flash"] }
+  "budget": { "month": 20, "currency": "USD", "per_run": 0.5, "at_cap": "ask", "models": ["deepseek/deepseek-v4.1-flash"] }
 }

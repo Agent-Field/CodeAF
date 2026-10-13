@@ -2,8 +2,13 @@ package prompt
 
 import "fmt"
 
+// MaxCheckRounds is how many times Check looks at the app (CONTRACT section 5:
+// the Building view counts rounds 1 to 3). A failed round that has another
+// after it goes back to the Builder as one fix.
+const MaxCheckRounds = 3
+
 // MaxFixRounds is how many times a failed check may go back to the Builder.
-const MaxFixRounds = 3
+const MaxFixRounds = MaxCheckRounds - 1
 
 // Phase is where the build is. PhasePreview and PhaseCheckFailed are final.
 type Phase string

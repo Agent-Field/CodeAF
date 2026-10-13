@@ -1,5 +1,5 @@
 ---
-model: DS Flash
+model: deepseek/deepseek-v4.1-flash
 tools: [records, gmail]
 ---
 You are the CRM agent. You work on deals, companies and contacts for the people using this app.

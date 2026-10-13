@@ -12,7 +12,7 @@ func samplePlan() Plan {
 		Data:       []Line{{"deal", "Deal · name, stage"}, {"company", "Company · name"}},
 		Automation: []Line{{"follow-up", "Weekdays 9:00 · draft"}},
 		Screens:    []Line{{"deals", "Deals · list"}},
-		Agent:      AgentLine{"CRM agent · drafts"},
+		Agent:      AgentLine{Line: "CRM agent · drafts"},
 		Needs:      "computed",
 	}
 }

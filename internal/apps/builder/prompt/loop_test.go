@@ -1,6 +1,9 @@
 package prompt
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func advanceToCheck(t *testing.T, l *Loop) {
 	t.Helper()
@@ -35,12 +38,12 @@ func TestLoopFixesThenPasses(t *testing.T) {
 	}
 }
 
-func TestLoopGivesUpAfterThreeFixRoundsKeepingTheLastReport(t *testing.T) {
+func TestLoopGivesUpAfterTheLastCheckRoundKeepingItsReport(t *testing.T) {
 	l := NewLoop()
 	advanceToCheck(t, l)
-	reports := []string{"r1", "r2", "r3", "r4"}
 	var phase Phase
-	for i, r := range reports {
+	for i := 0; i <= MaxFixRounds; i++ {
+		r := fmt.Sprintf("r%d", i+1)
 		phase, _ = l.CheckResult(false, r)
 		if i < MaxFixRounds {
 			if phase != PhaseFix {
@@ -51,7 +54,7 @@ func TestLoopGivesUpAfterThreeFixRoundsKeepingTheLastReport(t *testing.T) {
 			}
 		}
 	}
-	if phase != PhaseCheckFailed || !l.Done() || l.LastReport() != "r4" || l.FixRounds() != MaxFixRounds {
+	if phase != PhaseCheckFailed || !l.Done() || l.LastReport() != fmt.Sprintf("r%d", MaxCheckRounds) || l.FixRounds() != MaxFixRounds {
 		t.Fatalf("phase=%s report=%q fixes=%d", phase, l.LastReport(), l.FixRounds())
 	}
 }

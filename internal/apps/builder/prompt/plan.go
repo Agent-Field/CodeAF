@@ -32,12 +32,14 @@ type Line struct {
 
 // AgentLine is the plan's single agent line, which has no id.
 type AgentLine struct {
+	ID   string `json:"id,omitempty"`
 	Line string `json:"line"`
 }
 
 // Plan is plan.json as the plan card draws it.
 type Plan struct {
 	Ask        string    `json:"ask"`
+	Name       string    `json:"name"`
 	Data       []Line    `json:"data"`
 	Automation []Line    `json:"automation"`
 	Screens    []Line    `json:"screens"`

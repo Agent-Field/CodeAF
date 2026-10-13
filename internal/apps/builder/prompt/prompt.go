@@ -43,6 +43,25 @@ type Inputs struct {
 	Request    string // a plan-card edit or Shape request, for plan revisions
 	Files      map[string]string
 	Report     string
+	// AgentModel is the model id the app's own agent runs on (write only).
+	AgentModel string
+	// Only narrows a write to these files, so one call writes one screen and
+	// the calls run side by side. Files then holds what is already written.
+	Only []string
+}
+
+// Wants reports whether this write covers a file under prefix: every file when
+// Only is empty, otherwise the files Only names.
+func (in Inputs) Wants(prefix string) bool {
+	if len(in.Only) == 0 {
+		return true
+	}
+	for _, path := range in.Only {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // File is one current app file as the fix prompt shows it.
@@ -51,6 +70,14 @@ type File struct{ Path, Content string }
 type view struct {
 	Inputs
 	Example Example
+}
+
+// ExampleReply is the few-shot WRITE reply cut to the kinds of file this call
+// writes, so a single-screen call is not shown the whole CRM.
+func (v view) ExampleReply() (string, error) {
+	return exampleReply(func(path string) bool {
+		return v.Wants(path) || v.Wants(exampleGroup(path))
+	})
 }
 
 // SortedFiles lists the files by path so a prompt is byte-stable.

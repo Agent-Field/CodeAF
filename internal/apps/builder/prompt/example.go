@@ -39,7 +39,7 @@ func buildExample() (Example, error) {
 	if err != nil {
 		return Example{}, err
 	}
-	files, err := exampleReply()
+	files, err := exampleReply(func(string) bool { return true })
 	if err != nil {
 		return Example{}, err
 	}
@@ -50,11 +50,22 @@ func buildExample() (Example, error) {
 	}, nil
 }
 
-// exampleReply writes the files as the model must: JSON files as objects,
-// everything else as an escaped string, one path per line.
-func exampleReply() (string, error) {
+// exampleGroup is the path prefix that selects a file's kind in Inputs.Only.
+func exampleGroup(path string) string {
+	if dir, _, found := strings.Cut(path, "/"); found {
+		return dir + "/"
+	}
+	return path
+}
+
+// exampleReply writes the files that keep accepts as the model must: JSON
+// files as objects, everything else as an escaped string, one path per line.
+func exampleReply(keep func(path string) bool) (string, error) {
 	entries := make([]string, 0, len(exampleFiles))
 	for _, path := range exampleFiles {
+		if !keep(path) {
+			continue
+		}
 		raw, err := exampleFS.ReadFile("example/" + path)
 		if err != nil {
 			return "", err
