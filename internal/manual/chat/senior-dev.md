@@ -1030,8 +1030,9 @@ with exactly those, routing among them call by call when there are several; the 
 the task's first line name them. A name that fits more than one model is put to you to
 settle. A model none of your connected services can serve is refused before the card, by
 name, rather than swapped for another. When a catalog was loaded, a model neither it nor
-codeaf's own model catalog can size cannot be used: the run ends before its first call with
-`senior-dev cannot work with <model>: …`, and nothing is spent. A model you asked for
+codeaf's own model catalog or an explicit model configuration can size cannot be used: the run ends before its first call with
+`senior-dev cannot work with <model>: …`, and nothing is spent. This applies to every
+pool, including `--low` and `--frontier`, even on a shell run without `--asked`. A model you asked for
 that is known to hold 32,768 tokens or fewer is refused the same way (see the section on
 a model too small for senior-dev). If models.dev is unavailable and codeaf's catalog does not know the model
 either, the run starts on an assumed 16,384 tokens and says so. The models are fixed when the run starts; changing the crew later does not move
@@ -1051,6 +1052,26 @@ work or a history summary.
 A crew model senior-dev's model catalog cannot size is left out, and its log says so,
 and so is one known to hold 32,768 tokens or fewer; if that leaves no working model, it
 uses its own list instead.
+
+## senior-dev cannot work with my custom model — unknown window, context length, senior-dev.json
+
+A connected custom service can list a model that works in chat without publishing its
+context-window size. senior-dev needs that size to keep a long run's history in it.
+A shell run warms the catalogs of the services named in its `--high`, `--low` and
+`--frontier` pools, not just the default service's catalog. When a populated catalog
+cannot size any remaining pool, the run refuses before its first stage or model call,
+names the model and says nothing was started. A row with no window is not a zero-sized
+model, and no capacity is invented for it.
+
+Use a model whose service lists its window, or supply **limits from the provider** in
+`senior-dev.json` in the project. Set `provider.openrouter.models["connection/model"].limit.context`
+to the provider's context-token limit, and `.limit.output` to its output limit or
+a smaller requested output ceiling. `connection/model` is the exact model spelling
+codeaf accepts, with no leading `openrouter/`. Here `openrouter` names codeaf's loopback
+API format; calls still use the selected connection and codeaf's shared model funnel.
+Do not enter an assumed large window just to pass the check. Known windows of 32,768
+tokens or fewer are still refused; the existing conservative guess when no catalog
+can be read is unchanged.
 
 ## senior-dev keeps compacting, or refused a model as too small — how much its model can hold, a 32K model, could not learn how much its model holds
 

@@ -292,8 +292,14 @@ func askedRefusal(pool string, known func(string) bool) string {
 	if len(unknown) == 0 {
 		return ""
 	}
+	return capacityRefusal(unknown)
+}
+
+// capacityRefusal names models whose metadata cannot size a run, and the two
+// supported ways to supply it. A missing window is never made up here.
+func capacityRefusal(unknown []string) string {
 	return "senior-dev cannot work with " + strings.Join(unknown, ", ") +
-		": its model catalog does not know how much it can hold, so nothing was started; ask for a model it knows"
+		": its model catalog does not know how much it can hold, so nothing was started; ask for a model it knows or set its verified limits in senior-dev.json"
 }
 
 // refused is the ending of a run that could not start: its brief, its

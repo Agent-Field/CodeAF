@@ -131,9 +131,9 @@ type carriedRoad struct {
 	seat          string
 	defaultSeat   func() (string, error)
 	signNamed     bool
-	// warmCatalog waits, within ctx, for the profile's model catalog to be
-	// resolved and written down. Nil for a road with no catalog.
-	warmCatalog func(ctx context.Context) bool
+	// warmCatalog waits, within ctx, for the named models' service catalogs
+	// to be resolved and written down. Nil for a road with no catalog.
+	warmCatalog func(ctx context.Context, models []string) bool
 }
 
 // carriedModels resolves a shell run's road. It is the person's own profile,
@@ -181,8 +181,34 @@ func profileRoad() (carriedRoad, error) {
 			}
 			return seats.Work.Model, nil
 		},
-		signNamed:   config.AttributionModelAt(settings.ProfileDir),
-		warmCatalog: settings.Models.Warmed,
+		signNamed: config.AttributionModelAt(settings.ProfileDir),
+		warmCatalog: func(ctx context.Context, models []string) bool {
+			// The child reads each service's own cache without provider keys.
+			// Waiting only for the default cache leaves a fresh custom service's
+			// known window invisible to senior-dev.
+			catalogs := map[string]*catalog.Catalog{}
+			for _, model := range models {
+				model = strings.TrimPrefix(strings.TrimSpace(model), modelsource.DefaultID+"/")
+				if model == "" {
+					continue
+				}
+				service, _ := sources.For(model)
+				if service.Source.ID == modelsource.DefaultID {
+					catalogs[modelsource.DefaultID] = settings.Models
+					continue
+				}
+				options := config.CatalogOptionsFor(service, settings.ProfileDir)
+				key := catalog.CacheKey(options.Source, options.BaseURL)
+				if catalogs[key] == nil {
+					catalogs[key] = catalog.LoadLazy(ctx, options)
+				}
+			}
+			ready := true
+			for _, models := range catalogs {
+				ready = models.Warmed(ctx) && ready
+			}
+			return ready
+		},
 	}, nil
 }
 
@@ -260,11 +286,16 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		}
 		return err
 	}
+	var modelsToWarm []string
+	if asked != "" {
+		modelsToWarm = strings.Split(asked, ",")
+	}
 	if word := asked; word != "" && road.resolveModel != nil {
 		resolved, err := road.resolveModel(word)
 		if err != nil {
 			return err
 		}
+		modelsToWarm = strings.Split(resolved, ",")
 		if inv.Program.Name == "senior-dev" {
 			// Its pool is addressed through the loopback API's OpenRouter
 			// dialect, just as the chat road's crewFlags spells every seat.
@@ -283,6 +314,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		if err != nil {
 			return err
 		}
+		modelsToWarm = append(modelsToWarm, road.seat)
 		// AND THE SEAT IS WHAT THE PROGRAM WORKS ON, as a conversation's crew is
 		// ([carriedSeatedLine]): a shell run and a chat run of one program on
 		// one profile route on the same model.
@@ -344,7 +376,12 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// it guessed.
 	if inv.Program.Name == "senior-dev" && road.warmCatalog != nil {
 		warmCtx, warmed := context.WithTimeout(runCtx, carriedCatalogWarm)
-		road.warmCatalog(warmCtx)
+		for _, flag := range []string{"low", "frontier"} {
+			if pool := strings.TrimSpace(inv.ExplicitFlags[flag]); pool != "" {
+				modelsToWarm = append(modelsToWarm, strings.Split(pool, ",")...)
+			}
+		}
+		road.warmCatalog(warmCtx, modelsToWarm)
 		warmed()
 	}
 	ledger := session.UsageLedgerPath()
