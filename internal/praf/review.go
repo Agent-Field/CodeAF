@@ -232,7 +232,24 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 	cost, sessionCount, callCount := sessions.Spent()
 	if err != nil {
 		_, _ = fmt.Fprintf(notes, "[review] the review ended without a result: %v\n", err)
-		return failedReview(ctx, reviewCtx, t, err, cost)
+		ending := failedReview(ctx, reviewCtx, t, err, cost)
+		if recorder, ok := host.(delegate.Recorder); ok {
+			calls := review.stats()
+			files, saveErr := writeFailureRecord(recorder.Records(), failureRecord{
+				Kind: "review-failure", PullRequest: t.URL(), Stage: stageWords[tracker.stage()],
+				Reason: ending.Message, Failure: firstSentence(err.Error()), Elapsed: time.Since(started).Seconds(),
+				CostUSD: cost, Sessions: calls.SessionTotal, Calls: calls.Total - calls.SessionTotal,
+				FailedSession: calls.SessionFailed, FailedCall: calls.Failed - calls.SessionFailed,
+			})
+			if saveErr != nil {
+				_, _ = fmt.Fprintf(notes, "[review] could not save the failure record: %v\n", saveErr)
+			}
+			if len(files) > 0 {
+				ending.Deliverable = "No assembled review was returned. Nothing was posted to GitHub.\nFailure record: " + strings.Join(files, "\n")
+				ending.Extra = map[string]any{"failure_records": files}
+			}
+		}
+		return ending
 	}
 
 	calls := review.stats()

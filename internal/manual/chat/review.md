@@ -60,6 +60,8 @@ When it finishes, the chat is handed a short account whose first line says what 
 
 A shell run's record folder is under `~/.codeaf/v3/carried/review/`, one folder per run.
 
+If the pipeline stops before it returns an assembled review, the run keeps `review-failure.json` and `review-failure.md` instead. They record the stage, reason, elapsed time, recorded spend and failed call counts. They contain no review and cannot be posted as one; the run still ends as failed or stopped on its ceiling.
+
 ## Post the review to GitHub — comment on the pull request, request changes, /review post
 
 `review` never posts during a review. When a review found something, the chat offers to post it and waits; only after you say yes does it propose `review` with the brief `post <the review-report.json path>`, which you can also type yourself: `/review post ~/.codeaf/v3/…/review-report.json` (the record folder works too). That run posts the review **as it stands** — its summary, its inline comments, and its event (a request for changes when something blocks, a comment when nothing does, an approval when it found nothing) — on the commit that was reviewed, even if the pull request has moved since. Posting needs a token that can write to the repository (see *Private repositories*); without one it ends `review did not finish: nothing was posted: posting to owner/repo#123 needs a GitHub token; set GH_TOKEN or sign in with gh auth login`. GitHub refuses a request for changes on your own pull request, so there it goes as a comment, and the account says so.
