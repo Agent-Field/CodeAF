@@ -28,7 +28,8 @@ agents, history and non-secret settings. Keychain or Secret Service secrets
 sent on stdin are never saved to that home.
 
 This transport serves health, shutdown, keys, the event stream and agent
-lifecycle routes. Factory routes arrive with their own app API lane.
+lifecycle routes. Other app routes reserve their contract with HTTP 501; their
+resource behaviour arrives with the owning lane.
 
 ## App agents — list, create, rename, close, archive and reopen
 
@@ -61,7 +62,26 @@ Needs you takes precedence over running. A lost running engine reads idle with
 work unless `stop_running:true`: `closing this agent stops its running work`.
 Archive requires Closed; reopen keeps the whole transcript, name and settings.
 Nothing closes automatically or is deleted. Full turn/queue/file routes and
-provider retry actions are not yet exposed by this lifecycle lane.
+provider retry actions currently return HTTP 501 `not built yet`.
+
+## App API contract — not built yet — 501 — resource routes and schemas
+
+The local app API has reserved routes for turns, queues, files, tasks, quick
+tasks, processes, standing orders, reminders, permissions, asks, rules, Inbox,
+crews, members, roles, reports, models, settings, setup, memory, spending, caps,
+search, history, Activity, factory connections, power and the AI door.
+A reserved route returns HTTP 501 with `error: "not built yet"` and `route`
+naming the method and path template. It performs no action. Authentication,
+Origin and Host checks still run first; a wrong method returns 405 with `Allow`.
+Health, shutdown, keys, events and existing agent lifecycle routes keep working.
+The agent snapshot still contains only the existing saved/live entries, tasks
+and usage; its full queue and open-ask shape arrives with the turns lane.
+
+Go wire types are in `internal/appapi/*_wire.go`. Generated JSON Schemas in
+`docs/design/app-v2/schema/` reserve request, response and event shapes. They
+are contracts for resource work, not evidence that a resource works yet.
+`docs/design/app-v2/API.md` lists the registered routes. These HTTP doors do
+not add tools to the chat's belt or enable any app AI role.
 
 ## App events — SSE — Last-Event-ID — replay after reconnect — reset after restart
 

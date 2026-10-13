@@ -29,6 +29,7 @@ const (
 	EventCrewLog          EventType = "crew.log"
 	EventReportReady      EventType = "report.ready"
 	EventRoleChanged      EventType = "role.changed"
+	EventRuleCreated      EventType = "rule.created"
 	EventRuleChanged      EventType = "rule.changed"
 	EventMemoryChanged    EventType = "memory.changed"
 	EventSettingsChanged  EventType = "settings.changed"
@@ -50,7 +51,7 @@ func (kind EventType) publishable() bool {
 		EventQueueChanged, EventAskCreated, EventAskResolved, EventAskWithdrawn,
 		EventTaskCreated, EventTaskChanged, EventQuickTaskChanged, EventProcessChanged,
 		EventOrderChanged, EventOrderFired, EventCrewCreated, EventCrewChanged,
-		EventCrewLog, EventReportReady, EventRoleChanged, EventRuleChanged,
+		EventCrewLog, EventReportReady, EventRoleChanged, EventRuleCreated, EventRuleChanged,
 		EventMemoryChanged, EventSettingsChanged, EventKeysChanged, EventInboxAdded,
 		EventInboxResolved, EventInboxUndoWindow, EventSpendChanged, EventFactoryChanged,
 		EventFactoryEvent, EventActivity, EventTitleChanged:

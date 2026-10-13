@@ -80,6 +80,7 @@ func New(token string, options Options) *Server {
 		})
 	}
 	s.registerKeys()
+	s.registerContractRoutes()
 	s.mux.HandleFunc("/app/v1/agents", s.agentsRoute)
 	s.mux.HandleFunc("/app/v1/agents/", s.agentsRoute)
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
