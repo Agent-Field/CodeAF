@@ -532,6 +532,7 @@ const harnessTickSymbol = "github.com/Agent-Field/codeaf/internal/tui3.harnessTi
 // paying the old price.
 var blockingCommands = []string{
 	"waitDesign",
+	"waitErrand",
 	"waitEvent",
 	"waitGuestNotices",
 	"waitGuestQuestions",

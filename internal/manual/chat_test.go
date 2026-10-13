@@ -2530,6 +2530,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is the answer from home showing asterisks and hashes", "asking-from-home"},
 		{"does the ask here pane format the answer", "asking-from-home"},
 		{"can I ask two things from home at once", "asking-from-home"},
+		// A call inside an `ask here` errand that needed the person's ok had
+		// nowhere to be answered: the row said `working` for as long as the
+		// window was open. These are what somebody types looking at that row,
+		// and at the question the pane now draws instead.
+		{"ask here is stuck on working", "asking-from-home"},
+		{"a command in ask here needs my permission", "asking-from-home"},
+		{"how do I approve a command in the ask here pane", "asking-from-home"},
 		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
 		{"why is there no once on my reminder card", "keeping-an-eye"},
 		// The e2e suite found the firing that reached a conversation and was
