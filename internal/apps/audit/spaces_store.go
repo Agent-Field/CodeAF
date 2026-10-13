@@ -19,6 +19,7 @@ type Service struct {
 	cfg  svc.Config
 	all  *svc.Services
 	once sync.Once
+	mu   sync.Mutex
 	db   *sql.DB
 	err  error
 	now  func() time.Time
@@ -55,6 +56,7 @@ func (s *Service) initialize() error {
 	s.db = db
 	db.SetMaxOpenConns(1)
 	_, err = db.Exec(`
+PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 CREATE TABLE IF NOT EXISTS audit (
  seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,6 +68,11 @@ CREATE TABLE IF NOT EXISTS audit (
  activity INTEGER NOT NULL,
  entry BLOB NOT NULL
 );
+CREATE INDEX IF NOT EXISTS audit_space_seq ON audit (space, seq DESC);
+CREATE INDEX IF NOT EXISTS audit_space_app_seq ON audit (space, app, seq DESC);
+CREATE TRIGGER IF NOT EXISTS audit_no_replace BEFORE INSERT ON audit
+ WHEN EXISTS (SELECT 1 FROM audit WHERE seq = NEW.seq)
+ BEGIN SELECT RAISE(ABORT, 'audit is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit
  BEGIN SELECT RAISE(ABORT, 'audit is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit
@@ -85,6 +92,9 @@ func (s *Service) Append(ctx context.Context, e bridge.AuditEntry) (bridge.Audit
 	if err := s.open(); err != nil {
 		return bridge.AuditEntry{}, err
 	}
+	// Keep the commit and its publication together so concurrent writers publish in sequence order.
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	e.Seq, e.At = 0, s.now().UTC()
 	if e.Space == "" {
 		e.Space = svc.PersonalSpace
@@ -99,20 +109,28 @@ func (s *Service) Append(ctx context.Context, e bridge.AuditEntry) (bridge.Audit
 		return bridge.AuditEntry{}, err
 	}
 	e.Seq, err = result.LastInsertId()
+	if err == nil {
+		s.publishActivity(e)
+	}
 	return e, err
 }
 
 func (s *Service) List(ctx context.Context, scope svc.Scope, p bridge.AuditListParams) (bridge.AuditListResult, error) {
+	if !scope.Caller.IsAdmin() {
+		return bridge.AuditListResult{}, bridge.Errorf(bridge.CodeDenied, "audit needs workspace Owner or Admin")
+	}
 	entries, next, err := s.entries(ctx, scope, p, false)
 	return bridge.AuditListResult{Entries: entries, Next: next}, err
 }
 
 func (s *Service) Activity(ctx context.Context, scope svc.Scope, p bridge.ActivityListParams) (bridge.ActivityListResult, error) {
+	if scope.Caller.Member == "" {
+		return bridge.ActivityListResult{}, bridge.Errorf(bridge.CodeDenied, "a member is required")
+	}
 	entries, next, err := s.entries(ctx, scope, bridge.AuditListParams{App: p.App, Before: p.Before, Limit: p.Limit}, true)
 	lines := make([]bridge.ActivityEntry, 0, len(entries))
 	for _, e := range entries {
-		lines = append(lines, bridge.ActivityEntry{Seq: e.Seq, At: e.At, App: e.App, Member: e.Member,
-			Text: e.Activity.Text, Undo: e.Activity.Undo, View: e.Activity.View})
+		lines = append(lines, activityEntry(e))
 	}
 	return bridge.ActivityListResult{Lines: lines, Next: next}, err
 }
@@ -124,37 +142,74 @@ func (s *Service) entries(ctx context.Context, scope svc.Scope, p bridge.AuditLi
 	if err := s.open(); err != nil {
 		return nil, 0, err
 	}
-	limit := p.Limit
-	if limit == 0 {
-		limit = 100
-	}
-	query, args := entryQuery(scope, p, activity)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	entries := make([]bridge.AuditEntry, 0)
-	for rows.Next() {
-		e, err := readEntry(rows)
+	limit := pageLimit(p.Limit)
+	entries := make([]bridge.AuditEntry, 0, limit+1)
+	visibility := map[string]bool{"": true}
+	for {
+		batch, err := s.batch(ctx, scope, p, activity, limit+1)
 		if err != nil {
 			return nil, 0, err
 		}
-		if activity {
-			visible, err := s.visible(ctx, scope, e.App)
-			if err != nil {
-				return nil, 0, err
+		for _, e := range batch {
+			visible := true
+			if activity {
+				visible, err = s.cachedVisibility(ctx, scope, e.App, visibility)
+				if err != nil {
+					return nil, 0, err
+				}
 			}
-			if !visible {
-				continue
+			if visible {
+				entries = append(entries, e)
+			}
+			if len(entries) > limit {
+				return entries[:limit], entries[limit-1].Seq, nil
 			}
 		}
-		if len(entries) == limit {
-			return entries, entries[len(entries)-1].Seq, nil
+		if len(batch) < limit+1 {
+			return entries, 0, nil
+		}
+		p.Before = batch[len(batch)-1].Seq
+	}
+}
+
+func pageLimit(limit int) int {
+	if limit == 0 {
+		return 100
+	}
+	if limit > 500 {
+		return 500
+	}
+	return limit
+}
+
+// Finish reading before consulting peer services, which may use the same database.
+func (s *Service) batch(ctx context.Context, scope svc.Scope, p bridge.AuditListParams, activity bool, limit int) ([]bridge.AuditEntry, error) {
+	query, args := entryQuery(scope, p, activity)
+	rows, err := s.db.QueryContext(ctx, query+" LIMIT ?", append(args, limit)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := make([]bridge.AuditEntry, 0, limit)
+	for rows.Next() {
+		e, err := readEntry(rows)
+		if err != nil {
+			return nil, err
 		}
 		entries = append(entries, e)
 	}
-	return entries, 0, rows.Err()
+	return entries, rows.Err()
+}
+
+func (s *Service) cachedVisibility(ctx context.Context, scope svc.Scope, app string, cache map[string]bool) (bool, error) {
+	if visible, ok := cache[app]; ok {
+		return visible, nil
+	}
+	visible, err := s.visible(ctx, scope, app)
+	if err == nil {
+		cache[app] = visible
+	}
+	return visible, err
 }
 
 func entryQuery(scope svc.Scope, p bridge.AuditListParams, activity bool) (string, []any) {
@@ -198,6 +253,25 @@ func (s *Service) visible(ctx context.Context, scope svc.Scope, app string) (boo
 	if app == "" {
 		return true, nil
 	}
+	if s.all == nil || s.all.AppRoles == nil {
+		return false, nil
+	}
 	role, err := s.all.AppRoles.Role(ctx, app, scope.Caller.Member)
 	return role.AtLeast(svc.RoleViewer), err
+}
+
+func activityEntry(e bridge.AuditEntry) bridge.ActivityEntry {
+	return bridge.ActivityEntry{Seq: e.Seq, At: e.At, App: e.App, Member: e.Member,
+		Text: e.Activity.Text, Undo: e.Activity.Undo, View: e.Activity.View}
+}
+
+func (s *Service) publishActivity(e bridge.AuditEntry) {
+	if e.Activity == nil || s.all == nil || s.all.Hub == nil {
+		return
+	}
+	line := activityEntry(e)
+	s.all.Hub.Publish(bridge.TopicSpaceActivity, line)
+	if e.App != "" {
+		s.all.Hub.Publish("app/"+e.App+"/activity", line)
+	}
 }

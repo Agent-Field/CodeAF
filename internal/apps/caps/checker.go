@@ -27,7 +27,7 @@ func New(cfg svc.Config, all *svc.Services) *Service {
 // Allow is also the capability door for runs and the app agent's tools.
 func (s *Service) Allow(ctx context.Context, scope svc.Scope, method string, params json.RawMessage) error {
 	err := s.allow(ctx, scope, method, params)
-	s.audit.append(scope, method, err)
+	s.audit.append(ctx, s.all, scope, method, params, err)
 	return err
 }
 
