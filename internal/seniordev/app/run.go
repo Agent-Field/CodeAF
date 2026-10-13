@@ -79,6 +79,13 @@ type Options struct {
 	// have chosen; empty leaves that kind to discovery.
 	VerifyBuild string
 	VerifyTest  string
+	// StateDir is the directory `--state-dir` named: the run keeps its session
+	// store there — its database, its conversation and the lock that orders
+	// them. Empty reads SENIOR_DEV_STATE_DIR; with that empty too, the store
+	// goes in the run's record folder when codeaf named one, and in the
+	// folder's own .senior-dev only when it named none. The files the model
+	// works with stay in the folder's .senior-dev either way ([stateDirectory]).
+	StateDir string
 	// Crew says the pools came from the crew of the conversation that started
 	// the run (`--crew`), not from a person typing them: a model the catalog
 	// cannot size is dropped with a note, and a --high left empty routes on
@@ -158,6 +165,18 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 		args.MaxHours = &ceilings.Hours
 	}
 	workspace := host.Workspace()
+	records := ""
+	if recorder, ok := host.(delegate.Recorder); ok {
+		records = recorder.Records()
+	}
+	stateDir, refusal := stateDirectory(options.StateDir, workspace)
+	if refusal != "" {
+		return refused(refusal)
+	}
+	args.StateDir = stateDir
+	if stateDir == "" {
+		args.RecordStore = recordStoreBase(records, workspace)
+	}
 	loadedConfig, err := loadSeniorDevConfig(workspace)
 	if err != nil {
 		return refused("load config: " + err.Error())
@@ -371,13 +390,27 @@ func endingOf(result pipelineResult) delegate.Ending {
 	return ending
 }
 
+// nothingToCheck is what senior-dev saw of a project whose build and tests it
+// could not find, so ran none. The ending's sentence and its observation both
+// say it, in these words.
+const nothingToCheck = "the project has no build or tests it could find to run"
+
 // messageOf is the ending in one sentence. A run that submitted is said in
 // terms of what its own check of the project found, which is the fact the
 // status projects; everything else keeps the reason the run gave.
+//
+// A PASS WITH NO COMMAND BEHIND IT PASSED NOTHING. A folder that does not look
+// like a project — a README and nothing else — has no build or tests to find,
+// and its check comes back clean having run zero commands. Saying its build
+// and tests passed there would be a claim nothing made, so the sentence says
+// what was checked instead.
 func messageOf(result pipelineResult, data map[string]any) string {
 	inner, _ := data["status"].(string)
 	switch {
 	case result.Status == delegate.StatusPass && inner == "pass":
+		if commands, checked := data["verification_commands"]; checked && wholeNumber(commands) == 0 {
+			return "submitted a change; " + nothingToCheck
+		}
 		return "submitted a change, and the project's own build and tests passed"
 	case result.Status == delegate.StatusPass && inner == "pass-unverified":
 		return "submitted a change, and nothing finished checking it"
@@ -410,7 +443,7 @@ func observedOf(data map[string]any) string {
 	case commands > 0:
 		said = append(said, fmt.Sprintf("the project's %d build and test commands all passed", commands))
 	default:
-		said = append(said, "the project has no build or tests it could find to run")
+		said = append(said, nothingToCheck)
 	}
 	if data["suite_dead"] == true {
 		said = append(said, "its test suite could not even start")
