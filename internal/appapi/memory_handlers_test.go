@@ -81,8 +81,15 @@ func TestMemoryRoutesEditForgetAndUndoAcrossLaunches(t *testing.T) {
 	if json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list.Items) != 1 {
 		t.Fatalf("restored memory missing: %s", w.Body.String())
 	}
-	if second.events.seq != 1 || second.events.ring[0].kind != EventMemoryChanged {
-		t.Fatal("restore did not publish memory.changed")
+	changes := 0
+	batch, _, _, _, _ := second.events.read(0)
+	for _, event := range batch {
+		if event.kind == EventMemoryChanged {
+			changes++
+		}
+	}
+	if changes != 1 {
+		t.Fatalf("restore published %d memory.changed events", changes)
 	}
 }
 func TestMemoryUndoEndsAtExactlyFiveSeconds(t *testing.T) {
