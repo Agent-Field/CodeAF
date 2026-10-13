@@ -23,9 +23,9 @@ const (
 	writeTimeout     = 2 * time.Second
 )
 
-// Handler serves bridge.Path behind the existing app transport guard, which
+// NewHandler serves bridge.Path behind the existing app transport guard, which
 // checks the launch token, origin and host before upgrading the connection.
-func Handler(ctx context.Context, all *svc.Services) http.Handler {
+func NewHandler(ctx context.Context, all *svc.Services) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !offersProtocol(r) {
 			http.Error(w, "codeaf.apps.v1 subprotocol required", http.StatusBadRequest)
@@ -39,7 +39,7 @@ func Handler(ctx context.Context, all *svc.Services) http.Handler {
 			return
 		}
 		conn.SetReadLimit(readLimit)
-		newSession(ctx, conn, all).serve()
+		newSession(ctx, conn, all, r).serve()
 	})
 }
 
@@ -55,21 +55,24 @@ func offersProtocol(r *http.Request) bool {
 }
 
 type session struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	conn   *websocket.Conn
-	all    *svc.Services
-	out    chan bridge.Envelope
-	fatal  chan *bridge.Error
-	wg     sync.WaitGroup
-	mu     sync.Mutex
-	subs   map[string]func()
-	calls  map[string]bool
+	request    *http.Request
+	caller     svc.Caller
+	finishOnce sync.Once
+	ctx        context.Context
+	cancel     context.CancelFunc
+	conn       *websocket.Conn
+	all        *svc.Services
+	out        chan bridge.Envelope
+	fatal      chan *bridge.Error
+	wg         sync.WaitGroup
+	mu         sync.Mutex
+	subs       map[string]func()
+	calls      map[string]bool
 }
 
-func newSession(parent context.Context, conn *websocket.Conn, all *svc.Services) *session {
+func newSession(parent context.Context, conn *websocket.Conn, all *svc.Services, request *http.Request) *session {
 	ctx, cancel := context.WithCancel(parent)
-	return &session{ctx: ctx, cancel: cancel, conn: conn, all: all, out: make(chan bridge.Envelope, outputBuffer), fatal: make(chan *bridge.Error, 1), subs: map[string]func(){}, calls: map[string]bool{}}
+	return &session{request: request, caller: resolveCaller(ctx, request, ""), ctx: ctx, cancel: cancel, conn: conn, all: all, out: make(chan bridge.Envelope, outputBuffer), fatal: make(chan *bridge.Error, 1), subs: map[string]func(){}, calls: map[string]bool{}}
 }
 
 func (s *session) serve() {
@@ -132,20 +135,19 @@ func (s *session) route(in bridge.Envelope) {
 }
 
 func (s *session) call(in bridge.Envelope) {
-	scope := ownerScope(in.App)
+	scope := s.appScope(in.App)
 	err := s.all.Caps.Allow(s.ctx, scope, in.Method, in.Params)
-	entry, ok := methods[in.Method]
-	// Unknown wire methods remain invalid even when internal tool capabilities
-	// recognise the same verb for runs or the app agent.
+	entry, ok := lookupMethod(in.Method)
+	// Unknown wire methods stay invalid even if an internal tool capability names them.
 	if !ok {
 		err = bridge.Errorf(bridge.CodeInvalid, "unknown method "+in.Method)
 	}
 	if err == nil {
-		scope, err = s.resolveScope(scope, entry.global)
+		scope, err = s.resolveScope(scope, entry.Global)
 	}
 	var result any
 	if err == nil {
-		result, err = entry.run(s.ctx, s.all, scope, in.Params)
+		result, err = entry.Handle(s.ctx, s.all, scope, in.Params)
 	}
 	if err != nil {
 		s.send(failure(in.ID, err))
@@ -159,10 +161,6 @@ func (s *session) call(in bridge.Envelope) {
 	s.send(bridge.Envelope{ID: in.ID, Type: bridge.TypeResult, Result: data})
 }
 
-func ownerScope(app string) svc.Scope {
-	return svc.Scope{App: app, Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}, Data: svc.DataSample}
-}
-
 // resolveScope selects sample records until Keep, regardless of client params.
 func (s *session) resolveScope(scope svc.Scope, global bool) (svc.Scope, error) {
 	if global {
@@ -172,7 +170,7 @@ func (s *session) resolveScope(scope svc.Scope, global bool) (svc.Scope, error) 
 		return scope, bridge.Errorf(bridge.CodeInvalid, "this method needs app")
 	}
 	detail, err := s.all.Store.Get(s.ctx, scope.App)
-	if err == nil && detail.State == bridge.StateKept {
+	if err == nil && detail.State == bridge.StateKept && scope.Data != svc.DataDraft {
 		scope.Data = svc.DataReal
 	}
 	return scope, err
@@ -186,7 +184,7 @@ func (s *session) topicScope(in bridge.Envelope, method string) (svc.Scope, erro
 	if in.App != "" && in.App != app {
 		return svc.Scope{}, bridge.Errorf(bridge.CodeInvalid, "topic and app disagree")
 	}
-	scope := ownerScope(app)
+	scope := s.appScope(app)
 	raw, _ := json.Marshal(map[string]string{"topic": in.Topic})
 	if err := s.all.Caps.Allow(s.ctx, scope, method, raw); err != nil {
 		return scope, err
@@ -301,13 +299,22 @@ func (s *session) writeOne(e bridge.Envelope) error {
 }
 
 func (s *session) finish(err *bridge.Error) {
-	_ = s.writeOne(failure("", err))
-	s.cancel()
-	_ = s.conn.Close(websocket.StatusPolicyViolation, err.Message)
+	s.finishOnce.Do(func() {
+		if err != nil {
+			_ = s.writeOne(failure("", err))
+		}
+		s.cancel()
+		if err != nil {
+			_ = s.conn.Close(websocket.StatusPolicyViolation, err.Message)
+		} else {
+			_ = s.conn.CloseNow()
+		}
+		runDisconnectHooks(s.caller)
+	})
 }
 
 func (s *session) close() {
-	s.cancel()
+	s.finish(nil)
 	s.mu.Lock()
 	subs := s.subs
 	s.subs = map[string]func(){}

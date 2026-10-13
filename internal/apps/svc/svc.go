@@ -185,6 +185,8 @@ type Services struct {
 	Agent      Agent
 	Model      Model
 	Hub        Hub
+	Shape      Shape
+	Shaper     Shaper
 	Caps       Caps
 }
 
