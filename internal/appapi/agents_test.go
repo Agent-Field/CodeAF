@@ -381,6 +381,14 @@ func TestAgentLifecycleEventsAndCloseWorkAndCrewRules(t *testing.T) {
 		readAgent(t, f.request(t, "POST", "/app/v1/agents/"+agent.ID+"/"+action, `{}`), 200)
 	}
 	batch, _, _, _, _ = f.server.Events().read(0)
+	// Activity has its own transition tests; this gate counts agent publications.
+	agentEvents := batch[:0]
+	for _, event := range batch {
+		if event.kind != EventActivity {
+			agentEvents = append(agentEvents, event)
+		}
+	}
+	batch = agentEvents
 	if len(batch) != 4 {
 		t.Fatalf("failed actions or replay published changes: %d", len(batch))
 	}

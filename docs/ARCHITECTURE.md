@@ -948,3 +948,24 @@ also reaches `turn.entry` and the agent's snapshot. Live output has a separate
 follow response, bounded reads and write deadlines. Closing an agent and app
 shutdown stop its processes before releasing the connection; the factory power
 lane calls `AgentRegistry.StopAllProcesses` for sleep.
+
+
+## App search, history and engine Activity
+
+A12's `internal/appapi/search*_handlers.go` reads the existing agent/crew
+handlers and mounted solo factory queue, preserving the caller's headers and
+context. It owns one plain-text query grammar and caps Jump Anywhere at four
+rows per group. Agent-list queries share that grammar through the A12 transport
+observer. Transcript text comes through the session's canonical display reader,
+including compacted history; actual saved spend comes from session metadata.
+File search uses existing context chips and the owning workspace file interface.
+No search opens a model connection or pays for an AI call.
+
+`activity_handlers.go` observes supported tidy mutations behind the transport
+guard. A private append-only `<home>/v3/app/activity.jsonl` and cross-process
+flock serialize before/after reads, the mutation and its receipt. Changed state
+is flushed before an `activity` event is published. Failures and unchanged
+retries are omitted. The journal survives restart; tab tidy records and undo
+stacks belong to the app. This is an observation journal, not a transaction with
+all resource stores: a crash after a mutation and before the append can omit its
+receipt, and a failed append reports that the mutation completed.
