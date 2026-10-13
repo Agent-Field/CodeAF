@@ -269,10 +269,11 @@ re-query (events are not replayed).
 | Method | `app` | params → result |
 | --- | --- | --- |
 | `apps.list` | — | `{}` → `{apps: AppSummary[]}` |
-| `apps.get` | ✓ | `{}` → `AppDetail` (summary + `files {path: text}` + `needs`) |
+| `apps.get` | ✓ | `{}` → `AppDetail` (summary + `files {path: text}` + `needs` + `left_out`) |
 | `apps.create` | — | `{paragraph, model?, budget_month?, connectors?, just_build?}` → `AppSummary` (state `planning`) |
 | `builder.plan.edit` | ✓ | `{edits: [{section?, id?, text}]}` → `{plan, needs}` |
 | `builder.write` | ✓ | `{}` → `{}`; progress on `app/<id>/build` |
+| `builder.run.fix` | ✓ | `{file: "runs/<id>.yaml"}` → `{}`; WRITE/FIX only that left-out run |
 | `builder.cancel` | ✓ | `{}` → `{}` |
 | `apps.keep` | ✓ | `{}` → `AppSummary` (state `kept`, version 1, real records empty) |
 | `apps.discard` | ✓ | `{}` → `{}` (folder and records gone) |
@@ -296,7 +297,7 @@ is not kept and **real** data once kept; the gateway decides from the state.
 
 | Topic | Event type |
 | --- | --- |
-| `app/<id>/build` | `BuildEvent {step: plan\|write\|check\|preview, status: running\|done\|failed, round?, log?, files?, plan?, needs?, check?, cost {spent, cap}, at}` |
+| `app/<id>/build` | `BuildEvent {step: plan\|write\|check\|preview, status: running\|done\|failed, round?, log?, files?, plan?, needs?, check?, left_out?: [{file, name, reason}], cost {spent, cap}, at}` |
 | `app/<id>/state` | `AppSummary` on every state change |
 | `app/<id>/records/<type>` | `RecordDiff {op: upsert\|delete, type, id, record?, by}` |
 | `app/<id>/runs` | `RunState` on every step change |
@@ -323,8 +324,38 @@ or after `builder.write`: state `building`, then for each step `running` →
 `done` with `files` (write) and `check` (`CheckReport {pass, round, issues
 [{file, path, rule, message}], rendered [screen ids], runs [run ids]}`). A
 failed round publishes `{step: check, status: failed, round, check}` and the
-Builder retries; after round 3 the state becomes `failed`. On pass, Builder
-seeds sample records (`Sample.Generate` → `Records.Seed`), publishes `{step:
+Builder retries for three Check rounds (two FIX calls). If the final report
+contains only issues attributed to existing `runs/*.yaml` files, the Builder
+leaves those automations out: removes the files, their plan lines, triggers,
+commands, screen start actions and run bindings. It removes `runs.start` from
+agent.md when no runs remain. It checks the reduced definition again before
+preview. If that Check finds a screen or app/record failure, the original files
+are restored and the build remains `check_failed` in state `failed`.
+Otherwise the build finishes in `preview` with
+`left_out: [{file, name, reason}]` on build events and `apps.get`. `name` is the
+run title, falling back to its file id; `reason` retains the last issues and
+repair hints. The final preview event carries `left_out: []` after all omitted
+runs have been repaired. Results survive restarts in Builder-owned
+`build-result.json`, outside the definition directory.
+
+Fix it on an omitted automation calls `builder.run.fix` with its exact file.
+WRITE and FIX can change only that run; FIX includes the current definition as
+context and ignores unrelated returned files. The Builder restores the run's
+plan line and the removed references on definition files that have not been
+changed since the omission, then performs the usual Check rounds. A repeated
+run-only failure returns to preview with the omission still listed. Screen,
+record and app schema failures stay real failures.
+
+Check validates screen query filter and sort tokens against the bound record
+schema, including hidden bindings and resolved templates, as well as field
+props such as groupBy and Table.sort. Run query field names are checked even
+when a gate prevents execution. Run parameter references must name declared
+parameters; ref/refs parameters target declared record types and contain ids,
+not field objects. Trigger parameter field references must belong to their
+record type. Unknown fields include the file, bad field and valid fields in
+the repair hint passed to FIX.
+
+On pass, Builder seeds sample records (`Sample.Generate` → `Records.Seed`), publishes `{step:
 preview, status: done}` and sets state `preview`. `cost` on every event is the
 Builder's spend against the app budget. `builder.cancel` stops at the next
 step boundary and returns to `planning`.
@@ -413,3 +444,39 @@ Only B1 decides more.
   bridge serving `fixtures/apps/crm/`.
 
 - Wave 2 · shape track: [contract/shape.md](contract/shape.md)
+
+### c2 run fallback · gateway and desk handoff
+
+The Builder owns the wire extensions as `builder.ResultEvent` and
+`builder.ResultDetail`, embedding the existing bridge envelopes. It exposes
+`AppDetail(context.Context, svc.Scope) (any, error)` for the `apps.get` handler.
+**Gateway lane still needs to call that optional adapter** before its existing
+Store.Get path; the existing handler does not expose `left_out` until wired:
+
+```go
+if provider, ok := all.Builder.(interface {
+    AppDetail(context.Context, svc.Scope) (any, error)
+}); ok {
+    return provider.AppDetail(ctx, scope)
+}
+```
+
+This keeps Store metadata and service interfaces unchanged. The new
+`builder.run.fix` method is already registered from the Builder through the
+contract's gateway registry, with editor-only access.
+
+Desk lane: add to `src/lib/types/apps.ts`:
+
+```ts
+export type LeftOutAutomation = { file: string; name: string; reason: string };
+// AppDetail
+left_out: LeftOutAutomation[];
+// BuildEvent (the final preview event always carries an array)
+left_out?: LeftOutAutomation[];
+// builder.run.fix params
+{ file: string }
+```
+
+Show the omissions in Preview with Fix it sending `builder.run.fix`, and use
+`apps.get` after reconnect to recover the durable result. A final empty array
+clears the previously displayed omissions.

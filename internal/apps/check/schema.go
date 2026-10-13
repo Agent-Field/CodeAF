@@ -35,6 +35,7 @@ func validateFiles(files spec.Files) []Issue {
 	}
 	issues = append(issues, planTargets(b)...)
 	issues = append(issues, recordTargets(b)...)
+	issues = append(issues, paramFields(b)...)
 	issues = append(issues, agentCapabilities(b)...)
 	for _, id := range b.RunIDs() {
 		issues = append(issues, runActions("runs/"+id+".yaml", "/steps", b.Runs[id].Steps)...)

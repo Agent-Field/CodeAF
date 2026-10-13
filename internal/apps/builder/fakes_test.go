@@ -66,11 +66,18 @@ func (m *memStore) current() (bridge.AppState, spec.Files) {
 
 // memHub records every event published on the build topic.
 type memHub struct {
-	mu     sync.Mutex
-	builds []bridge.BuildEvent
+	mu      sync.Mutex
+	builds  []bridge.BuildEvent
+	results []ResultEvent
 }
 
 func (h *memHub) Publish(topic string, data any) {
+	if result, ok := data.(ResultEvent); ok {
+		h.mu.Lock()
+		h.results = append(h.results, result)
+		h.mu.Unlock()
+		data = result.BuildEvent
+	}
 	if ev, ok := data.(bridge.BuildEvent); ok && topic == bridge.TopicBuild("crm") {
 		h.mu.Lock()
 		h.builds = append(h.builds, ev)
@@ -150,6 +157,7 @@ type scriptedModel struct {
 	prompts []string
 	cost    float64
 	plan    func(call int) string
+	write   func(prompt string) string
 	fixes   []string // replies to successive FIX calls
 	calls   map[string]int
 	hold    chan struct{} // when set, every call waits on it
@@ -198,6 +206,9 @@ func (m *scriptedModel) reply(kind, prompt string, n int) string {
 		return goldenPlan()
 	case "fix":
 		return m.fixes[min(n, len(m.fixes)-1)]
+	}
+	if m.write != nil {
+		return m.write(prompt)
 	}
 	return goldenFiles(onlyPaths(prompt))
 }

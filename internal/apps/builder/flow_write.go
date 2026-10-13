@@ -19,10 +19,17 @@ const writeWorkers = 6
 // writeAndCheck is Write: the files, then Check with up to MaxFixRounds fixes,
 // then Preview or failed.
 func (s *Service) writeAndCheck(ctx context.Context, b *build) error {
+	if err := s.saveResult(b, savedResult{}); err != nil {
+		return err
+	}
 	files, err := s.writeAll(ctx, b)
 	if err != nil {
 		return s.failWrite(ctx, b, err)
 	}
+	return s.checkAndFix(ctx, b, files, "")
+}
+
+func (s *Service) checkAndFix(ctx context.Context, b *build, files spec.Files, only string) error {
 	loop := prompt.NewLoop()
 	_ = loop.PlanWritten()
 	_ = loop.FilesWritten()
@@ -34,11 +41,16 @@ func (s *Service) writeAndCheck(ctx context.Context, b *build) error {
 		phase, _ := loop.CheckResult(report.Pass, formatReport(report))
 		switch phase {
 		case prompt.PhasePreview:
+			if only != "" {
+				if err := s.completeRetry(b, only); err != nil {
+					return err
+				}
+			}
 			return s.preview(ctx, b, files)
 		case prompt.PhaseCheckFailed:
-			return s.giveUp(ctx, b, report)
+			return s.runFallback(ctx, b, files, report)
 		}
-		if files, err = s.fix(ctx, b, files, loop.LastReport()); err != nil {
+		if files, err = s.fixOnly(ctx, b, files, loop.LastReport(), only); err != nil {
 			return s.failWrite(ctx, b, err)
 		}
 		_ = loop.FixApplied()
@@ -230,9 +242,12 @@ func setIn(app map[string]any, group, key string, value any) {
 	}
 }
 
-// fix sends the check report and the current files, and merges the files the
-// model changed. Files it leaves out stay as they were.
-func (s *Service) fix(ctx context.Context, b *build, files spec.Files, report string) (spec.Files, error) {
+// FIX reads the whole definition for context. A run retry accepts changes to
+// only that file, so a repair cannot overwrite an already working screen.
+func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, report, only string) (spec.Files, error) {
+	if only != "" {
+		report += "\nChange ONLY " + only + ". Keep every other file as it is."
+	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildRunning, Log: "Fixing what the checks found"})
 	text, err := prompt.Render(prompt.KindFix, prompt.Inputs{
 		Report: report, Files: asText(files), Catalog: catalogText(),
@@ -244,6 +259,13 @@ func (s *Service) fix(ctx context.Context, b *build, files spec.Files, report st
 	changed, err := converse(ctx, s, b, text, prompt.ParseFiles)
 	if err != nil {
 		return nil, err
+	}
+	if only != "" {
+		data, ok := changed[only]
+		if !ok {
+			return nil, fmt.Errorf("the FIX reply has no %s", only)
+		}
+		changed = map[string][]byte{only: data}
 	}
 	delete(changed, spec.PlanFile)
 	if changed, err = b.patch(changed); err != nil {

@@ -22,6 +22,7 @@ const ModelEnv = "CODEAF_APPS_BUILDER_MODEL"
 // package, which is how rule 01 holds by construction; TestBuilderNeverReadsRecords
 // keeps it so.
 type Service struct {
+	root  string
 	ctx   context.Context
 	all   *svc.Services
 	model string
@@ -43,7 +44,7 @@ func New(cfg svc.Config, all *svc.Services) *Service {
 	if model == "" {
 		model = DefaultModel
 	}
-	return &Service{ctx: ctx, all: all, model: model, now: time.Now, builds: map[string]*build{}}
+	return &Service{root: cfg.Root, ctx: ctx, all: all, model: model, now: time.Now, builds: map[string]*build{}}
 }
 
 // Create makes the app in state planning and starts the plan in the background.
@@ -102,6 +103,9 @@ func (s *Service) buildFor(ctx context.Context, app string) (*build, error) {
 			return nil, bridge.Errorf(bridge.CodeInvalid, "plan.json: "+err.Error())
 		}
 		b.plan = plan
+	}
+	if err := s.loadResult(b); err != nil {
+		return nil, err
 	}
 	s.remember(b)
 	return b, nil

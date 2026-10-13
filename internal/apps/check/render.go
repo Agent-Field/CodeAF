@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/query"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
+	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
 type renderer struct {
@@ -132,8 +134,10 @@ func (r *renderer) node(n *spec.Node, path string, values map[string]any, typ st
 			r.issue(path+"/when", "render/when", err, "write a boolean CEL expression that works on every sample row")
 		}
 	}
-	if visible {
+	if visible || (n.Bind != nil && n.Bind.Records != "") {
 		r.bind(n.Bind, path+"/bind", values, typ)
+	}
+	if visible {
 		r.props(n, path, values, typ)
 		r.actions(n, path, values, typ)
 	}
@@ -149,6 +153,9 @@ func (r *renderer) node(n *spec.Node, path string, values map[string]any, typ st
 func (r *renderer) hidden(n *spec.Node, path string, values map[string]any) {
 	if n == nil {
 		return
+	}
+	if n.Bind != nil && n.Bind.Records != "" {
+		r.bind(n.Bind, path+"/bind", clone(values), n.Bind.Records)
 	}
 	if n.When != "" {
 		program, err := compileWhen(n.When, values)
@@ -174,14 +181,18 @@ func (r *renderer) bind(bind *spec.Binding, path string, values map[string]any, 
 		}
 		record := r.record(bind.Records, records[r.index%len(records)])
 		values["row"] = record
-		query, err := resolveValue(bind.Query, values)
+		resolvedQuery, err := resolveValue(bind.Query, values)
 		if err == nil {
-			if _, text := query.(string); !text {
-				err = fmt.Errorf("query must resolve to a string, got %T", query)
+			if _, text := resolvedQuery.(string); !text {
+				err = fmt.Errorf("query must resolve to a string, got %T", resolvedQuery)
 			}
 		}
+		recordType := r.bundle.App.Records[bind.Records]
+		if err == nil && recordType != nil {
+			_, err = query.Parse(recordType, resolvedQuery.(string), svc.Owner)
+		}
 		if err != nil {
-			r.issue(path+"/query", "render/bind", err, "use query tokens or a reference that resolves to query text")
+			r.issue(path+"/query", "render/bind", fmt.Errorf("%s: %w", r.file, err), boundFieldHint(recordType, bind.Records))
 		}
 		return
 	}
