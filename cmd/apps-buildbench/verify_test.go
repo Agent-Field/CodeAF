@@ -32,7 +32,7 @@ func TestBindingIssues(t *testing.T) {
 		name, path, from, to, want string
 	}{
 		{"unknown record type", "screens/contacts.json", `"records": "contact"`, `"records": "person"`, `unknown record type "person"`},
-		{"unknown field", "screens/contacts.json", `"columns": ["name", "email", "company"]`, `"columns": ["name", "mail"]`, `no field "mail"`},
+		{"unknown field", "screens/contacts.json", `                "email",`, `                "mail",`, `no field "mail"`},
 		{"unknown part", "screens/deal.json", `"part": "ApprovalCard"`, `"part": "Gauge"`, `"Gauge" is not in the kit`},
 		{"unknown screen", "screens/deal.json", `"open": "pipeline"`, `"open": "board"`, `no such screen`},
 		{"unknown ref target", "app.json", `"to": "contact"`, `"to": "person"`, `unknown record type "person"`},
