@@ -15,7 +15,7 @@ import (
 )
 
 func linkWire(tok tokens.Token) api.AccessLink {
-	return api.AccessLink{ID: tok.ID, CreatedAt: tok.Created, ExpiresAt: tok.Expires, CreatedBy: tok.InvitedBy, Login: tok.InvitedLogin, Name: tok.InvitedName, Revoked: tok.Revoked}
+	return api.AccessLink{Operator: tok.Operator, ID: tok.ID, CreatedAt: tok.Created, ExpiresAt: tok.Expires, CreatedBy: tok.InvitedBy, Login: tok.InvitedLogin, Name: tok.InvitedName, Revoked: tok.Revoked}
 }
 
 func (h *Handler) accessLinks(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +68,7 @@ func (h *Handler) createAccessLink(w http.ResponseWriter, r *http.Request) {
 	}
 	out := linkWire(tok)
 	// The fragment is consumed by the app; it is never sent as a URL query to the server.
-	out.URL = "codeaf://factory/join?url=" + url.QueryEscape(h.factory.Address) + "#token=" + url.QueryEscape(tok.Token)
+	out.URL = accessLinkURL(h.factory.Address, tok)
 	h.write(w, http.StatusCreated, struct {
 		Factory api.Factory    `json:"factory"`
 		Link    api.AccessLink `json:"link"`
@@ -114,4 +114,13 @@ func (h *Handler) mutateLink(change func() error) error {
 	}
 	defer filelock.Unlock(f)
 	return change()
+}
+
+// accessLinkURL keeps startup and app-created links on the same join door.
+func accessLinkURL(address string, tok tokens.Token) string {
+	query := url.Values{"url": {address}}
+	if tok.Operator {
+		query.Set("operator", "true")
+	}
+	return "codeaf://factory/join?" + query.Encode() + "#token=" + url.QueryEscape(tok.Token)
 }

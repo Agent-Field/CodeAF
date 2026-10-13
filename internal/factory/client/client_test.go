@@ -82,7 +82,7 @@ func jobPath(path string) bool {
 
 func newFloor(t *testing.T) (factory.Seam, *capture) {
 	t.Helper()
-	h := serve.New(factory.FixtureSeam(floorNow), serve.Config{Address: "http://factory.test", Version: "test"})
+	h := serve.New(factory.FixtureSeam(floorNow), serve.Config{Address: "http://factory.test", Version: "test", Mode: api.FactorySolo, AccessToken: "floor-secret"})
 	cap := &capture{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cap.record(r)

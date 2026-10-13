@@ -82,6 +82,7 @@ func runFactory(args []string) error {
 	listen := flags.String("listen", "", "address to listen on")
 	path := flags.String("config", home.Join("factory", "config.yaml"), "host configuration")
 	model := flags.String("model", "", "model slug for the factory")
+	newOperator := flags.Bool("new-operator-link", false, "print a fresh one-time operator recovery link")
 	oneModel := flags.Bool("one-model", false, "every factory text call runs on the named model; the tier rows stand down")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
@@ -99,7 +100,7 @@ func runFactory(args []string) error {
 		}
 		modelName = v3TalkModel("", settings)
 	}
-	return serveFactory(ctx, *path, *listen, os.Stdout, modelName, *oneModel)
+	return serveFactory(ctx, *path, *listen, os.Stdout, modelName, *oneModel, *newOperator)
 }
 
 func printFactorySteps(out io.Writer) error {
@@ -111,7 +112,7 @@ func printFactorySteps(out io.Writer) error {
 // are the lease's, so a run pressed anywhere queues the job for whichever
 // attached worker pulls it, and every other verb reaches that worker through
 // its lease (factory_run.go).
-func serveFactory(ctx context.Context, configPath, listen string, out io.Writer, model string, oneModel bool) error {
+func serveFactory(ctx context.Context, configPath, listen string, out io.Writer, model string, oneModel bool, recovery ...bool) error {
 	st, err := store.Open(v3FactoryRoot())
 	if err != nil {
 		return err
@@ -138,27 +139,35 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 		return fmt.Errorf("factory config %s: %w", configPath, err)
 	}
 	cfg.secure = &secure
+	cfg.operatorLinks = true
+	cfg.operatorRecovery = len(recovery) > 0 && recovery[0]
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return fmt.Errorf("factory cannot listen on %s: %w", listen, err)
 	}
 	defer listener.Close()
-	// The service records every approval under a forge handle, so it must know
-	// who the token belongs to: without the connection doors an approval from
-	// the browser is refused ("approval requires a forge handle").
-	seam := factorygithub.Connect(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir)), factoryProfile(""))
+	// The server reads GitHub through its own grant while each caller's
+	// signed-in identity supplies Activity and job ownership.
+	seam := factoryServerSeam(st, factoryTokensPath(configPath))
 	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken, factoryTokensPath(configPath), cfg)
 	if err != nil {
 		return err
 	}
 	defer service.close()
+	operatorLink := service.operatorLink
 	// THE SERVER HAS NO CONVERSATION, so its launch supplies the model pin
 	// on the same parent the desk's worker uses. Triage reads it for every request.
 	setFactoryModelPin(model, oneModel)
 	startFactoryTriage(ctx, st)
+	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath))
 	server, done := service.server, service.done
 	if _, err := fmt.Fprintln(out, service.public); err != nil {
 		return err
+	}
+	if operatorLink.URL != "" {
+		if _, err := fmt.Fprintln(out, "operator access link: "+operatorLink.URL); err != nil {
+			return err
+		}
 	}
 	for _, line := range service.notes {
 		if _, err := fmt.Fprintln(out, line); err != nil {
@@ -187,14 +196,15 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 type factoryService struct {
 	// url is the address this machine's own clients dial, which serve.json
 	// names; public is the one a person is given. They differ when TLS is on.
-	url       string
-	public    string
-	notes     []string
-	server    *http.Server
-	door      *http.Server
-	handler   *serve.Handler
-	done      chan error
-	discovery string
+	url          string
+	public       string
+	notes        []string
+	operatorLink api.AccessLink
+	server       *http.Server
+	door         *http.Server
+	handler      *serve.Handler
+	done         chan error
+	discovery    string
 }
 
 // startFactoryService serves seam on listener and writes serve.json, the
@@ -213,12 +223,15 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	if len(hostConfigs) > 0 {
 		host = hostConfigs[0]
 	}
-	// A window serves with an empty token and polls GitHub. `codeaf factory`
-	// always has a token and does not poll, so it does not claim an interval.
+	// A window and the explicit server both poll, while a service opened
+	// only for local discovery does not promise a background read.
 	servedBy := "factory"
 	var poll time.Duration
 	if token == "" {
 		servedBy = "tui"
+		poll = factoryPollEvery
+	}
+	if host.operatorLinks {
 		poll = factoryPollEvery
 	}
 	mode := host.Mode
@@ -235,7 +248,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	public := secure.publicURL(listener.Addr().String())
 	jobWrites := factorygithub.JobWrites{Token: func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, home.Dir()); return t }}
 	workdirs := factoryWorkdirs(st, st)
-	handler := serve.New(seam, serve.Config{
+	handlerConfig := serve.Config{
 		ChangeAssignee: jobWrites.Assign,
 		DeleteBranch: func(ctx context.Context, it factory.Item) error {
 			if err := jobWrites.DeleteDroppedBranch(ctx, it, workdirs.DroppedBranch(it), time.Now()); err != nil {
@@ -248,7 +261,21 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},
-	})
+	}
+	if servedBy == "factory" && mode == api.FactoryTeam {
+		// THE TEAM SERVER NEVER WRITES TO GITHUB, even with a host override.
+		handlerConfig.ChangeAssignee = nil
+		handlerConfig.DeleteBranch = nil
+	}
+	handler := serve.New(seam, handlerConfig)
+	var operatorLink api.AccessLink
+	if host.operatorLinks {
+		operatorLink, err = handler.NewOperatorLink(ctx, host.operatorRecovery)
+		if err != nil {
+			handler.Close()
+			return nil, err
+		}
+	}
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: 10 * time.Second,
 		// Long polls and change streams must end with the service, otherwise
@@ -257,7 +284,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	// Every listener reports its end here; only the first is read, so the
 	// channel holds one per listener and none of them blocks on the send.
-	s := &factoryService{url: address, public: public, server: server, handler: handler, done: make(chan error, 2),
+	s := &factoryService{url: address, public: public, operatorLink: operatorLink, server: server, handler: handler, done: make(chan error, 2),
 		discovery: filepath.Join(st.Root(), "serve.json")}
 	served := listener
 	if secure.on() {

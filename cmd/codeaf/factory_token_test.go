@@ -120,25 +120,25 @@ func TestFactoryTokenAddWorksUntilRevoke(t *testing.T) {
 	}
 	secret := strings.TrimSpace(out)
 	rows, err := tokens.Load(factoryTokensPath(configPath))
-	if err != nil || len(rows) != 1 || rows[0].Token != secret {
+	if err != nil || len(rows) != 2 || !rows[0].Operator || rows[1].Token != secret {
 		t.Fatalf("rows = %+v, %v", rows, err)
 	}
+	row := rows[1]
 	body, status := getFactoryMe(t, address, secret)
-	if status != http.StatusOK || !strings.Contains(body, `"session_id":"`+rows[0].ID+`"`) {
+	if status != http.StatusOK || !strings.Contains(body, `"session_id":"`+row.ID+`"`) {
 		t.Fatalf("me = %d %s", status, body)
 	}
-	if rows[0].Expires.Before(time.Now().Add(time.Hour-time.Minute)) || rows[0].Expires.After(time.Now().Add(time.Hour+time.Minute)) {
-		t.Fatalf("expiry = %s", rows[0].Expires)
+	if row.Expires.Before(time.Now().Add(time.Hour-time.Minute)) || row.Expires.After(time.Now().Add(time.Hour+time.Minute)) {
+		t.Fatalf("expiry = %s", row.Expires)
 	}
 	if _, err := captureStdout(t, func() error {
-		return runFactory([]string{"revoke", rows[0].ID, "--config", configPath})
+		return runFactory([]string{"revoke", row.ID, "--config", configPath})
 	}); err != nil {
 		t.Fatal(err)
 	}
 	body, status = getFactoryMe(t, address, secret)
-	// Loopback stays open, so the call still answers. The bearer is no longer
-	// a credential: the session id that belonged to the row is gone.
-	if status != http.StatusOK || strings.Contains(body, `"session_id":"tok_`) {
+	// Explicitly revoked credentials refuse even on an otherwise open loopback listener.
+	if status != http.StatusUnauthorized || !strings.Contains(body, `"reason":"revoked"`) {
 		t.Fatalf("revoked token still a credential: %d %s", status, body)
 	}
 	cancel()

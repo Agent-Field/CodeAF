@@ -19,8 +19,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // ErrExists is an id collision. The caller mints another id.
@@ -43,6 +41,7 @@ type Profile struct {
 // empty. Revoked keeps the row as a tombstone so a later presentation can
 // say the link was revoked. The secret is cleared; TokenHash is what matches.
 type Token struct {
+	Operator     bool      `json:"operator,omitempty"`
 	AccessLink   bool      `json:"access_link,omitempty"`
 	ID           string    `json:"id"`
 	Token        string    `json:"token,omitempty"`
@@ -223,42 +222,60 @@ func writePrivate(path string, body []byte) error {
 
 // Bind remembers who signed in with this access token, under the same lock as
 // add and revoke. The first GitHub handle sticks; a later sign-in as someone
-// else is refused.
-func Bind(path, id string, profile Profile, now time.Time) error {
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+// else is refused. An operator claim records consent before publishing identity.
+func Bind(path, id string, profile Profile, now time.Time, claimEvent ...func() error) error {
+	unlock, err := lockRows(path)
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
-	if err := filelock.Lock(lock, true, false); err != nil {
-		return err
-	}
-	defer func() { _ = filelock.Unlock(lock) }()
+	defer unlock()
 	rows, err := Load(path)
 	if err != nil {
 		return err
 	}
 	for i := range rows {
-		row := &rows[i]
-		if row.ID != id {
+		if rows[i].ID != id {
 			continue
 		}
-		if row.Revoked || (!row.Expires.IsZero() && !now.Before(row.Expires)) {
-			return os.ErrPermission
-		}
-		if row.InvitedLogin != "" && row.InvitedLogin != profile.Handle {
-			return os.ErrPermission
-		}
-		if row.Profile != nil && row.Profile.Handle != profile.Handle {
-			return os.ErrPermission
-		}
-		row.Profile = &profile
-		// The first sign-in is when they joined. A later sign-in must not
-		// move that instant.
-		if row.Joined.IsZero() {
-			row.Joined = now
+		if err := bindProfile(path, &rows[i], profile, now, claimEvent); err != nil {
+			return err
 		}
 		return Save(path, rows)
 	}
 	return os.ErrPermission
+}
+
+func bindingAllowed(row Token, handle string, now time.Time) bool {
+	if row.Revoked || (row.Operator && !row.Joined.IsZero()) {
+		return false
+	}
+	if !row.Expires.IsZero() && !now.Before(row.Expires) {
+		return false
+	}
+	if row.InvitedLogin != "" && row.InvitedLogin != handle {
+		return false
+	}
+	return row.Profile == nil || row.Profile.Handle == handle
+}
+
+func bindProfile(path string, row *Token, profile Profile, now time.Time, claimEvent []func() error) error {
+	if !bindingAllowed(*row, profile.Handle, now) {
+		return os.ErrPermission
+	}
+	if row.Operator {
+		if len(claimEvent) > 0 {
+			if err := claimEvent[0](); err != nil {
+				return err
+			}
+		}
+		if err := saveOperator(path, OperatorClaim{Login: profile.Handle, ClaimedAt: now}); err != nil {
+			return err
+		}
+	}
+	row.Profile = &profile
+	// The first sign-in is when they joined; returning cannot move that instant.
+	if row.Joined.IsZero() {
+		row.Joined = now
+	}
+	return nil
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
@@ -202,7 +203,7 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := tokens.Bind(h.config.TokensPath, flow.tokenID, profile, now); h.failed(w, err) {
+		if err := h.bindDeviceProfile(r, flow.tokenID, profile, now); h.failed(w, err) {
 			return
 		}
 	}
@@ -242,4 +243,19 @@ func (h *Handler) deviceWaiting(w http.ResponseWriter, state string, interval in
 		Error    string      `json:"error"`
 		Interval int         `json:"interval"`
 	}{h.factory, state, interval})
+}
+
+// bindDeviceProfile records an operator claim only after GitHub proves the link's bound login.
+func (h *Handler) bindDeviceProfile(r *http.Request, id string, profile api.Profile, now time.Time) error {
+	return tokens.Bind(h.config.TokensPath, id, profile, now, func() error {
+		if h.config.Record == nil {
+			return nil
+		}
+		_, err := h.config.Record.Append(r.Context(), record.Event{
+			Kind: record.OperatorClaimed, Handle: profile.Handle, Object: "factory",
+			Actor:  record.Actor{Kind: "person", Name: "@" + profile.Handle, Operator: true},
+			Detail: "claimed factory as operator",
+		})
+		return err
+	})
 }

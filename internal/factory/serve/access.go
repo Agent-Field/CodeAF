@@ -69,6 +69,13 @@ func (h *Handler) allowed(r *http.Request) bool {
 	if _, ok := h.credential(r); ok {
 		return true
 	}
+	// A refused explicit credential cannot regain access through loopback.
+	if bearer(r) != "" {
+		return false
+	}
+	if _, err := r.Cookie(accessCookieName); err == nil {
+		return false
+	}
 	return h.loopbackOwner(r)
 }
 
@@ -200,7 +207,7 @@ func (h *Handler) classifyToken(token string) tokenHit {
 		}
 		hit := tokenHit{id: row.ID, invitedBy: row.InvitedBy, created: row.Created}
 		switch {
-		case row.Revoked:
+		case row.Revoked || (row.Operator && !row.Joined.IsZero()):
 			hit.reason = factory.LinkRevoked
 		case !row.Expires.IsZero() && !now.Before(row.Expires):
 			hit.reason = factory.LinkExpired
@@ -259,7 +266,7 @@ func (h *Handler) sessionUsable(session accessSession) bool {
 	}
 	now := h.now()
 	for _, row := range h.tokenRows() {
-		if row.ID == session.tokenID && !row.Revoked && (row.Expires.IsZero() || now.Before(row.Expires)) {
+		if row.ID == session.tokenID && !row.Revoked && ((row.Operator && !row.Joined.IsZero()) || row.Expires.IsZero() || now.Before(row.Expires)) {
 			return true
 		}
 	}

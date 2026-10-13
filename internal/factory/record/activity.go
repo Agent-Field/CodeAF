@@ -56,6 +56,10 @@ func enrich(e *Event) {
 			e.Verb = "created access link"
 		case LinkRevoked:
 			e.Verb = "revoked access link"
+		case OperatorClaimed:
+			e.Verb = "claimed factory"
+		case GitHubGranted:
+			e.Verb = "granted GitHub read access"
 		case SessionsRevoked:
 			e.Verb = "revoked sessions"
 		default:

@@ -4,6 +4,7 @@ import "time"
 
 // AccessLink exposes its secret URL only when the operator creates it.
 type AccessLink struct {
+	Operator  bool      `json:"operator,omitempty"`
 	ID        string    `json:"id"`
 	URL       string    `json:"url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`

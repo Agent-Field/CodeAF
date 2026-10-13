@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
 // mode follows the actual serving door unless the host explicitly selects a mode.
@@ -25,6 +26,13 @@ func (h *Handler) mode() string {
 }
 
 func (h *Handler) operatorLogin(r *http.Request) string {
+	if h.mode() == api.FactoryTeam {
+		claim, err := tokens.LoadOperator(h.config.TokensPath)
+		if err != nil {
+			return ""
+		}
+		return claim.Login
+	}
 	if handle := factory.NormalizeHandle(h.config.OperatorLogin); handle != "" {
 		return handle
 	}
@@ -32,7 +40,7 @@ func (h *Handler) operatorLogin(r *http.Request) string {
 	return factory.NormalizeHandle(handle)
 }
 
-// isOperator accepts the host door or its checked GitHub identity, never an access-link claim.
+// isOperator accepts script credentials or the persisted operator's signed-in identity.
 func (h *Handler) isOperator(r *http.Request) bool {
 	if h.floorToken(bearer(r)) {
 		return true

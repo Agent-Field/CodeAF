@@ -23,10 +23,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
 // Config is supplied by the host so the handler never reads a person's home
@@ -34,7 +36,7 @@ import (
 type Config struct {
 	// Mode is solo or team; an unset mode follows the host access configuration.
 	Mode string
-	// OperatorLogin identifies the person running serve, never a client claim.
+	// OperatorLogin names a solo host; team identity comes from the persisted claim.
 	OperatorLogin string
 	// ChangeAssignee mirrors a person's decision to GitHub before storing it.
 	ChangeAssignee func(context.Context, factory.Item, string) error
@@ -138,6 +140,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.auth = &deviceFlows{pending: make(map[string]*deviceFlow)}
 	h.viewer = newViewerState()
 	h.sessions.err = h.loadSessions()
+	if _, err := tokens.LoadOperator(config.TokensPath); err != nil {
+		h.sessions.err = err
+	}
 	h.route("/v1/auth/device", map[string]http.HandlerFunc{http.MethodPost: h.startDevice})
 	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
@@ -150,6 +155,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/github", h.github)
+	h.route("/v1/github/grant", map[string]http.HandlerFunc{http.MethodPut: h.grantGitHub})
 	h.read("/v1/about", h.about)
 	h.read("/v1/me", h.me)
 	h.route("/v1/me/takes_unassigned", map[string]http.HandlerFunc{http.MethodPut: h.setTakes})
@@ -547,6 +553,17 @@ func (h *Handler) github(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	grant, err := factorygithub.LoadReadGrant(factorygithub.GrantPath(h.config.TokensPath))
+	if h.failed(w, err) {
+		return
+	}
+	var grantedAt *time.Time
+	if !grant.GrantedAt.IsZero() {
+		grantedAt = &grant.GrantedAt
+	}
+	if link.Login == "" && grant.Login != "" {
+		link.Login, link.Via = grant.Login, "grant"
+	}
 	var every string
 	if h.config.PollingEvery > 0 {
 		every = h.config.PollingEvery.String()
@@ -556,7 +573,9 @@ func (h *Handler) github(w http.ResponseWriter, r *http.Request) {
 		Login        string      `json:"login"`
 		Via          string      `json:"via"`
 		PollingEvery string      `json:"polling_every,omitempty"`
-	}{h.factory, link.Login, link.Via, every})
+		GrantedBy    string      `json:"granted_by,omitempty"`
+		GrantedAt    *time.Time  `json:"granted_at,omitempty"`
+	}{h.factory, link.Login, link.Via, every, grant.Login, grantedAt})
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
@@ -582,6 +601,9 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	body := h.meBody(profile, session.id)
 	body.Machines = machines
 	body.Mode, body.Operator = h.mode(), h.isOperator(r)
+	if body.Mode == api.FactoryTeam && h.operatorLogin(r) == "" {
+		body.Operator = false
+	}
 	body.Runners, err = h.runnerList(r, handle)
 	if h.failed(w, err) {
 		return

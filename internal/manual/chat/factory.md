@@ -131,10 +131,11 @@ over HTTPS (see hosting a team factory over HTTPS).
 `GET /` is a one-line pointer to codeaf (TUI), the codeaf app and `/v1`, not a dashboard.
 The team view lives in the codeaf app (`Agent-Field/codeaf-desk`).
 
-This service process has no GitHub polling or worker loop.
-It does read who the token belongs to (`GH_TOKEN`, `GITHUB_TOKEN`, a saved token,
-or gh once allowed), so `GET /v1/github` names the login and an approval from the
-app is recorded under that handle. Run queues a job; an attached worker pulls it,
+The service polls watched GitHub repositories every minute once a read token is
+connected. It has no worker loop and never writes to GitHub. The app's separate
+read grant supplies issue and repository reads; `GH_TOKEN` or `GITHUB_TOKEN`
+on the host overrides it. Operator identity comes from the saved operator claim,
+not the account whose token happens to be on the host. Run queues a job; an attached worker pulls it,
 runs it on its own machine and reports back. Stop, pause, answers and steering
 reach that worker through its lease. With no worker attached, a job stays `queued`.
 
@@ -149,7 +150,11 @@ handles, such as `team: [priya, "@sam"]`), and the HTTPS keys `tls`, `domain`,
 and saved in a private file. Unknown keys, invalid repository names and multiple YAML
 documents are refused. A supplied `repos` list replaces the watched repositories;
 an omitted list keeps the saved selection, and `repos: []` clears it.
-This host config is separate from a repository's pipeline file.
+This host config is separate from a repository's pipeline file. `mode` may be
+`solo` or `team`. The older `operator_login` key remains readable but does not
+choose a team's operator: only the operator access-link claim does that.
+`access_token` is for scripts; do not put it in an app attach URL. The private
+`operator.json`, `tokens.json` and `github-grant.json` sit beside this config.
 `CODEAF_HOME` moves the default config and factory discovery paths.
 
 ## host a team factory over HTTPS — tls auto, a certificate, domain and port 443
@@ -1988,7 +1993,8 @@ Loopback connections are open. Connections from any other address require
 `Authorization: Bearer <access token>` using the host configuration's access token
 or an unexpired token from `tokens.json`, or a live session cookie created by entering that
 token at `/access`. With no host token and no unexpired access token, remote
-access is refused. Forwarded headers do not grant loopback access. Without either
+access is refused. Forwarded headers do not grant loopback access. An explicitly expired or revoked
+credential answers HTTP 401 even on loopback. Without either
 credential the service answers HTTP 401 with
 `a bearer access token or live session is required; open /access to enter the token`.
 
@@ -3068,7 +3074,9 @@ approval authority by becoming operator.
 `DELETE /v1/people/{login}/sessions` lets the operator end that person's
 sign-ins and runner credentials. Their unfinished jobs stop and go to
 Unassigned in Backlog. Their branches and Activity stay. Operator identity
-comes from the host's GitHub login, not a claim sent by a client.
+comes from a GitHub sign-in through the one-time operator link and is persisted
+in `operator.json`. Changing the host's GitHub token or `operator_login` never
+changes the team's operator.
 
 ## Access links — Sign in with GitHub through an access link
 
@@ -3076,7 +3084,13 @@ The binary owns access links. The operator creates one with
 `POST /v1/access/links`, optionally naming `login`, `name` and `expires_at`.
 The response is `{factory,link}` with a `codeaf://factory/join` URL. Its
 secret is in the fragment and returned only at creation. `GET /v1/access/links`
-lists metadata without reusable secrets. A named link binds that GitHub login.
+lists metadata without reusable secrets, including `operator:true` for operator
+links. Startup operator links use this same join URL and device endpoints.
+They are single use, expire after 24 hours and are replaced on each restart
+until claimed. A claimed operator's session outlives the invitation's expiry.
+`codeaf factory serve --new-operator-link` replaces outstanding operator links
+for recovery, bound to the saved operator when one exists. Ordinary member links
+keep their configured lifetime and may sign in again as their bound login. A named link binds that GitHub login.
 
 Use the link token at `/v1/auth/device` and `/v1/auth/device/poll`, then use the
 returned factory session. A link without live GitHub sign-in cannot read jobs:
@@ -3084,6 +3098,45 @@ returned factory session. A link without live GitHub sign-in cannot read jobs:
 `DELETE /v1/access/links/{id}` revokes the link and its person's execution.
 `POST /v1/access/revoke-sessions` ends all sessions and unassigns their work.
 The app confirms Revoke all sessions before calling the door.
+
+
+## set up a team factory — operator link, GitHub sign-in and read-only grant
+
+1. Set `github_client_id` in the host config, then run `codeaf factory serve`.
+   After its address it prints `operator access link: codeaf://factory/join?...`.
+   Open that link in the codeaf app. It expires after 24 hours; restarting before
+   claim revokes it and prints a replacement. No link prints once an operator exists.
+2. Sign in with GitHub through the link. If the host has a GitHub token, only that
+   token's login may claim it. Otherwise the first successful GitHub sign-in becomes
+   operator. The link works once; Activity records who claimed the factory `as operator`.
+3. Grant GitHub read access from the app with a separate device-flow token. The
+   operator sends it to `PUT /v1/github/grant`. Then connect repositories and invite
+   people with access links. Runners use their own credentials to do work.
+
+For recovery, restart with `codeaf factory serve --new-operator-link`. It prints a
+fresh one-time link for the saved operator and revokes earlier outstanding operator
+links. It never prints the raw host `access_token`; that remains for scripts.
+
+## factory GitHub read-only grant — issues, metadata, who granted it and when
+
+`PUT /v1/github/grant {"token":"..."}` requires a live signed-in operator session.
+The server checks GitHub's login matches the saved operator and stores the token in
+private mode-0600 `github-grant.json` beside the host config. Responses and Activity
+never contain the token. Members get `only the operator can do this`; another
+account's token gets `the GitHub read grant must belong to the operator`.
+
+The app obtains a separate GitHub App device-flow token configured with Issues and
+Metadata read permissions. Classic OAuth has no read-only private-repository scope:
+`repo` and `public_repo` include writes. Known write-capable OAuth scopes are refused
+with `GitHub read grant needs read-only permissions; use a GitHub App with Issues and Metadata read access`.
+An OAuth token with only profile read scopes can read public repositories.
+GitHub App permissions are configured in GitHub, not inferred from OAuth scope text.
+
+`GET /v1/github` includes `login`, `via`, `granted_by` and `granted_at`; unknown grant
+facts are omitted. `GH_TOKEN` and `GITHUB_TOKEN` remain host read overrides. Replacing
+a grant wakes the poll and the next read uses the new token. The grant is used only
+for reading issues and repositories, never as a runner or publishing credential.
+The team server never writes to GitHub, including when a host override is present.
 
 ## Factory Activity — actor, verb, object and CSV export
 

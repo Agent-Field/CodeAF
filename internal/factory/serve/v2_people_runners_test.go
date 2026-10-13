@@ -39,6 +39,9 @@ func peopleV2Setup(t *testing.T, mode string) *peopleV2Fixture {
 	}
 	f.seam = factory.Seam{Load: func() (factory.Snapshot, error) { items, err := st.List(); return factory.Snapshot{Items: items}, err }, SetRepos: st.SetRepos}
 	f.cfg = Config{Name: "factory", Version: "test", Address: "https://factory.test", Mode: mode, OperatorLogin: "owner", AccessToken: "operator-secret", Store: st, Record: history, TokensPath: filepath.Join(st.Root(), "tokens.json"), PullWait: time.Millisecond, Now: func() time.Time { return f.now }, LeaseOptions: lease.Options{Now: func() time.Time { return f.now }}}
+	if err := os.WriteFile(filepath.Join(st.Root(), "operator.json"), []byte(`{"login":"owner","claimed_at":"2026-10-11T12:00:00Z"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	f.h = New(f.seam, f.cfg)
 	t.Cleanup(f.h.Close)
 	return f

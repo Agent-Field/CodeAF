@@ -38,7 +38,9 @@ type factoryHostConfig struct {
 
 	// secure is the HTTPS keys resolved against the final listen address by
 	// `factory serve`; nil serves plain HTTP the way a window does.
-	secure *factoryTLS
+	secure           *factoryTLS
+	operatorLinks    bool
+	operatorRecovery bool
 }
 
 // MarshalYAML keeps omission distinct from an explicit empty repository list,
