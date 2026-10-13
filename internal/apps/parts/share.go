@@ -14,6 +14,9 @@ import (
 )
 
 func (c *session) share(ctx context.Context, doc string) (*bridge.Share, error) {
+	if c.scope.Data == svc.DataDraft {
+		return nil, nil
+	}
 	share := bridge.Share{Doc: doc}
 	err := c.tx.QueryRowContext(ctx, `SELECT slug,"on",by,at FROM share_links WHERE data=? AND doc=?`, mode(c.scope), doc).Scan(&share.Slug, &share.On, &share.By, &share.At)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -61,6 +64,9 @@ func (c *session) newSlug(ctx context.Context, doc, title string) (string, error
 	}
 }
 func (s *Service) SetShare(ctx context.Context, scope svc.Scope, p bridge.SetShareParams) (bridge.Share, error) {
+	if scope.Data == svc.DataDraft {
+		return bridge.Share{}, conflict("Share works on the applied app")
+	}
 	c, err := s.open(ctx, scope)
 	if err != nil {
 		return bridge.Share{}, err
@@ -92,6 +98,9 @@ func (s *Service) SetShare(ctx context.Context, scope svc.Scope, p bridge.SetSha
 	return result, c.commit()
 }
 func (s *Service) OpenShare(ctx context.Context, scope svc.Scope, p bridge.OpenShareParams) (bridge.DocInfo, error) {
+	if scope.Data == svc.DataDraft {
+		return bridge.DocInfo{}, conflict("Share works on the applied app")
+	}
 	c, err := s.open(ctx, scope)
 	if err != nil {
 		return bridge.DocInfo{}, err

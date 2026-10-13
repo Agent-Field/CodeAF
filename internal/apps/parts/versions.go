@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -16,7 +16,7 @@ import (
 func formulasPath(part string) string { return strings.TrimSuffix(part, ".csv") + ".formulas.json" }
 func (c *session) sidecar(ctx context.Context, doc, part string) (string, string, error) {
 	var status, owner string
-	err := c.tx.QueryRowContext(ctx, `SELECT status,owner FROM part_sidecar WHERE data=? AND doc=? AND part=?`, mode(c.scope), doc, part).Scan(&status, &owner)
+	err := c.tx.QueryRowContext(ctx, "SELECT status,owner FROM "+c.sidecarTable+" WHERE data=? AND doc=? AND part=?", mode(c.scope), doc, part).Scan(&status, &owner)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
 	}
@@ -49,7 +49,7 @@ func (c *session) readVersion(ctx context.Context, p bridge.GetPartParams, resul
 	if p.Version < 0 {
 		return invalid("version cannot be negative")
 	}
-	query := `SELECT version,at,by,by_agent,body,extra FROM part_versions WHERE data=? AND doc=? AND part=?`
+	query := c.selectVersions("version,at,by,by_agent,body,extra")
 	args := []any{mode(c.scope), p.Doc, p.Part}
 	if p.Version > 0 {
 		query += " AND version=?"
@@ -67,11 +67,7 @@ func (c *session) readVersion(ctx context.Context, p bridge.GetPartParams, resul
 	return json.Unmarshal([]byte(extra), &result.Extra)
 }
 func (c *session) readCurrent(part *bridge.Part) error {
-	path, err := c.docPath(part.Doc, part.Part)
-	if err != nil {
-		return err
-	}
-	body, err := os.ReadFile(path)
+	body, err := c.readFile(part.Doc, part.Part)
 	if err != nil {
 		return ioError(err)
 	}
@@ -82,12 +78,8 @@ func (c *session) readCurrent(part *bridge.Part) error {
 	return err
 }
 func (c *session) readFormulas(doc, part string) (*bridge.PartExtra, error) {
-	path, err := c.docPath(doc, formulasPath(part))
-	if err != nil {
-		return nil, err
-	}
-	b, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
+	b, err := c.readFile(doc, formulasPath(part))
+	if errors.Is(err, fs.ErrNotExist) {
 		return &bridge.PartExtra{Formulas: map[string]string{}}, nil
 	}
 	if err != nil {
@@ -252,7 +244,7 @@ func (s *Service) Versions(ctx context.Context, scope svc.Scope, p bridge.ListPa
 	if _, err = c.docPath(p.Doc, p.Part); err != nil {
 		return result, err
 	}
-	rows, err := c.tx.QueryContext(ctx, `SELECT version,kind,label,by,by_agent,at FROM part_versions WHERE data=? AND doc=? AND part=? ORDER BY version DESC`, mode(scope), p.Doc, p.Part)
+	rows, err := c.tx.QueryContext(ctx, c.selectVersions("version,kind,label,by,by_agent,at")+" ORDER BY version DESC", mode(scope), p.Doc, p.Part)
 	if err != nil {
 		return result, err
 	}

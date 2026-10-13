@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -125,7 +126,12 @@ func (s surfaceCollab) Holds(scope svc.Scope, doc, part string) bool {
 	s.p.holdCalls++
 	return s.p.holds
 }
-func (s surfaceCollab) Dropped(member string) { s.p.dropped <- member }
+func (s surfaceCollab) Dropped(member string) {
+	select {
+	case s.p.dropped <- member:
+	default:
+	}
+}
 
 type surfaceAgent struct {
 	svc.Agent
@@ -178,15 +184,15 @@ func TestSurfaceDispatch(t *testing.T) {
 			p := &surfaceProbe{holds: true, comment: bridge.Comment{Doc: "decks/q4", Part: "slides/1.json", Text: "annual numbers"}}
 			agent := &surfaceAgent{}
 			all := &svc.Services{Parts: surfaceParts{p: p}, Collab: surfaceCollab{p: p}, Agent: agent}
-			entry, ok := methods[tt.method]
-			if !ok || entry.global {
+			entry, ok := lookupMethod(tt.method)
+			if !ok || entry.Global {
 				t.Fatal("missing app-scoped dispatch")
 			}
 			raw, err := json.Marshal(tt.params)
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := entry.run(context.Background(), all, scope, raw)
+			result, err := entry.Handle(context.Background(), all, scope, raw)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -212,7 +218,7 @@ func TestSurfaceDispatch(t *testing.T) {
 				t.Fatal("unexpected agent send")
 			}
 			p.method = ""
-			if _, err := entry.run(context.Background(), all, scope, json.RawMessage(`[`)); err == nil {
+			if _, err := entry.Handle(context.Background(), all, scope, json.RawMessage(`[`)); err == nil {
 				t.Fatal("malformed params accepted")
 			}
 			if p.method != "" {
@@ -225,7 +231,7 @@ func TestSurfaceDispatch(t *testing.T) {
 func TestSurfaceWriteRequiresCallerLock(t *testing.T) {
 	p := &surfaceProbe{}
 	all := &svc.Services{Parts: surfaceParts{p: p}, Collab: surfaceCollab{p: p}}
-	_, err := methods[bridge.MethodPartsWrite].run(context.Background(), all, ownerScope("slides"), json.RawMessage(`{"doc":"decks/q4","part":"slides/1.json"}`))
+	_, err := surfaceMethods[bridge.MethodPartsWrite].Handle(context.Background(), all, svc.Scope{App: "slides", Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}, Data: svc.DataSample}, json.RawMessage(`{"doc":"decks/q4","part":"slides/1.json"}`))
 	var wire *bridge.Error
 	if !errors.As(err, &wire) || wire.Code != bridge.CodeConflict {
 		t.Fatalf("error=%v", err)
@@ -247,7 +253,7 @@ func TestSurfaceCommentSendPropagatesErrors(t *testing.T) {
 				agent.err = want
 			}
 			all := &svc.Services{Collab: surfaceCollab{p: p}, Agent: agent}
-			_, err := sendComment(context.Background(), all, ownerScope("slides"), json.RawMessage(`{"id":"comment-1"}`))
+			_, err := sendComment(context.Background(), all, svc.Scope{App: "slides", Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}, Data: svc.DataSample}, json.RawMessage(`{"id":"comment-1"}`))
 			if err != want {
 				t.Fatalf("error=%v", err)
 			}
@@ -259,9 +265,14 @@ func TestSurfaceCommentSendPropagatesErrors(t *testing.T) {
 }
 
 func TestSurfaceSocketCloseDropsMember(t *testing.T) {
+	resetCallerResolver(t)
+	SetCallerResolver(func(context.Context, *http.Request, string) svc.Caller {
+		return svc.Caller{Member: "mona", Role: svc.RoleUser}
+	})
 	all := testServices(t)
 	p := &surfaceProbe{dropped: make(chan string, 1)}
 	all.Collab = surfaceCollab{p: p}
+	RegisterCollabDisconnect(all.Collab)
 	all.Parts = surfaceParts{p: p}
 	ctx, url := testServer(t, all)
 	client := dialSocket(t, ctx, url)
@@ -272,7 +283,7 @@ func TestSurfaceSocketCloseDropsMember(t *testing.T) {
 	_ = client.conn.CloseNow()
 	select {
 	case member := <-p.dropped:
-		if member != svc.Owner {
+		if member != "mona" {
 			t.Fatalf("dropped member=%q", member)
 		}
 	case <-ctx.Done():

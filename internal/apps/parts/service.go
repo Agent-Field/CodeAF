@@ -30,27 +30,30 @@ func invalid(message string) error                   { return bridge.Errorf(brid
 func missing(message string) error                   { return bridge.Errorf(bridge.CodeNotFound, message) }
 func conflict(message string) error                  { return bridge.Errorf(bridge.CodeConflict, message) }
 func mode(scope svc.Scope) string {
-	if scope.Data == svc.DataReal {
+	if scope.Data == svc.DataReal || scope.Data == svc.DataDraft {
 		return "real"
 	}
 	return "sample"
 }
 func content(scope svc.Scope) string {
-	if scope.Data == svc.DataReal {
+	if scope.Data == svc.DataReal || scope.Data == svc.DataDraft {
 		return "content"
 	}
 	return "sample-content"
 }
 
 type session struct {
-	s         *Service
-	scope     svc.Scope
-	db        *sql.DB
-	tx        *sql.Tx
-	root      string
-	changes   []fileChange
-	events    []pendingEvent
-	committed bool
+	s            *Service
+	scope        svc.Scope
+	db           *sql.DB
+	tx           *sql.Tx
+	root         string
+	realRoot     string
+	versionTable string
+	sidecarTable string
+	changes      []fileChange
+	events       []pendingEvent
+	committed    bool
 }
 type fileChange struct {
 	path    string
@@ -70,13 +73,20 @@ func (s *Service) open(ctx context.Context, scope svc.Scope) (*session, error) {
 		return nil, invalid("invalid app id")
 	}
 	s.mu.Lock()
-	c := &session{s: s, scope: scope}
-	dir, err := safePath(s.cfg.Root, scope.App)
+	c := &session{s: s, scope: scope, versionTable: "part_versions", sidecarTable: "part_sidecar"}
+	appDir, err := safePath(s.cfg.Root, scope.App)
+	var dir string
+	if err == nil {
+		dir, err = c.storageDir(appDir)
+	}
 	if err == nil {
 		c.root, err = safePath(dir, content(scope))
 	}
 	if err == nil {
 		c.db, err = openDatabase(ctx, dir)
+	}
+	if err == nil {
+		err = c.attachApplied(ctx, appDir)
 	}
 	if err == nil {
 		c.tx, err = c.db.BeginTx(ctx, nil)
@@ -144,7 +154,7 @@ func (c *session) commit() error {
 		return err
 	}
 	c.committed = true
-	if c.s.all != nil && c.s.all.Hub != nil {
+	if c.scope.Data != svc.DataDraft && c.s.all != nil && c.s.all.Hub != nil {
 		for _, e := range c.events {
 			c.s.all.Hub.Publish(bridge.TopicDoc(c.scope.App, e.doc), e.event)
 		}
@@ -172,7 +182,7 @@ func (c *session) docPath(doc, part string) (string, error) {
 }
 func (c *session) version(ctx context.Context, doc, part string) (int, error) {
 	var v int
-	err := c.tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version),0) FROM part_versions WHERE data=? AND doc=? AND part=?`, mode(c.scope), doc, part).Scan(&v)
+	err := c.tx.QueryRowContext(ctx, c.selectVersions("COALESCE(MAX(version),0)"), mode(c.scope), doc, part).Scan(&v)
 	return v, err
 }
 func (c *session) requirePart(ctx context.Context, doc, part string) (descriptor, error) {

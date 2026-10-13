@@ -3,9 +3,7 @@ package parts
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -21,11 +19,7 @@ type descriptor struct {
 
 func (c *session) readDoc(doc string) (descriptor, error) {
 	var d descriptor
-	path, err := c.docPath(doc, "doc.json")
-	if err != nil {
-		return d, err
-	}
-	b, err := os.ReadFile(path)
+	b, err := c.readFile(doc, "doc.json")
 	if err != nil {
 		return d, ioError(err)
 	}
@@ -109,32 +103,20 @@ func (s *Service) ListDocs(ctx context.Context, scope svc.Scope, p bridge.ListDo
 		return result, err
 	}
 	defer c.close()
-	err = filepath.WalkDir(c.root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if os.IsNotExist(walkErr) && path == c.root {
-			return nil
-		}
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return invalid("symlinks are not allowed in content")
-		}
-		if entry.IsDir() || entry.Name() != "doc.json" {
-			return nil
-		}
-		rel, err := filepath.Rel(c.root, filepath.Dir(path))
+	ids, err := c.documentIDs()
+	if err != nil {
+		return result, err
+	}
+	for _, id := range ids {
+		doc, err := c.info(ctx, id)
 		if err != nil {
-			return err
-		}
-		doc, err := c.info(ctx, filepath.ToSlash(rel))
-		if err != nil {
-			return err
+			return result, err
 		}
 		if p.Surface == "" || doc.Surface == p.Surface {
 			result.Docs = append(result.Docs, doc)
 		}
-		return nil
-	})
+	}
+
 	return result, err
 }
 func (s *Service) CreateDoc(ctx context.Context, scope svc.Scope, p bridge.CreateDocParams) (bridge.DocInfo, error) {
@@ -160,11 +142,8 @@ func (s *Service) CreateDoc(ctx context.Context, scope svc.Scope, p bridge.Creat
 	return result, c.commit()
 }
 func (c *session) create(ctx context.Context, doc string, d descriptor, parts []bridge.CreateDocPart, extras map[string]*bridge.PartExtra) error {
-	path, err := c.docPath(doc, "doc.json")
-	if err != nil {
-		return err
-	}
-	if _, err = os.Lstat(path); err == nil {
+	_, err := c.readFile(doc, "doc.json")
+	if err == nil {
 		return conflict("document already exists")
 	}
 	if !os.IsNotExist(err) {

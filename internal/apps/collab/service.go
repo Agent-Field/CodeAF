@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/gateway"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
@@ -65,6 +66,7 @@ func NewWithClock(cfg svc.Config, all *svc.Services, clock Clock) *Service {
 	if cfg.Ctx != nil {
 		context.AfterFunc(cfg.Ctx, s.Close)
 	}
+	gateway.RegisterCollabDisconnect(s)
 	return s
 }
 
