@@ -16,6 +16,7 @@ require (
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
 	github.com/flynn/noise v1.1.0
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/gtank/ristretto255 v0.1.2
 	github.com/int128/listener v1.3.0
@@ -37,9 +38,11 @@ require (
 )
 
 require (
+	cel.dev/expr v0.24.0 // indirect
 	github.com/amp-labs/amp-common v0.0.0-20260814191756-775714ec2997 // indirect
 	github.com/antchfx/xmlquery v1.5.1 // indirect
 	github.com/antchfx/xpath v1.3.6 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.43.4 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.35 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.34 // indirect
@@ -96,6 +99,7 @@ require (
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/spyzhov/ajson v0.9.6 // indirect
+	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -106,7 +110,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
+	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/time v0.15.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect
 	modernc.org/libc v1.41.0 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
