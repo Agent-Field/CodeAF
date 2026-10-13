@@ -1,0 +1,32 @@
+run: follow-up
+title: Draft follow-ups for quiet deals
+budget: { per_run: 0.50 }
+params:
+  deals:
+    type: refs
+    to: deal
+    default: "stage:Qualified,Proposal,Negotiation last_touch<-7d"
+steps:
+  - id: each
+    title: Each quiet deal
+    loop:
+      over: $params.deals
+      as: deal
+      max: 25
+    steps:
+      - id: draft
+        agent: CRM agent
+        prompt: '{ Write a short, plain follow-up email for the deal {deal.name} at {deal.company}. Under 120 words, no hype, reference the next step and ask for a reply. Output the subject line first, then the body. Label anything you assume with "· AI". }'
+        retry: { max: 2, backoff: 30s }
+      - id: approve
+        gate:
+          approval: send
+          who: $deal.owner
+          title: Approve follow-up for {{deal.name}}
+      - id: touch
+        records.update:
+          type: deal
+          id: $deal.id
+          set:
+            next_step: $steps.draft.output
+            last_touch: $now

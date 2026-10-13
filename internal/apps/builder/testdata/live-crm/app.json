@@ -1,0 +1,175 @@
+{
+  "$schema": "https://codeaf.dev/schema/app/1.json",
+  "agent": {
+    "file": "agent.md",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "name": "CRM agent"
+  },
+  "budget": {
+    "at_cap": "ask",
+    "currency": "USD",
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ],
+    "month": 20,
+    "per_run": 2
+  },
+  "capabilities": {
+    "ai": [
+      "sort",
+      "summarise",
+      "draft",
+      "extract"
+    ],
+    "records": {
+      "company": "rw",
+      "contact": "rw",
+      "deal": "rw"
+    },
+    "tools": []
+  },
+  "commands": [
+    {
+      "for": "deal",
+      "id": "follow-up",
+      "label": "Draft follow-up",
+      "params": {
+        "deals": "$selection.ids"
+      },
+      "run": "follow-up"
+    },
+    {
+      "do": [
+        {
+          "agent.ask": "Summarise this pipeline: open deals by stage, amount and last touch. Label anything you rank or guess with \"· AI\"."
+        }
+      ],
+      "id": "summarise-pipeline",
+      "label": "Summarise pipeline · AI"
+    }
+  ],
+  "description": "A CRM for our sales pipeline: companies, deals and contacts. The agent drafts follow-ups when a deal goes quiet for a week; you approve every email before it sends.",
+  "id": "crm",
+  "kit": 2,
+  "name": "CRM",
+  "records": {
+    "company": {
+      "fields": {
+        "domain": {
+          "index": true,
+          "type": "url"
+        },
+        "name": {
+          "required": true,
+          "type": "text",
+          "unique": true
+        },
+        "notes": {
+          "type": "longtext"
+        },
+        "owner": {
+          "default": "$me",
+          "type": "person"
+        }
+      },
+      "label": "Company",
+      "plural": "Companies",
+      "title": "name"
+    },
+    "contact": {
+      "fields": {
+        "company": {
+          "to": "company",
+          "type": "ref"
+        },
+        "email": {
+          "index": true,
+          "type": "email"
+        },
+        "name": {
+          "required": true,
+          "type": "text"
+        },
+        "owner": {
+          "default": "$me",
+          "type": "person"
+        },
+        "phone": {
+          "type": "phone"
+        }
+      },
+      "label": "Contact",
+      "plural": "Contacts",
+      "title": "name"
+    },
+    "deal": {
+      "fields": {
+        "amount": {
+          "currency": "USD",
+          "type": "money"
+        },
+        "close_on": {
+          "type": "date"
+        },
+        "company": {
+          "required": true,
+          "to": "company",
+          "type": "ref"
+        },
+        "contacts": {
+          "to": "contact",
+          "type": "refs"
+        },
+        "health": {
+          "ai": "how healthy is this deal given its stage, last touch and close date",
+          "label": "Health · AI",
+          "type": "enum",
+          "values": [
+            "On track",
+            "Needs a nudge",
+            "At risk"
+          ]
+        },
+        "last_touch": {
+          "type": "datetime"
+        },
+        "name": {
+          "required": true,
+          "type": "text"
+        },
+        "next_step": {
+          "type": "text"
+        },
+        "owner": {
+          "default": "$me",
+          "type": "person"
+        },
+        "stage": {
+          "default": "Lead",
+          "type": "enum",
+          "values": [
+            "Lead",
+            "Qualified",
+            "Proposal",
+            "Negotiation",
+            "Won",
+            "Lost"
+          ]
+        }
+      },
+      "label": "Deal",
+      "plural": "Deals",
+      "title": "name"
+    }
+  },
+  "space": "personal",
+  "triggers": [
+    {
+      "cron": "0 9 * * 1-5",
+      "id": "quiet-deals",
+      "on": "schedule",
+      "run": "follow-up"
+    }
+  ],
+  "version": 1
+}

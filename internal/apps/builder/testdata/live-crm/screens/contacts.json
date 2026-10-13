@@ -1,0 +1,127 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "contacts",
+  "title": "Contacts",
+  "nav": {
+    "part": "SectionTabs",
+    "props": {
+      "items": [
+        "Deals",
+        "Companies",
+        "Contacts"
+      ]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "props": {
+      "gap": "3"
+    },
+    "children": [
+      {
+        "part": "Row",
+        "props": {
+          "align": "center",
+          "gap": "3"
+        },
+        "children": [
+          {
+            "part": "Text",
+            "props": {
+              "text": "Contacts",
+              "size": "title"
+            }
+          },
+          {
+            "part": "Button",
+            "label": "New contact",
+            "props": {
+              "kind": "primary",
+              "size": "sm"
+            },
+            "on": {
+              "click": [
+                {
+                  "records.create": {
+                    "type": "contact",
+                    "set": {
+                      "name": "$input.name",
+                      "email": "$input.email",
+                      "phone": "$input.phone",
+                      "company": "$input.company"
+                    }
+                  },
+                  "ask": {
+                    "name": "text",
+                    "email": "email",
+                    "phone": "phone",
+                    "company": "text"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "RecordList",
+        "label": "Contacts list",
+        "id": "contacts",
+        "bind": {
+          "records": "contact",
+          "query": "sort:name"
+        },
+        "props": {
+          "columns": [
+            "name",
+            "company",
+            "email",
+            "owner",
+            "phone"
+          ]
+        },
+        "on": {
+          "open": [
+            {
+              "open": "contacts",
+              "id": "$row.id"
+            }
+          ]
+        },
+        "slots": {
+          "empty": {
+            "part": "Empty",
+            "props": {
+              "text": "No contacts yet."
+            },
+            "children": [
+              {
+                "part": "Button",
+                "label": "New contact",
+                "props": {
+                  "kind": "secondary",
+                  "size": "sm"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "records.create": {
+                        "type": "contact",
+                        "set": {
+                          "name": "$input.name"
+                        }
+                      },
+                      "ask": {
+                        "name": "text"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

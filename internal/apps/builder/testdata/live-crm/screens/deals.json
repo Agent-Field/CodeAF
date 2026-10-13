@@ -1,0 +1,253 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "deals",
+  "title": "Deals",
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Sections",
+    "props": {
+      "items": [
+        "Deals",
+        "Companies",
+        "Contacts"
+      ]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "props": {
+      "gap": "4"
+    },
+    "children": [
+      {
+        "part": "Row",
+        "props": {
+          "align": "center",
+          "gap": "3"
+        },
+        "children": [
+          {
+            "part": "Text",
+            "props": {
+              "text": "Deals",
+              "size": "title"
+            }
+          },
+          {
+            "part": "Button",
+            "label": "New deal",
+            "props": {
+              "kind": "primary"
+            },
+            "on": {
+              "click": [
+                {
+                  "records.create": {
+                    "type": "deal",
+                    "set": {
+                      "name": "$input.name",
+                      "company": "$input.company",
+                      "stage": "$input.stage",
+                      "amount": "$input.amount",
+                      "close_on": "$input.close_on"
+                    }
+                  },
+                  "ask": {
+                    "name": "text",
+                    "company": "text",
+                    "stage": "enum",
+                    "amount": "money",
+                    "close_on": "date"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "Row",
+        "props": {
+          "gap": "3"
+        },
+        "children": [
+          {
+            "part": "Chart",
+            "bind": {
+              "records": "deal"
+            },
+            "props": {
+              "chart": "metric",
+              "y": "amount",
+              "agg": "sum",
+              "title": "Pipeline amount"
+            }
+          },
+          {
+            "part": "Chart",
+            "bind": {
+              "records": "deal"
+            },
+            "props": {
+              "chart": "bar",
+              "x": "stage",
+              "y": "amount",
+              "agg": "sum",
+              "title": "Amount by stage"
+            }
+          }
+        ]
+      },
+      {
+        "part": "RecordList",
+        "id": "deals",
+        "label": "Deals list",
+        "bind": {
+          "records": "deal",
+          "query": "sort:-amount"
+        },
+        "props": {
+          "columns": [
+            "name",
+            "company",
+            "stage",
+            "amount",
+            "close_on",
+            "health"
+          ],
+          "views": [
+            "List",
+            "Board by stage"
+          ],
+          "meter": "stage",
+          "groupBy": "stage"
+        },
+        "slots": {
+          "empty": {
+            "part": "Empty",
+            "props": {
+              "text": "No deals yet — add your first deal."
+            }
+          }
+        }
+      },
+      {
+        "part": "Panel",
+        "label": "Deal panel",
+        "when": "$selection.deals.count == 1",
+        "props": {
+          "title": "Deal"
+        },
+        "children": [
+          {
+            "part": "RecordPage",
+            "label": "Deal details",
+            "bind": {
+              "record": "$selection.deals.id",
+              "type": "deal"
+            },
+            "props": {
+              "fields": [
+                "name",
+                "company",
+                "contacts",
+                "stage",
+                "amount",
+                "close_on",
+                "health",
+                "last_touch",
+                "next_step",
+                "owner"
+              ],
+              "actions": [
+                "follow-up",
+                "summarise-pipeline"
+              ],
+              "history": true
+            }
+          },
+          {
+            "part": "Row",
+            "props": {
+              "gap": "2"
+            },
+            "children": [
+              {
+                "part": "Button",
+                "label": "Edit deal",
+                "on": {
+                  "click": [
+                    {
+                      "records.update": {
+                        "id": "$selection.deals.id",
+                        "set": {
+                          "name": "$input.name",
+                          "stage": "$input.stage",
+                          "amount": "$input.amount",
+                          "close_on": "$input.close_on",
+                          "next_step": "$input.next_step",
+                          "owner": "$input.owner",
+                          "health": "$input.health"
+                        }
+                      },
+                      "ask": {
+                        "name": "text",
+                        "stage": "enum",
+                        "amount": "money",
+                        "close_on": "date",
+                        "next_step": "longtext",
+                        "owner": "text",
+                        "health": "enum"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "part": "Button",
+                "label": "Draft follow-up",
+                "on": {
+                  "click": [
+                    {
+                      "runs.start": "follow-up",
+                      "params": {
+                        "deals": "$selection.deals.ids"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "part": "Button",
+                "label": "Delete deal…",
+                "props": {
+                  "kind": "destructive"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "records.delete": {
+                        "id": "$selection.deals.id"
+                      },
+                      "confirm": "Delete this deal? This cannot be undone."
+                    },
+                    {
+                      "open": "deals"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "part": "RunTimeline",
+            "bind": {
+              "run": "follow-up",
+              "for": "$selection.deals.id"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

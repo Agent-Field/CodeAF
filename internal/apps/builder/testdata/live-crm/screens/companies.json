@@ -1,0 +1,119 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "companies",
+  "title": "Companies",
+  "nav": {
+    "part": "SectionTabs",
+    "props": {
+      "items": [
+        "Deals",
+        "Companies",
+        "Contacts"
+      ]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "props": {
+      "gap": "4"
+    },
+    "children": [
+      {
+        "part": "Row",
+        "props": {
+          "align": "center",
+          "gap": "3"
+        },
+        "children": [
+          {
+            "part": "Text",
+            "props": {
+              "text": "Companies",
+              "size": "title"
+            }
+          },
+          {
+            "part": "Button",
+            "label": "New company",
+            "props": {
+              "kind": "primary"
+            },
+            "on": {
+              "click": [
+                {
+                  "records.create": {
+                    "type": "company",
+                    "set": {
+                      "name": "$input.name",
+                      "domain": "$input.domain",
+                      "notes": "$input.notes"
+                    }
+                  },
+                  "ask": {
+                    "name": "text",
+                    "domain": "url",
+                    "notes": "longtext"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "RecordList",
+        "label": "Companies list",
+        "id": "companies",
+        "bind": {
+          "records": "company",
+          "query": "sort:name"
+        },
+        "props": {
+          "columns": [
+            "name",
+            "domain",
+            "owner",
+            "notes"
+          ],
+          "views": [
+            "List"
+          ]
+        },
+        "slots": {
+          "empty": {
+            "part": "Empty",
+            "props": {
+              "text": "No companies yet. Add the first one."
+            }
+          }
+        }
+      },
+      {
+        "part": "Panel",
+        "label": "Company panel",
+        "when": "$selection.companies.count == 1",
+        "props": {
+          "title": "Company"
+        },
+        "children": [
+          {
+            "part": "RecordPage",
+            "label": "Company details",
+            "bind": {
+              "record": "$selection.companies.id"
+            },
+            "props": {
+              "fields": [
+                "name",
+                "domain",
+                "owner",
+                "notes"
+              ],
+              "links": true
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
