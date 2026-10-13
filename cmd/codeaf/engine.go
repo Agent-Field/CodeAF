@@ -1367,6 +1367,14 @@ func engineWorkspace(path string) (string, error) {
 	}
 	path = strings.TrimSpace(path)
 	if path == "" {
+		// THE DEFAULT IS THE SAME DOOR AS THE NAMED ONE. Omitting --workspace
+		// means the home directory, and home reaches the resolution below only
+		// when somebody TYPES it — an omitted flag returned the raw spelling, so
+		// a home behind a symlink keyed two hosts depending on how it was said
+		// (#1761).
+		if resolved, err := filepath.EvalSymlinks(home); err == nil {
+			home = resolved
+		}
 		return home, nil
 	}
 	expanded, err := expandHome(path)
