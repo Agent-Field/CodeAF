@@ -22,9 +22,10 @@ via cloudflare · 0.6s · 61 t/s
 
 ## Why a model name starts with ~ — the tilde or squiggle in front of a model name, and whether it is a typo
 
-Some rows on the model list are prefixed with `~`. The model codeaf ships with is spelled
-`~deepseek/deepseek-v4-flash-latest`, and that is the name on the model picker and on the
-status line.
+Some rows on the model list are prefixed with `~`, such as
+`~deepseek/deepseek-v4-flash-latest`. The model codeaf ships with is spelled
+`deepseek/deepseek-v4.1-flash`, a fixed build with no `~`, and that is the name on the
+model picker and on the status line until you choose another.
 
 **The leading `~` is not a typo and not a home directory.** It is the router's own marker
 for a *floating* name: one that does not point at a fixed build of a model but at

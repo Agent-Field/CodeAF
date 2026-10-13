@@ -1019,12 +1019,11 @@ var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelT
 // through [TierModelAt]. Blank is still an answer on both: a row a person
 // emptied on purpose reads empty and follows the model the person is talking
 // to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
-// here ([TierModelAt] says how). The low row is pinned to a DATED build on
-// purpose: the bare `deepseek/deepseek-v4-flash` id resolves to the April
-// build, and the July build costs the same.
+// here ([TierModelAt] says how). The low row is the same V4.1 Flash as
+// [DefaultModel]: no role falls back to an older Flash.
 const (
 	DefaultReflexModel = "google/gemini-2.5-flash"
-	DefaultLowModel    = "deepseek/deepseek-v4-flash-0731"
+	DefaultLowModel    = "deepseek/deepseek-v4.1-flash"
 )
 
 // DocumentEngines are the four rungs CODEAF_DOC_ENGINE accepts.
