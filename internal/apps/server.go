@@ -14,6 +14,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/caps"
 	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/gateway"
+	"github.com/Agent-Field/codeaf/internal/apps/grants"
+	"github.com/Agent-Field/codeaf/internal/apps/imports"
 	"github.com/Agent-Field/codeaf/internal/apps/realtime"
 	"github.com/Agent-Field/codeaf/internal/apps/records"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
@@ -32,6 +34,8 @@ type Mux interface {
 func Wire(ctx context.Context, home string) *svc.Services {
 	cfg := svc.Config{Root: filepath.Join(home, "apps"), Ctx: ctx}
 	all := &svc.Services{}
+	all.Connect.Grants = grants.New(cfg, all)
+	all.Connect.Imports = imports.New(cfg, all)
 	all.Hub = realtime.New(cfg, all)
 	all.Caps = caps.New(cfg, all)
 	all.Store = store.New(cfg, all)
