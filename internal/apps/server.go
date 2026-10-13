@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/records"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/sample"
+	"github.com/Agent-Field/codeaf/internal/apps/shape"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
@@ -48,10 +49,12 @@ func Wire(ctx context.Context, home string) *svc.Services {
 	all.Agent = agent.New(cfg, all)
 	all.Parts = parts.New(cfg, all)
 	all.Collab = collab.New(cfg, all)
+	all.Shape = shape.New(cfg, all)
+	all.Shaper = builder.NewShaper(cfg, all)
 	return all
 }
 
 // Mount serves the bridge at bridge.Path on mux.
 func Mount(ctx context.Context, mux Mux, all *svc.Services) {
-	mux.Handle(bridge.Path, gateway.Handler(ctx, all))
+	mux.Handle(bridge.Path, gateway.NewHandler(ctx, all))
 }

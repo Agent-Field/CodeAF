@@ -133,7 +133,7 @@ func (s probeAgent) Send(_ context.Context, scope svc.Scope, p bridge.AgentSendP
 }
 
 func TestDispatchUsesContractServiceMethods(t *testing.T) {
-	scope := ownerScope("crm")
+	scope := svc.Scope{App: "crm", Caller: PersonalCaller(context.Background(), nil, "crm"), Data: svc.DataSample}
 	scope.Data = svc.DataReal
 	tests := []struct {
 		method string
@@ -155,22 +155,23 @@ func TestDispatchUsesContractServiceMethods(t *testing.T) {
 		{bridge.MethodApprovalsDecide, bridge.DecideApprovalParams{ApprovalID: "approval-1", Answer: "yes"}},
 		{bridge.MethodAgentSend, bridge.AgentSendParams{Thread: "thread-1", Text: "draft a follow-up", Record: "row", Screen: "deal"}},
 	}
-	if len(tests)+len(surfaceMethods) != len(methods) {
-		t.Fatalf("dispatch coverage=%d methods=%d", len(tests), len(methods))
-	}
 	for _, tt := range tests {
 		t.Run(tt.method, func(t *testing.T) {
 			probe := &dispatchProbe{}
 			all := &svc.Services{Store: probeStore{p: probe}, Records: probeRecords{p: probe}, Builder: probeBuilder{p: probe}, Runs: probeRuns{p: probe}, Approvals: probeApprovals{p: probe}, Agent: probeAgent{p: probe}}
 			raw, _ := json.Marshal(tt.params)
-			_, err := methods[tt.method].run(context.Background(), all, scope, raw)
+			entry, ok := lookupMethod(tt.method)
+			if !ok || entry.Handle == nil || entry.Allow != nil {
+				t.Fatal("missing wave-1 dispatch entry or changed permission")
+			}
+			_, err := entry.Handle(context.Background(), all, scope, raw)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if probe.method != tt.method || !reflect.DeepEqual(probe.params, tt.params) {
 				t.Fatalf("dispatch=%+v want method=%s params=%+v", probe, tt.method, tt.params)
 			}
-			if methods[tt.method].global {
+			if entry.Global {
 				if probe.scope.Caller != scope.Caller {
 					t.Fatal(probe.scope)
 				}

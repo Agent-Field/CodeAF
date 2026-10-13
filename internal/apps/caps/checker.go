@@ -26,26 +26,36 @@ func New(cfg svc.Config, all *svc.Services) *Service {
 
 // Allow is also the capability door for runs and the app agent's tools.
 func (s *Service) Allow(ctx context.Context, scope svc.Scope, method string, params json.RawMessage) error {
-	err := s.allow(ctx, scope, method, params)
+	err := s.allowRegistered(ctx, scope, method, params)
 	s.audit.append(scope, method, err)
 	return err
 }
 
-func (s *Service) allow(ctx context.Context, scope svc.Scope, method string, params json.RawMessage) error {
+func (s *Service) allowRegistered(ctx context.Context, scope svc.Scope, method string, params json.RawMessage) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if scope.Caller.Member == "" {
 		return denied("a member is required")
 	}
-	if handled, err := allowSurfaces(scope, method, params); handled {
-		return err
-	}
-	if err := allowRole(scope.Caller, method); err != nil {
-		return err
-	}
 	if len(params) != 0 && string(params) != "null" && (!json.Valid(params) || !strings.HasPrefix(strings.TrimSpace(string(params)), "{")) {
 		return bridge.Errorf(bridge.CodeInvalid, "params must be an object")
+	}
+	allow, denies := registeredPermission(method, params)
+	for _, rule := range denies {
+		if err := rule(ctx, scope.Caller, scope, method, params); err != nil {
+			return err
+		}
+	}
+	if allow != nil {
+		return allow(ctx, scope.Caller, scope, params)
+	}
+	return s.allow(ctx, scope, method, params)
+}
+
+func (s *Service) allow(ctx context.Context, scope svc.Scope, method string, params json.RawMessage) error {
+	if err := allowRole(scope.Caller, method); err != nil {
+		return err
 	}
 	if method == bridge.MethodAppsList || method == bridge.MethodAppsCreate {
 		return nil
