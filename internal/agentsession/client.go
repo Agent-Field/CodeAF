@@ -23,6 +23,7 @@ package agentsession
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,7 +142,7 @@ func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, e
 	}
 	wire := wireRequest{
 		Model: request.Model, Messages: request.Messages, Tools: request.Tools,
-		ResponseFormat: request.ResponseFormat, PromptCacheKey: request.Thread,
+		ResponseFormat: request.ResponseFormat, PromptCacheKey: wireAffinity(request.Thread),
 	}
 	if len(wire.Tools) > 0 {
 		wire.ToolChoice = "auto"
@@ -187,6 +188,28 @@ func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, e
 		}
 	}
 	return nil, last
+}
+
+// wireAffinity keeps ordinary cache keys unchanged. A display label can contain
+// any Unicode, but gateways also use affinity as a request header, which must
+// be ASCII. Hash the entire unsafe key so its turns stay together without
+// collapsing different labels or session numbers to the same stripped text.
+func wireAffinity(thread string) string {
+	if strings.IndexFunc(thread, func(r rune) bool { return r < 33 || r > 126 }) < 0 {
+		return thread
+	}
+	sum := sha256.Sum256([]byte(thread))
+	return fmt.Sprintf("agent-%x", sum)
+}
+
+// Refusal is the first refusal that stopped all model calls. A program that
+// retains a partial result still needs the typed ceiling or key refusal, even
+// if its own phase calls wrapped the individual failures in opaque errors.
+func (c *Client) Refusal() error {
+	if stopped := c.stopped.Load(); stopped != nil {
+		return *stopped
+	}
+	return nil
 }
 
 // errHeld is the model API asking a call to wait while calls in flight hold

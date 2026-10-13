@@ -281,10 +281,8 @@ func strategyValues(strategies []schemas.HuntStrategy) []string {
 //
 // Concurrency parity:
 //
-//   - `asyncio.gather(..., return_exceptions=True)` means a hunter that raises
-//     is SILENTLY DROPPED — its findings are simply absent and nothing is
-//     logged. The Go port reproduces that: a per-index error slot that nothing
-//     reads. The only error RunHunt can return is dedup's.
+//   - A failed hunter contributes no findings, but codeaf records the failure
+//     separately so a resumed audit cannot mistake it for a completed search.
 //   - Results are flattened in strategy order regardless of completion order,
 //     so the port writes into a pre-sized slice rather than appending from the
 //     goroutines.
@@ -312,6 +310,7 @@ func RunHunt(
 	sem := semaphore.NewWeighted(int64(concurrencyLimit(maxConcurrentHunters, len(strategies))))
 
 	perStrategy := make([][]schemas.RawFinding, len(strategies))
+	failures := make([]error, len(strategies))
 	var wg sync.WaitGroup
 	for i, strategy := range strategies {
 		i, strategy := i, strategy
@@ -319,7 +318,7 @@ func RunHunt(
 		go func() {
 			defer wg.Done()
 			if err := sem.Acquire(ctx, 1); err != nil {
-				// Python: a cancelled task is an exception gather swallows.
+				failures[i] = err
 				return
 			}
 			defer sem.Release(1)
@@ -327,14 +326,16 @@ func RunHunt(
 				ctx, strategyRunnerIndex[strategy], app, repoPath, recon, profile,
 			)
 			if err != nil {
-				// Python: `return_exceptions=True` then `if isinstance(result,
-				// Exception): continue`.
+				failures[i] = err
 				return
 			}
 			perStrategy[i] = findings
 		}()
 	}
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return schemas.HuntResult{}, err
+	}
 
 	allFindings := []schemas.RawFinding{}
 	for _, findings := range perStrategy {
@@ -352,6 +353,7 @@ func RunHunt(
 	deduplicated.ChainCount = len(deduplicated.Chains)
 	deduplicated.StrategiesRun = strategyValues(strategies)
 	deduplicated.HuntDurationSeconds = time.Since(started).Seconds()
+	deduplicated.Coverage = coverageForErrors(strategies, failures)
 	return deduplicated, nil
 }
 
@@ -413,13 +415,15 @@ func RunHuntStreaming(
 	)
 
 	var wg sync.WaitGroup
-	for _, strategy := range strategies {
+	failures := make([]error, len(strategies))
+	for index, strategy := range strategies {
 		strategy := strategy
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
 			if err := sem.Acquire(ctx, 1); err != nil {
+				failures[index] = err
 				return
 			}
 			hunterFindings, err := runSingleHunter(
@@ -427,8 +431,7 @@ func RunHuntStreaming(
 			)
 			sem.Release(1) // Python releases before taking the dedup lock.
 			if err != nil {
-				// Python: gather(return_exceptions=True) swallows it, and the
-				// task never reaches its queue put.
+				failures[index] = err
 				return
 			}
 
@@ -461,6 +464,9 @@ func RunHuntStreaming(
 	}
 	wg.Wait()
 	close(findings) // Python: `await findings_queue.put(None)`.
+	if err := ctx.Err(); err != nil {
+		return schemas.HuntResult{}, err
+	}
 
 	unique := make([]schemas.RawFinding, 0, len(fingerprintOrder))
 	for _, fingerprint := range fingerprintOrder {
@@ -480,5 +486,21 @@ func RunHuntStreaming(
 	deduplicated.ChainCount = len(deduplicated.Chains)
 	deduplicated.StrategiesRun = strategyValues(strategies)
 	deduplicated.HuntDurationSeconds = time.Since(started).Seconds()
+	deduplicated.Coverage = coverageForErrors(strategies, failures)
 	return deduplicated, nil
+}
+
+// coverageForErrors retains selected invocations in order after all producers
+// have joined. Complete runs keep the original report and checkpoint shape.
+func coverageForErrors(strategies []schemas.HuntStrategy, failures []error) *schemas.HuntCoverage {
+	var failed []schemas.HuntFailure
+	for i, err := range failures {
+		if err != nil {
+			failed = append(failed, schemas.HuntFailure{Strategy: string(strategies[i]), Reason: err.Error()})
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return &schemas.HuntCoverage{Attempted: len(strategies), Failures: failed}
 }

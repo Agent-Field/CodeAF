@@ -36,6 +36,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/programguide"
 	"github.com/Agent-Field/codeaf/internal/secaf/audit"
+	"github.com/Agent-Field/codeaf/internal/secaf/schemas"
 )
 
 // Name is the program's name: its chat command and its shell verb.
@@ -277,15 +278,15 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		ending := delegate.Ending{CostUSD: spent, Reason: err.Error(),
 			Extra: map[string]any{"sessions": sessions, "calls": calls}}
 		switch {
-		case errors.Is(err, agentsession.ErrCeiling):
+		case ctx.Err() != nil:
+			ending.Status = delegate.StatusFail
+			ending.Message = "it was stopped before it finished"
+		case errors.Is(err, agentsession.ErrCeiling) || errors.Is(client.Refusal(), agentsession.ErrCeiling):
 			ending.Status = delegate.StatusBudget
 			ending.Message = "it reached the run's dollar ceiling before it finished, so it has no report"
 		case errors.Is(auditCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
 			ending.Status = delegate.StatusBudget
 			ending.Message = "it reached the run's time ceiling before it finished, so it has no report"
-		case ctx.Err() != nil:
-			ending.Status = delegate.StatusFail
-			ending.Message = "it was stopped before it finished"
 		default:
 			ending.Status = delegate.StatusFail
 			ending.Message = firstSentence(err.Error())
@@ -301,6 +302,28 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	if errors.Is(auditCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
 		cut = stageWords[phases.current()]
 	}
+	status := delegate.StatusPass
+	coverage := schemas.Coverage(result.Metadata)
+	if coverage.Incomplete() {
+		status = delegate.StatusFail
+	}
+	interruption := ""
+	switch {
+	case ctx.Err() != nil:
+		status, interruption = delegate.StatusFail, "the run was stopped before it finished"
+	case cut != "":
+		status, interruption = delegate.StatusBudget, "the run's time ceiling stopped the analysis"
+	case errors.Is(client.Refusal(), agentsession.ErrCeiling):
+		status, interruption = delegate.StatusBudget, "the run's dollar ceiling stopped the analysis"
+	case client.Refusal() != nil:
+		status, interruption = delegate.StatusFail, firstSentence(client.Refusal().Error())
+	}
+	if interruption != "" {
+		if result.Metadata == nil {
+			result.Metadata = make(map[string]any)
+		}
+		result.Metadata["analysis_incomplete"] = interruption
+	}
 	host.Stage(delegate.StageRecord{Stage: stageReport, Status: "running"})
 	files, err := reportFiles(records, result, len(request.ComplianceFrameworks) > 0, runFacts{
 		scope: scope, changes: changes, spent: spent, sessions: sessions, calls: calls, took: time.Since(started),
@@ -309,16 +332,23 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		_, _ = fmt.Fprintf(notes, "[sec] could not write the full report: %v\n", err)
 	}
 	text := summary(scope, changes, result, files, cut, host.Ceilings().TimeWord())
+	extra := map[string]any{
+		"status": status, "reports": files, "sessions": sessions, "calls": calls, "cut_at": cut,
+		"confirmed": result.Confirmed, "likely": result.Likely,
+		"inconclusive": result.Inconclusive, "ruled_out": result.NotExploitable,
+	}
+	if coverage.Incomplete() {
+		extra["hunt_coverage"] = coverage
+	}
+	if interruption != "" {
+		extra["analysis_incomplete"] = interruption
+	}
 	return delegate.Ending{
-		Status:      delegate.StatusPass,
+		Status:      status,
 		Message:     outcomeLine(result, cut),
 		CostUSD:     spent,
 		Deliverable: text,
-		Extra: map[string]any{
-			"status": "pass", "reports": files, "sessions": sessions, "calls": calls, "cut_at": cut,
-			"confirmed": result.Confirmed, "likely": result.Likely,
-			"inconclusive": result.Inconclusive, "ruled_out": result.NotExploitable,
-		},
+		Extra:       extra,
 	}
 }
 

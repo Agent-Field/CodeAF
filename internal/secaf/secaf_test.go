@@ -60,6 +60,9 @@ type stubModels struct {
 	calls   int
 	threads map[string]bool
 	scanned []string
+	// reject injects a transport failure at a schema boundary while allowing
+	// the real pipeline's other agents to finish normally.
+	reject func(string) int
 }
 
 func (m *stubModels) serve(t *testing.T) delegate.ModelAPI {
@@ -83,6 +86,14 @@ func (m *stubModels) serve(t *testing.T) delegate.ModelAPI {
 		m.mu.Unlock()
 		text := "no chains"
 		if schema := schemaOf(body.ResponseFormat, body.Messages); schema != nil {
+			if m.reject != nil {
+				title, _ := schema["title"].(string)
+				if status := m.reject(title); status != 0 {
+					w.WriteHeader(status)
+					_, _ = io.WriteString(w, `{"error":{"message":"injected model refusal"}}`)
+					return
+				}
+			}
 			value := minimal(schema, schema)
 			if title, _ := schema["title"].(string); title == "ScanLocationsResult" {
 				user := body.Messages[len(body.Messages)-1].Content[0].Text
