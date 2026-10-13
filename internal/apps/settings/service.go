@@ -48,6 +48,11 @@ func (s *Service) definition(ctx context.Context, app string) (*spec.Bundle, err
 	if s.all == nil || s.all.Store == nil {
 		return nil, bridge.Errorf(bridge.CodeInternal, "app store unavailable")
 	}
+	// Settings need the runs engine to report spending and AI trigger pauses.
+	// An unwired engine leaves the whole settings surface unavailable.
+	if s.all.Runs == nil {
+		return nil, bridge.NotBuilt("runs")
+	}
 	def, err := s.all.Store.Definition(ctx, app)
 	if err != nil {
 		return nil, err

@@ -96,7 +96,7 @@ func (s *Service) budget(ctx context.Context, scope svc.Scope, app *spec.App, p 
 
 func (s *Service) spent(ctx context.Context, scope svc.Scope, at time.Time) (float64, error) {
 	if s.all.Runs == nil {
-		return 0, bridge.Errorf(bridge.CodeInternal, "runs budget unavailable")
+		return 0, bridge.NotBuilt("runs")
 	}
 	page, err := s.all.Runs.List(ctx, scope, bridge.ListRunsParams{})
 	if err != nil {

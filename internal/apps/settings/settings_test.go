@@ -453,7 +453,7 @@ func TestMethodsRejectUnreadableState(t *testing.T) {
 			{"invalid id", bridge.CodeInvalid, func(_ *testing.T, _ *Service, _ *testStore, scope *svc.Scope) { scope.App = "../crm" }},
 			{"store unavailable", bridge.CodeInternal, func(_ *testing.T, s *Service, _ *testStore, _ *svc.Scope) { s.all.Store = nil }},
 			{"bad JSON", bridge.CodeInternal, func(t *testing.T, s *Service, _ *testStore, _ *svc.Scope) { seedSettings(t, s, "{") }},
-			{"runs unavailable", bridge.CodeInternal, func(_ *testing.T, s *Service, _ *testStore, _ *svc.Scope) { s.all.Runs = nil }},
+			{"runs unavailable", bridge.CodeNotBuilt, func(_ *testing.T, s *Service, _ *testStore, _ *svc.Scope) { s.all.Runs = nil }},
 			{"runs read fails", bridge.CodeInternal, func(_ *testing.T, s *Service, _ *testStore, _ *svc.Scope) {
 				s.all.Runs = &testRuns{err: bridge.Errorf(bridge.CodeInternal, "journal unavailable")}
 			}},
@@ -467,6 +467,49 @@ func TestMethodsRejectUnreadableState(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestMethodsWaitForRunsWithoutChangingSettings(t *testing.T) {
+	for _, method := range []struct {
+		name      string
+		call      func(*Service, svc.Scope) error
+		wiredCode bridge.ErrorCode
+	}{
+		{"triggers.list", func(s *Service, scope svc.Scope) error {
+			_, err := s.ListTriggers(context.Background(), scope)
+			return err
+		}, ""},
+		{"triggers.pause", func(s *Service, scope svc.Scope) error {
+			_, err := s.PauseTrigger(context.Background(), scope, bridge.PauseTriggerParams{ID: "monday", Paused: true})
+			return err
+		}, ""},
+		{"triggers.pause unknown", func(s *Service, scope svc.Scope) error {
+			_, err := s.PauseTrigger(context.Background(), scope, bridge.PauseTriggerParams{ID: "missing", Paused: true})
+			return err
+		}, bridge.CodeNotFound},
+		{"budget.get", func(s *Service, scope svc.Scope) error {
+			_, err := s.GetBudget(context.Background(), scope)
+			return err
+		}, ""},
+		{"budget.set", func(s *Service, scope svc.Scope) error {
+			_, err := s.SetBudget(context.Background(), scope, bridge.SetBudgetParams{Month: 10})
+			return err
+		}, ""},
+	} {
+		t.Run(method.name, func(t *testing.T) {
+			s, _, scope, activity := fixture(t)
+			const previous = `{"month":20,"triggers":{"new-deal":{"paused":true}}}`
+			seedSettings(t, s, previous)
+			s.all.Runs = nil
+			requireCode(t, method.call(s, scope), bridge.CodeNotBuilt)
+			raw, err := os.ReadFile(filepath.Join(s.root, "crm", "settings.json"))
+			if err != nil || string(raw) != previous || len(activity.lines) != 0 {
+				t.Fatalf("unwired settings call changed state: settings=%s Activity=%q error=%v", raw, activity.lines, err)
+			}
+			s.all.Runs = &testRuns{}
+			requireCode(t, method.call(s, scope), method.wiredCode)
+		})
 	}
 }
 
