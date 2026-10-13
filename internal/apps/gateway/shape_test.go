@@ -58,7 +58,7 @@ func TestDraftRecordCreateOnlyWritesOverlay(t *testing.T) {
 	all.Hub = realtime.New(cfg, all)
 	all.Caps = caps.New(cfg, all)
 	all.Records = records.New(cfg, all)
-	real := ownerScope("crm")
+	real := svc.Scope{App: "crm", Caller: PersonalCaller(context.Background(), nil, "crm"), Data: svc.DataSample}
 	real.Data = svc.DataReal
 	before, err := all.Records.Query(context.Background(), real, bridge.QueryParams{Type: "company"})
 	if err != nil {
@@ -145,17 +145,14 @@ func TestShapeMethodDispatch(t *testing.T) {
 		{"versions.list", `{}`}, {"versions.diff", `{"version":1}`},
 		{"versions.restore", `{"version":1,"confirm":true}`}, {"apps.health", `{}`},
 	}
-	if len(tests) != len(shapeMethods) {
-		t.Fatalf("shape dispatch coverage=%d methods=%d", len(tests), len(shapeMethods))
-	}
 
 	for _, tt := range tests {
 		t.Run(tt.method, func(t *testing.T) {
-			entry, ok := lookupShapeMethod(tt.method)
-			if !ok || entry.global {
+			entry, ok := lookupMethod(tt.method)
+			if !ok || entry.Global {
 				t.Fatal("missing app-scoped dispatch entry")
 			}
-			scope := ownerScope("crm")
+			scope := svc.Scope{App: "crm", Caller: PersonalCaller(context.Background(), nil, "crm"), Data: svc.DataSample}
 			if tt.method == bridge.MethodShapeAsk {
 				scope.Caller.Role = svc.RoleUser
 			}
@@ -163,7 +160,7 @@ func TestShapeMethodDispatch(t *testing.T) {
 			if err := all.Caps.Allow(context.Background(), scope, tt.method, raw); err != nil {
 				t.Fatal(err)
 			}
-			result, err := entry.run(context.Background(), all, scope, raw)
+			result, err := entry.Handle(context.Background(), all, scope, raw)
 			if tt.method == bridge.MethodVersionsList {
 				if err != nil {
 					t.Fatal(err)

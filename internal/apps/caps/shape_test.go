@@ -1,4 +1,4 @@
-package caps
+package caps_test
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/caps"
+	_ "github.com/Agent-Field/codeaf/internal/apps/gateway"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
@@ -16,7 +18,7 @@ func TestShapeRoles(t *testing.T) {
 		bridge.MethodShapePreview, bridge.MethodShapeApply, bridge.MethodShapeDiscard, bridge.MethodShapeReplayDismiss,
 		bridge.MethodShapeAsk, bridge.MethodVersionsList, bridge.MethodVersionsDiff, bridge.MethodVersionsRestore, bridge.MethodAppsHealth,
 	}
-	checker := New(svc.Config{Root: t.TempDir()}, &svc.Services{})
+	checker := caps.New(svc.Config{Root: t.TempDir()}, &svc.Services{})
 	for _, role := range []svc.Role{svc.RoleEditor, svc.RoleUser, svc.RoleViewer, ""} {
 		for _, method := range methods {
 			t.Run(string(role)+"/"+method, func(t *testing.T) {
@@ -36,7 +38,7 @@ func TestShapeRoles(t *testing.T) {
 }
 
 func TestShapeSubscriptionPrivacy(t *testing.T) {
-	checker := New(svc.Config{Root: t.TempDir()}, &svc.Services{})
+	checker := caps.New(svc.Config{Root: t.TempDir()}, &svc.Services{})
 	for _, tt := range []struct {
 		topic string
 		code  bridge.ErrorCode
@@ -64,7 +66,7 @@ func TestShapeSubscriptionPrivacy(t *testing.T) {
 }
 
 func TestDraftAgentAndShapeValidation(t *testing.T) {
-	checker := New(svc.Config{Root: t.TempDir()}, &svc.Services{})
+	checker := caps.New(svc.Config{Root: t.TempDir()}, &svc.Services{})
 	scope := svc.Scope{App: "crm", Caller: svc.Caller{Member: "me", Role: svc.RoleEditor}, Data: svc.DataDraft}
 	requireShapeCode(t, checker.Allow(context.Background(), scope, bridge.MethodAgentSend, nil), bridge.CodeDenied)
 	for _, raw := range []string{`[]`, `"text"`, `{`, `42`} {

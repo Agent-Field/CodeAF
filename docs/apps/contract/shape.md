@@ -168,9 +168,30 @@ type ShapeOutput struct { Files spec.Files; Summary string; Question *bridge.Sha
 
 Registration lines (R1): `svc.Services` gets `Shape Shape` and `Shaper Shaper`;
 `server.go` gets `all.Shape = shape.New(cfg, all)` and
-`all.Shaper = builder.NewShaper(cfg, all)`; the gateway table gets one
-`registerShape(methods)` call from `gateway/shape.go`; caps gets one call to a
-shape rule file for role checks of `shape.*`/`versions.restore`.
+`all.Shaper = builder.NewShaper(cfg, all)`. Each method in `gateway/shape.go`
+registers from its own `init()` with `gateway.Register(name, Method{Handle:
+handler, Allow: allow})`; its Allow enforces the role in §3 and admits the
+app agent only for `apps.health`. There are no track wrappers around
+`gateway.call` or `caps.Allow`, and duplicate method names panic at startup.
+Gateway forwards Allows to the caps registry to avoid an import cycle.
+
+Shape registers its private topic prefix `app/*/shape/` with
+`caps.RegisterTopic` and an Allow that admits only the calling member, plus
+version and health topic permissions. Client app wildcards are denied so they
+cannot expose another member's draft. `caps/shape.go` registers one deny-only
+rule with `caps.AddDenyRule`: `agent.send` cannot run under `DataDraft`.
+Generic checks run before deny rules; deny rules run before method/topic
+Allows, and audit still appends once per call.
+
+Draft scope is a core gateway seam: `gateway/scope_draft.go` strips `@draft`
+before resolving the app caller and sets `Scope.Data = DataDraft` before
+caps; resolving a kept app preserves that data mode. Only spaces sets
+`gateway.SetCallerResolver` from its `init()`; the default is the Personal
+owner/editor, and a second Set panics. The resolver receives the upgrade
+request once for socket membership (app empty), and once per app-scoped call
+or subscription for the bare app id. Socket cleanup uses
+`gateway.OnDisconnect(func(svc.Caller))`: hooks receive the socket caller in
+registration order, and a panicking hook is logged without stopping others.
 
 ## 7 · Ownership
 

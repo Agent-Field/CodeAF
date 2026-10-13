@@ -2,106 +2,138 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/caps"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
-// Keep the wave-1 dispatch table intact so tracks can register their own methods.
-var shapeMethods = map[string]method{}
-
-func init() { registerShape(shapeMethods) }
-
-func lookupShapeMethod(name string) (method, bool) {
-	if entry, ok := methods[name]; ok {
-		return entry, true
-	}
-	entry, ok := shapeMethods[name]
-	return entry, ok
-}
-
-func (s *session) shapeCall(in bridge.Envelope) (method, svc.Scope, error) {
-	scope := shapeScope(in.App)
-	err := s.all.Caps.Allow(s.ctx, scope, in.Method, in.Params)
-	entry, ok := lookupShapeMethod(in.Method)
-	// Unknown wire methods remain invalid even when internal tool capabilities
-	// recognise the same verb for runs or the app agent.
-	if !ok {
-		return entry, scope, bridge.Errorf(bridge.CodeInvalid, "unknown method "+in.Method)
-	}
-	if err == nil {
-		scope, err = s.resolveShapeScope(scope, entry.global)
-	}
-	return entry, scope, err
-}
-
-func registerShape(m map[string]method) {
-	m[bridge.MethodShapeOpen] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeOpenParams) (bridge.ShapeOpenResult, error) {
+func init() {
+	Register(bridge.MethodShapeOpen, Method{Allow: shapeAllow(bridge.MethodShapeOpen), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeOpenParams) (bridge.ShapeOpenResult, error) {
 		return s.Shape.Open
-	})}
-	m[bridge.MethodShapeGet] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeGetParams) (bridge.ShapeGetResult, error) {
+	})})
+	Register(bridge.MethodShapeGet, Method{Allow: shapeAllow(bridge.MethodShapeGet), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeGetParams) (bridge.ShapeGetResult, error) {
 		return s.Shape.Get
-	})}
-	m[bridge.MethodShapeRequest] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeRequestParams) (bridge.ShapeRequestResult, error) {
+	})})
+	Register(bridge.MethodShapeRequest, Method{Allow: shapeAllow(bridge.MethodShapeRequest), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeRequestParams) (bridge.ShapeRequestResult, error) {
 		return s.Shape.Request
-	})}
-	m[bridge.MethodShapePlanEdit] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapePlanEditParams) (bridge.ShapePlanEditResult, error) {
+	})})
+	Register(bridge.MethodShapePlanEdit, Method{Allow: shapeAllow(bridge.MethodShapePlanEdit), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapePlanEditParams) (bridge.ShapePlanEditResult, error) {
 		return s.Shape.EditPlan
-	})}
-	m[bridge.MethodShapeChangeFix] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeChangeFixParams) (bridge.ShapeChangeFixResult, error) {
+	})})
+	Register(bridge.MethodShapeChangeFix, Method{Allow: shapeAllow(bridge.MethodShapeChangeFix), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeChangeFixParams) (bridge.ShapeChangeFixResult, error) {
 		return s.Shape.FixChange
-	})}
-	m[bridge.MethodShapeChangeCancel] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeChangeCancelParams) (bridge.ShapeChangeCancelResult, error) {
+	})})
+	Register(bridge.MethodShapeChangeCancel, Method{Allow: shapeAllow(bridge.MethodShapeChangeCancel), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeChangeCancelParams) (bridge.ShapeChangeCancelResult, error) {
 		return s.Shape.CancelChange
-	})}
-	m[bridge.MethodShapeAnswer] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeAnswerParams) (bridge.ShapeAnswerResult, error) {
+	})})
+	Register(bridge.MethodShapeAnswer, Method{Allow: shapeAllow(bridge.MethodShapeAnswer), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeAnswerParams) (bridge.ShapeAnswerResult, error) {
 		return s.Shape.Answer
-	})}
-	m[bridge.MethodShapeDiff] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeDiffParams) (bridge.ShapeDiffResult, error) {
+	})})
+	Register(bridge.MethodShapeDiff, Method{Allow: shapeAllow(bridge.MethodShapeDiff), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeDiffParams) (bridge.ShapeDiffResult, error) {
 		return s.Shape.Diff
-	})}
-	m[bridge.MethodShapePreview] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapePreviewParams) (bridge.ShapePreviewResult, error) {
+	})})
+	Register(bridge.MethodShapePreview, Method{Allow: shapeAllow(bridge.MethodShapePreview), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapePreviewParams) (bridge.ShapePreviewResult, error) {
 		return s.Shape.Preview
-	})}
-	m[bridge.MethodShapeApply] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeApplyParams) (bridge.ShapeApplyResult, error) {
+	})})
+	Register(bridge.MethodShapeApply, Method{Allow: shapeAllow(bridge.MethodShapeApply), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeApplyParams) (bridge.ShapeApplyResult, error) {
 		return s.Shape.Apply
-	})}
-	m[bridge.MethodShapeDiscard] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeDiscardParams) (bridge.ShapeDiscardResult, error) {
+	})})
+	Register(bridge.MethodShapeDiscard, Method{Allow: shapeAllow(bridge.MethodShapeDiscard), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeDiscardParams) (bridge.ShapeDiscardResult, error) {
 		return s.Shape.Discard
-	})}
-	m[bridge.MethodShapeReplayDismiss] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeReplayDismissParams) (bridge.ShapeReplayDismissResult, error) {
+	})})
+	Register(bridge.MethodShapeReplayDismiss, Method{Allow: shapeAllow(bridge.MethodShapeReplayDismiss), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeReplayDismissParams) (bridge.ShapeReplayDismissResult, error) {
 		return s.Shape.DismissReplay
-	})}
-	m[bridge.MethodShapeAsk] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeAskParams) (bridge.ShapeAskResult, error) {
+	})})
+	Register(bridge.MethodShapeAsk, Method{Allow: shapeAllow(bridge.MethodShapeAsk), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.ShapeAskParams) (bridge.ShapeAskResult, error) {
 		return s.Shape.Ask
-	})}
-	m[bridge.MethodVersionsList] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.VersionsListParams) (bridge.VersionsListResult, error) {
+	})})
+	Register(bridge.MethodVersionsList, Method{Allow: shapeAllow(bridge.MethodVersionsList), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.VersionsListParams) (bridge.VersionsListResult, error) {
 		return s.Shape.ListVersions
-	})}
-	m[bridge.MethodVersionsDiff] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.VersionsDiffParams) (bridge.VersionsDiffResult, error) {
+	})})
+	Register(bridge.MethodVersionsDiff, Method{Allow: shapeAllow(bridge.MethodVersionsDiff), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.VersionsDiffParams) (bridge.VersionsDiffResult, error) {
 		return s.Shape.DiffVersion
-	})}
-	m[bridge.MethodVersionsRestore] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.VersionsRestoreParams) (bridge.VersionsRestoreResult, error) {
+	})})
+	Register(bridge.MethodVersionsRestore, Method{Allow: shapeAllow(bridge.MethodVersionsRestore), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.VersionsRestoreParams) (bridge.VersionsRestoreResult, error) {
 		return s.Shape.RestoreVersion
-	})}
-	m[bridge.MethodAppsHealth] = method{run: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.AppsHealthParams) (bridge.AppsHealthResult, error) {
+	})})
+	Register(bridge.MethodAppsHealth, Method{Allow: shapeAllow(bridge.MethodAppsHealth), Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.AppsHealthParams) (bridge.AppsHealthResult, error) {
 		return s.Shape.Health
-	})}
+	})})
+	caps.RegisterTopic("app/*/shape/", allowShapeTopic)
+	caps.RegisterTopic("app/*/version", allowShapeTopic)
+	caps.RegisterTopic("app/*/health", allowShapeTopic)
+	caps.RegisterTopic("app/*/*", allowShapeTopic)
 }
 
-func shapeScope(app string) svc.Scope {
-	id, draft := svc.ParseDraftApp(app)
-	scope := ownerScope(id)
-	if draft {
-		scope.Data = svc.DataDraft
+func shapeAllow(method string) AllowFunc {
+	return func(_ context.Context, caller svc.Caller, scope svc.Scope, _ json.RawMessage) error {
+		if err := validateShapeScope(scope); err != nil {
+			return err
+		}
+		if caller.Agent && method != bridge.MethodAppsHealth {
+			return bridge.Errorf(bridge.CodeDenied, "the app agent cannot change or read app definitions")
+		}
+		switch method {
+		case bridge.MethodVersionsList, bridge.MethodVersionsDiff, bridge.MethodAppsHealth:
+			return nil
+		case bridge.MethodShapeAsk:
+			if caller.Role != svc.RoleEditor {
+				return nil
+			}
+		default:
+			if caller.Role == svc.RoleEditor {
+				return nil
+			}
+		}
+		return bridge.Errorf(bridge.CodeDenied, "the app role does not allow this call")
 	}
-	return scope
 }
 
-func (s *session) resolveShapeScope(scope svc.Scope, global bool) (svc.Scope, error) {
-	resolved, err := s.resolveScope(scope, global)
-	if scope.Data == svc.DataDraft {
-		resolved.Data = svc.DataDraft
+func validateShapeScope(scope svc.Scope) error {
+	switch scope.Caller.Role {
+	case svc.RoleEditor, svc.RoleUser, svc.RoleViewer:
+	default:
+		return bridge.Errorf(bridge.CodeDenied, "the app role does not allow this call")
 	}
-	return resolved, err
+	if scope.App == "" {
+		return bridge.Errorf(bridge.CodeInvalid, "this method needs app")
+	}
+	return nil
+}
+
+func allowShapeTopic(_ context.Context, caller svc.Caller, scope svc.Scope, params json.RawMessage) error {
+	if err := validateShapeScope(scope); err != nil {
+		return err
+	}
+	var p struct {
+		Topic string `json:"topic"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return bridge.Errorf(bridge.CodeInvalid, "topic must be a string")
+	}
+	parts := strings.Split(p.Topic, "/")
+	if len(parts) < 3 || parts[0] != "app" || parts[1] != scope.App {
+		return bridge.Errorf(bridge.CodeInvalid, "topic must belong to this app")
+	}
+	switch parts[2] {
+	case "shape":
+		if len(parts) != 4 || parts[3] == "" || strings.ContainsAny(parts[3], "*\\") {
+			return bridge.Errorf(bridge.CodeInvalid, "unknown app topic")
+		}
+		if parts[3] != caller.Member {
+			return bridge.Errorf(bridge.CodeDenied, "a shape draft belongs to its member")
+		}
+		return nil
+	case "version", "health":
+		if len(parts) == 3 {
+			return nil
+		}
+	case "*":
+		// Client wildcards would expose other members' private shape events.
+		return bridge.Errorf(bridge.CodeDenied, "subscribe to individual app topics")
+	}
+	return bridge.Errorf(bridge.CodeInvalid, "unknown app topic")
 }
