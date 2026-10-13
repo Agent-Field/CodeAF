@@ -82,14 +82,32 @@ func encodeWorkspace(workspace string) string {
 // explicit workspace — the engine's --workspace, a door that has already
 // resolved one — is taken as given and is always borrowed: it is a place
 // somebody named, and naming a place is asking to work in it.
+//
+// A PROJECT IS NAMED BY THE FOLDER, NOT A SPELLING OF IT. Every answer here is
+// a key this surface reads and writes sessions, tasks and memory under, so the
+// spelling a terminal carried into the directory (a path reached through a
+// symlink) may not leak into it — the engine's door resolved (#1761), and a
+// bucket minted from the alias here would still have been a second project,
+// a second history, for one folder. A path that does not resolve keeps its
+// spelling.
 func v3Workspace(cwd, explicit string) (string, bool) {
 	if named := strings.TrimSpace(explicit); named != "" {
-		return named, false
+		return v3CanonicalPlace(named), false
 	}
 	if root, found := v3GitRoot(cwd); found {
-		return root, false
+		return v3CanonicalPlace(root), false
 	}
-	return cwd, v3NoProjectPlace(cwd)
+	return v3CanonicalPlace(cwd), v3NoProjectPlace(cwd)
+}
+
+// v3CanonicalPlace resolves the links in a path that is about to become a key,
+// and hands back the spelling it was given when the path does not resolve — a
+// workspace not on disk yet, a test's imagined directory.
+func v3CanonicalPlace(dir string) string {
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		return resolved
+	}
+	return dir
 }
 
 // v3NoProjectPlace reports whether a directory is somewhere the person stood by
