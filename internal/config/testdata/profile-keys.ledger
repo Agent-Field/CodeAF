@@ -121,3 +121,19 @@ update.auto
 vision_model
 work.workers
 working_set_tokens
+
+# App-owned non-secret rows in the shared profile.
+app.accounts.github
+app.accounts.google
+app.accounts.slack
+app.advanced.context_tokens
+app.advanced.idle_days
+app.advanced.work_folder
+app.factory.polling_s
+app.memory.agents_may_add
+app.models.pinned
+app.permissions.always_ask
+app.permissions.mode
+app.permissions.question_clock_min
+app.setup.step
+app.spending.per_agent

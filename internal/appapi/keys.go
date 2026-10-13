@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -36,7 +37,10 @@ type KeyCheckResult struct {
 // person's later disconnect. The map contains only the provider's model ids.
 type keyState struct {
 	sync.Mutex
-	models map[string][]string
+	models       map[string][]string
+	revisions    map[string]uint64
+	listedAt     map[string]time.Time
+	lastProvider string
 }
 
 func (s *Server) registerKeys() {
@@ -44,6 +48,8 @@ func (s *Server) registerKeys() {
 		return
 	}
 	s.keyState.models = make(map[string][]string)
+	s.keyState.revisions = make(map[string]uint64)
+	s.keyState.listedAt = make(map[string]time.Time)
 	s.mux.HandleFunc("/app/v1/keys", s.keys)
 	s.mux.HandleFunc("/app/v1/keys/{provider}", s.providerKey)
 }
@@ -103,7 +109,10 @@ func (s *Server) providerKey(w http.ResponseWriter, r *http.Request) {
 	defer s.keyState.Unlock()
 	if r.Method == http.MethodDelete {
 		s.options.Credentials.Set(id, "")
+		s.keyState.revisions[id]++
+		_, _ = s.events.Publish(EventKeysChanged, map[string]any{"keys": []string{id}})
 		delete(s.keyState.models, id)
+		delete(s.keyState.listedAt, id)
 		write(w, 200, map[string]bool{"ok": true})
 		return
 	}
@@ -128,6 +137,10 @@ func (s *Server) providerKey(w http.ResponseWriter, r *http.Request) {
 	}
 	s.options.Credentials.Set(id, key)
 	s.keyState.models[id] = models
+	s.keyState.listedAt[id] = time.Now()
+	s.keyState.lastProvider = id
+	s.keyState.revisions[id]++
+	_, _ = s.events.Publish(EventKeysChanged, map[string]any{"keys": []string{id}})
 	write(w, 200, KeyCheckResult{OK: true, Models: models})
 }
 

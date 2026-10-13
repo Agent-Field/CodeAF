@@ -135,6 +135,51 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	if len(updates) == 0 {
 		return nil
 	}
+	// User-defined marshalers stay outside the profile lock. A marshaler may
+	// wait for another writer, and neither writer may hold the other's lock.
+	prepared := make(map[string]any, len(updates))
+	for name, value := range updates {
+		if _, remove := value.(profileKeyRemoval); remove {
+			prepared[name] = value
+			continue
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("write config %s: %w", name, err)
+		}
+		prepared[name] = json.RawMessage(raw)
+	}
+	return transformProfileValues(profileDir, func(map[string]json.RawMessage) (map[string]any, error) { return prepared, nil })
+}
+
+// transformProfileValues checks and changes one snapshot while holding the
+// shared profile lock, so conditional app writes cannot overwrite a TUI edit.
+func transformProfileValues(profileDir string, transform func(map[string]json.RawMessage) (map[string]any, error)) error {
+	profileWriteMu.Lock()
+	defer profileWriteMu.Unlock()
+	path := BudgetConfigPath(profileDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	profileLock, err := lockProfileConfig(path)
+	if err != nil {
+		return err
+	}
+	defer profileLock.Close()
+	held, err := readProfileConfig(profileDir)
+	if err != nil {
+		return fmt.Errorf("write config: preserve existing file: %w", err)
+	}
+	updates, err := transform(held)
+	if err != nil {
+		return err
+	}
+	if err := refuseAppCredentialUpdates(updates); err != nil {
+		return err
+	}
+	if len(updates) == 0 {
+		return nil
+	}
 	// The key in the error messages is a DETERMINISTIC one — a map has no order,
 	// and a failure that named a different row on every attempt would be a
 	// failure nobody could search for.
@@ -153,28 +198,6 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 		encodedUpdates[name] = encodedValue
 	}
 
-	// A settings write is one read-copy-rename transaction. Two surface actions
-	// may reach it together; serializing the whole transaction keeps the second
-	// read behind the first rename instead of letting either rename discard the
-	// other action. Marshal before the lock because user-defined marshalers do
-	// not belong inside the profile critical section.
-	profileWriteMu.Lock()
-	defer profileWriteMu.Unlock()
-
-	path := BudgetConfigPath(profileDir)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("write config %s: %w", key, err)
-	}
-	profileLock, err := lockProfileConfig(path)
-	if err != nil {
-		return fmt.Errorf("write config %s: %w", key, err)
-	}
-	defer profileLock.Close()
-
-	held, err := readProfileConfig(profileDir)
-	if err != nil {
-		return fmt.Errorf("write config: preserve existing file: %w", err)
-	}
 	// THE WRITER OWNS ITS OWN MAP. [readProfileConfig] hands back the map its
 	// memo is holding, and adding a row to that map in place would rewrite what
 	// every reader in this package is about to be told the file says — including

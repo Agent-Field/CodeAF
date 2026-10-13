@@ -12,13 +12,13 @@ import (
 const (
 	DefaultTaskProposalSeconds = config.DefaultTaskAutoApprove
 	DefaultTaskCapUSD          = config.CrewTaskCapDefault
-	DefaultDayCapUSD           = 20.0
+	DefaultDayCapUSD           = config.AppDefaultDayCap
 	DefaultStandingRunUSD      = standing.DefaultPerRunUSD
-	QuestionClock              = 15 * time.Minute
+	QuestionClock              = config.AppDefaultQuestionClockMinutes * time.Minute
 	ProcessOutputRetention     = 7 * 24 * time.Hour
 	MaxProcessOutputBytes      = 10 << 20
 	QuickTaskFileLimit         = 30
-	IdleAgentAfter             = 7 * 24 * time.Hour
+	IdleAgentAfter             = config.AppDefaultIdleDays * 24 * time.Hour
 )
 
 // StandingScope names where an order may speak, rather than where it looks.

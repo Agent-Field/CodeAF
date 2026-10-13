@@ -1,6 +1,7 @@
 package appapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 )
 
 // Contract changes only when the app wire makes a breaking change.
@@ -31,25 +33,31 @@ type Hello struct {
 }
 
 type Options struct {
-	Version       string
-	Epoch         string
-	Shutdown      func()
-	Credentials   *config.AppCredentials
-	ProfileDir    string
-	KeyHTTPClient *http.Client
-	Agents        *AgentRegistry
+	Version        string
+	Epoch          string
+	Shutdown       func()
+	Credentials    *config.AppCredentials
+	ProfileDir     string
+	KeyHTTPClient  *http.Client
+	ModelCatalog   func(context.Context) ([]CatalogModel, error)
+	Context        context.Context
+	OpenRouterAuth openrouterauth.Options
+	Agents         *AgentRegistry
 }
 
 // Server keeps every registered handler behind the same transport guard.
 // Later lanes mount their resource handlers through Handle, never on a second
 // listener with a different authentication policy.
 type Server struct {
-	options  Options
-	mux      *http.ServeMux
-	guarded  http.Handler
-	once     sync.Once
-	events   *EventHub
-	keyState keyState
+	options       Options
+	mux           *http.ServeMux
+	guarded       http.Handler
+	once          sync.Once
+	events        *EventHub
+	keyState      keyState
+	settingsState settingsState
+	signIn        browserSignIn
+	mutations     mutationState
 }
 
 type route struct {
@@ -83,6 +91,7 @@ func New(token string, options Options) *Server {
 	s.registerContractRoutes()
 	s.mux.HandleFunc("/app/v1/agents", s.agentsRoute)
 	s.mux.HandleFunc("/app/v1/agents/", s.agentsRoute)
+	s.registerSettings()
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "no such app route")
 	})
@@ -133,7 +142,7 @@ func (s *Server) shutdown(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 	s.once.Do(func() {
-		s.events.Close()
+		s.Close()
 		if s.options.Shutdown != nil {
 			s.options.Shutdown()
 		}

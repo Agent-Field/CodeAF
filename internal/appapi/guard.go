@@ -77,6 +77,7 @@ func Guard(token string, next http.Handler) http.Handler {
 		}
 		if present {
 			w.Header().Set("Access-Control-Allow-Origin", origins[0])
+			w.Header().Set("Access-Control-Expose-Headers", "ETag")
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Last-Event-ID")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")

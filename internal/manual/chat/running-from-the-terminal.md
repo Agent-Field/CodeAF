@@ -27,9 +27,10 @@ absolute path is reported in the hello. The app and terminal share saved
 agents, history and non-secret settings. Keychain or Secret Service secrets
 sent on stdin are never saved to that home.
 
-This transport serves health, shutdown, keys, the event stream and agent
-lifecycle routes. Other app routes reserve their contract with HTTP 501; their
-resource behaviour arrives with the owning lane.
+This transport serves health, shutdown, keys, models, app settings, first-launch
+setup, OpenRouter browser sign-in, the event stream and agent lifecycle routes.
+Other app routes reserve their contract with HTTP 501; their resource
+behaviour arrives with the owning lane.
 
 ## App agents — list, create, rename, close, archive and reopen
 
@@ -41,8 +42,10 @@ Plain name words and `state:`, `model:`, `kind:agent`, `crew:`, `pinned:` and
 `since:YYYY-MM-DD` filter without AI. Other search tokens are refused for now.
 
 `POST /app/v1/agents` requires `start:"send"` with a first `text`, or
-`start:"empty"` without text. Omitted effort is `medium`; budget is
-`{usd:"5.00"}`; the engine resolves an omitted model. Optional approvals are
+`start:"empty"` without text. Omitted model, effort, budget and approval mode
+come from the saved app settings; a fresh app starts with `medium`,
+`{usd:"5.00"}` and risky-action approval. Explicit creation choices win,
+and existing agents keep their own values. Optional approvals are
 `risky`, `everything` or `none`. Context chips reference absolute paths, with
 kind `file`, `folder` or `repo`. App names come from the first message's words,
 folding whitespace and keeping at most 40 characters, with no AI title call.
@@ -104,8 +107,9 @@ With no filter, all events except `turn.delta` are included. Repeat
 events without an agent remain included. An empty agent id is refused with
 `agent filter needs an agent id`. Events name changes such as `agent.changed`
 and `task.changed`; clients re-read full objects. Process output belongs to
-its own follow stream. Agent lifecycle routes publish their creation and changes on this stream; other
-resource producers arrive with their own lanes.
+its own follow stream. Agent lifecycle routes publish their creation and
+changes. Key and app settings writes publish `keys.changed` and
+`settings.changed`. Other resource producers arrive with their routes.
 
 ## App keys — Keychain, Secret Service, key handoff and keys are kept by the app
 
@@ -122,8 +126,9 @@ check, at most 10 seconds. Success returns `{"ok":true,"models":[…]}`;
 failure returns HTTP 422 with the provider's words and status, with secrets
 removed, and keeps the old key. OpenRouter checks the authenticated model list;
 GitHub checks the account and returns no models. A timeout says
-`No answer · couldn't reach the provider in 10s · Try again`. Browser sign-in
-is not available through this API yet. All key routes require the launch token.
+`No answer · couldn't reach the provider in 10s · Try again`. OpenRouter browser sign-in
+is available at `POST /app/v1/providers/openrouter/sign-in`. All key routes
+require the launch token.
 
 `DELETE /app/v1/keys/{provider}` removes the memory key and prevents falling
 back to a shell or profile key. The app updates Keychain / Secret Service

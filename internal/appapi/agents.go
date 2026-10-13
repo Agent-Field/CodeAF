@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -174,7 +175,7 @@ func (a *AgentRegistry) disk(fn func(*agentDisk) error, save bool) error {
 		if _, ok := disk.Records[row.ID]; ok {
 			continue
 		}
-		effort := "medium"
+		effort := config.AppDefaultEffort
 		meta, err := session.LoadMeta(row.Dir)
 		if err == nil && meta.Effort != "" {
 			effort = meta.Effort
@@ -183,7 +184,7 @@ func (a *AgentRegistry) disk(fn func(*agentDisk) error, save bool) error {
 		if row.Archived {
 			state = "archived"
 		}
-		agent := Agent{ID: row.ID, Name: row.Title, Model: row.Model, Effort: effort, Budget: Money{"5.00"}, State: state, Rules: []string{}, Context: []AgentContext{}, CreatedAt: row.Created, CreatedBy: "you", Version: 1}
+		agent := Agent{ID: row.ID, Name: row.Title, Model: row.Model, Effort: effort, Budget: Money{fmt.Sprintf("%.2f", config.AppDefaultAgentBudget)}, State: state, Rules: []string{}, Context: []AgentContext{}, CreatedAt: row.Created, CreatedBy: "you", Version: 1}
 		if !row.At.IsZero() {
 			at := row.At
 			agent.LastMessageAt = &at
@@ -230,6 +231,7 @@ func (a *AgentRegistry) disk(fn func(*agentDisk) error, save bool) error {
 
 func (a *AgentRegistry) view(record agentRecord) Agent {
 	agent := record.Agent
+	agent.Effort = config.AppEffortWord(agent.Effort)
 	live := a.live[agent.ID]
 	if agent.State != "closed" && agent.State != "archived" {
 		row := session.ReadRows([]string{record.SessionFile})[record.SessionFile]

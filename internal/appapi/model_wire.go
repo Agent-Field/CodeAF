@@ -1,42 +1,60 @@
 package appapi
 
-// These wire types reserve the app vocabulary before this resource has behaviour.
+// Model names the connection that can run this canonical model id.
 type Model struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Provider  string `json:"provider"`
-	Available bool   `json:"available"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Provider  string   `json:"provider"`
+	Available bool     `json:"available"`
+	Efforts   []string `json:"efforts"`
 }
 type ModelsResponse struct {
 	Models  []Model  `json:"models"`
 	Default string   `json:"default"`
-	Pinned  []string `json:"pinned" jsonschema:"maxItems=3"`
+	Pinned  []string `json:"pinned" jsonschema:"minItems=3,maxItems=3"`
 }
 type PinnedModelsRequest struct {
-	Pinned []string     `json:"pinned" jsonschema:"maxItems=3"`
-	Expect *AgentExpect `json:"expect,omitempty"`
+	Models []string        `json:"models" jsonschema:"minItems=3,maxItems=3"`
+	Expect *SettingsExpect `json:"expect,omitempty"`
+}
+type PinnedModelsResponse struct {
+	Pinned []string `json:"pinned" jsonschema:"minItems=3,maxItems=3"`
 }
 type DefaultModelRequest struct {
-	Model  string       `json:"model"`
-	Expect *AgentExpect `json:"expect,omitempty"`
+	Model  string          `json:"model"`
+	Effort string          `json:"effort,omitempty" jsonschema:"enum=low,enum=medium,enum=high"`
+	Expect *SettingsExpect `json:"expect,omitempty"`
+}
+type DefaultModelResponse struct {
+	Model  string `json:"model"`
+	Effort string `json:"effort" jsonschema:"enum=low,enum=medium,enum=high"`
 }
 type ModelRole struct {
+	ID     string `json:"id" jsonschema:"enum=checks,enum=planner"`
 	Model  string `json:"model"`
 	Effort string `json:"effort" jsonschema:"enum=low,enum=medium,enum=high"`
 }
 type ModelRolesResponse struct {
-	Checks  ModelRole `json:"checks"`
-	Planner ModelRole `json:"planner"`
+	Roles []ModelRole `json:"roles" jsonschema:"minItems=2,maxItems=2"`
 }
 type ModelRoleRequest struct {
-	Model  string       `json:"model"`
-	Effort string       `json:"effort" jsonschema:"enum=low,enum=medium,enum=high"`
-	Expect *AgentExpect `json:"expect,omitempty"`
+	Model  string          `json:"model"`
+	Effort string          `json:"effort" jsonschema:"enum=low,enum=medium,enum=high"`
+	Expect *SettingsExpect `json:"expect,omitempty"`
 }
+type ProviderSignInRequest struct{}
 type ProviderSignInResponse struct {
 	VerificationURI string `json:"verification_uri"`
 }
+type ProviderSignInStatusResponse struct {
+	State string `json:"state"`
+	Error string `json:"error"`
+}
+type ProviderSignInClaimResponse struct {
+	Provider string `json:"provider"`
+	Key      string `json:"key"`
+}
 
 func modelContract() resourceContract {
-	return resourceContract{Name: "model", Types: []any{Model{}, ModelsResponse{}, PinnedModelsRequest{}, DefaultModelRequest{}, ModelRole{}, ModelRolesResponse{}, ModelRoleRequest{}, ProviderSignInResponse{}}, Routes: modelContractRoutes, Events: []eventContract{}}
+	return resourceContract{Name: "model", Types: []any{Model{}, ModelsResponse{}, PinnedModelsRequest{}, PinnedModelsResponse{}, DefaultModelRequest{}, DefaultModelResponse{}, ModelRole{}, ModelRolesResponse{}, ModelRoleRequest{}, ProviderSignInRequest{}, ProviderSignInResponse{}, ProviderSignInStatusResponse{}, ProviderSignInClaimResponse{}}, Routes: modelContractRoutes, Events: []eventContract{}}
 }

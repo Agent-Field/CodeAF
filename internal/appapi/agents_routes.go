@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -141,6 +142,9 @@ func (s *Server) agentsRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		var err error
 		if id == "" {
+			if err := s.fillAgentDefaults(&body); err != nil {
+				return agentError(500, "conflict", "could not read saved settings")
+			}
 			changed, stream, err = a.create(r.Context(), d, body)
 			fields = []string{"name", "state", "model", "effort", "budget"}
 		} else {
@@ -366,7 +370,7 @@ func (a *AgentRegistry) create(ctx context.Context, d *agentDisk, body agentMuta
 	if a.open == nil {
 		return Agent{}, nil, agentError(503, "not_allowed", "connect a model in Settings → Models")
 	}
-	effort, budget, model := "medium", Money{"5.00"}, ""
+	effort, budget, model := config.AppDefaultEffort, Money{fmt.Sprintf("%.2f", config.AppDefaultAgentBudget)}, ""
 	if body.Effort != nil {
 		effort = *body.Effort
 	}
@@ -452,6 +456,8 @@ func (a *AgentRegistry) mutate(ctx context.Context, d *agentDisk, id, action str
 		return Agent{}, nil, errAgentMissing
 	}
 	agent := a.view(record)
+	// Display normalization must not replace a terminal choice during an unrelated edit.
+	agent.Effort = record.Agent.Effort
 	if expect := body.Expect; expect != nil && ((expect.State != nil && *expect.State != agent.State) || (expect.Version != nil && *expect.Version != agent.Version)) {
 		return Agent{}, nil, agentError(409, "stale", "the agent changed; read it again before acting")
 	}
@@ -574,6 +580,7 @@ func (a *AgentRegistry) mutate(ctx context.Context, d *agentDisk, id, action str
 			delete(a.live, id)
 		}
 	}
+	agent.Effort = config.AppEffortWord(agent.Effort)
 	return agent, fields, nil
 }
 

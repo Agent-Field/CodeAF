@@ -795,6 +795,32 @@ at the current head. The first frame is hello, keepalive comments run every
 events remain visible. Text deltas require an explicit agent filter. Resource
 lanes own the producers and their payloads; A3 starts no agents or pollers.
 
+A11a mounts models, binary settings and four-step app setup on this same
+transport. `config.AppSettingsAt` is the codec for the non-secret flat app
+vocabulary; `ApplyAppSettings` uses the native profile keys where their
+semantics agree and `app.*` for the new rows. Model roles expose only Checks
+and Planner, with grouped native pins derived on read; app effort has three
+levels. Settings patches validate and commit atomically, compare optional
+profile versions under the cross-process lock, preserve terminal credentials,
+and publish small `settings.changed` facts. Model choices must belong to a
+connected provider's catalog; pinned slots are three ids or empty strings.
+Key-check listings retain provider order and are reused for fifteen minutes.
+The app welcome has its own persisted step; advancing Defaults writes the
+same default-model and day-cap rows, with $20 for a fresh app. New agents
+read saved model, effort, agent budget and approval mode here; explicit
+creation fields win and existing agents keep their choices. Higher terminal
+effort rungs are normalized only on app responses.
+
+OpenRouter browser sign-in ports the existing PKCE callback. The app receives
+an address immediately and there is no deadline on finishing in the browser.
+Successful exchange installs a memory credential and emits `keys.changed`.
+The authenticated native core claims the key once for Keychain or Secret
+Service; ordinary GETs stay masked, and no app credential reaches the profile.
+Cancel and engine exit close pending listeners, and a newer key replacement
+or removal cannot be undone by a late browser callback. Other providers have
+no app browser flow. New settings' live permission, memory, agent-budget and
+factory enforcement remains with those resource lanes.
+
 The first stdin line supplies provider
 keys and factory sessions to `config.AppCredentials`, a synchronized memory
 source above shell/profile keys. PUT checks once before replacing a key;

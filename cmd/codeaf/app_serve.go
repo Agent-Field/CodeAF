@@ -122,7 +122,8 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 	}
 	agents := appapi.NewAgentRegistry(options.home, appAgentOpener(binary, logOutput))
 	defer agents.Close()
-	api := appapi.New(token, appapi.Options{Version: buildinfo.String(), Epoch: epoch, Shutdown: cancel, Credentials: credentials, ProfileDir: config.ProfileDir(), Agents: agents})
+	api := appapi.New(token, appapi.Options{Version: buildinfo.String(), Epoch: epoch, Shutdown: cancel, Credentials: credentials, ProfileDir: config.ProfilePath(config.ProfileDir(), ""), Context: ctx, Agents: agents})
+	defer api.Close()
 	server := &http.Server{
 		Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout: 60 * time.Second, ErrorLog: logger,

@@ -1,16 +1,14 @@
 package appapi
 
-import "net/http"
-
-// This table belongs to the resource lane, so implementing it needs no shared router edit.
+// Handlers are mounted by registerModels and registerSignIn through the same guard.
 var modelContractRoutes = []contractRoute{
-	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/models", Request: "", Response: "ModelsResponse"}, handle: (*Server).modelHandler, reserved: true},
-	{RouteContract: RouteContract{Method: "PUT", Path: "/app/v1/models/pinned", Request: "PinnedModelsRequest", Response: "ActionResponse"}, handle: (*Server).modelHandler, reserved: true},
-	{RouteContract: RouteContract{Method: "PUT", Path: "/app/v1/models/default", Request: "DefaultModelRequest", Response: "ActionResponse"}, handle: (*Server).modelHandler, reserved: true},
-	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/models/roles", Request: "", Response: "ModelRolesResponse"}, handle: (*Server).modelHandler, reserved: true},
-	{RouteContract: RouteContract{Method: "PUT", Path: "/app/v1/models/roles/{role}", Request: "ModelRoleRequest", Response: "ActionResponse"}, handle: (*Server).modelHandler, reserved: true},
-	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/providers/{p}/sign-in", Request: "ExpectRequest", Response: "ProviderSignInResponse"}, handle: (*Server).modelHandler, reserved: true},
+	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/models", Response: "ModelsResponse"}},
+	{RouteContract: RouteContract{Method: "PUT", Path: "/app/v1/models/pinned", Request: "PinnedModelsRequest", Response: "PinnedModelsResponse"}},
+	{RouteContract: RouteContract{Method: "PUT", Path: "/app/v1/models/default", Request: "DefaultModelRequest", Response: "DefaultModelResponse"}},
+	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/models/roles", Response: "ModelRolesResponse"}},
+	{RouteContract: RouteContract{Method: "PUT", Path: "/app/v1/models/roles/{role}", Request: "ModelRoleRequest", Response: "ModelRole"}},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/providers/{provider}/sign-in", Request: "ProviderSignInRequest", Response: "ProviderSignInResponse"}},
+	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/providers/{provider}/sign-in", Response: "ProviderSignInStatusResponse"}},
+	{RouteContract: RouteContract{Method: "DELETE", Path: "/app/v1/providers/{provider}/sign-in", Response: "ActionResponse"}},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/providers/{provider}/sign-in/claim", Request: "ProviderSignInRequest", Response: "ProviderSignInClaimResponse"}},
 }
-
-// The owning lane replaces this stub and clears reserved in its own table.
-func (s *Server) modelHandler(w http.ResponseWriter, r *http.Request) { notBuilt(w, r) }

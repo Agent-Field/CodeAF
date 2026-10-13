@@ -470,6 +470,14 @@ func consumedProfileKeys(profileDir string) map[string]bool {
 	for _, row := range NewSettings(SettingsOptions{ProfileDir: profileDir}).Rows() {
 		consumed[row.Key] = true
 	}
+	// The app's own settings are read through its codec in the shared home.
+	// Role rows are derived from native pins and are not persisted separately.
+	consumed[KeyAppSetupStep] = true
+	for key, row := range appSettings {
+		if !strings.HasPrefix(key, "models.roles.") {
+			consumed[row.native] = true
+		}
+	}
 	return consumed
 }
 
@@ -480,7 +488,7 @@ func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage)
 	consumed := consumedProfileKeys(profileDir)
 	var unread []string
 	for key := range values {
-		if consumed[key] || (retiredProfileKeys[key] && retiredRowNotes[key] == "") {
+		if consumed[key] || appMCPProfileKey(key) || (retiredProfileKeys[key] && retiredRowNotes[key] == "") {
 			continue
 		}
 		unread = append(unread, key)

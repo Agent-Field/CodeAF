@@ -394,3 +394,62 @@ func TestAppServeHelpAndBadArgumentsDoNotLaunch(t *testing.T) {
 		}
 	}
 }
+
+func TestAppServeSettingsAndSetupUseTheOrdinaryResolvedProfile(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		t.Run(strconv.FormatBool(shared), func(t *testing.T) {
+			root := t.TempDir()
+			launch := launchAppAtHomeForTest(t, root, shared)
+			if _, err := io.WriteString(launch.input, "{\"keys\":{}}\n"); err != nil {
+				t.Fatal(err)
+			}
+			response := launch.call(t, "GET", "/app/v1/settings", "", launch.hello.Token)
+			var values map[string]any
+			err := json.NewDecoder(response.Body).Decode(&values)
+			_ = response.Body.Close()
+			if response.StatusCode != 200 || err != nil || values["models.effort"] != "medium" {
+				t.Fatalf("ordinary settings: %d %v %v", response.StatusCode, values, err)
+			}
+			response = launch.call(t, "PATCH", "/app/v1/settings", `{"models.effort":"high"}`, launch.hello.Token)
+			_ = response.Body.Close()
+			if response.StatusCode != 200 {
+				t.Fatal("ordinary app could not save settings")
+			}
+			response = launch.call(t, "POST", "/app/v1/setup", `{"step":2}`, launch.hello.Token)
+			_ = response.Body.Close()
+			if response.StatusCode != 200 {
+				t.Fatal("ordinary app could not advance welcome")
+			}
+			raw, err := os.ReadFile(filepath.Join(launch.root, "config.json"))
+			if err != nil || !bytes.Contains(raw, []byte(`"effort": "high"`)) {
+				t.Fatalf("settings did not reach resolved home: %v", err)
+			}
+			response = launch.call(t, "POST", "/app/v1/shutdown", `{}`, launch.hello.Token)
+			_ = response.Body.Close()
+			launch.wait(t)
+			again := launchAppAtHomeForTest(t, root, shared)
+			if _, err := io.WriteString(again.input, "{\"keys\":{}}\n"); err != nil {
+				t.Fatal(err)
+			}
+			response = again.call(t, "GET", "/app/v1/setup", "", again.hello.Token)
+			var setup appapi.SetupView
+			err = json.NewDecoder(response.Body).Decode(&setup)
+			_ = response.Body.Close()
+			if response.StatusCode != 200 || err != nil || setup.Step != 2 {
+				t.Fatalf("welcome resume: %d %+v %v", response.StatusCode, setup, err)
+			}
+			response = again.call(t, "GET", "/app/v1/models/roles", "", again.hello.Token)
+			var modelRoles struct {
+				Roles []appapi.RoleView `json:"roles"`
+			}
+			err = json.NewDecoder(response.Body).Decode(&modelRoles)
+			_ = response.Body.Close()
+			if response.StatusCode != 200 || err != nil || len(modelRoles.Roles) != 2 {
+				t.Fatal("ordinary app model roles are unavailable")
+			}
+			response = again.call(t, "POST", "/app/v1/shutdown", `{}`, again.hello.Token)
+			_ = response.Body.Close()
+			again.wait(t)
+		})
+	}
+}
