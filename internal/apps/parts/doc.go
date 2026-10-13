@@ -1,3 +1,2 @@
-// Package parts provides the service seam for documents, part files, versions and share links.
-// The stub leaves persistence and collaboration to their implementing lanes.
+// Package parts stores document content and the history of each part.
 package parts
