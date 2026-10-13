@@ -35,7 +35,8 @@ func parseAction(text string) action {
 	body = strings.TrimSuffix(strings.TrimPrefix(body, "```json"), "```")
 	body = strings.TrimSpace(strings.TrimPrefix(body, "```"))
 	var a action
-	if err := json.Unmarshal([]byte(body), &a); err != nil {
+	// Only the first object counts: some models put several in one reply.
+	if err := json.NewDecoder(strings.NewReader(body)).Decode(&a); err != nil {
 		return action{Say: strings.TrimSpace(text)}
 	}
 	return a

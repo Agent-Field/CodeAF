@@ -81,9 +81,9 @@ func toolHelp(tool string) string {
 	case "records.get":
 		return `records.get {"type","id"}`
 	case "records.create":
-		return `records.create {"type","set":{field:value}}`
+		return `records.create {"type","set":{field:value}}: adds a NEW record; use it whenever the person asks to add or create one`
 	case "records.update":
-		return `records.update {"type","id" or "ids","set":{field:value}}`
+		return `records.update {"type","id" or "ids","set":{field:value}}: changes records that already exist, never creates`
 	case "runs.start":
 		return `runs.start {"run","params"?}: start a run of this app`
 	}

@@ -374,3 +374,10 @@ func TestThreadsSavedWithToolMessagesLoadAsUserTurns(t *testing.T) {
 		t.Fatalf("loaded %+v, %v", got, err)
 	}
 }
+
+func TestAReplyWithSeveralJSONObjectsActsOnTheFirst(t *testing.T) {
+	a := parseAction(`{"tool":"records.query","args":{"type":"deal"}}` + "\n\nNote: waiting.\n" + `{"say":"Waiting."}`)
+	if a.Tool != "records.query" || a.Say != "" {
+		t.Fatalf("action = %+v", a)
+	}
+}
