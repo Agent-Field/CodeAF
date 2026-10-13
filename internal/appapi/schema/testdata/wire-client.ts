@@ -25,6 +25,8 @@ declare const response: AppResponse<"GET /app/v1/agents/{id}">;
 const agent: AgentResponse = response;
 const name: string = agent.name;
 const entries = agent.snapshot.entries;
+declare const imageResponse: AppResponse<"GET /app/v1/agents/{id}/image">;
+const imageBlob: Blob = imageResponse;
 
 function consume(event: AppEvent): string {
   switch (event.event) {
@@ -45,6 +47,8 @@ const floatMoney: Money = { usd: 4.2 };
 const nullPinned: PatchAgentRequest = { pinned: null };
 // @ts-expect-error A GET route accepts no request body.
 const getBody: AppRequest<"GET /app/v1/health"> = {};
+// @ts-expect-error Images are binary responses, not JSON strings.
+const jsonImage: string = imageResponse;
 // @ts-expect-error Unknown routes cannot enter a typed client.
 type MissingRoute = AppResponse<"GET /app/v1/not-registered">;
 // @ts-expect-error The event name determines its payload.

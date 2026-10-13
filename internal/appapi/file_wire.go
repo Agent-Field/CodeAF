@@ -41,5 +41,6 @@ type FileDiffResponse struct {
 }
 
 func fileContract() resourceContract {
-	return resourceContract{Name: "file", Types: []any{FileTextResponse{}, FileStat{}, FileStatsResponse{}, FileFindResponse{}, FileChange{}, FileChangesResponse{}, FileDiffResponse{}}, Routes: fileContractRoutes, Events: []eventContract{}}
+	routes := append(append([]contractRoute(nil), fileContractRoutes...), imageContractRoutes...)
+	return resourceContract{Name: "file", Types: []any{FileTextResponse{}, FileStat{}, FileStatsResponse{}, FileFindResponse{}, FileChange{}, FileChangesResponse{}, FileDiffResponse{}}, Routes: routes, Events: []eventContract{}}
 }

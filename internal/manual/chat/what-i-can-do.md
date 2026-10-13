@@ -834,6 +834,20 @@ Attaching is not the only way in. A picture already on disk is opened by `read`
 disk?"), which describes the whole thing, and by `read_document`, which is the
 door for a photograph of a page you want extracted as a document.
 
+## Plot it and show me — can I see a chart or picture inline in the desk app?
+
+When you ask to see a chart, plot or picture codeaf made, it saves a PNG inside
+the workspace and includes a markdown image such as
+`![Monthly totals](charts/totals.png)` in the answer, with one sentence explaining
+what it shows. The desk app can load the image bytes for an inline display.
+
+The app's image route accepts PNG, JPEG, GIF and WebP up to 10 MiB, only inside
+this conversation's workspace or its own session directory. Relative paths start
+at the workspace. Files outside those folders, including symlinks pointing
+outside, are refused. SVG and files whose contents do not match their image
+extension are refused too. Save a chart in the workspace rather than `/tmp` so
+the app can show it.
+
 ## Can you make a picture, a voiceover, music or a video?
 
 Yes, when a model for that kind of media is available on this machine — and each

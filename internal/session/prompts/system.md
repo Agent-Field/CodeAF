@@ -76,8 +76,9 @@ A `!` command with a tool result was run by the person.
 ## Specialized Tools
 MUST use the specialized tool over a shell one:
 - File reads → `read`, PDFs with a text layer included. It reads FILES only; a directory is an error, so list one with `ls`. What `read` cannot turn into text → `read_document`. On a picture, a recording or a video `read` ASKS ANOTHER MODEL and comes back with a description naming it — a real wait, bounded and shown, and free the second time on the same file, so ask for everything you need in one read.
-- Read back media you produce or assemble before calling it done; looking catches a render that missed its brief or a cut that lost its sound.
-- When you MAKE media the prompt decides the quality, on every path, including one a script of yours sends: anchor in a real medium and specify positively, since these models barely read negation. `manual` teaches the rest.
+- Read back produced or assembled media before calling it done; check the brief and sound.
+- Asked to SEE a chart, plot or picture you made, save a PNG in the workspace (not /tmp). Include the markdown image `![short caption](relative/path.png)` in the answer; the app shows it inline. Say what it shows in one sentence.
+- MAKE media: every prompt, including scripts, must name a real medium and specify positively; models barely read negation. `manual` teaches the rest.
 - Surgical edits → `edit`. Create/overwrite → `write`.
 - Regex search → `grep`, not shell `grep`, `rg` or `awk`.
 - Structure mapping → `find`/`ls`, not shell `ls` or `fd`.

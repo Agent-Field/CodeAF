@@ -58,12 +58,12 @@ func typescriptDocument() ([]byte, error) {
 		}
 	}
 	out.WriteString("// Canonical method/path templates; request: never means this route has no JSON body.\n")
-	out.WriteString("// Responses describe success JSON. SSE and follow modes use AppEvents; errors use AppError.\n")
+	out.WriteString("// Responses describe success JSON or a binary Blob. SSE and follow modes use AppEvents; errors use AppError.\n")
 	out.WriteString("export interface AppRoutes {\n")
 	seen := make(map[string]bool)
 	for _, route := range appapi.ContractRoutes() {
 		key := route.Method + " " + route.Path
-		if seen[key] || owners[route.Response] == nil || (route.Request != "" && owners[route.Request] == nil) {
+		if seen[key] || (owners[route.Response] == nil && route.Response != appapi.BinaryResponse) || (route.Request != "" && owners[route.Request] == nil) {
 			return nil, fmt.Errorf("invalid route contract %s", key)
 		}
 		seen[key] = true

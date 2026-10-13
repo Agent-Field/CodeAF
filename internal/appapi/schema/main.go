@@ -95,6 +95,9 @@ func schemaDocuments() (map[string][]byte, error) {
 				continue
 			}
 			row := map[string]string{"method": route.Method, "path": route.Path, "response": owners[route.Response] + ".json#/$defs/" + route.Response}
+			if route.Response == appapi.BinaryResponse {
+				row["response"] = "binary"
+			}
 			if route.Request != "" {
 				row["request"] = owners[route.Request] + ".json#/$defs/" + route.Request
 			}

@@ -164,7 +164,7 @@ func TestEveryWireTypeAndEventHasAContract(t *testing.T) {
 		})
 	}
 	for _, route := range ContractRoutes() {
-		if !registered[route.Response] || (route.Request != "" && !registered[route.Request]) {
+		if (!registered[route.Response] && route.Response != BinaryResponse) || (route.Request != "" && !registered[route.Request]) {
 			t.Errorf("%s %s has an unknown JSON type", route.Method, route.Path)
 		}
 	}

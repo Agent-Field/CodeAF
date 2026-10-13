@@ -8,14 +8,17 @@ import (
 
 //go:generate go run ./schema -out ../../docs/design/app-v2/schema -typescript ../../docs/design/app-v2/wire.ts
 
-// RouteContract is the method, path and named JSON shape reserved for a resource.
+// BinaryResponse describes raw bytes consumed with Response.blob() by the app.
+const BinaryResponse = "Blob"
+
+// RouteContract is the method, path and response shape reserved for a resource.
 // Empty Request means there is no request body; follow responses are documented separately.
 type RouteContract struct {
 	Resource string `json:"resource"`
 	Method   string `json:"method"`
 	Path     string `json:"path"`
 	Request  string `json:"request,omitempty"`
-	Response string `json:"response"`
+	Response string `json:"response"` // BinaryResponse means bytes rather than a named JSON shape.
 }
 
 type contractRoute struct {

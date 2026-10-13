@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"go/parser"
 	"go/token"
 	"os"
@@ -9,6 +10,32 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestImageRoutePublishesABinaryResponse(t *testing.T) {
+	documents, err := schemaDocuments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct {
+		Routes []struct {
+			Method   string `json:"method"`
+			Path     string `json:"path"`
+			Response string `json:"response"`
+		} `json:"x-routes"`
+	}
+	if err := json.Unmarshal(documents["file.json"], &file); err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range file.Routes {
+		if route.Method == "GET" && route.Path == "/app/v1/agents/{id}/image" {
+			if route.Response != "binary" {
+				t.Fatalf("image route advertises a JSON shape: %s", route.Response)
+			}
+			return
+		}
+	}
+	t.Fatal("the image route is absent from the published contract")
+}
 
 func TestGeneratedSchemasAreFresh(t *testing.T) {
 	documents, err := schemaDocuments()
