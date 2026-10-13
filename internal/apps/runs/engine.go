@@ -2,6 +2,7 @@ package runs
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,6 +16,8 @@ const defaultModel = "deepseek/deepseek-v4.1-flash"
 // maxDriveSteps stops a stuck interpreter from spinning the sidecar.
 const maxDriveSteps = 10000
 
+var errClosed = errors.New("runs service is closed")
+
 // engines is one journal per apps root. New, NewApprovals and NewConnectors
 // share it: a decision has to wake the run that opened the approval.
 var (
@@ -23,24 +26,27 @@ var (
 )
 
 type engine struct {
-	ctx  context.Context
-	root string
-	all  *svc.Services
+	ctx    context.Context
+	cancel context.CancelFunc
+	root   string
+	all    *svc.Services
 
 	// now and sleep are atomic so a test can pin the clock without racing the ticker.
 	now     atomic.Value // func() time.Time
 	sleeper atomic.Value // func(context.Context, time.Duration) error
 
-	mu       sync.Mutex
-	dbs      map[string]*dbConn
-	busy     map[string]bool
-	seen     map[string]map[string]any // app/type/id → last field snapshot
-	lastFire map[string]time.Time      // app/trigger → last schedule minute
-	calls    []recorded
-	replies  map[string]any
-	started  chan string // test hook; nil in the server
-	ready    chan struct{}
-	wg       sync.WaitGroup
+	mu        sync.Mutex
+	dbs       map[string]*dbConn
+	busy      map[string]bool
+	seen      map[string]map[string]any // app/type/id → last field snapshot
+	lastFire  map[string]time.Time      // app/trigger → last schedule minute
+	calls     []recorded
+	replies   map[string]any
+	started   chan string // test hook; nil in the server
+	ready     chan struct{}
+	wg        sync.WaitGroup
+	closed    bool
+	closeOnce sync.Once
 }
 
 type recorded struct {
@@ -65,8 +71,10 @@ func newEngine(cfg svc.Config, all *svc.Services) *engine {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	e := &engine{
 		ctx:      ctx,
+		cancel:   cancel,
 		root:     cfg.Root,
 		all:      all,
 		dbs:      map[string]*dbConn{},
@@ -127,6 +135,51 @@ func (e *engine) loop() {
 func (e *engine) pump(ctx context.Context) {
 	e.resumeDue(ctx)
 	e.fireSchedules(ctx)
+}
+
+// work admits a worker before Close can wait, and links request and service cancellation.
+func (e *engine) work(ctx context.Context) (context.Context, func(), error) {
+	e.mu.Lock()
+	if e.closed {
+		e.mu.Unlock()
+		return nil, nil, errClosed
+	}
+	e.wg.Add(1)
+	e.mu.Unlock()
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(e.ctx, cancel)
+	return ctx, func() {
+		stop()
+		cancel()
+		e.wg.Done()
+	}, nil
+}
+
+func (e *engine) launch(fn func()) {
+	_, done, err := e.work(e.ctx)
+	if err != nil {
+		return
+	}
+	go func() {
+		defer done()
+		fn()
+	}()
+}
+
+func (e *engine) close() {
+	e.closeOnce.Do(func() {
+		e.mu.Lock()
+		e.closed = true
+		e.cancel()
+		e.mu.Unlock()
+		e.wg.Wait()
+		e.closeDBs()
+		enginesMu.Lock()
+		if engines[e.root] == e {
+			delete(engines, e.root)
+		}
+		enginesMu.Unlock()
+	})
 }
 
 func (e *engine) begin(id string) bool {
