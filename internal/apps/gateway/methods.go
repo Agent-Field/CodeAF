@@ -116,3 +116,5 @@ func decode(raw json.RawMessage, into any) error {
 	}
 	return nil
 }
+
+var sessionMethods = spacesMethodTable(methods)

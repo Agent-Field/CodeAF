@@ -39,7 +39,7 @@ func Handler(ctx context.Context, all *svc.Services) http.Handler {
 			return
 		}
 		conn.SetReadLimit(readLimit)
-		newSession(ctx, conn, all).serve()
+		newSession(sessionContext(ctx, r.Context()), conn, all).serve()
 	})
 }
 
@@ -132,9 +132,11 @@ func (s *session) route(in bridge.Envelope) {
 }
 
 func (s *session) call(in bridge.Envelope) {
-	scope := ownerScope(in.App)
-	err := s.all.Caps.Allow(s.ctx, scope, in.Method, in.Params)
-	entry, ok := methods[in.Method]
+	scope, err := s.scope(in.App)
+	if err == nil {
+		err = s.all.Caps.Allow(s.ctx, scope, in.Method, in.Params)
+	}
+	entry, ok := sessionMethods[in.Method]
 	// Unknown wire methods remain invalid even when internal tool capabilities
 	// recognise the same verb for runs or the app agent.
 	if !ok {
@@ -179,6 +181,9 @@ func (s *session) resolveScope(scope svc.Scope, global bool) (svc.Scope, error) 
 }
 
 func (s *session) topicScope(in bridge.Envelope, method string) (svc.Scope, error) {
+	if scope, handled, err := s.spacesTopicScope(in, method); handled {
+		return scope, err
+	}
 	app, ok := topicApp(in.Topic)
 	if !ok {
 		return svc.Scope{}, bridge.Errorf(bridge.CodeInvalid, "topics look like app/<id>/...")
@@ -186,7 +191,10 @@ func (s *session) topicScope(in bridge.Envelope, method string) (svc.Scope, erro
 	if in.App != "" && in.App != app {
 		return svc.Scope{}, bridge.Errorf(bridge.CodeInvalid, "topic and app disagree")
 	}
-	scope := ownerScope(app)
+	scope, err := s.scope(app)
+	if err != nil {
+		return scope, err
+	}
 	raw, _ := json.Marshal(map[string]string{"topic": in.Topic})
 	if err := s.all.Caps.Allow(s.ctx, scope, method, raw); err != nil {
 		return scope, err

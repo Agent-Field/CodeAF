@@ -34,6 +34,7 @@ func Wire(ctx context.Context, home string) *svc.Services {
 	all := &svc.Services{}
 	all.Hub = realtime.New(cfg, all)
 	all.Caps = caps.New(cfg, all)
+	wireSpaces(cfg, all)
 	all.Store = store.New(cfg, all)
 	all.Records = records.New(cfg, all)
 	all.Sample = sample.New(cfg, all)
