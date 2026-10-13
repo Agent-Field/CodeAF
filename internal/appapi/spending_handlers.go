@@ -259,6 +259,9 @@ func (n nativeSpending) SpendingRows(context.Context) ([]MeasuredSpendingRow, er
 		}
 		if who.ID == "" {
 			who.Kind, who.Purpose = "system", line.Role
+			if strings.HasPrefix(line.Role, "app.") {
+				who.Kind, who.Purpose = "app", strings.TrimPrefix(line.Role, "app.")
+			}
 		}
 		what := line.Role
 		if line.Task != "" {

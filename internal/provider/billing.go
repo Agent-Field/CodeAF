@@ -113,6 +113,7 @@ type billingContextKey struct{}
 type reconcileContextKey struct{}
 type receiptPendingContextKey struct{}
 type unmeteredReceiptsContextKey struct{}
+type requiredCostReceiptContextKey struct{}
 
 // WithBilling arms one piece of work's banking. Like the transcript sink it
 // belongs to the work rather than to the client, because one client serves
@@ -159,6 +160,21 @@ func WithReceiptPending(ctx context.Context, pending ReceiptPending) context.Con
 // one: its missing usage block is a subscription's silence, not a charge.
 func WithUnmeteredReceipts(ctx context.Context) context.Context {
 	return context.WithValue(ctx, unmeteredReceiptsContextKey{}, true)
+}
+
+// WithRequiredCostReceipt requires a dollar receipt even when token counts
+// arrived. Budgeted app calls must not mistake an absent cost for a free call.
+// A direct service reports the missing price without asking a router for it.
+func WithRequiredCostReceipt(ctx context.Context) context.Context {
+	return context.WithValue(WithUnmeteredReceipts(ctx), requiredCostReceiptContextKey{}, true)
+}
+
+func requiredCostReceiptFrom(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	armed, _ := ctx.Value(requiredCostReceiptContextKey{}).(bool)
+	return armed
 }
 
 // unmeteredReceiptsFrom reports whether [WithUnmeteredReceipts] armed ctx.
@@ -232,11 +248,12 @@ func (c *Client) bill(ctx context.Context, model string, response *ai.Response) 
 	sink(billed)
 }
 
-// billAnswered bills an answer that arrived whole. One with no usage block is
-// settled like a cut one when the work asked for that ([WithUnmeteredReceipts]),
-// and billed the ordinary way — which banks nothing for it — otherwise.
+// billAnswered bills an answer that arrived whole. Missing usage, or a missing
+// cost when explicitly required, enters reconciliation so an unknown charge
+// cannot be confused with a measured zero.
 func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Response, answerBytes int) {
-	if response != nil && response.Usage == nil && unmeteredReceiptsFrom(ctx) {
+	if response != nil && unmeteredReceiptsFrom(ctx) &&
+		(response.Usage == nil || (requiredCostReceiptFrom(ctx) && response.Usage.Cost == nil)) {
 		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes)
 		return
 	}

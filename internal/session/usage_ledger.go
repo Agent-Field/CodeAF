@@ -132,6 +132,8 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, a standing promise.
 type UsageLine struct {
+	// ID joins an app call's response to its measured provider receipts.
+	ID string `json:"id,omitempty"`
 	// At is the instant the call was journaled, RFC3339 with nanoseconds.
 	At time.Time `json:"at"`
 	// Day is At's LOCAL calendar day, "2006-01-02". It is written down rather

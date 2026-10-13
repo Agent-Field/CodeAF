@@ -1145,3 +1145,34 @@ App turn admission reads the native inline reply through `App.ReplyRunning`
 when only task permissions are open. Such asks keep their attention state
 without blocking a new chat message; a reply running in either the app or the
 joined TUI still refuses a second Send.
+
+## App AI calls
+
+A13's authenticated `POST /app/v1/ai/call` is the binary's generic AI door.
+`internal/roles/app.go` restricts it to explicitly registered `app.<purpose>`
+roles with the normal pin/tier/default ladder. No app role ships enabled;
+app titles remain deterministic. The app owns future feature prompts and
+never chooses a model or contacts a provider itself.
+
+`internal/appapi/ai_handlers.go` resolves the profile and memory credentials,
+then calls `provider.Client.CompleteWithMessages`. Its billing and reconciliation
+sinks append measured receipts to the native usage ledger before a successful
+reply; additive `UsageLine.ID` joins the reply's `ledger_id`. A role beginning
+`app.` without an agent id projects as app spending with its purpose.
+`provider.WithRequiredCostReceipt` also reconciles token-only usage rather than
+banking an absent cost as zero. A direct service reports an unbilled receipt
+without contacting the router; any unresolved charge prevents a priced success.
+
+`provider.WithCostAdmission` reserves each actual encoded send's conservative
+published-price estimate, including retries, rescue arms and their thinking
+ceilings. An absent price or absent output ceiling refuses. Per-call and day
+admission share the same budget; already admitted calls settle actual costs.
+A private home-wide app-call flock prevents overlapping app calls across
+launches. Agent calls retain their existing in-flight accounting limitation.
+The provider's normal routing, stream guards, call log and receipt reconciliation
+remain the only token path.
+
+SSE deltas and the final receipt travel only on the call response. A launch's
+bounded idempotency cache retains the complete response and flushes live events
+through its capture writer; a replay pays nothing. Keyed mutations wait for the
+original response. Caller/launch cancellation propagates to the provider.

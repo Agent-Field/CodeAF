@@ -153,9 +153,10 @@ func (m *receiptRouteMemo) heard(base string, now time.Time) {
 }
 
 // settle closes one of the four streamed endings that may still hold provider
-// money. A usage block stays on the ordinary billing door. A direct service
-// stops there because it has no routed receipt. Otherwise a generation id
-// proves the provider got far enough for its receipt to be asked for, while
+// money. A usage block stays on the ordinary billing door unless its caller
+// requires a cost it did not carry. A direct service stops without a receipt
+// request; a caller requiring cost receives an unknown-price result. Otherwise
+// a generation id proves the provider got far enough for its receipt to be asked for, while
 // text already written without an id is reported unpriced without making an
 // unanswerable request. A call with neither is not reported at all: the
 // measured first-frame in-band refusal is an upstream breaking before it
@@ -166,7 +167,8 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	if len(traces) > 0 && traces[0] != nil && traces[0].attemptBase != "" {
 		base = traces[0].attemptBase
 	}
-	if response != nil && response.Usage != nil {
+	if response != nil && response.Usage != nil &&
+		(!requiredCostReceiptFrom(ctx) || response.Usage.Cost != nil) {
 		c.bill(ctx, model, response)
 		return
 	}
@@ -174,7 +176,8 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// usage block supplies no measured figures to record, and calling the
 	// router's route on the vendor would send that vendor a request and bearer
 	// for a fact this client already knows cannot be there.
-	if c.config.Direct && (base == c.config.BaseURL || telemetry.RoutingProvider(base) != modelsource.DefaultID) {
+	direct := c.config.Direct && (base == c.config.BaseURL || telemetry.RoutingProvider(base) != modelsource.DefaultID)
+	if direct && !requiredCostReceiptFrom(ctx) {
 		return
 	}
 	sink := reconcileFrom(ctx)
@@ -191,6 +194,19 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	}
 	if response != nil {
 		result.Ref = strings.TrimSpace(response.ID)
+		if response.Usage != nil {
+			result.PromptTokens = response.Usage.PromptTokens
+			result.CompletionTokens = response.Usage.CompletionTokens
+			result.CachedTokens = response.Usage.CacheReadTokens()
+		}
+	}
+	// A direct service has no generation receipt endpoint. Keep its unknown
+	// price visible to callers that require costs, without inventing a charge.
+	if direct {
+		if answerBytes > 0 || result.Ref != "" || !result.Billed.Empty() {
+			sink(result)
+		}
+		return
 	}
 	// NO ID MEANS NO REQUEST. Text still proves that the call got somewhere and
 	// may be charged, so its missing price is said; without text there is no
@@ -206,6 +222,11 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
 		AccountingSource: "provider", ReceiptID: "generation:" + result.Ref,
 	})}
+	// Token-only usage was already reported by the stream. Recovering its cost
+	// must not add those tokens to telemetry a second time.
+	if response != nil && response.Usage != nil {
+		work.usage = nil
+	}
 	// THE WORK IS TOLD A RECEIPT IS OWED BEFORE IT IS QUEUED, and told it was
 	// answered only after the sink has banked it, so a caller waiting for its
 	// receipts cannot see zero owed while money is between the two

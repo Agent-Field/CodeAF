@@ -243,6 +243,14 @@ func TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared(t *testing.T) {
 // that passes forever the moment somebody builds a tag out of a variable, which
 // is exactly how the log came to carry 2,309 untagged rows in the first place.
 var derivedTags = map[string]func(yield func(tag, where string)){
+	// The app door validates the registered purpose, then qualifies its fixed
+	// auxiliary role. A future purpose keeps that role in historical replays.
+	"string(lane.RoleAuxiliary) + \":\" + body.Role": func(yield func(tag, where string)) {
+		yield("auxiliary:app.future-purpose", "internal/appapi/ai_handlers.go, a qualified app purpose")
+		for _, role := range roles.AppRoles() {
+			yield("auxiliary:"+string(role), "internal/appapi/ai_handlers.go, a registered app purpose")
+		}
+	},
 	// internal/session/toolask.go: a tool's own call carries the tool's name
 	// after the role word, and no walk can enumerate the belt.
 	"toolCallTag(question.tool)": func(yield func(tag, where string)) {

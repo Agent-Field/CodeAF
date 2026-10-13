@@ -627,6 +627,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				knobs.trace.body = body
 			}
 		}
+		if err := c.admitCost(ctx, c.modelFor(request), body); err != nil {
+			cancelAttempt()
+			return nil, err
+		}
 		httpRequest, err := c.newHTTPRequestAt(attemptCtx, request, body, stream, currentBase)
 		if err != nil {
 			cancelAttempt()
