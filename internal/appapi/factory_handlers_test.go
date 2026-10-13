@@ -198,12 +198,12 @@ func TestFactoryHandOffChoosesFactoryKeepsSourceAndSendsOnce(t *testing.T) {
 	}
 	path := "/app/v1/agents/" + agent.ID + "/hand-off/" + card.ID + "/send"
 	for i := 0; i < 2; i++ {
-		w = fixture.request(t, "POST", path, "{}")
+		w = fixture.request(t, "POST", path, `{"pipeline":"repair","issue":true}`)
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "repo#17") {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}
-	if calls.Load() != 1 || created.Source != "hand-off" || created.FromRef.ID != agent.ID || created.Assignee == nil || *created.Assignee != "person" {
+	if calls.Load() != 1 || created.Pipeline != "repair" || !created.Issue || created.Source != "hand-off" || created.FromRef.ID != agent.ID || created.Assignee == nil || *created.Assignee != "person" {
 		t.Fatal(calls.Load(), created)
 	}
 	w = fixture.request(t, "GET", "/app/v1/agents/"+agent.ID, "")
@@ -400,6 +400,41 @@ func TestFactoryTaskHandOffRejectsAChangedTaskBeforeCreatingAJob(t *testing.T) {
 	var queue factoryapi.Queue
 	_ = json.Unmarshal(w.Body.Bytes(), &queue)
 	if w.Code != 200 || len(queue.Jobs) != 0 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestFactoryHandOffReadAndNotNowLeaveOriginRunning(t *testing.T) {
+	fixture := newAgentFixture(t)
+	bindTestFactory(t, fixture.server, fixture.home)
+	w := fixture.request(t, "POST", "/app/v1/factories/solo", "{}")
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	agent := readAgent(t, fixture.request(t, "POST", "/app/v1/agents", `{"model":"test/model","start":"send","text":"Ship change"}`), 201)
+	w = fixture.request(t, "POST", "/app/v1/agents/"+agent.ID+"/hand-off", "{}")
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var card HandOffCard
+	if err := json.Unmarshal(w.Body.Bytes(), &card); err != nil {
+		t.Fatal(err)
+	}
+	path := "/app/v1/agents/" + agent.ID + "/hand-off/" + card.ID
+	w = fixture.request(t, "GET", path, "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), card.ID) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = fixture.request(t, "POST", path+"/not-now", "{}")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = fixture.request(t, "GET", path, "")
+	if w.Code != 404 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = fixture.request(t, "GET", "/app/v1/agents/"+agent.ID, "")
+	if w.Code != 200 || strings.Contains(w.Body.String(), "Handed to the factory") {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }

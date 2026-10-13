@@ -19,6 +19,14 @@ func enrich(e *Event) {
 	}
 	if e.Verb == "" {
 		switch e.Kind {
+		case StepEdited:
+			e.Verb = "edited steps"
+		case StepStopped:
+			e.Verb = "stopped"
+		case StepRerun:
+			e.Verb = "reran step"
+		case HandOffNotNow:
+			e.Verb = "put away hand-off"
 		case AutoStarted, Started:
 			e.Verb = "started"
 		case AskedFirst:

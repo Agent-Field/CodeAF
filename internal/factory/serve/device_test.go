@@ -522,3 +522,40 @@ func TestLoopbackStopWithNoGitHubNeverBorrowsTheAssignee(t *testing.T) {
 		t.Fatalf("stop borrowed job identity = %+v %v", events, err)
 	}
 }
+
+func TestCancelledDeviceCodeCannotPollOrCrossCallers(t *testing.T) {
+	g := &fakeGitHub{t: t, login: "priya"}
+	h := New(factory.Seam{}, Config{GitHubClientID: "client", GitHubHTTPClient: g.client(), AccessToken: "host-token"})
+	defer h.Close()
+	request := func(method, path, token, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:1234"
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+	w := request("POST", "/v1/auth/device", "host-token", "{}")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var device api.Device
+	if err := json.Unmarshal(w.Body.Bytes(), &device); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(api.DevicePoll{DeviceCode: device.DeviceCode})
+	w = request("DELETE", "/v1/auth/device", "", string(body))
+	if w.Code != 400 {
+		t.Fatal("another caller cancelled code", w.Code, w.Body.String())
+	}
+	w = request("DELETE", "/v1/auth/device", "host-token", string(body))
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = request("POST", "/v1/auth/device/poll", "host-token", string(body))
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "unknown device code for this caller") || g.polls != 0 {
+		t.Fatal(w.Code, w.Body.String(), g.polls)
+	}
+}

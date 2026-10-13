@@ -95,11 +95,17 @@ func typescriptDocument() ([]byte, error) {
 	out.WriteString("}\n\nexport type AppEventName = keyof AppEvents;\n")
 	out.WriteString("export type AppEvent<N extends AppEventName = AppEventName> = {\n")
 	out.WriteString("  [K in N]: { event: K; data: AppEvents[K] }\n}[N];\n")
+	factoryWire, err := factoryTypescriptDocument()
+	if err != nil {
+		return nil, err
+	}
+	out.WriteString(factoryWire)
 	return []byte(out.String()), nil
 }
 
 type tsGenerator struct {
-	types map[reflect.Type]string
+	types          map[reflect.Type]string
+	integerMapKeys bool
 }
 
 func (g tsGenerator) fields(typ reflect.Type) (string, error) {
@@ -219,7 +225,7 @@ func (g tsGenerator) value(typ reflect.Type, schemaTag string, omitEmpty, defini
 		}
 		return value, nil
 	case reflect.Map:
-		if typ.Key().Kind() != reflect.String {
+		if typ.Key().Kind() != reflect.String && !(g.integerMapKeys && typ.Key().Kind() == reflect.Int) {
 			return "", fmt.Errorf("unsupported JSON map key %s", typ.Key())
 		}
 		elem, err := g.value(typ.Elem(), "", false, false)

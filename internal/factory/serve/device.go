@@ -259,3 +259,26 @@ func (h *Handler) bindDeviceProfile(r *http.Request, id string, profile api.Prof
 		return err
 	})
 }
+
+// cancelDevice consumes only this caller's pending code; an in-flight poll holds the same lock.
+func (h *Handler) cancelDevice(w http.ResponseWriter, r *http.Request) {
+	var body api.DevicePoll
+	if !h.decode(w, r, &body, false) {
+		return
+	}
+	h.auth.mu.Lock()
+	flow := h.auth.pending[body.DeviceCode]
+	h.auth.mu.Unlock()
+	if flow == nil || flow.caller != flowCaller(r) {
+		h.fail(w, http.StatusBadRequest, "unknown device code for this caller")
+		return
+	}
+	flow.mu.Lock()
+	defer flow.mu.Unlock()
+	if flow.consumed {
+		h.fail(w, http.StatusBadRequest, "device code was already exchanged")
+		return
+	}
+	h.forgetDevice(body.DeviceCode, flow)
+	h.finish(w, nil)
+}

@@ -188,7 +188,13 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 // the item answered, and returned so a caller may log them too; a caller
 // never appends them a second time. Every stage added or changed carries By
 // and Why.
-func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, error) {
+func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines []string, err error) {
+	// The HTTP door needs to distinguish a bounded refusal from a failed store write.
+	defer func() {
+		if err != nil {
+			err = EditRefusal{Cause: err}
+		}
+	}()
 	if e.Empty() {
 		return it, nil, nil
 	}
@@ -546,3 +552,9 @@ func AdaptedLine(it Item) string {
 	}
 	return strings.Join(parts, " · ")
 }
+
+// EditRefusal retains the exact bounded-edit sentence while identifying a conflict.
+type EditRefusal struct{ Cause error }
+
+func (e EditRefusal) Error() string { return e.Cause.Error() }
+func (e EditRefusal) Unwrap() error { return e.Cause }

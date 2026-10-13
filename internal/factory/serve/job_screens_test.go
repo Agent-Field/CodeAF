@@ -1,0 +1,346 @@
+package serve_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
+)
+
+func reopenJobs(t *testing.T, f *v2Jobs) {
+	t.Helper()
+	f.h.Close()
+	f.h = serve.New(f.seam, f.cfg)
+}
+
+func recordedRun() *factory.Stream {
+	return &factory.Stream{Cur: 1, Spent: 1.25, Started: now, Phases: []factory.Phase{
+		{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Result: &factory.StageResult{Output: "keep this plan", Done: true}},
+		{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 2, Chat: "old-chat"},
+		{Name: "proof", Kind: factory.StageChat, State: factory.PhasePending},
+	}}
+}
+
+func TestJobScreensStopRerunKeepsEarlierWorkAndRevokesLease(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "sam", Stream: recordedRun()})
+	desk, err := lease.Open(f.st, f.cfg.LeaseOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := lease.Worker{ID: "worker", Machine: "laptop", Handle: "sam", Team: true, Slots: 1}
+	held, err := desk.Pull(worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.post(t, it, "steps/write/stop", `{"expect":{"step":"plan"}}`, 409)
+	f.person = "mei"
+	f.post(t, it, "steps/write/stop", "{}", 403)
+	f.person = "sam"
+	f.post(t, it, "steps/missing/stop", "{}", 404)
+	f.post(t, it, "steps/plan/stop", "{}", 409)
+	f.post(t, it, "steps/write/stop", "{}", 200)
+	if _, err := desk.Heartbeat(held.Job, worker.ID); err == nil {
+		t.Fatal("old lease still accepts a heartbeat")
+	}
+	j := f.read(t, it)
+	if j.State != "needs_you" || j.StatePresentation.Title != "Step stopped" || !j.Controls.RerunStep || j.Controls.StopStep || j.Cost != 1.25 {
+		t.Fatalf("stop: %+v", j)
+	}
+	f.post(t, it, "steps/proof/rerun", "{}", 409)
+	f.post(t, it, "steps/write/rerun", "{}", 200)
+	cur, _ := f.st.Get(it.ID)
+	if cur.State != factory.StateQueued || cur.Stream.Phases[0].Result.Output != "keep this plan" || cur.Stream.Phases[1].Chat != "" || cur.Stream.Phases[1].Round != 0 || cur.Stream.Spent != 1.25 || cur.Failure != nil {
+		t.Fatalf("rerun: %+v", cur)
+	}
+	f.post(t, it, "steps/plan/rerun", "{}", 200)
+	cur, _ = f.st.Get(it.ID)
+	if cur.Stream.Cur != 0 || cur.Stream.Phases[0].State != factory.PhaseRunning || cur.Stream.Spent != 1.25 {
+		t.Fatalf("first step rerun lost revival state: %+v", cur.Stream)
+	}
+	events, err := f.rec.Since(context.Background(), time.Time{})
+	if err != nil || len(events) < 3 || events[len(events)-1].Kind != record.StepRerun {
+		t.Fatalf("events: %+v %v", events, err)
+	}
+}
+
+func TestJobScreensEditsAndAssignmentRespectBounds(t *testing.T) {
+	f := newV2Jobs(t)
+	f.seam.Edit = factory.LocalSeam(f.st, now).Edit
+	reopenJobs(t, f)
+	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "old", On: true}, {Name: "proof", Kind: factory.StageChat, Ask: "prove", Fixed: true, On: true}}})
+	w := verbRequest(f.h, "GET", fmt.Sprintf("/v1/jobs/%d/step-edits", it.ID), "")
+	checkJSON(t, w, 200)
+	var before api.StepEdits
+	if err := json.Unmarshal(w.Body.Bytes(), &before); err != nil {
+		t.Fatal(err)
+	}
+	f.post(t, it, "step-edits", `{"skip":["proof"]}`, 409)
+	f.post(t, it, "step-edits", `{"ask":{"write":"new ask"},"why":"make the scope clear"}`, 200)
+	cur, _ := f.st.Get(it.ID)
+	if cur.Stages[0].Ask != "new ask" || cur.Stages[0].By != factory.ByYou {
+		t.Fatal(cur.Stages)
+	}
+	f.post(t, it, "step-edits", fmt.Sprintf(`{"ask":{"write":"stale"},"expect":{"version":%d}}`, before.Version), 409)
+	f.person = "mei"
+	f.post(t, it, "step-edits", `{"ask":{"write":"wrong person"}}`, 403)
+	f.person = "sam"
+	f.post(t, it, "assignee", `{"assignee":"@Mei"}`, 200)
+	cur, _ = f.st.Get(it.ID)
+	if cur.Person() != "mei" {
+		t.Fatal(cur.Person())
+	}
+	f.post(t, it, "assignee", `{"assignee":"sam"}`, 403)
+}
+
+type jobsTransport func(*http.Request) (*http.Response, error)
+
+func (f jobsTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestJobScreensIssuesPipelineAndSyncUseRealGitHubShapes(t *testing.T) {
+	f := newV2Jobs(t)
+	f.cfg.Mode = api.FactorySolo
+	f.cfg.GitHubToken = func(context.Context) string { return "private-token" }
+	var creates, refreshes int
+	f.cfg.GitHubHTTPClient = &http.Client{Transport: jobsTransport(func(r *http.Request) (*http.Response, error) {
+		if r.Header.Get("Authorization") != "Bearer private-token" {
+			t.Fatal("wrong GitHub credential")
+		}
+		body, status := "", 200
+		switch r.URL.Path {
+		case "/repos/acme/api/issues":
+			creates++
+			var fields struct {
+				Title     string
+				Body      string
+				Assignees []string
+			}
+			if err := json.NewDecoder(r.Body).Decode(&fields); err != nil {
+				t.Fatal(err)
+			}
+			if r.Method != "POST" || fields.Title != "Fix it" || fields.Body != "the brief" || len(fields.Assignees) != 1 || fields.Assignees[0] != "sam" {
+				t.Fatalf("GitHub issue body: %+v", fields)
+			}
+			status = 201
+			body = fmt.Sprintf(`{"number":%d,"title":"Fix it","html_url":"https://github.com/acme/api/issues/%d"}`, creates+10, creates+10)
+		case "/search/issues":
+			if r.URL.Query().Get("q") != "repo:acme/api is:issue is:open fix repo:private/hidden" {
+				t.Fatal(r.URL.Query())
+			}
+			body = `{"items":[{"number":11,"title":"Fix it","html_url":"https://github.com/acme/api/issues/11","repository_url":"https://api.github.com/repos/acme/api"},{"number":7,"title":"Secret","repository_url":"https://api.github.com/repos/private/hidden"}]}`
+		default:
+			t.Fatalf("unexpected GitHub request: %s", r.URL)
+		}
+		return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	p := pipeline.Defaults()
+	p.Pipeline[factory.Kind("repair")] = []string{"write", "proof"}
+	f.cfg.Pipeline = func(context.Context, string, string) (pipeline.File, error) { return p, nil }
+	f.seam.RecipeAt = func(string) (factory.Recipe, []factory.Problem, string, error) { return p.Recipe(), nil, "", nil }
+	f.seam.New = func(repo, words string) (int, error) {
+		it, err := f.st.Create(factory.Item{State: factory.StateNew, Repo: repo, Title: "Fix it", Body: "the brief", Kind: factory.KindIssue, Origin: factory.OriginTerminal, Assignee: "sam"})
+		return it.ID, err
+	}
+	f.seam.Refresh = func(context.Context, int) error { refreshes++; return nil }
+	reopenJobs(t, f)
+	body := `{"repo":"acme/api","title":"Fix it","text":"the brief","assignee":"sam","pipeline":"repair"}`
+	w := verbRequest(f.h, "POST", "/v1/issues", body)
+	checkJSON(t, w, 201)
+	var created api.JobCreated
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	it, _ := f.st.Get(created.ID)
+	if it.Num != 11 || !it.Synced || it.Origin != factory.OriginForge || len(it.Stages) != 2 || it.Stages[0].Name != "write" {
+		t.Fatalf("issue job: %+v", it)
+	}
+	f.post(t, it, "sync", "{}", 200)
+	if refreshes != 1 || creates != 1 {
+		t.Fatal(refreshes, creates)
+	}
+	w = verbRequest(f.h, "GET", "/v1/issues?repo=acme/api&q=fix%20repo:private/hidden", "")
+	checkJSON(t, w, 200)
+	if strings.Contains(w.Body.String(), "Secret") || !strings.Contains(w.Body.String(), "Fix it") {
+		t.Fatal(w.Body.String())
+	}
+	w = verbRequest(f.h, "POST", "/v1/issues", strings.ReplaceAll(body, "repair", "missing"))
+	checkJSON(t, w, 422)
+	if creates != 1 {
+		t.Fatal("invalid pipeline opened an issue")
+	}
+	local := f.create(t, factory.Item{State: factory.StateNew, Origin: factory.OriginTerminal, Title: "Fix it", Body: "the brief", Assignee: "sam"})
+	f.post(t, local, "sync", "{}", 200)
+	f.post(t, local, "sync", "{}", 200)
+	if creates != 2 || refreshes != 2 {
+		t.Fatal("sync duplicated issue", creates, refreshes)
+	}
+}
+
+func TestJobScreensHandOffNotNowSurvivesRestartAndIsPersonal(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "sam", Ask: &factory.JobAsk{Text: "fix the brief", Source: "hand-off", FromRef: &factory.SourceRef{Kind: "agent", ID: "a1", Title: "Source"}}})
+	path := fmt.Sprintf("/v1/jobs/%d/hand-off/a1", it.ID)
+	checkJSON(t, verbRequest(f.h, "GET", path, ""), 200)
+	f.post(t, it, "hand-off/a1/not-now", "{}", 200)
+	reopenJobs(t, f)
+	w := verbRequest(f.h, "GET", path, "")
+	checkJSON(t, w, 200)
+	if !strings.Contains(w.Body.String(), `"not_now":true`) {
+		t.Fatal(w.Body.String())
+	}
+	cur, _ := f.st.Get(it.ID)
+	if cur.State != factory.StateRunning {
+		t.Fatal("Not now stopped the job")
+	}
+	f.person = "mei"
+	w = verbRequest(f.h, "GET", path, "")
+	checkJSON(t, w, 200)
+	if !strings.Contains(w.Body.String(), `"not_now":false`) {
+		t.Fatal("dismissal crossed people")
+	}
+	checkJSON(t, verbRequest(f.h, "GET", path+"missing", ""), 404)
+}
+
+func TestJobScreensStatePresentationOnQueueAndJobReads(t *testing.T) {
+	for _, tc := range []struct {
+		name, state, qkind, kind, title string
+		failure                         *factory.Failure
+	}{
+		{"failed", string(factory.StateNew), "", "failed", "Step failed", &factory.Failure{Code: factory.CodeToolError, Step: "write", Detail: "command failed"}},
+		{"rounds", string(factory.StateNeedsYou), factory.QKindOutOfAttempts, "out_of_rounds", "Out of rounds", nil},
+		{"queued", string(factory.StateQueued), "", "waiting_for_runner", "Waiting for runner", nil},
+		{"spending", string(factory.StateNeedsYou), "cap", "spending", "Spending limit reached", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newV2Jobs(t)
+			it := f.create(t, factory.Item{State: factory.State(tc.state), QKind: tc.qkind, Question: "continue?", Failure: tc.failure, Stream: recordedRun(), Assignee: "sam", Cap: 2})
+			j := f.read(t, it)
+			if j.StatePresentation.Kind != tc.kind || j.StatePresentation.Title != tc.title || !j.Controls.Timeline {
+				t.Fatalf("presentation %+v", j)
+			}
+			w := verbRequest(f.h, "GET", "/v1/queue", "")
+			checkJSON(t, w, 200)
+			if !strings.Contains(w.Body.String(), `"state_presentation"`) || !strings.Contains(w.Body.String(), `"controls"`) {
+				t.Fatal(w.Body.String())
+			}
+		})
+	}
+}
+
+func TestJobScreensPipelinePRPreservesCheckout(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	git("init", "-b", "main")
+	git("config", "user.name", "test")
+	git("config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("base"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "tracked")
+	git("commit", "-m", "base")
+	if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("dirty"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f := newV2Jobs(t)
+	f.seam.RecipeAt = func(string) (factory.Recipe, []factory.Problem, string, error) {
+		return factory.DefaultRecipe(), nil, dir, nil
+	}
+	reopenJobs(t, f)
+	body, _ := json.Marshal(api.PipelinePRRequest{Text: "pipeline:\n  issue: [write, proof]\n", Title: "Change steps"})
+	w := verbRequest(f.h, "POST", "/v1/repos/acme/api/pipeline/open-pr", string(body))
+	checkJSON(t, w, 200)
+	if !strings.Contains(w.Body.String(), "no remote to push to") {
+		t.Fatal(w.Body.String())
+	}
+	dirty, _ := os.ReadFile(filepath.Join(dir, "tracked"))
+	if string(dirty) != "dirty" {
+		t.Fatal("checkout changed")
+	}
+	if _, err := os.Stat(filepath.Join(dir, factory.PipelineFile)); !os.IsNotExist(err) {
+		t.Fatal("pipeline written into checkout", err)
+	}
+	cmd := exec.Command("git", "show", "factory/recipe-change:"+factory.PipelineFile)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "pipeline:") {
+		t.Fatalf("review branch: %s %v", out, err)
+	}
+}
+
+func TestJobScreensPublishedRoutesAreRegistered(t *testing.T) {
+	f := newV2Jobs(t)
+	for _, route := range api.ServiceRoutes {
+		path := strings.NewReplacer("{id}", "999", "{sid}", "write", "{card}", "missing", "{owner}", "acme", "{repo}", "api").Replace(route.Path)
+		w := verbRequest(f.h, route.Method, path, "{}")
+		if w.Code == 405 || strings.Contains(w.Body.String(), "factory endpoint not found") {
+			t.Fatalf("unregistered %s %s: %s", route.Method, route.Path, w.Body.String())
+		}
+	}
+}
+
+func TestJobScreensGitHubFailureCreatesNoJob(t *testing.T) {
+	f := newV2Jobs(t)
+	f.cfg.Mode = api.FactorySolo
+	f.cfg.GitHubToken = func(context.Context) string { return "private-token" }
+	f.cfg.GitHubHTTPClient = &http.Client{Transport: jobsTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"message":"private response"}`))}, nil
+	})}
+	f.seam.New = func(repo, words string) (int, error) { t.Fatal("failed GitHub issue created a job"); return 0, nil }
+	reopenJobs(t, f)
+	w := verbRequest(f.h, "POST", "/v1/issues", `{"repo":"acme/api","title":"Fix it","text":"brief"}`)
+	checkJSON(t, w, 502)
+	if strings.Contains(w.Body.String(), "private response") || strings.Contains(w.Body.String(), "private-token") {
+		t.Fatal("GitHub response leaked")
+	}
+	items, err := f.st.List()
+	if err != nil || len(items) != 0 {
+		t.Fatal(items, err)
+	}
+}
+
+func TestJobScreensLiveEditsRecompileTailAndRevokeOldWorker(t *testing.T) {
+	f := newV2Jobs(t)
+	f.seam.Edit = factory.LocalSeam(f.st, now).Edit
+	reopenJobs(t, f)
+	it := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "sam", Stream: recordedRun(), Stages: []factory.Stage{
+		{Name: "plan", Kind: factory.StageChat, On: true}, {Name: "write", Kind: factory.StageChat, On: true}, {Name: "proof", Kind: factory.StageChat, On: true},
+	}})
+	desk, err := lease.Open(f.st, f.cfg.LeaseOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := lease.Worker{ID: "worker", Handle: "sam", Machine: "laptop", Slots: 1}
+	held, err := desk.Pull(worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.post(t, it, "step-edits", `{"add":[{"step":{"name":"security","ask":"Check permissions"},"after":"write"}]}`, 200)
+	if _, err := desk.Heartbeat(held.Job, worker.ID); err == nil {
+		t.Fatal("old worker can restore previous pipeline")
+	}
+	cur, _ := f.st.Get(it.ID)
+	if cur.State != factory.StateQueued || len(cur.Stream.Phases) != 4 || cur.Stream.Phases[2].Name != "security" || cur.Stream.Phases[1].Chat != "old-chat" || cur.Stream.Spent != 1.25 {
+		t.Fatalf("live edit: %+v", cur)
+	}
+	f.post(t, it, "step-edits", `{"ask":{"write":"too late"}}`, 409)
+}

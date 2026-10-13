@@ -229,23 +229,25 @@ const (
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
-	Assignee        string               `json:"assignee,omitempty"`
-	Runner          string               `json:"runner,omitempty"`
-	JobID           string               `json:"id"`
-	Ref             string               `json:"ref"`
-	Priority        *factory.JobPriority `json:"priority,omitempty"`
-	Size            string               `json:"size,omitempty"`
-	Budget          float64              `json:"budget,omitempty"`
-	Reason          string               `json:"reason,omitempty"`
-	DoneHow         string               `json:"done_how,omitempty"`
-	DoneAt          time.Time            `json:"done_at"`
-	Dismissed       bool                 `json:"dismissed"`
-	DismissedBy     []string             `json:"dismissed_by,omitempty"`
-	WaitingFor      string               `json:"waiting_for,omitempty"`
-	Overlap         []string             `json:"overlap,omitempty"`
-	Approval        *factory.Approval    `json:"approval,omitempty"`
-	BranchDeleteAt  time.Time            `json:"branch_delete_at"`
-	BranchDeletedAt time.Time            `json:"branch_deleted_at"`
+	StatePresentation StatePresentation    `json:"state_presentation"`
+	Controls          JobControls          `json:"controls"`
+	Assignee          string               `json:"assignee,omitempty"`
+	Runner            string               `json:"runner,omitempty"`
+	JobID             string               `json:"id"`
+	Ref               string               `json:"ref"`
+	Priority          *factory.JobPriority `json:"priority,omitempty"`
+	Size              string               `json:"size,omitempty"`
+	Budget            float64              `json:"budget,omitempty"`
+	Reason            string               `json:"reason,omitempty"`
+	DoneHow           string               `json:"done_how,omitempty"`
+	DoneAt            time.Time            `json:"done_at"`
+	Dismissed         bool                 `json:"dismissed"`
+	DismissedBy       []string             `json:"dismissed_by,omitempty"`
+	WaitingFor        string               `json:"waiting_for,omitempty"`
+	Overlap           []string             `json:"overlap,omitempty"`
+	Approval          *factory.Approval    `json:"approval,omitempty"`
+	BranchDeleteAt    time.Time            `json:"branch_delete_at"`
+	BranchDeletedAt   time.Time            `json:"branch_deleted_at"`
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`

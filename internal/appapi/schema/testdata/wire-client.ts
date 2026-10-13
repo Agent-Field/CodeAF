@@ -53,3 +53,15 @@ const wrongPayload: AppEvent<"turn.delta"> = { event: "turn.delta", data: { proc
 const signIn: AppRequest<"POST /app/v1/providers/openrouter/sign-in"> = { theme: "dark" };
 // @ts-expect-error Embedded Agent fields are flattened, not nested.
 const nestedAgent = response.Agent;
+
+
+import type { FactoryRequest, FactoryResponse } from "../../../../docs/design/app-v2/wire";
+const rerun: FactoryRequest<"POST /v1/jobs/{id}/steps/{sid}/rerun"> = { expect: { version: 2 } };
+const issue: FactoryRequest<"POST /v1/issues"> = { repo: "org/repo", title: "Fix it", text: "Brief", pipeline: "repair" };
+function factoryCard(job: FactoryResponse<"GET /v1/jobs/{id}">): string {
+  return job.factory.name + job.state_presentation.title + String(job.controls.stop_step);
+}
+// @ts-expect-error Factory reads accept no JSON body.
+const invalidFactoryRead: FactoryRequest<"GET /v1/jobs/{id}/step-edits"> = {};
+// @ts-expect-error Step reruns accept a version number, never a display string.
+const invalidStepVersion: FactoryRequest<"POST /v1/jobs/{id}/steps/{sid}/rerun"> = { expect: { version: "2" } };

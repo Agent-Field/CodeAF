@@ -34,6 +34,9 @@ import (
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// GitHubToken supplies the local profile credential only on a solo host.
+	GitHubToken func(context.Context) string
+
 	// Mode is solo or team; an unset mode follows the host access configuration.
 	Mode string
 	// OperatorLogin names a solo host; team identity comes from the persisted claim.
@@ -143,7 +146,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	if _, err := tokens.LoadOperator(config.TokensPath); err != nil {
 		h.sessions.err = err
 	}
-	h.route("/v1/auth/device", map[string]http.HandlerFunc{http.MethodPost: h.startDevice})
+	h.route("/v1/auth/device", map[string]http.HandlerFunc{http.MethodPost: h.startDevice, http.MethodDelete: h.cancelDevice})
 	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
 	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
@@ -170,6 +173,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.workerRoutes()
 	h.v2Routes()
 	h.jobVerbs()
+	h.jobScreens()
 	h.scheduleJobTimer()
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
@@ -375,6 +379,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			q.Since.SpentToday = h.config.SpentToday()
 		}
 	}
+	for i := range q.Jobs {
+		h.presentJob(r, &q.Jobs[i])
+	}
 	for _, job := range q.Jobs {
 		if job.HeldBy != nil {
 			h.addSummary(r, q.People, job.HeldBy.Handle)
@@ -407,6 +414,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}
+	h.presentJob(r, &jobs[0])
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job

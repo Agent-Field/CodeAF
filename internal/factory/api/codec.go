@@ -146,6 +146,7 @@ func FromItem(it factory.Item) Job {
 	j.Failure = failureOf(it)
 	j.Ask = jobAsk(it)
 	j.PublishError = it.PublishError
+	PresentJob(&j)
 	return j
 }
 

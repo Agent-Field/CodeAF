@@ -49,6 +49,32 @@ func (s *Server) serveFactory(w http.ResponseWriter, r *http.Request) {
 		fail(w, 503, "not_allowed", "the engine is stopping")
 		return
 	}
+	if key := r.PathValue("card"); key != "" && !strings.HasSuffix(r.URL.Path, "/send") {
+		card := f.cards[key]
+		if card == nil || card.Agent != r.PathValue("id") || time.Now().After(card.Expires) {
+			fail(w, 404, "not_found", "hand-off card not found")
+			return
+		}
+		if r.Method == "GET" {
+			write(w, 200, card.HandOffCard)
+			return
+		}
+		var body ExpectRequest
+		if !decodeFactory(w, r, &body) {
+			return
+		}
+		if body.Expect != nil {
+			fail(w, 422, "bad_input", "Not now does not take expect")
+			return
+		}
+		if card.Result != nil {
+			fail(w, 409, "conflict", "this hand-off has already sent a job")
+			return
+		}
+		delete(f.cards, key)
+		write(w, 200, ActionResponse{OK: true})
+		return
+	}
 	if r.Method == "GET" {
 		out, err := f.list(r.Context())
 		if err != nil {
@@ -372,9 +398,6 @@ func (f *FactoryRegistry) send(ctx context.Context, id, key string, body SendHan
 	if strings.TrimSpace(edited.Title) == "" || strings.TrimSpace(edited.Repo) == "" || (edited.Start != "now" && edited.Start != "backlog") {
 		return HandOffResponse{}, agentError(422, "bad_input", "hand-off needs a title, repository and now or backlog")
 	}
-	if edited.Issue || edited.Pipeline != "default" {
-		return HandOffResponse{}, agentError(422, "not_allowed", "hand-off uses the repository pipeline and does not create a GitHub issue")
-	}
 	rows, err := f.connections(nil)
 	if err != nil {
 		return HandOffResponse{}, err
@@ -451,7 +474,7 @@ func (f *FactoryRegistry) send(ctx context.Context, id, key string, body SendHan
 			if title == "" {
 				title = edited.Title
 			}
-			body := factoryapi.NewJob{Repo: edited.Repo, Title: edited.Title, Text: edited.Brief, Source: "hand-off", FromRef: &corefactory.SourceRef{Kind: "agent", ID: id, Title: title}, Assignee: &edited.Assignee, Start: edited.Start}
+			body := factoryapi.NewJob{Repo: edited.Repo, Title: edited.Title, Text: edited.Brief, Source: "hand-off", FromRef: &corefactory.SourceRef{Kind: "agent", ID: id, Title: title}, Assignee: &edited.Assignee, Start: edited.Start, Pipeline: edited.Pipeline, Issue: edited.Issue}
 			if err := factoryCreateRequest(ctx, source, key, body, &job); err != nil {
 				return err
 			}

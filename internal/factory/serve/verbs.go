@@ -48,7 +48,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "approve" || verb == "retry_publish" || verb == "answer" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "unassign" {
+			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "answer" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -97,6 +97,7 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	}
 	job := h.withVersion(api.FromItem(updated))
 	job.Can = api.CanFor(updated, me, h.clock())
+	h.presentJob(r, &job)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job
@@ -134,6 +135,7 @@ func (h *Handler) release(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}
 	job := h.withVersion(api.FromItem(updated))
 	job.Can = api.CanFor(updated, me, h.clock())
+	h.presentJob(r, &job)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job
@@ -641,6 +643,43 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if body.Autostart && !h.requireVerb(w, h.seam.Launch != nil) {
 		return
 	}
+	var selected []factory.Stage
+	if body.Pipeline != "" && body.Pipeline != "default" {
+		if !h.requireVerb(w, h.config.Store != nil && h.seam.RecipeAt != nil) {
+			return
+		}
+		recipe, _, dir, err := h.seam.RecipeAt(body.Repo)
+		if h.failed(w, err) {
+			return
+		}
+		if h.config.Pipeline != nil {
+			f, err := h.config.Pipeline(r.Context(), body.Repo, dir)
+			if h.failed(w, err) {
+				return
+			}
+			recipe = f.Recipe()
+		}
+		selected = recipe.ByKind[factory.Kind(body.Pipeline)]
+		if len(selected) == 0 {
+			h.fail(w, 422, "pipeline not found")
+			return
+		}
+	}
+	var issue api.Issue
+	if body.Issue {
+		if !h.requireVerb(w, h.config.Store != nil) {
+			return
+		}
+		assignee := ""
+		if body.Assignee != nil {
+			assignee = *body.Assignee
+		}
+		var ok bool
+		issue, ok = h.openIssue(w, r, body.Repo, body.Title, body.Text, assignee)
+		if !ok {
+			return
+		}
+	}
 	// New has one words argument today. Join the title and brief here so a
 	// wire client does not need to know the seam's terminal-input shape.
 	words := body.Title
@@ -652,6 +691,12 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.failed(w, h.stampAsk(r, id, body)) {
+		return
+	}
+	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error { it.Stages = factory.CopyStages(selected); return nil })) {
+		return
+	}
+	if body.Issue && h.failed(w, h.keepIssue(id, issue)) {
 		return
 	}
 	if body.Autostart && h.config.Store != nil {

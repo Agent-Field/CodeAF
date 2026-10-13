@@ -1579,7 +1579,7 @@ repository, repository pipeline, assignee, Now/Backlog choice and factory picker
 `POST /app/v1/tasks/{tid}/hand-off {}` uses that task's resource snapshot.
 The default factory is the one watching the repository.
 `POST /app/v1/agents/{id}/hand-off/{card}/send {}` sends it; editable fields
-include `factory`, `title`, `brief`, `repo`, `start` and `assignee`.
+include `factory`, `title`, `brief`, `repo`, `pipeline`, `issue`, `start` and `assignee`.
 
 A successful creation stops the origin and writes "Handed to the factory" with
 a link to the job. A failed creation leaves the origin running. Repeating a
@@ -1587,9 +1587,12 @@ successful card returns the same job. A changed agent or originating task answer
 409 `stale` before creation.
 Cards expire after one hour; at most 256 cards remain in one launch.
 Task hand-off requires the task resource and a task stop door and keeps
-unrelated replies running. `issue:true` and a custom pipeline answer 422
-`not_allowed`: this job door uses the repository pipeline and cannot create
-an additional GitHub issue.
+unrelated replies running. `issue:true` opens a GitHub issue using your credential.
+`pipeline` may select a named pipeline from the repository file; an unknown name
+answers 422 `pipeline not found`. GitHub failure leaves the origin running.
+`GET /app/v1/agents/{id}/hand-off/{card}` reopens an unexpired card.
+`POST /app/v1/agents/{id}/hand-off/{card}/not-now {}` puts an unsent card away
+without stopping the origin. A sent card cannot be put away.
 
 ## App Mac asleep — Linux sleep — power events and stopped processes
 

@@ -3136,7 +3136,8 @@ GitHub App permissions are configured in GitHub, not inferred from OAuth scope t
 facts are omitted. `GH_TOKEN` and `GITHUB_TOKEN` remain host read overrides. Replacing
 a grant wakes the poll and the next read uses the new token. The grant is used only
 for reading issues and repositories, never as a runner or publishing credential.
-The team server never writes to GitHub, including when a host override is present.
+The team server never uses the host override or read grant for GitHub writes.
+An explicit issue creation uses the signed-in person's own credential.
 
 ## Factory Activity — actor, verb, object and CSV export
 
@@ -3160,3 +3161,73 @@ computer. This saves the factory connection through the same door as
 not leave a daemon running after the command exits. Use the factory session
 returned by GitHub sign-in. `CODEAF_FACTORY_BENCHES` sets the number of
 execution slots, default 2. A team runner runs only its owner's assigned jobs.
+
+
+## Stop this step and rerun from here in a job
+
+`POST /v1/jobs/{id}/steps/{sid}/stop {}` stops the current recorded step.
+`sid` is the step name. The job waits in Needs you with a "Step stopped" card;
+its branch, previous results and spending stay. `POST .../rerun {}` queues a
+new attempt from a step that has run. Earlier completed steps stay; the chosen
+step and those after it start over. Both revoke the old runner lease so late
+reports cannot restore the previous run. Only the assignee may act in a team;
+the solo owner may act. A missing step answers 404 `step not found`; pending
+steps cannot rerun. Finished or publishing jobs cannot rewind.
+Both requests accept `expect:{version,state,step}` to refuse stale pages.
+
+## Editing steps and open a pipeline pull request
+
+`GET /v1/jobs/{id}/step-edits` returns the steps and document version.
+`POST` accepts `ask` and `thinking` maps by step name, `on` and `skip` name
+lists, `add:[{step:{name,kind,ask,until,effort},after}]`, `why` and `expect`.
+The binary applies the same bounds as manager edits: fixed steps, started
+steps, proof requirements and spending limits remain protected. The assignee
+owns team edits; finished and publishing jobs cannot edit steps. A held run
+resumes through a new lease with its current conversation and edited future
+steps; late reports from its previous worker are refused.
+
+`POST /v1/repos/{owner}/{repo}/pipeline/open-pr {text,title}` validates YAML
+and writes the proposed pipeline on a separate review branch. The checkout
+stays untouched. This is an operator action. A checkout is required. The
+response's `note` says whether a pull request opened, a branch was pushed,
+or only a local commit was possible; missing remote or gh cannot promise a PR.
+
+## Change assignee, Sync with GitHub, New job and issue search
+
+`POST /v1/jobs/{id}/assignee {assignee,expect}` is Change assignee: the current
+assignee may reassign their team job. `POST /v1/jobs/{id}/sync {}` refreshes a
+GitHub job or opens an issue for a local job and keeps its receipt. A refresh
+requires the host's refresh door; issue creation requires your GitHub sign-in
+(or the local profile in solo mode). The team read grant never writes.
+
+`POST /v1/issues {repo,title,text,assignee,pipeline,start}` opens a GitHub issue
+and creates its job. `POST /v1/jobs` also accepts `issue:true` and a named
+`pipeline` from the repository file. `default` uses the usual issue pipeline.
+An unknown pipeline answers 422 `pipeline not found` before any issue opens.
+`GET /v1/issues?repo=owner/name&q=words` searches up to 50 open issues in that
+visible repository. These requests use your credential; unknown facts never
+come from the app. GitHub failures return a refusal without claiming success.
+
+## Job state cards, controls and Timeline
+
+Every job read includes `state_presentation` with kind, title and optional
+detail, and `controls` with the actions this caller can use here. Cards include
+"Step failed", "Step stopped", "Out of rounds", "Waiting for runner" and
+"Spending limit reached". Timeline comes from the recorded steps and rounds.
+The binary computes Stop this step, rerun, editing, reassignment and sync
+availability from caller permissions, stored state and the host's real doors.
+
+## Hand-off source card and Not now
+
+`GET /v1/jobs/{id}/hand-off/{card}` reads a job's saved originating agent;
+`card` is its `ask.from_ref.id`. `POST .../not-now {}` records that caller's
+Not now in Activity. It leaves the job and source running and survives restart.
+Other people keep their own view. A missing source card answers 404
+`hand-off card not found`.
+
+## Cancel a pending GitHub device code
+
+`DELETE /v1/auth/device {device_code}` consumes your pending factory sign-in
+code. A poll already exchanging it completes under the same lock; cancellation
+cannot undo a completed sign-in. Another caller cannot cancel your code. Later
+polls of a cancelled code answer `unknown device code for this caller`.

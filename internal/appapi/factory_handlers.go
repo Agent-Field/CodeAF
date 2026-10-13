@@ -4,6 +4,8 @@ import "net/http"
 
 // This table belongs to the resource lane, so implementing it needs no shared router edit.
 var factoryContractRoutes = []contractRoute{
+	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/agents/{id}/hand-off/{card}", Response: "HandOffCard"}, handle: (*Server).factoryHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/agents/{id}/hand-off/{card}/not-now", Request: "ExpectRequest", Response: "ActionResponse"}, handle: (*Server).factoryHandler},
 	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/factories", Request: "", Response: "FactoriesResponse"}, handle: (*Server).factoryHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories/solo", Request: "ExpectRequest", Response: "Factory"}, handle: (*Server).factoryHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories", Request: "AttachFactoryRequest", Response: "Factory"}, handle: (*Server).factoryHandler},
