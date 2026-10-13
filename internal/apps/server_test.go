@@ -144,7 +144,7 @@ func TestBridgePublishesRowDiffs(t *testing.T) {
 
 func TestBridgeTypedErrors(t *testing.T) {
 	c := dial(t)
-	if err := c.call("crm", bridge.MethodRunsStart, bridge.StartRunParams{Run: "follow-up"}, nil); err == nil || err.Code != bridge.CodeNotBuilt {
+	if err := c.call("crm", bridge.MethodRunsStart, bridge.StartRunParams{Run: "not-a-run"}, nil); err == nil || err.Code != bridge.CodeNotFound {
 		t.Fatalf("runs.start err = %+v", err)
 	}
 	if err := c.call("nope", bridge.MethodAppsGet, nil, nil); err == nil || err.Code != bridge.CodeNotFound {
