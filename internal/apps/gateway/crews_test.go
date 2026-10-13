@@ -6,19 +6,33 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/caps"
 	"github.com/Agent-Field/codeaf/internal/apps/crewagent"
 	"github.com/Agent-Field/codeaf/internal/apps/crewlink"
 	"github.com/Agent-Field/codeaf/internal/apps/custom"
 	"github.com/Agent-Field/codeaf/internal/apps/lifecycle"
 	"github.com/Agent-Field/codeaf/internal/apps/prebuilt"
+	"github.com/Agent-Field/codeaf/internal/apps/realtime"
+	"github.com/Agent-Field/codeaf/internal/apps/records"
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
+	"github.com/Agent-Field/codeaf/internal/apps/sample"
 	"github.com/Agent-Field/codeaf/internal/apps/settings"
+	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
 func crewsTestServices(t *testing.T) *svc.Services {
 	t.Helper()
-	all := testServices(t)
 	cfg := svc.Config{Root: t.TempDir()}
+	all := &svc.Services{}
+	all.Store = store.New(cfg, all)
+	all.Caps = caps.New(cfg, all)
+	all.Records = records.New(cfg, all)
+	all.Sample = sample.New(cfg, all)
+	if err := all.Store.(*store.Service).SeedGoldenCRM(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	all.Hub = realtime.New(cfg, all)
 	preferences := settings.New(cfg, all)
 	all.Crews = svc.CrewsServices{
 		Lifecycle: lifecycle.New(cfg, all), Settings: preferences,
@@ -27,6 +41,9 @@ func crewsTestServices(t *testing.T) *svc.Services {
 		TriggerGate: preferences, BudgetCap: preferences,
 	}
 	all.Caps = CrewsCaps(all.Caps, all)
+	engine := runs.New(cfg, all)
+	all.Runs = engine
+	t.Cleanup(engine.Close)
 	return all
 }
 
@@ -39,37 +56,44 @@ func linksBuilt(method string) bool {
 	}
 }
 
-func TestCrewsMethodsDispatchThroughWebSocket(t *testing.T) {
+func TestCrewsMethodsThroughWebSocket(t *testing.T) {
 	tests := []struct {
-		name   string
-		global bool
-		params any
+		name     string
+		global   bool
+		params   any
+		notBuilt bool
 	}{
-		{bridge.MethodAppsArchive, false, bridge.Empty{}},
-		{bridge.MethodAppsRestore, false, bridge.Empty{}},
-		{bridge.MethodAppsDelete, false, bridge.DeleteAppParams{Confirm: "CRM"}},
-		{bridge.MethodAppsCopy, false, bridge.CopyAppParams{Name: "My CRM"}},
-		{bridge.MethodAppsLifecycle, true, bridge.Empty{}},
-		{bridge.MethodTriggersList, false, bridge.Empty{}},
-		{bridge.MethodTriggersPause, false, bridge.PauseTriggerParams{ID: "follow-up", Paused: true}},
-		{bridge.MethodBudgetGet, false, bridge.Empty{}},
-		{bridge.MethodBudgetSet, false, bridge.SetBudgetParams{Month: 20}},
-		{bridge.MethodLinksAdd, false, bridge.AddLinkParams{Crew: "pricing", Type: "deal", ID: "dl_hooli"}},
-		{bridge.MethodLinksRemove, false, bridge.RemoveLinkParams{Crew: "pricing", Type: "deal", ID: "dl_hooli"}},
-		{bridge.MethodLinksForRecord, false, bridge.LinksForRecordParams{Type: "deal", ID: "dl_hooli"}},
-		{bridge.MethodLinksForCrew, true, bridge.LinksForCrewParams{Crew: "pricing"}},
-		{bridge.MethodCrewAgentBadge, false, bridge.Empty{}},
-		{bridge.MethodCrewAgentCandidates, true, bridge.Empty{}},
-		{bridge.MethodAppsPrebuilt, true, bridge.Empty{}},
-		{bridge.MethodCustomBundle, false, bridge.CustomBundleParams{File: "custom/chart.tsx"}},
+		{bridge.MethodAppsArchive, false, bridge.Empty{}, false},
+		{bridge.MethodAppsRestore, false, bridge.Empty{}, false},
+		{bridge.MethodAppsDelete, false, bridge.DeleteAppParams{Confirm: "CRM"}, false},
+		{bridge.MethodAppsCopy, false, bridge.CopyAppParams{Name: "My CRM"}, false},
+		{bridge.MethodAppsLifecycle, true, bridge.Empty{}, false},
+		{bridge.MethodTriggersList, false, bridge.Empty{}, false},
+		{bridge.MethodTriggersPause, false, bridge.PauseTriggerParams{ID: "proposal-sent", Paused: true}, false},
+		{bridge.MethodBudgetGet, false, bridge.Empty{}, false},
+		{bridge.MethodBudgetSet, false, bridge.SetBudgetParams{Month: 20}, false},
+		{bridge.MethodLinksAdd, false, bridge.AddLinkParams{Crew: "pricing", Type: "deal", ID: "dl_hooli"}, false},
+		{bridge.MethodLinksRemove, false, bridge.RemoveLinkParams{Crew: "pricing", Type: "deal", ID: "dl_hooli"}, false},
+		{bridge.MethodLinksForRecord, false, bridge.LinksForRecordParams{Type: "deal", ID: "dl_hooli"}, false},
+		{bridge.MethodLinksForCrew, true, bridge.LinksForCrewParams{Crew: "pricing"}, false},
+		{bridge.MethodCrewAgentBadge, false, bridge.Empty{}, true},
+		{bridge.MethodCrewAgentCandidates, true, bridge.Empty{}, true},
+		{bridge.MethodAppsPrebuilt, true, bridge.Empty{}, false},
+		{bridge.MethodCustomBundle, false, bridge.CustomBundleParams{File: "custom/chart.tsx"}, false},
 	}
 	if len(tests) != len(crewsMethods) {
 		t.Fatalf("coverage=%d methods=%d", len(tests), len(crewsMethods))
 	}
-	ctx, url := testServer(t, crewsTestServices(t))
-	socket := dialSocket(t, ctx, url)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			all := crewsTestServices(t)
+			if tt.name == bridge.MethodLinksRemove {
+				if _, err := all.Crews.Links.Add(context.Background(), ownerScope("crm"), bridge.AddLinkParams{Crew: "pricing", Type: "deal", ID: "dl_hooli"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, url := testServer(t, all)
+			socket := dialSocket(t, ctx, url)
 			entry, exists := methods[tt.name]
 			if !exists || entry.global != tt.global {
 				t.Fatalf("registration=%+v exists=%v", entry, exists)
@@ -78,28 +102,9 @@ func TestCrewsMethodsDispatchThroughWebSocket(t *testing.T) {
 			if tt.global {
 				app = ""
 			}
-			id := socket.send(bridge.TypeCall, app, tt.name, "", tt.params)
+			// Validate malformed calls before a successful delete can hide this fixture.
+			id := socket.send(bridge.TypeCall, app, tt.name, "", []string{"invalid"})
 			reply := socket.read()
-			switch {
-			case tt.name == bridge.MethodAppsPrebuilt:
-				if !factoryResult(t, id, reply) {
-					t.Fatalf("reply=%+v", reply)
-				}
-			case linksBuilt(tt.name):
-				if reply.ID != id || reply.Type != bridge.TypeResult || reply.Error != nil {
-					t.Fatalf("reply=%+v", reply)
-				}
-			default:
-				code := bridge.CodeNotBuilt
-				if tt.name == bridge.MethodCustomBundle {
-					code = bridge.CodeNotFound
-				}
-				if reply.ID != id || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != code {
-					t.Fatalf("reply=%+v", reply)
-				}
-			}
-			id = socket.send(bridge.TypeCall, app, tt.name, "", []string{"invalid"})
-			reply = socket.read()
 			if reply.ID != id || reply.Error == nil || reply.Error.Code != bridge.CodeInvalid {
 				t.Fatalf("invalid params=%+v", reply)
 			}
@@ -107,6 +112,32 @@ func TestCrewsMethodsDispatchThroughWebSocket(t *testing.T) {
 				id = socket.send(bridge.TypeCall, "", tt.name, "", tt.params)
 				if reply := socket.read(); reply.ID != id || reply.Error == nil || reply.Error.Code != bridge.CodeInvalid {
 					t.Fatalf("missing app=%+v", reply)
+				}
+			}
+			id = socket.send(bridge.TypeCall, app, tt.name, "", tt.params)
+			reply = socket.read()
+			if reply.ID != id {
+				t.Fatalf("reply=%+v", reply)
+			}
+			if (reply.Type != bridge.TypeResult && reply.Type != bridge.TypeError) || (reply.Type == bridge.TypeError) != (reply.Error != nil) {
+				t.Fatalf("reply=%+v", reply)
+			}
+			notBuilt := reply.Error != nil && reply.Error.Code == bridge.CodeNotBuilt
+			if notBuilt != tt.notBuilt {
+				t.Fatalf("reply=%+v want not_built=%v", reply, tt.notBuilt)
+			}
+			switch {
+			case tt.name == bridge.MethodAppsPrebuilt:
+				if !factoryResult(t, id, reply) {
+					t.Fatalf("reply=%+v", reply)
+				}
+			case linksBuilt(tt.name):
+				if reply.Type != bridge.TypeResult || reply.Error != nil {
+					t.Fatalf("reply=%+v", reply)
+				}
+			case tt.name == bridge.MethodCustomBundle:
+				if reply.Error == nil || reply.Error.Code != bridge.CodeNotFound {
+					t.Fatalf("reply=%+v", reply)
 				}
 			}
 		})
@@ -179,11 +210,30 @@ func TestCrewsUseExistingCapabilityDoor(t *testing.T) {
 
 func TestRestoreReachesLifecycleWhenStoreHidesDeletedApp(t *testing.T) {
 	all := crewsTestServices(t)
+	if err := all.Crews.Lifecycle.Delete(context.Background(), ownerScope("crm"), bridge.DeleteAppParams{Confirm: "CRM"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := all.Store.Get(context.Background(), "crm"); err == nil {
+		t.Fatal("deleted app remains visible")
+	} else if typed, ok := err.(*bridge.Error); !ok || typed.Code != bridge.CodeNotFound {
+		t.Fatalf("deleted app error=%v", err)
+	}
 	ctx, url := testServer(t, all)
 	socket := dialSocket(t, ctx, url)
-	socket.send(bridge.TypeCall, "deleted", bridge.MethodAppsRestore, "", bridge.Empty{})
-	if reply := socket.read(); reply.Error == nil || reply.Error.Code != bridge.CodeNotBuilt {
+	id := socket.send(bridge.TypeCall, "crm", bridge.MethodAppsRestore, "", bridge.Empty{})
+	reply := socket.read()
+	if reply.ID != id || reply.Type != bridge.TypeResult || reply.Error != nil {
 		t.Fatalf("restore=%+v", reply)
+	}
+	var restored bridge.AppSummary
+	if err := json.Unmarshal(reply.Result, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored.ID != "crm" || restored.State != bridge.StateKept {
+		t.Fatalf("restored=%+v", restored)
+	}
+	if _, err := all.Store.Get(context.Background(), "crm"); err != nil {
+		t.Fatalf("restored app error=%v", err)
 	}
 }
 
