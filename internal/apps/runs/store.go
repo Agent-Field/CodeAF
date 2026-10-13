@@ -46,6 +46,9 @@ func (e *engine) db(app string) (*sql.DB, error) {
 }
 
 func (e *engine) dbLocked(app string) (*sql.DB, error) {
+	if e.closed {
+		return nil, errClosed
+	}
 	if conn, ok := e.dbs[app]; ok {
 		return conn.db, nil
 	}
@@ -232,10 +235,10 @@ func (e *engine) loadApprovals(app string) ([]bridge.Approval, error) {
 
 func (e *engine) rememberFire(key string, at time.Time) {
 	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.lastFire[key] = at
 	app, _, _ := splitFireKey(key)
 	db, err := e.dbLocked(app)
-	e.mu.Unlock()
 	if err != nil || db == nil {
 		return
 	}
