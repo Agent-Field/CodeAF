@@ -22,6 +22,8 @@ task numbers repeat across conversations. You can file the same task in several
 collections alongside related chats and files. Filing does not move, copy, start
 or stop the task; its original conversation still owns its execution.
 
+## Where do I get a conversation id
+
 The conversation ID is the 16-hex name of the folder holding its journal at
 `~/.codeaf/v3/projects/<the workspace path with its separators turned to dashes>/<id>/transcript.jsonl`;
 it is the same ID the transcript header carries, and `CODEAF_HOME` moves the root.

@@ -193,9 +193,7 @@ func (s *Server) agentsRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		a.publish(kind, changed, fields...)
 		if stream != nil {
-			_, _ = a.events.Publish(EventTurnStarted, map[string]any{"agent": changed.ID, "turn": fmt.Sprintf("%s_%d", changed.ID, a.live[changed.ID].generation)})
-			live := a.live[changed.ID]
-			go a.pump(changed.ID, live, live.generation, stream)
+			a.startTurnPump(changed.ID, a.live[changed.ID], stream)
 		}
 	}
 	write(w, reply.Status, reply.Body)
@@ -307,28 +305,7 @@ func (s *Server) readAgents(w http.ResponseWriter, r *http.Request, a *AgentRegi
 				return errAgentMissing
 			}
 			agent := a.view(record)
-			// A4b owns live queue, tools and turn shaping; this is the canonical saved
-			// record and the available live task/usage view through the same engine.
-			snapshot := struct {
-				Entries []session.DisplayEntry `json:"entries"`
-				Tasks   []session.PlanTaskRow  `json:"tasks"`
-				Usage   session.Usage          `json:"usage"`
-			}{Entries: session.ReadTranscript(record.SessionFile).Entries, Tasks: []session.PlanTaskRow{}}
-			if live := a.live[id]; live != nil {
-				snapshot.Entries = live.conn.Engine.Transcript()
-				snapshot.Tasks = live.conn.Engine.PlanTasks()
-				snapshot.Usage = live.conn.Engine.Usage()
-			}
-			if snapshot.Entries == nil {
-				snapshot.Entries = []session.DisplayEntry{}
-			}
-			if snapshot.Tasks == nil {
-				snapshot.Tasks = []session.PlanTaskRow{}
-			}
-			write(w, 200, struct {
-				Agent
-				Snapshot any `json:"snapshot"`
-			}{agent, snapshot})
+			write(w, 200, AgentResponse{Agent: agent, Snapshot: a.turnSnapshot(record)})
 			return nil
 		}
 		state, q := r.URL.Query().Get("state"), r.URL.Query().Get("q")
@@ -424,7 +401,13 @@ func (a *AgentRegistry) create(ctx context.Context, d *agentDisk, body agentMuta
 		agent.LastMessageAt, agent.State, agent.Glyph = &now, "running", "running"
 	}
 	a.live[agent.ID] = &agentLive{conn: conn, running: events != nil, generation: 1}
-	d.Records[agent.ID] = agentRecord{Agent: agent, SessionFile: conn.SessionFile, Workspace: conn.Workspace, Approvals: body.Approvals}
+	record := agentRecord{Agent: agent, SessionFile: conn.SessionFile, Workspace: conn.Workspace, Approvals: body.Approvals}
+	if events != nil {
+		record.LastTurn = &TurnRequest{Text: body.Text, Mode: "send", Context: body.Context}
+		record.TurnSeq = 1
+		a.live[agent.ID].turnID = agent.ID + "_1"
+	}
+	d.Records[agent.ID] = record
 	return a.view(d.Records[agent.ID]), events, nil
 }
 
@@ -602,52 +585,6 @@ func (a *AgentRegistry) running(record agentRecord) agentRunning {
 		}
 	}
 	return counts
-}
-
-func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, events <-chan session.Event) {
-	state := "idle"
-	for event := range events {
-		switch event.Kind {
-		case session.EventError:
-			state = "failed"
-		case session.EventConsentRequest, session.EventQuestion:
-			_ = a.transitionState(id, "needs_you", live, generation)
-		}
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.live[id] != live || live.generation != generation || a.stopped {
-		return
-	}
-	live.running = false
-	if live.conn.Engine.NeedsPerson() {
-		state = "needs_you"
-	}
-	var changed Agent
-	err := a.disk(func(d *agentDisk) error {
-		record, ok := d.Records[id]
-		if !ok {
-			return errAgentMissing
-		}
-		if record.Agent.State == "closed" || record.Agent.State == "archived" {
-			return nil
-		}
-		record.Agent.State = state
-		record.Agent.Version++
-		d.Records[id] = record
-		changed = a.view(record)
-		return nil
-	}, true)
-	if err == nil && changed.ID != "" {
-		a.publish(EventAgentChanged, changed, "state", "glyph")
-		if a.events != nil {
-			how := "done"
-			if state == "failed" {
-				how = "failed"
-			}
-			_, _ = a.events.Publish(EventTurnEnded, map[string]any{"agent": changed.ID, "turn": fmt.Sprintf("%s_%d", changed.ID, generation), "how": how})
-		}
-	}
 }
 
 // Context chips are carried to the engine as explicit references, never as a

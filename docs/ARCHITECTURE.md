@@ -853,6 +853,22 @@ credential pipe, released when this launch ends. `LaunchShape.DeterministicNames
 publish small `agent.created`/`agent.changed` facts on the shared app event hub
 only after saving. Model work continues to belong to `internal/session`.
 
+A4b's turn handlers extend that registry with durable pending messages, the
+last accepted request, turn identities and receipts anchored in the transcript.
+The binary dispatches pending messages through `Submit` after normal completion;
+editing/removing and admission share the registry lock because the existing
+remote wire has no queue-edit method. Stream generations protect Stop/Close
+from late events. One primary stream publishes app-coded deltas, entries and
+lifecycle facts; steer subscriptions are drained without duplicating output.
+An injectable 180-second timer emits one running-long event per reply.
+
+Snapshot and transcript codecs use engine interfaces for questions, task rows,
+usage and compacted history. Retry preserves the accepted request, and model
+switching uses the engine's model setter. Move-to-task uses reply-only Interrupt
+and canonical StartTask with transcript context, preserving existing tasks and
+recording admission failures. Provider patience remains the session's policy;
+A4b exposes terminal failures without implementing a second retry loop.
+
 ## v2 app engine rules
 
 The local app API's shared policy is `internal/appapi/rules.go` (API.md §5).

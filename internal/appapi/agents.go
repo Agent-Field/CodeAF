@@ -89,10 +89,14 @@ type AgentConnection struct {
 type OpenAgent func(context.Context, AgentOpenRequest) (AgentConnection, error)
 
 type agentRecord struct {
-	Agent       Agent  `json:"agent"`
-	SessionFile string `json:"session_file"`
-	Workspace   string `json:"workspace"`
-	Approvals   string `json:"approvals,omitempty"`
+	Agent       Agent              `json:"agent"`
+	SessionFile string             `json:"session_file"`
+	Workspace   string             `json:"workspace"`
+	Approvals   string             `json:"approvals,omitempty"`
+	Queue       []QueueItem        `json:"queue,omitempty"`
+	LastTurn    *TurnRequest       `json:"last_turn,omitempty"`
+	TurnSeq     uint64             `json:"turn_seq,omitempty"`
+	Receipts    []turnSavedReceipt `json:"receipts,omitempty"`
 }
 
 type agentDisk struct {
@@ -104,6 +108,10 @@ type agentLive struct {
 	conn       AgentConnection
 	running    bool
 	generation uint64
+	primary    <-chan session.Event
+	turnID     string
+	longTimer  *time.Timer
+	longShown  bool
 }
 
 // AgentRegistry serializes local connections and flocks durable mutations so
@@ -117,18 +125,27 @@ type AgentRegistry struct {
 	live    map[string]*agentLive
 	events  *EventHub
 	stopped bool
+	after   func(time.Duration, func()) *time.Timer
+	done    chan struct{}
 }
 
 func NewAgentRegistry(home string, open OpenAgent) *AgentRegistry {
-	return &AgentRegistry{home: home, open: open, now: time.Now, live: make(map[string]*agentLive)}
+	return &AgentRegistry{home: home, open: open, now: time.Now, after: time.AfterFunc, done: make(chan struct{}), live: make(map[string]*agentLive)}
 }
 
 // Close releases this launch's connections. It never closes or archives resources.
 func (a *AgentRegistry) Close() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.stopped {
+		return
+	}
 	a.stopped = true
+	close(a.done)
 	for id, live := range a.live {
+		if live.longTimer != nil {
+			live.longTimer.Stop()
+		}
 		if live.conn.Close != nil {
 			live.conn.Close()
 		}

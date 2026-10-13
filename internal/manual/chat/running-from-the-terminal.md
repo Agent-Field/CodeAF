@@ -28,7 +28,7 @@ agents, history and non-secret settings. Keychain or Secret Service secrets
 sent on stdin are never saved to that home.
 
 This transport serves health, shutdown, keys, models, app settings, first-launch
-setup, OpenRouter browser sign-in, the event stream and agent lifecycle routes.
+setup, OpenRouter browser sign-in, the event stream, agent lifecycle and turn routes.
 Other app routes reserve their contract with HTTP 501; their resource
 behaviour arrives with the owning lane.
 
@@ -64,21 +64,21 @@ Needs you takes precedence over running. A lost running engine reads idle with
 `/app/v1/agents/{id}/close`, `/archive` and `/reopen`. Close refuses running
 work unless `stop_running:true`: `closing this agent stops its running work`.
 Archive requires Closed; reopen keeps the whole transcript, name and settings.
-Nothing closes automatically or is deleted. Full turn/queue/file routes and
-provider retry actions currently return HTTP 501 `not built yet`.
+Nothing closes automatically or is deleted. Turn, queue, stop, Retry and Switch model routes work. File browsing remains
+reserved with HTTP 501 `not built yet`.
 
 ## App API contract — not built yet — 501 — resource routes and schemas
 
-The local app API has reserved routes for turns, queues, files, tasks, quick
-tasks, processes, standing orders, reminders, permissions, asks, rules, Inbox,
+The local app API has reserved routes for files, tasks, quick tasks, processes,
+standing orders, reminders, permissions, asks, rules, Inbox,
 crews, members, roles, reports, models, settings, setup, memory, spending, caps,
 search, history, Activity, factory connections, power and the AI door.
 A reserved route returns HTTP 501 with `error: "not built yet"` and `route`
 naming the method and path template. It performs no action. Authentication,
 Origin and Host checks still run first; a wrong method returns 405 with `Allow`.
-Health, shutdown, keys, events and existing agent lifecycle routes keep working.
-The agent snapshot still contains only the existing saved/live entries, tasks
-and usage; its full queue and open-ask shape arrives with the turns lane.
+Health, shutdown, keys, events, agent lifecycle and turn routes work.
+The agent snapshot includes the last 100 app entries, pending queue, live open
+asks, task summaries and usage. Earlier entries use the `/entries` route.
 
 Go wire types are in `internal/appapi/*_wire.go`. Generated JSON Schemas in
 `docs/design/app-v2/schema/` reserve request, response and event shapes. They
@@ -1443,3 +1443,36 @@ its final totals. With no receipt outstanding, it adds no receipt wait to the
 ending. Otherwise it waits at most the provider's existing receipt deadline and keeps
 the figures already received when a receipt cannot be settled. An incomplete
 receipt therefore reports the work's paid calls as well as its failure reason.
+
+## App agent turns — send, steer, queue, edit, remove, stop and Retry
+
+`POST /app/v1/agents/{id}/turn` takes `text` and `mode`: `send`, `steer` or
+`queue`. Send refuses a running reply: `work is running; steer or queue explicitly`.
+Steer puts words into that reply. Queue keeps messages behind it; while idle,
+Queue starts immediately. Pending messages survive restart without starting on
+their own. Edit uses POST `/queue/{qid}` with `text`; Remove uses DELETE there
+with `{}`. An admitted row says `that message has already been sent`.
+
+Context chips remain references. Files take absolute regular-file paths and
+plain names, with an 8 MiB total limit. Queue reads file bytes when the message
+starts. A steer cannot carry files. Stop at `/stop` ends work with `Stopped by you`
+and clears pending messages. A failed reply holds them instead. `/retry` resends
+the last accepted request after a terminal engine failure. `/switch-model` takes
+`model` on a failed agent, for its next Retry. The engine keeps its own provider
+retry policy; this API does not impose exactly three provider calls.
+
+## App running long — Move Reply to a Task — tool output and earlier messages
+
+After 180 seconds a running reply emits one `turn.long` event. Nothing moves
+automatically. POST `/app/v1/agents/{id}/move-reply-to-task` interrupts the reply
+and starts a canonical task with its request and up to 64 KiB of transcript
+context. It returns `task_id`, records `Moved to a task · the chat is free again`
+and links the task. Failed task admission returns 409 and leaves a failed reply
+with `The reply stopped; moving it to a task failed`. Existing tasks are kept.
+
+GET `/app/v1/agents/{id}` includes the last 100 entries, queue, live open asks,
+tasks summary and usage. GET `/entries?before=&limit=` reads earlier messages,
+including compacted history; default limit 100, maximum 500. GET `/tools/{call_id}`
+reads a recorded tool result, capped at 1 MiB. The caller supplies a call id,
+never a path. Missing calls return 404; unfinished calls return 409. Full saved
+results must belong to this conversation's tool records.
