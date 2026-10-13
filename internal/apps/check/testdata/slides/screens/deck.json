@@ -1,0 +1,14 @@
+{
+  "screen": "deck",
+  "title": "Deck",
+  "params": ["id"],
+  "body": {
+    "part": "Stack",
+    "children": [
+      {"part": "RecordPage", "bind": {"record": "$params.id", "type": "deck"}, "props": {"fields": ["title", "doc"]}},
+      {"part": "Text", "props": {"text": "{{record.title}}", "size": "title"}},
+      {"part": "Pages", "bind": {"doc": "$record.doc", "surface": "canvas"}},
+      {"part": "Canvas", "bind": {"doc": "$record.doc", "surface": "canvas"}, "props": {"frame": "16:9"}}
+    ]
+  }
+}

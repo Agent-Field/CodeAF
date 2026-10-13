@@ -11,7 +11,7 @@ import (
 func validateFiles(files spec.Files) []Issue {
 	issues := []Issue{}
 	for _, issue := range spec.Validate(files) {
-		issues = append(issues, Issue{Issue: issue, FixHint: "match the file schema in internal/apps/spec/schema"})
+		issues = append(issues, surfaceSchemaIssue(issue, files))
 	}
 	for _, name := range files.Paths() {
 		if definitionPath(name) {

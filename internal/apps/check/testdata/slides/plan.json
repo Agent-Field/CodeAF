@@ -1,0 +1,9 @@
+{
+  "ask": "A place for our team's decks.",
+  "name": "Slides",
+  "data": [{"id": "deck", "line": "A deck has a title and a document."}],
+  "automation": [],
+  "screens": [{"id": "deck", "line": "Deck: Pages and a Canvas."}],
+  "agent": {"id": "agent", "line": "The Slides agent edits content."},
+  "needs": "computed"
+}

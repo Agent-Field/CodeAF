@@ -48,6 +48,7 @@ func lint(b *spec.Bundle, kit *spec.Kit) []Issue {
 		screen := b.Screens[id]
 		info := inspect(screen)
 		file := "screens/" + id + ".json"
+		issues = append(issues, surfaceLaw(screen, kit, file)...)
 		var walk func(*spec.Node, string, string)
 		walk = func(n *spec.Node, path, typ string) {
 			if n == nil {

@@ -1,0 +1,17 @@
+{
+  "id": "slides",
+  "name": "Slides",
+  "space": "personal",
+  "kit": 2,
+  "agent": {"name": "Slides agent", "file": "agent.md"},
+  "records": {
+    "deck": {
+      "label": "Deck",
+      "plural": "Decks",
+      "title": "title",
+      "fields": {"title": {"type": "text"}, "doc": {"type": "text"}}
+    }
+  },
+  "capabilities": {"records": {"deck": "rw"}},
+  "budget": {"month": 20, "currency": "USD", "at_cap": "ask"}
+}

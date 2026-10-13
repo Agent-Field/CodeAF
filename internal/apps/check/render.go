@@ -134,6 +134,7 @@ func (r *renderer) node(n *spec.Node, path string, values map[string]any, typ st
 	}
 	if visible {
 		r.bind(n.Bind, path+"/bind", values, typ)
+		r.surface(n, path, values)
 		r.props(n, path, values, typ)
 		r.actions(n, path, values, typ)
 	}
