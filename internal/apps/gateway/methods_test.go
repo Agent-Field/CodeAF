@@ -155,8 +155,21 @@ func TestDispatchUsesContractServiceMethods(t *testing.T) {
 		{bridge.MethodApprovalsDecide, bridge.DecideApprovalParams{ApprovalID: "approval-1", Answer: "yes"}},
 		{bridge.MethodAgentSend, bridge.AgentSendParams{Thread: "thread-1", Text: "draft a follow-up", Record: "row", Screen: "deal"}},
 	}
-	if len(tests) != len(methods) {
-		t.Fatalf("dispatch coverage=%d methods=%d", len(tests), len(methods))
+	// Connect routes have their own stub dispatch tests in connect_test.go.
+	covered := make(map[string]bool, len(tests)+len(connectMethodCases))
+	for _, tt := range tests {
+		covered[tt.method] = true
+	}
+	for _, tt := range connectMethodCases {
+		covered[tt.name] = true
+	}
+	for name := range methods {
+		if !covered[name] {
+			t.Errorf("method %s has no dispatch coverage", name)
+		}
+	}
+	if len(covered) != len(methods) {
+		t.Fatalf("dispatch coverage=%d methods=%d", len(covered), len(methods))
 	}
 	for _, tt := range tests {
 		t.Run(tt.method, func(t *testing.T) {
