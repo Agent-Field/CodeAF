@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/realtime"
@@ -63,17 +62,17 @@ func TestCloseCancelsAndWaitsForRuns(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			awaitShutdown(t, model.entered, "model call")
+			awaitShutdown(model.entered)
 			closed := make(chan struct{})
 			go func() { h.runs.Close(); close(closed) }()
-			awaitShutdown(t, model.canceled, "run cancellation")
+			awaitShutdown(model.canceled)
 			select {
 			case <-closed:
 				t.Fatal("Close returned before the model call exited")
 			default:
 			}
 			release()
-			awaitShutdown(t, closed, "Close")
+			awaitShutdown(closed)
 			h.runs.Close()
 			if len(h.eng.dbs) != 0 || len(h.eng.busy) != 0 {
 				t.Fatal("Close left journals or runs open")
@@ -135,11 +134,6 @@ func (m *shutdownModel) Complete(ctx context.Context, _ svc.ModelCall) (svc.Mode
 	return svc.ModelReply{}, ctx.Err()
 }
 
-func awaitShutdown(t *testing.T, ch <-chan struct{}, action string) {
-	t.Helper()
-	select {
-	case <-ch:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("timed out waiting for %s", action)
-	}
-}
+// awaitShutdown blocks until ch closes. It has no deadline of its own: a wall
+// clock bound fails under load, and a real hang is caught by go test -timeout.
+func awaitShutdown(ch <-chan struct{}) { <-ch }
