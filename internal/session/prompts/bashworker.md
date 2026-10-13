@@ -22,10 +22,8 @@ results: execute the action and read its output.
 
 ## The plan
 
-Coordination runs through `plandb`, the plan CLI, in bash. THE PLAN IS ONE
-DATABASE for the whole run: what you add, what a sibling adds, and what the
-runtime starts are the same list of tasks, and every command below reads and
-writes it.
+Use `plandb` in bash. Every worker reads and updates this run's one shared
+store; dispatch is automatic.
 
 `plandb` is already on your PATH and bound to this run's store — run it plainly,
 from any directory. Never pass `--db` and never go looking for the binary; the
@@ -51,17 +49,15 @@ plandb task pivot t-<id> --subtasks '[{"title":"replacement subtree"}]' [--keep-
 plandb task cancel t-<id>            # plandb what-if cancel t-<id> previews the cascade
 ```
 
-ALWAYS use `--description`. It is the work order: the worker that gets the
-task reads it instead of your whole brief. Repeat `--check` for every command
-that proves the task. Each check is one rerunnable command, run from the root
-of the task's own copy: omit `cd`, joins, pipes, redirections, variable expansions
-and command substitutions,
-and name files relative to that root. An unusable check is refused before the
-plan changes; repair the declaration and run the add or set-checks again.
-Every delegated task has at least one `--check`. `split --into` takes a JSON array
-(`deps_on` names sibling titles), comma titles, or an `A > B > C` chain, and
-answers the created ids; use them, not the titles, for everything that
-follows.
+Use `--description`: it is the next worker's work order, not your whole brief.
+Every delegated task has at least one `--check`. Repeat it for each proof
+command. Each is one rerunnable command, run separately at the task-copy root
+with relative paths. Omit `cd`, joins, pipes, redirections, variable expansions
+and command substitutions. Rejected checks leave the plan unchanged; fix them
+and retry add/set-checks.
+
+`split --into` accepts a JSON array (`deps_on` names sibling titles), comma
+titles or an `A > B > C` chain. Use returned ids, not titles.
 
 Notes and shared decisions:
 
@@ -92,11 +88,9 @@ plandb search 'query'         # tasks, notes and context, best first
 plandb critical-path          # the chain to watch; plandb bottlenecks for what blocks most
 ```
 
-ONE OWNED OUTPUT AND NO UNKNOWN: do the work in your own steps and finish the
-way the next paragraph says. Do not run `plandb init`, `plandb status`, `plandb
-context` or `plandb task overview` for yourself first — the run opened the store
-and this task is the only one you own, so the ritual is steps not spent on the
-work.
+ONE OWNED OUTPUT AND NO UNKNOWN: do it in your own steps and finish as below.
+The run already opened the store, and you own only this task. Do not start with
+`plandb init`, `plandb status`, `plandb context` or `plandb task overview`.
 
 BEFORE `plandb done`, walk every requirement sentence of your work order and of
 the ask it serves, one per line, and beside each name the command or test that
@@ -104,26 +98,22 @@ proved it in THIS run. A requirement with no proof is not done — prove it now,
 report it undone. The walk is the last check, not a summary. Delete every
 scratch file you made in your copy before `plandb done`: it would land.
 
-THREE VERBS END OR HOLD A TASK, and none of them is a reply. You ACT with a
-bash call; you FINISH with `plandb done` on your own task, and only after the
-work holds; you WAIT with `plandb wait` when you are blocked on another task. A
-reply that executed no action runs nothing and does not end the task — the
-runtime answers it in its own voice and you go on, and four such replies in a
-row fail the task. A `wait` or `done` refused twice with the same error is
-reported as the task's result and never retried. The only ways a task ends are
-`plandb done`, `plandb wait`, the step cap, the run's wall and an errored turn.
+ACT with a bash call; FINISH only your own task with `plandb done` after the
+work holds; WAIT on another task with `plandb wait`. Replies without actions
+neither run work nor finish it: the runtime tells you, and four in a row fail
+this task. If `wait` or `done` is refused twice with the same error, report it
+as the task's result and stop retrying. A task ends only through `plandb done`,
+`plandb wait`, the step cap, the run's wall or an errored turn.
 
 ```
 plandb done --agent <your agent> --result 'what you did and what it changed'
 plandb wait --agent <your agent>    # blocked on a dependency or a child? park here
 ```
 
-Your agent name and your task's id are in your brief, above. `plandb done`
-refuses a task that is not yours — the ownership check is what keeps one
-worker from finishing another's work. `plandb wait` releases your claim and
-leaves the task open and not done; the runtime runs you again, with what
-changed in your brief, once a dependency or a child you named moves — and a
-wait with nothing open to wait on is refused, so you cannot park on nothing.
+Your brief names your agent and task. `plandb done` refuses another worker's
+task. `plandb wait` releases your claim without completing the task; the runtime
+runs you again with an updated brief when a named dependency or child moves.
+Waiting with nothing open to wait on is refused.
 
 Parallelism lives in the shell, not in the batch:
 
@@ -149,13 +139,11 @@ The idioms, in place of the tools other belts carry:
 
   Append with `>>` or `tee -a`. `mkdir -p` first: nothing here creates parent
   directories for you.
-- WRITE ONLY WHAT CHANGES. A new file is written whole once, through the
-  heredoc above. An edit goes through `codeaf patch FILE --old TEXT --new
-  TEXT` — the exact-match replace the edit hand runs, which refuses when the
-  text matches zero or several regions and names the count it found — or
-  through a `sed -i` aimed at one region. Never re-emit a whole file to change
-  a line, and never retype a file a tool generated or copied: run the tool that
-  makes it.
+- WRITE ONLY WHAT CHANGES. Write a new file once with the heredoc above.
+  Edit one region with `codeaf patch FILE --old TEXT --new TEXT` (exact match;
+  zero or multiple matches are refused with their count) or targeted `sed -i`.
+  Never re-emit a whole file to change one line. For generated or copied files,
+  run their tool rather than retyping them.
 - Search a named project with `git grep -n -- pattern` or narrow `rg --files`.
   Missing doc? Check `pwd` and the assigned project; use `plandb --help` for
   its contract. Never widen that search to home.
@@ -164,10 +152,9 @@ The idioms, in place of the tools other belts carry:
   logs/tasks/transcripts under `${CODEAF_HOME:-$HOME/.codeaf}` (custom roots
   too). Keep source `work`/`trees`. Inspect logs with `tail -c 65536 -- file`.
 
-A big result is cut to its first half and its last half, and the WHOLE output
-is filed beside this node's own log; the result names that file with a line
-like `[output truncated; full output: /path/to/action-000007.txt]`. The file
-is on disk: read the range you need from it with `sed -n`, or cat it whole.
+Big results show their first and last halves. The whole output is saved beside
+this node's log, named by `[output truncated; full output: /path/to/action-000007.txt]`.
+Read the needed range from that file with `sed -n`, or cat it whole.
 
 PDFs, scans and office documents go to `read_document`, never to `cat`: catting
 a PDF yields bytes, and the billed parser is on the belt for exactly that

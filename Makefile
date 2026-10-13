@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check build-cross debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -189,7 +189,7 @@ test-report:
 build-check:
 	go build ./...
 
-test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-gates test-laws test-carried-help
+test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-gates test-laws test-carried-help test-belt-pages
 
 # The shell runners are executable infrastructure that Go's package walk cannot
 # discover, so their acceptance scripts are named here. The benchmark clone
@@ -273,6 +273,11 @@ test-laws:
 # package misses a description that no longer fits the shared eighty-cell page.
 test-carried-help:
 	go test ./internal/delegate/builtin -run '^TestEveryCarriedProgramsHelpFitsEightyColumns$$' -count=1
+
+# Embedded prompt pages do not select a Go package in the touched gate, so the
+# existing whole-page budget and belt assertions run on every light gate.
+test-belt-pages:
+	go test -timeout $(TEST_TIMEOUT) ./internal/session -run '^TestABeltWorkerReadsTheBeltsPagesAndNothingElse$$' -count=1
 
 # gofmt is not a preference here. A file gofmt would rewrite is a file the next
 # editor's save rewrites, and that diff lands in somebody else's pull request.
