@@ -1168,6 +1168,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't I run senior-dev in a folder inside the one another run is working in", "senior-dev"},
 		{"can I run senior-dev in a folder that is not a git repo", "senior-dev"},
 		{"where do senior-dev's notes go", "senior-dev"},
+		{"senior-dev crashed with projection.lock no such file or directory", "senior-dev"},
+		{"keep senior-dev's session database outside the folder", "senior-dev"},
 		{"why can't codeaf edit files while senior-dev is working", "senior-dev"},
 		{"my task was refused because senior-dev is working in the folder", "senior-dev"},
 		{"the delegate was refused because of uncommitted changes", "delegates"},
@@ -3214,6 +3216,30 @@ func TestGeneralTaskCostPagesNameSeniorDevCeiling(t *testing.T) {
 	}
 }
 
+// A senior-dev run in a folder with nothing to check ends saying so, where it
+// once said the project's build and tests passed. Whoever reads that ending, or
+// doubts an older one, asks in these words and must reach the section that says
+// what was checked.
+func TestSeniorDevNothingToRunQuestionsReachItsSection(t *testing.T) {
+	for _, asked := range []string{
+		"senior-dev says the project has no build or tests it could find to run",
+		"senior-dev found no build or tests to run",
+		"my folder only has a README, did senior-dev check its change",
+		"senior-dev said the build and tests passed but my folder has no tests",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "senior-dev" && strings.Contains(section.Title, "found no build or tests to run") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the section on a folder with nothing to run", asked)
+		}
+	}
+}
+
 // TestC13UpdateQuestionsReachTheNewManualSection proves C13.
 func TestC13UpdateQuestionsReachTheNewManualSection(t *testing.T) {
 	for _, asked := range []string{
@@ -3410,6 +3436,39 @@ func TestTheUndiscoveredBuildQuestionsReachTheVerifyFlags(t *testing.T) {
 		{"how do I tell senior-dev which command runs my tests", "--verify-test"},
 		{"senior-dev failed verification on my fuzz target harness", "--verify-build"},
 		{"does senior-dev build a cmake project and run ctest", "cmake-build"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "senior-dev" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a senior-dev section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
+// A senior-dev run whose .senior-dev went away under it ended with a sentence a
+// person pastes back as a question, and whoever starts it from a benchmark rig
+// asks how to keep its store out of the folder. Both reach the section that
+// names the flag, and the ending a removed store now gives reaches the section
+// that explains it. Where the database lives now, and what happens when the
+// work empties .senior-dev, are asked in a person's words too.
+func TestTheVanishedStoreQuestionsReachTheStateDir(t *testing.T) {
+	for _, probe := range []struct {
+		asked string
+		says  string
+	}{
+		{"senior-dev crashed with projection.lock no such file or directory", "--state-dir"},
+		{"open .senior-dev/projection.lock: no such file or directory", "--state-dir"},
+		{"keep senior-dev's session database outside the folder", "SENIOR_DEV_STATE_DIR"},
+		{"what does senior-dev's --state-dir do", "--state-dir"},
+		{"senior-dev says its store was removed while the run was working", "was removed while the run was working"},
+		{"where does senior-dev keep its session database", "store/"},
+		{"senior-dev's .senior-dev folder was deleted in the middle of a run", "written back"},
+		{"make clean deleted .senior-dev while senior-dev was working", "puts back the brief"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

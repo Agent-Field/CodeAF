@@ -92,9 +92,13 @@ var Program = delegate.Delegate{
 	// the home folder — because the recorder's own reading climbs to any
 	// repository around the folder.
 	PlainFolder: []string{"--in-place"},
-	// Where it keeps its records in the folder it works in: the brief, the
-	// checklist, the pinned command, its session database and its model
-	// conversation (app's seniorDevDataDirectory, which git never sees).
+	// Where it keeps the files it and its model work from in the folder it
+	// works in: the brief, the checklist, the pinned command, the messages it
+	// was handed and the output it set aside (app's seniorDevDataDirectory,
+	// which git never sees). Its session database and model conversation are
+	// not here: they go in the run's record folder (CODEAF_RECORDS), or in
+	// --state-dir's directory, and here only when codeaf names no record
+	// folder (app's stateDirectory).
 	Notes: ".senior-dev",
 	// IT LISTENS: the person's words from its page and the conversation's
 	// `say` reach its model between steps until it hands in (app/steering.go).
@@ -188,8 +192,12 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	asked := fs.Bool("asked", false, "the --high models were asked for by name; none is skipped")
 	// The project's own check, named by whoever started the run, for a project
 	// whose build or test discovery cannot find (fullverification/declared.go).
-	verifyBuild := fs.String("verify-build", "", "the project's build command, run on the frozen tree in place of the one discovered")
-	verifyTest := fs.String("verify-test", "", "the project's test command, run on the frozen tree in place of the one discovered")
+	verifyBuild := fs.String("verify-build", "", "build command on the frozen tree; replaces discovery")
+	verifyTest := fs.String("verify-test", "", "test command on the frozen tree; replaces discovery")
+	// Where the session store lives when the folder's own .senior-dev is not
+	// safe to keep it in: a rig that resets the folder, or one that collects the
+	// store after the run (app/state_dir.go).
+	stateDir := fs.String("state-dir", "", "session store path (see manual for defaults)")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		run(ctx, host, app.Options{
 			Goal:        strings.Join(args, " "),
@@ -200,6 +208,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 			InPlace:     *inPlace,
 			VerifyBuild: *verifyBuild,
 			VerifyTest:  *verifyTest,
+			StateDir:    *stateDir,
 			Crew:        *crew,
 			Asked:       *asked,
 		}, os.Stderr)
