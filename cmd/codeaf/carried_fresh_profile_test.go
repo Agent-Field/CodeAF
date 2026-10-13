@@ -15,6 +15,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // The real shell parser must let a model named by --high start on a fresh
@@ -46,12 +47,38 @@ func TestSeniorDevShellRefusesAServiceThatCannotServeItsModel(t *testing.T) {
 	testSeniorDevExplicitShellModel(t, shellModelCase{word: "openrouter/fixture/vendor-model", noKey: true, refused: true})
 }
 
+// A custom service's /models row can identify a working model without saying
+// how much history it accepts. A real child must either use the service's
+// known window or the project's explicit limit, or refuse before any turn.
+func TestSeniorDevCustomShellModelNeedsKnownOrConfiguredCapacity(t *testing.T) {
+	for _, tc := range []shellModelCase{
+		{word: "fixture-custom/custom-model", custom: true, window: 200_000},
+		{word: "fixture-custom/custom-model", custom: true, configuredWindow: 64_000},
+		{word: "fixture-custom/custom-model", custom: true, capacityRefused: true},
+		{word: "fixture-custom/custom-model", custom: true, window: 16_384, capacityRefused: true},
+	} {
+		name := "listed-window"
+		if tc.capacityRefused && tc.window > 0 {
+			name = "tiny-listed-window"
+		} else if tc.configuredWindow > 0 {
+			name = "explicit-config"
+		} else if tc.capacityRefused {
+			name = "missing-window"
+		}
+		t.Run(name, func(t *testing.T) { testSeniorDevExplicitShellModel(t, tc) })
+	}
+}
+
 type shellModelCase struct {
-	word    string
-	plain   bool
-	asked   bool
-	refused bool
-	noKey   bool
+	word             string
+	plain            bool
+	asked            bool
+	refused          bool
+	noKey            bool
+	custom           bool
+	window           int
+	configuredWindow int
+	capacityRefused  bool
 }
 
 func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
@@ -80,11 +107,25 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 	t.Setenv(carriedChildEnv, "real")
 	t.Setenv("DO_NOT_TRACK", "1")
 	t.Setenv("CODEAF_NO_UPDATE_CHECK", "1")
+	modelID := "fixture/vendor-model"
+	window := 200_000
+	if tc.custom {
+		modelID, window = "custom-model", tc.window
+	}
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/models") {
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"data":[{"id":"fixture/vendor-model","canonical_slug":"fixture/vendor-model","name":"Fixture model","context_length":200000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0","request":"0"},"supported_parameters":["tools","tool_choice","max_tokens"]}]}`)
+			row := map[string]any{
+				"id": modelID, "canonical_slug": modelID, "name": "Fixture model",
+				"architecture":         map[string]any{"input_modalities": []string{"text"}, "output_modalities": []string{"text"}},
+				"pricing":              map[string]string{"prompt": "0", "completion": "0", "request": "0"},
+				"supported_parameters": []string{"tools", "tool_choice", "max_tokens"},
+			}
+			if window > 0 {
+				row["context_length"] = window
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{row}})
 			return
 		}
 		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/chat/completions") {
@@ -98,7 +139,7 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		if request.Model != "fixture/vendor-model" {
+		if request.Model != modelID {
 			http.Error(w, "wrong model: "+request.Model, 400)
 			return
 		}
@@ -115,13 +156,29 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 		}
 		if tool != "" {
 			argumentJSON, _ := json.Marshal(arguments)
-			fmt.Fprintf(w, "data: {\"id\":\"fixture-%d\",\"model\":\"fixture/vendor-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"call-%d\",\"type\":\"function\",\"function\":{\"name\":%q,\"arguments\":%s}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20,\"total_tokens\":120,\"cost\":0}}\n\ndata: [DONE]\n\n", call, call, tool, argumentJSON)
+			fmt.Fprintf(w, "data: {\"id\":\"fixture-%d\",\"model\":%q,\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"call-%d\",\"type\":\"function\",\"function\":{\"name\":%q,\"arguments\":%s}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20,\"total_tokens\":120,\"cost\":0}}\n\ndata: [DONE]\n\n", call, modelID, call, tool, argumentJSON)
 		} else {
-			fmt.Fprintf(w, "data: {\"id\":\"fixture-%d\",\"model\":\"fixture/vendor-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"done\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20,\"total_tokens\":120,\"cost\":0}}\n\ndata: [DONE]\n\n", call)
+			fmt.Fprintf(w, "data: {\"id\":\"fixture-%d\",\"model\":%q,\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"done\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20,\"total_tokens\":120,\"cost\":0}}\n\ndata: [DONE]\n\n", call, modelID)
 		}
 	}))
 	defer server.Close()
 	t.Setenv("CODEAF_BASE_URL", server.URL+"/api/v1")
+	if tc.custom {
+		t.Setenv("OPENROUTER_API_KEY", "")
+		profile := os.Getenv("CODEAF_HOME")
+		t.Setenv(config.ProfileDirEnv, profile)
+		if err := config.WriteSources(profile, []config.PersistedSource{{
+			ID: modelsource.CustomID, Written: "fixture-custom", Address: server.URL + "/api/v1", Key: "fixture-key", Order: 1,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if tc.configuredWindow > 0 {
+		text := fmt.Sprintf(`{"provider":{"openrouter":{"models":{"fixture-custom/custom-model":{"limit":{"context":%d,"output":2048}}}}}}`, tc.configuredWindow)
+		if err := os.WriteFile(filepath.Join(workspace, "senior-dev.json"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	previous := carriedStdout
 	output := &lockedBuffer{}
 	carriedStdout = output
@@ -132,6 +189,17 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 	}
 	line = append(line, "--dir", workspace, "--", "Add", "the", "feature.")
 	err := runCarried(program, line)
+	if tc.capacityRefused {
+		printed := output.String()
+		if exitCodeOf(err) == 0 || calls.Load() != 0 ||
+			!strings.Contains(printed, "senior-dev cannot work with "+tc.word) ||
+			!strings.Contains(printed, "nothing was started") ||
+			(tc.window == 0 && !strings.Contains(printed, "senior-dev.json")) ||
+			strings.Contains(printed, "implement ·") || strings.Contains(printed, "bootstrap ·") {
+			t.Fatalf("unsized custom model exited %d after %d calls: %s", exitCodeOf(err), calls.Load(), printed)
+		}
+		return
+	}
 	if tc.refused {
 		if err == nil || calls.Load() != 0 || !strings.Contains(err.Error(), tc.word) ||
 			!strings.Contains(err.Error(), "/crew") || !strings.Contains(err.Error(), "codeaf connect") || output.String() != "" {

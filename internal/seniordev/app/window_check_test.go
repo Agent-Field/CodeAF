@@ -116,6 +116,48 @@ func TestATinyKnownWindowIsRefusedAndAGuessIsOnlySaid(t *testing.T) {
 	}
 }
 
+// Every pool can be selected by the runtime. An unsized low or frontier seat
+// must be refused before work just as an unsized working seat is, even when
+// no --asked flag accompanied a shell invocation.
+func TestEveryUnsizedPoolIsRefusedBeforeStarting(t *testing.T) {
+	for _, pool := range []string{"high", "low", "frontier"} {
+		t.Run(pool, func(t *testing.T) {
+			backend := newModelAPIBackend(testModelAPI, "")
+			backend.catalog = fixtureModelsDev(t)
+			args := cliArgs{High: "openrouter/fixture/vendor-model"}
+			switch pool {
+			case "high":
+				args.High = "openrouter/custom/no-window"
+			case "low":
+				args.Low = "openrouter/custom/no-window"
+			case "frontier":
+				args.Frontier = "openrouter/custom/no-window"
+			}
+			refusal, guessed := windowCheck(args, seniorDevModels{backend: backend})
+			if !strings.HasPrefix(refusal, "senior-dev cannot work with custom/no-window:") ||
+				!strings.Contains(refusal, "nothing was started") ||
+				!strings.Contains(refusal, "senior-dev.json") || len(guessed) != 0 {
+				t.Fatalf("unsized %s: refusal=%q, guessed=%v", pool, refusal, guessed)
+			}
+		})
+	}
+}
+
+// A catalog naming a model without its window is not a proof of capacity.
+// It is refused just like a row absent from the catalog, never sized at zero.
+func TestACatalogRowWithoutCapacityIsRefusedBeforeStarting(t *testing.T) {
+	backend := newModelAPIBackend(testModelAPI, "")
+	backend.catalog = fixtureModelsDev(t)
+	provider := backend.catalog["openrouter"]
+	model := provider.Models["fixture/vendor-model"]
+	model.Limit.Context = 0
+	provider.Models["fixture/vendor-model"] = model
+	refusal, guessed := windowCheck(cliArgs{High: "openrouter/fixture/vendor-model"}, seniorDevModels{backend: backend})
+	if !strings.Contains(refusal, "nothing was started") || len(guessed) != 0 {
+		t.Fatalf("zero-capacity catalog: refusal=%q, guessed=%v", refusal, guessed)
+	}
+}
+
 // THE REFUSAL HAPPENS BEFORE ANYTHING IS SPENT. A run asked to work on a model
 // codeaf's catalog lists at 16,384 tokens ends with the sentence that names it,
 // and never reaches its first stage, let alone a model call.

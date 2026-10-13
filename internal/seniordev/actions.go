@@ -268,6 +268,14 @@ func presentStage(stage, status string, facts stageFacts) (delegate.Shown, bool)
 		return delegate.Shown{Text: "stopped without handing in its work"}, true
 	case "implement/steered":
 		return steered(facts), true
+	case "implement/notes-rewritten":
+		// Something the work ran removed the file (app/notes_kept.go); the
+		// run wrote it back as it last read it and carried on.
+		text := "wrote its notes back after something removed them"
+		if file := facts.text("file"); file != "" {
+			text = "wrote " + file + " back after something removed it"
+		}
+		return delegate.Shown{Text: text}, true
 
 	case "compaction-capacity/pinned":
 		text := "learned how much its model can hold"

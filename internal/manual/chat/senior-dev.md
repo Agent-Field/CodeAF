@@ -381,7 +381,8 @@ When it submits, its submission receipt names the change, for example
 `across 3 file(s), tree <id>`. In a plain folder it counts changed files but does not
 produce patch text, so no byte size is shown; a measured patch in a git repository says,
 for example, `128 bytes across 3 file(s), tree <id>`. The run's last line is its ending
-sentence, such as that it submitted a change and the project's own build and tests passed.
+sentence, such as `submitted a change, and the project's own build and tests passed`,
+which it says only when at least one of their commands ran.
 
 **On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
@@ -501,6 +502,32 @@ have found. senior-dev runs them itself on the submitted tree, with the same str
 settings and time limit, and a non-zero exit fails the check. Naming one never
 excuses the other. Only the command line sets them; senior-dev's own model cannot.
 
+## senior-dev found no build or tests to run — a folder with only a README, nothing was checked, did it pass
+
+A folder that does not look like a project — no manifest, no `Makefile`, no
+`CMakeLists.txt`, no `test/` folder, only a README or loose files — has no build or
+tests for senior-dev to find, so its own check runs no command. Its `verify` step says
+`found no build or tests to run`.
+
+A change it submits there is still finished work, and its ending says only what was
+checked:
+`finished: submitted a change; the project has no build or tests it could find to run`.
+At a shell, the observation printed beneath it says the same:
+`senior-dev observed: the project has no build or tests it could find to run`.
+It never says the project's build and tests passed when none ran; that sentence,
+`submitted a change, and the project's own build and tests passed`, is kept for a run
+where at least one of their commands did.
+
+To the chat the run still counts as passed (see what codeaf does when senior-dev ends):
+it reads the change and offers to merge the branch without any check of its own having
+run, so look at the change yourself before taking it.
+
+A folder that does look like a project but has no command senior-dev can find is
+different: its check fails with `no build entrypoint could be discovered` (or `test`),
+and the change is still handed in (see how senior-dev finds a project's build and
+tests). To have a folder checked by something it cannot find, name the check yourself
+with `--verify-test` or `--verify-build` on `codeaf senior-dev run`.
+
 ## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
 
 Yes. **senior-dev uses git only if it is there.** A folder with no git history — a plain
@@ -613,17 +640,52 @@ and one rescue to **250 MiB** total. If a file or the total exceeds the limit,
 senior-dev refuses the restore before changing the folder; the ending says it
 could not be put back and that the folder holds later changes nothing checked.
 
-## Its notes — .senior-dev, its checklist, its session database, moved out when it ends
+## Its notes — .senior-dev, its checklist, moved out when it ends; its session database in the record folder
 
-senior-dev keeps its own records in `.senior-dev/` in the folder it works in (its copy, in
-a repository): the brief,
-its checklist, the command it pinned, its session database and its whole conversation
-with its model. **They are moved out of your folder when the run ends or you stop it**,
-into the task's record folder beside `delegate-conversation.jsonl` (a shell run's record
-folder at a shell), and the page adds `its notes (.senior-dev/) are kept in <path>`. So
-they never end up on a branch, and the next run in that folder never reads the last
-one's checklist as its own. A `.senior-dev/` already in the folder when the run began is
-left where it is, and never ends up on a branch either.
+senior-dev keeps the files it and its model work from in `.senior-dev/` in the folder it
+works in (its copy, in a repository): the brief, its checklist, the command it pinned,
+the messages it was handed and the output it set aside. **They are moved out of your
+folder when the run ends or you stop it**, into the task's record folder beside
+`delegate-conversation.jsonl` (a shell run's record folder at a shell), and the page adds
+`its notes (.senior-dev/) are kept in <path>`. So they never end up on a branch, and the
+next run in that folder never reads the last one's checklist as its own. A `.senior-dev/`
+already in the folder when the run began is left where it is, and never ends up on a
+branch either.
+
+Its session database and its whole conversation with its model are not in your folder at
+all. From the moment the run starts they are in `store/` in that same record folder
+(`store.1`, `store.2` for a later run of the same task), and they stay there. A run given
+`--state-dir DIR` (or `SENIOR_DEV_STATE_DIR`) keeps them in that directory instead. Only
+when codeaf names no record folder do they go in `.senior-dev/`.
+
+## senior-dev stopped with projection.lock: no such file or directory — .senior-dev removed or a link to it gone mid-run, its session store, --state-dir, SENIOR_DEV_STATE_DIR
+
+senior-dev's session store — `senior-dev.db`, the `storage/` folder of its records and
+`projection.lock` — is kept out of the folder it works in: in `store/` in the run's
+record folder, or where `--state-dir DIR` or `SENIOR_DEV_STATE_DIR` says (the flag
+wins). With no record folder and neither of those, it is in `.senior-dev/`. **It opens
+the store once, by its real path**, so a link on the way to it that goes away no longer
+matters. It used to live in `.senior-dev/`, reopened through it for every write,
+and a run whose `.senior-dev` link was deleted ended with
+`open <folder>/.senior-dev/projection.lock: no such file or directory` while the store
+itself was whole.
+
+**A `.senior-dev/` removed mid-run is written back.** What the work runs can empty the
+folder — a benchmark's reset script, `make clean`, `rm -rf` of the tree. After each step
+its model takes, senior-dev puts back the brief, the checklist, the pinned command and the
+messages it was handed, as it last read them, and carries on; the page says
+`wrote .senior-dev/checklist.md back after something removed it`. The session store is
+elsewhere and is not affected.
+
+**A store that is itself removed or emptied ends the run**, because its conversation went
+with it; senior-dev never carries on in an empty one made in its place. It stops, saying
+`its store <dir> was removed while the run was working, with the conversation in it`.
+
+What `--state-dir` or `SENIOR_DEV_STATE_DIR` names is made if it is missing. **Use a new
+one for each run**: runs in folders without git share one project, so a shared one mixes
+their sessions. One inside the folder is refused before anything
+is made or spent, because its checkpoints and the change it hands in would carry the
+store; the folder's own `.senior-dev/` is the exception.
 
 ## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, one commit
 
@@ -968,8 +1030,9 @@ with exactly those, routing among them call by call when there are several; the 
 the task's first line name them. A name that fits more than one model is put to you to
 settle. A model none of your connected services can serve is refused before the card, by
 name, rather than swapped for another. When a catalog was loaded, a model neither it nor
-codeaf's own model catalog can size cannot be used: the run ends before its first call with
-`senior-dev cannot work with <model>: …`, and nothing is spent. A model you asked for
+codeaf's own model catalog or an explicit model configuration can size cannot be used: the run ends before its first call with
+`senior-dev cannot work with <model>: …`, and nothing is spent. This applies to every
+pool, including `--low` and `--frontier`, even on a shell run without `--asked`. A model you asked for
 that is known to hold 32,768 tokens or fewer is refused the same way (see the section on
 a model too small for senior-dev). If models.dev is unavailable and codeaf's catalog does not know the model
 either, the run starts on an assumed 16,384 tokens and says so. The models are fixed when the run starts; changing the crew later does not move
@@ -989,6 +1052,26 @@ work or a history summary.
 A crew model senior-dev's model catalog cannot size is left out, and its log says so,
 and so is one known to hold 32,768 tokens or fewer; if that leaves no working model, it
 uses its own list instead.
+
+## senior-dev cannot work with my custom model — unknown window, context length, senior-dev.json
+
+A connected custom service can list a model that works in chat without publishing its
+context-window size. senior-dev needs that size to keep a long run's history in it.
+A shell run warms the catalogs of the services named in its `--high`, `--low` and
+`--frontier` pools, not just the default service's catalog. When a populated catalog
+cannot size any remaining pool, the run refuses before its first stage or model call,
+names the model and says nothing was started. A row with no window is not a zero-sized
+model, and no capacity is invented for it.
+
+Use a model whose service lists its window, or supply **limits from the provider** in
+`senior-dev.json` in the project. Set `provider.openrouter.models["connection/model"].limit.context`
+to the provider's context-token limit, and `.limit.output` to its output limit or
+a smaller requested output ceiling. `connection/model` is the exact model spelling
+codeaf accepts, with no leading `openrouter/`. Here `openrouter` names codeaf's loopback
+API format; calls still use the selected connection and codeaf's shared model funnel.
+Do not enter an assumed large window just to pass the check. Known windows of 32,768
+tokens or fewer are still refused; the existing conservative guess when no catalog
+can be read is unchanged.
 
 ## senior-dev keeps compacting, or refused a model as too small — how much its model can hold, a 32K model, could not learn how much its model holds
 
@@ -1114,7 +1197,7 @@ after the run's record folder (such as `20260924-150405.000000`). That folder al
 `delegate-program.json`, with the instant senior-dev's process started and the instant it
 ended.
 
-## senior-dev's flags — run, --variant, --in-place, --high, --verify-test, --max-cost
+## senior-dev's flags — run, --variant, --in-place, --high, --verify-test, --state-dir, --max-cost
 
 `codeaf senior-dev <brief>` is `codeaf senior-dev run -- <brief>`. codeaf gives every
 program it carries four flags:
@@ -1140,6 +1223,7 @@ senior-dev's own flags on `run`:
 - `--verify-build CMD`, `--verify-test CMD` — the project's own build or test command,
   run by senior-dev on the submitted tree instead of the one it would have found (see
   how senior-dev finds a project's build and tests);
+- `--state-dir DIR` — its session store in DIR, not the run's record folder (`SENIOR_DEV_STATE_DIR`);
 - `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
 - `--crew` — the models came from a conversation's crew: one its catalog cannot size is
   left out instead of failing the run. codeaf passes it with the crew's models.
@@ -1204,8 +1288,9 @@ senior-dev had finished but that codeaf closed under before the run was over rea
 A run ends in one of these ways, and the task's ending says which:
 
 - `finished: …` — it submitted a change, and the words after say what its own check of the
-  project's build and tests found on the frozen tree, passed or not: a change handed in is
-  finished work, and a check that did not pass is looked into by the chat, not acted on;
+  project's build and tests found on the frozen tree, passed or not, or that it found none
+  to run: a change handed in is finished work, and a check that did not pass is looked
+  into by the chat, not acted on;
 - `senior-dev did not finish: …` — it ended without submitting. It is not drawn as a fault,
   what it made is still on its branch, and the chat acts on it (see what codeaf does when
   senior-dev ends);
