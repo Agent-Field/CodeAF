@@ -308,6 +308,7 @@ func (s *session) finish(err *bridge.Error) {
 
 func (s *session) close() {
 	s.cancel()
+	droppedSurfaces(s.all, svc.Owner)
 	s.mu.Lock()
 	subs := s.subs
 	s.subs = map[string]func(){}

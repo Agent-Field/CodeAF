@@ -55,7 +55,12 @@
         { "type": "object", "required": ["approvals"], "additionalProperties": false,
           "properties": { "approvals": { "enum": ["open", "all"] } } },
         { "type": "object", "required": ["selection"], "additionalProperties": false,
-          "properties": { "selection": { "type": "string" } } }
+          "properties": { "selection": { "type": "string" } } },
+        { "type": "object", "required": ["doc", "surface"], "additionalProperties": false,
+          "properties": {
+            "doc": { "type": "string", "minLength": 1 },
+            "surface": { "enum": ["canvas", "text", "grid", "timeline", "graph", "map"] }
+          } }
       ]
     },
     "modifiers": {

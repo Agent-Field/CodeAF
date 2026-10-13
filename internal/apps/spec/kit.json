@@ -150,12 +150,14 @@
     },
     {
       "name": "Text",
-      "kind": "primitive",
+      "kind": "surface",
+      "wave": 2,
       "interactive": false,
       "events": [],
       "children": "none",
+      "bind": ["doc"],
       "props": {
-        "text": { "type": "template", "required": true },
+        "text": { "type": "template" },
         "size": { "type": "enum", "values": ["title", "body", "small"] },
         "tone": { "type": "tone" }
       }
@@ -433,6 +435,121 @@
         "y": { "type": "field" },
         "agg": { "type": "enum", "values": ["count", "sum", "avg"] },
         "title": { "type": "template" }
+      }
+    },
+    {
+      "name": "Pages",
+      "kind": "pattern",
+      "wave": 2,
+      "interactive": true,
+      "events": [
+        "pick"
+      ],
+      "children": "none",
+      "bind": [
+        "doc"
+      ],
+      "props": {
+        "parts": {
+          "type": "value"
+        },
+        "value": {
+          "type": "value"
+        }
+      }
+    },
+    {
+      "name": "Canvas",
+      "kind": "surface",
+      "wave": 2,
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "bind": [
+        "doc"
+      ],
+      "props": {
+        "frame": {
+          "type": "enum",
+          "values": [
+            "16:9",
+            "board"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Grid",
+      "kind": "surface",
+      "wave": 2,
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "bind": [
+        "doc"
+      ],
+      "props": {}
+    },
+    {
+      "name": "Timeline",
+      "kind": "surface",
+      "wave": 2,
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "bind": [
+        "doc"
+      ],
+      "props": {
+        "view": {
+          "type": "enum",
+          "values": [
+            "gantt",
+            "calendar",
+            "shifts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Graph",
+      "kind": "surface",
+      "wave": 2,
+      "interactive": false,
+      "events": [
+        "open"
+      ],
+      "children": "none",
+      "bind": [
+        "doc"
+      ],
+      "props": {
+        "view": {
+          "type": "enum",
+          "values": [
+            "tree",
+            "flow",
+            "free"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Map",
+      "kind": "surface",
+      "wave": 2,
+      "interactive": false,
+      "events": [
+        "open"
+      ],
+      "children": "none",
+      "bind": [
+        "doc"
+      ],
+      "props": {
+        "tiles": {
+          "type": "value"
+        }
       }
     }
   ]

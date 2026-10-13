@@ -12,10 +12,11 @@ const (
 	KindPrimitive PartKind = "primitive"
 	KindPattern   PartKind = "pattern"
 	KindData      PartKind = "data"
+	KindSurface   PartKind = "surface"
 )
 
-// Kit is the wave-1 kit catalog (kit.json). The desk renders exactly these
-// parts; Check rejects any other part name.
+// Kit is the kit catalog (kit.json), with each later part naming its wave.
+// The desk renders these parts; Check rejects any other part name.
 type Kit struct {
 	Kit       int               `json:"kit"`
 	Wave      int               `json:"wave"`
@@ -29,6 +30,7 @@ type Kit struct {
 type Part struct {
 	Name        string           `json:"name"`
 	Kind        PartKind         `json:"kind"`
+	Wave        int              `json:"wave,omitempty"`
 	Interactive bool             `json:"interactive"` // kit/label: needs a label
 	NavOnly     bool             `json:"navOnly,omitempty"`
 	Events      []string         `json:"events"`

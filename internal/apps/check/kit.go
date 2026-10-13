@@ -212,6 +212,8 @@ func bindingKind(b *spec.Binding) string {
 		return "approvals"
 	case b.Selection != "":
 		return "selection"
+	case b.Doc != "":
+		return "doc"
 	}
 	return ""
 }

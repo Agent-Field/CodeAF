@@ -186,6 +186,8 @@ type Services struct {
 	Model      Model
 	Hub        Hub
 	Caps       Caps
+	Parts      Parts
+	Collab     Collab
 }
 
 // Config is what every service constructor receives.

@@ -28,7 +28,7 @@ type Node struct {
 }
 
 // Binding says where a node's data comes from. Exactly one of the
-// discriminating fields (Records, Record, Run, Runs, Approvals, Selection)
+// discriminating fields (Records, Record, Run, Runs, Approvals, Selection, Doc)
 // is set.
 type Binding struct {
 	Records   string `json:"records,omitempty"`
@@ -40,6 +40,8 @@ type Binding struct {
 	Runs      string `json:"runs,omitempty"`
 	Approvals string `json:"approvals,omitempty"`
 	Selection string `json:"selection,omitempty"`
+	Doc       string `json:"doc,omitempty"`
+	Surface   string `json:"surface,omitempty"`
 }
 
 // Action verbs a screen or command may use.

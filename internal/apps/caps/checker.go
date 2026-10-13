@@ -38,6 +38,9 @@ func (s *Service) allow(ctx context.Context, scope svc.Scope, method string, par
 	if scope.Caller.Member == "" {
 		return denied("a member is required")
 	}
+	if handled, err := allowSurfaces(scope, method, params); handled {
+		return err
+	}
 	if err := allowRole(scope.Caller, method); err != nil {
 		return err
 	}
