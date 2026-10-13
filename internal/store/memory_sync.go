@@ -320,6 +320,11 @@ func foldMemoryUpdate(tx *sql.Tx, event Event, seq int64, fts bool, allow func(o
 	if allow != nil && !allow(rowOwner) {
 		return false, nil
 	}
+	// A shelf transfer must be permitted at both ends; it cannot widen a
+	// restricted pairing just because the old owner was allowed.
+	if payload.Owner != "" && (!ValidOwner(payload.Owner) || (allow != nil && !allow(payload.Owner))) {
+		return false, nil
+	}
 	return true, applyMemoryUpdate(tx, payload, seq, fts)
 }
 

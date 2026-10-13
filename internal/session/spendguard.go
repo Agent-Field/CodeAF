@@ -154,8 +154,10 @@ func (d *SpendDay) lastCost(model string) float64 {
 // own ceiling. The zero parts are off: no Day or no Cap is no day cap, and a
 // seat with no SeatCeilings entry has no ceiling of its own.
 type SpendGuard struct {
-	Price SpendPrice
-	Day   *SpendDay
+	// Limits reads live app raises and expiry before each call, preserving holds.
+	Limits func() (day, task float64, err error)
+	Price  SpendPrice
+	Day    *SpendDay
 	// Cap is the day's limit in dollars and CapAction the sentence a call it
 	// stops ends on.
 	Cap       float64
@@ -273,6 +275,17 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 	if g == nil {
 		return 0, nil
 	}
+	capUSD, taskCap := g.Cap, g.TaskCap
+	capAction, taskAction := g.CapAction, g.TaskAction
+	if g.Limits != nil {
+		var err error
+		capUSD, taskCap, err = g.Limits()
+		if err != nil {
+			return 0, err
+		}
+		capAction = fmt.Sprintf("day cap reached · $%.2f cap · raise the cap before continuing", capUSD)
+		taskAction = fmt.Sprintf("task cap reached · $%.2f cap · raise the cap before continuing", taskCap)
+	}
 	var prompt, completion, cacheRead float64
 	ok := false
 	if g.Price != nil {
@@ -284,11 +297,11 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		// at its ceiling make no more such calls, on the same sentence a priced
 		// call ends on. Below every line it goes as it always has, and what it
 		// cost is counted after when the provider says.
-		if g.Cap > 0 && g.Day.Total() >= g.Cap {
-			return 0, ErrSpendStopped{Action: g.CapAction}
+		if capUSD > 0 && g.Day.Total() >= capUSD {
+			return 0, ErrSpendStopped{Action: capAction}
 		}
-		if g.TaskCap > 0 && g.tally().Total() >= g.TaskCap {
-			return 0, ErrSpendStopped{Action: g.TaskAction}
+		if taskCap > 0 && g.tally().Total() >= taskCap {
+			return 0, ErrSpendStopped{Action: taskAction}
 		}
 		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.seatTally(seat).Total() >= g.SeatCeilings[seat] {
 			ceiling := g.SeatCeilings[seat]
@@ -316,19 +329,19 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 	}
 	task := g.tally()
-	if !task.hold(est, g.TaskCap) {
+	if !task.hold(est, taskCap) {
 		if ceiling > 0 {
 			g.seatTally(seat).settle(est, 0)
 		}
-		return 0, ErrSpendStopped{Action: g.TaskAction}
+		return 0, ErrSpendStopped{Action: taskAction}
 	}
-	held, fits := g.Day.hold(model, est, g.Cap)
+	held, fits := g.Day.hold(model, est, capUSD)
 	if !fits {
 		task.settle(est, 0)
 		if ceiling > 0 {
 			g.seatTally(seat).settle(est, 0)
 		}
-		return 0, ErrSpendStopped{Action: g.CapAction}
+		return 0, ErrSpendStopped{Action: capAction}
 	}
 	if g.Day == nil {
 		held = est

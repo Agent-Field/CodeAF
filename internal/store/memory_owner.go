@@ -30,9 +30,8 @@ import (
 // door that can prove a row's source session lived in a workspace can re-home
 // it to that project ([Store.RehomeMemories]).
 //
-// team:<id> owners are deliberately ABSENT, not deferred in a comment: no door
-// mints one yet, and a capability that cannot work is absent rather than
-// broken. Sharing with a team arrives with the sync work, as an explicit copy.
+// crew:<id> owners isolate app crew shelves. Crew execution supplies that exact
+// owner in its retrieval set; an unrelated agent never receives those memories.
 const (
 	OwnerUser          = "user"
 	OwnerMachine       = "machine"
@@ -57,6 +56,10 @@ func OwnerKindOf(owner string) string {
 	switch {
 	case owner == OwnerUser || owner == OwnerMachine:
 		return owner
+	case strings.HasPrefix(owner, "crew:"):
+		if key := strings.TrimPrefix(owner, "crew:"); key != "" && !strings.ContainsAny(key, " \t\r\n\x00/") {
+			return "crew"
+		}
 	case strings.HasPrefix(owner, "project:"):
 		if key := strings.TrimPrefix(owner, "project:"); key != "" {
 			return "project"

@@ -2696,3 +2696,9 @@ func (a *Agent) Rename(name string) error {
 	_, err := a.c.call(nil, MethodRename, name)
 	return err
 }
+
+// SetAppBudget binds the app daily agent allowance on a child or joined TUI host.
+func (a *Agent) SetAppBudget(usd float64) error {
+	_, err := a.c.call(nil, MethodSetAppBudget, usd)
+	return err
+}

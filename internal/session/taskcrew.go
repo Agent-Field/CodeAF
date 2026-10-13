@@ -219,6 +219,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	}
 	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true)
 	crew.guard.Day = a.crewDay()
+	a.bindAppGuard(crew.guard, usageTaskID(row))
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
 	config.LogCrewDecision(a.config.ProfileDir, crew.call, decision, repo, title)
@@ -615,6 +616,7 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 		guard.TaskCap, guard.TaskAction, guard.Task = crew.guard.TaskCap, crew.guard.TaskAction, crew.guard.tally()
 		guard.Cap, guard.CapAction = crew.guard.Cap, crew.guard.CapAction
 	}
+	a.bindAppGuard(guard, a.usageNode())
 	return guard
 }
 

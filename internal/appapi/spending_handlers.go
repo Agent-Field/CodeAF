@@ -3,6 +3,7 @@ package appapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -264,63 +265,99 @@ func (n nativeSpending) SpendingRows(context.Context) ([]MeasuredSpendingRow, er
 	}
 	return result, nil
 }
-func (n nativeSpending) SpendingCap(_ context.Context, scope, id string) (Money, error) {
-	if scope == "day" || scope == "task" {
-		values, _, err := config.AppSettingsAt(n.s.options.ProfileDir)
+func (n nativeSpending) SpendingCap(ctx context.Context, scope, id string) (Money, error) {
+	if scope == "day" {
+		cap, err := config.AppCapAt(n.s.options.ProfileDir, scope, id, config.AppDefaultDayCap, n.s.resourceNow())
+		return usdMoney(cap), err
+	}
+	if scope == "task" {
+		key, err := n.taskCapID(id)
 		if err != nil {
 			return Money{}, err
 		}
-		key := "spending.day_cap"
-		if scope == "task" {
-			key = "spending.per_task"
-		}
-		return Money{USD: values[key].(map[string]string)["usd"]}, nil
+		cap, err := config.AppCapAt(n.s.options.ProfileDir, scope, key, config.AppDefaultTaskCap, n.s.resourceNow())
+		return usdMoney(cap), err
 	}
 	if scope == "agent" && n.s.options.Agents != nil {
 		a := n.s.options.Agents
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		var cap Money
+		var cap float64
 		err := a.disk(func(d *agentDisk) error {
 			row, ok := d.Records[id]
 			if !ok {
 				return agentError(404, "not_found", "no such agent")
 			}
-			cap = row.Agent.Budget
-			return nil
+			base, _ := moneyValue(row.Agent.Budget)
+			var err error
+			cap, err = config.AppCapAt(n.s.options.ProfileDir, scope, id, base, n.s.resourceNow())
+			return err
 		}, false)
-		return cap, err
+		return usdMoney(cap), err
 	}
 	return Money{}, agentError(409, "not_allowed", "this cap needs its resource's execution owner")
 }
-func (n nativeSpending) RaiseCap(ctx context.Context, body RaiseCapRequest, _ time.Time) error {
-	if body.For == "today" {
-		return agentError(409, "not_allowed", "this execution owner cannot expire a cap raise at midnight")
+
+// A task number is local to its agent. The composite id also works before a
+// provider receipt exists; a bare number is accepted only when unambiguous.
+func (n nativeSpending) taskCapID(id string) (string, error) {
+	a := n.s.options.Agents
+	if a == nil {
+		return "", agentError(404, "not_found", "no such task")
 	}
-	if body.Scope == "day" {
-		if body.Expect != nil {
-			return agentError(422, "bad_input", "day cap expectations use the settings route and its ETag")
-		}
-		values, version, err := config.AppSettingsAt(n.s.options.ProfileDir)
-		if err != nil {
-			return err
-		}
-		current := values["spending.day_cap"].(map[string]string)["usd"]
-		old, _ := strconv.ParseFloat(current, 64)
-		amount, _ := moneyValue(body.To)
-		if old == 0 || amount <= old {
-			return agentError(409, "conflict", "the new cap must be higher than the current cap")
-		}
-		raw, _ := json.Marshal(body.To)
-		patch := map[string]json.RawMessage{"spending.day_cap": raw}
-		if err := config.ApplyAppSettings(n.s.options.ProfileDir, patch, version); err != nil {
-			if err == config.ErrAppStale {
-				return agentError(409, "stale", "the cap changed; read it again before acting")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var found string
+	err := a.disk(func(d *agentDisk) error {
+		for agent, record := range d.Records {
+			ids := map[string]bool{}
+			for _, row := range session.ReadTaskIndex(session.TaskIndexPath(record.SessionFile)) {
+				ids[row.ID] = true
 			}
-			return err
+			if live := a.live[agent]; live != nil {
+				for _, row := range live.conn.Engine.PlanTasks() {
+					ids[row.ID] = true
+				}
+			}
+			for task := range ids {
+				key := config.AppTaskCapID(agent, task)
+				if id == key || id == task {
+					if found != "" && found != key {
+						return agentError(409, "conflict", "task id needs its agent id")
+					}
+					found = key
+				}
+			}
 		}
-		n.s.settingsChanged(patch)
 		return nil
+	}, false)
+	if err != nil {
+		return "", err
+	}
+	if found == "" {
+		return "", agentError(404, "not_found", "no such task")
+	}
+	return found, nil
+}
+func (n nativeSpending) RaiseCap(ctx context.Context, body RaiseCapRequest, now time.Time) error {
+	if body.Scope == "day" || body.Scope == "task" {
+		if body.Expect != nil {
+			return agentError(422, "bad_input", "day and task cap expectations use their owning settings or task route")
+		}
+		id := body.ID
+		if body.Scope == "task" {
+			var err error
+			id, err = n.taskCapID(id)
+			if err != nil {
+				return err
+			}
+		}
+		usd, _ := moneyValue(body.To)
+		err := config.RaiseAppCap(n.s.options.ProfileDir, body.Scope, id, config.AppDefaultTaskCap, usd, body.For == "today", now)
+		if errors.Is(err, config.ErrAppCapConflict) {
+			return agentError(409, "conflict", err.Error())
+		}
+		return err
 	}
 	if body.Scope == "agent" && n.s.options.Agents != nil {
 		a := n.s.options.Agents
@@ -332,16 +369,31 @@ func (n nativeSpending) RaiseCap(ctx context.Context, body RaiseCapRequest, _ ti
 			if !ok {
 				return agentError(404, "not_found", "no such agent")
 			}
-			old, _ := moneyValue(row.Agent.Budget)
-			amount, _ := moneyValue(body.To)
-			if amount <= old {
-				return agentError(409, "conflict", "the new cap must be higher than the current cap")
+			if expect := body.Expect; expect != nil && ((expect.State != nil && *expect.State != row.Agent.State) || (expect.Version != nil && *expect.Version != row.Agent.Version)) {
+				return agentError(409,"stale","the agent changed; read it again before acting")
 			}
-			var err error
+			base, _ := moneyValue(row.Agent.Budget)
+			usd, _ := moneyValue(body.To)
+			if body.For == "today" {
+				return config.RaiseAppCap(n.s.options.ProfileDir, "agent", body.ID, base, usd, true, now)
+			}
+			current, err := config.AppCapAt(n.s.options.ProfileDir, "agent", body.ID, base, now)
+			if err != nil {
+				return err
+			}
+			if usd <= current {
+				return config.ErrAppCapConflict
+			}
 			changed, _, err = a.mutate(ctx, d, body.ID, "", agentMutation{Budget: &body.To, Expect: body.Expect})
-			return err
+			if err != nil {
+				return err
+			}
+			return config.BindAppAgentBudget(n.s.options.ProfileDir, body.ID, usd)
 		}, true)
-		if err == nil {
+		if errors.Is(err, config.ErrAppCapConflict) {
+			return agentError(409, "conflict", err.Error())
+		}
+		if err == nil && changed.ID != "" {
 			a.publish(EventAgentChanged, changed, "budget")
 		}
 		return err

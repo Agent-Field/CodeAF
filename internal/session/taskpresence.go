@@ -1134,7 +1134,7 @@ const subharnessOfferLine = "wants to run "
 // written on a five-second heartbeat and believed for fifteen
 // ([presenceHeartbeat]), so a count built on it would lag a question the person
 // is looking at, and would be this process reading its own writes off a disk.
-func (a *Agent) NeedsPerson() bool { return a.waitingOnPerson().waiting }
+func (a *Agent) NeedsPerson() bool { return a.appCapNeedsPerson() || a.waitingOnPerson().waiting }
 
 // WaitingOn is the one line about WHY, and it is exactly what the presence file
 // writes into [SessionPresence.Reason] — the same call, at the same instant, so

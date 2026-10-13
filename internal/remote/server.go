@@ -2732,6 +2732,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		s.session.announce()
 		return nil, nil
 
+	case MethodSetAppBudget:
+		usd, err := arg[float64](call)
+		if err != nil {
+			return nil, err
+		}
+		binder, ok := agent.(interface{ SetAppBudget(float64) error })
+		if !ok {
+			return nil, errors.New("agent budget cannot be changed here")
+		}
+		return nil, binder.SetAppBudget(usd)
+
 	case MethodSetSpendRail:
 		usd, err := arg[float64](call)
 		if err != nil {

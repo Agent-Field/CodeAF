@@ -2364,6 +2364,9 @@ type Config struct {
 	// already in flight is never cut in half by it.
 	SpendRailUSD float64
 
+	// AppSpending carries daily agent accounting into child task agents.
+	AppSpending bool
+
 	// Unattended retains the legacy opt-in to automatic goal continuation.
 	// Together with Budget it selects a Steward only when Interactive is false.
 	// Tool approval policy is configured separately by the launch door.
@@ -2456,6 +2459,8 @@ type Agent struct {
 	// An open conversation's changed rail is separate from its launch config:
 	// proposal cards read it while holding mu, while runs also read it outside
 	// that lock. Atomic publication keeps both roads on the same figure.
+	appSpending      atomic.Bool
+	appCapPending    atomic.Bool
 	liveSpendRail    atomic.Uint64
 	liveSpendRailSet atomic.Bool
 	client           Completer

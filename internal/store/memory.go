@@ -285,6 +285,9 @@ type memoryPayload struct {
 }
 
 type memoryUpdatePayload struct {
+	// A person can move a shelf; ordinary model corrections preserve the owner.
+	Owner         string   `json:"owner,omitempty"`
+	PreviousOwner string   `json:"previous_owner,omitempty"`
 	ID            string   `json:"id"`
 	Title         string   `json:"title"`
 	Text          string   `json:"text"`
@@ -1421,6 +1424,23 @@ func applyMemoryAdd(tx *sql.Tx, payload memoryPayload, seq int64, fts bool) erro
 }
 
 func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64, fts bool) error {
+	if payload.Owner != "" {
+		if !ValidOwner(payload.Owner) || payload.PreviousOwner == "" {
+			return fmt.Errorf("%w: invalid shelf transfer", ErrInvalid)
+		}
+		result, err := tx.Exec("UPDATE memories SET owner=?, scope=? WHERE id=? AND owner=? AND status=?", payload.Owner, OwnerScopeOf(payload.Owner), payload.ID, payload.PreviousOwner, MemoryActive)
+		if err != nil {
+			return err
+		}
+		changed, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if changed != 1 {
+			return ErrMemoryStale
+		}
+	}
+
 	tags, err := memoryTagsJSON(payload.Tags)
 	if err != nil {
 		return err

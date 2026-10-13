@@ -63,6 +63,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -1090,7 +1091,7 @@ func (m *memoryBrain) takeNotices() []string {
 // waited for by Close, and silent whatever happens to it. There is no event kind
 // for "a small thing did not work" (title.go's reasoning, unchanged).
 func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
-	if !a.memoryWritable() {
+	if !a.memoryWritable() || !config.AgentsMayAddMemoryAt(a.config.ProfileDir) {
 		return
 	}
 	injected := a.memory.takeInjected()
@@ -2014,7 +2015,7 @@ func init() { glossField["remember"] = "text" }
 // carrying `remember` against no store is a model told it can remember, whose
 // every call is refused. A session without memory simply does not have the verb.
 func (a *Agent) memoryTools() []bare.Tool {
-	if !a.memoryWritable() {
+	if !a.memoryWritable() || !config.AgentsMayAddMemoryAt(a.config.ProfileDir) {
 		return nil
 	}
 	return append([]bare.Tool{{
@@ -2022,6 +2023,9 @@ func (a *Agent) memoryTools() []bare.Tool {
 		Description: rememberDescription,
 		Schema:      json.RawMessage(rememberSchemaJSON),
 		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+			if !config.AgentsMayAddMemoryAt(a.config.ProfileDir) {
+				return "Memory additions are off; ask the person to save this.", true, nil
+			}
 			var parsed struct {
 				Text  string `json:"text"`
 				Scope string `json:"scope"`

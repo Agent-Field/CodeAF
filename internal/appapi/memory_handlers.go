@@ -26,7 +26,7 @@ var memoryContractRoutes = []contractRoute{
 }
 
 // MemoryUndoWindow is owned by the engine so two windows agree on its deadline.
-const MemoryUndoWindow = 5 * time.Second
+const MemoryUndoWindow = store.MemoryUndoWindow
 
 // MemoryBackend lets the crew lane supply its owner-aware store without making
 // this resource infer crew ownership from project memory or UI shelf labels.
@@ -170,6 +170,9 @@ func (n nativeMemory) ReadMemory(context.Context) (MemoryResponse, error) {
 		if row.Owner == store.OwnerUser {
 			names[row.Owner] = "Yours"
 		}
+		if store.OwnerKindOf(row.Owner) == "crew" {
+			names[row.Owner] = strings.TrimPrefix(row.Owner, "crew:")
+		}
 		if row.Owner == store.OwnerMachine {
 			names[row.Owner] = "This machine"
 		}
@@ -220,71 +223,43 @@ func (n nativeMemory) locked(fn func(map[string]time.Time) error) error {
 		return undo, nil
 	})
 }
-func (n nativeMemory) PatchMemory(_ context.Context, id string, body PatchMemoryRequest) (out MemoryItem, err error) {
-	err = n.locked(func(_ map[string]time.Time) error {
-		row, err := n.record(id, body.Expect)
-		if err != nil {
-			return err
-		}
-		if row.Status != store.MemoryActive {
-			return agentError(409, "conflict", "forgotten memories cannot be edited")
-		}
-		if body.Shelf != nil && *body.Shelf != row.Owner {
-			return agentError(409, "not_allowed", "this memory store cannot move memories between shelves")
-		}
-		if body.Text != nil {
-			if err := n.db.UpdateMemory(id, row.Title, *body.Text, row.Tags); err != nil {
-				return err
-			}
-			row, _, err = n.db.MemoryRecord(id)
-			if err != nil {
-				return err
-			}
-		}
-		out = memoryView(row)
-		return nil
-	})
-	return
+func memoryEditExpect(edit *store.MemoryEdit, expect *AgentExpect) {
+	if expect != nil {
+		edit.State, edit.Version = expect.State, expect.Version
+	}
+}
+func (n nativeMemory) PatchMemory(_ context.Context, id string, body PatchMemoryRequest) (MemoryItem, error) {
+	edit := store.MemoryEdit{Action: "patch", Text: body.Text, Owner: body.Shelf}
+	memoryEditExpect(&edit, body.Expect)
+	if err := n.db.EditMemory(id, edit); err != nil {
+		return MemoryItem{}, err
+	}
+	row, _, err := n.db.MemoryRecord(id)
+	return memoryView(row), err
 }
 func (n nativeMemory) ForgetMemory(_ context.Context, id string, expect *AgentExpect, now time.Time) error {
-	return n.locked(func(undo map[string]time.Time) error {
-		row, err := n.record(id, expect)
-		if err != nil {
-			return err
-		}
-		if row.Status != store.MemoryActive {
-			return agentError(409, "conflict", "the memory is already forgotten")
-		}
-		for key, until := range undo {
-			if !now.Before(until) {
-				delete(undo, key)
-			}
-		}
-		if err := n.db.ForgetMemory(id); err != nil {
-			return err
-		}
-		undo[id] = now.Add(MemoryUndoWindow)
-		return nil
-	})
+	edit := store.MemoryEdit{Action: "forget", Now: now}
+	memoryEditExpect(&edit, expect)
+	return n.db.EditMemory(id, edit)
 }
 func (n nativeMemory) RestoreMemory(_ context.Context, id string, expect *AgentExpect, now time.Time) error {
-	return n.locked(func(undo map[string]time.Time) error {
-		row, err := n.record(id, expect)
-		if err != nil {
-			return err
-		}
-		if row.Status != store.MemoryForgotten || !now.Before(undo[id]) {
-			return agentError(409, "conflict", "the five-second memory undo window has ended")
-		}
-		if err := n.db.RestoreMemory(id); err != nil {
-			return err
-		}
-		delete(undo, id)
-		return nil
-	})
+	edit := store.MemoryEdit{Action: "restore", Now: now}
+	memoryEditExpect(&edit, expect)
+	return n.db.EditMemory(id, edit)
 }
 
 func resourceFailure(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrMemoryMissing):
+		fail(w, 404, "not_found", err.Error())
+		return
+	case errors.Is(err, store.ErrMemoryStale):
+		fail(w, 409, "stale", err.Error())
+		return
+	case errors.Is(err, store.ErrMemoryConflict), errors.Is(err, store.ErrMemoryUndoEnded):
+		fail(w, 409, "conflict", err.Error())
+		return
+	}
 	var reply *agentReplyError
 	if errors.As(err, &reply) {
 		agentFailure(w, err)

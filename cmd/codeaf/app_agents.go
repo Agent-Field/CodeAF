@@ -115,7 +115,7 @@ func appAgentConnection(ctx context.Context, client *remote.Client, ask appapi.A
 		client.Close()
 		return appapi.AgentConnection{}, err
 	}
-	if err := agent.SetSpendRail(usd); err != nil {
+	if err := agent.SetAppBudget(usd); err != nil {
 		client.Close()
 		return appapi.AgentConnection{}, err
 	}

@@ -36,6 +36,9 @@ import (
 // SetSpendRail binds a setting written in an open chat before the next turn
 // or delegated run reads the ceiling. In-flight work keeps its admitted limit.
 func (a *Agent) SetSpendRail(usd float64) error {
+	if a.appSpending.Load() {
+		return a.SetAppBudget(usd)
+	}
 	if usd < 0 || math.IsNaN(usd) || math.IsInf(usd, 0) {
 		return fmt.Errorf("conversation limit must be a finite non-negative amount")
 	}
@@ -59,6 +62,9 @@ var ErrSpendRail = errors.New("session: the spend rail was reached")
 // railBlockLocked reports why a turn may not start, or nil. It is called with
 // a.mu held, from the one place turns begin.
 func (a *Agent) railBlockLocked() error {
+	if err := a.appSpendingBlockLocked(); err != nil {
+		return err
+	}
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
 	}
