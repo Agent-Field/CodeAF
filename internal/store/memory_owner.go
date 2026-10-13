@@ -438,3 +438,6 @@ func applyMemoryRehomed(tx *sql.Tx, raw json.RawMessage, seq int64) error {
 	}
 	return nil
 }
+
+// OwnerCrew isolates a crew's shelf from personal and other crews' retrieval.
+func OwnerCrew(id string) string { return "crew:" + strings.TrimSpace(id) }

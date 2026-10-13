@@ -72,6 +72,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 const (
@@ -254,6 +255,9 @@ func (a *Agent) memoryOwners() []string {
 // project the conversation has since anchored to. It is the one list builder.
 func (a *Agent) memoryOwnersFor(projectKey string) []string {
 	owners := []string{store.OwnerUser, store.OwnerMachine}
+	if crew := a.memoryCrewID(); crew != "" {
+		owners = append(owners, store.OwnerCrew(crew))
+	}
 	if key := strings.TrimSpace(projectKey); key != "" {
 		owners = append(owners, store.OwnerProject(key))
 	}
@@ -2221,4 +2225,25 @@ func memoryJoined(settled <-chan struct{}) bool {
 	case <-timer.C:
 		return false
 	}
+}
+
+// Membership comes from the native document, so a removed agent loses the shelf
+// on its next read. Child tasks keep the scope they were admitted under.
+func (a *Agent) memoryCrewID() string {
+	if a.config.MemoryCrewID != "" {
+		return a.config.MemoryCrewID
+	}
+	if a.config.SessionFile == "" {
+		return ""
+	}
+	f, err := teams.Snapshot(a.config.ProfileDir)
+	if err != nil {
+		return ""
+	}
+	for _, crew := range f.Teams {
+		if !crew.Root && !crew.Closed() && crew.Holds(a.config.SessionFile) {
+			return crew.ID
+		}
+	}
+	return ""
 }

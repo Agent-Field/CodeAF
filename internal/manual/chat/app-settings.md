@@ -52,8 +52,9 @@ account access, polling, context tokens, work folder, proposal seconds,
 idle days and crew defaults. Proposal seconds accept 0–60; 0 disables
 that clock. Account choices are `yes`, `ask_first` and `off`, including
 `accounts.mcp:<server>`. App approval choices are `ask_risky`,
-`ask_everything` and `dont_ask`. Live enforcement of the new app permission,
-memory, agent-budget and factory settings arrives with those resource routes.
+`ask_everything` and `dont_ask`. The memory-add switch and daily agent budgets are enforced by the engine.
+Live enforcement of the new app permission and factory settings arrives with
+those resource routes.
 Theme, windows, notifications and other UI-only settings stay in the app.
 
 ## App first launch — resume setup and choose defaults

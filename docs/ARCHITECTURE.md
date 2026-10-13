@@ -1066,24 +1066,43 @@ the quick worker leaves, in the same folder with its existing edits. The
 standing task subscription feeds HTTP events after the originating turn ends.
 
 
-## App spending and memory resource seams
+## App spending and memory execution owners
 
-The app spending handler reads the canonical `v3/usage.jsonl`, sums measured
-sub-cent costs before formatting money and attributes child task calls to their
-root agent. Permanent day and agent raises reach the native profile and session
-protocol. `SpendingBackend` and `WithSpendingBackend` allow execution owners to
-supply task/member/crew limits and temporary raises without editing their files
-from a second resource. `CheckSpending` is an admission hook, and
-`PublishSpending` is a throttled completion hook; native turn producers do not
-yet call them. The native engine still lacks daily-agent admission and temporary
-cap expiry, so the HTTP adapter refuses unsupported raises rather than silently
-changing a permanent cap.
+App spending reads the canonical `v3/usage.jsonl`, sums measured sub-cent costs
+before formatting money and attributes task calls to their root agent. The
+session checks the same day/agent/task cap reader before admitting a turn and
+before each model call. Daily agent allowances use the additive `SetAppBudget`
+wire method, independent of lifetime conversation and crew-member rails.
+Child tasks inherit the profile, root attribution and app spending policy.
 
-The memory handler edits the existing `graph.db`. `MemoryBackend` and
-`WithMemoryBackend` are the owner-aware crew shelf boundary; the native adapter
-preserves user/machine/project owners and refuses shelf moves. Forget immediately
-journals a native tombstone, with its five-second undo deadline persisted under
-`v3/app/memory-undo.json`. A resource flock coordinates app launches; private
-atomic replacement preserves undo receipts. The resource lock does not cover
-terminal store writes, so cross-surface conditional edits still need a store
-transaction seam. Model memory-add enforcement remains with the execution owner.
+`config.AppCapAt` reads native defaults and the locked profile's
+`app.spending.caps` map. Each entry separates its permanent allowance from a
+raise expiring at the next local midnight; every admission reevaluates that
+deadline. The task key is `<root-agent-id>:<local-task-number>` to avoid mixing
+identical local numbers. Task guards preserve their tallies and reservations
+while reading fresh limits. Already admitted calls finish; cross-process calls
+in flight retain the existing SpendGuard limitation.
+
+The app home observer samples native receipts once per second through
+`RefreshSpending`. `PublishSpending` throttles measured stream changes;
+`SpendingBudgetAsks` supplies one saved question for each reached scope to asks
+and Inbox consumers. Raises/reset resolve actual saved questions. The server
+joins its spending and crew watchers before Close returns, so shutdown cannot
+leave a writer racing a removed or replaced home.
+
+`SpendingBackend`/`WithSpendingBackend` remain the resource boundary for member
+and crew caps. Native day, agent and task raises are owned here; this adapter
+never writes crew/member state on their behalf.
+
+Memory uses canonical `graph.db`. `Store.EditMemory` compares expectations,
+journals text/shelf edits or a tombstone, and persists the five-second undo
+receipt in one SQLite write transaction. A restore checks both its deadline
+and the exact tombstone version. An intervening terminal action therefore
+cannot be undone by an old app receipt. Shelf moves use owner-aware journal
+payloads and sync requires permission at both ends of a transfer.
+
+Active native crews expose even an empty `crew:<id>` shelf. Session retrieval
+includes only its own native membership and admitted child scope. Owner-aware
+`MemoryBackend` implementations can supply other resource storage. The saved
+memory-add switch hides the model's remember tool and suppresses post-turn
+extraction; existing retrieval and explicit person saves remain available.

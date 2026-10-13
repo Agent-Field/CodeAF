@@ -4,16 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 )
 
 // AppCap is an execution limit, with an optional local-midnight override.
 // Keeping both figures lets a restart preserve a raise without making it permanent.
 type AppCap struct {
-	USD      float64   `json:"usd"`
-	TodayUSD float64   `json:"today_usd,omitempty"`
-	Until    time.Time `json:"until,omitempty"`
+	Permanent bool      `json:"permanent,omitempty"`
+	USD       float64   `json:"usd"`
+	TodayUSD  float64   `json:"today_usd,omitempty"`
+	Until     time.Time `json:"until,omitempty"`
 }
 
 const appCapsKey = "app.spending.caps"
@@ -50,7 +50,7 @@ func appCapFrom(values map[string]json.RawMessage, scope, id string, base float6
 	if cap, ok := caps[scope+":"+id]; ok {
 		// Day and task defaults remain live settings unless this particular task
 		// has its own permanent override.
-		if scope != "day" {
+		if scope != "day" && (scope != "task" || cap.Permanent) {
 			base = cap.USD
 		}
 		if now.Before(cap.Until) {
@@ -81,7 +81,7 @@ func BindAppAgentBudget(profile, id string, usd float64) error {
 			return nil, err
 		}
 		cap := caps["agent:"+id]
-		cap.USD = usd
+		cap.USD, cap.Permanent = usd, true
 		caps["agent:"+id] = cap
 		return map[string]any{appCapsKey: caps}, nil
 	})
@@ -120,7 +120,7 @@ func RaiseAppCap(profile, scope, id string, base, usd float64, today bool, now t
 			cap.TodayUSD = usd
 			cap.Until = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 		} else {
-			cap = AppCap{USD: usd}
+			cap = AppCap{USD: usd, Permanent: true}
 			if scope == "day" {
 				updates[KeyDailyBudget] = usd
 			}
@@ -148,11 +148,19 @@ func AgentsMayAddMemoryAt(profile string) bool {
 
 // AppDefaultAgentBudgetAt resolves the same number the settings route displays.
 func AppDefaultAgentBudgetAt(profile string) float64 {
-	values, _, err := AppSettingsAt(profile)
+	values, err := readProfileConfig(profile)
 	if err != nil {
 		return AppDefaultAgentBudget
 	}
-	usd, _ := strconv.ParseFloat(values["spending.per_agent"].(map[string]string)["usd"], 64)
+	usd := AppDefaultAgentBudget
+	if raw := values["app.spending.per_agent"]; raw != nil {
+		if json.Unmarshal(raw, &usd) != nil {
+			return AppDefaultAgentBudget
+		}
+	}
+	if _, err := validateDailyBudget(usd, "agent cap"); err != nil {
+		return AppDefaultAgentBudget
+	}
 	return usd
 }
 

@@ -74,6 +74,8 @@ The local app API has reserved routes for files, tasks, quick tasks, processes,
 standing orders, reminders, permissions, asks, rules,
 crews, members, roles, reports, models, settings, setup, memory, spending, caps,
 search, history, Activity and the AI door.
+Crews, members, models, settings, setup, memory and spending have implemented
+resource handlers described below.
 A reserved route returns HTTP 501 with `error: "not built yet"` and `route`
 naming the method and path template. It performs no action. Authentication,
 Origin and Host checks still run first; a wrong method returns 405 with `Allow`.
@@ -1589,23 +1591,52 @@ runner merely to report power. Linux sends the same events from logind.
 An unreachable attached factory returns an error; retry the power event
 when the connection returns. Standing-order missed-trigger accounting belongs
 to its own resource.
-## App spending ledger, cap raises and memory undo
 
-The app engine exposes `GET /app/v1/spending` and `/app/v1/spending/today`.
-The ledger accepts `when=today|week|all` and `by=agent|crew|job|model`; today and
-agent totals retain measured sub-cent costs until the final money formatting.
-A fresh app day cap reads $20.00, agent budget $5.00 and task cap $2.00.
-`POST /app/v1/caps/raise` supports permanent day and agent raises. Native
-`for:today` raises and task/member/crew raises answer 409 `not_allowed` until
-an execution owner supplies them. The daily-agent cap hook is not yet wired
-into native turns; existing session budget behavior still applies.
+## App spending ledger and daily agent budgets
 
-`GET /app/v1/memory` searches active memories with `q` and selects an owner
-shelf with `shelf`. Native shelves are Yours, This machine and project owners;
-crew shelves and moving a memory need a crew-owned backend and currently refuse.
-`PATCH /app/v1/memory/{id}` edits the wording. `POST` to its `/forget` removes
-it from retrieval immediately; `/restore` undoes that strictly within five
-seconds, including from another app window or engine launch sharing the home.
-After five seconds it says "the five-second memory undo window has ended".
-The saved "Agents may add to shelves" setting has no native model-write
-integration yet.
+`GET /app/v1/spending` and `/app/v1/spending/today` show measured costs.
+The ledger accepts `when=today|week|all` and `by=agent|crew|job|model`.
+Sub-cent receipts count before totals are rounded to cents. Child task calls
+count toward their root agent. Future receipts are excluded.
+
+A fresh app defaults to $20.00 per day across the home, $5.00 per agent per day
+and $2.00 per task over its lifetime. Existing profile choices remain in effect.
+The app daily agent allowance is separate from the optional lifetime conversation
+ceiling and crew-member caps. At a reached cap, no new model call starts. Work
+pauses with the spent figure and cap, and a budget question asks you to raise it
+or stop. Already admitted calls finish. A refused message is yours to send again.
+
+## App raise a cap for today or for good
+
+`POST /app/v1/caps/raise` accepts day, agent and task scopes, a larger `to`
+amount with two decimals, and `for:today` or `for:for_good`. Today expires at
+local midnight, even after a restart or a daylight-saving change; it keeps the
+permanent limit intact. Agent ids are stable; task cap ids use
+`<agent-id>:<task-number>` because different agents may have task 1.
+A bare task number works only when it is unambiguous. A disabled cap or an
+amount no higher than the current cap is refused. Member and crew cap changes
+need their resource's execution backend; they are never silently rewritten as
+an agent cap. Raising resolves an actual waiting budget question, when one exists.
+
+## App memory shelves, edit, Forget and five-second Undo
+
+`GET /app/v1/memory` searches active memories with `q` and selects a shelf with
+`shelf`. Shelves include Yours, This machine, projects and active crews, even a
+crew with no memories. Crew memories are read only by that crew's members and
+their admitted tasks. `PATCH /app/v1/memory/{id}` edits `text`, changes `shelf`,
+or does both. An unknown or closed crew cannot receive a memory.
+
+POST to a memory's `/forget` removes it from retrieval immediately. Its
+`/restore` undoes that strictly within five seconds, including from another app
+window or after restart in the same home. At five seconds it says
+"the five-second memory undo window has ended". A retry does not extend the
+window. An intervening terminal restore/forget invalidates the old Undo.
+Edits compare `expect.state` and `expect.version` inside the store transaction.
+
+## Agents may add to shelves — memory additions off
+
+Turning `memory.agents_may_add` off removes the model's `remember` tool and stops
+automatic post-turn memory extraction. Existing memory remains readable.
+Explicit saves you request, including `/remember`, still work. An already-issued
+remember tool call rechecks the switch before writing. Turn it on to allow
+model additions again.

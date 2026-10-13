@@ -174,4 +174,5 @@ func (s *Server) Close() {
 		s.options.Agents.Close()
 	}
 	s.events.Close()
+	s.watchers.Wait()
 }

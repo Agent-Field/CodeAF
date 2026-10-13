@@ -36,9 +36,6 @@ import (
 // SetSpendRail binds a setting written in an open chat before the next turn
 // or delegated run reads the ceiling. In-flight work keeps its admitted limit.
 func (a *Agent) SetSpendRail(usd float64) error {
-	if a.appSpending.Load() {
-		return a.SetAppBudget(usd)
-	}
 	if usd < 0 || math.IsNaN(usd) || math.IsInf(usd, 0) {
 		return fmt.Errorf("conversation limit must be a finite non-negative amount")
 	}
@@ -68,7 +65,7 @@ func (a *Agent) railBlockLocked() error {
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
 	}
-	if !a.config.InTask && !a.config.Errand {
+	if !a.appCapsEnabled() && !a.config.InTask && !a.config.Errand {
 		if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
 			spentToday := spentTodayOnLedger()
 			if a.crewDayHeld != nil {

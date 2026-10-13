@@ -18,7 +18,9 @@ func (s *Server) startCrewBudgetWatch() {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	s.watchers.Add(1)
 	go func() {
+		defer s.watchers.Done()
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {

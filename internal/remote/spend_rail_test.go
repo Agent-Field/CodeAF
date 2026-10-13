@@ -32,3 +32,27 @@ func TestOpenEngineRoadBindsConversationSpendRail(t *testing.T) {
 		t.Fatalf("engine holds $%.2f, want $1.50", far.rail)
 	}
 }
+
+type appBudgetAgent struct {
+	*spendRailAgent
+	budget float64
+}
+
+func (a *appBudgetAgent) SetAppBudget(usd float64) error { a.budget = usd; return nil }
+func TestAppBudgetWireKeepsConversationRailSeparate(t *testing.T) {
+	far := &appBudgetAgent{spendRailAgent: &spendRailAgent{fakeAgent: &fakeAgent{model: "m"}}}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) { return &Engine{Agent: far, Workspace: "/srv/app"}, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	if err := loop.Client.Agent().SetAppBudget(5); err != nil {
+		t.Fatal(err)
+	}
+	if err := loop.Client.Agent().SetSpendRail(20); err != nil {
+		t.Fatal(err)
+	}
+	if far.budget != 5 || far.rail != 20 {
+		t.Fatalf("budget %v rail %v", far.budget, far.rail)
+	}
+}

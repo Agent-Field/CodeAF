@@ -107,7 +107,7 @@ func (s *Server) spendingAction(w http.ResponseWriter, r *http.Request) {
 		}
 		// A cap change alone does not resolve a waiting ask. Its owner does that
 		// when it accepts the raised limit, so the stream never invents an Inbox id.
-		_ = s.PublishSpending(r.Context(), body.ID)
+		_ = s.RefreshSpending(r.Context())
 		write(w, 200, ActionResponse{OK: true})
 		return
 	}
@@ -150,6 +150,9 @@ func (s *Server) spendingAction(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			resourceFailure(w, err)
 			return
+		}
+		if row.At.After(now) {
+			continue
 		}
 		if !row.At.Before(start) && row.At.Before(end) {
 			today += cost
@@ -204,7 +207,7 @@ func (s *Server) PublishSpending(ctx context.Context, agent string) error {
 	end := start.AddDate(0, 0, 1)
 	var total float64
 	for _, row := range rows {
-		if row.At.Before(start) || !row.At.Before(end) {
+		if row.At.After(now) || row.At.Before(start) || !row.At.Before(end) {
 			continue
 		}
 		amount, err := measuredCost(row)
@@ -370,7 +373,7 @@ func (n nativeSpending) RaiseCap(ctx context.Context, body RaiseCapRequest, now 
 				return agentError(404, "not_found", "no such agent")
 			}
 			if expect := body.Expect; expect != nil && ((expect.State != nil && *expect.State != row.Agent.State) || (expect.Version != nil && *expect.Version != row.Agent.Version)) {
-				return agentError(409,"stale","the agent changed; read it again before acting")
+				return agentError(409, "stale", "the agent changed; read it again before acting")
 			}
 			base, _ := moneyValue(row.Agent.Budget)
 			usd, _ := moneyValue(body.To)
@@ -384,11 +387,21 @@ func (n nativeSpending) RaiseCap(ctx context.Context, body RaiseCapRequest, now 
 			if usd <= current {
 				return config.ErrAppCapConflict
 			}
-			changed, _, err = a.mutate(ctx, d, body.ID, "", agentMutation{Budget: &body.To, Expect: body.Expect})
+			live, err := a.connect(ctx, row)
 			if err != nil {
 				return err
 			}
-			return config.BindAppAgentBudget(n.s.options.ProfileDir, body.ID, usd)
+			if err := bindAppAgentBudget(live.conn.Engine, usd); err != nil {
+				return err
+			}
+			if err := config.BindAppAgentBudget(n.s.options.ProfileDir, body.ID, usd); err != nil {
+				return err
+			}
+			row.Agent.Budget = body.To
+			row.Agent.Version++
+			d.Records[body.ID] = row
+			changed = row.Agent
+			return nil
 		}, true)
 		if errors.Is(err, config.ErrAppCapConflict) {
 			return agentError(409, "conflict", err.Error())
@@ -460,4 +473,13 @@ func (s *Server) CheckSpending(ctx context.Context, agent, task string) error {
 		}
 	}
 	return nil
+}
+
+// The app's daily allowance is distinct from a crew member's lifetime rail.
+// Older embedders retain their existing adjustable-limit adapter.
+func bindAppAgentBudget(engine AgentEngine, usd float64) error {
+	if binder, ok := engine.(interface{ SetAppBudget(float64) error }); ok {
+		return binder.SetAppBudget(usd)
+	}
+	return engine.SetSpendRail(usd)
 }

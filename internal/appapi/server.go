@@ -57,6 +57,7 @@ type Server struct {
 	options       Options
 	mux           *http.ServeMux
 	guarded       http.Handler
+	watchers      sync.WaitGroup
 	once          sync.Once
 	events        *EventHub
 	keyState      keyState
@@ -107,6 +108,7 @@ func New(token string, options Options) *Server {
 	s.startCrewBudgetWatch()
 	s.startInbox()
 	s.startOrderWatch()
+	s.startSpendingWatch()
 	return s
 }
 

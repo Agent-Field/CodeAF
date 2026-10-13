@@ -7710,7 +7710,6 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// AND WHOSE MONEY IT IS. Every line this worker records names the
 		// conversation the work is rooted in, however deep the family goes.
 		rootSession: root,
-		AppSpending: a.appCapsEnabled(),
 		// AND WHERE ITS LITTER GOES, which is NOT its workspace. A worker is not a
 		// session and carries no Place — that is deliberate (session.go) — so with
 		// nothing here its job logs and its stubbed tool results landed in

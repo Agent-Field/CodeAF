@@ -44,7 +44,7 @@ func TestSpendingLedgerKeepsSubCentsAndFamilyAttribution(t *testing.T) {
 		{At: now.Add(24 * time.Hour), USD: 99, Session: "future", Model: "m-future"},
 	}
 	for i := range 10 {
-		lines = append(lines, session.UsageLine{At: now.Add(time.Duration(i) * time.Minute), USD: .001, Session: "child", Root: "a-root", Task: "t-child", Model: "m-worker"})
+		lines = append(lines, session.UsageLine{At: now.Add(-time.Duration(i) * time.Minute), USD: .001, Session: "child", Root: "a-root", Task: "t-child", Model: "m-worker"})
 	}
 	writeResourceLedger(t, home, lines)
 	w := resourceRequest(s, "GET", "/app/v1/spending", "", "")
@@ -149,8 +149,8 @@ func TestSpendingRefusalsDoNotChangeCaps(t *testing.T) {
 		{`{"scope":"agent","to":{"usd":"25.00"},"for":"for_good"}`, 422},
 		{`{"scope":"day","to":{"usd":"0.00"},"for":"for_good"}`, 422},
 		{`{"scope":"day","to":{"usd":"19.00"},"for":"for_good"}`, 409},
-		{`{"scope":"day","to":{"usd":"25.00"},"for":"today"}`, 409},
-		{`{"scope":"task","id":"t","to":{"usd":"25.00"},"for":"for_good"}`, 409},
+
+		{`{"scope":"task","id":"t","to":{"usd":"25.00"},"for":"for_good"}`, 404},
 		{`{"scope":"crew","id":"c","to":{"usd":"25.00"},"for":"for_good"}`, 409},
 	}
 	for _, tc := range cases {
@@ -275,5 +275,93 @@ func TestSpendingAdmissionUsesDayAgentAndTaskRules(t *testing.T) {
 				t.Fatalf("wrong cap: %v", err)
 			}
 		})
+	}
+}
+
+func TestSpendingTemporaryDayRaiseExpiresInHTTPAndEngine(t *testing.T) {
+	home := t.TempDir()
+	loc, err := time.LoadLocation("America/Toronto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 1, 0, 30, 0, 0, loc)
+	s := resourceServer(t, home, &now, nil)
+	body := `{"scope":"day","to":{"usd":"30.00"},"for":"today"}`
+	if w := resourceRequest(s, "POST", "/app/v1/caps/raise", body, "raise-today"); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	now = time.Date(2026, 11, 1, 23, 59, 59, 0, loc)
+	second := resourceServer(t, home, &now, nil)
+	if w := resourceRequest(second, "GET", "/app/v1/spending/today", "", ""); !strings.Contains(w.Body.String(), `"usd":"30.00"`) {
+		t.Fatal(w.Body.String())
+	}
+	now = now.Add(time.Second)
+	if w := resourceRequest(second, "GET", "/app/v1/spending/today", "", ""); !strings.Contains(w.Body.String(), `"usd":"20.00"`) {
+		t.Fatal(w.Body.String())
+	}
+	if cap, err := config.AppCapAt(home, "day", "", 20, now); err != nil || cap != 20 {
+		t.Fatalf("engine cap %v %v", cap, err)
+	}
+}
+
+func TestSpendingTaskRaiseKeepsAgentOwnershipAndReachesEngine(t *testing.T) {
+	home, now := t.TempDir(), time.Now()
+	registry := NewAgentRegistry(home, nil)
+	registry.now = func() time.Time { return now }
+	registry.live["a"] = &agentLive{conn: AgentConnection{Engine: &fakeAgentEngine{tasks: []session.PlanTaskRow{{ID: "1", Status: "running"}}}}}
+	registry.mu.Lock()
+	err := registry.disk(func(d *agentDisk) error {
+		d.Records["a"] = agentRecord{Agent: Agent{ID: "a", Budget: usdMoney(5), State: "idle", Version: 1}}
+		return nil
+	}, true)
+	registry.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New("test-resource-token", Options{ProfileDir: home, Agents: registry})
+	t.Cleanup(s.Close)
+	body := `{"scope":"task","id":"a:1","to":{"usd":"3.00"},"for":"for_good"}`
+	if w := resourceRequest(s, "POST", "/app/v1/caps/raise", body, ""); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if cap, err := config.AppCapAt(home, "task", config.AppTaskCapID("a", "1"), 2, now); err != nil || cap != 3 {
+		t.Fatalf("task cap %v %v", cap, err)
+	}
+	if cap, err := config.AppCapAt(home, "task", config.AppTaskCapID("other", "1"), 2, now); err != nil || cap != 2 {
+		t.Fatalf("other agent task cap %v %v", cap, err)
+	}
+}
+
+func TestSpendingBudgetQuestionsResolveOnlyActualWaitingItems(t *testing.T) {
+	home, now := t.TempDir(), time.Now()
+	backend := &fakeResourceSpending{cap: usdMoney(20), rows: []MeasuredSpendingRow{{SpendingRow: SpendingRow{At: now, Who: SpendingWho{Kind: "system"}}, USD: 20}}}
+	s := resourceServer(t, home, &now, WithSpendingBackend(context.Background(), backend))
+	if err := s.RefreshSpending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	asks, err := s.SpendingBudgetAsks()
+	if err != nil || len(asks) != 1 || asks[0].Kind != "budget" {
+		t.Fatalf("asks %v %v", asks, err)
+	}
+	seq := s.events.seq
+	if err := s.RefreshSpending(context.Background()); err != nil || s.events.seq != seq {
+		t.Fatalf("duplicate question: %d %v", s.events.seq, err)
+	}
+	w := resourceRequest(s, "POST", "/app/v1/caps/raise", `{"scope":"day","to":{"usd":"30.00"},"for":"today"}`, "")
+	if w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	asks, err = s.SpendingBudgetAsks()
+	if err != nil || len(asks) != 0 {
+		t.Fatalf("raised ask %v %v", asks, err)
+	}
+	found := false
+	for i := uint64(0); i < s.events.seq; i++ {
+		if row := s.events.ring[i]; row.kind == EventInboxResolved && strings.Contains(string(row.data), `"item":"budget:`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("waiting budget question was not resolved")
 	}
 }

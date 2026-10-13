@@ -2,6 +2,7 @@ package appapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -182,7 +183,7 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		case session.EventNotice, session.EventCaption:
 			a.publishTurn(EventTurnEntry, TurnEntryEvent{Agent: id, Entry: DisplayEntry{Kind: "notice", Role: "note", Text: event.Text}})
 		case session.EventError:
-			failed = true
+			failed = !errors.Is(event.Err, session.ErrSpendRail)
 			if event.Err != nil {
 				failureWords = "Stopped · " + redact.Secrets(event.Err.Error())
 			}

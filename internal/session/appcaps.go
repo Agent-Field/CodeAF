@@ -19,7 +19,6 @@ func (a *Agent) SetAppBudget(usd float64) error {
 		return err
 	}
 	a.appSpending.Store(true)
-	a.appCapPending.Store(false)
 	return nil
 }
 
@@ -131,6 +130,9 @@ func (a *Agent) bindAppGuard(guard *SpendGuard, task string) {
 		day, err := config.AppCapAt(a.config.ProfileDir, "day", "", config.AppDefaultDayCap, now)
 		if err != nil {
 			return 0, 0, err
+		}
+		if task == "" {
+			return day, 0, nil
 		}
 		cap, err := config.AppCapAt(a.config.ProfileDir, "task", config.AppTaskCapID(owner, task), config.AppDefaultTaskCap, now)
 		return day, cap, err

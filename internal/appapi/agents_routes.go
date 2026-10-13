@@ -456,7 +456,7 @@ func (a *AgentRegistry) mutate(ctx context.Context, d *agentDisk, id, action str
 			}
 			if body.Budget != nil {
 				usd, _ := strconv.ParseFloat(body.Budget.USD, 64)
-				if err := live.conn.Engine.SetSpendRail(usd); err != nil {
+				if err := bindAppAgentBudget(live.conn.Engine, usd); err != nil {
 					return Agent{}, nil, agentError(409, "conflict", "the agent budget could not be changed")
 				}
 				agent.Budget = *body.Budget

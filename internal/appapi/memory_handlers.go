@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 var memoryContractRoutes = []contractRoute{
@@ -165,14 +166,23 @@ func (n nativeMemory) ReadMemory(context.Context) (MemoryResponse, error) {
 	}
 	result := MemoryResponse{Shelves: []MemoryShelf{{ID: store.OwnerUser, Name: "Yours"}}, Items: []MemoryItem{}}
 	names := map[string]string{store.OwnerUser: "Yours"}
+	crews, err := teams.Snapshot(n.home)
+	if err != nil {
+		return MemoryResponse{}, err
+	}
+	for _, crew := range crews.Teams {
+		if !crew.Root && !crew.Closed() {
+			names[store.OwnerCrew(crew.ID)] = crew.Name
+		}
+	}
 	for _, row := range rows {
-		names[row.Owner] = row.Owner
+		if _, ok := names[row.Owner]; !ok {
+			names[row.Owner] = row.Owner
+		}
 		if row.Owner == store.OwnerUser {
 			names[row.Owner] = "Yours"
 		}
-		if store.OwnerKindOf(row.Owner) == "crew" {
-			names[row.Owner] = strings.TrimPrefix(row.Owner, "crew:")
-		}
+
 		if row.Owner == store.OwnerMachine {
 			names[row.Owner] = "This machine"
 		}
@@ -191,44 +201,22 @@ func (n nativeMemory) ReadMemory(context.Context) (MemoryResponse, error) {
 	return result, nil
 }
 
-func memoryExpect(row store.Memory, expect *AgentExpect) error {
-	if expect != nil && ((expect.State != nil && *expect.State != row.Status) || (expect.Version != nil && *expect.Version != uint64(row.UpdatedSeq))) {
-		return agentError(409, "stale", "the memory changed; read it again before acting")
-	}
-	return nil
-}
-
-func (n nativeMemory) record(id string, expect *AgentExpect) (store.Memory, error) {
-	row, ok, err := n.db.MemoryRecord(id)
-	if err != nil {
-		return row, err
-	}
-	if !ok {
-		return row, agentError(404, "not_found", "no such memory")
-	}
-	return row, memoryExpect(row, expect)
-}
-
-// The resource lock covers the native edit and the undo receipt across app
-// launches. The canonical store still owns its SQLite transaction and journal.
-func (n nativeMemory) locked(fn func(map[string]time.Time) error) error {
-	return resourceDisk(n.home, "memory-undo", map[string]time.Time{}, func(raw []byte) (any, error) {
-		undo := map[string]time.Time{}
-		if err := json.Unmarshal(raw, &undo); err != nil {
-			return nil, err
-		}
-		if err := fn(undo); err != nil {
-			return nil, err
-		}
-		return undo, nil
-	})
-}
 func memoryEditExpect(edit *store.MemoryEdit, expect *AgentExpect) {
 	if expect != nil {
 		edit.State, edit.Version = expect.State, expect.Version
 	}
 }
 func (n nativeMemory) PatchMemory(_ context.Context, id string, body PatchMemoryRequest) (MemoryItem, error) {
+	if body.Shelf != nil && store.OwnerKindOf(*body.Shelf) == "crew" {
+		crews, err := teams.Snapshot(n.home)
+		if err != nil {
+			return MemoryItem{}, err
+		}
+		crew, ok := crews.Team(strings.TrimPrefix(*body.Shelf, "crew:"))
+		if !ok || crew.Root || crew.Closed() {
+			return MemoryItem{}, agentError(422, "bad_input", "no such memory shelf")
+		}
+	}
 	edit := store.MemoryEdit{Action: "patch", Text: body.Text, Owner: body.Shelf}
 	memoryEditExpect(&edit, body.Expect)
 	if err := n.db.EditMemory(id, edit); err != nil {

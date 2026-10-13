@@ -87,6 +87,20 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	// Every child keeps its parent's spending owner and profile, including
+	// checkers and adaptive workers built from otherwise minimal configs.
+	if a.appCapsEnabled() {
+		a.mu.Lock()
+		config.rootSession = a.appAgentIDLocked()
+		a.mu.Unlock()
+		config.AppSpending = true
+		config.ProfileDir = a.config.ProfileDir
+		config.usageLedger = a.config.usageLedger
+	}
+	if config.MemoryCrewID == "" {
+		config.MemoryCrewID = a.memoryCrewID()
+	}
+
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
 		return nil, err

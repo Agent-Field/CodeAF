@@ -1423,6 +1423,9 @@ type Config struct {
 	// a config copy that was not written to carry it.
 	MemoryProjectKey string
 
+	// MemoryCrewID freezes a task child's admitted crew shelf.
+	MemoryCrewID string
+
 	// MemoryIndex is the store THIS SESSION'S CONVERSATION is indexed into,
 	// and it is deliberately not [Config.Memory]: with memory off, the session
 	// writes nothing about the person and still writes its own words where the

@@ -119,7 +119,7 @@ func TestMemoryRefusesStaleInvalidAndUnsupportedMutations(t *testing.T) {
 		status             int
 	}{
 		{"PATCH", path, `{"text":"new","expect":{"version":0}}`, 409},
-		{"PATCH", path, `{"text":"new","shelf":"crew:release"}`, 409},
+		{"PATCH", path, `{"text":"new","shelf":"crew:release"}`, 422},
 		{"PATCH", path, `{"text":""}`, 422},
 		{"PATCH", path, `{"text":"new","expect":null}`, 422},
 		{"PATCH", path, `{}`, 422},
@@ -178,5 +178,38 @@ func TestMemoryUsesCrewResourceInterface(t *testing.T) {
 	w = resourceRequest(s, "POST", "/app/v1/memory/m-release/forget", `{}`, "")
 	if w.Code != 200 || !backend.until.Equal(now.Add(5*time.Second)) {
 		t.Fatal("forget time not forwarded")
+	}
+}
+
+func TestMemoryCrewShelvesAndMovesUseNativeMembership(t *testing.T) {
+	f := newAgentFixture(t)
+	a := crewTestAgent(t, f, "Manager")
+	b := crewTestAgent(t, f, "Helper")
+	crew := crewTestMake(t, f, "Release", a, b)
+	row := seedMemory(t, f.home, "Monday release", store.OwnerUser)
+	var result MemoryResponse
+	crewTestRead(t, f.request(t, "GET", "/app/v1/memory", ""), 200, &result)
+	found := false
+	for _, shelf := range result.Shelves {
+		if shelf.ID == store.OwnerCrew(crew.ID) && shelf.Name == "Release" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("empty crew shelf missing: %v", result.Shelves)
+	}
+	path := "/app/v1/memory/" + row.ID
+	var changed MemoryItem
+	crewTestRead(t, f.request(t, "PATCH", path, `{"shelf":`+strconvQuote(store.OwnerCrew(crew.ID))+`}`), 200, &changed)
+	if changed.Shelf != store.OwnerCrew(crew.ID) {
+		t.Fatal(changed)
+	}
+	crewTestRead(t, f.request(t, "GET", "/app/v1/memory?shelf=user", ""), 200, &result)
+	if len(result.Items) != 0 {
+		t.Fatal("personal shelf retained crew-owned memory")
+	}
+	crewTestRead(t, f.request(t, "GET", "/app/v1/memory?shelf="+store.OwnerCrew(crew.ID), ""), 200, &result)
+	if len(result.Items) != 1 {
+		t.Fatal("crew shelf lost the memory")
 	}
 }
