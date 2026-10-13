@@ -344,8 +344,9 @@ var tuiWords = map[string]tuiWord{
 		why:    "both ways out of the pane, named because on a narrow frame the pane is the whole screen",
 	},
 	"homeAnswerHint": {
-		screen: "enter or tab answer this ",
-		why:    "the hint while the cursor stands on an errand row that is asking something",
+		screen: "enter or → answer this ",
+		why: "the hint while the cursor stands on an errand row with an empty box. It said `enter or tab` " +
+			"until `tab` on the row had long been the next place; `→` is the way into the pane that replaced it",
 	},
 	"standRemindYes": {
 		screen: "Remind me",

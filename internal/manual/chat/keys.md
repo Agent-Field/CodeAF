@@ -2331,13 +2331,15 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the seven main destinations on
-the top line, `home  chats  AI teams  activity  memory  spend  settings`, and each answers to its position there,
-`alt+1` through `alt+6`. **`alt+7` and `alt+8` are kept**, on the two places that
-are off the bar — standing and memory — so those keys still open a room rather than
-doing nothing; `alt+.` draws them all with their numbers. `alt+2` is the teams page, and
-`alt+3` is `chats`, the way back to the conversation in front (a new chat when none is open);
-it is not a room, so `tab` steps over it. Hold
+**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the seven words on
+the top line, `home  chats  AI teams  activity  memory  spend  settings`, and `alt+1` opens it.
+**The other numbers do not follow the bar's order** — they kept the destinations they had
+before the bar was regrouped: `alt+2` AI teams, `alt+3` chats, `alt+4` activity, `alt+5`
+spend, `alt+6` settings, `alt+7` standing, `alt+8` memory. So memory is the fifth word on the
+bar and `alt+8`, and standing, which is off the bar, is `alt+7`. `alt+.` draws every place
+with its number, and `/help` lists them the same way, digit by digit. `alt+3` is `chats`,
+the way back to the conversation in front (a new chat when none is open); it is not a room,
+so `tab` steps over it. Hold
 `alt` and press the digit. On macOS codeaf draws the modifier as `opt+`, after the name on
 that keycap; it is the same key and the same chord, and on Linux and on Windows it is drawn
 `alt+`. It arrives in every terminal codeaf runs in, which is why the numbers are on `alt`
@@ -2422,6 +2424,8 @@ what each holds), and its keys are a small grammar:
 | `enter` | acts on the row under the cursor: a conversation opens, a `since you left` line opens its record, file or place, a `standing` row opens standing, a fold line opens or shuts its panel. `projects` and `spend` rows are not stops, so the cursor never reaches them; a click on a project picks the folder for the next message |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
+| `alt+enter` | with something typed: opens the **composer layer**, and a second press sends it off as a task (*Keys in the composer layer*). It is not a spelling of `ask here` |
+| `ctrl+enter` | with something typed: asks it here at once, without walking to the `ask here` row — only on a terminal that can tell it from a plain `enter`, so the foot names `↑ ask here` instead |
 | `esc` | clears the box if anything is in it, and closes home otherwise |
 | `alt+.` | the map |
 | `backspace`, `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` | edit the box |
@@ -2515,20 +2519,25 @@ one `↑` reaches `ask here` and a second lands on the strongest match. Clearing
 the panels back. On a frame 136 columns or wider a card about the match under the cursor
 stands to the right of the list while you type; at rest there is no card.
 
-**On an `ask here` row** — the `?` rows an errand leaves at the end of the conversation list —
-the line under the box reads
-`↑↓ move · enter or tab answer this ask here · esc close`. `enter` or `tab` hands the
-keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
-`esc` or `tab` hands it back (*Asking from home*).
-
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
+
+## Keys on an ask here row — enter or → go in, and tab is the next place
+
+**On an `ask here` row** — the `?` row an errand leaves on home — the line under the box
+reads `↑↓ move · enter or → answer this ask here · esc close`, or
+`↑↓ move · enter answer this ask here · esc clear` while something is typed, when `→` moves
+the caret instead. `enter` or `→` hands the keyboard to the exchange's pane; **`tab` on the
+row is the next place**, not a way in. The pane reads
+`enter sends a follow-up · tab or esc back to the list`, and `tab` or `esc` there hands the
+keyboard back. The way back is that line's last clause and the one it keeps at sixty
+columns (*Asking from home*).
 
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
 **On every place, `↑` from the first row of the page lands the cursor on the tab bar**,
-the six place words on the top line after the `codeaf` wordmark (seven while you stand in
-standing or memory, whose word is drawn after the six). The chat tab strip is
+the seven words on the top line after the `codeaf` wordmark (eight while you stand in
+standing, whose word is drawn after the seven). The chat tab strip is
 not on a place. It is the row under that top line only while a conversation is in front.
 The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:

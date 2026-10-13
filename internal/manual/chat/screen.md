@@ -47,11 +47,12 @@ column closed the conversation is laid out at the full width of the terminal, ru
 still draws the strip along the top, and the keys row under the box reads `alt+l tasks`
 once the session has tasks to come back to and no running-turn line owns that row.
 
-**Seven places take the whole frame instead of sharing it**, at every width: home, teams,
-sessions, standing, memory, spend and settings. Five are on the tab bar with the way back to the chats, `home  teams  chats
-sessions  spend  settings`, and `tab` walks the five rooms; `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump
-straight to any of those seven or back to the chats from wherever you are standing, a place or a conversation,
-and each
+**Seven places take the whole frame instead of sharing it**, at every width: home, AI teams,
+activity, standing, memory, spend and settings. Six are on the tab bar with the way back to the chats,
+`home  chats  AI teams  activity  memory  spend  settings`, and `tab` walks those six rooms; standing is
+off the bar. `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump straight to any of those seven or back to
+the chats from wherever you are standing, a place or a conversation — by number and not by position on
+the bar, so memory, the fifth word, is `alt+8` — and each
 has commands of its own (`/home`, `/teams`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven: it is something you do to this conversation rather than

@@ -2530,6 +2530,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is the answer from home showing asterisks and hashes", "asking-from-home"},
 		{"does the ask here pane format the answer", "asking-from-home"},
 		{"can I ask two things from home at once", "asking-from-home"},
+		// The wave that made home's hints name only keys that do what they say.
+		// The pages said `alt+enter` was ask here's second chord, the row's foot
+		// said `enter or tab` when `tab` was the next place, and a narrow pane
+		// dropped the way back to the list first.
+		{"is there a shortcut for ask here", "asking-from-home"},
+		{"does alt+enter ask here", "asking-from-home"},
+		{"why does tab leave home from an ask here row", "keys"},
+		{"how do I leave the ask here pane on a narrow window", "asking-from-home"},
 		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
 		{"why is there no once on my reminder card", "keeping-an-eye"},
 		// The e2e suite found the firing that reached a conversation and was
@@ -2669,6 +2677,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I expand a panel on home to see the rest", "home"},
 		{"where did the card on home go", "home"},
 		{"where did standing and memory go from the tab bar", "home"},
+		// /help said the numbers came "in the tab bar's own order", and memory is
+		// the fifth word on the bar and `alt+8`.
+		{"why is memory alt+8 when it is fifth on the tab bar", "home"},
+		{"do the alt numbers follow the tab bar", "home"},
 		{"can I stop another window task from home", "home"},
 		{"is there a something is wrong panel", "home"},
 		// The wave that stopped guessing at the terminal's background and asked

@@ -517,7 +517,7 @@ own tab stack — so going back is `enter`. A window that has held only one conv
 **On a launch** — home greeting you — the cursor is on the conversation this window is
 holding, the row `esc` drops back into.
 
-**`↑` off the top row of home stays on it.** The tab bar, the row of six words, is
+**`↑` off the top row of home stays on it.** The tab bar, the row of seven words, is
 reached by clicking a word, by `tab`, or by a place's own chord (`alt+4` and the rest); on
 every other place `↑` off the top row still walks up onto it. On the bar `←`
 and `→` walk along the words without opening anything, `enter` or `↓` goes into the one under the
@@ -642,17 +642,20 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing and memory go: the six words on the tab bar
+## Where did standing and memory go: the seven words on the tab bar
 
-The top line reads `home  chats  AI teams  activity  memory  spend  settings`. `alt+1` through
-`alt+6` go to each; `chats` (`alt+3`) returns to your conversation.
+The top line reads `home  chats  AI teams  activity  memory  spend  settings` — memory is the
+fifth word, and standing is the one place not on it. **The numbers are not the bar's order**:
+each place kept the number it had before the bar was regrouped — `alt+1` home, `alt+2`
+AI teams, `alt+3` chats (back to your conversation), `alt+4` activity, `alt+5` spend,
+`alt+6` settings, `alt+7` standing, `alt+8` memory.
 
-- `/standing` (or `/orders`) and `alt+7` open Standing.
-- `/memory` (or `/memories`) and `alt+8` open Memory.
+- `/standing` (or `/orders`) and `alt+7` open Standing. Its word appears after the seven
+  while it is open, and `tab` from there returns to Home.
+- `/memory` (or `/memories`), `alt+8` and the word `memory` on the bar open Memory.
 
-Their words appear after the six while open. `tab` returns to Home; `alt+.` shows
-all eight numbered destinations. Search is on Home: type into its box to find a
-conversation. There is no separate Search tab or `/search` command.
+`alt+.` shows all eight numbered destinations. Search is on Home: type into its box to find
+a conversation. There is no separate Search tab or `/search` command.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -1627,8 +1630,9 @@ this folder as the first row of `projects`.
 ## Is there a key for home?
 
 Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
-six words on the tab bar, and each answers to its own position, `alt+1` through `alt+6`
-(standing and memory, the two places off the bar, answer `alt+7` and `alt+8`).
+seven words on the tab bar. The other numbers do not follow the bar: each still opens the
+place it opened before the bar was regrouped, so memory, the fifth word, is `alt+8`, and
+standing, which is off the bar, is `alt+7`; `alt+.` draws every place with its number.
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 

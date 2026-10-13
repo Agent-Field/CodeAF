@@ -1299,7 +1299,7 @@ box, opens it on a one-conversation machine and on an empty one alike, and over 
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the six words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+of the seven words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,

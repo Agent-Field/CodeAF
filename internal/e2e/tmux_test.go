@@ -496,14 +496,15 @@ func (r *rig) lit(text string) {
 
 // ctrlEnter is `ask here` without leaving the box.
 //
-// TWO SPELLINGS, BOTH SENT AS THE BYTES A TERMINAL SENDS. home.go binds
-// "ctrl+enter" and "alt+enter" to one call and says why: ctrl+enter only
-// reaches the app on a terminal that can tell it from a plain enter. Bubble Tea
-// v2 asks for the kitty protocol and modifyOtherKeys unconditionally, so
-// CSI 13;5u decodes as ctrl+enter — this suite sends that one, and alt+enter
-// (ESC CR) is the fallback every terminal delivers.
+// IT IS SENT AS THE BYTES A TERMINAL SENDS. ctrl+enter only reaches the app on
+// a terminal that can tell it from a plain enter. Bubble Tea v2 asks for the
+// kitty protocol and modifyOtherKeys unconditionally, so CSI 13;5u decodes as
+// ctrl+enter, which home binds to `ask here`.
 func (r *rig) ctrlEnter() { r.lit("\x1b[13;5u") }
 
+// altEnter is ESC CR, which every terminal delivers. It is NOT a second
+// spelling of ctrlEnter: on home the router takes alt+enter for the composer
+// layer, whose second press sends the task (internal/tui3's composerlayer.go).
 func (r *rig) altEnter() { r.lit("\x1b\r") }
 
 // mouseTo moves the pointer to a 1-based cell with an SGR motion report, which

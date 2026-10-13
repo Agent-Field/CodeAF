@@ -464,18 +464,25 @@ func pages() []page {
 	return rooms
 }
 
-// placeWordList is the seven words in digit order, for the one sentence on the
-// key sheet that has to say which digit is which (commands.go).
+// placeWordList is every place's word with the digit that reaches it, in digit
+// order — `1 home · 2 AI teams · 3 chats · …` — for the one sentence on the key
+// sheet that has to say which digit is which (commands.go).
 //
 // IT IS READ OFF [placeOrder] AND NOT TYPED OUT, because a hand-written list on
 // the help sheet is a second answer to what `alt+3` opens — and the day a place
 // is added or the order changes, the sheet is the last thing anybody would think
 // to edit. One source of truth (CLAUDE.md's design laws).
+//
+// AND EVERY WORD CARRIES ITS DIGIT, because the digits are NOT the tab bar's
+// order. [placeBarOrder] regrouped the bar and kept every number where it was,
+// so memory is the fifth word on the bar and `alt+8`. A bare list in digit order
+// is a list a reader counts along against the bar they can see, which is how
+// the sheet came to call this list "the tab bar's own order".
 func placeWordList() string {
 	words := make([]string, 0, len(placeOrder))
 	for _, id := range placeOrder {
 		if pl, ok := placeRegistry[id]; ok {
-			words = append(words, pl.word())
+			words = append(words, itoa(placeDigitOf(id))+" "+pl.word())
 		}
 	}
 	return strings.Join(words, " · ")

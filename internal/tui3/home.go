@@ -2691,14 +2691,20 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		return a.homeEnter()
 
-	case "ctrl+enter", "alt+enter":
-		// `ask here` WITHOUT LEAVING THE BOX. Two spellings because terminals
-		// disagree about which one they can send — the same law input.go states
-		// for alt+enter and ctrl+j — and ctrl+enter reaches this switch only on a
-		// terminal that can distinguish it from a plain enter at all (the kitty
-		// protocol, win32-input). alt+enter is the one that survives everywhere,
-		// and the hint line names ctrl+enter because it is the one a hand
-		// reaches for.
+	case "ctrl+enter":
+		// `ask here` WITHOUT LEAVING THE BOX, on a terminal that can tell
+		// ctrl+enter from a plain enter at all (the kitty protocol, win32-input).
+		// The foot does not name it, because most terminals cannot send it; the
+		// `↑` onto the row is the gesture every terminal has (homeHintWords).
+		//
+		// `alt+enter` IS NOT A SECOND SPELLING OF IT, AND IT USED TO BE LISTED
+		// HERE AS ONE. The router above takes that chord on every place
+		// (placekeys.go) — on home it opens the composer layer, whose second
+		// press sends the sentence through this same errand door with a project,
+		// a model and a cap settled (composerlayer.go's [app.composerSend]) — so
+		// an `alt+enter` arm in this switch was a branch no key could reach. Home
+		// is the only place that layer opens; a home that took the chord back
+		// would leave the layer reachable from nowhere.
 		return a.askHere(strings.TrimSpace(h.box.String()))
 
 	// ── THE CARD'S OWN KEYS ARE CHORDS ─────────────────────────────────────
@@ -3224,8 +3230,9 @@ func (a *app) homeEnter() tea.Cmd {
 		// ENTER ON AN ERRAND HANDS IT THE KEYBOARD. There is nothing to open —
 		// the exchange is already drawn beside the row, or on a narrow frame is
 		// about to take the whole screen — so the one thing enter can mean here
-		// is "I am talking to this one now", which is what tab means from the
-		// same row and what a second click on it means.
+		// is "I am talking to this one now", which is what `→` means from the
+		// same row and what a second click on it means. (`tab` meant it once;
+		// it is the next place now, on home as on every place.)
 		if line.ex != nil {
 			line.ex.focused = true
 		}
@@ -5601,10 +5608,22 @@ func withChords(hint, chords string) string {
 	if chords == "" {
 		return hint
 	}
-	if at := strings.LastIndex(hint, railSep); at >= 0 && strings.HasPrefix(hint[at+len(railSep):], "esc") {
+	if at := strings.LastIndex(hint, railSep); at >= 0 && footWayOut(hint[at+len(railSep):]) {
 		return hint[:at] + railSep + chords + hint[at:]
 	}
 	return dotted(hint, chords)
+}
+
+// footWayOut reports whether one clause is a foot's way out: a clause that
+// begins with `esc`, or the errand pane's [exchangeBackWord], whose way out is
+// two keys and names the zone toggle first.
+//
+// IT HAS TO KNOW THE SECOND SHAPE. Read as "begins with esc" alone, the pane's
+// way out was not one, so the chords went on after it, [hintFit] protected the
+// last of them, and the way back to the list was the first clause a narrow
+// frame gave up.
+func footWayOut(clause string) bool {
+	return strings.HasPrefix(clause, "esc") || clause == exchangeBackWord
 }
 
 // homeVerbsWord is how the CARD advertises the strip. It names the key and the
@@ -5633,7 +5652,17 @@ func (a *app) homeHintWords() string {
 		// standing beside the column with no line saying how to reach it is the
 		// half of the toggle nobody finds; the list's own verbs come first,
 		// because that is the zone the hand is in.
-		return "↑↓ move · enter or tab answer this " + homeAskHereWord + " · esc close"
+		//
+		// AND IT NAMES ONLY THE KEYS THAT GO IN. It said `enter or tab` long
+		// after `tab` became the next place on every place (placekeys.go), so
+		// the line sent a person who believed it off home altogether. `→` is
+		// the way in that replaced it ([app.homeKey]'s `right` arm), and only
+		// over an empty box: with a draft the arrow is the caret's, and `esc`
+		// clears the draft before it closes anything.
+		if !a.home.box.empty() {
+			return "↑↓ move · enter answer this " + homeAskHereWord + " · esc clear"
+		}
+		return "↑↓ move · enter or → answer this " + homeAskHereWord + " · esc close"
 	}
 	line, _ := a.home.focusedLine()
 	switch {

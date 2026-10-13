@@ -46,9 +46,14 @@ done**. They sit at the very **top of home's `threads` panel**, above every
 conversation — an errand is a thing you asked for a minute ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
-`↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
-until the places arrived and took that key for the next place; `→` points at the column the
-pane is drawn in, which is where the gesture went.)
+`↑↓ move · enter or → answer this ask here · esc close`. With something typed in home's box
+it reads `↑↓ move · enter answer this ask here · esc clear` instead, because `→` then moves
+the caret and `esc` clears what you typed before it closes anything.
+
+**`tab` on the row is not a way in.** It goes to the next place, as it does on every place.
+`tab` was the way in until the places arrived and took that key; `→` points at the column
+the pane is drawn in, which is where the gesture went. The hint went on saying
+`enter or tab` long after, and it was wrong.
 
 ## How do I know ask here is doing something — the spinner, the clock and the live strip
 
@@ -177,8 +182,8 @@ it:
   in; **`→` on the exchange's row** takes it back in. (Both directions used to be `tab`; a
   place's `tab` is the way to the next place, and a box that has taken the keyboard keeps
   its own keys, which is why one half of the toggle stayed and the other moved to the arrow
-  that points at the pane.) It works from
-  `continue as a conversation` row, an open card. It never loses what is in the pane.
+  that points at the pane.) It works from the box, the `continue as a conversation` row
+  and an open card alike. It never loses what is in the pane.
 - **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
   half a follow-up typed, the first `esc` clears that and the second one leaves.
 - **`enter`** on the exchange's row in the list hands the keyboard to its pane.
@@ -193,9 +198,14 @@ column exactly as they do with no exchange on screen, and `enter` opens the row 
 cursor. **The pane follows the cursor** — walk off the exchange and the row you land on
 draws its own card again, where the frame is wide enough to have one.
 
+## What the line under the ask here pane says — the answers, a follow-up and the way back
+
 While the pane has the keyboard the hint reads `enter sends a follow-up · tab or esc back to
 the list`, with the card's own answers in front of it when a card is up and
-`↓ continue as a conversation` after it when that row is on screen.
+`↓ continue as a conversation` before the way out when that row is on screen. Home's
+`/ commands` is not on it: a `/` typed in the pane starts a follow-up and opens no list.
+`tab or esc back to the list` is always the last clause, and on a narrow window it is the
+one that stays (*Ask here on a narrow window*, below).
 
 **The answers in that line are the ones the card actually drew, and never one more.** A
 card that offers all three reads
@@ -219,7 +229,17 @@ of sat side by side:
 - the **exchange** is the screen while it holds the keyboard — the same pane, the same card,
   the same live strip, drawn at the full width;
 - **`esc`** or **`tab`** brings the list back, with the exchange's row still on it wearing
-  its tail, and **`enter`** on that row opens it again.
+  its tail, and **`enter`** or **`→`** on that row opens it again.
+
+**The way back is always on the line under the box**, at the narrowest width this layout
+has, sixty columns. `tab or esc back to the list` is the last clause of that line and the
+one that stays; the clauses in front of it give way first, nearest first — home's chords
+such as `alt+e effort`, then `↓ continue as a conversation`, then `enter sends a follow-up`,
+then the card's answers from the last one back — so a card at sixty columns reads
+`1 Remind me at 6 today · tab or esc back to the list`, and its other answers are still on
+the card's own rows. It used to be the other way round: the way back
+was the first thing a narrow window dropped, and the stacked pane, which is the whole
+screen, never said how to leave it.
 
 `ask here` itself opens straight into the stacked pane, because it selects the new row and
 gives it the keyboard. Everything answers the same keys it answers on a wide frame.
@@ -240,14 +260,6 @@ A click on one of the card's answers in the pane answers the card, the same way 
 answers it in a conversation. Each answer owns its whole row, so there is no gap between two
 of them to miss.
 
-**There is a chord for it and the foot does not name it.** `ctrl+enter` is still bound to
-`ask here`, and it only reaches codeaf on a terminal that can tell it apart from a plain
-`enter` — the kitty keyboard protocol, Windows terminals. `alt+enter` is **not** a second
-spelling of it: on home as on every place, that chord opens the composer layer and sends
-what you typed off as a **task** (the places page). So the arrow is the gesture the foot
-names, because the arrow is the one every terminal has. This page used to say `alt+enter` was
-bound to the same thing, and it was not.
-
 If this window was launched with no way to open a second session, the row refuses in one
 line: `this window cannot ask from home`, and nothing is created. The window that gets that
 line is one attached to another machine — `--host` or `--at`: the errand's folder and the
@@ -255,6 +267,22 @@ standing store live on the machine that runs the errand, and a laptop cannot mak
 them on a server's disk. An ordinary `codeaf` in a folder asks from home whether or not this
 project's engine is holding the conversation, because that engine is a process on the same
 machine as the folder.
+
+## Is there a shortcut for ask here — ctrl+enter, and what alt+enter does on home
+
+**`ctrl+enter` asks what you typed here without walking to the row**, and the foot does not
+name it: it only reaches codeaf on a terminal that can tell it apart from a plain `enter` —
+the kitty keyboard protocol, Windows terminals. Elsewhere it usually arrives as a plain
+`enter`, which on the typing rows starts a new conversation. So the gesture the foot names
+is `↑ ask here`, because every terminal has the arrow.
+
+**`alt+enter` is not a second spelling of it.** On home it opens the **composer layer**,
+where you check the project, the model the work runs on and the spending cap; a second
+`alt+enter` sends it off as a task, and the task lands as the same kind of `?` row with its
+pane, carrying those three settings (the places page). On every other place the chord does
+nothing. This page once said `alt+enter` was bound to `ask here` itself, and home's own key
+handler listed it beside `ctrl+enter` — but the layer always took the key first, so that
+line never ran, and it is gone.
 
 ## What is ask here — and how is it different from starting a conversation
 

@@ -623,7 +623,7 @@ The standing orders page has the whole of it.
 ## memory — what is held true
 
 What codeaf holds true about you and this machine, with what kind of thing each line is, how
-it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+8`. It is not on the tab bar.
+it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so do `alt+8` and `memory`, the fifth word on the tab bar — the numbers kept their old places, so the fifth word is not `alt+5`.
 
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
@@ -754,8 +754,9 @@ anywhere off the menu, puts it away and leaves everything else as it was.
 
 **The wordmark and the place you are standing in never fold**, and neither does the word the
 bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
-whether or not its word is on the row, and the numbers never move: the six on the bar are
-`alt+1`…`alt+6`, then standing and memory are `alt+7`…`alt+8`.
+whether or not its word is on the row, and the numbers never move — nor do they follow the
+bar's order: home `alt+1`, AI teams `alt+2`, chats `alt+3`, activity `alt+4`, spend `alt+5`,
+settings `alt+6`, standing `alt+7`, memory `alt+8`.
 
 The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts

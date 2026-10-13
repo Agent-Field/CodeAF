@@ -181,7 +181,8 @@ const (
 // targetChordWords is the draft's chords as a clause on home's foot
 // (footswap.go: the lowest line is for keys): the folder chord where there is
 // somewhere to walk to, approvals where the control can act, the switcher
-// where there is anywhere to go, and `/ commands` while the box is empty.
+// where there is anywhere to go, and `/ commands` while home's own box is empty
+// and has the keyboard.
 // Nothing while the model list
 // is up — it has the whole keyboard (SCREEN 3a's clause: no key does anything
 // that is not drawn on screen right now), and the foot is already saying the
@@ -215,7 +216,11 @@ func (a *app) targetChordWords() string {
 	// looking at is furniture (render.go's [microcopy] holds the original). It
 	// is home's clause alone: on the other places a `/` is a character in the
 	// box and opens no list (homeslash.go is home's).
-	if a.at(pageHome) && a.home.box.empty() {
+	//
+	// AND IT IS HOME'S OWN BOX'S CLAUSE, so it goes while an errand's pane holds
+	// the keyboard. The pane types into a box of its own ([placeHome.box]), where
+	// a `/` is the first character of a follow-up and no list opens over it.
+	if a.at(pageHome) && a.placeBox() == &a.home.box && a.home.box.empty() {
 		right = dotted(right, microcopy)
 	}
 	return right

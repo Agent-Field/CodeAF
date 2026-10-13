@@ -315,7 +315,7 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// placeJumpKey is `alt+1`…`alt+7` ALONE, and it is its own function because it
+// placeJumpKey is `alt+1`…`alt+8` ALONE, and it is its own function because it
 // is the one class of the six that belongs to no place.
 //
 // THE CONVERSATION IS A SURFACE THE NUMBERS HAVE TO WORK ON. Every other class
@@ -355,7 +355,7 @@ func (a *app) placeJumpKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // else is here".
 const placeMapKey = "alt+."
 
-// placeDigit is `alt+1`…`alt+7`: the place at that position in [pages].
+// placeDigit is `alt+1`…`alt+8`: the place at that position in [placeOrder].
 //
 // WHY alt IS THE ONE THIS PROGRAM PROMISES EVERYWHERE: `alt+1` arrives as
 // esc-then-1 and has for forty years, while `ctrl+1` has no legacy encoding at
@@ -371,7 +371,9 @@ func placeDigitAt(prefix, key string) (page, bool) {
 		return 0, false
 	}
 	at := int(key[len(prefix)] - '1')
-	// The digits are the BAR's order, the chats included (place_chats.go).
+	// The digits are [placeOrder]'s, the chats included (place_chats.go) — and
+	// NOT the bar's: [placeBarOrder] regrouped the words and kept every number,
+	// so memory is fifth on the bar and `alt+8`.
 	all := placeOrder
 	if at < 0 || at >= len(all) {
 		return 0, false
