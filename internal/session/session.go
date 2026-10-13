@@ -2251,6 +2251,10 @@ type Config struct {
 	// reason too: no surface sets it, the executor wires it from the node
 	// (task_run.go's newTaskAgentOn).
 	quickItems func(done int, add []string) string
+	// taskControl binds file receipts and step holds to the node that owns them.
+	taskControl *TaskNode
+	// The saved per-task cap applies across this node's worker and repair rounds.
+	taskCapUSD float64
 
 	// fixesDir is the project bucket the error→fix sidecar keeps its file in
 	// (fixstore.go), and it is set only when this agent is a NODE. A node's

@@ -109,6 +109,12 @@ func (a *AgentRegistry) turnSnapshot(record agentRecord) AgentSnapshot {
 			}
 			snapshot.Tasks.Steps += row.Steps
 		}
+		// A5 supplies the canonical tree through its optional engine interface.
+		if door, ok := live.conn.Engine.(TaskEngine); ok {
+			if rows, err := door.AppTasks(); err == nil {
+				snapshot.Tasks = taskTreeFromRows(record.Agent.ID, rows)
+			}
+		}
 		if door, ok := live.conn.Engine.(interface{ OpenQuestions() []session.Question }); ok {
 			for _, q := range door.OpenQuestions() {
 				ask := turnAsk(record.Agent.ID, q)

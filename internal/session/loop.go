@@ -1836,6 +1836,14 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 }
 
 func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reached *reachedThePerson, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
+	if node := a.config.taskControl; node != nil {
+		if err := node.appBoundary(ctx); err != nil {
+			return nil, model, err
+		}
+		if a.config.taskCapUSD > 0 && node.spend() >= a.config.taskCapUSD {
+			return nil, model, ErrSpendStopped{Action: config.CrewTaskCapAction(a.config.taskCapUSD)}
+		}
+	}
 	// THIS CALL'S WORDS ARE A REPLY SOMEBODY READS, and it is the one place in
 	// this package that can say so: every request that goes out through here is
 	// the turn's own, and every gate, judge, title and memo is made from some
@@ -3668,7 +3676,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// somehow, and the id on the row is the only handle it has (promote.go).
 		// It is set at this chokepoint rather than per tool, so the early warm
 		// start carries it exactly as the batch does.
-		text, isError, err := tool.Execute(withCallID(ctx, call.ID), args)
+		text, isError, err := a.executeTaskTool(withCallID(ctx, call.ID), tool, running, args)
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
 		// yet — it goes out with the batch, in call order, because that is the
 		// order the transcript is written in — but the fact that this call is

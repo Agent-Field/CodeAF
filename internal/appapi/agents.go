@@ -106,6 +106,8 @@ type agentDisk struct {
 }
 
 type agentLive struct {
+	// The task lane is subscribed once and released with this connection.
+	taskStop   func()
 	conn       AgentConnection
 	running    bool
 	generation uint64
@@ -149,6 +151,9 @@ func (a *AgentRegistry) Close() {
 		}
 		_ = stopEngineProcesses(live.conn.Engine)
 		a.syncProcessEventsLocked(id, live.conn)
+		if live.taskStop != nil {
+			live.taskStop()
+		}
 		if live.conn.Close != nil {
 			live.conn.Close()
 		}

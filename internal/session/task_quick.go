@@ -64,6 +64,11 @@ const (
 // ([TaskNode.quickItemChange]) — so every reader of either takes
 // `graph.mu` first, exactly as the row's own fields are read.
 type quickTaskSpec struct {
+	// Captures keep the original bytes through repeated writes and engine restarts.
+	captures  []QuickFileCapture
+	promotion uint64
+	promoted  bool
+	undone    bool
 	// line is what to do, in one sentence. It is also the node's title when the
 	// caller named none.
 	line string
@@ -326,11 +331,10 @@ func quickReportOnClose(record taskRecord) string {
 // ([Config.mayQuickTask] puts both verbs on a belt or neither). What is left
 // here is what only this string says: the two roads' shape in one sentence, the
 // step that is not a hand-off at all, and the grain.
-var quickTaskDescription = "A task gets its own copy of the folder, is checked, and lands. A quick task works " +
-	"where you are and its last message is its answer. One edit, one " +
-	"read, one command is a step: do it yourself. Related steps that share what they learn are one quick " +
-	"task's items, not several quick tasks. KEEP ONE SMALL, a few files and a few minutes: reading is not " +
-	"progress, so " + strconv.Itoa(taskNoProgress) + " steps that only read end it."
+var quickTaskDescription = "Quick work runs here; its last message is the answer. One step: do it yourself. " +
+	"Related steps sharing context: one quick task's items. " + strconv.Itoa(taskNoProgress) +
+	" calls that only read stop it. Shell, media, workspace restore/merge or file " +
+	strconv.Itoa(QuickTaskFileLimit+1) + " ask to promote it to a full task."
 
 // quickTaskSchemaJSON is the wire schema. Every field but `line` is optional,
 // which is the whole shape of the verb: there is no contract to groom, no
@@ -970,11 +974,11 @@ const (
 // it does: everything that can go wrong here is something the person who asked
 // for the work has to be told in words.
 //
-// THERE IS NO GATE UNDER THIS AND THERE IS NOT MEANT TO BE. No worktree, so
-// nothing to merge; no auditor, so nothing to verify; no settle policy, so a
-// quick node is never [TaskUnverified] and never asks anybody anything. Its last
-// message is its result, and the road from here — complete, announce, the
-// landing note — is the road every task already takes.
+// QUICK WORK HAS NO LANDING GATE. Its last message is its result, and it never
+// becomes [TaskUnverified]. The execution boundary may ask to promote work
+// before an unbounded action or file 31; that admits a separate ordinary node
+// after this worker leaves, so its contract and check belong to that node.
+// Completion, announcement and the landing note still use the ordinary road.
 func (a *Agent) runQuickNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	quick := node.spec.quick
 	log := taskLog(listed)
@@ -1041,6 +1045,13 @@ func (a *Agent) runQuickNode(ctx context.Context, node *TaskNode, listed *job) T
 	said := lastSaid(child)
 	node.keepWorkerConclusion(said, log)
 	report := composeTaskReport(said)
+
+	node.graph.mu.Lock()
+	promoted := quick.promoted
+	node.graph.mu.Unlock()
+	if promoted {
+		return a.landQuickNode(node, "Promoted to a task", wrote, TaskDone)
+	}
 
 	// A PERSON'S ✕ IS NOT A FAILURE OF THE WORK, and it is asked first because
 	// [TaskGraph.stop] sets `stopped` before it cuts the context: everything below

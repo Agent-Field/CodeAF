@@ -18,7 +18,7 @@ const (
 	QuestionClock              = config.AppDefaultQuestionClockMinutes * time.Minute
 	ProcessOutputRetention     = session.AppProcessOutputRetention
 	MaxProcessOutputBytes      = session.AppProcessOutputBytes
-	QuickTaskFileLimit         = 30
+	QuickTaskFileLimit         = session.QuickTaskFileLimit
 	IdleAgentAfter             = config.AppDefaultIdleDays * 24 * time.Hour
 )
 

@@ -2,6 +2,7 @@ package appapi
 
 // These wire types reserve the app vocabulary before this resource has behaviour.
 type QuickTask struct {
+	Version uint64          `json:"version,omitempty"`
 	ID      string          `json:"id"`
 	AgentID string          `json:"agent_id"`
 	Title   string          `json:"title"`

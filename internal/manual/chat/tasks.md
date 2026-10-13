@@ -126,7 +126,8 @@ it must wait for, and a model to run on. What it gets back is one line, at once:
 quick task 7 started: compare the four configs · 4 items
 ```
 
-That is the whole of the ceremony. If you want the other road instead, say so — *"do that
+That starts the quick work. A shell call or a 31st file asks for promotion before it runs.
+If you want the other road instead, say so — *"do that
 as a proper task"* — and the model proposes an ordinary task, card, branch, check and all.
 *"Just do it quickly"* goes the other way.
 
@@ -5750,3 +5751,58 @@ before its cost was saved also stays interrupted: inspect the saved work before
 asking again. Its cost is never guessed or reset to make it resume, it is never
 counted as completed, and its folder is never guessed. Programs that had already started keep their existing
 interrupted-program behavior; this restart rule concerns ordinary planned tasks.
+
+## App task proposals, Hold, typing, and irreversible tasks
+
+The app's Tasks panel reads the engine's own task tree, progress, spending and
+steps. A proposed task starts after 12 seconds by default. The saved
+`task.autoapprove_seconds` setting changes that; 0 means no automatic start in
+a watched session. **Hold** and typing in one proposal remove only that task's
+clock. Other proposals keep their own deadlines. Leaving the tab does not hold
+anything. Start it answers immediately; No leaves a "Declined by you" receipt.
+A proposal marked `irreversible:true` never gets a clock. Without a watching
+session, it refuses with "this task needs your answer in a watching session".
+
+The app's task ids include their agent, so task 1 in two agents is two separate
+objects. A stale expected state or version refuses with
+"stale: that task changed; open it again". Refresh that task before answering again.
+
+## App task notes, Change the brief, Pause, and your call
+
+A note reaches a running task through its existing steering lane. Its
+`read_at_step` stays absent until a model request carries those words. An
+opened task shows the result, changed file paths, work log, notes and brief.
+Change the brief sends new instructions to the same task; the original task
+contract remains on its record. Plan tasks use their existing note and brief
+writers; they omit a step receipt when the engine has no such fact.
+
+Pause lets the current request or action finish and holds the next request or
+action. Resume releases it. Stop keeps the work already written. The default
+per-task cap is $2; a saved cap wins, and the engine stops further worker calls
+at that cap.
+
+A task at **your call** has no clock. Accept takes the work as done. Not right
+and Tell it… reopen the same task, with your words. Recheck asks its checker
+again. Let it decide hands this decision to codeaf through the existing task
+decision door. These five actions do not answer an unstarted proposal.
+
+## Undo a quick task, file hashes, and promotion before tests or file 31
+
+A quick task keeps each regular file's bytes before its first write and its
+latest after bytes in its private engine checkpoint. Repeated writes keep the
+same original. Its app row exposes paths and SHA-256 hashes, never the saved
+bytes. An absent file has an empty hash; an empty file has a real hash.
+
+Undo is available for an ended quick task, including one you stopped. It checks **every** after hash
+first. If any file changed, it restores nothing and lists `changed_since`,
+with "Can't undo cleanly: 2 files changed since" for two paths. Otherwise it
+restores every original file, including its permissions, and removes files
+that the quick task created. The bytes and hashes survive an engine restart.
+
+Before writing the 31st distinct file, the worker asks to become a full task.
+It also asks before **any shell call**, including tests hidden in scripts or
+aliases, before workspace restores or merges, and before media creation. Shell effects cannot be counted safely.
+There is no clock on this promotion. Promote starts an ordinary task after
+the quick worker leaves, continuing in the same folder with its existing
+edits and the blocked action in its brief. Cancel stops the quick worker and
+keeps its edits. Promote is also available before the limit is reached.

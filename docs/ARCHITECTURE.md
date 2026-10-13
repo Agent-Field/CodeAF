@@ -1040,3 +1040,27 @@ Reminders register without a trust or ratification card and retire after one
 firing. Pause observes and records missed triggers without executing an action;
 Stop preserves history and removes the live row. A per-run budget stop holds
 later triggers until the budget is raised through the order change door.
+
+## v2 app tasks and quick-task file receipts
+
+A5's resource handlers extend the canonical agent connection with `App.Tasks`,
+`App.Task`, `App.TaskAction`, `App.QuickTasks` and `App.QuickTaskAction`. Reads
+preserve engine errors; mutations run on the action lane so a proposal answer
+cannot queue behind the turn it must release. Watcher connections may read
+these resources but cannot mutate them. The HTTP codec scopes every local task
+id to its stable agent id and exposes a version for expected-state writes.
+
+The session owns proposal clocks, per-task hold, pause, steering receipts and
+all five your-call verbs. A step receipt is derived from the direction carried
+into the worker's next request. Holds and notes live beside their node in the
+checkpoint; no app database becomes a second task store. The saved per-task
+cap applies before further graph-worker requests, with the existing $2 default.
+
+Quick workers capture original and after bytes around the actual write/edit
+execution, serialized per node. The checkpoint carries bytes, existence and
+file modes privately (0600); the remote and HTTP reads expose only hashes,
+paths and line counts. Undo checks the entire file set before restoring it.
+Before file 31, shell execution (tests included), or media creation, the engine
+opens a no-clock promotion proposal. Approval starts an ordinary task after
+the quick worker leaves, in the same folder with its existing edits. The
+standing task subscription feeds HTTP events after the originating turn ends.

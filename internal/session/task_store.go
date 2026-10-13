@@ -142,10 +142,12 @@ func (c Config) checkpointFile() string {
 // the reports its prerequisites left, which is the same thing it would have done
 // had nothing died.
 type taskRecord struct {
-	Restart *taskRestartRecord `json:"restart,omitempty"`
-	ID      uint64             `json:"id"`
-	Title   string             `json:"title"`
-	Summary string             `json:"summary,omitempty"`
+	App          appTaskRecord      `json:"app_control,omitempty,omitzero"`
+	Irreversible bool               `json:"irreversible,omitempty"`
+	Restart      *taskRestartRecord `json:"restart,omitempty"`
+	ID           uint64             `json:"id"`
+	Title        string             `json:"title"`
+	Summary      string             `json:"summary,omitempty"`
 	// Request is the person's own message, kept because a node that resumes
 	// without it would be re-opened on the model's paraphrase alone — the one
 	// part of what it was told that nothing downstream could reconstruct
@@ -583,10 +585,14 @@ type taskRecord struct {
 //
 // Done is parallel to Items, one tick per item, exactly as it is in memory.
 type quickRecord struct {
-	Line  string   `json:"line"`
-	Items []string `json:"items,omitempty"`
-	Done  []bool   `json:"done,omitempty"`
-	Files []string `json:"files,omitempty"`
+	Captures  []QuickFileCapture `json:"captures,omitempty"`
+	Promotion uint64             `json:"promotion,omitempty"`
+	Promoted  bool               `json:"promoted,omitempty"`
+	Undone    bool               `json:"undone,omitempty"`
+	Line      string             `json:"line"`
+	Items     []string           `json:"items,omitempty"`
+	Done      []bool             `json:"done,omitempty"`
+	Files     []string           `json:"files,omitempty"`
 }
 
 // quickRecordLocked copies a quick body out, with the graph held — the lock the
@@ -597,7 +603,9 @@ func quickRecordLocked(spec *quickTaskSpec) *quickRecord {
 		return nil
 	}
 	return &quickRecord{
-		Line:  spec.line,
+		Line:      spec.line,
+		Captures:  cloneQuickCaptures(spec.captures),
+		Promotion: spec.promotion, Promoted: spec.promoted, Undone: spec.undone,
 		Items: append([]string(nil), spec.items...),
 		Done:  append([]bool(nil), spec.done...),
 		Files: append([]string(nil), spec.files...),
@@ -614,6 +622,8 @@ func (r *quickRecord) body() *quickTaskSpec {
 		return nil
 	}
 	spec := newQuickTaskSpec(r.Line, append([]string(nil), r.Items...), append([]string(nil), r.Files...))
+	spec.captures = cloneQuickCaptures(r.Captures)
+	spec.promotion, spec.promoted, spec.undone = r.Promotion, r.Promoted, r.Undone
 	for index := range spec.done {
 		spec.done[index] = index < len(r.Done) && r.Done[index]
 	}
@@ -650,12 +660,13 @@ type revisionRecord struct {
 // stops a landing publishing, and a process that died between the words and the
 // landing must not come back having forgotten them.
 type directionRecord struct {
-	ID      uint64    `json:"id"`
-	Words   string    `json:"words"`
-	At      time.Time `json:"at,omitzero"`
-	From    string    `json:"from,omitempty"`
-	State   string    `json:"state,omitempty"`
-	Version uint64    `json:"version,omitempty"`
+	ReadAtStep *int      `json:"read_at_step,omitempty"`
+	ID         uint64    `json:"id"`
+	Words      string    `json:"words"`
+	At         time.Time `json:"at,omitzero"`
+	From       string    `json:"from,omitempty"`
+	State      string    `json:"state,omitempty"`
+	Version    uint64    `json:"version,omitempty"`
 	// Source is the person's message this was forwarded from (task_forward.go),
 	// absent on a line said into the node's own room and on every checkpoint
 	// written before forwarding existed.
@@ -913,7 +924,23 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 		}
 	}
 	temporary := s.path + ".tmp"
-	if err := os.WriteFile(temporary, append(encoded, '\n'), 0o644); err != nil {
+	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	// A stale temporary file may predate private byte captures, so chmod comes
+	// before truncation or writing, rather than trusting its creation mode.
+	if err := file.Chmod(0o600); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Truncate(0); err != nil {
+		file.Close()
+		return err
+	}
+	_, writeErr := file.Write(append(encoded, '\n'))
+	closeErr := file.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
 		return err
 	}
 	if err := os.Rename(temporary, s.path); err != nil {
@@ -1311,10 +1338,11 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Quick:          quickRecordLocked(n.spec.quick),
-		Unshaped:       n.spec.unshaped,
-		Unsized:        n.spec.unsized,
-		Expects:        append([]Expectation(nil), n.spec.expects...),
-		Assignment:     recordedAssignment(n.assignment),
+		App:            cloneAppTaskRecord(n.app), Irreversible: n.spec.irreversible,
+		Unshaped:   n.spec.unshaped,
+		Unsized:    n.spec.unsized,
+		Expects:    append([]Expectation(nil), n.spec.expects...),
+		Assignment: recordedAssignment(n.assignment),
 	}
 }
 
@@ -2113,6 +2141,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		record.Title = taskPersonTitle(subject)
 	}
 	node := &TaskNode{
+		app:        cloneAppTaskRecord(record.App),
 		nextModel:  record.NextModel,
 		nextEffort: record.NextEffort, graph: graph,
 		id:        record.ID,
@@ -2141,7 +2170,8 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			expects:     record.Expects,
 			// AND A QUICK NODE'S BODY, which is what tells the runner it is quick
 			// and what the next checkpoint writes back ([taskRecord.Quick]).
-			quick: record.Quick.body(),
+			quick:        record.Quick.body(),
+			irreversible: record.Irreversible,
 			// AND THE READINGS THIS NODE IS STILL OWED, so that a `/task` that was
 			// queued when the engine went down still has its brief written and its
 			// width read beside the worker it finally gets ([taskRecord.Unshaped]).
