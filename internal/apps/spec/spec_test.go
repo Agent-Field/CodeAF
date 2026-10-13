@@ -98,14 +98,16 @@ func TestValidateReportsSchemaIssues(t *testing.T) {
 	cases := map[string]struct {
 		file, content, want string
 	}{
-		"unknown field type":     {AppFile, strings.Replace(string(files[AppFile]), `"type": "url"`, `"type": "hyperlink"`, 1), "/records/company/fields/domain/type"},
-		"enum without values":    {AppFile, strings.Replace(string(files[AppFile]), `"type": "enum", "values": ["1-10", "11-50", "51-200", "201+"]`, `"type": "enum"`, 1), "/records/company/fields/size"},
-		"plan line without id":   {PlanFile, strings.Replace(string(files[PlanFile]), `{ "id": "company", `, `{ `, 1), "/data/1"},
-		"screen id differs":      {"screens/deal.json", strings.Replace(string(files["screens/deal.json"]), `"screen": "deal"`, `"screen": "deals"`, 1), "/screen"},
-		"two verbs":              {"screens/deal.json", strings.Replace(string(files["screens/deal.json"]), `{ "open": "pipeline" }`, `{ "open": "pipeline", "runs.start": "follow-up" }`, 1), "/body/children/1/children/2/on/click/1"},
-		"delete without confirm": {"screens/deal.json", strings.Replace(string(files["screens/deal.json"]), `, "confirm": "Delete {{record.name}}? It can be restored for 30 days."`, ``, 1), "/body/children/1/children/2/on/click/0"},
-		"loop without max":       {"runs/follow-up.yaml", strings.Replace(string(files["runs/follow-up.yaml"]), `, max: 25`, ``, 1), "/steps/0/loop"},
-		"step without action":    {"runs/follow-up.yaml", strings.Replace(string(files["runs/follow-up.yaml"]), "records.update: { type: deal, id: $deal, set: { last_touch: $now } }", "title: nothing", 1), "/steps/0/steps/3"},
+		"unknown field type": {AppFile, strings.Replace(string(files[AppFile]), `"type": "url"`, `"type": "hyperlink"`, 1), "/records/company/fields/domain/type"},
+		"enum without values": {AppFile, strings.Replace(string(files[AppFile]), `"type": "enum",
+          "values": ["1-10", "11-50", "51-200", "201+"]`, `"type": "enum"`, 1), "/records/company/fields/size"},
+		"plan line without id": {PlanFile, strings.Replace(string(files[PlanFile]), `{ "id": "company", `, `{ `, 1), "/data/1"},
+		"screen id differs":    {"screens/deal.json", strings.Replace(string(files["screens/deal.json"]), `"screen": "deal"`, `"screen": "deals"`, 1), "/screen"},
+		"two verbs":            {"screens/deal.json", strings.Replace(string(files["screens/deal.json"]), `{ "open": "pipeline" }`, `{ "open": "pipeline", "runs.start": "follow-up" }`, 1), "/body/children/1/children/2/on/click/1"},
+		"delete without confirm": {"screens/deal.json", strings.Replace(string(files["screens/deal.json"]), `,
+                  "confirm": "Delete {{record.name}}? It can be restored for 30 days."`, ``, 1), "/body/children/1/children/2/on/click/0"},
+		"loop without max":    {"runs/follow-up.yaml", strings.Replace(string(files["runs/follow-up.yaml"]), `, max: 25`, ``, 1), "/steps/0/loop"},
+		"step without action": {"runs/follow-up.yaml", strings.Replace(string(files["runs/follow-up.yaml"]), "records.update: { type: deal, id: $deal, set: { last_touch: $now } }", "title: nothing", 1), "/steps/0/steps/3"},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {

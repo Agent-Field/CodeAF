@@ -1,24 +1,176 @@
 {
   "company": [
-    { "id": "co_northwind", "fields": { "name": "Northwind", "domain": "https://northwind.example", "size": "51-200", "owner": "me" } },
-    { "id": "co_globex", "fields": { "name": "Globex", "domain": "https://globex.example", "size": "201+", "owner": "me" } },
-    { "id": "co_initech", "fields": { "name": "Initech", "domain": "https://initech.example", "size": "11-50", "owner": "me" } },
-    { "id": "co_hooli", "fields": { "name": "Hooli", "domain": "https://hooli.example", "size": "201+", "owner": "me" } },
-    { "id": "co_umbrella", "fields": { "name": "Umbrella", "domain": "https://umbrella.example", "size": "1-10", "owner": "me" } }
+    {
+      "id": "co_northwind",
+      "fields": {
+        "name": "Northwind",
+        "domain": "https://northwind.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_globex",
+      "fields": {
+        "name": "Globex",
+        "domain": "https://globex.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_initech",
+      "fields": {
+        "name": "Initech",
+        "domain": "https://initech.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_hooli",
+      "fields": {
+        "name": "Hooli",
+        "domain": "https://hooli.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_umbrella",
+      "fields": {
+        "name": "Umbrella",
+        "domain": "https://umbrella.example",
+        "size": "1-10",
+        "owner": "me"
+      }
+    }
   ],
   "contact": [
-    { "id": "ct_priya", "fields": { "name": "Priya Shah", "email": "priya@northwind.example", "phone": "+1 415 555 0101", "company": "co_northwind" } },
-    { "id": "ct_hank", "fields": { "name": "Hank Scorpio", "email": "hank@globex.example", "phone": "+1 415 555 0102", "company": "co_globex" } },
-    { "id": "ct_peter", "fields": { "name": "Peter Gibbons", "email": "peter@initech.example", "phone": "+1 415 555 0103", "company": "co_initech" } },
-    { "id": "ct_gavin", "fields": { "name": "Gavin Belson", "email": "gavin@hooli.example", "phone": "+1 415 555 0104", "company": "co_hooli" } },
-    { "id": "ct_alice", "fields": { "name": "Alice Abernathy", "email": "alice@umbrella.example", "phone": "+1 415 555 0105", "company": "co_umbrella" } }
+    {
+      "id": "ct_priya",
+      "fields": {
+        "name": "Priya Shah",
+        "email": "priya@northwind.example",
+        "phone": "+1 415 555 0101",
+        "company": "co_northwind"
+      }
+    },
+    {
+      "id": "ct_hank",
+      "fields": {
+        "name": "Hank Scorpio",
+        "email": "hank@globex.example",
+        "phone": "+1 415 555 0102",
+        "company": "co_globex"
+      }
+    },
+    {
+      "id": "ct_peter",
+      "fields": {
+        "name": "Peter Gibbons",
+        "email": "peter@initech.example",
+        "phone": "+1 415 555 0103",
+        "company": "co_initech"
+      }
+    },
+    {
+      "id": "ct_gavin",
+      "fields": {
+        "name": "Gavin Belson",
+        "email": "gavin@hooli.example",
+        "phone": "+1 415 555 0104",
+        "company": "co_hooli"
+      }
+    },
+    {
+      "id": "ct_alice",
+      "fields": {
+        "name": "Alice Abernathy",
+        "email": "alice@umbrella.example",
+        "phone": "+1 415 555 0105",
+        "company": "co_umbrella"
+      }
+    }
   ],
   "deal": [
-    { "id": "dl_northwind", "fields": { "name": "Northwind · renewal", "company": "co_northwind", "contacts": ["ct_priya"], "stage": "Proposal", "amount": 48000, "close_on": "2026-11-28", "owner": "me", "last_touch": "2026-10-01T09:12:00Z", "likely": "Likely" } },
-    { "id": "dl_globex", "fields": { "name": "Globex · platform", "company": "co_globex", "contacts": ["ct_hank"], "stage": "Negotiation", "amount": 36500, "close_on": "2026-11-15", "owner": "me", "last_touch": "2026-10-10T14:00:00Z", "likely": "Maybe" } },
-    { "id": "dl_initech", "fields": { "name": "Initech · pilot", "company": "co_initech", "contacts": ["ct_peter"], "stage": "Qualified", "amount": 12000, "close_on": "2026-12-01", "owner": "me", "last_touch": "2026-10-08T10:30:00Z" } },
-    { "id": "dl_umbrella", "fields": { "name": "Umbrella · expansion", "company": "co_umbrella", "contacts": ["ct_alice"], "stage": "Proposal", "amount": 9800, "close_on": "2026-12-12", "owner": "me", "last_touch": "2026-09-25T16:45:00Z" } },
-    { "id": "dl_hooli", "fields": { "name": "Hooli · first order", "company": "co_hooli", "contacts": ["ct_gavin"], "stage": "Lead", "amount": 4200, "owner": "me" } },
-    { "id": "dl_globex_pilot", "fields": { "name": "Globex · pilot", "company": "co_globex", "contacts": ["ct_hank"], "stage": "Won", "amount": 6800, "close_on": "2026-10-01", "owner": "me", "last_touch": "2026-10-01T08:00:00Z" } }
+    {
+      "id": "dl_northwind",
+      "fields": {
+        "name": "Northwind · renewal",
+        "company": "co_northwind",
+        "contacts": ["ct_priya"],
+        "stage": "Proposal",
+        "amount": 48000,
+        "close_on": "2026-11-28",
+        "owner": "me",
+        "last_touch": "2026-10-01T09:12:00Z",
+        "likely": "Likely"
+      }
+    },
+    {
+      "id": "dl_globex",
+      "fields": {
+        "name": "Globex · platform",
+        "company": "co_globex",
+        "contacts": ["ct_hank"],
+        "stage": "Negotiation",
+        "amount": 36500,
+        "close_on": "2026-11-15",
+        "owner": "me",
+        "last_touch": "2026-10-10T14:00:00Z",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_initech",
+      "fields": {
+        "name": "Initech · pilot",
+        "company": "co_initech",
+        "contacts": ["ct_peter"],
+        "stage": "Qualified",
+        "amount": 12000,
+        "close_on": "2026-12-01",
+        "owner": "me",
+        "last_touch": "2026-10-08T10:30:00Z"
+      }
+    },
+    {
+      "id": "dl_umbrella",
+      "fields": {
+        "name": "Umbrella · expansion",
+        "company": "co_umbrella",
+        "contacts": ["ct_alice"],
+        "stage": "Proposal",
+        "amount": 9800,
+        "close_on": "2026-12-12",
+        "owner": "me",
+        "last_touch": "2026-09-25T16:45:00Z"
+      }
+    },
+    {
+      "id": "dl_hooli",
+      "fields": {
+        "name": "Hooli · first order",
+        "company": "co_hooli",
+        "contacts": ["ct_gavin"],
+        "stage": "Lead",
+        "amount": 4200,
+        "owner": "me"
+      }
+    },
+    {
+      "id": "dl_globex_pilot",
+      "fields": {
+        "name": "Globex · pilot",
+        "company": "co_globex",
+        "contacts": ["ct_hank"],
+        "stage": "Won",
+        "amount": 6800,
+        "close_on": "2026-10-01",
+        "owner": "me",
+        "last_touch": "2026-10-01T08:00:00Z"
+      }
+    }
   ]
 }

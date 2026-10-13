@@ -16,79 +16,424 @@
     "value": "literal, $reference or {{template}}"
   },
   "parts": [
-    { "name": "Button", "kind": "primitive", "interactive": true, "events": ["click"], "children": "none",
-      "props": { "kind": { "type": "enum", "values": ["primary", "secondary", "quiet", "destructive"] }, "size": { "type": "enum", "values": ["sm", "md"] }, "icon": { "type": "icon" } } },
-    { "name": "IconButton", "kind": "primitive", "interactive": true, "events": ["click"], "children": "none",
-      "props": { "icon": { "type": "icon", "required": true } } },
-    { "name": "Chip", "kind": "primitive", "interactive": true, "events": ["pick"], "children": "none",
-      "props": { "value": { "type": "value", "required": true }, "selected": { "type": "boolean" }, "tone": { "type": "tone" } } },
-    { "name": "Field", "kind": "primitive", "interactive": true, "events": ["change"], "children": "none",
-      "props": { "field": { "type": "field" }, "value": { "type": "value" }, "placeholder": { "type": "template" }, "multiline": { "type": "boolean" } } },
-    { "name": "Select", "kind": "primitive", "interactive": true, "events": ["change"], "children": "none",
-      "props": { "options": { "type": "strings" }, "field": { "type": "field" }, "value": { "type": "value" } } },
-    { "name": "Segmented", "kind": "primitive", "interactive": true, "events": ["change"], "children": "none",
-      "props": { "items": { "type": "strings", "required": true }, "value": { "type": "value" } } },
-    { "name": "Toggle", "kind": "primitive", "interactive": true, "events": ["change"], "children": "none",
-      "props": { "on": { "type": "value" }, "field": { "type": "field" } } },
-    { "name": "Menu", "kind": "primitive", "interactive": true, "events": [], "children": ["Button"],
-      "props": { "icon": { "type": "icon" } } },
-    { "name": "Dialog", "kind": "primitive", "interactive": true, "events": ["confirm", "cancel"], "children": "any",
-      "props": { "title": { "type": "template", "required": true }, "confirm": { "type": "string" }, "tone": { "type": "tone" } } },
-    { "name": "Avatar", "kind": "primitive", "interactive": false, "events": [], "children": "none",
-      "props": { "person": { "type": "value", "required": true }, "size": { "type": "enum", "values": ["sm", "md", "lg"] } } },
-    { "name": "StateGlyph", "kind": "primitive", "interactive": false, "events": [], "children": "none",
-      "props": { "state": { "type": "enum", "values": ["needs", "running", "queued", "idle", "done", "failed"], "required": true } } },
-    { "name": "Icon", "kind": "primitive", "interactive": false, "events": [], "children": "none",
-      "props": { "name": { "type": "icon", "required": true } } },
-    { "name": "Text", "kind": "primitive", "interactive": false, "events": [], "children": "none",
-      "props": { "text": { "type": "template", "required": true }, "size": { "type": "enum", "values": ["title", "body", "small"] }, "tone": { "type": "tone" } } },
-    { "name": "Stack", "kind": "primitive", "interactive": false, "events": [], "children": "any",
-      "props": { "gap": { "type": "enum", "values": ["1", "2", "3", "4", "5", "6"] }, "align": { "type": "enum", "values": ["start", "center", "end", "stretch"] } } },
-    { "name": "Row", "kind": "primitive", "interactive": false, "events": [], "children": "any",
-      "props": { "gap": { "type": "enum", "values": ["1", "2", "3", "4", "5", "6"] }, "align": { "type": "enum", "values": ["start", "center", "end", "stretch"] }, "wrap": { "type": "boolean" } } },
-    { "name": "Divider", "kind": "primitive", "interactive": false, "events": [], "children": "none",
-      "props": { "inset": { "type": "boolean" }, "vertical": { "type": "boolean" } } },
-    { "name": "DatePicker", "kind": "primitive", "interactive": true, "events": ["change"], "children": "none",
-      "props": { "field": { "type": "field" }, "value": { "type": "value" }, "range": { "type": "boolean" }, "min": { "type": "value" }, "max": { "type": "value" } } },
-    { "name": "PeoplePicker", "kind": "primitive", "interactive": true, "events": ["change"], "children": "none",
-      "props": { "field": { "type": "field" }, "value": { "type": "value" }, "multiple": { "type": "boolean" } } },
-    { "name": "Timer", "kind": "primitive", "interactive": false, "events": [], "children": "none",
-      "props": { "field": { "type": "field", "required": true }, "direction": { "type": "enum", "values": ["up", "down"] }, "amber": { "type": "string" }, "red": { "type": "string" } } },
-    { "name": "Masked", "kind": "primitive", "interactive": true, "events": ["reveal"], "children": "none",
-      "props": { "field": { "type": "field", "required": true }, "reason": { "type": "string" } } },
+    {
+      "name": "Button",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["click"],
+      "children": "none",
+      "props": {
+        "kind": {
+          "type": "enum",
+          "values": ["primary", "secondary", "quiet", "destructive"]
+        },
+        "size": { "type": "enum", "values": ["sm", "md"] },
+        "icon": { "type": "icon" }
+      }
+    },
+    {
+      "name": "IconButton",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["click"],
+      "children": "none",
+      "props": { "icon": { "type": "icon", "required": true } }
+    },
+    {
+      "name": "Chip",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["pick"],
+      "children": "none",
+      "props": {
+        "value": { "type": "value", "required": true },
+        "selected": { "type": "boolean" },
+        "tone": { "type": "tone" }
+      }
+    },
+    {
+      "name": "Field",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["change"],
+      "children": "none",
+      "props": {
+        "field": { "type": "field" },
+        "value": { "type": "value" },
+        "placeholder": { "type": "template" },
+        "multiline": { "type": "boolean" }
+      }
+    },
+    {
+      "name": "Select",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["change"],
+      "children": "none",
+      "props": {
+        "options": { "type": "strings" },
+        "field": { "type": "field" },
+        "value": { "type": "value" }
+      }
+    },
+    {
+      "name": "Segmented",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["change"],
+      "children": "none",
+      "props": {
+        "items": { "type": "strings", "required": true },
+        "value": { "type": "value" }
+      }
+    },
+    {
+      "name": "Toggle",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["change"],
+      "children": "none",
+      "props": { "on": { "type": "value" }, "field": { "type": "field" } }
+    },
+    {
+      "name": "Menu",
+      "kind": "primitive",
+      "interactive": true,
+      "events": [],
+      "children": ["Button"],
+      "props": { "icon": { "type": "icon" } }
+    },
+    {
+      "name": "Dialog",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["confirm", "cancel"],
+      "children": "any",
+      "props": {
+        "title": { "type": "template", "required": true },
+        "confirm": { "type": "string" },
+        "tone": { "type": "tone" }
+      }
+    },
+    {
+      "name": "Avatar",
+      "kind": "primitive",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "props": {
+        "person": { "type": "value", "required": true },
+        "size": { "type": "enum", "values": ["sm", "md", "lg"] }
+      }
+    },
+    {
+      "name": "StateGlyph",
+      "kind": "primitive",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "props": {
+        "state": {
+          "type": "enum",
+          "values": ["needs", "running", "queued", "idle", "done", "failed"],
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "Icon",
+      "kind": "primitive",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "props": { "name": { "type": "icon", "required": true } }
+    },
+    {
+      "name": "Text",
+      "kind": "primitive",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "props": {
+        "text": { "type": "template", "required": true },
+        "size": { "type": "enum", "values": ["title", "body", "small"] },
+        "tone": { "type": "tone" }
+      }
+    },
+    {
+      "name": "Stack",
+      "kind": "primitive",
+      "interactive": false,
+      "events": [],
+      "children": "any",
+      "props": {
+        "gap": { "type": "enum", "values": ["1", "2", "3", "4", "5", "6"] },
+        "align": {
+          "type": "enum",
+          "values": ["start", "center", "end", "stretch"]
+        }
+      }
+    },
+    {
+      "name": "Row",
+      "kind": "primitive",
+      "interactive": false,
+      "events": [],
+      "children": "any",
+      "props": {
+        "gap": { "type": "enum", "values": ["1", "2", "3", "4", "5", "6"] },
+        "align": {
+          "type": "enum",
+          "values": ["start", "center", "end", "stretch"]
+        },
+        "wrap": { "type": "boolean" }
+      }
+    },
+    {
+      "name": "Divider",
+      "kind": "primitive",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "props": {
+        "inset": { "type": "boolean" },
+        "vertical": { "type": "boolean" }
+      }
+    },
+    {
+      "name": "DatePicker",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["change"],
+      "children": "none",
+      "props": {
+        "field": { "type": "field" },
+        "value": { "type": "value" },
+        "range": { "type": "boolean" },
+        "min": { "type": "value" },
+        "max": { "type": "value" }
+      }
+    },
+    {
+      "name": "PeoplePicker",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["change"],
+      "children": "none",
+      "props": {
+        "field": { "type": "field" },
+        "value": { "type": "value" },
+        "multiple": { "type": "boolean" }
+      }
+    },
+    {
+      "name": "Timer",
+      "kind": "primitive",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "props": {
+        "field": { "type": "field", "required": true },
+        "direction": { "type": "enum", "values": ["up", "down"] },
+        "amber": { "type": "string" },
+        "red": { "type": "string" }
+      }
+    },
+    {
+      "name": "Masked",
+      "kind": "primitive",
+      "interactive": true,
+      "events": ["reveal"],
+      "children": "none",
+      "props": {
+        "field": { "type": "field", "required": true },
+        "reason": { "type": "string" }
+      }
+    },
 
-    { "name": "SectionTabs", "kind": "pattern", "interactive": true, "events": ["change"], "children": "none", "navOnly": true,
-      "props": { "items": { "type": "strings", "required": true } } },
-    { "name": "QueryField", "kind": "pattern", "interactive": true, "events": ["change"], "children": "none",
-      "props": { "views": { "type": "strings" }, "placeholder": { "type": "template" } } },
-    { "name": "StateMeter", "kind": "pattern", "interactive": true, "events": ["pick"], "children": "none", "bind": ["records"],
-      "props": { "field": { "type": "field", "required": true } } },
-    { "name": "List", "kind": "pattern", "interactive": true, "events": ["open"], "children": "none", "bind": ["records"], "slots": ["row", "empty"],
-      "props": { "nested": { "type": "boolean" }, "fields": { "type": "fields" } } },
-    { "name": "Panel", "kind": "pattern", "interactive": true, "events": ["close"], "children": "any",
-      "props": { "title": { "type": "template" } } },
-    { "name": "Table", "kind": "pattern", "interactive": true, "events": ["open"], "children": "none", "bind": ["records"],
-      "props": { "columns": { "type": "fields", "required": true }, "sort": { "type": "string" } } },
-    { "name": "Board", "kind": "pattern", "interactive": true, "events": ["open"], "children": "none", "bind": ["records"],
-      "props": { "groupBy": { "type": "field", "required": true }, "fields": { "type": "fields" } } },
-    { "name": "BulkBar", "kind": "pattern", "interactive": false, "events": ["clear"], "children": ["Button", "Menu"],
-      "props": { "list": { "type": "string" } } },
-    { "name": "Thread", "kind": "pattern", "interactive": true, "events": ["reply"], "children": "none", "bind": ["records"],
-      "props": { "from": { "type": "field" }, "body": { "type": "field" }, "at": { "type": "field" } } },
-    { "name": "Empty", "kind": "pattern", "interactive": false, "events": [], "children": ["Button"],
-      "props": { "text": { "type": "template", "required": true } } },
+    {
+      "name": "SectionTabs",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["change"],
+      "children": "none",
+      "navOnly": true,
+      "props": { "items": { "type": "strings", "required": true } }
+    },
+    {
+      "name": "QueryField",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["change"],
+      "children": "none",
+      "props": {
+        "views": { "type": "strings" },
+        "placeholder": { "type": "template" }
+      }
+    },
+    {
+      "name": "StateMeter",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["pick"],
+      "children": "none",
+      "bind": ["records"],
+      "props": { "field": { "type": "field", "required": true } }
+    },
+    {
+      "name": "List",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["open"],
+      "children": "none",
+      "bind": ["records"],
+      "slots": ["row", "empty"],
+      "props": {
+        "nested": { "type": "boolean" },
+        "fields": { "type": "fields" }
+      }
+    },
+    {
+      "name": "Panel",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["close"],
+      "children": "any",
+      "props": { "title": { "type": "template" } }
+    },
+    {
+      "name": "Table",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["open"],
+      "children": "none",
+      "bind": ["records"],
+      "props": {
+        "columns": { "type": "fields", "required": true },
+        "sort": { "type": "string" }
+      }
+    },
+    {
+      "name": "Board",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["open"],
+      "children": "none",
+      "bind": ["records"],
+      "props": {
+        "groupBy": { "type": "field", "required": true },
+        "fields": { "type": "fields" }
+      }
+    },
+    {
+      "name": "BulkBar",
+      "kind": "pattern",
+      "interactive": false,
+      "events": ["clear"],
+      "children": ["Button", "Menu"],
+      "props": { "list": { "type": "string" } }
+    },
+    {
+      "name": "Thread",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["reply"],
+      "children": "none",
+      "bind": ["records"],
+      "props": {
+        "from": { "type": "field" },
+        "body": { "type": "field" },
+        "at": { "type": "field" }
+      }
+    },
+    {
+      "name": "Empty",
+      "kind": "pattern",
+      "interactive": false,
+      "events": [],
+      "children": ["Button"],
+      "props": { "text": { "type": "template", "required": true } }
+    },
 
-    { "name": "RecordList", "kind": "data", "interactive": true, "events": ["open", "select"], "children": "none", "bind": ["records"], "slots": ["empty"],
-      "props": { "columns": { "type": "fields", "required": true }, "views": { "type": "strings" }, "meter": { "type": "field" }, "groupBy": { "type": "field" }, "query": { "type": "boolean" } } },
-    { "name": "RecordPage", "kind": "data", "interactive": true, "events": [], "children": "none", "bind": ["record"],
-      "props": { "fields": { "type": "fields", "required": true }, "actions": { "type": "commands" }, "history": { "type": "boolean" }, "links": { "type": "boolean" } } },
-    { "name": "Form", "kind": "data", "interactive": true, "events": ["submit", "cancel"], "children": "none", "bind": ["record"],
-      "props": { "type": { "type": "string" }, "fields": { "type": "fields", "required": true }, "submit": { "type": "string" } } },
-    { "name": "RunTimeline", "kind": "data", "interactive": false, "events": [], "children": "none", "bind": ["run", "runs"],
-      "props": {} },
-    { "name": "ApprovalCard", "kind": "data", "interactive": true, "events": [], "children": "none", "bind": ["approvals", "run"],
-      "props": {} },
-    { "name": "Chart", "kind": "data", "interactive": false, "events": [], "children": "none", "bind": ["records"],
-      "props": { "chart": { "type": "enum", "values": ["bar", "line", "area", "metric"], "required": true }, "x": { "type": "field" }, "y": { "type": "field" }, "agg": { "type": "enum", "values": ["count", "sum", "avg"] }, "title": { "type": "template" } } }
+    {
+      "name": "RecordList",
+      "kind": "data",
+      "interactive": true,
+      "events": ["open", "select"],
+      "children": "none",
+      "bind": ["records"],
+      "slots": ["empty"],
+      "props": {
+        "columns": { "type": "fields", "required": true },
+        "views": { "type": "strings" },
+        "meter": { "type": "field" },
+        "groupBy": { "type": "field" },
+        "query": { "type": "boolean" }
+      }
+    },
+    {
+      "name": "RecordPage",
+      "kind": "data",
+      "interactive": true,
+      "events": [],
+      "children": "none",
+      "bind": ["record"],
+      "props": {
+        "fields": { "type": "fields", "required": true },
+        "actions": { "type": "commands" },
+        "history": { "type": "boolean" },
+        "links": { "type": "boolean" }
+      }
+    },
+    {
+      "name": "Form",
+      "kind": "data",
+      "interactive": true,
+      "events": ["submit", "cancel"],
+      "children": "none",
+      "bind": ["record"],
+      "props": {
+        "type": { "type": "string" },
+        "fields": { "type": "fields", "required": true },
+        "submit": { "type": "string" }
+      }
+    },
+    {
+      "name": "RunTimeline",
+      "kind": "data",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "bind": ["run", "runs"],
+      "props": {}
+    },
+    {
+      "name": "ApprovalCard",
+      "kind": "data",
+      "interactive": true,
+      "events": [],
+      "children": "none",
+      "bind": ["approvals", "run"],
+      "props": {}
+    },
+    {
+      "name": "Chart",
+      "kind": "data",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "bind": ["records"],
+      "props": {
+        "chart": {
+          "type": "enum",
+          "values": ["bar", "line", "area", "metric"],
+          "required": true
+        },
+        "x": { "type": "field" },
+        "y": { "type": "field" },
+        "agg": { "type": "enum", "values": ["count", "sum", "avg"] },
+        "title": { "type": "template" }
+      }
+    }
   ]
 }

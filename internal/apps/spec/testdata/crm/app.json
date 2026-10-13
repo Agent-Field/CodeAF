@@ -6,19 +6,30 @@
   "space": "personal",
   "version": 1,
   "kit": 2,
-  "agent": { "name": "CRM agent", "file": "agent.md", "model": "deepseek/deepseek-v4.1-flash" },
+  "agent": {
+    "name": "CRM agent",
+    "file": "agent.md",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
   "records": {
     "company": {
-      "label": "Company", "plural": "Companies", "title": "name",
+      "label": "Company",
+      "plural": "Companies",
+      "title": "name",
       "fields": {
         "name": { "type": "text", "required": true, "unique": true },
         "domain": { "type": "url", "index": true },
-        "size": { "type": "enum", "values": ["1-10", "11-50", "51-200", "201+"] },
+        "size": {
+          "type": "enum",
+          "values": ["1-10", "11-50", "51-200", "201+"]
+        },
         "owner": { "type": "person", "default": "$me" }
       }
     },
     "contact": {
-      "label": "Contact", "plural": "Contacts", "title": "name",
+      "label": "Contact",
+      "plural": "Contacts",
+      "title": "name",
       "fields": {
         "name": { "type": "text", "required": true },
         "email": { "type": "email", "index": true },
@@ -27,39 +38,107 @@
       }
     },
     "deal": {
-      "label": "Deal", "plural": "Deals", "title": "name",
+      "label": "Deal",
+      "plural": "Deals",
+      "title": "name",
       "fields": {
         "name": { "type": "text", "required": true },
-        "company": { "type": "ref", "to": "company", "required": true, "index": true },
+        "company": {
+          "type": "ref",
+          "to": "company",
+          "required": true,
+          "index": true
+        },
         "contacts": { "type": "refs", "to": "contact" },
-        "stage": { "type": "enum", "default": "Lead", "index": true, "values": ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"] },
+        "stage": {
+          "type": "enum",
+          "default": "Lead",
+          "index": true,
+          "values": [
+            "Lead",
+            "Qualified",
+            "Proposal",
+            "Negotiation",
+            "Won",
+            "Lost"
+          ]
+        },
         "amount": { "type": "money", "currency": "USD" },
         "close_on": { "type": "date" },
         "owner": { "type": "person", "default": "$me" },
         "last_touch": { "type": "datetime", "index": true },
-        "weighted": { "type": "money", "computed": "amount * stage_weight[stage]" },
-        "likely": { "type": "enum", "values": ["Likely", "Maybe", "Unlikely"], "ai": "likely to close this month" }
+        "weighted": {
+          "type": "money",
+          "computed": "amount * stage_weight[stage]"
+        },
+        "likely": {
+          "type": "enum",
+          "values": ["Likely", "Maybe", "Unlikely"],
+          "ai": "likely to close this month"
+        }
       },
       "constants": {
-        "stage_weight": { "Lead": 0.1, "Qualified": 0.25, "Proposal": 0.5, "Negotiation": 0.7, "Won": 1, "Lost": 0 }
+        "stage_weight": {
+          "Lead": 0.1,
+          "Qualified": 0.25,
+          "Proposal": 0.5,
+          "Negotiation": 0.7,
+          "Won": 1,
+          "Lost": 0
+        }
       }
     }
   },
   "capabilities": {
     "records": { "deal": "rw", "company": "rw", "contact": "rw" },
     "connectors": {
-      "gmail": { "as": "member", "can": ["read", "draft", "send"], "approve": ["send"] }
+      "gmail": {
+        "as": "member",
+        "can": ["read", "draft", "send"],
+        "approve": ["send"]
+      }
     },
     "ai": ["sort", "summarise", "draft"],
     "tools": []
   },
   "triggers": [
-    { "id": "proposal-sent", "on": "record.changed", "type": "deal", "when": "changed('stage') && stage == 'Proposal'", "run": "follow-up", "params": { "deals": ["$record.id"] } }
+    {
+      "id": "proposal-sent",
+      "on": "record.changed",
+      "type": "deal",
+      "when": "changed('stage') && stage == 'Proposal'",
+      "run": "follow-up",
+      "params": { "deals": ["$record.id"] }
+    }
   ],
   "commands": [
-    { "id": "follow-up", "label": "Draft follow-up", "for": "deal", "run": "follow-up", "params": { "deals": "$selection.deals.ids" } },
-    { "id": "mark-won", "label": "Mark won…", "for": "deal", "confirm": "Mark {{count}} deals won?",
-      "do": [ { "records.update": { "ids": "$selection.deals.ids", "set": { "stage": "Won" } } } ] }
+    {
+      "id": "follow-up",
+      "label": "Draft follow-up",
+      "for": "deal",
+      "run": "follow-up",
+      "params": { "deals": "$selection.deals.ids" }
+    },
+    {
+      "id": "mark-won",
+      "label": "Mark won…",
+      "for": "deal",
+      "confirm": "Mark {{count}} deals won?",
+      "do": [
+        {
+          "records.update": {
+            "ids": "$selection.deals.ids",
+            "set": { "stage": "Won" }
+          }
+        }
+      ]
+    }
   ],
-  "budget": { "month": 20, "currency": "USD", "per_run": 0.5, "at_cap": "ask", "models": ["deepseek/deepseek-v4.1-flash"] }
+  "budget": {
+    "month": 20,
+    "currency": "USD",
+    "per_run": 0.5,
+    "at_cap": "ask",
+    "models": ["deepseek/deepseek-v4.1-flash"]
+  }
 }

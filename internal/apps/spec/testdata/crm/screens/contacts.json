@@ -2,31 +2,90 @@
   "$schema": "https://codeaf.dev/schema/screen/1.json",
   "screen": "contacts",
   "title": "Contacts",
-  "nav": { "part": "SectionTabs", "label": "CRM sections", "props": { "items": ["Pipeline", "Contacts"] } },
+  "nav": {
+    "part": "SectionTabs",
+    "label": "CRM sections",
+    "props": { "items": ["Pipeline", "Contacts"] }
+  },
   "body": {
     "part": "Row",
     "children": [
       {
         "part": "Stack",
         "children": [
-          { "part": "Row",
+          {
+            "part": "Row",
             "children": [
-              { "part": "Text", "props": { "text": "Contacts", "size": "title" } },
-              { "part": "Button", "label": "New contact", "props": { "kind": "primary" },
-                "on": { "click": [ { "records.create": { "type": "contact", "set": { "name": "$input.name", "email": "$input.email" } }, "ask": { "name": "text", "email": "email" } } ] } }
-            ] },
-          { "part": "RecordList", "id": "contacts", "label": "Contacts",
+              {
+                "part": "Text",
+                "props": { "text": "Contacts", "size": "title" }
+              },
+              {
+                "part": "Button",
+                "label": "New contact",
+                "props": { "kind": "primary" },
+                "on": {
+                  "click": [
+                    {
+                      "records.create": {
+                        "type": "contact",
+                        "set": {
+                          "name": "$input.name",
+                          "email": "$input.email"
+                        }
+                      },
+                      "ask": { "name": "text", "email": "email" }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "part": "RecordList",
+            "id": "contacts",
+            "label": "Contacts",
             "bind": { "records": "contact", "query": "sort:name" },
             "props": { "columns": ["name", "email", "company"] },
-            "slots": { "empty": { "part": "Empty", "props": { "text": "No contacts yet" } } } }
+            "slots": {
+              "empty": {
+                "part": "Empty",
+                "props": { "text": "No contacts yet" }
+              }
+            }
+          }
         ]
       },
       {
-        "part": "Panel", "label": "Selected contact", "when": "$selection.contacts.count == 1",
+        "part": "Panel",
+        "label": "Selected contact",
+        "when": "$selection.contacts.count == 1",
         "children": [
-          { "part": "Form", "label": "Edit contact", "bind": { "record": "$selection.contacts.id", "type": "contact" },
-            "props": { "type": "contact", "fields": ["name", "email", "phone", "company"], "submit": "Save" },
-            "on": { "submit": [ { "records.update": { "id": "$selection.contacts.id", "set": { "name": "$input.name", "email": "$input.email", "phone": "$input.phone", "company": "$input.company" } } } ] } }
+          {
+            "part": "Form",
+            "label": "Edit contact",
+            "bind": { "record": "$selection.contacts.id", "type": "contact" },
+            "props": {
+              "type": "contact",
+              "fields": ["name", "email", "phone", "company"],
+              "submit": "Save"
+            },
+            "on": {
+              "submit": [
+                {
+                  "records.update": {
+                    "id": "$selection.contacts.id",
+                    "set": {
+                      "name": "$input.name",
+                      "email": "$input.email",
+                      "phone": "$input.phone",
+                      "company": "$input.company"
+                    }
+                  }
+                }
+              ]
+            }
+          }
         ]
       }
     ]
