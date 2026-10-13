@@ -192,12 +192,12 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	asked := fs.Bool("asked", false, "the --high models were asked for by name; none is skipped")
 	// The project's own check, named by whoever started the run, for a project
 	// whose build or test discovery cannot find (fullverification/declared.go).
-	verifyBuild := fs.String("verify-build", "", "the project's build command, run on the frozen tree in place of the one discovered")
-	verifyTest := fs.String("verify-test", "", "the project's test command, run on the frozen tree in place of the one discovered")
+	verifyBuild := fs.String("verify-build", "", "build command on the frozen tree; replaces discovery")
+	verifyTest := fs.String("verify-test", "", "test command on the frozen tree; replaces discovery")
 	// Where the session store lives when the folder's own .senior-dev is not
 	// safe to keep it in: a rig that resets the folder, or one that collects the
 	// store after the run (app/state_dir.go).
-	stateDir := fs.String("state-dir", "", "keep the session database and conversation here, outside the folder (default: $"+app.StateDirEnv+", else .senior-dev)")
+	stateDir := fs.String("state-dir", "", "session store path (see manual for defaults)")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		run(ctx, host, app.Options{
 			Goal:        strings.Join(args, " "),
