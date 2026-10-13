@@ -23,14 +23,14 @@ var crewWorkContractRoutes = []contractRoute{
 	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/crews/{cid}/report", Request: "", Response: "CrewReport"}, handle: (*Server).crewWorkHandler},
 	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/crews/{cid}/log", Request: "", Response: "CrewLogResponse"}, handle: (*Server).crewWorkHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/crews/{cid}/items", Request: "CrewItemRequest", Response: "CrewItem"}, handle: (*Server).crewWorkHandler},
-	{RouteContract: RouteContract{Method: "DELETE", Path: "/app/v1/crews/{cid}/items/{ref}", Request: "ExpectRequest", Response: "ActionResponse"}, handle: (*Server).crewWorkHandler},
+	{RouteContract: RouteContract{Method: "DELETE", Path: "/app/v1/crews/{cid}/items/{ref...}", Request: "ExpectRequest", Response: "ActionResponse"}, handle: (*Server).crewWorkHandler},
 	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/crews/{cid}/summary-since", Request: "", Response: "CrewSummaryResponse"}, handle: (*Server).crewWorkHandler},
 }
 
 // Crew work uses the same native document as membership. History is preserved
 // on finish; only unlinking removes a reference, never the referenced work.
 func (s *Server) crewWorkHandler(w http.ResponseWriter, r *http.Request) {
-	s.idempotent(s.serveCrewWork)(w, r)
+	s.idempotent(s.crewAppsAroundWork(s.serveCrewWork))(w, r)
 }
 func (s *Server) serveCrewWork(w http.ResponseWriter, r *http.Request) {
 	a := s.options.Agents

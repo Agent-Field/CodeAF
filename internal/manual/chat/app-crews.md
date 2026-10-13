@@ -114,9 +114,26 @@ or Archived. A closed parent must be reopened first. History is kept forever.
 ## Items, log and while you were away — link, unlink, read
 
 `POST /app/v1/crews/{cid}/items` accepts exactly one `ref` or HTTP(S) `url`
-without credentials, up to 256 links per crew. A URL gets an opaque ref.
+without credentials, or one record link. A URL gets an opaque ref.
+Ref and URL links stop at 256 per crew.
 `DELETE /app/v1/crews/{cid}/items/{ref}` unlinks that reference only.
 The crew GET includes its linked items.
+
+## Discussed in — a record link, never a copy
+
+`POST /app/v1/crews/{cid}/items` with `{"kind":"record","app","type","id"}`
+gives the crew a link to that record. The record stays in the app.
+`DELETE /app/v1/crews/{cid}/items/app:<app>/<type>/<id>` sets that link to
+`unlinked`. The record and its Discussed-in history stay.
+`GET /app/v1/crews/{cid}` lists those links as items with `kind` `record`,
+`label`, a live `detail` such as `Proposal · $48,000`, `access`
+(`ok`, `no_access`, `deleted`, `archived`) and
+`href` `codeaf://apps/<app>/<type>/<id>`.
+`no_access` is a record the caller cannot open. A deleted record stays in
+the list. An archived app is `archived`.
+Finish crew sets the links to `finished`. Reopen sets those same links back
+to `open`. The crew report lists them under Everything it touched. Each line
+ends with the app name and View, such as `CRM · View`.
 
 `GET /app/v1/crews/{cid}/log` shows everyone talking, newest first, up to
 100 entries; use its `before` cursor to read older entries. This log is read

@@ -94,8 +94,7 @@ func (s *Server) serveCrew(w http.ResponseWriter, r *http.Request) {
 			if manager, ok := d.Records[c.ManagerID]; ok {
 				plan = a.turnSnapshot(manager).Tasks.Tasks
 			}
-			write(w, 200, CrewResponse{Crew: c, Tree: members, Plan: plan, Items: work.Items})
-			return nil
+			return s.writeCrewView(w, r, CrewResponse{Crew: c, Tree: members, Plan: plan, Items: work.Items})
 		}, false)
 		if err != nil {
 			crewFailure(w, err)

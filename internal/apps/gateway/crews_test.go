@@ -30,6 +30,15 @@ func crewsTestServices(t *testing.T) *svc.Services {
 	return all
 }
 
+func linksBuilt(method string) bool {
+	switch method {
+	case bridge.MethodLinksAdd, bridge.MethodLinksRemove, bridge.MethodLinksForRecord, bridge.MethodLinksForCrew:
+		return true
+	default:
+		return false
+	}
+}
+
 func TestCrewsMethodsDispatchThroughWebSocket(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -71,11 +80,16 @@ func TestCrewsMethodsDispatchThroughWebSocket(t *testing.T) {
 			}
 			id := socket.send(bridge.TypeCall, app, tt.name, "", tt.params)
 			reply := socket.read()
-			if tt.name == bridge.MethodAppsPrebuilt {
+			switch {
+			case tt.name == bridge.MethodAppsPrebuilt:
 				if !factoryResult(t, id, reply) {
 					t.Fatalf("reply=%+v", reply)
 				}
-			} else {
+			case linksBuilt(tt.name):
+				if reply.ID != id || reply.Type != bridge.TypeResult || reply.Error != nil {
+					t.Fatalf("reply=%+v", reply)
+				}
+			default:
 				code := bridge.CodeNotBuilt
 				if tt.name == bridge.MethodCustomBundle {
 					code = bridge.CodeNotFound
