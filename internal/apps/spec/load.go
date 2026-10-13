@@ -45,7 +45,7 @@ type Bundle struct {
 func ReadDir(dir string) (Files, error) {
 	files := Files{}
 	root := os.DirFS(dir)
-	for _, pattern := range []string{AppFile, PlanFile, AgentFile, ScreensDir + "/*.json", RunsDir + "/*.yaml"} {
+	for _, pattern := range []string{AppFile, PlanFile, AgentFile, ScreensDir + "/*.json", RunsDir + "/*.yaml", "custom/*.tsx"} {
 		matches, err := fs.Glob(root, pattern)
 		if err != nil {
 			return nil, err

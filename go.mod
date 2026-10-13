@@ -14,6 +14,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
+	github.com/evanw/esbuild v0.25.11
 	github.com/flynn/noise v1.1.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-git/go-git/v5 v5.16.3
