@@ -20,3 +20,8 @@ resource backend; the spending resource does not rewrite their native documents.
 Budget questions register through the Inbox source interface. The Inbox owns
 answer-once and its five-second Undo; the spending source applies a temporary
 raise only after that hold. Direct permanent/today cap requests remain available.
+
+Pending automatic memory candidates recheck the addition switch before saving,
+including after model settlement; turning it off cannot leave a queued extraction
+adding memories afterward. Memory lookup and extraction also check app caps before
+dispatching their model calls.

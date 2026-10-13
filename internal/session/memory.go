@@ -305,6 +305,9 @@ type billedCompleter struct {
 }
 
 func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	if err := b.agent.appSpendingBlock(); err != nil {
+		return nil, err
+	}
 	// EVERY REFLEX CALL IS A MEMORY CALL, said here because this wrapper is the
 	// one door all of them go through — internal/reflex takes a completer and
 	// knows nothing about roles, so a stamp inside it would be a stamp in the
@@ -1107,6 +1110,9 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 	}
 	go func() {
 		defer a.memoryJobs.Done()
+		if !config.AgentsMayAddMemoryAt(a.config.ProfileDir) {
+			return
+		}
 		ctx := a.memoryCtx
 		client := a.reflexClient()
 		if client == nil {
@@ -1319,6 +1325,11 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 // post-turn pass), publishes the claim's provenance in the memory write's own
 // transaction.
 func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer, candidate reflex.ExtractResult, source *memoryTurnEvidence) (store.Memory, error) {
+	// A pending extraction cannot keep adding after the person turns it off.
+	// Explicit saves carry no turn source and remain available.
+	if source != nil && !config.AgentsMayAddMemoryAt(a.config.ProfileDir) {
+		return store.Memory{}, nil
+	}
 	if strings.TrimSpace(candidate.Text) == "" {
 		return store.Memory{}, errors.New("session: a memory with no text says nothing")
 	}
@@ -1348,6 +1359,9 @@ func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer,
 		// NOTHING NEAR IT IS NOT A QUESTION. A store with no opinion about this
 		// subject has nothing for a decider to weigh, and asking anyway would be
 		// a call whose answer is known.
+		if source != nil && !config.AgentsMayAddMemoryAt(a.config.ProfileDir) {
+			return store.Memory{}, nil
+		}
 		return a.addThroughDoorFrom(fresh, evidence)
 	}
 	near := make([]reflex.Neighbor, 0, len(neighbors))
@@ -1365,6 +1379,9 @@ func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer,
 	decided, err := reflex.Decide(ctx, client, candidate, near)
 	if err != nil {
 		return store.Memory{}, err
+	}
+	if source != nil && !config.AgentsMayAddMemoryAt(a.config.ProfileDir) {
+		return store.Memory{}, nil
 	}
 	// THE SETTLED LINE IS BOUNDED BY THE CAP THE STORE WILL ENFORCE. The
 	// candidate arrives already clipped, but a decider's merged line REPLACES it

@@ -1108,3 +1108,6 @@ includes only its own native membership and admitted child scope. Owner-aware
 `MemoryBackend` implementations can supply other resource storage. The saved
 memory-add switch hides the model's remember tool and suppresses post-turn
 extraction; existing retrieval and explicit person saves remain available.
+Pending extraction and settlement recheck that switch before saving. The billed
+memory completer checks app caps before calling its provider, so lookup and
+extraction cannot spend beyond the same admission boundary as turn calls.

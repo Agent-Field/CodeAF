@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -153,6 +155,66 @@ func TestMemoryAdditionSwitchKeepsExplicitSavesAndExistingReads(t *testing.T) {
 	a.learnFromTurn("Invent another fact", "Keep it")
 	if rows, err := brain.ListMemories(nil, 0); err != nil || len(rows) != 1 {
 		t.Fatalf("automatic write %v %v", rows, err)
+	}
+}
+
+func TestAppAgentCapStopsMemoryCallsBeforeTheProvider(t *testing.T) {
+	profile := t.TempDir()
+	ledger := filepath.Join(profile, "v3", UsageLedgerName)
+	c := &scriptedCompleter{}
+	a, _ := newTestAgent(t, c, func(cfg *Config) { cfg.ProfileDir = profile; cfg.usageLedger = ledger })
+	if err := a.SetAppBudget(5); err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	id := a.appAgentIDLocked()
+	a.mu.Unlock()
+	appLedgerFixture(t, ledger, UsageLine{At: time.Now(), Session: id, USD: 5})
+	_, err := (billedCompleter{agent: a, inner: c}).CompleteWithMessages(context.Background(), nil)
+	if !errors.Is(err, ErrSpendRail) || c.requests() != 0 {
+		t.Fatalf("memory cap: %v, provider calls %d", err, c.requests())
+	}
+}
+
+func TestMemoryAdditionSwitchDiscardsPendingAutomaticCandidates(t *testing.T) {
+	for _, settling := range []bool{false, true} {
+		t.Run(fmt.Sprintf("settling=%t", settling), func(t *testing.T) {
+			profile := t.TempDir()
+			brain, err := store.Open(filepath.Join(profile, "graph.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = brain.Close() })
+			a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) { cfg.Memory = brain; cfg.ProfileDir = profile; cfg.RolesSource = nil })
+			disable := func() {
+				if err := config.ApplyAppSettings(profile, map[string]json.RawMessage{"memory.agents_may_add": json.RawMessage("false")}, ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			client := &scriptedCompleter{}
+			if settling {
+				existing, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Type: store.MemoryPreference, Title: "Editor", Text: "Prefer tabs"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				client.steps = []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+					disable()
+					return textResponse(`{"op":"update","target_id":"` + existing.ID + `","title":"Editor","text":"Prefer spaces"}`), nil
+				}}
+			} else {
+				disable()
+			}
+			candidate := reflex.ExtractResult{Mem: 1, Type: store.MemoryPreference, Scope: store.MemoryScopeUser, Title: "Editor", Text: "Prefer spaces"}
+			source := a.memoryTurnSource("Prefer spaces")
+			kept, err := a.applyCandidateFrom(context.Background(), client, candidate, &source)
+			if err != nil || kept.ID != "" {
+				t.Fatalf("disabled automatic save: %v %v", kept, err)
+			}
+			rows, err := brain.ListMemories(nil, 0)
+			if err != nil || !settling && len(rows) != 0 || settling && (len(rows) != 1 || rows[0].Text != "Prefer tabs" || client.requests() != 1) {
+				t.Fatalf("pending extraction changed memories: %v %v; calls %d", rows, err, client.requests())
+			}
+		})
 	}
 }
 

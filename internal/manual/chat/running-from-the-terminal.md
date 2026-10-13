@@ -1644,4 +1644,6 @@ Turning `memory.agents_may_add` off removes the model's `remember` tool and stop
 automatic post-turn memory extraction. Existing memory remains readable.
 Explicit saves you request, including `/remember`, still work. An already-issued
 remember tool call rechecks the switch before writing. Turn it on to allow
-model additions again.
+model additions again. Pending automatic candidates also recheck before saving,
+including after a model has finished deciding how to combine memories.
+Memory lookup and extraction model calls obey the app's spending caps.
