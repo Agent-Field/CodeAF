@@ -1,19 +1,49 @@
 {
-  "$schema": "https://codeaf.dev/schema/screen/1.json",
-  "screen": "deals", "title": "Deals",
-  "nav": { "part": "SectionTabs", "props": { "items": ["Deals", "Companies"] } },
-  "body": { "part": "Row", "children": [
-    { "part": "RecordList", "id": "deals",
-      "bind": { "records": "deal", "query": "stage:-Lost sort:-amount" },
-      "props": { "views": ["List", "Board by stage"], "meter": "stage", "columns": ["name", "stage", "amount", "likely"] },
-      "on": { "open": [{ "open": "deal", "id": "$row.id" }] } },
-    { "part": "BulkBar", "when": "$selection.deals.count > 0", "children": [
-      { "part": "Button", "label": "Draft follow-ups",
-        "on": { "click": [{ "runs.start": "follow-up", "params": { "deals": "$selection.deals.ids" } }] } },
-      { "part": "Button", "label": "Likely to close · AI",
-        "on": { "click": [{ "ai.sort": "deals", "field": "likely" }] } } ] },
-    { "part": "Panel", "when": "$selection.deals.count == 1", "children": [
-      { "part": "RecordPage", "bind": { "record": "$selection.deals.id" },
-        "props": { "fields": ["stage", "amount", "close_on", "owner"], "actions": ["follow-up"] } } ] }
-  ] }
+  "screen": "deals",
+  "title": "Deals",
+  "nav": { "part": "SectionTabs", "label": "Partnerships sections", "props": { "items": ["Deals", "Companies"] } },
+  "body": {
+    "part": "Row",
+    "children": [
+      {
+        "part": "Stack",
+        "children": [
+          {
+            "part": "Row",
+            "children": [
+              { "part": "Text", "props": { "text": "Deals", "size": "title" } },
+              {
+                "part": "Button", "label": "New deal", "props": { "kind": "primary" },
+                "on": { "click": [{ "records.create": { "type": "deal", "set": { "name": "$input.name", "value": "$input.value", "stage": "Idea" } }, "ask": { "name": "text", "value": "money" } }] }
+              }
+            ]
+          },
+          {
+            "part": "RecordList", "id": "deals", "label": "Deals",
+            "bind": { "records": "deal", "query": "stage:-Dropped sort:-value" },
+            "props": { "views": ["Board by stage", "List"], "meter": "stage", "groupBy": "stage", "query": true, "columns": ["name", "company", "stage", "value", "due_on", "owner"] },
+            "slots": { "empty": { "part": "Empty", "props": { "text": "No deals yet. Add the first one." } } }
+          },
+          {
+            "part": "BulkBar", "when": "$selection.deals.count > 0", "props": { "list": "deals" },
+            "children": [
+              { "part": "Button", "label": "Draft nudge", "on": { "click": [{ "runs.start": "follow-up", "params": { "deals": "$selection.deals.ids" } }] } }
+            ]
+          }
+        ]
+      },
+      {
+        "part": "Panel", "label": "Selected deal", "when": "$selection.deals.count == 1",
+        "children": [
+          { "part": "RecordPage", "label": "Deal", "bind": { "record": "$selection.deals.id", "type": "deal" }, "props": { "fields": ["name", "company", "stage", "value", "due_on", "owner", "last_touch", "notes"], "actions": ["nudge"] } },
+          {
+            "part": "Form", "label": "Edit deal", "bind": { "record": "$selection.deals.id", "type": "deal" },
+            "props": { "type": "deal", "fields": ["name", "company", "stage", "value", "due_on", "owner", "notes"], "submit": "Save" },
+            "on": { "submit": [{ "records.update": { "id": "$selection.deals.id", "set": { "name": "$input.name", "company": "$input.company", "stage": "$input.stage", "value": "$input.value", "due_on": "$input.due_on", "owner": "$input.owner", "notes": "$input.notes" } } }] }
+          },
+          { "part": "Button", "label": "Delete deal…", "props": { "kind": "destructive" }, "on": { "click": [{ "records.delete": { "id": "$selection.deals.id" }, "confirm": "Delete this deal?" }] } }
+        ]
+      }
+    ]
+  }
 }

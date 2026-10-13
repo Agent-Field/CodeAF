@@ -1,1 +1,1 @@
-A CRM for our sales pipeline: companies, deals and contacts. The agent drafts follow-ups when a deal goes quiet for a week; I approve every email before it sends.
+I run partnerships for a small software company. I want to track the companies we talk to and the deals with each of them, from first idea to signed. When a deal has gone quiet for a week, the agent should draft a nudge email, and I approve it before anything is sent.

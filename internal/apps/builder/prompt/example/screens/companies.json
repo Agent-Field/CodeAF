@@ -1,9 +1,43 @@
 {
-  "$schema": "https://codeaf.dev/schema/screen/1.json",
-  "screen": "companies", "title": "Companies",
-  "nav": { "part": "SectionTabs", "props": { "items": ["Deals", "Companies"] } },
-  "body": { "part": "RecordList", "id": "companies",
-    "bind": { "records": "company", "query": "sort:name" },
-    "props": { "columns": ["name", "domain", "owner"] },
-    "on": { "open": [{ "open": "company", "id": "$row.id" }] } }
+  "screen": "companies",
+  "title": "Companies",
+  "nav": { "part": "SectionTabs", "label": "Partnerships sections", "props": { "items": ["Deals", "Companies"] } },
+  "body": {
+    "part": "Row",
+    "children": [
+      {
+        "part": "Stack",
+        "children": [
+          {
+            "part": "Row",
+            "children": [
+              { "part": "Text", "props": { "text": "Companies", "size": "title" } },
+              {
+                "part": "Button", "label": "New company", "props": { "kind": "primary" },
+                "on": { "click": [{ "records.create": { "type": "company", "set": { "name": "$input.name", "website": "$input.website" } }, "ask": { "name": "text", "website": "url" } }] }
+              }
+            ]
+          },
+          {
+            "part": "RecordList", "id": "companies", "label": "Companies",
+            "bind": { "records": "company", "query": "sort:name" },
+            "props": { "query": true, "columns": ["name", "kind", "website", "owner"] },
+            "slots": { "empty": { "part": "Empty", "props": { "text": "No companies yet. Add the first one." } } }
+          }
+        ]
+      },
+      {
+        "part": "Panel", "label": "Selected company", "when": "$selection.companies.count == 1",
+        "children": [
+          { "part": "RecordPage", "label": "Company", "bind": { "record": "$selection.companies.id", "type": "company" }, "props": { "fields": ["name", "kind", "website", "owner", "notes"] } },
+          {
+            "part": "Form", "label": "Edit company", "bind": { "record": "$selection.companies.id", "type": "company" },
+            "props": { "type": "company", "fields": ["name", "kind", "website", "owner", "notes"], "submit": "Save" },
+            "on": { "submit": [{ "records.update": { "id": "$selection.companies.id", "set": { "name": "$input.name", "kind": "$input.kind", "website": "$input.website", "owner": "$input.owner", "notes": "$input.notes" } } }] }
+          },
+          { "part": "Button", "label": "Delete company…", "props": { "kind": "destructive" }, "on": { "click": [{ "records.delete": { "id": "$selection.companies.id" }, "confirm": "Delete this company?" }] } }
+        ]
+      }
+    ]
+  }
 }

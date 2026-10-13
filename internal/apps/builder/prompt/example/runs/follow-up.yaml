@@ -1,20 +1,25 @@
 run: follow-up
-title: Follow up on quiet deals
-budget: { per_run: 0.50 }
+title: Nudge quiet deals
+budget: { per_run: 0.30 }
 params:
-  deals: { type: refs, to: deal, default: "stage:Qualified,Proposal,Negotiation last_touch<-7d" }
+  deals: { type: refs, to: deal, default: "stage:Talking,Terms last_touch<-7d" }
 steps:
   - id: each
-    loop: { over: $params.deals, as: deal, max: 25 }
+    loop: { over: $params.deals, as: deal, max: 20 }
     steps:
+      - id: load
+        records.query: { type: deal, query: "id:{{deal}}", limit: 1 }
       - id: draft
-        agent: CRM agent
-        prompt: Draft a short, plain follow-up for {{deal.name}}.
-        retry: { max: 2, backoff: 30s }
+        agent: Partnerships agent
+        prompt: "Draft a short, friendly nudge email about the deal {{steps.load.output.name}} (stage {{steps.load.output.stage}})."
+        output:
+          type: object
+          required: [subject, body]
+          properties: { subject: { type: string }, body: { type: string } }
       - id: send
-        gate: { approval: send, who: $deal.owner }
+        gate: { approval: send, who: $me, title: "Approval needed: send nudge" }
         tool: gmail.send
-        as: $deal.owner
-        args: { draft: $steps.draft.output }
+        as: $me
+        args: { subject: $steps.draft.output.subject, body: $steps.draft.output.body }
       - id: touch
-        records.update: { id: $deal.id, set: { last_touch: $now } }
+        records.update: { type: deal, id: $deal, set: { last_touch: $now } }

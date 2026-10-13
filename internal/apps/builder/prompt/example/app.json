@@ -1,33 +1,45 @@
 {
-  "$schema": "https://codeaf.dev/schema/app/1.json",
-  "id": "crm", "name": "CRM", "space": "acme", "version": 1, "kit": 2,
-  "agent": { "name": "CRM agent", "file": "agent.md", "model": "deepseek/deepseek-v4.1-flash" },
+  "id": "partnerships",
+  "name": "Partnerships",
+  "description": "Companies we talk to and the deals with each, from first idea to signed. The agent drafts nudges; every email waits for approval.",
+  "space": "personal",
+  "version": 1,
+  "kit": 2,
+  "agent": { "name": "Partnerships agent", "file": "agent.md", "model": "deepseek/deepseek-v4.1-flash" },
   "records": {
-    "company": { "title": "name", "fields": {
-      "name": { "type": "text", "required": true, "unique": true },
-      "domain": { "type": "url", "index": true },
-      "owner": { "type": "person", "default": "$me" } } },
-    "contact": { "title": "name", "fields": {
-      "name": { "type": "text", "required": true },
-      "email": { "type": "email", "index": true },
-      "company": { "type": "ref", "to": "company" } } },
-    "deal": { "title": "name", "fields": {
-      "name": { "type": "text", "required": true },
-      "company": { "type": "ref", "to": "company", "required": true },
-      "contacts": { "type": "refs", "to": "contact" },
-      "stage": { "type": "enum", "default": "Lead", "values": ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"] },
-      "amount": { "type": "money", "currency": "USD" },
-      "close_on": { "type": "date" },
-      "owner": { "type": "person", "default": "$me" },
-      "last_touch": { "type": "datetime" },
-      "likely": { "type": "enum", "values": ["Likely", "Maybe", "Unlikely"], "ai": "likely to close this month" } } }
+    "company": {
+      "label": "Company", "plural": "Companies", "title": "name",
+      "fields": {
+        "name": { "type": "text", "label": "Company", "required": true, "unique": true },
+        "website": { "type": "url" },
+        "kind": { "type": "enum", "values": ["Reseller", "Integrator", "Media", "Other"] },
+        "owner": { "type": "person", "default": "$me" },
+        "notes": { "type": "longtext" }
+      }
+    },
+    "deal": {
+      "label": "Deal", "plural": "Deals", "title": "name",
+      "fields": {
+        "name": { "type": "text", "label": "Deal", "required": true },
+        "company": { "type": "ref", "to": "company", "index": true },
+        "stage": { "type": "enum", "default": "Idea", "index": true, "values": ["Idea", "Talking", "Terms", "Signed", "Dropped"] },
+        "value": { "type": "money", "currency": "USD" },
+        "due_on": { "type": "date", "label": "Due" },
+        "owner": { "type": "person", "default": "$me" },
+        "last_touch": { "type": "datetime", "index": true },
+        "notes": { "type": "longtext" }
+      }
+    }
   },
   "capabilities": {
-    "records": { "company": "rw", "contact": "rw", "deal": "rw" },
-    "connectors": { "gmail": { "as": "member", "can": ["read", "draft", "send"], "approve": ["send"] } },
-    "ai": ["sort"], "tools": []
+    "records": { "company": "rw", "deal": "rw" },
+    "connectors": { "gmail": { "as": "member", "can": ["draft", "send"], "approve": ["send"] } },
+    "ai": ["draft"],
+    "tools": []
   },
-  "triggers": [{ "id": "quiet", "on": "schedule", "cron": "0 9 * * 1-5", "run": "follow-up" }],
-  "commands": [{ "id": "follow-up", "label": "Draft follow-up", "for": "deal", "run": "follow-up", "params": { "deals": "$selection.ids" } }],
-  "budget": { "month": 20, "currency": "USD", "per_run": 0.5, "at_cap": "ask", "models": ["deepseek/deepseek-v4.1-flash"] }
+  "triggers": [{ "id": "mondays", "on": "schedule", "cron": "0 9 * * 1", "run": "follow-up" }],
+  "commands": [
+    { "id": "nudge", "label": "Draft nudge", "for": "deal", "run": "follow-up", "params": { "deals": "$selection.deals.ids" } }
+  ],
+  "budget": { "month": 20, "currency": "USD", "per_run": 0.3, "at_cap": "ask", "models": ["deepseek/deepseek-v4.1-flash"] }
 }
