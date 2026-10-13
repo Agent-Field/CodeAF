@@ -89,10 +89,11 @@ func (s *Service) open(ctx context.Context, scope svc.Scope, writing, seeding bo
 	u := url.URL{Scheme: "file", Path: filepath.Join(dir, filename)}
 	q := u.Query()
 	q.Add("_pragma", "busy_timeout(5000)")
+	s.prepareShapeConnection(scope, c, &writing, q)
 	u.RawQuery = q.Encode()
 	c.db, err = sql.Open("sqlite", u.String())
 	if err != nil {
-		lock.Unlock()
+		c.unlock()
 		return nil, err
 	}
 	c.db.SetMaxOpenConns(1)

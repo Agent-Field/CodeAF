@@ -7,19 +7,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
-type Service struct{ all *svc.Services }
-
 var _ svc.Shape = (*Service)(nil)
-
-func New(_ svc.Config, all *svc.Services) *Service { return &Service{all: all} }
-
-func (*Service) Open(context.Context, svc.Scope, bridge.ShapeOpenParams) (bridge.ShapeOpenResult, error) {
-	return bridge.ShapeOpenResult{}, bridge.NotBuilt("shape")
-}
-
-func (*Service) Get(context.Context, svc.Scope, bridge.ShapeGetParams) (bridge.ShapeGetResult, error) {
-	return bridge.ShapeGetResult{}, bridge.NotBuilt("shape")
-}
 
 func (*Service) Request(context.Context, svc.Scope, bridge.ShapeRequestParams) (bridge.ShapeRequestResult, error) {
 	return bridge.ShapeRequestResult{}, bridge.NotBuilt("shape")
@@ -33,16 +21,8 @@ func (*Service) FixChange(context.Context, svc.Scope, bridge.ShapeChangeFixParam
 	return bridge.ShapeChangeFixResult{}, bridge.NotBuilt("shape")
 }
 
-func (*Service) CancelChange(context.Context, svc.Scope, bridge.ShapeChangeCancelParams) (bridge.ShapeChangeCancelResult, error) {
-	return bridge.ShapeChangeCancelResult{}, bridge.NotBuilt("shape")
-}
-
 func (*Service) Answer(context.Context, svc.Scope, bridge.ShapeAnswerParams) (bridge.ShapeAnswerResult, error) {
 	return bridge.ShapeAnswerResult{}, bridge.NotBuilt("shape")
-}
-
-func (*Service) Diff(context.Context, svc.Scope, bridge.ShapeDiffParams) (bridge.ShapeDiffResult, error) {
-	return bridge.ShapeDiffResult{}, bridge.NotBuilt("shape")
 }
 
 func (*Service) Preview(context.Context, svc.Scope, bridge.ShapePreviewParams) (bridge.ShapePreviewResult, error) {
@@ -51,10 +31,6 @@ func (*Service) Preview(context.Context, svc.Scope, bridge.ShapePreviewParams) (
 
 func (*Service) Apply(context.Context, svc.Scope, bridge.ShapeApplyParams) (bridge.ShapeApplyResult, error) {
 	return bridge.ShapeApplyResult{}, bridge.NotBuilt("shape")
-}
-
-func (*Service) Discard(context.Context, svc.Scope, bridge.ShapeDiscardParams) (bridge.ShapeDiscardResult, error) {
-	return bridge.ShapeDiscardResult{}, bridge.NotBuilt("shape")
 }
 
 func (*Service) DismissReplay(context.Context, svc.Scope, bridge.ShapeReplayDismissParams) (bridge.ShapeReplayDismissResult, error) {
