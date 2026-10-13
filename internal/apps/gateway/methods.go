@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/caps"
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
@@ -31,7 +33,18 @@ var methods = map[string]method{
 		return all.Builder.Create(ctx, scope.Caller, p)
 	}},
 	bridge.MethodAppsGet: {run: func(ctx context.Context, all *svc.Services, scope svc.Scope, _ json.RawMessage) (any, error) {
-		return all.Store.Get(ctx, scope.App)
+		detail, err := all.Store.Get(ctx, scope.App)
+		if err != nil {
+			return nil, err
+		}
+		if raw := detail.Files[spec.AppFile]; raw != "" {
+			var app spec.App
+			if err := json.Unmarshal([]byte(raw), &app); err != nil {
+				return nil, err
+			}
+			detail.Needs = caps.Needs(&app)
+		}
+		return detail, nil
 	}},
 	bridge.MethodAppsKeep: {run: func(ctx context.Context, all *svc.Services, scope svc.Scope, _ json.RawMessage) (any, error) {
 		return all.Store.Keep(ctx, scope.App)
@@ -95,7 +108,7 @@ func with[P, R any](pick func(*svc.Services) func(context.Context, svc.Scope, P)
 }
 
 func decode(raw json.RawMessage, into any) error {
-	if len(raw) == 0 {
+	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
 	if err := json.Unmarshal(raw, into); err != nil {

@@ -4,13 +4,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
 const subscriberBuffer = 256
 
-// Hub is the in-process pub/sub. A slow subscriber loses events rather than
-// blocking publishers; clients re-query on reconnect.
+// Hub is the in-process pub/sub. A slow subscriber receives a
+// terminal error and is removed; clients re-query on reconnect.
 type Hub struct {
 	mu     sync.Mutex
 	seq    map[string]int64
@@ -36,11 +37,23 @@ func (h *Hub) Publish(topic string, data any) {
 	defer h.mu.Unlock()
 	h.seq[topic]++
 	event := svc.Event{Topic: topic, Seq: h.seq[topic], Data: data}
-	for _, sub := range h.subs {
+	for id, sub := range h.subs {
 		if matches(sub.topic, topic) {
 			select {
 			case sub.ch <- event:
 			default:
+				// A gap cannot look like a complete stream of row diffs.
+			drain:
+				for {
+					select {
+					case <-sub.ch:
+					default:
+						break drain
+					}
+				}
+				sub.ch <- svc.Event{Topic: topic, Seq: event.Seq, Data: bridge.Errorf(bridge.CodeConflict, "slow consumer: reconnect and re-query")}
+				close(sub.ch)
+				delete(h.subs, id)
 			}
 		}
 	}
@@ -58,9 +71,11 @@ func (h *Hub) Subscribe(topic string) (<-chan svc.Event, func()) {
 	return sub.ch, func() {
 		once.Do(func() {
 			h.mu.Lock()
-			delete(h.subs, id)
+			if _, exists := h.subs[id]; exists {
+				delete(h.subs, id)
+				close(sub.ch)
+			}
 			h.mu.Unlock()
-			close(sub.ch)
 		})
 	}
 }

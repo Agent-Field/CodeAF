@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -14,23 +15,43 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
-const readLimit = 4 << 20
+const (
+	readLimit        = 4 << 20
+	outputBuffer     = 64
+	maxCalls         = 32
+	maxSubscriptions = 128
+	writeTimeout     = 2 * time.Second
+)
 
-// Handler serves bridge.Path. Origin, host and the bearer token are checked
-// by the app transport guard before this handler runs.
+// Handler serves bridge.Path behind the existing app transport guard, which
+// checks the launch token, origin and host before upgrading the connection.
 func Handler(ctx context.Context, all *svc.Services) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !offersProtocol(r) {
+			http.Error(w, "codeaf.apps.v1 subprotocol required", http.StatusBadRequest)
+			return
+		}
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			Subprotocols:       []string{bridge.Subprotocol},
-			InsecureSkipVerify: true, // the guard already enforced the origin allowlist
+			InsecureSkipVerify: true, // The app guard already enforced the origin allowlist.
 		})
 		if err != nil {
 			return
 		}
 		conn.SetReadLimit(readLimit)
-		session := newSession(ctx, conn, all)
-		session.serve()
+		newSession(ctx, conn, all).serve()
 	})
+}
+
+func offersProtocol(r *http.Request) bool {
+	for _, header := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, protocol := range strings.Split(header, ",") {
+			if strings.TrimSpace(protocol) == bridge.Subprotocol {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type session struct {
@@ -39,26 +60,34 @@ type session struct {
 	conn   *websocket.Conn
 	all    *svc.Services
 	out    chan bridge.Envelope
+	fatal  chan *bridge.Error
+	wg     sync.WaitGroup
 	mu     sync.Mutex
 	subs   map[string]func()
+	calls  map[string]bool
 }
 
 func newSession(parent context.Context, conn *websocket.Conn, all *svc.Services) *session {
 	ctx, cancel := context.WithCancel(parent)
-	return &session{ctx: ctx, cancel: cancel, conn: conn, all: all, out: make(chan bridge.Envelope, 64), subs: map[string]func(){}}
+	return &session{ctx: ctx, cancel: cancel, conn: conn, all: all, out: make(chan bridge.Envelope, outputBuffer), fatal: make(chan *bridge.Error, 1), subs: map[string]func(){}, calls: map[string]bool{}}
 }
 
 func (s *session) serve() {
 	defer s.close()
-	go s.write()
+	s.wg.Add(1)
+	go func() { defer s.wg.Done(); s.write() }()
 	for {
-		_, data, err := s.conn.Read(s.ctx)
+		kind, data, err := s.conn.Read(s.ctx)
 		if err != nil {
 			return
 		}
+		if kind != websocket.MessageText {
+			s.send(failure("", bridge.Errorf(bridge.CodeInvalid, "messages must be JSON text frames")))
+			continue
+		}
 		var in bridge.Envelope
 		if err := json.Unmarshal(data, &in); err != nil {
-			s.send(failure("", bridge.Errorf(bridge.CodeInvalid, "envelope: "+err.Error())))
+			s.send(failure("", bridge.Errorf(bridge.CodeInvalid, "invalid envelope")))
 			continue
 		}
 		s.route(in)
@@ -66,28 +95,53 @@ func (s *session) serve() {
 }
 
 func (s *session) route(in bridge.Envelope) {
+	if in.ID == "" {
+		s.send(failure("", bridge.Errorf(bridge.CodeInvalid, "request id is required")))
+		return
+	}
 	switch in.Type {
 	case bridge.TypeCall:
-		go s.call(in)
+		s.mu.Lock()
+		duplicate, full := s.calls[in.ID], len(s.calls) >= maxCalls
+		if !duplicate && !full {
+			s.calls[in.ID] = true
+		}
+		s.mu.Unlock()
+		if duplicate || full {
+			s.send(failure(in.ID, bridge.Errorf(bridge.CodeConflict, "duplicate request id or too many active calls")))
+			return
+		}
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			defer func() { s.mu.Lock(); delete(s.calls, in.ID); s.mu.Unlock() }()
+			s.call(in)
+		}()
 	case bridge.TypeSub:
 		s.subscribe(in)
 	case bridge.TypeUnsub:
+		if _, err := s.topicScope(in, "unsub"); err != nil {
+			s.send(failure(in.ID, err))
+			return
+		}
 		s.unsubscribe(in.Topic)
-		s.send(bridge.Envelope{ID: in.ID, Type: bridge.TypeResult})
+		s.send(bridge.Envelope{ID: in.ID, Type: bridge.TypeResult, Result: json.RawMessage(`{}`)})
 	default:
-		s.send(failure(in.ID, bridge.Errorf(bridge.CodeInvalid, "unknown message type "+string(in.Type))))
+		s.send(failure(in.ID, bridge.Errorf(bridge.CodeInvalid, "unknown message type")))
 	}
 }
 
 func (s *session) call(in bridge.Envelope) {
+	scope := ownerScope(in.App)
+	err := s.all.Caps.Allow(s.ctx, scope, in.Method, in.Params)
 	entry, ok := methods[in.Method]
+	// Unknown wire methods remain invalid even when internal tool capabilities
+	// recognise the same verb for runs or the app agent.
 	if !ok {
-		s.send(failure(in.ID, bridge.Errorf(bridge.CodeInvalid, "unknown method "+in.Method)))
-		return
+		err = bridge.Errorf(bridge.CodeInvalid, "unknown method "+in.Method)
 	}
-	scope, err := s.scope(in.App, entry.global)
 	if err == nil {
-		err = s.all.Caps.Allow(s.ctx, scope, in.Method, in.Params)
+		scope, err = s.resolveScope(scope, entry.global)
 	}
 	var result any
 	if err == nil {
@@ -105,57 +159,84 @@ func (s *session) call(in bridge.Envelope) {
 	s.send(bridge.Envelope{ID: in.ID, Type: bridge.TypeResult, Result: data})
 }
 
-// scope resolves the caller and data mode. Wave 1 has one member, the owner,
-// holding every role.
-func (s *session) scope(app string, global bool) (svc.Scope, error) {
-	scope := svc.Scope{App: app, Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}, Data: svc.DataSample}
+func ownerScope(app string) svc.Scope {
+	return svc.Scope{App: app, Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}, Data: svc.DataSample}
+}
+
+// resolveScope selects sample records until Keep, regardless of client params.
+func (s *session) resolveScope(scope svc.Scope, global bool) (svc.Scope, error) {
 	if global {
 		return scope, nil
 	}
-	if app == "" {
+	if scope.App == "" {
 		return scope, bridge.Errorf(bridge.CodeInvalid, "this method needs app")
 	}
-	detail, err := s.all.Store.Get(s.ctx, app)
-	if err != nil {
-		return scope, err
-	}
-	if detail.State == bridge.StateKept {
+	detail, err := s.all.Store.Get(s.ctx, scope.App)
+	if err == nil && detail.State == bridge.StateKept {
 		scope.Data = svc.DataReal
 	}
-	return scope, nil
+	return scope, err
+}
+
+func (s *session) topicScope(in bridge.Envelope, method string) (svc.Scope, error) {
+	app, ok := topicApp(in.Topic)
+	if !ok {
+		return svc.Scope{}, bridge.Errorf(bridge.CodeInvalid, "topics look like app/<id>/...")
+	}
+	if in.App != "" && in.App != app {
+		return svc.Scope{}, bridge.Errorf(bridge.CodeInvalid, "topic and app disagree")
+	}
+	scope := ownerScope(app)
+	raw, _ := json.Marshal(map[string]string{"topic": in.Topic})
+	if err := s.all.Caps.Allow(s.ctx, scope, method, raw); err != nil {
+		return scope, err
+	}
+	return s.resolveScope(scope, false)
 }
 
 func (s *session) subscribe(in bridge.Envelope) {
-	app, ok := topicApp(in.Topic)
-	if !ok {
-		s.send(failure(in.ID, bridge.Errorf(bridge.CodeInvalid, "topics look like app/<id>/...")))
-		return
-	}
-	scope, err := s.scope(app, false)
-	if err == nil {
-		err = s.all.Caps.Allow(s.ctx, scope, "sub", json.RawMessage(`{"topic":`+quote(in.Topic)+`}`))
-	}
-	if err != nil {
+	if _, err := s.topicScope(in, "sub"); err != nil {
 		s.send(failure(in.ID, err))
 		return
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, exists := s.subs[in.Topic]; !exists {
+		if len(s.subs) >= maxSubscriptions {
+			s.send(failure(in.ID, bridge.Errorf(bridge.CodeConflict, "too many subscriptions")))
+			return
+		}
 		events, cancel := s.all.Hub.Subscribe(in.Topic)
 		s.subs[in.Topic] = cancel
-		go s.forward(events)
+		// Queue the receipt before allowing this subscription's first event.
+		s.send(bridge.Envelope{ID: in.ID, Type: bridge.TypeResult, Result: json.RawMessage(`{}`)})
+		s.wg.Add(1)
+		go func() { defer s.wg.Done(); s.forward(events) }()
+		return
 	}
-	s.mu.Unlock()
-	s.send(bridge.Envelope{ID: in.ID, Type: bridge.TypeResult})
+	s.send(bridge.Envelope{ID: in.ID, Type: bridge.TypeResult, Result: json.RawMessage(`{}`)})
 }
 
 func (s *session) forward(events <-chan svc.Event) {
-	for event := range events {
-		data, err := json.Marshal(event.Data)
-		if err != nil {
-			continue
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			if err, ok := event.Data.(*bridge.Error); ok {
+				s.fail(err)
+				return
+			}
+			data, err := json.Marshal(event.Data)
+			if err != nil {
+				s.fail(bridge.Errorf(bridge.CodeInternal, "cannot encode subscription event"))
+				return
+			}
+			s.send(bridge.Envelope{Type: bridge.TypeEvent, Topic: event.Topic, Seq: event.Seq, Event: data})
 		}
-		s.send(bridge.Envelope{Type: bridge.TypeEvent, Topic: event.Topic, Seq: event.Seq, Event: data})
 	}
 }
 
@@ -170,25 +251,59 @@ func (s *session) unsubscribe(topic string) {
 }
 
 func (s *session) send(e bridge.Envelope) {
+	if s.ctx.Err() != nil {
+		return
+	}
 	select {
 	case s.out <- e:
-	case <-s.ctx.Done():
+	default:
+		s.fail(bridge.Errorf(bridge.CodeConflict, "slow consumer: reconnect and re-query"))
+	}
+}
+func (s *session) fail(err *bridge.Error) {
+	select {
+	case s.fatal <- err:
+	default:
 	}
 }
 
 func (s *session) write() {
 	for {
 		select {
+		case err := <-s.fatal:
+			s.finish(err)
+			return
+		default:
+		}
+		select {
 		case <-s.ctx.Done():
 			return
+		case err := <-s.fatal:
+			s.finish(err)
+			return
 		case e := <-s.out:
-			data, _ := json.Marshal(e)
-			if s.conn.Write(s.ctx, websocket.MessageText, data) != nil {
-				s.cancel()
+			if err := s.writeOne(e); err != nil {
+				s.finish(bridge.Errorf(bridge.CodeConflict, "slow consumer or disconnected socket"))
 				return
 			}
 		}
 	}
+}
+
+func (s *session) writeOne(e bridge.Envelope) error {
+	data, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, writeTimeout)
+	defer cancel()
+	return s.conn.Write(ctx, websocket.MessageText, data)
+}
+
+func (s *session) finish(err *bridge.Error) {
+	_ = s.writeOne(failure("", err))
+	s.cancel()
+	_ = s.conn.Close(websocket.StatusPolicyViolation, err.Message)
 }
 
 func (s *session) close() {
@@ -200,13 +315,14 @@ func (s *session) close() {
 	for _, cancel := range subs {
 		cancel()
 	}
-	_ = s.conn.Close(websocket.StatusNormalClosure, "")
+	_ = s.conn.CloseNow()
+	s.wg.Wait()
 }
 
 func failure(id string, err error) bridge.Envelope {
 	var typed *bridge.Error
 	if !errors.As(err, &typed) {
-		typed = bridge.Errorf(bridge.CodeInternal, err.Error())
+		typed = bridge.Errorf(bridge.CodeInternal, "app service failed")
 	}
 	return bridge.Envelope{ID: id, Type: bridge.TypeError, Error: typed}
 }
@@ -217,9 +333,4 @@ func topicApp(topic string) (string, bool) {
 		return "", false
 	}
 	return parts[1], true
-}
-
-func quote(text string) string {
-	data, _ := json.Marshal(text)
-	return string(data)
 }
