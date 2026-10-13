@@ -35,6 +35,7 @@ type offerLab struct {
 	result    codeupdate.InstallResult
 	failWith  error
 	allow     *bool
+	automatic bool
 }
 
 func newOfferLab(t *testing.T, coordinator *UpdateCoordinator) *offerLab {
@@ -52,6 +53,7 @@ func newOfferLab(t *testing.T, coordinator *UpdateCoordinator) *offerLab {
 		},
 		InstallUpdate: func(_ context.Context, options codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 			*lab.allow = options.AllowDowngrade
+			lab.automatic = options.Automatic
 			if lab.failWith != nil {
 				return codeupdate.InstallResult{}, lab.failWith
 			}

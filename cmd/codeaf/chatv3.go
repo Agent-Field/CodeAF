@@ -206,6 +206,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if !ok {
 		return fmt.Errorf("--reasoning %q: use auto, low, medium, high, xhigh or max (off also clears the override)", *reasoning)
 	}
+	// THE LAUNCH'S OWN UPDATE, after every refusal above and before any door
+	// forks: a released codeaf installs the newest stable and restarts onto it
+	// here, before a frame is drawn, and every other launch is told what is out
+	// on one terminal line (prelaunch.go). It is the same for all four doors
+	// because the file being replaced is this machine's whichever one opens.
+	// --once is a script, not a person, and is never restarted under it.
+	if strings.TrimSpace(*once) == "" {
+		updateBeforeLaunch()
+	}
 
 	// THE OTHER DOOR, and it forks BEFORE any of this machine's own resolution
 	// below: over --host the models, the keys, the session files, the gate and

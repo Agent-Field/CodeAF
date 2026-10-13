@@ -947,7 +947,8 @@ func TestTheAutoUpdateRowReadsBesideBackgroundChecks(t *testing.T) {
 		t.Fatal("the registry has no auto update row")
 	}
 	for _, want := range []string{
-		"keeps this codeaf installation current in the background.",
+		"keeps a released codeaf current: a newer stable release installs as codeaf opens",
+		"Dev, staging, rc and source builds are never updated on their own.",
 		"Off, installation is manual",
 		"still checks once",
 	} {

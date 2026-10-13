@@ -280,10 +280,14 @@ const (
 	// because a person who has silenced the tips has said they know the surface,
 	// and being told about features is the same conversation.
 	KeyHints = "ui.hints"
-	// KeyUpdateAuto is whether codeaf INSTALLS a new release in the background on
-	// its own. ON is the default: the check is one small request after the first
-	// frame, and a person who does not want it has a row, an environment variable
-	// and one chord on the offer itself. OFF means nothing is installed until the
+	// KeyUpdateAuto is whether codeaf INSTALLS a new release on its own. ON is
+	// the default: a released codeaf installs a newer stable release as it opens
+	// and starts on it (cmd/codeaf's prelaunch.go), and the chat's countdown
+	// installs in the background when that could not finish. Only a stable build
+	// named codeaf is ever moved this way; dev, staging, rc and source builds are
+	// told, never replaced ([codeupdate.AutomaticFor]). A person who does not want
+	// it has a row, an environment variable and one chord on the offer itself.
+	// OFF means nothing is installed until the
 	// person asks — `/update` still installs a release on request, because a
 	// person who typed it has said what they want — but the LAUNCH CHECK STILL
 	// RUNS and still names the release on one dim line, because knowing is not
@@ -1115,6 +1119,11 @@ var OperatorEnvPins = []string{
 	"CODEAF_NO_UPDATE_CHECK",
 	"CODEAF_GITHUB_API",
 	"CODEAF_GITHUB_DOWNLOAD",
+	// What a launch that installed a release tells the build it hands the
+	// terminal to (cmd/codeaf's prelaunch.go): the build it replaced. codeaf
+	// sets it for exactly one exec and the new process clears it on arrival, so
+	// it is plumbing between two processes and never a person's choice.
+	"CODEAF_UPDATED_FROM",
 	// CODEAF_INSTALL_NAME belongs to the shell installer and not to this
 	// program: it chooses the file name an install writes, and codeaf never
 	// reads it. It is spelled in Go at all only because the curl line codeaf
@@ -2575,8 +2584,9 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyUpdateAuto, Category: CategoryPractice, Kind: SettingBool,
 			Label: "auto update",
-			Hint: "keeps this codeaf installation current in the background. " +
-				"The offer waits in the keys line for about ten seconds; it never blocks a keystroke. " +
+			Hint: "keeps a released codeaf current: a newer stable release installs as codeaf opens, then codeaf starts on it. " +
+				"When that cannot finish quickly, the offer waits in the keys line for about ten seconds and installs in the background. " +
+				"Dev, staging, rc and source builds are never updated on their own. " +
 				"Off, installation is manual — nothing is installed until you run /update — and codeaf " +
 				"still checks once and names a new release (CODEAF_NO_UPDATE_CHECK=1 makes no request at all).",
 			read:  func() string { return formatBool(UpdateAutoAt(dir)) },

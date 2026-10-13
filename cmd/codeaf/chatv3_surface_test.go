@@ -72,7 +72,9 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 	}))
 	defer server.Close()
 
-	target := filepath.Join(t.TempDir(), "codeaf")
+	// THE RESOLVED SPELLING, because the installer answers with the file it
+	// replaced ([updateTarget] says why that matters on macOS).
+	target := updateTarget(t)
 	if err := os.WriteFile(target, []byte("old executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}

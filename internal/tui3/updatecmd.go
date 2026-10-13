@@ -82,7 +82,16 @@ func (a *app) tookUpdateCheck(message updateCheckMsg) tea.Cmd {
 		a.note(refusal)
 		return nil
 	}
-	if !a.updateAuto.Enabled {
+	// A PINNED FILE IS TOLD, NOT MOVED. A person put this release here by name
+	// and the countdown would undo it; the line says how to let it go.
+	if strings.TrimSpace(message.available.Pinned) != "" {
+		a.note(pinnedUpdateNotice(message.available))
+		return nil
+	}
+	// OFF, OR A BUILD THE AUTOMATIC ROAD IS NOT FOR — a dev or staging build,
+	// a release candidate, a file not named codeaf — or a release the person
+	// already stopped as this launch opened: one quiet line, nothing counted.
+	if !a.updateAuto.Enabled || !a.updateAuto.automatic(message.available) {
 		a.note(quietUpdateNotice(message.available))
 		return nil
 	}
@@ -265,6 +274,9 @@ func (a *app) tookUpdateResolve(message updateResolveMsg) tea.Cmd {
 	return func() tea.Msg {
 		result, err := install(context.Background(), codeupdate.InstallOptions{
 			Release: release, AllowDowngrade: allowDowngrade,
+			// The countdown's own install is nobody asking; it never moves a
+			// pinned file and never pins or unpins one.
+			Automatic: message.auto,
 		})
 		return updateInstallMsg{result: result, err: err, auto: message.auto, tag: tag}
 	}
@@ -296,6 +308,9 @@ func (a *app) tookUpdateInstall(message updateInstallMsg) tea.Cmd {
 		// one this window was about to write, so there is nothing to alarm.
 		a.offer.clear()
 		a.note("codeaf " + tag + " is already the build on disk · this session is untouched")
+		if message.result.Pinned {
+			a.note(pinnedNote(tag))
+		}
 		return nil
 	}
 	a.offer.ready(a.now())
@@ -311,6 +326,9 @@ func (a *app) tookUpdateInstall(message updateInstallMsg) tea.Cmd {
 	}
 	a.note("checksum matched · installed at " + message.result.Path)
 	a.note(a.updateOfferNote())
+	if message.result.Pinned {
+		a.note(pinnedNote(tag))
+	}
 	return a.offerSettleTick()
 }
 

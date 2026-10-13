@@ -537,7 +537,8 @@ Housekeeping — changes state on disk or on the network
   codeaf disconnect <provider>
       forget a provider and the key or sign-in behind it
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
-      check or install a release; this build's own channel is the default
+      check or install a release; this build's own channel is the default;
+      --version pins that release until a plain codeaf update moves it
   codeaf cache
       what the shared build cache holds, and how big it is
   codeaf cache clean [--yes]
@@ -681,8 +682,9 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
                        profiles, catalog, skills (default ~/.codeaf). Move it
                        to run a disposable store that touches nothing of yours.
   CODEAF_NO_UPDATE_CHECK
-                       1 skips the launch check; /update and codeaf update
-                       still work.
+                       1 skips the launch check and the update a released
+                       codeaf installs as it opens; /update and codeaf
+                       update still work.
   CODEAF_PROFILE_DIR   where measured behaviour is kept (default CODEAF_HOME)
   CODEAF_CALL_LOG      the model-call log (default <profile>/logs/calls.jsonl).
                        "off" writes nothing; any other value is the file to

@@ -2,30 +2,80 @@
 
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
-At launch, a stable, dev or staging build behind the newest release of its own
-channel is told about it, and with `automatic updates` on (the default) the install
-begins on its own after a brief pause: the sentence `codeaf <newest> is out ·
-installs in 10s · <skip chord> skip · /update` waits in the keys line, counted
-down from about ten seconds. It never blocks a keystroke. `/update` while it
-is up installs immediately — that is the release the offer is about, not a
-rollback; the skip chord, or `/update skip`, answers that one release, it is
-never offered again, and a later release is a new question; `/update never` turns
-`automatic updates` off, and so does the `automatic updates` row on `/settings`' **General** tab. Turning it off does not
-cancel an install already downloading, and the launch check still makes its one
-request and names what is out. A release whose automatic install failed
-three times stops being tried on its own.
+Every launch of a release build checks the newest release of the channel it
+follows, and what happens next depends on the build:
 
-A release candidate gets the notice when its stable line is published. An equal
-or ahead build gets nothing. Source and unstamped builds make no launch request,
-and their `/update` answers `this codeaf was built from source · rebuild with
-make build, or install a release: curl -fsSL https://agentfield.ai/get/codeaf |
-bash`. A codeaf owned by Homebrew, Nix or the system package manager, or one in a
-folder this account cannot write, is never replaced in place: with `automatic updates`
-on or off the launch names the manager and the curl line, not `/update`.
+- A released codeaf — a stable tag, in a file named `codeaf` — with `automatic
+  updates` on (the default) installs the newest stable release BEFORE the chat
+  opens and starts on it. The terminal says `updating codeaf <running> to
+  <newest> · ctrl+c opens <running> now`, then `codeaf <newest> installed ·
+  opening it`, and the chat's first line says `codeaf updated from <old> to
+  <new> as it opened · automatic updates in /settings turns this off`.
+- Every other build is told and never replaced unasked: dev and staging builds,
+  release candidates, `devaf`, `stageaf`, any other file name, a pinned file,
+  and any codeaf with `automatic updates` off. Before the chat opens the
+  terminal prints `codeaf <newest> is out · you have <running> · codeaf update
+  installs it` (with the file's own name: `devaf update`), and the chat says
+  `codeaf <newest> is out · you have <running> · /update installs it for the
+  next launch`. Nothing is downloaded until you ask.
 
-With `automatic updates` off, the launch check still runs and still says `codeaf <newest>
-is out · you have <running> · /update installs it for the next launch`, but
-nothing is downloaded until you ask.
+A release candidate is told when its stable line is published. An equal or
+ahead build gets nothing. Source and unstamped builds — `make build`, `go run`
+— make no launch request at all, and their `/update` answers `this codeaf was
+built from source · rebuild with make build, or install a release: curl -fsSL
+https://agentfield.ai/get/codeaf | bash`. A codeaf owned by Homebrew, Nix or the
+system package manager, or one in a folder this account cannot write, is never
+replaced in place: the launch names the manager and the curl line instead.
+
+## Does it update itself automatically — automatic updates — auto update on launch — restart on the new version — stop updating itself
+
+Only a released codeaf moving to a newer stable release is updated without
+being asked, and only where a person is waiting: standard input and output are
+a terminal, `CI` is unset, and the launch is not `--once`. The look is cached
+for 24 hours and otherwise waits at most 1.5 seconds; a look that got no answer
+is not waited on again for an hour. The install waits at most 20 seconds and
+then hands the terminal to the new build with the same arguments.
+
+Every way it stops short opens the build already on disk. ctrl+c says `update
+stopped · opening <running>`, and that window does not count down to the same
+release again. A slow download says `codeaf <newest> is still downloading ·
+opening <running> now · the chat installs it in the background`. A failure says
+`codeaf <newest> could not be installed · <reason> · opening <running>` and
+counts: a release backs off for hours after a failure and stops being tried on
+its own after three.
+
+When the launch could not finish, the chat's offer takes over: `codeaf <newest>
+is out · installs in 10s · <skip chord> skip · /update` waits in the keys line,
+counted down from about ten seconds, then installs in the background. It never
+blocks a keystroke or restarts the conversation. `/update` while it is up
+installs at once; the skip chord, or `/update skip`, answers that one release
+and it is never offered again.
+
+To stop all of it, turn off `automatic updates` on `/settings`' **General**
+tab or type `/update never`; launches still say what is out.
+`CODEAF_NO_UPDATE_CHECK=1` makes no request at all. Turning the row off does not
+cancel an install already downloading.
+
+## Pin a version — stay on an older version — roll back to an earlier release
+
+`codeaf update --version <tag>` or `/update <tag>` installs that exact release
+and PINS it: ``codeaf: <tag> is pinned · it is not updated on its own until
+`codeaf update` runs without --version`` (the chat says `… until /update runs
+without a version`). Naming the release already installed pins it in place
+without a download. Naming a tag is also the only way to roll back.
+
+A pinned file is never updated on its own. Its launches say `codeaf <newest> is
+out · you have <running>, pinned · codeaf update installs it and unpins`, and an
+automatic install that races a pin is refused with `codeaf <tag> is pinned on
+this machine · /update or codeaf update installs <newest> and unpins it`.
+
+A plain `codeaf update`, `codeaf update --stable`, or `/update` with no tag
+installs the newest release and unpins. The pin belongs to the file, not to a
+profile: it is kept beside it in `<file>.install.lock`, every profile running
+that file sees it, and a file reinstalled with the curl line is no longer
+pinned.
+
+## /update in the chat — install in the background — skip — never — channel — rollback
 
 `/update` downloads the release, checks its sha256 and replaces this executable
 IN THE BACKGROUND; `/upgrade` is its alias. It never quits, never restarts the
@@ -45,7 +95,10 @@ two terminals, or two profiles sharing one codeaf, cannot replace it at once, an
 a window that resolves a release another terminal has already superseded installs
 nothing.
 
-Set `CODEAF_NO_UPDATE_CHECK=1` to skip only the launch check. Dev and staging
+## Skip the update check — CODEAF_NO_UPDATE_CHECK — update-check.json — which curl line reinstalls this file
+
+Set `CODEAF_NO_UPDATE_CHECK=1` to skip the launch check and the update before
+the chat opens. Dev and staging
 answers are cached beside `config.json` for one hour in `update-check.dev.json`
 and `update-check.staging.json`; stable and rc use `update-check.json` for 24
 hours. A cached newer release is still shown. The curl line reinstalls this file
@@ -61,7 +114,8 @@ stable release its launch line just named, and a file under any other name gets
 
 `codeaf update` and `codeaf update --check` default to dev on a `dev-*` build,
 staging on a `staging-*` build, and stable on stable or rc. `--stable`, `--rc`,
-`--dev`, `--staging`, or `--version <tag>` overrides that choice.
+`--dev`, `--staging`, or `--version <tag>` overrides that choice. `--version
+<tag>` also pins the file at that release, and any install without it unpins.
 
 `--check` exits 3 when the selected release is newer, and also whenever a dev or
 staging tag is selected from a build of another channel, because a channel tag
@@ -137,7 +191,8 @@ terminal, when `CI` is set, or when the install runs in your home folder or `/` 
 neither does codeaf: what the anonymous usage counts carry is written in `docs/TELEMETRY.md`
 in the repository, and the `telemetry` switch in `/settings` turns them off.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
-running the install line again works too.
+running the install line again works too. With `automatic updates` on, a codeaf
+installed this way also installs each new stable release itself as it opens.
 
 ## What is devaf — dev build beside codeaf — side by side — two versions — install under a different file name — --name
 
@@ -161,7 +216,9 @@ may contain ASCII letters, digits, `.`, `_`, and `-`, and must begin with a
 letter or digit. codeaf and devaf share `~/.codeaf`, including keys and
 conversations, and one engine per workspace; opening a workspace with the other
 build retires an idle host or joins a busy compatible one. A devaf launch checks
-the dev channel hourly, and bare `/update` keeps following dev.
+the dev channel hourly, and bare `/update` keeps following dev. A devaf is never
+updated on its own: a launch behind the newest dev build says `codeaf <newest>
+is out · you have <running> · devaf update installs it` and opens as it is.
 
 ## What is stageaf — staging build beside codeaf — try the next release early — install staging — how often does staging update
 
@@ -177,6 +234,8 @@ channel and name lines. It installs `~/.codeaf/bin/stageaf` (`stageaf.exe` on
 Windows) beside an untouched codeaf. `stageaf version` still starts with `codeaf`.
 It shares `~/.codeaf` with codeaf and devaf, including keys and conversations.
 A stageaf launch checks the staging channel hourly; bare `/update` follows staging.
+Like devaf it is never updated on its own; `stageaf update` installs the newest
+staging build when you ask.
 
 The promotion runs once a week and moves staging to the newest dev commit at
 the Friday 17:00 Toronto-time cutoff when the full check passes. When the check

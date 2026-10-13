@@ -143,7 +143,7 @@ capture_settings() {
     # THE ROW'S OWN HINT IS THE PROOF THE CURSOR IS ON IT: the sheet draws the
     # hint only for the row under the cursor, and this row's hint opens with
     # these words.
-    if tmux -L "$SOCK" capture-pane -p -t "$session" | grep -q "keeps this codeaf installation current in the background"; then
+    if tmux -L "$SOCK" capture-pane -p -t "$session" | grep -q "keeps a released codeaf current"; then
       landed=yes
       break
     fi
@@ -160,7 +160,7 @@ capture_settings() {
   # THE ROW ITSELF IS THE CHECK, not the fact that something drew: the registry's
   # label, the sentence the registry wrote for it, and the value its reader
   # resolved. A capture without all three is a failure.
-  grep -q "keeps this codeaf installation current in the background" "$file" || {
+  grep -q "keeps a released codeaf current" "$file" || {
     echo "the settings capture at ${cols}c did not draw the row's own hint:" >&2
     cat "$file" >&2
     exit 1

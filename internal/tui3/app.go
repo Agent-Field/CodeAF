@@ -3227,6 +3227,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
 	}
+	if from := strings.TrimSpace(opts.UpdatedFrom); from != "" {
+		a.note(updatedFromNote(from, a.updateRunning))
+	}
 	if a.resumed && a.file != "" {
 		a.note(a.resumedNote())
 	}

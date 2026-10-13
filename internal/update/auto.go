@@ -361,6 +361,13 @@ type installRecord struct {
 	SHA256      string    `json:"sha256,omitempty"`
 	PublishedAt time.Time `json:"published_at,omitempty"`
 	InstalledAt time.Time `json:"installed_at,omitempty"`
+	// Pinned says a PERSON put this exact release here by name — `/update
+	// <tag>` or `codeaf update --version <tag>` — so the automatic road leaves
+	// the file alone until a person moves it again. It lives in the record and
+	// not in a profile because it is a fact about this FILE: two profiles share
+	// one executable, and a file replaced by curl or a package manager no longer
+	// hashes to the record, which drops the pin with it.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // canonicalTarget resolves a target to the ABSOLUTE, LINK-FREE path whose file
@@ -464,12 +471,23 @@ func (l *InstallLock) Record() (installRecord, bool) {
 // RecordInstalled writes what this target now holds. The caller holds the lock
 // and has just written those bytes.
 func (l *InstallLock) RecordInstalled(tag, digest string, published time.Time) {
+	l.recordInstalled(tag, digest, published, false)
+}
+
+// recordInstalled is [InstallLock.RecordInstalled] with the pin said out loud:
+// the installer pins exactly the release a person named and unpins on every
+// other install a person asked for.
+func (l *InstallLock) recordInstalled(tag, digest string, published time.Time, pinned bool) {
+	l.writeRecord(installRecord{
+		Tag: strings.TrimSpace(tag), SHA256: strings.ToLower(strings.TrimSpace(digest)),
+		PublishedAt: published.UTC(), InstalledAt: time.Now().UTC(), Pinned: pinned,
+	})
+}
+
+// writeRecord replaces the record through the held handle.
+func (l *InstallLock) writeRecord(record installRecord) {
 	if l == nil || l.file == nil {
 		return
-	}
-	record := installRecord{
-		Tag: strings.TrimSpace(tag), SHA256: strings.ToLower(strings.TrimSpace(digest)),
-		PublishedAt: published.UTC(), InstalledAt: time.Now().UTC(),
 	}
 	raw, err := json.Marshal(record)
 	if err != nil {
@@ -485,6 +503,42 @@ func (l *InstallLock) RecordInstalled(tag, digest string, published time.Time) {
 		return
 	}
 	_ = l.file.Sync()
+}
+
+// PinnedRelease names the release a person pinned this executable at, or ""
+// when nothing is pinned. A pin is believed exactly as the rest of the record
+// is — only while the file still hashes to it — so a codeaf replaced by curl or
+// a package manager has no pin left to honour.
+//
+// IT READS WITHOUT TAKING THE LOCK, because a launch asks it on every start and
+// must neither create the lock file beside an executable that was never
+// updated nor wait on an install another window is running. A record that
+// cannot be read reads as no pin; the installer asks again UNDER the lock
+// before the automatic road writes anything ([InstallOptions.Automatic]), so a
+// pin written a moment later is still honoured.
+func PinnedRelease(target string) string {
+	target = canonicalTarget(target)
+	if target == "" {
+		return ""
+	}
+	file, err := os.Open(installLockPath(target))
+	if err != nil {
+		return ""
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, maxInstallRecordBytes))
+	_ = file.Close()
+	if err != nil {
+		return ""
+	}
+	var record installRecord
+	if json.Unmarshal(raw, &record) != nil || !record.Pinned || record.Tag == "" || record.SHA256 == "" {
+		return ""
+	}
+	actual, err := sha256File(target)
+	if err != nil || !strings.EqualFold(actual, record.SHA256) {
+		return ""
+	}
+	return record.Tag
 }
 
 // Release drops the lock. It is safe on a nil lock and safe to call twice.
