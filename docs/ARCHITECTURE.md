@@ -869,6 +869,24 @@ and canonical StartTask with transcript context, preserving existing tasks and
 recording admission failures. Provider patience remains the session's policy;
 A4b exposes terminal failures without implementing a second retry loop.
 
+The app crew and member handlers use the native `teams.Update` lock and keep
+additional fields in each team's preserved `app_v2` JSON extension. Native
+membership, parent, manager and name remain authoritative. Crews reference
+transcripts rather than merging histories; a role reused in another live crew
+gets another agent conversation. Helper proposals use the source agent's normal
+Submit door and private durable proposal storage in `<home>/v3/app`.
+
+A crew budget monitor wakes on app events and every second, stops work at
+lifetime member/crew caps and saves one budget Ask in the team document before
+publication. Membership spend offsets keep work from before joining out of the
+crew pool. `CrewBudgetAsks`, `CrewQuestionPath`, `CrewAllowsMessage` and
+`RecordCrewMessage` provide typed producer doors for asks, Inbox and turns.
+Role resolution accepts a `CrewRoleSource`, so A10a reads A10b data through an
+interface rather than its handler. A10a wraps the guarded A4b turn route for
+paused/capped admission and accepted-message logging, retaining cached replies
+when a member was paused after acceptance. Other producer wiring remains with
+its owning resource lane.
+
 ## v2 app engine rules
 
 The local app API's shared policy is `internal/appapi/rules.go` (API.md §5).

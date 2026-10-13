@@ -43,6 +43,7 @@ type Options struct {
 	Context        context.Context
 	OpenRouterAuth openrouterauth.Options
 	Agents         *AgentRegistry
+	CrewRoles      CrewRoleSource
 }
 
 // Server keeps every registered handler behind the same transport guard.
@@ -95,7 +96,8 @@ func New(token string, options Options) *Server {
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "no such app route")
 	})
-	s.guarded = Guard(token, s.mux)
+	s.guarded = Guard(token, s.crewTurnGuard(s.mux))
+	s.startCrewBudgetWatch()
 	return s
 }
 
