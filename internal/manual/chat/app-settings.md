@@ -231,3 +231,10 @@ runner silence timeout. `POST /app/v1/factories/{id}/runner` takes
 Both return `{ok:true}` and keep the existing range checks. Sign-out uses
 `POST /app/v1/factories/{id}/sign-out {}`. A solo factory refuses sign-out
 because it belongs to this machine. DELETE on the factory id still leaves it.
+
+## App shutdown and in-flight AI spending
+
+Closing the app cancels its active AI calls and waits for their final spending
+receipts before the engine stops. New AI requests during shutdown return
+"the engine is stopping". A canceled call can still cost money; its final
+receipt remains in Spending.

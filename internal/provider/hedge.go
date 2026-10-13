@@ -175,6 +175,8 @@ type hedgeRace struct {
 	messages []ai.Message
 	options  []ai.Option
 	results  chan armResult
+	// Books that close must join the arms before waiting for their receipts.
+	armWork sync.WaitGroup
 	// wake is how a controller whose deadline has moved tells the beat to sleep
 	// for a different length of time. It has room for one signal because one is
 	// all a re-arm ever needs.
@@ -301,9 +303,19 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 	r.base, r.messages, r.options = ctx, messages, options
 
 	beat := make(chan struct{})
-	defer close(beat)
+	beatDone := make(chan struct{})
+	defer func() {
+		stopAll()
+		close(beat)
+		if callDrainFrom(ctx) {
+			// Stop the controller before joining arms so no new request can arrive
+			// behind the last arm's receipt registration.
+			<-beatDone
+			r.armWork.Wait()
+		}
+	}()
 	r.start(0, "")
-	guard.Go("provider.hedge.silence", func() { r.beat(beat) })
+	guard.Go("provider.hedge.silence", func() { defer close(beatDone); r.beat(beat) })
 
 	decided := r.decided
 	seen := map[int]armResult{}
@@ -530,11 +542,13 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 	if lane != "" {
 		armCtx = withHedgeLane(armCtx, lane)
 	}
+	r.armWork.Add(1)
 	r.addArm(arm)
 	r.rearm()
 
 	observer := r.observerFor(index)
 	guard.Go("provider.hedge.arm", func() {
+		defer r.armWork.Done()
 		response, relearned, err := r.client.completeWithMessagesStreaming(armCtx, observer, r.messages, r.options...)
 		cancel()
 		r.results <- armResult{index: index, response: response, relearned: relearned, err: err}

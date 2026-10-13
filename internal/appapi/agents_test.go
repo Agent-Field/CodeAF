@@ -91,7 +91,8 @@ func newAgentFixture(t *testing.T) *agentFixture {
 	})
 	f.registry.now = func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC) }
 	f.server = New(testToken, Options{Agents: f.registry})
-	t.Cleanup(f.registry.Close)
+	// The fixture owns the server and every writer it starts, not only its agent connections.
+	t.Cleanup(f.server.Close)
 	return f
 }
 func (f *agentFixture) request(t *testing.T, method, path, body string) *httptest.ResponseRecorder {

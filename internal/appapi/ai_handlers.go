@@ -72,6 +72,17 @@ func (s *Server) aiRuntime() (AICallRuntime, error) {
 }
 
 func (s *Server) aiHandler(w http.ResponseWriter, r *http.Request) {
+	// A canceled call can still owe a spending receipt, so shutdown joins its handler.
+	// The inbox lock makes admission and shutdown exclusion one decision.
+	s.inbox.Lock()
+	if s.inbox.closed {
+		s.inbox.Unlock()
+		fail(w, 503, "not_allowed", "the engine is stopping")
+		return
+	}
+	s.watchers.Add(1)
+	s.inbox.Unlock()
+	defer s.watchers.Done()
 	s.aiIdempotent(s.aiAction)(w, r)
 }
 func (s *Server) aiAction(w http.ResponseWriter, r *http.Request) {
@@ -149,10 +160,8 @@ func (s *Server) aiAction(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), roles.Patience(tier))
 	defer cancel()
-	if s.options.Context != nil {
-		stop := context.AfterFunc(s.options.Context, cancel)
-		defer stop()
-	}
+	stop := context.AfterFunc(s.inbox.ctx, cancel)
+	defer stop()
 	ctx = provider.WithRole(ctx, lane.RoleAuxiliary)
 	ctx = provider.WithCallTag(ctx, string(lane.RoleAuxiliary)+":"+body.Role)
 	ctx = provider.WithConfiguredReasoningEffort(ctx, provider.Effort(call.Effort))
@@ -244,6 +253,9 @@ func (s *Server) aiAction(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	var pending sync.WaitGroup
+	// A canceled routing race returns before its arms register their receipts.
+	// Join those arms first so waiting on receipts cannot mistake that gap for done.
+	ctx = provider.WithCallDrain(ctx)
 	ctx = provider.WithReceiptPending(ctx, func() func() { pending.Add(1); return pending.Done })
 	cfg := runtime.ClientConfig(call.String())
 	oldGate := cfg.RouteGate

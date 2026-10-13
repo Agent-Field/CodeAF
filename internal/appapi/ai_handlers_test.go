@@ -340,4 +340,5 @@ func TestAICallFlushesDeltaBeforeTheAnswerEnds(t *testing.T) {
 		}
 	}
 	cancel()
+	s.Close()
 }
