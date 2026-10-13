@@ -2,13 +2,60 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/records"
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
+
+func TestOrdinaryKeepLeavesRealRecordsEmpty(t *testing.T) {
+	ctx := context.Background()
+	cfg := svc.Config{Root: t.TempDir()}
+	all := &svc.Services{}
+	s := store.NewWithOptions(cfg, all, store.Options{WithoutDemo: true})
+	all.Store, all.Records = s, records.New(cfg, all)
+	caller := svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}
+	app, err := s.Create(ctx, caller, "CRM", "Track our sales")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, sample := spec.GoldenCRM()
+	if err := s.WriteFiles(ctx, app.ID, files); err != nil {
+		t.Fatal(err)
+	}
+	var rows map[string][]bridge.Record
+	if err := json.Unmarshal(sample, &rows); err != nil {
+		t.Fatal(err)
+	}
+	if err := all.Records.Seed(ctx, app.ID, rows); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []bridge.AppState{bridge.StateBuilding, bridge.StatePreview} {
+		if err := s.SetState(ctx, app.ID, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Keep(ctx, app.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []svc.DataMode{svc.DataSample, svc.DataReal} {
+		t.Run(string(mode), func(t *testing.T) {
+			scope := svc.Scope{App: app.ID, Data: mode, Caller: caller}
+			page, err := all.Records.Query(ctx, scope, bridge.QueryParams{Type: "deal"})
+			want := 0
+			if mode == svc.DataSample {
+				want = len(rows["deal"])
+			}
+			if err != nil || page.Total != want {
+				t.Fatalf("records after Keep = %+v, %v; want %d", page, err, want)
+			}
+		})
+	}
+}
 
 func TestKeptDemoRecordsPersist(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
