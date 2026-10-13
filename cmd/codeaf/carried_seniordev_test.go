@@ -100,10 +100,12 @@ func TestSeniorDevWorksATaskThroughTheShellHostsModelAPI(t *testing.T) {
 	// within one catalog fetch, so the window senior-dev reads from it is on
 	// disk before its first call (carried.go's carriedCatalogWarm).
 	var warms, callsAtWarm int
+	var warmedModels []string
 	var warmBound time.Duration
 	carriedModels = func() (carriedRoad, error) {
-		return carriedRoad{completerFor: model.completerFor, warmCatalog: func(ctx context.Context) bool {
+		return carriedRoad{completerFor: model.completerFor, warmCatalog: func(ctx context.Context, models []string) bool {
 			warms++
+			warmedModels = append([]string(nil), models...)
 			if deadline, ok := ctx.Deadline(); ok {
 				warmBound = time.Until(deadline)
 			}
@@ -131,6 +133,9 @@ func TestSeniorDevWorksATaskThroughTheShellHostsModelAPI(t *testing.T) {
 	if warms != 1 || callsAtWarm != 0 || warmBound <= 0 || warmBound > catalog.FetchTimeout {
 		t.Fatalf("catalog waited for %d times, after %d calls, bounded by %v; want once, before any call, within %v",
 			warms, callsAtWarm, warmBound, catalog.FetchTimeout)
+	}
+	if strings.Join(warmedModels, ",") != "openrouter/fixture/vendor-model" {
+		t.Fatalf("catalog warm models = %q, want the selected working model", warmedModels)
 	}
 	for _, want := range []string{"senior-dev · working in " + workspace, "senior-dev finished", "senior-dev's model said: feature.txt now holds the feature", " · 300 in · 20 out · $0.0020"} {
 		if !strings.Contains(out, want) {
