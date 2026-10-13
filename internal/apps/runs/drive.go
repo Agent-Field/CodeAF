@@ -155,7 +155,7 @@ func (e *engine) drive(ctx context.Context, app, id string) {
 			}
 			continue
 		case "step":
-			blocked, stepErr := e.execStep(ctx, job, bundle, found)
+			blocked, stepErr := e.connectorStep(ctx, job, bundle, found)
 			if errors.Is(stepErr, context.Canceled) {
 				return
 			}

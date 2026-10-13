@@ -3,20 +3,8 @@ package runs
 import (
 	"context"
 
-	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
-
-type permitKey struct{}
-
-func withPermit(ctx context.Context) context.Context {
-	return context.WithValue(ctx, permitKey{}, true)
-}
-
-func permitted(ctx context.Context) bool {
-	ok, _ := ctx.Value(permitKey{}).(bool)
-	return ok
-}
 
 // Connectors is the wave-1 fake door. Every call is recorded and answered
 // with a canned reply. Outbound verbs refuse unless the run held an approval.
@@ -40,32 +28,5 @@ func (c *Connectors) Call(ctx context.Context, scope svc.Scope, tool string, arg
 func (c *Connectors) Outbound(tool string) bool { return outboundVerb(tool) }
 
 func (e *engine) callConnector(ctx context.Context, scope svc.Scope, tool string, args map[string]any) (any, error) {
-	if outboundVerb(tool) && !permitted(ctx) {
-		return nil, bridge.Errorf(bridge.CodeDenied, "outbound needs approval")
-	}
-	if args == nil {
-		args = map[string]any{}
-	}
-	copied := resolveMap(args, map[string]any{})
-	e.mu.Lock()
-	e.calls = append(e.calls, recorded{App: scope.App, Tool: tool, Args: copied})
-	reply, ok := e.replies[tool]
-	e.mu.Unlock()
-	if ok {
-		return reply, nil
-	}
-	return canned(tool), nil
-}
-
-func canned(tool string) any {
-	switch tool {
-	case "gmail.search", "gmail.read":
-		return map[string]any{"messages": []any{}, "thread": "thread-fake"}
-	case "gmail.draft":
-		return map[string]any{"id": "draft-fake", "fake": true}
-	case "gmail.send":
-		return map[string]any{"id": "msg-fake", "thread": "thread-fake", "fake": true}
-	default:
-		return map[string]any{"ok": true, "fake": true, "tool": tool}
-	}
+	return e.connectorCall(ctx, scope, tool, args)
 }

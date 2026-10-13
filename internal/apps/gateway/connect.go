@@ -71,7 +71,7 @@ func registerConnect(table map[string]method) {
 	})}
 	table[bridge.MethodConnectWaits] = method{global: true, run: withConnectCaller(func(all *svc.Services) func(context.Context, svc.Caller, bridge.Empty) (bridge.ConnectWaitsResult, error) {
 		return func(ctx context.Context, caller svc.Caller, _ bridge.Empty) (bridge.ConnectWaitsResult, error) {
-			if activity, ok := all.Connect.Grants.(connectActivity); ok {
+			if activity, ok := all.Connectors.(connectActivity); ok {
 				return activity.Waits(ctx, caller)
 			}
 			return bridge.ConnectWaitsResult{}, bridge.Errorf(bridge.CodeNotBuilt, "connect.waits is not built yet")
@@ -79,7 +79,7 @@ func registerConnect(table map[string]method) {
 	})}
 	table[bridge.MethodConnectFakes] = method{run: with(func(all *svc.Services) func(context.Context, svc.Scope, bridge.ConnectFakesParams) (bridge.ConnectFakesResult, error) {
 		return func(ctx context.Context, scope svc.Scope, p bridge.ConnectFakesParams) (bridge.ConnectFakesResult, error) {
-			if activity, ok := all.Connect.Grants.(connectActivity); ok {
+			if activity, ok := all.Connectors.(connectActivity); ok {
 				return activity.Fakes(ctx, scope, p)
 			}
 			return bridge.ConnectFakesResult{}, bridge.Errorf(bridge.CodeNotBuilt, "connect.fakes is not built yet")
@@ -104,7 +104,7 @@ type connectAllowSheets interface {
 	AllowSheet(context.Context, svc.Scope, bridge.AllowSheetParams) (bridge.AllowSheet, error)
 }
 
-// Lane b1 fills these queries; they route to Grants until the connector door lands.
+// The connector door owns fake calls and durable connection waits.
 type connectActivity interface {
 	Waits(context.Context, svc.Caller) (bridge.ConnectWaitsResult, error)
 	Fakes(context.Context, svc.Scope, bridge.ConnectFakesParams) (bridge.ConnectFakesResult, error)
