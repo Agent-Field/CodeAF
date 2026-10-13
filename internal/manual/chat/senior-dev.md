@@ -1063,9 +1063,9 @@ cannot size any remaining pool, the run refuses before its first stage or model 
 names the model and says nothing was started. A row with no window is not a zero-sized
 model, and no capacity is invented for it.
 
-Use a model whose service lists its window, or supply **verified provider limits** in
+Use a model whose service lists its window, or supply **limits from the provider** in
 `senior-dev.json` in the project. Set `provider.openrouter.models["connection/model"].limit.context`
-to the verified context-token limit, and `.limit.output` to a verified output limit or
+to the provider's context-token limit, and `.limit.output` to its output limit or
 a smaller requested output ceiling. `connection/model` is the exact model spelling
 codeaf accepts, with no leading `openrouter/`. Here `openrouter` names codeaf's loopback
 API format; calls still use the selected connection and codeaf's shared model funnel.
