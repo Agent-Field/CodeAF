@@ -53,7 +53,10 @@ func TestAFreshProfileStartsOnAutoWithTheDefaultLimits(t *testing.T) {
 func TestNoCrewSeatFallsBackToABuiltInModel(t *testing.T) {
 	dir := crewProfile(t)
 	CrewCatalog = func() []catalog.Model { return nil }
-	builtIn := map[string]bool{DefaultModel: true, DefaultReflexModel: true, DefaultLowModel: true, FreeChatModel: true}
+	builtIn := map[string]bool{}
+	for _, model := range []string{DefaultModel, DefaultReflexModel, DefaultLowModel, FreeChatModel} {
+		builtIn[model] = true
+	}
 	for _, seat := range crewroute.Seats {
 		row := TierSeatAt(dir, CrewSeatTier(seat))
 		if row.Model != "" || builtIn[row.Model] {
