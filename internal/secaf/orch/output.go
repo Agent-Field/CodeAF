@@ -187,6 +187,9 @@ func (o *AuditOrchestrator) GenerateOutput(
 		"findings_not_verified": o.FindingsNotVerified,
 		"prove_drop_summary":    o.ProveDropSummary,
 	}
+	if hunt.Coverage != nil {
+		result.Metadata["hunt_coverage"] = *hunt.Coverage
+	}
 	result.Sarif = ""
 
 	result.Sarif = output.GenerateSarif(result)

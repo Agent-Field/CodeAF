@@ -665,6 +665,9 @@ func TestRunHuntStreamingClosesOnHunterFailure(t *testing.T) {
 	if count != 0 {
 		t.Errorf("streamed %d batches, want 0", count)
 	}
+	if result.Coverage == nil || !result.Coverage.AllFailed() || result.Coverage.Attempted != 1 {
+		t.Fatalf("failed streaming hunt lost accounting: %+v", result.Coverage)
+	}
 	if result.TotalRaw != 0 || len(result.Findings) != 0 {
 		t.Errorf("result = %+v, want an empty one", result)
 	}

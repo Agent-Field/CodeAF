@@ -61,6 +61,25 @@ The full report is three files in the task's record folder, named at the end of 
 
 `--compliance owasp,pci-dss` (at a shell) maps the findings to compliance frameworks — OWASP, PCI-DSS, SOC2, HIPAA, ISO27001 — and adds `sec-compliance.md`. A shell run's record folder is under `~/.codeaf/v3/carried/sec/`, one folder per run.
 
+## A failed or incomplete audit — a model error, hunts that did not finish, no findings
+
+If a hunt cannot finish because a model call failed or its session stopped, sec
+records that failure separately from a completed hunt with no findings. Its ending,
+account and readable report say **analysis incomplete** and how many hunts failed.
+Findings from completed hunts still go through the same checks and remain in the
+report; the failure itself is never a security finding. If all hunts fail, sec
+makes no claim that the code has no exploitable problems.
+
+The run ends as failed when any hunt fails, or on its ceiling if the run's dollar
+or time limit caused the incomplete analysis. A run stopped or refused by the
+model service later in the audit also says analysis incomplete, retaining any
+findings already checked; a partial result never turns that stop into a pass.
+The JSON report keeps the attempted
+count and each failed strategy and reason in `metadata.hunt_coverage`; the SARIF
+records unsuccessful execution and an error notification, alongside any findings.
+Global stops are also recorded in `metadata.analysis_incomplete`. If the pipeline
+cannot produce a result, the ending explains the stop without promising a report.
+
 ## An earlier audit's report — find it from another conversation, run it again, the last audit, start fresh
 
 A sec run in the chat keeps its report in that task's record folder, `~/.codeaf/v3/projects/<project>/<conversation>/tasks/<n>/`. Every conversation in the project can see the run in `tasks`: its row's outcome is the first line of its account, which says what it found — `Security audit of the whole repository: 14 problems, 9 confirmed and 5 likely (1 critical, 1 high, 12 medium).` — and its `artifact` is that record folder, where `sec-report.md` is.

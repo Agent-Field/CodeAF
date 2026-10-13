@@ -337,6 +337,7 @@ func TestRunFromCheckpoint_HuntBranch(t *testing.T) {
 	hunt := schemas.NewHuntResult()
 	hunt.TotalRaw = 9
 	hunt.StrategiesRun = []string{"injection"}
+	hunt.Coverage = &schemas.HuntCoverage{Attempted: 2, Failures: []schemas.HuntFailure{{Strategy: "auth", Reason: "no reply"}}}
 	if err := o.WriteCheckpoint(PhaseRecon, reconFixture(t, "minimal")); err != nil {
 		t.Fatalf("WriteCheckpoint: %v", err)
 	}
@@ -347,6 +348,9 @@ func TestRunFromCheckpoint_HuntBranch(t *testing.T) {
 	result, err := o.RunFromCheckpoint(context.Background(), "hunt")
 	if err != nil {
 		t.Fatalf("RunFromCheckpoint: %v", err)
+	}
+	if got := schemas.Coverage(result.Metadata); !got.Incomplete() || got.Attempted != 2 || len(got.Failures) != 1 {
+		t.Fatalf("resumed report dropped coverage: %+v", got)
 	}
 	if result.TotalRawFindings != 9 {
 		t.Errorf("total_raw_findings = %d, want the checkpointed 9", result.TotalRawFindings)
