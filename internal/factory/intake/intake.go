@@ -68,7 +68,7 @@ func (in *Intake) Once(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" {
+		if it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" {
 			continue
 		}
 		if err := in.decide(ctx, it); err != nil {
@@ -137,6 +137,9 @@ var errMoved = errors.New("intake: job already moved")
 // after Once listed the backlog still wins. Only a person's Run door may
 // restart a job they stopped; labels never restore that permission.
 func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
+	if it.SetupHeld {
+		return errMoved
+	}
 	if it.State != factory.StateNew {
 		return errMoved
 	}

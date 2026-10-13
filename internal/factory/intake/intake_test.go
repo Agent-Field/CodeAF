@@ -211,3 +211,35 @@ func TestStoppedJobStaysStoppedUntilPersonRunsIt(t *testing.T) {
 	}
 	tick(factory.StateRunning)
 }
+
+func TestFirstRunImportsNeverStartFromMatchingLabels(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(100, 0)
+	_, err = st.Create(factory.Item{Repo: "owner/repo", Kind: factory.KindIssue, State: factory.StateNew, SetupHeld: true, Labels: []string{"ready", "size:S"}, Triage: factory.Triage{Size: "S", TriagedAt: now, Est: 0.1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := record.Open(st, record.Options{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, err := pipeline.Parse("start:\n  labels: [ready]\n  max_cost: 1\n  max_size: M\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := 0
+	in := intake.New(st, intake.Options{Record: history, Load: func(string) (pipeline.File, error) { return rules, nil }, Launch: func(int) error { started++; return nil }})
+	if err = in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if started != 0 {
+		t.Fatal("first-run import automatically started")
+	}
+	items, _ := st.List()
+	if items[0].State != factory.StateNew {
+		t.Fatal("first-run import moved out of Backlog")
+	}
+}

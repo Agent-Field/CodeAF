@@ -366,6 +366,8 @@ type PullRequest struct {
 const QKindAskFirst = "ask_first"
 
 type Item struct {
+	// SetupHeld keeps first-run imports in Backlog until a person starts them.
+	SetupHeld bool `json:",omitempty"`
 	// Job decisions belong to the binary; presentation derives from these facts.
 	Priority        *JobPriority `json:",omitempty"`
 	DismissedBy     []string     `json:",omitempty"`

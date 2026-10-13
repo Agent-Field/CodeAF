@@ -23,6 +23,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 			}
 		}
 		jobs[i] = FromItem(it)
+		jobs[i].Display = DisplayFor(jobs[i], now)
 		jobs[i].Can = CanFor(it, me, now)
 		ForViewer(&jobs[i], it, me)
 		for _, other := range s.Items {
@@ -103,8 +104,9 @@ var Lost = map[string]string{
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
 	j := Job{
-		Owners: append([]string(nil), it.Owners...),
-		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
+		SetupHeld: it.SetupHeld,
+		Owners:    append([]string(nil), it.Owners...),
+		ID:        it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
 		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
@@ -259,8 +261,9 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
-		Owners: append([]string(nil), j.Owners...),
-		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
+		SetupHeld: j.SetupHeld,
+		Owners:    append([]string(nil), j.Owners...),
+		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo,

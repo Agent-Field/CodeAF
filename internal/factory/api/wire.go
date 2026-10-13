@@ -229,6 +229,8 @@ const (
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	SetupHeld         bool                 `json:"setup_held,omitempty"`
+	Display           JobDisplay           `json:"display"`
 	StatePresentation StatePresentation    `json:"state_presentation"`
 	Controls          JobControls          `json:"controls"`
 	Assignee          string               `json:"assignee,omitempty"`

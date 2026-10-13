@@ -39,6 +39,8 @@ type Config struct {
 
 	// Mode is solo or team; an unset mode follows the host access configuration.
 	Mode string
+	// ProfileDir resolves the solo factory's existing GitHub connection for setup reads.
+	ProfileDir string
 	// OperatorLogin names a solo host; team identity comes from the persisted claim.
 	OperatorLogin string
 	// ChangeAssignee mirrors a person's decision to GitHub before storing it.
@@ -103,6 +105,15 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
+	setupMu     sync.Mutex
+	setupBusy   bool
+	setupClosed bool
+	setupCancel context.CancelFunc
+	setupDone   chan struct{}
+	setupTimer  *time.Timer
+	accessMu    sync.Mutex
+	accessFlows map[string]accessLinkFlow
+
 	jobsMu     sync.Mutex
 	jobsTimer  *time.Timer
 	jobsClosed bool
@@ -172,9 +183,20 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.verbs()
 	h.workerRoutes()
 	h.v2Routes()
+	h.route("/v1/factory-setup/{id}", map[string]http.HandlerFunc{http.MethodGet: h.factorySetup, http.MethodPost: h.factorySetup})
+	h.route("/v1/factory-setup", map[string]http.HandlerFunc{http.MethodPost: h.factorySetup})
+	h.route("/v1/factory-access", map[string]http.HandlerFunc{http.MethodGet: h.factoryAccess, http.MethodPost: h.factoryAccess})
+	h.read("/v1/factory-days/today", h.factoryDay)
 	h.jobVerbs()
 	h.jobScreens()
 	h.scheduleJobTimer()
+	if config.Store != nil {
+		h.setupMu.Lock()
+		if saved, err := h.loadSetup("local"); err == nil {
+			h.startSetup(saved)
+		}
+		h.setupMu.Unlock()
+	}
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 	})
@@ -196,6 +218,17 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // Close stops the filesystem watch. The HTTP server can still be running;
 // a change after Close is not delivered.
 func (h *Handler) Close() {
+	if h != nil {
+		h.setupMu.Lock()
+		h.setupClosed = true
+		if h.setupTimer != nil {
+			h.setupTimer.Stop()
+		}
+		if h.setupCancel != nil {
+			h.setupCancel()
+		}
+		h.setupMu.Unlock()
+	}
 	if h != nil {
 		h.jobsMu.Lock()
 		h.jobsClosed = true
@@ -239,7 +272,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
+	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
 		if h.authFailed(w, r) {
 			return
 		}

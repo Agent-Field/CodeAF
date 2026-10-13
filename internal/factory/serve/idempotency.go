@@ -31,7 +31,8 @@ type replayCache struct {
 
 func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 	key := r.Header.Get("Idempotency-Key")
-	if r.Method != http.MethodPost || key == "" {
+	// Access links establish a caller cookie; replaying a pre-sign-in response could give another opener that cookie.
+	if r.Method != http.MethodPost || key == "" || r.URL.Path == "/v1/factory-access" {
 		h.mux.ServeHTTP(w, r)
 		return
 	}

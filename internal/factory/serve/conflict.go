@@ -34,6 +34,7 @@ func (h *Handler) guarded(verb string, action jobAction) jobAction {
 // withVersion stamps the store's document revision onto the job the page
 // reads. A handler with no store leaves it zero, and the field stays off the wire.
 func (h *Handler) withVersion(job api.Job) api.Job {
+	job.Display = api.DisplayFor(job, h.clock())
 	if h.config.Store == nil || job.ID == 0 {
 		return job
 	}

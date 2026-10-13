@@ -2491,7 +2491,10 @@ can be retried when GitHub is available. The machine-offline case waits on its o
 
 ## factory HTTP double click, repeat requests and Idempotency-Key
 
-Every POST accepts `Idempotency-Key`. Repeating a key on the same route with the
+Factory mutation POSTs accept `Idempotency-Key`. Opening an access link at
+`POST /v1/factory-access` uses its caller cookie and current link state instead
+of response replay, so a new opener cannot receive an earlier sign-in cookie.
+Repeating a key on another POST route with the
 same credential within 24 hours returns the first status, headers and body and
 does not run the action again, even if the repeated body differs. Choose a new
 key for a new action, including a later Retry publishing. A repeat may replay an
@@ -3231,3 +3234,75 @@ Other people keep their own view. A missing source card answers 404
 code. A poll already exchanging it completes under the same lock; cancellation
 cannot undo a completed sign-in. Another caller cannot cancel your code. Later
 polls of a cancelled code answer `unknown device code for this caller`.
+
+## Factory first run, discover repos, read issues and choose a checkout
+
+The app polls `GET /v1/factory-setup/{id}`. The binary keeps progress across
+restarts: `github`, `repos`, `reading`, `checkouts`, then `done`.
+`POST /v1/factory-setup/{id}` accepts a `verb`; the app can also post to
+`/v1/factory-setup` with `id`. `discover` reads GitHub identity and visible
+repositories; `connect` (also `scope`) chooses `gh` or a token for a solo
+factory. A team factory refuses that connection with
+`Give the factory read-only GitHub access.` and uses its operator's separate
+read grant. Identity is checked before reading; GitHub checks repository
+permissions on every read. A fine-grained token's write permissions are checked
+by GitHub when its assignee publishes, not promised by setup discovery.
+
+`select_repos` (also `ingest`) selects visible, unarchived repositories. Open
+issues become deduplicated jobs in Backlog. Pull requests are excluded. These
+imports stay in Backlog until a person starts them, even when labels match
+automatic start rules. Reading uses no model calls and continues after leaving
+the page. A failed read says `waiting`; `retry_read` (also `retry`) is available
+40 seconds after that read began. Rate limits carry `resumes_at`; the engine resumes reading at that deadline
+even when the page is closed. Restarting resumes an unfinished read from its
+last saved page. Setup lists at most 10,000 repositories and reads at most
+100,000 issue-list entries per repository; exceeding either limit refuses
+further reading. Each GitHub response is limited to 8 MiB.
+
+## Factory first run clone, choose folder, skip and finish
+
+At `checkouts`, `clone` takes `repo_id` and an absolute folder path. Git clones
+on the machine serving this factory using its GitHub connection, then keeps the
+checkout in the factory's checkout map. `checkout` checks that an existing
+folder's GitHub origin matches the selected repository before keeping it.
+A failed clone keeps `clone_error` and can be tried again; an interrupted clone
+resumes by checking the destination when the server starts reading setup again.
+`skip` leaves that repository without a checkout. Its jobs need a runner that
+has one. `done` finishes setup and skips remaining missing checkouts.
+`back` returns from repository selection to GitHub, or from checkouts to reading.
+It does not remove jobs already imported. Setup mutations require the operator.
+For a team attached in the app, the binary sends discovery and ingestion to that
+server and performs clones and checkout selection on this app's machine. Each
+attachment keeps its own local skip, clone and Done progress through a restart.
+
+## Opening a factory access link, waiting, joined, expired or revoked
+
+`GET /v1/factory-access?link=…` reads a `codeaf://factory/join` link. The binary
+checks its factory address and token, then says `ready`, `expired`, `revoked`,
+`used_up` or `no_access`. A valid link names the factory, operator and watched
+repositories. `POST /v1/factory-access` with `link` and `verb: sign_in` starts
+GitHub device sign-in and returns `waiting`, `sign_in_url` and `user_code`.
+Keep the sign-in cookie while polling. Another opener cannot inherit that flow.
+`verb: cancel` ends only that opener's unfinished sign-in.
+
+After GitHub proves identity and repository visibility, the binary says
+`joined`. A wrong invited login or no repository access does not consume the
+link. A signed-in caller gets `already_joined` without using an unused link.
+The app's binary host retains the remote session and saves the attachment;
+public app responses contain no session credential. Native factory clients
+receive a completed session grant in `access_token`, like the existing device
+sign-in door. Revoking or expiring a link immediately removes its usable state.
+
+## Factory Running merged jobs for 24 hours and today's counts
+
+Every job in queue and detail reads carries `display.running_visible`.
+The binary keeps live work, jobs needing an answer, and open published pull
+requests in Running. A merged pull request remains there for exactly 24 hours
+after GitHub's `merged_at`, then appears only in Done. Unknown merge times do
+not start a retention clock. The app uses this flag instead of a timer.
+
+`GET /v1/factory-days/today` uses the server's calendar day and clock. It counts
+visible jobs started, posted and merged once each, including repeated starts
+or posts. `waiting_median_seconds` is the median current question age and is
+null when no question age is known. Repository visibility applies before the
+counts; hidden jobs never contribute.

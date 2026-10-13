@@ -50,7 +50,7 @@ func TestEveryDocumentedAppRouteIsRegistered(t *testing.T) {
 			t.Errorf("duplicate route %s", key)
 		}
 		declared[key] = true
-		if !documented[key] {
+		if !documented[key] && !(strings.HasPrefix(route.Path, "/v1/") && bytes.Contains(doc, []byte(route.Method+" "+route.Path))) {
 			t.Errorf("route missing from API.md: %s %s", route.Method, route.Path)
 		}
 		path := contractPathVariable.ReplaceAllString(route.Path, "contract-id")

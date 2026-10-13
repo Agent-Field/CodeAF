@@ -24,7 +24,9 @@ var now = time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 var config = serve.Config{Address: "http://127.0.0.1:7420", Version: "test", AccessToken: "floor-secret", PollingEvery: time.Minute}
 
 func TestFixtureReadsOverHTTP(t *testing.T) {
-	s := httptest.NewServer(serve.New(factory.FixtureSeam(now), config))
+	fixtureConfig := config
+	fixtureConfig.Now = func() time.Time { return now }
+	s := httptest.NewServer(serve.New(factory.FixtureSeam(now), fixtureConfig))
 	defer s.Close()
 	var q api.Queue
 	getJSON(t, s.URL+"/v1/queue", &q)

@@ -2,6 +2,7 @@ package appapi
 
 import (
 	"encoding/json"
+	factoryapi "github.com/Agent-Field/codeaf/internal/factory/api"
 	"time"
 )
 
@@ -62,5 +63,5 @@ type FactoryEvent struct {
 }
 
 func factoryContract() resourceContract {
-	return resourceContract{Name: "factory", Types: []any{Factory{}, FactoriesResponse{}, AttachFactoryRequest{}, HandOffCard{}, SendHandOffRequest{}, HandOffResponse{}, PowerRequest{}, FactoryChangedEvent{}, FactoryEvent{}}, Routes: factoryContractRoutes, Events: []eventContract{{"factory.changed", FactoryChangedEvent{}}, {"factory.event", FactoryEvent{}}}}
+	return resourceContract{Name: "factory", Types: []any{factoryapi.FactorySetup{}, factoryapi.FactorySetupRequest{}, factoryapi.SetupGitHub{}, factoryapi.SetupGH{}, factoryapi.SetupRepo{}, factoryapi.FactoryAccess{}, factoryapi.FactoryAccessRequest{}, factoryapi.AccessFactory{}, factoryapi.FactoryDay{}, factoryapi.JobDisplay{}, Factory{}, FactoriesResponse{}, AttachFactoryRequest{}, HandOffCard{}, SendHandOffRequest{}, HandOffResponse{}, PowerRequest{}, FactoryChangedEvent{}, FactoryEvent{}}, Routes: factoryContractRoutes, Events: []eventContract{{"factory.changed", FactoryChangedEvent{}}, {"factory.event", FactoryEvent{}}}}
 }

@@ -33,6 +33,9 @@ type FactoryRegistry struct {
 	Changed          func()
 	Power            func(context.Context, bool) error
 	Tasks            FactoryTaskSource
+	SetupCheckout    func(context.Context, string, string, bool) (string, error)
+	SetupCheckouts   func() (map[string]string, error)
+	setupBusy        map[string]bool
 	Client           *http.Client
 	server           *Server
 	handler          http.Handler
@@ -40,6 +43,7 @@ type FactoryRegistry struct {
 	closed           bool
 	seen             map[string]Factory
 	sourceTokens     map[string]string
+	accessCookies    map[string][]*http.Cookie
 }
 type factoryConnection struct {
 	ID   string `json:"id"`
@@ -47,8 +51,9 @@ type factoryConnection struct {
 	Mode string `json:"mode"`
 }
 type factoryConnections struct {
-	URL       string              `json:"url,omitempty"`
-	Factories []factoryConnection `json:"factories"`
+	Setups    map[string]localFactorySetup `json:"setups,omitempty"`
+	URL       string                       `json:"url,omitempty"`
+	Factories []factoryConnection          `json:"factories"`
 }
 
 // FactoryTaskSource lets the task resource keep ownership of its state and

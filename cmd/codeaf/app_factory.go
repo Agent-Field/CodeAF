@@ -107,7 +107,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		return nil, err
 	}
 	seam := factorySeam(h.floor, h.workspace, h.profile)
-	handler := serve.New(seam, serve.Config{GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: "This machine", Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: "This machine", Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},

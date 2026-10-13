@@ -203,6 +203,39 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// A join link must not be consumed by a person whose GitHub sees no watched repository.
+		for _, row := range h.tokenRows() {
+			if row.ID != flow.tokenID || !row.AccessLink || row.Operator || h.seam.Load == nil {
+				continue
+			}
+			snap, loadErr := h.seam.Load()
+			if h.failed(w, loadErr) {
+				return
+			}
+			if h.config.Store != nil {
+				watched, e := h.config.Store.Repos()
+				if h.failed(w, e) {
+					return
+				}
+				snap = withWatchedRepos(snap, watched)
+			}
+			allowed := len(snap.Repos) == 0
+			for _, repo := range snap.Repos {
+				status, e := h.githubStatus(r, "GET", "https://api.github.com/repos/"+repo.Name, exchange.AccessToken)
+				if e != nil {
+					h.fail(w, 502, "GitHub repository access is unavailable")
+					return
+				}
+				if status == 200 {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				h.fail(w, 403, "Your GitHub cannot see this factory's repositories.")
+				return
+			}
+		}
 		if err := h.bindDeviceProfile(r, flow.tokenID, profile, now); h.failed(w, err) {
 			return
 		}

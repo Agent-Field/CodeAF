@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
@@ -129,7 +130,9 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 		return err
 	}
 	defer factories.close()
-	if err := api.BindFactories(&appapi.FactoryRegistry{Home: options.home, URL: factories.address, Token: token, Credentials: credentials, Solo: factories.mountSolo, Power: factories.power}); err != nil {
+	if err := api.BindFactories(&appapi.FactoryRegistry{Home: options.home, URL: factories.address, Token: token, Credentials: credentials, Solo: factories.mountSolo, Power: factories.power, SetupCheckouts: factories.floor.Checkouts, SetupCheckout: func(ctx context.Context, repo, path string, clone bool) (string, error) {
+		return serve.SetupCheckout(ctx, factories.floor, factories.profile, repo, path, clone)
+	}}); err != nil {
 		return err
 	}
 	server := &http.Server{

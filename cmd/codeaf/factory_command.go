@@ -250,7 +250,9 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	jobWrites := factorygithub.JobWrites{Token: func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, home.Dir()); return t }}
 	workdirs := factoryWorkdirs(st, st)
 	handlerConfig := serve.Config{
-		GitHubToken:    jobWrites.Token,
+		GitHubToken: jobWrites.Token,
+
+		ProfileDir:     home.Dir(),
 		ChangeAssignee: jobWrites.Assign,
 		DeleteBranch: func(ctx context.Context, it factory.Item) error {
 			if err := jobWrites.DeleteDroppedBranch(ctx, it, workdirs.DroppedBranch(it), time.Now()); err != nil {
