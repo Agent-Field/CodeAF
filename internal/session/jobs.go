@@ -669,7 +669,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	started.sink = newJobSink(logFile, spoolPath)
 	if config.AppMode() {
 		started.sink.appWindow = true
-		started.sink.chunkBytes = AppProcessOutputBytes
+		started.sink.chunkBytes, _ = config.AppOutputPolicyAt(config.ProfileDir())
 	}
 	// THE ORIGIN IS TAKEN AT LAUNCH, ONCE. A job's real ending may arrive long
 	// after the turn that started it, and it must be stamped with the turn that

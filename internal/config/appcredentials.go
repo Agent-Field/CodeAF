@@ -24,15 +24,16 @@ var ErrAppKeys = errors.New("keys are kept by the app")
 // Empty entries are deliberate removals and prevent a profile or shell key
 // from silently reconnecting a provider the person just disconnected.
 type AppCredentials struct {
-	mu       sync.RWMutex
-	keys     map[string]string
-	sessions map[string]string
+	mu        sync.RWMutex
+	keys      map[string]string
+	sessions  map[string]string
+	revisions map[string]uint64
 }
 
 var appCredentials atomic.Pointer[AppCredentials]
 
 func NewAppCredentials() *AppCredentials {
-	return &AppCredentials{keys: make(map[string]string), sessions: make(map[string]string)}
+	return &AppCredentials{keys: make(map[string]string), sessions: make(map[string]string), revisions: make(map[string]uint64)}
 }
 
 // UseAppCredentials installs one launch's source before any engine starts.
@@ -48,11 +49,11 @@ func AppCredentialSource() *AppCredentials { return appCredentials.Load() }
 
 func (c *AppCredentials) Set(provider, key string) {
 	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
-	trace.Secret(key)
-	redact.Register(key)
+	registerAppSecret(key)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.keys[provider] = key
+	c.revisions[provider]++
 }
 
 func (c *AppCredentials) Key(provider string) (string, bool) {
@@ -156,4 +157,47 @@ func refuseAppCredentialUpdates(updates map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// KeyRevision prevents a completed browser callback from undoing a later disconnect.
+func (c *AppCredentials) KeyRevision(provider string) uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.revisions[strings.ToLower(strings.TrimSpace(provider))]
+}
+func (c *AppCredentials) SetAtRevision(provider, key string, version uint64) bool {
+	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
+	registerAppSecret(key)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.revisions[provider] != version {
+		return false
+	}
+	c.keys[provider] = key
+	c.revisions[provider]++
+	return true
+}
+
+// A browser grant is an opaque Keychain payload; its individual bearer bytes need the same redaction as a pasted key.
+func registerAppSecret(raw string) {
+	trace.Secret(raw)
+	redact.Register(raw)
+	var grant struct {
+		Key  string `json:"key"`
+		Keys *struct {
+			Access  string `json:"access_token"`
+			Refresh string `json:"refresh_token"`
+		} `json:"keys"`
+	}
+	if json.Unmarshal([]byte(raw), &grant) != nil {
+		return
+	}
+	trace.Secret(grant.Key)
+	redact.Register(grant.Key)
+	if grant.Keys != nil {
+		trace.Secret(grant.Keys.Access)
+		redact.Register(grant.Keys.Access)
+		trace.Secret(grant.Keys.Refresh)
+		redact.Register(grant.Keys.Refresh)
+	}
 }

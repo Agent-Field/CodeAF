@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -64,6 +65,9 @@ var appSettings = map[string]appSetting{
 	"accounts.github":                   {"app.accounts.github", "ask_first"},
 	"accounts.google":                   {"app.accounts.google", "ask_first"},
 	"accounts.slack":                    {"app.accounts.slack", "ask_first"},
+	"factory.runner_timeout_s":          {"app.factory.runner_timeout_s", factory.DefaultRunnerTimeoutSeconds},
+	"factory.keep_output_days":          {"app.factory.keep_output_days", factory.DefaultKeepOutputDays},
+	"factory.keep_output_mb":            {"app.factory.keep_output_mb", factory.DefaultKeepOutputMB},
 	"factory.polling_s":                 {"app.factory.polling_s", 60},
 	"advanced.context_tokens":           {"app.advanced.context_tokens", 160000},
 	"advanced.work_folder":              {"app.advanced.work_folder", "~/codeaf/work"},
@@ -77,6 +81,9 @@ var appSettings = map[string]appSetting{
 func appSettingFor(key string) (appSetting, bool) {
 	if row, ok := appSettings[key]; ok {
 		return row, true
+	}
+	if appAccountActionKey(key) {
+		return appSetting{"app." + key, "ask_first"}, true
 	}
 	if strings.HasPrefix(key, "accounts.mcp:") && len(key) > len("accounts.mcp:") && len(key) <= 160 && !strings.ContainsAny(key, " \t\r\n\x00") {
 		return appSetting{"app." + key, "ask_first"}, true
@@ -101,7 +108,7 @@ func appSettingsFrom(held map[string]json.RawMessage) map[string]any {
 		keys = append(keys, key)
 	}
 	for key := range held {
-		if strings.HasPrefix(key, "app.accounts.mcp:") {
+		if strings.HasPrefix(key, "app.accounts.mcp:") || appAccountActionKey(strings.TrimPrefix(key, "app.")) {
 			keys = append(keys, strings.TrimPrefix(key, "app."))
 		}
 	}
@@ -310,11 +317,14 @@ func validateAppSetting(key string, raw json.RawMessage) (any, error) {
 	if strings.HasPrefix(key, "accounts.") {
 		switch value {
 		case "yes", "ask_first", "off":
+			if (strings.HasSuffix(key, ".mail-send") || strings.HasSuffix(key, ".calendar-write") || strings.HasSuffix(key, ".messages-send")) && value != "ask_first" {
+				return nil, errors.New("acting in your name always asks")
+			}
 			return value, nil
 		}
 		return nil, errors.New("account must be yes, ask_first or off")
 	}
-	bands := map[string][2]int{"permissions.question_clock_min": {1, 1440}, "factory.polling_s": {1, 86400}, "advanced.context_tokens": {1, 2000000}, "advanced.proposal_s": {0, 60}, "advanced.idle_days": {1, 3650}, "crews.depth": {teamsDepthMin, teamsDepthMax}, "crews.share_pct": {teamsShareMin, teamsShareMax}}
+	bands := map[string][2]int{"permissions.question_clock_min": {1, 1440}, "factory.polling_s": {1, 86400}, "factory.runner_timeout_s": {factory.MinRunnerTimeoutSeconds, factory.MaxRunnerTimeoutSeconds}, "factory.keep_output_days": {factory.MinKeepOutputDays, factory.MaxKeepOutputDays}, "factory.keep_output_mb": {factory.MinKeepOutputMB, factory.MaxKeepOutputMB}, "advanced.context_tokens": {1, 2000000}, "advanced.proposal_s": {0, 60}, "advanced.idle_days": {1, 3650}, "crews.depth": {teamsDepthMin, teamsDepthMax}, "crews.share_pct": {teamsShareMin, teamsShareMax}}
 	band, known := bands[key]
 	n, ok := value.(float64)
 	if !known || !ok || n != math.Trunc(n) || n < float64(band[0]) || n > float64(band[1]) {
@@ -423,6 +433,9 @@ func AppRoleSource(profileDir, agentModel, agentEffort string, fallback roles.So
 // Dynamic MCP account rows use the same validated namespace as the app writer.
 // A typo elsewhere under app.* must still be reported as an unread key.
 func appMCPProfileKey(key string) bool {
+	if appAccountActionKey(strings.TrimPrefix(key, "app.")) {
+		return true
+	}
 	if !strings.HasPrefix(key, "app.accounts.mcp:") {
 		return false
 	}

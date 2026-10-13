@@ -129,7 +129,11 @@ app.accounts.slack
 app.advanced.context_tokens
 app.advanced.idle_days
 app.advanced.work_folder
+app.factory.keep_output_days
+app.factory.keep_output_mb
 app.factory.polling_s
+app.factory.runner_timeout_s
+app.mcp.servers
 app.memory.agents_may_add
 app.models.pinned
 app.permissions.always_ask

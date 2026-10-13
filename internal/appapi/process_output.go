@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"io"
 	"net/http"
 	"os"
@@ -33,6 +34,13 @@ func processTailLimit(query string) (int, error) {
 	return n, nil
 }
 func readProcessOutput(row processRow, limit int, now time.Time) (ProcessOutputResponse, error) {
+	age := ProcessOutputRetention
+	if config.AppMode() {
+		_, age = config.AppOutputPolicyAt(config.ProfileDir())
+	}
+	return readProcessOutputWithAge(row, limit, now, age)
+}
+func readProcessOutputWithAge(row processRow, limit int, now time.Time, age time.Duration) (ProcessOutputResponse, error) {
 	file, err := openProcessLog(row.File, row.Notice.LogPath)
 	if err != nil {
 		return ProcessOutputResponse{}, err
@@ -42,7 +50,7 @@ func readProcessOutput(row processRow, limit int, now time.Time) (ProcessOutputR
 	if err != nil {
 		return ProcessOutputResponse{}, err
 	}
-	if row.Process.State != "running" && info.ModTime().Before(now.Add(-ProcessOutputRetention)) {
+	if row.Process.State != "running" && info.ModTime().Before(now.Add(-age)) {
 		return ProcessOutputResponse{}, os.ErrNotExist
 	}
 	offset := info.Size() - int64(limit)
@@ -74,9 +82,10 @@ func (s *Server) processOutput(w http.ResponseWriter, r *http.Request) {
 		agentFailure(w, err)
 		return
 	}
-	output, err := readProcessOutput(row, limit, s.options.Agents.now())
+	_, age := config.AppOutputPolicyAt(s.options.ProfileDir)
+	output, err := readProcessOutputWithAge(row, limit, s.options.Agents.now(), age)
 	if err != nil {
-		fail(w, 404, "not_found", "process output is unavailable or expired after 7 days")
+		fail(w, 404, "not_found", fmt.Sprintf("process output is unavailable or expired after %d days", int(age/(24*time.Hour))))
 		return
 	}
 	if follow != "1" {
@@ -115,14 +124,14 @@ func (c *processOutputCursor) read(row processRow, initialLimit int) ([]byte, er
 		probe := make([]byte, len(c.anchor))
 		n, _ := file.ReadAt(probe, c.offset-int64(len(c.anchor)))
 		if n != len(probe) || !bytes.Equal(probe, c.anchor) {
-			raw, err := io.ReadAll(io.NewSectionReader(file, 0, MaxProcessOutputBytes))
+			raw, err := io.ReadAll(io.NewSectionReader(file, max(int64(0), info.Size()-MaxProcessOutputBytes), MaxProcessOutputBytes))
 			if err != nil {
 				return nil, err
 			}
 			at := bytes.LastIndex(raw, c.anchor)
-			start = 0
+			start = max(int64(0), info.Size()-MaxProcessOutputBytes)
 			if at >= 0 {
-				start = int64(at + len(c.anchor))
+				start = max(int64(0), info.Size()-MaxProcessOutputBytes) + int64(at+len(c.anchor))
 			}
 		}
 	}

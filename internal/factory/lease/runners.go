@@ -14,7 +14,7 @@ func (d *Desk) Sleep(machine, handle string, asleep bool) error {
 			held := &doc.Leases[i]
 			if held.Machine == machine && held.Handle == handle {
 				held.Asleep = asleep
-				held.HeartbeatAt, held.ExpiresAt = now, now.Add(d.ttl)
+				held.HeartbeatAt, held.ExpiresAt = now, now.Add(d.TTL())
 			}
 		}
 		return true, nil

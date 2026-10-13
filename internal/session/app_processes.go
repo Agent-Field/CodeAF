@@ -3,6 +3,8 @@ package session
 import (
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,8 +15,8 @@ import (
 
 // AppProcessOutputBytes is the disk limit for the app's process output. The
 // terminal keeps its existing chunk policy; both readers keep the 64 KiB ring.
-const AppProcessOutputBytes = 10 << 20
-const AppProcessOutputRetention = 7 * 24 * time.Hour
+const AppProcessOutputBytes = factory.DefaultKeepOutputMB << 20
+const AppProcessOutputRetention = factory.DefaultKeepOutputDays * 24 * time.Hour
 
 // A conversation has one engine writer. This lock orders its asynchronous
 // naming and exit updates so a late name cannot overwrite a settled process.
@@ -162,7 +164,7 @@ func SweepProcessOutput(file string, now time.Time) error {
 			return errRetentionUnsafe
 		}
 	}
-	err := jobRetentionSweepBefore(filepath.Join(root, placeLogs, droppingJobs), defaultJobRetentionBudget(), now.Add(-AppProcessOutputRetention))
+	err := jobRetentionSweepBefore(filepath.Join(root, placeLogs, droppingJobs), defaultJobRetentionBudget(), now.Add(-appProcessOutputAge()))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -191,4 +193,13 @@ func (a *Agent) finishProcessRecords() {
 		}
 	}
 	writeProcessRecords(a.SessionPath(), rows)
+}
+
+// Terminal callers retain their existing policy; app sweeps read this Mac's saved age.
+func appProcessOutputAge() time.Duration {
+	if config.AppMode() {
+		_, age := config.AppOutputPolicyAt(config.ProfileDir())
+		return age
+	}
+	return AppProcessOutputRetention
 }

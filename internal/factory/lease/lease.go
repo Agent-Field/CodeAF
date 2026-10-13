@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -19,7 +21,7 @@ import (
 )
 
 // DefaultTTL keeps a disconnected worker's job from remaining taken forever.
-const DefaultTTL = time.Minute
+const DefaultTTL = factory.DefaultRunnerTimeoutSeconds * time.Second
 
 // HeartbeatEvery is how often a worker renews a live lease. The worker loop's
 // default beat is this same duration, so a quiet machine and a missed beat
@@ -31,7 +33,7 @@ const HeartbeatEvery = 2 * time.Second
 const OfflineMisses = int(OfflineAfter / HeartbeatEvery)
 
 // OfflineAfter is the S2 runner silence deadline, shared by every presence read.
-const OfflineAfter = time.Minute
+const OfflineAfter = factory.DefaultRunnerTimeoutSeconds * time.Second
 
 var (
 	ErrNoJob      = errors.New("factory lease: no queued job for this worker")
@@ -122,7 +124,14 @@ func Open(st *store.Store, options Options) (*Desk, error) {
 }
 
 // TTL is the hold length this desk renews to.
-func (d *Desk) TTL() time.Duration { return d.ttl }
+func (d *Desk) TTL() time.Duration {
+	if _, err := os.Stat(filepath.Join(d.store.Root(), "runner-settings.json")); err == nil {
+		if value, err := d.store.RunnerSettings(); err == nil {
+			return time.Duration(value.RunnerTimeoutSeconds) * time.Second
+		}
+	}
+	return d.ttl
+}
 
 // Live is the holds that are still inside their TTL, after releasing any
 // that have expired. Reading presence reaps the same way a pull does, so a
@@ -224,7 +233,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if _, err := rand.Read(token[:]); err != nil {
 				return false, err
 			}
-			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.ttl), ThreadOnly: it.State != factory.StateQueued || paused(it)}
+			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: it.State != factory.StateQueued || paused(it)}
 			return false, d.reserve(doc, worker, taken)
 		}
 		return false, ErrNoJob
@@ -267,7 +276,7 @@ func (d *Desk) Heartbeat(id int, worker string) (Lease, error) {
 		if err != nil {
 			return false, err
 		}
-		held.ExpiresAt = now.Add(d.ttl)
+		held.ExpiresAt = now.Add(d.TTL())
 		held.HeartbeatAt = now
 		renewed = *held
 		return true, nil
@@ -419,6 +428,9 @@ func paused(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused 
 func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
 	var expired, kept []Lease
 	for _, held := range append([]Lease(nil), doc.Leases...) {
+		if !held.HeartbeatAt.IsZero() {
+			held.ExpiresAt = held.HeartbeatAt.Add(d.TTL())
+		}
 		if held.Asleep || now.Before(held.ExpiresAt) {
 			kept = append(kept, held)
 			continue

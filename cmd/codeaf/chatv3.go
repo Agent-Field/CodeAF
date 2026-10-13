@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/catalog"
@@ -1977,6 +1978,9 @@ func v3SearchStatus(provider search.Provider, profileDir string) func() string {
 // registered anywhere, so a machine with neither browser application still has
 // a manager and still has the accounts list — it simply has neither service.
 func v3Connect(profileDir string) *connect.Manager {
+	if source := config.AppCredentialSource(); source != nil {
+		return appapi.NewAccountManager(profileDir, source)
+	}
 	credentials := map[string]connect.ClientCredential{}
 	if id, secret := config.GoogleOAuthClientAt(profileDir); strings.TrimSpace(id) != "" && strings.TrimSpace(secret) != "" {
 		credentials["google"] = connect.ClientCredential{ID: id, Secret: secret}

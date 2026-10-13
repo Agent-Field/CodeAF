@@ -53,8 +53,8 @@ idle days and crew defaults. Proposal seconds accept 0–60; 0 disables
 that clock. Account choices are `yes`, `ask_first` and `off`, including
 `accounts.mcp:<server>`. App approval choices are `ask_risky`,
 `ask_everything` and `dont_ask`. The memory-add switch and daily agent budgets are enforced by the engine.
-Live enforcement of the new app permission and factory settings arrives with
-those resource routes.
+Account action choices reach the native service tools. Factory timeout and local
+output settings are available through the factory settings routes.
 Theme, windows, notifications and other UI-only settings stay in the app.
 
 ## App first launch — resume setup and choose defaults
@@ -96,3 +96,65 @@ provider's key route is supported. Codex browser credentials are not accepted
 by the app key API.
 A key replacement or removal while the browser waits wins over its later
 completion. No browser credential is saved to the binary's home.
+
+## App accounts — connect Google or Slack, permissions and disconnect
+
+`GET /app/v1/accounts` lists GitHub, Google and Slack without credentials.
+`PATCH /app/v1/accounts/{id}` takes `{access:"yes"|"ask_first"|"off"}`.
+An unconnected account refuses Yes or Ask first. Off removes its native actions
+from use. `PATCH /app/v1/accounts/{id}/actions/{aid}` saves an individual choice.
+Sending mail, posting Slack messages and writing calendar events always ask;
+their action rows refuse any choice other than `ask_first`.
+
+`POST /app/v1/accounts/{id}/connect` with `{}` returns `connect_url`.
+For Google and Slack this starts the ordinary browser grant with a local
+callback. It waits at most five minutes. `GET` on the same route polls the
+account state. Google currently offers Gmail and Calendar, not Drive.
+GitHub's link opens its token settings; the app hands its token to the binary.
+`DELETE /app/v1/accounts/{id}` cancels a pending sign-in, forgets the launch's
+grant and saves Off. A late callback cannot undo that disconnect.
+
+The app supplies credentials over its private launch pipe. Browser grants and
+renewals stay in process memory; the binary never reads or writes the terminal's
+credentials.json for app accounts. Account reads and events never return tokens. The first successful connect poll
+includes a one-time `credential` payload for the app to save to Keychain. Later
+polls omit it; initial launch keys are never exported. The app hands that opaque
+payload back under the service id on the next launch.
+
+## App MCP servers — add, access, not answering and remove
+
+`GET /app/v1/mcp` returns saved server addresses, access and tool counts.
+`POST /app/v1/mcp` takes `{address}`. Addresses without a scheme use HTTPS,
+or HTTP for localhost. Embedded credentials, query strings and fragments are
+refused; remote HTTP is refused. A server's real tools list determines
+`connected` or `not_answering`, with a two-second limit for each probe.
+At most four probes run together and at most 64 servers may be saved.
+
+`PATCH /app/v1/mcp/{id}` takes `{access:"yes"|"ask_first"|"off"}`.
+`DELETE /app/v1/mcp/{id}` removes the address and its launch token.
+Only addresses and permission choices reach the profile. Tokens are handed
+through the app's pipe under `mcp:<id>`. Saved servers join the native tool sources on the next belt rebuild.
+Off removes their tools, and removing a server removes that source.
+A server must answer before its tools are armed. Adding one does not start
+a vendor authorization trip; authenticated servers need an app-supplied token.
+
+## App factory settings — sign out, repository switches and access links
+
+`GET /app/v1/factories/{id}` returns the selected factory's Settings details.
+`POST /app/v1/factories/{id}/sign-out` revokes this factory session and forgets
+its memory-only token while preserving the attachment. A solo factory cannot
+sign out. Repository switches use `PATCH /app/v1/factories/{id}/repos/{rid}`
+with `{enabled}`; rid is the URL-encoded owner/name. The factory enforces
+operator permission. `POST /app/v1/factories/{id}/links` creates an access link;
+its secret URL is returned only at creation. DELETE on that route with `{id}`,
+or on `/links/{link}`, revokes it through the factory's operator door.
+
+`PATCH /app/v1/factories/{id}` accepts `runner_timeout_s`, `keep_output_days`
+and `keep_output_mb`. Runner silence must be 1–86400 seconds and requires the
+factory operator. Its lease and presence reads use the same saved deadline.
+Output age is 1–3650 days and size 1–1024 MiB, saved for this Mac. Changing
+local retention needs no team operator permission. New app processes use the
+saved byte window; completed-log sweeps use the saved age. Factory log reads
+and writes trim oldest lines while leaving proof and execution results intact.
+Existing running processes keep the window they started with. Output reads
+remain bounded to 10 MiB per reply.

@@ -320,10 +320,11 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer 
 
 	runContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	flow := &Flow{
-		manager: m,
-		plug:    plug,
-		cancel:  cancel,
-		done:    make(chan flowResult, 1),
+		appRevision: m.store.appRevision(service.ID),
+		manager:     m,
+		plug:        plug,
+		cancel:      cancel,
+		done:        make(chan flowResult, 1),
 	}
 	loopback := &mcpLoopback{answers: make(chan mcpAnswer, 1)}
 	server := &http.Server{Handler: loopback, ReadHeaderTimeout: mcpAskTimeout}

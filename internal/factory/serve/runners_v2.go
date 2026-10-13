@@ -10,11 +10,11 @@ import (
 	"sort"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
-	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 func (h *Handler) v2Routes() {
+	h.route("/v1/settings", map[string]http.HandlerFunc{http.MethodGet: h.runnerPolicy, http.MethodPatch: h.runnerPolicy})
 	h.read("/v1/runners", h.runnersDirectory)
 	h.route("/v1/runners/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/runners/pull", h.pullWorker)
@@ -60,7 +60,7 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 			}
 			if row.Asleep {
 				got.State = api.RunnerAsleep
-			} else if !h.clock().Before(row.Last.Add(lease.OfflineAfter)) {
+			} else if !h.clock().Before(row.Last.Add(h.runnerOfflineAfter())) {
 				got.State = api.RunnerOffline
 			}
 			for _, checkout := range row.Checkouts {

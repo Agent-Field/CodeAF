@@ -26,5 +26,5 @@ type SetupRequest struct {
 }
 
 func settingContract() resourceContract {
-	return resourceContract{Name: "setting", Types: []any{Settings{}, PatchSettingsRequest{}, SettingsExpect{}, SetupResponse{}, SetupRequest{}}, Routes: settingContractRoutes, Events: []eventContract{{"settings.changed", KeysChangedEvent{}}}}
+	return resourceContract{Name: "setting", Types: []any{Settings{}, PatchSettingsRequest{}, SettingsExpect{}, SetupResponse{}, SetupRequest{}, EmptyRequest{}, ServiceAction{}, ConnectedService{}, AccountsResponse{}, ServiceAccessRequest{}, ServiceConnectResponse{}, AccountConnectResponse{}, McpServer{}, McpServersResponse{}, AddMcpServerRequest{}}, Routes: append(settingContractRoutes, connectionContractRoutes...), Events: []eventContract{{"settings.changed", KeysChangedEvent{}}}}
 }

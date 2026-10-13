@@ -120,6 +120,7 @@ func (m *Manager) MCPService(service string) bool {
 
 // toolServer is one service that brings its own tools, as a plug.
 type toolServer struct {
+	app     bool
 	service Service
 	// address is where the service answers, which is the one fact the catalog
 	// of these (mcp_catalog.go) carries beyond what goes on a menu. It is also

@@ -78,3 +78,16 @@ type RepoLister func(ctx context.Context) ([]RepoInfo, error)
 func WithRepoLister(list RepoLister) LocalOption {
 	return func(o *localOptions) { o.lister = list }
 }
+
+// Settings defaults are shared by the app profile, factory host and process engine.
+const (
+	MinRunnerTimeoutSeconds     = 1
+	MaxRunnerTimeoutSeconds     = 86400
+	MinKeepOutputDays           = 1
+	MaxKeepOutputDays           = 3650
+	MinKeepOutputMB             = 1
+	MaxKeepOutputMB             = 1024
+	DefaultRunnerTimeoutSeconds = 60
+	DefaultKeepOutputDays       = 7
+	DefaultKeepOutputMB         = 10
+)

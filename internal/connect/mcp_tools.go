@@ -149,6 +149,9 @@ func (m *Manager) MCPCall(ctx context.Context, service, tool string, args json.R
 // until it is restarted.
 func (m *Manager) open(ctx context.Context, plug *toolServer) (*mcp.ClientSession, error) {
 	service := plug.service
+	if plug.app && m.store.app != nil {
+		return m.openAppMCP(ctx, plug)
+	}
 	entry, ok := m.standing(plug)
 	if !ok {
 		return nil, fmt.Errorf("%s is not connected", service.Name)
@@ -169,10 +172,11 @@ func (m *Manager) open(ctx context.Context, plug *toolServer) (*mcp.ClientSessio
 	}
 
 	source := &persisting{
-		base:  record.config().TokenSource(ctx, entry.Keys),
-		store: m.store,
-		id:    service.ID,
-		last:  entry.Keys,
+		appRevision: m.store.appRevision(service.ID),
+		base:        record.config().TokenSource(ctx, entry.Keys),
+		store:       m.store,
+		id:          service.ID,
+		last:        entry.Keys,
 	}
 	client := oauth2.NewClient(ctx, source)
 	client.Timeout = mcpCallTimeout

@@ -242,6 +242,14 @@ func (m *Manager) CapabilityState(service, capability string) CapabilityState {
 	if !ok {
 		return StateOff
 	}
+	if m.appPolicy != nil {
+		if state, ok := m.appPolicy(service, capability); ok {
+			if declared.Acts && state == StateYes {
+				return StateAsk
+			}
+			return state
+		}
+	}
 	if state, stored := m.policy().get(service, capability); stored {
 		return state
 	}

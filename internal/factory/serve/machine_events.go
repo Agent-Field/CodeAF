@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
-	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
 )
 
@@ -47,7 +46,7 @@ func (h *Handler) machineEvents() {
 		}
 		h.machines[key] = row
 		if row.Status != api.MachineOffline && row.Status != api.RunnerAsleep {
-			due := row.LastHeartbeat.Add(lease.OfflineAfter)
+			due := row.LastHeartbeat.Add(h.runnerOfflineAfter())
 			if deadline.IsZero() || due.Before(deadline) {
 				deadline = due
 			}

@@ -123,7 +123,7 @@ func (h *Handler) roster(now time.Time, leases []lease.Lease) []machineRow {
 			got.jobAt = at
 		}
 	}
-	limit := lease.OfflineAfter
+	limit := h.runnerOfflineAfter()
 	out := make([]machineRow, 0, len(keys))
 	for _, key := range keys {
 		got := by[key]

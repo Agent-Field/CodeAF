@@ -84,11 +84,12 @@ const successPage = `<!DOCTYPE html>
 // the address on screen, open it, and only then block on [Flow.Wait]. Any other
 // arrangement makes the screen wait on the network before it can show anything.
 type Flow struct {
-	manager *Manager
-	plug    Plug
-	url     string
-	cancel  context.CancelFunc
-	done    chan flowResult
+	manager     *Manager
+	appRevision uint64
+	plug        Plug
+	url         string
+	cancel      context.CancelFunc
+	done        chan flowResult
 
 	mu      sync.Mutex
 	settled bool
@@ -127,6 +128,9 @@ func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, erro
 	// it where its sign-in is, rather than from addresses written down here.
 	// The trip that follows is the same trip. See mcp_auth.go.
 	if server, ok := plug.(*toolServer); ok {
+		if m.store.app != nil {
+			return nil, fmt.Errorf("%s uses a token supplied by the app", service.Name)
+		}
 		return m.beginToolServer(ctx, server, answer)
 	}
 	if service.Auth == AuthKey {
@@ -184,11 +188,12 @@ func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, erro
 
 	runContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	flow := &Flow{
-		manager: m,
-		plug:    plug,
-		url:     doorURL,
-		cancel:  cancel,
-		done:    make(chan flowResult, 1),
+		appRevision: m.store.appRevision(service.ID),
+		manager:     m,
+		plug:        plug,
+		url:         doorURL,
+		cancel:      cancel,
+		done:        make(chan flowResult, 1),
 	}
 	if refusal, refuses := plug.(refusing); refuses {
 		runContext = context.WithValue(runContext, oauth2.HTTPClient, &http.Client{
@@ -285,7 +290,7 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 	if account, err := f.plug.Account(ctx, staticClient(ctx, result.keys)); err == nil {
 		entry.Account = account
 	}
-	if err := f.manager.store.put(service.ID, entry); err != nil {
+	if err := f.manager.store.putAtRevision(service.ID, entry, f.appRevision); err != nil {
 		f.status = Status{Service: service}
 		f.err = fmt.Errorf("connect %s: %w", service.Name, err)
 		return f.status, f.err

@@ -62,6 +62,7 @@ type Server struct {
 	events        *EventHub
 	keyState      keyState
 	settingsState settingsState
+	accounts      accountState
 	signIn        browserSignIn
 	mutations     mutationState
 	crewLogs      crewLogState

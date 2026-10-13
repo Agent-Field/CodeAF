@@ -250,9 +250,11 @@ func sortPlugs(plugs []Plug) {
 // Manager is the one handle the rest of the program holds: it owns the store
 // file, the client credentials, and every connection made with them.
 type Manager struct {
-	store *store
-	creds map[string]ClientCredential
-	plugs []Plug
+	appPolicy  func(string, string) (CapabilityState, bool)
+	appServers func() []AppToolServer
+	store      *store
+	creds      map[string]ClientCredential
+	plugs      []Plug
 }
 
 // NewManager opens the store under profileDir and binds it to the credentials
@@ -298,12 +300,15 @@ func (m *Manager) Services() []Status {
 		entries = map[string]stored{}
 	}
 	out := make([]Status, 0, len(m.plugs))
-	for _, p := range m.plugs {
+	for _, p := range m.currentPlugs() {
 		service := p.Service()
 		if !m.offered(service) {
 			continue
 		}
 		status := Status{Service: service}
+		if server, ok := p.(*toolServer); ok && server.app {
+			status.Connected = true
+		}
 		if record, ok := entries[service.ID]; ok && record.usable() && record.covers(service.Scopes) {
 			status.Connected = true
 			status.Account = record.Account
@@ -324,7 +329,18 @@ func (m *Manager) offered(service Service) bool {
 	// SEAM(mcp): a service that introduces itself to its vendor at connect time
 	// has no client credential for a build to be missing, so it is offered in
 	// every build. See mcp.go's registersItself.
-	return service.Auth == AuthKey || registersItself(service) || m.creds[service.ID].ok()
+	if service.Auth == AuthKey || registersItself(service) || m.creds[service.ID].ok() {
+		return true
+	}
+	if m.store.app != nil {
+		if m.appServers != nil && strings.HasPrefix(service.ID, "mcp:") {
+			return true
+		}
+		if raw, _ := m.store.app.Key(service.ID); raw != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Connected reports whether id can be used right now.
@@ -350,6 +366,9 @@ func (m *Manager) Connected(id string) bool {
 // than letting a screen promise access codeaf cannot deliver.
 func (m *Manager) standing(p Plug) (stored, bool) {
 	service := p.Service()
+	if server, ok := p.(*toolServer); ok && server.app {
+		return stored{}, true
+	}
 	if !m.offered(service) {
 		return stored{}, false
 	}
@@ -383,7 +402,7 @@ func (m *Manager) Disconnect(id string) error {
 // service.
 func (m *Manager) plug(id string) (Plug, error) {
 	id = strings.TrimSpace(id)
-	for _, p := range m.plugs {
+	for _, p := range m.currentPlugs() {
 		if p.Service().ID == id {
 			return p, nil
 		}

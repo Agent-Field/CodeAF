@@ -134,7 +134,9 @@ func (s stored) covers(wanted []string) bool {
 // and a process killed mid-write leaves the previous file intact rather than
 // half of a new one.
 type store struct {
-	path string
+	appPlugs func() []Plug
+	app      AppKeySource
+	path     string
 	// mu serialises this manager's own writes. The sidecar lock in replace
 	// extends the same critical section across managers and processes.
 	mu sync.Mutex
@@ -157,6 +159,9 @@ func newStore(profileDir string) *store {
 // connections, not an error: nobody has connected anything, which is a perfectly
 // ordinary state for a fresh install.
 func (s *store) load() (map[string]stored, error) {
+	if s.app != nil {
+		return s.loadApp(), nil
+	}
 	raw, err := os.ReadFile(s.path)
 	if os.IsNotExist(err) {
 		return map[string]stored{}, nil
@@ -201,6 +206,9 @@ func (s *store) remove(id string) error {
 func (s *store) replace(id string, edit func(map[string]stored)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.app != nil {
+		return s.replaceApp(id, edit)
+	}
 
 	directory := filepath.Dir(s.path)
 	if err := os.MkdirAll(directory, 0o700); err != nil {

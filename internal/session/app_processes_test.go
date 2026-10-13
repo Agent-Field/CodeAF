@@ -209,3 +209,38 @@ func TestAppProcessCloseFencesLateRecords(t *testing.T) {
 		t.Fatalf("late record wrote after Close: %v", err)
 	}
 }
+
+func TestAppSavedOutputPolicyChangesNewWindowAndCompletedExpiry(t *testing.T) {
+	t.Setenv(config.AppModeEnv, "1")
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	if err := config.ApplyAppSettings(profile, map[string]json.RawMessage{"factory.keep_output_mb": json.RawMessage(`1`), "factory.keep_output_days": json.RawMessage(`2`)}, ""); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	registry := newJobRegistry(dir, Place{Dir: dir}, nil)
+	ended, err := registry.newJob("output", jobKindBash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ended.sink.Write(bytes.Repeat([]byte("fixture line\n"), 200000)); err != nil {
+		t.Fatal(err)
+	}
+	ended.sink.close()
+	registry.joinRetention()
+	info, err := os.Stat(ended.logPath)
+	if err != nil || info.Size() > 1<<20 {
+		t.Fatal("saved window was not enforced", info, err)
+	}
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-3 * 24 * time.Hour)
+	if err := os.Chtimes(ended.logPath, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := SweepProcessOutput(filepath.Join(dir, "transcript.jsonl"), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(ended.logPath); !os.IsNotExist(err) {
+		t.Fatal("saved age was not enforced", err)
+	}
+}

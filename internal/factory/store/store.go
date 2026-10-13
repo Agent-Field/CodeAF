@@ -53,7 +53,8 @@ var ErrNewer = errors.New("factory store: written by a newer codeaf")
 
 // Store is the factory's items under one root.
 type Store struct {
-	root string
+	root         string
+	outputPolicy func() (int, int)
 	// clock is the store's now. A test may hold it still; it is nil in every
 	// real build, which reads as time.Now.
 	clock func() time.Time
@@ -118,6 +119,7 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 			return err
 		}
 		it.ID = highest + 1
+		st.retainOutput(&it)
 		data, err := marshalDoc(doc{Revision: 1, Item: it})
 		if err != nil {
 			return err
@@ -195,6 +197,7 @@ func (st *Store) Get(id int) (factory.Item, error) {
 	if err != nil {
 		return factory.Item{}, err
 	}
+	st.retainOutput(&d.Item)
 	return d.Item, nil
 }
 
@@ -238,6 +241,7 @@ func (st *Store) List() ([]factory.Item, error) {
 		if err != nil {
 			return nil, err
 		}
+		st.retainOutput(&d.Item)
 		items = append(items, d.Item)
 	}
 	sort.SliceStable(items, func(a, b int) bool {
@@ -279,6 +283,7 @@ func (st *Store) Save(it factory.Item) error {
 		default:
 			return err
 		}
+		st.retainOutput(&it)
 		data, err := marshalDoc(doc{Revision: rev, Item: it})
 		if err != nil {
 			return err
@@ -361,6 +366,7 @@ func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) er
 		// Talk door and the adapt door each get their event (`read`, `talked`,
 		// `stages changed by plan`) without one of them having to remember.
 		factory.NoteChanges(before, &it, now)
+		st.retainOutput(&it)
 		data, err := marshalDoc(doc{Revision: current.Revision + 1, Item: it})
 		if err != nil {
 			return err

@@ -1,7 +1,6 @@
 package appapi
 
 import (
-	"context"
 	"path/filepath"
 	"sync"
 	"time"
@@ -28,11 +27,11 @@ func (s *Server) startOrderWatch() {
 		s.SetInboxSource("standing", &orderInboxSource{s: s})
 	}
 	s.orders.wake = make(chan struct{}, 1)
-	ctx := s.options.Context
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	// The server owns cancellation and joins this writer before returning from Close.
+	ctx := s.inbox.ctx
+	s.watchers.Add(1)
 	go func() {
+		defer s.watchers.Done()
 		clock := time.NewTicker(time.Second)
 		defer clock.Stop()
 		next := time.Now()

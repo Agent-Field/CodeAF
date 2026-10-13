@@ -59,6 +59,7 @@ func newAppFactoryHost(ctx context.Context, root, address, token string, credent
 	ctx, cancel := context.WithCancel(ctx)
 	workspace, _ := os.Getwd()
 	h := &appFactoryHost{ctx: ctx, cancel: cancel, done: make(chan struct{}), floor: floor, address: address, token: token, workspace: workspace, profile: config.ProfileDir(), credentials: credentials}
+	floor.SetOutputPolicy(appFactoryOutputPolicy(h.profile))
 	guard.Go("app/factory worker", func() { defer close(h.done); h.workers() })
 	return h, nil
 }
@@ -274,6 +275,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	if err != nil {
 		return
 	}
+	mirror.SetOutputPolicy(appFactoryOutputPolicy(h.profile))
 	defer os.RemoveAll(mirror.Root())
 	current := h.parent
 	if current == nil {
@@ -419,4 +421,12 @@ func appFactoryRequest(ctx context.Context, target factoryTarget, method, path s
 		return json.NewDecoder(response.Body).Decode(out)
 	}
 	return nil
+}
+
+// Local log policy follows this Mac's profile, including for mirrors of a team factory.
+func appFactoryOutputPolicy(profile string) func() (int, int) {
+	return func() (int, int) {
+		bytes, age := config.AppOutputPolicyAt(profile)
+		return int(age / (24 * time.Hour)), int(bytes)
+	}
 }

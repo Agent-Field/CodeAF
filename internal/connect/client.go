@@ -53,15 +53,19 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 		// next move; the useful answer is the browser trip they already know.
 		return nil, fmt.Errorf("%s has to be connected again", service.Name)
 	}
+	if m.store.app != nil && entry.Keys != nil && entry.Keys.RefreshToken == "" {
+		return staticClient(ctx, entry.Keys), nil
+	}
 	credential, err := m.credential(service.ID)
 	if err != nil {
 		return nil, err
 	}
 	source := &persisting{
-		base:  m.config(plug, credential).TokenSource(ctx, entry.Keys),
-		store: m.store,
-		id:    service.ID,
-		last:  entry.Keys,
+		appRevision: m.store.appRevision(service.ID),
+		base:        m.config(plug, credential).TokenSource(ctx, entry.Keys),
+		store:       m.store,
+		id:          service.ID,
+		last:        entry.Keys,
 	}
 	client := oauth2.NewClient(ctx, bearerSource{base: source})
 	client.Timeout = clientTimeout
@@ -101,9 +105,10 @@ func (b bearerSource) Token() (*oauth2.Token, error) {
 
 // persisting is the wrapper that notices a renewal and records it.
 type persisting struct {
-	base  oauth2.TokenSource
-	store *store
-	id    string
+	appRevision uint64
+	base        oauth2.TokenSource
+	store       *store
+	id          string
 
 	mu   sync.Mutex
 	last *oauth2.Token
@@ -139,9 +144,10 @@ func (p *persisting) Token() (*oauth2.Token, error) {
 		return fresh, nil
 	}
 	entry.Keys = fresh
-	if err := p.store.put(p.id, entry); err != nil {
+	if err := p.store.putAtRevision(p.id, entry, p.appRevision); err != nil {
 		return fresh, nil
 	}
+	p.appRevision = p.store.appRevision(p.id)
 	p.last = fresh
 	return fresh, nil
 }
