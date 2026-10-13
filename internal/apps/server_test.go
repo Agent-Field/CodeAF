@@ -14,7 +14,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
-	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
@@ -30,7 +29,8 @@ type client struct {
 func testServices(t *testing.T, ctx context.Context) *svc.Services {
 	t.Helper()
 	all := Wire(ctx, t.TempDir())
-	if err := all.Store.(*store.Service).SeedGoldenCRM(ctx); err != nil {
+	// Reading through Store starts the demo registry even when lifecycle wraps it.
+	if _, err := all.Store.Get(ctx, "crm"); err != nil {
 		t.Fatal(err)
 	}
 	return all
