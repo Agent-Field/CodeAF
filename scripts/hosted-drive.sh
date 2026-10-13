@@ -4,7 +4,7 @@
 # screen and the folder back. A surface change is accepted on this, never on a
 # test with a stand-in agent: what a stand-in proves is what the stand-in does.
 #
-#   scripts/hosted-drive.sh <path to bin/codeaf> [folder to keep failed screens in]
+#   scripts/hosted-drive.sh <path to bin/codeaf> [folder to keep evidence in]
 #
 # IT MAKES REAL MODEL CALLS, so it is never part of `make check` or any default
 # target. Run it by hand, after `make build`, when a change touches the run, the
@@ -12,15 +12,20 @@
 #
 # WHAT IT NEEDS: tmux, git, python3, and a key the product can find, either in
 # the environment or in your profile's config file. Everything it makes is
-# thrown away: a home of its own, a repository of its own, and a tmux server on
+# isolated: a home of its own, a repository of its own, and a tmux server on
 # a socket of its own. It never writes to your own home folder's state.
+# Outcome, action and provider records are kept in the evidence folder even
+# after a pass, so a later diagnosis does not depend on a deleted home.
 #
-# YOUR KEY: the drive copies your profile's key into a private temporary home,
+# YOUR KEY: when CODEAF_PROFILE_DIR is set, the application uses that bound
+# profile and the drive never reads or copies its credential file. Otherwise
+# the drive copies your profile's key into a private temporary home,
 # readable by you alone, and removes that copy on every exit: a pass, a failed
 # check, an interrupt. Nothing else the product writes there carries the key.
 # A screen kept from a failed check has any key the drive knows struck out. It
 # knows a key by a field whose name says so, or by an environment variable that
-# ends in _API_KEY. A credential kept under any other name it cannot know, so
+# ends in _API_KEY. Bound-profile records mask common bearer/OpenRouter key
+# spellings without reading that profile. Other spellings cannot be known, so
 # kept screens are private files: read them before you share them.
 #
 # WHAT IT ENDS, and how it chooses: its own tmux server, by its own socket's
@@ -39,6 +44,7 @@
 #     - The run works in one copy of its own, kept under the conversation.
 #     - The second hand-off joins the first and shows on the side list.
 #  2. The run ends and its work comes home.
+#     - Both handed-off tasks ended done, rather than failed or still running.
 #     - One new commit holds the run's files.
 #     - Your unsaved file is untouched and still unsaved.
 #     - The run's copy is given back.
@@ -47,6 +53,7 @@
 #     - No row on the side list is still running.
 #  3. A task handed off after the run has ended is a run of its own, and the
 #     first run stays readable.
+#     - The later handed-off task ended done.
 #     - The first run's record is kept beside the live one.
 #     - A press on the first run's row opens that task's page over the
 #       conversation, with the task as it was given.
@@ -59,12 +66,14 @@
 # shellcheck disable=SC2329
 set -u
 
-BIN=${1:?usage: scripts/hosted-drive.sh <path to bin/codeaf> [folder for failed screens]}
+BIN=${1:?usage: scripts/hosted-drive.sh <path to bin/codeaf> [folder for evidence]}
 [ -x "$BIN" ] || { echo "no binary at $BIN: run make build first"; exit 2; }
 for tool in tmux git python3; do
 	command -v "$tool" >/dev/null || { echo "this drive needs $tool"; exit 2; }
 done
 BIN=$(cd "$(dirname "$BIN")" && pwd -P)/$(basename "$BIN")
+EVIDENCE_HELPER=$(cd "$(dirname "$0")" && pwd -P)/hosted-evidence.py
+[ -f "$EVIDENCE_HELPER" ] || { echo "missing hosted-evidence.py beside the drive"; exit 2; }
 umask 077
 OUT=${2:-$(mktemp -d /tmp/codeaf-drive-screens.XXXXXX)}
 mkdir -p "$OUT"
@@ -73,9 +82,14 @@ HOME_DIR=$(mktemp -d /tmp/codeaf-drive-home.XXXXXX)
 WORK=$(mktemp -d /tmp/codeaf-drive-work.XXXXXX)
 # mktemp -d makes a folder only its owner can enter on every system this runs
 # on; said again here because a key is about to be copied into it.
-chmod 700 "$HOME_DIR"
+chmod 700 "$HOME_DIR" "$OUT"
+EVIDENCE_ARGS=(--home "$HOME_DIR")
+if [ -z "${CODEAF_PROFILE_DIR:-}" ]; then
+	EVIDENCE_ARGS+=(--copied-config "$HOME_DIR/config.json")
+fi
 fails=0
 passed=no
+final_kept=no
 
 say() { printf '%s\n' "$*"; }
 t() { tmux -L "$SOCK" "$@"; }
@@ -87,34 +101,24 @@ import sys
 sys.stdout.write(''.join('*' if 0xe000 <= ord(c) <= 0xf8ff else c for c in sys.stdin.read()))"
 }
 
-# strike_keys removes every key the drive knows from what passes through it:
-# the ones in the copied profile and the ones in the environment. The drive
-# opens no page that draws a key; this is for the day some page does.
+# A bound credential file never reaches this redactor. The legacy mode names
+# only its own temporary copy; common bearer/OpenRouter spellings are masked
+# without opening the externally bound profile.
 strike_keys() {
-	python3 -c "
-import json, os, sys
-known = set()
-def walk(node):
-    if isinstance(node, dict):
-        for name, value in node.items():
-            if isinstance(value, str) and 'key' in name.lower() and len(value) > 8:
-                known.add(value)
-            else:
-                walk(value)
-    elif isinstance(node, list):
-        for value in node:
-            walk(value)
-try:
-    walk(json.load(open(sys.argv[1])))
-except Exception:
-    pass
-for name, value in os.environ.items():
-    if name.endswith('_API_KEY') and len(value) > 8:
-        known.add(value)
-text = sys.stdin.read()
-for value in known:
-    text = text.replace(value, '[key struck out]')
-sys.stdout.write(text)" "$HOME_DIR/config.json"
+	python3 "$EVIDENCE_HELPER" redact "${EVIDENCE_ARGS[@]}"
+}
+
+# Capture before another hand-off rotates the store, and before cleanup gives
+# back the home. A failed run retains the same durable fields as a clean one.
+capture_evidence() {
+	python3 "$EVIDENCE_HELPER" snapshot --output "$OUT/$1" "${EVIDENCE_ARGS[@]}" || return 1
+	screen | strike_keys >"$OUT/$1/screen.txt" 2>/dev/null
+	[ "$1" != final ] || final_kept=yes
+	return 0
+}
+
+terminal_tasks() {
+	python3 "$EVIDENCE_HELPER" terminal --home "$HOME_DIR" --ids "$@"
 }
 
 pass() { say "  PASS  $*"; }
@@ -214,13 +218,20 @@ holders_of() {
 	return 0
 }
 
-# cleanup runs on EVERY exit. The key's copy goes first and goes always; the
+# cleanup runs on EVERY exit. Sanitized evidence is kept before the home
+# goes away. The key's own temporary copy is removed on every exit; the
 # rest of the home may stay for reading when a check failed.
 #
 # THE ENGINE IS ENDED BEFORE ANYTHING IS REMOVED, because it is found through a
 # socket that lives in the home. A clean pass then removes what the drive made,
 # by the names it made them under and nothing else.
 cleanup() {
+	local status=$?
+	if [ "$final_kept" != yes ] && ! capture_evidence final; then
+		say "  FAIL  diagnostic evidence could not be kept"
+		passed=no
+		[ "$status" -ne 0 ] || status=1
+	fi
 	rm -f "$HOME_DIR/config.json"
 	t kill-server 2>/dev/null
 	end_engine
@@ -228,6 +239,8 @@ cleanup() {
 		case "$HOME_DIR" in /tmp/codeaf-drive-home.*) rm -rf "$HOME_DIR" ;; esac
 		case "$WORK" in /tmp/codeaf-drive-work.*) rm -rf "$WORK" ;; esac
 	fi
+	trap - EXIT
+	exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
@@ -243,14 +256,14 @@ first_on_the_list() { screen | cut -c119- | grep -q 'add Mul and Div'; }
 # only one spelling reads an open column as closed on the other system, and the
 # key pressed to open it closes it instead.
 column_open() { screen | grep -Eq '│ Tasks [0-9]+.*(alt|opt)\+l'; }
-first_run_home() { [ -f "$WORK/README.md" ] && [ -f "$WORK/muldiv.go" ]; }
+first_run_home() { [ -f "$WORK/README.md" ] && [ -f "$WORK/muldiv.go" ] && terminal_tasks 1 2; }
 one_new_commit() { [ "$(git -C "$WORK" log --oneline | wc -l | tr -d ' ')" = "2" ]; }
 my_file_untouched() { [ "$(cat "$WORK/notes.txt")" = "mine, unsaved" ] && only_my_file; }
 copy_given_back() { [ -z "$(copies)" ]; }
 no_task_branch() { [ -z "$(git -C "$WORK" branch --list 'task/*')" ]; }
 card_says_merged() { screen | grep -q '· merged' && ! screen | grep -q 'branch kept'; }
 nothing_running() { ! screen | cut -c119- | grep -Eq 'Running [1-9][0-9]*'; }
-second_run_home() { grep -q 'func Neg' "$WORK"/*.go 2>/dev/null; }
+second_run_home() { grep -q 'func Neg' "$WORK"/*.go 2>/dev/null && terminal_tasks 3; }
 first_record_kept() { ls "$HOME_DIR"/v3/projects/*/*/plandb.db.1 >/dev/null 2>&1; }
 page_drawn() { screen | grep -q 'transcript · work   esc/← main'; }
 page_is_the_first_runs() { page_drawn && screen | grep -q '› add Mul and Div with table tests'; }
@@ -259,7 +272,9 @@ ended_run_answers() { screen | grep -q '· this task has finished — say it to 
 draft_is_back() { screen | grep -q '› my draft stays'; }
 
 profile=${CODEAF_HOME:-$HOME/.codeaf}/config.json
-[ -f "$profile" ] && cp "$profile" "$HOME_DIR/config.json"
+if [ -z "${CODEAF_PROFILE_DIR:-}" ] && [ -f "$profile" ]; then
+	cp "$profile" "$HOME_DIR/config.json"
+fi
 (
 	cd "$WORK" || exit 1
 	git init -q -b work
@@ -302,6 +317,8 @@ check "the second hand-off shows on the side list" second_on_the_list
 say "2. the run ends and its work comes home"
 wait_for 60 5 first_run_home || fail "the run did not end inside five minutes"
 sleep 12
+capture_evidence first-run || fail "first-run evidence could not be kept"
+check "both first hand-offs ended successfully" terminal_tasks 1 2
 check "one new commit holds the run's files" one_new_commit
 check "your unsaved file is untouched" my_file_untouched
 check "the copy is given back" copy_given_back
@@ -313,6 +330,8 @@ say "3. a hand-off after the run has ended is a run of its own, and the first st
 typed '/task add a Neg function with a table test'
 wait_for 60 5 second_run_home || fail "the second run did not end inside five minutes"
 sleep 12
+capture_evidence second-run || fail "second-run evidence could not be kept"
+check "the later hand-off ended successfully" terminal_tasks 3
 check "the first run's record was kept beside the live one" first_record_kept
 t send-keys -t x -l 'my draft stays'
 sleep 1
@@ -333,6 +352,7 @@ t send-keys -t x Escape
 sleep 2
 check "esc returns to the conversation with your draft as you left it" draft_is_back
 
+capture_evidence final || fail "final evidence could not be kept"
 say ""
 if [ "$fails" -eq 0 ]; then
 	say "ALL PASS"
