@@ -66,6 +66,9 @@ type Config struct {
 type Limits struct {
 	Turns int
 	Wall  time.Duration
+	// AnswerReserve is part of Wall, not extra time. Zero preserves the
+	// program's existing reading policy.
+	AnswerReserve time.Duration
 }
 
 // limitsFor is the bounds one session runs under: the program's for this
@@ -166,7 +169,7 @@ func (a *App) Harness(ctx context.Context, prompt string, schema map[string]any,
 	limits := a.limitsFor(opts)
 	result, err := RunSession(ctx, a.client, SessionOrder{
 		Model: a.config.SessionModel, Thread: thread, Root: root, Work: a.config.Work, Prompt: prompt, Schema: schema,
-		MaxTurns: limits.Turns, Wall: limits.Wall, Policy: a.config.Policy,
+		MaxTurns: limits.Turns, Wall: limits.Wall, AnswerReserve: limits.AnswerReserve, Policy: a.config.Policy,
 	})
 	a.spend(result.CostUSD, true)
 	if watch := a.config.Watch; watch != nil && watch.Session != nil {

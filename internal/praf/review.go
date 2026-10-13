@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/agentsession"
@@ -209,6 +210,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		Sessions: o.sessions, Calls: callsAtOnce,
 		MaxTurns: otherLimits.Turns, SessionWall: otherLimits.Wall,
 		Limits: limitsFor(o), Policy: sessionPolicy,
+		Watch: &agentsession.Watch{Session: sessionFailureNotes(notes)},
 	})
 	if err != nil {
 		return delegate.Ending{Status: delegate.StatusFail, Message: "its agent sessions could not start: " + err.Error()}
@@ -286,6 +288,26 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 			"pull_request": t.String(), "reports": files, "findings": result.Summary.TotalFindings,
 			"blocking": result.Summary.BlockingCount, "sessions": sessionCount, "calls": callCount, "cut_at": run.cutAt,
 		},
+	}
+}
+
+// sessionFailureNotes keeps the label and elapsed time with a failed agent,
+// so a later diagnostic can distinguish its own wall from the whole run's.
+// Concurrent reviewers share one notes stream.
+func sessionFailureNotes(notes io.Writer) func(string, agentsession.SessionResult, error) {
+	var mu sync.Mutex
+	return func(label string, result agentsession.SessionResult, err error) {
+		failure := result.Failed
+		if err != nil {
+			failure = err.Error()
+		}
+		if failure == "" {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		_, _ = fmt.Fprintf(notes, "[review] agent %s failed after %s (%d turns, %d reads): %s\n",
+			label, result.Duration.Round(time.Millisecond), result.Turns, result.Tools, firstSentence(failure))
 	}
 }
 
