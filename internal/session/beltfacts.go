@@ -29,7 +29,7 @@ import (
 // composed at render time, each from THE PREDICATE THAT PUTS ITS TOOL ON THE
 // BELT. Where a tool is absent the fragment says what to do instead rather than
 // saying nothing, in the voice the page's own `remember` and `stand` sentences
-// already use ("Without `remember`, do not claim you can add durable memories"): a worker
+// already use ("Without `remember`, say plainly that memory is off"): a worker
 // told the truth spends its turn on the work, and a worker told nothing spends
 // it guessing.
 //
@@ -859,7 +859,7 @@ func promptWithBeltFacts(config Config) string {
 //
 // The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
-	"remember": "Without `remember`, do not claim you can add durable memories",
+	"remember": "Without `remember`, say plainly that memory is off",
 	// A hand inherits the caller's page but intentionally carries a smaller,
 	// closed belt; its appended tail is the truthful capability account.
 	"ask": "Use `ask` only as the last rung",
