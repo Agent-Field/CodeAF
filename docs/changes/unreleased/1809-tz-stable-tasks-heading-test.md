@@ -11,9 +11,10 @@ invalidates:
     IS THE WRITER'S" law on SpendToday), so a date the tests assert — the chat
     manual's `since aug 11`, and the `shift+← aug 2 – aug 25 →` window control —
     shifted by a day once the foreign offset was read as local on a host far
-    enough east: green on a UTC runner, red on a UTC+8 box (#1808). Every
-    tasks-page fixture clock is now built in time.Local, so the tests read the
-    same dates under every $TZ.
+    enough east: green on a UTC runner, red on a UTC+8 box (#1808). The
+    affected fixture clocks now use time.Local, fixing the fixed-offset
+    mismatch; a pre-existing bug at skipped-midnight DST transitions, such as
+    America/Santiago on 2026-09-06, remains unresolved.
 ---
 
 No product behavior changed: the window following the viewer's local calendar
