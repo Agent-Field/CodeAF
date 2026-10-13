@@ -160,6 +160,7 @@ func (s *Server) claimSignIn(w http.ResponseWriter, r *http.Request) {
 
 // Close releases browser callbacks on stdin EOF, parent death and shutdown.
 func (s *Server) Close() {
+	s.closeInbox()
 	s.signIn.Lock()
 	defer s.signIn.Unlock()
 	s.signIn.revision++

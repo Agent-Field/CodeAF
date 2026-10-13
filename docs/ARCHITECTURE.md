@@ -887,6 +887,25 @@ paused/capped admission and accepted-message logging, retaining cached replies
 when a member was paused after acceptance. Other producer wiring remains with
 its owning resource lane.
 
+A9 derives the Inbox from typed source producers in `internal/appapi/inbox*.go`.
+There is no durable Inbox answer store. Engine questions retain transcript/lane/
+token identity, and factory needs-you items retain factory/job/kind/since identity.
+`AskInboxSource` accepts other resource lanes' producer and resolver interfaces;
+`SetInboxSource` attaches both solo and team `FactoryInboxSource` instances.
+Factory attachment state remains with A14. Snapshots preserve the source path,
+source verbs and two preceding entries; unavailable sources retain their last
+rows instead of reporting false resolutions.
+
+One binary coordinator keeps a pending answer for five seconds. Source ask and
+permission routes share it with Inbox; `AnswerInbox`, `UndoInbox` and
+`ResolveInbox` provide the other source surfaces' doors. At the deadline it
+checks that the source item still waits, then calls the canonical resolver once.
+Factory approvals forward immediately to the factory's existing hold and Undo,
+with the sampled proof commit and version; no second hold is added. Shutdown
+cancels local pending decisions. Question subscriptions report terminal answers,
+a 500 ms sampler covers producer changes, and person-authenticated factory SSE
+subscriptions relay only Inbox-related facts with replay cursors.
+
 ## v2 app engine rules
 
 The local app API's shared policy is `internal/appapi/rules.go` (API.md §5).

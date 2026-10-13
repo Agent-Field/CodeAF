@@ -70,13 +70,13 @@ reserved with HTTP 501 `not built yet`.
 ## App API contract — not built yet — 501 — resource routes and schemas
 
 The local app API has reserved routes for files, tasks, quick tasks, processes,
-standing orders, reminders, permissions, asks, rules, Inbox,
+standing orders, reminders, permissions, asks, rules,
 crews, members, roles, reports, models, settings, setup, memory, spending, caps,
 search, history, Activity, factory connections, power and the AI door.
 A reserved route returns HTTP 501 with `error: "not built yet"` and `route`
 naming the method and path template. It performs no action. Authentication,
 Origin and Host checks still run first; a wrong method returns 405 with `Allow`.
-Health, shutdown, keys, events, agent lifecycle and turn routes work.
+Health, shutdown, keys, events, agent lifecycle, turn and Inbox routes work.
 The agent snapshot includes the last 100 app entries, pending queue, live open
 asks, task summaries and usage. Earlier entries use the `/entries` route.
 
@@ -1505,3 +1505,30 @@ The API is `GET /app/v1/processes`, `GET /app/v1/processes/{pid}/output`,
 `tail` can request up to 10 MiB, and `follow=1` streams new output until the
 process ends. All routes require the app's launch credential. Process handles
 are opaque; they are not operating-system process ids.
+
+
+## App Inbox — answer once — five-second Undo — questions and factory approvals
+
+`GET /app/v1/inbox` returns the source items still waiting, oldest first, with
+stable ids, their source path, actions and two preceding entries. There are
+sixteen kinds: question, clarification, permission, your_call, approval_plan,
+approval_proof, approval_start, budget, out_of_rounds, failed, changes_requested,
+conflict, publish_failed, runner_offline, order_ask and reminder. Resource
+producers supply their own waiting state; the Inbox does not create questions.
+Later and Done today are kept by the app for each person.
+
+POST `/app/v1/inbox/{id}/answer` forwards the choice, words or action to its
+source. Engine answers wait **five seconds** before being sent. The response
+has `undo_until`, and `inbox.undo_window` tells every app window the deadline.
+POST `/app/v1/inbox/{id}/undo` before that deadline cancels the pending answer;
+nothing is sent. Source ask and permission answers share this same hold. A
+second answer is refused while Undo is waiting or after the source settles.
+A repeated `Idempotency-Key` replays its original response.
+
+Factory producers use the person's session and source permissions, including
+assignee-only approval. Factory approvals use the factory's own five-second
+hold and Undo. Solo and attached factory sources can be merged once attached;
+this lane does not implement factory attachment. Answers given in the terminal
+resolve their canonical question in the app too. A source that cannot be reached
+keeps its last known items. Closing the engine cancels unsent engine answers;
+restarting does not send them. These app routes add no new chat tools.
