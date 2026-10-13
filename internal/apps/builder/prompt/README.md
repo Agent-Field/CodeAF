@@ -13,7 +13,17 @@ Pure logic, no I/O. The wiring lane calls the model and the server; this package
 9. `ParsePlan(output)` does the same for a plan and checks ids (lowercase, unique per group) and non-empty lines.
 10. `ApplyPlanEdits(plan, edits)` applies plan-card edits (`set`, `add`, `remove` on data, automation, screens; `set` on agent) to a copy. One bad edit fails the batch and changes nothing. Needs cannot be edited.
 11. `Loop` is the policy: plan → write → check → fix → check … The caller reports each step (`PlanWritten`, `FilesWritten`, `CheckResult`, `FixApplied`) and reads `Phase()`.
-12. A passing check ends in `preview`. A failing check goes to `fix` up to `MaxFixRounds` (3) times.
-13. The fourth failure ends in `check_failed`; `LastReport()` holds that report for the Fix it · Cancel card.
+12. A passing check ends in `preview`. A failing check goes to `fix` up to `MaxFixRounds` (2) times.
+13. The third failure ends in `check_failed`; `LastReport()` holds that report for the Fix it · Cancel card.
 14. Out-of-order steps are errors, so a wiring bug cannot silently skip a check.
 15. Catalog and schemas are plain text inputs; when `internal/apps/spec` lands, pass its embedded files in.
+
+`RenderShape(Inputs, sampleJSON)` renders the Shape prompt from draft definition
+files, the kit, a request, the last report and synthetic records only. Replies
+contain changed files and a summary, or one question with concrete alternatives
+and `Drop this request` last. Renames put `alias: "<old>"` on the new field.
+The Shaper uses the existing model door, per-call routing, file parser and one
+parser-repair attempt. It refuses content and database paths before any model
+call. `go test -tags live -run '^TestLiveShapeRename$' -v ./internal/apps/builder`
+checks the golden CRM rename with the configured OpenRouter key and records the
+model id. Set `LIVE_ONLY=shape` to select this case.

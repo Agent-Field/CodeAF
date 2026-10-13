@@ -138,8 +138,13 @@ func (s *Service) CancelChange(ctx context.Context, scope svc.Scope, p bridge.Sh
 	if err != nil {
 		return bridge.Draft{}, err
 	}
+	cancelledIndex := d.index(p.Change)
+	activeIndex := d.index(s.pipeline.active[draftKey(scope)])
 	if err := d.removeChange(p.Change); err != nil {
 		return bridge.Draft{}, err
+	}
+	if activeIndex >= 0 && cancelledIndex <= activeIndex {
+		s.pipeline.epochs[draftKey(scope)]++
 	}
 	return d.snapshot(), nil
 }

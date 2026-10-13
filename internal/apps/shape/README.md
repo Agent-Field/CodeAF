@@ -3,7 +3,7 @@
 `New(cfg, all)` reloads every committed `<app>/drafts/<member>/draft.json`
 under `cfg.Root`. Corrupt metadata remains an error; it is never treated as a
 missing draft. With no configured root the skeleton doors still return
-`not_built`. Pipeline doors remain stubbed for their lane.
+`not_built`. The Builder pipeline uses the persisted journal as its queue.
 
 `shape.open` snapshots `Store.Definition` into `files/` and real records into
 `overlay.db`. A second open preserves the request journal and refreshes the
@@ -69,7 +69,7 @@ tests migration on a WAL-aware copy and holds the real writer lock through the
 version commit and migration. Its connection views expose current fields and
 aliases; their write triggers retain hidden values in backing tables.
 
-The pipeline lane fills `Service.replayHook func(app string, newVersion int)`.
+The pipeline installs `Service.replayHook func(app string, newVersion int)`.
 Apply calls it with the journal lock released after removing the applying
 member's draft from disk and memory. Restore calls it
 after publishing the new version. The hook is responsible for replaying other
@@ -89,3 +89,37 @@ the desk owns displaying the last good version read-only.
 
 Persistent operations require a configured apps root. An unwired constructor
 with an empty root retains the skeleton's unavailable response.
+
+## Builder changes and replay
+
+`shape.request` returns a checking change immediately. The ordered journal is
+the queue: one worker per member draft sends definition files, the kit, synthetic
+sample records, the request and the last Check report to the Builder. It streams
+Plan, Write, Render and Behaviour steps, then passes the complete candidate to
+Check. A failed report returns to the Builder for at most three rounds. The
+last issue becomes `Check failed: …  round 3 of 3`; failed changes never join
+files or reach Apply. `shape.change.fix` replaces the request with `Fix: <hint>`
+and starts three fresh rounds. Plan edits become `<section> › <id>: <text>`.
+Cancellation removes only that change and rejects an in-flight result.
+
+Personal requests without migration lines apply as soon as Check passes. Queued
+personal requests commit separately through the same migration/version door,
+keeping unprocessed requests in the journal on the new base. A change with
+migration lines stays ready for the preview and a person's Apply.
+
+Apply calls the installed replay hook after releasing the draft lock. Every
+other open draft rebases on the new files and re-runs its requests in order;
+old model results cannot overwrite the new base. An all-pass replay publishes
+`replayed` with the old/new versions, applying member and request count.
+`shape.replay.dismiss` persists dismissal of that line. An incompatible request
+becomes a question with concrete options and `Drop this request` last; its draft
+blocks Apply and its member receives a `shape_question` approval titled
+`CRM · Builder needs you` (using the app's name). `shape.answer` replaces the
+request with the answer, rechecks it and replays later dependent requests; drop
+removes only that change. Checking journals resume when the desk opens or reads
+the draft after a restart.
+
+`shape.ask` opens a `shape_ask` Inbox approval addressed to the Editor who applied
+last. Its title is `@raj asks for a change to CRM “…”`. The approved payload has
+`action: shape_this`, the app and the original request; the desk opens Shape with
+those words pre-filled. The Editor sends the request from the composer.

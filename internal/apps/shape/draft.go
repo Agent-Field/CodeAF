@@ -27,6 +27,7 @@ type Service struct {
 	all        *svc.Services
 	drafts     map[string]*draft
 	loadErr    error
+	pipeline   *pipeline
 }
 
 // draft keeps replay data off the wire. The saved base makes cancellation
@@ -42,6 +43,7 @@ type draft struct {
 func New(cfg svc.Config, all *svc.Services) *Service {
 	s := &Service{cfg: cfg, all: all, drafts: make(map[string]*draft), now: time.Now}
 	s.loadErr = s.reload()
+	s.initPipeline()
 	return s
 }
 
@@ -82,6 +84,7 @@ func (s *Service) Open(ctx context.Context, scope svc.Scope, _ bridge.ShapeOpenP
 		return bridge.Draft{}, err
 	}
 	if d := s.drafts[draftKey(scope)]; d != nil {
+		s.startDraft(scope)
 		changed, err := d.refreshOverlay(ctx)
 		if err != nil {
 			return bridge.Draft{}, err
@@ -153,6 +156,7 @@ func (s *Service) Get(ctx context.Context, scope svc.Scope, _ bridge.ShapeGetPar
 		return bridge.ShapeGetResult{}, err
 	}
 	if d := s.drafts[draftKey(scope)]; d != nil {
+		s.startDraft(scope)
 		value := d.snapshot()
 		return bridge.ShapeGetResult{Draft: &value}, nil
 	}
