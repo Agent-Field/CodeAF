@@ -5,6 +5,11 @@ import (
 )
 
 // These wire types reserve the app vocabulary before this resource has behaviour.
+type CrewHelpersRequest struct {
+	MemberID string       `json:"member_id"`
+	Expect   *AgentExpect `json:"expect,omitempty"`
+}
+
 type CrewItem struct {
 	Ref string `json:"ref,omitempty"`
 	URL string `json:"url,omitempty"`
@@ -53,5 +58,5 @@ type ReportReadyEvent struct {
 }
 
 func crewWorkContract() resourceContract {
-	return resourceContract{Name: "crew_work", Types: []any{CrewItem{}, CrewItemRequest{}, CrewLogEntry{}, CrewLogResponse{}, CrewSummaryResponse{}, CrewReport{}, ReportOpenItem{}, CrewLogEvent{}, ReportReadyEvent{}}, Routes: crewWorkContractRoutes, Events: []eventContract{{"crew.log", CrewLogEvent{}}, {"report.ready", ReportReadyEvent{}}}}
+	return resourceContract{Name: "crew_work", Types: []any{CrewHelpersRequest{}, CrewItem{}, CrewItemRequest{}, CrewLogEntry{}, CrewLogResponse{}, CrewSummaryResponse{}, CrewReport{}, ReportOpenItem{}, CrewLogEvent{}, ReportReadyEvent{}}, Routes: crewWorkContractRoutes, Events: []eventContract{{"crew.log", CrewLogEvent{}}, {"report.ready", ReportReadyEvent{}}}}
 }

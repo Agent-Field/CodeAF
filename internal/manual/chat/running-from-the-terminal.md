@@ -28,7 +28,8 @@ agents, history and non-secret settings. Keychain or Secret Service secrets
 sent on stdin are never saved to that home.
 
 This transport serves health, shutdown, keys, models, app settings, first-launch
-setup, OpenRouter browser sign-in, the event stream, agent lifecycle and turn routes.
+setup, OpenRouter browser sign-in, the event stream, agent lifecycle and turn routes,
+crews, members, reusable roles, sub-crews, reports, crew items and log reads.
 Other app routes reserve their contract with HTTP 501; their resource
 behaviour arrives with the owning lane.
 

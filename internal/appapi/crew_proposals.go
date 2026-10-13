@@ -3,10 +3,12 @@ package appapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -18,7 +20,12 @@ func (s *Server) proposeHelpers(w http.ResponseWriter, r *http.Request, a *Agent
 	if !decodeCrew(w, r, &body) {
 		return
 	}
-	id := r.PathValue("id")
+	s.proposeHelpersFor(w, r, a, r.PathValue("id"), "", body.Expect)
+}
+func (s *Server) proposeHelpersFor(w http.ResponseWriter, r *http.Request, a *AgentRegistry, id, parentID string, expect *AgentExpect) {
+	var parentVersion uint64
+	var parentBudget int64
+
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
 	var record agentRecord
@@ -38,11 +45,51 @@ func (s *Server) proposeHelpers(w http.ResponseWriter, r *http.Request, a *Agent
 			return errAgentMissing
 		}
 		agent := a.view(record)
-		if err := crewAgentExpect(agent, body.Expect); err != nil {
+		if err := crewAgentExpect(agent, func() *AgentExpect {
+			if parentID != "" {
+				return nil
+			}
+			return expect
+		}()); err != nil {
 			return err
 		}
-		if agent.CrewID != "" {
+		if agent.CrewID != "" && parentID == "" {
 			return agentError(409, "conflict", "this agent is already a crew member")
+		}
+		if parentID != "" {
+			f, err := teams.Snapshot(a.home)
+			if err != nil {
+				return err
+			}
+			parent, ok := f.Team(parentID)
+			if !ok {
+				return crewMissing()
+			}
+			meta, err := readCrewMeta(parent)
+			if err != nil {
+				return err
+			}
+			if err = crewExpect(parent, meta, expect); err != nil {
+				return err
+			}
+			if parent.Closed() || meta.State != "active" {
+				return agentError(409, "conflict", "the parent crew must be active")
+			}
+			if len(f.Ancestors(parent.ID))+1 >= config.DefaultTeamsDepthLimit {
+				return agentError(409, "conflict", "Crews nest 3 deep at most.")
+			}
+			if !parent.Holds(record.SessionFile) || agent.CrewID != parentID || parent.Manager == record.SessionFile {
+				return crewBad("choose a non-manager member of this crew")
+			}
+			parentVersion = crewRevision(parent)
+			budget, err := crewCents(meta.Budget)
+			if err != nil {
+				return err
+			}
+			parentBudget = budget * int64(config.DefaultTeamsSubSharePct) / 100
+			if parentBudget < 1 {
+				return crewBad("the parent budget is too small for a sub-crew")
+			}
 		}
 		if agent.State != "idle" {
 			return agentError(409, "conflict", "wait until the agent is idle before bringing in helpers")
@@ -53,6 +100,9 @@ func (s *Server) proposeHelpers(w http.ResponseWriter, r *http.Request, a *Agent
 			return err
 		}
 		prompt := `Propose helpers for our current work. Do not make a crew or start helpers. Return only a JSON object with name (1 to 40 characters), tint (iris, sage, sand, tide, rose or graphite), helpers (1 to 16 objects with role, model and budget:{usd:"2.00"}), budget:{usd:"20.00"}, optional ends_at (RFC3339). Every cap must fit the crew budget. Keep the proposal editable; I may keep this as one agent.`
+		if parentID != "" {
+			prompt += fmt.Sprintf(" This member will manage a sub-crew. Its parent budget share is 50%%: return budget:{usd:%q}, and fit every helper cap inside it.", fmt.Sprintf("%d.%02d", parentBudget/100, parentBudget%100))
+		}
 		stream, err = live.conn.Engine.Submit(ctx, prompt)
 		if err != nil {
 			return agentError(409, "conflict", "the helper proposal was not accepted")
@@ -117,11 +167,18 @@ func (s *Server) proposeHelpers(w http.ResponseWriter, r *http.Request, a *Agent
 		fail(w, 502, "bad_input", "the agent did not return a valid helper proposal")
 		return
 	}
+	if parentID != "" {
+		budget, _ := crewCents(proposal.Budget)
+		if budget > parentBudget {
+			fail(w, 502, "bad_input", "the sub-crew proposal exceeds its 50% parent share")
+			return
+		}
+	}
 	proposal.ID = teams.NewID()
 	a.mu.Lock()
 	err = a.disk(func(d *agentDisk) error {
 		record = d.Records[id]
-		if record.Agent.CrewID != "" || record.Agent.State == "closed" || record.Agent.State == "archived" {
+		if (parentID == "" && record.Agent.CrewID != "" || parentID != "" && record.Agent.CrewID != parentID) || record.Agent.State == "closed" || record.Agent.State == "archived" {
 			return agentError(409, "stale", "the agent changed while proposing helpers")
 		}
 		return nil
@@ -137,7 +194,7 @@ func (s *Server) proposeHelpers(w http.ResponseWriter, r *http.Request, a *Agent
 			if len(records) >= 128 {
 				return agentError(409, "conflict", "too many helper proposals are waiting")
 			}
-			records[proposal.ID] = crewProposalRecord{Proposal: proposal, AgentID: id, Goal: record.Agent.Name, Version: record.Agent.Version, Made: a.now().UTC()}
+			records[proposal.ID] = crewProposalRecord{ParentID: parentID, ParentVersion: parentVersion, Proposal: proposal, AgentID: id, Goal: record.Agent.Name, Version: record.Agent.Version, Made: a.now().UTC()}
 			return nil
 		}, true)
 	}

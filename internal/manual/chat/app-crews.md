@@ -42,6 +42,8 @@ Caps are positive USD cents and cannot exceed their crew's budget.
 At its cap a member stops; at the crew budget all its members stop.
 The binary saves one budget question; raising that cap clears it.
 Crew spending starts when members join, excluding earlier chat work.
+Removing a member keeps its accrued spend; work done while a crew is closed
+does not charge that crew when it reopens.
 
 ## Message any member and questions climb — app resource availability
 
@@ -49,6 +51,75 @@ Each member keeps its own agent id and chat. `POST /app/v1/agents/{member.agent_
 accepted messages in the native log for the manager to read.
 Native clarifying questions climb from member to manager and through parent
 crews. Permission decisions remain yours; the visible question path keeps its
-original member id. The ask-answer, Inbox and sub-crew HTTP routes are separate
-resource lanes and remain reserved until those lanes land.
-The crew page's plan and items remain empty until their producers are connected.
+original member id. Ask-answer and Inbox routes belong to their own resource lanes.
+The crew page shows linked items and the manager's task snapshot.
+
+
+## Roles — one live copy per crew, edit every copy
+
+`GET /app/v1/roles`, `POST /app/v1/roles` and `PATCH /app/v1/roles/{rid}`
+read, make and edit reusable roles. Names have 1–40 characters; instructions
+have 1–16000 bytes. A model is required; effort is low, medium or high,
+defaulting to medium. Definitions survive relaunch. Existing inline crew
+roles stay readable and editable.
+
+Editing updates each live copy's name, model, effort and instructions.
+Instructions arrive through the native log at its next step. Each copy keeps
+its own conversation, memory and work. Adding or moving a second copy of the
+same role into one crew returns 409 `already in <crew name>`.
+
+## Sub-crews — bring helpers to a member, depth and budget share
+
+`POST /app/v1/crews/{cid}/bring-in-helpers` needs `member_id` for an idle
+non-manager member of that crew. It proposes helpers without making a crew.
+Accept with `POST /app/v1/crews` using `from:"proposal"` and its `proposal_id`.
+The same member becomes the sub-crew's manager, keeping its chat. A changed
+parent or source requires a new proposal.
+
+Crews nest at most three deep. At depth three the route returns 409
+`Crews nest 3 deep at most.` A sub-crew's budget fits within 50% of its
+parent's budget. Edits enforce that limit too. Parent spending includes
+sub-crews, counting each conversation once; at a parent cap descendants stop.
+
+## Wrap up, report and keep going — five parts and Markdown
+
+`POST /app/v1/crews/{cid}/wrap-up` asks the manager to finish and bring a
+report. It saves the native fifteen-minute wrap-up clock once; asking twice
+does not restart it. `GET /app/v1/crews/{cid}/report` gives what shipped,
+your decisions, files, left-open work with hand-offs, cost and the same text
+as Markdown. Until a report is ready it returns 409
+`the manager's report is not ready`.
+
+`POST /app/v1/crews/{cid}/keep-going` keeps it active, clears its pending
+report and end date, and tells the manager to continue. An elapsed end date
+asks once; it never silently closes the crew.
+
+## Finish crew, archive and reopen — members stop, history stays
+
+`POST /app/v1/crews/{cid}/finish` refuses with 409 and `open_items` while
+items aren't done. Open tasks, unresolved report work and unfinished links
+all count. Unknown linked state counts as unfinished. Solo factory jobs use
+their canonical state; a published PR still waiting on GitHub is unfinished.
+Unlinking removes the reference without touching the work.
+
+When no report exists, Finish asks the idle manager to write one through its
+normal engine, with a two-minute ceiling. It rechecks state before closing.
+Finish keeps that report and stops members; agents still in another open
+crew keep working there. Linked jobs keep running.
+
+`POST /app/v1/crews/{cid}/archive` requires a finished crew.
+`POST /app/v1/crews/{cid}/reopen` restores its roster and report from Closed
+or Archived. A closed parent must be reopened first. History is kept forever.
+
+## Items, log and while you were away — link, unlink, read
+
+`POST /app/v1/crews/{cid}/items` accepts exactly one `ref` or HTTP(S) `url`
+without credentials, up to 256 links per crew. A URL gets an opaque ref.
+`DELETE /app/v1/crews/{cid}/items/{ref}` unlinks that reference only.
+The crew GET includes its linked items.
+
+`GET /app/v1/crews/{cid}/log` shows everyone talking, newest first, up to
+100 entries; use its `before` cursor to read older entries. This log is read
+only; message a member to speak. `summary-since?at=<RFC3339 time>` gives a
+plain log digest after at least an hour away with new entries. With no new
+entries or less than an hour away, its text stays empty.

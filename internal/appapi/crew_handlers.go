@@ -48,6 +48,10 @@ func (s *Server) serveCrew(w http.ResponseWriter, r *http.Request) {
 	}
 	cid := r.PathValue("cid")
 	if r.Method == "GET" {
+		if err := s.RefreshCrewWork(r.Context()); err != nil {
+			crewFailure(w, err)
+			return
+		}
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		err := a.disk(func(d *agentDisk) error {
@@ -82,7 +86,15 @@ func (s *Server) serveCrew(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 			w.Header().Set("ETag", fmt.Sprintf("\"%d\"", crewRevision(t)))
-			write(w, 200, CrewResponse{Crew: c, Tree: members, Plan: []Task{}, Items: []CrewItem{}})
+			work, err := readCrewWork(t)
+			if err != nil {
+				return err
+			}
+			plan := []Task{}
+			if manager, ok := d.Records[c.ManagerID]; ok {
+				plan = a.turnSnapshot(manager).Tasks.Tasks
+			}
+			write(w, 200, CrewResponse{Crew: c, Tree: members, Plan: plan, Items: work.Items})
 			return nil
 		}, false)
 		if err != nil {
@@ -176,8 +188,13 @@ func (s *Server) serveCrew(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				meta.ManagerID = mid
-			} else if err := applyCrewPatch(t, &meta, patch); err != nil {
-				return err
+			} else {
+				if err := applyCrewPatch(t, &meta, patch); err != nil {
+					return err
+				}
+				if err := checkCrewTreeBudgets(f, *t, meta); err != nil {
+					return err
+				}
 			}
 			meta.Version++
 			if err := writeCrewMeta(t, meta); err != nil {
@@ -227,6 +244,10 @@ func decodeCrew(w http.ResponseWriter, r *http.Request, body any) bool {
 func crewBad(message string) error { return agentError(422, "bad_input", message) }
 func crewMissing() error           { return agentError(404, "not_found", "no such crew") }
 func crewFailure(w http.ResponseWriter, err error) {
+	if errors.Is(err, errAgentMissing) {
+		fail(w, 404, "not_found", "no such agent")
+		return
+	}
 	var reply *agentReplyError
 	if errors.As(err, &reply) {
 		fail(w, reply.status, reply.reason, reply.sentence)
@@ -328,7 +349,7 @@ func crewExpect(t teams.Team, m crewMeta, e *AgentExpect) error {
 	if state == "" {
 		state = "active"
 	}
-	if t.Closed() {
+	if t.Closed() && state != "archived" {
 		state = "closed"
 	}
 	if e.Version != nil && *e.Version != crewRevision(t) || e.State != nil && *e.State != state {
@@ -348,6 +369,16 @@ type CrewRoleSource interface {
 func (s *Server) crewRole(ctx context.Context, f *teams.File, id string) (CrewRole, error) {
 	if s.options.CrewRoles != nil {
 		return s.options.CrewRoles.ReadCrewRole(ctx, id)
+	}
+	if s.options.Agents != nil {
+		role, err := (storedCrewRoles{home: s.options.Agents.home}).ReadCrewRole(ctx, id)
+		if err == nil {
+			return role, nil
+		}
+		var reply *agentReplyError
+		if !errors.As(err, &reply) || reply.status != 404 {
+			return CrewRole{}, err
+		}
 	}
 	for _, t := range f.Teams {
 		meta, err := readCrewMeta(t)
@@ -433,6 +464,26 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 					}
 				}
 			}
+			if proposed.ParentID != "" {
+				parent, ok := f.Team(proposed.ParentID)
+				if !ok {
+					return crewMissing()
+				}
+				pm, err := readCrewMeta(parent)
+				if err != nil {
+					return err
+				}
+				if parent.Closed() || pm.State != "active" || crewRevision(parent) != proposed.ParentVersion {
+					return agentError(409, "stale", "the parent crew changed; ask for a new helper proposal")
+				}
+				if len(f.Ancestors(parent.ID))+1 >= config.DefaultTeamsDepthLimit {
+					return agentError(409, "conflict", "Crews nest 3 deep at most.")
+				}
+				source, ok := d.Records[proposed.AgentID]
+				if !ok || source.Agent.CrewID != parent.ID || !parent.Holds(source.SessionFile) || source.SessionFile == parent.Manager {
+					return agentError(409, "stale", "the proposed manager left its parent crew")
+				}
+			}
 			seen := map[string]bool{}
 			for _, id := range body.AgentIDs {
 				if seen[id] {
@@ -479,7 +530,7 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 				meta.EndsAt = proposed.Proposal.EndsAt
 			}
 			up := true
-			t := teams.Team{ID: teams.NewID(), Name: body.Name, Made: a.now().UTC(), Settings: teams.Settings{QuestionsUp: &up}}
+			t := teams.Team{ID: teams.NewID(), Parent: proposed.ParentID, Name: body.Name, Made: a.now().UTC(), Settings: teams.Settings{QuestionsUp: &up}}
 			t.SetHue(teams.HueSpec{Hue: float64(crewTintIndex(meta.Tint)) * 60})
 			if body.Edits != nil {
 				if body.Edits.Expect != nil {
@@ -487,6 +538,21 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 				}
 				if err := applyCrewPatch(&t, &meta, *body.Edits); err != nil {
 					return err
+				}
+			}
+			if proposed.ParentID != "" {
+				parent, _ := f.Team(proposed.ParentID)
+				pm, err := readCrewMeta(parent)
+				if err != nil {
+					return err
+				}
+				pool, _ := crewCents(pm.Budget)
+				budget, err := crewCents(meta.Budget)
+				if err != nil {
+					return err
+				}
+				if budget > pool*int64(config.DefaultTeamsSubSharePct)/100 {
+					return crewBad("sub-crew budget cannot exceed its 50% parent share")
 				}
 			}
 			// Resolve and validate every requested member before an engine is opened.
@@ -515,7 +581,7 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 			target := &f.Teams[len(f.Teams)-1]
 			for _, id := range body.AgentIDs {
 				record := d.Records[id]
-				if record.Agent.CrewID != "" {
+				if record.Agent.CrewID != "" && proposed.ParentID == "" {
 					role := NewRole{Name: record.Agent.Name, Model: record.Agent.Model, Effort: record.Agent.Effort, Instructions: "Continue the role of " + record.Agent.Name + " for this crew."}
 					m, err := s.addCrewMember(r.Context(), a, d, f, target, &meta, CreateMemberRequest{NewRole: &role}, record.Agent.RoleID)
 					if err != nil {
@@ -528,7 +594,7 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 					if err := f.AddMember(target.ID, teams.Member{Key: record.SessionFile, File: record.SessionFile, Where: record.Workspace, Word: record.Agent.Name, JoinedAt: a.now().UTC()}); err != nil {
 						return err
 					}
-					meta.Members[id] = crewMemberMeta{StartSpent: a.view(record).Spent, RoleID: record.Agent.RoleID, Role: NewRole{Name: record.Agent.Name, Model: record.Agent.Model, Effort: record.Agent.Effort}, State: "idle"}
+					meta.Members[id] = crewMemberMeta{ReportsTo: "", StartSpent: a.view(record).Spent, RoleID: record.Agent.RoleID, Role: NewRole{Name: record.Agent.Name, Model: record.Agent.Model, Effort: record.Agent.Effort}, State: "idle"}
 					m := meta.Members[id]
 					if m.RoleID == "" {
 						m.RoleID = teams.NewID()

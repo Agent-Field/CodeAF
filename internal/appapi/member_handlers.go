@@ -181,7 +181,13 @@ func (s *Server) serveMember(w http.ResponseWriter, r *http.Request) {
 								return crewBad("member caps cannot exceed the destination crew budget")
 							}
 						}
+						for _, existing := range dst.Members {
+							if member.RoleID != "" && existing.RoleID == member.RoleID {
+								return agentError(409, "conflict", "already in "+target.Name)
+							}
+						}
 						member.ReportsTo = crewAgentID(d, target.Manager)
+						member.StartSpent = a.view(record).Spent
 						dst.Members[mid] = member
 						dst.Version++
 						if err = f.AddMember(target.ID, teams.Member{Key: record.SessionFile, File: record.SessionFile, Where: record.Workspace, Word: record.Agent.Name, JoinedAt: a.now().UTC()}); err != nil {
@@ -207,6 +213,22 @@ func (s *Server) serveMember(w http.ResponseWriter, r *http.Request) {
 					} else {
 						if err = f.RemoveMember(cid, record.SessionFile); err != nil {
 							return err
+						}
+						retire := meta.Members[mid]
+						current := a.view(record).Spent
+						if current != nil {
+							spent, _ := crewCents(*current)
+							if retire.StartSpent != nil {
+								start, _ := crewCents(*retire.StartSpent)
+								spent -= start
+							}
+							prior := int64(0)
+							if meta.RetiredSpent != nil {
+								prior, _ = crewCents(*meta.RetiredSpent)
+							}
+							if spent > 0 {
+								meta.RetiredSpent = crewPoolMoney(prior + spent)
+							}
 						}
 						delete(meta.Members, mid)
 						record.Agent.CrewID = destination
@@ -382,7 +404,19 @@ func (s *Server) crewDirectiveMember(a *AgentRegistry, cid, mid, text string) {
 	var key string
 	_ = a.disk(func(d *agentDisk) error { key = d.Records[mid].SessionFile; return nil }, false)
 	if key != "" {
-		_ = teams.AppendTraffic(a.home, cid, teams.Entry{Kind: teams.KindDirective, From: teams.FromYou, To: mid, ToKey: key, Text: text})
+		f, err := teams.Snapshot(a.home)
+		if err != nil {
+			return
+		}
+		t, ok := f.Team(cid)
+		if !ok {
+			return
+		}
+		m, ok := t.Member(key)
+		if !ok {
+			return
+		}
+		_ = teams.AppendTraffic(a.home, cid, teams.Entry{Kind: teams.KindDirective, From: teams.FromYou, To: m.Handle, ToKey: key, Text: text})
 	}
 }
 
@@ -445,6 +479,23 @@ func (a *AgentRegistry) CrewAllowsMessage(agentID string) error {
 		if err != nil {
 			return err
 		}
+		if t.Closed() {
+			return agentError(409, "conflict", "reopen the crew before messaging")
+		}
+		for _, parent := range f.Ancestors(t.ID) {
+			pm, err := readCrewMeta(parent)
+			if err != nil {
+				return err
+			}
+			spent, err := crewPoolSpent(f, parent, d, a)
+			if err != nil {
+				return err
+			}
+			cap, _ := crewCents(pm.Budget)
+			if parent.Closed() || spent >= cap {
+				return agentError(409, "at_cap", "the parent crew is at its budget")
+			}
+		}
 		member := m.Members[agentID]
 		if member.State == "paused" {
 			return agentError(409, "conflict", "Paused · Resume to message")
@@ -469,6 +520,10 @@ func (a *AgentRegistry) CrewAllowsMessage(agentID string) error {
 					return agentError(409, "at_cap", "the member is at its cap")
 				}
 			}
+		}
+		total, err = crewPoolSpent(f, t, d, a)
+		if err != nil {
+			return err
 		}
 		budget, _ := crewCents(m.Budget)
 		if total >= budget {

@@ -44,6 +44,7 @@ type Options struct {
 	OpenRouterAuth openrouterauth.Options
 	Agents         *AgentRegistry
 	CrewRoles      CrewRoleSource
+	CrewItems      CrewItemSource
 }
 
 // Server keeps every registered handler behind the same transport guard.
@@ -59,6 +60,7 @@ type Server struct {
 	settingsState settingsState
 	signIn        browserSignIn
 	mutations     mutationState
+	crewLogs      crewLogState
 	inbox         *inboxState
 }
 

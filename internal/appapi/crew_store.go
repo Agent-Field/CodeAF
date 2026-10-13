@@ -19,7 +19,8 @@ func defaultCrewBudget() Money { return Money{fmt.Sprintf("%.2f", defaultCrewBud
 // App fields live inside the native document's preserved extension, so TUI
 // membership and manager edits remain the source of truth across launches.
 type crewMeta struct {
-	BudgetAsk *Ask `json:"budget_ask,omitempty"`
+	BudgetAsk    *Ask   `json:"budget_ask,omitempty"`
+	RetiredSpent *Money `json:"retired_spent,omitempty"`
 	Crew
 	Members    map[string]crewMemberMeta `json:"members"`
 	Version    uint64                    `json:"version"`
@@ -27,6 +28,7 @@ type crewMeta struct {
 }
 type crewMemberMeta struct {
 	MessageKeys []string `json:"message_keys,omitempty"`
+	EndSpent    *Money   `json:"end_spent,omitempty"`
 	StartSpent  *Money   `json:"start_spent,omitempty"`
 	BudgetAsk   *Ask     `json:"budget_ask,omitempty"`
 	RoleID      string   `json:"role_id"`
@@ -97,7 +99,9 @@ func crewView(f *teams.File, t teams.Team, d *agentDisk, a *AgentRegistry) (Crew
 	c.ParentID = t.Parent
 	c.Depth = len(f.Ancestors(t.ID)) + 1
 	if t.Closed() {
-		c.State = "closed"
+		if c.State != "archived" {
+			c.State = "closed"
+		}
 		at := t.ClosedAt
 		c.ClosedAt = &at
 	}
@@ -119,8 +123,11 @@ func crewView(f *teams.File, t teams.Team, d *agentDisk, a *AgentRegistry) (Crew
 				}
 			}
 			member.Spent = agent.Spent
-			if agent.Spent != nil && m.StartSpent != nil {
-				n, _ := crewCents(*agent.Spent)
+			if m.EndSpent != nil {
+				member.Spent = m.EndSpent
+			}
+			if member.Spent != nil && m.StartSpent != nil {
+				n, _ := crewCents(*member.Spent)
 				start, _ := crewCents(*m.StartSpent)
 				n -= start
 				member.Spent = nil
@@ -177,6 +184,10 @@ func crewView(f *teams.File, t teams.Team, d *agentDisk, a *AgentRegistry) (Crew
 		}
 		c.StateLine += fmt.Sprintf("%d needs you", needs)
 	}
+	total, err = crewPoolSpent(f, t, d, a)
+	if err != nil {
+		return Crew{}, nil, err
+	}
 	c.Spent = nil
 	if total > 0 {
 		c.Spent = &Money{fmt.Sprintf("%d.%02d", total/100, total%100)}
@@ -185,11 +196,13 @@ func crewView(f *teams.File, t teams.Team, d *agentDisk, a *AgentRegistry) (Crew
 }
 
 type crewProposalRecord struct {
-	Proposal HelperProposal `json:"proposal"`
-	AgentID  string         `json:"agent_id"`
-	Goal     string         `json:"goal"`
-	Version  uint64         `json:"version"`
-	Made     time.Time      `json:"made"`
+	ParentID      string         `json:"parent_id,omitempty"`
+	ParentVersion uint64         `json:"parent_version,omitempty"`
+	Proposal      HelperProposal `json:"proposal"`
+	AgentID       string         `json:"agent_id"`
+	Goal          string         `json:"goal"`
+	Version       uint64         `json:"version"`
+	Made          time.Time      `json:"made"`
 }
 
 // Proposals are saved independently because proposing creates no team or member.

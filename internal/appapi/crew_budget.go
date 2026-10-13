@@ -41,6 +41,7 @@ func (s *Server) startCrewBudgetWatch() {
 				return
 			}
 			_ = s.EnforceCrewBudgets(ctx)
+			_ = s.RefreshCrewWork(ctx)
 		}
 	}()
 }
@@ -82,12 +83,9 @@ func (s *Server) EnforceCrewBudgets(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			total := int64(0)
-			for _, m := range members {
-				if m.Spent != nil {
-					n, _ := crewCents(*m.Spent)
-					total += n
-				}
+			total, err := crewPoolSpent(f, t, d, a)
+			if err != nil {
+				return err
 			}
 			budget, _ := crewCents(meta.Budget)
 			if total >= budget && budget > 0 {
@@ -139,27 +137,51 @@ func (s *Server) EnforceCrewBudgets(ctx context.Context) error {
 				if cap != hit.cap {
 					continue
 				}
-				for _, native := range t.Members {
-					id := crewAgentID(d, native.Key)
-					if hit.mid != "" && id != hit.mid {
-						continue
-					}
-					record, ok := d.Records[id]
-					if !ok {
-						continue
-					}
-					live, err := a.connect(ctx, record)
+				affected := []teams.Team{*t}
+				if hit.mid == "" {
+					affected = append(affected, current.Descendants(t.ID)...)
+				}
+				stopped := map[string]bool{}
+				for _, child := range affected {
+					cm, err := readCrewMeta(child)
 					if err != nil {
 						return err
 					}
-					if err = live.conn.Engine.StopWork(); err != nil {
-						return err
+					for _, native := range child.Members {
+						id := crewAgentID(d, native.Key)
+						if hit.mid != "" && id != hit.mid {
+							continue
+						}
+						record, ok := d.Records[id]
+						if !ok {
+							continue
+						}
+						if !stopped[id] {
+							live, err := a.connect(ctx, record)
+							if err != nil {
+								return err
+							}
+							if err = live.conn.Engine.StopWork(); err != nil {
+								return err
+							}
+							live.running = false
+							live.generation++
+							stopped[id] = true
+						}
+						member := cm.Members[id]
+						member.State = "stopped"
+						cm.Members[id] = member
+						if child.ID == t.ID {
+							member = meta.Members[id]
+							member.State = "stopped"
+							meta.Members[id] = member
+						}
 					}
-					live.running = false
-					live.generation++
-					member := meta.Members[id]
-					member.State = "stopped"
-					meta.Members[id] = member
+					if child.ID != t.ID {
+						if err = writeCrewMeta(&current.Teams[teams.Index(current.Teams, child.ID)], cm); err != nil {
+							return err
+						}
+					}
 				}
 				source := SourceRef{Kind: "crew", ID: hit.cid}
 				name := t.Name

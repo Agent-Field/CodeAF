@@ -906,6 +906,33 @@ cancels local pending decisions. Question subscriptions report terminal answers,
 a 500 ms sampler covers producer changes, and person-authenticated factory SSE
 subscriptions relay only Inbox-related facts with replay cursors.
 
+
+A10b keeps reusable crew roles in private, atomically replaced
+`<home>/v3/app/roles.json` under a role-writer flock. Member creation reads
+that atomic snapshot without acquiring another lock inside the native team
+lock. Role updates refresh every live copy's definition/model/effort and
+append instructions addressed by native member handles for its next boundary.
+Copies retain independent conversations, work and memory.
+
+Sub-crew proposals use the selected member's engine and save parent revision
+and membership alongside the proposal. Acceptance retains the member's chat,
+sets the native parent and enforces three levels and the 50% share. Crew
+pools aggregate descendant usage once per conversation; admission checks
+ancestor pools and the monitor stops descendants when their parent reaches
+its budget. The existing question path keeps the original member identity.
+
+Items and report-packet identity live in the native team's preserved
+`app_work_v2` extension. Native closing packets feed the five-part report;
+Finish can request one from the manager's normal engine when needed.
+`teams.UpdateClosing` accepts a report under the lifecycle lock before the
+origin closes. Finish checks linked resources through `CrewItemSource`,
+using canonical solo-factory state by default, and stops only conversations
+without another open crew. Unknown linked state refuses finish. Log and
+away digests read native traffic. Per-launch log cursors sample native member,
+manager and terminal writes into `crew.log` without replaying old history.
+End-date questions and report publication
+are durable producers; they never silently close a crew.
+
 ## v2 app engine rules
 
 The local app API's shared policy is `internal/appapi/rules.go` (API.md §5).
