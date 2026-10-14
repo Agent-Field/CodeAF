@@ -19,6 +19,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/apps"
+	"github.com/Agent-Field/codeaf/internal/apps/draft"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -34,13 +35,21 @@ type appServeOptions struct {
 	parentPID int
 }
 
+// runApp is `codeaf app`: serve keeps its own flags and lifecycle, and every
+// other verb is a Builder draft verb that draft.Main answers with its own exit
+// code (docs/apps/builder-loop/DESIGN.md section 6), the way `codeaf plandb`
+// reaches plandb.Main.
 func runApp(args []string) error {
 	if len(args) == 0 || args[0] != "serve" {
-		if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-			fmt.Fprintln(usageOut, "codeaf app serve [--home dir] [--listen 127.0.0.1:0] [--parent-pid pid]")
-			return exitHelped
+		if code := draft.Main(args, os.Stdin, os.Stdout, os.Stderr); code != 0 {
+			return exitStatus(code)
 		}
-		return errors.New("usage: codeaf app serve [--home dir] [--listen 127.0.0.1:0] [--parent-pid pid]")
+		return nil
+	}
+	if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+		fmt.Fprintln(usageOut, "codeaf app serve [--home dir] [--listen 127.0.0.1:0] [--parent-pid pid]")
+		fmt.Fprintln(usageOut, "codeaf app <verb> ...   draft verbs for a Builder task; run `codeaf app help` for the list")
+		return exitHelped
 	}
 	flags := commandFlags("app serve")
 	options := appServeOptions{}

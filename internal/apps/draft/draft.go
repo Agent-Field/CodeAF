@@ -6,18 +6,18 @@
 // service of the running server.
 package draft
 
-import (
-	"context"
-	"errors"
-	"io"
+import _ "embed"
 
-	"github.com/Agent-Field/codeaf/internal/apps/spec"
-)
+//go:embed testdata/crm.sh
+var crmScript string
 
 const (
 	JournalFile = "draft.jsonl"
 	LockFile    = "draft.lock"
 	SocketFile  = "builder.sock"
+	// DefaultsFile holds the create-sheet facts the Builder saves beside the
+	// journal, so `show` can render the same files the Builder renders.
+	DefaultsFile = "defaults.json"
 	// DirEnv overrides where the CLI looks for the draft; without it the CLI
 	// reads dir($PLANDB_DB), then walks up from its working directory.
 	DirEnv = "CODEAF_APP_DRAFT"
@@ -63,57 +63,18 @@ const (
 	PhaseDone     Phase = "done"
 )
 
-// State is the fold of the journal. L1 fills the fields; the shape below is
-// the part the Builder reads.
-type State struct {
-	Name  string
-	About string
-	Plan  spec.Plan
-	Phase Phase
-}
-
 // Defaults are the facts Render takes from the create sheet, not the worker.
 type Defaults struct {
-	AppID       string
-	Space       string
-	AgentModel  string
-	BudgetMonth float64
-	Kit         int
+	AppID string `json:"app_id"`
+	Space string `json:"space,omitempty"`
+	// Ask is the owner's paragraph, verbatim; plan.json carries it.
+	Ask         string  `json:"ask,omitempty"`
+	AgentModel  string  `json:"agent_model,omitempty"`
+	BudgetMonth float64 `json:"budget_month,omitempty"`
+	Kit         int     `json:"kit,omitempty"`
 }
 
-// Store is one build's draft folder.
-type Store struct{ dir string }
-
-var errUnbuilt = errors.New("draft: not built yet")
-
-func Open(dir string) (*Store, error) { return nil, errUnbuilt }
-func (s *Store) Dir() string          { return s.dir }
-func (s *Store) Append(a Author, verb string, args []string, body string) (Entry, error) {
-	return Entry{}, errUnbuilt
-}
-func (s *Store) Entries(since int) ([]Entry, error) { return nil, errUnbuilt }
-func (s *Store) State() (State, error)              { return State{}, errUnbuilt }
-
-func Fold(entries []Entry) State             { return State{} }
-func Render(st State, d Defaults) spec.Files { return spec.Files{} }
-
-// Request and Reply are the server verbs' wire over SocketFile.
-type Request struct {
-	Verb string   `json:"verb"`
-	Args []string `json:"args"`
-}
-
-type Reply struct {
-	OK   bool   `json:"ok"`
-	Text string `json:"text"`
-}
-
-// Handler answers one server verb.
-type Handler func(context.Context, Request) Reply
-
-func Serve(ctx context.Context, dir string, h Handler) (stop func(), err error) {
-	return nil, errUnbuilt
-}
-
-// Main is `codeaf app <verb>`: exit 0 ok, 1 refused, 2 usage, 3 Builder not running.
-func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int { return 2 }
+// CRMScript is the golden CRM as the verbs a worker types, for the Builder's
+// teaching page. A test runs it through Main and requires Render to equal the
+// golden CRM, so the page and the verbs cannot drift apart.
+func CRMScript() string { return crmScript }
