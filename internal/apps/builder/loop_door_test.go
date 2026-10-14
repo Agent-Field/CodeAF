@@ -63,7 +63,10 @@ type workerScript struct {
 	calls int
 }
 
-func (w *workerScript) CompleteWithMessages(ctx context.Context, _ []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+func (w *workerScript) CompleteWithMessages(ctx context.Context, msgs []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	if isSideCall(msgs) {
+		return wordsReply("A short summary of the work so far."), nil
+	}
 	w.mu.Lock()
 	n := w.calls
 	w.calls++
@@ -72,6 +75,22 @@ func (w *workerScript) CompleteWithMessages(ctx context.Context, _ []ai.Message,
 		return wordsReply("I have nothing more to do."), nil
 	}
 	return w.steps[n](ctx), nil
+}
+
+// isSideCall tells the session's own housekeeping request (a summary of the
+// recent transcript, sent when it chooses to, on a timer of its own) from a turn
+// of the worker. It must not take a step: under load it arrived between two
+// turns and the worker lost the step it was owed.
+func isSideCall(msgs []ai.Message) bool {
+	if len(msgs) == 0 {
+		return false
+	}
+	for _, part := range msgs[len(msgs)-1].Content {
+		if strings.HasPrefix(part.Text, "Recent transcript:") {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *workerScript) used() int {
