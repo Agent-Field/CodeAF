@@ -91,7 +91,7 @@ func Parse(schema *spec.RecordType, text, member string) (AST, error) {
 // against now, so a screen filter stays current without a computed field.
 func ParseAt(schema *spec.RecordType, text, member string, now time.Time) (AST, error) {
 	a := AST{Sort: Sort{Field: "id"}}
-	tokens, err := split(text, unicode.IsSpace)
+	tokens, err := split(normalize(schema, text), unicode.IsSpace)
 	if err != nil {
 		return a, err
 	}

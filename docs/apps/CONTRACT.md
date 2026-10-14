@@ -209,7 +209,11 @@ accept (`now - 7d`, `days(n)`), so there is no second duration grammar.
 The comparison may be `<`, `>`, `<=` or `>=`, with an optional colon before it
 (`due:<0d` is `due<0d`). The value may also be `now`, `today`, `tomorrow` or
 `yesterday`; in screen, record and agent queries `field:today` means within
-that day. CEL in a query (`due < now`) is an error that names the token.
+that day. A moment may carry arithmetic (`now+90d`, `today-days(7)`), and on
+the record type's own date fields spaces around the comparison are tolerated
+(`due_on < now + 14d`). A backslash-escaped space is read as a quoted value
+(`status:Part\ paid` is `status:"Part paid"`). Anything else that reads like
+CEL (`&&`, function calls over other records) is an error naming the token.
 
 ```yaml
 run: wont-fix
