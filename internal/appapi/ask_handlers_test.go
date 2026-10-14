@@ -630,3 +630,22 @@ func TestPermissionWindowEndKeepsRunningUntilTheEngineTakesTheAnswer(t *testing.
 		}
 	}
 }
+
+// A remote engine's own word lags its questions and does not cover one the
+// model asked; the open question itself is what waits on the person.
+func TestOpenQuestionReadsNeedsYouWhenTheEngineWordSaysOtherwise(t *testing.T) {
+	f := newAskFixture(t)
+	f.engine.mu.Lock()
+	f.engine.needs = false
+	f.engine.mu.Unlock()
+	f.ask(t, permissionQuestion(41))
+	if got := readAgent(t, f.request(t, "GET", "/app/v1/agents/"+f.id, ""), 200).State; got != "needs_you" {
+		t.Fatalf("agent with an open question reads %s", got)
+	}
+	f.registry.mu.Lock()
+	needs := f.registry.live[f.id].needsPerson(f.id)
+	f.registry.mu.Unlock()
+	if !needs {
+		t.Fatal("stored transitions would not read the open question")
+	}
+}

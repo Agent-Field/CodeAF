@@ -123,23 +123,23 @@ type agentLive struct {
 
 // needsPerson is the one reading of "waiting on the person" for views and
 // stored transitions: an open question whose answer is not held for Undo.
-// Callers hold the registry lock.
+// The open questions are read themselves, because an engine's own word can
+// lag them (a remote engine pushes it) or not cover a question the model
+// asked. Callers hold the registry lock.
 func (live *agentLive) needsPerson(id string) bool {
 	door, ok := live.conn.Engine.(inboxQuestionDoor)
-	if !ok || len(live.held) == 0 {
+	if !ok {
 		return live.conn.Engine.NeedsPerson()
 	}
 	open := door.OpenQuestions()
 	live.pruneHeld(id, open)
-	if !live.conn.Engine.NeedsPerson() {
-		return false
-	}
 	for _, q := range open {
 		if !live.held[inboxQuestionID(id, q)] {
 			return true
 		}
 	}
-	return len(open) == 0
+	// Every open question is answered and held: the person is not waited on.
+	return len(open) == 0 && live.conn.Engine.NeedsPerson()
 }
 
 // pruneHeld drops holds whose question the engine has taken: a sent answer
@@ -343,7 +343,8 @@ func (a *AgentRegistry) view(record agentRecord) Agent {
 		row := session.ReadRows([]string{record.SessionFile})[record.SessionFile]
 		presence, fresh := session.ReadSessionPresence(filepath.Dir(record.SessionFile), a.now())
 		switch {
-		case live != nil && live.needsPerson(agent.ID), live == nil && fresh && presence.NeedsPerson():
+		// A held answer is the one case the presence file is behind on.
+		case live != nil && live.needsPerson(agent.ID), (live == nil || len(live.held) == 0) && fresh && presence.NeedsPerson():
 			agent.State = "needs_you"
 		case live != nil && live.running, fresh && (presence.State == session.PresenceWorking || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0):
 			agent.State = "running"
