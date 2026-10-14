@@ -99,13 +99,14 @@ var Program = delegate.Delegate{
 	// the person's money, so the conversation offers it and waits.
 	FollowUp: "If it found confirmed or likely problems, offer to hand them to senior-dev as one task that fixes them, " +
 		"naming which; propose that task only after the person says yes.",
-	ModelFlag:  "model",
-	CrewFlags:  crewFlags,
-	StageWords: stageWords,
-	Present:    presentActions,
-	Default:    "run",
-	Page:       Name,
-	Commands:   []delegate.Command{runCommand},
+	ModelFlag:           "model",
+	AuxiliaryModelFlags: []string{"light"},
+	CrewFlags:           crewFlags,
+	StageWords:          stageWords,
+	Present:             presentActions,
+	Default:             "run",
+	Page:                Name,
+	Commands:            []delegate.Command{runCommand},
 }
 
 // crewFlags is the conversation's crew as the audit's own flags: the working

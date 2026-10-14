@@ -66,6 +66,9 @@ type Config struct {
 type Limits struct {
 	Turns int
 	Wall  time.Duration
+	// AnswerReserve is part of Wall, not extra time. Zero preserves the
+	// program's existing reading policy.
+	AnswerReserve time.Duration
 }
 
 // limitsFor is the bounds one session runs under: the program's for this
@@ -158,7 +161,8 @@ func (a *App) Harness(ctx context.Context, prompt string, schema map[string]any,
 	// THE REPOSITORY IS THE APP'S, NOT THE CALLER'S. Every agent names the
 	// folder it was handed; one that named another would be read nowhere.
 	if project := strings.TrimSpace(opts.ProjectDir); project != "" && filepath.Clean(project) != filepath.Clean(root) {
-		if real, err := filepath.EvalSymlinks(project); err != nil || !within(root, real) {
+		realRoot, rootErr := filepath.EvalSymlinks(root)
+		if real, err := filepath.EvalSymlinks(project); err != nil || rootErr != nil || !within(realRoot, real) {
 			return nil, fmt.Errorf("%s asked to read %s, which is not the repository this run reads", label, project)
 		}
 	}
@@ -166,7 +170,7 @@ func (a *App) Harness(ctx context.Context, prompt string, schema map[string]any,
 	limits := a.limitsFor(opts)
 	result, err := RunSession(ctx, a.client, SessionOrder{
 		Model: a.config.SessionModel, Thread: thread, Root: root, Work: a.config.Work, Prompt: prompt, Schema: schema,
-		MaxTurns: limits.Turns, Wall: limits.Wall, Policy: a.config.Policy,
+		MaxTurns: limits.Turns, Wall: limits.Wall, AnswerReserve: limits.AnswerReserve, Policy: a.config.Policy,
 	})
 	a.spend(result.CostUSD, true)
 	if watch := a.config.Watch; watch != nil && watch.Session != nil {

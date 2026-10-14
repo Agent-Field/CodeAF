@@ -20,6 +20,10 @@ import (
 
 // Policy is how every agent session of a program reads and answers.
 type Policy struct {
+	// StructuredAnswers opts schema-bound final turns into native formatting
+	// only when the profile's catalog publishes support. False keeps the
+	// program's existing prompt-only behavior.
+	StructuredAnswers bool
 	// FollowUps is how many times an answer that does not meet its schema is
 	// asked for again.
 	FollowUps int
