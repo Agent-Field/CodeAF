@@ -114,6 +114,8 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 		if err := fillFields(app, rows, schema, &row, i, seed, now, words, seen); err != nil {
 			return err
 		}
+		cohere(schema, row.Fields, i, now)
+		// Computed fields are evaluated from the generated inputs, never seeded.
 		row, err = rules.Prepare(row, svc.Owner, now, true)
 		if err != nil {
 			return err

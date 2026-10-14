@@ -342,3 +342,102 @@ func TestSampleFillsValidAppsWithNarrowTitlesAndUniqueFields(t *testing.T) {
 		t.Errorf("rows should cap at the unique value space: %d seats, %d tickets", len(rows["seat"]), len(rows["ticket"]))
 	}
 }
+
+func invoiceApp() *spec.App {
+	return &spec.App{ID: "billing", Records: map[string]*spec.RecordType{
+		"guest": {Label: "Guest", Title: "name", Fields: map[string]*spec.Field{
+			"name":     {Type: spec.FieldText, Unique: true},
+			"company":  {Type: spec.FieldText},
+			"headshot": {Type: spec.FieldFile},
+		}},
+		"invoice": {Label: "Invoice", Title: "number", Fields: map[string]*spec.Field{
+			"number":     {Type: spec.FieldText, Unique: true},
+			"guest":      {Type: spec.FieldRef, To: "guest"},
+			"status":     {Type: spec.FieldEnum, Values: []string{"Draft", "Sent", "Paid", "Late"}, Default: json.RawMessage(`"Draft"`)},
+			"issue_date": {Type: spec.FieldDate},
+			"due_date":   {Type: spec.FieldDate},
+			"paid_on":    {Type: spec.FieldDate},
+			"date":       {Type: spec.FieldDate},
+			"contract":   {Type: spec.FieldFile},
+			"flagged":    {Type: spec.FieldBool},
+			"streak":     {Type: spec.FieldNumber, Default: json.RawMessage(`0`)},
+		}},
+	}}
+}
+
+func TestInvoicesAreConsistentAndFilesLookUploaded(t *testing.T) {
+	app := invoiceApp()
+	now := sampleNow()
+	rows, err := GenerateAt(context.Background(), app, DefaultCount, 3, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	day := func(v any) time.Time { at, _ := time.Parse("2006-01-02", v.(string)); return at }
+	streaks := map[float64]bool{}
+	flagged := 0
+	for _, row := range rows["invoice"] {
+		f := row.Fields
+		issued, due := day(f["issue_date"]), day(f["due_date"])
+		if issued.After(now) || day(f["date"]).After(now) {
+			t.Errorf("issued or bare date in the future: %v %v", f["issue_date"], f["date"])
+		}
+		if !due.After(issued) {
+			t.Errorf("due %v is not after issued %v", f["due_date"], f["issue_date"])
+		}
+		switch f["status"] {
+		case "Paid":
+			if f["paid_on"] == nil || day(f["paid_on"]).After(now) {
+				t.Errorf("paid invoice needs a past paid date: %v", f["paid_on"])
+			}
+		case "Late":
+			if f["paid_on"] != nil || !due.Before(now) {
+				t.Errorf("late invoice must be unpaid and past due: %v", f)
+			}
+		default:
+			if f["paid_on"] != nil {
+				t.Errorf("%v invoice has a paid date", f["status"])
+			}
+		}
+		if contract := f["contract"].(string); !strings.HasPrefix(contract, "Contract – ") || !strings.HasSuffix(contract, ".pdf") {
+			t.Errorf("file does not look uploaded: %q", contract)
+		}
+		streaks[f["streak"].(float64)] = true
+		if f["flagged"] == true {
+			flagged++
+		}
+	}
+	if len(streaks) < 2 || flagged == 0 || flagged*2 > len(rows["invoice"]) {
+		t.Errorf("numbers and flags should vary, flags stay rare: %d streak values, %d flagged", len(streaks), flagged)
+	}
+	for _, row := range rows["guest"] {
+		name := row.Fields["name"].(string)
+		if orgLike(name) || strings.ContainsAny(name, ".&") || len(strings.Fields(name)) != 2 {
+			t.Errorf("guest should be a person: %q", name)
+		}
+		if photo := row.Fields["headshot"].(string); !strings.HasSuffix(photo, ".jpg") {
+			t.Errorf("headshot should be an image: %q", photo)
+		}
+	}
+}
+
+func TestClientWithAContactIsACompany(t *testing.T) {
+	app := &spec.App{ID: "freelance", Records: map[string]*spec.RecordType{
+		"client": {Label: "Client", Title: "name", Fields: map[string]*spec.Field{
+			"name":    {Type: spec.FieldText, Unique: true},
+			"contact": {Type: spec.FieldText},
+			"email":   {Type: spec.FieldEmail},
+		}},
+	}}
+	rows, err := GenerateAt(context.Background(), app, DefaultCount, 1, sampleNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, row := range rows["client"] {
+		if row.Fields["name"] != orgName(i) || row.Fields["contact"] != personName(i) {
+			t.Errorf("client should be a company with a person as contact: %v", row.Fields)
+		}
+		if row.Fields["email"] != emailFor(personName(i), i) {
+			t.Errorf("email should belong to the contact at the company: %v", row.Fields["email"])
+		}
+	}
+}
