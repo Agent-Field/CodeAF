@@ -28,7 +28,7 @@ func TestRenderIncludesWhatEachCallNeeds(t *testing.T) {
 		kind Kind
 		want []string
 	}{
-		{KindPlan, []string{"PLAN call", "ten rules", "tracker for our team", fixtureCatalog, "up to $20 a month", "Connected accounts: gmail", `"needs":"computed"`, "at most 120 characters", "one short clause", "detail goes in the files, not the plan line"}},
+		{KindPlan, []string{"PLAN call", "ten rules", "tracker for our team", fixtureCatalog, "up to $20 a month", "Connected accounts: gmail", `"needs":"computed"`, "aim ≤ 120, hard limit 200 characters", "hard limit 60 characters", `"brief":`, "daily_view", "one short clause", "detail goes in the files, not the plan line"}},
 		{KindWrite, []string{"WRITE call", "ten rules", fixtureSchemas, fixturePlan, `space ("acme")`, "That changes the app", "strict JSON"}},
 		{KindFix, []string{"FIX call", "ten rules", "----- app.json -----", "kit/no-raw-style screens/b.json:4", "changed files only"}},
 	}
@@ -98,7 +98,7 @@ func TestPlanRevisionNeedsNoParagraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, "Rewrite the current plan") || !strings.Contains(got, in.Request) {
+	if !strings.Contains(got, "Rewrite the brief and plan") || !strings.Contains(got, in.Request) {
 		t.Error("revision request not rendered")
 	}
 }

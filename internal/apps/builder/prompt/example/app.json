@@ -11,23 +11,23 @@
       "label": "Company", "plural": "Companies", "title": "name",
       "fields": {
         "name": { "type": "text", "label": "Company", "required": true, "unique": true },
-        "website": { "type": "url" },
-        "kind": { "type": "enum", "values": ["Reseller", "Integrator", "Media", "Other"] },
-        "owner": { "type": "person", "default": "$me" },
-        "notes": { "type": "longtext" }
+        "website": { "label": "Website", "type": "url" },
+        "kind": { "label": "Partner type", "type": "enum", "values": ["Reseller", "Integrator", "Media", "Other"] },
+        "owner": { "label": "Owner", "type": "person", "default": "$me" },
+        "notes": { "label": "Notes", "type": "longtext" }
       }
     },
     "deal": {
       "label": "Deal", "plural": "Deals", "title": "name",
       "fields": {
         "name": { "type": "text", "label": "Deal", "required": true },
-        "company": { "type": "ref", "to": "company", "index": true },
-        "stage": { "type": "enum", "default": "Idea", "index": true, "values": ["Idea", "Talking", "Terms", "Signed", "Dropped"] },
-        "value": { "type": "money", "currency": "USD" },
-        "due_on": { "type": "date", "label": "Due" },
-        "owner": { "type": "person", "default": "$me" },
-        "last_touch": { "type": "datetime", "index": true },
-        "notes": { "type": "longtext" }
+        "company": { "label": "Company", "type": "ref", "to": "company", "index": true },
+        "stage": { "label": "Stage", "type": "enum", "default": "Idea", "index": true, "values": ["Idea", "Talking", "Terms", "Signed", "Dropped"] },
+        "value": { "label": "Deal value", "type": "money", "currency": "USD" },
+        "due_on": { "label": "Due date", "type": "date" },
+        "owner": { "label": "Owner", "type": "person", "default": "$me" },
+        "last_touch": { "label": "Last touch", "type": "datetime", "index": true },
+        "notes": { "label": "Notes", "type": "longtext" }
       }
     }
   },
