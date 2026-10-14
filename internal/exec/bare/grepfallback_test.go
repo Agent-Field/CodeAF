@@ -22,7 +22,10 @@ import (
 // grepTree writes a small repository to search.
 func grepTree(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir()) // grepByWalking canonicalises its root; so must the expectations
+	if err != nil {
+		t.Fatal(err)
+	}
 	files := map[string]string{
 		"main.go":                 "package main\n\nfunc main() {\n\tstartTheBelt()\n}\n",
 		"internal/belt.go":        "package internal\n\n// startTheBelt wires the tools.\nfunc startTheBelt() {}\n",
