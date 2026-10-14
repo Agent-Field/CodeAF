@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -86,14 +87,15 @@ func grantHint(tool string, connectors map[string]spec.Connector) string {
 // actions; the chat panel already shows every answer as AI.
 const aiMark = "· AI"
 
-var negations = []string{"never", "not", "don't", "no "}
+// negation is a word that, before the mark on the same line, forbids it.
+var negation = regexp.MustCompile(`(?i)\b(never|not|don't|do not|no)\b`)
 
 // agentAnswerMark finds body lines that tell the agent to put the AI mark on
 // its answers, which then open every chat paragraph with "· AI —".
 func agentAnswerMark(b *spec.Bundle) []Issue {
 	for i, line := range strings.Split(b.Agent.Body, "\n") {
-		lower := strings.ToLower(line)
-		if !strings.Contains(line, aiMark) || slices.ContainsFunc(negations, func(n string) bool { return strings.Contains(lower, n) }) {
+		at := strings.Index(line, aiMark)
+		if at < 0 || negation.MatchString(line[:at]) {
 			continue
 		}
 		return []Issue{finding(spec.AgentFile, "/body", "agent/answer-mark", fmt.Sprintf("agent.md body line %d tells the agent to mark answers %q", i+1, aiMark), fmt.Sprintf("delete that line from agent.md: the chat panel already shows answers as AI; %q goes only on labels of ai fields and actions in app files", aiMark))}

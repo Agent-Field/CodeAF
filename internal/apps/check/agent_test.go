@@ -76,6 +76,9 @@ func TestAgentBodyMustNotMarkAnswers(t *testing.T) {
 		{"Start each answer with · AI.", true},
 		{"- Never mark answers \"· AI\"; the panel already shows them as AI.", false},
 		{"- Mark answers as AI; the panel does.", false},
+		{"- Note the owner, then add \"· AI\" to the answer.", true},
+		{"- Add \"· AI\" to every answer; nothing is unlabelled.", true},
+		{"- Label notes and summaries with \"· AI\".", true},
 	} {
 		b := &spec.Bundle{App: &spec.App{}, Agent: &spec.AgentDoc{Body: "You help.\n" + tc.body}}
 		got := slices.ContainsFunc(agentCapabilities(b), func(i Issue) bool { return i.Rule == "agent/answer-mark" })
