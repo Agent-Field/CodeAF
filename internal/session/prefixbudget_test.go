@@ -577,9 +577,17 @@ const fixedPrefixTarget = 48_000
 // shorter. The fixed prefix measures 52,713 bytes and the lean 44,935, and both
 // waivers FALL to sit exactly on the measurement: the bill this file has
 // carried for `stand` since it was first weighed is mostly paid.
+//
+// 2026-10-14, one memory strength. The page's memory sentence says what
+// `remember` keeps and that a timed thing is an automation; `memory_evidence`
+// leaves the belt with the evidence it read, and `forget` joins `remember` as
+// a one-field verb on the full belt (the lean belt carries neither, its page
+// saying the person can /remember). The fixed prefix
+// measures 52,519 bytes and the lean 44,915, and both waivers FALL — by 194 and
+// by 20 — to sit exactly on the measurement.
 const (
-	fixedPrefixWaiver = 4_713
-	leanPrefixWaiver  = 13_435
+	fixedPrefixWaiver = 4_519
+	leanPrefixWaiver  = 13_415
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

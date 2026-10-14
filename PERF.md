@@ -1570,6 +1570,15 @@ measures **52,713** bytes and the lean **44,935**, and both waivers fall to sit
 exactly on the measurement: the full cap is **52,713** (4,713 over its target)
 and the lean cap **44,935** (13,435 over).
 
+**One memory strength (2026-10-14).** The page's memory sentence names `remember`
+and says a timed thing is an automation; `memory_evidence` leaves the belt with the
+evidence it read, and `forget` joins `remember` as a one-field verb on the full
+belt, while the lean belt carries neither and its page says the person can
+`/remember`. The full prefix
+measures **52,519** bytes and the lean **44,915**; both waivers fall to the
+measurement, so the full cap is **52,519** (4,519 over its target) and the lean
+cap **44,915** (13,415 over).
+
 ## Following through on a completion claim
 
 A turn may decline handoff once per request when its own continuation says no
@@ -2607,7 +2616,7 @@ clock, with no new timer or narrator call. Suffixes use spare columns; at narrow
 widths the dot uses the existing icon gutter. The laid-out activity row suppresses
 a duplicate footer pulse; detailed phase information remains in the footer.
 
-## Memory lookup BESIDE the first response, and the law that keeps it there
+## Nothing awaited before the first response, and the law that keeps it there
 
 **THE ONLY WAIT A PERSON EXPERIENCES IS THE MAIN MODEL GENERATING**
 (`internal/session/loop.go`'s header, and the gate in `loop_speed_test.go`). Two
@@ -2623,23 +2632,19 @@ it. The one named exception is the guardian (`guardianAnswerWindow`, 10 s), whic
 decides whether a tool runs at all and therefore has nothing to run beside; it now
 draws `checking whether this is safe to run` for the whole of that window.
 
-Pre-turn recall is started at `Agent.startTurnLocked`, beside the title, and is
-never awaited. What it finds is applied rather than dropped: before the request is
-assembled it rides that request; before the first token it buys **one** cut and
-re-ask (`errRecallCut`, no backoff, one per turn); after the first token it rides
-the next step and the turn's `pace` journal line records `recall:late`.
+There is no memory reading in front of a turn any more. The pre-turn recall —
+started beside the title, never awaited, and measured on 2026-09-11 at a mean of
+4.3 s over 16 calls — was removed on 2026-10-14 with the router it fed: every
+remembered line rides message[0] from one indexed read at the turn's start
+(*The memory block* below), so there is nothing left to race against the first
+token. `lane.RoleRecall` and its patience row (**0.2**: a 2 s ceiling, 18 s
+give-up) went with it, because a lane role nobody calls is owed a deletion
+(`internal/provider`'s `TestEveryRoleInTheTableHasACallSite`).
 
-`RoleRecall` patience is **0.2**, which is a **2 s** ceiling (act on silence: move
-to another machine) and an **18 s** give-up. The two used to be the same instant —
-`internal/reflex`'s `Route` read `Ceiling()` as its deadline — so no recall in this
-build was ever rescued off a slow machine. Measured 2026-09-11: 16 recalls, mean
-4.3 s, max 10.7 s, DekaLLM p50 5.5 s and Io Net 4.3 s against DeepInfra's 1.7 s.
-
-`RoleJudge` patience is **1** (**10 s** ceiling, **90 s** give-up) for the same
-reason: a 60 s ceiling was outside every caller's window and could never fire, and
-the same census has four mark readings dying at 30,001–30,002 ms having decided
-nothing. The quantity is the same one recall's is, read against a caller's window
-rather than a machine's median — late enough that a healthy machine is never
+`RoleJudge` patience is **1** (**10 s** ceiling, **90 s** give-up): a 60 s ceiling
+was outside every caller's window and could never fire, and the 2026-09-11 census
+has four mark readings dying at 30,001–30,002 ms having decided nothing. The
+figure is read against a caller's window rather than a machine's median — late enough that a healthy machine is never
 abandoned (above the 8.4 s p90 first token) and early enough that a second machine
 can still answer inside the tightest window that constrains it (the pre-turn route
 read's 20 s, less the same 8.4 s). The interval is (8.4 s, 11.6 s); ten seconds is
@@ -2682,11 +2687,13 @@ and `confirmRouteWork` at `routeRaceConfirmWindow` (30 s). They inherited the lo
 and mastermind tier patience — 2 minutes and **10 minutes** — with the person's
 answer already on the screen.
 
-Other reflex operations share the existing `roles.PatienceFor(RoleReflex)`
-(45 seconds) across retries. Recall bypasses the ordinary session auxiliary
-adapter, so its own operation now owns these bounds. On recall failure, the main
-request proceeds without selected memories. There is no phase word on the lookup
-any more: `preparing saved context` named a wait that no longer exists.
+The one reflex call left — the noticing pass after a finished turn
+(`internal/reflex`'s `Notice`) — runs after the answer is on the screen and has
+`roles.PatienceFor(RoleReflex)` (**45 seconds**) across its retries. Its input is
+bounded: each message clipped to **2,000 runes** (`messageLimit`) and at most
+**80** numbered kept lines offered for it to replace (`keptLimit`). There is no
+phase word for memory: `preparing saved context` named a wait that no longer
+exists.
 
 Host attachment compares a build identity captured at process initialization,
 including timestamp precision beyond the minute shown on screen. This adds one
@@ -2893,49 +2900,27 @@ shared `teamsPreviewBytes` (**64 KiB per transcript**) budget. Transcript pieces
 are rendered only for visible cards. Hosted catalogs never read local transcript
 paths. No saved conversation is resumed to display or select its card.
 
-## Contextual memory bounds
+## The memory block
 
-One ordinary post-turn extraction can add one memory claim. It keeps at most eight
-independent receipts per turn, each clipped to 2,000 runes, and eight metadata items
-of 240 runes each. The existing 512-rune memory body stays unchanged; rich source
-words and reasoning live in the canonical journal. Approved context and direct
-lexical fallback together take at most eight claims, within the existing 4,800-rune
-memory block. Local source revision queries get a two-second cancellation bound.
-Only clean tracked revisions establish current outcome evidence.
+Every active memory line in a conversation's scope — for the person everywhere, for
+this machine, for this project — rides one `<memory>` block in message[0], in a
+stable order (person, machine, project; oldest first) and with no age or other
+clock-derived byte, so it is byte-identical from turn to turn until a line changes,
+which is what keeps the cached prefix warm (`prefixcache_test.go`). The block is
+bounded at **4,800 runes** of lines (`memoryBlockRunes`, `internal/session/memory.go`),
+about 1,200 tokens. **A save that would overflow it is refused** (`errMemoryFull`)
+with a receipt naming the bound, so nothing that rides is ever dropped later and no
+ranking decides which lines a turn sees; the memory place counts what does not fit.
+Each line is at most **512 runes** (`store.MemoryTextRunes`) with an 80-rune title.
 
-Binding retrieval spends its bounded window on authority: approved rules and
-confirmed decisions are read through a partial index (`events_contextual_approved`)
-that holds only binding rows, so the newest-128 window is a seek over the rule
-count rather than a walk of the owner's evidence partition. A projection that asks
-for many memories' latest evidence does so in ONE indexed read per owner through
-`events_contextual_memory` (an expression index over the memory id), and the live
-guards (validity, memory suppression, source retirement, derivation ancestry and
-conditions) are answered for the whole candidate set in batched, owner-scoped
-reads rather than a query per row. The per-memory latest read is NOT windowed to a
-record count: a live rule whose newest evidence sits behind a burst of newer rows
-is still answered, so no hidden total-claim ceiling can drop it. Source suppression
-still checks the owner journal to avoid old-source resurrection, and the ancestry
-it walks is bounded by the candidates' derivation closure, not by a fixed count.
-Dependency projections inspect 128 events and return at most eight links/notices.
-Only successful full reads of files up to 64 KiB can establish an exact-path link.
-At most eight source reads per pass can establish eight edges. Consumer probes are
-bounded to eight producer/consumer pairs; they make no provider calls or edits.
-Exact duplicate settlement streams the active owner partition transactionally: its
-cost grows with that partition, rather than losing punctuation or older duplicates
-behind a retrieval ceiling. The canonical event journal is not periodically pruned;
-projection/context work is bounded, while durable history continues to grow.
-
-Rules — memories marked always — ride in message[0] and close every task brief, so
-their block is bounded twice: at most **12 rules** (`alwaysBlockMost`) and **2,400
-runes** of rule lines (`alwaysBlockRunes`, half the routed block's 4,800), whole rules
-only, the newest waiting behind a `…N more` line. The block carries no age and no
-clock-derived byte, so it is byte-identical from turn to turn until a rule changes,
-which is what keeps the cached prefix warm (`prefixcache_test.go`). The read is one
-statement per turn start through the partial index `memories_always_active`, which
-holds only active rules, so it is a seek over the rule count; a failed read keeps the
-last block rather than re-pricing the prefix to say nothing. Rules are excluded from
-the router's shortlist, the binding reads and the memory tidy, so no line is paid for
-twice.
+The read is **one indexed statement per turn start** (`Store.MemoriesFor`, over the
+owners the conversation sees); a failed read keeps the last block rather than
+re-pricing the prefix to say nothing. A task worker's brief closes on the same section,
+read once per run (`TaskGraph.memoryWorld`). A bare `/forget` walks back at most
+**20** of a conversation's own memory changes (`memoryUndoDepth`). No retrieval,
+evidence projection, binding read or background tidy exists: the store's work is
+bounded by the scope's own line count, and the event journal continues to grow as the
+durable record.
 
 ## Conversation deletion completion
 

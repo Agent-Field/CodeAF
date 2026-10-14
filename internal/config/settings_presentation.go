@@ -45,7 +45,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Hidden = true // Resident-only controls have no live chat consumer.
 	case KeyMemoryEnabled:
 		p.Category, p.Label = "Memory", "notice things to remember"
-		p.Description = "After a turn you typed, codeaf may keep one line you said that should hold in every conversation — a preference, a rule, a correction — and tells you in the conversation, with /forget to undo it. Off stops only the noticing: lines you keep with /remember still ride every conversation, and nothing saved is deleted."
+		p.Description = "Off stops only the noticing: what you keep with /remember still rides every conversation, and nothing saved is deleted. On, after a turn you typed, codeaf may keep one line you said that should hold everywhere — a preference, a rule, a correction — and tells you, with /forget to undo it."
 		p.Activation = "Applies from the next turn"
 	case KeyUpdateAuto:
 		p.Label = "automatic updates"
@@ -206,7 +206,9 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	}
 	switch s.Key {
 	case KeyMemoryEnabled:
-		p.Aliases = append(p.Aliases, "remember", "learn", "forget", "recall", "memory", "notice", "automatic")
+		// "remember across chats" is the row's label until 2026-10-14, kept so
+		// the words a person learned still find it.
+		p.Aliases = append(p.Aliases, "remember across chats", "remember", "learn", "forget", "recall", "memory", "notice", "automatic")
 	case KeyTelemetry:
 		p.Aliases = append(p.Aliases, "analytics", "tracking", "privacy", "data sharing")
 	case KeyTaskMinFreeMB:

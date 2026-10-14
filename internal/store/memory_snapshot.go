@@ -72,30 +72,14 @@ func (s *Store) MemorySnapshot(limit int) (MemoryShelves, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	counts := map[string]int{}
-	rows, err := tx.Query(`SELECT owner, COUNT(*) FROM memories WHERE status = ? GROUP BY owner`, MemoryActive)
+	counts, held, err := memoryCountsOn(tx)
 	if err != nil {
-		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
-	}
-	held := 0
-	for rows.Next() {
-		var owner string
-		var count int
-		if err := rows.Scan(&owner, &count); err != nil {
-			rows.Close()
-			return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
-		}
-		counts[owner] = count
-		held += count
-	}
-	if err := closeRows(rows); err != nil {
 		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
 	}
 	var letGoCount int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE status <> ?`, MemoryActive).Scan(&letGoCount); err != nil {
 		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
 	}
-
 	active, err := queryMemoriesOn(tx, `WHERE status = ?`, []any{MemoryActive}, `memories.created_seq, memories.id`, limit)
 	if err != nil {
 		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
@@ -104,7 +88,35 @@ func (s *Store) MemorySnapshot(limit int) (MemoryShelves, error) {
 	if err != nil {
 		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
 	}
+	return MemoryShelves{Shelves: shelveMemories(counts, active), LetGo: letGo, Held: held, LetGoCount: letGoCount}, nil
+}
 
+// memoryCountsOn is each owner's exact count of active lines, and their total,
+// so a shelf can say how many it holds even when the rows were cut.
+func memoryCountsOn(tx *sql.Tx) (map[string]int, int, error) {
+	counts := map[string]int{}
+	rows, err := tx.Query(`SELECT owner, COUNT(*) FROM memories WHERE status = ? GROUP BY owner`, MemoryActive)
+	if err != nil {
+		return nil, 0, err
+	}
+	held := 0
+	for rows.Next() {
+		var owner string
+		var count int
+		if err := rows.Scan(&owner, &count); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		counts[owner] = count
+		held += count
+	}
+	return counts, held, closeRows(rows)
+}
+
+// shelveMemories puts each active line on its owner's shelf and stands the
+// shelves in the page's order: person, machine, projects by name, quarantine
+// last.
+func shelveMemories(counts map[string]int, active []Memory) []MemoryShelf {
 	byOwner := map[string]*MemoryShelf{}
 	for owner, count := range counts {
 		byOwner[owner] = &MemoryShelf{Owner: owner, Held: count}
@@ -135,7 +147,7 @@ func (s *Store) MemorySnapshot(limit int) (MemoryShelves, error) {
 		}
 		return shelves[i].Owner < shelves[j].Owner
 	})
-	return MemoryShelves{Shelves: shelves, LetGo: letGo, Held: held, LetGoCount: letGoCount}, nil
+	return shelves
 }
 
 // memoryShelfRank is where an owner's shelf stands on the page.

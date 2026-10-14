@@ -72,7 +72,7 @@ func TestEveryReadingBesideTheWorkGoesThroughTheOneDoor(t *testing.T) {
 		t.Fatalf("only %d readings found through readBeside (%v); the law is reading the wrong tree",
 			len(readings), namesOf(readings))
 	}
-	for _, name := range []string{"refreshMemory", "readMark", "readRouteJudge"} {
+	for _, name := range []string{"askRouteAhead", "readMark", "readRouteJudge"} {
 		if !readings[name] {
 			t.Errorf("%s is not among the readings this law watches (%v) — it is supposed to be "+
 				"derived from every readBeside ask in the package", name, namesOf(readings))

@@ -15,7 +15,7 @@ func TestMemoryCatalogueDescribesTheBarePlaceAndQueriedTranscript(t *testing.T) 
 	if strings.Contains(text, "prints every memory into the conversation") {
 		t.Fatal("catalogue still promises the retired bare print posture")
 	}
-	if !strings.Contains(text, "| `/memories` | — | — | opens the memory place |") || !strings.Contains(text, "prints matching memories into the conversation") {
+	if !strings.Contains(text, "| `/memory` | `/memories` | — | opens the memory place") || !strings.Contains(text, "prints the remembered lines those words name into the conversation") {
 		t.Fatal("catalogue does not explain both memory doors")
 	}
 }

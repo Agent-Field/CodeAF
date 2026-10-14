@@ -739,53 +739,66 @@ func (a *Agent) learnFromTurn(user userMessage, answer string) {
 	go func() {
 		defer a.memoryJobs.Done()
 		a.importMemoryFile()
-		client := a.reflexClient()
-		if client == nil {
-			return
-		}
-		var kept []store.Memory
-		if askMemory {
-			visible, err := a.memory.store.MemoriesFor(a.memoryOwners())
-			if err != nil {
-				a.journalMemoryFailure("notice", err)
-				askMemory = false
-			}
-			kept = visible
-		}
-		texts := make([]string, len(kept))
-		for index, memory := range kept {
-			texts[index] = memory.Text
-		}
-		found, err := reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
+		a.noticeTurn(words, answer, askMemory)
+	}()
+}
+
+// noticeTurn is the reading itself: the lines this conversation can see,
+// numbered so the reading can say one is corrected, the one call, and the
+// state card it always answers.
+func (a *Agent) noticeTurn(words, answer string, askMemory bool) {
+	client := a.reflexClient()
+	if client == nil {
+		return
+	}
+	var kept []store.Memory
+	if askMemory {
+		visible, err := a.memory.store.MemoriesFor(a.memoryOwners())
 		if err != nil {
 			a.journalMemoryFailure("notice", err)
-			return
+			askMemory = false
 		}
-		if found.State != nil {
-			a.mergeStateCard(*found.State)
-		}
-		if found.Keep == "" {
-			return
-		}
-		var replaced *store.Memory
-		if found.Replaces > 0 && found.Replaces <= len(kept) {
-			line := kept[found.Replaces-1]
-			replaced = &line
-		}
-		memory, reach, added, err := a.keep(found.Keep, found.Scope, store.OriginNoticed, replaced)
-		switch {
-		case errors.Is(err, errMemoryFull):
-			a.sayMemory("noticed something worth keeping, but memory is full here · " + found.Keep)
-		case err != nil:
-			a.journalMemoryFailure("notice", err)
-		case !added:
-			// Already kept: nothing changed, so nothing is said.
-		case replaced != nil:
-			a.sayMemory("noticed and remembered · " + memory.Text + " · replaces " + replaced.Text + " · " + reach + " · /forget undoes it")
-		default:
-			a.sayMemory("noticed and remembered · " + memory.Text + " · " + reach + " · /forget undoes it")
-		}
-	}()
+		kept = visible
+	}
+	texts := make([]string, len(kept))
+	for index, memory := range kept {
+		texts[index] = memory.Text
+	}
+	found, err := reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
+	if err != nil {
+		a.journalMemoryFailure("notice", err)
+		return
+	}
+	if found.State != nil {
+		a.mergeStateCard(*found.State)
+	}
+	if found.Keep == "" {
+		return
+	}
+	var replaced *store.Memory
+	if found.Replaces > 0 && found.Replaces <= len(kept) {
+		line := kept[found.Replaces-1]
+		replaced = &line
+	}
+	a.keepNoticed(found.Keep, found.Scope, replaced)
+}
+
+// keepNoticed writes what the reading found through the one door and SAYS SO:
+// a line kept on the person's behalf is never kept in silence.
+func (a *Agent) keepNoticed(text, scope string, replaced *store.Memory) {
+	memory, reach, added, err := a.keep(text, scope, store.OriginNoticed, replaced)
+	switch {
+	case errors.Is(err, errMemoryFull):
+		a.sayMemory("noticed something worth keeping, but memory is full here · " + text)
+	case err != nil:
+		a.journalMemoryFailure("notice", err)
+	case !added:
+		// Already kept: nothing changed, so nothing is said.
+	case replaced != nil:
+		a.sayMemory("noticed and remembered · " + memory.Text + " · replaces " + replaced.Text + " · " + reach + " · /forget undoes it")
+	default:
+		a.sayMemory("noticed and remembered · " + memory.Text + " · " + reach + " · /forget undoes it")
+	}
 }
 
 // reflexClient is this conversation's own client pinned to the reflex model,
@@ -1013,6 +1026,31 @@ func (a *Agent) startMemoryJob() bool {
 
 // ── the legacy file ─────────────────────────────────────────────────────────
 
+// readMemoryFile reads the legacy file's lines: a leading "- " dropped,
+// headings, comments and blank lines skipped, each line cut to what the store
+// holds. found is false when there is no file to read, which is every machine
+// that has already been through the import.
+func readMemoryFile(path string) (lines []string, found bool, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false, nil
+	}
+	defer func() { _ = file.Close() }()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64<<10), store.MemoryTextRunes*4)
+	for scanner.Scan() {
+		line := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(scanner.Text()), "- "))
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "<!--") {
+			continue
+		}
+		if utf8.RuneCountInString(line) > store.MemoryTextRunes {
+			line = string([]rune(line)[:store.MemoryTextRunes])
+		}
+		lines = append(lines, line)
+	}
+	return lines, true, scanner.Err()
+}
+
 // importMemoryFile carries the legacy ~/.codeaf/v3/memory.md into the store,
 // once, for the person everywhere, and renames it out of the way only after
 // every line landed. One line says how many it carried.
@@ -1032,27 +1070,12 @@ func (a *Agent) importMemoryFile() {
 	if path == "" {
 		return
 	}
-	file, err := os.Open(path)
-	if err != nil {
+	lines, found, err := readMemoryFile(path)
+	if !found {
 		return
 	}
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64<<10), store.MemoryTextRunes*4)
-	for scanner.Scan() {
-		line := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(scanner.Text()), "- "))
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "<!--") {
-			continue
-		}
-		if utf8.RuneCountInString(line) > store.MemoryTextRunes {
-			line = string([]rune(line)[:store.MemoryTextRunes])
-		}
-		lines = append(lines, line)
-	}
-	scanErr := scanner.Err()
-	_ = file.Close()
-	if scanErr != nil {
-		a.retryImport(fmt.Errorf("reading %s: %w", path, scanErr))
+	if err != nil {
+		a.retryImport(fmt.Errorf("reading %s: %w", path, err))
 		return
 	}
 	imported := 0

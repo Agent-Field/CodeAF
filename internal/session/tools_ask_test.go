@@ -210,7 +210,11 @@ func TestTheRecordRidesInModelContext(t *testing.T) {
 	}
 }
 
-func TestAnExplainedOverrideBecomesAPreferenceThatCanBeForgotten(t *testing.T) {
+// AN EXPLAINED OVERRIDE IS NOT A MEMORY BEHIND ANYBODY'S BACK. The reason rides
+// the decision record, where the question gate reads it; turning it into a line
+// in front of every conversation would be a memory the person never saw kept. When they want it to hold, they say so (/remember, or
+// "remember that"), and that says so in turn.
+func TestAnExplainedOverrideIsNotSilentlyRemembered(t *testing.T) {
 	a, _ := brainAgent(t, &scriptedCompleter{}, func(config *Config) { config.Interactive = true })
 	raw := json.RawMessage(`{"head":"Which report style?","kind":"choice","reason":"the record has no report style","options":[{"key":"1","label":"long"},{"key":"2","label":"compact"}],"pick":{"key":"1","reason":"it carries more detail"},"stakes":"reversible"}`)
 	done := make(chan struct{})
@@ -230,30 +234,11 @@ func TestAnExplainedOverrideBecomesAPreferenceThatCanBeForgotten(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-done
-	// THE PREFERENCE IS WRITTEN BESIDE THE ANSWER AND NEVER IN FRONT OF IT
-	// (question.go's [Agent.rememberOverride]): the answer's own door returns
-	// the moment the lane has it, and the memory lands a moment later.
-	var memories []MemoryLine
-	var err error
-	deadline = time.After(5 * time.Second)
-	for {
-		memories, err = a.Memories("compact reports")
-		if err == nil && len(memories) > 0 && strings.Contains(memories[0].Text, "compact reports are easier") {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("preference was not kept: %+v, %v", memories, err)
-		default:
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
-	if _, err := a.Forget("compact reports"); err != nil {
-		t.Fatal(err)
-	}
-	memories, _ = a.Memories("compact reports")
-	if len(memories) != 0 {
-		t.Fatalf("preference was not forgettable: %+v", memories)
+	// Every background memory pass this agent started has landed before the
+	// store is read, so an absence here is an absence and not a race.
+	a.memoryJobs.Wait()
+	if memories, err := a.Memories("compact reports"); err != nil || len(memories) != 0 {
+		t.Fatalf("an answer was kept as a memory nobody was told about: %+v, %v", memories, err)
 	}
 }
 

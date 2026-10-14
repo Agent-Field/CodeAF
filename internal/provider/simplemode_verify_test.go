@@ -334,7 +334,7 @@ func TestUnderSimpleOnlyThePersonsOwnTurnCarriesTheTalkPin(t *testing.T) {
 	// read from the table rather than from a list kept here: whatever else is
 	// added to that table arrives already answered.
 	for _, errand := range []lanes.Role{
-		lanes.RoleAuxiliary, lanes.RoleMemory, lanes.RoleRecall,
+		lanes.RoleAuxiliary, lanes.RoleMemory,
 		lanes.RoleTool, lanes.RoleJudge, lanes.RoleLeafUnattended, lanes.RoleUnknown,
 	} {
 		knobs := callKnobs{role: errand}
