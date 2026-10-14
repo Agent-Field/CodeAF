@@ -139,7 +139,7 @@ func TestSocketCallDenySubscribeDiffAndDisconnect(t *testing.T) {
 	// Repeating a subscription must not create a second delivery or leak.
 	c.send(bridge.TypeSub, "", "", "app/crm/records/*", nil)
 	c.read()
-	id = c.send(bridge.TypeCall, "crm", bridge.MethodRecordsUpdate, "", bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Qualified"}})
+	id = c.send(bridge.TypeCall, "crm", bridge.MethodRecordsUpdate, "", bridge.UpdateRecordParams{Type: "deal", ID: "dl_05_umbrella", Set: map[string]any{"stage": "Talking"}})
 	gotResult, gotEvent := false, false
 	for range 2 {
 		e := c.read()
@@ -151,7 +151,7 @@ func TestSocketCallDenySubscribeDiffAndDisconnect(t *testing.T) {
 			if err := json.Unmarshal(e.Event, &diff); err != nil {
 				t.Fatal(err)
 			}
-			gotEvent = e.Topic == bridge.TopicRecords("crm", "deal") && e.Seq == 1 && diff.ID == "dl_hooli" && diff.Record.Fields["stage"] == "Qualified"
+			gotEvent = e.Topic == bridge.TopicRecords("crm", "deal") && e.Seq == 1 && diff.ID == "dl_05_umbrella" && diff.Record.Fields["stage"] == "Talking"
 		default:
 			t.Fatal(e)
 		}

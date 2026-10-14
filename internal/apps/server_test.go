@@ -120,7 +120,7 @@ func TestBridgeServesTheGoldenCRM(t *testing.T) {
 	if err := c.call("crm", bridge.MethodRecordsQuery, bridge.QueryParams{Type: "deal", Query: "sort:-amount", CountBy: "stage"}, &page); err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 10 || page.Rows[0].ID != "dl_northwind" || page.Counts["Proposal"] != 2 {
+	if page.Total != 62 || page.Rows[0].ID != "dl_01_globex" || page.Counts["Proposal"] != 5 {
 		t.Fatalf("page = %+v", page)
 	}
 }
@@ -154,7 +154,7 @@ func TestBridgePublishesRowDiffs(t *testing.T) {
 	if reply := c.read(); reply.ID != id || reply.Type != bridge.TypeResult {
 		t.Fatalf("sub reply = %+v", reply)
 	}
-	raw, _ := json.Marshal(bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Qualified"}})
+	raw, _ := json.Marshal(bridge.UpdateRecordParams{Type: "deal", ID: "dl_05_umbrella", Set: map[string]any{"stage": "Talking"}})
 	c.send(bridge.Envelope{Type: bridge.TypeCall, App: "crm", Method: bridge.MethodRecordsUpdate, Params: raw})
 	var sawResult, sawEvent bool
 	for !(sawResult && sawEvent) {
@@ -165,7 +165,7 @@ func TestBridgePublishesRowDiffs(t *testing.T) {
 		case bridge.TypeEvent:
 			var diff bridge.RecordDiff
 			_ = json.Unmarshal(e.Event, &diff)
-			if e.Topic != topic || diff.Op != bridge.DiffUpsert || diff.Record.Fields["stage"] != "Qualified" {
+			if e.Topic != topic || diff.Op != bridge.DiffUpsert || diff.Record.Fields["stage"] != "Talking" {
 				t.Fatalf("event = %+v diff = %+v", e, diff)
 			}
 			sawEvent = true

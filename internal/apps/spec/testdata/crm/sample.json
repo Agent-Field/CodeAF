@@ -48,7 +48,7 @@
     {
       "id": "co_vandelay",
       "fields": {
-        "name": "Vandelay Industries",
+        "name": "Vandelay",
         "domain": "https://vandelay.example",
         "size": "11-50",
         "owner": "me"
@@ -78,6 +78,294 @@
         "name": "Pied Piper",
         "domain": "https://pied-piper.example",
         "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_wayne_logistics",
+      "fields": {
+        "name": "Wayne Logistics",
+        "domain": "https://wayne-logistics.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_soylent_foods",
+      "fields": {
+        "name": "Soylent Foods",
+        "domain": "https://soylent-foods.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_tyrell_systems",
+      "fields": {
+        "name": "Tyrell Systems",
+        "domain": "https://tyrell-systems.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_cyberdyne",
+      "fields": {
+        "name": "Cyberdyne",
+        "domain": "https://cyberdyne.example",
+        "size": "1-10",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_wonka_sweets",
+      "fields": {
+        "name": "Wonka Sweets",
+        "domain": "https://wonka-sweets.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_oscorp",
+      "fields": {
+        "name": "Oscorp",
+        "domain": "https://oscorp.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_massive_dynamic",
+      "fields": {
+        "name": "Massive Dynamic",
+        "domain": "https://massive-dynamic.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_gringotts_bank",
+      "fields": {
+        "name": "Gringotts Bank",
+        "domain": "https://gringotts-bank.example",
+        "size": "1-10",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_bluth_homes",
+      "fields": {
+        "name": "Bluth Homes",
+        "domain": "https://bluth-homes.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_dunder_paper",
+      "fields": {
+        "name": "Dunder Paper",
+        "domain": "https://dunder-paper.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_prestige_travel",
+      "fields": {
+        "name": "Prestige Travel",
+        "domain": "https://prestige-travel.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_sterling_media",
+      "fields": {
+        "name": "Sterling Media",
+        "domain": "https://sterling-media.example",
+        "size": "1-10",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_hanso_research",
+      "fields": {
+        "name": "Hanso Research",
+        "domain": "https://hanso-research.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_oceanic_air",
+      "fields": {
+        "name": "Oceanic Air",
+        "domain": "https://oceanic-air.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_monarch_health",
+      "fields": {
+        "name": "Monarch Health",
+        "domain": "https://monarch-health.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_krusty_brands",
+      "fields": {
+        "name": "Krusty Brands",
+        "domain": "https://krusty-brands.example",
+        "size": "1-10",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_duff_beverages",
+      "fields": {
+        "name": "Duff Beverages",
+        "domain": "https://duff-beverages.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_planet_express",
+      "fields": {
+        "name": "Planet Express",
+        "domain": "https://planet-express.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_aperture_labs",
+      "fields": {
+        "name": "Aperture Labs",
+        "domain": "https://aperture-labs.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_zorg_industries",
+      "fields": {
+        "name": "Zorg Industries",
+        "domain": "https://zorg-industries.example",
+        "size": "1-10",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_nakatomi_trading",
+      "fields": {
+        "name": "Nakatomi Trading",
+        "domain": "https://nakatomi-trading.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_weyland_shipping",
+      "fields": {
+        "name": "Weyland Shipping",
+        "domain": "https://weyland-shipping.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_rekall_travel",
+      "fields": {
+        "name": "Rekall Travel",
+        "domain": "https://rekall-travel.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_virtucon",
+      "fields": {
+        "name": "Virtucon",
+        "domain": "https://virtucon.example",
+        "size": "1-10",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_initrode",
+      "fields": {
+        "name": "Initrode",
+        "domain": "https://initrode.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_black_mesa",
+      "fields": {
+        "name": "Black Mesa",
+        "domain": "https://black-mesa.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_vehement_capital",
+      "fields": {
+        "name": "Vehement Capital",
+        "domain": "https://vehement-capital.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_sirius_devices",
+      "fields": {
+        "name": "Sirius Devices",
+        "domain": "https://sirius-devices.example",
+        "size": "1-10",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_kwik_mart",
+      "fields": {
+        "name": "Kwik Mart",
+        "domain": "https://kwik-mart.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_gekko_partners",
+      "fields": {
+        "name": "Gekko Partners",
+        "domain": "https://gekko-partners.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_paper_street_soap",
+      "fields": {
+        "name": "Paper Street Soap",
+        "domain": "https://paper-street-soap.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_ollivander_tools",
+      "fields": {
+        "name": "Ollivander Tools",
+        "domain": "https://ollivander-tools.example",
+        "size": "1-10",
         "owner": "me"
       }
     }
@@ -167,165 +455,882 @@
   ],
   "deal": [
     {
-      "id": "dl_northwind",
+      "id": "dl_01_globex",
       "fields": {
         "name": "Annual renewal · 120 seats",
+        "company": "co_globex",
+        "stage": "Proposal",
+        "amount": 48000,
+        "close_on": "2026-10-27",
+        "owner": "me",
+        "last_touch": "2026-10-12T11:50:00Z",
+        "next_step": "Send revised quote",
+        "contacts": [
+          "ct_hank"
+        ],
+        "likely": "Likely"
+      }
+    },
+    {
+      "id": "dl_02_northwind",
+      "fields": {
+        "name": "Team plan · 40 seats",
         "company": "co_northwind",
+        "stage": "Talking",
+        "amount": 14400,
+        "close_on": "2026-10-31",
+        "owner": "crm-agent",
+        "last_touch": "2026-10-13T09:50:00Z",
+        "next_step": "Follow-up drafted · waiting on you",
         "contacts": [
           "ct_priya"
         ],
-        "stage": "Proposal",
-        "amount": 48000,
-        "close_on": "2026-11-28",
-        "owner": "me",
-        "last_touch": "2026-10-01T09:12:00Z",
-        "likely": "Likely",
-        "next_step": "Send revised renewal quote"
+        "likely": "Likely"
       }
     },
     {
-      "id": "dl_globex",
-      "fields": {
-        "name": "Platform rollout · 75 seats",
-        "company": "co_globex",
-        "contacts": [
-          "ct_hank"
-        ],
-        "stage": "Negotiation",
-        "amount": 36500,
-        "close_on": "2026-11-15",
-        "owner": "me",
-        "last_touch": "2026-10-10T14:00:00Z",
-        "likely": "Maybe",
-        "next_step": "Review contract with procurement"
-      }
-    },
-    {
-      "id": "dl_initech",
+      "id": "dl_03_initech",
       "fields": {
         "name": "Pilot for the ops team",
         "company": "co_initech",
+        "stage": "Proposal",
+        "amount": 9000,
+        "close_on": "2026-11-04",
+        "owner": "mona",
+        "last_touch": "2026-10-13T08:50:00Z",
+        "next_step": "Security review call Thu",
         "contacts": [
           "ct_peter"
         ],
-        "stage": "Qualified",
-        "amount": 12000,
-        "close_on": "2026-12-01",
-        "owner": "me",
-        "last_touch": "2026-10-08T10:30:00Z",
-        "next_step": "Security review call Thursday"
+        "likely": "Likely"
       }
     },
     {
-      "id": "dl_umbrella",
+      "id": "dl_04_hooli",
       "fields": {
-        "name": "Expansion · support team",
-        "company": "co_umbrella",
-        "contacts": [
-          "ct_alice"
-        ],
-        "stage": "Proposal",
-        "amount": 9800,
-        "close_on": "2026-12-12",
-        "owner": "me",
-        "last_touch": "2026-09-25T16:45:00Z",
-        "next_step": "Send expansion proposal"
-      }
-    },
-    {
-      "id": "dl_hooli",
-      "fields": {
-        "name": "First order · 10 seats",
+        "name": "Expansion · EU region",
         "company": "co_hooli",
+        "stage": "Talking",
+        "amount": 22500,
+        "close_on": "2026-11-08",
+        "owner": "jm",
+        "last_touch": "2026-10-12T11:50:00Z",
+        "next_step": "Book a demo with their CTO",
         "contacts": [
           "ct_gavin"
         ],
-        "stage": "Lead",
-        "amount": 4200,
-        "owner": "me",
-        "next_step": "Book a demo with their CTO",
-        "last_touch": "2026-10-09T11:15:00Z",
-        "close_on": "2026-12-15"
+        "likely": "Likely"
       }
     },
     {
-      "id": "dl_globex_pilot",
+      "id": "dl_05_umbrella",
+      "fields": {
+        "name": "Starter plan",
+        "company": "co_umbrella",
+        "stage": "Lead",
+        "amount": 3600,
+        "close_on": "2026-11-12",
+        "owner": "crm-agent",
+        "last_touch": "2026-10-06T11:50:00Z",
+        "next_step": "Follow-up drafted · quiet 7d",
+        "contacts": [
+          "ct_alice"
+        ],
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_06_vandelay",
+      "fields": {
+        "name": "Import tooling seats",
+        "company": "co_vandelay",
+        "stage": "Talking",
+        "amount": 6800,
+        "close_on": "2026-11-16",
+        "owner": "raj",
+        "last_touch": "2026-10-11T11:50:00Z",
+        "next_step": "Send case study",
+        "contacts": [
+          "ct_art"
+        ],
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_07_acme_retail",
+      "fields": {
+        "name": "Store managers rollout",
+        "company": "co_acme_retail",
+        "stage": "Lead",
+        "amount": 12000,
+        "close_on": "2026-11-20",
+        "owner": "crm-agent",
+        "last_touch": "2026-10-05T11:50:00Z",
+        "next_step": "Follow-up drafted · quiet 8d",
+        "contacts": [
+          "ct_carmen"
+        ],
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_08_stark_labs",
+      "fields": {
+        "name": "Research team · 15 seats",
+        "company": "co_stark",
+        "stage": "Lead",
+        "amount": 5400,
+        "close_on": "2026-11-24",
+        "owner": "mona",
+        "last_touch": "2026-10-09T11:50:00Z",
+        "next_step": "Intro call Mon",
+        "contacts": [
+          "ct_maya"
+        ],
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_09_pied_piper",
+      "fields": {
+        "name": "Annual · 25 seats",
+        "company": "co_pied_piper",
+        "stage": "Proposal",
+        "amount": 10500,
+        "close_on": "2026-11-28",
+        "owner": "me",
+        "last_touch": "2026-10-08T11:50:00Z",
+        "next_step": "Waiting on legal",
+        "contacts": [
+          "ct_richard"
+        ],
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_10_wayne_logistics",
+      "fields": {
+        "name": "Fleet team · 30 seats",
+        "company": "co_wayne_logistics",
+        "stage": "Talking",
+        "amount": 2400,
+        "close_on": "2026-11-12",
+        "owner": "me",
+        "last_touch": "2026-10-13T06:00:00Z",
+        "next_step": "Send pricing for 30 seats",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_11_soylent_foods",
+      "fields": {
+        "name": "Kitchen ops pilot",
+        "company": "co_soylent_foods",
+        "stage": "Talking",
+        "amount": 11500,
+        "close_on": "2026-11-15",
+        "owner": "mona",
+        "last_touch": "2026-10-12T23:00:00Z",
+        "next_step": "Share the pilot plan",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_12_tyrell_systems",
+      "fields": {
+        "name": "Design team · 20 seats",
+        "company": "co_tyrell_systems",
+        "stage": "Talking",
+        "amount": 6300,
+        "close_on": "2026-11-18",
+        "owner": "jm",
+        "last_touch": "2026-10-12T16:00:00Z",
+        "next_step": "Answer SSO questions",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_13_cyberdyne",
+      "fields": {
+        "name": "Support desk rollout",
+        "company": "co_cyberdyne",
+        "stage": "Talking",
+        "amount": 15400,
+        "close_on": "2026-11-21",
+        "owner": "raj",
+        "last_touch": "2026-10-12T09:00:00Z",
+        "next_step": "Book the admin walkthrough",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_14_wonka_sweets",
+      "fields": {
+        "name": "Seasonal staff seats",
+        "company": "co_wonka_sweets",
+        "stage": "Talking",
+        "amount": 10200,
+        "close_on": "2026-11-24",
+        "owner": "me",
+        "last_touch": "2026-10-12T02:00:00Z",
+        "next_step": "Confirm seat count",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_15_oscorp",
+      "fields": {
+        "name": "Lab notebooks · 18 seats",
+        "company": "co_oscorp",
+        "stage": "Talking",
+        "amount": 5000,
+        "close_on": "2026-11-27",
+        "owner": "mona",
+        "last_touch": "2026-10-11T19:00:00Z",
+        "next_step": "Send security overview",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_16_massive_dynamic",
+      "fields": {
+        "name": "Research group · 50 seats",
+        "company": "co_massive_dynamic",
+        "stage": "Proposal",
+        "amount": 14100,
+        "close_on": "2026-11-30",
+        "owner": "jm",
+        "last_touch": "2026-10-11T12:00:00Z",
+        "next_step": "Review terms with procurement",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_17_gringotts_bank",
+      "fields": {
+        "name": "Compliance team · 35 seats",
+        "company": "co_gringotts_bank",
+        "stage": "Proposal",
+        "amount": 8900,
+        "close_on": "2026-12-03",
+        "owner": "raj",
+        "last_touch": "2026-10-11T05:00:00Z",
+        "next_step": "Send the revised order form",
+        "likely": "Maybe"
+      }
+    },
+    {
+      "id": "dl_18_bluth_homes",
+      "fields": {
+        "name": "Sales office starter",
+        "company": "co_bluth_homes",
+        "stage": "Lead",
+        "amount": 3700,
+        "close_on": "2026-12-06",
+        "owner": "me",
+        "last_touch": "2026-10-10T22:00:00Z",
+        "next_step": "Intro call",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_19_dunder_paper",
+      "fields": {
+        "name": "Regional branch · 12 seats",
+        "company": "co_dunder_paper",
+        "stage": "Lead",
+        "amount": 12800,
+        "close_on": "2026-12-09",
+        "owner": "mona",
+        "last_touch": "2026-10-10T15:00:00Z",
+        "next_step": "Reply to the inbound form",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_20_prestige_travel",
+      "fields": {
+        "name": "Agents team starter",
+        "company": "co_prestige_travel",
+        "stage": "Lead",
+        "amount": 7600,
+        "close_on": "2026-12-12",
+        "owner": "jm",
+        "last_touch": "2026-10-10T08:00:00Z",
+        "next_step": "Find the right contact",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_21_sterling_media",
+      "fields": {
+        "name": "Creative team · 8 seats",
+        "company": "co_sterling_media",
+        "stage": "Lead",
+        "amount": 2400,
+        "close_on": "2026-12-15",
+        "owner": "raj",
+        "last_touch": "2026-10-10T01:00:00Z",
+        "next_step": "Send the overview deck",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_22_hanso_research",
+      "fields": {
+        "name": "Field team pilot",
+        "company": "co_hanso_research",
+        "stage": "Lead",
+        "amount": 11500,
+        "close_on": "2026-12-18",
+        "owner": "me",
+        "last_touch": "2026-10-09T18:00:00Z",
+        "next_step": "Book a discovery call",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_23_oceanic_air",
+      "fields": {
+        "name": "Crew scheduling seats",
+        "company": "co_oceanic_air",
+        "stage": "Lead",
+        "amount": 6300,
+        "close_on": "2026-12-21",
+        "owner": "mona",
+        "last_touch": "2026-10-09T11:00:00Z",
+        "next_step": "Qualify the team size",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_24_monarch_health",
+      "fields": {
+        "name": "Clinic admins · 14 seats",
+        "company": "co_monarch_health",
+        "stage": "Lead",
+        "amount": 15400,
+        "close_on": "2026-12-24",
+        "owner": "jm",
+        "last_touch": "2026-10-09T04:00:00Z",
+        "next_step": "Send the healthcare one-pager",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_25_krusty_brands",
+      "fields": {
+        "name": "Franchise starter",
+        "company": "co_krusty_brands",
+        "stage": "Lead",
+        "amount": 10200,
+        "close_on": "2026-12-27",
+        "owner": "raj",
+        "last_touch": "2026-10-08T21:00:00Z",
+        "next_step": "Intro call",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_26_duff_beverages",
+      "fields": {
+        "name": "Distribution team seats",
+        "company": "co_duff_beverages",
+        "stage": "Lead",
+        "amount": 5000,
+        "close_on": "2026-12-30",
+        "owner": "me",
+        "last_touch": "2026-10-08T14:00:00Z",
+        "next_step": "Reply with pricing tiers",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_27_planet_express",
+      "fields": {
+        "name": "Dispatch team · 9 seats",
+        "company": "co_planet_express",
+        "stage": "Lead",
+        "amount": 14100,
+        "close_on": "2027-01-02",
+        "owner": "mona",
+        "last_touch": "2026-10-08T07:00:00Z",
+        "next_step": "Book a demo",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_28_aperture_labs",
+      "fields": {
+        "name": "Test team starter",
+        "company": "co_aperture_labs",
+        "stage": "Lead",
+        "amount": 8900,
+        "close_on": "2027-01-05",
+        "owner": "jm",
+        "last_touch": "2026-10-08T00:00:00Z",
+        "next_step": "Follow up on the trial signup",
+        "likely": "Unlikely"
+      }
+    },
+    {
+      "id": "dl_29_globex",
       "fields": {
         "name": "Analytics pilot",
         "company": "co_globex",
+        "stage": "Won",
+        "amount": 3000,
+        "close_on": "2026-10-04",
+        "owner": "me",
+        "last_touch": "2026-10-04T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff",
         "contacts": [
           "ct_hank"
-        ],
+        ]
+      }
+    },
+    {
+      "id": "dl_30_hooli",
+      "fields": {
+        "name": "First order · 10 seats",
+        "company": "co_hooli",
         "stage": "Won",
-        "amount": 6800,
-        "close_on": "2026-10-01",
+        "amount": 11500,
+        "close_on": "2026-10-02",
+        "owner": "mona",
+        "last_touch": "2026-10-02T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff",
+        "contacts": [
+          "ct_gavin"
+        ]
+      }
+    },
+    {
+      "id": "dl_31_initech",
+      "fields": {
+        "name": "Ops team · 25 seats",
+        "company": "co_initech",
+        "stage": "Won",
+        "amount": 20000,
+        "close_on": "2026-09-30",
+        "owner": "jm",
+        "last_touch": "2026-09-30T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff",
+        "contacts": [
+          "ct_peter"
+        ]
+      }
+    },
+    {
+      "id": "dl_32_northwind",
+      "fields": {
+        "name": "Starter plan",
+        "company": "co_northwind",
+        "stage": "Won",
+        "amount": 6400,
+        "close_on": "2026-09-28",
+        "owner": "raj",
+        "last_touch": "2026-09-28T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff",
+        "contacts": [
+          "ct_priya"
+        ]
+      }
+    },
+    {
+      "id": "dl_33_wayne_logistics",
+      "fields": {
+        "name": "Annual · 20 seats",
+        "company": "co_wayne_logistics",
+        "stage": "Won",
+        "amount": 14900,
+        "close_on": "2026-09-26",
         "owner": "me",
-        "last_touch": "2026-10-01T08:00:00Z",
+        "last_touch": "2026-09-26T12:00:00Z",
         "next_step": "Schedule onboarding kickoff"
       }
     },
     {
-      "id": "dl_vandelay",
+      "id": "dl_34_tyrell_systems",
       "fields": {
-        "name": "Import tooling seats",
-        "company": "co_vandelay",
-        "contacts": [
-          "ct_art"
-        ],
-        "stage": "Qualified",
-        "amount": 6800,
-        "next_step": "Send the logistics case study",
-        "last_touch": "2026-10-11T15:20:00Z",
-        "close_on": "2026-11-20",
-        "owner": "me"
+        "name": "Team plan · 15 seats",
+        "company": "co_tyrell_systems",
+        "stage": "Won",
+        "amount": 23400,
+        "close_on": "2026-09-24",
+        "owner": "mona",
+        "last_touch": "2026-09-24T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
       }
     },
     {
-      "id": "dl_acme_retail",
+      "id": "dl_35_cyberdyne",
       "fields": {
-        "name": "Store managers rollout",
-        "company": "co_acme_retail",
-        "contacts": [
-          "ct_carmen"
-        ],
-        "stage": "Lead",
-        "amount": 12000,
-        "next_step": "Confirm pilot stores and book discovery",
-        "last_touch": "2026-10-05T16:00:00Z",
-        "close_on": "2026-12-18",
-        "owner": "me"
+        "name": "Pilot · 5 seats",
+        "company": "co_cyberdyne",
+        "stage": "Won",
+        "amount": 9800,
+        "close_on": "2026-09-22",
+        "owner": "jm",
+        "last_touch": "2026-09-22T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
       }
     },
     {
-      "id": "dl_stark",
+      "id": "dl_36_oscorp",
       "fields": {
-        "name": "Research team · 15 seats",
+        "name": "Annual · 40 seats",
+        "company": "co_oscorp",
+        "stage": "Won",
+        "amount": 18300,
+        "close_on": "2026-09-20",
+        "owner": "raj",
+        "last_touch": "2026-09-20T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_37_massive_dynamic",
+      "fields": {
+        "name": "Team plan · 60 seats",
+        "company": "co_massive_dynamic",
+        "stage": "Won",
+        "amount": 4700,
+        "close_on": "2026-09-18",
+        "owner": "me",
+        "last_touch": "2026-09-18T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_38_gringotts_bank",
+      "fields": {
+        "name": "Starter plan",
+        "company": "co_gringotts_bank",
+        "stage": "Won",
+        "amount": 13200,
+        "close_on": "2026-09-16",
+        "owner": "mona",
+        "last_touch": "2026-09-16T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_39_zorg_industries",
+      "fields": {
+        "name": "Annual · 80 seats",
+        "company": "co_zorg_industries",
+        "stage": "Won",
+        "amount": 21700,
+        "close_on": "2026-09-14",
+        "owner": "jm",
+        "last_touch": "2026-09-14T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_40_nakatomi_trading",
+      "fields": {
+        "name": "Team plan · 12 seats",
+        "company": "co_nakatomi_trading",
+        "stage": "Won",
+        "amount": 8100,
+        "close_on": "2026-09-12",
+        "owner": "raj",
+        "last_touch": "2026-09-12T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_41_weyland_shipping",
+      "fields": {
+        "name": "Annual · 30 seats",
+        "company": "co_weyland_shipping",
+        "stage": "Won",
+        "amount": 16600,
+        "close_on": "2026-09-10",
+        "owner": "me",
+        "last_touch": "2026-09-10T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_42_rekall_travel",
+      "fields": {
+        "name": "Starter plan",
+        "company": "co_rekall_travel",
+        "stage": "Won",
+        "amount": 3000,
+        "close_on": "2026-09-08",
+        "owner": "mona",
+        "last_touch": "2026-09-08T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_43_virtucon",
+      "fields": {
+        "name": "Team plan · 22 seats",
+        "company": "co_virtucon",
+        "stage": "Won",
+        "amount": 11500,
+        "close_on": "2026-09-06",
+        "owner": "jm",
+        "last_touch": "2026-09-06T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_44_initrode",
+      "fields": {
+        "name": "Pilot · 8 seats",
+        "company": "co_initrode",
+        "stage": "Won",
+        "amount": 20000,
+        "close_on": "2026-09-04",
+        "owner": "raj",
+        "last_touch": "2026-09-04T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_45_black_mesa",
+      "fields": {
+        "name": "Annual · 45 seats",
+        "company": "co_black_mesa",
+        "stage": "Won",
+        "amount": 6400,
+        "close_on": "2026-09-02",
+        "owner": "me",
+        "last_touch": "2026-09-02T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_46_vehement_capital",
+      "fields": {
+        "name": "Team plan · 16 seats",
+        "company": "co_vehement_capital",
+        "stage": "Won",
+        "amount": 14900,
+        "close_on": "2026-08-31",
+        "owner": "mona",
+        "last_touch": "2026-08-31T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_47_sirius_devices",
+      "fields": {
+        "name": "Annual · 10 seats",
+        "company": "co_sirius_devices",
+        "stage": "Won",
+        "amount": 23400,
+        "close_on": "2026-08-29",
+        "owner": "jm",
+        "last_touch": "2026-08-29T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_48_kwik_mart",
+      "fields": {
+        "name": "Starter plan",
+        "company": "co_kwik_mart",
+        "stage": "Won",
+        "amount": 9800,
+        "close_on": "2026-08-27",
+        "owner": "raj",
+        "last_touch": "2026-08-27T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_49_gekko_partners",
+      "fields": {
+        "name": "Team plan · 28 seats",
+        "company": "co_gekko_partners",
+        "stage": "Won",
+        "amount": 18300,
+        "close_on": "2026-08-25",
+        "owner": "me",
+        "last_touch": "2026-08-25T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_50_paper_street_soap",
+      "fields": {
+        "name": "Pilot · 6 seats",
+        "company": "co_paper_street_soap",
+        "stage": "Won",
+        "amount": 4700,
+        "close_on": "2026-08-23",
+        "owner": "mona",
+        "last_touch": "2026-08-23T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_51_ollivander_tools",
+      "fields": {
+        "name": "Annual · 18 seats",
+        "company": "co_ollivander_tools",
+        "stage": "Won",
+        "amount": 13200,
+        "close_on": "2026-08-21",
+        "owner": "jm",
+        "last_touch": "2026-08-21T12:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_52_umbrella",
+      "fields": {
+        "name": "Enterprise plan",
+        "company": "co_umbrella",
+        "stage": "Lost",
+        "amount": 4000,
+        "close_on": "2026-10-01",
+        "owner": "me",
+        "last_touch": "2026-10-01T12:00:00Z",
+        "next_step": "Revisit next quarter",
+        "contacts": [
+          "ct_alice"
+        ]
+      }
+    },
+    {
+      "id": "dl_53_stark_labs",
+      "fields": {
+        "name": "Company-wide rollout",
         "company": "co_stark",
+        "stage": "Lost",
+        "amount": 10300,
+        "close_on": "2026-09-28",
+        "owner": "mona",
+        "last_touch": "2026-09-28T12:00:00Z",
+        "next_step": "Revisit next quarter",
         "contacts": [
           "ct_maya"
-        ],
-        "stage": "Negotiation",
-        "amount": 5400,
-        "next_step": "Review data retention terms with legal",
-        "last_touch": "2026-10-12T13:40:00Z",
-        "close_on": "2026-10-30",
-        "owner": "me"
+        ]
       }
     },
     {
-      "id": "dl_pied_piper",
+      "id": "dl_54_soylent_foods",
       "fields": {
-        "name": "Annual plan · 25 seats",
-        "company": "co_pied_piper",
-        "contacts": [
-          "ct_richard"
-        ],
+        "name": "Annual · 60 seats",
+        "company": "co_soylent_foods",
         "stage": "Lost",
-        "amount": 10500,
-        "next_step": "Revisit after next quarter’s funding round",
-        "last_touch": "2026-10-06T09:30:00Z",
-        "close_on": "2026-10-07",
-        "owner": "me"
+        "amount": 16600,
+        "close_on": "2026-09-25",
+        "owner": "jm",
+        "last_touch": "2026-09-25T12:00:00Z",
+        "next_step": "Revisit next quarter"
+      }
+    },
+    {
+      "id": "dl_55_wonka_sweets",
+      "fields": {
+        "name": "Team plan · 25 seats",
+        "company": "co_wonka_sweets",
+        "stage": "Lost",
+        "amount": 8200,
+        "close_on": "2026-09-22",
+        "owner": "raj",
+        "last_touch": "2026-09-22T12:00:00Z",
+        "next_step": "Revisit next quarter"
+      }
+    },
+    {
+      "id": "dl_56_bluth_homes",
+      "fields": {
+        "name": "Annual · 15 seats",
+        "company": "co_bluth_homes",
+        "stage": "Lost",
+        "amount": 14500,
+        "close_on": "2026-09-19",
+        "owner": "me",
+        "last_touch": "2026-09-19T12:00:00Z",
+        "next_step": "Revisit next quarter"
+      }
+    },
+    {
+      "id": "dl_57_dunder_paper",
+      "fields": {
+        "name": "Team plan · 30 seats",
+        "company": "co_dunder_paper",
+        "stage": "Lost",
+        "amount": 6100,
+        "close_on": "2026-09-16",
+        "owner": "mona",
+        "last_touch": "2026-09-16T12:00:00Z",
+        "next_step": "Revisit next quarter"
+      }
+    },
+    {
+      "id": "dl_58_prestige_travel",
+      "fields": {
+        "name": "Annual · 12 seats",
+        "company": "co_prestige_travel",
+        "stage": "Lost",
+        "amount": 12400,
+        "close_on": "2026-09-13",
+        "owner": "jm",
+        "last_touch": "2026-09-13T12:00:00Z",
+        "next_step": "Revisit next quarter"
+      }
+    },
+    {
+      "id": "dl_59_sterling_media",
+      "fields": {
+        "name": "Team plan · 10 seats",
+        "company": "co_sterling_media",
+        "stage": "Lost",
+        "amount": 4000,
+        "close_on": "2026-09-10",
+        "owner": "raj",
+        "last_touch": "2026-09-10T12:00:00Z",
+        "next_step": "Revisit next quarter"
+      }
+    },
+    {
+      "id": "dl_60_hanso_research",
+      "fields": {
+        "name": "Annual · 20 seats",
+        "company": "co_hanso_research",
+        "stage": "Lost",
+        "amount": 10300,
+        "close_on": "2026-09-07",
+        "owner": "me",
+        "last_touch": "2026-09-07T12:00:00Z",
+        "next_step": "Revisit next quarter"
+      }
+    },
+    {
+      "id": "dl_61_oceanic_air",
+      "fields": {
+        "name": "Team plan · 40 seats",
+        "company": "co_oceanic_air",
+        "stage": "Lost",
+        "amount": 16600,
+        "close_on": "2026-09-04",
+        "owner": "mona",
+        "last_touch": "2026-09-04T12:00:00Z",
+        "next_step": "Revisit next quarter"
+      }
+    },
+    {
+      "id": "dl_62_monarch_health",
+      "fields": {
+        "name": "Annual · 16 seats",
+        "company": "co_monarch_health",
+        "stage": "Lost",
+        "amount": 8200,
+        "close_on": "2026-09-01",
+        "owner": "jm",
+        "last_touch": "2026-09-01T12:00:00Z",
+        "next_step": "Revisit next quarter"
       }
     }
   ]

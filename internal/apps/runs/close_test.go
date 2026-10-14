@@ -56,7 +56,7 @@ func TestCloseCancelsAndWaitsForRuns(t *testing.T) {
 				}()
 			} else {
 				_, err := h.recs.Update(h.ctx, h.scope(), bridge.UpdateRecordParams{
-					Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Proposal"},
+					Type: "deal", ID: "dl_04_hooli", Set: map[string]any{"stage": "Proposal"},
 				})
 				if err != nil {
 					t.Fatal(err)

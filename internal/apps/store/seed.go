@@ -71,9 +71,11 @@ func (s *Service) seedGoldenCRM(ctx context.Context) error {
 		return err
 	}
 	if s.all != nil && s.all.Records != nil {
-		_, sample := spec.GoldenCRM()
 		var rows map[string][]bridge.Record
-		err = json.Unmarshal(sample, &rows)
+		sample, err := spec.GoldenCRMSampleAt(s.now())
+		if err == nil {
+			err = json.Unmarshal(sample, &rows)
+		}
 		if err == nil {
 			err = s.seedDemoRecords(ctx, m.ID, rows)
 		}

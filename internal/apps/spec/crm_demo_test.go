@@ -160,9 +160,6 @@ func TestGoldenCRMDemoSample(t *testing.T) {
 	if err := json.Unmarshal(data, &rows); err != nil {
 		t.Fatal(err)
 	}
-	if len(rows["deal"]) < 8 || len(rows["deal"]) > 12 {
-		t.Fatalf("demo has %d deals; want 8–12", len(rows["deal"]))
-	}
 	ids := map[string]map[string]bool{}
 	for typ, records := range rows {
 		ids[typ] = map[string]bool{}

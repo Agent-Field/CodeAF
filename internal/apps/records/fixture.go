@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
@@ -23,7 +24,7 @@ func fixtureRows(def *spec.Bundle, scope svc.Scope, dir string) (map[string][]br
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	files, sample := spec.GoldenCRM()
+	files, _ := spec.GoldenCRM()
 	if len(def.Files) != len(files) {
 		return nil, nil
 	}
@@ -32,7 +33,11 @@ func fixtureRows(def *spec.Bundle, scope svc.Scope, dir string) (map[string][]br
 			return nil, nil
 		}
 	}
+	sample, err := spec.GoldenCRMSampleAt(time.Now())
+	if err != nil {
+		return nil, err
+	}
 	var rows map[string][]bridge.Record
-	err := json.Unmarshal(sample, &rows)
+	err = json.Unmarshal(sample, &rows)
 	return rows, err
 }
