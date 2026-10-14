@@ -123,10 +123,6 @@ func assertSameMeaning(t *testing.T, got spec.Files) {
 	}
 	for _, name := range want.Paths() {
 		g, w := decodeFile(t, name, got[name]), decodeFile(t, name, want[name])
-		if name == spec.PlanFile {
-			// The golden plan.json predates plan tint; Render writes it, app.json is the proof.
-			delete(g.(map[string]any), "tint")
-		}
 		for _, d := range diffPaths("", g, w) {
 			t.Errorf("%s differs at %s", name, d)
 		}
