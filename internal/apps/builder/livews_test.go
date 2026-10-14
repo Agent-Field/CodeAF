@@ -24,16 +24,32 @@ import (
 // crmParagraph is the board-05 owner paragraph.
 const crmParagraph = "A CRM for our sales pipeline: companies, deals and contacts. The agent drafts follow-ups when a deal goes quiet for a week; I approve every email before it sends."
 
+const inventoryRoasteryParagraph = "Inventory for our small coffee roastery. Track green coffee lots (origin, process, weight in kg, cost per kg, supplier), roasted batches (lot, roast date, roast level, weight out), and suppliers. Show what is low on stock and what was roasted this week."
+
 // TestLiveServe drives a real `codeaf app serve` on a temp home through the
 // bridge socket: apps.create, builder.write, wait for preview, apps.keep,
 // apps.get. It needs bin/codeaf (make build) and the machine's OpenRouter key:
 //
 //	go test -tags live -run TestLiveServe -v ./internal/apps/builder/
 func TestLiveServe(t *testing.T) {
+	liveServe(t, crmParagraph)
+}
+
+func TestLiveServeInventoryRoastery(t *testing.T) {
+	liveServe(t, inventoryRoasteryParagraph)
+}
+
+func TestLiveServeInventoryPurchaseOrders(t *testing.T) {
+	liveServe(t, "Inventory for our coffee roastery. Items have a name, SKU, category (beans, equipment, packaging), quantity on hand, reorder level and a supplier. Suppliers have a name, email and lead time in days. Show items that are below their reorder level at the top. The agent drafts a purchase order when an item drops below its reorder level; I approve every order before it is sent.")
+}
+
+func liveServe(t *testing.T, paragraph string) {
+	t.Helper()
 	key := config.APIKeyAt(config.ProfilePath(config.ProfileDir(), ""))
 	if key == "" {
 		t.Skip("no OpenRouter key on this machine")
 	}
+	t.Setenv(ModelEnv, DefaultModel)
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 	hello := startServe(ctx, t, key)
@@ -41,7 +57,7 @@ func TestLiveServe(t *testing.T) {
 
 	began := time.Now()
 	var created bridge.AppSummary
-	c.call(t, "apps.create", "", bridge.CreateAppParams{Paragraph: crmParagraph}, &created)
+	c.call(t, "apps.create", "", bridge.CreateAppParams{Paragraph: paragraph, Model: DefaultModel}, &created)
 	app := created.ID
 	c.call(t, "sub", "", nil, nil, bridge.TopicBuild(app))
 	c.call(t, "sub", "", nil, nil, bridge.TopicState(app))
@@ -52,8 +68,8 @@ func TestLiveServe(t *testing.T) {
 	writeBegan := time.Now()
 	c.call(t, "builder.write", app, nil, nil)
 	last := c.waitEvent(ctx, t, app)
-	t.Logf("plan card %.1fs; write+check+preview %.1fs; total %.1fs; cost $%.4f of $%.2f",
-		planAt.Seconds(), time.Since(writeBegan).Seconds(), time.Since(began).Seconds(), last.Cost.Spent, last.Cost.Cap)
+	t.Logf("model %s; Check rounds %d; plan card %.1fs; write+check+preview %.1fs; total %.1fs; cost $%.6f of $%.2f",
+		DefaultModel, c.checkRound, planAt.Seconds(), time.Since(writeBegan).Seconds(), time.Since(began).Seconds(), last.Cost.Spent, last.Cost.Cap)
 
 	var kept bridge.AppSummary
 	c.call(t, "apps.keep", app, nil, &kept)
@@ -90,9 +106,10 @@ func startServe(ctx context.Context, t *testing.T, key string) appapi.Hello {
 }
 
 type bridgeClient struct {
-	conn    *websocket.Conn
-	next    int
-	pending []bridge.Envelope
+	conn       *websocket.Conn
+	next       int
+	pending    []bridge.Envelope
+	checkRound int
 }
 
 func dialBridge(ctx context.Context, t *testing.T, hello appapi.Hello) *bridgeClient {
@@ -172,12 +189,20 @@ func (c *bridgeClient) waitEvent(ctx context.Context, t *testing.T, app string) 
 				return last
 			}
 			if s.State == bridge.StateFailed {
-				t.Fatalf("build failed: %+v", last)
+				t.Fatalf("build failed: Check rounds %d; cost $%.6f; %+v", c.checkRound, last.Cost.Spent, last)
 			}
 			continue
 		}
 		_ = json.Unmarshal(env.Event, &last)
+		if last.Step == bridge.StepCheck {
+			c.checkRound = max(c.checkRound, last.Round)
+		}
 		t.Logf("  %s %s r%d %s", last.Step, last.Status, last.Round, last.Log)
+		if last.Status == bridge.BuildFailed && last.Check != nil {
+			for _, issue := range last.Check.Issues {
+				t.Logf("    %s", issue.String())
+			}
+		}
 	}
 	t.Fatal("timed out waiting for preview")
 	return last
