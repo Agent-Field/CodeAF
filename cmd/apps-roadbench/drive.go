@@ -139,9 +139,9 @@ func poll(ctx context.Context, limit time.Duration, step func() (ok, stop bool))
 
 func (l *lab) finish(ctx context.Context, r *row, app string, began, ended time.Time) {
 	t := l.hear.take(app)
-	dumpTrace(l.out, l.road, app, t)
+	dumpTrace(l.out, l.road, r.ID, t)
 	d, _ := l.get(ctx, app)
-	l.keepFiles(app, d.Files)
+	l.keepFiles(r.ID, d.Files)
 	r.Useful = "pending"
 	v := judge(t.lastCheck(), d.Files, r.State)
 	lines := t.lines()
@@ -163,7 +163,7 @@ func (l *lab) finish(ctx context.Context, r *row, app string, began, ended time.
 		return
 	}
 	r.Stages.Keep, r.Stages.Use = l.keepAndUse(ctx, app)
-	l.judgeBlind(r, app)
+	l.judgeBlind(r)
 }
 
 // keepAndUse keeps the app the way the desk does, then reads it the way Use
@@ -242,9 +242,9 @@ func (l *lab) keepFiles(app string, files map[string]string) {
 
 // judgeBlind asks the usefulness judge about the files alone; it is never told
 // the road. Without a judge command the verdict stays "pending".
-func (l *lab) judgeBlind(r *row, app string) {
+func (l *lab) judgeBlind(r *row) {
 	if l.judge == "" {
 		return
 	}
-	r.Useful, r.UsefulWhy = runJudge(l.judge, r.ID, l.appDir(app))
+	r.Useful, r.UsefulWhy = runJudge(l.judge, r.ID, l.appDir(r.ID))
 }
