@@ -10,6 +10,7 @@ import (
 // briefKeys is the design brief's shape, in the order a product designer
 // answers it: the PLAN call writes it first and every later call reads it.
 var briefKeys = []struct{ Key, Label string }{
+	{"asked", "Asked for"},
 	{"users", "Who uses it"},
 	{"job", "The job"},
 	{"object", "Primary object"},

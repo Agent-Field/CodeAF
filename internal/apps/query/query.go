@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Agent-Field/codeaf/internal/apps/expr"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
@@ -80,6 +81,13 @@ func Expression(schema *spec.RecordType, field string) (string, error) {
 
 // Parse accepts QueryField tokens. Quoted values can contain spaces and commas.
 func Parse(schema *spec.RecordType, text, member string) (AST, error) {
+	return ParseAt(schema, text, member, time.Now())
+}
+
+// ParseAt is Parse with the request clock: a date or datetime value written as
+// an expr.Offset literal (`due<7d`, `last_touch<-7d`, `due<0d`) resolves
+// against now, so a screen filter stays current without a computed field.
+func ParseAt(schema *spec.RecordType, text, member string, now time.Time) (AST, error) {
 	a := AST{Sort: Sort{Field: "id"}}
 	tokens, err := split(text, unicode.IsSpace)
 	if err != nil {
@@ -94,7 +102,7 @@ func Parse(schema *spec.RecordType, text, member string) (AST, error) {
 			}
 			continue
 		}
-		p, err := parseToken(schema, token, member)
+		p, err := parseToken(schema, token, member, now)
 		if err != nil {
 			return a, err
 		}
@@ -102,7 +110,7 @@ func Parse(schema *spec.RecordType, text, member string) (AST, error) {
 	}
 	return a, nil
 }
-func parseToken(schema *spec.RecordType, token, member string) (Predicate, error) {
+func parseToken(schema *spec.RecordType, token, member string, now time.Time) (Predicate, error) {
 	pos := strings.IndexAny(token, ":<>!=~")
 	if pos < 1 {
 		return Predicate{}, fmt.Errorf("expected field:value in %q", token)
@@ -179,13 +187,29 @@ func parseToken(schema *spec.RecordType, token, member string) (Predicate, error
 		if p.Field == "created_at" || p.Field == "updated_at" {
 			f = &spec.Field{Type: spec.FieldDatetime}
 		}
-		typed, err := valueFor(f, v)
+		typed, err := valueFor(f, relativeValue(f, v, now))
 		if err != nil {
 			return p, err
 		}
 		p.Values = append(p.Values, typed)
 	}
 	return p, nil
+}
+
+// relativeValue rewrites an Offset literal on a date or datetime field into
+// the stored form valueFor expects; every other value passes through.
+func relativeValue(f *spec.Field, value string, now time.Time) string {
+	if f == nil || (f.Type != spec.FieldDate && f.Type != spec.FieldDatetime) {
+		return value
+	}
+	at, ok := expr.RelativeTime(value, now)
+	switch {
+	case !ok:
+		return value
+	case f.Type == spec.FieldDate:
+		return at.Format("2006-01-02")
+	}
+	return at.UTC().Format(time.RFC3339Nano)
 }
 func valueFor(f *spec.Field, value string) (any, error) {
 	if f == nil {
