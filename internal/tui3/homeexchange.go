@@ -679,6 +679,13 @@ func (a *app) exchangeConsent(ex *homeExchange, ev session.Event) {
 			kind: exchangeTool, text: exchangeToolLine(ev), began: a.now(), callID: call,
 		})
 	}
+	// AND THE CARD'S ANSWERS GO, SO ITS SETTLE GUARD STARTS AGAIN. They are not
+	// drawn while an approval is up, and when they come back they come back under
+	// a hand that was just answering the approval — `1 1` must allow the call and
+	// leave the card alone. The next frame that draws them stamps them afresh.
+	if ex.ask != nil {
+		ex.ask.shown = time.Time{}
+	}
 	permit := &exchangePermit{shown: a.exchangePermitShown(ex, ev), call: call}
 	for i, open := range ex.permits {
 		if open.shown.question.ID == ev.ID {
@@ -1581,24 +1588,28 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		// hands the keyboard back to the list, and a card left standing on the
 		// column is not an answer.
 		//
-		// AND `c` ARMS THE CORRECTION, which is what `2 change when or where`
+		// AND `o` ARMS THE CORRECTION, which is what `2 change when or where`
 		// used to be — a chip that asked for the box rather than an answer. It is
 		// the same key on every question this surface asks.
 		//
-		// AN APPROVAL THE TURN IS STOPPED ON GOES FIRST. Nothing in the errand
+		// WHILE A CORRECTION IS BEING WRITTEN THE BOX OWNS EVERY KEY, and that
+		// comes before either question: `make it 10 tomorrow` is a sentence. Its
+		// `1` used to answer the card yes halfway through the word meant to
+		// change it — and with an approval up beside the card, it allowed the
+		// call. Both questions wait until the sentence is sent or cleared.
+		//
+		// AN APPROVAL THE TURN IS STOPPED ON GOES NEXT. Nothing in the errand
 		// moves until it is answered, the card's answers are not drawn while it
 		// is up, and a key may only answer what is on the screen.
+		if ex.changing {
+			break
+		}
 		if ex.permit() != nil {
 			if cmd, took := a.exchangePermitKey(ex, msg.String()); took {
 				return cmd
 			}
-		} else if ex.asking() && ex.ask != nil && !ex.changing {
-			// WHILE A CORRECTION IS BEING WRITTEN THE BOX OWNS EVERY KEY, which is
-			// why this arm is skipped then: `make it 10 tomorrow` is a sentence,
-			// and its `1` used to answer the card yes and set up the reminder
-			// halfway through the word that was meant to change it.
-			//
-			// AND THE SETTLE GUARD HOLDS HERE AS IT DOES ON THE BLOCK. A key that
+		} else if ex.asking() && ex.ask != nil {
+			// THE SETTLE GUARD HOLDS HERE AS IT DOES ON THE BLOCK. A key that
 			// arrives before the card has been on the screen for [questionSettle]
 			// was aimed at what was there before it — a `1` in a follow-up — and is
 			// dropped rather than read as `set it up` ([app.questionSettled]).

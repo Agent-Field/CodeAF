@@ -320,17 +320,14 @@ uses: `Set it up · Mondays at 9am · set up`, `Only now, don't repeat · approv
 ordinary characters again and can be typed into a follow-up. The only card that ever
 replaces it is the new one the model sends after a change.
 
-## Why didn't my key answer the card in ask here — I typed a new time and it set up the reminder anyway, and the quarter-second guard
+## Why didn't my key answer the card in ask here — the quarter-second guard
 
-**A key pressed within a quarter of a second of the card first being drawn is ignored**, and
-so is a click. It was aimed at whatever was there before the card — usually a follow-up you
-were typing — so a `1` in your sentence cannot set something up. Press it again. A card that
-arrived while you were in another conversation counts from when you first see it.
-
-**While you are writing a change after `o`, the card takes no keys at all.** "make it 10
-tomorrow" goes into the box whole and `enter` sends it. It used to answer the card: the `1`
-was taken as yes, the reminder was set up as first proposed, and the rest of the sentence
-was lost.
+**A key pressed within a quarter of a second of the card's answers being drawn is
+ignored**, and so is a click. It was aimed at whatever was there before — usually a
+follow-up you were typing, or a command's approval you had just answered — so a `1` meant
+for something else cannot set something up. Press it again. A card that arrived while you
+were in another conversation counts from when you first see it, and one whose answers an
+approval hid counts again from when they come back.
 
 The digits belong to a card only while it is still a question. With no card up, or with an
 answered one on screen, `3` in the middle of "make it 3pm" is just a `3`.
@@ -338,6 +335,17 @@ answered one on screen, `3` in the middle of "make it 3pm" is just a `3`.
 **Your answer is kept on the card itself.** Nothing is added above the message box of the
 conversation you open next — it used to show there for half a minute as a decision line,
 about a conversation that never asked.
+
+## I typed a new time and it set up the reminder anyway — typing a change in ask here
+
+**While you are writing a change after `o`, every key is text.** "make it 10 tomorrow" goes
+into the box whole and `enter` sends it; until then neither the card nor a command's
+approval beside it takes a digit. Send or clear the sentence, and their keys are theirs
+again.
+
+It used to answer: the `1` was taken as yes, the reminder was set up as first proposed and
+the rest of the sentence was lost — and with an approval up beside the card, the `1`
+allowed the command.
 
 ## Ask here needs your permission to run a command — approve or deny it in the pane
 

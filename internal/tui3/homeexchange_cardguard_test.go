@@ -129,3 +129,72 @@ func TestTheCardsAnswerLeavesNoReceiptInTheWindow(t *testing.T) {
 		t.Fatalf("the card did not keep its answer in the pane:\n%s", homeText(a))
 	}
 }
+
+// TestACorrectionNeverAnswersAnApprovalBesideTheCard is the same law with both
+// questions up. One step can propose a reminder and stop on a gated call at once,
+// and the box still owns every key while a correction is written: `make it 10`
+// used to allow the call at its `1` and leave `make it 0` in the box.
+func TestACorrectionNeverAnswersAnApprovalBesideTheCard(t *testing.T) {
+	a, gated, ex, now := askGated(t, nil)
+	a.errandEvent(ex, standingProposal(5, "remind me at 6 to leave"))
+	homeText(a)
+	*now = now.Add(time.Second)
+	drive(t, a, key(questionCommentKey))
+	if !ex.changing {
+		t.Fatalf("`%s` did not arm the correction", questionCommentKey)
+	}
+	a.errandEvent(ex, ciCall("call_7"))
+	a.errandEvent(ex, ciConsent(7, "call_7"))
+	homeText(a)
+	*now = now.Add(time.Second)
+
+	// TYPED THROUGH THE LOOP, so an answer a key gave would reach the agent.
+	for _, r := range "make it 10" {
+		drive(t, a, key(string(r)))
+	}
+	if len(gated.given) != 0 || len(gated.answered) != 0 {
+		t.Fatalf("typing the correction answered a question: approvals %+v, card %+v", gated.given, gated.answered)
+	}
+	if got := ex.box.String(); got != "make it 10" {
+		t.Fatalf("the correction lost characters, the box holds %q", got)
+	}
+	// AND ONCE IT IS SENT, THE APPROVAL'S DIGITS ARE ITS OWN AGAIN.
+	drive(t, a, key("enter"))
+	if len(gated.answered) != 1 || gated.answered[0].Change != "make it 10" {
+		t.Fatalf("enter did not send the correction, the card saw %+v", gated.answered)
+	}
+	drive(t, a, key("1"))
+	if len(gated.given) != 1 || !gated.given[0].allow {
+		t.Fatalf("after the correction `1` did not allow the call: %+v", gated.given)
+	}
+}
+
+// TestTheCardSettlesAgainAfterAnApprovalHidIt is the settle guard re-armed. An
+// approval hides the card's answers; when it is answered they come back under
+// the hand that answered it, so a `1 1` allows the call and must not also set up
+// the reminder in the same instant.
+func TestTheCardSettlesAgainAfterAnApprovalHidIt(t *testing.T) {
+	a, gated, ex, now := askGated(t, nil)
+	a.errandEvent(ex, standingProposal(5, "remind me at 6 to leave"))
+	homeText(a)
+	*now = now.Add(time.Second)
+	a.errandEvent(ex, ciCall("call_7"))
+	a.errandEvent(ex, ciConsent(7, "call_7"))
+	homeText(a)
+	*now = now.Add(time.Second)
+
+	drive(t, a, key("1"))
+	if len(gated.given) != 1 || !gated.given[0].allow {
+		t.Fatalf("`1` did not allow the call: %+v", gated.given)
+	}
+	drive(t, a, key("1"))
+	if len(gated.answered) != 0 {
+		t.Fatalf("the second `1` answered the card the instant its answers came back: %+v", gated.answered)
+	}
+	homeText(a)
+	*now = now.Add(questionSettle)
+	drive(t, a, key("1"))
+	if len(gated.answered) != 1 || !gated.answered[0].Approved {
+		t.Fatalf("a `1` on the card once it was read did not answer it: %+v", gated.answered)
+	}
+}
