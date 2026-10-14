@@ -28,7 +28,20 @@ func fallbackRig(t *testing.T, badScreen bool) *rig {
 	// before the run needs a live engine.
 	golden["runs/follow-up.yaml"] = []byte(strings.Replace(string(golden["runs/follow-up.yaml"]), "id:{{deal}}", "highly:{{deal}}", 1))
 	if badScreen {
-		golden["screens/pipeline.json"] = []byte(strings.Replace(string(golden["screens/pipeline.json"]), "stage:-Lost sort:-amount", "highly:yes", 1))
+		var screen spec.Screen
+		if err := json.Unmarshal(golden["screens/pipeline.json"], &screen); err != nil {
+			t.Fatal(err)
+		}
+		screen.Walk(func(node *spec.Node) {
+			if node.ID == "deals" {
+				node.Bind.Query = "highly:yes"
+			}
+		})
+		var err error
+		golden["screens/pipeline.json"], err = json.Marshal(screen)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	r.model.write = func(text string) string {
 		reply := map[string]string{}

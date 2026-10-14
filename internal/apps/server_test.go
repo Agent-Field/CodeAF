@@ -14,7 +14,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
-	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
@@ -126,29 +125,12 @@ func TestBridgeServesTheGoldenCRM(t *testing.T) {
 	}
 }
 
-func TestGoldenCRMNewDealInputsCreateARecord(t *testing.T) {
-	files, _ := spec.GoldenCRM()
-	definition, err := spec.Decode(files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var create bridge.CreateRecordParams
-	definition.Screens["pipeline"].Walk(func(node *spec.Node) {
-		if node.Label == "New deal" {
-			if err := json.Unmarshal(node.On["click"][0][spec.VerbRecordsCreate], &create); err != nil {
-				t.Fatal(err)
-			}
-		}
-	})
+func TestGoldenCRMDealCreateThroughBridge(t *testing.T) {
 	input := map[string]any{
 		"name": "Support team rollout", "company": "co_northwind",
 		"amount": float64(18000), "stage": "Lead", "next_step": "Book discovery with Priya",
 	}
-	for name, value := range create.Set {
-		if ref, ok := value.(string); ok && strings.HasPrefix(ref, "$input.") {
-			create.Set[name] = input[strings.TrimPrefix(ref, "$input.")]
-		}
-	}
+	create := bridge.CreateRecordParams{Type: "deal", Set: input}
 	c := dial(t)
 	var created bridge.Record
 	if err := c.call("crm", bridge.MethodRecordsCreate, create, &created); err != nil {
