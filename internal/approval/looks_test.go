@@ -1,6 +1,9 @@
 package approval
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 // Every look the table names, in the spellings it accepts.
 func TestReadOnlyLookAcceptsOnlyTheTable(t *testing.T) {
@@ -212,6 +215,21 @@ func TestTheLookTableNamesOnlyFlags(t *testing.T) {
 		}
 		if spec.minArgs > spec.maxArgs {
 			t.Errorf("%s: args %d..%d", name, spec.minArgs, spec.maxArgs)
+		}
+	}
+}
+
+// A look is off the always-ask floor. If [AlwaysAsks] were true for a plain
+// `gh pr view`, a "for this task" yes would be inert: the gate would ask
+// again on every call.
+func TestALookIsNotOnTheAlwaysAskFloor(t *testing.T) {
+	for _, line := range []string{"gh pr view", "gh pr view 7", "gh issue list -R o/r", "gh api repos/o/r/issues"} {
+		if _, ok := ReadOnlyLook(line); !ok {
+			t.Fatalf("%q is not a look", line)
+		}
+		raw, _ := json.Marshal(map[string]string{"command": line})
+		if AlwaysAsks(ToolBash, raw) {
+			t.Errorf("%q is on the always-ask floor", line)
 		}
 	}
 }
