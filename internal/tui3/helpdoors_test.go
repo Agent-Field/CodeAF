@@ -181,7 +181,7 @@ func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	}
 
 	// MEMORY — a foot that promises only what is bound.
-	bare := readMemory(store.MemoryShelves{}, "", nil, "", time.Time{})
+	bare := readMemory(store.MemoryShelves{}, "", nil, nil, "", time.Time{})
 	a := newTestApp(nil)
 	a.width, a.height = 120, 40
 	a.mem.reading = bare
@@ -200,7 +200,7 @@ func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	// there from the first memory on and the whisper is gone, so the eighth
 	// memory no longer swaps three paragraphs for a head row in one frame.
 	some := readMemory(store.MemoryShelves{Held: 3,
-		Shelves: []store.MemoryShelf{{Owner: store.OwnerUser, Held: 3}}}, "", nil, "", time.Time{})
+		Shelves: []store.MemoryShelf{{Owner: store.OwnerUser, Held: 3}}}, "", nil, nil, "", time.Time{})
 	shown := ""
 	for _, line := range some.rows(120, pal) {
 		shown += ansi.Strip(line) + "\n"

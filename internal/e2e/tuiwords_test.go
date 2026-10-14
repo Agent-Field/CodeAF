@@ -259,9 +259,10 @@ var tuiWords = map[string]tuiWord{
 			"until the place was named for what is in it",
 	},
 	"barMemoryWord": {
-		screen: "Memory",
-		source: "memory",
-		why:    "the fifth place on the wordmark row, which stands on the bar before the first memory is saved",
+		screen: "Memories",
+		source: "memories",
+		why: "the fifth place on the wordmark row, which stands on the bar before the first memory is saved. It " +
+			"was `Memory` until 2026-10-14",
 	},
 	"barAutomationsWord": {
 		screen: "Automations",
@@ -276,7 +277,7 @@ var tuiWords = map[string]tuiWord{
 	"barSettingsWord": {
 		screen: "Settings",
 		source: "settings",
-		why: "the last of the eight, after automations and spend — eight words need 84 columns, so a narrower " +
+		why: "the last of the eight, after automations and spend — eight words need 86 columns, so a narrower " +
 			"frame folds it behind `more ▾`",
 	},
 	"chatFootEffortWord": {

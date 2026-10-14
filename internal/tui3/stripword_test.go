@@ -75,7 +75,7 @@ func TestATeachingPagesFootOffersNoVerbOverABodyWithNoRows(t *testing.T) {
 		// A machine with nothing on it: no record, no orders, no memories. Each
 		// of the three places reads its own zero value here, which is the state a
 		// fresh install is in.
-		a.mem.reading = readMemory(store.MemoryShelves{}, "", nil, "", time.Time{})
+		a.mem.reading = readMemory(store.MemoryShelves{}, "", nil, nil, "", time.Time{})
 
 		foot := placeTailed(page.foot(a))
 		want := wayOut

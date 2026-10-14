@@ -248,13 +248,13 @@ var commands = []command{
 	// bare row is the one nearly everybody wants, and a single row carrying
 	// [query] would make it unreachable from the list ([app.runMenu] puts a row
 	// that TAKES something into the draft instead of running it).
-	{name: "memory", desc: "open the memory place · " + placeChord(pageMemory)},
+	{name: "memory", desc: "open the Memories tab · " + placeChord(pageMemory)},
 	{name: "memory", args: "<words>", desc: "print the remembered lines those words name"},
-	{name: "memories", desc: "open the memory place, or print every line kept here"},
+	{name: "memories", desc: "open the Memories tab, or print every line kept here"},
 	{name: "memories", args: "<words>", desc: "…only the lines those words name"},
+	// THERE IS NO /forget: a line is forgotten on the Memories tab, where it is
+	// in front of the person rather than guessed at from words (memory.go).
 	{name: "remember", args: "<text>", desc: "keep one line for this project · for you everywhere, from home"},
-	{name: "forget", desc: "undo the newest memory change in this conversation"},
-	{name: "forget", args: "<words>", desc: "drop the one remembered line those words name"},
 	// AND /always, THE SAME ERRAND AS /remember UNDER THE WORD PEOPLE WERE TAUGHT:
 	// a timeless rule is a memory like any other line (anything with a time in it
 	// is an automation). Two rows for the /memories reason: the bare form is the

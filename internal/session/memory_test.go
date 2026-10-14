@@ -17,10 +17,10 @@ import (
 
 // THE MEMORY LAWS, AS A CONVERSATION LIVES THEM. Every kept line rides
 // message[0]; message[0] moves only when a line does; there is one write door
-// with one scope default and receipts that say where a line holds; a forget
-// never guesses; a bare /forget undoes; the pass after a turn may keep one line
-// the person said, and says so with its undo; the person's switch governs that
-// pass and nothing else; and a read-only posture reads and never writes.
+// with one scope default and receipts that say where a line holds; the model's
+// forget never guesses; the pass after a turn may keep one line the person
+// said, and says so with where to take it back; the person's switch governs
+// that pass and nothing else; and a read-only posture reads and never writes.
 
 // reflexScript answers a conversation's turns and the one call that follows
 // each turn — the noticing call, which opens with a sentence internal/reflex
@@ -329,7 +329,7 @@ func TestAFullBlockRefusesASaveAndSaysHow(t *testing.T) {
 	for i := 0; ; i++ {
 		_, err := agent.Remember(line + string(rune('a'+i%26)) + string(rune('a'+i/26)))
 		if errors.Is(err, errMemoryFull) {
-			if !strings.Contains(err.Error(), "Memory tab") {
+			if !strings.Contains(err.Error(), "Memories tab") {
 				t.Fatalf("the refusal does not say how to make room: %v", err)
 			}
 			return
@@ -355,56 +355,33 @@ func TestEveryDoorRedacts(t *testing.T) {
 	}
 }
 
-// ── forgetting and undo ─────────────────────────────────────────────────────
+// ── forgetting ──────────────────────────────────────────────────────────────
 
 func TestForgetNamesOneLineOrListsTheMatchesAndNeverGuesses(t *testing.T) {
 	agent, brain := brainAgent(t, &reflexScript{}, nil)
 	for _, text := range []string{"deploys on Fridays", "deploy keys rotate monthly", "prefers tabs"} {
 		remember(t, brain, "", text)
 	}
-	receipt, err := agent.Forget("deploy")
+	receipt, err := agent.forgetLine("deploy")
 	if err != nil || !strings.Contains(receipt, "nothing was forgotten") || !strings.Contains(receipt, "deploys on Fridays") || !strings.Contains(receipt, "deploy keys rotate monthly") {
 		t.Fatalf("an ambiguous forget = %q %v, want the matches listed and nothing forgotten", receipt, err)
 	}
 	if got := activeTexts(t, brain, store.OwnerUser); len(got) != 3 {
 		t.Fatalf("an ambiguous forget forgot something: %v", got)
 	}
-	receipt, err = agent.Forget("the")
+	receipt, err = agent.forgetLine("the")
 	if err != nil || !strings.HasPrefix(receipt, "nothing remembered matches") {
 		t.Fatalf("a word in no line = %q %v", receipt, err)
 	}
-	receipt, err = agent.Forget("deploy keys")
+	receipt, err = agent.forgetLine("deploy keys")
 	if err != nil || receipt != "forgot · deploy keys rotate monthly" {
 		t.Fatalf("a unique forget = %q %v", receipt, err)
 	}
 }
 
-func TestABareForgetUndoesTheNewestChange(t *testing.T) {
-	agent, brain := brainAgent(t, &reflexScript{}, nil)
-	if receipt, _ := agent.Forget(""); !strings.HasPrefix(receipt, "no memory change to undo here") {
-		t.Fatalf("undo with nothing to undo = %q", receipt)
-	}
-	if _, err := agent.Remember("prefers tabs"); err != nil {
-		t.Fatal(err)
-	}
-	if receipt, err := agent.Forget(""); err != nil || receipt != "took back · prefers tabs" {
-		t.Fatalf("undo a save = %q %v", receipt, err)
-	}
-	remember(t, brain, "", "deploys on Fridays")
-	if _, err := agent.Forget("Fridays"); err != nil {
-		t.Fatal(err)
-	}
-	if receipt, err := agent.Forget(""); err != nil || receipt != "put back · deploys on Fridays" {
-		t.Fatalf("undo a forget = %q %v", receipt, err)
-	}
-	if got := activeTexts(t, brain, store.OwnerUser); len(got) != 1 || got[0] != "deploys on Fridays" {
-		t.Fatalf("after both undos = %v", got)
-	}
-}
-
 // ── noticing ────────────────────────────────────────────────────────────────
 
-func TestANoticedLineIsKeptSaidAndUndoable(t *testing.T) {
+func TestANoticedLineIsKeptAndSaysWhereToTakeItBack(t *testing.T) {
 	script := &reflexScript{notice: `{"keep":"wants the change made directly","scope":"user"}`}
 	agent, brain := brainAgent(t, script, nil)
 	collect(t, mustSubmit(t, agent, "stop explaining, just make the change — everywhere"))
@@ -415,16 +392,13 @@ func TestANoticedLineIsKeptSaidAndUndoable(t *testing.T) {
 	}
 	events := collect(t, mustSubmit(t, agent, "thanks"))
 	lines := noticeLines(events)
-	want := "noticed and remembered · wants the change made directly · for you everywhere · /forget undoes it"
+	want := "noticed and remembered · wants the change made directly · for you everywhere · " + memoryTakeBack
 	if len(lines) == 0 || lines[0] != want {
 		t.Fatalf("the person was told %q, want %q", lines, want)
 	}
-	if receipt, err := agent.Forget(""); err != nil || receipt != "took back · wants the change made directly" {
-		t.Fatalf("undo the noticed line = %q %v", receipt, err)
-	}
 }
 
-func TestANoticedReplacementReplacesAndUndoPutsTheOldLineBack(t *testing.T) {
+func TestANoticedReplacementReplacesAndTheOldLineCanComeBack(t *testing.T) {
 	script := &reflexScript{notice: `{"keep":"deploys on Tuesdays","scope":"user","replaces":1}`}
 	agent, brain := brainAgent(t, script, nil)
 	remember(t, brain, "", "deploys on Fridays")
@@ -436,11 +410,26 @@ func TestANoticedReplacementReplacesAndUndoPutsTheOldLineBack(t *testing.T) {
 	if !strings.Contains(script.shown[0], "1. deploys on Fridays") {
 		t.Fatalf("the noticing call was not shown what is kept:\n%s", script.shown[0])
 	}
-	if receipt, err := agent.Forget(""); err != nil || !strings.Contains(receipt, "deploys on Fridays is back") {
-		t.Fatalf("undo the replacement = %q %v", receipt, err)
+	// THE OLD LINE IS LET GO, NOT DELETED: the Memories tab's put-back is the
+	// store's restore, and it brings the old line back beside the new one.
+	shelves, err := brain.MemorySnapshot(0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := activeTexts(t, brain, store.OwnerUser); len(got) != 1 || got[0] != "deploys on Fridays" {
-		t.Fatalf("after the undo = %v", got)
+	var old store.Memory
+	for _, memory := range shelves.LetGo {
+		if memory.Text == "deploys on Fridays" {
+			old = memory
+		}
+	}
+	if old.Status != store.MemorySuperseded {
+		t.Fatalf("the replaced line is %q, want it let go as replaced", old.Status)
+	}
+	if err := brain.RestoreMemory(old.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := activeTexts(t, brain, store.OwnerUser); len(got) != 2 {
+		t.Fatalf("after putting the old line back = %v", got)
 	}
 }
 
@@ -556,7 +545,7 @@ func TestTheModelsVerbsKeepAndForgetAndSaySo(t *testing.T) {
 	agent.memory.mu.Lock()
 	held := append([]string(nil), agent.memory.said...)
 	agent.memory.mu.Unlock()
-	if len(held) != 2 || !strings.Contains(held[0], "/forget undoes it") || !strings.Contains(held[1], "/forget puts it back") {
+	if len(held) != 2 || !strings.Contains(held[0], memoryTakeBack) || !strings.Contains(held[1], "put it back on the Memories tab") {
 		t.Fatalf("the person was not told what the model did: %q", held)
 	}
 }
@@ -582,7 +571,7 @@ func TestTwoProjectsNeverSeeEachOthersLines(t *testing.T) {
 	if len(lines) != 0 {
 		t.Fatalf("beta sees alpha's line: %+v", lines)
 	}
-	if receipt, _ := beta.Forget("Fridays"); !strings.HasPrefix(receipt, "nothing remembered matches") {
+	if receipt, _ := beta.forgetLine("Fridays"); !strings.HasPrefix(receipt, "nothing remembered matches") {
 		t.Fatalf("beta could forget alpha's line: %q", receipt)
 	}
 }

@@ -290,12 +290,10 @@ command).
 | `/review` | — | `[<pull request>] [what to focus on] \| post <report>` | when this build or far engine carries review, reviews a GitHub pull request (its link, `owner/repo#N` or `#N`), or with nothing after it the current branch's; `post <report>` posts a review it wrote, on your yes. It changes no files |
 | `/sec` | — | `[changes [since <ref>]] [quick \| thorough]` | when this build or far engine carries sec, audits the whole repository for security problems, or with `changes` only the branch's changes; with nothing after it, the whole repository. It changes no files |
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
-| `/memory` | `/memories` | — | opens the memory place (`alt+8`) |
+| `/memory` | `/memories` | — | opens the Memories tab (`alt+8`) |
 | `/memory` | `/memories` | `<words>` | prints the remembered lines those words name into the conversation |
 | `/remember` | `/always` | `<text>` | keeps one line in front of every conversation: for this project, or for you everywhere when typed on home or in a conversation with no project; it says `remembered · <text> · <where>` |
 | `/always` | — | — | prints every line kept here — on home, the ones that hold everywhere |
-| `/forget` | — | — | undoes the newest memory change in this conversation: takes back a line just kept, or puts back one just forgotten |
-| `/forget` | — | `<words>` | forgets the one remembered line those words name; when several match it lists them and forgets nothing |
 
 ## Crew and task commands
 
@@ -376,14 +374,14 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…8        go to a place · in the tab bar's own order: home · AI teams · chats · activity · spend · settings · automations · memory
+alt+1…8        go to a place · in the tab bar's own order: home · AI teams · chats · activity · spend · settings · automations · memories
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
 On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same. The digits follow that list, not the bar's
-left-to-right order: `alt+8` is memory, and `alt+7` is automations, which is on the bar
+left-to-right order: `alt+8` is memories, and `alt+7` is automations, which is on the bar
 only while you are in it.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -1050,7 +1048,8 @@ deletes anything; `codeaf cache clean --yes` skips the question for scripts.
 
 **What `/cache clean` will not do:** it does not delete conversations, reset the
 dashboard, or forget memories. To start a fresh conversation the command is `/new`;
-a memory is forgotten with `/forget`, or with `f` on the memory place.
+a memory is forgotten with `f` on the Memories tab, or by asking. There is no
+`/forget` command any more.
 
 ## /model — pick a model
 
@@ -1917,7 +1916,7 @@ Settings now groups controls by what you want to change:
 General holds appearance, input and updates. Models holds model selection and
 advanced routing/context controls. Memory holds `notice things to remember` —
 whether codeaf may keep a line on its own after a turn you typed — and a link to
-the Memory tab. Tasks controls delegated work; AI teams sets defaults
+the Memories tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
 Privacy holds history, drafts and data-sharing choices.

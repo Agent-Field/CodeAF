@@ -97,15 +97,15 @@ when a subteam is created; it does not redistribute existing budgets.
 
 **Memory → notice things to remember** decides one thing: whether, after a turn
 you typed, codeaf may keep a line you said that should hold in every conversation
-— and tell you in the conversation, with `/forget` to undo it. Off stops only
-that noticing. Lines kept with `/remember`, by asking, or on the Memory tab still
+— and tell you in the conversation. Off stops only that noticing. Lines kept
+with `/remember`, by asking, or on the Memories tab still
 ride every conversation, and nothing saved is deleted. It applies from the next
 turn, in every open chat, with no restart.
 
 There is no switch that turns memory off altogether: what you kept is yours to
-forget, line by line. Use `/memory`, `/memories` or the Memory tab (`alt+8`) to
+forget, line by line. Use `/memory`, `/memories` or the Memories tab (`alt+8`) to
 see every line, and fix, move, forget or put back any of them there. The row's
-`Open the Memory tab` door goes straight to it. Input history and unfinished
+`Open the Memories tab` door goes straight to it. Input history and unfinished
 drafts are separate Privacy choices.
 
 ## Permissions, task timers and automatic work

@@ -62,10 +62,10 @@ func headRowsOf(a *app) []string {
 // draws the air row, the rule and a blank and no strip, and the body starts on
 // the next row.
 // navAllFit is the width from which every place's word fits on row zero, so the
-// row cannot move between pages. Eight words need eighty-four columns; under
+// row cannot move between pages. Eight words need eighty-six columns; under
 // that, a place folded behind `more ▾` is lent the row while a person stands in
 // it, which moves the words after it — narrow_test.go's law, not this one.
-const navAllFit = 84
+const navAllFit = 86
 
 func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 	for _, width := range navWidths {
@@ -449,7 +449,7 @@ func TestTheCountThatWantsYouNeverLeavesTheNav(t *testing.T) {
 	a.width = 80
 	a.navMemo = navMemo{}
 	row := plain(a.navLine(80, a.pal))
-	if !placeWordsInOrder(row, "Home", "Chats", "AI teams", "Activity", "Memory", "More") || !a.navMore.span.pressable() {
+	if !placeWordsInOrder(row, "Home", "Chats", "AI teams", "Activity", "Memories", "More") || !a.navMore.span.pressable() {
 		t.Fatalf("at 80 the short count cost a place: %q", row)
 	}
 	if !strings.HasSuffix(strings.TrimRight(row, " "), "2 ? · $1.20") {

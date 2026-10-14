@@ -25,11 +25,11 @@ Three laws follow from the owner's brief:
 
 1. **Never silent.** Every change — kept, noticed, forgotten, replaced, moved,
    put back — says one line in the conversation that caused it.
-2. **Never invisible.** The Memory tab (`alt+8`, always on the tab bar) shows
-   every line, who kept it and where it holds, and so does `/memories`.
-3. **Never irreversible.** A bare `/forget` undoes the newest change in the
-   conversation; the tab's `u put it back` restores a line that was let go.
-   Nothing is ever deleted outright.
+2. **Never invisible.** The Memories tab (`alt+8`, always on the tab bar)
+   shows every line, who kept it and where it holds, and so does `/memories`.
+3. **Never irreversible.** Every forgotten or replaced line waits under `let
+   go` on the Memories tab, where `u put it back` restores it. Nothing is ever
+   deleted outright.
 
 ## 1. Owners and scope
 
@@ -78,15 +78,17 @@ mouth:
 | the legacy `memory.md`, once | person | as the file said |
 
 A save the block has no room for is refused (`errMemoryFull`) with a receipt naming
-the bound. Every write pushes onto the conversation's undo stack (20 deep), which a
-bare `/forget` walks back. Forgetting is `/forget <words>` (several matches are
-listed and nothing is forgotten), the model's `forget`, or `f`/`delete` on the tab.
-Moving is `Memory.Move` (`y`/`p`/`m` on the tab); fixing the wording is
-`UpdateMemory(id, text)` (`e`).
+the bound. A person forgets a line on the Memories tab (`f` or `delete`, by its id)
+and puts one back there (`u`); the model forgets with its `forget`, which names one
+line by its words, lists several matches and forgets nothing, and never guesses.
+There is no `/forget` command and no undo stack (both removed 2026-10-14): the tab
+is the one place a change is taken back. Moving is `Memory.Move` (`y`/`p`/`m` on
+the tab); fixing the wording is `UpdateMemory(id, text)` (`e`).
 
 Receipts: `remembered · <line> · <where>`, `already remembered · …`,
-`forgot · <line>`, `took back · …`, `put back · …`,
-`nothing remembered matches "<words>"`, `now for you everywhere`.
+`forgot · <line>`, `put back · …`, `nothing remembered matches "<words>"`,
+`now for you everywhere`. One made on the person's behalf ends with `see or forget
+it on the Memories tab` (`memoryTakeBack`).
 
 ## 4. The read path
 
@@ -110,19 +112,24 @@ updates the state card. It may also keep **one** line, only when the person type
 the turn and the `memory.enabled` row (`notice things to remember`) is on — read
 live on every turn, so no restart is needed. It may replace a numbered kept line
 (a correction), which supersedes the old one. It says
-`noticed and remembered · <line> · <where> · /forget undoes it`. Turning the row
+`noticed and remembered · <line> · <where> · see or forget it on the Memories
+tab`. Turning the row
 off stops only this: every kept line still rides.
 
 ## 6. Surfaces
 
-- **The Memory tab** (`internal/tui3/memoryplace.go`, `place_memory.go`): shelves
-  `you, everywhere`, `this machine`, `this project · <name>` open; other projects,
-  `couldn't tell which project` and `let go` rolled up; a card per line; the `→`
-  verbs. Writes are asynchronous (`memoryPlaceDoneMsg`).
-- **Commands**: `/memory`, `/memories`, `/remember`, `/always`, `/forget`.
+- **The Memories tab** (`internal/tui3/memoryplace.go`, `place_memories.go`; it
+  was "Memory" until 2026-10-14) is drawn like the Activity tab: groups `you,
+  everywhere`, `this machine`, `this project · <name>` open, other projects,
+  `couldn't tell which project` and `let go` folded; `→` opens a group and `←`
+  folds it (never `enter`); lines hang on tree connectors with `kept by` and `age`
+  columns; a pane reads the cursor row out on frames of 110 columns or more; a
+  card per line on `enter`; the `→` verbs. Writes and provenance reads are
+  asynchronous (`memoryPlaceDoneMsg`, `memoryOriginMsg`).
+- **Commands**: `/memory`, `/memories`, `/remember`, `/always`.
 - **Over `--host`**: wire Version 22 — `Memory.Snapshot`, `ChangedSince`,
-  `Update`, `Forget`, `Restore`, `Provenance`, `Remember`, `ForgetQuery`,
-  `Memories`, `RememberAlways`, `Always`, `Move`, `Project`. A far engine with no
+  `Update`, `Forget`, `Restore`, `Provenance`, `Remember`, `Memories`,
+  `RememberAlways`, `Always`, `Move`, `Project`. A far engine with no
   store answers `memory is unavailable on this machine · the store could not be
   opened`.
 
@@ -131,10 +138,16 @@ off stops only this: every kept line still rides.
 The pre-turn recall and its router, use and miss ranking, the always flag and its
 12-rule block, contextual evidence (binding reads, observed outcomes, cross-project
 impact, dismissals) and the `memory_evidence` tool, the background tidy and its
-`consolidate` registration, and the question-override memories. Each decided what
-the model saw in a way the person could neither see nor predict, and several wrote
-lines nobody was told about. One strength, one door and one block make "what does
-the model know about me?" the same question as "what is on the Memory tab?".
+`consolidate` registration, and the question-override memories. Each decided
+what the model saw in a way the person could neither see nor predict, and several
+wrote lines nobody was told about. One strength, one door and one block make
+"what does the model know about me?" the same question as "what is on the
+Memories tab?".
+
+The `/forget` command and its undo stack went too. A typed query had to name one
+line out of fifty and was a guess with a receipt; the tab puts the line in front
+of the person, and taking a change back is forgetting or putting back the line
+it changed.
 
 ## 8. Tests
 

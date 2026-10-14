@@ -1682,7 +1682,7 @@ type app struct {
 	// (formingblock.go).
 	waits []preflight
 	// mem is the memory place's state: the snapshot it is drawing, the shelves that
-	// are unrolled, and the filter (place_memory.go).
+	// are unrolled, and the filter (place_memories.go).
 	mem memoryPlace
 	// memory is the store the place reads and changes. It is optional because
 	// memory-off sessions must have no capability behind the place.
@@ -5416,6 +5416,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.adoptMemoryPlaceDone(msg)
 		return a, nil
 
+	case memoryOriginMsg:
+		a.adoptMemoryOrigin(msg)
+		return a, nil
+
 	case compactedMsg:
 		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A
 		// page over that conversation still leaves its reply behind the page.
@@ -8066,9 +8070,6 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "remember":
 		return a.runRemember(rest)
-
-	case "forget":
-		return a.runForget(rest)
 
 	case "always":
 		// The person's rules (memory.go's [app.runAlways]): bare, the ones in

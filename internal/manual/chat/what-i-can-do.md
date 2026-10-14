@@ -1015,7 +1015,7 @@ Yes, in two ways: the transcript itself, and three tools that hold working state
 **outside** the transcript so a compaction cannot lose it.
 
 (Carrying something into a *later* conversation is a different mechanism and has
-its own page — `remember`, `/remember`, `/memories` and `/forget` are on
+its own page — `remember`, `forget`, `/remember`, `/memories` and the Memories tab are on
 what-i-remember.)
 
 **`track`** records one item. Arguments: `text` (required), `kind` (required —

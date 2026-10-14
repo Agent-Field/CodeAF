@@ -2036,9 +2036,9 @@ func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) 
 //     from the working state it keeps for itself (internal/session's state.go),
 //     and remember and forget, which keep or forget one of the person's memory
 //     lines (memory.go). A memory change is never silent: the conversation says
-//     `remembered · …` or `forgot · …`, and a bare /forget takes it straight
-//     back. Asking somebody to approve a change they are shown and can undo
-//     with one word is asking about the wrong thing.
+//     `remembered · …` or `forgot · …`, and the Memories tab forgets or puts
+//     back any line. Asking somebody to approve a change they are shown and can
+//     take back in one keystroke is asking about the wrong thing.
 //
 //   - manual, which reads pages compiled into this binary and touches no disk
 //     at all (internal/session's tools_manual.go). A person who asks "what can

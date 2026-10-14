@@ -13,15 +13,16 @@ Lines get kept three ways, and all three tell you:
 - you keep one: `/remember <text>` (or `/always <text>`, the same thing);
 - you ask in words — "remember that I deploy on Fridays" — and the model keeps it;
 - codeaf notices something durable you said and keeps it, saying
-  `noticed and remembered · <line> · <where> · /forget undoes it`.
+  `noticed and remembered · <line> · <where> · see or forget it on the Memories tab`.
 
 The commands:
 
-- `/memory` or `/memories` — open the Memory tab (`alt+8`).
+- `/memory` or `/memories` — open the Memories tab (`alt+8`).
 - `/memory <words>` or `/memories <words>` — print the lines those words name.
 - `/remember <text>` — keep one line.
-- `/forget <words>` — drop the one line those words name.
-- `/forget` on its own — undo the newest memory change in this conversation.
+
+There is no `/forget`: a line is forgotten on the Memories tab, where you can see
+it, or by asking — "forget that I use npm".
 
 The words themselves are not memory: everything said in every conversation on
 this machine is also kept and can be **searched** (see "What did we decide last
@@ -38,8 +39,9 @@ it. `/remember <text>` answers with exactly what was kept and where it holds:
 Typed on home, it holds for you everywhere instead. The same words twice say
 `already remembered · …` and keep one line. Said in words ("remember that…"),
 the model uses its `remember` tool and you see
-`remembered · <line> · <where> · /forget undoes it`. The model can also drop a
-line you ask it to with its `forget` tool, and says `forgot · <line>`.
+`remembered · <line> · <where> · see or forget it on the Memories tab`. The
+model can also drop a line you ask it to with its `forget` tool, and says
+`forgot · <line> · put it back on the Memories tab`.
 
 A line is one sentence, at most 512 characters, and a credential pasted into it
 is redacted before it is kept.
@@ -70,8 +72,8 @@ is an automation.
 
 When it did something once and you meant it to hold — it didn't notice this was
 a rule — make it permanent: say "remember that", or type `/remember <the rule>`.
-When it kept something you only meant for now, `/forget` on its own takes it
-back. Noticing reads every turn you type, so a rule you state plainly ("always…",
+When it kept something you only meant for now, forget it on the Memories tab, or
+say "forget that". Noticing reads every turn you type, so a rule you state plainly ("always…",
 "never…", "from now on…") is usually kept and says so.
 
 
@@ -90,7 +92,7 @@ of its own (home, or a folder codeaf could not identify) keeps a project line
 for you everywhere and says so: `… · for you everywhere, since this conversation
 has no project of its own`.
 
-Can I change everywhere to just this project? Yes: on the Memory tab, `→` on the
+Can I change everywhere to just this project? Yes: on the Memories tab, `→` on the
 line offers `hold it everywhere`, `hold it in this project` and `hold it on this
 machine` — whichever it is not. There is no "everywhere except here": move the
 line to the projects it should hold in instead.
@@ -99,42 +101,57 @@ A project is known by its git `origin` (so every clone and worktree of one
 repository is one project), or by the folder when there is no remote.
 
 
-## How do I see what codeaf remembers about me? The Memory tab
+## How do I see what codeaf remembers about me? The Memories tab (it was the Memory tab)
 
-Open it with `alt+8`, the **Memory** word on the tab bar, or `/memory`. It is
-every remembered line, on shelves by where it holds:
+Open it with `alt+8`, the **Memories** word on the tab bar, or `/memory`. It is
+drawn like the Activity tab: groups, each a row of its own in the heading ink
+with its fold mark after it, and every line hanging under its group on the
+tree's connectors:
 
 - `you, everywhere`, `this machine` and `this project · <name>` — what a
   conversation here is told, open from the start;
 - each other project, by its name, and `couldn't tell which project` — lines an
-  earlier build kept without naming the project — rolled up;
-- `let go` — forgotten and replaced lines, rolled up, ready to put back.
+  earlier build kept without naming the project — folded;
+- `let go` — forgotten and replaced lines, folded, ready to put back.
 
-Each line says who kept it — `you`, `the model` or `noticed` — and how long ago.
-The head row counts what is kept, and says `N don't fit in front of the model ·
-forget some` when a conversation here has more lines than fit (see "How many
-lines ride along"). The first row, `+ remember something`, keeps a new line.
+Two columns, headed on the filter row: **kept by** (`you`, `the model`,
+`noticed`, or on a let-go line `forgotten` / `replaced`) and **age**. The head
+row counts what is kept, and says `N don't fit in front of the model · forget
+some` when a conversation here has more lines than fit. `+ remember something`
+keeps a new line; what you type is drawn in that row.
 
-Keys: `enter` opens a shelf, a line's card, or the editor on the add row; `→`
-opens the line's verbs; typing filters; `esc` clears the filter, then leaves.
+On a frame 110 columns or wider a pane beside the list reads out the row under
+the cursor: the whole line, where it holds, who kept it, and where it was
+learned.
+
+
+## Open and fold a group on the Memories tab — the arrow keys, enter, and the keys
+
+- `→` on a group opens it; `←` folds it back up. `enter` does not open groups.
+- `enter` on a line opens its card; on `+ remember something`, starts a line.
+- `→` on a line opens its verbs (fix, forget, move, ask, put back).
+- Typing filters every group at once; `esc` clears the filter, then leaves.
+- `delete` forgets the line under the cursor. A click on a group opens or folds it.
+
 Every change the tab makes happens beside the screen, so a slow engine never
 freezes the keyboard, and its receipt appears on the line at the foot.
 
 
-## What the memory place shows when there is nothing in it
+## What the Memories tab shows when there is nothing in it
 
-On a machine that has kept nothing yet, the Memory tab draws its heading and one
-line — `the lines codeaf keeps in front of every conversation · /remember adds
-one` — and its foot offers only the way out. There is no `0 kept`: nothing kept is
-drawn as nothing. Once there is a first line, the shelves and the
+On a machine that has kept nothing yet, the Memories tab draws its heading and
+one line — `the lines codeaf keeps in front of every conversation · /remember
+adds one` — and its foot offers only the way out. There is no `0 kept`: nothing
+kept is drawn as nothing. Once there is a first line, the groups and the
 `+ remember something` row appear.
 
 
 ## How do I edit a memory? Fix the wording
 
-On the Memory tab, put the cursor on the line and press `→`, then `e fix the
+On the Memories tab, put the cursor on the line and press `→`, then `e fix the
 wording` — or open its card with `enter` and press `→` then `e`. The line's
-words load into the editor; `enter` saves and `esc` cancels. The line keeps where
+words load into its own row, where you edit them; `enter` saves and `esc`
+cancels. The line keeps where
 it holds and who kept it; its title follows the new words, so the list and the
 model both read the corrected line. The receipt says `fixed · <line>`.
 
@@ -142,19 +159,20 @@ To change where a line holds instead, `→` offers the moves (see "Where a line
 holds").
 
 
-## How do I forget a memory, and undo forgetting one? Can a forgotten memory come back or be relearned?
+## How do I make you forget something? Forget a memory, undo forgetting one. Can a forgotten memory come back or be relearned?
 
-- `/forget <words>` drops the **one** line those words name: every word must be
-  in the line, and an exact line wins. When the words name more than one line it
-  forgets nothing and lists them —
-  `3 remembered lines match "deploy" · nothing was forgotten · say more of the line, or forget one on the Memory tab (alt+8):`
-  — and when they name none it says `nothing remembered matches "<words>"`.
-- `/forget` on its own undoes the newest memory change in this conversation: a
-  line kept is taken back (`took back · <line>`), a replaced line comes back, a
-  forgotten line is put back (`put back · <line>`). It walks back up to twenty
-  changes, newest first.
-- On the Memory tab: `→` then `f forget it`, or `delete`. The line moves to the
-  `let go` shelf; `→` then `u put it back` restores it, whenever you like.
+On the Memories tab: `→` on the line, then `f forget it` — or `delete`. The
+line moves under `let go`, marked `forgotten`; open `let go` with `→`, and
+`→` then `u put it back` on the line restores it, whenever you like.
+
+Or ask in words — "forget that I use npm". The model's `forget` drops the
+**one** line those words name and says `forgot · <line> · put it back on the
+Memories tab`. When the words name more than one line it forgets nothing and
+lists them; when they name none it says `nothing remembered matches "<words>"`.
+
+There is no `/forget` command (there was one until 2026-10-14) and no undo key:
+every change — kept, noticed, replaced, forgotten — is a line on the tab you can
+forget or put back.
 
 Nothing is ever deleted outright, so a forgotten line comes back only if you put
 it back or keep the same words again. Searching an old conversation does not
@@ -192,9 +210,9 @@ those.
 
 Every time it keeps a line it says so in the conversation:
 
-`noticed and remembered · wants the change made directly · for you everywhere · /forget undoes it`
+`noticed and remembered · wants the change made directly · for you everywhere · see or forget it on the Memories tab`
 
-`/forget` on its own takes it back, and the Memory tab marks it `noticed`. Most
+The tab marks it `noticed`, and `f` there forgets it. Most
 turns keep nothing. Turn noticing off with the `notice things to remember` row
 (see "How do I turn memory off").
 
@@ -205,10 +223,10 @@ When something you said corrects a line already kept — "we deploy on Tuesdays
 now" against `deploys on Fridays` — noticing replaces the old line with the new
 one and says so:
 
-`noticed and remembered · deploys on Tuesdays · replaces deploys on Fridays · for this project · /forget undoes it`
+`noticed and remembered · deploys on Tuesdays · replaces deploys on Fridays · for this project · see or forget it on the Memories tab`
 
-`/forget` on its own puts the old line back and drops the new one. The replaced
-line also stays on the Memory tab's `let go` shelf, marked `replaced`.
+The replaced line waits under `let go` on the Memories tab, marked `replaced`:
+put it back there, and forget the new one, to undo the change.
 
 Nothing merges or rewrites lines while you are away any more. An earlier build
 ran a background tidy that merged and retired lines and said `memory tidied ·
@@ -220,9 +238,9 @@ that you never see is exactly what this memory does not do.
 
 No and no. A line holds until somebody forgets it — there is no expiry, no
 decay by age, and no background tidy. Every line weighs the same, so there is no
-ranking and no count of how often a line helped: the Memory tab shows who kept a
-line and when, not a score. Nothing is ever deleted outright either; a forgotten
-or replaced line waits on the `let go` shelf.
+ranking and no count of how often a line helped: the Memories tab shows who kept
+a line and when, not a score. Nothing is ever deleted outright either; a
+forgotten or replaced line waits under `let go`.
 
 
 ## How many lines ride along in every conversation? It said memory is full
@@ -235,12 +253,12 @@ and they only change when somebody keeps or forgets a line.
 A keep that would go past that is refused, so what is kept is always what the
 model sees:
 
-`memory is full here · forget a line on the Memory tab (alt+8) to make room`
+`memory is full here · forget a line on the Memories tab to make room`
 
 Noticing says `noticed something worth keeping, but memory is full here · <line>`
 instead of keeping it. A store that already holds more (from an earlier build, or
-lines kept from another project) carries the lines that fit and the Memory tab's
-head row says how many do not.
+lines kept from another project) carries the lines that fit and the Memories
+tab's head row says how many do not.
 
 
 ## How do I turn memory off? The notice things to remember setting
@@ -250,7 +268,7 @@ codeaf keeps lines on its own after your turns. Off, nothing is noticed. It
 applies from the next turn, with no restart.
 
 It does not stop the lines you kept from riding every conversation, and it does
-not stop `/remember`, `/forget` or the Memory tab. To stop a line, forget it.
+not stop `/remember` or the Memories tab. To stop a line, forget it there.
 Saved lines are never deleted by the setting.
 
 Conversation search and the bash fix hints are separate and keep working either
@@ -280,8 +298,8 @@ That sentence came from an older codeaf reading a store a newer one had already
 upgraded, or the reverse: a mismatch between the file and the program, not
 damage to the file. The newer codeaf repairs the file as it opens it, keeping
 every line's words, where it came from and whether it was active. A line an old
-store kept as "project" without naming the project is kept on the Memory tab's
-`couldn't tell which project` shelf until you move it.
+store kept as "project" without naming the project is kept under the Memories
+tab's `couldn't tell which project` group until you move it.
 
 A window held by an engine keeps that engine until a newer build replaces it.
 Update codeaf on the machine holding the workspace and reconnect; on that same
@@ -294,7 +312,7 @@ reconnect. `codeaf engine --status` names the engine.
 ## Does memory work on the ordinary launch, over --host, and on a smaller model?
 
 Yes. Plain `codeaf` and `--host devbox` both use the connected conversation's
-memory: the commands, the Memory tab and the receipts all reach that machine's
+memory: the commands, the Memories tab and the receipts all reach that machine's
 store. `--no-host` uses this machine's store directly.
 
 On a small model (a context window under about 32,000 tokens, or a model with no
@@ -306,7 +324,7 @@ belt to save room, so it tells you it cannot keep a line itself and that you can
 
 ## Can I keep typing while a memory command waits? Remember has not answered yet
 
-Yes. `/remember`, `/forget` and `/memories <words>` wait beside the screen, in
+Yes. `/remember` and `/memories <words>` wait beside the screen, in
 the order you sent them, one conversation at a time. Their receipts stay with
 the conversation that issued them; a command typed on home answers on home's own
 message line. Closing a window cancels commands still waiting behind another,
@@ -318,7 +336,7 @@ receipt, and then `/remember` says:
 `saving that has not answered yet · check /memory before trying again`
 
 That is not a failure: the engine may still be saving, and codeaf does not retry
-on its own. Check the Memory tab before sending it again.
+on its own. Check the Memories tab before sending it again.
 
 
 ## Where is everything you remember kept? Where is my memory file on disk? Can I copy my memories to another machine?
@@ -332,7 +350,7 @@ conversations.
 `CODEAF_HOME` moves the whole folder. Copy the file to another machine and your
 memories go with it; delete it and they are gone, because nothing keeps a second
 copy. A line kept for **this machine** travels in the file too, so check that
-shelf after copying.
+group after copying.
 
 
 ## Does a task, an automation or a team member see my memory? Is memory shared with my team?
@@ -346,7 +364,7 @@ They read the same lines a conversation in that project would carry:
 - a **team's manager and members** run in the same workspace, so the project's
   lines reach them as they reach any conversation there.
 
-There is no team shelf. A line belongs to you, one project, or this machine;
+There is no team group. A line belongs to you, one project, or this machine;
 nothing shares a line with another person's account.
 
 
@@ -516,5 +534,5 @@ one at the top of codeaf's own folder. Tasks write into the same project file.
 The counts are **halved every week**, so something confirmed once months ago
 drops out and something confirmed this morning rises. A suggestion that fails on
 the same error is counted against itself. There is no command or panel for it,
-it is not on the Memory tab, and the noticing setting does not turn it off: the
+it is not on the Memories tab, and the noticing setting does not turn it off: the
 one line on a failed row is the whole of what it says.

@@ -632,9 +632,8 @@ the same stream and its recorded events.
 ## Are saved memories available on the default engine launch?
 
 Yes. Plain `codeaf` holds the conversation in this machine's engine and reads
-its memories. `/memory` or `alt+8` opens the memory place; `/remember <text>`
-keeps one line, `/memories` lists them and `/forget <words>` forgets the one
-those words name. The page and commands use the same engine store. A demo
+its memories. `/memory` or `alt+8` opens the Memories tab; `/remember <text>`
+keeps one line, `/memories` lists them, and the tab forgets one. The page and commands use the same engine store. A demo
 home's seeded lines are available on this road too.
 
 Over `--host`, these same doors reach the other machine's store. When a

@@ -24,9 +24,13 @@ import (
 //
 //	/remember <text>   keep one line (here: this project; on home: everywhere)
 //	/always <text>     the same, under the word people were taught
-//	/forget <words>    drop the one line the words name — or list the matches
-//	/forget            undo the newest memory change this conversation made
-//	/memory [<words>]  open the memory place, or print the lines that match
+//	/memory [<words>]  open the Memories tab, or print the lines that match
+//
+// THERE IS NO /forget. Taking a line out is done on the Memories tab, where
+// the line is in front of the person with who kept it and where it holds — a
+// typed query that had to name one line out of fifty was a guess with a
+// receipt, and the tab is a choice. The model's own `forget` stays, for
+// "forget that" said in words.
 //
 // Receipts answer in the transcript so they stay scrollable, and on home's own
 // message line when the command was typed there.
@@ -42,9 +46,6 @@ type memoryAgent interface {
 	Remembers() bool
 	// Remember keeps one line and answers the receipt.
 	Remember(text string) (string, error)
-	// Forget drops the line a query names and answers the receipt; an empty
-	// query undoes the conversation's newest memory change.
-	Forget(query string) (string, error)
 	// Memories lists what is kept, or the matches for a query.
 	Memories(query string) ([]session.MemoryLine, error)
 	// MoveMemory moves one line to where the person says it holds, and
@@ -289,29 +290,6 @@ func (a *app) runAlways(text string) tea.Cmd {
 			return "could not read what is remembered · " + err.Error(), err
 		}
 		return memoriesText("", lines), nil
-	})
-}
-
-// runForget is /forget. With words it drops the ONE line they name, and when
-// they name more than one it drops nothing and lists them — removing every
-// match, or the best guess, could erase lines the person never meant to name.
-// Bare, it undoes the newest memory change this conversation made, which is
-// what every "noticed and remembered" line points at.
-func (a *app) runForget(query string) tea.Cmd {
-	agent, ok := a.brain()
-	if !ok {
-		a.note(memoryUnavailableNote)
-		return nil
-	}
-	return a.memoryCall(func() (string, error) {
-		receipt, err := agent.Forget(strings.TrimSpace(query))
-		if err != nil {
-			if errors.Is(err, remote.ErrLate) {
-				return "that has not answered yet · check /memory before trying again", err
-			}
-			return "could not forget that · " + err.Error(), err
-		}
-		return receipt, nil
 	})
 }
 

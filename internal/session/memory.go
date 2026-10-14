@@ -22,16 +22,18 @@ package session
 //     line.
 //
 //   - THERE IS ONE WRITE DOOR ([Agent.keep]) and three ways to it: the person
-//     (/remember, /always, the memory place), the model's own `remember`, and
+//     (/remember, /always, the Memories tab), the model's own `remember`, and
 //     the pass after a turn noticing something durable the person said. None of
 //     them asks a model whether to save: the duplicate check is the store's, and
 //     a line the noticing pass says replaces another replaces it.
 //
 //   - NOTHING CHANGES SILENTLY. Every line kept, replaced or forgotten by the
-//     model or by the noticing pass says one line in the conversation, with how
-//     to take it back: a bare /forget undoes the newest memory change this
-//     conversation made ([Agent.undoMemory]), and the memory place lists every
-//     line with who saved it.
+//     model or by the noticing pass says one line in the conversation, naming
+//     where to take it back: the Memories tab lists every line with who kept
+//     it, forgets any of them, and puts back any line that was let go. There
+//     is no forgetting by slash command — the tab is the one place a person
+//     does it by hand, and the model's `forget` is the one place it is asked
+//     for in words.
 //
 //   - THE SWITCH GOVERNS NOTICING, NOT MEMORY. The person's `memory.enabled`
 //     row turns the noticing pass off; the lines already kept go on riding every
@@ -79,16 +81,18 @@ const (
 	// changes that section in the same commit.
 	memoryBlockRunes = 4800
 
-	// memoryUndoDepth is how many of this conversation's memory changes a bare
-	// /forget can walk back, newest first.
-	memoryUndoDepth = 20
-
 	// memoryFailureWindow is how long one "couldn't update memory" line buys.
 	memoryFailureWindow = 5 * time.Minute
 )
 
 // errMemoryFull is a save the block has no room for.
-var errMemoryFull = errors.New("memory is full here · forget a line on the Memory tab (alt+8) to make room")
+var errMemoryFull = errors.New("memory is full here · forget a line on the Memories tab to make room")
+
+// memoryTakeBack is the clause every receipt for a change made on the person's
+// behalf ends with: where they go to see it and take it back. It names the tab
+// and not its key, because this is the engine speaking and the key is the
+// surface's to spell.
+const memoryTakeBack = "see or forget it on the Memories tab"
 
 // memoryBrain is the store this conversation remembers into, and the little
 // bookkeeping that goes with it. It holds a lock of its own, outside a.mu,
@@ -103,23 +107,10 @@ type memoryBrain struct {
 	// stream to say them on: the noticing pass writes after the turn's hub has
 	// closed, so its line is held for the next turn.
 	said []string
-	// changes is this conversation's memory changes, oldest first, bounded by
-	// [memoryUndoDepth]: what a bare /forget walks back.
-	changes []memoryChange
 	// imported records that the legacy memory.md has been looked at.
 	imported bool
 	// failureSaid is when the last failure line went out.
 	failureSaid time.Time
-}
-
-// memoryChange is one change this conversation made to memory.
-type memoryChange struct {
-	// kept is the line a save landed, or the zero Memory for a forget.
-	kept store.Memory
-	// replaced is the line a save retired, when it replaced one.
-	replaced *store.Memory
-	// forgot is the line a forget retired.
-	forgot *store.Memory
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
@@ -392,8 +383,7 @@ func memoryBlock(memories []store.Memory) string {
 
 // ── the one write door ──────────────────────────────────────────────────────
 
-// keep writes one line through the store's write door and records the change
-// for undo. It is EVERY mouth: the person's /remember, the model's `remember`,
+// keep writes one line through the store's write door. It is EVERY mouth: the person's /remember, the model's `remember`,
 // the noticing pass and the legacy import. It asks no model anything.
 //
 // replaced, when set, is a line this one supersedes — the noticing pass saying
@@ -436,8 +426,6 @@ func (a *Agent) keep(text, scope, origin string, replaced *store.Memory) (store.
 		if err != nil {
 			return store.Memory{}, "", false, err
 		}
-		old := *replaced
-		a.recordMemoryChange(memoryChange{kept: fresh, replaced: &old})
 		return fresh, reach, true, nil
 	}
 	result, err := a.memory.store.Write(store.WriteRequest{
@@ -450,7 +438,6 @@ func (a *Agent) keep(text, scope, origin string, replaced *store.Memory) (store.
 	if result.Outcome == store.WriteOutcomeSkipped {
 		return result.Memory, reach, false, nil
 	}
-	a.recordMemoryChange(memoryChange{kept: result.Memory})
 	return result.Memory, reach, true, nil
 }
 
@@ -472,20 +459,11 @@ func memoryRoom(visible []store.Memory, text string, replaced *store.Memory) boo
 	return used+memoryLineCost(text) <= memoryBlockRunes
 }
 
-// recordMemoryChange remembers one change for undo.
-func (a *Agent) recordMemoryChange(change memoryChange) {
-	a.memory.mu.Lock()
-	defer a.memory.mu.Unlock()
-	a.memory.changes = append(a.memory.changes, change)
-	if over := len(a.memory.changes) - memoryUndoDepth; over > 0 {
-		a.memory.changes = append([]memoryChange(nil), a.memory.changes[over:]...)
-	}
-}
-
-// ── forgetting, and taking a change back ────────────────────────────────────
+// ── forgetting ──────────────────────────────────────────────────────────────
 
 // forgetLine drops the one line a query names among the lines this
-// conversation can see, and answers the receipt.
+// conversation can see, and answers the receipt. It is the model's `forget`;
+// a person forgets a line on the Memories tab.
 //
 // IT NEVER GUESSES. Every word of the query must appear in the line (an exact
 // line wins outright); one match is forgotten, none says so, and more than one
@@ -504,7 +482,7 @@ func (a *Agent) forgetLine(query string) (string, error) {
 	default:
 		var out strings.Builder
 		out.WriteString(strconv.Itoa(len(matches)) + " remembered lines match " + strconv.Quote(strings.TrimSpace(query)) +
-			" · nothing was forgotten · say more of the line, or forget one on the Memory tab (alt+8):")
+			" · nothing was forgotten · say more of the line, or forget one on the Memories tab:")
 		for _, memory := range matches {
 			out.WriteString("\n  " + memory.Text)
 		}
@@ -514,7 +492,6 @@ func (a *Agent) forgetLine(query string) (string, error) {
 	if err := a.memory.store.ForgetMemoryForOwners(a.memoryOwners(), target.ID, a.memorySourceSession()); err != nil {
 		return "", err
 	}
-	a.recordMemoryChange(memoryChange{forgot: &target})
 	return "forgot · " + target.Text, nil
 }
 
@@ -546,42 +523,6 @@ func matchMemories(memories []store.Memory, query string) []store.Memory {
 		}
 	}
 	return found
-}
-
-// undoMemory takes back the newest memory change this conversation made, and
-// answers the receipt: a kept line is forgotten (and anything it replaced is
-// put back), a forgotten line is put back.
-func (a *Agent) undoMemory() (string, error) {
-	a.memory.mu.Lock()
-	if len(a.memory.changes) == 0 {
-		a.memory.mu.Unlock()
-		return "no memory change to undo here · /forget <words> drops a remembered line", nil
-	}
-	change := a.memory.changes[len(a.memory.changes)-1]
-	a.memory.changes = a.memory.changes[:len(a.memory.changes)-1]
-	a.memory.mu.Unlock()
-
-	st := a.memory.store
-	switch {
-	case change.forgot != nil:
-		if err := st.RestoreMemoryForOwners(a.memoryOwners(), change.forgot.ID); err != nil {
-			return "", err
-		}
-		return "put back · " + change.forgot.Text, nil
-	case change.replaced != nil:
-		if err := st.ForgetMemoryForOwners(a.memoryOwners(), change.kept.ID, a.memorySourceSession()); err != nil {
-			return "", err
-		}
-		if err := st.RestoreMemoryForOwners(a.memoryOwners(), change.replaced.ID); err != nil {
-			return "", err
-		}
-		return "took back · " + change.kept.Text + " · " + change.replaced.Text + " is back", nil
-	default:
-		if err := st.ForgetMemoryForOwners(a.memoryOwners(), change.kept.ID, a.memorySourceSession()); err != nil {
-			return "", err
-		}
-		return "took back · " + change.kept.Text, nil
-	}
 }
 
 // ── what a person can ask for by hand ───────────────────────────────────────
@@ -628,18 +569,6 @@ func (a *Agent) rememberAs(text, scope string) (string, error) {
 		return "already remembered · " + memory.Text + " · " + reach, nil
 	}
 	return "remembered · " + memory.Text + " · " + reach, nil
-}
-
-// Forget drops the line a query names and answers the receipt; an empty query
-// undoes the newest memory change this conversation made ([Agent.undoMemory]).
-func (a *Agent) Forget(query string) (string, error) {
-	if !a.memoryWritable() {
-		return "", errors.New("this conversation keeps no memory")
-	}
-	if strings.TrimSpace(query) == "" {
-		return a.undoMemory()
-	}
-	return a.forgetLine(query)
 }
 
 // Memories lists what this conversation keeps, in the order its block carries
@@ -795,9 +724,9 @@ func (a *Agent) keepNoticed(text, scope string, replaced *store.Memory) {
 	case !added:
 		// Already kept: nothing changed, so nothing is said.
 	case replaced != nil:
-		a.sayMemory("noticed and remembered · " + memory.Text + " · replaces " + replaced.Text + " · " + reach + " · /forget undoes it")
+		a.sayMemory("noticed and remembered · " + memory.Text + " · replaces " + replaced.Text + " · " + reach + " · " + memoryTakeBack)
 	default:
-		a.sayMemory("noticed and remembered · " + memory.Text + " · " + reach + " · /forget undoes it")
+		a.sayMemory("noticed and remembered · " + memory.Text + " · " + reach + " · " + memoryTakeBack)
 	}
 }
 
@@ -900,7 +829,7 @@ func (a *Agent) memoryTools() []bare.Tool {
 			if !added {
 				return "already remembered " + reach + ": " + memory.Text, false, nil
 			}
-			a.sayMemory("remembered · " + memory.Text + " · " + reach + " · /forget undoes it")
+			a.sayMemory("remembered · " + memory.Text + " · " + reach + " · " + memoryTakeBack)
 			return "remembered " + reach + ": " + memory.Text, false, nil
 		},
 	}, {
@@ -922,7 +851,7 @@ func (a *Agent) memoryTools() []bare.Tool {
 				return "Could not forget that: " + err.Error(), true, nil
 			}
 			if strings.HasPrefix(receipt, "forgot · ") {
-				a.sayMemory(receipt + " · /forget puts it back")
+				a.sayMemory(receipt + " · put it back on the Memories tab")
 			}
 			return receipt, false, nil
 		},

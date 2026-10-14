@@ -26,10 +26,6 @@ func (h *heldEngineMemory) Remember(text string) (string, error) {
 	h.wait()
 	return h.Agent.Remember(text)
 }
-func (h *heldEngineMemory) Forget(query string) (string, error) {
-	h.wait()
-	return h.Agent.Forget(query)
-}
 func (h *heldEngineMemory) Memories(query string) ([]session.MemoryLine, error) {
 	h.wait()
 	return h.Agent.Memories(query)
@@ -38,7 +34,6 @@ func (h *heldEngineMemory) Memories(query string) ([]session.MemoryLine, error) 
 func TestMemoryWireWaitLeavesTypingAndRepaintAvailable(t *testing.T) {
 	for _, tc := range []struct{ command, receipt string }{
 		{"/remember cobalt shipment fixture", "remembered ·"},
-		{"/forget neovim", "forgot ·"},
 		{"/memories neovim", "neovim"},
 	} {
 		t.Run(tc.command, func(t *testing.T) {

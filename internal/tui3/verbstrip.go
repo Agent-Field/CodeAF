@@ -314,7 +314,7 @@ const (
 	memoryForgetWord = "forget it"
 	memoryUndoWord   = "put it back"
 	// The three moves, one per place a line can hold, each offered only where
-	// the line is not (place_memory.go's [placeMemory.verbs]).
+	// the line is not (place_memories.go's [placeMemory.verbs]).
 	memoryMoveYouWord     = "hold it everywhere"
 	memoryMoveHereWord    = "hold it in this project"
 	memoryMoveMachineWord = "hold it on this machine"

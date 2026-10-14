@@ -29,8 +29,8 @@ type rememberingAgent struct {
 	off     bool
 	project string
 
-	remembered, forgotten, listed, moved []string
-	everywhere                           []bool
+	remembered, listed, moved []string
+	everywhere                []bool
 }
 
 func (r *rememberingAgent) Remembers() bool { return !r.off }
@@ -60,28 +60,6 @@ func (r *rememberingAgent) RememberAlways(text string, everywhere bool) (string,
 
 func (r *rememberingAgent) AlwaysMemories(everywhere bool) ([]session.MemoryLine, error) {
 	return r.Memories("")
-}
-
-func (r *rememberingAgent) Forget(query string) (string, error) {
-	r.forgotten = append(r.forgotten, query)
-	if r.failing != nil {
-		return "", r.failing
-	}
-	if strings.TrimSpace(query) == "" {
-		if len(r.kept) == 0 {
-			return "no memory change to undo here · /forget <words> drops a remembered line", nil
-		}
-		last := r.kept[len(r.kept)-1]
-		r.kept = r.kept[:len(r.kept)-1]
-		return "took back · " + last.Text, nil
-	}
-	for index, line := range r.kept {
-		if strings.Contains(strings.ToLower(line.Text), strings.ToLower(query)) {
-			r.kept = append(r.kept[:index], r.kept[index+1:]...)
-			return "forgot · " + line.Text, nil
-		}
-	}
-	return "nothing remembered matches \"" + query + "\"", nil
 }
 
 func (r *rememberingAgent) Memories(query string) ([]session.MemoryLine, error) {
@@ -245,10 +223,14 @@ func memoryPlaceRowsText(a *app) string {
 // ── the commands ────────────────────────────────────────────────────────────
 
 func TestTheMemoryCommandsAreOnTheList(t *testing.T) {
-	want := map[string]bool{"memory": false, "memories": false, "remember": false, "forget": false, "always": false}
+	want := map[string]bool{"memory": false, "memories": false, "remember": false, "always": false}
 	for _, command := range commands {
 		if _, ok := want[command.name]; ok {
 			want[command.name] = true
+		}
+		// THERE IS NO /forget: a line is forgotten on the Memories tab.
+		if command.name == "forget" {
+			t.Errorf("/forget is on the command list; forgetting is the Memories tab's")
 		}
 	}
 	for name, found := range want {
@@ -264,18 +246,6 @@ func TestRememberPrintsTheConversationsOwnReceipt(t *testing.T) {
 	answerMemory(a, a.runRemember("prefers tabs"))
 	if got := plain(lastNote(t, a)); got != "remembered · prefers tabs · for this project" {
 		t.Fatalf("receipt = %q", got)
-	}
-}
-
-func TestABareForgetUndoesAndAWordedOneNamesALine(t *testing.T) {
-	agent := &rememberingAgent{kept: []session.MemoryLine{{ID: "m1", Text: "deploys on Fridays"}}}
-	a := newTestApp(agent)
-	answerMemory(a, a.runForget(""))
-	if len(agent.forgotten) != 1 || agent.forgotten[0] != "" {
-		t.Fatalf("a bare /forget asked %q, want the undo", agent.forgotten)
-	}
-	if got := plain(lastNote(t, a)); got != "took back · deploys on Fridays" {
-		t.Fatalf("undo receipt = %q", got)
 	}
 }
 
@@ -296,7 +266,6 @@ func TestWithoutAStoreEveryCommandSaysWhy(t *testing.T) {
 	a := newTestApp(&rememberingAgent{off: true})
 	for _, run := range []func(){
 		func() { a.runRemember("x") },
-		func() { a.runForget("x") },
 		func() { a.runMemories("x") },
 	} {
 		run()
@@ -364,11 +333,22 @@ func TestTheShelvesSayWhereEachLineHoldsAndWhoKeptIt(t *testing.T) {
 	for _, want := range []string{
 		memoryShelfYou + " · 1", memoryShelfMachine + " · 1", memoryShelfHere + " · codeaf · 1",
 		"infra · 1", memoryShelfLost + " · 1", memoryShelfLetGo + " · 1",
-		"prefers tabs" + rowSep + "you", "rg is ripgrep here" + rowSep + "the model", "deploys on Tuesdays" + rowSep + "noticed",
 	} {
 		if !strings.Contains(shown, want) {
 			t.Fatalf("the place does not say %q:\n%s", want, shown)
 		}
+	}
+	// EVERY LINE HANGS UNDER ITS GROUP on the tree's connector and says who
+	// kept it in its own column; a group's row has no connector, so the two
+	// cannot be mistaken for each other.
+	for text, who := range map[string]string{"prefers tabs": "you", "rg is ripgrep here": "the model", "deploys on Tuesdays": "noticed"} {
+		row := memoryRowSaying(shown, text)
+		if !strings.Contains(row, "─ "+text) || !strings.Contains(row, who) {
+			t.Fatalf("the line %q does not hang from a connector beside %q:\n%s", text, who, shown)
+		}
+	}
+	if row := memoryRowSaying(shown, memoryShelfYou); strings.Contains(row, "─") {
+		t.Fatalf("a group's row wears a connector like a line: %q", row)
 	}
 	// THE SHELVES A CONVERSATION HERE IS NOT TOLD ARE ROLLED UP.
 	for _, hidden := range []string{"their rule", "came in blind", "ships on Fridays"} {
@@ -380,6 +360,103 @@ func TestTheShelvesSayWhereEachLineHoldsAndWhoKeptIt(t *testing.T) {
 		if strings.Contains(shown, gone) {
 			t.Fatalf("the place still says %q", gone)
 		}
+	}
+}
+
+// memoryRowSaying is the one drawn row that carries some words.
+func memoryRowSaying(shown, words string) string {
+	for _, row := range strings.Split(shown, "\n") {
+		if strings.Contains(row, words) {
+			return row
+		}
+	}
+	return ""
+}
+
+// A GROUP OPENS ON `→` AND FOLDS ON `←`, and `enter` does neither: the
+// Activity tab's bargain with the same keys. The foot over a group names the
+// arrow that would act, and only that one.
+func TestAGroupOpensOnTheRightArrowAndFoldsOnTheLeft(t *testing.T) {
+	a, _ := memoryPlaceApp(t, []store.Memory{
+		{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs"},
+		{ID: "g", Owner: store.OwnerUser, Text: "ships on Fridays", Status: store.MemoryForgotten},
+	})
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, memoryShelfYou)
+	if foot := (placeMemory{}).hint(a); foot != memoryShelfShutHint {
+		t.Fatalf("the foot over an open group = %q", foot)
+	}
+	drive(t, a, key("enter"))
+	if !strings.Contains(memoryPlaceRowsText(a), "prefers tabs") {
+		t.Fatal("enter folded a group; groups fold on ←")
+	}
+	drive(t, a, key("left"))
+	if strings.Contains(memoryPlaceRowsText(a), "prefers tabs") {
+		t.Fatalf("← did not fold the group:\n%s", memoryPlaceRowsText(a))
+	}
+	if foot := (placeMemory{}).hint(a); foot != memoryShelfOpenHint {
+		t.Fatalf("the foot over a folded group = %q", foot)
+	}
+	drive(t, a, key("right"))
+	if !strings.Contains(memoryPlaceRowsText(a), "prefers tabs") {
+		t.Fatal("→ did not open the group again")
+	}
+	// AND THE CURSOR STAYED ON THE GROUP through both, rather than sliding to
+	// whatever row took its place.
+	if stop, ok := a.mem.reading.at(a.mem.cursor); !ok || stop.shelf != store.OwnerUser || stop.line != nil {
+		t.Fatalf("the cursor left the group it folded: %+v", stop)
+	}
+}
+
+// WHAT IS BEING WRITTEN IS ON THE SCREEN, in the row it belongs to, with the
+// caret after it. The add row's editor used to take the keys and draw nothing.
+func TestTheWordsBeingWrittenAreDrawnInTheirRow(t *testing.T) {
+	a, _ := memoryPlaceApp(t, []store.Memory{{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs"}})
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, memoryAddWord)
+	drive(t, a, key("enter"))
+	typeInto(t, a, "uses pnpm")
+	if !strings.Contains(plain(frame(a)), "+ uses pnpm") {
+		t.Fatalf("the new line is not drawn while it is written:\n%s", plain(frame(a)))
+	}
+	drive(t, a, key("esc"))
+	memoryCursorTo(t, a, "prefers tabs")
+	for _, v := range (placeMemory{}).verbs(a) {
+		if v.key == 'e' {
+			runCmd(v.do())
+		}
+	}
+	typeInto(t, a, " always")
+	if !strings.Contains(plain(frame(a)), "prefers tabs always") {
+		t.Fatalf("a line being reworded is not drawn in its row:\n%s", plain(frame(a)))
+	}
+}
+
+// A WIDE FRAME READS THE CURSOR ROW OUT BESIDE THE LIST, at the width the
+// Activity tab splits at, and a narrow one has no pane at all.
+func TestAWideFrameReadsTheLineOutBesideTheList(t *testing.T) {
+	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs", Origin: store.OriginNoticed}})
+	memory.origins["u"] = memoryOrigin{session: "s1", title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, "prefers tabs")
+	// The read the walk-in asked for went with the command this harness did
+	// not run; the cursor's own follow asks again.
+	a.mem.asking = nil
+	for _, msg := range runCmd(a.memoryFollow()) {
+		if origin, ok := msg.(memoryOriginMsg); ok {
+			a.adoptMemoryOrigin(origin)
+		}
+	}
+	a.width, a.height = taskPaneFloor+20, 30
+	shown := plain(frame(a))
+	for _, want := range []string{"for you everywhere · kept by noticed", "in 'Editor setup'", "→ edit, forget, move"} {
+		if !strings.Contains(shown, want) {
+			t.Fatalf("the pane does not say %q:\n%s", want, shown)
+		}
+	}
+	a.width = taskPaneFloor - 10
+	if strings.Contains(plain(frame(a)), "in 'Editor setup'") {
+		t.Fatal("a frame under the split width drew a pane")
 	}
 }
 
@@ -437,7 +514,7 @@ func TestTheVerbsAreTheLinesAndALetGoLineCanBePutBack(t *testing.T) {
 		t.Fatalf("a line's verbs = %q, want edit, forget, the two moves it is not in, and ask", string(keys))
 	}
 	memoryCursorTo(t, a, memoryShelfLetGo)
-	drive(t, a, key("enter"))
+	drive(t, a, key("right"))
 	memoryCursorTo(t, a, "ships on Fridays")
 	verbs := (placeMemory{}).verbs(a)
 	if len(verbs) != 1 || verbs[0].key != 'u' {
@@ -463,7 +540,7 @@ func TestForgettingFromThePlaceLeavesTheLoopAndSaysWhereItWent(t *testing.T) {
 			a.adoptMemoryPlaceDone(done)
 		}
 	}
-	if len(memory.forgotten) != 1 || !strings.Contains(a.mem.footer, "let go shelf") {
+	if len(memory.forgotten) != 1 || !strings.Contains(a.mem.footer, "under let go") {
 		t.Fatalf("forgot %v with footer %q", memory.forgotten, a.mem.footer)
 	}
 }

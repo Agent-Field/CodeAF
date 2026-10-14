@@ -174,7 +174,7 @@ func closeRows(rows *sql.Rows) error {
 
 // MemoryChangedSince counts what changed in the store since t: lines learned
 // (created at or after t) and lines let go of (forgotten at or after t). It is
-// what home's "since you left" and the Memory tab's count say.
+// what home's "since you left" and the Memories tab's count say.
 //
 // A zero t answers zeros: with no origin there is no "since".
 func (s *Store) MemoryChangedSince(t time.Time) (learned, letGo int, err error) {

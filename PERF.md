@@ -2916,8 +2916,7 @@ Each line is at most **512 runes** (`store.MemoryTextRunes`) with an 80-rune tit
 The read is **one indexed statement per turn start** (`Store.MemoriesFor`, over the
 owners the conversation sees); a failed read keeps the last block rather than
 re-pricing the prefix to say nothing. A task worker's brief closes on the same section,
-read once per run (`TaskGraph.memoryWorld`). A bare `/forget` walks back at most
-**20** of a conversation's own memory changes (`memoryUndoDepth`). No retrieval,
+read once per run (`TaskGraph.memoryWorld`). No retrieval,
 evidence projection, binding read or background tidy exists: the store's work is
 bounded by the scope's own line count, and the event journal continues to grow as the
 durable record.

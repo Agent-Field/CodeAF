@@ -5,6 +5,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -14,13 +16,18 @@ const memoryPlaceRows = 12
 // THE FOOT SAYS WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR, and only keys
 // that really do it: a letter on this place is a verb only while the `→` strip
 // is drawn (verbstrip.go), so the foot names the arrow and never a bare letter.
+// A GROUP NAMES ITS ARROW AND NOT `enter`: `→` opens it and `←` folds it back
+// up, which is the Activity tab's bargain with the same two keys
+// ([tasksShutWord] is that tab's word, said here unchanged).
 const (
-	memoryLineHint  = "enter open · → edit, forget, move · type to filter"
-	memoryGoneHint  = "enter open · → " + memoryUndoWord + " · type to filter"
-	memoryShelfHint = "enter open or close · type to filter"
-	memoryAddHint   = "enter " + memoryAddWord + " · type to filter"
-	memoryCardHint  = "→ edit, forget, move · esc back to the list"
-	memoryEditHint  = "enter save · esc cancel"
+	memoryLineHint      = "enter open · → edit, forget, move · type to filter"
+	memoryGoneHint      = "enter open · → " + memoryUndoWord + " · type to filter"
+	memoryShelfOpenWord = "→ show its lines"
+	memoryShelfOpenHint = memoryShelfOpenWord + " · type to filter"
+	memoryShelfShutHint = tasksShutWord + " · type to filter"
+	memoryAddHint       = "enter " + memoryAddWord + " · type to filter"
+	memoryCardHint      = "→ edit, forget, move · esc back to the list"
+	memoryEditHint      = "enter save · esc cancel"
 	// A PAGE WITH NOTHING ON IT HAS ONLY A WAY OUT: its whisper already says
 	// /remember adds a line, and the add row arrives with the first one.
 	memoryBareHint = "esc"
@@ -70,8 +77,8 @@ type memoryOrigin struct {
 // memoryAddID is the edit target that means "a new line" rather than an id.
 const memoryAddID = "\x00add"
 
-// memoryPlace is the whole memory place: the snapshot it is drawing, which
-// shelves are open, the filter, and the one line a card or an editor is about.
+// memoryPlace is the whole Memories tab: the snapshot it is drawing, which
+// groups are open, the filter, and the one line a card or an editor is about.
 //
 // IT HOLDS A SNAPSHOT AND FILTERS THE SNAPSHOT. The whole shape is read in a
 // fixed number of statements ([MemoryStore.Snapshot]) on the clock and on the
@@ -81,10 +88,16 @@ type memoryPlace struct {
 	read    time.Time
 	// here is the owner this conversation keeps project lines under, which is
 	// what makes one shelf "this project".
-	here    string
-	open    map[string]bool
-	reading memoryReading
-	filter  editor
+	here string
+	// open is what `→` opened and `←` folded back up. closed is what `←`
+	// folded while a filter was typed — a filter opens every group with a match
+	// — and closedQuery is the filter it was folded under: a new filter is a
+	// new question, and starts with every match open again.
+	open        map[string]bool
+	closed      map[string]bool
+	closedQuery string
+	reading     memoryReading
+	filter      editor
 	// cursor is a line of the reading; top and shown are the window the last
 	// draw put over it, and hover the line the pointer is over (-1 for none).
 	cursor     int
@@ -94,6 +107,9 @@ type memoryPlace struct {
 	// line was learned, read for that one id when its card opens.
 	expanded string
 	origins  map[string]memoryOrigin
+	// asking is the ids whose provenance has been asked for and has not come
+	// back, so a cursor resting on a line asks the store once.
+	asking map[string]bool
 	// edit is the wording being written, and editID the line it belongs to —
 	// [memoryAddID] for a new one.
 	edit   *editor
@@ -110,11 +126,19 @@ func (p *memoryPlace) start(shelves store.MemoryShelves, here string, now time.T
 	*p = memoryPlace{
 		shelves: shelves, read: now, here: here, hover: -1,
 		open: memoryOpenByDefault(shelves, here), origins: map[string]memoryOrigin{},
+		asking: map[string]bool{},
 	}
 	p.rank()
-	// THE CURSOR STARTS ON THE FIRST LINE, not on the head row: the first thing
-	// a person can do here is read what is kept.
+	// THE CURSOR STARTS ON THE FIRST LINE KEPT, not on the head row, the add
+	// row or a group: the first thing a person can do here is read what is
+	// kept, and the pane beside the list reads it out.
 	p.cursor = p.nearestStop(0)
+	for i := range p.reading.lines {
+		if stop, ok := p.reading.at(i); ok && stop.line != nil {
+			p.cursor = i
+			break
+		}
+	}
 }
 
 // refresh replaces the snapshot under a page that is already up, keeping the
@@ -131,7 +155,10 @@ func (p *memoryPlace) rank() {
 	if p.open == nil {
 		p.open = map[string]bool{}
 	}
-	p.reading = readMemory(p.shelves, p.here, p.open, p.filter.String(), p.read)
+	if query := p.filter.String(); query != p.closedQuery {
+		p.closed, p.closedQuery = nil, query
+	}
+	p.reading = readMemory(p.shelves, p.here, p.open, p.closed, p.filter.String(), p.read)
 	p.cursor = p.nearestStop(p.cursor)
 }
 
@@ -222,7 +249,7 @@ func (p *memoryPlace) choice() (store.Memory, bool) {
 	return *stop.line, true
 }
 
-// shelfUnder is the shelf heading the cursor is standing ON.
+// shelfUnder is the group the cursor is standing ON.
 func (p *memoryPlace) shelfUnder() (string, bool) {
 	stop, ok := p.reading.at(p.cursor)
 	if !ok || stop.line != nil || stop.add {
@@ -237,12 +264,47 @@ func (p *memoryPlace) onAdd() bool {
 	return ok && stop.add
 }
 
-// toggleShelf is `enter` on a heading: open it, or roll it up again.
-func (p *memoryPlace) toggleShelf(key string) {
+// fold opens or shuts the group under the cursor, and reports whether there
+// was one to act on — `→` and `←` (placekeys.go). A group already the way it
+// was asked to be answers false, so `→` on an open group falls through to the
+// row's verbs, and a group has none.
+//
+// A CARD OR AN EDITOR STANDING OPEN IS NOT THE LIST, so neither key folds
+// anything under one: `→` on a card opens the card's line's verbs.
+func (p *memoryPlace) fold(open bool) bool {
+	if p.expanded != "" || p.edit != nil {
+		return false
+	}
+	key, ok := p.shelfUnder()
+	if !ok {
+		return false
+	}
+	for _, line := range p.reading.lines {
+		if line.kind == memoryReadingShelf && line.shelf == key && line.open == open {
+			return false
+		}
+	}
 	was, _ := p.reading.at(p.cursor)
-	p.open[key] = !p.open[key]
+	if strings.TrimSpace(p.filter.String()) != "" {
+		if p.closed == nil {
+			p.closed = map[string]bool{}
+		}
+		p.closed[key] = !open
+	} else {
+		p.open[key] = open
+	}
 	p.rank()
 	p.followStop(was)
+	return true
+}
+
+// shelfOpen is whether the group under the cursor is open, and false over
+// anything that is not a group.
+func (p *memoryPlace) shelfOpen() bool {
+	if line := p.cursor; line >= 0 && line < len(p.reading.lines) && p.reading.lines[line].kind == memoryReadingShelf {
+		return p.reading.lines[line].open
+	}
+	return false
 }
 
 // startEdit opens the editor on a line's words, or on nothing for a new one.
@@ -298,30 +360,8 @@ func (p *memoryPlace) card(width int, pal palette) []string {
 		rows = append(rows, pal.bold(fit(line, width)))
 	}
 	rows = append(rows, "")
-	about := []string{p.memoryWhere(memory)}
-	if word := memoryStatusWord(memory.Status); word != "" {
-		about = append(about, word)
-	}
-	if word := memoryOriginWord(memory.Origin); word != "" {
-		about = append(about, "kept by "+word)
-	}
-	rows = append(rows, pal.dim(fit(strings.Join(about, " · "), width)))
-	// WHERE IT WAS LEARNED IS DRAWN ONLY WHEN THE STORE SAID. An origin nobody
-	// could name is absent rather than "somewhere".
-	if origin, held := p.origins[memory.ID]; held {
-		learned := ""
-		if age := sinceAt(origin.at, p.read); age != "" {
-			learned = age + " ago"
-		}
-		if origin.title != "" {
-			if learned != "" {
-				learned += " · "
-			}
-			learned += "in '" + origin.title + "'"
-		}
-		if learned != "" {
-			rows = append(rows, pal.dim(fit(learned, width)))
-		}
+	for _, fact := range p.memoryFacts(memory) {
+		rows = append(rows, pal.dim(fit(fact, width)))
 	}
 	return rows
 }
@@ -373,7 +413,7 @@ func (a *app) openMemory() tea.Cmd {
 	a.mem.start(shelves, here, a.now())
 	a.mem.footer = why
 	a.touch()
-	return a.armPlaceClock()
+	return tea.Batch(a.armPlaceClock(), a.memoryFollow())
 }
 
 // memorySnapshot is what the store holds, and — when there is no store — the
@@ -522,7 +562,7 @@ func (a *app) memoryForgetRow(memory store.Memory) tea.Cmd {
 		if err := mem.ForgetMemory(memory.ID); err != nil {
 			return memoryUnchangedWord
 		}
-		return "forgot · " + memory.Text + " · it is on the let go shelf, where → puts it back"
+		return "forgot · " + memory.Text + " · it is under let go, where → puts it back"
 	})
 }
 
@@ -534,7 +574,7 @@ type placeMemory struct{ placeBase }
 func init() { registerPlace(placeMemory{}) }
 
 func (placeMemory) id() page      { return pageMemory }
-func (placeMemory) word() string  { return "memory" }
+func (placeMemory) word() string  { return "memories" }
 func (placeMemory) counted() bool { return true }
 
 func (placeMemory) open(a *app) tea.Cmd { return a.openMemory() }
@@ -549,40 +589,311 @@ func (placeMemory) tick(a *app, now time.Time) (bool, tea.Cmd) {
 	return true, nil
 }
 
-// body is the shelves, or the one line whose card is open.
+// body is the groups and their lines — with the cursor row's pane beside them
+// on a frame wide enough for one — or the one line whose card is open.
 func (placeMemory) body(a *app, width, room int) []placeRow {
 	p := &a.mem
-	rows := make([]placeRow, 0, room)
 	if p.expanded != "" {
 		p.top = 0
+		rows := make([]placeRow, 0, room)
 		for _, line := range p.card(width-len(placeLead), a.pal) {
 			if len(rows) < room {
 				rows = append(rows, placeRow{text: placeLead + line, hit: -1})
 			}
 		}
-	} else {
-		if p.reading.bare() {
-			// THE EMPTY PAGE IS ITS HEADING AND ITS WHISPER, which names the door.
-			return placeWhisperRows(pageMemory, width, room, a.pal)
+		p.shown = len(rows)
+		for len(rows) < room {
+			rows = append(rows, placeRow{text: "", hit: -1})
 		}
-		body := p.reading.paint(width, a.pal, func(i int) bool { return i == p.cursor })
-		p.top = placeTop(p.top, p.cursor, len(body), room)
-		for i := p.top; i < len(body); i++ {
-			if len(rows) >= room {
-				break
-			}
-			text := body[i]
-			if _, stop := p.reading.at(i); stop && i == p.cursor {
-				text = placeBand(text, width, a.pal)
-			}
-			rows = append(rows, placeRow{text: text, hit: i})
+		return rows
+	}
+	if p.reading.bare() {
+		// THE EMPTY PAGE IS ITS HEADING AND ITS WHISPER, which names the door.
+		p.shown = 0
+		return placeWhisperRows(pageMemory, width, room, a.pal)
+	}
+	// A WIDE FRAME SPLITS THE WAY THE ACTIVITY TAB'S DOES (taskpane.go): the
+	// list keeps the left at the width it is laid out at, the seam divides it,
+	// and the right is the cursor row read out — its whole words, where it
+	// holds, who kept it and where it was learned — following the cursor.
+	// [taskPaneCols] is the one function that decides whether there is a pane,
+	// so the two tabs split at the same width.
+	left := taskPaneList(width)
+	list := a.memoryListRows(left, room)
+	if left == width {
+		return list
+	}
+	head := 0
+	if p.top == 0 && len(list) > 0 {
+		head = 1
+	}
+	pane := a.memoryPaneRows(width-left-ansi.StringWidth(taskPaneSeam), room-head)
+	seam := a.pal.dim(taskPaneSeam)
+	out := make([]placeRow, 0, len(list))
+	next := 0
+	for at, row := range list {
+		if head == 1 && at == 0 {
+			// THE HEAD ROW IS ABOUT THE TAB AND KEEPS THE WHOLE FRAME; the seam
+			// starts under it, as it does on the Activity tab.
+			out = append(out, placeRow{text: placeLead + placeHeading(fit(memoryCounts(p.reading.held, p.reading.letGo, p.reading.outside), width-len(placeLead)), a.pal), hit: row.hit})
+			continue
 		}
+		text := ""
+		if next < len(pane) {
+			text = pane[next]
+		}
+		next++
+		out = append(out, placeRow{text: taskPanePad(row.text, left) + seam + text, hit: row.hit})
+	}
+	return out
+}
+
+// memoryListRows is the list half: the reading painted at the list's width,
+// windowed over the cursor, the cursor row banded.
+func (a *app) memoryListRows(width, room int) []placeRow {
+	p := &a.mem
+	rows := make([]placeRow, 0, room)
+	body := p.reading.paint(width, a.pal, memoryPaint{
+		lit:    func(i int) bool { return i == p.cursor },
+		editID: p.editID, edit: p.edit,
+	})
+	p.top = placeTop(p.top, p.cursor, len(body), room)
+	for i := p.top; i < len(body); i++ {
+		if len(rows) >= room {
+			break
+		}
+		text := body[i]
+		if _, stop := p.reading.at(i); stop && i == p.cursor {
+			text = placeBand(text, width, a.pal)
+		}
+		rows = append(rows, placeRow{text: text, hit: i})
 	}
 	p.shown = len(rows)
 	for len(rows) < room {
 		rows = append(rows, placeRow{text: "", hit: -1})
 	}
 	return rows
+}
+
+// caretRow parks the terminal's caret in the box a person is typing into when
+// that box is one of the rows just built: the filter row, the new line being
+// written on the add row, or a line being reworded in its own row.
+func (placeMemory) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	p := &a.mem
+	if p.expanded != "" || p.reading.bare() {
+		return 0, 0, false
+	}
+	listWidth := taskPaneList(width)
+	want, column := -1, 0
+	for i, line := range p.reading.lines {
+		switch {
+		case p.edit == nil && line.kind == memoryReadingControl:
+			_, column = memoryControlRow(p.reading.typed, listWidth, a.pal)
+			want = i
+		case p.edit != nil && p.editID == memoryAddID && line.kind == memoryReadingAdd:
+			_, column = memoryAddRow(listWidth, a.pal, true, p.edit)
+			want = i
+		case p.edit != nil && line.kind == memoryReadingMemory && line.memory != nil && line.memory.ID == p.editID:
+			_, column = memoryLineRow(line, listWidth, a.pal, true, p.edit)
+			want = i
+		}
+		if want >= 0 {
+			break
+		}
+	}
+	if want < 0 {
+		return 0, 0, false
+	}
+	for j, row := range rows {
+		if hit, ok := row.hit.(int); ok && hit == want {
+			return j, column, true
+		}
+	}
+	// The window scrolled the box off this frame; the caret is hidden rather
+	// than parked in a box that is not the one the words are landing in.
+	return -1, 0, true
+}
+
+// memoryPaneRows is the pane: the row under the cursor read out, in exactly the
+// rows it was given.
+func (a *app) memoryPaneRows(width, room int) []string {
+	if room < 1 {
+		return nil
+	}
+	p, pal := &a.mem, a.pal
+	var rows []string
+	add := func(text string) { rows = append(rows, fit(text, width)) }
+	gap := func() {
+		if len(rows) > 0 && rows[len(rows)-1] != "" {
+			rows = append(rows, "")
+		}
+	}
+	stop, ok := p.reading.at(p.cursor)
+	switch {
+	case width < 1 || !ok:
+	case stop.add:
+		add(pal.bold(pal.ink(memoryAddWord)))
+		gap()
+		for _, line := range wrapText("one line codeaf keeps in front of every conversation "+p.addReach(), width) {
+			add(pal.dim(line))
+		}
+		gap()
+		add(pal.dim("enter starts it"))
+	case stop.line != nil:
+		memory := *stop.line
+		for _, line := range wrapText(memory.Text, width) {
+			add(pal.bold(pal.ink(line)))
+		}
+		gap()
+		for _, fact := range p.memoryFacts(memory) {
+			add(pal.dim(fact))
+		}
+		gap()
+		if memory.Status != store.MemoryActive {
+			add(pal.dim("→ " + memoryUndoWord))
+		} else {
+			add(pal.dim("→ edit, forget, move"))
+		}
+	default:
+		for _, line := range p.reading.lines {
+			if line.kind != memoryReadingShelf || line.shelf != stop.shelf {
+				continue
+			}
+			add(placeHeading(line.label, pal))
+			gap()
+			for _, said := range wrapText(memoryShelfAbout(stop.shelf, p.here), width) {
+				add(pal.dim(said))
+			}
+			add(pal.dim(memoryLinesWord(line.count)))
+			gap()
+			if line.open {
+				add(pal.dim(tasksShutWord))
+			} else {
+				add(pal.dim(memoryShelfOpenWord))
+			}
+			break
+		}
+	}
+	if len(rows) > room {
+		rows = rows[:room]
+	}
+	for len(rows) < room {
+		rows = append(rows, "")
+	}
+	return rows
+}
+
+// memoryFacts is what the pane and the card say about one line beyond its
+// words: where it holds, who kept it or what happened to it, and when and
+// where it was learned when the store has said.
+func (p *memoryPlace) memoryFacts(memory store.Memory) []string {
+	about := []string{p.memoryWhere(memory)}
+	if word := memoryStatusWord(memory.Status); word != "" {
+		about = append(about, word)
+	}
+	if word := memoryOriginWord(memory.Origin); word != "" {
+		about = append(about, "kept by "+word)
+	}
+	facts := []string{strings.Join(about, " · ")}
+	// WHERE IT WAS LEARNED IS SAID ONLY WHEN THE STORE SAID. An origin nobody
+	// could name is absent rather than "somewhere", and one still on its way is
+	// absent until it lands.
+	if origin, held := p.origins[memory.ID]; held {
+		learned := ""
+		if age := sinceAt(origin.at, p.read); age != "" {
+			learned = age + " ago"
+		}
+		if origin.title != "" {
+			if learned != "" {
+				learned += " · "
+			}
+			learned += "in '" + origin.title + "'"
+		}
+		if learned != "" {
+			facts = append(facts, learned)
+		}
+	}
+	return facts
+}
+
+// addReach is where a line kept from the add row holds, in the pane's words.
+func (p *memoryPlace) addReach() string {
+	if p.here == "" {
+		return "here, for you in every project"
+	}
+	return "in this project"
+}
+
+// memoryShelfAbout is what a group means, in the pane's words: which
+// conversations its lines are put in front of.
+func memoryShelfAbout(key, here string) string {
+	switch {
+	case key == store.OwnerUser:
+		return "in front of every conversation, in every project"
+	case key == store.OwnerMachine:
+		return "in front of every conversation on this machine"
+	case key == memoryLetGoKey:
+		return "forgotten or replaced, and in front of nothing · → on a line puts it back"
+	case key == store.OwnerLegacyProject:
+		return "kept by an earlier build that could not tell which project · → on a line moves it"
+	case here != "" && key == here:
+		return "in front of every conversation in this project"
+	}
+	return "in front of conversations in that project, and not here"
+}
+
+// memoryLinesWord is a group's count in words.
+func memoryLinesWord(n int) string {
+	if n == 1 {
+		return "1 line"
+	}
+	return groupedInt(n) + " lines"
+}
+
+// memoryOriginMsg is one line's provenance, read off the loop.
+type memoryOriginMsg struct {
+	id     string
+	origin memoryOrigin
+	ok     bool
+}
+
+// memoryFollow asks the store where the line under the cursor was learned,
+// once per line, OFF the update loop — over --host it is a wire call — so the
+// pane can say it when it lands. Until then that one fact is absent, which is
+// the emptiness law applied to a fact that is merely late.
+func (a *app) memoryFollow() tea.Cmd {
+	p := &a.mem
+	if a.memory == nil || !a.at(pageMemory) {
+		return nil
+	}
+	memory, ok := p.choice()
+	if !ok {
+		return nil
+	}
+	if _, held := p.origins[memory.ID]; held || p.asking[memory.ID] {
+		return nil
+	}
+	if p.asking == nil {
+		p.asking = map[string]bool{}
+	}
+	p.asking[memory.ID] = true
+	mem, id := a.memory, memory.ID
+	return func() tea.Msg {
+		where, title, at, err := mem.MemoryProvenance(id)
+		return memoryOriginMsg{id: id, origin: memoryOrigin{session: where, title: title, at: at}, ok: err == nil}
+	}
+}
+
+// adoptMemoryOrigin lands one provenance read. A read that failed is not
+// retried on this visit: the pane is complete without it.
+func (a *app) adoptMemoryOrigin(msg memoryOriginMsg) {
+	p := &a.mem
+	delete(p.asking, msg.id)
+	if !msg.ok || p.origins == nil {
+		return
+	}
+	p.origins[msg.id] = msg.origin
+	a.touch()
 }
 
 func (placeMemory) stops(a *app) []int { return a.mem.stops() }
@@ -607,22 +918,28 @@ func (placeMemory) rowID(a *app) string {
 	return ""
 }
 
-// enter opens the editor on the add row, opens or closes a shelf, and opens a
-// line's card — the one view of a line that only looks.
+// enter opens the editor on the add row and a line's card — the whole view of
+// one line. IT DOES NOTHING ON A GROUP: groups open on `→` and fold on `←`,
+// and the foot over a group names those and not `enter`.
 func (placeMemory) enter(a *app) tea.Cmd {
 	p := &a.mem
 	if p.onAdd() {
 		p.startEdit(memoryAddID, "")
 		return nil
 	}
-	if key, ok := p.shelfUnder(); ok {
-		p.toggleShelf(key)
-		return nil
-	}
 	if memory, ok := p.choice(); ok {
 		p.openMemoryCard(a, memory)
 	}
 	return nil
+}
+
+// fold is `→` and `←` on a group (placekeys.go's [app.placeFold]).
+func (placeMemory) fold(a *app, open bool) bool {
+	if !a.mem.fold(open) {
+		return false
+	}
+	a.touch()
+	return true
 }
 
 // openMemoryCard is one line's own page: its provenance is read for THAT ONE id,
@@ -727,7 +1044,7 @@ func (placeMemory) verbs(a *app) []verb {
 	return verbs
 }
 
-// alt answers no view key: the shelves open and close on `enter`.
+// alt answers no view key: the groups open on `→` and fold on `←`.
 func (placeMemory) alt(a *app, letter rune) bool { return false }
 
 // box is the filter, or the words being written while the editor is open.
@@ -767,7 +1084,10 @@ func (placeMemory) hint(a *app) string {
 		return memoryAddHint
 	}
 	if _, ok := p.shelfUnder(); ok {
-		return memoryShelfHint
+		if p.shelfOpen() {
+			return memoryShelfShutHint
+		}
+		return memoryShelfOpenHint
 	}
 	if memory, ok := p.choice(); ok {
 		if memory.Status != store.MemoryActive {
@@ -775,13 +1095,15 @@ func (placeMemory) hint(a *app) string {
 		}
 		return memoryLineHint
 	}
-	return memoryShelfHint
+	return memoryAddHint
 }
 
 func (placeMemory) changed(a *app, since time.Time) int { return a.memoryChangedSince(since) }
 
-// press is enter on the row it lands on. A card or an editor standing open is
-// not the list, so a press over it lands on no row of it.
+// press is enter on the row it lands on, and on a group it is the fold: a
+// pointer has no arrows, and a press on a row that opens is how it opens. A
+// card or an editor standing open is not the list, so a press over it lands on
+// no row of it.
 func (placeMemory) press(a *app, y int) (tea.Cmd, bool) {
 	p := &a.mem
 	if p.expanded != "" || p.edit != nil {
@@ -791,12 +1113,17 @@ func (placeMemory) press(a *app, y int) (tea.Cmd, bool) {
 	if !ok {
 		return nil, true
 	}
-	if _, ok := p.reading.at(at); !ok {
+	stop, ok := p.reading.at(at)
+	if !ok {
 		return nil, true
 	}
 	p.cursor = at
 	a.touch()
-	return placeMemory{}.enter(a), true
+	if !stop.add && stop.line == nil {
+		p.fold(!p.shelfOpen())
+		return a.memoryFollow(), true
+	}
+	return tea.Batch(placeMemory{}.enter(a), a.memoryFollow()), true
 }
 
 func (placeMemory) hover(a *app, y int) bool {
@@ -812,11 +1139,15 @@ func (placeMemory) hover(a *app, y int) bool {
 func (placeMemory) wheel(a *app, delta int) (tea.Cmd, bool) {
 	a.mem.move(delta)
 	a.touch()
-	return nil, true
+	return a.memoryFollow(), true
 }
 
-// key is this place's own reading of a key the router did not take.
-func (placeMemory) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.memoryKey(msg) }
+// key is this place's own reading of a key the router did not take. Every key
+// may have moved the cursor onto a line whose provenance the pane has not
+// read yet, so each one asks ([app.memoryFollow]).
+func (placeMemory) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
+	return tea.Batch(a.memoryKey(msg), a.memoryFollow())
+}
 
 // owns is the editor: a whole-keyboard surface inside [placeMemory.key], so the
 // place router never walks the place out from under somebody mid-sentence.

@@ -93,9 +93,10 @@ func TestDefaultEngineMemoryCommandsReachTheRealSession(t *testing.T) {
 	if err != nil || shelves.Held != 2 {
 		t.Fatalf("the memory place snapshot = %+v, %v", shelves, err)
 	}
-	forgot, err := commands.Forget("tabs")
-	if err != nil || forgot != "forgot · prefers tabs over spaces in Go" {
-		t.Fatalf("forget = %q, %v", forgot, err)
+	// A PERSON FORGETS ON THE MEMORIES TAB, by the line's id, through the
+	// engine's own store.
+	if err := loop.Client.ForgetMemory(lines[0].ID); err != nil {
+		t.Fatalf("forget = %v", err)
 	}
 	lines, err = commands.Memories("tabs")
 	if err != nil || len(lines) != 0 {
@@ -143,7 +144,7 @@ func TestDefaultEngineMemoryOffIsNotAnEmptyEnabledStore(t *testing.T) {
 	if !ok || commands.Remembers() {
 		t.Fatal("the ordinary engine handle does not distinguish memory off")
 	}
-	for _, method := range []string{MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories} {
+	for _, method := range []string{MethodMemoryRemember, MethodMemoryMemories} {
 		if _, err := loop.Client.call(nil, method, "tabs"); err == nil || !strings.Contains(err.Error(), memoryGoneWord) {
 			t.Fatalf("%s with memory off = %v", method, err)
 		}

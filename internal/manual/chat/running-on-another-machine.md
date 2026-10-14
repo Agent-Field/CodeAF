@@ -483,7 +483,7 @@ does not claim the far registry is empty.
 
 The memory commands are different: this build carries the connected engine's memory state
 and memory doors. `/memory <query>` and `/memories` read that machine's store, while
-`/remember` and `/forget` write it. When that machine's memory store could not be
+`/remember` and the Memories tab write it. When that machine's memory store could not be
 opened, they say exactly:
 `memory is unavailable on this machine · the store could not be opened`.
 
@@ -510,7 +510,7 @@ name the connected machine, and say to change the crew there:
 ## How does remember over host know whether memory is on?
 
 The connection's welcome says whether the connected engine has its memory store open,
-and the memory commands use that engine's store. `/remember` and `/forget` write there;
+and the memory commands use that engine's store. `/remember` and the Memories tab write there;
 `/memories` and `/memory <query>` read there. Memory has no off switch — the far
 machine's `notice things to remember` row decides only whether that engine keeps lines
 on its own — so the one refusal is a store that would not open:

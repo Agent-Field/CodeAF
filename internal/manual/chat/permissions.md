@@ -845,7 +845,7 @@ underneath whatever you wrote:
 - **The agent's own bookkeeping** — `track` and `recall`, which write to and read
   from the working state codeaf keeps for itself, and `remember` and `forget`,
   which keep or forget one of your memory lines. Neither memory verb is silent:
-  the conversation says `remembered · …` or `forgot · …`, and `/forget` on its own
+  the conversation says `remembered · …` or `forgot · …`, and the Memories tab
   takes it straight back.
 - **`manual`**, which reads pages compiled into this binary and touches no disk
   at all. Asking you to approve codeaf looking up its own documentation would be

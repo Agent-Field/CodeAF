@@ -163,7 +163,7 @@ Answer against the model's pick and add why. The decision and your reason are
 kept in `decisions.jsonl` as the record of what happened. An answer is not turned
 into a memory on its own: when the reason should hold in every conversation, say
 "remember that…" or type `/remember <the reason>`, and the conversation says
-`remembered · …`; `/forget` on its own takes it back.
+`remembered · …`; the Memories tab forgets it.
 
 ## A finished task waiting on your word counts as needing you
 

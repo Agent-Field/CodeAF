@@ -63,12 +63,6 @@ func TestMemoryCrossesTheWireToTheRealSession(t *testing.T) {
 	if row.Owner != store.OwnerUser {
 		t.Fatalf("the moved line = %+v", row)
 	}
-	// A BARE FORGET IS THE UNDO, and it crosses as an empty query rather than
-	// a search for nothing.
-	undone, err := commands.Forget("")
-	if err != nil || undone != "took back · no emoji anywhere" {
-		t.Fatalf("the undo over the wire = (%q, %v)", undone, err)
-	}
 	// AND THE PLACE'S FIX THROUGH THE ENGINE'S STORE carries only the words.
 	if err := loop.Client.UpdateMemory(lines[0].ID, "use tabs everywhere"); err != nil {
 		t.Fatalf("a fix over the wire: %v", err)

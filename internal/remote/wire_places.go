@@ -110,9 +110,8 @@ const (
 	// These are the commands, which act for the CONVERSATION — its project
 	// decides where a line holds — rather than on the store editor behind the
 	// memory place. Each answers the receipt the surface prints.
-	MethodMemoryRemember    = "Memory.Remember"    // string → receipt
-	MethodMemoryForgetQuery = "Memory.ForgetQuery" // string → receipt ("" undoes)
-	MethodMemoryMemories    = "Memory.Memories"    // string → []session.MemoryLine
+	MethodMemoryRemember = "Memory.Remember" // string → receipt
+	MethodMemoryMemories = "Memory.Memories" // string → []session.MemoryLine
 	// MethodMemoryMove is the place moving one line to where the person says
 	// it holds — for them everywhere, this machine, or this conversation's
 	// project — which only the conversation can resolve.
@@ -240,7 +239,6 @@ type EngineMemory interface {
 type MemoryCommands interface {
 	Remembers() bool
 	Remember(text string) (string, error)
-	Forget(query string) (string, error)
 	Memories(query string) ([]session.MemoryLine, error)
 	// RememberAlways and AlwaysMemories are /always: the same errand as
 	// /remember, and its listing.

@@ -1377,14 +1377,10 @@ func (c *Client) AlwaysMemories(everywhere bool) ([]session.MemoryLine, error) {
 	return lines, err
 }
 
-// Remember, ForgetQuery and MoveMemory each answer the receipt the engine's
+// Remember and MoveMemory each answer the receipt the engine's
 // conversation wrote: it is the one that knows where a line holds.
 func (c *Client) Remember(text string) (string, error) {
 	return c.receipt(MethodMemoryRemember, text)
-}
-
-func (c *Client) ForgetQuery(query string) (string, error) {
-	return c.receipt(MethodMemoryForgetQuery, query)
 }
 
 func (c *Client) MoveMemory(id, scope string) (string, error) {

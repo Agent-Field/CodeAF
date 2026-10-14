@@ -519,6 +519,9 @@ func (p page) lookKey() string {
 	if p == pageTeams {
 		return "teams"
 	}
+	if p == pageMemory {
+		return "memory"
+	}
 	return p.word()
 }
 
@@ -551,6 +554,10 @@ func placeNames(id page) []string {
 		names = append(names, "teams")
 	case pageTasks:
 		names = append(names, "sessions")
+	case pageMemory:
+		// The tab was "memory" until 2026-10-14; the word a person learned
+		// still reaches it.
+		names = append(names, "memory")
 	}
 	return names
 }

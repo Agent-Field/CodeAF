@@ -202,7 +202,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Memory, accounts and the rest**
 
-- `/remember carries a fact forward, /forget drops it` — retired when `/remember` is typed.
+- `/remember carries a fact forward, and the Memories tab forgets it` — retired when `/remember` is typed.
   It is the only row that names two commands as a pair: the fact, and the way back out of
   it.
 - `/connect links Notion, Slack and other accounts` — retired when the connect panel

@@ -125,7 +125,7 @@ func (h *homeView) switchExchanges() []homeLine {
 // this screen is taken.
 //
 // ON HOME'S OWN BEAT AND NEVER ON A DRAW. There is SQLite behind that seam
-// (place_memory.go's [memoryStore]), and the law every home reader is held to is
+// (place_memories.go's [memoryStore]), and the law every home reader is held to is
 // that a draw never touches a disk (tui3.go). A window with no store, or a store
 // that could not be read, answers nothing — and the ledger then draws no memory
 // line at all, which is the emptiness law rather than a gap.

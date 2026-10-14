@@ -157,7 +157,7 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 		}
 		payload, err := memoryCall(engine.Memory, call)
 		return payload, true, err
-	case MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories,
+	case MethodMemoryRemember, MethodMemoryMemories,
 		MethodMemoryRememberAlways, MethodMemoryAlways, MethodMemoryMove, MethodMemoryProject:
 		commands, ok := sess.current().(MemoryCommands)
 		if !ok || !commands.Remembers() {
@@ -371,12 +371,6 @@ func memoryCommandCall(commands MemoryCommands, call Frame) (json.RawMessage, er
 	switch call.Method {
 	case MethodMemoryRemember:
 		receipt, err := commands.Remember(text)
-		if err != nil {
-			return nil, err
-		}
-		return json.Marshal(receipt)
-	case MethodMemoryForgetQuery:
-		receipt, err := commands.Forget(text)
 		if err != nil {
 			return nil, err
 		}

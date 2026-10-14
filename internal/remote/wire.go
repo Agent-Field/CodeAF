@@ -386,12 +386,12 @@ import (
 //
 // VERSION 22 IS MEMORY WITH ONE STRENGTH (internal/session's memory.go). The
 // rule flag's door (`Memory.SetAlways`) and the flat list (`Memory.List`) are
-// gone, `Memory.Update` carries only the words, the commands answer whole
-// receipts, `Memory.ForgetQuery` with nothing in it undoes the conversation's
-// newest memory change, and `Memory.Move` and `Memory.Project` are new. The
-// number moves because a version-21 engine would answer the place's move as
-// "no such method" and an empty forget as a search for nothing — a key that
-// did nothing, and a person told so in words that were not true.
+// gone, so is the `/forget` command's `Memory.ForgetQuery` (a person forgets a
+// line on the Memories tab, by its id), `Memory.Update` carries only the words,
+// the commands answer whole receipts, and `Memory.Move` and `Memory.Project`
+// are new. The number moves because a version-21 engine would answer the
+// place's move as "no such method" — a key that did nothing, and a person told
+// so in words that were not true.
 const Version = 22
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods

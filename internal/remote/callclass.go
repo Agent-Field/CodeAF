@@ -171,7 +171,7 @@ func classify(method string) callClass {
 		MethodConsent, MethodConsentRemember,
 		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
-		MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories,
+		MethodMemoryRemember, MethodMemoryMemories,
 		MethodMemoryRememberAlways, MethodMemoryAlways, MethodMemoryMove,
 		MethodTake, MethodAnswerLaneOffer, MethodInterrupt, MethodUnqueueFollowUp,
 		MethodPlanNote, MethodPlanPause, MethodPlanResume, MethodPlanCancel, MethodPlanAmend, MethodPlanPriority,

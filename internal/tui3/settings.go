@@ -814,7 +814,7 @@ func (s *sheet) finishCategory() {
 	title := settingTabs[s.tab]
 	shown := make([]sheetItem, 0, len(s.items))
 	if title == tabMemory {
-		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "Open the Memory tab", about: "See every remembered line, who kept it, and fix, move, forget or put one back (" + placeChord(pageMemory) + ")."}})
+		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "Open the Memories tab", about: "See every remembered line, who kept it, and fix, move, forget or put one back (" + placeChord(pageMemory) + ")."}})
 	}
 	advanced := make([]sheetItem, 0)
 	catalog := make([]sheetItem, 0)
