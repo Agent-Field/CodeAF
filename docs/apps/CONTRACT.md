@@ -200,6 +200,13 @@ and literal commas **inside** the query: `status:"in progress"`,
 `status:"won't fix"`, `title:"{{params.title}}"`. YAML string quotes alone
 do not quote the embedded query value; use a block scalar when convenient.
 
+**Relative dates (one grammar).** A date or datetime value in a query may be a
+signed duration from the moment the query runs: `7d`, `2w`, `24h`, `30m`, with
+an optional `+` or `-`. `due<0d` is overdue, `pickup>-1d pickup<7d` is the
+coming week, `last_touch<-7d` is quiet for a week. Screen, record, agent and run
+queries and Check all read it through `expr.Offset`, the same units CEL rules
+accept (`now - 7d`, `days(n)`), so there is no second duration grammar.
+
 ```yaml
 run: wont-fix
 params:

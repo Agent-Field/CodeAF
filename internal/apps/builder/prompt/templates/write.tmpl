@@ -17,11 +17,11 @@ Names must exist: open screens, run targets, record types in to/binds/capabiliti
 - Field types: money, date, datetime (date+time), number, bool, enum (in work order), email, phone, url, longtext; relations are ref/refs with to, never text; person = an app member (default "$me").
 - Each type: label, plural, title (required text; add a summary text when nothing is a natural title). Refs are optional. Index filtered or sorted status, date and ref fields; status enums get a default.
 - Every field has a Title Case label, the words a user says: publish_on → "Publish date", value → "Deal value". AI field labels end "· AI".
-- Derived numbers are computed (`price - deposit`). Bool computed for filters: `stock <= reorder_level` queried `low:true`; date window `pickup >= now && pickup < now + 7d` queried `this_week:true`.
+- Derived numbers are computed (`price - deposit`); low stock is bool computed `stock <= reorder_level`, queried `low:true`.
 
 ## Screens
 - One per plan screen, each with identical SectionTabs nav, labelled, items = screen titles in plan order.
-- The first plan screen is the daily view: its RecordList query keeps what needs the user now (date window or status); children ScreenSubtitle, StatStrip (stage field), FilterTokens.
+- The first plan screen is the daily view: its RecordList query keeps what needs the user now (a date window or status token); children ScreenSubtitle, StatStrip (stage field), FilterTokens.
 - Master/detail: Row containing Stack (title Text, primary New Button with records.create and ask for title/key fields, then RecordList) and Panel when "$selection.<list>.count == 1" containing RecordPage, Form (all editable fields; on.submit records.update set maps to $input.<field>), Delete Button (records.delete, confirm).
 - RecordList: id, label, records bind, query ending sort:field or sort:-field (by date when dates drive the work), <=6 columns with title first, query:true, an Empty slot saying what to add. Status enums with >=3 values get views ["Board by <Field label>","List"], meter, groupBy. Board cards show these columns, labelled. Quote multiword query values; no variables or functions in screen queries.
 - Requested subsets (low stock/upcoming/overdue) get a filtered RecordList above the main one, with a Text heading. Summaries use Chart (chart:"metric", agg) or filtered RecordList. BulkBar list names its RecordList; Buttons act on $selection.<list>.ids.
