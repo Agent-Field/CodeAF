@@ -59,6 +59,7 @@ const retries = 2
 // own: agentsession has no defaults, so that nothing tuned for sec's agents
 // reaches review's, or the reverse.
 var sessionPolicy = agentsession.Policy{
+	StructuredAnswers: true,
 	// Asks for an answer of the right shape after one that was not.
 	FollowUps: 2,
 	// About a hundred thousand tokens, which every model a person is likely to

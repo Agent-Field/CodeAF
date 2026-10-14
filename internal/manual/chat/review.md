@@ -47,6 +47,12 @@ Its stages are on the rail and head the lines of its page:
 
 Each reviewer is an agent session that reads the checkout, told it is part of a code review, with four read-only tools — read a file, list a folder, find files by name, look for text in files — within the turns and minutes its part of the review is given — from ten turns for the smallest to thirty for a reviewer. It reserves thirty seconds of its time limit for the answer, or half the remaining time when the limit is shorter than a minute. At the reading cutoff it stops reading and answers from what it has already found; the answer must still finish within the original time limit. At a shell, `--max-turns` and `--session-wall` set one limit for every reviewer instead. A review of a mid-sized pull request commonly takes half an hour to an hour.
 
+A linked path to the repository is accepted as the same reading root. Files and links that lead outside that root are still refused.
+
+## Final answers — JSON Schema, supported response formats, unsupported endpoints
+
+Review's agents ask for a native schema-bound format on their final answers when the profile's cached model catalog publishes support. Reading turns keep their read-only tools. When support is unknown or absent, the schema stays in the prompt. An endpoint that explicitly refuses that format gets one prompt-only fallback inside the existing turn and time limits. Every answer is still checked against the original schema; invalid schemas, account refusals, provider outages and cancellation do not buy a formatting fallback.
+
 ## What /review shows while it runs — each reviewer's line, what it found, which files
 
 Its page shows each stage once as the review enters it, then one line per finished step under it with what it found: `reviewed internal/auth/middleware.go, internal/auth/token.go and 2 more` · `3 findings`, and the step opened shows the first findings by title. A step that failed says `failed` and why. `ctrl+y` shows the raw model calls.
@@ -73,6 +79,8 @@ A run nobody set a limit for stops at **$5 and two hours**, or sooner where this
 It keeps three minutes of its time ceiling back to write its review. **A review its time ceiling cuts still reports**, and says so in its second line: `It reached its time ceiling of 2h while reviewing, so the reviewers still running were stopped and their parts of the change were not reviewed.` A run that reaches a ceiling before it has any review says `it reached the run's dollar ceiling before it finished, so it has no review` (or `time ceiling`).
 
 **Which models.** From the chat, the conversation's working seat reads the code and its light seat makes the single structured calls; a model you name for the hand-off reads the code instead. At a shell, `--model` and `--light` name them, else the profile's work seat does both.
+
+Both flags resolve model words through the profile's catalog, including floating aliases and provider-qualified names. An unknown model word is refused before any model call starts.
 
 ## Fixing what /review found — hand the findings to senior-dev, fix the blocking findings
 

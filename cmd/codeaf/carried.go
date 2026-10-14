@@ -309,6 +309,25 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		}
 		inv.Line = carriedResolvedModel(inv.Line, modelFlag, resolved)
 	}
+	// AN AUXILIARY MODEL IS RESOLVED BY THE SAME DOOR. Leaving a light
+	// model as typed sent an unmarked floating alias where the main model
+	// had already been replaced by its catalog spelling.
+	for _, flag := range inv.Program.AuxiliaryModelFlags {
+		flag = strings.TrimSpace(flag)
+		word := strings.TrimSpace(inv.ExplicitFlags[flag])
+		if word == "" {
+			continue
+		}
+		resolved := word
+		if road.resolveModel != nil {
+			resolved, err = road.resolveModel(word)
+			if err != nil {
+				return err
+			}
+		}
+		inv.Line = carriedResolvedModel(inv.Line, flag, resolved)
+		modelsToWarm = append(modelsToWarm, strings.Split(resolved, ",")...)
+	}
 	if asked == "" && road.defaultSeat != nil {
 		road.seat, err = road.defaultSeat()
 		if err != nil {
