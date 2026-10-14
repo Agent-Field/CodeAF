@@ -21,7 +21,7 @@ import (
 // one piece of work waiting on a person, and two admitted behind it that nothing
 // has started.
 func tasksParkedFixture() (session.World, session.UsageWindow, time.Time) {
-	loc := time.FixedZone("fixture", -4*60*60)
+	loc := time.Local // #1808: the window buckets in local time, so a fixed foreign offset would shift the dates by $TZ
 	now := time.Date(2026, time.September, 2, 23, 52, 0, 0, loc)
 	row := session.SessionRow{ID: "room-a", Title: "The Task Surface", Project: "codeaf", Open: true, Live: false}
 	entry := func(id, label, status string) session.TaskIndexEntry {
