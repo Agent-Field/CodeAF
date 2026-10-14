@@ -75,10 +75,13 @@ func (s *Service) List(ctx context.Context, caller svc.Caller) ([]bridge.AppSumm
 		}
 		m, err := s.load(entry.Name())
 		if errors.Is(err, os.ErrNotExist) {
-			continue
+			continue // a folder without metadata is not an app yet
 		}
 		if err != nil {
-			return nil, err
+			if caller.Member == svc.Owner {
+				apps = append(apps, unreadableApp(entry.Name(), err))
+			}
+			continue
 		}
 		if m.Maker == caller.Member && m.State != StateDeleted {
 			apps = append(apps, m.AppSummary)
@@ -86,6 +89,16 @@ func (s *Service) List(ctx context.Context, caller svc.Caller) ([]bridge.AppSumm
 	}
 	sort.Slice(apps, func(i, j int) bool { return apps[i].ID < apps[j].ID })
 	return apps, nil
+}
+
+// An unreadable row uses folder identity because its metadata cannot be trusted.
+func unreadableApp(id string, err error) bridge.AppSummary {
+	problem := bridge.Errorf(bridge.CodeInternal, "app metadata could not be read")
+	var typed *bridge.Error
+	if errors.As(err, &typed) {
+		problem = bridge.Errorf(typed.Code, typed.Message)
+	}
+	return bridge.AppSummary{ID: id, Name: id, Space: "personal", Error: problem}
 }
 
 func (s *Service) Get(ctx context.Context, app string) (bridge.AppDetail, error) {

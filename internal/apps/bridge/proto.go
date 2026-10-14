@@ -139,6 +139,7 @@ type AppSummary struct {
 	Space       string   `json:"space"`
 	UpdatedAt   string   `json:"updated_at"`          // RFC 3339
 	NeedsYou    int      `json:"needs_you,omitempty"` // open approvals
+	Error       *Error   `json:"error,omitempty"`     // unreadable apps.list row
 }
 
 // AppDetail is apps.get: the summary plus the definition files and Needs.

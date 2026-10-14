@@ -322,6 +322,17 @@ The store copies `app.Tint` into metadata in `definitionSummary` and copies
 `labels.Tint` when `WriteFiles` refreshes labels. This supplies tint to List,
 detail, Keep and app state events without choosing a default.
 
+`AppSummary` also has optional `error: {code, message}` on unreadable
+`apps.list` rows. Readable rows omit it, so older desks can ignore the new
+field. An unreadable personal app uses its folder name for both `id` and
+`name`, with `space: "personal"`; its other metadata is unknown. Typed
+validation errors keep their code and short message; other read/decode errors
+use `internal` and `app metadata could not be read`. Missing metadata also
+produces an error row. These rows are visible only to the personal owner.
+One unreadable app does not prevent other apps from being listed. Failure to
+read the registry directory still fails the call, except that a registry
+directory not yet created continues to mean an empty list.
+
 ### Methods
 
 | Method | `app` | params → result |

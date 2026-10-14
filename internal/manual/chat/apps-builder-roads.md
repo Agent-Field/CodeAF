@@ -1,5 +1,9 @@
 # How the Apps Builder builds your app
 
+## One unreadable app does not hide the app list
+
+If a personal app's saved metadata is corrupt or belongs to a different folder, the app list still returns the other readable apps. The unreadable app stays in the list under its folder name, with an error code and short message for the desk to display. If the apps directory itself cannot be read, listing still fails. A directory that has not been created yet means an empty list.
+
 ## The Builder takes a second pass when the first write fails
 
 When the Builder writes your app and its first attempt does not pass its own check, it does not show you an error. It says "Taking a second pass…" and tries again, working from the plan you already approved. The second pass is short on purpose: at most 60 steps, 6 minutes and $0.30. Whichever limit it reaches first stops it.
