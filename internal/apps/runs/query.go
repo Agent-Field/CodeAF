@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/expr"
 )
 
 // matchQuery applies QueryField tokens. The records service may not understand
@@ -157,17 +158,9 @@ func matchCmp(got any, op, value string, now time.Time) bool {
 	return cmpFloat(left, op, right)
 }
 
+// relativeTime shares expr's duration grammar with screen queries and rules.
 func relativeTime(value string, now time.Time) (time.Time, bool) {
-	neg := strings.HasPrefix(value, "-")
-	raw := strings.TrimPrefix(value, "-")
-	d, ok := parseDur(raw)
-	if !ok {
-		return time.Time{}, false
-	}
-	if neg {
-		return now.Add(-d), true
-	}
-	return now.Add(d), true
+	return expr.RelativeTime(value, now)
 }
 
 func asTime(value any) (time.Time, bool) {
@@ -185,6 +178,10 @@ func asTime(value any) (time.Time, bool) {
 func splitOp(token string) (field, op, value string, ok bool) {
 	for _, candidate := range []string{"<=", ">=", "<", ">", ":"} {
 		if i := strings.Index(token, candidate); i > 0 {
+			if candidate != ":" {
+				// `due:<0d` is `due<0d`: the same liberal spelling screen queries take.
+				return strings.TrimSuffix(token[:i], ":"), candidate, token[i+len(candidate):], true
+			}
 			return token[:i], candidate, token[i+len(candidate):], true
 		}
 	}

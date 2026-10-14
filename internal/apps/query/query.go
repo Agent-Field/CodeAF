@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Agent-Field/codeaf/internal/apps/expr"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
@@ -21,6 +22,8 @@ const (
 	Ne       Op = "ne"
 	Lt       Op = "lt"
 	Gt       Op = "gt"
+	Le       Op = "le"
+	Ge       Op = "ge"
 	In       Op = "in"
 	Contains Op = "contains"
 	IsNull   Op = "isnull"
@@ -80,12 +83,19 @@ func Expression(schema *spec.RecordType, field string) (string, error) {
 
 // Parse accepts QueryField tokens. Quoted values can contain spaces and commas.
 func Parse(schema *spec.RecordType, text, member string) (AST, error) {
+	return ParseAt(schema, text, member, time.Now())
+}
+
+// ParseAt is Parse with the request clock: a date or datetime value written as
+// an expr.Offset literal (`due<7d`, `last_touch<-7d`, `due<0d`) resolves
+// against now, so a screen filter stays current without a computed field.
+func ParseAt(schema *spec.RecordType, text, member string, now time.Time) (AST, error) {
 	a := AST{Sort: Sort{Field: "id"}}
-	tokens, err := split(text, unicode.IsSpace)
+	tokens, err := split(normalize(schema, text), unicode.IsSpace)
 	if err != nil {
 		return a, err
 	}
-	for _, token := range tokens {
+	for _, token := range dayRanges(schema, tokens, now) {
 		if strings.HasPrefix(token, "sort:") {
 			value := strings.TrimPrefix(token, "sort:")
 			a.Sort = Sort{Field: strings.TrimPrefix(value, "-"), Desc: strings.HasPrefix(value, "-")}
@@ -94,15 +104,15 @@ func Parse(schema *spec.RecordType, text, member string) (AST, error) {
 			}
 			continue
 		}
-		p, err := parseToken(schema, token, member)
+		p, err := parseToken(schema, comparisonToken(token), member, now)
 		if err != nil {
-			return a, err
+			return a, fmt.Errorf("query token %q: %w; query tokens are field<7d, field>=-30d, field:today, field:value; not CEL", token, err)
 		}
 		a.Filters = append(a.Filters, p)
 	}
 	return a, nil
 }
-func parseToken(schema *spec.RecordType, token, member string) (Predicate, error) {
+func parseToken(schema *spec.RecordType, token, member string, now time.Time) (Predicate, error) {
 	pos := strings.IndexAny(token, ":<>!=~")
 	if pos < 1 {
 		return Predicate{}, fmt.Errorf("expected field:value in %q", token)
@@ -112,8 +122,14 @@ func parseToken(schema *spec.RecordType, token, member string) (Predicate, error
 	switch token[pos] {
 	case '<':
 		p.Op = Lt
+		if strings.HasPrefix(value, "=") {
+			p.Op, value = Le, value[1:]
+		}
 	case '>':
 		p.Op = Gt
+		if strings.HasPrefix(value, "=") {
+			p.Op, value = Ge, value[1:]
+		}
 	case '!':
 		if !strings.HasPrefix(value, "=") {
 			return p, fmt.Errorf("expected !=")
@@ -179,13 +195,61 @@ func parseToken(schema *spec.RecordType, token, member string) (Predicate, error
 		if p.Field == "created_at" || p.Field == "updated_at" {
 			f = &spec.Field{Type: spec.FieldDatetime}
 		}
-		typed, err := valueFor(f, v)
+		typed, err := valueFor(f, relativeValue(f, v, now))
 		if err != nil {
 			return p, err
 		}
 		p.Values = append(p.Values, typed)
 	}
 	return p, nil
+}
+
+// comparisonToken drops the colon a writer puts before a comparison
+// (`due:<0d` is `due<0d`), so both spellings mean the same token.
+func comparisonToken(token string) string {
+	field, rest, found := strings.Cut(token, ":")
+	if found && rest != "" && (rest[0] == '<' || rest[0] == '>') {
+		return field + rest
+	}
+	return token
+}
+
+// dayRanges turns `field:today` (or tomorrow, yesterday) on a date or
+// datetime field into the two comparisons that bound that day, so a day word
+// means "within that day" whatever the stored precision.
+func dayRanges(schema *spec.RecordType, tokens []string, now time.Time) []string {
+	out := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		field, word, found := strings.Cut(token, ":")
+		f := schema.Fields[field]
+		if !found || !expr.IsDayWord(word) || f == nil || (f.Type != spec.FieldDate && f.Type != spec.FieldDatetime) {
+			out = append(out, token)
+			continue
+		}
+		start, _ := expr.RelativeTime(word, now)
+		layout := time.RFC3339Nano
+		if f.Type == spec.FieldDate {
+			layout = "2006-01-02"
+		}
+		out = append(out, field+">="+start.Format(layout), field+"<"+start.AddDate(0, 0, 1).Format(layout))
+	}
+	return out
+}
+
+// relativeValue rewrites an Offset literal on a date or datetime field into
+// the stored form valueFor expects; every other value passes through.
+func relativeValue(f *spec.Field, value string, now time.Time) string {
+	if f == nil || (f.Type != spec.FieldDate && f.Type != spec.FieldDatetime) {
+		return value
+	}
+	at, ok := expr.RelativeTime(value, now)
+	switch {
+	case !ok:
+		return value
+	case f.Type == spec.FieldDate:
+		return at.Format("2006-01-02")
+	}
+	return at.UTC().Format(time.RFC3339Nano)
 }
 func valueFor(f *spec.Field, value string) (any, error) {
 	if f == nil {
@@ -325,11 +389,11 @@ func predicate(schema *spec.RecordType, p Predicate) (string, []any, error) {
 	var sql string
 	args := append([]any(nil), p.Values...)
 	switch p.Op {
-	case Eq, Ne, Lt, Gt:
+	case Eq, Ne, Lt, Gt, Le, Ge:
 		if len(args) != 1 {
 			return "", nil, fmt.Errorf("comparison needs one value")
 		}
-		ops := map[Op]string{Eq: "=", Ne: "!=", Lt: "<", Gt: ">"}
+		ops := map[Op]string{Eq: "=", Ne: "!=", Lt: "<", Gt: ">", Le: "<=", Ge: ">="}
 		sql = target + " " + ops[p.Op] + " ?"
 	case In:
 		sql = target + " IN (" + strings.TrimSuffix(strings.Repeat("?,", len(args)), ",") + ")"
