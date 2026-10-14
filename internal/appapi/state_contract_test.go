@@ -122,7 +122,28 @@ func TestAgentStateContractForBothQuestionKinds(t *testing.T) {
 					return
 				}
 				c.step("window end before the engine takes the answer", c.windowEnds, "running", false)
-				c.step("answer consumed", func() { c.door.consume(); c.facts(false) }, "running", false)
+				// The pushed word still says what it said while the card waited.
+				c.step("answer consumed, engine word lags", c.door.consume, "running", false)
+				c.step("engine word catches up", func() { c.facts(false) }, "running", false)
+			})
+			if !sent || !kind.pushed {
+				continue
+			}
+			// A later need the engine reports with no question (a spending cap)
+			// is read again once work has shown after the answer.
+			t.Run(kind.name+" later need", func(t *testing.T) {
+				c := newStateContract(t)
+				q := kind.question
+				c.facts(true)
+				c.door.put(q)
+				item := "/app/v1/inbox/" + inboxItems(t, c.server)[0].ID
+				turnStatus(t, inboxReq(t, c.server, "POST", item+"/answer", kind.answer), 200)
+				c.windowEnds()
+				c.step("answer consumed, engine word lags", c.door.consume, "running", false)
+				c.registry.workShown(c.registry.live[c.id])
+				if view := readAgent(t, c.request(t, "GET", "/app/v1/agents/"+c.id, ""), 200).State; view != "needs_you" {
+					t.Fatalf("a need after work showed reads %s", view)
+				}
 			})
 		}
 	}
