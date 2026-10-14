@@ -18,6 +18,27 @@ type InboxItem struct {
 	Context      InboxContext        `json:"context"`
 	Verbs        []string            `json:"verbs"`
 	WhoCanAnswer []string            `json:"who_can_answer"`
+	Permission   *InboxPermission    `json:"permission,omitempty"`
+}
+
+// InboxPermission is the permission card's whole content: the exact commands
+// (never a tool name), what they touch, and the scopes a yes can take.
+type InboxPermission struct {
+	Reason       string            `json:"reason"`
+	Commands     []string          `json:"commands"`
+	CommandIDs   []string          `json:"command_ids,omitempty"`
+	Irreversible bool              `json:"irreversible"`
+	Task         string            `json:"task,omitempty"`
+	Scopes       []PermissionScope `json:"scopes"`
+	Touches      []string          `json:"touches,omitempty"`
+	ReadOnly     bool              `json:"read_only,omitempty"`
+}
+
+// PermissionScope is one rule a yes can save: this exact command, or its class.
+type PermissionScope struct {
+	ID      string `json:"id" jsonschema:"enum=exact,enum=class"`
+	Command string `json:"command"`
+	Label   string `json:"label"`
 }
 type InboxContext struct {
 	Before []DisplayEntry `json:"before" jsonschema:"minItems=2,maxItems=2"`
@@ -56,5 +77,5 @@ type InboxUndoWindowEvent struct {
 }
 
 func inboxContract() resourceContract {
-	return resourceContract{Name: "inbox", Types: []any{InboxItem{}, InboxContext{}, InboxResponse{}, InboxAnswerRequest{}, InboxAnswerResponse{}, InboxAddedEvent{}, InboxResolvedEvent{}, InboxUndoWindowEvent{}}, Routes: inboxContractRoutes, Events: []eventContract{{"inbox.added", InboxAddedEvent{}}, {"inbox.resolved", InboxResolvedEvent{}}, {"inbox.undo_window", InboxUndoWindowEvent{}}}}
+	return resourceContract{Name: "inbox", Types: []any{InboxItem{}, InboxPermission{}, PermissionScope{}, InboxContext{}, InboxResponse{}, InboxAnswerRequest{}, InboxAnswerResponse{}, InboxAddedEvent{}, InboxResolvedEvent{}, InboxUndoWindowEvent{}}, Routes: inboxContractRoutes, Events: []eventContract{{"inbox.added", InboxAddedEvent{}}, {"inbox.resolved", InboxResolvedEvent{}}, {"inbox.undo_window", InboxUndoWindowEvent{}}}}
 }
