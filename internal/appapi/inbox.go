@@ -136,9 +136,9 @@ func (s *Server) SetInboxSource(key string, source InboxSource) {
 	}
 	for id, row := range s.inbox.rows {
 		if row.key == key {
-			s.retainInbox(row, nil, nil, "no_longer_needed", "")
+			resolved := s.retainInbox(row, nil, nil, "no_longer_needed", "")
 			delete(s.inbox.rows, id)
-			_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, "no_longer_needed", "", s.inbox.now().UTC()})
+			_, _ = s.events.Publish(EventInboxResolved, resolved)
 		}
 	}
 	if stop := s.inbox.watches[key]; stop != nil {
@@ -275,8 +275,7 @@ func (s *Server) RefreshInbox(ctx context.Context) ([]InboxItem, error) {
 				}
 				delete(state.pending, id)
 			}
-			s.retainInbox(row, answer, receipt, how, by)
-			_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, how, by, state.now().UTC()})
+			_, _ = s.events.Publish(EventInboxResolved, s.retainInbox(row, answer, receipt, how, by))
 		}
 	}
 	s.pruneInbox()
@@ -427,10 +426,10 @@ func (s *Server) sendHeld(id string, p *inboxPending) bool {
 		_, _ = s.events.Publish(EventInboxAdded, InboxAddedEvent{id, p.row.item.Kind})
 		return false
 	}
-	s.retainInbox(p.row, &p.answer, reply.Receipt, "here", "you")
+	resolved := s.retainInbox(p.row, &p.answer, reply.Receipt, "here", "you")
 	delete(state.rows, id)
 	state.sent[id] = p.row.key
-	_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, "here", "you", state.now().UTC()})
+	_, _ = s.events.Publish(EventInboxResolved, resolved)
 	return true
 }
 
@@ -504,9 +503,9 @@ func (s *Server) resolveInbox(id, how, by string, answer *InboxAnswerRequest, re
 		holdInbox(p.row, false)
 		delete(s.inbox.pending, id)
 	}
-	s.retainInbox(row, answer, receipt, how, by)
+	resolved := s.retainInbox(row, answer, receipt, how, by)
 	delete(s.inbox.rows, id)
-	_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, how, by, s.inbox.now().UTC()})
+	_, _ = s.events.Publish(EventInboxResolved, resolved)
 }
 
 // ReadInbox includes resolved snapshots while the list remains waiting-only.
@@ -528,7 +527,8 @@ func (s *Server) ReadInbox(ctx context.Context, id string) (InboxItem, error) {
 
 // Callers hold the Inbox lock, so resolution and the retained detail become
 // visible together. A copied wire snapshot cannot retain a source credential.
-func (s *Server) retainInbox(row inboxRow, answer *InboxAnswerRequest, receipt *DisplayEntry, how, by string) {
+// It returns the resolution the caller publishes as inbox.resolved.
+func (s *Server) retainInbox(row inboxRow, answer *InboxAnswerRequest, receipt *DisplayEntry, how, by string) InboxResolvedEvent {
 	if source, ok := row.source.(interface {
 		InboxResult(InboxItem) (*InboxAnswerRequest, *DisplayEntry)
 	}); ok {
@@ -543,7 +543,7 @@ func (s *Server) retainInbox(row inboxRow, answer *InboxAnswerRequest, receipt *
 	at := s.inbox.now().UTC()
 	item := row.item
 	item.Answer, item.Receipt = answer, receipt
-	item.Resolved = &InboxResolvedEvent{item.ID, how, by, at}
+	item.Resolved = &InboxResolvedEvent{Item: item.ID, How: how, By: by, At: at, Verb: resolvedVerb(item, answer)}
 	if item.Receipt == nil && answer != nil {
 		text := answer.Words
 		if text == "" {
@@ -561,6 +561,20 @@ func (s *Server) retainInbox(row inboxRow, answer *InboxAnswerRequest, receipt *
 	_ = json.Unmarshal(raw, &snapshot)
 	s.inbox.resolved[item.ID] = snapshot
 	s.pruneInbox()
+	return *item.Resolved
+}
+
+// resolvedVerb names a permission decision for surfaces that show it after
+// the item leaves the list. Chat and rule answers carry the option key.
+func resolvedVerb(item InboxItem, answer *InboxAnswerRequest) string {
+	if item.Kind != "permission" || answer == nil {
+		return ""
+	}
+	switch answer.Verb {
+	case "allow_once", "always", "deny":
+		return answer.Verb
+	}
+	return permissionVerb(answer.Choice)
 }
 
 func (s *Server) pruneInbox() {

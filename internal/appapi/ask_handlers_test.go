@@ -615,6 +615,9 @@ func TestPermissionWindowEndKeepsRunningUntilTheEngineTakesTheAnswer(t *testing.
 		if changes != 0 || state != "running" || len(f.door.answers) != 1 {
 			t.Fatalf("window end before the engine took the answer: %d changes, now %s", changes, state)
 		}
+		if verb := resolvedVerbEvent(f.server, click); verb != "allow_once" {
+			t.Fatalf("inbox.resolved verb %q", verb)
+		}
 		f.door.consume()
 		f.engine.mu.Lock()
 		f.engine.needs = false
@@ -647,5 +650,39 @@ func TestOpenQuestionReadsNeedsYouWhenTheEngineWordSaysOtherwise(t *testing.T) {
 	f.registry.mu.Unlock()
 	if !needs {
 		t.Fatal("stored transitions would not read the open question")
+	}
+}
+
+func resolvedVerbEvent(s *Server, after uint64) string {
+	batch, _, _, _, _ := s.Events().read(after)
+	for _, event := range batch {
+		if event.kind == EventInboxResolved {
+			var row InboxResolvedEvent
+			_ = json.Unmarshal(event.data, &row)
+			return row.Verb
+		}
+	}
+	return "<none>"
+}
+
+// A permission resolution names its decision whichever surface answered:
+// Inbox verbs pass through, chat and rule answers carry the option key.
+func TestInboxResolvedNamesThePermissionVerb(t *testing.T) {
+	permission := InboxItem{Kind: "permission"}
+	for _, c := range []struct {
+		item   InboxItem
+		answer *InboxAnswerRequest
+		want   string
+	}{
+		{permission, &InboxAnswerRequest{Verb: "deny"}, "deny"},
+		{permission, &InboxAnswerRequest{Verb: "always"}, "always"},
+		{permission, &InboxAnswerRequest{Choice: "1"}, "allow_once"},
+		{permission, &InboxAnswerRequest{Choice: "3"}, "deny"},
+		{permission, nil, ""},
+		{InboxItem{Kind: "question"}, &InboxAnswerRequest{Choice: "1"}, ""},
+	} {
+		if got := resolvedVerb(c.item, c.answer); got != c.want {
+			t.Fatalf("%+v: %q, want %q", c.answer, got, c.want)
+		}
 	}
 }

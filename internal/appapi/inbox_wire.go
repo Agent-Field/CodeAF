@@ -73,6 +73,9 @@ type InboxResolvedEvent struct {
 	How  string    `json:"how" jsonschema:"enum=here,enum=in_place,enum=someone_else,enum=no_longer_needed"`
 	By   string    `json:"by"`
 	At   time.Time `json:"at"`
+	// Verb names a permission decision: allow_once, always, deny, or expired
+	// when the question clock ran out. Empty for other kinds.
+	Verb string `json:"verb,omitempty" jsonschema:"enum=allow_once,enum=always,enum=deny,enum=expired"`
 }
 type InboxUndoWindowEvent struct {
 	Item  string    `json:"item"`
