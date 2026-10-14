@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -129,6 +130,64 @@ func (s *Server) modelList(ctx context.Context) []CatalogModel {
 	return rows
 }
 
+// canonicalModelRows keeps one concrete choice per lineage for the picker.
+// The provider's full list remains the authority for writes and setup.
+func canonicalModelRows(models []CatalogModel) []CatalogModel {
+	rows := []CatalogModel{}
+	positions := map[string]int{}
+	builds := map[string]string{}
+	for _, row := range models {
+		if strings.Contains(row.ID, ":") || strings.HasPrefix(row.ID, "~") || strings.HasSuffix(row.ID, "-latest") {
+			continue
+		}
+		lineage := crewroute.Lineage(row.ID)
+		build := ""
+		// Let the shared helper recognise snapshots even when a provider's
+		// namespace or spelling differs from the canonical id.
+		if at := strings.LastIndex(row.ID, "-"); at > 0 && crewroute.Lineage(row.ID[:at]) == lineage {
+			build = row.ID[at+1:]
+		}
+		at, seen := positions[lineage]
+		if !seen {
+			positions[lineage] = len(rows)
+			builds[lineage] = build
+			rows = append(rows, row)
+			continue
+		}
+		// The plain id wins over snapshots; otherwise their date suffixes
+		// sort newest first without changing the provider's group order.
+		if held := builds[lineage]; held != "" && (build == "" || build > held) {
+			rows[at] = row
+			builds[lineage] = build
+		}
+	}
+	return rows
+}
+
+// modelListingLineage reads any router suffix as a route to the same model.
+// The shared lineage helper then owns aliases and snapshot spellings.
+func modelListingLineage(id string) string {
+	bare, _, _ := strings.Cut(id, ":")
+	return crewroute.Lineage(bare)
+}
+
+// savedModelName preserves a disconnected choice's remembered title without
+// fetching a catalogue or making that choice available for writes.
+func (s *Server) savedModelName(id string, models []CatalogModel) string {
+	for _, row := range models {
+		if row.ID == id && row.Name != "" && row.Name != id {
+			return row.Name
+		}
+	}
+	services := config.ResolveSources(s.options.ProfileDir, "", config.DefaultBaseURL)
+	service, bare := services.For(id)
+	remembered := catalog.Recall(config.CatalogOptionsFor(service, s.options.ProfileDir))
+	if model, known := remembered.Model(bare); known && model.Name != "" {
+		return model.Name
+	}
+	return id
+}
+
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	if !acceptMethod(w, r, "GET") {
 		return
@@ -137,12 +196,13 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// A supplied catalogue may reuse its slice across reads, so response-only
-	// prices belong to a copy rather than mutating its shared rows.
-	rows := slices.Clone(s.modelList(r.Context()))
-	seen := map[string]bool{}
+	// Filtering and response-only prices belong to fresh rows because a supplied
+	// catalogue may reuse its slice across reads and validation needs every id.
+	models := s.modelList(r.Context())
+	rows := canonicalModelRows(models)
+	listed := map[string]bool{}
 	for _, row := range rows {
-		seen[row.ID] = true
+		listed[modelListingLineage(row.ID)] = true
 	}
 	// A disconnected saved choice stays visible, with its actual availability.
 	saved := []string{values["models.default"].(string)}
@@ -150,9 +210,10 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	var pinned []string
 	_ = json.Unmarshal(raw, &pinned)
 	saved = append(saved, pinned...)
+	seen := map[string]bool{}
 	for _, id := range saved {
-		if id != "" && !seen[id] {
-			rows = append(rows, CatalogModel{ID: id, Name: id, Available: false, Efforts: append([]string{}, roles.Efforts...)})
+		if id != "" && !listed[modelListingLineage(id)] && !seen[id] {
+			rows = append(rows, CatalogModel{ID: id, Name: s.savedModelName(id, models), Available: false, Efforts: append([]string{}, roles.Efforts...)})
 			seen[id] = true
 		}
 	}
