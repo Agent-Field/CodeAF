@@ -76,6 +76,12 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 	if err := os.WriteFile(target, []byte("old executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The installer reports the executable's physical path. A temporary
+	// directory on macOS can name that same file through a linked ancestor.
+	canonicalTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
 	oldRun := runSurfaceProgram
 	oldClient, oldExecutable := surfaceUpdateClient, surfaceExecutable
 	oldRunningExecutable := surfaceRunningExecutable
@@ -157,7 +163,7 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 		t.Fatal(err)
 	}
 	installed, err := os.ReadFile(target)
-	if err != nil || string(installed) != string(asset) || result.Path != target || resolved != 1 {
+	if err != nil || string(installed) != string(asset) || result.Path != canonicalTarget || resolved != 1 {
 		t.Fatalf("result = %+v resolved = %d installed = %q, %v", result, resolved, installed, err)
 	}
 }
