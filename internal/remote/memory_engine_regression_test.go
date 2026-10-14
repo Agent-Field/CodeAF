@@ -30,7 +30,6 @@ func TestDefaultEngineMemoryCommandsReachTheRealSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
-	var enteredOnce sync.Once
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
@@ -43,8 +42,6 @@ func TestDefaultEngineMemoryCommandsReachTheRealSession(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Errorf("decode model request: %v", err)
 		}
-		enteredOnce.Do(func() { close(entered) })
-		<-release
 		if request.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"op\\\":\\\"add\\\"}\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
@@ -61,7 +58,7 @@ func TestDefaultEngineMemoryCommandsReachTheRealSession(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = far.Close() })
 	saved := make(chan struct{})
-	recorder := &memorySaveRecorder{Agent: far, saved: saved}
+	recorder := &memorySaveRecorder{Agent: far, saved: saved, entered: entered, release: release}
 	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
 		return &Engine{Agent: recorder, Memory: engineMemoryRows{brain}}, nil
 	}})
@@ -84,9 +81,9 @@ func TestDefaultEngineMemoryCommandsReachTheRealSession(t *testing.T) {
 	if err != nil || len(lines) != 1 || lines[0].ID != seeded.ID {
 		t.Fatalf("seeded memories = %+v, %v", lines, err)
 	}
-	title, err := commands.Remember("prefers tabs over spaces in Go")
-	if err != nil || title == "" {
-		t.Fatalf("remember = %q, %v", title, err)
+	receipt, err := commands.Remember("prefers tabs over spaces in Go")
+	if err != nil || !strings.HasPrefix(receipt, "remembered · prefers tabs over spaces in Go · ") {
+		t.Fatalf("remember = %q, %v", receipt, err)
 	}
 	lines, err = commands.Memories("tabs")
 	if err != nil || len(lines) != 1 || lines[0].Text != "prefers tabs over spaces in Go" {
@@ -97,16 +94,16 @@ func TestDefaultEngineMemoryCommandsReachTheRealSession(t *testing.T) {
 		t.Fatalf("the memory place snapshot = %+v, %v", shelves, err)
 	}
 	forgot, err := commands.Forget("tabs")
-	if err != nil || forgot != title {
-		t.Fatalf("forget = %q, %v; want %q", forgot, err, title)
+	if err != nil || forgot != "forgot · prefers tabs over spaces in Go" {
+		t.Fatalf("forget = %q, %v", forgot, err)
 	}
 	lines, err = commands.Memories("tabs")
 	if err != nil || len(lines) != 0 {
 		t.Fatalf("forgotten memory still listed = %+v, %v", lines, err)
 	}
 
-	// The decider is held by a channel, not a sleep. A receipt that expires
-	// while that real save runs must stay uncertain, and the write still lands.
+	// The save is held by a channel, not a sleep. A receipt that expires while
+	// that real save runs must stay uncertain, and the write still lands.
 	_, answered, err := loop.Client.callAnswered(nil, MethodMemoryRemember, "seasonal amber fixture stays", 20*time.Millisecond)
 	if answered || !errors.Is(err, ErrLate) {
 		t.Fatalf("held save receipt = answered %v, %v", answered, err)
@@ -114,7 +111,7 @@ func TestDefaultEngineMemoryCommandsReachTheRealSession(t *testing.T) {
 	select {
 	case <-entered:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the real memory decider was never reached")
+		t.Fatal("the real memory save was never reached")
 	}
 	close(release)
 	select {
@@ -190,13 +187,22 @@ func (m engineMemoryRows) ListMemories(scope string, limit int) ([]store.Memory,
 // its completion, so the test never polls a store racing its writer.
 type memorySaveRecorder struct {
 	*session.Agent
-	saved chan struct{}
+	saved            chan struct{}
+	entered, release chan struct{}
+	once             sync.Once
 }
 
+// Remember holds the one save the test is about until the test lets it go, so
+// its wire receipt can expire while the real write is still on its way.
 func (a *memorySaveRecorder) Remember(text string) (string, error) {
-	title, err := a.Agent.Remember(text)
-	if text == "seasonal amber fixture stays" {
+	held := text == "seasonal amber fixture stays"
+	if held {
+		a.once.Do(func() { close(a.entered) })
+		<-a.release
+	}
+	receipt, err := a.Agent.Remember(text)
+	if held {
 		close(a.saved)
 	}
-	return title, err
+	return receipt, err
 }

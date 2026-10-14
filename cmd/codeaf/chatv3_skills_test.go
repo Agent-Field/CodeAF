@@ -96,13 +96,11 @@ func TestALaunchWithNoStoreSkipsTheShelfPassWithoutPanic(t *testing.T) {
 	importForeignSkillsBeforeFirstMessage(nil, t.TempDir())
 }
 
-// MEMORY OFF IS NOT SKILLS OFF. A launch whose memory row is off opens no
-// memory store at all, and still reaches the skills a person installed for
-// another harness: the process builds a shelf of the folders alone, the
-// launch imports into it before the first message, and the process removes it
-// when it closes, so nothing about the folders outlives the process that read
-// them.
-func TestAMemoryOffLaunchStillHasTheSkillShelf(t *testing.T) {
+// AUTOMATIC SAVING OFF IS NOT SKILLS OFF, AND NOT MEMORY OFF. The row governs
+// only what is noticed for the person, so the launch still opens the memory
+// store — the lines the person kept go on riding every turn — and still reaches
+// the skills they installed for another harness, through that one store.
+func TestALaunchWithAutomaticSavingOffStillHasTheSkillShelf(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	profile := t.TempDir()
@@ -122,8 +120,8 @@ func TestAMemoryOffLaunchStillHasTheSkillShelf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the launch did not open: %v", err)
 	}
-	if launch.Config.Memory != nil {
-		t.Fatal("a launch with memory off was handed a memory store")
+	if launch.Config.Memory == nil {
+		t.Fatal("a launch with automatic saving off was handed no memory store; the person's lines would stop riding")
 	}
 	if launch.Config.Skills == nil {
 		t.Fatal("a launch with memory off was handed no skill shelf")
@@ -140,13 +138,10 @@ func TestAMemoryOffLaunchStillHasTheSkillShelf(t *testing.T) {
 		t.Fatalf("the skill folder is not on the memory-off shelf: %+v", facts)
 	}
 
-	shelfDir := proc.skillsDir
-	if shelfDir == "" {
-		t.Fatal("the memory-off shelf has no folder of its own to remove")
-	}
-	proc.closeAll()
-	if _, err := os.Stat(shelfDir); !os.IsNotExist(err) {
-		t.Fatalf("the memory-off shelf outlived its process at %s (%v)", shelfDir, err)
+	// AND IT IS THE ONE SHELF: the memory store is opened whatever the row says,
+	// so no second database is made beside it.
+	if launch.Config.Skills != launch.Config.Memory || proc.skillsDir != "" {
+		t.Fatalf("automatic saving off made a second shelf at %q", proc.skillsDir)
 	}
 }
 
