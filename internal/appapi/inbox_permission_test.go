@@ -43,3 +43,15 @@ func TestInboxPermissionCarriesTheCommandAndItsScopes(t *testing.T) {
 		t.Fatal("a non-permission question got a card")
 	}
 }
+
+// A call waiting on a person's ok counts as a step underway.
+func TestAWaitingPermissionCountsAsAStep(t *testing.T) {
+	f := newAskFixture(t)
+	if waitingSteps(f.door) != 0 {
+		t.Fatal("steps with nothing waiting")
+	}
+	f.ask(t, permissionQuestion(21))
+	if waitingSteps(f.door) != 1 {
+		t.Fatal("the waiting call is not a step")
+	}
+}
