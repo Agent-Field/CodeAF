@@ -152,9 +152,7 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		if !open {
 			break
 		}
-		if progress(event.Kind) {
-			a.workShown(live)
-		}
+		a.wordStated(live, event.Kind)
 		if waiting && progress(event.Kind) && !a.liveNeedsPerson(id, live) {
 			waiting = false
 			_ = a.transitionState(id, "running", live, generation)
