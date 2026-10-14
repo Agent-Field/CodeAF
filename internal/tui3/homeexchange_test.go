@@ -1838,6 +1838,10 @@ func TestThePanesBoxSaysWhatTypingThereDoes(t *testing.T) {
 			{Kind: session.EventTurnDone},
 		})
 		a.width, a.height = width, 30
+		// THE CARD TAKES NO KEY UNTIL IT HAS BEEN READ (the settle guard), so the
+		// clock is pinned and moved past it once the card has been drawn.
+		now := time.Now()
+		a.clock = func() time.Time { return now }
 		a.openHome()
 		typeHome(a, "remind me at 6 to leave")
 		drive(t, a, key("up"), key("enter"))
@@ -1860,6 +1864,7 @@ func TestThePanesBoxSaysWhatTypingThereDoes(t *testing.T) {
 			}
 		}
 		rests(homeAskRestWord)
+		now = now.Add(questionSettle)
 
 		// THE CORRECTION KEY CHANGES WHAT THE BOX IS FOR, and the box says so.
 		drive(t, a, key(questionCommentKey))
