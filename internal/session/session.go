@@ -1256,6 +1256,9 @@ type Config struct {
 	// App task permissions are resolved by the owning conversation, never by a headless worker.
 	appApprovalOwner *Agent
 	appApprovalTask  string
+	// lookGrants is the task node's own "allow for this task" set. It belongs
+	// to the node, so it is unique to that task and is emptied when it ends.
+	lookGrants *lookGrants
 
 	// DeterministicNames keeps app naming on the first message, without an AI errand.
 	DeterministicNames bool
@@ -3438,6 +3441,11 @@ type Agent struct {
 	// your mind on the receipt can take back all of it rather than the half this
 	// session happens to hold ([grantMade], consent.go).
 	grants map[string]grantMade
+	// turnLooks is "allow for this task" given in the conversation itself: the
+	// look families a person said yes to for the turn numbered turnLooksTurn.
+	// A new turn number finds none (consent_task.go).
+	turnLooks     *lookGrants
+	turnLooksTurn uint64
 
 	// connectAsks is the connect questions a person owes an answer to, keyed by
 	// the id the EventConnectAsk carried, and connectSeq is what names them

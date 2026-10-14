@@ -34,9 +34,11 @@ type InboxPermission struct {
 	ReadOnly     bool              `json:"read_only,omitempty"`
 }
 
-// PermissionScope is one rule a yes can save: this exact command, or its class.
+// PermissionScope is one way a yes can be remembered. "task" covers the same
+// family's looks until the task or turn ends and saves nothing; "exact" and
+// "class" save a rule.
 type PermissionScope struct {
-	ID      string `json:"id" jsonschema:"enum=exact,enum=class"`
+	ID      string `json:"id" jsonschema:"enum=task,enum=exact,enum=class"`
 	Command string `json:"command"`
 	Label   string `json:"label"`
 }

@@ -281,6 +281,11 @@ const (
 // brief is assembled once at start (runFrontier's JIT assembly) from spec.brief
 // plus prerequisites' reports and is not the spec.
 type TaskNode struct {
+	// looks is "allow for this task" for THIS node: the look families a person
+	// said yes to while it ran. It has its own lock, is reached only through a
+	// pointer, and is emptied when the node ends or finishes.
+	looks lookGrants
+
 	// File captures serialize before and after bytes across concurrent tool calls.
 	quickIO sync.Mutex
 	// App holds are checkpointed with the node, so a restart never grants a resume.
@@ -2260,7 +2265,12 @@ func (n *TaskNode) markStopped() {
 // first-cause law stated on the field: the ending a person reads is the one
 // that happened first, not the one that was written last.
 func (n *TaskNode) end(ending TaskEnding) {
-	if n == nil || n.graph == nil || ending == "" {
+	if n == nil || ending == "" {
+		return
+	}
+	// THE TASK IS OVER AND SO IS WHAT WAS ALLOWED FOR IT (consent_task.go).
+	n.looks.end()
+	if n.graph == nil {
 		return
 	}
 	n.graph.mu.Lock()
@@ -2905,6 +2915,8 @@ func (n *TaskNode) runContext() (context.Context, context.CancelFunc) {
 // finish writes the node's leavings before its state changes, so the update
 // that announces "done" carries them.
 func (n *TaskNode) finish(report string, changed []string, branch, merge string) {
+	// THE TASK IS OVER AND SO IS WHAT WAS ALLOWED FOR IT (consent_task.go).
+	n.looks.end()
 	// A release records the actual branch before unregistering it. Read that
 	// fact outside the graph lock so the very first settled notice also names
 	// a branch the person can find after the worker renamed it.
@@ -7767,6 +7779,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		DeterministicNames: parent.DeterministicNames,
 		appApprovalOwner:   a.appPermissionOwner(),
 		appApprovalTask:    appTaskPermissionName(node),
+		lookGrants:         &node.looks,
 		AskConsent:         false,
 		InTask:             true,
 		// InTask is also what makes this agent's calls PATIENT with a provider

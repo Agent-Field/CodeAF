@@ -72,6 +72,9 @@ func (a *Agent) appTaskPermission(ctx context.Context, hub *eventHub, call ai.To
 	if !answer.allow {
 		return refusal("denied by the person: " + decision.Rule), false
 	}
+	if answer.scope == ConsentTask {
+		a.rememberLookGrant(call)
+	}
 	return toolResult{}, true
 }
 

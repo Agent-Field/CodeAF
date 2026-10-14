@@ -27,7 +27,7 @@ type PermissionDecision struct {
 	Verb string `json:"verb" jsonschema:"enum=allow_once,enum=deny,enum=always"`
 }
 type PermissionRuleChoice struct {
-	Match string `json:"match" jsonschema:"enum=exact,enum=class"`
+	Match string `json:"match" jsonschema:"enum=exact,enum=class,enum=task"`
 	Who   string `json:"who" jsonschema:"enum=agent,enum=all_agents"`
 }
 type PermissionRequest struct {

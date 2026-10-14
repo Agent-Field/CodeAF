@@ -79,6 +79,12 @@ const (
 	// person expected means being asked again, which is the card's promise kept
 	// rather than broken.
 	ConsentRule ConsentScope = "rule"
+	// ConsentTask answers this call and every later LOOK of the same family
+	// (internal/approval's [approval.ReadOnlyLook]) until the task ends — or,
+	// asked in the conversation itself, until the turn ends. A write in that
+	// family still asks each time, and so does anything on the floor. See
+	// consent_task.go.
+	ConsentTask ConsentScope = "task"
 )
 
 // ConsentWaiting is the only silence the gate has: an unanswered question
@@ -113,7 +119,7 @@ func (a *Agent) ResolveConsent(id uint64, allow bool) {
 // not quietly turn "always" into "once".
 func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope ConsentScope) {
 	switch scope {
-	case ConsentToolSession, ConsentRule:
+	case ConsentToolSession, ConsentRule, ConsentTask:
 	default:
 		scope = ConsentOnce
 	}
@@ -231,6 +237,12 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	}
 	if decision.Action == approval.ActionDeny {
 		return refusal("denied by approval rule: " + decision.Rule), false
+	}
+
+	// A "for this task" yes covers the next look of the same family, in every
+	// mode; it never reaches a write or the floor (consent_task.go).
+	if a.lookGrantCovers(call) {
+		return toolResult{}, true
 	}
 
 	// From here the policy wants a person, and a remembered answer for this tool
@@ -421,6 +433,11 @@ func (a *Agent) askAnswerFor(ctx context.Context, hub *eventHub, call ai.ToolCal
 		// already wrote the rule the person picked, and a memo beside it would be
 		// the coarse tool-wide yes this scope exists to stop making. See its
 		// doc for the consequence.
+		if answer.scope == ConsentTask && answer.allow && task == "" {
+			// A task's own grant is written by the task that asked
+			// ([Agent.appTaskPermission]), on the node it belongs to.
+			a.rememberLookGrant(call)
+		}
 		if answer.scope == ConsentToolSession {
 			// A STANDING YES ABOUT AN ACCOUNT IS A SETTING, NOT A MEMO. It is
 			// written where the settings sheet writes it, and it is written
@@ -642,15 +659,22 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 }
 
 // ConsentCard is what a permission card says about one call, from
-// internal/approval's description of it. It is display only.
+// internal/approval's description of it. Command and Touches are display
+// only. Family and ReadOnly say the call is a look ([lookFamily]) so a surface
+// can offer "for this task"; the gate re-derives both from the call itself and
+// never trusts them back off the question.
 type ConsentCard struct {
-	Command string   `json:"command"`
-	Touches []string `json:"touches,omitempty"`
+	Command  string   `json:"command"`
+	Touches  []string `json:"touches,omitempty"`
+	Family   string   `json:"family,omitempty"`
+	ReadOnly bool     `json:"read_only,omitempty"`
 }
 
 func consentCard(call ai.ToolCall) *ConsentCard {
 	d := approval.Describe(call.Function.Name, json.RawMessage(call.Function.Arguments))
-	return &ConsentCard{Command: d.Command, Touches: d.Touches}
+	card := &ConsentCard{Command: d.Command, Touches: d.Touches}
+	card.Family, card.ReadOnly = lookFamily(call)
+	return card
 }
 
 // consentHeadLead opens the one line this lane's question is read by in every

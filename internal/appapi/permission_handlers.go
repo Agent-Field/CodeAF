@@ -119,7 +119,12 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, "bad_input", "verb must be allow_once, deny or always")
 			return
 		}
-		if item.Verb == "always" {
+		if item.Verb == "always" && taskScope(body.Rule) {
+			if err := s.taskScopeAllowed(target); err != nil {
+				agentFailure(w, err)
+				return
+			}
+		} else if item.Verb == "always" {
 			if target.Ask.Irreversible {
 				fail(w, 422, "not_allowed", "irreversible actions always ask")
 				return
@@ -170,7 +175,11 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 		}
 		var rule *config.AppPermissionRule
 		createdRule := false
-		if item.Verb == "always" {
+		if item.Verb == "always" && taskScope(body.Rule) {
+			// For this task: a yes the engine keeps until the task or turn
+			// ends, for this family's looks. No rule is written.
+			answer.Scope = session.ScopeTask
+		} else if item.Verb == "always" {
 			saved, created, err := config.EnsureAppPermissionRule(s.permissionProfile(), askAgent(target.Ask.ID), target.Tool, target.Args, body.Rule.Match, body.Rule.Who, target.Ask.ID, a.now())
 			if err != nil {
 				fail(w, 422, "bad_input", err.Error())
@@ -323,4 +332,27 @@ func permissionRuleMatches(row config.AppPermissionRule, q string) bool {
 		}
 	}
 	return true
+}
+
+// taskScope is the "for this task" choice: a yes that lives until the task or
+// turn ends, never saved as a rule.
+func taskScope(rule *PermissionRuleChoice) bool {
+	return rule != nil && rule.Match == "task"
+}
+
+// taskScopeAllowed offers "for this task" only for a look off every floor.
+// It is the route's own refusal for a clear message; the engine classifies the
+// call again from its arguments and banks nothing for anything else.
+func (s *Server) taskScopeAllowed(target savedAsk) error {
+	if target.Ask.Irreversible || !target.Permission.ReadOnly {
+		return agentError(422, "not_allowed", "only a read-only command can be allowed for this task")
+	}
+	floor, err := config.AppPermissionAlwaysAsk(s.permissionProfile(), target.Tool, target.Args, target.Permission.TaskID != "")
+	if err != nil {
+		return err
+	}
+	if floor {
+		return agentError(422, "not_allowed", "this action always asks")
+	}
+	return nil
 }

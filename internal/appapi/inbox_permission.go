@@ -30,6 +30,7 @@ func inboxPermission(agent string, q session.Question) *InboxPermission {
 		CommandIDs:   []string{askID(agent, q)},
 		Irreversible: q.Stakes == session.StakesIrreversible,
 		Touches:      card.Touches,
+		ReadOnly:     card.ReadOnly,
 		Scopes:       []PermissionScope{},
 	}
 	if len(q.Blocking.Tasks) > 0 {
@@ -41,10 +42,15 @@ func inboxPermission(agent string, q session.Question) *InboxPermission {
 	return p
 }
 
-// permissionScopes lists the rules a yes can save, the ones the permission
-// route already accepts: the exact command, and its class when it has one.
+// permissionScopes lists what a yes can be remembered as, shortest-lived
+// first: for this task (a look only, which the engine checks again itself),
+// then the two saved rules — the exact command, and its class when it has one.
 func permissionScopes(q session.Question, card session.ConsentCard) []PermissionScope {
-	scopes := []PermissionScope{{ID: "exact", Command: card.Command, Label: "exactly this command"}}
+	scopes := []PermissionScope{}
+	if card.ReadOnly && card.Family != "" {
+		scopes = append(scopes, PermissionScope{ID: "task", Command: card.Family, Label: "for this task"})
+	}
+	scopes = append(scopes, PermissionScope{ID: "exact", Command: card.Command, Label: "exactly this command"})
 	if q.Subject.Name != approval.ToolBash || q.PermissionCommand == "" {
 		return scopes
 	}

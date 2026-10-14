@@ -2425,6 +2425,9 @@ const AnswerBanked = "banked"
 // stand-in, a link that resolves on the far side — has to reach the one mapping
 // rather than write a second.
 func ConsentScopeOf(action AnswerAction, answer Answer) ConsentScope {
+	if action.Allow && answer.Scope == ScopeTask {
+		return ConsentTask
+	}
 	if action.Allow && action.Scope == ConsentToolSession &&
 		strings.TrimSpace(answer.Comments[AnswerBanked]) != "" {
 		return ConsentRule

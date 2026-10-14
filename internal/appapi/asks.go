@@ -156,7 +156,7 @@ func (a *AgentRegistry) questionAsk(agent string, q session.Question, entries []
 		}
 		record.Permission = &Permission{ID: ask.ID, AgentID: agent, Command: command, Class: config.AppPermissionClass(record.Tool, record.Args), Irreversible: ask.Irreversible, Why: q.Reason, Before: ask.Before}
 		if q.Card != nil {
-			record.Permission.Touches = q.Card.Touches
+			record.Permission.Touches, record.Permission.ReadOnly = q.Card.Touches, q.Card.ReadOnly
 		}
 		if len(q.Blocking.Tasks) > 0 {
 			record.Permission.TaskID = q.Blocking.Tasks[0]
