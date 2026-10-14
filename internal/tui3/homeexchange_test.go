@@ -297,17 +297,21 @@ func TestAskHereMakesItsFolderOutsideTheProjectsAndSendsTheSentence(t *testing.T
 	}
 }
 
-// TestTheChordAsksHereWithoutWalkingToTheRow pins the second way in. Both
-// spellings are bound because terminals disagree about which one they can send
-// (home.go's ctrl+enter case says so); alt+enter is the one every terminal here
-// delivers, so it is the one the test presses.
+// TestTheChordAsksHereWithoutWalkingToTheRow pins the two chords that reach the
+// errand door without the cursor ever leaving the row it was on, and which of
+// them is home's own.
 //
-// IT IS TWO PRESSES NOW AND THE LAW IT PINS IS UNCHANGED: the chord reaches the
-// errand door without the cursor ever leaving the row it was on. The first press
-// opens the composer layer, where the three facts a task needs are settled
-// (composerlayer.go, SCREEN 2e); the second is the send. What would break this
-// test is the chord walking somebody onto the `ask here` row to work — which is
-// exactly what it never did and still never does.
+// `alt+enter` IS THE ROUTER'S, on home as on every place (placekeys.go). Its
+// first press opens the composer layer, where the three facts a task needs are
+// settled (composerlayer.go, SCREEN 2e), and asks nothing; its second is the
+// send, through the same door `ask here` uses. home.go used to list it beside
+// ctrl+enter as a second spelling of `ask here` in its own switch, an arm no key
+// could reach because the router takes the chord first — so the first press is
+// asserted to have asked NOTHING, which is what that arm would have done.
+//
+// `ctrl+enter` IS HOME'S, and it asks at once. It reaches home only on a
+// terminal that can tell it from a plain enter, and where it does it must mean
+// this and not the layer.
 func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -319,21 +323,25 @@ func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	if !a.composerShowing() {
 		t.Fatal("the first alt+enter opened no composer layer")
 	}
+	if len(lab.agent.sent) != 0 || theExchange(a) != nil {
+		t.Fatalf("the first alt+enter asked here instead of opening the layer, the agent saw %v", lab.agent.sent)
+	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
 
 	if len(lab.agent.sent) != 1 {
-		t.Fatalf("alt+enter should have asked here, the agent saw %v", lab.agent.sent)
+		t.Fatalf("the layer's second alt+enter should have asked here, the agent saw %v", lab.agent.sent)
 	}
 	if theExchange(a) == nil {
 		t.Fatal("alt+enter left no exchange in the pane")
 	}
-	// AND ctrl+enter IS THE SAME DOOR. It reaches the router only on a terminal
-	// that can tell it from a plain enter, and where it does it must mean this.
 	second := lab.app(mine, []session.Event{{Kind: session.EventTurnDone}})
 	second.openHome()
 	typeHome(second, "tell me when CI goes red")
 	drive(t, second, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	if len(lab.agent.sent) != 1 {
+	if second.composerShowing() {
+		t.Fatal("ctrl+enter opened the composer layer; it is home's own `ask here` chord")
+	}
+	if len(lab.agent.sent) != 1 || theExchange(second) == nil {
 		t.Fatalf("ctrl+enter should have asked here, the agent saw %v", lab.agent.sent)
 	}
 }
@@ -691,7 +699,7 @@ func TestEscLeavesTheExchangeAliveAndTheListMoving(t *testing.T) {
 	if theExchange(a).focused {
 		t.Fatal("esc left the keyboard in the pane")
 	}
-	// AND ITS ROW IS STILL ON HOME, where enter or tab hands it the keyboard
+	// AND ITS ROW IS STILL ON HOME, where enter or → hands it the keyboard
 	// again — the grid puts the list back rather than a pane beside it.
 	if exchangeRowAt(a, theExchange(a)) < 0 {
 		t.Fatalf("esc took the exchange's row off home:\n%s", homeText(a))
@@ -783,6 +791,77 @@ func TestTabTogglesTheListAndThePaneAtHome(t *testing.T) {
 	}
 	if theExchange(a) == nil {
 		t.Fatal("leaving the pane closed the exchange")
+	}
+}
+
+// TestTheErrandRowFootNamesOnlyTheKeysThatGoIn pins the line under the box
+// while the cursor stands on an errand's row and the list has the keyboard.
+//
+// IT SAID `enter or tab answer this ask here` for as long as `tab` had been the
+// next place on every place (placekeys.go), so the one key it named besides
+// enter walked a person off home. Every key the line names is pressed here and
+// does what the line says, over an empty box and over a draft — and `tab` is
+// pressed last, to show why the line may not name it.
+func TestTheErrandRowFootNamesOnlyTheKeysThatGoIn(t *testing.T) {
+	_, a := exchangeLab(t)
+	ex := theExchange(a)
+	foot := func() string {
+		rows := errandRows(a)
+		return rows[len(rows)-1]
+	}
+	drive(t, a, key("esc"))
+	if ex.focused || a.paneExchange() != ex {
+		t.Fatal("esc should leave the cursor on the errand's row with the keyboard on the list")
+	}
+	if line := foot(); !strings.Contains(line, "enter or → answer this "+homeAskHereWord+" · ") ||
+		strings.Contains(line, "or tab") {
+		t.Fatalf("over an empty box the row's foot should name enter and →, and never tab:\n%s", line)
+	}
+	drive(t, a, key("right"))
+	if !ex.focused || !a.at(pageHome) {
+		t.Fatalf("→ on the row did not hand the pane the keyboard (focused %v, on %q)", ex.focused, a.page.word())
+	}
+	drive(t, a, key("tab"), key("enter"))
+	if !ex.focused {
+		t.Fatal("enter on the row did not hand the pane the keyboard")
+	}
+
+	// OVER A DRAFT THE ARROW IS THE CARET'S AND esc CLEARS FIRST, so the line
+	// names enter alone and says what esc will do to the draft. The words have
+	// to match a conversation for the drop-up to draw a block for the errand's
+	// row to stand in.
+	// The row is walked onto with ↑, as a person reaches it: a drop-up keeps a
+	// cursor through a rebuild only on a row somebody chose ([homeView.build]).
+	drive(t, a, key("tab"))
+	typeHome(a, "pricing")
+	for step := 0; step < len(a.home.lines) && a.paneExchange() != ex; step++ {
+		drive(t, a, key("up"))
+	}
+	if a.paneExchange() != ex {
+		t.Fatalf("↑ never reached the errand's row on the drop-up:\n%s", homeText(a))
+	}
+	if line := foot(); !strings.Contains(line, "enter answer this "+homeAskHereWord+" · ") ||
+		!strings.Contains(line, "esc clear") || strings.Contains(line, "→") {
+		t.Fatalf("over a draft the row's foot should name enter alone and esc clear:\n%s", line)
+	}
+	drive(t, a, key("right"))
+	if ex.focused {
+		t.Fatal("→ over a draft took the pane instead of moving the caret")
+	}
+	drive(t, a, key("enter"))
+	if !ex.focused {
+		t.Fatal("enter over a draft did not hand the pane the keyboard")
+	}
+
+	// AND `tab` ON THE ROW IS THE NEXT PLACE. Inside the pane it hands the
+	// keyboard back, which the pane's own foot says; on the row it leaves home.
+	drive(t, a, key("tab"))
+	if ex.focused || !a.at(pageHome) {
+		t.Fatalf("tab in the pane should hand the keyboard to the list (focused %v, on %q)", ex.focused, a.page.word())
+	}
+	drive(t, a, key("tab"))
+	if ex.focused || a.at(pageHome) {
+		t.Fatalf("tab on the row should be the next place (focused %v, on %q)", ex.focused, a.page.word())
 	}
 }
 
@@ -1570,5 +1649,136 @@ func TestANarrowWindowStacksTheExchangeOverTheList(t *testing.T) {
 	drive(t, a, key("1"))
 	if len(lab.agent.answered) != 1 || lab.agent.answered[0].FirstKey() != session.AutomationSaveKey {
 		t.Fatalf("the card could not be answered on a narrow frame, the agent saw %v", lab.agent.answered)
+	}
+}
+
+// TestThePaneKeepsItsWayBackAtEveryWidth pins the last clause of the pane's
+// foot. On a narrow frame the pane IS the screen, so the way back to the list
+// is the one clause it may never give up — and at sixty columns it was the
+// first one it gave up: home put its draft chords AFTER the way back, and
+// [hintFit], which protects a foot's last clause, kept `/ commands` and dropped
+// `tab or esc back to the list`. A card or the `continue` row lost it the same
+// way at every width up to 140.
+//
+// `/ commands` IS NOT NAMED IN THE PANE AT ALL. The pane types into a box of its
+// own, where a `/` is the first character of a follow-up and opens no list.
+func TestThePaneKeepsItsWayBackAtEveryWidth(t *testing.T) {
+	panes := []struct {
+		what  string
+		turns [][]session.Event
+		check func(*homeExchange) bool
+	}{
+		{"before any reply", nil, func(ex *homeExchange) bool { return !ex.offering() && !ex.asking() }},
+		{"with a reply and the continue row", [][]session.Event{{
+			text(session.EventTextDelta, "I will remind you at 6."),
+			{Kind: session.EventTurnDone},
+		}}, func(ex *homeExchange) bool { return ex.offering() }},
+		{"with a card up", [][]session.Event{{
+			text(session.EventTextDelta, "Here is what I will do."),
+			automationProposal(7, "remind me at 6 to leave"),
+			{Kind: session.EventTurnDone},
+		}}, func(ex *homeExchange) bool { return ex.asking() }},
+	}
+	for _, width := range []int{60, 72, 80, 100, 140, 200} {
+		for _, pane := range panes {
+			lab := newErrandLab(t)
+			mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+			a := lab.app(mine, pane.turns...)
+			a.width, a.height = width, 30
+			a.openHome()
+			typeHome(a, "remind me at 6 to leave")
+			drive(t, a, key("up"), key("enter"))
+			ex := theExchange(a)
+			if ex == nil || !ex.focused || !pane.check(ex) {
+				t.Fatalf("at %d columns the pane %s never held the keyboard", width, pane.what)
+			}
+			rows := errandRows(a)
+			foot := rows[len(rows)-1]
+			if !strings.Contains(foot, exchangeBackWord) {
+				t.Errorf("at %d columns the pane %s does not say how to get back to the list:\n%s", width, pane.what, foot)
+			}
+			if strings.Contains(foot, microcopy) {
+				t.Errorf("at %d columns the pane %s names %q, which its box does not do:\n%s", width, pane.what, microcopy, foot)
+			}
+		}
+	}
+	// AND THE DRAFT'S CHORDS GO IN FRONT OF IT, which is the mechanism. A lab
+	// with one project draws no `alt+p`, so the order is pinned on the line.
+	line := withChords("enter sends a follow-up · "+exchangeBackWord, "alt+p project · alt+e effort")
+	if want := "enter sends a follow-up · alt+p project · alt+e effort · " + exchangeBackWord; line != want {
+		t.Fatalf("the chords went on the pane's foot as %q, want them before the way out: %q", line, want)
+	}
+	if fitted := hintFit(line, 58); !strings.HasSuffix(fitted, exchangeBackWord) {
+		t.Fatalf("at sixty columns the pane's foot with chords on it reads %q, without the way back", fitted)
+	}
+}
+
+// TestThePanesBoxSaysWhatTypingThereDoes pins the sentence the box rests on
+// while the errand's pane holds the keyboard.
+//
+// IT SAID HOME'S OWN `type to search or start something new`, over a box that
+// does neither: the foot draws whichever box has the keyboard ([placeHome.box])
+// and asked home for its words whatever box that was. Typing there writes a
+// follow-up — or, once the card's correction key is pressed, the change the
+// card is answered with — so that is what it says now, and home's sentence
+// comes back the moment the list has the keyboard again.
+func TestThePanesBoxSaysWhatTypingThereDoes(t *testing.T) {
+	for _, width := range []int{60, 140} {
+		lab := newErrandLab(t)
+		mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+		a := lab.app(mine, []session.Event{
+			text(session.EventTextDelta, "Here is what I will do."),
+			automationProposal(7, "remind me at 6 to leave"),
+			{Kind: session.EventTurnDone},
+		})
+		a.width, a.height = width, 30
+		// THE CARD TAKES NO KEY UNTIL IT HAS BEEN READ (the settle guard), so the
+		// clock is pinned and moved past it once the card has been drawn.
+		now := time.Now()
+		a.clock = func() time.Time { return now }
+		a.openHome()
+		typeHome(a, "remind me at 6 to leave")
+		drive(t, a, key("up"), key("enter"))
+		ex := theExchange(a)
+		if ex == nil || !ex.focused || !ex.asking() {
+			t.Fatalf("at %d columns the pane never held the keyboard with a card up", width)
+		}
+		// THE BOX'S ROW IS THE ONE THAT OPENS WITH `› `, which is how a sentence
+		// in the box is told apart from the same words in the hint under it.
+		rests := func(want string) {
+			t.Helper()
+			frame := homeText(a)
+			if !strings.Contains(frame, "› "+want) {
+				t.Fatalf("at %d columns the box does not rest on %q:\n%s", width, want, frame)
+			}
+			for _, other := range []string{placeRestWord, homeAskRestWord, homeAskChangeRestWord} {
+				if other != want && strings.Contains(frame, "› "+other) {
+					t.Fatalf("at %d columns the box says %q where it should say %q:\n%s", width, other, want, frame)
+				}
+			}
+		}
+		rests(homeAskRestWord)
+		now = now.Add(questionSettle)
+
+		// THE CORRECTION KEY CHANGES WHAT THE BOX IS FOR, and the box says so.
+		drive(t, a, key(questionCommentKey))
+		if !ex.changing {
+			t.Fatalf("%s on the card did not arm the correction", questionCommentKey)
+		}
+		rests(homeAskChangeRestWord)
+		drive(t, a, key("x"))
+		if frame := homeText(a); !strings.Contains(frame, "› x") || strings.Contains(frame, "› "+homeAskChangeRestWord) {
+			t.Fatalf("at %d columns the letter typed is not in the box:\n%s", width, frame)
+		}
+
+		// esc CLEARS WHAT WAS TYPED AND THE SENTENCE COMES BACK; esc again gives
+		// the list the keyboard, and home's own sentence comes back with it.
+		drive(t, a, key("esc"))
+		rests(homeAskChangeRestWord)
+		drive(t, a, key("esc"))
+		if ex.focused {
+			t.Fatalf("at %d columns the second esc left the keyboard in the pane", width)
+		}
+		rests(placeRestWord)
 	}
 }

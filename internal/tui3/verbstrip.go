@@ -77,7 +77,8 @@ func (a *app) closeStrip() {
 
 // openStrip is `→` on a row that has verbs. It answers false when the row has
 // none, and the arrow keeps every other meaning it already had on that place —
-// which on home is the fold ladder and the walk across the columns.
+// which on home is the way into an errand's pane and the fold ladder of the
+// phone's inbox.
 func (a *app) openStrip() bool {
 	verbs := a.rowVerbs()
 	if len(verbs) == 0 {

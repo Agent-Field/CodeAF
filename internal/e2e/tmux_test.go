@@ -498,6 +498,14 @@ func (r *rig) lit(text string) {
 	time.Sleep(120 * time.Millisecond)
 }
 
+// ctrlEnter is `ask here` without leaving the box.
+//
+// IT IS SENT AS THE BYTES A TERMINAL SENDS. ctrl+enter only reaches the app on
+// a terminal that can tell it from a plain enter. Bubble Tea v2 asks for the
+// kitty protocol and modifyOtherKeys unconditionally, so CSI 13;5u decodes as
+// ctrl+enter, which home binds to `ask here`.
+func (r *rig) ctrlEnter() { r.lit("\x1b[13;5u") }
+
 // mouseTo moves the pointer to a 1-based cell with an SGR motion report, which
 // is what the all-motion mode the app turns on in View() asks for.
 func (r *rig) mouseTo(col, row int) {

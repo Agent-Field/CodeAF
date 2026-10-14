@@ -131,7 +131,7 @@ judged does not go quiet without telling you.
 A reminder calls no model and is never affected. Scheduled work that cannot reach a model
 ends `incomplete · a fault: …`, and its next run tries again.
 
-## The card — what kind of card this is, what its options mean, what o Change does, and how to answer, cancel or decline it
+## The card — what kind of card this is, what its options mean, what o Change does, how long you have to answer it, and how to answer, cancel or decline it
 
 Every automation reaches you as a card first, and **nothing is saved until you say so**. It
 is the card the standing card became, and its heading says which kind it proposes:

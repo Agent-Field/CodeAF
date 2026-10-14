@@ -268,7 +268,7 @@ conversation with no work stands under `completed`; the extra section can put th
 unused row below the visible screen. Use `↑` and `↓` to reach it. The count does not
 promise that every row fits on the screen at once.
 
-## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
+## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip next to the box
 
 The line over home's box is the same shape as the line over a conversation's own message
 box:
@@ -433,11 +433,13 @@ r run now   p pause   e edit   d delete   o open where it was asked
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x delete`, `c copy name`, `n new in project`, `o open folder`,
-`s stop` on a task this window runs,
-`its chats` and `open folder` on a project. Home's `automations` panel has no verbs: `enter`
-on it opens the automations place, where they are. On home, `→` opens the selected row's
-options at every width; the arrows stay in the list.
+verbs are the row's own — a question's first two answers on its own answer keys;
+`x delete`, `c copy name`, `n new in project` and `o open folder` on a conversation;
+`s stop it` on a task this window runs. Home's `automations` panel has no verbs: `enter` on
+it opens the automations place, where they are. A project's row is not a stop, so it has
+none: a click on it picks the folder for the next message. On home, `→` opens the selected
+row's options at every width; the arrows stay in the list and never cross to another
+column.
 
 While those options are drawn, **those letters are the verbs** and the composer is asleep.
 On wide home layouts they appear below the selected description in the middle column,
@@ -539,7 +541,7 @@ the left, and the **rail** at the right holds `projects` and `spend` at its top 
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
 naming what arrives there.
 
-Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
+Its own keys are in the **Home** page: `↑↓` walk the field, `→` opens a row's verbs and `←` closes them, a digit
 answers the question row drawing its answers, and `enter` opens a row. `tab` is the way to the
 next place, and the errand pane is taken into with `→` rather than `tab`. Home uses
 `alt+p` for the next conversation's project, `alt+e` for effort, `alt+a` for
@@ -634,7 +636,7 @@ command any more, and *Automations* has the whole of what replaced them.
 ## memory — what is held true
 
 What codeaf holds true about you and this machine, with what kind of thing each line is, how
-it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+8`. It is on the tab bar, between `Activity` and `Spend`.
+it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so do `alt+8` and `Memory`, the fifth word on the tab bar — the numbers kept their old places, so the fifth word is not `alt+5`.
 
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
@@ -766,8 +768,9 @@ anywhere off the menu, puts it away and leaves everything else as it was.
 
 **The wordmark and the place you are standing in never fold**, and neither does the word the
 bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
-whether or not its word is on the row, and the numbers never move: `alt+7` is automations,
-drawn on the row only while you are in it, and `alt+8` is memory.
+whether or not its word is on the row, and the numbers never move — nor do they follow the
+bar's order: home `alt+1`, AI teams `alt+2`, chats `alt+3`, activity `alt+4`, spend `alt+5`,
+settings `alt+6`, automations `alt+7`, memory `alt+8`.
 
 The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts
