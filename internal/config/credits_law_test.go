@@ -59,6 +59,7 @@ func TestEveryImplicitModelRungUsesTheBalanceCheck(t *testing.T) {
 // must join the profile-aware rung or explain its exception here.
 func TestNoUnlistedRuntimeReaderUsesThePaidDefault(t *testing.T) {
 	allowed := map[string]string{
+		"internal/appapi/models.go:models":               "display only: the models response reports which model the conversation resolves to when none is set; it never places a call",
 		"cmd/codeaf/chatv3.go:v3TalkModel":               "distinguishes the implicit rung from a supplied model",
 		"cmd/codeaf/chatv3_credits.go:v3FreshDefault":    "recognises the two build defaults before moving a fresh launch",
 		"cmd/codeaf/main.go:<package>":                   "prints the compile-time fallback in environment help",

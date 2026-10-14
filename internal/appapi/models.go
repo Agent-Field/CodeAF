@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"sort"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -135,7 +137,9 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows := s.modelList(r.Context())
+	// A supplied catalogue may reuse its slice across reads, so response-only
+	// prices belong to a copy rather than mutating its shared rows.
+	rows := slices.Clone(s.modelList(r.Context()))
 	seen := map[string]bool{}
 	for _, row := range rows {
 		seen[row.ID] = true
@@ -152,7 +156,16 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 			seen[id] = true
 		}
 	}
-	write(w, 200, ModelsView{Models: rows, Default: values["models.default"].(string), Pinned: pinned})
+	for i := range rows {
+		if price, known := orchestrate.PriceOf(rows[i].ID); known {
+			rows[i].PriceIn, rows[i].PriceOut = &price.In, &price.Out
+		}
+	}
+	resolved := config.ChatModelAt(s.options.ProfileDir)
+	if resolved == "" {
+		resolved = config.DefaultModel
+	}
+	write(w, 200, ModelsView{Models: rows, Default: values["models.default"].(string), Resolved: resolved, Pinned: pinned})
 }
 
 func (s *Server) modelsAllowed(w http.ResponseWriter, r *http.Request, patch map[string]json.RawMessage) bool {
