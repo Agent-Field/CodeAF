@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -223,6 +224,12 @@ func (s *Store) Create(a Automation) (Automation, error) {
 	if a.Schedule.Repeats() && a.Schedule.Anchor.IsZero() && a.Schedule.Interval() > 0 {
 		a.Schedule.Anchor = now
 	}
+	// A FOLDER UNDER ~ IS THIS MACHINE'S ~, wherever the line was typed.
+	workspace, err := ExpandHome(a.Workspace)
+	if err != nil {
+		return Automation{}, err
+	}
+	a.Workspace = workspace
 	if err := a.Validate(); err != nil {
 		return Automation{}, err
 	}
@@ -322,6 +329,11 @@ func (s *Store) Update(a Automation) (Automation, error) {
 		}
 		a.Created, a.Updated = current.Created, now
 		a.Revision = current.Revision + 1
+		workspace, err := ExpandHome(a.Workspace)
+		if err != nil {
+			return err
+		}
+		a.Workspace = workspace
 		a.Status, a.Next, a.Seen, a.Memo = current.Status, current.Next, current.Seen, current.Memo
 		if lookChanged(current.Look, a.Look) {
 			a.Seen, a.Memo = "", ""
@@ -404,9 +416,10 @@ func (s *Store) SetStatus(id string, status Status) (Automation, error) {
 	return saved, err
 }
 
-// Delete removes an automation and its history.
+// Delete removes an automation and its history: the rows, and every run's
+// folder that holds nothing but what the run said ([Store.forgetRunFolders]).
 func (s *Store) Delete(id string) error {
-	return s.write(func(tx *sql.Tx, seq int64) error {
+	err := s.write(func(tx *sql.Tx, seq int64) error {
 		res, err := tx.Exec(`DELETE FROM automations WHERE id = ?`, id)
 		if err != nil {
 			return err
@@ -417,6 +430,88 @@ func (s *Store) Delete(id string) error {
 		_, err = tx.Exec(`DELETE FROM runs WHERE automation_id = ?`, id)
 		return err
 	})
+	if err != nil {
+		return err
+	}
+	s.forgetRunFolders(id, nil)
+	return nil
+}
+
+// KeepRuns is how many runs of one automation the store keeps: the history the
+// place draws, and no more. A watch on a fifteen-minute rhythm runs ninety-six
+// times a day, and a history nobody can scroll to is only disk.
+const KeepRuns = 100
+
+// prune forgets the runs of one automation past the newest [KeepRuns], and
+// their folders. It runs after a run is recorded, so a history never grows
+// past what the place can show.
+func (s *Store) prune(id string) {
+	var gone []int64
+	err := s.write(func(tx *sql.Tx, seq int64) error {
+		rows, err := tx.Query(`SELECT id FROM runs WHERE automation_id = ? AND phase = ? ORDER BY id DESC LIMIT -1 OFFSET ?`, id, string(PhaseOver), KeepRuns)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var run int64
+			if err := rows.Scan(&run); err != nil {
+				rows.Close()
+				return err
+			}
+			gone = append(gone, run)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil || len(gone) == 0 {
+			return err
+		}
+		_, err = tx.Exec(`DELETE FROM runs WHERE automation_id = ? AND phase = ? AND id <= ?`, id, string(PhaseOver), gone[0])
+		return err
+	})
+	if err == nil && len(gone) > 0 {
+		s.forgetRunFolders(id, gone)
+	}
+}
+
+// runFolderTrees is the folder inside a run's own folder that holds the
+// separate worktree a run of work cut (internal/session's Place.Trees).
+const runFolderTrees = "trees"
+
+// forgetRunFolders removes the folders of one automation's runs — the named
+// runs, or with none named every run it has — under `<root>/runs/<id>/`.
+//
+// A FOLDER HOLDING A WORKTREE IS KEPT. A run of work in a separate worktree
+// leaves its changes there for the person to review, committed or not, and
+// removing the checkout would lose them; such a folder stays until the person
+// lands or discards the work. Everything else in a run's folder is what the run
+// said, and goes with its row.
+func (s *Store) forgetRunFolders(id string, runs []int64) {
+	base := filepath.Join(s.root, "runs", id)
+	if strings.TrimSpace(id) == "" || strings.ContainsAny(id, `/\`) {
+		return
+	}
+	var dirs []string
+	if runs == nil {
+		entries, err := os.ReadDir(base)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				dirs = append(dirs, filepath.Join(base, entry.Name()))
+			}
+		}
+	} else {
+		for _, run := range runs {
+			dirs = append(dirs, filepath.Join(base, strconv.FormatInt(run, 10)))
+		}
+	}
+	for _, dir := range dirs {
+		if entries, err := os.ReadDir(filepath.Join(dir, runFolderTrees)); err == nil && len(entries) > 0 {
+			continue
+		}
+		_ = os.RemoveAll(dir)
+	}
+	_ = os.Remove(base) // only when nothing is left in it
 }
 
 // ── the clock's own writes ──────────────────────────────────────────────────
@@ -608,7 +703,7 @@ func (s *Store) Start(id int64) error {
 // store refuses a second take of it, so the run that picks up after a cut-off
 // one is a run of its own, and the history keeps both.
 func (s *Store) Finish(run Run) error {
-	return s.write(func(tx *sql.Tx, seq int64) error {
+	err := s.write(func(tx *sql.Tx, seq int64) error {
 		_, err := tx.Exec(`UPDATE runs SET phase = ?, finished_ms = ?, outcome = ?, line = ?, detail = ?, usd = ?, transcript = ?, seq = ? WHERE id = ?`,
 			string(PhaseOver), ms(s.now()), string(run.Outcome), run.Line, run.Detail, run.USD, run.Transcript, seq, run.ID)
 		if err != nil || !run.Closed() {
@@ -616,6 +711,10 @@ func (s *Store) Finish(run Run) error {
 		}
 		return dueAgain(tx, seq, run.AutomationID, s.now())
 	})
+	if err == nil {
+		s.prune(run.AutomationID)
+	}
+	return err
 }
 
 // dueAgain makes an automation due at the moment a run of it was cut off: a

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -329,7 +330,7 @@ func TestAFilesLookSaysWhatChangedSinceTheLastLook(t *testing.T) {
 	must(os.WriteFile(filepath.Join(root, "invoices", "2026", "a.pdf"), []byte("a"), 0o600))
 	must(os.WriteFile(filepath.Join(root, "notes.txt"), []byte("x"), 0o600))
 
-	first, err := automationLookFiles(root, "invoices/**/*.pdf", "")
+	first, err := automationLookFiles(context.Background(), root, "invoices/**/*.pdf", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,18 +339,18 @@ func TestAFilesLookSaysWhatChangedSinceTheLastLook(t *testing.T) {
 	}
 	must(os.WriteFile(filepath.Join(root, "invoices", "2026", "b.pdf"), []byte("b"), 0o600))
 	must(os.WriteFile(filepath.Join(root, "invoices", "2026", "a.pdf"), []byte("a2"), 0o600))
-	second, err := automationLookFiles(root, "invoices/**/*.pdf", first.Memo)
+	second, err := automationLookFiles(context.Background(), root, "invoices/**/*.pdf", first.Memo)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(second.Text, "+ invoices/2026/b.pdf (new)") || !strings.Contains(second.Text, "~ invoices/2026/a.pdf (changed)") {
 		t.Fatalf("second look = %q", second.Text)
 	}
-	third, _ := automationLookFiles(root, "invoices/**/*.pdf", second.Memo)
+	third, _ := automationLookFiles(context.Background(), root, "invoices/**/*.pdf", second.Memo)
 	if !strings.Contains(third.Text, "Nothing changed") {
 		t.Fatalf("third look = %q", third.Text)
 	}
-	if _, err := automationLookFiles(root, "../elsewhere/*", ""); err == nil {
+	if _, err := automationLookFiles(context.Background(), root, "../elsewhere/*", ""); err == nil {
 		t.Fatal("a glob outside the project was read")
 	}
 }
@@ -521,5 +522,50 @@ func TestAWatchesCheckSkipsAModelWithNoKey(t *testing.T) {
 	cfg.Model = "cheap/chat-model"
 	if _, err := automationJudgeModels(cfg); err == nil || !strings.Contains(err.Error(), "no key for cheap/sentinel") {
 		t.Fatalf("with no key anywhere the check says %v", err)
+	}
+}
+
+// A FILES LOOK ENDS WHEN ITS RUN DOES. A stopped or closing run's context ends
+// the walk at the next entry, matched or not, rather than walking on to the
+// budget.
+func TestAFilesLookStopsWithItsContext(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 50; i++ {
+		dir := filepath.Join(root, "deep", strconv.Itoa(i))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := automationLookFiles(ctx, root, "**/never-matches.pdf", ""); err == nil {
+		t.Fatal("a look whose run had ended walked the workspace anyway")
+	}
+}
+
+// A REPLACED KEY REACHES THE NEXT CHECK. The judge's client is kept per model
+// AND account, so a key the person replaced is the one the next look sends,
+// not the one the first look was built with.
+func TestAWatchesCheckUsesAReplacedKey(t *testing.T) {
+	r := &automationRunner{clients: map[string]Completer{}}
+	cfg := Config{Model: "cheap/judge", APIKey: "sk-or-old", BaseURL: "https://router.invalid/api/v1"}
+	first, _, err := r.judgeClient(cfg, "cheap/judge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, _, _ := r.judgeClient(cfg, "cheap/judge")
+	if first != again {
+		t.Fatal("the same model on the same account built a second client")
+	}
+	cfg.APIKey = "sk-or-new"
+	replaced, _, err := r.judgeClient(cfg, "cheap/judge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replaced == first {
+		t.Fatal("a replaced key kept the client built with the old one")
 	}
 }

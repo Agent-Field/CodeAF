@@ -114,8 +114,7 @@ are the machine's settings, not yours.
 Type `/` and filter. The full set:
 
 `/graph` `/self` `/tasks` `/node` `/open` `/notebook` `/history` `/budget`
-`/standing` `/settings` `/help` `/model` `/memory` `/session` `/new` `/cancel`
-`/quit`
+`/settings` `/help` `/model` `/memory` `/session` `/new` `/cancel` `/quit`
 
 `?` opens the same catalogue as a scrollable overlay, generated from that same
 list, so the two can never disagree.

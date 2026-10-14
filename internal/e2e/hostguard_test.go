@@ -8,8 +8,8 @@ package e2e
 //   - EVERY START TAKES THE OLD TIMERS OFF THE LOGIN. The feature automations
 //     replaced installed one launchd agent or systemd timer per login, and
 //     internal/automation's legacy.go removes every definition it finds under
-//     HOME on every start — `launchctl bootout` and `systemctl --user disable
-//     --now` included. A launch pointed at the developer's HOME would boot the
+//     HOME on every start — `launchctl bootout` and `systemctl --user stop`
+//     included. A launch pointed at the developer's HOME would boot the
 //     developer's own timers out from under them.
 //   - EVERY WINDOW STARTS A CLOCK. `codeaf clock` is a detached process that
 //     outlives the window that started it by half a minute, so a test window
@@ -492,11 +492,11 @@ func TestTheOldTimersComeOffOnlyTheThrowawayLogin(t *testing.T) {
 	case "darwin":
 		domain := "gui/" + strconv.Itoa(os.Getuid())
 		for _, label := range oldTimerLabels {
-			want = append(want, "launchctl bootout "+domain+" "+filepath.Join(g.login, "Library", "LaunchAgents", label+".plist"))
+			want = append(want, "launchctl bootout "+domain+"/"+label)
 		}
 	case "linux":
 		for _, unit := range oldTimerUnits {
-			want = append(want, "systemctl --user disable --now "+unit+".timer")
+			want = append(want, "systemctl --user stop "+unit+".timer")
 		}
 		want = append(want, "systemctl --user daemon-reload")
 	}

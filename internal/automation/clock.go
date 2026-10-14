@@ -137,8 +137,9 @@ type Clock struct {
 
 // flight is one run in hand.
 type flight struct {
-	cancel context.CancelCauseFunc
-	work   bool
+	cancel     context.CancelCauseFunc
+	work       bool
+	automation string
 }
 
 // errStopRequested and errClosing are the causes the clock cancels a run with,
@@ -146,6 +147,7 @@ type flight struct {
 var (
 	errStopRequested = errors.New(lineStopped)
 	errClosing       = errors.New(LineClosed)
+	errDeleted       = errors.New(lineDeleted)
 )
 
 // LockName is the clock's lock file inside the store's root.
@@ -265,6 +267,7 @@ func (c *Clock) pass(ctx context.Context, now time.Time) {
 			c.cancel(id, errStopRequested)
 		}
 	}
+	c.stopOrphans()
 	due, err := c.Store.Due(now)
 	if err != nil {
 		c.log("could not read what is due: " + err.Error())
@@ -293,6 +296,25 @@ func (c *Clock) pass(ctx context.Context, now time.Time) {
 	}
 	for _, run := range queued {
 		c.start(ctx, run)
+	}
+}
+
+// stopOrphans stops every run in hand whose automation was deleted. Deleting an
+// automation takes its history with it — its run rows too — so a stop request
+// written on the row would be deleted with it; the clock asks the store whether
+// each run's automation still exists instead, and a run of one that does not
+// is spending the person's money on nothing.
+func (c *Clock) stopOrphans() {
+	c.mu.Lock()
+	held := make(map[int64]string, len(c.inflight))
+	for id, f := range c.inflight {
+		held[id] = f.automation
+	}
+	c.mu.Unlock()
+	for id, automation := range held {
+		if _, err := c.Store.Get(automation); errors.Is(err, ErrNotFound) {
+			c.cancel(id, errDeleted)
+		}
 	}
 }
 
@@ -348,7 +370,7 @@ func (c *Clock) start(ctx context.Context, run Run) {
 		return
 	}
 	runCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
-	f := &flight{cancel: cancel, work: isWork}
+	f := &flight{cancel: cancel, work: isWork, automation: a.ID}
 	c.inflight[run.ID] = f
 	if isWork {
 		c.work++
@@ -513,6 +535,8 @@ func (c *Clock) ended(ctx context.Context, run Run, outcome Outcome, line string
 			run.Outcome, run.Line = OutcomeStopped, lineStopped
 		case errors.Is(cause, errClosing):
 			run.Outcome, run.Line = OutcomeStopped, LineClosed
+		case errors.Is(cause, errDeleted):
+			run.Outcome, run.Line = OutcomeStopped, lineDeleted
 		default:
 			run.Outcome, run.Line = late, "ran out of time"
 		}

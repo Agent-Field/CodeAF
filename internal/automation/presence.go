@@ -72,18 +72,32 @@ func (p *Presence) HoldAs(w Window) (release func(), err error) {
 	if _, err := rand.Read(raw[:]); err != nil {
 		return func() {}, fmt.Errorf("automations: %w", err)
 	}
-	path := filepath.Join(p.dir, fmt.Sprintf("%d-%s.lock", os.Getpid(), hex.EncodeToString(raw[:])))
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0o600)
+	// THE FILE IS LOCKED AND WRITTEN UNDER A NAME NOBODY COUNTS, and only then
+	// renamed into place. Created straight under its `.lock` name, it stood
+	// unlocked for an instant, and a counter that looked in that instant took
+	// the lock, read a window that was gone, and removed it — leaving an open
+	// window invisible, and no clock running for it, for as long as it stayed
+	// open. A lock is on the file, not the name, so it survives the rename.
+	name := fmt.Sprintf("%d-%s", os.Getpid(), hex.EncodeToString(raw[:]))
+	staging := filepath.Join(p.dir, "."+name+".opening")
+	path := filepath.Join(p.dir, name+".lock")
+	file, err := os.OpenFile(staging, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0o600)
 	if err != nil {
 		return func() {}, fmt.Errorf("automations: %w", err)
 	}
 	if err := filelock.Lock(file, true, true); err != nil {
 		_ = file.Close()
-		_ = os.Remove(path)
+		_ = os.Remove(staging)
 		return func() {}, fmt.Errorf("automations: hold a window: %w", err)
 	}
 	body, _ := json.Marshal(Window{PID: os.Getpid(), Label: strings.TrimSpace(w.Label), Started: time.Now(), Env: strings.TrimSpace(w.Env)})
 	_, _ = file.Write(body)
+	if err := os.Rename(staging, path); err != nil {
+		_ = os.Remove(staging)
+		_ = filelock.Unlock(file)
+		_ = file.Close()
+		return func() {}, fmt.Errorf("automations: hold a window: %w", err)
+	}
 	done := false
 	return func() {
 		if done {

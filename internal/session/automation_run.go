@@ -157,7 +157,7 @@ func (r *automationRunner) Look(ctx context.Context, item automation.Automation)
 	case strings.TrimSpace(look.Command) != "":
 		return automationLookCommand(ctx, item.Workspace, look.Command)
 	case strings.TrimSpace(look.Files) != "":
-		return automationLookFiles(item.Workspace, look.Files, item.Memo)
+		return automationLookFiles(ctx, item.Workspace, look.Files, item.Memo)
 	}
 	return r.lookTool(ctx, item)
 }
@@ -198,8 +198,8 @@ func automationLookCommand(ctx context.Context, workspace, command string) (auto
 // their contents — and says what changed since the last decided look. The
 // listing it keeps is the memo; with none, this is the first look, and it says
 // so rather than reporting every file as new.
-func automationLookFiles(workspace, glob, memo string) (automation.Sight, error) {
-	now, truncated, err := automationListing(workspace, glob)
+func automationLookFiles(ctx context.Context, workspace, glob, memo string) (automation.Sight, error) {
+	now, truncated, err := automationListing(ctx, workspace, glob)
 	if err != nil {
 		return automation.Sight{}, err
 	}
@@ -247,7 +247,12 @@ func automationLookFiles(workspace, glob, memo string) (automation.Sight, error)
 
 // automationListing walks the workspace for paths matching glob (where ** spans
 // folders), bounded in count, size read and time.
-func automationListing(workspace, glob string) (map[string]string, bool, error) {
+//
+// THE BUDGET IS ASKED ON EVERY ENTRY, matched or not, and so is the look's own
+// context. A workspace that is the person's whole home and a glob that rarely
+// matches used to walk every file under it on each look — the deadline was
+// read only after a match — and a stop or a closing codeaf waited for it.
+func automationListing(ctx context.Context, workspace, glob string) (map[string]string, bool, error) {
 	glob = filepath.ToSlash(strings.TrimSpace(glob))
 	if glob == "" {
 		return nil, false, errors.New("an empty glob")
@@ -259,6 +264,13 @@ func automationListing(workspace, glob string) (map[string]string, bool, error) 
 	deadline := time.Now().Add(automationFilesBudget)
 	truncated := false
 	err := filepath.WalkDir(workspace, func(full string, entry fs.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if time.Now().After(deadline) {
+			truncated = true
+			return filepath.SkipAll
+		}
 		if err != nil {
 			return nil
 		}
@@ -276,7 +288,7 @@ func automationListing(workspace, glob string) (map[string]string, bool, error) 
 		if !automationGlobMatch(glob, rel) {
 			return nil
 		}
-		if len(listing) >= automationFilesMax || time.Now().After(deadline) {
+		if len(listing) >= automationFilesMax {
 			truncated = true
 			return filepath.SkipAll
 		}
@@ -484,14 +496,19 @@ func (r *automationRunner) judgeClient(cfg Config, model string) (Completer, str
 	settings.Routing = provider.StaticRouting(cfg.Routing)
 	settings.Fallbacks = cfg.ModelFallbacks
 	settings.NearestModels = cfg.NearestModels
-	if client, ok := r.clients[settings.Model]; ok {
+	// THE CLIENT IS KEPT FOR ONE MODEL ON ONE ACCOUNT, not one model: the base
+	// is assembled again before every run with the keys as they are on disk
+	// now, and a client kept by the model's name alone went on sending the key
+	// it was built with after the person had replaced it.
+	key := settings.Model + "\x00" + settings.BaseURL + "\x00" + settings.APIKey
+	if client, ok := r.clients[key]; ok {
 		return client, settings.Model, nil
 	}
 	client, err := provider.NewClient(settings)
 	if err != nil {
 		return nil, settings.Model, err
 	}
-	r.clients[settings.Model] = client
+	r.clients[key] = client
 	return client, settings.Model, nil
 }
 

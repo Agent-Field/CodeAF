@@ -334,8 +334,13 @@ func automationBannerBody(item automation.Automation, run automation.Run) string
 		out = joinDot(out, "late "+automationLate(late))
 	}
 	text := strings.TrimSpace(run.Line)
-	if detail := strings.Join(strings.Fields(run.Detail), " "); len(detail) > len(text) {
-		text = detail
+	// ONLY A PIECE OF WORK'S REPORT STANDS IN FOR ITS LINE. A watch that spoke
+	// says what the person asked it to say, and its detail is what its look
+	// saw — evidence, not the message.
+	if item.Kind() == automation.KindWork {
+		if detail := strings.Join(strings.Fields(run.Detail), " "); len(detail) > len(text) {
+			text = detail
+		}
 	}
 	if text == "" && item.Kind() == automation.KindReminder {
 		text = strings.TrimSpace(item.Action.Say)

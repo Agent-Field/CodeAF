@@ -1,6 +1,8 @@
 package automation
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -213,5 +215,45 @@ func TestAMomentReadsTheWayItIsSaid(t *testing.T) {
 		if !want.IsZero() && !strings.Contains(err.Error(), "already passed") {
 			t.Errorf("%s: refused with %v", line, err)
 		}
+	}
+}
+
+// A FOLDER UNDER ~ IS SENT AS ~, and the store reads it as its own machine's
+// home: a line typed over --host names the far machine's folder, not the
+// laptop's.
+func TestAFolderUnderHomeIsKeptForTheStoreToRead(t *testing.T) {
+	now, _ := commandNow(t)
+	for line, want := range map[string]string{
+		`add x at 18:00 say y folder ~/app`:    "~/app",
+		`add x at 18:00 say y folder ~`:        "~",
+		`add x at 18:00 say y folder ~/a/../b`: "~/b",
+	} {
+		cmd, err := ParseCommand(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err := cmd.Apply(commandBase(), now.Add(-time.Hour))
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		if a.Workspace != want {
+			t.Fatalf("%s: folder %q, want %q", line, a.Workspace, want)
+		}
+	}
+	if cmd, err := ParseCommand(`add x at 18:00 say y folder ~bob/app`); err == nil {
+		if _, err := cmd.Apply(commandBase(), now.Add(-time.Hour)); err == nil {
+			t.Fatal("another person's ~ was taken")
+		}
+	}
+	s, _ := openStore(t)
+	item := reminder(time.Date(2026, 10, 9, 18, 0, 0, 0, time.UTC))
+	item.Workspace = "~/app"
+	made, err := s.Create(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	house, _ := os.UserHomeDir()
+	if made.Workspace != filepath.Join(house, "app") {
+		t.Fatalf("the store kept %q, want this machine's %q", made.Workspace, filepath.Join(house, "app"))
 	}
 }

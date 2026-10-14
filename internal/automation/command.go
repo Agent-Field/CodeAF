@@ -95,7 +95,7 @@ func ParseCommand(line string) (Command, error) {
 		}
 	case VerbEdit, VerbRun, VerbPause, VerbResume, VerbDelete:
 		if len(rest) == 0 || strings.TrimSpace(rest[0]) == "" {
-			return Command{}, fmt.Errorf("%s needs the automation's id — the list shows it", verb)
+			return Command{}, fmt.Errorf("%s needs the automation's id — → then e on its row in /automations puts its line, id and all, in the box", verb)
 		}
 		cmd.ID, rest = strings.TrimSpace(rest[0]), rest[1:]
 		if verb != VerbEdit {
@@ -413,7 +413,7 @@ func parseDistance(text string) (time.Duration, error) {
 	spec := strings.TrimSpace(text)
 	if days, ok := strings.CutSuffix(spec, "d"); ok {
 		count, err := strconv.Atoi(days)
-		if err != nil || count < 1 {
+		if err != nil || count < 1 || int64(count) > maxIntervalDays {
 			return 0, fmt.Errorf("cannot read %q", text)
 		}
 		return time.Duration(count) * 24 * time.Hour, nil
@@ -440,19 +440,39 @@ func durationWord(d time.Duration) string {
 }
 
 // expandFolder reads a folder as a person types one: absolute, or under `~`.
+//
+// A FOLDER UNDER ~ IS KEPT AS ~. The line may be typed in a window on another
+// machine, whose home is not the home of the machine that keeps and runs the
+// automation, so the store expands it where it lands ([ExpandHome]).
 func expandFolder(text string) (string, error) {
 	text = strings.TrimSpace(text)
 	if rest, ok := strings.CutPrefix(text, "~"); ok {
-		house, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
+		if rest != "" && !strings.HasPrefix(rest, "/") {
+			return "", fmt.Errorf("the folder %q has to be a full path, or start with ~/", text)
 		}
-		text = filepath.Join(house, rest)
+		return "~" + strings.TrimSuffix(filepath.ToSlash(filepath.Clean("/"+rest)), "/"), nil
 	}
 	if !filepath.IsAbs(text) {
 		return "", fmt.Errorf("the folder %q has to be a full path, or start with ~", text)
 	}
 	return filepath.Clean(text), nil
+}
+
+// ExpandHome is a workspace with a leading ~ read as THIS process's home — the
+// machine that keeps the store — and anything else exactly as it was.
+func ExpandHome(path string) (string, error) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(path), "~")
+	if !ok {
+		return path, nil
+	}
+	if rest != "" && !strings.HasPrefix(rest, "/") {
+		return path, nil
+	}
+	house, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(house) == "" {
+		return "", fmt.Errorf("cannot find the home folder %q is under", path)
+	}
+	return filepath.Join(house, rest), nil
 }
 
 // lookWith is the watch's look with one change made, creating it when the

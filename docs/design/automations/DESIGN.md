@@ -1,8 +1,9 @@
 # Automations — work codeaf does on a clock
 
-Design doc, 2026-10-10. The owner's decisions of 2026-10-09 are the contract;
-`audit-notes/standing-and-schedules.md` is the evidence that led to them. This
-replaces standing items (`internal/standing`, `/standing`, the OS timer) and the
+Design doc, 2026-10-10. The owner's decisions of 2026-10-09 are the contract,
+taken after an audit of the standing machinery on 2026-10-09 (its findings that
+matter are restated where they bear: the timer left behind, the drift, the
+repeated hour). This replaces standing items (`internal/standing`, `/standing`, the OS timer) and the
 v1 resident's scheduler. Where this document and the code disagree once the
 build has landed, the code is right and this document is the bug.
 
@@ -150,10 +151,17 @@ against those writers disagreeing. Here:
   off each candidate, and **the wall clock may never go backwards**: on the
   night the clocks fall back a 01:30 line runs once (the old schedule ran it on
   every pass for an hour); in spring the missing hour has no minutes, so a 02:30
-  line waits a day. A line that can never match is refused at the door.
+  line waits a day. A line that can never match is refused at the door. The
+  same rule has a cost the other way: `*/15 * * * *` runs four times in the
+  repeated hour of the autumn night, not eight, because the wall clock's second
+  pass over 01:00–02:00 is a time it has already been.
 - **Intervals** are a grid, `anchor + k × interval`, so a late run never moves
   the next one later (the old schedule drifted: a `15m` rhythm averaged 17.1
-  minutes). `d` is a day; the minimum is a minute.
+  minutes). `d` is a day; the minimum is a minute. **An interval is absolute
+  time, not wall time**: `1d` is twenty-four hours, so a `1d` rhythm saved at
+  09:00 runs at 08:00 or 10:00 after the clocks change. A rhythm that must keep
+  its hour is a cron line (`0 9 * * *`). A count of days that would overflow a
+  duration is refused.
 - **Missed slots catch up once.** However many slots passed while codeaf was
   closed or the machine slept, ONE run is taken, marked late, and the next slot
   is the first after now. A one-time reminder is never dropped for being late.
