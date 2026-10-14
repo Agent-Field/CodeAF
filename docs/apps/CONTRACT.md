@@ -35,7 +35,8 @@ triggers firing (they validate but do not fire), freeze, blind fields.
 ## 2 · File formats
 
 An app is a folder; its definition is these files (relative slash paths). The
-Builder writes them and nothing else does (rules 01 and 02).
+Builder writes the definition files (rules 01 and 02); the owner may also
+change a kept app's identity tint through `app.setTint`.
 
 | File | Format | Schema `$id` |
 | --- | --- | --- |
@@ -317,11 +318,9 @@ comes from the app definition and uses the same identity palette. Older
 definitions may omit it. The first-run golden CRM keeps `tint: "sage"` in its
 definition.
 
-Store handoff for the tint spec lane: copy `app.Tint` into metadata in
-`definitionSummary` and copy `labels.Tint` when `WriteFiles` refreshes labels.
-This supplies tint to List, detail, Keep and app state events without choosing a
-default. The spec lane owns the schema and wire field; the store owns these
-metadata projections.
+The store copies `app.Tint` into metadata in `definitionSummary` and copies
+`labels.Tint` when `WriteFiles` refreshes labels. This supplies tint to List,
+detail, Keep and app state events without choosing a default.
 
 ### Methods
 
@@ -336,6 +335,7 @@ metadata projections.
 | `builder.cancel` | ✓ | `{}` → `{}` |
 | `apps.keep` | ✓ | `{}` → `AppSummary` (state `kept`, version 1, real records empty) |
 | `apps.discard` | ✓ | `{}` → `{}` (folder and records gone) |
+| `app.setTint` | — | `{app: "<app id>", tint: "iris"\|"sage"\|"sand"\|"tide"\|"rose"\|"graphite"}` → `AppSummary` including `tint`; owner only |
 | `records.query` | ✓ | `{type, query?, limit?, after?, count_by?}` → `{rows, next?, total, counts?}` |
 | `records.get` | ✓ | `{type, id}` → `Record` |
 | `records.create` | ✓ | `{type, set}` → `Record` |
@@ -347,6 +347,17 @@ metadata projections.
 | `approvals.list` | ✓ | `{state?}` → `{approvals}` |
 | `approvals.decide` | ✓ | `{approval_id, answer: yes\|no, edit?}` → `Approval` |
 | `agent.send` | ✓ | `{thread?, text, record?, screen?}` → `{thread, turn}`; reply streams on `app/<id>/agent/<thread>` |
+
+`app.setTint` takes the app id in params and requires the Personal owner,
+with the same owner check as other owner-only app operations. App agents and
+non-owners receive `denied`; an unknown app receives `not_found`. Invalid tints
+receive `invalid` with exactly
+`"tint must be one of iris, sage, sand, tide, rose, graphite"`.
+Only kept apps can change tint; other states receive `conflict`.
+The gateway calls the store's `svc.TintStore` extension; the Builder's
+`svc.Store` seam is unchanged. The store uses its atomic version-write path,
+preserving existing version tags and returning the next version's summary. It publishes that summary on the
+existing `app/<id>/state` topic so open desks update.
 
 App state: `planning → building → preview → kept`, or `building → failed`
 (Fix it · Cancel). Records calls read and write **sample** data while the app

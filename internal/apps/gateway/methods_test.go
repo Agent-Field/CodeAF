@@ -42,6 +42,11 @@ func (s probeStore) Discard(_ context.Context, app string) error {
 	return nil
 }
 
+func (s probeStore) SetTint(_ context.Context, caller svc.Caller, p bridge.SetTintParams) (bridge.AppSummary, error) {
+	s.p.save(bridge.MethodAppSetTint, svc.Scope{Caller: caller}, p)
+	return bridge.AppSummary{}, nil
+}
+
 type probeRecords struct {
 	svc.Records
 	p *dispatchProbe
@@ -141,6 +146,7 @@ func TestDispatchUsesContractServiceMethods(t *testing.T) {
 	}{
 		{bridge.MethodAppsList, nil}, {bridge.MethodAppsGet, nil}, {bridge.MethodAppsCreate, bridge.CreateAppParams{Paragraph: "a sales app"}},
 		{bridge.MethodAppsKeep, nil}, {bridge.MethodAppsDiscard, nil},
+		{bridge.MethodAppSetTint, bridge.SetTintParams{App: "crm", Tint: "iris"}},
 		{bridge.MethodBuilderPlanEdit, bridge.PlanEditParams{Edits: []bridge.PlanEdit{{ID: "deal", Text: "deals"}}}},
 		{bridge.MethodBuilderWrite, nil}, {bridge.MethodBuilderCancel, nil},
 		{bridge.MethodRecordsQuery, bridge.QueryParams{Type: "deal", Query: "sort:-amount", Limit: 10}},
