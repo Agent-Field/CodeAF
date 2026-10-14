@@ -59,14 +59,14 @@ func (a *Agent) automationTools() []bare.Tool {
 }
 
 var automationDescription = "Set up work codeaf does on a clock — a reminder, scheduled work, or a watch — and manage the ones that exist. THE PERSON NEVER NAMES THIS TOOL; you recognise it from what their sentence IS.\n\n" +
-	"KINDS. A REMINDER says a fixed line at a time (`say`): \"remind me at 6 to leave\". SCHEDULED WORK runs a brief at a time or on a rhythm (`do`): \"every Monday at 9, draft the weekly update from the git log\". A WATCH looks at something on a rhythm and, when its condition turns true, says a line or runs work (`look` + `say` or `do`): \"tell me when CI on main goes red\". Automations run ONLY while codeaf is open; anything that fell due while it was closed runs once when it opens, marked late.\n\n" +
+	"KINDS. A REMINDER says a fixed line at a time (`say`): \"remind me at 6 to leave\". SCHEDULED WORK runs a brief at a time or on a rhythm (`do`): \"every Monday at 9, draft the weekly update\". A WATCH looks at something on a rhythm and, when its condition turns true, says a line or runs work (`look` + `say` or `do`): \"tell me when CI on main goes red\". Automations run ONLY while codeaf is open; anything that fell due while it was closed runs once when it opens, marked late.\n\n" +
 	"NOT A RULE. \"Always use tabs here\", \"never touch the public API\", a convention or preference for future work is a memory marked always — use `remember` with always, not this tool. Something the person wants done ONCE, now, is just done now.\n\n" +
-	"PROPOSE puts a card in front of the person; nothing is saved until they say yes, and the card shows exactly what you send. Keep their sentence verbatim in `words`; give a short `title`. WHEN: `when.at` is one moment (RFC 3339 with offset, worked out from the `Now` line); `when.in` is a distance from now (\"20m\", \"2h\", \"1d\"); `when.every` is a rhythm — a five-field cron line read in the person's zone (\"0 9 * * 1\" is Mondays 09:00, \"30 8 * * 1-5\" weekdays 08:30) or an interval (\"15m\", \"2h\", \"1d\"). A moment that has already passed is refused. A WATCH needs `when.every` (how often it looks), a `look` (exactly one of a shell `command` run in the project, a `files` glob, or a `tool` with `args` — with `service` when the tool belongs to a connected account) and a `condition`: the plain sentence the model checks every look against (\"the latest run on main failed\"). Prefer a look whose output carries the thing itself (a status field, a file's contents), not a bare status code. `look.once` makes it tell once and stop. A watch speaks when its condition CHANGES to true, and is quiet while it stays true. Send `worktree` only for work that edits code and should be kept on a branch for review. Send `limits` only when the person named a time or a price (defaults: 30m and $5 a run).\n\n" +
-	"MANAGE: `list` shows them with their ids; `pause`, `resume`, `delete`, `run` (now, outside its schedule) and `history` take an `id`."
+	"PROPOSE puts a card in front of the person; nothing is saved until they say yes, and the card shows exactly what you send. Keep their sentence verbatim in `words`; give a short `title`. WHEN: `when.at` is one moment (RFC 3339 with offset, worked out from the `Now` line); `when.in` is a distance from now (\"20m\", \"2h\", \"1d\"); `when.every` is a rhythm — a five-field cron line read in the person's zone (\"0 9 * * 1\" is Mondays 09:00, \"30 8 * * 1-5\" weekdays 08:30) or an interval (\"15m\", \"2h\", \"1d\"). A moment that has already passed is refused. A WATCH needs `when.every` (how often it looks), a `look` (exactly one of `command`, `files`, or `tool` with `args`) and a `condition` (\"the latest run on main failed\"). Prefer a look whose output carries the thing itself (a status field, a file's contents), not a bare status code. `look.once` makes it tell once and stop. A watch speaks when its condition CHANGES to true, and is quiet while it stays true. Send `worktree` only for work that edits code and should be kept on a branch for review. Send `limits` only when the person named a time or a price (defaults: 30m and $5 a run).\n\n" +
+	"CHANGE: \"move my reminder to 5pm\" is `change` with its `id` and only what changes — never a second proposal; it raises the same card, and a new `when` wakes a finished one. MANAGE: `list` shows ids; `pause`, `resume`, `delete`, `run` (now) and `history` take an `id`."
 
 var automationSchemaJSON = `{"type":"object","properties":{` +
-	`"op":{"type":"string","enum":["propose","list","pause","resume","delete","run","history"]},` +
-	`"id":{"type":"string","description":"Which automation, for pause, resume, delete, run and history — from list."},` +
+	`"op":{"type":"string","enum":["propose","change","list","pause","resume","delete","run","history"]},` +
+	`"id":{"type":"string","description":"Which automation, from list."},` +
 	`"title":{"type":"string","description":"A short name, a few words."},` +
 	`"words":{"type":"string","description":"The person's own sentence, verbatim."},` +
 	`"when":{"type":"object","properties":{` +
@@ -91,33 +91,44 @@ var automationSchemaJSON = `{"type":"object","properties":{` +
 	`},"required":["op"]}`
 
 type automationArguments struct {
-	Op    string `json:"op"`
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Words string `json:"words"`
-	When  struct {
-		At    string `json:"at"`
-		In    string `json:"in"`
-		Every string `json:"every"`
-		Words string `json:"words"`
-	} `json:"when"`
-	Look *struct {
-		Command   string          `json:"command"`
-		Files     string          `json:"files"`
-		Tool      string          `json:"tool"`
-		Service   string          `json:"service"`
-		Args      json.RawMessage `json:"args"`
-		Condition string          `json:"condition"`
-		Once      bool            `json:"once"`
-	} `json:"look"`
-	Say      string `json:"say"`
-	Do       string `json:"do"`
-	Worktree bool   `json:"worktree"`
-	Limits   struct {
-		Time string   `json:"time"`
-		USD  *float64 `json:"usd"`
-	} `json:"limits"`
+	Op    string                   `json:"op"`
+	ID    string                   `json:"id"`
+	Title string                   `json:"title"`
+	Words string                   `json:"words"`
+	When  automationWhenArguments  `json:"when"`
+	Look  *automationLookArguments `json:"look"`
+	Say   string                   `json:"say"`
+	Do    string                   `json:"do"`
+	// Worktree is a pointer because a change has to tell "keep it where it
+	// runs" (absent) from "run it in the checkout" (false).
+	Worktree *bool                     `json:"worktree"`
+	Limits   automationLimitsArguments `json:"limits"`
 }
+
+type automationWhenArguments struct {
+	At    string `json:"at"`
+	In    string `json:"in"`
+	Every string `json:"every"`
+	Words string `json:"words"`
+}
+
+type automationLookArguments struct {
+	Command   string          `json:"command"`
+	Files     string          `json:"files"`
+	Tool      string          `json:"tool"`
+	Service   string          `json:"service"`
+	Args      json.RawMessage `json:"args"`
+	Condition string          `json:"condition"`
+	Once      *bool           `json:"once"`
+}
+
+type automationLimitsArguments struct {
+	Time string   `json:"time"`
+	USD  *float64 `json:"usd"`
+}
+
+// automationOps is every op, in the order a refusal names them.
+const automationOps = "propose, change, list, pause, resume, delete, run or history"
 
 // automationTool is the belt's entry point, with the clock stamped on every
 // answer: this is the tool whose subject is WHEN, and the model needs the real
@@ -144,6 +155,8 @@ func (a *Agent) automationDispatch(ctx context.Context, args json.RawMessage) (s
 	switch op := strings.ToLower(strings.TrimSpace(parsed.Op)); op {
 	case "propose":
 		return a.automationPropose(ctx, store, parsed)
+	case "change":
+		return a.automationChange(ctx, store, parsed)
 	case "list":
 		return automationList(store, time.Now())
 	case "pause", "resume":
@@ -159,9 +172,9 @@ func (a *Agent) automationDispatch(ctx context.Context, args json.RawMessage) (s
 	case "history":
 		return automationHistory(store, parsed.ID, time.Now())
 	case "":
-		return "Invalid arguments: op is required — propose, list, pause, resume, delete, run or history", true, nil
+		return "Invalid arguments: op is required — " + automationOps, true, nil
 	default:
-		return "Invalid arguments: no op called " + strconv.Quote(parsed.Op) + " — propose, list, pause, resume, delete, run or history", true, nil
+		return "Invalid arguments: no op called " + strconv.Quote(parsed.Op) + " — " + automationOps, true, nil
 	}
 }
 
@@ -191,13 +204,9 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 		Options:    AutomationOptions(item),
 	}
 	answer, err := a.askAutomation(ctx, &notice)
-	switch {
-	case errors.Is(err, errAutomationUnwatched):
-		return "nobody is here to say yes — an automation can only be set up in a conversation somebody is in", true, nil
-	case errors.Is(err, errAutomationUnanswered):
-		return "the card was left unanswered — nothing was saved", false, nil
-	case err != nil:
-		return "the card was never answered: " + err.Error(), true, nil
+	if err != nil {
+		out, failed := automationNoAnswer(err, "set up", "saved")
+		return out, failed, nil
 	}
 	if !answer.Save {
 		if change := strings.TrimSpace(answer.Change); change != "" {
@@ -252,71 +261,264 @@ func (a *Agent) automationFrom(parsed automationArguments, now time.Time) (autom
 		Title:     strings.TrimSpace(parsed.Title),
 		Words:     strings.TrimSpace(parsed.Words),
 		Workspace: a.automationWorkspace(),
-		Worktree:  parsed.Worktree,
+		Worktree:  parsed.Worktree != nil && *parsed.Worktree,
 		Action:    automation.Action{Say: strings.TrimSpace(parsed.Say), Do: strings.TrimSpace(parsed.Do)},
 		Origin:    a.automationOrigin(),
 	}
 	if item.Title == "" {
 		item.Title = clip(firstNonEmptyString(item.Words, item.Action.Say, item.Action.Do), 60)
 	}
-	at, in, every := strings.TrimSpace(parsed.When.At), strings.TrimSpace(parsed.When.In), strings.TrimSpace(parsed.When.Every)
+	schedule, sent, problem := automationSchedule(parsed.When, a.automationZone(), now)
+	switch {
+	case problem != "":
+		return item, problem
+	case !sent:
+		return item, automationOneWhen
+	}
+	item.Schedule = schedule
+	item.Look = automationLook(parsed.Look, nil)
+	limits, problem := automationLimits(parsed.Limits, automation.Limits{})
+	if problem != "" {
+		return item, problem
+	}
+	item.Limits = limits
+	return item, ""
+}
+
+const automationOneWhen = "Invalid arguments: send exactly one of when.at, when.in or when.every"
+
+// automationSchedule reads `when` into a schedule, and says whether one was
+// sent at all: a proposal refuses a `when` with nothing in it, and a change
+// reads it as "keep the schedule it has". A new rhythm is read in zone.
+func automationSchedule(when automationWhenArguments, zone string, now time.Time) (automation.Schedule, bool, string) {
+	at, in, every := strings.TrimSpace(when.At), strings.TrimSpace(when.In), strings.TrimSpace(when.Every)
 	set := 0
 	for _, field := range []string{at, in, every} {
 		if field != "" {
 			set++
 		}
 	}
-	if set != 1 {
-		return item, "Invalid arguments: send exactly one of when.at, when.in or when.every"
-	}
 	switch {
+	case set == 0:
+		return automation.Schedule{}, false, ""
+	case set > 1:
+		return automation.Schedule{}, false, automationOneWhen
 	case every != "":
-		item.Schedule = automation.Schedule{Every: every, Zone: a.automationZone()}
+		return automation.Schedule{Every: every, Zone: zone}, true, ""
 	case in != "":
 		span, err := automation.ParseInterval(in)
 		if err != nil {
-			return item, "Invalid arguments: when.in is a distance like \"20m\", \"2h\" or \"1d\""
+			return automation.Schedule{}, false, "Invalid arguments: when.in is a distance like \"20m\", \"2h\" or \"1d\""
 		}
-		item.Schedule = automation.Schedule{At: now.Add(span)}
-	default:
-		moment, err := automationMoment(at)
-		if err != nil {
-			return item, "Invalid arguments: when.at " + err.Error()
-		}
-		if moment.Before(now.Add(-automationPastGrace)) {
-			return item, fmt.Sprintf("when.at %s has already passed — it is %s now. For a distance from now send when.in; for a clock time, compute it from now.",
-				moment.Format("2006-01-02 15:04 -07:00"), now.Format("2006-01-02 15:04 -07:00"))
-		}
-		item.Schedule = automation.Schedule{At: moment}
+		return automation.Schedule{At: now.Add(span)}, true, ""
 	}
-	if look := parsed.Look; look != nil {
-		item.Look = &automation.Look{
-			Command:   strings.TrimSpace(look.Command),
-			Files:     strings.TrimSpace(look.Files),
-			Tool:      strings.TrimSpace(look.Tool),
-			Service:   strings.TrimSpace(look.Service),
-			Args:      look.Args,
-			Condition: strings.TrimSpace(look.Condition),
-			Once:      look.Once,
-		}
-		if string(item.Look.Args) == "null" {
-			item.Look.Args = nil
-		}
+	moment, err := automationMoment(at)
+	if err != nil {
+		return automation.Schedule{}, false, "Invalid arguments: when.at " + err.Error()
 	}
-	if raw := strings.TrimSpace(parsed.Limits.Time); raw != "" {
+	if moment.Before(now.Add(-automationPastGrace)) {
+		return automation.Schedule{}, false, fmt.Sprintf("when.at %s has already passed — it is %s now. For a distance from now send when.in; for a clock time, compute it from now.",
+			moment.Format("2006-01-02 15:04 -07:00"), now.Format("2006-01-02 15:04 -07:00"))
+	}
+	return automation.Schedule{At: moment}, true, ""
+}
+
+// automationLook lays the look that was sent over the one there is, which for
+// a proposal is none. A new target — a command, files or a tool — replaces the
+// old target whole; the condition and `once` stay unless they are sent, as the
+// typed `look` and `files` clauses keep them (internal/automation's Apply).
+func automationLook(sent *automationLookArguments, base *automation.Look) *automation.Look {
+	if sent == nil {
+		return base
+	}
+	var look automation.Look
+	if base != nil {
+		look = *base
+	}
+	command, files, tool := strings.TrimSpace(sent.Command), strings.TrimSpace(sent.Files), strings.TrimSpace(sent.Tool)
+	if command != "" || files != "" || tool != "" {
+		look.Command, look.Files, look.Tool, look.Service, look.Args = command, files, tool, "", nil
+	}
+	if service := strings.TrimSpace(sent.Service); service != "" {
+		look.Service = service
+	}
+	if len(sent.Args) > 0 && string(sent.Args) != "null" {
+		look.Args = sent.Args
+	}
+	if condition := strings.TrimSpace(sent.Condition); condition != "" {
+		look.Condition = condition
+	}
+	if sent.Once != nil {
+		look.Once = *sent.Once
+	}
+	return &look
+}
+
+// automationLimits lays the limits that were sent over the ones there are.
+func automationLimits(sent automationLimitsArguments, base automation.Limits) (automation.Limits, string) {
+	limits := base
+	if raw := strings.TrimSpace(sent.Time); raw != "" {
 		limit, err := automation.ParseInterval(raw)
 		if err != nil {
-			return item, "Invalid arguments: limits.time is a duration like \"30m\" or \"2h\""
+			return limits, "Invalid arguments: limits.time is a duration like \"30m\" or \"2h\""
 		}
-		item.Limits.Time = limit
+		limits.Time = limit
 	}
-	if parsed.Limits.USD != nil {
-		if *parsed.Limits.USD <= 0 || math.IsNaN(*parsed.Limits.USD) {
-			return item, "Invalid arguments: limits.usd is a price above zero"
+	if sent.USD != nil {
+		if *sent.USD <= 0 || math.IsNaN(*sent.USD) {
+			return limits, "Invalid arguments: limits.usd is a price above zero"
 		}
-		item.Limits.USD = *parsed.Limits.USD
+		limits.USD = *sent.USD
 	}
-	return item, ""
+	return limits, ""
+}
+
+// automationNoAnswer is what a card that got no answer comes to, in the words
+// of what the call was for: a proposal is "set up" and "saved", a change is
+// "changed" and "changed".
+func automationNoAnswer(err error, can, nothing string) (string, bool) {
+	switch {
+	case errors.Is(err, errAutomationUnwatched):
+		return "nobody is here to say yes — an automation can only be " + can + " in a conversation somebody is in", true
+	case errors.Is(err, errAutomationUnanswered):
+		return "the card was left unanswered — nothing was " + nothing, false
+	}
+	return "the card was never answered: " + err.Error(), true
+}
+
+// ── changing ────────────────────────────────────────────────────────────────
+
+// automationChange changes an automation that exists, on the same card a
+// proposal raises, headed `save this change?` ([AutomationHead]).
+//
+// IT IS WHAT "MOVE MY REMINDER TO 5PM" IS. Before it, the model's only door
+// was a new proposal, which left the old automation — often a finished one —
+// standing beside the new one in `/automations`. A change keeps the id, the
+// place it runs, the conversation it reports to and its history, and
+// [automation.Store.Update] works a changed schedule out again from now, which
+// is what wakes a finished one-time reminder that is given a new moment.
+func (a *Agent) automationChange(ctx context.Context, store *automation.Store, parsed automationArguments) (string, bool, error) {
+	id := strings.TrimSpace(parsed.ID)
+	if id == "" {
+		return "Invalid arguments: id is required — list shows them", true, nil
+	}
+	stored, err := store.Get(id)
+	if err != nil {
+		return automationNotFound(err), true, nil
+	}
+	now := time.Now()
+	item, rescheduled, problem := a.automationChanged(stored, parsed, now)
+	if problem != "" {
+		return problem, true, nil
+	}
+	if err := item.Validate(); err != nil {
+		return "Invalid arguments: " + err.Error(), true, nil
+	}
+	// THE CARD'S NEXT RUN IS THE ONE THE SAVE WILL GIVE IT: worked out again from
+	// now for a new schedule, the one it already has otherwise — none for a
+	// finished one — and none while it is paused, because a paused automation
+	// does not run whatever its schedule says.
+	var next time.Time
+	switch {
+	case item.Status == automation.StatusPaused:
+	case rescheduled:
+		if next, err = item.Schedule.First(now); err != nil {
+			return "Invalid arguments: " + err.Error(), true, nil
+		}
+	default:
+		next = stored.Next
+	}
+	whenWords := automation.Describe(item.Schedule, now)
+	if rescheduled {
+		whenWords = firstNonEmptyString(strings.TrimSpace(parsed.When.Words), whenWords)
+	}
+	notice := AutomationNotice{
+		Automation: item,
+		WhenWords:  whenWords,
+		Exact:      automation.Exact(item.Schedule),
+		Next:       next,
+		CostWords:  a.automationCostWords(item, now),
+		Options:    AutomationOptions(item),
+	}
+	answer, err := a.askAutomation(ctx, &notice)
+	if err != nil {
+		out, failed := automationNoAnswer(err, "changed", "changed")
+		return out, failed, nil
+	}
+	if !answer.Save {
+		if change := strings.TrimSpace(answer.Change); change != "" {
+			return "the person changed it: " + change + "\nNothing is changed yet. Send the change again with that.", false, nil
+		}
+		return "nothing was changed: the person said no.", false, nil
+	}
+	saved, err := store.Update(item)
+	switch {
+	case errors.Is(err, automation.ErrNotFound):
+		return "nothing was changed: it was deleted while the card was up", true, nil
+	case err != nil:
+		return "nothing was changed: " + err.Error(), true, nil
+	}
+	a.emitAutomationUpdate("changed", saved, "")
+	line := fmt.Sprintf("changed %s: %s\nit runs: %s", saved.ID, saved.Title, whenWords)
+	switch {
+	case saved.Status == automation.StatusPaused:
+		line += "\nit is still paused — resume starts it again"
+	case saved.Status == automation.StatusFinished:
+		line += "\nit has already run and runs again only if when changes"
+	case !saved.Next.IsZero():
+		line += "\nnext run: " + automation.Moment(saved.Next, now)
+	}
+	return line + "\nThey answered the card. Your WHOLE reply is one short line saying what changed and when it next runs — no preamble, and do not ask again.", false, nil
+}
+
+// automationChanged lays a change over the automation as it is saved: what was
+// sent replaces what was there, and everything else stays. It says whether the
+// schedule was replaced, and refuses a change that sends nothing to change.
+func (a *Agent) automationChanged(stored automation.Automation, parsed automationArguments, now time.Time) (automation.Automation, bool, string) {
+	item := stored
+	sent := false
+	if title := strings.TrimSpace(parsed.Title); title != "" {
+		item.Title, sent = title, true
+	}
+	if words := strings.TrimSpace(parsed.Words); words != "" {
+		item.Words, sent = words, true
+	}
+	// A NEW RHYTHM KEEPS THE ZONE THE OLD ONE WAS READ IN, as the typed `every`
+	// clause does; only an automation that never had one is given this
+	// conversation's.
+	schedule, rescheduled, problem := automationSchedule(parsed.When, firstNonEmptyString(stored.Schedule.Zone, a.automationZone()), now)
+	if problem != "" {
+		return item, false, problem
+	}
+	if rescheduled {
+		item.Schedule, sent = schedule, true
+	}
+	// A line and work are one slot: sending either replaces what it says or
+	// does, and [automation.Automation.Validate] refuses both at once.
+	if say, do := strings.TrimSpace(parsed.Say), strings.TrimSpace(parsed.Do); say != "" || do != "" {
+		item.Action, sent = automation.Action{Say: say, Do: do}, true
+	}
+	switch {
+	case parsed.Worktree != nil:
+		item.Worktree, sent = *parsed.Worktree, true
+	case item.Action.Do == "":
+		// Only work runs in a worktree, so work turned into a line leaves it.
+		item.Worktree = false
+	}
+	if parsed.Look != nil {
+		item.Look, sent = automationLook(parsed.Look, stored.Look), true
+	}
+	if strings.TrimSpace(parsed.Limits.Time) != "" || parsed.Limits.USD != nil {
+		limits, problem := automationLimits(parsed.Limits, stored.Limits)
+		if problem != "" {
+			return item, false, problem
+		}
+		item.Limits, sent = limits, true
+	}
+	if !sent {
+		return item, false, "Invalid arguments: send only what changes — when, say, do, look, worktree or limits — beside the id"
+	}
+	return item, rescheduled, ""
 }
 
 // automationOrigin is the conversation an automation is made in: where its

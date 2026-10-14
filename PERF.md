@@ -1570,6 +1570,14 @@ measures **52,713** bytes and the lean **44,935**, and both waivers fall to sit
 exactly on the measurement: the full cap is **52,713** (4,713 over its target)
 and the lean cap **44,935** (13,435 over).
 
+**`automation` learns `change`, and pays for it (2026-10-14).** The op, the
+sentence in the tool's description that says when to use it and the page's
+"one that exists is CHANGED, never proposed again" were taken out of what the
+description already said twice — a watch's look and condition, which the schema
+says beside their own fields — and out of the `id` field's list of the ops that
+take one. Both arms come out **22** bytes lighter: the full cap is **52,691**
+(4,691 over) and the lean cap **44,913** (13,413 over).
+
 ## Following through on a completion claim
 
 A turn may decline handoff once per request when its own continuation says no

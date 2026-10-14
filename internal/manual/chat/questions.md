@@ -1307,7 +1307,8 @@ card — the title, when it first runs, what it says or does, where work runs an
 for anything but a reminder, what one run may take and spend (*Automations*,
 *The card*) — and its question goes on the block above your box. The first line
 says the kind: `wants to remind you`, `wants to schedule work` or
-`wants to watch for something`. The line under it is
+`wants to watch for something` — or `save this change?` when I change one that exists,
+with only `1 Save` and `0 Don't save`. The line under it is
 `nothing is saved until you say so`.
 
 The answers are `1 Save`; `2 Save and run it now`, or `2 Save and check it now` on
@@ -1439,8 +1440,8 @@ It depends on what was proposed, and the card says which beside `1 Save`:
 (on a watch, `Saves it, then takes one look now, here, while you watch.`), and
 `0 Don't save` says `Nothing is saved and nothing runs.` On the card a typed
 `/automations add` raises, `1 Save` says
-`It runs on this schedule while codeaf is open.`; on an edit's,
-`The automation runs this way from its next time.`
+`It runs on this schedule while codeaf is open.`; on a change's — typed with `edit`, or
+asked of me in a conversation — `The automation runs this way from its next time.`
 
 Saving is not forever: pausing or deleting one later is `/automations`, or asking me
 (*Automations*). A rule such as "always use tabs" is not an automation — it has no

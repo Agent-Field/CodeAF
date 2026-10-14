@@ -2621,17 +2621,16 @@ verbs, and their letters work only while that strip is drawn:
 A verb that cannot work on the row is not drawn: `s` only while a run is in hand and `r`
 only while none is, no `pause` on a finished one, no `o` with no conversation behind it. A
 click on a row opens it; the wheel walks. Home's `automations` panel has none of these
-keys — its rows open this place, and `ctrl+e`, `ctrl+x` and `alt+e` do nothing to an
-automation.
+keys — its rows open this place — and `ctrl+e`, `ctrl+x` and `alt+e` do nothing to one.
 
 **On an automation's card** — `wants to remind you`, `wants to schedule work`,
 `wants to watch for something` — `1` Save · `2` Save and run it now (`2` Save and check it
 now on a watch; no `2` on a reminder or on work kept in a separate worktree) · `0` Don't
 save · `o` Change…, which asks for your correction in words · `esc` later, which puts the
 card off until `alt+y` raises it. A card raised by a typed `/automations add` or `edit` —
-`save this automation?`, `save this change?` — has only `1` and `0`. In home's `ask here`
-pane the same keys answer it while the pane has the keyboard, and `esc` there hands the
-keyboard back to the list instead.
+`save this automation?`, `save this change?` — has only `1` and `0`; a change I raise
+has `1`, `0` and `o`. In home's `ask here` pane the same keys answer it while the pane has
+the keyboard, and `esc` there hands it back to the list.
 
 *Automations* says what each verb and each answer does.
 

@@ -676,8 +676,9 @@ var automationFacts = []beltFact{{
 	present: "SOMETHING TO LEAVE BEHIND — a reminder, work on a rhythm, a watch on the\n" +
 		"world — is `automation`'s: \"remind me at 6\", \"every Monday draft the update\",\n" +
 		"\"tell me when CI goes red\". PROPOSE IT, and never do it instead of proposing\n" +
-		"it, which answers a request they did not make. `automation`'s own description\n" +
-		"says how to tell one from the work in front of you and how to say when.",
+		"it, which answers a request they did not make; one that exists is CHANGED,\n" +
+		"never proposed again. `automation`'s own description says how to tell one\n" +
+		"from the work in front of you and how to say when.",
 	// AND THE ABSENT CASE NAMES NO VERB: a sentence naming a tool this belt does
 	// not carry is the lie the whole file exists to prevent (prompt_belt_test.go
 	// asks it of every shape).

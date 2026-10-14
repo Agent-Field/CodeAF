@@ -577,9 +577,16 @@ const fixedPrefixTarget = 48_000
 // shorter. The fixed prefix measures 52,713 bytes and the lean 44,935, and both
 // waivers FALL to sit exactly on the measurement: the bill this file has
 // carried for `stand` since it was first weighed is mostly paid.
+//
+// 2026-10-14, `automation` learns `change`. The op, its sentence in the tool's
+// description and the page's "one that exists is CHANGED, never proposed again"
+// were paid for out of what the description said twice — a watch's look and
+// condition, already said beside their own fields in the schema — and the `id`
+// field's list of the ops that take one. Both arms come out 22 bytes lighter,
+// at 52,691 and 44,913, and both waivers fall by exactly that.
 const (
-	fixedPrefixWaiver = 4_713
-	leanPrefixWaiver  = 13_435
+	fixedPrefixWaiver = 4_691
+	leanPrefixWaiver  = 13_413
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
