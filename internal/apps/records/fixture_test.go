@@ -19,8 +19,8 @@ func TestFixtureBootstrapAndPersistedAppIsolation(t *testing.T) {
 		mode      svc.DataMode
 		want      int
 	}{
-		{name: "fixture real", mode: svc.DataReal, want: 10},
-		{name: "fixture sample", mode: svc.DataSample, want: 10},
+		{name: "fixture real", mode: svc.DataReal, want: 62},
+		{name: "fixture sample", mode: svc.DataSample, want: 62},
 		{name: "persisted real", persisted: true, mode: svc.DataReal},
 		{name: "persisted sample", persisted: true, mode: svc.DataSample},
 		{name: "other definition", modified: true, mode: svc.DataReal},

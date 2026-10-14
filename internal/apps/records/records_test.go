@@ -134,7 +134,7 @@ func TestCRUDHistoryAndIsolation(t *testing.T) {
 		t.Fatal("unexpected history")
 	}
 	page, err = s.Query(ctx, scope, bridge.QueryParams{Type: "company"})
-	if err != nil || page.Total != 9 {
+	if err != nil || page.Total != 41 {
 		t.Fatalf("sample was changed: %+v %v", page, err)
 	}
 	if len(hub.events) != 3 {
@@ -149,23 +149,23 @@ func TestCRUDHistoryAndIsolation(t *testing.T) {
 func TestComputedAndTransactionalBatches(t *testing.T) {
 	s, scope, hub, _ := setup(t)
 	ctx := context.Background()
-	before := read(t, s, scope, "deal", "dl_northwind")
+	before := read(t, s, scope, "deal", "dl_01_globex")
 	if before.Fields["weighted"] != float64(24000) {
 		t.Fatalf("weighted = %v", before.Fields["weighted"])
 	}
-	_, err := s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_northwind", Set: map[string]any{"weighted": 1}})
+	_, err := s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_01_globex", Set: map[string]any{"weighted": 1}})
 	needCode(t, err, bridge.CodeInvalid)
-	_, err = s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", IDs: []string{"dl_northwind", "absent"}, Set: map[string]any{"stage": "Won"}})
+	_, err = s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", IDs: []string{"dl_01_globex", "absent"}, Set: map[string]any{"stage": "Won"}})
 	needCode(t, err, bridge.CodeNotFound)
-	after := read(t, s, scope, "deal", "dl_northwind")
+	after := read(t, s, scope, "deal", "dl_01_globex")
 	if !reflect.DeepEqual(before, after) || len(hub.events) != 0 {
 		t.Fatal("partial batch escaped its transaction")
 	}
-	_, err = s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_northwind", Set: map[string]any{"stage": "Won"}})
+	_, err = s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_01_globex", Set: map[string]any{"stage": "Won"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	after = read(t, s, scope, "deal", "dl_northwind")
+	after = read(t, s, scope, "deal", "dl_01_globex")
 	if after.Fields["weighted"] != float64(48000) {
 		t.Fatal(after)
 	}
@@ -193,13 +193,13 @@ func TestValidationRelationsAndUniqueConstraints(t *testing.T) {
 		set           map[string]any
 		code          bridge.ErrorCode
 	}{
-		{"unknown", "deal", "dl_hooli", map[string]any{"x": "oops"}, bridge.CodeInvalid},
-		{"enum", "deal", "dl_hooli", map[string]any{"stage": "Outside"}, bridge.CodeInvalid},
-		{"money", "deal", "dl_hooli", map[string]any{"amount": "1 OR 1=1"}, bridge.CodeInvalid},
-		{"required", "deal", "dl_hooli", map[string]any{"name": nil}, bridge.CodeInvalid},
-		{"reference", "deal", "dl_hooli", map[string]any{"company": "absent"}, bridge.CodeInvalid},
-		{"refs", "deal", "dl_hooli", map[string]any{"contacts": []string{"absent"}}, bridge.CodeInvalid},
-		{"date", "deal", "dl_hooli", map[string]any{"close_on": "2026-02-30"}, bridge.CodeInvalid},
+		{"unknown", "deal", "dl_04_hooli", map[string]any{"x": "oops"}, bridge.CodeInvalid},
+		{"enum", "deal", "dl_04_hooli", map[string]any{"stage": "Outside"}, bridge.CodeInvalid},
+		{"money", "deal", "dl_04_hooli", map[string]any{"amount": "1 OR 1=1"}, bridge.CodeInvalid},
+		{"required", "deal", "dl_04_hooli", map[string]any{"name": nil}, bridge.CodeInvalid},
+		{"reference", "deal", "dl_04_hooli", map[string]any{"company": "absent"}, bridge.CodeInvalid},
+		{"refs", "deal", "dl_04_hooli", map[string]any{"contacts": []string{"absent"}}, bridge.CodeInvalid},
+		{"date", "deal", "dl_04_hooli", map[string]any{"close_on": "2026-02-30"}, bridge.CodeInvalid},
 		{"email", "contact", "ct_priya", map[string]any{"email": "not email"}, bridge.CodeInvalid},
 		{"url", "company", "co_globex", map[string]any{"domain": "javascript:alert(1)"}, bridge.CodeInvalid},
 		{"unique", "company", "co_globex", map[string]any{"name": "Northwind"}, bridge.CodeConflict},
@@ -215,9 +215,9 @@ func TestValidationRelationsAndUniqueConstraints(t *testing.T) {
 	}
 	_, err := s.Delete(ctx, scope, bridge.DeleteRecordParams{Type: "company", ID: "co_northwind"})
 	needCode(t, err, bridge.CodeConflict)
-	_, err = s.Delete(ctx, scope, bridge.DeleteRecordParams{Type: "deal", IDs: []string{"dl_hooli", "absent"}})
+	_, err = s.Delete(ctx, scope, bridge.DeleteRecordParams{Type: "deal", IDs: []string{"dl_04_hooli", "absent"}})
 	needCode(t, err, bridge.CodeNotFound)
-	_ = read(t, s, scope, "deal", "dl_hooli")
+	_ = read(t, s, scope, "deal", "dl_04_hooli")
 	for _, p := range []bridge.UpdateRecordParams{{Type: "deal"}, {Type: "deal", ID: "a", IDs: []string{"b"}}, {Type: "deal", IDs: []string{"a", "a"}}} {
 		_, err := s.Update(ctx, scope, p)
 		needCode(t, err, bridge.CodeInvalid)
@@ -229,7 +229,7 @@ func TestSeedAtomicReplacementAndIndexedColumns(t *testing.T) {
 	broken := map[string][]bridge.Record{"deal": {{ID: "bad", Fields: map[string]any{"name": "Bad", "company": "absent"}}}}
 	needCode(t, s.Seed(ctx, "crm", broken), bridge.CodeInvalid)
 	page, err := s.Query(ctx, scope, bridge.QueryParams{Type: "deal"})
-	if err != nil || page.Total != 10 {
+	if err != nil || page.Total != 62 {
 		t.Fatalf("failed seed erased rows: %+v %v", page, err)
 	}
 	if err := s.Seed(ctx, "crm", original); err != nil {
@@ -291,16 +291,16 @@ func TestRulesDependenciesAndClock(t *testing.T) {
 	if err := s.Refresh(context.Background(), at); err != nil {
 		t.Fatal(err)
 	}
-	if row := read(t, s, scope, "deal", "dl_hooli"); row.Fields["age"] != float64(3) {
+	if row := read(t, s, scope, "deal", "dl_04_hooli"); row.Fields["age"] != float64(3) {
 		t.Fatal(row.Fields)
 	}
-	if len(hub.events) != 10 {
+	if len(hub.events) != 62 {
 		t.Fatalf("clock events = %d", len(hub.events))
 	}
 	if err := s.Refresh(context.Background(), at); err != nil {
 		t.Fatal(err)
 	}
-	if len(hub.events) != 10 {
+	if len(hub.events) != 62 {
 		t.Fatal("same clock wrote again")
 	}
 }
@@ -336,14 +336,14 @@ func TestStoredQueryPagingCountsAndDatetimes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Total != 9 || len(first.Rows) != 2 || first.Next == "" || first.Counts["Proposal"] != 2 {
+	if first.Total != 51 || len(first.Rows) != 2 || first.Next == "" || first.Counts["Proposal"] != 5 {
 		t.Fatal(first)
 	}
 	second, err := s.Query(ctx, scope, bridge.QueryParams{Type: "deal", Query: "stage:-Lost sort:-amount", Limit: 2, After: first.Next, CountBy: "stage"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Total != 9 || second.Rows[0].ID == first.Rows[0].ID || !reflect.DeepEqual(first.Counts, second.Counts) {
+	if second.Total != 51 || second.Rows[0].ID == first.Rows[0].ID || !reflect.DeepEqual(first.Counts, second.Counts) {
 		t.Fatal(second)
 	}
 	for _, p := range []bridge.QueryParams{{Type: "deal", Limit: 101}, {Type: "deal", After: "malformed"}, {Type: "deal", CountBy: "amount"}, {Type: `deal; DROP TABLE records_deal`}, {Type: "deal", Query: "sort:unknown"}} {
@@ -351,12 +351,12 @@ func TestStoredQueryPagingCountsAndDatetimes(t *testing.T) {
 			t.Fatal("accepted invalid query", p)
 		}
 	}
-	_, err = s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"last_touch": "2026-10-13T02:00:00.100+02:00"}})
+	_, err = s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_04_hooli", Set: map[string]any{"last_touch": "2026-10-13T13:30:00.100+02:00"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := s.Query(ctx, scope, bridge.QueryParams{Type: "deal", Query: "last_touch>2026-10-13T00:00:00Z"})
-	if err != nil || len(result.Rows) != 1 || result.Rows[0].ID != "dl_hooli" {
+	result, err := s.Query(ctx, scope, bridge.QueryParams{Type: "deal", Query: "last_touch>2026-10-13T11:00:00Z"})
+	if err != nil || len(result.Rows) != 1 || result.Rows[0].ID != "dl_04_hooli" {
 		t.Fatalf("datetime: %+v %v", result, err)
 	}
 }
@@ -368,13 +368,13 @@ func TestAgentLabelsAndPins(t *testing.T) {
 		t.Fatal(err)
 	}
 	hub.events = nil
-	_, err := s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_northwind", Set: map[string]any{"likely": "Maybe"}})
+	_, err := s.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_02_northwind", Set: map[string]any{"likely": "Maybe"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	agent := scope
 	agent.Caller.Agent = true
-	result, err := s.Update(ctx, agent, bridge.UpdateRecordParams{Type: "deal", ID: "dl_northwind", Set: map[string]any{"likely": "Unlikely", "name": "Updated by agent"}})
+	result, err := s.Update(ctx, agent, bridge.UpdateRecordParams{Type: "deal", ID: "dl_02_northwind", Set: map[string]any{"likely": "Unlikely", "name": "Updated by agent"}})
 	if err != nil {
 		t.Fatal(err)
 	}

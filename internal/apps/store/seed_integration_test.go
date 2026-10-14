@@ -165,7 +165,7 @@ func TestKeptDemoRecordsPersist(t *testing.T) {
 			}
 			scope := svc.Scope{App: "crm", Data: svc.DataReal, Caller: svc.Caller{Member: svc.Owner}}
 			page, err := all.Records.Query(ctx, scope, bridge.QueryParams{Type: "deal", Query: "sort:-amount", CountBy: "stage"})
-			if err != nil || page.Total != 10 || len(page.Rows) != 10 || page.Rows[0].ID != "dl_northwind" || page.Counts["Proposal"] != 2 {
+			if err != nil || page.Total != 62 || len(page.Rows) != 62 || page.Rows[0].ID != "dl_01_globex" || page.Counts["Proposal"] != 5 {
 				t.Fatalf("kept demo records = %+v, %v", page, err)
 			}
 			_, sample := spec.GoldenCRM()
@@ -181,27 +181,27 @@ func TestKeptDemoRecordsPersist(t *testing.T) {
 					}
 				}
 			}
-			if _, err := all.Records.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Qualified"}}); err != nil {
+			if _, err := all.Records.Update(ctx, scope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_05_umbrella", Set: map[string]any{"stage": "Talking"}}); err != nil {
 				t.Fatal(err)
 			}
 			sampleScope := scope
 			sampleScope.Data = svc.DataSample
-			row, err := all.Records.Get(ctx, sampleScope, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
+			row, err := all.Records.Get(ctx, sampleScope, bridge.GetRecordParams{Type: "deal", ID: "dl_05_umbrella"})
 			if err != nil || row.Fields["stage"] != "Lead" {
 				t.Fatalf("real write changed sample = %+v, %v", row, err)
 			}
-			if _, err := all.Records.Update(ctx, sampleScope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Won"}}); err != nil {
+			if _, err := all.Records.Update(ctx, sampleScope, bridge.UpdateRecordParams{Type: "deal", ID: "dl_05_umbrella", Set: map[string]any{"stage": "Won"}}); err != nil {
 				t.Fatal(err)
 			}
 			all.Store, all.Records = store.New(cfg, all), records.New(cfg, all)
 			if err := all.Store.(*store.Service).SeedGoldenCRM(ctx); err != nil {
 				t.Fatal(err)
 			}
-			row, err = all.Records.Get(ctx, scope, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
-			if err != nil || row.Fields["stage"] != "Qualified" {
+			row, err = all.Records.Get(ctx, scope, bridge.GetRecordParams{Type: "deal", ID: "dl_05_umbrella"})
+			if err != nil || row.Fields["stage"] != "Talking" {
 				t.Fatalf("restarted demo = %+v, %v", row, err)
 			}
-			row, err = all.Records.Get(ctx, sampleScope, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
+			row, err = all.Records.Get(ctx, sampleScope, bridge.GetRecordParams{Type: "deal", ID: "dl_05_umbrella"})
 			if err != nil || row.Fields["stage"] != "Won" {
 				t.Fatalf("restarted sample = %+v, %v", row, err)
 			}

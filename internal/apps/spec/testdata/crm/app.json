@@ -102,9 +102,8 @@
           "index": true,
           "values": [
             "Lead",
-            "Qualified",
+            "Talking",
             "Proposal",
-            "Negotiation",
             "Won",
             "Lost"
           ],
@@ -155,9 +154,8 @@
       "constants": {
         "stage_weight": {
           "Lead": 0.1,
-          "Qualified": 0.25,
+          "Talking": 0.3,
           "Proposal": 0.5,
-          "Negotiation": 0.7,
           "Won": 1,
           "Lost": 0
         }

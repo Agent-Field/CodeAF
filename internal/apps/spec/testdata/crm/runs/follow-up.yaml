@@ -2,7 +2,7 @@ run: follow-up
 title: Follow up on deals
 budget: { per_run: 0.50 }
 params:
-  deals: { type: refs, to: deal, default: "stage:Proposal,Negotiation last_touch<-14d" }
+  deals: { type: refs, to: deal, default: "stage:Lead,Talking,Proposal last_touch<-7d" }
 steps:
   - id: each
     loop: { over: $params.deals, as: deal, max: 25 }

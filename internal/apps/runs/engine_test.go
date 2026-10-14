@@ -13,7 +13,7 @@ import (
 
 func TestFollowUpWaitsThenSendsOnApproval(t *testing.T) {
 	h := newHarness(t)
-	state, err := h.runs.Start(h.ctx, h.scope(), bridge.StartRunParams{Run: "follow-up"})
+	state, err := h.runs.Start(h.ctx, h.scope(), bridge.StartRunParams{Run: "follow-up", Params: map[string]any{"deals": []any{"dl_05_umbrella"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestFollowUpWaitsThenSendsOnApproval(t *testing.T) {
 		gotPrompt = h.model.last.Messages[0].Text
 	}
 	h.model.mu.Unlock()
-	if gotModel != "deepseek/deepseek-v4.1-flash" || !strings.Contains(gotPrompt, "Expansion · support team") {
+	if gotModel != "deepseek/deepseek-v4.1-flash" || !strings.Contains(gotPrompt, "Starter plan") {
 		t.Fatalf("model %q prompt %q", gotModel, gotPrompt)
 	}
 	list, err := h.inbox.List(h.ctx, h.scope(), bridge.ListApprovalsParams{})
@@ -63,7 +63,7 @@ func TestFollowUpWaitsThenSendsOnApproval(t *testing.T) {
 	if !sawSend {
 		t.Fatal("gmail.send was not recorded")
 	}
-	row, err := h.recs.Get(h.ctx, h.scope(), bridge.GetRecordParams{Type: "deal", ID: "dl_umbrella"})
+	row, err := h.recs.Get(h.ctx, h.scope(), bridge.GetRecordParams{Type: "deal", ID: "dl_05_umbrella"})
 	if err != nil || row.Fields["last_touch"] == "" {
 		t.Fatalf("last_touch = %+v err %v", row.Fields, err)
 	}
@@ -227,7 +227,7 @@ func TestRecordEventOnTheHubStartsTheRun(t *testing.T) {
 	h.eng.started = make(chan string, 1)
 	h.eng.mu.Unlock()
 	if _, err := h.recs.Update(h.ctx, h.scope(), bridge.UpdateRecordParams{
-		Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Proposal"},
+		Type: "deal", ID: "dl_04_hooli", Set: map[string]any{"stage": "Proposal"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestRecordEventOnTheHubStartsTheRun(t *testing.T) {
 
 func TestRecordChangeStartsTheRun(t *testing.T) {
 	h := newHarness(t)
-	row, err := h.recs.Get(h.ctx, h.scope(), bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
+	row, err := h.recs.Get(h.ctx, h.scope(), bridge.GetRecordParams{Type: "deal", ID: "dl_04_hooli"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestRecordChangeStartsTheRun(t *testing.T) {
 	h.eng.handleRecord(h.ctx, "crm", bridge.RecordDiff{
 		Op: bridge.DiffUpsert, Type: "deal", ID: row.ID, Record: &row, By: svc.Owner,
 	})
-	list, err := h.runs.List(h.ctx, h.scope(), bridge.ListRunsParams{For: "dl_hooli"})
+	list, err := h.runs.List(h.ctx, h.scope(), bridge.ListRunsParams{For: "dl_04_hooli"})
 	if err != nil || len(list.Runs) != 1 || list.Runs[0].Trigger != "proposal-sent" {
 		t.Fatalf("runs = %+v err %v", list, err)
 	}
@@ -257,7 +257,7 @@ func TestRecordChangeStartsTheRun(t *testing.T) {
 
 func TestRestartResumesAWaitingRun(t *testing.T) {
 	h := newHarness(t)
-	state, err := h.runs.Start(h.ctx, h.scope(), bridge.StartRunParams{Run: "follow-up"})
+	state, err := h.runs.Start(h.ctx, h.scope(), bridge.StartRunParams{Run: "follow-up", Params: map[string]any{"deals": []any{"dl_05_umbrella"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
