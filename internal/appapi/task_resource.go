@@ -178,6 +178,7 @@ func (s *Server) taskRequest(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			response := taskTreeFromRows(agent, rows)
+			response.Steps += waitingSteps(engine)
 			write(w, 200, response)
 			return
 		}

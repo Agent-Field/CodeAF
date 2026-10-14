@@ -54,3 +54,21 @@ func permissionScopes(q session.Question, card session.ConsentCard) []Permission
 	}
 	return scopes
 }
+
+// waitingSteps is the number of calls stopped on a person's ok. Each is a
+// step underway, so a task waiting on its first call reads "1 step" rather
+// than "0 steps" for as long as the question stands. It is a count for the
+// view and nothing else.
+func waitingSteps(engine any) int {
+	door, ok := engine.(interface{ OpenQuestions() []session.Question })
+	if !ok {
+		return 0
+	}
+	n := 0
+	for _, q := range door.OpenQuestions() {
+		if q.Kind == session.QuestionConsent && q.Withdrawn == nil {
+			n++
+		}
+	}
+	return n
+}

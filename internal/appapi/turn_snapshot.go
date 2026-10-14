@@ -155,6 +155,7 @@ func (a *AgentRegistry) turnSnapshot(record agentRecord) AgentSnapshot {
 				snapshot.OpenAsks = append(snapshot.OpenAsks, ask)
 			}
 		}
+		snapshot.Tasks.Steps += waitingSteps(live.conn.Engine)
 	}
 	if len(snapshot.Entries) > turnTailEntries {
 		snapshot.Entries = snapshot.Entries[len(snapshot.Entries)-turnTailEntries:]
