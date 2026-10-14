@@ -40,8 +40,9 @@ type road struct {
 
 // roads is the registry; adding a road is adding a row.
 var roads = map[string]road{
-	roadCalls: callsRoad,
-	roadLoop:  loopRoad,
+	roadCalls:  callsRoad,
+	roadLoop:   loopRoad,
+	roadRescue: rescueRoad,
 }
 
 var callsRoad = road{
@@ -63,8 +64,8 @@ func chooseRoad(setting string, beltAsked bool) (string, road) {
 	case roads[name].plan == nil:
 		log.Printf("apps builder: %s=%q is not a road; building on the calls road", RoadEnv, setting)
 		name = roadCalls
-	case name == roadLoop && !beltAsked:
-		log.Printf("apps builder: the loop road needs the bash task belt; building on the calls road")
+	case (name == roadLoop || name == roadRescue) && !beltAsked:
+		log.Printf("apps builder: the %s road needs the bash task belt; building on the calls road", name)
 		name = roadCalls
 	}
 	return name, roads[name]
