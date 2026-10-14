@@ -16,6 +16,30 @@ shell command; it cannot silently authorize a compound command. Some commands
 have no class to save. Irreversible permissions never offer Always and refuse
 an attempt to save one: "irreversible actions always ask".
 
+## Allow for this task: one yes for a task's read-only commands
+
+When a command only reads, the permission card offers "for this task" as its
+first scope, before the two saved rules. Choose it and codeaf stops asking about
+that program's other read-only commands until the task ends. In a conversation
+with no task, it lasts until the reply ends; the next message asks again.
+It saves no rule, so nothing appears in Settings and there is nothing to remove.
+
+Only a plain read-only `gh` command counts today: `gh issue view` and `list`,
+`gh pr view`, `list`, `status`, `diff` and `checks`, `gh repo`, `release`, `run`
+and `workflow` `view` and `list`, `gh label list`, and `gh api` reading one path.
+The command must stand alone; one trailing ` 2>&1` is the only addition that
+still counts as a read. A pipe such as `| head`, any other redirect, a chain
+with `;` or `&&`, quotes, a variable, or a flag codeaf does not know makes it
+an ordinary command again, and it asks every time. So does every command that
+writes: a comment, a merge, a `gh api` call with a method or a body. Commands
+on the always-ask list and irreversible ones never offer this scope; an attempt
+answers "only a read-only command can be allowed for this task".
+
+Read-only commands an agent sends in the same step arrive as one card that
+lists each command. One answer covers all of them. A command that writes in
+that step keeps its own card. While a command waits for your answer the task
+counts it as a step, so a waiting task never reads "0 steps".
+
 ## App always ask list and Don't ask mode
 
 Settings → Permissions keeps "acting in your name", "deleting outside a task"

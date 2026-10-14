@@ -3286,6 +3286,29 @@ func TestSeniorDevNothingToRunQuestionsReachItsSection(t *testing.T) {
 	}
 }
 
+// A person who was asked eight times for eight read-only commands asks in
+// their own words; each wording must reach the section that answers it.
+func TestAllowForThisTaskQuestionsReachTheirSection(t *testing.T) {
+	for _, asked := range []string{
+		"what does allow for this task do on a permission card",
+		"how do I stop being asked for every read-only command in one task",
+		"I allowed for this task and a piped command still asks",
+		"does allow for this task save a rule",
+		"why are several read-only commands on one permission card",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "app-permissions" && strings.Contains(section.Title, "Allow for this task") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the section on allowing for this task", asked)
+		}
+	}
+}
+
 // TestC13UpdateQuestionsReachTheNewManualSection proves C13.
 func TestC13UpdateQuestionsReachTheNewManualSection(t *testing.T) {
 	for _, asked := range []string{
