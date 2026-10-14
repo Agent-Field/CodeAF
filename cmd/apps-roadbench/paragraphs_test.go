@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -83,5 +84,15 @@ func TestRawClassifier(t *testing.T) {
 	}
 	if countRaw(append(raw, owner...)) != len(raw) {
 		t.Error("countRaw")
+	}
+}
+
+func TestRealZooPickShape(t *testing.T) {
+	got, err := readParagraphs("testdata/apps.txt")
+	if err != nil || len(got) != 2 {
+		t.Fatalf("want 2 apps, got %+v %v", got, err)
+	}
+	if got[0].ID != "coach-packages" || got[0].Jobs == "" || strings.Contains(got[0].Paragraph, "jobs:") {
+		t.Fatalf("%+v", got[0])
 	}
 }

@@ -1,0 +1,5 @@
+[coach-packages] (persona/small-business) I'm a career coach. Clients buy a package (6 or 12 sessions), I need to book sessions, keep notes after each (private!), track how many sessions are left and whether the package is paid. Some pay monthly. Reminders to clients 24h before. A review at the end of a package.
+
+  jobs: see my sessions this week; write a private note after a session and read past ones; see sessions left per client; see who has an unpaid package or a late monthly payment; book the next session for a client
+
+[ent-hiring-team] (persona/enterprise-team) Hiring 3 backend engineers. Candidates, stage, each interviewer's scorecard (1-4 + notes), debrief decision. People who interview several candidates. I want a debrief view side by side. Need to schedule interview loops and not double book interviewers. Offers need approval from my director.
