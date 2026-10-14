@@ -75,6 +75,32 @@ func (c *stateContract) step(name string, act func(), want string, wantChanged b
 	}
 }
 
+// listed pins what a refetch of the Inbox reads: whether the item is there,
+// and whether it is marked as decided and held for Undo. An item is never
+// announced as added again once its answer was sent.
+func (c *stateContract) listed(name string, want, held bool) {
+	c.t.Helper()
+	_, mark, _, _, _ := c.server.Events().read(0)
+	items := inboxItems(c.t, c.server)
+	batch, _, _, _, _ := c.server.Events().read(mark)
+	for _, event := range batch {
+		if event.kind == EventInboxAdded {
+			c.t.Fatalf("%s: the item was announced again", name)
+		}
+	}
+	if (len(items) == 1) != want {
+		c.t.Fatalf("%s: %d items listed, want listed=%v", name, len(items), want)
+	}
+	if !want {
+		return
+	}
+	item := items[0]
+	decided := item.UndoUntil != nil && item.Answer != nil && (item.Kind != "permission" || item.Answer.Verb == "allow_once")
+	if decided != held || !held && (item.UndoUntil != nil || item.Answer != nil) {
+		c.t.Fatalf("%s: undo_until %v answer %+v, want held=%v", name, item.UndoUntil, item.Answer, held)
+	}
+}
+
 func (c *stateContract) windowEnds() {
 	c.clock.at = c.clock.at.Add(inboxAnswerHold)
 	c.clock.callbacks[len(c.clock.callbacks)-1]()
@@ -114,17 +140,25 @@ func TestAgentStateContractForBothQuestionKinds(t *testing.T) {
 				item := "/app/v1/inbox/" + inboxItems(t, c.server)[0].ID
 				answer := func() { turnStatus(t, inboxReq(t, c.server, "POST", item+"/answer", kind.answer), 200) }
 				c.step("answered inside the Undo window", answer, "running", true)
+				c.listed("answered inside the Undo window", true, true)
 				c.step("Undo", func() { turnStatus(t, inboxReq(t, c.server, "POST", item+"/undo", `{}`), 200) }, "needs_you", true)
+				c.listed("Undo", true, false)
 				c.step("answered again", answer, "running", true)
 				if !sent {
 					c.door.refused = true
 					c.step("failed send", c.windowEnds, "needs_you", true)
+					c.listed("failed send", true, false)
 					return
 				}
 				c.step("window end before the engine takes the answer", c.windowEnds, "running", false)
+				c.listed("window end before the engine takes the answer", false, false)
 				// The pushed word still says what it said while the card waited.
 				c.step("answer consumed, engine word lags", c.door.consume, "running", false)
 				c.step("engine word catches up", func() { c.facts(false) }, "running", false)
+				c.listed("answer consumed", false, false)
+				if n := len(c.server.inbox.sent); n != 0 {
+					t.Fatalf("%d sent marks outlived their question", n)
+				}
 			})
 			if !sent || !kind.pushed {
 				continue

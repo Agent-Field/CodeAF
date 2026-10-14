@@ -19,6 +19,9 @@ type InboxItem struct {
 	Verbs        []string            `json:"verbs"`
 	WhoCanAnswer []string            `json:"who_can_answer"`
 	Permission   *InboxPermission    `json:"permission,omitempty"`
+	// UndoUntil is set while an answer waits out its Undo window; Answer then
+	// carries that decision, so a refetch can tell the item from an open one.
+	UndoUntil *time.Time `json:"undo_until,omitempty"`
 }
 
 // InboxPermission is the permission card's whole content: the exact commands

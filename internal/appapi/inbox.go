@@ -68,13 +68,17 @@ type inboxState struct {
 	resolved map[string]InboxItem
 	rows     map[string]inboxRow
 	pending  map[string]*inboxPending
-	now      func() time.Time
-	after    func(time.Duration, func()) *time.Timer
-	closed   bool
-	done     chan struct{}
-	cancel   context.CancelFunc
-	ctx      context.Context
-	watches  map[string]context.CancelFunc
+	// sent maps an item whose answer its source took to that source's key.
+	// The source may list the question until it has consumed the answer; the
+	// item is resolved for every reader and must not come back as open.
+	sent    map[string]string
+	now     func() time.Time
+	after   func(time.Duration, func()) *time.Timer
+	closed  bool
+	done    chan struct{}
+	cancel  context.CancelFunc
+	ctx     context.Context
+	watches map[string]context.CancelFunc
 }
 
 func (s *Server) startInbox() {
@@ -83,7 +87,7 @@ func (s *Server) startInbox() {
 		ctx = context.Background()
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	s.inbox = &inboxState{sources: map[string]InboxSource{}, rows: map[string]inboxRow{}, resolved: map[string]InboxItem{}, pending: map[string]*inboxPending{}, now: time.Now, after: time.AfterFunc, done: make(chan struct{}), cancel: cancel, ctx: ctx, watches: map[string]context.CancelFunc{}}
+	s.inbox = &inboxState{sources: map[string]InboxSource{}, rows: map[string]inboxRow{}, resolved: map[string]InboxItem{}, pending: map[string]*inboxPending{}, sent: map[string]string{}, now: time.Now, after: time.AfterFunc, done: make(chan struct{}), cancel: cancel, ctx: ctx, watches: map[string]context.CancelFunc{}}
 	if s.options.Agents != nil {
 		s.inbox.sources["engine"] = &engineInboxSource{s: s, a: s.options.Agents}
 	}
@@ -123,6 +127,11 @@ func (s *Server) SetInboxSource(key string, source InboxSource) {
 				pending.timer.Stop()
 			}
 			delete(s.inbox.pending, id)
+		}
+	}
+	for id, sentKey := range s.inbox.sent {
+		if sentKey == key {
+			delete(s.inbox.sent, id)
 		}
 	}
 	for id, row := range s.inbox.rows {
@@ -178,6 +187,7 @@ func (s *Server) RefreshInbox(ctx context.Context) ([]InboxItem, error) {
 		return nil, agentError(503, "not_allowed", "the engine is stopping")
 	}
 	next := map[string]inboxRow{}
+	sent := map[string]string{}
 	var restored []InboxUndoWindowEvent
 	// Independent factories are sampled together, so one unreachable team
 	// cannot add a separate network wait ahead of every healthy source.
@@ -200,10 +210,19 @@ func (s *Server) RefreshInbox(ctx context.Context) ([]InboxItem, error) {
 					next[id] = row
 				}
 			}
+			for id, sentKey := range state.sent {
+				if sentKey == key {
+					sent[id] = key
+				}
+			}
 			continue
 		}
 		for _, item := range items {
 			if item.ID == "" || !inboxKind(item.Kind) {
+				continue
+			}
+			if state.sent[item.ID] == key {
+				sent[item.ID] = key
 				continue
 			}
 			item.Context.Before = inboxBefore(item.Context.Before)
@@ -261,10 +280,10 @@ func (s *Server) RefreshInbox(ctx context.Context) ([]InboxItem, error) {
 		}
 	}
 	s.pruneInbox()
-	state.rows = next
+	state.rows, state.sent = next, sent
 	out := make([]InboxItem, 0, len(next))
 	for _, row := range next {
-		out = append(out, row.item)
+		out = append(out, state.shown(row))
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
@@ -273,6 +292,31 @@ func (s *Server) RefreshInbox(ctx context.Context) ([]InboxItem, error) {
 		return out[i].CreatedAt.Before(out[j].CreatedAt)
 	})
 	return out, nil
+}
+
+// shown is the item a reader gets: one held for Undo carries its deadline and
+// the decision, and never the caller's version guard. Callers hold the lock.
+func (state *inboxState) shown(row inboxRow) InboxItem {
+	item := row.item
+	p := state.pending[item.ID]
+	if p == nil {
+		return item
+	}
+	until, answer := p.until, p.answer
+	answer.Expect = nil
+	if item.Kind == "permission" && answer.Verb == "" {
+		answer.Verb = permissionVerb(answer.Choice)
+	}
+	item.UndoUntil = &until
+	if answer.Choice != "" || answer.Words != "" || answer.Verb != "" || len(answer.Items) > 0 {
+		item.Answer = &answer
+	}
+	return item
+}
+
+// permissionVerb names the permission option a chat or rule answer picked.
+func permissionVerb(choice string) string {
+	return map[string]string{"1": "allow_once", "2": "always", "3": "deny"}[choice]
 }
 func inboxKind(kind string) bool {
 	switch kind {
@@ -385,6 +429,7 @@ func (s *Server) sendHeld(id string, p *inboxPending) bool {
 	}
 	s.retainInbox(p.row, &p.answer, reply.Receipt, "here", "you")
 	delete(state.rows, id)
+	state.sent[id] = p.row.key
 	_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, "here", "you", state.now().UTC()})
 	return true
 }
@@ -473,7 +518,7 @@ func (s *Server) ReadInbox(ctx context.Context, id string) (InboxItem, error) {
 	s.inbox.Lock()
 	defer s.inbox.Unlock()
 	if row, ok := s.inbox.rows[id]; ok {
-		return row.item, nil
+		return s.inbox.shown(row), nil
 	}
 	if item, ok := s.inbox.resolved[id]; ok {
 		return item, nil
