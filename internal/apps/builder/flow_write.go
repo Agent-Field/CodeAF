@@ -93,6 +93,7 @@ func (s *Service) writeAll(ctx context.Context, b *build) (spec.Files, error) {
 		return nil, err
 	}
 	merge(files, rest)
+	syncNav(files, plan)
 	if err := s.all.Store.WriteFiles(ctx, b.app, files); err != nil {
 		return nil, err
 	}
@@ -176,7 +177,7 @@ func (s *Service) writeUnit(ctx context.Context, b *build, plan prompt.Plan, pla
 		u.schemas = coreSchemas()
 	}
 	text, err := prompt.Render(prompt.KindWrite, prompt.Inputs{
-		Plan: planRaw, Catalog: catalogText(), Schemas: u.schemas,
+		Plan: planRaw, Brief: string(plan.Brief), Catalog: catalogText(), Schemas: u.schemas,
 		Space: personalSpace, Budget: budgetWords(b.budget), Connectors: b.connectors,
 		AgentModel: b.agentModel, Only: u.only, Files: u.already,
 	})
@@ -250,7 +251,7 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildRunning, Log: "Fixing what the checks found"})
 	text, err := prompt.Render(prompt.KindFix, prompt.Inputs{
-		Report: report, Files: asText(files), Catalog: catalogText(),
+		Report: report, Brief: string(b.currentPlan().Brief), Files: asText(files), Catalog: catalogText(),
 		Schemas: schemaFor(spec.AppSchemaURL, spec.ScreenSchemaURL, spec.RunSchemaURL),
 	})
 	if err != nil {

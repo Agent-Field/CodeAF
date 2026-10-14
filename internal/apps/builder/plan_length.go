@@ -71,6 +71,7 @@ func (s *Service) shortenPlanLines(ctx context.Context, b *build, files spec.Fil
 		return err
 	}
 	if p, err := decodePlan(string(raw)); err == nil {
+		p.Brief = b.currentPlan().Brief // plan.json has no brief; keep the one in build state
 		b.setPlan(p)
 	}
 	for _, log := range logs {
