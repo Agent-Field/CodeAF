@@ -28,15 +28,15 @@ import (
 )
 
 const (
-	// DefaultModel is the harness's default. DeepSeek V4 Flash Latest is the
-	// floating alias, so a new dated snapshot is picked up without a code change.
-	// 1M context, ~$0.09/M in and ~$0.18/M out, and it advertises both
-	// structured_outputs and reasoning on OpenRouter.
+	// DefaultModel is the harness's default for every role: DeepSeek V4.1
+	// Flash, the owner's measured default (2026-10-13 bake-off). It is spelled
+	// as the exact id, never the floating V4 Flash alias, so a fresh profile
+	// never runs a silently older Flash. 1M context on OpenRouter.
 	//
 	// A first-prompt stall on this default names `/model` rather than hanging
 	// silent (F42). The slug itself is not swapped for a more expensive one:
 	// the cheap default stays, and the stall is what must recover visibly.
-	DefaultModel = "~deepseek/deepseek-v4-flash-latest"
+	DefaultModel = "deepseek/deepseek-v4.1-flash"
 
 	// DefaultVoiceModel is the independent speech-to-text slot. Voice never
 	// enters the talk/work router: OpenRouter exposes it through the dedicated

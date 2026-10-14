@@ -17,6 +17,18 @@ import (
 	"time"
 )
 
+// canonicalTempDir is t.TempDir() with symlinks resolved: on macOS the temp
+// dir sits behind /var -> /private/var, and the code under test reports the
+// resolved path.
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func releaseClient(server *httptest.Server, revision string) *Client {
 	return &Client{
 		HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL, Revision: revision,
@@ -509,7 +521,7 @@ func TestTimeoutContractC1SlowAssetOutlivesTheCheckClock(t *testing.T) {
 	}))
 	defer server.Close()
 
-	dir := t.TempDir()
+	dir := canonicalTempDir(t)
 	target := filepath.Join(dir, "codeaf")
 	if err := os.WriteFile(target, []byte("old codeaf"), 0o700); err != nil {
 		t.Fatal(err)
@@ -729,7 +741,7 @@ func TestC7CheckedInstallReplacesAtomicallyAndMismatchPreservesTheOriginal(t *te
 		t.Run(row.name, func(t *testing.T) {
 			server, _ := servedRelease(t, asset, row.checksum)
 			defer server.Close()
-			dir := t.TempDir()
+			dir := canonicalTempDir(t)
 			target := filepath.Join(dir, "codeaf")
 			if err := os.WriteFile(target, []byte("old codeaf"), 0o700); err != nil {
 				t.Fatal(err)

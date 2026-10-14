@@ -4789,7 +4789,7 @@ func (l *leafLife) longest() time.Duration {
 // FALLS is not the same thing and says no, because it never saw an answer to
 // be lenient about.
 func quorumVerify(ctx context.Context, settings config.Config, clients *messageClientPool, nodeID, ask, deliverable string) (accepts int, rejects string) {
-	client, err := clients.ForModel("deepseek/deepseek-v4-flash")
+	client, err := clients.ForModel(config.DefaultLowModel)
 	if err != nil || client == nil {
 		return 2, "" // fail-open: both accept
 	}
