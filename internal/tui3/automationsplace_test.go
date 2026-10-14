@@ -363,3 +363,55 @@ func TestQuitLeavesAtOnceWithARunInHand(t *testing.T) {
 		t.Fatalf("leaving still warned: %q", notes)
 	}
 }
+
+// A RUN'S WHOLE RESULT IS READ IN ITS HISTORY, in the ordinary ink. The row is
+// one dim sentence; the run under the cursor — the newest, when the history
+// opens — says the rest of its report under it, every line of it.
+func TestAHistorySaysTheWholeResultOfTheRunUnderTheCursor(t *testing.T) {
+	a, store := automationLab(t, labWork("youtube", "0 9 * * 1"))
+	item := a.watch.list[0]
+	run, err := store.QueueNow(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Start(run.ID); err != nil {
+		t.Fatal(err)
+	}
+	report := "His latest video is \"Why the war will not end this year\".\nIt went up yesterday and runs for forty minutes, mostly about the spring offensive."
+	run.Outcome, run.Line, run.Detail = automation.OutcomeDone, "His latest video is \"Why the war will not end this year\".", report
+	if err := store.Finish(run); err != nil {
+		t.Fatal(err)
+	}
+	runCmd(a.openAutomations())
+	drive(t, a, key("enter"))
+	drive(t, a, runCmd(a.readAutomationRuns(item.ID))...)
+	screen := automationsScreen(a)
+	for _, want := range []string{"runs for forty minutes", "mostly about the spring offensive"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the history does not carry the whole report (%q):\n%s", want, screen)
+		}
+	}
+	width, height := a.size()
+	lines, _, _, _ := a.placeDraw(placeAutomations{}, width, height)
+	for _, line := range lines {
+		if strings.Contains(plain(line), "spring offensive") && strings.Contains(line, "\x1b[2m") {
+			t.Fatalf("the result is drawn faint: %q", line)
+		}
+	}
+}
+
+// A BANNER CARRIES THE RESULT, NOT ONLY ITS FIRST LINE, and does not say the
+// title twice: the title is the banner's own head.
+func TestABannerCarriesTheResult(t *testing.T) {
+	item := labWork("youtube", "0 9 * * 1")
+	run := automation.Run{Outcome: automation.OutcomeDone, Line: "Found it.",
+		Detail: "Found it.\nHis latest video is \"Why the war will not end this year\", up yesterday."}
+	body := automationBannerBody(item, run)
+	if !strings.HasPrefix(body, "done · ") || !strings.Contains(body, "Why the war will not end") || strings.Contains(body, "youtube") {
+		t.Fatalf("the banner says %q", body)
+	}
+	reminder := automationBannerBody(labReminder("stretch"), automation.Run{Outcome: automation.OutcomeDone, Line: "time to stretch"})
+	if reminder != "done · time to stretch" {
+		t.Fatalf("a reminder's banner says %q", reminder)
+	}
+}

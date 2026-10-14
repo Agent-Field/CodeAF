@@ -175,6 +175,19 @@ func automationsListLines(pal palette, glyph func(tokens.GlyphID) string, list [
 	return lines, owner, newTop, shown
 }
 
+// automationRunResult is one run's whole result as wrapped lines: its report
+// when it wrote one, and otherwise its line. Nothing at all when it has neither.
+func automationRunResult(run automation.Run, width int) []string {
+	text := strings.TrimSpace(run.Detail)
+	if text == "" {
+		text = strings.TrimSpace(run.Line)
+	}
+	if text == "" {
+		return nil
+	}
+	return wrap(text, width)
+}
+
 // automationsTitleRoom is the title column: as wide as the longest title, and
 // never more than a third of the row, so the sentence beside it has room.
 func automationsTitleRoom(list []automation.Automation, width int) int {
@@ -293,6 +306,23 @@ func automationHistoryLines(pal palette, glyph func(tokens.GlyphID) string, item
 		lines = append(lines, row)
 		owner = append(owner, i)
 		shown++
+		if i == cursor {
+			// THE RUN UNDER THE CURSOR SAYS WHAT IT CAME TO IN FULL, in the
+			// ordinary ink: a piece of work's whole report, a watch's whole
+			// sighting, a reminder's line. The row above is one dim sentence,
+			// and a result cut to a sentence is a result nobody can read.
+			for _, text := range automationRunResult(run, width-len(placeLead)-2) {
+				if len(lines) >= room {
+					break
+				}
+				lines = append(lines, placeLead+"  "+pal.ink(text))
+				owner = append(owner, i)
+			}
+			if len(lines) < room && i+1 < len(runs) {
+				lines = append(lines, "")
+				owner = append(owner, i)
+			}
+		}
 	}
 	return lines, owner, newTop, shown
 }

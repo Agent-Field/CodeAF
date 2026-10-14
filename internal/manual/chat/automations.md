@@ -272,7 +272,7 @@ something anybody types on one line — and the edit leaves that look as it was.
 pause, resume, run, delete, list it and read its history; changing one is `e`, or a new
 proposal that replaces it.
 
-## History — every run, why did I get this reminder, and open where it was asked
+## History — every run, read a run's whole result, why did I get this reminder, and open where it was asked
 
 `enter` on a row of `/automations` opens its history. The top says what it is — its title
 and schedule, the rhythm exactly, what it looks at and its condition, what it says or does —
@@ -285,7 +285,10 @@ Mon 28 Sep at 09:00       your call · needed your ok to run bash git push
 ```
 
 Each row is when it started, what it came to, how late it was, its one line and what it
-cost. `enter` on a run of work opens that run's own transcript, read like any
+cost. **The run under the cursor shows its whole result under its row**, in ordinary text —
+a piece of work's full report, a watch's sighting, a reminder's line — and the history opens
+on the newest run, so the latest result is the first thing you read; `↑`/`↓` move to
+another. `enter` on a run of work opens that run's own transcript, read like any
 conversation; a run that only said a line keeps none: `this run kept no transcript`.
 `esc` goes back to the list. With nothing run yet it says `it has not run yet`.
 
@@ -329,9 +332,9 @@ say — the same line is said on that page's message line, so `r` is answered wh
 pressed it. Another conversation in front gets the notification, not the line: its
 transcript is not where another conversation's news belongs.
 
-**On the desktop.** A run that is news raises one notification, titled `codeaf · <title>`
-with the same line as its text, **whether or not codeaf is the window you are looking at**
-— a reminder is the one banner you asked for. It is raised **once per run per machine**, by
+**On the desktop.** A run that is news raises one notification, titled `codeaf · <title>`,
+saying what it came to and as much of the result as a banner shows — up to about 180
+characters of a work run's report, not only its first line — **whether or not codeaf is the window you are looking at**. It is raised **once per run per machine**, by
 whichever open window claims it first. A `stopped` run and a watch's `nothing new` raise
 none, and neither does a run closing codeaf cut off. There is no setting for it.
 *Desktop notifications* says which application sends them and how to turn them on.
