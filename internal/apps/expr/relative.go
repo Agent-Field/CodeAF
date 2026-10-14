@@ -31,8 +31,31 @@ func Offset(text string) (time.Duration, bool) {
 	return sign * time.Duration(n*multiplier) * base, true
 }
 
-// RelativeTime is now shifted by an Offset literal: "-7d" is a week ago.
+// dayWords are the named moments a query value may use: the start of a day
+// in the clock's own zone, or the clock itself.
+var dayWords = map[string]func(now time.Time) time.Time{
+	"now":       func(now time.Time) time.Time { return now },
+	"today":     func(now time.Time) time.Time { return DayStart(now) },
+	"tomorrow":  func(now time.Time) time.Time { return DayStart(now).AddDate(0, 0, 1) },
+	"yesterday": func(now time.Time) time.Time { return DayStart(now).AddDate(0, 0, -1) },
+}
+
+// DayStart is midnight of at's day in at's zone.
+func DayStart(at time.Time) time.Time {
+	y, m, d := at.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, at.Location())
+}
+
+// IsDayWord reports whether value names a whole day (today, tomorrow,
+// yesterday), which an equality token matches as a range.
+func IsDayWord(value string) bool { return value != "now" && dayWords[value] != nil }
+
+// RelativeTime is now shifted by an Offset literal ("-7d" is a week ago), or
+// a day word resolved against the same clock.
 func RelativeTime(value string, now time.Time) (time.Time, bool) {
+	if word := dayWords[value]; word != nil {
+		return word(now), true
+	}
 	d, ok := Offset(value)
 	if !ok {
 		return time.Time{}, false

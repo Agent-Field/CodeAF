@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,6 +66,50 @@ func TestRelativeDateQueryOverRecords(t *testing.T) {
 		}
 		if got := selected(t, db, schema, a); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s = %v, want %v", query, got, want)
+		}
+	}
+}
+
+// The forms a model actually writes: a colon before the operator, >= and <=,
+// day words, and CEL by mistake (which must be named, with the real forms).
+func TestLiberalRelativeForms(t *testing.T) {
+	schema := &spec.RecordType{Fields: map[string]*spec.Field{"due": {Type: spec.FieldDate}, "starts": {Type: spec.FieldDatetime}}}
+	type want struct {
+		op    Op
+		value any
+	}
+	tests := map[string][]want{
+		"due:<0d":         {{Lt, "2026-10-13"}},
+		"due<=0d":         {{Le, "2026-10-13"}},
+		"due>=-30d":       {{Ge, "2026-09-13"}},
+		"starts>=-0d":     {{Ge, "2026-10-13T12:00:00.000000000Z"}},
+		"due:>=today":     {{Ge, "2026-10-13"}},
+		"due<tomorrow":    {{Lt, "2026-10-14"}},
+		"starts<now":      {{Lt, "2026-10-13T12:00:00.000000000Z"}},
+		"due:today":       {{Ge, "2026-10-13"}, {Lt, "2026-10-14"}},
+		"due:yesterday":   {{Ge, "2026-10-12"}, {Lt, "2026-10-13"}},
+		"starts:tomorrow": {{Ge, "2026-10-14T00:00:00.000000000Z"}, {Lt, "2026-10-15T00:00:00.000000000Z"}},
+	}
+	for query, wants := range tests {
+		a, err := ParseAt(schema, query, "owner", relativeNow)
+		if err != nil {
+			t.Errorf("%s: %v", query, err)
+			continue
+		}
+		if len(a.Filters) != len(wants) {
+			t.Errorf("%s: %d filters, want %d", query, len(a.Filters), len(wants))
+			continue
+		}
+		for i, w := range wants {
+			if a.Filters[i].Op != w.op || a.Filters[i].Values[0] != w.value {
+				t.Errorf("%s filter %d = %s %v, want %s %v", query, i, a.Filters[i].Op, a.Filters[i].Values[0], w.op, w.value)
+			}
+		}
+	}
+	for _, cel := range []string{"due < now", "due < now + 14d"} {
+		_, err := ParseAt(schema, cel, "owner", relativeNow)
+		if err == nil || !strings.Contains(err.Error(), "not CEL") || !strings.Contains(err.Error(), "field<7d, field>=-30d, field:today") {
+			t.Errorf("%q: err = %v, want the token named with the real forms", cel, err)
 		}
 	}
 }
