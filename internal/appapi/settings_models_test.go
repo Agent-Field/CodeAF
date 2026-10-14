@@ -17,7 +17,7 @@ func settingsServer(t *testing.T) *Server {
 	keys := config.NewAppCredentials()
 	keys.Set("openrouter", "memory-only-test-key")
 	s := New(testToken, Options{Credentials: keys, ProfileDir: t.TempDir(), Context: t.Context(), ModelCatalog: func(context.Context) ([]CatalogModel, error) {
-		return []CatalogModel{{ID: "vendor/z-first", Name: "First returned", Provider: "openrouter", Available: true, Efforts: []string{"low", "medium", "high"}}, {ID: "vendor/a-second:free", Name: "Second returned", Provider: "openrouter", Available: true, Efforts: []string{"low", "medium", "high"}}}, nil
+		return []CatalogModel{{ID: "vendor/z-first", Name: "First returned", Provider: "openrouter", Available: true, Efforts: []string{"low", "medium", "high"}}, {ID: "vendor/a-second", Name: "Second returned", Provider: "openrouter", Available: true, Efforts: []string{"low", "medium", "high"}}, {ID: "vendor/a-second:free", Name: "Second returned", Provider: "openrouter", Available: true, Efforts: []string{"low", "medium", "high"}}}, nil
 	}})
 	t.Cleanup(s.Close)
 	return s
@@ -93,7 +93,7 @@ func TestModelsReportKnownTariffsAndOmitUnknownPrices(t *testing.T) {
 		out   float64
 	}{
 		{id: "vendor/z-first", known: true, in: 2, out: 8},
-		{id: "vendor/a-second:free", known: true},
+		{id: "vendor/a-second", known: true},
 		{id: "unknown/model"},
 	} {
 		t.Run(tc.id, func(t *testing.T) {

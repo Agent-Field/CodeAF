@@ -33,6 +33,18 @@ including a native Anthropic key, also has unavailable models. Selecting
 an unavailable model is refused with
 `that model is not available from a connected provider`.
 
+## App model picker duplicates — router variants, aliases and dated builds
+
+`GET /app/v1/models` shows one concrete row per model lineage: its plain
+undated id, or the newest dated build when no plain id is listed. Router
+variants such as `:batch` and `:free`, and floating aliases beginning with
+`~` or ending in `-latest`, do not get separate rows. Saved variants, aliases
+and snapshots are represented by the listed lineage's row; `default` and
+`pinned` retain their saved ids. A saved choice with no listed lineage remains
+visible as `available:false`, using its catalog name when known. Writes still
+accept any id the connected provider serves, including variants and dated
+builds. Setup also keeps the provider's full list.
+
 ## App binary settings — saved values and stale changes
 
 `GET /app/v1/settings` returns only binary-owned, non-secret settings.
