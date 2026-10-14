@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/reportline"
 	"github.com/Agent-Field/codeaf/internal/tui2/prose"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -445,32 +446,11 @@ func mdSegments(text string) []mdSegment {
 }
 
 // mdFenceOpen reads an opening fence at column zero, returning its delimiter run
-// and its info string.
+// and its info string. The reading itself lives in reportline.Fence, the one
+// fence opinion the engine's report readers share with this renderer (#931), so
+// a marker is a marker here for exactly the reason it is one there.
 func mdFenceOpen(line string) (delim, info string, ok bool) {
-	var mark byte
-	switch {
-	case strings.HasPrefix(line, "```"):
-		mark = '`'
-	case strings.HasPrefix(line, "~~~"):
-		mark = '~'
-	default:
-		return "", "", false
-	}
-	n := 0
-	for n < len(line) && line[n] == mark {
-		n++
-	}
-	info = strings.TrimSpace(line[n:])
-	// A backtick in a backtick fence's info string is not an info string —
-	// CommonMark says so, and the line is prose.
-	if mark == '`' && strings.ContainsRune(info, '`') {
-		return "", "", false
-	}
-	// The language is the first word; the rest is metadata no lexer reads.
-	if cut := strings.IndexAny(info, " \t"); cut >= 0 {
-		info = info[:cut]
-	}
-	return line[:n], info, true
+	return reportline.Fence(line)
 }
 
 // mdFenceClose reports whether line closes a fence opened by delim: the same
