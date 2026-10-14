@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/expr"
@@ -408,7 +409,7 @@ func (r *renderer) actionTarget(verb string, data map[string]any, path, typ stri
 	case spec.VerbRunsStart:
 		id, _ := data[verb].(string)
 		if r.bundle.Runs[id] == nil {
-			r.issue(ptr(path, verb), "kit/bind", fmt.Errorf("unknown run %q", id), "name a runs/<id>.yaml file")
+			r.issue(ptr(path, verb), "kit/bind", fmt.Errorf("unknown run %q", id), unknownRunHint(r.bundle, id))
 		}
 	case spec.VerbRecordsCreate, spec.VerbRecordsUpdate:
 		args, _ := data[verb].(map[string]any)
@@ -460,4 +461,14 @@ func (r *renderer) dateFields(values map[string]any) []string {
 		}
 	}
 	return result
+}
+
+// unknownRunHint names the runs that exist, so a repair either points at one
+// of them or writes the missing file instead of guessing another id.
+func unknownRunHint(b *spec.Bundle, id string) string {
+	hint := "write runs/" + id + ".yaml or replace this action with agent.ask for a readable answer"
+	if ids := b.RunIDs(); len(ids) > 0 {
+		hint = "name one of the runs: " + strings.Join(ids, ", ") + "; or " + hint
+	}
+	return hint
 }

@@ -69,3 +69,13 @@ func TestRunFailureHintsArePerCause(t *testing.T) {
 		}
 	}
 }
+
+func TestUnknownRunHintNamesTheRunsThatExist(t *testing.T) {
+	b := &spec.Bundle{Runs: map[string]*spec.Run{"warranty-digest": {}}}
+	hint := unknownRunHint(b, "mark-returned")
+	for _, want := range []string{"warranty-digest", "runs/mark-returned.yaml"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint %q lacks %q", hint, want)
+		}
+	}
+}
