@@ -7,10 +7,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
-// Item titles are noun phrases: a neutral qualifier, an optional descriptive
+// Item titles are noun phrases: a time qualifier (a month or season reads
+// naturally before any work noun: "October order", "Year-end deal"), an optional descriptive
 // value from the record's own schema, and the record's label as head noun.
 // No verbs lead, so a list reads as things rather than chores.
-var titleQualifiers = []string{"Spring", "Bayview", "Weekend", "Downtown", "Autumn", "Northside", "Parkside", "Evening", "Lakeside", "Summer", "Westfield", "Morning", "Winter", "Eastgate", "Hillside", "Midtown"}
+var titleQualifiers = []string{"January", "February", "March", "April", "June", "July", "August", "September", "October", "November", "December", "Year-end", "Mid-year", "Holiday", "Weekend", "Winter"}
 var titleSeries = []string{"", "second", "follow-up", "community", "flagship", "starter", "classic", "express"}
 
 func titleValue(typ string, schema *spec.RecordType, f *spec.Field, i, offset int) string {

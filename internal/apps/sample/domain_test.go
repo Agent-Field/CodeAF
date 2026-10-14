@@ -190,7 +190,7 @@ func TestTextSamplesRespectDefaultsAndDoNotTreatHumanRelatedObjectsAsPeople(t *t
 		def, want                         string
 	}{
 		{"class", "Class", "name", "Name", `"Gentle flow"`, "Gentle flow"},
-		{"customer_order", "Customer order", "name", "Name", "", "Spring customer order"},
+		{"customer_order", "Customer order", "name", "Name", "", "January customer order"},
 		{"item", "Stock item", "customer_notes", "Customer notes", "", "Kicked off last week and the first draft is with the team"},
 		{"teacher", "Teacher", "first_name", "First name", "", "Priya Shah"},
 		{"teacher", "Teacher", "last_name", "Last name", "", "Priya Shah"},
