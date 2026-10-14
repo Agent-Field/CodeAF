@@ -3,6 +3,7 @@ package draft
 import (
 	"bytes"
 	"context"
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"go/parser"
 	"go/token"
 	"os"
@@ -263,5 +264,30 @@ func TestSocketOfADeepFolderMovesToTheTempFolder(t *testing.T) {
 	}
 	if code, _, _ := runMain(t, "", "check"); code != ExitNoBuilder {
 		t.Fatalf("after stop: %d", code)
+	}
+}
+
+func TestTintIsWrittenOnlyWhenTheSchemaHasIt(t *testing.T) {
+	s := openTemp(t)
+	play(t, s, append(planned(), c("tint", "sage")))
+	st, _ := s.State()
+	d := Defaults{AppID: "crm", Tint: "tide"}
+	if strings.Contains(string(Render(st, d)["app.json"]), `"tint"`) {
+		t.Fatal("today's schema has no tint, yet app.json carries one")
+	}
+	raw, _ := spec.SchemaJSON(spec.AppSchemaURL)
+	if schemaHasTint(raw) {
+		t.Fatal("the embedded schema already has tint: this test needs updating")
+	}
+	withTint := strings.Replace(string(raw), `"properties": {`, `"properties": { "tint": { "type": "string" },`, 1)
+	if !schemaHasTint([]byte(withTint)) {
+		t.Fatal("a schema with the property was not recognised")
+	}
+	if got := string(marshalFile(appDoc(st, d, true))); !strings.Contains(got, `"tint": "sage"`) {
+		t.Fatalf("the worker's tint did not win:\n%s", got)
+	}
+	st.Tint = ""
+	if got := string(marshalFile(appDoc(st, d, true))); !strings.Contains(got, `"tint": "tide"`) {
+		t.Fatalf("Defaults.Tint was not used:\n%s", got)
 	}
 }

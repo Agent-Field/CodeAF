@@ -74,6 +74,8 @@ type Defaults struct {
 	AgentModel  string  `json:"agent_model,omitempty"`
 	BudgetMonth float64 `json:"budget_month,omitempty"`
 	Kit         int     `json:"kit,omitempty"`
+	// Tint is the Builder's suggestion; the worker's own `tint` wins.
+	Tint string `json:"tint,omitempty"`
 }
 
 // CRMScript is the golden CRM as the verbs a worker types, for the Builder's

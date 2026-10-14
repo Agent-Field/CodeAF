@@ -5,6 +5,7 @@ set -euo pipefail
 
 # 1. Name and purpose.
 codeaf app name CRM --about 'Sales pipeline: companies, deals and contacts. The agent drafts follow-ups; every email waits for approval.'
+codeaf app tint sage
 
 # 2. The plan card, one line per piece.
 codeaf app plan data deal 'Deal · name, company, stage (Lead → Won/Lost), next step, value, close date, owner'

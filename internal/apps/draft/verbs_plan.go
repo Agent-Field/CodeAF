@@ -38,32 +38,34 @@ func init() {
 		register("plan "+g.word, planLineDef(g))
 	}
 	register("name", nameDef())
+	register("tint", tintDef())
 	register("plan agent", planAgentDef())
 	register("plan drop", planDropDef())
 	register("plan ready", planReadyDef())
 	register("phase", phaseDef())
 }
 
-type nameArgs struct{ name, about string }
+type nameArgs struct{ name, about, tint string }
 
 func nameDef() def[nameArgs] {
 	return def[nameArgs]{
-		Usage:  `codeaf app name "<Name>" [--about "<one sentence>"]`,
-		Values: []string{"about"},
+		Usage:  `codeaf app name "<Name>" [--about "<one sentence>"] [--tint <name>]`,
+		Values: []string{"about", "tint"},
 		Decode: func(a argv, _ string) (nameArgs, error) {
 			if err := a.exactly(1); err != nil {
 				return nameArgs{}, err
 			}
-			return nameArgs{strings.TrimSpace(a.pos[0]), strings.TrimSpace(a.str("about"))}, nil
+			return nameArgs{strings.TrimSpace(a.pos[0]), strings.TrimSpace(a.str("about")), a.str("tint")}, nil
 		},
 		Piece: func(nameArgs) Piece { return Piece{Kind: "name"} },
 		Check: func(_ State, _ Entry, n nameArgs) error {
 			if n.name == "" || runeLen(n.name) > maxNameLen {
 				return refuse("the app name must be 1 to %d characters, got %d — give a short name such as \"CRM\"", maxNameLen, runeLen(n.name))
 			}
-			return nil
+			return checkTint(n.tint)
 		},
 		Apply: func(st *State, n nameArgs) {
+			st.Tint = orElse(n.tint, st.Tint)
 			st.Name = n.name
 			if n.about != "" {
 				st.About = n.about
@@ -273,4 +275,35 @@ func phaseDef() def[phaseArgs] {
 			return "Done · " + p.note
 		},
 	}
+}
+
+type tintArgs struct{ tint string }
+
+func tintDef() def[tintArgs] {
+	return def[tintArgs]{
+		Usage: "codeaf app tint <" + strings.Join(Tints, "|") + ">",
+		Decode: func(a argv, _ string) (tintArgs, error) {
+			if err := a.exactly(1); err != nil {
+				return tintArgs{}, err
+			}
+			return tintArgs{a.pos[0]}, nil
+		},
+		Piece: func(tintArgs) Piece { return Piece{Kind: "tint"} },
+		Check: func(_ State, _ Entry, t tintArgs) error { return checkTint(t.tint) },
+		Apply: func(st *State, t tintArgs) { st.Tint = t.tint },
+		Line:  func(_ State, t tintArgs) string { return "Tint · " + t.tint },
+	}
+}
+
+// Tints are the palette names that colour an app's frame. It is the twin of
+// crewTints in internal/appapi/crew_handlers.go: draft must not import appapi,
+// so the two lists are kept equal by hand.
+var Tints = []string{"iris", "sage", "sand", "tide", "rose", "graphite"}
+
+// checkTint accepts "" (no tint chosen) or one of Tints.
+func checkTint(name string) error {
+	if name == "" || contains(Tints, name) {
+		return nil
+	}
+	return refuse("tint %q is not one of %s", name, strings.Join(Tints, ", "))
 }
