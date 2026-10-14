@@ -3275,6 +3275,12 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 		// and it is what keeps a sentence typed in the last seconds of a turn
 		// from landing in the transcript with nobody ever asked about it.
 		owed = owed || message.wake || !message.authored
+		// AND A LINE THE PERSON TYPED ARMS THE MODEL'S MEMORY VERBS, even in a
+		// turn the session opened (memory.go's [Agent.heardThePerson]): from
+		// here on the session is answering them.
+		if !message.authored && !message.wake {
+			a.heardThePerson()
+		}
 	}
 	return sourceCount, owed
 }

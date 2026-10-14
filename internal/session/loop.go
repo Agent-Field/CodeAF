@@ -332,6 +332,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// (memory.go's [Agent.sayMemory]).
 	a.flushMemoryNotices()
 	a.armMemoryVerbs(user)
+	defer a.endMemoryVerbs()
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}

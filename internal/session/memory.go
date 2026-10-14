@@ -132,6 +132,10 @@ type memoryBrain struct {
 	// typed is whether the person typed the turn now running. The model's
 	// `remember` and `forget` act only on such a turn ([Agent.memoryTools]).
 	typed atomic.Bool
+	// heard is a line the person typed that reached the transcript after the
+	// running turn's loop had ended — the line the follow-up turn started for it
+	// answers ([Agent.armMemoryVerbs]).
+	heard atomic.Bool
 	// failureSaid is when the last failure line went out.
 	failureSaid time.Time
 }
@@ -719,7 +723,7 @@ func (a *Agent) learnFromTurn(user userMessage, answer string) {
 	// AN ASK-HERE ERRAND IS NOT NOTICED: it is usually one exchange, so the
 	// line saying what was kept would have no turn after it to be said on, and
 	// what is typed there is a reminder or a watch rather than a preference.
-	askMemory := !user.authored && a.noticing() && !a.config.Errand
+	askMemory := personTyped(user) && a.noticing() && !a.config.Errand
 	words := user.said
 	if strings.TrimSpace(words) == "" {
 		words = user.text()
@@ -872,11 +876,45 @@ func init() {
 // noticing pass's own rule ([Agent.learnFromTurn]), held for the model's verbs.
 const memoryNotTypedWords = "Not on this turn: the person did not type it, so nothing is kept or forgotten. Say what you would keep, and the person can /remember it."
 
+// personTyped reports whether a turn's opening message is the person's own
+// words: not a note the session wrote ([userMessage.authored]), not a woken
+// turn's opening — a task's report, a job's end, a watch firing or a team's
+// message, whose note arrives on the steering queue ([Agent.wakeLocked]) — and
+// not empty.
+func personTyped(user userMessage) bool {
+	return !user.authored && !user.wake && !user.empty()
+}
+
 // armMemoryVerbs is said at the start of every turn: the model's memory verbs
-// act only on a turn the person typed ([memoryNotTypedWords]).
+// act only on a turn the person typed ([memoryNotTypedWords]). A turn the
+// session opened — a task's landing, a job's ending — is not armed, with one
+// exception: the empty turn started to answer a line the person typed in the
+// last seconds of the turn before ([Agent.heardThePerson]), which is answering
+// them.
 func (a *Agent) armMemoryVerbs(user userMessage) {
 	if a.memory != nil {
-		a.memory.typed.Store(!user.authored)
+		heard := a.memory.heard.Swap(false)
+		a.memory.typed.Store(personTyped(user) || heard && user.wake && user.empty())
+	}
+}
+
+// heardThePerson is a line the person typed reaching the transcript
+// ([Agent.drainQueuedLocked]). Mid-turn it arms the verbs for the rest of the
+// turn, so a steer typed into a woken turn still has them; after the turn's
+// loop has ended it arms the turn started to answer it.
+func (a *Agent) heardThePerson() {
+	if a.memory != nil {
+		a.memory.typed.Store(true)
+		a.memory.heard.Store(true)
+	}
+}
+
+// endMemoryVerbs is said when a turn's loop ends: a line the person typed
+// during the turn was answered by it, so only one drained after this point is
+// owed the next turn's verbs.
+func (a *Agent) endMemoryVerbs() {
+	if a.memory != nil {
+		a.memory.heard.Store(false)
 	}
 }
 

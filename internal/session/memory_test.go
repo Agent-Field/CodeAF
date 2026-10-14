@@ -39,6 +39,9 @@ type reflexScript struct {
 	hold chan struct{}
 	// answer is the turn's own reply.
 	answer string
+	// onTurn, when set, is called at each of the turn's own requests, before
+	// it is answered and with no lock held.
+	onTurn func()
 
 	notices, turns int
 	// asked records, per noticing call, whether it was asked about memory.
@@ -61,6 +64,9 @@ func (r *reflexScript) CompleteWithMessages(ctx context.Context, messages []ai.M
 	}
 	if hold := r.hold; hold != nil && strings.HasPrefix(system, "You read one exchange between a person and an assistant") {
 		<-hold
+	}
+	if r.onTurn != nil && !strings.HasPrefix(system, "You read one exchange between a person and an assistant") {
+		r.onTurn()
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -583,17 +589,73 @@ func TestTheModelsVerbsKeepAndForgetAndSaySo(t *testing.T) {
 
 // A TURN THE PERSON TYPED IS WHAT ARMS THE VERBS, and a turn the session
 // wrote for itself disarms them, through the real turn loop.
+//
+// The turns here are real: a task's landing wakes the idle conversation the way
+// it does in use ([Agent.enqueueSteering]), and the person types into that woken
+// turn while it is running.
 func TestTheVerbsAreArmedOnlyByATurnThePersonTyped(t *testing.T) {
-	agent, _ := brainAgent(t, &reflexScript{}, nil)
+	script := &reflexScript{}
+	agent, _ := brainAgent(t, script, nil)
+	var mu sync.Mutex
+	var armed []bool
+	steered := false
+	script.onTurn = func() {
+		mu.Lock()
+		armed = append(armed, agent.memory.typed.Load())
+		steer := len(armed) == 2 && !steered
+		steered = steered || steer
+		mu.Unlock()
+		if steer {
+			// THE PERSON TYPES INTO THE WOKEN TURN while it is running.
+			events, err := agent.Submit(context.Background(), "and keep it short")
+			if err != nil {
+				t.Errorf("steer the woken turn: %v", err)
+				return
+			}
+			go func() {
+				for range events { //nolint:revive // draining is the point
+				}
+			}()
+		}
+	}
 	collect(t, mustSubmit(t, agent, "hello"))
-	if !agent.memory.typed.Load() {
+	agent.enqueueSteering("task 1 finished: the build is green")
+	waitFor(t, "the woken turn and the turn answering the steer", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(armed) >= 3
+	})
+	waitIdle(t, agent)
+	mu.Lock()
+	defer mu.Unlock()
+	if !armed[0] {
 		t.Fatal("a turn the person typed did not arm the memory verbs")
 	}
-	note := userText("a task's report")
-	note.authored = true
-	agent.armMemoryVerbs(note)
+	if armed[1] {
+		t.Fatal("a turn a task's landing woke armed the memory verbs")
+	}
+	if !armed[len(armed)-1] {
+		t.Fatalf("the line the person typed into the woken turn did not arm the verbs: %v", armed)
+	}
+}
+
+// A LINE THE PERSON TYPED, DRAINED MID-TURN, ARMS THE REST OF THAT TURN and
+// nothing after it: the next turn a task's landing wakes is not armed by a line
+// the turn before already answered.
+func TestASteerArmsOnlyTheTurnItLandsIn(t *testing.T) {
+	agent, _ := brainAgent(t, &reflexScript{}, nil)
+	agent.armMemoryVerbs(wakeNote("task 1 finished: the build is green"))
+	agent.mu.Lock()
+	agent.steering = append(agent.steering, userText("and keep it short"))
+	agent.drainQueuedLocked(nil, false)
+	agent.mu.Unlock()
+	if !agent.memory.typed.Load() {
+		t.Fatal("a line the person typed into a woken turn did not arm the verbs")
+	}
+	agent.endMemoryVerbs()
+	agent.armMemoryVerbs(userMessage{wake: true})
 	if agent.memory.typed.Load() {
-		t.Fatal("a turn the session wrote armed the memory verbs")
+		t.Fatal("a line its own turn answered armed the next woken turn")
 	}
 }
 
