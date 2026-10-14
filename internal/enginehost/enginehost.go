@@ -163,12 +163,86 @@ func SocketPath(workspace string) (string, error) {
 
 // Dial connects to a host that is already running, and fails when none is. It
 // never starts one — see [Attach] for that.
+//
+// THE HOST AN OLDER BUILD WROTE FOR THIS FOLDER IS STILL THIS FOLDER'S HOST.
+// The directory a host lives in is named by a hash of the workspace, and once
+// that hash was taken from the resolved spelling (#1761), a directory an older
+// build named by the raw spelling it was handed went dark for every door here:
+// [Held] reads what was written inside, but Dial, Stop, the status door and the
+// takeover rule ask by key. A directory whose recorded workspace ([placeName])
+// resolves to the same folder is this workspace's host whoever wrote it, so a
+// canonical miss is answered by the legacy directories before this gives up —
+// which is what keeps an upgrade from orphaning a running engine, its
+// conversations and the commands that must still stop it. The canonical error
+// is the one handed back when nothing anywhere answers, so the retry semantics
+// above this door do not move.
 func Dial(workspace string) (net.Conn, error) {
 	socket, err := SocketPath(workspace)
 	if err != nil {
 		return nil, err
 	}
-	return net.DialTimeout("unix", socket, dialTimeout)
+	conn, dialErr := net.DialTimeout("unix", socket, dialTimeout)
+	if dialErr == nil {
+		return conn, nil
+	}
+	for _, legacy := range legacySockets(workspace) {
+		if conn, err := net.DialTimeout("unix", legacy, dialTimeout); err == nil {
+			return conn, nil
+		}
+	}
+	return nil, dialErr
+}
+
+// legacySockets names the live sockets of host directories an older build wrote
+// for this workspace — directories whose recorded workspace resolves to the
+// same folder — and none when there are no such directories or the workspace
+// itself does not resolve. It reads the state root and follows links, and makes
+// nothing.
+func legacySockets(workspace string) []string {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return nil
+	}
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(workspace))
+	if err != nil {
+		return nil
+	}
+	root := home.Join("v3", "hosts")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	canonical, err := where(workspace)
+	if err != nil {
+		return nil
+	}
+	var sockets []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, entry.Name())
+		if dir == canonical {
+			continue
+		}
+		name, err := os.ReadFile(filepath.Join(dir, placeName))
+		if err != nil {
+			continue
+		}
+		recorded := strings.TrimSpace(string(name))
+		if recorded == "" {
+			continue
+		}
+		resolvedRecorded, err := filepath.EvalSymlinks(filepath.Clean(recorded))
+		if err != nil || resolvedRecorded != resolved {
+			continue
+		}
+		socket := filepath.Join(dir, socketName)
+		if SocketPathFits(socket) {
+			sockets = append(sockets, socket)
+		}
+	}
+	return sockets
 }
 
 // dialTimeout is how long one connect attempt may take. A unix socket connects
