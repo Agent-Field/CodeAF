@@ -23,6 +23,7 @@ type toolbox struct {
 	scope   svc.Scope
 	bundle  *spec.Bundle
 	allowed []string
+	thread  string // the thread that hears how an approval ends
 }
 
 // outcome is a tool's result for the model, plus the approval it opened.
@@ -180,7 +181,9 @@ func (tb *toolbox) startRun(ctx context.Context, p bridge.StartRunParams) (outco
 }
 
 // connector always opens an approval. The app agent has no direct connector
-// execution path, even when a persona asks it to bypass a gate.
+// execution path, even when a persona asks it to bypass a gate. The approval
+// names the thread, so approvals.decide runs the action and the outcome comes
+// back here as a later message (ApprovalSettled).
 func (tb *toolbox) connector(ctx context.Context, tool string, args map[string]any) (outcome, error) {
 	opened, err := tb.all.Approvals.Open(ctx, tb.scope, bridge.Approval{
 		App:     tb.scope.App,
@@ -191,13 +194,16 @@ func (tb *toolbox) connector(ctx context.Context, tool string, args map[string]a
 		Payload: args,
 		Who:     tb.scope.Caller.Member,
 		State:   bridge.ApprovalOpen,
+		Thread:  tb.thread,
 	})
 	if err != nil {
 		return outcome{}, err
 	}
 	note := map[string]any{"status": "waiting for approval", "approval": opened.ID}
-	return outcome{result: note, approval: &opened}, nil
+	return outcome{result: note, approval: &opened, note: waitingNote}, nil
 }
+
+const waitingNote = "Nothing has run yet. The person approves or skips it in the dock, and the outcome arrives as a later message. Tell them it is waiting for their approval; never say it was done."
 
 // hideMasked removes masked fields so their values never reach the model.
 func (tb *toolbox) hideMasked(rows []bridge.Record) []bridge.Record {

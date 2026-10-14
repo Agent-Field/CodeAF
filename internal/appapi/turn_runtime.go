@@ -138,6 +138,9 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 	failed := false
 	failureWords := "Stopped · the model provider could not finish this reply"
 	endedNormally := false
+	// An answer does not always come back as EventQuestionAnswered, so the
+	// first sign of work after a wait is what returns the agent to running.
+	waiting := false
 	for {
 		var event session.Event
 		var open bool
@@ -148,6 +151,10 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		}
 		if !open {
 			break
+		}
+		if waiting && progress(event.Kind) && !a.liveNeedsPerson(id, live) {
+			waiting = false
+			_ = a.transitionState(id, "running", live, generation)
 		}
 		a.mu.Lock()
 		if a.stopped || a.live[id] != live || live.generation != generation {
@@ -165,14 +172,16 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 			entry := DisplayEntry{Kind: "tool", Role: "tool", CallID: event.CallID, Tool: event.Tool, Text: event.Hint, Args: event.Args, Output: event.Output, Answered: event.Kind != session.EventToolBegin}
 			a.publishTurn(EventTurnEntry, TurnEntryEvent{Agent: id, Entry: entry})
 		case session.EventConsentRequest, session.EventQuestion:
+			waiting = true
 			a.mu.Unlock()
 			_ = a.transitionState(id, "needs_you", live, generation)
 			continue
 		case session.EventQuestionAnswered, session.EventQuestionWithdrawn:
 			state := "running"
-			if live.conn.Engine.NeedsPerson() {
+			if live.needsPerson(id) {
 				state = "needs_you"
 			}
+			waiting = state == "needs_you"
 			a.mu.Unlock()
 			_ = a.transitionState(id, state, live, generation)
 			continue
@@ -212,7 +221,7 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 	} else if !endedNormally {
 		how = "stopped"
 	}
-	if live.conn.Engine.NeedsPerson() && !failed {
+	if live.needsPerson(id) && !failed {
 		state = "needs_you"
 	}
 	var changed Agent
@@ -278,4 +287,13 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 	if next != nil {
 		a.startTurnPump(id, live, next)
 	}
+}
+
+// progress reports the events that mean the turn is moving again.
+func progress(kind session.EventKind) bool {
+	switch kind {
+	case session.EventTextDelta, session.EventReasoning, session.EventToolBegin, session.EventToolEnd, session.EventToolFailed, session.EventNotice, session.EventAssistantDone:
+		return true
+	}
+	return false
 }

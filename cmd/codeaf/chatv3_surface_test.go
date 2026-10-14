@@ -31,6 +31,18 @@ type surfaceFrameWriter struct {
 	once  sync.Once
 }
 
+// canonicalTempDir is t.TempDir() with symlinks resolved: on macOS the temp
+// dir sits behind /var -> /private/var, and the code under test reports the
+// resolved path.
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func (writer *surfaceFrameWriter) Write(raw []byte) (int, error) {
 	writer.mu.Lock()
 	written, err := writer.Buffer.Write(raw)
@@ -72,7 +84,7 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 	}))
 	defer server.Close()
 
-	target := filepath.Join(t.TempDir(), "codeaf")
+	target := filepath.Join(canonicalTempDir(t), "codeaf")
 	if err := os.WriteFile(target, []byte("old executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}

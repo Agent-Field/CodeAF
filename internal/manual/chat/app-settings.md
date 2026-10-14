@@ -9,6 +9,13 @@ models; its refreshable credentials stay in app memory. `PUT /app/v1/models/defa
 an unused pinned slot. Nonempty slots must be distinct available models.
 The default is for new agents; changing it does not move existing agents.
 
+The response keeps `default` as the saved choice, which is empty on a fresh
+profile. `resolved` reports that choice or the built-in conversation model
+when no choice is saved. Each model row includes `price_in` and `price_out`
+in USD per million tokens when the spend meter knows its tariff. Unknown
+prices are omitted; a known zero is included. Reading prices adds no network
+request.
+
 App effort is `low`, `medium` or `high`, with `medium` for a fresh app.
 App writes refuse `xhigh`, `max` and `auto`. Higher terminal choices appear
 as `high` in the app; an automatic terminal choice appears as `medium`.

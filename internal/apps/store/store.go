@@ -195,9 +195,10 @@ func (s *Service) WriteFiles(ctx context.Context, app string, files spec.Files) 
 		var labels struct {
 			Name        string `json:"name"`
 			Description string `json:"description"`
+			Tint        string `json:"tint"`
 		}
 		if json.Unmarshal(files[spec.AppFile], &labels) == nil && labels.Name != "" {
-			m.Name, m.Description = labels.Name, labels.Description
+			m.Name, m.Description, m.Tint = labels.Name, labels.Description, labels.Tint
 		}
 	}
 	return s.changeDefinition(ctx, &m, func(dir string) error {

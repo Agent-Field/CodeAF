@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
 func settingsServer(t *testing.T) *Server {
@@ -20,6 +21,111 @@ func settingsServer(t *testing.T) *Server {
 	}})
 	t.Cleanup(s.Close)
 	return s
+}
+
+func TestModelsReportTheResolvedConversationModel(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		talk  string
+		reset bool
+		want  string
+	}{
+		{name: "fresh profile", want: config.DefaultModel},
+		{name: "saved talk model", talk: "vendor/z-first", want: "vendor/z-first"},
+		{name: "cleared talk model", talk: "vendor/z-first", reset: true, want: config.DefaultModel},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := settingsServer(t)
+			if tc.talk != "" {
+				if err := config.WriteChatModel(s.options.ProfileDir, tc.talk); err != nil {
+					t.Fatal(err)
+				}
+			}
+			wantDefault := tc.talk
+			if tc.reset {
+				if err := config.WriteChatModel(s.options.ProfileDir, ""); err != nil {
+					t.Fatal(err)
+				}
+				wantDefault = ""
+			}
+			w := request(t, s, "GET", "/app/v1/models", "", bearer(), "127.0.0.1:4000")
+			var models ModelsResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &models); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != 200 || models.Resolved != tc.want || models.Default != wantDefault {
+				t.Fatalf("models: %d %s; want resolved %q and default %q", w.Code, w.Body, tc.want, wantDefault)
+			}
+		})
+	}
+}
+
+func TestModelsReportKnownTariffsAndOmitUnknownPrices(t *testing.T) {
+	orchestrate.UsePrices(orchestrate.CatalogPrices(func(id string) (float64, float64, bool) {
+		switch id {
+		case "vendor/z-first":
+			return .000002, .000008, true
+		case "vendor/a-second":
+			return 0, 0, true
+		default:
+			return 0, 0, false
+		}
+	}))
+	t.Cleanup(func() { orchestrate.UsePrices(nil) })
+	s := settingsServer(t)
+	if err := config.WriteChatModel(s.options.ProfileDir, "unknown/model"); err != nil {
+		t.Fatal(err)
+	}
+	w := request(t, s, "GET", "/app/v1/models", "", bearer(), "127.0.0.1:4000")
+	var response struct {
+		Models []map[string]json.RawMessage `json:"models"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || len(response.Models) != 3 {
+		t.Fatalf("models: %d %s", w.Code, w.Body)
+	}
+	for _, tc := range []struct {
+		id    string
+		known bool
+		in    float64
+		out   float64
+	}{
+		{id: "vendor/z-first", known: true, in: 2, out: 8},
+		{id: "vendor/a-second:free", known: true},
+		{id: "unknown/model"},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			for _, row := range response.Models {
+				var id string
+				if err := json.Unmarshal(row["id"], &id); err != nil {
+					t.Fatal(err)
+				}
+				if id != tc.id {
+					continue
+				}
+				for _, field := range []struct {
+					key  string
+					want float64
+				}{{"price_in", tc.in}, {"price_out", tc.out}} {
+					raw, present := row[field.key]
+					if present != tc.known {
+						t.Fatalf("%s present = %v, want %v", field.key, present, tc.known)
+					}
+					if !present {
+						continue
+					}
+					var price float64
+					if err := json.Unmarshal(raw, &price); err != nil || price != field.want {
+						t.Fatalf("%s = %s, want %g: %v", field.key, raw, field.want, err)
+					}
+				}
+				return
+			}
+			t.Fatal("model row missing")
+		})
+	}
 }
 
 func TestSettingsModelRouteTableUsesTheTransportGuard(t *testing.T) {

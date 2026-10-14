@@ -116,6 +116,77 @@ type agentLive struct {
 	turnID     string
 	longTimer  *time.Timer
 	longShown  bool
+	// held names Inbox items whose answer waits out its Undo window; the
+	// agent is not waiting on the person for those questions.
+	held map[string]bool
+}
+
+// needsPerson is the one reading of "waiting on the person" for views and
+// stored transitions: an open question whose answer is not held for Undo.
+// The open questions are read themselves, because an engine's own word can
+// lag them (a remote engine pushes it) or not cover a question the model
+// asked. Callers hold the registry lock.
+func (live *agentLive) needsPerson(id string) bool {
+	door, ok := live.conn.Engine.(inboxQuestionDoor)
+	if !ok {
+		return live.conn.Engine.NeedsPerson()
+	}
+	open := door.OpenQuestions()
+	live.pruneHeld(id, open)
+	for _, q := range open {
+		if !live.held[inboxQuestionID(id, q)] {
+			return true
+		}
+	}
+	// Every open question is answered and held: the person is not waited on.
+	return len(open) == 0 && live.conn.Engine.NeedsPerson()
+}
+
+// pruneHeld drops holds whose question the engine has taken: a sent answer
+// stays held until its question leaves the open set. Callers hold the lock.
+func (live *agentLive) pruneHeld(id string, open []session.Question) {
+	still := make(map[string]bool, len(open))
+	for _, q := range open {
+		still[inboxQuestionID(id, q)] = true
+	}
+	for item := range live.held {
+		if !still[item] {
+			delete(live.held, item)
+		}
+	}
+}
+
+func (a *AgentRegistry) liveNeedsPerson(id string, live *agentLive) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return live.needsPerson(id)
+}
+
+// holdAnswer records that an Inbox answer entered (held) or left its Undo
+// window and stores the agent state the views now read, so the desk hears
+// agent.changed at the click rather than when the window closes.
+func (a *AgentRegistry) holdAnswer(id, item string, held bool) {
+	a.mu.Lock()
+	live := a.live[id]
+	if live == nil {
+		a.mu.Unlock()
+		return
+	}
+	if held {
+		if live.held == nil {
+			live.held = map[string]bool{}
+		}
+		live.held[item] = true
+	} else {
+		delete(live.held, item)
+	}
+	state := "running"
+	if live.needsPerson(id) {
+		state = "needs_you"
+	}
+	generation := live.generation
+	a.mu.Unlock()
+	_ = a.transitionState(id, state, live, generation)
 }
 
 // AgentRegistry serializes local connections and flocks durable mutations so
@@ -272,7 +343,8 @@ func (a *AgentRegistry) view(record agentRecord) Agent {
 		row := session.ReadRows([]string{record.SessionFile})[record.SessionFile]
 		presence, fresh := session.ReadSessionPresence(filepath.Dir(record.SessionFile), a.now())
 		switch {
-		case live != nil && live.conn.Engine.NeedsPerson(), fresh && presence.NeedsPerson():
+		// A held answer is the one case the presence file is behind on.
+		case live != nil && live.needsPerson(agent.ID), (live == nil || len(live.held) == 0) && fresh && presence.NeedsPerson():
 			agent.State = "needs_you"
 		case live != nil && live.running, fresh && (presence.State == session.PresenceWorking || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0):
 			agent.State = "running"

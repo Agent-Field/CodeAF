@@ -401,3 +401,48 @@ func TestAgentLifecycleEventsAndCloseWorkAndCrewRules(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentReturnsToRunningWhenWorkResumesAfterConsent(t *testing.T) {
+	f := newAgentFixture(t)
+	a := readAgent(t, f.request(t, "POST", "/app/v1/agents", `{"start":"send","text":"Chart the data"}`), 201)
+	engine := f.engines[0]
+	changes := func() int {
+		batch, _, _, _, _ := f.server.Events().read(0)
+		n := 0
+		for _, event := range batch {
+			if event.kind == EventAgentChanged && event.agent == a.ID {
+				n++
+			}
+		}
+		return n
+	}
+	waitChange := func(after int, why string) int {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for n := changes(); ; n = changes() {
+			if n > after {
+				return n
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("no agent.changed after %s", why)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	engine.mu.Lock()
+	engine.needs = true
+	events := engine.events
+	engine.mu.Unlock()
+	asked := waitChange(changes()-1, "start")
+	events <- session.Event{Kind: session.EventConsentRequest}
+	asked = waitChange(asked, "consent request")
+	// The answer lands without EventQuestionAnswered; the next work event is the signal.
+	engine.mu.Lock()
+	engine.needs = false
+	engine.mu.Unlock()
+	events <- session.Event{Kind: session.EventTextDelta, Text: "Here is the chart."}
+	waitChange(asked, "work resumed")
+	if got := readAgent(t, f.request(t, "GET", "/app/v1/agents/"+a.ID, ""), 200); got.State != "running" {
+		t.Fatalf("want running, got %s", got.State)
+	}
+}
