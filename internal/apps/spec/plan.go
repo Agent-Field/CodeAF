@@ -5,6 +5,7 @@ package spec
 type Plan struct {
 	Ask        string     `json:"ask"`
 	Name       string     `json:"name"`
+	Tint       string     `json:"tint,omitempty"`
 	Data       []PlanLine `json:"data"`
 	Automation []PlanLine `json:"automation"`
 	Screens    []PlanLine `json:"screens"`

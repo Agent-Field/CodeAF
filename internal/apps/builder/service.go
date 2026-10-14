@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -42,13 +42,14 @@ type Service struct {
 
 var _ svc.Builder = (*Service)(nil)
 
-// New returns the Builder. Its model is DefaultModel unless ModelEnv is set.
+// New resolves the Builder's model at server start so saved settings and the
+// environment pin choose the same model the settings registry reports.
 func New(cfg svc.Config, all *svc.Services) *Service {
 	ctx := cfg.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	model := strings.TrimSpace(os.Getenv(ModelEnv))
+	model := config.AppsBuilderModelAt(config.ProfilePath(config.ProfileDir(), ""))
 	if model == "" {
 		model = DefaultModel
 	}

@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/codeaf/internal/apps/draft"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
@@ -18,7 +17,7 @@ func (s *Service) chooseTint(b *build) {
 		return
 	}
 	used := s.tintsInUse(b.app)
-	b.setTint(leastUsed(draft.Tints, used), usedNames(used))
+	b.setTint(leastUsed(spec.Tints, used), usedNames(used))
 }
 
 // tintsInUse counts the tints the other apps carry in their app.json; an app

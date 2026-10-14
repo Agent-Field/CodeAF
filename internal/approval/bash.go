@@ -275,8 +275,9 @@ func globMatch(pattern, text string) bool {
 // model, and not an attempt to enumerate every way a shell can ruin a machine
 // — that list does not terminate, and pretending otherwise would sell a
 // guarantee this package cannot keep. It is a floor: the handful of shapes
-// that destroy a disk or drop the box, where being asked once costs a keystroke
-// and not being asked costs the machine. Everything else is the policy's job.
+// that destroy a disk, drop the box or install software. Installation changes
+// the person's environment, so even a remembered allow must ask first.
+// Everything else is the policy's job.
 //
 // Matched against the whole line and each segment, after normalizeCritical.
 var criticalCommands = []string{
@@ -300,6 +301,26 @@ var criticalCommands = []string{
 	"reboot", "reboot *",
 	"halt", "halt *",
 	"poweroff", "poweroff *",
+	// Installing software and creating its environment always need consent.
+	"pip install", "pip install *",
+	"pip3 install", "pip3 install *",
+	"python -m pip install", "python -m pip install *",
+	"python3 -m pip install", "python3 -m pip install *",
+	"uv pip install", "uv pip install *",
+	"uv add", "uv add *",
+	"npm install -g", "npm install -g *", "npm install * -g", "npm install * -g *",
+	"npm i -g", "npm i -g *", "npm i * -g", "npm i * -g *",
+	"npm install --global", "npm install --global *", "npm install * --global", "npm install * --global *",
+	"npm i --global", "npm i --global *", "npm i * --global", "npm i * --global *",
+	"brew install", "brew install *",
+	"gem install", "gem install *",
+	"cargo install", "cargo install *",
+	"go install", "go install *",
+	"python -m venv", "python -m venv *",
+	"python3 -m venv", "python3 -m venv *",
+	"virtualenv", "virtualenv *",
+	"curl * | sh", "curl * | sh *",
+	"curl * | bash", "curl * | bash *",
 }
 
 // forkBomb is the classic shape, matched against the line with ALL whitespace
@@ -316,6 +337,14 @@ func criticalHit(command string, segments []string) (string, bool) {
 	candidates := make([]string, 0, len(segments)+1)
 	candidates = append(candidates, command)
 	candidates = append(candidates, segments...)
+	// Keep adjacent pipeline commands together so spacing and an earlier cd
+	// cannot hide a downloaded script being sent straight to a shell.
+	parts := SplitBashCommand(command)
+	for index, part := range parts {
+		if part.Separator == "|" && index+1 < len(parts) {
+			candidates = append(candidates, part.Command+" | "+parts[index+1].Command)
+		}
+	}
 	for _, candidate := range candidates {
 		normalized := normalizeCritical(candidate)
 		if normalized == "" {

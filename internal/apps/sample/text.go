@@ -70,28 +70,8 @@ func textValue(typ, name string, schema *spec.RecordType, f *spec.Field, i int) 
 	if personField(name, f.Label) {
 		return person
 	}
-	if name == schema.Title {
-		return titleValue(typ, schema, i)
-	}
 	if hasWord(semantic, "sku", "code", "serial", "identifier") {
 		return fmt.Sprintf("%s-%04d", strings.ToUpper(typ), i+1)
 	}
 	return fmt.Sprintf("%s %d", label(f.Label, name), i+1)
-}
-
-func titleValue(typ string, schema *spec.RecordType, i int) string {
-	if personTitle(typ) || personTitle(schema.Label) {
-		return personName(i)
-	}
-	parts := []string{label(schema.Label, typ)}
-	// Enum choices are the domain vocabulary already supplied by the Builder.
-	// Lifecycle states describe progress rather than the record's identity.
-	for _, name := range keys(schema.Fields) {
-		f := schema.Fields[name]
-		if f.Type != spec.FieldEnum || len(f.Values) == 0 || hasWord(name+" "+f.Label, "status", "state", "stage") {
-			continue
-		}
-		parts = append(parts, f.Values[i%len(f.Values)])
-	}
-	return fmt.Sprintf("%s %d", strings.Join(parts, " · "), i+1)
 }

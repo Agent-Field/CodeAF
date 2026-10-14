@@ -124,6 +124,7 @@ const (
 type AppSummary struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
+	Tint        string   `json:"tint,omitempty"`
 	Description string   `json:"description,omitempty"`
 	State       AppState `json:"state"`
 	Version     int      `json:"version"` // 0 until Keep

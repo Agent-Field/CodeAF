@@ -125,6 +125,9 @@ var settingReaders = map[string]string{
 	KeyTenureAfter:    "CODEAF_TENURE_AFTER",
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
+
+	KeyAppsBuilderModel: "AppsBuilderModelAt",
+
 	// The model-name row names the one resolver every door turns it into a
 	// name through: the leaf loops' doors hand [AssistedByModelAt]'s answer to
 	// the attribution line.

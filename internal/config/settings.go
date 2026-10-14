@@ -118,6 +118,9 @@ const (
 	KeyTenureAfter    = "tenure_after"
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
+	// KeyAppsBuilderModel selects the model that writes app definitions,
+	// independently of the app's own agent model.
+	KeyAppsBuilderModel = "apps.builder.model"
 	// KeyModelPool is the stored word the pool's resolver takes: the same three
 	// answers the CODEAF_MODEL_POOL pin and a CI environment may give it
 	// (internal/pool/poolcfg). The resolver beside the search rows is the one
@@ -1055,6 +1058,12 @@ var ModelPoolChoices = []string{"on", "read", "off"}
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
 	"CODEAF_BASE_URL",
+	// GUI launches restore the login PATH once; this startup opt-out has no editable row.
+	"CODEAF_NO_LOGIN_ENV",
+	// The native app passes its credential disk policy to child processes at launch.
+	AppModeEnv,
+	// The Apps Builder reads this launch override outside the shared model slots.
+	"CODEAF_APPS_BUILDER_MODEL",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.
 	"CODEAF_CODEX_ISSUER",
@@ -1239,6 +1248,11 @@ var OperatorEnvPins = []string{
 	// row offering to persist it would be offering to point a person's box at
 	// somebody else's lock.
 	"CODEAF_SUITE_DIRLOCK_PATH",
+	// CODEAF_NO_LOGIN_ENV stops `codeaf app serve` on macOS from reading the
+	// login shell's PATH (internal/loginenv). It is an escape hatch for a launch
+	// environment that already carries the right PATH, set where the app is
+	// launched, never a preference a person keeps in settings.
+	"CODEAF_NO_LOGIN_ENV",
 	// CODEAF_PROMPT_PROFILE used to sit here, on the reasoning that the profile
 	// is derived and the pin belongs to a bench measuring one arm against the
 	// other. It is a settings row's pin now ([KeyPromptProfile]), because the
@@ -1927,6 +1941,17 @@ func (s *Settings) build() []Setting {
 	for _, slot := range slots {
 		rows = append(rows, s.modelRow(slot))
 	}
+	rows = append(rows, Setting{
+		Key: KeyAppsBuilderModel, Category: CategoryModels, Kind: SettingText,
+		Label: "apps builder model", Env: "CODEAF_APPS_BUILDER_MODEL",
+		EmptyLabel: "built in",
+		Hint: "the model that plans, writes and fixes app definitions. Set " +
+			"CODEAF_APPS_BUILDER_MODEL to override the saved choice; restart the app server " +
+			"to use a changed value. Blank uses the built-in model " +
+			"and does not select the app's own agent model.",
+		read:  func() string { return AppsBuilderModelAt(dir) },
+		write: func(raw string) error { return writeText(dir, KeyAppsBuilderModel, raw) },
+	})
 
 	rows = append(rows,
 		// The two rows that pick what reads a thing rather than what runs it.
@@ -3415,6 +3440,18 @@ func DocumentEngineAt(profileDir string) (string, error) {
 		}
 	}
 	return DefaultDocumentEngine, nil
+}
+
+// AppsBuilderModelAt resolves the app-definition model. Empty lets the Builder
+// supply its built-in default without duplicating that model in the registry.
+func AppsBuilderModelAt(profileDir string) string {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_APPS_BUILDER_MODEL")); raw != "" {
+		return raw
+	}
+	if value, ok := persistedString(profileDir, KeyAppsBuilderModel); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
 }
 
 // VisionModelAt resolves the image-inspection proxy slot. Empty means resolve

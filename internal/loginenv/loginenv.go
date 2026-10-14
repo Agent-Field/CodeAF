@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	pathStart = "__CODEAF_ENV_START__"
-	pathEnd   = "__CODEAF_ENV_END__"
+	pathStart = "__codeaf_login_path_start__"
+	pathEnd   = "__codeaf_login_path_end__"
 )
 
 type resolver struct {

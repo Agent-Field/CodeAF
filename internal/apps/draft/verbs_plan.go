@@ -281,7 +281,7 @@ type tintArgs struct{ tint string }
 
 func tintDef() def[tintArgs] {
 	return def[tintArgs]{
-		Usage: "codeaf app tint <" + strings.Join(Tints, "|") + ">",
+		Usage: "codeaf app tint <" + strings.Join(spec.Tints, "|") + ">",
 		Decode: func(a argv, _ string) (tintArgs, error) {
 			if err := a.exactly(1); err != nil {
 				return tintArgs{}, err
@@ -295,15 +295,10 @@ func tintDef() def[tintArgs] {
 	}
 }
 
-// Tints are the palette names that colour an app's frame. It is the twin of
-// crewTints in internal/appapi/crew_handlers.go: draft must not import appapi,
-// so the two lists are kept equal by hand.
-var Tints = []string{"iris", "sage", "sand", "tide", "rose", "graphite"}
-
-// checkTint accepts "" (no tint chosen) or one of Tints.
+// checkTint accepts "" (no tint chosen) or one of spec.Tints.
 func checkTint(name string) error {
-	if name == "" || contains(Tints, name) {
+	if name == "" || contains(spec.Tints, name) {
 		return nil
 	}
-	return refuse("tint %q is not one of %s", name, strings.Join(Tints, ", "))
+	return refuse("tint %q is not one of %s", name, strings.Join(spec.Tints, ", "))
 }
