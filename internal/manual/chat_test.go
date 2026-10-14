@@ -2676,6 +2676,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is the home screen empty", "home"},
 		{"what does the dim line under a panel heading mean", "home"},
 		{"how do I move between the columns on home", "home"},
+		// The arrows stopped crossing columns on 2026-09-17, and four pages went
+		// on saying they did; `→` opens the row's verbs and nothing crosses.
+		{"can I walk to the projects column with the arrow keys", "home"},
+		{"do the arrow keys cross columns on home", "places"},
+		{"what does the right arrow do on home", "places"},
 		{"why is the cursor on my previous chat when I open home", "home"},
 		{"why did home cut off panels on a small terminal", "home"},
 		{"what does 3 more mean on home", "home"},

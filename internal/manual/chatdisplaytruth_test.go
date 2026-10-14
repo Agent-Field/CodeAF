@@ -92,6 +92,32 @@ func TestNoSectionRepeatsStaleHelpSettingsGreetingOrManagerClaims(t *testing.T) 
 	}
 }
 
+// HOME'S ARROWS STOPPED CROSSING COLUMNS ON 2026-09-17, when every row the cursor
+// can stand on moved into the field's one column and the rail stopped being
+// walked (internal/tui3's homegrid.go, THE ARROWS STAY IN THEIR COLUMN). Five
+// sections went on saying `←`/`→` cross columns, and two promised a project
+// row's `its chats` verb, which #1422 removed along with the row's stop.
+func TestNoSectionSaysHomesArrowsCrossColumns(t *testing.T) {
+	stale := []string{
+		"←→ cross columns",
+		"`←→` cross columns",
+		"`←`/`→` cross columns",
+		"`←`/`→` cross between columns",
+		"cross to the next column",
+		"cross home's columns first",
+		"`→` then `its chats`",
+		"`its chats` and `open folder` on a project",
+	}
+	for _, section := range Chat().Sections() {
+		text := flatten(section.Title + " " + section.Body)
+		for _, claim := range stale {
+			if strings.Contains(text, claim) {
+				t.Errorf("%s: %s still says %q", section.Page, section.Title, claim)
+			}
+		}
+	}
+}
+
 func TestManualStatesHelpSettingsGreetingAndManagerDisplayTruth(t *testing.T) {
 	for _, test := range []struct {
 		page, title string

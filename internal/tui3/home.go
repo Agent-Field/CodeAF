@@ -2631,11 +2631,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// errand everywhere else; it is THE WAY TO THE NEXT PLACE now, on every
 	// place, because a key meaning "next section" here and "next place" on the
 	// other six is exactly the per-place grammar the router exists to end
-	// (placekeys.go). Both of the things it did are still reachable and neither
-	// lost a gesture: the zones are crossed into with `←` and back out with `→`
-	// ([homeView.crossColumns], which the file already described as "tab's
-	// circle, unrolled onto the two keys that already point the way"), and the
-	// errand in the pane is taken into with `→` from its own row.
+	// (placekeys.go). Neither of the things it did needs it now. There are no
+	// zones left to cycle: every row the cursor can stand on is in the field,
+	// which is one column at every width, and no arrow crosses columns any more
+	// (homegrid.go's THE ARROWS STAY IN THEIR COLUMN). And the errand in the
+	// pane is taken into with `→` from its own row.
 	case "esc":
 		// ONE LAYER AT A TIME, the settings panel's rule: a box with something
 		// in it is cleared first, and the second esc leaves. A person who typed
@@ -2890,10 +2890,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "right":
 		// AN ERRAND IN THE PANE IS TAKEN INTO WITH `→`, AND IT USED TO BE `tab`.
 		// `tab` is the way to the next place now (pages.go), so the toggle moved
-		// onto the arrow that already points at the column the errand is drawn in
-		// — the same law [homeView.crossColumns] follows two clauses down, where →
-		// walks from the zones into the list. `esc` still hands the keyboard back,
-		// which is the half of the toggle that never moved.
+		// onto the arrow that already points at the column the errand is drawn
+		// in. The arrow is free on that row: an errand's row has no verbs for the
+		// router to open (placekeys.go), and no arrow crosses columns any more
+		// (homegrid.go). `esc` still hands the keyboard back, which is the half of
+		// the toggle that never moved.
 		if h.box.empty() {
 			if ex := a.paneExchange(); ex != nil && !ex.focused {
 				ex.focused = true

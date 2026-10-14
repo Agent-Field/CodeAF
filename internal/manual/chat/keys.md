@@ -2419,7 +2419,7 @@ what each holds), and its keys are a small grammar:
 | Key | On home |
 | --- | --- |
 | `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the field, from one panel into the next, and stop at both ends: `↑` off the top row stays there and does not climb onto the tab bar (reach the bar with a click, `tab`, or a place's chord) |
-| `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
+| `←` / `→` | never cross to another column: `→` opens the row's verbs on a strip under it and `←` closes them, and on an `ask here` row `→` hands its pane the keyboard. With something typed they move the caret |
 | a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `unread` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
 | `enter` | acts on the row under the cursor: a conversation opens, a `since you left` line opens its record, file or place, a `standing` row opens standing, a fold line opens or shuts its panel. `projects` and `spend` rows are not stops, so the cursor never reaches them; a click on a project picks the folder for the next message |
 | `pgup` / `pgdown` | jump a screenful |
@@ -2434,19 +2434,23 @@ what each holds), and its keys are a small grammar:
 **Opening home puts the cursor on the chat you were in before this one**, so `space` `space`
 then `enter` is a switch back; a window with only one conversation opens on its own row,
 which says `here`. The panel holding the cursor marks its heading with the cursor's ground,
-which is how you tell which column your arrows are in. **`alt+g` and `alt+q` are unbound on
+which is how you tell which panel your arrows are in. **`alt+g` and `alt+q` are unbound on
 home** — there is no list left to group or thin — and so is the answer strip above the box:
 the answers are on the `needs you` row itself.
 
-**`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
-opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
-of the list down by its own height, and while that strip is drawn its letters are the verbs
-and the box is asleep — a question's own answer keys and words, `x close`, `c copy name`, `n new in project`,
-`o open folder`, `p pause it` or `r resume it` on a standing item. `esc` or
-`←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
-never leave home's field, and on a panel's fold line (`N more`) `enter`
-opens the panel and shows the rest; on `N fewer` it folds them again.
-While something is typed the two arrows move the caret in the box instead.
+**`←` and `→` never cross home's columns.** Every row the cursor can stand on is in the
+field at the left; the rail at the right — `projects`, `spend` and the quiet panels — is
+read and clicked, never walked, so there is no column to cross to. (The arrows used to
+cross into the neighbouring column; that ended on 2026-09-17.) **`→` opens the row's
+verbs** on a strip drawn **directly under that row**, pushing the rest of the list down by
+its own height, and while that strip is drawn its letters are the verbs and the box is
+asleep — a question's own answer keys and words; `x delete`, `c copy name`,
+`n new in project` and `o open folder` on a conversation; `p pause` or `r resume it` on a
+standing item; `s stop it` on work this window is running. `esc` or `←` closes it, `enter`
+still opens the row, and walking off the row closes it too. A row with no verbs draws no
+strip: on an `ask here` row `→` hands the errand's pane the keyboard instead, and on a
+panel's fold line (`N more`) `enter` opens the panel and shows the rest; on `N fewer` it
+folds them again. While something is typed the two arrows move the caret in the box instead.
 
 **A letter always types**, unless the verb strip that names it is on screen — that visible
 strip is the one state where a printable key is a verb, and it is why it has to be drawn.

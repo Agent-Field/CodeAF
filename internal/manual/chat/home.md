@@ -422,7 +422,8 @@ no right side at all on the resting screen.
 
 Where to go for the whole figure instead:
 
-- **`→` then `its chats`** on the row lists every conversation in the project as a search;
+- **typing the project's name** into the box lists every conversation in it as a search
+  (a project's row is not a stop, so `→` has nothing to open there);
 - **the activity page** for the work a project has run, which is the record rather than a
   count;
 - **the spend place** for what it has cost.
@@ -473,7 +474,7 @@ every conversation in it, and `ctrl+t` on one of them starts a new one there.
 ones out of the way: `needs you` and `sessions` hold what wants you or is moving, and
 the conversation list shows the fifteen most recent conversations, with closed ones dimmed. A short frame folds what does not fit behind `N more`. Typing finds any conversation on the machine.
 
-## Which column am I in — move between the columns on home: ↑↓ walk a panel, ←→ cross columns
+## Which column am I in — move between the columns on home: ↑↓ walk the field, ←→ open a row's verbs
 
 **`↑` and `↓` walk the field**, from one panel into the next at its ends, and stop at
 both ends: `↑` off the top row stays on it and does not climb onto the tab bar. **`←` and
@@ -487,8 +488,9 @@ inside it. The conversation and question rows have no heading. The row you are o
 wears the same ground and its title goes bold; the row under your mouse pointer wears it too
 while the pointer is on it.
 
-**`→` opens a row's verbs, on every row and at every width**, and the chords work without
-the strip: `ctrl+o` opens a conversation's workspace, the workspace a standing order stands
+**`→` opens a row's verbs, on every row that has any and at every width** — on an `ask here`
+row it hands the errand's pane the keyboard instead — and the chords work without the
+strip: `ctrl+o` opens a conversation's workspace, the workspace a standing order stands
 over, or the conversation a `since you left` line happened in; `ctrl+y` copies the path,
 `ctrl+e` asks to delete a conversation or pauses a standing item, `ctrl+x` stops. The foot does not change from row to row and
 names none of them; `alt+.` draws the map when you want the rest.
@@ -737,7 +739,8 @@ goes empty on the `start a new conversation` row, which is a chat that does not 
 
 ## Switch between sessions — enter on home
 
-`↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk a column and `←`/`→` cross between columns.
+`↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk the rows; `←`/`→` never cross to another column — `→`
+opens the row's verbs and `←` closes them, and with something typed they move the caret.
 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A `projects` row is the one exception: a click on it picks that
@@ -2375,8 +2378,8 @@ Top to bottom:
 3. Home ask exchanges retain their own answer rows.
 4. `since you left` — what landed while you were not in the room.
 5. **The projects.** This window's own project is drawn open with its remaining rows; every
-   other project is one folded line — `▸ wisp   6 · 2d` — that `enter` or a tap opens in
-   place.
+   other project is one folded line — `▸ wisp   6 · 2d` — that `enter`, `→` or a tap opens
+   in place, and `←` folds back.
 
 Each section shows **three rows** and folds the rest into `▸ …N more`; `enter` or a tap on
 that line opens it in place. A section with nothing in it is not drawn at all. **A row

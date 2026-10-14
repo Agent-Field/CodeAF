@@ -431,10 +431,12 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x delete`, `c copy name`, `n new in project`, `o open folder`, and
-`p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
-`its chats` and `open folder` on a project. On home, `→` opens the selected row's
-options at every width; the arrows stay in the list.
+verbs are the row's own — a question's first two answers on its own answer keys;
+`x delete`, `c copy name`, `n new in project` and `o open folder` on a conversation;
+`p pause` or `r resume it` on a standing item; `s stop it` on a task this window runs. A
+project's row is not a stop, so it has none: a click on it picks the folder for the next
+message. On home, `→` opens the selected row's options at every width; the arrows stay in
+the list and never cross to another column.
 
 While those options are drawn, **those letters are the verbs** and the composer is asleep.
 On wide home layouts they appear below the selected description in the middle column,
@@ -536,7 +538,7 @@ the left, and the **rail** at the right holds `projects` and `spend` at its top 
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
 naming what arrives there.
 
-Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
+Its own keys are in the **Home** page: `↑↓` walk the field, `→` opens a row's verbs and `←` closes them, a digit
 answers the question row drawing its answers, and `enter` opens a row. `tab` is the way to the
 next place, and the errand pane is taken into with `→` rather than `tab`. Home uses
 `alt+p` for the next conversation's project, `alt+e` for effort, `alt+a` for

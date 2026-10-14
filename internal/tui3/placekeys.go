@@ -259,10 +259,10 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 		// `→` OPENS THE ROW'S VERBS, and only when the row has any. Where it does
-		// not, the arrow keeps every meaning it already had on that place — the
-		// fold ladder and the walk across the columns on home, the caret's step
-		// inside a box everywhere — which is what makes this a new claim on the
-		// key rather than a seizure of it.
+		// not, the arrow keeps every meaning it already had on that place — on
+		// home the way into an errand's pane and the fold ladder of the phone's
+		// inbox, the caret's step inside a box everywhere — which is what makes
+		// this a new claim on the key rather than a seizure of it.
 		if a.openStrip() {
 			a.touch()
 			return nil, true
