@@ -6,12 +6,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
-// maxPlanLine is how long the worker may write one card line. The plan schema
+// MaxPlanLine is how long the worker may write one card line. The plan schema
 // allows 200; a shorter line reads better on the card.
-const maxPlanLine = 120
+const MaxPlanLine = 120
 
-// maxNameLen is the longest app name the plan card has room for.
-const maxNameLen = 40
+// MaxNameLen is the longest app name the plan card has room for.
+const MaxNameLen = 40
 
 // planGroup is one list on the plan card that takes id-and-line entries.
 type planGroup struct {
@@ -60,8 +60,8 @@ func nameDef() def[nameArgs] {
 		},
 		Piece: func(nameArgs) Piece { return Piece{Kind: "name"} },
 		Check: func(_ State, _ Entry, n nameArgs) error {
-			if n.name == "" || runeLen(n.name) > maxNameLen {
-				return refuse("the app name must be 1 to %d characters, got %d — give a short name such as \"CRM\"", maxNameLen, runeLen(n.name))
+			if n.name == "" || runeLen(n.name) > MaxNameLen {
+				return refuse("the app name must be 1 to %d characters, got %d — give a short name such as \"CRM\"", MaxNameLen, runeLen(n.name))
 			}
 			return checkTint(n.tint)
 		},
@@ -111,8 +111,8 @@ func checkPlanLine(line string) error {
 	if line == "" {
 		return refuse("a plan line must not be empty — write one plain sentence the owner can read")
 	}
-	if runeLen(line) > maxPlanLine {
-		return refuse("a plan line is at most %d characters, got %d — shorten it", maxPlanLine, runeLen(line))
+	if runeLen(line) > MaxPlanLine {
+		return refuse("a plan line is at most %d characters, got %d — shorten it", MaxPlanLine, runeLen(line))
 	}
 	return nil
 }

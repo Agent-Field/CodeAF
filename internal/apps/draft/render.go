@@ -74,7 +74,7 @@ func appDoc(st State, d Defaults) appFile {
 	app := spec.App{
 		ID: d.AppID, Name: st.Name, Tint: tintOf(st, d), Description: st.About, Space: d.Space, Version: 1, Kit: d.Kit,
 		Agent:    spec.AgentRef{Name: agentName(st), File: spec.AgentFile, Model: d.AgentModel},
-		Records:  st.Records,
+		Records:  labelled(st.Records),
 		Triggers: st.Triggers,
 		Commands: st.Commands,
 		Budget:   budget(d),
@@ -177,3 +177,20 @@ func withNewline(b []byte) []byte {
 
 // tintOf is the worker's choice, else the Builder's suggestion.
 func tintOf(st State, d Defaults) string { return orElse(st.Tint, d.Tint) }
+
+// labelled copies the records with a human label on every field that has
+// none: "due_on" reads "Due on", never the raw id. The State is not changed.
+func labelled(records map[string]*spec.RecordType) map[string]*spec.RecordType {
+	out := make(map[string]*spec.RecordType, len(records))
+	for id, rec := range records {
+		copied := *rec
+		copied.Fields = make(map[string]*spec.Field, len(rec.Fields))
+		for name, f := range rec.Fields {
+			field := *f
+			field.Label = orElse(field.Label, titleOf(name))
+			copied.Fields[name] = &field
+		}
+		out[id] = &copied
+	}
+	return out
+}
