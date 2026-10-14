@@ -446,10 +446,6 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 	a.harnessSeq++
 	id := a.harnessSeq
 	answers := make(chan harnessAnswer, 1)
-	if a.harnessAsks == nil {
-		a.harnessAsks = make(map[uint64]harnessAsk, 1)
-	}
-	a.harnessAsks[id] = harnessAsk{answers: answers}
 	a.mu.Unlock()
 
 	// THE OFFER IS RAISED THROUGH THE ONE DOOR, with the card as its
@@ -470,7 +466,27 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 		Model:     match.Model,
 		ModelNote: match.ModelNote,
 	}
-	defer a.presenceAskingWhole(a.harnessQuestion(id, offer), func() { hub.send(offer) })()
+	q := a.harnessQuestion(id, offer)
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return harnessAnswer{}, errAgentClosed
+	}
+	// THE SENTENCE LANDS BEFORE THE LANE IS VISIBLE. Readers of harnessAsks
+	// must already find the question's words, even if publication is delayed.
+	forgetDesk := a.presenceAskingQuestion(q)
+	if a.harnessAsks == nil {
+		a.harnessAsks = make(map[uint64]harnessAsk, 1)
+	}
+	a.harnessAsks[id] = harnessAsk{answers: answers}
+	a.mu.Unlock()
+	letGo := a.raiseQuestion(q, func() { hub.send(offer) })
+	teamDown := a.teamAsking(q)
+	defer func() {
+		forgetDesk()
+		letGo()
+		teamDown()
+	}()
 
 	select {
 	case answer := <-answers:

@@ -2497,6 +2497,9 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-alpha", "aaaa000000000001", "the only one", lab.workspace("alpha"), time.Now())
 	a := lab.door(mine)
+	// Pin the display home so the project's expected spelling is independent
+	// of whether the runner keeps its temporary directories under the real home.
+	a.tilde = lab.work
 	if !a.homeDoorOpen() || !a.homeDoorShowing() {
 		t.Fatal("the door is shut on a machine whose only conversation is this one")
 	}
@@ -2516,7 +2519,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	// The row wears its title cased the way every row does ([homeName]), so
 	// the look is case-blind: the claim is that the conversation is there.
 	text := strings.ToLower(homeText(a))
-	for _, want := range []string{strings.ToLower(ansi.Cut(lab.workspace("alpha"), 0, 12)), "the only one", microcopy} {
+	for _, want := range []string{"~/alpha", "the only one", microcopy} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("a one-conversation home is missing %q:\n%s", want, text)
 		}
@@ -2630,12 +2633,14 @@ func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
 		t.Fatalf("the walk found %d projects in a folder nobody has spoken in", len(world.Projects))
 	}
 	a := lab.app(mine)
+	// The project is under this display home on every runner.
+	a.tilde = lab.work
 	a.workspace, a.title = alpha, "first thing"
 	a.openHome()
 	// The row wears the title the way every row does ([homeName] cases it), so
 	// the comparison is case-blind: the claim is that the title is there.
 	text := strings.ToLower(homeText(a))
-	for _, want := range []string{strings.ToLower(ansi.Cut(alpha, 0, 12)), "first thing"} {
+	for _, want := range []string{"~/alpha", "first thing"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home opened from a fresh conversation does not list it (%q):\n%s", want, text)
 		}
