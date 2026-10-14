@@ -61,11 +61,17 @@ func (s *Service) failWrite(ctx context.Context, b *build, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	if b.holdingFailure() {
+		return errRungFailed
+	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildFailed, Log: err.Error()})
 	return s.setState(ctx, b, bridge.StateFailed)
 }
 
 func (s *Service) giveUp(ctx context.Context, b *build, report bridge.CheckReport) error {
+	if b.holdingFailure() {
+		return errRungFailed
+	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: bridge.BuildFailed, Round: report.Round,
 		Log: "The checks did not pass after " + fmt.Sprint(report.Round) + " rounds", Check: &report})
 	return s.setState(ctx, b, bridge.StateFailed)

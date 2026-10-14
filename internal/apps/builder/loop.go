@@ -185,9 +185,25 @@ func (s *Service) steer(b *build, t *seat, request string) error {
 		t.tell("Owner asks: " + request)
 		return nil
 	}
-	return s.start(b, func() error { return nil }, func(ctx context.Context) error {
+	err := s.start(b, func() error { return nil }, func(ctx context.Context) error {
 		return s.replan(ctx, b, t, request)
 	})
+	var busy *bridge.Error
+	if errors.As(err, &busy) && busy.Code == bridge.CodeConflict {
+		return s.queue(b, t, request)
+	}
+	return err
+}
+
+// queue leaves a request for the next worker when the Builder is busy between
+// tasks: a note on the newest task, which the next worker reads at its first
+// step. The owner is told in plain words that it will be read.
+func (s *Service) queue(b *build, t *seat, request string) error {
+	if id := t.newestTask(); id != "" {
+		_, _ = t.tasks.AddPersonNote(id, "Owner asks: "+request)
+	}
+	s.step(b, bridge.StepPlan, bridge.BuildRunning, "Your change is noted; the Builder reads it at its next step")
+	return nil
 }
 
 // replan runs the short task that changes the plan, then shows the card again.

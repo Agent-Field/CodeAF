@@ -34,6 +34,7 @@ type build struct {
 	seat     *seat
 	demoted  bool
 	rounds   int
+	hold     bool // a rung is running whose failure must fall to the next rung, not show the card
 	tint     string
 	tintUsed []string
 }
@@ -49,6 +50,20 @@ func (b *build) isDemoted() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.demoted
+}
+
+// holdFailure makes a failed check end quietly with errRungFailed instead of
+// the failed card, for as long as a rung that has a rung below it is running.
+func (b *build) holdFailure(on bool) {
+	b.mu.Lock()
+	b.hold = on
+	b.mu.Unlock()
+}
+
+func (b *build) holdingFailure() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.hold
 }
 
 // nextRound numbers the next check round, however it was asked for.

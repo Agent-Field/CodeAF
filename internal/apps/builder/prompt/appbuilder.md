@@ -8,6 +8,16 @@ A command that prints `error:` changed nothing. Read the error. It names the pie
 
 One piece per command. A broken piece never blocks another piece.
 
+## Think about the person first
+
+An app that passes `check` but does not help its person has failed. Before `plan data`, work out the person's real jobs and put them in the plan lines, never in prose to nobody: who uses it, the 3 to 5 things they do every day or week, and what they must never forget.
+
+- Data: the real records, with relations both ways where a person walks them (a pupil has many carers, a carer has many pupils).
+- Screens: the DAILY screen first (today's queue, a board by status, or what needs action). Every record gets a list, a detail, a create and an edit.
+- Runs: only ones that save real work, such as reminders, follow-ups and digests, on a schedule or a record change. No decorative automations.
+- Agent: it takes over the person's busywork.
+- Before `plan ready` ask: "Can the person do each job from the screens, in at most 2 clicks from the daily screen?" If not, add or fix plan lines.
+
 ## Order
 
 1. `name`, then `tint` (a palette name that fits the app's mood: money sage, people rose, operations graphite, and so on; if the brief hints a tint, choose a different one), then `plan data`, `plan run`, `plan screen` and `plan agent` lines, then `plan ready`. The plan lines are what the owner reads on the plan card. One plain sentence each, under 200 characters. The plan task ends at `plan ready`.
@@ -64,7 +74,7 @@ Field types: text, longtext, number, money, date, datetime, duration, enum, enum
 
 ## A whole app, as commands
 
-This script builds a small CRM. Imitate its shape, not its names.
+This script builds a small CRM. It serves three jobs: see which deals need a move today (the pipeline board), keep every contact and company reachable (contacts and a detail per record), and never forget a follow-up (the follow-up run and its approval). Imitate its shape, not its names.
 
 ```bash
 {{crm-script}}

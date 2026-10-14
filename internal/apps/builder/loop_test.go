@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -275,7 +276,7 @@ func TestARestartRebuildsThePlanFromTheJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := b.currentPlan()
-	if plan.Name != "CRM" || len(plan.Screens) != 1 {
+	if plan.Name != "CRM" || len(plan.Screens) != 1 || !strings.Contains(plan.Ask, "A CRM for our sales pipeline") {
 		t.Fatalf("plan after restart = %+v", plan)
 	}
 }
@@ -418,5 +419,66 @@ func TestTintIsTheFirstUnusedAndFallsBackToTheLeastUsed(t *testing.T) {
 	}
 	if line := tintLine("b", []string{"a"}); line != "Tint hint: b (other apps use: a)" {
 		t.Errorf("line = %q", line)
+	}
+}
+
+// seqChecks answers Check from a list of reports in the order of the calls,
+// whatever round each call names.
+type seqChecks struct {
+	mu      sync.Mutex
+	reports []bridge.CheckReport
+	n       int
+}
+
+func (c *seqChecks) Run(context.Context, string, spec.Files, int) (bridge.CheckReport, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r := c.reports[min(c.n, len(c.reports)-1)]
+	c.n++
+	return r, nil
+}
+
+func TestAFixRungThatKeepsFailingFallsToTheCallsRungBeforeTheCard(t *testing.T) {
+	steps := []func(context.Context) *ai.Response{
+		crmPlan(t), finishTask("plan"), crmBuild(t, "# 5\\."), finishTask("build"),
+	}
+	r := newLoopRig(t, script(steps...))
+	bad := bridge.CheckReport{Issues: []spec.Issue{{File: spec.AppFile, Rule: "agent", Message: "still wrong"}}}
+	// Three failed rounds end the fix rung; the calls rung's first check passes.
+	r.svc.all.Check = &seqChecks{reports: []bridge.CheckReport{bad, bad, bad, {Pass: true}}}
+	r.model.fixes = []string{goldenFiles(goldenPaths())}
+	buildToPlan(t, r)
+	if err := r.svc.Write(context.Background(), r.scope()); err != nil {
+		t.Fatal(err)
+	}
+	r.waitState(t, bridge.StatePreview)
+
+	if got := r.road(t); got != roadCalls {
+		t.Errorf("road = %q, want %q", got, roadCalls)
+	}
+	if r.model.calls["fix"] != 2 || r.model.calls["write"] == 0 {
+		t.Errorf("fix calls %d, write calls %d", r.model.calls["fix"], r.model.calls["write"])
+	}
+	for _, ev := range r.hub.events() {
+		if ev.Status == bridge.BuildFailed && ev.Step == bridge.StepWrite {
+			t.Errorf("the failed card showed before the last rung: %+v", ev)
+		}
+	}
+}
+
+func TestAFreeRequestWhileTheBuilderIsBusyIsQueuedAsANote(t *testing.T) {
+	r := newLoopRig(t, script(planScript()...))
+	buildToPlan(t, r)
+	b, _ := r.svc.buildFor(context.Background(), "crm")
+	if _, err := b.begin(context.Background()); err != nil { // busy, with no worker live
+		t.Fatal(err)
+	}
+	defer b.finish()
+	if _, err := r.svc.EditPlan(context.Background(), r.scope(), bridge.PlanEditParams{Edits: []bridge.PlanEdit{{Text: "Add contacts"}}}); err != nil {
+		t.Fatalf("a busy Builder must queue the request, got %v", err)
+	}
+	notes := r.seat(t).tasks.Notes("plan", 0)
+	if len(notes) != 1 || !strings.Contains(notes[0].Body, "Add contacts") {
+		t.Fatalf("notes = %+v", notes)
 	}
 }
