@@ -2,6 +2,7 @@ package expr
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,9 @@ func Offset(text string) (time.Duration, bool) {
 		sign, text = -1, text[1:]
 	case len(text) > 0 && text[0] == '+':
 		text = text[1:]
+	}
+	if d, ok := daysCall(text); ok {
+		return sign * d, true
 	}
 	if len(text) < 2 {
 		return 0, false
@@ -50,11 +54,29 @@ func DayStart(at time.Time) time.Time {
 // yesterday), which an equality token matches as a range.
 func IsDayWord(value string) bool { return value != "now" && dayWords[value] != nil }
 
+// daysCall reads `days(n)`, the CEL helper, as the same duration here.
+func daysCall(text string) (time.Duration, bool) {
+	inner, ok := strings.CutPrefix(text, "days(")
+	if !ok || !strings.HasSuffix(inner, ")") {
+		return 0, false
+	}
+	n, err := strconv.ParseFloat(strings.TrimSpace(strings.TrimSuffix(inner, ")")), 64)
+	if err != nil || n < 0 || n > 36500 {
+		return 0, false
+	}
+	return time.Duration(n * float64(24*time.Hour)), true
+}
+
 // RelativeTime is now shifted by an Offset literal ("-7d" is a week ago), or
 // a day word resolved against the same clock.
 func RelativeTime(value string, now time.Time) (time.Time, bool) {
 	if word := dayWords[value]; word != nil {
 		return word(now), true
+	}
+	// `now+90d`, `today-days(7)`: a day word shifted by an Offset.
+	if i := strings.IndexAny(value, "+-"); i > 0 && dayWords[value[:i]] != nil {
+		d, ok := Offset(value[i:])
+		return dayWords[value[:i]](now).Add(d), ok
 	}
 	d, ok := Offset(value)
 	if !ok {

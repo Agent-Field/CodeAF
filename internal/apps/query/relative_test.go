@@ -106,10 +106,52 @@ func TestLiberalRelativeForms(t *testing.T) {
 			}
 		}
 	}
-	for _, cel := range []string{"due < now", "due < now + 14d"} {
+	for _, cel := range []string{"due < now && starts > now", "count(due) > 2"} {
 		_, err := ParseAt(schema, cel, "owner", relativeNow)
 		if err == nil || !strings.Contains(err.Error(), "not CEL") || !strings.Contains(err.Error(), "field<7d, field>=-30d, field:today") {
 			t.Errorf("%q: err = %v, want the token named with the real forms", cel, err)
 		}
+	}
+}
+
+// Spellings from real builds: moments with arithmetic, days(n), spaces around
+// the operator on a date field, and a backslash-escaped space in a value.
+func TestSpokenFormsNormalizeToStrictTokens(t *testing.T) {
+	schema := &spec.RecordType{Fields: map[string]*spec.Field{"due_on": {Type: spec.FieldDate}, "starts": {Type: spec.FieldDatetime}, "status": {Type: spec.FieldEnum}, "name": {Type: spec.FieldText}}}
+	type want struct {
+		field string
+		op    Op
+		value any
+	}
+	tests := map[string][]want{
+		"due_on<now+90d":                 {{"due_on", Lt, "2027-01-11"}},
+		"due_on<now+days(90)":            {{"due_on", Lt, "2027-01-11"}},
+		"due_on < now + 14d":             {{"due_on", Lt, "2026-10-27"}},
+		"due_on < now":                   {{"due_on", Lt, "2026-10-13"}},
+		"due_on >= today - days(7)":      {{"due_on", Ge, "2026-10-06"}},
+		"starts<today+1d":                {{"starts", Lt, "2026-10-14T00:00:00.000000000Z"}},
+		`status:Part\ paid due_on <= 0d`: {{"status", Eq, "Part paid"}, {"due_on", Le, "2026-10-13"}},
+		`status:"Part paid" name:now`:    {{"status", Eq, "Part paid"}, {"name", Eq, "now"}},
+	}
+	for query, wants := range tests {
+		a, err := ParseAt(schema, query, "owner", relativeNow)
+		if err != nil {
+			t.Errorf("%s: %v", query, err)
+			continue
+		}
+		if len(a.Filters) != len(wants) {
+			t.Errorf("%s: %d filters, want %d", query, len(a.Filters), len(wants))
+			continue
+		}
+		for i, w := range wants {
+			f := a.Filters[i]
+			if f.Field != w.field || f.Op != w.op || f.Values[0] != w.value {
+				t.Errorf("%s filter %d = %s %s %v, want %+v", query, i, f.Field, f.Op, f.Values[0], w)
+			}
+		}
+	}
+	// A spaced comparison on a field that is not a date stays an error.
+	if _, err := ParseAt(schema, "name < now", "owner", relativeNow); err == nil {
+		t.Error("free text with a spaced operator must not parse")
 	}
 }
