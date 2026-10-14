@@ -543,7 +543,7 @@ func (s *Server) retainInbox(row inboxRow, answer *InboxAnswerRequest, receipt *
 	at := s.inbox.now().UTC()
 	item := row.item
 	item.Answer, item.Receipt = answer, receipt
-	item.Resolved = &InboxResolvedEvent{Item: item.ID, How: how, By: by, At: at, Verb: resolvedVerb(item, answer)}
+	item.Resolved = &InboxResolvedEvent{Item: item.ID, How: how, By: by, At: at, Verb: resolvedVerb(row, answer)}
 	if item.Receipt == nil && answer != nil {
 		text := answer.Words
 		if text == "" {
@@ -564,10 +564,17 @@ func (s *Server) retainInbox(row inboxRow, answer *InboxAnswerRequest, receipt *
 	return *item.Resolved
 }
 
-// resolvedVerb names a permission decision for surfaces that show it after
-// the item leaves the list. Chat and rule answers carry the option key.
-func resolvedVerb(item InboxItem, answer *InboxAnswerRequest) string {
-	if item.Kind != "permission" || answer == nil {
+// resolvedVerb names a decision for surfaces that show it after the item
+// leaves the list. Chat and rule answers carry the permission option key; an
+// unanswered item is expired when its source says the clock ended it.
+func resolvedVerb(row inboxRow, answer *InboxAnswerRequest) string {
+	if answer == nil {
+		if source, ok := row.source.(interface{ ExpiredInbox(InboxItem) bool }); ok && source.ExpiredInbox(row.item) {
+			return "expired"
+		}
+		return ""
+	}
+	if row.item.Kind != "permission" {
 		return ""
 	}
 	switch answer.Verb {

@@ -668,9 +668,9 @@ func resolvedVerbEvent(s *Server, after uint64) string {
 // A permission resolution names its decision whichever surface answered:
 // Inbox verbs pass through, chat and rule answers carry the option key.
 func TestInboxResolvedNamesThePermissionVerb(t *testing.T) {
-	permission := InboxItem{Kind: "permission"}
+	permission := inboxRow{item: InboxItem{Kind: "permission"}}
 	for _, c := range []struct {
-		item   InboxItem
+		item   inboxRow
 		answer *InboxAnswerRequest
 		want   string
 	}{
@@ -679,10 +679,54 @@ func TestInboxResolvedNamesThePermissionVerb(t *testing.T) {
 		{permission, &InboxAnswerRequest{Choice: "1"}, "allow_once"},
 		{permission, &InboxAnswerRequest{Choice: "3"}, "deny"},
 		{permission, nil, ""},
-		{InboxItem{Kind: "question"}, &InboxAnswerRequest{Choice: "1"}, ""},
+		{inboxRow{item: InboxItem{Kind: "question"}}, &InboxAnswerRequest{Choice: "1"}, ""},
 	} {
 		if got := resolvedVerb(c.item, c.answer); got != c.want {
 			t.Fatalf("%+v: %q, want %q", c.answer, got, c.want)
 		}
+	}
+}
+
+// The clock stops work and the engine withdraws the question. That reads as
+// an expiry on the ask and on inbox.resolved, with one transcript receipt.
+func TestExpiredAskReadsExpiredNotMovedOn(t *testing.T) {
+	f := newAskFixture(t)
+	f.server.inbox.cancel()
+	<-f.server.inbox.done
+	t.Cleanup(f.server.Close)
+	a := f.registry
+	f.server.SetInboxSource("engine", &engineInboxSource{s: f.server, a: a})
+	now := a.now()
+	a.now = func() time.Time { return now }
+	q := permissionQuestion(41)
+	id := f.ask(t, q)
+	if items := inboxItems(t, f.server); len(items) != 1 {
+		t.Fatalf("items %d", len(items))
+	}
+	now = now.Add(QuestionClock)
+	a.pauseAsk(f.id, id, f.door)
+	_, mark, _, _, _ := f.server.Events().read(0)
+	f.door.consume()
+	var row savedAsk
+	a.mu.Lock()
+	err := a.observeAskLocked(f.id, session.Event{Kind: session.EventQuestionWithdrawn, Question: &q}, &row)
+	a.mu.Unlock()
+	if err != nil || row.Ask.State != "withdrawn" || !strings.HasPrefix(row.Ask.Receipt.Text, "Expired · ") {
+		t.Fatalf("ask: %v %+v", err, row.Ask.Receipt)
+	}
+	if _, err := f.server.RefreshInbox(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if verb := resolvedVerbEvent(f.server, mark); verb != "expired" {
+		t.Fatalf("inbox.resolved verb %q", verb)
+	}
+	receipts := 0
+	for _, entry := range f.snapshot(t).Snapshot.Entries {
+		if entry.Kind == "receipt" {
+			receipts++
+		}
+	}
+	if receipts != 1 {
+		t.Fatalf("%d transcript receipts, want the clock's one", receipts)
 	}
 }

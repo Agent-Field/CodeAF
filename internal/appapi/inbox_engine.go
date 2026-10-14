@@ -245,6 +245,11 @@ func (e *engineInboxSource) HoldInbox(item InboxItem, held bool) {
 	}
 }
 
+// ExpiredInbox reports an item whose question the clock ended.
+func (e *engineInboxSource) ExpiredInbox(item InboxItem) bool {
+	return e.a.askExpired(item.ID)
+}
+
 // Question subscriptions outlive turns, so answers from the terminal and
 // withdrawals also resolve the derived item when no app reply is running.
 func (e *engineInboxSource) watch(id string, engine AgentEngine) {

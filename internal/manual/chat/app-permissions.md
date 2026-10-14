@@ -68,6 +68,8 @@ hold it. Later holds a question or permission's timer. Submitting an answer also
 the timer during the five-second Undo window; Undo leaves it held. Expiry stops
 the agent's work without sending Allow, Deny or the suggested answer, and leaves
 "Paused · no answer before the question clock ran out". The engine withdraws
-pending calls cancelled by that stop. Send a new message to continue the work.
+pending calls cancelled by that stop; the question then reads "Expired · no
+answer before the question clock ran out", not "No longer needed", and its
+Inbox resolution carries `verb: "expired"`. Send a new message to continue the work.
 Irreversible permissions can time out into a stop; they never time out into
 permission. Task proposal clocks and questions that block nothing are separate.

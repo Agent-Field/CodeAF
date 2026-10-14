@@ -48,7 +48,9 @@ type savedAsk struct {
 	Args       json.RawMessage  `json:"args,omitempty"`
 	Tool       string           `json:"tool,omitempty"`
 	Held       bool             `json:"held,omitempty"`
-	Version    uint64           `json:"version"`
+	// Expired marks a hold the question clock made, not the person's "later".
+	Expired bool   `json:"expired,omitempty"`
+	Version uint64 `json:"version"`
 }
 type askDisk struct {
 	Asks map[string]savedAsk `json:"asks"`
@@ -296,7 +298,7 @@ func (a *AgentRegistry) observeAskLocked(agent string, ev session.Event, out *sa
 				row.Permission.Before = old.Ask.Before
 				row.Ask.Permission = row.Permission
 			}
-			row.Held = old.Held
+			row.Held, row.Expired = old.Held, old.Expired
 			row.Version = old.Version
 			row.Ask.Clock = old.Ask.Clock
 		}
@@ -325,9 +327,8 @@ func (a *AgentRegistry) observeAskLocked(agent string, ev session.Event, out *sa
 			how = resolvedHow
 			if ev.Kind == session.EventQuestionWithdrawn {
 				row.Ask.State = "withdrawn"
-				text = "No longer needed — the turn moved on"
+				text, how = askWithdrawal(row.Expired)
 				by = "codeaf"
-				how = "withdrawn"
 				event = EventAskWithdrawn
 			} else {
 				row.Ask.State = "answered"
@@ -352,7 +353,8 @@ func (a *AgentRegistry) observeAskLocked(agent string, ev session.Event, out *sa
 	if err != nil {
 		return err
 	}
-	if receipt != nil {
+	// The clock's own receipt is already in the transcript for an expired ask.
+	if receipt != nil && how != "expired" {
 		if err := a.saveAskReceipt(agent, *receipt); err != nil {
 			return err
 		}
@@ -361,6 +363,31 @@ func (a *AgentRegistry) observeAskLocked(agent string, ev session.Event, out *sa
 		a.publishTurn(event, AskEvent{Ask: out.Ask.ID, Agent: agent, Kind: out.Ask.Kind, How: how, By: askBy(out.Ask)})
 	}
 	return nil
+}
+
+// askWithdrawal words a withdrawn ask. The clock stops work, and the engine
+// then withdraws the question; that is an expiry, not a turn that moved on.
+func askWithdrawal(expired bool) (text, how string) {
+	if expired {
+		return "Expired · no answer before the question clock ran out", "expired"
+	}
+	return "No longer needed — the turn moved on", "withdrawn"
+}
+
+// askExpired reports whether the clock ended the question behind an Inbox item.
+func (a *AgentRegistry) askExpired(item string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	expired := false
+	_ = a.asks(false, func(d *askDisk) error {
+		for id, row := range d.Asks {
+			if row.Expired && inboxQuestionID(askAgent(id), row.Question) == item {
+				expired = true
+			}
+		}
+		return nil
+	})
+	return expired
 }
 func askBy(ask Ask) string {
 	if ask.Receipt != nil {
@@ -436,7 +463,7 @@ func (a *AgentRegistry) pauseAsk(agent, id string, engine AgentEngine) {
 		if !ok || row.Held || row.Ask.State != "waiting" || row.Ask.Clock == nil || a.now().Before(*row.Ask.Clock.PausesAt) {
 			return nil
 		}
-		row.Held = true
+		row.Held, row.Expired = true, true
 		row.Version++
 		d.Asks[id] = row
 		expired = true
