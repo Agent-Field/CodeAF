@@ -52,8 +52,9 @@ teams, activity, automations, memory, spend and settings. All seven are on the t
 the way back to the chats, `Home  Chats  AI teams  Activity  Memories  Automations  Spend
 Settings`; `tab` walks the rooms on the bar.
 `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump straight to any of those seven or back
-to the chats from wherever you are standing, a place or a conversation — `alt+7` is
-automations — and each has commands of its own (`/home`, `/teams`, `/history`,
+to the chats from wherever you are standing, a place or a conversation — by number and not
+by position on the bar, so memories, the fifth word, is `alt+8`, and automations `alt+7` — and
+each has commands of its own (`/home`, `/teams`, `/history`,
 `/automations`, `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven: it is something you do to this conversation rather than
 a room in the machine.

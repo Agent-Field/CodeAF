@@ -106,7 +106,8 @@ repository is one project), or by the folder when there is no remote.
 
 ## How do I see what codeaf remembers about me? The Memories tab (it was the Memory tab)
 
-Open it with `alt+8`, the **Memories** word on the tab bar, or `/memory`. It is
+Open it with `alt+8`, the **Memories** word on the tab bar (the fifth word; its number is 8
+all the same), or `/memory`. It is
 drawn like the Activity tab: groups, each a row of its own in the heading ink
 with its fold mark after it, and every line hanging under its group on the
 tree's connectors:

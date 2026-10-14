@@ -247,6 +247,12 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 
 // homeArchiveRow closes the same tab the row names, keeping its work and draft.
 // Reopening returns through the normal conversation door, restoring the tab too.
+//
+// NO KEY REACHES IT ANY MORE. `ctrl+e` and the strip's `x` on a conversation's
+// row became the delete confirmation (#1750, [app.conversationDeleteOpen]), and
+// home has had no archive key since. It stays because the tests make their
+// closed rows with it — a closed row is still a state home draws, dimmed, and
+// still reopens on `enter` ([app.homeOpenLine]).
 func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 	if a.homeConversationClosed(row) {
 		return a.homeOpenLine(homeLine{kind: homeSession, row: row})

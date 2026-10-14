@@ -289,8 +289,8 @@ func TestTabLeavesEveryPlaceAndComesBack(t *testing.T) {
 	}
 }
 
-// alt+1…9 JUMPS FROM EVERY PLACE. The numbers are the bar's own order and they
-// mean the same thing wherever you are standing — or, for a room with nothing
+// alt+1…8 JUMPS FROM EVERY PLACE. The numbers are [placeOrder]'s, not the bar's,
+// and they mean the same thing wherever you are standing — or, for a room with nothing
 // in it, they say why and leave you where you were. What they may never do is
 // nothing at all.
 func TestTheNumbersJumpFromEveryPlace(t *testing.T) {

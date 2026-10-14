@@ -16,9 +16,10 @@ package tui3
 //
 //   - A second action row, `ask here`, drawn directly above
 //     `start a new conversation` while something is typed. It is one ↑ away and
-//     it is also a chord — ctrl+enter, with alt+enter as the spelling terminals
-//     that cannot send the first one do send (input.go's alt+enter/ctrl+j pair
-//     is the same law about the same key).
+//     it is also a chord — ctrl+enter, on the terminals that can send it. It
+//     has no second spelling: `alt+enter` is the router's on every place, and
+//     on home it opens the composer layer, whose second press comes through
+//     this file's door with the three facts settled ([app.askHereWith]).
 //   - A REAL session.Agent behind it, built through the door's own seam
 //     ([Options.Errand]) with its transcript in a folder under the errands
 //     root rather than under v3/projects — so home never lists it, and the
@@ -109,6 +110,19 @@ const (
 	homeAskSavedWord = "saved · /automations lists it"
 	// homeAskPromotedWord is the refusal for a second promotion of one folder.
 	homeAskPromotedWord = "this exchange is already a conversation"
+	// exchangeBackWord is the pane's way out, the last clause of its foot
+	// ([exchangeHint]). It is named because two readers have to recognise it:
+	// the foot that writes it, and home's [withChords], which puts the draft's
+	// chords in front of a foot's way out rather than behind it.
+	exchangeBackWord = "tab or esc back to the list"
+	// homeAskRestWord is what the pane's box says with nothing typed into it,
+	// where home's own box says [placeRestWord]. Typing there writes a follow-up
+	// to this errand; nothing is searched and nothing new is started.
+	homeAskRestWord = "type a follow-up"
+	// homeAskChangeRestWord is the same box once the card's correction key has
+	// armed it: what is typed now is the change the card is answered with, not
+	// a follow-up ([homeExchange.changing]).
+	homeAskChangeRestWord = "type the change"
 )
 
 // What an exchange's ROW says it is doing, and what the pane says while a turn
@@ -297,10 +311,11 @@ type homeExchange struct {
 	chips []chip
 	// focused says the keyboard belongs to the exchange rather than to the
 	// list. THERE ARE TWO ZONES WHILE AN EXCHANGE IS UP — the list and this pane
-	// — and this bool is which of them has the hand. `tab` toggles it, esc hands
-	// it to the list, a click on a row takes it to the list and a click in the
-	// pane brings it back, and a yes on the card gives it to the list by itself
-	// (home.go's [app.homeKey] states the whole model).
+	// — and this bool is which of them has the hand. `tab` or esc in the pane
+	// hands it to the list and `enter` or `→` on the row hands it back (`tab`
+	// on the row is the next place), a click on a row takes it to the list and
+	// a click in the pane brings it back, and a yes on the card gives it to the
+	// list by itself (home.go's [app.homeKey] states the whole model).
 	focused bool
 	// onOffer says the cursor inside the pane is on `continue as a
 	// conversation` rather than in the box. ↓ puts it there and ↑ takes it back,
@@ -930,7 +945,8 @@ func (a *app) answerExchangeCard(ex *homeExchange, notice *session.AutomationNot
 	// AND THE KEYBOARD GOES BACK TO THE LIST on a yes and on a no alike. The
 	// question is over either way, and a hand left in a pane with nothing left
 	// to answer is how the arrows stop moving the column. The exchange stays
-	// alive beside it — tab or a click brings it back for a follow-up.
+	// alive beside it — enter, → or a click brings it back for a
+	// follow-up.
 	ex.focused, ex.onOffer = false, false
 	return sent
 }
@@ -1094,7 +1110,7 @@ func exchangeAutomationWords(args string) string {
 //
 // AND THE KEYBOARD GOES BACK TO THE LIST. The thing they asked for now exists;
 // the list is where a person goes next, and the exchange stays alive beside it
-// for a follow-up that tab or a click reaches.
+// for a follow-up that enter, → or a click on its row reaches.
 func (a *app) errandUpdated(ex *homeExchange, notice session.AutomationNotice) tea.Cmd {
 	if text := strings.TrimSpace(notice.Text); text != "" {
 		ex.rows = append(ex.rows, exchangeRow{kind: exchangeNote, text: text})
@@ -2527,7 +2543,7 @@ func exchangeHint(ex *homeExchange) string {
 		if ex.ask != nil {
 			parts = append(parts, exchangeAnswerWords(ex.ask.question))
 			// AND THE KEY THAT ASKS FOR THE BOX, which is the one answer with no
-			// row on the card: `c` says "I will take one of these, but not as it
+			// row on the card: `o` says "I will take one of these, but not as it
 			// stands", and the sentence that follows is the correction.
 			//
 			// ITS WORD IS THE KEY TABLE'S OWN (questionkeys.go's
@@ -2548,6 +2564,29 @@ func exchangeHint(ex *homeExchange) string {
 	// half of the way back to the list. On a narrow frame this pane is the whole
 	// screen and the same two keys are how the list comes back, which is why the
 	// sentence says "the list" rather than "the column".
-	parts = append(parts, "tab or esc back to the list")
+	//
+	// AND IT IS THE LAST CLAUSE, WHICH IS WHAT KEEPS IT ON A NARROW FRAME.
+	// [hintFit] protects a foot's last clause and gives up the ones in front of
+	// it, so the answers and the follow-up go before this does. It used to lose:
+	// home put its draft chords AFTER it, because [withChords] only knew a way
+	// out that begins with `esc` — and at sixty columns, where this pane is the
+	// whole screen, the foot kept `/ commands` and never said how to leave.
+	parts = append(parts, exchangeBackWord)
 	return strings.Join(parts, " · ")
+}
+
+// exchangeRestWord is what the pane's box says with nothing typed in it: a
+// follow-up, or — once the card's correction key has armed it — the change the
+// card is answered with. It is the box's half of [exchangeHint], drawn by both
+// frames that draw this box: the foot under a stacked or side-by-side pane
+// ([app.placeRestWord]) and the phone's sheet ([app.homeErrandSheet]).
+//
+// IT USED TO BE HOME'S OWN SENTENCE, `type to search or start something new`,
+// drawn over a box that does neither. The foot draws whichever box has the
+// keyboard ([placeHome.box]), and asked home for its words whatever box it was.
+func exchangeRestWord(ex *homeExchange) string {
+	if ex.changing {
+		return homeAskChangeRestWord
+	}
+	return homeAskRestWord
 }

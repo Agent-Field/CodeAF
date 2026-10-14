@@ -86,9 +86,15 @@ On home at rest the rows are a short list of their own in the left column, under
 conversations, sorted **what wants you first, then what is moving, then what is done**.
 While you type, a row is drawn among the matches, in the block of the project it belongs to.
 
-`enter` or `→` on the row hands the keyboard to its pane. The foot there says
-`enter or tab answer this ask here`, but `tab` on home is the way to the next place — use
-`enter` or `→`.
+`enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
+`↑↓ move · enter or → answer this ask here · esc close`. With something typed in home's box
+it reads `↑↓ move · enter answer this ask here · esc clear` instead, because `→` then moves
+the caret and `esc` clears what you typed before it closes anything.
+
+**`tab` on the row is not a way in.** It goes to the next place, as it does on every place.
+`tab` was the way in until the places arrived and took that key; `→` points at the column
+the pane is drawn in, which is where the gesture went. The hint went on saying
+`enter or tab` long after, and it was wrong.
 
 ## How do I know ask here is doing something — the spinner, the clock and the live strip
 
@@ -165,9 +171,11 @@ along it**:
   watch; `2 Save and check it now` on a watch. Not offered on a reminder, or on work kept
   in a separate worktree.
 - `0 Don't save` — `Nothing is saved and nothing runs.`
-- `o Change…` — the pane says `type the change and press enter`; write the correction in
-  your own words ("make it 8pm", "every weekday") and the model proposes again, on a new
-  card that replaces this one. While you write it every key is text, digits included.
+- `o Change…` — the pane says `type the change and press enter` and its box
+  `type the change`; write the correction in your own words ("make it 8pm", "every
+  weekday") and the model proposes again, on a new card that replaces this one. While you
+  write it every key is text, digits included. (It was `2`, and this page once called it `c`
+  long after the key became `o`.)
 
 **`esc` is not an answer here.** In the pane it hands the keyboard back to the list, and the
 card goes on waiting — there is no clock on it — with its row saying `waiting on you`. `0`
@@ -238,11 +246,25 @@ exchange is drawn in. Exactly one of them has the keyboard:
 With the keyboard on the list, `↑`/`↓`, `ctrl+p`/`ctrl+n` and `pgup`/`pgdown` walk it
 exactly as they do with no exchange on screen. **The pane follows the cursor.**
 
-While the pane has the keyboard the hint names `enter sends a follow-up` and `tab or esc
-back to the list`, with the card's own answers in front while a card is asking — or
-`1 allow once · 3 deny` while a command is waiting for your ok — and
-`↓ continue as a conversation` between them once that row is on screen. `continue as a
-conversation` is reached with `↓` and left again with `↑`, `tab` or `esc`.
+`continue as a conversation` is reached with `↓` inside the pane and left again with `↑`,
+`tab` or `esc`.
+
+## What the line under the ask here pane says — the box, the answers, a follow-up and the way back
+
+While the pane has the keyboard the hint reads `enter sends a follow-up · tab or esc back to
+the list`, with the card's own answers in front of it when a card is up — or
+`1 allow once · 3 deny` when a command is waiting for your ok — and
+`↓ continue as a conversation` before the way out when that row is on screen. Home's
+`/ commands` is not on it: a `/` typed in the pane starts a follow-up and opens no list.
+`tab or esc back to the list` is always the last clause, approval or not, and on a narrow
+window it is the one that stays (*Ask here on a narrow window*, below) — except while a
+change is being typed after `o`, when the line is `type the change and press enter · esc clear`.
+
+**The box above that line says what typing there does**: `› type a follow-up`, and
+`› type the change` once `o` on a card has asked for a correction. Home's own
+`› type to search or start something new` belongs to home's box and comes back the moment the
+list has the keyboard. The pane's box used to wear home's sentence, which promised a search
+and a new conversation that typing in the pane does not do.
 
 ## Ask here on a narrow window — the exchange takes the whole screen
 
@@ -256,15 +278,32 @@ side.
 - **`esc`** or **`tab`** brings the list back, with the exchange's row still on it wearing
   its tail, and **`enter`** or **`→`** on that row opens it again.
 
+**The way back is always on the line under the box**, at the narrowest width this layout
+has, sixty columns, except while a change is being typed after `o` (that line ends
+`esc clear`). `tab or esc back to the list` is the last clause of that line and the one
+that stays; the clauses in front of it give way first, nearest first — home's chords such as
+`alt+e effort`, then `↓ continue as a conversation`, then `enter sends a follow-up`, then
+the card's answers from the last one back — so a card at sixty columns reads
+`1 Save · tab or esc back to the list`, and its other answers are still on the card's own
+rows. It used to be the other way round: the way back was the first thing a narrow window
+dropped, and the stacked pane, which is the whole screen, never said how to leave it.
+
 `ask here` itself opens straight into the stacked pane, because it selects the new row and
 gives it the keyboard. Resizing between the shapes costs nothing: it is the same exchange
 and the same keyboard, drawn in whichever geometry fits.
 
-**On a phone-shaped frame** — under 60 columns, where home is an inbox — the bar at the foot
-offers `open`, `new` and `ask here` once something is typed, and a tap on `ask here` asks.
-An exchange holding a card is listed with what waits on you; tapping it raises the exchange
-over the screen, with `‹ back`, `send` and, while it is offered, `more` — continue as a
-conversation — along the foot.
+## Ask here on a phone-width window — the errand is a sheet
+
+Under 60 columns, where home is an inbox, the stacked pane is a **sheet** over the whole
+frame: `‹ back` on the top row, the exchange under it, its box, and `‹ back · send · more`
+as the bar. **The sheet is up whenever the pane has the keyboard**, so `ask here` opens
+straight into it, and so does anything else that hands the pane the keyboard — its chord,
+`enter` or `→` on the errand's row. `tab` or `esc` puts the inbox back, with the errand's
+row still on it and anything half-typed still in its box.
+
+It used to open on `enter` alone. `ask here` on a phone-width window left the inbox drawn
+while the keys went into the pane's box, so what you typed appeared nowhere, under a box
+that still said `type to search or start something new`.
 
 ## Why can't I click a row while asking — you can, and it opens it
 
@@ -277,12 +316,19 @@ click never starts a paid turn.
 A click on one of the card's answers in the pane answers the card. Each answer owns its
 whole row, so there is no gap between two of them to miss.
 
+## Is there a shortcut for ask here — ctrl+enter, and what alt+enter does on home
+
 **`ctrl+enter` is the chord for `ask here`, and the foot does not name it.** It only reaches
 codeaf on a terminal that can tell it apart from a plain `enter` — the kitty keyboard
-protocol, Windows terminals — so the foot names the arrow every terminal has. `alt+enter`
-is **not** a second spelling of it: on home, as on every place, it opens the task composer
-layer (*Places*), whose own second `alt+enter` sends the sentence through this same door
-with the project, model and spending cap the layer settled.
+protocol, Windows terminals — so the foot names the arrow every terminal has. Elsewhere it
+usually arrives as a plain `enter`, which on the typing rows starts a new conversation.
+`alt+enter` is **not** a second spelling of it: on home it opens the task composer layer
+(*Places*), whose own second `alt+enter` sends the sentence through this same door with the
+project, model and spending cap the layer settled. This page once said `alt+enter` was bound
+to `ask here` itself, and home's own key handler listed it beside `ctrl+enter` — but the
+layer always took the key first, so that line never ran, and it is gone.
+
+## Asking from another machine — this window cannot ask from home
 
 If this window has no way to open a second session, the row answers in one line —
 `this window cannot ask from home` — and nothing is created. That window is one attached to
