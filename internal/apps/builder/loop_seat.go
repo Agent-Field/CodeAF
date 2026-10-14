@@ -47,6 +47,7 @@ func (s *Service) buildDir(app string) string { return filepath.Join(s.root, bui
 
 // openSeat opens the build's folder, journal and plan store once.
 func (s *Service) openSeat(b *build) (*seat, error) {
+	s.chooseTint(b)
 	defaults := s.defaults(b) // read before b.mu is held: it reads the plan under that lock
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -252,6 +253,7 @@ func (s *Service) planBrief(b *build) string {
 		"The owner asked for: "+b.currentPlan().Ask,
 		"The owner chose: "+budgetWords(b.budget)+"; the app agent runs on "+b.agentModel+connectorWords(b.connectors)+".",
 		"The app lives in the "+personalSpace+" space. The catalog the screens may use: "+catalogText(),
+		tintLine(b.tintChoice(), b.tintUsedBy()),
 		"When the plan is ready, end the task with plandb done.")
 }
 

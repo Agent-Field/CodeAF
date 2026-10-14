@@ -158,7 +158,7 @@ func (s *Service) render(b *build, st draft.State) spec.Files {
 func (s *Service) defaults(b *build) draft.Defaults {
 	return draft.Defaults{
 		AppID: b.app, Space: personalSpace, Ask: b.currentPlan().Ask,
-		AgentModel: b.agentModel, BudgetMonth: b.budget, Kit: kitVersion(),
+		AgentModel: b.agentModel, BudgetMonth: b.budget, Kit: kitVersion(), Tint: b.tintChoice(),
 	}
 }
 

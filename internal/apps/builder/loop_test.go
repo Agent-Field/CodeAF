@@ -407,3 +407,16 @@ func TestHoldPlanKeepsTheLastReadyPlanThroughAReplan(t *testing.T) {
 		t.Fatalf("a replan must keep the last ready plan and stream the rest: %v", got)
 	}
 }
+
+func TestTintIsTheFirstUnusedAndFallsBackToTheLeastUsed(t *testing.T) {
+	palette := []string{"a", "b", "c"}
+	if got := leastUsed(palette, map[string]int{"a": 1}); got != "b" {
+		t.Errorf("first unused = %q, want b", got)
+	}
+	if got := leastUsed(palette, map[string]int{"a": 2, "b": 1, "c": 2}); got != "b" {
+		t.Errorf("least used = %q, want b", got)
+	}
+	if line := tintLine("b", []string{"a"}); line != "Tint hint: b (other apps use: a)" {
+		t.Errorf("line = %q", line)
+	}
+}

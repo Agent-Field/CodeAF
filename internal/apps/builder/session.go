@@ -31,9 +31,11 @@ type build struct {
 
 	// The loop road's parts: the seat its worker builds in, whether the loop
 	// gave this build's plan to the calls road, and the check rounds so far.
-	seat    *seat
-	demoted bool
-	rounds  int
+	seat     *seat
+	demoted  bool
+	rounds   int
+	tint     string
+	tintUsed []string
 }
 
 // demote hands the build to the calls road for good (see roadFor).
