@@ -65,6 +65,7 @@ const (
 	MethodApprovalsList   = "approvals.list"
 	MethodApprovalsDecide = "approvals.decide"
 	MethodAgentSend       = "agent.send"
+	MethodAgentStop       = "agent.stop"
 )
 
 // SetTintParams changes a kept app's identity tint.
@@ -391,13 +392,17 @@ type StepState struct {
 
 // ---- approvals: topic app/<id>/approvals ----
 
-// ApprovalState is open until a person answers.
+// ApprovalState is open until a person answers. A standalone approval (no
+// run) carrying a Tool moves on from approved once its action has run: done
+// with Result, or failed with Error.
 type ApprovalState string
 
 const (
 	ApprovalOpen     ApprovalState = "open"
 	ApprovalApproved ApprovalState = "approved"
 	ApprovalRejected ApprovalState = "rejected"
+	ApprovalDone     ApprovalState = "done"
+	ApprovalFailed   ApprovalState = "failed"
 )
 
 // Approval is "Approval needed: …" (rule 03).
@@ -415,6 +420,9 @@ type Approval struct {
 	State     ApprovalState  `json:"state"`
 	CreatedAt string         `json:"created_at"`
 	DecidedAt string         `json:"decided_at,omitempty"`
+	Thread    string         `json:"thread,omitempty"` // the agent thread that asked; it hears the outcome
+	Result    string         `json:"result,omitempty"` // done: a short summary of what ran
+	Error     string         `json:"error,omitempty"`  // failed: why the action did not complete
 }
 
 // ListApprovalsParams is approvals.list.
@@ -443,6 +451,11 @@ type AgentSendParams struct {
 	Text   string `json:"text"`
 	Record string `json:"record,omitempty"` // "type/id" in view
 	Screen string `json:"screen,omitempty"`
+}
+
+// AgentStopParams is agent.stop: cancel the thread's turn in flight.
+type AgentStopParams struct {
+	Thread string `json:"thread"`
 }
 
 // AgentSendResult names the thread and turn the events stream on.

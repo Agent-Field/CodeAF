@@ -36,6 +36,7 @@ type engine struct {
 	sleeper atomic.Value // func(context.Context, time.Duration) error
 
 	mu        sync.Mutex
+	decideMu  sync.Mutex // orders approvals.decide so an approval is claimed once
 	dbs       map[string]*dbConn
 	busy      map[string]bool
 	seen      map[string]map[string]any // app/type/id → last field snapshot

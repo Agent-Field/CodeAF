@@ -345,8 +345,9 @@ detail, Keep and app state events without choosing a default.
 | `runs.get` | ✓ | `{run_id}` → `RunState` |
 | `runs.list` | ✓ | `{run?, for?}` → `{runs}` newest first |
 | `approvals.list` | ✓ | `{state?}` → `{approvals}` |
-| `approvals.decide` | ✓ | `{approval_id, answer: yes\|no, edit?}` → `Approval` |
+| `approvals.decide` | ✓ | `{approval_id, answer: yes\|no, edit?}` → `Approval`; a second answer is `conflict` (see Approval outcomes) |
 | `agent.send` | ✓ | `{thread?, text, record?, screen?}` → `{thread, turn}`; reply streams on `app/<id>/agent/<thread>` |
+| `agent.stop` | ✓ | `{thread}` → `{}`; cancels the thread's turn in flight, which ends with `delta "Stopped."` then `done`; idle threads are a no-op; the agent itself is denied |
 
 `app.setTint` takes the app id in params and requires the Personal owner,
 with the same owner check as other owner-only app operations. App agents and
@@ -371,11 +372,31 @@ is not kept and **real** data once kept; the gateway decides from the state.
 | `app/<id>/state` | `AppSummary` on every state change |
 | `app/<id>/records/<type>` | `RecordDiff {op: upsert\|delete, type, id, record?, by}` |
 | `app/<id>/runs` | `RunState` on every step change |
-| `app/<id>/approvals` | `Approval` on open and decide |
+| `app/<id>/approvals` | `Approval` on open, on decide, and again when an agent action finishes (`done`/`failed`) |
 | `app/<id>/agent/<thread>` | `AgentEvent {kind: delta\|tool\|approval\|shape_this\|done\|error, turn, text?, tool?, summary?, approval?, request?, cost?}` |
 
 Server-side, a hub subscription to `app/<id>/*` receives every topic of the app
 (runs use it for triggers).
+
+### Approval outcomes
+
+`Approval.state` is `open → approved | rejected` for a run gate, which then
+continues or stops the run. An approval the app agent opened carries
+`thread` and no `run_id`; deciding it is also the moment its action happens:
+
+- `yes`: state `approved` is published, then `approvals.decide` runs the stored
+  `tool` with the stored `payload` (with `edit` applied) through the same
+  connector door as an approved run step, and the approval moves to `done`
+  with `result` (a short line, e.g. `Ran gmail send (msg-fake)`) or `failed`
+  with `error` (the reason). The decide reply is that final approval.
+- `no`: state `rejected`; nothing runs.
+
+Either way the agent thread hears it: an `AgentEvent {kind: approval}` with the
+final approval on `app/<id>/agent/<thread>`, then a new turn in which the
+outcome is the tool's result and the agent answers ("Sent the email to
+Priya"), then `done`. The desk updates the card from either the approvals topic
+or that event. An approval is claimed once: a repeated decide (double click,
+reconnect) gets `conflict` and runs nothing.
 
 ### Errors
 
