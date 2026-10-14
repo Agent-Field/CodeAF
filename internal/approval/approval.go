@@ -263,6 +263,14 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 			return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("critical command %q", hit)}
 		}
 	}
+	// A CLI signed in to the person's account acts as them outside this
+	// machine. Only a rule the person saved (matched) lets it run unasked.
+	if cli, ok := accountCLI(segments); ok && !matched {
+		if decision.Action == ActionAllow {
+			return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("%s acts in your name outside this machine", cli)}
+		}
+		return decision
+	}
 	// A read-only line — `git status` and its flags — is not a question in
 	// default (prompt) mode when the pattern list is empty. The moment the
 	// list has an author, that list is the whole answer: a project row that

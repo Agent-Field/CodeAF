@@ -159,9 +159,9 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 	guard.Go("app/shutdown", func() {
 		defer close(shutdownDone)
 		<-ctx.Done()
-		deadline, stop := context.WithTimeout(context.Background(), 3*time.Second)
+		grace, stop := context.WithTimeout(context.Background(), 3*time.Second)
 		defer stop()
-		if err := server.Shutdown(deadline); err != nil {
+		if err := server.Shutdown(grace); err != nil {
 			_ = server.Close()
 		}
 	})

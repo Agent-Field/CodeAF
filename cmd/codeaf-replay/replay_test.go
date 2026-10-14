@@ -260,6 +260,13 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 	// cmd/codeaf/chat.go's errandContext passes the errand's own name straight
 	// through; its call sites are walked for the literals they hand it.
 	"task": func(yield func(tag, where string)) {},
+	// internal/apps/builder/model.go qualifies the app door's role word with
+	// "apps.". Its callers name two: the Builder's own turn (the empty role)
+	// and the app agent's.
+	"\"apps.\" + strings.ReplaceAll(role, \" \", \"-\")": func(yield func(tag, where string)) {
+		yield("apps.builder", "internal/apps/builder/model.go, the Builder's turn")
+		yield("apps.app-agent", "internal/apps/builder/model.go, the app agent's turn")
+	},
 	// cmd/codeaf/factory_triage.go tags the factory floor's cheap read with the
 	// constant it also names the spend ledger's role column by, so the one
 	// word it can produce is that constant's value.

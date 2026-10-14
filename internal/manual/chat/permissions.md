@@ -855,6 +855,16 @@ The Python module forms also cover `python3`. A saved allow cannot lift this
 floor. `pip list`, `pip show` and local `npm install` keep their existing policy;
 the agent's instruction to ask before installing anything still applies.
 
+## Signed-in CLIs — gh, aws, gcloud and other tools that use your accounts
+
+A bash line that starts a command-line tool signed in to one of your accounts
+asks first, even for a read: `gh`, `glab`, `hub`, `aws`, `gcloud`, `gsutil`,
+`bq`, `az`, `doctl`, `vercel`, `netlify`, `railway`, `fly`, `heroku`, `stripe`,
+`firebase`, `supabase`, `wrangler`, `slack` and `op`. They act as you on a
+service outside this machine. Choose Always… on the card to save a rule; a saved
+rule lets that command run without asking. Public data, such as a repository's
+star count, comes through an anonymous `fetch` instead and needs no question.
+
 ## Other tools that run without an approval question by default
 
 Some tools this build never had a reason to ask about are also seeded as `allow`

@@ -28,7 +28,7 @@ func TestRenderIncludesWhatEachCallNeeds(t *testing.T) {
 		kind Kind
 		want []string
 	}{
-		{KindPlan, []string{"PLAN call", "ten rules", "tracker for our team", fixtureCatalog, "up to $20 a month", "Connected accounts: gmail", `"needs":"computed"`}},
+		{KindPlan, []string{"PLAN call", "ten rules", "tracker for our team", fixtureCatalog, "up to $20 a month", "Connected accounts: gmail", `"needs":"computed"`, "at most 120 characters", "one short clause", "detail goes in the files, not the plan line"}},
 		{KindWrite, []string{"WRITE call", "ten rules", fixtureSchemas, fixturePlan, `space ("acme")`, "That changes the app", "strict JSON"}},
 		{KindFix, []string{"FIX call", "ten rules", "----- app.json -----", "kit/no-raw-style screens/b.json:4", "changed files only"}},
 	}
