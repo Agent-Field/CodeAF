@@ -62,9 +62,17 @@ func (e *engineInboxSource) InboxItems(ctx context.Context) ([]InboxItem, error)
 			if live := a.live[id]; live != nil {
 				e.watch(id, live.conn.Engine)
 				if door, ok := live.conn.Engine.(interface{ OpenQuestions() []session.Question }); ok {
+					groups := map[string]int{}
 					for _, q := range door.OpenQuestions() {
 						if q.Withdrawn != nil {
 							continue
+						}
+						if key := permissionGroupKey(q); key != "" {
+							if at, ok := groups[key]; ok {
+								joinPermission(&out[at], id, q)
+								continue
+							}
+							groups[key] = len(out)
 						}
 						verbs := []string{}
 						for _, option := range q.Options {

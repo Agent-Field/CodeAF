@@ -1,6 +1,7 @@
 package appapi
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -104,5 +105,53 @@ func TestPermissionTaskScopeAnswersWithoutSavingARule(t *testing.T) {
 	turnStatus(t, f.request(t, "POST", "/app/v1/permissions/"+id, body), 422)
 	if len(f.door.answers) != 1 {
 		t.Fatal("a refused task scope reached the engine")
+	}
+}
+
+// Looks raised in one step are ONE inbox item, and one answer releases all of
+// them; a write in the same step stays its own item and is not answered.
+func TestLooksOfOneStepGroupIntoOneItem(t *testing.T) {
+	f := newAskFixture(t)
+	ask := func(id uint64, command string, look bool) session.Question {
+		q := permissionQuestion(id)
+		q.PermissionCommand, q.Batch = command, "step-1"
+		q.Subject.CallID = command
+		q.Card = &session.ConsentCard{Command: command}
+		if look {
+			q.Card.Family, q.Card.ReadOnly = "gh", true
+		}
+		return q
+	}
+	first := f.ask(t, ask(11, "gh issue view 1", true))
+	second := f.ask(t, ask(12, "gh pr list", true))
+	f.ask(t, ask(13, "gh pr merge 7", false))
+	items, err := (&engineInboxSource{s: f.server, a: f.registry}).InboxItems(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grouped, single int
+	for _, item := range items {
+		if item.Permission == nil {
+			continue
+		}
+		switch len(item.Permission.Commands) {
+		case 2:
+			grouped++
+			if item.Permission.CommandIDs[0] != first || item.Permission.CommandIDs[1] != second || item.Permission.Scopes[0].ID != "task" {
+				t.Fatalf("group = %+v", item.Permission)
+			}
+		case 1:
+			single++
+			if item.Permission.Commands[0] != "gh pr merge 7" || item.Permission.Scopes[0].ID != "exact" {
+				t.Fatalf("write = %+v", item.Permission)
+			}
+		}
+	}
+	if grouped != 1 || single != 1 {
+		t.Fatalf("grouped=%d single=%d items=%+v", grouped, single, items)
+	}
+	turnStatus(t, f.request(t, "POST", "/app/v1/permissions/"+first, `{"verb":"always","rule":{"match":"task","who":"agent"}}`), 200)
+	if len(f.door.answers) != 2 || len(f.door.open) != 1 || f.door.open[0].PermissionCommand != "gh pr merge 7" {
+		t.Fatalf("answers=%d open=%+v", len(f.door.answers), f.door.open)
 	}
 }

@@ -85,7 +85,7 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(decisions) == 0 {
 		decisions = []PermissionDecision{{ID: row.Ask.ID, Verb: body.Verb}}
-		if body.Verb != "always" {
+		if body.Verb != "always" || taskScope(body.Rule) {
 			for _, item := range a.permissionBatchLocked(row) {
 				if item.ID != row.Ask.ID {
 					decisions = append(decisions, PermissionDecision{ID: item.ID, Verb: body.Verb})
@@ -208,12 +208,14 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 
 func (a *AgentRegistry) permissionBatchLocked(row savedAsk) []PermissionCommand {
 	out := []PermissionCommand{}
-	if row.Permission == nil || row.Permission.TaskID == "" || row.Question.Batch == "" {
+	// A task's asks batch by task; outside a task only looks batch, the same
+	// grouping the Inbox shows (permissionGroupKey).
+	if row.Permission == nil || row.Question.Batch == "" || row.Permission.TaskID == "" && permissionGroupKey(row.Question) == "" {
 		return out
 	}
 	_ = a.asks(false, func(d *askDisk) error {
 		for _, s := range d.Asks {
-			if s.Ask.State == "waiting" && s.Permission != nil && s.Permission.AgentID == row.Permission.AgentID && s.Permission.TaskID == row.Permission.TaskID && s.Question.Batch == row.Question.Batch {
+			if s.Ask.State == "waiting" && s.Permission != nil && s.Permission.AgentID == row.Permission.AgentID && s.Permission.TaskID == row.Permission.TaskID && s.Question.Batch == row.Question.Batch && (row.Permission.TaskID != "" || permissionGroupKey(s.Question) == permissionGroupKey(row.Question)) {
 				out = append(out, PermissionCommand{ID: s.Ask.ID, Command: s.Permission.Command})
 			}
 		}

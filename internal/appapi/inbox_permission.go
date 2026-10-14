@@ -2,6 +2,7 @@ package appapi
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -77,4 +78,29 @@ func waitingSteps(engine any) int {
 		}
 	}
 	return n
+}
+
+// permissionGroupKey is the key looks of one step coalesce under: the same
+// batch and the same family. A write, or an ask with no batch, is its own
+// item and keeps asking on its own.
+func permissionGroupKey(q session.Question) string {
+	if q.Kind != session.QuestionConsent || q.Card == nil || !q.Card.ReadOnly || q.Card.Family == "" || q.Batch == "" || q.Stakes == session.StakesIrreversible {
+		return ""
+	}
+	return q.Batch + "\x00" + q.Card.Family
+}
+
+// joinPermission folds one more look into a grouped item, keeping commands
+// and command_ids aligned.
+func joinPermission(item *InboxItem, agent string, q session.Question) {
+	if item.Permission == nil || q.Card == nil {
+		return
+	}
+	item.Permission.Commands = append(item.Permission.Commands, q.Card.Command)
+	item.Permission.CommandIDs = append(item.Permission.CommandIDs, askID(agent, q))
+	for _, touch := range q.Card.Touches {
+		if !slices.Contains(item.Permission.Touches, touch) {
+			item.Permission.Touches = append(item.Permission.Touches, touch)
+		}
+	}
 }
