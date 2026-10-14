@@ -54,3 +54,18 @@ func TestKitHintsListChoices(t *testing.T) {
 		t.Errorf("bind hint %q", got)
 	}
 }
+
+func TestRunFailureHintsArePerCause(t *testing.T) {
+	tests := map[string]string{
+		"model reply missing call_time":          "name call_time in that step's prompt",
+		"model reply was not JSON":               "one JSON object",
+		"outbound needs approval":                "approval: send",
+		"something else entirely":                spec.RunReferenceRule,
+		`missing run reference "params.x"; rest`: "declare params.x",
+	}
+	for msg, want := range tests {
+		if got := runFailureHint(msg); !strings.Contains(got, want) {
+			t.Errorf("%q: hint %q lacks %q", msg, got, want)
+		}
+	}
+}

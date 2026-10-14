@@ -200,11 +200,11 @@ func (s *Service) behaviour(ctx context.Context, app string, b *spec.Bundle, row
 			continue
 		}
 		if err != nil {
-			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/run", err.Error(), spec.RunReferenceRule+"; "+spec.RunQueryRule))
+			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/run", err.Error(), runFailureHint(err.Error())))
 			continue
 		}
 		if state.Status == bridge.RunFailed || state.Status == bridge.RunStopped {
-			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/run", "run "+string(state.Status)+": "+state.Error, spec.RunReferenceRule+"; "+spec.RunQueryRule))
+			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/run", "run "+string(state.Status)+": "+state.Error, runFailureHint(state.Error)))
 			continue
 		}
 		if state.Status != bridge.RunDone {

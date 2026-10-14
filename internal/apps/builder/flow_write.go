@@ -33,12 +33,14 @@ func (s *Service) checkAndFix(ctx context.Context, b *build, files spec.Files, o
 	loop := prompt.NewLoop()
 	_ = loop.PlanWritten()
 	_ = loop.FilesWritten()
+	memory := &roundMemory{}
 	for round := 1; ; round++ {
 		report, err := s.checkRound(ctx, b, files, round)
 		if err != nil {
 			return err
 		}
-		phase, _ := loop.CheckResult(report.Pass, formatReport(report))
+		phase, _ := loop.CheckResult(report.Pass, memory.formatReport(report, files))
+		memory.remember(report, files)
 		switch phase {
 		case prompt.PhasePreview:
 			if only != "" {
@@ -362,13 +364,10 @@ func checkLog(r bridge.CheckReport) string {
 
 // formatReport is the check report as the FIX call reads it, one issue a line.
 func formatReport(r bridge.CheckReport) string {
-	lines := make([]string, 0, len(r.Issues))
-	for _, issue := range r.Issues {
-		lines = append(lines, issue.String()+lengthHint(issue))
-	}
-	sort.Strings(lines)
-	return strings.Join(lines, "\n")
+	return (&roundMemory{}).formatReport(r, nil)
 }
+
+func sortStrings(lines []string) { sort.Strings(lines) }
 
 // preview seeds sample records and opens the preview. The Builder writes only
 // sample rows, never real ones, and never reads them back.
