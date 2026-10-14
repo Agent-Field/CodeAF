@@ -232,10 +232,30 @@ func (a *AgentRegistry) watchAsks(agent string, conn *AgentConnection) {
 					delete(timers, id)
 				}
 				a.mu.Unlock()
+				if ev.Kind == session.EventQuestion {
+					a.questionWaits(agent)
+				}
 				observer.deliver(ev)
 			}
 		}
 	}()
+}
+
+// questionWaits stores needs_you when a question opens during a reply. A
+// remote engine's reply stream does not carry every question (one the model
+// asks arrives on the question lane only), so the pump alone would leave the
+// stored state at running and publish no agent.changed. An idle agent keeps
+// its stored state: a task's question must not mark the conversation busy.
+func (a *AgentRegistry) questionWaits(id string) {
+	a.mu.Lock()
+	live := a.live[id]
+	if live == nil || !live.running || !live.needsPerson(id) {
+		a.mu.Unlock()
+		return
+	}
+	generation := live.generation
+	a.mu.Unlock()
+	_ = a.transitionState(id, "needs_you", live, generation)
 }
 
 func (a *AgentRegistry) observeAskLocked(agent string, ev session.Event, out *savedAsk, paths ...[]SourceRef) error {
