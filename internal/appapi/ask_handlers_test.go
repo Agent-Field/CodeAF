@@ -495,3 +495,63 @@ func TestAskTaskPermissionLeavesTheHTTPConversationFree(t *testing.T) {
 	f.engine.stream(0) <- session.Event{Kind: session.EventTurnDone}
 	close(f.engine.stream(0))
 }
+
+// The answer is taken at the click: agent.changed reaches the desk at once with
+// a state that is not needs_you, Undo returns it, and the held window's end
+// keeps it running.
+func TestPermissionAnswerLeavesNeedsYouAtTheClickAndUndoRestoresIt(t *testing.T) {
+	f := newAskFixture(t)
+	f.server.inbox.cancel()
+	<-f.server.inbox.done
+	t.Cleanup(f.server.Close)
+	a := f.registry
+	f.server.SetInboxSource("engine", &engineInboxSource{s: f.server, a: a})
+	clock := &inboxTestClock{at: a.now()}
+	f.server.inbox.now = func() time.Time { return clock.at }
+	f.server.inbox.after = func(_ time.Duration, fn func()) *time.Timer {
+		clock.callbacks = append(clock.callbacks, fn)
+		return nil
+	}
+	setNeeds := func(v bool) { f.engine.mu.Lock(); f.engine.needs = v; f.engine.mu.Unlock() }
+	changes := func() int {
+		batch, _, _, _, _ := f.server.Events().read(0)
+		n := 0
+		for _, event := range batch {
+			if event.kind == EventAgentChanged && event.agent == f.id {
+				n++
+			}
+		}
+		return n
+	}
+	state := func() string {
+		return readAgent(t, f.request(t, "GET", "/app/v1/agents/"+f.id, ""), 200).State
+	}
+	setNeeds(true)
+	id := f.ask(t, permissionQuestion(31))
+	if err := a.UpdateState(f.id, "needs_you"); err != nil || state() != "needs_you" {
+		t.Fatalf("setup: %v %s", err, state())
+	}
+	before := changes()
+	// Published inside the answer request itself, so well within 200 ms of the
+	// click; a wall clock here would only measure the test host's load.
+	turnStatus(t, f.request(t, "POST", "/app/v1/permissions/"+id, `{"verb":"allow_once"}`), 200)
+	if changes() <= before {
+		t.Fatal("answer returned before agent.changed was published")
+	}
+	if got := state(); got == "needs_you" {
+		t.Fatalf("answered agent still reads %s", got)
+	}
+	items := inboxItems(t, f.server)
+	before = changes()
+	turnStatus(t, inboxReq(t, f.server, "POST", "/app/v1/inbox/"+items[0].ID+"/undo", `{}`), 200)
+	if changes() <= before || state() != "needs_you" {
+		t.Fatalf("undo did not restore needs_you with agent.changed: %s", state())
+	}
+	turnStatus(t, f.request(t, "POST", "/app/v1/permissions/"+id, `{"verb":"allow_once"}`), 200)
+	setNeeds(false)
+	clock.at = clock.at.Add(5 * time.Second)
+	clock.callbacks[len(clock.callbacks)-1]()
+	if len(f.door.answers) != 1 || state() != "running" {
+		t.Fatalf("window end: answers %d state %s", len(f.door.answers), state())
+	}
+}
