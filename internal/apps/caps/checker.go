@@ -57,6 +57,12 @@ func (s *Service) allow(ctx context.Context, scope svc.Scope, method string, par
 	if err := allowRole(scope.Caller, method); err != nil {
 		return err
 	}
+	if method == bridge.MethodAppSetTint {
+		if scope.Caller.Member != svc.Owner || scope.Caller.Agent {
+			return denied("only the owner may change a personal app's tint")
+		}
+		return nil
+	}
 	if method == bridge.MethodAppsList || method == bridge.MethodAppsCreate {
 		return nil
 	}
@@ -81,7 +87,7 @@ func (s *Service) allow(ctx context.Context, scope svc.Scope, method string, par
 
 func definitionMethod(method string) bool {
 	switch method {
-	case bridge.MethodAppsCreate, bridge.MethodAppsKeep, bridge.MethodAppsDiscard,
+	case bridge.MethodAppsCreate, bridge.MethodAppsKeep, bridge.MethodAppsDiscard, bridge.MethodAppSetTint,
 		bridge.MethodBuilderPlanEdit, bridge.MethodBuilderWrite, bridge.MethodBuilderCancel:
 		return true
 	}
