@@ -236,11 +236,19 @@ func (a *app) updateOfferHint(width int) string {
 	case updateDownloading:
 		return "Updating codeaf in the background · keep working"
 	case updateReady:
-		return "codeaf " + o.tag + " installed · this session keeps running"
+		return updateReadyLine(o.tag)
 	case updateFailed:
 		return "codeaf " + o.tag + " could not be installed · /update retries"
 	}
 	return ""
+}
+
+// updateReadyLine is what a finished install says, in the keys line and in
+// the transcript alike: what landed and the one thing to do about it. It is
+// short on purpose — the engine and window details it used to spell out are
+// the manual's to explain, not every install's to recite.
+func updateReadyLine(tag string) string {
+	return "codeaf " + strings.TrimSpace(tag) + " installed · restart to use the new version"
 }
 
 // spellGrace prints a short count for the keys line.
@@ -289,7 +297,7 @@ func (a *app) updateOfferNote() string {
 	case updateDownloading:
 		return "updating codeaf in the background · this session keeps running"
 	case updateReady:
-		return "codeaf " + o.tag + " installed · this session keeps running · new windows open the updated app; work already running keeps its current engine until all its windows and work close"
+		return updateReadyLine(o.tag)
 	case updateFailed:
 		return "codeaf " + o.tag + " could not be installed · this version keeps running · /update retries"
 	}

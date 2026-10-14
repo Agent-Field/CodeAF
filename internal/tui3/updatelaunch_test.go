@@ -112,6 +112,25 @@ func TestANamedInstallSaysItPinned(t *testing.T) {
 	}
 }
 
+// TestAFinishedInstallSaysOneShortLine proves the completion is the release and
+// the one thing to do about it — in the transcript and in the keys line alike —
+// and that it fits an eighty-column window.
+func TestAFinishedInstallSaysOneShortLine(t *testing.T) {
+	lab := newOfferLab(t, offerAuto(&codeupdate.AutoState{}))
+	drive(t, lab.app, offerCheck("v0.9.3"))
+	drive(t, lab.app, updateGraceMsg{})
+	want := "codeaf v0.9.3 installed · restart to use the new version"
+	if !strings.Contains(updateNotes(lab.app), want) {
+		t.Fatalf("the transcript did not say %q:\n%s", want, updateNotes(lab.app))
+	}
+	if strings.Contains(updateNotes(lab.app), "new windows open the updated app") {
+		t.Fatalf("the long completion came back:\n%s", updateNotes(lab.app))
+	}
+	if got := lab.app.updateOfferHint(80); got != want {
+		t.Fatalf("the keys line says %q, want %q", got, want)
+	}
+}
+
 // TestAWindowALaunchUpdatedSaysSo proves the line the old build printed is not
 // the only record: the chat's own first lines name both builds and the switch.
 func TestAWindowALaunchUpdatedSaysSo(t *testing.T) {

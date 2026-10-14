@@ -46,8 +46,9 @@ its own after three.
 
 When the launch could not finish, the chat's offer takes over: `codeaf <newest>
 is out · installs in 10s · <skip chord> skip · /update` waits in the keys line,
-counted down from about ten seconds, then installs in the background. It never
-blocks a keystroke or restarts the conversation. `/update` while it is up
+counted down from about ten seconds, then installs in the background and says
+`codeaf <newest> installed · restart to use the new version`. It never blocks a
+keystroke or restarts the conversation. `/update` while it is up
 installs at once; the skip chord, or `/update skip`, answers that one release
 and it is never offered again.
 

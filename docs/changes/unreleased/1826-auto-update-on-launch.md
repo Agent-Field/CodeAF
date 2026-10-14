@@ -8,6 +8,7 @@ invalidates:
   - "In v0.8.0 the countdown and background install ran for every channel, so devaf, stageaf, dev builds installed as codeaf and release candidates replaced themselves unasked. Now only a stable release in a file named codeaf is ever installed without being asked (`update.AutomaticFor`); every other build is told on one line and installs only on `/update` or `codeaf update`."
   - "With `automatic updates` off, a newer release was named only inside the chat. It is now also printed in the terminal before the chat opens, `codeaf <newest> is out · you have <running> · codeaf update installs it`, using the file's own name for devaf, stageaf and other installs."
   - "There was no way to stay on an older release: the next automatic update moved the file forward again. `codeaf update --version <tag>` and `/update <tag>` now pin the file at that release, the automatic road refuses to move a pinned file, and a plain `codeaf update` or `/update` unpins it."
+  - "A finished background install said `codeaf <tag> installed · this session keeps running · new windows open the updated app; work already running keeps its current engine until all its windows and work close`, and the keys line said `codeaf <tag> installed · this session keeps running`. Both now say `codeaf <tag> installed · restart to use the new version`."
   - "`CODEAF_NO_UPDATE_CHECK=1` used to mean only that no launch check was made. It now also means no update is installed as codeaf opens, because that installation depends on the same launch check."
 ---
 
