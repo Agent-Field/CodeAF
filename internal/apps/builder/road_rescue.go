@@ -122,6 +122,9 @@ func (s *Service) climbRescue(ctx context.Context, b *build, t *seat, left float
 	if st, err := t.drafts.State(); err == nil {
 		files, done = s.render(b, st), st.Phase == draft.PhaseDone
 	}
+	// The done phase alone is not proof (see passedOnExactly): a worker may edit
+	// after done, so the preview follows only a pass on these exact files.
+	done = done && s.passedOnExactly(t, files)
 	for _, r := range rescueLadder {
 		if r.fits(done, files) && (r.road != roadRescueLoopFix || left > 0) {
 			if err := s.tagRoad(b, r.road); err != nil {

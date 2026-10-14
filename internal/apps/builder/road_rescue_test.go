@@ -325,3 +325,16 @@ func TestUnsetRoadIsRescueWhenTheBeltIsOn(t *testing.T) {
 		t.Errorf("default without belt = %q", name)
 	}
 }
+
+// The rescue's twin of TestAPreviewNeverFollowsAFailedFinalCheck: the worker
+// edits the draft after done, so the done phase no longer matches a passing
+// Check of these files, and the fix rung must run before any preview.
+func TestARescuePreviewNeverFollowsAFailedFinalCheck(t *testing.T) {
+	steps := script(crmBuild(t, ""), types(`codeaf app plan data extra "Extra · name"`), finishTask("build"))
+	r := newRescueRig(t, steps, true, true, true, false, true)
+	writePlanned(t, r)
+	r.waitState(t, bridge.StatePreview)
+	if got := r.road(t); got == roadRescueLoop {
+		t.Errorf("road = %q: the preview followed a draft whose last check was not a pass", got)
+	}
+}
