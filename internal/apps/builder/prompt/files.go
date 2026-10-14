@@ -20,26 +20,56 @@ var appFilePath = regexp.MustCompile(
 // ValidPath reports whether path is a file the Builder may write.
 func ValidPath(path string) bool { return appFilePath.MatchString(path) }
 
-// ParseFiles reads the model's reply as {path: content}. It tolerates leading
-// and trailing prose and code fences, and accepts a .json file's content given
-// as an object instead of an escaped string. Any path outside the app's files,
-// or content that does not parse for its extension, rejects the whole reply.
+// FilesObjectError tells the repair call which keys were returned instead of
+// app paths, so an inline app definition does not end the write step.
+type FilesObjectError struct {
+	Keys []string
+}
+
+func (e *FilesObjectError) Error() string {
+	return fmt.Sprintf("prompt: return a JSON object mapping app file paths to contents; got keys %q", e.Keys)
+}
+
+// ParseFiles prefers an explicit files wrapper, then the first object whose
+// keys are all app paths. Prose and unrelated objects are skipped; contents
+// still have to parse for their extension.
 func ParseFiles(output string) (map[string][]byte, error) {
-	objects := jsonObjects(output)
-	if len(objects) == 0 {
-		return nil, errNoObject
-	}
-	var first error
-	for _, raw := range objects {
-		files, err := filesFromObject(raw)
-		if err == nil {
-			return files, nil
+	var objects []map[string]json.RawMessage
+	keys := map[string]json.RawMessage{}
+	for _, raw := range jsonObjects(output) {
+		entries := objectEntries(raw)
+		objects = append(objects, entries)
+		for key := range entries {
+			keys[key] = nil
 		}
-		if first == nil {
-			first = err
+		if wrapped := objectEntries(entries["files"]); filesObject(wrapped) {
+			return filesFromObject(wrapped)
 		}
 	}
-	return nil, first
+	for _, entries := range objects {
+		if filesObject(entries) {
+			return filesFromObject(entries)
+		}
+	}
+	return nil, &FilesObjectError{Keys: sortedKeys(keys)}
+}
+
+func objectEntries(raw json.RawMessage) map[string]json.RawMessage {
+	var entries map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &entries)
+	return entries
+}
+
+func filesObject(entries map[string]json.RawMessage) bool {
+	if len(entries) == 0 {
+		return false
+	}
+	for path := range entries {
+		if !ValidPath(path) {
+			return false
+		}
+	}
+	return true
 }
 
 // jsonObjects returns each top-level JSON object found in s, scanning past
@@ -64,19 +94,9 @@ func jsonObjects(s string) []json.RawMessage {
 	return found
 }
 
-func filesFromObject(raw json.RawMessage) (map[string][]byte, error) {
-	var entries map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &entries); err != nil {
-		return nil, fmt.Errorf("prompt: files: %w", err)
-	}
-	if len(entries) == 0 {
-		return nil, fmt.Errorf("prompt: files object is empty")
-	}
+func filesFromObject(entries map[string]json.RawMessage) (map[string][]byte, error) {
 	files := make(map[string][]byte, len(entries))
 	for _, path := range sortedKeys(entries) {
-		if !ValidPath(path) {
-			return nil, fmt.Errorf("prompt: %q is not an app file", path)
-		}
 		content, err := fileContent(path, entries[path])
 		if err != nil {
 			return nil, fmt.Errorf("prompt: %s: %w", path, err)
