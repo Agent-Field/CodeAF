@@ -58,7 +58,7 @@ func TestPlanLengthSafetyNetBeforeRealCheck(t *testing.T) {
 				}
 				r.svc.all.Check = check.New(svc.Config{}, &svc.Services{Sample: sample.New(svc.Config{}, nil)})
 				b := &build{app: "crm", plan: planFromSpec(p)}
-				report, err := r.svc.checkRound(context.Background(), b, files, 1)
+				report, err := r.svc.checkRound(context.Background(), b, files, 1, nil)
 				if err != nil || !report.Pass {
 					t.Fatalf("Check after shortening: %+v %v", report, err)
 				}
@@ -101,7 +101,7 @@ func TestMaxLengthHintReachesFix(t *testing.T) {
 			r.model.fixes = []string{goldenFiles([]string{spec.AppFile})}
 			report := bridge.CheckReport{Issues: []spec.Issue{{File: tt.file, Path: tt.path, Rule: "schema", Message: fmt.Sprintf("length must be <= %d, but got %d", tt.limit, tt.length)}}}
 			b := &build{app: "crm", plan: planFromSpec(mustPlan(t, files)), budget: 20}
-			if _, err := r.svc.fixOnly(context.Background(), b, files, formatReport(report), ""); err != nil {
+			if _, _, err := r.svc.fixOnly(context.Background(), b, files, report.Issues, formatReport(report), ""); err != nil {
 				t.Fatal(err)
 			}
 			for _, want := range []string{"fix: shorten " + tt.file + ":" + tt.path, fmt.Sprintf("at most %d characters", tt.limit), fmt.Sprintf("current length %d", tt.length)} {

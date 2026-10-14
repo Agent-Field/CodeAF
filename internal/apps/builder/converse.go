@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/builder/prompt"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
@@ -25,8 +27,13 @@ func converse[T any](ctx context.Context, s *Service, b *build, text string, par
 		if parseErr == nil {
 			return out, nil
 		}
+		debugLog(b.app, "model reply rejected", parseErr)
 		if attempt == 1 {
-			return zero, parseErr
+			return zero, &replyError{err: parseErr}
+		}
+		var shape *prompt.ShapeError
+		if errors.As(parseErr, &shape) {
+			s.step(b, bridge.StepWrite, bridge.BuildRunning, logWrongShapeRetry)
 		}
 		messages = append(messages,
 			svc.ModelMessage{Role: "assistant", Text: reply},

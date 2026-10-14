@@ -56,7 +56,8 @@ func (s *Service) retryRun(ctx context.Context, b *build, files spec.Files, file
 	changed, err := s.writeUnit(ctx, b, plan, string(planRaw), writeUnit{
 		only: []string{file}, already: asText(files), schemas: schemaFor(spec.RunSchemaURL),
 	})
-	if err != nil {
+	pending, shaped := shapeIssues(err, []string{file})
+	if err != nil && !shaped {
 		return s.failWrite(ctx, b, err)
 	}
 	next, err := retryFiles(files, b.result(), file)
@@ -67,8 +68,10 @@ func (s *Service) retryRun(ctx context.Context, b *build, files spec.Files, file
 	if err := s.all.Store.WriteFiles(ctx, b.app, next); err != nil {
 		return err
 	}
-	s.announce(b, changed, "Wrote "+file)
-	return s.checkAndFix(ctx, b, next, file)
+	if !shaped {
+		s.announce(b, changed, "Wrote "+file)
+	}
+	return s.checkAndFix(ctx, b, next, file, pending)
 }
 
 func retryFiles(files spec.Files, saved savedResult, file string) (spec.Files, error) {
