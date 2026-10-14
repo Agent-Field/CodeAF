@@ -198,7 +198,7 @@ func TestSampleRequired(t *testing.T) {
 			files, sample := fixture(t)
 			sample.err = err
 			r, got := New(svc.Config{}, services(sample)).Run(context.Background(), "crm", files, 1)
-			if !errors.Is(got, err) || r.Pass {
+			if got != nil || r.Pass || len(r.Issues) != 1 || !strings.Contains(r.Issues[0].Message, err.Error()) || !strings.Contains(r.Issues[0].Message, "; fix:") {
 				t.Fatalf("report %+v err %v", r, got)
 			}
 		})

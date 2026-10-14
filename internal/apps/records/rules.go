@@ -2,18 +2,13 @@ package records
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/expr"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common/functions"
-	"github.com/google/cel-go/common/types"
-	"github.com/google/cel-go/common/types/ref"
-	"github.com/google/cel-go/common/types/traits"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
@@ -33,16 +28,7 @@ type Rules struct {
 func NewRules(schema *spec.RecordType) (*Rules, error) {
 	r := &Rules{schema: schema}
 	opts := []cel.EnvOption{
-		cel.Variable("created_at", cel.StringType), cel.Variable("updated_at", cel.StringType), cel.Variable("id", cel.StringType),
-		cel.Function("now", cel.Overload("records_now", nil, cel.TimestampType)),
-		cel.Function("me", cel.Overload("records_me", nil, cel.StringType)),
-		cel.Function("count", cel.Overload("records_count", []*cel.Type{cel.DynType}, cel.IntType, cel.UnaryBinding(func(value ref.Val) ref.Val {
-			if s, ok := value.(traits.Sizer); ok {
-				return s.Size()
-			}
-			return types.NewErr("count needs a list, map or text")
-		}))),
-		cel.Function("days_since", cel.Overload("records_days_string", []*cel.Type{cel.StringType}, cel.DoubleType), cel.Overload("records_days_timestamp", []*cel.Type{cel.TimestampType}, cel.DoubleType)),
+		cel.Variable("created_at", cel.TimestampType), cel.Variable("updated_at", cel.TimestampType), cel.Variable("id", cel.StringType),
 	}
 	for _, name := range sorted(schema.Fields) {
 		opts = append(opts, cel.Variable(name, cel.DynType))
@@ -50,7 +36,7 @@ func NewRules(schema *spec.RecordType) (*Rules, error) {
 	for _, name := range sorted(schema.Constants) {
 		opts = append(opts, cel.Variable(name, cel.DynType))
 	}
-	env, err := cel.NewEnv(opts...)
+	env, err := expr.NewEnv(opts...)
 	if err != nil {
 		return nil, invalid("computed fields: " + err.Error())
 	}
@@ -64,9 +50,9 @@ func NewRules(schema *spec.RecordType) (*Rules, error) {
 		if f.Computed == "" {
 			continue
 		}
-		ast, issues := env.Compile(recordReferences(f.Computed))
-		if issues.Err() != nil {
-			return nil, invalid(name + ": " + issues.Err().Error())
+		ast, err := expr.Compile(env, f.Computed)
+		if err != nil {
+			return nil, invalid(name + ": " + err.Error())
 		}
 		asts[name] = ast
 	}
@@ -110,6 +96,7 @@ func dependencies(e *exprpb.Expr) (map[string]bool, bool) {
 		}
 		if ident := e.GetIdentExpr(); ident != nil {
 			names[ident.Name] = true
+			timed = timed || ident.Name == "now"
 		}
 		if call := e.GetCallExpr(); call != nil {
 			if call.Function == "now" || call.Function == "days_since" {
@@ -174,34 +161,29 @@ func (r *Rules) Prepare(row bridge.Record, member string, at time.Time, defaults
 	for name := range r.schema.Fields {
 		vars[name] = fields[name]
 	}
-	bindings := []cel.ProgramOption{cel.CostLimit(10000), cel.Functions(
-		&functions.Overload{Operator: "records_now", Function: func(...ref.Val) ref.Val { return types.Timestamp{Time: at} }},
-		&functions.Overload{Operator: "records_me", Function: func(...ref.Val) ref.Val { return types.String(member) }},
-		&functions.Overload{Operator: "records_days_string", Unary: func(value ref.Val) ref.Val {
-			t, err := parseTime(fmt.Sprint(value.Value()))
-			if err != nil {
-				return types.NewErr("invalid date")
-			}
-			return types.Double(at.Sub(t).Hours() / 24)
-		}},
-		&functions.Overload{Operator: "records_days_timestamp", Unary: func(value ref.Val) ref.Val { return types.Double(at.Sub(value.Value().(time.Time)).Hours() / 24) }},
-	)}
-	for _, f := range r.fields {
-		program, err := r.env.Program(f.ast, bindings...)
-		if err != nil {
-			return row, invalid(f.name + ": " + err.Error())
+	vars["now"] = at
+	dateFields := []string{}
+	for name, field := range r.schema.Fields {
+		if field.Type == spec.FieldDate || field.Type == spec.FieldDatetime {
+			dateFields = append(dateFields, name)
 		}
-		value, _, err := program.Eval(vars)
+	}
+	for _, f := range r.fields {
+		program, err := expr.Program(r.env, f.ast, at, member)
+		if err != nil {
+			return row, invalid(f.name + ": " + expr.Diagnostic(r.schema.Fields[f.name].Computed, err).Error())
+		}
+		value, _, err := program.Eval(expr.Activation(vars, dateFields...))
 		if err != nil {
 			if missingDependency(f.ast, r.schema, fields) {
 				fields[f.name], vars[f.name] = nil, nil
 				continue
 			}
-			return row, invalid(f.name + ": " + err.Error())
+			return row, invalid(f.name + ": " + expr.Diagnostic(r.schema.Fields[f.name].Computed, err).Error())
 		}
 		result, err := value.ConvertToNative(reflect.TypeFor[any]())
 		if err != nil {
-			return row, invalid(f.name + ": " + err.Error())
+			return row, invalid(f.name + ": " + expr.Diagnostic(r.schema.Fields[f.name].Computed, err).Error())
 		}
 		if t, ok := result.(time.Time); ok {
 			result = stamp(t)
@@ -224,13 +206,6 @@ func (r *Rules) Prepare(row bridge.Record, member string, at time.Time, defaults
 	}
 	return row, nil
 }
-func parseTime(value string) (time.Time, error) {
-	t, err := time.Parse(time.RFC3339Nano, value)
-	if err != nil {
-		return time.Parse("2006-01-02", value)
-	}
-	return t, nil
-}
 func writable(typ *spec.RecordType, fields map[string]any) error {
 	for name := range fields {
 		f := typ.Fields[name]
@@ -252,58 +227,4 @@ func missingDependency(ast *cel.Ast, schema *spec.RecordType, fields map[string]
 		}
 	}
 	return false
-}
-
-// References are expanded only outside CEL string literals, which can contain
-// literal dollar signs. Field references retain ordinary CEL dependency checks.
-func recordReferences(source string) string {
-	var result strings.Builder
-	var quote byte
-	escape := false
-	for i := 0; i < len(source); {
-		c := source[i]
-		if quote != 0 {
-			result.WriteByte(c)
-			i++
-			if escape {
-				escape = false
-			} else if c == '\\' {
-				escape = true
-			} else if c == quote {
-				quote = 0
-			}
-			continue
-		}
-		if c == '\'' || c == '"' {
-			quote = c
-			result.WriteByte(c)
-			i++
-			continue
-		}
-		if c != '$' {
-			result.WriteByte(c)
-			i++
-			continue
-		}
-		end := i + 1
-		for end < len(source) {
-			c := source[end]
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '.') {
-				break
-			}
-			end++
-		}
-		reference := source[i:end]
-		switch {
-		case reference == "$now":
-			reference = "now()"
-		case reference == "$me":
-			reference = "me()"
-		case strings.HasPrefix(reference, "$record."):
-			reference = strings.TrimPrefix(strings.TrimPrefix(reference, "$record."), "fields.")
-		}
-		result.WriteString(reference)
-		i = end
-	}
-	return result.String()
 }
