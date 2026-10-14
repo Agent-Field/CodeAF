@@ -516,6 +516,11 @@ func TestTimeoutContractC1SlowAssetOutlivesTheCheckClock(t *testing.T) {
 	}
 	client := releaseClient(server, "v0.1.0")
 	client.HTTP.Timeout = CheckTimeout
+	// Install reports the resolved path; macOS temporary roots can be links.
+	wantPath, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := Install(context.Background(), InstallOptions{
 		Client: client, Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
 	})
@@ -530,7 +535,7 @@ func TestTimeoutContractC1SlowAssetOutlivesTheCheckClock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o755 || result.Path != target {
+	if info.Mode().Perm() != 0o755 || result.Path != wantPath {
 		t.Fatalf("result = %+v mode = %v", result, info.Mode().Perm())
 	}
 	if matches, _ := filepath.Glob(filepath.Join(dir, ".codeaf.tmp.*")); len(matches) != 0 {
@@ -734,6 +739,10 @@ func TestC7CheckedInstallReplacesAtomicallyAndMismatchPreservesTheOriginal(t *te
 			if err := os.WriteFile(target, []byte("old codeaf"), 0o700); err != nil {
 				t.Fatal(err)
 			}
+			wantPath, err := filepath.EvalSymlinks(target)
+			if err != nil {
+				t.Fatal(err)
+			}
 			result, err := Install(context.Background(), InstallOptions{
 				Client: releaseClient(server, "v0.1.1"), Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
 			})
@@ -748,7 +757,7 @@ func TestC7CheckedInstallReplacesAtomicallyAndMismatchPreservesTheOriginal(t *te
 			if row.ok {
 				want = asset
 				info, _ := os.Stat(target)
-				if info.Mode().Perm() != 0o755 || result.Path != target || result.Release.Tag != "v0.2.0" {
+				if info.Mode().Perm() != 0o755 || result.Path != wantPath || result.Release.Tag != "v0.2.0" {
 					t.Fatalf("result = %+v mode %o", result, info.Mode().Perm())
 				}
 			} else if !strings.Contains(err.Error(), "checksum") {

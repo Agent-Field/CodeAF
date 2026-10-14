@@ -191,13 +191,14 @@ build-check:
 
 test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-gates test-laws test-carried-help test-belt-pages
 
-# The shell runners are executable infrastructure that Go's package walk cannot
+# The script runners are executable infrastructure that Go's package walk cannot
 # discover, so their acceptance scripts are named here. The benchmark clone
 # regression is kept beside the helper it drives. They are touched-only, like
 # the Go packages: `pr-ready` runs them when the change touches scripts/, the
 # covered benchmark paths, or this Makefile. Together they take about forty
 # seconds and most pull requests never go near them.
 test-tooling:
+	python3 scripts/hosted-evidence_test.py
 	bash scripts/touched-packages_test.sh
 	bash scripts/touched-verdict_test.sh
 	bash scripts/one-suite_test.sh

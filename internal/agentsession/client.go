@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 )
@@ -57,6 +58,9 @@ type Client struct {
 	// call waits; a test shortens both.
 	pause func(attempt int) time.Duration
 	held  func() time.Duration
+	// supportsParameter reads only the profile's remembered capabilities.
+	// Unknown facts never opt a session into a new provider request field.
+	supportsParameter func(model, parameter string) (supported, known bool)
 }
 
 // NewClient opens the run's model API. It refuses an API with no address or no
@@ -79,8 +83,9 @@ func NewClient(api delegate.ModelAPI, retries int) (*Client, error) {
 		// NO CLIENT TIMEOUT: a thinking model can be quiet for minutes, and the
 		// call's own context (the session's wall, the run's stop) is what ends
 		// it.
-		http:  &http.Client{},
-		pause: func(attempt int) time.Duration { return time.Duration(2<<attempt) * time.Second },
+		http:              &http.Client{},
+		pause:             func(attempt int) time.Duration { return time.Duration(2<<attempt) * time.Second },
+		supportsParameter: config.CachedSupportsParameter,
 	}, nil
 }
 
@@ -216,6 +221,10 @@ func (c *Client) Refusal() error {
 // what is left of the run's ceiling.
 var errHeld = errors.New("the run's ceiling is held by calls in flight")
 
+// errResponseFormatUnsupported is an explicit format refusal, classified
+// at the API boundary. It is not a bad schema, account refusal or outage.
+var errResponseFormatUnsupported = errors.New("the served endpoint does not support the response format")
+
 // holdPause is how long a held call waits before it asks again: about the two
 // seconds the model API suggests, spread so that calls held together do not
 // all ask again together.
@@ -269,6 +278,9 @@ func (c *Client) send(ctx context.Context, body []byte) (*ai.Response, error, bo
 		case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, http.StatusInternalServerError:
 			return nil, fmt.Errorf("the model API answered %d: %s", answer.StatusCode, message), true
 		}
+		if responseFormatUnsupported(answer.StatusCode, raw, message) {
+			return nil, fmt.Errorf("%w: %s", errResponseFormatUnsupported, message), false
+		}
 		return nil, fmt.Errorf("the model API answered %d: %s", answer.StatusCode, message), false
 	}
 	var response ai.Response
@@ -279,6 +291,42 @@ func (c *Client) send(ctx context.Context, body []byte) (*ai.Response, error, bo
 		return nil, errors.New("the model's reply has no choices"), true
 	}
 	return &response, nil, false
+}
+
+// responseFormatUnsupported recognizes only a permanent request-field
+// refusal. A schema the provider says is invalid must still fail unchanged.
+func responseFormatUnsupported(status int, raw []byte, message string) bool {
+	if status != http.StatusBadRequest && status != http.StatusUnprocessableEntity {
+		return false
+	}
+	var detail struct {
+		Error struct {
+			Param string `json:"param"`
+			Code  string `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(raw, &detail) == nil {
+		switch detail.Error.Code {
+		case "invalid_json_schema", "invalid_schema", "schema_validation_error":
+			return false
+		case "unsupported_parameter":
+			if detail.Error.Param == "response_format" {
+				return true
+			}
+		}
+	}
+	message = strings.ToLower(message)
+	for _, phrase := range []string{"invalid schema", "invalid json schema", "schema is invalid", "invalid_json_schema"} {
+		if strings.Contains(message, phrase) {
+			return false
+		}
+	}
+	for _, phrase := range []string{"response_format is not supported", "response_format not supported", "does not support response_format", "unsupported response_format", "json_schema is not supported", "does not support json_schema"} {
+		if strings.Contains(message, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 // apiMessage is the one sentence an error body carries, or the body itself.
