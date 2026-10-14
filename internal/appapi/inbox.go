@@ -356,32 +356,46 @@ func (s *Server) finishInbox(id string, p *inboxPending) {
 		return
 	}
 	delete(state.pending, id)
-	defer holdInbox(p.row, false)
+	// A sent answer keeps its hold: the engine takes it off its channel later,
+	// and until then the question is still open. The source drops the hold
+	// once the question leaves its open set; only an unsent answer releases it.
+	if !s.sendHeld(id, p) {
+		holdInbox(p.row, false)
+	}
+}
+
+// sendHeld forwards an answer whose Undo window ended. Callers hold the Inbox
+// lock. It reports whether the source took the answer.
+func (s *Server) sendHeld(id string, p *inboxPending) bool {
+	state := s.inbox
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	items, err := p.row.source.InboxItems(ctx)
 	if err != nil {
 		_, _ = s.events.Publish(EventInboxAdded, InboxAddedEvent{id, p.row.item.Kind})
-		return
+		return false
 	}
-	found := false
-	for _, item := range items {
-		if item.ID == id {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
+	if !inboxHas(items, id) {
+		return false
 	}
 	reply, err := p.row.source.AnswerInbox(ctx, p.row.item, p.answer)
 	if err != nil || !reply.OK {
 		_, _ = s.events.Publish(EventInboxAdded, InboxAddedEvent{id, p.row.item.Kind})
-		return
+		return false
 	}
 	s.retainInbox(p.row, &p.answer, reply.Receipt, "here", "you")
 	delete(state.rows, id)
 	_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{id, "here", "you", state.now().UTC()})
+	return true
+}
+
+func inboxHas(items []InboxItem, id string) bool {
+	for _, item := range items {
+		if item.ID == id {
+			return true
+		}
+	}
+	return false
 }
 func (s *Server) UndoInbox(ctx context.Context, id string, expect *AgentExpect) error {
 	state := s.inbox
