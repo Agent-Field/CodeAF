@@ -95,6 +95,12 @@ render the summarizer reads caps a tool result at 2,000 bytes and a call's argum
 
 ## Connection recovery bounds
 
+Successful connection model lists share discovery's **16 MiB** response bound
+(`catalog.MaxCatalogBytes`). The connection probe reads one extra byte to refuse
+an oversized listing rather than admit a truncated prefix; error and one-token
+probe responses retain their **4 KiB** read bound. Probe timeouts are unchanged.
+These are network/memory safety bounds, not response-time performance targets.
+
 `internal/provider/connectivity.go` limits a connection-recovery episode to
 two minutes (`connectionRecoveryWindow`), including repeated loss after a
 successful probe. Caller deadlines and cancellation can end it earlier. Each

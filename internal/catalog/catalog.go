@@ -28,8 +28,10 @@ import (
 )
 
 const (
-	TTL             = 24 * time.Hour
-	maxCatalogBytes = 16 << 20
+	TTL = 24 * time.Hour
+	// MaxCatalogBytes is the model-list response bound shared by discovery and
+	// connection checks, so a catalog discovery can read is also connectable.
+	MaxCatalogBytes = 16 << 20
 	cacheName       = "model-catalog.json"
 	// DefaultBaseURL lives beside the compiled-in fallback rows because those
 	// rows are this service's ids, so the package that serves them has to be
@@ -1222,7 +1224,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 	var payload struct {
 		Data []json.RawMessage `json:"data"`
 	}
-	decoder := json.NewDecoder(io.LimitReader(response.Body, maxCatalogBytes))
+	decoder := json.NewDecoder(io.LimitReader(response.Body, MaxCatalogBytes))
 	if err := decoder.Decode(&payload); err != nil {
 		return nil, err
 	}

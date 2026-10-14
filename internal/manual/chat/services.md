@@ -127,6 +127,11 @@ provider's own answer, cut at 120 characters on a word boundary:
 `deepseek refused that key — Authentication Fails, Your api key is invalid`. No answer is
 different: `deepseek did not answer · nothing was saved`.
 
+When a connection is proved by its model list, the list is read in full up to 16 MiB,
+including providers whose rows carry extra metadata. A larger list, unreadable JSON,
+or an interrupted response does not save that connection; previously saved keys and
+providers stay as they were.
+
 codeaf checks each billing door in order with a one-token completion and binds the first
 one that answers. A no-plan or payment answer on one door moves the connection check to
 the next; a bad-key answer stops immediately in the vendor's words. A missing answer also
