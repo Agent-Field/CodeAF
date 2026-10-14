@@ -335,8 +335,8 @@ func TestLoopTypingTheCRMScriptReachesPreviewOnTheLoopRoad(t *testing.T) {
 			t.Errorf("the draft is missing %s", want)
 		}
 	}
-	if len(r.checks.seen) < 3 {
-		t.Errorf("check ran %d times, want one per check, try and done", len(r.checks.seen))
+	if len(r.checks.seen) != 1 {
+		t.Errorf("check ran %d times; check, try and done on one render must share one run", len(r.checks.seen))
 	}
 	if _, ok := r.hub.find(bridge.StepPreview, bridge.BuildDone); !ok {
 		t.Error("no preview-ready event")
@@ -480,5 +480,69 @@ func TestAFreeRequestWhileTheBuilderIsBusyIsQueuedAsANote(t *testing.T) {
 	notes := r.seat(t).tasks.Notes("plan", 0)
 	if len(notes) != 1 || !strings.Contains(notes[0].Body, "Add contacts") {
 		t.Fatalf("notes = %+v", notes)
+	}
+}
+
+// slowChecks counts its runs and holds each one until released.
+type slowChecks struct {
+	mu      sync.Mutex
+	runs    int
+	release chan struct{}
+}
+
+func (c *slowChecks) Run(context.Context, string, spec.Files, int) (bridge.CheckReport, error) {
+	c.mu.Lock()
+	c.runs++
+	c.mu.Unlock()
+	<-c.release
+	return bridge.CheckReport{Pass: true}, nil
+}
+
+func (c *slowChecks) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.runs
+}
+
+func TestTwoVerbsOnOneRenderRunOneCheckAndShareItsReport(t *testing.T) {
+	r := newLoopRig(t, script(planScript()...))
+	buildToPlan(t, r)
+	checks := &slowChecks{release: make(chan struct{})}
+	r.svc.all.Check = checks
+	st := r.seat(t)
+	b, _ := r.svc.buildFor(context.Background(), "crm")
+	handle := r.svc.verbHandler(b, st)
+
+	replies := make(chan draft.Reply, 3)
+	for _, verb := range []string{"check", "check", "done"} {
+		go func() { replies <- handle(context.Background(), draft.Request{Verb: verb, Args: []string{"x"}}) }()
+	}
+	waitFor(t, "the first check to start", func() bool { return checks.count() == 1 })
+	close(checks.release)
+	for i := 0; i < 3; i++ {
+		if reply := <-replies; !reply.OK {
+			t.Errorf("reply = %+v", reply)
+		}
+	}
+	if checks.count() != 1 {
+		t.Errorf("checks ran %d times, want 1", checks.count())
+	}
+}
+
+func TestCheckTryAndDoneRefuseWhileThePlanIsStillBeingMade(t *testing.T) {
+	r := newLoopRig(t, script(types(`codeaf app name "CRM"`), types("sleep 20")))
+	r.create(t, false)
+	st := r.seat(t)
+	b, _ := r.svc.buildFor(context.Background(), "crm")
+	waitFor(t, "a live plan worker", func() bool { return st.liveTask() == "plan" })
+	handle := r.svc.verbHandler(b, st)
+	for _, verb := range []string{"check", "try", "done"} {
+		reply := handle(context.Background(), draft.Request{Verb: verb, Args: []string{"x"}})
+		if reply.OK || reply.Text != "error: check runs after plan ready — finish the plan first" {
+			t.Errorf("%s answered %+v", verb, reply)
+		}
+	}
+	if err := r.svc.Cancel(context.Background(), r.scope()); err != nil {
+		t.Fatal(err)
 	}
 }

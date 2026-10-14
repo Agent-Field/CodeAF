@@ -654,7 +654,7 @@ func (e *engine) onStepError(ctx context.Context, job *job, found piece, err err
 	n := job.Attempts[found.path] + 1
 	job.Attempts[found.path] = n
 	if step.RetryMax > 0 && n <= step.RetryMax {
-		if napErr := e.nap(ctx, backoff(step.RetryBackoff, n)); napErr != nil {
+		if napErr := e.backoffNap(ctx, step, n); napErr != nil {
 			return true, napErr
 		}
 		return false, nil
@@ -671,6 +671,15 @@ func (e *engine) onStepError(ctx context.Context, job *job, found piece, err err
 		e.fail(job, err)
 		return true, nil
 	}
+}
+
+// backoffNap waits out a retry's backoff, except in a check's rehearsal, where
+// the wait would only make the builder's worker sit through it.
+func (e *engine) backoffNap(ctx context.Context, step *stepBody, attempt int) error {
+	if svc.DryRun(ctx) {
+		return ctx.Err()
+	}
+	return e.nap(ctx, backoff(step.RetryBackoff, attempt))
 }
 
 func (e *engine) allow(ctx context.Context, scope svc.Scope, method string, params any) error {

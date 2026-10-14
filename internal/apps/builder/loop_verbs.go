@@ -2,9 +2,12 @@ package builder
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/draft"
@@ -34,8 +37,20 @@ func (s *Service) verbHandler(b *build, t *seat) draft.Handler {
 		}
 		t.verbMu.Lock()
 		defer t.verbMu.Unlock()
+		if !t.planIsReady() {
+			return refused(planFirst)
+		}
 		return verb(s, ctx, b, t, req.Args)
 	}
+}
+
+// planFirst is the answer to a check, try or done while the plan is still
+// being made: they judge a built app, and there is none yet.
+const planFirst = "error: check runs after plan ready — finish the plan first"
+
+func (t *seat) planIsReady() bool {
+	st, err := t.drafts.State()
+	return err == nil && phaseAtLeast(st.Phase, draft.PhasePlanned)
 }
 
 func refused(text string) draft.Reply  { return draft.Reply{Text: text} }
@@ -51,10 +66,52 @@ func (s *Service) drafted(b *build, t *seat) (spec.Files, draft.State, error) {
 	return s.render(b, st), st, nil
 }
 
-// runCheck is one numbered check round on the rendered files, with the events
-// the Building screen shows.
-func (s *Service) runCheck(ctx context.Context, b *build, files spec.Files) (bridge.CheckReport, error) {
-	return s.checkRound(ctx, b, files, b.nextRound())
+// runCheck is the build's one check on the rendered files. The report is kept
+// by the sha256 of the files, so check, try and done reuse it for as long as
+// the render does not change; a check is minutes of the worker's wall and the
+// same files give the same report. Calls arrive one at a time (verbHandler
+// holds verbMu), so a second call waits for the running check and then reads
+// its report, and never starts another.
+func (s *Service) runCheck(ctx context.Context, b *build, t *seat, files spec.Files) (bridge.CheckReport, error) {
+	sum := digest(files)
+	if report, ok := t.checked.get(sum); ok {
+		return report, nil
+	}
+	report, err := s.checkRound(ctx, b, files, b.nextRound())
+	if err == nil {
+		t.checked.put(sum, report)
+	}
+	return report, err
+}
+
+// checkMemo holds the report of the last check and the files it was made on.
+type checkMemo struct {
+	mu     sync.Mutex
+	sum    string
+	report bridge.CheckReport
+	have   bool
+}
+
+func (m *checkMemo) get(sum string) (bridge.CheckReport, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.report, m.have && m.sum == sum
+}
+
+func (m *checkMemo) put(sum string, report bridge.CheckReport) {
+	m.mu.Lock()
+	m.sum, m.report, m.have = sum, report, true
+	m.mu.Unlock()
+}
+
+// digest is the sha256 of the files by path, in path order.
+func digest(files spec.Files) string {
+	h := sha256.New()
+	for _, path := range files.Paths() {
+		fmt.Fprintf(h, "%s\x00%d\x00", path, len(files[path]))
+		h.Write(files[path])
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (s *Service) verbCheck(ctx context.Context, b *build, t *seat, _ []string) draft.Reply {
@@ -62,7 +119,7 @@ func (s *Service) verbCheck(ctx context.Context, b *build, t *seat, _ []string) 
 	if err != nil {
 		return refused("error: the draft could not be read — try again")
 	}
-	report, err := s.runCheck(ctx, b, files)
+	report, err := s.runCheck(ctx, b, t, files)
 	if err != nil {
 		return refused("error: the check could not run — try again")
 	}
@@ -92,7 +149,7 @@ func (s *Service) verbTry(ctx context.Context, b *build, t *seat, args []string)
 	if files[file] == nil {
 		return refused("error: there is no run " + args[0] + " in the draft — add it with codeaf app run first")
 	}
-	report, err := s.runCheck(ctx, b, files)
+	report, err := s.runCheck(ctx, b, t, files)
 	if err != nil {
 		return refused("error: the run could not be tried — try again")
 	}
@@ -118,14 +175,11 @@ func tryReply(report bridge.CheckReport, id, file string) draft.Reply {
 // verbDone is the finish: the full check, and only when it passes the draft
 // moves to done. The worker's CLI never writes that phase itself.
 func (s *Service) verbDone(ctx context.Context, b *build, t *seat, _ []string) draft.Reply {
-	files, st, err := s.drafted(b, t)
+	files, _, err := s.drafted(b, t)
 	if err != nil {
 		return refused("error: the draft could not be read — try again")
 	}
-	if !phaseAtLeast(st.Phase, draft.PhasePlanned) {
-		return refused("error: the plan is not ready — run codeaf app plan ready first")
-	}
-	report, err := s.runCheck(ctx, b, files)
+	report, err := s.runCheck(ctx, b, t, files)
 	if err != nil {
 		return refused("error: the check could not run — try again")
 	}

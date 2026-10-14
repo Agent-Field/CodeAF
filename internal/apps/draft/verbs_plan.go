@@ -6,8 +6,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
-// maxPlanLine is the plan schema's limit on one card line.
-const maxPlanLine = 200
+// maxPlanLine is how long the worker may write one card line. The plan schema
+// allows 200; a shorter line reads better on the card.
+const maxPlanLine = 120
 
 // maxNameLen is the longest app name the plan card has room for.
 const maxNameLen = 40
