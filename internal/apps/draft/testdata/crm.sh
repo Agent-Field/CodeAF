@@ -30,6 +30,9 @@ codeaf app field contact email email --index --label Email
 codeaf app field contact phone phone --masked --label Phone
 codeaf app field contact company ref --index --label Company --to company
 codeaf app record deal --label Deal --plural Deals --title name
+codeaf app constant deal stage_weight <<'JSON'
+{"Lead": 0.1, "Qualified": 0.25, "Proposal": 0.5, "Negotiation": 0.7, "Won": 1, "Lost": 0}
+JSON
 codeaf app field deal name text --required --label Deal
 codeaf app field deal company ref --required --index --label Company --to company
 codeaf app field deal contacts refs --label Contacts --to contact
@@ -41,9 +44,6 @@ codeaf app field deal last_touch datetime --index --label Touch
 codeaf app field deal weighted money --label 'Weighted value' --computed 'amount * stage_weight[stage]'
 codeaf app field deal likely enum --label 'Likely to close · AI' --ai 'likely to close this month' --values Likely,Maybe,Unlikely
 codeaf app field deal next_step text --required --label 'Next step'
-codeaf app constant deal stage_weight <<'JSON'
-{"Lead": 0.1, "Qualified": 0.25, "Proposal": 0.5, "Negotiation": 0.7, "Won": 1, "Lost": 0}
-JSON
 
 # 4. Screens, one whole JSON document each.
 codeaf app screen pipeline <<'JSON'
