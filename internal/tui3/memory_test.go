@@ -450,7 +450,7 @@ func TestTheVerbsAreTheLinesAndALetGoLineCanBePutBack(t *testing.T) {
 	}
 }
 
-func TestAForgetFromThePlaceLeavesTheLoopAndSaysWhereItWent(t *testing.T) {
+func TestForgettingFromThePlaceLeavesTheLoopAndSaysWhereItWent(t *testing.T) {
 	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs"}})
 	openMemoryPlace(t, a)
 	memoryCursorTo(t, a, "prefers tabs")
