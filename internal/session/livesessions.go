@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -105,7 +104,7 @@ func someoneIsWatching() bool {
 
 // liveSessionTouched is when a person last had anything to do with one open
 // window: the later of when they last SPOKE in it ([Meta.LastUserAt], the same
-// stamp the resume law and [MachineIdle] read, and deliberately never a file
+// stamp the resume law reads, and deliberately never a file
 // mtime) and when the window opened.
 //
 // THE OPENING COUNTS BECAUSE A FRESH WINDOW IS SOMEBODY ARRIVING. A
@@ -120,39 +119,6 @@ func liveSessionTouched(window liveWindow) time.Time {
 		}
 	}
 	return at
-}
-
-// ── whether the machine is quiet ────────────────────────────────────────────
-
-// MachineIdle is the world reader's answer to "has nobody been here for a
-// while", which the clock's memory pass is gated on ([automation.Idle]).
-//
-// TWO CONDITIONS, AND BOTH ARE ABOUT PEOPLE. Nothing may be working right now —
-// a machine mid-build is not idle however long ago somebody typed — and the
-// newest thing anybody SAID anywhere must be older than the span. The second is
-// read from [Meta.LastUserAt] and deliberately not from file times, which is the
-// ordering law everywhere in this codebase: a background write is not a person
-// returning to a conversation.
-func MachineIdle() automation.Idle {
-	return func(quiet time.Duration) bool {
-		world := ReadHome()
-		var newest time.Time
-		for _, project := range world.Projects {
-			for _, row := range project.Sessions {
-				if row.Live && row.Presence.State == PresenceWorking {
-					return false
-				}
-				if row.At.After(newest) {
-					newest = row.At
-				}
-			}
-		}
-		if newest.IsZero() {
-			// Nobody has ever said anything on this machine. That is quiet.
-			return true
-		}
-		return world.Read.Sub(newest) >= quiet
-	}
 }
 
 // ── small words ─────────────────────────────────────────────────────────────
