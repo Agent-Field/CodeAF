@@ -15,6 +15,7 @@
 // caller in Role's context, so no-row Personal fallback uses Store's app space.
 //
 // Role changes commit before the independent Audit.Append and publish immediately.
+// Set requires both Audit and Hub before it changes any row.
 // An audit failure reaches the caller, but cannot roll back the committed role.
 // Global apps.list/apps.create and Viewer agent.send need the gateway's method
 // owners to register caps.AllowWorkspaceApps and caps.AllowWorkspaceAgent. Their

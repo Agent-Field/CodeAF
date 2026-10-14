@@ -205,3 +205,34 @@ func TestWorkspaceGlobalAppsPermission(t *testing.T) {
 		}
 	}
 }
+
+func TestPersonalAndWorkspaceAgentsKeepExistingPermissions(t *testing.T) {
+	checker := New(svc.Config{}, &svc.Services{Store: definitionStore{bundle: testBundle(t)}})
+	methods := []string{
+		bridge.MethodAppsList, bridge.MethodAppsCreate, bridge.MethodAppsGet, bridge.MethodAppsKeep, bridge.MethodAppsDiscard,
+		bridge.MethodBuilderPlanEdit, bridge.MethodBuilderWrite, bridge.MethodBuilderCancel,
+		bridge.MethodRecordsQuery, bridge.MethodRecordsGet, bridge.MethodRecordsCreate, bridge.MethodRecordsUpdate, bridge.MethodRecordsDelete,
+		bridge.MethodRunsStart, bridge.MethodRunsGet, bridge.MethodRunsList,
+		bridge.MethodApprovalsList, bridge.MethodApprovalsDecide, bridge.MethodAgentSend, "sub", "unsub",
+	}
+	for _, space := range []string{"", svc.PersonalSpace, "acme"} {
+		for _, agent := range []bool{false, true} {
+			if space == "acme" && !agent {
+				continue
+			}
+			for _, role := range []svc.Role{svc.RoleEditor, svc.RoleUser, svc.RoleViewer, ""} {
+				for _, method := range methods {
+					t.Run(space+"/"+string(role)+"/"+method+"/agent="+map[bool]string{true: "true", false: "false"}[agent], func(t *testing.T) {
+						scope := svc.Scope{App: "crm", Caller: svc.Caller{Member: "raj", Space: space, WS: svc.WorkspaceOwner, Role: role, Agent: agent}}
+						raw := json.RawMessage(`{"type":"deal","run":"follow-up","topic":"app/crm/build"}`)
+						want := checker.allow(context.Background(), scope, method, raw)
+						got := checker.allowRegistered(context.Background(), scope, method, raw)
+						if errorCode(got) != errorCode(want) {
+							t.Fatalf("registered permissions=%v, existing permissions=%v", got, want)
+						}
+					})
+				}
+			}
+		}
+	}
+}

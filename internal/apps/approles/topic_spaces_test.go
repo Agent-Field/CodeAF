@@ -99,9 +99,6 @@ func TestSocketTopicsResolveAndDenyWorkspaceNonmembers(t *testing.T) {
 	for _, message := range []bridge.MessageType{bridge.TypeSub, bridge.TypeUnsub} {
 		for _, app := range []string{"x", "crm"} {
 			for _, family := range []string{"records/deal", "runs", "agent/t1", "roles", "build", "shape/raj", "*"} {
-				if app == "crm" && (family == "records/deal" || family == "runs" || family == "agent/t1") {
-					continue
-				}
 				topic := "app/" + app + "/" + family
 				t.Run(string(message)+"/"+topic, func(t *testing.T) {
 					request := bridge.Envelope{ID: "topic", Type: message, Topic: topic}
@@ -117,7 +114,8 @@ func TestSocketTopicsResolveAndDenyWorkspaceNonmembers(t *testing.T) {
 					if err := json.Unmarshal(raw, &reply); err != nil {
 						t.Fatal(err)
 					}
-					wantDenied := app == "x" || family != "roles"
+					writeOnly := family == "build" || family == "shape/raj" || family == "*"
+					wantDenied := app == "x" || writeOnly
 					if wantDenied && (reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != bridge.CodeDenied) {
 						t.Fatalf("reply=%s want denied", raw)
 					}
@@ -171,6 +169,30 @@ func TestSocketTopicsResolveAndDenyWorkspaceNonmembers(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
+	}
+	// Demotion must stop writes on this socket without reconnecting or caching its old role.
+	_, err = roles.Set(ctx, svc.Scope{App: "crm", Caller: svc.Caller{Member: "mona", Space: "acme", WS: svc.WorkspaceOwner, Role: svc.RoleEditor}}, bridge.AppRoleSetParams{Member: "raj", Role: &viewer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Write(ctx, websocket.MessageText, raw); err != nil {
+		t.Fatal(err)
+	}
+	_, deniedRaw, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var deniedReply bridge.Envelope
+	if err := json.Unmarshal(deniedRaw, &deniedReply); err != nil {
+		t.Fatal(err)
+	}
+	if deniedReply.Type != bridge.TypeError || deniedReply.Error == nil || deniedReply.Error.Code != bridge.CodeDenied {
+		t.Fatalf("reply=%s, want denied after demotion", deniedRaw)
+	}
+	select {
+	case scope := <-writer.scopes:
+		t.Fatalf("demoted caller reached records writer: %+v", scope)
+	default:
 	}
 	resolver.mu.Lock()
 	defer resolver.mu.Unlock()

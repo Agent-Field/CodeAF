@@ -388,3 +388,25 @@ func TestAuditFailureStillPublishesCommittedRole(t *testing.T) {
 		t.Fatal(role)
 	}
 }
+
+func TestSetRequiresAuditAndRoleNotifications(t *testing.T) {
+	for _, missing := range []string{"audit", "hub"} {
+		t.Run(missing, func(t *testing.T) {
+			s, audit, hub := newTestService(t)
+			ctx := context.Background()
+			requireCode(t, s.Seed(ctx, "crm", "mona"), "")
+			if missing == "audit" {
+				s.all.Audit = nil
+			} else {
+				s.all.Hub = nil
+			}
+			_, err := s.Set(ctx, workspaceScope(svc.RoleEditor), bridge.AppRoleSetParams{Member: "jm", Role: rolePtr(svc.RoleViewer)})
+			requireCode(t, err, bridge.CodeNotBuilt)
+			role, err := s.Role(ctx, "crm", "jm")
+			requireCode(t, err, "")
+			if role != svc.RoleUser || len(audit.entries) != 0 || len(hub.events) != 0 {
+				t.Fatalf("role=%s audit=%+v events=%+v; unavailable role updates must leave membership unchanged", role, audit.entries, hub.events)
+			}
+		})
+	}
+}

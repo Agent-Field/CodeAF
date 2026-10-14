@@ -153,6 +153,9 @@ func (s *Service) Set(ctx context.Context, scope svc.Scope, p bridge.AppRoleSetP
 	if s.all == nil || s.all.Audit == nil {
 		return bridge.AppMembers{}, bridge.NotBuilt("approles audit")
 	}
+	if s.all.Hub == nil {
+		return bridge.AppMembers{}, bridge.NotBuilt("approles role notifications")
+	}
 	roster, err := s.roster(ctx, scope.Caller)
 	if err != nil {
 		return bridge.AppMembers{}, err
@@ -174,9 +177,7 @@ func (s *Service) Set(ctx context.Context, scope svc.Scope, p bridge.AppRoleSetP
 		return bridge.AppMembers{}, err
 	}
 	// Publish committed membership even when the independent audit append fails.
-	if s.all.Hub != nil {
-		s.all.Hub.Publish(bridge.TopicRoles(scope.App), result)
-	}
+	s.all.Hub.Publish(bridge.TopicRoles(scope.App), result)
 	detail, _ := json.Marshal(p)
 	_, err = s.all.Audit.Append(ctx, bridge.AuditEntry{Space: scope.Caller.Space, App: scope.App, Member: scope.Caller.Member, Action: bridge.MethodAppRolesSet, Object: "member/" + p.Member, Decision: "allow", Detail: detail, Activity: &bridge.ActivityLine{Text: roleActivity(scope.Caller.Member, p, name), View: "members"}})
 	return result, err
