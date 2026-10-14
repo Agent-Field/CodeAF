@@ -37,9 +37,19 @@ type planFile struct {
 	spec.Plan
 }
 
+// appFile also shadows capabilities so tools is always written, as an empty
+// list when no tool is granted: the app definition spells it out.
 type appFile struct {
-	Schema string `json:"$schema"`
+	Schema       string   `json:"$schema"`
+	Capabilities capsFile `json:"capabilities"`
 	spec.App
+}
+
+type capsFile struct {
+	Records    map[string]spec.Access    `json:"records"`
+	Connectors map[string]spec.Connector `json:"connectors,omitempty"`
+	AI         []string                  `json:"ai,omitempty"`
+	Tools      []string                  `json:"tools"`
 }
 
 func planDoc(st State, d Defaults) planFile {
@@ -49,7 +59,7 @@ func planDoc(st State, d Defaults) planFile {
 	plan.Needs = "computed"
 	plan.Data, plan.Automation, plan.Screens = nonNil(plan.Data), nonNil(plan.Automation), nonNil(plan.Screens)
 	plan.Agent.ID = "agent"
-	return planFile{spec.PlanSchemaURL, plan}
+	return planFile{Schema: spec.PlanSchemaURL, Plan: plan}
 }
 
 func nonNil(lines []spec.PlanLine) []spec.PlanLine {
@@ -62,14 +72,13 @@ func nonNil(lines []spec.PlanLine) []spec.PlanLine {
 func appDoc(st State, d Defaults) appFile {
 	app := spec.App{
 		ID: d.AppID, Name: st.Name, Description: st.About, Space: d.Space, Version: 1, Kit: d.Kit,
-		Agent:        spec.AgentRef{Name: agentName(st), File: spec.AgentFile, Model: d.AgentModel},
-		Records:      st.Records,
-		Capabilities: capabilities(st),
-		Triggers:     st.Triggers,
-		Commands:     st.Commands,
-		Budget:       budget(d),
+		Agent:    spec.AgentRef{Name: agentName(st), File: spec.AgentFile, Model: d.AgentModel},
+		Records:  st.Records,
+		Triggers: st.Triggers,
+		Commands: st.Commands,
+		Budget:   budget(d),
 	}
-	return appFile{spec.AppSchemaURL, app}
+	return appFile{Schema: spec.AppSchemaURL, Capabilities: capabilities(st), App: app}
 }
 
 func agentName(st State) string {
@@ -89,8 +98,8 @@ func budget(d Defaults) spec.Budget {
 
 // capabilities is derived, never typed: every record is read-write, the AI
 // verbs follow from what the app does, and connectors come from `connect`.
-func capabilities(st State) spec.Capabilities {
-	caps := spec.Capabilities{Records: map[string]spec.Access{}, AI: aiVerbs(st)}
+func capabilities(st State) capsFile {
+	caps := capsFile{Records: map[string]spec.Access{}, AI: aiVerbs(st), Tools: []string{}}
 	for id := range st.Records {
 		caps.Records[id] = spec.AccessReadWrite
 	}

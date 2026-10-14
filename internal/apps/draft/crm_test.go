@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -121,12 +122,52 @@ func assertSameMeaning(t *testing.T, got spec.Files) {
 		t.Fatalf("files = %v, want %v", got.Paths(), want.Paths())
 	}
 	for _, name := range want.Paths() {
-		if g, w := decodeFile(t, name, got[name]), decodeFile(t, name, want[name]); !reflect.DeepEqual(g, w) {
-			gj, _ := json.MarshalIndent(g, "", " ")
-			wj, _ := json.MarshalIndent(w, "", " ")
-			t.Errorf("%s differs\n got: %s\nwant: %s", name, gj, wj)
+		g, w := decodeFile(t, name, got[name]), decodeFile(t, name, want[name])
+		for _, d := range diffPaths("", g, w) {
+			t.Errorf("%s differs at %s", name, d)
 		}
 	}
+}
+
+// diffPaths lists where two decoded JSON values differ, one line per path.
+func diffPaths(path string, got, want any) []string {
+	switch w := want.(type) {
+	case map[string]any:
+		g, ok := got.(map[string]any)
+		if !ok {
+			return []string{path + ": got " + fmt.Sprint(got) + ", want an object"}
+		}
+		var out []string
+		for _, k := range mapKeys(g, w) {
+			out = append(out, diffPaths(path+"/"+k, g[k], w[k])...)
+		}
+		return out
+	case []any:
+		g, ok := got.([]any)
+		if !ok || len(g) != len(w) {
+			return []string{fmt.Sprintf("%s: got %v, want %v", path, got, want)}
+		}
+		var out []string
+		for i := range w {
+			out = append(out, diffPaths(fmt.Sprintf("%s/%d", path, i), g[i], w[i])...)
+		}
+		return out
+	}
+	if !reflect.DeepEqual(got, want) {
+		return []string{fmt.Sprintf("%s: got %v, want %v", path, got, want)}
+	}
+	return nil
+}
+
+func mapKeys(a, b map[string]any) []string {
+	set := map[string]bool{}
+	for k := range a {
+		set[k] = true
+	}
+	for k := range b {
+		set[k] = true
+	}
+	return sortedKeys(set)
 }
 
 func decodeFile(t *testing.T, name string, data []byte) any {
