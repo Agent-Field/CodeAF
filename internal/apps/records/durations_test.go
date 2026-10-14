@@ -55,3 +55,15 @@ func TestComputedExpressionDiagnostic(t *testing.T) {
 		}
 	}
 }
+
+func TestAComputedDeadlineInADateFieldKeepsItsDay(t *testing.T) {
+	schema := &spec.RecordType{Fields: map[string]*spec.Field{"shoot_at": {Type: spec.FieldDatetime}, "deliver_by": {Type: spec.FieldDate, Computed: `shoot_at + days(28)`}}}
+	rules, err := NewRules(schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := rules.Prepare(bridge.Record{Fields: map[string]any{"shoot_at": "2026-10-20T03:03:22Z"}}, "me", time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC), false)
+	if err != nil || row.Fields["deliver_by"] != "2026-11-17" {
+		t.Fatalf("row %+v err %v", row, err)
+	}
+}

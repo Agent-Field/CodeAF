@@ -79,3 +79,19 @@ func TestUnknownRunHintNamesTheRunsThatExist(t *testing.T) {
 		}
 	}
 }
+
+func TestAFieldReadOffASelectionIsToldWhatASelectionHolds(t *testing.T) {
+	m := selectionField.FindStringSubmatch(`selection.shoots.price: unknown target "price"`)
+	if m == nil {
+		t.Fatal("the message was not recognised")
+	}
+	hint := selectionFieldHint(m[1], m[2])
+	for _, want := range []string{"only id, ids and count", "RecordPage", "$selection.shoots.id"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint lacks %q: %s", want, hint)
+		}
+	}
+	if selectionField.MatchString(`$input.stage: unknown target "stage"`) {
+		t.Error("an input reference was taken for a selection")
+	}
+}

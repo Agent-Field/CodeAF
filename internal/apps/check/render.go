@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -53,6 +54,9 @@ func (r *renderer) issue(path, rule string, err error, hint string) {
 		return
 	}
 	r.seen[key] = true
+	if m := selectionField.FindStringSubmatch(err.Error()); m != nil {
+		hint = selectionFieldHint(m[1], m[2])
+	}
 	r.issues = append(r.issues, finding(r.file, path, rule, err.Error(), hint))
 }
 
@@ -483,4 +487,14 @@ func unknownRunHint(b *spec.Bundle, id string) string {
 		hint = "name one of the runs: " + strings.Join(ids, ", ") + "; or " + hint
 	}
 	return hint
+}
+
+// selectionField matches a reference that reads a field off a selection.
+var selectionField = regexp.MustCompile(`selection\.([A-Za-z0-9_-]+)\.[A-Za-z0-9_.-]*: unknown target "([^"]+)"`)
+
+// selectionFieldHint says what a selection holds and where a field of the
+// selected record is shown instead; renaming the field never repairs it.
+func selectionFieldHint(list, field string) string {
+	return "a selection has only id, ids and count, so selection." + list + "." + field + " does not exist whatever the field is; to show " + field +
+		" of the selected record use a RecordPage bound to {record: \"$selection." + list + ".id\"}, or a records list with the query id:{{selection." + list + ".id}}"
 }

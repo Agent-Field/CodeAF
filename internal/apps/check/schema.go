@@ -27,7 +27,7 @@ func validateFiles(files spec.Files) []Issue {
 		issues = append(issues, finding(name, "", "schema/file", "unsupported definition file", "write app.json, plan.json, agent.md, screens/<id>.json or runs/<id>.yaml"))
 	}
 	if len(issues) > 0 {
-		return issues
+		return collapseShapes(issues)
 	}
 	b, err := spec.Decode(files)
 	if err != nil {
