@@ -29,9 +29,10 @@ func main() {
 	bin := flag.String("bin", "bin/codeaf", "codeaf binary built from the branch")
 	build := flag.String("build", "", "commit sha of the binary (default: git rev-parse --short HEAD)")
 	zoo := flag.String("zoo", "", "path of the zoo tool: adds families to the matrix and records stages")
+	judge := flag.String("judge", "", "blind usefulness judge command, run as `<cmd> <app-id> <dir>`; unset leaves usefulness pending")
 	run := flag.String("run", "", "zoo run id prefix, road is appended (e.g. bl-2115)")
 	flag.Parse()
-	o := options{*file, strings.Split(*roads, ","), *out, *model, *bin, *build, *zoo, *run, *parallel}
+	o := options{*file, strings.Split(*roads, ","), *out, *model, *bin, *build, *zoo, *run, *judge, *parallel}
 	if err := execute(o); err != nil {
 		fmt.Fprintln(os.Stderr, "apps-roadbench:", err)
 		os.Exit(1)
@@ -44,6 +45,7 @@ type options struct {
 	out, model string
 	bin, build string
 	zoo, run   string
+	judge      string
 	parallel   int
 }
 
@@ -103,7 +105,7 @@ func openLabs(ctx context.Context, o options) ([]*lab, error) {
 	var labs []*lab
 	for _, road := range o.roads {
 		road = strings.TrimSpace(road)
-		l, err := newLab(ctx, o.bin, road, o.model, filepath.Join(o.out, "home-"+road))
+		l, err := newLab(ctx, o.bin, road, o.model, filepath.Join(o.out, "home-"+road), o.out, o.judge)
 		if err != nil {
 			for _, started := range labs {
 				started.close()

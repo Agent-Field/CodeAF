@@ -43,3 +43,11 @@ func TestH1AndStageRecords(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 }
+
+func TestParseVerdict(t *testing.T) {
+	for in, want := range map[string]string{"verdict: THIN - sparse screens": "thin", "useless\nwhy": "useless", "Useful.": "useful", "hmm": "pending"} {
+		if got, _ := parseVerdict(in); got != want {
+			t.Errorf("%q: %s want %s", in, got, want)
+		}
+	}
+}

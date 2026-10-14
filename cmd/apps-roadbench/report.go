@@ -65,14 +65,14 @@ func report(build string, rows []row) string {
 	var sb strings.Builder
 	roads := roadsOf(rows)
 	fmt.Fprintf(&sb, "# Builder road bench\n\nPath: served-bridge (real `codeaf app serve`, bridge WebSocket). Binary commit: %s\n\n## Totals per road\n\n", build)
-	sb.WriteString("| road | apps | check pass | opens in Use | runs dry ok | raw errors | first line med/p90 s | total med/p90 s | mean cost $ | rungs |\n|---|---|---|---|---|---|---|---|---|---|\n")
+	sb.WriteString("| road | apps | reach Use | useful/thin/useless | check pass | opens in Use | runs dry ok | raw errors | first line med/p90 s | total med/p90 s | mean cost $ | rungs |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, road := range roads {
 		sb.WriteString(totals(road, byRoad(rows, road)) + "\n")
 	}
-	sb.WriteString("\n## Per app\n\n| id | road | used | state | check | opens | dry | raw | first s | total s | $ | steps | cause |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	sb.WriteString("\n## Per app\n\n| id | road | reach_use | check_pass | usefulness | road_used | raw_errors | first_line_s | total_s | cost | state | cause |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, r := range rows {
-		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %v | %v | %v | %d | %.1f | %.0f | %.4f | %d | %s |\n", r.ID, r.Road, r.RoadUsed, r.State,
-			r.CheckPass, r.OpensInUse, r.RunsDryOK, r.RawErrors, r.FirstLineS, r.TotalS, r.CostUSD, r.Steps, r.Cause)
+		fmt.Fprintf(&sb, "| %s | %s | %v | %v | %s | %s | %d | %.1f | %.0f | %.4f | %s | %s |\n", r.ID, r.Road, r.Stages.Use, r.CheckPass,
+			orPending(r.Useful), r.RoadUsed, r.RawErrors, r.FirstLineS, r.TotalS, r.CostUSD, r.State, r.Cause)
 	}
 	sb.WriteString(rawSection(rows))
 	sb.WriteString("\n## MATRIX\n\n" + matrix(rows, roads))
@@ -124,8 +124,8 @@ func totals(road string, rs []row) string {
 	for _, r := range rs {
 		rungs[orDash(r.RoadUsed)]++
 	}
-	return fmt.Sprintf("| %s | %d | %d/%d | %d/%d | %d/%d | %d | %.1f / %.1f | %.0f / %.0f | %.4f | %s |", road, n,
-		count(rs, func(r row) bool { return r.CheckPass }), n, count(rs, func(r row) bool { return r.OpensInUse }), n,
+	return fmt.Sprintf("| %s | %d | %d/%d | %s | %d/%d | %d/%d | %d/%d | %d | %.1f / %.1f | %.0f / %.0f | %.4f | %s |", road, n,
+		count(rs, func(r row) bool { return r.Stages.Use }), n, usefulText(rs), count(rs, func(r row) bool { return r.CheckPass }), n, count(rs, func(r row) bool { return r.OpensInUse }), n,
 		count(rs, func(r row) bool { return r.RunsDryOK }), n, raw,
 		percentile(first, 50), percentile(first, 90), percentile(total, 50), percentile(total, 90), mean(cost), rungText(rungs))
 }
@@ -244,4 +244,21 @@ func inFamily(rs []row, fam string) []row {
 		}
 	}
 	return out
+}
+
+func orPending(s string) string {
+	if s == "" {
+		return "pending"
+	}
+	return s
+}
+
+// usefulText is "useful/thin/useless" counts, with pending ones noted.
+func usefulText(rs []row) string {
+	c := func(w string) int { return count(rs, func(r row) bool { return orPending(r.Useful) == w }) }
+	text := fmt.Sprintf("%d/%d/%d", c("useful"), c("thin"), c("useless"))
+	if p := c("pending"); p > 0 {
+		text += fmt.Sprintf(" (+%d pending)", p)
+	}
+	return text
 }

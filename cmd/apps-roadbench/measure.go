@@ -28,6 +28,8 @@ type row struct {
 	CostUSD    float64  `json:"cost_usd"`
 	Steps      int      `json:"steps"`
 	Stages     stageSet `json:"stages"`
+	Useful     string   `json:"usefulness"`
+	UsefulWhy  string   `json:"usefulness_reason,omitempty"`
 	Cause      string   `json:"cause,omitempty"`
 	Error      string   `json:"error,omitempty"`
 }
@@ -121,4 +123,24 @@ func causeOf(text string) string {
 		return "H1"
 	}
 	return ""
+}
+
+// dumpTrace keeps every event of one app under out/events/ for the autopsy.
+func dumpTrace(out, road, app string, t trace) {
+	dir := filepath.Join(out, "events")
+	if os.MkdirAll(dir, 0o755) != nil {
+		return
+	}
+	var lines []byte
+	add := func(kind string, v any) {
+		raw, _ := json.Marshal(map[string]any{"kind": kind, "event": v})
+		lines = append(append(lines, raw...), '\n')
+	}
+	for _, b := range t.builds {
+		add("build", b)
+	}
+	for _, d := range t.drafts {
+		add("draft", d)
+	}
+	_ = os.WriteFile(filepath.Join(dir, road+"-"+app+".jsonl"), lines, 0o644)
 }

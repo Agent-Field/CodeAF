@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
@@ -15,13 +17,15 @@ var h1 = regexp.MustCompile(`prompt: "[^"]*" is not an app file`)
 
 // lab is one served process on one road, with the socket the desk would hold.
 type lab struct {
-	road string
-	srv  *server
-	wire *wire
-	hear *collector
+	judge string
+	out   string
+	road  string
+	srv   *server
+	wire  *wire
+	hear  *collector
 }
 
-func newLab(ctx context.Context, bin, road, model, home string) (*lab, error) {
+func newLab(ctx context.Context, bin, road, model, home, out, judge string) (*lab, error) {
 	srv, err := startServe(ctx, bin, road, model, home)
 	if err != nil {
 		return nil, err
@@ -32,7 +36,7 @@ func newLab(ctx context.Context, bin, road, model, home string) (*lab, error) {
 		srv.stop()
 		return nil, err
 	}
-	return &lab{road: road, srv: srv, wire: w, hear: hear}, nil
+	return &lab{judge: judge, out: out, road: road, srv: srv, wire: w, hear: hear}, nil
 }
 
 func (l *lab) close() { l.wire.close(); l.srv.stop() }
@@ -58,8 +62,11 @@ func (l *lab) build(ctx context.Context, p para, lim limits) row {
 	r.Stages.Plan = l.waitPlan(ctx, sum.ID, lim.plan)
 	var ended time.Time
 	if r.Stages.Plan {
-		_ = l.wire.call(ctx, sum.ID, bridge.MethodBuilderWrite, bridge.Empty{}, nil)
-		r.State = l.waitState(ctx, sum.ID, lim.build)
+		if err := l.startWrite(ctx, sum.ID, lim.plan); err != nil {
+			r.State, r.Error = "write-refused", err.Error()
+		} else {
+			r.State = l.waitState(ctx, sum.ID, lim.build)
+		}
 	} else {
 		r.State = "plan-failed"
 	}
@@ -67,6 +74,21 @@ func (l *lab) build(ctx context.Context, p para, lim limits) row {
 	time.Sleep(300 * time.Millisecond) // let the last events reach the collector
 	l.finish(ctx, &r, sum.ID, began, ended)
 	return r
+}
+
+// startWrite presses "Write it". The plan file lands before the plan task
+// ends, and the Builder refuses a write while a step runs, so a refusal is
+// retried until the plan card would be live.
+func (l *lab) startWrite(ctx context.Context, app string, limit time.Duration) error {
+	var last error
+	ok := poll(ctx, limit, func() (bool, bool) {
+		last = l.wire.call(ctx, app, bridge.MethodBuilderWrite, bridge.Empty{}, nil)
+		return last == nil, last == nil
+	})
+	if ok {
+		return nil
+	}
+	return last
 }
 
 func (l *lab) get(ctx context.Context, app string) (bridge.AppDetail, error) {
@@ -117,7 +139,10 @@ func poll(ctx context.Context, limit time.Duration, step func() (ok, stop bool))
 
 func (l *lab) finish(ctx context.Context, r *row, app string, began, ended time.Time) {
 	t := l.hear.take(app)
+	dumpTrace(l.out, l.road, app, t)
 	d, _ := l.get(ctx, app)
+	l.keepFiles(app, d.Files)
+	r.Useful = "pending"
 	v := judge(t.lastCheck(), d.Files, r.State)
 	lines := t.lines()
 	st := t.stages()
@@ -131,11 +156,14 @@ func (l *lab) finish(ctx context.Context, r *row, app string, began, ended time.
 	r.FirstLineS, r.TotalS = seconds(began, t.firstLine()), seconds(began, ended)
 	r.CostUSD, r.Steps = t.cost(), journalSteps(root, app)
 	if r.State != string(bridge.StatePreview) {
-		r.Error = t.lastFailure()
+		if r.Error == "" {
+			r.Error = t.lastFailure()
+		}
 		r.Cause = causeOf(r.Error)
 		return
 	}
 	r.Stages.Keep, r.Stages.Use = l.keepAndUse(ctx, app)
+	l.judgeBlind(r, app)
 }
 
 // keepAndUse keeps the app the way the desk does, then reads it the way Use
@@ -198,4 +226,25 @@ func runAll(ctx context.Context, labs []*lab, ps []para, parallel int, lim limit
 	}
 	wg.Wait()
 	return rows
+}
+
+// appDir is where one app's final definition files are kept.
+func (l *lab) appDir(app string) string { return filepath.Join(l.out, l.road, app) }
+
+func (l *lab) keepFiles(app string, files map[string]string) {
+	for name, text := range files {
+		path := filepath.Join(l.appDir(app), name)
+		if os.MkdirAll(filepath.Dir(path), 0o755) == nil {
+			_ = os.WriteFile(path, []byte(text), 0o644)
+		}
+	}
+}
+
+// judgeBlind asks the usefulness judge about the files alone; it is never told
+// the road. Without a judge command the verdict stays "pending".
+func (l *lab) judgeBlind(r *row, app string) {
+	if l.judge == "" {
+		return
+	}
+	r.Useful, r.UsefulWhy = runJudge(l.judge, r.ID, l.appDir(app))
 }

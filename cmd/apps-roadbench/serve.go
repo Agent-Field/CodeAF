@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // server is one `codeaf app serve` process on one road, launched the way the
@@ -25,9 +28,9 @@ type server struct {
 }
 
 // startServe launches the binary with the road and model in ITS environment
-// only. The first stdin line is the key handoff; it carries no keys, so the
-// served process resolves the OpenRouter key from the profile itself. Stdin
-// stays open, because closing it is how the app stops.
+// only. The first stdin line is the key handoff, the way the desk gives the
+// served process its OpenRouter key. Stdin stays open, because closing it is
+// how the app stops.
 func startServe(ctx context.Context, bin, road, model, home string) (*server, error) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, err
@@ -51,7 +54,7 @@ func startServe(ctx context.Context, bin, road, model, home string) (*server, er
 		return nil, err
 	}
 	s := &server{cmd: cmd, stdin: stdin, home: home, road: road}
-	if _, err := io.WriteString(stdin, "{\"keys\":{}}\n"); err != nil {
+	if err := writeHandoff(stdin); err != nil {
 		s.stop()
 		return nil, err
 	}
@@ -91,4 +94,19 @@ func (s *server) stop() {
 		_ = s.cmd.Process.Kill()
 		<-done
 	}
+}
+
+// writeHandoff sends the profile's OpenRouter key on the pipe, as the desk
+// does. The key is never printed or logged.
+func writeHandoff(w io.Writer) error {
+	key := config.APIKeyAt(config.ProfilePath(config.ProfileDir(), ""))
+	if key == "" {
+		return errors.New("no OpenRouter key in the codeaf profile")
+	}
+	line, err := json.Marshal(map[string]map[string]string{"keys": {modelsource.DefaultID: key}})
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(append(line, '\n'))
+	return err
 }
