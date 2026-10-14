@@ -196,7 +196,7 @@ func (s *Service) writeUnit(ctx context.Context, b *build, plan prompt.Plan, pla
 
 // expectFiles parses a WRITE reply and keeps exactly the files asked for.
 func expectFiles(reply string, only []string) (map[string][]byte, error) {
-	parsed, err := prompt.ParseFilesFor(reply, only)
+	parsed, err := prompt.ParseFiles(reply)
 	if err != nil {
 		return nil, err
 	}
@@ -263,13 +263,7 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 	if err != nil {
 		return nil, err
 	}
-	var expect []string
-	if only != "" {
-		expect = []string{only}
-	}
-	changed, err := converse(ctx, s, b, text, func(reply string) (map[string][]byte, error) {
-		return prompt.ParseFilesFor(reply, expect)
-	})
+	changed, err := converse(ctx, s, b, text, prompt.ParseFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -292,31 +286,6 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 	}
 	s.announce(b, changed, "Fixed "+strings.Join(spec.Files(changed).Paths(), ", "))
 	return next, nil
-}
-
-// reportNames reports whether a Check report has an issue in file.
-func reportNames(report, file string) bool {
-	for _, line := range strings.Split(report, "\n") {
-		if strings.HasPrefix(line, file) {
-			return true
-		}
-	}
-	return false
-}
-
-// keepPlanFix accepts a plan.json repair only when Check named plan.json and
-// the new plan still parses; the plan card then shows the repaired lines.
-func keepPlanFix(b *build, changed map[string][]byte, named bool) {
-	raw, ok := changed[spec.PlanFile]
-	if !ok {
-		return
-	}
-	plan, err := decodePlan(string(raw))
-	if !named || err != nil {
-		delete(changed, spec.PlanFile)
-		return
-	}
-	b.setPlan(plan)
 }
 
 func asText(files spec.Files) map[string]string {
@@ -364,10 +333,13 @@ func checkLog(r bridge.CheckReport) string {
 
 // formatReport is the check report as the FIX call reads it, one issue a line.
 func formatReport(r bridge.CheckReport) string {
-	return (&roundMemory{}).formatReport(r, nil)
+	lines := make([]string, 0, len(r.Issues))
+	for _, issue := range r.Issues {
+		lines = append(lines, issue.String()+lengthHint(issue))
+	}
+	sort.Strings(lines)
+	return strings.Join(lines, "\n")
 }
-
-func sortStrings(lines []string) { sort.Strings(lines) }
 
 // preview seeds sample records and opens the preview. The Builder writes only
 // sample rows, never real ones, and never reads them back.

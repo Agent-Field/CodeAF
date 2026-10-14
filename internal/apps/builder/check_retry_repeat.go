@@ -3,6 +3,7 @@ package builder
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -50,7 +51,7 @@ func (m *roundMemory) formatReport(r bridge.CheckReport, files spec.Files) strin
 	for _, issue := range r.Issues {
 		lines = append(lines, issue.String()+lengthHint(issue)+m.note(issue, files))
 	}
-	sortStrings(lines)
+	sort.Strings(lines)
 	return strings.Join(lines, "\n")
 }
 

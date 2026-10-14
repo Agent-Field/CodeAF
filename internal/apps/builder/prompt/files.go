@@ -23,13 +23,11 @@ func ValidPath(path string) bool { return appFilePath.MatchString(path) }
 // FilesObjectError tells the repair call which keys were returned instead of
 // app paths, so an inline app definition does not end the write step.
 type FilesObjectError struct {
-	Keys   []string
-	Expect []string // paths the call asked for, when known
-	Sent   string   // kind of file object sent without its path, if recognised
+	Keys []string
 }
 
 func (e *FilesObjectError) Error() string {
-	return fmt.Sprintf("prompt: return a JSON object mapping app file paths to contents; got keys %q", e.Keys) + e.shapeHint()
+	return fmt.Sprintf("prompt: return a JSON object mapping app file paths to contents; got keys %q", e.Keys)
 }
 
 // ParseFiles prefers an explicit files wrapper, then the first object whose
