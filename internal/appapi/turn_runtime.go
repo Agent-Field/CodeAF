@@ -152,6 +152,9 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		if !open {
 			break
 		}
+		if progress(event.Kind) {
+			a.workShown(live)
+		}
 		if waiting && progress(event.Kind) && !a.liveNeedsPerson(id, live) {
 			waiting = false
 			_ = a.transitionState(id, "running", live, generation)
@@ -214,7 +217,7 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		live.longTimer.Stop()
 		live.longTimer = nil
 	}
-	live.running = false
+	live.running, live.taken = false, false
 	state, how := "idle", "done"
 	if failed {
 		state, how = "failed", "failed"

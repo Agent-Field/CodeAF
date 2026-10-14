@@ -119,6 +119,11 @@ type agentLive struct {
 	// held names Inbox items whose answer waits out its Undo window; the
 	// agent is not waiting on the person for those questions.
 	held map[string]bool
+	// taken is set when the engine takes a held answer. Its own word and the
+	// presence file still say needs-person for a moment after that, so both
+	// are left unread until work shows, the word catches up, a new question
+	// opens or the turn ends.
+	taken bool
 }
 
 // needsPerson is the one reading of "waiting on the person" for views and
@@ -135,11 +140,26 @@ func (live *agentLive) needsPerson(id string) bool {
 	live.pruneHeld(id, open)
 	for _, q := range open {
 		if !live.held[inboxQuestionID(id, q)] {
+			live.taken = false
 			return true
 		}
 	}
 	// Every open question is answered and held: the person is not waited on.
-	return len(open) == 0 && live.conn.Engine.NeedsPerson()
+	if len(open) > 0 {
+		return false
+	}
+	// No question is open, so only the engine's word is left; just after an
+	// answer was taken that word is the old one.
+	if !live.conn.Engine.NeedsPerson() {
+		live.taken = false
+	}
+	return !live.taken && live.conn.Engine.NeedsPerson()
+}
+
+// readsPresence reports whether the presence file may speak for this agent:
+// not while an answer is held or was just taken, when the file is behind.
+func (live *agentLive) readsPresence() bool {
+	return live == nil || len(live.held) == 0 && !live.taken
 }
 
 // pruneHeld drops holds whose question the engine has taken: a sent answer
@@ -152,8 +172,17 @@ func (live *agentLive) pruneHeld(id string, open []session.Question) {
 	for item := range live.held {
 		if !still[item] {
 			delete(live.held, item)
+			live.taken = true
 		}
 	}
+}
+
+// workShown ends the wait on the engine's word after a taken answer: work
+// after the answer means a need it reports now is a new one.
+func (a *AgentRegistry) workShown(live *agentLive) {
+	a.mu.Lock()
+	live.taken = false
+	a.mu.Unlock()
 }
 
 func (a *AgentRegistry) liveNeedsPerson(id string, live *agentLive) bool {
@@ -344,7 +373,7 @@ func (a *AgentRegistry) view(record agentRecord) Agent {
 		presence, fresh := session.ReadSessionPresence(filepath.Dir(record.SessionFile), a.now())
 		switch {
 		// A held answer is the one case the presence file is behind on.
-		case live != nil && live.needsPerson(agent.ID), (live == nil || len(live.held) == 0) && fresh && presence.NeedsPerson():
+		case live != nil && live.needsPerson(agent.ID), live.readsPresence() && fresh && presence.NeedsPerson():
 			agent.State = "needs_you"
 		case live != nil && live.running, fresh && (presence.State == session.PresenceWorking || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0):
 			agent.State = "running"
