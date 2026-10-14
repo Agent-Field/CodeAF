@@ -187,7 +187,9 @@ func (a *AgentRegistry) watchAsks(agent string, conn *AgentConnection) {
 		})
 	}
 	engine := conn.Engine
+	a.workers.Add(1)
 	go func() {
+		defer a.workers.Done()
 		timers := map[string]*time.Timer{}
 		defer func() {
 			for _, timer := range timers {
