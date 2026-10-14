@@ -16,6 +16,16 @@ const patch: PatchAgentRequest = { pinned: false, expect: { version: 0 } };
 const money: Money = { usd: "4.20" };
 const setup: SetupResponse = { step: 1, has_key: false, day_cap: null, complete: false };
 const settings: Settings = { "models.default": "model-id", extension: [null, { on: true }] };
+const models: AppResponse<"GET /app/v1/models"> = {
+  models: [
+    { id: "known/model", name: "Known", provider: "openrouter", available: true, efforts: [], price_in: 2, price_out: 8 },
+    { id: "unknown/model", name: "Unknown", provider: "openrouter", available: true, efforts: [] },
+  ],
+  default: "", resolved: "known/model", pinned: ["", "", ""],
+};
+const resolvedModel: string = models.resolved;
+const inputPrice: number | undefined = models.models?.[0]?.price_in;
+const outputPrice: number | undefined = models.models?.[0]?.price_out;
 const arbitrary: JsonValue = { nested: [null, true, 3, "value"] };
 const conflict: ConflictResponse = { error: "changed", request_id: "opaque", reason: "stale", by: "you" };
 const hello: AppEvents["hello"] = { epoch: "opaque", codeaf_version: "dev", contract };
@@ -57,6 +67,8 @@ const wrongPayload: AppEvent<"turn.delta"> = { event: "turn.delta", data: { proc
 const signIn: AppRequest<"POST /app/v1/providers/openrouter/sign-in"> = { theme: "dark" };
 // @ts-expect-error Embedded Agent fields are flattened, not nested.
 const nestedAgent = response.Agent;
+// @ts-expect-error Optional model prices omit unknown values rather than encoding null.
+const nullPrice: NonNullable<typeof models.models>[number] = { id: "model", name: "Model", provider: "openrouter", available: true, efforts: [], price_in: null };
 
 
 import type { FactoryRequest, FactoryResponse } from "../../../../docs/design/app-v2/wire";
