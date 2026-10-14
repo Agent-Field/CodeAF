@@ -163,3 +163,63 @@ func TestMemoryReceiptReturnsOnlyToItsOriginatingConversation(t *testing.T) {
 		t.Fatalf("returning to the original conversation lost its receipt: %q", got)
 	}
 }
+
+// A LINE MEMORY SAYS WHILE ITS CONVERSATION IS OUT OF SIGHT WAITS FOR THE
+// PERSON. The keeper holds a conversation's standing lane while another one is
+// on screen, and it drained memory's notices to nowhere: a line noticed after a
+// turn the person had walked away from was said to nobody, and nothing ever said
+// it again. Now the watcher keeps it, a stir files it with that conversation's
+// parked receipts, and coming back draws it there. A notice the transcript
+// already carries is not kept — coming back redraws it anyway.
+func TestAMemoryNoticeSaidOutOfSightWaitsForThePerson(t *testing.T) {
+	const said = "noticed and remembered · wants tabs in Go · for this project · see or forget it on the Memories tab"
+	lane := make(chan session.Event, 4)
+	away := &taskLaneAgent{fakeAgent: &fakeAgent{model: "m"}, lane: lane}
+	out := make(chan behindStirMsg, stirDepth)
+	watch := startBehindWatch("/tmp/lab/away.jsonl", away, out)
+	defer watch.stop()
+
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/front.jsonl"
+	conv := Conversation{Agent: away, SessionFile: "/tmp/lab/away.jsonl", Workspace: "/tmp/lab"}
+	held := &kept{conv: conv, side: &aside{}, watch: watch}
+	a.behind = map[string]*kept{"/tmp/lab/away.jsonl": held}
+
+	lane <- session.Event{Kind: session.EventNotice, Text: "a program ended, so here is what it said"}
+	lane <- session.Event{Kind: session.EventNotice, Text: said, Unrecorded: true}
+	deadline := time.After(2 * time.Second)
+	for len(held.side.parkNotes) == 0 {
+		select {
+		case stir := <-out:
+			a.behindStir(stir)
+		case <-deadline:
+			t.Fatal("a memory notice said out of sight was never kept")
+		}
+	}
+	if len(held.side.parkNotes) != 1 || held.side.parkNotes[0] != said {
+		t.Fatalf("the kept lines are %q, want only the memory notice", held.side.parkNotes)
+	}
+	if len(a.entries) != 0 {
+		t.Fatal("a line said out of sight was drawn in the conversation on screen")
+	}
+	a.attachConversation(conv, held.side)
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "noticed and remembered · wants tabs in Go") {
+		t.Fatalf("coming back did not draw the kept line: %q", got)
+	}
+}
+
+// AND A TURN'S OWN LINE WAITS FOR THE TURN TO END: a person who comes back while
+// it is still running is shown it again by the turn's own replay, so keeping it
+// before then would draw it twice.
+func TestATurnsMemoryNoticeIsKeptOnlyOnceTheTurnEnds(t *testing.T) {
+	watch := &behindWatch{key: "/tmp/lab/away.jsonl"}
+	watch.holdTurnNotice("noticed and remembered · wants tabs in Go")
+	if got := watch.takeNotices(); len(got) != 0 {
+		t.Fatalf("a running turn's line was handed over before the turn ended: %q", got)
+	}
+	watch.turnNoticesLanded()
+	watch.holdNotice("noticed and remembered · wants tabs in Go")
+	if got := watch.takeNotices(); len(got) != 1 {
+		t.Fatalf("an ended turn's line was not kept exactly once: %q", got)
+	}
+}

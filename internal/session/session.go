@@ -694,7 +694,14 @@ type Event struct {
 	// Discard says an EventError ended a cut attempt whose streamed text was
 	// never a reply. The surface withdraws that attempt before drawing the
 	// error, as it does for EventRetrying, without counting another retry.
-	Discard       bool `json:"Discard,omitempty"`
+	Discard bool `json:"Discard,omitempty"`
+	// Unrecorded says an EventNotice is in no record a returning surface
+	// redraws: memory's notices ([Agent.sayMemory]) are said to the person and
+	// never written into the transcript. A surface holding this conversation
+	// out of sight keeps such a line and draws it when the person brings the
+	// conversation back (tui3's keeper.go). Every other notice is either in the
+	// transcript already or said for the moment it is said in.
+	Unrecorded    bool `json:"Unrecorded,omitempty"`
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
 	// Skills is the ordered list of skill names this turn carried, on the

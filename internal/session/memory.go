@@ -1000,7 +1000,7 @@ func (a *Agent) sayMemory(text string) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	event := Event{Kind: EventNotice, Text: text}
+	event := Event{Kind: EventNotice, Text: text, Unrecorded: true}
 	if a.hub.send(event) {
 		return
 	}
