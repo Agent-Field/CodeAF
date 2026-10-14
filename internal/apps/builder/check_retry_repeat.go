@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
@@ -52,7 +53,24 @@ func (m *roundMemory) formatReport(r bridge.CheckReport, files spec.Files) strin
 		lines = append(lines, issue.String()+lengthHint(issue)+m.note(issue, files))
 	}
 	sort.Strings(lines)
+	if !r.Pass {
+		lines = append(lines, designWarnings(files)...)
+	}
 	return strings.Join(lines, "\n")
+}
+
+// designWarnings ride along in a FIX call a real failure already caused;
+// they never fail Check, so they cannot cost reach.
+func designWarnings(files spec.Files) []string {
+	b, err := spec.Decode(files)
+	if err != nil {
+		return nil
+	}
+	var lines []string
+	for _, w := range check.DesignWarnings(b) {
+		lines = append(lines, "warning (fix while you are here; never at the cost of a failing item): "+w.String()+"; fix: "+w.FixHint)
+	}
+	return lines
 }
 
 // valueAt quotes the JSON value at pointer in file, or a short placeholder.
