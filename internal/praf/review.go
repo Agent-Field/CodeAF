@@ -229,6 +229,13 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		defer cancel()
 	}
 	result, pr, err := r.review(reviewCtx, orch.Deps{App: review, GH: gh, NodeID: Name, Local: tracker, SpentUSD: spent}, in, cfg)
+	if err == nil {
+		for _, finding := range result.Findings {
+			if err = finding.ValidateConsistency(); err != nil {
+				break
+			}
+		}
+	}
 	cost, sessionCount, callCount := sessions.Spent()
 	if err != nil {
 		_, _ = fmt.Fprintf(notes, "[review] the review ended without a result: %v\n", err)
@@ -277,9 +284,43 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		run.failNote = strings.TrimSpace(run.failNote + fmt.Sprintf(" %d of its %d agent sessions and single calls failed, so parts of the review may be missing; the first with: %s",
 			calls.Failed, calls.Total, firstSentence(calls.FirstErr)))
 	}
+	coverage := ReportCoverage{
+		FailedSessions: calls.SessionFailed, FailedCalls: calls.Failed - calls.SessionFailed,
+		DegradedDimensions: result.Metadata.DegradedDimensions, BudgetExhausted: result.Summary.BudgetExhausted,
+		StoppedAt: run.cutAt,
+	}
+	coverage.Complete = calls.Failed == 0 && coverage.DegradedDimensions == 0 && !coverage.BudgetExhausted && coverage.StoppedAt == ""
+	run.partial = !coverage.Complete
+	if run.partial {
+		// The posting payload names missing work, not raw local/provider
+		// exceptions that may contain private paths or account details.
+		var limits []string
+		if calls.Failed > 0 {
+			limits = append(limits, fmt.Sprintf("%d agent sessions and %d single calls failed; parts of the review may be missing.", coverage.FailedSessions, coverage.FailedCalls))
+		}
+		if run.cutAt != "" {
+			limits = append(limits, cutSentence(run.cutAt, run.wall))
+		}
+		if coverage.BudgetExhausted {
+			limits = append(limits, "A budget limit stopped new work; later checks were skipped.")
+		}
+		if coverage.DegradedDimensions > 0 {
+			limits = append(limits, fmt.Sprintf("%d review dimensions degraded; parts of the change may be missing.", coverage.DegradedDimensions))
+		}
+		coverage.Note = strings.Join(limits, " ")
+		if run.failNote == "" && run.cutAt == "" {
+			run.failNote = coverage.Note
+		}
+		var body strings.Builder
+		body.WriteString(partialWarning + " " + coverage.Note + "\n\nThis report covers only the work that completed.\n")
+		for i, finding := range sortedFindings(result.Findings) {
+			body.WriteString(markdownFinding(i+1, finding, run.checkout))
+		}
+		result.Review = orch.PartialReviewPayload(result.Review, body.String())
+	}
 
 	host.Stage(delegate.StageRecord{Stage: stageReport, Status: "running", Data: stageData(map[string]any{"doing": "writing the review"})})
-	saved := Saved{Program: Name, Focus: request.Focus, Review: result,
+	saved := Saved{Program: Name, Focus: request.Focus, Review: result, Coverage: &coverage,
 		PullRequest: SavedPullRequest{Owner: t.Owner, Repo: t.Repo, Number: t.Number, URL: t.URL()}}
 	if pr != nil {
 		saved.PullRequest.Title, saved.PullRequest.HeadSHA = pr.Title, pr.HeadSHA
@@ -302,6 +343,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		CostUSD:     cost,
 		Deliverable: account(result, run, files),
 		Extra: map[string]any{
+			"partial":      run.partial,
 			"pull_request": t.String(), "reports": files, "findings": result.Summary.TotalFindings,
 			"blocking": result.Summary.BlockingCount, "sessions": sessionCount, "calls": callCount, "cut_at": run.cutAt,
 		},

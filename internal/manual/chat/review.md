@@ -66,6 +66,20 @@ When it finishes, the chat is handed a short account whose first line says what 
 
 A shell run's record folder is under `~/.codeaf/v3/carried/review/`, one folder per run.
 
+An assembled review can finish successfully while covering only part of the change.
+Its first line says `Partial review` when a session failed, a dimension degraded,
+or a time or dollar limit stopped work. The JSON report keeps those coverage facts,
+and the review it would post carries the same warning. A partial review cannot be
+posted as an approval; a valid partial report can still be posted as a comment or
+request for changes on your yes. Terminal success means the report was assembled,
+not that every check completed.
+
+A reported consistency defect must include its explanation and code
+location with a valid line range. Missing details end the run with a failure record
+instead of a postable review. Posting also refuses such malformed findings in older
+saved reports. Older reports with a known budget stop or degraded work need the
+coverage facts and posting warning before they can be posted.
+
 If the pipeline stops before it returns an assembled review, the run keeps `review-failure.json` and `review-failure.md` instead. They record the stage, reason, elapsed time, recorded spend and failed call counts. They contain no review and cannot be posted as one; the run still ends as failed or stopped on its ceiling.
 
 ## Post the review to GitHub — comment on the pull request, request changes, /review post

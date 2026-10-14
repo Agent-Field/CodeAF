@@ -18,6 +18,767 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.8.0 — 2026-10-14
+
+### Added
+
+- **ai& is offered as a provider of its own, asked for by key and nothing else** — [#1737](https://github.com/Agent-Field/codeaf/pull/1737) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - ai& was reachable only by hand, as a **Custom OpenAI-compatible API** row with `https://api.aiand.com/v1` typed into it, a name typed beside it and a key pasted in. It now has its own row in `/connect`, its own name in `codeaf connect aiand` and its own row in the Connections category of /settings.
+  - A provider that served more than one lab had no way to say so. Every direct connection was treated as one family, because one lab's own API takes one family. ai& is reached through six catalog vendors from the one key, and the crew can now put a planner and a checker on different labs through it.
+  - A connection is seated on its vendor's flagship, on the assumption that the best model is the one to land a person on. On ai& that model takes text alone, so the first attachment a person tried was refused by the model codeaf had chosen for them. The preference is now the best model that also takes a file.
+
+  One prepaid credit spends any model in ai&'s list, and that list reaches GLM,
+  DeepSeek, Qwen and Kimi at once, so a single key covers models a person would
+  otherwise open four accounts for. ai& is one row in `modelsource.Vendored()`,
+  and every surface a person touches is derived from that catalog — the connect
+  panel, the providers group, the picker group, the Connections category in
+  /settings and `codeaf connect aiand`.
+
+  ai& lists its models — `GET /v1/models` answers — so the connect line carries
+  the count that came back, for example `aiand is connected · 13 models`, and
+  `/model` fills its group from that list rather than asking for a typed id.
+
+  The row's preference was CHANGED by what that list says. It was the flagship,
+  `zai-org/glm-5.3`, whose vendor manifest answers `attachment: false` — a person
+  who dropped a screenshot into their first ai& conversation was refused by the
+  model codeaf had just seated them on. It is now `zai-org/glm-5.3-flash`: the
+  same family, `input: [text, image, video]`, and $0.15/$0.50 against the
+  flagship's $1.00/$4.00. The rule the row follows is the one `Source` already
+  states — the vendor's best model, not simply its flagship.
+
+  What makes ai& a row naming six vendors rather than one is that it is not one
+  lab, so the crew treats it as one route that spans families:
+  `crewVendors["aiand"]` names `deepseek`, `z-ai`, `moonshotai`, `qwen`, `openai`
+  and `google`, and one key can carry a planner and a checker sitting on different
+  labs in the same task. The rename in `crewVendorWire` is not a spelling
+  preference: asked on 2026-10-02 for the bare names the table avoids sending —
+  `glm-5.3-flash`, `deepseek-v4-flash` — api.aiand.com answered 404
+  `model_not_found` for every one, while the two-segment forms answered 200. So a
+  send without it is a call that fails.
+
+  The implementation is a base-URL swap: `Config.Direct` already switches off the
+  router's lane sheet, receipt fetch, price ceiling and routing vocabulary for a
+  vendor reached directly, `clientdoor.go` keys its adapter pool on the resolved
+  connection, and `internal/config/crew.go` carries the two tables above as its
+  only production code. Effort clamping for direct providers and one
+  crew-unreachable vendor (`motif-technologies/motif-3`, pickable by hand) are
+  recorded as future work, not acted on here. Nothing on the wire separates a
+  subscription from metered credit, so codeaf makes no plan claim — a run with
+  nothing left is answered by ai& with a `402` and `insufficient_credits`, the
+  balance speaking, not a bad key.
+
+  </details>
+
+- **memories belong to an owner, every write walks one door, and failure is visible** — [#1745](https://github.com/Agent-Field/codeaf/pull/1745) · `chat` `engine` `docs`
+
+  <details><summary>10 things that are no longer true</summary>
+
+  - The memory `scope` column was a label, not an owner: the router's shortlist, the dedup search and a forget query were unfiltered, so a project's memory could surface — and be updated — in an unrelated project. Every memory now carries an `owner` (`user`, `machine`, `project:<key>`), every read that can put a memory in front of a model filters on it, and the reads without one are refused rather than allowed to widen.
+  - A project's identity was the word `project` and nothing else. It is now proved from the workspace: the git origin's normalized URL (an SSH clone and an HTTPS clone of one repository are one project), or the canonical path when there is no remote. A memory whose project cannot be proved is quarantined, never re-attributed to the person at large; rows the migration can prove — through their source session's own workspace record — are re-homed to that project.
+  - The routed `remember…` command wrote through AddMemory directly, the one door with no duplicate check, so the same preference said three ways through three mouths could be three rows. Every mouth — /remember, the remember tool, the routed command, the post-turn extraction and the legacy import — now walks one door with one dedup rule, and both outcomes (kept, skipped) are journaled.
+  - Memory writes failed silently: an extraction the settle could not finish, a store refusal, an import that stopped halfway — nothing anywhere recorded it. Failures are now journaled (`memory_write_failed`, with the door and the reason), said once per five-minute window as a dim line, and fall back to `v3/memory-failures.log` when the store itself is what failed.
+  - The legacy memory.md import renamed the file whether or not the rows landed, and ignored the scanner's own error. The rename now happens only after every row landed; a scan error or a failed row leaves the file in place and retries later, and the retry is idempotent — kept lines are skipped, never duplicated.
+  - An explicit save needed the small memory model: when the decider could not answer, /remember lost the words. The decider's failure is journaled and the save still happens through the store's own dedup door, which needs no model.
+  - Turning memory off also closed the conversation index, so `search_conversations` disappeared with it — a feature nobody asked to lose. The conversation index is now its own handle on the same file: the memory row decides what is REMEMBERED, never what is SEARCHABLE, and a memory-off conversation still indexes itself and still carries the search verb.
+  - The FTS5 index was assumed. It is now proved by a probe at open: a build whose SQLite has no FTS5 opens with memory intact and only the lexical tier quiet, with no install step and no fallback data store.
+  - The memory listing could not page: a caller asked for the first N and stopped. The store has keyset pagination (`MemoryPage`) on the same newest-touched ordering, with a cursor that survives writes landing between pages.
+  - Sync was promised by the schema and delivered by nothing. The store now exports memory events after a cursor (`ExportMemoryEvents`) and folds a batch idempotently (`ApplyMemoryEvents`) with a receiver's owner policy: adds re-deliver as skips, tombstones never resurrect, first-applied wins on concurrent supersession, and refused owners are skipped, never widened. No transport ships with this — PR #1738's pairing carries it later.
+
+  The memory architecture review (docs/memory-architecture.md) found four
+  structural defects in the pipeline — scope leak, split write doors, silent
+  failure, lossy import — and this change lands the substrate that closes them.
+  The architecture document is updated in the same change to say what shipped
+  and what is deliberately deferred (embedding vectors, team owners, the sync
+  transport).
+
+  </details>
+
+- **ordinary memory retains evidence and conditional context before actions** — [#1777](https://github.com/Agent-Field/codeaf/pull/1777) · `chat` `engine` `docs`
+
+  <details><summary>34 things that are no longer true</summary>
+
+  - Project corrections previously searched every owner readable by a session. Settlement now stays in the candidate owner, and supersession refuses an owner change.
+  - Equal titles could discard distinct bodies and concurrent exact writes could duplicate a claim. Duplicate settlement now checks complete normalized bodies within one transaction.
+  - Router failure or late recall could remove binding context from the first action. Supporting explicit user rules and decisions now have bounded local context before the first request, with lexical fallback and optional semantic routing.
+  - Assistant assertions and model-reported memory use were treated as outcome evidence. Ordinary extraction now keeps source words or independent receipts, conditions, rationale and revision eligibility; model self-report does not train benefit ranking.
+  - Forgetting only hid a saved row. It now suppresses all historical recorded sources and derived use; searchable original conversation history remains.
+  - Cross-project names alone supplied no consequence evidence. Successful full reads can establish exact resolved dependencies, and bounded consumer rereads support actionable hypotheses with content-based dismissal. Dynamic dependencies remain unsupported.
+  - An observed attempt hashed the raw tool receipt while the evidence row for the same receipt hashed the redacted one, so a secret-bearing receipt broke the memory-forget provenance join. Attempts now hash the redacted bytes on every writer (session, delegated, settled job), and a settled line is bounded to the store's own title and text caps instead of being refused when the decider answered longer than the candidate it merged.
+  - A changed producer needed one of a fixed list of words in the turn before a consequence was considered. Impact checks are now driven by the observed state, so an ordinary request is not missed, and an unchanged file stays quiet.
+  - A delegated paired re-read of a changed producer beside an unchanged consumer reset the recorded baseline and hid the consequence. The baseline is now kept until the consumer's own assumption changes.
+  - A narrative of newer incidental observations could push a live rare approved rule out of the binding read. Approved rules and confirmed decisions now have their own bounded authority-window projection; latest correction, expiry, conditions and suppression still win.
+  - A cited history lookup, task summary or memory_evidence result could become an independent observation and re-learn suppressed history under a new receipt id. Derived receipts no longer corroborate; genuine raw tool evidence is unchanged. Original conversation history still exists on disk and is not erased.
+  - A standing run authorized to act unattended was built from a vision posture with no brain, so it could act before any of the project's approved binding rules were in front of it. The run is now lent the owner-scoped canonical brain READ-ONLY: it reads the rules before its first action and remembers, extracts, observes or dismisses nothing back.
+  - A home filing whose Save failed still answered with the moved origin as though the record were on disk. The item is now returned as it actually stands, with the write failure surfaced and a visible needs-person line.
+  - A true substring inside a question or a rejected third-party quotation could become an approved rule. Authority is now judged from the containing clause as well as the quote, so a question or a rejected quotation is a proposal while polite directives and ordinary literal constraints still bind.
+  - A standing run with memory on silently fell back to an unbound run when its brain could not be opened, so an action-capable task could edit without any approved binding rule in front of it. Memory-on binding now fails closed and visible before any provider or tool call; memory-off stays intentionally absent, and an already-supplied brain is bound rather than bypassed.
+  - Machine scope was kept for any supported quote and its evidence was pinned to the origin project, so an explicit machine-wide rule became silently project-local. Machine scope now needs its own supporting span, carries no project condition, and applies across projects on the same authorized machine; a project span beside a global sentence, 'everywhere in this project', and any tool observation all stay project-local.
+  - A credential spoken beside a genuine constraint was persisted and rendered verbatim in the claim body and evidence. Literal support is still checked against the person's original words, but every persisted or rendered human-readable field is now passed through the existing secret redactor first.
+  - Dismissal matched a substring over every held notice. It now drops exactly what the person named, an unmistakable singleton, or an explicitly plural batch; a bare ambiguous dismiss drops nothing and a negated one keeps the offer. The held set is bounded and evictable, so nine or more historical notices cannot permanently block new material.
+  - A firing that reached an open window wrote no inbox note. The note is now made durable before the live offer, so a crash or a window closing between the offer and the reading cannot lose the line.
+  - A file watch took its baseline at the first wake. Ratification now arms it at the yes, and a scan that could not read everything it matches sets no baseline and leaves a visible needs-person flag.
+  - An ambiguous, refused or timed-out judgment was folded into a decided no. The real tick now carries the three-way sentinel: an undecided look writes nothing and the item stays due.
+  - An unchanged positive probe reading was reported again whenever the sentinel said yes, so "notify me once when ready becomes true" could put a second notice in front of the person for one observed state. The identity of the last affirmative reading is now the machinery's own fact: the same evidence stays quiet however the sentinel words its answer, a decided no re-arms, and a document carrying the identity or a one-shot intent is fenced at a newer schema so the build that preceded it skips rather than re-reports.
+  - A condition watch could only speak the rising edge, so a literal "notify me once" re-notified on every false-then-true with no person action. The one-shot intent is now a compiled field the model sets once at proposal time — shown on the approval card and kept in the stored document — and a one-shot say delivers its one line and retires, including when a lost delivery is repaired under the same identity, and a retire write that is lost after the line reached the person is settled from the delivery’s own append-only ledger record, so a restart or a later false-then-true cannot put the one notice in front of them a second time. A recurring watch (the field unset) re-arms as before, and an ambiguous one-shot task still stops for the person rather than replaying.
+  - A completed task whose post-run item write was lost was read on the next pass as an ambiguous in-flight attempt and told the person a task was waiting for them, and a one-shot that had already spoken never retired. The firing's own append-only ledger line now carries what it came to, and a task attempt is settled from its run identity in that record before the marker is read as ambiguous: a completed one-shot retires once, a recurring task is not run again, and a settlement restores the firing's spend, outcome, history, run folder and any question it left for the person — so a needs-you firing keeps its question and puts its clean-run streak back to nothing, and a task with no durable outcome still stops for the person rather than replaying.
+  - A background pass reloaded the profile's tiers, role pins and fallback ladder, so an item ratified under `--one-model` could be answered by a different model. The item freezes the ratifying conversation's model policy on its origin and the pass honours it for the sentinel and every child seat.
+  - A run lent the canonical brain read-only still journaled project attempt rows: nested task workers and the run's own promoted jobs wrote through the delegated outcome collector, which checked no posture. The collector now refuses every observation when the root is binding-only, so the lent brain is read-only through every door while the binding read and the ordinary session's delegated continuity are unchanged. A session folder keeps exactly one persistent resident now that its inbox flock lives inside it, and the lock file's name is exported for callers that assert on a folder's contents.
+  - Only failures and blocks were ever written from the tool boundary. A success in the same turn and goal now attaches to the failure as its observed successful alternative, and no other success is retained.
+  - A fresh turn shown a prior failure had no note of a path already known to work, so it could repeat dead work to rediscover it. An applicable observed alternative is now rendered beside its failure with its own receipt and source circumstances, as observed history rather than a cause or a ban.
+  - A condition watch passed the proposer's model-authored hint to the sentinel as WHAT A YES LOOKS LIKE with no provenance, so a status-only probe against an application-readiness ask fired while the body said not ready. The sentinel now judges the person's own sentence as the criterion, the hint is labelled the proposer's own guess, and a weaker fact than they named — a host answering where they asked whether an application is ready — is unknown.
+  - The sentinel was handed the probe's output alone and inferred the contract from it, so a bare HTTP 200 read as the application being ready. The judgment now carries the look's own command, or belt tool and arguments, beside the evidence under WHAT THE CHECK RAN, read from the approved item and never re-derived; a status or reachability reading proves transport and not the application contract the person named, and a weaker witness is unknown unless the output itself carries what they named or their own words made that reading the criterion.
+  - The sentinel's closing question asked "yes or no" while the prompt promised three answers, so an unresolved look could be read as a decided no. The closing question now asks yes, no or unknown as the first word.
+  - The stand tool's probe guidance did not say the look must be read-only, and its hint field could read as the person's own condition. A probe must now take a read-only look at what the endpoint or command returns, and the hint field says reachability is not their condition.
+  - The sentinel-grounding matrix lived in an in-package double that re-encoded yes/no/unknown plumbing rather than showing what the model does with the composed prompt. It is now an opt-in, tag-gated real-model end-to-end regression at the production seam, pinned to the review's model, that SKIPS with no provider key and is never a pass; focused tests and a skip still do not establish real work.
+  - The whole-request outcome-composition fixture modelled the trailing failure without its own observed alternative, so it claimed the captured two-failure/two-alternative case fit after the shared-caveat dedup when it does not. The fixture now drives the real composition seam with each alternative indexing, and the renderer states a genuinely shared source snapshot, seen day or whole-command action launcher once above the rows instead of on every row: inside the one shared 4,800-rune ceiling, alongside a realistic mandatory approved-rule load, both complete pairs now fit, rows with different structured sources, days or launchers keep their own exact statement, and a pair that still does not fit is omitted whole with no orphan alternative. The boundary test is a bounded lexical subset, not a shell grammar: a span inside an unquoted substitution or grouping construct is refused rather than parsed, and unknown syntax keeps the full per-row actions. No production cap, preview window, slot count, priority or authority order changed.
+
+  This draft starts from #1751 and keeps one canonical event journal. Source,
+  applicability, authority and validity remain separate. Ordinary automatic scope
+  is project-local unless the person's words explicitly grant wider applicability.
+  Approved rules retain their source conditions before actions. Existing standing
+  orders remain the only ratified scheduling mechanism; memory does not authorize
+  unrelated edits. Sync records replay identity and owner-proven pending tombstones,
+  but opposite-order conflicts remain arrival-ordered rather than convergent.
+
+  Also in this head: exact authority is judged against a claim's own supporting span,
+  not the whole utterance; the harness gained optional `--model`/`--one-model` and an
+  explicit `CODEAF_CALL_LOG_BODIES=1` opt-in, and a dedicated profile that pins every
+  text seat; and the immutability law on the canonical journal is unchanged, so raw
+  audit growth stays an explicit limit rather than something pruned.
+
+  A probe watch is bounded by the identity of the evidence it was shown, not by
+  the sentinel's wording: an unchanged positive reading is told once and stays
+  quiet, and only a reading that moved is judged afresh. A watch that asks to be
+  told once carries that as a compiled field — shown on the card, kept in the
+  document — and retires after its one durable, delivered line; a watch without
+  it speaks each change, and a rhythm keeps speaking on its schedule.
+
+  Standing deliveries are durable-first with this head. A delivery is appended to
+  its inbox under the pending identity and Sync'd before anything is drawn or
+  queued, then offered to an open window on top of the note. The inbox dedups on
+  the identity across retries and restarts. The live handoff is at least once: a
+  line offered live and then folded when the window is reopened can be read twice,
+  because whether a screen drew the row is not observable here, and loss is the
+  direction this refuses to fail toward. A write that could not be made durable,
+  or an item with no address at all, is reported so the caller keeps the intent
+  rather than reading success. A ratified FILE watch is armed at the yes, so a
+  change between the card and the first wake is a change; a bounded scan that could
+  not read everything it matches sets no baseline, leaves a visible flag, and the
+  first complete look clears it. A ratified item also keeps the model policy it
+  was given on: when the session ran under `--one-model`, the origin records the
+  promise and the model, the origin is written at the schema barrier so a build
+  without those fields skips it, and the reloaded background pass resolves the
+  sentinel and every child text seat from the item's pin with the role pins,
+  tiers, fallback chain and nearest-model guess withheld. One behaviour changed
+  for the keyless walk: an undecided look (for example, a machine with no API key)
+  is counted as checked and writes nothing, rather than being published as a
+  failed check; the item stays due and is retried next pass.
+
+  A recorded failure can also carry the later observed success that answered it.
+  The alternative is an `AttemptSucceeded` row whose `AlternativeOf` names the
+  failed attempt's source key, so an explicit forget of either source retires the
+  pair through the existing suppression join and the read side never shows a
+  success on its own. A source snapshot is labelled as a snapshot, never as the
+  live machine's own state. The rendered prior-outcome block is bounded by whole
+  records inside the one shared memory ceiling, and it states a fact once where it is actually
+  shared: when every row carries the same raw source snapshot and the same seen day, or the
+  same whole-command action launcher, that circumstance is stated once above the rows and the
+  per-row repetition is dropped, so two complete failure/alternative pairs fit where
+  repetition previously pushed the second one out. Rows whose structured source, day or
+  launcher genuinely differ keep their own exact statement, a span that stops inside a word,
+  quoted argument or heredoc is never factored, an unquoted substitution or grouping construct
+  is refused rather than parsed, and a pair that still does not fit is omitted whole with no
+  orphan alternative. A larger mandatory approved-rule load trims by whole
+  record exactly as before; no cap, preview window, slot count or authority priority changed.
+
+  The condition sentinel is grounded in the person's own sentence. A watch's judgment now
+  carries the look's own command, or belt tool and arguments, beside the evidence — read
+  from the approved item and never re-derived — so a status-only probe against a readiness
+  ask is unknown rather than a false yes; the model-authored hint is the proposer's guess,
+  not the person's criterion. The stand tool asks for a read-only look at what the endpoint
+  or command actually returns. The recorded failing shape was measured at the production
+  seam on the review's pinned model, and that live matrix is an opt-in e2e regression that
+  skips with no key and is never acceptance.
+
+  The built-in manual now names these limits in the words people use: an
+  app-closed watch has no separate helper to install; a `once` watch waits as an
+  inbox note rather than a notification or toast — in the conversation that made
+  it, or under the project when it came from home's `ask here` — and is delivered
+  only once, so reopening does not repeat it; a judged look runs on a model, so the
+  provider
+  serving THAT judge model must hold the credential — reconnecting an unrelated
+  provider leaves the watch where it was — and a look the judge model's provider
+  cannot pay for queues no note, leaves the item active and due, and is retried
+  once that provider is connected; and a check missed while the machine was off or
+  asleep is a best-effort request rather than a guarantee, and only while
+  background checks are on. It also draws the distinctions the old
+  pages blurred: an observed prior attempt is an advisory read before a relevant
+  turn, not the error-fix suggestion looked up only after a command fails; the one
+  shared store is not one shared scope, so "a memory kept in one project is there
+  in the next" is gone in favour of the closed shelves — you, this workspace,
+  this machine — with no memory owned by a whole team; and while a manager, a new
+  member and a task in that workspace read the workspace's approved rules and
+  confirmed decisions locally and deterministically before their first request (a
+  task read-only and bounded, with no provider asked), that binding read is a
+  separate path from the router's advisory relevant-memory shortlist, and a search
+  of an old conversation is reading only — it does not reactivate a forgotten
+  decision. The failed-method page now answers whether remembering a failed method or
+  tool stops codeaf trying it again: that observed-outcome advisory is read locally
+  from the saved memories before the first request and is not gated by the router's
+  ranking or small relevance model, it bans no tool, and with changed inputs or
+  circumstances the agent may retry or adapt rather than being forbidden — it never
+  promises a retry either. The changed-input page states the same line one more
+  way: with the data file changed, a past observed result is kept as historical
+  advisory and is not automatically erased or retired, no rerun is forced, and a
+  fresh inspection of the changed file is needed before the prior result may be
+  reported as current. The scope list now names which mouth is which: an
+  omitted scope on the `remember` tool means this project, and only `/remember`
+  is the personal save kept as you — the engine's default, not a claim that
+  the personal save is the default. Retrieval probes for these questions are in
+  `internal/manual/chat_test.go`.
+
+  Final-head terminal acceptance is required before this entry is treated as
+  landed, and focused tests alone do not establish real work improved: the acceptance runs
+  against the frozen final head on the pinned model, and any key-skipped e2e run is a skip
+  rather than a pass. This entry makes no native-pass claim; see docs/contextual-memory.md
+  for limitations and evidence.
+
+  </details>
+
+- **sec, sec-af's security audit built into codeaf, audits a repository or its changes** — [#1781](https://github.com/Agent-Field/codeaf/pull/1781) · `chat` `engine` `docs` `build`
+
+  <details><summary>10 things that are no longer true</summary>
+
+  - senior-dev was the only program codeaf carries. There are two: sec (`/sec`, `codeaf sec`, `via: "sec"`) is the second, and it changes no files.
+  - sec-af was a separate AgentField node with its own key and a coding-agent binary per agent call. It is copied into codeaf at sec-af's tag codeaf-absorb (47d57d7) as internal/secaf, runs only through codeaf, and is frozen in its own repository.
+  - Every program's unattended ceilings were senior-dev's, chosen by its name in nine places. A program names its own (`Delegate.Unattended`); a program with none runs on what the conversation has left.
+  - A program that lands text had no ending of its own and was sent looking for a branch. Its ending asks the chat for a summary and the program's own offer (`Delegate.FollowUp`) and starts nothing.
+  - The model API answered 402 to any call its ceiling could not admit at that moment. A call held only by calls still in flight is answered 429 with Retry-After and X-Codeaf-Held; 402 is kept for a ceiling truly reached.
+  - A shell run resolved a person's model only through a flag named `--high`. A program names its own model flag (`Delegate.ModelFlag`).
+  - A program the chat proposed was always handed the composed brief, which opens on `WHAT THE PERSON ASKED FOR`. A program whose brief is a few words it reads itself (`Delegate.Words`, sec's `changes since main thorough`) is handed those words alone, and a report program's row in the project's index points at its record folder, not at the repository.
+  - A bare `/<program>` always asked for a brief. A program with a default brief runs bare (`/sec` audits the whole repository), and its row shows its own arguments.
+  - sec-af failed every audit that named compliance frameworks, and its PR mode read the diff from the wrong folder and only filtered findings after a whole-repository scan. Frameworks map and report; an audit of the changes reads them in the folder under audit and tells the hunters what changed.
+  - The fixed and lean prefix caps were 57,218 and 49,590 bytes and SIZE-BUDGET was 68,850,000. They are 57,614, 49,986 and 71,363,000, raised by exactly what sec measured (PERF.md).
+
+  `/sec` (or `changes`, `changes since <ref>`, `quick`, `thorough`) starts an
+  audit that reads the folder with four read-only tools, hunts for vulnerabilities,
+  tests each one against the code, and reports what stands with file, line and fix.
+  Its report goes to the task's record folder (`sec-report.md`, `.json`, `.sarif`)
+  and its account to the conversation, which offers to hand confirmed findings to
+  senior-dev. Every model call goes through the run's model API, priced and held to
+  its ceiling: $5 and four hours unless the conversation has less.
+  Its agents run on `internal/agentsession`, a read-only agent loop over the run's
+  model API that any program codeaf carries can use, and that names each program's
+  own work in its prompt.
+
+  </details>
+
+- **review, pr-af's code review built into codeaf, reviews a GitHub pull request and posts on your yes** — [#1784](https://github.com/Agent-Field/codeaf/pull/1784) · `chat` `engine` `docs` `build`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - sec and senior-dev were the only programs codeaf carries. There are three: review (`/review`, `codeaf review`, `via: "review"`) is the third, and it changes no files.
+  - pr-af was a separate AgentField node with its own keys and a coding-agent binary per reviewer. It is copied into codeaf at pr-af's tag codeaf-absorb (b70667e) as internal/praf, runs only through codeaf on the shared agent sessions (internal/agentsession), and is frozen in its own repository.
+  - A program codeaf carried never posted anything outside the machine. review posts a review it wrote to its pull request, but only as its own run (`/review post <report>`), which the chat proposes after the person says yes.
+  - Typing a program's name as a word asked for it. A program whose name is an everyday word (`Delegate.Asked`) is heard by its command and its work instead: `/review` and "take a look at PR 123" ask for review, and "review this function" does not.
+  - The fixed and lean prefix caps were 57,614 and 49,986 bytes and SIZE-BUDGET was 71,363,000. They are 57,817, 50,189 and 72,395,784, raised by exactly what review measured (PERF.md).
+
+  `/review <pull request> [focus]` (or a bare `/review` for the current branch's open pull
+  request) checks the pull request out in a folder of its own, plans the review,
+  sends a reviewer at each part of the change, checks and challenges what they found
+  against the code, and hands back every finding, blocking first, with where it is
+  and a suggested fix. Its review goes to the task's record folder (`review-report.md`,
+  `review-report.json`) and its account to the conversation, which offers to post it or
+  to hand the blocking findings to senior-dev. Private repositories use `GH_TOKEN`,
+  `GITHUB_TOKEN` or `gh auth token`. Every model call goes through the run's model
+  API, priced and held to its ceiling: $5 and two hours unless the conversation has
+  less.
+
+  </details>
+
+- **senior-dev checks CMake projects itself and takes --verify-build and --verify-test** — [#1793](https://github.com/Agent-Field/codeaf/pull/1793) · `engine` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A CMake project with no recognized CI, script or README command failed senior-dev's checks with `no build entrypoint could be discovered`. senior-dev now builds it into `.senior-dev/cmake-build` and runs `ctest` there.
+  - There was no way to tell senior-dev which command checks a project; `submission_evidence` was the only channel, and nothing read it. `codeaf senior-dev run` takes `--verify-build CMD` and `--verify-test CMD`, which senior-dev runs itself on the submitted tree in place of discovery.
+
+  The shape is a header-only library or a fuzz target whose harness lives beside
+  the checkout: CyberGym's arvo_24633 was fixed, verified externally and graded
+  4/4, yet senior-dev called it a failed change. The flags come only from the
+  command line, never from the working model, so a check it could choose is not a
+  check it could choose to pass; naming one kind never excuses the other.
+
+  </details>
+
+
+### Changed
+
+- **Teams previews, shared conversations and scoped deletion** — [#1750](https://github.com/Agent-Field/codeaf/pull/1750) · `chat` `engine` `remote` `docs`
+
+  <details><summary>13 things that are no longer true</summary>
+
+  - Teams used the conversation grid as a creation surface and Chats' grid listed only open tabs. Teams now has a dedicated Name/Project multi-select picker; Chats owns the complete saved conversation grid and retains its card-selection New team flow.
+  - Chats used All for both team selection and the grid. The synchronized Teams dropdown now offers only active teams and All teams when a global manager exists, without a None option. A selected team chip has an independent x that restores ordinary Chats and All teams in Teams, while its name reopens the dropdown. The fixed All button opens the team-agnostic saved conversation library.
+  - Team overviews used equal-sized manager and member cards with row-aligned team tiles. Managers now show the latest user message and the beginning of its response in a larger card, followed by six-row recent interactions and compact members; All teams stacks variable-height cards independently and sorts siblings by latest conversation activity.
+  - Every subteam shrank into another nested box, eventually disappearing at narrow widths. All teams now names the parent and child count, connects single-column child cards with branch guides, and uses expandable tree rows after two nested box levels or when a child box would be narrower than 36 columns. Boxes and tree rows share collapse controls and retain collapsed descendants across resizing. The default team depth remains three total levels.
+  - Working member and manager cards showed a static state word. Their working label now carries the shared animated spinner, including the Global manager, and stops for questions, permission waits, idle and failed conversations. Only visible cards keep the animation clock running; ASCII and screen-reader views retain a static work mark.
+  - Recent interactions had one forward-only page button. Prev and Next now remain visible together, moving in both directions through six-row pages; unavailable directions are grey and stop at the first or last page.
+  - Closing and reopening teams or saved Sessions rows left their lifetime unclear. Disbanding now ends coordination recursively while retaining conversations and history; permanent team deletion preserves conversations, conversation deletion removes all its tasks, and task deletion removes only its containment subtree.
+  - Older deletion payloads could still replace or disband an ordinary manager's teams. The store now requires reassignment first; parent replacement explains which sibling subteam managers to assign first.
+  - Conversation closing released the journal while cancelled task-run workers could still write, and interrupted cleanup was hidden. Journal ownership now lasts through run completion, deletion joins with a bounded grace, unsafe task symlinks are refused before mutation, and durable pending cleanup is retried on startup and remains reachable from Home. Saved memories remain independent of transcript deletion.
+  - Closing-report acceptance could omit its terminal interaction after closing the team. The matching terminal event now lands under the lifecycle lock and is retryable without admitting ordinary writes to closed history.
+  - Older hosted whole-file writers could erase membership authority and delivery boundaries. Membership writes now require a capability on both ends; current builds preserve unknown member JSON and existing join timestamps, omit absent timestamps, and stamp new hosted joins at the engine.
+  - A running task's stop shortcut could capture typing in team dialogs or the Teams own-answer box, and narrow scrolled panes retained pointer targets on blank rows. Team text inputs own their keys and clipped pane targets remain keyboard stops only.
+  - A conversation could newly manage unrelated teams and manager deletion offered follow-up replacements. New leadership must belong to one managed anchor and its descendants; ordinary manager deletion requires reassignment from existing members in Teams first, while the optional global manager can be deleted and recreated independently.
+
+  Membership removal preserves current work, conversations and other memberships.
+  Permanent deletion uses owner acknowledgements, locked scope checks and durable
+  tombstones. Late membership writers cannot restore deleted conversations, including
+  journal aliases. Unfinished hard-dependent work remains incomplete after deletion;
+  completed sibling results and tasks with suggested dependencies remain intact.
+
+  Cards follow their underlying chat model and use chat-style user/assistant previews,
+  with question alerts and bounded truncation. Teams and Chats share selection without
+  duplicating the conversation catalog or creation logic. Manuals and the design record
+  describe the revised controls, routing, limits and refusals.
+
+  </details>
+
+- **Choose a provider during setup and pick only available models** — [#1789](https://github.com/Agent-Field/codeaf/pull/1789) · `chat` `docs`
+
+  <details><summary>10 things that are no longer true</summary>
+
+  - The later add-provider and /connect menus used to omit OpenRouter and treated every saved provider row as connected. Both now include all nine initial setup options and read actual credential availability; the add menu labels connected and not connected rows. OpenRouter can be connected after Ollama through its existing browser/key form without repeating onboarding, losing the draft or removing Ollama. Its profile key can also be disconnected with two-Enter confirmation and is revoked in the running session; shell keys remain connected until unset and restarted.
+  - Provider selection used to start on Ollama. OpenRouter is now first and initially selected, with Ollama second; the other seven options keep their order.
+  - Choosing Codex during setup used to start browser sign-in immediately. Codex now has the same enter connects in browser confirmation as OpenRouter; selecting the provider opens its connection screen and Enter starts sign-in.
+  - Provider setup used to divide supported providers between a first page and More providers, with a selectable Skip for now row. It now has one flat list showing all nine providers, with no scrolling viewport or page counter; Esc skips setup and no provider row skips it.
+  - Browser authorization URLs used to wrap across several visible rows. Codex, OpenRouter and the shared browser sign-in cards now show one short hyperlink retaining the complete URL. Setup adds Ctrl+Y to copy the complete sign-in URL; waiting cards retain their full-link copy action.
+  - A fresh profile used to ask for OpenRouter before offering any other model provider. Setup now begins with a choice of supported providers, retains the numbered connection and controls screens, and connects Ollama without asking for a key. Back cancels unfinished connections, and working connections bypass the chooser.
+  - Enter used to apply a model and leave the picker open until Esc. It now selects the model and closes the list immediately, returning to the conversation, task room, settings, Home draft or task composer.
+  - OpenRouter's public catalog used to appear even without an OpenRouter key. Every model picker now includes only provider connections with credentials or explicit anonymous access, including Ollama, and combines their own catalogs when several are connected.
+  - A cold picker used to offer five built-in guesses, and filtered or empty catalogs could fall through to older rows. Picker lists now use only the current provider's known catalog or its own cache while warming, with no built-in guesses.
+  - A local launch used to display its configured or shipped model even when the picker did not list it. Its default now comes from the available chat catalog; an absent choice is replaced by a listed model, and no known model leaves the draft held until discovery supplies one.
+
+  The draft is preserved when the model is chosen. A list with no matching model
+  stays open; Enter inside provider controls keeps their existing navigation.
+
+  The fresh-install terminal test confirms the initially selected OpenRouter row
+  with Enter before checking its connection screen and setup count.
+
+  </details>
+
+- **launches offer a new codeaf in a quieter, non-blocking way, and installs run in the background** — [#1790](https://github.com/Agent-Field/codeaf/pull/1790) · `chat`
+
+  <details><summary>8 things that are no longer true</summary>
+
+  - `/update` used to refuse while a turn or task was running and then quit the program so the door could restart on the new build. It now installs in the background on the same road the automatic updater uses: nothing quits, nothing restarts, and a running turn or task is untouched. The new build is what opens the next time codeaf is started.
+  - The launch notice used to be a single dim line whose only action was `/update`. With `update.auto` on (the default) a newer release now raises an offer in the keys line, counted down live from ten seconds, and then installs itself in the background; `alt+n` or `/update skip` skips that exact release, and `/update never` or the settings row turns the automatic road off.
+  - A version behind its channel with `update.auto` off still gets one quiet line naming the release and the hand-run road, instead of no check at all — and the launch request really is made, because the standing row no longer suppresses it; only `CODEAF_NO_UPDATE_CHECK=1` does that.
+  - A codeaf owned by Homebrew, Nix or a system package manager, or one in a folder the account cannot write, is refused in place by both the chat and `codeaf update`, and the refusal names the manager and the curl road.
+  - The manuals `internal/manual/chat/staying-on-that-machine.md` and `running-on-another-machine.md` said a busy engine from an older build was replaced the moment a newer codeaf opened. They now say the truth the engine implements: an older engine holding work is joined and keeps it, and steps aside once it is quiet (or at the next safe launch for a host too old to know the ask); one holding nothing hands over at once; an attached idle window counts as holding work; and another wire, or one too old to be asked, is refused with `codeaf engine --stop --workspace '<path>'` named.
+  - One install now runs at a time per executable, across terminals and profiles: the lock is an OS advisory lock keyed on the executable AND IS TAKEN INSIDE the shared installer, so the chat surface and `codeaf update` are one acquirer. The target is canonicalized first — absolute, cleaned, symlinks resolved — so a relative path or a symlinked folder is the same target and serializes against it, and the ownership refusal answers about the file the replacement would land on. Under the lock a sha256-tied record says what is on disk: a duplicate is a quiet no-op and a stale automatic downgrade is refused, while an explicitly named tag may still roll back.
+  - Only a tag a person named may install an older build. The bare `/update` that answers an open offer installs the release the offer is about and no longer carries rollback intent, and a named tag reaches the installer even when it matches the running process's own stamp, because the stamp is not the file on disk.
+  - The `auto update` row in `/settings` (`update.auto`) moved from the Display tab to the Workspace tab, beside `background checks`: keeping this installation current is what codeaf does on this machine on its own, and Display is where the surface's own appearance and typing live. The key, the label and the default are unchanged; only the tab it is read under moved.
+
+  The offer waits in the line that already carries the idle keys, so it never
+  takes the message box, never blocks a keystroke and never binds a plain letter.
+  While its grace is open it stays visible even over a running turn's own keys by
+  appending a defer clause; when it expires the download begins in the background.
+  The sentence names the release, says it installs shortly, and carries the skip
+  chord and `/update` — both survive an eighty-column window, and over a running
+  turn at a narrow width the TURN's clauses are shortened first so the countdown
+  never loses the one control it has.
+
+  The clock also WAITS wherever the offer cannot be read or answered — a question
+  page, `/settings` and the other places, the first-run sheet, a team's card, the
+  provider panel, the settings panel's own boxes — instead of spending the ten
+  seconds invisibly, and it ends early when the row is turned off or the release is
+  skipped in another window. The row is re-read from the profile on every beat, at
+  the deadline, and again before a resolved release is downloaded, so a stale
+  decision never installs over a newer one; `/update` typed by hand is the person's
+  own answer and is not re-checked.
+
+  The completion wording is exact and quiet: `codeaf <tag> installed · this
+  session keeps running`, with the durable note adding that new windows open the
+  updated app while work already running keeps its current engine until all its
+  windows and work close. It does not promise that a busy engine swaps. A
+  same-release candidate is a quiet successful no-op rather than an alarming
+  failure, and only a NAMED tag (`/update <tag>`, `update --version <tag>`) may
+  deliberately roll back; an automatic or channel update never does. Skipping is
+  per release — that exact tag is never offered again and a later one is a new
+  question — and a skip the profile could not save says so rather than claiming a
+  durable answer it did not write.
+
+  `update.auto`, `auto update` in `/settings`, is on by default. The dismissal and
+  the failure count live in one small PROFILE file beside `config.json`, keyed by
+  release, so the same release never asks twice and a release that failed three
+  times stops being tried on its own. (The install lock, not this file, is the one
+  keyed by the executable.)
+
+  WHICH VERSION IS WHICH IS ON THE SCREEN. The offer's line names the release that
+  is out; the build holding this session is the one `/status` reports (its `build`
+  row), and the note the offer writes names both (`codeaf <new> is out · you
+  have <current>`). An install only replaces the file: nothing about the running
+  session changes, and the new build is what opens the next time codeaf is started
+  — so a newly opened app can be up to date while its shared engine finishes work
+  on an older build. The automatic road moves forward only: a duplicate is a quiet no-op, an
+  older build is refused unless a person names the tag, and two same-day dev or
+  staging builds whose published moment is not known are refused rather than
+  guessed at — with a sentence that says the order could not be confirmed rather
+  than calling either one newer. A dev or staging tag resolved without the API
+  looks its own publish moment up once, best-effort, so a hand-installed same-day
+  build is still ordered by fact instead of blocking the next one, and an offline
+  or unindexed tag installs without it. With `update.auto` off the launch check still runs and says the same
+  two versions in one quiet line; `CODEAF_NO_UPDATE_CHECK=1` is what makes no
+  request at all.
+
+  </details>
+
+- **Clear settings categories and AI team navigation without resetting preferences** — [#1792](https://github.com/Agent-Field/codeaf/pull/1792) · `chat` `engine` `docs`
+
+  <details><summary>8 things that are no longer true</summary>
+
+  - Chat settings tools now discover the same names and categories as the panel, explain legacy value mappings and restart requirements, and leave resident-only controls out of ordinary chat discovery. Interface preferences refresh after panel writes and at chat turn completion.
+  - Choice settings no longer silently cycle on activation. They show the saved selection and alternatives before committing; number and text fields keep clickable Save/Cancel and validation beside the draft.
+  - Chat settings used ten mixed tabs. Nine purpose-based categories now use a sidebar in wide terminals, a compact bar in narrow ones, searchable advanced controls and service options.
+  - Teams could imply human collaboration and Sessions obscured delegated work. The navigation now says AI teams and Activity, keeps Memory visible and preserves numbered shortcuts, typed aliases and saved visit keys.
+  - Resident-only controls and unwritable legacy model slots appeared in chat settings. They are omitted from this surface while their stored values and the resident registry remain intact.
+  - Hover descriptions could move controls and mouse clicks could reach behind editors. Details now occupy stable rows; editors protect their input and retain invalid values for correction.
+  - The document-reader preference was saved but not carried into the live chat engine. New CLI launches now pass the resolved preference into the session and its tasks.
+  - Show hints formerly appeared as a negative disable question. The positive label preserves the existing persisted preference; profile keys and unknown fields are not migrated or reset.
+
+  Settings explain scope, environment overrides and known activation boundaries.
+  Already-open chats still need a CLI restart for settings captured at startup,
+  including memory activation. The built-in manual describes those limits.
+
+  </details>
+
+
+### Fixed
+
+- **a reply that is only a number and a full stop draws instead of vanishing** — [#1746](https://github.com/Agent-Field/codeaf/pull/1746) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A model reply whose whole text was a number and a full stop (`32.`, `1024.`) parsed as a Markdown ordered list with one empty item, so the list renderer drew the marker column, found no body, and discarded the marker too. The reply rendered to zero rows and the deck skipped it: the fold showed only the thought row though the transcript held the text. An ordered-list item with no body now draws its marker as the literal text the reader sent, so `32.` stands under the chip; `1. one` and multi-item lists still draw as lists.
+
+  Found while running the number-answer journey against `dev`: asking the chat for
+  "only the number followed by a period" produced `32.`, which the surface dropped.
+  `renderer.list` in `internal/tui2/prose` pushed the marker, rendered the empty
+  item, and popped it as undrawn, taking the marker with it. The fix draws the
+  marker when the item body produced nothing, which is the only case a bare
+  `<number>.` reaches.
+
+  </details>
+
+- **the hosted drive passes on a Mac whose task column starts open** — [#1756](https://github.com/Agent-Field/codeaf/pull/1756) · `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - On a Mac, scripts/hosted-drive.sh failed seven of its fourteen checks whenever the profile's task column started open, which reads as a broken binary. It now recognises the column's opt+l key and passes.
+
+  </details>
+
+- **PlanDB run workers can search and fetch through native tools** — [#1783](https://github.com/Agent-Field/codeaf/pull/1783) · `engine` `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The task belt defined web tools but PlanDB run workers received no web dependencies. The crew factory now binds the run profile's live search and fetch pair.
+  - The bash worker prompt and retry diagnostic claimed only bash could be called. Workers may call any available native tool, one call per response.
+
+  Task trajectories now retain the native tool name beside arguments and returned
+  observations. Files and PlanDB coordination continue through bash. Both worker
+  policy pages allow native calls. Child briefs also distinguish the parent's
+  coordination instructions from the child's own work order.
+
+  </details>
+
+- **a store written before memory owners existed opens again on the next launch** — [#1787](https://github.com/Agent-Field/codeaf/pull/1787) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The memories schema ordered the owner index before the owner column existed, so opening any database written by an earlier release died with `initialize memories schema: no such column: owner` and the launch carried on with no brain. The index is now created beside the column by the owner migration, on a legacy store and a brand new one alike.
+  - The owner migration returned early the moment the column was present, so an upgrade interrupted between the column and its index would have been left without the index forever. It now ensures the index on every open, whichever shape the store is in.
+  - A memory written by an older build that is still running against an upgraded store landed with an empty owner, so no owner-filtered read — the router's shortlist, search, a forget match — could ever reach it. Every open now owns empty rows from their scope again (or quarantines them), and a row that already has an owner is never moved.
+
+  A database that failed to open under the broken build keeps its notes: the
+  failure happens before any memory row is deleted or rewritten, so a line's words,
+  its provenance and whether it was still active are all still in the file. There
+  is no repair command and no backup to restore — the next open of this build adds
+  the missing column, gives every row the owner its old scope proves, creates the
+  owner index, and reads the same lines back. A row the old store kept as a project
+  cannot prove which project it was, so it also gains the `legacy-project`
+  quarantine marker and needs a proven owner before a conversation sees it again;
+  nothing else about it is rewritten.
+
+  Recovery is a launch of the fixed build, and installing it does not by itself
+  change an engine already running. On the machine holding the workspace, updating
+  codeaf and reconnecting or opening a conversation there is the whole repair: a
+  newer build replaces an older engine as the window connects, busy or not (the
+  turn it catches stops where it is and keeps its partial reply), and the new
+  engine repairs the file as it opens. A window held by an engine on another
+  machine is not reached by that reconnect — update codeaf there, and when its work
+  is safe run `codeaf engine --stop --workspace <folder>` there first
+  (`codeaf engine --status` names the engine if the folder is unclear). A plain
+  launch with no engine holding it repairs the file at its next open. An idle
+  engine of the same build may restart to pick up a changed terminal environment; a
+  busy one keeps running and is only replaced when a newer build connects.
+
+  </details>
+
+- **senior-dev reads its window from codeaf offline, refuses tiny models, keeps progress on compaction** — [#1791](https://github.com/Agent-Field/codeaf/pull/1791) · `engine` `chat` `docs`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - senior-dev sized every model at 16,384 tokens when models.dev could not be reached. It now reads the window from the model catalog codeaf keeps for the profile, and only guesses 16,384 when neither knows the model, saying so on its page and in its log.
+  - senior-dev started on any model it could size. A model the person asked for that is known to hold 32,768 tokens or fewer is now refused before its first call with `senior-dev cannot work with <model> (<n> tokens): …`, and nothing is spent; a crew seat that small is left out with a note instead.
+  - When a compacted history did not fit, senior-dev replaced the summary with a stub that kept no progress. The stub now carries as much of the newest summary as fits, and the changed-files list.
+  - The summary length budget assumed 2,048 tokens of fixed context. It now measures the system prompt, tools and pins, and never asks for more than the summarizer's output limit.
+  - A context-overflow pin applied to one senior-dev session. It now applies to every session on the same model for the rest of the run.
+
+  A CyberGym run in a container that could not reach models.dev sized a 1M-token model at
+  16,384 tokens. It compacted 115 times in 25 minutes, and 113 of those compactions erased
+  its progress. The do stage delivered nothing. codeaf's own catalog in that container
+  already listed the real window.
+
+  A senior-dev shell run now waits up to one catalog fetch (`catalog.FetchTimeout`) for the
+  profile's model list before it starts, so a fresh profile writes the list senior-dev
+  reads.
+
+  </details>
+
+- **Keep AI team hover responsive with large conversation previews** — [#1794](https://github.com/Agent-Field/codeaf/pull/1794) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - AI team hover and spinner paints reparsed every member's Markdown response, including cards below the screen. Unchanged fitted excerpts now reuse bounded rendered rows, and offscreen member cards keep navigation targets without formatting their previews or borders.
+  - Skipping offscreen cards can leave placeholders after keyboard scrolling or a shrinking overview. The final viewport now paints revealed cards in the same frame, while streamed text, theme, size and path facts invalidate excerpt reuse.
+
+  Physical scrolling, member click targets, manager previews and conversation drafts
+  keep their existing behavior. The rendered excerpt cache is cleared on page close.
+
+  </details>
+
+- **Built-in provider lists accept appended catalog rows** — [#1795](https://github.com/Agent-Field/codeaf/pull/1795) · `chat` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The provider chooser kept its key hint even when it pushed OpenRouter off a short terminal. The hint now yields before any provider row, so a tenth entry fits at 40x10.
+  - Provider-menu tests pinned the catalog size or assumed Custom API was last. Counts now follow the catalog, appended sources preserve the established order, and custom-row tests select by identity.
+  - The manual repeated numeric built-in provider counts and complete provider lists. Those passages and the guide now describe every built-in provider without a fixed count, and a manual guard rejects count claims.
+
+  The built-in catalog is unchanged. A throwaway source appended to Vendored()
+  passes the full tui3 and manual suites, and the short chooser shows every row
+  without its footer. The separate provider addition can land without changing
+  these setup tests or manual passages.
+
+  </details>
+
+- **senior-dev keeps its session store out of the folder and writes back a removed .senior-dev** — [#1800](https://github.com/Agent-Field/codeaf/pull/1800) · `engine` `docs`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A run whose `.senior-dev` was a link to a store elsewhere ended on the next model turn after the link went away, with `open <folder>/.senior-dev/projection.lock: no such file or directory`, while the store itself was whole. senior-dev now resolves the store's path once when it opens it, so the database, the records and the lock all name the store itself, and a link that goes away no longer ends the run.
+  - The session database and conversation lived in the folder's `.senior-dev` and were moved into the task's record when the run ended. A run codeaf carries now keeps them in its record folder from the start, `<record>/store` (`store.1`, `store.2` for a later run of the same task), and the folder's `.senior-dev` holds only the brief, the checklist, the pinned command, the messages taken and the output set aside. They are in `.senior-dev` only when codeaf names no record folder.
+  - `codeaf senior-dev run --state-dir DIR`, or `SENIOR_DEV_STATE_DIR`, keeps the store in DIR instead of the record folder, where it stays; a DIR inside the folder, other than under its own `.senior-dev/`, is refused before anything is made or spent.
+  - A `.senior-dev` removed mid-run took the brief, the checklist and the pinned command with it. senior-dev now writes each one back after the step that removed it, as it last read it, says so on the run's page (`wrote .senior-dev/checklist.md back after something removed it`) and carries on.
+
+  Two CyberGym runs lost `.senior-dev` to the model's own last command. On openssl
+  the folder's `.senior-dev` was a link to a store outside it, and OpenSSL 1.1.0's
+  `make clean` deletes every link in the tree; the lock was reopened through the
+  link for every write, so one failed `open()` ended the run unsubmitted after
+  $0.64 while the store was collected intact. On arduinojson `.senior-dev` was a
+  real directory, and the rig's `validate.py` began `sudo rm -rf /src`, taking the
+  store and the conversation with it. Neither deleting step reached the action
+  log, because the store died before the step could be written.
+
+  A store that is itself removed or emptied still ends the run, now saying `its
+  store <dir> was removed while the run was working, with the conversation in it`.
+  The store holds its directory, its database and its records open and compares
+  them with what is at their paths before every write and every read of the
+  conversation: in a fresh directory the next turn would make the session again
+  under the same id and the model would carry on from a conversation that starts
+  where the removal happened. Holding them open also keeps ext4 and overlayfs from
+  handing a removed directory's inode number to the next one made at the same
+  path.
+
+  </details>
+
+- **senior-dev's ending no longer says the build and tests passed when it ran none** — [#1801](https://github.com/Agent-Field/codeaf/pull/1801) · `engine` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - senior-dev ended `submitted a change, and the project's own build and tests passed` whenever its check came back clean, even in a folder with nothing to run. With zero commands it now ends `submitted a change; the project has no build or tests it could find to run`.
+  - The run's reason for a zero-command pass, which codeaf appends to the landing note, said `submitted, and its build and tests passed`. It now says `submitted, and found no build or tests to run`.
+
+  A real run on a folder holding only a README printed the pass sentence one line
+  above `senior-dev observed: the project has no build or tests it could find to run`.
+  The inner status is still `pass`; only what the ending claims changed.
+
+  </details>
+
+- **senior-dev help fits eighty columns and is checked before merging** — [#1810](https://github.com/Agent-Field/codeaf/pull/1810) · `engine` `build` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The senior-dev run help printed --state-dir, --verify-build and --verify-test beyond eighty columns. Their descriptions now fit, and the state-dir line points to the manual's record-folder and environment defaults.
+  - A change to a carried program's flags could pass the PR gate without running the registry's help-width test. The light gate and make test-quick now run that test for every carried program and command.
+
+  </details>
+
+- **senior-dev checks selected-service model capacity before starting** — [#1811](https://github.com/Agent-Field/codeaf/pull/1811) · `engine` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A shell run warmed only the default service catalog, so a model from another connected service could fail sizing despite that service publishing its window. It now warms the catalogs for the selected high, low and frontier models.
+  - A missing or zero window could reach senior-dev's pipeline and fail during work. All remaining pools now refuse before stages or model calls, and provider-supplied project limits remain supported.
+
+  </details>
+
+- **task check declarations are refused before work when they cannot be rerun** — [#1812](https://github.com/Agent-Field/codeaf/pull/1812) · `engine` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Task creation and check replacement accepted compound commands or variable-dependent declarations that the completion gate could never approve. Admission now asks that gate's existing predicate before changing the plan, and explains how to declare separate commands from the task-copy root.
+
+  </details>
+
+- **the belt worker page fits its budget and is checked before merging** — [#1813](https://github.com/Agent-Field/codeaf/pull/1813) · `engine` `build` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The belt worker page exceeded its unchanged sixteen-KiB bound after the task-check guidance grew. Shorter wording preserves its rules and restores room below that bound.
+  - Embedded Markdown prompt changes could pass the Go-only touched-package gate without running the composed-page size and belt assertions. The light gate and make test-quick now run that existing test before merging.
+
+  </details>
+
+- **updater acceptance follows resolved install paths and current settings** — [#1814](https://github.com/Agent-Field/codeaf/pull/1814) · `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Updater tests compared the installer's resolved target with its unresolved input path, so successful installs through macOS temporary-directory links failed acceptance. They now compare against the independently resolved target while retaining the content, mode, checksum and timeout checks.
+  - The updater terminal drive navigated old settings tabs and searched for the old row label. It now stays in General and selects automatic updates, retaining the row's own hint, on/off checks, widths and navigation bound.
+
+  </details>
+
+- **security audits distinguish incomplete analysis from a completed search** — [#1815](https://github.com/Agent-Field/codeaf/pull/1815) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Unicode session labels were also sent as machine affinity keys, which some model gateways rejected. Unsafe keys are now stable ASCII while the readable labels and selected models remain unchanged.
+  - Failed hunt calls contributed empty batches without measured failure accounting, so every failed hunt could end as a clean pass. Failed attempts now survive checkpoints and reports, make the analysis incomplete and retain findings from completed hunts.
+  - A partial audit result could conceal a later model refusal or run limit. Result-bearing stops now keep their failed or ceiling ending and mark Markdown, JSON and SARIF as incomplete without changing proof requirements.
+
+  </details>
+
+- **hosted acceptance checks actual task endings and retains diagnostics** — [#1816](https://github.com/Agent-Field/codeaf/pull/1816) · `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Hosted acceptance treated landed files as successful task completion and could print ALL PASS while a task's durable ending was failed. Completion now requires all three handed-off tasks to end done, without changing the existing file/UI assertions or five-minute guards.
+  - A successful hosted drive deleted the full outcome and action records before they could explain a later failed-task report. Private sanitized phase and final records now survive cleanup, model-call metadata is kept inside the owned home without request/response bodies, and externally bound profiles are handled by the application without the drive reading or copying their credential file.
+
+  </details>
+
+- **review agents reserve answer time and retain failure evidence** — [#1817](https://github.com/Agent-Field/codeaf/pull/1817) · `chat` `engine` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Review sessions were forced to answer only at their turn or context limits. They now reserve answer time inside the existing hard deadline.
+  - Session duration was lost when the result returned. Completed and failed sessions now retain elapsed time and failed-agent diagnostics.
+  - A pipeline error returned without saving a review record. It now saves separate non-postable failure records; the failed pipeline ending is preserved.
+
+  Failure records contain no assembled review and cannot be posted as GitHub reviews. Time and cost ceilings are unchanged.
+
+  </details>
+
+- **review resolves model words and linked roots and formats final answers** — [#1818](https://github.com/Agent-Field/codeaf/pull/1818) · `chat` `engine` `docs`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - The shell resolved the main model flag but passed an explicit light model word unchanged. Review and security now resolve both through the same profile catalog, refusing unknown words before calls start.
+  - Read tools compared resolved file paths against an unresolved repository root and refused ordinary files under a linked root. Both spellings of the owned root now work while external paths and links remain refused.
+  - Final review answers requested JSON only through prompt instructions. They now request native schema formatting when the cached catalog publishes support, with one prompt-only fallback for an explicit unsupported-format refusal.
+  - The macOS installer surface regression compared a physical output path with a linked temporary-path spelling. It now checks the exact resolved installation target while preserving installed-byte and invocation-count checks.
+
+  Every review answer is still checked against the original full schema. Invalid schemas, account or ceiling refusals, cancellation and provider outages do not take the formatting fallback. Model defaults and turn, time and cost ceilings are unchanged.
+
+  </details>
+
+- **shell programs price qualified model names on their selected service** — [#1819](https://github.com/Agent-Field/codeaf/pull/1819) · `engine` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Shell admission priced connection-qualified model words as unknown even when OpenRouter published their tariff. It now resolves the connection and thinking level the same way the provider adapter does.
+  - A matching bare id on another connected service could borrow the shared OpenRouter tariff. Other services now retain the conservative unknown-price bound.
+
+  Unknown and unpublished prices still use the existing conservative reservation.
+  Receipt settlement, fallback reservation policy, and the run's cost and time ceilings are
+  unchanged.
+
+  </details>
+
+- **review rejects malformed consistency claims and retains partial coverage** — [#1820](https://github.com/Agent-Field/codeaf/pull/1820) · `chat` `engine` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A negative consistency claim could omit its explanation and code location and still become a finding. Such output now ends with a non-postable failure record, and posting refuses malformed older findings.
+  - A partial run warned in its account but saved JSON omitted the coverage facts and its posting payload could still approve or recommend a clean merge. New reports persist their limits, keep the warning in the posting payload and avoid those claims.
+
+  Assembled partial reviews still finish successfully. Invalid consistency claims do
+  not. Models and limits are unchanged; older reports with known partial metadata
+  need coverage facts and a posting warning before posting. This repair does not
+  resolve the remaining lens session deadlines or establish complete live acceptance.
+
+  </details>
+
+- **provider connections read complete bounded model catalogs** — [#1822](https://github.com/Agent-Field/codeaf/pull/1822) · `chat` `engine` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Connection checks read only four KiB of a successful model list, so ai&'s valid larger catalog became incomplete JSON and its key could not connect. Successful model-list probes now read the complete response up to discovery's shared sixteen-MiB bound and refuse oversized responses instead of accepting a truncated prefix.
+
+  </details>
+
+- **concurrent provider-memo saves preserve every learned fact at restart** — [#1824](https://github.com/Agent-Field/codeaf/pull/1824) · `engine` `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Atomic provider-memo replacement kept valid JSON but could let an older in-process snapshot overwrite a newer learned fact. Saves now serialize from before snapshot through replacement, while requests still persist asynchronously; separate processes do not merge their caches.
+
+  </details>
+
+
+### Internal
+
+- **CHANGELOG.md gains its v0.7.1 section ahead of the stable cut** — [#1775](https://github.com/Agent-Field/codeaf/pull/1775) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - #1754 and #1755, merged after v0.7.0, were described only by loose files under docs/changes/unreleased/; CHANGELOG.md now carries them as v0.7.1, and that folder holds only what lands next.
+
+  </details>
+
+- **CHANGELOG.md gains its v0.8.0 section ahead of staging promotion** — [#1821](https://github.com/Agent-Field/codeaf/pull/1821) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The 32 accumulated entries through #1822 were available as loose files under docs/changes/unreleased/. CHANGELOG.md now carries their headlines, invalidations and explanations in its v0.8.0 section, and that folder holds only what lands next.
+
+  </details>
+
+- **provider restart fixtures drain learned-memo writers before resetting memory** — [#1823](https://github.com/Agent-Field/codeaf/pull/1823) · `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The restart fixtures forced a synchronous save but left a scheduled save running while they discarded process memory. They now drain the owned writer before resetting memory and reloading the memo, preserving the original startup and request-count assertions.
+
+  </details>
+
 ## v0.7.1 — 2026-10-05
 
 ### Changed
