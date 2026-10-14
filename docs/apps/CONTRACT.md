@@ -443,6 +443,7 @@ Only B1 decides more.
   from the pinned binary in `codeaf-sidecar.json`. Browser dev uses D3's mock
   bridge serving `fixtures/apps/crm/`.
 
+- Wave 2 · spaces: [contract/spaces.md](contract/spaces.md)
 - Wave 2 · shape track: [contract/shape.md](contract/shape.md)
 
 ### c2 run fallback · gateway and desk handoff

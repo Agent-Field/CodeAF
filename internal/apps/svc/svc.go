@@ -28,6 +28,8 @@ type Caller struct {
 	Member string
 	Role   Role
 	Agent  bool // true when the app agent calls on the member's behalf
+	Space  string
+	WS     WorkspaceRole
 }
 
 // DataMode picks the records a call reads and writes.
@@ -175,6 +177,7 @@ type Caps interface {
 
 // Services is everything the gateway dispatches to.
 type Services struct {
+	SpacesServices
 	Store      Store
 	Records    Records
 	Sample     Sample
