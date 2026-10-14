@@ -32,6 +32,9 @@ type ResultEvent struct {
 
 type savedResult struct {
 	BuildResult
+	// Road says which road built the app: calls, loop or loop+fix. The bench
+	// counts rescues from it.
+	Road     string     `json:"road,omitempty"`
 	Original spec.Files `json:"original,omitempty"`
 }
 

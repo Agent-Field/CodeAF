@@ -74,12 +74,18 @@ func (s *Service) publishPlan(ctx context.Context, b *build, plan prompt.Plan) e
 	if err := s.storePlan(ctx, b, plan); err != nil {
 		return err
 	}
+	s.emitPlan(b, plan)
+	return nil
+}
+
+// emitPlan tells the desk the plan card is ready. The loop road calls it as
+// soon as the draft's plan is ready, before the worker has ended its task.
+func (s *Service) emitPlan(b *build, plan prompt.Plan) {
 	sp := specPlan(plan)
 	s.emit(b, bridge.BuildEvent{
 		Step: bridge.StepPlan, Status: bridge.BuildDone, Log: "Plan ready",
 		Plan: &sp, Needs: planNeeds(plan, b),
 	})
-	return nil
 }
 
 func (s *Service) storePlan(ctx context.Context, b *build, plan prompt.Plan) error {
@@ -101,14 +107,11 @@ func (s *Service) EditPlan(ctx context.Context, scope svc.Scope, p bridge.PlanEd
 	}
 	if detail, err := s.all.Store.Get(ctx, scope.App); err != nil {
 		return bridge.PlanEditResult{}, err
-	} else if detail.State != bridge.StatePlanning {
+	} else if !s.roadFor(b).editable[detail.State] {
 		return bridge.PlanEditResult{}, bridge.Errorf(bridge.CodeConflict, "the plan can only change before Write")
 	}
-	plan, err := s.applyEdits(ctx, b, p.Edits)
+	plan, err := s.roadFor(b).edit(s, ctx, b, p.Edits)
 	if err != nil {
-		return bridge.PlanEditResult{}, err
-	}
-	if err := s.storePlan(ctx, b, plan); err != nil {
 		return bridge.PlanEditResult{}, err
 	}
 	return bridge.PlanEditResult{Plan: specPlan(plan), Needs: planNeeds(plan, b)}, nil

@@ -175,7 +175,7 @@ func (s *Service) allowTopic(ctx context.Context, scope svc.Scope, raw json.RawM
 	}
 	if len(parts) == 3 {
 		switch parts[2] {
-		case "build", "state", "runs", "approvals":
+		case "build", "draft", "state", "runs", "approvals":
 			return nil
 		case "*":
 			return s.allowAllRecords(ctx, scope)

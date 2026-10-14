@@ -69,9 +69,16 @@ type memHub struct {
 	mu      sync.Mutex
 	builds  []bridge.BuildEvent
 	results []ResultEvent
+	drafts  []bridge.DraftEvent
 }
 
 func (h *memHub) Publish(topic string, data any) {
+	if ev, ok := data.(bridge.DraftEvent); ok && topic == bridge.TopicDraft("crm") {
+		h.mu.Lock()
+		h.drafts = append(h.drafts, ev)
+		h.mu.Unlock()
+		return
+	}
 	if result, ok := data.(ResultEvent); ok {
 		h.mu.Lock()
 		h.results = append(h.results, result)

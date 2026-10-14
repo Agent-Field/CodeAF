@@ -19,7 +19,7 @@ const writeWorkers = 6
 // writeAndCheck is Write: the files, then Check with up to MaxFixRounds fixes,
 // then Preview or failed.
 func (s *Service) writeAndCheck(ctx context.Context, b *build) error {
-	if err := s.saveResult(b, savedResult{}); err != nil {
+	if err := s.saveResult(b, savedResult{Road: b.result().Road}); err != nil {
 		return err
 	}
 	files, err := s.writeAll(ctx, b)

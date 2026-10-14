@@ -28,6 +28,33 @@ type build struct {
 	spent   float64
 	cancel  context.CancelFunc
 	working bool
+
+	// The loop road's parts: the seat its worker builds in, whether the loop
+	// gave this build's plan to the calls road, and the check rounds so far.
+	seat    *seat
+	demoted bool
+	rounds  int
+}
+
+// demote hands the build to the calls road for good (see roadFor).
+func (b *build) demote() {
+	b.mu.Lock()
+	b.demoted = true
+	b.mu.Unlock()
+}
+
+func (b *build) isDemoted() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.demoted
+}
+
+// nextRound numbers the next check round, however it was asked for.
+func (b *build) nextRound() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.rounds++
+	return b.rounds
 }
 
 func (b *build) cost() bridge.Cost {

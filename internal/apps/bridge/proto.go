@@ -68,6 +68,7 @@ const (
 
 // Topic builders. Every topic is app-scoped.
 func TopicBuild(app string) string               { return "app/" + app + "/build" }
+func TopicDraft(app string) string               { return "app/" + app + "/draft" }
 func TopicState(app string) string               { return "app/" + app + "/state" }
 func TopicRecords(app, recordType string) string { return "app/" + app + "/records/" + recordType }
 func TopicRuns(app string) string                { return "app/" + app + "/runs" }
@@ -212,6 +213,19 @@ type BuildEvent struct {
 	Check  *CheckReport `json:"check,omitempty"`
 	Cost   Cost         `json:"cost"`
 	At     string       `json:"at"`
+}
+
+// DraftEvent is one piece the Builder's worker committed to the draft, on
+// topic app/<id>/draft. Line is the owner-readable sentence for the plan card
+// and the log; it is never a verb and never an error. The desk de-duplicates
+// by Seq.
+type DraftEvent struct {
+	Seq    int    `json:"seq"`
+	Kind   string `json:"kind"` // name|plan.data|plan.run|plan.screen|plan.agent|record|field|screen|run|agent|connect|trigger|command|drop|phase
+	ID     string `json:"id,omitempty"`
+	Line   string `json:"line"`
+	Author string `json:"author"` // builder|owner|codeaf
+	At     string `json:"at"`
 }
 
 // Cost is spend so far against the cap, in USD.
