@@ -125,20 +125,35 @@ type agentLive struct {
 // stored transitions: an open question whose answer is not held for Undo.
 // Callers hold the registry lock.
 func (live *agentLive) needsPerson(id string) bool {
+	door, ok := live.conn.Engine.(inboxQuestionDoor)
+	if !ok || len(live.held) == 0 {
+		return live.conn.Engine.NeedsPerson()
+	}
+	open := door.OpenQuestions()
+	live.pruneHeld(id, open)
 	if !live.conn.Engine.NeedsPerson() {
 		return false
 	}
-	door, ok := live.conn.Engine.(inboxQuestionDoor)
-	if !ok || len(live.held) == 0 {
-		return true
-	}
-	open := door.OpenQuestions()
 	for _, q := range open {
 		if !live.held[inboxQuestionID(id, q)] {
 			return true
 		}
 	}
 	return len(open) == 0
+}
+
+// pruneHeld drops holds whose question the engine has taken: a sent answer
+// stays held until its question leaves the open set. Callers hold the lock.
+func (live *agentLive) pruneHeld(id string, open []session.Question) {
+	still := make(map[string]bool, len(open))
+	for _, q := range open {
+		still[inboxQuestionID(id, q)] = true
+	}
+	for item := range live.held {
+		if !still[item] {
+			delete(live.held, item)
+		}
+	}
 }
 
 func (a *AgentRegistry) liveNeedsPerson(id string, live *agentLive) bool {
