@@ -143,14 +143,14 @@ func (l *screenLint) props(part *spec.Part, n *spec.Node, typ, path string) {
 		case !prop.Accepts(n.Props[key]):
 			l.add(at, "prop %q must have type %s", key, prop.Type)
 		default:
-			l.propValue(prop, key, n.Props[key], typ, at)
+			l.propValue(part.Name, prop, key, n.Props[key], typ, at)
 		}
 	}
 }
 
 // propValue checks the props whose meaning needs the draft: field names of
 // the bound record and the sort expression.
-func (l *screenLint) propValue(prop *spec.Prop, key string, value any, typ, at string) {
+func (l *screenLint) propValue(partName string, prop *spec.Prop, key string, value any, typ, at string) {
 	switch prop.Type {
 	case "field":
 		l.fieldName(typ, value.(string), at)
@@ -160,7 +160,8 @@ func (l *screenLint) propValue(prop *spec.Prop, key string, value any, typ, at s
 			l.fieldName(typ, name, fmt.Sprintf("%s/%d", at, i))
 		}
 	case "string":
-		if key == "sort" {
+		// FilterTokens names its sort action for people; only a table's sort is a field expression.
+		if key == "sort" && partName != "FilterTokens" {
 			if rec := l.st.Records[typ]; rec != nil {
 				if _, err := query.Expression(rec, strings.TrimPrefix(value.(string), "-")); err != nil {
 					l.add(at, "%v (fields of %s: %s)", err, typ, fieldList(sortedKeys(rec.Fields)))
