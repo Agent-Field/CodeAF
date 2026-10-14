@@ -31,8 +31,19 @@ func TestCanonicalModelRows(t *testing.T) {
 			ids: []string{
 				"vendor/model:batch", "vendor/model:free", "vendor/model:nitro", "vendor/model:floor",
 				"vendor/model:exacto", "vendor/model:online", "vendor/model:thinking", "vendor/model:future-variant",
-				"~vendor/model", "vendor/model-latest",
+				"~vendor/model", "vendor/model-latest", "vendor/model",
 			},
+			want: []string{"vendor/model"},
+		},
+		{
+			name: "local tags are models, not routes",
+			ids:  []string{"qwen3:8b", "llama3.1:70b", "llama3:latest"},
+			want: []string{"qwen3:8b", "llama3.1:70b", "llama3:latest"},
+		},
+		{
+			name: "a lone variant is the only way to that model",
+			ids:  []string{"vendor/solo:free"},
+			want: []string{"vendor/solo:free"},
 		},
 		{
 			name: "plain wins in either order",
@@ -145,7 +156,6 @@ func TestModelsKeepUnlistedSavedChoicesAndTheirKnownNames(t *testing.T) {
 		listed          []CatalogModel
 		remembered      []catalog.Model
 	}{
-		{name: "name in full catalog", id: "vendor/model:batch", title: "Model", listed: []CatalogModel{{ID: "vendor/model:batch", Name: "Model", Available: true}}},
 		{name: "disconnected catalog name", id: "vendor/disconnected", title: "Disconnected model", remembered: []catalog.Model{{ID: "vendor/disconnected", Name: "Disconnected model"}}},
 		{name: "unknown id", id: "vendor/unknown", title: "vendor/unknown"},
 	} {

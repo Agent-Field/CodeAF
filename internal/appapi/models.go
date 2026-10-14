@@ -136,8 +136,9 @@ func canonicalModelRows(models []CatalogModel) []CatalogModel {
 	rows := []CatalogModel{}
 	positions := map[string]int{}
 	builds := map[string]string{}
+	concrete := concreteLineages(models)
 	for _, row := range models {
-		if strings.Contains(row.ID, ":") || strings.HasPrefix(row.ID, "~") || strings.HasSuffix(row.ID, "-latest") {
+		if isRouteOfListed(row.ID, concrete) {
 			continue
 		}
 		lineage := crewroute.Lineage(row.ID)
@@ -164,6 +165,33 @@ func canonicalModelRows(models []CatalogModel) []CatalogModel {
 	return rows
 }
 
+// isAlias reports a floating alias: `~vendor/model` or `vendor/model-latest`.
+func isAlias(id string) bool {
+	return strings.HasPrefix(id, "~") || strings.HasSuffix(id, "-latest")
+}
+
+// concreteLineages are the lineages the list holds a concrete id for: no
+// router suffix and no floating alias.
+func concreteLineages(models []CatalogModel) map[string]bool {
+	held := map[string]bool{}
+	for _, row := range models {
+		if !strings.Contains(row.ID, ":") && !isAlias(row.ID) {
+			held[crewroute.Lineage(row.ID)] = true
+		}
+	}
+	return held
+}
+
+// isRouteOfListed reports a router variant or alias whose model the list
+// already holds concretely. A colon alone proves nothing: local servers name
+// their own models `qwen3:8b`, and those are the only rows they have.
+func isRouteOfListed(id string, concrete map[string]bool) bool {
+	if !strings.Contains(id, ":") && !isAlias(id) {
+		return false
+	}
+	return concrete[modelListingLineage(strings.TrimPrefix(id, "~"))]
+}
+
 // modelListingLineage reads any router suffix as a route to the same model.
 // The shared lineage helper then owns aliases and snapshot spellings.
 func modelListingLineage(id string) string {
@@ -173,12 +201,7 @@ func modelListingLineage(id string) string {
 
 // savedModelName preserves a disconnected choice's remembered title without
 // fetching a catalogue or making that choice available for writes.
-func (s *Server) savedModelName(id string, models []CatalogModel) string {
-	for _, row := range models {
-		if row.ID == id && row.Name != "" && row.Name != id {
-			return row.Name
-		}
-	}
+func (s *Server) savedModelName(id string) string {
 	services := config.ResolveSources(s.options.ProfileDir, "", config.DefaultBaseURL)
 	service, bare := services.For(id)
 	remembered := catalog.Recall(config.CatalogOptionsFor(service, s.options.ProfileDir))
@@ -213,7 +236,7 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	seen := map[string]bool{}
 	for _, id := range saved {
 		if id != "" && !listed[modelListingLineage(id)] && !seen[id] {
-			rows = append(rows, CatalogModel{ID: id, Name: s.savedModelName(id, models), Available: false, Efforts: append([]string{}, roles.Efforts...)})
+			rows = append(rows, CatalogModel{ID: id, Name: s.savedModelName(id), Available: false, Efforts: append([]string{}, roles.Efforts...)})
 			seen[id] = true
 		}
 	}
