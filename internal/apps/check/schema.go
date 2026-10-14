@@ -11,7 +11,7 @@ import (
 func validateFiles(files spec.Files) []Issue {
 	issues := []Issue{}
 	for _, issue := range spec.Validate(files) {
-		hint := "match the file schema in internal/apps/spec/schema"
+		hint := issueHint(issue)
 		if strings.HasPrefix(issue.File, "runs/") {
 			hint += "; " + spec.RunReferenceRule + "; put gate and exactly one approved action in the same step; never a gate-only step"
 			if strings.Contains(issue.Message, "valid against schemas at indexes") {
@@ -42,6 +42,19 @@ func validateFiles(files spec.Files) []Issue {
 		issues = append(issues, runQueries("runs/"+id+".yaml", "/steps", b.Runs[id].Steps, b.App)...)
 	}
 	return issues
+}
+
+// issueHint is the exact repair for one spec.Validate finding.
+func issueHint(issue spec.Issue) string {
+	switch issue.Rule {
+	case "missing":
+		return "write " + issue.File + "; it is required in every app"
+	case "name":
+		return "set " + at(issue) + " to the file name's id"
+	case "parse":
+		return "rewrite " + issue.File + " so it parses; keep its content"
+	}
+	return schemaIssueHint(issue)
 }
 
 func definitionPath(name string) bool {

@@ -33,12 +33,14 @@ func (s *Service) checkAndFix(ctx context.Context, b *build, files spec.Files, o
 	loop := prompt.NewLoop()
 	_ = loop.PlanWritten()
 	_ = loop.FilesWritten()
+	memory := &roundMemory{}
 	for round := 1; ; round++ {
 		report, err := s.checkRound(ctx, b, files, round)
 		if err != nil {
 			return err
 		}
-		phase, _ := loop.CheckResult(report.Pass, formatReport(report))
+		phase, _ := loop.CheckResult(report.Pass, memory.formatReport(report, files))
+		memory.remember(report, files)
 		switch phase {
 		case prompt.PhasePreview:
 			if only != "" {
@@ -250,9 +252,14 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 		report += "\nChange ONLY " + only + ". Keep every other file as it is."
 	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildRunning, Log: "Fixing what the checks found"})
+	planNamed := only == "" && reportNames(report, spec.PlanFile)
+	schemas := []string{spec.AppSchemaURL, spec.ScreenSchemaURL, spec.RunSchemaURL}
+	if planNamed {
+		schemas = append(schemas, spec.PlanSchemaURL)
+	}
 	text, err := prompt.Render(prompt.KindFix, prompt.Inputs{
 		Report: report, Brief: string(b.currentPlan().Brief), Files: asText(files), Catalog: catalogText(),
-		Schemas: schemaFor(spec.AppSchemaURL, spec.ScreenSchemaURL, spec.RunSchemaURL),
+		Schemas: schemaFor(schemas...),
 	})
 	if err != nil {
 		return nil, err
@@ -268,7 +275,7 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 		}
 		changed = map[string][]byte{only: data}
 	}
-	delete(changed, spec.PlanFile)
+	keepPlanFix(b, changed, planNamed)
 	if changed, err = b.patch(changed); err != nil {
 		return nil, err
 	}
@@ -292,7 +299,7 @@ func asText(files spec.Files) map[string]string {
 
 // checkRound runs Check on the files and publishes its report.
 func (s *Service) checkRound(ctx context.Context, b *build, files spec.Files, round int) (bridge.CheckReport, error) {
-	if err := s.shortenPlanLines(ctx, b, files); err != nil {
+	if err := s.repairBeforeCheck(ctx, b, files); err != nil {
 		return bridge.CheckReport{}, err
 	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: bridge.BuildRunning, Round: round, Log: "Opening every screen with sample data"})
