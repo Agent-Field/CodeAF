@@ -1337,6 +1337,21 @@ type Config struct {
 	// v3SkillShelf). The folders stay the one source of truth either way.
 	Skills *store.Store
 
+	// SkillsReady is closed once the shelf's foreign-skill import pass has
+	// finished — the pass a launch used to run synchronously before the first
+	// message could build (#1659). The turn's skill resolve waits on it,
+	// bounded by SkillsReadyWait, so the very first message still sees the
+	// skills a person installed for another harness while the door that
+	// opened the conversation never waits on a disk scan. NIL IS NO GATE: a
+	// door that hands no channel answers instantly, which is every door that
+	// ran the pass itself, and every turn after the pass is done — a closed
+	// channel answers in the select's first tick.
+	SkillsReady <-chan struct{}
+	// SkillsReadyWait bounds the wait above; zero takes the package default.
+	// Tests set it small so a stuck pass proves the bound instead of the
+	// wall clock.
+	SkillsReadyWait time.Duration
+
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.
 	// Nil falls back to Memory, so a memory-off root grants no history access.

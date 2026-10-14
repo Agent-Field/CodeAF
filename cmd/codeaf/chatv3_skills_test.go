@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -45,6 +46,16 @@ func TestAForeignSkillIsOnTheShelfBeforeTheFirstMessage(t *testing.T) {
 	launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: workspace})
 	if err != nil {
 		t.Fatalf("the launch did not open: %v", err)
+	}
+
+	// THE PASS RUNS OFF THE OPEN NOW (#1659): the launch comes back first and
+	// the pass lands behind the gate the first turn holds for. Wait for it
+	// here — the law under test is "on the shelf before the first message
+	// builds", not "before the open returns".
+	select {
+	case <-launch.Config.SkillsReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the foreign-skill pass never landed")
 	}
 
 	facts, err := launch.Config.Memory.SkillFacts(store.FactActive, 50)
@@ -96,6 +107,59 @@ func TestALaunchWithNoStoreSkipsTheShelfPassWithoutPanic(t *testing.T) {
 	importForeignSkillsBeforeFirstMessage(nil, t.TempDir())
 }
 
+// THE OPEN DOES NOT WAIT FOR THE PASS (#1659). The pass used to run inside
+// the launch — on the shared road, inside the enter keystroke itself. The
+// launch returns with the gate standing and the pass still out; the first
+// turn's bounded wait is what keeps the shelf under the first message.
+func TestTheLaunchReturnsBeforeTheForeignSkillPassFinishes(t *testing.T) {
+	proc := v3TestProcess(t)
+	aForeignSkill(t)
+	held := make(chan struct{})
+	quit := make(chan struct{})
+	realPass := foreignSkillPass
+	foreignSkillPass = func(shelf *store.Store, workspace string) {
+		select {
+		case <-held:
+		case <-quit:
+		}
+		realPass(shelf, workspace)
+	}
+	t.Cleanup(func() {
+		close(quit)
+		foreignSkillPass = realPass
+	})
+	launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatalf("the launch did not open while its pass was held: %v", err)
+	}
+	if launch.Config.SkillsReady == nil {
+		t.Fatal("the launch carried no gate for the first turn")
+	}
+	select {
+	case <-launch.Config.SkillsReady:
+		t.Fatal("the open waited on the foreign-skill pass")
+	default:
+	}
+	// THE FIRST TURN'S GATE THEN HOLDS THE LINE: release the pass, the gate
+	// opens, and the shelf the first message builds from carries the skill.
+	close(held)
+	select {
+	case <-launch.Config.SkillsReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the pass never landed after release")
+	}
+	facts, err := launch.Config.Memory.SkillFacts(store.FactActive, 50)
+	if err != nil {
+		t.Fatalf("the shelf did not read: %v", err)
+	}
+	for _, fact := range facts {
+		if fact.SkillName() == "pdf" {
+			return
+		}
+	}
+	t.Fatalf("the shelf the first message builds from has no pdf skill; facts: %+v", facts)
+}
+
 // MEMORY OFF IS NOT SKILLS OFF. A launch whose memory row is off opens no
 // memory store at all, and still reaches the skills a person installed for
 // another harness: the process builds a shelf of the folders alone, the
@@ -127,6 +191,13 @@ func TestAMemoryOffLaunchStillHasTheSkillShelf(t *testing.T) {
 	}
 	if launch.Config.Skills == nil {
 		t.Fatal("a launch with memory off was handed no skill shelf")
+	}
+	// THE PASS RUNS OFF THE OPEN NOW (#1659) — wait for it behind the gate
+	// the first turn holds for, then read the shelf.
+	select {
+	case <-launch.Config.SkillsReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the foreign-skill pass never landed")
 	}
 	facts, err := launch.Config.Skills.SkillFacts(store.FactActive, 50)
 	if err != nil {
