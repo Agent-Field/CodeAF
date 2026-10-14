@@ -61,6 +61,25 @@ The full report is three files in the task's record folder, named at the end of 
 
 `--compliance owasp,pci-dss` (at a shell) maps the findings to compliance frameworks — OWASP, PCI-DSS, SOC2, HIPAA, ISO27001 — and adds `sec-compliance.md`. A shell run's record folder is under `~/.codeaf/v3/carried/sec/`, one folder per run.
 
+## A failed or incomplete audit — a model error, hunts that did not finish, no findings
+
+If a hunt cannot finish because a model call failed or its session stopped, sec
+records that failure separately from a completed hunt with no findings. Its ending,
+account and readable report say **analysis incomplete** and how many hunts failed.
+Findings from completed hunts still go through the same checks and remain in the
+report; the failure itself is never a security finding. If all hunts fail, sec
+makes no claim that the code has no exploitable problems.
+
+The run ends as failed when any hunt fails, or on its ceiling if the run's dollar
+or time limit caused the incomplete analysis. A run stopped or refused by the
+model service later in the audit also says analysis incomplete, retaining any
+findings already checked; a partial result never turns that stop into a pass.
+The JSON report keeps the attempted
+count and each failed strategy and reason in `metadata.hunt_coverage`; the SARIF
+records unsuccessful execution and an error notification, alongside any findings.
+Global stops are also recorded in `metadata.analysis_incomplete`. If the pipeline
+cannot produce a result, the ending explains the stop without promising a report.
+
 ## An earlier audit's report — find it from another conversation, run it again, the last audit, start fresh
 
 A sec run in the chat keeps its report in that task's record folder, `~/.codeaf/v3/projects/<project>/<conversation>/tasks/<n>/`. Every conversation in the project can see the run in `tasks`: its row's outcome is the first line of its account, which says what it found — `Security audit of the whole repository: 14 problems, 9 confirmed and 5 likely (1 critical, 1 high, 12 medium).` — and its `artifact` is that record folder, where `sec-report.md` is.
@@ -78,6 +97,8 @@ A run nobody set a limit for stops at **$5 and four hours**, or sooner where thi
 What a run spends depends on the repository and the models: a `quick` audit of a small project is cents; a `standard` audit of a mid-sized one is commonly under a dollar or two on an inexpensive model, and a `thorough` one more. It keeps three minutes of its time ceiling back to write its report. **A run its time ceiling cuts still reports**, and says so at the top of its account and its report: `It reached its time ceiling of 4h during prove, so findings whose tests had not finished are marked unclear, and no fixes were written.` A large repository can need more than four hours at `standard`; give it `--max-hours` at a shell, or audit only the changes. A run that reaches its dollar ceiling before the report ends with `sec reached the run's dollar ceiling of $5.00: sec said it reached the run's dollar ceiling before it finished, so it has no report` (codeaf refused its next model call); one that reaches its time ceiling ends with `sec stopped on its own ceiling: it reached the run's time ceiling before it finished, so it has no report`. Either way the chat asks whether to spend more rather than running it again.
 
 **Which models.** From the chat, the conversation's working seat reads the code and its light seat makes the single quick calls (merging duplicates, the compliance mapping). A model you name for the hand-off reads the code in place of the working seat. At a shell, the profile's work seat does both unless `--model` (and `--light`) name others.
+
+Both flags resolve model words through the profile's catalog, including floating aliases and provider-qualified names. An unknown model word is refused before any model call starts. A linked path to the repository is accepted as the same reading root; files and links that lead outside that root are still refused.
 
 ## Fixing what sec found — hand the findings to senior-dev, fix the vulnerabilities
 

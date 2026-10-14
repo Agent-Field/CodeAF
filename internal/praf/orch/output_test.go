@@ -37,6 +37,19 @@ func fixedClockOrch(t *testing.T) *Orchestrator {
 	return o
 }
 
+func TestPartialPayloadPreservesCommentsWithoutTheCleanAdvisoryCallout(t *testing.T) {
+	finding := schemas.ScoredFinding{Title: "Fix nil lookup", Body: "Dereference follows failure.", Severity: "important"}
+	body := decorateWithBlocking(&finding, "**Fix nil lookup**\n\nDereference follows failure.")
+	original := schemas.GitHubReview{Body: "Safe to merge", Event: "COMMENT", Comments: []schemas.GitHubComment{{Path: "a.go", Line: 3, Body: body}}}
+	partial := PartialReviewPayload(original, "Partial review; one session failed.")
+	if strings.Contains(partial.Body, "Safe to merge") || strings.Contains(partial.Comments[0].Body, "Safe to merge") || !strings.Contains(partial.Comments[0].Body, "Dereference follows failure.") || partial.Comments[0].Path != "a.go" || partial.Comments[0].Line != 3 {
+		t.Fatalf("partial payload=%+v", partial)
+	}
+	if original.Comments[0].Body != body {
+		t.Fatal("partial conversion mutated the original payload")
+	}
+}
+
 type ownPRFallbackGH struct {
 	reviews []schemas.GitHubReview
 }

@@ -95,6 +95,12 @@ render the summarizer reads caps a tool result at 2,000 bytes and a call's argum
 
 ## Connection recovery bounds
 
+Successful connection model lists share discovery's **16 MiB** response bound
+(`catalog.MaxCatalogBytes`). The connection probe reads one extra byte to refuse
+an oversized listing rather than admit a truncated prefix; error and one-token
+probe responses retain their **4 KiB** read bound. Probe timeouts are unchanged.
+These are network/memory safety bounds, not response-time performance targets.
+
 `internal/provider/connectivity.go` limits a connection-recovery episode to
 two minutes (`connectionRecoveryWindow`), including repeated loss after a
 successful probe. Caller deadlines and cancellation can end it earlier. Each
@@ -2943,3 +2949,16 @@ receipts are atomically replaced and synced before committing deletion. Startup 
 walks only the two saved-conversation directory levels, without following symlinked buckets.
 `internal/session/deletion_revision_test.go` drives completion and timeout with held
 channels and a zero test grace rather than sleeping for the production deadline.
+
+## Learned provider-fact persistence
+
+Within one process, `quirksStore.saveMutex` serializes saves from before the
+snapshot through atomic file replacement, so an older snapshot cannot replace
+newer learned facts. The memo-reader mutex is still held only while copying
+maps, never across file I/O. Requests still schedule persistence asynchronously;
+waiting writers do not move a disk wait onto the request path. The existing
+unique temporary files and atomic rename remain unchanged. This is an in-process
+ordering guarantee, not a merge of caches written by separate processes.
+
+Restart fixtures drain their owned scheduled writes before discarding process
+memory. No timeout, response limit or request/retry budget changes.

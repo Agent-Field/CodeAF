@@ -1073,7 +1073,7 @@ func (o *Orchestrator) runConsistencyVerify(ctx context.Context, allFindings []s
 			continue
 		}
 		holds, present := v["holds"]
-		if !present || holds != false || getStr(v, "title", "") == "" {
+		if !present || holds != false {
 			continue
 		}
 		lineEndVal := getIntOrZero(v, "line_end")
@@ -1094,7 +1094,11 @@ func (o *Orchestrator) runConsistencyVerify(ctx context.Context, allFindings []s
 			"confidence":     getFloatOr(v, "confidence", 0.7),
 			"tags":           []string{"consistency"},
 		}
-		newFindings = append(newFindings, mapToStruct[schemas.ReviewFinding](normalized))
+		finding := mapToStruct[schemas.ReviewFinding](normalized)
+		if err := finding.ValidateConsistency(); err != nil {
+			return nil, err
+		}
+		newFindings = append(newFindings, finding)
 	}
 	return append(allFindings, newFindings...), nil
 }

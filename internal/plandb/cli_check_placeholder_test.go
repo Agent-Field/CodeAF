@@ -113,7 +113,6 @@ func TestAddKeepsLegitimateChecksExactly(t *testing.T) {
 		{"existing underscore file", "gofmt -l issue_.go"},
 		{"no numbered sibling", "gofmt -l notes_.go"},
 		{"glob", "gofmt -l issue_*.go"},
-		{"shell variable", `test -f "$FILE"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

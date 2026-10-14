@@ -502,14 +502,18 @@ func TestEachAgentHasItsOwnLimits(t *testing.T) {
 		}
 	}
 	own := limitsFor(options{})
-	if got := own(secappx.HarnessOptions{Label: reasoners.LabelReviewer}); got != agentLimits[reasoners.LabelReviewer] {
+	wantReviewer := agentLimits[reasoners.LabelReviewer]
+	wantReviewer.AnswerReserve = 30 * time.Second
+	if got := own(secappx.HarnessOptions{Label: reasoners.LabelReviewer}); got != wantReviewer {
 		t.Errorf("reviewer limits = %+v", got)
 	}
-	if got := own(secappx.HarnessOptions{Label: "something else"}); got != otherLimits {
+	wantOther := otherLimits
+	wantOther.AnswerReserve = 30 * time.Second
+	if got := own(secappx.HarnessOptions{Label: "something else"}); got != wantOther {
 		t.Errorf("an unknown agent's limits = %+v", got)
 	}
 	overridden := limitsFor(options{maxTurns: 7, sessionWall: time.Minute})
-	if got := overridden(secappx.HarnessOptions{Label: reasoners.LabelLens}); got != (agentsession.Limits{Turns: 7, Wall: time.Minute}) {
+	if got := overridden(secappx.HarnessOptions{Label: reasoners.LabelLens}); got != (agentsession.Limits{Turns: 7, Wall: time.Minute, AnswerReserve: 30 * time.Second}) {
 		t.Errorf("--max-turns and --session-wall do not override: %+v", got)
 	}
 	fs := flag.NewFlagSet("review run", flag.ContinueOnError)

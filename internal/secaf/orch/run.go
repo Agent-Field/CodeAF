@@ -569,6 +569,7 @@ func (o *AuditOrchestrator) RunProve(
 		ChainCount:          hunt.ChainCount,
 		StrategiesRun:       hunt.StrategiesRun,
 		HuntDurationSeconds: hunt.HuntDurationSeconds,
+		Coverage:            hunt.Coverage,
 	}
 
 	o.FindingsNotVerified = len(hunt.Findings) - len(limitedHunt.Findings)

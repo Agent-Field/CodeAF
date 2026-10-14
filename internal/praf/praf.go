@@ -77,13 +77,14 @@ var Program = delegate.Delegate{
 		"`post <the review-report.json path from the account>`), or handing the blocking findings to senior-dev as " +
 		"one task that fixes them in this folder when it is the pull request's checkout, naming which. " +
 		"Propose neither before they say yes to it.",
-	ModelFlag:  "model",
-	CrewFlags:  crewFlags,
-	StageWords: stageWords,
-	Present:    presentActions,
-	Default:    "run",
-	Page:       Name,
-	Commands:   []delegate.Command{runCommand},
+	ModelFlag:           "model",
+	AuxiliaryModelFlags: []string{"light"},
+	CrewFlags:           crewFlags,
+	StageWords:          stageWords,
+	Present:             presentActions,
+	Default:             "run",
+	Page:                Name,
+	Commands:            []delegate.Command{runCommand},
 }
 
 // title is a typed run's title.

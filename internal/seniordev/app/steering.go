@@ -96,8 +96,16 @@ func (runner *pipeline) heardSteering(inbox delegate.Listener, messages []delega
 
 // keepSteering appends the messages to the steering file compaction pins. A
 // file that cannot be written costs the pin, never the message: the model is
-// handed the words either way.
+// handed the words either way. A steering file something removed is written
+// back before it is appended to, so the messages taken before are not lost,
+// and the append holds the kept notes' lock, so a write-back running beside it
+// can neither land under it nor keep the file from before it
+// ([pipeline.readNote]).
 func (runner *pipeline) keepSteering(messages []delegate.Message) {
+	runner.kept.mu.Lock()
+	defer runner.kept.mu.Unlock()
+	_, _ = runner.readNoteLocked(steeringFile)
+	defer func() { _, _ = runner.readNoteLocked(steeringFile) }()
 	path := filepath.Join(runner.workspace, steeringFile)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
