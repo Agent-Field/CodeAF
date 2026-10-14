@@ -76,8 +76,8 @@ func TestCrewsMethodsThroughWebSocket(t *testing.T) {
 		{bridge.MethodLinksRemove, false, bridge.RemoveLinkParams{Crew: "pricing", Type: "deal", ID: "dl_hooli"}, false},
 		{bridge.MethodLinksForRecord, false, bridge.LinksForRecordParams{Type: "deal", ID: "dl_hooli"}, false},
 		{bridge.MethodLinksForCrew, true, bridge.LinksForCrewParams{Crew: "pricing"}, false},
-		{bridge.MethodCrewAgentBadge, false, bridge.Empty{}, true},
-		{bridge.MethodCrewAgentCandidates, true, bridge.Empty{}, true},
+		{bridge.MethodCrewAgentBadge, false, bridge.Empty{}, false},
+		{bridge.MethodCrewAgentCandidates, true, bridge.Empty{}, false},
 		{bridge.MethodAppsPrebuilt, true, bridge.Empty{}, false},
 		{bridge.MethodCustomBundle, false, bridge.CustomBundleParams{File: "custom/chart.tsx"}, false},
 	}
@@ -127,6 +127,8 @@ func TestCrewsMethodsThroughWebSocket(t *testing.T) {
 				t.Fatalf("reply=%+v want not_built=%v", reply, tt.notBuilt)
 			}
 			switch {
+			case tt.name == bridge.MethodCrewAgentBadge || tt.name == bridge.MethodCrewAgentCandidates:
+				checkCrewAgentResult(t, tt.name, reply)
 			case tt.name == bridge.MethodAppsPrebuilt:
 				if !factoryResult(t, id, reply) {
 					t.Fatalf("reply=%+v", reply)
@@ -141,6 +143,33 @@ func TestCrewsMethodsThroughWebSocket(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func checkCrewAgentResult(t *testing.T, method string, reply bridge.Envelope) {
+	t.Helper()
+	if reply.Type != bridge.TypeResult || reply.Error != nil {
+		t.Fatalf("reply=%+v", reply)
+	}
+	var badge bridge.Badge
+	if method == bridge.MethodCrewAgentCandidates {
+		var got bridge.CrewAgentCandidatesResult
+		if err := json.Unmarshal(reply.Result, &got); err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Agents) != 1 {
+			t.Fatalf("candidates=%+v", got)
+		}
+		badge = got.Agents[0]
+	} else if err := json.Unmarshal(reply.Result, &badge); err != nil {
+		t.Fatal(err)
+	}
+	want := bridge.Badge{
+		App: "crm", AppName: "CRM", AgentName: "CRM agent", Role: string(svc.RoleEditor),
+		Can: "can read companies, contacts, deals, create and change companies, contacts, deals, draft emails, read emails, send emails",
+	}
+	if badge != want {
+		t.Fatalf("badge=%+v want=%+v", badge, want)
 	}
 }
 
