@@ -404,12 +404,11 @@ func testHomeShape(t *testing.T) {
 	if strings.Contains(screen, say(t, "homeRunningWhisper")) {
 		t.Errorf("populated sessions still show the empty-panel hint:\n%s", screen)
 	}
-	// THE BAR IS SEVEN PLACES on the wordmark row, each by its label, in
-	// placeBarOrder's order. Automations is the one place off it: it is reached
-	// by command, by alt+7 and by home's `automations` heading, and it joins the
-	// bar only while somebody stands in it.
+	// THE BAR IS EIGHT PLACES on the wordmark row, each by its label, in
+	// placeBarOrder's order, automations between memory and spend.
 	want := []string{say(t, "barHomeWord"), say(t, "barChatsWord"), say(t, "barTeamsWord"),
-		say(t, "barSessionsWord"), say(t, "barMemoryWord"), say(t, "barSpendWord"), say(t, "barSettingsWord")}
+		say(t, "barSessionsWord"), say(t, "barMemoryWord"), say(t, "barAutomationsWord"),
+		say(t, "barSpendWord"), say(t, "barSettingsWord")}
 	if row, ok := barInOrder(screen, want); !ok {
 		t.Errorf("the tab bar reads %q, want the labels %q in that order:\n%s", row, want, screen)
 	}

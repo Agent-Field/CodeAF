@@ -1994,9 +1994,8 @@ see *Switch between open conversations*.
 It works while either conversation is running, over every door: the one you leave keeps
 streaming into its own transcript and is all there when you come back.
 
-**On a place, `tab` is the next place instead.** Home, AI teams, activity, memory, spend and
-settings form the circle it walks; `shift+tab` walks it back. Automations is off the bar and
-off the circle: from it, `tab` returns to home and `shift+tab` goes to settings. That is
+**On a place, `tab` is the next place instead.** Home, AI teams, activity, memory,
+automations, spend and settings form the circle it walks; `shift+tab` walks it back. That is
 the same key doing the same kind of thing — going to the next thing of the kind you are
 looking at — and it is the only meaning `tab` has while a place is up. See **Places**.
 
@@ -2334,12 +2333,11 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the seven words on
-the top line, `home  chats  AI teams  activity  memory  spend  settings`, but the digits keep
-their own order, the one `/help` lists: `alt+1` home, `alt+2` AI teams, `alt+3` chats,
-`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` memory.
-Automations is the one place off the bar — its word is drawn only while you are in it — so
-`alt+7` opens it from anywhere; `alt+.` draws them all with their numbers.
+**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the eight words on
+the top line, `home  chats  AI teams  activity  memory  automations  spend  settings`, but the
+digits keep their own order, the one `/help` lists: `alt+1` home, `alt+2` AI teams, `alt+3`
+chats, `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8`
+memory. `alt+.` draws them all with their numbers.
 `alt+3` is `chats`, the way back to the conversation in front (a new chat when none is open);
 it is not a room, so `tab` steps over it. Hold
 `alt` and press the digit. On macOS codeaf draws the modifier as `opt+`, after the name on
@@ -2528,8 +2526,7 @@ to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
 **On every place, `↑` from the first row of the page lands the cursor on the tab bar**,
-the seven place words on the top line after the `codeaf` wordmark (eight while you stand in
-automations, whose word is drawn after the seven). The chat tab strip is
+the eight place words on the top line after the `codeaf` wordmark. The chat tab strip is
 not on a place. It is the row under that top line only while a conversation is in front.
 The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:

@@ -59,7 +59,7 @@ There is no argument form. The screen is how you name what you want; a command t
 project name would be asking you to type out the very thing home exists to show you.
 
 Home is the **first place on the top line**, right after the `codeaf` wordmark:
-`home  chats  AI teams  activity  memory  spend  settings`.
+`home  chats  AI teams  activity  memory  automations  spend  settings`.
 The **teams page**, right after it, is where your teams and their managers live.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
@@ -612,7 +612,7 @@ there is no strip. The rule and a blank come next, three rows, and the page star
 row higher. **Inside a chat** and on every place but home the top line reads:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memory  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
 
 **On home it drops the two counts** and keeps the budget and the clock, because the
@@ -645,16 +645,17 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing and memory go on the tab bar — automations is alt+7, memory alt+8, and the seven words
+## Where did standing and memory go on the tab bar — automations is alt+7, memory alt+8, and the eight words
 
-The top line reads `home  chats  AI teams  activity  memory  spend  settings`. Each place
+The top line reads `home  chats  AI teams  activity  memory  automations  spend  settings`. Each place
 has a digit of its own: `alt+1` home, `alt+2` AI teams, `alt+3` chats (back to your
 conversation), `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations and
 `alt+8` memory.
 
 - **Standing is gone, and automations replaced it.** `/automations` and `alt+7` open the
-  automations place; its word is not one of the seven, and is drawn after them while you
-  are in it. `/standing` and `/orders` are not commands any more — `/standing` answers
+  automations place, and its word is always on the bar, between `memory` and `spend`. On a
+  frame under 84 columns the bar has no room for all eight words, and `spend` and
+  `settings` fold behind `more ▾`. `/standing` and `/orders` are not commands any more — `/standing` answers
   `there is no command called /standing · / lists them`.
 - **Memory is on the bar**, the fifth word. `/memory` (or `/memories`) and `alt+8` open it.
 
@@ -1649,8 +1650,8 @@ this folder as the first row of `projects`.
 
 Three of them. **`alt+1`** goes straight there from anywhere — home is the first word on
 the tab bar, and every place answers to a digit of its own, `alt+1` through `alt+8`
-(automations, the one place not drawn on the bar until you are in it, is `alt+7`; memory is
-`alt+8`).
+(automations is `alt+7` and memory `alt+8`, though they stand in the other order on the
+bar).
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 

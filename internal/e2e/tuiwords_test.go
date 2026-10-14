@@ -263,16 +263,21 @@ var tuiWords = map[string]tuiWord{
 		source: "memory",
 		why:    "the fifth place on the wordmark row, which stands on the bar before the first memory is saved",
 	},
+	"barAutomationsWord": {
+		screen: "Automations",
+		source: "automations",
+		why:    "the sixth place on the wordmark row, between memory and spend, on the bar before anything is set up",
+	},
 	"barSpendWord": {
 		screen: "Spend",
 		source: "spend",
-		why:    "the sixth place on the wordmark row, and the place home's `spend` heading opens",
+		why:    "the seventh place on the wordmark row, and the place home's `spend` heading opens",
 	},
 	"barSettingsWord": {
 		screen: "Settings",
 		source: "settings",
-		why: "the last of the seven — automations is off the bar and reached by `/automations`, by `alt+7` and by " +
-			"home's `automations` heading, and it joins the bar only while somebody stands in it",
+		why: "the last of the eight, after automations and spend — eight words need 84 columns, so a narrower " +
+			"frame folds it behind `more ▾`",
 	},
 	"chatFootEffortWord": {
 		screen: "alt+e effort · alt+a approvals",

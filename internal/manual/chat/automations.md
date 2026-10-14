@@ -190,9 +190,10 @@ refused: `the rhythm "0 0 30 2 *" never happens`. A rhythm under a minute is ref
 
 ## /automations — see every automation, when it runs next, how it last went, and what its mark or dot means
 
-`/automations` opens the list — so does `alt+7`, or the `automations` heading on home. It is
-not one of the tab bar's words until you are in it. One row per automation: its mark, its
-title, and one dim sentence — its kind, its schedule, where it is now, and its last run:
+`/automations` opens the list — so does `alt+7`, the `Automations` word on the tab bar
+(between `Memory` and `Spend`), or the `automations` heading on home. One row per
+automation: its mark, its title, and one dim sentence — its kind, its schedule, where it is
+now, and its last run:
 
 ```
 weekly update   scheduled work · every Monday at 09:00 · next Mon 12 Oct at 09:00 · last done

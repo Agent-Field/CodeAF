@@ -23,7 +23,9 @@ func barGeometry(frame, first string) (y, x, gap int) {
 // wordmark's row, in the same cells, with the same air between two words. The
 // strip of chats is the next row only in a conversation. On a place that row
 // is the rule. The one thing that differs on row zero is which word is lit:
-// `chats` over a conversation, the place over a place.
+// `chats` over a conversation, the place over a place. (The place walked to is
+// one the bar carries at eighty columns; a place folded behind `more` is lent
+// the row while a person stands in it, which is a different law — narrow_test.go.)
 func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 	for _, width := range []int{80, 110, 160} {
 		a, _, _, _ := trafficApp(t)
@@ -35,7 +37,7 @@ func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 		chat, _, _ := a.frame()
 		cy, cx, cgap := barGeometry(chat, " "+navLabel(pageHome)+" ")
 		chatSpans := append([]placeTabSpan(nil), a.tabs...)
-		walkTo(t, a, pageSpend)
+		walkTo(t, a, pageAutomations)
 		frame, _, _ := a.frame()
 		py, px, pgap := barGeometry(frame, " "+navLabel(pageHome)+" ")
 		if cy != navRow || py != navRow || a.tabRow != navRow {
@@ -64,7 +66,7 @@ func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 			t.Fatalf("at %d the place's head is not the nav, the air row, the rule and a blank", width)
 		}
 		lit := a.pal.onPlaces()
-		if !strings.Contains(frame, lit.bold(lit.accent(tabPad+navLabel(pageSpend)+tabPad))) {
+		if !strings.Contains(frame, lit.bold(lit.accent(tabPad+navLabel(pageAutomations)+tabPad))) {
 			t.Fatalf("at %d the place you stand in is not lit in the accent", width)
 		}
 		if a.tabActivePaint(" x ") != activeGround(a.pal, " x ") {
