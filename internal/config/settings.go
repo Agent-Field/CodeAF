@@ -1066,6 +1066,9 @@ var OperatorEnvPins = []string{
 	// The Apps Builder road (rescue, calls, loop) is a launch override for
 	// operators and benches; a person has no row for it.
 	"CODEAF_APPS_BUILDER_ROAD",
+	// The Builder hands its loop tools the draft they edit; the app server
+	// sets it for the child, and a person has nothing to say to it.
+	"CODEAF_APP_DRAFT",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.
 	"CODEAF_CODEX_ISSUER",
