@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // ModelEnv names the environment variable that picks the Builder's model.
@@ -40,7 +40,7 @@ func New(cfg svc.Config, all *svc.Services) *Service {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	model := strings.TrimSpace(os.Getenv(ModelEnv))
+	model := strings.TrimSpace(env.Get(ModelEnv))
 	if model == "" {
 		model = DefaultModel
 	}
