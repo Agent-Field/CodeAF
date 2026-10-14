@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -25,6 +26,21 @@ func TestAppBuilderPageNamesEveryVerb(t *testing.T) {
 		verb := "codeaf app " + strings.Fields(usage)[2]
 		if !strings.Contains(page, verb) {
 			t.Errorf("the page does not name %q", verb)
+		}
+	}
+}
+
+func TestAppBuilderPageQuotesTheVerbLimits(t *testing.T) {
+	page := AppBuilderPage()
+	if strings.Contains(page, "{{plan-line-max}}") || strings.Contains(page, "{{name-max}}") {
+		t.Fatal("a limit placeholder was not replaced")
+	}
+	for _, want := range []string{
+		"at most " + strconv.Itoa(draft.MaxPlanLine) + " characters",
+		"name is at most " + strconv.Itoa(draft.MaxNameLen) + " characters",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page lacks %q", want)
 		}
 	}
 }
