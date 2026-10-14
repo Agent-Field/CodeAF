@@ -2929,3 +2929,16 @@ receipts are atomically replaced and synced before committing deletion. Startup 
 walks only the two saved-conversation directory levels, without following symlinked buckets.
 `internal/session/deletion_revision_test.go` drives completion and timeout with held
 channels and a zero test grace rather than sleeping for the production deadline.
+
+## Learned provider-fact persistence
+
+Within one process, `quirksStore.saveMutex` serializes saves from before the
+snapshot through atomic file replacement, so an older snapshot cannot replace
+newer learned facts. The memo-reader mutex is still held only while copying
+maps, never across file I/O. Requests still schedule persistence asynchronously;
+waiting writers do not move a disk wait onto the request path. The existing
+unique temporary files and atomic rename remain unchanged. This is an in-process
+ordering guarantee, not a merge of caches written by separate processes.
+
+Restart fixtures drain their owned scheduled writes before discarding process
+memory. No timeout, response limit or request/retry budget changes.

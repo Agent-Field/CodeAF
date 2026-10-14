@@ -2769,6 +2769,19 @@ An endpoint's explicit total limit is remembered by base URL, model and provider
 prompt's length is **not** a total context limit. Old model-wide `served_window` guesses
 are no longer used to size requests.
 
+## Learned model request facts after restarting
+
+codeaf remembers request shapes an endpoint refused, such as a disabled reasoning
+pass or a cache breakpoint, in `model-quirks.json`. Saves made by one running
+process preserve its latest learned facts when the writes finish, even when
+several requests learn at once. Saving stays in the background; the next request
+uses the fact already held in memory.
+
+A missing, unreadable or unwritable memo is a cache miss: codeaf may learn the
+endpoint's refusal again. Concurrent separate processes sharing the same profile
+still replace the same cache file; their learned sets are not merged. Endpoint
+context limits retain their existing 30-minute lifetime.
+
 ## How much room is left for the answer — the output cap, max_tokens and the safety margin
 
 When no output cap was requested, the total output allowance is the smaller of the answer
