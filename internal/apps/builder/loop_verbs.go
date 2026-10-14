@@ -66,7 +66,7 @@ func (s *Service) drafted(b *build, t *seat) (spec.Files, draft.State, error) {
 	return s.render(b, st), st, nil
 }
 
-// runCheck is the build's one check on the rendered files. The report is kept
+// runCheck is the build's one check on the rendered files, made quietly. The report is kept
 // by the sha256 of the files, so check, try and done reuse it for as long as
 // the render does not change; a check is minutes of the worker's wall and the
 // same files give the same report. Calls arrive one at a time (verbHandler
@@ -77,7 +77,10 @@ func (s *Service) runCheck(ctx context.Context, b *build, t *seat, files spec.Fi
 	if report, ok := t.checked.get(sum); ok {
 		return report, nil
 	}
-	report, err := s.checkRound(ctx, b, files, b.nextRound())
+	if err := s.shortenPlanLines(ctx, b, files); err != nil {
+		return bridge.CheckReport{}, err
+	}
+	report, err := s.checkQuietly(ctx, b, files, b.nextRound())
 	if err == nil {
 		t.checked.put(sum, report)
 	}
@@ -132,7 +135,7 @@ func reportReply(report bridge.CheckReport) draft.Reply {
 	if report.Pass {
 		return accepted(fmt.Sprintf("ok every screen opens (%d screens, %d runs tried)", len(report.Rendered), len(report.Runs)))
 	}
-	return refused(fmt.Sprintf("error: the check found %d things to fix:\n%s", len(report.Issues), formatReport(report)))
+	return refused("error: the check found " + things(len(report.Issues)) + " to fix:\n" + formatReport(report))
 }
 
 // verbTry answers for one run: the issues the check found in its file, or ok
@@ -186,6 +189,8 @@ func (s *Service) verbDone(ctx context.Context, b *build, t *seat, _ []string) d
 	if !report.Pass {
 		return reportReply(report)
 	}
+	// The accepted check is the one the owner reads: the interim ones were quiet.
+	s.announceCheck(b, report)
 	if _, err := t.drafts.Append(draft.AuthorCodeaf, "phase", []string{"done"}, ""); err != nil {
 		return refused(err.Error())
 	}

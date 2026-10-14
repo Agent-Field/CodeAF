@@ -45,13 +45,14 @@ type feed struct {
 	seq       int
 	files     spec.Files
 	announced bool
-	plan      []byte // the last plan.json written while the plan was ready
+	plan      []byte            // the last plan.json written while the plan was ready
+	told      map[string]string // the last line published for each piece
 }
 
 // newFeed starts after the entries the journal already holds, so a restart does
 // not replay the build to the desk; the first pump still renders them.
 func newFeed(s *Service, b *build, drafts *draft.Store) *feed {
-	f := &feed{s: s, b: b, drafts: drafts}
+	f := &feed{s: s, b: b, drafts: drafts, told: map[string]string{}}
 	if entries, err := drafts.Entries(0); err == nil && len(entries) > 0 {
 		f.seq = entries[len(entries)-1].Seq
 	}
@@ -83,6 +84,12 @@ func (f *feed) pump(ctx context.Context) {
 }
 
 func (f *feed) publish(e draft.Entry) {
+	// A piece set again to the same words is not news: the owner reads it once.
+	key := e.Piece.Kind + ":" + e.Piece.ID
+	if last, seen := f.told[key]; seen && last == e.Line {
+		return
+	}
+	f.told[key] = e.Line
 	f.s.all.Hub.Publish(bridge.TopicDraft(f.b.app), bridge.DraftEvent{
 		Seq: e.Seq, Kind: e.Piece.Kind, ID: e.Piece.ID, Line: e.Line, Author: string(e.Author), At: e.At,
 	})
@@ -92,10 +99,12 @@ func (f *feed) publish(e draft.Entry) {
 }
 
 // stepOf puts an entry on the Building row it belongs to; the phase marker is
-// not work and shows no line.
+// not work and shows no line, and fields show only on the written-so-far list.
 func stepOf(e draft.Entry) (bridge.BuildStep, bool) {
 	switch {
-	case e.Piece.Kind == "phase":
+	case e.Piece.Kind == "phase", e.Piece.Kind == "field":
+		// A field line would grow with every field a record gets; the desk's
+		// written-so-far list carries them, and the step row does not.
 		return "", false
 	case e.Piece.Kind == "name", strings.HasPrefix(e.Piece.Kind, "plan."):
 		return bridge.StepPlan, true

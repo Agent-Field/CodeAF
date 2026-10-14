@@ -53,18 +53,19 @@ var callsRoad = road{
 	editable: map[bridge.AppState]bool{bridge.StatePlanning: true},
 }
 
-// chooseRoad resolves the road from its setting. An unknown name, and a loop
-// the task belt cannot host, both fall back to calls with one log line, so a
+// chooseRoad resolves the road from its setting; unset is rescue. An unknown name, and a loop
+// the task belt cannot host, both (a rescue too) fall back to calls with one log line, so a
 // bad setting never leaves the Builder without a road.
 func chooseRoad(setting string, beltAsked bool) (string, road) {
 	name := strings.ToLower(strings.TrimSpace(setting))
+	if name == "" {
+		name = roadRescue
+	}
 	switch {
-	case name == "":
-		name = roadCalls
 	case roads[name].plan == nil:
 		log.Printf("apps builder: %s=%q is not a road; building on the calls road", RoadEnv, setting)
 		name = roadCalls
-	case (name == roadLoop || name == roadRescue) && !beltAsked:
+	case name != roadCalls && !beltAsked:
 		log.Printf("apps builder: the %s road needs the bash task belt; building on the calls road", name)
 		name = roadCalls
 	}

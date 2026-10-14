@@ -71,11 +71,19 @@ func recordLine(st State, id string) string {
 		return titleOf(id)
 	}
 	name := orElse(rec.Label, titleOf(id))
-	names := fieldOrder(st, id)
-	if len(names) == 0 {
+	ids := fieldOrder(st, id)
+	if len(ids) == 0 {
 		return name + " · record added"
 	}
-	return name + " · " + strings.Join(names, ", ")
+	// The owner reads labels, never the ids a worker typed.
+	labels := make([]string, len(ids))
+	for i, f := range ids {
+		labels[i] = titleOf(f)
+		if field := rec.Fields[f]; field != nil && field.Label != "" {
+			labels[i] = field.Label
+		}
+	}
+	return name + " · " + strings.Join(labels, ", ")
 }
 
 // fieldOrder lists a record's fields in the order they were added.
