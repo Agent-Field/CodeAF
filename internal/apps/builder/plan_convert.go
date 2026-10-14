@@ -20,6 +20,7 @@ func specPlan(p prompt.Plan) spec.Plan {
 		Screens:    specLines(p.Screens),
 		Agent:      spec.PlanLine{ID: agentLineID, Line: p.Agent.Line},
 		Needs:      "computed",
+		Tint:       p.Tint,
 	}
 }
 
@@ -41,6 +42,7 @@ func planFromSpec(p spec.Plan) prompt.Plan {
 		Screens:    promptLines(p.Screens),
 		Agent:      prompt.AgentLine{ID: agentLineID, Line: p.Agent.Line},
 		Needs:      "computed",
+		Tint:       p.Tint,
 	}
 }
 

@@ -229,6 +229,9 @@ func (b *build) patch(files map[string][]byte) (map[string][]byte, error) {
 	app["id"], app["space"] = b.app, personalSpace
 	setIn(app, "budget", "month", b.budget)
 	setIn(app, "agent", "model", b.agentModel)
+	if tint := b.currentPlan().Tint; tint != "" {
+		app["tint"] = tint
+	}
 	if name := strings.TrimSpace(b.currentPlan().Name); name != "" {
 		app["name"] = name
 	}
