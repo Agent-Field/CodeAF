@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -421,6 +422,10 @@ func (s *Store) UpdateMemory(id, text string) error {
 	if err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
+	// A WORDING ITS OWNER ALREADY KEEPS WOULD BE ONE THING SAID TWICE.
+	if kept, err := memoryDuplicateOn(tx, owner, text, id); err != nil || kept != "" {
+		return fmt.Errorf("update memory: %w", cmp.Or(err, ErrMemoryKept))
+	}
 	// A LONGER WORDING IS A BIGGER LINE, and it is measured like a new one.
 	if err := memoryRoomOn(tx, owner, text, id); err != nil {
 		return fmt.Errorf("update memory: %w", err)
@@ -650,6 +655,11 @@ func (s *Store) restoreMemory(owners []string, id string) error {
 			return fmt.Errorf("restore memory: %w: missing memory", ErrInvalid)
 		}
 		return fmt.Errorf("restore memory: %w", err)
+	}
+	// AND WORDS ALREADY KEPT THERE ARE NOT KEPT TWICE: the line already active
+	// stands, and this one stays let go.
+	if kept, err := memoryDuplicateOn(tx, owner, text, id); err != nil || kept != "" {
+		return fmt.Errorf("restore memory: %w", cmp.Or(err, ErrMemoryKept))
 	}
 	if err := memoryRoomOn(tx, owner, text, id); err != nil {
 		return fmt.Errorf("restore memory: %w", err)

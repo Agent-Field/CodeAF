@@ -55,6 +55,11 @@ func MemoryLineCost(text string) int {
 // wrapped by [MemoryFullError], which names the block.
 var ErrMemoryFull = errors.New("memory is full")
 
+// ErrMemoryKept is a line put back, or reworded, onto words its owner already
+// keeps active: two lines saying one thing would both ride, so the change is
+// refused and the line already kept stands.
+var ErrMemoryKept = errors.New("those words are already kept there")
+
 // MemoryFullError says which conversations' block a change would overflow.
 type MemoryFullError struct {
 	// Owner is the project owner whose conversations would be overflowed, or ""

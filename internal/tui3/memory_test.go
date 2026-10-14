@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -28,6 +30,8 @@ type rememberingAgent struct {
 	failing error
 	off     bool
 	project string
+	// projectErr is the engine failing to say which project this is.
+	projectErr error
 
 	remembered, listed, moved []string
 	everywhere                []bool
@@ -84,7 +88,7 @@ func (r *rememberingAgent) MoveMemory(id, scope string) (string, error) {
 	return "now for you everywhere", nil
 }
 
-func (r *rememberingAgent) MemoryProject() (string, error) { return r.project, nil }
+func (r *rememberingAgent) MemoryProject() (string, error) { return r.project, r.projectErr }
 
 // panelMemoryStore is the store as the memory place reads it, shelving rows by
 // owner exactly as internal/store does.
@@ -97,6 +101,8 @@ type panelMemoryStore struct {
 	learned   int
 	letGo     int
 	snapshots int
+	// refuse, when set, is what a put-back or a rewording answers instead.
+	refuse error
 }
 
 func (s *panelMemoryStore) Snapshot(limit int) (store.MemoryShelves, error) {
@@ -151,6 +157,9 @@ func (s *panelMemoryStore) Snapshot(limit int) (store.MemoryShelves, error) {
 func (s *panelMemoryStore) ChangedSince(time.Time) (int, int, error) { return s.learned, s.letGo, nil }
 
 func (s *panelMemoryStore) UpdateMemory(id, text string) error {
+	if s.refuse != nil {
+		return s.refuse
+	}
 	s.updated = append(s.updated, text)
 	for i := range s.rows {
 		if s.rows[i].ID == id {
@@ -169,6 +178,9 @@ func (s *panelMemoryStore) ForgetMemory(id string) error {
 	return nil
 }
 func (s *panelMemoryStore) RestoreMemory(id string) error {
+	if s.refuse != nil {
+		return s.refuse
+	}
 	s.restored = append(s.restored, id)
 	for i := range s.rows {
 		if s.rows[i].ID == id {
@@ -524,6 +536,102 @@ func TestTheVerbsAreTheLinesAndALetGoLineCanBePutBack(t *testing.T) {
 	drainPlaceWrites(t, a)
 	if len(memory.restored) != 1 || memory.restored[0] != "g" {
 		t.Fatalf("put back restored %v", memory.restored)
+	}
+}
+
+// A REFUSED WRITE SAYS WHY WHEN THE PERSON CAN ACT ON IT: a full block names
+// whose block it is, from this conversation — and over --host, where the
+// store's refusal is only text, the name in it is compared with this project's.
+// Words already kept are said too. Anything else is the one unchanged line, so
+// a SQLite message never reaches the screen.
+func TestARefusedWriteSaysWhyWhenThePersonCanActOnIt(t *testing.T) {
+	here := memoryWhere{owner: store.OwnerProject("here"), name: "lab"}
+	room := " · forget a line on the Memories tab to make room"
+	for _, c := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"this project's block", fmt.Errorf("restore memory: %w", &store.MemoryFullError{Owner: here.owner, Project: "lab"}), "memory is full here" + room},
+		{"another project's, over the wire", errors.New("restore memory: memory is full for infra"), "memory is full for infra" + room},
+		{"this project's, over the wire", errors.New("update memory: memory is full for lab"), "memory is full here" + room},
+		{"words already kept", fmt.Errorf("restore memory: %w", store.ErrMemoryKept), "already kept · ships on Fridays · nothing was changed"},
+		{"words already kept, over the wire", errors.New("restore memory: those words are already kept there"), "already kept · ships on Fridays · nothing was changed"},
+		{"anything else", errors.New("database is locked"), memoryUnchangedWord},
+	} {
+		if got := memoryWriteRefusal(c.err, here, "ships on Fridays"); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+
+	// AND THROUGH THE TAB: a put-back the store refuses for another project's
+	// room says so on the receipt line.
+	a, memory := memoryPlaceApp(t, []store.Memory{
+		{ID: "g", Owner: store.OwnerUser, Text: "ships on Fridays", Status: store.MemoryForgotten},
+	})
+	memory.refuse = fmt.Errorf("restore memory: %w", &store.MemoryFullError{Owner: store.OwnerProject("infra"), Project: "infra"})
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, memoryShelfLetGo)
+	drive(t, a, key("right"))
+	memoryCursorTo(t, a, "ships on Fridays")
+	verbs := (placeMemory{}).verbs(a)
+	if len(verbs) != 1 {
+		t.Fatalf("a let-go line's verbs = %+v", verbs)
+	}
+	for _, msg := range runCmd(verbs[0].do()) {
+		if done, ok := msg.(memoryPlaceDoneMsg); ok {
+			a.adoptMemoryPlaceDone(done)
+		}
+	}
+	if a.mem.footer != "memory is full for infra"+room {
+		t.Fatalf("the refused put-back said %q", a.mem.footer)
+	}
+}
+
+// A FILTER THAT MATCHES NOTHING NAMES THE ONE KEY THAT HELPS.
+func TestAFilterThatMatchesNothingSaysHowToClearIt(t *testing.T) {
+	a, _ := memoryPlaceApp(t, []store.Memory{{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs"}})
+	openMemoryPlace(t, a)
+	typeInto(t, a, "zebra")
+	if foot := (placeMemory{}).hint(a); foot != memoryNoMatchHint {
+		t.Fatalf("the foot over a filter that matched nothing = %q, want %q", foot, memoryNoMatchHint)
+	}
+	drive(t, a, key("esc"))
+	if a.mem.filter.String() != "" {
+		t.Fatalf("esc left the filter as %q", a.mem.filter.String())
+	}
+}
+
+// AN ENGINE THAT CANNOT SAY WHICH PROJECT THIS IS IS SAID, not read as "no
+// project": the tab then draws every project's lines by name, and the note
+// says why none of them is called this project.
+//
+// AND THE HEAD ROW COUNTS NOTHING THAT DOES NOT FIT: which lines ride here is
+// exactly what went unanswered, so a count would be measured without them.
+func TestAnEngineThatCannotNameTheProjectIsSaid(t *testing.T) {
+	rows := []store.Memory{{ID: "p", Owner: store.OwnerProject("here"), ProjectName: "lab", Text: "uses pnpm"}}
+	for i, cost := 0, 0; cost <= store.MemoryBlockRunes; i++ {
+		text := fmt.Sprintf("person line %03d %s", i, strings.Repeat("w", 80))
+		rows = append(rows, store.Memory{ID: fmt.Sprint("u", i), Owner: store.OwnerUser, Text: text})
+		cost += store.MemoryLineCost(text)
+	}
+	a, _ := memoryPlaceApp(t, rows)
+	openMemoryPlace(t, a)
+	if !strings.Contains(memoryPlaceRowsText(a), "don't fit in front of the model") {
+		t.Fatalf("an overflowing store with the project known counts nothing:\n%s", memoryPlaceRowsText(a))
+	}
+
+	a, _ = memoryPlaceApp(t, rows)
+	a.agent.(*rememberingAgent).projectErr = errors.New("the engine went away")
+	openMemoryPlace(t, a)
+	if a.mem.footer != memoryNoProjectWord {
+		t.Fatalf("the note = %q, want %q", a.mem.footer, memoryNoProjectWord)
+	}
+	if a.mem.here != "" {
+		t.Fatalf("a project the engine could not name was taken as %q", a.mem.here)
+	}
+	if strings.Contains(memoryPlaceRowsText(a), "don't fit") {
+		t.Fatalf("the head row counted what does not fit without knowing the project:\n%s", memoryPlaceRowsText(a))
 	}
 }
 

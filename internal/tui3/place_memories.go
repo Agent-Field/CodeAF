@@ -96,8 +96,10 @@ type memoryPlace struct {
 	shelves store.MemoryShelves
 	read    time.Time
 	// here is the owner this conversation keeps project lines under, which is
-	// what makes one shelf "this project".
-	here string
+	// what makes one shelf "this project". hereUnknown is the engine failing to
+	// say: here is then "" and no shelf is called this project.
+	here        string
+	hereUnknown bool
 	// open is what `→` opened and `←` folded back up. closed is what `←`
 	// folded while a filter was typed — a filter opens every group with a match
 	// — and closedQuery is the filter it was folded under: a new filter is a
@@ -131,9 +133,9 @@ func (p *memoryPlace) close() { *p = memoryPlace{} }
 
 // start takes one snapshot and makes it the page, with the shelves a
 // conversation here is told already open.
-func (p *memoryPlace) start(shelves store.MemoryShelves, here string, now time.Time) {
+func (p *memoryPlace) start(shelves store.MemoryShelves, here string, hereUnknown bool, now time.Time) {
 	*p = memoryPlace{
-		shelves: shelves, read: now, here: here, hover: -1,
+		shelves: shelves, read: now, here: here, hereUnknown: hereUnknown, hover: -1,
 		open: memoryOpenByDefault(shelves, here), origins: map[string]memoryOrigin{},
 		asking: map[string]bool{},
 	}
@@ -168,6 +170,12 @@ func (p *memoryPlace) rank() {
 		p.closed, p.closedQuery = nil, query
 	}
 	p.reading = readMemory(p.shelves, p.here, p.open, p.closed, p.filter.String(), p.read)
+	if p.hereUnknown {
+		// WHICH LINES RIDE HERE IS WHAT THE ENGINE COULD NOT SAY, so how many do
+		// not fit is unknown too — and unknown is drawn as nothing, never as a
+		// count measured without this project's lines.
+		p.reading.outside = 0
+	}
 	p.cursor = p.nearestStop(p.cursor)
 }
 
@@ -413,17 +421,24 @@ const memorySnapshotRows = 500
 // behind it, and says once on its note when there is not.
 func (a *app) openMemory() tea.Cmd {
 	shelves, why := a.memorySnapshot()
-	here := ""
+	here, unknown := "", false
 	if agent, ok := a.brain(); ok {
 		project, err := agent.MemoryProject()
-		if err != nil && why == "" {
-			why = memoryNoProjectWord
+		switch {
+		case err != nil:
+			// "COULD NOT ASK" IS NOT "NO PROJECT": nothing the failed answer
+			// carried is taken, and the note says why no shelf is this one.
+			unknown = true
+			if why == "" {
+				why = memoryNoProjectWord
+			}
+		default:
+			here = project
 		}
-		here = project
 	}
 	a.standDownFullscreen()
 	a.page = pageMemory
-	a.mem.start(shelves, here, a.now())
+	a.mem.start(shelves, here, unknown, a.now())
 	a.mem.footer = why
 	a.touch()
 	return tea.Batch(a.armPlaceClock(), a.memoryFollow())
@@ -558,25 +573,29 @@ func (a *app) memorySave(id, text string) tea.Cmd {
 	mem, here := a.memory, a.mem.where()
 	return a.memoryPlaceDo(func() string {
 		if err := mem.UpdateMemory(id, text); err != nil {
-			return memoryWriteRefusal(err, here)
+			return memoryWriteRefusal(err, here, text)
 		}
 		return "fixed · " + text
 	})
 }
 
-// memoryWriteRefusal is the receipt for a write the store would not take. A
-// full block is said, in the engine's own words and from this conversation
-// ([session.MemoryFullWords]: here, which project, or another one), because the
-// person can make room; anything else is [memoryUnchangedWord].
+// memoryWriteRefusal is the receipt for a write of text the store would not
+// take. The two refusals the person can act on are said: a full block, in the
+// engine's own words and from this conversation ([session.MemoryFullWords]:
+// here, which project, or another one), and words that are already kept
+// ([store.ErrMemoryKept]). Anything else is [memoryUnchangedWord].
 //
 // THE MATCH IS ON THE WORDS AS WELL AS THE SENTINEL, because over --host the
 // store's error crosses the wire as text and is a different value at this end.
 //
 // It runs off the update loop, inside the write's command, so where "here" is
 // was read on the loop beforehand ([memoryPlace.where]).
-func memoryWriteRefusal(err error, here memoryWhere) string {
-	if errors.Is(err, store.ErrMemoryFull) || strings.Contains(err.Error(), store.ErrMemoryFull.Error()) {
+func memoryWriteRefusal(err error, here memoryWhere, text string) string {
+	switch {
+	case errors.Is(err, store.ErrMemoryFull) || strings.Contains(err.Error(), store.ErrMemoryFull.Error()):
 		return session.MemoryFullWords(err, here.owner, here.name)
+	case errors.Is(err, store.ErrMemoryKept) || strings.Contains(err.Error(), store.ErrMemoryKept.Error()):
+		return "already kept · " + text + " · nothing was changed"
 	}
 	return memoryUnchangedWord
 }
@@ -1031,7 +1050,7 @@ func (placeMemory) verbs(a *app) []verb {
 			p.expanded = ""
 			return a.memoryPlaceDo(func() string {
 				if err := mem.RestoreMemory(memory.ID); err != nil {
-					return memoryWriteRefusal(err, here)
+					return memoryWriteRefusal(err, here, memory.Text)
 				}
 				return "put back · " + memory.Text
 			})
@@ -1058,7 +1077,7 @@ func (placeMemory) verbs(a *app) []verb {
 			return a.memoryPlaceDo(func() string {
 				receipt, err := agent.MoveMemory(memory.ID, scope)
 				if err != nil {
-					return memoryWriteRefusal(err, here)
+					return memoryWriteRefusal(err, here, memory.Text)
 				}
 				return memory.Text + " · " + receipt
 			})

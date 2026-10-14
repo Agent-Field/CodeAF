@@ -219,6 +219,51 @@ func TestAnUnboundedWriteIsKeptPastTheBound(t *testing.T) {
 	}
 }
 
+// WORDS ALREADY KEPT ARE NOT KEPT TWICE: putting back a line whose words its
+// owner keeps again since, or rewording one onto another line's words, is
+// refused with [ErrMemoryKept], and one line still says it.
+func TestPuttingBackOrRewordingOntoWordsAlreadyKeptKeepsOneLine(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+	gone, err := s.AddMemory(Memory{Owner: OwnerUser, Type: MemoryFact, Text: "prefers tabs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ForgetMemory(gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: "Prefers  tabs"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RestoreMemory(gone.ID); !errors.Is(err, ErrMemoryKept) {
+		t.Fatalf("putting back words already kept = %v; want ErrMemoryKept", err)
+	}
+	other, err := s.AddMemory(Memory{Owner: OwnerUser, Type: MemoryFact, Text: "uses pnpm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateMemory(other.ID, "prefers tabs"); !errors.Is(err, ErrMemoryKept) {
+		t.Fatalf("rewording onto words already kept = %v; want ErrMemoryKept", err)
+	}
+	active, err := s.MemoriesFor([]string{OwnerUser})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 2 {
+		t.Fatalf("active lines = %+v, want the one kept and the one left as it was", active)
+	}
+	// THE SAME WORDS FOR ANOTHER OWNER ARE ANOTHER LINE, and come back.
+	project, err := s.AddMemory(Memory{Owner: OwnerProject("alpha"), Type: MemoryFact, Text: "prefers tabs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ForgetMemory(project.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RestoreMemory(project.ID); err != nil {
+		t.Fatalf("putting back a project's line beside the person's same words = %v", err)
+	}
+}
+
 // PUT BACK, MOVE AND REWORD MAKE A LINE ACTIVE OR BIGGER, and each is measured.
 func TestPutBackMoveAndRewordAreMeasured(t *testing.T) {
 	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
