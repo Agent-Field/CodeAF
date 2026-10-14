@@ -285,12 +285,9 @@ func TestARestartRebuildsThePlanFromTheJournal(t *testing.T) {
 // starts with to ("" means the end of the script).
 func crmPart(t *testing.T, from, to string) string {
 	t.Helper()
-	path, err := filepath.Abs("../draft/testdata/crm.sh")
-	if err != nil {
+	path := filepath.Join(t.TempDir(), "crm.sh")
+	if err := os.WriteFile(path, []byte(draft.CRMScript()), 0o600); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("the golden CRM verb script is not on this branch yet: %v", err)
 	}
 	end := "$"
 	if to != "" {
@@ -373,4 +370,40 @@ func tail(text string, n int) string {
 		return text
 	}
 	return text[len(text)-n:]
+}
+
+func TestPlanJSONWaitsForPlanReadyAndSurvivesAReplan(t *testing.T) {
+	release := filepath.Join(t.TempDir(), "release")
+	r := newLoopRig(t, script(
+		types(`codeaf app name "CRM"`),
+		types(`codeaf app plan data deal "Deal · name"`),
+		types("while [ ! -f "+release+" ]; do sleep 0.02; done"),
+		types(`codeaf app plan screen pipeline "Pipeline · deals"`),
+		types(`codeaf app plan agent "Helps"`),
+		types(`codeaf app plan ready`),
+		finishTask("plan")))
+	r.create(t, false)
+	st := r.seat(t)
+	waitFor(t, "two lines", func() bool { return len(r.draftEvents()) >= 2 })
+	if _, files := r.store.current(); files[spec.PlanFile] != nil {
+		t.Fatal("plan.json reached the app before the plan was ready")
+	}
+	if err := os.WriteFile(release, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "plan.json", func() bool { _, f := r.store.current(); return f[spec.PlanFile] != nil })
+	_ = st
+}
+
+func TestHoldPlanKeepsTheLastReadyPlanThroughAReplan(t *testing.T) {
+	f := &feed{}
+	ready := spec.Files{spec.PlanFile: []byte("ready")}
+	if got := f.holdPlan(draft.State{Phase: draft.PhasePlanned}, ready); string(got[spec.PlanFile]) != "ready" {
+		t.Fatal("a ready plan must be written")
+	}
+	early := spec.Files{spec.PlanFile: []byte("half"), spec.AppFile: []byte("{}")}
+	got := f.holdPlan(draft.State{Phase: draft.PhasePlanning}, early)
+	if string(got[spec.PlanFile]) != "ready" || got[spec.AppFile] == nil {
+		t.Fatalf("a replan must keep the last ready plan and stream the rest: %v", got)
+	}
 }

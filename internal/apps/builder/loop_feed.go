@@ -45,6 +45,7 @@ type feed struct {
 	seq       int
 	files     spec.Files
 	announced bool
+	plan      []byte // the last plan.json written while the plan was ready
 }
 
 // newFeed starts after the entries the journal already holds, so a restart does
@@ -109,12 +110,33 @@ func (f *feed) flush(ctx context.Context, st draft.State) {
 	if plan, err := decodePlan(string(files[spec.PlanFile])); err == nil {
 		f.b.setPlan(plan)
 	}
+	files = f.holdPlan(st, files)
 	if sameFiles(f.files, files) {
 		return
 	}
 	if err := f.s.all.Store.WriteFiles(ctx, f.b.app, files); err == nil {
 		f.files = files
 	}
+}
+
+// holdPlan keeps plan.json off the app's draft until the plan is ready. The
+// desk prefers plan.json over the streamed lines, so a nearly empty one fetched
+// early would freeze the card. While a replan runs, the last ready plan.json
+// stays until the new plan is ready.
+func (f *feed) holdPlan(st draft.State, files spec.Files) spec.Files {
+	held := spec.Files{}
+	for path, data := range files {
+		held[path] = data
+	}
+	if phaseAtLeast(st.Phase, draft.PhasePlanned) {
+		f.plan = files[spec.PlanFile]
+		return held
+	}
+	delete(held, spec.PlanFile)
+	if f.plan != nil {
+		held[spec.PlanFile] = f.plan
+	}
+	return held
 }
 
 // announcePlan shows the plan card the first time the draft's plan is ready.
@@ -128,11 +150,16 @@ func (f *feed) announcePlan(st draft.State) {
 
 // render is the pure render of a draft with the facts of the create sheet.
 func (s *Service) render(b *build, st draft.State) spec.Files {
-	defaults := draft.Defaults{
+	return draft.Render(st, s.defaults(b))
+}
+
+// defaults are the create-sheet facts a render takes from the build, not the
+// worker.
+func (s *Service) defaults(b *build) draft.Defaults {
+	return draft.Defaults{
 		AppID: b.app, Space: personalSpace, Ask: b.currentPlan().Ask,
 		AgentModel: b.agentModel, BudgetMonth: b.budget, Kit: kitVersion(),
 	}
-	return draft.Render(st, defaults)
 }
 
 func kitVersion() int {

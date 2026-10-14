@@ -159,7 +159,7 @@ func (s *Service) loopEdit(ctx context.Context, b *build, edits []bridge.PlanEdi
 	for _, e := range lines {
 		verb, args := ownerVerb(e)
 		if _, err := t.drafts.Append(draft.AuthorOwner, verb, args, ""); err != nil {
-			return prompt.Plan{}, bridge.Errorf(bridge.CodeInvalid, strings.TrimPrefix(err.Error(), "error: "))
+			return prompt.Plan{}, bridge.Errorf(bridge.CodeInvalid, err.Error())
 		}
 		t.tell(ownerNote(e))
 	}

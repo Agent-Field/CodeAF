@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/apps/builder/prompt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,6 +47,7 @@ func (s *Service) buildDir(app string) string { return filepath.Join(s.root, bui
 
 // openSeat opens the build's folder, journal and plan store once.
 func (s *Service) openSeat(b *build) (*seat, error) {
+	defaults := s.defaults(b) // read before b.mu is held: it reads the plan under that lock
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.seat != nil {
@@ -64,6 +66,9 @@ func (s *Service) openSeat(b *build) (*seat, error) {
 	}
 	tasks, err := plandb.Open(filepath.Join(dir, "plan.db"), "apps-"+b.app, loopRootID, "Build "+b.app, "")
 	if err != nil {
+		return nil, err
+	}
+	if err := drafts.SaveDefaults(defaults); err != nil {
 		return nil, err
 	}
 	b.seat = &seat{dir: dir, drafts: drafts, tasks: tasks}
@@ -238,7 +243,7 @@ func (sb *spendBank) settle(final float64) {
 // brief composes what a task's worker is told. The teaching page is part of it
 // so the first turn already knows the verbs.
 func (s *Service) brief(lines ...string) string {
-	return strings.Join(append(lines, "", teachingPage()), "\n")
+	return strings.Join(append(lines, "", prompt.AppBuilderPage()), "\n")
 }
 
 func (s *Service) planBrief(b *build) string {
