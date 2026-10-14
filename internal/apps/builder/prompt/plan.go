@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -65,6 +66,7 @@ type Edit struct {
 // ParsePlan reads the model's PLAN reply and checks the plan's shape.
 func ParsePlan(output string) (Plan, error) {
 	last := errNoObject
+	var long Plan
 	for _, raw := range jsonObjects(output) {
 		var plan Plan
 		if err := json.Unmarshal(raw, &plan); err != nil {
@@ -72,13 +74,24 @@ func ParsePlan(output string) (Plan, error) {
 			continue
 		}
 		if err := plan.validate(); err != nil {
+			if errors.Is(err, ErrLongLines) {
+				long = plan
+			}
 			last = err
 			continue
 		}
 		return plan, nil
 	}
+	if errors.Is(last, ErrLongLines) {
+		return long, last
+	}
 	return Plan{}, last
 }
+
+// ErrLongLines marks a plan that is whole except for card lines over the
+// limit. ParsePlan returns that plan beside the error, so a caller out of
+// retries can keep it: the lines are cut to fit before Check.
+var ErrLongLines = errors.New("plan lines are too long")
 
 func (p Plan) validate() error {
 	if len(p.Data) == 0 || len(p.Screens) == 0 {
@@ -110,7 +123,7 @@ func (p Plan) checkLengths() error {
 	if len(long) == 0 {
 		return nil
 	}
-	return fmt.Errorf("prompt: plan lines must be at most %d characters: %s; shorten each to one clause, keeping its fields and choices", limit, strings.Join(long, "; "))
+	return fmt.Errorf("prompt: plan lines must be at most %d characters: %s; shorten each to one clause, keeping its fields and choices%w", limit, strings.Join(long, "; "), silent{ErrLongLines})
 }
 
 // PlanLineLimit is plan.schema.json's maxLength for a card line.
@@ -257,3 +270,9 @@ func removeLine(lines *[]Line, e Edit) error {
 	*lines = append((*lines)[:i], (*lines)[i+1:]...)
 	return nil
 }
+
+// silent carries a sentinel through %w without adding to the message.
+type silent struct{ err error }
+
+func (silent) Error() string   { return "" }
+func (s silent) Unwrap() error { return s.err }

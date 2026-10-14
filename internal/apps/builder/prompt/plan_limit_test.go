@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,10 @@ func TestParsePlanRejectsLinesOverSchemaLimit(t *testing.T) {
 	}
 	long := strings.Repeat("a", limit+1)
 	out := `{"ask":"x","name":"X","data":[{"id":"deal","line":"` + long + `"}],"screens":[{"id":"deals","line":"Deals"}],"agent":{"line":"Helps"}}`
-	_, err := ParsePlan(out)
+	kept, err := ParsePlan(out)
+	if !errors.Is(err, ErrLongLines) || len(kept.Data) != 1 {
+		t.Fatalf("err = %v, plan = %+v; want ErrLongLines beside the whole plan", err, kept)
+	}
 	if err == nil || !strings.Contains(err.Error(), "at most") || !strings.Contains(err.Error(), `data "deal"`) {
 		t.Fatalf("err = %v, want over-limit rejection naming the line", err)
 	}

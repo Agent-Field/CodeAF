@@ -26,7 +26,7 @@ func converse[T any](ctx context.Context, s *Service, b *build, text string, par
 			return out, nil
 		}
 		if attempt == 1 {
-			return zero, parseErr
+			return out, parseErr
 		}
 		messages = append(messages,
 			svc.ModelMessage{Role: "assistant", Text: reply},

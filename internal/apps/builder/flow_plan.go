@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -58,6 +59,11 @@ func (s *Service) runPlanCall(ctx context.Context, b *build, in prompt.Inputs) (
 		return prompt.Plan{}, err
 	}
 	plan, err := converse(ctx, s, b, text, prompt.ParsePlan)
+	if errors.Is(err, prompt.ErrLongLines) {
+		// The retry was spent and only card lines are too long: keep the plan,
+		// because shortenPlanLines cuts them to fit before Check.
+		err = nil
+	}
 	if err != nil {
 		return prompt.Plan{}, err
 	}
