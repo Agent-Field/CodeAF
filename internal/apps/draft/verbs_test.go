@@ -264,3 +264,15 @@ func TestRecordLineNamesTheFieldsInOrder(t *testing.T) {
 		t.Fatalf("line %q err %v", e.Line, err)
 	}
 }
+
+func TestAPlanLineIsAtMost120Characters(t *testing.T) {
+	s := openTemp(t)
+	long := strings.Repeat("x", 121)
+	_, err := s.Append(AuthorBuilder, "plan data", []string{"deal", long}, "")
+	if err == nil || !strings.Contains(err.Error(), "a plan line is at most 120 characters, got 121 — shorten it") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := s.Append(AuthorBuilder, "plan data", []string{"deal", strings.Repeat("x", 120)}, ""); err != nil {
+		t.Fatalf("a 120-character line must pass: %v", err)
+	}
+}

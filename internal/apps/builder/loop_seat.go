@@ -38,9 +38,10 @@ type seat struct {
 	tasks  *plandb.Store
 	feed   *feed
 
-	verbMu sync.Mutex // one server verb at a time
-	mu     sync.Mutex
-	live   string // id of the task a worker is on now, "" between tasks
+	verbMu  sync.Mutex // one server verb at a time
+	checked checkMemo  // the last check, by the digest of the files it ran on
+	mu      sync.Mutex
+	live    string // id of the task a worker is on now, "" between tasks
 }
 
 func (s *Service) buildDir(app string) string { return filepath.Join(s.root, buildsDir, app) }
