@@ -25,6 +25,57 @@ func registry(t *testing.T, dir string) *Settings {
 	})
 }
 
+func TestAppsBuilderModelRowReportsTheLaunchPin(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		pin    string
+		value  string
+		pinned bool
+	}{
+		{name: "unset", value: "built in"},
+		{name: "blank", pin: " \t ", value: "built in"},
+		{name: "model", pin: "openai/gpt-5-mini", value: "openai/gpt-5-mini", pinned: true},
+		{name: "trimmed", pin: " openai/gpt-5-mini \t", value: "openai/gpt-5-mini", pinned: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CODEAF_APPS_BUILDER_MODEL", tc.pin)
+			row, found := registry(t, t.TempDir()).Row(KeyAppsBuilderModel)
+			if !found {
+				t.Fatal("the apps builder model row is not registered")
+			}
+			if row.Category != CategoryModels || row.Kind != SettingText || row.Env != "CODEAF_APPS_BUILDER_MODEL" {
+				t.Fatalf("apps builder model row = %+v", row)
+			}
+			if got := row.Value(); got != tc.value {
+				t.Errorf("value = %q, want %q", got, tc.value)
+			}
+			name, pinned := row.PinnedBy()
+			if pinned != tc.pinned || (pinned && name != row.Env) {
+				t.Errorf("pin = %q, %v; want pinned = %v", name, pinned, tc.pinned)
+			}
+			err := row.Apply("another/model")
+			if tc.pinned {
+				if err == nil || err.Error() != "apps builder model is set by CODEAF_APPS_BUILDER_MODEL" {
+					t.Errorf("pinned Apply = %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := row.Value(); got != "another/model" {
+					t.Errorf("saved value = %q, want another/model", got)
+				}
+				if err := row.Apply(""); err != nil {
+					t.Fatal(err)
+				}
+				if got := row.Value(); got != "built in" {
+					t.Errorf("cleared value = %q, want built in", got)
+				}
+			}
+		})
+	}
+}
+
 func TestSlackApplicationRowShowsOnlyThePersonsAnswer(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SLACK_OAUTH_CLIENT", "")
@@ -122,7 +173,7 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 		registered[name] = true
 	}
 
-	pattern := regexp.MustCompile(`CODEAF_[A-Z0-9_]+`)
+	pattern := environmentPinPattern()
 	root := repositoryRoot(t)
 	seen := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
@@ -164,6 +215,31 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 		}
 		t.Fatalf("%s (%s) is neither a settings row nor operator plumbing — register it in settings.go",
 			name, path)
+	}
+}
+
+func environmentPinPattern() *regexp.Regexp {
+	// Shell output markers may contain the prefix without naming an environment variable.
+	return regexp.MustCompile(`\bCODEAF_[A-Z0-9_]+\b`)
+}
+
+func TestEnvironmentPinScanMatchesCompleteNames(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		want         []string
+	}{
+		{"lookup", `os.LookupEnv("CODEAF_NO_LOGIN_ENV")`, []string{"CODEAF_NO_LOGIN_ENV"}},
+		{"comment", "// CODEAF_HOME moves the store.", []string{"CODEAF_HOME"}},
+		{"markers", `"__CODEAF_ENV_START__" + "__CODEAF_ENV_END__"`, nil},
+		{"identifier", "MY_CODEAF_HOME", nil},
+		{"mixed", `"__CODEAF_ENV_START__"; os.Getenv("CODEAF_HOME"); os.Getenv("CODEAF_BASE_URL")`, []string{"CODEAF_HOME", "CODEAF_BASE_URL"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := environmentPinPattern().FindAllString(tt.source, -1)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("environment pins = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

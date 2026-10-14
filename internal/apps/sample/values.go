@@ -12,6 +12,9 @@ import (
 )
 
 func fieldValue(rows map[string][]bridge.Record, typ, name string, schema *spec.RecordType, f *spec.Field, i int, rng *rand.Rand, now time.Time) (any, error) {
+	if name == schema.Title && (f.Type == spec.FieldText || f.Type == spec.FieldLongtext) {
+		return titleValue(typ, schema, f, i), nil
+	}
 	if useDefault(f) {
 		return defaultValue(f)
 	}

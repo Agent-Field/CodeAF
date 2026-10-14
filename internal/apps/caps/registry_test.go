@@ -3,10 +3,7 @@ package caps
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -149,6 +146,7 @@ func TestGenericChecksPrecedeExtensionsAndAuditOnce(t *testing.T) {
 			AddDenyRule(func(context.Context, svc.Caller, svc.Scope, string, json.RawMessage) error { fail(); return nil })
 			root := t.TempDir()
 			checker := New(svc.Config{Root: root}, nil)
+			t.Cleanup(func() { _ = checker.audit.fallback.Close() })
 			scope := svc.Scope{Caller: svc.Caller{Member: "raj", Role: svc.RoleEditor}}
 			if tt.noMember {
 				scope.Caller.Member = ""
@@ -162,9 +160,13 @@ func TestGenericChecksPrecedeExtensionsAndAuditOnce(t *testing.T) {
 			if errorCode(err) != tt.code {
 				t.Fatal(err)
 			}
-			data, err := os.ReadFile(filepath.Join(root, "audit.jsonl"))
-			if err != nil || strings.Count(string(data), "\n") != 1 {
-				t.Fatalf("audit=%s error=%v", data, err)
+			page, err := checker.audit.fallback.List(context.Background(), svc.Scope{Caller: svc.PersonalCaller()}, bridge.AuditListParams{})
+			if err != nil || len(page.Entries) != 1 {
+				t.Fatalf("audit=%+v error=%v", page, err)
+			}
+			entry := page.Entries[0]
+			if entry.Action != "track.method" || entry.Decision != "deny" || entry.Member != scope.Caller.Member {
+				t.Fatalf("audit entry=%+v", entry)
 			}
 		})
 	}

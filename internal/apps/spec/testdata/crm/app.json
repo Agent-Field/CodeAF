@@ -2,6 +2,7 @@
   "$schema": "https://codeaf.dev/schema/app/1.json",
   "id": "crm",
   "name": "CRM",
+  "tint": "sage",
   "description": "Sales pipeline: companies, deals and contacts. The agent drafts follow-ups; every email waits for approval.",
   "space": "personal",
   "version": 1,

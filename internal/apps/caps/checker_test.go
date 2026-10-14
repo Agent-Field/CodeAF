@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/apps/audit"
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
@@ -111,26 +112,37 @@ func TestDenialAppendsAuditWithoutContent(t *testing.T) {
 	root := t.TempDir()
 	all := &svc.Services{Store: store.New(svc.Config{}, nil)}
 	checker := New(svc.Config{Root: root}, all)
+	t.Cleanup(func() { _ = checker.audit.fallback.Close() })
 	scope := svc.Scope{App: "crm", Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleViewer}}
 	for range 2 {
-		_ = checker.Allow(context.Background(), scope, bridge.MethodRecordsCreate, json.RawMessage(`{"type":"deal","set":{"name":"private prompt"}}`))
+		if err := checker.Allow(context.Background(), scope, bridge.MethodRecordsCreate, json.RawMessage(`{"type":"deal","set":{"name":"private prompt"}}`)); err == nil {
+			t.Fatal("viewer write allowed")
+		}
 	}
-	data, err := os.ReadFile(filepath.Join(root, "audit.jsonl"))
+	// Read through a separate service to prove the standalone checker persisted both denials.
+	log := audit.New(svc.Config{Root: root}, all)
+	t.Cleanup(func() { _ = log.Close() })
+	page, err := log.List(context.Background(), svc.Scope{Caller: svc.PersonalCaller()}, bridge.AuditListParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) != 2 || strings.Contains(string(data), "private prompt") {
-		t.Fatalf("audit = %s", data)
+	if len(page.Entries) != 2 {
+		t.Fatalf("audit = %+v", page)
 	}
-	for _, line := range lines {
-		var entry map[string]string
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+	for i, entry := range page.Entries {
+		if entry.App != "crm" || entry.Member != svc.Owner || entry.Decision != "deny" || entry.Action != bridge.MethodRecordsCreate || entry.Seq != int64(2-i) || entry.At.IsZero() {
+			t.Fatalf("entry = %+v", entry)
+		}
+		data, err := json.Marshal(entry)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if entry["app"] != "crm" || entry["member"] != svc.Owner || entry["decision"] != "denied" || entry["method"] != bridge.MethodRecordsCreate {
-			t.Fatal(entry)
+		if strings.Contains(string(data), "private prompt") || len(entry.Detail) != 0 {
+			t.Fatalf("content leaked: %s", data)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "audit.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected JSONL audit: %v", err)
 	}
 }
 
