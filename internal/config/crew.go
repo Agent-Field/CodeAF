@@ -44,9 +44,10 @@ import (
 // auxiliary calls that ride those tiers (the brief a task is shaped into, an
 // image read for a model that cannot see one, the plan of an adaptive run)
 // follow a pin. A named provider route lives beside that row, so an older
-// build reading the tier still sends a model id. An unwritten row is `auto`:
-// the seat is routed. The reflex and small-work rows are not crew seats and
-// keep their shipped defaults.
+// build reading the tier still sends a model id. Per-task seats remain routed
+// when unpinned. Outside a task, mastermind follows the conversation; worker
+// and checker still use standing picks. Reflex follows the conversation too,
+// while small work keeps its shipped default.
 
 // Crew rows, spelled once.
 const (
@@ -214,7 +215,7 @@ func CrewPinAt(profileDir string, seat crewroute.Seat) (CrewPin, bool) {
 }
 
 // crewSeatRow is a seat's settings row: the pin as written, or empty — which
-// the row draws as `auto`.
+// worker and checker draw as `auto`, and planner as `follows the conversation`.
 func crewSeatRow(profileDir string, seat crewroute.Seat) string {
 	if pin, ok := CrewPinAt(profileDir, seat); ok {
 		return pin.String()
@@ -1457,8 +1458,9 @@ func resolveCrewPin(pin CrewPin, providers []CrewProvider) (out crewroute.Pin) {
 }
 
 // standingCrewSeat is a routed seat for the calls that ride a crew seat's
-// tier without a task in front of them — the conversation's own planner and
-// careful calls. They are routed as work of no particular class, so an
+// tier without a task in front of them — worker and careful calls. The
+// conversation's unpinned mastermind follows its own live model instead.
+// Worker and checker are routed as work of no particular class, so an
 // unpinned seat never falls back to a model this build chose for everybody.
 // A profile with nothing the router can pick answers empty, which is the role
 // ladder's own floor: the model the person is talking to.

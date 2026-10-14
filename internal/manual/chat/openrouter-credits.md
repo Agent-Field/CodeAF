@@ -5,9 +5,10 @@
 For the default OpenRouter service, codeaf reads the account's credit balance and
 the key's own spending cap, whichever is smaller. A known remaining balance of $0.50
 or less is low. While it is low, a new conversation on a profile where you never
-chose a model opens on `qwen/qwen3.8-27b:free`, and the two helper rows nobody set
-use `nvidia/nemotron-3.5-lightning:free` for reflex and
-`thinkingmachines/inkling-small:free` for small work. The crew's three seats — worker,
+chose a model opens on `qwen/qwen3.8-27b:free`. An unset or cleared reflex row
+follows that free conversation model. If the live chat is paid and the reflex row
+has never been set, reflex uses `nvidia/nemotron-3.5-lightning:free` while credit is low.
+A cleared reflex row follows chat even then. The unset small-work row uses `thinkingmachines/inkling-small:free`. The crew's three seats — worker,
 planner and checker — are picked per task, and a low balance reaches them as an
 OpenRouter account out of credit: a seat nobody pinned is routed to a free pool, and the
 task's crew line says `free routes in use (may log prompts) · credit unavailable on

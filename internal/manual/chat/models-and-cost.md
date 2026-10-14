@@ -574,7 +574,8 @@ whenever one serves the model.
 The crew is three seats because those are the calls a task spends most of its money on.
 codeaf also makes smaller calls on your behalf — naming a session, the safety gate, memory
 — and those ride two rows of their own in `/settings` → Models, **reflex** and
-**small work**, which ship pointed at near-free models and are not part of the crew.
+**small work**. Reflex follows your conversation model unless you set its row;
+small work keeps its near-free default. Neither is part of the task crew.
 
 **`/model` is untouched.** It is the model you talk to, and nothing about the crew moves
 it.
@@ -1163,6 +1164,20 @@ sent the lowest level it offers instead of a switch-off it would refuse, so `off
 `low` on the wire and the row says `low` with no pin word beside it. That is the section
 *A model that cannot stop thinking*.
 
+## Do reflex and mastermind helpers use my chat model by default
+
+Yes. An unset or cleared **reflex** row and an unpinned **planner** (mastermind)
+row follow the live conversation model, including after `/model`. A model you wrote
+in either row still wins; a role pin wins over its row. This covers memory routing
+and extraction, markreader, handoff, router confirmation, division review, planner
+and designer calls. Settings says `follows the conversation` for those blank rows. On low credit,
+an unset reflex uses its free fallback only beside a paid chat; a cleared row
+still follows chat. A chat already using a free model keeps that model for reflex.
+
+Worker and checker keep their standing crew picks outside tasks. Task crews still
+route their unpinned seats per task. Vision and media keep their capability-qualified
+models: following a text-only chat model would stop them seeing images.
+
 ## Why reflex has its own model class
 
 `reflex` is the only role called **twice on every message** — once
@@ -1172,8 +1187,8 @@ once after, to decide whether the exchange held anything worth keeping (what-i-r
 was held behind it for a measured mean of 4.3 seconds. Both now run alongside your answer,
 and what they find is applied to whichever step of the answer is still ahead of them. That is
 why it has a
-class of its own rather than sharing "small work", and why it is the one row where a large
-model is an expensive mistake rather than a preference. Both calls are folded into the
+class of its own rather than sharing "small work". An unset or cleared reflex row follows
+the model you are talking to; write a model there to choose a different one. Both calls are folded into the
 session's total, not into the message that triggered them, so `/cost` includes them
 without any one message reading as three times the price of its neighbours.
 
@@ -1195,9 +1210,8 @@ next to the money it is spending:
 
 `planner: <model>` is the model amending the plan after every node — resolved once when the
 run started, from the model whatever started the run named, then the `planner` role's pin,
-then the crew's **planner** — its pin, or the model the crew would pick — then the model you
-are talking to. That is usually *not* the model in the rest of this conversation, which
-is why the run's own page says it rather than leaving you to work it out. You cannot name it
+then the **planner** tier's pin, then the model you are talking to. With no pin it follows
+the conversation, including a model change. The run's page names its model explicitly. You cannot name it
 yourself from a conversation, because a conversation cannot start a run at all — see
 *adaptive runs*.
 
@@ -1339,12 +1353,10 @@ run whose cost is being attributed to one model cannot have finished a single re
 another. That includes the catalog's own guess: with no `fallback models` row written, an
 ordinary run falls back to the nearest same-class model, and this flag withholds that too.
 
-**The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
-decides whether a long answer is moved to a task, and the writer of the brief that task opens
-on, normally run on the crew's planner and on nothing else: with no planner they are skipped
-rather than handed to the model that just wrote the answer. Under this flag they run on your
-model like everything else, because you have said your model is the crew. Without the flag and
-without a planner to seat, a move that needs them says `no second model is set`.
+**The mark reader and handoff writer also follow your model by default.** Their planner
+pin wins on an ordinary launch. Under `--one-model`, that pin is withheld too. A missing
+planner pin no longer means these calls are skipped or says `no second model is set`:
+they use the live conversation model.
 
 **Model Pool judging waits for an ordinary launch.** Its judge must be independent
 of the crew, so `--one-model` runs neither the task-landing judge nor the startup sweep

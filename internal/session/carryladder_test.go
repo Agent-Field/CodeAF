@@ -406,20 +406,18 @@ func TestUnderOneModelACrewOnlyErrandRidesTheConversationsModel(t *testing.T) {
 	}
 }
 
-// AND WITHOUT THE FLAG THE CREW-ONLY REFUSAL STANDS, because it is a quality
-// judgement about a profile that has a crew and this change does not touch it: an
-// install with no mastermind still gets no brief writer rather than the running
-// model editing the document it just wrote badly.
-func TestWithoutOneModelACrewOnlyErrandStillRefusesToFallToTheConversation(t *testing.T) {
-	agent := checkpointAgent(t, &modelAsked{}, func(config *Config) {
+// The ordinary thinking tier has the same conversation floor. The flag's
+// additional promise is that even a configured pin cannot displace it.
+func TestWithoutOneModelAnUnpinnedThinkingErrandFollowsTheConversation(t *testing.T) {
+	asked := &modelAsked{}
+	agent := checkpointAgent(t, asked, func(config *Config) {
 		config.Model = "the-one/model"
 		config.RolesSource = nil
 	})
-
-	_, _, err := agent.callRole(context.Background(), roles.RoleHandoff, "",
+	_, model, err := agent.callRole(context.Background(), roles.RoleHandoff, "",
 		[]ai.Message{textMessage("user", "write the brief")})
-	if !errors.Is(err, roles.ErrNoModel) {
-		t.Fatalf("a crew-only errand with no crew answered %v, want roles.ErrNoModel", err)
+	if err != nil || model != "the-one/model" || asked.model() != model {
+		t.Fatalf("handoff model = %q, wire = %q, error = %v", model, asked.model(), err)
 	}
 }
 

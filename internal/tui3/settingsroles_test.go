@@ -199,7 +199,7 @@ func TestARoleFollowsItsClassAndThenTheConversation(t *testing.T) {
 		want string
 	}{
 		{roles.RoleTitle, config.DefaultLowModel},
-		{roles.RoleReflex, config.DefaultReflexModel},
+		{roles.RoleReflex, a.model},
 	} {
 		if got := roleItem(t, a, c.role).model; got != c.want {
 			t.Errorf("%s resolves to %q, want its class's shipped %q", c.role, got, c.want)

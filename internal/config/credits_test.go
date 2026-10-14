@@ -38,7 +38,7 @@ func TestCreditsRecordChangesImplicitDefaultsWithoutSavingModels(t *testing.T) {
 		t.Fatalf("low record did not move chat default and crew health: chat=%q", ChatDefaultAt(dir))
 	}
 	for tier, want := range freeHelperModels {
-		if got := TierModelAt(dir, tier); got != want {
+		if got := TierModelAt(dir, tier, "vendor/paid-chat"); got != want {
 			t.Errorf("%s = %q, want %q", tier, got, want)
 		}
 	}
@@ -106,8 +106,8 @@ func TestFreeHelpersAreAReadingAndExplicitRowsWin(t *testing.T) {
 			t.Fatalf("%q is not free", model)
 		}
 	}
-	if strings.Split(freeHelperModels[ModelTierReflex], "/")[0] == strings.Split(freeHelperModels[ModelTierLow], "/")[0] {
-		t.Fatal("reflex and small work share a vendor")
+	if seat := TierSeatAt(dir, ModelTierReflex); seat.Model != "" || seat.Source != SeatConversation {
+		t.Fatalf("low credits silently replaced the conversation's reflex: %+v", seat)
 	}
 }
 

@@ -72,8 +72,8 @@ const roleFallThroughs = 1
 // would put a charge on a row nobody's request ever reached.
 //
 // `sessionDefault` is the ladder's floor, exactly as [roles.ResolveCall] takes
-// it — except under [Config.OneModel], where the floor is the conversation's own
-// model whatever the caller passed, for the reason spelled at that seam below.
+// it. Mastermind calls and [Config.OneModel] use the live conversation model
+// whatever the caller passed, for the reason spelled at that seam below.
 // Options are the caller's own — temperature, output cap, a response format
 // — and the model is added here so no caller can name one that disagrees with
 // the rung it is on.
@@ -94,24 +94,14 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 ) (*ai.Response, string, error) {
 	a.mu.Lock()
 	source := a.config.RolesSource
-	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG. A crew-only caller passes an empty
-	// floor deliberately — it is a quality judgement about a profile that HAS a
-	// crew, and it refuses to let the running model mark its own work — but the
-	// person who passed `--one-model` has already said the conversation's model
-	// is the crew. Left alone, those callers had no pin, no tier and no floor
-	// under the flag, so [roles.Ladder] answered ErrNoModel and a measured run
-	// had no mark reader and no brief writer at all (#443). It is decided HERE,
-	// at the one seam every errand passes through, so the next crew-only caller
-	// is correct without knowing the flag exists.
-	//
-	// THE FLOOR IS a.model AND NOT THE TURN'S LATCHED MODEL, because it is the
-	// same live conversation model every other errand already passes as its own
-	// floor (title.go, taskname.go, route_judge.go all read it live). A /model
-	// typed mid-turn reaches the turn's own next request now ([Agent.SetModel]),
-	// so reading it live here moves the crew-only rungs WITH the work rather than
-	// leaving the errands beside a turn talking to a model they do not know about.
+	// An unpinned thinking tier follows the LIVE conversation, even when a
+	// caller historically asked for a crew-only floor. The mark reader and
+	// handoff writer must not disappear merely because no second model was
+	// configured. Pins still outrank this floor; --one-model withholds them.
+	if tier, ok := roles.TierOf(role); ok && tier == roles.TierMastermind {
+		sessionDefault = a.model
+	}
 	if a.config.OneModel {
-		// A copied source must not let a role pin outrank the one-model floor.
 		source = nil
 		sessionDefault = a.model
 	}

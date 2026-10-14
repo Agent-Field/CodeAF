@@ -3867,25 +3867,21 @@ func TestATurnSpentWatchingItsOwnWorkIsNeverCheckpointed(t *testing.T) {
 
 // ── #468: A READER THAT CANNOT WORK IS ABSENT, NOT FAILING ──────────────────
 
-// A SESSION WITH NO SECOND MODEL ASKS NOBODY, AND SAYS SO ONCE.
-//
-// [roles.RoleMarkReader] answers to the crew alone, so a profile with no
-// mastermind resolves to nothing at all. Every mark and every end-of-turn reading
-// still made the call, failed in under two milliseconds and journaled itself as a
-// mark that FAILED — a row that reads exactly like a mastermind that was there
-// and could not be reached, written on every round of an evening. The decision
-// carries on without it, on the work.
-func TestAMarkReaderWithNoModelIsAbsentRatherThanFailing(t *testing.T) {
+// A session with no client has nobody to ask, even with a chat model. Its
+// absence is still recorded once, and is distinct from a failed provider call.
+func TestAMarkReaderWithNoClientIsAbsentRatherThanFailing(t *testing.T) {
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "transcript.jsonl")
-	// NO ROLES SOURCE AT ALL, which is the install this is about: no pin, no
-	// tier, and a crew-only caller passes no floor of its own.
+	// No client means no usable reader, regardless of the configured model.
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
 		c.Workspace = dir
 		c.SessionFile = transcript
 		c.Unattended = true
 		c.Budget = Budget{Wall: time.Hour}
 	})
+	agent.mu.Lock()
+	agent.client = nil
+	agent.mu.Unlock()
 	workedTurn(agent, "port the parser and wire the handlers", 3)
 
 	for round := 1; round <= 3; round++ {

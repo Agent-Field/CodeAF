@@ -1042,6 +1042,12 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		workSeat, planSeat, checkSeat, oneModel = saved.Work, saved.Plan, saved.Check, saved.OneModel
 	}
 
+	// An unrouted or older saved run must keep the conversation's planner
+	// floor; an empty seat would otherwise fall through to a worker pick.
+	if planSeat == "" {
+		planSeat = a.Model()
+	}
+
 	wallLeft, _ := a.config.Budget.Left()
 	if a.config.Budget.Wall > 0 && !a.startedAt.IsZero() {
 		wallLeft = a.config.Budget.Wall - time.Since(a.startedAt)
@@ -1125,6 +1131,9 @@ func (a *Agent) delegateCrew(run *beltRun) delegate.Crew {
 		return strings.TrimSpace(model), rung
 	}
 	brain, _ := seat(roles.TierMastermind)
+	if brain == "" {
+		brain = a.Model()
+	}
 	hands, handsEffort := seat(roles.TierWorker)
 	light, _ := seat(roles.TierLow)
 	crew := delegate.Crew{

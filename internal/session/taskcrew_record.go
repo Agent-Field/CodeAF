@@ -56,6 +56,11 @@ func (a *Agent) unroutedCrewRecord() *TaskCrewRecord {
 	source := roles.Source(a.config.RolesSource)
 	r.Work, _ = roles.TierModel(source, roles.TierWorker)
 	r.Plan, _ = roles.TierModel(source, roles.TierMastermind)
+	// Persist the model this unrouted conversation would actually plan on,
+	// so restoring the task cannot turn an empty tier into a worker pick.
+	if r.Plan == "" {
+		r.Plan = a.Model()
+	}
 	if a.config.OneModel {
 		r.OneModel = a.Model()
 		r.Work, r.Plan, r.Check = r.OneModel, r.OneModel, r.OneModel

@@ -13,10 +13,8 @@ import (
 // The settings panel builds a source of its own for what is on screen
 // (internal/tui3's rolesSource); this is the one every actual call resolves
 // against, and the two had drifted: the panel mapped all the tiers and the
-// door mapped two, so a reflex — a call made TWICE EVERY TURN — resolved to the
-// conversation's own model on every machine. That is not thrift misconfigured;
-// it is the most expensive model in the build answering the cheapest question
-// in it.
+// door mapped two. Every tier must reach the same ladder, with reflex and
+// mastermind following the live conversation unless somebody pinned them.
 func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 	dir := t.TempDir()
 	source, err := v3RolesSource(t.TempDir(), dir)
@@ -24,14 +22,13 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 		t.Fatalf("v3RolesSource: %v", err)
 	}
 
-	// An untouched profile: every class ships pointed at a model (the crew, in
-	// internal/config's crew.go), so nothing here resolves to the conversation.
+	// An untouched reflex follows the conversation, with no second model chosen.
 	reflex, err := roles.Resolve(roles.Source(source), roles.RoleReflex, "vendor/conversation")
 	if err != nil {
 		t.Fatalf("resolving the reflex role: %v", err)
 	}
-	if reflex != config.DefaultReflexModel {
-		t.Fatalf("the reflex role resolves to %q, want the reflex tier's own %q", reflex, config.DefaultReflexModel)
+	if reflex != "vendor/conversation" {
+		t.Fatalf("the reflex role resolves to %q, want vendor/conversation", reflex)
 	}
 
 	// And a person who pinned the tier is obeyed.

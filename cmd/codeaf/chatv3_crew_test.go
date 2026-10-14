@@ -188,10 +188,11 @@ func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
 	if err != nil {
 		t.Fatalf("v3RolesSource: %v", err)
 	}
-	reflex := roles.TierKey(roles.TierReflex)
-	paid, _ := source(reflex)
-	if paid != config.DefaultReflexModel {
-		t.Fatalf("a profile with no record seated reflex on %q, want the shipped %q", paid, config.DefaultReflexModel)
+	// Small work still changes with credit; reflex follows the conversation.
+	low := roles.TierKey(roles.TierLow)
+	paid, _ := source(low)
+	if paid != config.DefaultLowModel {
+		t.Fatalf("a profile with no record seated small work on %q", paid)
 	}
 	record, err := json.Marshal(map[string]any{
 		"low": true, "known": true, "key": config.CreditsKeyPrint("sk-or-v1-crewtest"), "read_at": "2026-09-24T21:44:22Z",
@@ -204,8 +205,8 @@ func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	free, _ := source(reflex)
-	if free == paid || free != config.TierModelAt(dir, config.ModelTierReflex) || !strings.HasSuffix(free, ":free") {
+	free, _ := source(low)
+	if free == paid || free != config.TierModelAt(dir, config.ModelTierLow) || !strings.HasSuffix(free, ":free") {
 		t.Fatalf("after another process recorded a low balance the live crew seated reflex on %q", free)
 	}
 	record, _ = json.Marshal(map[string]any{
@@ -214,7 +215,7 @@ func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if back, _ := source(reflex); back != paid {
+	if back, _ := source(low); back != paid {
 		t.Fatalf("after a top-up recorded elsewhere the live crew kept reflex on %q", back)
 	}
 }

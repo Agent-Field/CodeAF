@@ -807,7 +807,7 @@ const checkpointCarriedOnSeen = 200
 // [checkpointCarryOnCap] and a number written twice is a number that will drift.
 func checkpointCarriedOnNote(observed []string) string {
 	// NOTHING OBSERVED IS SAID AS NOTHING OBSERVED. It is the shape a session
-	// with no second model to read with would reach if it ever got here, and a
+	// with no usable reader would reach if it ever got here, and a
 	// note that invented a reason on its behalf would be the sentence this
 	// function was rewritten to remove.
 	seen := clip(strings.Join(observed, "; "), checkpointCarriedOnSeen)
@@ -1362,7 +1362,7 @@ func completionClaimOver(ask string) string {
 
 // checkpointSketch is what one mark's sidecar drew: the shape line, the sentence
 // under it naming the letters, and how many parts the harness read out of the
-// shape. An empty one is every failure — no mastermind, a fault, a window that
+// shape. An empty one is every failure — no usable reader, a fault, a window that
 // ran out, an answer with nothing in it — and it decides nothing and heads
 // nothing.
 type checkpointSketch struct {
@@ -1429,7 +1429,7 @@ var checkpointDoneShapes = map[string]bool{
 // be handed to two pairs of hands; only this says there is nothing there.
 //
 // AND A READER NOBODY REACHED SAYS NOTHING AT ALL. An empty sketch is a fault, a
-// timeout, an install with no mastermind and a blank reply, and reading silence
+// timeout, an install with no usable reader and a blank reply, and reading silence
 // as agreement would hand every turn whose sidecar was down straight back to the
 // running model. So the sketch must have been drawn.
 func (s checkpointSketch) saysDone() bool {
@@ -1793,24 +1793,19 @@ func unbracket(stage string) string {
 // markReaderAbsent reports that THIS INSTALL HAS NOBODY TO READ A MARK WITH, and
 // writes that down once for the session.
 //
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN (CLAUDE.md), and this road
-// had it exactly the wrong way round. [roles.RoleMarkReader] answers to the crew
-// alone, so a profile with no mastermind resolves to nothing at all — and every
-// mark and every end-of-turn reading still made the call, failed in under two
-// milliseconds, and journaled itself as a mark that FAILED. A run under one model
-// wrote that row on every round of an evening, which reads in the file exactly
-// like a mastermind that was there and could not be reached (#468).
+// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN (CLAUDE.md). A missing
+// client or model is not a provider failure, and must not write failed marks
+// on every round. An ordinary unpinned chat has its own model as the reader.
 //
 // IT ASKS THE LADDER THE SAME QUESTION [Agent.callRole] IS ABOUT TO ASK IT, in
 // the same words, so the two can never disagree about whether there is a reader:
-// the pin, then the tier, then the floor — which is empty for a crew-only caller
-// unless `--one-model` put the conversation's own model there (auxiliary.go).
-// A session with no client at all is the same answer for the other reason.
+// the pin, then the tier, then the LIVE conversation model. A session with
+// no client at all is absent for the other reason.
 func (a *Agent) markReaderAbsent() bool {
 	a.mu.Lock()
-	source, floor := a.config.RolesSource, ""
+	source, floor := a.config.RolesSource, a.model
 	if a.config.OneModel {
-		floor = a.model
+		source = nil
 	}
 	a.mu.Unlock()
 	if a.hasClient() {
@@ -1842,19 +1837,11 @@ func (a *Agent) noteReaderAbsent() {
 }
 
 // readMark is the sidecar: ONE call, at one mark, asking somebody who is not the
-// running model what is left of this turn.
+// main request what is left of this turn.
 //
-// IT IS ASKED OF THE CREW ALONE — the empty `sessionDefault` — which is the same
-// refusal [Agent.askRouteAhead] makes and for a sharper reason. The ladder's
-// floor is the conversation's own model (auxiliary.go), and the conversation's
-// own model is precisely the reader this whole mechanism was rebuilt to stop
-// relying on: it answered the same question with a tool call instead of an answer
-// on up to half the measured turns. Falling through to it would be the running
-// model deciding whether to interrupt itself, quietly, under a different name. So
-// an install with no mastermind gets NO MARK READING AT ALL, which is the
-// codebase's law about a capability that cannot work being absent rather than
-// broken — and the ceiling still moves the turn at the last mark, which is what
-// that install had before this existed.
+// IT FOLLOWS THE THINKING TIER: a pin when one was written, otherwise the
+// live conversation model. The request is separate from the main turn and
+// carries no tools, even when both calls use the same model.
 //
 // IT IS SENT WITH NO BELT, for [Agent.checkpointBrief]'s reason: a reader with no
 // hand to reach for can only answer with the drawing.
@@ -2064,7 +2051,7 @@ const (
 
 	checkpointDecisionContinue = "continue"
 	checkpointDecisionFailed   = "failed"
-	// checkpointDecisionNoReader is the ONE row a session with no second model
+	// checkpointDecisionNoReader is the ONE row a session with no usable reader
 	// writes ([Agent.noteReaderAbsent]). It is a different fact from `failed` and
 	// the file has to be able to tell them apart: one is a reader that could not
 	// be reached, the other is an install that never had one.
@@ -3264,7 +3251,7 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 //
 // EVERY FAILURE ENDS THE TURN, which is the opposite fail-open direction from the
 // marks and is the honest one here. A reader nobody can reach, a window that ran
-// out, an install with no mastermind: each answers MET, and the turn ends as it
+// out, an install with no usable reader: each answers MET, and the turn ends as it
 // did before this existed. The alternative — re-opening on silence — is a harness
 // that will not let a conversation finish on the day its sidecar goes down.
 //
@@ -4762,7 +4749,7 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 		return stewardReading{read: true, decision: *taken}, checkpointHandover{}, false
 	}
 	// THE READER'S LINE IS TAKEN THE WAY A STOPPED TURN TAKES IT, which costs
-	// nothing on an install with no mastermind: [Agent.readRemains] answers ""
+	// nothing on an install with no usable reader: [Agent.readRemains] answers ""
 	// without a call when there is nobody to ask, and the decision is then made
 	// on what landed and what the checks said, exactly as #507 makes it. What was
 	// said is the model's own last words, so a principal that reads them is shown

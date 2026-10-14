@@ -10,8 +10,8 @@ import (
 )
 
 // A FRESH PROFILE STARTS ON AUTO. With HOME and CODEAF_HOME both empty
-// directories and no profile override, every crew seat is routed — worker,
-// planner and checker — nothing is pinned, the allowed rule is `all`, a task
+// directories and no profile override, worker and checker have standing router picks;
+// the conversation's planner follows its live model — nothing is pinned, the allowed rule is `all`, a task
 // is held to $2, and there is no daily crew cap until one is set. Reading all
 // of it writes nothing.
 func TestAFreshProfileStartsOnAutoWithTheDefaultLimits(t *testing.T) {
@@ -37,8 +37,12 @@ func TestAFreshProfileStartsOnAutoWithTheDefaultLimits(t *testing.T) {
 	}
 	for _, seat := range crewroute.Seats {
 		row := TierSeatAt(dir, CrewSeatTier(seat))
-		if row.Source != SeatRouted {
-			t.Errorf("%s reads %+v on a fresh profile, want auto (routed)", seat, row)
+		want := SeatRouted
+		if seat == crewroute.Planner {
+			want = SeatConversation
+		}
+		if row.Source != want {
+			t.Errorf("%s reads %+v on a fresh profile, want %s", seat, row, want)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("CODEAF_HOME"), "config.json")); !os.IsNotExist(err) {

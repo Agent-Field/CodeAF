@@ -1715,16 +1715,8 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// always handled, and they stay unset rather than becoming a fourth resolution
 	// path that could drift from the other three.
 	//
-	// BUT WITHHOLDING ALONE IS NOT THE PROMISE, and this comment used to claim it
-	// was. Two errands hand the ladder an EMPTY floor on purpose — the mark's
-	// reader and the brief's writer are crew-only, so that an install with no
-	// mastermind gets no second opinion rather than the running model marking its
-	// own work — and with no pin, no tier and no floor those two rungs resolve to
-	// no model at all. A measured run under the flag therefore had neither, and
-	// the person was told the second model could not be reached (#443). So the
-	// flag is CARRIED into the session as [session.Config.OneModel] and answered
-	// once at the seam every errand passes through, which is the only place a
-	// third crew-only caller can be made right without knowing the flag exists.
+	// The thinking tier also follows the live conversation without the flag;
+	// --one-model additionally withholds explicit pins and every other text tier.
 	//
 	// The media slots are deliberately untouched. Vision, image, speech and
 	// video are capability-qualified — a text model cannot answer view_image —
@@ -2477,12 +2469,8 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 	// what a task costs, and a repository that could point it at a model would
 	// be spending a visitor's credit on the work it asked for.
 	//
-	// The reflex tier: the two calls that ride it are made TWICE EVERY TURN
-	// (internal/reflex), so a reflex resolving to the conversation's model is not
-	// thrift misconfigured, it is the most expensive model in the build answering
-	// the cheapest question in it. The mastermind tier: it plans adaptive runs
-	// and designs saved harnesses, and a repository that could point it at a
-	// model would be spending a visitor's credit on the run it asked for.
+	// Reflex and mastermind follow the live conversation unless pinned. Neither
+	// row may silently choose a different model for an unconfigured chat.
 	// A CHECKER NO PROJECT NAMED IS THE CREW'S: its pin, or the router's
 	// standing pick ([config.TierModelAt]) — never an empty row that would
 	// fall to the conversation's model.

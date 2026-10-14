@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -341,4 +342,31 @@ func TestAICallFlushesDeltaBeforeTheAnswerEnds(t *testing.T) {
 	}
 	cancel()
 	s.Close()
+}
+
+// The app's standalone AI runtime has no active engine to supply its floor.
+// Its empty tiers still follow the resolved conversation default, not no model.
+func TestStandaloneAIRuntimeFollowsTheConversationForEmptyHelperTiers(t *testing.T) {
+	now := time.Now()
+	s := resourceServer(t, t.TempDir(), &now, context.Background())
+	s.options.ProfileDir = t.TempDir()
+	for _, chosen := range []string{"", "vendor/conversation"} {
+		if err := config.WriteChatModel(s.options.ProfileDir, chosen); err != nil {
+			t.Fatal(err)
+		}
+		runtime, err := s.aiRuntime()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := chosen
+		if want == "" {
+			want = config.ChatDefaultAt(s.options.ProfileDir)
+		}
+		for _, role := range []roles.Role{roles.RoleReflex, roles.RoleMarkReader} {
+			call, err := roles.ResolveCall(runtime.Source, role, runtime.Default)
+			if err != nil || call.Model != want {
+				t.Fatalf("%s = %+v, %v; want %s", role, call, err, want)
+			}
+		}
+	}
 }

@@ -273,9 +273,17 @@ func (a *Agent) memoryOwnersFor(projectKey string) []string {
 // left. The binding itself is one small struct.
 func (a *Agent) reflexClient() reflex.Completer {
 	a.mu.Lock()
-	source, model := a.config.RolesSource, a.model
+	source, model, profile, oneModel := a.config.RolesSource, a.model, a.config.ProfileDir, a.config.OneModel
 	a.mu.Unlock()
-	named, err := reflex.Model(roles.Source(source), model)
+	// The unconfigured tier follows this chat. Only a paid conversation on
+	// low credit needs a separate free reflex model; pins still win above it.
+	floor := model
+	if !oneModel && config.CreditsLowAt(profile) {
+		if tier := config.TierModelAt(profile, config.ModelTierReflex, model); tier != "" {
+			floor = tier
+		}
+	}
+	named, err := reflex.Model(roles.Source(source), floor)
 	if err != nil {
 		return nil
 	}

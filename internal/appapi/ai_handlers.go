@@ -58,15 +58,20 @@ func (s *Server) aiRuntime() (AICallRuntime, error) {
 	if err != nil {
 		return AICallRuntime{}, err
 	}
+	fallback, _ := settings["models.default"].(string)
+	// Empty helper tiers need the same account-aware floor as a fresh chat;
+	// the saved default alone is empty until somebody chooses a model.
+	if fallback == "" {
+		fallback = config.ChatDefaultAt(s.options.ProfileDir)
+	}
 	source := func(key string) (string, bool) {
 		if strings.HasPrefix(key, "roles.") {
 			value, ok := pins[strings.TrimPrefix(key, "roles.")]
 			return value, ok
 		}
-		value := config.TierModelAt(s.options.ProfileDir, strings.TrimPrefix(key, "tiers."))
+		value := config.TierModelAt(s.options.ProfileDir, strings.TrimPrefix(key, "tiers."), fallback)
 		return value, value != ""
 	}
-	fallback, _ := settings["models.default"].(string)
 	cfg := config.Config{ProfileDir: s.options.ProfileDir, Sources: config.ResolveSources(s.options.ProfileDir, "", config.DefaultBaseURL), Models: catalog.Recall(catalog.Options{Dir: s.options.ProfileDir})}
 	return AICallRuntime{Source: source, Default: fallback, ClientConfig: cfg.ClientConfig}, nil
 }

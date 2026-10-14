@@ -318,7 +318,7 @@ var settingUI = map[string]settingMeta{
 	// seat may be picked from and what the crews may spend.
 	config.KeyTierReflexModel: {
 		tab: tabProviders, label: "reflex", widget: widgetSelect,
-		about: "near-free · reads every turn — memory, titles, safety",
+		about: "reads every turn for memory · empty follows the conversation",
 	},
 
 	config.KeyTierLowModel: {
@@ -340,7 +340,7 @@ var settingUI = map[string]settingMeta{
 	// written down and outlives it.
 	config.KeyTierMastermindModel: {
 		tab: tabProviders, label: "planner", widget: widgetText,
-		about: "plans runs and designs harnesses — add :low, :medium or :high. Empty is auto: routed per task",
+		about: "plans runs and designs harnesses — add :low, :medium or :high. Empty follows the conversation; task crews route per task",
 	},
 	config.KeyModelRoles: {
 		tab: tabProviders, label: "pinned roles", widget: widgetText,
