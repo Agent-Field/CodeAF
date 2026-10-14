@@ -74,7 +74,16 @@ func shownEntry(entry session.DisplayEntry) bool {
 	return true
 }
 func (a *AgentRegistry) turnEntries(record agentRecord) []DisplayEntry {
-	return mergeProcessEndEntries(a.turnBaseEntries(record), a.endedProcessEntries(record.Agent.ID, record.SessionFile))
+	merged := mergeProcessEndEntries(a.turnBaseEntries(record), a.endedProcessEntries(record.Agent.ID, record.SessionFile))
+	// A session-written aside is told to the model, not the person; the live
+	// stream never draws it. Job ends were swapped for their notices above.
+	shown := merged[:0]
+	for _, entry := range merged {
+		if entry.Kind != "notice" || entry.Role != "aside" {
+			shown = append(shown, entry)
+		}
+	}
+	return shown
 }
 func (a *AgentRegistry) turnBaseEntries(record agentRecord) []DisplayEntry {
 	saved := session.ReadTranscript(record.SessionFile)

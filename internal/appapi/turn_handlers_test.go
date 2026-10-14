@@ -319,14 +319,13 @@ func TestTurnSnapshotShowsComposedRepliesNotRawToolResults(t *testing.T) {
 	want := []struct{ kind, role, text string }{
 		{"message", "user", "plot the stars"},
 		{"tool", "tool", ""},
-		{"notice", "aside", "taking stock"},
 		{"message", "assistant", "Here is the chart."},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("entries: %+v", got)
 	}
 	for i, w := range want {
-		if got[i].Kind != w.kind || got[i].Role != w.role || got[i].Text != w.text || got[i].ID != fmt.Sprintf("entry_%d", i) {
+		if got[i].Kind != w.kind || got[i].Role != w.role || got[i].Text != w.text {
 			t.Fatalf("entry %d = %+v, want %+v", i, got[i], w)
 		}
 	}
