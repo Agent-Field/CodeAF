@@ -24,3 +24,14 @@ lookup, dial, spawn, lock and status cannot disagree; the default home in
 `engineWorkspace`; the session bucket and memory project key in `cmd/codeaf`;
 the typed `/project` pin in `internal/tui3`. A regression test drives a symlink
 through each layer and asserts both spellings land on one key.
+
+THE UPGRADE KEEPS WHAT THE OLD KEY WROTE. A host directory and a conversation
+bucket an older build named by the raw spelling are still this folder's: a
+`Dial` that misses the canonical key looks for host directories whose recorded
+workspace (`internal/enginehost`'s place file) resolves to the same folder, so
+`--status`, `--stop`, `--status-all`, `--stop-all` and the takeover rule reach
+an engine the upgrade did not start; and a launch whose canonical bucket holds
+no spoken conversation resumes the newest folder in another bucket whose
+`meta.workspace` citation resolves to it. No migration, no merge — the old
+records are read where they live, and the canonical key takes over from there.
+
