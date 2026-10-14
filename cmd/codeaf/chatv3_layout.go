@@ -294,12 +294,77 @@ func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Sess
 		// happened.
 		return v3Session{Place: place, Transcript: place.Transcript(), Resumed: resumed, Bucket: bucket}, nil
 	}
+
+	// A CONVERSATION AN OLDER BUILD FILED UNDER ANOTHER SPELLING IS STILL THIS
+	// WORKSPACE'S CONVERSATION. Before the project key was resolved (#1761),
+	// buckets were minted from whatever spelling the terminal carried, and an
+	// upgrade that reads only the canonical bucket would open a fresh journal
+	// beside every conversation a person already had. The newest spoken folder
+	// whose recorded workspace resolves to this folder resumes where it lives —
+	// no merge, no move; the canonical bucket simply takes over from here.
+	if legacy, legacyBucket, found := v3LegacyFolder(workspace); found {
+		place := v3PlaceFor(legacy.dir, workspace, owned || legacy.meta.Owned)
+		return v3Session{Place: place, Transcript: place.Transcript(), Resumed: true, Bucket: legacyBucket}, nil
+	}
+
 	place, err := v3MintSession(bucket, workspace, launchDir, owned)
 	if err != nil {
 		return v3Session{}, err
 	}
 	v3ReapEmpty(empty, place.Dir)
 	return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, nil
+}
+
+// v3LegacyFolder searches the project buckets OTHER than this workspace's own
+// for the newest conversation somebody has spoken in whose recorded workspace
+// ([session.Meta.Workspace]) resolves to the same folder, and answers it with
+// the bucket it lives in. It is the upgrade road for buckets minted before the
+// project key was resolved (#1761): the bucket name is a spelling's encoding and
+// cannot be reversed, but every folder cites its own workspace, and a citation
+// that resolves to this folder is this folder's conversation. Empty folders and
+// folders that cite nothing are not candidates — a resume must come back to
+// words, and a citation that was never written cannot be trusted to spellings.
+func v3LegacyFolder(workspace string) (v3Folder, string, bool) {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return v3Folder{}, "", false
+	}
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(workspace))
+	if err != nil {
+		return v3Folder{}, "", false
+	}
+	root := home.Join("v3", "projects")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return v3Folder{}, "", false
+	}
+	canonical := filepath.Join(root, encodeWorkspace(workspace))
+	var newest v3Folder
+	newestBucket := ""
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		bucket := filepath.Join(root, entry.Name())
+		if bucket == canonical {
+			continue
+		}
+		spoken, _ := v3ScanBucket(bucket)
+		for _, folder := range spoken {
+			recorded := strings.TrimSpace(folder.meta.Workspace)
+			if recorded == "" {
+				continue
+			}
+			resolvedRecorded, err := filepath.EvalSymlinks(filepath.Clean(recorded))
+			if err != nil || resolvedRecorded != resolved {
+				continue
+			}
+			if newestBucket == "" || folder.at.After(newest.at) {
+				newest, newestBucket = folder, bucket
+			}
+		}
+	}
+	return newest, newestBucket, newestBucket != ""
 }
 
 // v3PickFolder resumes the newest conversation somebody has spoken in. A
@@ -344,6 +409,11 @@ func v3LatestTranscript(workspace string) string {
 	spoken, empty := v3ScanBucket(bucket)
 	folder, _, found := v3PickFolder(spoken, empty, false)
 	if !found {
+		// A CONVERSATION AN OLDER BUILD FILED UNDER ANOTHER SPELLING IS STILL
+		// THIS WORKSPACE'S CONVERSATION ([v3LegacyFolder]).
+		if legacy, _, found := v3LegacyFolder(workspace); found {
+			return session.Place{Dir: legacy.dir}.Transcript()
+		}
 		return ""
 	}
 	return session.Place{Dir: folder.dir}.Transcript()
