@@ -666,6 +666,13 @@ func (a *app) exchangeConsent(ex *homeExchange, ev session.Event) {
 			kind: exchangeTool, text: exchangeToolLine(ev), began: a.now(), callID: call,
 		})
 	}
+	// AND THE CARD'S ANSWERS GO, SO ITS SETTLE GUARD STARTS AGAIN. They are not
+	// drawn while an approval is up, and when they come back they come back under
+	// a hand that was just answering the approval — `1 1` must allow the call and
+	// leave the card alone. The next frame that draws them stamps them afresh.
+	if ex.ask != nil {
+		ex.ask.shown = time.Time{}
+	}
 	permit := &exchangePermit{shown: a.exchangePermitShown(ex, ev), call: call}
 	for i, open := range ex.permits {
 		if open.shown.question.ID == ev.ID {
@@ -761,11 +768,11 @@ func (ex *homeExchange) dropPermits() { ex.permits = nil }
 // A LETTER IS NOT TAKEN — `o` asks the card for the box, and an approval has
 // no such answer here — so it goes to the box the person is typing in.
 //
-// AND THE SETTLE GUARD IS KEPT, which this pane's card does without. A key that
-// arrives before the question has been on the screen for [questionSettle] was
-// aimed at whatever was there before it — the follow-up box, or the approval
-// just answered when two are queued — and the one answer here that must never
-// come from a keystroke meant for something else is `allow once`.
+// AND THE SETTLE GUARD IS KEPT, as it is on the card. A key that arrives before
+// the question has been on the screen for [questionSettle] was aimed at whatever
+// was there before it — the follow-up box, or the approval just answered when two
+// are queued — and the one answer here that must never come from a keystroke
+// meant for something else is `allow once`.
 func (a *app) exchangePermitKey(ex *homeExchange, key string) (tea.Cmd, bool) {
 	permit := ex.permit()
 	if permit == nil {
@@ -885,13 +892,15 @@ func (a *app) exchangeShown(ex *homeExchange, notice session.AutomationNotice) *
 			return a.answerExchangeCard(ex, &kept, answer)
 		},
 		commented: func() { ex.changing = true },
+		// AND ITS RECEIPT IS THE CARD ITSELF, settled in place. The block's
+		// receipt is drawn above the WINDOW's box, which holds a different
+		// conversation from the one this card is about ([questionShown.elsewhere]).
+		elsewhere: true,
 	}
-	// THE STAMP IS WRITTEN AT THE RAISE, which is [app.raiseHomeAsk]'s own
-	// bargain: the settle guard exists to catch a key aimed at the screen a
-	// quarter-second ago, and the pane redraws this card on every frame it is on
-	// — so a stamp waiting for the block's own draw would never be written at
-	// all, and the digits would never answer.
-	shown.shown = a.now()
+	// THE STAMP IS NOT WRITTEN HERE. The settle guard is a claim about what a
+	// person could have seen, so it counts from the first frame that DREW the
+	// answers ([app.exchangePane]) — a card that arrived while somebody was in
+	// another conversation has been on nobody's screen, however long ago it came.
 	return &shown
 }
 
@@ -1516,18 +1525,34 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		// hands the keyboard back to the list, and a card left standing on the
 		// column is not an answer.
 		//
-		// AND `c` ARMS THE CORRECTION, which is what `2 change when or where`
+		// AND `o` ARMS THE CORRECTION, which is what `2 change when or where`
 		// used to be — a chip that asked for the box rather than an answer. It is
 		// the same key on every question this surface asks.
 		//
-		// AN APPROVAL THE TURN IS STOPPED ON GOES FIRST. Nothing in the errand
+		// WHILE A CORRECTION IS BEING WRITTEN THE BOX OWNS EVERY KEY, and that
+		// comes before either question: `make it 10 tomorrow` is a sentence. Its
+		// `1` used to answer the card yes halfway through the word meant to
+		// change it — and with an approval up beside the card, it allowed the
+		// call. Both questions wait until the sentence is sent or cleared.
+		//
+		// AN APPROVAL THE TURN IS STOPPED ON GOES NEXT. Nothing in the errand
 		// moves until it is answered, the card's answers are not drawn while it
 		// is up, and a key may only answer what is on the screen.
+		if ex.changing {
+			break
+		}
 		if ex.permit() != nil {
 			if cmd, took := a.exchangePermitKey(ex, msg.String()); took {
 				return cmd
 			}
 		} else if ex.asking() && ex.ask != nil {
+			// THE SETTLE GUARD HOLDS HERE AS IT DOES ON THE BLOCK. A key that
+			// arrives before the card has been on the screen for [questionSettle]
+			// was aimed at what was there before it — a `1` in a follow-up — and is
+			// dropped rather than read as `set it up` ([app.questionSettled]).
+			if !a.questionSettled(*ex.ask) {
+				return nil
+			}
 			if cmd, took := a.questionOptionKey(*ex.ask, msg.String()); took {
 				return cmd
 			}
@@ -1828,6 +1853,9 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 				// NOT WHILE AN APPROVAL IS UP: the digits answer that first
 				// ([app.exchangeKey]), and one digit drawn under two questions is a
 				// key whose meaning depends on which one a person happened to read.
+				if ex.ask.shown.IsZero() {
+					ex.ask.shown = a.now()
+				}
 				answers, askAt := a.exchangeAnswers(*ex.ask, width, len(out))
 				out, ex.askAt = append(out, answers...), askAt
 			}
@@ -2408,7 +2436,9 @@ func (a *app) exchangePress(x, row int) tea.Cmd {
 				return a.pickPermit(ex, at)
 			}
 		}
-	} else if ex.asking() && ex.ask != nil {
+	} else if ex.asking() && ex.ask != nil && a.questionSettled(*ex.ask) {
+		// A press is held to the settle guard for the reason its digit is: a
+		// click aimed at a row the card has just moved under is not an answer.
 		for at, drawn := range ex.askAt {
 			if drawn < 0 || drawn != row {
 				continue

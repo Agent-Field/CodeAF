@@ -472,6 +472,7 @@ func TestAClickOnTheCardsAnswerInThePaneTakesIt(t *testing.T) {
 	if no < 0 || no >= len(answers) || !strings.Contains(answers[no], session.AutomationNoKey) {
 		t.Fatalf("the card's no is not drawn at its target: answers %q", answers)
 	}
+	readCard(t, a)
 	spend(t, a, a.exchangePress(0, ex.askAt[no]))
 	if len(lab.agent.answered) != 1 || lab.agent.answered[0].FirstKey() != session.AutomationNoKey {
 		t.Fatalf("a press on the card's no answered %+v", lab.agent.answered)
