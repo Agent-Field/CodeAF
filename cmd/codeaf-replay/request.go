@@ -296,6 +296,10 @@ var callSiteRoles = map[string]lane.Role{
 	// this instrument's `task` numbers a floor on how bad a watched task step
 	// was, never a ceiling, and the report says so.
 	"task": lane.RoleLeafUnattended,
+	// internal/apps/builder/model.go: an app's Builder turn and its agent's
+	// turn, each answering a person who is watching the app's chat.
+	"apps.builder":   lane.RoleTalk,
+	"apps.app-agent": lane.RoleTalk,
 	// internal/exec/linear.go: a plan leaf, which nobody is sitting in front of.
 	"leaf": lane.RoleLeafUnattended,
 	// internal/reflex/reflex.go tags every reflex call with one word while its
