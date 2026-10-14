@@ -83,7 +83,7 @@ func planTargets(b *spec.Bundle) []Issue {
 			}
 			at := fmt.Sprintf("/%s/%d/id", section, i)
 			if !exists {
-				issues = append(issues, finding(spec.PlanFile, at, "schema/plan", "planned "+section+" target "+line.ID+" is missing", "write the record type or file named by this plan line"))
+				issues = append(issues, finding(spec.PlanFile, at, "schema/plan", "planned "+section+" target "+line.ID+" is missing", planTargetHint(section, line.ID)))
 			}
 			if seen[line.ID] {
 				issues = append(issues, finding(spec.PlanFile, at, "schema/plan", "duplicate plan id "+line.ID, "give each line a distinct target id"))
@@ -124,9 +124,19 @@ func runActions(file, path string, steps []*spec.Step) []Issue {
 			}
 		}
 		if count != 1 {
-			issues = append(issues, finding(file, at, "schema/run-action", fmt.Sprintf("run step has %d actions; exactly one is required besides gate", count), "split multiple actions into separate steps"))
+			issues = append(issues, finding(file, at, "schema/run-action", fmt.Sprintf("run step has %d actions; exactly one is required besides gate", count), "split it into consecutive steps with one action each (agent, tool, records.query/create/update/delete, wait or steps); a gate stays on the step whose action it approves"))
 		}
 		issues = append(issues, runActions(file, at+"/steps", step.Steps)...)
 	}
 	return issues
+}
+
+// planTargetHint names the exact file or key a plan line needs.
+func planTargetHint(section, id string) string {
+	target := map[string]string{
+		"data":       "add records." + id + " to app.json",
+		"automation": "write runs/" + id + ".yaml",
+		"screens":    "write screens/" + id + ".json",
+	}[section]
+	return target + " (or rename the plan line id to the one that exists)"
 }

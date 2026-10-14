@@ -77,7 +77,7 @@ func (s *Service) check(ctx context.Context, app string, files spec.Files, round
 			err = ctx.Err()
 		}
 		if err != nil && ctx.Err() == nil {
-			r.Issues = append(r.Issues, finding(spec.AppFile, "", "check/error", err.Error(), "repair the definition named in this failure using the supplied schemas and kit"))
+			r.Issues = append(r.Issues, finding(spec.AppFile, "", "check/error", err.Error(), "the message names the file and value Check could not load; repair that value against the File schemas and kit catalog"))
 			err = nil
 		}
 		r.Passed = err == nil && len(r.Issues) == 0
