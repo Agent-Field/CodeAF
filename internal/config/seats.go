@@ -73,8 +73,12 @@ const (
 	// SeatRouted is the router's pick for this task.
 	SeatRouted SeatSource = "routed"
 	// SeatDefault is this build's own model for a tier that is not a crew
-	// seat — reflex and small work — on a profile that never wrote the row.
+	// seat — small work, or reflex beside a paid chat on low credit — when
+	// the profile never wrote the row.
 	SeatDefault SeatSource = "default"
+	// SeatConversation leaves the model to the live conversation. No router
+	// has chosen a second model on the person's behalf.
+	SeatConversation SeatSource = "follows conversation"
 )
 
 // ModelEnv, PlanModelEnv, and CheckModelEnv are the variables the seats read.
@@ -271,19 +275,13 @@ func CheckEnvModel() string {
 // the settings sheet's rows, and a run's crew factory for a seat its door did
 // not name.
 //
-// A CREW SEAT'S ROW — worker, planner (mastermind), checker (high) — is its
-// pin when one is written, and otherwise the router's pick for work of no
-// particular class ([standingCrewSeat]): the calls that ride those tiers
-// without a task in front of them are routed too, never handed a model this
-// build chose for everybody.
-//
-// THE OTHER TWO ROWS — reflex and small work — are not crew seats and read the
-// way they always have: a row somebody WROTE is theirs, a row they CLEARED
-// reads empty and follows the conversation ([TierModelAt] argues why UNSET
-// and CLEARED are different answers), and a key never held reads this build's
-// own near-free model — or, on an account known to be low, a free one
-// ([freeTierModelAt]).
-func TierSeatAt(profileDir, tier string) Seat {
+// Crew rows read their pins, or the router's standing picks. An unwritten
+// or cleared reflex reads empty: the role ladder supplies the LIVE
+// conversation model, including after /model.
+// With a conversation model, unset reflex retains its low-credit free
+// fallback only beside a paid chat. Small work keeps its own defaults. A written
+// row always wins; a cleared row follows the conversation.
+func TierSeatAt(profileDir, tier string, conversationModel ...string) Seat {
 	if seat, ok := CrewTierSeat(tier); ok {
 		role := SeatRole(seat)
 		if pin, ok := CrewPinAt(profileDir, seat); ok {
@@ -294,7 +292,21 @@ func TierSeatAt(profileDir, tier string) Seat {
 	role := SeatRole(tierWords(tier))
 	// A retired `auto` reads the default until the migration takes it away.
 	if written, held := persistedString(profileDir, tierKeyFor(tier)); held && !strings.EqualFold(strings.TrimSpace(written), CrewAuto) {
-		return Seat{Role: role, Model: strings.TrimSpace(written), Source: SeatPinned}
+		model := strings.TrimSpace(written)
+		if tier == ModelTierReflex && model == "" {
+			return Seat{Role: role, Source: SeatConversation}
+		}
+		return Seat{Role: role, Model: model, Source: SeatPinned}
+	}
+	if tier == ModelTierReflex {
+		// Credit defaults need the LIVE model. Without that context the row
+		// stays empty, so a saved paid model cannot displace a free chat.
+		if len(conversationModel) > 0 {
+			if model := freeReflexModelAt(profileDir, conversationModel[0]); model != "" {
+				return Seat{Role: role, Model: model, Source: SeatDefault}
+			}
+		}
+		return Seat{Role: role, Source: SeatConversation}
 	}
 	return Seat{Role: role, Model: freeTierModelAt(profileDir, tier), Source: SeatDefault}
 }

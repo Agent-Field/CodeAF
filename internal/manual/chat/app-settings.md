@@ -33,6 +33,16 @@ including a native Anthropic key, also has unavailable models. Selecting
 an unavailable model is refused with
 `that model is not available from a connected provider`.
 
+## Which models do helper tiers use
+
+`GET /app/v1/models` includes `helper_tiers`, a read-only array of
+`{tier, model, source}` for reflex, low, worker, high and mastermind. It reports each profile
+seat's resolved model and source (`pinned`, `routed`, `default` or `follows conversation`). Reflex follows the resolved profile chat model unless its row
+names a model, with the low-credit free fallback only beside a paid chat. A
+routed crew seat with no available pick has an empty model; it is not reported
+as following chat. Active conversations may use a different chat model from the
+profile default. This field does not write or pin any seat.
+
 ## App binary settings — saved values and stale changes
 
 `GET /app/v1/settings` returns only binary-owned, non-secret settings.

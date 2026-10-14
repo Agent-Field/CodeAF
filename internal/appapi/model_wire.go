@@ -18,6 +18,16 @@ type ModelsResponse struct {
 	// Resolved names the fallback without replacing the saved default choice.
 	Resolved string   `json:"resolved"`
 	Pinned   []string `json:"pinned" jsonschema:"minItems=3,maxItems=3"`
+	// HelperTiers exposes the resolved profile seats without changing their pins.
+	HelperTiers []HelperTier `json:"helper_tiers"`
+}
+
+// HelperTier names a tier's model and where that choice came from.
+// An empty routed model means no standing crew seat could be chosen.
+type HelperTier struct {
+	Tier   string `json:"tier"`
+	Model  string `json:"model"`
+	Source string `json:"source"`
 }
 type PinnedModelsRequest struct {
 	Models []string        `json:"models" jsonschema:"minItems=3,maxItems=3"`
@@ -62,5 +72,5 @@ type ProviderSignInClaimResponse struct {
 }
 
 func modelContract() resourceContract {
-	return resourceContract{Name: "model", Types: []any{Model{}, ModelsResponse{}, PinnedModelsRequest{}, PinnedModelsResponse{}, DefaultModelRequest{}, DefaultModelResponse{}, ModelRole{}, ModelRolesResponse{}, ModelRoleRequest{}, ProviderSignInRequest{}, ProviderSignInResponse{}, ProviderSignInStatusResponse{}, ProviderSignInClaimResponse{}}, Routes: modelContractRoutes, Events: []eventContract{}}
+	return resourceContract{Name: "model", Types: []any{Model{}, ModelsResponse{}, HelperTier{}, PinnedModelsRequest{}, PinnedModelsResponse{}, DefaultModelRequest{}, DefaultModelResponse{}, ModelRole{}, ModelRolesResponse{}, ModelRoleRequest{}, ProviderSignInRequest{}, ProviderSignInResponse{}, ProviderSignInStatusResponse{}, ProviderSignInClaimResponse{}}, Routes: modelContractRoutes, Events: []eventContract{}}
 }

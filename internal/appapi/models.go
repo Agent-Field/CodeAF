@@ -165,7 +165,25 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	if resolved == "" {
 		resolved = config.DefaultModel
 	}
-	write(w, 200, ModelsView{Models: rows, Default: values["models.default"].(string), Resolved: resolved, Pinned: pinned})
+	write(w, 200, ModelsView{Models: rows, Default: values["models.default"].(string), Resolved: resolved, Pinned: pinned, HelperTiers: s.helperTiers()})
+}
+
+// helperTiers reads the same seats as chat. Only conversation-following rows
+// borrow the profile's resolved chat model; an absent crew pick stays absent.
+func (s *Server) helperTiers() []HelperTier {
+	conversation := config.ChatModelAt(s.options.ProfileDir)
+	if conversation == "" {
+		conversation = config.ChatDefaultAt(s.options.ProfileDir)
+	}
+	rows := make([]HelperTier, 0, len(config.ModelTiers))
+	for _, tier := range config.ModelTiers {
+		seat := config.TierSeatAt(s.options.ProfileDir, tier, conversation)
+		if seat.Source == config.SeatConversation || tier == config.ModelTierLow && seat.Model == "" {
+			seat.Model, seat.Source = conversation, config.SeatConversation
+		}
+		rows = append(rows, HelperTier{Tier: tier, Model: seat.Model, Source: string(seat.Source)})
+	}
+	return rows
 }
 
 func (s *Server) modelsAllowed(w http.ResponseWriter, r *http.Request, patch map[string]json.RawMessage) bool {

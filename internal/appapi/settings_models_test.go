@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
@@ -55,6 +57,89 @@ func TestModelsReportTheResolvedConversationModel(t *testing.T) {
 			}
 			if w.Code != 200 || models.Resolved != tc.want || models.Default != wantDefault {
 				t.Fatalf("models: %d %s; want resolved %q and default %q", w.Code, w.Body, tc.want, wantDefault)
+			}
+		})
+	}
+}
+
+// The desk needs the standing router choice as well as the saved pins.
+// Reading these seats must not turn the router's answer into a profile write.
+func TestModelsExposeHelperTierModelsAndSourcesWithoutWriting(t *testing.T) {
+	for _, name := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "CODEAF_BASE_URL",
+		"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY", "MINIMAX_API_KEY", "DASHSCOPE_API_KEY", "AIAND_API_KEY"} {
+		t.Setenv(name, "")
+	}
+	original := config.CrewCatalog
+	config.CrewCatalog = func() []catalog.Model {
+		return []catalog.Model{{ID: "moonshotai/kimi-k3", OpenWeights: true,
+			PromptPrice: 3e-6, CompletionPrice: 1.5e-5, IntelligenceIndex: 43.6,
+			CodingIndex: 76.2, AgenticIndex: 50, ContextLength: 1048576, Parameters: []string{"tools"}}}
+	}
+	t.Cleanup(func() { config.CrewCatalog = original })
+	for _, state := range []string{"unset", "pinned", "cleared", "low credit"} {
+		t.Run(state, func(t *testing.T) {
+			s := settingsServer(t)
+			values := map[string]string{"api_key": "test-key", config.KeyChatModel: "vendor/chat"}
+			if state == "pinned" {
+				values[config.KeyTierMastermindModel] = "vendor/planner:high"
+				values[config.KeyTierReflexModel] = "vendor/reflex"
+			}
+			if state == "cleared" {
+				values[config.KeyTierReflexModel] = ""
+			}
+			if state == "low credit" {
+				delete(values, config.KeyChatModel)
+			}
+			before, err := json.Marshal(values)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := config.BudgetConfigPath(s.options.ProfileDir)
+			if err := os.WriteFile(path, before, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if state == "low credit" {
+				if err := config.WriteCreditsReading(s.options.ProfileDir, "test-key", credits.Reading{Known: true, Low: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w := request(t, s, "GET", "/app/v1/models", "", bearer(), "127.0.0.1:4000")
+			var response ModelsResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != 200 || len(response.HelperTiers) != len(config.ModelTiers) {
+				t.Fatalf("models: %d %s", w.Code, w.Body)
+			}
+			wanted := map[string]HelperTier{}
+			for _, tier := range []string{config.ModelTierWorker, config.ModelTierHigh, config.ModelTierMastermind} {
+				wanted[tier] = HelperTier{Tier: tier, Model: "moonshotai/kimi-k3", Source: "routed"}
+			}
+			wanted[config.ModelTierLow] = HelperTier{Tier: config.ModelTierLow, Model: config.DefaultLowModel, Source: "default"}
+			wanted[config.ModelTierReflex] = HelperTier{Tier: config.ModelTierReflex, Model: "vendor/chat", Source: "follows conversation"}
+			if state == "pinned" {
+				wanted[config.ModelTierMastermind] = HelperTier{Tier: config.ModelTierMastermind, Model: "vendor/planner:high", Source: "pinned"}
+				wanted[config.ModelTierReflex] = HelperTier{Tier: config.ModelTierReflex, Model: "vendor/reflex", Source: "pinned"}
+			}
+			if state == "low credit" {
+				for _, tier := range []string{config.ModelTierWorker, config.ModelTierHigh, config.ModelTierMastermind} {
+					wanted[tier] = HelperTier{Tier: tier, Source: "routed"}
+				}
+				wanted[config.ModelTierLow] = HelperTier{Tier: config.ModelTierLow, Model: "thinkingmachines/inkling-small:free", Source: "default"}
+				wanted[config.ModelTierReflex] = HelperTier{Tier: config.ModelTierReflex, Model: config.FreeChatModel, Source: "follows conversation"}
+			}
+			for _, row := range response.HelperTiers {
+				if want, ok := wanted[row.Tier]; !ok || row != want {
+					t.Fatalf("helper %+v, want %+v", row, want)
+				}
+				delete(wanted, row.Tier)
+			}
+			if len(wanted) != 0 {
+				t.Fatalf("missing helper tiers: %v", wanted)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != string(before) {
+				t.Fatalf("model read changed profile: %s, %v", after, err)
 			}
 		})
 	}

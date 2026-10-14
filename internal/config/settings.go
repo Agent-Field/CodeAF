@@ -203,14 +203,11 @@ const (
 	// answer this could send a visitor's work — and their credit — to a model
 	// they never picked, by being cloned.
 	KeyTierWorkerModel = "models.tiers.worker"
-	// KeyTierReflexModel is the third tier, and the only one with a model in it
-	// out of the box. It is read TWICE A TURN by the routing and extraction
-	// calls the reflex tier exists for (internal/reflex), which is a rhythm no
-	// other auxiliary call has: a model that costs a tenth of a cent a call is
-	// free on the low tier and is real money here. So the row ships pointed at
-	// a model that costs near nothing rather than at "follows the conversation"
-	// — a person who never opens the sheet gets the cheap thing, and a person
-	// who clears the row gets the conversation's own model, deliberately.
+	// KeyTierReflexModel names the routing and extraction model, called twice
+	// a turn. Unwritten and cleared both follow the conversation: choosing a
+	// chat model must not silently send its memories to another model. A row
+	// somebody wrote still wins, including while the account is low. An unset
+	// row keeps its free fallback only beside a paid chat on a low account.
 	KeyTierReflexModel = "models.tiers.reflex"
 	// KeyTierMastermindModel is the fourth tier and the only one whose model is
 	// chosen for THINKING rather than for a price. Two roles ride it — the
@@ -1004,20 +1001,10 @@ const (
 // [tierKeyFor] is total over it.
 var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelTierHigh, ModelTierMastermind}
 
-// THE TWO ROWS THAT ARE NOT CREW SEATS arrive pointed at a model. The reflex
-// and small-work tiers carry the calls a conversation makes on its own behalf —
-// twice a turn for the reflex — so a person who never opened the sheet gets a
-// model that costs near nothing rather than the one they are talking to. The
-// three crew seats have no shipped model at all: an unpinned seat is routed per
-// task (crew.go), and a build-chosen worker, planner or checker would be the
-// implicit fallback the router exists to remove.
-//
-// Each is a bare OpenRouter id, spelled ONCE here and read by every caller
-// through [TierModelAt]. Blank is still an answer on both: a row a person
-// emptied on purpose reads empty and follows the model the person is talking
-// to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
-// here ([TierModelAt] says how). The low row is the same V4.1 Flash as
-// [DefaultModel]: no role falls back to an older Flash.
+// Small work keeps its V4.1 Flash default; the three crew seats are routed.
+// DefaultReflexModel records the former shipped model for catalogue
+// compatibility. An unwritten reflex now follows the conversation, with a
+// low-credit free fallback only beside paid chats.
 const (
 	DefaultReflexModel = "google/gemini-2.5-flash"
 	DefaultLowModel    = "deepseek/deepseek-v4.1-flash"
@@ -2455,10 +2442,10 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,
 			Label: "reflex", EmptyLabel: "follows the conversation",
-			Hint: "the near-free model that reads every turn — it decides which remembered " +
+			Hint: "the model that reads every turn — it decides which remembered " +
 				"lines this turn needs and whether the exchange is worth keeping. Routing and " +
 				"extraction, never reasoning. Blank makes it follow the model you are talking to.",
-			read:  func() string { return TierModelAt(dir, ModelTierReflex) },
+			read:  s.reflexModel,
 			write: func(raw string) error { return writeTierModel(dir, ModelTierReflex, raw) },
 		},
 		Setting{
@@ -4089,23 +4076,36 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // TierModelAt resolves the model one tier runs on. Empty means the tier follows
 // the session's own model, which is internal/roles' floor.
 //
-// A CREW SEAT'S TIER — worker, mastermind (the planner), high (the checker) —
-// reads its pin, or the router's standing pick when it has none ([TierSeatAt]),
-// so the calls that ride those tiers outside a task follow the crew without a
-// second place to set it.
-//
-// THE OTHER TWO ROWS KEEP THE RULE THEY HAVE ALWAYS HAD: UNSET AND CLEARED ARE
-// DIFFERENT ANSWERS. A profile that has never held the key gets this build's
-// own near-free model ([DefaultReflexModel], [DefaultLowModel]), because a call
-// made twice a turn is a bill nobody agreed to; a row somebody emptied ON
-// PURPOSE reads empty and follows the conversation, because refusing to let
-// them turn it off would make a default into a rule.
+// Crew tiers read their pins or the router's standing picks. Small work keeps
+// its near-free default (or a free model while credit is low); clearing its
+// row deliberately follows the conversation. Reflex follows the conversation
+// when unwritten or cleared. Supplying the live chat model lets an unwritten
+// reflex keep its low-credit free fallback only beside a paid chat; without
+// that context the reflex row stays empty.
 //
 // The value may carry a level (`moonshotai/kimi-k3:low`) and IS RETURNED WHOLE.
 // Splitting is [roles.SplitEffort]'s job at the point of resolution, because a
 // settings surface wants the string the person wrote and a request wants the two
 // halves apart.
-func TierModelAt(profileDir, tier string) string { return TierSeatAt(profileDir, tier).Model }
+func TierModelAt(profileDir, tier string, conversationModel ...string) string {
+	return TierSeatAt(profileDir, tier, conversationModel...).Model
+}
+
+// reflexModel reads the row against the model the surface actually shows.
+// With no live seam, a standalone settings reader uses the profile's chat.
+func (s *Settings) reflexModel() string {
+	model := ""
+	if s.options.ModelValue != nil {
+		model = strings.TrimSpace(s.options.ModelValue(roleSlots[store.RoleOrchestrate]))
+	}
+	if model == "" {
+		model = ChatModelAt(s.options.ProfileDir)
+	}
+	if model == "" {
+		model = ChatDefaultAt(s.options.ProfileDir)
+	}
+	return TierModelAt(s.options.ProfileDir, ModelTierReflex, model)
+}
 
 // tierKeyFor is the settings key one tier word writes. It is total over
 // [ModelTiers] and degrades to the low row, which is what an unknown word has
@@ -4124,12 +4124,11 @@ func tierKeyFor(tier string) string {
 	return KeyTierLowModel
 }
 
-// builtinTierModel is the build's own model for the two rows that are not crew
-// seats. A crew seat's tier has none — it is routed — and reads the small-work
-// model only if a caller asks for a tier word this build does not know.
+// builtinTierModel is small work's build default. Reflex has no model of its
+// own, and an unknown tier keeps the small-work fallback it has always had.
 func builtinTierModel(tier string) string {
 	if tier == ModelTierReflex {
-		return DefaultReflexModel
+		return ""
 	}
 	return DefaultLowModel
 }

@@ -2478,9 +2478,8 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 	// be spending a visitor's credit on the work it asked for.
 	//
 	// The reflex tier: the two calls that ride it are made TWICE EVERY TURN
-	// (internal/reflex), so a reflex resolving to the conversation's model is not
-	// thrift misconfigured, it is the most expensive model in the build answering
-	// the cheapest question in it. The mastermind tier: it plans adaptive runs
+	// (internal/reflex), and follows the live conversation unless somebody wrote
+	// its row. The mastermind tier: it plans adaptive runs
 	// and designs saved harnesses, and a repository that could point it at a
 	// model would be spending a visitor's credit on the run it asked for.
 	// A CHECKER NO PROJECT NAMED IS THE CREW'S: its pin, or the router's

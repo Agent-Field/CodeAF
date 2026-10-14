@@ -676,12 +676,12 @@ into a message.
 
 Two calls per message — plus one that is not per message at all: the background
 tidy, on the **small work** class, a few times a day at most while nobody is
-here. The two that ride every message are both on the cheapest of the five model
-rows — the
-`reflex` row, which exists precisely because a call made twice a turn is a
-different economy from one made once a session. It ships pointed at
-`google/gemini-2.5-flash`, and at `mistralai/mistral-nemo` when your allowed
-models are `open`. Each goes out with a short
+here. The two that ride every message use the `reflex` row, which exists
+because a call made twice a turn is a different economy from one made once a
+session. An unset or cleared row follows the live conversation model, including
+after `/model`; a written model or role pin still wins. On low credit, an
+unwritten row uses its free fallback only beside a paid chat. A chat already
+using a free model keeps that model. Each goes out with a short
 prompt and a 200-token ceiling, and each is asked to answer in a few words of
 JSON.
 
