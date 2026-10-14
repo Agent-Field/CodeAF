@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -75,6 +76,7 @@ func (s *Service) rescueBuild(ctx context.Context, b *build) error {
 		err = s.seedPlan(t, b.currentPlan())
 	}
 	if err != nil {
+		log.Printf("apps builder: rescue could not seed the draft: %v", err)
 		return s.failWrite(ctx, b, errors.New(couldNotFinish))
 	}
 	if err := s.saveResult(b, savedResult{}); err != nil {
