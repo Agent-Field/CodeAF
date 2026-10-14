@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
+	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
 // Plan groups. Needs is not a group: codeaf computes it, so it cannot be edited.
@@ -85,8 +89,45 @@ func (p Plan) validate() error {
 			return err
 		}
 	}
-	return nil
+	return p.checkLengths()
 }
+
+// checkLengths rejects card lines over the plan schema's limit, so the PLAN
+// retry shortens them in the model's own words instead of a later cut.
+func (p Plan) checkLengths() error {
+	limit := PlanLineLimit()
+	var long []string
+	for _, group := range []string{GroupData, GroupAutomation, GroupScreens} {
+		for _, l := range *p.lines(group) {
+			if n := utf8.RuneCountInString(l.Line); limit > 0 && n > limit {
+				long = append(long, fmt.Sprintf("%s %q is %d characters", group, l.ID, n))
+			}
+		}
+	}
+	if len(long) == 0 {
+		return nil
+	}
+	return fmt.Errorf("prompt: plan lines must be at most %d characters: %s; shorten each to one clause, keeping its fields and choices", limit, strings.Join(long, "; "))
+}
+
+// PlanLineLimit is plan.schema.json's maxLength for a card line.
+var PlanLineLimit = sync.OnceValue(func() int {
+	raw, err := spec.SchemaJSON(spec.PlanSchemaURL)
+	if err != nil {
+		panic(err)
+	}
+	var schema struct {
+		Defs map[string]struct {
+			Properties map[string]struct {
+				MaxLength int `json:"maxLength"`
+			} `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		panic(err)
+	}
+	return schema.Defs["line"].Properties["line"].MaxLength
+})
 
 func checkLines(group string, lines []Line) error {
 	seen := map[string]bool{}

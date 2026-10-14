@@ -194,7 +194,7 @@ func (s *Service) writeUnit(ctx context.Context, b *build, plan prompt.Plan, pla
 
 // expectFiles parses a WRITE reply and keeps exactly the files asked for.
 func expectFiles(reply string, only []string) (map[string][]byte, error) {
-	parsed, err := prompt.ParseFiles(reply)
+	parsed, err := prompt.ParseFilesFor(reply, only)
 	if err != nil {
 		return nil, err
 	}
@@ -249,14 +249,25 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 		report += "\nChange ONLY " + only + ". Keep every other file as it is."
 	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildRunning, Log: "Fixing what the checks found"})
+	planNamed := only == "" && reportNames(report, spec.PlanFile)
+	schemas := []string{spec.AppSchemaURL, spec.ScreenSchemaURL, spec.RunSchemaURL}
+	if planNamed {
+		schemas = append(schemas, spec.PlanSchemaURL)
+	}
 	text, err := prompt.Render(prompt.KindFix, prompt.Inputs{
 		Report: report, Files: asText(files), Catalog: catalogText(),
-		Schemas: schemaFor(spec.AppSchemaURL, spec.ScreenSchemaURL, spec.RunSchemaURL),
+		Schemas: schemaFor(schemas...),
 	})
 	if err != nil {
 		return nil, err
 	}
-	changed, err := converse(ctx, s, b, text, prompt.ParseFiles)
+	var expect []string
+	if only != "" {
+		expect = []string{only}
+	}
+	changed, err := converse(ctx, s, b, text, func(reply string) (map[string][]byte, error) {
+		return prompt.ParseFilesFor(reply, expect)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +278,7 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 		}
 		changed = map[string][]byte{only: data}
 	}
-	delete(changed, spec.PlanFile)
+	keepPlanFix(b, changed, planNamed)
 	if changed, err = b.patch(changed); err != nil {
 		return nil, err
 	}
@@ -279,6 +290,31 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 	}
 	s.announce(b, changed, "Fixed "+strings.Join(spec.Files(changed).Paths(), ", "))
 	return next, nil
+}
+
+// reportNames reports whether a Check report has an issue in file.
+func reportNames(report, file string) bool {
+	for _, line := range strings.Split(report, "\n") {
+		if strings.HasPrefix(line, file) {
+			return true
+		}
+	}
+	return false
+}
+
+// keepPlanFix accepts a plan.json repair only when Check named plan.json and
+// the new plan still parses; the plan card then shows the repaired lines.
+func keepPlanFix(b *build, changed map[string][]byte, named bool) {
+	raw, ok := changed[spec.PlanFile]
+	if !ok {
+		return
+	}
+	plan, err := decodePlan(string(raw))
+	if !named || err != nil {
+		delete(changed, spec.PlanFile)
+		return
+	}
+	b.setPlan(plan)
 }
 
 func asText(files spec.Files) map[string]string {

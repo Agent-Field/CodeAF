@@ -6,32 +6,16 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/builder/prompt"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
-// Read the embedded limit so the safety net follows the schema when it changes.
-var planLineLimit = sync.OnceValue(func() int {
-	raw, err := spec.SchemaJSON(spec.PlanSchemaURL)
-	if err != nil {
-		panic(err)
-	}
-	var schema struct {
-		Defs map[string]struct {
-			Properties map[string]struct {
-				MaxLength int `json:"maxLength"`
-			} `json:"properties"`
-		} `json:"$defs"`
-	}
-	if err := json.Unmarshal(raw, &schema); err != nil {
-		panic(err)
-	}
-	return schema.Defs["line"].Properties["line"].MaxLength
-})
+// planLineLimit follows the plan schema, shared with PLAN's parse check.
+var planLineLimit = prompt.PlanLineLimit
 
 // Shorten only card summaries after WRITE has used their full detail. Preserve
 // all other JSON fields so Check still reports unrelated definition mistakes.

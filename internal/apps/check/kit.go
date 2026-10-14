@@ -57,11 +57,11 @@ func lint(b *spec.Bundle, kit *spec.Kit) []Issue {
 			typ = nodeType(n, typ, info)
 			part := kit.Part(n.Part)
 			if part == nil {
-				issues = append(issues, finding(file, path+"/part", "kit/parts", fmt.Sprintf("unknown kit part %q", n.Part), "choose a part from kit.json"))
+				issues = append(issues, finding(file, path+"/part", "kit/parts", fmt.Sprintf("unknown kit part %q", n.Part), partNamesHint(kit)))
 			} else {
-				issues = append(issues, lintProps(b, part, n, typ, file, path)...)
+				issues = append(issues, lintProps(b, kit, part, n, typ, file, path)...)
 				if n.Bind != nil && !contains(part.Bind, bindingKind(n.Bind)) {
-					issues = append(issues, finding(file, path+"/bind", "kit/bind", n.Part+" does not support "+bindingKind(n.Bind)+" binding", "use a binding kind declared for this part in kit.json"))
+					issues = append(issues, finding(file, path+"/bind", "kit/bind", n.Part+" does not support "+bindingKind(n.Bind)+" binding", bindKindsHint(part)))
 				}
 			}
 			issues = append(issues, lintBinding(b, n.Bind, info, file, path+"/bind")...)
@@ -98,7 +98,7 @@ func lintBinding(b *spec.Bundle, bind *spec.Binding, info screenInfo, file, path
 	}
 	for key, target := range map[string]string{"records": bind.Records, "type": bind.Type} {
 		if target != "" && b.App.Records[target] == nil {
-			issues = append(issues, finding(file, path+"/"+key, "kit/bind", fmt.Sprintf("unknown record type %q", target), "name a record type declared in app.json"))
+			issues = append(issues, finding(file, path+"/"+key, "kit/bind", fmt.Sprintf("unknown record type %q", target), recordTypesHint(b)))
 		}
 	}
 	if bind.Record != "" && bind.Type == "" {
@@ -106,7 +106,7 @@ func lintBinding(b *spec.Bundle, bind *spec.Binding, info screenInfo, file, path
 	}
 	for key, target := range map[string]string{"run": bind.Run, "runs": bind.Runs} {
 		if target != "" && b.Runs[target] == nil {
-			issues = append(issues, finding(file, path+"/"+key, "kit/bind", fmt.Sprintf("unknown run %q", target), "name a runs/<id>.yaml file"))
+			issues = append(issues, finding(file, path+"/"+key, "kit/bind", fmt.Sprintf("unknown run %q", target), "name one of the runs: "+strings.Join(b.RunIDs(), ", ")))
 		}
 	}
 	if bind.Selection != "" && info.lists[bind.Selection] == "" {
@@ -116,7 +116,7 @@ func lintBinding(b *spec.Bundle, bind *spec.Binding, info screenInfo, file, path
 	return issues
 }
 
-func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path string) []Issue {
+func lintProps(b *spec.Bundle, kit *spec.Kit, part *spec.Part, n *spec.Node, typ, file, path string) []Issue {
 	var issues []Issue
 	for _, key := range keys(part.Props) {
 		if part.Props[key].Required {
@@ -129,12 +129,12 @@ func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path st
 		prop := part.Props[key]
 		at := ptr(path+"/props", key)
 		if prop == nil {
-			issues = append(issues, finding(file, at, "kit/parts", fmt.Sprintf("%s has no prop %q", part.Name, key), "use only this part's props from kit.json"))
+			issues = append(issues, finding(file, at, "kit/parts", fmt.Sprintf("%s has no prop %q", part.Name, key), propNamesHint(part)))
 			continue
 		}
 		value := n.Props[key]
 		if !validProp(prop, value) {
-			issues = append(issues, finding(file, at, "kit/parts", "prop must have type "+prop.Type, "use the type and token values in kit.json"))
+			issues = append(issues, finding(file, at, "kit/parts", fmt.Sprintf("prop must have type %s; got %v", prop.Type, value), propValueHint(kit, part, key, prop)))
 			continue
 		}
 		switch prop.Type {
@@ -172,7 +172,7 @@ func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path st
 					}
 				}
 				if !found {
-					issues = append(issues, finding(file, fmt.Sprintf("%s/%d", at, i), "kit/bind", "unknown command "+id, "name a command from app.json"))
+					issues = append(issues, finding(file, fmt.Sprintf("%s/%d", at, i), "kit/bind", "unknown command "+id, commandsHint(b)))
 				}
 			}
 		}

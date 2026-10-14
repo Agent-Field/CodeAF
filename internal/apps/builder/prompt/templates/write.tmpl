@@ -57,4 +57,4 @@ plan.json:
 {{.Content}}
 {{end}}{{end}}
 ## Output
-Reply with one JSON object `{"<path>": <content>, ...}` and nothing else: no code fence, no prose before or after. Paths are exactly {{if .Only}}{{join .Only ", "}}{{else}}app.json, screens/<id>.json, runs/<id>.yaml, agent.md{{end}}. For .json files the content is the JSON object itself; for .yaml and .md files it is a string with newlines escaped. Strict JSON throughout.
+Reply with one JSON object `{{if .Only}}{"{{index .Only 0}}": <content>{{else}}{"<path>": <content>{{end}}, ...}` and nothing else: no code fence, no prose before or after. Paths are exactly {{if .Only}}{{join .Only ", "}}{{else}}app.json, screens/<id>.json, runs/<id>.yaml, agent.md{{end}}. For .json files the content is the JSON object itself; for .yaml and .md files it is a string with newlines escaped. Strict JSON throughout.
