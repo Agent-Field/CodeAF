@@ -41,6 +41,9 @@ func runApp(args []string) error {
 		}
 		return errors.New("usage: codeaf app serve [--home dir] [--listen 127.0.0.1:0] [--parent-pid pid]")
 	}
+	if done, err := serveWorkspace(args[1:]); done || err != nil {
+		return err
+	}
 	flags := commandFlags("app serve")
 	options := appServeOptions{}
 	flags.StringVar(&options.home, "home", "", "shared codeaf home (default: CODEAF_HOME or ~/.codeaf)")
