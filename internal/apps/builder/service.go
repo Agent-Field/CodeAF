@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // ModelEnv names the environment variable that picks the Builder's model.
@@ -22,6 +22,7 @@ const ModelEnv = "CODEAF_APPS_BUILDER_MODEL"
 // package, which is how rule 01 holds by construction; TestBuilderNeverReadsRecords
 // keeps it so.
 type Service struct {
+	root  string
 	ctx   context.Context
 	all   *svc.Services
 	model string
@@ -33,17 +34,18 @@ type Service struct {
 
 var _ svc.Builder = (*Service)(nil)
 
-// New returns the Builder. Its model is DefaultModel unless ModelEnv is set.
+// New resolves the Builder's model at server start so saved settings and the
+// environment pin choose the same model the settings registry reports.
 func New(cfg svc.Config, all *svc.Services) *Service {
 	ctx := cfg.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	model := strings.TrimSpace(os.Getenv(ModelEnv))
+	model := config.AppsBuilderModelAt(config.ProfilePath(config.ProfileDir(), ""))
 	if model == "" {
 		model = DefaultModel
 	}
-	return &Service{ctx: ctx, all: all, model: model, now: time.Now, builds: map[string]*build{}}
+	return &Service{root: cfg.Root, ctx: ctx, all: all, model: model, now: time.Now, builds: map[string]*build{}}
 }
 
 // Create makes the app in state planning and starts the plan in the background.
@@ -102,6 +104,9 @@ func (s *Service) buildFor(ctx context.Context, app string) (*build, error) {
 			return nil, bridge.Errorf(bridge.CodeInvalid, "plan.json: "+err.Error())
 		}
 		b.plan = plan
+	}
+	if err := s.loadResult(b); err != nil {
+		return nil, err
 	}
 	s.remember(b)
 	return b, nil

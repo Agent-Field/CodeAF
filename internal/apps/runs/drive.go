@@ -538,13 +538,17 @@ func (e *engine) execTool(ctx context.Context, job *job, bundle *spec.Bundle, fo
 }
 
 func (e *engine) execQuery(ctx context.Context, job *job, rec *recBody) (outcome, error) {
-	query := asText(resolveValue(rec.Query, job.Env))
+	resolved, err := resolveRunValue(rec.Query, job.Env)
+	if err != nil {
+		return outcome{}, fmt.Errorf("records.query query %q: %w", rec.Query, err)
+	}
+	query := asText(resolved)
 	if err := e.allow(ctx, e.scope(job), "records.query", map[string]any{"type": rec.Type}); err != nil {
 		return outcome{}, err
 	}
 	rows, err := e.queryRows(ctx, job, rec.Type, query, rec.Limit)
 	if err != nil {
-		return outcome{}, err
+		return outcome{}, fmt.Errorf("records.query query %q: %w; %s", query, err, spec.RunQueryRule)
 	}
 	if len(rows) == 1 || rec.Limit == 1 && len(rows) > 0 {
 		return outcome{output: rowOut(rows[0])}, nil
@@ -578,7 +582,10 @@ func (e *engine) queryRows(ctx context.Context, job *job, recordType, query stri
 }
 
 func (e *engine) execWrite(ctx context.Context, job *job, method string, rec *recBody, update bool) (outcome, error) {
-	set := resolveMap(rec.Set, job.Env)
+	set, err := resolveRunMap(rec.Set, job.Env)
+	if err != nil {
+		return outcome{}, err
+	}
 	if err := e.allow(ctx, e.scope(job), method, map[string]any{"type": rec.Type}); err != nil {
 		return outcome{}, err
 	}
@@ -593,8 +600,10 @@ func (e *engine) execWrite(ctx context.Context, job *job, method string, rec *re
 		}
 		return outcome{output: rowOut(row)}, nil
 	}
-	id := asText(resolveValue(rec.ID, job.Env))
-	ids := stringList(resolveValue(rec.IDs, job.Env))
+	id, ids, err := resolveRecordIDs(rec, job.Env)
+	if err != nil {
+		return outcome{}, err
+	}
 	result, err := e.all.Records.Update(ctx, scope, bridge.UpdateRecordParams{Type: rec.Type, ID: id, IDs: ids, Set: set})
 	if err != nil {
 		return outcome{}, err
@@ -613,13 +622,24 @@ func (e *engine) execDelete(ctx context.Context, job *job, rec *recBody) (outcom
 	if err := e.allow(ctx, e.scope(job), "records.delete", map[string]any{"type": rec.Type}); err != nil {
 		return outcome{}, err
 	}
-	id := asText(resolveValue(rec.ID, job.Env))
-	ids := stringList(resolveValue(rec.IDs, job.Env))
+	id, ids, err := resolveRecordIDs(rec, job.Env)
+	if err != nil {
+		return outcome{}, err
+	}
 	result, err := e.all.Records.Delete(ctx, e.scope(job), bridge.DeleteRecordParams{Type: rec.Type, ID: id, IDs: ids})
 	if err != nil {
 		return outcome{}, err
 	}
 	return outcome{output: map[string]any{"ids": result.IDs}}, nil
+}
+
+func resolveRecordIDs(rec *recBody, env map[string]any) (string, []string, error) {
+	id, err := resolveRunValue(rec.ID, env)
+	if err != nil {
+		return "", nil, err
+	}
+	ids, err := resolveRunValue(rec.IDs, env)
+	return asText(id), stringList(ids), err
 }
 
 func (e *engine) onStepError(ctx context.Context, job *job, found piece, err error) (bool, error) {

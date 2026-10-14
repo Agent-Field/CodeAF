@@ -44,6 +44,42 @@
         "size": "1-10",
         "owner": "me"
       }
+    },
+    {
+      "id": "co_vandelay",
+      "fields": {
+        "name": "Vandelay Industries",
+        "domain": "https://vandelay.example",
+        "size": "11-50",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_acme_retail",
+      "fields": {
+        "name": "Acme Retail",
+        "domain": "https://acme-retail.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_stark",
+      "fields": {
+        "name": "Stark Labs",
+        "domain": "https://stark.example",
+        "size": "51-200",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "co_pied_piper",
+      "fields": {
+        "name": "Pied Piper",
+        "domain": "https://pied-piper.example",
+        "size": "11-50",
+        "owner": "me"
+      }
     }
   ],
   "contact": [
@@ -59,7 +95,7 @@
     {
       "id": "ct_hank",
       "fields": {
-        "name": "Hank Scorpio",
+        "name": "Hank Sullivan",
         "email": "hank@globex.example",
         "phone": "+1 415 555 0102",
         "company": "co_globex"
@@ -68,7 +104,7 @@
     {
       "id": "ct_peter",
       "fields": {
-        "name": "Peter Gibbons",
+        "name": "Peter Grant",
         "email": "peter@initech.example",
         "phone": "+1 415 555 0103",
         "company": "co_initech"
@@ -77,7 +113,7 @@
     {
       "id": "ct_gavin",
       "fields": {
-        "name": "Gavin Belson",
+        "name": "Gavin Bell",
         "email": "gavin@hooli.example",
         "phone": "+1 415 555 0104",
         "company": "co_hooli"
@@ -86,10 +122,46 @@
     {
       "id": "ct_alice",
       "fields": {
-        "name": "Alice Abernathy",
+        "name": "Alice Morgan",
         "email": "alice@umbrella.example",
         "phone": "+1 415 555 0105",
         "company": "co_umbrella"
+      }
+    },
+    {
+      "id": "ct_art",
+      "fields": {
+        "name": "Art Vandelay",
+        "email": "art@vandelay.example",
+        "phone": "+1 416 555 0106",
+        "company": "co_vandelay"
+      }
+    },
+    {
+      "id": "ct_carmen",
+      "fields": {
+        "name": "Carmen Torres",
+        "email": "carmen@acme-retail.example",
+        "phone": "+1 416 555 0107",
+        "company": "co_acme_retail"
+      }
+    },
+    {
+      "id": "ct_maya",
+      "fields": {
+        "name": "Maya Chen",
+        "email": "maya@stark.example",
+        "phone": "+1 416 555 0108",
+        "company": "co_stark"
+      }
+    },
+    {
+      "id": "ct_richard",
+      "fields": {
+        "name": "Richard Hendricks",
+        "email": "richard@pied-piper.example",
+        "phone": "+1 416 555 0109",
+        "company": "co_pied_piper"
       }
     }
   ],
@@ -97,79 +169,163 @@
     {
       "id": "dl_northwind",
       "fields": {
-        "name": "Northwind · renewal",
+        "name": "Annual renewal · 120 seats",
         "company": "co_northwind",
-        "contacts": ["ct_priya"],
+        "contacts": [
+          "ct_priya"
+        ],
         "stage": "Proposal",
         "amount": 48000,
         "close_on": "2026-11-28",
         "owner": "me",
         "last_touch": "2026-10-01T09:12:00Z",
-        "likely": "Likely"
+        "likely": "Likely",
+        "next_step": "Send revised renewal quote"
       }
     },
     {
       "id": "dl_globex",
       "fields": {
-        "name": "Globex · platform",
+        "name": "Platform rollout · 75 seats",
         "company": "co_globex",
-        "contacts": ["ct_hank"],
+        "contacts": [
+          "ct_hank"
+        ],
         "stage": "Negotiation",
         "amount": 36500,
         "close_on": "2026-11-15",
         "owner": "me",
         "last_touch": "2026-10-10T14:00:00Z",
-        "likely": "Maybe"
+        "likely": "Maybe",
+        "next_step": "Review contract with procurement"
       }
     },
     {
       "id": "dl_initech",
       "fields": {
-        "name": "Initech · pilot",
+        "name": "Pilot for the ops team",
         "company": "co_initech",
-        "contacts": ["ct_peter"],
+        "contacts": [
+          "ct_peter"
+        ],
         "stage": "Qualified",
         "amount": 12000,
         "close_on": "2026-12-01",
         "owner": "me",
-        "last_touch": "2026-10-08T10:30:00Z"
+        "last_touch": "2026-10-08T10:30:00Z",
+        "next_step": "Security review call Thursday"
       }
     },
     {
       "id": "dl_umbrella",
       "fields": {
-        "name": "Umbrella · expansion",
+        "name": "Expansion · support team",
         "company": "co_umbrella",
-        "contacts": ["ct_alice"],
+        "contacts": [
+          "ct_alice"
+        ],
         "stage": "Proposal",
         "amount": 9800,
         "close_on": "2026-12-12",
         "owner": "me",
-        "last_touch": "2026-09-25T16:45:00Z"
+        "last_touch": "2026-09-25T16:45:00Z",
+        "next_step": "Send expansion proposal"
       }
     },
     {
       "id": "dl_hooli",
       "fields": {
-        "name": "Hooli · first order",
+        "name": "First order · 10 seats",
         "company": "co_hooli",
-        "contacts": ["ct_gavin"],
+        "contacts": [
+          "ct_gavin"
+        ],
         "stage": "Lead",
         "amount": 4200,
-        "owner": "me"
+        "owner": "me",
+        "next_step": "Book a demo with their CTO",
+        "last_touch": "2026-10-09T11:15:00Z",
+        "close_on": "2026-12-15"
       }
     },
     {
       "id": "dl_globex_pilot",
       "fields": {
-        "name": "Globex · pilot",
+        "name": "Analytics pilot",
         "company": "co_globex",
-        "contacts": ["ct_hank"],
+        "contacts": [
+          "ct_hank"
+        ],
         "stage": "Won",
         "amount": 6800,
         "close_on": "2026-10-01",
         "owner": "me",
-        "last_touch": "2026-10-01T08:00:00Z"
+        "last_touch": "2026-10-01T08:00:00Z",
+        "next_step": "Schedule onboarding kickoff"
+      }
+    },
+    {
+      "id": "dl_vandelay",
+      "fields": {
+        "name": "Import tooling seats",
+        "company": "co_vandelay",
+        "contacts": [
+          "ct_art"
+        ],
+        "stage": "Qualified",
+        "amount": 6800,
+        "next_step": "Send the logistics case study",
+        "last_touch": "2026-10-11T15:20:00Z",
+        "close_on": "2026-11-20",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "dl_acme_retail",
+      "fields": {
+        "name": "Store managers rollout",
+        "company": "co_acme_retail",
+        "contacts": [
+          "ct_carmen"
+        ],
+        "stage": "Lead",
+        "amount": 12000,
+        "next_step": "Confirm pilot stores and book discovery",
+        "last_touch": "2026-10-05T16:00:00Z",
+        "close_on": "2026-12-18",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "dl_stark",
+      "fields": {
+        "name": "Research team · 15 seats",
+        "company": "co_stark",
+        "contacts": [
+          "ct_maya"
+        ],
+        "stage": "Negotiation",
+        "amount": 5400,
+        "next_step": "Review data retention terms with legal",
+        "last_touch": "2026-10-12T13:40:00Z",
+        "close_on": "2026-10-30",
+        "owner": "me"
+      }
+    },
+    {
+      "id": "dl_pied_piper",
+      "fields": {
+        "name": "Annual plan · 25 seats",
+        "company": "co_pied_piper",
+        "contacts": [
+          "ct_richard"
+        ],
+        "stage": "Lost",
+        "amount": 10500,
+        "next_step": "Revisit after next quarter’s funding round",
+        "last_touch": "2026-10-06T09:30:00Z",
+        "close_on": "2026-10-07",
+        "owner": "me"
       }
     }
   ]

@@ -36,7 +36,7 @@ func TestShapeModelDoorAndParser(t *testing.T) {
 					t.Fatalf("route = %+v", call)
 				}
 				text := call.Messages[0].Text
-				for _, want := range []string{"rename Value to Amount", "synthetic-company", "last check issue", `"alias"`, "Drop this request"} {
+				for _, want := range []string{"rename Value to Amount", "synthetic-company", "last check issue", `"alias"`, "Drop this request", "app.json capabilities", "records.query", "records.get", "records.create", "records.update", "records.delete", "repair missing record tools"} {
 					if !strings.Contains(text, want) {
 						t.Errorf("prompt missing %q", want)
 					}
@@ -83,7 +83,7 @@ func TestShapeRepairsMalformedReplyOnce(t *testing.T) {
 		if len(call.Messages) != 3 || !strings.Contains(call.Messages[2].Text, "concrete alternatives") {
 			t.Fatalf("repair = %+v", call.Messages)
 		}
-		return svc.ModelReply{Text: `{"agent.md":"New instructions"}`, Cost: .003}, nil
+		return svc.ModelReply{Text: `{"agent.md":"---\nname: CRM agent\ntools: [records.query, records.get, records.create, records.update, records.delete]\n---\nNew instructions"}`, Cost: .003}, nil
 	})
 	out, err := NewShaper(svc.Config{}, &svc.Services{Model: model}).Shape(context.Background(), svc.ShapeInput{Files: spec.Files{"agent.md": []byte("old")}, Request: "edit"})
 	if err != nil || calls != 2 || out.Cost != .005 {

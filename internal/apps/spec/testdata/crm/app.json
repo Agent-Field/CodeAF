@@ -17,13 +17,32 @@
       "plural": "Companies",
       "title": "name",
       "fields": {
-        "name": { "type": "text", "required": true, "unique": true },
-        "domain": { "type": "url", "index": true },
+        "name": {
+          "type": "text",
+          "required": true,
+          "unique": true,
+          "label": "Company name"
+        },
+        "domain": {
+          "type": "url",
+          "index": true,
+          "label": "Website"
+        },
         "size": {
           "type": "enum",
-          "values": ["1-10", "11-50", "51-200", "201+"]
+          "values": [
+            "1-10",
+            "11-50",
+            "51-200",
+            "201+"
+          ],
+          "label": "Company size"
         },
-        "owner": { "type": "person", "default": "$me" }
+        "owner": {
+          "type": "person",
+          "default": "$me",
+          "label": "Owner"
+        }
       }
     },
     "contact": {
@@ -31,10 +50,27 @@
       "plural": "Contacts",
       "title": "name",
       "fields": {
-        "name": { "type": "text", "required": true },
-        "email": { "type": "email", "index": true },
-        "phone": { "type": "phone", "masked": true },
-        "company": { "type": "ref", "to": "company", "index": true }
+        "name": {
+          "type": "text",
+          "required": true,
+          "label": "Contact name"
+        },
+        "email": {
+          "type": "email",
+          "index": true,
+          "label": "Email"
+        },
+        "phone": {
+          "type": "phone",
+          "masked": true,
+          "label": "Phone"
+        },
+        "company": {
+          "type": "ref",
+          "to": "company",
+          "index": true,
+          "label": "Company"
+        }
       }
     },
     "deal": {
@@ -42,14 +78,23 @@
       "plural": "Deals",
       "title": "name",
       "fields": {
-        "name": { "type": "text", "required": true },
+        "name": {
+          "type": "text",
+          "required": true,
+          "label": "Deal"
+        },
         "company": {
           "type": "ref",
           "to": "company",
           "required": true,
-          "index": true
+          "index": true,
+          "label": "Company"
         },
-        "contacts": { "type": "refs", "to": "contact" },
+        "contacts": {
+          "type": "refs",
+          "to": "contact",
+          "label": "Contacts"
+        },
         "stage": {
           "type": "enum",
           "default": "Lead",
@@ -61,20 +106,49 @@
             "Negotiation",
             "Won",
             "Lost"
-          ]
+          ],
+          "label": "Stage",
+          "required": true
         },
-        "amount": { "type": "money", "currency": "USD" },
-        "close_on": { "type": "date" },
-        "owner": { "type": "person", "default": "$me" },
-        "last_touch": { "type": "datetime", "index": true },
+        "amount": {
+          "type": "money",
+          "currency": "USD",
+          "label": "Value",
+          "required": true
+        },
+        "close_on": {
+          "type": "date",
+          "label": "Close date"
+        },
+        "owner": {
+          "type": "person",
+          "default": "$me",
+          "label": "Owner"
+        },
+        "last_touch": {
+          "type": "datetime",
+          "index": true,
+          "label": "Touch"
+        },
         "weighted": {
           "type": "money",
-          "computed": "amount * stage_weight[stage]"
+          "computed": "amount * stage_weight[stage]",
+          "label": "Weighted value"
         },
         "likely": {
           "type": "enum",
-          "values": ["Likely", "Maybe", "Unlikely"],
-          "ai": "likely to close this month"
+          "values": [
+            "Likely",
+            "Maybe",
+            "Unlikely"
+          ],
+          "ai": "likely to close this month",
+          "label": "Likely to close · AI"
+        },
+        "next_step": {
+          "type": "text",
+          "label": "Next step",
+          "required": true
         }
       },
       "constants": {
@@ -90,15 +164,29 @@
     }
   },
   "capabilities": {
-    "records": { "deal": "rw", "company": "rw", "contact": "rw" },
+    "records": {
+      "deal": "rw",
+      "company": "rw",
+      "contact": "rw"
+    },
     "connectors": {
       "gmail": {
         "as": "member",
-        "can": ["read", "draft", "send"],
-        "approve": ["send"]
+        "can": [
+          "read",
+          "draft",
+          "send"
+        ],
+        "approve": [
+          "send"
+        ]
       }
     },
-    "ai": ["sort", "summarise", "draft"],
+    "ai": [
+      "sort",
+      "summarise",
+      "draft"
+    ],
     "tools": []
   },
   "triggers": [
@@ -108,7 +196,11 @@
       "type": "deal",
       "when": "changed('stage') && stage == 'Proposal'",
       "run": "follow-up",
-      "params": { "deals": ["$record.id"] }
+      "params": {
+        "deals": [
+          "$record.id"
+        ]
+      }
     }
   ],
   "commands": [
@@ -117,7 +209,9 @@
       "label": "Draft follow-up",
       "for": "deal",
       "run": "follow-up",
-      "params": { "deals": "$selection.deals.ids" }
+      "params": {
+        "deals": "$selection.deals.ids"
+      }
     },
     {
       "id": "mark-won",
@@ -128,7 +222,9 @@
         {
           "records.update": {
             "ids": "$selection.deals.ids",
-            "set": { "stage": "Won" }
+            "set": {
+              "stage": "Won"
+            }
           }
         }
       ]
@@ -139,6 +235,8 @@
     "currency": "USD",
     "per_run": 0.5,
     "at_cap": "ask",
-    "models": ["deepseek/deepseek-v4.1-flash"]
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
   }
 }

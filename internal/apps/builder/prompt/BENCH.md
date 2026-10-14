@@ -58,3 +58,49 @@ Keep `deepseek/deepseek-v4.1-flash` as the default: 12 of 12, about 1.3 s to pla
 - WRITE emits an edit form's `set` mapping for every field (about 700 characters a screen). If the desk's Form can save itself, dropping `on.submit` makes WRITE smaller and faster (not measured).
 - `prompt.Plan` has no `name`; the bench keeps the model's own object and stamps `$schema`, `ask` and `needs`.
 - The WRITE call is one request. Splitting it per file and running the calls in parallel would cut the wait to the slowest file.
+
+## Runs regression proof · 2026-10-13
+
+All four paragraphs passed the production `internal/apps/check` service
+within three Check rounds on `deepseek/deepseek-v4.1-flash`, with that model
+also used for run agent steps. The bug-tracker paragraph was the UX tester's
+exact ask: “A bug tracker for our small web team. Bugs have a title, steps to
+reproduce, severity (S1 to S3), status (new, triaged, in progress, fixed, won't
+fix), an assignee and the release they are fixed in. The agent triages new
+bugs: it suggests a severity and spots duplicates. I approve every status
+change to won't fix.” The other paragraphs are the CRM, inventory and booking
+presets in `cmd/apps-buildbench/presets.go`.
+
+| paragraph | Check rounds | model seconds | total USD | Check pass |
+| --- | --- | --- | --- | --- |
+| crm | 1 | 13.15 | $0.005620 | yes |
+| bug-tracker | 1 | 9.89 | $0.006699 | yes |
+| inventory | 2 | 16.50 | $0.008598 | yes |
+| booking | 2 | 15.45 | $0.009547 | yes |
+
+Seconds sum PLAN, WRITE, FIX and behaviour model calls; costs include all
+those calls. Jobs ran concurrently. Round 1 is the initial WRITE; at most two
+FIX calls were allowed. Booking's first report rejected a misplaced `summary`
+property; inventory's first report rejected `$input.note` without an ask. FIX
+repaired each using the full current files and rule hints. The bug triage run
+completed against the real sample store without any FIX call.
+
+The command's original verifier checks schemas and bindings, not production
+Check. For this proof, its pipeline was copied to `.tmp/c1-buildbench`, the
+tracker preset was replaced with the paragraph above, and `verify` was
+replaced by a call to `check.New(...).Run(...)`. The adapter used the real
+sample generator, records store, capability checker, runs engine, approvals
+and fake connectors, and included behaviour-model spend in each result.
+Run output and generated definitions are in `.tmp/c1-results/`; the per-round
+Check reports are in `.tmp/c1-bench.log`. No command-package files were changed.
+
+The deterministic `TestCheckBugRunsAgainstRealSampleStore` separately proves
+the two-run case from the UX report: triage finishes, the won't-fix run pauses
+at its gate, and both receive an actual sample bug id. Schema tests reject
+bare param references and gate-only steps. Query tests assert the offending
+query and repair hint reach the Builder's report.
+
+An agent-runtime dependency remains outside this lane: `records.delete` is
+absent from `internal/apps/agent`'s tool allowlist and dispatch. Generated
+agent definitions and Check now require it for rw records; the agent lane
+needs to expose that existing records-service operation.

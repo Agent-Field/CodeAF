@@ -320,6 +320,7 @@ func TestPipelineRenameRetainsAliasWithRealCheck(t *testing.T) {
 	for name, data := range d.BaseFiles {
 		d.BaseFiles[name] = bytes.ReplaceAll(data, []byte("amount"), []byte("value"))
 	}
+	d.BaseFiles[spec.AgentFile] = bytes.ReplaceAll(d.BaseFiles[spec.AgentFile], []byte("records.update,"), []byte("records.update, records.delete,"))
 	versions, err := s.versionStore()
 	if err == nil {
 		_, err = versions.CommitShape(context.Background(), scope.App, 1, d.BaseFiles, []string{"fixture starts with Value"}, scope.Caller.Member)
@@ -340,6 +341,7 @@ func TestPipelineRenameRetainsAliasWithRealCheck(t *testing.T) {
 		for name, data := range files {
 			files[name] = bytes.ReplaceAll(data, []byte(`"value"`), []byte(`"amount"`))
 			files[name] = bytes.ReplaceAll(files[name], []byte("value *"), []byte("amount *"))
+			files[name] = bytes.ReplaceAll(files[name], []byte("$input.value"), []byte("$input.amount"))
 		}
 		var app map[string]any
 		if err := json.Unmarshal(files["app.json"], &app); err != nil {

@@ -1,8 +1,10 @@
 package runs
 
 import (
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 )
@@ -11,7 +13,7 @@ import (
 // them yet, so the engine filters the page it got back. Tokens already applied
 // by the store stay true, so filtering twice does not drop a real match.
 func matchQuery(row bridge.Record, query string, now time.Time) bool {
-	for _, token := range strings.Fields(query) {
+	for _, token := range queryTokens(query, unicode.IsSpace) {
 		if token == "" || strings.HasPrefix(token, "sort:") {
 			continue
 		}
@@ -49,15 +51,15 @@ func matchColon(got, op, value string) bool {
 		return false
 	}
 	var includes, excludes []string
-	for _, part := range strings.Split(value, ",") {
+	for _, part := range queryTokens(value, func(r rune) bool { return r == ',' }) {
 		if part == "" {
 			continue
 		}
 		if strings.HasPrefix(part, "-") {
-			excludes = append(excludes, strings.TrimPrefix(part, "-"))
+			excludes = append(excludes, queryValue(strings.TrimPrefix(part, "-")))
 			continue
 		}
-		includes = append(includes, part)
+		includes = append(includes, queryValue(part))
 	}
 	for _, ex := range excludes {
 		if starMatch(got, ex) {
@@ -73,6 +75,54 @@ func matchColon(got, op, value string) bool {
 		}
 	}
 	return false
+}
+
+// The engine's fallback filter must keep the quoting the records query parser
+// accepts; splitting on spaces silently drops values such as "in progress".
+func queryTokens(text string, separator func(rune) bool) []string {
+	var tokens []string
+	var quote rune
+	escaped, start := false, 0
+	for i, char := range text {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if quote != 0 {
+			if char == '\\' {
+				escaped = true
+			} else if char == quote {
+				quote = 0
+			}
+			continue
+		}
+		if char == '\'' || char == '"' {
+			quote = char
+			continue
+		}
+		if separator(char) {
+			if i > start {
+				tokens = append(tokens, text[start:i])
+			}
+			start = i + len(string(char))
+		}
+	}
+	if start < len(text) {
+		tokens = append(tokens, text[start:])
+	}
+	return tokens
+}
+
+func queryValue(value string) string {
+	if strings.HasPrefix(value, `"`) {
+		if text, err := strconv.Unquote(value); err == nil {
+			return text
+		}
+	}
+	if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
+		return strings.ReplaceAll(value[1:len(value)-1], `\'`, `'`)
+	}
+	return value
 }
 
 func starMatch(got, pattern string) bool {

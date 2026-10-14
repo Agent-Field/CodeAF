@@ -1,2 +1,4 @@
-// Package agent is the app agent from agent.md: content only, streamed replies, outbound drafts as approvals, and "That changes the app". Lane B7.
+// Package agent supplies the app's content agent: persona instructions from
+// agent.md, tools from app.json capabilities, plain replies, connector approval
+// gates, and "That changes the app" for definition requests. Lane B7.
 package agent

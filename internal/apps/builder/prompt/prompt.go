@@ -12,12 +12,12 @@ import (
 	"text/template"
 )
 
-//go:embed templates/*.tmpl
+//go:embed templates/*.tmpl templates/runs.txt
 var templateFS embed.FS
 
 var templates = template.Must(template.New("prompt").
 	Option("missingkey=error").
-	Funcs(template.FuncMap{"join": strings.Join}).
+	Funcs(template.FuncMap{"join": strings.Join, "runRules": runRules}).
 	ParseFS(templateFS, "templates/*.tmpl"))
 
 // Kind names one of the Builder's three calls.
@@ -139,4 +139,9 @@ func (in Inputs) require(kind Kind) error {
 		return fmt.Errorf("prompt: %s needs %s", kind, strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func runRules() (string, error) {
+	text, err := templateFS.ReadFile("templates/runs.txt")
+	return string(text), err
 }

@@ -54,7 +54,7 @@ func newApplyFixture(t *testing.T, count int) applyFixture {
 	files := spec.Files{
 		spec.AppFile:            []byte(`{"id":"crm","name":"CRM","space":"personal","version":0,"kit":2,"agent":{"name":"CRM agent","file":"agent.md"},"records":{"deal":{"label":"Deal","plural":"deals","title":"name","fields":{"name":{"type":"text","required":true},"value":{"type":"money","label":"Value","index":true},"source":{"type":"text","label":"Source"}}}},"capabilities":{"records":{"deal":"rw"}},"budget":{"month":20,"currency":"USD"}}`),
 		spec.PlanFile:           []byte(`{"ask":"A sales pipeline","name":"CRM","data":[{"id":"deal","line":"deals"}],"automation":[],"screens":[{"id":"pipeline","line":"Pipeline"}],"agent":{"id":"agent","line":"CRM agent"},"needs":"computed"}`),
-		spec.AgentFile:          []byte("---\nname: CRM agent\ntools: []\n---\nHelp with deals.\n"),
+		spec.AgentFile:          []byte("---\nname: CRM agent\ntools: [records.query, records.get, records.create, records.update, records.delete]\n---\nHelp with deals.\n"),
 		"screens/pipeline.json": []byte(`{"screen":"pipeline","title":"Pipeline","body":{"part":"RecordList","id":"deals","label":"Deals","bind":{"records":"deal"},"props":{"columns":["name","value"]}}}`),
 	}
 	if err := st.WriteFiles(ctx, scope.App, files); err != nil {

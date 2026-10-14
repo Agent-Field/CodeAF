@@ -134,7 +134,7 @@ func TestCRUDHistoryAndIsolation(t *testing.T) {
 		t.Fatal("unexpected history")
 	}
 	page, err = s.Query(ctx, scope, bridge.QueryParams{Type: "company"})
-	if err != nil || page.Total != 5 {
+	if err != nil || page.Total != 9 {
 		t.Fatalf("sample was changed: %+v %v", page, err)
 	}
 	if len(hub.events) != 3 {
@@ -229,7 +229,7 @@ func TestSeedAtomicReplacementAndIndexedColumns(t *testing.T) {
 	broken := map[string][]bridge.Record{"deal": {{ID: "bad", Fields: map[string]any{"name": "Bad", "company": "absent"}}}}
 	needCode(t, s.Seed(ctx, "crm", broken), bridge.CodeInvalid)
 	page, err := s.Query(ctx, scope, bridge.QueryParams{Type: "deal"})
-	if err != nil || page.Total != 6 {
+	if err != nil || page.Total != 10 {
 		t.Fatalf("failed seed erased rows: %+v %v", page, err)
 	}
 	if err := s.Seed(ctx, "crm", original); err != nil {
@@ -294,13 +294,13 @@ func TestRulesDependenciesAndClock(t *testing.T) {
 	if row := read(t, s, scope, "deal", "dl_hooli"); row.Fields["age"] != float64(3) {
 		t.Fatal(row.Fields)
 	}
-	if len(hub.events) != 6 {
+	if len(hub.events) != 10 {
 		t.Fatalf("clock events = %d", len(hub.events))
 	}
 	if err := s.Refresh(context.Background(), at); err != nil {
 		t.Fatal(err)
 	}
-	if len(hub.events) != 6 {
+	if len(hub.events) != 10 {
 		t.Fatal("same clock wrote again")
 	}
 }
@@ -336,14 +336,14 @@ func TestStoredQueryPagingCountsAndDatetimes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Total != 6 || len(first.Rows) != 2 || first.Next == "" || first.Counts["Proposal"] != 2 {
+	if first.Total != 9 || len(first.Rows) != 2 || first.Next == "" || first.Counts["Proposal"] != 2 {
 		t.Fatal(first)
 	}
 	second, err := s.Query(ctx, scope, bridge.QueryParams{Type: "deal", Query: "stage:-Lost sort:-amount", Limit: 2, After: first.Next, CountBy: "stage"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Total != 6 || second.Rows[0].ID == first.Rows[0].ID || !reflect.DeepEqual(first.Counts, second.Counts) {
+	if second.Total != 9 || second.Rows[0].ID == first.Rows[0].ID || !reflect.DeepEqual(first.Counts, second.Counts) {
 		t.Fatal(second)
 	}
 	for _, p := range []bridge.QueryParams{{Type: "deal", Limit: 101}, {Type: "deal", After: "malformed"}, {Type: "deal", CountBy: "amount"}, {Type: `deal; DROP TABLE records_deal`}, {Type: "deal", Query: "sort:unknown"}} {

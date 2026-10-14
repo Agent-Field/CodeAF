@@ -177,6 +177,8 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 			_ = a.transitionState(id, state, live, generation)
 			continue
 		case session.EventAssistantDone:
+			// Published even when empty: the desk drops its streamed text on this
+			// entry, and an empty entry is never drawn.
 			a.publishTurn(EventTurnEntry, TurnEntryEvent{Agent: id, Entry: DisplayEntry{Kind: "message", Role: "assistant", Text: event.Text}})
 		case session.EventRetrying:
 			a.publishTurn(EventTurnEntry, TurnEntryEvent{Agent: id, Entry: DisplayEntry{Kind: "retry", Role: "note", Text: event.Text}})

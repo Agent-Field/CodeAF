@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/query"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
@@ -92,6 +93,9 @@ func lintBinding(b *spec.Bundle, bind *spec.Binding, info screenInfo, file, path
 		return nil
 	}
 	var issues []Issue
+	if bind.Records != "" {
+		issues = append(issues, queryFields(file, path+"/query", bind.Records, bind.Query, b.App.Records[bind.Records])...)
+	}
 	for key, target := range map[string]string{"records": bind.Records, "type": bind.Type} {
 		if target != "" && b.App.Records[target] == nil {
 			issues = append(issues, finding(file, path+"/"+key, "kit/bind", fmt.Sprintf("unknown record type %q", target), "name a record type declared in app.json"))
@@ -147,7 +151,15 @@ func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path st
 					fieldPath = fmt.Sprintf("%s/%d", at, i)
 				}
 				if b.App.Records[typ] == nil || b.App.Records[typ].Fields[field] == nil {
-					issues = append(issues, finding(file, fieldPath, "kit/bind", fmt.Sprintf("unknown field %q on record type %q", field, typ), "name a field of the bound record type in app.json"))
+					issues = append(issues, finding(file, fieldPath, "kit/bind", fmt.Sprintf("unknown field %q on record type %q", field, typ), boundFieldHint(b.App.Records[typ], typ)))
+				}
+			}
+		case "string":
+			if key == "sort" {
+				if record := b.App.Records[typ]; record != nil {
+					if _, err := query.Expression(record, strings.TrimPrefix(value.(string), "-")); err != nil {
+						issues = append(issues, finding(file, at, "kit/bind", fmt.Sprintf("%s: %v", file, err), fieldHint(typ, record)))
+					}
 				}
 			}
 		case "commands":
@@ -252,4 +264,11 @@ func actionValue(action spec.Action) map[string]any {
 		value[key] = v
 	}
 	return value
+}
+
+func boundFieldHint(record *spec.RecordType, typ string) string {
+	if record == nil {
+		return "bind to a record type declared in app.json"
+	}
+	return fieldHint(typ, record)
 }

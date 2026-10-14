@@ -129,7 +129,11 @@ func validateFile(name string, data []byte) []Issue {
 	if err := compiledSchemas[url].Validate(value); err != nil {
 		return schemaIssues(name, err)
 	}
-	return idMatchesName(name, value)
+	issues := idMatchesName(name, value)
+	if url == RunSchemaURL {
+		issues = append(issues, runReferences(name, value)...)
+	}
+	return issues
 }
 
 func schemaIssues(name string, err error) []Issue {

@@ -68,6 +68,8 @@ func (h *hub) Publish(topic string, value any) {
 func fixture(t testing.TB) (spec.Files, *samples) {
 	t.Helper()
 	files, data := spec.GoldenCRM()
+	// The contract lane's older fixture predates full writable-record coverage.
+	files[spec.AgentFile] = []byte(strings.Replace(string(files[spec.AgentFile]), "records.update, gmail", "records.update, records.delete, gmail", 1))
 	s := &samples{}
 	if err := json.Unmarshal(data, &s.rows); err != nil {
 		t.Fatal(err)
@@ -150,7 +152,9 @@ func TestBrokenDefinitions(t *testing.T) {
 		{"template", "screens/deal.json", `"text": "Approvals"`, `"text": "{{record.missing}}"`, "render/prop", "/body/children/2/props/text"},
 		{"action target", "screens/deal.json", `"runs.start": "follow-up"`, `"runs.start": "missing"`, "kit/bind", "/body/children/1/children/0/on/click/0/runs.start"},
 		{"action field", "screens/contacts.json", `"phone": "$input.phone"`, `"missing": "$input.phone"`, "kit/bind", "/body/children/1/children/0/on/submit/0/records.update/set/missing"},
-		{"action ref", "screens/deal.json", `"deals": ["$params.id"]`, `"deals": ["$params.missing"]`, "render/action", "/body/children/1/children/0/on/click/0/params"},
+		{"action ref", "screens/deal.json", `"$params.id"
+                    ]`, `"$params.missing"
+                    ]`, "render/action", "/body/children/1/children/0/on/click/0/params"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

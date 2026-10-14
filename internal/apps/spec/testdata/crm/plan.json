@@ -5,9 +5,12 @@
   "data": [
     {
       "id": "deal",
-      "line": "Deal · name, company, stage (Lead → Won/Lost), amount, close, owner"
+      "line": "Deal · name, company, stage (Lead → Won/Lost), next step, value, close date, owner"
     },
-    { "id": "company", "line": "Company · name, domain, size, owner" },
+    {
+      "id": "company",
+      "line": "Company · name, domain, size, owner"
+    },
     {
       "id": "contact",
       "line": "Contact · name, email, phone (hidden until revealed), company"
@@ -22,9 +25,12 @@
   "screens": [
     {
       "id": "pipeline",
-      "line": "Pipeline · deals as a board by stage, list view, bulk moves"
+      "line": "Pipeline · full-width deals table, board by stage, bulk moves"
     },
-    { "id": "deal", "line": "Deal · one deal with its runs and approvals" },
+    {
+      "id": "deal",
+      "line": "Deal · one deal with its runs and approvals"
+    },
     {
       "id": "contacts",
       "line": "Contacts · searchable list, add and edit contacts"

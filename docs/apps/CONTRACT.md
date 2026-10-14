@@ -145,8 +145,44 @@ query?, id?, ids?, set?, limit?}`) · `wait {for | until | timeout}` · nested
 `on_error stop|continue|goto <id>`, `retry {max ≤ 5, backoff}`, `on_timeout`.
 `gate {approval: plan|proof|start|send, who, title}` waits for a person. **An
 outbound tool always runs behind a `send` gate, inserted if the YAML omits
-it.** The schema enforces "at least one action"; Check (B6) enforces "exactly
-one besides gate".
+it.** The schema enforces **exactly one action besides gate**. Put the gate and
+the action it protects in the same step; a standalone gate step is invalid.
+Approval resumes that action, then the following step.
+
+Run references use one convention: `$params.bug` preserves a typed value;
+`{{params.bug}}` interpolates the same value into text, including queries.
+Params always live under `params`; `$bug` / `{{bug}}` only mean a variable
+introduced by a containing `loop.as: bug`. Results use
+`$steps.triage.output.severity` / `{{steps.triage.output.severity}}`;
+`records.query` returns fields directly in output. The other roots are
+`$me`, `$space`, `$now`. Schema validation rejects malformed templates,
+undeclared params and unknown namespaces, including the bare-param spelling.
+Record ids are declared as `ref` with `to`; lists as `refs` with `to`.
+Record triggers explicitly bind run params in app.json, e.g.
+`params: {bug: "$record.id"}`. Runs then read `$params.bug`.
+
+Queries are `field:value` tokens, not CEL or SQL. Quote spaces, apostrophes
+and literal commas **inside** the query: `status:"in progress"`,
+`status:"won't fix"`, `title:"{{params.title}}"`. YAML string quotes alone
+do not quote the embedded query value; use a block scalar when convenient.
+
+```yaml
+run: wont-fix
+params:
+  bug: {type: ref, to: bug}
+steps:
+  - id: approve-change
+    gate: {approval: start, who: $me, title: "Approval needed: won't fix"}
+    records.update: {type: bug, id: $params.bug, set: {status: "won't fix"}}
+  - id: load
+    records.query: {type: bug, query: 'id:{{params.bug}}', limit: 1}
+```
+
+Check supplies a typed fake value for every declared param, sample record ids
+for refs, and the triggering sample record when resolving record.* bindings.
+Its reports retain the failing query and repair hints in issue messages.
+WRITE and FIX share the reference, query and gate rules; FIX includes every
+current definition file in full, including each failing file.
 
 ### agent.md
 
@@ -154,13 +190,19 @@ one besides gate".
 ---
 name: CRM agent
 model: deepseek/deepseek-v4.1-flash
-tools: [records.query, records.update, gmail.draft, gmail.send]
+tools: [records.query, records.get, records.create, records.update, records.delete, gmail.draft, gmail.send]
 ---
 Instructions (Markdown body).
 ```
 
 `name` is required. `tools` must be a subset of what `app.json` capabilities
-allow; the agent never gets definition-writing tools.
+allow; the agent never gets definition-writing tools. Derive this list from
+the app, not the few-shot example: every r/rw type requires records.query
+and records.get; every rw type also requires records.create, records.update
+and records.delete. These global tools cover each permitted type; capability
+checks still apply to the type on every call. Include runs.start for runs
+the plan needs the agent to start and only granted connector verbs. Check
+enforces the subset and record coverage rules.
 
 ### Records (wire)
 
@@ -227,10 +269,11 @@ re-query (events are not replayed).
 | Method | `app` | params → result |
 | --- | --- | --- |
 | `apps.list` | — | `{}` → `{apps: AppSummary[]}` |
-| `apps.get` | ✓ | `{}` → `AppDetail` (summary + `files {path: text}` + `needs`) |
+| `apps.get` | ✓ | `{}` → `AppDetail` (summary + `files {path: text}` + `needs` + `left_out`) |
 | `apps.create` | — | `{paragraph, model?, budget_month?, connectors?, just_build?}` → `AppSummary` (state `planning`) |
 | `builder.plan.edit` | ✓ | `{edits: [{section?, id?, text}]}` → `{plan, needs}` |
 | `builder.write` | ✓ | `{}` → `{}`; progress on `app/<id>/build` |
+| `builder.run.fix` | ✓ | `{file: "runs/<id>.yaml"}` → `{}`; WRITE/FIX only that left-out run |
 | `builder.cancel` | ✓ | `{}` → `{}` |
 | `apps.keep` | ✓ | `{}` → `AppSummary` (state `kept`, version 1, real records empty) |
 | `apps.discard` | ✓ | `{}` → `{}` (folder and records gone) |
@@ -254,7 +297,7 @@ is not kept and **real** data once kept; the gateway decides from the state.
 
 | Topic | Event type |
 | --- | --- |
-| `app/<id>/build` | `BuildEvent {step: plan\|write\|check\|preview, status: running\|done\|failed, round?, log?, files?, plan?, needs?, check?, cost {spent, cap}, at}` |
+| `app/<id>/build` | `BuildEvent {step: plan\|write\|check\|preview, status: running\|done\|failed, round?, log?, files?, plan?, needs?, check?, left_out?: [{file, name, reason}], cost {spent, cap}, at}` |
 | `app/<id>/state` | `AppSummary` on every state change |
 | `app/<id>/records/<type>` | `RecordDiff {op: upsert\|delete, type, id, record?, by}` |
 | `app/<id>/runs` | `RunState` on every step change |
@@ -281,8 +324,38 @@ or after `builder.write`: state `building`, then for each step `running` →
 `done` with `files` (write) and `check` (`CheckReport {pass, round, issues
 [{file, path, rule, message}], rendered [screen ids], runs [run ids]}`). A
 failed round publishes `{step: check, status: failed, round, check}` and the
-Builder retries; after round 3 the state becomes `failed`. On pass, Builder
-seeds sample records (`Sample.Generate` → `Records.Seed`), publishes `{step:
+Builder retries for three Check rounds (two FIX calls). If the final report
+contains only issues attributed to existing `runs/*.yaml` files, the Builder
+leaves those automations out: removes the files, their plan lines, triggers,
+commands, screen start actions and run bindings. It removes `runs.start` from
+agent.md when no runs remain. It checks the reduced definition again before
+preview. If that Check finds a screen or app/record failure, the original files
+are restored and the build remains `check_failed` in state `failed`.
+Otherwise the build finishes in `preview` with
+`left_out: [{file, name, reason}]` on build events and `apps.get`. `name` is the
+run title, falling back to its file id; `reason` retains the last issues and
+repair hints. The final preview event carries `left_out: []` after all omitted
+runs have been repaired. Results survive restarts in Builder-owned
+`build-result.json`, outside the definition directory.
+
+Fix it on an omitted automation calls `builder.run.fix` with its exact file.
+WRITE and FIX can change only that run; FIX includes the current definition as
+context and ignores unrelated returned files. The Builder restores the run's
+plan line and the removed references on definition files that have not been
+changed since the omission, then performs the usual Check rounds. A repeated
+run-only failure returns to preview with the omission still listed. Screen,
+record and app schema failures stay real failures.
+
+Check validates screen query filter and sort tokens against the bound record
+schema, including hidden bindings and resolved templates, as well as field
+props such as groupBy and Table.sort. Run query field names are checked even
+when a gate prevents execution. Run parameter references must name declared
+parameters; ref/refs parameters target declared record types and contain ids,
+not field objects. Trigger parameter field references must belong to their
+record type. Unknown fields include the file, bad field and valid fields in
+the repair hint passed to FIX.
+
+On pass, Builder seeds sample records (`Sample.Generate` → `Records.Seed`), publishes `{step:
 preview, status: done}` and sets state `preview`. `cost` on every event is the
 Builder's spend against the app budget. `builder.cancel` stops at the next
 step boundary and returns to `planning`.
@@ -370,4 +443,41 @@ Only B1 decides more.
   from the pinned binary in `codeaf-sidecar.json`. Browser dev uses D3's mock
   bridge serving `fixtures/apps/crm/`.
 
+- Wave 2 · spaces: [contract/spaces.md](contract/spaces.md)
 - Wave 2 · shape track: [contract/shape.md](contract/shape.md)
+
+### c2 run fallback · gateway and desk handoff
+
+The Builder owns the wire extensions as `builder.ResultEvent` and
+`builder.ResultDetail`, embedding the existing bridge envelopes. It exposes
+`AppDetail(context.Context, svc.Scope) (any, error)` for the `apps.get` handler.
+**Gateway lane still needs to call that optional adapter** before its existing
+Store.Get path; the existing handler does not expose `left_out` until wired:
+
+```go
+if provider, ok := all.Builder.(interface {
+    AppDetail(context.Context, svc.Scope) (any, error)
+}); ok {
+    return provider.AppDetail(ctx, scope)
+}
+```
+
+This keeps Store metadata and service interfaces unchanged. The new
+`builder.run.fix` method is already registered from the Builder through the
+contract's gateway registry, with editor-only access.
+
+Desk lane: add to `src/lib/types/apps.ts`:
+
+```ts
+export type LeftOutAutomation = { file: string; name: string; reason: string };
+// AppDetail
+left_out: LeftOutAutomation[];
+// BuildEvent (the final preview event always carries an array)
+left_out?: LeftOutAutomation[];
+// builder.run.fix params
+{ file: string }
+```
+
+Show the omissions in Preview with Fix it sending `builder.run.fix`, and use
+`apps.get` after reconnect to recover the durable result. A final empty array
+clears the previously displayed omissions.

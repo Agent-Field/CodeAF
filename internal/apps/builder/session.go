@@ -24,6 +24,7 @@ type build struct {
 
 	mu      sync.Mutex
 	plan    prompt.Plan
+	saved   savedResult
 	spent   float64
 	cancel  context.CancelFunc
 	working bool

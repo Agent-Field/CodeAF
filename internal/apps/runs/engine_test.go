@@ -35,7 +35,7 @@ func TestFollowUpWaitsThenSendsOnApproval(t *testing.T) {
 		gotPrompt = h.model.last.Messages[0].Text
 	}
 	h.model.mu.Unlock()
-	if gotModel != "deepseek/deepseek-v4.1-flash" || !strings.Contains(gotPrompt, "Umbrella") {
+	if gotModel != "deepseek/deepseek-v4.1-flash" || !strings.Contains(gotPrompt, "Expansion · support team") {
 		t.Fatalf("model %q prompt %q", gotModel, gotPrompt)
 	}
 	list, err := h.inbox.List(h.ctx, h.scope(), bridge.ListApprovalsParams{})

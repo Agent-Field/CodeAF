@@ -5,7 +5,12 @@
   "nav": {
     "part": "SectionTabs",
     "label": "CRM sections",
-    "props": { "items": ["Pipeline", "Contacts"] }
+    "props": {
+      "items": [
+        "Pipeline",
+        "Contacts"
+      ]
+    }
   },
   "body": {
     "part": "Row",
@@ -18,12 +23,17 @@
             "children": [
               {
                 "part": "Text",
-                "props": { "text": "Contacts", "size": "title" }
+                "props": {
+                  "text": "Contacts",
+                  "size": "title"
+                }
               },
               {
                 "part": "Button",
                 "label": "New contact",
-                "props": { "kind": "primary" },
+                "props": {
+                  "kind": "primary"
+                },
                 "on": {
                   "click": [
                     {
@@ -31,10 +41,15 @@
                         "type": "contact",
                         "set": {
                           "name": "$input.name",
-                          "email": "$input.email"
+                          "email": "$input.email",
+                          "company": "$input.company"
                         }
                       },
-                      "ask": { "name": "text", "email": "email" }
+                      "ask": {
+                        "name": "text",
+                        "email": "email",
+                        "company": "ref"
+                      }
                     }
                   ]
                 }
@@ -45,12 +60,23 @@
             "part": "RecordList",
             "id": "contacts",
             "label": "Contacts",
-            "bind": { "records": "contact", "query": "sort:name" },
-            "props": { "columns": ["name", "email", "company"] },
+            "bind": {
+              "records": "contact",
+              "query": "sort:name"
+            },
+            "props": {
+              "columns": [
+                "name",
+                "email",
+                "company"
+              ]
+            },
             "slots": {
               "empty": {
                 "part": "Empty",
-                "props": { "text": "No contacts yet" }
+                "props": {
+                  "text": "No contacts yet"
+                }
               }
             }
           }
@@ -64,10 +90,18 @@
           {
             "part": "Form",
             "label": "Edit contact",
-            "bind": { "record": "$selection.contacts.id", "type": "contact" },
+            "bind": {
+              "record": "$selection.contacts.id",
+              "type": "contact"
+            },
             "props": {
               "type": "contact",
-              "fields": ["name", "email", "phone", "company"],
+              "fields": [
+                "name",
+                "email",
+                "phone",
+                "company"
+              ],
               "submit": "Save"
             },
             "on": {

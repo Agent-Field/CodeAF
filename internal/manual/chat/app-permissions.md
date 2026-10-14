@@ -23,6 +23,10 @@ and "payments" in Always ask. These entries cannot be removed. Extra entries
 may name a tool, an exact command or its shown command class. These actions
 still ask in Don't ask mode, with a saved rule or with an account set to Yes.
 A rule that explicitly denies an action continues to refuse it.
+Software-install and virtual-environment commands on the bash permission floor
+also always ask, including pip installs, global npm installs, brew installs and
+downloaded scripts piped from curl to sh or bash. Saved rules cannot allow them
+automatically; an attempt to save one is refused with "irreversible actions always ask".
 
 ## App always-allow receipts, Why, Remove and Undo
 

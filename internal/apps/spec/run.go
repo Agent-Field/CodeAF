@@ -1,5 +1,9 @@
 package spec
 
+// RunQueryRule is included in repair reports because YAML quoting alone does
+// not quote a multiword value in the query language inside that YAML string.
+const RunQueryRule = `queries use field:value tokens, not CEL or SQL; quote spaces, apostrophes and commas INSIDE the query, e.g. status:"in progress" or status:"won't fix"; use id:{{params.bug}} for a declared bug param and supply a nonempty value for every field`
+
 // Run is runs/<id>.yaml after YAML is parsed to JSON.
 type Run struct {
 	Run    string               `json:"run"`

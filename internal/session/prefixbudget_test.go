@@ -931,6 +931,8 @@ func fixedShapedAgent(t *testing.T) *Agent {
 
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
 // anybody has said anything.
+// Installation consent and workspace boundaries add two General bullets; tighter
+// wording of the surrounding rules pays for them within both existing caps.
 func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 	reportPrefix(t, prefixArm{
 		what:        "the fixed prefix",

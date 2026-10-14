@@ -37,6 +37,7 @@ func TestLiveShapeRename(t *testing.T) {
 	for name, data := range files {
 		files[name] = bytes.ReplaceAll(data, []byte("amount"), []byte("value"))
 	}
+	files[spec.AgentFile] = bytes.ReplaceAll(files[spec.AgentFile], []byte("records.update,"), []byte("records.update, records.delete,"))
 	var app map[string]any
 	if err := json.Unmarshal(files[spec.AppFile], &app); err != nil {
 		t.Fatal(err)

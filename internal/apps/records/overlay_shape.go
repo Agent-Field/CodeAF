@@ -1,6 +1,7 @@
 package records
 
 import (
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
@@ -23,6 +25,7 @@ func DraftOverlayLock(root string, scope svc.Scope) *sync.Mutex {
 }
 
 func (s *Service) prepareShapeConnection(scope svc.Scope, c *connection, writing *bool, q url.Values) {
+	prepareShapeDefinition(c)
 	if scope.Data != svc.DataDraft {
 		return
 	}
@@ -36,6 +39,21 @@ func (s *Service) prepareShapeConnection(scope svc.Scope, c *connection, writing
 	// A concurrent Discard may remove the copy after path resolution.
 	// Read/write mode refuses to recreate it as a fresh database.
 	q.Set("mode", "rw")
+}
+
+func prepareShapeDefinition(c *connection) {
+	if _, exists := c.def.Files[spec.AppFile]; exists {
+		return
+	}
+	// Parsed bundles without source files have no alias annotations. Keep this
+	// connection's fallback private so record access never changes the store.
+	def := *c.def
+	def.Files = maps.Clone(def.Files)
+	if def.Files == nil {
+		def.Files = spec.Files{}
+	}
+	def.Files[spec.AppFile] = []byte(`{}`)
+	c.def = &def
 }
 
 func (s *Service) shapeDatabaseFilename(scope svc.Scope) (string, error) {

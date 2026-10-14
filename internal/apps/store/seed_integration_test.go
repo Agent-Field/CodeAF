@@ -77,7 +77,7 @@ func TestKeptDemoRecordsPersist(t *testing.T) {
 			}
 			scope := svc.Scope{App: "crm", Data: svc.DataReal, Caller: svc.Caller{Member: svc.Owner}}
 			page, err := all.Records.Query(ctx, scope, bridge.QueryParams{Type: "deal", Query: "sort:-amount", CountBy: "stage"})
-			if err != nil || page.Total != 6 || len(page.Rows) != 6 || page.Rows[0].ID != "dl_northwind" || page.Counts["Proposal"] != 2 {
+			if err != nil || page.Total != 10 || len(page.Rows) != 10 || page.Rows[0].ID != "dl_northwind" || page.Counts["Proposal"] != 2 {
 				t.Fatalf("kept demo records = %+v, %v", page, err)
 			}
 			_, sample := spec.GoldenCRM()

@@ -28,6 +28,8 @@ type Caller struct {
 	Member string
 	Role   Role
 	Agent  bool // true when the app agent calls on the member's behalf
+	Space  string
+	WS     WorkspaceRole
 }
 
 // DataMode picks the records a call reads and writes.
@@ -138,6 +140,7 @@ type ModelCall struct {
 	Messages []ModelMessage
 	Schema   json.RawMessage // optional JSON Schema the reply must match
 	App      string          // charged to this app's budget
+	Role     string          // who is asking, for error messages and call tags: "builder" (default) or "app agent"
 }
 
 // ModelMessage is one chat message.
@@ -174,6 +177,7 @@ type Caps interface {
 
 // Services is everything the gateway dispatches to.
 type Services struct {
+	SpacesServices
 	Store      Store
 	Records    Records
 	Sample     Sample

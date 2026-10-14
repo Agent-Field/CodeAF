@@ -175,9 +175,11 @@ func (e *engine) fire(ctx context.Context, app string, trigger spec.Trigger, dif
 		"record": map[string]any{"id": diff.ID, "type": diff.Type},
 	}
 	if diff.Record != nil {
-		env["record"] = map[string]any{"id": diff.Record.ID, "type": diff.Record.Type}
+		record := map[string]any{"id": diff.Record.ID, "type": diff.Record.Type, "fields": diff.Record.Fields}
+		env["record"] = record
 		for key, value := range diff.Record.Fields {
 			env[key] = value
+			record[key] = value
 		}
 	}
 	params, _ := resolveValue(trigger.Params, env).(map[string]any)

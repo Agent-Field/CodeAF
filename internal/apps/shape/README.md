@@ -51,6 +51,9 @@ commit point: restart rebuilds `files/` from the saved base and passed diffs.
 Records and Shape share `records.DraftOverlayLock` while refreshing/removing
 or using an overlay. Draft reads retain that lock until closing SQLite;
 `mode=rw` prevents a racing discard from recreating a phantom scratch database.
+Parsed record definitions without source files carry no alias annotations. The
+connection supplies a private empty annotation document in that case; it does
+not change the store's bundle or accept malformed source bytes.
 
 # Shape Apply and version handoff
 
@@ -101,6 +104,10 @@ last issue becomes `Check failed: …  round 3 of 3`; failed changes never join
 files or reach Apply. `shape.change.fix` replaces the request with `Fix: <hint>`
 and starts three fresh rounds. Plan edits become `<section> › <id>: <text>`.
 Cancellation removes only that change and rejects an in-flight result.
+The Shape prompt derives `agent.md` tools from the app's record capabilities:
+readable types require `records.query` and `records.get`; writable types also
+require `records.create`, `records.update` and `records.delete`. Missing tools
+are repaired even when the requested change concerns another definition file.
 
 Personal requests without migration lines apply as soon as Check passes. Queued
 personal requests commit separately through the same migration/version door,

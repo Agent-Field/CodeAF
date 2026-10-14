@@ -11,7 +11,12 @@ import (
 func (s *Service) emit(b *build, ev bridge.BuildEvent) {
 	ev.Cost = b.cost()
 	ev.At = s.now().UTC().Format(time.RFC3339Nano)
-	s.all.Hub.Publish(bridge.TopicBuild(b.app), ev)
+	result := b.result().BuildResult
+	if len(result.LeftOut) > 0 || (ev.Step == bridge.StepPreview && ev.Status == bridge.BuildDone) {
+		s.all.Hub.Publish(bridge.TopicBuild(b.app), ResultEvent{BuildEvent: ev, BuildResult: result})
+	} else {
+		s.all.Hub.Publish(bridge.TopicBuild(b.app), ev)
+	}
 }
 
 func (s *Service) step(b *build, step bridge.BuildStep, status bridge.BuildStatus, log string) {

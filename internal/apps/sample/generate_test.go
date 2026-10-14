@@ -4,11 +4,14 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/records"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
+
+func sampleNow() time.Time { return time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC) }
 
 func golden(t *testing.T) *spec.Bundle {
 	t.Helper()
@@ -23,11 +26,11 @@ func TestDeterministicValidSamples(t *testing.T) {
 	def := golden(t)
 	ctx := context.Background()
 	for _, count := range []int{0, 1, 12, 25} {
-		a, err := Generate(ctx, def.App, count, 42)
+		a, err := GenerateAt(ctx, def.App, count, 42, sampleNow())
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := Generate(ctx, def.App, count, 42)
+		b, err := GenerateAt(ctx, def.App, count, 42, sampleNow())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -66,12 +69,13 @@ func TestDeterministicValidSamples(t *testing.T) {
 			}
 		}
 	}
-	a, _ := Generate(ctx, def.App, 12, 42)
-	b, _ := Generate(ctx, def.App, 12, 43)
+	a, _ := GenerateAt(ctx, def.App, 12, 42, sampleNow())
+	b, _ := GenerateAt(ctx, def.App, 12, 43, sampleNow())
 	if reflect.DeepEqual(a, b) {
 		t.Fatal("seed has no effect")
 	}
 	service := New(svc.Config{}, nil)
+	service.Now = sampleNow
 	rows, err := service.Generate(ctx, def)
 	if err != nil || len(rows["deal"]) != DefaultCount {
 		t.Fatalf("service: %v %v", rows, err)
