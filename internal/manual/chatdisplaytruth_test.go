@@ -118,6 +118,27 @@ func TestNoSectionSaysHomesArrowsCrossColumns(t *testing.T) {
 	}
 }
 
+// HOME'S ctrl+e STOPPED CLOSING TABS ON 2026-10-07 (#1750): on a conversation's
+// row it opens the delete confirmation, and the strip's `x` is `x delete`. Three
+// sections of the keys page went on saying it closes, archives and reopens.
+func TestNoSectionSaysHomesCtrlEClosesATab(t *testing.T) {
+	stale := []string{
+		"`ctrl+e` closes the conversation tab",
+		"Enter or `ctrl+e` on a closed row reopens it",
+		"the card's legend says `ctrl+e close`",
+		"`x close`",
+		"it is the put-away key the legend names",
+	}
+	for _, section := range Chat().Sections() {
+		text := flatten(section.Title + " " + section.Body)
+		for _, claim := range stale {
+			if strings.Contains(text, claim) {
+				t.Errorf("%s: %s still says %q", section.Page, section.Title, claim)
+			}
+		}
+	}
+}
+
 func TestManualStatesHelpSettingsGreetingAndManagerDisplayTruth(t *testing.T) {
 	for _, test := range []struct {
 		page, title string

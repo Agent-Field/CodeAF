@@ -268,7 +268,7 @@ conversation with no work stands under `completed`; the extra section can put th
 unused row below the visible screen. Use `↑` and `↓` to reach it. The count does not
 promise that every row fits on the screen at once.
 
-## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
+## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip next to the box
 
 The line over home's box is the same shape as the line over a conversation's own message
 box:

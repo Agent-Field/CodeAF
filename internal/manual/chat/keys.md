@@ -850,19 +850,22 @@ home's box — which is the first box most people type into. `home` and `end` ar
 the exception and stay with the box that owns them: on the settings panel, the
 task page and the rewind sheet they move the **list**, not the caret.
 
-## cmd+right on home no longer puts a conversation away
+## cmd+right on home no longer acts on the row — ctrl+e asks to delete, from the end of the line
 
-`ctrl+e` sets the row under the cursor aside on home — a conversation goes to the
-archive, a standing item is paused, and the card's legend says `ctrl+e close`.
-`cmd+→` arrives as `ctrl+e` on a Mac, so reaching for the end of a sentence used
-to archive whatever the cursor was resting on.
+`ctrl+e` acts on the row under the cursor on home: on a conversation it **asks to delete
+it** — the confirmation *Permanently deleting a conversation from Home* describes, and
+nothing is deleted until you confirm — and on a standing item it pauses it. The card's
+legend says `ctrl+e delete` or `ctrl+e pause`. `cmd+→` arrives as `ctrl+e` on a Mac, so
+reaching for the end of a sentence used to act on whatever the cursor was resting on.
 
 **It reads the caret now.** With the caret somewhere before the end of what you
 typed, `ctrl+e` moves it to the end of the line and leaves the row alone; from the
-end of the line — and over an empty box — it is the put-away key the legend names.
-So one press is never destructive, and the way back out of the archive still
-works: type the name of a row you put away, the list finds it, and `ctrl+e` from
-there brings it back.
+end of the line — and over an empty box — it is the row's key the legend names.
+So one press never reaches the row.
+
+It used to put a conversation away in an archive, and `ctrl+e` on that dimmed row brought
+it back. Since 2026-10-07 it asks to delete instead, and **`enter` on a dimmed row** is what
+reopens a closed conversation.
 
 ## Click the box to put the caret there — in the conversation and on home
 
@@ -2264,9 +2267,9 @@ rather than the same one, and several go in a row. Its conversation, its work an
 draft are untouched; `→` reaches it and `enter` brings it back.
 
 **Tab closing does not archive the saved conversation.** Home shows up to three
-recently closed tabs as dimmed rows. `ctrl+e` or `→`, then `x close`, on Home also
-archives the conversation and closes its tab, removing it from the default chats
-list. Both routes keep work and drafts. Enter on a dimmed Home row reopens it.
+recently closed tabs as dimmed rows, and `enter` on one reopens it. Home has no archive key
+any more: `ctrl+e`, or `→` then `x delete`, on a conversation's row asks to delete it
+permanently, and nothing goes until you confirm.
 
 On the row marked `you are here`, the card closes and the window selects the most
 recently used remaining tab, or Home when none remain. This is the same action as
@@ -2456,9 +2459,9 @@ folds them again. While something is typed the two arrows move the caret in the 
 strip is the one state where a printable key is a verb, and it is why it has to be drawn.
 Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
 actions otherwise ride chords, which can never begin a word, and they work from any column:
-**`ctrl+e` closes the conversation tab** — it leaves the open Home list and the
-default chats menu. Up to three closed rows stay dimmed on Home; typing finds older
-ones. Enter or `ctrl+e` on a closed row reopens it. **`ctrl+o`** opens
+**`ctrl+e` asks to delete the conversation** — the same confirmation `→` then `x delete`
+opens, and nothing is deleted until you confirm. Up to three closed tabs stay dimmed on
+Home; typing finds older ones, and `enter` on a dimmed row reopens it. **`ctrl+o`** opens
 its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row
 starts a new one in that row's folder; a click on a row of the `projects` panel instead
 picks the folder for the next message sent from home. On a standing item's row — in `needs you` while it asks, in

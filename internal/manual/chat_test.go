@@ -2681,6 +2681,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I walk to the projects column with the arrow keys", "home"},
 		{"do the arrow keys cross columns on home", "places"},
 		{"what does the right arrow do on home", "places"},
+		// And ctrl+e, which the keys page said closed a tab after #1750 made it
+		// the delete confirmation.
+		{"what does ctrl+e do on home", "keys"},
 		{"why is the cursor on my previous chat when I open home", "home"},
 		{"why did home cut off panels on a small terminal", "home"},
 		{"what does 3 more mean on home", "home"},
