@@ -10,8 +10,8 @@ records through `Services.Records.Seed`. Since that interface seeds sample data,
 the first-run bootstrap moves the closed seeded database to `records.db`, then
 seeds a separate `sample.db`. The records service owns both databases' schemas
 and all subsequent reads and writes. Existing apps and modified records
-are never replaced by repeated seeding. Ordinary Keep still leaves real records
-empty; the demo's sample seed does not change that rule.
+are never replaced by repeated seeding. Ordinary Keep adopts sample records the
+same way (below).
 
 Each allocated slug is both the app id and its folder name. Duplicate names
 receive numeric suffixes. The folder contains `state.json` (summary, maker and
@@ -27,8 +27,13 @@ version, even when the Builder starts from an example with another id.
 
 `SetState` handles planning, building, failed and preview transitions. `Keep`
 requires preview, validates the complete definition, commits on the draft branch,
-tags `v1` and selects `main`. All kept reads come from the current tag. Keep never
-copies sample records into real records. Each state change publishes an
+tags `v1` and selects `main`. All kept reads come from the current tag. Before it
+commits, Keep reads the preview's sample records (edits included) through
+`Services.Records.Query` and adopts them as the first real records the same way the
+demo does, so the owner opens an app they can judge. Sample rows keep their
+`sample_<type>_NNNN` ids, which is how a later "clear sample data" finds them. An
+app that already has `records.db`, or whose preview was never seeded, gets nothing;
+Keep runs only once per app, and Restore never touches records. Each state change publishes an
 `AppSummary` through `Services.Hub` on `app/<id>/state`; repeated state setters
 publish nothing. `Discard` removes the entire unkept app folder and publishes
 the final `discarded` summary.
