@@ -73,6 +73,7 @@ type turn struct {
 	params bridge.AgentSendParams
 	thread string
 	id     string
+	denied int // permission asks refused this turn
 }
 
 func (t *turn) emit(e bridge.AgentEvent) {
@@ -187,6 +188,10 @@ func (t *turn) step(tb *toolbox, th *thread, a action) (bool, error) {
 	if err != nil {
 		return true, err
 	}
+	if t.denied > 1 {
+		t.emit(bridge.AgentEvent{Kind: bridge.AgentDelta, Text: cannotLine(a.Tool)})
+		return true, nil
+	}
 	th.Messages = append(th.Messages, svc.ModelMessage{Role: "user", Text: resultText(a.Tool, feedback)})
 	return false, nil
 }
@@ -203,6 +208,10 @@ func resultText(tool, feedback string) string {
 func (t *turn) useTool(tb *toolbox, a action) (string, error) {
 	out, err := tb.call(t.svc.ctx, a.Tool, a.Args)
 	t.emit(bridge.AgentEvent{Kind: bridge.AgentTool, Tool: a.Tool, Summary: summarize(tb.bundle, a.Tool, a.Args, out, err)})
+	if isDenied(err) {
+		t.denied++
+		return deniedFeedback(err), nil
+	}
 	if err != nil {
 		return toolFailure(err)
 	}
