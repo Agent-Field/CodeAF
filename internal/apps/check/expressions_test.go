@@ -83,3 +83,19 @@ func TestCELRecordFieldsDoNotShadowBuiltins(t *testing.T) {
 		t.Fatalf("result %v err %v", result, err)
 	}
 }
+
+func TestDurationWhen(t *testing.T) {
+	for _, source := range []string{`roast_date >= now - 7d`, `roast_date >= now - 24h`, `roast_date >= now - 30m`, `roast_date >= now - 2w`, `roast_date >= now - days(7)`} {
+		t.Run(source, func(t *testing.T) {
+			values := map[string]any{"roast_date": "2026-10-13T11:59:00Z", "now": "2026-10-13T12:00:00Z"}
+			p, err := compileWhen(source, values)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := evalWhen(context.Background(), p, values, "roast_date")
+			if err != nil || !got {
+				t.Fatalf("got %v err %v", got, err)
+			}
+		})
+	}
+}
