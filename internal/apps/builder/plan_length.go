@@ -25,6 +25,7 @@ func (s *Service) repairBeforeCheck(ctx context.Context, b *build, files spec.Fi
 	}
 	changed := append(renameReservedFields(files), polishLabels(files)...)
 	changed = append(changed, fillAskInputs(files)...)
+	changed = append(changed, unwrapSelectionIDs(files)...)
 	if len(changed) == 0 {
 		return nil
 	}

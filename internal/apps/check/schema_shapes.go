@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
 var quotedName = regexp.MustCompile(`'([^']+)'`)
@@ -94,8 +96,38 @@ func (g *shape) rejected() []string {
 	return all
 }
 
+// chosen is the action verb the object already has: the other verbs' shapes
+// refuse it as an extra key, and its own shape lists the real faults.
+func (g *shape) chosen() (verb string, faults []string) {
+	for _, candidate := range spec.Verbs {
+		for _, extras := range g.extras {
+			if contains(extras, candidate) {
+				verb = candidate
+			}
+		}
+		if verb != "" {
+			break
+		}
+	}
+	for _, extras := range g.extras {
+		if verb != "" && !contains(extras, verb) {
+			faults = extras
+		}
+	}
+	return verb, faults
+}
+
 func (g *shape) finding(first Issue) Issue {
 	where := first.File + ":" + first.Path
+	if verb, faults := g.chosen(); verb != "" {
+		first.Message = where + " is a " + verb + " action whose content does not fit that action"
+		first.FixHint = "keep the " + verb + " key and repair what is inside it; see the other findings under " + where
+		if len(faults) > 0 {
+			first.Message += "; keys it does not take beside " + verb + ": " + strings.Join(faults, ", ")
+			first.FixHint = "keep the " + verb + " key; remove " + strings.Join(faults, ", ") + " from beside it (move them inside " + verb + " when it takes them)"
+		}
+		return first
+	}
 	message := fmt.Sprintf("%s fits none of its %d allowed shapes; each shape needs one of: %s", where, len(g.needs), strings.Join(g.needs, " | "))
 	hint := "rewrite " + where + " as exactly ONE of those shapes: that key holds the arguments, e.g. {\"" + firstKey(g.needs[0]) + "\": ...}"
 	if rejected := g.rejected(); len(rejected) > 0 {

@@ -34,3 +34,21 @@ func TestOneWrongObjectDrawsOneFinding(t *testing.T) {
 		t.Errorf("single findings were changed: %+v", got[1:])
 	}
 }
+
+func TestARightVerbWithWrongContentIsNotToldToDropTheVerb(t *testing.T) {
+	at := "/body/children/0/on/click/0"
+	issues := []Issue{
+		finding("screens/people.json", at, "schema", "missing properties: 'open'", "h"),
+		finding("screens/people.json", at, "schema", "additionalProperties 'records.update' not allowed", "h"),
+		finding("screens/people.json", at, "schema", "missing properties: 'records.create'", "h"),
+		finding("screens/people.json", at, "schema", "additionalProperties 'records.update' not allowed", "h"),
+		finding("screens/people.json", at+"/records.update/ids", "schema", "expected array, but got string", "keep"),
+	}
+	got := collapseShapes(issues)
+	if len(got) != 2 {
+		t.Fatalf("got %d findings, want 2: %+v", len(got), got)
+	}
+	if !strings.Contains(got[0].Message, "is a records.update action") || strings.Contains(got[0].FixHint, "remove records.update") {
+		t.Errorf("finding = %+v", got[0])
+	}
+}

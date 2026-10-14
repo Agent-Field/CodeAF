@@ -15,7 +15,7 @@
   },
   "$defs": {
     "expr": { "type": "string", "minLength": 1, "description": "CEL subset (S-A2 Expressions)." },
-    "ref": { "type": "string", "pattern": "^\\$[a-z_][a-zA-Z0-9_.]*$", "description": "$me $space $params.x $record $row $selection.<id>.ids|id|count $input.x $now" },
+    "ref": { "type": "string", "pattern": "^\\$[a-z_][a-zA-Z0-9_.-]*$", "description": "$me $space $params.x $record $row $selection.<id>.ids|id|count $input.x $now" },
     "value": { "description": "A literal, a $reference or a {{template}} string." },
     "ids": { "oneOf": [ { "$ref": "#/$defs/ref" }, { "type": "array", "items": { "type": "string" } } ] },
     "node": {
