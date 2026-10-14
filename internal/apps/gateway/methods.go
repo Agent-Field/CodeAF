@@ -42,6 +42,17 @@ func init() {
 	Register(bridge.MethodAppsDiscard, Method{Handle: func(ctx context.Context, all *svc.Services, scope svc.Scope, _ json.RawMessage) (any, error) {
 		return bridge.Empty{}, all.Store.Discard(ctx, scope.App)
 	}})
+	Register(bridge.MethodAppSetTint, Method{Global: true, Handle: func(ctx context.Context, all *svc.Services, scope svc.Scope, raw json.RawMessage) (any, error) {
+		var p bridge.SetTintParams
+		if err := decode(raw, &p); err != nil {
+			return nil, err
+		}
+		store, ok := all.Store.(svc.TintStore)
+		if !ok {
+			return nil, bridge.Errorf(bridge.CodeNotBuilt, "app.setTint is not available")
+		}
+		return store.SetTint(ctx, scope.Caller, p)
+	}})
 	Register(bridge.MethodBuilderPlanEdit, Method{Handle: with(func(s *svc.Services) func(context.Context, svc.Scope, bridge.PlanEditParams) (bridge.PlanEditResult, error) {
 		return s.Builder.EditPlan
 	})})

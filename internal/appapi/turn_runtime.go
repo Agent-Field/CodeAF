@@ -152,7 +152,7 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		if !open {
 			break
 		}
-		if waiting && progress(event.Kind) && !live.conn.Engine.NeedsPerson() {
+		if waiting && progress(event.Kind) && !a.liveNeedsPerson(id, live) {
 			waiting = false
 			_ = a.transitionState(id, "running", live, generation)
 		}
@@ -178,7 +178,7 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 			continue
 		case session.EventQuestionAnswered, session.EventQuestionWithdrawn:
 			state := "running"
-			if live.conn.Engine.NeedsPerson() {
+			if live.needsPerson(id) {
 				state = "needs_you"
 			}
 			waiting = state == "needs_you"
@@ -221,7 +221,7 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 	} else if !endedNormally {
 		how = "stopped"
 	}
-	if live.conn.Engine.NeedsPerson() && !failed {
+	if live.needsPerson(id) && !failed {
 		state = "needs_you"
 	}
 	var changed Agent

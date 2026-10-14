@@ -7,11 +7,17 @@ type Model struct {
 	Provider  string   `json:"provider"`
 	Available bool     `json:"available"`
 	Efforts   []string `json:"efforts"`
+	// Prices share the spend meter's tariff in USD per million tokens; an
+	// omitted price means unknown, while a published zero remains visible.
+	PriceIn  *float64 `json:"price_in,omitempty"`
+	PriceOut *float64 `json:"price_out,omitempty"`
 }
 type ModelsResponse struct {
-	Models  []Model  `json:"models"`
-	Default string   `json:"default"`
-	Pinned  []string `json:"pinned" jsonschema:"minItems=3,maxItems=3"`
+	Models  []Model `json:"models"`
+	Default string  `json:"default"`
+	// Resolved names the fallback without replacing the saved default choice.
+	Resolved string   `json:"resolved"`
+	Pinned   []string `json:"pinned" jsonschema:"minItems=3,maxItems=3"`
 }
 type PinnedModelsRequest struct {
 	Models []string        `json:"models" jsonschema:"minItems=3,maxItems=3"`

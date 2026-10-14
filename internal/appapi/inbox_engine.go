@@ -233,6 +233,18 @@ func (e *engineInboxSource) AnswerInbox(ctx context.Context, item InboxItem, ans
 	return e.s.forwardInbox(ctx, "/app/v1/asks/"+url.PathEscape(turnAsk(record.Agent.ID, q).ID)+"/answer", AnswerAskRequest{Choice: key, Words: answer.Words, Verb: verb, Expect: answer.Expect})
 }
 
+// HoldInbox keeps the agent's stored state in step with an answer held for
+// Undo: running while held, back to needs_you when Undo reopens the question.
+func (e *engineInboxSource) HoldInbox(item InboxItem, held bool) {
+	parts := strings.SplitN(item.ID, ":", 3)
+	if len(parts) < 3 || parts[0] != "ask" {
+		return
+	}
+	if agent, err := url.QueryUnescape(parts[1]); err == nil {
+		e.a.holdAnswer(agent, item.ID, held)
+	}
+}
+
 // Question subscriptions outlive turns, so answers from the terminal and
 // withdrawals also resolve the derived item when no app reply is running.
 func (e *engineInboxSource) watch(id string, engine AgentEngine) {

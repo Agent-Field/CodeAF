@@ -523,18 +523,30 @@ func (e *engine) execTool(ctx context.Context, job *job, bundle *spec.Bundle, fo
 	if job.Edit != nil {
 		args = resolveMap(job.Edit, job.Env)
 	}
-	if err := e.allow(ctx, e.scope(job), step.Tool, args); err != nil {
-		return outcome{}, err
-	}
-	callCtx := ctx
+	call := e.callChecked
 	if outboundVerb(step.Tool) || mustGate(bundle.App, step.Tool) {
-		callCtx = withPermit(ctx)
+		call = e.callApproved
 	}
-	out, err := e.callConnector(callCtx, e.scope(job), step.Tool, args)
+	out, err := call(ctx, e.scope(job), step.Tool, args)
 	if err != nil {
 		return outcome{}, err
 	}
 	return outcome{output: out}, nil
+}
+
+// callChecked passes the capability check, then calls the connector.
+func (e *engine) callChecked(ctx context.Context, scope svc.Scope, tool string, args map[string]any) (any, error) {
+	if err := e.allow(ctx, scope, tool, args); err != nil {
+		return nil, err
+	}
+	return e.callConnector(ctx, scope, tool, args)
+}
+
+// callApproved is the one door for an action a person approved, from a run
+// gate or from the app agent: checked like any call, then let past the
+// outbound refusal.
+func (e *engine) callApproved(ctx context.Context, scope svc.Scope, tool string, args map[string]any) (any, error) {
+	return e.callChecked(withPermit(ctx), scope, tool, args)
 }
 
 func (e *engine) execQuery(ctx context.Context, job *job, rec *recBody) (outcome, error) {

@@ -38,13 +38,21 @@ func (s *Service) Keep(ctx context.Context, app string) (bridge.AppSummary, erro
 		return bridge.AppSummary{}, err
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	m, err := s.lookup(ctx, app)
+	_, err := s.keepable(ctx, app)
+	s.mu.Unlock()
 	if err != nil {
 		return bridge.AppSummary{}, err
 	}
-	if m.State != bridge.StatePreview || m.Version != 0 {
-		return bridge.AppSummary{}, bridge.Errorf(bridge.CodeConflict, "only a preview can be kept")
+	// The records service reads the definition through this store, so the
+	// sample is carried before the registry lock is taken for the commit.
+	if err := s.carrySample(ctx, app); err != nil {
+		return bridge.AppSummary{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, err := s.keepable(ctx, app)
+	if err != nil {
+		return bridge.AppSummary{}, err
 	}
 	files, err := readFiles(s.definitionDir(app))
 	if err != nil {
@@ -62,6 +70,19 @@ func (s *Service) Keep(ctx context.Context, app string) (bridge.AppSummary, erro
 	}
 	s.publish(m.AppSummary)
 	return m.AppSummary, nil
+}
+
+// keepable returns the app when it is a preview that has never been kept.
+// The caller holds s.mu.
+func (s *Service) keepable(ctx context.Context, app string) (metadata, error) {
+	m, err := s.lookup(ctx, app)
+	if err != nil {
+		return metadata{}, err
+	}
+	if m.State != bridge.StatePreview || m.Version != 0 {
+		return metadata{}, bridge.Errorf(bridge.CodeConflict, "only a preview can be kept")
+	}
+	return m, nil
 }
 
 // GetVersion reads a tag, even if the current working tree was later changed.
@@ -197,7 +218,7 @@ func definitionSummary(m *metadata, files spec.Files) error {
 	if err := json.Unmarshal(files[spec.AppFile], &app); err != nil {
 		return err
 	}
-	m.Name, m.Description = app.Name, app.Description
+	m.Name, m.Description, m.Tint = app.Name, app.Description, app.Tint
 	return nil
 }
 

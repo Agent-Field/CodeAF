@@ -27,7 +27,7 @@ func TestWaveOneVerdictsWithoutExtensions(t *testing.T) {
 	resetPermissions(t)
 	checker := New(svc.Config{Root: t.TempDir()}, &svc.Services{Store: definitionStore{bundle: testBundle(t)}})
 	for _, method := range []string{
-		bridge.MethodAppsList, bridge.MethodAppsCreate, bridge.MethodAppsGet, bridge.MethodAppsKeep, bridge.MethodAppsDiscard,
+		bridge.MethodAppsList, bridge.MethodAppsCreate, bridge.MethodAppsGet, bridge.MethodAppsKeep, bridge.MethodAppsDiscard, bridge.MethodAppSetTint,
 		bridge.MethodBuilderPlanEdit, bridge.MethodBuilderWrite, bridge.MethodBuilderCancel,
 		bridge.MethodRecordsQuery, bridge.MethodRecordsGet, bridge.MethodRecordsCreate, bridge.MethodRecordsUpdate, bridge.MethodRecordsDelete,
 		bridge.MethodRunsStart, bridge.MethodRunsGet, bridge.MethodRunsList, bridge.MethodApprovalsList, bridge.MethodApprovalsDecide, bridge.MethodAgentSend,
@@ -45,6 +45,9 @@ func TestWaveOneVerdictsWithoutExtensions(t *testing.T) {
 							bridge.MethodRunsGet, bridge.MethodRunsList, bridge.MethodApprovalsList, "sub", "unsub":
 							allowed = true
 						}
+					}
+					if method == bridge.MethodAppSetTint {
+						allowed = false
 					}
 					if agent && (definitionMethod(method) || method == bridge.MethodAppsList || method == bridge.MethodAppsGet) {
 						allowed = false
