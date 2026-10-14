@@ -84,6 +84,35 @@ Go twin for a complete example of each.
 Needs are never written by the Builder; codeaf computes them from `app.json`
 (`plan.json` carries `"needs": "computed"`).
 
+### Expression grammar
+
+`internal/apps/expr` owns the shared CEL environment, compilation and bounded
+program construction; it imports neither services, records nor check. Check,
+record execution and worker drafts must use this package so they agree.
+
+Computed fields read bare record fields or `$record.<field>`. ISO date and
+datetime values have timestamp semantics during expression evaluation; stored
+JSON remains strings. `now` is the supplied current timestamp; `now()` and
+`$now` remain compatible. `me()` / `$me`, `count(value)` and
+`days_since(date)` remain available. `days(n)` returns a duration for a numeric
+number of days, including fractions and negative numbers, within Go duration
+range. Check `when` expressions must yield bool.
+
+Duration literals are decimal nonnegative integers immediately followed by
+`m` (minutes), `h` (hours), `d` (24 hours) or `w` (7 days): `7d`, `24h`, `30m`,
+`2w`. Compilation rewrites them to `duration("168h")`, `duration("24h")`,
+`duration("30m")`, `duration("336h")` only outside quoted strings, raw strings
+and comments, and never inside identifiers. Explicit `duration("168h")` is
+also accepted. Examples: `roast_date >= now - 7d` and
+`due_date < now + days(2)`. CEL expressions are limited to 4096 source bytes,
+64 parser nesting levels and an evaluation cost of 10000. Query tokens are
+separate from CEL.
+
+Every Check stage failure, including expression compilation and sample
+execution, carries a repair hint into FIX until the existing round ceiling.
+Expression issues include the field/path, original expression, source line and
+column, and a corrected example. Cancellation stops the build immediately.
+
 ### plan.json
 
 `{ask, name, tint?, data[], automation[], screens[], agent, needs: "computed"}`.

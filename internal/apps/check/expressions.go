@@ -3,8 +3,11 @@ package check
 import (
 	"context"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/apps/expr"
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -155,31 +158,35 @@ func compileWhen(source string, values map[string]any) (cel.Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	options := []cel.EnvOption{cel.ParserExpressionSizeLimit(4096), cel.ParserRecursionLimit(64)}
+	options := []cel.EnvOption{}
 	for _, name := range keys(values) {
 		// These names belong to CEL itself. Fields with those names remain
 		// accessible through $record.<field> without shadowing a built-in.
-		if contains([]string{"bool", "bytes", "double", "duration", "int", "list", "map", "null_type", "string", "timestamp", "type", "uint", "true", "false", "null", "in"}, name) {
+		if contains([]string{"now", "bool", "bytes", "double", "duration", "int", "list", "map", "null_type", "string", "timestamp", "type", "uint", "true", "false", "null", "in"}, name) {
 			continue
 		}
 		options = append(options, cel.Variable(name, cel.DynType))
 	}
-	env, err := cel.NewEnv(options...)
+	env, err := expr.NewEnv(options...)
 	if err != nil {
 		return nil, err
 	}
-	ast, issues := env.Compile(source)
-	if issues.Err() != nil {
-		return nil, issues.Err()
+	ast, err := expr.Compile(env, source)
+	if err != nil {
+		return nil, err
 	}
 	if ast.OutputType() != cel.BoolType && ast.OutputType() != cel.DynType {
 		return nil, fmt.Errorf("when must yield bool, got %s", ast.OutputType())
 	}
-	return env.Program(ast, cel.CostLimit(10000), cel.InterruptCheckFrequency(100))
+	at, _ := time.Parse(time.RFC3339, fmt.Sprint(values["now"]))
+	if supplied, ok := values["now"].(time.Time); ok {
+		at = supplied
+	}
+	return expr.Program(env, ast, at, fmt.Sprint(values["me"]))
 }
 
-func evalWhen(ctx context.Context, program cel.Program, values map[string]any) (bool, error) {
-	output, _, err := program.ContextEval(ctx, values)
+func evalWhen(ctx context.Context, program cel.Program, values map[string]any, dateFields ...string) (bool, error) {
+	output, _, err := program.ContextEval(ctx, expr.Activation(values, dateFields...))
 	if err != nil {
 		return false, err
 	}
@@ -187,4 +194,33 @@ func evalWhen(ctx context.Context, program cel.Program, values map[string]any) (
 		return false, fmt.Errorf("when must yield bool, got %s", output.Type())
 	}
 	return bool(output.(types.Bool)), nil
+}
+
+func computedExpressions(b *spec.Bundle) []Issue {
+	var result []Issue
+	for _, typ := range keys(b.App.Records) {
+		schema := b.App.Records[typ]
+		options := []cel.EnvOption{cel.Variable("created_at", cel.TimestampType), cel.Variable("updated_at", cel.TimestampType), cel.Variable("id", cel.StringType)}
+		for _, name := range keys(schema.Fields) {
+			options = append(options, cel.Variable(name, cel.DynType))
+		}
+		for _, name := range keys(schema.Constants) {
+			options = append(options, cel.Variable(name, cel.DynType))
+		}
+		env, err := expr.NewEnv(options...)
+		if err != nil {
+			result = append(result, finding(spec.AppFile, ptr("/records", typ), "expression/env", err.Error(), "rename fields that conflict with CEL built-ins"))
+			continue
+		}
+		for _, name := range keys(schema.Fields) {
+			source := schema.Fields[name].Computed
+			if source == "" {
+				continue
+			}
+			if _, err := expr.Compile(env, source); err != nil {
+				result = append(result, finding(spec.AppFile, ptr(ptr("/records", typ)+"/fields", name)+"/computed", "expression/computed", name+": "+err.Error(), "use declared record fields and duration literals, for example now - days(7)"))
+			}
+		}
+	}
+	return result
 }
