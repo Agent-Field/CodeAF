@@ -93,7 +93,7 @@ from home stands there as a card. Nothing else stands in it.
 | --- | --- | --- | --- |
 | `projects` | a folder with conversations | no keyboard stop; click selects the next message’s project | never empty — the folder this window opened in is always a row |
 | `sessions` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
-| `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
+| `since you left` | what landed while you were away | opens the record, the file or the place | `what landed while you were away` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
 | `automations` | an automation that will run again — a reminder, scheduled work or a watch — soonest first | opens the automations place | `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"` |
 
@@ -322,7 +322,7 @@ Two reasons, and they are the same reason:
 Home wears two marks and only two: the amber `?` on a row waiting for a person, and that
 spinner. In screen-reader (linear) mode nothing turns at all.
 
-## What did it do while I was away — the since you left panel, what happened while the terminal was shut
+## What did it do while I was away — the since you left panel, what landed while the terminal was shut
 
 **What happened on its own while you were not looking**, under `activity` — in the field
 when it holds anything and in the rail when it does not — headed with how long you were
@@ -354,7 +354,7 @@ file, on an automation's run opens the automations place (`/automations`) and on
 line opens memory.
 
 It is measured from when you last **closed** home; the very first look has no "since" and
-the panel keeps its heading and `what watches and tasks did while the terminal was shut`.
+the panel keeps its heading and `what landed while you were away`.
 The memory line is not wired yet: its figures read zero on this surface, and a zero draws
 nothing.
 

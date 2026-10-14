@@ -341,6 +341,16 @@ type Run struct {
 	Transcript string `json:"transcript,omitempty"`
 }
 
+// News reports whether this run is something to tell a person: over, with an
+// outcome worth a line, and not one codeaf closing cut off — that one is
+// paused, and the run that picks up after it is the one that is told.
+func (r Run) News() bool { return r.Phase == PhaseOver && r.Outcome.Delivered() && !r.Closed() }
+
+// Closed reports whether codeaf closing cut this run off. Such a run is paused
+// rather than over: nobody is told about it, and its automation runs again,
+// once, when a window next opens ([Store.Finish]).
+func (r Run) Closed() bool { return r.Outcome == OutcomeStopped && r.Line == LineClosed }
+
 // Late is how far behind its slot the run started, and zero when it was on
 // time or asked for now.
 func (r Run) Late() time.Duration {

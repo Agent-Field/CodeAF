@@ -536,9 +536,9 @@ writes your draft to disk and exits.
 the same thing `esc` does — and the press is spent on the model. Press it again once the
 answer has stopped and codeaf leaves.
 
-**Or an automation was.** With a run in hand and no other codeaf window open, the first
-press says `1 automation is running — quitting stops it · ctrl+c again to quit`; the same
-key within ten seconds leaves and stops the run (*Quitting while an automation is running*).
+**An automation running does not hold it up.** Closing codeaf pauses automations, and a run
+it cut off runs again when a window is next open (*Quitting while an automation is
+running*).
 
 **Nothing you typed is lost when you exit or close it.** The unsent sentence in the box
 goes to disk, with any message that was still waiting for an answer folded in underneath
@@ -587,9 +587,8 @@ running.
 - **`/quit` closes one conversation, not the program.** It is typed out on purpose, so it
   is not asked twice — but what it closes is the conversation in front, and codeaf stays up
   with the previous one forward when this terminal is holding another. It leaves only when
-  that was the last one, warning once first if an automation is running and no other
-  codeaf window is open (`· /quit again to quit`). `ctrl+c` closes everything. `/exit` and
-  `/q` are the same.
+  that was the last one, an automation running or not. `ctrl+c` closes everything. `/exit`
+  and `/q` are the same.
 - A real signal — `kill -INT`, `kill -TERM`, `kill -HUP`, a closed terminal window,
   or `^C` on a terminal that is not in raw mode — also leaves through the same clean
   exit: draft written, session closed, status 0. A second signal ends the process at once

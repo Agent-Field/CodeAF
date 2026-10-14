@@ -337,12 +337,12 @@ func TestAbandonedClosesWhatAGoneClockLeftRunning(t *testing.T) {
 	a, _ := s.Create(routine("1h"))
 	run, _ := s.QueueNow(a.ID)
 	_ = s.Start(run.ID)
-	n, err := s.Abandoned(lineClosed)
+	n, err := s.Abandoned(LineClosed)
 	if err != nil || n != 1 {
 		t.Fatalf("abandoned %d, %v", n, err)
 	}
 	got, _ := s.Run(run.ID)
-	if got.Phase != PhaseOver || got.Outcome != OutcomeStopped || got.Line != lineClosed {
+	if got.Phase != PhaseOver || got.Outcome != OutcomeStopped || got.Line != LineClosed {
 		t.Fatalf("left %+v", got)
 	}
 }
@@ -381,4 +381,103 @@ func TestValidateRefusesWhatCannotRun(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
+}
+
+// A RUN CODEAF CLOSING CUT OFF IS PAUSED, NOT OVER. A one-time automation the
+// take marked finished wakes again at its own slot, and a rhythm whose next slot
+// had moved on comes back to the one that was cut off, so the next clock runs
+// it once, late. A run the person stopped is over, and wakes nothing.
+func TestACutOffRunIsDueAgain(t *testing.T) {
+	s, now := openStore(t)
+	once, _ := s.Create(reminder(now.Add(time.Minute)))
+	rhythm, _ := s.Create(routine("1h"))
+	*now = now.Add(2 * time.Hour)
+	due, _ := s.Due(*now)
+	if len(due) != 2 {
+		t.Fatalf("due = %v", due)
+	}
+	var runs []Run
+	for _, a := range due {
+		run, err := s.Take(a, *now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = s.Start(run.ID)
+		runs = append(runs, run)
+	}
+	if got, _ := s.Get(once.ID); got.Status != StatusFinished {
+		t.Fatalf("the take left the one-time automation %s", got.Status)
+	}
+	for _, run := range runs {
+		run.Outcome, run.Line = OutcomeStopped, LineClosed
+		if !run.Closed() {
+			t.Fatal("a run codeaf closing ended does not read as closed")
+		}
+		if err := s.Finish(run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{once.ID, rhythm.ID} {
+		got, _ := s.Get(id)
+		if got.Status != StatusActive || got.Next.After(*now) {
+			t.Fatalf("%s after its run was cut off: %s, next %v (now %v)", got.Title, got.Status, got.Next, *now)
+		}
+	}
+	// CODEAF IS BACK AN HOUR LATER, and the run that picks up is late.
+	*now = now.Add(time.Hour)
+	again, _ := s.Due(*now)
+	if len(again) != 2 {
+		t.Fatalf("due again = %v", again)
+	}
+	run, err := s.Take(again[0], *now)
+	if err != nil || run.Why != WhyLate {
+		t.Fatalf("the run after the cut-off one is %+v, %v", run, err)
+	}
+	// A STOP THE PERSON ASKED FOR IS NOT A PAUSE.
+	stopped, _ := s.Create(reminder(now.Add(time.Minute)))
+	*now = now.Add(time.Hour)
+	for _, a := range mustDue(t, s, *now) {
+		if a.ID != stopped.ID {
+			continue
+		}
+		run, _ := s.Take(a, *now)
+		run.Outcome, run.Line = OutcomeStopped, "stopped by you"
+		_ = s.Finish(run)
+	}
+	if got, _ := s.Get(stopped.ID); got.Status != StatusFinished {
+		t.Fatalf("a run the person stopped woke its automation: %s", got.Status)
+	}
+}
+
+// AND A RUN A GONE CLOCK LEFT IN HAND IS DUE AGAIN THE SAME WAY.
+func TestAbandonedRunsAreDueAgain(t *testing.T) {
+	s, now := openStore(t)
+	a, _ := s.Create(reminder(now.Add(time.Minute)))
+	*now = now.Add(time.Hour)
+	due, _ := s.Due(*now)
+	run, err := s.Take(due[0], *now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Start(run.ID)
+	if n, err := s.Abandoned(LineClosed); err != nil || n != 1 {
+		t.Fatalf("abandoned %d, %v", n, err)
+	}
+	got, _ := s.Get(a.ID)
+	if got.Status != StatusActive || got.Next.After(*now) {
+		t.Fatalf("after a gone clock: %s next %v, want active and due by %v", got.Status, got.Next, *now)
+	}
+	again, err := s.Take(got, *now)
+	if err != nil || again.Why != WhyLate {
+		t.Fatalf("the run after a gone clock is %+v, %v", again, err)
+	}
+}
+
+func mustDue(t *testing.T, s *Store, now time.Time) []Automation {
+	t.Helper()
+	due, err := s.Due(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return due
 }

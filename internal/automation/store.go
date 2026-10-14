@@ -598,12 +598,55 @@ func (s *Store) Start(id int64) error {
 }
 
 // Finish records what a run came to.
+//
+// A RUN CODEAF CLOSING CUT OFF IS PAUSED, NOT OVER ([Run.Closed]). In the same
+// write its automation is made due again at the moment it was cut off, so the
+// next clock takes it once when a window next opens — marked late, like a slot
+// missed while codeaf was shut, unless codeaf was back within [LateAfter].
+//
+// THE MOMENT IS A NEW SLOT AND NOT THE OLD ONE. A slot is taken once and the
+// store refuses a second take of it, so the run that picks up after a cut-off
+// one is a run of its own, and the history keeps both.
 func (s *Store) Finish(run Run) error {
 	return s.write(func(tx *sql.Tx, seq int64) error {
 		_, err := tx.Exec(`UPDATE runs SET phase = ?, finished_ms = ?, outcome = ?, line = ?, detail = ?, usd = ?, transcript = ?, seq = ? WHERE id = ?`,
 			string(PhaseOver), ms(s.now()), string(run.Outcome), run.Line, run.Detail, run.USD, run.Transcript, seq, run.ID)
-		return err
+		if err != nil || !run.Closed() {
+			return err
+		}
+		return dueAgain(tx, seq, run.AutomationID, s.now())
 	})
+}
+
+// dueAgain makes an automation due at the moment a run of it was cut off: a
+// one-time one that [Store.Take] marked finished wakes again, and an active
+// rhythm whose next slot is later is brought back to it. A paused one is left paused — resuming it is
+// the person's word — and a deleted one has nothing to wake.
+func dueAgain(tx *sql.Tx, seq int64, id string, at time.Time) error {
+	var status string
+	var next int64
+	err := tx.QueryRow(`SELECT status, next_ms FROM automations WHERE id = ?`, id).Scan(&status, &next)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if at.IsZero() {
+		return nil
+	}
+	switch Status(status) {
+	case StatusFinished:
+		status = string(StatusActive)
+	case StatusActive:
+	default:
+		return nil
+	}
+	if next != 0 && next <= ms(at) {
+		return nil
+	}
+	_, err = tx.Exec(`UPDATE automations SET status = ?, next_ms = ?, seq = ? WHERE id = ?`, status, ms(at), seq, id)
+	return err
 }
 
 // RequestStop asks the clock to stop a run. Any window may ask; the clock sees
@@ -635,11 +678,31 @@ func (s *Store) StopRequested() (map[int64]bool, error) {
 
 // Abandoned closes runs a previous clock left in hand. A clock is only ever
 // taken from a process that is gone — the lock dies with it — so a run still
-// "running" is one nobody is running; it is recorded as stopped and not run
-// again, which is the rule for any run codeaf closing ended.
+// "running" is one nobody is running; it is recorded as stopped, and when the
+// line says codeaf closed it, its automation is due again and runs once, late,
+// which is the rule for any run codeaf closing cut off ([Store.Finish]).
 func (s *Store) Abandoned(line string) (int, error) {
 	var closed int
 	err := s.write(func(tx *sql.Tx, seq int64) error {
+		// THE RUNS ARE READ BEFORE THEY ARE CLOSED, because each one closed with
+		// codeaf's own line makes its automation due again ([Store.Finish]).
+		rows, err := tx.Query(`SELECT automation_id FROM runs WHERE phase = ?`, string(PhaseRunning))
+		if err != nil {
+			return err
+		}
+		var cut []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			cut = append(cut, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
 		res, err := tx.Exec(`UPDATE runs SET phase = ?, finished_ms = ?, outcome = ?, line = ?, seq = ? WHERE phase = ?`,
 			string(PhaseOver), ms(s.now()), string(OutcomeStopped), line, seq, string(PhaseRunning))
 		if err != nil {
@@ -647,6 +710,17 @@ func (s *Store) Abandoned(line string) (int, error) {
 		}
 		n, _ := res.RowsAffected()
 		closed = int(n)
+		if line != LineClosed {
+			return nil
+		}
+		// A GONE CLOCK SAYS NOTHING ABOUT WHEN IT WENT, so the runs it left are
+		// due from the hour before this one: late, as they are.
+		at := s.now().Add(-time.Hour)
+		for _, id := range cut {
+			if err := dueAgain(tx, seq, id, at); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	return closed, err

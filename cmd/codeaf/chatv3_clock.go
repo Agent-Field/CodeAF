@@ -17,12 +17,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -30,6 +34,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -71,23 +77,21 @@ func v3Automations() *session.Automations {
 }
 
 // v3AutomationsSeam is [tui3.Options.Automations] for a window on the machine
-// its automations run on: the store itself, read and written directly, and the
-// presence folder the clock counts windows from. A store that cannot be opened
-// is the zero seam, which the surface reads as automations absent.
+// its automations run on: the store itself, read and written directly. A store
+// that cannot be opened is the zero seam, which the surface reads as
+// automations absent.
 func v3AutomationsSeam() tui3.AutomationsSeam {
 	autos := v3Automations()
 	if autos == nil || autos.Store == nil {
 		return tui3.AutomationsSeam{}
 	}
 	store := autos.Store
-	presence := automation.NewPresence(store.Root())
 	return tui3.AutomationsSeam{
 		List:      store.List,
 		Runs:      store.Runs,
 		Changes:   store.Changes,
 		Cursor:    store.Cursor,
 		Active:    store.Active,
-		Windows:   presence.Count,
 		Create:    store.Create,
 		Update:    store.Update,
 		SetStatus: store.SetStatus,
@@ -103,6 +107,14 @@ func v3AutomationsSeam() tui3.AutomationsSeam {
 		},
 		Zone: autos.Zone,
 	}
+}
+
+// v3NotifyRoute is [tui3.Options.Notify]: how a banner reaches the screen from
+// the terminal this process was started in, with this machine's codeaf home as
+// the place its notifier keeps the logo and the mark that the line about
+// notification settings has been said (internal/tui3's desktopnotify.go).
+func v3NotifyRoute() tui3.NotifyRoute {
+	return tui3.DetectNotifyRoute(env.Value, runtime.GOOS, home.Join("v3", "notify"))
 }
 
 // hostAutomationsSeam is [tui3.Options.Automations] for a window on ANOTHER
@@ -128,7 +140,6 @@ func hostAutomationsSeam(client *remote.Client, welcome remote.Welcome) tui3.Aut
 		Changes:   client.AutomationsChanges,
 		Cursor:    client.AutomationsCursor,
 		Active:    client.AutomationsActive,
-		Windows:   client.AutomationsWindows,
 		Create:    client.AutomationsCreate,
 		Update:    client.AutomationsUpdate,
 		SetStatus: client.AutomationsSetStatus,
@@ -153,25 +164,92 @@ func hostAutomationsSeam(client *remote.Client, welcome remote.Welcome) tui3.Aut
 // ([engineAutomations]), once per connection whose hello says it is a window,
 // released when that connection ends. One door for both kinds of window is what
 // keeps them one kind of thing to the clock that counts them.
+//
+// AND IT SAYS WHAT ENVIRONMENT IT WAS STARTED IN ([clockEnvironment]), so the
+// clock runs with the newest window's keys: a window starts a clock only when
+// it is the newest window or shares that window's environment, and a running
+// clock started elsewhere leaves for it once nothing is in hand
+// (internal/automation's [automation.Clock.Env]). A key exported in one shell
+// and not another used to decide, by which window happened to open first,
+// whether every watch on the machine could be checked at all.
 func keepAutomationsWindow(label string) func() {
 	root := automationsRoot()
+	window := automation.Window{Label: label, Env: clockEnvironment(root)}
 	binary, err := os.Executable()
 	if err != nil || !automation.Startable(binary) {
 		// A process that cannot start a clock still counts as an open window:
 		// another window's clock runs while it is here.
-		release, err := automation.Keep(root, label, nil)
+		release, err := automation.KeepAs(root, window, nil)
 		if err != nil {
 			return func() {}
 		}
 		return release
 	}
-	release, err := automation.Keep(root, label, func() error {
+	presence := automation.NewPresence(root)
+	release, err := automation.KeepAs(root, window, func() error {
+		if newest, ok := presence.Newest(); ok && window.Env != "" && newest.Env != window.Env {
+			return nil
+		}
 		return automation.StartClock(root, binary, "clock")
 	})
 	if err != nil {
 		return func() {}
 	}
 	return release
+}
+
+// clockEnvironment is this process's environment as the clock compares it: the
+// provider keys and codeaf's own variables, under a salt kept beside the store,
+// with no value in it (internal/enginehost's [enginehost.EnvironmentMAC]). "" is
+// a salt that could not be kept, which says nothing and is never followed.
+func clockEnvironment(root string) string {
+	salt := clockSalt(root)
+	if len(salt) == 0 {
+		return ""
+	}
+	workspace, err := os.UserHomeDir()
+	if err != nil || workspace == "" {
+		workspace = os.TempDir()
+	}
+	return hex.EncodeToString(enginehost.EnvironmentMAC(salt, workspace))
+}
+
+// clockSaltName is the salt's file under the automations root.
+const clockSaltName = "environment.salt"
+
+// clockSalt is the salt every process on this home fingerprints with, made by
+// the first one to ask. TWO PROCESSES ASKING AT ONCE AGREE: the salt is written
+// to a file of its own and linked into place, and whoever loses the race reads
+// the winner's.
+func clockSalt(root string) []byte {
+	path := filepath.Join(root, clockSaltName)
+	if salt, err := os.ReadFile(path); err == nil && len(salt) == sha256.Size {
+		return salt
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil
+	}
+	salt := make([]byte, sha256.Size)
+	if _, err := rand.Read(salt); err != nil {
+		return nil
+	}
+	temp, err := os.CreateTemp(root, ".salt-")
+	if err != nil {
+		return nil
+	}
+	defer os.Remove(temp.Name())
+	_, werr := temp.Write(salt)
+	cerr := temp.Close()
+	if werr != nil || cerr != nil {
+		return nil
+	}
+	if err := os.Link(temp.Name(), path); err != nil && !os.IsExist(err) {
+		return nil
+	}
+	if kept, err := os.ReadFile(path); err == nil && len(kept) == sha256.Size {
+		return kept
+	}
+	return nil
 }
 
 // runClock is `codeaf clock`.
@@ -194,7 +272,17 @@ func runClock(args []string) error {
 	}
 	defer stop()
 	logf := clockLogger(root)
+	// ONE ASSEMBLY AT A TIME, because each one re-reads the keys first and two
+	// runs start side by side.
+	var assemble sync.Mutex
 	runner := session.NewAutomationRunner(func(workspace string) (session.Config, error) {
+		assemble.Lock()
+		defer assemble.Unlock()
+		// THE KEYS AS THEY ARE NOW, not as they were when the clock started. A
+		// clock lives for as long as any window is open, and a key pasted into
+		// a window, or a service connected from one, since then is on disk and
+		// nowhere else this process would look.
+		clockRereadKeys(proc)
 		// THE PERSON'S OWN ASSEMBLY, read the way their conversations read it:
 		// Interactive is what picks their own approval rules rather than the
 		// headless default. The runner then takes the person away — nobody is
@@ -202,8 +290,7 @@ func runClock(args []string) error {
 		cfg, _, _, err := v3ConfigFor(proc, v3Options{Interactive: true}, workspace, session.Place{}, "", nil)
 		return cfg, err
 	}, store.Root())
-	clock := &automation.Clock{Store: store, Presence: automation.NewPresence(root), Runner: runner, Log: logf}
-	clock.Tidy = clockMemoryTidy(proc, store.Root())
+	clock := &automation.Clock{Store: store, Presence: automation.NewPresence(root), Runner: runner, Log: logf, Env: clockEnvironment(root)}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -216,44 +303,26 @@ func runClock(args []string) error {
 	return err
 }
 
-// clockMemoryTidy is the pass over what is remembered that the clock asks for
-// while a window is open (internal/session's memory_consolidate.go), or nil
-// when memory is off or the person's assembly cannot be read — a capability
-// that cannot work is absent.
-//
-// IT RIDES THE CLOCK because it wants exactly what the clock already has: one
-// process elected among every window, and a machine where nobody is typing,
-// which the pass asks for itself ([session.MachineIdle]). It is handed the
-// store's PATH rather than an open store, so the clock does not hold a database
-// connection between passes.
-//
-// THE PASS HAS NO PROJECT. It is resolved against the person's home and runs
-// over what they and this machine remember, never over one project's lines,
-// because nobody is in a project while it runs.
-func clockMemoryTidy(proc *v3Process, root string) automation.Tidy {
-	brain := v3MemoryPath(proc.ProfileDir)
-	if brain == "" {
-		return nil
+// clockRereadKeys puts the profile's key and connected services, as they are on
+// disk now, under the clock's process. A key the environment carries is still
+// read first, exactly as [config.Load] orders them.
+func clockRereadKeys(proc *v3Process) {
+	key := config.APIKeyAt(proc.ProfileDir)
+	if key == "" {
+		key = proc.Settings.APIKey
 	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		home = os.TempDir()
-	}
-	parent, _, _, err := v3ConfigFor(proc, v3Options{Interactive: true}, home, session.Place{}, "", nil)
-	if err != nil {
-		return nil
-	}
-	parent.MemoryProjectKey = ""
-	return session.NewMemoryTidy(parent, brain, root, session.MachineIdle())
+	proc.Settings.APIKey = key
+	proc.Settings.Sources = config.ResolveSources(proc.ProfileDir, key, proc.Settings.BaseURL)
 }
 
 // v3MemoryPath is the brain's file when the memory row is on, and the empty
-// string when it is off.
+// string when it is off. `codeaf do` reads the rules in force through it
+// (do_always.go).
 //
 // IT READS THE SAME ROW [v3Memory] READS and answers a path rather than a
 // handle, which is the difference between the conversation's need and a
-// pass's: a window opens one store and keeps it for the session, while a pass
-// wants one a few times a day and wants it closed again afterwards.
+// one-shot read's: a window opens one store and keeps it for the session, while
+// a single read wants one briefly and wants it closed again afterwards.
 func v3MemoryPath(profileDir string) string {
 	if !config.MemoryEnabledAt(profileDir) {
 		return ""

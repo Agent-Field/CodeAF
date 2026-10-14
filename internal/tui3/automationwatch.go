@@ -11,14 +11,13 @@ package tui3
 //
 // From what it reads a window draws the run's one line in the conversation that
 // made the automation, if it has that conversation open; raises a desktop
-// notification for news, once per run per machine; refreshes the list; and
-// keeps the snapshot the quit question is asked from. Every read is a seam
-// call, so all of it runs in a command and none of it on the update loop.
+// notification for news, once per run per machine; and refreshes the list.
+// Every read is a seam call, so all of it runs in a command and none of it on
+// the update loop.
 
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -46,9 +45,6 @@ type AutomationsSeam struct {
 	Cursor  func() (int64, error)
 	// Active is every run queued or in hand.
 	Active func() ([]automation.Run, error)
-	// Windows is how many codeaf windows are open on the machine the
-	// automations run on, this one included.
-	Windows func() (int, error)
 	// Create, Update, SetStatus and Delete are the person's changes; RunNow
 	// asks for a run outside the schedule and StopRun ends one in hand.
 	Create    func(automation.Automation) (automation.Automation, error)
@@ -76,11 +72,8 @@ type automationsWatch struct {
 	// active is every run queued or in hand, which the place reads to offer a
 	// stop and to mark a row as running.
 	active []automation.Run
-	// running is how many runs are in hand, and others how many windows are
-	// open besides this one. known is false until the first reading lands, and
-	// the quit question is not asked from an unknown.
-	running, others int
-	known           bool
+	// running is how many runs are in hand.
+	running int
 	// awayFor is the conversation whose missed news this window last gathered.
 	// A conversation that comes to the front is asked about once, on the next
 	// reading, whether it is the first one this window opened or one it
@@ -109,7 +102,6 @@ type automationsReadMsg struct {
 	listed  bool
 	active  []automation.Run
 	running int
-	windows int
 	known   bool
 }
 
@@ -127,8 +119,8 @@ func (a *app) beatAutomations() tea.Cmd {
 }
 
 // readAutomations reads the store once, in a command: the runs that changed
-// since the cursor, the list, how many runs are in hand and how many windows
-// are open. The first reading starts the cursor at now. AND WHENEVER A
+// since the cursor, the list, and the runs queued or in hand. The first reading
+// starts the cursor at now. AND WHENEVER A
 // CONVERSATION COMES TO THE FRONT — the first one, or one switched to — the
 // reading also collects what it missed while it was not in front.
 func (a *app) readAutomations() tea.Cmd {
@@ -166,13 +158,6 @@ func (a *app) readAutomations() tea.Cmd {
 					}
 				}
 				msg.known = true
-			}
-		}
-		if seam.Windows != nil {
-			if windows, err := seam.Windows(); err == nil {
-				msg.windows = windows
-			} else {
-				msg.known = false
 			}
 		}
 		return msg
@@ -222,7 +207,7 @@ func automationsAway(seam AutomationsSeam, list []automation.Automation, file st
 		}
 		for i := len(runs) - 1; i >= 0; i-- {
 			run := runs[i]
-			if run.Phase == automation.PhaseOver && run.Outcome.Delivered() && run.Finished.After(since) {
+			if run.News() && run.Finished.After(since) {
 				away = append(away, run)
 			}
 		}
@@ -231,7 +216,7 @@ func automationsAway(seam AutomationsSeam, list []automation.Automation, file st
 }
 
 // automationsRead folds one reading in: the lines, the notifications, the
-// snapshot, and the next reading.
+// list, and the next reading.
 func (a *app) automationsRead(msg automationsReadMsg) tea.Cmd {
 	a.watch.started = true
 	a.watch.cursor = msg.cursor
@@ -246,10 +231,6 @@ func (a *app) automationsRead(msg automationsReadMsg) tea.Cmd {
 	if msg.known {
 		a.watch.active = msg.active
 	}
-	if msg.windows > 0 {
-		a.watch.others = msg.windows - 1
-	}
-	a.watch.known = msg.known && msg.windows > 0
 	byID := make(map[string]automation.Automation, len(a.watch.list))
 	for _, item := range a.watch.list {
 		byID[item.ID] = item
@@ -271,7 +252,7 @@ func (a *app) automationsRead(msg automationsReadMsg) tea.Cmd {
 		}
 	}
 	for _, run := range msg.runs {
-		if run.Phase != automation.PhaseOver || !run.Outcome.Delivered() {
+		if !run.News() {
 			continue
 		}
 		item, ok := byID[run.AutomationID]
@@ -281,6 +262,10 @@ func (a *app) automationsRead(msg automationsReadMsg) tea.Cmd {
 		if sameTranscript(item.Origin.Transcript, a.file) {
 			a.drawAutomationRun(item, run)
 		}
+		// AND THE SAME LINE WHERE THE PERSON IS, when that is a place or home:
+		// `r` pressed on a row of /automations is answered on that page, not
+		// only in a conversation behind it.
+		a.tellHere(automationRunWords(item, run), "")
 		if automationNotifies(item, run) {
 			cmds = append(cmds, a.notifyAutomation(item, run))
 		}
@@ -304,30 +289,75 @@ func automationNotifies(item automation.Automation, run automation.Run) bool {
 
 // notifyAutomation raises the desktop notification for one run, in the one
 // window on the machine that claims it.
+//
+// IT IS RAISED WHETHER OR NOT THIS WINDOW HAS THE KEYBOARD. A reminder is the
+// one banner a person set up on purpose, and `r` on a row of /automations is a
+// person asking to see exactly what the banner says; a window in front of them
+// is no reason to keep it back, and the conversation that would have drawn the
+// line is often not the one on the screen.
 func (a *app) notifyAutomation(item automation.Automation, run automation.Run) tea.Cmd {
 	seam := a.autos
 	if seam.Claim == nil {
 		return nil
 	}
-	// A WINDOW THAT IS KNOWN TO HAVE THE KEYBOARD RAISES NO BANNER: the
-	// person is looking at codeaf, and the line is already in front of them.
-	// A terminal that never reports focus is NOT taken as focused here, as a
-	// turn's banner takes it (notify.go) — an automation's news is for somebody
-	// who is elsewhere, and a missed reminder costs more than a redundant one.
-	if a.seenFocus && a.focused {
-		return nil
-	}
 	title := "codeaf · " + strings.TrimSpace(item.Title)
 	body := automationRunWords(item, run)
+	route, first := a.notifyRoute, a.notifyFirst
 	return func() tea.Msg {
 		if !seam.Claim(run.ID) {
 			return nil
 		}
-		if osNotify(title, body) {
-			return nil
+		msg := automationNotifyMsg{title: title, body: body, escape: route.Escape != ""}
+		if !msg.escape && !osNotify(title, body, route.Dir) {
+			// NO NATIVE NOTIFIER ANSWERED: the terminal's escape is the last
+			// road, and a terminal that does not know it shows nothing.
+			msg.escape, msg.fallback = true, true
 		}
-		return automationNotifyMsg{title: title, body: body}
+		if notifyTellsSettings && !msg.fallback && first != nil && firstBanner(route.Dir, first) {
+			msg.told = route.Via
+		}
+		return msg
 	}
+}
+
+// tellHere puts one line on the message line of the place or home in front of
+// the person, with the address a click on it opens, and reports whether there
+// was one: a conversation in front has no such line, and its transcript is not
+// somewhere another conversation's news belongs.
+func (a *app) tellHere(text, link string) bool {
+	switch {
+	case a.at(pageHome):
+		a.home.say(text, "")
+	case a.pageShowing():
+		a.pageMsg = text
+	default:
+		return false
+	}
+	a.msgLink, a.msgLinkFor = link, text
+	if link == "" {
+		a.msgLinkFor = ""
+	}
+	a.touch()
+	return true
+}
+
+// automationNotified folds a raised banner back in: the escape, when the
+// banner rides the terminal, and the one-time line about where banners are
+// turned on, said where the person is.
+func (a *app) automationNotified(msg automationNotifyMsg) tea.Cmd {
+	if msg.told != "" {
+		line := notifyFirstLine(msg.told)
+		if !a.tellHere(line, notifySettingsURL) {
+			a.note(line)
+		}
+	}
+	if !msg.escape {
+		return nil
+	}
+	if msg.fallback {
+		return tea.Raw(notifySeq(msg.title, msg.body))
+	}
+	return tea.Raw(a.notifyRoute.escapeFor(msg.title, msg.body))
 }
 
 // sameTranscript reports whether two paths name the same transcript.
@@ -337,12 +367,4 @@ func sameTranscript(a, b string) bool {
 		return false
 	}
 	return filepath.Clean(a) == filepath.Clean(b)
-}
-
-// automationRunningLine is the quit question's sentence.
-func automationRunningLine(running int) string {
-	if running == 1 {
-		return "1 automation is running — quitting stops it"
-	}
-	return strconv.Itoa(running) + " automations are running — quitting stops them"
 }

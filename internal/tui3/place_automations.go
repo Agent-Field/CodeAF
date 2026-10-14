@@ -575,7 +575,7 @@ func (placeAutomations) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.auto
 func (placeAutomations) changed(a *app, since time.Time) int {
 	n := 0
 	for _, item := range a.watch.list {
-		if last := item.Last; last != nil && last.Outcome.Delivered() && last.Finished.After(since) {
+		if last := item.Last; last != nil && last.News() && last.Finished.After(since) {
 			n++
 		}
 	}

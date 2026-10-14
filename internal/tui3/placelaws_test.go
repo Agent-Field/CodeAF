@@ -614,7 +614,6 @@ func panicAutomations(t *testing.T, place string) AutomationsSeam {
 		Changes: func(int64) ([]automation.Run, int64, error) { fail("Changes"); return nil, 0, nil },
 		Cursor:  func() (int64, error) { fail("Cursor"); return 0, nil },
 		Active:  func() ([]automation.Run, error) { fail("Active"); return nil, nil },
-		Windows: func() (int, error) { fail("Windows"); return 0, nil },
 		Create: func(automation.Automation) (automation.Automation, error) {
 			fail("Create")
 			return automation.Automation{}, nil

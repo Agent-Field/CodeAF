@@ -110,13 +110,13 @@ type demoRun struct {
 	took time.Duration
 }
 
-// The lines the clock puts on a run it ended itself. They are unexported in
-// internal/automation (clock.go's lineClosed and lineStopped), so they are
-// spelled here as the person reads them — and so, inline where it is used, is
+// The lines the clock puts on a run it ended itself. The closed one is
+// internal/automation's own [automation.LineClosed]; lineStopped is unexported
+// there, so it is spelled here as the person reads it — and so, inline where it is used, is
 // the runner's `needed your ok to run …` (internal/session's
 // automationNeedsLine), which names the tool and then the command.
 const (
-	demoClosedLine  = "codeaf closed before it finished"
+	demoClosedLine  = automation.LineClosed
 	demoStoppedLine = "stopped by you"
 )
 

@@ -372,7 +372,7 @@ func (r *switcherReading) addLedger(autos []automation.Automation, world session
 	var events []switcherRow
 	for _, item := range autos {
 		last := item.Last
-		if last == nil || !last.Outcome.Delivered() || !last.Finished.After(seen) {
+		if last == nil || !last.News() || !last.Finished.After(seen) {
 			continue
 		}
 		events = append(events, switcherRow{kind: switcherLedger, title: automationRunWords(item, *last), place: placeAutomationsWord, at: last.Finished})

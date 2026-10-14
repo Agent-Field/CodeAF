@@ -2007,7 +2007,15 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// line, so its keys are read by the same grammar ([paintHint]) rather than
 	// dimmed flat, and the door's clause keeps the colour every other key on
 	// this surface wears.
-	return " " + a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim)), true
+	line := a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim))
+	// AND A LINE THAT NAMES SOMEWHERE TO GO CARRIES THE WAY THERE: the address
+	// [app.tellHere] was handed with it, for as long as the line still says it.
+	// It wraps the line whole, after the fitting, because a link occupies no
+	// cells (opener.go's [linkify]).
+	if a.msgLink != "" && msg == a.msgLinkFor && path == "" {
+		line = linkify(line, a.msgLink)
+	}
+	return " " + line, true
 }
 
 // ── opening a place ─────────────────────────────────────────────────────────

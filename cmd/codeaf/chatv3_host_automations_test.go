@@ -36,7 +36,7 @@ func TestTheHostDoorReadsTheFarMachinesAutomations(t *testing.T) {
 
 	options, _ := hostOptions(onePipeFleet("devbox", loop.Client), loop.Client.Welcome(), false)
 	seam := options.Automations
-	if seam.List == nil || seam.Changes == nil || seam.Claim == nil || seam.Windows == nil {
+	if seam.List == nil || seam.Changes == nil || seam.Claim == nil || seam.Active == nil {
 		t.Fatal("the door hands a window over --host no automations seam, so it can draw none of that machine's automations")
 	}
 	if seam.Zone != "Pacific/Chatham" {

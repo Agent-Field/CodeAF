@@ -556,9 +556,15 @@ do quietly.
 
 ## Why did it say memory tidied — my memories got merged while I was away
 
-Because a third call, quite separate from the two above, went over what is
-remembered while nobody was here and tidied it. When it changes something it
-says so in one dim line and nothing else:
+**It does not tidy on its own any more.** Since 2026-10-14 nothing runs the pass
+described below: an automatic change to what is remembered that nobody sees is
+what the memory rework rules out, so the automations clock stopped asking for it.
+A `memory tidied` line in an older conversation is from before that, and what it
+changed is still in `/memory`.
+
+What the pass did, while it ran: a third call, quite separate from the two above,
+went over what is remembered while nobody was here and tidied it. When it changed
+something it said so in one dim line and nothing else:
 
 ```
 memory tidied · 2 merged · 1 superseded
@@ -575,8 +581,8 @@ is not advanced, so the failed work stays eligible for retry. Write failures
 are also journaled when the store can accept the failure record. Quarantined
 rows are excluded even if a project key is accidentally set to `legacy`.
 
-**When it runs.** It is a background pass that runs only while a codeaf window is
-open, and three things have to be true at once: memory is **on**,
+**When it ran.** It was a background pass that ran only while a codeaf window was
+open, and three things had to be true at once: memory is **on**,
 **nobody has said anything anywhere for fifteen minutes**, and the last tidy was
 **more than six hours ago**. On top of that at least **two** remembered lines
 must have changed since the last one — one new line has already been settled
@@ -611,10 +617,10 @@ does not show it.
 is no expiry, no half-life and no floor on how often a memory has to be used.
 Something you told it a year ago is still there.
 
-The only thing the background tidy above ever removes from the active list is a
-line **another line has replaced** — the api moved from v2 to v3, the deploy
-window changed — and even then the old row is kept and stays readable. Age on its
-own is never a reason.
+The background tidy above no longer runs (since 2026-10-14). The only thing it
+ever removed from the active list was a line **another line had replaced** — the
+api moved from v2 to v3, the deploy window changed — and even then the old row is
+kept and stays readable. Age on its own is never a reason.
 
 **And it will never replace something you said yourself with something it
 worked out.** A `preference`, a `decision` and a `correction` are your own words

@@ -53,8 +53,12 @@ const MaxWork = 2
 const maxLooks = 4
 
 // The lines a run carries when the clock, and not the run, decided its end.
+//
+// [LineClosed] IS EXPORTED BECAUSE IT IS A FACT A WINDOW ACTS ON: a run codeaf
+// closing cut off is paused rather than over, so it is told to nobody and runs
+// again when a window next opens ([Run.Closed], [Store.Finish]).
 const (
-	lineClosed  = "codeaf closed before it finished"
+	LineClosed  = "codeaf closed before it finished"
 	lineStopped = "stopped by you"
 	lineDeleted = "the automation was deleted"
 )
@@ -116,18 +120,18 @@ type Clock struct {
 	// Log receives one line for anything that went wrong outside a run — a
 	// store error, a run that could not be recorded. Nil discards.
 	Log func(string)
-	// Tidy is the pass over what is remembered, asked every [tidyEvery] while
-	// a window is open and never while one is already in hand. Nil is memory
-	// off, and nothing is asked.
-	Tidy Tidy
+	// Env is the fingerprint of the environment this clock was started in
+	// ([Window.Env]). When the newest open window says a different one and no
+	// run is in hand, the clock leaves, and that window starts the next: a
+	// clock started from a shell without the person's key would otherwise
+	// fail every check and every piece of work for as long as any window
+	// stayed open. Empty never leaves for this reason.
+	Env string
 
 	mu       sync.Mutex
 	inflight map[int64]*flight
 	work     int
 	looks    int
-	tidying  bool
-	tidiedAt time.Time
-	tidyStop context.CancelFunc
 	wg       sync.WaitGroup
 }
 
@@ -141,7 +145,7 @@ type flight struct {
 // so the run's record says which.
 var (
 	errStopRequested = errors.New(lineStopped)
-	errClosing       = errors.New(lineClosed)
+	errClosing       = errors.New(LineClosed)
 )
 
 // LockName is the clock's lock file inside the store's root.
@@ -177,7 +181,7 @@ func (c *Clock) Run(ctx context.Context) error {
 	c.inflight = map[int64]*flight{}
 	// A CLOCK IS ONLY EVER TAKEN FROM A PROCESS THAT IS GONE, so a run still
 	// recorded as running is one nobody is running any more.
-	if n, err := c.Store.Abandoned(lineClosed); err != nil {
+	if n, err := c.Store.Abandoned(LineClosed); err != nil {
 		c.log("could not close runs a previous clock left: " + err.Error())
 	} else if n > 0 {
 		c.log(fmt.Sprintf("closed %d run(s) a previous clock left running", n))
@@ -196,7 +200,10 @@ func (c *Clock) Run(ctx context.Context) error {
 		case windows > 0:
 			empty = time.Time{}
 			c.pass(ctx, now)
-			c.tidy(ctx, now)
+			if c.outgrown() {
+				c.log("a window started with a different environment is open; leaving so it starts the clock")
+				return nil
+			}
 		case empty.IsZero():
 			empty = now
 		case now.Sub(empty) >= closingGrace:
@@ -210,6 +217,22 @@ func (c *Clock) Run(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// outgrown reports whether the newest open window says a different environment
+// from this clock's, with nothing in hand to stop by leaving.
+func (c *Clock) outgrown() bool {
+	if strings.TrimSpace(c.Env) == "" {
+		return false
+	}
+	c.mu.Lock()
+	busy := len(c.inflight) > 0
+	c.mu.Unlock()
+	if busy {
+		return false
+	}
+	newest, ok := c.Presence.Newest()
+	return ok && newest.Env != c.Env
 }
 
 // lock takes the clock's file lock, or reports [ErrHeld].
@@ -232,48 +255,6 @@ func (c *Clock) lock() (func(), error) {
 		_ = filelock.Unlock(file)
 		_ = file.Close()
 	}, nil
-}
-
-// tidyEvery is how often the clock asks the memory pass whether it wants to
-// run, and tidyWindow how long one pass may take. The pass keeps its own gates
-// (internal/session's memory_consolidate.go), so asking is a stat and a world
-// read on every ask but the few a day it actually runs.
-var (
-	tidyEvery  = 5 * time.Minute
-	tidyWindow = 2 * time.Minute
-)
-
-// tidy asks the memory pass, beside the runs and never in their way: it runs
-// on a goroutine of its own, one at a time, and the clock's closing cancels it.
-func (c *Clock) tidy(ctx context.Context, now time.Time) {
-	if c.Tidy == nil {
-		return
-	}
-	c.mu.Lock()
-	if c.tidying || (!c.tidiedAt.IsZero() && now.Sub(c.tidiedAt) < tidyEvery) {
-		c.mu.Unlock()
-		return
-	}
-	pass, cancel := context.WithTimeout(ctx, tidyWindow)
-	c.tidying, c.tidiedAt, c.tidyStop = true, now, cancel
-	c.mu.Unlock()
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		defer func() {
-			cancel()
-			c.mu.Lock()
-			c.tidying, c.tidyStop = false, nil
-			c.mu.Unlock()
-		}()
-		tidied, err := c.Tidy(pass)
-		switch {
-		case err != nil:
-			c.log("the memory pass: " + err.Error())
-		case tidied.Line() != "":
-			c.log(tidied.Line())
-		}
-	}()
 }
 
 // pass is one look: stop what somebody asked to stop, take what is due, and
@@ -420,11 +401,6 @@ func (c *Clock) stopAll(cause error) {
 	for _, f := range c.inflight {
 		f.cancel(cause)
 	}
-	// AND THE MEMORY PASS GOES WITH THEM: it is nobody's run, and a closing
-	// clock waits for nothing it can stop.
-	if c.tidyStop != nil {
-		c.tidyStop()
-	}
 	c.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
@@ -435,7 +411,7 @@ func (c *Clock) stopAll(cause error) {
 	case <-done:
 	case <-time.After(stopWait):
 		c.log("runs did not stop in time; recording them as stopped")
-		if _, err := c.Store.Abandoned(lineClosed); err != nil {
+		if _, err := c.Store.Abandoned(LineClosed); err != nil {
 			c.log("could not record stopped runs: " + err.Error())
 		}
 	}
@@ -536,7 +512,7 @@ func (c *Clock) ended(ctx context.Context, run Run, outcome Outcome, line string
 		case errors.Is(cause, errStopRequested):
 			run.Outcome, run.Line = OutcomeStopped, lineStopped
 		case errors.Is(cause, errClosing):
-			run.Outcome, run.Line = OutcomeStopped, lineClosed
+			run.Outcome, run.Line = OutcomeStopped, LineClosed
 		default:
 			run.Outcome, run.Line = late, "ran out of time"
 		}

@@ -293,11 +293,8 @@ row, and a working one is answered by the card below. `/quit` and `ctrl+c` end t
 program, ask
 their own question about work in flight, and act on every conversation this window holds
 at once. Closing a tab never quits codeaf, and quitting is not what any of the card's
-three answers does. With an automation running and no other codeaf window open, the
-first `ctrl+c` at rest, or the last `/quit`, only says
-`1 automation is running — quitting stops it · ctrl+c again to quit`
-(`· /quit again to quit` after `/quit`), and the same gesture within ten seconds leaves
-(*Automations*).
+three answers does. An automation running is no reason to ask: closing codeaf pauses it,
+and a run it cut off runs again when a window is next open (*Automations*).
 The session cancels its routing-cache refresh and waits for that refresh's remaining
 local writes before shutdown completes.
 

@@ -1,10 +1,13 @@
 package automation
 
-// tidy.go is the one piece of background work the clock does that nobody
-// armed: the pass over what codeaf remembers that merges duplicates and retires
-// lines a newer one replaced (internal/session's memory_consolidate.go). It
-// rides the clock because it wants exactly what the clock already has — one
-// process elected among every window, and a machine where nobody is typing.
+// tidy.go is the vocabulary of the pass over what codeaf remembers that merges
+// duplicates and retires lines a newer one replaced (internal/session's
+// memory_consolidate.go).
+//
+// THE CLOCK NO LONGER RUNS IT. An automatic change to what is remembered that
+// nobody sees is what the memory overhaul rules out, so the clock stopped
+// asking for the pass on 2026-10-14; these types stay only until the session's
+// half of the pass is deleted with that overhaul, and go with it.
 
 import (
 	"context"

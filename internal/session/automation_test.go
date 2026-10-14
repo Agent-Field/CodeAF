@@ -12,6 +12,8 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // automationCall is one scripted `automation` call.
@@ -489,5 +491,35 @@ func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
 	}
 	if !opened {
 		t.Fatal("a run under the daily limit never started")
+	}
+}
+
+// A WATCH'S CHECK PASSES OVER A MODEL WHOSE SERVICE HAS NO KEY. The sentinel
+// seat's tier names a model on the default service, which the person never
+// gave a key; their own conversation model is on a service they connected,
+// and that is the model the check asks — instead of answering `no API key`
+// every fifteen minutes.
+func TestAWatchesCheckSkipsAModelWithNoKey(t *testing.T) {
+	tier, _ := roles.TierOf(roles.RoleSentinel)
+	cfg := Config{
+		Model: "localhost/chat-model",
+		Sources: modelsource.NewSet(
+			modelsource.Connected{Source: modelsource.DefaultSource("https://router.invalid/api/v1")},
+			modelsource.Connected{Source: modelsource.Source{ID: "direct", Written: "localhost", Name: "Local", Address: "http://127.0.0.1:1"}, Key: "direct-key"},
+		),
+		RolesSource: tierSettings(map[string]string{roles.TierKey(tier): "cheap/sentinel"}),
+	}
+	models, err := automationJudgeModels(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0] != "localhost/chat-model" {
+		t.Fatalf("the check would ask %q, want only the conversation's own model", models)
+	}
+	// AND WITH NO RUNG REACHABLE IT SAYS WHICH MODEL AND WHICH SERVICE, rather
+	// than the adapter's `this session has not been given one yet`.
+	cfg.Model = "cheap/chat-model"
+	if _, err := automationJudgeModels(cfg); err == nil || !strings.Contains(err.Error(), "no key for cheap/sentinel") {
+		t.Fatalf("with no key anywhere the check says %v", err)
 	}
 }

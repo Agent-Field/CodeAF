@@ -414,11 +414,7 @@ func (r *automationRunner) Judge(ctx context.Context, item automation.Automation
 	if err != nil {
 		return automation.Judgment{}, err
 	}
-	model, err := automationJudgeModel(cfg)
-	if err != nil {
-		return automation.Judgment{}, err
-	}
-	client, model, err := r.judgeClient(cfg, model)
+	models, err := automationJudgeModels(cfg)
 	if err != nil {
 		return automation.Judgment{}, err
 	}
@@ -427,10 +423,26 @@ func (r *automationRunner) Judge(ctx context.Context, item automation.Automation
 			provider.WithoutStream(withPurpose(ctx, purposeAutomationCheck)),
 			provider.IntentBackground),
 		lane.RoleStanding)
-	response, err := client.CompleteWithMessages(callCtx, []ai.Message{
-		textMessage("system", automationJudgePrompt),
-		textMessage("user", automationJudgeQuestion(item, sight)),
-	})
+	var response *ai.Response
+	var model string
+	for _, candidate := range models {
+		var client Completer
+		client, model, err = r.judgeClient(cfg, candidate)
+		if err != nil {
+			return automation.Judgment{}, err
+		}
+		response, err = client.CompleteWithMessages(callCtx, []ai.Message{
+			textMessage("system", automationJudgePrompt),
+			textMessage("user", automationJudgeQuestion(item, sight)),
+		})
+		// A RUNG WITH NO KEY IS PASSED OVER, never the end of the check: the
+		// next one down is the person's own conversation model, which is
+		// reachable by construction.
+		if errors.Is(err, provider.ErrNoAPIKey) {
+			continue
+		}
+		break
+	}
 	if err != nil {
 		return automation.Judgment{}, err
 	}
@@ -483,10 +495,44 @@ func (r *automationRunner) judgeClient(cfg Config, model string) (Completer, str
 	return client, settings.Model, nil
 }
 
-// automationJudgeModel is the model a watch's judgment runs on: the low-tier
-// sentinel seat, resolved the way every role is.
-func automationJudgeModel(cfg Config) (string, error) {
-	return roles.Resolve(roles.Source(cfg.RolesSource), roles.RoleSentinel, cfg.Model)
+// automationJudgeModels is every model a watch's judgment may run on, in the
+// order it tries them: the low-tier sentinel seat's ladder, resolved the way
+// every role's is, down to the person's own conversation model — keeping only
+// the rungs whose service holds a key.
+//
+// A RUNG ON A SERVICE WITH NO KEY IS NOT A RUNG. The seat's tier may name a
+// model on a service the person never connected while their own model sits on
+// one they did; the check used to stop there with `no API key`, every fifteen
+// minutes, while the model they talk to could have answered it.
+func automationJudgeModels(cfg Config) ([]string, error) {
+	rungs, err := roles.Ladder(roles.Source(cfg.RolesSource), roles.RoleSentinel, cfg.Model)
+	if err != nil {
+		return nil, err
+	}
+	var models []string
+	for _, rung := range rungs {
+		if cfg.serviceFor(rung.Model).HasCredentials() {
+			models = append(models, rung.Model)
+		}
+	}
+	if len(models) == 0 {
+		first := rungs[0].Model
+		return nil, fmt.Errorf("no key for %s: connect %s, or set a key in /settings", first, automationServiceName(cfg, first))
+	}
+	return models, nil
+}
+
+// automationServiceName is the service a model is served by, as a person
+// finds it in /settings.
+func automationServiceName(cfg Config, model string) string {
+	service := cfg.serviceFor(model)
+	if name := strings.TrimSpace(service.Source.Name); name != "" {
+		return name
+	}
+	if id := strings.TrimSpace(service.Source.ID); id != "" {
+		return id
+	}
+	return "its service"
 }
 
 // automationJudgeQuestion is the judgment as the model reads it.

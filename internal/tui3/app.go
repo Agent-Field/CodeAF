@@ -2064,11 +2064,9 @@ type app struct {
 	auto  *automationCard
 	autos AutomationsSeam
 	watch automationsWatch
-	// typedSeq numbers the cards this window raises for typed automations, and
-	// quitArmed is when leaving was last warned about a run it would stop
-	// (automationscmd.go, automationquit.go).
-	typedSeq  uint64
-	quitArmed time.Time
+	// typedSeq numbers the cards this window raises for typed automations
+	// (automationscmd.go).
+	typedSeq uint64
 	// THE LINK SIDE (hostlink.go). link is what the door can tell this surface
 	// about the connection the conversation is on the far end of. Its zero value
 	// is every local session — no segment, no notice, no waiting room — which is
@@ -2757,6 +2755,14 @@ type app struct {
 	// not need to be told what they are looking at.
 	focused   bool
 	seenFocus bool
+	// notifyRoute is how this window's banners reach the screen, and
+	// notifyFirst whether it has raised one yet — shared with the commands
+	// that raise them, which is why it is a pointer (desktopnotify.go).
+	notifyRoute NotifyRoute
+	notifyFirst *atomic.Bool
+	// msgLink is the address a click on the message line opens, while the line
+	// still says msgLinkFor: a line replaced by another takes its link with it.
+	msgLink, msgLinkFor string
 	// lastQuestionKey is the last proof somebody was AT THIS WINDOW. Question
 	// delivery alone reads it, against awayAfter, so every arrival agrees on
 	// when this window became unattended.
@@ -3005,6 +3011,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		resume:              opts.Resume,
 		shared:              opts.SharedAgent,
 		autos:               opts.Automations,
+		notifyRoute:         opts.Notify,
+		notifyFirst:         new(atomic.Bool),
 		teamsDisk:           teamsDisk{door: opts.Teams},
 		link:                opts.Link,
 		conns:               opts.Connections,
@@ -5258,9 +5266,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.readAutomations()
 
 	case automationNotifyMsg:
-		// A MACHINE WITH NO NATIVE NOTIFIER: the banner rides the terminal's own
-		// escape instead, the way a finished turn's does (desktopnotify.go).
-		return a, tea.Raw(notifySeq(msg.title, msg.body))
+		// A BANNER A COMMAND RAISED: the terminal's escape when the banner rides
+		// the terminal, and the first one's line about where banners are turned
+		// on (desktopnotify.go).
+		return a, a.automationNotified(msg)
 
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
@@ -7749,9 +7758,10 @@ func (a *app) slash(line string) tea.Cmd {
 		if cmd, more := a.closeFront(); more {
 			return cmd
 		}
-		// AND THE LAST ONE SAYS WHAT LEAVING WOULD STOP, once, when an
-		// automation is running and no other window is open (automationquit.go).
-		return a.requestQuit(quitAgainCommand)
+		// AND THE LAST ONE LEAVES AT ONCE, an automation in hand or not: closing
+		// codeaf pauses automations, and a run it cut off runs again when a
+		// window next opens (ctrl+c's own case in input.go says the same).
+		return a.quit()
 
 	case "dismiss":
 		a.dismissNotifications(rest)

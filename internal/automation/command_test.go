@@ -172,3 +172,46 @@ func TestAnEditKeepsWhatTheLineDoesNotMention(t *testing.T) {
 		t.Fatalf("a bare command is the list, got %+v, %v", cmd, err)
 	}
 }
+
+// A MOMENT IS TYPED THE WAY A PERSON SAYS IT, with or without quotes: `6pm`,
+// `tomorrow 9am`, `monday 9am` and `today 18:00` all read, and a day of the
+// week is the next one to come. The clock is Saturday 10 October, 14:30.
+func TestAMomentReadsTheWayItIsSaid(t *testing.T) {
+	now, loc := commandNow(t)
+	cases := map[string]time.Time{
+		`add leave at 6pm say x`:                       time.Date(2026, 10, 10, 18, 0, 0, 0, loc),
+		`add leave at 6:30pm say x`:                    time.Date(2026, 10, 10, 18, 30, 0, 0, loc),
+		`add leave at 18 say x`:                        time.Date(2026, 10, 10, 18, 0, 0, 0, loc),
+		`add leave at tomorrow 9am say x`:              time.Date(2026, 10, 11, 9, 0, 0, 0, loc),
+		`add leave at "tomorrow 18:00" say x`:          time.Date(2026, 10, 11, 18, 0, 0, 0, loc),
+		`add leave at today 11:59pm say x`:             time.Date(2026, 10, 10, 23, 59, 0, 0, loc),
+		`add leave at monday 9am say x`:                time.Date(2026, 10, 12, 9, 0, 0, 0, loc),
+		`add leave at sat 9am say x`:                   time.Date(2026, 10, 17, 9, 0, 0, 0, loc),
+		`add leave at sat 4pm say x`:                   time.Date(2026, 10, 10, 16, 0, 0, 0, loc),
+		`add leave at 12am say x zone America/Toronto`: time.Date(2026, 10, 10, 0, 0, 0, 0, loc),
+		`add leave at 2026-10-15 9:00 say x`:           time.Date(2026, 10, 15, 9, 0, 0, 0, loc),
+		`add leave at 2026-10-15T09:00 say x`:          time.Date(2026, 10, 15, 9, 0, 0, 0, loc),
+		`add leave at someday say x`:                   {},
+		`add leave at 13pm say x`:                      {},
+	}
+	for line, want := range cases {
+		cmd, err := ParseCommand(line)
+		if err == nil {
+			var a Automation
+			a, err = cmd.Apply(commandBase(), now)
+			if err == nil {
+				if want.IsZero() {
+					t.Errorf("%s: read as %v, want it refused", line, a.Schedule.At)
+					continue
+				}
+				if !a.Schedule.At.Equal(want) {
+					t.Errorf("%s: read as %v, want %v", line, a.Schedule.At, want)
+				}
+				continue
+			}
+		}
+		if !want.IsZero() && !strings.Contains(err.Error(), "already passed") {
+			t.Errorf("%s: refused with %v", line, err)
+		}
+	}
+}

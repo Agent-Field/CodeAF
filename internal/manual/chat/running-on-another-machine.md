@@ -660,10 +660,11 @@ that machine for as long as its connection lasts, once per window however many
 conversations it has open. A window opened on that machine itself counts too. Nothing is
 run for them on the machine you are sitting at.
 
-**Closing the last attached window stops a run in progress there.** Half a minute after the
-last window on that machine is gone, its clock stops whatever is running, records it as
+**Closing the last attached window pauses a run in progress there.** Half a minute after
+the last window on that machine is gone, its clock stops whatever is running, records it as
 `stopped · codeaf closed before it finished`, and runs nothing more until a window is back.
-A slot missed in the meantime runs once, marked late, when one is. The same half minute is
+Then the cut-off run runs again, once, and a slot missed in the meantime runs once, marked
+late. The same half minute is
 what carries a dropped `--host` link that reconnects: the window counts again once it is
 back.
 

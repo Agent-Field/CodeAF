@@ -365,8 +365,8 @@ only while a codeaf window is open on that machine or attached to it with `--hos
 `--at` — and a conversation the host goes on holding after its window closed is not an open
 window. So the host staying or going changes nothing for them: half a minute after the last
 window is gone a run in progress is stopped, recorded as
-`stopped · codeaf closed before it finished`, and whatever falls due meanwhile runs once,
-late, when a window is back (*Automations*).
+`stopped · codeaf closed before it finished`, and both it and whatever falls due meanwhile
+run once, late, when a window is back (*Automations*).
 
 **And it goes early when codeaf on that machine is rebuilt under it.** It is a running copy
 of the build that started it, so a new binary at the same path does not replace it; it
