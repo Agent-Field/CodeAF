@@ -111,12 +111,16 @@ func TestAttachOnADirectoryRefusesOnlyOverAConnection(t *testing.T) {
 	}
 
 	local, here, dir := fileLab(t, "", map[string]int{"folder/inside.txt": 8})
+	// Pin the display home so the temporary directory exercises the shortened
+	// path on every machine, including runners whose temporary files are at home.
+	local.tilde = filepath.Dir(dir)
 	local.attachFilePath("folder")
 	want := filepath.Join(dir, "folder")
 	if len(here.places) != 1 || here.places[0].Path != want {
 		t.Fatalf("the local conversation gained %+v, want %s", here.places, want)
 	}
-	if got := plain(lastNote(t, local)); got != folderChoseWord+want {
+	shown := filepath.Join("~", filepath.Base(dir), "folder")
+	if got := plain(lastNote(t, local)); got != folderChoseWord+shown {
 		t.Fatalf("the local attach said %q", got)
 	}
 }

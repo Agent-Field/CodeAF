@@ -125,7 +125,10 @@ func TestTheSpendingTabCountsALateReceiptThroughTheHostSeam(t *testing.T) {
 	folder := filepath.Join(t.TempDir(), "projects", "repo", treeConversation)
 	a.file = filepath.Join(folder, "transcript.jsonl")
 	a.usageLedger = ""
-	now := time.Now()
+	// Both receipts belong to today. Pin the surface clock at noon so the
+	// earlier receipt cannot become yesterday's when a runner starts at midnight.
+	now := time.Date(2026, time.October, 14, 12, 0, 0, 0, time.Local)
+	a.clock = func() time.Time { return now }
 	a.ledger = func(time.Time) ([]session.UsageLine, bool, bool) {
 		return []session.UsageLine{
 			{At: now.Add(-time.Minute), Session: treeConversation, Model: "m", Calls: 1, USD: 0.41},
