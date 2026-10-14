@@ -10,17 +10,23 @@ One piece per command. A broken piece never blocks another piece.
 
 ## Think about the person first
 
-An app that passes `check` but does not help its person has failed. Before `plan data`, work out the person's real jobs and put them in the plan lines, never in prose to nobody: who uses it, the 3 to 5 things they do every day or week, and what they must never forget.
+An app that passes `check` but does not help its person has failed. Before `plan data`, write this brief into the plan lines, never as prose to nobody:
 
-- Data: the real records, with relations both ways where a person walks them (a pupil has many carers, a carer has many pupils).
-- Screens: the DAILY screen first (today's queue, a board by status, or what needs action). Every record gets a list, a detail, a create and an edit.
-- Runs: only ones that save real work, such as reminders, follow-ups and digests, on a schedule or a record change. No decorative automations.
-- Agent: it takes over the person's busywork.
-- Before `plan ready` ask: "Can the person do each job from the screens, in at most 2 clicks from the daily screen?" If not, add or fix plan lines.
+1. Who uses it.
+2. The job: the 3 to 5 things they do every day or week, and what they must never forget.
+3. The primary object, and the real relations around it, both ways where a person walks them (a pupil has many carers).
+4. ONE daily view, shown first: today's queue, a board by status, or what needs action. Every record also gets a list, a detail, a create and an edit.
+5. The states the object moves through.
+6. The top 3 actions, one button each.
+7. The agent's job: the person's busywork. Runs only where they save real work (reminders, follow-ups, digests), never decorative ones.
+
+Before `plan ready` ask: "Can the person do each job from the screens, in at most 2 clicks from the daily screen?" If not, add or fix plan lines.
+
+Labels are in the owner's words: every field gets `--label "Due date"`, and every button and command is verb + object ("Send invoice").
 
 ## Order
 
-1. `name`, then `tint` (a palette name that fits the app's mood: money sage, people rose, operations graphite, and so on; if the brief hints a tint, choose a different one), then `plan data`, `plan run`, `plan screen` and `plan agent` lines, then `plan ready`. The plan lines are what the owner reads on the plan card. One plain sentence each, under 200 characters. The plan task ends at `plan ready`.
+1. `name`, then `tint` (a palette name that fits the app's mood: money sage, people rose, operations graphite, and so on; if the brief hints a tint, choose a different one), then `plan data`, `plan run`, `plan screen` and `plan agent` lines, then `plan ready`. The plan lines are what the owner reads on the plan card. One plain sentence each, at most {{plan-line-max}} characters. The plan task ends at `plan ready`.
 2. `record` and `field`. Make a record that another record points to before the record that points to it. `field ... ref --to <record>` needs that record to exist. A `--computed` field is checked as an expression when you add it, so add the fields it reads, and any `constant` it uses, first.
 3. `screen`, one whole JSON document each, from a heredoc.
 4. `run`, one whole YAML document each, from a heredoc.
@@ -34,7 +40,7 @@ Never run `plandb add` or `plandb split`. This task has one output: the draft.
 ## Commands
 
 ```
-codeaf app name "<Name>" [--about "<one sentence>"] [--tint <name>]   name is at most 40 characters
+codeaf app name "<Name>" [--about "<one sentence>"] [--tint <name>]   name is at most {{name-max}} characters
 codeaf app tint <iris|sage|sand|tide|rose|graphite>             colours the app frame
 codeaf app plan data|run|screen <id> "<line>"                  id is lowercase, unique in its group
 codeaf app plan agent "<line>"

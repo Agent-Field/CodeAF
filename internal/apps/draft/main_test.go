@@ -282,3 +282,18 @@ func TestTintTheWorkersChoiceWinsOverTheDefault(t *testing.T) {
 		t.Fatal("the worker's tint did not win")
 	}
 }
+
+func TestRenderLabelsEveryFieldInHumanWords(t *testing.T) {
+	s := openTemp(t)
+	play(t, s, append(planned(), c("field", "deal", "due_on", "date"), c("field", "deal", "next_step", "text", "--label", "What next")))
+	st, _ := s.State()
+	app := string(Render(st, Defaults{AppID: "crm"})["app.json"])
+	for _, want := range []string{`"label": "Due on"`, `"label": "What next"`, `"label": "Stage"`} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.json lacks %s", want)
+		}
+	}
+	if st.Records["deal"].Fields["due_on"].Label != "" {
+		t.Fatal("Render changed the State")
+	}
+}

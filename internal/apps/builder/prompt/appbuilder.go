@@ -2,6 +2,7 @@ package prompt
 
 import (
 	_ "embed"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -16,8 +17,14 @@ var appBuilderMarkdown string
 
 const crmScriptMarker = "{{crm-script}}"
 
+// The limits the page quotes are the verbs' own constants, rendered in, so the
+// page cannot say a number the verbs do not enforce.
 var appBuilderOnce = sync.OnceValue(func() string {
-	return strings.Replace(appBuilderMarkdown, crmScriptMarker, strings.TrimSpace(draft.CRMScript()), 1)
+	return strings.NewReplacer(
+		crmScriptMarker, strings.TrimSpace(draft.CRMScript()),
+		"{{plan-line-max}}", strconv.Itoa(draft.MaxPlanLine),
+		"{{name-max}}", strconv.Itoa(draft.MaxNameLen),
+	).Replace(appBuilderMarkdown)
 })
 
 // AppBuilderPage is the page that goes into the task brief. The worked example
