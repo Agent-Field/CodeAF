@@ -546,3 +546,22 @@ func TestCheckTryAndDoneRefuseWhileThePlanIsStillBeingMade(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAPreviewNeverFollowsAFailedFinalCheck(t *testing.T) {
+	// done passes, then the worker edits the draft again and the last Check fails.
+	steps := []func(context.Context) *ai.Response{
+		crmPlan(t), finishTask("plan"), crmBuild(t, ""),
+		types(`codeaf app plan data extra "Extra · name"`), finishTask("build"),
+	}
+	r := newLoopRig(t, script(steps...))
+	bad := bridge.CheckReport{Issues: []spec.Issue{{File: "runs/x.yaml", Rule: "behaviour/run", Message: "run failed"}}}
+	r.svc.all.Check = &seqChecks{reports: []bridge.CheckReport{{Pass: true}, {Pass: true}, {Pass: true}, bad, {Pass: true}}}
+	buildToPlan(t, r)
+	if err := r.svc.Write(context.Background(), r.scope()); err != nil {
+		t.Fatal(err)
+	}
+	r.waitState(t, bridge.StatePreview)
+	if got := r.road(t); got == roadLoop {
+		t.Errorf("road = %q: the preview followed a draft whose last check was not a pass", got)
+	}
+}
