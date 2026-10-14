@@ -188,6 +188,16 @@ func TestAChangeLaysOnlyWhatWasSentOverWhatIsSaved(t *testing.T) {
 		t.Fatalf("a new rhythm = %+v %+v (rescheduled %v, %q)", got.Schedule, got.Limits, rescheduled, problem)
 	}
 
+	// THE SAME `when` RE-SENT IS NO NEW SCHEDULE, even beside a field that does
+	// change: a finished watch told to stop telling once stays finished, because
+	// the save will not reschedule it either.
+	finished := watch
+	finished.Status = automation.StatusFinished
+	got, rescheduled, problem = change(finished, map[string]any{"when": map[string]any{"every": "0 * * * *"}, "look": map[string]any{"once": false}})
+	if problem != "" || rescheduled || got.Look.Once || automation.ScheduleChanged(finished.Schedule, got.Schedule) {
+		t.Fatalf("the same rhythm re-sent = %+v (rescheduled %v, %q)", got.Schedule, rescheduled, problem)
+	}
+
 	work := automation.Automation{ID: "k", Title: "tidy", Workspace: t.TempDir(), Worktree: true,
 		Schedule: automation.Schedule{Every: "1d"}, Action: automation.Action{Do: "tidy branches"}}
 	got, _, problem = change(work, map[string]any{"say": "time to tidy your branches"})
@@ -242,5 +252,96 @@ func TestAChangeNeedsAnAutomationAndSomebodyToSayYes(t *testing.T) {
 	}
 	if got, _ := store.Get(reminder.ID); got.Status != automation.StatusFinished {
 		t.Fatalf("a change nobody saw was saved: %+v", got)
+	}
+}
+
+// changeTurn is one turn in which the model sends one `change`, its card
+// answered by answer.
+func changeTurn(t *testing.T, store *automation.Store, body map[string]any, answer func(*Agent, Event)) []Event {
+	t.Helper()
+	body["op"] = "change"
+	completer := &scriptedCompleter{steps: []step{automationCall("a1", body), finalText("ok")}}
+	agent := automationAgent(t, completer, store, nil)
+	events, err := agent.Submit(context.Background(), "change it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return drainAnsweringAutomation(t, events, func(event Event) { answer(agent, event) })
+}
+
+func saveTheCard(agent *Agent, event Event) {
+	agent.ResolveAutomation(event.Automation.ID, AutomationAnswer{Save: true})
+}
+
+// A `when` RE-SENT AS IT WAS IS NOT A NEW SCHEDULE. Models send unchanged
+// fields beside the one that changed; the card has to promise the next run the
+// save keeps, and the grid an interval is anchored to must not move. A rhythm
+// saved with no zone — the machine's — is not given one by the re-send either.
+func TestReSendingTheSameWhenKeepsTheNextRun(t *testing.T) {
+	store := automationStoreFor(t)
+	made, err := store.Create(automation.Automation{Title: "stretch", Workspace: t.TempDir(),
+		Schedule: automation.Schedule{Every: "1h"}, Action: automation.Action{Say: "stand up"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, _ := store.Get(made.ID)
+	collected := changeTurn(t, store, map[string]any{"id": made.ID, "when": map[string]any{"every": "1h"}, "say": "stand up and stretch"}, saveTheCard)
+	if card, found := firstOfKind(collected, EventAutomationProposal); !found || !card.Automation.Next.Equal(stored.Next) {
+		t.Fatalf("the card promised %v, the automation next runs %v", card.Automation, stored.Next)
+	}
+	got, _ := store.Get(made.ID)
+	if got.Action.Say != "stand up and stretch" {
+		t.Fatalf("the change was not saved: %+v", got)
+	}
+	if !got.Next.Equal(stored.Next) || !got.Schedule.Anchor.Equal(stored.Schedule.Anchor) || got.Schedule.Zone != "" {
+		t.Fatalf("re-sending the same rhythm moved it: next %v anchor %v zone %q, was %v %v %q",
+			got.Next, got.Schedule.Anchor, got.Schedule.Zone, stored.Next, stored.Schedule.Anchor, stored.Schedule.Zone)
+	}
+}
+
+// AN AUTOMATION DELETED WHILE ITS CHANGE CARD IS UP IS NOT BROUGHT BACK.
+func TestAChangeToOneDeletedWhileItsCardIsUpSavesNothing(t *testing.T) {
+	store := automationStoreFor(t)
+	made, err := store.Create(automation.Automation{Title: "leave", Workspace: t.TempDir(),
+		Schedule: automation.Schedule{At: time.Now().Add(time.Hour)}, Action: automation.Action{Say: "time to leave"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := changeTurn(t, store, map[string]any{"id": made.ID, "say": "leave now"}, func(agent *Agent, event Event) {
+		if err := store.Delete(made.ID); err != nil {
+			t.Errorf("delete: %v", err)
+		}
+		saveTheCard(agent, event)
+	})
+	if output := toolOutput(t, collected, "automation"); !strings.Contains(output, "nothing was changed: it was deleted while the card was up") {
+		t.Fatalf("tool result = %q", output)
+	}
+	if all, _ := store.List(); len(all) != 0 {
+		t.Fatalf("a change brought back a deleted automation: %+v", all)
+	}
+}
+
+// A PAUSED AUTOMATION STAYS PAUSED THROUGH A CHANGE, and its card promises no
+// run, because a paused one does not run whatever its schedule says.
+func TestAPausedAutomationStaysPausedThroughAChange(t *testing.T) {
+	store := automationStoreFor(t)
+	made, err := store.Create(automation.Automation{Title: "weekly update", Workspace: t.TempDir(),
+		Schedule: automation.Schedule{Every: "0 9 * * 1", Zone: "UTC"}, Action: automation.Action{Do: "draft the weekly update"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetStatus(made.ID, automation.StatusPaused); err != nil {
+		t.Fatal(err)
+	}
+	collected := changeTurn(t, store, map[string]any{"id": made.ID, "when": map[string]any{"every": "0 9 * * 2"}}, saveTheCard)
+	if card, found := firstOfKind(collected, EventAutomationProposal); !found || !card.Automation.Next.IsZero() {
+		t.Fatalf("a paused automation's change card promised a run: %+v", card.Automation)
+	}
+	got, _ := store.Get(made.ID)
+	if got.Status != automation.StatusPaused || got.Schedule.Every != "0 9 * * 2" {
+		t.Fatalf("after the change it is %s on %q", got.Status, got.Schedule.Every)
+	}
+	if output := toolOutput(t, collected, "automation"); !strings.Contains(output, "it is still paused") {
+		t.Fatalf("tool result = %q", output)
 	}
 }

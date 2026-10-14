@@ -276,7 +276,13 @@ func automationBands(notice session.AutomationNotice) []string {
 		if when != "" {
 			when += " · "
 		}
-		when += "first run " + notice.Next.Local().Format("Mon 2 Jan 15:04")
+		// A CHANGE'S RUN IS ITS NEXT, NOT ITS FIRST: the automation already
+		// exists, and an id on the card is what says so ([session.AutomationHead]).
+		word := "first run "
+		if strings.TrimSpace(item.ID) != "" {
+			word = "next run "
+		}
+		when += word + notice.Next.Local().Format("Mon 2 Jan 15:04")
 	}
 	if when != "" {
 		bands = append(bands, when)

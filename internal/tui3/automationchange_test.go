@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -15,13 +16,19 @@ func TestAChangeTheModelAsksForDrawsTheEditsCard(t *testing.T) {
 	a, _ := automationLab(t, labWork("weekly update", "0 9 * * 1"))
 	item := a.watch.list[0]
 	item.Schedule.Every = "0 9 * * 2"
-	a.proposeAutomation(automationProposalOf(7, item, "every Tuesday at 09:00"))
+	proposal := automationProposalOf(7, item, "every Tuesday at 09:00")
+	proposal.Automation.Next = time.Now().Add(time.Hour)
+	a.proposeAutomation(proposal)
 	if a.auto == nil || a.auto.settled() {
 		t.Fatalf("the change raised no card: %+v", a.auto)
 	}
 	rows := AutomationCardRows(a, a.auto, 80, false)
 	if len(rows) == 0 || !strings.Contains(plain(rows[0]), typedEditHead) {
 		t.Fatalf("the change card's head is %q, want %q", plain(rows[0]), typedEditHead)
+	}
+	// AND ITS RUN IS ITS NEXT: the automation exists, so nothing about it is first.
+	if drawn := plain(strings.Join(rows, "\n")); !strings.Contains(drawn, "next run ") || strings.Contains(drawn, "first run ") {
+		t.Fatalf("the change card does not say its next run:\n%s", drawn)
 	}
 	question := a.automationShown(a.auto).question
 	if question.Head != typedEditHead {

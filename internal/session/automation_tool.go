@@ -484,15 +484,27 @@ func (a *Agent) automationChanged(stored automation.Automation, parsed automatio
 		item.Words, sent = words, true
 	}
 	// A NEW RHYTHM KEEPS THE ZONE THE OLD ONE WAS READ IN, as the typed `every`
-	// clause does; only an automation that never had one is given this
-	// conversation's.
-	schedule, rescheduled, problem := automationSchedule(parsed.When, firstNonEmptyString(stored.Schedule.Zone, a.automationZone()), now)
+	// clause does — an empty one too, which is the machine's zone and was chosen
+	// as such. Only a one-time automation, which has no rhythm to have read, is
+	// given this conversation's.
+	zone := stored.Schedule.Zone
+	if !stored.Schedule.Repeats() {
+		zone = firstNonEmptyString(zone, a.automationZone())
+	}
+	schedule, whenSent, problem := automationSchedule(parsed.When, zone, now)
 	if problem != "" {
 		return item, false, problem
 	}
+	// A `when` RE-SENT AS IT WAS IS NOT A NEW SCHEDULE. Models send unchanged
+	// fields beside the one that changed, and [automation.Store.Update] keeps
+	// the next run and the status unless [automation.ScheduleChanged] says
+	// otherwise — so the card has to ask the same question, or it promises a
+	// next run the save never gives.
+	rescheduled := whenSent && automation.ScheduleChanged(stored.Schedule, schedule)
 	if rescheduled {
-		item.Schedule, sent = schedule, true
+		item.Schedule = schedule
 	}
+	sent = sent || whenSent
 	// A line and work are one slot: sending either replaces what it says or
 	// does, and [automation.Automation.Validate] refuses both at once.
 	if say, do := strings.TrimSpace(parsed.Say), strings.TrimSpace(parsed.Do); say != "" || do != "" {
@@ -516,7 +528,7 @@ func (a *Agent) automationChanged(stored automation.Automation, parsed automatio
 		item.Limits, sent = limits, true
 	}
 	if !sent {
-		return item, false, "Invalid arguments: send only what changes — when, say, do, look, worktree or limits — beside the id"
+		return item, false, "Invalid arguments: send only what changes — title, words, when, say, do, look, worktree or limits — beside the id"
 	}
 	return item, rescheduled, ""
 }

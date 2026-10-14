@@ -257,7 +257,8 @@ late. A finished one offers no pause. The foot names the row's verbs:
 **Ask me.** "Move my water reminder to 5pm", "make the weekly update Tuesdays", "have the
 CI watch look every 30 minutes": I find it with the `automation` tool's `list` and change
 it in place with its `change` op, sending only what changes. Its card is headed
-`save this change?` and shows the automation as it would be: `1 Save` says
+`save this change?` and shows the automation as it would be, with `next run` where a new
+one says `first run`: `1 Save` says
 `The automation runs this way from its next time.`, `0 Don't save` says `Nothing is saved.`,
 and a correction typed under it goes back to me. Saved, it leaves one dim line —
 `drink water · changed` — and it keeps its id, its history, where it runs and the
