@@ -6,7 +6,8 @@ package tui3
 // is the model's own markdown. A model that opens with a fenced block — a diff,
 // a command's output, a JSON result — spends that row on the fence marker itself
 // unless the reading skips it, and `"```"` is the row saying nothing at all
-// (#889). These pin every road the reading can take.
+// (#889). The exhaustive table of that reading lives in internal/reportline;
+// these pin that the card is wired to it.
 
 import (
 	"strings"
@@ -14,37 +15,10 @@ import (
 	"time"
 )
 
-// THE FIRST PROSE LINE, OVER THE TABLE. A leading fence is skipped whether a
-// language word follows it or not, blank lines are skipped, a report that is
-// nothing but a fence quotes the first line inside it, and a report with no
-// prose at all returns nothing — which is the emptiness law's case, not this
-// reader's.
-func TestFirstProseLineSkipsFencesBlankLinesAndWrappers(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		report string
-		want   string
-	}{
-		{"a report that opens with prose", "the seven files are written and the suite passes", "the seven files are written and the suite passes"},
-		{"a leading fence is skipped", "```\nthe seven files are written and the suite passes\n```", "the seven files are written and the suite passes"},
-		{"a fence's language word is skipped too", "```go\npackage main\n```\nthe suite passes", "package main"},
-		{"a tilde fence is skipped too", "~~~\nthe suite passes\n~~~", "the suite passes"},
-		{"a leading blank line is skipped", "\n\nthe suite passes", "the suite passes"},
-		{"blank lines inside a fence are skipped", "```\n\nthe suite passes\n```", "the suite passes"},
-		{"a report that is nothing but a fence quotes its first line", "```\n7 files changed, 15 insertions(+)\n```", "7 files changed, 15 insertions(+)"},
-		{"a closed fence with nothing inside falls on", "```\n```\nthe suite passes", "the suite passes"},
-		{"an unclosed fence with nothing yet inside falls on", "```go\n\nthe suite passes", "the suite passes"},
-		{"an indented fence marker is still a fence", "  ```\nthe suite passes", "the suite passes"},
-		{"a marker is skipped wherever it stands, not only in front", "```\n```\n```diff\n- old\n+ new\n```", "- old"},
-		{"an empty report says nothing", "", ""},
-		{"a report of blank lines says nothing", "\n \n", ""},
-		{"a report of fence markers alone says nothing", "```\n", ""},
-	} {
-		if got := firstProseLine(tc.report); got != tc.want {
-			t.Errorf("%s: firstProseLine(%q) = %q, want %q", tc.name, tc.report, got, tc.want)
-		}
-	}
-}
+// THE FIRST PROSE LINE'S RULE — a leading fence is skipped, blank lines are
+// skipped, a fence-only report quotes the line inside it, an empty report says
+// nothing — is pinned once in internal/reportline, which firstProseLine now wraps.
+// The two cards below prove the surface is wired to that reading.
 
 // A DONE CARD SKIPS A FENCE AND QUOTES THE FIRST PROSE LINE, which is #889
 // whole: a quick task lands with a fenced block in front of its answer and the
