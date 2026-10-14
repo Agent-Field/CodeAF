@@ -744,6 +744,14 @@ rule.
 
   </details>
 
+- **concurrent provider-memo saves preserve every learned fact at restart** — [#1824](https://github.com/Agent-Field/codeaf/pull/1824) · `engine` `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Atomic provider-memo replacement kept valid JSON but could let an older in-process snapshot overwrite a newer learned fact. Saves now serialize from before snapshot through replacement, while requests still persist asynchronously; separate processes do not merge their caches.
+
+  </details>
+
 
 ### Internal
 
@@ -755,6 +763,21 @@ rule.
 
   </details>
 
+- **CHANGELOG.md gains its v0.8.0 section ahead of staging promotion** — [#1821](https://github.com/Agent-Field/codeaf/pull/1821) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The 32 accumulated entries through #1822 were available as loose files under docs/changes/unreleased/. CHANGELOG.md now carries their headlines, invalidations and explanations in its v0.8.0 section, and that folder holds only what lands next.
+
+  </details>
+
+- **provider restart fixtures drain learned-memo writers before resetting memory** — [#1823](https://github.com/Agent-Field/codeaf/pull/1823) · `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The restart fixtures forced a synchronous save but left a scheduled save running while they discarded process memory. They now drain the owned writer before resetting memory and reloading the memo, preserving the original startup and request-count assertions.
+
+  </details>
 
 ## v0.7.1 — 2026-10-05
 
