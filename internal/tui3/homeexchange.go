@@ -123,6 +123,14 @@ const (
 	// the foot that writes it, and home's [withChords], which puts the draft's
 	// chords in front of a foot's way out rather than behind it.
 	exchangeBackWord = "tab or esc back to the list"
+	// homeAskRestWord is what the pane's box says with nothing typed into it,
+	// where home's own box says [placeRestWord]. Typing there writes a follow-up
+	// to this errand; nothing is searched and nothing new is started.
+	homeAskRestWord = "type a follow-up"
+	// homeAskChangeRestWord is the same box once the card's correction key has
+	// armed it: what is typed now is the change the card is answered with, not
+	// a follow-up ([homeExchange.changing]).
+	homeAskChangeRestWord = "type the change"
 )
 
 // What an exchange's ROW says it is doing, and what the pane says while a turn
@@ -2221,4 +2229,20 @@ func exchangeHint(ex *homeExchange) string {
 	// whole screen, the foot kept `/ commands` and never said how to leave.
 	parts = append(parts, exchangeBackWord)
 	return strings.Join(parts, " · ")
+}
+
+// exchangeRestWord is what the pane's box says with nothing typed in it: a
+// follow-up, or — once the card's correction key has armed it — the change the
+// card is answered with. It is the box's half of [exchangeHint], drawn by both
+// frames that draw this box: the foot under a stacked or side-by-side pane
+// ([app.placeRestWord]) and the phone's sheet ([app.homeErrandSheet]).
+//
+// IT USED TO BE HOME'S OWN SENTENCE, `type to search or start something new`,
+// drawn over a box that does neither. The foot draws whichever box has the
+// keyboard ([placeHome.box]), and asked home for its words whatever box it was.
+func exchangeRestWord(ex *homeExchange) string {
+	if ex.changing {
+		return homeAskChangeRestWord
+	}
+	return homeAskRestWord
 }

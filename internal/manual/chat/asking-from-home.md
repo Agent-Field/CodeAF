@@ -198,7 +198,7 @@ column exactly as they do with no exchange on screen, and `enter` opens the row 
 cursor. **The pane follows the cursor** — walk off the exchange and the row you land on
 draws its own card again, where the frame is wide enough to have one.
 
-## What the line under the ask here pane says — the answers, a follow-up and the way back
+## What the line under the ask here pane says — the box, the answers, a follow-up and the way back
 
 While the pane has the keyboard the hint reads `enter sends a follow-up · tab or esc back to
 the list`, with the card's own answers in front of it when a card is up and
@@ -206,6 +206,12 @@ the list`, with the card's own answers in front of it when a card is up and
 `/ commands` is not on it: a `/` typed in the pane starts a follow-up and opens no list.
 `tab or esc back to the list` is always the last clause, and on a narrow window it is the
 one that stays (*Ask here on a narrow window*, below).
+
+**The box above that line says what typing there does**: `› type a follow-up`, and
+`› type the change` once `o` on a card has asked for a correction. Home's own
+`› type to search or start something new` belongs to home's box and comes back the moment the
+list has the keyboard. The pane's box used to wear home's sentence, which promised a search
+and a new conversation that typing in the pane does not do.
 
 **The answers in that line are the ones the card actually drew, and never one more.** A
 card that offers all three reads
@@ -247,6 +253,19 @@ gives it the keyboard. Everything answers the same keys it answers on a wide fra
 Resizing between the two shapes costs nothing: it is the same exchange and the same
 keyboard, drawn in whichever geometry fits. Drag a window narrow with the pane open and the
 pane fills the frame; drag it wide again and it goes back beside the list.
+
+## Ask here on a phone-width window — the errand is a sheet
+
+Under 60 columns, where home is an inbox, the stacked pane is a **sheet** over the whole
+frame: `‹ back` on the top row, the exchange under it, its box, and `‹ back · send · more`
+as the bar. **The sheet is up whenever the pane has the keyboard**, so `ask here` opens
+straight into it, and so does anything else that hands the pane the keyboard — its chord,
+`enter` or `→` on the errand's row. `tab` or `esc` puts the inbox back, with the errand's
+row still on it and anything half-typed still in its box.
+
+It used to open on `enter` alone. `ask here` on a phone-width window left the inbox drawn
+while the keys went into the pane's box, so what you typed appeared nowhere, under a box
+that still said `type to search or start something new`.
 
 ## Why can't I click a row while asking — you can, and it opens it
 
@@ -312,10 +331,10 @@ the pane with your own words, when it would wake, and what it would cost per run
 created until you answer it:
 
 - `1` — yes. It stands as proposed, and the keyboard goes back to the list.
-- `c` — change it. The pane says `type the change and press enter`; write the correction in
-  your own words ("make it 8pm", "every weekday") and the model proposes again. Nothing is
-  created by a change. (This was `2` before the card's answers moved onto the question every
-  screen here draws; `c` is that question's own key for "not as it stands".)
+- `o` — change it. The pane says `type the change and press enter` and its box
+  `type the change`; write the correction in your own words ("make it 8pm", "every
+  weekday") and the model proposes again. Nothing is created by a change. (It was `2`,
+  and this page called it `c` long after the key became `o`.)
 - `3`. Once. The action runs now and nothing standing is created. On a repeating
   check the button reads `Only now, don't repeat`. **Not every card offers it**: a
   one-off reminder draws no once chip, because doing "remind me at six" now says the

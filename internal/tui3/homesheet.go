@@ -119,21 +119,30 @@ type homeSheet struct {
 // homeSheetShowing reports whether the sheet is on the frame RIGHT NOW, which
 // is what every router below asks.
 //
-// It is the open flag AND the tier AND — for an errand — the keyboard, for
+// It is the tier AND the open flag — or, for an errand, the keyboard — for
 // [app.expandShowing]'s reason: a terminal dragged wider while the sheet is up
 // has stopped being the tier this sheet exists for, and the card is beside the
 // list from that moment exactly as it would have been had it been opened there.
 func (a *app) homeSheetShowing() bool {
-	if !a.home.sheet.open || !a.homePhone() {
+	if !a.homePhone() {
 		return false
 	}
 	if ex, ok := a.homeSheetErrand(); ok {
-		// AN ERRAND'S SHEET IS ITS FOCUS. `tab` and `esc` hand the keyboard back
-		// to the list from inside the pane (homeexchange.go), and that IS the way
-		// out of this sheet — one gesture, not two flags to keep in step.
+		// AN ERRAND'S SHEET IS ITS FOCUS, BOTH WAYS. `tab` and `esc` hand the
+		// keyboard back to the list from inside the pane (homeexchange.go), and
+		// that IS the way out of this sheet — one gesture, not two flags to keep
+		// in step. The way in is the same fact: whatever handed the pane the
+		// keyboard raised the sheet.
+		//
+		// IT USED TO NEED THE OPEN FLAG AS WELL, which only `enter` on the row
+		// set. `ask here`, its chord and `→` on the row all hand the pane the
+		// keyboard without it, so at this tier they put the keys in a box the
+		// inbox does not draw: letters typed went nowhere a person could see,
+		// under a box still saying home's `type to search or start something
+		// new`.
 		return ex.focused
 	}
-	return true
+	return a.home.sheet.open
 }
 
 // homeSheetErrand is the exchange the sheet is about, when it is about one.
@@ -590,7 +599,14 @@ func (a *app) homeErrandSheet(width, height int) ([]string, []int, int, int) {
 
 	add(pal.dim(rule(width)), -1, homeSheetHit{})
 	text := ex.box.String()
-	add(" "+pal.muted("› ")+pal.ink(fit(text, width-4)), -1, homeSheetHit{})
+	box := pal.ink(fit(text, width-4))
+	if len(ex.box.value) == 0 {
+		// AT REST THE SHEET'S BOX SAYS WHAT TYPING THERE DOES, as the box under
+		// a stacked pane does ([app.placeRestWord]), with the caret on its
+		// first letter — the same box, at the tier with the least room.
+		box = pal.dim(fit(exchangeRestWord(ex), width-4))
+	}
+	add(" "+pal.muted("› ")+box, -1, homeSheetHit{})
 	caretX, caretY := 3+ansi.StringWidth(text), len(lines)-1
 	if caretX > width-1 {
 		caretX = width - 1

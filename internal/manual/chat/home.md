@@ -2417,6 +2417,11 @@ Keys on the sheet:
 | `→` or `m` | open everything behind `▸ more` |
 | `→` then `p` / `s`, or `ctrl+e` / `ctrl+x` | on a standing item: pause it, stop it |
 
+An `ask here` errand's row opens a sheet too — the exchange and its box — and it also opens
+by itself whenever the errand takes the keyboard: `ask here`, its chord, `→` on the row. Its
+keys are the pane's own: `tab` or `esc` back to the inbox, and `enter` sends what you typed
+(*Asking from home*).
+
 A standing item's sheet carries your words, where it is, when it goes off, what it has
 done, `4 runs · spent $0.08`, `ran 3 times this week · $0.04`, and how hard it thinks when
 you have said. A frame too short for all the bands **drops them from the bottom** — never

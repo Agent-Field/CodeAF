@@ -1626,7 +1626,17 @@ func boxFloor(height int) int {
 // placeRestWord is what home's box row says with nothing typed in it — the
 // design's own sentence (SCREEN 2b). It is home's alone now: no other place
 // draws a box ([place.box]).
-func (a *app) placeRestWord() string { return "› " + placeRestWord }
+//
+// AND AN ERRAND'S PANE SAYS ITS OWN. While the pane holds the keyboard the box
+// at the foot is the pane's ([placeHome.box]), and typing there writes a
+// follow-up — so home's sentence over it promised a search and a new start the
+// box under the keys does not do ([exchangeRestWord]).
+func (a *app) placeRestWord() string {
+	if ex := a.paneExchange(); ex != nil && ex.focused {
+		return "› " + exchangeRestWord(ex)
+	}
+	return "› " + placeRestWord
+}
 
 // placeHintSaid is the line under the composer, IN THE ONE SPELLING EVERY
 // CONSTANT ON THIS SURFACE IS AUTHORED IN. Home writes its own sentence for

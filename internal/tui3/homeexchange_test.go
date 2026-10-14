@@ -1798,3 +1798,68 @@ func TestThePaneKeepsItsWayBackAtEveryWidth(t *testing.T) {
 		t.Fatalf("at sixty columns the pane's foot with chords on it reads %q, without the way back", fitted)
 	}
 }
+
+// TestThePanesBoxSaysWhatTypingThereDoes pins the sentence the box rests on
+// while the errand's pane holds the keyboard.
+//
+// IT SAID HOME'S OWN `type to search or start something new`, over a box that
+// does neither: the foot draws whichever box has the keyboard ([placeHome.box])
+// and asked home for its words whatever box that was. Typing there writes a
+// follow-up — or, once the card's correction key is pressed, the change the
+// card is answered with — so that is what it says now, and home's sentence
+// comes back the moment the list has the keyboard again.
+func TestThePanesBoxSaysWhatTypingThereDoes(t *testing.T) {
+	for _, width := range []int{60, 140} {
+		lab := newErrandLab(t)
+		mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+		a := lab.app(mine, []session.Event{
+			text(session.EventTextDelta, "Here is what I will do."),
+			standingProposal(7, "remind me at 6 to leave"),
+			{Kind: session.EventTurnDone},
+		})
+		a.width, a.height = width, 30
+		a.openHome()
+		typeHome(a, "remind me at 6 to leave")
+		drive(t, a, key("up"), key("enter"))
+		ex := theExchange(a)
+		if ex == nil || !ex.focused || !ex.asking() {
+			t.Fatalf("at %d columns the pane never held the keyboard with a card up", width)
+		}
+		// THE BOX'S ROW IS THE ONE THAT OPENS WITH `› `, which is how a sentence
+		// in the box is told apart from the same words in the hint under it.
+		rests := func(want string) {
+			t.Helper()
+			frame := homeText(a)
+			if !strings.Contains(frame, "› "+want) {
+				t.Fatalf("at %d columns the box does not rest on %q:\n%s", width, want, frame)
+			}
+			for _, other := range []string{placeRestWord, homeAskRestWord, homeAskChangeRestWord} {
+				if other != want && strings.Contains(frame, "› "+other) {
+					t.Fatalf("at %d columns the box says %q where it should say %q:\n%s", width, other, want, frame)
+				}
+			}
+		}
+		rests(homeAskRestWord)
+
+		// THE CORRECTION KEY CHANGES WHAT THE BOX IS FOR, and the box says so.
+		drive(t, a, key(questionCommentKey))
+		if !ex.changing {
+			t.Fatalf("%s on the card did not arm the correction", questionCommentKey)
+		}
+		rests(homeAskChangeRestWord)
+		drive(t, a, key("x"))
+		if frame := homeText(a); !strings.Contains(frame, "› x") || strings.Contains(frame, "› "+homeAskChangeRestWord) {
+			t.Fatalf("at %d columns the letter typed is not in the box:\n%s", width, frame)
+		}
+
+		// esc CLEARS WHAT WAS TYPED AND THE SENTENCE COMES BACK; esc again gives
+		// the list the keyboard, and home's own sentence comes back with it.
+		drive(t, a, key("esc"))
+		rests(homeAskChangeRestWord)
+		drive(t, a, key("esc"))
+		if ex.focused {
+			t.Fatalf("at %d columns the second esc left the keyboard in the pane", width)
+		}
+		rests(placeRestWord)
+	}
+}

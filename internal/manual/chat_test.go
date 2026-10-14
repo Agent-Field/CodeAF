@@ -2538,6 +2538,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does alt+enter ask here", "asking-from-home"},
 		{"why does tab leave home from an ask here row", "keys"},
 		{"how do I leave the ask here pane on a narrow window", "asking-from-home"},
+		// And the box under the pane, which wore home's own sentence, and on a
+		// phone-width window was not drawn at all while it had the keyboard.
+		{"why does the ask here box say type a follow-up", "asking-from-home"},
+		{"I typed in ask here on my phone and nothing showed up", "asking-from-home"},
+		{"ask here on a phone", "asking-from-home"},
 		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
 		{"why is there no once on my reminder card", "keeping-an-eye"},
 		// The e2e suite found the firing that reached a conversation and was

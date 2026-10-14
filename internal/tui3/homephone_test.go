@@ -609,7 +609,9 @@ func TestAnErrandOnAPhoneIsTheSameSheet(t *testing.T) {
 	if ex == nil {
 		t.Fatal("ask here made no errand")
 	}
-	a.home.sheet = homeSheet{open: true}
+	// NOTHING RAISES THE SHEET BY HAND. This test used to set the open flag
+	// itself, which hid that `ask here` at this tier never did (homesheet.go's
+	// [app.homeSheetShowing]): the pane having the keyboard IS the sheet.
 	if !a.homeSheetShowing() {
 		t.Fatal("the errand is not showing as a sheet")
 	}
@@ -624,6 +626,53 @@ func TestAnErrandOnAPhoneIsTheSameSheet(t *testing.T) {
 	drive(t, a, key("tab"))
 	if a.homeSheetShowing() {
 		t.Fatal("tab did not put the list back")
+	}
+}
+
+// THE SHEET'S BOX IS THE BOX THE KEYS GO TO, AND IT SAYS WHAT TYPING THERE
+// DOES. At this tier the sheet used to be raised by `enter` on the row alone, so
+// `ask here` — and its chord, and `→` on the row — handed the pane the keyboard
+// with the inbox still drawn: what was typed went into a box nobody could see,
+// under home's own `type to search or start something new`.
+func TestAskHereOnAPhoneTypesIntoTheSheetItRaised(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+	a := lab.app(mine, []session.Event{
+		text(session.EventTextDelta, "I will remind you at 6."),
+		{Kind: session.EventTurnDone},
+	})
+	a.width, a.height = phoneWidth, 30
+	a.openHome()
+	typeHome(a, "remind me at 6")
+	drive(t, a, key("up"), key("enter"))
+	ex := theExchange(a)
+	if ex == nil || !ex.focused {
+		t.Fatal("ask here on a phone did not hand the pane the keyboard")
+	}
+	screen := func() string { return strings.Join(phoneRows(a), "\n") }
+	if !a.homeSheetShowing() {
+		t.Fatalf("ask here on a phone left the inbox up:\n%s", screen())
+	}
+	if got := screen(); !strings.Contains(got, "› "+homeAskRestWord) || strings.Contains(got, placeRestWord) {
+		t.Fatalf("the sheet's box should rest on %q:\n%s", homeAskRestWord, got)
+	}
+	drive(t, a, key("x"))
+	if got := screen(); !strings.Contains(got, "› x") {
+		t.Fatalf("the letter typed is not on the screen:\n%s", got)
+	}
+	// AND OUT AND BACK IN: tab gives the list the keyboard and puts the inbox
+	// back, and → on the errand's row raises the sheet again with the
+	// half-typed follow-up still in its box.
+	drive(t, a, key("tab"))
+	if ex.focused || a.homeSheetShowing() {
+		t.Fatalf("tab did not put the inbox back:\n%s", screen())
+	}
+	drive(t, a, key("right"))
+	if !ex.focused || !a.homeSheetShowing() {
+		t.Fatalf("→ on the errand's row did not raise its sheet:\n%s", screen())
+	}
+	if got := screen(); !strings.Contains(got, "› x") {
+		t.Fatalf("the half-typed follow-up is gone from the sheet's box:\n%s", got)
 	}
 }
 
