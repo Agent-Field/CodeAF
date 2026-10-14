@@ -17,7 +17,7 @@ import (
 var tasksWidths = []int{60, 80, 120, 200}
 
 func tasksFixture() (session.World, session.UsageWindow, time.Time) {
-	loc := time.FixedZone("fixture", -4*60*60)
+	loc := time.Local // #1808: the window buckets in local time, so a fixed foreign offset would shift the dates by $TZ
 	now := time.Date(2026, time.August, 25, 13, 11, 0, 0, loc)
 	at := func(day, hour int) time.Time { return time.Date(2026, time.August, day, hour, 0, 0, 0, loc) }
 	entry := func(id, label, status string, ended time.Time, cost float64) session.TaskIndexEntry {
@@ -381,7 +381,7 @@ func TestTasksChangedSinceCountsOnlyLandedWorkAfterTheLook(t *testing.T) {
 // that landed today with three workers under it, and a second root beside it
 // that is nobody's family.
 func tasksFamilyFixture() (session.World, session.UsageWindow, time.Time) {
-	loc := time.FixedZone("fixture", -4*60*60)
+	loc := time.Local // #1808: the window buckets in local time, so a fixed foreign offset would shift the dates by $TZ
 	now := time.Date(2026, time.August, 25, 13, 11, 0, 0, loc)
 	at := func(hour int) time.Time { return time.Date(2026, time.August, 25, hour, 0, 0, 0, loc) }
 	row := session.SessionRow{ID: "room-a", Title: "The Split", Project: "codeaf", Open: true}
@@ -573,7 +573,7 @@ func TestVisibleChildrenKeepTheirOwnSectionsWhenTheRootIsAbsent(t *testing.T) {
 // detail beside each — and arriving OUT of time order, which is what the world
 // scan hands this place.
 func tasksPolishFixture() (session.World, session.UsageWindow, time.Time) {
-	loc := time.FixedZone("fixture", -4*60*60)
+	loc := time.Local // #1808: the window buckets in local time, so a fixed foreign offset would shift the dates by $TZ
 	now := time.Date(2026, time.September, 2, 23, 3, 0, 0, loc)
 	done := func(id, label, outcome string, files int, cost float64, ago time.Duration) session.TaskIndexEntry {
 		return session.TaskIndexEntry{
@@ -956,7 +956,7 @@ func TestTheTaskPageNamesTheConversationItCameOutOf(t *testing.T) {
 // [homeName], whose title case has raised the id's first letter), so the
 // composer keys on the trimmed title equal to the row's own id, folded.
 func TestAConversationWithNoTitleIsCalledTheWordNotItsId(t *testing.T) {
-	loc := time.FixedZone("fixture", -4*60*60)
+	loc := time.Local // #1808: the window buckets in local time, so a fixed foreign offset would shift the dates by $TZ
 	now := time.Date(2026, time.September, 11, 14, 25, 0, 0, loc)
 	id := "de9ea39e6f4c18c3"
 	transcript := "/private/tmp/htw/codeaf/" + id + "/transcript.jsonl"

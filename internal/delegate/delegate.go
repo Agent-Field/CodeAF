@@ -177,6 +177,10 @@ type Delegate struct {
 	// profile's work seat on the line when they typed nothing. Empty is a
 	// program that takes no model.
 	ModelFlag string
+	// AuxiliaryModelFlags names other model flags the shell resolves through
+	// the same profile. Only an explicitly written value is replaced; these
+	// flags do not choose the run's default work seat.
+	AuxiliaryModelFlags []string
 	// CrewFlags is the flags the default command takes to use the models of
 	// the conversation's crew ([Crew]), which codeaf puts on the line of every
 	// run it starts from a conversation. Nil is a program that picks its own
@@ -375,6 +379,12 @@ func (d Delegate) validateLineFlags() error {
 	}
 	if flag := strings.TrimSpace(d.ModelFlag); flag != "" && !parses([]string{"--" + flag, "vendor/model"}) {
 		return fmt.Errorf("%s: the model flag --%s is not a flag its %s command takes", d.Name, flag, command.Name)
+	}
+	for _, declared := range d.AuxiliaryModelFlags {
+		flag := strings.TrimSpace(declared)
+		if flag == "" || !parses([]string{"--" + flag, "vendor/model"}) {
+			return fmt.Errorf("%s: the auxiliary model flag --%s is not a flag its %s command takes", d.Name, flag, command.Name)
+		}
 	}
 	if len(d.PlainFolder) > 0 && !parses(d.PlainFolder) {
 		return fmt.Errorf("%s: the plain folder flags %q are not flags its %s command takes", d.Name, strings.Join(d.PlainFolder, " "), command.Name)

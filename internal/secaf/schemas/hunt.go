@@ -330,6 +330,9 @@ type HuntResult struct {
 	ChainCount          int              `json:"chain_count"`
 	StrategiesRun       []string         `json:"strategies_run"`
 	HuntDurationSeconds float64          `json:"hunt_duration_seconds"`
+	// Coverage is measured by codeaf's phase. Complete hunts omit this optional
+	// extension, preserving the original model's wire shape and goldens.
+	Coverage *HuntCoverage `json:"hunt_coverage,omitempty"`
 }
 
 // DeduplicatedResult is the dedup lane output before PROVE prioritization

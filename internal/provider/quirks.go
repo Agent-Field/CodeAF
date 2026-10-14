@@ -40,6 +40,10 @@ const quirksFile = "model-quirks.json"
 type quirksStore struct {
 	mutex sync.Mutex
 	path  string
+	// saveMutex orders each snapshot with its replacement on disk. Without
+	// it, an older snapshot can finish after a newer one and erase a fact
+	// already saved by this process. Readers never take this writer lock.
+	saveMutex sync.Mutex
 	// mandatory is the learned set, keyed by normalized model.
 	mandatory map[string]time.Time
 	// disableIgnored is the answer-side twin of mandatory: models whose endpoint
@@ -484,6 +488,10 @@ func (q *quirksStore) settle() { q.writes.Wait() }
 // fact, and a failure is silent: a cache that could not be written is a cache
 // that will be rebuilt, not an error the run should carry.
 func (q *quirksStore) save() {
+	// Take the writer lock before snapshotting, not only before renaming: a
+	// snapshot copied while another writer owns the file can already be stale.
+	q.saveMutex.Lock()
+	defer q.saveMutex.Unlock()
 	path, wire := q.snapshot()
 	if path == "" {
 		return

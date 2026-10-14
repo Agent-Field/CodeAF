@@ -122,9 +122,9 @@ capture() {
 }
 
 # capture_settings <state> <cols> \u2014 the REAL /settings page with the real
-# `auto update` row, reached the way a person reaches it: the command, the
-# arrow keys that walk the tabs to Workspace, and the down key that walks the
-# cursor onto the row. The row is confirmed selected by its OWN hint being on
+# `automatic updates` row, reached the way a person reaches it: the command
+# opens General, and the down key walks the cursor onto the row.
+# The row is confirmed selected by its OWN hint being on
 # screen, not by the label merely existing somewhere in the frame.
 capture_settings() {
   local state="$1" cols="$2"
@@ -136,14 +136,8 @@ capture_settings() {
   tmux -L "$SOCK" send-keys -t "$session" -l "/settings"
   tmux -L "$SOCK" send-keys -t "$session" Enter
   sleep 2
-  # THE WORKSPACE TAB, BY THE PANEL'S OWN ARROW KEY: Session, Context,
-  # Workspace. The panel's type-to-search is deliberately NOT used here — it
-  # ranks fuzzy matches from every tab, so the row under the cursor is usually
-  # the wrong one and the sentence drawn under it explains somebody else's
-  # setting.
-  tmux -L "$SOCK" send-keys -t "$session" Right
-  tmux -L "$SOCK" send-keys -t "$session" Right
-  sleep 2
+  # GENERAL IS THE INITIAL CATEGORY. Walking right would leave the category
+  # that owns automatic updates; walk its rows directly instead.
   local landed=""
   for _ in $(seq 1 24); do
     # THE ROW'S OWN HINT IS THE PROOF THE CURSOR IS ON IT: the sheet draws the
@@ -171,12 +165,12 @@ capture_settings() {
     cat "$file" >&2
     exit 1
   }
-  grep -q "auto update" "$file" || {
+  grep -q "automatic updates" "$file" || {
     echo "the settings capture at ${cols}c did not draw the auto update row:" >&2
     cat "$file" >&2
     exit 1
   }
-  grep -q "auto update.*$state" "$file" || {
+  grep -q "automatic updates.*$state" "$file" || {
     echo "the settings capture at ${cols}c did not read $state:" >&2
     cat "$file" >&2
     exit 1

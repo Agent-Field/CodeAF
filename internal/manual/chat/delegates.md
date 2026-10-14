@@ -168,7 +168,9 @@ An open chat's `/budget conversation` change binds its next proposal, run and tu
 as soon as the setting receipt appears.
 Before forwarding a call, codeaf reserves the larger estimate from the requested model
 and its possible fallback seat when both have known prices, using input size and output
-cap; if either price is unknown, it uses the unpriced bound. It refuses a call whose
+cap. A shell model's connection prefix and thinking level do not change its
+published price on that service; another service never borrows OpenRouter's price.
+If either price is unknown, it uses the unpriced bound. It refuses a call whose
 estimate would cross the ceiling, and a call that would fit once calls already in flight have
 ended (a program that makes many calls at once, as sec does) is asked to wait for
 them instead and goes on when one ends. An

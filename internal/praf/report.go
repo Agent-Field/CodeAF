@@ -40,7 +40,22 @@ type Saved struct {
 	PullRequest SavedPullRequest     `json:"pull_request"`
 	Focus       string               `json:"focus,omitempty"`
 	Review      schemas.ReviewResult `json:"review"`
+	Coverage    *ReportCoverage      `json:"coverage,omitempty"`
 }
+
+// Coverage is separate from execution status: an assembled partial review can
+// end successfully, but a saved or posted report must keep its missing work.
+type ReportCoverage struct {
+	Complete           bool   `json:"complete"`
+	FailedSessions     int    `json:"failed_sessions"`
+	FailedCalls        int    `json:"failed_calls"`
+	DegradedDimensions int    `json:"degraded_dimensions"`
+	BudgetExhausted    bool   `json:"budget_exhausted"`
+	StoppedAt          string `json:"stopped_at,omitempty"`
+	Note               string `json:"note,omitempty"`
+}
+
+const partialWarning = "**Partial review.**"
 
 // SavedPullRequest is the pull request a saved review is of.
 type SavedPullRequest struct {
@@ -69,6 +84,7 @@ type runFacts struct {
 	cutAt    string
 	wall     string
 	failNote string
+	partial  bool
 }
 
 // writeReport writes the full report into folder and answers the paths it
@@ -149,6 +165,9 @@ func account(review schemas.ReviewResult, run runFacts, files []string) string {
 // review found in counts, blocking first.
 func outcomeLine(review schemas.ReviewResult, run runFacts) string {
 	what := "Review of " + run.target.String()
+	if run.partial {
+		what = "Partial review of " + run.target.String()
+	}
 	if title := oneLine(run.title); title != "" {
 		what += " (" + title + ")"
 	}

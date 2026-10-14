@@ -75,18 +75,33 @@ func GenerateSarifAs(result schemas.SecurityAuditResult, tool SarifTool) string 
 		results = append(results, buildResult(finding, tool.PropertyPrefix))
 	}
 
+	run := obj{
+		{"tool", buildToolSection(included, tool)},
+		{"results", results},
+		{"automationDetails", obj{{"id", fmt.Sprintf("%s/audit/%s/%s", tool.PropertyPrefix, result.Repository, result.Timestamp.String())}}},
+	}
+	coverage := schemas.Coverage(result.Metadata)
+	interruption := schemas.Interruption(result.Metadata)
+	if coverage.Incomplete() || interruption != "" {
+		message := "Security analysis incomplete: " + interruption
+		if coverage.Incomplete() {
+			message = "Security analysis incomplete: " + coverage.Description() + "."
+			if interruption != "" {
+				message += " " + interruption
+			}
+		}
+		run = append(run, kv{"invocations", []any{obj{
+			{"executionSuccessful", false},
+			{"toolExecutionNotifications", []any{obj{
+				{"level", "error"},
+				{"message", obj{{"text", message}}},
+			}}},
+		}}})
+	}
 	sarif := obj{
 		{"$schema", "https://json.schemastore.org/sarif-2.1.0.json"},
 		{"version", "2.1.0"},
-		{"runs", []any{
-			obj{
-				{"tool", buildToolSection(included, tool)},
-				{"results", results},
-				{"automationDetails", obj{
-					{"id", fmt.Sprintf("%s/audit/%s/%s", tool.PropertyPrefix, result.Repository, result.Timestamp.String())},
-				}},
-			},
-		}},
+		{"runs", []any{run}},
 	}
 	return dumpsIndent(sarif, 2)
 }
