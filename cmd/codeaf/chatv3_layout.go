@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -403,6 +404,8 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 			cfg.Workspace = workspace
 		}
 		cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
+		cfg.MemoryProjectName = gitidentity.ProjectName(cfg.Workspace)
+		cfg.MemoryProjectName = gitidentity.ProjectName(cfg.Workspace)
 		return cfg, nil
 	}
 	if err := prepareOwnedWorkspace(place); err != nil {

@@ -1035,7 +1035,8 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 		// owner a memory really belongs to. Empty (an error, or a workspace
 		// that could not be resolved) quarantines project writes rather than
 		// guessing.
-		MemoryProjectKey: v3ProjectKey(workspace),
+		MemoryProjectKey:  v3ProjectKey(workspace),
+		MemoryProjectName: gitidentity.ProjectName(workspace),
 		// AND THE SKILL SHELF, which is the line above when memory is on and a
 		// shelf of the skill folders alone when it is off ([v3SkillShelf]):
 		// the skills a person installed for another harness are not memory,
@@ -2149,13 +2150,17 @@ func v3ProjectKey(workspace string) string {
 	return key
 }
 
+// v3Memory opens the memory store, WHATEVER THE MEMORY ROW SAYS. The row
+// governs only what the noticing pass keeps on the person's behalf, and it is
+// read live by the conversation (internal/session's memory.go): lines the
+// person kept hold whether it is on or off, the memory place can read and
+// change them either way, and a long-lived engine follows a change to the row
+// without being restarted. A store that will not open is the one way memory is
+// absent, and that is said on stderr.
 func v3Memory(profileDir string) *store.Store {
-	if !config.MemoryEnabledAt(profileDir) {
-		return nil
-	}
 	brain, err := store.Open(defaultChatDB())
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "memory is off for this session: "+err.Error())
+		fmt.Fprintln(os.Stderr, "memory is unavailable in this session: "+err.Error())
 		return nil
 	}
 	return brain
@@ -2172,10 +2177,10 @@ func v3Memory(profileDir string) *store.Store {
 // mean nothing there. Two vocabularies, one join, written down here where the
 // door already owns every other translation between the two packages.
 //
-// A NIL STORE STAYS NIL THROUGH IT. Memory off means no store, and a typed nil
-// inside a non-nil interface would turn "the place is absent" into "the place
-// panics the first time somebody presses alt+4" — the classic shape of that
-// bug, refused here rather than guarded against in the surface.
+// A NIL STORE STAYS NIL THROUGH IT. A store that would not open is no store,
+// and a typed nil inside a non-nil interface would turn "the place is absent"
+// into "the place panics the first time somebody presses alt+8" — the classic
+// shape of that bug, refused here rather than guarded against in the surface.
 type v3Brain struct{ brain *store.Store }
 
 func (s v3Brain) Snapshot(limit int) (store.MemoryShelves, error) {
@@ -2186,44 +2191,12 @@ func (s v3Brain) ChangedSince(t time.Time) (int, int, error) {
 	return s.brain.MemoryChangedSince(t)
 }
 
-// ListMemories answers the surface's scope word as the OWNERS it means. The
-// person's overview reads the whole store (the snapshot above does), so an
-// empty scope stays "every owner"; `project` is the word the surface spells
-// for "the project rows", and it answers every project's rows — this is the
-// person's own audit page, not a session's retrieval, and the session-scoped
-// reads live in internal/session. A scope this build does not spell answers
-// nothing rather than everything.
-func (s v3Brain) ListMemories(scope string, limit int) ([]store.Memory, error) {
-	switch strings.TrimSpace(scope) {
-	case "":
-		return s.brain.ListMemories(nil, limit)
-	case store.MemoryScopeUser:
-		return s.brain.ListMemories([]string{store.OwnerUser}, limit)
-	case store.MemoryScopeEnv:
-		return s.brain.ListMemories([]string{store.OwnerMachine}, limit)
-	case store.MemoryScopeProject:
-		// EVERY PROJECT'S ROWS, INCLUDING THE QUARANTINE: this is the person's
-		// audit shelf, not a session's retrieval — a project-scoped listing
-		// that answered only the quarantine would hide every real project's
-		// memories the day the first one was written with an owner.
-		return s.brain.ListProjectMemories(limit)
-	}
-	return nil, nil
-}
-
-func (s v3Brain) UpdateMemory(id, title, text string, tags []string) error {
-	return s.brain.UpdateMemory(id, title, text, tags)
+func (s v3Brain) UpdateMemory(id, text string) error {
+	return s.brain.UpdateMemory(id, text)
 }
 
 func (s v3Brain) ForgetMemory(id string) error  { return s.brain.ForgetMemory(id) }
 func (s v3Brain) RestoreMemory(id string) error { return s.brain.RestoreMemory(id) }
-
-// SetMemoryAlways is the place's `a` — by the raw id the page is showing, which
-// is the person's own surface managing a row it drew (internal/store's raw-door
-// contract on [store.Store.UpdateMemory]).
-func (s v3Brain) SetMemoryAlways(id string, always bool) error {
-	return s.brain.SetMemoryAlways(id, always)
-}
 
 func (s v3Brain) MemoryProvenance(id string) (string, string, time.Time, error) {
 	return s.brain.MemoryProvenance(id)

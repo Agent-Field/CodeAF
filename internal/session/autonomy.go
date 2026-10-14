@@ -145,11 +145,3 @@ func (a *Agent) autonomyFor(kind AskKind) Policy {
 	return Policy{Kind: PolicyAsk}
 }
 
-func memoryScopeForAnswer(scope AnswerScope) string {
-	switch scope {
-	case ScopeProject, ScopeTask:
-		return "project"
-	default:
-		return "user"
-	}
-}

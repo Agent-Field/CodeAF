@@ -2,119 +2,85 @@ package main
 
 // seed_memory.go is what the demo machine remembers.
 //
-// It goes through internal/store's own doors — AddMemory, ForgetMemory,
-// RecordMemoryOutcome — and never through SQL, so the rows land with the real
-// schema, the event journal behind them is whole, and a Rebuild would reproduce
-// exactly what the page draws. The three shelves are a closed enum (`user`,
-// `project`, `env`) and all three are filled, because a shelf with nothing on
-// it is not drawn at all.
+// It goes through internal/store's own doors — AddMemory and ForgetMemory —
+// and never through SQL, so the rows land with the real schema, the event
+// journal behind them is whole, and a Rebuild would reproduce exactly what the
+// page draws. Every shelf the memory place draws for a conversation here is
+// filled — the person's, this machine's and the first project's — and one line
+// is let go, so the let-go shelf has something to put back. Each line says who
+// kept it, because the place draws that beside every line.
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// demoMemory is one thing worth remembering across conversations, with the two
-// counters that decide where it ranks.
+// demoMemory is one thing worth remembering across conversations.
 type demoMemory struct {
 	memory store.Memory
-	// helped is how many times it BORE ON THE MOMENT and unused how many times
-	// it was put in front of a model and bore on nothing. They are written
-	// through [store.Store.RecordMemoryOutcome], one call per count, because the
-	// counter measures help rather than injection and there is no door that sets
-	// it to a number.
-	helped, unused int
-	// letGo forgets it afterwards. A forgotten memory is a tombstone with its
-	// row intact — every view stops agreeing with it and nothing is deleted —
-	// and the memory page is the only reader in the product that can see one.
+	// letGo forgets it afterwards: a tombstone with its row intact, which the
+	// memory place's let-go shelf can put back.
 	letGo bool
 }
 
 var demoMemories = []demoMemory{
-	{memory: store.Memory{Type: store.MemoryPreference, Scope: store.MemoryScopeUser,
-		Title: "Answers short, evidence under them",
-		Text:  "They want the answer first and the reasoning underneath, never the other way round."}, helped: 9, unused: 1},
-	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeUser,
-		Title: "Works from Bengaluru",
-		Text:  "Their day is IST, so a morning watch means their morning."}, helped: 4},
-	{memory: store.Memory{Type: store.MemoryPreference, Scope: store.MemoryScopeUser,
-		Title: "No emoji anywhere they read",
-		Text:  "Not in commits, not in a card, not in a status line."}, helped: 6, unused: 2},
-	{memory: store.Memory{Type: store.MemoryCorrection, Scope: store.MemoryScopeUser,
-		Title: "It is the strip, not the toolbar",
-		Text:  "They corrected this twice; the row of verbs under a line is the strip."}, helped: 3},
-	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeUser,
-		Title: "Ships on Fridays",
-		Text:  "This turned out to be wrong — they ship when a wave is done."}, helped: 1, unused: 5, letGo: true},
+	{memory: store.Memory{Type: store.MemoryPreference, Scope: store.MemoryScopeUser, Origin: store.OriginPerson,
+		Text: "Wants the answer first and the reasoning underneath, never the other way round."}},
+	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeUser, Origin: store.OriginNoticed,
+		Text: "Works from Bengaluru, so a morning means IST."}},
+	{memory: store.Memory{Type: store.MemoryPreference, Scope: store.MemoryScopeUser, Origin: store.OriginPerson,
+		Text: "No emoji anywhere they read: not in commits, cards or status lines."}},
+	{memory: store.Memory{Type: store.MemoryCorrection, Scope: store.MemoryScopeUser, Origin: store.OriginNoticed,
+		Text: "The row of verbs under a line is the strip, not the toolbar."}},
+	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeUser, Origin: store.OriginModel,
+		Text: "Ships on Fridays."}, letGo: true},
 
-	{memory: store.Memory{Type: store.MemoryProjectState, Scope: store.MemoryScopeProject,
-		Title: "Work lands on chat-v3-task",
-		Text:  "Feature waves are built in worktrees off it and merged back the same day."}, helped: 11, unused: 1},
-	{memory: store.Memory{Type: store.MemoryDecision, Scope: store.MemoryScopeProject,
-		Title: "Home is one list, never a dashboard",
-		Text:  "Ordered by what wants them first; innovation goes into the interaction, not into panels."}, helped: 7},
-	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeProject,
-		Title: "make check is the end-of-change ritual",
-		Text:  "Vet, the tests, the build, and the binary-size ratchet in SIZE-BUDGET."}, helped: 8, unused: 3},
-	{memory: store.Memory{Type: store.MemoryDecision, Scope: store.MemoryScopeProject,
-		Title: "The annual toggle ships before the ladder",
-		Text:  "The toggle is a day of work and the ladder is a quarter of pricing argument."}, helped: 2, unused: 4},
+	{memory: store.Memory{Type: store.MemoryDecision, Scope: store.MemoryScopeProject, Origin: store.OriginPerson,
+		Text: "Branch off dev and open every pull request against dev."}},
+	{memory: store.Memory{Type: store.MemoryDecision, Scope: store.MemoryScopeProject, Origin: store.OriginNoticed,
+		Text: "Home is one list ordered by what wants them first, never a dashboard."}},
+	{memory: store.Memory{Type: store.MemoryPreference, Scope: store.MemoryScopeProject, Origin: store.OriginPerson,
+		Text: "Always run make pr-ready before opening a pull request."}},
 
-	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeEnv,
-		Title: "Go is on the path here",
-		Text:  "A build needs nothing installed first on this machine."}, helped: 5},
-	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeEnv,
-		Title: "tmux is how the terminal is driven",
-		Text:  "Screens are captured with tmux capture-pane -p rather than photographed."}, helped: 3, unused: 1},
-	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeEnv,
-		Title: "ripgrep answers to rg",
-		Text:  "It is faster than find here and it respects the ignore files."}, helped: 6, unused: 2},
+	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeEnv, Origin: store.OriginNoticed,
+		Text: "Go is on the path here, so a build needs nothing installed first."}},
+	{memory: store.Memory{Type: store.MemoryFact, Scope: store.MemoryScopeEnv, Origin: store.OriginModel,
+		Text: "ripgrep answers to rg on this machine."}},
 }
 
 // writeMemories puts every memory into the store and answers how many it wrote.
 //
-// THE PROJECT ROWS CARRY A REAL OWNER. A scope word alone would land them in
-// the quarantine ([store.OwnerLegacyProject]) — the honest answer for a row
-// whose project nobody proved, and the wrong one for a fixture whose project
-// is sitting right there: the demo home would show its project shelf all
-// quarantined rows and never a live project memory. The key is minted the way
-// every session mints one, from the workspace itself, so the demo's memory is
-// visible exactly where the demo's conversations run.
+// THE PROJECT ROWS ARE OWNED BY THE FIRST PROJECT'S REAL KEY and carry its name,
+// minted the same way the engine mints it ([gitidentity.ProjectKey] and
+// [gitidentity.ProjectName]), so a conversation opened in that folder carries
+// them and the memory place heads their shelf "this project".
 func writeMemories(brain *store.Store, projectDir string) (int, error) {
 	key, err := gitidentity.ProjectKey(projectDir)
 	if err != nil || key == "" {
 		return 0, fmt.Errorf("mint the demo project key: %w", err)
 	}
 	projectOwner := store.OwnerProject(key)
+	projectName := gitidentity.ProjectName(projectDir)
+	if projectName == "" {
+		projectName = filepath.Base(projectDir)
+	}
 	written := 0
 	for _, held := range demoMemories {
 		memory := held.memory
 		if memory.Scope == store.MemoryScopeProject {
 			memory.Owner = projectOwner
+			memory.ProjectName = projectName
 		}
 		made, err := brain.AddMemory(memory)
 		if err != nil {
-			return written, fmt.Errorf("remember %q: %w", memory.Title, err)
-		}
-		// One call per count: the two counters are written together from one
-		// confirmation after a turn, and there is no door that sets them to a
-		// figure — which is the whole reason a memory cannot be credited for
-		// being retrieved rather than for being worth retrieving.
-		for range held.helped {
-			if err := brain.RecordMemoryOutcome([]string{made.ID}, nil); err != nil {
-				return written, fmt.Errorf("count a use of %q: %w", held.memory.Title, err)
-			}
-		}
-		for range held.unused {
-			if err := brain.RecordMemoryOutcome(nil, []string{made.ID}); err != nil {
-				return written, fmt.Errorf("count a miss of %q: %w", held.memory.Title, err)
-			}
+			return written, fmt.Errorf("remember %q: %w", memory.Text, err)
 		}
 		if held.letGo {
 			if err := brain.ForgetMemory(made.ID); err != nil {
-				return written, fmt.Errorf("let go of %q: %w", held.memory.Title, err)
+				return written, fmt.Errorf("let go of %q: %w", memory.Text, err)
 			}
 		}
 		written++

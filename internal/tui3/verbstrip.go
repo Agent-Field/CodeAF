@@ -310,14 +310,16 @@ func (a *app) rowVerbs() []verb {
 // spelled here, and the two home already had are borrowed from its own legend
 // rather than written a second time.
 const (
-	memoryCardWord   = "open the card"
 	memoryFixWord    = "fix the wording"
 	memoryForgetWord = "forget it"
 	memoryUndoWord   = "put it back"
-	// The two spellings of `a`, one per state of the line under the cursor: an
-	// ordinary line is made a rule, put in front of every conversation and task
-	// where it holds; a rule goes back to coming up only when it bears on the
-	// work (internal/session's memory_always.go).
-	memoryAlwaysWord      = "make it always"
-	memoryWhenMattersWord = "only when it matters"
+	// The three moves, one per place a line can hold, each offered only where
+	// the line is not (place_memory.go's [placeMemory.verbs]).
+	memoryMoveYouWord     = "for you everywhere"
+	memoryMoveHereWord    = "for this project"
+	memoryMoveMachineWord = "for this machine"
+	// memoryAskWord opens a conversation about the line, and memorySourceWord
+	// opens the conversation it was learned in.
+	memoryAskWord    = "ask me about it"
+	memorySourceWord = "open where it was learned"
 )

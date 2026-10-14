@@ -1297,35 +1297,27 @@ type Config struct {
 	// through internal/home so CODEAF_HOME moves it with everything else.
 	ArtifactsIndex string
 
-	// Memory is the brain this session remembers into (memory.go): the store's
-	// event-sourced memories, routed into the prompt before a turn and written
-	// after one. NIL IS MEMORY OFF — no <memory> block, no reflex call, and no
-	// `remember` on the belt, so the model does not have the verb.
+	// Memory is the store this conversation remembers into (memory.go): every
+	// line it keeps rides its message[0], and the pass after a turn may keep a
+	// new one. NIL IS NO MEMORY — no block, no noticing, and no `remember` or
+	// `forget` on the belt, so the model does not have the verbs.
 	//
 	// It is the caller's store rather than one this package opens, for the
 	// reason SessionFile is a path rather than a directory: where a person's
-	// state lives is the surface's decision, and the door is also where the
-	// memory.enabled row is read. A door that turns memory off hands nothing
-	// here, which is what makes "no calls" structural.
+	// state lives is the surface's decision. The memory.enabled row does NOT
+	// decide whether one is handed over — it governs only the noticing pass,
+	// and is read here live ([Agent.noticing]).
 	Memory *store.Store
-	// bindingStore is the brain a TASK WORKER is LENT READ-ONLY, so its first
-	// provider request carries the project's approved binding rules without the
-	// worker gaining any memory write, extraction, import or the remember/forget
-	// verbs ([Config.bindingOnlyMemory]'s posture, expressed here as a store that
-	// is never [Config.Memory]). It is the parent conversation's own brain handed
-	// down the worker tree, so every node and auditor reads the SAME owner set the
-	// conversation that started it reads. NIL IS NO BINDING, which is memory off
-	// and every caller that predates this field; a worker then opens exactly as it
-	// did, with no approved block and no new authority. It is read-only by the
-	// plumbing that uses it ([Agent.prepareWorkerBinding] never writes it).
+	// bindingStore is the store a TASK WORKER is LENT READ-ONLY: the parent
+	// conversation's own, handed down the worker tree so a node's brief closes
+	// on the same memory block the conversation that started it carries
+	// ([TaskGraph.memoryWorld]). It is never [Config.Memory], so a worker gains
+	// no noticing and no verbs. Nil is no memory section in the brief.
 	bindingStore *store.Store
-	// bindingOnlyMemory makes a brain READ-ONLY. It exists for an automation's
-	// run, which must see the owner's approved binding rules before its first
-	// action without gaining any general memory write: extraction,
-	// dependency observation, dismissal, import and the remember/forget verbs
-	// are all refused, while the same canonical identity, query and context
-	// machinery answers the read. Nothing is written from a posture that only
-	// borrowed the brain to be bound.
+	// bindingOnlyMemory makes [Config.Memory] READ-ONLY. It exists for an
+	// automation's run, which reads the memory block in front of its first
+	// action and must never write: no noticing, no `remember` or `forget` on its
+	// belt, and no lines said, because nobody is there.
 	bindingOnlyMemory bool
 	// Skills is the store the skill shelf is read from: the catalog section,
 	// the skills a message carries, and `use_skill`. NIL FALLS BACK TO
@@ -1371,6 +1363,12 @@ type Config struct {
 	// read is scoped to the conversation's project, and it is NEVER inherited by
 	// a config copy that was not written to carry it.
 	MemoryProjectKey string
+	// MemoryProjectName is the name a person knows that project by — the
+	// repository's name, or the folder's — written beside every project memory
+	// this conversation keeps, so the memory place can say where a line holds
+	// without reversing an opaque key. It moves with the key and is never
+	// relied on for permission: [Config.MemoryProjectKey] is the identity.
+	MemoryProjectName string
 
 	// MemoryIndex is the store THIS SESSION'S CONVERSATION is indexed into,
 	// and it is deliberately not [Config.Memory]: with memory off, the session
@@ -2580,16 +2578,6 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
-	// outcomes is the observation-only bridge from delegated workers to this
-	// conversation's journal (contextual_delegated.go). It is shared with every
-	// worker this session builds; a worker only hands it a raw observation and
-	// gains no memory write, approval or promotion power from it. `origin` is
-	// the worker's FROZEN provenance — root session, user turn, goal, task and
-	// owner, captured before it launched — so nothing it reports is attributed
-	// to whatever turn is live when the report lands.
-	outcomes *outcomeCollector
-	origin   delegatedOrigin
-
 	// laneStop cancels the session's lane context, including probes. laneDone
 	// joins the optional sheet beat, whose cache writes must finish before Close
 	// returns. Both are established before the agent is published.
@@ -2889,52 +2877,22 @@ type Agent struct {
 	// stop, so a late watch read cannot stop a later turn.
 	teamTurnAt     time.Time
 	teamTurnSerial uint64
-	// memoryText is the <memory> block message[0] currently carries: what the
-	// router asked for at the start of this turn, or the block a task node was
-	// opened with (memory.go). It is under mu because it is rendered into the
-	// transcript's first message, and it is REPLACED per turn rather than
-	// appended to — a turn's memories are that turn's.
+	// memoryText is the <memory> block message[0] currently carries: every line
+	// this conversation keeps, read from the store at the start of every turn
+	// (memory.go's [Agent.refreshMemoryLocked]). An unchanged set renders the
+	// same bytes, so a conversation whose memory has not moved leaves message[0]
+	// exactly as the provider cached it.
 	memoryText string
-	// bindingText is the project's APPROVED BINDING BLOCK as read before the
-	// first request of a task worker (contextual_memory.go's
-	// [Agent.prepareWorkerBinding]). It is a note of its OWN rather than the
-	// routed block's, because a node hands the worker its semantic shortlist
-	// asynchronously ([Agent.takeMemory]) and that hand may land at any moment;
-	// keeping the binding rules in their own field and their own note is what
-	// lets the deterministic, may-not-be-late half survive a late router answer.
-	// It is empty for every conversation, which lands nothing.
-	bindingText string
-	// frameworkPolicy says the note this turn's request carries has relevant
-	// prior-outcome rows, which is the ONE condition under which the
-	// source-authored [frameworkMethodPolicy] rides the request's SYSTEM message.
-	// It is set BESIDE the rows themselves, under the SAME a.mu mutation, by the
-	// before-request reads ([Agent.prepareBindingContext],
-	// [Agent.prepareWorkerBinding], [Agent.refreshMemory] via
-	// [Agent.withBindingContextMeta]), and it is TAKEN WITH the message snapshot
-	// at the request seam ([Agent.snapshotWithReasoning]) so
-	// [Agent.withFrameworkPolicy] never rereads a later flag against older
-	// messages. The policy and the rows therefore always travel together and the
-	// same bit serves a conversation, a manager and a task worker. False is the
-	// ordinary state and adds nothing.
-	frameworkPolicy bool
 	// cardText is the <state> block (card.go): what this conversation is doing,
 	// as the post-turn pass has folded it. It sits under mu because it is
 	// rendered into the transcript — at the TAIL, in the volatile note
 	// ([Agent.landVolatileLocked]), and no longer in message[0], because it
 	// moves every time a delta lands and message[0] is in front of everything.
 	cardText string
-	// alwaysText is the <always> block message[0] currently carries
-	// (memory_always.go): the person's rules over this place, read from the
-	// memory store at the start of every turn. An unchanged set renders the same
-	// bytes, so a conversation whose rules have not moved leaves message[0]
-	// exactly as the provider cached it. A read that fails keeps the last block
-	// it had, because a rule the model was working under a turn ago has not
-	// stopped holding because a disk was busy.
-	alwaysText string
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
 	// named absolutely, with each one's own house rules scoped to it. It sits
-	// under mu beside the two blocks above and it is REBUILT ONLY WHEN THE SET
+	// under mu beside the memory block above and it is REBUILT ONLY WHEN THE SET
 	// MOVES — a person attaching or removing a folder, or a conversation being
 	// reopened onto the set its meta.json remembers — because message[0] sits in
 	// front of everything and what does not move must render byte for byte.
@@ -3103,12 +3061,6 @@ type Agent struct {
 	// compare against the model the work is on rather than the one the session
 	// remembers (steer.go's [Agent.rideModel]).
 	riding string
-	// recall is the pre-turn memory routing STARTED BESIDE THE TITLE and never
-	// waited on (memory.go's [recallAside]). It is under mu because
-	// [Agent.startTurnLocked] writes it with the lock held and the turn's own
-	// goroutine takes it a moment later; it is nil for every turn of a session
-	// that remembers nothing, which is the whole of the cost to those.
-	recall   *recallAside
 	steering []userMessage
 	// steerGrace is the one armed second look at a correction that arrived
 	// while a foreground bash was still too young to adopt (steer_grace.go).

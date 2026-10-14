@@ -5403,6 +5403,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.adoptMemoryReply(msg)
 		return a, nil
 
+	case memoryPlaceDoneMsg:
+		a.adoptMemoryPlaceDone(msg)
+		return a, nil
+
 	case compactedMsg:
 		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A
 		// page over that conversation still leaves its reply behind the page.

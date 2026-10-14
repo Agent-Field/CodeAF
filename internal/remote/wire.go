@@ -383,7 +383,16 @@ import (
 // closes, with somebody watching, and a run in progress is recorded as codeaf
 // closing. So the number moves, and the door refuses the pair before either
 // half can be believed. NEVER TO SILENCE.
-const Version = 21
+//
+// VERSION 22 IS MEMORY WITH ONE STRENGTH (internal/session's memory.go). The
+// rule flag's door (`Memory.SetAlways`) and the flat list (`Memory.List`) are
+// gone, `Memory.Update` carries only the words, the commands answer whole
+// receipts, `Memory.ForgetQuery` with nothing in it undoes the conversation's
+// newest memory change, and `Memory.Move` and `Memory.Project` are new. The
+// number moves because a version-21 engine would answer the place's move as
+// "no such method" and an empty forget as a search for nothing — a key that
+// did nothing, and a person told so in words that were not true.
+const Version = 22
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"

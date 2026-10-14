@@ -248,19 +248,20 @@ var commands = []command{
 	// bare row is the one nearly everybody wants, and a single row carrying
 	// [query] would make it unreachable from the list ([app.runMenu] puts a row
 	// that TAKES something into the draft instead of running it).
-	{name: "memory", desc: "inspect and change what is remembered"},
-	{name: "memory", args: "<query>", desc: "print only the memories matching a word"},
-	{name: "memories", desc: "print what is remembered about you"},
-	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
-	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
-	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
-	// AND THE RULES, the fourth errand onto what it knows: a line kept in front
-	// of every conversation and task rather than recalled when it seems to bear
-	// (internal/session's memory_always.go). Two rows for the /memories reason:
-	// the bare form is the list of what holds here, and a single row carrying
-	// <text> would make that list unreachable from the menu.
-	{name: "always", desc: "the rules in force here · in front of every conversation and task"},
-	{name: "always", args: "<text>", desc: "…keep one as a rule for this project · for you, from home"},
+	{name: "memory", desc: "open the memory place · " + placeChord(pageMemory)},
+	{name: "memory", args: "<words>", desc: "print the remembered lines those words name"},
+	{name: "memories", desc: "open the memory place, or print every line kept here"},
+	{name: "memories", args: "<words>", desc: "…only the lines those words name"},
+	{name: "remember", args: "<text>", desc: "keep one line for this project · for you everywhere, from home"},
+	{name: "forget", desc: "undo the newest memory change in this conversation"},
+	{name: "forget", args: "<words>", desc: "drop the one remembered line those words name"},
+	// AND /always, THE SAME ERRAND AS /remember UNDER THE WORD PEOPLE WERE TAUGHT:
+	// a timeless rule is a memory like any other line (anything with a time in it
+	// is an automation). Two rows for the /memories reason: the bare form is the
+	// list of what holds here, and a single row carrying <text> would make that
+	// list unreachable from the menu.
+	{name: "always", desc: "every line kept here · everywhere, from home"},
+	{name: "always", args: "<text>", desc: "…keep one, the same as /remember"},
 	// AND WHAT codeaf WORKS WITH, beside what it knows about you: the crew a
 	// task runs on — worker, planner, checker — picked per task (crew.go). The
 	// bare form is the panel; the four shortcuts are how anything on it

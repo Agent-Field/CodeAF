@@ -340,7 +340,6 @@ func (a *Agent) dropOwedCut(cause error) {
 // EXPERIENCES law for why the readings behind them are allowed to interrupt work
 // and never to precede it.
 var (
-	errRecallCut = errors.New("session: generation cut to carry the recalled memories")
 	errMarkCut   = boundaryCut{errors.New("session: generation cut by the mark's reading")}
 )
 

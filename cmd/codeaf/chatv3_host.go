@@ -1515,11 +1515,8 @@ func (h *hostMemory) snapshot() (shelves store.MemoryShelves, learned, letGo int
 	defer h.mu.Unlock()
 	return h.shelves, h.learned, h.letGo, h.known
 }
-func (h *hostMemory) ListMemories(scope string, limit int) ([]store.Memory, error) {
-	return h.client.ListMemories(scope, limit)
-}
-func (h *hostMemory) UpdateMemory(id, title, text string, tags []string) error {
-	err := h.client.UpdateMemory(id, title, text, tags)
+func (h *hostMemory) UpdateMemory(id, text string) error {
+	err := h.client.UpdateMemory(id, text)
 	h.refresh(500, time.Time{})
 	return err
 }
@@ -1530,11 +1527,6 @@ func (h *hostMemory) ForgetMemory(id string) error {
 }
 func (h *hostMemory) RestoreMemory(id string) error {
 	err := h.client.RestoreMemory(id)
-	h.refresh(500, time.Time{})
-	return err
-}
-func (h *hostMemory) SetMemoryAlways(id string, always bool) error {
-	err := h.client.SetMemoryAlways(id, always)
 	h.refresh(500, time.Time{})
 	return err
 }

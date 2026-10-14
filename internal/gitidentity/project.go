@@ -120,3 +120,28 @@ func NormalizeRemoteURL(raw string) string {
 	}
 	return value
 }
+
+// ProjectName answers the name a person knows a workspace's project by: the
+// repository's name from its origin remote when there is one, so every worktree
+// and clone of one repository reads the same, and the folder's own name
+// otherwise. It is a LABEL and never an identity — [ProjectKey] is the
+// identity — so it is free to be ambiguous between two unrelated folders with
+// the same name, and "" only for an empty workspace.
+func ProjectName(workspace string) string {
+	root := strings.TrimSpace(workspace)
+	if root == "" {
+		return ""
+	}
+	if remote := originRemote(root); remote != "" {
+		if normalized := NormalizeRemoteURL(remote); normalized != "" {
+			if name := filepath.Base(normalized); name != "." && name != "/" && name != "" {
+				return name
+			}
+		}
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return filepath.Base(root)
+	}
+	return filepath.Base(absolute)
+}
