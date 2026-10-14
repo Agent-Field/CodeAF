@@ -1362,6 +1362,11 @@ func factsMoved(kind session.EventKind) bool {
 	return false
 }
 
+// FactsMoved is [factsMoved] for a client that reads the pushed facts beside
+// the event stream: the facts frame goes out ahead of such an event, so on
+// hearing one the pushed word is the engine's current one.
+func FactsMoved(kind session.EventKind) bool { return factsMoved(kind) }
+
 // weighsAgainLocked says whether this event is the first word of the request
 // that follows a tool batch, which is when what the conversation weighs is
 // stated again (the facts' ContextTokens).

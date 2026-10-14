@@ -129,8 +129,8 @@ func TestAgentStateContractForBothQuestionKinds(t *testing.T) {
 			if !sent || !kind.pushed {
 				continue
 			}
-			// A later need the engine reports with no question (a spending cap)
-			// is read again once work has shown after the answer.
+			// A need the engine reports with no question (a spending cap, a
+			// connect wait) right after a taken answer still reads needs_you.
 			t.Run(kind.name+" later need", func(t *testing.T) {
 				c := newStateContract(t)
 				q := kind.question
@@ -140,9 +140,18 @@ func TestAgentStateContractForBothQuestionKinds(t *testing.T) {
 				turnStatus(t, inboxReq(t, c.server, "POST", item+"/answer", kind.answer), 200)
 				c.windowEnds()
 				c.step("answer consumed, engine word lags", c.door.consume, "running", false)
-				c.registry.workShown(c.registry.live[c.id])
+				live := c.registry.live[c.id]
+				// Text and a tool's start come with no fresh facts: the old
+				// word must stay unread, or the flash is back.
+				c.step("text before the word is stated", func() {
+					c.registry.wordStated(live, session.EventTextDelta)
+					c.registry.wordStated(live, session.EventToolBegin)
+				}, "running", false)
+				// A capability wait reaches the stream as its own event, with
+				// the facts stated ahead of it.
+				c.registry.wordStated(live, session.EventError)
 				if view := readAgent(t, c.request(t, "GET", "/app/v1/agents/"+c.id, ""), 200).State; view != "needs_you" {
-					t.Fatalf("a need after work showed reads %s", view)
+					t.Fatalf("capability wait right after a taken answer reads %s", view)
 				}
 			})
 		}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -121,8 +122,8 @@ type agentLive struct {
 	held map[string]bool
 	// taken is set when the engine takes a held answer. Its own word and the
 	// presence file still say needs-person for a moment after that, so both
-	// are left unread until work shows, the word catches up, a new question
-	// opens or the turn ends.
+	// are left unread until the engine states its facts again, the word
+	// catches up, a new question opens or the turn ends.
 	taken bool
 }
 
@@ -177,9 +178,15 @@ func (live *agentLive) pruneHeld(id string, open []session.Question) {
 	}
 }
 
-// workShown ends the wait on the engine's word after a taken answer: work
-// after the answer means a need it reports now is a new one.
-func (a *AgentRegistry) workShown(live *agentLive) {
+// wordStated ends the wait on the engine's word after a taken answer. The
+// engine states its facts ahead of the events that move them (a tool result,
+// a new ask, a capability or connect wait, the turn's end), so its word is
+// current when one is heard. Text, reasoning and a tool's start carry no
+// facts: clearing on those would read the old word and flash needs_you.
+func (a *AgentRegistry) wordStated(live *agentLive, kind session.EventKind) {
+	if !remote.FactsMoved(kind) {
+		return
+	}
 	a.mu.Lock()
 	live.taken = false
 	a.mu.Unlock()
