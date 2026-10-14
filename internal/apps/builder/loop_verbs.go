@@ -77,7 +77,9 @@ func (s *Service) runCheck(ctx context.Context, b *build, t *seat, files spec.Fi
 	if report, ok := t.checked.get(sum); ok {
 		return report, nil
 	}
-	if err := s.repairBeforeCheck(ctx, b, files); err != nil {
+	// Rendered files are checked as they are: the preview gate compares this
+	// report's digest with the files previewed, so no repair runs here.
+	if err := s.shortenPlanLines(ctx, b, files); err != nil {
 		return bridge.CheckReport{}, err
 	}
 	report, err := s.checkQuietly(ctx, b, files, b.nextRound(), nil)
