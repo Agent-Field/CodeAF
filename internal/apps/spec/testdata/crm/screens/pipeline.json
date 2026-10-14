@@ -12,68 +12,26 @@
       "items": [
         "Pipeline",
         "Contacts"
-      ]
+      ],
+      "placement": "views"
     }
   },
   "body": {
     "part": "Stack",
     "children": [
       {
-        "part": "Row",
-        "children": [
-          {
-            "part": "Text",
-            "props": {
-              "text": "Deals",
-              "size": "title"
-            }
-          },
-          {
-            "part": "Button",
-            "label": "New deal",
-            "props": {
-              "kind": "primary"
-            },
-            "on": {
-              "click": [
-                {
-                  "records.create": {
-                    "type": "deal",
-                    "set": {
-                      "name": "$input.name",
-                      "company": "$input.company",
-                      "amount": "$input.amount",
-                      "stage": "$input.stage",
-                      "next_step": "$input.next_step"
-                    }
-                  },
-                  "ask": {
-                    "name": "text",
-                    "company": "ref",
-                    "amount": "money",
-                    "stage": "enum",
-                    "next_step": "text"
-                  }
-                }
-              ]
-            }
-          }
-        ]
-      },
-      {
         "part": "RecordList",
         "id": "deals",
         "label": "Deals",
         "bind": {
           "records": "deal",
-          "query": "stage:-Lost sort:-amount"
+          "query": "stage:-Won,Lost has:owner"
         },
         "props": {
           "views": [
             "List",
             "Board by stage"
           ],
-          "meter": "stage",
           "groupBy": "stage",
           "columns": [
             "company",
@@ -99,7 +57,47 @@
               "text": "No deals yet"
             }
           }
-        }
+        },
+        "children": [
+          {
+            "part": "FilterTokens",
+            "label": "Filter deals",
+            "props": {
+              "labels": [
+                "stage:open",
+                "owner:team"
+              ],
+              "placeholder": "Search deals · company: value: touched:",
+              "sort": "Likely to close",
+              "ai": true
+            },
+            "on": {
+              "sort": [
+                {
+                  "ai.sort": "deals",
+                  "field": "likely"
+                }
+              ]
+            }
+          },
+          {
+            "part": "StatStrip",
+            "props": {
+              "field": "stage"
+            },
+            "bind": {
+              "records": "deal"
+            }
+          },
+          {
+            "part": "ScreenSubtitle",
+            "props": {
+              "noun": "open deals",
+              "phrase": "likely to close ↓ · your pin first",
+              "hint": "j / k · ↵ open · P pin"
+            }
+          }
+        ]
       },
       {
         "part": "BulkBar",

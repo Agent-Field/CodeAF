@@ -46,33 +46,37 @@ func TestGoldenCRMDemoScreens(t *testing.T) {
 		name  string
 		check func(*testing.T)
 	}{
-		{"new deal", func(t *testing.T) {
-			button := crmNode(t, b.Screens["pipeline"], "New deal")
-			var ask map[string]string
-			var create struct {
-				Type string            `json:"type"`
-				Set  map[string]string `json:"set"`
+		{"board header", func(t *testing.T) {
+			screen := b.Screens["pipeline"]
+			list := crmNode(t, screen, "Deals")
+			if screen.Nav.Props["placement"] != "views" || list.Bind.Query != "stage:-Won,Lost has:owner" {
+				t.Fatalf("nav = %+v, binding = %+v", screen.Nav.Props, list.Bind)
 			}
-			action := button.On["click"][0]
-			if err := json.Unmarshal(action["ask"], &ask); err != nil {
+			parts := []string{}
+			for _, child := range list.Children {
+				parts = append(parts, child.Part)
+			}
+			if !reflect.DeepEqual(parts, []string{"FilterTokens", "StatStrip", "ScreenSubtitle"}) {
+				t.Fatalf("header parts = %v", parts)
+			}
+			filter := crmNode(t, screen, "Filter deals")
+			if filter.Props["sort"] != "Likely to close" || filter.Props["ai"] != true {
+				t.Fatalf("sort label = %+v", filter.Props)
+			}
+			var target, field string
+			action := filter.On["sort"][0]
+			if err := json.Unmarshal(action[VerbAISort], &target); err != nil {
 				t.Fatal(err)
 			}
-			if err := json.Unmarshal(action[VerbRecordsCreate], &create); err != nil {
+			if err := json.Unmarshal(action["field"], &field); err != nil {
 				t.Fatal(err)
 			}
-			want := map[string]string{"name": "text", "company": "ref", "amount": "money", "stage": "enum", "next_step": "text"}
-			if create.Type != "deal" || !reflect.DeepEqual(ask, want) {
-				t.Fatalf("create = %+v, ask = %v", create, ask)
+			if target != "deals" || field != "likely" {
+				t.Fatalf("AI sort = %s, field = %s", target, field)
 			}
-			for name := range want {
-				if create.Set[name] != "$input."+name {
-					t.Errorf("creation drops %s", name)
-				}
-			}
-			for name, field := range b.App.Records["deal"].Fields {
-				if field.Required && ask[name] == "" {
-					t.Errorf("creation omits required %s", name)
-				}
+			strip := list.Children[1]
+			if strip.Bind.Records != "deal" || strip.Bind.Query != "" || strip.Props["field"] != "stage" {
+				t.Fatalf("stage counts = %+v", strip)
 			}
 		}},
 		{"full width table", func(t *testing.T) {
