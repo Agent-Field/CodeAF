@@ -52,7 +52,7 @@ func scopeOf(app string, mode svc.DataMode) svc.Scope {
 func TestKeepCarriesSampleRecordsIntoRealRecords(t *testing.T) {
 	ctx := context.Background()
 	s, all, app, rows := previewCRM(t)
-	edit := bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Qualified"}}
+	edit := bridge.UpdateRecordParams{Type: "deal", ID: "dl_04_hooli", Set: map[string]any{"stage": "Talking"}}
 	if _, err := all.Records.Update(ctx, scopeOf(app, svc.DataSample), edit); err != nil {
 		t.Fatal(err)
 	}
@@ -67,18 +67,18 @@ func TestKeepCarriesSampleRecordsIntoRealRecords(t *testing.T) {
 					t.Fatalf("%s after Keep = %d, %v; want %d", typ, page.Total, err, len(want))
 				}
 			}
-			row, err := all.Records.Get(ctx, scopeOf(app, mode), bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
-			if err != nil || row.Fields["stage"] != "Qualified" {
+			row, err := all.Records.Get(ctx, scopeOf(app, mode), bridge.GetRecordParams{Type: "deal", ID: "dl_04_hooli"})
+			if err != nil || row.Fields["stage"] != "Talking" {
 				t.Fatalf("preview edit after Keep = %+v, %v", row, err)
 			}
 		})
 	}
 	real := scopeOf(app, svc.DataReal)
-	if _, err := all.Records.Update(ctx, real, bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Won"}}); err != nil {
+	if _, err := all.Records.Update(ctx, real, bridge.UpdateRecordParams{Type: "deal", ID: "dl_04_hooli", Set: map[string]any{"stage": "Won"}}); err != nil {
 		t.Fatal(err)
 	}
-	row, err := all.Records.Get(ctx, scopeOf(app, svc.DataSample), bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
-	if err != nil || row.Fields["stage"] != "Qualified" {
+	row, err := all.Records.Get(ctx, scopeOf(app, svc.DataSample), bridge.GetRecordParams{Type: "deal", ID: "dl_04_hooli"})
+	if err != nil || row.Fields["stage"] != "Talking" {
 		t.Fatalf("real write reached sample = %+v, %v", row, err)
 	}
 }
@@ -107,19 +107,19 @@ func TestLaterKeepsNeverReplaceRealRecords(t *testing.T) {
 				t.Fatal(err)
 			}
 			real := scopeOf(app, svc.DataReal)
-			if _, err := all.Records.Delete(ctx, real, bridge.DeleteRecordParams{Type: "deal", ID: "dl_hooli"}); err != nil {
+			if _, err := all.Records.Delete(ctx, real, bridge.DeleteRecordParams{Type: "deal", ID: "dl_04_hooli"}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := all.Records.Update(ctx, real, bridge.UpdateRecordParams{Type: "deal", ID: "dl_globex", Set: map[string]any{"stage": "Won"}}); err != nil {
+			if _, err := all.Records.Update(ctx, real, bridge.UpdateRecordParams{Type: "deal", ID: "dl_01_globex", Set: map[string]any{"stage": "Won"}}); err != nil {
 				t.Fatal(err)
 			}
 			if err := tc.later(ctx, s, app); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := all.Records.Get(ctx, real, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"}); err == nil {
+			if _, err := all.Records.Get(ctx, real, bridge.GetRecordParams{Type: "deal", ID: "dl_04_hooli"}); err == nil {
 				t.Fatal("a deleted real record came back")
 			}
-			row, err := all.Records.Get(ctx, real, bridge.GetRecordParams{Type: "deal", ID: "dl_globex"})
+			row, err := all.Records.Get(ctx, real, bridge.GetRecordParams{Type: "deal", ID: "dl_01_globex"})
 			if err != nil || row.Fields["stage"] != "Won" {
 				t.Fatalf("real edit = %+v, %v", row, err)
 			}
