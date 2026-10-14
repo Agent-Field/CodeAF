@@ -17,6 +17,23 @@ import (
 // planLineLimit follows the plan schema, shared with PLAN's parse check.
 var planLineLimit = prompt.PlanLineLimit
 
+// repairBeforeCheck applies the mechanical repairs every round: plan lines
+// cut to the schema limit, and human labels and AI marks in app and screens.
+func (s *Service) repairBeforeCheck(ctx context.Context, b *build, files spec.Files) error {
+	if err := s.shortenPlanLines(ctx, b, files); err != nil {
+		return err
+	}
+	changed := polishLabels(files)
+	if len(changed) == 0 {
+		return nil
+	}
+	if err := s.all.Store.WriteFiles(ctx, b.app, files); err != nil {
+		return err
+	}
+	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildDone, Files: changed, Log: "Wrote human labels in " + strings.Join(changed, ", ")})
+	return nil
+}
+
 // Shorten only card summaries after WRITE has used their full detail. Preserve
 // all other JSON fields so Check still reports unrelated definition mistakes.
 func (s *Service) shortenPlanLines(ctx context.Context, b *build, files spec.Files) error {

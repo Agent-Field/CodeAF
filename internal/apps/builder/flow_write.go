@@ -298,7 +298,7 @@ func asText(files spec.Files) map[string]string {
 
 // checkRound runs Check on the files and publishes its report.
 func (s *Service) checkRound(ctx context.Context, b *build, files spec.Files, round int) (bridge.CheckReport, error) {
-	if err := s.shortenPlanLines(ctx, b, files); err != nil {
+	if err := s.repairBeforeCheck(ctx, b, files); err != nil {
 		return bridge.CheckReport{}, err
 	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: bridge.BuildRunning, Round: round, Log: "Opening every screen with sample data"})
