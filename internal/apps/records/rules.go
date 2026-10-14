@@ -187,6 +187,10 @@ func (r *Rules) Prepare(row bridge.Record, member string, at time.Time, defaults
 		}
 		if t, ok := result.(time.Time); ok {
 			result = stamp(t)
+			if r.schema.Fields[f.name].Type == spec.FieldDate {
+				// A computed deadline (shoot_at + days(28)) is a timestamp; a date field keeps its day.
+				result = t.UTC().Format(time.DateOnly)
+			}
 		}
 		// JSON normalisation keeps CEL integers, lists and maps in the same types as bridge input.
 		normal, err := copyFields(map[string]any{f.name: result})
