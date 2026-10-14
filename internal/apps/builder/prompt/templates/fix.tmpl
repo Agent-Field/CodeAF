@@ -18,7 +18,7 @@ File schemas:
 {{runRules}}
 
 ## Agent tools rule
-Derive agent.md tools from app.json capabilities: every readable type needs records.query/get; every rw type also needs records.create/update/delete. Include only granted connector verbs and runs.start for existing runs the plan needs. Never copy the example tools.
+{{template "agentTools" .}}
 
 ## Current files (full contents, including every failing file)
 {{range .SortedFiles}}----- {{.Path}} -----

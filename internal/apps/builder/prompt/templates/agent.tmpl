@@ -1,0 +1,4 @@
+{{define "agent.tmpl"}}{{if .Wants "agent.md"}}- agent.md: front matter name, model, tools, test_questions (2 day-one questions answered by sample data). Body: at most {{.AgentBodyLines}} lines, the example's sections for THIS app; 3-5 jobs tied to its records and screen actions. Never mark answers "· AI"; chat shows AI.
+{{template "agentTools" .}}
+{{end}}{{end}}
+{{define "agentTools"}}- Agent tools: least privilege from capabilities: r/rw type needs records.query,get; rw also records.create,update,delete; granted connector verbs only; runs.start if runs exist.{{end}}
