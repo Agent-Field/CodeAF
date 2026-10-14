@@ -81,7 +81,7 @@ func (e *engineInboxSource) InboxItems(ctx context.Context) ([]InboxItem, error)
 								source.ID = q.Token()
 							}
 						}
-						out = append(out, InboxItem{ID: inboxQuestionID(id, q), Kind: inboxQuestionKind(q), Source: source, Title: q.Head, Path: []SourceRef{source}, CreatedAt: at, Context: InboxContext{Before: inboxBefore(entries)}, Verbs: verbs, WhoCanAnswer: []string{"you"}})
+						out = append(out, InboxItem{ID: inboxQuestionID(id, q), Kind: inboxQuestionKind(q), Source: source, Title: q.Head, Path: []SourceRef{source}, CreatedAt: at, Context: InboxContext{Before: inboxBefore(entries)}, Verbs: verbs, WhoCanAnswer: []string{"you"}, Permission: inboxPermission(id, q)})
 					}
 				}
 			}

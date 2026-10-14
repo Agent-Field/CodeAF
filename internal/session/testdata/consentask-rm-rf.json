@@ -1,4 +1,7 @@
 {
+  "card": {
+    "command": "rm -rf /"
+  },
   "id": 9,
   "kind": "consent",
   "ask": "permission",

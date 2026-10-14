@@ -631,6 +631,7 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		// and no task waits on this at all.
 		Blocking: Blocking{Turn: true},
 		Scope:    scope,
+		Card:     consentCard(call),
 		// AND IT ATTACHES NOTHING. The call's arguments are on the row this question
 		// points at, and consent.go's own law is that IT SHOWS THE ROW THAT IS
 		// ALREADY THERE — two renderings of one call is how a person ends up
@@ -638,6 +639,18 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		// question would also put a whole file's body into a presence file every
 		// window on the machine re-reads every few seconds.
 	}
+}
+
+// ConsentCard is what a permission card says about one call, from
+// internal/approval's description of it. It is display only.
+type ConsentCard struct {
+	Command string   `json:"command"`
+	Touches []string `json:"touches,omitempty"`
+}
+
+func consentCard(call ai.ToolCall) *ConsentCard {
+	d := approval.Describe(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	return &ConsentCard{Command: d.Command, Touches: d.Touches}
 }
 
 // consentHeadLead opens the one line this lane's question is read by in every

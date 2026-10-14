@@ -15,6 +15,8 @@ type Permission struct {
 	Why          string              `json:"why"`
 	Before       []DisplayEntry      `json:"before" jsonschema:"minItems=2,maxItems=2"`
 	Batch        []PermissionCommand `json:"batch,omitempty"`
+	Touches      []string            `json:"touches,omitempty"`
+	ReadOnly     bool                `json:"read_only,omitempty"`
 }
 type PermissionCommand struct {
 	ID      string `json:"id"`

@@ -713,6 +713,10 @@ const (
 type Question struct {
 	// PermissionCommand carries the app task command without copying arbitrary tool arguments into presence.
 	PermissionCommand string `json:"permission_command,omitempty"`
+	// Card names a consent question's call for the card a person reads: the
+	// exact command (clipped, never rewritten) and what it touches. It is
+	// internal/approval's [approval.Describe], carried whole, and display only.
+	Card *ConsentCard `json:"card,omitempty"`
 
 	// ClarificationDepth orders prerequisites ahead of the question they explain.
 	ClarificationDepth int `json:"clarificationDepth,omitempty"`

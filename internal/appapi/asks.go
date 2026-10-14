@@ -150,8 +150,14 @@ func (a *AgentRegistry) questionAsk(agent string, q session.Question, entries []
 		command := config.AppPermissionCommand(record.Tool, record.Args)
 		if len(record.Args) == 0 {
 			command = q.Head
+			if q.Card != nil && q.Card.Command != "" {
+				command = q.Card.Command
+			}
 		}
 		record.Permission = &Permission{ID: ask.ID, AgentID: agent, Command: command, Class: config.AppPermissionClass(record.Tool, record.Args), Irreversible: ask.Irreversible, Why: q.Reason, Before: ask.Before}
+		if q.Card != nil {
+			record.Permission.Touches = q.Card.Touches
+		}
 		if len(q.Blocking.Tasks) > 0 {
 			record.Permission.TaskID = q.Blocking.Tasks[0]
 			record.Ask.Source = SourceRef{Kind: "task", ID: record.Permission.TaskID}
