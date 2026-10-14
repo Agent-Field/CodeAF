@@ -33,7 +33,7 @@ import (
 // is the depth the old page could not draw. `thor clips` finished yesterday and
 // has nothing under it but one row.
 func tasksChatFixture() (session.World, session.UsageWindow, time.Time) {
-	loc := time.FixedZone("fixture", -4*60*60)
+	loc := time.Local // #1808: the window buckets in local time, so a fixed foreign offset would shift the dates by $TZ
 	now := time.Date(2026, time.September, 6, 13, 0, 0, 0, loc)
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
 

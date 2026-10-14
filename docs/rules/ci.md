@@ -35,7 +35,7 @@ one required name, is green only when both halves are.
 
 ## What the light gate actually checks
 
-Eight things in `ci.yml`, job name `light gate`, then the touched packages, then `check`:
+Nine things in `ci.yml`, job name `light gate`, then the touched packages, then `check`:
 
 - **`go build ./...`** — several sessions work this tree at once and a
   half-finished file breaks the build for everybody. Cheapest possible answer to
@@ -71,6 +71,12 @@ Eight things in `ci.yml`, job name `light gate`, then the touched packages, then
   the shared flags included. It runs on every light gate and in `test-quick`,
   because the touched-package selector does not follow reverse dependencies
   from a program's flags to the registry's help test.
+- **The belt worker reads only its pages and stays below sixteen KiB.**
+  `make test-belt-pages` runs the existing composed-page test with fresh results
+  on every light gate and in `test-quick`. Embedded Markdown changes do not
+  select `internal/session` through the Go-only touched-package gate, so this
+  one focused test also checks the belt's required rules and absent chat words
+  before merging, without running the whole session suite.
 
 **`touched packages`** is the aggregate job: the full suite of every package
 this change touched runs with `-count=1` in concurrent tui3, session, codeaf and

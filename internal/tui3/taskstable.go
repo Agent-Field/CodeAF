@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/reportline"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -354,9 +355,12 @@ func tasksReasonLine(item tasksItem, width int, pal palette) string {
 
 // taskFirstSentence is the opening sentence of what a landing wrote down, which
 // is as much of a report as a single line can honestly carry. A report with no
-// sentence end in it is taken whole and left to the fitter.
+// sentence end in it is taken whole and left to the fitter. It reads the report's
+// first PROSE line through reportline.FirstProse (#931), so a report that opens
+// with a fenced block gives its sentence rather than the row of backticks around
+// it, the same reading the landed card takes.
 func taskFirstSentence(report string) string {
-	report = strings.TrimSpace(strings.SplitN(strings.TrimSpace(report), "\n", 2)[0])
+	report = reportline.FirstProse(report)
 	for at, r := range report {
 		if r != '.' && r != '!' && r != '?' {
 			continue

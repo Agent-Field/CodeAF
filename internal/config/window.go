@@ -27,12 +27,7 @@ func CachedContextWindow(model string) int {
 	if model == "" {
 		return 0
 	}
-	profileDir := ProfileDir()
-	values, _ := readProfileConfig(profileDir)
-	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
-	noKey := func(PersistedSource, modelsource.Source) string { return "" }
-	sources := sourceHomes(resolveSources("", baseURL, persistedSourcesFrom(values), noKey), profileDir)
-	service, bare := sources.For(model)
+	service, bare, profileDir, baseURL := cachedModelService(model)
 	id := strings.TrimSpace(service.Source.ID)
 	switch {
 	case strings.EqualFold(id, modelsource.DefaultID):
@@ -53,4 +48,30 @@ func CachedContextWindow(model string) int {
 	// Recall reads the file and nothing else, so the key the options carry
 	// (none here) and their client are never used.
 	return catalog.Recall(CatalogOptionsFor(service, profileDir)).ContextLength(bare)
+}
+
+// CachedSupportsParameter reads only the profile's remembered model facts.
+// Unknown or unpublished support stays unknown; no fetch or key lookup is
+// allowed on a carried program's answer path.
+func CachedSupportsParameter(model, parameter string) (supported, known bool) {
+	if strings.TrimSpace(model) == "" || strings.TrimSpace(parameter) == "" {
+		return false, false
+	}
+	service, bare, profileDir, baseURL := cachedModelService(model)
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID) {
+		return catalog.Recall(catalog.Options{BaseURL: baseURL, Dir: profileDir}).SupportsParameter(bare, parameter)
+	}
+	return catalog.Recall(CatalogOptionsFor(service, profileDir)).SupportsParameter(bare, parameter)
+}
+
+// cachedModelService resolves only a catalog compartment, with every key
+// lookup disabled. Window and parameter facts must use the same service.
+func cachedModelService(model string) (modelsource.Connected, string, string, string) {
+	profileDir := ProfileDir()
+	values, _ := readProfileConfig(profileDir)
+	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
+	noKey := func(PersistedSource, modelsource.Source) string { return "" }
+	sources := sourceHomes(resolveSources("", baseURL, persistedSourcesFrom(values), noKey), profileDir)
+	service, bare := sources.For(strings.TrimSpace(model))
+	return service, bare, profileDir, baseURL
 }

@@ -276,7 +276,7 @@ func HuntPhase(
 			"hunt", "ai_gate", "cwe_expansion")
 	}
 
-	dedupedFindings, totalRaw, err := runHunters(
+	dedupedFindings, totalRaw, failures, err := runHunters(
 		ctx, app, nodeID, repoPath, recon, strategies, depth, maxConcurrentHunters, earlyStopFileThreshold,
 	)
 	if err != nil {
@@ -314,6 +314,10 @@ func HuntPhase(
 
 	dedup.StrategiesRun = strategyValues(strategies)
 	dedup.TotalRaw = totalRaw
+	dedup.Coverage = nil
+	if len(failures) > 0 {
+		dedup.Coverage = &schemas.HuntCoverage{Attempted: len(strategies), Failures: failures}
+	}
 
 	app.Note(ctx, "HUNT phase complete", "phase", "hunt", "done")
 	return afx.ToMap(dedup)
@@ -371,7 +375,7 @@ func runHunters(
 	depth string,
 	maxConcurrentHunters int,
 	earlyStopFileThreshold int,
-) ([]schemas.RawFinding, int, error) {
+) ([]schemas.RawFinding, int, []schemas.HuntFailure, error) {
 	// Python: max(1, min(max_concurrent_hunters, len(strategies))) — the outer
 	// max keeps an empty strategy list (or a non-positive limit) from asking
 	// for a zero-capacity semaphore.
@@ -447,7 +451,10 @@ func runHunters(
 		fatalMu.Unlock()
 	}
 
-	for _, strategy := range strategies {
+	// A failure belongs to an invocation, not a strategy name. Separate slots
+	// let concurrent producers retain selection order and duplicate attempts.
+	failures := make([]*schemas.HuntFailure, len(strategies))
+	for index, strategy := range strategies {
 		strategy := strategy
 		wg.Add(1)
 		go func() {
@@ -487,8 +494,9 @@ func runHunters(
 				"max_files_without_signal": earlyStopFileThreshold,
 			}, BindHuntResult)
 			if err != nil {
-				// Python: note(f"Hunt strategy failed: {strategy_name}: {exc}")
-				// then put([]). The exception TEXT is runtime-specific.
+				// Keep the other hunters and their findings, but remember that an
+				// empty failed batch is not a successful search with no findings.
+				failures[index] = &schemas.HuntFailure{Strategy: strategyName, Reason: err.Error()}
 				app.Note(ctx, fmt.Sprintf("Hunt strategy failed: %s: %v", strategyName, err), "hunt", "error")
 				findingsQueue <- []schemas.RawFinding{}
 				return
@@ -504,7 +512,13 @@ func runHunters(
 	err := fatalErr
 	fatalMu.Unlock()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
-	return result.findings, result.totalRaw, nil
+	failed := make([]schemas.HuntFailure, 0)
+	for _, failure := range failures {
+		if failure != nil {
+			failed = append(failed, *failure)
+		}
+	}
+	return result.findings, result.totalRaw, failed, nil
 }
