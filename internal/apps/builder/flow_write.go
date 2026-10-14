@@ -61,7 +61,7 @@ func (s *Service) failWrite(ctx context.Context, b *build, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildFailed, Log: err.Error()})
+	s.failed(b, bridge.StepWrite, err)
 	return s.setState(ctx, b, bridge.StateFailed)
 }
 

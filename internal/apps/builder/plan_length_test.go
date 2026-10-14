@@ -43,6 +43,7 @@ func TestPlanLengthSafetyNetBeforeRealCheck(t *testing.T) {
 		for _, group := range []string{"data", "automation", "screens"} {
 			t.Run(fmt.Sprintf("%s/%d", group, length), func(t *testing.T) {
 				r := newRig(t)
+				debug := captureDebug(t)
 				files, _ := spec.GoldenCRM()
 				files[spec.AgentFile] = []byte(strings.ReplaceAll(string(files[spec.AgentFile]), "records.update, gmail", "records.update, records.delete, gmail"))
 				var p spec.Plan
@@ -67,10 +68,14 @@ func TestPlanLengthSafetyNetBeforeRealCheck(t *testing.T) {
 				if got != short || p.Ask == "" {
 					t.Fatalf("plan lost summary or ask: %+v", p)
 				}
-				wantLog := fmt.Sprintf("plan.json:/%s/0/line from %d to %d characters (limit %d)", group, length, utf8.RuneCountInString(short), planLineLimit())
 				events := r.hub.events()
-				if events[0].Step != bridge.StepPlan || !strings.Contains(events[0].Log, wantLog) {
-					t.Fatalf("missing plan log before Check: %+v", events)
+				if events[0].Step != bridge.StepPlan || events[0].Log != "Shortened one plan line to fit" {
+					t.Fatalf("missing plain plan log before Check: %+v", events)
+				}
+				assertOwnerWords(t, events)
+				wantDetail := fmt.Sprintf("path=/%s/0/line from=%d to=%d limit=%d", group, length, utf8.RuneCountInString(short), planLineLimit())
+				if !strings.Contains(debug.String(), wantDetail) || !strings.Contains(debug.String(), "file=plan.json") {
+					t.Fatalf("debug log lost the detail %q: %s", wantDetail, debug.String())
 				}
 				_, saved := r.store.current()
 				if string(saved[spec.PlanFile]) != string(files[spec.PlanFile]) {

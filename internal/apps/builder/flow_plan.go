@@ -22,7 +22,7 @@ func (s *Service) planThenMaybeWrite(ctx context.Context, b *build, justBuild bo
 		return ctx.Err()
 	}
 	if err != nil {
-		s.step(b, bridge.StepPlan, bridge.BuildFailed, err.Error())
+		s.failed(b, bridge.StepPlan, err)
 		return nil
 	}
 	if err := s.publishPlan(ctx, b, plan); err != nil {

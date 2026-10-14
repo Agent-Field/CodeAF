@@ -40,7 +40,7 @@ func (s *Service) shortenPlanLines(ctx context.Context, b *build, files spec.Fil
 	if json.Unmarshal(files[spec.PlanFile], &plan) != nil {
 		return nil
 	}
-	var logs []string
+	shortened := 0
 	limit := planLineLimit()
 	if limit <= 0 {
 		return nil
@@ -56,10 +56,12 @@ func (s *Service) shortenPlanLines(ctx context.Context, b *build, files spec.Fil
 			}
 			short := shortenClause(text, limit)
 			line["line"] = short
-			logs = append(logs, fmt.Sprintf("Shortened plan.json:/%s/%d/line from %d to %d characters (limit %d)", group, i, length, utf8.RuneCountInString(short), limit))
+			shortened++
+			s.detail(b, "shortened plan line", "file", spec.PlanFile, "path", fmt.Sprintf("/%s/%d/line", group, i),
+				"from", length, "to", utf8.RuneCountInString(short), "limit", limit)
 		}
 	}
-	if len(logs) == 0 {
+	if shortened == 0 {
 		return nil
 	}
 	raw, err := json.MarshalIndent(plan, "", "  ")
@@ -73,9 +75,7 @@ func (s *Service) shortenPlanLines(ctx context.Context, b *build, files spec.Fil
 	if p, err := decodePlan(string(raw)); err == nil {
 		b.setPlan(p)
 	}
-	for _, log := range logs {
-		s.emit(b, bridge.BuildEvent{Step: bridge.StepPlan, Status: bridge.BuildDone, Files: []string{spec.PlanFile}, Log: log})
-	}
+	s.emit(b, bridge.BuildEvent{Step: bridge.StepPlan, Status: bridge.BuildDone, Files: []string{spec.PlanFile}, Log: shortenedWords(shortened)})
 	return nil
 }
 

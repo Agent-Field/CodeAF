@@ -46,10 +46,10 @@ func (s *Service) ask(ctx context.Context, b *build, messages []svc.ModelMessage
 	reply, err := s.all.Model.Complete(ctx, svc.ModelCall{Model: b.model, Messages: messages, App: b.app})
 	b.charge(reply.Cost)
 	if err != nil {
-		return "", err
+		return "", spoken{err}
 	}
 	if strings.TrimSpace(reply.Text) == "" {
-		return "", errEmptyReply
+		return "", spoken{errEmptyReply}
 	}
 	return reply.Text, nil
 }

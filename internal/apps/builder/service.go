@@ -141,7 +141,7 @@ func (s *Service) report(b *build, err error) {
 		_ = s.setState(ctx, b, bridge.StatePlanning)
 		return
 	}
-	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildFailed, Log: err.Error()})
+	s.failed(b, bridge.StepWrite, err)
 	if detail, getErr := s.all.Store.Get(ctx, b.app); getErr == nil && detail.State == bridge.StateBuilding {
 		_ = s.setState(ctx, b, bridge.StateFailed)
 	}
