@@ -1063,6 +1063,9 @@ var OperatorEnvPins = []string{
 	AppModeEnv,
 	// The Apps Builder reads this launch override outside the shared model slots.
 	"CODEAF_APPS_BUILDER_MODEL",
+	// The Apps Builder road (rescue, calls, loop) is a launch override for
+	// operators and benches; a person has no row for it.
+	"CODEAF_APPS_BUILDER_ROAD",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.
 	"CODEAF_CODEX_ISSUER",
