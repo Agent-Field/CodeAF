@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/expr"
 	"github.com/Agent-Field/codeaf/internal/apps/query"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
@@ -128,10 +129,10 @@ func (r *renderer) node(n *spec.Node, path string, values map[string]any, typ st
 	if n.When != "" {
 		program, err := compileWhen(n.When, values)
 		if err == nil {
-			visible, err = evalWhen(r.ctx, program, values)
+			visible, err = evalWhen(r.ctx, program, values, r.dateFields(values)...)
 		}
 		if err != nil {
-			r.issue(path+"/when", "render/when", err, "write a boolean CEL expression that works on every sample row")
+			r.issue(path+"/when", "render/when", expr.Diagnostic(n.When, err), "write a boolean CEL expression that works on every sample row")
 		}
 	}
 	if visible || (n.Bind != nil && n.Bind.Records != "") {
@@ -160,10 +161,10 @@ func (r *renderer) hidden(n *spec.Node, path string, values map[string]any) {
 	if n.When != "" {
 		program, err := compileWhen(n.When, values)
 		if err == nil {
-			_, err = evalWhen(r.ctx, program, values)
+			_, err = evalWhen(r.ctx, program, values, r.dateFields(values)...)
 		}
 		if err != nil {
-			r.issue(path+"/when", "render/when", err, "write a boolean CEL expression using declared targets")
+			r.issue(path+"/when", "render/when", expr.Diagnostic(n.When, err), "write a boolean CEL expression using declared targets")
 		}
 	}
 	nodeChildren(n, path, func(child *spec.Node, childPath string) { r.hidden(child, childPath, values) })
@@ -443,4 +444,20 @@ func (r *renderer) actionTarget(verb string, data map[string]any, path, typ stri
 			r.issue(ptr(path, verb), "kit/bind", fmt.Errorf("unknown connector method %s.%s", connector, method), "declare the connector and verb in app.json capabilities")
 		}
 	}
+}
+
+func (r *renderer) dateFields(values map[string]any) []string {
+	record, _ := values["record"].(map[string]any)
+	typ, _ := record["type"].(string)
+	schema := r.bundle.App.Records[typ]
+	result := []string{}
+	if schema == nil {
+		return result
+	}
+	for name, field := range schema.Fields {
+		if field.Type == spec.FieldDate || field.Type == spec.FieldDatetime {
+			result = append(result, name)
+		}
+	}
+	return result
 }
