@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/draft"
@@ -57,13 +58,32 @@ func (s *Service) previewDraft(ctx context.Context, b *build, files spec.Files) 
 
 // fixDraft runs today's check and fix calls over a draft the worker did not
 // finish: up to three fix calls, then the fallback that leaves failing runs out.
+//
+// Its failure does not show the failed card: the rung below it, today's one-call
+// write from the plan, gets its turn first, and only that rung may fail the build.
 func (s *Service) fixDraft(ctx context.Context, b *build, files spec.Files) error {
 	s.step(b, bridge.StepWrite, bridge.BuildRunning, "Finishing the parts that are left")
+	b.holdFailure(true)
+	err := s.fixHeld(ctx, b, files)
+	b.holdFailure(false)
+	if errors.Is(err, errRungFailed) {
+		if err := s.tagRoad(b, roadCalls); err != nil {
+			return err
+		}
+		return s.rewriteFromPlan(ctx, b, nil)
+	}
+	return err
+}
+
+func (s *Service) fixHeld(ctx context.Context, b *build, files spec.Files) error {
 	if err := s.all.Store.WriteFiles(ctx, b.app, files); err != nil {
 		return s.failWrite(ctx, b, err)
 	}
 	return s.checkAndFix(ctx, b, files, "")
 }
+
+// errRungFailed says a held rung ended in a failed check or write.
+var errRungFailed = errors.New("the rung did not pass")
 
 // rewriteFromPlan is today's one-call pipeline from the plan, for a draft too
 // thin to fix.

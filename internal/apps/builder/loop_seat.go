@@ -69,12 +69,29 @@ func (s *Service) openSeat(b *build) (*seat, error) {
 	if err != nil {
 		return nil, err
 	}
+	if defaults.Ask == "" {
+		// A lost plan.json must not lose the ask: the saved defaults still hold it.
+		defaults.Ask = drafts.Defaults().Ask
+		b.plan.Ask = defaults.Ask
+	}
 	if err := drafts.SaveDefaults(defaults); err != nil {
 		return nil, err
 	}
 	b.seat = &seat{dir: dir, drafts: drafts, tasks: tasks}
 	b.seat.feed = newFeed(s, b, drafts)
 	return b.seat, nil
+}
+
+// newestTask is the id of the task added last, which is the one the next
+// worker opens on.
+func (t *seat) newestTask() string {
+	newest := ""
+	for _, task := range t.tasks.Tasks() {
+		if task.ID != loopRootID {
+			newest = task.ID
+		}
+	}
+	return newest
 }
 
 func (t *seat) setLive(id string) {

@@ -366,3 +366,5 @@ the full gate.
 - The app agent on the loop (`internal/apps/agent`). It is a later step on the
   same seat.
 - Making `loop` the default. That waits for §11.
+- A single-run executor behind `svc.Check` for `try`. Today `try <run>` runs
+  the full Check and shows only that run's findings.
