@@ -35,9 +35,16 @@ func formatDate(f *spec.Field, at time.Time, i int) string {
 	if f.Type == spec.FieldDate {
 		return at.Format("2006-01-02")
 	}
-	// Subday offsets keep unique datetime fields distinct even in large samples.
-	return at.Add(time.Duration(i) * time.Second).Format(time.RFC3339Nano)
+	// Datetimes fall in working hours on the half hour; subday offsets keep
+	// unique datetime fields distinct even in large samples.
+	at = at.Truncate(24 * time.Hour).Add(time.Duration(workHour(i))*time.Hour + time.Duration(i%2*30)*time.Minute)
+	if f.Unique {
+		at = at.Add(time.Duration(i) * time.Second)
+	}
+	return at.Format(time.RFC3339Nano)
 }
+
+func workHour(i int) int { return workdayStart + i*5%workdayHours }
 
 // onlyWords reports whether every word of text is one of words.
 func onlyWords(text string, words []string) bool {

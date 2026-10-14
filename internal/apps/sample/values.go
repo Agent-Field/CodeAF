@@ -29,22 +29,22 @@ type cell struct {
 
 func fieldValue(c cell) (any, error) {
 	if c.name == c.schema.Title && (c.f.Type == spec.FieldText || c.f.Type == spec.FieldLongtext) {
-		if title, ok := c.words.title(c.typ, c.i); ok && !numberedTitle(c.name, c.f.Label) {
+		if title, ok := c.words.title(c.typ, c.i, c.schema); ok {
 			return title, nil
 		}
 		return rowTitle(c), nil
 	}
+	if value, ok := c.words.value(c); ok {
+		return value, nil
+	}
 	if useDefault(c.f) {
 		return defaultValue(c.f)
-	}
-	if value, ok := c.words.value(c.typ, c.name, c.f, c.i); ok {
-		return value, nil
 	}
 	switch c.f.Type {
 	case spec.FieldText:
 		return textValue(c.typ, c.name, c.schema, c.f, c.i), nil
 	case spec.FieldLongtext:
-		return noteValue(c.title, c.i), nil
+		return noteValue(c.title, c.i+len(c.name)), nil
 	case spec.FieldDate, spec.FieldDatetime:
 		return dateValue(c.name, c.f, c.i, c.rng, c.now), nil
 	case spec.FieldEnum, spec.FieldEnums:
@@ -142,7 +142,8 @@ var numberRanges = []numberRange{
 	{[]string{"rating", "stars", "score"}, 1, 5, 1},
 	{[]string{"percent", "percentage", "progress", "probability", "completion", "pct"}, 5, 95, 5},
 	{[]string{"quantity", "qty", "count", "stock", "units", "inventory", "seats", "capacity", "attendees"}, 2, 180, 1},
-	{[]string{"hours", "hrs", "minutes", "duration", "days"}, 1, 40, 1},
+	{[]string{"hours", "hrs"}, 0.5, 8, 0.5},
+	{[]string{"minutes", "duration", "days", "length"}, 15, 90, 15},
 	{[]string{"age"}, 18, 70, 1},
 	{[]string{"year"}, 2019, 2026, 1},
 	{[]string{"weight", "kg", "lbs"}, 1, 60, 0.5},
