@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: approvals inside home's ask here errand are answered in its pane, and its card keeps the block's guards
+title: ask here answers its approvals in the pane, and its card keeps the question guards
 pr: 1833
 surface: [chat, docs]
 invalidates:
