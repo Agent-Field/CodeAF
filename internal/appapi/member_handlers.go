@@ -21,7 +21,7 @@ var memberContractRoutes = []contractRoute{
 }
 
 func (s *Server) memberHandler(w http.ResponseWriter, r *http.Request) {
-	s.idempotent(s.serveMember)(w, r)
+	s.idempotent(s.crewAppsAroundMembers(s.serveMember))(w, r)
 }
 func (s *Server) serveMember(w http.ResponseWriter, r *http.Request) {
 	a := s.options.Agents

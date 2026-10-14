@@ -47,7 +47,7 @@ does not charge that crew when it reopens.
 
 ## Message any member and questions climb — app resource availability
 
-Each member keeps its own agent id and chat. `POST /app/v1/agents/{member.agent_id}/turn` checks paused members and records
+Ordinary agent members keep their own agent id and chat. App-agent members answer in the crew log; see [An app's agent in a crew](apps-crew-agents.md). `POST /app/v1/agents/{member.agent_id}/turn` checks paused members and records
 accepted messages in the native log for the manager to read.
 Native clarifying questions climb from member to manager and through parent
 crews. Permission decisions remain yours; the visible question path keeps its
@@ -108,7 +108,7 @@ Finish keeps that report and stops members; agents still in another open
 crew keep working there. Linked jobs keep running.
 
 `POST /app/v1/crews/{cid}/archive` requires a finished crew.
-`POST /app/v1/crews/{cid}/reopen` restores its roster and report from Closed
+`POST /app/v1/crews/{cid}/reopen` restores its ordinary-agent roster and report from Closed
 or Archived. A closed parent must be reopened first. History is kept forever.
 
 ## Items, log and while you were away — link, unlink, read

@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/crewagent"
 	"github.com/Agent-Field/codeaf/internal/apps/crewlink"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -27,6 +29,10 @@ type appsTransport struct {
 // SetAppsServices binds apps before serving requests and returns the same handle
 // for Mount. Later crew handlers reach their peers through AppsServices.
 func (s *Server) SetAppsServices(all *svc.Services) *svc.Services {
+	crewagent.Prepare(all)
+	if s.options.Agents != nil {
+		session.SetCrewApps(s.options.Agents.home, all, appsCaller())
+	}
 	if bound, ok := s.guarded.(*appsTransport); ok {
 		bound.services = all
 	} else {
@@ -52,6 +58,7 @@ type crewLinkState interface {
 type crewViewBody struct {
 	CrewResponse
 	Items []any `json:"items"`
+	Tree  []any `json:"tree"`
 }
 
 func (s *Server) writeCrewView(w http.ResponseWriter, r *http.Request, body CrewResponse) error {
@@ -59,7 +66,11 @@ func (s *Server) writeCrewView(w http.ResponseWriter, r *http.Request, body Crew
 	if err != nil {
 		return err
 	}
-	write(w, 200, crewViewBody{CrewResponse: body, Items: items})
+	tree, err := s.crewAppMemberViews(body.ID, body.Tree)
+	if err != nil {
+		return err
+	}
+	write(w, 200, crewViewBody{CrewResponse: body, Items: items, Tree: tree})
 	return nil
 }
 
@@ -69,16 +80,22 @@ func (s *Server) crewAppsAroundWork(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		verb := crewPathVerb(r)
-		if verb != "finish" && verb != "reopen" && !(r.Method == http.MethodGet && verb == "report") {
+		if verb != "finish" && verb != "reopen" && !(r.Method == http.MethodGet && (verb == "report" || verb == "log")) {
 			next(w, r)
 			return
 		}
 		rec := &replyWriter{header: make(http.Header)}
 		next(rec, r)
 		if rec.code/100 == 2 {
-			if verb == "report" {
+			if verb == "log" {
+				if err := s.enrichCrewAppLog(r, rec); err != nil {
+					rec.Reset()
+					rec.code = 0
+					writeLinkError(rec, err)
+				}
+			} else if verb == "report" {
 				s.enrichCrewReport(r, rec)
-			} else if err := s.syncCrewLinks(r, verb); err != nil {
+			} else if err := s.syncCrewApps(r, verb); err != nil {
 				rec.Reset()
 				rec.code = 0
 				writeLinkError(rec, err)

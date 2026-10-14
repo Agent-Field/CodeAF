@@ -551,7 +551,7 @@ func (a *Agent) armTeamTools(roles []teamRole, lead bool) {
 	}
 	// A schema that will not parse is a bug in this build, and every tool here
 	// is a literal; the error has nowhere useful to go at a boundary.
-	_, _ = a.armFamily(arriving)
+	_, _ = a.armFamily(a.crewAppsTools(arriving))
 	a.armMu.Lock()
 	for name := range allowed {
 		delete(a.teamRetired, name)
