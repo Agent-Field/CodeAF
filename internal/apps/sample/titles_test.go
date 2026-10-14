@@ -80,7 +80,7 @@ func TestTitleVocabularyCoversMaximumPreviewWithoutCounters(t *testing.T) {
 			}
 			seen := map[string]bool{}
 			for i := range 10000 {
-				title := titleValue("record", schema, schema.Fields["title"], i)
+				title := titleValue("record", schema, schema.Fields["title"], i, 0)
 				if seen[title] || !readableTitle(title) {
 					t.Fatalf("invalid title at %d: %q", i, title)
 				}
