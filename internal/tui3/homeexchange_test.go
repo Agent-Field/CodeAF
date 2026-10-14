@@ -340,6 +340,19 @@ func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	}
 }
 
+// readCard is a person reading the pane's card before answering it: it has been
+// on the screen for the settle guard's quarter second, so a key or a press is
+// taken as aimed at it ([app.questionSettled]). The tests whose subject is that
+// guard drive the clock instead (homeexchange_cardguard_test.go).
+func readCard(t *testing.T, a *app) {
+	t.Helper()
+	ex := theExchange(a)
+	if ex == nil || ex.ask == nil {
+		t.Fatal("there is no card up to read")
+	}
+	ex.ask.shown = a.now().Add(-questionSettle)
+}
+
 // standingProposal is one EventStandingProposal as the engine sends it.
 func standingProposal(id uint64, words string) session.Event {
 	return session.Event{
@@ -385,6 +398,7 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 			t.Fatalf("the card does not say %q:\n%s", want, frame)
 		}
 	}
+	readCard(t, a)
 	drive(t, a, key("1"))
 	if len(lab.agent.answered) != 1 {
 		t.Fatalf("`1` should have answered the card, the agent saw %v", lab.agent.answered)
@@ -538,6 +552,7 @@ func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 	if frame := homeText(a); !strings.Contains(frame, "0 Don't remind me") {
 		t.Fatalf("the pane does not name the decline:\n%s", frame)
 	}
+	readCard(t, a)
 	drive(t, a, key(session.StandingNoKey))
 	if len(lab.agent.answered) != 1 {
 		t.Fatalf("`%s` should have answered the card, the agent saw %v", session.StandingNoKey, lab.agent.answered)
@@ -954,6 +969,7 @@ func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
 	// behind the keys already in hand, so a `1` sent in the same call would be
 	// pressed before the card it answers had arrived.
 	drive(t, a, key("up"), key("enter"))
+	readCard(t, a)
 	drive(t, a, key("1"))
 
 	ex := theExchange(a)
@@ -1078,6 +1094,7 @@ func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
 	drive(t, a, key("up"), key("enter"))
+	readCard(t, a)
 	drive(t, a, key(questionCommentKey))
 
 	ex := theExchange(a)
@@ -1331,7 +1348,9 @@ func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 	}
 	// AND IT IS STILL ANSWERABLE.
 	a.home.cursor = exchangeRowAt(a, ex)
-	drive(t, a, key("right"), key("1"))
+	drive(t, a, key("right"))
+	readCard(t, a)
+	drive(t, a, key("1"))
 	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
 		t.Fatalf("the card outlived home but could not be answered, the agent saw %v", lab.agent.answered)
 	}
@@ -1653,6 +1672,7 @@ func TestANarrowWindowStacksTheExchangeOverTheList(t *testing.T) {
 	}
 	// THE CARD IS ANSWERABLE THERE.
 	a.errandEvent(ex, standingProposal(7, "remind me at 6 to leave"))
+	readCard(t, a)
 	drive(t, a, key("1"))
 	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
 		t.Fatalf("the card could not be answered on a narrow frame, the agent saw %v", lab.agent.answered)

@@ -2537,6 +2537,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"ask here is stuck on working", "asking-from-home"},
 		{"a command in ask here needs my permission", "asking-from-home"},
 		{"how do I approve a command in the ask here pane", "asking-from-home"},
+		// The pane's card owned its digits while a correction was being typed, so
+		// "make it 10" set the reminder up at the `1`; and it took a key pressed
+		// the instant it appeared. What somebody asks after either.
+		{"I typed a new time and it set up the reminder anyway", "asking-from-home"},
+		{"why didn't my key answer the card in ask here", "asking-from-home"},
 		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
 		{"why is there no once on my reminder card", "keeping-an-eye"},
 		// The e2e suite found the firing that reached a conversation and was

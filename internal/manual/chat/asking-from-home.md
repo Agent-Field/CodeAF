@@ -290,10 +290,11 @@ the pane with your own words, when it would wake, and what it would cost per run
 created until you answer it:
 
 - `1` — yes. It stands as proposed, and the keyboard goes back to the list.
-- `c` — change it. The pane says `type the change and press enter`; write the correction in
+- `o` — change it. The pane says `type the change and press enter`; write the correction in
   your own words ("make it 8pm", "every weekday") and the model proposes again. Nothing is
-  created by a change. (This was `2` before the card's answers moved onto the question every
-  screen here draws; `c` is that question's own key for "not as it stands".)
+  created by a change. While you write it every key is text, digits included. (This was `2`
+  before the card's answers moved onto the question every screen here draws; `o` is that
+  question's own key for "not as it stands".)
 - `3`. Once. The action runs now and nothing standing is created. On a repeating
   check the button reads `Only now, don't repeat`. **Not every card offers it**: a
   one-off reminder draws no once chip, because doing "remind me at six" now says the
@@ -319,8 +320,24 @@ uses: `Set it up · Mondays at 9am · set up`, `Only now, don't repeat · approv
 ordinary characters again and can be typed into a follow-up. The only card that ever
 replaces it is the new one the model sends after a change.
 
+## Why didn't my key answer the card in ask here — I typed a new time and it set up the reminder anyway, and the quarter-second guard
+
+**A key pressed within a quarter of a second of the card first being drawn is ignored**, and
+so is a click. It was aimed at whatever was there before the card — usually a follow-up you
+were typing — so a `1` in your sentence cannot set something up. Press it again. A card that
+arrived while you were in another conversation counts from when you first see it.
+
+**While you are writing a change after `o`, the card takes no keys at all.** "make it 10
+tomorrow" goes into the box whole and `enter` sends it. It used to answer the card: the `1`
+was taken as yes, the reminder was set up as first proposed, and the rest of the sentence
+was lost.
+
 The digits belong to a card only while it is still a question. With no card up, or with an
 answered one on screen, `3` in the middle of "make it 3pm" is just a `3`.
+
+**Your answer is kept on the card itself.** Nothing is added above the message box of the
+conversation you open next — it used to show there for half a minute as a decision line,
+about a conversation that never asked.
 
 ## Ask here needs your permission to run a command — approve or deny it in the pane
 
