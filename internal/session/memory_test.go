@@ -297,7 +297,7 @@ func TestRememberKeepsForThisProjectAndWidensWithoutOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt != "remembered for this project · run make pr-ready first" {
+	if receipt != "remembered · run make pr-ready first · for this project" {
 		t.Fatalf("receipt = %q", receipt)
 	}
 	got, _ := brain.MemoriesFor([]string{store.OwnerProject("alpha")})
@@ -305,11 +305,11 @@ func TestRememberKeepsForThisProjectAndWidensWithoutOne(t *testing.T) {
 		t.Fatalf("kept = %+v, want one person-kept line under the project's name", got)
 	}
 	receipt, err = agent.RememberAlways("no emoji anywhere", true)
-	if err != nil || receipt != "remembered for you everywhere · no emoji anywhere" {
+	if err != nil || receipt != "remembered · no emoji anywhere · for you everywhere" {
 		t.Fatalf("typed on home = %q %v, want it kept for the person everywhere", receipt, err)
 	}
 	again, err := agent.Remember("run make pr-ready first")
-	if err != nil || !strings.HasPrefix(again, "already remembered for this project") {
+	if err != nil || again != "already remembered · run make pr-ready first · for this project" {
 		t.Fatalf("the same words again = %q %v", again, err)
 	}
 
@@ -415,7 +415,7 @@ func TestANoticedLineIsKeptSaidAndUndoable(t *testing.T) {
 	}
 	events := collect(t, mustSubmit(t, agent, "thanks"))
 	lines := noticeLines(events)
-	want := "noticed and remembered for you everywhere · wants the change made directly · /forget undoes it"
+	want := "noticed and remembered · wants the change made directly · for you everywhere · /forget undoes it"
 	if len(lines) == 0 || lines[0] != want {
 		t.Fatalf("the person was told %q, want %q", lines, want)
 	}

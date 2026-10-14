@@ -165,11 +165,10 @@ func readMemory(shelves store.MemoryShelves, here string, open map[string]bool, 
 	}
 	r.outside = len(hereTexts) - session.MemoryFits(hereTexts)
 
-	// A MACHINE THAT HAS REMEMBERED NOTHING draws the place's whisper and the
-	// one door that changes that (the body puts the whisper above it): no head
-	// row saying "0 kept", which is the emptiness law applied to a count.
+	// A MACHINE THAT HAS REMEMBERED NOTHING HAS NO LINES AT ALL: the place
+	// draws its heading and whisper instead, and the whisper names /remember.
+	// No head row saying "0 kept" — the emptiness law applied to a count.
 	if r.bare() {
-		r.lines = []memoryReadingLine{{kind: memoryReadingAdd, label: "+ " + memoryAddWord}}
 		return r
 	}
 	r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingHeader})
@@ -366,5 +365,5 @@ func (r memoryReading) at(i int) (memoryStop, bool) {
 }
 
 // bare says nothing is remembered at all and no filter is typed: the place
-// then draws its whisper and the add row.
+// then draws its whisper and nothing else.
 func (r memoryReading) bare() bool { return r.held == 0 && r.letGo == 0 && r.typed == "" }

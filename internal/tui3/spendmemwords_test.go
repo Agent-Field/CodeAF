@@ -22,7 +22,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -224,108 +223,6 @@ func writeUsageLines(t *testing.T, path string, lines []session.UsageLine) {
 	}
 	if err := os.WriteFile(path, []byte(file.String()), 0o600); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// ── the memory place ────────────────────────────────────────────────────────
-
-// TestTheMemoryRowsUseTheSurfacesOneSeparator is audit-settings row 7. The rows
-// glued their fields together with two spaces while every clause built for those
-// same rows joined with ` · `, so one line carried two separator grammars and
-// `· Ships on Fridays  fact  let go` gave a reader no way to tell where the
-// memory's own words stopped.
-func TestTheMemoryRowsUseTheSurfacesOneSeparator(t *testing.T) {
-	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
-	r := readMemory(memoryPlaceFixture(now), map[string]bool{store.MemoryScopeUser: true}, "", now)
-	rows := r.rows(200, newPalette(tokens.NoColor, false))
-	for at, line := range r.lines {
-		switch line.kind {
-		case memoryReadingShelf, memoryReadingMemory:
-		default:
-			continue
-		}
-		row := plain(rows[at])
-		// The age is right-aligned and the run of air before it is the column,
-		// not a separator: what is under test is the half of the row that
-		// carries the facts.
-		facts := strings.TrimRight(strings.SplitN(strings.TrimRight(row, " "), "  ", 2)[0], " ")
-		if strings.Contains(facts, "  ") {
-			t.Fatalf("row %d reads %q, want its facts joined with %q — one separator, one meaning", at, facts, rowSep)
-		}
-		if len(line.facts) > 0 && !strings.Contains(facts, rowSep) {
-			t.Fatalf("row %d reads %q and has facts to say, want them behind %q", at, facts, rowSep)
-		}
-	}
-}
-
-// TestTheShelvesHeadingIsWholeBeforeItsLegend is audit-settings row 13. At 80
-// columns the section's identity was truncated — `shelves · …` — to keep a count
-// of correction memories whole, which is rowfit's first law inverted.
-func TestTheShelvesHeadingIsWholeBeforeItsLegend(t *testing.T) {
-	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
-	r := readMemory(memoryPlaceFixture(now), nil, "", now)
-	at := -1
-	for i, line := range r.lines {
-		if line.kind == memoryReadingSection {
-			at = i
-		}
-	}
-	if at < 0 {
-		t.Fatal("the reading drew no shelves heading")
-	}
-	kinds := 0
-	for _, width := range []int{200, 120, 80, 60} {
-		// The heading stands on the place's one left edge ([placeLead]).
-		row := strings.TrimPrefix(plain(r.rows(width, newPalette(tokens.NoColor, false))[at]), placeLead)
-		if !strings.HasPrefix(row, memorySectionWord) {
-			t.Fatalf("at %d cells the heading reads %q, want %q whole in front of the legend", width, row, memorySectionWord)
-		}
-		// AND THE LEGEND IS A PREFIX OF ITSELF: kinds fall off the end one at a
-		// time as the frame narrows, biggest first, and none is skipped forward
-		// into the gap a wider one could not use.
-		if n := strings.Count(row, " · ") - 1; kinds > 0 && n > kinds {
-			t.Fatalf("at %d cells the legend grew to %d kinds from %d as the frame narrowed: %q", width, n, kinds, row)
-		} else if n >= 0 {
-			kinds = n
-		}
-	}
-}
-
-// TestAMemoryLetGoAndOneReplacedAreNotTheSameWord is the fix brief's row 6. The
-// phrase `let go` was a count on the head AND the tag on a row, and worse, the
-// tag was worn by two different states: a line somebody asked to be forgotten
-// and a line the machine retired because something newer contradicted it. The
-// head added them together.
-func TestAMemoryLetGoAndOneReplacedAreNotTheSameWord(t *testing.T) {
-	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
-	shelves := memoryPlaceFixture(now)
-	// THE TWO RETIRED LINES ARE PUT WHERE THE PAGE DRAWS THEM. A shelf shows
-	// three memories and a fold ([memoryShelfShown]); the fixture's forgotten and
-	// superseded lines are the last two of six, which is the fold and not the
-	// row this test is about.
-	for at, shelf := range shelves.Shelves {
-		if shelf.Scope != store.MemoryScopeUser {
-			continue
-		}
-		retired := shelf.Memories[len(shelf.Memories)-2:]
-		shelves.Shelves[at].Memories = append(append([]store.Memory{}, retired...), shelf.Memories[:len(shelf.Memories)-2]...)
-	}
-	r := readMemory(shelves, map[string]bool{store.MemoryScopeUser: true}, "", now)
-	text := memoryPlaceText(r, 200)
-	if !strings.Contains(text, "1 let go · 1 replaced") {
-		t.Fatalf("the head counts the two states as one:\n%s", text)
-	}
-	if !strings.Contains(text, "Feature branches · fact · "+memoryLetGoWord) {
-		t.Fatalf("the memory somebody let go of does not say so:\n%s", text)
-	}
-	if !strings.Contains(text, "TUI2 is live · project state · "+memoryReplacedWord) {
-		t.Fatalf("a memory the machine retired on its own still says %q:\n%s", memoryLetGoWord, text)
-	}
-	// AND ZERO OF EITHER IS STILL NOTHING (the emptiness law).
-	quiet := shelves
-	quiet.LetGo, quiet.Superseded = 0, 0
-	if got := memoryPlaceText(readMemory(quiet, nil, "", now), 200); strings.Contains(got, "0 "+memoryReplacedWord) {
-		t.Fatalf("zero replaced was drawn as a fact:\n%s", got)
 	}
 }
 

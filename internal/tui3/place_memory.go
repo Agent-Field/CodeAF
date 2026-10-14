@@ -16,12 +16,14 @@ const memoryPlaceRows = 12
 // is drawn (verbstrip.go), so the foot names the arrow and never a bare letter.
 const (
 	memoryLineHint  = "enter open · → edit, forget, move · type to filter"
-	memoryGoneHint  = "enter open · → put it back · type to filter"
+	memoryGoneHint  = "enter open · → " + memoryUndoWord + " · type to filter"
 	memoryShelfHint = "enter open or close · type to filter"
 	memoryAddHint   = "enter " + memoryAddWord + " · type to filter"
 	memoryCardHint  = "→ edit, forget, move · esc back to the list"
 	memoryEditHint  = "enter save · esc cancel"
-	memoryBareHint  = "enter " + memoryAddWord + " · esc"
+	// A PAGE WITH NOTHING ON IT HAS ONLY A WAY OUT: its whisper already says
+	// /remember adds a line, and the add row arrives with the first one.
+	memoryBareHint = "esc"
 )
 
 // The words this place's own doors are spelled in, once.
@@ -559,17 +561,12 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 			}
 		}
 	} else {
-		body := p.reading.paint(width, a.pal, func(i int) bool { return i == p.cursor })
 		if p.reading.bare() {
-			// THE EMPTY PAGE IS THE WHISPER AND THE ONE DOOR THAT CHANGES IT.
-			for _, line := range placeWhisperLines(pageMemory, width, a.pal) {
-				rows = append(rows, placeRow{text: line, hit: -1})
-			}
-			rows = append(rows, placeRow{text: ""})
-			p.top = 0
-		} else {
-			p.top = placeTop(p.top, p.cursor, len(body), room-len(rows))
+			// THE EMPTY PAGE IS ITS HEADING AND ITS WHISPER, which names the door.
+			return placeWhisperRows(pageMemory, width, room, a.pal)
 		}
+		body := p.reading.paint(width, a.pal, func(i int) bool { return i == p.cursor })
+		p.top = placeTop(p.top, p.cursor, len(body), room)
 		for i := p.top; i < len(body); i++ {
 			if len(rows) >= room {
 				break
@@ -761,7 +758,7 @@ func (placeMemory) hint(a *app) string {
 		return "edit · " + memoryEditHint
 	case p.expanded != "":
 		if memory, ok := p.choice(); ok && memory.Status != store.MemoryActive {
-			return "→ put it back · esc back to the list"
+			return "→ " + memoryUndoWord + " · esc back to the list"
 		}
 		return memoryCardHint
 	case p.reading.bare():

@@ -625,9 +625,9 @@ func (a *Agent) rememberAs(text, scope string) (string, error) {
 		return "", err
 	}
 	if !added {
-		return "already remembered " + reach + " · " + memory.Text, nil
+		return "already remembered · " + memory.Text + " · " + reach, nil
 	}
-	return "remembered " + reach + " · " + memory.Text, nil
+	return "remembered · " + memory.Text + " · " + reach, nil
 }
 
 // Forget drops the line a query names and answers the receipt; an empty query
@@ -781,9 +781,9 @@ func (a *Agent) learnFromTurn(user userMessage, answer string) {
 		case !added:
 			// Already kept: nothing changed, so nothing is said.
 		case replaced != nil:
-			a.sayMemory("noticed and remembered " + reach + " · " + memory.Text + " · replaces " + replaced.Text + " · /forget undoes it")
+			a.sayMemory("noticed and remembered · " + memory.Text + " · replaces " + replaced.Text + " · " + reach + " · /forget undoes it")
 		default:
-			a.sayMemory("noticed and remembered " + reach + " · " + memory.Text + " · /forget undoes it")
+			a.sayMemory("noticed and remembered · " + memory.Text + " · " + reach + " · /forget undoes it")
 		}
 	}()
 }
@@ -887,7 +887,7 @@ func (a *Agent) memoryTools() []bare.Tool {
 			if !added {
 				return "already remembered " + reach + ": " + memory.Text, false, nil
 			}
-			a.sayMemory("remembered " + reach + " · " + memory.Text + " · /forget undoes it")
+			a.sayMemory("remembered · " + memory.Text + " · " + reach + " · /forget undoes it")
 			return "remembered " + reach + ": " + memory.Text, false, nil
 		},
 	}, {

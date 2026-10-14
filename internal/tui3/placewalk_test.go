@@ -91,7 +91,7 @@ func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 	if !strings.Contains(screen, whisperOf(pageMemory)) {
 		t.Fatalf("the place with no store does not say what arrives here:\n%s", screen)
 	}
-	if !strings.Contains(screen, memoryOffNote) {
+	if !strings.Contains(screen, memoryUnavailableNote) {
 		t.Fatalf("the place with no store does not say so:\n%s", screen)
 	}
 }

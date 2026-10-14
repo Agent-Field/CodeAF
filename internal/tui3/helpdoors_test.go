@@ -181,7 +181,7 @@ func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	}
 
 	// MEMORY — a foot that promises only what is bound.
-	bare := readMemory(store.MemoryShelves{}, nil, "", time.Time{})
+	bare := readMemory(store.MemoryShelves{}, "", nil, "", time.Time{})
 	a := newTestApp(nil)
 	a.width, a.height = 120, 40
 	a.mem.reading = bare
@@ -199,13 +199,13 @@ func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	// AND A PAGE WITH ONE LINE ON IT IS A PAGE, NOT A LESSON. The head row is
 	// there from the first memory on and the whisper is gone, so the eighth
 	// memory no longer swaps three paragraphs for a head row in one frame.
-	some := readMemory(store.MemoryShelves{Total: 3, Held: 3,
-		Shelves: []store.MemoryShelf{{Scope: store.MemoryScopeUser, Held: 3}}}, nil, "", time.Time{})
+	some := readMemory(store.MemoryShelves{Held: 3,
+		Shelves: []store.MemoryShelf{{Owner: store.OwnerUser, Held: 3}}}, "", nil, "", time.Time{})
 	shown := ""
 	for _, line := range some.rows(120, pal) {
 		shown += ansi.Strip(line) + "\n"
 	}
-	if !strings.Contains(shown, "3 held") || strings.Contains(shown, placeWhisper[pageMemory].whisper) {
+	if !strings.Contains(shown, "3 kept") || strings.Contains(shown, placeWhisper[pageMemory].whisper) {
 		t.Errorf("a page with three memories on it is not headed by its count:\n%s", shown)
 	}
 }

@@ -1,29 +1,36 @@
 package tui3
 
 import (
-	"errors"
-	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// rememberingAgent is a fakeAgent that also has a brain — the optional
-// interface memory.go asserts. It is a separate type rather than three more
-// fields on fakeAgent for exactly the reason the interface is separate: a
-// session without memory is the ordinary case, and every other test in this
-// package has to keep meaning what it means.
+// THE SURFACE OF MEMORY: the commands say exactly what the conversation wrote,
+// a command typed on home answers on home, the memory place shelves what is
+// kept by where it holds and says who kept each line, its foot names only keys
+// that work, and every write leaves the update loop.
+
+// rememberingAgent is a fakeAgent with a memory: the optional interfaces
+// memory.go asserts. Its receipts are the engine's own spellings, because the
+// surface prints what the conversation wrote rather than composing its own.
 type rememberingAgent struct {
 	fakeAgent
 
 	kept    []session.MemoryLine
 	failing error
 	off     bool
+	project string
 
-	remembered, forgotten, listed []string
+	remembered, forgotten, listed, moved []string
+	everywhere                           []bool
 }
 
 func (r *rememberingAgent) Remembers() bool { return !r.off }
@@ -33,9 +40,26 @@ func (r *rememberingAgent) Remember(text string) (string, error) {
 	if r.failing != nil {
 		return "", r.failing
 	}
-	line := session.MemoryLine{ID: "mem_1", Title: "prefers tabs", Text: text}
-	r.kept = append(r.kept, line)
-	return line.Title, nil
+	r.kept = append(r.kept, session.MemoryLine{ID: "mem_" + itoa(len(r.kept)+1), Title: text, Text: text, Where: "for this project", Origin: store.OriginPerson})
+	return "remembered · " + text + " · for this project", nil
+}
+
+func (r *rememberingAgent) RememberAlways(text string, everywhere bool) (string, error) {
+	r.everywhere = append(r.everywhere, everywhere)
+	r.remembered = append(r.remembered, text)
+	if r.failing != nil {
+		return "", r.failing
+	}
+	where := "for this project"
+	if everywhere {
+		where = "for you everywhere"
+	}
+	r.kept = append(r.kept, session.MemoryLine{ID: "mem_" + itoa(len(r.kept)+1), Title: text, Text: text, Where: where, Origin: store.OriginPerson})
+	return "remembered · " + text + " · " + where, nil
+}
+
+func (r *rememberingAgent) AlwaysMemories(everywhere bool) ([]session.MemoryLine, error) {
+	return r.Memories("")
 }
 
 func (r *rememberingAgent) Forget(query string) (string, error) {
@@ -43,13 +67,21 @@ func (r *rememberingAgent) Forget(query string) (string, error) {
 	if r.failing != nil {
 		return "", r.failing
 	}
+	if strings.TrimSpace(query) == "" {
+		if len(r.kept) == 0 {
+			return "no memory change to undo here · /forget <words> drops a remembered line", nil
+		}
+		last := r.kept[len(r.kept)-1]
+		r.kept = r.kept[:len(r.kept)-1]
+		return "took back · " + last.Text, nil
+	}
 	for index, line := range r.kept {
 		if strings.Contains(strings.ToLower(line.Text), strings.ToLower(query)) {
 			r.kept = append(r.kept[:index], r.kept[index+1:]...)
-			return line.Title, nil
+			return "forgot · " + line.Text, nil
 		}
 	}
-	return "", nil
+	return "nothing remembered matches \"" + query + "\"", nil
 }
 
 func (r *rememberingAgent) Memories(query string) ([]session.MemoryLine, error) {
@@ -69,71 +101,82 @@ func (r *rememberingAgent) Memories(query string) ([]session.MemoryLine, error) 
 	return found, nil
 }
 
+func (r *rememberingAgent) MoveMemory(id, scope string) (string, error) {
+	r.moved = append(r.moved, id+"→"+scope)
+	return "now for you everywhere", nil
+}
+
+func (r *rememberingAgent) MemoryProject() string { return r.project }
+
+// panelMemoryStore is the store as the memory place reads it, shelving rows by
+// owner exactly as internal/store does.
 type panelMemoryStore struct {
 	rows      []store.Memory
 	origins   map[string]memoryOrigin
 	updated   []string
 	forgotten []string
 	restored  []string
-	// ruled is every id `a` was pressed on, with the flag it asked for.
-	ruled     []string
 	learned   int
 	letGo     int
 	snapshots int
 }
 
-// Snapshot is the fake's half of the seam the place actually draws from: the
-// rows shelved by scope and counted by status, exactly as internal/store does
-// it in two statements. It is here rather than in a helper because the shape IS
-// the contract — a page that could not tell "held" from "let go" would draw
-// forgotten lines as though nothing had happened to them.
 func (s *panelMemoryStore) Snapshot(limit int) (store.MemoryShelves, error) {
 	s.snapshots++
-	shelves := map[string]*store.MemoryShelf{}
+	byOwner := map[string]*store.MemoryShelf{}
 	var out store.MemoryShelves
 	for _, row := range s.rows {
-		shelf := shelves[row.Scope]
+		if row.Owner == "" {
+			row.Owner = store.OwnerUser
+		}
+		if row.Status != store.MemoryActive && row.Status != "" {
+			out.LetGo = append(out.LetGo, row)
+			out.LetGoCount++
+			continue
+		}
+		shelf := byOwner[row.Owner]
 		if shelf == nil {
-			shelf = &store.MemoryShelf{Scope: row.Scope, Label: store.MemoryShelfWord(row.Scope), ByType: map[string]int{}}
-			shelves[row.Scope] = shelf
+			shelf = &store.MemoryShelf{Owner: row.Owner}
+			byOwner[row.Owner] = shelf
 		}
+		row.Status = store.MemoryActive
 		shelf.Memories = append(shelf.Memories, row)
-		shelf.ByType[row.Type]++
-		switch row.Status {
-		case store.MemoryForgotten:
-			shelf.LetGo, out.LetGo = shelf.LetGo+1, out.LetGo+1
-		case store.MemorySuperseded:
-			shelf.Superseded, out.Superseded = shelf.Superseded+1, out.Superseded+1
-		default:
-			shelf.Held, out.Held = shelf.Held+1, out.Held+1
+		shelf.Held++
+		if row.ProjectName != "" {
+			shelf.ProjectName = row.ProjectName
 		}
-		out.Total, out.Shown = out.Total+1, out.Shown+1
+		out.Held++
 	}
-	for _, scope := range []string{store.MemoryScopeUser, store.MemoryScopeProject, store.MemoryScopeEnv} {
-		if shelf := shelves[scope]; shelf != nil {
-			out.Shelves = append(out.Shelves, *shelf)
+	rank := func(owner string) int {
+		switch owner {
+		case store.OwnerUser:
+			return 0
+		case store.OwnerMachine:
+			return 1
+		case store.OwnerLegacyProject:
+			return 3
 		}
+		return 2
 	}
+	for _, shelf := range byOwner {
+		out.Shelves = append(out.Shelves, *shelf)
+	}
+	sort.SliceStable(out.Shelves, func(i, j int) bool {
+		if rank(out.Shelves[i].Owner) != rank(out.Shelves[j].Owner) {
+			return rank(out.Shelves[i].Owner) < rank(out.Shelves[j].Owner)
+		}
+		return out.Shelves[i].Owner < out.Shelves[j].Owner
+	})
 	return out, nil
 }
 
 func (s *panelMemoryStore) ChangedSince(time.Time) (int, int, error) { return s.learned, s.letGo, nil }
 
-func (s *panelMemoryStore) ListMemories(scope string, limit int) ([]store.Memory, error) {
-	var rows []store.Memory
-	for _, row := range s.rows {
-		if row.Status == store.MemoryForgotten || scope != "" && row.Scope != scope {
-			continue
-		}
-		rows = append(rows, row)
-	}
-	return rows, nil
-}
-func (s *panelMemoryStore) UpdateMemory(id, title, text string, tags []string) error {
+func (s *panelMemoryStore) UpdateMemory(id, text string) error {
 	s.updated = append(s.updated, text)
 	for i := range s.rows {
 		if s.rows[i].ID == id {
-			s.rows[i].Text = text
+			s.rows[i].Text, s.rows[i].Title = text, text
 		}
 	}
 	return nil
@@ -156,23 +199,14 @@ func (s *panelMemoryStore) RestoreMemory(id string) error {
 	}
 	return nil
 }
-func (s *panelMemoryStore) SetMemoryAlways(id string, always bool) error {
-	s.ruled = append(s.ruled, fmt.Sprintf("%s=%v", id, always))
-	for i := range s.rows {
-		if s.rows[i].ID == id {
-			s.rows[i].Always = always
-		}
-	}
-	return nil
-}
 func (s *panelMemoryStore) MemoryProvenance(id string) (string, string, time.Time, error) {
 	origin := s.origins[id]
-	return "session", origin.title, origin.at, nil
+	return origin.session, origin.title, origin.at, nil
 }
 
 func memoryPlaceApp(t *testing.T, rows []store.Memory) (*app, *panelMemoryStore) {
 	t.Helper()
-	agent := &rememberingAgent{}
+	agent := &rememberingAgent{project: store.OwnerProject("here")}
 	for _, row := range rows {
 		agent.kept = append(agent.kept, session.MemoryLine{ID: row.ID, Title: row.Title, Text: row.Text})
 	}
@@ -181,441 +215,307 @@ func memoryPlaceApp(t *testing.T, rows []store.Memory) (*app, *panelMemoryStore)
 	return a, memory
 }
 
-// ── the table ───────────────────────────────────────────────────────────────
-
-func TestTheThreeMemoryCommandsAreOnTheList(t *testing.T) {
-	help := helpText("", chordSpelling{})
-	for _, name := range []string{"memory", "remember", "forget"} {
-		var found bool
-		for _, c := range commands {
-			found = found || c.name == name
-		}
-		if !found {
-			t.Fatalf("/%s is not on the command list", name)
-		}
-		if !strings.Contains(help, "/"+name) {
-			t.Fatalf("/%s is not in /help", name)
-		}
-	}
-	if got := canonicalCommand("memories"); got != "memories" {
-		t.Fatalf("/memories ran as /%s", got)
-	}
-	if err := checkCommands(commands); err != nil {
-		t.Fatalf("the table stopped being a table: %v", err)
+// openMemoryPlace walks into the place and lands the first snapshot.
+func openMemoryPlace(t *testing.T, a *app) {
+	t.Helper()
+	a.width, a.height = 120, 40
+	a.slash("/memory")
+	if !a.at(pageMemory) {
+		t.Fatal("/memory did not open the memory place")
 	}
 }
 
-// settleMemorySlash runs a command's returned receipt before its observable
-// assertions, just as the program loop does now that memory leaves Update.
+// memoryCursorTo walks the cursor to the first row whose drawn text contains want.
+func memoryCursorTo(t *testing.T, a *app, want string) {
+	t.Helper()
+	rows := a.mem.reading.rows(200, newPalette(tokens.NoColor, false))
+	for i, row := range rows {
+		if _, stop := a.mem.reading.at(i); stop && strings.Contains(row, want) {
+			a.mem.cursor = i
+			return
+		}
+	}
+	t.Fatalf("no row says %q:\n%s", want, strings.Join(rows, "\n"))
+}
+
+func memoryPlaceRowsText(a *app) string {
+	return strings.Join(a.mem.reading.rows(200, newPalette(tokens.NoColor, false)), "\n")
+}
+
+// ── the commands ────────────────────────────────────────────────────────────
+
+func TestTheMemoryCommandsAreOnTheList(t *testing.T) {
+	want := map[string]bool{"memory": false, "memories": false, "remember": false, "forget": false, "always": false}
+	for _, command := range commands {
+		if _, ok := want[command.name]; ok {
+			want[command.name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("/%s is not on the command list", name)
+		}
+	}
+}
+
+func TestRememberPrintsTheConversationsOwnReceipt(t *testing.T) {
+	agent := &rememberingAgent{}
+	a := newTestApp(agent)
+	answerMemory(a, a.runRemember("prefers tabs"))
+	if got := plain(lastNote(t, a)); got != "remembered · prefers tabs · for this project" {
+		t.Fatalf("receipt = %q", got)
+	}
+}
+
+func TestABareForgetUndoesAndAWordedOneNamesALine(t *testing.T) {
+	agent := &rememberingAgent{kept: []session.MemoryLine{{ID: "m1", Text: "deploys on Fridays"}}}
+	a := newTestApp(agent)
+	answerMemory(a, a.runForget(""))
+	if len(agent.forgotten) != 1 || agent.forgotten[0] != "" {
+		t.Fatalf("a bare /forget asked %q, want the undo", agent.forgotten)
+	}
+	if got := plain(lastNote(t, a)); got != "took back · deploys on Fridays" {
+		t.Fatalf("undo receipt = %q", got)
+	}
+}
+
+func TestMemoriesPrintsWhereALineHoldsAndWhoKeptIt(t *testing.T) {
+	lines := []session.MemoryLine{{Text: "prefers tabs", Where: "for you everywhere", Origin: store.OriginNoticed}}
+	if got := memoriesText("", lines); got != "· prefers tabs  · for you everywhere · noticed" {
+		t.Fatalf("listing = %q", got)
+	}
+	if got := memoriesText("", nil); !strings.Contains(got, "/remember <text>") {
+		t.Fatalf("the empty listing does not say how to keep a line: %q", got)
+	}
+	if got := memoriesText("zebra", nil); got != "nothing remembered matches zebra" {
+		t.Fatalf("an empty match = %q", got)
+	}
+}
+
+func TestWithoutAStoreEveryCommandSaysWhy(t *testing.T) {
+	a := newTestApp(&rememberingAgent{off: true})
+	for _, run := range []func(){
+		func() { a.runRemember("x") },
+		func() { a.runForget("x") },
+		func() { a.runMemories("x") },
+	} {
+		run()
+		if got := plain(lastNote(t, a)); got != memoryUnavailableNote {
+			t.Fatalf("with no store a command said %q", got)
+		}
+	}
+	if strings.Contains(memoryUnavailableNote, "/settings") {
+		t.Fatal("the unavailable note sends the person to a setting that does not turn memory on")
+	}
+}
+
+func TestRememberTypedOnHomeIsKeptEverywhereAndAnsweredOnHome(t *testing.T) {
+	agent := &rememberingAgent{}
+	a := newTestApp(agent)
+	a.width, a.height = 120, 40
+	a.page = pageHome
+	answerMemory(a, a.runRemember("no emoji anywhere"))
+	if len(agent.everywhere) != 1 || !agent.everywhere[0] {
+		t.Fatalf("typed on home it was not kept everywhere: %v", agent.everywhere)
+	}
+	if got := plain(a.home.msg); !strings.Contains(got, "remembered · no emoji anywhere · for you everywhere") {
+		t.Fatalf("home's message line = %q, want the receipt where it was typed", got)
+	}
+}
+
+// answerMemory runs one memory command off the loop, as Bubble Tea would, and
+// routes the reply it answered back into the surface.
+func answerMemory(a *app, cmd tea.Cmd) {
+	for _, msg := range runCmd(cmd) {
+		if reply, ok := msg.(memoryReplyMsg); ok {
+			a.adoptMemoryReply(reply)
+		}
+	}
+}
+
+// ── the place ───────────────────────────────────────────────────────────────
+
+func TestTheEmptyPlaceIsItsWhisperAndTheWhisperNamesTheDoor(t *testing.T) {
+	a, _ := memoryPlaceApp(t, nil)
+	openMemoryPlace(t, a)
+	if foot := (placeMemory{}).hint(a); foot != memoryBareHint {
+		t.Fatalf("the empty page's foot = %q", foot)
+	}
+	shown := plain(frame(a))
+	if !strings.Contains(shown, placeWhisper[pageMemory].whisper) || !strings.Contains(placeWhisper[pageMemory].whisper, "/remember") {
+		t.Fatalf("the empty page lacks a whisper that names /remember:\n%s", shown)
+	}
+	if strings.Contains(shown, "0 kept") {
+		t.Fatal("the empty page drew a zero count")
+	}
+}
+
+func TestTheShelvesSayWhereEachLineHoldsAndWhoKeptIt(t *testing.T) {
+	a, _ := memoryPlaceApp(t, []store.Memory{
+		{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs", Origin: store.OriginPerson},
+		{ID: "m", Owner: store.OwnerMachine, Text: "rg is ripgrep here", Origin: store.OriginModel},
+		{ID: "p", Owner: store.OwnerProject("here"), Text: "deploys on Tuesdays", Origin: store.OriginNoticed, ProjectName: "codeaf"},
+		{ID: "o", Owner: store.OwnerProject("other"), Text: "their rule", ProjectName: "infra"},
+		{ID: "q", Owner: store.OwnerLegacyProject, Text: "came in blind"},
+		{ID: "g", Owner: store.OwnerUser, Text: "ships on Fridays", Status: store.MemoryForgotten},
+	})
+	openMemoryPlace(t, a)
+	shown := memoryPlaceRowsText(a)
+	for _, want := range []string{
+		memoryShelfYou + " · 1", memoryShelfMachine + " · 1", memoryShelfHere + " · codeaf · 1",
+		"infra · 1", memoryShelfLost + " · 1", memoryShelfLetGo + " · 1",
+		"prefers tabs" + rowSep + "you", "rg is ripgrep here" + rowSep + "the model", "deploys on Tuesdays" + rowSep + "noticed",
+	} {
+		if !strings.Contains(shown, want) {
+			t.Fatalf("the place does not say %q:\n%s", want, shown)
+		}
+	}
+	// THE SHELVES A CONVERSATION HERE IS NOT TOLD ARE ROLLED UP.
+	for _, hidden := range []string{"their rule", "came in blind", "ships on Fridays"} {
+		if strings.Contains(shown, hidden) {
+			t.Fatalf("a shelf a conversation here is not told opened by itself: %q\n%s", hidden, shown)
+		}
+	}
+	for _, gone := range []string{"helped", "bore on", "always"} {
+		if strings.Contains(shown, gone) {
+			t.Fatalf("the place still says %q", gone)
+		}
+	}
+}
+
+func TestTheFootNamesOnlyKeysThatWork(t *testing.T) {
+	a, _ := memoryPlaceApp(t, []store.Memory{{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs"}})
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, "prefers tabs")
+	foot := (placeMemory{}).hint(a)
+	if foot != memoryLineHint || strings.Contains(foot, "e fix") || strings.Contains(foot, "f forget") {
+		t.Fatalf("the foot over a line = %q", foot)
+	}
+	// AND A LETTER TYPED IS A LETTER: it narrows the page, it does not act.
+	typeInto(t, a, "e")
+	if a.mem.edit != nil || a.mem.filter.String() != "e" {
+		t.Fatalf("typing `e` acted instead of filtering: edit=%v filter=%q", a.mem.edit != nil, a.mem.filter.String())
+	}
+}
+
+func TestEnterOpensTheCardAndTheCardsFootIsItsOwn(t *testing.T) {
+	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs", Origin: store.OriginNoticed}})
+	memory.origins["u"] = memoryOrigin{session: "s1", title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, "prefers tabs")
+	drive(t, a, key("enter"))
+	if a.mem.expanded != "u" {
+		t.Fatal("enter on a line did not open its card")
+	}
+	if foot := (placeMemory{}).hint(a); foot != memoryCardHint {
+		t.Fatalf("the card's foot = %q", foot)
+	}
+	shown := plain(frame(a))
+	for _, want := range []string{"prefers tabs", "for you everywhere", "kept by noticed", "in 'Editor setup'"} {
+		if !strings.Contains(shown, want) {
+			t.Fatalf("the card does not say %q:\n%s", want, shown)
+		}
+	}
+	drive(t, a, key("esc"))
+	if a.mem.expanded != "" || !a.at(pageMemory) {
+		t.Fatal("esc did not take the card back to the list")
+	}
+}
+
+func TestTheVerbsAreTheLinesAndALetGoLineCanBePutBack(t *testing.T) {
+	a, memory := memoryPlaceApp(t, []store.Memory{
+		{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs"},
+		{ID: "g", Owner: store.OwnerUser, Text: "ships on Fridays", Status: store.MemoryForgotten},
+	})
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, "prefers tabs")
+	var keys []rune
+	for _, v := range (placeMemory{}).verbs(a) {
+		keys = append(keys, v.key)
+	}
+	if string(keys) != "efpma" {
+		t.Fatalf("a line's verbs = %q, want edit, forget, the two moves it is not in, and ask", string(keys))
+	}
+	memoryCursorTo(t, a, memoryShelfLetGo)
+	drive(t, a, key("enter"))
+	memoryCursorTo(t, a, "ships on Fridays")
+	verbs := (placeMemory{}).verbs(a)
+	if len(verbs) != 1 || verbs[0].key != 'u' {
+		t.Fatalf("a let-go line's verbs = %+v, want only put it back", verbs)
+	}
+	runCmd(verbs[0].do())
+	drainPlaceWrites(t, a)
+	if len(memory.restored) != 1 || memory.restored[0] != "g" {
+		t.Fatalf("put back restored %v", memory.restored)
+	}
+}
+
+func TestAForgetFromThePlaceLeavesTheLoopAndSaysWhereItWent(t *testing.T) {
+	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs"}})
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, "prefers tabs")
+	cmd := a.memoryKey(key("delete"))
+	if len(memory.forgotten) != 0 {
+		t.Fatal("the forget ran on the update loop instead of beside it")
+	}
+	for _, msg := range runCmd(cmd) {
+		if done, ok := msg.(memoryPlaceDoneMsg); ok {
+			a.adoptMemoryPlaceDone(done)
+		}
+	}
+	if len(memory.forgotten) != 1 || !strings.Contains(a.mem.footer, "let go shelf") {
+		t.Fatalf("forgot %v with footer %q", memory.forgotten, a.mem.footer)
+	}
+}
+
+func TestTheAddRowKeepsALineThroughTheConversation(t *testing.T) {
+	a, _ := memoryPlaceApp(t, []store.Memory{{ID: "u", Owner: store.OwnerUser, Text: "prefers tabs"}})
+	agent := a.agent.(*rememberingAgent)
+	openMemoryPlace(t, a)
+	memoryCursorTo(t, a, memoryAddWord)
+	drive(t, a, key("enter"))
+	if a.mem.edit == nil || a.mem.editID != memoryAddID {
+		t.Fatal("enter on the add row did not open an empty editor")
+	}
+	typeInto(t, a, "uses pnpm")
+	cmd := a.memoryKey(key("enter"))
+	for _, msg := range runCmd(cmd) {
+		if done, ok := msg.(memoryPlaceDoneMsg); ok {
+			a.adoptMemoryPlaceDone(done)
+		}
+	}
+	if len(agent.remembered) != 1 || agent.remembered[0] != "uses pnpm" {
+		t.Fatalf("the add row kept %v", agent.remembered)
+	}
+	if a.mem.footer != "remembered · uses pnpm · for this project" {
+		t.Fatalf("the add row's receipt = %q", a.mem.footer)
+	}
+}
+
+func TestTheHeadRowSaysWhenLinesDoNotFit(t *testing.T) {
+	var rows []store.Memory
+	for i := 0; i < 40; i++ {
+		rows = append(rows, store.Memory{ID: "m" + itoa(i), Owner: store.OwnerUser, Text: strings.Repeat("long words ", 20) + itoa(i)})
+	}
+	a, _ := memoryPlaceApp(t, rows)
+	openMemoryPlace(t, a)
+	if shown := memoryPlaceRowsText(a); !strings.Contains(shown, "don't fit in front of the model") {
+		t.Fatalf("an overflowing store does not say lines are left out:\n%.400s", shown)
+	}
+}
+
+// drainPlaceWrites lands every place write a test's command answered. The
+// place's writes come back as memoryPlaceDoneMsg; runCmd already ran them.
+func drainPlaceWrites(t *testing.T, a *app) {
+	t.Helper()
+	a.refreshMemory()
+}
+
+// settleMemorySlash runs one slash command through the update loop, with the
+// reply its memory call answers routed back as Bubble Tea would.
 func settleMemorySlash(t *testing.T, a *app, line string) {
 	t.Helper()
 	if cmd := a.slash(line); cmd != nil {
 		drive(t, a, cmd())
-	}
-}
-
-// ── the happy paths ─────────────────────────────────────────────────────────
-
-func TestRememberKeepsOneThingAndSaysWhatItKept(t *testing.T) {
-	agent := &rememberingAgent{}
-	a := newTestApp(agent)
-
-	settleMemorySlash(t, a, "/remember I prefer tabs over spaces in Go")
-
-	if len(agent.remembered) != 1 || agent.remembered[0] != "I prefer tabs over spaces in Go" {
-		t.Fatalf("the agent was asked to remember %v", agent.remembered)
-	}
-	if text := lastNote(t, a); !strings.Contains(text, "remembered") || !strings.Contains(text, "prefers tabs") {
-		t.Fatalf("the answer was %q", text)
-	}
-}
-
-func TestMemoriesListsOnePerLineWithTheIdThatNamesIt(t *testing.T) {
-	agent := &rememberingAgent{kept: []session.MemoryLine{
-		{ID: "mem_1", Title: "prefers tabs", Text: "prefers tabs over spaces in Go"},
-		{ID: "mem_2", Title: "standup time", Text: "standup is at 9:15"},
-	}}
-	a := newTestApp(agent)
-
-	settleMemorySlash(t, a, "/memories")
-
-	text := lastNote(t, a)
-	lines := strings.Split(text, "\n")
-	if len(lines) != 2 {
-		t.Fatalf("the list is %d lines:\n%s", len(lines), text)
-	}
-	if !strings.Contains(lines[0], "prefers tabs — prefers tabs over spaces in Go") || !strings.Contains(lines[0], "(mem_1)") {
-		t.Fatalf("a row reads %q", lines[0])
-	}
-}
-
-func TestMemoriesWithAQueryNarrowsTheList(t *testing.T) {
-	agent := &rememberingAgent{kept: []session.MemoryLine{
-		{ID: "mem_1", Title: "prefers tabs", Text: "prefers tabs over spaces in Go"},
-		{ID: "mem_2", Title: "standup time", Text: "standup is at 9:15"},
-	}}
-	a := newTestApp(agent)
-
-	settleMemorySlash(t, a, "/memories standup")
-
-	if len(agent.listed) != 1 || agent.listed[0] != "standup" {
-		t.Fatalf("the agent was asked for %v", agent.listed)
-	}
-	text := lastNote(t, a)
-	if strings.Contains(text, "tabs") || !strings.Contains(text, "standup") {
-		t.Fatalf("the narrowed list is:\n%s", text)
-	}
-}
-
-func TestForgetDropsTheMatchAndNamesIt(t *testing.T) {
-	agent := &rememberingAgent{kept: []session.MemoryLine{
-		{ID: "mem_2", Title: "standup time", Text: "standup is at 9:15"},
-	}}
-	a := newTestApp(agent)
-
-	settleMemorySlash(t, a, "/forget standup")
-
-	if text := lastNote(t, a); !strings.Contains(text, "forgot") || !strings.Contains(text, "standup time") {
-		t.Fatalf("the answer was %q", text)
-	}
-	if len(agent.kept) != 0 {
-		t.Fatalf("the memory is still kept: %v", agent.kept)
-	}
-}
-
-// ── the empty and the missing ───────────────────────────────────────────────
-
-// A COMMAND TYPED ON PURPOSE ALWAYS ANSWERS. An empty store, an empty search
-// and a no-match forget are three different facts and each gets its own line —
-// silence would read as a command that broke.
-func TestTheEmptyStatesEachSayWhichEmptinessItIs(t *testing.T) {
-	agent := &rememberingAgent{}
-	a := newTestApp(agent)
-
-	settleMemorySlash(t, a, "/memories")
-	if text := lastNote(t, a); text != "nothing is remembered yet" {
-		t.Fatalf("an empty store answered %q", text)
-	}
-
-	agent.kept = []session.MemoryLine{{ID: "mem_1", Title: "prefers tabs", Text: "prefers tabs over spaces in Go"}}
-	settleMemorySlash(t, a, "/memories pineapples")
-	if text := lastNote(t, a); !strings.Contains(text, "nothing remembered matches pineapples") {
-		t.Fatalf("an empty search answered %q", text)
-	}
-
-	settleMemorySlash(t, a, "/forget pineapples")
-	if text := lastNote(t, a); !strings.Contains(text, "nothing matched pineapples") {
-		t.Fatalf("a no-match forget answered %q", text)
-	}
-}
-
-func TestTheTwoArgumentCommandsAskForTheirArgument(t *testing.T) {
-	a := newTestApp(&rememberingAgent{})
-
-	settleMemorySlash(t, a, "/remember")
-	if text := lastNote(t, a); !strings.Contains(text, "what should be kept") {
-		t.Fatalf("/remember with nothing answered %q", text)
-	}
-	settleMemorySlash(t, a, "/forget   ")
-	if text := lastNote(t, a); !strings.Contains(text, "what should be dropped") {
-		t.Fatalf("/forget with nothing answered %q", text)
-	}
-}
-
-// A SESSION WITH NO BRAIN SAYS SO AND NAMES THE ROW. "no" without "and here is
-// how to change that" is the half of an answer that sends somebody to the
-// manual.
-func TestWithoutABrainAllThreeSayMemoryIsOff(t *testing.T) {
-	// Two shapes of "no brain", and they must read the same: an agent that has
-	// never heard of memory (every other test's fake, and every surface built
-	// before this feature), and a real session whose door opened no store.
-	for _, agent := range []Agent{&fakeAgent{model: "m"}, &rememberingAgent{off: true}} {
-		a := newTestApp(agent)
-		for _, line := range []string{"/memories", "/remember something", "/forget something"} {
-			settleMemorySlash(t, a, line)
-			if text := lastNote(t, a); !strings.Contains(text, "memory is off") || !strings.Contains(text, "/settings") {
-				t.Fatalf("%s answered %q", line, text)
-			}
-		}
-	}
-}
-
-func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
-	a, _ := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Type: store.MemoryPreference, Scope: store.MemoryScopeUser}})
-	settleMemorySlash(t, a, "/memory")
-	if !a.at(pageMemory) {
-		t.Fatal("bare /memory did not open the panel")
-	}
-	if got := plain(frame(a)); !strings.Contains(got, "uses neovim") {
-		t.Fatalf("panel did not list memory:\n%s", got)
-	}
-	a.leavePlace()
-	settleMemorySlash(t, a, "/memory vim")
-	if a.at(pageMemory) {
-		t.Fatal("/memory <query> opened the panel")
-	}
-	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
-		t.Fatalf("print posture said %q", got)
-	}
-	settleMemorySlash(t, a, "/memories vim")
-	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
-		t.Fatalf("alias said %q", got)
-	}
-	// AND BARE /memories OPENS THE PLACE NOW, on a surface that has one. It kept
-	// an older print posture while memory was a twelve-row overlay; the moment it
-	// became a place a person can walk into, filter and act on, sending them to
-	// the transcript instead was sending them to the worse half of the feature.
-	// With a query BOTH spellings still print, because a query is a question
-	// rather than a door.
-	settleMemorySlash(t, a, "/memories")
-	if !a.at(pageMemory) {
-		t.Fatal("bare /memories did not open the memory place")
-	}
-}
-
-// THE EMPTY PLACE TEACHES, AND SO DOES THE ONE WITH NO STORE BEHIND IT.
-//
-// A machine that has remembered nothing meets the three sentences that say what
-// this place is for. Memory switched off in the settings meets exactly the same
-// three, with the one fact they cannot carry said once on the note line under
-// them — this build is not remembering anything, and here is the row that
-// changes that ([memoryOffNote]).
-//
-// THE SECOND HALF USED TO BE A REFUSAL. The door would not open the place at all
-// and wrote its sentence into the transcript, so `alt+4` on a build without a
-// store was a key that did nothing; SCREEN 1f's preamble says an almost-empty
-// place is the best teacher on the machine, and a person who has never seen this
-// page is exactly who is standing there.
-func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
-	a, _ := memoryPlaceApp(t, nil)
-	a.slash("/memory")
-	got := plain(frame(a))
-	if !strings.Contains(got, whisperOf(pageMemory)) {
-		t.Fatalf("the empty place does not say what arrives here:\n%s", got)
-	}
-	if strings.Contains(got, "shelves · biggest first") {
-		t.Fatalf("a heading was drawn over no shelves:\n%s", got)
-	}
-	drive(t, a, key("esc"))
-	if a.at(pageMemory) {
-		t.Fatal("esc did not close the memory place")
-	}
-
-	off := newTestApp(&rememberingAgent{off: true})
-	off.width, off.height = 100, 30
-	off.slash("/memory")
-	if !off.at(pageMemory) {
-		t.Fatal("a build with no store behind it opened no memory place")
-	}
-	offScreen := plain(frame(off))
-	if !strings.Contains(offScreen, whisperOf(pageMemory)) {
-		t.Fatalf("the place with no store does not say what arrives here:\n%s", offScreen)
-	}
-	if !strings.Contains(offScreen, memoryOffNote) {
-		t.Fatalf("the place with no store does not say so:\n%s", offScreen)
-	}
-
-	// TYPING FILTERS THE HELD SNAPSHOT AND READS NOTHING. The store is asked
-	// once, when the place opens; every letter after that narrows shelves and
-	// lines already in memory.
-	rows := []store.Memory{
-		{ID: "m1", Title: "terminal editor", Text: "uses neovim", Scope: store.MemoryScopeUser},
-		{ID: "m2", Title: "deploys", Text: "deploys Fridays", Scope: store.MemoryScopeProject},
-	}
-	a, brain := memoryPlaceApp(t, rows)
-	a.slash("/memory")
-	asked := brain.snapshots
-	typeInto(t, a, "nvm")
-	body := plain(frame(a))
-	if !strings.Contains(body, "terminal editor") || strings.Contains(body, "deploys") {
-		t.Fatalf("the filter did not narrow the shelves:\n%s", body)
-	}
-	if brain.snapshots != asked {
-		t.Fatalf("typing read the store %d more times", brain.snapshots-asked)
-	}
-}
-
-// `enter` ON A SHELF OPENS AND CLOSES IT, and a line's own card is `→ c` — one
-// provenance read, for one line, on the keystroke that asked for it.
-//
-// THE CARD MOVED AND THE LAW DID NOT. It used to be behind `enter` on a line;
-// SCREEN 1f puts `ask me about it` there and the card on the row's strip, and
-// what this test is about — that the store is asked about ONE line, when
-// somebody asks for that line, and not about every line on the page — is the
-// same law either way.
-func TestMemoryShelvesOpenAndALineCarriesItsProvenance(t *testing.T) {
-	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, UseCount: 7, Scope: store.MemoryScopeUser}})
-	memory.origins["m1"] = memoryOrigin{title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
-	a.slash("/memory")
-	if _, ok := a.mem.shelfUnder(); !ok {
-		t.Fatal("the cursor did not open on a shelf heading")
-	}
-	// The biggest shelf opens itself, so enter here ROLLS IT UP.
-	drive(t, a, key("enter"))
-	if strings.Contains(plain(frame(a)), "uses neovim") {
-		t.Fatalf("enter did not close the shelf:\n%s", plain(frame(a)))
-	}
-	drive(t, a, key("enter"))
-	drive(t, a, key("down"))
-	if got, ok := a.mem.choice(); !ok || got.ID != "m1" {
-		t.Fatalf("down did not land on the line: %#v %v", got, ok)
-	}
-	drive(t, a, key("right"))
-	drive(t, a, key("c"))
-	if got := plain(frame(a)); !strings.Contains(got, "in 'Editor setup'") || !strings.Contains(got, "tags · editor") {
-		t.Fatalf("the line's card:\n%s", got)
-	}
-	drive(t, a, key("enter"))
-	if a.mem.edit == nil || a.mem.edit.String() != "uses neovim daily" {
-		t.Fatal("edit was not preloaded")
-	}
-	drive(t, a, key("ctrl+u"))
-	typeInto(t, a, "uses helix")
-	drive(t, a, key("esc"))
-	if len(memory.updated) != 0 {
-		t.Fatal("esc wrote the edit")
-	}
-	drive(t, a, key("enter"))
-	drive(t, a, key("ctrl+u"))
-	typeInto(t, a, "uses helix")
-	drive(t, a, key("enter"))
-	if len(memory.updated) != 1 || memory.updated[0] != "uses helix" {
-		t.Fatalf("updates were %v", memory.updated)
-	}
-	if got := plain(frame(a)); !strings.Contains(got, "uses helix") {
-		t.Fatalf("the corrected wording is not on the page:\n%s", got)
-	}
-}
-
-// THE UNDO IS ONE DEEP, AND IT IS A VERB ON THE ROW'S STRIP RATHER THAN A BARE
-// LETTER.
-//
-// `u` used to be matched ahead of the filter's default arm, which meant the
-// letter could not be TYPED — a search for a word with a `u` in it lost it and
-// put something back instead. It is on the `→` strip now, offered only while
-// there is something to put back, and `tab` — which cycled the shelves — is the
-// way to the next place, so the shelf walk moved to `alt+s` (verbstrip.go).
-func TestMemoryForgetUndoIsOneDeepAndAltSWalksTheShelves(t *testing.T) {
-	a, memory := memoryPlaceApp(t, []store.Memory{
-		{ID: "m1", Title: "uses neovim", Text: "uses neovim", Scope: store.MemoryScopeUser},
-		{ID: "m2", Title: "release branch", Text: "release is main", Scope: store.MemoryScopeProject},
-	})
-	a.slash("/memory")
-	drive(t, a, key("down"))
-	drive(t, a, key("delete"))
-	if len(memory.forgotten) != 1 || !strings.Contains(a.mem.footer, "forgot 'uses neovim'") {
-		t.Fatalf("forget state: %v %q", memory.forgotten, a.mem.footer)
-	}
-	drive(t, a, key("right"), key("u"))
-	if len(memory.restored) != 1 {
-		t.Fatalf("restore calls %v", memory.restored)
-	}
-
-	// `alt+s` WALKS THE SHELVES, one open at a time, and ends with them all
-	// rolled up — a state `enter` cannot reach in one press.
-	a.slash("/memory")
-	open := func() []string {
-		var found []string
-		for scope, on := range a.mem.shelfOpen {
-			if on {
-				found = append(found, scope)
-			}
-		}
-		return found
-	}
-	first := open()
-	if len(first) != 1 {
-		t.Fatalf("the place opened with %v unrolled, want exactly one", first)
-	}
-	drive(t, a, key("alt+s"))
-	second := open()
-	if len(second) != 1 || second[0] == first[0] {
-		t.Fatalf("alt+s left %v unrolled, want the next shelf after %v", second, first)
-	}
-	drive(t, a, key("alt+s"))
-	if rest := open(); len(rest) != 0 {
-		t.Fatalf("alt+s past the last shelf left %v unrolled", rest)
-	}
-}
-
-func TestAFailureIsReportedAndNotSwallowed(t *testing.T) {
-	agent := &rememberingAgent{failing: errors.New("the brain is locked")}
-	a := newTestApp(agent)
-
-	settleMemorySlash(t, a, "/remember I prefer tabs")
-	if text := lastNote(t, a); !strings.Contains(text, "the brain is locked") {
-		t.Fatalf("a failed write answered %q", text)
-	}
-}
-
-// `enter` ON A LINE IS `ask me about it` (SCREEN 1f / FIDELITY item 5).
-//
-// A line here is something codeaf believes about you, and the useful thing to do
-// with one is to talk about it. It used to open the card in place — the thing
-// the design moved onto the row's `→` strip — and the foot said `enter open a
-// shelf` over every row, so on a line it named a key and described something
-// else.
-func TestEnterOnAMemoryLineOpensAConversationAboutThatLine(t *testing.T) {
-	a, _ := memoryPlaceApp(t, []store.Memory{{
-		ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Scope: store.MemoryScopeUser,
-	}})
-	started := &rememberingAgent{}
-	a.start = func(workspace string) (Conversation, error) {
-		return Conversation{Agent: started, SessionFile: "/tmp/lab/next/transcript.jsonl", Workspace: workspace}, nil
-	}
-	a.slash("/memory")
-	drive(t, a, key("down"))
-	line, ok := a.mem.choice()
-	if !ok || line.ID != "m1" {
-		t.Fatalf("the cursor is not on the line: %#v %v", line, ok)
-	}
-	// The foot says what THIS row can be asked for, and names the verbs the
-	// row's strip holds — `a` last, in the word for an ordinary line.
-	if got, want := (placeMemory{}).hint(a), memoryLineHint+" · a "+memoryAlwaysWord; got != want {
-		t.Fatalf("over a line the foot reads %q, want %q", got, want)
-	}
-
-	drive(t, a, key("enter"))
-	if a.at(pageMemory) {
-		t.Fatal("`enter` on a line left the person standing in the memory place")
-	}
-	if len(started.sent) != 1 {
-		t.Fatalf("the fresh conversation was sent %v", started.sent)
-	}
-	if !strings.Contains(started.sent[0], "uses neovim daily") {
-		t.Fatalf("the conversation was not seeded with the line: %q", started.sent[0])
-	}
-	if !strings.HasPrefix(started.sent[0], memoryAskOpening) {
-		t.Fatalf("the opening does not say what the line is: %q", started.sent[0])
-	}
-}
-
-// AND A SHELF HEADING KEEPS ITS OWN `enter` AND ITS OWN SENTENCE. Two rows, two
-// things the key does, two feet — which is pages.go's contract for a hint.
-func TestTheMemoryFootSaysWhatTheRowUnderTheCursorCanBeAskedFor(t *testing.T) {
-	a, _ := memoryPlaceApp(t, []store.Memory{{
-		ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Scope: store.MemoryScopeUser,
-	}})
-	a.slash("/memory")
-	if _, ok := a.mem.shelfUnder(); !ok {
-		t.Fatal("the cursor did not open on a shelf heading")
-	}
-	if got := (placeMemory{}).hint(a); got != memoryShelfHint {
-		t.Fatalf("over a shelf the foot reads %q, want %q", got, memoryShelfHint)
-	}
-	if strings.Contains(memoryShelfHint, memoryAskWord) {
-		t.Fatalf("the shelf's foot promises %q, which `enter` does not do there", memoryAskWord)
-	}
-	drive(t, a, key("down"))
-	if got := (placeMemory{}).hint(a); strings.Contains(got, "open a shelf") {
-		t.Fatalf("over a line the foot still says `enter open a shelf`: %q", got)
-	}
-	// AND THE CARD IS ON THE STRIP, offered on a line and on nothing else.
-	words := ""
-	for _, v := range (placeMemory{}).verbs(a) {
-		words += string(v.key) + " " + v.word + " · "
-	}
-	if !strings.Contains(words, "c "+memoryCardWord) {
-		t.Fatalf("the line's strip does not carry the card: %s", words)
 	}
 }

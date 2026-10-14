@@ -315,9 +315,9 @@ const (
 	memoryUndoWord   = "put it back"
 	// The three moves, one per place a line can hold, each offered only where
 	// the line is not (place_memory.go's [placeMemory.verbs]).
-	memoryMoveYouWord     = "for you everywhere"
-	memoryMoveHereWord    = "for this project"
-	memoryMoveMachineWord = "for this machine"
+	memoryMoveYouWord     = "hold it everywhere"
+	memoryMoveHereWord    = "hold it in this project"
+	memoryMoveMachineWord = "hold it on this machine"
 	// memoryAskWord opens a conversation about the line, and memorySourceWord
 	// opens the conversation it was learned in.
 	memoryAskWord    = "ask me about it"
