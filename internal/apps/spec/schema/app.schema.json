@@ -9,6 +9,7 @@
     "$schema": { "type": "string" },
     "id": { "$ref": "#/$defs/slug" },
     "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "tint": { "type": "string", "enum": ["iris", "sage", "sand", "tide", "rose", "graphite"] },
     "description": { "type": "string" },
     "space": { "type": "string" },
     "version": { "type": "integer", "minimum": 0 },

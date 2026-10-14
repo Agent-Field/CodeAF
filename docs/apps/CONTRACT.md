@@ -54,6 +54,10 @@ Go twin for a complete example of each.
 `id` (slug `^[a-z][a-z0-9_-]{0,47}$`), `name`, `description`, `space`,
 `version`, `kit` (2), `agent {name, file: "agent.md", model}`, and:
 
+- `tint?`: the app's identity tint, independent of its space. Allowed values,
+  in palette order: `iris`, `sage`, `sand`, `tide`, `rose`, `graphite` (the shared
+  `spec.Tints` app/crew palette). Omission is valid; an empty string or any other
+  value fails Check. Board 05's acme app is iris; board 08's golden CRM is sage.
 - `records`: `{ <type>: {label, plural, title, fields, constants?, freeze?} }`.
   `title` names the field shown as the record's name.
 - Field: `{type, label?, required?, unique?, index?, values?, default?, to?,
@@ -82,7 +86,8 @@ Needs are never written by the Builder; codeaf computes them from `app.json`
 
 ### plan.json
 
-`{ask, name, data[], automation[], screens[], agent, needs: "computed"}`. Each
+`{ask, name, tint?, data[], automation[], screens[], agent, needs: "computed"}`.
+Optional `tint` uses the same identity palette and validation as `app.json`. Each
 of `data`, `automation`, `screens` is a list of lines `{id, line}`; `agent` is
 `{id: "agent", line}`. The `id` is the record type, run or screen the line
 becomes, so the card edits a line in place and Check can match plan ↔ files.
@@ -263,6 +268,17 @@ JSON text frames:
 
 Calls may resolve out of order; match on `id`. On reconnect, resubscribe and
 re-query (events are not replayed).
+
+`AppSummary` has optional `tint`; `AppDetail` embeds that summary. The value
+comes from the app definition and uses the same identity palette. Older
+definitions may omit it. The first-run golden CRM keeps `tint: "sage"` in its
+definition.
+
+Store handoff for the tint spec lane: copy `app.Tint` into metadata in
+`definitionSummary` and copy `labels.Tint` when `WriteFiles` refreshes labels.
+This supplies tint to List, detail, Keep and app state events without choosing a
+default. The spec lane owns the schema and wire field; the store owns these
+metadata projections.
 
 ### Methods
 
