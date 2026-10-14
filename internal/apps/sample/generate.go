@@ -22,12 +22,14 @@ type Service struct {
 	Count int
 	Seed  int64
 	Now   func() time.Time
+	all   *svc.Services
+	words vocabCache
 }
 
 var _ svc.Sample = (*Service)(nil)
 
-func New(svc.Config, *svc.Services) *Service {
-	return &Service{Count: DefaultCount, Seed: 1, Now: time.Now}
+func New(_ svc.Config, all *svc.Services) *Service {
+	return &Service{Count: DefaultCount, Seed: 1, Now: time.Now, all: all}
 }
 func (s *Service) Generate(ctx context.Context, def *spec.Bundle) (map[string][]bridge.Record, error) {
 	if def == nil || def.App == nil {
@@ -37,7 +39,22 @@ func (s *Service) Generate(ctx context.Context, def *spec.Bundle) (map[string][]
 	if s.Now != nil {
 		now = s.Now
 	}
-	return GenerateAt(ctx, def.App, s.Count, s.Seed, now())
+	at := now()
+	// Model vocabulary is a bonus: any failure, or values that break a
+	// uniqueness rule, falls back to the deterministic generator.
+	if words := s.words.get(ctx, s.model(), def); words != nil {
+		if rows, err := generate(ctx, def.App, s.Count, s.Seed, at, words); err == nil {
+			return rows, nil
+		}
+	}
+	return GenerateAt(ctx, def.App, s.Count, s.Seed, at)
+}
+
+func (s *Service) model() svc.Model {
+	if s.all == nil {
+		return nil
+	}
+	return s.all.Model
 }
 
 // Generate allocates every id before choosing refs, so cycles and forward
@@ -48,6 +65,10 @@ func Generate(ctx context.Context, app *spec.App, count int, seed int64) (map[st
 
 // GenerateAt fixes the clock as well as the seed for repeatable Check fixtures.
 func GenerateAt(ctx context.Context, app *spec.App, count int, seed int64, now time.Time) (map[string][]bridge.Record, error) {
+	return generate(ctx, app, count, seed, now, nil)
+}
+
+func generate(ctx context.Context, app *spec.App, count int, seed int64, now time.Time, words *vocab) (map[string][]bridge.Record, error) {
 	now = now.UTC()
 	if app == nil || count < 0 || count > 10000 {
 		return nil, bridge.Errorf(bridge.CodeInvalid, "sample count must be between 0 and 10000")
@@ -64,14 +85,14 @@ func GenerateAt(ctx context.Context, app *spec.App, count int, seed int64, now t
 		}
 	}
 	for _, typ := range keys(app.Records) {
-		if err := fillType(ctx, app, rows, typ, seed, now); err != nil {
+		if err := fillType(ctx, app, rows, typ, seed, now, words); err != nil {
 			return nil, err
 		}
 	}
 	return rows, nil
 }
 
-func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Record, typ string, seed int64, now time.Time) error {
+func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Record, typ string, seed int64, now time.Time, words *vocab) error {
 	schema := app.Records[typ]
 	rules, err := records.NewRules(schema)
 	if err != nil {
@@ -87,7 +108,7 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := fillFields(app, rows, schema, &row, i, seed, now); err != nil {
+		if err := fillFields(app, rows, schema, &row, i, seed, now, words); err != nil {
 			return err
 		}
 		row, err = rules.Prepare(row, svc.Owner, now, true)
@@ -105,23 +126,35 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 	return nil
 }
 
-func fillFields(app *spec.App, rows map[string][]bridge.Record, schema *spec.RecordType, row *bridge.Record, i int, seed int64, now time.Time) error {
-	for _, name := range keys(schema.Fields) {
+func fillFields(app *spec.App, rows map[string][]bridge.Record, schema *spec.RecordType, row *bridge.Record, i int, seed int64, now time.Time, words *vocab) error {
+	c := cell{app: app, rows: rows, typ: row.Type, schema: schema, i: i, now: now, words: words}
+	// The title goes first so notes, emails and file names can mention it.
+	for _, name := range titleFirst(schema) {
 		f := schema.Fields[name]
 		if f.Computed != "" {
 			continue
 		}
-		rng := random(seed, app.ID, row.Type, name, fmt.Sprint(i))
-		value, err := fieldValue(rows, row.Type, name, schema, f, i, rng, now)
+		c.name, c.f = name, f
+		c.rng = random(seed, app.ID, row.Type, name, fmt.Sprint(i))
+		value, err := fieldValue(c)
 		if err != nil {
 			return bridge.Errorf(bridge.CodeInvalid, row.Type+"."+name+": "+err.Error())
 		}
 		row.Fields[name] = value
+		if name == schema.Title {
+			c.title, _ = value.(string)
+		}
 		if f.AI != "" {
 			row.AI = append(row.AI, name)
 		}
 	}
 	return nil
+}
+
+func titleFirst(schema *spec.RecordType) []string {
+	names := keys(schema.Fields)
+	sort.SliceStable(names, func(a, b int) bool { return names[a] == schema.Title && names[b] != schema.Title })
+	return names
 }
 
 func checkUnique(row bridge.Record, seen map[string]map[string]bool) error {
