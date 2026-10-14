@@ -20,9 +20,14 @@
           },
           {
             "part": "RecordList", "id": "deals", "label": "Deals",
-            "bind": { "records": "deal", "query": "stage:-Dropped sort:-value" },
-            "props": { "views": ["Board by stage", "List"], "meter": "stage", "groupBy": "stage", "query": true, "columns": ["name", "company", "stage", "value", "due_on", "owner"] },
-            "slots": { "empty": { "part": "Empty", "props": { "text": "No deals yet. Add the first one." } } }
+            "bind": { "records": "deal", "query": "stage:-Dropped sort:last_touch" },
+            "props": { "views": ["Board by Stage", "List"], "meter": "stage", "groupBy": "stage", "query": true, "columns": ["name", "company", "stage", "value", "due_on", "last_touch"] },
+            "slots": { "empty": { "part": "Empty", "props": { "text": "No deals yet. Add the first one." } } },
+            "children": [
+              { "part": "ScreenSubtitle", "props": { "noun": "open deals", "phrase": "quietest first" } },
+              { "part": "StatStrip", "bind": { "records": "deal" }, "props": { "field": "stage" } },
+              { "part": "FilterTokens", "label": "Filter deals", "props": { "labels": ["stage:Talking", "owner:me"], "placeholder": "Search deals" } }
+            ]
           },
           {
             "part": "BulkBar", "when": "$selection.deals.count > 0", "props": { "list": "deals" },

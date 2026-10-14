@@ -21,10 +21,14 @@ var exampleFiles = []string{
 	"runs/follow-up.yaml", "agent.md",
 }
 
-// Example is the few-shot material: paragraph → plan → the WRITE reply.
+// Example is the few-shot material: paragraph → brief and plan → the WRITE
+// reply. PlanReply is what the PLAN call answers: the brief first, then the
+// plan keys; Plan alone is plan.json as the card and Check see it.
 type Example struct {
 	Paragraph string
+	Brief     string
 	Plan      string
+	PlanReply string
 	Files     string
 }
 
@@ -39,13 +43,24 @@ func buildExample() (Example, error) {
 	if err != nil {
 		return Example{}, err
 	}
+	brief, err := exampleFS.ReadFile("example/brief.json")
+	if err != nil {
+		return Example{}, err
+	}
 	files, err := exampleReply(func(string) bool { return true })
 	if err != nil {
 		return Example{}, err
 	}
+	var parsed Brief
+	if err := parsed.UnmarshalJSON(brief); err != nil {
+		return Example{}, err
+	}
+	planText := strings.TrimSpace(string(plan))
 	return Example{
 		Paragraph: strings.TrimSpace(string(paragraph)),
-		Plan:      strings.TrimSpace(string(plan)),
+		Brief:     string(parsed),
+		Plan:      planText,
+		PlanReply: `{"brief":` + strings.TrimSpace(string(brief)) + "," + strings.TrimPrefix(planText, "{"),
 		Files:     files,
 	}, nil
 }

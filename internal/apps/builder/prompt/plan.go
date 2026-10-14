@@ -38,6 +38,9 @@ type AgentLine struct {
 
 // Plan is plan.json as the plan card draws it.
 type Plan struct {
+	// Brief is the design brief the PLAN reply opens with. plan.json has no
+	// key for it, so it lives in build state and is never written there.
+	Brief      Brief     `json:"brief,omitempty"`
 	Ask        string    `json:"ask"`
 	Name       string    `json:"name"`
 	Data       []Line    `json:"data"`

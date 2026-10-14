@@ -61,7 +61,11 @@ func (s *Service) runPlanCall(ctx context.Context, b *build, in prompt.Inputs) (
 	if err != nil {
 		return prompt.Plan{}, err
 	}
-	plan.Ask = b.currentPlan().Ask
+	current := b.currentPlan()
+	plan.Ask = current.Ask
+	if plan.Brief == "" {
+		plan.Brief = current.Brief
+	}
 	if strings.TrimSpace(plan.Name) == "" {
 		plan.Name = deriveName(plan.Ask)
 	}
@@ -73,6 +77,9 @@ func (s *Service) runPlanCall(ctx context.Context, b *build, in prompt.Inputs) (
 func (s *Service) publishPlan(ctx context.Context, b *build, plan prompt.Plan) error {
 	if err := s.storePlan(ctx, b, plan); err != nil {
 		return err
+	}
+	if plan.Brief != "" {
+		s.step(b, bridge.StepPlan, bridge.BuildRunning, "Design brief · "+strings.ReplaceAll(string(plan.Brief), "\n", " · "))
 	}
 	sp := specPlan(plan)
 	s.emit(b, bridge.BuildEvent{
@@ -130,6 +137,7 @@ func (s *Service) applyEdits(ctx context.Context, b *build, edits []bridge.PlanE
 	}
 	in := s.planInputs(b)
 	in.Plan, in.Request = string(current), strings.Join(requests, "\n")
+	in.Brief = string(plan.Brief)
 	return s.runPlanCall(ctx, b, in)
 }
 

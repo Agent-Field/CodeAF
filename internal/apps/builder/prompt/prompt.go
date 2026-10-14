@@ -17,7 +17,10 @@ var templateFS embed.FS
 
 var templates = template.Must(template.New("prompt").
 	Option("missingkey=error").
-	Funcs(template.FuncMap{"join": strings.Join, "runRules": runRules}).
+	Funcs(template.FuncMap{
+		"join": strings.Join, "runRules": runRules,
+		"lineLimit": lineLimit, "nameLimit": nameLimit,
+	}).
 	ParseFS(templateFS, "templates/*.tmpl"))
 
 // Kind names one of the Builder's three calls.
@@ -40,9 +43,12 @@ type Inputs struct {
 	Catalog    string
 	Schemas    string
 	Plan       string // plan.json text; a revision input for plan, the source for write
-	Request    string // a plan-card edit or Shape request, for plan revisions
-	Files      map[string]string
-	Report     string
+	// Brief is the design brief the PLAN call wrote (Plan.Brief): plan shows
+	// it on a revision, write and fix read it so every file serves one design.
+	Brief   string
+	Request string // a plan-card edit or Shape request, for plan revisions
+	Files   map[string]string
+	Report  string
 	// AgentModel is the model id the app's own agent runs on (write only).
 	AgentModel string
 	// Only narrows a write to these files, so one call writes one screen and
@@ -79,6 +85,9 @@ func (v view) ExampleReply() (string, error) {
 		return v.Wants(path) || v.Wants(exampleGroup(path))
 	})
 }
+
+// KitHints is the one-line when-to-use hint for each catalog part that has one.
+func (v view) KitHints() string { return kitHints(v.Catalog) }
 
 // SortedFiles lists the files by path so a prompt is byte-stable.
 func (v view) SortedFiles() []File {
