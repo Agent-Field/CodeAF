@@ -76,9 +76,9 @@ saying at its right what it is doing:
 ```
 
 - **`working`** — a turn is in flight, with its clock.
-- **`waiting on you`** — a card is up and nobody has answered it. It is the only tail drawn
-  in amber, and it is the same `?` a conversation stopped on a question wears: this row
-  costs one keystroke to unblock.
+- **`waiting on you`** — a card, or a command's approval, is up and nobody has answered
+  it. It is the only tail drawn in amber, and it is the same `?` a conversation stopped on a
+  question wears: this row costs one keystroke to unblock.
 - **`saved`** — an automation was saved from it.
 - **`answered`** — it is over and nothing was saved: a plain answer, or a card you declined.
 
@@ -113,6 +113,10 @@ growing tail of the reply, so a long answer visibly moves. A running call carrie
 spinner; one that succeeded carries nothing at all; one that failed carries `✕` and what
 went wrong. **The whole block goes when the turn ends**: it is a window onto the moment, and
 everything in it is already a row above it.
+
+**It also gives way while the turn is stopped on an approval.** Nothing is happening until
+you answer, so no spinner turns: the call's row wears the waiting `?` instead, with the
+question under it (*Ask here needs your permission to run a command*, below).
 
 A tool row says what the call is pointed at and never says `unknown`: `bash` shows the
 first line of the command, `read` shows the path, and the `automation` tool says what it is
@@ -235,7 +239,8 @@ With the keyboard on the list, `↑`/`↓`, `ctrl+p`/`ctrl+n` and `pgup`/`pgdown
 exactly as they do with no exchange on screen. **The pane follows the cursor.**
 
 While the pane has the keyboard the hint names `enter sends a follow-up` and `tab or esc
-back to the list`, with the card's own answers in front while a card is asking and
+back to the list`, with the card's own answers in front while a card is asking — or
+`1 allow once · 3 deny` while a command is waiting for your ok — and
 `↓ continue as a conversation` between them once that row is on screen. `continue as a
 conversation` is reached with `↓` and left again with `↑`, `tab` or `esc`.
 
@@ -306,6 +311,56 @@ Going means its session is closed. **Nothing is deleted and the folder does not 
 turn is interrupted and the session closed — and a card still waiting is then never
 answered, so nothing is saved from it.
 
+## Ask here needs your permission to run a command — approve or deny it in the pane
+
+When a call inside an `ask here` errand needs your ok — the same approval rules decide it
+as in a conversation — the errand stops on it, and **the question is asked in the pane,
+directly under the call it is about**:
+
+```
+ ? bash · gh run list --branch main
+  needs your ok to run bash
+  bash pattern "gh *" asks first
+
+  ▸ 1  allow once
+    3  deny                                  safe answer
+```
+
+The errand's row on home says `? waiting on you` and sorts to the top. Nothing in the
+errand moves until you answer, and **there is no clock on it**: it waits.
+
+- `1` — allow this one call. It runs, and its row keeps `allowed`.
+- `3` — refuse it. The row says `denied` at once, and the model is told
+  `denied by the person: <rule>` and carries on without it.
+- A click anywhere along an answer's row takes that answer.
+
+Answering leaves the keyboard in the pane, because the errand is still working.
+
+**The pane decides this one call.** There is no `always` and no `o other` here: a standing
+permission is changed with `/permissions`, or answered on a conversation's own approval.
+While the question is up, `0` and `2` do nothing, and a letter goes into the follow-up box.
+
+**A key pressed within a quarter of a second of the question appearing is ignored**, so a
+digit you were typing into a follow-up cannot allow a command you have not read. Press it
+again.
+
+**Several calls stopped at once** are asked one at a time. Each shows
+`needs your ok to run …` under its own row; the answers appear only under the one the
+digits answer, and the next one's once it is next.
+
+## Why ask here looked stuck on working — an approval nobody could see
+
+It used to be. When a call inside the errand needed your ok, the pane did not draw the
+question at all: the session waited for an answer no screen offered, the row said
+`⠹ working` with its clock counting up for as long as the window stayed open, and a `1`
+pressed at it went into the follow-up box. The question is now asked in the pane
+(*Ask here needs your permission to run a command*, above).
+
+**If the turn ends while the question is still up** — you quit, or you take the exchange
+to `continue as a conversation` — the call does not run, the model is told
+`not approved: ended before an answer`, and the question leaves the pane. Continuing as a
+conversation does not carry the question across; ask again there if you still want it run.
+
 ## Where did that exchange go — the folder, at every stage
 
 There is one folder and it moves at most once. Nothing here copies a transcript.
@@ -355,8 +410,9 @@ will not make is answered with `this exchange is already a conversation`.
   the exchange's transcript — and is drawn only while you have that open.
 - **It will not run the full conversation surface in the pane.** It draws what you said, the
   reply **rendered as markdown**, one line per tool call, the live strip and the automation
-  card. Slash commands, the task column, `/rewind`, images and permission questions are the
-  conversation's own screen — take the exchange there with `continue as a conversation`.
+  card, and a command's approval with its two answers. Slash commands, the task column,
+  `/rewind`, images and an approval's `always` are the conversation's own screen — take the
+  exchange there with `continue as a conversation`.
 - **It will not save anything without the card.** Typing a sentence at home sets nothing up;
   a card does, and only after you press `1` or `2`.
 - **It will not end an errand because you looked away.** Closing home, opening another

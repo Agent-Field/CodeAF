@@ -492,6 +492,13 @@ Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot 
 connected machine's build cache and refuse before touching this machine's cache. The
 answer names the connected machine and says to change it there.
 
+## Why won't /permissions show the rules on the machine I connected to with --host?
+
+`/permissions` has no wire door yet. Over `--host` it reads and changes neither machine's
+rules: it names the connected machine and says `change it on that machine`. The rules that
+decide what a hosted conversation may do are the far machine's own, and its approvals are
+asked in this window as usual (*Approvals over --host*).
+
 ## Why didn't /crew pin change the crew on the remote machine?
 
 `/crew` has no far-profile door yet. Over `--host`, the panel and every shortcut —
