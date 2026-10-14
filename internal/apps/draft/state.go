@@ -11,6 +11,8 @@ import (
 type State struct {
 	Name  string
 	About string
+	// Tint is the palette name the worker chose for the app frame, or "".
+	Tint string
 	// Plan holds the plan card's lines. Name and Ask are filled by Render.
 	Plan  spec.Plan
 	Phase Phase

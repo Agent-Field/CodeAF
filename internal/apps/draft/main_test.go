@@ -3,6 +3,7 @@ package draft
 import (
 	"bytes"
 	"context"
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"go/parser"
 	"go/token"
 	"os"
@@ -232,5 +233,61 @@ func TestVerbsFolderIsFreeOfServices(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestSocketOfADeepFolderMovesToTheTempFolder(t *testing.T) {
+	dir := filepath.Join(shortDir(t), strings.Repeat("d", 60), strings.Repeat("e", 60))
+	if err := os.MkdirAll(dir, 0o755); err != nil || len(dir) <= 110 {
+		t.Fatalf("setup: %v, %d bytes", err, len(dir))
+	}
+	t.Setenv(DirEnv, dir)
+	stop, err := Serve(context.Background(), dir, func(context.Context, Request) Reply { return Reply{OK: true, Text: "ok deep"} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, err := os.ReadFile(filepath.Join(dir, AddrFile))
+	if err != nil || filepath.Dir(string(addr)) != os.TempDir() || !strings.Contains(string(addr), "codeaf-b-") {
+		t.Fatalf("addr = %q, %v", addr, err)
+	}
+	if info, _ := os.Stat(filepath.Join(dir, AddrFile)); info.Mode().Perm() != 0o600 {
+		t.Fatalf("addr mode = %v", info.Mode())
+	}
+	if code, out, _ := runMain(t, "", "check"); code != 0 || out != "ok deep\n" {
+		t.Fatalf("check: %d %q", code, out)
+	}
+	stop()
+	for _, p := range []string{string(addr), filepath.Join(dir, AddrFile)} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Fatalf("%s left behind", p)
+		}
+	}
+	if code, _, _ := runMain(t, "", "check"); code != ExitNoBuilder {
+		t.Fatalf("after stop: %d", code)
+	}
+}
+
+func TestTintIsWrittenOnlyWhenTheSchemaHasIt(t *testing.T) {
+	s := openTemp(t)
+	play(t, s, append(planned(), c("tint", "sage")))
+	st, _ := s.State()
+	d := Defaults{AppID: "crm", Tint: "tide"}
+	if strings.Contains(string(Render(st, d)["app.json"]), `"tint"`) {
+		t.Fatal("today's schema has no tint, yet app.json carries one")
+	}
+	raw, _ := spec.SchemaJSON(spec.AppSchemaURL)
+	if schemaHasTint(raw) {
+		t.Fatal("the embedded schema already has tint: this test needs updating")
+	}
+	withTint := strings.Replace(string(raw), `"properties": {`, `"properties": { "tint": { "type": "string" },`, 1)
+	if !schemaHasTint([]byte(withTint)) {
+		t.Fatal("a schema with the property was not recognised")
+	}
+	if got := string(marshalFile(appDoc(st, d, true))); !strings.Contains(got, `"tint": "sage"`) {
+		t.Fatalf("the worker's tint did not win:\n%s", got)
+	}
+	st.Tint = ""
+	if got := string(marshalFile(appDoc(st, d, true))); !strings.Contains(got, `"tint": "tide"`) {
+		t.Fatalf("Defaults.Tint was not used:\n%s", got)
 	}
 }

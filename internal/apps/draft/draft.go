@@ -15,6 +15,8 @@ const (
 	JournalFile = "draft.jsonl"
 	LockFile    = "draft.lock"
 	SocketFile  = "builder.sock"
+	// AddrFile names the socket when its path is too long to sit in the folder.
+	AddrFile = "builder.addr"
 	// DefaultsFile holds the create-sheet facts the Builder saves beside the
 	// journal, so `show` can render the same files the Builder renders.
 	DefaultsFile = "defaults.json"
@@ -72,6 +74,8 @@ type Defaults struct {
 	AgentModel  string  `json:"agent_model,omitempty"`
 	BudgetMonth float64 `json:"budget_month,omitempty"`
 	Kit         int     `json:"kit,omitempty"`
+	// Tint is the Builder's suggestion; the worker's own `tint` wins.
+	Tint string `json:"tint,omitempty"`
 }
 
 // CRMScript is the golden CRM as the verbs a worker types, for the Builder's

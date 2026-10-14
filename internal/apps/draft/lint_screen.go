@@ -93,21 +93,9 @@ func (l *screenLint) bindKind(part *spec.Part, n *spec.Node, path string) {
 	if n.Bind == nil {
 		return
 	}
-	if kind := bindingKind(n.Bind); !contains(part.Bind, kind) {
+	if kind := n.Bind.Kind(); !contains(part.Bind, kind) {
 		l.add(path+"/bind", "%s does not support a %s binding — allowed: %s", n.Part, kind, ids(part.Bind))
 	}
-}
-
-func bindingKind(b *spec.Binding) string {
-	for _, k := range []struct{ name, val string }{
-		{"records", b.Records}, {"record", b.Record}, {"run", b.Run},
-		{"runs", b.Runs}, {"approvals", b.Approvals}, {"selection", b.Selection},
-	} {
-		if k.val != "" {
-			return k.name
-		}
-	}
-	return ""
 }
 
 func (l *screenLint) bind(b *spec.Binding, path string) {
@@ -131,7 +119,7 @@ func (l *screenLint) bind(b *spec.Binding, path string) {
 }
 
 func (l *screenLint) query(path, typ, text string) {
-	if err := queryProblem(l.st.Records[typ], text); err != nil {
+	if err := query.Problem(l.st.Records[typ], text, ownerID); err != nil {
 		l.add(path, "%v (fields of %s: %s) — %s", err, typ, fieldList(sortedKeys(l.st.Records[typ].Fields)), spec.RunQueryRule)
 	}
 }
@@ -148,7 +136,7 @@ func (l *screenLint) props(part *spec.Part, n *spec.Node, typ, path string) {
 		switch {
 		case prop == nil:
 			l.add(at, "%s has no prop %q — allowed: %s", part.Name, key, ids(sortedKeys(part.Props)))
-		case !validProp(prop, n.Props[key]):
+		case !prop.Accepts(n.Props[key]):
 			l.add(at, "prop %q must have type %s", key, prop.Type)
 		default:
 			l.propValue(prop, key, n.Props[key], typ, at)
@@ -163,7 +151,8 @@ func (l *screenLint) propValue(prop *spec.Prop, key string, value any, typ, at s
 	case "field":
 		l.fieldName(typ, value.(string), at)
 	case "fields":
-		for i, name := range stringList(value) {
+		names, _ := spec.StringList(value)
+		for i, name := range names {
 			l.fieldName(typ, name, fmt.Sprintf("%s/%d", at, i))
 		}
 	case "string":
@@ -230,48 +219,6 @@ func checkRecordWrite(sink *issueSink, st State, typ string, set map[string]any,
 			sink.add(path+"/set/"+escapePointer(field), "%q is not a field of %s (fields: %s)", field, typ, fieldList(sortedKeys(rec.Fields)))
 		}
 	}
-}
-
-func validProp(prop *spec.Prop, value any) bool {
-	text, isText := value.(string)
-	switch prop.Type {
-	case "number":
-		_, ok := value.(float64)
-		return ok
-	case "boolean":
-		_, ok := value.(bool)
-		return ok
-	case "strings", "fields", "commands":
-		return isStringList(value)
-	case "enum":
-		return isText && contains(prop.Values, text)
-	case "tone":
-		return isText && contains([]string{"neutral", "accent", "positive", "caution", "critical"}, text)
-	case "value":
-		return true
-	}
-	return isText
-}
-
-func isStringList(value any) bool {
-	list, ok := value.([]any)
-	if !ok {
-		return false
-	}
-	for _, item := range list {
-		if _, ok := item.(string); !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func stringList(value any) []string {
-	var out []string
-	for _, item := range value.([]any) {
-		out = append(out, item.(string))
-	}
-	return out
 }
 
 func escapePointer(key string) string {

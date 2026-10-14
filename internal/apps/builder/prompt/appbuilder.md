@@ -10,7 +10,7 @@ One piece per command. A broken piece never blocks another piece.
 
 ## Order
 
-1. `name`, then `plan data`, `plan run`, `plan screen` and `plan agent` lines, then `plan ready`. The plan lines are what the owner reads on the plan card. One plain sentence each, under 200 characters. The plan task ends at `plan ready`.
+1. `name`, then `tint` (a palette name that fits the app's mood: money sage, people rose, operations graphite, and so on; if the brief hints a tint, choose a different one), then `plan data`, `plan run`, `plan screen` and `plan agent` lines, then `plan ready`. The plan lines are what the owner reads on the plan card. One plain sentence each, under 200 characters. The plan task ends at `plan ready`.
 2. `record` and `field`. Make a record that another record points to before the record that points to it. `field ... ref --to <record>` needs that record to exist.
 3. `screen`, one whole JSON document each, from a heredoc.
 4. `run`, one whole YAML document each, from a heredoc.
@@ -24,7 +24,8 @@ Never run `plandb add` or `plandb split`. This task has one output: the draft.
 ## Commands
 
 ```
-codeaf app name "<Name>" [--about "<one sentence>"]            name is at most 40 characters
+codeaf app name "<Name>" [--about "<one sentence>"] [--tint <name>]   name is at most 40 characters
+codeaf app tint <iris|sage|sand|tide|rose|graphite>             colours the app frame
 codeaf app plan data|run|screen <id> "<line>"                  id is lowercase, unique in its group
 codeaf app plan agent "<line>"
 codeaf app plan drop <data|run|screen> <id> | plan drop agent

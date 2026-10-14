@@ -29,13 +29,6 @@ func queryFields(file, path, typ, text string, record *spec.RecordType) []Issue 
 	if record == nil || strings.HasPrefix(text, "$") {
 		return nil
 	}
-	if !strings.Contains(text, "{{") {
-		return queryIssue(file, path, typ, text, record)
-	}
-	schema := &spec.RecordType{Fields: map[string]*spec.Field{}}
-	for name := range record.Fields {
-		schema.Fields[name] = &spec.Field{Type: spec.FieldText}
-	}
-	text = referenceTemplate.ReplaceAllString(text, "sample")
-	return queryIssue(file, path, typ, text, schema)
+	stub, stubText := query.Stub(record, text)
+	return queryIssue(file, path, typ, stubText, stub)
 }
