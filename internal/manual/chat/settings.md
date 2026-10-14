@@ -42,6 +42,18 @@ read-only: editing returns "apps builder model is set by CODEAF_APPS_BUILDER_MOD
 Clear the variable to edit the saved choice; clear the saved choice to restore
 the built-in model.
 
+## Apps Builder reply repair — stray JSON objects and files wrappers
+
+When Builder writes app files, it prefers a JSON object under a `files` key,
+then the first object whose keys are all valid app file paths. It skips inline
+app definitions and plan fragments. File contents still must parse as JSON or
+YAML where their extension requires it.
+
+If no files object qualifies, Builder sends the model a correction naming the
+keys it received: "return a JSON object mapping app file paths to contents;
+got keys …". It retries that step once, charging both calls to the build budget.
+A second rejected reply leaves the build failed with Fix it and Cancel.
+
 ## Change settings by asking in chat
 
 You can ask codeaf to change supported preferences: “hide hints,” “expand completed
