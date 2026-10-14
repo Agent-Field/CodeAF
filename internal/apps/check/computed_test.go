@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -43,5 +44,20 @@ func TestCheckComputedDurations(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAComputedFieldThatReachesPastItsRecordIsToldSo(t *testing.T) {
+	record := &spec.RecordType{Fields: map[string]*spec.Field{"amount": {Type: spec.FieldMoney}, "paid": {Type: spec.FieldBool}}}
+	for _, message := range []string{"undeclared reference to 'sum' (in container '')", "Syntax error: mismatched input 'where' expecting <EOF>"} {
+		hint := computedHint("invoice", record, errors.New(message))
+		for _, want := range []string{"amount, paid", "no aggregates", "Chart or Stat", "plain number field"} {
+			if !strings.Contains(hint, want) {
+				t.Errorf("hint for %q lacks %q: %s", message, want, hint)
+			}
+		}
+	}
+	if hint := computedHint("invoice", record, errors.New("no matching overload for '_<_'")); hint != computedFallbackHint {
+		t.Errorf("another error got %q", hint)
 	}
 }

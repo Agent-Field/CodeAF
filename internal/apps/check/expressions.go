@@ -218,7 +218,7 @@ func computedExpressions(b *spec.Bundle) []Issue {
 				continue
 			}
 			if _, err := expr.Compile(env, source); err != nil {
-				result = append(result, finding(spec.AppFile, ptr(ptr("/records", typ)+"/fields", name)+"/computed", "expression/computed", name+": "+err.Error(), "use declared record fields and duration literals, for example now - days(7)"))
+				result = append(result, finding(spec.AppFile, ptr(ptr("/records", typ)+"/fields", name)+"/computed", "expression/computed", name+": "+err.Error(), computedHint(typ, schema, err)))
 			}
 		}
 	}
