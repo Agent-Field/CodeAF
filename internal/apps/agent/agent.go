@@ -22,6 +22,7 @@ type Service struct {
 	ctx     context.Context
 	all     *svc.Services
 	threads *threadStore
+	turns   *inflight
 }
 
 var _ svc.Agent = (*Service)(nil)
@@ -31,7 +32,7 @@ func New(cfg svc.Config, all *svc.Services) *Service {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return &Service{ctx: ctx, all: all, threads: newThreadStore(cfg.Root)}
+	return &Service{ctx: ctx, all: all, threads: newThreadStore(cfg.Root), turns: newInflight()}
 }
 
 // Send validates the call, then runs the turn in the background and streams
@@ -68,6 +69,7 @@ func randomID(prefix string) string {
 // turn is one agent.send: the person's message and everything that follows.
 type turn struct {
 	svc    *Service
+	ctx    context.Context // cancelled by agent.stop or the server's end
 	scope  svc.Scope
 	bundle *spec.Bundle
 	params bridge.AgentSendParams
@@ -90,17 +92,28 @@ func (t *turn) fail(err error) {
 	t.emit(bridge.AgentEvent{Kind: bridge.AgentError, Text: msg})
 }
 
-func (t *turn) run() {
+func (t *turn) run() { t.converse(t.userText()) }
+
+// converse adds text as the person's side of the thread and lets the model
+// answer it. Turns on one thread take their turn in order.
+func (t *turn) converse(text string) {
 	lock := t.svc.threads.turnLock(t.scope.App, t.thread)
 	lock.Lock()
 	defer lock.Unlock()
+	ctx, end := t.svc.turns.begin(t.svc.ctx, t.scope.App, t.thread)
+	defer end()
+	t.ctx = ctx
 	th, err := t.svc.threads.load(t.scope.App, t.thread)
 	if err != nil {
 		t.fail(err)
 		return
 	}
-	th.Messages = append(th.Messages, svc.ModelMessage{Role: "user", Text: t.userText()})
+	th.Messages = append(th.Messages, svc.ModelMessage{Role: "user", Text: text})
 	err = t.loop(th)
+	if t.stopped(err) {
+		t.emit(bridge.AgentEvent{Kind: bridge.AgentDelta, Text: "Stopped."})
+		err = nil
+	}
 	if saveErr := t.svc.threads.save(t.scope.App, th); err == nil {
 		err = saveErr
 	}
@@ -142,12 +155,16 @@ func (t *turn) overBudget(th *thread) bool {
 
 func (t *turn) loop(th *thread) error {
 	tb := newToolbox(t.svc.all, t.scope, t.bundle)
+	tb.thread = t.thread
 	system := systemPrompt(t.bundle, tb.allowed)
 	for range maxSteps {
+		if err := t.ctx.Err(); err != nil {
+			return err
+		}
 		if t.overBudget(th) {
 			return bridge.Errorf(bridge.CodeBudget, "the app's monthly budget is used up")
 		}
-		reply, err := t.svc.all.Model.Complete(t.svc.ctx, svc.ModelCall{
+		reply, err := t.svc.all.Model.Complete(t.ctx, svc.ModelCall{
 			Model: t.model(), System: system, Messages: th.Messages,
 			Schema: actionSchema, App: t.scope.App, Role: "app agent",
 		})
@@ -201,7 +218,7 @@ func resultText(tool, feedback string) string {
 // useTool runs one action and tells the person what it did in plain words,
 // never the call's JSON.
 func (t *turn) useTool(tb *toolbox, a action) (string, error) {
-	out, err := tb.call(t.svc.ctx, a.Tool, a.Args)
+	out, err := tb.call(t.ctx, a.Tool, a.Args)
 	t.emit(bridge.AgentEvent{Kind: bridge.AgentTool, Tool: a.Tool, Summary: summarize(tb.bundle, a.Tool, a.Args, out, err)})
 	if err != nil {
 		return toolFailure(err)
