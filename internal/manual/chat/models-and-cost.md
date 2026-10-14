@@ -2256,8 +2256,12 @@ name, a run of JSON, and no answer anywhere in it. The reply is well-formed as f
 connection can tell, so without its own guard codeaf would show it to you and keep going.
 
 codeaf reads the finished reply's shape — mostly symbols, a tool it was actually offered
-spelled inside the markup, and no real tool call attached — and cuts it. **None of the
-markup is kept**: not in the conversation, not sent back to the model. A dim line says
+spelled inside the markup, and no real tool call attached — and then tries to **read the
+call back out of it**. When the markup holds a call it can vouch for, that call is
+**dispatched** and the turn carries on as the tool call it was always trying to be; you
+see the tool run, not a cut. Only a reply it cannot read that way is cut. **None of the
+markup reaches you either way**: what runs came out of the model's own text, and a dim
+line says
 
 ```
 the model answered in its own internal markup instead of words — that text was dropped, asking again
@@ -2275,10 +2279,13 @@ With nowhere left to go, the turn ends in
 `the reply was the model's own internal markup instead of an answer and was cut`, and
 `/model` is the door — a different model, or the same model once its provider recovers.
 
-**What it will not cut.** A reply with a fenced code block in it is never judged — asking
-what a tool call looks like gets you an honest answer full of exactly this syntax. Prose
-that merely names a tool is safe: the markup has to be the substance of the reply, not a
-word in a sentence. And a conversation with no tools available cannot trigger it at all.
+**What it will not run.** A reply with a fenced code block in it is never judged — asking
+what a tool call looks like usually gets you an honest answer full of exactly this syntax,
+inside a fence, and it is left alone. Without a fence the same question is still safe,
+because a reply that is mostly WORDS around its markup is a model explaining a call and
+not making one: a real leak is nearly all markup with a short lead-in, and the recovery
+refuses anything else. Prose that merely names a tool is safe for the same reason. And a
+conversation with no tools available cannot trigger any of it at all.
 
 **The switch is the same one.** `reply guard` on the **Models** category of `/settings`
 turns this off together with the repetition guard above; off means you see whatever
