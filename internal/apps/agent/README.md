@@ -14,6 +14,15 @@ Declared runs permit `runs.start`. Declared connector verbs and external tools
 open approval items; the agent does not execute connectors directly.
 `agent.md` supplies persona and instructions only.
 
+## Refused tools
+
+There is no card on which a person grants the app agent a tool the app does
+not declare, so a permission ask never waits. A tool off the belt, or a call
+the capability checker refuses, is answered at once as "Not allowed in this
+app", and the model is told to say in one line what it could not do. If it
+asks for a refused tool a second time, the turn ends with "I can't use <tool>
+in this app." Connector approvals are not refusals and keep their own path.
+
 ## Replies and name lookups
 
 Each model reply accepts the first complete JSON action, including replies
