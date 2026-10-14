@@ -233,3 +233,37 @@ func TestALookIsNotOnTheAlwaysAskFloor(t *testing.T) {
 		}
 	}
 }
+
+// Exactly one trailing ` 2>&1` is still a look; every other redirect, a
+// second one, a pipe or a chain after it, and odd spacing before it ask.
+func TestAStderrJoinIsTheOneWrapperALookMayCarry(t *testing.T) {
+	cases := []struct {
+		line string
+		look bool
+	}{
+		{"gh pr list 2>&1", true},
+		{"gh issue list -R o/r --state open --limit 50 2>&1", true},
+		{"gh api repos/o/r/issues 2>&1", true},
+		{"gh pr list 2>&1 2>&1", false},
+		{"gh pr list 2>/tmp/x", false},
+		{"gh pr list >&2", false},
+		{"gh pr list 2>&1 | head", false},
+		{"gh pr list 2>&1 | head -20", false},
+		{"gh pr list 2>&1;x", false},
+		{"gh pr list 2>&1 && gh pr merge 1", false},
+		{"gh pr list  2>&1", false},
+		{"gh pr list\t2>&1", false},
+		{"gh pr list 2>&1 ", false},
+		{"gh pr list 1>&2", false},
+		{"gh pr list &>/dev/null", false},
+		{"gh pr list 2>&1>x", false},
+		{" 2>&1", false},
+		{"gh pr merge 7 2>&1", false},
+		{`gh api repos/o/r "-X" DELETE 2>&1`, false},
+	}
+	for _, c := range cases {
+		if _, ok := ReadOnlyLook(c.line); ok != c.look {
+			t.Errorf("%q look = %v, want %v", c.line, ok, c.look)
+		}
+	}
+}

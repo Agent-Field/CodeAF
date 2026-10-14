@@ -88,6 +88,10 @@ func restPath(word string) bool {
 // ReadOnlyLook reports the family ("gh") of a command line that is a look by
 // the table above. Any line the table does not recognise whole is not one.
 func ReadOnlyLook(command string) (family string, ok bool) {
+	command, ok = withoutStderrJoin(command)
+	if !ok {
+		return "", false
+	}
 	if strings.ContainsFunc(command, func(r rune) bool { return !strings.ContainsRune(lookCharset, r) }) {
 		return "", false
 	}
@@ -156,4 +160,20 @@ func lookValueOK(name, value string, takesValue bool) bool {
 	}
 	pinned, ok := lookFlagValues[name]
 	return !ok || value == pinned
+}
+
+// stderrJoin is the one wrapper a look may carry: a single trailing ` 2>&1`,
+// which only folds the program's own error stream into its output. It is cut
+// once, as exact bytes; the rest must pass the charset and the table as it
+// stands, so a second one, another redirect or anything after it still asks.
+const stderrJoin = " 2>&1"
+
+// withoutStderrJoin cuts one trailing [stderrJoin]. The text before it may
+// not end in white space: `gh pr list  2>&1` is not the shape that was ruled on.
+func withoutStderrJoin(command string) (string, bool) {
+	rest, cut := strings.CutSuffix(command, stderrJoin)
+	if !cut {
+		return command, true
+	}
+	return rest, rest != "" && !strings.HasSuffix(rest, " ")
 }
