@@ -180,6 +180,10 @@ func (s *Service) allowTopic(ctx context.Context, scope svc.Scope, raw json.RawM
 		case "draft":
 			return allowDraft(scope)
 		case "*":
+			// The wildcard also delivers the draft topic, so it needs the same right.
+			if err := allowDraft(scope); err != nil {
+				return err
+			}
 			return s.allowAllRecords(ctx, scope)
 		}
 	}

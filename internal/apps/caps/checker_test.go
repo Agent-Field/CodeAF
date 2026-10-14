@@ -73,6 +73,7 @@ func TestAllow(t *testing.T) {
 		{name: "draft of another app", method: "sub", raw: `{"topic":"app/other/draft"}`, role: svc.RoleEditor, code: bridge.CodeInvalid},
 		{name: "draft for the app agent", method: "sub", raw: `{"topic":"app/crm/draft"}`, role: svc.RoleEditor, agent: true, code: bridge.CodeDenied},
 		{name: "draft for a plain user", method: "sub", raw: `{"topic":"app/crm/draft"}`, role: svc.RoleUser, code: bridge.CodeDenied},
+		{name: "wildcard reaches the draft for an agent", method: "sub", raw: `{"topic":"app/crm/*"}`, role: svc.RoleEditor, agent: true, code: bridge.CodeDenied},
 		{name: "draft subtopic", method: "sub", raw: `{"topic":"app/crm/draft/x"}`, role: svc.RoleEditor, code: bridge.CodeInvalid},
 		{name: "cross app topic", method: "sub", raw: `{"topic":"app/other/build"}`, role: svc.RoleEditor, code: bridge.CodeInvalid},
 		{name: "unknown topic", method: "sub", raw: `{"topic":"app/crm/secret"}`, role: svc.RoleEditor, code: bridge.CodeInvalid},
