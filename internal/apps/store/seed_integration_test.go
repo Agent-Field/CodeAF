@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -12,14 +13,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
-func TestOrdinaryKeepLeavesRealRecordsEmpty(t *testing.T) {
+// previewCRM builds the golden CRM as an unkept preview whose sample records
+// are seeded the way the Builder seeds them.
+func previewCRM(t *testing.T) (*store.Service, *svc.Services, string, map[string][]bridge.Record) {
+	t.Helper()
 	ctx := context.Background()
 	cfg := svc.Config{Root: t.TempDir()}
 	all := &svc.Services{}
 	s := store.NewWithOptions(cfg, all, store.Options{WithoutDemo: true})
 	all.Store, all.Records = s, records.New(cfg, all)
-	caller := svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}
-	app, err := s.Create(ctx, caller, "CRM", "Track our sales")
+	app, err := s.Create(ctx, svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}, "CRM", "Track our sales")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,21 +42,106 @@ func TestOrdinaryKeepLeavesRealRecordsEmpty(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.Keep(ctx, app.ID); err != nil {
+	return s, all, app.ID, rows
+}
+
+func scopeOf(app string, mode svc.DataMode) svc.Scope {
+	return svc.Scope{App: app, Data: mode, Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}}
+}
+
+func TestKeepCarriesSampleRecordsIntoRealRecords(t *testing.T) {
+	ctx := context.Background()
+	s, all, app, rows := previewCRM(t)
+	edit := bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Qualified"}}
+	if _, err := all.Records.Update(ctx, scopeOf(app, svc.DataSample), edit); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Keep(ctx, app); err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []svc.DataMode{svc.DataSample, svc.DataReal} {
 		t.Run(string(mode), func(t *testing.T) {
-			scope := svc.Scope{App: app.ID, Data: mode, Caller: caller}
-			page, err := all.Records.Query(ctx, scope, bridge.QueryParams{Type: "deal"})
-			want := 0
-			if mode == svc.DataSample {
-				want = len(rows["deal"])
+			for typ, want := range rows {
+				page, err := all.Records.Query(ctx, scopeOf(app, mode), bridge.QueryParams{Type: typ})
+				if err != nil || page.Total != len(want) {
+					t.Fatalf("%s after Keep = %d, %v; want %d", typ, page.Total, err, len(want))
+				}
 			}
-			if err != nil || page.Total != want {
-				t.Fatalf("records after Keep = %+v, %v; want %d", page, err, want)
+			row, err := all.Records.Get(ctx, scopeOf(app, mode), bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
+			if err != nil || row.Fields["stage"] != "Qualified" {
+				t.Fatalf("preview edit after Keep = %+v, %v", row, err)
 			}
 		})
+	}
+	real := scopeOf(app, svc.DataReal)
+	if _, err := all.Records.Update(ctx, real, bridge.UpdateRecordParams{Type: "deal", ID: "dl_hooli", Set: map[string]any{"stage": "Won"}}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := all.Records.Get(ctx, scopeOf(app, svc.DataSample), bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"})
+	if err != nil || row.Fields["stage"] != "Qualified" {
+		t.Fatalf("real write reached sample = %+v, %v", row, err)
+	}
+}
+
+func TestLaterKeepsNeverReplaceRealRecords(t *testing.T) {
+	cases := []struct {
+		name  string
+		later func(context.Context, *store.Service, string) error
+	}{
+		{"second keep", func(ctx context.Context, s *store.Service, app string) error {
+			if _, err := s.Keep(ctx, app); err == nil {
+				return errors.New("a kept app was kept again")
+			}
+			return nil
+		}},
+		{"new version", func(ctx context.Context, s *store.Service, app string) error {
+			_, err := s.Restore(ctx, app, 1)
+			return err
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			s, all, app, _ := previewCRM(t)
+			if _, err := s.Keep(ctx, app); err != nil {
+				t.Fatal(err)
+			}
+			real := scopeOf(app, svc.DataReal)
+			if _, err := all.Records.Delete(ctx, real, bridge.DeleteRecordParams{Type: "deal", ID: "dl_hooli"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := all.Records.Update(ctx, real, bridge.UpdateRecordParams{Type: "deal", ID: "dl_globex", Set: map[string]any{"stage": "Won"}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.later(ctx, s, app); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := all.Records.Get(ctx, real, bridge.GetRecordParams{Type: "deal", ID: "dl_hooli"}); err == nil {
+				t.Fatal("a deleted real record came back")
+			}
+			row, err := all.Records.Get(ctx, real, bridge.GetRecordParams{Type: "deal", ID: "dl_globex"})
+			if err != nil || row.Fields["stage"] != "Won" {
+				t.Fatalf("real edit = %+v, %v", row, err)
+			}
+		})
+	}
+}
+
+func TestKeepLeavesExistingRealRecordsAlone(t *testing.T) {
+	ctx := context.Background()
+	s, all, app, _ := previewCRM(t)
+	real := scopeOf(app, svc.DataReal)
+	if _, err := all.Records.Create(ctx, real, bridge.CreateRecordParams{Type: "company", Set: map[string]any{"name": "Real Co"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Keep(ctx, app); err != nil {
+		t.Fatal(err)
+	}
+	for typ, want := range map[string]int{"company": 1, "deal": 0} {
+		page, err := all.Records.Query(ctx, real, bridge.QueryParams{Type: typ})
+		if err != nil || page.Total != want {
+			t.Fatalf("real %s after Keep = %d, %v; want %d", typ, page.Total, err, want)
+		}
 	}
 }
 
