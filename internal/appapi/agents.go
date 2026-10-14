@@ -116,6 +116,62 @@ type agentLive struct {
 	turnID     string
 	longTimer  *time.Timer
 	longShown  bool
+	// held names Inbox items whose answer waits out its Undo window; the
+	// agent is not waiting on the person for those questions.
+	held map[string]bool
+}
+
+// needsPerson is the one reading of "waiting on the person" for views and
+// stored transitions: an open question whose answer is not held for Undo.
+// Callers hold the registry lock.
+func (live *agentLive) needsPerson(id string) bool {
+	if !live.conn.Engine.NeedsPerson() {
+		return false
+	}
+	door, ok := live.conn.Engine.(inboxQuestionDoor)
+	if !ok || len(live.held) == 0 {
+		return true
+	}
+	open := door.OpenQuestions()
+	for _, q := range open {
+		if !live.held[inboxQuestionID(id, q)] {
+			return true
+		}
+	}
+	return len(open) == 0
+}
+
+func (a *AgentRegistry) liveNeedsPerson(id string, live *agentLive) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return live.needsPerson(id)
+}
+
+// holdAnswer records that an Inbox answer entered (held) or left its Undo
+// window and stores the agent state the views now read, so the desk hears
+// agent.changed at the click rather than when the window closes.
+func (a *AgentRegistry) holdAnswer(id, item string, held bool) {
+	a.mu.Lock()
+	live := a.live[id]
+	if live == nil {
+		a.mu.Unlock()
+		return
+	}
+	if held {
+		if live.held == nil {
+			live.held = map[string]bool{}
+		}
+		live.held[item] = true
+	} else {
+		delete(live.held, item)
+	}
+	state := "running"
+	if live.needsPerson(id) {
+		state = "needs_you"
+	}
+	generation := live.generation
+	a.mu.Unlock()
+	_ = a.transitionState(id, state, live, generation)
 }
 
 // AgentRegistry serializes local connections and flocks durable mutations so
@@ -272,7 +328,7 @@ func (a *AgentRegistry) view(record agentRecord) Agent {
 		row := session.ReadRows([]string{record.SessionFile})[record.SessionFile]
 		presence, fresh := session.ReadSessionPresence(filepath.Dir(record.SessionFile), a.now())
 		switch {
-		case live != nil && live.conn.Engine.NeedsPerson(), fresh && presence.NeedsPerson():
+		case live != nil && live.needsPerson(agent.ID), live == nil && fresh && presence.NeedsPerson():
 			agent.State = "needs_you"
 		case live != nil && live.running, fresh && (presence.State == session.PresenceWorking || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0):
 			agent.State = "running"

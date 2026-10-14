@@ -27,6 +27,19 @@ type inboxNativeHold interface {
 	NativeInboxHold(InboxItem, InboxAnswerRequest) bool
 	UndoInbox(context.Context, InboxItem, *AgentExpect) error
 }
+
+// inboxHolder hears an item enter or leave its Undo window, so the source can
+// show the answer as taken at the click instead of when the window closes.
+type inboxHolder interface {
+	HoldInbox(item InboxItem, held bool)
+}
+
+func holdInbox(row inboxRow, held bool) {
+	if holder, ok := row.source.(inboxHolder); ok {
+		holder.HoldInbox(row.item, held)
+	}
+}
+
 type inboxValidator interface {
 	ValidateInbox(context.Context, InboxItem, InboxAnswerRequest) error
 }
@@ -233,6 +246,7 @@ func (s *Server) RefreshInbox(ctx context.Context) ([]InboxItem, error) {
 				if p.timer != nil {
 					p.timer.Stop()
 				}
+				holdInbox(p.row, false)
 				if p.native && how != "someone_else" {
 					if p.answer.Choice != "" || p.answer.Words != "" || p.answer.Verb != "" || len(p.answer.Items) > 0 {
 						answer = &p.answer
@@ -320,10 +334,12 @@ func (s *Server) AnswerInbox(ctx context.Context, id string, answer InboxAnswerR
 		p.native = true
 		p.receipt = reply.Receipt
 		state.pending[id] = p
+		holdInbox(row, true)
 		_, _ = s.events.Publish(EventInboxUndoWindow, InboxUndoWindowEvent{id, p.until})
 		return reply, nil
 	}
 	state.pending[id] = p
+	holdInbox(row, true)
 	p.timer = state.after(inboxAnswerHold, func() { s.finishInbox(id, p) })
 	_, _ = s.events.Publish(EventInboxUndoWindow, InboxUndoWindowEvent{id, p.until})
 	return InboxAnswerResponse{OK: true, UndoUntil: &p.until}, nil
@@ -340,6 +356,7 @@ func (s *Server) finishInbox(id string, p *inboxPending) {
 		return
 	}
 	delete(state.pending, id)
+	defer holdInbox(p.row, false)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	items, err := p.row.source.InboxItems(ctx)
@@ -394,6 +411,7 @@ func (s *Server) UndoInbox(ctx context.Context, id string, expect *AgentExpect) 
 		}
 	}
 	delete(state.pending, id)
+	holdInbox(p.row, false)
 	_, _ = s.events.Publish(EventInboxAdded, InboxAddedEvent{id, p.row.item.Kind})
 	return nil
 }
@@ -424,6 +442,7 @@ func (s *Server) resolveInbox(id, how, by string, answer *InboxAnswerRequest, re
 		if p.timer != nil {
 			p.timer.Stop()
 		}
+		holdInbox(p.row, false)
 		delete(s.inbox.pending, id)
 	}
 	s.retainInbox(row, answer, receipt, how, by)
