@@ -132,14 +132,22 @@ type AgentRegistry struct {
 	stopped    bool
 	after      func(time.Duration, func()) *time.Timer
 	done       chan struct{}
+	workers    sync.WaitGroup // watcher goroutines Close joins
 }
 
 func NewAgentRegistry(home string, open OpenAgent) *AgentRegistry {
 	return &AgentRegistry{home: home, open: open, now: time.Now, after: time.AfterFunc, done: make(chan struct{}), live: make(map[string]*agentLive)}
 }
 
-// Close releases this launch's connections. It never closes or archives resources.
+// Close releases this launch's connections and waits for their watchers, so
+// nothing is still writing under the registry's home when it returns. It never
+// closes or archives resources.
 func (a *AgentRegistry) Close() {
+	a.stop()
+	a.workers.Wait()
+}
+
+func (a *AgentRegistry) stop() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.stopped {

@@ -51,7 +51,9 @@ func (a *AgentRegistry) watchProcesses(id string, conn *AgentConnection) {
 			}
 		})
 	}
+	a.workers.Add(1)
 	go func() {
+		defer a.workers.Done()
 		ticker := time.NewTicker(250 * time.Millisecond)
 		defer ticker.Stop()
 		for {
