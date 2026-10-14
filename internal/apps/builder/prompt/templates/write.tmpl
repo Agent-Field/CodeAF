@@ -7,7 +7,7 @@ This call writes ONLY: {{join .Only ", "}}. Write no other file; the rest of the
 ## Files you write
 - app.json: id (slug of the plan name), name, description (one sentence), space ("{{.Space}}"), version 1, kit 2, agent {name, file: "agent.md", model: "{{.AgentModel}}"}, records, capabilities, triggers, commands, budget. Record ids = plan data ids. Budget from: {{.Budget}} (month, currency "USD", per_run, at_cap "ask", models). Connectors{{if .Connectors}} you may use, only when the plan needs them: {{join .Connectors ", "}}{{else}}: none are connected, so declare none; nothing is sent{{end}}.
 - screens/<id>.json and runs/<id>.yaml: one per plan line; `screen` and `run` equal the file name.
-- agent.md: name, model, tools front matter; plain instructions.
+{{template "agent.tmpl" .}}
 Names must exist: open screens, run targets, record types in to/binds/capabilities, fields in columns/set/queries.
 
 ## Records
@@ -26,8 +26,7 @@ Names must exist: open screens, run targets, record types in to/binds/capabiliti
 - Runs need run, title, budget.per_run, params, steps. Steps: id plus agent (prompt, output schema), tool, records.query/create/update/delete, wait, or nested steps with loop {over,as,max}. Outbound tool steps need gate {approval:send,who:$me,title:"Approval needed: send ..."}.
 - For a readable answer/summary use a screen Button agent.ask (label ends "· AI"), not a run. Send only when requested.
 - Time-based wishes use schedule trigger + cron and a manual command for that run. Record events use record.created/changed + type and when. Commands use run or do actions, with for = record type.
-- Capabilities: records lists each type as rw or r; connectors grants only used verbs, approve:["send"] for sending; ai grants used verbs. Derive agent.md tools from THIS app, never copy the example: r/rw requires records.query,get; rw ALSO requires records.create,update,delete. Global tools cover every permitted type; the bridge checks each call's type. Add runs.start for runs the agent needs and only granted connector verbs.
-- agent.md: purpose, record jobs (including create/edit/delete), names what it read/changed, sends wait for "Approval needed: send", rules 2 and 9. Under 12 lines.
+- Capabilities: records lists each type as rw or r; connectors grants only used verbs, approve:["send"] for sending; ai grants used verbs.
 
 {{runRules}}
 
