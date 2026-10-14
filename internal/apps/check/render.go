@@ -22,6 +22,8 @@ type renderer struct {
 	index  int
 	issues []Issue
 	seen   map[string]bool
+	// shown is whether the node being bound is on screen in this selection state.
+	shown bool
 }
 
 func render(ctx context.Context, b *spec.Bundle, kit *spec.Kit, screen *spec.Screen, rows map[string][]bridge.Record) []Issue {
@@ -137,6 +139,7 @@ func (r *renderer) node(n *spec.Node, path string, values map[string]any, typ st
 		}
 	}
 	if visible || (n.Bind != nil && n.Bind.Records != "") {
+		r.shown = visible
 		r.bind(n.Bind, path+"/bind", values, typ)
 	}
 	if visible {
@@ -157,6 +160,7 @@ func (r *renderer) hidden(n *spec.Node, path string, values map[string]any) {
 		return
 	}
 	if n.Bind != nil && n.Bind.Records != "" {
+		r.shown = false
 		r.bind(n.Bind, path+"/bind", clone(values), n.Bind.Records)
 	}
 	if n.When != "" {
@@ -192,6 +196,14 @@ func (r *renderer) bind(bind *spec.Binding, path string, values map[string]any, 
 		recordType := r.bundle.App.Records[bind.Records]
 		if err == nil && recordType != nil {
 			_, err = query.Parse(recordType, resolvedQuery.(string), svc.Owner)
+		}
+		if list, unselected := unselectedList(bind.Query, values); err != nil && unselected {
+			// A list of the selected record's related rows has no query until
+			// one row is selected; hidden, it asks nothing.
+			if r.shown {
+				r.issue(path+"/query", "render/bind", fmt.Errorf("%s: the query reads the selected %s row, and nothing is selected yet", r.file, list), unselectedHint(list))
+			}
+			return
 		}
 		if err != nil {
 			r.issue(path+"/query", "render/bind", fmt.Errorf("%s: %w", r.file, err), boundFieldHint(recordType, bind.Records))
