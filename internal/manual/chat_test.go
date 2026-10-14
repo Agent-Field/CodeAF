@@ -35,6 +35,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"your key was not accepted for this model", "starting-codeaf"},
 		{"codeaf ignores my OPENAI_API_KEY", "starting-codeaf"},
 
+		{"the app builder said it is taking a second pass", "apps-builder-roads"},
+		{"what does CODEAF_APPS_BUILDER_ROAD do", "apps-builder-roads"},
+		{"why does the app plan card fill in line by line", "apps-builder-roads"},
+		{"what colours can I give an app", "apps-builder-roads"},
 		{"what can you do", "what-i-can-do"},
 		{"how do I attach to a team factory", "factory"},
 		{"how do I give someone access to my factory", "factory"},
