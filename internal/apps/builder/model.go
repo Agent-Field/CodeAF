@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -80,13 +81,30 @@ func clientConfig(model string) provider.Config {
 
 func messagesOf(call svc.ModelCall) []ai.Message {
 	messages := make([]ai.Message, 0, len(call.Messages)+1)
-	if strings.TrimSpace(call.System) != "" {
-		messages = append(messages, textMessage("system", call.System))
+	if system := strings.TrimSpace(call.System + schemaLine(call.Schema)); system != "" {
+		messages = append(messages, textMessage("system", system))
 	}
 	for _, m := range call.Messages {
 		messages = append(messages, textMessage(m.Role, m.Text))
 	}
 	return messages
+}
+
+// schemaLine states the reply schema in the system message: the provider call
+// carries no response format, so a model only returns the required keys when
+// the prompt names them.
+func schemaLine(schema json.RawMessage) string {
+	var parsed struct {
+		Required []string `json:"required"`
+	}
+	if len(schema) == 0 || json.Unmarshal(schema, &parsed) != nil {
+		return ""
+	}
+	line := "\nReply with one JSON object matching this JSON Schema: " + string(schema)
+	if len(parsed.Required) > 0 {
+		line += "\nIt must have every one of these keys: " + strings.Join(parsed.Required, ", ") + "."
+	}
+	return line
 }
 
 func textMessage(role, text string) ai.Message {
