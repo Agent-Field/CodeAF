@@ -40,6 +40,7 @@ The service also exports calls required by this lane beyond the current
 | --- | --- |
 | `GetVersion(ctx, app, version)` | Files from an immutable numbered tag. |
 | `Versions(ctx, app)` | Tags newest first, including commit, request, maker and time. |
+| `SetTint(ctx, caller, {app, tint})` | Owner only; save a kept app identity tint as a new immutable version and publish its summary on `app/<id>/state`. |
 | `Restore(ctx, app, version)` | A new commit and tag; prior tags and records survive. |
 | `Archive(ctx, app)` / `Unarchive(ctx, app)` | Keep files, versions and records; change state. |
 | `Delete(ctx, caller, app, confirmation)` | Require the owner's exact app name; mark deleted. |

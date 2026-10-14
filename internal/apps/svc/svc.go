@@ -65,6 +65,12 @@ type Store interface {
 	Discard(ctx context.Context, app string) error
 }
 
+// TintStore extends stores that support owner edits to a kept app's identity.
+// Builder stores need only the definition lifecycle in Store.
+type TintStore interface {
+	SetTint(ctx context.Context, caller Caller, p bridge.SetTintParams) (bridge.AppSummary, error)
+}
+
 // Records (B2) is the records store and query compiler. It publishes a
 // bridge.RecordDiff on bridge.TopicRecords after every write.
 type Records interface {

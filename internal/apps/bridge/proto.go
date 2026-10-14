@@ -50,6 +50,7 @@ const (
 	MethodAppsCreate      = "apps.create"
 	MethodAppsKeep        = "apps.keep"
 	MethodAppsDiscard     = "apps.discard"
+	MethodAppSetTint      = "app.setTint"
 	MethodBuilderPlanEdit = "builder.plan.edit"
 	MethodBuilderWrite    = "builder.write"
 	MethodBuilderCancel   = "builder.cancel"
@@ -65,6 +66,12 @@ const (
 	MethodApprovalsDecide = "approvals.decide"
 	MethodAgentSend       = "agent.send"
 )
+
+// SetTintParams changes a kept app's identity tint.
+type SetTintParams struct {
+	App  string `json:"app"`
+	Tint string `json:"tint"`
+}
 
 // Topic builders. Every topic is app-scoped.
 func TopicBuild(app string) string               { return "app/" + app + "/build" }

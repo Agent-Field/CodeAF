@@ -197,7 +197,7 @@ func definitionSummary(m *metadata, files spec.Files) error {
 	if err := json.Unmarshal(files[spec.AppFile], &app); err != nil {
 		return err
 	}
-	m.Name, m.Description = app.Name, app.Description
+	m.Name, m.Description, m.Tint = app.Name, app.Description, app.Tint
 	return nil
 }
 
