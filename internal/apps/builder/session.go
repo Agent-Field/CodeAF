@@ -87,6 +87,13 @@ func (b *build) charge(usd float64) {
 	b.mu.Unlock()
 }
 
+// spentNow is what the build has spent so far.
+func (b *build) spentNow() float64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.spent
+}
+
 // withinBudget refuses the next call once the cap is spent (rule 10).
 func (b *build) withinBudget() error {
 	b.mu.Lock()

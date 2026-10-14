@@ -104,7 +104,7 @@ func TestVerbsAcceptAndRefuse(t *testing.T) {
 		{name: "record unplanned", setup: planned()[:6], call: c("record", "lead"), code: ExitRefused,
 			err: `error: record "lead" is not in the plan (data lines: deal, company) — plan it first with: codeaf app plan data lead "<line>", or add --new`},
 		{name: "record new", setup: planned()[:6], call: c("record", "lead", "--new", "--label", "Lead"), line: "Lead · record added"},
-		{name: "field", setup: planned()[:9], call: c("field", "deal", "name", "text"), line: "Deal · name"},
+		{name: "field", setup: planned()[:9], call: c("field", "deal", "name", "text"), line: "Deal · Name"},
 		{name: "field unknown record", setup: planned(), call: c("field", "lead", "x", "text"), code: ExitRefused,
 			err: `error: record "lead" does not exist (records: company, deal) — make it first with: codeaf app record lead`},
 		{name: "field ref target", setup: planned(), call: c("field", "deal", "owner", "ref", "--to", "person"), code: ExitRefused,
@@ -114,7 +114,7 @@ func TestVerbsAcceptAndRefuse(t *testing.T) {
 			err: `error: deal.kind: /default "c" is not one of its values (values: a, b)`},
 		{name: "field currency", setup: planned(), call: c("field", "deal", "n", "number", "--currency", "USD"), code: ExitRefused,
 			err: "error: deal.n: /currency only applies to a money field, this one is number"},
-		{name: "field computed", setup: planned(), call: c("field", "deal", "x", "number", "--computed", "$now > $now - 7d"), line: "Deal · name, stage, x"},
+		{name: "field computed", setup: planned(), call: c("field", "deal", "x", "number", "--computed", "$now > $now - 7d"), line: "Deal · Name, Stage, X"},
 		{name: "field computed typo", setup: planned(), call: c("field", "deal", "x", "number", "--computed", "stge + 1"), code: ExitRefused},
 		{name: "field bad type", setup: planned(), call: c("field", "deal", "n", "numbr"), code: ExitRefused},
 		{name: "screen", setup: planned(), call: c("screen", "pipeline").withBody(screenWith(`["name","stage"]`)), line: "Screen · Pipeline"},
@@ -260,7 +260,7 @@ func TestRecordLineNamesTheFieldsInOrder(t *testing.T) {
 	s := openTemp(t)
 	play(t, s, planned())
 	e, err := s.Append(AuthorBuilder, "field", []string{"deal", "amount", "money"}, "")
-	if err != nil || e.Line != "Deal · name, stage, amount" {
+	if err != nil || e.Line != "Deal · Name, Stage, Amount" {
 		t.Fatalf("line %q err %v", e.Line, err)
 	}
 }

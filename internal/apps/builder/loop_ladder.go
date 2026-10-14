@@ -38,6 +38,7 @@ func (s *Service) climb(ctx context.Context, b *build, t *seat) error {
 			files, done = s.render(b, st), st.Phase == draft.PhaseDone
 		}
 	}
+	done = done && s.passedOnExactly(t, files)
 	for _, r := range ladder {
 		if r.fits(done, files) {
 			if err := s.tagRoad(b, r.road); err != nil {
@@ -47,6 +48,21 @@ func (s *Service) climb(ctx context.Context, b *build, t *seat) error {
 		}
 	}
 	return nil
+}
+
+// passedOnExactly says the last Check passed on these very files. The done
+// phase alone is not proof: a worker may keep editing after `done` (zoo run,
+// it-asset-register: round 10 passed, the worker added a run, round 11 failed,
+// and the preview still followed). A preview follows only a passing Check of the
+// exact files it shows; the report is the one the worker's check or done got, so
+// the model is never asked to re-roll it. After a restart no report is kept, and
+// the draft goes through the fix rung's Check instead.
+func (s *Service) passedOnExactly(t *seat, files spec.Files) bool {
+	if t == nil {
+		return false
+	}
+	report, ok := t.checked.get(digest(files))
+	return ok && report.Pass
 }
 
 // previewDraft is the best case: the worker reached `done`, so the check

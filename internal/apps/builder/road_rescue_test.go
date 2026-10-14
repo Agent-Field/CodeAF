@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"encoding/json"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/builder/prompt"
@@ -245,5 +247,94 @@ func TestRescueSeedFitsLongCallsPlanLines(t *testing.T) {
 		if n := len([]rune(l.Line)); n > draft.MaxPlanLine {
 			t.Errorf("seeded line is %d characters, over %d", n, draft.MaxPlanLine)
 		}
+	}
+}
+
+// A worker that never stops hits the step bound; the ladder then finds an
+// empty draft and the failed card shows once, in the second pass's own words.
+func TestRescueStepBoundStopsTheWorkerAndShowsTheSecondPassCard(t *testing.T) {
+	var steps []func(context.Context) *ai.Response
+	for i := 0; i < rescueSteps+20; i++ {
+		steps = append(steps, types("true"))
+	}
+	worker := script(steps...)
+	r := newRescueRig(t, worker, false)
+	writePlanned(t, r)
+	r.waitState(t, bridge.StateFailed)
+
+	if n := worker.used(); n > rescueSteps+1 {
+		t.Errorf("the worker made %d calls, bound is %d", n, rescueSteps)
+	}
+	cards := r.failedCards()
+	if len(cards) != 1 || cards[0].Log != couldNotFinish {
+		t.Errorf("failed cards = %+v, want one saying %q", cards, couldNotFinish)
+	}
+}
+
+// The wall bound is shortened to 200 ms: a worker that is slow is stopped.
+func TestRescueWallBoundStopsASlowWorker(t *testing.T) {
+	old := rescueWall
+	rescueWall = 200 * time.Millisecond
+	t.Cleanup(func() { rescueWall = old })
+	slow := func(ctx context.Context) *ai.Response {
+		select {
+		case <-ctx.Done():
+		case <-time.After(5 * time.Second):
+		}
+		return types("true")(ctx)
+	}
+	r := newRescueRig(t, script(slow, slow), false)
+	writePlanned(t, r)
+	r.waitState(t, bridge.StateFailed)
+	if cards := r.failedCards(); len(cards) != 1 || cards[0].Log != couldNotFinish {
+		t.Errorf("failed cards = %+v", cards)
+	}
+}
+
+// The spend bound stops the worker at the cap and no later than one call past.
+func TestASpendCapStopsTheWorkerOnce(t *testing.T) {
+	b := &build{budget: 20}
+	stopped := 0
+	bank := &spendBank{b: b, stop: func() { stopped++ }, cap: rescueSpend}
+	bank.add(rescueSpend / 2)
+	if stopped != 0 {
+		t.Fatal("stopped below the cap")
+	}
+	bank.add(rescueSpend)
+	if stopped == 0 || b.spentNow() > rescueSpend {
+		t.Errorf("stopped %d, spent %.2f", stopped, b.spentNow())
+	}
+}
+
+func TestPluralsInTheCheckLine(t *testing.T) {
+	one := bridge.CheckReport{Issues: make([]spec.Issue, 1)}
+	two := bridge.CheckReport{Issues: make([]spec.Issue, 2)}
+	if got := checkLog(one); got != "1 thing to fix" {
+		t.Errorf("one: %q", got)
+	}
+	if got := checkLog(two); got != "2 things to fix" {
+		t.Errorf("two: %q", got)
+	}
+}
+
+func TestUnsetRoadIsRescueWhenTheBeltIsOn(t *testing.T) {
+	if name, _ := chooseRoad("", true); name != roadRescue {
+		t.Errorf("default = %q", name)
+	}
+	if name, _ := chooseRoad("", false); name != roadCalls {
+		t.Errorf("default without belt = %q", name)
+	}
+}
+
+// The rescue's twin of TestAPreviewNeverFollowsAFailedFinalCheck: the worker
+// edits the draft after done, so the done phase no longer matches a passing
+// Check of these files, and the fix rung must run before any preview.
+func TestARescuePreviewNeverFollowsAFailedFinalCheck(t *testing.T) {
+	steps := script(crmBuild(t, ""), types(`codeaf app plan data extra "Extra · name"`), finishTask("build"))
+	r := newRescueRig(t, steps, true, true, true, false, true)
+	writePlanned(t, r)
+	r.waitState(t, bridge.StatePreview)
+	if got := r.road(t); got == roadRescueLoop {
+		t.Errorf("road = %q: the preview followed a draft whose last check was not a pass", got)
 	}
 }

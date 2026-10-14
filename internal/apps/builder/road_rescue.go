@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/builder/prompt"
@@ -22,11 +23,25 @@ const (
 )
 
 // secondPass is the one line the owner reads when the first write did not pass.
-const secondPass = "Taking a second pass"
+const secondPass = "Taking a second pass…"
 
 // couldNotFinish is what the failed card says when the second pass also ends
 // without a preview. The owner reads a sentence, never the error behind it.
-const couldNotFinish = "The Builder could not finish this app"
+const couldNotFinish = "The second pass could not finish"
+
+// The second pass is bounded far tighter than the loop road's own build, which
+// keeps 140 steps, 15 minutes and the whole app budget. The live median rescue
+// took 185 s, and 5 of 6 finished under 240 s and under $0.10, so a pass that
+// runs past these is not converging and the owner is better served by the
+// failed card than by a longer wait. Whichever bound is hit first stops the
+// worker, and the ladder then decides from what the draft holds.
+const (
+	rescueSteps = 60
+	rescueSpend = 0.30
+)
+
+// rescueWall is a variable only so a test can shorten it to milliseconds.
+var rescueWall = 6 * time.Minute
 
 // rescueRoad plans and edits exactly as the calls road does and writes the same
 // way too. Only when that write ends failed does it run the loop road's build
@@ -82,7 +97,10 @@ func (s *Service) rescueBuild(ctx context.Context, b *build) error {
 	if err := s.saveResult(b, savedResult{}); err != nil {
 		return err
 	}
-	err = s.runLoopTask(ctx, b, t, buildTask(s.buildBrief(b)))
+	start := b.spentNow()
+	task := buildTask(s.buildBrief(b))
+	task.steps, task.wall, task.spendCap = rescueSteps, rescueWall, rescueSpend
+	err = s.runLoopTask(ctx, b, t, task)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -90,12 +108,13 @@ func (s *Service) rescueBuild(ctx context.Context, b *build) error {
 		return err
 	}
 	t.feed.pump(ctx)
-	return s.climbRescue(ctx, b, t)
+	return s.climbRescue(ctx, b, t, rescueSpend-(b.spentNow()-start))
 }
 
 // climbRescue is the loop road's climb over the rescue ladder. A draft that
 // fits no rung is the end: the failed card shows once, in plain words.
-func (s *Service) climbRescue(ctx context.Context, b *build, t *seat) error {
+// left is what the second pass may still spend; the fix rung needs some.
+func (s *Service) climbRescue(ctx context.Context, b *build, t *seat, left float64) error {
 	var (
 		files spec.Files
 		done  bool
@@ -103,8 +122,11 @@ func (s *Service) climbRescue(ctx context.Context, b *build, t *seat) error {
 	if st, err := t.drafts.State(); err == nil {
 		files, done = s.render(b, st), st.Phase == draft.PhaseDone
 	}
+	// The done phase alone is not proof (see passedOnExactly): a worker may edit
+	// after done, so the preview follows only a pass on these exact files.
+	done = done && s.passedOnExactly(t, files)
 	for _, r := range rescueLadder {
-		if r.fits(done, files) {
+		if r.fits(done, files) && (r.road != roadRescueLoopFix || left > 0) {
 			if err := s.tagRoad(b, r.road); err != nil {
 				return err
 			}
@@ -119,7 +141,14 @@ func (s *Service) climbRescue(ctx context.Context, b *build, t *seat) error {
 // failed card, which is the card the owner would have seen from the calls road.
 func (s *Service) fixRescued(ctx context.Context, b *build, files spec.Files) error {
 	s.step(b, bridge.StepWrite, bridge.BuildRunning, "Finishing the parts that are left")
-	return s.fixHeld(ctx, b, files)
+	b.holdFailure(true)
+	err := s.fixHeld(ctx, b, files)
+	b.holdFailure(false)
+	if errors.Is(err, errRungFailed) {
+		// Held, so that the card says the second pass's own sentence.
+		return s.failWrite(ctx, b, errors.New(couldNotFinish))
+	}
+	return err
 }
 
 // seedPlan writes the approved plan into the draft as codeaf's own entries, so

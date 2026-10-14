@@ -375,7 +375,33 @@ func (s *Service) checkRound(ctx context.Context, b *build, files spec.Files, ro
 	if err := s.repairBeforeCheck(ctx, b, files); err != nil {
 		return bridge.CheckReport{}, err
 	}
-	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: bridge.BuildRunning, Round: round, Log: "Opening every screen with sample data"})
+	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: bridge.BuildRunning, Round: round, Log: openingScreens})
+	report, err := s.checkQuietly(ctx, b, files, round, pending)
+	if err != nil {
+		return report, err
+	}
+	s.announceCheck(b, report)
+	return report, nil
+}
+
+// openingScreens is the line the owner reads while a check runs.
+const openingScreens = "Opening every screen with sample data"
+
+// announceCheck shows a finished check to the owner as its done or failed line.
+func (s *Service) announceCheck(b *build, report bridge.CheckReport) {
+	status := bridge.BuildDone
+	if !report.Pass {
+		status = bridge.BuildFailed
+	}
+	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: status, Round: report.Round, Check: &report,
+		Log: checkLog(report)})
+}
+
+// checkQuietly runs one check and tells the owner nothing. The loop worker's
+// own check, try and done verbs use it: a worker mid-build is expected to fail
+// checks, and each failure shown would read as the app breaking. pending holds
+// the reply-shape issues a write left for the first round.
+func (s *Service) checkQuietly(ctx context.Context, b *build, files spec.Files, round int, pending []spec.Issue) (bridge.CheckReport, error) {
 	report, err := s.all.Check.Run(ctx, b.app, files, round)
 	if ctx.Err() != nil {
 		return report, ctx.Err()
@@ -393,20 +419,22 @@ func (s *Service) checkRound(ctx context.Context, b *build, files spec.Files, ro
 		report.Issues = append(report.Issues, spec.Issue{File: spec.AppFile, Rule: "check/failed", Message: "Check did not pass; fix: repair the current app definition against the supplied schemas and kit"})
 	}
 	report.Round = round
-	status := bridge.BuildDone
-	if !report.Pass {
-		status = bridge.BuildFailed
-	}
-	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: status, Round: round, Check: &report,
-		Log: checkLog(report)})
 	return report, nil
+}
+
+// things counts findings in plain words: "1 thing", "3 things".
+func things(n int) string {
+	if n == 1 {
+		return "1 thing"
+	}
+	return fmt.Sprintf("%d things", n)
 }
 
 func checkLog(r bridge.CheckReport) string {
 	if r.Pass {
 		return "Every screen opens"
 	}
-	return fmt.Sprintf("%d things to fix", len(r.Issues))
+	return things(len(r.Issues)) + " to fix"
 }
 
 // formatReport is the check report as the FIX call reads it, one issue a line.

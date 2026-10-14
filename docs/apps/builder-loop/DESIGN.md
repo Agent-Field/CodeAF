@@ -19,8 +19,8 @@ and exposes its tools the way plandb is exposed. Stability comes before cost.
 - When a run fails, a **rescue ladder** takes over: it goes from the loop to
   today's fix calls, then to today's one-call pipeline. The new road cannot do
   worse than today on success rate.
-- The switch is `CODEAF_APPS_BUILDER_ROAD=loop|calls`. The default stays
-  `calls` until the measurement in §11 shows the loop wins.
+- The switch is `CODEAF_APPS_BUILDER_ROAD=loop|calls`. The default is
+  `rescue` (calls first, the loop only when the calls write fails); `calls` and `loop` stay selectable.
 
 ## 2. What exists today (the parts reused)
 
@@ -260,6 +260,8 @@ problems that only the full render shows wait for `check` and `done`.
     is told, and Check gates `done` as usual.
 
 ## 9. Stability: the rescue ladder
+
+The rescue second pass is bounded at 60 steps, 6 minutes and $0.30 (live median 185 s; 5 of 6 under 240 s and $0.10); past a bound the ladder decides, and the failed card reads "The second pass could not finish".
 
 The loop is first. No run that ends badly reaches the owner as a raw error.
 

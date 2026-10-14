@@ -116,6 +116,9 @@ type loopTask struct {
 	brief  string
 	steps  int
 	wall   time.Duration
+	// spendCap stops the worker once it has spent this much; 0 means only the
+	// build's own budget stops it.
+	spendCap float64
 }
 
 // The bounds of the three tasks (DESIGN §7): a plan is short, a build is long,
@@ -207,7 +210,7 @@ func (s *Service) runLoopTask(ctx context.Context, b *build, t *seat, task loopT
 	parent := ctx
 	ctx, stopWorker := context.WithTimeout(ctx, task.wall)
 	defer stopWorker()
-	spend := &spendBank{b: b, stop: stopWorker}
+	spend := &spendBank{b: b, stop: stopWorker, cap: task.spendCap}
 	ctx = run.WithStepsPerTask(ctx, task.steps)
 	ctx = run.WithSpendBank(ctx, spend.add)
 	stopServing, err := draft.Serve(ctx, t.dir, s.verbHandler(b, t))
@@ -232,6 +235,7 @@ func (s *Service) runLoopTask(ctx context.Context, b *build, t *seat, task loopT
 type spendBank struct {
 	b      *build
 	stop   context.CancelFunc
+	cap    float64 // the task's own cap, 0 for none
 	mu     sync.Mutex
 	banked float64
 }
@@ -242,7 +246,7 @@ func (sb *spendBank) add(total float64) {
 	sb.banked = total
 	sb.mu.Unlock()
 	sb.b.charge(rise)
-	if sb.b.withinBudget() != nil {
+	if sb.b.withinBudget() != nil || (sb.cap > 0 && total >= sb.cap) {
 		sb.stop()
 	}
 }
