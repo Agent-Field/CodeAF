@@ -7,8 +7,14 @@
 // person's name on reserved .example domains; money and numbers take their
 // magnitude from field-name hints; longtext names the record. Pipeline enums
 // (status, stage, phase) show every state, then favour the middle ones.
-// Defaults are respected except for relations, dates, unique fields and enum
-// states. The constructor generates twelve records per type. Dates stay near
+// Text defaults are respected; relations, dates, enums, numbers, money,
+// checkboxes and unique fields vary. A client or customer with a contact
+// person is a company; number-titled records read "Invoice #1001". Rows then
+// cohere: due dates follow issue dates, outcome dates (paid on) appear only
+// once the status reached them, late rows are past due and unpaid, and
+// computed fields are evaluated from the generated inputs. Row counts cap at
+// a type's unique value space, and only generated text titles must be
+// distinct. The constructor generates twelve records per type. Dates stay near
 // the current clock: due, publish, start and renewal fields lie ahead, created,
 // started and last-touch fields lie behind; date values use YYYY-MM-DD and
 // datetime values use RFC 3339. GenerateAt fixes the clock and seed for

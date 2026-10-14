@@ -161,6 +161,9 @@ func textValue(typ, name string, schema *spec.RecordType, f *spec.Field, i int) 
 			return hint.value(i)
 		}
 	}
+	if hasWord(semantic, "number", "tag", "reference", "badge", "plate", "ticket", "invoice") {
+		return fmt.Sprintf("%s-%04d", strings.ToUpper(slug(typ, "-")), i+1)
+	}
 	return sentence(notes[i%len(notes)])
 }
 

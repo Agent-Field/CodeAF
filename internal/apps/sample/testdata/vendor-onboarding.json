@@ -1,0 +1,234 @@
+{
+  "agent": {
+    "file": "agent.md",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "name": "Procurement agent"
+  },
+  "budget": {
+    "at_cap": "ask",
+    "currency": "USD",
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ],
+    "month": 20,
+    "per_run": 0.5
+  },
+  "capabilities": {
+    "ai": [
+      "summarise",
+      "draft"
+    ],
+    "records": {
+      "activity": "rw",
+      "document": "rw",
+      "step": "rw",
+      "vendor": "rw"
+    },
+    "tools": []
+  },
+  "commands": [
+    {
+      "id": "sla-now",
+      "label": "Check SLA now",
+      "run": "sla-check"
+    }
+  ],
+  "description": "Vendors through request, questionnaire, legal, finance and approval, with SLA steps, expiring documents and a full audit trail.",
+  "id": "procurement-new-vendors",
+  "kit": 2,
+  "name": "Vendor Procurement",
+  "records": {
+    "activity": {
+      "fields": {
+        "action": {
+          "required": true,
+          "type": "text"
+        },
+        "at": {
+          "index": true,
+          "type": "datetime"
+        },
+        "detail": {
+          "type": "longtext"
+        },
+        "vendor": {
+          "index": true,
+          "to": "vendor",
+          "type": "ref"
+        },
+        "who": {
+          "default": "$me",
+          "type": "person"
+        }
+      },
+      "label": "Activity",
+      "plural": "Activity",
+      "title": "action"
+    },
+    "document": {
+      "fields": {
+        "expiry_on": {
+          "index": true,
+          "label": "Expiry",
+          "type": "date"
+        },
+        "file": {
+          "type": "file"
+        },
+        "kind": {
+          "default": "Other",
+          "index": true,
+          "type": "enum",
+          "values": [
+            "Insurance cert",
+            "W9",
+            "DPA",
+            "Other"
+          ]
+        },
+        "name": {
+          "label": "Document",
+          "required": true,
+          "type": "text"
+        },
+        "notes": {
+          "type": "longtext"
+        },
+        "vendor": {
+          "index": true,
+          "to": "vendor",
+          "type": "ref"
+        },
+        "verified": {
+          "default": false,
+          "type": "bool"
+        }
+      },
+      "label": "Document",
+      "plural": "Documents",
+      "title": "name"
+    },
+    "step": {
+      "fields": {
+        "blocked_by": {
+          "label": "Blocked by",
+          "type": "person"
+        },
+        "blocked_reason": {
+          "type": "longtext"
+        },
+        "kind": {
+          "default": "Request",
+          "index": true,
+          "type": "enum",
+          "values": [
+            "Request",
+            "Questionnaire",
+            "Legal",
+            "Finance"
+          ]
+        },
+        "notes": {
+          "type": "longtext"
+        },
+        "owner": {
+          "default": "$me",
+          "type": "person"
+        },
+        "sla_due": {
+          "index": true,
+          "label": "SLA due",
+          "type": "date"
+        },
+        "status": {
+          "default": "Waiting",
+          "index": true,
+          "type": "enum",
+          "values": [
+            "Waiting",
+            "In progress",
+            "Blocked",
+            "Done"
+          ]
+        },
+        "vendor": {
+          "index": true,
+          "to": "vendor",
+          "type": "ref"
+        }
+      },
+      "label": "Step",
+      "plural": "Steps",
+      "title": "kind"
+    },
+    "vendor": {
+      "fields": {
+        "category": {
+          "type": "enum",
+          "values": [
+            "Software",
+            "Hardware",
+            "Services",
+            "Consulting",
+            "Facilities",
+            "Other"
+          ]
+        },
+        "name": {
+          "label": "Vendor",
+          "required": true,
+          "type": "text",
+          "unique": true
+        },
+        "notes": {
+          "type": "longtext"
+        },
+        "owner": {
+          "default": "$me",
+          "type": "person"
+        },
+        "status": {
+          "default": "Request",
+          "index": true,
+          "type": "enum",
+          "values": [
+            "Request",
+            "Questionnaire",
+            "Legal",
+            "Finance",
+            "Approved",
+            "Rejected"
+          ]
+        },
+        "submitted_on": {
+          "index": true,
+          "label": "Submitted",
+          "type": "date"
+        },
+        "urgency": {
+          "default": "Normal",
+          "type": "enum",
+          "values": [
+            "Low",
+            "Normal",
+            "High",
+            "Critical"
+          ]
+        }
+      },
+      "label": "Vendor",
+      "plural": "Vendors",
+      "title": "name"
+    }
+  },
+  "space": "personal",
+  "triggers": [
+    {
+      "cron": "0 8 * * *",
+      "id": "daily-sla",
+      "on": "schedule",
+      "run": "sla-check"
+    }
+  ],
+  "version": 0
+}

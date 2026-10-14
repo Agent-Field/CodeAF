@@ -1,0 +1,215 @@
+{
+  "$schema": "https://codeaf.dev/schema/app/1.json",
+  "agent": {
+    "file": "agent.md",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "name": "Herd agent"
+  },
+  "budget": {
+    "at_cap": "ask",
+    "currency": "USD",
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ],
+    "month": 20,
+    "per_run": 2
+  },
+  "capabilities": {
+    "ai": [
+      "summarise",
+      "draft"
+    ],
+    "records": {
+      "animal": "rw",
+      "event": "rw",
+      "field": "rw",
+      "move": "rw"
+    },
+    "tools": []
+  },
+  "commands": [
+    {
+      "for": "animal",
+      "id": "new-animal",
+      "label": "New animal",
+      "params": {},
+      "run": "vaccination-due"
+    },
+    {
+      "for": "animal",
+      "id": "log-vaccination",
+      "label": "Log a vaccination",
+      "params": {
+        "animal": "$selection.animals.ids"
+      },
+      "run": "vaccination-due"
+    }
+  ],
+  "description": "One clear log per animal for a sixty-head herd, with vaccination reminders every Monday and one-tap moves between four fields.",
+  "id": "family-farm-has",
+  "kit": 2,
+  "name": "Herd Log",
+  "records": {
+    "animal": {
+      "fields": {
+        "birth_date": {
+          "index": true,
+          "label": "Birth date",
+          "type": "date"
+        },
+        "breed": {
+          "label": "Breed",
+          "type": "text"
+        },
+        "field": {
+          "index": true,
+          "label": "Field",
+          "to": "field",
+          "type": "ref"
+        },
+        "name": {
+          "label": "Name",
+          "type": "text"
+        },
+        "notes": {
+          "label": "Notes",
+          "type": "longtext"
+        },
+        "owner": {
+          "default": "$me",
+          "label": "Owner",
+          "type": "person"
+        },
+        "photo": {
+          "label": "Photo",
+          "type": "file"
+        },
+        "status": {
+          "default": "Active",
+          "index": true,
+          "label": "Status",
+          "type": "enum",
+          "values": [
+            "Active",
+            "Sold",
+            "Deceased"
+          ]
+        },
+        "tag_number": {
+          "label": "Tag number",
+          "required": true,
+          "type": "text",
+          "unique": true
+        }
+      },
+      "label": "Animal",
+      "plural": "Animals",
+      "title": "tag_number"
+    },
+    "event": {
+      "fields": {
+        "animal": {
+          "index": true,
+          "label": "Animal",
+          "required": true,
+          "to": "animal",
+          "type": "ref"
+        },
+        "date": {
+          "index": true,
+          "label": "Date",
+          "required": true,
+          "type": "date"
+        },
+        "kind": {
+          "ai": "Classify the event kind from notes: Vet visit, Vaccination or Weigh-in",
+          "default": "Vet visit",
+          "index": true,
+          "label": "Kind · AI",
+          "type": "enum",
+          "values": [
+            "Vet visit",
+            "Vaccination",
+            "Weigh-in"
+          ]
+        },
+        "notes": {
+          "label": "Notes",
+          "type": "longtext"
+        },
+        "weight": {
+          "label": "Weight",
+          "type": "number"
+        }
+      },
+      "label": "Event",
+      "plural": "Events",
+      "title": "kind"
+    },
+    "field": {
+      "fields": {
+        "acreage": {
+          "label": "Acreage",
+          "type": "number"
+        },
+        "map_pin": {
+          "label": "Map pin",
+          "type": "text"
+        },
+        "name": {
+          "label": "Name",
+          "required": true,
+          "type": "text",
+          "unique": true
+        },
+        "notes": {
+          "label": "Notes",
+          "type": "longtext"
+        }
+      },
+      "label": "Field",
+      "plural": "Fields",
+      "title": "name"
+    },
+    "move": {
+      "fields": {
+        "animal": {
+          "index": true,
+          "label": "Animal",
+          "required": true,
+          "to": "animal",
+          "type": "ref"
+        },
+        "from_field": {
+          "label": "From field",
+          "to": "field",
+          "type": "ref"
+        },
+        "moved_on": {
+          "index": true,
+          "label": "Moved on",
+          "required": true,
+          "type": "datetime"
+        },
+        "to_field": {
+          "label": "To field",
+          "to": "field",
+          "type": "ref"
+        }
+      },
+      "label": "Move",
+      "plural": "Moves",
+      "title": "moved_on"
+    }
+  },
+  "space": "personal",
+  "triggers": [
+    {
+      "cron": "0 8 * * 1",
+      "id": "monday-due",
+      "on": "schedule",
+      "run": "vaccination-due"
+    }
+  ],
+  "version": 0
+}
