@@ -756,6 +756,16 @@ func (s *Store) MemoriesFor(owners []string) ([]Memory, error) {
 	return memories, nil
 }
 
+// ActiveMemoryCount is how many active lines ride some conversation: every
+// owner's but the quarantine's, which no conversation is told.
+func (s *Store) ActiveMemoryCount() (int, error) {
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM memories WHERE status = ? AND owner <> ?`, MemoryActive, OwnerLegacyProject).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count memories: %w", err)
+	}
+	return count, nil
+}
+
 // ListMemories returns active memories newest-touched first. The owners list is
 // the only filter, and an empty one is deliberate: this is the person's own
 // audit read and the demo seeder's, never a retrieval.

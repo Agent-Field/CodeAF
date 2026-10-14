@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -154,6 +155,17 @@ func toolOutput(t *testing.T, events []Event, tool string) string {
 }
 
 // noticeLines is every memory line the person was shown in some events.
+// allNotices is every notice a turn said.
+func allNotices(events []Event) []string {
+	var lines []string
+	for _, event := range events {
+		if event.Kind == EventNotice {
+			lines = append(lines, event.Text)
+		}
+	}
+	return lines
+}
+
 func noticeLines(events []Event) []string {
 	var lines []string
 	for _, event := range events {
@@ -642,6 +654,58 @@ func TestAnOverflowingBlockIsSaidOnce(t *testing.T) {
 	for _, line := range noticeLines(collect(t, mustSubmit(t, agent, "again"))) {
 		if strings.Contains(line, "don't fit") {
 			t.Fatalf("the overflow was said again: %q", line)
+		}
+	}
+}
+
+// A PERSON WHO HAD MEMORY OFF BEFORE THE UPGRADE IS TOLD ONCE PER MACHINE that
+// their kept lines ride again — and nothing about the lines changes.
+func TestAPersonWhoHadMemoryOffIsToldOncePerMachine(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	profile := t.TempDir()
+	writeProfileRow(t, profile, config.KeyMemoryEnabled, config.MemoryOff)
+	// The line is in the store before the conversation opens, as it is on a
+	// machine upgrading from an earlier build.
+	agent, brain := brainAgent(t, &reflexScript{}, func(c *Config) {
+		c.ProfileDir = profile
+		remember(t, c.Memory, "", "prefers tabs")
+	})
+	said := 0
+	for _, line := range allNotices(collect(t, mustSubmit(t, agent, "hello"))) {
+		if strings.HasPrefix(line, "1 kept memory line now rides every conversation it holds in") {
+			said++
+		}
+	}
+	if said != 1 {
+		t.Fatal("a person who had memory off was not told their line rides again")
+	}
+	if _, err := os.Stat(memoryUpgradeMarker()); err != nil {
+		t.Fatalf("the notice was said and not written down: %v", err)
+	}
+	if got := activeTexts(t, brain, store.OwnerUser); len(got) != 1 {
+		t.Fatalf("the notice changed the lines: %v", got)
+	}
+	// A SECOND CONVERSATION ON THE SAME MACHINE IS NOT TOLD AGAIN.
+	again, _ := brainAgent(t, &reflexScript{}, func(c *Config) { c.Memory = brain; c.ProfileDir = agent.config.ProfileDir })
+	for _, line := range allNotices(collect(t, mustSubmit(t, again, "hello"))) {
+		if strings.Contains(line, "now ride") || strings.Contains(line, "now rides") {
+			t.Fatalf("a second conversation was told again: %q", line)
+		}
+	}
+}
+
+// AND A PERSON WHO HAD MEMORY ON AT THE FIRST START IS OWED NOTHING, then or
+// after: turning noticing off later is not "had memory off before".
+func TestAFirstStartWithMemoryOnClosesTheNotice(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	agent, brain := brainAgent(t, &reflexScript{}, nil)
+	remember(t, brain, "", "prefers tabs")
+	collect(t, mustSubmit(t, agent, "hello"))
+	writeProfileRow(t, agent.config.ProfileDir, config.KeyMemoryEnabled, config.MemoryOff)
+	later, _ := brainAgent(t, &reflexScript{}, func(c *Config) { c.Memory = brain; c.ProfileDir = agent.config.ProfileDir })
+	for _, line := range allNotices(collect(t, mustSubmit(t, later, "hello"))) {
+		if strings.Contains(line, "kept memory line") {
+			t.Fatalf("turning noticing off after the first start told the person anyway: %q", line)
 		}
 	}
 }

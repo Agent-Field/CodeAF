@@ -57,6 +57,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -124,6 +125,10 @@ type memoryBrain struct {
 	// overflowSaid records that this conversation has said its block holds
 	// more than fits ([Agent.refreshMemoryLocked]); it is said once.
 	overflowSaid bool
+	// upgradeChecked records that this conversation has asked whether the
+	// machine still owes the person the memory-off notice
+	// ([Agent.noteMemoryOffUpgradeLocked]).
+	upgradeChecked bool
 	// typed is whether the person typed the turn now running. The model's
 	// `remember` and `forget` act only on such a turn ([Agent.memoryTools]).
 	typed atomic.Bool
@@ -353,6 +358,7 @@ func (a *Agent) refreshMemoryLocked() {
 		return
 	}
 	a.memoryText = memoryBlock(memories)
+	a.noteMemoryOffUpgradeLocked()
 	// A STORE AN EARLIER BUILD FILLED PAST THE BOUND IS SAID ONCE, in this
 	// conversation, rather than only to the model: the person is the one who
 	// can choose what to forget. The line is held for the stream the turn is
@@ -366,6 +372,58 @@ func (a *Agent) refreshMemoryLocked() {
 		}
 		a.memory.mu.Unlock()
 	}
+}
+
+// memoryUpgradeMarker is the file that says this machine has had its first
+// start after memory stopped turning off. It is per machine, beside the store,
+// because the notice it guards is about what the store's lines now do.
+func memoryUpgradeMarker() string { return home.Join("v3", "memory-upgrade-noticed") }
+
+// noteMemoryOffUpgradeLocked is the owner's ruling for a person who had memory
+// OFF before this build: off used to keep their saved lines out of every
+// prompt, and now it governs only the noticing, so the lines ride again. That
+// is said ONCE PER MACHINE — on the first start after the upgrade, in the
+// first conversation that turn starts in — and nothing about the lines changes.
+//
+// THE MARKER IS CREATED FIRST, EXCLUSIVELY, WHATEVER THE SETTING SAYS. The
+// first start after the upgrade is the one moment "had memory off before" is
+// true of the row: a person who turns noticing off next month never had memory
+// off in the old sense and is owed nothing. Creating it exclusively means two
+// windows starting at once say it once between them. An ask-here errand does
+// not take the one chance: it is usually a single exchange in a pane that goes.
+func (a *Agent) noteMemoryOffUpgradeLocked() {
+	if a.memory == nil || a.config.bindingOnlyMemory || a.config.Errand || a.memory.upgradeChecked {
+		return
+	}
+	a.memory.upgradeChecked = true
+	marker := memoryUpgradeMarker()
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		return
+	}
+	file, err := os.OpenFile(marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	_ = file.Close()
+	if config.MemoryEnabledAt(a.config.ProfileDir) {
+		return
+	}
+	count, err := a.memory.store.ActiveMemoryCount()
+	if err != nil || count == 0 {
+		return
+	}
+	a.memory.mu.Lock()
+	a.memory.said = append(a.memory.said, memoryOffUpgradeWords(count))
+	a.memory.mu.Unlock()
+}
+
+// memoryOffUpgradeWords is that one line.
+func memoryOffUpgradeWords(count int) string {
+	lines := strconv.Itoa(count) + " kept memory lines now ride every conversation they hold in"
+	if count == 1 {
+		lines = "1 kept memory line now rides every conversation it holds in"
+	}
+	return lines + " — memory off now only stops noticing · see or forget them on the Memories tab"
 }
 
 // memoryOverflowWords is that one line.

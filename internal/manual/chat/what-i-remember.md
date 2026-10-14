@@ -279,6 +279,12 @@ applies from the next turn, with no restart.
 
 It does not stop the lines you kept from riding every conversation, and it does
 not stop `/remember` or the Memories tab. To stop a line, forget it there.
+
+If memory was off before this build, off used to keep your saved lines out of
+every prompt; now they ride again. The first conversation after the upgrade says
+so once on this machine — `N kept memory lines now ride every conversation they
+hold in — memory off now only stops noticing · see or forget them on the
+Memories tab` — and nothing about the lines changes.
 Saved lines are never deleted by the setting.
 
 Conversation search and the bash fix hints are separate and keep working either
