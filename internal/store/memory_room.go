@@ -87,6 +87,19 @@ func (e *MemoryFullError) Unwrap() error { return ErrMemoryFull }
 // project's block only. The quarantine reaches no block — no conversation is
 // told those lines — so it is never refused.
 func memoryRoomOn(tx *sql.Tx, owner, text, exclude string) error {
+	err := memoryRoomAnswer(tx, owner, text, exclude)
+	if memoryRoomRead != nil {
+		memoryRoomRead(text, err)
+	}
+	return err
+}
+
+// memoryRoomRead, when a test sets it, is told each room check's answer from
+// inside the write transaction that asked — the seam that holds one writer
+// there while a second one tries (memory_room_test.go).
+var memoryRoomRead func(text string, err error)
+
+func memoryRoomAnswer(tx *sql.Tx, owner, text, exclude string) error {
 	owner = normalizeOwner(owner)
 	if owner == OwnerLegacyProject {
 		return nil

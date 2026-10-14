@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // THE BOUND IS THE STORE'S, AND IT IS HELD INSIDE THE WRITE. Every door that
@@ -109,6 +110,112 @@ func TestTwoWritersWithRoomForOneAdmitOne(t *testing.T) {
 	}
 	if ok != 1 || full != 1 {
 		t.Fatalf("two writers with room for one: %d admitted, %d refused (%v)", ok, full, errs)
+	}
+}
+
+// A SECOND WRITER READS THE ROOM ONLY AFTER THE FIRST HAS COMMITTED. The check
+// runs inside the write's own immediate transaction, so while one writer holds
+// its answer the other cannot even ask. Here the first is held inside its
+// transaction, past its check: the second must not reach its own check until
+// the first lets go, and then it finds no room. A check read outside the lock
+// would let both through, which is the race the other test can only hope to
+// land on.
+func TestASecondWriterReadsTheRoomOnlyAfterTheFirstCommits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	first := openTestStore(t, path)
+	second := openTestStore(t, path)
+	used := fillTo(t, first, OwnerUser, "", "person", MemoryBlockRunes-200)
+	room := MemoryBlockRunes - used
+	line := func(who string) string {
+		body := who + " " + strings.Repeat("r", room/2+20)
+		for MemoryLineCost(body) > room {
+			body = body[:len(body)-1]
+		}
+		return body
+	}
+	read := make(chan string, 4)
+	release := make(chan struct{})
+	memoryRoomRead = func(text string, _ error) {
+		read <- text
+		if strings.HasPrefix(text, "first") {
+			<-release
+		}
+	}
+	t.Cleanup(func() { memoryRoomRead = nil })
+
+	var wg sync.WaitGroup
+	var firstErr, secondErr error
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, firstErr = first.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: line("first")})
+	}()
+	if got := <-read; !strings.HasPrefix(got, "first") {
+		t.Fatalf("the first room check was %q", got)
+	}
+	go func() {
+		defer wg.Done()
+		_, secondErr = second.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: line("second")})
+	}()
+	select {
+	case got := <-read:
+		close(release)
+		wg.Wait()
+		t.Fatalf("the second writer read the room while the first's line was uncommitted (%q)", got)
+	case <-time.After(150 * time.Millisecond):
+	}
+	close(release)
+	wg.Wait()
+	if firstErr != nil {
+		t.Fatalf("the first writer, which had room, was refused: %v", firstErr)
+	}
+	if !errors.Is(secondErr, ErrMemoryFull) {
+		t.Fatalf("the second writer, reading after the first committed, = %v; want memory full", secondErr)
+	}
+}
+
+// A REPLACEMENT IS MEASURED TOO: a correction longer than the line it replaces
+// is refused when the block has no room for the difference, and the line it
+// would have replaced is still kept.
+func TestAReplacementIsMeasured(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+	old, err := s.AddMemory(Memory{Owner: OwnerUser, Type: MemoryFact, Text: "short"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Between 105 and 200 runes of room are left: never enough for 250 more.
+	fillTo(t, s, OwnerUser, "", "person", MemoryBlockRunes-200)
+	owners := []string{OwnerUser, OwnerMachine}
+	_, _, err = s.SupersedeMemoryForOwners(owners, old.ID, Memory{Owner: OwnerUser, Type: MemoryFact, Text: strings.Repeat("longer ", 36)})
+	if !errors.Is(err, ErrMemoryFull) {
+		t.Fatalf("a longer replacement past the bound = %v", err)
+	}
+	active, err := s.MemoriesFor([]string{OwnerUser})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if indexOf(active, old.ID) < 0 {
+		t.Fatal("a refused replacement let the old line go")
+	}
+	// AND ONE NO LONGER THAN WHAT IT REPLACES ALWAYS FITS: the old line's room
+	// is the new one's.
+	if _, added, err := s.SupersedeMemoryForOwners(owners, old.ID, Memory{Owner: OwnerUser, Type: MemoryFact, Text: "brief"}); err != nil || !added {
+		t.Fatalf("a replacement the same size = %v, %v", added, err)
+	}
+}
+
+// THE LEGACY IMPORT IS THE ONE WRITE THE BOUND DOES NOT MEASURE: those lines
+// were the person's before the bound existed, and refusing them would lose
+// them. Every other write is still refused once the block is past it.
+func TestAnUnboundedWriteIsKeptPastTheBound(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+	fillTo(t, s, OwnerUser, "", "person", MemoryBlockRunes-40)
+	got, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: roomLine("imported", 1), Unbounded: true})
+	if err != nil || got.Outcome == WriteOutcomeSkipped {
+		t.Fatalf("an unbounded write past the bound = %+v, %v; want it kept", got, err)
+	}
+	if _, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: roomLine("after", 1)}); !errors.Is(err, ErrMemoryFull) {
+		t.Fatalf("a measured write after it = %v; want memory full", err)
 	}
 }
 

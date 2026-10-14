@@ -882,6 +882,33 @@ func TestAWorkersBriefClosesOnTheSameSection(t *testing.T) {
 
 // ── the legacy file ─────────────────────────────────────────────────────────
 
+// THE OLD FILE IS IMPORTED WHOLE, PAST THE BOUND: those lines were the
+// person's before the bound existed, and an import that refused the tail would
+// lose it. What then rides is chosen ([store.FitMemories]); a line kept after
+// it is measured and refused.
+func TestTheOldMemoryFileIsImportedWholePastTheBound(t *testing.T) {
+	legacy := filepath.Join(t.TempDir(), "memory.md")
+	var file strings.Builder
+	cost, n := 0, 0
+	for ; cost <= store.MemoryBlockRunes; n++ {
+		line := fmt.Sprintf("imported line %03d %s", n, strings.Repeat("w", 80))
+		file.WriteString("- " + line + "\n")
+		cost += store.MemoryLineCost(line)
+	}
+	if err := os.WriteFile(legacy, []byte(file.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.MemoryImport = legacy })
+	collect(t, mustSubmit(t, agent, "hello"))
+	settleMemory(agent)
+	if got := activeTexts(t, brain, store.OwnerUser); len(got) != n {
+		t.Fatalf("imported %d of the file's %d lines", len(got), n)
+	}
+	if _, err := agent.RememberAlways("one more", true); !errors.Is(err, store.ErrMemoryFull) {
+		t.Fatalf("a line kept after the import = %v; want memory full", err)
+	}
+}
+
 func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 	legacy := filepath.Join(t.TempDir(), "memory.md")
 	if err := os.WriteFile(legacy, []byte("# Memory\n\n- prefers tabs\n- uses pnpm\n<!-- note -->\n"), 0o600); err != nil {
