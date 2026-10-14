@@ -211,7 +211,7 @@ func TestUserBashCriticalFloorAsksUnderAllow(t *testing.T) {
 					t.Fatalf("refused command ran: %v", err)
 				}
 				failed, ok := firstOfKind(events, EventToolFailed)
-				if !ok || !strings.Contains(failed.Output, `denied by the person: critical command "mkfs*"`) {
+				if !ok || failed.Output != personDeclined {
 					t.Fatalf("refusal = %+v", failed)
 				}
 			}

@@ -70,7 +70,7 @@ func (a *Agent) appTaskPermission(ctx context.Context, hub *eventHub, call ai.To
 		return refusal(notApprovedWording(err)), false
 	}
 	if !answer.allow {
-		return refusal("denied by the person: " + decision.Rule), false
+		return refusal(personDeclined), false
 	}
 	return toolResult{}, true
 }

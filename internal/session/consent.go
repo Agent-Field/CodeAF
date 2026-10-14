@@ -298,10 +298,18 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal(notApprovedWording(err)), false
 	}
 	if !allowed {
-		return refusal("denied by the person: " + decision.Rule), false
+		return refusal(personDeclined), false
 	}
 	return toolResult{}, true
 }
+
+// personDeclined is what the model is told when the person said no. It
+// carries no policy rule: a rule such as "this action always asks" read as an
+// invitation to ask again, and the model once re-asked through the ask tool.
+// The no is final for this action; the model goes on without it.
+const personDeclined = "denied by the person: they declined this action. " +
+	"Do not run it again and do not ask for it again, by any tool. " +
+	"Continue without it, or say what you could not do because of it."
 
 // notApprovedWording is what the model is told when the wait ended without
 // anybody answering. The two sentences are the two truths: the question ran

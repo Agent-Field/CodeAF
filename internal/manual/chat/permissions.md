@@ -42,7 +42,8 @@ you are here to read.
 
 - `1` — allow this one call. The transcript row is annotated `allowed`.
 - `3` — refuse this one call. The row is annotated `denied`. The model is handed
-  an error result, `denied by the person: <rule>`, and keeps going.
+  an error result that says the person declined and that it must not run the
+  action again or ask for it again, and keeps going without it.
 - `2` — the widening yes. What it banks is a separate decision, and on a shell
   command codeaf asks you which shape to bank before it answers.
 - `o` — **other**. Write an updated request and press `enter`. The pending
@@ -1102,8 +1103,9 @@ any further policy for pull requests, issues or comments.
 
 A wait that ends without an answer is not a person's no. The model used to be
 handed `denied by the person: <rule>` — including `denied by the person: default`
-on a `propose_task` that simply ran out of time. That sentence is only for a
-key someone pressed (`n`, `d`, or `esc` on the card).
+on a `propose_task` that simply ran out of time. The "denied by the person"
+refusal is now only for a key someone pressed (`n`, `d`, or `esc` on the
+card), and it no longer names the rule.
 
 If the question timed out, the model is told `not approved: the question timed
 out`. If the turn ended, or the agent closed, first: `not approved: ended
@@ -1134,7 +1136,9 @@ hang, and never the end of the turn. The exact sentences:
 
 - `denied by approval rule: <rule>`
 - `denied by approval rule: <rule> (remembered for this session)`
-- `denied by the person: <rule>`
+- `denied by the person: they declined this action. Do not run it again and do not ask for it again, by any tool. Continue without it, or say what you could not do because of it.`
+  It names no rule: a rule such as "this action always asks" read as an
+  invitation to ask again.
 - `not approved: the question timed out`
 - `not approved: ended before an answer`
 - `needs approval but no resolver is attached: <rule>`

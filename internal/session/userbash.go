@@ -76,7 +76,7 @@ func (a *Agent) approveUserBash(ctx context.Context, hub *eventHub, call ai.Tool
 			return refusal(notApprovedWording(err)), false
 		}
 		if !allowed {
-			return refusal("denied by the person: " + decision.Rule), false
+			return refusal(personDeclined), false
 		}
 	}
 	return toolResult{}, true
