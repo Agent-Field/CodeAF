@@ -49,6 +49,10 @@ Each reviewer is an agent session that reads the checkout, told it is part of a 
 
 A linked path to the repository is accepted as the same reading root. Files and links that lead outside that root are still refused.
 
+## Final answers — JSON Schema, supported response formats, unsupported endpoints
+
+Review's agents ask for a native schema-bound format on their final answers when the profile's cached model catalog publishes support. Reading turns keep their read-only tools. When support is unknown or absent, the schema stays in the prompt. An endpoint that explicitly refuses that format gets one prompt-only fallback inside the existing turn and time limits. Every answer is still checked against the original schema; invalid schemas, account refusals, provider outages and cancellation do not buy a formatting fallback.
+
 ## What /review shows while it runs — each reviewer's line, what it found, which files
 
 Its page shows each stage once as the review enters it, then one line per finished step under it with what it found: `reviewed internal/auth/middleware.go, internal/auth/token.go and 2 more` · `3 findings`, and the step opened shows the first findings by title. A step that failed says `failed` and why. `ctrl+y` shows the raw model calls.
