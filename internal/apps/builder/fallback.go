@@ -46,7 +46,7 @@ func (s *Service) runFallback(ctx context.Context, b *build, files spec.Files, r
 	if err := s.all.Store.WriteFiles(ctx, b.app, next); err != nil {
 		return err
 	}
-	reduced, err := s.checkRound(ctx, b, next, report.Round)
+	reduced, err := s.checkRound(ctx, b, next, report.Round, nil)
 	if err != nil || !reduced.Pass {
 		restoreErr := s.all.Store.WriteFiles(context.WithoutCancel(ctx), b.app, files)
 		if err != nil || restoreErr != nil {

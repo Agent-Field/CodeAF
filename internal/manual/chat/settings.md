@@ -42,17 +42,32 @@ read-only: editing returns "apps builder model is set by CODEAF_APPS_BUILDER_MOD
 Clear the variable to edit the saved choice; clear the saved choice to restore
 the built-in model.
 
-## Apps Builder reply repair — stray JSON objects and files wrappers
+## Apps Builder reply repair — wrong shape, stray JSON objects and files wrappers
 
-When Builder writes app files, it prefers a JSON object under a `files` key,
-then the first object whose keys are all valid app file paths. It skips inline
-app definitions and plan fragments. File contents still must parse as JSON or
-YAML where their extension requires it.
+When Builder writes app files, it wants one JSON object mapping each file path
+to its content. It prefers a `files` key, then the first object whose keys are
+all valid app file paths. It also places the common wrong shapes when there is
+only one way to read them: a single bare screen object (keys like `screen`,
+`title`, `body`, `nav`) goes to the screen file its id or the request names; a
+`files` list of `{path, content}` items; folders spelled as nested objects
+(`{"screens": {"queue.json": …}}`); one wrapper key too many; and a file value
+spelled `{"content": …}`. File contents still must parse as JSON or YAML.
 
-If no files object qualifies, Builder sends the model a correction naming the
-keys it received: "return a JSON object mapping app file paths to contents;
-got keys …". It retries that step once, charging both calls to the build budget.
-A second rejected reply leaves the build failed with Fix it and Cancel.
+Otherwise Builder sends the model one correction naming the expected shape,
+the keys it got and the exact paths wanted, charging both calls to the build
+budget. The Builder log says "The model's reply was in the wrong shape;
+repairing"; the parser's own text goes to the debug log, never the build log.
+If a screen or automation still comes back in the wrong shape, the build does
+not stop: that file becomes a Check issue and the next fix round writes it. A
+fix reply in the wrong shape uses up that round, not the build.
+
+## Fix it on a failed app build — what it repairs
+
+Fix it on a failed build keeps the files already written, writes only the
+ones still missing, then runs Check with up to two fix rounds again. It does
+not start the app over. If the records and agent could not be written at
+all, the log says "The model's reply was in the wrong shape" and Fix it
+tries them again.
 
 ## Change settings by asking in chat
 

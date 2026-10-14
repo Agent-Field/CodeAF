@@ -36,7 +36,7 @@ func TestWriteUnitRepairsMissingFilesObjectOnce(t *testing.T) {
 					text = tt.second
 				}
 				return svc.ModelReply{Text: text, Cost: 0.01}, nil
-			})}
+			}), Hub: &memHub{}}
 			s := New(svc.Config{}, all)
 			b := s.newBuild("inventory", bridge.CreateAppParams{})
 			files, err := s.writeUnit(context.Background(), b, prompt.Plan{}, goldenPlan(), writeUnit{only: []string{"agent.md"}})
@@ -45,7 +45,7 @@ func TestWriteUnitRepairsMissingFilesObjectOnce(t *testing.T) {
 					t.Fatalf("files=%v err=%v", files, err)
 				}
 			} else {
-				var correction *prompt.FilesObjectError
+				var correction *prompt.ShapeError
 				if !errors.As(err, &correction) {
 					t.Fatalf("err=%v, want files object correction", err)
 				}
@@ -55,7 +55,7 @@ func TestWriteUnitRepairsMissingFilesObjectOnce(t *testing.T) {
 			}
 			messages := calls[1].Messages
 			if len(messages) != 3 || messages[1].Role != "assistant" || messages[1].Text != tt.first ||
-				messages[2].Role != "user" || !strings.Contains(messages[2].Text, "return a JSON object mapping app file paths to contents; got keys") {
+				messages[2].Role != "user" || !strings.Contains(messages[2].Text, `this reply must hold exactly the paths ["agent.md"]; got keys`) {
 				t.Fatalf("repair messages=%+v", messages)
 			}
 			if cost := b.cost().Spent; cost != 0.02 {

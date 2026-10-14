@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -22,20 +23,23 @@ func (s *Service) writeAndCheck(ctx context.Context, b *build) error {
 	if err := s.saveResult(b, savedResult{}); err != nil {
 		return err
 	}
-	files, err := s.writeAll(ctx, b)
+	files, pending, err := s.writeAll(ctx, b)
 	if err != nil {
 		return s.failWrite(ctx, b, err)
 	}
-	return s.checkAndFix(ctx, b, files, "")
+	return s.checkAndFix(ctx, b, files, "", pending)
 }
 
-func (s *Service) checkAndFix(ctx context.Context, b *build, files spec.Files, only string) error {
+// checkAndFix runs Check and the FIX rounds. pending are issues Check cannot
+// see, such as a file whose WRITE reply never took the right shape; they join
+// the next round's report so FIX repairs them like any other finding.
+func (s *Service) checkAndFix(ctx context.Context, b *build, files spec.Files, only string, pending []spec.Issue) error {
 	loop := prompt.NewLoop()
 	_ = loop.PlanWritten()
 	_ = loop.FilesWritten()
 	memory := &roundMemory{}
 	for round := 1; ; round++ {
-		report, err := s.checkRound(ctx, b, files, round)
+		report, err := s.checkRound(ctx, b, files, round, pending)
 		if err != nil {
 			return err
 		}
@@ -52,7 +56,7 @@ func (s *Service) checkAndFix(ctx context.Context, b *build, files spec.Files, o
 		case prompt.PhaseCheckFailed:
 			return s.runFallback(ctx, b, files, report)
 		}
-		if files, err = s.fixOnly(ctx, b, files, loop.LastReport(), only); err != nil {
+		if files, pending, err = s.fixOnly(ctx, b, files, report.Issues, loop.LastReport(), only); err != nil {
 			return s.failWrite(ctx, b, err)
 		}
 		_ = loop.FixApplied()
@@ -63,7 +67,8 @@ func (s *Service) failWrite(ctx context.Context, b *build, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildFailed, Log: err.Error()})
+	debugLog(b.app, "write failed", err)
+	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildFailed, Log: ownerLog(err)})
 	return s.setState(ctx, b, bridge.StateFailed)
 }
 
@@ -76,31 +81,51 @@ func (s *Service) giveUp(ctx context.Context, b *build, report bridge.CheckRepor
 // writeAll writes the app: app.json and agent.md first, because every screen
 // and run is written against the record types in app.json, then those files
 // side by side with a progress event as each one lands.
-func (s *Service) writeAll(ctx context.Context, b *build) (spec.Files, error) {
-	s.step(b, bridge.StepWrite, bridge.BuildRunning, "Writing the records and the agent")
+func (s *Service) writeAll(ctx context.Context, b *build) (spec.Files, []spec.Issue, error) {
 	plan := b.currentPlan()
 	planRaw, err := planJSON(plan)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	core, err := s.writeUnit(ctx, b, plan, string(planRaw), writeUnit{only: []string{spec.AppFile, spec.AgentFile}})
-	if err != nil {
-		return nil, err
+	return s.writeMissing(ctx, b, spec.Files{spec.PlanFile: append(planRaw, '\n')})
+}
+
+// writeMissing writes every file of the plan that files does not hold yet,
+// so Fix it after a failed write resumes instead of starting over. A screen or
+// run whose reply never took the right shape becomes a pending FIX issue; the
+// records and agent are written first and must succeed, because every other
+// file is written against app.json. What was written is saved even when a
+// later call fails.
+func (s *Service) writeMissing(ctx context.Context, b *build, files spec.Files) (spec.Files, []spec.Issue, error) {
+	plan := b.currentPlan()
+	planRaw := string(files[spec.PlanFile])
+	if files[spec.AppFile] == nil || files[spec.AgentFile] == nil {
+		s.step(b, bridge.StepWrite, bridge.BuildRunning, "Writing the records and the agent")
+		core, err := s.writeUnit(ctx, b, plan, planRaw, writeUnit{only: []string{spec.AppFile, spec.AgentFile}})
+		if err != nil {
+			return nil, nil, err
+		}
+		s.announce(b, core, "Records and agent written")
+		merge(files, core)
 	}
-	s.announce(b, core, "Records and agent written")
-	files := spec.Files{spec.PlanFile: append(planRaw, '\n')}
-	merge(files, core)
-	rest, err := s.writeRest(ctx, b, plan, string(planRaw), core[spec.AppFile])
-	if err != nil {
-		return nil, err
-	}
+	rest, pending, err := s.writeUnits(ctx, b, plan, planRaw, missingUnits(restUnits(plan, files[spec.AppFile]), files))
 	merge(files, rest)
 	syncNav(files, plan)
-	if err := s.all.Store.WriteFiles(ctx, b.app, files); err != nil {
-		return nil, err
+	if storeErr := s.all.Store.WriteFiles(ctx, b.app, files); storeErr != nil || err != nil {
+		return nil, nil, errors.Join(err, storeErr)
 	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildDone, Files: files.Paths(), Log: "All files written"})
-	return files, nil
+	return files, pending, nil
+}
+
+func missingUnits(units []writeUnit, files spec.Files) []writeUnit {
+	var missing []writeUnit
+	for _, u := range units {
+		if files[u.only[0]] == nil {
+			missing = append(missing, u)
+		}
+	}
+	return missing
 }
 
 func merge(into spec.Files, from map[string][]byte) {
@@ -114,16 +139,17 @@ func (s *Service) announce(b *build, files map[string][]byte, log string) {
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildRunning, Files: paths, Log: log})
 }
 
-// writeRest writes every screen and run side by side. The first error stops
-// the others at their next model call.
-func (s *Service) writeRest(ctx context.Context, b *build, plan prompt.Plan, planRaw string, appJSON []byte) (map[string][]byte, error) {
-	units := restUnits(plan, appJSON)
+// writeUnits writes screens and runs side by side. A reply in the wrong shape
+// becomes a pending issue and the others carry on; any other error stops them
+// at their next model call.
+func (s *Service) writeUnits(ctx context.Context, b *build, plan prompt.Plan, planRaw string, units []writeUnit) (map[string][]byte, []spec.Issue, error) {
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup
 		firstErr error
+		pending  []spec.Issue
 		out      = map[string][]byte{}
 		slots    = make(chan struct{}, writeWorkers)
 	)
@@ -136,6 +162,10 @@ func (s *Service) writeRest(ctx context.Context, b *build, plan prompt.Plan, pla
 			files, err := s.writeUnit(ctx, b, plan, planRaw, u)
 			mu.Lock()
 			defer mu.Unlock()
+			if issues, ok := shapeIssues(err, u.only); ok {
+				pending = append(pending, issues...)
+				return
+			}
 			if err != nil {
 				if firstErr == nil {
 					firstErr = err
@@ -148,7 +178,12 @@ func (s *Service) writeRest(ctx context.Context, b *build, plan prompt.Plan, pla
 		}(u)
 	}
 	wg.Wait()
-	return out, firstErr
+	sortIssues(pending)
+	return out, pending, firstErr
+}
+
+func sortIssues(issues []spec.Issue) {
+	sort.Slice(issues, func(i, j int) bool { return issues[i].File < issues[j].File })
 }
 
 // writeUnit is one model call that writes the files in only.
@@ -195,9 +230,11 @@ func (s *Service) writeUnit(ctx context.Context, b *build, plan prompt.Plan, pla
 	return b.patch(files)
 }
 
-// expectFiles parses a WRITE reply and keeps exactly the files asked for.
+// expectFiles parses a WRITE reply and keeps exactly the files asked for. A
+// reply without one of them is a shape error, so the correction names every
+// path expected and the ones that came back.
 func expectFiles(reply string, only []string) (map[string][]byte, error) {
-	parsed, err := prompt.ParseFiles(reply)
+	parsed, err := prompt.ParseFilesFor(reply, only)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +242,7 @@ func expectFiles(reply string, only []string) (map[string][]byte, error) {
 	for _, path := range only {
 		data, ok := parsed[path]
 		if !ok {
-			return nil, fmt.Errorf("the reply has no %s", path)
+			return nil, &prompt.ShapeError{Keys: spec.Files(parsed).Paths(), Want: only}
 		}
 		out[path] = data
 	}
@@ -246,8 +283,10 @@ func setIn(app map[string]any, group, key string, value any) {
 }
 
 // FIX reads the whole definition for context. A run retry accepts changes to
-// only that file, so a repair cannot overwrite an already working screen.
-func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, report, only string) (spec.Files, error) {
+// only that file, so a repair cannot overwrite an already working screen. A
+// FIX reply in the wrong shape changes nothing and comes back as pending
+// issues for the next round, which spends that round rather than the build.
+func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, issues []spec.Issue, report, only string) (spec.Files, []spec.Issue, error) {
 	if only != "" {
 		report += "\nChange ONLY " + only + ". Keep every other file as it is."
 	}
@@ -262,31 +301,56 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, repor
 		Schemas: schemaFor(schemas...),
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	changed, err := converse(ctx, s, b, text, prompt.ParseFiles)
+	want := fixPaths(issues, only)
+	changed, err := converse(ctx, s, b, text, func(reply string) (map[string][]byte, error) {
+		return fixReply(reply, want, only)
+	})
+	if pending, ok := shapeIssues(err, want); ok {
+		return files, pending, nil
+	}
 	if err != nil {
-		return nil, err
-	}
-	if only != "" {
-		data, ok := changed[only]
-		if !ok {
-			return nil, fmt.Errorf("the FIX reply has no %s", only)
-		}
-		changed = map[string][]byte{only: data}
+		return nil, nil, err
 	}
 	keepPlanFix(b, changed, planNamed)
 	if changed, err = b.patch(changed); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	next := spec.Files{}
 	merge(next, files)
 	merge(next, changed)
 	if err := s.all.Store.WriteFiles(ctx, b.app, next); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	s.announce(b, changed, "Fixed "+strings.Join(spec.Files(changed).Paths(), ", "))
-	return next, nil
+	return next, nil, nil
+}
+
+// fixPaths are the files a FIX reply is expected to hold: the run being
+// retried, or every file the report names.
+func fixPaths(issues []spec.Issue, only string) []string {
+	if only != "" {
+		return []string{only}
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, issue := range issues {
+		if prompt.ValidPath(issue.File) && !seen[issue.File] {
+			seen[issue.File] = true
+			paths = append(paths, issue.File)
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// fixReply parses a FIX reply; a run retry keeps only its own file.
+func fixReply(reply string, want []string, only string) (map[string][]byte, error) {
+	if only != "" {
+		return expectFiles(reply, want)
+	}
+	return prompt.ParseFilesFor(reply, want)
 }
 
 func asText(files spec.Files) map[string]string {
@@ -298,7 +362,7 @@ func asText(files spec.Files) map[string]string {
 }
 
 // checkRound runs Check on the files and publishes its report.
-func (s *Service) checkRound(ctx context.Context, b *build, files spec.Files, round int) (bridge.CheckReport, error) {
+func (s *Service) checkRound(ctx context.Context, b *build, files spec.Files, round int, pending []spec.Issue) (bridge.CheckReport, error) {
 	if err := s.repairBeforeCheck(ctx, b, files); err != nil {
 		return bridge.CheckReport{}, err
 	}
@@ -311,6 +375,10 @@ func (s *Service) checkRound(ctx context.Context, b *build, files spec.Files, ro
 		// Check errors still belong to a repair round; only cancellation stops the loop.
 		report.Pass = false
 		report.Issues = append(report.Issues, spec.Issue{File: spec.AppFile, Rule: "check/error", Message: err.Error() + "; fix: repair the definition named by Check and rerun every check"})
+	}
+	if len(pending) > 0 {
+		report.Pass = false
+		report.Issues = append(report.Issues, pending...)
 	}
 	if !report.Pass && len(report.Issues) == 0 {
 		report.Issues = append(report.Issues, spec.Issue{File: spec.AppFile, Rule: "check/failed", Message: "Check did not pass; fix: repair the current app definition against the supplied schemas and kit"})
@@ -363,4 +431,20 @@ func (s *Service) preview(ctx context.Context, b *build, files spec.Files) error
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepPreview, Status: bridge.BuildDone,
 		Needs: appNeeds(def.App), Log: "Ready to preview"})
 	return nil
+}
+
+// repair is Fix it on a failed build: it keeps the files already written,
+// writes only the ones still missing, then runs the same Check and FIX rounds
+// as the build itself. Starting over would send the same prompts again and
+// usually fail the same way.
+func (s *Service) repair(ctx context.Context, b *build, stored spec.Files) error {
+	if stored[spec.PlanFile] == nil {
+		return s.writeAndCheck(ctx, b)
+	}
+	s.step(b, bridge.StepWrite, bridge.BuildRunning, "Repairing the app")
+	files, pending, err := s.writeMissing(ctx, b, stored)
+	if err != nil {
+		return s.failWrite(ctx, b, err)
+	}
+	return s.checkAndFix(ctx, b, files, "", pending)
 }

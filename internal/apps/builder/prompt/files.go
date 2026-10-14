@@ -20,25 +20,23 @@ var appFilePath = regexp.MustCompile(
 // ValidPath reports whether path is a file the Builder may write.
 func ValidPath(path string) bool { return appFilePath.MatchString(path) }
 
-// FilesObjectError tells the repair call which keys were returned instead of
-// app paths, so an inline app definition does not end the write step.
-type FilesObjectError struct {
-	Keys []string
-}
-
-func (e *FilesObjectError) Error() string {
-	return fmt.Sprintf("prompt: return a JSON object mapping app file paths to contents; got keys %q", e.Keys)
-}
-
 // ParseFiles prefers an explicit files wrapper, then the first object whose
-// keys are all app paths. Prose and unrelated objects are skipped; contents
-// still have to parse for their extension.
+// keys are all app paths, then the wrong shapes models commonly send (see
+// normalize). Prose and unrelated objects are skipped; contents still have to
+// parse for their extension.
 func ParseFiles(output string) (map[string][]byte, error) {
-	var objects []map[string]json.RawMessage
+	return ParseFilesFor(output, nil)
+}
+
+// ParseFilesFor is ParseFiles for a reply that was asked for the paths in
+// want, which lets it place a reply holding one bare file's content.
+func ParseFilesFor(output string, want []string) (map[string][]byte, error) {
+	objects := jsonObjects(output)
+	all := make([]map[string]json.RawMessage, 0, len(objects))
 	keys := map[string]json.RawMessage{}
-	for _, raw := range jsonObjects(output) {
+	for _, raw := range objects {
 		entries := objectEntries(raw)
-		objects = append(objects, entries)
+		all = append(all, entries)
 		for key := range entries {
 			keys[key] = nil
 		}
@@ -46,12 +44,17 @@ func ParseFiles(output string) (map[string][]byte, error) {
 			return filesFromObject(wrapped)
 		}
 	}
-	for _, entries := range objects {
+	for _, entries := range all {
 		if filesObject(entries) {
 			return filesFromObject(entries)
 		}
 	}
-	return nil, &FilesObjectError{Keys: sortedKeys(keys)}
+	for _, entries := range all {
+		if files := normalize(entries, want); files != nil {
+			return filesFromObject(files)
+		}
+	}
+	return nil, &ShapeError{Keys: sortedKeys(keys), Want: want}
 }
 
 func objectEntries(raw json.RawMessage) map[string]json.RawMessage {
@@ -116,6 +119,7 @@ func sortedKeys(m map[string]json.RawMessage) []string {
 }
 
 func fileContent(path string, raw json.RawMessage) ([]byte, error) {
+	raw = unwrapContent(raw)
 	var text string
 	if err := json.Unmarshal(raw, &text); err != nil {
 		return objectContent(path, raw)

@@ -97,11 +97,11 @@ func TestParseFilesMissingObjectReturnsCorrection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ParseFiles(tt.output)
-			var correction *FilesObjectError
+			var correction *ShapeError
 			if !errors.As(err, &correction) || !reflect.DeepEqual(correction.Keys, tt.keys) {
 				t.Fatalf("err = %v, want correction with keys %v", err, tt.keys)
 			}
-			if !strings.Contains(err.Error(), "return a JSON object mapping app file paths to contents; got keys") {
+			if !strings.Contains(err.Error(), "ONE JSON object whose keys are file paths") {
 				t.Fatalf("missing repair instruction: %v", err)
 			}
 		})
