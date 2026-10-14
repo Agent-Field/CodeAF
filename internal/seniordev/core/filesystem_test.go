@@ -56,7 +56,7 @@ func TestFileSystemUpAndGlob(t *testing.T) {
 		}
 	}
 	start := filepath.Join(root, "a", "b")
-	found, err := filesystem.Up(UpOptions{Targets: []string{"package.json", "config.json"}, Start: start})
+	found, err := filesystem.Up(UpOptions{Targets: []string{"package.json", "config.json"}, Start: start, Stop: root})
 	if err != nil {
 		t.Fatal(err)
 	}
