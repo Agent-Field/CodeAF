@@ -2246,11 +2246,14 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
 			Label: "notice things to remember", Choices: MemoryModes,
-			Hint: "when on, after a turn you typed codeaf may keep one line you said that should " +
-				"hold in every conversation — a preference, a rule, a correction — and says so. " +
-				"Off notices nothing; the lines you keep yourself still ride every conversation. " +
-				"Applies from the next turn. The Memories tab lists everything kept, and forgets " +
-				"or puts back any of it.",
+			// THE ONE SPELLING OF WHAT THIS ROW DOES: the settings panel reads it
+			// as the row's detail and the settings tool reads it as its hint, so
+			// the two cannot disagree. Off comes first because it is what a
+			// person scanning the row needs to know before anything else.
+			Hint: "Off stops only the noticing: what you keep with /remember still rides every " +
+				"conversation, and nothing saved is deleted. On, after a turn you typed, codeaf may " +
+				"keep one line you said that should hold everywhere — a preference, a rule, a " +
+				"correction — and tells you; the Memories tab shows, forgets and puts back any of it.",
 			read:  func() string { return MemoryAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMemoryEnabled, raw, MemoryModes) },
 		},

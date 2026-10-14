@@ -249,7 +249,7 @@ type MemoryCommands interface {
 	MoveMemory(id, scope string) (string, error)
 	// MemoryProject is the owner this conversation's project lines land in, or
 	// "" when it has no project of its own.
-	MemoryProject() string
+	MemoryProject() (string, error)
 }
 
 // ConversationDeleteArgs carries explicit manager choices from the confirmation.

@@ -41,7 +41,10 @@ Typed on home, it holds for you everywhere instead. The same words twice say
 the model uses its `remember` tool and you see
 `remembered · <line> · <where> · see or forget it on the Memories tab`. The
 model can also drop a line you ask it to with its `forget` tool, and says
-`forgot · <line> · put it back on the Memories tab`.
+`forgot · <line> · put it back on the Memories tab`. It does either only on a
+turn **you typed**: a turn opened by a task's report, a team member's message or
+a watch's news keeps and forgets nothing, so words someone else wrote cannot plant
+a line in every future conversation.
 
 A line is one sentence, at most 512 characters, and a credential pasted into it
 is redacted before it is kept.
@@ -206,13 +209,13 @@ decision, or a lasting fact. It is shown what is already kept, so it does not
 keep the same thing twice. It never keeps something only the assistant said, the
 work in progress, code, or anything with a time in it — and never anything from a
 task's report, a watch's news or a team's message, because you did not type
-those.
+those. An `ask here` exchange from home is not noticed either.
 
 Every time it keeps a line it says so in the conversation:
 
 `noticed and remembered · wants the change made directly · for you everywhere · see or forget it on the Memories tab`
 
-The tab marks it `noticed`, and `f` there forgets it. Most
+The tab marks it `noticed`, and `→` then `f` (or `delete`) there forgets it. Most
 turns keep nothing. Turn noticing off with the `notice things to remember` row
 (see "How do I turn memory off").
 
@@ -250,15 +253,22 @@ this project's — share about 4,800 characters, roughly fifty ordinary lines.
 They ride in the cached front of every request, so they cost little once sent,
 and they only change when somebody keeps or forgets a line.
 
-A keep that would go past that is refused, so what is kept is always what the
-model sees:
+Anything that would go past that in **any** conversation is refused: keeping a
+line, rewording one, moving one, or putting one back. A line for you everywhere
+or for this machine rides in every project's conversations, so it is refused when
+any project's would overflow, and the receipt names that project:
 
 `memory is full here · forget a line on the Memories tab to make room`
+`memory is full for infra · forget a line on the Memories tab to make room`
 
 Noticing says `noticed something worth keeping, but memory is full here · <line>`
-instead of keeping it. A store that already holds more (from an earlier build, or
-lines kept from another project) carries the lines that fit and the Memories
-tab's head row says how many do not.
+instead of keeping it.
+
+A store an earlier build filled with no bound can hold more than fits. Then what
+rides is chosen: lines that build kept as rules first, then this project's, then
+this machine's, then yours everywhere, newest first. The conversation says once,
+`N remembered lines don't fit in front of the model here · forget some on the
+Memories tab`, and the tab's head row counts them.
 
 
 ## How do I turn memory off? The notice things to remember setting

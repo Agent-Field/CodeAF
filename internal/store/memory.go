@@ -150,17 +150,24 @@ type Memory struct {
 	ProjectName string
 	// UpdatedAt is when the event that last touched this memory was journaled.
 	// Zero is unknown and renders as nothing.
-	UpdatedAt     time.Time
+	UpdatedAt time.Time
+	// Rule is an earlier build's `always` flag on this line (the always_on
+	// column). Nothing sets it any more and nothing treats the line
+	// differently — except [FitMemories], which, when a store an earlier build
+	// filled holds more than a block fits, lets the lines the person once
+	// marked as rules ride first.
+	Rule          bool
 	CreatedSeq    int64
 	UpdatedSeq    int64
 	SourceSession string
 	SourceSeq     int64
 }
 
-// THE COLUMNS THIS BUILD STOPPED WRITING ARE NOT DROPPED. use_count, miss_count
-// and always_on exist on stores written by earlier builds; they have defaults,
+// THE COLUMNS THIS BUILD STOPPED WRITING ARE NOT DROPPED. use_count and
+// miss_count exist on stores written by earlier builds; they have defaults,
 // nothing reads them, and SQLite would have to rebuild the table to drop them.
-// A store created today simply does not have them.
+// always_on is READ ([Memory.Rule]) and never written, so every store has it:
+// an old one already does, and a new one gets it from the migration.
 const memoriesSchema = `
 CREATE TABLE IF NOT EXISTS memories (
     id          TEXT PRIMARY KEY,
@@ -192,15 +199,22 @@ CREATE INDEX IF NOT EXISTS memories_status_updated ON memories (status, updated_
 // longer maintains taken away.
 //
 // THE DROPS ARE NOT TIDINESS. Two of the retired indexes were over the whole
-// events journal — every event any part of codeaf writes paid to maintain them
-// — and the search table would go stale the moment this build stopped
-// refreshing it, which is worse than its being gone.
+// events journal — every event any part of codeaf writes paid to maintain them.
+// An older engine still serving a workspace re-creates an index it misses on
+// its next open, so dropping one costs it nothing.
+//
+// THE SEARCH TABLE (memories_fts) IS NOT DROPPED IN THIS RELEASE, because an
+// older engine still serving a workspace writes and reads it on every memory
+// change and recall, and would fail each one with "no such table" until it
+// restarted. This build neither reads nor refreshes it; a later release drops
+// it once no engine of the older build can still be running.
 func migrateMemoriesSchema(db *sql.DB) error {
 	for _, column := range []struct{ name, declaration string }{
 		{"source_session", `ALTER TABLE memories ADD COLUMN source_session TEXT NOT NULL DEFAULT ''`},
 		{"source_seq", `ALTER TABLE memories ADD COLUMN source_seq INTEGER NOT NULL DEFAULT 0`},
 		{"origin", `ALTER TABLE memories ADD COLUMN origin TEXT NOT NULL DEFAULT ''`},
 		{"project_name", `ALTER TABLE memories ADD COLUMN project_name TEXT NOT NULL DEFAULT ''`},
+		{"always_on", `ALTER TABLE memories ADD COLUMN always_on INTEGER NOT NULL DEFAULT 0`},
 	} {
 		if err := addColumnOnce(db, "memories", column.name, column.declaration); err != nil {
 			return err
@@ -211,7 +225,6 @@ func migrateMemoriesSchema(db *sql.DB) error {
 		`DROP INDEX IF EXISTS events_contextual_memory`,
 		`DROP INDEX IF EXISTS memories_always_active`,
 		`DROP INDEX IF EXISTS memories_status_scope`,
-		`DROP TABLE IF EXISTS memories_fts`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			return err
@@ -393,8 +406,8 @@ func (s *Store) UpdateMemory(id, text string) error {
 		return fmt.Errorf("update memory: %w", err)
 	}
 	defer tx.Rollback()
-	var rawTags string
-	if err := tx.QueryRow(`SELECT tags FROM memories WHERE id = ? AND status = ?`, id, MemoryActive).Scan(&rawTags); err != nil {
+	var rawTags, owner string
+	if err := tx.QueryRow(`SELECT tags, owner FROM memories WHERE id = ? AND status = ?`, id, MemoryActive).Scan(&rawTags, &owner); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("update memory: %w: %q is not an active memory", ErrInvalid, id)
 		}
@@ -406,6 +419,10 @@ func (s *Store) UpdateMemory(id, text string) error {
 	}
 	title, text, tags, err := validMemoryBody(MemoryTitleOf(redact.Secrets(text)), text, tags)
 	if err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	// A LONGER WORDING IS A BIGGER LINE, and it is measured like a new one.
+	if err := memoryRoomOn(tx, owner, text, id); err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
 	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags}
@@ -426,56 +443,112 @@ func (s *Store) UpdateMemory(id, text string) error {
 // event, under the constraint that the old row is active and owned by one of the
 // named owners — the store-level guard that keeps a caller holding a foreign id
 // from retiring another project's memory. The replacement keeps the target's
-// owner.
-func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory) (Memory, error) {
-	if len(owners) == 0 {
-		return Memory{}, fmt.Errorf("supersede memory: %w: no owner was named", ErrInvalid)
-	}
+// owner, and is measured against the bound with the old line already gone.
+//
+// WHEN THE REPLACEMENT'S WORDS ARE ALREADY KEPT for that owner, nothing new is
+// admitted: the old line is let go, the line already there stands, and the
+// answer is that line with added false.
+func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory) (Memory, bool, error) {
 	oldID = strings.TrimSpace(oldID)
+	fresh, err := supersedePayloadFor(owners, oldID, m)
+	if err != nil {
+		return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+	}
+	defer tx.Rollback()
+	if err := supersedeTargetOn(tx, owners, oldID, fresh.Owner); err != nil {
+		return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+	}
+	kept, err := memoryDuplicateOn(tx, fresh.Owner, fresh.Text, oldID)
+	if err != nil {
+		return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+	}
+	if kept != "" {
+		// The words are already kept there: the old line goes, that one stands.
+		if err := forgetOn(tx, oldID, fresh.Owner, fresh.SourceSession); err != nil {
+			return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+		}
+		found, err := queryMemoriesOn(tx, "WHERE id = ?", []any{kept}, "", 1)
+		if err == nil {
+			err = tx.Commit()
+		}
+		if err != nil {
+			return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+		}
+		return found[0], false, nil
+	}
+	if err := memoryRoomOn(tx, fresh.Owner, fresh.Text, oldID); err != nil {
+		return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+	}
+	payload := memorySupersedePayload{OldID: oldID, New: fresh, SourceSession: fresh.SourceSession}
+	seq, _, err := appendEvent(tx, fresh.ID, EventMemorySupersede, payload)
+	if err == nil {
+		err = applyMemorySupersede(tx, payload, seq)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+	}
+	return memoryFromPayload(fresh, seq), true, nil
+}
+
+// supersedePayloadFor checks a replacement's arguments and builds the row it
+// would admit, before any transaction is opened.
+func supersedePayloadFor(owners []string, oldID string, m Memory) (memoryPayload, error) {
+	if len(owners) == 0 {
+		return memoryPayload{}, fmt.Errorf("%w: no owner was named", ErrInvalid)
+	}
 	if oldID == "" {
-		return Memory{}, fmt.Errorf("supersede memory: %w: id is required", ErrInvalid)
+		return memoryPayload{}, fmt.Errorf("%w: id is required", ErrInvalid)
 	}
 	fresh, err := memoryPayloadFrom(m)
 	if err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+		return memoryPayload{}, err
 	}
 	if fresh.ID == "" {
 		fresh.ID = NewMemoryID()
 	}
 	if fresh.ID == oldID {
-		return Memory{}, fmt.Errorf("supersede memory: %w: %q cannot supersede itself", ErrInvalid, oldID)
-	}
-	tx, err := s.beginWrite()
-	if err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
-	}
-	defer tx.Rollback()
-	where, ownerArgs := ownerFilterSQL(owners)
-	var oldOwner string
-	err = tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`+where,
-		append([]any{oldID, MemoryActive}, ownerArgs...)...).Scan(&oldOwner)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Memory{}, fmt.Errorf("supersede memory: %w: %q is not an active memory this conversation can see", ErrInvalid, oldID)
-	}
-	if err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
-	}
-	if oldOwner != fresh.Owner {
-		return Memory{}, fmt.Errorf("supersede memory: %w: replacement must keep the target owner", ErrInvalid)
+		return memoryPayload{}, fmt.Errorf("%w: %q cannot supersede itself", ErrInvalid, oldID)
 	}
 	fresh.SourceSession = strings.TrimSpace(m.SourceSession)
-	payload := memorySupersedePayload{OldID: oldID, New: fresh, SourceSession: fresh.SourceSession}
-	seq, _, err := appendEvent(tx, fresh.ID, EventMemorySupersede, payload)
+	return fresh, nil
+}
+
+// supersedeTargetOn checks that the line being replaced is active, is one the
+// caller's owners may see, and holds where its replacement will.
+func supersedeTargetOn(tx *sql.Tx, owners []string, oldID, freshOwner string) error {
+	where, ownerArgs := ownerFilterSQL(owners)
+	var oldOwner string
+	err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`+where,
+		append([]any{oldID, MemoryActive}, ownerArgs...)...).Scan(&oldOwner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: %q is not an active memory this conversation can see", ErrInvalid, oldID)
+	}
 	if err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+		return err
 	}
-	if err := applyMemorySupersede(tx, payload, seq); err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	if oldOwner != freshOwner {
+		return fmt.Errorf("%w: replacement must keep the target owner", ErrInvalid)
 	}
-	if err := tx.Commit(); err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	return nil
+}
+
+// forgetOn lets one line go inside a caller's own transaction — the doors that
+// find the words they were about to make active already kept, and let the
+// duplicate go rather than keep it twice.
+func forgetOn(tx *sql.Tx, id, owner, sourceSession string) error {
+	payload := memoryForgetPayload{ID: id, Owner: owner, SourceSession: sourceSession}
+	seq, _, err := appendEvent(tx, id, EventMemoryForget, payload)
+	if err != nil {
+		return err
 	}
-	return memoryFromPayload(fresh, seq), nil
+	return applyMemoryForget(tx, payload, seq)
 }
 
 // ForgetMemory tombstones a memory by id. It refuses a memory that is already
@@ -570,6 +643,17 @@ func (s *Store) restoreMemory(owners []string, id string) error {
 			return fmt.Errorf("restore memory: %w", err)
 		}
 	}
+	// A LINE PUT BACK IS A LINE MADE ACTIVE, and it is measured like a new one.
+	var owner, text string
+	if err := tx.QueryRow(`SELECT owner, text FROM memories WHERE id = ?`, id).Scan(&owner, &text); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("restore memory: %w: missing memory", ErrInvalid)
+		}
+		return fmt.Errorf("restore memory: %w", err)
+	}
+	if err := memoryRoomOn(tx, owner, text, id); err != nil {
+		return fmt.Errorf("restore memory: %w", err)
+	}
 	payload := memoryRestorePayload{ID: id}
 	seq, _, err := appendEvent(tx, id, EventMemoryRestore, payload)
 	if err != nil {
@@ -584,40 +668,68 @@ func (s *Store) restoreMemory(owners []string, id string) error {
 	return nil
 }
 
-// MoveMemory gives one memory a new owner — the person moving a line from this
-// project to everywhere, or a quarantined line into the project they are
-// standing in — and records the project's name with it when the new owner is a
-// project. Like [Store.UpdateMemory] it acts by id for the person's own memory
-// place.
-func (s *Store) MoveMemory(id, owner, projectName string) error {
+// MoveMemory gives one active memory a new owner — the person moving a line
+// from this project to everywhere, or a quarantined line into the project they
+// are standing in — and records the project's name with it when the new owner
+// is a project. Like [Store.UpdateMemory] it acts by id for the person's own
+// Memories tab. The line is measured against every block its new owner
+// reaches, with its old place already counted as gone.
+//
+// WHEN THE NEW OWNER ALREADY HOLDS THE SAME WORDS, the line is not moved on top
+// of them: it is let go, the line already there stands, and merged is true.
+func (s *Store) MoveMemory(id, owner, projectName string) (merged bool, err error) {
 	id = strings.TrimSpace(id)
 	owner = normalizeOwner(owner)
 	if id == "" {
-		return fmt.Errorf("move memory: %w: id is required", ErrInvalid)
+		return false, fmt.Errorf("move memory: %w: id is required", ErrInvalid)
 	}
 	if !ValidOwner(owner) || owner == OwnerLegacyProject {
-		return fmt.Errorf("move memory: %w: owner %q is not one a line can be moved to", ErrInvalid, owner)
+		return false, fmt.Errorf("move memory: %w: owner %q is not one a line can be moved to", ErrInvalid, owner)
 	}
 	if OwnerKindOf(owner) != OwnerKindProject {
 		projectName = ""
 	}
 	tx, err := s.beginWrite()
 	if err != nil {
-		return fmt.Errorf("move memory: %w", err)
+		return false, fmt.Errorf("move memory: %w", err)
 	}
 	defer tx.Rollback()
-	payload := memoryMovedPayload{ID: id, Owner: owner, ProjectName: strings.TrimSpace(projectName)}
+	merged, err = moveMemoryOn(tx, id, owner, strings.TrimSpace(projectName))
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		return false, fmt.Errorf("move memory: %w", err)
+	}
+	return merged, nil
+}
+
+// moveMemoryOn is the move inside its transaction: an active line only, onto
+// words the new owner does not already hold, and only with room for it.
+func moveMemoryOn(tx *sql.Tx, id, owner, projectName string) (bool, error) {
+	var oldOwner, text string
+	if err := tx.QueryRow(`SELECT owner, text FROM memories WHERE id = ? AND status = ?`, id, MemoryActive).Scan(&oldOwner, &text); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, fmt.Errorf("%w: %q is not an active memory", ErrInvalid, id)
+		}
+		return false, err
+	}
+	kept, err := memoryDuplicateOn(tx, owner, text, id)
+	if err != nil {
+		return false, err
+	}
+	if kept != "" {
+		return true, forgetOn(tx, id, oldOwner, "")
+	}
+	if err := memoryRoomOn(tx, owner, text, id); err != nil {
+		return false, err
+	}
+	payload := memoryMovedPayload{ID: id, Owner: owner, ProjectName: projectName}
 	seq, _, err := appendEvent(tx, id, EventMemoryMoved, payload)
 	if err != nil {
-		return fmt.Errorf("move memory: %w", err)
+		return false, err
 	}
-	if err := applyMemoryMoved(tx, payload, seq); err != nil {
-		return fmt.Errorf("move memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("move memory: %w", err)
-	}
-	return nil
+	return false, applyMemoryMoved(tx, payload, seq)
 }
 
 // MemoriesFor is every active memory the named owners hold, IN THE ORDER A
@@ -722,7 +834,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 		SELECT memories.id, memories.owner, memories.type, memories.scope, memories.title,
 		       memories.text, memories.tags, memories.status, memories.origin,
 		       memories.project_name, memories.created_seq, memories.updated_seq,
-		       memories.source_session, memories.source_seq,
+		       memories.source_session, memories.source_seq, memories.always_on,
 		       COALESCE((SELECT ts FROM events WHERE seq = memories.updated_seq), '')
 		FROM memories ` + where
 	if order != "" {
@@ -744,7 +856,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 		if err := rows.Scan(&memory.ID, &memory.Owner, &memory.Type, &memory.Scope, &memory.Title,
 			&memory.Text, &tags, &memory.Status, &memory.Origin, &memory.ProjectName,
 			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq,
-			&updatedAt); err != nil {
+			&memory.Rule, &updatedAt); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(tags), &memory.Tags); err != nil {

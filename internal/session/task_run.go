@@ -7457,14 +7457,10 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // under the graph's lock and this package takes one lock at a time.
 //
 // AND THE ONE THING IT DOES INHERIT OF WHAT THE PERSON IS REMEMBERED TO WANT:
-// the same pre-turn router the conversation runs, asked against this node's
-// brief instead of a typed message (memory.go). It travels as WORDS and never as
-// the store itself — a family of eight nodes must not be eight writers on one
-// brain. IT IS NO LONGER ROUTED HERE. It was, as an argument to the constructor
-// below, which put one reflex call in front of every worker a node built; it is
-// now routed once per node, beside the work, and handed to this worker when it
-// has come back ([nodeMemory]). No store, no reflex, or a router that answered
-// nothing: the node opens with exactly the prompt it always did.
+// the conversation's memory section, closing the node's brief from its first
+// request ([TaskGraph.memoryWorld]). It travels as WORDS and never as the store
+// itself — a family of eight nodes must not be eight writers on one brain — and
+// nothing is routed or fetched for it: there is no router any more.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
 	return a.newTaskAgentOn(ctx, dir, node, suffix, "", false)
 }
@@ -7605,13 +7601,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	child, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
-		// AND THE PROJECT'S APPROVED BINDING RULES BEFORE THE FIRST ACTION. A
-		// worker has no brain of its own, so its parent's is LENT READ-ONLY: the
-		// same owner set, the same approved rules and confirmed decisions in front
-		// of the first provider request, and no write, extraction, import or verb
-		// (contextual_memory.go's [Agent.prepareWorkerBinding]). The node's own
-		// routed shortlist still arrives beside the work ([nodeMemory]); this is
-		// the half that may not be late, and a router outage cannot erase it.
+		// AND THE CONVERSATION'S MEMORY, READ-ONLY. A worker has no brain of its
+		// own, so its parent's is LENT: the same owner set and the same memory
+		// section closing its brief ([TaskGraph.memoryWorld]), and no write,
+		// noticing, import or verb.
 		bindingStore:     parent.bindingBrain(),
 		MemoryProjectKey: parent.MemoryProjectKey,
 		// The node learns from, and into, the PROJECT'S error→fix file rather

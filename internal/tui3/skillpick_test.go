@@ -90,16 +90,15 @@ func (m *skillMemory) SkillFacts(status string, limit int) ([]store.Fact, error)
 
 func (m *skillMemory) Snapshot(int) (store.MemoryShelves, error) { return store.MemoryShelves{}, nil }
 func (m *skillMemory) ChangedSince(time.Time) (int, int, error)  { return 0, 0, nil }
-func (m *skillMemory) ListMemories(string, int) ([]store.Memory, error) {
-	return nil, nil
-}
-func (m *skillMemory) UpdateMemory(string, string, string, []string) error { return nil }
-func (m *skillMemory) ForgetMemory(string) error                           { return nil }
-func (m *skillMemory) RestoreMemory(string) error                          { return nil }
-func (m *skillMemory) SetMemoryAlways(string, bool) error                  { return nil }
+func (m *skillMemory) UpdateMemory(string, string) error         { return nil }
+func (m *skillMemory) ForgetMemory(string) error                 { return nil }
+func (m *skillMemory) RestoreMemory(string) error                { return nil }
 func (m *skillMemory) MemoryProvenance(string) (string, string, time.Time, error) {
 	return "", "", time.Time{}, nil
 }
+
+// The stub is the Memories tab's seam, held to it by the compiler.
+var _ MemoryStore = (*skillMemory)(nil)
 
 // seedSkill writes one skill folder under a root directory the way the
 // foreign harnesses keep them.

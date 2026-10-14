@@ -84,7 +84,7 @@ func (r *rememberingAgent) MoveMemory(id, scope string) (string, error) {
 	return "now for you everywhere", nil
 }
 
-func (r *rememberingAgent) MemoryProject() string { return r.project }
+func (r *rememberingAgent) MemoryProject() (string, error) { return r.project, nil }
 
 // panelMemoryStore is the store as the memory place reads it, shelving rows by
 // owner exactly as internal/store does.

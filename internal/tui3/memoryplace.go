@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
-	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -40,7 +39,7 @@ import (
 // EVERY LINE WEIGHS THE SAME. There is no "helped" count and no rule flag: what
 // is under the first three groups is exactly what a conversation here is told,
 // and the head row says so — and says how many lines did not fit, when any did
-// not ([session.MemoryFits]).
+// not ([store.FitMemories], the store's own choice of what rides).
 
 // The words the groups are headed with, spelled once.
 const (
@@ -194,7 +193,7 @@ func readMemory(shelves store.MemoryShelves, here string, open, closed map[strin
 	// WHAT A CONVERSATION HERE IS TOLD, in the order it is told it — the
 	// person's, the machine's, the project's — so the head row can say how many
 	// lines did not fit in front of the model.
-	var hereTexts []string
+	var hereLines []store.Memory
 	for _, rank := range []func(string) bool{
 		func(o string) bool { return o == store.OwnerUser },
 		func(o string) bool { return o == store.OwnerMachine },
@@ -202,13 +201,11 @@ func readMemory(shelves store.MemoryShelves, here string, open, closed map[strin
 	} {
 		for _, shelf := range shelves.Shelves {
 			if rank(shelf.Owner) {
-				for _, memory := range shelf.Memories {
-					hereTexts = append(hereTexts, memory.Text)
-				}
+				hereLines = append(hereLines, shelf.Memories...)
 			}
 		}
 	}
-	r.outside = len(hereTexts) - session.MemoryFits(hereTexts)
+	_, r.outside = store.FitMemories(hereLines)
 
 	// A MACHINE THAT HAS REMEMBERED NOTHING HAS NO LINES AT ALL: the place
 	// draws its heading and whisper instead, and the whisper names /remember.

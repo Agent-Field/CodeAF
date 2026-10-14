@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -26,8 +27,12 @@ const (
 	memoryShelfOpenHint = memoryShelfOpenWord + " · type to filter"
 	memoryShelfShutHint = tasksShutWord + " · type to filter"
 	memoryAddHint       = "enter " + memoryAddWord + " · type to filter"
-	memoryCardHint      = "→ edit, forget, move · esc back to the list"
-	memoryEditHint      = "enter save · esc cancel"
+	// memoryNoMatchHint is the foot over a filter that matched nothing: the
+	// add row is not drawn under a filter, so `enter` has nothing to do, and
+	// the one key that does something is the one that clears it.
+	memoryNoMatchHint = "esc clear the filter"
+	memoryCardHint    = "→ edit, forget, move · esc back to the list"
+	memoryEditHint    = "enter save · esc cancel"
 	// A PAGE WITH NOTHING ON IT HAS ONLY A WAY OUT: its whisper already says
 	// /remember adds a line, and the add row arrives with the first one.
 	memoryBareHint = "esc"
@@ -45,6 +50,13 @@ const (
 	// memoryUnchangedWord is a write the store would not take. Its own text is
 	// not carried onto the screen: a SQLite message is machinery vocabulary.
 	memoryUnchangedWord = "that line could not be changed just now"
+	// memoryNoProjectWord is the engine not answering which project this
+	// conversation is in: the tab then draws every project's lines by name.
+	memoryNoProjectWord = "couldn't ask which project this is · every project's lines are shown by name"
+	// memoryFullWord is a write the store refused because some conversation's
+	// memory would no longer fit ([store.ErrMemoryFull]) — the one refusal
+	// whose reason the person can act on, so it is said rather than hidden.
+	memoryFullWord = "memory is full · forget a line to make room"
 )
 
 // MemoryStore is the exact durable seam the memory place needs: one reading,
@@ -406,7 +418,11 @@ func (a *app) openMemory() tea.Cmd {
 	shelves, why := a.memorySnapshot()
 	here := ""
 	if agent, ok := a.brain(); ok {
-		here = agent.MemoryProject()
+		project, err := agent.MemoryProject()
+		if err != nil && why == "" {
+			why = memoryNoProjectWord
+		}
+		here = project
 	}
 	a.standDownFullscreen()
 	a.page = pageMemory
@@ -545,10 +561,23 @@ func (a *app) memorySave(id, text string) tea.Cmd {
 	mem := a.memory
 	return a.memoryPlaceDo(func() string {
 		if err := mem.UpdateMemory(id, text); err != nil {
-			return memoryUnchangedWord
+			return memoryWriteRefusal(err)
 		}
 		return "fixed · " + text
 	})
+}
+
+// memoryWriteRefusal is the receipt for a write the store would not take: a
+// full block is said, because the person can make room; anything else is
+// [memoryUnchangedWord].
+//
+// THE MATCH IS ON THE WORDS AS WELL AS THE SENTINEL, because over --host the
+// store's error crosses the wire as text and is a different value at this end.
+func memoryWriteRefusal(err error) string {
+	if errors.Is(err, store.ErrMemoryFull) || strings.Contains(err.Error(), store.ErrMemoryFull.Error()) {
+		return memoryFullWord
+	}
+	return memoryUnchangedWord
 }
 
 // memoryForgetRow forgets one line from the page.
@@ -562,7 +591,7 @@ func (a *app) memoryForgetRow(memory store.Memory) tea.Cmd {
 		if err := mem.ForgetMemory(memory.ID); err != nil {
 			return memoryUnchangedWord
 		}
-		return "forgot · " + memory.Text + " · it is under let go, where → puts it back"
+		return "forgot · " + memory.Text + " · it is under let go, where → then u puts it back"
 	})
 }
 
@@ -986,7 +1015,7 @@ func (placeMemory) verbs(a *app) []verb {
 			p.expanded = ""
 			return a.memoryPlaceDo(func() string {
 				if err := mem.RestoreMemory(memory.ID); err != nil {
-					return memoryUnchangedWord
+					return memoryWriteRefusal(err)
 				}
 				return "put back · " + memory.Text
 			})
@@ -1012,7 +1041,7 @@ func (placeMemory) verbs(a *app) []verb {
 			return a.memoryPlaceDo(func() string {
 				receipt, err := agent.MoveMemory(memory.ID, scope)
 				if err != nil {
-					return memoryUnchangedWord
+					return memoryWriteRefusal(err)
 				}
 				return memory.Text + " · " + receipt
 			})
@@ -1094,6 +1123,9 @@ func (placeMemory) hint(a *app) string {
 			return memoryGoneHint
 		}
 		return memoryLineHint
+	}
+	if strings.TrimSpace(p.filter.String()) != "" {
+		return memoryNoMatchHint
 	}
 	return memoryAddHint
 }

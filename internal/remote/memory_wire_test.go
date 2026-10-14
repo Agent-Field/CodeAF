@@ -48,7 +48,7 @@ func TestMemoryCrossesTheWireToTheRealSession(t *testing.T) {
 	if err != nil || receipt != "remembered · no emoji anywhere · for you everywhere" {
 		t.Fatalf("/always from home over the wire = (%q, %v)", receipt, err)
 	}
-	if owner := commands.MemoryProject(); owner != store.OwnerProject("wire") {
+	if owner, err := commands.MemoryProject(); err != nil || owner != store.OwnerProject("wire") {
 		t.Fatalf("the engine's project over the wire = %q", owner)
 	}
 	lines, err := commands.Memories("tabs")

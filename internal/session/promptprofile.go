@@ -82,7 +82,7 @@ package session
 //     offered by the loading verb.
 //  4. THE PROJECT'S INSTRUCTION FILE rides under [leanInstructionLimit].
 //     Memory is NOT a lean casualty: the person's kept lines are bounded
-//     (memory.go's [memoryBlockRunes]) and hold over a small model exactly as
+//     ([store.MemoryBlockRunes]) and hold over a small model exactly as
 //     over a large one, and the one call after a turn runs on the reflex tier,
 //     not on this window.
 //

@@ -236,12 +236,12 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 	case resume:
 		doc = withReport(doc, taskResumeClause)
 	}
-	// THE PERSON'S RULES, LAST — the same road a node's brief takes
+	// THE MEMORY SECTION, LAST — the same road a node's brief takes
 	// ([TaskGraph.briefLocked]): the job is above, and the conditions the job is
-	// done under close the document. The section is memories marked always,
-	// already rendered by the caller ([AlwaysWorld]); an empty one is no
-	// section, the emptiness law, and a brief for a place with no rules reads as
-	// it always read.
+	// done under close the document. The section is every line kept for this
+	// place, already rendered by the caller ([MemoryWorld]); an empty one is no
+	// section, the emptiness law, and a brief for a place with nothing kept reads
+	// as it always read.
 	//
 	// WITHOUT THIS A PLAN-BORN WORKER RAN WITH NO HOUSE RULES (#1549): the
 	// composition above is built from the store's task rows, and nothing on

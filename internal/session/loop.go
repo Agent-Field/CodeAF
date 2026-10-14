@@ -331,6 +331,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// after that turn's stream had closed, so this stream is the first it gets
 	// (memory.go's [Agent.sayMemory]).
 	a.flushMemoryNotices()
+	a.armMemoryVerbs(user)
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}
@@ -1295,8 +1296,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			a.maybeTitle(ctx, hub)
 			// AND THE EXCHANGE IS READ FOR ANYTHING WORTH KEEPING, off this
 			// goroutine entirely and on the session's own lifetime rather than
-			// the turn's (memory.go). Nobody is waiting for it, nothing it finds
-			// reaches this turn, and it says nothing whatever happens to it.
+			// the turn's (memory.go). Nobody is waiting for it and nothing it
+			// finds reaches this turn; a line it keeps is said on the standing
+			// lane, and a failure once per window.
 			a.learnFromTurn(user, answer)
 			return true
 		}

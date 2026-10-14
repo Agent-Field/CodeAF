@@ -3,7 +3,8 @@
 Status: shipped 2026-10-14. It replaces the owner-scoped substrate and the
 contextual-evidence layer built over 2026-10-03 to 2026-10-13, whose documents
 are in git history (`git log -- docs/memory-architecture.md
-docs/contextual-memory.md`). `audit-notes/memory.md` is the audit that led here.
+docs/contextual-memory.md`), as is the audit that led here (`git log --
+audit-notes/memory.md`).
 Audience: anyone implementing or reviewing memory work in this repository. The
 person-facing account is `internal/manual/chat/what-i-remember.md`; where this
 document and that page disagree about behaviour, the code decides and both are
@@ -17,9 +18,12 @@ Anything tied to a time or an event (a reminder, a schedule, a watch) is an
 automation, not a memory (`docs/design/automations/DESIGN.md`).
 
 There is **one strength**: every active line in scope rides every conversation,
-in full, in front of every request. There is no router choosing lines per
-message, no ranking, no use or miss counts, no "always" flag and no tidy pass.
-A line is in front of the model, or it is forgotten.
+in front of every request. There is no router choosing lines per message, no use
+or miss counts, no "always" flag and no tidy pass. The store refuses any change
+that would push some conversation's block past its bound, so a line is in front of
+the model or it is forgotten — except in a store an earlier build filled with no
+bound, where `store.FitMemories` chooses what rides and the conversation says how
+many lines did not.
 
 Three laws follow from the owner's brief:
 
@@ -77,8 +81,12 @@ mouth:
 | noticing after a turn (§5) | noticed | what the reading names |
 | the legacy `memory.md`, once | person | as the file said |
 
-A save the block has no room for is refused (`errMemoryFull`) with a receipt naming
-the bound. A person forgets a line on the Memories tab (`f` or `delete`, by its id)
+The store measures every change that makes a line active — a new line, a
+replacement, a reworded line, a move, a put-back — inside its write transaction,
+against every block the owner reaches (`internal/store/memory_room.go`), and refuses
+one that would overflow any of them with `store.ErrMemoryFull` and a receipt naming
+the project. The legacy import alone is unbounded. The model's `remember` and
+`forget` act only on a turn the person typed. A person forgets a line on the Memories tab (`f` or `delete`, by its id)
 and puts one back there (`u`); the model forgets with its `forget`, which names one
 line by its words, lists several matches and forgets nothing, and never guesses.
 There is no `/forget` command and no undo stack (both removed 2026-10-14): the tab
@@ -113,7 +121,9 @@ the turn and the `memory.enabled` row (`notice things to remember`) is on — re
 live on every turn, so no restart is needed. It may replace a numbered kept line
 (a correction), which supersedes the old one. It says
 `noticed and remembered · <line> · <where> · see or forget it on the Memories
-tab`. Turning the row
+tab` — on the turn's stream if it is still open, and otherwise on the standing lane
+every surface holds, so the last turn before a person quits still says it. An
+ask-here errand is not noticed. Turning the row
 off stops only this: every kept line still rides.
 
 ## 6. Surfaces

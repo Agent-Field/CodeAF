@@ -28,7 +28,7 @@ func TestUpdateAndSupersedeDoorsRedactTitleBodyAndTags(t *testing.T) {
 	}
 	assertNoSecret(t, "update", updated, secret)
 	// THE SUPERSEDE DOOR, called with nothing redacted.
-	fresh, err := s.SupersedeMemoryForOwners([]string{OwnerUser}, row.ID, Memory{
+	fresh, _, err := s.SupersedeMemoryForOwners([]string{OwnerUser}, row.ID, Memory{
 		ID: "replacement", Owner: OwnerUser, Type: MemoryFact,
 		Title: "title " + secret, Text: "body " + secret, Tags: []string{"tag:" + secret}})
 	if err != nil {

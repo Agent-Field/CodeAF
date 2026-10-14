@@ -2907,11 +2907,18 @@ this machine, for this project — rides one `<memory>` block in message[0], in 
 stable order (person, machine, project; oldest first) and with no age or other
 clock-derived byte, so it is byte-identical from turn to turn until a line changes,
 which is what keeps the cached prefix warm (`prefixcache_test.go`). The block is
-bounded at **4,800 runes** of lines (`memoryBlockRunes`, `internal/session/memory.go`),
-about 1,200 tokens. **A save that would overflow it is refused** (`errMemoryFull`)
-with a receipt naming the bound, so nothing that rides is ever dropped later and no
-ranking decides which lines a turn sees; the memory place counts what does not fit.
-Each line is at most **512 runes** (`store.MemoryTextRunes`) with an 80-rune title.
+bounded at **4,800 runes** of lines (`store.MemoryBlockRunes`,
+`internal/store/memory_room.go`), about 1,200 tokens. **The store refuses any change
+that would carry any conversation's block past it** (`store.ErrMemoryFull`) — a new
+line, a replacement, a reworded line, a move or a put-back — measured inside the write
+transaction, against every block the line's owner reaches (a line for the person or this
+machine is in every project's block). Only a store an earlier build filled with no bound
+can hold more than fits; then `store.FitMemories` lets that build's rules, then the
+project's lines, then the machine's, then the person's ride, newest first within each,
+and the conversation says once how many did not; the Memories tab counts them. Each line
+is at most **512 runes** (`store.MemoryTextRunes`) with an 80-rune title. The room check
+reads every active line once per write; the store's lines are bounded by the same rule,
+so that read is a few hundred rows at most.
 
 The read is **one indexed statement per turn start** (`Store.MemoriesFor`, over the
 owners the conversation sees); a failed read keeps the last block rather than

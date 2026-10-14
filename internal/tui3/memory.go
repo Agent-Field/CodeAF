@@ -52,7 +52,7 @@ type memoryAgent interface {
 	// MemoryProject is the owner this conversation keeps project lines under —
 	// the two things only the conversation can resolve.
 	MoveMemory(id, scope string) (string, error)
-	MemoryProject() string
+	MemoryProject() (string, error)
 }
 
 // brain is the agent under this surface, when it has one at all.

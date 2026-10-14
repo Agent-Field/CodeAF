@@ -39,4 +39,4 @@ func (a *Agent) MoveMemory(id, scope string) (string, error) { return a.c.MoveMe
 
 // MemoryProject is the owner the connected conversation keeps project lines
 // under.
-func (a *Agent) MemoryProject() string { return a.c.MemoryProject() }
+func (a *Agent) MemoryProject() (string, error) { return a.c.MemoryProject() }

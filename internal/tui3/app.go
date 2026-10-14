@@ -1681,11 +1681,12 @@ type app struct {
 	// blocks stacked at the transcript tail is a wall; several share one block
 	// (formingblock.go).
 	waits []preflight
-	// mem is the memory place's state: the snapshot it is drawing, the shelves that
-	// are unrolled, and the filter (place_memories.go).
+	// mem is the Memories tab's state: the snapshot it is drawing, the groups
+	// that are open, and the filter (place_memories.go).
 	mem memoryPlace
-	// memory is the store the place reads and changes. It is optional because
-	// memory-off sessions must have no capability behind the place.
+	// memory is the store the tab reads and changes. It is optional because a
+	// session whose memory store could not be opened has no capability behind
+	// the tab.
 	memory memoryStore
 	// searchStatus names the web plug the next call will use.
 	searchStatus func() string
@@ -8072,8 +8073,8 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runRemember(rest)
 
 	case "always":
-		// The person's rules (memory.go's [app.runAlways]): bare, the ones in
-		// force here; with words, one kept.
+		// The same errand as /remember (memory.go's [app.runAlways]): bare,
+		// every line kept here; with words, one kept.
 		return a.runAlways(rest)
 
 	case "crew":

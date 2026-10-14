@@ -1048,7 +1048,7 @@ deletes anything; `codeaf cache clean --yes` skips the question for scripts.
 
 **What `/cache clean` will not do:** it does not delete conversations, reset the
 dashboard, or forget memories. To start a fresh conversation the command is `/new`;
-a memory is forgotten with `f` on the Memories tab, or by asking. There is no
+a memory is forgotten on the Memories tab (`→` then `f`, or `delete`), or by asking. There is no
 `/forget` command any more.
 
 ## /model — pick a model

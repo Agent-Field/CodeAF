@@ -1389,12 +1389,12 @@ func (c *Client) MoveMemory(id, scope string) (string, error) {
 
 // MemoryProject is the owner the engine's conversation keeps project lines
 // under, or "" when it has none or the engine could not say.
-func (c *Client) MemoryProject() string {
-	owner, err := c.receipt(MethodMemoryProject, nil)
-	if err != nil {
-		return ""
-	}
-	return owner
+// MemoryProject asks the engine's conversation which owner its project lines
+// land in. A wire that did not answer is an error and NOT "no project": a tab
+// that read it as no project would draw this project's lines as another's and
+// offer moves that land somewhere the person did not mean.
+func (c *Client) MemoryProject() (string, error) {
+	return c.receipt(MethodMemoryProject, nil)
 }
 
 func (c *Client) receipt(method string, args any) (string, error) {

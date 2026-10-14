@@ -132,7 +132,7 @@ func TestAForgottenOrReplacedLineCanBePutBack(t *testing.T) {
 	}
 	// A REPLACEMENT IS UNDONE BY FORGETTING THE NEW LINE AND PUTTING THE OLD
 	// ONE BACK, which is what a conversation's undo does.
-	fresh, err := s.SupersedeMemoryForOwners(owners, line.ID, Memory{Owner: OwnerUser, Text: "deploys on Tuesdays"})
+	fresh, _, err := s.SupersedeMemoryForOwners(owners, line.ID, Memory{Owner: OwnerUser, Text: "deploys on Tuesdays"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,11 +156,11 @@ func TestAReplacementCannotCrossOwners(t *testing.T) {
 	t.Parallel()
 	s := memoryStore(t)
 	foreign := mustWrite(t, s, WriteRequest{Owner: OwnerProject("other"), Text: "their line"})
-	if _, err := s.SupersedeMemoryForOwners([]string{OwnerUser, OwnerProject("k1")}, foreign.ID, Memory{Owner: OwnerProject("other"), Text: "x"}); !errors.Is(err, ErrInvalid) {
+	if _, _, err := s.SupersedeMemoryForOwners([]string{OwnerUser, OwnerProject("k1")}, foreign.ID, Memory{Owner: OwnerProject("other"), Text: "x"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("superseding a line this conversation cannot see err = %v, want ErrInvalid", err)
 	}
 	mine := mustWrite(t, s, WriteRequest{Owner: OwnerUser, Text: "my line"})
-	if _, err := s.SupersedeMemoryForOwners([]string{OwnerUser}, mine.ID, Memory{Owner: OwnerMachine, Text: "moved by a replacement"}); !errors.Is(err, ErrInvalid) {
+	if _, _, err := s.SupersedeMemoryForOwners([]string{OwnerUser}, mine.ID, Memory{Owner: OwnerMachine, Text: "moved by a replacement"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a replacement under another owner err = %v, want ErrInvalid", err)
 	}
 }
@@ -188,21 +188,21 @@ func TestMovingALineCarriesItsProjectName(t *testing.T) {
 	t.Parallel()
 	s := memoryStore(t)
 	line := mustWrite(t, s, WriteRequest{Owner: OwnerUser, Text: "run make pr-ready first"})
-	if err := s.MoveMemory(line.ID, OwnerProject("k1"), "codeaf"); err != nil {
+	if _, err := s.MoveMemory(line.ID, OwnerProject("k1"), "codeaf"); err != nil {
 		t.Fatal(err)
 	}
 	got, _, _ := s.MemoryRecord(line.ID)
 	if got.Owner != OwnerProject("k1") || got.Scope != MemoryScopeProject || got.ProjectName != "codeaf" {
 		t.Fatalf("moved line = %+v, want the project's owner, scope and name", got)
 	}
-	if err := s.MoveMemory(line.ID, OwnerMachine, "codeaf"); err != nil {
+	if _, err := s.MoveMemory(line.ID, OwnerMachine, "codeaf"); err != nil {
 		t.Fatal(err)
 	}
 	got, _, _ = s.MemoryRecord(line.ID)
 	if got.Owner != OwnerMachine || got.ProjectName != "" {
 		t.Fatalf("moved to the machine = %+v, want no project name", got)
 	}
-	if err := s.MoveMemory(line.ID, OwnerLegacyProject, ""); !errors.Is(err, ErrInvalid) {
+	if _, err := s.MoveMemory(line.ID, OwnerLegacyProject, ""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("moving into the quarantine err = %v, want ErrInvalid", err)
 	}
 }
@@ -216,10 +216,10 @@ func TestRebuildReproducesEveryMemoryAndIgnoresRetiredEvents(t *testing.T) {
 	if err := s.ForgetMemory(b.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.MoveMemory(c.ID, OwnerUser, ""); err != nil {
+	if _, err := s.MoveMemory(c.ID, OwnerUser, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SupersedeMemoryForOwners([]string{OwnerUser}, a.ID, Memory{Owner: OwnerUser, Text: "a2", Origin: OriginNoticed}); err != nil {
+	if _, _, err := s.SupersedeMemoryForOwners([]string{OwnerUser}, a.ID, Memory{Owner: OwnerUser, Text: "a2", Origin: OriginNoticed}); err != nil {
 		t.Fatal(err)
 	}
 	// THE EVENTS EARLIER BUILDS WROTE AND THIS ONE DOES NOT READ: a ranking

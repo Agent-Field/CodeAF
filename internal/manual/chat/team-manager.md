@@ -188,8 +188,9 @@ this machine and for this project rides in front of its first request and every
 one after. The team itself owns none of them, and the manager reads the same
 lines the same way. Nothing is fetched later or picked per message. The block is
 bounded (what-i-remember, *How many lines ride along*), and a line that would not
-fit is refused when it is kept rather than dropped later, so what rides is
-always the whole of it.
+fit is refused when it is kept rather than dropped later. The one exception is a
+store an earlier build filled with no bound: then the earlier build's rules and
+the project's lines ride first, and the conversation says how many did not.
 
 ## Who a Traffic row is from and who it is to
 

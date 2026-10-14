@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -30,6 +32,10 @@ type reflexScript struct {
 	// notice is the noticing call's answer, and noticeErr its failure.
 	notice    string
 	noticeErr error
+	// hold, when set, keeps the noticing call's answer until it closes — the
+	// way a test makes "the turn's stream has already closed" a fact rather
+	// than a race.
+	hold chan struct{}
 	// answer is the turn's own reply.
 	answer string
 
@@ -51,6 +57,9 @@ func (r *reflexScript) CompleteWithMessages(ctx context.Context, messages []ai.M
 	system := ""
 	if len(messages) > 0 {
 		system = messageText(messages[0])
+	}
+	if hold := r.hold; hold != nil && strings.HasPrefix(system, "You read one exchange between a person and an assistant") {
+		<-hold
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -268,21 +277,19 @@ func TestALeanProfileCarriesTheBlockToo(t *testing.T) {
 	}
 }
 
-func TestMemoryFitsIsTheBlocksOwnMeasure(t *testing.T) {
+func TestTheBlockCarriesWhatTheStoreFits(t *testing.T) {
 	line := strings.Repeat("x", 300)
-	texts := make([]string, 30)
 	memories := make([]store.Memory, 30)
-	for i := range texts {
-		texts[i] = line
-		memories[i] = store.Memory{Owner: store.OwnerUser, Text: line}
+	for i := range memories {
+		memories[i] = store.Memory{Owner: store.OwnerUser, Text: line, CreatedSeq: int64(i + 1)}
 	}
-	fits := MemoryFits(texts)
-	if fits <= 0 || fits >= len(texts) {
-		t.Fatalf("MemoryFits = %d, want some but not all of %d long lines", fits, len(texts))
+	fit, left := store.FitMemories(memories)
+	if left <= 0 || len(fit) == 0 {
+		t.Fatalf("FitMemories kept %d and left %d, want some but not all of %d long lines", len(fit), left, len(memories))
 	}
 	block := renderMemory(memories, "")
-	if got := strings.Count(block, line); got != fits {
-		t.Fatalf("the block carried %d lines and MemoryFits said %d", got, fits)
+	if got := strings.Count(block, line); got != len(fit) {
+		t.Fatalf("the block carried %d lines and the store fit %d", got, len(fit))
 	}
 	if !strings.Contains(block, "more kept lines did not fit here") {
 		t.Fatal("an overflowing block did not say lines were left out")
@@ -318,8 +325,8 @@ func TestRememberKeepsForThisProjectAndWidensWithoutOne(t *testing.T) {
 	if err != nil || !strings.Contains(receipt, "since this conversation has no project of its own") {
 		t.Fatalf("a conversation with no project = %q %v, want the widening said", receipt, err)
 	}
-	if homeless.MemoryProject() != "" {
-		t.Fatalf("a conversation with no project names %q as its project", homeless.MemoryProject())
+	if project, _ := homeless.MemoryProject(); project != "" {
+		t.Fatalf("a conversation with no project names %q as its project", project)
 	}
 }
 
@@ -328,7 +335,7 @@ func TestAFullBlockRefusesASaveAndSaysHow(t *testing.T) {
 	line := strings.Repeat("word ", 90)
 	for i := 0; ; i++ {
 		_, err := agent.Remember(line + string(rune('a'+i%26)) + string(rune('a'+i/26)))
-		if errors.Is(err, errMemoryFull) {
+		if errors.Is(err, store.ErrMemoryFull) {
 			if !strings.Contains(err.Error(), "Memories tab") {
 				t.Fatalf("the refusal does not say how to make room: %v", err)
 			}
@@ -530,6 +537,18 @@ func TestTheModelsVerbsKeepAndForgetAndSaySo(t *testing.T) {
 	if !strings.Contains(rememberDescription, "time component") {
 		t.Fatal("remember's description lost the sentence that sends anything with a time to automations")
 	}
+	// A TURN THE PERSON DID NOT TYPE CHANGES NOTHING: no line is kept or
+	// forgotten from a task's report or a team's directive.
+	agent.memory.typed.Store(false)
+	for _, verb := range []func(context.Context, json.RawMessage) (string, bool, error){rememberTool, forgetTool} {
+		if out, isErr, _ := verb(context.Background(), json.RawMessage(`{"text":"uses pnpm, not npm"}`)); !isErr || out != memoryNotTypedWords {
+			t.Fatalf("a verb on a turn the person did not type = %q %v", out, isErr)
+		}
+	}
+	if got, _ := brain.MemoriesFor([]string{store.OwnerProject("alpha")}); len(got) != 0 {
+		t.Fatalf("a turn the person did not type kept %+v", got)
+	}
+	agent.memory.typed.Store(true)
 	out, isErr, err := rememberTool(context.Background(), json.RawMessage(`{"text":"uses pnpm, not npm"}`))
 	if err != nil || isErr || out != "remembered for this project: uses pnpm, not npm" {
 		t.Fatalf("remember = %q %v %v", out, isErr, err)
@@ -547,6 +566,83 @@ func TestTheModelsVerbsKeepAndForgetAndSaySo(t *testing.T) {
 	agent.memory.mu.Unlock()
 	if len(held) != 2 || !strings.Contains(held[0], memoryTakeBack) || !strings.Contains(held[1], "put it back on the Memories tab") {
 		t.Fatalf("the person was not told what the model did: %q", held)
+	}
+}
+
+// A TURN THE PERSON TYPED IS WHAT ARMS THE VERBS, and a turn the session
+// wrote for itself disarms them, through the real turn loop.
+func TestTheVerbsAreArmedOnlyByATurnThePersonTyped(t *testing.T) {
+	agent, _ := brainAgent(t, &reflexScript{}, nil)
+	collect(t, mustSubmit(t, agent, "hello"))
+	if !agent.memory.typed.Load() {
+		t.Fatal("a turn the person typed did not arm the memory verbs")
+	}
+	note := userText("a task's report")
+	note.authored = true
+	agent.armMemoryVerbs(note)
+	if agent.memory.typed.Load() {
+		t.Fatal("a turn the session wrote armed the memory verbs")
+	}
+}
+
+// A LINE NOTICED AFTER THE LAST TURN IS SAID WITHOUT WAITING FOR ANOTHER: a
+// surface holds the standing lane for the life of the session, and the line
+// goes there when the turn's own stream has closed.
+func TestANoticedLineIsSaidOnTheStandingLane(t *testing.T) {
+	script := &reflexScript{notice: `{"keep":"wants the change made directly","scope":"user"}`, hold: make(chan struct{})}
+	agent, _ := brainAgent(t, script, nil)
+	lane, stop := agent.WatchTaskUpdates()
+	defer stop()
+	collect(t, mustSubmit(t, agent, "stop explaining, just make the change"))
+	// THE TURN'S STREAM HAS CLOSED; only now does the noticing call answer.
+	close(script.hold)
+	settleMemory(agent)
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-lane:
+			if event.Kind == EventNotice && strings.HasPrefix(event.Text, "noticed and remembered · wants the change made directly") {
+				return
+			}
+		case <-deadline:
+			t.Fatal("the noticed line never reached the standing lane")
+		}
+	}
+}
+
+// AN ASK-HERE ERRAND IS NOT NOTICED.
+func TestAnErrandIsNotNoticed(t *testing.T) {
+	script := &reflexScript{notice: `{"keep":"wants the change made directly","scope":"user"}`}
+	agent, brain := brainAgent(t, script, func(c *Config) { c.Errand = true })
+	collect(t, mustSubmit(t, agent, "stop explaining, just make the change"))
+	settleMemory(agent)
+	if got, _ := brain.MemoriesFor([]string{store.OwnerUser}); len(got) != 0 {
+		t.Fatalf("an errand kept %+v", got)
+	}
+}
+
+// A BLOCK AN EARLIER BUILD FILLED PAST THE BOUND IS SAID ONCE.
+func TestAnOverflowingBlockIsSaidOnce(t *testing.T) {
+	agent, brain := brainAgent(t, &reflexScript{}, nil)
+	for i := 0; i < 70; i++ {
+		if _, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Type: store.MemoryFact, Text: fmt.Sprintf("line %02d %s", i, strings.Repeat("w", 80))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := noticeLines(collect(t, mustSubmit(t, agent, "hello")))
+	said := 0
+	for _, line := range first {
+		if strings.Contains(line, "don't fit in front of the model here") {
+			said++
+		}
+	}
+	if said != 1 {
+		t.Fatalf("the first turn said the overflow %d times: %q", said, first)
+	}
+	for _, line := range noticeLines(collect(t, mustSubmit(t, agent, "again"))) {
+		if strings.Contains(line, "don't fit") {
+			t.Fatalf("the overflow was said again: %q", line)
+		}
 	}
 }
 
@@ -587,8 +683,8 @@ func TestMovingALineIsResolvedByTheConversation(t *testing.T) {
 	if got.Owner != store.OwnerProject("alpha") || got.ProjectName != "alpha-repo" {
 		t.Fatalf("moved = %+v", got)
 	}
-	if agent.MemoryProject() != store.OwnerProject("alpha") {
-		t.Fatalf("MemoryProject = %q", agent.MemoryProject())
+	if project, _ := agent.MemoryProject(); project != store.OwnerProject("alpha") {
+		t.Fatalf("MemoryProject = %q", project)
 	}
 }
 

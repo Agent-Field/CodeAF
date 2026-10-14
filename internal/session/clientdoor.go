@@ -536,8 +536,9 @@ const (
 	// through the door; it is to make them say the same word the door says.
 	//
 	// THEY REACHED THE CALL LOG WITH NO TAG AT ALL UNTIL THIS PR, which meant the
-	// two slowest unattended errands this build makes — a memory tidy-up and an
-	// automation's check, both of which run while nobody is there — were
+	// two slowest unattended errands this build made — a memory tidy-up (since
+	// removed) and an automation's check, both of which ran while nobody was
+	// there — were
 	// indistinguishable from a turn that had lost its name. They carry the most
 	// money per call of anything nobody is waiting for.
 

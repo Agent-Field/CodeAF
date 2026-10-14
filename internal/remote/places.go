@@ -332,7 +332,11 @@ func memoryCommandCall(commands MemoryCommands, call Frame) (json.RawMessage, er
 	// string.
 	switch call.Method {
 	case MethodMemoryProject:
-		return json.Marshal(commands.MemoryProject())
+		owner, err := commands.MemoryProject()
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(owner)
 	case MethodMemoryMove:
 		args, err := arg[MemoryMoveArgs](call)
 		if err != nil {

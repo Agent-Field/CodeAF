@@ -265,12 +265,13 @@ capability that cannot work is left off it rather than offered and failing.
 | Files and shell | `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` |
 | Documents and jobs | `read_document`, `jobs`, `manual` |
 | Interaction and work | `ask`, `watch`, `tasks`, `propose_task`, `quick_task`, `items`, `divide_work`, `stand` |
-| Memory and workspace | `remember`, `recall`, `track`, `commit`, `workspace`, `workspace_snapshots`, `workspace_restore`, `workspace_fork`, `workspace_merge`, `search_conversations` |
+| Memory and workspace | `remember`, `forget`, `recall`, `track`, `commit`, `workspace`, `workspace_snapshots`, `workspace_restore`, `workspace_fork`, `workspace_merge`, `search_conversations` |
 | Web | `web_search`, `web_fetch` |
 | Settings and accounts | `settings`, `change_setting`, `services`, `use_service`, `gmail_search`, `gmail_read`, `gmail_send`, `calendar_list`, `calendar_create`, `slack_search`, `slack_read_thread`, `slack_list_channels`, `slack_send` |
 | Media | `generate_image`, `speak`, `generate_music`, `generate_video`, `view_image`, `edit_video`, `load_capability` |
 
-`remember` needs memory switched on. The four `workspace_*` tools need a folder under
+`remember` and `forget` need a memory store, a turn the person typed, and the full prompt
+profile (a lean one leaves them off; the person can still `/remember`). The four `workspace_*` tools need a folder under
 Furrow watch. The five `gmail_*` and `calendar_*` tools arrive only with a connected
 Google account and the four `slack_*` only with Slack; `/connect` — `your connected
 accounts · connect another` — is the door, and any other keyed account brings one
@@ -299,10 +300,13 @@ you say yes. They run only while a codeaf window is open, and anything that fell
 while it was closed runs once when it opens, marked late. `/automations` lists them,
 with every run's history.
 
-Memory keeps person-, project-, or machine-scoped records in `graph.db`; `/memory`,
-`/memories`, `/remember` and `/forget` change them. A rule for all future work —
-`always run the tests before a commit` — is a memory marked always: `/always <text>`
-keeps one, and it is in front of every conversation and task from then on.
+Memory keeps one-line records for the person, a project or this machine in `graph.db`,
+and every line held where a conversation is rides in front of it, its tasks and its
+automations' runs. `/remember <text>` (or `/always <text>`, the same command) keeps one;
+`/memory` and `/memories` open the Memories tab (`alt+8`), where a line is fixed, moved,
+forgotten or put back. A rule for all future work — `always run the tests before a
+commit` — is a memory like any other. There is no `/forget` command: forget on the tab,
+or ask.
 
 ## Models, keys, and spending
 

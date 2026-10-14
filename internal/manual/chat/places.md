@@ -420,7 +420,7 @@ The label between the arrows is the control and the reading at once, so the span
 screen once and the keys that move it are beside it. A place with no window to move answers
 those keys with nothing rather than with something that is not drawn, and so does a terminal
 too narrow to draw the control — and the zoom is bound only where its own clause fits, for
-the same reason. **Memory and automations have no time window**; their `shift+<arrow>` keys
+the same reason. **Memories and automations have no time window**; their `shift+<arrow>` keys
 do nothing.
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
@@ -763,7 +763,7 @@ the line):
 6. and then the day's figure itself.
 
 **The count of things waiting on you never goes.** `2 ?` outlasts the money and the places,
-at every width. With activity and spending to show, an 80-column bar keeps daily work and Memory visible, while Spend and Settings remain under `more`. The menu preserves their names and shortcuts. Wider windows show all main destinations; narrower windows progressively fold them while keeping the current destination visible.
+at every width. With activity and spending to show, an 80-column bar keeps daily work and Memories visible, while Spend and Settings remain under `more`. The menu preserves their names and shortcuts. Wider windows show all main destinations; narrower windows progressively fold them while keeping the current destination visible.
 
 **`more ▾` is a door.** Click it and a small menu hangs under it listing exactly the places it
 folded, each with its key (`spend  alt+5`, `settings  alt+6`). The pointer lights a row and a

@@ -657,7 +657,7 @@ conversation), `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automa
   frame under 86 columns the bar has no room for all eight words, and `spend` and
   `settings` fold behind `more ▾`. `/standing` and `/orders` are not commands any more — `/standing` answers
   `there is no command called /standing · / lists them`.
-- **Memory is on the bar**, the fifth word, always — on a fresh machine too. `/memory`
+- **Memories is on the bar**, the fifth word, always — on a fresh machine too. `/memory`
   (or `/memories`) and `alt+8` open it.
 
 `tab` returns to Home; `alt+.` shows all eight numbered destinations. Search is on Home:

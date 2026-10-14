@@ -1083,9 +1083,9 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		// An adaptive run's worker shares the project's error→fix file for a task
 		// node's reason (task_run.go's newTaskAgent, fixstore.go).
 		fixesDir: a.config.fixesBucket(),
-		// AND THE PROJECT'S APPROVED BINDING RULES BEFORE THE FIRST ACTION, on a
-		// task node's exact terms (task_run.go's newTaskAgentOn): the parent's
-		// brain lent read-only, the root's project key, no memory write.
+		// AND THE CONVERSATION'S MEMORY, on a task node's exact terms
+		// (task_run.go's newTaskAgentOn): the parent's brain lent read-only, the
+		// root's project key, no memory write.
 		bindingStore:     parent.bindingBrain(),
 		MemoryProjectKey: parent.MemoryProjectKey,
 		// And its litter follows the run's own session rather than the directory

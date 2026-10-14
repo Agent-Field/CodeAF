@@ -38,6 +38,13 @@ type WriteRequest struct {
 	// ProjectName is the name the person knows the project by, kept beside a
 	// project memory so the memory place can say where it holds.
 	ProjectName string
+	// Unbounded admits the line without measuring it against
+	// [MemoryBlockRunes]. ONE caller sets it: the legacy memory.md import,
+	// whose lines were already the person's before the bound existed — a
+	// store an earlier build filled the same way. What does not fit is then
+	// chosen by [FitMemories] and said, rather than refused half way through
+	// a file the import would retry every turn.
+	Unbounded bool
 }
 
 // WriteResult is the door's answer.
@@ -55,9 +62,12 @@ const (
 	WriteOutcomeSkipped = "skipped-duplicate"
 )
 
-// Write validates and deduplicates under one immediate write transaction. Exact
-// folded bodies within the same owner are duplicates. Validation comes before
-// the lookup so an invalid request cannot become a successful skip.
+// Write validates, deduplicates and measures under one immediate write
+// transaction. Exact folded bodies within the same owner are duplicates, and a
+// duplicate needs no room; a new line must fit every block its owner reaches
+// ([memoryRoomOn]), or the write is refused with [ErrMemoryFull]. Validation
+// comes before the lookup so an invalid request cannot become a successful
+// skip.
 func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 	owner := normalizeOwner(req.Owner)
 	if !ValidOwner(owner) {
@@ -89,6 +99,11 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 		}
 		result = WriteResult{Memory: *existing, Outcome: WriteOutcomeSkipped}
 	} else {
+		if !req.Unbounded {
+			if err := memoryRoomOn(tx, owner, payload.Text, ""); err != nil {
+				return WriteResult{}, fmt.Errorf("write memory: %w", err)
+			}
+		}
 		seq, _, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
 		if err != nil {
 			return WriteResult{}, fmt.Errorf("write memory: %w", err)

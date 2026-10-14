@@ -14,12 +14,14 @@ package session
 //     line the person typed and a line that was noticed for them are the same
 //     thing once kept, and the person can see and take back either.
 //
-//   - WHAT IS SAVED IS EXACTLY WHAT THE MODEL SEES. The block is bounded
-//     ([memoryBlockRunes]), and a save that would carry it past the bound is
-//     refused with a sentence saying so, rather than kept somewhere the model
-//     never reads. The block has no clock in it, so it renders byte for byte —
-//     and the provider's cached prefix stays warm — until somebody changes a
-//     line.
+//   - WHAT IS SAVED IS WHAT THE MODEL SEES. The block is bounded
+//     ([store.MemoryBlockRunes]), and the store refuses — inside the write that
+//     would do it — any change that would carry ANY conversation's block past
+//     the bound, with a sentence saying so. Only a store an earlier build filled
+//     with no bound can hold more than a block fits; then [store.FitMemories]
+//     chooses what rides and the conversation says, once, how many lines did
+//     not. The block has no clock in it, so it renders byte for byte — and the
+//     provider's cached prefix stays warm — until somebody changes a line.
 //
 //   - THERE IS ONE WRITE DOOR ([Agent.keep]) and three ways to it: the person
 //     (/remember, /always, the Memories tab), the model's own `remember`, and
@@ -58,6 +60,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -74,19 +77,28 @@ import (
 )
 
 const (
-	// memoryBlockRunes bounds the memory lines one block carries: about twelve
-	// hundred tokens at four characters a token, which is fifty-odd ordinary
-	// lines. It is paid on every request, in the cached prefix, so it is a
-	// bound on the bill as much as on the page. PERF.md records it; changing it
-	// changes that section in the same commit.
-	memoryBlockRunes = 4800
-
 	// memoryFailureWindow is how long one "couldn't update memory" line buys.
 	memoryFailureWindow = 5 * time.Minute
 )
 
-// errMemoryFull is a save the block has no room for.
-var errMemoryFull = errors.New("memory is full here · forget a line on the Memories tab to make room")
+// memoryFull is a refusal for want of room as a person reads it: its words
+// are [memoryFullWords], and it still answers errors.Is for
+// [store.ErrMemoryFull].
+type memoryFull struct{ err error }
+
+func (f memoryFull) Error() string { return memoryFullWords(f.err) }
+func (f memoryFull) Unwrap() error { return f.err }
+
+// memoryFullWords is the receipt for a change the store refused because a
+// conversation's block has no room ([store.ErrMemoryFull]): which
+// conversations, and where to make room.
+func memoryFullWords(err error) string {
+	var full *store.MemoryFullError
+	if errors.As(err, &full) && full.Project != "" {
+		return "memory is full for " + full.Project + " · forget a line on the Memories tab to make room"
+	}
+	return "memory is full here · forget a line on the Memories tab to make room"
+}
 
 // memoryTakeBack is the clause every receipt for a change made on the person's
 // behalf ends with: where they go to see it and take it back. It names the tab
@@ -109,6 +121,12 @@ type memoryBrain struct {
 	said []string
 	// imported records that the legacy memory.md has been looked at.
 	imported bool
+	// overflowSaid records that this conversation has said its block holds
+	// more than fits ([Agent.refreshMemoryLocked]); it is said once.
+	overflowSaid bool
+	// typed is whether the person typed the turn now running. The model's
+	// `remember` and `forget` act only on such a turn ([Agent.memoryTools]).
+	typed atomic.Bool
 	// failureSaid is when the last failure line went out.
 	failureSaid time.Time
 }
@@ -231,59 +249,25 @@ const (
 	memoryReport = "If you cannot honour one of these, say so in your report."
 )
 
-// memoryField renders ONE memory line as a single physical line with its angle
-// markers escaped, so a line's own words can never close the block or open a
-// second one. The journal keeps the raw bytes; only the projection escapes.
-func memoryField(s string) string {
-	q := strconv.Quote(s)
-	q = strings.ReplaceAll(q, "<", "\\u003c")
-	q = strings.ReplaceAll(q, ">", "\\u003e")
-	return q
-}
-
-// memoryLineCost is what one line spends of [memoryBlockRunes].
-func memoryLineCost(text string) int {
-	return utf8.RuneCountInString("- "+memoryField(text)) + 1
-}
-
-// MemoryFits answers how many of these lines, taken in order, fit in front of
-// the model: the ONE measure of [memoryBlockRunes], exported so the memory
-// place can say how many lines a conversation here is not being told rather
-// than repeat the arithmetic and drift from it.
-func MemoryFits(texts []string) int {
-	used := 0
-	for index, text := range texts {
-		cost := memoryLineCost(text)
-		if used+cost > memoryBlockRunes {
-			return index
-		}
-		used += cost
-	}
-	return len(texts)
-}
-
 // renderMemory is the section itself: the heading, the preamble, the lines
 // grouped by where they hold, how many did not fit, and the caller's closing.
 //
 // THE EMPTINESS LAW: no lines is NO SECTION — not an empty heading.
 //
 // NO AGES, AND THE ORDER IS THE STORE'S ([store.Store.MemoriesFor]): the block
-// rides the cached prefix, so nothing here may depend on a clock.
+// rides the cached prefix, so nothing here may depend on a clock. Which lines
+// ride when they do not all fit is [store.FitMemories]'s, in that same order.
 func renderMemory(memories []store.Memory, closing string) string {
+	fit, _ := store.FitMemories(memories)
 	var lines strings.Builder
-	used, shown, group := 0, 0, ""
-	for _, memory := range memories {
-		cost := memoryLineCost(memory.Text)
-		if used+cost > memoryBlockRunes {
-			break
-		}
+	shown, group := 0, ""
+	for _, memory := range fit {
 		if heading := memoryGroupHeading(memory); heading != group {
 			group = heading
 			lines.WriteString(heading + ":\n")
 		}
-		used += cost
 		shown++
-		lines.WriteString("- " + memoryField(memory.Text) + "\n")
+		lines.WriteString("- " + store.MemoryQuote(memory.Text) + "\n")
 	}
 	if shown == 0 {
 		return ""
@@ -369,6 +353,28 @@ func (a *Agent) refreshMemoryLocked() {
 		return
 	}
 	a.memoryText = memoryBlock(memories)
+	// A STORE AN EARLIER BUILD FILLED PAST THE BOUND IS SAID ONCE, in this
+	// conversation, rather than only to the model: the person is the one who
+	// can choose what to forget. The line is held for the stream the turn is
+	// about to open ([Agent.flushMemoryNotices]) — this runs under a.mu, where
+	// saying it here would take the lock twice.
+	if _, left := store.FitMemories(memories); left > 0 && a.memory != nil && !a.config.bindingOnlyMemory {
+		a.memory.mu.Lock()
+		if !a.memory.overflowSaid {
+			a.memory.overflowSaid = true
+			a.memory.said = append(a.memory.said, memoryOverflowWords(left))
+		}
+		a.memory.mu.Unlock()
+	}
+}
+
+// memoryOverflowWords is that one line.
+func memoryOverflowWords(left int) string {
+	lines := strconv.Itoa(left) + " remembered lines don't"
+	if left == 1 {
+		lines = "1 remembered line doesn't"
+	}
+	return lines + " fit in front of the model here · forget some on the Memories tab"
 }
 
 // memoryBlock is the <memory> block message[0] carries, or "" when nothing is
@@ -393,6 +399,14 @@ func memoryBlock(memories []store.Memory) string {
 // The answer is the line as kept, where it holds in receipt words, and whether
 // it was new.
 func (a *Agent) keep(text, scope, origin string, replaced *store.Memory) (store.Memory, string, bool, error) {
+	return a.keepLine(text, scope, origin, replaced, false)
+}
+
+// keepLine is [Agent.keep] with the one exception spelled out: unbounded is the
+// legacy import's, whose lines were the person's before the bound existed
+// ([store.WriteRequest.Unbounded]). Every other caller is measured, by the
+// store, inside the write.
+func (a *Agent) keepLine(text, scope, origin string, replaced *store.Memory, unbounded bool) (store.Memory, string, bool, error) {
 	if !a.memoryWritable() {
 		return store.Memory{}, "", false, errors.New("this conversation keeps no memory")
 	}
@@ -409,28 +423,22 @@ func (a *Agent) keep(text, scope, origin string, replaced *store.Memory) (store.
 		// still named line 3.
 		owner, widened = replaced.Owner, false
 	}
-	visible, err := a.memory.store.MemoriesFor(a.memoryOwners())
-	if err != nil {
-		return store.Memory{}, "", false, err
-	}
-	if !memoryRoom(visible, text, replaced) {
-		return store.Memory{}, "", false, errMemoryFull
-	}
 	_, projectName, _ := a.projectKey()
 	reach := memoryReach(owner, widened)
 	if replaced != nil {
-		fresh, err := a.memory.store.SupersedeMemoryForOwners(a.memoryOwners(), replaced.ID, store.Memory{
+		fresh, added, err := a.memory.store.SupersedeMemoryForOwners(a.memoryOwners(), replaced.ID, store.Memory{
 			Owner: owner, Type: memoryTypeOf(text), Text: text,
 			Origin: origin, ProjectName: projectName, SourceSession: a.memorySourceSession(),
 		})
 		if err != nil {
 			return store.Memory{}, "", false, err
 		}
-		return fresh, reach, true, nil
+		return fresh, reach, added, nil
 	}
 	result, err := a.memory.store.Write(store.WriteRequest{
 		Owner: owner, Type: memoryTypeOf(text), Text: text,
 		Origin: origin, ProjectName: projectName, SourceSession: a.memorySourceSession(),
+		Unbounded: unbounded,
 	})
 	if err != nil {
 		return store.Memory{}, "", false, err
@@ -439,24 +447,6 @@ func (a *Agent) keep(text, scope, origin string, replaced *store.Memory) (store.
 		return result.Memory, reach, false, nil
 	}
 	return result.Memory, reach, true, nil
-}
-
-// memoryRoom says whether the block has room for one more line, counting the
-// line a replacement would retire as already gone.
-func memoryRoom(visible []store.Memory, text string, replaced *store.Memory) bool {
-	used := 0
-	for _, memory := range visible {
-		if replaced != nil && memory.ID == replaced.ID {
-			continue
-		}
-		if store.NormalizeMemoryWords(memory.Text) == store.NormalizeMemoryWords(text) {
-			// Already kept: the write door will skip it, and a skip needs no
-			// room.
-			return true
-		}
-		used += memoryLineCost(memory.Text)
-	}
-	return used+memoryLineCost(text) <= memoryBlockRunes
 }
 
 // ── forgetting ──────────────────────────────────────────────────────────────
@@ -562,6 +552,9 @@ func (a *Agent) RememberAlways(text string, everywhere bool) (string, error) {
 
 func (a *Agent) rememberAs(text, scope string) (string, error) {
 	memory, reach, added, err := a.keep(text, scope, store.OriginPerson, nil)
+	if errors.Is(err, store.ErrMemoryFull) {
+		return "", memoryFull{err}
+	}
 	if err != nil {
 		return "", err
 	}
@@ -614,21 +607,29 @@ func (a *Agent) MoveMemory(id, scope string) (string, error) {
 	}
 	owner, widened := a.ownerFor(scope)
 	_, name, _ := a.projectKey()
-	if err := a.memory.store.MoveMemory(id, owner, name); err != nil {
+	merged, err := a.memory.store.MoveMemory(id, owner, name)
+	if errors.Is(err, store.ErrMemoryFull) {
+		return "", memoryFull{err}
+	}
+	if err != nil {
 		return "", err
+	}
+	if merged {
+		return "already kept " + memoryReach(owner, widened) + " · this copy is let go", nil
 	}
 	return "now " + memoryReach(owner, widened), nil
 }
 
 // MemoryProject is the owner this conversation keeps project lines under, or
-// "" when it has no project of its own — what lets the memory place say which
-// shelf is "this project".
-func (a *Agent) MemoryProject() string {
+// "" when it has no project of its own — what lets the Memories tab say which
+// group is "this project". In process it cannot fail; the error is the wire's
+// (internal/remote), where "could not ask" must not read as "no project".
+func (a *Agent) MemoryProject() (string, error) {
 	owner, widened := a.ownerFor(store.MemoryScopeProject)
 	if widened {
-		return ""
+		return "", nil
 	}
-	return owner
+	return owner, nil
 }
 
 func memoryLines(found []store.Memory) []MemoryLine {
@@ -657,7 +658,10 @@ func (a *Agent) learnFromTurn(user userMessage, answer string) {
 	if !a.memoryWritable() {
 		return
 	}
-	askMemory := !user.authored && a.noticing()
+	// AN ASK-HERE ERRAND IS NOT NOTICED: it is usually one exchange, so the
+	// line saying what was kept would have no turn after it to be said on, and
+	// what is typed there is a reminder or a watch rather than a preference.
+	askMemory := !user.authored && a.noticing() && !a.config.Errand
 	words := user.said
 	if strings.TrimSpace(words) == "" {
 		words = user.text()
@@ -717,7 +721,7 @@ func (a *Agent) noticeTurn(words, answer string, askMemory bool) {
 func (a *Agent) keepNoticed(text, scope string, replaced *store.Memory) {
 	memory, reach, added, err := a.keep(text, scope, store.OriginNoticed, replaced)
 	switch {
-	case errors.Is(err, errMemoryFull):
+	case errors.Is(err, store.ErrMemoryFull):
 		a.sayMemory("noticed something worth keeping, but memory is full here · " + text)
 	case err != nil:
 		a.journalMemoryFailure("notice", err)
@@ -799,6 +803,25 @@ func init() {
 	glossField["forget"] = "text"
 }
 
+// memoryNotTypedWords is what the model's `remember` and `forget` answer on a
+// turn the person did not type.
+//
+// A TURN THE PERSON DID NOT TYPE MAY NOT CHANGE WHAT THEY ARE REMEMBERED BY. A
+// task's report, a team's directive or a watch's news opens a turn of its own
+// ([userMessage.authored]), and a tool result inside one can carry words
+// somebody else wrote; a line kept from it would ride every future
+// conversation, with its receipt said where nobody may be watching. It is the
+// noticing pass's own rule ([Agent.learnFromTurn]), held for the model's verbs.
+const memoryNotTypedWords = "Not on this turn: the person did not type it, so nothing is kept or forgotten. Say what you would keep, and the person can /remember it."
+
+// armMemoryVerbs is said at the start of every turn: the model's memory verbs
+// act only on a turn the person typed ([memoryNotTypedWords]).
+func (a *Agent) armMemoryVerbs(user userMessage) {
+	if a.memory != nil {
+		a.memory.typed.Store(!user.authored)
+	}
+}
+
 // memoryTools is `remember` and `forget`, on a writable conversation's belt
 // only: a read-only posture and a task worker do not have the verbs at all.
 //
@@ -822,7 +845,13 @@ func (a *Agent) memoryTools() []bare.Tool {
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
+			if !a.memory.typed.Load() {
+				return memoryNotTypedWords, true, nil
+			}
 			memory, reach, added, err := a.keep(parsed.Text, parsed.Scope, store.OriginModel, nil)
+			if errors.Is(err, store.ErrMemoryFull) {
+				return memoryFullWords(err), true, nil
+			}
 			if err != nil {
 				return "Could not remember that: " + err.Error(), true, nil
 			}
@@ -846,6 +875,9 @@ func (a *Agent) memoryTools() []bare.Tool {
 			if strings.TrimSpace(parsed.Text) == "" {
 				return "Name the line to forget by its words.", true, nil
 			}
+			if !a.memory.typed.Load() {
+				return memoryNotTypedWords, true, nil
+			}
 			receipt, err := a.forgetLine(parsed.Text)
 			if err != nil {
 				return "Could not forget that: " + err.Error(), true, nil
@@ -860,17 +892,26 @@ func (a *Agent) memoryTools() []bare.Tool {
 
 // ── lines said ──────────────────────────────────────────────────────────────
 
-// sayMemory puts one line in front of the person, on the turn's own stream
-// when there is one and on the next turn's when there is not. The hub says
-// whether the line landed, from under its own lock; a line that did not is
-// held for the next turn ([Agent.flushMemoryNotices]).
+// sayMemory puts one line in front of the person: on the turn's own stream
+// when there is one, and otherwise on the standing lane every surface holds for
+// the life of the session ([Agent.WatchTaskUpdates]) — the noticing pass runs
+// after the turn's stream has closed, and the last turn before a person quits
+// has no next turn to carry its line. Only with no surface watching at all is
+// the line held for the next turn ([Agent.flushMemoryNotices]).
 func (a *Agent) sayMemory(text string) {
 	if a.config.bindingOnlyMemory || a.memory == nil {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.hub.send(Event{Kind: EventNotice, Text: text}) {
+	event := Event{Kind: EventNotice, Text: text}
+	if a.hub.send(event) {
+		return
+	}
+	if len(a.taskWatchers) > 0 {
+		for _, watcher := range a.taskWatchers {
+			watcher.send(event)
+		}
 		return
 	}
 	a.memory.mu.Lock()
@@ -1009,7 +1050,7 @@ func (a *Agent) importMemoryFile() {
 	}
 	imported := 0
 	for _, line := range lines {
-		_, _, added, err := a.keep(line, store.MemoryScopeUser, store.OriginPerson, nil)
+		_, _, added, err := a.keepLine(line, store.MemoryScopeUser, store.OriginPerson, nil, true)
 		if err != nil {
 			a.retryImport(fmt.Errorf("importing a memory.md line: %w", err))
 			return

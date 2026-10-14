@@ -354,10 +354,11 @@ func TestOpeningADatabaseFromBeforeOwnersKeepsEveryNote(t *testing.T) {
 	}
 	// AND THE RETIRED COLUMNS AND SEARCH TABLE ARE NOT A REASON TO FAIL: the
 	// counters the old build wrote stay in their columns, read by nothing, and
-	// the search table this build no longer maintains is dropped rather than
-	// left to go stale.
-	if tableExists(t, graph, "memories_fts") {
-		t.Fatal("the upgrade left the retired memory search table behind")
+	// the search table stays for THIS release — an older engine still serving a
+	// workspace writes and reads it, and would fail every memory change without
+	// it (memory.go's [migrateMemoriesSchema]).
+	if !tableExists(t, graph, "memories_fts") {
+		t.Fatal("the upgrade dropped the search table an older engine still uses")
 	}
 }
 
