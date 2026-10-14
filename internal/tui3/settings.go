@@ -261,9 +261,9 @@ var settingUI = map[string]settingMeta{
 			"work and decide, and ask you only when it cannot tell.",
 	},
 	config.KeyMemoryEnabled: {
-		tab: tabSession, label: "memory", widget: widgetCycle,
-		about: "a few things are carried from one conversation to the next. " +
-			"Off, each one starts knowing nothing about you.",
+		tab: tabSession, label: "notice things to remember", widget: widgetCycle,
+		about: "after a turn you typed, codeaf may keep one line you said and tell you. " +
+			"Off, nothing is noticed; the lines you keep still hold.",
 	},
 	// The countdown sits under the gate rows for the same reason the guardian
 	// does: it is not a fourth approval mode but the OTHER clock in the room —
@@ -814,7 +814,7 @@ func (s *sheet) finishCategory() {
 	title := settingTabs[s.tab]
 	shown := make([]sheetItem, 0, len(s.items))
 	if title == tabMemory {
-		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "View saved memories", about: "Inspect, correct or remove saved memories."}})
+		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "Open the Memory tab", about: "See every remembered line, who kept it, and fix, move, forget or put one back (" + placeChord(pageMemory) + ")."}})
 	}
 	advanced := make([]sheetItem, 0)
 	catalog := make([]sheetItem, 0)

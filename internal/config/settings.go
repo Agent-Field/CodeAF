@@ -323,12 +323,13 @@ const (
 	// as the default, silently, the way any word this build does not know reads
 	// ([TaskStartAt]).
 	KeyTaskStart = "task.start"
-	// KeyMemoryEnabled is whether this build remembers anything across
-	// conversations at all (internal/session's memory.go): the pre-turn router
-	// that decides which remembered lines a turn needs, the post-turn pass that
-	// decides whether the exchange held anything worth keeping, and the
-	// `remember` tool the model reaches for. Off is a conversation that starts
-	// knowing nothing about you, and that makes not one extra call.
+	// KeyMemoryEnabled is whether codeaf NOTICES things worth keeping on its
+	// own (internal/session's memory.go): after a turn the person typed, one
+	// small call may keep one line they said, and says so. It governs nothing
+	// else — the lines a person kept ride every conversation whether it is on
+	// or off, and /remember works either way — and it is read live, so a change
+	// applies from the next turn without a restart. The key keeps its old
+	// spelling because profiles on disk carry it.
 	KeyMemoryEnabled = "memory.enabled"
 
 	KeyModelRoles = "models.roles"
@@ -2244,12 +2245,12 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
-			Label: "memory", Choices: MemoryModes,
-			Hint: "when on, codeaf carries a handful of things across conversations: what you " +
-				"asked it to remember, preferences you stated, corrections you made. A small " +
-				"model decides before each message which of them bear on it, and after each " +
-				"answer whether anything new is worth keeping. Off remembers nothing and makes " +
-				"neither call. On is the default; /memories lists what is kept.",
+			Label: "notice things to remember", Choices: MemoryModes,
+			Hint: "when on, after a turn you typed codeaf may keep one line you said that should " +
+				"hold in every conversation — a preference, a rule, a correction — and says so, " +
+				"with /forget to undo it. Off notices nothing; the lines you keep yourself still " +
+				"ride every conversation. Applies from the next turn. The Memory tab lists " +
+				"everything kept.",
 			read:  func() string { return MemoryAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMemoryEnabled, raw, MemoryModes) },
 		},

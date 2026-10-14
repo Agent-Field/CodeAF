@@ -20,16 +20,16 @@ import (
 // conflicts for whoever merges.
 //
 // EVERY DOOR HERE REFUSES RATHER THAN INVENTS. A nil closure is a capability
-// this engine does not have — memory turned off, a build with no index, a world
-// with no ledger — and it is answered as an error so that the surface can tell
-// "there is nothing there" from "nobody asked". That is [Engine.World]'s own
-// law, restated once here and not per method.
+// this engine does not have — a memory store that would not open, a build with
+// no index, a world with no ledger — and it is answered as an error so that the
+// surface can tell "there is nothing there" from "nobody asked". That is
+// [Engine.World]'s own law, restated once here and not per method.
 
 // engineOffWord leads every refusal in this file. It names the MACHINE and not
 // the connection, because that is the fact the surface turns into a sentence: a
-// person reading `memory is off on that machine` has learned something true
-// about the far end, where `memory is off for this session` would have been a
-// claim about a setting nobody consulted (internal/tui3's host.go).
+// person reading `memory is unavailable on this machine` has learned something
+// true about the far end, where a sentence about this window would have been a
+// claim about a store nobody consulted (internal/tui3's host.go).
 const engineOffWord = "engine: "
 
 // placesCall answers the three late places' methods, and says whether the method
@@ -153,7 +153,7 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 			// engine with no store has no snapshot to answer AND no line to
 			// forget, and several sentences about one absence would be several
 			// chances for two screens to say it differently.
-			return nil, true, errors.New(engineOffWord + memoryOffWord)
+			return nil, true, errors.New(engineOffWord + memoryGoneWord)
 		}
 		payload, err := memoryCall(engine.Memory, call)
 		return payload, true, err
@@ -161,7 +161,7 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 		MethodMemoryRememberAlways, MethodMemoryAlways, MethodMemoryMove, MethodMemoryProject:
 		commands, ok := sess.current().(MemoryCommands)
 		if !ok || !commands.Remembers() {
-			return nil, true, errors.New(engineOffWord + memoryOffWord)
+			return nil, true, errors.New(engineOffWord + memoryGoneWord)
 		}
 		payload, err := memoryCommandCall(commands, call)
 		return payload, true, err
@@ -198,11 +198,11 @@ func keepsFolders(agent any) bool {
 // [engineOffWord]'s reason.
 const foldersOffWord = "this engine cannot keep the folders a conversation is about"
 
-// memoryOffWord is the far machine's memory row, off. It is spelled here and
-// matched on the surface ([Client.MemoryOff]) because the surface has to turn it
-// into a sentence of its own — `memory is off on that machine` — rather than
-// draw an engine's error text, which is machinery vocabulary.
-const memoryOffWord = "memory is off on this machine"
+// memoryGoneWord is the far machine's answer when its memory store could not be
+// opened. Memory has no off switch any more — the setting governs only the
+// noticing — so the one way a far engine has no memory is a store that would not
+// open, and this says so in the words the local surface uses for the same fact.
+const memoryGoneWord = "memory is unavailable on this machine · the store could not be opened"
 
 // ── THE SURFACE HALF OF THE FOLDERS ─────────────────────────────────────────
 //

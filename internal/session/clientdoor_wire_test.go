@@ -176,7 +176,6 @@ func clientDoorHasCeiling(t *testing.T, call clientDoorCall) bool {
 	return ok
 }
 
-
 func establishClientDoorRouter(t *testing.T, baseURL string) {
 	t.Helper()
 	lanes.WireSheet(baseURL, "", nil, true)
@@ -596,7 +595,6 @@ func TestTheAutomationJudgmentReachesTheSourceThatServesItsModel(t *testing.T) {
 	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-judge-key", "stub/judge")
 }
 
-
 // A conversation built by the public session door sends the account it was
 // handed, strips the thinking level from the provider's slug, and carries that
 // level beside the slug where the request grammar expects it.
@@ -677,7 +675,6 @@ func TestAnAutomationJudgmentCarriesTheSessionsPublishedPriceCeiling(t *testing.
 		t.Fatalf("the judgment carried no provider.max_price; its provider preferences were %s", call.body["provider"])
 	}
 }
-
 
 func assertOrdinaryClientDoorCall(t *testing.T, call clientDoorCall, key, model string) {
 	t.Helper()

@@ -888,7 +888,7 @@ looks like something to build and still has room to grow (see the keys page). Th
 the one slot and the tag's line wins whenever both would show. While the spelling-out call
 is out, the slot turns a small spinner in front of the same words. Neither ever moves the
 message box: this line is on the frame in every state. A sentence that reads like a rule
-gets no line of its own: a rule is kept with `/always` (*What I remember*).
+gets no line of its own: a rule is kept with `/remember` or `/always` (*What I remember*).
 
 One line in that slot is not about the next keystroke: `alt+l tasks` (`alt+l traffic` in a
 manager's chat), which appears
@@ -3373,7 +3373,7 @@ with `ask here`, is not on it; `/automations` (`alt+7`) lists every one.
 
 **Standing orders are gone**, and with them the column's `standing` section, its
 `+ /standing` door and the `◦ 2 standing orders` line at its foot: what ran on a clock is
-an automation, and a rule is a memory marked always (`/always`). A window that cannot read
+an automation, and a rule is a memory (`/remember`, or `/always`, the same command). A window that cannot read
 automations — a store that would not open, or a `--host` engine on a build without them —
 draws no automations section at all.
 
@@ -3640,16 +3640,15 @@ leaves within milliseconds of the tool result before it.
 Everything else codeaf asks on your behalf during a turn runs **beside** the
 answer, never in front of it:
 
-- the **memory lookup**, picking which remembered lines belong in this message
-  (*What I remember*);
 - the **naming** of the conversation, on your first message (*Why does my tab say
   Untitled*);
 - the **work-or-words judge**, asking whether what you typed was really a job for
   a task (*Tasks*);
 - the **step captions** over a running batch;
 - the **reading of a long answer**, asking what is left of your question;
-- the **keeping pass** after the turn, deciding whether the exchange held anything
-  worth remembering.
+- the **noticing pass** after a turn you typed, deciding whether you said anything
+  that should hold in every conversation — and saying so in the conversation when it
+  keeps a line (*What I remember*).
 
 None of them can delay you, and none of them is thrown away either. A reading that
 answers in time is applied to the step in front of it. One that answers late is

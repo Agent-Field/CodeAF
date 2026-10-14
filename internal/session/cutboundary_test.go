@@ -161,7 +161,6 @@ func TestACutAskedBeforeTheRequestExistsIsSpentByIt(t *testing.T) {
 	}
 }
 
-
 // AND NEITHER IS THE WORD A PERSON SAYS. The model they named rides
 // [Agent.spokenModel] and the next request reads it at the latch, so a word said
 // between two requests is already carried without any cut — and owing one would

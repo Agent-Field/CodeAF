@@ -59,7 +59,6 @@ const (
 // functions read these SAME predicates, which is what makes it impossible for
 // the two to disagree about a tool.
 
-
 // maySeeSettings says whether the settings pair belongs on this belt
 // (tools_settings.go). It comes off inside a task for the sharpest reason on
 // the belt: a node runs in a worktree with nobody watching, so a permanent

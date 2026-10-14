@@ -144,11 +144,11 @@ func TestDefaultEngineMemoryOffIsNotAnEmptyEnabledStore(t *testing.T) {
 		t.Fatal("the ordinary engine handle does not distinguish memory off")
 	}
 	for _, method := range []string{MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories} {
-		if _, err := loop.Client.call(nil, method, "tabs"); err == nil || !strings.Contains(err.Error(), memoryOffWord) {
+		if _, err := loop.Client.call(nil, method, "tabs"); err == nil || !strings.Contains(err.Error(), memoryGoneWord) {
 			t.Fatalf("%s with memory off = %v", method, err)
 		}
 	}
-	if _, err := loop.Client.Snapshot(500); err == nil || !strings.Contains(err.Error(), memoryOffWord) {
+	if _, err := loop.Client.Snapshot(500); err == nil || !strings.Contains(err.Error(), memoryGoneWord) {
 		t.Fatalf("snapshot with memory off = %v", err)
 	}
 }

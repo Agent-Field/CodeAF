@@ -347,7 +347,8 @@ Four kinds of line, newest first, four of them — eight in a tall window — th
 - **an automation's run** — the line its own conversation got,
   `weekly update · done · drafted it`: the last run of each automation, when it ended
   while you were away and is news. A watch's `nothing new` is never a line;
-- **what memory learned or let go** — `learned 2 things, let go of 1`.
+- **what memory kept or let go** — `learned 2 things, let go of 1`: lines kept (by you, the
+  model or noticing) and lines forgotten or replaced since you last closed home.
 
 **Every line is a door.** `enter` on a task opens that task's record, on a file opens the
 file, on an automation's run opens the automations place (`/automations`) and on memory's
@@ -355,8 +356,7 @@ line opens memory.
 
 It is measured from when you last **closed** home; the very first look has no "since" and
 the panel keeps its heading and `what happened while you were away`.
-The memory line is not wired yet: its figures read zero on this surface, and a zero draws
-nothing.
+With nothing kept or let go since then, the memory line draws nothing.
 
 ## Threads, open conversations and recently closed chats — the Home list
 
@@ -657,7 +657,8 @@ conversation), `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automa
   frame under 84 columns the bar has no room for all eight words, and `spend` and
   `settings` fold behind `more ▾`. `/standing` and `/orders` are not commands any more — `/standing` answers
   `there is no command called /standing · / lists them`.
-- **Memory is on the bar**, the fifth word. `/memory` (or `/memories`) and `alt+8` open it.
+- **Memory is on the bar**, the fifth word, always — on a fresh machine too. `/memory`
+  (or `/memories`) and `alt+8` open it.
 
 `tab` returns to Home; `alt+.` shows all eight numbered destinations. Search is on Home:
 type into its box to find a conversation. There is no separate Search tab or `/search`

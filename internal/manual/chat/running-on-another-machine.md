@@ -209,9 +209,9 @@ The **far** machine owns the conversation and everything it touches:
 - connected accounts
 - the harness registry
 - the session file the conversation is written to
-- **your automations and your rules** — reminders, scheduled work and watches, and the
-  memories marked always: the stores they live in, the clock that runs the automations, and
-  the machine they run on (*Automations on another machine*, below)
+- **your automations and your memory** — reminders, scheduled work and watches, and every
+  remembered line: the stores they live in, the clock that runs the automations, and the
+  machine they run on (*Automations on another machine*, below)
 - **the places** — home, tasks and automations all list the far machine's own disk, because
   a place is a listing of a machine and the machine that matters is the one the work is on
   (*The places over --host*, on the Places page)
@@ -483,8 +483,9 @@ does not claim the far registry is empty.
 
 The memory commands are different: this build carries the connected engine's memory state
 and memory doors. `/memory <query>` and `/memories` read that machine's store, while
-`/remember` and `/forget` write it. When memory is really off there, they say exactly:
-`memory is off for this session · turn it on under /settings`.
+`/remember` and `/forget` write it. When that machine's memory store could not be
+opened, they say exactly:
+`memory is unavailable on this machine · the store could not be opened`.
 
 ## Did cache clean delete the laptop cache or the remote machine's cache?
 
@@ -508,10 +509,12 @@ name the connected machine, and say to change the crew there:
 
 ## How does remember over host know whether memory is on?
 
-The connection's welcome carries the connected engine's memory setting, and the memory
-commands use that engine's store. `/remember` and `/forget` write there; `/memories` and
-`/memory <query>` read there. With memory off, the commands and memory place say:
-`memory is off for this session · turn it on under /settings`.
+The connection's welcome says whether the connected engine has its memory store open,
+and the memory commands use that engine's store. `/remember` and `/forget` write there;
+`/memories` and `/memory <query>` read there. Memory has no off switch — the far
+machine's `notice things to remember` row decides only whether that engine keeps lines
+on its own — so the one refusal is a store that would not open:
+`memory is unavailable on this machine · the store could not be opened`.
 
 ## Does subharness know whether the remote machine has saved programs?
 

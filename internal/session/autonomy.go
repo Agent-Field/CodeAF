@@ -144,4 +144,3 @@ func (a *Agent) autonomyFor(kind AskKind) Policy {
 	}
 	return Policy{Kind: PolicyAsk}
 }
-

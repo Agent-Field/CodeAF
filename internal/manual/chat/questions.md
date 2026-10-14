@@ -159,10 +159,11 @@ this way and cannot be changed to automatic.
 
 ## It assumed something wrong
 
-Answer against the model's pick and add why. That explanation becomes a durable
-preference when memory is on, is read back with relevant remembered context, and
-can be removed through the existing forget control. The decision itself remains
-in `decisions.jsonl` as the record of what happened.
+Answer against the model's pick and add why. The decision and your reason are
+kept in `decisions.jsonl` as the record of what happened. An answer is not turned
+into a memory on its own: when the reason should hold in every conversation, say
+"remember that…" or type `/remember <the reason>`, and the conversation says
+`remembered · …`; `/forget` on its own takes it back.
 
 ## A finished task waiting on your word counts as needing you
 
@@ -1444,5 +1445,5 @@ It depends on what was proposed, and the card says which beside `1 Save`:
 
 Saving is not forever: pausing or deleting one later is `/automations`, or asking me
 (*Automations*). A rule such as "always use tabs" is not an automation — it has no
-time and nothing to run — so it is kept as a memory marked always, with `/always`
-(*Rules are not automations*).
+time and nothing to run — so it is kept as a memory, with `/remember` (*Rules are not
+automations*).

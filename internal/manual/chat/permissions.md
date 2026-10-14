@@ -740,8 +740,8 @@ in for you on a call that acts in your name. It does not run on the early-start
 path.
 
 **It is the one thing codeaf asks that really does hold the work up**, and it says
-so while it does. Everything else a turn asks on your behalf — the memory lookup,
-the judges, the reader of a long answer — runs beside your answer and can never
+so while it does. Everything else a turn asks on your behalf — the judges, the
+reader of a long answer, the noticing pass after it — runs beside your answer and can never
 delay it (*Screen*). This one decides whether the command runs at all, so there is
 nothing for it to run alongside. It answers in **ten seconds or not at all**, and
 for the whole of that the status line reads
@@ -797,8 +797,8 @@ A blanket allow — the settings row set to `allow`, or `--yolo` — becomes a
 
 The floor holds under the **default**, and it yields to a rule that **names the
 tool**. `gmail_send:allow` in `tools.approval` runs it silently. So does a
-capability set to `yes`. So does a remembered "always" answer. Nothing else
-lifts it.
+capability set to `yes`. So does a remembered "always" answer to this approval
+question. Nothing else lifts it.
 
 ## Neither floor can be swallowed by "stop asking me"
 
@@ -842,9 +842,11 @@ underneath whatever you wrote:
 - **Reads of this machine** — `read`, `grep`, `find`, `ls`.
 - **`jobs`**, whose list and output are reads of processes you already started.
   Its kill is **not** on the floor; that inherits the blanket mode.
-- **The agent's own bookkeeping** — `remember`, `track` and `recall`. These
-  write to and read from the working state codeaf keeps for itself — but
-  `remember` set to *always* keeps a rule, so it asks: `needs your ok to keep a rule`.
+- **The agent's own bookkeeping** — `track` and `recall`, which write to and read
+  from the working state codeaf keeps for itself, and `remember` and `forget`,
+  which keep or forget one of your memory lines. Neither memory verb is silent:
+  the conversation says `remembered · …` or `forgot · …`, and `/forget` on its own
+  takes it straight back.
 - **`manual`**, which reads pages compiled into this binary and touches no disk
   at all. Asking you to approve codeaf looking up its own documentation would be
   asking about the wrong thing.

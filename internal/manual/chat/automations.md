@@ -18,7 +18,7 @@ you say yes**. `/automations` lists them, with what each one last came to.
 
 They run **only while a codeaf window is open** (*Does it run when codeaf is closed*). A
 rule such as "always use tabs here" is not an automation: it has no time and nothing to
-run, and it is kept as a memory marked always (*Rules are not automations*).
+run, and it is kept as a memory (*Rules are not automations*).
 
 ## How do I check on it later — have codeaf look again at a time, or keep watching and tell me
 
@@ -65,7 +65,8 @@ where (`in your checkout` or `in a separate worktree, kept for review`) and what
 may take and spend: `up to 30m and $5.00 a run`.
 
 **A run is your own conversation, done later.** It has your models, keys, connected
-accounts, memory, the rules you keep with `/always`, and **your own approval rules**.
+accounts, memory — the rules you keep with `/remember` among it — and **your own approval
+rules**.
 Nobody is there to ask, so a call your rules would ask you about is refused, and the first
 such refusal stops the run, naming the call:
 `weekly update · your call · needed your ok to run bash git push`. Allow that call with
@@ -577,13 +578,15 @@ whole of it.
 
 "Always use tabs in this repository", "never force-push a shared branch", "our commits are
 written in the imperative" — these have no time and nothing to run, so they are not
-automations. **They are rules: memories marked always**, put in front of every turn of
-every conversation where they hold, and in the brief of every task started there.
+automations. **They are memories**, and every memory is put in front of every turn of every
+conversation where it holds, and in the brief of every task started there; there is no
+separate "rule" kind.
 
-`/always <text>` keeps one; bare `/always` lists the rules in force here. Said in a
-conversation, I keep one with `remember` set to always, on a card that asks you first.
-*What I remember* — its `Always` sections — has the rest: where a rule holds, how many ride
-along, and switching one off.
+`/remember <text>` (or `/always <text>`, the same command) keeps one; bare `/always` lists
+every line kept here. Said in a conversation, I keep one with `remember`, and the
+conversation says `remembered · <the line> · <where>` — `/forget` on its own takes it back.
+*What I remember* has the rest: where a line holds, how many ride along, and forgetting
+one.
 
 ## How I set one up when you say it — the automation tool, and automation_report
 
@@ -613,8 +616,7 @@ What a standing order did is now one of two things:
 
 - **something on a clock** — a reminder, a routine, a watch — is an **automation**:
   `/automations`, or say it;
-- **a rule** — "always run the tests before you commit" — is a **memory marked always**:
-  `/always`.
+- **a rule** — "always run the tests before you commit" — is a **memory**: `/remember`.
 
 **Standing orders were not carried over.** None of them is listed or changed anywhere in
 codeaf any more: make again, as automations or rules, the ones you still want. Their old

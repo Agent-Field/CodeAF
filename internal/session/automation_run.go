@@ -590,11 +590,11 @@ func automationVerdictWords(reply string) (word, line string) {
 
 // ── the work ────────────────────────────────────────────────────────────────
 
-// automationBinding is the memory posture a run works under. THE PERSON'S RULES
+// automationBinding is the memory posture a run works under. THE PERSON'S LINES
 // HOLD OVER A RUN, AND NOTHING A RUN DOES IS REMEMBERED: the brain is lent
-// read-only ([Config.bindingOnlyMemory]), so the rules marked always are read
-// before the first action and nothing work nobody watched turned up is
-// extracted, promoted or kept. A run with memory off has nothing to lend.
+// read-only ([Config.bindingOnlyMemory]), so the memory block rides in front of
+// the first action and nothing work nobody watched turned up is kept. A run
+// with no memory store has nothing to lend.
 func automationBinding(cfg Config) Config {
 	cfg.bindingOnlyMemory = cfg.Memory != nil
 	return cfg

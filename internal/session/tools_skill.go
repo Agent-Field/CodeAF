@@ -22,7 +22,7 @@ package session
 // nothing to read. So the belt and the page agree by construction:
 // [Config.mayProposeTask] AND a non-nil [Config.skillShelf], which is the
 // predicate the belt fact is composed from (beltfacts.go) and the gate this
-// method reads. With memory off the live door still hands a shelf, so the verb
+// method reads. With no memory store the live door still hands a shelf, so the verb
 // is there whenever the person's skill folders are.
 
 import (

@@ -360,8 +360,8 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// [writeStub], which is a dropping like any other (landing.go).
 	// THE JOURNAL INDEXES INTO THE CONVERSATION INDEX, which is the memory
 	// store for every pre-split caller and its own store where a door opened
-	// one — memory off keeps the conversation searchable (tools_conversations.go
-	// states the order).
+	// one — so a memory store that would not open still leaves the
+	// conversation searchable (tools_conversations.go states the order).
 	agent.chatlog = newChatJournal(config.conversationIndexStore(), agent.threadID(), config.Workspace, config.droppingsPlace())
 	// And the state card is held before any turn has run, so that the note the
 	// first request carries already has it: a resumed conversation's card is what

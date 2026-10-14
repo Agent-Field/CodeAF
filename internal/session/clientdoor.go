@@ -545,8 +545,7 @@ const (
 	// role, the call site writes `callPurpose(roles.RoleX)` and no constant is
 	// declared here — restating a role's string would be the same word in two
 	// places, and the point of a small closed block is that what IS in it stands
-	// out. The memory tidy-up is [roles.RoleConsolidate] and says so at its own
-	// call; the two below are not roles at all.
+	// out. The two below are not roles at all.
 	//
 	// purposeAutomationCheck is one automation watch's judgment: does what its
 	// look saw meet the condition? It is the ONE DELIBERATE DIVERGENCE: the call

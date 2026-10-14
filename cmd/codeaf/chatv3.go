@@ -498,7 +498,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		Agent:             agent,
 		Build:             buildinfo.String(),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
-		// The memory place reads the conversation's store; memory off supplies no seam.
+		// The memory place reads the conversation's store; a store that would not
+		// open supplies no seam.
 		Memory:       v3MemorySeam(cfg.Memory),
 		SearchStatus: v3SearchStatus(cfg.SearchProvider, settings.ProfileDir),
 		// The machine-wide spending ledger the spend place adds up. It is the
@@ -1019,16 +1020,15 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 		WorktreeRoot: place.Trees(),
 		// The durable memory, on the store this time (internal/session's
 		// memory.go). It is opened once, here, because where a person's state
-		// lives is the door's decision — and it is opened AT ALL only when the
-		// memory row is on, which is what makes "memory off makes no calls" a
-		// fact about the wiring instead of a branch every caller has to keep.
+		// lives is the door's decision — and it is opened ALWAYS: the memory row
+		// governs only the noticing pass, which the session reads live, so the
+		// lines a person kept hold whatever the row says.
 		Memory: proc.Memory,
 		// AND THE CONVERSATION INDEX, WHICH IS NOT THE MEMORY ANY MORE. It is
-		// the process's search store — the same handle as Memory when memory
-		// is on, and its own handle of the same file when memory is off — so
-		// the search verb survives the memory row. The chat journal indexes
-		// the conversation into it either way; the memory row now decides
-		// only what is REMEMBERED (internal/session's memory.go).
+		// the process's search store — the same handle as Memory, and its own
+		// handle of the same file only when the memory store would not open —
+		// so the search verb survives that failure. The chat journal indexes
+		// the conversation into it either way.
 		MemoryIndex: proc.Search,
 		// AND THE PROJECT THIS SESSION CAN PROVE IT IS IN. The key is minted
 		// from the workspace's origin remote, or its canonical path when there
@@ -1038,10 +1038,10 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 		// guessing.
 		MemoryProjectKey:  v3ProjectKey(workspace),
 		MemoryProjectName: gitidentity.ProjectName(workspace),
-		// AND THE SKILL SHELF, which is the line above when memory is on and a
-		// shelf of the skill folders alone when it is off ([v3SkillShelf]):
-		// the skills a person installed for another harness are not memory,
-		// and turning memory off never asked for them to go.
+		// AND THE SKILL SHELF, which is the line above, and a shelf of the skill
+		// folders alone when the memory store would not open ([v3SkillShelf]):
+		// the skills a person installed for another harness are not memory, and
+		// a broken store is no reason for them to go.
 		Skills: proc.skillShelf(),
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
@@ -1261,7 +1261,7 @@ func importForeignSkillsBeforeFirstMessage(shelf *store.Store, workspace string)
 }
 
 // v3SkillShelf is the store the skill shelf lives in for one process: the
-// memory store when there is one, and with memory off a store of its own in a
+// memory store when there is one, and without one a store of its own in a
 // fresh temporary folder, which the process removes when it closes. The
 // second answer is the folder it made, so the close knows what to remove; it
 // is empty when the shelf is the memory store.
@@ -2032,11 +2032,13 @@ func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) 
 //     started. Its kill is not on the floor: it inherits the blanket mode,
 //     which asks.
 //
-//   - The agent's own bookkeeping — remember, track and recall. These write to
-//     and read from the memories and working state it keeps for itself
-//     (internal/session's memory.go and state.go); no hand outside this process
-//     reads them, and asking somebody to approve the agent writing itself a
-//     reminder is asking about the wrong thing.
+//   - The agent's own bookkeeping — track and recall, which write to and read
+//     from the working state it keeps for itself (internal/session's state.go),
+//     and remember and forget, which keep or forget one of the person's memory
+//     lines (memory.go). A memory change is never silent: the conversation says
+//     `remembered · …` or `forgot · …`, and a bare /forget takes it straight
+//     back. Asking somebody to approve a change they are shown and can undo
+//     with one word is asking about the wrong thing.
 //
 //   - manual, which reads pages compiled into this binary and touches no disk
 //     at all (internal/session's tools_manual.go). A person who asks "what can
@@ -2081,7 +2083,7 @@ func v3BuiltinApprovals() map[string]any {
 	return map[string]any{
 		"read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
 		"jobs":     "allow",
-		"remember": "allow", "track": "allow", "recall": "allow",
+		"remember": "allow", "forget": "allow", "track": "allow", "recall": "allow",
 		"manual": "allow", "settings": "allow",
 		"team_status": "allow", "team_read": "allow", "team_send": "allow",
 		"team_stop": "allow", "team_post": "allow",

@@ -944,12 +944,11 @@ role**, grouped under the row answering it, saying which model comes out:
 
 | role | row | what it is |
 | --- | --- | --- |
-| `reflex` | reflex | reads every turn for memory — routing and keeping |
+| `reflex` | reflex | reads each finished turn — what to remember, and where the work stands |
 | `title` | small work | the name a session gives itself |
 | `worker` | worker | one node of an adaptive run, and the worker of every task |
 | `guardian` | small work | is this one tool call plainly safe |
 | `router` | small work | whether a turn should have been work |
-| `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
 | `checker` | checker | whether finished-looking work is actually finished (older pins may keep their former spelling) |
 | `vision` | checker | reads images for a model that cannot see them |
@@ -1153,10 +1152,11 @@ travelled**, and where something overrode the pin it prints `pinned <word>` besi
 level that did not go out. A row with no `pinned` word is a row where the pin travelled, and
 that is almost all of them.
 
-Two things can displace a pin, and both name themselves that way. A **reflex** call disables
-thinking because its answer cap is tiny and a thinking pass would leave no room for the
-answer. And a model whose published row says it takes no reasoning knob at all is sent none,
-pin or no pin — a knob that breaks the call is worse than a knob that did not travel.
+One thing can displace a pin, and it names itself that way: a model whose published row
+says it takes no reasoning knob at all is sent none, pin or no pin — a knob that breaks the
+call is worse than a knob that did not travel. (A **reflex** call no longer switches
+thinking off or caps its answer; it asks for a few words of JSON in its prompt and leaves
+how the model thinks to the model.)
 
 One reading that is *not* an override: a model that cannot have its thinking switched off is
 sent the lowest level it offers instead of a switch-off it would refuse, so `off` becomes
@@ -1165,17 +1165,17 @@ sent the lowest level it offers instead of a switch-off it would refuse, so `off
 
 ## Why reflex has its own model class
 
-`reflex` is the only role called **twice on every message** — once
-beside your own model's first request, to pick which remembered lines belong in this one, and
-once after, to decide whether the exchange held anything worth keeping (what-i-remember).
-**Neither of them is ever waited for**: the first used to be, and the answer to every message
-was held behind it for a measured mean of 4.3 seconds. Both now run alongside your answer,
-and what they find is applied to whichever step of the answer is still ahead of them. That is
-why it has a
-class of its own rather than sharing "small work", and why it is the one row where a large
-model is an expensive mistake rather than a preference. Both calls are folded into the
-session's total, not into the message that triggered them, so `/cost` includes them
-without any one message reading as three times the price of its neighbours.
+`reflex` is the role called **after every finished turn**: one call that updates the
+conversation's state card and, on a turn you typed, decides whether you said anything that
+should hold in every conversation (what-i-remember, *Noticing*). **It is never waited for**
+— it runs after the answer is already on your screen. There used to be a second reflex call
+in front of every answer, picking which remembered lines belonged in it, and the answer was
+held behind it for a measured mean of 4.3 seconds; it is gone, because every remembered line
+now rides every conversation. Because it runs on every turn, it has a class of its own
+rather than sharing "small work", and it is the one row where a large model is an expensive
+mistake rather than a preference. The call is folded into the session's total, not into the
+message that triggered it, so `/cost` includes it without any one message reading as twice
+the price of its neighbours.
 
 ## Which model the vision role uses
 
@@ -1300,8 +1300,7 @@ for, and there is no state for "a small thing did not work".
 **Each of these calls also has its own patience**, taken from its row rather than from a
 per-call setting: a reflex call has **45s**, a small-work call **2m**, a checker call
 **5m**, and a planner call **10m**. Some calls set something tighter still and keep it —
-the guardian answers in ten seconds or not at all, the memory lookup moves to another machine
-after **two seconds** and stops after **eighteen**, and the two readers at the end of an
+the guardian answers in ten seconds or not at all, and the two readers at the end of an
 answer get **20s** and **30s**. What this replaced was the ordinary
 five-to-fifteen-minute bound a completion carries, which is right for your own turn and
 absurd for eight words of title.
@@ -1520,7 +1519,7 @@ session runs for itself — naming a conversation, judging a route — still ask
 nothing, because your dial is not spent on a title.
 
 codeaf also leaves generation defaults alone on its own auxiliary calls: task and
-conversation names, reflex sorting, memory upkeep, task planning and checks,
+conversation names, the reflex reading, task planning and checks,
 automations, document parsing, saved harness execution, and resident work all omit output and
 sampling controls unless an operator-facing option supplied one. Context reserves,
 response byte limits, task budgets and deadlines still bound the local process; they are
@@ -2296,7 +2295,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
-| `empty reflex answers` | paid memory-routing or extraction requests that returned no answer |
+| `empty reflex answers` | paid reflex readings after a turn that returned no answer |
 | `time` | how long |
 
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
@@ -2389,7 +2388,7 @@ it — there is a section on that below, `Spend that /cost does not show`.
 
 `empty reflex answers` appears only when that failure happened. Those requests remain in
 the token, call and spend totals because the provider billed them; the separate count says
-that the money bought no memory decision. codeaf retries one such answer with more room,
+that the money bought no reading. codeaf retries one such answer with more room,
 then uses the configured low-tier model for the rest of this session if it is still empty.
 
 **Every line is dropped when its figure is absent.** A provider that publishes no cache
@@ -4108,10 +4107,12 @@ Lean changes four things:
   and the schemas arrive on the next request, in the same turn.
 - `ask` is put straight in the tool list rather than waiting to be fetched, so
   a model that makes one call per message can still put a question to you.
-- Saved memories are off. There is no `remember` verb and no `<memory>` block,
-  and the reply says so plainly if you ask. Nothing is deleted, and a larger
-  model brings them back. The record of what was said is untouched, and still
-  searchable.
+- Your memories still ride: the `<memory>` block is in front of every
+  request, bounded the same as on any window. What is missing is the
+  `remember` and `forget` verbs, so the model cannot keep or forget a line
+  itself — it tells you to use `/remember` or `/forget`, which work as
+  always, and noticing still runs after a turn you typed. The record of what
+  was said is untouched, and still searchable.
 
 The project's own instructions still ride, cut at 2KiB instead of 8KiB, and
 only the first file found of `AGENTS.md` and `CLAUDE.md`. The reply says the
@@ -4130,7 +4131,7 @@ lean.
 
 So an open-weight model with a large window is NOT lean. `glm-5.3-flash` and
 `glm-5.3` are served with 128,000 tokens of room, so they get the full
-page, the full tool list and saved memories, exactly like any other
+page, the full tool list and the memory verbs, exactly like any other
 128,000-token model — including when they are the model the crew picked
 for the `worker` seat, and including when you then choose that same model in
 chat. Open weights are a licence, not a size.
@@ -4232,7 +4233,8 @@ The conversation still works as a chat: the model answers from what it knows and
 you paste in. It cannot open files, run commands or look anything up, and it will say so
 if you ask it to. It is also given a **short chat page** as its instructions instead of
 codeaf's working page — about 2,000 characters rather than 20,000 or more, because the
-working page is almost all about tools — and memory is off, as on a small window. Your
+working page is almost all about tools — with your memories in front of it as on any
+other page, and no verbs to keep or forget one (`/remember` and `/forget` still work). Your
 project's instruction files (AGENTS.md, CLAUDE.md) are not sent to it. The request-size
 check counts only what is really sent. Pick a model that takes tools (`/model`) when you
 need it to work in your files: the next message goes out with the working page and every

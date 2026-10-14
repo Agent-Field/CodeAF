@@ -97,11 +97,11 @@ func TestTheMemoryDoorsWithNoStoreAreRefused(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = loop.Close() })
 	for _, method := range []string{MethodMemoryRememberAlways, MethodMemoryAlways, MethodMemoryMove} {
-		if _, err := loop.Client.call(nil, method, MemoryAlwaysArgs{Text: "use tabs"}); err == nil || !strings.Contains(err.Error(), memoryOffWord) {
+		if _, err := loop.Client.call(nil, method, MemoryAlwaysArgs{Text: "use tabs"}); err == nil || !strings.Contains(err.Error(), memoryGoneWord) {
 			t.Fatalf("%s with no store = %v", method, err)
 		}
 	}
-	if err := loop.Client.UpdateMemory("mem_x", "words"); err == nil || !strings.Contains(err.Error(), memoryOffWord) {
+	if err := loop.Client.UpdateMemory("mem_x", "words"); err == nil || !strings.Contains(err.Error(), memoryGoneWord) {
 		t.Fatalf("the place's fix with no store = %v", err)
 	}
 }

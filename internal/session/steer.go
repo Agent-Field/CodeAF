@@ -331,17 +331,14 @@ func (a *Agent) dropOwedCut(cause error) {
 	}
 }
 
-// The two machine cuts, beside [errSteerCut] which is the person's.
+// The machine's cut, beside [errSteerCut] which is the person's.
 //
-// NEITHER IS A FAILURE AND NEITHER IS SHOWN. A steer says "stop, I am typing";
-// these say "what you are about to be sent has changed" and "somebody has read
-// this turn and it is being handed over", and both are answered by the loop
-// rather than reported to the person — see loop.go's THE ONLY WAIT A PERSON
-// EXPERIENCES law for why the readings behind them are allowed to interrupt work
-// and never to precede it.
-var (
-	errMarkCut   = boundaryCut{errors.New("session: generation cut by the mark's reading")}
-)
+// IT IS NOT A FAILURE AND IT IS NOT SHOWN. A steer says "stop, I am typing";
+// this says "somebody has read this turn and it is being handed over", and it is
+// answered by the loop rather than reported to the person — see loop.go's THE
+// ONLY WAIT A PERSON EXPERIENCES law for why the reading behind it is allowed to
+// interrupt work and never to precede it.
+var errMarkCut = boundaryCut{errors.New("session: generation cut by the mark's reading")}
 
 // boundaryCut is a cut WHOSE REASON RIDES NO TRANSCRIPT, and it is a property of
 // the reading rather than of the moment the cut happens to arrive — which is why

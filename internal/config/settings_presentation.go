@@ -44,9 +44,9 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeySplitPct:
 		p.Hidden = true // Resident-only controls have no live chat consumer.
 	case KeyMemoryEnabled:
-		p.Category, p.Label = "Memory", "remember across chats"
-		p.Description = "Learns useful preferences and corrections from conversations and recalls relevant memories. /memories lets you inspect what is saved. Turning this off does not delete saved memories."
-		p.Activation = "Restart the CLI to apply this to already-open chats"
+		p.Category, p.Label = "Memory", "notice things to remember"
+		p.Description = "After a turn you typed, codeaf may keep one line you said that should hold in every conversation — a preference, a rule, a correction — and tells you in the conversation, with /forget to undo it. Off stops only the noticing: lines you keep with /remember still ride every conversation, and nothing saved is deleted."
+		p.Activation = "Applies from the next turn"
 	case KeyUpdateAuto:
 		p.Label = "automatic updates"
 	case KeyMouse:
@@ -206,7 +206,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	}
 	switch s.Key {
 	case KeyMemoryEnabled:
-		p.Aliases = append(p.Aliases, "remember", "learn", "forget", "recall")
+		p.Aliases = append(p.Aliases, "remember", "learn", "forget", "recall", "memory", "notice", "automatic")
 	case KeyTelemetry:
 		p.Aliases = append(p.Aliases, "analytics", "tracking", "privacy", "data sharing")
 	case KeyTaskMinFreeMB:

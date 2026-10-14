@@ -506,7 +506,6 @@ func (p panicMemory) ChangedSince(since time.Time) (int, int, error) {
 	return 0, 0, nil
 }
 
-
 // A FACT SPELLED TWICE IS A BUG (ARCHITECTURE.md), pinned for the words a strip
 // puts in front of a person.
 //

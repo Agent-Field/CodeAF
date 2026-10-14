@@ -1242,9 +1242,11 @@ type Welcome struct {
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
 
-	// Memory says the conversation's engine has its memory row enabled. It is
-	// carried once so a surface can distinguish an empty store from memory off
-	// without asking from its paint loop.
+	// Memory says the conversation's engine has its memory store open. It is
+	// carried once so a surface can distinguish an empty store from one that
+	// could not be opened without asking from its paint loop. (The memory row no
+	// longer governs this: it decides only whether the engine notices things to
+	// keep on its own.)
 	Memory bool `json:"memory,omitempty"`
 
 	// Teams says this engine ANSWERS THE TEAMS DOORS ([MethodTeamsRead],

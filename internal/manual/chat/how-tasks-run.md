@@ -648,12 +648,11 @@ this conversation exactly as it stands, every result in it, reading none of it a
 (*tasks*, under *Can it keep what it read*). Every other task inherits **not the
 transcript**: one assembled brief is its whole world, and your own message is the first
 part of it (below, under *What the task actually reads*).
-Of what codeaf remembers about you it is given two things: the handful of lines its own
-brief needs — the conversation asks the router once, against that brief, and puts the
-answer at the top of the task's instructions — and your rules, the memories marked always
-that hold where it starts, which close its brief (what-i-remember, under *Always*). The
-task itself never writes a memory — a family of eight tasks would be eight writers on one
-brain, each blind to the others. If it runs on a **different model from the conversation**, its context
+Of what codeaf remembers about you it is given exactly what the conversation carries:
+every line that holds where it starts — for you everywhere, for this machine, and for its
+project — closes its brief, read once when the run begins (what-i-remember, *Does a task
+see my memory?*). The task itself never writes a memory and has no `remember` or `forget`
+— a family of eight tasks would be eight writers on one brain, each blind to the others. If it runs on a **different model from the conversation**, its context
 window is set to 0 rather than reusing a window measured for another model.
 
 **Four tools are missing from its belt:** `watch`, `automation`, and the settings pair
@@ -730,7 +729,7 @@ worker's instructions describe the tools it actually carries:
   The task's checker can independently read the same source.
   It can search all indexed places and open an exchange by
   an opaque source reference. It cannot write memories through that interface.
-  If the parent has memory off and no history source, the tool remains absent.
+  If the parent has no history source, the tool remains absent.
   If task preparation falls back to "Complete the brief and report the result and checks run.",
   the checker receives that referenced brief so it can check the actual request.
   A requested final answer is kept as the task's result; checking it does not

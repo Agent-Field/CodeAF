@@ -349,7 +349,6 @@ func TestAThoughtOnTheScreenIsSomethingTheyHaveRead(t *testing.T) {
 	}
 }
 
-
 // TestThePersonsCutTellsTheRoomTheAttemptIsVoid: the engine empties its four
 // buffers at the top of the next attempt, and the surface only learns that a
 // request it is drawing a clock for is gone if it is told. EventRetrying is that

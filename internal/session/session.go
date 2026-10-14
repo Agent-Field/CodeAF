@@ -1324,20 +1324,18 @@ type Config struct {
 	// Memory, so a door that names no shelf of its own reads the shelf in the
 	// store it remembers into, exactly as every door did before this field.
 	//
-	// IT IS A SEPARATE FIELD BECAUSE SKILLS ARE NOT MEMORY. A person who
-	// turned memory off asked for a conversation that carries nothing about
-	// them across conversations; they did not ask to lose the skills they
-	// installed for Claude Code or Codex, which live in folders on disk and
-	// say nothing about them. So a door with memory off hands no Memory — no
-	// block, no reflex call, no `remember` — and still hands a shelf here:
-	// one that holds only what the folders hold, built from those folders by
-	// the same import pass, and thrown away with the process (cmd/codeaf's
-	// v3SkillShelf). The folders stay the one source of truth either way.
+	// IT IS A SEPARATE FIELD BECAUSE SKILLS ARE NOT MEMORY. A door whose
+	// memory store would not open hands no Memory — no block, no noticing, no
+	// `remember` — and still hands a shelf here: one that holds only what the
+	// skill folders hold, built from those folders by the same import pass, and
+	// thrown away with the process (cmd/codeaf's v3SkillShelf). The folders stay
+	// the one source of truth either way.
 	Skills *store.Store
 
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.
-	// Nil falls back to Memory, so a memory-off root grants no history access.
+	// Nil falls back to Memory, so a root with no memory store grants no
+	// history access.
 	ConversationHistory ConversationHistoryReader
 
 	// MemoryImport is the legacy memory.md this session carries into the store
@@ -1371,9 +1369,9 @@ type Config struct {
 	MemoryProjectName string
 
 	// MemoryIndex is the store THIS SESSION'S CONVERSATION is indexed into,
-	// and it is deliberately not [Config.Memory]: with memory off, the session
-	// writes nothing about the person and still writes its own words where the
-	// next search can find them. Nil indexes nothing, which is a session built
+	// and it is deliberately not [Config.Memory]: when the memory store would not
+	// open, the session still writes its own words where the next search can
+	// find them. Nil indexes nothing, which is a session built
 	// by a caller that opens no store at all.
 	//
 	// Every reader falls back to Memory when this is unset, so a door that
@@ -2617,7 +2615,7 @@ type Agent struct {
 	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
 	// of this conversation posted into the store's thread as it lands, so that a
 	// stub and a fold point at text somebody can still read. It is nil when there
-	// is no store, which is memory off, and it sits outside mu holding its own
+	// is no store, and it sits outside mu holding its own
 	// lock for the reason memory does — its writer outlives the turn.
 	chatlog *chatJournal
 
@@ -3060,7 +3058,7 @@ type Agent struct {
 	// same fact published, so the door that decides whether a pick is NEWS can
 	// compare against the model the work is on rather than the one the session
 	// remembers (steer.go's [Agent.rideModel]).
-	riding string
+	riding   string
 	steering []userMessage
 	// steerGrace is the one armed second look at a correction that arrived
 	// while a foreground bash was still too young to adopt (steer_grace.go).
