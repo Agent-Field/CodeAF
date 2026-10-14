@@ -567,6 +567,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// Automations, read and changed off the same store the conversation
 		// proposes into (chatv3_clock.go).
 		Automations: v3AutomationsSeam(),
+		Notify:      v3NotifyRoute(),
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {

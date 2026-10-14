@@ -59,7 +59,7 @@ There is no argument form. The screen is how you name what you want; a command t
 project name would be asking you to type out the very thing home exists to show you.
 
 Home is the **first place on the top line**, right after the `codeaf` wordmark:
-`home  chats  AI teams  activity  memory  spend  settings`.
+`home  chats  AI teams  activity  memory  automations  spend  settings`.
 The **teams page**, right after it, is where your teams and their managers live.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
@@ -93,7 +93,7 @@ from home stands there as a card. Nothing else stands in it.
 | --- | --- | --- | --- |
 | `projects` | a folder with conversations | no keyboard stop; click selects the next message’s project | never empty — the folder this window opened in is always a row |
 | `sessions` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
-| `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
+| `since you left` | what landed while you were away | opens the record, the file or the place | `what happened while you were away` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
 | `automations` | an automation that will run again — a reminder, scheduled work or a watch — soonest first | opens the automations place | `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"` |
 
@@ -322,7 +322,7 @@ Two reasons, and they are the same reason:
 Home wears two marks and only two: the amber `?` on a row waiting for a person, and that
 spinner. In screen-reader (linear) mode nothing turns at all.
 
-## What did it do while I was away — the since you left panel, what happened while the terminal was shut
+## What did it do while I was away — the since you left panel, what landed while the terminal was shut
 
 **What happened on its own while you were not looking**, under `activity` — in the field
 when it holds anything and in the rail when it does not — headed with how long you were
@@ -354,7 +354,7 @@ file, on an automation's run opens the automations place (`/automations`) and on
 line opens memory.
 
 It is measured from when you last **closed** home; the very first look has no "since" and
-the panel keeps its heading and `what watches and tasks did while the terminal was shut`.
+the panel keeps its heading and `what happened while you were away`.
 The memory line is not wired yet: its figures read zero on this surface, and a zero draws
 nothing.
 
@@ -612,7 +612,7 @@ there is no strip. The rule and a blank come next, three rows, and the page star
 row higher. **Inside a chat** and on every place but home the top line reads:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memory  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
 
 **On home it drops the two counts** and keeps the budget and the clock, because the
@@ -645,16 +645,17 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing and memory go on the tab bar — automations is alt+7, memory alt+8, and the seven words
+## Where did standing and memory go on the tab bar — automations is alt+7, memory alt+8, and the eight words
 
-The top line reads `home  chats  AI teams  activity  memory  spend  settings`. Each place
+The top line reads `home  chats  AI teams  activity  memory  automations  spend  settings`. Each place
 has a digit of its own: `alt+1` home, `alt+2` AI teams, `alt+3` chats (back to your
 conversation), `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations and
 `alt+8` memory.
 
 - **Standing is gone, and automations replaced it.** `/automations` and `alt+7` open the
-  automations place; its word is not one of the seven, and is drawn after them while you
-  are in it. `/standing` and `/orders` are not commands any more — `/standing` answers
+  automations place, and its word is always on the bar, between `memory` and `spend`. On a
+  frame under 84 columns the bar has no room for all eight words, and `spend` and
+  `settings` fold behind `more ▾`. `/standing` and `/orders` are not commands any more — `/standing` answers
   `there is no command called /standing · / lists them`.
 - **Memory is on the bar**, the fifth word. `/memory` (or `/memories`) and `alt+8` open it.
 
@@ -1649,8 +1650,8 @@ this folder as the first row of `projects`.
 
 Three of them. **`alt+1`** goes straight there from anywhere — home is the first word on
 the tab bar, and every place answers to a digit of its own, `alt+1` through `alt+8`
-(automations, the one place not drawn on the bar until you are in it, is `alt+7`; memory is
-`alt+8`).
+(automations is `alt+7` and memory `alt+8`, though they stand in the other order on the
+bar).
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 

@@ -110,15 +110,17 @@ type demoRun struct {
 	took time.Duration
 }
 
-// The lines the clock puts on a run it ended itself. They are unexported in
-// internal/automation (clock.go's lineClosed and lineStopped), so they are
-// spelled here as the person reads them — and so, inline where it is used, is
-// the runner's `needed your ok to run …` (internal/session's
-// automationNeedsLine), which names the tool and then the command.
-const (
-	demoClosedLine  = "codeaf closed before it finished"
-	demoStoppedLine = "stopped by you"
-)
+// The line the clock puts on a run the person stopped. It is unexported in
+// internal/automation (clock.go's lineStopped), so it is spelled here as the
+// person reads it — and so, inline where it is used, is the runner's `needed
+// your ok to run …` (internal/session's automationNeedsLine), which names the
+// tool and then the command.
+//
+// THE FIXTURE HAS NO RUN CODEAF CLOSING CUT OFF. Such a run is paused rather
+// than over: the store makes its automation due again at the moment it was cut
+// off ([automation.Store.Finish]), so the replay's next take would be that
+// pickup rather than the rhythm's next slot, and this replay walks the rhythm.
+const demoStoppedLine = "stopped by you"
 
 // ciRedSight is what the watch on CI saw the time it spoke: gh's own table, as
 // it prints one without a terminal.
@@ -182,7 +184,7 @@ var demoAutomations = []demoAutomation{
 				said: "Fetching first, so the comparison is against what is really on the remote."},
 			{outcome: automation.OutcomeDone, usd: 0.38, took: 9 * time.Minute,
 				detail: "Three branches landed; one of them rewrites docs/HOME.md, which you have open.\nThe other two are under internal/session and change nothing you are holding."},
-			{outcome: automation.OutcomeStopped, usd: 0.12, took: 3 * time.Minute, line: demoClosedLine,
+			{outcome: automation.OutcomeStopped, usd: 0.12, took: 3 * time.Minute, line: demoStoppedLine,
 				detail: "Reading the eleven commits on the release branch, oldest first."},
 			{outcome: automation.OutcomeIncomplete, usd: 0.61, took: 20 * time.Minute, line: "ran out of its 20m",
 				detail: "The suite is still running against the third branch; there is nothing to report until it finishes."},

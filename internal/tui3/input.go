@@ -653,10 +653,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// above it written down before the program ends — is bought by
 		// [app.quit] itself, on this press, and is owed to a real SIGINT too.
 		//
-		// THE ONE EXCEPTION IS A RUN THIS WINDOW WOULD STOP. Closing the last
-		// window stops an automation in hand, so the first press says so and the
-		// second leaves (automationquit.go).
-		return a.requestQuit(quitAgainChord)
+		// AN AUTOMATION IN HAND IS NO EXCEPTION. Automations run only while a
+		// window is open, and closing the last one pauses them: a run it cut off
+		// runs again, once, when a window next opens (internal/automation's
+		// clock.go). Nothing is lost by leaving, so nothing asks first.
+		return a.quit()
 	}
 
 	// THE REWIND TIMELINE IS MODAL AT THIS RUNG AND FOR THE SETTINGS PANEL'S

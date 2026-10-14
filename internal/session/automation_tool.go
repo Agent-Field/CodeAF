@@ -392,10 +392,13 @@ func (a *Agent) automationCostWords(item automation.Automation, now time.Time) s
 	if item.Look == nil || a.config.ModelPrice == nil {
 		return ""
 	}
-	model, err := automationJudgeModel(a.config)
-	if err != nil || strings.TrimSpace(model) == "" {
+	// THE MODEL THE CHECK WILL ACTUALLY ASK: the first rung with a key, which
+	// is the one the clock tries first ([automationJudgeModels]).
+	models, err := automationJudgeModels(a.config)
+	if err != nil || len(models) == 0 || strings.TrimSpace(models[0]) == "" {
 		return ""
 	}
+	model := models[0]
 	prompt, completion, known := a.config.ModelPrice(model)
 	if !known {
 		return ""

@@ -21,8 +21,8 @@ import (
 // circle is the whole set and that every step of it lands.
 
 // TAB WALKS THE WHOLE CIRCLE AND EVERY ROOM ON IT OPENS. On a surface with no
-// brain, no store and nothing run, all four still take the frame — and the three
-// off the bar, reached by their digits, take it too.
+// brain, no store and nothing run, every room on the bar still takes the frame —
+// and a room off the bar, reached by its digit, would take it too.
 func TestTabWalksEveryPlaceAndEachOneOpens(t *testing.T) {
 	a := placeApp(t)
 	ring := barPages(pageHome, false)

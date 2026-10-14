@@ -13,14 +13,12 @@ import (
 // v3AutomationsSeam), over a store a test owns: THE REAL STORE, so what these
 // tests read is what a window reads and not a second answer to it.
 func automationsSeamOf(store *automation.Store) AutomationsSeam {
-	presence := automation.NewPresence(store.Root())
 	return AutomationsSeam{
 		List:      store.List,
 		Runs:      store.Runs,
 		Changes:   store.Changes,
 		Cursor:    store.Cursor,
 		Active:    store.Active,
-		Windows:   presence.Count,
 		Create:    store.Create,
 		Update:    store.Update,
 		SetStatus: store.SetStatus,

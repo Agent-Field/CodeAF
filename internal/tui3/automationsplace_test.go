@@ -23,7 +23,7 @@ var (
 )
 
 func init() {
-	osNotify = func(title, body string) bool {
+	osNotify = func(title, body, _ string) bool {
 		raisedMu.Lock()
 		defer raisedMu.Unlock()
 		raised = append(raised, title+" — "+body)
@@ -346,54 +346,20 @@ func TestARunsBannerIsRaisedOnceAcrossWindows(t *testing.T) {
 	}
 }
 
-// LEAVING SAYS WHAT IT WOULD STOP, ONCE. The last window open with a run in
-// hand warns on ctrl+c, and the same key again leaves.
-func TestQuitWarnsOnceWhenItWouldStopARun(t *testing.T) {
+// LEAVING NEVER ASKS, A RUN IN HAND OR NOT. Closing codeaf pauses automations
+// and a run it cuts off runs again when a window next opens, so ctrl+c at rest
+// leaves on its first press with nothing said.
+func TestQuitLeavesAtOnceWithARunInHand(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	a.watch.known, a.watch.running, a.watch.others = true, 1, 0
-	if cmd := a.requestQuit(quitAgainChord); cmd != nil {
-		t.Fatal("the first ctrl+c left with a run in hand")
-	}
-	if notes := homeNotes(a); !strings.Contains(notes, "1 automation is running — quitting stops it"+quitAgainChord) {
-		t.Fatalf("the warning reads %q", notes)
-	}
-	cmd := a.requestQuit(quitAgainChord)
+	a.watch.running = 1
+	_, cmd := a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("the second ctrl+c did not leave")
+		t.Fatal("ctrl+c at rest with a run in hand did not leave")
 	}
 	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Fatal("the second ctrl+c did not quit")
+		t.Fatal("ctrl+c at rest with a run in hand did not quit")
 	}
-}
-
-// AND IT DOES NOT WARN WHEN NOTHING WOULD STOP: another window keeps the clock
-// going, and a reading that has not landed is not grounds for a warning.
-func TestQuitDoesNotWarnWhenNothingWouldStop(t *testing.T) {
-	for name, set := range map[string]func(a *app){
-		"another window open": func(a *app) { a.watch.known, a.watch.running, a.watch.others = true, 1, 1 },
-		"nothing running":     func(a *app) { a.watch.known, a.watch.running = true, 0 },
-		"no reading yet":      func(a *app) { a.watch.running = 1 },
-	} {
-		t.Run(name, func(t *testing.T) {
-			a := newTestApp(&fakeAgent{model: "m"})
-			set(a)
-			if cmd := a.requestQuit(quitAgainChord); cmd == nil {
-				t.Fatal("a quit that would stop nothing warned")
-			}
-		})
-	}
-}
-
-// AND A WARNING GOES STALE: the same key ten seconds later warns again rather
-// than leaving on a press somebody made for another reason.
-func TestAQuitWarningGoesStale(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	now := time.Now()
-	a.clock = func() time.Time { return now }
-	a.watch.known, a.watch.running = true, 1
-	a.requestQuit(quitAgainChord)
-	now = now.Add(quitArmedFor + time.Second)
-	if cmd := a.requestQuit(quitAgainChord); cmd != nil {
-		t.Fatal("a stale warning still let the key leave")
+	if notes := homeNotes(a); strings.Contains(notes, "quitting stops") {
+		t.Fatalf("leaving still warned: %q", notes)
 	}
 }

@@ -492,6 +492,13 @@ Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot 
 connected machine's build cache and refuse before touching this machine's cache. The
 answer names the connected machine and says to change it there.
 
+## Why won't /permissions show the rules on the machine I connected to with --host?
+
+`/permissions` has no wire door yet. Over `--host` it reads and changes neither machine's
+rules: it names the connected machine and says `change it on that machine`. The rules that
+decide what a hosted conversation may do are the far machine's own, and its approvals are
+asked in this window as usual (*Approvals over --host*).
+
 ## Why didn't /crew pin change the crew on the remote machine?
 
 `/crew` has no far-profile door yet. Over `--host`, the panel and every shortcut —
@@ -653,10 +660,11 @@ that machine for as long as its connection lasts, once per window however many
 conversations it has open. A window opened on that machine itself counts too. Nothing is
 run for them on the machine you are sitting at.
 
-**Closing the last attached window stops a run in progress there.** Half a minute after the
-last window on that machine is gone, its clock stops whatever is running, records it as
+**Closing the last attached window pauses a run in progress there.** Half a minute after
+the last window on that machine is gone, its clock stops whatever is running, records it as
 `stopped · codeaf closed before it finished`, and runs nothing more until a window is back.
-A slot missed in the meantime runs once, marked late, when one is. The same half minute is
+Then the cut-off run runs again, once, and a slot missed in the meantime runs once, marked
+late. The same half minute is
 what carries a dropped `--host` link that reconnects: the window counts again once it is
 back.
 

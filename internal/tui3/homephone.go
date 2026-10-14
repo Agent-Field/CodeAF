@@ -388,7 +388,7 @@ func (h *homeView) phoneNotes() []homePhoneNote {
 	if !h.seen.IsZero() {
 		for _, item := range h.autos {
 			last := item.Last
-			if last == nil || !last.Outcome.Delivered() || !last.Finished.After(h.seen) {
+			if last == nil || !last.News() || !last.Finished.After(h.seen) {
 				continue
 			}
 			out = append(out, homePhoneNote{words: automationRunWords(item, *last), at: last.Finished, project: placeAutomationsWord})

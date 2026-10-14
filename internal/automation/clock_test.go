@@ -199,8 +199,13 @@ func TestClockStopsWorkWhenTheLastWindowCloses(t *testing.T) {
 		t.Fatal("the clock kept running with no window open")
 	}
 	runs, _ := r.store.Runs(a.ID, 5)
-	if runs[0].Outcome != OutcomeStopped || runs[0].Line != lineClosed || runs[0].USD != 0.3 {
+	if runs[0].Outcome != OutcomeStopped || runs[0].Line != LineClosed || runs[0].USD != 0.3 {
 		t.Fatalf("the interrupted run reads %+v", runs[0])
+	}
+	// AND IT IS PAUSED, NOT OVER: the automation is due again, for the next
+	// window's clock to run once.
+	if got, err := r.store.Get(a.ID); err != nil || got.Status != StatusActive || got.Next.After(time.Now()) {
+		t.Fatalf("after the window closed on a run the automation is %+v, %v", got, err)
 	}
 	r.done <- nil // the cleanup waits on it
 }
@@ -422,51 +427,51 @@ func TestWatchWorkGetsTheEvidence(t *testing.T) {
 	}
 }
 
-// THE MEMORY PASS RIDES THE CLOCK: asked while a window is open, once per
-// [tidyEvery] and never twice at once, and its line goes to the clock's log.
-func TestTheClockAsksTheMemoryPassWhileAWindowIsOpen(t *testing.T) {
+// A CLOCK FOLLOWS THE NEWEST WINDOW'S ENVIRONMENT. Started from a shell without
+// the person's key, it would fail every check for as long as any window stayed
+// open; when a window started in a different environment opens and nothing is
+// in hand, it leaves so that window starts the next one. A window that says
+// nothing about its environment is never followed.
+func TestAClockLeavesForANewerWindowsEnvironment(t *testing.T) {
 	fast(t)
-	root := t.TempDir()
-	store, err := Open(root)
+	s, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	release, err := NewPresence(root).Hold("test window")
+	defer s.Close()
+	presence := NewPresence(s.Root())
+	old, err := presence.HoldAs(Window{Label: "the shell without the key", Env: "aaaa"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer release()
-	asked := make(chan struct{}, 4)
-	var logged []string
-	var logMu sync.Mutex
-	clock := &Clock{Store: store, Presence: NewPresence(root), Runner: &fakeRunner{},
-		Tidy: func(context.Context) (Tidied, error) {
-			asked <- struct{}{}
-			return Tidied{Merged: 2}, nil
-		},
-		Log: func(line string) { logMu.Lock(); logged = append(logged, line); logMu.Unlock() },
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+	defer old()
+	quiet, _ := presence.Hold("a window that says nothing")
+	defer quiet()
 	done := make(chan error, 1)
+	clock := &Clock{Store: s, Presence: presence, Runner: &fakeRunner{}, Env: "aaaa", Log: func(line string) { t.Log("clock: " + line) }}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() { done <- clock.Run(ctx) }()
 	select {
-	case <-asked:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the clock never asked the memory pass")
+	case err := <-done:
+		t.Fatalf("the clock left with its own environment newest (%v)", err)
+	case <-time.After(100 * time.Millisecond):
 	}
-	cancel()
-	if err := <-done; err != nil {
+	time.Sleep(5 * time.Millisecond) // a later Started than the first window's
+	newer, err := presence.HoldAs(Window{Label: "the shell with the key", Env: "bbbb"})
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer newer()
 	select {
-	case <-asked:
-		t.Fatal("the pass was asked twice inside one tidy interval")
-	default:
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the clock left with %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the clock kept running under the older window's environment")
 	}
-	logMu.Lock()
-	defer logMu.Unlock()
-	if len(logged) == 0 || logged[len(logged)-1] != "consolidated · 2 merged" {
-		t.Fatalf("the pass's line did not reach the log: %q", logged)
+	if newest, ok := presence.Newest(); !ok || newest.Env != "bbbb" {
+		t.Fatalf("the newest window is %+v, %v", newest, ok)
 	}
 }

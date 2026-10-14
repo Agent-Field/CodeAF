@@ -39,18 +39,29 @@ func NewPresence(root string) *Presence {
 	return &Presence{dir: filepath.Join(root, windowsDir)}
 }
 
-// Window is what one open window says about itself, for the person reading the
-// folder and for nothing else: liveness is the lock, never these fields.
+// Window is what one open window says about itself. Liveness is the lock,
+// never these fields.
 type Window struct {
 	PID     int       `json:"pid"`
 	Label   string    `json:"label,omitempty"`
 	Started time.Time `json:"started"`
+	// Env is a salted fingerprint of the environment the window was started
+	// in — the provider keys and codeaf's own variables, never their values —
+	// so the clock can tell that the newest window would hand a run a
+	// different key than the one it was started with ([Clock.Env]). Empty says
+	// nothing, and a window that says nothing is never followed.
+	Env string `json:"env,omitempty"`
 }
 
 // Hold registers one open window until release is called or the process ends.
 // label says what it is ("window", "attached from laptop.local") for anybody
 // reading the folder.
 func (p *Presence) Hold(label string) (release func(), err error) {
+	return p.HoldAs(Window{Label: label})
+}
+
+// HoldAs is [Presence.Hold] with everything the window says about itself.
+func (p *Presence) HoldAs(w Window) (release func(), err error) {
 	if p == nil {
 		return func() {}, errors.New("automations: no presence folder")
 	}
@@ -71,7 +82,7 @@ func (p *Presence) Hold(label string) (release func(), err error) {
 		_ = os.Remove(path)
 		return func() {}, fmt.Errorf("automations: hold a window: %w", err)
 	}
-	body, _ := json.Marshal(Window{PID: os.Getpid(), Label: strings.TrimSpace(label), Started: time.Now()})
+	body, _ := json.Marshal(Window{PID: os.Getpid(), Label: strings.TrimSpace(w.Label), Started: time.Now(), Env: strings.TrimSpace(w.Env)})
 	_, _ = file.Write(body)
 	done := false
 	return func() {
@@ -128,4 +139,41 @@ func (p *Presence) alive(path string) bool {
 		return false
 	}
 	return filelock.IsBusy(err)
+}
+
+// Newest is the most recently opened window that said what environment it was
+// started in, and false when no open window did. The clock follows it
+// ([Clock.Env]), and a window starts a clock only when it is that window or
+// shares its environment, so two windows from two shells never take turns.
+func (p *Presence) Newest() (Window, bool) {
+	if p == nil {
+		return Window{}, false
+	}
+	entries, err := os.ReadDir(p.dir)
+	if err != nil {
+		return Window{}, false
+	}
+	var newest Window
+	found := false
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".lock") {
+			continue
+		}
+		path := filepath.Join(p.dir, entry.Name())
+		if !p.alive(path) {
+			continue
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var w Window
+		if json.Unmarshal(body, &w) != nil || strings.TrimSpace(w.Env) == "" {
+			continue
+		}
+		if !found || w.Started.After(newest.Started) {
+			newest, found = w, true
+		}
+	}
+	return newest, found
 }

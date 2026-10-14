@@ -79,11 +79,13 @@ notification. Opening a conversation shows the lines for runs that ended while
 it was closed. A watch's quiet looks ("nothing new") are never news; its row
 says when it last looked.
 
-**Closing codeaf** with a run in progress, from the last open window, warns
-first: `1 automation is running — quitting stops it · ctrl+c again to quit`
-(`· /quit again to quit` when it was `/quit`). The same gesture within ten
-seconds quits; the clock then stops the run and records it as stopped. Closing
-the terminal outright cannot warn; the run is stopped and recorded the same way.
+**Closing codeaf pauses automations** (the owner's ruling, 2026-10-14). Quitting
+never asks: the clock stops a run in progress, records it as stopped, and makes
+its automation due again, so the run picks up once when a window next opens —
+late, like a missed slot. The cut-off attempt is told to nobody. (The first
+build warned `1 automation is running — quitting stops it · ctrl+c again to
+quit` and recorded the run as over; the warning was taken out as one more thing
+to read for a consequence that no longer loses anything.)
 
 ### The words
 
@@ -94,7 +96,8 @@ The run words are the task-state words (`docs/design/task-states/DESIGN.md`):
 | done | `done` — a reminder said, work reported finished, a watch spoke | yes |
 | your call | `your call · needed your ok to run gh pr list` | yes |
 | incomplete | `incomplete · ran out of its 30m` / `· a fault: …` / `· it ended without saying how it went` | yes |
-| stopped | `stopped · by you` / `· codeaf closed before it finished` | yes |
+| stopped | `stopped · by you` | yes |
+| stopped, cut off | `stopped · codeaf closed before it finished` — runs again on reopen | no |
 | couldn't check | `couldn't check · no API key` (a watch) | yes |
 | nothing new | `nothing new` (a watch looked; condition not met, or still met) | no |
 
@@ -189,9 +192,18 @@ project, and retire on their own schedule.
   most two pieces of work and four looks at once), and honours stop requests.
 - With no window open it waits a 30s grace (a window restarting onto a new build
   closes and reopens its presence in that time), then stops every run — recorded
-  `stopped · codeaf closed before it finished` — and exits.
+  `stopped · codeaf closed before it finished`, with its automation due again at
+  that moment — and exits.
 - On start it closes runs a previous clock left `running` (that process is gone:
   the lock proved it), the same way.
+- It follows the newest window's environment. Every window writes a salted
+  fingerprint of the environment codeaf reads for keys into its presence file
+  (never a value); a window starts a clock only when it is the newest or shares
+  its fingerprint, and a running clock whose fingerprint differs from the
+  newest window's leaves when nothing is in hand. A key exported in one shell
+  and not another used to decide, by which window opened first, whether every
+  watch could be judged. It also re-reads the profile's key and connected
+  services before every run.
 - It retires when its binary has been replaced and nothing is running; the next
   window check starts the new build.
 
@@ -260,12 +272,17 @@ from the database, windows on another machine through one wire call,
 - refreshes the list and the counts;
 - raises a desktop notification for a delivered run — once per run per machine
   (the run's `told` column is claimed in the store, and only the window whose
-  claim lands raises it) — through `osascript` on macOS and `notify-send` on
-  Linux, and the terminal's own notification escape where neither answers;
-  never while the window is known to be focused.
-
-The quit question reads the same snapshot: runs in progress, and the windows
-open other than this one.
+  claim lands raises it), focused or not. It goes through the terminal where the
+  terminal raises one — iTerm2's OSC 9; OSC 777 for Ghostty, kitty, WezTerm and
+  foot — because that banner brings back the tab when clicked; otherwise through
+  `osascript` on macOS (as Script Editor, with a sound) and `notify-send` on
+  Linux (with the logo), and the terminal's escape where neither answers. A
+  codeaf-branded banner on macOS needs a Developer ID-signed helper: macOS 26
+  silently refuses notification permission to an ad-hoc-signed applet or
+  bundle (tried 2026-10-14). The first banner on a machine is followed, once,
+  by a line naming the sending application, linked to System Settings →
+  Notifications;
+- says the run's line on the message line of home or a place in front.
 
 ## Rules become memories marked always
 
@@ -306,10 +323,11 @@ named a standing item keep the row; it resolves to nothing.
 
 **Re-homed, not deleted:**
 
-- The memory tidy, which rode the standing pass, rides the clock: asked every
-  five minutes while a window is open, one at a time and bounded to two
-  minutes, and it keeps its own gates — fifteen quiet minutes on the machine
-  and six hours since the last pass.
+- The memory tidy, which rode the standing pass, rode the clock until
+  2026-10-14: asked every five minutes while a window was open, one at a time
+  and bounded to two minutes, behind its own gates. The memory rework ruled out
+  automatic changes to what is remembered that nobody sees, so the clock stopped
+  asking for it, and the session's half of the pass goes with that rework.
 - Home's `ask here` errands, which lived under the standing root, live in
   `~/.codeaf/v3/errands`. The launch sweep reaps one that went nowhere after a
   week, unless an automation was saved from it, because "open where it was

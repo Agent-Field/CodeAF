@@ -398,16 +398,22 @@ var placeRegistry = map[page]place{}
 var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageAutomations, pageMemory}
 
 // placeBarOrder groups daily work before utilities. Memory stays discoverable
-// even before the first saved memory; automations remain available in the map.
-var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageAutomations}
+// even before the first saved memory, and automations sit beside it on the bar
+// from the first launch: a reminder said in a conversation has to have
+// somewhere visible to be found again, and a word that appeared only while a
+// person stood in it was a place nobody knew was there.
+var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageAutomations, pageSpend, pageSettings}
 
-const placeBarPlaces = 7
+// placeBarPlaces is how many of [placeBarOrder] the bar draws at rest. It is
+// all of them; [barPages] still knows how to lend the bar a room that is off
+// it, for the day one is added that does not fit.
+const placeBarPlaces = 8
 
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
 // the others — a bar with no word lit is a bar that does not know where you
-// are. With the map up (`every`) it is all of them, numbered, so the two that
-// are off the bar are on the one surface whose job is to show every key.
+// are. With the map up (`every`) it is all of them, numbered, so a room off the
+// bar would still be on the one surface whose job is to show every key.
 func barPages(here page, every bool) []page {
 	if every {
 		return placeBarOrder
@@ -2001,7 +2007,15 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// line, so its keys are read by the same grammar ([paintHint]) rather than
 	// dimmed flat, and the door's clause keeps the colour every other key on
 	// this surface wears.
-	return " " + a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim)), true
+	line := a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim))
+	// AND A LINE THAT NAMES SOMEWHERE TO GO CARRIES THE WAY THERE: the address
+	// [app.tellHere] was handed with it, for as long as the line still says it.
+	// It wraps the line whole, after the fitting, because a link occupies no
+	// cells (opener.go's [linkify]).
+	if a.msgLink != "" && msg == a.msgLinkFor && path == "" {
+		line = linkify(line, a.msgLink)
+	}
+	return " " + line, true
 }
 
 // ── opening a place ─────────────────────────────────────────────────────────
@@ -2212,8 +2226,8 @@ func (a *app) placeBodyWheel(delta int) (tea.Cmd, bool) {
 // from the last. `back` is `shift+tab`, the same circle walked the other way.
 //
 // THE CIRCLE IS THE BAR ([barPages]). `tab` is the bar walked by a key, so it
-// goes where the words are: the four, and the room you are standing in when it
-// is one of the three off the bar — from which `tab` goes on to home.
+// goes where the words are, and from a room off the bar, were there one, it
+// goes on to home.
 func nextPage(at page, back bool) page {
 	// `tab` walks the rooms, and the chats are the way out of them rather than
 	// one of them (place_chats.go), so the walk steps over the word.

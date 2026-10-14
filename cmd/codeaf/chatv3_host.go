@@ -786,6 +786,9 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// laptop's, which run somewhere else. The linked-local road puts its own
 		// machine's store back on top ([openChatV3Local]).
 		Automations: hostAutomationsSeam(client, welcome),
+		// AND THE BANNERS ARE THIS MACHINE'S: they are raised by this window, in
+		// the terminal in front of the person, whichever machine ran the run.
+		Notify: v3NotifyRoute(),
 		// ── WHAT THE CONNECTION ITSELF SAYS ─────────────────────────────────
 		//
 		// The four facts only a connection has: the sentence to draw while a

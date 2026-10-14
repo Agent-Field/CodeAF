@@ -809,26 +809,36 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	}
 }
 
-// Daily work precedes utilities on the bar, including discoverable memory.
-// Numbered shortcuts retain their previous destinations.
+// Daily work precedes utilities on the bar, including discoverable memory and
+// the automations beside it. Numbered shortcuts retain their previous
+// destinations.
+//
+// EIGHT WORDS NEED EIGHTY-FOUR COLUMNS. At eighty the two utilities on the
+// right fold behind `more ▾`, and nothing a person can reach is lost: the fold
+// is a door onto exactly them (navmore.go).
 func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
-	for _, width := range []int{80, 120, 200} {
+	for _, width := range []int{84, 120, 200} {
 		bar := navPlaces(a, width, false)
-		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Spend", "Settings") {
-			t.Fatalf("at %d columns the bar is not the six places in order: %q", width, bar)
-		}
-		for _, id := range []page{pageAutomations} {
-			if strings.Contains(bar, navLabel(id)) {
-				t.Fatalf("at %d columns the bar still carries %q: %q", width, id.word(), bar)
-			}
+		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Automations", "Spend", "Settings") {
+			t.Fatalf("at %d columns the bar is not the eight places in order: %q", width, bar)
 		}
 	}
-	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
-	// lit is a bar that does not know where you are.
-	walkTo(t, a, pageAutomations)
-	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Settings  Automations") {
-		t.Fatalf("standing in automations, the bar does not say so: %q", bar)
+	bar := navPlaces(a, 80, false)
+	if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Automations") {
+		t.Fatalf("at 80 columns the bar does not keep the automations beside memory: %q", bar)
+	}
+	if !pagesHold(a.navMore.folded, pageSpend) || !pagesHold(a.navMore.folded, pageSettings) {
+		t.Fatalf("at 80 columns spend and settings are neither on the row nor behind more: %q %v", bar, a.navMore.folded)
+	}
+	// AND THE AUTOMATIONS ARE ON IT BEFORE ANYBODY HAS STOOD IN THEM. A word
+	// that appeared only while a person was in it was a room nobody knew was
+	// there.
+	if a.page == pageAutomations {
+		t.Fatal("the lab opened on the automations, which proves nothing about the bar at rest")
+	}
+	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Memory  Automations  Spend") {
+		t.Fatalf("at rest the bar does not carry the automations between memory and spend: %q", bar)
 	}
 }
 

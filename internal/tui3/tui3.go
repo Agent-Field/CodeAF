@@ -1146,6 +1146,11 @@ type Options struct {
 	// window with automations off: no page, no lines, no notifications.
 	Automations AutomationsSeam
 
+	// Notify is how this window's desktop notifications reach the screen, read
+	// by the door from the terminal it was started in ([DetectNotifyRoute]).
+	// The zero value is the operating system's notifier, keeping nothing.
+	Notify NotifyRoute
+
 	// Teams is where the teams file and the Traffic logs are: the profile of
 	// the machine the SESSION runs on, because the team tools a model calls
 	// keep them there ([TeamsSeam] says what each function owes).

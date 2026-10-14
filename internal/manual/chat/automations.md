@@ -103,13 +103,23 @@ files look stays inside the project, lists at most 2,000 files, and says which a
 changed or gone since the last look. Prefer a command whose output carries the thing
 itself — a status field, a file's contents — rather than a bare exit code.
 
-## Will a watch retry if my API key is missing or the provider is disconnected — couldn't check
+## Will a watch retry if my API key is missing or the provider is disconnected — couldn't check, no API key
 
 Every look a watch takes is judged by a model — the low-tier one codeaf uses for its own
-small checks, the same for every watch — through your own keys and connected accounts.
-With no key, or with the
-provider that serves that model disconnected or failing, the look still runs and cannot be
-judged: it ends `couldn't check` with the reason (`couldn't decide: …`), and **it changes
+small checks (the `sentinel` role), the same for every watch — through your own keys and
+connected accounts. **It uses the key your conversations use.** A model on a service that
+has no key is passed over, down to the model you chat with, so a cheap model on a service
+you never connected does not stop a check your own model can answer.
+
+The clock reads the key the way a conversation does: `OPENROUTER_API_KEY` (or
+`OPENAI_API_KEY`) from the environment, then the key saved in your profile, then your
+connected services, read again before every run. A key exported in one shell and not in
+another follows the **newest open window**: when a window started in a different
+environment opens, the clock hands over to it as soon as nothing is running.
+
+With no key anywhere, or with every provider that could judge it disconnected or failing,
+the look still runs and cannot be judged: it ends `couldn't check` with the reason —
+`couldn't decide: no key for <model>: connect <service>, or set a key in /settings` — and **it changes
 nothing about what the watch has seen**, so it neither speaks nor forgets.
 
 Nothing is retried in between. The next look on its rhythm simply tries again, so setting
@@ -190,9 +200,10 @@ refused: `the rhythm "0 0 30 2 *" never happens`. A rhythm under a minute is ref
 
 ## /automations — see every automation, when it runs next, how it last went, and what its mark or dot means
 
-`/automations` opens the list — so does `alt+7`, or the `automations` heading on home. It is
-not one of the tab bar's words until you are in it. One row per automation: its mark, its
-title, and one dim sentence — its kind, its schedule, where it is now, and its last run:
+`/automations` opens the list — so does `alt+7`, the `Automations` word on the tab bar
+(between `Memory` and `Spend`), or the `automations` heading on home. One row per
+automation: its mark, its title, and one dim sentence — its kind, its schedule, where it is
+now, and its last run:
 
 ```
 weekly update   scheduled work · every Monday at 09:00 · next Mon 12 Oct at 09:00 · last done
@@ -290,17 +301,18 @@ are. From inside that conversation it says `you are already in it`. You can also
 | `nothing new` | a watch looked and the condition was not met, or still holds since it last spoke |
 | `your call` | work stopped on a call only you could allow: `needed your ok to run bash git push`; or did not start because today's spending limit is reached |
 | `incomplete` | work did not finish: `ran out of its 30m`, `reached its $5.00 cap`, `a fault: …`, its own summary, or `it ended without saying how it went` |
-| `stopped` | `stopped by you`, `codeaf closed before it finished`, or `the automation was deleted` |
+| `stopped` | `stopped by you`, `the automation was deleted`, or `codeaf closed before it finished` — and that last one runs again when a window next opens |
 | `couldn't check` | a watch could not look or be judged: `couldn't look: …`, `couldn't decide: …`, `ran out of time`, or why the model could not tell |
 
 A run that started more than two minutes after its time adds `late` and how late it was:
 `late 2h`, `late 3d`. A run you asked for with `r` is never late.
 
 Every one but `nothing new` is news: a line in the conversation that made it, and — except
-`stopped`, which you or closing codeaf caused — a desktop notification. There is no
-`failed`: a run that did not finish says why in its line.
+`stopped`, which you caused — a desktop notification. A run closing codeaf cut off is not
+news at all: it is paused, and the run that picks it up is the one you hear about. There is
+no `failed`: a run that did not finish says why in its line.
 
-## Where does the news arrive — the line in the conversation, and the desktop notification
+## Where does the news arrive — the line in the conversation, on the page you are on, and the desktop notification
 
 **In the conversation that made it.** When a run ends, one dim line appears there:
 `weekly update · done · drafted it`, `ci on main · done · CI on main is red`. It is not part
@@ -311,17 +323,43 @@ open, within a couple of seconds — every run worth telling you about that ende
 last wrote there, up to the last ten of each automation. A line a window has already drawn
 is not drawn again when you switch back. Its history on `/automations` has every run.
 
+**On the page you are on.** While home or a place is in front — `/automations` after `r`,
+say — the same line is said on that page's message line, so `r` is answered where you
+pressed it. Another conversation in front gets the notification, not the line: its
+transcript is not where another conversation's news belongs.
+
 **On the desktop.** A run that is news raises one notification, titled `codeaf · <title>`
-with the same line as its text: on macOS through `osascript`, on Linux through
-`notify-send` when it is installed, and otherwise through the terminal's own notification
-escape — the one a finished turn uses, which some terminals never show. It is raised **once
-per run per machine**, by whichever open window claims it first, and not at all while the
-window is known to have your keyboard: you are already looking. A `stopped` run and a
-watch's `nothing new` raise none. There is no setting for it.
+with the same line as its text, **whether or not codeaf is the window you are looking at**
+— a reminder is the one banner you asked for. It is raised **once per run per machine**, by
+whichever open window claims it first. A `stopped` run and a watch's `nothing new` raise
+none, and neither does a run closing codeaf cut off. There is no setting for it.
+*Desktop notifications* says which application sends them and how to turn them on.
 
 **Elsewhere.** Home's `since you left` panel has a line for each automation whose last run
 was news and ended while you were away, opening `/automations`; `/status` has an
 `automations` line; and a conversation's side column lists the automations it set up.
+
+## Desktop notifications — no notification, which app sends them, the sound, the logo, and what clicking one opens
+
+**Through your terminal, where it can raise one.** In iTerm2 the banner comes from iTerm2
+(its own `OSC 9`), and in Ghostty, kitty, WezTerm and foot from that terminal (`OSC 777`):
+it carries the terminal's icon and sound, and **clicking it brings back the window and the
+tab codeaf is in**. Every other terminal — Apple's Terminal among them, and anything inside
+tmux — sends it through the operating system: on macOS through `osascript`, so it comes
+from **Script Editor**, plays the `Glass` sound when your settings allow notification
+sounds, and clicking it opens Script Editor, which codeaf cannot change; on Linux through
+`notify-send`, with codeaf's logo, when it is installed.
+
+**No notification?** macOS keeps a new sender quiet until you allow it. The first banner a
+machine raises is followed, once, by a line naming the application —
+`desktop notifications come from iTerm2 · not seeing them? allow iTerm2 in notification settings`
+— and on home or a place a click on that line (`cmd`-click in most terminals) opens System
+Settings → Notifications. In iTerm2, the profile's *Terminal → Notifications* setting must
+also let escape sequences send them.
+
+**No codeaf logo on macOS.** macOS 26 lets only an application signed with an Apple
+Developer ID ask to send notifications, so a banner of codeaf's own waits on a signed
+helper. Windows has no desktop banner: the lines are the news there.
 
 ## Automations on home — when does my reminder go off, the automations panel, /status and since you left
 
@@ -374,33 +412,30 @@ next slot is the first after now: a weekly report after a fortnight away is writ
 not twice. A one-time reminder whose moment passed is never dropped; it is said when you
 come back.
 
-**Closing the last window stops a run in progress.** After that half minute — the grace
-that lets a window restart onto a new build — the run is stopped and recorded as
-`stopped · codeaf closed before it finished`. It is not run again; its next slot comes as
-usual.
+**Closing the last window pauses a run in progress.** After that half minute — the grace
+that lets a window restart onto a new build — the run is stopped, and it **runs again,
+once, when a window is next open**, marked `late` when that is more than two minutes later.
+Its history keeps both: `stopped · codeaf closed before it finished`, then the run that
+picked it up. Nothing asks before you close, and the cut-off attempt raises no line and no
+notification.
 
 To keep automations running, keep a codeaf window open: on this machine, or attached to
 another machine with `--host` or `--at`, which keeps that machine's automations running
 (*Automations on another machine*). A conversation its engine goes on holding after you
 closed its window is not an open window, and does not keep them running.
 
-## Quitting while an automation is running — 1 automation is running, quitting stops it
+## Quitting while an automation is running — does closing codeaf stop it
 
-Leaving the last codeaf window while a run is in hand says so once instead of leaving:
+**Quitting never asks.** `ctrl+c` at rest and the last `/quit` leave at once, an automation
+running or not. Closing codeaf **pauses** automations: a run it cut off runs again, once,
+when a window is next open (*Does it run in the background when codeaf is closed*), and
+what falls due while it is closed catches up the same way. With another codeaf window still
+open, closing this one stops nothing at all.
 
-```
-1 automation is running — quitting stops it · ctrl+c again to quit
-```
-
-With more than one it reads `2 automations are running — quitting stops them`. The second
-half names the gesture you used — `· /quit again to quit` after the last `/quit` — and the
-same gesture again within ten seconds leaves. Leaving stops the run and records it as
-`stopped · codeaf closed before it finished`.
-
-It asks only when it is true. With another codeaf window open, closing this one stops
-nothing, and it leaves at once; so does a window that has not read the automations yet.
-Closing the terminal outright, or a signal from outside, cannot ask: the run is stopped and
-recorded the same way.
+The cut-off attempt says nothing — no line, no notification. Its history on `/automations`
+keeps it as `stopped · codeaf closed before it finished`, beside the run that picked it up.
+(Until 2026-10-14 the first `ctrl+c` warned `1 automation is running — quitting stops it`
+and only the second left.)
 
 ## Several windows, codeaf clock, CODEAF_HOME and CODEAF_NO_AUTOMATIONS — which window runs them, and where they are kept
 
@@ -484,9 +519,9 @@ quote inside one.
 
 The title comes straight after `add`. The words, each with one value:
 
-- **when** — `at` (`18:00` today, `"tomorrow 18:00"`, `2026-10-12T09:00`), `in` (`20m`,
-  `2h`, `1d`), or `every` (an interval, or a cron line in quotes); `zone` (`America/Toronto`)
-  is read first;
+- **when** — `at` (`18:00` or `6pm` today, `tomorrow 9am`, `monday 9am` — the next one —
+  `2026-10-12T09:00`; no quotes needed), `in` (`20m`, `2h`, `1d`), or `every` (an interval,
+  or a cron line in quotes); `zone` (`America/Toronto`) is read first;
 - **what** — `say "<line>"` or `do "<brief>"`;
 - **a watch** — `look "<command>"` or `files "<pattern>"`, `until "<condition>"`, and `once`;
 - **where and how much** — `worktree` or `checkout`, `time 45m`, `usd 2.50`, `folder ~/code/app`.
@@ -517,7 +552,7 @@ A line that cannot be read says why and saves nothing:
 
 - `add needs a title first: add "weekly update" every "0 9 * * 1" do "…"`
 - `unknown word "daily" — the words are title, at, in, every, zone, say, do, look, files, until, time, usd, folder, once, worktree, checkout`
-- `cannot read the moment "6pm" — say 18:00, "tomorrow 18:00" or 2026-10-12T09:00`
+- `cannot read the moment "someday" — say 18:00, 6pm, tomorrow 9am, monday 9am or 2026-10-12T09:00`
 - `Sat 10 Oct 09:00 has already passed`
 - `a watch needs a rhythm to look on` · `a watch needs the condition it is looking for`
 - `an automation needs something to say or something to do`

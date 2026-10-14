@@ -48,9 +48,9 @@ still draws the strip along the top, and the keys row under the box reads `alt+l
 once the session has tasks to come back to and no running-turn line owns that row.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, AI
-teams, activity, automations, memory, spend and settings. Six are on the tab bar with the
-way back to the chats, `Home  Chats  AI teams  Activity  Memory  Spend  Settings`, and
-`Automations` joins it only while you are in it; `tab` walks the rooms on the bar.
+teams, activity, automations, memory, spend and settings. All seven are on the tab bar with
+the way back to the chats, `Home  Chats  AI teams  Activity  Memory  Automations  Spend
+Settings`; `tab` walks the rooms on the bar.
 `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump straight to any of those seven or back
 to the chats from wherever you are standing, a place or a conversation — `alt+7` is
 automations — and each has commands of its own (`/home`, `/teams`, `/history`,
@@ -106,7 +106,7 @@ navigation from reading. The strip is that chat's row. Home, teams, sessions, sp
 settings and every other place do not draw it:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memory  spend  settings                 $1.20 / $20 · thu 10:31pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings                 $1.20 / $20 · thu 10:31pm
      openrouter price scrape       Refactor the rail scope...      Shipping the parser ×   +   ▦ All
   ──────────────────────────────────────────────────────────────────────────────────────────────────
 ```
@@ -293,11 +293,8 @@ row, and a working one is answered by the card below. `/quit` and `ctrl+c` end t
 program, ask
 their own question about work in flight, and act on every conversation this window holds
 at once. Closing a tab never quits codeaf, and quitting is not what any of the card's
-three answers does. With an automation running and no other codeaf window open, the
-first `ctrl+c` at rest, or the last `/quit`, only says
-`1 automation is running — quitting stops it · ctrl+c again to quit`
-(`· /quit again to quit` after `/quit`), and the same gesture within ten seconds leaves
-(*Automations*).
+three answers does. An automation running is no reason to ask: closing codeaf pauses it,
+and a run it cut off runs again when a window is next open (*Automations*).
 The session cancels its routing-cache refresh and waits for that refresh's remaining
 local writes before shutdown completes.
 
@@ -1442,7 +1439,7 @@ The top line is the program's name and the places on the left, and the machine's
 signs on the right:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memory  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
 ```
 
 When there is not room for all of it, things give way **one at a time, in a fixed order**

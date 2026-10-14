@@ -120,8 +120,18 @@ func ParseCommand(line string) (Command, error) {
 			if len(rest) == 0 {
 				return Command{}, fmt.Errorf("%s needs a value after it", word)
 			}
-			cmd.clauses = append(cmd.clauses, clause{word: word, value: rest[0]})
-			rest = rest[1:]
+			value, used := rest[0], 1
+			if word == "at" {
+				// A MOMENT MAY BE SEVERAL WORDS WITHOUT QUOTES — `at tomorrow
+				// 6pm`, `at monday 9am` — so `at` reads up to the next word
+				// this line knows. A moment never contains one of them.
+				for used < len(rest) && !contains(clauseValued, strings.ToLower(rest[used])) && !contains(clauseFlags, strings.ToLower(rest[used])) {
+					value += " " + rest[used]
+					used++
+				}
+			}
+			cmd.clauses = append(cmd.clauses, clause{word: word, value: value})
+			rest = rest[used:]
 		default:
 			return Command{}, fmt.Errorf("unknown word %q — the words are %s", word, strings.Join(ClauseWords(), ", "))
 		}
@@ -297,8 +307,11 @@ func CommandLine(a Automation) string {
 // clock in the schedule's zone, to the minute.
 const momentLayout = "2006-01-02T15:04"
 
-// parseMoment reads `18:00` (today), `tomorrow 18:00`, `2026-10-12T09:00`,
-// `2026-10-12 09:00`, or a full RFC 3339 time with its own offset.
+// parseMoment reads a moment the way a person types one: a time of day —
+// `18:00`, `6pm`, `6:30pm`, `18` — today, or after `today`, `tomorrow` or a
+// day of the week (`monday 9am`, `fri 17:30`, the next one to come); a date and
+// a time, `2026-10-12T09:00` or `2026-10-12 09:00`; or a full RFC 3339 time
+// with its own offset.
 func parseMoment(text string, now time.Time, loc *time.Location) (time.Time, error) {
 	text = strings.TrimSpace(text)
 	if at, err := time.Parse(time.RFC3339, text); err == nil {
@@ -309,15 +322,90 @@ func parseMoment(text string, now time.Time, loc *time.Location) (time.Time, err
 			return at, nil
 		}
 	}
-	day := now.In(loc)
-	clock := text
-	if rest, ok := strings.CutPrefix(strings.ToLower(text), "tomorrow "); ok {
-		day, clock = day.AddDate(0, 0, 1), strings.TrimSpace(rest)
+	refuse := fmt.Errorf("cannot read the moment %q — say 18:00, 6pm, tomorrow 9am, monday 9am or 2026-10-12T09:00", text)
+	words := strings.Fields(strings.ToLower(text))
+	if len(words) == 0 || len(words) > 3 {
+		return time.Time{}, refuse
 	}
-	if t, err := time.Parse("15:04", clock); err == nil {
-		return time.Date(day.Year(), day.Month(), day.Day(), t.Hour(), t.Minute(), 0, 0, loc), nil
+	today := now.In(loc)
+	day, ahead, named := today, 0, false
+	switch first := words[0]; {
+	case first == "today":
+		named = true
+	case first == "tomorrow":
+		day, named = today.AddDate(0, 0, 1), true
+	default:
+		if weekday, ok := weekdayNamed(first); ok {
+			ahead = (int(weekday) - int(today.Weekday()) + 7) % 7
+			day, named = today.AddDate(0, 0, ahead), true
+		}
 	}
-	return time.Time{}, fmt.Errorf("cannot read the moment %q — say 18:00, \"tomorrow 18:00\" or 2026-10-12T09:00", text)
+	clockWords := words
+	if named {
+		clockWords = words[1:]
+	}
+	hour, minute, ok := clockOf(strings.Join(clockWords, ""))
+	if !ok {
+		return time.Time{}, refuse
+	}
+	at := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, loc)
+	// A DAY OF THE WEEK IS THE NEXT ONE TO COME: `monday 9am` said on a Monday
+	// afternoon is next Monday, not a moment that has already passed.
+	if named && words[0] != "today" && words[0] != "tomorrow" && ahead == 0 && !at.After(today) {
+		at = at.AddDate(0, 0, 7)
+	}
+	return at, nil
+}
+
+// clockOf reads a time of day with no spaces in it — `18:00`, `6pm`, `6:30am`,
+// `18` — as an hour and a minute.
+func clockOf(text string) (int, int, bool) {
+	half := ""
+	if rest, ok := strings.CutSuffix(text, "am"); ok {
+		text, half = rest, "am"
+	} else if rest, ok := strings.CutSuffix(text, "pm"); ok {
+		text, half = rest, "pm"
+	}
+	hourText, minuteText, hasMinute := strings.Cut(text, ":")
+	hour, err := strconv.Atoi(hourText)
+	if err != nil || hourText == "" {
+		return 0, 0, false
+	}
+	minute := 0
+	if hasMinute {
+		if len(minuteText) != 2 {
+			return 0, 0, false
+		}
+		if minute, err = strconv.Atoi(minuteText); err != nil || minute < 0 || minute > 59 {
+			return 0, 0, false
+		}
+	}
+	switch half {
+	case "am", "pm":
+		if hour < 1 || hour > 12 {
+			return 0, 0, false
+		}
+		hour %= 12
+		if half == "pm" {
+			hour += 12
+		}
+	default:
+		if hour < 0 || hour > 23 {
+			return 0, 0, false
+		}
+	}
+	return hour, minute, true
+}
+
+// weekdayNamed reads a day of the week, whole or by its first three letters.
+func weekdayNamed(word string) (time.Weekday, bool) {
+	for day := time.Sunday; day <= time.Saturday; day++ {
+		name := strings.ToLower(day.String())
+		if word == name || word == name[:3] {
+			return day, true
+		}
+	}
+	return 0, false
 }
 
 // parseDistance reads a positive duration, with "d" for a day.

@@ -57,6 +57,12 @@ func canonicalEnvironment(workspace string) string {
 	return strings.Join(lines, "\n")
 }
 
+// EnvironmentMAC is the fingerprint of the environment codeaf reads for
+// providers and settings, under a caller's salt: no value is ever in it, and
+// two processes with the same salt and the same keys answer the same bytes.
+// The automations clock compares windows with it (cmd/codeaf's chatv3_clock.go).
+func EnvironmentMAC(salt []byte, workspace string) []byte { return environmentMAC(salt, workspace) }
+
 func environmentMAC(salt []byte, workspace string) []byte {
 	mac := hmac.New(sha256.New, salt)
 	_, _ = mac.Write([]byte(canonicalEnvironment(workspace)))

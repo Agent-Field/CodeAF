@@ -1,18 +1,18 @@
 # Places
 
-## What a place is, and the seven of them
+## What a place is, and the eight of them
 
 A **place** is a full-screen view in codeaf. The main bar groups your daily work first, then utilities:
 
-`Home` · `Chats` · `AI teams` · `Activity` · `Memory` · `Spend` · `Settings`
+`Home` · `Chats` · `AI teams` · `Activity` · `Memory` · `Automations` · `Spend` · `Settings`
 
-AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memory is always available, including before anything has been saved. Automations are reached through `/automations`, `alt+7` and the map; their word joins the bar only while that place is open.
+AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memory is always available, including before anything has been saved, and Automations stands beside it from the first launch — `/automations` and `alt+7` reach it too. Eight words need 84 columns; on a narrower frame the words on the right fold behind `more ▾`, which opens onto exactly the ones it folded.
 
 They are drawn on the **top line of every page**, right after the `codeaf` wordmark, on a
 place and in a conversation alike. This manual still calls that row of words **the bar**:
 
 ```
- >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings      3 moving · $1.20  thu 10:31pm
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Automations  Spend  Settings      3 moving · $1.20
 ──────────────────────────────────────────────────────────────────────────────────────────
 ```
 

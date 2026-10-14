@@ -440,14 +440,11 @@ running keeps going and is there when you open the workspace again; work running
 this terminal stops with it. While a turn is running `ctrl+c` interrupts the turn instead,
 and that press does not leave.
 
-**The one warning is a running automation.** Automations run only while a codeaf window is
-open, so with a run in hand and no other codeaf window open, the press that would leave —
-`ctrl+c`, or the `/quit` that closes the last conversation — says
-`1 automation is running — quitting stops it · ctrl+c again to quit` instead
-(`· /quit again to quit` after `/quit`). The same gesture again within ten seconds leaves,
-and the run is recorded as `stopped · codeaf closed before it finished`. Nothing else is
-asked or named first. The keys page has the whole rule under "Quitting codeaf", and
-*Automations* the rest.
+**A running automation is no reason to ask.** Automations run only while a codeaf window is
+open, and closing the last one pauses them: a run it cuts off runs again, once, when a
+window is next open, and nothing is said about the cut-off attempt. Nothing is asked or
+named first. The keys page has the whole rule under "Quitting codeaf", and *Automations*
+the rest.
 
 ## /new — start another conversation in this project
 
@@ -1319,7 +1316,7 @@ box, opens it on a one-conversation machine and on an empty one alike, and over 
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the seven words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+of the eight words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,

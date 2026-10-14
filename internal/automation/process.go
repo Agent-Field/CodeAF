@@ -78,8 +78,14 @@ func Startable(binary string) bool {
 // Keep holds one open window until release is called, and keeps a clock
 // running while it does: start is called now and every keepEvery after.
 func Keep(root, label string, start func() error) (release func(), err error) {
+	return KeepAs(root, Window{Label: label}, start)
+}
+
+// KeepAs is [Keep] with everything the window says about itself
+// ([Window.Env] above all).
+func KeepAs(root string, w Window, start func() error) (release func(), err error) {
 	presence := NewPresence(root)
-	letGo, err := presence.Hold(label)
+	letGo, err := presence.HoldAs(w)
 	if err != nil {
 		return func() {}, err
 	}

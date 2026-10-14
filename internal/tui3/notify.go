@@ -81,7 +81,7 @@ func (a *app) notifyDone() tea.Cmd {
 	if a.focused {
 		return nil
 	}
-	return tea.Raw(notifySeq(notifyTitle, a.notifyBody()))
+	return tea.Raw(a.pingSeq(notifyTitle, a.notifyBody()))
 }
 
 // notifyBehind is the banner for a conversation this process holds and is not
@@ -98,7 +98,7 @@ func (a *app) notifyBehind(held *kept, word string) tea.Cmd {
 	if name != "" {
 		name += " · "
 	}
-	return tea.Raw(notifySeq(notifyTitle, name+word))
+	return tea.Raw(a.pingSeq(notifyTitle, name+word))
 }
 
 // agentTitle is the name a conversation gave itself, or "" for one that has not
@@ -138,7 +138,7 @@ func (a *app) notifyAsk() tea.Cmd {
 	if a.focused {
 		return nil
 	}
-	return tea.Raw(notifySeq(notifyTitle, a.notifyName()+notifyAskWord))
+	return tea.Raw(a.pingSeq(notifyTitle, a.notifyName()+notifyAskWord))
 }
 
 // notifyName is the conversation's name and the separator that follows it, or
@@ -153,6 +153,17 @@ func (a *app) notifyName() string {
 		return ""
 	}
 	return name + " · "
+}
+
+// pingSeq is the sequence a turn's banner rides on this terminal: iTerm2's own
+// OSC 9 where that is the terminal (desktopnotify.go's [NotifyRoute]), and OSC
+// 777 everywhere else — which is also what a terminal the door could not name
+// is sent, because a terminal that does not know it prints nothing.
+func (a *app) pingSeq(title, body string) string {
+	if a.notifyRoute.Escape != "" {
+		return a.notifyRoute.escapeFor(title, body)
+	}
+	return notifySeq(title, body)
 }
 
 // notifySeq builds the sequence. The two fields are sanitized for the one
