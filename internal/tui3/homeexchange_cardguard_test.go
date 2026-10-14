@@ -46,7 +46,7 @@ func askCard(t *testing.T) (*app, *errandLab, *homeExchange, *time.Time) {
 // three. After `o` the pane says `type the change and press enter`, and the
 // sentence a person types is a time — so it is full of digits. The card went on
 // owning `1`, `3` and `0` while it waited for that sentence: `make it 10
-// tomorrow` answered the card yes at its `1`, saved the reminder as first
+// tomorrow` answered the card yes at its `1`, set up the reminder as first
 // proposed, and dropped the rest of the words.
 func TestTypingACorrectionNeverAnswersTheCard(t *testing.T) {
 	a, lab, ex, now := askCard(t)
@@ -69,7 +69,7 @@ func TestTypingACorrectionNeverAnswersTheCard(t *testing.T) {
 		t.Fatal("the card stopped waiting for its correction while it was being typed")
 	}
 	drive(t, a, key("enter"))
-	if len(lab.agent.answered) != 1 || lab.agent.answered[0].Change != words || lab.agent.answered[0].FirstKey() == session.AutomationSaveKey {
+	if len(lab.agent.answered) != 1 || lab.agent.answered[0].Words() != words || lab.agent.answered[0].FirstKey() == session.AutomationSaveKey {
 		t.Fatalf("enter did not send the whole correction, the agent saw %+v", lab.agent.answered)
 	}
 }
@@ -171,7 +171,7 @@ func TestACorrectionNeverAnswersAnApprovalBesideTheCard(t *testing.T) {
 
 // TestTheCardSettlesAgainAfterAnApprovalHidIt is the settle guard re-armed. An
 // approval hides the card's answers; when it is answered they come back under
-// the hand that answered it, so a `1 1` allows the call and must not also save
+// the hand that answered it, so a `1 1` allows the call and must not also set up
 // the reminder in the same instant.
 func TestTheCardSettlesAgainAfterAnApprovalHidIt(t *testing.T) {
 	a, gated, ex, now := askGated(t, nil)

@@ -195,30 +195,6 @@ pane, because the model is answering it.
 The digits belong to a card only while it is still a question. With no card up, or with an
 answered one on screen, `3` in the middle of "make it 3pm" is just a `3`.
 
-**Your answer is kept on the card itself.** Nothing is added above the message box of the
-conversation you open next — it used to show there for half a minute as a decision line,
-about a conversation that never asked.
-
-## Why didn't my key answer the card in ask here — the quarter-second guard
-
-**A key pressed within a quarter of a second of the card's answers being drawn is
-ignored**, and so is a click. It was aimed at whatever was there before — usually a
-follow-up you were typing, or a command's approval you had just answered — so a `1` meant
-for something else cannot save anything. Press it again. A card that arrived while you
-were in another conversation counts from when you first see it, and one whose answers an
-approval hid counts again from when they come back.
-
-## I typed a new time and it set up the reminder anyway — it saved it — typing a change in ask here
-
-**While you are writing a change after `o`, every key is text.** "make it 10 tomorrow" goes
-into the box whole and `enter` sends it; until then neither the card nor a command's
-approval beside it takes a digit. Send or clear the sentence, and their keys are theirs
-again.
-
-It used to answer: the `1` was taken as yes, the reminder was saved as first proposed and
-the rest of the sentence was lost — and with an approval up beside the card, the `1`
-allowed the command.
-
 ## Why did my reminder card disappear when I opened another chat — it does not any more
 
 It used to, and that was a defect. The exchange lived on the home screen, so closing home —
@@ -334,6 +310,30 @@ Going means its session is closed. **Nothing is deleted and the folder does not 
 **Quitting the window that holds it ends every exchange**, including one still working — the
 turn is interrupted and the session closed — and a card still waiting is then never
 answered, so nothing is saved from it.
+
+## Why didn't my key answer the card in ask here — the quarter-second guard
+
+**A key pressed within a quarter of a second of the card's answers being drawn is
+ignored**, and so is a click. It was aimed at whatever was there before — usually a
+follow-up you were typing, or a command's approval you had just answered — so a `1` meant
+for something else cannot save something. Press it again. A card that arrived while you
+were in another conversation counts from when you first see it, and one whose answers an
+approval hid counts again from when they come back.
+
+**Your answer is kept on the card itself.** Nothing is added above the message box of the
+conversation you open next — it used to show there for half a minute as a decision line,
+about a conversation that never asked.
+
+## I typed a new time and it set up the reminder anyway — typing a change in ask here
+
+**While you are writing a change after `o`, every key is text.** "make it 10 tomorrow" goes
+into the box whole and `enter` sends it; until then neither the card nor a command's
+approval beside it takes a digit. Send or clear the sentence, and their keys are theirs
+again.
+
+It used to answer: the `1` was taken as `Save`, the reminder was saved as first proposed
+and the rest of the sentence was lost — and with an approval up beside the card, the `1`
+allowed the command.
 
 ## Ask here needs your permission to run a command — approve or deny it in the pane
 
