@@ -1055,6 +1055,12 @@ var ModelPoolChoices = []string{"on", "read", "off"}
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
 	"CODEAF_BASE_URL",
+	// GUI launches restore the login PATH once; this startup opt-out has no editable row.
+	"CODEAF_NO_LOGIN_ENV",
+	// The native app passes its credential disk policy to child processes at launch.
+	AppModeEnv,
+	// The Apps Builder reads this launch override outside the shared model slots.
+	"CODEAF_APPS_BUILDER_MODEL",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.
 	"CODEAF_CODEX_ISSUER",

@@ -122,7 +122,7 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 		registered[name] = true
 	}
 
-	pattern := regexp.MustCompile(`CODEAF_[A-Z0-9_]+`)
+	pattern := environmentPinPattern()
 	root := repositoryRoot(t)
 	seen := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
@@ -164,6 +164,31 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 		}
 		t.Fatalf("%s (%s) is neither a settings row nor operator plumbing — register it in settings.go",
 			name, path)
+	}
+}
+
+func environmentPinPattern() *regexp.Regexp {
+	// Shell output markers may contain the prefix without naming an environment variable.
+	return regexp.MustCompile(`\bCODEAF_[A-Z0-9_]+\b`)
+}
+
+func TestEnvironmentPinScanMatchesCompleteNames(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		want         []string
+	}{
+		{"lookup", `os.LookupEnv("CODEAF_NO_LOGIN_ENV")`, []string{"CODEAF_NO_LOGIN_ENV"}},
+		{"comment", "// CODEAF_HOME moves the store.", []string{"CODEAF_HOME"}},
+		{"markers", `"__CODEAF_ENV_START__" + "__CODEAF_ENV_END__"`, nil},
+		{"identifier", "MY_CODEAF_HOME", nil},
+		{"mixed", `"__CODEAF_ENV_START__"; os.Getenv("CODEAF_HOME"); os.Getenv("CODEAF_BASE_URL")`, []string{"CODEAF_HOME", "CODEAF_BASE_URL"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := environmentPinPattern().FindAllString(tt.source, -1)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("environment pins = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
