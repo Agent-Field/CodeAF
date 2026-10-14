@@ -807,11 +807,17 @@ func TestStatusSaysNoneWhenNothingHoldsTheWorkspace(t *testing.T) {
 	shortEngineHome(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// The status door names the workspace by its resolved path (#1761); the
+	// expectation follows the same spelling rather than the one typed in.
+	resolved, err := engineWorkspace(home)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var out strings.Builder
 	if err := runEngineStatus(&out, home); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(out.String()); got != "no engine is holding "+home+" on this machine" {
+	if got := strings.TrimSpace(out.String()); got != "no engine is holding "+resolved+" on this machine" {
 		t.Fatalf("status of an empty workspace said %q", got)
 	}
 }

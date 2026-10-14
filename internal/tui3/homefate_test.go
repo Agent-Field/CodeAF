@@ -190,19 +190,25 @@ func TestTheStoreLandingKeepsHomesSheetAboutTheNextConversation(t *testing.T) {
 // /project WITH A PATH TAKES THE PATH AND OPENS NOTHING. A person who typed the
 // folder has already answered the question the browser exists to ask, and the
 // pin is a string on this window rather than a round trip — so the keys row
-// says the new folder on the very next frame.
+// says the new folder on the very next frame. The pin names the FOLDER the path
+// reaches, not the spelling that was typed (#1761), so the expectation resolves
+// the fixture path the same way the pin does.
 func TestProjectWithAPathAtHomePinsItWithoutTheBrowser(t *testing.T) {
 	a, _, root := mixedLab(t)
 	runCmd(a.openHome())
 
 	inner := filepath.Join(root, "here", "inner")
 	runCmd(a.homeSlash("/project " + inner))
+	pinned, err := filepath.EvalSymlinks(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if a.folder.open {
 		t.Fatal("/project <path> opened the browser instead of taking the path")
 	}
-	if a.target.where != inner {
-		t.Fatalf("/project <path> pinned %q, want %q", a.target.where, inner)
+	if a.target.where != pinned {
+		t.Fatalf("/project <path> pinned %q, want %q", a.target.where, pinned)
 	}
 	if !a.at(pageHome) {
 		t.Fatal("/project <path> left home")
