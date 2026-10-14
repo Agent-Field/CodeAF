@@ -301,7 +301,7 @@ func (a *app) notifyAutomation(item automation.Automation, run automation.Run) t
 		return nil
 	}
 	title := "codeaf · " + strings.TrimSpace(item.Title)
-	body := automationRunWords(item, run)
+	body := automationBannerBody(item, run)
 	route, first := a.notifyRoute, a.notifyFirst
 	return func() tea.Msg {
 		if !seam.Claim(run.ID) {
@@ -318,6 +318,32 @@ func (a *app) notifyAutomation(item automation.Automation, run automation.Run) t
 		}
 		return msg
 	}
+}
+
+// bannerRunes is how much of a run's result a banner carries: about the two
+// lines a banner shows before it cuts the text itself.
+const bannerRunes = 180
+
+// automationBannerBody is what a run's banner says under its title: what it came
+// to and as much of the result as a banner shows — the report's own words when
+// the run wrote one, not only its first line, and never the title again, which
+// the banner already leads with.
+func automationBannerBody(item automation.Automation, run automation.Run) string {
+	out := run.Outcome.Word()
+	if late := run.Late(); late > 0 {
+		out = joinDot(out, "late "+automationLate(late))
+	}
+	text := strings.TrimSpace(run.Line)
+	if detail := strings.Join(strings.Fields(run.Detail), " "); len(detail) > len(text) {
+		text = detail
+	}
+	if text == "" && item.Kind() == automation.KindReminder {
+		text = strings.TrimSpace(item.Action.Say)
+	}
+	if text != "" {
+		out = joinDot(out, clipRunes(text, bannerRunes))
+	}
+	return out
 }
 
 // tellHere puts one line on the message line of the place or home in front of
