@@ -7,6 +7,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // MENTIONS: "@" ALSO NAMES A TEAM OR A CONVERSATION.
@@ -67,6 +69,11 @@ type mentionChat struct {
 	slug             string
 	open             bool
 	note             string
+	// signal is [app.tabSignalFor]’s reading for this conversation: what the
+	// strip would say it is doing. It is tabIdle for at rest AND for not
+	// known, the one honest answer for a conversation this window does not
+	// hold.
+	signal tabSignal
 }
 
 // mentionScope splits an @ query into a section prefix and the needle. No
@@ -702,6 +709,9 @@ func (a *app) mentionLinkChats() []mentionChat {
 			return
 		}
 		seen[chat.key] = true
+		// The one state source, the strip’s own: keeper-cached, no file, no
+		// wire (tabsignal.go’s law).
+		chat.signal = a.tabSignalFor(chat.key, chat.key == a.frontTabKey())
 		out = append(out, chat)
 	}
 	for _, chat := range a.mentionChats() {
@@ -722,6 +732,57 @@ func (a *app) mentionLinkChats() []mentionChat {
 		}
 	}
 	return out
+}
+
+// mentionSignalPaint is a live mention’s ink: the FIRST CELL of the token
+// carries the signal mark in [palette.tabSignalInk], and the rest keeps the
+// link ink — exactly the strip’s mechanism (chattabs.go), where the mark is
+// the first cell of the name. Two claims, two inks (tabsignal.go’s
+// [palette.tabSignalInk] comment): the ink says it is a link, the first cell
+// says what the conversation is doing, and neither overwrites the other. The
+// mark is the strip's own state glyph in the strip's own ink, worn in the @'s
+// cell: accent ◐ while the turn runs, the warning ? while it waits on the
+// person. An ink-only mark would read as nothing — the accent and the link
+// ink share a hue (styles.go:386) — so the glyph is what a person actually
+// sees change, and because it wears the @'s own cell the row never changes
+// width. The hover override (paintLinksWith) still wins over the whole token
+// because it replaces ref.paint outright.
+func mentionSignalPaint(sig tabSignal) func(palette, string) string {
+	switch sig {
+	case tabWorking:
+		return mentionSignalPaintWorking
+	case tabNeedsPerson:
+		return mentionSignalPaintNeeds
+	}
+	return nil
+}
+
+// The two marks, hoisted: the paint path allocates no closure per token (there
+// are two marks in this program and these are written once), and the token is
+// split ONCE — the mark is its first cell and the rest is the same slice past
+// it. The previous shape walked the token with [ansi.StringWidth] on every
+// painted mention, every frame, only to say "to the end".
+func mentionSignalPaintWorking(pal palette, s string) string {
+	return mentionSignalSplit(pal, tabWorking, s)
+}
+
+func mentionSignalPaintNeeds(pal palette, s string) string {
+	return mentionSignalSplit(pal, tabNeedsPerson, s)
+}
+
+func mentionSignalSplit(pal palette, sig tabSignal, s string) string {
+	if s == "" {
+		return s
+	}
+	mark := ansi.Cut(s, 0, 1)
+	rest := s[len(mark):]
+	if sig == tabWorking {
+		return pal.tabSignalInk(sig, tokens.GlyphWorking) + teamLinkInk(pal, rest)
+	}
+	if sig == tabNeedsPerson {
+		return pal.tabSignalInk(sig, tokens.GlyphNeedsHuman) + teamLinkInk(pal, rest)
+	}
+	return pal.tabSignalInk(sig, mark) + teamLinkInk(pal, rest)
 }
 
 func linkifyMentions(text string, pal palette, teams []mentionTeam, chats []mentionChat, hot int) (string, []taskLink) {
@@ -785,7 +846,11 @@ func mentionTextRefs(flat string, teams []mentionTeam, chats []mentionChat) []ta
 				break
 			}
 			if strings.EqualFold(chat.handle, low) || chat.slug == low {
-				out = append(out, taskRef{from: i, to: j, member: chat.key, title: chat.title})
+				ref := taskRef{from: i, to: j, member: chat.key, title: chat.title}
+				if chat.signal != tabIdle {
+					ref.paint = mentionSignalPaint(chat.signal)
+				}
+				out = append(out, ref)
 				break
 			}
 		}
@@ -816,21 +881,82 @@ func (a *app) mentionChatPress(key string) tea.Cmd {
 	return nil
 }
 
-func (a *app) mentionChatHint(key string) string {
-	for _, chat := range a.mentionLinkChats() {
+// mentionChatByKey is [app.mentionLinkChats]' answer for ONE key, in that
+// catalog's own order and with its own first-wins rule: the open tabs' source
+// (minus the front, the way [app.mentionChatsExcept] leaves it off), then the
+// recent snapshot, then the wall's members. It stops at the match — no
+// catalog, no seen map, no signal reads for rows nobody is pointing at —
+// because the hover path runs it on every frame a hint sits open
+// (chattabs.go's teamLinkHint).
+func (a *app) mentionChatByKey(key string) (mentionChat, bool) {
+	if key == "" {
+		return mentionChat{}, false
+	}
+	one := func(chat mentionChat) (mentionChat, bool) {
+		// The one state source, the strip's own: keeper-cached, no file, no
+		// wire (tabsignal.go's law).
+		chat.signal = a.tabSignalFor(chat.key, chat.key == a.frontTabKey())
+		return chat, true
+	}
+	front := a.frontTabKey()
+	if a.startingChat() {
+		front = ""
+	}
+	for _, tab := range a.tabList() {
+		if tab.slot || tab.key == "" || tab.key == front || !a.mentionableTab(tab) {
+			continue
+		}
+		if tab.key == key {
+			return one(a.mentionFromTab(tab, true))
+		}
+	}
+	for _, chat := range a.comp.recents {
 		if chat.key != key {
 			continue
 		}
-		name := "@" + mentionToken(chat)
-		verb := "Resume"
-		if tabsHold(a.tabList(), key) {
-			verb = "Open"
+		if chat.key != front {
+			// The rows [app.mentionChatsExcept] hands out are not open in
+			// front of the person right now.
+			chat.open = false
 		}
-		words := verb + " " + name
-		if title := strings.TrimSpace(chat.title); title != "" && title != name {
-			words += hintSegment + title
-		}
-		return words + hintSegment + "click"
+		return one(chat)
 	}
-	return ""
+	if a.wall.loaded {
+		for _, t := range a.wall.teams {
+			for _, m := range t.Members {
+				if m.Key != key {
+					continue
+				}
+				return one(mentionChat{
+					key: m.Key, file: m.File, where: m.Where,
+					title: m.Word, handle: m.Handle, slug: mentionSlug(m.Word),
+					note: m.Word,
+				})
+			}
+		}
+	}
+	return mentionChat{}, false
+}
+
+func (a *app) mentionChatHint(key string) string {
+	// A DIRECT LOOKUP, not the whole catalog: the hover path runs on every
+	// frame the hint sits open, and the catalog is a slice, a seen map and a
+	// signal read per conversation. See [app.mentionChatByKey].
+	chat, ok := a.mentionChatByKey(key)
+	if !ok {
+		return ""
+	}
+	name := "@" + mentionToken(chat)
+	verb := "Resume"
+	if tabsHold(a.tabList(), key) {
+		verb = "Open"
+	}
+	words := verb + " " + name
+	if title := strings.TrimSpace(chat.title); title != "" && title != name {
+		words += hintSegment + title
+	}
+	if chat.signal != tabIdle {
+		words += hintSegment + tabSignalWord(chat.signal)
+	}
+	return words + hintSegment + "click"
 }
