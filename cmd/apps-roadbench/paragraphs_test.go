@@ -20,7 +20,7 @@ func TestReadJSONLines(t *testing.T) {
 	if err != nil || len(got) != 2 {
 		t.Fatalf("got %v %v", got, err)
 	}
-	if got[0] != (para{"a", "A CRM", "crm"}) || got[1].ID != "p02" {
+	if got[0] != (para{ID: "a", Paragraph: "A CRM", Family: "crm"}) || got[1].ID != "p02" {
 		t.Fatalf("got %+v", got)
 	}
 }
@@ -38,6 +38,13 @@ func TestReadPlainBlocks(t *testing.T) {
 func TestReadZooPick(t *testing.T) {
 	got, err := readParagraphs(write(t, "[clinic-booking] We run a clinic.\n\n[theatre-crew] We stage shows.\n"))
 	if err != nil || len(got) != 2 || got[0].ID != "clinic-booking" || got[1].Paragraph != "We stage shows." {
+		t.Fatalf("got %+v %v", got, err)
+	}
+}
+
+func TestJobsLineIsNotAParagraph(t *testing.T) {
+	got, err := readParagraphs(write(t, "[a] First app.\n\n  jobs: see things; do things\n\n[b] Second.\n"))
+	if err != nil || len(got) != 2 || got[0].Jobs != "see things; do things" || got[0].Paragraph != "First app." {
 		t.Fatalf("got %+v %v", got, err)
 	}
 }

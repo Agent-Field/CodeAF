@@ -66,8 +66,12 @@ func report(build string, rows []row) string {
 	roads := roadsOf(rows)
 	fmt.Fprintf(&sb, "# Builder road bench\n\nPath: served-bridge (real `codeaf app serve`, bridge WebSocket). Binary commit: %s\n\n## Totals per road\n\n", build)
 	sb.WriteString("| road | apps | reach Use | useful/thin/useless | check pass | opens in Use | runs dry ok | raw errors | first line med/p90 s | total med/p90 s | mean cost $ | rungs |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	done := finished(rows)
 	for _, road := range roads {
-		sb.WriteString(totals(road, byRoad(rows, road)) + "\n")
+		sb.WriteString(totals(road, byRoad(done, road)) + "\n")
+	}
+	if n := len(rows) - len(done); n > 0 {
+		fmt.Fprintf(&sb, "\nTotals count finished apps only. %d app-runs are still running and are listed as running below.\n", n)
 	}
 	sb.WriteString("\n## Per app\n\n| id | road | reach_use | check_pass | usefulness | road_used | raw_errors | first_line_s | total_s | cost | state | cause |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, r := range rows {
@@ -75,7 +79,7 @@ func report(build string, rows []row) string {
 			orPending(r.Useful), r.RoadUsed, r.RawErrors, r.FirstLineS, r.TotalS, r.CostUSD, r.State, r.Cause)
 	}
 	sb.WriteString(rawSection(rows))
-	sb.WriteString("\n## MATRIX\n\n" + matrix(rows, roads))
+	sb.WriteString("\n## MATRIX\n\n" + matrix(done, roads))
 	return sb.String()
 }
 

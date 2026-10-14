@@ -15,6 +15,8 @@ type para struct {
 	ID        string `json:"id"`
 	Paragraph string `json:"paragraph"`
 	Family    string `json:"family,omitempty"`
+	// Jobs is the zoo's acceptance-jobs line; the judge reads it, the Builder never does.
+	Jobs string `json:"jobs,omitempty"`
 }
 
 // readParagraphs reads a paragraphs file. A file whose first non-blank byte is
@@ -71,14 +73,15 @@ func parseBlocks(text string) []para {
 	var out []para
 	for _, block := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n") {
 		block = strings.Join(strings.Fields(block), " ")
-		if block == "" {
-			continue
+		switch m := tagged.FindStringSubmatch(block); {
+		case block == "":
+		case m != nil:
+			out = append(out, para{ID: m[1], Paragraph: m[2]})
+		case len(out) > 0 && strings.HasPrefix(block, "jobs:") && out[len(out)-1].Jobs == "":
+			out[len(out)-1].Jobs = strings.TrimSpace(strings.TrimPrefix(block, "jobs:"))
+		default:
+			out = append(out, para{ID: fmt.Sprintf("p%02d", len(out)+1), Paragraph: block})
 		}
-		id := fmt.Sprintf("p%02d", len(out)+1)
-		if m := tagged.FindStringSubmatch(block); m != nil {
-			id, block = m[1], m[2]
-		}
-		out = append(out, para{ID: id, Paragraph: block})
 	}
 	return out
 }

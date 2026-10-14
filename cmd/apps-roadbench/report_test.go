@@ -51,3 +51,15 @@ func TestParseVerdict(t *testing.T) {
 		}
 	}
 }
+
+func TestLogRowsAndJunk(t *testing.T) {
+	log := "p02                      calls  failed      used=calls    check=false opens=false dry=false keep=false use=false raw=0 first=8.9s total=56s $0.0265 H1\n" +
+		"coach-packages           loop   preview     used=loop+fix check=true opens=true dry=false keep=true use=true raw=0 first=12.9s total=307s $0.0605 \n"
+	rows := logRows(log)
+	if len(rows) != 2 || rows[0].Cause != "H1" || rows[1].RoadUsed != "loop+fix" || !rows[1].Stages.Use || rows[1].TotalS != 307 {
+		t.Fatalf("%+v", rows)
+	}
+	if got := withoutJunk(rows); len(got) != 1 || got[0].ID != "coach-packages" {
+		t.Fatalf("%+v", got)
+	}
+}

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -18,12 +20,13 @@ func combine(dirs []string, b7 string) ([]row, error) {
 	}
 	var rows []row
 	for _, dir := range dirs {
-		more, err := readRows(filepath.Join(dir, "results.jsonl"))
+		more, err := rowsOf(dir)
 		if err != nil {
 			return nil, err
 		}
 		rows = append(rows, more...)
 	}
+	rows = withoutJunk(rows)
 	for i := range rows {
 		rows[i].B7 = marked[rows[i].ID]
 	}
@@ -48,4 +51,79 @@ func readRows(path string) ([]row, error) {
 		rows = append(rows, r)
 	}
 	return rows, sc.Err()
+}
+
+// junkID matches the ids the old reader gave to zoo "jobs:" lines (p02, p04...).
+var junkID = regexp.MustCompile(`^p\d+$`)
+
+func withoutJunk(rows []row) []row {
+	var out []row
+	for _, r := range rows {
+		if !junkID.MatchString(r.ID) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// rowsOf reads a finished run's results.jsonl, or, while the run is still
+// going, rebuilds the finished rows from bench.log and lists the rest as running.
+func rowsOf(dir string) ([]row, error) {
+	if rows, err := readRows(filepath.Join(dir, "results.jsonl")); err == nil {
+		return rows, nil
+	}
+	log, err := os.ReadFile(filepath.Join(dir, "bench.log"))
+	if err != nil {
+		return nil, err
+	}
+	rows := logRows(string(log))
+	have := map[string]bool{}
+	for _, r := range rows {
+		have[r.ID+"/"+r.Road] = true
+	}
+	ps, err := readParagraphs(filepath.Join(dir, "apps.txt"))
+	if err != nil {
+		return rows, nil
+	}
+	for _, p := range ps {
+		for _, road := range []string{"calls", "loop"} {
+			if !have[p.ID+"/"+road] {
+				rows = append(rows, row{ID: p.ID, Road: road, State: "running"})
+			}
+		}
+	}
+	return rows, nil
+}
+
+var (
+	logKV   = regexp.MustCompile(`(used|check|opens|dry|keep|use|raw|first|total)=(\S*)`)
+	logCost = regexp.MustCompile(`\$([0-9.]+)\s*(\S*)`)
+)
+
+// logRows parses the progress lines a run prints as each app ends.
+func logRows(log string) []row {
+	var rows []row
+	for _, line := range strings.Split(log, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 4 || (f[1] != "calls" && f[1] != "loop") {
+			continue
+		}
+		kv := map[string]string{}
+		for _, m := range logKV.FindAllStringSubmatch(line, -1) {
+			kv[m[1]] = m[2]
+		}
+		r := row{ID: f[0], Road: f[1], State: f[2], RoadUsed: kv["used"], CheckPass: kv["check"] == "true",
+			OpensInUse: kv["opens"] == "true", RunsDryOK: kv["dry"] == "true"}
+		r.Stages = stageSet{Plan: f[2] != "plan-failed", Write: f[2] == "preview", Check: r.CheckPass, Preview: f[2] == "preview",
+			Keep: kv["keep"] == "true", Use: kv["use"] == "true"}
+		r.RawErrors, _ = strconv.Atoi(kv["raw"])
+		r.FirstLineS, _ = strconv.ParseFloat(strings.TrimSuffix(kv["first"], "s"), 64)
+		r.TotalS, _ = strconv.ParseFloat(strings.TrimSuffix(kv["total"], "s"), 64)
+		if m := logCost.FindStringSubmatch(line); m != nil {
+			r.CostUSD, _ = strconv.ParseFloat(m[1], 64)
+			r.Cause = m[2]
+		}
+		rows = append(rows, r)
+	}
+	return rows
 }

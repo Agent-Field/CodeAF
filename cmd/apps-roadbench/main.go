@@ -35,7 +35,7 @@ func main() {
 	b7 := flag.String("b7", "", "comma-separated app ids to mark b7-fail with -combine")
 	flag.Parse()
 	if *combineDirs != "" {
-		fail(combineReport(strings.Split(*combineDirs, ","), *b7, *out, *build))
+		fail(combineReport(strings.Split(*combineDirs, ","), *b7, *out, *build, *zoo, *run, *model))
 		return
 	}
 	o := options{*file, strings.Split(*roads, ","), *out, *model, *bin, *build, *zoo, *run, *judge, *parallel}
@@ -49,12 +49,40 @@ func fail(err error) {
 	}
 }
 
-func combineReport(dirs []string, b7, out, build string) error {
+// combineReport merges runs into one REPORT.md. With zoo and run set it also
+// records the finished rows (never the running ones) to the zoo.
+func combineReport(dirs []string, b7, out, build, zoo, run, model string) error {
 	rows, err := combine(dirs, b7)
 	if err != nil {
 		return err
 	}
-	return writeAll(out, build, rows)
+	if zoo != "" {
+		for i := range rows {
+			if rows[i].Family == "" {
+				rows[i].Family = zooTags(zoo, rows[i].ID)
+			}
+		}
+	}
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		return err
+	}
+	if err := writeAll(out, build, rows); err != nil {
+		return err
+	}
+	if zoo == "" || run == "" {
+		return nil
+	}
+	return recordZoo(zoo, run, build, model, finished(rows))
+}
+
+func finished(rows []row) []row {
+	var out []row
+	for _, r := range rows {
+		if r.State != "running" {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 type options struct {
