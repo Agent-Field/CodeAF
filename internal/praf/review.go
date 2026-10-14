@@ -302,7 +302,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 			limits = append(limits, cutSentence(run.cutAt, run.wall))
 		}
 		if coverage.BudgetExhausted {
-			limits = append(limits, "The dollar limit stopped new work; later checks were skipped.")
+			limits = append(limits, "A budget limit stopped new work; later checks were skipped.")
 		}
 		if coverage.DegradedDimensions > 0 {
 			limits = append(limits, fmt.Sprintf("%d review dimensions degraded; parts of the change may be missing.", coverage.DegradedDimensions))
@@ -311,15 +311,12 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		if run.failNote == "" && run.cutAt == "" {
 			run.failNote = coverage.Note
 		}
-		warning := partialWarning + " " + coverage.Note
-		if result.Review.Event == "APPROVE" {
-			result.Review.Event = "COMMENT"
-			// The clean-approval body can say "Safe to merge" even when no
-			// findings means missing reviewers. Do not preserve that claim.
-			result.Review.Body = warning + "\n\nThis report covers only the work that completed."
-		} else {
-			result.Review.Body = warning + "\n\n" + result.Review.Body
+		var body strings.Builder
+		body.WriteString(partialWarning + " " + coverage.Note + "\n\nThis report covers only the work that completed.\n")
+		for i, finding := range sortedFindings(result.Findings) {
+			body.WriteString(markdownFinding(i+1, finding, run.checkout))
 		}
+		result.Review = orch.PartialReviewPayload(result.Review, body.String())
 	}
 
 	host.Stage(delegate.StageRecord{Stage: stageReport, Status: "running", Data: stageData(map[string]any{"doing": "writing the review"})})

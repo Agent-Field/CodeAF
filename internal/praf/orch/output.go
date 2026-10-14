@@ -339,6 +339,24 @@ func (o *Orchestrator) formatCommentBody(finding schemas.ScoredFinding) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
+const advisoryCallout = "> [!NOTE]\n> **Advisory — non-blocking.** Safe to merge and address in a follow-up."
+
+// PartialReviewPayload keeps findings available without a clean merge claim.
+// Its body is built from completed work by the host that knows what stopped.
+func PartialReviewPayload(review schemas.GitHubReview, body string) schemas.GitHubReview {
+	review.Body = body
+	if review.Event == "APPROVE" {
+		review.Event = "COMMENT"
+	}
+	comments := make([]schemas.GitHubComment, len(review.Comments))
+	for i, comment := range review.Comments {
+		comment.Body = strings.Replace(comment.Body, advisoryCallout, "> [!NOTE]\n> **Advisory — non-blocking.** This finding is from a partial review.", 1)
+		comments[i] = comment
+	}
+	review.Comments = comments
+	return review
+}
+
 func decorateWithBlocking(finding *schemas.ScoredFinding, body string) string {
 	var header string
 	if finding != nil && finding.Blocking {
@@ -347,7 +365,7 @@ func decorateWithBlocking(finding *schemas.ScoredFinding, body string) string {
 			header += " " + finding.BlockingReason
 		}
 	} else {
-		header = "> [!NOTE]\n> **Advisory — non-blocking.** Safe to merge and address in a follow-up."
+		header = advisoryCallout
 		if finding != nil && finding.BlockingReason != "" {
 			header += "\n>\n> _Why non-blocking:_ " + finding.BlockingReason
 		}

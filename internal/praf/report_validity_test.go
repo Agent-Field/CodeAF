@@ -63,7 +63,13 @@ func TestPartialPostingRequiresHonestCoverageAndCannotApprove(t *testing.T) {
 		{"contradictory complete", func(s *Saved) { s.Coverage.Complete = true }, true},
 		{"negative count", func(s *Saved) { s.Coverage.FailedSessions = -1 }, true},
 		{"metadata budget mismatch", func(s *Saved) { s.Review.Summary.BudgetExhausted = true }, true},
-		{"legacy complete report", func(s *Saved) {
+		{"legacy budget stop", func(s *Saved) {
+			s.Coverage = nil
+			s.Review.Summary.BudgetExhausted = true
+			s.Review.Review.Event = "APPROVE"
+		}, true},
+		{"legacy degraded comment", func(s *Saved) { s.Coverage = nil; s.Review.Metadata.DegradedDimensions = 1 }, true},
+		{"legacy without known partial facts", func(s *Saved) {
 			s.Coverage = nil
 			s.Review.Review = schemas.GitHubReview{Body: "summary", Event: "APPROVE"}
 		}, false},
@@ -81,6 +87,29 @@ func TestPartialPostingRequiresHonestCoverageAndCannotApprove(t *testing.T) {
 				t.Fatalf("readSaved error=%v; refused want %v", err, tc.refused)
 			}
 		})
+	}
+}
+
+func TestBudgetPartialAdvisoryReportKeepsFindingsWithoutMergeClaim(t *testing.T) {
+	r, _ := testReviewer(&fakeSessions{}, func(context.Context, orch.Deps) (schemas.ReviewResult, error) {
+		x := sampleResult()
+		x.Summary.BudgetExhausted = true
+		x.Findings = x.Findings[1:]
+		x.Findings[0].Blocking = false
+		x.Review = schemas.GitHubReview{Body: "> **Safe to merge.** One advisory below.", Event: "COMMENT"}
+		return x, nil
+	})
+	host := newTestHost(t)
+	end := runReview(context.Background(), host, ReadBrief("o/r#7", nil), defaults(), io.Discard, r)
+	if end.Status != delegate.StatusPass {
+		t.Fatalf("assembled partial status=%s", end.Status)
+	}
+	saved, _, err := readSaved(host.records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(saved.Review.Review.Body, "Safe to merge") || !strings.Contains(saved.Review.Review.Body, "Nil dereference") || !strings.Contains(saved.Review.Review.Body, "The value is used before err is checked.") || strings.Contains(saved.Coverage.Note, "dollar") {
+		t.Fatalf("partial payload lost finding or kept a clean/cost-only claim: %+v", saved)
 	}
 }
 

@@ -57,6 +57,9 @@ func readSaved(path string) (Saved, string, error) {
 			return Saved{}, path, err
 		}
 	}
+	if saved.Coverage == nil && (saved.Review.Summary.BudgetExhausted || saved.Review.Metadata.DegradedDimensions > 0) {
+		return Saved{}, path, errors.New("the older partial review does not keep coverage facts and a posting warning")
+	}
 	if coverage := saved.Coverage; coverage != nil {
 		complete := coverage.FailedSessions == 0 && coverage.FailedCalls == 0 && coverage.DegradedDimensions == 0 && !coverage.BudgetExhausted && coverage.StoppedAt == ""
 		if coverage.FailedSessions < 0 || coverage.FailedCalls < 0 || coverage.DegradedDimensions < 0 || coverage.Complete != complete ||
