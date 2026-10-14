@@ -80,13 +80,11 @@ package session
 //     load-then-ask inside a turn, so the `questions` group is put on the belt at
 //     construction through the one arming door ([Agent.armFamily]) and is not
 //     offered by the loading verb.
-//  4. THE MEMORY REFLEX DOES NOT RUN and the project's instruction file rides
-//     under [leanInstructionLimit]. The reflex is two model calls every turn on
-//     top of the one the person is waiting for; on a small window it is the most
-//     expensive thing in the turn that nobody asked for. It is off by the
-//     predicate that already decides writable memory ([Config.hasStore]) rather
-//     than by a switch of its own — and the conversation's own record is
-//     untouched, because reading what was said costs nothing per turn.
+//  4. THE PROJECT'S INSTRUCTION FILE rides under [leanInstructionLimit].
+//     Memory is NOT a lean casualty: the person's kept lines are bounded
+//     (memory.go's [memoryBlockRunes]) and hold over a small model exactly as
+//     over a large one, and the one call after a turn runs on the reflex tier,
+//     not on this window.
 //
 // ── AND FULL IS UNTOUCHED ──
 //

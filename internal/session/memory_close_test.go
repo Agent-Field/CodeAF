@@ -28,21 +28,20 @@ import (
 // scheduler happens to run first, which is the only way a failure seen once in
 // hundreds of loaded runs can be made to fail every time.
 
-// heldReflex answers a turn and its reflexes, and holds exactly one of them —
-// the router or the extractor — until the test opens its gate.
+// heldReflex answers a turn and holds the noticing call after it until the
+// test opens its gate.
 //
 // THE HELD CALL IGNORES ITS CONTEXT ON PURPOSE. It stands for a reading already
 // on its way back when Close begins, past anything a cancel can reach, which is
 // the window the store write sits in.
 type heldReflex struct {
-	holdRoute bool
-	gate      chan struct{}
-	entered   chan struct{}
-	once      sync.Once
+	gate    chan struct{}
+	entered chan struct{}
+	once    sync.Once
 }
 
-func newHeldReflex(holdRoute bool) *heldReflex {
-	return &heldReflex{holdRoute: holdRoute, gate: make(chan struct{}), entered: make(chan struct{})}
+func newHeldReflex() *heldReflex {
+	return &heldReflex{gate: make(chan struct{}), entered: make(chan struct{})}
 }
 
 func (h *heldReflex) hold() {
@@ -55,19 +54,9 @@ func (h *heldReflex) CompleteWithMessages(_ context.Context, messages []ai.Messa
 	if len(messages) > 0 {
 		system = messageText(messages[0])
 	}
-	switch {
-	case strings.Contains(system, "memory router"):
-		if h.holdRoute {
-			h.hold()
-			return textResponse(`{"inject":[],"cmd":{"name":"remember","arg":"the release train leaves on Thursdays"}}`), nil
-		}
-		return textResponse(`{"inject":[],"cmd":null}`), nil
-	case strings.Contains(system, "worth remembering after this session ends"):
-		if !h.holdRoute {
-			h.hold()
-			return textResponse(`{"mem":1,"type":"fact","scope":"project","title":"release train","text":"the release train leaves on Thursdays","tags":[]}`), nil
-		}
-		return textResponse(`{"mem":0}`), nil
+	if strings.HasPrefix(system, "You read one exchange between a person and an assistant") {
+		h.hold()
+		return textResponse(`{"keep":"the release train leaves on Thursdays","scope":"user"}`), nil
 	}
 	return textResponse("done"), nil
 }
@@ -75,17 +64,14 @@ func (h *heldReflex) CompleteWithMessages(_ context.Context, messages []ai.Messa
 func TestClosedSessionHasNoMemoryPassStillWritingTheStore(t *testing.T) {
 	for _, probe := range []struct {
 		name string
-		// holdRoute holds the pre-turn recall; otherwise the post-turn pass.
-		holdRoute bool
 		// pastTheGrace lets Close's first wait run out, and its cancel land,
 		// before the held call is let go.
 		pastTheGrace bool
 	}{
-		// The recall rides beside the turn and may still be reading the store
-		// after the turn it was started for has ended. Nothing joined it.
-		{name: "a recall left behind its own turn", holdRoute: true},
+		// The post-turn pass is joined inside the grace.
+		{name: "a post-turn pass still reading when Close begins"},
 		// The post-turn pass WAS joined, but only for the grace: the cancel
-		// that followed was never waited for.
+		// that followed must be waited for too.
 		{name: "a post-turn pass the grace ran out on", pastTheGrace: true},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
@@ -94,14 +80,8 @@ func TestClosedSessionHasNoMemoryPassStillWritingTheStore(t *testing.T) {
 			// the bubble would be a goroutine the bubble is never rid of.
 			usageWriterFor(UsageLedgerPath())
 			synctest.Test(t, func(t *testing.T) {
-				reflexes := newHeldReflex(probe.holdRoute)
+				reflexes := newHeldReflex()
 				agent, brain := brainAgent(t, reflexes, nil)
-				if probe.holdRoute {
-					// Something to route against: an empty brain is never a
-					// call. The post-turn case keeps the brain empty, so its
-					// write is an add with no decision in front of it.
-					remember(t, brain, "standup time", "standup is at 9:15")
-				}
 
 				collect(t, mustSubmit(t, agent, "the release train leaves on Thursdays"))
 				<-reflexes.entered

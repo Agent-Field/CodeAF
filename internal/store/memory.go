@@ -633,7 +633,9 @@ func (s *Store) MemoriesFor(owners []string) ([]Memory, error) {
 		return nil, fmt.Errorf("memories for: %w: no owner was named", ErrInvalid)
 	}
 	where, ownerArgs := ownerFilterSQL(owners)
-	args := append([]any{MemoryActive, OwnerUser, OwnerMachine}, ownerArgs...)
+	// The arguments follow the placeholders: the status, the owner list, and
+	// then the two owners the ORDER BY ranks first.
+	args := append(append([]any{MemoryActive}, ownerArgs...), OwnerUser, OwnerMachine)
 	memories, err := s.queryMemories(`WHERE status = ?`+where, args,
 		`CASE memories.owner WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END, memories.created_seq, memories.id`, 0)
 	if err != nil {

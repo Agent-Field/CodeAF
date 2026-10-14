@@ -6,11 +6,12 @@ import (
 	"testing"
 )
 
-// THE REDACtor IS THE ONE MOUTH EVERY MEMORY WRITE SHARES. The add door already
-// redacted; the update and supersede doors now do too, because the backstop sits
-// in [validMemoryBody], which all three pass through. A direct store caller that
-// never redacts cannot land a credential in a title, a body or a tag.
+// THE REDACTOR IS THE ONE MOUTH EVERY MEMORY WRITE SHARES. The backstop sits in
+// [validMemoryBody], which the add, write, update and supersede doors all pass
+// through, so a direct store caller that never redacts cannot land a credential
+// in a title, a body or a tag.
 func TestUpdateAndSupersedeDoorsRedactTitleBodyAndTags(t *testing.T) {
+	t.Parallel()
 	const secret = "xoxb-1234567890abcdef"
 	s := openTestStore(t, filepath.Join(t.TempDir(), "redact-backstop.db"))
 	row, err := s.AddMemory(Memory{Owner: OwnerUser, Type: MemoryFact, Title: "clean", Text: "keep a clean line"})
@@ -18,7 +19,7 @@ func TestUpdateAndSupersedeDoorsRedactTitleBodyAndTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	// THE UPDATE DOOR, called with nothing redacted.
-	if err := s.UpdateMemoryForOwners([]string{OwnerUser}, row.ID, "title "+secret, "body "+secret, []string{"tag:" + secret}, ""); err != nil {
+	if err := s.UpdateMemory(row.ID, "body "+secret); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	updated, found, err := s.MemoryRecord(row.ID)

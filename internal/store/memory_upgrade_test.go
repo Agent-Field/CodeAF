@@ -271,9 +271,6 @@ func TestOpeningADatabaseFromBeforeOwnersKeepsEveryNote(t *testing.T) {
 		if !reflect.DeepEqual(got.Tags, wantTags) {
 			t.Errorf("%s tags = %v, want %v", want.id, got.Tags, wantTags)
 		}
-		if got.UseCount != want.useCount || got.MissCount != want.missCount {
-			t.Errorf("%s counters = (%d, %d), want (%d, %d)", want.id, got.UseCount, got.MissCount, want.useCount, want.missCount)
-		}
 		if got.CreatedSeq != want.createdSeq || got.UpdatedSeq != want.updatedSeq {
 			t.Errorf("%s seqs = (%d, %d), want (%d, %d)", want.id, got.CreatedSeq, got.UpdatedSeq, want.createdSeq, want.updatedSeq)
 		}
@@ -336,53 +333,31 @@ func TestOpeningADatabaseFromBeforeOwnersKeepsEveryNote(t *testing.T) {
 	if len(quarantined) != 2 {
 		t.Fatalf("the quarantine = %v, want the unprovable project row and the unknown scope", memoryIDs(quarantined))
 	}
-	// The lexical tier answered from the rows the old build indexed, under the
-	// new owner filter: the note a person would search for is the one they get.
-	hits, err := graph.SearchMemories([]string{OwnerUser}, "receipts", 5)
-	if err != nil {
-		t.Fatalf("search after the upgrade: %v", err)
-	}
-	if len(hits) != 1 || hits[0].ID != "mem_user" {
-		t.Fatalf("search for 'receipts' = %v, want the preserved note", memoryIDs(hits))
-	}
-	if hits[0].Text != "Keeps the receipts for the tax year." {
-		t.Fatalf("the search hit lost its text: %q", hits[0].Text)
-	}
-	// The words the old build indexed are still the words that match, and the
-	// owner filter decides which of them a search may return: "amber" is in this
-	// machine's row and in the quarantined project row, and neither search sees
-	// the other's.
+	// WHAT A CONVERSATION IS TOLD AFTER THE UPGRADE is the owner filter's
+	// answer: the person's line to the person, this machine's to this machine,
+	// and the quarantined row to nobody a model can name.
 	for _, want := range []struct {
 		owners []string
-		query  string
-		id     string
+		ids    []string
 	}{
-		{[]string{OwnerUser}, "finance", "mem_user"},           // the tag the old build wrote, punctuation and all
-		{[]string{OwnerMachine}, "amber", "mem_env"},           // this machine's own truth
-		{[]string{OwnerLegacyProject}, "amber", "mem_project"}, // the quarantine, to its own owner only
-		{[]string{OwnerUser}, "amber", ""},                     // the person has no such line
+		{[]string{OwnerUser}, []string{"mem_user"}},
+		{[]string{OwnerMachine}, []string{"mem_env"}},
+		{[]string{OwnerUser, OwnerMachine, OwnerProject("alpha")}, []string{"mem_user", "mem_env"}},
 	} {
-		got, err := graph.SearchMemories(want.owners, want.query, 5)
+		got, err := graph.MemoriesFor(want.owners)
 		if err != nil {
-			t.Fatalf("search %q under %v: %v", want.query, want.owners, err)
+			t.Fatalf("memories for %v: %v", want.owners, err)
 		}
-		if want.id == "" {
-			if len(got) != 0 {
-				t.Fatalf("search %q under %v = %v, want nothing", want.query, want.owners, memoryIDs(got))
-			}
-			continue
-		}
-		if len(got) != 1 || got[0].ID != want.id {
-			t.Fatalf("search %q under %v = %v, want %s", want.query, want.owners, memoryIDs(got), want.id)
+		if !reflect.DeepEqual(memoryIDs(got), want.ids) {
+			t.Fatalf("memories for %v = %v, want %v", want.owners, memoryIDs(got), want.ids)
 		}
 	}
-	// A quarantined row is not searchable under any owner a model can name.
-	blind, err := graph.SearchMemories([]string{OwnerUser, OwnerMachine, OwnerProject("alpha")}, "Tuesday", 5)
-	if err != nil {
-		t.Fatalf("search across real owners: %v", err)
-	}
-	if len(blind) != 0 {
-		t.Fatalf("the quarantine answered a model's search: %v", memoryIDs(blind))
+	// AND THE RETIRED COLUMNS AND SEARCH TABLE ARE NOT A REASON TO FAIL: the
+	// counters the old build wrote stay in their columns, read by nothing, and
+	// the search table this build no longer maintains is dropped rather than
+	// left to go stale.
+	if tableExists(t, graph, "memories_fts") {
+		t.Fatal("the upgrade left the retired memory search table behind")
 	}
 }
 
@@ -592,9 +567,6 @@ func TestOpeningADatabaseWithoutItsLexicalIndexKeepsEveryNote(t *testing.T) {
 	if kept.Owner != OwnerUser || kept.Text != "Keeps the receipts for the tax year." {
 		t.Fatalf("the note = %+v, want its words and the owner its scope proves", kept)
 	}
-	if hits, err := graph.SearchMemories([]string{OwnerUser}, "receipts", 5); err != nil || len(hits) != 0 {
-		t.Fatalf("search without a lexical index = (%v, %v), want the quiet tier", memoryIDs(hits), err)
-	}
 }
 
 // A BRAND NEW STORE STILL GETS THE INDEX. The index moved out of the schema
@@ -621,4 +593,33 @@ func legacyTags(t *testing.T, raw string) []string {
 		t.Fatalf("fixture tags %q are not JSON: %v", raw, err)
 	}
 	return tags
+}
+
+// tableExists asks the store's own schema whether a table is there.
+func tableExists(t *testing.T, graph *Store, name string) bool {
+	t.Helper()
+	var count int
+	if err := graph.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = ?`, name).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return count > 0
+}
+
+// memoryIDs is the ids of some memories, in order.
+func memoryIDs(memories []Memory) []string {
+	ids := make([]string, 0, len(memories))
+	for _, memory := range memories {
+		ids = append(ids, memory.ID)
+	}
+	return ids
+}
+
+// containsStubTag says whether a tag list carries one tag.
+func containsStubTag(tags []string, want string) bool {
+	for _, tag := range tags {
+		if tag == want {
+			return true
+		}
+	}
+	return false
 }

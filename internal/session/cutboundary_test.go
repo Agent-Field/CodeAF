@@ -161,23 +161,6 @@ func TestACutAskedBeforeTheRequestExistsIsSpentByIt(t *testing.T) {
 	}
 }
 
-// AND A CUT WHOSE REASON IS ALREADY IN THE TRANSCRIPT IS NOT OWED. The recall's
-// block is recorded before its cut is raised, so the request being assembled
-// carries it either way — and a cut kept for that request would throw away a
-// request that was already right, which is the whole reason the two cuts declare
-// themselves differently (steer.go's [boundaryCut]).
-func TestACutWhoseReasonRidesTheTranscriptIsNotOwed(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-
-	if agent.cutGeneration(errRecallCut) {
-		t.Error("a recall with nothing to cut was told its one re-ask had been spent")
-	}
-	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
-	defer agent.endGeneration(generation)
-	if ctx.Err() != nil {
-		t.Errorf("the next request was cut for a block the transcript already carried: %v", context.Cause(ctx))
-	}
-}
 
 // AND NEITHER IS THE WORD A PERSON SAYS. The model they named rides
 // [Agent.spokenModel] and the next request reads it at the latch, so a word said

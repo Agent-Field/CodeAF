@@ -127,19 +127,16 @@ func briefIn(request, text string) bool {
 	return false
 }
 
-// A FRESH NATIVE MEMBER'S FIRST REQUEST CARRIES THE PROJECT'S PRIOR OUTCOMES.
+// A FRESH NATIVE MEMBER'S FIRST REQUEST CARRIES WHAT ITS PROJECT REMEMBERS.
 //
 // The conversation is opened empty and made a member, then woken by the
-// manager's start: nobody typed its first turn, and its only goal at that
-// instant is the brief the loop's first drain is about to put in front of the
-// model. The before-request binding read must be scoped to that brief — from
-// the member's OWN workspace and project key — so an observed outcome pair is
-// in front of the model before its first actionable provider request, exactly
-// as it already was for a person's opening turn.
+// manager's start: nobody typed its first turn. What its project keeps rides
+// message[0] of that very first request, read from the member's OWN project key
+// — exactly as it does for a person's opening turn (memory.go).
 //
-// This drives the real seam: the wake watch, the runTurn before-request reads,
-// and the real journal read ([Agent.priorOutcomeBlock] through a real store).
-func TestAFreshMemberWakesWithPriorOutcomesBeforeItsFirstRequest(t *testing.T) {
+// This drives the real seam: the wake watch, the turn's start-of-turn read and a
+// real store.
+func TestAFreshMemberWakesWithItsProjectsMemory(t *testing.T) {
 	fixture := newWakingTeamFixture(t)
 	const brief = "Rework the lexer tokenizer and the parser tables."
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: brief})
@@ -158,16 +155,9 @@ func TestAFreshMemberWakesWithPriorOutcomesBeforeItsFirstRequest(t *testing.T) {
 	t.Cleanup(func() { _ = brain.Close() })
 	const key = "member-fresh-project"
 	owner := store.OwnerProject(key)
-	// The pair the live ledger run left behind: one failed method and the
-	// later success that answered it, under the same source key.
-	failed := seedFailure(t, brain, owner,
-		"Rework the lexer tokenizer and the parser tables.",
-		"bash: rework the lexer tokenizer with the parser tables",
-		"parse error: unknown tokenizer table", "s:t:member", "h-member", "snap-member")
-	seedAlternative(t, brain, owner,
-		"Rework the lexer tokenizer and the parser tables.",
-		"bash: rework the lexer tokenizer with the parser tables",
-		"lexer tokenizer parsed all parser tables", "s:t:member", "h-member", "snap-member", failed.SourceKey)
+	if _, err := brain.AddMemory(store.Memory{Owner: owner, Text: "the parser tables are generated, never edited by hand"}); err != nil {
+		t.Fatal(err)
+	}
 
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("on it"), nil },
@@ -195,10 +185,8 @@ func TestAFreshMemberWakesWithPriorOutcomesBeforeItsFirstRequest(t *testing.T) {
 	if !strings.Contains(first, brief) {
 		t.Fatalf("the first request did not carry the brief:\n%s", first)
 	}
-	if !strings.Contains(first, memoryNoteOpening) {
-		t.Fatalf("the fresh member's first request carried no session memory note:\n%s", first)
-	}
-	if !strings.Contains(first, "prior_outcomes") || !strings.Contains(first, "parser tables") {
-		t.Fatalf("the note did not carry the project's observed outcome pair:\n%s", first)
+	system := messageText(completer.request(0)[0])
+	if !strings.Contains(system, "<memory>") || !strings.Contains(system, "the parser tables are generated") {
+		t.Fatalf("the fresh member's first request did not carry its project's memory:\n%s", system)
 	}
 }

@@ -40,16 +40,11 @@ func (c *deadlineCompleter) CompleteWithMessages(ctx context.Context, _ []ai.Mes
 	return &ai.Response{Choices: []ai.Choice{{Message: ai.Message{Content: []ai.ContentPart{{Type: "text", Text: "not json"}}}}}}, nil
 }
 
-// THE BOUND IS THE ROLE'S GIVE-UP AND NOT ITS CEILING, which is what changed on
-// 2026-09-11. A role says two things about a silence — when to ACT on it
-// ([lane.Role.Ceiling]) and when to STOP ([lane.Role.GiveUp]) — and this call
-// used to read the first as though it were the second. That made them the same
-// instant: the hazard controller was told to move this call to another machine at
-// exactly the moment the deadline killed it, so no recall was ever rescued off a
-// slow reflex endpoint. The ceiling now acts two seconds in, inside this.
-func TestRecallSharesTheRolesGiveUpAcrossRepair(t *testing.T) {
-	c := &deadlineCompleter{t: t, cap: lane.RoleRecall.GiveUp(), role: lane.RoleRecall}
-	_, err := Route(context.Background(), c, "which preference applies", nil)
+// THE NOTICING CALL SHARES ONE BOUND ACROSS ITS REPAIR: the reflex tier's
+// patience, read once, so a repair can never restart the clock.
+func TestNoticeSharesTierPatienceAcrossRepair(t *testing.T) {
+	c := &deadlineCompleter{t: t, cap: roles.PatienceFor(roles.RoleReflex), role: lane.RoleMemory}
+	_, err := Notice(context.Background(), c, "remember I use tabs", "ok", nil, true)
 	if !errors.Is(err, context.DeadlineExceeded) || c.calls != 2 {
 		t.Fatalf("calls=%d err=%v", c.calls, err)
 	}
@@ -63,11 +58,11 @@ func TestOtherReflexOperationsShareTierPatienceAcrossRepair(t *testing.T) {
 	}
 }
 
-func TestRecallPreservesAShorterCallerDeadline(t *testing.T) {
+func TestNoticePreservesAShorterCallerDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	c := &deadlineCompleter{t: t, cap: time.Second}
-	_, _ = Route(ctx, c, "which preference applies", nil)
+	_, _ = Notice(ctx, c, "remember I use tabs", "ok", nil, true)
 	want, _ := ctx.Deadline()
 	if !c.deadline.Equal(want) {
 		t.Fatalf("caller deadline changed: %v -> %v", want, c.deadline)

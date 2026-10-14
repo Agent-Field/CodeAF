@@ -29,7 +29,7 @@ import (
 // composed at render time, each from THE PREDICATE THAT PUTS ITS TOOL ON THE
 // BELT. Where a tool is absent the fragment says what to do instead rather than
 // saying nothing, in the voice the page's own `remember` sentence already uses
-// ("Without `remember`, say plainly that memory is off"): a worker told the
+// ("Without `remember`, say you cannot keep it"): a worker told the
 // truth spends its turn on the work, and a worker told nothing spends it
 // guessing.
 //
@@ -59,22 +59,6 @@ const (
 // functions read these SAME predicates, which is what makes it impossible for
 // the two to disagree about a tool.
 
-// hasStore controls writable memory and its prompt extraction. Conversation
-// search has its own read-only predicate so workers can inherit just that door.
-//
-// AND A LEAN PREFIX HAS NO WRITABLE MEMORY (promptprofile.go). The reflex is two
-// model calls on every turn on top of the one the person is waiting for, which
-// on a small open-weight seat is the most expensive thing in the turn that
-// nobody asked for — so the brain is not built (agent.go's newAgent), `remember`
-// is not on the belt, and the page's own "Without `remember`, say plainly that
-// memory is off" clause becomes the truth rather than a fallback.
-//
-// THE STORE ITSELF IS UNTOUCHED, and that distinction is the whole of this line.
-// Config.Memory is also the conversation's own RECORD — the chat log every
-// session writes and `search_conversations` reads — and taking that away would
-// be a session that forgets what was said, which is not what "the reflex is off"
-// means and is not what any window is short of.
-func (c Config) hasStore() bool { return c.Memory != nil && !c.promptProfile().lean() }
 
 // maySeeSettings says whether the settings pair belongs on this belt
 // (tools_settings.go). It comes off inside a task for the sharpest reason on
@@ -805,8 +789,8 @@ func promptWithBeltFacts(config Config) string {
 // honest:
 //
 //   - WRITTEN FOR BOTH CASES ALREADY. The page names the tool and, in the same
-//     breath, says what to do without it — "Without `remember`, say plainly that
-//     memory is off". prompt_belt_test.go holds these to that: where the belt
+//     breath, says what to do without it — "Without `remember`, say you cannot
+//     keep it". prompt_belt_test.go holds these to that: where the belt
 //     lacks the tool, the sentence stating the absence must be in the rendered
 //     prompt.
 //
@@ -817,7 +801,7 @@ func promptWithBeltFacts(config Config) string {
 //
 // The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
-	"remember": "Without `remember`, say plainly that memory is off",
+	"remember": "Without `remember`, say you cannot keep it",
 	// A hand inherits the caller's page but intentionally carries a smaller,
 	// closed belt; its appended tail is the truthful capability account.
 	"ask": "Use `ask` only as the last rung",

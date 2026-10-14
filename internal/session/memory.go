@@ -859,8 +859,13 @@ func init() {
 
 // memoryTools is `remember` and `forget`, on a writable conversation's belt
 // only: a read-only posture and a task worker do not have the verbs at all.
+//
+// A LEAN PREFIX DOES NOT CARRY THEM EITHER, and only for its byte budget
+// (prefixbudget_test.go): the lines kept still ride its message[0], the pass
+// after a turn still notices, and its page tells the model the person can type
+// /remember — what a small window gives up is the model's own two hands.
 func (a *Agent) memoryTools() []bare.Tool {
-	if !a.memoryWritable() {
+	if !a.memoryWritable() || a.config.promptProfile().lean() {
 		return nil
 	}
 	return []bare.Tool{{

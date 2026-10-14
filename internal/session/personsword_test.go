@@ -349,31 +349,6 @@ func TestAThoughtOnTheScreenIsSomethingTheyHaveRead(t *testing.T) {
 	}
 }
 
-// TestTheOneReadingIsWhatBothDoorsAsk is the structural half of the same thing.
-// A build with two readings passes every behaviour fixture above and still has
-// the defect, because the defect is that the two can drift.
-func TestTheOneReadingIsWhatBothDoorsAsk(t *testing.T) {
-	reached := &reachedThePerson{}
-	generation := &activeGeneration{reached: reached}
-	aside := &recallAside{}
-	aside.watch(reached)
-
-	if generation.productive() {
-		t.Fatal("a request that has drawn nothing reported that it had")
-	}
-	reached.drew()
-	if !generation.productive() {
-		t.Fatal("the person's word does not see what the observer drew")
-	}
-	if !aside.reached.Load().did() {
-		t.Fatal("the recall's gate and the person's word are reading two different facts, " +
-			"which is the defect this reading exists to make impossible")
-	}
-	reached.reset()
-	if generation.productive() || aside.reached.Load().did() {
-		t.Fatal("the attempt boundary did not empty the reading for both doors")
-	}
-}
 
 // TestThePersonsCutTellsTheRoomTheAttemptIsVoid: the engine empties its four
 // buffers at the top of the next attempt, and the surface only learns that a

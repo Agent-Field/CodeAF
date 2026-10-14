@@ -12,7 +12,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/automation"
@@ -20,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -176,25 +176,6 @@ func clientDoorHasCeiling(t *testing.T, call clientDoorCall) bool {
 	return ok
 }
 
-func addClientDoorMemories(t *testing.T, path string) {
-	t.Helper()
-	brain, err := store.Open(path)
-	if err != nil {
-		t.Fatalf("open memory store: %v", err)
-	}
-	for _, memory := range []store.Memory{
-		{Type: store.MemoryFact, Scope: store.MemoryScopeUser, Title: "first", Text: "the first remembered fact"},
-		{Type: store.MemoryFact, Scope: store.MemoryScopeUser, Title: "second", Text: "the second remembered fact"},
-	} {
-		if _, err := brain.AddMemory(memory); err != nil {
-			_ = brain.Close()
-			t.Fatalf("add memory: %v", err)
-		}
-	}
-	if err := brain.Close(); err != nil {
-		t.Fatalf("close memory store: %v", err)
-	}
-}
 
 func establishClientDoorRouter(t *testing.T, baseURL string) {
 	t.Helper()
@@ -479,7 +460,7 @@ func TestTheMemoryReflexResolvesEachActiveModelsService(t *testing.T) {
 			t.Cleanup(defaultServer.Close)
 			t.Cleanup(directServer.Close)
 			defaultServer.Refuse(http.StatusOK, `{"model":"crew/reflex","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":" "}}]}`)
-			directServer.Refuse(http.StatusOK, `{"model":"fake-small","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"{\"inject\":[],\"cmd\":null}"}}]}`)
+			directServer.Refuse(http.StatusOK, `{"model":"fake-small","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"{\"keep\":\"\"}"}}]}`)
 
 			brain, err := store.Open(filepath.Join(t.TempDir(), "brain.db"))
 			if err != nil {
@@ -510,10 +491,10 @@ func TestTheMemoryReflexResolvesEachActiveModelsService(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = agent.Close() })
 
-			// The first route gets an empty primary answer and moves to the
-			// conversation-model fallback. The second starts on that fallback.
-			agent.routedMemory(t.Context(), "use the useful fact", nil, false)
-			agent.routedMemory(t.Context(), "use the useful fact again", nil, false)
+			// The first noticing call gets an empty primary answer and moves to
+			// the conversation-model fallback. The second starts on that fallback.
+			_, _ = reflex.Notice(t.Context(), agent.reflexClient(), "use the useful fact", "ok", nil, true)
+			_, _ = reflex.Notice(t.Context(), agent.reflexClient(), "use the useful fact again", "ok", nil, true)
 
 			assertSourceRequests := func(server *sourcestub.Server, count int, bearer, model string) {
 				t.Helper()
@@ -615,17 +596,6 @@ func TestTheAutomationJudgmentReachesTheSourceThatServesItsModel(t *testing.T) {
 	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-judge-key", "stub/judge")
 }
 
-func TestTheMemoryConsolidationReachesTheSourceThatServesItsModel(t *testing.T) {
-	server := newClientDoorServer(t, `{"ops":[]}`)
-	root := t.TempDir()
-	brainPath := filepath.Join(root, "brain.db")
-	addClientDoorMemories(t, brainPath)
-	tidy := NewMemoryTidy(Config{Model: "direct/stub/memory", Sources: directClientDoorSources(server, "direct-memory-key")}, brainPath, root, func(_ time.Duration) bool { return true })
-	if _, err := tidy(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-memory-key", "stub/memory")
-}
 
 // A conversation built by the public session door sends the account it was
 // handed, strips the thinking level from the provider's slug, and carries that
@@ -708,33 +678,6 @@ func TestAnAutomationJudgmentCarriesTheSessionsPublishedPriceCeiling(t *testing.
 	}
 }
 
-// A memory consolidation receives the same price seam as the conversation,
-// so an unattended pass cannot lose the account's ceiling at its private
-// client-construction site.
-func TestAMemoryConsolidationCarriesTheSessionsPublishedPriceCeiling(t *testing.T) {
-	server := newClientDoorServer(t, `{"ops":[]}`)
-	establishClientDoorRouter(t, server.URL)
-	root := t.TempDir()
-	brainPath := filepath.Join(root, "brain.db")
-	addClientDoorMemories(t, brainPath)
-	tidy := NewMemoryTidy(Config{
-		Model: "stub/memory-client-door", APIKey: "memory-key", BaseURL: server.URL,
-		Routing: provider.RoutingLatency,
-		ModelPrice: func(string) (float64, float64, bool) {
-			return 0.0000004, 0.0000016, true
-		},
-	}, brainPath, root, func(_ time.Duration) bool { return true })
-	if _, err := tidy(context.Background()); err != nil {
-		t.Fatalf("memory consolidation: %v", err)
-	}
-	call := server.call(t, 0)
-	if call.authorization != "Bearer memory-key" {
-		t.Fatalf("Authorization = %q, want the session's bearer", call.authorization)
-	}
-	if !clientDoorHasCeiling(t, call) {
-		t.Fatalf("memory request carried no provider.max_price; its provider preferences were %s", call.body["provider"])
-	}
-}
 
 func assertOrdinaryClientDoorCall(t *testing.T, call clientDoorCall, key, model string) {
 	t.Helper()
@@ -796,19 +739,6 @@ func TestTheSessionClientDoorsLeaveAnOrdinaryRequestAlone(t *testing.T) {
 		assertOrdinaryClientDoorCall(t, server.call(t, 0), "plain-judge-key", "stub/plain-judge")
 	})
 
-	t.Run("memory", func(t *testing.T) {
-		server := newClientDoorServer(t, `{"ops":[]}`)
-		root := t.TempDir()
-		brainPath := filepath.Join(root, "brain.db")
-		addClientDoorMemories(t, brainPath)
-		tidy := NewMemoryTidy(Config{
-			Model: "stub/plain-memory", APIKey: "plain-memory-key", BaseURL: server.URL,
-		}, brainPath, root, func(_ time.Duration) bool { return true })
-		if _, err := tidy(context.Background()); err != nil {
-			t.Fatalf("memory consolidation: %v", err)
-		}
-		assertOrdinaryClientDoorCall(t, server.call(t, 0), "plain-memory-key", "stub/plain-memory")
-	})
 }
 
 func TestAFirstRunKeyReachesATaskSpawnedAfterItLands(t *testing.T) {

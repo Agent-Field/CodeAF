@@ -194,7 +194,7 @@ func TestTheRecordRidesInModelContext(t *testing.T) {
 	a := askTestAgent(t, true)
 	a.recordDecision(DecisionRecord{Head: "Which format?", Labels: []string{"json"}, By: DecidedByPerson, At: time.Now()})
 	a.mu.Lock()
-	a.alwaysText = "\n\nAlways:\n- ship on Fridays"
+	a.memoryText = "\n<memory>\nMemory:\n\n- \"ship on Fridays\"\n</memory>\n"
 	a.refreshSystemLocked()
 	got := a.messages[0].Content[0].Text
 	a.mu.Unlock()
