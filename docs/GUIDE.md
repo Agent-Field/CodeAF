@@ -264,7 +264,7 @@ capability that cannot work is left off it rather than offered and failing.
 | --- | --- |
 | Files and shell | `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` |
 | Documents and jobs | `read_document`, `jobs`, `manual` |
-| Interaction and work | `ask`, `watch`, `tasks`, `propose_task`, `quick_task`, `items`, `divide_work`, `stand` |
+| Interaction and work | `ask`, `watch`, `tasks`, `propose_task`, `quick_task`, `items`, `divide_work`, `automation` |
 | Memory and workspace | `remember`, `forget`, `recall`, `track`, `commit`, `workspace`, `workspace_snapshots`, `workspace_restore`, `workspace_fork`, `workspace_merge`, `search_conversations` |
 | Web | `web_search`, `web_fetch` |
 | Settings and accounts | `settings`, `change_setting`, `services`, `use_service`, `gmail_search`, `gmail_read`, `gmail_send`, `calendar_list`, `calendar_create`, `slack_search`, `slack_read_thread`, `slack_list_channels`, `slack_send` |
