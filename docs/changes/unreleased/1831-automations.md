@@ -18,7 +18,6 @@ invalidates:
   - "The tab bar had seven words. It has eight: `Automations` stands between `Memory` and `Spend` (still `alt+7`), and under 84 columns `Spend` and `Settings` fold behind `more ▾`."
   - "A turn's banner was always OSC 777, which iTerm2 ignores. In iTerm2 it is OSC 9 now, and an automation's banner rides the terminal there and in Ghostty, kitty, WezTerm and foot, so clicking it brings back the tab."
   - "The memory tidy ran on the standing pass. Nothing runs it now; the clock does not."
-  - "An approval asked inside an `ask here` errand was never drawn, so the errand sat on `working`. It is asked in the errand's own pane."
   - "Home's `since you left` panel whispered `what watches and tasks did while the terminal was shut`. It whispers `what happened while you were away`, because nothing runs while codeaf is shut."
 ---
 

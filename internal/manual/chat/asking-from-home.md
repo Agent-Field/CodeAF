@@ -167,7 +167,7 @@ along it**:
 - `0 Don't save` — `Nothing is saved and nothing runs.`
 - `o Change…` — the pane says `type the change and press enter`; write the correction in
   your own words ("make it 8pm", "every weekday") and the model proposes again, on a new
-  card that replaces this one.
+  card that replaces this one. While you write it every key is text, digits included.
 
 **`esc` is not an answer here.** In the pane it hands the keyboard back to the list, and the
 card goes on waiting — there is no clock on it — with its row saying `waiting on you`. `0`
@@ -310,6 +310,30 @@ Going means its session is closed. **Nothing is deleted and the folder does not 
 **Quitting the window that holds it ends every exchange**, including one still working — the
 turn is interrupted and the session closed — and a card still waiting is then never
 answered, so nothing is saved from it.
+
+## Why didn't my key answer the card in ask here — the quarter-second guard
+
+**A key pressed within a quarter of a second of the card's answers being drawn is
+ignored**, and so is a click. It was aimed at whatever was there before — usually a
+follow-up you were typing, or a command's approval you had just answered — so a `1` meant
+for something else cannot save something. Press it again. A card that arrived while you
+were in another conversation counts from when you first see it, and one whose answers an
+approval hid counts again from when they come back.
+
+**Your answer is kept on the card itself.** Nothing is added above the message box of the
+conversation you open next — it used to show there for half a minute as a decision line,
+about a conversation that never asked.
+
+## I typed a new time and it set up the reminder anyway — typing a change in ask here
+
+**While you are writing a change after `o`, every key is text.** "make it 10 tomorrow" goes
+into the box whole and `enter` sends it; until then neither the card nor a command's
+approval beside it takes a digit. Send or clear the sentence, and their keys are theirs
+again.
+
+It used to answer: the `1` was taken as `Save`, the reminder was saved as first proposed
+and the rest of the sentence was lost — and with an approval up beside the card, the `1`
+allowed the command.
 
 ## Ask here needs your permission to run a command — approve or deny it in the pane
 

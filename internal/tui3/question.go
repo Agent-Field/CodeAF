@@ -306,6 +306,12 @@ type questionShown struct {
 	// another conversation — has to be told that the next enter is an answer
 	// rather than a message, and this is where it is told.
 	commented func()
+	// elsewhere says the question is about ANOTHER SESSION than the one this
+	// window is holding — home's errand card, answered on the errand's own agent
+	// (homeexchange.go). Its answer leaves no receipt above this window's box:
+	// that line belongs to the conversation behind it, which never asked, and the
+	// card already keeps its answer where it was drawn.
+	elsewhere bool
 	// held is the lane's own hand on the first evidence that somebody is AT THE
 	// KEYBOARD, and it is called once per question.
 	//
@@ -2704,8 +2710,14 @@ func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	// that has already been made. A page is a way of READING one question; when
 	// there is no question there is no page.
 	a.closeQuestionPage(token)
-	a.recordQuestion(q, answer)
-	a.countQuestionYes(q, answer)
+	// A QUESTION ABOUT ANOTHER SESSION LEAVES NO RECEIPT HERE AND COUNTS NO YES.
+	// The receipt is drawn above this window's box, in a conversation that never
+	// asked, and the rule a third yes offers would be written for this window's
+	// asks out of answers given about somebody else's ([questionShown.elsewhere]).
+	if !q.elsewhere {
+		a.recordQuestion(q, answer)
+		a.countQuestionYes(q, answer)
+	}
 	a.touch()
 }
 
