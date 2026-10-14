@@ -146,7 +146,26 @@ func checkField(st State, _ Entry, f fieldArgs) error {
 	if issues := spec.ValidateDef(label, spec.AppSchemaURL, "field", asAny(f.field)); len(issues) > 0 {
 		return refuseAll(issueLines(label, issues, "codeaf app schema field"))
 	}
-	return checkFieldRefs(st, label, f.field)
+	if err := checkFieldRefs(st, label, f.field); err != nil {
+		return err
+	}
+	return checkComputed(st, f)
+}
+
+// checkComputed compiles a computed field against the fields and constants
+// the record has by now, plus this field, so a computed field comes after the
+// fields and constants it reads.
+func checkComputed(st State, f fieldArgs) error {
+	if f.field.Computed == "" {
+		return nil
+	}
+	rec := *st.Records[f.record]
+	rec.Fields = map[string]*spec.Field{}
+	for name, field := range st.Records[f.record].Fields {
+		rec.Fields[name] = field
+	}
+	rec.Fields[f.name] = &f.field
+	return computedProblem(&rec, f.record, f.name, f.field.Computed)
 }
 
 // checkFieldRefs holds the rules the schema cannot see because they need the

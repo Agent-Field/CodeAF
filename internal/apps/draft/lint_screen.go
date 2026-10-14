@@ -30,6 +30,8 @@ type screenLint struct {
 	st    State
 	kit   *spec.Kit
 	lists map[string]string // list id → record type, as the screen declares it
+	// values are the names a condition may read; see whenValues.
+	values map[string]any
 }
 
 // lintScreen returns the findings of one decoded screen.
@@ -44,6 +46,7 @@ func lintScreen(st State, id string, screen *spec.Screen) []string {
 			l.lists[n.ID] = n.Bind.Records
 		}
 	})
+	l.values = l.whenValues(screen)
 	l.node(screen.Nav, "/nav", "")
 	l.node(screen.Body, "/body", "")
 	return l.lines
@@ -60,6 +63,7 @@ func (l *screenLint) node(n *spec.Node, path, inherited string) {
 		l.props(part, n, typ, path)
 		l.bindKind(part, n, path)
 	}
+	l.when(n, path)
 	l.bind(n.Bind, path+"/bind")
 	l.actions(n, typ, path)
 	for i, child := range n.Children {

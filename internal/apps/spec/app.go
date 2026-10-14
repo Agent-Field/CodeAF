@@ -6,6 +6,7 @@ import "encoding/json"
 type App struct {
 	ID           string                 `json:"id"`
 	Name         string                 `json:"name"`
+	Tint         string                 `json:"tint,omitempty"`
 	Description  string                 `json:"description,omitempty"`
 	Space        string                 `json:"space,omitempty"`
 	Version      int                    `json:"version,omitempty"`

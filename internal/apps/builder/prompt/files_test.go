@@ -1,6 +1,8 @@
 package prompt
 
 import (
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -37,14 +39,14 @@ func TestParseFilesAcceptsJSONAsEscapedString(t *testing.T) {
 
 func TestParseFilesRejects(t *testing.T) {
 	tests := []struct{ name, out, want string }{
-		{"no object", "sorry, I cannot", "no JSON object"},
-		{"empty object", `{}`, "empty"},
-		{"outside path", `{"../app.json":"{}"}`, "not an app file"},
-		{"absolute", `{"/etc/passwd":"x"}`, "not an app file"},
-		{"custom tsx", `{"custom/x.tsx":"x"}`, "not an app file"},
-		{"nested screen", `{"screens/a/b.json":{}}`, "not an app file"},
-		{"wrong ext", `{"screens/a.yaml":"x"}`, "not an app file"},
-		{"migration", `{"migrations/0001.json":{}}`, "not an app file"},
+		{"no object", "sorry, I cannot", "got keys []"},
+		{"empty object", `{}`, "got keys []"},
+		{"outside path", `{"../app.json":"{}"}`, "../app.json"},
+		{"absolute", `{"/etc/passwd":"x"}`, "/etc/passwd"},
+		{"custom tsx", `{"custom/x.tsx":"x"}`, "custom/x.tsx"},
+		{"nested screen", `{"screens/a/b.json":{}}`, "screens/a/b.json"},
+		{"wrong ext", `{"screens/a.yaml":"x"}`, "screens/a.yaml"},
+		{"migration", `{"migrations/0001.json":{}}`, "migrations/0001.json"},
 		{"one bad among good", `{"app.json":{},"notes.txt":"x"}`, "notes.txt"},
 		{"bad json string", `{"app.json":"{nope"}`, "not valid JSON"},
 		{"bad yaml", `{"runs/a.yaml":"a: [1"}`, "not valid YAML"},
@@ -61,10 +63,59 @@ func TestParseFilesRejects(t *testing.T) {
 	}
 }
 
-func TestParseFilesSkipsAnEarlierUnrelatedObject(t *testing.T) {
-	files, err := ParseFiles(`note {"x":1} then {"agent.md":"hello"}`)
-	if err != nil || string(files["agent.md"]) != "hello" {
-		t.Fatalf("files=%v err=%v", files, err)
+func TestParseFilesChoosesFilesObject(t *testing.T) {
+	const files = `{"agent.md":"hello"}`
+	tests := []struct{ name, output string }{
+		{"unrelated", `note {"x":1} then ` + files},
+		{"inline app body", `{"budget":{"month":20},"records":{}} then ` + files},
+		{"plan fragment", `{"data":[{"id":"lot","line":"Lots"}]} then ` + files},
+		{"mixed paths", `{"app.json":{},"notes.txt":"x"} then ` + files},
+		{"wrapper", `{"files":` + files + `,"explanation":"done"}`},
+		{"prefer wrapper", `{"agent.md":"earlier"} then {"files":` + files + `}`},
+		{"invalid wrapper", `{"files":{"budget":{}}} then ` + files},
+		{"first map", files + ` then {"agent.md":"later"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseFiles(tt.output)
+			if err != nil || len(got) != 1 || string(got["agent.md"]) != "hello" {
+				t.Fatalf("files=%v err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestParseFilesMissingObjectReturnsCorrection(t *testing.T) {
+	tests := []struct {
+		name, output string
+		keys         []string
+	}{
+		{"garbage", "not JSON {broken", []string{}},
+		{"inline definition", `{"records":{},"budget":{}}`, []string{"budget", "records"}},
+		{"several objects", `{"z":1} then {"a":2,"z":3}`, []string{"a", "z"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFiles(tt.output)
+			var correction *FilesObjectError
+			if !errors.As(err, &correction) || !reflect.DeepEqual(correction.Keys, tt.keys) {
+				t.Fatalf("err = %v, want correction with keys %v", err, tt.keys)
+			}
+			if !strings.Contains(err.Error(), "return a JSON object mapping app file paths to contents; got keys") {
+				t.Fatalf("missing repair instruction: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseFilesDoesNotHideInvalidSelectedContent(t *testing.T) {
+	for _, output := range []string{
+		`{"app.json":"{broken"} then {"app.json":{}}`,
+		`{"app.json":{}} then {"files":{"app.json":"{broken"}}`,
+	} {
+		if _, err := ParseFiles(output); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+			t.Fatalf("err = %v", err)
+		}
 	}
 }
 

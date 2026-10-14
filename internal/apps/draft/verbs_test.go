@@ -114,6 +114,8 @@ func TestVerbsAcceptAndRefuse(t *testing.T) {
 			err: `error: deal.kind: /default "c" is not one of its values (values: a, b)`},
 		{name: "field currency", setup: planned(), call: c("field", "deal", "n", "number", "--currency", "USD"), code: ExitRefused,
 			err: "error: deal.n: /currency only applies to a money field, this one is number"},
+		{name: "field computed", setup: planned(), call: c("field", "deal", "x", "number", "--computed", "$now > $now - 7d"), line: "Deal · name, stage, x"},
+		{name: "field computed typo", setup: planned(), call: c("field", "deal", "x", "number", "--computed", "stge + 1"), code: ExitRefused},
 		{name: "field bad type", setup: planned(), call: c("field", "deal", "n", "numbr"), code: ExitRefused},
 		{name: "screen", setup: planned(), call: c("screen", "pipeline").withBody(screenWith(`["name","stage"]`)), line: "Screen · Pipeline"},
 		{name: "screen unknown field", setup: planned(), call: c("screen", "pipeline").withBody(screenWith(`["name","stge"]`)), code: ExitRefused,

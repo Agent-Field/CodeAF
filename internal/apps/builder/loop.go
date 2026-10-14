@@ -130,6 +130,8 @@ var verbGroup = map[string]string{
 // registry's own name for it, such as "plan data".
 func ownerVerb(e prompt.Edit) (verb string, args []string) {
 	switch {
+	case e.Group == prompt.GroupTint:
+		return "tint", []string{e.Line}
 	case e.Group == prompt.GroupAgent:
 		return "plan agent", []string{e.Line}
 	case e.Op == prompt.OpRemove:
@@ -140,6 +142,9 @@ func ownerVerb(e prompt.Edit) (verb string, args []string) {
 
 // ownerNote is the edit in the words the worker is told.
 func ownerNote(e prompt.Edit) string {
+	if e.Group == prompt.GroupTint {
+		return "Owner set the app's tint to " + e.Line + "."
+	}
 	if e.Op == prompt.OpRemove {
 		return "Owner removed " + e.Group + " " + e.ID + " from the plan."
 	}

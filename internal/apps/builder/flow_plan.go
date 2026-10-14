@@ -66,6 +66,10 @@ func (s *Service) runPlanCall(ctx context.Context, b *build, in prompt.Inputs) (
 		plan.Name = deriveName(plan.Ask)
 	}
 	plan.Needs = "computed"
+	s.chooseTint(b)
+	if prompt.CheckTint(plan.Tint) != nil {
+		plan.Tint = b.tintChoice()
+	}
 	return plan, nil
 }
 
@@ -110,11 +114,28 @@ func (s *Service) EditPlan(ctx context.Context, scope svc.Scope, p bridge.PlanEd
 	} else if !s.roadFor(b).editable[detail.State] {
 		return bridge.PlanEditResult{}, bridge.Errorf(bridge.CodeConflict, "the plan can only change before Write")
 	}
+	if err := checkTintEdits(p.Edits); err != nil {
+		return bridge.PlanEditResult{}, err
+	}
 	plan, err := s.roadFor(b).edit(s, ctx, b, p.Edits)
 	if err != nil {
 		return bridge.PlanEditResult{}, err
 	}
 	return bridge.PlanEditResult{Plan: specPlan(plan), Needs: planNeeds(plan, b)}, nil
+}
+
+// checkTintEdits refuses a tint outside the palette before any road acts, so
+// both roads give the owner the same words.
+func checkTintEdits(edits []bridge.PlanEdit) error {
+	for _, e := range edits {
+		if e.Section != prompt.GroupTint {
+			continue
+		}
+		if err := prompt.CheckTint(strings.TrimSpace(e.Text)); err != nil {
+			return bridge.Errorf(bridge.CodeInvalid, err.Error())
+		}
+	}
+	return nil
 }
 
 func (s *Service) applyEdits(ctx context.Context, b *build, edits []bridge.PlanEdit) (prompt.Plan, error) {
@@ -140,6 +161,8 @@ func (s *Service) applyEdits(ctx context.Context, b *build, edits []bridge.PlanE
 func splitEdits(plan prompt.Plan, edits []bridge.PlanEdit) (lines []prompt.Edit, requests []string) {
 	for _, e := range edits {
 		switch {
+		case e.Section == prompt.GroupTint:
+			lines = append(lines, prompt.Edit{Op: prompt.OpSet, Group: e.Section, Line: strings.TrimSpace(e.Text)})
 		case e.Section == prompt.GroupAgent:
 			lines = append(lines, prompt.Edit{Op: prompt.OpSet, Group: e.Section, Line: e.Text})
 		case e.Section == "" || e.ID == "":

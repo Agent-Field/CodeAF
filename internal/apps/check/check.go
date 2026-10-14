@@ -76,6 +76,10 @@ func (s *Service) check(ctx context.Context, app string, files spec.Files, round
 		if err == nil {
 			err = ctx.Err()
 		}
+		if err != nil && ctx.Err() == nil {
+			r.Issues = append(r.Issues, finding(spec.AppFile, "", "check/error", err.Error(), "repair the definition named in this failure using the supplied schemas and kit"))
+			err = nil
+		}
 		r.Passed = err == nil && len(r.Issues) == 0
 		for _, step := range r.Steps {
 			if step.Status == "skipped" {
@@ -103,6 +107,7 @@ func (s *Service) check(ctx context.Context, app string, files spec.Files, round
 	cap := b.App.Budget.Month
 	s.progress(app, round, "kit", "running", nil, cap)
 	r.Issues = append(r.Issues, lint(b, kit)...)
+	r.Issues = append(r.Issues, computedExpressions(b)...)
 	s.finish(app, round, &r, 1, 0, cap)
 	if err = ctx.Err(); err != nil {
 		return
@@ -116,8 +121,12 @@ func (s *Service) check(ctx context.Context, app string, files spec.Files, round
 	rows, sampleErr := s.all.Sample.Generate(ctx, b)
 	if sampleErr != nil {
 		r.Steps[2].Status = "failed"
+		if ctx.Err() != nil {
+			return r, ctx.Err()
+		}
+		r.Issues = append(r.Issues, finding(spec.AppFile, "/records", "render/sample", sampleErr.Error(), "repair the named field or computed expression in app.json; use now - days(7) for a week ago"))
 		s.progress(app, round, "render", "failed", &r, cap)
-		return r, sampleErr
+		return r, nil
 	}
 	before := len(r.Issues)
 	for _, id := range b.ScreenIDs() {

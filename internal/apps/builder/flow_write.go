@@ -229,6 +229,9 @@ func (b *build) patch(files map[string][]byte) (map[string][]byte, error) {
 	app["id"], app["space"] = b.app, personalSpace
 	setIn(app, "budget", "month", b.budget)
 	setIn(app, "agent", "model", b.agentModel)
+	if tint := b.currentPlan().Tint; tint != "" {
+		app["tint"] = tint
+	}
 	if name := strings.TrimSpace(b.currentPlan().Name); name != "" {
 		app["name"] = name
 	}
@@ -299,8 +302,16 @@ func asText(files spec.Files) map[string]string {
 func (s *Service) checkRound(ctx context.Context, b *build, files spec.Files, round int) (bridge.CheckReport, error) {
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: bridge.BuildRunning, Round: round, Log: "Opening every screen with sample data"})
 	report, err := s.all.Check.Run(ctx, b.app, files, round)
+	if ctx.Err() != nil {
+		return report, ctx.Err()
+	}
 	if err != nil {
-		return report, err
+		// Check errors still belong to a repair round; only cancellation stops the loop.
+		report.Pass = false
+		report.Issues = append(report.Issues, spec.Issue{File: spec.AppFile, Rule: "check/error", Message: err.Error() + "; fix: repair the definition named by Check and rerun every check"})
+	}
+	if !report.Pass && len(report.Issues) == 0 {
+		report.Issues = append(report.Issues, spec.Issue{File: spec.AppFile, Rule: "check/failed", Message: "Check did not pass; fix: repair the current app definition against the supplied schemas and kit"})
 	}
 	report.Round = round
 	status := bridge.BuildDone

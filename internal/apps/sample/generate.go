@@ -79,7 +79,7 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 	}
 	seen := map[string]map[string]bool{}
 	for name, f := range schema.Fields {
-		if f.Unique {
+		if f.Unique || name == schema.Title {
 			seen[name] = map[string]bool{}
 		}
 	}
@@ -93,6 +93,9 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 		row, err = rules.Prepare(row, svc.Owner, now, true)
 		if err != nil {
 			return err
+		}
+		if !readableTitle(fmt.Sprint(row.Fields[schema.Title])) {
+			return bridge.Errorf(bridge.CodeInvalid, "sample needs a readable title for "+typ)
 		}
 		if err := checkUnique(row, seen); err != nil {
 			return err

@@ -27,6 +27,33 @@ Saved. Remote AI team defaults wait for the host's acknowledgement; after Save
 has been sent, the editor says Saving and offers Close. Closing that editor does
 not undo the write already in progress.
 
+## Apps Builder model — CODEAF_APPS_BUILDER_MODEL environment pin
+
+The settings registry row `apps.builder.model`, labelled **apps builder model**,
+selects the model that plans, writes and fixes app definitions. It saves the
+choice in the profile's `config.json`. `CODEAF_APPS_BUILDER_MODEL` overrides
+that saved choice. Surrounding whitespace is ignored; with no nonblank pin or
+saved choice, the Builder uses its built-in model and the row reads **built in**.
+This setting does not select the app's own agent model.
+
+The Builder reads this setting when the app server starts. Restart that server
+for a changed value to take effect. A nonblank environment pin makes the row
+read-only: editing returns "apps builder model is set by CODEAF_APPS_BUILDER_MODEL".
+Clear the variable to edit the saved choice; clear the saved choice to restore
+the built-in model.
+
+## Apps Builder reply repair — stray JSON objects and files wrappers
+
+When Builder writes app files, it prefers a JSON object under a `files` key,
+then the first object whose keys are all valid app file paths. It skips inline
+app definitions and plan fragments. File contents still must parse as JSON or
+YAML where their extension requires it.
+
+If no files object qualifies, Builder sends the model a correction naming the
+keys it received: "return a JSON object mapping app file paths to contents;
+got keys …". It retries that step once, charging both calls to the build budget.
+A second rejected reply leaves the build failed with Fix it and Cancel.
+
 ## Change settings by asking in chat
 
 You can ask codeaf to change supported preferences: “hide hints,” “expand completed

@@ -2,6 +2,7 @@
   "$schema": "https://codeaf.dev/schema/plan/1.json",
   "ask": "A CRM for our sales pipeline: companies, deals and contacts. The agent drafts follow-ups when a deal goes to proposal; I approve every email before it sends.",
   "name": "CRM",
+  "tint": "sage",
   "data": [
     {
       "id": "deal",

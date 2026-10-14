@@ -54,6 +54,10 @@ Go twin for a complete example of each.
 `id` (slug `^[a-z][a-z0-9_-]{0,47}$`), `name`, `description`, `space`,
 `version`, `kit` (2), `agent {name, file: "agent.md", model}`, and:
 
+- `tint?`: the app's identity tint, independent of its space. Allowed values,
+  in palette order: `iris`, `sage`, `sand`, `tide`, `rose`, `graphite` (the shared
+  `spec.Tints` app/crew palette). Omission is valid; an empty string or any other
+  value fails Check. Board 05's acme app is iris; board 08's golden CRM is sage.
 - `records`: `{ <type>: {label, plural, title, fields, constants?, freeze?} }`.
   `title` names the field shown as the record's name.
 - Field: `{type, label?, required?, unique?, index?, values?, default?, to?,
@@ -80,9 +84,39 @@ Go twin for a complete example of each.
 Needs are never written by the Builder; codeaf computes them from `app.json`
 (`plan.json` carries `"needs": "computed"`).
 
+### Expression grammar
+
+`internal/apps/expr` owns the shared CEL environment, compilation and bounded
+program construction; it imports neither services, records nor check. Check,
+record execution and worker drafts must use this package so they agree.
+
+Computed fields read bare record fields or `$record.<field>`. ISO date and
+datetime values have timestamp semantics during expression evaluation; stored
+JSON remains strings. `now` is the supplied current timestamp; `now()` and
+`$now` remain compatible. `me()` / `$me`, `count(value)` and
+`days_since(date)` remain available. `days(n)` returns a duration for a numeric
+number of days, including fractions and negative numbers, within Go duration
+range. Check `when` expressions must yield bool.
+
+Duration literals are decimal nonnegative integers immediately followed by
+`m` (minutes), `h` (hours), `d` (24 hours) or `w` (7 days): `7d`, `24h`, `30m`,
+`2w`. Compilation rewrites them to `duration("168h")`, `duration("24h")`,
+`duration("30m")`, `duration("336h")` only outside quoted strings, raw strings
+and comments, and never inside identifiers. Explicit `duration("168h")` is
+also accepted. Examples: `roast_date >= now - 7d` and
+`due_date < now + days(2)`. CEL expressions are limited to 4096 source bytes,
+64 parser nesting levels and an evaluation cost of 10000. Query tokens are
+separate from CEL.
+
+Every Check stage failure, including expression compilation and sample
+execution, carries a repair hint into FIX until the existing round ceiling.
+Expression issues include the field/path, original expression, source line and
+column, and a corrected example. Cancellation stops the build immediately.
+
 ### plan.json
 
-`{ask, name, data[], automation[], screens[], agent, needs: "computed"}`. Each
+`{ask, name, tint?, data[], automation[], screens[], agent, needs: "computed"}`.
+Optional `tint` uses the same identity palette and validation as `app.json`. Each
 of `data`, `automation`, `screens` is a list of lines `{id, line}`; `agent` is
 `{id: "agent", line}`. The `id` is the record type, run or screen the line
 becomes, so the card edits a line in place and Check can match plan ↔ files.
@@ -264,6 +298,17 @@ JSON text frames:
 Calls may resolve out of order; match on `id`. On reconnect, resubscribe and
 re-query (events are not replayed).
 
+`AppSummary` has optional `tint`; `AppDetail` embeds that summary. The value
+comes from the app definition and uses the same identity palette. Older
+definitions may omit it. The first-run golden CRM keeps `tint: "sage"` in its
+definition.
+
+Store handoff for the tint spec lane: copy `app.Tint` into metadata in
+`definitionSummary` and copy `labels.Tint` when `WriteFiles` refreshes labels.
+This supplies tint to List, detail, Keep and app state events without choosing a
+default. The spec lane owns the schema and wire field; the store owns these
+metadata projections.
+
 ### Methods
 
 | Method | `app` | params → result |
@@ -443,6 +488,7 @@ Only B1 decides more.
   from the pinned binary in `codeaf-sidecar.json`. Browser dev uses D3's mock
   bridge serving `fixtures/apps/crm/`.
 
+- Wave 2 · spaces: [contract/spaces.md](contract/spaces.md)
 - Wave 2 · shape track: [contract/shape.md](contract/shape.md)
 
 ### c2 run fallback · gateway and desk handoff

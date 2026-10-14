@@ -3,7 +3,6 @@ package draft
 import (
 	"encoding/json"
 	"strings"
-	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
@@ -18,7 +17,7 @@ const perRunDivisor = 40
 func Render(st State, d Defaults) spec.Files {
 	files := spec.Files{spec.PlanFile: marshalFile(planDoc(st, d))}
 	if st.Name != "" && len(st.Records) > 0 {
-		files[spec.AppFile] = marshalFile(appDoc(st, d, tintInSchema()))
+		files[spec.AppFile] = marshalFile(appDoc(st, d))
 	}
 	for id, raw := range st.Screens {
 		files[spec.ScreensDir+"/"+id+".json"] = withNewline(raw)
@@ -43,8 +42,6 @@ type planFile struct {
 type appFile struct {
 	Schema       string   `json:"$schema"`
 	Capabilities capsFile `json:"capabilities"`
-	// Tint is set only when the app schema knows the property.
-	Tint string `json:"tint,omitempty"`
 	spec.App
 }
 
@@ -59,6 +56,7 @@ func planDoc(st State, d Defaults) planFile {
 	plan := st.Plan
 	plan.Ask = orElse(d.Ask, st.About)
 	plan.Name = st.Name
+	plan.Tint = tintOf(st, d)
 	plan.Needs = "computed"
 	plan.Data, plan.Automation, plan.Screens = nonNil(plan.Data), nonNil(plan.Automation), nonNil(plan.Screens)
 	plan.Agent.ID = "agent"
@@ -72,20 +70,16 @@ func nonNil(lines []spec.PlanLine) []spec.PlanLine {
 	return lines
 }
 
-func appDoc(st State, d Defaults, withTint bool) appFile {
+func appDoc(st State, d Defaults) appFile {
 	app := spec.App{
-		ID: d.AppID, Name: st.Name, Description: st.About, Space: d.Space, Version: 1, Kit: d.Kit,
+		ID: d.AppID, Name: st.Name, Tint: tintOf(st, d), Description: st.About, Space: d.Space, Version: 1, Kit: d.Kit,
 		Agent:    spec.AgentRef{Name: agentName(st), File: spec.AgentFile, Model: d.AgentModel},
 		Records:  st.Records,
 		Triggers: st.Triggers,
 		Commands: st.Commands,
 		Budget:   budget(d),
 	}
-	doc := appFile{Schema: spec.AppSchemaURL, Capabilities: capabilities(st), App: app}
-	if withTint {
-		doc.Tint = orElse(st.Tint, d.Tint)
-	}
-	return doc
+	return appFile{Schema: spec.AppSchemaURL, Capabilities: capabilities(st), App: app}
 }
 
 func agentName(st State) string {
@@ -181,17 +175,5 @@ func withNewline(b []byte) []byte {
 	return append(append([]byte{}, b...), '\n')
 }
 
-// tintInSchema is decided once from the embedded app schema, so tint switches
-// on by itself when the schema gains the property and Validate never fails
-// before then.
-var tintInSchema = sync.OnceValue(func() bool {
-	raw, err := spec.SchemaJSON(spec.AppSchemaURL)
-	return err == nil && schemaHasTint(raw)
-})
-
-func schemaHasTint(schema []byte) bool {
-	var doc struct {
-		Properties map[string]json.RawMessage `json:"properties"`
-	}
-	return json.Unmarshal(schema, &doc) == nil && doc.Properties["tint"] != nil
-}
+// tintOf is the worker's choice, else the Builder's suggestion.
+func tintOf(st State, d Defaults) string { return orElse(st.Tint, d.Tint) }

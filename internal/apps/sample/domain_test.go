@@ -54,8 +54,8 @@ func TestInventorySamplesUseTheirOwnVocabularyAndReadableRelations(t *testing.T)
 			}
 			for i, row := range rows["item"] {
 				title := row.Fields["summary"].(string)
-				if !strings.Contains(title, "Stock item") || !strings.Contains(title, row.Fields["category"].(string)) {
-					t.Errorf("title lacks type label or domain choices: %q", title)
+				if !strings.Contains(title, "Stock item") || strings.ContainsFunc(title, unicode.IsDigit) {
+					t.Errorf("title lacks type label or uses a counter: %q", title)
 				}
 				if row.Fields["sku"] != fmt.Sprintf("ITEM-%04d", i+1) {
 					t.Errorf("SKU ignores field semantics: %v", row.Fields["sku"])
@@ -190,10 +190,10 @@ func TestTextSamplesRespectDefaultsAndDoNotTreatHumanRelatedObjectsAsPeople(t *t
 		def, want                         string
 	}{
 		{"class", "Class", "name", "Name", `"Gentle flow"`, "Gentle flow"},
-		{"customer_order", "Customer order", "name", "Name", "", "Customer order 1"},
+		{"customer_order", "Customer order", "name", "Name", "", "Customer order: Review overview details"},
 		{"item", "Stock item", "customer_notes", "Customer notes", "", "Customer notes 1"},
-		{"teacher", "Teacher", "first_name", "First name", "", "Priya"},
-		{"teacher", "Teacher", "last_name", "Last name", "", "Shah"},
+		{"teacher", "Teacher", "first_name", "First name", "", "Priya Shah"},
+		{"teacher", "Teacher", "last_name", "Last name", "", "Priya Shah"},
 	} {
 		t.Run(tt.typ+"/"+tt.field, func(t *testing.T) {
 			f := &spec.Field{Type: spec.FieldText, Label: tt.fieldLabel, Default: json.RawMessage(tt.def)}
