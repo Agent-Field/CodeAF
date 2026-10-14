@@ -502,11 +502,6 @@ func (r *rig) lit(text string) {
 // ctrl+enter, which home binds to `ask here`.
 func (r *rig) ctrlEnter() { r.lit("\x1b[13;5u") }
 
-// altEnter is ESC CR, which every terminal delivers. It is NOT a second
-// spelling of ctrlEnter: on home the router takes alt+enter for the composer
-// layer, whose second press sends the task (internal/tui3's composerlayer.go).
-func (r *rig) altEnter() { r.lit("\x1b\r") }
-
 // mouseTo moves the pointer to a 1-based cell with an SGR motion report, which
 // is what the all-motion mode the app turns on in View() asks for.
 func (r *rig) mouseTo(col, row int) {

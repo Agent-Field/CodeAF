@@ -370,7 +370,7 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…8        go to a place · established shortcut order: home · AI teams · chats · activity · spend · settings · standing · memory
+alt+1…8        go to a place · 1 home · 2 AI teams · 3 chats · 4 activity · 5 spend · 6 settings · 7 standing · 8 memory
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```

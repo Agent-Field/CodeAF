@@ -1325,7 +1325,7 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		// hands the keyboard back to the list, and a card left standing on the
 		// column is not an answer.
 		//
-		// AND `c` ARMS THE CORRECTION, which is what `2 change when or where`
+		// AND `o` ARMS THE CORRECTION, which is what `2 change when or where`
 		// used to be — a chip that asked for the box rather than an answer. It is
 		// the same key on every question this surface asks.
 		if ex.asking() && ex.ask != nil {
@@ -2198,7 +2198,7 @@ func exchangeHint(ex *homeExchange) string {
 		if ex.ask != nil {
 			parts = append(parts, exchangeAnswerWords(ex.ask.question))
 			// AND THE KEY THAT ASKS FOR THE BOX, which is the one answer with no
-			// row on the card: `c` says "I will take one of these, but not as it
+			// row on the card: `o` says "I will take one of these, but not as it
 			// stands", and the sentence that follows is the correction.
 			//
 			// ITS WORD IS THE KEY TABLE'S OWN (questionkeys.go) and not this

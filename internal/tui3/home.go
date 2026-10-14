@@ -2831,8 +2831,8 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		// AND IT STOPS A PIECE OF WORK THIS WINDOW HOLDS, through the stop card,
 		// which asks first — the same verb the row's strip offers
-		// (homepanel_running.go's [app.runningVerbs]), reached where `→` crosses
-		// columns instead of opening the strip.
+		// (homepanel_running.go's [app.runningVerbs]), reached without opening
+		// the strip.
 		if ok {
 			for _, v := range a.runningVerbs(line) {
 				if v.key == 's' {

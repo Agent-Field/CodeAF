@@ -205,7 +205,8 @@ the list`, with the card's own answers in front of it when a card is up and
 `↓ continue as a conversation` before the way out when that row is on screen. Home's
 `/ commands` is not on it: a `/` typed in the pane starts a follow-up and opens no list.
 `tab or esc back to the list` is always the last clause, and on a narrow window it is the
-one that stays (*Ask here on a narrow window*, below).
+one that stays (*Ask here on a narrow window*, below) — except while a change is being
+typed after `o`, when the line is `type the change and press enter · esc clear`.
 
 **The box above that line says what typing there does**: `› type a follow-up`, and
 `› type the change` once `o` on a card has asked for a correction. Home's own
@@ -238,7 +239,8 @@ of sat side by side:
   its tail, and **`enter`** or **`→`** on that row opens it again.
 
 **The way back is always on the line under the box**, at the narrowest width this layout
-has, sixty columns. `tab or esc back to the list` is the last clause of that line and the
+has, sixty columns, except while a change is being typed after `o` (that line ends
+`esc clear`). `tab or esc back to the list` is the last clause of that line and the
 one that stays; the clauses in front of it give way first, nearest first — home's chords
 such as `alt+e effort`, then `↓ continue as a conversation`, then `enter sends a follow-up`,
 then the card's answers from the last one back — so a card at sixty columns reads

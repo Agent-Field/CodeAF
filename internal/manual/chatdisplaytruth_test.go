@@ -58,6 +58,10 @@ func TestNoSectionRepeatsAStaleDisplayClaim(t *testing.T) {
 		"| `auditor` | checker |",
 		"draws one tab per open conversation, and",
 		"names every open conversation, and",
+		// /help's digit row said it was in the tab bar's order, then in the
+		// "established shortcut order"; it pairs each digit with its place now.
+		"established shortcut order",
+		"in the tab bar's own order",
 	}
 	for _, section := range Chat().Sections() {
 		body := flatten(section.Body)
