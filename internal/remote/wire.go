@@ -14,7 +14,6 @@ package remote
 
 import (
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -1890,9 +1889,15 @@ type PlanSpendArgs struct {
 // EventWire is a session.Event that survives JSON. Err is an interface and
 // marshals to nothing, so the string rides beside it and shadows it on the
 // wire; [EventWire.Event] restores the one field that needs restoring.
+//
+// ErrStop IS THE ERROR'S TYPE, which a string cannot carry. A surface decides
+// that a turn stopped at a spending cap with errors.Is, and a sentence rebuilt
+// by errors.New matches nothing ([session.TurnStop]). It is omitted for an
+// ordinary failure, so an older peer reads and writes the bytes it always did.
 type EventWire struct {
 	session.Event
-	Err string `json:"Err,omitempty"`
+	Err     string           `json:"Err,omitempty"`
+	ErrStop session.TurnStop `json:"ErrStop,omitempty"`
 }
 
 // WireEvent wraps an event for sending.
@@ -1900,6 +1905,7 @@ func WireEvent(ev session.Event) EventWire {
 	w := EventWire{Event: ev}
 	if ev.Err != nil {
 		w.Err = ev.Err.Error()
+		w.ErrStop = session.TurnStopOf(ev.Err)
 	}
 	w.Event.Err = nil
 	return w
@@ -1909,7 +1915,7 @@ func WireEvent(ev session.Event) EventWire {
 func (w EventWire) Unwire() session.Event {
 	ev := w.Event
 	if w.Err != "" {
-		ev.Err = errors.New(w.Err)
+		ev.Err = session.TurnStopError(w.ErrStop, w.Err)
 	}
 	return ev
 }

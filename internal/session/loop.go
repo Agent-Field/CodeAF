@@ -2101,6 +2101,15 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if err == nil {
 			return response, model, nil
 		}
+		// A SPENDING STOP IS NOT A FAILED REQUEST, and nothing below may weigh it
+		// as one. No request was made — the cap was read at the door
+		// ([Agent.completeWithNamedModel]) — so there is no wire to classify and
+		// nothing to retry or hop from. Weighed, it matched no transport shape and
+		// left under the words for one, `the request did not get through`, in
+		// front of the one sentence that names the cap and how to raise it.
+		if TurnStopOf(err) != "" {
+			return nil, model, err
+		}
 		// AND THE MARK'S READING TRAVELS OUT, because what it wants is the
 		// BOUNDARY and not another request: the drawing it made is spent by
 		// [Agent.checkpointSettle] at the top of the turn's own loop, which is
