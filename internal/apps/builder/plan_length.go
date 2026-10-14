@@ -23,14 +23,14 @@ func (s *Service) repairBeforeCheck(ctx context.Context, b *build, files spec.Fi
 	if err := s.shortenPlanLines(ctx, b, files); err != nil {
 		return err
 	}
-	changed := polishLabels(files)
+	changed := append(polishLabels(files), fillAskInputs(files)...)
 	if len(changed) == 0 {
 		return nil
 	}
 	if err := s.all.Store.WriteFiles(ctx, b.app, files); err != nil {
 		return err
 	}
-	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildDone, Files: changed, Log: "Wrote human labels in " + strings.Join(changed, ", ")})
+	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildDone, Files: changed, Log: "Wrote human labels and ask inputs in " + strings.Join(changed, ", ")})
 	return nil
 }
 
