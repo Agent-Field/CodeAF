@@ -183,6 +183,7 @@ func (s *Service) behaviour(ctx context.Context, app string, b *spec.Bundle, row
 		return "skipped", nil
 	}
 	scope := svc.Scope{App: app, Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}, Data: svc.DataSample}
+	ctx = svc.WithDryRun(ctx)
 	pending := false
 	for _, id := range b.RunIDs() {
 		if err := s.all.Records.Seed(ctx, app, rows); err != nil {

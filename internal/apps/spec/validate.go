@@ -171,3 +171,53 @@ func idMatchesName(name string, value any) []Issue {
 	}
 	return nil
 }
+
+// ValidateFile checks one file alone, with the same schema, parse and name
+// rules Validate applies to every file. The draft store uses it to judge a
+// single screen, run or agent without needing the rest of the app.
+func ValidateFile(name string, data []byte) []Issue { return validateFile(name, data) }
+
+// defSchemas caches the compiled sub-schemas ValidateDef asks for, by
+// "<schema url>#/$defs/<def>".
+var defSchemas sync.Map
+
+// ValidateDef checks one value against a named definition inside an embedded
+// schema, for example the field, trigger or command definition of app.json.
+// The file argument only labels the issues it returns.
+func ValidateDef(file, schemaURL, def string, value any) []Issue {
+	schema, err := defSchema(schemaURL, def)
+	if err != nil {
+		return []Issue{{File: file, Rule: "schema", Message: err.Error()}}
+	}
+	if err := schema.Validate(value); err != nil {
+		return schemaIssues(file, err)
+	}
+	return nil
+}
+
+func defSchema(schemaURL, def string) (*jsonschema.Schema, error) {
+	key := schemaURL + "#/$defs/" + def
+	if cached, ok := defSchemas.Load(key); ok {
+		return cached.(*jsonschema.Schema), nil
+	}
+	if _, err := schemas(); err != nil {
+		return nil, err
+	}
+	compiler := jsonschema.NewCompiler()
+	compiler.Draft = jsonschema.Draft2020
+	for url, file := range schemaFiles {
+		data, err := embedded.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		if err := compiler.AddResource(url, bytes.NewReader(data)); err != nil {
+			return nil, err
+		}
+	}
+	schema, err := compiler.Compile(key)
+	if err != nil {
+		return nil, fmt.Errorf("compile %s: %w", key, err)
+	}
+	defSchemas.Store(key, schema)
+	return schema, nil
+}

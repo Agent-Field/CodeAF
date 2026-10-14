@@ -177,7 +177,13 @@ func (s *Service) allowTopic(ctx context.Context, scope svc.Scope, raw json.RawM
 		switch parts[2] {
 		case "build", "state", "runs", "approvals":
 			return nil
+		case "draft":
+			return allowDraft(scope)
 		case "*":
+			// The wildcard also delivers the draft topic, so it needs the same right.
+			if err := allowDraft(scope); err != nil {
+				return err
+			}
 			return s.allowAllRecords(ctx, scope)
 		}
 	}
@@ -200,6 +206,16 @@ func (s *Service) allowTopic(ctx context.Context, scope svc.Scope, raw json.RawM
 		return s.allowAllRecords(ctx, scope)
 	}
 	return bridge.Errorf(bridge.CodeInvalid, "unknown app topic")
+}
+
+// allowDraft lets only a person who edits the app follow the Builder's draft.
+// The draft is the Builder's work stream and not part of the app, so the app
+// agent and plain users of the app never read it.
+func allowDraft(scope svc.Scope) error {
+	if scope.Caller.Agent || scope.Caller.Role != svc.RoleEditor {
+		return denied("only the owner's desk may follow the Builder's draft")
+	}
+	return nil
 }
 
 func (s *Service) allowAllRecords(ctx context.Context, scope svc.Scope) error {

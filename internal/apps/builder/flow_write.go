@@ -20,7 +20,7 @@ const writeWorkers = 6
 // writeAndCheck is Write: the files, then Check with up to MaxFixRounds fixes,
 // then Preview or failed.
 func (s *Service) writeAndCheck(ctx context.Context, b *build) error {
-	if err := s.saveResult(b, savedResult{}); err != nil {
+	if err := s.saveResult(b, savedResult{Road: b.result().Road}); err != nil {
 		return err
 	}
 	files, pending, err := s.writeAll(ctx, b)
@@ -67,12 +67,18 @@ func (s *Service) failWrite(ctx context.Context, b *build, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	if b.holdingFailure() {
+		return errRungFailed
+	}
 	debugLog(b.app, "write failed", err)
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildFailed, Log: ownerLog(err)})
 	return s.setState(ctx, b, bridge.StateFailed)
 }
 
 func (s *Service) giveUp(ctx context.Context, b *build, report bridge.CheckReport) error {
+	if b.holdingFailure() {
+		return errRungFailed
+	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepCheck, Status: bridge.BuildFailed, Round: report.Round,
 		Log: "The checks did not pass after " + fmt.Sprint(report.Round) + " rounds", Check: &report})
 	return s.setState(ctx, b, bridge.StateFailed)
@@ -263,6 +269,9 @@ func (b *build) patch(files map[string][]byte) (map[string][]byte, error) {
 	app["id"], app["space"] = b.app, personalSpace
 	setIn(app, "budget", "month", b.budget)
 	setIn(app, "agent", "model", b.agentModel)
+	if tint := b.currentPlan().Tint; tint != "" {
+		app["tint"] = tint
+	}
 	if name := strings.TrimSpace(b.currentPlan().Name); name != "" {
 		app["name"] = name
 	}

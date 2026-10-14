@@ -71,6 +71,10 @@ func (s *Service) runPlanCall(ctx context.Context, b *build, in prompt.Inputs) (
 		plan.Name = deriveName(plan.Ask)
 	}
 	plan.Needs = "computed"
+	s.chooseTint(b)
+	if prompt.CheckTint(plan.Tint) != nil {
+		plan.Tint = b.tintChoice()
+	}
 	return plan, nil
 }
 
@@ -79,6 +83,13 @@ func (s *Service) publishPlan(ctx context.Context, b *build, plan prompt.Plan) e
 	if err := s.storePlan(ctx, b, plan); err != nil {
 		return err
 	}
+	s.emitPlan(b, plan)
+	return nil
+}
+
+// emitPlan tells the desk the plan card is ready. The loop road calls it as
+// soon as the draft's plan is ready, before the worker has ended its task.
+func (s *Service) emitPlan(b *build, plan prompt.Plan) {
 	if plan.Brief != "" {
 		s.step(b, bridge.StepPlan, bridge.BuildRunning, "Design brief · "+strings.ReplaceAll(string(plan.Brief), "\n", " · "))
 	}
@@ -87,7 +98,6 @@ func (s *Service) publishPlan(ctx context.Context, b *build, plan prompt.Plan) e
 		Step: bridge.StepPlan, Status: bridge.BuildDone, Log: "Plan ready",
 		Plan: &sp, Needs: planNeeds(plan, b),
 	})
-	return nil
 }
 
 func (s *Service) storePlan(ctx context.Context, b *build, plan prompt.Plan) error {
@@ -109,17 +119,31 @@ func (s *Service) EditPlan(ctx context.Context, scope svc.Scope, p bridge.PlanEd
 	}
 	if detail, err := s.all.Store.Get(ctx, scope.App); err != nil {
 		return bridge.PlanEditResult{}, err
-	} else if detail.State != bridge.StatePlanning {
+	} else if !s.roadFor(b).editable[detail.State] {
 		return bridge.PlanEditResult{}, bridge.Errorf(bridge.CodeConflict, "the plan can only change before Write")
 	}
-	plan, err := s.applyEdits(ctx, b, p.Edits)
+	if err := checkTintEdits(p.Edits); err != nil {
+		return bridge.PlanEditResult{}, err
+	}
+	plan, err := s.roadFor(b).edit(s, ctx, b, p.Edits)
 	if err != nil {
 		return bridge.PlanEditResult{}, err
 	}
-	if err := s.storePlan(ctx, b, plan); err != nil {
-		return bridge.PlanEditResult{}, err
-	}
 	return bridge.PlanEditResult{Plan: specPlan(plan), Needs: planNeeds(plan, b)}, nil
+}
+
+// checkTintEdits refuses a tint outside the palette before any road acts, so
+// both roads give the owner the same words.
+func checkTintEdits(edits []bridge.PlanEdit) error {
+	for _, e := range edits {
+		if e.Section != prompt.GroupTint {
+			continue
+		}
+		if err := prompt.CheckTint(strings.TrimSpace(e.Text)); err != nil {
+			return bridge.Errorf(bridge.CodeInvalid, err.Error())
+		}
+	}
+	return nil
 }
 
 func (s *Service) applyEdits(ctx context.Context, b *build, edits []bridge.PlanEdit) (prompt.Plan, error) {
@@ -146,6 +170,8 @@ func (s *Service) applyEdits(ctx context.Context, b *build, edits []bridge.PlanE
 func splitEdits(plan prompt.Plan, edits []bridge.PlanEdit) (lines []prompt.Edit, requests []string) {
 	for _, e := range edits {
 		switch {
+		case e.Section == prompt.GroupTint:
+			lines = append(lines, prompt.Edit{Op: prompt.OpSet, Group: e.Section, Line: strings.TrimSpace(e.Text)})
 		case e.Section == prompt.GroupAgent:
 			lines = append(lines, prompt.Edit{Op: prompt.OpSet, Group: e.Section, Line: e.Text})
 		case e.Section == "" || e.ID == "":

@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ModelEnv names the environment variable that picks the Builder's model.
@@ -27,6 +28,13 @@ type Service struct {
 	all   *svc.Services
 	model string
 	now   func() time.Time
+
+	// road is the way builds are made (see road.go); roadName is its name.
+	road     road
+	roadName string
+	// completerFor builds the loop worker's provider seat for a model; a test
+	// swaps it for a scripted one.
+	completerFor func(model string) (session.Completer, error)
 
 	mu     sync.Mutex
 	builds map[string]*build
@@ -45,7 +53,9 @@ func New(cfg svc.Config, all *svc.Services) *Service {
 	if model == "" {
 		model = DefaultModel
 	}
-	return &Service{root: cfg.Root, ctx: ctx, all: all, model: model, now: time.Now, builds: map[string]*build{}}
+	name, chosen := roadFromEnv()
+	return &Service{root: cfg.Root, ctx: ctx, all: all, model: model, now: time.Now, builds: map[string]*build{},
+		road: chosen, roadName: name, completerFor: liveCompleter}
 }
 
 // Create makes the app in state planning and starts the plan in the background.
@@ -62,7 +72,7 @@ func (s *Service) Create(ctx context.Context, caller svc.Caller, p bridge.Create
 	b.plan.Ask = paragraph
 	s.remember(b)
 	err = s.start(b, func() error { return nil },
-		func(ctx context.Context) error { return s.planThenMaybeWrite(ctx, b, p.JustBuild) })
+		func(ctx context.Context) error { return s.road.plan(s, ctx, b, p.JustBuild) })
 	return summary, err
 }
 
@@ -108,6 +118,7 @@ func (s *Service) buildFor(ctx context.Context, app string) (*build, error) {
 	if err := s.loadResult(b); err != nil {
 		return nil, err
 	}
+	s.road.restore(s, b)
 	s.remember(b)
 	return b, nil
 }
@@ -189,8 +200,10 @@ func (s *Service) Write(ctx context.Context, scope svc.Scope) error {
 	if len(b.currentPlan().Screens) == 0 {
 		return bridge.Errorf(bridge.CodeConflict, "the plan is not ready yet")
 	}
-	run := func(ctx context.Context) error { return s.writeAndCheck(ctx, b) }
-	if detail.State == bridge.StateFailed {
+	run := func(ctx context.Context) error { return s.roadFor(b).write(s, ctx, b) }
+	// Fix it repairs the stored files with calls; the loop road's own build
+	// task already reads the draft it left, so it writes again instead.
+	if detail.State == bridge.StateFailed && (s.roadName != roadLoop || b.isDemoted()) {
 		stored := spec.Files{}
 		for name, text := range detail.Files {
 			stored[name] = []byte(text)

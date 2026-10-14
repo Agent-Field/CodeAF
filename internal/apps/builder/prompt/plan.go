@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -17,6 +18,7 @@ const (
 	GroupAutomation = "automation"
 	GroupScreens    = "screens"
 	GroupAgent      = "agent"
+	GroupTint       = "tint"
 )
 
 // Edit operations on a plan-card line.
@@ -52,6 +54,7 @@ type Plan struct {
 	Screens    []Line    `json:"screens"`
 	Agent      AgentLine `json:"agent"`
 	Needs      string    `json:"needs"`
+	Tint       string    `json:"tint,omitempty"`
 }
 
 // Edit is one change a person made to the plan card.
@@ -191,6 +194,9 @@ func (p *Plan) apply(e Edit) error {
 	if e.Group == GroupAgent {
 		return p.editAgent(e)
 	}
+	if e.Group == GroupTint {
+		return p.editTint(e)
+	}
 	lines := p.lines(e.Group)
 	if lines == nil {
 		return fmt.Errorf("unknown group %q", e.Group)
@@ -214,6 +220,26 @@ func (p *Plan) editAgent(e Edit) error {
 		return fmt.Errorf("the agent line cannot be empty")
 	}
 	p.Agent.Line = e.Line
+	return nil
+}
+
+// editTint sets the app's tint, which must be one of the shared palette.
+func (p *Plan) editTint(e Edit) error {
+	if e.Op != OpSet {
+		return fmt.Errorf("the tint can only be set")
+	}
+	if err := CheckTint(e.Line); err != nil {
+		return err
+	}
+	p.Tint = e.Line
+	return nil
+}
+
+// CheckTint says whether name is a tint of the palette.
+func CheckTint(name string) error {
+	if !slices.Contains(spec.Tints, name) {
+		return fmt.Errorf("tint must be one of %s", strings.Join(spec.Tints, ", "))
+	}
 	return nil
 }
 

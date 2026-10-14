@@ -28,6 +28,50 @@ type build struct {
 	spent   float64
 	cancel  context.CancelFunc
 	working bool
+
+	// The loop road's parts: the seat its worker builds in, whether the loop
+	// gave this build's plan to the calls road, and the check rounds so far.
+	seat     *seat
+	demoted  bool
+	rounds   int
+	hold     bool // a rung is running whose failure must fall to the next rung, not show the card
+	tint     string
+	tintUsed []string
+}
+
+// demote hands the build to the calls road for good (see roadFor).
+func (b *build) demote() {
+	b.mu.Lock()
+	b.demoted = true
+	b.mu.Unlock()
+}
+
+func (b *build) isDemoted() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.demoted
+}
+
+// holdFailure makes a failed check end quietly with errRungFailed instead of
+// the failed card, for as long as a rung that has a rung below it is running.
+func (b *build) holdFailure(on bool) {
+	b.mu.Lock()
+	b.hold = on
+	b.mu.Unlock()
+}
+
+func (b *build) holdingFailure() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.hold
+}
+
+// nextRound numbers the next check round, however it was asked for.
+func (b *build) nextRound() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.rounds++
+	return b.rounds
 }
 
 func (b *build) cost() bridge.Cost {

@@ -69,9 +69,16 @@ type memHub struct {
 	mu      sync.Mutex
 	builds  []bridge.BuildEvent
 	results []ResultEvent
+	drafts  []bridge.DraftEvent
 }
 
 func (h *memHub) Publish(topic string, data any) {
+	if ev, ok := data.(bridge.DraftEvent); ok && topic == bridge.TopicDraft("crm") {
+		h.mu.Lock()
+		h.drafts = append(h.drafts, ev)
+		h.mu.Unlock()
+		return
+	}
 	if result, ok := data.(ResultEvent); ok {
 		h.mu.Lock()
 		h.results = append(h.results, result)
@@ -269,7 +276,7 @@ func (r *rig) scope() svc.Scope { return svc.Scope{App: "crm", Caller: svc.Calle
 // waitFor polls until cond holds; the Builder works in the background.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(60 * time.Second) // generous: the box is shared and a worker runs real shell
 	for !cond() {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for %s", what)

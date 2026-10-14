@@ -245,7 +245,7 @@ func (r *renderer) props(n *spec.Node, path string, values map[string]any, typ s
 			continue
 		}
 		value, err := resolveValue(n.Props[key], values)
-		if err == nil && !validProp(prop, value) {
+		if err == nil && !prop.Accepts(value) {
 			err = fmt.Errorf("resolved prop must have type %s, got %T", prop.Type, value)
 		}
 		if err == nil && prop.Type == "value" {
@@ -269,7 +269,7 @@ func (r *renderer) boundFieldTypes(n *spec.Node, prop *spec.Prop, value any, val
 	if prop.Type == "field" {
 		fields = append(fields, value.(string))
 	} else {
-		fields = stringList(value)
+		fields = mustStrings(value)
 	}
 	key := "record"
 	if n.Bind != nil && n.Bind.Records != "" {
