@@ -71,7 +71,7 @@ func report(build string, rows []row) string {
 	}
 	sb.WriteString("\n## Per app\n\n| id | road | reach_use | check_pass | usefulness | road_used | raw_errors | first_line_s | total_s | cost | state | cause |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, r := range rows {
-		fmt.Fprintf(&sb, "| %s | %s | %v | %v | %s | %s | %d | %.1f | %.0f | %.4f | %s | %s |\n", r.ID, r.Road, r.Stages.Use, r.CheckPass,
+		fmt.Fprintf(&sb, "| %s | %s | %v | %v | %s | %s | %d | %.1f | %.0f | %.4f | %s | %s |\n", idCell(r), r.Road, r.Stages.Use, r.CheckPass,
 			orPending(r.Useful), r.RoadUsed, r.RawErrors, r.FirstLineS, r.TotalS, r.CostUSD, r.State, r.Cause)
 	}
 	sb.WriteString(rawSection(rows))
@@ -261,4 +261,12 @@ func usefulText(rs []row) string {
 		text += fmt.Sprintf(" (+%d pending)", p)
 	}
 	return text
+}
+
+// idCell marks the apps that failed on the earlier calls road.
+func idCell(r row) string {
+	if r.B7 {
+		return r.ID + " (b7-fail)"
+	}
+	return r.ID
 }

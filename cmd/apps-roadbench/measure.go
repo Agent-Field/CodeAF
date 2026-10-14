@@ -28,6 +28,7 @@ type row struct {
 	CostUSD    float64  `json:"cost_usd"`
 	Steps      int      `json:"steps"`
 	Stages     stageSet `json:"stages"`
+	B7         bool     `json:"b7_fail,omitempty"`
 	Useful     string   `json:"usefulness"`
 	UsefulWhy  string   `json:"usefulness_reason,omitempty"`
 	Cause      string   `json:"cause,omitempty"`

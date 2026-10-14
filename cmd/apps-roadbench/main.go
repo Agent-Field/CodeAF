@@ -31,12 +31,30 @@ func main() {
 	zoo := flag.String("zoo", "", "path of the zoo tool: adds families to the matrix and records stages")
 	judge := flag.String("judge", "", "blind usefulness judge command, run as `<cmd> <app-id> <dir>`; unset leaves usefulness pending")
 	run := flag.String("run", "", "zoo run id prefix, road is appended (e.g. bl-2115)")
+	combineDirs := flag.String("combine", "", "comma-separated result dirs to merge into one report at -out (no build is run)")
+	b7 := flag.String("b7", "", "comma-separated app ids to mark b7-fail with -combine")
 	flag.Parse()
+	if *combineDirs != "" {
+		fail(combineReport(strings.Split(*combineDirs, ","), *b7, *out, *build))
+		return
+	}
 	o := options{*file, strings.Split(*roads, ","), *out, *model, *bin, *build, *zoo, *run, *judge, *parallel}
-	if err := execute(o); err != nil {
+	fail(execute(o))
+}
+
+func fail(err error) {
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "apps-roadbench:", err)
 		os.Exit(1)
 	}
+}
+
+func combineReport(dirs []string, b7, out, build string) error {
+	rows, err := combine(dirs, b7)
+	if err != nil {
+		return err
+	}
+	return writeAll(out, build, rows)
 }
 
 type options struct {
