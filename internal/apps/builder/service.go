@@ -141,7 +141,8 @@ func (s *Service) report(b *build, err error) {
 		_ = s.setState(ctx, b, bridge.StatePlanning)
 		return
 	}
-	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildFailed, Log: err.Error()})
+	debugLog(b.app, "build failed", err)
+	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildFailed, Log: ownerLog(err)})
 	if detail, getErr := s.all.Store.Get(ctx, b.app); getErr == nil && detail.State == bridge.StateBuilding {
 		_ = s.setState(ctx, b, bridge.StateFailed)
 	}
@@ -169,9 +170,10 @@ func (s *Service) leaveFailed(ctx context.Context, b *build) error {
 	return s.setState(ctx, b, bridge.StatePlanning)
 }
 
-// Write starts the write · check · preview run for a planned or failed app. An
-// app still building with no step running was cut off by a restart; it is
-// written again.
+// Write starts the write · check · preview run for a planned app. On a failed
+// app it is the owner's Fix it, which repairs what is there rather than
+// writing it again (see repair). An app still building with no step running
+// was cut off by a restart; it is written again.
 func (s *Service) Write(ctx context.Context, scope svc.Scope) error {
 	b, err := s.buildFor(ctx, scope.App)
 	if err != nil {
@@ -187,9 +189,15 @@ func (s *Service) Write(ctx context.Context, scope svc.Scope) error {
 	if len(b.currentPlan().Screens) == 0 {
 		return bridge.Errorf(bridge.CodeConflict, "the plan is not ready yet")
 	}
-	return s.start(b,
-		func() error { return s.setState(ctx, b, bridge.StateBuilding) },
-		func(ctx context.Context) error { return s.writeAndCheck(ctx, b) })
+	run := func(ctx context.Context) error { return s.writeAndCheck(ctx, b) }
+	if detail.State == bridge.StateFailed {
+		stored := spec.Files{}
+		for name, text := range detail.Files {
+			stored[name] = []byte(text)
+		}
+		run = func(ctx context.Context) error { return s.repair(ctx, b, stored) }
+	}
+	return s.start(b, func() error { return s.setState(ctx, b, bridge.StateBuilding) }, run)
 }
 
 var writable = map[bridge.AppState]bool{

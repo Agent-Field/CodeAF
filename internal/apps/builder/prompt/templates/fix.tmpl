@@ -28,4 +28,4 @@ Derive agent.md tools from app.json capabilities: every readable type needs reco
 {{.Report}}
 
 ## Output
-Reply with one JSON object `{"<path>": <content>, ...}` and nothing else: no code fence, no prose before or after. Strict JSON throughout. The changed files only.
+Reply with one JSON object `{"<path>": <content>, ...}` and nothing else: no code fence, no prose before or after. Strict JSON throughout. The changed files only. The top-level keys are the paths themselves: a screen's own fields (screen, title, body, nav) go inside the value of its "screens/<id>.json" key, never at the top level.
