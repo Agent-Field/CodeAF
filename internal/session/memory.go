@@ -83,22 +83,77 @@ const (
 )
 
 // memoryFull is a refusal for want of room as a person reads it: its words
-// are [memoryFullWords], and it still answers errors.Is for
-// [store.ErrMemoryFull].
-type memoryFull struct{ err error }
+// are [MemoryFullWords] said from this conversation, and it still answers
+// errors.Is for [store.ErrMemoryFull].
+type memoryFull struct {
+	err   error
+	words string
+}
 
-func (f memoryFull) Error() string { return memoryFullWords(f.err) }
+func (f memoryFull) Error() string { return f.words }
 func (f memoryFull) Unwrap() error { return f.err }
 
-// memoryFullWords is the receipt for a change the store refused because a
-// conversation's block has no room ([store.ErrMemoryFull]): which
-// conversations, and where to make room.
-func memoryFullWords(err error) string {
-	var full *store.MemoryFullError
-	if errors.As(err, &full) && full.Project != "" {
-		return "memory is full for " + full.Project + " · forget a line on the Memories tab to make room"
+// memoryRoomWords is where every full-memory receipt sends the person.
+const memoryRoomWords = " · forget a line on the Memories tab to make room"
+
+// MemoryFullWords is the receipt for a change the store refused for want of
+// room ([store.ErrMemoryFull]), said from a conversation whose project lines
+// are kept under here ("" when it has none), named hereName.
+func MemoryFullWords(err error, here, hereName string) string {
+	text := err.Error()
+	if at := strings.Index(text, store.ErrMemoryFull.Error()); at >= 0 && strings.Contains(text, memoryRoomWords) {
+		// ALREADY SAID: a conversation's own receipt, come back over the wire.
+		return text[at:]
 	}
-	return "memory is full here · forget a line on the Memories tab to make room"
+	return "memory is full " + memoryFullWhere(err, here, hereName) + memoryRoomWords
+}
+
+// memoryFullWhere is which conversations a refused change would overflow:
+// "here" when it is this conversation's block, "for <name>" when the store
+// named another project, and "in another project" when it could not.
+//
+// OVER --host THE REFUSAL ARRIVES AS TEXT, which carries the project's name and
+// not its owner ([store.MemoryFullError.Error]), so the name is compared
+// instead. A refusal naming no project is read as this conversation's: it is
+// the person's and this machine's lines alone, unless the project it would
+// overflow was kept before lines carried a project's name.
+func memoryFullWhere(err error, here, hereName string) string {
+	var full *store.MemoryFullError
+	if errors.As(err, &full) {
+		switch {
+		case full.Owner == "" || full.Owner == here:
+			return "here"
+		case full.Project != "":
+			return "for " + full.Project
+		}
+		return "in another project"
+	}
+	_, name, named := strings.Cut(err.Error(), store.ErrMemoryFull.Error()+" for ")
+	if !named || name == "" || name == hereName {
+		return "here"
+	}
+	return "for " + name
+}
+
+// memoryFullError is the store's refusal for want of room as this
+// conversation says it ([MemoryFullWords]).
+func (a *Agent) memoryFullError(err error) memoryFull {
+	return memoryFull{err: err, words: MemoryFullWords(err, a.memoryHere(), a.memoryHereName())}
+}
+
+// memoryHere is the owner this conversation keeps project lines under, or ""
+// when it has no project of its own; memoryHereName is that project's name.
+func (a *Agent) memoryHere() string {
+	owner, widened := a.ownerFor(store.MemoryScopeProject)
+	if widened {
+		return ""
+	}
+	return owner
+}
+
+func (a *Agent) memoryHereName() string {
+	_, name, _ := a.projectKey()
+	return name
 }
 
 // memoryTakeBack is the clause every receipt for a change made on the person's
@@ -615,7 +670,7 @@ func (a *Agent) RememberAlways(text string, everywhere bool) (string, error) {
 func (a *Agent) rememberAs(text, scope string) (string, error) {
 	memory, reach, added, err := a.keep(text, scope, store.OriginPerson, nil)
 	if errors.Is(err, store.ErrMemoryFull) {
-		return "", memoryFull{err}
+		return "", a.memoryFullError(err)
 	}
 	if err != nil {
 		return "", err
@@ -671,7 +726,7 @@ func (a *Agent) MoveMemory(id, scope string) (string, error) {
 	_, name, _ := a.projectKey()
 	merged, err := a.memory.store.MoveMemory(id, owner, name)
 	if errors.Is(err, store.ErrMemoryFull) {
-		return "", memoryFull{err}
+		return "", a.memoryFullError(err)
 	}
 	if err != nil {
 		return "", err
@@ -687,11 +742,7 @@ func (a *Agent) MoveMemory(id, scope string) (string, error) {
 // group is "this project". In process it cannot fail; the error is the wire's
 // (internal/remote), where "could not ask" must not read as "no project".
 func (a *Agent) MemoryProject() (string, error) {
-	owner, widened := a.ownerFor(store.MemoryScopeProject)
-	if widened {
-		return "", nil
-	}
-	return owner, nil
+	return a.memoryHere(), nil
 }
 
 func memoryLines(found []store.Memory) []MemoryLine {
@@ -784,9 +835,15 @@ func (a *Agent) keepNoticed(text, scope string, replaced *store.Memory) {
 	memory, reach, added, err := a.keep(text, scope, store.OriginNoticed, replaced)
 	switch {
 	case errors.Is(err, store.ErrMemoryFull):
-		a.sayMemory("noticed something worth keeping, but memory is full here · " + text)
+		a.sayMemory("noticed something worth keeping, but memory is full " +
+			memoryFullWhere(err, a.memoryHere(), a.memoryHereName()) + " · " + text + memoryRoomWords)
 	case err != nil:
 		a.journalMemoryFailure("notice", err)
+	case !added && replaced != nil:
+		// THE CORRECTION WAS ALREADY KEPT, so the line it corrects is let go
+		// and nothing new is written — which is still a change to what rides,
+		// and is said ([store.Store.SupersedeMemoryForOwners]).
+		a.sayMemory("noticed · " + replaced.Text + " is let go · already kept: " + memory.Text + " · " + memoryTakeBack)
 	case !added:
 		// Already kept: nothing changed, so nothing is said.
 	case replaced != nil:
@@ -946,7 +1003,7 @@ func (a *Agent) memoryTools() []bare.Tool {
 			}
 			memory, reach, added, err := a.keep(parsed.Text, parsed.Scope, store.OriginModel, nil)
 			if errors.Is(err, store.ErrMemoryFull) {
-				return memoryFullWords(err), true, nil
+				return a.memoryFullError(err).Error(), true, nil
 			}
 			if err != nil {
 				return "Could not remember that: " + err.Error(), true, nil

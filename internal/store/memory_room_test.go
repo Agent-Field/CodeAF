@@ -43,7 +43,7 @@ func TestAnEverywhereLineIsMeasuredAgainstEveryProjectsBlock(t *testing.T) {
 	fillTo(t, s, OwnerProject("beta"), "beta-repo", "beta", MemoryBlockRunes-60)
 	_, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryPreference, Text: roomLine("everywhere", 1)})
 	var full *MemoryFullError
-	if !errors.As(err, &full) || full.Project != "beta-repo" {
+	if !errors.As(err, &full) || full.Project != "beta-repo" || full.Owner != OwnerProject("beta") {
 		t.Fatalf("an everywhere line that overflows beta = %v, want memory full in beta-repo", err)
 	}
 	if _, err := s.Write(WriteRequest{Owner: OwnerProject("alpha"), Type: MemoryFact, Text: roomLine("alpha", 1)}); err != nil {

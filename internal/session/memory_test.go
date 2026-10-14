@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -455,6 +456,59 @@ func TestANoticedReplacementReplacesAndTheOldLineCanComeBack(t *testing.T) {
 	}
 	if got := activeTexts(t, brain, store.OwnerUser); len(got) != 2 {
 		t.Fatalf("after putting the old line back = %v", got)
+	}
+}
+
+// A NOTICED CORRECTION THAT IS ALREADY KEPT STILL CHANGES WHAT RIDES: the line
+// it corrects is let go and nothing new is written, and the person is told
+// both halves — before, nothing at all was said.
+func TestANoticedCorrectionAlreadyKeptLetsTheOldLineGoAndSaysSo(t *testing.T) {
+	script := &reflexScript{notice: `{"keep":"deploys on Tuesdays","scope":"user","replaces":1}`}
+	agent, brain := brainAgent(t, script, nil)
+	remember(t, brain, "", "deploys on Fridays")
+	remember(t, brain, "", "deploys on Tuesdays")
+	collect(t, mustSubmit(t, agent, "actually we deploy on Tuesdays now"))
+	settleMemory(agent)
+	if got := activeTexts(t, brain, store.OwnerUser); len(got) != 1 || got[0] != "deploys on Tuesdays" {
+		t.Fatalf("after the correction = %v, want only the line already kept", got)
+	}
+	script.mu.Lock()
+	script.notice = ""
+	script.mu.Unlock()
+	lines := allNotices(collect(t, mustSubmit(t, agent, "thanks")))
+	want := "noticed · deploys on Fridays is let go · already kept: deploys on Tuesdays · " + memoryTakeBack
+	if !slices.Contains(lines, want) {
+		t.Fatalf("the person was told %q, want %q", lines, want)
+	}
+}
+
+// A FULL REFUSAL SAYS WHICH CONVERSATIONS IT WOULD OVERFLOW, from the
+// conversation saying it: its own block is "here", another project is named
+// when the store knows the name, and "another project" when it does not. Over
+// --host the refusal is text, and the name is what is compared.
+func TestAFullRefusalSaysWhichConversationsItWouldOverflow(t *testing.T) {
+	here := store.OwnerProject("alpha-key")
+	for _, c := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"the person's and this machine's lines alone", &store.MemoryFullError{}, "memory is full here"},
+		{"this project", &store.MemoryFullError{Owner: here, Project: "alpha"}, "memory is full here"},
+		{"another named project", &store.MemoryFullError{Owner: store.OwnerProject("beta-key"), Project: "beta"}, "memory is full for beta"},
+		{"another project with no name", &store.MemoryFullError{Owner: store.OwnerProject("beta-key")}, "memory is full in another project"},
+		{"over the wire, this project", errors.New("memory is full for alpha"), "memory is full here"},
+		{"over the wire, another project", errors.New("memory is full for beta"), "memory is full for beta"},
+		{"over the wire, no project named", errors.New("memory is full"), "memory is full here"},
+	} {
+		if got := MemoryFullWords(c.err, here, "alpha"); got != c.want+memoryRoomWords {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want+memoryRoomWords)
+		}
+	}
+	// AND A CONVERSATION'S OWN RECEIPT, COME BACK OVER THE WIRE, IS NOT SAID TWICE.
+	said := "memory is full for beta" + memoryRoomWords
+	if got := MemoryFullWords(errors.New("remote: "+said), here, "alpha"); got != said {
+		t.Fatalf("a receipt already said came back as %q", got)
 	}
 }
 

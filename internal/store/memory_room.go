@@ -57,14 +57,20 @@ var ErrMemoryFull = errors.New("memory is full")
 
 // MemoryFullError says which conversations' block a change would overflow.
 type MemoryFullError struct {
-	// Project is the name of the project whose conversations would be
-	// overflowed, or "" for a block with no project name to give.
+	// Owner is the project owner whose conversations would be overflowed, or ""
+	// when the person's and this machine's lines alone would overflow — which
+	// is every conversation's block.
+	Owner string
+	// Project is that project's name, or "" when none of its lines carries one.
 	Project string
 }
 
+// Error is the refusal as words. Over --host it crosses the wire as only this
+// text, so it carries the project's name in the one spelling a surface reads
+// back (session's MemoryFullWords): "memory is full for <name>".
 func (e *MemoryFullError) Error() string {
 	if e.Project != "" {
-		return ErrMemoryFull.Error() + " in " + e.Project
+		return ErrMemoryFull.Error() + " for " + e.Project
 	}
 	return ErrMemoryFull.Error()
 }
@@ -112,7 +118,7 @@ func memoryRoomOn(tx *sql.Tx, owner, text, exclude string) error {
 	switch OwnerKindOf(owner) {
 	case OwnerKindProject:
 		if base+costs[owner]+add > MemoryBlockRunes {
-			return &MemoryFullError{Project: names[owner]}
+			return &MemoryFullError{Owner: owner, Project: names[owner]}
 		}
 	default:
 		worst, worstOwner := 0, ""
@@ -122,7 +128,7 @@ func memoryRoomOn(tx *sql.Tx, owner, text, exclude string) error {
 			}
 		}
 		if base+worst+add > MemoryBlockRunes {
-			return &MemoryFullError{Project: names[worstOwner]}
+			return &MemoryFullError{Owner: worstOwner, Project: names[worstOwner]}
 		}
 	}
 	return nil

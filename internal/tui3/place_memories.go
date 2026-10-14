@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -53,10 +54,6 @@ const (
 	// memoryNoProjectWord is the engine not answering which project this
 	// conversation is in: the tab then draws every project's lines by name.
 	memoryNoProjectWord = "couldn't ask which project this is · every project's lines are shown by name"
-	// memoryFullWord is a write the store refused because some conversation's
-	// memory would no longer fit ([store.ErrMemoryFull]) — the one refusal
-	// whose reason the person can act on, so it is said rather than hidden.
-	memoryFullWord = "memory is full · forget a line to make room"
 )
 
 // MemoryStore is the exact durable seam the memory place needs: one reading,
@@ -558,26 +555,45 @@ func (a *app) memorySave(id, text string) tea.Cmd {
 	if a.memory == nil {
 		return nil
 	}
-	mem := a.memory
+	mem, here := a.memory, a.mem.where()
 	return a.memoryPlaceDo(func() string {
 		if err := mem.UpdateMemory(id, text); err != nil {
-			return memoryWriteRefusal(err)
+			return memoryWriteRefusal(err, here)
 		}
 		return "fixed · " + text
 	})
 }
 
-// memoryWriteRefusal is the receipt for a write the store would not take: a
-// full block is said, because the person can make room; anything else is
-// [memoryUnchangedWord].
+// memoryWriteRefusal is the receipt for a write the store would not take. A
+// full block is said, in the engine's own words and from this conversation
+// ([session.MemoryFullWords]: here, which project, or another one), because the
+// person can make room; anything else is [memoryUnchangedWord].
 //
 // THE MATCH IS ON THE WORDS AS WELL AS THE SENTINEL, because over --host the
 // store's error crosses the wire as text and is a different value at this end.
-func memoryWriteRefusal(err error) string {
+//
+// It runs off the update loop, inside the write's command, so where "here" is
+// was read on the loop beforehand ([memoryPlace.where]).
+func memoryWriteRefusal(err error, here memoryWhere) string {
 	if errors.Is(err, store.ErrMemoryFull) || strings.Contains(err.Error(), store.ErrMemoryFull.Error()) {
-		return memoryFullWord
+		return session.MemoryFullWords(err, here.owner, here.name)
 	}
 	return memoryUnchangedWord
+}
+
+// memoryWhere is this conversation's project as the page knows it: the owner
+// its lines are kept under and the name that shelf carries.
+type memoryWhere struct{ owner, name string }
+
+// where reads [memoryWhere] off the page, on the loop.
+func (p *memoryPlace) where() memoryWhere {
+	here := memoryWhere{owner: p.here}
+	for _, shelf := range p.shelves.Shelves {
+		if p.here != "" && shelf.Owner == p.here {
+			here.name = shelf.ProjectName
+		}
+	}
+	return here
 }
 
 // memoryForgetRow forgets one line from the page.
@@ -1011,11 +1027,11 @@ func (placeMemory) verbs(a *app) []verb {
 			if a.memory == nil {
 				return nil
 			}
-			mem := a.memory
+			mem, here := a.memory, p.where()
 			p.expanded = ""
 			return a.memoryPlaceDo(func() string {
 				if err := mem.RestoreMemory(memory.ID); err != nil {
-					return memoryWriteRefusal(err)
+					return memoryWriteRefusal(err, here)
 				}
 				return "put back · " + memory.Text
 			})
@@ -1038,10 +1054,11 @@ func (placeMemory) verbs(a *app) []verb {
 				return nil
 			}
 			p.expanded = ""
+			here := p.where()
 			return a.memoryPlaceDo(func() string {
 				receipt, err := agent.MoveMemory(memory.ID, scope)
 				if err != nil {
-					return memoryWriteRefusal(err)
+					return memoryWriteRefusal(err, here)
 				}
 				return memory.Text + " · " + receipt
 			})
