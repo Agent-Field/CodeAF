@@ -727,6 +727,11 @@ var settingUI = map[string]settingMeta{
 		about: "the share of its parent's cap a new sub-team starts with. Teams that " +
 			"already exist keep theirs.",
 	},
+	// The Apps Builder's model: one choice, read by the app server at launch.
+	config.KeyAppsBuilderModel: {
+		tab: tabProviders, label: "apps builder model", widget: widgetSelect,
+		about: "the model the Apps Builder plans and writes apps with.",
+	},
 	config.KeyTeamsDepthLimit: {
 		tab: tabTeams, label: "team depth", widget: widgetText,
 		about: "how many levels of teams a manager may build, the top team counting as one. " +
