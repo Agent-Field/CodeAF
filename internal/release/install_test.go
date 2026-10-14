@@ -293,23 +293,37 @@ func TestInstallerGetsLatestStableAndFinishesWithVersion(t *testing.T) {
 
 // H10: a 404 from the current repository makes release discovery retry the
 // former repository and complete the install from there.
-func TestH10InstallerFallsBackToLegacyRepository(t *testing.T) {
+// onlyTheReleaseRepository fails the test for any request that named a
+// repository other than the one releases come from.
+func onlyTheReleaseRepository(t *testing.T, github *installGitHub) {
+	t.Helper()
+	github.mu.Lock()
+	defer github.mu.Unlock()
+	if len(github.requests) == 0 {
+		t.Fatal("the installer asked nothing")
+	}
+	for _, request := range github.requests {
+		path := request.URL.Path
+		if !strings.HasPrefix(path, "/repos/Agent-Field/codeaf/") && !strings.HasPrefix(path, "/Agent-Field/codeaf/") {
+			t.Fatalf("the installer asked another repository: %s", path)
+		}
+	}
+}
+
+// THE INSTALLER ASKS ONE REPOSITORY. The fake answers under the former name
+// too, as a repository squatting on it could; a 404 from the real one still
+// ends the install, and nothing is asked of the other.
+func TestInstallerAsksOnlyTheReleaseRepository(t *testing.T) {
 	github := newInstallGitHub(t, "v1.2.3")
 	github.oldRepositoryOnly = true
 	run := runInstaller(t, github, nil, "CODEAF_NO_MODIFY_PATH=1")
-	if run.code != 0 {
-		t.Fatalf("fallback install exit %d:\n%s", run.code, run.output)
+	if run.code == 0 {
+		t.Fatalf("an install with no release in the release repository succeeded:\n%s", run.output)
 	}
-	github.mu.Lock()
-	defer github.mu.Unlock()
-	var current, legacy bool
-	for _, request := range github.requests {
-		current = current || request.URL.Path == "/repos/Agent-Field/codeaf/releases/latest"
-		legacy = legacy || request.URL.Path == "/repos/Agent-Field/aforge-v2/releases/latest" // legacy-name
+	if _, err := os.Stat(filepath.Join(run.installDir, "codeaf")); err == nil {
+		t.Fatal("a binary was written although the release repository had none")
 	}
-	if !current || !legacy {
-		t.Fatalf("repository requests current=%v legacy=%v", current, legacy)
-	}
+	onlyTheReleaseRepository(t, github)
 }
 
 // H10: a release containing only the former asset spelling is installed under
@@ -327,24 +341,27 @@ func TestH10InstallerFallsBackToLegacyAssetName(t *testing.T) {
 	}
 }
 
-func TestPinnedFormerReleaseKeepsAssetAndChecksumInTheFormerRepository(t *testing.T) {
-	github := newInstallGitHub(t, "v0.2.0")
-	github.oldRepositoryOnly = true
+// A release published before the rename carries the former asset name; pinning
+// it still installs it, with its asset and checksum both read from the release
+// repository.
+func TestPinnedFormerReleaseTakesItsFormerAssetFromTheReleaseRepository(t *testing.T) {
+	github := newInstallGitHub(t, "v0.1.0")
 	github.legacyAssetOnly = true
-	run := runInstaller(t, github, []string{"--version", "v0.2.0"}, "CODEAF_NO_MODIFY_PATH=1")
+	run := runInstaller(t, github, []string{"--version", "v0.1.0"}, "CODEAF_NO_MODIFY_PATH=1")
 	if run.code != 0 {
-		t.Fatalf("pinned compatibility install exit %d:\n%s", run.code, run.output)
+		t.Fatalf("pinned former release exit %d:\n%s", run.code, run.output)
 	}
 	github.mu.Lock()
-	defer github.mu.Unlock()
 	var asset, checksum bool
 	for _, request := range github.requests {
-		asset = asset || strings.Contains(request.URL.Path, "/Agent-Field/aforge-v2/releases/download/v0.2.0/aforge-") // legacy-name
-		checksum = checksum || request.URL.Path == "/Agent-Field/aforge-v2/releases/download/v0.2.0/checksums.txt"     // legacy-name
+		asset = asset || strings.Contains(request.URL.Path, "/Agent-Field/codeaf/releases/download/v0.1.0/aforge-") // legacy-name
+		checksum = checksum || request.URL.Path == "/Agent-Field/codeaf/releases/download/v0.1.0/checksums.txt"
 	}
+	github.mu.Unlock()
 	if !asset || !checksum {
-		t.Fatalf("former repository asset=%v checksum=%v", asset, checksum)
+		t.Fatalf("release repository asset=%v checksum=%v", asset, checksum)
 	}
+	onlyTheReleaseRepository(t, github)
 }
 
 func TestInstallerRunsAdoptionBeforeCreatingTheStateRoot(t *testing.T) {

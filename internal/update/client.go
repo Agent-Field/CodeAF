@@ -79,8 +79,13 @@ const (
 	downloadCeiling     = 15 * time.Minute
 )
 
+// primaryRepository is THE ONE ORIGIN a release is selected from and
+// downloaded from. The repository's former name is not a second one: GitHub
+// answers it only as a redirect to this repository, so it never held a release
+// this one lacks, and asking it after a 404 here could only ever reach a
+// repository somebody created under that name later — a stranger to every
+// checksum this program trusts.
 const primaryRepository = "Agent-Field/codeaf"
-const legacyRepository = "Agent-Field/aforge-v2" // legacy-name
 
 // Client talks to the release API and release asset host.
 type Client struct {
@@ -354,16 +359,7 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 	if channel != "stable" && channel != "rc" && channel != "dev" && channel != "staging" {
 		return Release{}, fmt.Errorf("channel must be stable, rc, dev, or staging")
 	}
-	for index, repository := range []string{primaryRepository, legacyRepository} { // legacy-name
-		release, err := c.selectRepository(ctx, repository, channel, strings.TrimSpace(choice.Running))
-		if err == nil {
-			return release, nil
-		}
-		if !isStatus(err, http.StatusNotFound) || index == 1 {
-			return Release{}, err
-		}
-	}
-	return Release{}, errors.New("no release repository answered")
+	return c.selectRepository(ctx, primaryRepository, channel, strings.TrimSpace(choice.Running))
 }
 
 // TagPublished asks the release API for ONE exact tag's publish moment, and it
@@ -385,26 +381,20 @@ func (c *Client) TagPublished(ctx context.Context, tag string) (time.Time, bool)
 	if strings.TrimSpace(c.APIBase) == "" {
 		return time.Time{}, false
 	}
-	for index, repository := range []string{primaryRepository, legacyRepository} { // legacy-name
-		rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + repository + "/releases/tags/" + url.PathEscape(tag)
-		body, err := c.get(ctx, rawURL, "application/vnd.github+json", true, "release API")
-		if err != nil {
-			if isStatus(err, http.StatusNotFound) && index == 0 {
-				continue
-			}
-			return time.Time{}, false
-		}
-		var row apiRelease
-		if json.Unmarshal(body, &row) != nil || strings.TrimSpace(row.TagName) != tag {
-			return time.Time{}, false
-		}
-		moment := row.stamp()
-		if moment.IsZero() {
-			return time.Time{}, false
-		}
-		return moment, true
+	rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + primaryRepository + "/releases/tags/" + url.PathEscape(tag)
+	body, err := c.get(ctx, rawURL, "application/vnd.github+json", true, "release API")
+	if err != nil {
+		return time.Time{}, false
 	}
-	return time.Time{}, false
+	var row apiRelease
+	if json.Unmarshal(body, &row) != nil || strings.TrimSpace(row.TagName) != tag {
+		return time.Time{}, false
+	}
+	moment := row.stamp()
+	if moment.IsZero() {
+		return time.Time{}, false
+	}
+	return moment, true
 }
 
 func (c *Client) selectRepository(ctx context.Context, repository, channel, running string) (Release, error) {

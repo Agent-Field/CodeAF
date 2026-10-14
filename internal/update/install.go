@@ -76,9 +76,6 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	if release.Tag == "" {
 		return InstallResult{}, errors.New("the release tag is empty")
 	}
-	if release.Repository == "" {
-		release.Repository = primaryRepository
-	}
 	// ONE ACQUIRER, INSIDE THE SHARED INSTALLER. Every road that replaces this
 	// file — the chat surface's background install and `codeaf update` alike —
 	// comes through here, so the lock and the on-disk re-read cannot be
@@ -144,21 +141,11 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 			return InstallResult{}, &RefusalError{Reason: reason}
 		}
 	}
-	var (
-		body      []byte
-		checksums []byte
-		err       error
-	)
-	for index, repository := range installRepositories(release.Repository) {
-		release.Repository = repository
-		body, asset, checksums, err = options.Client.downloadRelease(ctx, release, asset, goos, goarch, extension)
-		if err == nil {
-			break
-		}
-		if !isStatus(err, http.StatusNotFound) || index == 1 {
-			return InstallResult{}, err
-		}
-	}
+	// THE BYTES AND THE CHECKSUM COME FROM THE ONE ORIGIN ([primaryRepository]),
+	// whatever repository a caller wrote on the release: a 404 there is an
+	// answer, never a reason to go and ask somewhere else.
+	release.Repository = primaryRepository
+	body, asset, checksums, err := options.Client.downloadRelease(ctx, release, asset, goos, goarch, extension)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -198,13 +185,11 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	return InstallResult{Release: release, Path: target}, nil
 }
 
-func installRepositories(first string) []string {
-	if first == legacyRepository {
-		return []string{legacyRepository}
-	}
-	return []string{primaryRepository, legacyRepository} // legacy-name
-}
-
+// downloadRelease fetches the asset and its checksums from one release. The
+// former asset name is still tried, IN THE SAME RELEASE, for the one stable
+// published before the rename (v0.1.0): a person may still name that tag to roll
+// back to it, and checksums.txt beside it is what vouches for whichever name
+// answered.
 func (c *Client) downloadRelease(ctx context.Context, release Release, asset, goos, goarch, extension string) ([]byte, string, []byte, error) {
 	shownAsset := asset
 	body, err := c.downloadAsset(ctx, c.assetURL(release, asset), shownAsset)
