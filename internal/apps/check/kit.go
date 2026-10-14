@@ -155,7 +155,8 @@ func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path st
 				}
 			}
 		case "string":
-			if key == "sort" {
+			// FilterTokens names the sort action for people; Table names a record field.
+			if key == "sort" && part.Name != "FilterTokens" {
 				if record := b.App.Records[typ]; record != nil {
 					if _, err := query.Expression(record, strings.TrimPrefix(value.(string), "-")); err != nil {
 						issues = append(issues, finding(file, at, "kit/bind", fmt.Sprintf("%s: %v", file, err), fieldHint(typ, record)))

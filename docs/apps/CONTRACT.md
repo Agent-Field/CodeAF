@@ -246,13 +246,13 @@ number in major units in wave 1, refs are record ids. `sample.json` is
 (`primitive | pattern | data`), `interactive` (needs `label`), `events`,
 `children` (`"none" | "any" | [allowed parts]`), `bind` (allowed binding
 kinds), `slots`, `props` (`{type, values?, required?}` with types from
-`propTypes`). The desk renders exactly these 36 parts; Check rejects others.
+`propTypes`). The desk renders exactly these 39 parts; Check rejects others.
 
 - Primitives (20): Button, IconButton, Chip, Field, Select, Segmented, Toggle,
   Menu, Dialog, Avatar, StateGlyph, Icon, Text, Stack, Row, Divider,
   DatePicker, PeoplePicker, Timer, Masked.
-- Patterns (10): SectionTabs, QueryField, StateMeter, List, Panel, Table,
-  Board, BulkBar, Thread, Empty.
+- Patterns (13): SectionTabs, QueryField, StateMeter, List, Panel, Table,
+  Board, BulkBar, Thread, Empty, FilterTokens, StatStrip, ScreenSubtitle.
 - Data (6): RecordList (QueryField + StateMeter + views incl. Board by
   `groupBy`), RecordPage, Form, RunTimeline, ApprovalCard, Chart.
 
@@ -260,6 +260,20 @@ Not in wave 1: the six surfaces, Pages, Compare, Checklist, SignOff,
 DiffViewer, ProofList, LogStream, FileViewer, Media, Kbd, Code, Tooltip,
 Sheet, Toast as screen parts (Toast and Sheet are shell-owned: `ask` and
 action errors use them).
+
+Board 08 adds three general RecordList header children: `FilterTokens`,
+`StatStrip`, and `ScreenSubtitle`. `FilterTokens` inherits the parent list's
+query; removing a chip re-queries the records. Its optional `labels` array gives
+friendly display labels for the initial predicates in query order, without
+changing the predicates sent to codeaf. `sort` and `ai` label its sort action;
+`on.sort` uses normal screen actions. Its Views menu contains the list's `views`
+and the screen sections when `SectionTabs.props.placement` is `views` (the
+default placement remains `header`). `StatStrip` binds `records`, uses `field`
+to request `count_by`, and displays enum values in schema order. A separate
+unfiltered binding keeps every stage count visible while the list is filtered.
+`ScreenSubtitle` inherits the list's live `total`, followed by its `noun`,
+static `phrase`, and optional keyboard `hint`. With header children present,
+RecordList replaces its default query, meter and summary with those children.
 
 Kit law rules Check enforces in wave 1: `kit/parts` (known parts and props),
 `kit/label`, `kit/one-nav`, `kit/record-list` (growing lists use RecordList),
@@ -401,7 +415,7 @@ step boundary and returns to `planning`.
 | B5 builder | `internal/apps/builder/` | `svc.Builder`, `svc.Model` |
 | B6 check | `internal/apps/check/` | `svc.Check` |
 | B7 app agent | `internal/apps/agent/` | `svc.Agent` |
-| D1 kit | desk `src/kit/` | the 36 parts |
+| D1 kit | desk `src/kit/` | the 39 parts |
 | D2 runtime | desk `src/lib/apps/runtime/` | screen renderer, bindings, actions, CEL `when` |
 | D3 bridge client | desk `src/lib/apps/bridge/` | WS client, subscriptions, mock bridge for browser dev and e2e |
 | D4 apps shell | desk `src/features/apps-shell/` | rail Apps section, app tab, Use mode, docked agent |

@@ -258,7 +258,10 @@
       "events": ["change"],
       "children": "none",
       "navOnly": true,
-      "props": { "items": { "type": "strings", "required": true } }
+      "props": {
+        "items": { "type": "strings", "required": true },
+        "placement": { "type": "enum", "values": ["header", "views"] }
+      }
     },
     {
       "name": "QueryField",
@@ -360,7 +363,7 @@
       "kind": "data",
       "interactive": true,
       "events": ["open", "select"],
-      "children": "none",
+      "children": ["FilterTokens", "StatStrip", "ScreenSubtitle"],
       "bind": ["records"],
       "slots": ["empty"],
       "props": {
@@ -433,6 +436,60 @@
         "y": { "type": "field" },
         "agg": { "type": "enum", "values": ["count", "sum", "avg"] },
         "title": { "type": "template" }
+      }
+    },
+    {
+      "name": "FilterTokens",
+      "kind": "pattern",
+      "interactive": true,
+      "events": ["change", "sort"],
+      "children": "none",
+      "props": {
+        "labels": {
+          "type": "strings"
+        },
+        "placeholder": {
+          "type": "template"
+        },
+        "sort": {
+          "type": "string"
+        },
+        "ai": {
+          "type": "boolean"
+        }
+      }
+    },
+    {
+      "name": "StatStrip",
+      "kind": "pattern",
+      "bind": ["records"],
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "props": {
+        "field": {
+          "type": "field",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "ScreenSubtitle",
+      "kind": "pattern",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "props": {
+        "noun": {
+          "type": "string",
+          "required": true
+        },
+        "phrase": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        }
       }
     }
   ]
