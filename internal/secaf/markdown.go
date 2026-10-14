@@ -64,9 +64,38 @@ func markdownReport(result schemas.SecurityAuditResult, run runFacts) string {
 	if run.cutAt != "" {
 		fmt.Fprintf(&b, "> **Cut short.** %s\n\n", cutSentence(run.cutAt, run.wall))
 	}
+	coverage := schemas.Coverage(result.Metadata)
+	interruption := schemas.Interruption(result.Metadata)
+	if interruption != "" {
+		fmt.Fprintf(&b, "> **Analysis incomplete.** %s.\n\n", interruption)
+	}
+	if coverage.Incomplete() {
+		fmt.Fprintf(&b, "> **Analysis incomplete.** %s.", coverage.Description())
+		if !coverage.Unknown {
+			b.WriteString(" Findings from completed hunts remain in this report.")
+		}
+		b.WriteString("\n\n")
+		if len(coverage.Failures) > 0 {
+			b.WriteString("## Hunts that did not finish\n\n")
+		}
+		for _, failure := range coverage.Failures {
+			fmt.Fprintf(&b, "- %s: %s\n", oneLine(failure.Strategy), oneLine(failure.Reason))
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString("## What it found\n\n")
 	standing, unclear, ruledOut := sortFindings(result.Findings)
-	if len(standing) == 0 {
+	if coverage.Unknown || coverage.AllFailed() || (interruption != "" && len(standing) == 0) {
+		if coverage.AllFailed() {
+			b.WriteString("All hunts failed, so no conclusion about exploitable problems is available.")
+		} else if coverage.Unknown {
+			b.WriteString("Hunt accounting could not be read, so no conclusion about exploitable problems is available.")
+		} else {
+			b.WriteString("The analysis stopped, so no conclusion about exploitable problems is available.")
+		}
+	} else if len(standing) == 0 && coverage.Incomplete() {
+		b.WriteString("Completed hunts found nothing they could show exploitable; analysis is incomplete.")
+	} else if len(standing) == 0 {
 		b.WriteString("Nothing it could show exploitable.")
 	} else {
 		fmt.Fprintf(&b, "%d problem%s: %d confirmed and %d likely", len(standing), plural(len(standing)), result.Confirmed, result.Likely)

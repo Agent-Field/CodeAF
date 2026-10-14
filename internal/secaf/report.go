@@ -145,14 +145,42 @@ func summary(scope Scope, changes *Changes, result schemas.SecurityAuditResult, 
 	if changes != nil {
 		fmt.Fprintf(&b, " (%d changed files since %s, %d files near them)", len(changes.Changed), changes.BaseName, len(changes.Nearby))
 	}
-	if len(standing) == 0 {
-		b.WriteString(": nothing it could show exploitable")
+	coverage := schemas.Coverage(result.Metadata)
+	interruption := schemas.Interruption(result.Metadata)
+	if interruption != "" && !coverage.Incomplete() {
+		b.WriteString(": analysis incomplete; " + interruption)
+		if len(standing) > 0 {
+			b.WriteString("; completed work")
+		}
+	}
+	if coverage.Incomplete() {
+		b.WriteString(": analysis incomplete; " + coverage.Description())
+		if !coverage.AllFailed() && !coverage.Unknown && (interruption == "" || len(standing) > 0) {
+			b.WriteString("; completed hunts")
+		}
+	}
+	if coverage.Unknown || coverage.AllFailed() || (interruption != "" && len(standing) == 0) {
+		if !coverage.AllFailed() {
+			b.WriteString("; no conclusion about exploitable problems is available")
+		}
+		b.WriteString(".\n")
+	} else if len(standing) == 0 {
+		if coverage.Incomplete() || interruption != "" {
+			b.WriteString(" found nothing they could show exploitable")
+		} else {
+			b.WriteString(": nothing it could show exploitable")
+		}
 		if result.Inconclusive > 0 {
 			fmt.Fprintf(&b, "; %d finding%s stayed unclear and %s in the report", result.Inconclusive, plural(result.Inconclusive), areIs(result.Inconclusive))
 		}
 		b.WriteString(".\n")
 	} else {
-		fmt.Fprintf(&b, ": %d problem%s, %d confirmed and %d likely", len(standing), plural(len(standing)), result.Confirmed, result.Likely)
+		if coverage.Incomplete() || interruption != "" {
+			b.WriteString(" found ")
+		} else {
+			b.WriteString(": ")
+		}
+		fmt.Fprintf(&b, "%d problem%s, %d confirmed and %d likely", len(standing), plural(len(standing)), result.Confirmed, result.Likely)
 		if counts := severityCounts(standing); counts != "" {
 			b.WriteString(" (" + counts + ")")
 		}
@@ -250,14 +278,39 @@ func plural(n int) string {
 // problems stand, or that none does.
 func outcomeLine(result schemas.SecurityAuditResult, cutAt string) string {
 	standing := result.Confirmed + result.Likely
-	line := "it found nothing it could show exploitable"
-	if standing > 0 {
-		line = fmt.Sprintf("it found %d problem%s: %d confirmed, %d likely", standing, plural(standing), result.Confirmed, result.Likely)
+	line := outcomeLineWithoutCoverage(result)
+	if coverage := schemas.Coverage(result.Metadata); coverage.Incomplete() {
+		if coverage.AllFailed() {
+			line = fmt.Sprintf("analysis incomplete: all %d hunts failed", coverage.Attempted)
+		} else {
+			line = "analysis incomplete: " + coverage.Description()
+			if !coverage.Unknown {
+				line += "; completed hunts " + strings.TrimPrefix(outcomeLineWithoutCoverage(result), "it ")
+			}
+		}
+	}
+	if interruption := schemas.Interruption(result.Metadata); interruption != "" {
+		if !schemas.Coverage(result.Metadata).Incomplete() {
+			if standing == 0 {
+				line = "no conclusion about exploitable problems is available"
+			}
+			line = "analysis incomplete: " + line
+		}
+		line += "; " + interruption
 	}
 	if cutAt != "" {
 		line += ", before its time ceiling cut it short during " + cutAt
 	}
 	return line
+}
+
+// outcomeLineWithoutCoverage describes the retained findings alone, without
+// treating an incomplete analysis as a conclusion about the whole repository.
+func outcomeLineWithoutCoverage(result schemas.SecurityAuditResult) string {
+	if standing := result.Confirmed + result.Likely; standing > 0 {
+		return fmt.Sprintf("it found %d problem%s: %d confirmed, %d likely", standing, plural(standing), result.Confirmed, result.Likely)
+	}
+	return "it found nothing it could show exploitable"
 }
 
 // cutSentence says that the run's time ceiling stopped it, in which phase, and

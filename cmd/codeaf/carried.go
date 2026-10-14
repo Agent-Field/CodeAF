@@ -171,7 +171,7 @@ func profileRoad() (carriedRoad, error) {
 			settings.Models.Warmed(context.Background())
 			return session.ResolveProgramShellModels(word, v3TaskModels(settings.Models)(), sources)
 		},
-		modelPrice: settings.Models.PriceNow,
+		modelPrice: func(model string) (float64, float64, bool) { return carriedModelPrice(settings, model) },
 		defaultSeat: func() (string, error) {
 			// A shell run needs the profile's work seat only when nobody pinned
 			// a model for this invocation. A fresh profile can still use --high.
@@ -210,6 +210,19 @@ func profileRoad() (carriedRoad, error) {
 			return ready
 		},
 	}, nil
+}
+
+// carriedModelPrice prices the same service and bare id the adapter calls.
+// A connection qualifier is not a vendor prefix; only the selected default
+// service owns the shared catalog. Other services keep the unpriced bound
+// rather than borrowing an OpenRouter tariff for a coincidentally equal id.
+func carriedModelPrice(settings config.Config, model string) (float64, float64, bool) {
+	model, _ = roles.SplitEffort(model)
+	service, bare := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL).For(model)
+	if !strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID) {
+		return 0, 0, false
+	}
+	return settings.Models.PriceNow(bare)
 }
 
 // carriedAdapters is one adapter per model a shell run's program asks for,
@@ -308,6 +321,25 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 			resolved = strings.Join(models, ",")
 		}
 		inv.Line = carriedResolvedModel(inv.Line, modelFlag, resolved)
+	}
+	// AN AUXILIARY MODEL IS RESOLVED BY THE SAME DOOR. Leaving a light
+	// model as typed sent an unmarked floating alias where the main model
+	// had already been replaced by its catalog spelling.
+	for _, flag := range inv.Program.AuxiliaryModelFlags {
+		flag = strings.TrimSpace(flag)
+		word := strings.TrimSpace(inv.ExplicitFlags[flag])
+		if word == "" {
+			continue
+		}
+		resolved := word
+		if road.resolveModel != nil {
+			resolved, err = road.resolveModel(word)
+			if err != nil {
+				return err
+			}
+		}
+		inv.Line = carriedResolvedModel(inv.Line, flag, resolved)
+		modelsToWarm = append(modelsToWarm, strings.Split(resolved, ",")...)
 	}
 	if asked == "" && road.defaultSeat != nil {
 		road.seat, err = road.defaultSeat()

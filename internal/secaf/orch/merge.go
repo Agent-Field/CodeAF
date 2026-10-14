@@ -122,6 +122,7 @@ func MergeReconFindingsIntoHunt(hunt schemas.HuntResult, reconFindings []schemas
 		ChainCount:          hunt.ChainCount,
 		StrategiesRun:       strategiesRun,
 		HuntDurationSeconds: hunt.HuntDurationSeconds,
+		Coverage:            hunt.Coverage,
 	}
 }
 
