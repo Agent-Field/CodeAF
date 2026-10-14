@@ -98,6 +98,8 @@ What a run spends depends on the repository and the models: a `quick` audit of a
 
 **Which models.** From the chat, the conversation's working seat reads the code and its light seat makes the single quick calls (merging duplicates, the compliance mapping). A model you name for the hand-off reads the code in place of the working seat. At a shell, the profile's work seat does both unless `--model` (and `--light`) name others.
 
+Both flags resolve model words through the profile's catalog, including floating aliases and provider-qualified names. An unknown model word is refused before any model call starts. A linked path to the repository is accepted as the same reading root; files and links that lead outside that root are still refused.
+
 ## Fixing what sec found — hand the findings to senior-dev, fix the vulnerabilities
 
 When the audit finds confirmed or likely problems, the chat offers to hand them to senior-dev as one task that fixes them, and names which. It starts nothing until you say yes; then it proposes that task, and you answer its card as usual. You can also ask directly: "fix the two critical findings with senior-dev".

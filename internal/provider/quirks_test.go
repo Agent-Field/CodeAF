@@ -143,8 +143,14 @@ func TestLearnedQuirksSurviveTheProcessThatLearnedThem(t *testing.T) {
 		t.Fatalf("memo = %s, want the model that refused", raw)
 	}
 
-	// A fresh process reads it and never sends the refused shape at all.
+	// A fresh process reads it and never sends the refused shape at all. The
+	// synchronous save above does not join the separately scheduled writer;
+	// drain that writer before discarding the old process's memory, or it can
+	// overwrite the verified file with the deliberately emptied map.
+	quirks.settle()
+	quirks.mutex.Lock()
 	quirks.mandatory = map[string]time.Time{}
+	quirks.mutex.Unlock()
 	LoadQuirks(dir)
 	if !ReasoningMandatory("strict/persisted") {
 		t.Fatal("a memo on disk must be believed at startup")
@@ -176,6 +182,9 @@ func TestASilentlyIgnoredDisableSurvivesTheProcessThatLearnedIt(t *testing.T) {
 		t.Fatalf("memo = %s, want the model that ignored the disable", raw)
 	}
 
+	// The old process's scheduled save must finish before its memory is
+	// discarded, for the same reason as the mandatory-reasoning restart above.
+	quirks.settle()
 	quirks.mutex.Lock()
 	quirks.disableIgnored = map[string]time.Time{}
 	quirks.mutex.Unlock()

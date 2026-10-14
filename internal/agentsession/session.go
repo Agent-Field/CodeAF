@@ -42,8 +42,15 @@ type SessionOrder struct {
 	MaxTurns int
 	// Wall is the session's own time bound; zero is none past the context's.
 	Wall time.Duration
-	// Policy is how the session reads and answers; every field is required.
+	// AnswerReserve stops reading this long before the existing deadline, so
+	// the session can answer from completed observations. Zero reserves none.
+	AnswerReserve time.Duration
+	// Policy is how the session reads and answers; every limit is required.
 	Policy Policy
+	// supportsParameter reads remembered facts inside this session's clock.
+	supportsParameter func(model, parameter string) (supported, known bool)
+	// answerFormat is used only after reading has stopped.
+	answerFormat *ai.ResponseFormat
 }
 
 // SessionResult is how a session ended: its answer, and what it cost.
@@ -68,11 +75,39 @@ var errNoAnswer = errors.New("the session ended without an answer")
 // could not run at all — the model API refused, the run was stopped; a session
 // that ran and gave no usable answer says so in Failed.
 func RunSession(ctx context.Context, client *Client, order SessionOrder) (SessionResult, error) {
-	started := time.Now()
+	if client != nil {
+		order.supportsParameter = client.supportsParameter
+	}
+	return runSession(ctx, client.Complete, order, sessionClock{time.Now, context.WithDeadline})
+}
+
+// sessionClock keeps the deadline transition testable without waiting out a
+// real session. Production always uses the context's actual deadline.
+type sessionClock struct {
+	now          func() time.Time
+	withDeadline func(context.Context, time.Time) (context.Context, context.CancelFunc)
+}
+
+func runSession(ctx context.Context, complete func(context.Context, Request) (*ai.Response, error), order SessionOrder, clock sessionClock) (result SessionResult, err error) {
+	started := clock.now()
+	defer func() { result.Duration = clock.now().Sub(started) }()
 	if order.Wall > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, order.Wall)
+		ctx, cancel = clock.withDeadline(ctx, started.Add(order.Wall))
 		defer cancel()
+	}
+	readingCtx := ctx
+	var readingDeadline time.Time
+	if deadline, ok := ctx.Deadline(); ok && order.AnswerReserve > 0 {
+		// A caller's shorter deadline wins. Never reserve more than half the
+		// available time, and never extend either the caller or session wall.
+		reserve := min(order.AnswerReserve, deadline.Sub(started)/2)
+		if reserve > 0 {
+			readingDeadline = deadline.Add(-reserve)
+			var cancel context.CancelFunc
+			readingCtx, cancel = clock.withDeadline(ctx, readingDeadline)
+			defer cancel()
+		}
 	}
 	maxTurns := order.MaxTurns
 	if maxTurns <= 0 {
@@ -89,14 +124,35 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 			return SessionResult{}, fmt.Errorf("the answer's schema does not compile: %w", err)
 		}
 		validate = compiled
+		if order.Policy.StructuredAnswers && order.supportsParameter != nil {
+			format, formatKnown := order.supportsParameter(order.Model, "response_format")
+			schema, schemaKnown := order.supportsParameter(order.Model, "structured_outputs")
+			if formatKnown && format && schemaKnown && schema {
+				raw, err := json.Marshal(order.Schema)
+				if err != nil {
+					return result, fmt.Errorf("encode the answer's schema: %w", err)
+				}
+				order.answerFormat = &ai.ResponseFormat{Type: "json_schema", JSONSchema: &ai.JSONSchema{
+					// The existing schemas contain optional/defaulted fields.
+					// Do not impose a provider's narrower strict-mode dialect;
+					// the unchanged local validator enforces the full schema.
+					Name: "response", Schema: raw,
+				}}
+			}
+		}
 	}
-	tools := toolbox{root: order.Root, limits: policy.Tools}
+	if err := ctx.Err(); err != nil {
+		result.Failed = err.Error()
+		return result, err
+	}
+	tools, err := newToolbox(order.Root, policy.Tools)
+	if err != nil {
+		return result, err
+	}
 	messages := []ai.Message{
 		textMessage("system", sessionSystem(order)),
 		textMessage("user", order.Prompt),
 	}
-	result := SessionResult{}
-	defer func() { result.Duration = time.Since(started) }()
 	size := len(order.Prompt)
 	asked := 0
 	answering := false
@@ -104,18 +160,40 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 		// THE LAST TURN, OR A FULL CONTEXT, IS AN ANSWER. A session that is
 		// still reading when its turns or its room run out is told to answer
 		// with what it has, and is offered no tools to do anything else.
-		if !answering && (result.Turns >= maxTurns-1 || size > policy.ContextChars) {
+		if !answering && (result.Turns >= maxTurns-1 || size > policy.ContextChars ||
+			(!readingDeadline.IsZero() && !clock.now().Before(readingDeadline))) {
 			answering = true
 			messages = append(messages, textMessage("user", policy.AnswerNow))
 		}
 		request := Request{Model: order.Model, Thread: order.Thread, Messages: messages}
 		if !answering {
 			request.Tools = tools.definitions()
+		} else {
+			request.ResponseFormat = order.answerFormat
 		}
-		response, err := client.Complete(ctx, request)
+		callCtx := ctx
+		if !answering {
+			callCtx = readingCtx
+		}
+		response, err := complete(callCtx, request)
 		result.Turns++
 		result.CostUSD += costOf(response)
 		if err != nil {
+			// One explicit unsupported-format refusal falls back to the schema
+			// already in the prompt. The failed attempt still consumes a turn,
+			// and neither the hard deadline nor local validation changes.
+			if request.ResponseFormat != nil && errors.Is(err, errResponseFormatUnsupported) && ctx.Err() == nil {
+				order.answerFormat = nil
+				continue
+			}
+			// Only our intentional reading cutoff starts an answer. A caller
+			// stop, provider refusal or exhausted full deadline still fails.
+			if !answering && !readingDeadline.IsZero() && errors.Is(readingCtx.Err(), context.DeadlineExceeded) &&
+				ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+				answering = true
+				messages = append(messages, textMessage("user", policy.AnswerNow))
+				continue
+			}
 			result.Failed = err.Error()
 			return result, err
 		}
