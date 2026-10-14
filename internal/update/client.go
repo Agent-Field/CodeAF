@@ -323,7 +323,9 @@ type Choice struct {
 	Published time.Time
 }
 
-// Release is one selected GitHub release and the repository that answered.
+// Release is one selected GitHub release. Repository names where it was
+// selected and is always [primaryRepository]; it is a record of that fact and
+// never an address — nothing reads it to decide where to ask.
 type Release struct {
 	Tag                string
 	Repository         string
@@ -359,7 +361,7 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 	if channel != "stable" && channel != "rc" && channel != "dev" && channel != "staging" {
 		return Release{}, fmt.Errorf("channel must be stable, rc, dev, or staging")
 	}
-	return c.selectRepository(ctx, primaryRepository, channel, strings.TrimSpace(choice.Running))
+	return c.selectRelease(ctx, channel, strings.TrimSpace(choice.Running))
 }
 
 // TagPublished asks the release API for ONE exact tag's publish moment, and it
@@ -397,12 +399,12 @@ func (c *Client) TagPublished(ctx context.Context, tag string) (time.Time, bool)
 	return moment, true
 }
 
-func (c *Client) selectRepository(ctx context.Context, repository, channel, running string) (Release, error) {
+func (c *Client) selectRelease(ctx context.Context, channel, running string) (Release, error) {
 	suffix := "releases/latest"
 	if channel != "stable" {
 		suffix = "releases?per_page=100"
 	}
-	rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + repository + "/" + suffix
+	rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + primaryRepository + "/" + suffix
 	body, err := c.get(ctx, rawURL, "application/vnd.github+json", true, "release API")
 	if err != nil {
 		return Release{}, err
@@ -415,7 +417,7 @@ func (c *Client) selectRepository(ctx context.Context, repository, channel, runn
 		if Kind(row.TagName) != "stable" {
 			return Release{}, fmt.Errorf("the latest release did not name a stable codeaf tag")
 		}
-		return Release{Tag: row.TagName, Repository: repository, PublishedAt: row.stamp()}, nil
+		return Release{Tag: row.TagName, Repository: primaryRepository, PublishedAt: row.stamp()}, nil
 	}
 	var rows []apiRelease
 	if err := json.Unmarshal(body, &rows); err != nil {
@@ -438,12 +440,15 @@ func (c *Client) selectRepository(ctx context.Context, repository, channel, runn
 		return Release{}, fmt.Errorf("no %s build has been published yet", channel)
 	}
 	return Release{
-		Tag: newest.TagName, Repository: repository, PublishedAt: newest.stamp(),
+		Tag: newest.TagName, Repository: primaryRepository, PublishedAt: newest.stamp(),
 		RunningPublishedAt: runningPublished,
 	}, nil
 }
 
+// assetURL names one file of a release on the download host. The repository in
+// it is the constant, not anything carried on the release, so no caller can
+// point a download at a second origin.
 func (c *Client) assetURL(release Release, name string) string {
 	base := strings.TrimRight(c.DownloadBase, "/")
-	return base + "/" + release.Repository + "/releases/download/" + url.PathEscape(release.Tag) + "/" + url.PathEscape(name)
+	return base + "/" + primaryRepository + "/releases/download/" + url.PathEscape(release.Tag) + "/" + url.PathEscape(name)
 }

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -845,6 +846,25 @@ func TestC10RedirectsNeverCarryTheAPITokenToAnotherHost(t *testing.T) {
 	}
 }
 
+// requestLog is the paths a fake server was asked, kept under a lock because
+// the server's handler goroutines write while the test reads.
+type requestLog struct {
+	mu    sync.Mutex
+	paths []string
+}
+
+func (l *requestLog) record(path string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.paths = append(l.paths, path)
+}
+
+func (l *requestLog) list() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.paths...)
+}
+
 // onlyTheReleaseRepository fails the test for any request that names a
 // repository other than the one origin, in the API's spelling or the download
 // host's.
@@ -862,9 +882,9 @@ func onlyTheReleaseRepository(t *testing.T, paths []string) {
 // and nothing is asked of any other repository — not even when the caller
 // wrote another one on the release.
 func TestANotFoundFromTheReleaseRepositoryIsTheAnswer(t *testing.T) {
-	var paths []string
+	requests := &requestLog{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.Path)
+		requests.record(r.URL.Path)
 		http.NotFound(w, r)
 	}))
 	defer server.Close()
@@ -889,6 +909,7 @@ func TestANotFoundFromTheReleaseRepositoryIsTheAnswer(t *testing.T) {
 	if got, _ := os.ReadFile(target); string(got) != "old" {
 		t.Fatalf("the original was replaced: %q", got)
 	}
+	paths := requests.list()
 	if len(paths) == 0 {
 		t.Fatal("the server was never asked")
 	}
@@ -902,9 +923,9 @@ func TestANotFoundFromTheReleaseRepositoryIsTheAnswer(t *testing.T) {
 func TestTheFormerAssetNameStillInstallsTheOneOldRelease(t *testing.T) {
 	asset := []byte("old named release")
 	digest := sha256.Sum256(asset)
-	var paths []string
+	requests := &requestLog{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.Path)
+		requests.record(r.URL.Path)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/aforge-"+runtime.GOOS+"-"+runtime.GOARCH): // legacy-name
 			_, _ = w.Write(asset)
@@ -928,6 +949,7 @@ func TestTheFormerAssetNameStillInstallsTheOneOldRelease(t *testing.T) {
 	if got, _ := os.ReadFile(target); string(got) != string(asset) {
 		t.Fatalf("installed %q, want the release under its former asset name", got)
 	}
+	paths := requests.list()
 	joined := strings.Join(paths, "\n")
 	for _, want := range []string{"/codeaf-", "/aforge-"} { // legacy-name
 		if !strings.Contains(joined, want) {

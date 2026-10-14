@@ -142,8 +142,9 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 		}
 	}
 	// THE BYTES AND THE CHECKSUM COME FROM THE ONE ORIGIN ([primaryRepository]),
-	// whatever repository a caller wrote on the release: a 404 there is an
-	// answer, never a reason to go and ask somewhere else.
+	// whatever repository a caller wrote on the release ([Client.assetURL]
+	// reads only the constant): a 404 there is an answer, never a reason to go
+	// and ask somewhere else. The result records it.
 	release.Repository = primaryRepository
 	body, asset, checksums, err := options.Client.downloadRelease(ctx, release, asset, goos, goarch, extension)
 	if err != nil {

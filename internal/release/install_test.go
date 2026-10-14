@@ -291,8 +291,6 @@ func TestInstallerGetsLatestStableAndFinishesWithVersion(t *testing.T) {
 	}
 }
 
-// H10: a 404 from the current repository makes release discovery retry the
-// former repository and complete the install from there.
 // onlyTheReleaseRepository fails the test for any request that named a
 // repository other than the one releases come from.
 func onlyTheReleaseRepository(t *testing.T, github *installGitHub) {
