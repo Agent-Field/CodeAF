@@ -235,7 +235,7 @@ func TestHomeIsStableUntilItStopsBeingOne(t *testing.T) {
 		t.Fatalf("home %+v", h)
 	}
 	// k joins yard, which is just as near: harbor stays.
-	f.Teams[3].Members = append(f.Teams[3].Members, Member{Key: "k", Started: true})
+	must(t, f.AddMember("dddddddddddd", Member{Key: "k", Started: true}))
 	if tidy(f.Teams) {
 		t.Fatal("a nearer or started membership moved a valid home")
 	}

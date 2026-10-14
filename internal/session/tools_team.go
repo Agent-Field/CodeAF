@@ -456,7 +456,7 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 	file, _, _, _ := a.teamSnapshot(a.config.teamProfile())
 	entry, refusal := teamSendAddress(file, team, parsed.To, kind)
 	if refusal != "" {
-		return refusal, true, nil
+		return "Nothing was delivered. " + refusal, true, nil
 	}
 	// A DIRECTIVE TO EVERYONE REACHES THE ONES WHO REPORT HERE. A shared
 	// member is left out and named, and the rest are sent it as one message to
@@ -472,6 +472,10 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 			}
 			entry = teamEntryFor(own)
 		}
+	}
+	targets := teamSendTargets(team, entry)
+	if len(targets) == 0 {
+		return fmt.Sprintf("Nothing was delivered: no member can receive this message. Valid handles: %s.", teamHandles(team, team.Manager)), true, nil
 	}
 	entry.Kind, entry.From, entry.Text = kind, teams.FromManager, text
 	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
@@ -489,7 +493,10 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		// A DIRECTIVE WAKES, and a member nobody has open is opened so it can
 		// (team_wakewatch.go). The answer says what will happen and no more:
 		// whether the wake ran is the Traffic's to say, where the person reads it.
-		a.teamRouse(a.config.teamProfile(), team, role.wakes, teamSendTargets(team, entry), id)
+		if failures := a.teamRouseNow(a.config.teamProfile(), team, role.wakes, targets, id); len(failures) > 0 {
+			return fmt.Sprintf("The directive was saved as %s, but nothing was delivered to a running turn for %s. Those members were not woken; do not report their work as started. Valid handles: %s.",
+				teams.ThreadNumber(id), strings.Join(failures, "; "), teamHandles(team, team.Manager)), true, nil
+		}
 		if len(shared) > 0 {
 			return fmt.Sprintf("Sent a directive to %d member(s) of %q who report to you: %s. Not sent to %s: they report to another team's manager; send them a note.",
 				len(entry.Recipients()), team.Name, who, strings.Join(shared, ", ")), false, nil

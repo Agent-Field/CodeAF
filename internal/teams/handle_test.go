@@ -35,6 +35,36 @@ func TestDeriveHandle(t *testing.T) {
 	}
 }
 
+func TestUntitledHandleIsStableUniqueAndKeptAfterNaming(t *testing.T) {
+	for _, key := range []string{"916be7a36420b604", "fresh-member"} {
+		t.Run(key, func(t *testing.T) {
+			team := Team{ID: "crew", Members: []Member{{Key: key}}}
+			assignHandles(&team)
+			original := team.Members[0]
+			if ValidHandle(original.Handle) != nil || original.HandleBy != HandleByIdentity || original.HandleDerived() {
+				t.Fatalf("untitled handle: %+v", original)
+			}
+			again := Team{ID: "other-crew", Members: []Member{{Key: key}}}
+			assignHandles(&again)
+			if again.Members[0].Handle != original.Handle {
+				t.Fatal("same identity produced a different handle")
+			}
+			collision := Team{ID: "collision", Members: []Member{{Key: "named", Word: "Named", Handle: original.Handle}, {Key: key}}}
+			assignHandles(&collision)
+			if h := collision.Members[1].Handle; h == original.Handle || ValidHandle(h) != nil {
+				t.Fatalf("fallback collision was not resolved: %q", h)
+			}
+			team.Members[0].Word = "checker"
+			assignHandles(&team)
+			f := File{Teams: []Team{team}}
+			old, now, err := f.ChooseHandle(team.ID, key, []string{"checker"}, "checker")
+			if err != nil || old != original.Handle || now != original.Handle {
+				t.Fatalf("naming changed the address: %q -> %q, %v", old, now, err)
+			}
+		})
+	}
+}
+
 // THE TITLES THAT GAVE @checking, @review, @agent AND @te, as they were on the
 // machine where a team of them was first made. Each handle names what the
 // conversation is about, none is a filler word or a two-letter fragment, and

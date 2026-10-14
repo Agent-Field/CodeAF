@@ -26,6 +26,11 @@ one `team_start` names a new member by, is never replaced, and a handle the mode
 chosen again, so a line in the traffic keeps meaning the member it meant. Messages in a team
 are addressed by handle.
 
+A member added before its first turn gets a stable handle derived from its conversation
+identity, such as `@membera1b2c3`, even with no name. That handle stays when the member
+later gets a title or is renamed. A crew formed from existing agents gives its manager
+these handles in the handover; agent ids are not message addresses.
+
 Handles made before this were guesses, and each is chosen again the same way on its
 conversation's next turn. Every change is written to the team's traffic as
 `codeaf  @review is now @security`, which the manager and every member are told at their next
@@ -298,6 +303,20 @@ All teams' automatic manager memberships. Appoint a replacement through Teams fi
 conversation's remaining memberships do not silently acquire reporting authority when its
 reporting membership is removed. Its next role note describes it as independent; former
 team directives cannot be delivered through the ended membership.
+
+## When team_send delivers nothing or cannot wake a member
+
+An unknown handle or a send to `everyone` with no other members returns an error:
+`Nothing was delivered`, followed by the available handles. No message is written.
+Use a handle from `team_status`, or `everyone` when the team has recipients.
+
+A directive starts an idle member even before its first turn. If a member's conversation
+cannot be opened, `team_send` returns an error naming that member, the reason and the valid
+handles. The directive stays in the traffic for its next turn, and the failed wake is
+recorded there too. This error does not mean the member started work. Even a successful
+send confirms neither completion nor the quality of the member's work; read its reply
+or use `team_read` before claiming an outcome. A note does not wake idle members, and
+turning auto-wake off still leaves directives waiting until their next turn.
 
 ## Why team_start may ask before it starts
 

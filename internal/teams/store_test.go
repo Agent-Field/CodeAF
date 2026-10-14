@@ -375,7 +375,7 @@ func TestLoadCutsLoopsAndMissingParents(t *testing.T) {
 }
 
 // REPAIRS ON LOAD: a repeated id gets a new one, a manager who is not a member
-// is cleared, members with titles get handles, and all of it is written back.
+// is cleared, every member gets a handle, and all of it is written back.
 func TestLoadRepairsIdsManagersAndHandles(t *testing.T) {
 	dir := t.TempDir()
 	in := `{"version":2,"teams":[` +
@@ -398,7 +398,7 @@ func TestLoadRepairsIdsManagersAndHandles(t *testing.T) {
 	for _, m := range f.Teams[0].Members {
 		handles = append(handles, m.Handle)
 	}
-	if strings.Join(handles, ",") != "login,page," {
+	if len(handles) != 3 || handles[0] != "login" || handles[1] != "page" || ValidHandle(handles[2]) != nil {
 		t.Fatalf("handles %q", handles)
 	}
 	again, _ := Load(dir)

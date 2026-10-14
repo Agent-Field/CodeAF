@@ -834,39 +834,39 @@ func SetTeamResume(open func(file, workspace string) error) {
 // somewhere watches for itself and is left alone. answers is the entry that
 // asked for the wake, which a failure to wake answers, "" for none.
 func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string) {
+	guard.Go("team rouse", func() { a.teamRouseNow(profile, team, wakes, targets, answers) })
+}
+
+// teamRouseNow lets a send report failures to its caller as well as the traffic.
+// Opening a journal confirms only that it can receive traffic, never completion.
+func (a *Agent) teamRouseNow(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string) []string {
 	if profile == "" || !wakes || len(targets) == 0 {
-		return
+		return nil
 	}
 	a.team.mu.Lock()
 	self := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
-	var absent []teams.Member
+	var failures []string
 	for _, member := range targets {
 		if teamHoldsKey(self, member.Key) {
 			continue
 		}
-		absent = append(absent, member)
-	}
-	if len(absent) == 0 {
-		return
-	}
-	guard.Go("team rouse", func() {
-		for _, member := range absent {
-			if reason := rouseMember(member); reason != "" {
-				who, to := "@"+member.Handle, member.Handle
-				if member.Key == team.Manager {
-					who, to = "◆", teams.ToManager
-				}
-				if to == "" {
-					who, to = "a member with no handle", teams.ToRoom
-				}
-				a.teamSay(profile, team.ID, teams.Entry{
-					Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: member.Key,
-					State: teams.StateIdle, Text: "could not wake " + who + ": " + reason, Answers: answers,
-				})
+		if reason := rouseMember(member); reason != "" {
+			who, to := "@"+member.Handle, member.Handle
+			if member.Key == team.Manager {
+				who, to = "◆", teams.ToManager
 			}
+			if to == "" {
+				who, to = "a member with no handle", teams.ToRoom
+			}
+			failures = append(failures, who+": "+reason)
+			a.teamSay(profile, team.ID, teams.Entry{
+				Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: member.Key,
+				State: teams.StateIdle, Text: "could not wake " + who + ": " + reason, Answers: answers,
+			})
 		}
-	})
+	}
+	return failures
 }
 
 // rouseMember opens one conversation when nothing holds it, and says why not

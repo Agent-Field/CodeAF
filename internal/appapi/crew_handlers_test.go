@@ -130,6 +130,8 @@ func TestCrewMembersCapsInstructionsPauseResumeMoveAndRestart(t *testing.T) {
 	restart := NewAgentRegistry(f.home, f.registry.open)
 	defer restart.Close()
 	f.server = New(testToken, Options{Agents: restart})
+	// The fixture's cleanup captured the original server, so join this one's writers too.
+	t.Cleanup(f.server.Close)
 	read := crewTestGet(t, f, other.ID)
 	for _, m := range read.Tree {
 		if m.AgentID == added.AgentID && (m.Cap == nil || m.Cap.USD != "3.00") {

@@ -23,7 +23,7 @@ type Member struct {
 	Where string `json:"where"`
 	Word  string `json:"word"`
 	// Handle is the member's short name inside this team (handle.go). It is
-	// empty only while the member has no title to derive one from.
+	// assigned even before the conversation has a title or a first turn.
 	Handle string `json:"handle,omitempty"`
 	// Home marks the one membership, among all of this conversation's, that
 	// names the manager it reports to (home.go): the nearest manager up this
@@ -43,7 +43,8 @@ type Member struct {
 	Started bool `json:"started,omitempty"`
 	// HandleBy is who chose Handle: [HandleByWords] for the word list's
 	// instant guess, [HandleByModel] for the title model's word, and
-	// [HandleByTyped] for a handle a person or the manager gave. "" is a
+	// [HandleByTyped] for a handle a person or the manager gave, or
+	// [HandleByIdentity] for an untitled member's stable fallback. "" is a
 	// handle written before this was kept, and is read as the word list's
 	// ([Member.HandleDerived]).
 	HandleBy string `json:"handle_by,omitempty"`
@@ -398,7 +399,7 @@ func (f *File) at(id string) (int, error) {
 // ── MEMBERS AND THE MANAGER ─────────────────────────────────────────────────
 
 // AddMember puts m into team id after the members it has, and gives it a
-// handle if it has a title. A key already there is left as it is.
+// handle even without a title. A key already there is left as it is.
 func (f *File) AddMember(id string, m Member) error {
 	i, err := f.at(id)
 	if err != nil {
@@ -482,6 +483,10 @@ func (f *File) SetManager(id, key string) error {
 		f.Teams[idx].FormerManager = old
 	}
 	f.Teams[idx].Manager = key
+	// Untitled managers retain their existing team-name fallback rule.
+	if m := &f.Teams[idx].Members[f.Teams[idx].member(key)]; m.HandleBy == HandleByIdentity {
+		m.Handle, m.HandleBy = "", ""
+	}
 	assignHandles(&f.Teams[idx])
 	if f.Teams[idx].Root {
 		// Explicitly assigning the optional global role reconnects its current
@@ -539,8 +544,8 @@ func (f *File) SetHandle(id, key, h string) error {
 
 // tidy puts a list in order, in place, and reports whether it changed
 // anything: an id for every team (and a new one for an id used twice), a
-// parent that exists and does not lead back, handles for members with titles
-// and no valid unique handle, a manager that is a member, overrides inside
+// parent that exists and does not lead back, handles for members
+// with no valid unique handle, a manager that is a member, overrides inside
 // their bands, and one home for every conversation that has a manager to
 // report to (home.go). Colour is not its business ([File.Colour] is).
 func tidy(teams []Team) bool {

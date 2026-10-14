@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strconv"
@@ -25,14 +26,15 @@ import (
 // and a handle the model chose is not chosen again, so a line in the log keeps
 // meaning the member it meant.
 //
-// A member that joins before its conversation has a title has no handle yet; it
-// takes one the first time it is saved with a title.
+// A member that joins before its conversation has a title gets a stable
+// identity-based handle, so its first directive can start its first turn.
 
 // Who chose a member's handle ([Member.HandleBy]).
 const (
-	HandleByWords = "words" // the word list's instant guess ([DeriveHandle])
-	HandleByModel = "model" // the title model's word ([File.ChooseHandle])
-	HandleByTyped = "typed" // given by a person or the manager; never replaced
+	HandleByWords    = "words"    // the word list's instant guess ([DeriveHandle])
+	HandleByModel    = "model"    // the title model's word ([File.ChooseHandle])
+	HandleByTyped    = "typed"    // given by a person or the manager; never replaced
+	HandleByIdentity = "identity" // derived from a conversation key before it has a title
 )
 
 // HandleDerived reports whether m's handle is the word list's guess, which the
@@ -237,7 +239,7 @@ func FallbackHandle(t Team, key string) string {
 }
 
 // assignHandles clears every handle in t that is invalid or repeats one an
-// earlier member has, then gives each member with a title and no handle one,
+// earlier member has, then gives each member with no handle one,
 // in member order. It reports whether it changed anything.
 func assignHandles(t *Team) bool {
 	changed := false
@@ -264,6 +266,12 @@ func assignHandles(t *Team) bool {
 			base = FallbackHandle(*t, m.Key)
 		}
 		if base == "" {
+			// An untitled member must be addressable before its first turn.
+			// Keep this identity-based choice when a title later arrives.
+			sum := sha256.Sum256([]byte(m.Key))
+			base = fmt.Sprintf("member%x", sum[:3])
+			m.Handle, m.HandleBy = uniqueHandle(*t, m.Key, base), HandleByIdentity
+			changed = true
 			continue
 		}
 		m.Handle, m.HandleBy = uniqueHandle(*t, m.Key, base), HandleByWords

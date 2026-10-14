@@ -630,26 +630,26 @@ func TestTeamWakeADirectiveOpensAMemberNobodyHolds(t *testing.T) {
 // AND WHERE IT CANNOT BE OPENED, THE TRAFFIC SAYS SO rather than the manager
 // being told a wake that never happens.
 func TestTeamWakeAMemberThatCannotBeOpenedIsSaidInTheTraffic(t *testing.T) {
-	fastTeamWake(t)
-	fixture := newWakingTeamFixture(t)
-	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(1), nil)
-
-	SetTeamResume(nil)
-	sendDirective(t, manager, "web")
-	said := waitEvent(t, fixture, "could not wake @web")
-	if !strings.Contains(said.Text, "cannot open a conversation headless") {
-		t.Errorf("the missing road is not named: %q", said.Text)
-	}
-
-	recorder := &recordedResume{fail: errors.New("the host would not start")}
-	withTeamResume(t, recorder.open)
-	sendDirective(t, manager, "web")
-	deadline := time.Now().Add(5 * time.Second)
-	for len(trafficEvents(t, fixture, "the host would not start")) == 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if got := trafficEvents(t, fixture, "the host would not start"); len(got) != 1 {
-		t.Fatalf("a failed open was said %d times, want once", len(got))
+	for _, tc := range []struct {
+		name string
+		open func(string, string) error
+		want string
+	}{
+		{"no opener", nil, "cannot open a conversation headless"},
+		{"failed opener", func(string, string) error { return errors.New("the host would not start") }, "the host would not start"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newWakingTeamFixture(t)
+			manager := teamAgent(t, fixture, fixture.manager, nil, func(c *Config) { c.teamWatchManual = true })
+			withTeamResume(t, tc.open)
+			said, failed, err := manager.teamSendTool(context.Background(), json.RawMessage(`{"to":"web","text":"Fix the header.","kind":"directive"}`))
+			if err != nil || !failed || !strings.Contains(said, tc.want) || !strings.Contains(said, "not woken") || !strings.Contains(said, "Valid handles: @web, @parser") {
+				t.Fatalf("failed wake returned %q, failed=%v, err=%v", said, failed, err)
+			}
+			if got := trafficEvents(t, fixture, tc.want); len(got) != 1 {
+				t.Fatalf("failed wake events: %+v", got)
+			}
+		})
 	}
 }
 

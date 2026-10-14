@@ -579,6 +579,7 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 			}
 			f.Teams = append(f.Teams, t)
 			target := &f.Teams[len(f.Teams)-1]
+			handoverIDs := make(map[string]string, len(body.AgentIDs))
 			for _, id := range body.AgentIDs {
 				record := d.Records[id]
 				if record.Agent.CrewID != "" && proposed.ParentID == "" {
@@ -590,6 +591,7 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 					if id == body.Manager {
 						meta.ManagerID = m.AgentID
 					}
+					handoverIDs[id] = m.AgentID
 				} else {
 					if err := f.AddMember(target.ID, teams.Member{Key: record.SessionFile, File: record.SessionFile, Where: record.Workspace, Word: record.Agent.Name, JoinedAt: a.now().UTC()}); err != nil {
 						return err
@@ -603,6 +605,7 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 					if id == body.Manager {
 						meta.ManagerID = id
 					}
+					handoverIDs[id] = id
 				}
 			}
 			if body.Manager == "new" {
@@ -646,7 +649,9 @@ func (s *Server) createCrew(w http.ResponseWriter, r *http.Request, a *AgentRegi
 			fmt.Fprintf(&notes, "Manage crew %s. Goal: %s. Start by summarizing each member's handover; do not merge histories.\n", target.Name, meta.Goal)
 			for _, id := range body.AgentIDs {
 				record := d.Records[id]
-				fmt.Fprintf(&notes, "Member %s (%s): %s\n", id, record.Agent.Name, crewHandover(record))
+				if member, ok := target.Member(d.Records[handoverIDs[id]].SessionFile); ok {
+					fmt.Fprintf(&notes, "Member @%s (%s): %s\n", member.Handle, record.Agent.Name, crewHandover(record))
+				}
 			}
 			handover = notes.String()
 			return viewErr
