@@ -50,7 +50,7 @@ func hasWord(text string, words ...string) bool {
 }
 
 func personLike(text string) bool {
-	return hasWord(text, "person", "people", "contact", "candidate", "member", "employee", "staff", "teacher", "instructor", "trainer", "student", "client", "customer", "patient", "volunteer", "attendee", "participant", "author", "assignee", "owner", "manager", "lead", "guest", "tenant", "player", "coach", "mentor", "speaker", "applicant", "user", "writer", "freelancer", "donor")
+	return hasWord(text, "person", "people", "contact", "candidate", "member", "employee", "staff", "teacher", "instructor", "trainer", "student", "client", "customer", "patient", "volunteer", "attendee", "participant", "author", "assignee", "owner", "manager", "lead", "guest", "tenant", "player", "coach", "mentor", "speaker", "applicant", "user", "writer", "freelancer", "donor", "therapist", "doctor", "nurse", "driver", "musician", "artist", "host", "tutor", "technician", "photographer", "interviewer", "reviewer", "editor", "performer", "singer", "worker", "contractor", "bandmate", "interviewee", "subscriber", "resident", "visitor", "rider", "runner", "clinician", "practitioner", "stylist", "barber", "chef", "cook", "farmer", "handler")
 }
 
 func orgLike(text string) bool {

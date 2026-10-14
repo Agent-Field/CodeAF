@@ -21,10 +21,14 @@
 // deterministic fixtures, and Service.Now can inject a clock.
 //
 // When the services hold a model, Service.Generate first asks it once per
-// definition (app, description, the owner's ask) for example titles and text
-// values per type; replies are validated against the schema and only then used
-// as vocabulary. Any error, or values that break a uniqueness rule, falls
-// back to the deterministic generator.
+// definition (app, description, the owner's ask, the plan's data lines, every
+// type with its fields, enum values and refs, and today's date) to write whole
+// rows per record type. The reply is cached per definition and coerced field
+// by field: enum membership, ref titles resolved to ids, day offsets ("+3d
+// 14:30") turned into dates around the injected clock, .example addresses,
+// unique rules and row caps. A value that does not fit is dropped and only
+// that field comes from the generator; computed fields are always evaluated.
+// A timeout, an error or an unusable reply gives the deterministic sample.
 //
 // References can point forward or form cycles and remain ids on the wire;
 // consumers can read their titles through records.get and the target schema.

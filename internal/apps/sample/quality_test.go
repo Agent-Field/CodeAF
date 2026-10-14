@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -171,38 +173,164 @@ func (m *vocabModel) Complete(_ context.Context, call svc.ModelCall) (svc.ModelR
 	return svc.ModelReply{Text: m.reply}, nil
 }
 
-func TestModelVocabularyIsUsedOnceAndValidated(t *testing.T) {
-	model := &vocabModel{reply: "```json\n" + `{"types":{"project":{"titles":["Autumn lookbook shoot","Packaging refresh","bad_title","Packaging refresh"],"fields":{"summary":["Mood board approved; shoot booked for next week."],"status":["Done"]}},"ghost":{"titles":["Nope there"]}}}` + "\n```"}
+func gigApp() *spec.App {
+	return &spec.App{ID: "gigs", Name: "Band gigs", Records: map[string]*spec.RecordType{
+		"venue": {Label: "Venue", Title: "name", Fields: map[string]*spec.Field{
+			"name":  {Type: spec.FieldText},
+			"email": {Type: spec.FieldEmail},
+			"site":  {Type: spec.FieldURL},
+		}},
+		"gig": {Label: "Gig", Title: "name", Fields: map[string]*spec.Field{
+			"name":      {Type: spec.FieldText},
+			"venue":     {Type: spec.FieldRef, To: "venue"},
+			"status":    {Type: spec.FieldEnum, Values: []string{"Enquiry", "Confirmed", "Played", "Paid"}},
+			"fee":       {Type: spec.FieldMoney},
+			"doors_at":  {Type: spec.FieldDatetime},
+			"paid_on":   {Type: spec.FieldDate},
+			"deposit":   {Type: spec.FieldBool},
+			"notes":     {Type: spec.FieldLongtext},
+			"fee_twice": {Type: spec.FieldNumber, Computed: "fee * 2.0"},
+			"owner":     {Type: spec.FieldPerson},
+		}},
+	}}
+}
+
+// A consistent reply with deliberate faults: an unknown enum value, a ref to
+// a venue that was not written, a real-looking email domain, an absolute
+// date, a computed value, an unknown type and an unknown field.
+const gigReply = "```json\n" + `{"types":{
+"venue":[
+ {"name":"The Lantern Room","email":"bookings@lanternroom.example","site":"https://www.lanternroom.example"},
+ {"name":"Kestrel Hall","email":"events@kestrelhall.com","site":"http://kestrelhall.example"},
+ {"name":"Dockside Social","email":"hello@dockside.example","site":"https://www.dockside.example/live"},
+ {"name":"Old Mill Tap","email":"gigs@oldmilltap.example","site":"https://www.oldmilltap.example"}],
+"gig":[
+ {"name":"Autumn residency night","venue":"The Lantern Room","status":"paid","fee":450,"doors_at":"-20d 19:30","paid_on":"-12d","deposit":true,"notes":"Played two sets; fee settled by transfer.","fee_twice":1,"mood":"great"},
+ {"name":"Kestrel Hall wedding","venue":"kestrel hall","status":"Confirmed","fee":"1,200","doors_at":"+9d 18:00","paid_on":null,"deposit":true,"notes":"Deposit received; set list due next week."},
+ {"name":"Dockside open mic","venue":"Dockside Social","status":"Pencilled","fee":0,"doors_at":"+3d","deposit":false,"notes":"Waiting on a date from the promoter."},
+ {"name":"Old Mill charity night","venue":"The Roundhouse","status":"Played","fee":300,"doors_at":"2026-01-01T20:00:00Z","paid_on":"tomorrow","deposit":"yes","notes":"Invoice sent the morning after."}],
+"ghost":[{"name":"Nope"},{"name":"Nope"},{"name":"Nope"},{"name":"Nope"}]}}` + "\n```"
+
+func TestModelRowsAreCoercedFieldByFieldAndAskedOnce(t *testing.T) {
+	model := &vocabModel{reply: gigReply}
 	service := New(svc.Config{}, &svc.Services{Model: model})
 	service.Now = sampleNow
-	def := &spec.Bundle{App: studioApp(), Plan: &spec.Plan{Ask: "A desk for my design studio"}}
+	def := &spec.Bundle{App: gigApp(), Plan: &spec.Plan{Ask: "Track my band's gigs and who has paid"}}
 	rows, err := service.Generate(context.Background(), def)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Generate(context.Background(), def); err != nil || model.calls.Load() != 1 {
-		t.Fatalf("vocabulary should be asked once per definition: %d calls, %v", model.calls.Load(), err)
+		t.Fatalf("rows should be asked once per definition: %d calls, %v", model.calls.Load(), err)
 	}
-	project := rows["project"]
-	if project[0].Fields["title"] != "Autumn lookbook shoot" || project[1].Fields["title"] != "Packaging refresh" {
-		t.Errorf("model titles unused: %v, %v", project[0].Fields["title"], project[1].Fields["title"])
+	if len(rows["gig"]) != 4 || len(rows["venue"]) != 4 || rows["ghost"] != nil {
+		t.Fatalf("row counts should follow the model's rows: %d gigs, %d venues", len(rows["gig"]), len(rows["venue"]))
 	}
-	if title := project[2].Fields["title"].(string); title == "bad_title" || title == "Packaging refresh" {
-		t.Errorf("invalid or duplicate model title kept: %q", title)
+	for typ, list := range rows {
+		for _, row := range list {
+			if err := records.ValidateFields(def.App.Records[typ], row.Fields); err != nil {
+				t.Errorf("%s: %v", typ, err)
+			}
+		}
 	}
-	if project[0].Fields["summary"] != "Mood board approved; shoot booked for next week." {
-		t.Errorf("model longtext unused: %v", project[0].Fields["summary"])
+	now := sampleNow()
+	first, second, third, fourth := rows["gig"][0].Fields, rows["gig"][1].Fields, rows["gig"][2].Fields, rows["gig"][3].Fields
+	// The consistent row arrives whole: status, past dates, note and relation agree.
+	want := map[string]any{"name": "Autumn residency night", "venue": rows["venue"][0].ID, "status": "Paid", "fee": 450.0,
+		"doors_at": "2026-09-23T19:30:00.000000000Z", "paid_on": "2026-10-01", "deposit": true, "notes": "Played two sets; fee settled by transfer."}
+	for name, value := range want {
+		if first[name] != value {
+			t.Errorf("gig.%s = %v, want %v", name, first[name], value)
+		}
 	}
-	if project[0].Fields["status"] != "Idea" {
-		t.Errorf("model must not fill enum fields: %v", project[0].Fields["status"])
+	if first["fee_twice"] != 900.0 || first["mood"] != nil || first["owner"] != svc.Owner {
+		t.Errorf("computed, unknown and member fields must not come from the model: %v", first)
 	}
-	garbage := &vocabModel{reply: `{"severity":"S1"}`}
-	fallback := New(svc.Config{}, &svc.Services{Model: garbage})
-	fallback.Now = sampleNow
-	got, err := fallback.Generate(context.Background(), def)
+	if second["venue"] != rows["venue"][1].ID || second["fee"] != 1200.0 || second["status"] != "Confirmed" {
+		t.Errorf("ref titles resolve without case and money strings parse: %v", second)
+	}
+	if doors, _ := time.Parse(time.RFC3339, third["doors_at"].(string)); doors.Hour() < workdayStart || doors.Hour() >= workdayStart+workdayHours || !doors.After(now) {
+		t.Errorf("an offset without a time gets a working hour: %v", third["doors_at"])
+	}
+	if !slices.Contains(def.App.Records["gig"].Fields["status"].Values, third["status"].(string)) {
+		t.Errorf("an unknown enum value must be replaced: %v", third["status"])
+	}
+	// Faulty values are dropped one field at a time; the rest of the row stays.
+	if fourth["name"] != "Old Mill charity night" || fourth["notes"] != "Invoice sent the morning after." || fourth["status"] != "Played" {
+		t.Errorf("good fields of a faulty row were lost: %v", fourth)
+	}
+	if id, _ := fourth["venue"].(string); !strings.HasPrefix(id, "sample_venue_") {
+		t.Errorf("an unknown ref title must fall back to a real target: %v", fourth["venue"])
+	}
+	if doors, err := time.Parse(time.RFC3339, fourth["doors_at"].(string)); err != nil || doors.Before(now.AddDate(0, 0, -60)) {
+		t.Errorf("an absolute date must be replaced by one near now: %v", fourth["doors_at"])
+	}
+	if _, ok := fourth["deposit"].(bool); !ok {
+		t.Errorf("a non-boolean must be replaced: %v", fourth["deposit"])
+	}
+	venue := rows["venue"][1].Fields
+	if email := venue["email"].(string); !strings.HasSuffix(email, ".example") {
+		t.Errorf("a real-looking email domain must be replaced: %q", email)
+	}
+	if site := venue["site"].(string); !strings.HasPrefix(site, "https://") {
+		t.Errorf("a non-https link must be replaced: %q", site)
+	}
+}
+
+func TestUnusableModelRowsFallBackToTheGenerator(t *testing.T) {
+	def := &spec.Bundle{App: gigApp()}
 	want, _ := GenerateAt(context.Background(), def.App, DefaultCount, 1, sampleNow())
-	if err != nil || got["project"][0].Fields["title"] != want["project"][0].Fields["title"] {
-		t.Fatalf("unusable vocabulary should fall back to the deterministic sample: %v", err)
+	for name, reply := range map[string]string{
+		"not rows": `{"severity":"S1"}`,
+		"not json": "Sure! Here are some rows.",
+		"too few":  `{"types":{"gig":[{"name":"Only one gig"}]}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := New(svc.Config{}, &svc.Services{Model: &vocabModel{reply: reply}})
+			service.Now = sampleNow
+			got, err := service.Generate(context.Background(), def)
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("unusable rows should give the deterministic sample: %v", err)
+			}
+		})
+	}
+}
+
+func TestFallbackNamesPeopleAndKeepsWorkingHours(t *testing.T) {
+	app := &spec.App{ID: "clinic", Records: map[string]*spec.RecordType{
+		"therapist": {Label: "Therapist", Title: "name", Fields: map[string]*spec.Field{"name": {Type: spec.FieldText}}},
+		"keyholder": {Label: "Keyholder", Title: "name", Fields: map[string]*spec.Field{
+			"name": {Type: spec.FieldText}, "phone": {Type: spec.FieldPhone}, "contact": {Type: spec.FieldText}}},
+		"animal": {Label: "Animal", Title: "tag_number", Fields: map[string]*spec.Field{"tag_number": {Type: spec.FieldText, Unique: true}}},
+		"visit": {Label: "Visit", Title: "summary", Fields: map[string]*spec.Field{
+			"summary": {Type: spec.FieldText}, "starts": {Type: spec.FieldDatetime}, "hours": {Type: spec.FieldNumber},
+			"notes": {Type: spec.FieldLongtext}, "follow_up": {Type: spec.FieldLongtext}}},
+	}}
+	rows, err := GenerateAt(context.Background(), app, DefaultCount, 1, sampleNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, typ := range []string{"therapist", "keyholder"} {
+		for i, row := range rows[typ] {
+			if row.Fields["name"] != personName(i) {
+				t.Errorf("%s should be a person, got %q", typ, row.Fields["name"])
+			}
+		}
+	}
+	if tag := rows["animal"][0].Fields["tag_number"]; tag != "Tag 1001" {
+		t.Errorf("a number title uses the field's own noun: %q", tag)
+	}
+	for _, row := range rows["visit"] {
+		at, _ := time.Parse(time.RFC3339, row.Fields["starts"].(string))
+		if at.Hour() < workdayStart || at.Hour() >= workdayStart+workdayHours || at.Second() != 0 {
+			t.Errorf("datetime outside working hours: %v", row.Fields["starts"])
+		}
+		if hours := row.Fields["hours"].(float64); hours > 8 {
+			t.Errorf("one entry of %v hours", hours)
+		}
+		if row.Fields["notes"] == row.Fields["follow_up"] {
+			t.Errorf("two notes of one row are identical: %v", row.Fields["notes"])
+		}
 	}
 }
 
@@ -423,7 +551,7 @@ func TestInvoicesAreConsistentAndFilesLookUploaded(t *testing.T) {
 func TestClientWithAContactIsACompany(t *testing.T) {
 	app := &spec.App{ID: "freelance", Records: map[string]*spec.RecordType{
 		"client": {Label: "Client", Title: "name", Fields: map[string]*spec.Field{
-			"name":    {Type: spec.FieldText, Unique: true},
+			"name":    {Type: spec.FieldText, Unique: true, Label: "Client"},
 			"contact": {Type: spec.FieldText},
 			"email":   {Type: spec.FieldEmail},
 		}},

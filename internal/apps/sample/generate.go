@@ -40,9 +40,9 @@ func (s *Service) Generate(ctx context.Context, def *spec.Bundle) (map[string][]
 		now = s.Now
 	}
 	at := now()
-	// Model vocabulary is a bonus: any failure, or values that break a
-	// uniqueness rule, falls back to the deterministic generator.
-	if words := s.words.get(ctx, s.model(), def); words != nil {
+	// Model-written rows are a bonus: any failure, or rows that break a
+	// record rule, falls back to the deterministic generator.
+	if words := s.words.get(ctx, s.model(), def, at); words != nil {
 		if rows, err := generate(ctx, def.App, s.Count, s.Seed, at, words); err == nil {
 			return rows, nil
 		}
@@ -79,7 +79,7 @@ func generate(ctx context.Context, app *spec.App, count int, seed int64, now tim
 			return nil, bridge.Errorf(bridge.CodeInvalid, "invalid record type "+typ)
 		}
 	}
-	counts := rowCounts(app, count)
+	counts := rowCounts(app, count, words)
 	for _, typ := range keys(app.Records) {
 		rows[typ] = make([]bridge.Record, counts[typ])
 		for i := range counts[typ] {
@@ -114,7 +114,10 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 		if err := fillFields(app, rows, schema, &row, i, seed, now, words, seen); err != nil {
 			return err
 		}
-		cohere(schema, row.Fields, i, now)
+		if !words.written(typ) {
+			// The model writes consistent rows; generated rows are made to agree.
+			cohere(schema, row.Fields, i, now)
+		}
 		// Computed fields are evaluated from the generated inputs, never seeded.
 		row, err = rules.Prepare(row, svc.Owner, now, true)
 		if err != nil {

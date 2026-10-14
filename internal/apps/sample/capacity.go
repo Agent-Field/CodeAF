@@ -3,13 +3,13 @@ package sample
 import "github.com/Agent-Field/codeaf/internal/apps/spec"
 
 // rowCounts caps each type's row count at the number of distinct values its
-// unique fields can hold: a unique enum has one row per value, a unique bool
+// unique fields can hold (after the rows the model wrote, when it wrote them): a unique enum has one row per value, a unique bool
 // two, a unique ref one per target row. A valid app is never failed for a
 // value space smaller than the preview.
-func rowCounts(app *spec.App, count int) map[string]int {
+func rowCounts(app *spec.App, count int, words *vocab) map[string]int {
 	counts := map[string]int{}
 	for typ := range app.Records {
-		counts[typ] = count
+		counts[typ] = words.limit(typ, count)
 	}
 	// Ref caps follow their targets; one pass per type reaches a fixpoint.
 	for range app.Records {
