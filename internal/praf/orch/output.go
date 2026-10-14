@@ -38,6 +38,11 @@ func (o *Orchestrator) generateOutput(
 	if o.prData == nil {
 		return schemas.ReviewResult{}, errPRDataNotInitialized
 	}
+	for _, finding := range scoredFindings {
+		if err := finding.ValidateConsistency(); err != nil {
+			return schemas.ReviewResult{}, err
+		}
+	}
 
 	diffFiles := map[string]struct{}{}
 	for _, cf := range o.prData.ChangedFiles {
