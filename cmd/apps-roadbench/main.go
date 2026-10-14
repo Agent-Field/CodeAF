@@ -32,10 +32,11 @@ func main() {
 	judge := flag.String("judge", "", "blind usefulness judge command, run as `<cmd> <app-id> <dir>`; unset leaves usefulness pending")
 	run := flag.String("run", "", "zoo run id prefix, road is appended (e.g. bl-2115)")
 	combineDirs := flag.String("combine", "", "comma-separated result dirs to merge into one report at -out (no build is run)")
+	verdicts := flag.String("verdicts", "", "with -combine: JSON file of blind judge verdicts, {\"<road>/<id>\": {\"verdict\":..,\"scores\":..}}")
 	b7 := flag.String("b7", "", "comma-separated app ids to mark b7-fail with -combine")
 	flag.Parse()
 	if *combineDirs != "" {
-		fail(combineReport(strings.Split(*combineDirs, ","), *b7, *out, *build, *zoo, *run, *model))
+		fail(combineReport(strings.Split(*combineDirs, ","), *b7, *verdicts, *out, *build, *zoo, *run, *model))
 		return
 	}
 	o := options{*file, strings.Split(*roads, ","), *out, *model, *bin, *build, *zoo, *run, *judge, *parallel}
@@ -51,8 +52,8 @@ func fail(err error) {
 
 // combineReport merges runs into one REPORT.md. With zoo and run set it also
 // records the finished rows (never the running ones) to the zoo.
-func combineReport(dirs []string, b7, out, build, zoo, run, model string) error {
-	rows, err := combine(dirs, b7)
+func combineReport(dirs []string, b7, verdicts, out, build, zoo, run, model string) error {
+	rows, err := combine(dirs, b7, verdicts)
 	if err != nil {
 		return err
 	}

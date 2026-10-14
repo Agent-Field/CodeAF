@@ -73,11 +73,12 @@ func report(build string, rows []row) string {
 	if n := len(rows) - len(done); n > 0 {
 		fmt.Fprintf(&sb, "\nTotals count finished apps only. %d app-runs are still running and are listed as running below.\n", n)
 	}
-	sb.WriteString("\n## Per app\n\n| id | road | reach_use | check_pass | usefulness | road_used | raw_errors | first_line_s | total_s | cost | state | cause |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	sb.WriteString("\n## Per app\n\n| id | road | reach_use | check_pass | usefulness (definition-only) | judge scores | road_used | raw_errors | first_line_s | total_s | cost | state | cause |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, r := range rows {
-		fmt.Fprintf(&sb, "| %s | %s | %v | %v | %s | %s | %d | %.1f | %.0f | %.4f | %s | %s |\n", idCell(r), r.Road, r.Stages.Use, r.CheckPass,
-			orPending(r.Useful), r.RoadUsed, r.RawErrors, r.FirstLineS, r.TotalS, r.CostUSD, r.State, r.Cause)
+		fmt.Fprintf(&sb, "| %s | %s | %v | %v | %s | %s | %s | %d | %.1f | %.0f | %.4f | %s | %s |\n", idCell(r), r.Road, r.Stages.Use, r.CheckPass,
+			orPending(r.Useful), r.UsefulWhy, r.RoadUsed, r.RawErrors, r.FirstLineS, r.TotalS, r.CostUSD, r.State, r.Cause)
 	}
+	sb.WriteString("\nUsefulness verdicts come from the zoo judge run blind on the kept definition files only: no Use screenshots (one blank grey placeholder PNG) and no agent answers. Compare roads on the scores, not on the verdict word.\n")
 	sb.WriteString(rawSection(rows))
 	sb.WriteString("\n## MATRIX\n\n" + matrix(done, roads))
 	return sb.String()

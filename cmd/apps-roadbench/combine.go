@@ -13,7 +13,7 @@ import (
 
 // combine reads the results.jsonl of several runs into one row list, marks the
 // apps in b7 as earlier calls-road failures, and puts those first.
-func combine(dirs []string, b7 string) ([]row, error) {
+func combine(dirs []string, b7, verdicts string) ([]row, error) {
 	marked := map[string]bool{}
 	for _, id := range strings.Split(b7, ",") {
 		marked[strings.TrimSpace(id)] = true
@@ -27,6 +27,9 @@ func combine(dirs []string, b7 string) ([]row, error) {
 		rows = append(rows, more...)
 	}
 	rows = withoutJunk(rows)
+	if err := applyVerdicts(rows, verdicts); err != nil {
+		return nil, err
+	}
 	for i := range rows {
 		rows[i].B7 = marked[rows[i].ID]
 	}
@@ -126,4 +129,26 @@ func logRows(log string) []row {
 		rows = append(rows, r)
 	}
 	return rows
+}
+
+// applyVerdicts fills usefulness from a JSON file {"<road>/<id>": {verdict, scores}}
+// written after the blind judge ran; no file leaves the column pending.
+func applyVerdicts(rows []row, path string) error {
+	if path == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var v map[string]struct{ Verdict, Scores string }
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return err
+	}
+	for i := range rows {
+		if j, ok := v[rows[i].Road+"/"+rows[i].ID]; ok {
+			rows[i].Useful, rows[i].UsefulWhy = j.Verdict, j.Scores
+		}
+	}
+	return nil
 }
