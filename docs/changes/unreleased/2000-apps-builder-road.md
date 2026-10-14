@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: the Apps Builder builds through task verbs and takes a second pass instead of failing
-pr: 0
+pr: 2000
 surface: [engine, docs]
 invalidates:
   - "The Apps Builder had one way to build, a single write with repair rounds. Its default road is now rescue: the same first write, then a bounded second pass of 60 steps, 6 minutes and $0.30 before any failed card."
