@@ -9,7 +9,7 @@ Pure logic, no I/O. The wiring lane calls the model and the server; this package
 5. Every prompt carries the ten rules (`templates/rules.tmpl`) and demands strict JSON with no fence or prose.
 6. The few-shot is the CRM of board 08, kept as real files in `example/`. A test proves it parses with `ParseFiles` and `ParsePlan`.
 7. Size: the fixed text of WRITE is about 10k characters (~2.5k tokens), tested under 16k, so the catalog and schemas fit inside the 12k-token target for deepseek/deepseek-v4.1-flash.
-8. `ParseFiles(output)` finds the JSON object past prose and code fences, and rejects the whole reply if any path is not `app.json`, `plan.json`, `agent.md`, `screens/<id>.json` or `runs/<id>.yaml`, or if a file does not parse as JSON or YAML.
+8. `ParseFiles(output)` prefers an object under `files`, then the first object whose keys are all valid app paths (`app.json`, `plan.json`, `agent.md`, `screens/<id>.json`, `runs/<id>.yaml`). It skips unrelated objects past prose and code fences. The selected object's contents must still parse as JSON or YAML where required. If no object qualifies, `FilesObjectError` names the observed keys and asks for a path-to-content map; the Builder's repair loop sends that correction back with the rejected reply for one retry.
 9. `ParsePlan(output)` does the same for a plan and checks ids (lowercase, unique per group) and non-empty lines.
 10. `ApplyPlanEdits(plan, edits)` applies plan-card edits (`set`, `add`, `remove` on data, automation, screens; `set` on agent) to a copy. One bad edit fails the batch and changes nothing. Needs cannot be edited.
 11. `Loop` is the policy: plan → write → check → fix → check … The caller reports each step (`PlanWritten`, `FilesWritten`, `CheckResult`, `FixApplied`) and reads `Phase()`.
