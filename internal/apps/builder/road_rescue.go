@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/builder/prompt"
@@ -128,7 +129,13 @@ func (s *Service) seedPlan(t *seat, plan prompt.Plan) error {
 		name string
 		args []string
 	}
-	verbs := []verb{{"name", []string{plan.Name}}}
+	// THE SEED FITS THE VERBS' LIMITS. The calls road's plan lines may run to
+	// the schema's 200 characters while a draft verb takes at most
+	// draft.MaxPlanLine, and the apps that need a second pass are exactly the
+	// ones with long lines: a seed refused on length would end the rescue
+	// before it started. Each line is cut at a clause boundary the same way
+	// the calls road shortens its own plan before Check.
+	verbs := []verb{{"name", []string{shortenClause(plan.Name, draft.MaxNameLen)}}}
 	if plan.Tint != "" {
 		verbs = append(verbs, verb{"tint", []string{plan.Tint}})
 	}
@@ -137,10 +144,10 @@ func (s *Service) seedPlan(t *seat, plan prompt.Plan) error {
 		lines []prompt.Line
 	}{{"data", plan.Data}, {"run", plan.Automation}, {"screen", plan.Screens}} {
 		for _, l := range g.lines {
-			verbs = append(verbs, verb{"plan " + g.word, []string{l.ID, l.Line}})
+			verbs = append(verbs, verb{"plan " + g.word, []string{l.ID, shortenClause(l.Line, draft.MaxPlanLine)}})
 		}
 	}
-	verbs = append(verbs, verb{"plan agent", []string{plan.Agent.Line}}, verb{"plan ready", nil})
+	verbs = append(verbs, verb{"plan agent", []string{shortenClause(agentLine(plan), draft.MaxPlanLine)}}, verb{"plan ready", nil})
 	for _, v := range verbs {
 		if _, err := t.drafts.Append(draft.AuthorCodeaf, v.name, v.args, ""); err != nil {
 			return err
@@ -159,4 +166,14 @@ func (f *feed) adopt() {
 		f.seq = entries[len(entries)-1].Seq
 	}
 	f.announced = true
+}
+
+// agentLine is the plan's agent line, or a plain one named after the app when
+// the PLAN call left it empty: `plan ready` needs an agent line, and a rescue
+// must not stop on a line the owner never asked for.
+func agentLine(plan prompt.Plan) string {
+	if line := strings.TrimSpace(plan.Agent.Line); line != "" {
+		return line
+	}
+	return plan.Name + " agent · answers questions about the records"
 }

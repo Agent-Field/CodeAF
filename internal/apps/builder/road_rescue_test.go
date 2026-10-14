@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/builder/prompt"
+	"github.com/Agent-Field/codeaf/internal/apps/draft"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
@@ -209,5 +211,39 @@ func TestRescueNeedsTheTaskBeltLikeTheLoopRoad(t *testing.T) {
 	}
 	if name, _ := chooseRoad("rescue", true); name != roadRescue {
 		t.Errorf("with the belt, road = %q, want rescue", name)
+	}
+}
+
+// TestRescueSeedFitsLongCallsPlanLines pins the seed against the plans that
+// need a rescue most: the calls road allows plan lines to the schema's 200
+// characters, the draft verbs take far fewer, and an empty agent line would
+// stop `plan ready`. The seed must land every line and reach a ready plan.
+func TestRescueSeedFitsLongCallsPlanLines(t *testing.T) {
+	store, err := draft.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("Deliverable · brand, fee, due date, status, link, notes; ", 4)[:199]
+	plan := prompt.Plan{
+		Name:       "Sponsor deals tracker for my channel and its many sponsors",
+		Data:       []prompt.Line{{ID: "deal", Line: long}},
+		Automation: []prompt.Line{{ID: "chase", Line: long}},
+		Screens:    []prompt.Line{{ID: "deals", Line: long}},
+	}
+	st := &seat{drafts: store, feed: &feed{drafts: store}}
+	if err := (&Service{}).seedPlan(st, plan); err != nil {
+		t.Fatalf("seed refused: %v", err)
+	}
+	state, err := store.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Phase != draft.PhasePlanned {
+		t.Errorf("phase = %q, want %q", state.Phase, draft.PhasePlanned)
+	}
+	for _, l := range state.Plan.Data {
+		if n := len([]rune(l.Line)); n > draft.MaxPlanLine {
+			t.Errorf("seeded line is %d characters, over %d", n, draft.MaxPlanLine)
+		}
 	}
 }
