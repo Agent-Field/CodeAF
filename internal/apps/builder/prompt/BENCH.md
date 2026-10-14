@@ -2,7 +2,7 @@
 
 Measured 2026-10-13 with `cmd/apps-buildbench` against OpenRouter: PLAN, then WRITE, then FIX (up to 3 rounds) on four owner-style paragraphs (`crm`, `tracker`, `inventory`, `booking`; see `cmd/apps-buildbench/presets.go`). Reasoning is switched off (`reasoning.enabled=false`); Gemini refuses that, so it runs at `effort: low`. Seconds are one call's wall time with all runs in parallel; cost is OpenRouter's reported USD. **Pass** = `spec.Validate` + decode + the bench's binding check (every bound type, field, screen, run, command and part exists; agent tools are inside the capabilities; connectors are connected) + coverage (every record type has a list, a detail, a create and an edit).
 
-Reproduce: `go run ./cmd/apps-buildbench -model <id>[,<id>] [-preset crm|tracker|inventory|booking] [-v]`. Files land in `.tmp/buildbench/<model>/<preset>/`.
+Reproduce: `go run ./cmd/apps-buildbench -model <id>[,<id>] [-preset crm|tracker|inventory|booking] [-v]`. Calls now go through `builder.Model`, the shipped Builder model door, with its provider retries, key resolution and billing. Builder forces reasoning off; `-think` is gone. The key comes from the codeaf profile or `OPENROUTER_API_KEY`; a missing key fails with setup guidance. Files land in `.tmp/buildbench/<model>/<preset>/`. The measurements below were taken with the earlier direct client, including its low-effort fallback for Gemini.
 
 ## Default model, three repeats (final prompts)
 

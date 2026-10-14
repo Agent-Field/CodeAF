@@ -60,13 +60,13 @@ Read checks do not score factual quality. Each JSONL record includes the task,
 model, app, final reply, error, wall seconds, USD cost, tool-call count, events,
 expected fields and before/after records so a person can judge that quality.
 A requested capability absent from a bundle stays absent: for example, the
-current deepseek CRM bundle does not list `records.create`, and the app agent
-has no delete tool. The bench exposes their unmet data checks.
+current deepseek CRM bundle does not list `records.create`. The bench exposes
+unmet data checks when the bundle lacks a requested capability.
 
-The production model adapter currently sends tool-result messages without
-native tool-call IDs. An endpoint that requires `tool_call_id` rejects later
-steps; these are measured as errors, rather than hidden behind another model
-adapter. Successful completions before the failure still contribute cost.
+The current agent sends text-action feedback as user messages headed
+`Result of <tool>:`. The bench reads errors from those results, including errors
+the model recovers from before its final speech. Older tool-role feedback is
+also recognized. Successful completions before a failure still contribute cost.
 
 Each invocation creates a new `-out/run-<id>/` directory (default
 `.tmp/agentbench`). Each task gets one numbered `.jsonl` file containing one

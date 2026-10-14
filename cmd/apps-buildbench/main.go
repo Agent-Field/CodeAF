@@ -1,4 +1,4 @@
-// Command apps-buildbench runs the Apps Builder prompt pack against OpenRouter
+// Command apps-buildbench runs the Apps Builder prompt pack through builder.Model
 // for a paragraph or a named preset, validates what comes back, and prints
 // seconds, cost and issues per run. It exists to tune the prompts and to pick
 // the default model; it is not part of the shipped binary.
@@ -18,7 +18,7 @@ const defaultModel = "deepseek/deepseek-v4.1-flash"
 type options struct {
 	preset, paragraph, models, out string
 	rounds                         int
-	think, verbose                 bool
+	verbose                        bool
 }
 
 func main() {
@@ -28,7 +28,6 @@ func main() {
 	flag.StringVar(&o.models, "model", defaultModel, "comma-separated OpenRouter model ids")
 	flag.StringVar(&o.out, "out", ".tmp/buildbench", "directory the app files are written under")
 	flag.IntVar(&o.rounds, "rounds", 3, "maximum FIX rounds")
-	flag.BoolVar(&o.think, "think", false, "let the model reason before answering")
 	flag.BoolVar(&o.verbose, "v", false, "print issues and quality notes")
 	flag.Parse()
 	if err := execute(o); err != nil {
@@ -42,11 +41,7 @@ func execute(o options) error {
 	if err != nil {
 		return err
 	}
-	client, err := newOpenRouter(o.think)
-	if err != nil {
-		return err
-	}
-	p, err := newPipeline(client, o.rounds)
+	p, err := newPipeline(newCompleter(), o.rounds)
 	if err != nil {
 		return err
 	}

@@ -23,9 +23,7 @@ type observedModel struct {
 func (m *observedModel) Complete(ctx context.Context, call svc.ModelCall) (svc.ModelReply, error) {
 	m.mu.Lock()
 	for _, message := range call.Messages {
-		if message.Role == "tool" {
-			m.noteToolError(message.Text)
-		}
+		m.noteToolError(message)
 	}
 	m.mu.Unlock()
 	reply, err := m.Model.Complete(ctx, call)
@@ -36,7 +34,17 @@ func (m *observedModel) Complete(ctx context.Context, call svc.ModelCall) (svc.M
 	return reply, err
 }
 
-func (m *observedModel) noteToolError(text string) {
+// noteToolError reads the agent's text-action feedback. Current turns carry
+// named results as user messages; older saved turns may still use the tool role.
+func (m *observedModel) noteToolError(message svc.ModelMessage) {
+	text := message.Text
+	switch {
+	case message.Role == "tool":
+	case message.Role == "user" && (strings.HasPrefix(text, "Result of ") || strings.HasPrefix(text, "Result:\n")):
+		_, text, _ = strings.Cut(text, "\n")
+	default:
+		return
+	}
 	var feedback struct {
 		Error string `json:"error"`
 	}
