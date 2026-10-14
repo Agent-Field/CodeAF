@@ -39,10 +39,12 @@ then hands the terminal to the new build with the same arguments.
 Every way it stops short opens the build already on disk. ctrl+c says `update
 stopped · opening <running>`, and that window does not count down to the same
 release again. A slow download says `codeaf <newest> is still downloading ·
-opening <running> now · the chat installs it in the background`. A failure says
+opening <running> now · the chat installs it in the background`, and for a day
+that release is left to the chat rather than waited on at launch. A failure says
 `codeaf <newest> could not be installed · <reason> · opening <running>` and
 counts: a release backs off for hours after a failure and stops being tried on
-its own after three.
+its own after three. A release you skipped, or one backing off, prints nothing
+at launch.
 
 When the launch could not finish, the chat's offer takes over: `codeaf <newest>
 is out · installs in 10s · <skip chord> skip · /update` waits in the keys line,

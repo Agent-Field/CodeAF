@@ -69,6 +69,9 @@ var (
 	prelaunchAttended = func() bool {
 		return stdinIsTerminal(os.Stdin) && stdinIsTerminal(os.Stdout) && strings.TrimSpace(internalenv.Value("CI")) == ""
 	}
+	// prelaunchMeterLive is whether the moving download line has a terminal to
+	// move on: the writer it draws to is standard error.
+	prelaunchMeterLive = func() bool { return stdinIsTerminal(os.Stderr) }
 	// prelaunchInterrupt turns ctrl+c into "open what is on disk now" for as
 	// long as the install runs, and gives the signal back afterwards.
 	prelaunchInterrupt = func(parent context.Context) (context.Context, context.CancelFunc) {
@@ -98,7 +101,11 @@ func updateBeforeLaunch() {
 	// cleared before anything else, so an engine or a worker this process
 	// starts never inherits a fact about a launch it was not part of.
 	if from := strings.TrimSpace(internalenv.Get(updatedFromEnv)); from != "" {
+		// BOTH SPELLINGS GO, because the one door that read it answers from
+		// either: a shell exporting the legacy spelling would otherwise switch
+		// this road off for good and claim an update on every launch.
 		_ = os.Unsetenv(updatedFromEnv)
+		_ = os.Unsetenv(internalenv.Legacy(updatedFromEnv))
 		launchUpdate.updatedFrom = from
 		return
 	}
@@ -134,12 +141,20 @@ func updateBeforeLaunch() {
 	case strings.TrimSpace(available.Pinned) != "":
 		fmt.Fprintln(prelaunchOut, "codeaf "+tag+" is out · you have "+running+", pinned · "+command+" installs it and unpins")
 		return
-	case !config.UpdateAutoAt(profileDir) || !codeupdate.AutomaticFor(running, tag, executable):
+	case !config.UpdateAutoAt(profileDir) || !available.Automatic:
+		// THE BUILD'S HALF IS THE CHECK'S ANSWER (codeupdate.AutomaticFor on
+		// the resolved file), so this road and the chat cannot disagree about a
+		// symlinked install.
 		fmt.Fprintln(prelaunchOut, headline+" · "+command+" installs it")
 		return
-	case !codeupdate.ShouldOffer(codeupdate.LoadAutoState(profileDir), tag, prelaunchNow()):
+	}
+	state := codeupdate.LoadAutoState(profileDir)
+	if !codeupdate.ShouldOffer(state, tag, prelaunchNow()) || state.SlowRecently(tag, prelaunchNow()) {
 		// A RELEASE SOMEBODY SKIPPED, OR ONE STILL BACKING OFF AFTER A FAILED
 		// INSTALL, is not raised here — exactly as the chat does not raise it.
+		// ONE THAT DID NOT ARRIVE IN TIME AT A RECENT LAUNCH is left to the
+		// chat's background road too, which has no clock a person waits on:
+		// paying the same twenty seconds again would teach nothing new.
 		return
 	}
 	installBeforeLaunch(client, available, executable, curl, profileDir)
@@ -158,7 +173,7 @@ func installBeforeLaunch(client *codeupdate.Client, available codeupdate.Availab
 	fmt.Fprintln(prelaunchOut, "updating codeaf "+running+" to "+tag+" · ctrl+c opens "+running+" now")
 	interrupted, stopInterrupt := prelaunchInterrupt(context.Background())
 	install, cancel := context.WithTimeout(interrupted, prelaunchInstallFor)
-	meter := newDownloadMeter(prelaunchOut)
+	meter := newDownloadMeter(prelaunchOut, prelaunchMeterLive())
 	result, err := prelaunchInstall(install, codeupdate.InstallOptions{
 		Client: client, Target: target, Curl: curl, Automatic: true,
 		// THE RELEASE THE LOOK NAMED, with the moment it carried, and never a
@@ -178,6 +193,9 @@ func installBeforeLaunch(client *codeupdate.Client, available codeupdate.Availab
 			launchUpdate.deferred = tag
 			fmt.Fprintln(prelaunchOut, "update stopped · opening "+running)
 		case timedOut:
+			// WRITTEN DOWN, so the next launch does not start the same download
+			// against the same clock ([codeupdate.AutoState.SlowRecently]).
+			codeupdate.AutoSlow(profileDir, tag)
 			fmt.Fprintln(prelaunchOut, "codeaf "+tag+" is still downloading · opening "+running+" now · the chat installs it in the background")
 		case errors.As(err, &refusal):
 			fmt.Fprintln(prelaunchOut, refusal.Reason)
@@ -191,7 +209,15 @@ func installBeforeLaunch(client *codeupdate.Client, available codeupdate.Availab
 		return
 	}
 	codeupdate.AutoSuccess(profileDir)
-	fmt.Fprintln(prelaunchOut, "codeaf "+tag+" installed · opening it")
+	if result.Already {
+		// THE FILE ALREADY HELD THE RELEASE — another window installed it after
+		// this process started — so nothing was installed here, and the line
+		// says so. The file on disk is still newer than this process, so the
+		// terminal is still handed to it.
+		fmt.Fprintln(prelaunchOut, "codeaf "+tag+" is already on disk · opening it")
+	} else {
+		fmt.Fprintln(prelaunchOut, "codeaf "+tag+" installed · opening it")
+	}
 	_ = os.Setenv(updatedFromEnv, running)
 	if err := prelaunchRelaunch(codeupdate.Plan{Path: result.Path, Args: prelaunchArguments()}); err != nil {
 		// The file on disk is the new build; this process is still the old one,
@@ -204,16 +230,26 @@ func installBeforeLaunch(client *codeupdate.Client, available codeupdate.Availab
 // downloadMeter draws the one line that moves while a release arrives. It
 // redraws at most ten times a second and only when the shown number changes,
 // because a 32 KB read is far finer than anybody can see.
+//
+// IT DRAWS ONLY ON A TERMINAL. The launch runs with stdin and stdout on one,
+// but `codeaf 2>log` sends this writer to a file, where a carriage return and
+// an erase-line sequence are litter rather than a moving number.
 type downloadMeter struct {
 	out   io.Writer
+	live  bool
 	shown string
 	last  time.Time
 	drew  bool
 }
 
-func newDownloadMeter(out io.Writer) *downloadMeter { return &downloadMeter{out: out} }
+func newDownloadMeter(out io.Writer, live bool) *downloadMeter {
+	return &downloadMeter{out: out, live: live}
+}
 
 func (m *downloadMeter) observe(received, total int64) {
+	if !m.live {
+		return
+	}
 	line := "  " + megabytes(received)
 	if total > 0 {
 		line += " of " + megabytes(total)

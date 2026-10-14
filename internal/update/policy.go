@@ -32,15 +32,24 @@ const autoInstallName = "codeaf"
 // builds, and any file under another name (`devaf`, `stageaf`, a `--name`
 // install) are told and never replaced unasked.
 //
+// THE NAME IS THE NAME OF THE FILE THAT WOULD BE OVERWRITTEN — the path with
+// every link resolved, exactly as the installer resolves it — and never the
+// spelling a launch was started by. os.Executable answers through links on
+// Linux and not on macOS, so asking it directly would let one symlinked
+// install update itself on one platform and only be told on the other.
+//
 // It is the build's half of the decision. The person's half — the `update.auto`
 // row, a pinned version, a release they skipped — is asked separately by each
-// launch road, because only the road knows whether anybody is there to ask.
+// launch road, because only the road knows whether anybody is there to ask. It
+// resolves a path, so a surface asks it off the frame ([CheckLaunch] carries
+// the answer as [Available.Automatic]).
 func AutomaticFor(running, latest, executable string) bool {
 	running, latest = strings.TrimSpace(running), strings.TrimSpace(latest)
 	if Kind(running) != "stable" || Kind(latest) != "stable" {
 		return false
 	}
-	if strings.TrimSpace(executable) == "" || InstallName(executable) != autoInstallName {
+	file := canonicalTarget(executable)
+	if file == "" || InstallName(file) != autoInstallName {
 		return false
 	}
 	return Available{Latest: latest, Running: running}.Newer()

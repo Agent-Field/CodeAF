@@ -42,6 +42,12 @@ type Available struct {
 	// ([PinnedRelease]), or "". It is read only when a newer release is out,
 	// because that is the only time a pin changes what a launch does.
 	Pinned string
+	// Automatic is [AutomaticFor] asked about the release and the executable
+	// the check was given: whether this build and this file are ever installed
+	// without anybody asking. It is decided here, beside the request and off
+	// any frame, because it resolves the file's links; both launch roads read
+	// it rather than asking again.
+	Automatic bool
 }
 
 // Newer reports whether the selected release supersedes this build.
@@ -159,6 +165,7 @@ func CheckLaunch(ctx context.Context, options CheckOptions) (Available, bool) {
 		newer := answer.Newer()
 		if newer {
 			answer.Pinned = PinnedRelease(options.Executable)
+			answer.Automatic = AutomaticFor(answer.Running, answer.Latest, options.Executable)
 		}
 		return answer, newer
 	}

@@ -109,7 +109,8 @@ func newLaunchLab(t *testing.T, running string, release *launchRelease, name str
 		interrupt   func(context.Context) (context.Context, context.CancelFunc)
 		launchFacts launchUpdateFacts
 	}{prelaunchRevision, prelaunchExecutable, prelaunchClient, prelaunchRelaunch, prelaunchArguments, prelaunchAttended, prelaunchLookupWait, prelaunchInstallFor, prelaunchInterrupt, launchUpdate}
-	savedOut := prelaunchOut
+	savedOut, savedInstall, savedMeter := prelaunchOut, prelaunchInstall, prelaunchMeterLive
+	prelaunchMeterLive = func() bool { return false }
 	prelaunchRevision = func() string { return running }
 	prelaunchExecutable = func() (string, error) { return lab.target, nil }
 	if release != nil {
@@ -129,7 +130,7 @@ func newLaunchLab(t *testing.T, running string, release *launchRelease, name str
 		prelaunchRevision, prelaunchExecutable, prelaunchClient = saved.revision, saved.executable, saved.client
 		prelaunchRelaunch, prelaunchArguments, prelaunchAttended = saved.relaunch, saved.arguments, saved.attended
 		prelaunchLookupWait, prelaunchInstallFor, prelaunchInterrupt = saved.lookup, saved.installFor, saved.interrupt
-		prelaunchOut = savedOut
+		prelaunchOut, prelaunchInstall, prelaunchMeterLive = savedOut, savedInstall, savedMeter
 		launchUpdate = saved.launchFacts
 	})
 	return lab
@@ -194,6 +195,55 @@ func TestTheBuildALaunchStartedDoesNotLookAgain(t *testing.T) {
 	}
 	if value, present := os.LookupEnv(updatedFromEnv); present && value != "" {
 		t.Fatalf("%s is still %q for every child to inherit", updatedFromEnv, value)
+	}
+}
+
+// TestAFileAlreadyHoldingTheReleaseIsOpenedWithoutClaimingAnInstall proves the
+// launch does not say it installed what another window already put there, and
+// still hands the terminal to that newer file.
+func TestAFileAlreadyHoldingTheReleaseIsOpenedWithoutClaimingAnInstall(t *testing.T) {
+	release := newLaunchRelease(t, "v0.7.1")
+	lab := newLaunchLab(t, "v0.7.0", release, "codeaf")
+	prelaunchInstall = func(_ context.Context, options codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
+		return codeupdate.InstallResult{Release: options.Release, Path: options.Target, Already: true}, nil
+	}
+	updateBeforeLaunch()
+	if !strings.Contains(lab.out.String(), "codeaf v0.7.1 is already on disk · opening it") || strings.Contains(lab.out.String(), "installed · opening it") {
+		t.Fatalf("the launch said:\n%s", lab.out)
+	}
+	if len(lab.relaunched) != 1 {
+		t.Fatalf("relaunched %d times, want once onto the newer file", len(lab.relaunched))
+	}
+}
+
+// TestTheLegacySpellingOfTheRestartMarkerIsClearedToo proves a shell exporting
+// the old spelling cannot switch the launch road off for good: both spellings
+// are cleared the first time it is read.
+func TestTheLegacySpellingOfTheRestartMarkerIsClearedToo(t *testing.T) {
+	newLaunchLab(t, "v0.7.0", newLaunchRelease(t, "v0.7.1"), "codeaf")
+	legacy := internalenv.Legacy(updatedFromEnv)
+	t.Setenv(legacy, "v0.6.0")
+	updateBeforeLaunch()
+	if launchUpdate.updatedFrom != "v0.6.0" {
+		t.Fatalf("updatedFrom = %q, want the legacy spelling's value", launchUpdate.updatedFrom)
+	}
+	if value, present := os.LookupEnv(legacy); present && value != "" {
+		t.Fatalf("%s is still %q, so every later launch would skip its update", legacy, value)
+	}
+}
+
+// TestTheDownloadMeterDrawsOnlyOnATerminal proves `codeaf 2>log` gets no
+// carriage returns or erase sequences in its log.
+func TestTheDownloadMeterDrawsOnlyOnATerminal(t *testing.T) {
+	var file, terminal bytes.Buffer
+	newDownloadMeter(&file, false).observe(10_000_000, 66_000_000)
+	live := newDownloadMeter(&terminal, true)
+	live.observe(10_000_000, 66_000_000)
+	if file.Len() != 0 {
+		t.Fatalf("a meter with no terminal wrote %q", file.String())
+	}
+	if !strings.Contains(terminal.String(), "10 of 66 MB") {
+		t.Fatalf("a live meter wrote %q", terminal.String())
 	}
 }
 
@@ -340,6 +390,14 @@ func TestAnInstallThatCannotFinishOpensTheBuildOnDisk(t *testing.T) {
 		}
 		if state := codeupdate.LoadAutoState(lab.profile); state.Failures != 0 || len(lab.relaunched) != 0 || launchUpdate.deferred != "" {
 			t.Fatalf("a slow download counted as a failure or a stop: %+v, relaunched %d, deferred %q", state, len(lab.relaunched), launchUpdate.deferred)
+		}
+		// AND THE NEXT LAUNCH DOES NOT PAY THE SAME CLOCK AGAIN: the release
+		// is left to the chat's background road, and nothing is downloaded.
+		asked := release.requests.Load()
+		lab.out.Reset()
+		updateBeforeLaunch()
+		if strings.Contains(lab.out.String(), "updating codeaf") || release.requests.Load() != asked {
+			t.Fatalf("the next launch started the same slow download again (%d more requests):\n%s", release.requests.Load()-asked, lab.out)
 		}
 	})
 	t.Run("ctrl+c", func(t *testing.T) {

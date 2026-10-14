@@ -47,6 +47,106 @@ func TestOnlyAStableCodeafMovingToANewerStableIsUpdatedUnasked(t *testing.T) {
 			}
 		})
 	}
+
+	// THE NAME IS THE FILE THAT WOULD BE OVERWRITTEN, through every link, so
+	// one install answers the same on every platform whatever os.Executable
+	// happens to resolve there.
+	dir := t.TempDir()
+	write := func(name string) string {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("bytes"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	link := func(name, target string) string {
+		path := filepath.Join(dir, name)
+		if err := os.Symlink(target, path); err != nil {
+			t.Skipf("this filesystem has no symlinks: %v", err)
+		}
+		return path
+	}
+	versioned := write("tools/codeaf-v0.7.0")
+	installed := write("home/.codeaf/bin/codeaf")
+	for _, row := range []struct {
+		name, executable string
+		want             bool
+	}{
+		{"a link named codeaf to a file named otherwise", link("codeaf", versioned), false},
+		{"a link named devaf to a file named codeaf", link("devaf", installed), true},
+		{"a link to a folder holding codeaf", filepath.Join(link("linked-bin", filepath.Dir(installed)), "codeaf"), true},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if got := AutomaticFor("v0.7.0", "v0.7.1", row.executable); got != row.want {
+				t.Fatalf("AutomaticFor through %q = %t, want %t", row.executable, got, row.want)
+			}
+		})
+	}
+}
+
+// TestALaunchHearsTheBuildsHalfFromTheCheck proves both launch roads get the
+// rule's answer from the check, about the resolved file, and only when a
+// release is newer.
+func TestALaunchHearsTheBuildsHalfFromTheCheck(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "codeaf")
+	if err := os.WriteFile(file, []byte("bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	devaf := filepath.Join(dir, "devaf")
+	if err := os.Symlink(file, devaf); err != nil {
+		t.Skipf("this filesystem has no symlinks: %v", err)
+	}
+	for _, row := range []struct {
+		name, running, executable string
+		want                      bool
+	}{
+		{"a stable codeaf behind", "v0.7.0", file, true},
+		{"devaf linked to that codeaf", "v0.7.0", devaf, true},
+		{"a release candidate", "v0.7.1-rc.1", file, false},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			profile := t.TempDir()
+			if err := saveCheckCache(filepath.Join(profile, "update-check.json"), checkCache{CheckedAt: now.Add(-time.Hour), Latest: "v0.7.1", Running: row.running}); err != nil {
+				t.Fatal(err)
+			}
+			answer, newer := CheckLaunch(context.Background(), CheckOptions{
+				Running: row.running, ProfileDir: profile, Executable: row.executable, Now: func() time.Time { return now },
+			})
+			if !newer || answer.Automatic != row.want {
+				t.Fatalf("answer = %+v, newer %t; want Automatic %t", answer, newer, row.want)
+			}
+		})
+	}
+}
+
+// TestASlowLaunchIsRememberedForThatReleaseOnly proves the slow-download memory
+// answers one release, for a day, and that a success clears it.
+func TestASlowLaunchIsRememberedForThatReleaseOnly(t *testing.T) {
+	profile := t.TempDir()
+	AutoSlow(profile, "v0.7.1")
+	state := LoadAutoState(profile)
+	now := time.Now()
+	if !state.SlowRecently("v0.7.1", now) {
+		t.Fatalf("the slow release was not remembered: %+v", state)
+	}
+	if state.SlowRecently("v0.7.2", now) {
+		t.Fatal("a later release was treated as the slow one")
+	}
+	if state.SlowRecently("v0.7.1", now.Add(slowInstallQuiet+time.Minute)) {
+		t.Fatal("the slow release was remembered past its quiet period")
+	}
+	if state.Failures != 0 {
+		t.Fatalf("a slow download counted as a failure: %+v", state)
+	}
+	AutoSuccess(profile)
+	if LoadAutoState(profile).SlowRecently("v0.7.1", now) {
+		t.Fatal("a success left the slow memory behind")
+	}
 }
 
 // TestANamedTagPinsTheFileAndOnlyAPersonUnpinsIt proves the pin end to end

@@ -30,6 +30,11 @@ const (
 	maxAutoFailures = 3
 	autoRetryBase   = 6 * time.Hour
 	autoRetryCap    = 72 * time.Hour
+	// slowInstallQuiet is how long a release that did not arrive inside the
+	// launch's own clock is left to the chat's background road. Without it a
+	// slow connection would pay that whole clock on every launch for the same
+	// release, and the chat installs it regardless.
+	slowInstallQuiet = 24 * time.Hour
 
 	autoStateName = "update-state.json"
 )
@@ -44,6 +49,24 @@ type AutoState struct {
 	Failures      int       `json:"failures,omitempty"`
 	LastAttemptAt time.Time `json:"last_attempt_at,omitempty"`
 	LastError     string    `json:"last_error,omitempty"`
+	// SlowRelease and SlowAt name the release a launch could not download
+	// inside its own clock, and when. It is not a failure — nothing went wrong
+	// but the connection's speed — so it never counts toward
+	// [maxAutoFailures]; it only keeps the next launches from waiting on the
+	// same download again ([AutoState.SlowRecently]).
+	SlowRelease string    `json:"slow_release,omitempty"`
+	SlowAt      time.Time `json:"slow_at,omitempty"`
+}
+
+// SlowRecently reports whether a launch ran out of time downloading this exact
+// release within [slowInstallQuiet]. A later release is a new question.
+func (s AutoState) SlowRecently(tag string, now time.Time) bool {
+	tag = strings.TrimSpace(tag)
+	if tag == "" || tag != strings.TrimSpace(s.SlowRelease) || s.SlowAt.IsZero() {
+		return false
+	}
+	age := now.Sub(s.SlowAt)
+	return age >= 0 && age < slowInstallQuiet
 }
 
 // Dismissed reports whether this exact release was answered "not now".
@@ -305,6 +328,20 @@ func AutoFailure(profileDir, tag string, err error) AutoState {
 	return state
 }
 
+// AutoSlow records that a launch ran out of its own clock downloading a release.
+// Like [AutoFailure] it never claims a write it did not make: a write that did
+// not land costs at most one more wait on the next launch.
+func AutoSlow(profileDir, tag string) {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return
+	}
+	_, _ = mutateAutoState(profileDir, func(state *AutoState) {
+		state.SlowRelease = tag
+		state.SlowAt = time.Now()
+	})
+}
+
 // AutoSuccess clears the failure belonging to a release now installed.
 //
 // IT DOES NOT CLEAR A DISMISSAL. The person's "not now" for another tag is a
@@ -318,6 +355,8 @@ func AutoSuccess(profileDir string) AutoState {
 		state.Failures = 0
 		state.LastAttemptAt = time.Time{}
 		state.LastError = ""
+		state.SlowRelease = ""
+		state.SlowAt = time.Time{}
 	})
 	if saveErr != nil {
 		return LoadAutoState(profileDir)
@@ -662,6 +701,8 @@ func PackageManaged(target string) string {
 	}
 	prefixes := []struct{ prefix, manager string }{
 		{"/opt/homebrew/", "Homebrew"},
+		// Homebrew on Linux keeps its prefix under its own account.
+		{"/home/linuxbrew/.linuxbrew/", "Homebrew"},
 		{"/usr/local/Cellar/", "Homebrew"},
 		{"/nix/store/", "Nix"},
 		{"/usr/bin/", "the system package manager"},

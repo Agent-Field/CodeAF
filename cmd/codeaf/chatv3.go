@@ -126,11 +126,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// second id, or under none, is a record nothing can be joined to. The id is
 	// minted whether or not the switch is on: /debug can turn the record on
 	// halfway through a conversation, and it needs a run to turn it on for.
+	//
+	// THE RECORD ITSELF OPENS AFTER THE LAUNCH'S OWN UPDATE below. That road
+	// can hand the terminal to another build, and a record opened first would
+	// be one that run never writes to. Nothing between here and there makes a
+	// model call.
 	if *debug {
 		trace.Enable()
 	}
-	ctx := openDebugRecord(name, *model, "")
-	defer trace.Announce(ctx, os.Stderr)
 	if flags.NArg() != 0 {
 		// Resume's usage names no --once and no --session: it opens a list of
 		// the sessions there ARE, so naming one on the command line is the other
@@ -215,6 +218,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if strings.TrimSpace(*once) == "" {
 		updateBeforeLaunch()
 	}
+	ctx := openDebugRecord(name, *model, "")
+	defer trace.Announce(ctx, os.Stderr)
 
 	// THE OTHER DOOR, and it forks BEFORE any of this machine's own resolution
 	// below: over --host the models, the keys, the session files, the gate and
