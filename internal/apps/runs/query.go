@@ -178,6 +178,10 @@ func asTime(value any) (time.Time, bool) {
 func splitOp(token string) (field, op, value string, ok bool) {
 	for _, candidate := range []string{"<=", ">=", "<", ">", ":"} {
 		if i := strings.Index(token, candidate); i > 0 {
+			if candidate != ":" {
+				// `due:<0d` is `due<0d`: the same liberal spelling screen queries take.
+				return strings.TrimSuffix(token[:i], ":"), candidate, token[i+len(candidate):], true
+			}
 			return token[:i], candidate, token[i+len(candidate):], true
 		}
 	}

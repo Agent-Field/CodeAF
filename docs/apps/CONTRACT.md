@@ -204,8 +204,12 @@ do not quote the embedded query value; use a block scalar when convenient.
 signed duration from the moment the query runs: `7d`, `2w`, `24h`, `30m`, with
 an optional `+` or `-`. `due<0d` is overdue, `pickup>-1d pickup<7d` is the
 coming week, `last_touch<-7d` is quiet for a week. Screen, record, agent and run
-queries and Check all read it through `expr.Offset`, the same units CEL rules
+queries and Check all read it through `expr.RelativeTime`, the same units CEL rules
 accept (`now - 7d`, `days(n)`), so there is no second duration grammar.
+The comparison may be `<`, `>`, `<=` or `>=`, with an optional colon before it
+(`due:<0d` is `due<0d`). The value may also be `now`, `today`, `tomorrow` or
+`yesterday`; in screen, record and agent queries `field:today` means within
+that day. CEL in a query (`due < now`) is an error that names the token.
 
 ```yaml
 run: wont-fix
