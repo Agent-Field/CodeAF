@@ -27,7 +27,8 @@ import (
 // meaning the member it meant.
 //
 // A member that joins before its conversation has a title gets a stable
-// identity-based handle, so its first directive can start its first turn.
+// identity-based placeholder, so its first directive can start its first turn.
+// Its first title replaces that placeholder with a word handle.
 
 // Who chose a member's handle ([Member.HandleBy]).
 const (
@@ -37,12 +38,13 @@ const (
 	HandleByIdentity = "identity" // derived from a conversation key before it has a title
 )
 
-// HandleDerived reports whether m's handle is the word list's guess, which the
-// title model may replace once ([File.ChooseHandle]). A handle written before
-// [Member.HandleBy] was kept reads as one: the only handles then were derived,
-// but for the manager's own starts, which it names again the same way.
+// HandleDerived reports whether m's handle is an identity placeholder or the
+// word list's guess, which the title model may replace once ([File.ChooseHandle]).
+// A handle written before [Member.HandleBy] was kept reads as one: the only
+// handles then were derived, but for the manager's own starts, which it names
+// again the same way.
 func (m Member) HandleDerived() bool {
-	return m.HandleBy == "" || m.HandleBy == HandleByWords
+	return m.HandleBy == "" || m.HandleBy == HandleByWords || m.HandleBy == HandleByIdentity
 }
 
 // Handle lengths, in characters.
@@ -240,7 +242,8 @@ func FallbackHandle(t Team, key string) string {
 
 // assignHandles clears every handle in t that is invalid or repeats one an
 // earlier member has, then gives each member with no handle one,
-// in member order. It reports whether it changed anything.
+// in member order. A first title replaces an identity placeholder with a word
+// handle. It reports whether it changed anything.
 func assignHandles(t *Team) bool {
 	changed := false
 	seen := map[string]bool{}
@@ -258,7 +261,7 @@ func assignHandles(t *Team) bool {
 	}
 	for i := range t.Members {
 		m := &t.Members[i]
-		if m.Handle != "" {
+		if m.Handle != "" && (m.HandleBy != HandleByIdentity || strings.TrimSpace(m.Word) == "") {
 			continue
 		}
 		base := DeriveHandle(m.Word)
@@ -267,7 +270,6 @@ func assignHandles(t *Team) bool {
 		}
 		if base == "" {
 			// An untitled member must be addressable before its first turn.
-			// Keep this identity-based choice when a title later arrives.
 			sum := sha256.Sum256([]byte(m.Key))
 			base = fmt.Sprintf("member%x", sum[:3])
 			m.Handle, m.HandleBy = uniqueHandle(*t, m.Key, base), HandleByIdentity

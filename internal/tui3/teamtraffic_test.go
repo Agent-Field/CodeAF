@@ -481,8 +481,8 @@ func TestTeamAsideReadsAsCards(t *testing.T) {
 
 // A MEMBER THAT JOINED BEFORE IT HAD A TITLE IS TITLED BY THE READ. Nothing a
 // person does has to happen for it: the Traffic read sees the member's tab has
-// a name now, writes it through the store, and the member has a handle the
-// manager can address it by.
+// a name now, writes it through the store, and replaces the member's identity
+// placeholder with a readable word handle.
 func TestTrafficReadTitlesAMemberThatJoinedUntitled(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	if err := a.teamEdit(func(f *teamstore.File) error {
@@ -490,12 +490,13 @@ func TestTrafficReadTitlesAMemberThatJoinedUntitled(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if m, _ := mustTeam(t, a, harbor).Member("/tmp/lab/late.jsonl"); m.Handle != "" {
-		t.Fatalf("an untitled member has handle %q", m.Handle)
+	untitled, _ := mustTeam(t, a, harbor).Member("/tmp/lab/late.jsonl")
+	if untitled.Handle == "" || !strings.HasPrefix(untitled.Handle, "member") || untitled.HandleBy != teamstore.HandleByIdentity {
+		t.Fatalf("an untitled member lacks an identity handle: %+v", untitled)
 	}
 	a.chatTabs = append(a.chatTabs, chatTab{key: "/tmp/lab/late.jsonl", file: "/tmp/lab/late.jsonl", word: "benchmark sweep"})
 	trafficReadNow(t, a)
-	if m, _ := mustTeam(t, a, harbor).Member("/tmp/lab/late.jsonl"); m.Handle != "benchmark" {
+	if m, _ := mustTeam(t, a, harbor).Member("/tmp/lab/late.jsonl"); m.Handle != "benchmark" || m.Handle == untitled.Handle || m.HandleBy != teamstore.HandleByWords {
 		t.Fatalf("the read left the member as %+v", m)
 	}
 	teamsFlush(t, a)

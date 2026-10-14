@@ -75,9 +75,9 @@ func TestTeamEditKeepsWhatAnotherProcessWrote(t *testing.T) {
 	check("in the window", mine)
 }
 
-// A CONVERSATION THAT JOINED BEFORE IT HAD A TITLE HAS NO HANDLE, and takes one
-// the first time the team is written after its tab has a name. The handle is
-// derived from the title and never changed afterwards by a later title.
+// A CONVERSATION THAT JOINED BEFORE IT HAD A TITLE HAS A PLACEHOLDER HANDLE,
+// replaced the first time the team is written after its tab has a name. The
+// word handle is never changed afterwards by a later title.
 func TestTeamUntitledMemberTakesAHandleOnceItHasATitle(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestAppWithProfile(dir, nil)
@@ -91,8 +91,9 @@ func TestTeamUntitledMemberTakesAHandleOnceItHasATitle(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if m, _ := a.wall.teams[0].Member("k2"); m.Handle != "" {
-		t.Fatalf("an untitled member has handle %q", m.Handle)
+	untitled, _ := a.wall.teams[0].Member("k2")
+	if untitled.Handle == "" || !strings.HasPrefix(untitled.Handle, "member") || untitled.HandleBy != teamstore.HandleByIdentity {
+		t.Fatalf("an untitled member lacks an identity handle: %+v", untitled)
 	}
 	a.chatTabs = []chatTab{{key: "k2", file: "f2", word: "lexer rewrite"}}
 	if err := a.teamRecolor(id, teamHueSpec{Hue: 40, Tier: 1}); err != nil {
@@ -100,7 +101,7 @@ func TestTeamUntitledMemberTakesAHandleOnceItHasATitle(t *testing.T) {
 	}
 	teamsFlush(t, a)
 	disk, _ := loadTeams(dir, nil)
-	if m, _ := disk[0].Member("k2"); m.Handle != "lexer" || m.Word != "lexer rewrite" {
+	if m, _ := disk[0].Member("k2"); m.Handle != "lexer" || m.Handle == untitled.Handle || m.HandleBy != teamstore.HandleByWords || m.Word != "lexer rewrite" {
 		t.Fatalf("the titled member was saved as %+v", m)
 	}
 	// A later title leaves the handle alone.

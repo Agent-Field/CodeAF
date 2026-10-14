@@ -35,13 +35,13 @@ func TestDeriveHandle(t *testing.T) {
 	}
 }
 
-func TestUntitledHandleIsStableUniqueAndKeptAfterNaming(t *testing.T) {
+func TestUntitledHandleIsStableUniqueAndUpgradesAfterNaming(t *testing.T) {
 	for _, key := range []string{"916be7a36420b604", "fresh-member"} {
 		t.Run(key, func(t *testing.T) {
 			team := Team{ID: "crew", Members: []Member{{Key: key}}}
 			assignHandles(&team)
 			original := team.Members[0]
-			if ValidHandle(original.Handle) != nil || original.HandleBy != HandleByIdentity || original.HandleDerived() {
+			if !strings.HasPrefix(original.Handle, "member") || ValidHandle(original.Handle) != nil || original.HandleBy != HandleByIdentity || !original.HandleDerived() {
 				t.Fatalf("untitled handle: %+v", original)
 			}
 			again := Team{ID: "other-crew", Members: []Member{{Key: key}}}
@@ -56,10 +56,73 @@ func TestUntitledHandleIsStableUniqueAndKeptAfterNaming(t *testing.T) {
 			}
 			team.Members[0].Word = "checker"
 			assignHandles(&team)
+			if m := team.Members[0]; m.Handle != "checker" || m.HandleBy != HandleByWords {
+				t.Fatalf("first title did not upgrade the placeholder: %+v", m)
+			}
 			f := File{Teams: []Team{team}}
-			old, now, err := f.ChooseHandle(team.ID, key, []string{"checker"}, "checker")
-			if err != nil || old != original.Handle || now != original.Handle {
-				t.Fatalf("naming changed the address: %q -> %q, %v", old, now, err)
+			old, now, err := f.ChooseHandle(team.ID, key, []string{"checks"}, "checker")
+			if err != nil || old != "checker" || now != "checks" {
+				t.Fatalf("model did not replace the word guess: %q -> %q, %v", old, now, err)
+			}
+		})
+	}
+}
+
+func TestHandleTitleTransitions(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		by      string
+		title   string
+		want    string
+		wantBy  string
+		changed bool
+	}{
+		{"identity awaits title", HandleByIdentity, "", "member123abc", HandleByIdentity, false},
+		{"identity ignores blank title", HandleByIdentity, "  ", "member123abc", HandleByIdentity, false},
+		{"identity upgrades on title", HandleByIdentity, "lexer rewrite", "lexer", HandleByWords, true},
+		{"typed survives title", HandleByTyped, "lexer rewrite", "member123abc", HandleByTyped, false},
+		{"typed survives absent title", HandleByTyped, "", "member123abc", HandleByTyped, false},
+		{"word survives absent title", HandleByWords, "", "member123abc", HandleByWords, false},
+		{"word survives new title", HandleByWords, "lexer rewrite", "member123abc", HandleByWords, false},
+		{"model survives new title", HandleByModel, "lexer rewrite", "member123abc", HandleByModel, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			team := Team{Members: []Member{{Key: "fresh", Handle: "member123abc", HandleBy: tc.by, Word: tc.title}}}
+			if changed := assignHandles(&team); changed != tc.changed {
+				t.Fatalf("assignHandles changed = %v, want %v", changed, tc.changed)
+			}
+			if m := team.Members[0]; m.Handle != tc.want || m.HandleBy != tc.wantBy {
+				t.Fatalf("member = %+v, want handle %q by %q", m, tc.want, tc.wantBy)
+			}
+			if assignHandles(&team) {
+				t.Fatal("a second assignment changed the handle")
+			}
+		})
+	}
+}
+
+func TestChooseHandleReplacesOnlyPlaceholders(t *testing.T) {
+	for _, tc := range []struct {
+		by   string
+		want string
+	}{
+		{HandleByIdentity, "lexer"},
+		{HandleByWords, "lexer"},
+		{HandleByTyped, "member123abc"},
+		{HandleByModel, "member123abc"},
+	} {
+		t.Run(tc.by, func(t *testing.T) {
+			f := File{Teams: []Team{{ID: "crew", Members: []Member{{Key: "fresh", Handle: "member123abc", HandleBy: tc.by}}}}}
+			old, now, err := f.ChooseHandle("crew", "fresh", []string{"lexer"}, "lexer rewrite")
+			if err != nil || old != "member123abc" || now != tc.want {
+				t.Fatalf("ChooseHandle = %q -> %q, %v; want %q", old, now, err, tc.want)
+			}
+			wantBy := tc.by
+			if tc.want == "lexer" {
+				wantBy = HandleByModel
+			}
+			if m := f.Teams[0].Members[0]; m.Handle != tc.want || m.HandleBy != wantBy {
+				t.Fatalf("stored member = %+v, want handle %q by %q", m, tc.want, wantBy)
 			}
 		})
 	}

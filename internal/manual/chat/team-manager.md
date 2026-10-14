@@ -27,9 +27,10 @@ chosen again, so a line in the traffic keeps meaning the member it meant. Messag
 are addressed by handle.
 
 A member added before its first turn gets a stable handle derived from its conversation
-identity, such as `@membera1b2c3`, even with no name. That handle stays when the member
-later gets a title or is renamed. A crew formed from existing agents gives its manager
-these handles in the handover; agent ids are not message addresses.
+identity, such as `@membera1b2c3`, even with no name. This is a placeholder: the first
+title replaces it with a word handle, and the title model may choose that word once.
+A handle a person or the manager gave is never replaced. A crew formed from existing
+agents gives its manager these handles in the handover; agent ids are not message addresses.
 
 Handles made before this were guesses, and each is chosen again the same way on its
 conversation's next turn. Every change is written to the team's traffic as
