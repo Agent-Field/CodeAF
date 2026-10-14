@@ -171,7 +171,7 @@ func profileRoad() (carriedRoad, error) {
 			settings.Models.Warmed(context.Background())
 			return session.ResolveProgramShellModels(word, v3TaskModels(settings.Models)(), sources)
 		},
-		modelPrice: settings.Models.PriceNow,
+		modelPrice: func(model string) (float64, float64, bool) { return carriedModelPrice(settings, model) },
 		defaultSeat: func() (string, error) {
 			// A shell run needs the profile's work seat only when nobody pinned
 			// a model for this invocation. A fresh profile can still use --high.
@@ -210,6 +210,19 @@ func profileRoad() (carriedRoad, error) {
 			return ready
 		},
 	}, nil
+}
+
+// carriedModelPrice prices the same service and bare id the adapter calls.
+// A connection qualifier is not a vendor prefix; only the selected default
+// service owns the shared catalog. Other services keep the unpriced bound
+// rather than borrowing an OpenRouter tariff for a coincidentally equal id.
+func carriedModelPrice(settings config.Config, model string) (float64, float64, bool) {
+	model, _ = roles.SplitEffort(model)
+	service, bare := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL).For(model)
+	if !strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID) {
+		return 0, 0, false
+	}
+	return settings.Models.PriceNow(bare)
 }
 
 // carriedAdapters is one adapter per model a shell run's program asks for,
