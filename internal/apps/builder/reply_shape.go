@@ -3,6 +3,8 @@ package builder
 import (
 	"errors"
 	"log/slog"
+	"sort"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/builder/prompt"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
@@ -46,18 +48,36 @@ func debugLog(app, what string, err error) {
 	slog.Warn("apps builder: "+what, "app", app, "error", err.Error())
 }
 
+// unwritten is what a round still owes after replies in the wrong shape: the
+// issues the owner sees on the Check report, and the parser's hint that only
+// the FIX prompt reads (the shape expected, the keys sent, the exact paths).
+type unwritten struct {
+	issues []spec.Issue
+	hints  []string
+}
+
+func (u *unwritten) add(other unwritten) {
+	u.issues = append(u.issues, other.issues...)
+	u.hints = append(u.hints, other.hints...)
+}
+
+// report appends the hints to the Check report FIX is given.
+func (u unwritten) report(checks string) string {
+	sort.Strings(u.hints)
+	return strings.Join(append([]string{checks}, u.hints...), "\n")
+}
+
 // shapeIssues turns a reply that never took the right shape into one Check
-// issue per file it should have written, carrying the parser's hint so FIX
-// knows the shape, the keys it sent and the exact paths expected.
-func shapeIssues(err error, paths []string) ([]spec.Issue, bool) {
+// issue per file it should have written, so FIX repairs it like any finding.
+func shapeIssues(err error, paths []string) (unwritten, bool) {
 	var shape *prompt.ShapeError
 	if !errors.As(err, &shape) {
-		return nil, false
+		return unwritten{}, false
 	}
-	issues := make([]spec.Issue, 0, len(paths))
+	out := unwritten{hints: []string{ruleReplyShape + ": " + shape.Error()}}
 	for _, p := range paths {
-		issues = append(issues, spec.Issue{File: p, Rule: ruleReplyShape,
-			Message: logWrongShape + "; fix: " + shape.Error()})
+		out.issues = append(out.issues, spec.Issue{File: p, Rule: ruleReplyShape,
+			Message: logWrongShape + "; fix: write this file again"})
 	}
-	return issues, true
+	return out, true
 }

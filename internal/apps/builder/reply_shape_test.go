@@ -194,6 +194,13 @@ func assertOwnerLogClean(t *testing.T, r *rig) {
 				t.Errorf("owner log carries %q: %q", raw, ev.Log)
 			}
 		}
+		if ev.Check != nil {
+			for _, issue := range ev.Check.Issues {
+				if strings.Contains(issue.Message, "got keys") || strings.Contains(issue.Message, "JSON object") {
+					t.Errorf("Check report carries the parser's text: %q", issue.Message)
+				}
+			}
+		}
 		sawRepair = sawRepair || ev.Log == logWrongShapeRetry
 	}
 	if !sawRepair {

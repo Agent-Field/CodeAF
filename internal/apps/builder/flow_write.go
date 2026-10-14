@@ -34,16 +34,16 @@ func (s *Service) writeAndCheck(ctx context.Context, b *build) error {
 // checkAndFix runs Check and the FIX rounds. pending are issues Check cannot
 // see, such as a file whose WRITE reply never took the right shape; they join
 // the next round's report so FIX repairs them like any other finding.
-func (s *Service) checkAndFix(ctx context.Context, b *build, files spec.Files, only string, pending []spec.Issue) error {
+func (s *Service) checkAndFix(ctx context.Context, b *build, files spec.Files, only string, pending unwritten) error {
 	loop := prompt.NewLoop()
 	_ = loop.PlanWritten()
 	_ = loop.FilesWritten()
 	for round := 1; ; round++ {
-		report, err := s.checkRound(ctx, b, files, round, pending)
+		report, err := s.checkRound(ctx, b, files, round, pending.issues)
 		if err != nil {
 			return err
 		}
-		phase, _ := loop.CheckResult(report.Pass, formatReport(report))
+		phase, _ := loop.CheckResult(report.Pass, pending.report(formatReport(report)))
 		switch phase {
 		case prompt.PhasePreview:
 			if only != "" {
@@ -80,11 +80,11 @@ func (s *Service) giveUp(ctx context.Context, b *build, report bridge.CheckRepor
 // writeAll writes the app: app.json and agent.md first, because every screen
 // and run is written against the record types in app.json, then those files
 // side by side with a progress event as each one lands.
-func (s *Service) writeAll(ctx context.Context, b *build) (spec.Files, []spec.Issue, error) {
+func (s *Service) writeAll(ctx context.Context, b *build) (spec.Files, unwritten, error) {
 	plan := b.currentPlan()
 	planRaw, err := planJSON(plan)
 	if err != nil {
-		return nil, nil, err
+		return nil, unwritten{}, err
 	}
 	return s.writeMissing(ctx, b, spec.Files{spec.PlanFile: append(planRaw, '\n')})
 }
@@ -95,14 +95,14 @@ func (s *Service) writeAll(ctx context.Context, b *build) (spec.Files, []spec.Is
 // records and agent are written first and must succeed, because every other
 // file is written against app.json. What was written is saved even when a
 // later call fails.
-func (s *Service) writeMissing(ctx context.Context, b *build, files spec.Files) (spec.Files, []spec.Issue, error) {
+func (s *Service) writeMissing(ctx context.Context, b *build, files spec.Files) (spec.Files, unwritten, error) {
 	plan := b.currentPlan()
 	planRaw := string(files[spec.PlanFile])
 	if files[spec.AppFile] == nil || files[spec.AgentFile] == nil {
 		s.step(b, bridge.StepWrite, bridge.BuildRunning, "Writing the records and the agent")
 		core, err := s.writeUnit(ctx, b, plan, planRaw, writeUnit{only: []string{spec.AppFile, spec.AgentFile}})
 		if err != nil {
-			return nil, nil, err
+			return nil, unwritten{}, err
 		}
 		s.announce(b, core, "Records and agent written")
 		merge(files, core)
@@ -110,7 +110,7 @@ func (s *Service) writeMissing(ctx context.Context, b *build, files spec.Files) 
 	rest, pending, err := s.writeUnits(ctx, b, plan, planRaw, missingUnits(restUnits(plan, files[spec.AppFile]), files))
 	merge(files, rest)
 	if storeErr := s.all.Store.WriteFiles(ctx, b.app, files); storeErr != nil || err != nil {
-		return nil, nil, errors.Join(err, storeErr)
+		return nil, unwritten{}, errors.Join(err, storeErr)
 	}
 	s.emit(b, bridge.BuildEvent{Step: bridge.StepWrite, Status: bridge.BuildDone, Files: files.Paths(), Log: "All files written"})
 	return files, pending, nil
@@ -140,14 +140,14 @@ func (s *Service) announce(b *build, files map[string][]byte, log string) {
 // writeUnits writes screens and runs side by side. A reply in the wrong shape
 // becomes a pending issue and the others carry on; any other error stops them
 // at their next model call.
-func (s *Service) writeUnits(ctx context.Context, b *build, plan prompt.Plan, planRaw string, units []writeUnit) (map[string][]byte, []spec.Issue, error) {
+func (s *Service) writeUnits(ctx context.Context, b *build, plan prompt.Plan, planRaw string, units []writeUnit) (map[string][]byte, unwritten, error) {
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup
 		firstErr error
-		pending  []spec.Issue
+		pending  unwritten
 		out      = map[string][]byte{}
 		slots    = make(chan struct{}, writeWorkers)
 	)
@@ -160,8 +160,8 @@ func (s *Service) writeUnits(ctx context.Context, b *build, plan prompt.Plan, pl
 			files, err := s.writeUnit(ctx, b, plan, planRaw, u)
 			mu.Lock()
 			defer mu.Unlock()
-			if issues, ok := shapeIssues(err, u.only); ok {
-				pending = append(pending, issues...)
+			if missed, ok := shapeIssues(err, u.only); ok {
+				pending.add(missed)
 				return
 			}
 			if err != nil {
@@ -176,7 +176,7 @@ func (s *Service) writeUnits(ctx context.Context, b *build, plan prompt.Plan, pl
 		}(u)
 	}
 	wg.Wait()
-	sortIssues(pending)
+	sortIssues(pending.issues)
 	return out, pending, firstErr
 }
 
@@ -284,7 +284,7 @@ func setIn(app map[string]any, group, key string, value any) {
 // only that file, so a repair cannot overwrite an already working screen. A
 // FIX reply in the wrong shape changes nothing and comes back as pending
 // issues for the next round, which spends that round rather than the build.
-func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, issues []spec.Issue, report, only string) (spec.Files, []spec.Issue, error) {
+func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, issues []spec.Issue, report, only string) (spec.Files, unwritten, error) {
 	if only != "" {
 		report += "\nChange ONLY " + only + ". Keep every other file as it is."
 	}
@@ -294,7 +294,7 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, issue
 		Schemas: schemaFor(spec.AppSchemaURL, spec.ScreenSchemaURL, spec.RunSchemaURL),
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, unwritten{}, err
 	}
 	want := fixPaths(issues, only)
 	changed, err := converse(ctx, s, b, text, func(reply string) (map[string][]byte, error) {
@@ -304,20 +304,20 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, issue
 		return files, pending, nil
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, unwritten{}, err
 	}
 	delete(changed, spec.PlanFile)
 	if changed, err = b.patch(changed); err != nil {
-		return nil, nil, err
+		return nil, unwritten{}, err
 	}
 	next := spec.Files{}
 	merge(next, files)
 	merge(next, changed)
 	if err := s.all.Store.WriteFiles(ctx, b.app, next); err != nil {
-		return nil, nil, err
+		return nil, unwritten{}, err
 	}
 	s.announce(b, changed, "Fixed "+strings.Join(spec.Files(changed).Paths(), ", "))
-	return next, nil, nil
+	return next, unwritten{}, nil
 }
 
 // fixPaths are the files a FIX reply is expected to hold: the run being
