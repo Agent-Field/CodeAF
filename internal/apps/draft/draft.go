@@ -15,6 +15,8 @@ const (
 	JournalFile = "draft.jsonl"
 	LockFile    = "draft.lock"
 	SocketFile  = "builder.sock"
+	// AddrFile names the socket when its path is too long to sit in the folder.
+	AddrFile = "builder.addr"
 	// DefaultsFile holds the create-sheet facts the Builder saves beside the
 	// journal, so `show` can render the same files the Builder renders.
 	DefaultsFile = "defaults.json"

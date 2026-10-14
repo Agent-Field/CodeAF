@@ -42,6 +42,20 @@ type Binding struct {
 	Selection string `json:"selection,omitempty"`
 }
 
+// Kind names the binding's discriminating field, the word kit.json uses in a
+// part's bind list, or "" when none is set.
+func (b *Binding) Kind() string {
+	for _, k := range []struct{ name, val string }{
+		{"records", b.Records}, {"record", b.Record}, {"run", b.Run},
+		{"runs", b.Runs}, {"approvals", b.Approvals}, {"selection", b.Selection},
+	} {
+		if k.val != "" {
+			return k.name
+		}
+	}
+	return ""
+}
+
 // Action verbs a screen or command may use.
 const (
 	VerbOpen          = "open"

@@ -60,8 +60,8 @@ func lint(b *spec.Bundle, kit *spec.Kit) []Issue {
 				issues = append(issues, finding(file, path+"/part", "kit/parts", fmt.Sprintf("unknown kit part %q", n.Part), "choose a part from kit.json"))
 			} else {
 				issues = append(issues, lintProps(b, part, n, typ, file, path)...)
-				if n.Bind != nil && !contains(part.Bind, bindingKind(n.Bind)) {
-					issues = append(issues, finding(file, path+"/bind", "kit/bind", n.Part+" does not support "+bindingKind(n.Bind)+" binding", "use a binding kind declared for this part in kit.json"))
+				if n.Bind != nil && !contains(part.Bind, n.Bind.Kind()) {
+					issues = append(issues, finding(file, path+"/bind", "kit/bind", n.Part+" does not support "+n.Bind.Kind()+" binding", "use a binding kind declared for this part in kit.json"))
 				}
 			}
 			issues = append(issues, lintBinding(b, n.Bind, info, file, path+"/bind")...)
@@ -133,7 +133,7 @@ func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path st
 			continue
 		}
 		value := n.Props[key]
-		if !validProp(prop, value) {
+		if !prop.Accepts(value) {
 			issues = append(issues, finding(file, at, "kit/parts", "prop must have type "+prop.Type, "use the type and token values in kit.json"))
 			continue
 		}
@@ -143,7 +143,7 @@ func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path st
 			if prop.Type == "field" {
 				fields = append(fields, value.(string))
 			} else {
-				fields = stringList(value)
+				fields, _ = spec.StringList(value)
 			}
 			for i, field := range fields {
 				fieldPath := at
@@ -163,7 +163,7 @@ func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path st
 				}
 			}
 		case "commands":
-			for i, id := range stringList(value) {
+			for i, id := range mustStrings(value) {
 				found := false
 				for _, command := range b.App.Commands {
 					if command.ID == id {
@@ -177,63 +177,6 @@ func lintProps(b *spec.Bundle, part *spec.Part, n *spec.Node, typ, file, path st
 		}
 	}
 	return issues
-}
-
-func validProp(prop *spec.Prop, value any) bool {
-	_, text := value.(string)
-	switch prop.Type {
-	case "number":
-		_, ok := value.(float64)
-		return ok
-	case "boolean":
-		_, ok := value.(bool)
-		return ok
-	case "strings", "fields", "commands":
-		list, ok := value.([]any)
-		if !ok {
-			return false
-		}
-		for _, item := range list {
-			if _, ok := item.(string); !ok {
-				return false
-			}
-		}
-		return true
-	case "enum":
-		return text && contains(prop.Values, value.(string))
-	case "tone":
-		return text && contains([]string{"neutral", "accent", "positive", "caution", "critical"}, value.(string))
-	case "value":
-		return true
-	default:
-		return text
-	}
-}
-
-func bindingKind(b *spec.Binding) string {
-	switch {
-	case b.Records != "":
-		return "records"
-	case b.Record != "":
-		return "record"
-	case b.Run != "":
-		return "run"
-	case b.Runs != "":
-		return "runs"
-	case b.Approvals != "":
-		return "approvals"
-	case b.Selection != "":
-		return "selection"
-	}
-	return ""
-}
-
-func stringList(value any) []string {
-	var result []string
-	for _, item := range value.([]any) {
-		result = append(result, item.(string))
-	}
-	return result
 }
 
 func keys[V any](m map[string]V) []string {
@@ -271,4 +214,10 @@ func boundFieldHint(record *spec.RecordType, typ string) string {
 		return "bind to a record type declared in app.json"
 	}
 	return fieldHint(typ, record)
+}
+
+// mustStrings reads a list prop that validProp has already accepted.
+func mustStrings(value any) []string {
+	list, _ := spec.StringList(value)
+	return list
 }

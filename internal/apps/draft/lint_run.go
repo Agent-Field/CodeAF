@@ -2,14 +2,11 @@ package draft
 
 import (
 	"fmt"
-	"regexp"
+	"github.com/Agent-Field/codeaf/internal/apps/query"
 	"strings"
 
-	"github.com/Agent-Field/codeaf/internal/apps/query"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
-
-var templateRef = regexp.MustCompile(`\{\{([^{}]*)\}\}`)
 
 // lintRun returns the findings of one decoded run against the draft's
 // records. Connectors, screens and the agent are not looked at here: they
@@ -52,31 +49,8 @@ func lintRecordStep(l *issueSink, st State, path, key string, rs *spec.RecordsSt
 		return
 	}
 	if key == "records.query" {
-		if err := queryProblem(st.Records[rs.Type], rs.Query); err != nil {
+		if err := query.Problem(st.Records[rs.Type], rs.Query, ownerID); err != nil {
 			l.add(path+"/query", "%v (fields of %s: %s) — %s", err, rs.Type, fieldList(sortedKeys(st.Records[rs.Type].Fields)), spec.RunQueryRule)
 		}
 	}
-}
-
-// queryProblem parses a literal query against a record. A query that holds
-// templates is parsed with each template replaced by a stand-in word and every
-// field typed as text, because only the field names are known before it runs.
-func queryProblem(rec *spec.RecordType, text string) error {
-	if rec == nil || strings.HasPrefix(text, "$") {
-		return nil
-	}
-	if strings.Contains(text, "{{") {
-		rec = textOnly(rec)
-		text = templateRef.ReplaceAllString(text, "sample")
-	}
-	_, err := query.Parse(rec, text, ownerID)
-	return err
-}
-
-func textOnly(rec *spec.RecordType) *spec.RecordType {
-	out := &spec.RecordType{Fields: map[string]*spec.Field{}}
-	for name := range rec.Fields {
-		out.Fields[name] = &spec.Field{Type: spec.FieldText}
-	}
-	return out
 }

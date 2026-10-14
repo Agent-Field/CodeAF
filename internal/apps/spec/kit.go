@@ -2,6 +2,7 @@ package spec
 
 import (
 	"encoding/json"
+	"slices"
 	"sync"
 )
 
@@ -88,3 +89,45 @@ func KitJSON() ([]byte, error) { return embedded.ReadFile("kit.json") }
 
 // Part returns the named part, or nil when the kit has no such part.
 func (k *Kit) Part(name string) *Part { return k.byName[name] }
+
+// toneValues are the tokens a tone prop may hold.
+var toneValues = []string{"neutral", "accent", "positive", "caution", "critical"}
+
+// Accepts reports whether a decoded JSON value has the type this prop declares.
+func (p *Prop) Accepts(value any) bool {
+	text, isText := value.(string)
+	switch p.Type {
+	case "number":
+		_, ok := value.(float64)
+		return ok
+	case "boolean":
+		_, ok := value.(bool)
+		return ok
+	case "strings", "fields", "commands":
+		_, ok := StringList(value)
+		return ok
+	case "enum":
+		return isText && slices.Contains(p.Values, text)
+	case "tone":
+		return isText && slices.Contains(toneValues, text)
+	case "value":
+		return true
+	}
+	return isText
+}
+
+// StringList reads a decoded JSON array of strings; ok is false for anything else.
+func StringList(value any) (list []string, ok bool) {
+	items, isList := value.([]any)
+	if !isList {
+		return nil, false
+	}
+	for _, item := range items {
+		text, isText := item.(string)
+		if !isText {
+			return nil, false
+		}
+		list = append(list, text)
+	}
+	return list, true
+}

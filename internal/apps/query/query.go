@@ -382,3 +382,31 @@ func (p Plan) Fingerprint(recordType string) string {
 	}{recordType, p.AST})
 	return string(data)
 }
+
+var queryTemplate = regexp.MustCompile(`\{\{([^{}]*)\}\}`)
+
+// Stub readies a query written before any row exists. A query holding
+// {{templates}} comes back with each template replaced by a stand-in word and
+// against a schema that types every field as text, because only the field
+// names are known until the run happens; any other query comes back as given.
+func Stub(record *spec.RecordType, text string) (*spec.RecordType, string) {
+	if !strings.Contains(text, "{{") {
+		return record, text
+	}
+	stub := &spec.RecordType{Fields: map[string]*spec.Field{}}
+	for name := range record.Fields {
+		stub.Fields[name] = &spec.Field{Type: spec.FieldText}
+	}
+	return stub, queryTemplate.ReplaceAllString(text, "sample")
+}
+
+// Problem parses a query a document wrote before any row exists, or returns
+// nil when there is nothing to check: no record, or a "$reference".
+func Problem(record *spec.RecordType, text, member string) error {
+	if record == nil || strings.HasPrefix(text, "$") {
+		return nil
+	}
+	stub, stubText := Stub(record, text)
+	_, err := Parse(stub, stubText, member)
+	return err
+}
