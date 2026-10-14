@@ -2,11 +2,15 @@ package sample
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/records"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
@@ -287,4 +291,54 @@ func qualifierWord(word string) bool {
 		}
 	}
 	return false
+}
+
+// Apps the builder wrote whose titles are enums, people or dates, and whose
+// unique fields hold fewer values than a preview has rows. They are valid, so
+// the sample must fill them.
+func TestSampleFillsValidAppsWithNarrowTitlesAndUniqueFields(t *testing.T) {
+	for _, file := range []string{"hiring-team.json", "herd-log.json", "vendor-onboarding.json"} {
+		t.Run(file, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var app spec.App
+			if err := json.Unmarshal(data, &app); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := GenerateAt(context.Background(), &app, DefaultCount, 1, sampleNow())
+			if err != nil {
+				t.Fatalf("valid app failed the sample: %v", err)
+			}
+			for typ, list := range rows {
+				if len(list) == 0 {
+					t.Errorf("%s has no rows", typ)
+				}
+				for _, row := range list {
+					if err := records.ValidateFields(app.Records[typ], row.Fields); err != nil {
+						t.Errorf("%s: %v", typ, err)
+					}
+				}
+			}
+		})
+	}
+	unique := &spec.App{ID: "seats", Records: map[string]*spec.RecordType{
+		"seat": {Label: "Seat", Title: "row", Fields: map[string]*spec.Field{
+			"row":    {Type: spec.FieldEnum, Values: []string{"Front", "Middle", "Back"}, Unique: true},
+			"window": {Type: spec.FieldBool},
+			"city":   {Type: spec.FieldText, Unique: true},
+		}},
+		"ticket": {Label: "Ticket", Title: "name", Fields: map[string]*spec.Field{
+			"name": {Type: spec.FieldText},
+			"seat": {Type: spec.FieldRef, To: "seat", Unique: true},
+		}},
+	}}
+	rows, err := GenerateAt(context.Background(), unique, 25, 1, sampleNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows["seat"]) != 3 || len(rows["ticket"]) != 3 {
+		t.Errorf("rows should cap at the unique value space: %d seats, %d tickets", len(rows["seat"]), len(rows["ticket"]))
+	}
 }

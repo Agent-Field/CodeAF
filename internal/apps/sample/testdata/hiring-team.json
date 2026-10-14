@@ -1,0 +1,221 @@
+{
+  "agent": {
+    "file": "agent.md",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "name": "Hiring agent"
+  },
+  "budget": {
+    "at_cap": "ask",
+    "currency": "USD",
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ],
+    "month": 20,
+    "per_run": 2
+  },
+  "capabilities": {
+    "ai": [
+      "summarise"
+    ],
+    "records": {
+      "candidate": "rw",
+      "decision": "rw",
+      "interview": "rw",
+      "scorecard": "rw"
+    },
+    "tools": []
+  },
+  "commands": [
+    {
+      "do": [
+        {
+          "open": "debrief",
+          "params": {
+            "scorecard": "$selection.candidate.id"
+          }
+        }
+      ],
+      "for": "candidate",
+      "id": "record-scorecard",
+      "label": "Record a scorecard"
+    }
+  ],
+  "description": "Move candidates to a decided offer without double booking interviewers, from Applied to Hired or Rejected, with debriefs and offers approved.",
+  "id": "hiring-3-backend",
+  "kit": 2,
+  "name": "Hiring Loops",
+  "records": {
+    "candidate": {
+      "fields": {
+        "name": {
+          "label": "Candidate",
+          "required": true,
+          "type": "text"
+        },
+        "next_interview": {
+          "index": true,
+          "label": "Next interview",
+          "type": "datetime"
+        },
+        "notes": {
+          "label": "Notes",
+          "type": "longtext"
+        },
+        "owner": {
+          "default": "$me",
+          "label": "Owner",
+          "type": "person"
+        },
+        "role": {
+          "label": "Role",
+          "type": "text"
+        },
+        "source": {
+          "label": "Source",
+          "type": "text"
+        },
+        "stage": {
+          "default": "Applied",
+          "index": true,
+          "label": "Stage",
+          "type": "enum",
+          "values": [
+            "Applied",
+            "Screen",
+            "Loop",
+            "Debrief",
+            "Offer",
+            "Hired",
+            "Rejected"
+          ]
+        }
+      },
+      "label": "Candidate",
+      "plural": "Candidates",
+      "title": "name"
+    },
+    "decision": {
+      "fields": {
+        "approved_by": {
+          "label": "Approved by",
+          "type": "person"
+        },
+        "candidate": {
+          "index": true,
+          "label": "Candidate",
+          "to": "candidate",
+          "type": "ref"
+        },
+        "debrief_date": {
+          "index": true,
+          "label": "Debrief date",
+          "type": "date"
+        },
+        "decision": {
+          "default": "Pending",
+          "index": true,
+          "label": "Decision",
+          "type": "enum",
+          "values": [
+            "Pending",
+            "Hire",
+            "No hire"
+          ]
+        },
+        "summary": {
+          "label": "Summary",
+          "type": "longtext"
+        }
+      },
+      "label": "Decision",
+      "plural": "Decisions",
+      "title": "decision"
+    },
+    "interview": {
+      "fields": {
+        "candidate": {
+          "index": true,
+          "label": "Candidate",
+          "to": "candidate",
+          "type": "ref"
+        },
+        "interviewer": {
+          "label": "Interviewer",
+          "type": "person"
+        },
+        "kind": {
+          "default": "Screen",
+          "label": "Kind",
+          "type": "enum",
+          "values": [
+            "Screen",
+            "Technical",
+            "System design",
+            "Behavioural",
+            "Debrief"
+          ]
+        },
+        "room": {
+          "label": "Room",
+          "type": "text"
+        },
+        "slot": {
+          "index": true,
+          "label": "Slot",
+          "type": "datetime"
+        },
+        "status": {
+          "default": "Scheduled",
+          "index": true,
+          "label": "Status",
+          "type": "enum",
+          "values": [
+            "Scheduled",
+            "Done",
+            "Cancelled"
+          ]
+        }
+      },
+      "label": "Interview",
+      "plural": "Interviews",
+      "title": "kind"
+    },
+    "scorecard": {
+      "fields": {
+        "candidate": {
+          "index": true,
+          "label": "Candidate",
+          "to": "candidate",
+          "type": "ref"
+        },
+        "interview": {
+          "label": "Interview",
+          "to": "interview",
+          "type": "ref"
+        },
+        "interviewer": {
+          "label": "Interviewer",
+          "type": "person"
+        },
+        "notes": {
+          "label": "Notes",
+          "type": "longtext"
+        },
+        "score": {
+          "label": "Score",
+          "type": "number"
+        },
+        "submitted": {
+          "index": true,
+          "label": "Submitted",
+          "type": "bool"
+        }
+      },
+      "label": "Scorecard",
+      "plural": "Scorecards",
+      "title": "interviewer"
+    }
+  },
+  "space": "personal",
+  "version": 0
+}
