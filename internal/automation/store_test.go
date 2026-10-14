@@ -2,6 +2,9 @@ package automation
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -480,4 +483,59 @@ func mustDue(t *testing.T, s *Store, now time.Time) []Automation {
 		t.Fatal(err)
 	}
 	return due
+}
+
+// A HISTORY KEEPS ITS NEWEST HUNDRED RUNS, and the folders of the runs it
+// forgets go with them — except a folder holding a worktree, whose changes are
+// the person's to review. Deleting the automation forgets the rest the same way.
+func TestAHistoryKeepsItsNewestRunsAndTheirFolders(t *testing.T) {
+	s, now := openStore(t)
+	a, _ := s.Create(routine("1h"))
+	folder := func(run int64) string {
+		return filepath.Join(s.Root(), "runs", a.ID, strconv.FormatInt(run, 10))
+	}
+	var first, kept Run
+	for i := 0; i < KeepRuns+5; i++ {
+		*now = now.Add(time.Minute)
+		run, err := s.QueueNow(a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(folder(run.ID), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		switch i {
+		case 0:
+			first = run
+		case 1:
+			kept = run
+			if err := os.MkdirAll(filepath.Join(folder(run.ID), "trees", "automation-x"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_ = s.Start(run.ID)
+		run.Outcome, run.Line = OutcomeDone, "done"
+		if err := s.Finish(run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runs, _ := s.Runs(a.ID, KeepRuns*2)
+	if len(runs) != KeepRuns {
+		t.Fatalf("the history keeps %d runs, want %d", len(runs), KeepRuns)
+	}
+	if _, err := os.Stat(folder(first.ID)); !os.IsNotExist(err) {
+		t.Fatalf("a forgotten run's folder is still there: %v", err)
+	}
+	if _, err := os.Stat(folder(kept.ID)); err != nil {
+		t.Fatalf("a forgotten run's worktree was removed: %v", err)
+	}
+	if err := s.Delete(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(folder(runs[0].ID)); !os.IsNotExist(err) {
+		t.Fatalf("deleting the automation left a run's folder: %v", err)
+	}
+	if _, err := os.Stat(folder(kept.ID)); err != nil {
+		t.Fatalf("deleting the automation removed a worktree: %v", err)
+	}
 }

@@ -103,17 +103,28 @@ func (a *app) automationsCommand(rest string) tea.Cmd {
 }
 
 // automationWorkspace is where a typed automation runs unless it names a
-// folder: the project this window is in.
+// folder: the project this window is in, and otherwise the home folder — of the
+// machine the automation is kept on, which over --host is not this one, so a
+// window attached elsewhere sends `~` and the far store reads it there
+// (internal/automation's [automation.ExpandHome]).
 func (a *app) automationWorkspace() string {
 	if workspace := strings.TrimSpace(a.workspace); workspace != "" {
 		return workspace
+	}
+	if a.hosted() {
+		return "~"
 	}
 	return errandHomeDir()
 }
 
 // automationByID finds an automation by its id, or by the start of it when only
-// one id starts that way — the list shows ids, and nobody types sixteen hex
-// digits to pause something.
+// one id starts that way and it is at least [automationIDPrefixMin] long —
+// nobody types sixteen hex digits to pause something, and the id reaches the
+// box whole from `→` then `e` on its row.
+//
+// A ONE-CHARACTER START IS NOT AN ID. `delete` asks nothing when it is typed,
+// because typing the id is the confirmation, and a single digit that happened
+// to start one automation's id is not somebody naming it.
 func (a *app) automationByID(id string) (automation.Automation, bool) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -124,7 +135,7 @@ func (a *app) automationByID(id string) (automation.Automation, bool) {
 		if item.ID == id {
 			return item, true
 		}
-		if strings.HasPrefix(item.ID, id) {
+		if len(id) >= automationIDPrefixMin && strings.HasPrefix(item.ID, id) {
 			found = append(found, item)
 		}
 	}
@@ -133,6 +144,10 @@ func (a *app) automationByID(id string) (automation.Automation, bool) {
 	}
 	return automation.Automation{}, false
 }
+
+// automationIDPrefixMin is the fewest characters of an id a typed line may name
+// an automation by.
+const automationIDPrefixMin = 4
 
 // confirmTypedAutomation draws the card a typed add or edit ends on, and asks.
 func (a *app) confirmTypedAutomation(item automation.Automation, edit bool) {

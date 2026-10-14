@@ -198,7 +198,7 @@ that makes a promise about detaching reads it.
 ## Decision 6 — The engine machine is the authority, always
 
 **Decision.** The tool gate, the spend rail, the API key, the harness registry,
-connected accounts, the session file, standing items, and every path on the
+connected accounts, the session file, automations, and every path on the
 wire belong to the machine that runs the work. The surface owns the screen, the
 keyboard, the draft, and the input history.
 
@@ -211,7 +211,7 @@ ignored, so compaction cannot be sized by a stale or different laptop cache.
 honesty bug this lane has had came from a screen answering for the wrong
 machine. The YOLO badge is drawn from the engine's own profile because a badge
 read off the laptop would be a safety claim about a machine nobody consulted.
-Standing items are counted on the engine's disk because they run there.
+Automations are listed off the engine's disk because they run there.
 `/export` said `· on this machine` because that was the truth about where the
 bytes landed. A surface that resolved any of these locally would be
 comprehensible, fast, and wrong.
@@ -323,15 +323,15 @@ through the same fetch door as a path in a reply; it never joins a far session
 id to the surface machine's index. `/export` remains deliberately local and
 records into the surface machine's index because that is where its file lands.
 
-**Why one door and not one per place.** Five of the seven are built from that
-single walk — home lists it, tasks reads the task rows inside it, standing walks
-its projects to ask the far store what else stands there, spend joins its titles
-onto the ledger's ids, and search opens a hit's conversation out of it. A method
-per place would have been five round trips answering one question, and five
-chances for two screens to disagree about which machine they were describing.
+**Why one door and not one per place.** Four of the places are built from that
+single walk — home lists it, tasks reads the task rows inside it, spend joins its
+titles onto the ledger's ids, and search opens a hit's conversation out of it. A
+method per place would have been four round trips answering one question, and
+four chances for two screens to disagree about which machine they were
+describing. (Automations have doors of their own, `Automations.*`.)
 
-**Why the seam answers whether it has an answer.** An empty list of standing
-items and no answer yet are the same thing on a screen — the emptiness law draws
+**Why the seam answers whether it has an answer.** An empty list of
+automations and no answer yet are the same thing on a screen — the emptiness law draws
 both as nothing. An empty WORLD is not: it is a machine with no projects, and
 `nothing here yet — say something and this fills up` drawn over a server full of
 work is the one wrong sentence home can say about somebody else's disk. So the
@@ -342,7 +342,7 @@ far machine has spoken once.
 three-second beat, and over a wire both are moments a person is waiting through:
 a call carries a ten-second deadline, so an open that made one would be a
 terminal that stopped answering keys for as long as the far machine took. This
-is `hostStanding`'s law applied to the reading five screens share.
+is the automations seam's law applied to the reading four screens share.
 
 **What is still local, and says so.** Spend reads the ledger file, search reads
 the conversation index, memory reads the memory store — three files on the

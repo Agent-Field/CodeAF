@@ -169,8 +169,10 @@ func LooksLikeAPIKey(key string) bool {
 }
 
 // EnsurePersistedAPIKey copies the session's environment key into the profile
-// config exactly once, so the standing watch can authenticate after the shell
-// that ratified it is gone. It never overwrites a key already on disk, and the
+// config exactly once, so a process started after the shell that held the key
+// is gone can still authenticate. (Its one caller was the standing watch, which
+// is gone; the automations clock reads the key from the newest window's
+// environment instead.) It never overwrites a key already on disk, and the
 // file ends owner-readable only. Returns whether a key was newly persisted and
 // the path that holds it.
 func EnsurePersistedAPIKey(profileDir string) (bool, string, error) {

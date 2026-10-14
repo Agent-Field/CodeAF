@@ -3706,6 +3706,11 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT, the same way it must on the
 	// resident road: routed through the context, the supervisor stops launching,
 	// drains what is in flight, and what it reached is composed and printed.
+	// THE MEMORY SECTION IS READ BEFORE THE RUN'S CLOCK STARTS. It is a birth
+	// fact of the run, and opening the store to read it is setup, not work:
+	// under a short --timeout the open alone could spend the whole deadline
+	// before a single node had started.
+	memorySection := doMemory(workspace)
 	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	ctx, cancel := context.WithTimeout(signalled, request.timeout)
@@ -3731,7 +3736,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, doMemory(workspace), completerFor, settings.Sources),
+		}, memorySection, completerFor, settings.Sources),
 	})
 	errand := runErrandOutcome(summary, workspace, bound)
 	// THE RUN'S OWN CLOCK, read off the context because the summary's word is

@@ -17,8 +17,8 @@ func zone(t *testing.T, name string) *time.Location {
 
 // THE NIGHT THE CLOCKS FALL BACK, A 01:30 LINE FIRES ONCE. The schedule this
 // replaces returned a moment in the past for every instant of the repeated
-// hour, so a pass every five minutes fired a daily item eight times
-// (audit-notes/standing-and-schedules.md §3.2).
+// hour, so a pass every five minutes fired a daily item eight times (found in
+// the 2026-10-09 audit of the standing machinery).
 func TestCronFiresOnceOnTheNightTheClocksFallBack(t *testing.T) {
 	loc := zone(t, "America/Toronto")
 	s := Schedule{Every: "30 1 * * *", Zone: "America/Toronto"}
@@ -194,5 +194,24 @@ func TestValidateRefusesWhatCouldNeverWake(t *testing.T) {
 	}
 	if err := (Schedule{Every: "0 9 * * 1-5", Zone: "Mars/Olympus"}).Validate(); err == nil || !strings.Contains(err.Error(), "zone") {
 		t.Fatalf("an unknown zone should be named, got %v", err)
+	}
+}
+
+// A RHYTHM OF DAYS THAT WOULD OVERFLOW IS REFUSED, never wrapped round to a
+// negative one that wakes on every pass.
+func TestAnOverflowingRhythmIsRefused(t *testing.T) {
+	for _, spec := range []string{"107000d", "999999999999d"} {
+		if got, err := ParseInterval(spec); err == nil {
+			t.Fatalf("%s read as %v", spec, got)
+		}
+		if err := (Schedule{Every: spec, Zone: "UTC"}).Validate(); err == nil {
+			t.Fatalf("a schedule every %s validated", spec)
+		}
+		if got, err := parseDistance(spec); err == nil {
+			t.Fatalf("in %s read as %v", spec, got)
+		}
+	}
+	if got, err := ParseInterval("36500d"); err != nil || got <= 0 {
+		t.Fatalf("a hundred years reads as %v, %v", got, err)
 	}
 }

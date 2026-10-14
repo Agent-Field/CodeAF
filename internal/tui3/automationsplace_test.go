@@ -236,6 +236,11 @@ func TestTypedVerbsActOnTheAutomationNamed(t *testing.T) {
 	if got, _ := store.Get(id); got.Status != automation.StatusActive {
 		t.Fatalf("resume left it %q", got.Status)
 	}
+	// A ONE-CHARACTER START NAMES NOTHING, and delete asks nothing when typed.
+	drive(t, a, runCmd(a.automationsCommand("delete "+id[:1]))...)
+	if _, err := store.Get(id); err != nil {
+		t.Fatal("delete by one character of the id deleted it")
+	}
 	drive(t, a, runCmd(a.automationsCommand("delete "+id))...)
 	if _, err := store.Get(id); err == nil {
 		t.Fatal("delete left it in the store")
@@ -410,8 +415,28 @@ func TestABannerCarriesTheResult(t *testing.T) {
 	if !strings.HasPrefix(body, "done · ") || !strings.Contains(body, "Why the war will not end") || strings.Contains(body, "youtube") {
 		t.Fatalf("the banner says %q", body)
 	}
+	watch := automationBannerBody(labWatch("ci on main"), automation.Run{Outcome: automation.OutcomeDone, Line: "ci on main happened",
+		Detail: "completed failure tui3: fold the quiet rows ci master push 18734 4m12s"})
+	if watch != "done · ci on main happened" {
+		t.Fatalf("a watch that spoke says %q, not its own line", watch)
+	}
 	reminder := automationBannerBody(labReminder("stretch"), automation.Run{Outcome: automation.OutcomeDone, Line: "time to stretch"})
 	if reminder != "done · time to stretch" {
 		t.Fatalf("a reminder's banner says %q", reminder)
+	}
+}
+
+// A WINDOW ATTACHED ELSEWHERE WITH NO PROJECT SENDS ~, never this laptop's home:
+// the automation is kept and run on the far machine, whose store reads ~ as its
+// own.
+func TestAHostedWindowsTypedAutomationRunsInTheFarHome(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.workspace, a.host = "", "devbox"
+	if got := a.automationWorkspace(); got != "~" {
+		t.Fatalf("a hosted window with no project sends %q", got)
+	}
+	a.host = ""
+	if got := a.automationWorkspace(); got == "~" || got == "" {
+		t.Fatalf("a window on this machine sends %q", got)
 	}
 }

@@ -357,6 +357,33 @@ func TestStopRequestStopsARun(t *testing.T) {
 	}
 }
 
+// DELETING AN AUTOMATION STOPS ITS RUN. The delete takes the run rows with it,
+// so no stop request can be written there; the clock notices the automation is
+// gone and stops the run rather than let it spend to its limit.
+func TestDeletingAnAutomationStopsItsRun(t *testing.T) {
+	runner := &fakeRunner{block: true}
+	r := startClock(t, runner)
+	a, _ := r.store.Create(routine("1h"))
+	r.now(t, a.ID)
+	deadline := time.Now().Add(5 * time.Second)
+	for runner.working.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if runner.working.Load() == 0 {
+		t.Fatal("the run never started")
+	}
+	if err := r.store.Delete(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for runner.working.Load() != 0 && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if runner.working.Load() != 0 {
+		t.Fatal("the run of a deleted automation kept going")
+	}
+}
+
 // TWO PIECES OF WORK AT ONCE, the rest wait their turn.
 func TestWorkRunsTwoAtATime(t *testing.T) {
 	runner := &fakeRunner{report: Report{Outcome: OutcomeDone, Line: "ok"}}

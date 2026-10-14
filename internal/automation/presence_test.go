@@ -77,3 +77,40 @@ func TestPresenceCountsALockHeldElsewhere(t *testing.T) {
 		t.Fatalf("a window held elsewhere counts %d", n)
 	}
 }
+
+// A WINDOW BEING OPENED IS NEVER COUNTED AWAY. Counters look all the time, and
+// a window's file must never stand under its counted name before its owner
+// holds it — or a counter takes it for a window that is gone and removes it.
+func TestAWindowBeingOpenedIsNeverCountedAway(t *testing.T) {
+	p := NewPresence(t.TempDir())
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = p.Count()
+			}
+		}
+	}()
+	const windows = 40
+	var releases []func()
+	for i := 0; i < windows; i++ {
+		release, err := p.Hold("window")
+		if err != nil {
+			t.Fatal(err)
+		}
+		releases = append(releases, release)
+	}
+	close(stop)
+	<-done
+	if n, err := p.Count(); err != nil || n != windows {
+		t.Fatalf("%d windows are open and %d are counted (%v)", windows, n, err)
+	}
+	for _, release := range releases {
+		release()
+	}
+}

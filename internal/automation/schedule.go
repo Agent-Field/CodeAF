@@ -14,6 +14,7 @@ package automation
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -180,6 +181,10 @@ func parseRhythm(every string) (rhythm, error) {
 	return rhythm{cron: &line}, nil
 }
 
+// maxIntervalDays is the most days a rhythm or a distance may count before the
+// duration it makes would overflow.
+const maxIntervalDays = int64(math.MaxInt64 / int64(24*time.Hour))
+
 // ParseInterval reads a duration of at least [MinInterval]. It is Go's own
 // syntax with one addition, "d" for a day, because "every 2d" is a thing people
 // say and Go's parser refuses it.
@@ -187,7 +192,10 @@ func ParseInterval(text string) (time.Duration, error) {
 	spec := strings.TrimSpace(text)
 	if days, ok := strings.CutSuffix(spec, "d"); ok {
 		count, err := strconv.Atoi(days)
-		if err != nil || count < 1 {
+		// A COUNT OF DAYS THAT WOULD OVERFLOW A DURATION IS REFUSED, not
+		// wrapped: 107000d wrapped round to a negative rhythm, which passed every
+		// other check and woke on every pass forever.
+		if err != nil || count < 1 || int64(count) > maxIntervalDays {
 			return 0, fmt.Errorf("cannot read the rhythm %q", text)
 		}
 		return time.Duration(count) * 24 * time.Hour, nil

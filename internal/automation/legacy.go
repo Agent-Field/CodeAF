@@ -4,8 +4,8 @@ package automation
 // installed. Automations run only while codeaf is open, so nothing of codeaf's
 // may be left scheduled on the machine — and a timer left behind goes on
 // running `codeaf tick` against a store that no longer exists, or, on a machine
-// where a test once claimed it, fails forever with nobody told
-// (audit-notes/standing-and-schedules.md §2).
+// where a test once claimed it, fails forever with nobody told (the 2026-10-09
+// audit of the standing machinery found exactly that).
 //
 // IT RUNS ON EVERY START, NOT ONCE. An older build on the same machine — another
 // worktree's binary, a session host that has not retired yet — could put a
@@ -74,13 +74,16 @@ func removeDarwinTimers(home string) {
 		if _, err := os.Stat(plist); err != nil {
 			continue
 		}
-		// Unloaded first, so launchd forgets the job; the file second, so it is
-		// not loaded again at the next login.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		_ = exec.CommandContext(ctx, "launchctl", "bootout", domain, plist).Run()
-		cancel()
+		// THE FILE FIRST, THE JOB SECOND, and the job named by its label. This
+		// can be running inside `codeaf tick` that launchd itself started, and
+		// unloading the job kills that process: done first, it would end the
+		// removal before the file went, and the timer would be loaded again at
+		// the next login. The label form names the job without its file.
 		_ = os.Remove(plist)
 		_ = os.Remove(plist + ".lock")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = exec.CommandContext(ctx, "launchctl", "bootout", domain+"/"+label).Run()
+		cancel()
 	}
 }
 
@@ -104,15 +107,19 @@ func removeLinuxTimers(home string) {
 			continue
 		}
 		touched = true
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		_ = exec.CommandContext(ctx, "systemctl", "--user", "disable", "--now", timer).Run()
-		cancel()
+		// THE FILES FIRST, for the same reason as on macOS: a removal running
+		// inside the service the timer started must not be stopped before the
+		// files that would start it again are gone. The timer is then stopped by
+		// name, and the reload forgets the units.
 		for _, path := range paths {
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 		}
 		_ = os.Remove(filepath.Join(units, timer) + ".lock")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", timer).Run()
+		cancel()
 	}
 	if touched {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -63,6 +65,23 @@ func TestTheHostDoorReadsTheFarMachinesAutomations(t *testing.T) {
 	}
 	if seam.Claim(run.ID) {
 		t.Fatal("a run's notification was claimed twice")
+	}
+
+	// A FOLDER UNDER ~ CROSSES AS ~ AND IS READ ON THE FAR MACHINE. The line is
+	// typed on the laptop, whose home is not the home of the machine that keeps
+	// and runs the automation, so the window sends it unexpanded and the far
+	// store reads it there.
+	far, err := seam.Create(automation.Automation{
+		Title: "plants", Workspace: "~/app",
+		Schedule: automation.Schedule{At: time.Now().Add(time.Hour)},
+		Action:   automation.Action{Say: "water the plants"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	house, _ := os.UserHomeDir()
+	if far.Workspace != filepath.Join(house, "app") {
+		t.Fatalf("a ~ folder typed over --host was kept as %q, want the engine machine's %q", far.Workspace, filepath.Join(house, "app"))
 	}
 
 	bare, _ := hostOptions(onePipeFleet("devbox", hostedClient(t)), remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)

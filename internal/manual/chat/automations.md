@@ -182,7 +182,9 @@ A schedule is **one moment** or **a rhythm**. A moment is a time ("at 6", "tomor
 or a distance from now ("in 20 minutes"). A rhythm is an interval or a cron line:
 
 - **An interval**, a minute or more: `15m`, `2h`, `1d` — `d` is a day. It is a grid laid
-  from when it was saved, so a late run never pushes the next one later.
+  from when it was saved, so a late run never pushes the next one later. It counts real
+  time, so a `1d` saved at 09:00 runs at 08:00 or 10:00 after the clocks change; for a
+  fixed hour use a cron line, `0 9 * * *`.
 - **A cron line**, five numeric fields — minute, hour, day of the month, month, day of the
   week — with ranges, lists and steps: `0 9 * * 1` is Mondays at 09:00, `30 8 * * 1-5`
   weekdays at 08:30, `*/15 * * * *` every 15 minutes. Sunday is `0` or `7`. Names
@@ -242,7 +244,9 @@ drawn:
 Each says what it did on the message line: `asked to run now · weekly update`,
 `asked to stop · weekly update`, `paused · weekly update`, `going again · weekly update`,
 `deleted · weekly update`. The first `d` only asks:
-`d again deletes it and its history · esc keeps it`. **There is no undo for delete.**
+`d again deletes it and its history · esc keeps it`. **There is no undo for delete.** A run in
+progress is stopped. A separate worktree a run of work left is kept, because its changes are
+yours to review.
 
 **A pause is not a miss**: a resumed rhythm starts at its next slot after now and nothing
 catches up for the paused time; a one-time reminder resumed after its moment runs once,
@@ -276,7 +280,8 @@ proposal that replaces it.
 
 `enter` on a row of `/automations` opens its history. The top says what it is — its title
 and schedule, the rhythm exactly, what it looks at and its condition, what it says or does —
-and under it every run, newest first, up to the last hundred:
+and under it every run, newest first — the last hundred are kept, and older runs and their
+transcripts are let go:
 
 ```
 today at 09:00            done · drafted the update from 14 commits · $0.42
@@ -528,7 +533,8 @@ The title comes straight after `add`. The words, each with one value:
   or a cron line in quotes); `zone` (`America/Toronto`) is read first;
 - **what** — `say "<line>"` or `do "<brief>"`;
 - **a watch** — `look "<command>"` or `files "<pattern>"`, `until "<condition>"`, and `once`;
-- **where and how much** — `worktree` or `checkout`, `time 45m`, `usd 2.50`, `folder ~/code/app`.
+- **where and how much** — `worktree` or `checkout`, `time 45m`, `usd 2.50`, `folder ~/code/app`
+  (`~` is the home of the machine that keeps and runs it, which over `--host` is that machine).
 
 `1 Save` on its card — `It runs on this schedule while codeaf is open.` — saves it and says
 when it first runs: `saved stretch · next today at 16:30`. `0 Don't save` saves nothing.
@@ -536,7 +542,7 @@ when it first runs: `saved stretch · next today at 16:30`. `0 Don't save` saves
 ## /automations edit, run, pause, resume and delete — by id, and what a typed line says when it cannot be read
 
 The other forms take the automation's id — sixteen hexadecimal characters, of which the
-first few are enough when no other id starts the same way:
+first four or more are enough when no other id starts the same way:
 
 ```
 /automations edit 3f2a9c every 30m
