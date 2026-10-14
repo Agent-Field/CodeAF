@@ -90,6 +90,10 @@ func limitsFor(o options) func(secappx.HarnessOptions) agentsession.Limits {
 		if o.sessionWall > 0 {
 			limits.Wall = o.sessionWall
 		}
+		// Leave time for the structured answer inside the requested wall.
+		// Short sessions split reading and answering evenly; longer sessions
+		// reserve thirty seconds. The shared loop also honors a shorter caller.
+		limits.AnswerReserve = min(30*time.Second, limits.Wall/2)
 		return limits
 	}
 }

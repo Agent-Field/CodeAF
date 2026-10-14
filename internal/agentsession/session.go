@@ -42,6 +42,9 @@ type SessionOrder struct {
 	MaxTurns int
 	// Wall is the session's own time bound; zero is none past the context's.
 	Wall time.Duration
+	// AnswerReserve stops reading this long before the existing deadline, so
+	// the session can answer from completed observations. Zero reserves none.
+	AnswerReserve time.Duration
 	// Policy is how the session reads and answers; every field is required.
 	Policy Policy
 }
@@ -68,11 +71,36 @@ var errNoAnswer = errors.New("the session ended without an answer")
 // could not run at all — the model API refused, the run was stopped; a session
 // that ran and gave no usable answer says so in Failed.
 func RunSession(ctx context.Context, client *Client, order SessionOrder) (SessionResult, error) {
-	started := time.Now()
+	return runSession(ctx, client.Complete, order, sessionClock{time.Now, context.WithDeadline})
+}
+
+// sessionClock keeps the deadline transition testable without waiting out a
+// real session. Production always uses the context's actual deadline.
+type sessionClock struct {
+	now          func() time.Time
+	withDeadline func(context.Context, time.Time) (context.Context, context.CancelFunc)
+}
+
+func runSession(ctx context.Context, complete func(context.Context, Request) (*ai.Response, error), order SessionOrder, clock sessionClock) (result SessionResult, err error) {
+	started := clock.now()
+	defer func() { result.Duration = clock.now().Sub(started) }()
 	if order.Wall > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, order.Wall)
+		ctx, cancel = clock.withDeadline(ctx, started.Add(order.Wall))
 		defer cancel()
+	}
+	readingCtx := ctx
+	var readingDeadline time.Time
+	if deadline, ok := ctx.Deadline(); ok && order.AnswerReserve > 0 {
+		// A caller's shorter deadline wins. Never reserve more than half the
+		// available time, and never extend either the caller or session wall.
+		reserve := min(order.AnswerReserve, deadline.Sub(started)/2)
+		if reserve > 0 {
+			readingDeadline = deadline.Add(-reserve)
+			var cancel context.CancelFunc
+			readingCtx, cancel = clock.withDeadline(ctx, readingDeadline)
+			defer cancel()
+		}
 	}
 	maxTurns := order.MaxTurns
 	if maxTurns <= 0 {
@@ -95,8 +123,6 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 		textMessage("system", sessionSystem(order)),
 		textMessage("user", order.Prompt),
 	}
-	result := SessionResult{}
-	defer func() { result.Duration = time.Since(started) }()
 	size := len(order.Prompt)
 	asked := 0
 	answering := false
@@ -104,7 +130,8 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 		// THE LAST TURN, OR A FULL CONTEXT, IS AN ANSWER. A session that is
 		// still reading when its turns or its room run out is told to answer
 		// with what it has, and is offered no tools to do anything else.
-		if !answering && (result.Turns >= maxTurns-1 || size > policy.ContextChars) {
+		if !answering && (result.Turns >= maxTurns-1 || size > policy.ContextChars ||
+			(!readingDeadline.IsZero() && !clock.now().Before(readingDeadline))) {
 			answering = true
 			messages = append(messages, textMessage("user", policy.AnswerNow))
 		}
@@ -112,10 +139,22 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 		if !answering {
 			request.Tools = tools.definitions()
 		}
-		response, err := client.Complete(ctx, request)
+		callCtx := ctx
+		if !answering {
+			callCtx = readingCtx
+		}
+		response, err := complete(callCtx, request)
 		result.Turns++
 		result.CostUSD += costOf(response)
 		if err != nil {
+			// Only our intentional reading cutoff starts an answer. A caller
+			// stop, provider refusal or exhausted full deadline still fails.
+			if !answering && !readingDeadline.IsZero() && errors.Is(readingCtx.Err(), context.DeadlineExceeded) &&
+				ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+				answering = true
+				messages = append(messages, textMessage("user", policy.AnswerNow))
+				continue
+			}
 			result.Failed = err.Error()
 			return result, err
 		}

@@ -45,7 +45,7 @@ Its stages are on the rail and head the lines of its page:
 6. **obligations** and **coverage**: lists what the change must do and checks it, and looks for gaps.
 7. **report**.
 
-Each reviewer is an agent session that reads the checkout, told it is part of a code review, with four read-only tools — read a file, list a folder, find files by name, look for text in files — for as many turns and minutes as its part of the review is given — from ten turns for the smallest to thirty for a reviewer — after which it is made to answer. At a shell, `--max-turns` and `--session-wall` set one limit for every reviewer instead. A review of a mid-sized pull request commonly takes half an hour to an hour.
+Each reviewer is an agent session that reads the checkout, told it is part of a code review, with four read-only tools — read a file, list a folder, find files by name, look for text in files — within the turns and minutes its part of the review is given — from ten turns for the smallest to thirty for a reviewer. It reserves thirty seconds of its time limit for the answer, or half the remaining time when the limit is shorter than a minute. At the reading cutoff it stops reading and answers from what it has already found; the answer must still finish within the original time limit. At a shell, `--max-turns` and `--session-wall` set one limit for every reviewer instead. A review of a mid-sized pull request commonly takes half an hour to an hour.
 
 ## What /review shows while it runs — each reviewer's line, what it found, which files
 
@@ -59,6 +59,8 @@ When it finishes, the chat is handed a short account whose first line says what 
 - `review-report.json` — the review as data, including the review it would post and the commit it reviewed
 
 A shell run's record folder is under `~/.codeaf/v3/carried/review/`, one folder per run.
+
+If the pipeline stops before it returns an assembled review, the run keeps `review-failure.json` and `review-failure.md` instead. They record the stage, reason, elapsed time, recorded spend and failed call counts. They contain no review and cannot be posted as one; the run still ends as failed or stopped on its ceiling.
 
 ## Post the review to GitHub — comment on the pull request, request changes, /review post
 
