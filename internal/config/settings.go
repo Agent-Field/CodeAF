@@ -1,14 +1,12 @@
 package config
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
@@ -17,7 +15,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
@@ -112,10 +109,6 @@ var SettingCategories = []string{
 const (
 	KeyDailyBudget    = "daily_budget_usd"
 	KeyPlanConsent    = "plan_consent_usd"
-	KeyPracticeBudget = "practice_budget_usd"
-	KeyPracticeIdle   = "practice_idle"
-	KeyBriefAfter     = "brief_after"
-	KeyTenureAfter    = "tenure_after"
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
 	// KeyModelPool is the stored word the pool's resolver takes: the same three
@@ -337,22 +330,6 @@ const (
 	// `remember` tool the model reaches for. Off is a conversation that starts
 	// knowing nothing about you, and that makes not one extra call.
 	KeyMemoryEnabled = "memory.enabled"
-
-	// KeyStandingBackground is whether this machine's own scheduler keeps
-	// standing items current when no codeaf window is open (internal/standing's
-	// watch.go). It is dotted with the other v3 keys, under `standing.` because
-	// that is the thing it is about, and it is PROFILE-ONLY — deliberately
-	// absent from [ProjectKeys]: installing a timer is a change to somebody's
-	// machine, and a checked-in file that could make one is a repository
-	// arranging to run a program on every laptop that clones it.
-	//
-	// ON IS THE DEFAULT and the row is the only place it is ever asked. What
-	// the row READS is derived from the timer itself rather than from this
-	// value, so the sheet cannot say `on` over a machine where nothing is
-	// installed; this value is the person's INTENT, which is what the launch
-	// repair reads before it puts a drifted timer back
-	// ([BackgroundChecksWantedAt]).
-	KeyStandingBackground = "standing.background"
 
 	KeyModelRoles = "models.roles"
 	// KeyModelFallbacks is the ordered list of models a conversation moves to
@@ -729,21 +706,6 @@ const DefaultPromptProfile = PromptProfileAuto
 // engine obeys must be one string or they drift.
 const EnvPromptProfile = "CODEAF_PROMPT_PROFILE"
 
-// The background-checks row's two answers.
-const (
-	BackgroundOff = "off"
-	BackgroundOn  = "on"
-)
-
-// BackgroundModes lists them, on first — which is the default. Something you
-// asked to happen every morning is something you asked to happen on the
-// mornings you do not open a terminal, and a person who wanted it only while
-// they were sitting there says so here.
-var BackgroundModes = []string{BackgroundOn, BackgroundOff}
-
-// DefaultBackground is on.
-const DefaultBackground = BackgroundOn
-
 // The routing row's four answers. They are spelled here rather than imported
 // from internal/provider for the reason [DocumentEngines] is: a settings key's
 // vocabulary is a string on disk, and it must not change because a package
@@ -1115,6 +1077,11 @@ var OperatorEnvPins = []string{
 	"CODEAF_NO_UPDATE_CHECK",
 	"CODEAF_GITHUB_API",
 	"CODEAF_GITHUB_DOWNLOAD",
+	// CODEAF_NO_AUTOMATIONS keeps a window from starting the clock that runs
+	// automations (internal/automation's Startable). The demo home sets it so a
+	// look at the fixture spends nothing on its invented automations; it is one
+	// launch's posture rather than a preference, so plumbing.
+	"CODEAF_NO_AUTOMATIONS",
 	// CODEAF_INSTALL_NAME belongs to the shell installer and not to this
 	// program: it chooses the file name an install writes, and codeaf never
 	// reads it. It is spelled in Go at all only because the curl line codeaf
@@ -1373,10 +1340,6 @@ const (
 	// would genuinely want to see priced first. 0 never asks.
 	DefaultPlanConsentUSD = 100.0
 
-	// DefaultTenureAfter is the clean-firing count a standing charter needs
-	// before it earns tenure.
-	DefaultTenureAfter = 3
-
 	// DefaultAttributionModel names the model in the `Assisted-by` line by
 	// default, because the line is provenance and the model is the part of it
 	// somebody auditing the history later actually wants. The signature itself
@@ -1532,9 +1495,9 @@ type Setting struct {
 	// renders it ([Setting.Reading]).
 	//
 	// THE SYMBOLS ATTACH AND THE WORDS DO NOT. `300s`, `60%`, `20m` are one
-	// token in every terminal font, the way the two SettingDuration rows beside
-	// them already read; `1536 MB` and `65536 tok` are two words and read as
-	// two ([unitAttaches] is the whole list).
+	// token in every terminal font, the way a duration reading already reads;
+	// `1536 MB` and `65536 tok` are two words and read as two ([unitAttaches]
+	// is the whole list).
 	//
 	// A ROW WHOSE READING ALREADY CARRIES ITS UNIT LEAVES THIS EMPTY — a
 	// duration writes `20m`, a dollar row writes `$5`, [formatPercent] writes
@@ -1544,8 +1507,8 @@ type Setting struct {
 	// the completeness test can tell them apart.
 	Unit string
 
-	// UnitOne is [Setting.Unit] at exactly one — `1 clean firing` rather than
-	// `1 clean firings`. Empty means the unit reads the same at every number,
+	// UnitOne is [Setting.Unit] at exactly one — `1 level` rather than
+	// `1 levels`. Empty means the unit reads the same at every number,
 	// which is true of every symbol and of `tok`, `MB` and `per core`.
 	UnitOne string
 
@@ -1789,19 +1752,6 @@ type SettingsOptions struct {
 	// wiring lane hands in.
 	ModelCost func(slug string) string
 
-	// BackgroundChecks is this machine's own scheduler as internal/standing
-	// drives it: the launchd agent or systemd user timer that runs `codeaf tick`
-	// every [standing.Interval] so standing items are checked with no window
-	// open. It is what the `standing.background` row reads and writes.
-	//
-	// NIL LEAVES THE ROW OUT ALTOGETHER, which is this codebase's law about a
-	// capability that cannot work rather than a shortcut: a Windows host, a
-	// build with no store, a registry built to read defaults out of a profile
-	// nobody has — none of them has a timer to turn on, and a row present and
-	// refusing every write would be a switch wired to nothing. The divider row
-	// is absent for the same reason ([Settings.build]).
-	BackgroundChecks standing.Watch
-
 	// Applied fires after a row is successfully written, so a process holding
 	// its own copy of a value can honor the change without waiting for a
 	// relaunch.
@@ -1897,8 +1847,8 @@ func ModelSettingKey(slot string) string { return "model." + slot }
 //
 // Within a group the order is how often a person touches a row, not the order
 // the rows were written or the order they happen to persist in: the day's
-// ceiling before the ask-first threshold before the practice carve-out, the
-// conversation model before the two nobody has ever changed. Between groups the
+// ceiling before the ask-first threshold, the conversation model before the two
+// nobody has ever changed. Between groups the
 // order is [SettingCategories]. Nothing here announces either — 15 — the
 // sequence is the sequence.
 func (s *Settings) build() []Setting {
@@ -1929,8 +1879,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyEffort, Category: CategoryModels, Kind: SettingChoice,
 			Label: "thinking", Choices: EffortChoices,
 			Hint: "how hard the model thinks about your turns and the work you hand out. Auto leaves reasoning to the model. " +
-				"xhigh and max ask for a deeper pass than high, and cost the time they take. " +
-				"A standing item's firings and checks never take this row; only the rung on the item's own card reaches a firing.",
+				"xhigh and max ask for a deeper pass than high, and cost the time they take.",
 			read:  func() string { return EffortWord(DefaultEffortAt(dir)) },
 			write: func(raw string) error { return writeChoice(dir, KeyEffort, raw, EffortChoices) },
 		},
@@ -2091,17 +2040,6 @@ func (s *Settings) build() []Setting {
 				"does not stop. Say none and it never asks.",
 			read:  func() string { return moneyValue(resolvedDollars(PlanConsentUSDAt(dir))) },
 			write: func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
-		},
-		Setting{
-			Key: KeyPracticeBudget, Category: CategorySpending, Kind: SettingDollars,
-			Label: "practice budget", Env: "CODEAF_PRACTICE_BUDGET",
-			EmptyLabel: "practice off",
-			Hint: "the slice of the day reserved for codeaf practicing on itself. When it " +
-				"is spent, practice stops until tomorrow and your own work is untouched. " +
-				"0 is the one money row that does not mean no limit: it turns practice " +
-				"off. A change lands the next time codeaf starts.",
-			read:  func() string { return moneyValue(resolvedDollars(PracticeBudgetUSDAt(dir))) },
-			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
 		},
 
 		// The two consent rows sit with spending because they answer the same
@@ -2409,20 +2347,6 @@ func (s *Settings) build() []Setting {
 			receipt: s.spentThisSessionReceipt,
 		},
 
-		Setting{
-			Key: KeyPracticeIdle, Category: CategoryPractice, Kind: SettingDuration,
-			Label: "quiet before practice", Env: "CODEAF_PRACTICE_IDLE",
-			Hint:  "how long the room stays quiet before codeaf starts practicing.",
-			read:  func() string { return formatDuration(resolvedDuration(PracticeIdleAt(dir))) },
-			write: func(raw string) error { return writeDuration(dir, KeyPracticeIdle, raw) },
-		},
-		Setting{
-			Key: KeyBriefAfter, Category: CategoryPractice, Kind: SettingDuration,
-			Label: "arrival brief after", Env: "CODEAF_BRIEF_AFTER",
-			Hint:  "how long you have to be away before codeaf greets you with a summary. 0 always briefs.",
-			read:  func() string { return formatDuration(resolvedDuration(BriefAfterAt(dir))) },
-			write: func(raw string) error { return writeDuration(dir, KeyBriefAfter, raw) },
-		},
 		// THE TWO ROWS THAT ARE NOT THE CREW, AND THEN THE CREW'S THREE PINS.
 		// The tiers are what a person configures for the calls codeaf makes on
 		// its own — the name it gives a session, the check on work a task says is
@@ -2558,18 +2482,11 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return ReplyGuardAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyReplyGuard, raw, ReplyGuardModes) },
 		},
-		Setting{
-			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
-			Label: "tenure after", Unit: "clean firings", UnitOne: "clean firing", Env: "CODEAF_TENURE_AFTER",
-			Hint:  "how many clean firings a standing charter needs before it earns tenure.",
-			read:  func() string { return strconv.Itoa(TenureAfterAt(dir)) },
-			write: func(raw string) error { return writeTenure(dir, raw) },
-		},
 		// THE ROW READS THE SAME WAY UP AS ITS KEY, unlike the hints row above:
 		// `update.auto` on means codeaf keeps itself current, and `auto update` on
-		// is that sentence. It is the second row about what this machine does on
-		// its own, so it stands beside `background checks` rather than among the
-		// rows about how the surface draws itself. The offer's own "stop asking"
+		// is that sentence. It is a row about what this machine does on its own,
+		// so it stands with the practice rows rather than among the rows about
+		// how the surface draws itself. The offer's own "stop asking"
 		// writes through [SaveUpdateAuto], which is this row's writer by another
 		// door.
 		Setting{
@@ -2583,16 +2500,6 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeBool(dir, KeyUpdateAuto, raw) },
 		},
 	)
-
-	// THE SECOND ROW THAT IS NOT ALWAYS BUILT, on the divider's law below and
-	// for a plainer reason: on a machine with no timer to install there is
-	// nothing for this switch to switch. A Windows host, a registry built over
-	// a profile that exists only to read defaults out of, a caller that never
-	// opened a standing store — each of them gets a sheet without the row
-	// rather than a row that reads nothing and refuses every write.
-	if s.options.BackgroundChecks != nil {
-		rows = append(rows, s.backgroundRow(s.options.BackgroundChecks))
-	}
 
 	// THE ONE ROW THAT IS NOT ALWAYS BUILT, and it is the exception
 	// [NewSettings] names: a missing seam makes a row read-only, except where
@@ -2771,9 +2678,8 @@ const noLimitWord = NoLimitWord
 // A row whose figure is zero returns NOTHING, which hands the reading to
 // [Setting.EmptyLabel] — the mechanism every other kind of row already uses for
 // its off state, and the one place each rail's own word for zero is written
-// down: `no limit` on the day and the conversation, `never asks` on the consent
-// gate, `practice off` on the carve-out, whose zero switches practice off rather
-// than uncapping it. Two things follow for free, and both are the reason it is
+// down: `no limit` on the day and the conversation, and `never asks` on the
+// consent gate. Two things follow for free, and both are the reason it is
 // spelled this way rather than as a second receipt:
 //
 //   - THE EDIT BOX OPENS EMPTY on a row that holds nothing. Every surface
@@ -3014,65 +2920,6 @@ func modelSlotReading(options SettingsOptions, slot ModelSlot) string {
 	return strings.TrimSpace(value)
 }
 
-// backgroundRow is the `background checks` switch.
-//
-// WHAT IT READS IS DERIVED FROM THE MACHINE AND NEVER FROM THE FILE. The value
-// on disk is what the person last asked for; whether anything is actually
-// checking is a definition on this host, and [standing.Timer.Status] answers it
-// by reading that definition's own bytes. A row that read the file would say
-// `on` over a timer somebody removed with launchctl, in the one place a person
-// went to check — so the file's answer is used for exactly one thing, the
-// launch repair, and never for the sentence in front of you.
-//
-// A status that cannot be read renders as NOTHING, which is the emptiness law:
-// a switch that guessed would be worse than a switch that admits it does not
-// know.
-func (s *Settings) backgroundRow(watch standing.Watch) Setting {
-	dir := s.options.ProfileDir
-	return Setting{
-		Key: KeyStandingBackground, Category: CategoryPractice, Kind: SettingChoice,
-		Label: "background checks", Choices: BackgroundModes,
-		Hint: "whether reminders, watches and routines are checked when no codeaf window " +
-			"is open. On installs one small timer under your own login that runs " +
-			"`codeaf tick` every " + standing.IntervalWords() + " — a launchd agent called " +
-			standing.DarwinTickLabel + " on a Mac, a systemd user timer called " +
-			standing.LinuxTickTimer + " on Linux — and on is the default. Off removes it, and " +
-			"then things are checked only while a window is open. Either way nothing runs " +
-			"while the machine is asleep, and nothing runs when you are not logged in.",
-		read: func() string {
-			status, err := watch.Status()
-			if err != nil {
-				return ""
-			}
-			if status.Installed {
-				return BackgroundOn
-			}
-			return BackgroundOff
-		},
-		write: func(raw string) error {
-			value := strings.ToLower(strings.TrimSpace(raw))
-			if value == "" {
-				value = DefaultBackground
-			}
-			if value != BackgroundOn && value != BackgroundOff {
-				return fmt.Errorf("pick one of: %s", strings.Join(BackgroundModes, ", "))
-			}
-			// THE ANSWER IS WRITTEN DOWN BEFORE THE MACHINE IS TOUCHED, which is
-			// the law the first-item notice keeps too (internal/session's
-			// tools_standing.go): a person whose install half-worked is somebody
-			// this build knows what they asked for, rather than somebody it
-			// quietly does the opposite for at the next launch.
-			if err := writeProfileValue(dir, KeyStandingBackground, value); err != nil {
-				return err
-			}
-			if value == BackgroundOff {
-				return watch.Uninstall(context.Background())
-			}
-			return watch.Install(context.Background())
-		},
-	}
-}
-
 func (s *Settings) splitRow() Setting {
 	options := s.options
 	row := Setting{
@@ -3201,57 +3048,10 @@ func PlanConsentUSDAt(profileDir string) (float64, error) {
 	return DefaultPlanConsentUSD, nil
 }
 
-// PracticeBudgetUSDAt resolves the daily self-practice carve-out.
-func PracticeBudgetUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(env.Get("CODEAF_PRACTICE_BUDGET")); raw != "" {
-		return validateDailyBudgetValue(raw, "CODEAF_PRACTICE_BUDGET")
-	}
-	if value, ok := persistedFloat(profileDir, KeyPracticeBudget); ok && value >= 0 {
-		return value, nil
-	}
-	return DefaultPracticeBudgetUSD, nil
-}
-
-// PracticeIdleAt resolves the quiet period before self-practice.
-func PracticeIdleAt(profileDir string) (time.Duration, error) {
-	return durationAt(profileDir, "CODEAF_PRACTICE_IDLE", KeyPracticeIdle, DefaultPracticeIdle)
-}
-
-// BriefAfterAt resolves the absence that earns an arrival brief.
-func BriefAfterAt(profileDir string) (time.Duration, error) {
-	return durationAt(profileDir, "CODEAF_BRIEF_AFTER", KeyBriefAfter, DefaultBriefAfter)
-}
-
-func durationAt(profileDir, envName, key string, fallback time.Duration) (time.Duration, error) {
-	if raw := strings.TrimSpace(env.Value(envName)); raw != "" {
-		value, err := time.ParseDuration(raw)
-		if err != nil || value < 0 {
-			return 0, fmt.Errorf("%s: want a non-negative duration, got %q", envName, raw)
-		}
-		return value, nil
-	}
-	if value, ok := persistedDuration(profileDir, key); ok {
-		return value, nil
-	}
-	return fallback, nil
-}
-
-// TenureAfterAt resolves the clean-firing count that earns a charter tenure.
-func TenureAfterAt(profileDir string) int {
-	if raw := strings.TrimSpace(env.Get("CODEAF_TENURE_AFTER")); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
-			return value
-		}
-		return DefaultTenureAfter
-	}
-	if value, ok := persistedInt(profileDir, KeyTenureAfter); ok && value > 0 {
-		return value
-	}
-	return DefaultTenureAfter
-}
-
-// The two resolvers that used to sit here — practice_demand_pct and
-// propose_new_skills — are gone with their rows. Nothing in this build read
+// The resolvers that used to sit here — practice_demand_pct and
+// propose_new_skills, and later the v1 scheduler's four (the practice budget
+// and its quiet period, the arrival brief's absence, and tenure) — are gone
+// with their rows. Nothing in this build read
 // either one: the value was resolved, copied onto a Config field, and never
 // looked at again, so the sheet was offering a person a dial wired to nothing.
 // 5.20 is that an affordance which does nothing must not be offered as though
@@ -3409,19 +3209,6 @@ func VisionModelAt(profileDir string) string {
 		return strings.TrimSpace(value)
 	}
 	return ""
-}
-
-// InstallPersistedEnv exports the persisted value of every knob whose only
-// reader is the process environment, so a choice made in the sheet survives a
-// relaunch without a second lookup path. A variable the user actually set is
-// never overwritten — the environment still wins.
-func InstallPersistedEnv(profileDir string) {
-	if strings.TrimSpace(env.Get("CODEAF_TENURE_AFTER")) != "" {
-		return
-	}
-	if value, ok := persistedInt(profileDir, KeyTenureAfter); ok && value > 0 {
-		_ = os.Setenv("CODEAF_TENURE_AFTER", strconv.Itoa(value))
-	}
 }
 
 // ── the web-search rows ─────────────────────────────────────────────────────
@@ -4009,27 +3796,6 @@ func PromptProfileAt(profileDir string) string {
 // caller has to remember (internal/session's memory.go states the law).
 func MemoryEnabledAt(profileDir string) bool {
 	return MemoryAt(profileDir) == MemoryOn
-}
-
-// BackgroundChecksAt resolves the background-checks row to its word, default
-// on. It is the person's INTENT and not a reading of the machine: what the
-// settings row shows is derived from the timer ([Settings.build]), and this is
-// what the row was last told.
-func BackgroundChecksAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyStandingBackground); ok {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return DefaultBackground
-}
-
-// BackgroundChecksWantedAt is [BackgroundChecksAt] as the bool the launch reads
-// before it repairs a timer that has drifted off a program that moved
-// (cmd/codeaf's chatv3_process.go). A person who turned the row off is a person
-// whose machine must stay as they left it.
-func BackgroundChecksWantedAt(profileDir string) bool {
-	return BackgroundChecksAt(profileDir) == BackgroundOn
 }
 
 // ToolApprovalsAt resolves the per-tool exceptions as the person wrote them.
@@ -4638,14 +4404,6 @@ func writeDollars(profileDir, key, raw string) error {
 	return writeProfileValue(profileDir, key, value)
 }
 
-func writeDuration(profileDir, key, raw string) error {
-	value, err := parseDuration(raw)
-	if err != nil {
-		return err
-	}
-	return writeProfileValue(profileDir, key, formatDuration(value))
-}
-
 func writeBool(profileDir, key, raw string) error {
 	value, err := parseBool(raw)
 	if err != nil {
@@ -4918,23 +4676,6 @@ func writeContextReuse(profileDir, raw string) error {
 	return nil
 }
 
-// writeTenure persists the count and exports it, because the standing watch
-// reads the variable at each check: the change lands in this process too.
-func writeTenure(profileDir, raw string) error {
-	value, err := parseCount(raw)
-	if err != nil {
-		return err
-	}
-	if value <= 0 {
-		return fmt.Errorf("that needs to be at least 1")
-	}
-	if err := writeProfileValue(profileDir, KeyTenureAfter, value); err != nil {
-		return err
-	}
-	_ = os.Setenv("CODEAF_TENURE_AFTER", strconv.Itoa(value))
-	return nil
-}
-
 // Parsers. Their errors are the words the row shows under itself, so they read
 // like a person talking rather than a validator.
 
@@ -4960,18 +4701,6 @@ func parseDollars(raw string) (float64, error) {
 	value, err := strconv.ParseFloat(text, 64)
 	if err != nil || value < 0 {
 		return 0, fmt.Errorf("that's not a dollar amount — a number, or none for no limit")
-	}
-	return value, nil
-}
-
-func parseDuration(raw string) (time.Duration, error) {
-	text := strings.TrimSpace(raw)
-	if text == "0" {
-		return 0, nil
-	}
-	value, err := time.ParseDuration(text)
-	if err != nil || value < 0 {
-		return 0, fmt.Errorf("that's not a length of time — try 20m or 4h")
 	}
 	return value, nil
 }
@@ -5035,39 +4764,11 @@ func formatBool(value bool) string {
 	return "off"
 }
 
-// formatDuration writes the shortest honest form: 4h, 20m, 1h30m.
-func formatDuration(value time.Duration) string {
-	if value <= 0 {
-		return "0"
-	}
-	var text strings.Builder
-	if hours := int(value / time.Hour); hours > 0 {
-		fmt.Fprintf(&text, "%dh", hours)
-	}
-	if minutes := int(value % time.Hour / time.Minute); minutes > 0 {
-		fmt.Fprintf(&text, "%dm", minutes)
-	}
-	if seconds := int(value % time.Minute / time.Second); seconds > 0 {
-		fmt.Fprintf(&text, "%ds", seconds)
-	}
-	if text.Len() == 0 {
-		return value.String()
-	}
-	return text.String()
-}
-
 // A row still has to read while the environment holds an unparsable value.
 // The sheet shows the pin and refuses the edit; the reading falls back rather
 // than blanking.
 
 func resolvedDollars(value float64, err error) float64 {
-	if err != nil {
-		return 0
-	}
-	return value
-}
-
-func resolvedDuration(value time.Duration, err error) time.Duration {
 	if err != nil {
 		return 0
 	}
@@ -5128,18 +4829,6 @@ func persistedString(profileDir, key string) (string, bool) {
 	var value string
 	if err := json.Unmarshal(encoded, &value); err != nil {
 		return "", false
-	}
-	return value, true
-}
-
-func persistedDuration(profileDir, key string) (time.Duration, bool) {
-	text, ok := persistedString(profileDir, key)
-	if !ok {
-		return 0, false
-	}
-	value, err := parseDuration(text)
-	if err != nil {
-		return 0, false
 	}
 	return value, true
 }

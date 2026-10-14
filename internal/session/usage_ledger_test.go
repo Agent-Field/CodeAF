@@ -432,12 +432,12 @@ func TestFoldingAChildsTallyWritesNoSecondLedgerLine(t *testing.T) {
 	}
 }
 
-// A standing firing's money belongs to the promise, not to the one-run folder
-// the firing happened in.
-func TestAStandingFiringsLineNamesTheItem(t *testing.T) {
+// An automation's money belongs to the automation, not to the one-run folder
+// the run happened in.
+func TestAnAutomationRunsLineNamesTheAutomation(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
 	agent, _ := ledgerAgent(t, ledger, func(config *Config) {
-		config.standingItemID = "item-6am"
+		config.automationID = "item-6am"
 		config.taskID = 4
 	})
 	var turn Usage
@@ -448,15 +448,15 @@ func TestAStandingFiringsLineNamesTheItem(t *testing.T) {
 	if err != nil || len(lines) != 1 {
 		t.Fatalf("read %d lines, %v", len(lines), err)
 	}
-	if lines[0].Standing != "item-6am" {
-		t.Fatalf("the line names standing %q", lines[0].Standing)
+	if lines[0].Automation != "item-6am" || lines[0].Standing != "" {
+		t.Fatalf("the line names automation %q and standing %q", lines[0].Automation, lines[0].Standing)
 	}
 	if lines[0].Task != "4" {
 		t.Fatalf("the line names task %q, want the node it ran as", lines[0].Task)
 	}
-	// And the subject rollup prefers the promise over the run it spawned.
+	// And the subject rollup prefers the automation over the run it spawned.
 	rows := UsageBySubject(lines)
-	if len(rows) != 1 || rows[0].Kind != SubjectStanding || rows[0].ID != "item-6am" {
+	if len(rows) != 1 || rows[0].Kind != SubjectAutomation || rows[0].ID != "item-6am" {
 		t.Fatalf("the subject rollup is %+v", rows)
 	}
 }

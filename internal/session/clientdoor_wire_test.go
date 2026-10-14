@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/automation"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -592,13 +592,27 @@ func TestTheDocumentReadReachesTheSourceThatServesItsModel(t *testing.T) {
 	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-document-key", "stub/document")
 }
 
-func TestTheStandingRunReachesTheSourceThatServesItsModel(t *testing.T) {
+// clientDoorJudge asks one watch's judgment through a runner whose assembly is
+// cfg — the door the clock's runs go through ([NewAutomationRunner]).
+func clientDoorJudge(t *testing.T, cfg Config) error {
+	t.Helper()
+	runner := NewAutomationRunner(func(string) (Config, error) { return cfg, nil }, t.TempDir())
+	item := automation.Automation{
+		Title: "it", Words: "tell me when it changes",
+		Schedule: automation.Schedule{Every: "15m"},
+		Look:     &automation.Look{Command: "true", Condition: "it changed"},
+		Action:   automation.Action{Say: "it changed"},
+	}
+	_, err := runner.Judge(context.Background(), item, automation.Sight{Text: "unchanged"})
+	return err
+}
+
+func TestTheAutomationJudgmentReachesTheSourceThatServesItsModel(t *testing.T) {
 	server := newClientDoorServer(t, "no — nothing changed")
-	sentinel := NewStandingSentinel(Config{Model: "direct/stub/standing", Sources: directClientDoorSources(server, "direct-standing-key")})
-	if _, _, _, err := sentinel(context.Background(), standing.Judgment{Item: standing.Item{Words: "tell me when it changes"}, Evidence: "unchanged"}); err != nil {
+	if err := clientDoorJudge(t, Config{Model: "direct/stub/judge", Sources: directClientDoorSources(server, "direct-judge-key")}); err != nil {
 		t.Fatal(err)
 	}
-	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-standing-key", "stub/standing")
+	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-judge-key", "stub/judge")
 }
 
 func TestTheMemoryConsolidationReachesTheSourceThatServesItsModel(t *testing.T) {
@@ -670,30 +684,27 @@ func TestADocumentReadSendsTheBareSlugThroughTheSessionsAccount(t *testing.T) {
 	}
 }
 
-// A standing judgment receives the session catalog's list price, so its
+// A watch's judgment receives the session catalog's list price, so its
 // latency request carries the ceiling that prevents the fastest reseller from
 // silently charging several times the published price.
-func TestAStandingPassCarriesTheSessionsPublishedPriceCeiling(t *testing.T) {
+func TestAnAutomationJudgmentCarriesTheSessionsPublishedPriceCeiling(t *testing.T) {
 	server := newClientDoorServer(t, "yes — the evidence changed")
 	establishClientDoorRouter(t, server.URL)
-	sentinel := NewStandingSentinel(Config{
-		Model: "stub/standing-client-door", APIKey: "standing-key", BaseURL: server.URL,
+	if err := clientDoorJudge(t, Config{
+		Model: "stub/judge-client-door", APIKey: "judge-key", BaseURL: server.URL,
 		Routing: provider.RoutingLatency,
 		ModelPrice: func(string) (float64, float64, bool) {
 			return 0.0000004, 0.0000016, true
 		},
-	})
-	if _, _, _, err := sentinel(context.Background(), standing.Judgment{
-		Item: standing.Item{Words: "tell me when it changes"}, Evidence: "it changed",
 	}); err != nil {
-		t.Fatalf("standing judgment: %v", err)
+		t.Fatalf("automation judgment: %v", err)
 	}
 	call := server.call(t, 0)
-	if call.authorization != "Bearer standing-key" {
+	if call.authorization != "Bearer judge-key" {
 		t.Fatalf("Authorization = %q, want the session's bearer", call.authorization)
 	}
 	if !clientDoorHasCeiling(t, call) {
-		t.Fatalf("standing request carried no provider.max_price; its provider preferences were %s", call.body["provider"])
+		t.Fatalf("the judgment carried no provider.max_price; its provider preferences were %s", call.body["provider"])
 	}
 }
 
@@ -775,17 +786,14 @@ func TestTheSessionClientDoorsLeaveAnOrdinaryRequestAlone(t *testing.T) {
 		assertOrdinaryClientDoorCall(t, server.call(t, 0), "plain-document-key", "stub/plain-document")
 	})
 
-	t.Run("standing", func(t *testing.T) {
+	t.Run("automation", func(t *testing.T) {
 		server := newClientDoorServer(t, "no — nothing changed")
-		sentinel := NewStandingSentinel(Config{
-			Model: "stub/plain-standing", APIKey: "plain-standing-key", BaseURL: server.URL,
-		})
-		if _, _, _, err := sentinel(context.Background(), standing.Judgment{
-			Item: standing.Item{Words: "tell me when it changes"}, Evidence: "unchanged",
+		if err := clientDoorJudge(t, Config{
+			Model: "stub/plain-judge", APIKey: "plain-judge-key", BaseURL: server.URL,
 		}); err != nil {
-			t.Fatalf("standing judgment: %v", err)
+			t.Fatalf("automation judgment: %v", err)
 		}
-		assertOrdinaryClientDoorCall(t, server.call(t, 0), "plain-standing-key", "stub/plain-standing")
+		assertOrdinaryClientDoorCall(t, server.call(t, 0), "plain-judge-key", "stub/plain-judge")
 	})
 
 	t.Run("memory", func(t *testing.T) {

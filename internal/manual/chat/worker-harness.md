@@ -501,10 +501,10 @@ stop it`.
 ## Does the chat know what is running while I talk to it
 
 It does, while a run is live. Everything you send arrives with the run's rows in
-front of it — a plain sentence, a message with pictures attached, and a draft you
-marked standing alike: one line per task, the number you see on the side list,
-its title, its state in the side list's own words (`queued`, `running`, `done`,
-`stopped`, `incomplete`, `your call`), and the newest note left on it. You never
+front of it — a plain sentence and a message with pictures attached alike: one
+line per task, the number you see on the side list, its title, its state in the
+side list's own words (`queued`, `running`, `done`, `stopped`, `incomplete`,
+`your call`), and the newest note left on it. You never
 see that block — the conversation reads it, and your own sentence is what stays
 on the screen and in the transcript.
 

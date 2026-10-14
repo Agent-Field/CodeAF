@@ -172,6 +172,11 @@ type Memory struct {
 	UpdatedSeq    int64
 	SourceSession string
 	SourceSeq     int64
+	// Always is the person's RULE: a memory put in front of every conversation
+	// turn and every task brief at its owner's scope, rather than recalled when
+	// a router judges it relevant (memory_always.go). False is today's memory,
+	// which is every row written before the flag existed.
+	Always bool
 }
 
 // MemoryStub is one line of the router's shortlist: enough to decide whether a
@@ -210,7 +215,8 @@ CREATE TABLE IF NOT EXISTS memories (
     created_seq    INTEGER NOT NULL,
     updated_seq    INTEGER NOT NULL,
     source_session TEXT NOT NULL DEFAULT '',
-    source_seq     INTEGER NOT NULL DEFAULT 0
+    source_seq     INTEGER NOT NULL DEFAULT 0,
+    always_on      INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS memories_status_updated ON memories (status, updated_seq DESC);
 CREATE INDEX IF NOT EXISTS memories_status_scope ON memories (status, scope, updated_seq DESC);
@@ -220,7 +226,9 @@ CREATE INDEX IF NOT EXISTS memories_status_scope ON memories (status, scope, upd
 -- that does not exist yet — which is exactly the open that failed with
 -- "no such column: owner" on every store already on disk. It is created by
 -- [migrateMemoriesOwner], beside the column it indexes, on both a legacy store
--- and a brand new one.
+-- and a brand new one. THE ALWAYS INDEX IS NOT HERE EITHER, for the same reason
+-- twice over: it names owner AND always_on, and a store written before either
+-- existed has neither when this runs ([migrateMemoriesAlways]).
 `
 
 const memoriesFTSSchema = `
@@ -282,6 +290,11 @@ type memoryPayload struct {
 	Text          string   `json:"text"`
 	Tags          []string `json:"tags,omitempty"`
 	SourceSession string   `json:"source_session,omitempty"`
+	// Always rides the add and the supersede that create a row, so a replay
+	// lands a rule as a rule. It is omitted when false, which is every payload
+	// journaled before the flag existed and every recalled memory since: the
+	// journal of a store that has no rules reads byte for byte as it always did.
+	Always bool `json:"always,omitempty"`
 }
 
 type memoryUpdatePayload struct {
@@ -389,6 +402,7 @@ func (s *Store) addMemory(m Memory, sourceSession string) (Memory, error) {
 		Title: payload.Title, Text: payload.Text, Tags: payload.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
 		SourceSession: payload.SourceSession, SourceSeq: memorySourceSeq(payload.SourceSession, seq),
+		Always: payload.Always,
 	}, nil
 }
 
@@ -465,7 +479,8 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	defer tx.Rollback()
 
 	var oldOwner string
-	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner); err != nil {
+	var oldAlways bool
+	if err := tx.QueryRow(`SELECT owner, always_on FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner, &oldAlways); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Memory{}, fmt.Errorf("supersede memory: %w: target must be active", ErrInvalid)
 		}
@@ -474,6 +489,8 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	if oldOwner != fresh.Owner {
 		return Memory{}, fmt.Errorf("supersede memory: %w: replacement must keep the target owner", ErrInvalid)
 	}
+	// A RULE SAID BETTER IS STILL A RULE ([keepsTheRule] says why).
+	fresh.Always = keepsTheRule(oldAlways, fresh.Always)
 
 	var exists int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, fresh.ID).Scan(&exists); err != nil {
@@ -499,6 +516,7 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 		Title: fresh.Title, Text: fresh.Text, Tags: fresh.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
 		SourceSession: fresh.SourceSession, SourceSeq: memorySourceSeq(fresh.SourceSession, seq),
+		Always: fresh.Always,
 	}, nil
 }
 
@@ -592,7 +610,8 @@ func supersedeMemoryForOwnersTx(tx *sql.Tx, fts bool, owners []string, oldID str
 		return Memory{}, fmt.Errorf("supersede memory: %w: %q is not an active memory this session can see", ErrInvalid, oldID)
 	}
 	var oldOwner string
-	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner); err != nil {
+	var oldAlways bool
+	if err := tx.QueryRow(`SELECT owner, always_on FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner, &oldAlways); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Memory{}, fmt.Errorf("supersede memory: %w: target must be active", ErrInvalid)
 		}
@@ -601,6 +620,7 @@ func supersedeMemoryForOwnersTx(tx *sql.Tx, fts bool, owners []string, oldID str
 	if oldOwner != fresh.Owner {
 		return Memory{}, fmt.Errorf("supersede memory: %w: replacement must keep the target owner", ErrInvalid)
 	}
+	fresh.Always = keepsTheRule(oldAlways, fresh.Always)
 	var exists int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, fresh.ID).Scan(&exists); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
@@ -622,6 +642,7 @@ func supersedeMemoryForOwnersTx(tx *sql.Tx, fts bool, owners []string, oldID str
 		Title: fresh.Title, Text: fresh.Text, Tags: fresh.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
 		SourceSession: fresh.SourceSession, SourceSeq: memorySourceSeq(fresh.SourceSession, seq),
+		Always: fresh.Always,
 	}, nil
 }
 
@@ -1079,6 +1100,11 @@ const rrfK = 60
 // shorter than the index keeps — is not an error and not an empty answer: the
 // two arithmetic orderings still rank, so a person who types "ok, do it" is
 // still shown what has mattered most and what changed last.
+//
+// A RULE IS NEVER A CANDIDATE. A memory marked always is already in front of
+// every turn at its scope ([Store.AlwaysMemories]), so offering it to the router
+// again would spend one of eight places on a line the model is already reading
+// and inject it twice when the router picked it.
 func (s *Store) MemoryCandidates(owners []string, terms string, limit int) ([]MemoryStub, error) {
 	if len(owners) == 0 {
 		return nil, fmt.Errorf("memory candidates: %w: no owner was named", ErrInvalid)
@@ -1107,7 +1133,7 @@ func (s *Store) MemoryCandidates(owners []string, terms string, limit int) ([]Me
 	statement := `
 		WITH active AS (
 			SELECT id, title, type, scope, use_count, miss_count, updated_seq
-			FROM memories WHERE status = ?` + where + `
+			FROM memories WHERE status = ? AND always_on = 0` + where + `
 		),
 		lexical AS (` + lexical + `),
 		important AS (
@@ -1353,7 +1379,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 		SELECT memories.id, memories.owner, memories.type, memories.scope, memories.title,
 		       memories.text, memories.tags, memories.status, memories.use_count,
 		       memories.miss_count, memories.created_seq, memories.updated_seq,
-		       memories.source_session, memories.source_seq,
+		       memories.source_session, memories.source_seq, memories.always_on,
 		       COALESCE((SELECT ts FROM events WHERE seq = memories.updated_seq), '')
 		FROM memories ` + where
 	if order != "" {
@@ -1375,7 +1401,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 		if err := rows.Scan(&memory.ID, &memory.Owner, &memory.Type, &memory.Scope, &memory.Title,
 			&memory.Text, &tags, &memory.Status, &memory.UseCount, &memory.MissCount,
 			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq,
-			&updatedAt); err != nil {
+			&memory.Always, &updatedAt); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(tags), &memory.Tags); err != nil {
@@ -1411,10 +1437,11 @@ func applyMemoryAdd(tx *sql.Tx, payload memoryPayload, seq int64, fts bool) erro
 		return err
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO memories (id, owner, type, scope, title, text, tags, status, use_count, created_seq, updated_seq, source_session, source_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+		INSERT INTO memories (id, owner, type, scope, title, text, tags, status, use_count, created_seq, updated_seq, source_session, source_seq, always_on)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
 		payload.ID, payload.Owner, payload.Type, payload.Scope, payload.Title, payload.Text,
-		tags, MemoryActive, seq, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq)); err != nil {
+		tags, MemoryActive, seq, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq),
+		payload.Always); err != nil {
 		return err
 	}
 	return refreshMemoryFTS(tx, payload.ID, fts)
@@ -1634,6 +1661,11 @@ func memoryPayloadFrom(m Memory) (memoryPayload, error) {
 		Title: title,
 		Text:  text,
 		Tags:  tags,
+		// A RULE NOBODY CAN PROVE THE PLACE OF IS NOT A RULE. The quarantine is
+		// never put in front of anything ([OwnerLegacyProject]), so a row landing
+		// there keeps its words and drops the flag rather than claiming a reach
+		// it cannot have.
+		Always: m.Always && owner != OwnerLegacyProject,
 	}, nil
 }
 

@@ -25,3 +25,16 @@ func (a *Agent) Forget(query string) (string, error) { return a.c.ForgetQuery(qu
 func (a *Agent) Memories(query string) ([]session.MemoryLine, error) {
 	return a.c.Memories(query)
 }
+
+// RememberAlways keeps one rule through the conversation's own engine, for the
+// reason Remember does: that engine's project decides where the rule holds, and
+// a surface that kept it in a local brain would be keeping it somewhere the
+// conversation never reads.
+func (a *Agent) RememberAlways(text string, everywhere bool) (string, error) {
+	return a.c.RememberAlways(text, everywhere)
+}
+
+// AlwaysMemories lists the rules in force for the connected conversation.
+func (a *Agent) AlwaysMemories(everywhere bool) ([]session.MemoryLine, error) {
+	return a.c.AlwaysMemories(everywhere)
+}

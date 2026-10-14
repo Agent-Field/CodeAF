@@ -16,7 +16,7 @@ import (
 // ── an approval asked inside an exchange ─────────────────────────────────────
 //
 // The errand's session is built with the gate allowed to ASK (cmd/codeaf's
-// chatv3_local.go sets AskConsent on it, because its own standing card needs
+// chatv3_local.go sets AskConsent on it, because its own automation card needs
 // the same door), so a call the policy grades PROMPT emits
 // session.EventConsentRequest on the errand's own stream and then BLOCKS until
 // that agent is answered (internal/session's consent.go). Nothing else in this
@@ -179,7 +179,7 @@ func spentStream() <-chan session.Event {
 // drawn in.
 //
 // IT USED TO HAVE NOWHERE TO BE ANSWERED. errandEvent folded text, tools, the
-// standing card and the turn's end, and let EventConsentRequest fall through —
+// automation card and the turn's end, and let EventConsentRequest fall through —
 // so the session sat blocked on a question no screen drew, the row said
 // `working` with its clock counting up for as long as the window was open, and
 // a `1` pressed at it was typed into the follow-up box.
@@ -447,7 +447,7 @@ func TestAClickOnTheCardsAnswerInThePaneTakesIt(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 	a := lab.app(mine, []session.Event{
-		standingProposal(7, "remind me at 6 to leave"),
+		automationProposal(7, "remind me at 6 to leave"),
 		{Kind: session.EventTurnDone},
 	})
 	besideTheList(a)
@@ -465,16 +465,16 @@ func TestAClickOnTheCardsAnswerInThePaneTakesIt(t *testing.T) {
 	}
 	no := -1
 	for i, option := range ex.ask.question.Options {
-		if strings.TrimSpace(option.Key) == session.StandingNoKey {
+		if strings.TrimSpace(option.Key) == session.AutomationNoKey {
 			no = i
 		}
 	}
-	if no < 0 || no >= len(answers) || !strings.Contains(answers[no], session.StandingNoKey) {
+	if no < 0 || no >= len(answers) || !strings.Contains(answers[no], session.AutomationNoKey) {
 		t.Fatalf("the card's no is not drawn at its target: answers %q", answers)
 	}
 	readCard(t, a)
 	spend(t, a, a.exchangePress(0, ex.askAt[no]))
-	if len(lab.agent.answered) != 1 || lab.agent.answered[0].Approved || lab.agent.answered[0].Once {
+	if len(lab.agent.answered) != 1 || lab.agent.answered[0].FirstKey() != session.AutomationNoKey {
 		t.Fatalf("a press on the card's no answered %+v", lab.agent.answered)
 	}
 }

@@ -21,9 +21,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -35,8 +36,8 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	// believed for three heartbeats measured against the wall — so a fixture
 	// seeded at a pinned instant is a fixture whose conversations are all dead
 	// before the first assertion. What must NOT depend on where in the day this
-	// runs is the day-bucketed half — the standing ledger's today and the spend
-	// page's fourteen-day axis — and that is
+	// runs is the day-bucketed half — the automations' fortnight of runs and the
+	// spend page's fourteen-day axis — and that is
 	// [TestTheDemoHomesLedgersStayInsideTheirOwnDays], which pins both sides of
 	// midnight instead.
 	now := time.Now()
@@ -199,43 +200,8 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 		t.Fatalf("the record holds %d running and %d landed rows; the page wants both sections", running, landed)
 	}
 
-	// ── standing: the four states the page draws ──────────────────────────────
-	orders, err := standing.Open(filepath.Join(dir, ".codeaf", "v3", "standing"))
-	if err != nil {
-		t.Fatalf("open the standing store: %v", err)
-	}
-	items, err := orders.List()
-	if err != nil {
-		t.Fatalf("list the standing orders: %v", err)
-	}
-	if len(items) != built.Standing {
-		t.Fatalf("the standing store holds %d items out of %d written", len(items), built.Standing)
-	}
-	asking, fired, paused, held := 0, 0, 0, 0
-	for _, item := range items {
-		switch {
-		case item.NeedsPerson != "":
-			asking++
-		case item.Status == standing.StatusPaused:
-			paused++
-		case item.When.Kind == standing.WhenHold:
-			held++
-		}
-		if item.CleanRuns > 0 && item.LastCheckLine != "" {
-			fired++
-		}
-	}
-	if asking == 0 || fired == 0 || paused == 0 || held == 0 {
-		t.Fatalf("the standing page wants one of each and has asking=%d fired=%d paused=%d rule=%d",
-			asking, fired, paused, held)
-	}
-	spend, err := orders.Today("", now)
-	if err != nil {
-		t.Fatalf("read today's standing ledger: %v", err)
-	}
-	if spend.USD <= 0 {
-		t.Fatal("nothing standing has spent anything today, so cost per firing draws nothing")
-	}
+	// ── automations: every kind and state, and a fortnight of runs ────────────
+	automationIDs := assertAutomations(t, dir, now, built, rows)
 
 	// ── memory: three shelves, both counters, and one let go ──────────────────
 	brain, err := store.Open(filepath.Join(dir, ".codeaf", "graph.db"))
@@ -283,13 +249,17 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 		t.Fatalf("the ledger holds %d lines out of %d written", len(lines), built.UsageLines)
 	}
 	models, days := map[string]bool{}, map[string]bool{}
-	conversations, work, standingSpend := 0, 0, 0
+	conversations, work, automationSpend := 0, 0, 0
 	for _, line := range lines {
 		models[line.Model] = true
 		days[line.Day] = true
 		switch {
-		case line.Standing != "":
-			standingSpend++
+		case line.Automation != "":
+			automationSpend++
+			// The id joins: a line about an automation names one the store holds.
+			if !automationIDs[line.Automation] {
+				t.Fatalf("a ledger line names the automation %q, which the store does not hold", line.Automation)
+			}
 		case line.Task != "":
 			work++
 		case line.Session != "":
@@ -305,9 +275,9 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	if len(days) < usageDays-1 {
 		t.Fatalf("the spend page's day axis has %d days on it, want about %d", len(days), usageDays)
 	}
-	if conversations == 0 || work == 0 || standingSpend == 0 {
-		t.Fatalf("the `what it was for` column wants all three subjects and has conversations=%d work=%d standing=%d",
-			conversations, work, standingSpend)
+	if conversations == 0 || work == 0 || automationSpend == 0 {
+		t.Fatalf("the `what it was for` column wants all three subjects and has conversations=%d work=%d automations=%d",
+			conversations, work, automationSpend)
 	}
 
 	// ── search: a query a person would actually type finds a conversation ─────
@@ -337,6 +307,138 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	}
 }
 
+// assertAutomations reads the automations store back the way a window does and
+// insists on everything the list, a history and a conversation's lines need:
+// every kind and state, every outcome, a late run, an origin whose lines land,
+// and nothing left in hand. It answers the ids, which the ledger's lines must
+// name.
+func assertAutomations(t *testing.T, dir string, now time.Time, built builtHome, rows []session.SessionRow) map[string]bool {
+	t.Helper()
+	autos, err := automation.Open(filepath.Join(dir, ".codeaf", "v3", "automations"))
+	if err != nil {
+		t.Fatalf("open the automations store: %v", err)
+	}
+	defer autos.Close()
+	list, err := autos.List()
+	if err != nil {
+		t.Fatalf("list the automations: %v", err)
+	}
+	if len(list) != built.Automations {
+		t.Fatalf("the automations store holds %d automations out of %d written", len(list), built.Automations)
+	}
+	byTranscript := map[string]session.SessionRow{}
+	for _, row := range rows {
+		byTranscript[row.Transcript] = row
+	}
+	kinds := map[automation.Kind]int{}
+	outcomes := map[automation.Outcome]int{}
+	automationIDs := map[string]bool{}
+	cron, worktree, command, files, once, paused, origins, landing, late, runs := 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+	for _, item := range list {
+		automationIDs[item.ID] = true
+		kinds[item.Kind()]++
+		if item.Schedule.Repeats() && item.Schedule.Interval() == 0 {
+			cron++
+		}
+		if item.Worktree {
+			worktree++
+		}
+		if look := item.Look; look != nil {
+			if look.Command != "" {
+				command++
+			}
+			if look.Files != "" {
+				files++
+			}
+			if look.Once {
+				once++
+			}
+		}
+		if item.Status == automation.StatusPaused {
+			paused++
+		}
+		// AN ACTIVE AUTOMATION WAKES AFTER NOW. One that was due already would
+		// be a slot no window ever took, and the demo starts no clock to take it.
+		if item.Status == automation.StatusActive && !item.Next.After(now) {
+			t.Fatalf("%q is active and was due at %s, before the home was built", item.Title, item.Next)
+		}
+		history, err := autos.Runs(item.ID, 1000)
+		if err != nil {
+			t.Fatalf("read the history of %q: %v", item.Title, err)
+		}
+		for _, run := range history {
+			runs++
+			outcomes[run.Outcome]++
+			if run.Late() > 0 {
+				late++
+			}
+			if run.Phase != automation.PhaseOver || run.Started.Before(run.Due) || run.Finished.Before(run.Started) || run.Finished.After(now) {
+				t.Fatalf("a run of %q is not one finished run before now: %+v", item.Title, run)
+			}
+			// A run's transcript is the folder its session ran in, and a folder
+			// that is not there is a door that opens on nothing.
+			if run.Transcript != "" {
+				if _, spoken := session.Peek(filepath.Join(run.Transcript, "transcript.jsonl")); !spoken {
+					t.Fatalf("a run of %q names a transcript session.Peek cannot read: %s", item.Title, run.Transcript)
+				}
+			}
+		}
+		// THE ORIGIN IS A CONVERSATION THAT IS REALLY THERE, and its lines land:
+		// what a window draws on opening it is the delivered runs among the
+		// newest ten that ended after the person was last in it
+		// (internal/tui3's automationsAway).
+		if item.Origin.Transcript == "" {
+			continue
+		}
+		origins++
+		row, ok := byTranscript[item.Origin.Transcript]
+		if !ok || row.ID != item.Origin.SessionID {
+			t.Fatalf("%q was made in %s, which home does not read as a conversation", item.Title, item.Origin.Transcript)
+		}
+		meta, err := session.LoadMeta(row.Dir)
+		if err != nil {
+			t.Fatalf("read the conversation %q made in: %v", item.Title, err)
+		}
+		newest, err := autos.Runs(item.ID, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, run := range newest {
+			if run.Outcome.Delivered() && run.Finished.After(meta.LastUserAt) {
+				landing++
+			}
+		}
+	}
+	if kinds[automation.KindReminder] == 0 || kinds[automation.KindWork] < 2 || kinds[automation.KindWatch] < 2 {
+		t.Fatalf("the list wants every kind and has %v", kinds)
+	}
+	if cron == 0 || worktree == 0 || command == 0 || files == 0 || once == 0 || paused == 0 {
+		t.Fatalf("the list wants a cron rhythm, worktree work, a command watch, a files watch, a once-watch and a pause, and has "+
+			"cron=%d worktree=%d command=%d files=%d once=%d paused=%d", cron, worktree, command, files, once, paused)
+	}
+	if runs != built.AutomationRuns {
+		t.Fatalf("the store holds %d runs out of %d written", runs, built.AutomationRuns)
+	}
+	for _, outcome := range []automation.Outcome{
+		automation.OutcomeDone, automation.OutcomeQuiet, automation.OutcomeYourCall,
+		automation.OutcomeIncomplete, automation.OutcomeStopped, automation.OutcomeUnchecked,
+	} {
+		if outcomes[outcome] == 0 {
+			t.Fatalf("no run came to %q, so a history never draws %q: %v", outcome, outcome.Word(), outcomes)
+		}
+	}
+	if late == 0 {
+		t.Fatal("no run is late, so a history never draws `late`")
+	}
+	if origins == 0 || landing == 0 {
+		t.Fatalf("%d automations name the conversation they were made in and %d runs have a line waiting there", origins, landing)
+	}
+	if active, err := autos.Active(); err != nil || len(active) != 0 {
+		t.Fatalf("the demo home has runs in hand that no clock will ever finish: %+v, %v", active, err)
+	}
+	return automationIDs
+}
+
 // A demo home must be safe to build, which means it writes inside the directory
 // it was given and nowhere else — least of all into the state root of the person
 // running it, which is the whole reason this program exists.
@@ -355,6 +457,36 @@ func TestTheDemoHomeSeedsNothingOutsideTheDirectoryItWasGiven(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("seeding wrote %d things into the state root it was not given: %+v", len(entries), entries)
+	}
+}
+
+// NO AUTOMATION RUNS IN A DEMO HOME. Its automations are invented and the clock
+// would run them for real — unattended sessions on the person's own key — so
+// every way into the demo carries the variable that keeps a window from
+// starting one. The second half is the contract with internal/automation: if
+// that package stops reading this variable, the demo starts spending again, and
+// this is where that is caught rather than on somebody's bill.
+func TestTheDemoHomeNeverStartsTheAutomationsClock(t *testing.T) {
+	found := false
+	for _, entry := range demoEnviron() {
+		if entry == demoNoClock+"=1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the demo launch's environment does not carry %s=1", demoNoClock)
+	}
+	// The variable, and nothing else, is what decides: with it empty — in both
+	// of the spellings internal/env reads — the same codeaf may start a clock.
+	binary := filepath.Join(t.TempDir(), "codeaf")
+	t.Setenv(demoNoClock, "")
+	t.Setenv(env.Legacy(demoNoClock), "")
+	if !automation.Startable(binary) {
+		t.Fatalf("a codeaf with %s unset may not start a clock either, so this test proves nothing", demoNoClock)
+	}
+	t.Setenv(demoNoClock, "1")
+	if automation.Startable(binary) {
+		t.Fatalf("%s=1 no longer keeps a window from starting the clock, so opening the demo would run its invented work", demoNoClock)
 	}
 }
 
@@ -455,6 +587,12 @@ func TestTheDemoHomeRefusesADirectoryThatIsNotItsOwn(t *testing.T) {
 // this test chooses rather than instants it happens to run at. Nothing here
 // reads a presence file: liveness is the other test's business and is the one
 // thing that genuinely needs the wall clock.
+//
+// The automations' history is the other thing the hour moves. Which slots fell
+// before now — today's nine o'clock sweep, the evening reminder — depends on
+// when the home is built, and every run's outcome is assigned newest first, so
+// an hour that left a run out would shift every outcome along by one. The same
+// three instants hold it to the same bar as noon.
 func TestTheDemoHomesLedgersStayInsideTheirOwnDays(t *testing.T) {
 	day := time.Now()
 	for _, moment := range []struct {
@@ -472,17 +610,12 @@ func TestTheDemoHomesLedgersStayInsideTheirOwnDays(t *testing.T) {
 				t.Fatalf("seed the demo home: %v", err)
 			}
 
-			orders, err := standing.Open(filepath.Join(dir, ".codeaf", "v3", "standing"))
-			if err != nil {
-				t.Fatalf("open the standing store: %v", err)
-			}
-			spend, err := orders.Today("", moment.at)
-			if err != nil {
-				t.Fatalf("read today's standing ledger: %v", err)
-			}
-			if spend.USD <= 0 {
-				t.Fatal("nothing standing has spent anything today, so cost per firing draws nothing")
-			}
+			// THE AUTOMATIONS' FORTNIGHT IS MEASURED FROM THE SAME NOW, so it is
+			// held to the same instants: every run over before the home was built,
+			// every active automation waking after it, and the whole set of
+			// outcomes still there whichever runs the hour of the day left out.
+			assertAutomations(t, dir, moment.at, built,
+				session.ReadWorld(filepath.Join(dir, ".codeaf", "v3", "projects")).Sessions())
 
 			lines, err := session.ReadUsage(filepath.Join(dir, ".codeaf", "v3", session.UsageLedgerName), time.Time{})
 			if err != nil {

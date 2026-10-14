@@ -6,14 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 type switcherLab struct {
 	world session.World
-	items map[string][]StandingItemView
-	fired []StandingItemView
+	autos []automation.Automation
 	seen  time.Time
 	now   time.Time
 	here  string
@@ -43,20 +42,26 @@ func newSwitcherLab() switcherLab {
 		beta.Sessions = append(beta.Sessions, row)
 	}
 	beta.Sessions = append(beta.Sessions, session.SessionRow{ID: "gone", Title: "Archived chat", Archived: true, At: now})
-	standingAsk := standing.Item{ID: "stand-ask", Words: "Standing question", NeedsPerson: "send the digest?", Updated: now.Add(-8 * time.Hour)}
-	fired := standing.Item{ID: "stand-fired", Words: "Morning watch", LastFired: now.Add(-time.Hour), LastChecked: now.Add(-time.Hour), LastCheckLine: "nothing had changed", LastOutcome: standing.OutcomeNothing}
+	// AN AUTOMATION THAT RAN WHILE NOBODY WAS LOOKING, and one whose only run
+	// was before the last look and is therefore not news.
+	ran := automation.Automation{ID: "auto-ran", Title: "Morning digest",
+		Last: &automation.Run{Phase: automation.PhaseOver, Outcome: automation.OutcomeDone, Line: "three new invoices", Finished: now.Add(-time.Hour)}}
+	stale := automation.Automation{ID: "auto-stale", Title: "Yesterday's check",
+		Last: &automation.Run{Phase: automation.PhaseOver, Outcome: automation.OutcomeDone, Line: "old news", Finished: now.Add(-20 * time.Hour)}}
+	quiet := automation.Automation{ID: "auto-quiet", Title: "Quiet watch",
+		Last: &automation.Run{Phase: automation.PhaseOver, Outcome: automation.OutcomeQuiet, Finished: now.Add(-time.Minute)}}
 	return switcherLab{
 		world: session.World{Projects: []session.Project{beta, alpha}, Read: now}, now: now, seen: seen, here: asking.Dir,
-		items: map[string][]StandingItemView{alpha.Dir: {{Item: standingAsk}}, beta.Dir: {{Item: fired}}},
+		autos: []automation.Automation{ran, stale, quiet},
 	}
 }
 
 func (l switcherLab) read(ledger switcherLedgerInput) switcherReading {
-	return readSwitcher(l.world, l.items, l.fired, switcherHere{session: l.here}, l.gone, l.seen, l.now, ledger)
+	return readSwitcher(l.world, l.autos, switcherHere{session: l.here}, l.gone, l.seen, l.now, ledger)
 }
 
 // switcherStops is every row the reading hands the grid: the `since you left`
-// lines, then the ranked conversations and standing things.
+// lines, then the ranked conversations.
 func switcherStops(r switcherReading) []switcherRow {
 	return append(append([]switcherRow(nil), r.ledger...), r.rows...)
 }
@@ -83,13 +88,13 @@ func switcherRowByID(t *testing.T, r switcherReading, id string) switcherRow {
 	return switcherRow{}
 }
 
-// WHAT WANTS THE PERSON FIRST: a question (a watch's before a chat's, the
-// longer wait first), then what is moving, then the rest — each row carrying the
-// note its panel draws, and nothing archived.
+// WHAT WANTS THE PERSON FIRST: a question (the longer wait first), then what is
+// moving, then the rest — each row carrying the note its panel draws, and
+// nothing archived.
 func TestTheSwitcherRanksEveryKindOfThingByWhatWantsThePerson(t *testing.T) {
 	lab := newSwitcherLab()
 	r := lab.read(switcherLedgerInput{})
-	want := []string{"Standing question", "Asking Chat", "Running Chat"}
+	want := []string{"Asking Chat", "Running Chat"}
 	for i, title := range want {
 		if r.rows[i].title != title {
 			t.Fatalf("row %d is %q, want %q", i, r.rows[i].title, title)
@@ -106,26 +111,6 @@ func TestTheSwitcherRanksEveryKindOfThingByWhatWantsThePerson(t *testing.T) {
 	}
 }
 
-// A WATCH STOPPED FOR PERMISSION IS SAID, NOT ASKED. The line a refusal leaves
-// on an item is already a whole sentence about it, and the ask word used to put
-// `asks: stopped` on a row where nobody asked anything. Both spellings of a
-// refusal go through standing.IsPermissionLine, the one predicate for which of
-// the two things NeedsPerson carries a line is.
-func TestAWatchStoppedForPermissionIsSaidNotAsked(t *testing.T) {
-	for _, line := range []string{
-		standing.NeedsPermissionLead + "bash",
-		"needs approval but no resolver is attached: default",
-	} {
-		view := StandingItemView{Item: standing.Item{
-			ID: "w-stop", Words: "watch the lockfile", Status: standing.StatusActive,
-			NeedsPerson: line,
-		}}
-		if got := switcherStandingNote(view); got != line {
-			t.Fatalf("the row puts the ask word over a line nobody asked: got %q, want the line bare %q", got, line)
-		}
-	}
-}
-
 // FILES ARE NEWS ONLY AFTER THEIR ROW LANDS. A run started after the last look
 // but still carrying no ending is not counted as change since that look; the
 // same row becomes news once its closing row dates the landing.
@@ -138,7 +123,7 @@ func TestARunningRunIsNotNewsSinceTheLastLook(t *testing.T) {
 			Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{entry}},
 		}
 		world := session.World{Projects: []session.Project{{Name: "pricing", Dir: "/pricing", Sessions: []session.SessionRow{row}}}}
-		reading := readSwitcher(world, nil, nil, switcherHere{}, nil, seen, now, switcherLedgerInput{})
+		reading := readSwitcher(world, nil, switcherHere{}, nil, seen, now, switcherLedgerInput{})
 		for _, stop := range switcherStops(reading) {
 			if stop.kind == switcherConversation {
 				return stop.note
@@ -162,22 +147,28 @@ func TestARunningRunIsNotNewsSinceTheLastLook(t *testing.T) {
 }
 
 // THE LEDGER'S LINES ARE DOORS: each one names the place that owns it, and
-// only what was recorded — a watch's own last-look sentence, what memory said,
-// the work that landed — is a line at all.
+// only what was recorded — an automation's run that ended since the last look,
+// what memory said, the work that landed — is a line at all. A run from before
+// the look is not news, and a watch's quiet look is never news.
 func TestTheSwitcherSinceYouLeftLedgerDrawsOnlyRecordedDoors(t *testing.T) {
 	lab := newSwitcherLab()
 	r := lab.read(switcherLedgerInput{learned: 2, letGo: 1})
 	words := switcherWords(r.ledger)
-	for _, word := range []string{"nothing had changed", "learned 2 things, let go of 1", "Landed Chat", "Saved Run"} {
+	for _, word := range []string{"Morning digest · done · three new invoices", "learned 2 things, let go of 1", "Landed Chat", "Saved Run"} {
 		if !strings.Contains(words, word) {
 			t.Fatalf("ledger lost %q:\n%s", word, words)
+		}
+	}
+	for _, word := range []string{"Yesterday's check", "Quiet watch"} {
+		if strings.Contains(words, word) {
+			t.Fatalf("the ledger called %q news:\n%s", word, words)
 		}
 	}
 	doors := map[string]bool{}
 	for _, row := range r.ledger {
 		doors[row.place] = true
 	}
-	for _, door := range []string{"standing", "memory", "activity"} {
+	for _, door := range []string{placeAutomationsWord, "memory", "activity"} {
 		if !doors[door] {
 			t.Fatalf("%s was not a ledger door", door)
 		}
@@ -196,7 +187,7 @@ func TestTheSwitcherOnAQuietMorningClaimsNothing(t *testing.T) {
 			row.Tasks.Running = 0
 		}
 	}
-	lab.items = nil
+	lab.autos = nil
 	lab.seen = lab.now
 	r := lab.read(switcherLedgerInput{})
 	for _, row := range r.rows {
@@ -210,16 +201,10 @@ func TestTheSwitcherOnAQuietMorningClaimsNothing(t *testing.T) {
 }
 
 // A ROW'S VERBS ARE THE DOORS IT DESCRIBES: a question's own answers on their
-// own keys, a conversation's folder doors, a watch's pause.
+// own keys, and a conversation's folder doors.
 func TestSwitcherStopsAndVerbsCarryTheDoorTheyDescribe(t *testing.T) {
 	lab := newSwitcherLab()
 	r := lab.read(switcherLedgerInput{})
-	var standingRow switcherRow
-	for _, row := range r.rows {
-		if row.kind == switcherStanding {
-			standingRow = row
-		}
-	}
 	// The question's answers wear THEIR OWN KEYS. This read `y do it · n leave
 	// it` until the questions wave, which was the strip putting yes and no on
 	// whichever two answers came first — and on the consent lane, whose answers
@@ -228,17 +213,13 @@ func TestSwitcherStopsAndVerbsCarryTheDoorTheyDescribe(t *testing.T) {
 	if got := wordsOfSwitcherVerbs(switcherVerbsFor(switcherRowByID(t, r, "ask"))); !strings.Contains(got, "1 do it") || !strings.Contains(got, "2 leave it") || !strings.Contains(got, "x delete") || !strings.Contains(got, "c copy name") {
 		t.Fatalf("asking verbs are %q", got)
 	}
-	if got := wordsOfSwitcherVerbs(switcherVerbsFor(standingRow)); !strings.Contains(got, "p "+homeItemPauseWord) {
-		t.Fatalf("standing verbs are %q", got)
-	}
 }
 
 func TestSwitcherVerbsRequireTheStateAndAddressTheyActOn(t *testing.T) {
 	now := time.Date(2026, time.August, 25, 13, 0, 0, 0, time.UTC)
 	bare := session.SessionRow{ID: "bare", Title: "Bare", Presence: session.SessionPresence{Question: session.PresenceQuestion{Options: []session.AnswerOption{{Label: "yes"}, {Label: "no"}}}}}
-	paused := standing.Item{ID: "paused", Words: "Paused", Status: standing.StatusPaused, NeedsPerson: "old words without a pending question"}
 	world := session.World{Projects: []session.Project{{Name: "p", Sessions: []session.SessionRow{bare}}}}
-	r := readSwitcher(world, map[string][]StandingItemView{"": {{Item: paused}}}, nil, switcherHere{}, nil, time.Time{}, now, switcherLedgerInput{})
+	r := readSwitcher(world, nil, switcherHere{}, nil, time.Time{}, now, switcherLedgerInput{})
 	for _, row := range r.rows {
 		got := wordsOfSwitcherVerbs(switcherVerbsFor(row))
 		switch row.kind {
@@ -247,10 +228,6 @@ func TestSwitcherVerbsRequireTheStateAndAddressTheyActOn(t *testing.T) {
 				if strings.Contains(got, absent) {
 					t.Fatalf("addressless conversation offered %q in %q", absent, got)
 				}
-			}
-		case switcherStanding:
-			if !strings.Contains(got, switcherResumeWord) || strings.Contains(got, "p "+homeItemPauseWord) || strings.Contains(got, "y ") || strings.Contains(got, "n ") {
-				t.Fatalf("paused standing verbs are %q", got)
 			}
 		}
 	}
@@ -269,7 +246,7 @@ func wordsOfSwitcherVerbs(verbs []switcherVerb) string {
 func TestSwitcherNeverCallsAnEmptyAddressHere(t *testing.T) {
 	now := time.Date(2026, time.August, 25, 13, 0, 0, 0, time.UTC)
 	world := session.World{Projects: []session.Project{{Name: "p", Sessions: []session.SessionRow{{Title: "Missing address"}}}}}
-	r := readSwitcher(world, nil, nil, switcherHere{}, nil, time.Time{}, now, switcherLedgerInput{})
+	r := readSwitcher(world, nil, switcherHere{}, nil, time.Time{}, now, switcherLedgerInput{})
 	for _, row := range r.rows {
 		if row.here {
 			t.Fatal("two empty addresses became here")
@@ -299,7 +276,7 @@ func TestTheSwitcherRepeatsAConsentQuestionInItsOwnWords(t *testing.T) {
 	question := session.PresenceQuestion{Kind: session.QuestionConsent, ID: 9, Text: said, Asked: now.Add(-time.Hour), Options: []session.AnswerOption{{Key: "1", Label: "allow once"}, {Key: "3", Label: "not this time"}}}
 	row := session.SessionRow{ID: "consent", Title: "Consent", At: now.Add(-time.Hour), Live: true, Presence: session.SessionPresence{State: session.PresenceWaiting, Reason: question.Text, Question: question}}
 	world := session.World{Projects: []session.Project{{Dir: "/p", Name: "p", Sessions: []session.SessionRow{row}}}}
-	reading := readSwitcher(world, nil, nil, switcherHere{}, nil, time.Time{}, now, switcherLedgerInput{})
+	reading := readSwitcher(world, nil, switcherHere{}, nil, time.Time{}, now, switcherLedgerInput{})
 	// AND NOTHING WAS PUT IN FRONT OF IT. Any word this row adds shows up as
 	// something standing between the conversation's name and the gate's sentence.
 	got := switcherRowByID(t, reading, "consent")
@@ -315,7 +292,7 @@ func TestTheSwitcherRepeatsAConsentQuestionInItsOwnWords(t *testing.T) {
 // carries no note, no age and no ledger line.
 func TestTheSwitcherKeepsUnknownAndZeroFactsEmpty(t *testing.T) {
 	world := session.World{Projects: []session.Project{{Dir: "/p", Name: "p", Sessions: []session.SessionRow{{ID: "empty", Title: "Empty"}}}}}
-	r := readSwitcher(world, nil, nil, switcherHere{}, nil, time.Time{}, time.Time{}, switcherLedgerInput{})
+	r := readSwitcher(world, nil, switcherHere{}, nil, time.Time{}, time.Time{}, switcherLedgerInput{})
 	row := switcherRowByID(t, r, "empty")
 	if row.note != "" || row.age != "" || len(r.ledger) != 0 {
 		t.Fatalf("zero became a fact: note %q, age %q, ledger %+v", row.note, row.age, r.ledger)

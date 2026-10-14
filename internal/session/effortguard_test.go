@@ -27,9 +27,8 @@ import (
 // [Agent.effortLocked] or effort.Resolve — because a file that stamps without
 // resolving has picked its own rung, which is exactly the defect.
 var ladderStampers = map[string]string{
-	"loop.go":         "the person's own turn: the rung latched with the model at the top of a turn",
-	"auxiliary.go":    "every errand in the package, through the one role-call door",
-	"standing_run.go": "a firing's sentinel, at the standing role's own floor",
+	"loop.go":      "the person's own turn: the rung latched with the model at the top of a turn",
+	"auxiliary.go": "every errand in the package, through the one role-call door",
 }
 
 // legacyEffortStampers are the calls that still speak the ADAPTER'S older

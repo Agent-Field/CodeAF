@@ -5,7 +5,7 @@ import "strings"
 // ── TYPING OFFERS PLACES TOO (SCREEN 1g) ────────────────────────────────────
 //
 // The tab bar teaches and the keyboard is faster. Somebody who has learned that
-// `standing` is a place should be able to type `sta` and go there, out of the
+// `automations` is a place should be able to type `aut` and go there, out of the
 // same box they use to find a conversation — and nobody should have to be told
 // the places exist twice.
 //
@@ -52,9 +52,9 @@ func placeMatches(query string) []page {
 	if query == "" {
 		return nil
 	}
-	// A QUERY WITH A SPACE IN IT IS A SENTENCE, NOT A NAME. "standing up a watch"
-	// is somebody describing work, and offering them the standing place for the
-	// first word would be the surface answering a question it was not asked.
+	// A QUERY WITH A SPACE IN IT IS A SENTENCE, NOT A NAME. "memory leak in the
+	// parser" is somebody describing work, and offering them the memory place for
+	// the first word would be the surface answering a question it was not asked.
 	if strings.ContainsAny(query, " /~") {
 		return nil
 	}

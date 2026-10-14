@@ -26,7 +26,7 @@ func askCard(t *testing.T) (*app, *errandLab, *homeExchange, *time.Time) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 	a := lab.app(mine, []session.Event{
-		standingProposal(7, "remind me at 6 to leave"),
+		automationProposal(7, "remind me at 6 to leave"),
 		{Kind: session.EventTurnDone},
 	})
 	besideTheList(a)
@@ -69,7 +69,7 @@ func TestTypingACorrectionNeverAnswersTheCard(t *testing.T) {
 		t.Fatal("the card stopped waiting for its correction while it was being typed")
 	}
 	drive(t, a, key("enter"))
-	if len(lab.agent.answered) != 1 || lab.agent.answered[0].Change != words || lab.agent.answered[0].Approved {
+	if len(lab.agent.answered) != 1 || lab.agent.answered[0].Words() != words || lab.agent.answered[0].FirstKey() == session.AutomationSaveKey {
 		t.Fatalf("enter did not send the whole correction, the agent saw %+v", lab.agent.answered)
 	}
 }
@@ -104,7 +104,7 @@ func TestADigitThatLandsWithTheCardIsDropped(t *testing.T) {
 	// READ: the same key is now an answer.
 	*now = now.Add(questionSettle)
 	drive(t, a, key("1"))
-	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
+	if len(lab.agent.answered) != 1 || lab.agent.answered[0].FirstKey() != session.AutomationSaveKey {
 		t.Fatalf("a settled `1` did not answer the card, the agent saw %+v", lab.agent.answered)
 	}
 }
@@ -136,7 +136,7 @@ func TestTheCardsAnswerLeavesNoReceiptInTheWindow(t *testing.T) {
 // used to allow the call at its `1` and leave `make it 0` in the box.
 func TestACorrectionNeverAnswersAnApprovalBesideTheCard(t *testing.T) {
 	a, gated, ex, now := askGated(t, nil)
-	a.errandEvent(ex, standingProposal(5, "remind me at 6 to leave"))
+	a.errandEvent(ex, automationProposal(5, "remind me at 6 to leave"))
 	homeText(a)
 	*now = now.Add(time.Second)
 	drive(t, a, key(questionCommentKey))
@@ -175,7 +175,7 @@ func TestACorrectionNeverAnswersAnApprovalBesideTheCard(t *testing.T) {
 // the reminder in the same instant.
 func TestTheCardSettlesAgainAfterAnApprovalHidIt(t *testing.T) {
 	a, gated, ex, now := askGated(t, nil)
-	a.errandEvent(ex, standingProposal(5, "remind me at 6 to leave"))
+	a.errandEvent(ex, automationProposal(5, "remind me at 6 to leave"))
 	homeText(a)
 	*now = now.Add(time.Second)
 	a.errandEvent(ex, ciCall("call_7"))
@@ -194,7 +194,7 @@ func TestTheCardSettlesAgainAfterAnApprovalHidIt(t *testing.T) {
 	homeText(a)
 	*now = now.Add(questionSettle)
 	drive(t, a, key("1"))
-	if len(gated.answered) != 1 || !gated.answered[0].Approved {
+	if len(gated.answered) != 1 || gated.answered[0].FirstKey() != session.AutomationSaveKey {
 		t.Fatalf("a `1` on the card once it was read did not answer it: %+v", gated.answered)
 	}
 }

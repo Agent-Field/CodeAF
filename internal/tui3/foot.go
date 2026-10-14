@@ -66,8 +66,7 @@ const (
 	groupMeter
 	// groupElse is what is alive somewhere other than this conversation. It is
 	// background jobs alone now: the tab strip above says how many conversations
-	// are open, and the standing count is a line at the foot of the task column
-	// (task.go's [app.railFootRows]).
+	// are open.
 	groupElse
 	// groupPosture is the gate, drawn only when it is open and only on the
 	// frames whose seam has no approvals chip (approvalchip.go's
@@ -77,9 +76,8 @@ const (
 	// runs on answers, whose move it is, and what it is doing.
 	groupAlive
 	// groupOff is the facts that are NOT on the line at all any more — the
-	// session delta, the crew word, the per-turn burn, the open count and the
-	// standing count — kept in the telemetry list so the phone sheet and /status
-	// still say them.
+	// session delta, the crew word, the per-turn burn and the open count — kept
+	// in the telemetry list so the phone sheet and /status still say them.
 	groupOff
 )
 
@@ -315,11 +313,9 @@ func dropKind(parts *[]hudPart, kind hudSeg) bool {
 // own (approvalchip.go's [app.legendApprovalPress]); on the frames it is still
 // drawn here it is a reading.
 //
-// TWO DOORS LEFT THIS ROW ON 2026-09-09 AND ONE OF THEM IS STILL A DOOR. The
-// open count is gone because the tab strip already names every conversation;
-// the standing count moved to the foot of the task column, where it is drawn
-// dim, brightens under the pointer and opens /standing exactly as it did here
-// (task.go's [app.railFootRows], standdoor.go).
+// TWO DOORS LEFT THIS ROW ON 2026-09-09. The open count is gone because the tab
+// strip already names every conversation; the standing count moved to the foot
+// of the task column, and went with standing orders on 2026-10-10.
 
 // statusDoor is one pressable segment on the status row.
 type statusDoor struct {

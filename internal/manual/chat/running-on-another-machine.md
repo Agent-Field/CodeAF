@@ -209,10 +209,11 @@ The **far** machine owns the conversation and everything it touches:
 - connected accounts
 - the harness registry
 - the session file the conversation is written to
-- **everything you set up that keeps working** — reminders, watches, rules, overnight work:
-  the store they live in, the clock that checks them, and the machine they run on
-- **the places** — home, tasks and standing all list the far machine's own disk, because a
-  place is a listing of a machine and the machine that matters is the one the work is on
+- **your automations and your rules** — reminders, scheduled work and watches, and the
+  memories marked always: the stores they live in, the clock that runs the automations, and
+  the machine they run on (*Automations on another machine*, below)
+- **the places** — home, tasks and automations all list the far machine's own disk, because
+  a place is a listing of a machine and the machine that matters is the one the work is on
   (*The places over --host*, on the Places page)
 
 The **near** machine — the one you are sitting at — owns the surface:
@@ -273,7 +274,7 @@ on a remote path — expect to see the full path.
 Yes, and they show **the far machine's**.
 
 `space` `space` opens the home of the machine your session runs on: its projects, its
-conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
+conversations, what each of them ran, and its automations. `enter` on a row opens
 that conversation beside the one you are in — the engine gives it a connection of its own
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
@@ -491,6 +492,13 @@ Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot 
 connected machine's build cache and refuse before touching this machine's cache. The
 answer names the connected machine and says to change it there.
 
+## Why won't /permissions show the rules on the machine I connected to with --host?
+
+`/permissions` has no wire door yet. Over `--host` it reads and changes neither machine's
+rules: it names the connected machine and says `change it on that machine`. The rules that
+decide what a hosted conversation may do are the far machine's own, and its approvals are
+asked in this window as usual (*Approvals over --host*).
+
 ## Why didn't /crew pin change the crew on the remote machine?
 
 `/crew` has no far-profile door yet. Over `--host`, the panel and every shortcut —
@@ -615,48 +623,53 @@ The task roster lists this far conversation's work. Its rows come from the far
     bytes to the far conversation's `attachments/` folder. Generated and viewed pictures
     take the reverse road automatically so their far bytes can be painted in this terminal.
 
-## Reminders and watches over --host — they work, and they belong to that machine
+## Reminders and watches over --host — they work, and they are that machine's automations
 
-**Standing items cross this wire as ordinary events**, and your answer crosses back as its
-own frame — which is why they were the one ambient capability a connection never took away,
-back when a design card and an adaptive run's gate had no road here at all. The design card
-has one now (*Building a new sub-harness*, above); the run's gate still does not.
+`remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
+all work over `--host` and `--at`. The conversation over there proposes the automation, its
+card crosses the connection like any other question, and you answer it here with `1`, `2`,
+`0` or `o`. What to know is **whose machine it is on**:
 
-So `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
-all work over `--host`. What to know is **whose machine they are on**:
+- It is saved in the **far** machine's store and runs in the far machine's workspace, under
+  that machine's profile, keys and approval rules — never this laptop's.
+- `/automations` (`alt+7`), home's `automations` panel and the `automations` line of
+  `/status` all show that machine's automations, and `→` then `r`, `p`, `e` or `d` on a row
+  writes to its store. A write that store refuses is shown as its own refusal on the message
+  line, never redrawn as done.
+- `/automations add …` typed in this window saves it over there too, and its rhythm is read
+  in that machine's time zone.
+- `ask here` on a remote home answers `this window cannot ask from home` — say it in the
+  conversation instead (*Asking from home*).
 
-- The item is created, checked and fired on the **far** machine, in the far machine's
-  workspace, under the far machine's own profile rules — not this laptop's.
-- It keeps working after this window closes and after the connection drops.
-- Background checks belong to the **far** machine: the first thing you set up over the
-  connection installs its timer, and the `background checks` settings row turns that one.
-  Neither ever touches the machine you are sitting at.
-- Pausing or stopping one writes to the far machine's store, and a write that store
-  refuses is shown as its own refusal rather than redrawn as done.
+Nothing is installed on either machine to run them. When they run and when they stop is
+under *Automations on another machine* — in short, only while a window is open on that
+machine or attached to it.
 
-**Home works and is about the far machine; the standing place works in half.** Home lists
-that machine's projects with each one's `◦` item band under it, and the `p`/`s` keys live on
-them.
+## Automations on another machine — which machine runs them, and when they stop
 
-The standing place over a connection draws ONE of its shelves: **what stands anywhere else
-on that machine**. The shelf for *what stands on this conversation*, and the one for
-*exceptions*, are both empty — not because nothing stands, but because the reading behind
-them is a door the connection does not carry. For the same reason the `◦ 2 standing orders`
-count at the foot of the task column is **absent** over `--host`: there is no line rather
-than a wrong number.
+A window opened with `--host` or `--at` shows **that machine's** automations. One made in
+the conversation over there is saved on that machine and run by that machine's clock, in
+its workspace, under its profile and its keys. When a run ends, its one line appears in
+the conversation that made it if your window has that conversation open, and the desktop
+notification is raised on the machine you are sitting at — once, by whichever window
+reading that machine's automations claims it first. A rhythm such as every Monday at 9 is
+read in that machine's time zone.
 
-To see and change what stands on the conversation itself, open it on the machine it runs on.
-This is a gap and not a design: the doors exist on that machine and nothing carries them
-across yet.
+**They run there only while a window is attached.** Your window counts as a window open on
+that machine for as long as its connection lasts, once per window however many
+conversations it has open. A window opened on that machine itself counts too. Nothing is
+run for them on the machine you are sitting at.
 
-Two readings are absent over a connection, and each says nothing rather than guessing:
+**Closing the last attached window pauses a run in progress there.** Half a minute after
+the last window on that machine is gone, its clock stops whatever is running, records it as
+`stopped · codeaf closed before it finished`, and runs nothing more until a window is back.
+Then the cut-off run runs again, once, and a slot missed in the meantime runs once, marked
+late. The same half minute is
+what carries a dropped `--host` link that reconnects: the window counts again once it is
+back.
 
-- **`/status` prints no `keeping watch` line.** The OS timer is the far machine's and its
-  state is read from a file on that disk. A line drawn from this laptop's timer would be a
-  status about a machine nobody consulted.
-- **No row ever shows the firing mark `◐`.** Nothing on any disk says an item is firing at
-  this instant — a run is in flight inside whichever process holds the tick lock — so the
-  surface does not claim it. That is true locally too.
+A far engine that could not open its automations store gives this window no automations at
+all — never this machine's own, which run somewhere else.
 
 ## Connecting an account over --host
 

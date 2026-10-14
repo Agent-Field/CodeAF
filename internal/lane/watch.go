@@ -178,7 +178,7 @@ func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
 // WHAT THIS DOES AND DOES NOT ORDER. It orders the RATE: no second of a watched
 // wait is ever worth less than a second of an unwatched one, which is the law
 // beside this in watch_test.go. It does not order the total, and must not —
-// a standing pass really does tolerate nine minutes where a conversation
+// an automation check really does tolerate nine minutes where a conversation
 // tolerates ninety seconds, and six times the wait at a quarter the rate is
 // worth more than one times the wait at the full rate. What the wait is worth is
 // the product; what nobody is allowed to say is that an unwatched SECOND is

@@ -3,29 +3,28 @@ package tui3
 import (
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // THE MARGIN, AS A PERSON MEETS IT (margin.go).
 //
 // Every test here asserts what is on the column and what a press on it does,
-// rather than the shape of the code under it. The fixture is the standing
-// page's own scripted session ([standingPlaceFake]) at a frame wide enough for the
-// full column, because the two surfaces are two readings of one engine seam and
-// a second fake would be a second answer to what stands here.
+// rather than the shape of the code under it. The fixture is a real
+// automations store ([automationLab]) at a frame wide enough for the full
+// column, because the column and the automations place are two readings of one
+// store and a second fake would be a second answer to what is on the clock.
 
-// marginApp is a surface with orders over it and a frame that lends the full
-// column ([railFloor]).
-func marginApp(t *testing.T, stand ...standing.Item) (*app, *standingPlaceFake) {
+// marginApp is a surface with automations made in this conversation and a
+// frame that lends the full column ([railFloor]).
+func marginApp(t *testing.T, items ...automation.Automation) (*app, *automation.Store) {
 	t.Helper()
-	a, agent := standingPlaceApp(t, stand, nil)
+	a, store := automationLab(t, items...)
 	a.width, a.height = 140, 25 // the head's air row costs the frame one row
-	return a, agent
+	return a, store
 }
 
 // marginRail is the column as a reader sees it, colour stripped.
@@ -73,7 +72,7 @@ func TestTheEmptyMarginDrawsOnlyItsDoors(t *testing.T) {
 	}
 	// THE SECTIONS ARE IN THIS ORDER AND THE DOOR IS AT THE FOOT OF EACH: the
 	// work first, because that is what a person came to the column for, then
-	// what stands over it.
+	// what the conversation put on the clock.
 	order := []string{
 		marginDoorWord(marginTaskType),
 		marginDoorWord(marginStandType),
@@ -86,104 +85,47 @@ func TestTheEmptyMarginDrawsOnlyItsDoors(t *testing.T) {
 		}
 		at += found + len(want)
 	}
-	// AND THE STANDING SECTION IS ITS LABEL AND ITS DOOR AND NOTHING ELSE while
-	// nothing stands: no count of nothing, no line saying the shelf is empty.
-	if strings.Contains(rail, standHoldsWord) || strings.Contains(rail, placeWhisper[pageStanding].whisper) {
-		t.Fatalf("the empty standing section reported on its own emptiness:\n%s", rail)
+	// AND THE AUTOMATIONS SECTION IS ITS DOOR AND NOTHING ELSE while nothing
+	// is on the clock: no count of nothing, no line saying the shelf is empty.
+	if strings.Contains(rail, placeWhisper[pageAutomations].whisper) {
+		t.Fatalf("the empty automations section reported on its own emptiness:\n%s", rail)
 	}
 }
 
-// AN ORDER IS ONE LINE: the glyph every codeaf surface agrees on, and what the
-// order is called.
-func TestAStandingOrderIsOneLineOnTheMargin(t *testing.T) {
-	a, _ := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
+// AN AUTOMATION THIS CONVERSATION SET UP IS ONE LINE ON THE COLUMN, under its
+// label, and a press on it opens the automations place on it.
+func TestAnAutomationMadeHereIsOneLineThatOpensThePlace(t *testing.T) {
+	a, _ := marginApp(t, labWork("weekly update", "0 9 * * 1"), labWatch("ci on main"))
 	rail := marginRail(a)
-	if !strings.Contains(rail, "keep the tests green") {
-		t.Fatalf("the order is not on the column:\n%s", rail)
+	for _, want := range []string{marginStandWord, "weekly update", "ci on main"} {
+		if !strings.Contains(rail, want) {
+			t.Fatalf("the column is missing %q:\n%s", want, rail)
+		}
 	}
-	// The row is UNDER the standing label and above the door, which is what makes
-	// the label a heading rather than a word floating over the work.
-	label := strings.Index(rail, marginStandWord)
-	row := strings.Index(rail, "keep the tests green")
-	door := strings.Index(rail, marginDoorWord(marginStandType))
-	if !(label < row && row < door) {
-		t.Fatalf("the order is not filed under its label:\n%s", rail)
+	line, y := marginLine(t, a, func(l railLine) bool { return l.stand != "" && strings.Contains(plain(l.text), "ci on main") })
+	pressMargin(t, a, y)
+	if !a.at(pageAutomations) {
+		t.Fatal("a press on an automation's line did not open the automations place")
+	}
+	if item, ok := a.autoPlace.current(a); !ok || item.ID != line.stand {
+		t.Fatalf("the place opened on %+v, want the automation pressed (%s)", item, line.stand)
 	}
 }
 
-// WHAT HAS AN OCCASION COMING LEADS, AND WHAT MERELY HOLDS SITS UNDER IT. A rule
-// is true and does nothing at all; a reminder is going to happen, and when is the
-// question a person glancing at a column has.
-func TestTheMarginLeadsWithWhatHasAnOccasionComing(t *testing.T) {
-	hold := standOrder("h1", "never touch the public API", standing.AltitudeProject)
-	hold.When = standing.When{Kind: standing.WhenHold, Words: "always"}
-	hold.Rails = standing.Rails{}
-	a, _ := marginApp(t, hold, standOrder("e1", "draft the weekly update", standing.AltitudeProject))
-	rail := marginRail(a)
-	if strings.Index(rail, "draft the weekly update") > strings.Index(rail, "never touch the public API") {
-		t.Fatalf("the rule outranked the appointment:\n%s", rail)
+// AN AUTOMATION ANOTHER CONVERSATION MADE IS NOT THIS COLUMN'S: the column is
+// what this conversation left behind it.
+func TestTheMarginListsOnlyWhatThisConversationMade(t *testing.T) {
+	elsewhere := labWork("someone else's", "1h")
+	elsewhere.Origin.Transcript = "/elsewhere/transcript.jsonl"
+	a, _ := marginApp(t, elsewhere)
+	if rail := marginRail(a); strings.Contains(rail, "someone else's") {
+		t.Fatalf("the column drew an automation another conversation made:\n%s", rail)
 	}
 }
 
 // ── 2. the scope tail ───────────────────────────────────────────────────────
 
-// A TAIL ONLY WHERE THE REACH IS NOT THE DEFAULT. An order said in a chat governs
-// the project, so a tail saying so on every row would be the one column with no
-// room to spare printing what is already true of nearly everything on it.
-func TestTheScopeTailSaysOnlyWhatIsNotTheDefault(t *testing.T) {
-	a, _ := marginApp(t,
-		standOrder("m1", "never touch the API", standing.AltitudeMachine),
-		standOrder("c1", "keep the tests green", standing.AltitudeConversation),
-		standOrder("p1", "draft the update", standing.AltitudeProject),
-	)
-	rail := marginRail(a)
-	if !strings.Contains(rail, standEverywhereWord) {
-		t.Fatalf("a machine-wide order does not say %q:\n%s", standEverywhereWord, rail)
-	}
-	if !strings.Contains(rail, standJustHereTag) {
-		t.Fatalf("a conversation order does not say %q:\n%s", standJustHereTag, rail)
-	}
-	// The project row is the whole test: it wears NOTHING. Its own line is asked
-	// for by itself, because the two words above are on the same column.
-	line := plain(a.marginStandRow(StandingItemView{
-		Item: standOrder("p1", "draft the update", standing.AltitudeProject)}, a.railRoom()))
-	if strings.TrimSpace(line) != "◦ draft the update" {
-		t.Fatalf("the default reach printed itself: %q", line)
-	}
-	// AND THE WORDS ARE THE PAGE'S OWN. One vocabulary for the three reaches, or
-	// the column and the page are two surfaces calling one thing two things.
-	if standScopeTail(standing.AltitudeProject) != "" {
-		t.Fatal("the project reach grew a word")
-	}
-}
-
 // ── 3. the row that breathes ────────────────────────────────────────────────
-
-// AN ORDER IN A PASS'S HANDS BREATHES, exactly as the `keeping an eye on 2` chip
-// on the status row does (homestanding.go's [app.keepingWord]): the glyph is the
-// spinner while it is being checked or fired, and a still mark every other
-// moment.
-func TestAnOrderInAPassesHandsBreathesOnTheMargin(t *testing.T) {
-	a, _ := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
-	still := plain(a.marginStandRow(a.marginStanding()[0], a.railRoom()))
-	if !strings.HasPrefix(still, "◦") {
-		t.Fatalf("a waiting order is not still: %q", still)
-	}
-	a.stands.Running = func(string) (standing.RunningMark, bool) {
-		return standing.RunningMark{What: standing.RunningChecking, Since: a.now()}, true
-	}
-	a.standRailAt = time.Time{}
-	moving := plain(a.marginStandRow(a.marginStanding()[0], a.railRoom()))
-	if strings.HasPrefix(moving, "◦") || !strings.Contains(moving, "keep the tests green") {
-		t.Fatalf("a firing order did not take the spinner: %q", moving)
-	}
-	// The spinner is the one the whole surface turns on, so two moving things on
-	// one frame never beat against each other.
-	a.paints += spinnerStep
-	if next := plain(a.marginStandRow(a.marginStanding()[0], a.railRoom())); next == moving {
-		t.Fatalf("the mark did not move with the frame: %q", next)
-	}
-}
 
 // ── 4. the doors ────────────────────────────────────────────────────────────
 
@@ -229,90 +171,7 @@ func TestADoorKeepsTheSentenceAlreadyInTheBox(t *testing.T) {
 	}
 }
 
-// A STANDING ROW OPENS THE PAGE ON ITSELF, so that the keys that act on an order
-// act on the one that was pressed (standingpage.go).
-func TestPressingAStandingRowOpensThePageOnThatOrder(t *testing.T) {
-	a, _ := marginApp(t,
-		standOrder("p1", "draft the update", standing.AltitudeProject),
-		standOrder("p2", "keep the tests green", standing.AltitudeProject),
-	)
-	_, y := marginLine(t, a, func(l railLine) bool { return l.stand == "p2" })
-	pressMargin(t, a, y)
-	if !a.at(pageStanding) {
-		t.Fatal("the row opened no page")
-	}
-	item, ok := a.orders.current()
-	if !ok || item.ID != "p2" {
-		t.Fatalf("the page landed on %+v rather than on the row that was pressed", item)
-	}
-}
-
 // ── 5. /standing <words> ────────────────────────────────────────────────────
-
-// THE WORDS GO THROUGH THE DELIBERATE DOOR and never through the ordinary send.
-// A sentence handed over this way is shaped into a card or refused in one line,
-// and it is never carried out as one-off work (internal/session's
-// standing_mark.go); falling back to the ordinary send here would be the failure
-// the marked door exists to end, arriving through a door that promises the
-// opposite.
-func TestStandingWithWordsGoesThroughTheMarkedDoor(t *testing.T) {
-	a, agent := marginApp(t)
-	a.stands.Items = func(string) []standing.Item { return nil }
-	typeLine(t, a, "/standing always run the tests before you say you are done")
-	if len(agent.marked) != 1 || agent.marked[0] != "always run the tests before you say you are done" {
-		t.Fatalf("the words did not reach the marked door: %v", agent.marked)
-	}
-	if len(agent.sent) != 1 || agent.sent[0] != agent.marked[0] {
-		t.Fatalf("the journal did not get the person's own words: %v", agent.sent)
-	}
-	if a.at(pageStanding) {
-		t.Fatal("a sentence opened the page as well as standing")
-	}
-}
-
-// AND THE DOOR'S OWN GESTURE IS THAT ROAD FROM THE FIRST PRESS. The `+` row
-// types `/standing ` and stops, which leaves the half that decides what the
-// command DOES to the person — so the whole of what the door promises is only
-// kept if the sentence typed after it still reaches the marked door. This is the
-// press, the typing and the enter, end to end, because the two halves have been
-// asserted apart from each other and a person only ever does them together.
-func TestTheStandingDoorsSentenceReachesTheMarkedDoor(t *testing.T) {
-	a, agent := marginApp(t)
-	a.stands.Items = func(string) []standing.Item { return nil }
-	_, y := marginLine(t, a, func(l railLine) bool { return l.door == marginStandType })
-	pressMargin(t, a, y)
-	typeLine(t, a, "keep the tests green")
-	if len(agent.marked) != 1 || agent.marked[0] != "keep the tests green" {
-		t.Fatalf("the door's sentence did not reach the marked door: %v", agent.marked)
-	}
-	if a.input.String() != "" {
-		t.Fatalf("the box kept the sentence it sent: %q", a.input.String())
-	}
-}
-
-// AND THE BARE FORM IS UNCHANGED: it is the page, which is what nearly everybody
-// types the word for.
-func TestBareStandingStillOpensThePage(t *testing.T) {
-	a, agent := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
-	typeLine(t, a, "/standing")
-	if !a.at(pageStanding) {
-		t.Fatal("/standing did not open the page")
-	}
-	if len(agent.marked) != 0 {
-		t.Fatalf("the bare command sent something: %v", agent.marked)
-	}
-}
-
-// A SURFACE WITH NO AMBIENT SIDE SAYS SO AND SENDS NOTHING, in the same words the
-// chord answers with (standmark.go).
-func TestStandingWithWordsSaysSoWhereNothingCanHoldOne(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	a.width, a.height = 140, 25 // the head's air row costs the frame one row
-	typeLine(t, a, "/standing always run the tests")
-	if !strings.Contains(plain(frame(a)), standMarkNowhere) {
-		t.Fatalf("the refusal is not on the frame:\n%s", plain(frame(a)))
-	}
-}
 
 // ── 6. the tasks door's own command ─────────────────────────────────────────
 

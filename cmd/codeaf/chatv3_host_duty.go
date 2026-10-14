@@ -13,9 +13,8 @@ import (
 // hostFar is the far machine as the background duties are given it: the
 // connection, and the one place a sentence about a duty goes.
 //
-// IT IS THE ONE SEAM A DUTY IS ARMED THROUGH. The four readings hostOptions keeps
-// warm behind the surface — the places, spending, memory, the standing items —
-// each hold their wire door as a closure ([hostStanding] says why), and a closure
+// IT IS THE ONE SEAM A DUTY IS ARMED THROUGH. The readings hostOptions keeps
+// warm behind the surface — the places, spending, memory — each hold their wire door as a closure ([hostWorld] says why), and a closure
 // made from a nil client is a perfectly good function right up until it is
 // called, on a goroutine, where the nil dereference is a panic the guard swallows
 // and nobody sees. So the fact "there is a connection behind this" is established

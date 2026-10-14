@@ -39,7 +39,7 @@ func TestBashWorkerSettlesLateReceiptsBeforeReportingItsTotals(t *testing.T) {
 		close(queued)
 		return nil, errors.New("API error (401): account refused")
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", s)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", s)
 	report := make(chan run.Report, 1)
 	go func() { rep, _ := worker.Run(runContext(t), *store.Task(store.RootID())); report <- rep }()
 	select {
@@ -72,7 +72,7 @@ func TestBashWorkerWithNoOutstandingReceiptEndsWithoutAReceiptWait(t *testing.T)
 	s := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
 		return nil, errors.New("API error (401): account refused")
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", s)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", s)
 	ended := make(chan error, 1)
 	go func() { _, err := worker.Run(runContext(t), *store.Task(store.RootID())); ended <- err }()
 	select {

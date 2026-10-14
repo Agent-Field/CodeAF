@@ -1,17 +1,15 @@
 package config
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
@@ -241,8 +239,7 @@ func TestRegistryGroupsEveryCategoryAndEveryModelSlot(t *testing.T) {
 func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{
-		"CODEAF_DAILY_BUDGET", "CODEAF_PRACTICE_BUDGET", "CODEAF_PRACTICE_IDLE",
-		"CODEAF_BRIEF_AFTER", "CODEAF_TENURE_AFTER", "CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
+		"CODEAF_DAILY_BUDGET", "CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
 	} {
 		t.Setenv(name, "")
 	}
@@ -250,10 +247,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	rows := registry(t, dir)
 	defaults := map[string]string{
 		KeyDailyBudget:    formatDollars(DefaultDailyBudgetUSD),
-		KeyPracticeBudget: formatDollars(DefaultPracticeBudgetUSD),
-		KeyPracticeIdle:   "20m",
-		KeyBriefAfter:     "4h",
-		KeyTenureAfter:    "3",
 		KeyDocumentEngine: "auto",
 		KeyVisionModel:    "automatic",
 	}
@@ -269,10 +262,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 
 	changes := map[string]string{
 		KeyDailyBudget:    "35.50",
-		KeyPracticeBudget: "$4",
-		KeyPracticeIdle:   "45m",
-		KeyBriefAfter:     "90m",
-		KeyTenureAfter:    "5",
 		KeyDocumentEngine: "local",
 		KeyVisionModel:    "seer/vision",
 	}
@@ -285,10 +274,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	reread := registry(t, dir)
 	persisted := map[string]string{
 		KeyDailyBudget:    "$35.5",
-		KeyPracticeBudget: "$4",
-		KeyPracticeIdle:   "45m",
-		KeyBriefAfter:     "1h30m",
-		KeyTenureAfter:    "5",
 		KeyDocumentEngine: "local",
 		KeyVisionModel:    "seer/vision",
 	}
@@ -312,11 +297,10 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	}
 
 	t.Setenv("CODEAF_DOC_ENGINE", "ocr")
-	t.Setenv("CODEAF_TENURE_AFTER", "9")
 	t.Setenv("CODEAF_VISION_MODEL", "pinned/vision")
 	pinned := registry(t, dir)
 	for key, want := range map[string]string{
-		KeyDocumentEngine: "ocr", KeyTenureAfter: "9", KeyVisionModel: "pinned/vision",
+		KeyDocumentEngine: "ocr", KeyVisionModel: "pinned/vision",
 	} {
 		row, _ := pinned.Row(key)
 		if got := row.Value(); got != want {
@@ -338,7 +322,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	dir := t.TempDir()
 	rows := registry(t, dir)
 	for key, raw := range map[string]string{
-		KeyPracticeBudget: "6", KeyPracticeIdle: "5m", KeyBriefAfter: "30m",
+		KeyDailyBudget:    "6",
 		KeyDocumentEngine: "free",
 		KeyVisionModel:    "seer/vision",
 	} {
@@ -351,8 +335,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1")
 	t.Setenv("CODEAF_PROFILE_DIR", dir)
 	for _, name := range []string{
-		"CODEAF_PRACTICE_BUDGET", "CODEAF_PRACTICE_IDLE", "CODEAF_BRIEF_AFTER",
-		"CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
+		"CODEAF_DAILY_BUDGET", "CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
 	} {
 		t.Setenv(name, "")
 	}
@@ -360,20 +343,19 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.PracticeBudgetUSD != 6 || loaded.PracticeIdle != 5*time.Minute ||
-		loaded.BriefAfter != 30*time.Minute || loaded.DocumentEngine != "free" ||
+	if loaded.DailyBudgetUSD != 6 || loaded.DocumentEngine != "free" ||
 		loaded.VisionModel != "seer/vision" {
 		t.Fatalf("persisted settings did not reach Load: %+v", loaded)
 	}
 
 	// The environment still wins over everything written here.
 	t.Setenv("CODEAF_DOC_ENGINE", "ocr")
-	t.Setenv("CODEAF_BRIEF_AFTER", "2h")
+	t.Setenv("CODEAF_DAILY_BUDGET", "2")
 	loaded, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.DocumentEngine != "ocr" || loaded.BriefAfter != 2*time.Hour {
+	if loaded.DocumentEngine != "ocr" || loaded.DailyBudgetUSD != 2 {
 		t.Fatalf("environment lost to the persisted file: %+v", loaded)
 	}
 }
@@ -382,8 +364,7 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 	rows := registry(t, t.TempDir())
 	for key, raw := range map[string]string{
 		KeyDailyBudget:    "twenty dollars",
-		KeyBriefAfter:     "soonish",
-		KeyTenureAfter:    "many",
+		KeyTaskParallel:   "many",
 		KeyDocumentEngine: "tesseract",
 	} {
 		row, ok := rows.Row(key)
@@ -397,32 +378,6 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 		if message := err.Error(); message == "" || strings.Contains(message, "strconv") {
 			t.Fatalf("%s error is not plain language: %v", key, err)
 		}
-	}
-}
-
-func TestTenurePersistsAndReachesTheProcessEnvironment(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CODEAF_TENURE_AFTER", "")
-	rows := registry(t, dir)
-	row, _ := rows.Row(KeyTenureAfter)
-	if err := row.Apply("6"); err != nil {
-		t.Fatal(err)
-	}
-	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "6" {
-		t.Fatalf("tenure did not reach the running process: %q", got)
-	}
-	t.Setenv("CODEAF_TENURE_AFTER", "")
-	if got := TenureAfterAt(dir); got != 6 {
-		t.Fatalf("persisted tenure = %d", got)
-	}
-	InstallPersistedEnv(dir)
-	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "6" {
-		t.Fatalf("relaunch did not reinstall the persisted tenure: %q", got)
-	}
-	t.Setenv("CODEAF_TENURE_AFTER", "2")
-	InstallPersistedEnv(dir)
-	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "2" {
-		t.Fatalf("a set environment was overwritten: %q", got)
 	}
 }
 
@@ -895,57 +850,24 @@ func mustRow(t *testing.T, rows *Settings, key string) Setting {
 	return row
 }
 
-// ── background checks ───────────────────────────────────────────────────────
+// ── auto update ─────────────────────────────────────────────────────────────
 
-// THE ROW READS THE MACHINE AND NEVER THE FILE. What it shows is derived from
-// the timer's own definition on disk, so a person who removed the agent by hand
-// is told `off` in the one place they went to check — and turning the row is
-// what installs and removes it.
-// THE AUTO UPDATE ROW IS READ NEXT TO BACKGROUND CHECKS, on the same
-// machine-and-project reading and the same category: both answer what codeaf
-// does HERE on its own, rather than how the surface draws itself. It used to be
-// filed under the interface group and drawn on the Display tab, which is about
-// appearance and typing; a person keeping an installation current looks where
-// the machine's own work is kept.
-func TestTheAutoUpdateRowReadsBesideBackgroundChecks(t *testing.T) {
-	dir := t.TempDir()
-	home := t.TempDir()
-	program := filepath.Join(t.TempDir(), "codeaf")
-	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	timer, err := standing.NewWatch(standing.WatchOptions{
-		Platform: "darwin", HomeDir: home, Executable: program, UID: 501,
-		Runner: quietRunner{},
-	})
-	if err != nil {
-		t.Fatalf("NewWatch: %v", err)
-	}
-	registry := NewSettings(SettingsOptions{ProfileDir: dir, BackgroundChecks: timer})
-	updateAt, checksAt := -1, -1
-	for at, row := range registry.Rows() {
-		switch row.Key {
-		case KeyUpdateAuto:
-			updateAt = at
-			if row.Category != CategoryPractice {
-				t.Fatalf("auto update is filed under %q, want %q", row.Category, CategoryPractice)
-			}
-		case KeyStandingBackground:
-			checksAt = at
-		}
-	}
-	if updateAt < 0 || checksAt < 0 {
-		t.Fatalf("both rows must be in the registry: auto update at %d, background checks at %d", updateAt, checksAt)
-	}
-	if updateAt+1 != checksAt {
-		t.Fatalf("auto update stands at %d and background checks at %d, want them adjacent", updateAt, checksAt)
-	}
-	// THE FIRST SENTENCE SAYS WHAT THE ROW DOES, and the rest says what off
-	// means: manual installation, while the one launch check still runs.
+// THE AUTO UPDATE ROW IS FILED WITH WHAT THE MACHINE DOES ON ITS OWN, rather
+// than with how the surface draws itself. It used to be filed under the
+// interface group and drawn on the Display tab, which is about appearance and
+// typing; a person keeping an installation current looks where the machine's
+// own work is kept.
+func TestTheAutoUpdateRowIsFiledWithThePracticeRows(t *testing.T) {
+	registry := NewSettings(SettingsOptions{ProfileDir: t.TempDir()})
 	row, ok := registry.Row(KeyUpdateAuto)
 	if !ok {
 		t.Fatal("the registry has no auto update row")
 	}
+	if row.Category != CategoryPractice {
+		t.Fatalf("auto update is filed under %q, want %q", row.Category, CategoryPractice)
+	}
+	// THE FIRST SENTENCE SAYS WHAT THE ROW DOES, and the rest says what off
+	// means: manual installation, while the one launch check still runs.
 	for _, want := range []string{
 		"keeps this codeaf installation current in the background.",
 		"Off, installation is manual",
@@ -956,95 +878,6 @@ func TestTheAutoUpdateRowReadsBesideBackgroundChecks(t *testing.T) {
 		}
 	}
 }
-
-func TestTheBackgroundChecksRowReadsTheTimerAndTurnsIt(t *testing.T) {
-	dir := t.TempDir()
-	home := t.TempDir()
-	program := filepath.Join(t.TempDir(), "codeaf")
-	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	timer, err := standing.NewWatch(standing.WatchOptions{
-		Platform: "darwin", HomeDir: home, Executable: program, UID: 501,
-		Runner: quietRunner{},
-	})
-	if err != nil {
-		t.Fatalf("NewWatch: %v", err)
-	}
-	registry := NewSettings(SettingsOptions{ProfileDir: dir, BackgroundChecks: timer})
-	row, ok := registry.Row(KeyStandingBackground)
-	if !ok {
-		t.Fatal("a machine with a timer has no background checks row")
-	}
-	if row.Category != CategoryPractice || row.Kind != SettingChoice {
-		t.Fatalf("row = %+v", row)
-	}
-	// Nothing installed yet, so the row says so however the file reads.
-	if row.Value() != BackgroundOff {
-		t.Fatalf("an uninstalled timer reads %q", row.Value())
-	}
-	if err := row.Apply(BackgroundOn); err != nil {
-		t.Fatalf("turning it on: %v", err)
-	}
-	if row.Value() != BackgroundOn {
-		t.Fatalf("an installed timer reads %q", row.Value())
-	}
-	if BackgroundChecksAt(dir) != BackgroundOn {
-		t.Fatalf("the intent on disk = %q", BackgroundChecksAt(dir))
-	}
-	if err := row.Apply(BackgroundOff); err != nil {
-		t.Fatalf("turning it off: %v", err)
-	}
-	if row.Value() != BackgroundOff {
-		t.Fatalf("a removed timer reads %q", row.Value())
-	}
-	if BackgroundChecksWantedAt(dir) {
-		t.Fatal("the launch repair would put back a timer the person turned off")
-	}
-	// AND THE HINT NAMES THE THING IT INSTALLS. "codeaf installs a launchd
-	// agent" is a sentence nobody can check.
-	for _, want := range []string{standing.DarwinTickLabel, standing.LinuxTickTimer, standing.IntervalWords()} {
-		if !strings.Contains(row.Hint, want) {
-			t.Fatalf("the hint does not name %q: %s", want, row.Hint)
-		}
-	}
-	// And a model may turn it: this is a preference, not a rail on the model.
-	if !row.SelfService() {
-		t.Fatal("the chat cannot turn off the background checks somebody asked it to")
-	}
-}
-
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. On a machine with no
-// timer to install there is nothing for this switch to switch, so the sheet has
-// no row rather than a row that reads nothing and refuses every write.
-func TestTheBackgroundChecksRowIsAbsentWithNoTimer(t *testing.T) {
-	registry := NewSettings(SettingsOptions{ProfileDir: t.TempDir()})
-	if _, ok := registry.Row(KeyStandingBackground); ok {
-		t.Fatal("a machine with no timer offered a switch for one")
-	}
-	for _, row := range registry.Rows() {
-		if row.Key == KeyStandingBackground {
-			t.Fatal("the row is in the sheet after all")
-		}
-	}
-}
-
-// A REPOSITORY MAY NOT TURN THIS ON. Installing a timer is a change to
-// somebody's machine, and a checked-in file that could make one is a clone
-// arranging to run a program on every laptop it lands on.
-func TestBackgroundChecksAreProfileOnly(t *testing.T) {
-	for _, key := range ProjectKeys {
-		if key == KeyStandingBackground {
-			t.Fatal("a repository can install a timer on the reader's machine")
-		}
-	}
-}
-
-// quietRunner is this machine's scheduler, stood in for. Nothing in these tests
-// goes near launchctl.
-type quietRunner struct{}
-
-func (quietRunner) Run(context.Context, string, ...string) error { return nil }
 
 // ── the retired task-start word ─────────────────────────────────────────────
 
@@ -1169,9 +1002,8 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 	}{
 		{"the daily rail", DefaultDailyBudgetUSD, 500},
 		{"the plan consent gate", DefaultPlanConsentUSD, 100},
-		{"the practice carve-out", DefaultPracticeBudgetUSD, 50},
 		{"the lifted-tier cap", taxonomy.DefaultTierCapUSD, 25},
-		{"a standing order's per-firing rail", standing.DefaultPerRunUSD, 5},
+		{"an automation's per-run rail", automation.DefaultUSD, 5},
 	}
 	for _, floor := range floors {
 		if floor.value < floor.floor {
@@ -1187,8 +1019,8 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 	}
 }
 
-// TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans walks the four rows a
-// person actually turns. For each it checks the shipped reading against the
+// TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans walks the three rows
+// a person actually turns. For each it checks the shipped reading against the
 // constant that owns it — one source of truth, so a raise that forgot the row
 // fails here — and then writes 0 and reads the row back.
 //
@@ -1199,7 +1031,7 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 // already uses for its off state — and `$0` appears nowhere at all.
 func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 	for _, name := range []string{
-		"CODEAF_DAILY_BUDGET", "CODEAF_PRACTICE_BUDGET", "CODEAF_PLAN_CONSENT",
+		"CODEAF_DAILY_BUDGET", "CODEAF_PLAN_CONSENT",
 	} {
 		t.Setenv(name, "")
 	}
@@ -1210,10 +1042,6 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 	}{
 		{KeyDailyBudget, DefaultDailyBudgetUSD, noLimitWord},
 		{KeyPlanConsent, DefaultPlanConsentUSD, "never asks"},
-		// The carve-out is the deliberate exception: zero switches practice off
-		// rather than uncapping it, and the receipt has to say THAT and not
-		// "no limit", or the row would be lying in the calmest possible voice.
-		{KeyPracticeBudget, DefaultPracticeBudgetUSD, "practice off"},
 		{KeySpendRail, DefaultSpendRailUSD, noLimitWord},
 	}
 	for _, rail := range rails {
@@ -1332,7 +1160,6 @@ func TestTheThreeCategoriesSpendingLeftBehind(t *testing.T) {
 	want := map[string]string{
 		KeyDailyBudget:      CategorySpending,
 		KeyPlanConsent:      CategorySpending,
-		KeyPracticeBudget:   CategorySpending,
 		KeySpendRail:        CategorySpending,
 		KeyToolApprovalMode: CategorySafety,
 		KeyGuardian:         CategorySafety,

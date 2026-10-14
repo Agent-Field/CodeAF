@@ -45,10 +45,8 @@ package session
 //
 //   - IT RIDES THE TASK LANE. The standing lane is the one subscription that
 //     outlives every turn on every surface — the front conversation pumps it
-//     and a kept one drains it (internal/tui3's keeper.go) — and standing news
-//     already rides it for exactly that reason ([Agent.emitStandingNews]). A
-//     lane of its own would be a third subscription for one event a session
-//     sees at most once.
+//     and a kept one drains it (internal/tui3's keeper.go). A lane of its own
+//     would be a third subscription for one event a session sees at most once.
 
 import (
 	"encoding/json"

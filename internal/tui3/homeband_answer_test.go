@@ -10,8 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ANSWERING FROM HOME: the chips, the keys, the pointer, and the two windows
@@ -72,15 +72,16 @@ func consentQuestion(id uint64, text string) session.PresenceQuestion {
 	}
 }
 
-// standingQuestion is a standing card as another window reads it, with the
-// engine's own narrowing applied ([session.StandingOptions]) — which is what
-// makes the chips home draws the chips that session will actually take.
-func standingQuestion(id uint64, item standing.Item, text string) session.PresenceQuestion {
+// automationQuestion is an automation card as another window reads it, with
+// the engine's own answers for that automation ([session.AutomationOptions]) —
+// which is what makes the chips home draws the chips that session will
+// actually take.
+func automationQuestion(id uint64, item automation.Automation, text string) session.PresenceQuestion {
 	return session.PresenceQuestion{
-		Kind:    session.QuestionStanding,
+		Kind:    session.QuestionAutomation,
 		ID:      id,
 		Text:    text,
-		Options: session.StandingOptions(item),
+		Options: session.AutomationOptions(item),
 		Asked:   time.Now(),
 	}
 }
@@ -325,106 +326,57 @@ func TestHomeAnswersItsOwnWindowThroughItsOwnResolver(t *testing.T) {
 
 // SAYING NO FROM HOME, IN ONE KEYSTROKE.
 //
-// The standing card is the one question whose no lives on a key home cannot
-// spare: `esc` on home closes home. The engine's list carries the kind's own
-// no, and this band draws it like any other chip. A card met at home can be
-// answered all three ways without walking to the window it is in.
-func TestHomeCanSayNoToAStandingCard(t *testing.T) {
-	watch := standing.Item{
-		Words: "tell me when ci goes red",
-		When:  standing.When{Kind: standing.WhenProbe},
-		Does:  standing.Action{Kind: standing.ActionSay},
-	}
-	lab := newAnswerLab(t, standingQuestion(9, watch, "wants to keep an eye on: tell me when ci goes red"), time.Now())
+// The automation card's no lives on a key home cannot spare otherwise: `esc`
+// on home closes home. The engine's list carries the card's own no, and this
+// band draws it like any other chip. A card met at home can be answered every
+// way without walking to the window it is in.
+func TestHomeCanSayNoToAnAutomationCard(t *testing.T) {
+	watch := automation.Automation{Title: "ci on main", Words: "tell me when ci goes red",
+		Schedule: automation.Schedule{Every: "15m"}, Look: &automation.Look{Command: "gh run list", Condition: "the latest run failed"},
+		Action: automation.Action{Say: "CI is red"}}
+	lab := newAnswerLab(t, automationQuestion(9, watch, "wants to watch for something: ci on main"), time.Now())
 	text := homeText(lab.a)
-	for _, chip := range []string{"1 Watch for it", "3 Check once now", "0 Don't watch"} {
+	for _, chip := range []string{"1 Save", "2 Save and check it now", "0 Don't save"} {
 		if !strings.Contains(text, chip) {
 			t.Fatalf("the card does not offer %q:\n%s", chip, text)
 		}
 	}
 
-	lab.a.homeKey(key(session.StandingNoKey))
+	lab.a.homeKey(key(session.AutomationNoKey))
 	if len(*lab.sent) != 1 {
 		t.Fatalf("the decline sent %d answers, want 1", len(*lab.sent))
 	}
 	answer := (*lab.sent)[0]
-	if answer.dir != lab.dir || answer.kind != session.QuestionStanding || answer.id != 9 || answer.key != session.StandingNoKey {
-		t.Fatalf("the answer reads %+v, want the standing card declined", answer)
+	if answer.dir != lab.dir || answer.kind != session.QuestionAutomation || answer.id != 9 || answer.key != session.AutomationNoKey {
+		t.Fatalf("the answer reads %+v, want the automation card declined", answer)
 	}
 	// NOTHING WAS TYPED, which is the whole trade a digit key makes on a screen
 	// whose box is a search and a new conversation at once.
 	if typed := lab.a.home.box.String(); typed != "" {
 		t.Fatalf("the decline also typed %q into the box", typed)
 	}
-	if !strings.Contains(homeText(lab.a), answerSentWord+"Don't watch") {
+	if !strings.Contains(homeText(lab.a), answerSentWord+"Don't save") {
 		t.Fatalf("home did not say what it just answered:\n%s", homeText(lab.a))
 	}
 }
 
-// A ONE-OFF REMINDER HAS NO `once` AND STILL HAS A NO. The `3` is the only chip
-// that is ever missing ([session.StandingOptions]); the decline answers every
-// standing question there is.
-func TestHomeCanSayNoToAReminderThatOffersNoOnce(t *testing.T) {
-	reminder := standing.Item{
-		Words: "remind me at 6 to leave",
-		When:  standing.When{Kind: standing.WhenAt},
-		Does:  standing.Action{Kind: standing.ActionSay},
-	}
-	lab := newAnswerLab(t, standingQuestion(9, reminder, "wants to keep an eye on: remind me at 6 to leave"), time.Now())
+// A REMINDER HAS NO `run it now` AND STILL HAS A NO. The `2` is the only chip
+// that is ever missing ([session.AutomationOptions]); the decline answers every
+// automation card there is.
+func TestHomeCanSayNoToAReminderThatOffersNoRunNow(t *testing.T) {
+	reminder := automation.Automation{Title: "leave", Words: "remind me at 6 to leave",
+		Schedule: automation.Schedule{At: time.Now().Add(time.Hour)}, Action: automation.Action{Say: "leave"}}
+	lab := newAnswerLab(t, automationQuestion(9, reminder, "wants to remind you: leave"), time.Now())
 	text := homeText(lab.a)
-	if strings.Contains(text, "Check once now") || strings.Contains(text, "Only now") {
-		t.Fatalf("a one-off reminder was offered `once` from home:\n%s", text)
+	if strings.Contains(text, "run it now") || strings.Contains(text, "check it now") {
+		t.Fatalf("a reminder was offered running it now from home:\n%s", text)
 	}
-	if !strings.Contains(text, "0 Don't remind me") {
-		t.Fatalf("a one-off reminder was offered no way to say no:\n%s", text)
+	if !strings.Contains(text, "0 Don't save") {
+		t.Fatalf("a reminder was offered no way to say no:\n%s", text)
 	}
-	lab.a.homeKey(key(session.StandingNoKey))
-	if len(*lab.sent) != 1 || (*lab.sent)[0].key != session.StandingNoKey {
+	lab.a.homeKey(key(session.AutomationNoKey))
+	if len(*lab.sent) != 1 || (*lab.sent)[0].key != session.AutomationNoKey {
 		t.Fatalf("the decline sent %+v", *lab.sent)
-	}
-}
-
-// AND THIS WINDOW'S OWN CARD IS DECLINED IN ITS OWN HANDS, with the words the
-// card's own `esc` leaves on the row — not the yes's. The band reads what the
-// key MEANS off [session.AnswerFromKey] rather than off the digit, which is
-// what keeps the row and the engine saying the same thing.
-func TestHomeDecliningItsOwnStandingCardSettlesItAsNotSetUp(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	item := standing.Item{
-		Words: "tell me when ci goes red",
-		When:  standing.When{Kind: standing.WhenProbe},
-		Does:  standing.Action{Kind: standing.ActionSay},
-	}
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", now)
-	lab.asking("-tmp-alpha", "aaaa000000000001", standingQuestion(11, item, "wants to keep an eye on: tell me when ci goes red"), now)
-
-	agent := &standFake{fakeAgent: &fakeAgent{model: "m"}}
-	a := newTestApp(agent)
-	a.width, a.height = 120, 30
-	a.homeRoot = lab.root
-	a.file = mine
-	sent := 0
-	a.leaveAnswer = func(string, session.QuestionKind, uint64, string) error { sent++; return nil }
-	a.proposeStanding(session.Event{Kind: session.EventStandingProposal, Standing: &session.StandingNotice{
-		ID: 11, Item: item, WhenWords: "every few minutes", CostWords: "about $0.02 a check",
-		Options: session.StandingOptions(item),
-	}})
-	a.openHome()
-	a.home.point(mine)
-
-	spend(t, a, a.homeKey(key(session.StandingNoKey)))
-	if sent != 0 {
-		t.Fatal("this window left an answer on its own doorstep instead of answering it")
-	}
-	if len(agent.answered) != 1 || agent.answered[0].id != 11 {
-		t.Fatalf("the resolver saw %+v, want card 11 answered once", agent.answered)
-	}
-	if answer := agent.answered[0].answer; answer != (session.StandingAnswer{}) {
-		t.Fatalf("the decline sent %+v, want the zero answer", answer)
-	}
-	if a.stand == nil || a.stand.verdict != standNoWord {
-		t.Fatalf("the card in this window settled as %q, want %q", a.stand.verdict, standNoWord)
 	}
 }
 

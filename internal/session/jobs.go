@@ -104,16 +104,13 @@ const (
 	// is news, and it asks for nothing.
 	//
 	// A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION, which is
-	// the delivery class docs/design/prompt-diet/DESIGN.md §2 files this under
-	// and the pattern [standingNewsRule] was already written in — right down to
-	// the opening words, because a job's ending and a standing item's firing are
-	// the same kind of arrival and a model should not have to learn two frames
-	// for it. Saying it here costs the turn a job ends on; saying it on the page
-	// cost every request of every turn.
+	// the delivery class docs/design/prompt-diet/DESIGN.md §2 files this under.
+	// Saying it here costs the turn a job ends on; saying it on the page cost
+	// every request of every turn.
 	//
-	// IT NAMES WHAT IT IS FORBIDDING for [standingNewsRule]'s reason: a model
-	// holding `bash` reads an exit code as an invitation to run the thing again,
-	// and a model holding `jobs` reads a quiet job as something to go and check.
+	// IT NAMES WHAT IT IS FORBIDDING because a model holding `bash` reads an
+	// exit code as an invitation to run the thing again, and a model holding
+	// `jobs` reads a quiet job as something to go and check.
 	jobExitNewsRule = "— this already happened: relay it if it matters, never re-run it and never poll for it."
 )
 
@@ -1775,7 +1772,7 @@ func (s *jobSink) lastNonEmptyLine() string {
 // IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
 // goes through [bare.StreamingShell] instead, which is this choice plus the
 // line-buffering that keeps a long command's log from being empty until it
-// exits. What is left on this one is a watch's tick and a standing order's step
+// exits. What is left on this one is a watch's tick and an automation's look
 // — commands that are short by construction and read only after they end.
 func jobShell() (string, []string) {
 	if _, err := os.Stat("/bin/bash"); err == nil {

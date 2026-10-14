@@ -97,8 +97,8 @@ func (c Config) skillShelf() *store.Store {
 //
 // AN EMPTY SHELF IS ZERO BYTES, which is the whole reason the section is
 // conditional: a person with no skills must not pay a heading that names
-// nothing, and a store-less shape (a standing check's probe, a fork's hand) must
-// render byte-for-byte what it rendered before this file existed.
+// nothing, and a store-less shape (a fork's hand) must render byte-for-byte
+// what it rendered before this file existed.
 //
 // AND A BELT WITHOUT `use_skill` GETS NO CATALOG. The section's whole use is
 // choosing a skill to fetch, and it names the verb that fetches one; a worker

@@ -83,7 +83,8 @@ func (a *Agent) bashBelt() []bare.Tool {
 	// through to the store task so the store stays the record
 	// (plandb_plan.go's [TaskGraph.planReviseThrough]).
 	tools = append(tools, a.assignmentTools()...)
-	tools = append(tools, a.standingTools()...)
+	tools = append(tools, a.automationTools()...)
+	tools = append(tools, a.automationReportTools()...)
 	tools = append(tools, a.harnessTools()...)
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)

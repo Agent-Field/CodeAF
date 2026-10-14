@@ -162,8 +162,8 @@ func TestTheWatcherRecordsWhatTheStripReads(t *testing.T) {
 	}
 }
 
-// THE SAME CONVERSATION MUST NOT CHANGE ITS ANSWER WHEN IT MOVES. A standing
-// answer is held as needing a person, and the surface already carries that
+// THE SAME CONVERSATION MUST NOT CHANGE ITS ANSWER WHEN IT MOVES. An
+// automation card is held as needing a person, and the surface already carries that
 // question when the conversation comes forward. An automatic proposal remains
 // excluded on both sides because its deadline will answer it.
 func TestTheSameConversationAgreesInFrontAndBehind(t *testing.T) {
@@ -171,7 +171,7 @@ func TestTheSameConversationAgreesInFrontAndBehind(t *testing.T) {
 	watch.waits.Store(true)
 	held := a.tabSignalFor("/tmp/lab/two.jsonl", false)
 	a.questions = append(a.questions, questionShown{question: session.Question{
-		ID: 7, Kind: session.QuestionStanding,
+		ID: 7, Kind: session.QuestionAutomation,
 	}})
 	if front := a.tabSignalFor(a.file, true); front != held {
 		t.Fatalf("landed your-call conversation reads %v in front and %v behind", front, held)

@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // HOME'S COMPOSER ANSWERS A "/" THE WAY CHAT'S DOES: a ranked menu while typing
@@ -512,8 +510,8 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 	a.workspace = paths[0]
 	openHomeOn(a, mine)
 	runCmd(a.openHome())
-	// Standing-only projects are visible too, even without a conversation.
-	a.home.bare = append(a.home.bare, homeBare{project: session.Project{Path: paths[3], Dir: "/buckets/delta"}})
+	lab.session("-tmp-delta", "dddd000000000001", "the deploy", paths[3], now.Add(-3*time.Hour))
+	a.refreshHome()
 	in := a.home.gridInput()
 	rows := (projectsPanel{}).rows(&in).lines
 	if len(rows) != len(paths) {

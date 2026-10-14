@@ -310,15 +310,16 @@ test-packed-manual: embed
 test-remote:
 	go test -tags docker_e2e -count=1 -run TestRemoteTwoMachines -timeout 20m ./internal/e2e/
 
-# THE AMBIENT SURFACE, ALONE. TestTUIE2E fits in about seventeen minutes; the
-# full tagged package does not fit in forty (ManualOnTheWire, QuestionsE2E and
-# the roomfeed twins run first and eat the budget). This is the door for the
-# seventeen-minute ambient proof. Needs OPENROUTER_API_KEY, tmux and bin/codeaf.
+# THE CHAT SURFACE, ALONE. TestTUIE2E fits in forty minutes where the full
+# tagged package does not (ManualOnTheWire, QuestionsE2E and the roomfeed twins
+# run first and eat the budget). It used to take about seventeen, most of them
+# one subtest waiting out a standing pass that went with standing orders on
+# 2026-10-10. Needs OPENROUTER_API_KEY, tmux and bin/codeaf.
 test-e2e-tui: build
 	go test -tags e2e -count=1 -timeout 40m -v -run '^TestTUIE2E$$' ./internal/e2e/
 
 # THE WHOLE TAGGED PACKAGE. Two hours is the measured fit on Spark once every
-# live-model lane is included; prefer test-e2e-tui when only the ambient surface
+# live-model lane is included; prefer test-e2e-tui when only the chat surface
 # is under change.
 test-e2e: build
 	go test -tags e2e -count=1 -timeout 120m -v ./internal/e2e/
@@ -326,12 +327,13 @@ test-e2e: build
 # ── the demo home ───────────────────────────────────────────────────────────
 #
 # A HOME WITH SOMETHING ON EVERY PLACE, FOR LOOKING AT. On a machine that has
-# just started using codeaf the standing store, the memory store and the
+# just started using codeaf the automations store, the memory store and the
 # spending ledger are empty, and every one of those pages correctly draws
 # nothing — which is the emptiness law working and is also indistinguishable
 # from a page that is broken. This builds a THROWAWAY home somewhere else and
 # opens the real binary against it, so all of it can be seen full without a
-# single invented row landing in ~/.codeaf.
+# single invented row landing in ~/.codeaf. The window it opens starts no
+# automations clock (CODEAF_NO_AUTOMATIONS), so nothing invented ever runs.
 #
 # It prints the directory it built and the command to open it again, so the same
 # home can be returned to:

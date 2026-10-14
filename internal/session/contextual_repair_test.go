@@ -19,7 +19,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/reflex"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -140,7 +139,7 @@ func TestDelegatedSecretReceiptHashesTheRedactedBytes(t *testing.T) {
 func TestBindingOnlyRunLendsNoWriteToItsCollector(t *testing.T) {
 	dir := t.TempDir()
 	initRepo(t, dir)
-	key := standingProjectKey(dir)
+	key := anchoredProjectKey(dir)
 	owner := store.OwnerProject(key)
 	brain, err := store.Open(filepath.Join(t.TempDir(), "brain.db"))
 	if err != nil {
@@ -158,14 +157,9 @@ func TestBindingOnlyRunLendsNoWriteToItsCollector(t *testing.T) {
 		SourceKey: "s:t", SourceHash: "h"}); err != nil {
 		t.Fatal(err)
 	}
-	// THE PRODUCTION BINDING: withBindingMemory lends the canonical brain
-	// read-only and refuses an unprovable project rather than running unbound.
-	runner := &standingRunner{}
-	cfg, closeMemory, err := runner.withBindingMemory(Config{Workspace: dir, Memory: brain}, standing.Item{Workspace: dir})
-	if err != nil {
-		t.Fatalf("bind memory: %v", err)
-	}
-	t.Cleanup(closeMemory)
+	// THE PRODUCTION BINDING: an automation's run is lent the person's brain
+	// read-only, for the project its own assembly resolved.
+	cfg := automationBinding(Config{Workspace: dir, Memory: brain, MemoryProjectKey: key})
 	if !cfg.bindingOnlyMemory || cfg.MemoryProjectKey != key {
 		t.Fatalf("the run was not bound read-only: %+v", cfg.bindingOnlyMemory)
 	}

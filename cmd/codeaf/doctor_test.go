@@ -6,19 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/store"
-	"github.com/Agent-Field/codeaf/internal/watchdog"
 )
-
-type fakeDoctorWatch struct {
-	status watchdog.Status
-	err    error
-}
 
 // H8: help env lists the current names and says exactly once that legacy
 // spellings remain a one-release fallback; doctor names the resolved root and
@@ -36,7 +29,7 @@ func TestH8EnvironmentHelpAndDoctorUseCurrentNames(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(home.EnvVar, root)
 	var output bytes.Buffer
-	if err := runDoctorWith(nil, &output, 0, fakeDoctorWatch{}); err != nil {
+	if err := runDoctorWith(nil, &output, 0); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), root) {
@@ -47,24 +40,11 @@ func TestH8EnvironmentHelpAndDoctorUseCurrentNames(t *testing.T) {
 	}
 }
 
-func (watch fakeDoctorWatch) Status() (watchdog.Status, error) { return watch.status, watch.err }
-
 func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "graph.db")
 	graph, err := store.Open(path)
 	if err != nil {
-		t.Fatal(err)
-	}
-	charter, err := store.NewCharter("doctor-charter", "Keep releases documented.", store.WatchSpec{
-		Kind: store.WatchPoll, Poll: &store.PollWatch{Condition: "look for releases", Cadence: time.Hour},
-	}, "Did a release land?", store.CharterAction{Template: "Update release notes"},
-		store.CharterRails{PerFiringBudgetUSD: 0.1, MaxFiringsPerDay: 3}, store.CharterActive,
-		store.Ratification{Origin: store.OriginUser, SessionID: "doctor", Evidence: "yes"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.CreateCharter(charter); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := graph.AskQuestion(store.AgentQuestion{
@@ -84,28 +64,27 @@ func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	now := time.Now()
-	watch := fakeDoctorWatch{status: watchdog.Status{
-		Installed: true, LastWake: now.Add(-2 * time.Minute), NextDue: now.Add(3 * time.Minute),
-	}}
 	var output bytes.Buffer
-	if err := runDoctorWith([]string{"--db", path}, &output, 20, watch); err != nil {
+	if err := runDoctorWith([]string{"--db", path}, &output, 20); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
 	for _, want := range []string{
-		// `store` and `background timer` were `brain` and `standing watch`.
-		// Nobody looking for where their data lives searches for a brain, and
-		// `standing watch` is the RESIDENT's vocabulary — a word the chat's own
-		// manual is forbidden to use, so the manual could not quote this row
-		// and stay legal. What the row measures, in a developer's words, is
-		// what is running, since when, and whether it still answers.
-		"store", path, "desktop · pid 4321", "background timer", "installed",
-		"last wake 2m ago", "next check in 3m", "$3.40 today · rail $20.00",
-		"1 active charter · 1 pending question",
+		// `store` was `brain`: nobody looking for where their data lives
+		// searches for a brain.
+		"store", path, "desktop · pid 4321", "$3.40 today · rail $20.00",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("doctor output missing %q:\n%s", want, text)
+		}
+	}
+	// The two rows that read the v1 scheduler are gone with it: the timer it
+	// installed (`background timer`, once `standing watch`) and the count of
+	// its charters (`standing`). A row about machinery that is not there could
+	// only ever have said so.
+	for _, gone := range []string{"background timer", "last wake", "next check", "standing", "charter"} {
+		if strings.Contains(text, gone) {
+			t.Fatalf("doctor still reports the removed scheduler (%q):\n%s", gone, text)
 		}
 	}
 	for _, forbidden := range []string{"daemon", "launchd", "systemd", "service", "brain", "standing watch"} {
@@ -115,41 +94,10 @@ func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 	}
 }
 
-func TestDoctorSaysWhenAnArrangedWatchStoppedWaking(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "graph.db")
-	graph, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.Close(); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now()
-	var output bytes.Buffer
-	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{status: watchdog.Status{
-		Installed: true, LastWake: now.Add(-4 * time.Hour), NextDue: now.Add(time.Minute),
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(output.String(), "checks look stalled") {
-		t.Fatalf("stalled watch read as healthy:\n%s", output.String())
-	}
-
-	output.Reset()
-	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{status: watchdog.Status{
-		Installed: true, LastWake: now.Add(-2 * time.Minute), NextDue: now.Add(3 * time.Minute),
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(output.String(), "look stalled") {
-		t.Fatalf("healthy watch reported as stalled:\n%s", output.String())
-	}
-}
-
 func TestDoctorDoesNotCreateMissingBrainAndDegradesResidentCalmly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing", "graph.db")
 	var output bytes.Buffer
-	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{}); err != nil {
+	if err := runDoctorWith([]string{"--db", path}, &output, 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -157,7 +105,7 @@ func TestDoctorDoesNotCreateMissingBrainAndDegradesResidentCalmly(t *testing.T) 
 	}
 	text := output.String()
 	for _, want := range []string{
-		path + " · not created", "this terminal while open", "not installed",
+		path + " · not created", "this terminal while open",
 		// A machine that has spent nothing and holds nothing standing says so
 		// by leaving those figures out: the rail is the only claim here that
 		// anybody made (the emptiness law, emptiness_test.go).
@@ -181,7 +129,7 @@ func TestDoctorSaysThereIsNoKeyAndWhatToTypeAboutIt(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "graph.db")
 	var output bytes.Buffer
-	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{}); err != nil {
+	if err := runDoctorWith([]string{"--db", path}, &output, 0); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
@@ -230,7 +178,7 @@ func TestDoctorNamesWhereTheKeyCameFrom(t *testing.T) {
 
 			var output bytes.Buffer
 			if err := runDoctorWith([]string{"--db", filepath.Join(t.TempDir(), "graph.db")},
-				&output, 0, fakeDoctorWatch{}); err != nil {
+				&output, 0); err != nil {
 				t.Fatal(err)
 			}
 			line := rowSaying(output.String(), "key")

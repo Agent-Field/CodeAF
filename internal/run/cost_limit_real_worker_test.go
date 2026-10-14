@@ -36,7 +36,7 @@ func TestCostRemainderEndsARealBashWorker(t *testing.T) {
 		return reply, nil
 	}}
 	factory := func(plandb.Task) run.Worker {
-		return run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+		return run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 	}
 
 	outcome, summary := run.Start(runContext(t), run.Spec{

@@ -64,9 +64,10 @@ func WithConfiguredEffortRung(ctx context.Context, rung effort.Rung) context.Con
 	return withEffort(ctx, effortRequestFor(rung, true))
 }
 
-// WithEffortRung carries a rung the HARNESS chose for one phase — a sentinel's
-// yes-or-no, a standing check. The catalog gate drops it on a model that cannot
-// be vouched for, so a default depth can never break a run on an unknown model.
+// WithEffortRung carries a rung the HARNESS chose for one phase — an errand's
+// tier default (internal/session's auxiliary.go). The catalog gate drops it on
+// a model that cannot be vouched for, so a default depth can never break a run
+// on an unknown model.
 func WithEffortRung(ctx context.Context, rung effort.Rung) context.Context {
 	return withEffort(ctx, effortRequestFor(rung, false))
 }

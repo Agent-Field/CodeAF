@@ -313,9 +313,9 @@ type taskSpec struct {
 	// the contract. What this names is the filesystem path of the session
 	// journal and the line where the person's turn began, so a worker whose
 	// restatement was clipped can read the original words itself with the
-	// tools it already has. Empty is ordinary — a standing firing, a restored
-	// checkpoint written before origins were carried, a test that never set
-	// one — and [composeBrief] draws nothing for it.
+	// tools it already has. Empty is ordinary — a restored checkpoint written
+	// before origins were carried, a test that never set one — and
+	// [composeBrief] draws nothing for it.
 	origin taskOrigin
 	// admission is the WORKING CONTEXT this node was admitted with: bounded
 	// quotations of what was said around the work, with who said them, and

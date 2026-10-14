@@ -132,8 +132,6 @@ func toolGloss(name, arguments string) string {
 		return "opening what was found"
 	case beltToolCompetence:
 		return "checking what it is good at"
-	case beltToolStanding:
-		return "checking what is standing"
 	case beltToolSpending:
 		return "checking the spend"
 	case beltToolHistory:

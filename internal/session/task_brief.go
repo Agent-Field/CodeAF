@@ -1091,9 +1091,9 @@ func (a *Agent) taskRequest() string {
 // no person typing, so it INHERITS the origin of the task it was handed out
 // by. THE POINTER IS AN ADDRESS, NOT INHERITED CONTEXT: a nested task still
 // points at the human's journal, never at its own, and THE BRIEF REMAINS THE
-// CONTRACT. A standing firing has a journal and no person turn, so its spec
-// carries an empty origin and every part under it inherits that emptiness
-// rather than a guessed pointer at the run folder.
+// CONTRACT. An InTask session with no node behind it has no person turn to
+// point at, so its spec carries an empty origin and every part under it
+// inherits that emptiness rather than a guessed pointer at a run folder.
 func (a *Agent) taskOriginRef() taskOrigin {
 	if a.config.InTask {
 		if parent := a.graph().node(a.config.taskID); parent != nil {

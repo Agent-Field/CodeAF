@@ -83,16 +83,17 @@ const (
 	// shortens the first because the bytes are a means; it stays away from the
 	// second because here the bytes are the answer.
 	beltToolRead = "read"
-	// beltToolCompetence, beltToolStanding and beltToolSpending are the three
-	// reads that are about the employee rather than the work. Each was already
-	// measured, journalled and rendered somewhere else — the competence map for
-	// the router, the watch status for doctor, self-spend for the rail — and
-	// each reached a conversation through a hardcoded list of substrings or not
-	// at all. They are tools for the reason everything else here is a tool: the
-	// question "am I asking too much of you lately?" matches no list anybody
-	// will ever finish writing, and a model holding the read can recognise it.
+	// beltToolCompetence and beltToolSpending are the reads that are about the
+	// employee rather than the work. Each was already measured, journalled and
+	// rendered somewhere else — the competence map for the router, self-spend
+	// for the rail — and each reached a conversation through a hardcoded list
+	// of substrings or not at all. They are tools for the reason everything else
+	// here is a tool: the question "am I asking too much of you lately?" matches
+	// no list anybody will ever finish writing, and a model holding the read can
+	// recognise it. A third, `standing`, read the background timer's watch; it
+	// went with the v1 scheduler, because a read with nothing behind it is
+	// absent, not broken.
 	beltToolCompetence = "competence"
-	beltToolStanding   = "standing"
 	beltToolSpending   = "spending"
 	// beltToolHistory is the read that makes time a dimension of this belt
 	// rather than a word in it. Every other read is topical — board is BM25 over
@@ -292,7 +293,7 @@ func beltProp(kind, description string) map[string]any {
 func beltReadOnly(name string) bool {
 	switch strings.TrimSpace(name) {
 	case beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
-		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory,
+		beltToolCompetence, beltToolSpending, beltToolHistory,
 		beltToolSearch, beltToolThread,
 		// The lens (lens.go). All three change nothing: one searches, one opens,
 		// one reports. They join the closed set for the same reason the others
@@ -336,11 +337,11 @@ func beltDefinitions() []ai.ToolDefinition {
 			"separate":    beltProp("boolean", `true ONLY when they say in so many words that this is a job BESIDE work already waiting — "as well as", "a separate one"`),
 			"model":       beltProp("string", "the model they named for this job, in their own words; omit unless they named one"),
 		}, "instruction"),
-		beltTool(beltToolChange, "Change something already under way or already standing, by handing over their words: a live job, a standing rule, a service, or a learned way of working. Pass what they said VERBATIM and never pick a verb — what the words mean for the work is decided by whoever holds the plan, and you are told what it came to.", map[string]any{
-			"target": beltProp("string", "one id from a read: a job id, a standing rule's id, a service's name, or a learned way's own name"),
+		beltTool(beltToolChange, "Change something already under way, by handing over their words: a live job, a service, or a learned way of working. Pass what they said VERBATIM and never pick a verb — what the words mean for the work is decided by whoever holds the plan, and you are told what it came to.", map[string]any{
+			"target": beltProp("string", "one id from a read: a job id, a service's name, or a learned way's own name"),
 			"words":  beltProp("string", "the user's message, verbatim"),
 		}, "target"),
-		beltTool(beltToolStop, "Withdraw things: cancel live work, retire a standing rule or a learned way of working, stop a service. Name the ids from a read; \"everything\" is the total one. Call it with no targets and their words to get the candidates back.", map[string]any{
+		beltTool(beltToolStop, "Withdraw things: cancel live work, retire a learned way of working, stop a service. Name the ids from a read; \"everything\" is the total one. Call it with no targets and their words to get the candidates back.", map[string]any{
 			"targets": map[string]any{"type": "array", "description": `ids from a read, or the single word "everything"`,
 				"items": map[string]any{"type": "string"}},
 			"words": beltProp("string", `their own words for it; say pause or hold in them when they want it held rather than ended`),
@@ -360,7 +361,6 @@ func beltDefinitions() []ai.ToolDefinition {
 			"file": beltProp("string", "the path or filename as that job recorded it; omit it when the job wrote one file"),
 		}, "job"),
 		beltTool(beltToolCompetence, "Read the measured view of your own strengths, weak spots and learning frontier; a self-assessment given without it is invention.", map[string]any{}),
-		beltTool(beltToolStanding, "Read what you keep watch over: the last wake, the next check, and every standing rule with what it watches for and how often.", map[string]any{}),
 		beltTool(beltToolSpending, "Read what has been spent: today against the daily limit, your own upkeep separately, or any window you bound with since and until.", map[string]any{
 			"since": beltProp("string", `where the window starts, "2026-08-06" or "2026-08-06T09:00"`),
 			"until": beltProp("string", "where it ends, same spelling"),
@@ -372,20 +372,20 @@ func beltDefinitions() []ai.ToolDefinition {
 		beltTool(beltToolSearch, "Search everything you remember — this conversation, the notebook, jobs long finished — the only read that reaches what was merely said.", map[string]any{
 			"q": beltProp("string", "the words to look for, in the user's own terms"),
 		}, "q"),
-		beltTool(beltToolRecall, "Search everything settled or said at once — the conversation, the notebook, work live and finished, standing rules and services — and get back real content with an id for each hit that open takes. Always safe. Narrow with kind, since/until, or session; leave them off to search everything. If it comes back empty, say so plainly.", map[string]any{
+		beltTool(beltToolRecall, "Search everything settled or said at once — the conversation, the notebook, work live and finished, and services — and get back real content with an id for each hit that open takes. Always safe. Narrow with kind, since/until, or session; leave them off to search everything. If it comes back empty, say so plainly.", map[string]any{
 			"q":       beltProp("string", "the words to look for, in the user's own terms"),
-			"kind":    beltProp("string", "message, job, result, belief, rule, or service; omit to search all six"),
+			"kind":    beltProp("string", "message, job, result, belief, or service; omit to search all five"),
 			"since":   beltProp("string", `local date or time the window starts, "2026-08-06" or "2026-08-06T09:00"`),
 			"until":   beltProp("string", "local date or time the window ends, same spelling"),
 			"session": beltProp("string", "one conversation id, to look only in that room"),
 		}, "q"),
-		beltTool(beltToolOpen, "Open one thing whole: running work as its plan with every step's state, its workers' own progress, files and spend so far; finished work as its whole result, files, spend and how parts ended; a file as its actual bytes; a rule, service or #notebook line as its full record. Always safe. Longer than one page is PAGED, never cut — read on with part when it says so.", map[string]any{
-			"id":   beltProp("string", "what to open: a job id from a board or recall read, a file's name, a standing rule's id, a service's name, or a #number from the notebook"),
+		beltTool(beltToolOpen, "Open one thing whole: running work as its plan with every step's state, its workers' own progress, files and spend so far; finished work as its whole result, files, spend and how parts ended; a file as its actual bytes; a service or #notebook line as its full record. Always safe. Longer than one page is PAGED, never cut — read on with part when it says so.", map[string]any{
+			"id":   beltProp("string", "what to open: a job id from a board or recall read, a file's name, a service's name, or a #number from the notebook"),
 			"job":  beltProp("string", "the job that wrote the file, when two jobs wrote a file of the same name"),
 			"part": beltProp("integer", "which page to read, from a part-of line you have been shown; omit for the first"),
 			"raw":  beltProp("boolean", "true for the journal's own rows — every event and message anchored to it, unredacted"),
 		}, "id"),
-		beltTool(beltToolStatus, "Read the whole system on one page: running, queued and failed counts, today's cost against the daily limit, standing watches and next checks, services, measured competence, and what waits on an answer. Always safe.", map[string]any{}),
+		beltTool(beltToolStatus, "Read the whole system on one page: running, queued and failed counts, today's cost against the daily limit, services, measured competence, and what waits on an answer. Always safe.", map[string]any{}),
 		beltTool(beltToolThread, "Read another of the person's conversations; call it with no arguments to list the rooms. This conversation is already in front of you.", map[string]any{
 			"room": beltProp("string", "one conversation id, from this tool's own list"),
 		}),
@@ -518,8 +518,6 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.read(args)
 	case beltToolCompetence:
 		return run.competence()
-	case beltToolStanding:
-		return run.standing()
 	case beltToolSpending:
 		return run.spending(args)
 	case beltToolHistory:
@@ -646,8 +644,8 @@ func (run *beltRun) read(args map[string]any) (string, bool) {
 	return rendered, false
 }
 
-// competence, standing and spending are the employee's account of itself, and
-// they are reads in the same sense board and manual are: nothing is journalled,
+// competence and spending are the employee's account of itself, and they are
+// reads in the same sense board and manual are: nothing is journalled,
 // nothing acts, and a message that only asked how the work has been going
 // carries no command seq. Each returns the honest empty answer rather than an
 // error when the surface never registered it — a chat that has no competence
@@ -661,17 +659,6 @@ func (run *beltRun) competence() (string, bool) {
 		return "nothing has been measured yet — not enough work has settled to say where you are strong or weak.", false
 	}
 	return truncateBytes(measured, run.head.budget.grounding), false
-}
-
-func (run *beltRun) standing() (string, bool) {
-	if run.head == nil || run.head.standingWatch == nil {
-		return "standing-watch status is not available on this surface.", false
-	}
-	status := strings.TrimSpace(run.head.standingWatch())
-	if status == "" {
-		return "nothing is on watch and no standing check is arranged.", false
-	}
-	return truncateBytes(status, run.head.budget.grounding), false
 }
 
 // spending answers the money question the head could not answer at all. The

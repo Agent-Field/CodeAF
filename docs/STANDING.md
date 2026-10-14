@@ -1,5 +1,15 @@
 # Standing goals — recognition, ratification, and ambient presence
 
+> **Removed, 2026-10-10.** The v1 machinery this document describes is gone from
+> the code: charters and their watches, sentinels, probation and tenure, the
+> practice loop, the operating-system timer (`internal/watchdog`), `codeaf wake`
+> as a pass (it is now a hidden verb that does nothing, kept for timers an older
+> build installed) and the doctor rows that read them. A store an older build
+> wrote still opens and rebuilds — the journal keeps its events, which replay
+> passes over, and the `charters` table is left where it is, read only to name
+> an older build's work in a self receipt. What replaces all of it is
+> docs/design/automations/DESIGN.md. The rest of this page is history.
+
 *This is the v1-era design doc, and it is the ANCESTOR rather than the account:
 what v3 built is docs/AMBIENT.md, and where the two disagree AMBIENT.md and the
 code are right. Three decisions below have been overtaken by what shipped and

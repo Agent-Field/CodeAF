@@ -20,11 +20,13 @@ The memory commands have two postures:
   the conversation.
 - `/remember <text>` — keep one thing.
 - `/forget <query>` — drop the one thing that best matches.
+- `/always <text>` — keep a **rule**, put in front of every conversation and task
+  here; bare `/always` lists the rules in force (*Always — make it always do something*, below).
 
 Memory can be turned off entirely. The `memory` row in `/settings` is on by
 default; off, nothing is carried, nothing is written, neither of the two calls
-below is made, and the background tidy never runs. With it off, `/remember`,
-`/forget` and `/memories` answer:
+below is made, no rule rides along, and the background tidy never runs. With it
+off, `/remember`, `/forget`, `/always` and `/memories` answer:
 
 ```
 memory is off for this session · turn it on under /settings
@@ -231,7 +233,9 @@ and every field on the row is joined by the one separator this surface joins fac
 
 The **title is whole** whatever the frame is; the facts behind it are a ranked prefix, so a
 narrow terminal drops `helped 19 · bore on 3` from the end rather than cutting the line's own
-words. The age stays out at the right.
+words. The age stays out at the right. A **rule** leads its facts with `always` —
+`· use tabs in this repository · always · preference · new` — and typing `always` narrows
+the page to the rules.
 
 `helped` is how many times a line actually changed an answer; `bore on` is how many times it
 was put in front of a model and had nothing to do with the reply. A line that was **let go**
@@ -258,12 +262,13 @@ next place now, and a view of a place belongs to the `alt+<letter>` class.
 **The foot says what the row under the cursor can be asked for**, so it is two sentences:
 
 ```
-enter ask me about it · e fix the wording · f forget it · tab next place · esc
+enter ask me about it · e fix the wording · f forget it · a make it always · tab next place · esc
 enter open a shelf · type to filter · alt+s walk the shelves · tab next place · esc
 ```
 
-`e` and `f` are the row's `→` strip, which is where they are bound: press `→` first and the
-letters are the verbs while it is drawn.
+`e`, `f` and `a` are the row's `→` strip, which is where they are bound: press `→` first and
+the letters are the verbs while it is drawn. On a rule `a` reads `a only when it matters`; a
+narrow foot drops it first.
 
 `esc` clears the filter if there is one in it, and leaves the place on the second press.
 
@@ -323,8 +328,8 @@ While the strip is drawn its letters are the verbs and the filter box is asleep;
 `←` closes it and every letter is a character again.
 
 The strip is offered **only on a line**, and on a line it carries `c open the card`,
-`e fix the wording` and `f forget it` — plus `u put it back` while there is something to
-undo. A shelf heading, the section line and the teaching prose at the top of a nearly-empty
+`e fix the wording` and `f forget it`, then `a make it always` (`a only when it matters` on a
+rule) — plus `u put it back` while there is something to undo. A shelf heading, the section line and the teaching prose at the top of a nearly-empty
 page all have nothing to fix and nothing to forget, so `→` on any of them opens nothing.
 
 ## How do I forget a memory and undo forgetting one?
@@ -418,8 +423,8 @@ written, in the same words `/memory` uses:
 
 Something learned in the last hour reads `just now`, then hours, days, weeks and
 months. A memory old enough to be worth doubting is a memory that says so, which
-is the difference between a standing preference and a fact about a project that
-has moved on since.
+is the difference between a preference that still holds and a fact about a project
+that has moved on since.
 
 A line whose age is unknown — an old row from before this was recorded — simply
 carries no age rather than a zero. Nothing here asks a model to work out a date
@@ -551,9 +556,15 @@ do quietly.
 
 ## Why did it say memory tidied — my memories got merged while I was away
 
-Because a third call, quite separate from the two above, went over what is
-remembered while nobody was here and tidied it. When it changes something it
-says so in one dim line and nothing else:
+**It does not tidy on its own any more.** Since 2026-10-14 nothing runs the pass
+described below: an automatic change to what is remembered that nobody sees is
+what the memory rework rules out, so the automations clock stopped asking for it.
+A `memory tidied` line in an older conversation is from before that, and what it
+changed is still in `/memory`.
+
+What the pass did, while it ran: a third call, quite separate from the two above,
+went over what is remembered while nobody was here and tidied it. When it changed
+something it said so in one dim line and nothing else:
 
 ```
 memory tidied · 2 merged · 1 superseded
@@ -561,8 +572,8 @@ memory tidied · 2 merged · 1 superseded
 
 A half that is zero is left out, and a pass that changed nothing says nothing at
 all — which is most passes. The line arrives in whichever conversation you most
-recently touched, if any is open; on a machine with no window open there is no
-line, and the change is simply there the next time you look at `/memory`.
+recently touched, if one is open; otherwise there is no line, and the change is
+simply there the next time you look at `/memory`.
 
 If a tidy write fails, it reports an error rather than recording a successful
 no-op. Successful changes from that pass remain, but its completion watermark
@@ -570,8 +581,8 @@ is not advanced, so the failed work stays eligible for retry. Write failures
 are also journaled when the store can accept the failure record. Quarantined
 rows are excluded even if a project key is accidentally set to `legacy`.
 
-**When it runs.** It rides the same 5-minute background pass that checks
-everything standing, and three things have to be true at once: memory is **on**,
+**When it ran.** It was a background pass that ran only while a codeaf window was
+open, and three things had to be true at once: memory is **on**,
 **nobody has said anything anywhere for fifteen minutes**, and the last tidy was
 **more than six hours ago**. On top of that at least **two** remembered lines
 must have changed since the last one — one new line has already been settled
@@ -589,17 +600,16 @@ quarantine — grouped by how far each one's truth reaches, and answers with at 
   true now in its place.
 
 **What it costs.** One call on the **small work** class — the `consolidate` role
-in `/settings` → Models — a few times a day at most. It spends under the same
-daily budget as everything else that runs in the background, and it is the first
-thing a spent day stops paying for.
+in `/settings` → Models — a few times a day at most. It is skipped for the rest of
+the day once what the pass has spent that day reaches your daily limit (`per day`).
 
 **Where the record is.** Every change is an ordinary memory event, so `/memory`
 is where you see what it did — and because a line it rewrote was last touched by
 the tidy rather than by a conversation, that row's `learned <age>` is the age of
 the rewrite and it names no session. Nothing is deleted: a retired line keeps its
-row and the store keeps what it said before. What the pass spent is one line in
-the day's ledger under `~/.codeaf/v3/standing/`, and it counts against the same
-daily budget as everything else that runs in the background.
+row and the store keeps what it said before. What the pass spent is written to a
+day's record of its own rather than to the machine's spending ledger, so `/spend`
+does not show it.
 
 ## Does it clean up or delete old memories on its own?
 
@@ -607,10 +617,10 @@ daily budget as everything else that runs in the background.
 is no expiry, no half-life and no floor on how often a memory has to be used.
 Something you told it a year ago is still there.
 
-The only thing the background tidy above ever removes from the active list is a
-line **another line has replaced** — the api moved from v2 to v3, the deploy
-window changed — and even then the old row is kept and stays readable. Age on its
-own is never a reason.
+The background tidy above no longer runs (since 2026-10-14). The only thing it
+ever removed from the active list was a line **another line had replaced** — the
+api moved from v2 to v3, the deploy window changed — and even then the old row is
+kept and stays readable. Age on its own is never a reason.
 
 **And it will never replace something you said yourself with something it
 worked out.** A `preference`, a `decision` and a `correction` are your own words
@@ -647,6 +657,97 @@ memory rather than making a second — **and the settling step no longer needs
 the model to be up**: if the small memory model cannot answer, the line is
 still kept through the store's own duplicate check, and the failed settle is
 recorded in the journal rather than lost.
+
+## Always — make it always do something: a rule like always use tabs, never touch the public API, coding style, conventions for this repo
+
+A **rule** is a memory marked *always*. An ordinary memory comes up when it
+bears on what you asked; a rule is put in front of **every turn** of every
+conversation where it holds, and closes the brief of every task started there.
+It is for the conventions and preferences that govern work nobody has done yet.
+
+Two ways to make one:
+
+- **`/always <text>`** keeps it now and asks nothing — you typing it is the
+  confirmation:
+
+  ```
+  always · always use tabs in this repository · in this project
+  ```
+
+- **Say it.** When I recognise a rule in what you said I keep it with `remember`
+  set to *always*, and that always asks you first, on a card headed
+  `needs your ok to keep a rule`, because it will sit in front of every later
+  conversation. That card has no "always" answer: each rule is asked about by
+  itself. With nobody there to answer — inside a task, a headless run — it is not
+  kept.
+
+**Where it holds** is memory's own reach: this project by default; typed on home,
+for you in every project (`· in every project`). A conversation with no project
+of its own keeps its rules for you and says so:
+`· in every project, since this conversation has no project of its own`. There is
+no rule for one conversation only, and no "not here" exception.
+
+Bare `/always` lists the rules in force here — `rules in force here · 2`, then
+one rule per line with its id — or says
+`no rule holds here yet · /always <text> keeps one`. On home it lists the rules
+that hold everywhere you work.
+
+## Rules in every conversation and task — how many ride along, seeing, switching off and forgetting a rule
+
+**Where a rule reaches:** every turn of every conversation where it holds —
+including a small model's lean conversation, which does no other memory work;
+the brief of every task started there, which ends
+`If you cannot honour one of these, say so in your report.`; the workers of a
+plan; and a headless `codeaf do` in that folder.
+
+**How many:** yours first, then this machine's, then the project's, each oldest
+first. At most **twelve** rules and about **2,400** characters ride along; the
+newest wait, and the block says `…3 more`. A rule shows no age, and the block does
+not change from one turn to the next unless a rule does.
+
+**Seeing them:** bare `/always`, or the memory place, where a rule wears `always`
+as its first fact and on its card, and typing `always` filters the page to rules.
+
+**Switching one off:** `→` then `a` on a line in the memory place —
+`make it always` on an ordinary line, `only when it matters` on a rule. The line
+above the composer says `always · '<title>' is in front of every conversation now`
+or `'<title>' comes up only when it matters now`. A line nobody could prove the
+project of cannot be made a rule.
+
+**Forgetting one:** `/forget <query>` or `f`, as for any memory.
+
+The same words remembered again stay one rule, and `/always` on words already
+remembered makes that line the rule. Nothing learned in the background makes,
+unmakes or replaces a rule, and the tidy never touches one. **Memory off is rules
+off:** `/always` answers
+`memory is off for this session · turn it on under /settings`.
+
+## Where a rule holds — this project or every project, not in this project, and making it permanent
+
+A rule holds where it was kept, and nowhere narrower: in **this project** when it was kept
+in a conversation that has one, or in **every project** when it was typed on home or kept
+in a conversation with no project of its own. The line it was kept with says which.
+
+**There is no "not in this project" exception**, and no rule for one conversation only. To
+stop a rule holding here, switch it off — `→` then `a` on its line in the memory place, so
+it comes up only when it matters — or forget it with `/forget <query>`.
+
+**Making something permanent** is keeping it as a rule: a sentence you want true of every
+later conversation is `/always <text>`, kept at once. Something you want done again at a
+time or on a rhythm is not a rule but an automation (*Automations*).
+
+## Is that an instruction or a rule — how it knows you mean always, and when it didn't notice a rule and did it once
+
+The test is whether the sentence can be satisfied by the work in front of me and
+then forgotten. "Make sure this site has three pages" is done once it has three
+pages, however it is worded — an instruction for this work. "Never force-push a
+shared branch" can be broken tomorrow by work nobody has started — a rule. A
+sentence about the thing being built right now ("always validate the input in this
+form") is emphasis on this work.
+
+When it is genuinely unclear I follow it now and offer, in one line, to keep it
+always — rather than raising a card you did not want. If I missed one and only
+did it once, `/always <text>` keeps it without asking.
 
 ## Forgetting something
 
@@ -974,10 +1075,9 @@ them apply across projects. The ordinary remember tool also defaults to project;
 `/remember` retains its explicit personal-save behavior.
 
 Explicit rules and decisions with supporting user words are read locally before
-the first reply request. A standing order authorized to act unattended is bound
-the same way: its run reads this project's approved rules read-only before its
-first action and writes nothing back, and when memory is on a run that cannot load
-those rules refuses and asks for you instead of acting unbound. Optional semantic recall can arrive later.
+the first reply request. An automation's scheduled work is bound the same way: each
+run is your own conversation done later, so it starts on the same memory and the rules
+you keep with `/always` (*Automations*). Optional semantic recall can arrive later.
 Source words outrank interpretations; assistant assertions do not confirm test
 outcomes. A binding claim is judged against its own supporting span, not every
 word of the turn, so a quotation of ordinary talk cannot manufacture a rule. The
@@ -1036,9 +1136,12 @@ the evidence history.
 ## Will a future intention automatically schedule work?
 
 An intention can be retained with its prerequisite, but memory does not schedule
-it. When available, the existing `stand` tool proposes a standing order and uses
-its existing ratification, triggers and spending rails. Recognizing an opportunity
-never authorizes an unrelated edit. Memory adds no second scheduler.
+it. Something that should happen at a time or on a rhythm is an automation: in a
+conversation I propose it with the `automation` tool, on a card you answer before
+anything is saved, with its own limits, and it runs only while a codeaf window is open
+(*Automations*). A rule with no time — "always run the tests first" — is a memory
+marked always instead (`/always`). Recognizing an opportunity never authorizes an
+unrelated edit. Memory adds no second scheduler.
 
 
 ## Can I inspect the source behind a saved claim?

@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // THE POINTER ON A PLACE, AS A PERSON MEETS IT.
@@ -14,17 +12,14 @@ import (
 // the owner against the real binary: a tab word is a door, the wheel moves the
 // list under the pointer, and mouse and keyboard share the selected row.
 
-// standPlaceLab is the standing place standing over three orders.
-func standPlaceLab(t *testing.T) *app {
+// autoPlaceLab is the automations place open over three automations.
+func autoPlaceLab(t *testing.T) *app {
 	t.Helper()
-	a, _ := standingPlaceApp(t, []standing.Item{
-		standOrder("one", "watch the filings", standing.AltitudeMachine),
-		standOrder("two", "sweep the inbox", standing.AltitudeProject),
-		standOrder("three", "price the crew", standing.AltitudeConversation),
-	}, nil)
-	a.openStanding()
-	if !a.at(pageStanding) {
-		t.Fatal("the standing place did not open over three orders")
+	a, _ := automationLab(t, labWatch("watch the filings"), labWork("sweep the inbox", "1h"), labReminder("price the crew"))
+	a.width, a.height = 100, 24
+	runCmd(a.openAutomations())
+	if !a.at(pageAutomations) {
+		t.Fatal("the automations place did not open over three automations")
 	}
 	return a
 }
@@ -144,48 +139,47 @@ func placeTabGapColumn(a *app) (int, bool) {
 
 // ── the wheel ───────────────────────────────────────────────────────────────
 
-// AND THE STANDING PLACE ANSWERS IT TOO, which is the same law asked of the
+// AND THE AUTOMATIONS PLACE ANSWERS IT TOO, which is the same law asked of the
 // other promoted list.
-func TestTheWheelWalksTheStandingPlacesCursor(t *testing.T) {
-	a := standPlaceLab(t)
-	was := a.orders.cursor
+func TestTheWheelWalksTheAutomationsPlacesCursor(t *testing.T) {
+	a := autoPlaceLab(t)
+	was := a.autoPlace.cursor
 	drive(t, a, tea.MouseWheelMsg{X: 4, Y: placeHeadRows + 1, Button: tea.MouseWheelDown})
-	if a.orders.cursor == was {
-		t.Fatalf("the wheel did not move the standing place's cursor from %d", was)
+	if a.autoPlace.cursor == was {
+		t.Fatalf("the wheel did not move the automations place's cursor from %d", was)
 	}
 }
 
 // ── the hover ───────────────────────────────────────────────────────────────
 
-// AND THE STANDING PLACE PREVIEWS TOO. Its hover map was left answering -1
-// when the list was promoted out of the chrome that used to draw it, so a
-// pointer crossing it lit nothing at all.
-func TestHoveringARowOfTheStandingPlaceLightsIt(t *testing.T) {
-	a := standPlaceLab(t)
-	_, hits, _, _ := a.standingPlaceFrame(a.width, a.height)
+// AND THE AUTOMATIONS PLACE PREVIEWS TOO: a pointer crossing a row lights it
+// and puts the cursor on it, and a press is enter on that row.
+func TestHoveringARowOfTheAutomationsPlaceLightsIt(t *testing.T) {
+	a := autoPlaceLab(t)
+	_, hits := automationsPlaceFrame(a)
 	other := -1
 	for _, at := range hits {
-		if at >= 0 && at != a.orders.cursor {
+		if at >= 0 && at != a.autoPlace.cursor {
 			other = at
 			break
 		}
 	}
 	if other < 0 {
-		t.Fatal("the standing place drew no row that is not the cursor")
+		t.Fatal("the automations place drew no row that is not the cursor")
 	}
 	y := placeBodyRowOf(t, hits, other)
-	before, _, _, _ := a.standingPlaceFrame(a.width, a.height)
+	before, _ := automationsPlaceFrame(a)
 	drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
-	if a.orders.cursor != other {
-		t.Fatalf("the pointer selected standing row %d, want %d", a.orders.cursor, other)
+	if a.autoPlace.cursor != other {
+		t.Fatalf("the pointer selected automation row %d, want %d", a.autoPlace.cursor, other)
 	}
-	after, _, _, _ := a.standingPlaceFrame(a.width, a.height)
+	after, _ := automationsPlaceFrame(a)
 	if before[y] == after[y] {
-		t.Fatalf("the hovered standing row is painted exactly as it was: %q", plain(after[y]))
+		t.Fatalf("the hovered automation row is painted exactly as it was: %q", plain(after[y]))
 	}
 	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
-	if a.orders.cursor != other {
-		t.Fatalf("clicking standing row %d left the cursor on %d", other, a.orders.cursor)
+	if a.autoPlace.history == "" {
+		t.Fatalf("clicking automation row %d did not open its history", other)
 	}
 }
 

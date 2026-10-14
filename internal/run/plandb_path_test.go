@@ -111,7 +111,7 @@ func TestBashWorkerResolvesTheRunsPlandbOverAHostOne(t *testing.T) {
 			return toolReply(finishCommand("root", "checked the plan binary")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
@@ -163,7 +163,7 @@ func TestBashWorkerPlandbWritesTheRunsStoreFromAnyCwd(t *testing.T) {
 			return toolReply(finishCommand("outside", "added the task")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task("outside")); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)

@@ -96,6 +96,7 @@ func (m *skillMemory) ListMemories(string, int) ([]store.Memory, error) {
 func (m *skillMemory) UpdateMemory(string, string, string, []string) error { return nil }
 func (m *skillMemory) ForgetMemory(string) error                           { return nil }
 func (m *skillMemory) RestoreMemory(string) error                          { return nil }
+func (m *skillMemory) SetMemoryAlways(string, bool) error                  { return nil }
 func (m *skillMemory) MemoryProvenance(string) (string, string, time.Time, error) {
 	return "", "", time.Time{}, nil
 }
@@ -592,8 +593,9 @@ func (memoryOnly) ListMemories(string, int) ([]store.Memory, error) { return nil
 func (memoryOnly) UpdateMemory(string, string, string, []string) error {
 	return nil
 }
-func (memoryOnly) ForgetMemory(string) error  { return nil }
-func (memoryOnly) RestoreMemory(string) error { return nil }
+func (memoryOnly) ForgetMemory(string) error          { return nil }
+func (memoryOnly) RestoreMemory(string) error         { return nil }
+func (memoryOnly) SetMemoryAlways(string, bool) error { return nil }
 func (memoryOnly) MemoryProvenance(string) (string, string, time.Time, error) {
 	return "", "", time.Time{}, nil
 }

@@ -60,12 +60,12 @@ func TestAnchorWorkspaceMovesProjectIdentityAndRebinds(t *testing.T) {
 	scratch := t.TempDir()
 	// Anchoring resolves the Git root before asking for its project identity.
 	repo := canonicalPath(newTestRepo(t))
-	wantKey := standingProjectKey(repo)
+	wantKey := anchoredProjectKey(repo)
 	wantKeyFromDoor, err := gitidentity.ProjectKey(repo)
 	if err != nil || wantKeyFromDoor != wantKey || wantKey == "" {
 		t.Fatalf("test repo has no provable key: %q/%q/%v", wantKey, wantKeyFromDoor, err)
 	}
-	scratchKey := standingProjectKey(scratch)
+	scratchKey := anchoredProjectKey(scratch)
 	if scratchKey == "" || scratchKey == wantKey {
 		t.Fatalf("scratch and repo keys did not diverge: %q/%q", scratchKey, wantKey)
 	}

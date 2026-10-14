@@ -39,8 +39,8 @@ import (
 // a while behind that, so the cost is one short-lived subprocess per workspace
 // per half-minute rather than one per question the screen asks. A seam that
 // shelled out while a terminal was repainting would be the surface stopping to
-// ask another program a question, which is the mistake host.go's standing seam
-// already documents at length.
+// ask another program a question, which is the mistake internal/tui3's
+// hostlink.go documents for its own seam.
 func (a *Agent) workspaceTools() []bare.Tool {
 	return furrow.Tools(context.Background(), a.config.Workspace)
 }

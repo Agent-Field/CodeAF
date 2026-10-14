@@ -81,13 +81,13 @@ func SetLanePin(pin LanePin) {
 	//
 	// THIS SETTER IS A RESOLVER'S ENTRANCE AND NOT A PERSON'S, which is the
 	// whole reason it can afford that rule. It is called by every place that
-	// READS the row and hands the answer down — the door at launch, and the
-	// standing ticker, which rebuilds a whole posture every five minutes for as
-	// long as the window lives (cmd/codeaf's v3StandingTicker). An experiment
-	// build that forgot here unconditionally therefore forgot what the wire had
-	// said every five minutes and paid the identical 404 again: one at launch,
-	// one at 16:30:02, one at 16:35:00, in one process, in one measured run,
-	// with nobody having touched the row.
+	// READS the row and hands the answer down — the door at launch, and again
+	// for every automation run the clock assembles a config for (cmd/codeaf's
+	// applyV3Governance). An experiment build that forgot here unconditionally
+	// therefore forgot what the wire had said each time; under the standing
+	// orders' five-minute ticker that was the identical 404 paid again — one at
+	// launch, one at 16:30:02, one at 16:35:00, in one process, in one measured
+	// run, with nobody having touched the row.
 	//
 	// A PERSON'S OWN ACT COMES IN THROUGH [RepinLane] INSTEAD, and it forgets
 	// whatever the row says, because somebody choosing a machine in the picker

@@ -292,11 +292,11 @@ func TestUsageBySubjectSaysWhatTheMoneyWasFor(t *testing.T) {
 	}
 	// TWO FIRINGS, ONE PROMISE. A row per run folder would be a log, not an
 	// answer to "what was this for".
-	if rows[1].Kind != SubjectStanding || rows[1].ID != "item-6am" || rows[1].USD != 4 {
-		t.Fatalf("the standing row is %+v", rows[1])
+	if rows[1].Kind != SubjectAutomation || rows[1].ID != "item-6am" || rows[1].USD != 4 {
+		t.Fatalf("the automation row is %+v", rows[1])
 	}
-	if rows[1].Label != "standing" || rows[1].Session != "" {
-		t.Fatalf("the standing row named a run folder: %+v", rows[1])
+	if rows[1].Label != "automation" || rows[1].Session != "" {
+		t.Fatalf("the automation row named a run folder: %+v", rows[1])
 	}
 	if rows[2].Kind != SubjectConversation || rows[2].ID != "sess-1" || rows[2].Label != "chat" {
 		t.Fatalf("the conversation row is %+v", rows[2])
@@ -311,7 +311,7 @@ func TestUsageBySubjectSaysWhatTheMoneyWasFor(t *testing.T) {
 func TestTheSubjectWordsAreWordsAPersonUses(t *testing.T) {
 	for kind, want := range map[string]string{
 		SubjectTask:         "task",
-		SubjectStanding:     "standing",
+		SubjectAutomation:   "automation",
 		SubjectConversation: "chat",
 		"":                  "",
 		"errand":            "",

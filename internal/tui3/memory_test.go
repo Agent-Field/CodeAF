@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -74,6 +75,8 @@ type panelMemoryStore struct {
 	updated   []string
 	forgotten []string
 	restored  []string
+	// ruled is every id `a` was pressed on, with the flag it asked for.
+	ruled     []string
 	learned   int
 	letGo     int
 	snapshots int
@@ -149,6 +152,15 @@ func (s *panelMemoryStore) RestoreMemory(id string) error {
 	for i := range s.rows {
 		if s.rows[i].ID == id {
 			s.rows[i].Status = store.MemoryActive
+		}
+	}
+	return nil
+}
+func (s *panelMemoryStore) SetMemoryAlways(id string, always bool) error {
+	s.ruled = append(s.ruled, fmt.Sprintf("%s=%v", id, always))
+	for i := range s.rows {
+		if s.rows[i].ID == id {
+			s.rows[i].Always = always
 		}
 	}
 	return nil
@@ -557,10 +569,10 @@ func TestEnterOnAMemoryLineOpensAConversationAboutThatLine(t *testing.T) {
 	if !ok || line.ID != "m1" {
 		t.Fatalf("the cursor is not on the line: %#v %v", line, ok)
 	}
-	// The foot says what THIS row can be asked for, and names the two verbs the
-	// row's strip holds.
-	if got := (placeMemory{}).hint(a); got != memoryLineHint {
-		t.Fatalf("over a line the foot reads %q, want %q", got, memoryLineHint)
+	// The foot says what THIS row can be asked for, and names the verbs the
+	// row's strip holds — `a` last, in the word for an ordinary line.
+	if got, want := (placeMemory{}).hint(a), memoryLineHint+" · a "+memoryAlwaysWord; got != want {
+		t.Fatalf("over a line the foot reads %q, want %q", got, want)
 	}
 
 	drive(t, a, key("enter"))

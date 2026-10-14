@@ -405,15 +405,13 @@ const (
 	// "trying again". It never ends a turn: either the next attempt streams, or
 	// EventError arrives with the sentence about giving up.
 	EventRetrying
-	// EventStandingProposal asks the person whether one standing item — a
-	// reminder, a watch, a rule, an overnight job — may stand (standing_contract.go).
-	// Standing carries the card; the ID inside it is the token a surface hands back
-	// to [Agent.ResolveStanding]. Nothing stands until the answer is yes.
-	EventStandingProposal
-	// EventStandingUpdate reports a standing item changing under a live window: it
-	// was ratified, it fired, it was paused, retired, or it needs the person. It is
-	// a report, never a question.
-	EventStandingUpdate
+	// TWO KINDS WERE RETIRED HERE WITH STANDING ORDERS (the proposal and the
+	// update, replaced by [EventAutomationProposal] and [EventAutomationUpdate]
+	// at the end of this block). Their numbers are kept, never sent, so every
+	// kind after them keeps the integer it has on the wire and in anything a
+	// surface wrote down — this block's own law, stated over [EventRowNews].
+	_
+	_
 	// EventSubharnessAsk is a running subharness putting one question to the
 	// person (subharness_env.go, the Env's ask() door). ID is the run's task
 	// node, Text is the question in the program's own words, and Args carries
@@ -582,7 +580,7 @@ const (
 	//
 	// IT IS A SECOND DESCRIPTION AND NEVER A REPLACEMENT. Every lane goes on
 	// emitting the event it always emitted — EventConsentRequest,
-	// EventTaskProposal, EventStandingProposal and the rest — so a surface that
+	// EventTaskProposal, EventAutomationProposal and the rest — so a surface that
 	// ignores this kind is exactly what it was. A surface that draws it draws
 	// one object for every lane instead of thirteen cards.
 	//
@@ -635,6 +633,14 @@ const (
 	// EventToolOutput carries literal stdout/stderr in Text while a user shell
 	// command is running. CallID owns the bytes; its result still ends the call.
 	EventToolOutput
+	// EventAutomationProposal asks the person whether to save one automation
+	// (automation_tool.go); Automation carries the card. Nothing is saved until
+	// it is answered.
+	EventAutomationProposal
+	// EventAutomationUpdate reports an automation changing because of a call
+	// in this turn — saved, paused, resumed, deleted, asked to run now. It is a
+	// report and never a question.
+	EventAutomationUpdate
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -938,9 +944,9 @@ type Event struct {
 	// card from a value that never carried those.
 	TaskPhase *TaskPhaseNotice
 
-	// Standing carries one EventStandingProposal or EventStandingUpdate's payload
-	// (standing_contract.go). It is nil on every other kind.
-	Standing *StandingNotice
+	// Automation carries one EventAutomationProposal or EventAutomationUpdate's
+	// payload (automation_tool.go). It is nil on every other kind.
+	Automation *AutomationNotice `json:",omitempty"`
 
 	// Subharness carries one EventSubharnessProposal's intake card
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
@@ -1313,9 +1319,9 @@ type Config struct {
 	// did, with no approved block and no new authority. It is read-only by the
 	// plumbing that uses it ([Agent.prepareWorkerBinding] never writes it).
 	bindingStore *store.Store
-	// bindingOnlyMemory makes a brain READ-ONLY. It exists for the authorized
-	// standing run, which must see the owner's approved binding rules before
-	// its first action without gaining any general memory write: extraction,
+	// bindingOnlyMemory makes a brain READ-ONLY. It exists for an automation's
+	// run, which must see the owner's approved binding rules before its first
+	// action without gaining any general memory write: extraction,
 	// dependency observation, dismissal, import and the remember/forget verbs
 	// are all refused, while the same canonical identity, query and context
 	// machinery answers the read. Nothing is written from a posture that only
@@ -1519,16 +1525,15 @@ type Config struct {
 	// the same choices whichever way this is set.
 	TaskSettle string
 
-	// Standing is the ambient side (standing_contract.go, internal/standing).
-	// Nil is off: no belt tool, no card, no ticking from this process.
-	Standing *Standing
+	// Automations is the door to the automations store (automation_tool.go).
+	// Nil is off: no `automation` tool and no card — which is what a run of an
+	// automation is given, because nothing an automation does may arm another.
+	Automations *Automations
 
-	// standingItems overrides where [Standing.Store] would be read, and it is
-	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
-	// else: the store is a concrete *standing.Store on the seam a door fills,
-	// and a test that wants to watch what a ratified card actually writes needs
-	// a fake behind the same three methods (tools_standing.go's standingStore).
-	standingItems standingStore
+	// AutomationRun is set on the session ONE RUN of an automation's work runs
+	// in, and only there: it puts `automation_report` on the belt and receives
+	// what the run reports (automation_run.go).
+	AutomationRun *AutomationRun
 
 	// ProfileDir is the person's profile directory — the one holding the
 	// config.json that /settings writes (internal/config's settings registry).
@@ -1903,18 +1908,16 @@ type Config struct {
 
 	// Effort is the rung this session was HANDED — the work's own rung, filling
 	// the ladder's task scope. It is set on a child: a task worker gets the
-	// task's rung, a standing firing gets the item's. EMPTY IS THE HONEST
-	// DEFAULT and means nobody set one for this piece of work, which is every
-	// conversation a person opens themselves.
+	// task's rung. EMPTY IS THE HONEST DEFAULT and means nobody set one for this
+	// piece of work, which is every conversation a person opens themselves.
 	Effort effort.Rung
 
 	// EffortRole is what this session is FOR, and it is the rung of last resort
-	// before the install's default: a standing firing and its checks stay cheap
-	// however deep the install is dialled, and an errand asks for nothing at
-	// all. THE ZERO VALUE IS NOT A ROLE and falls through to DefaultEffort,
-	// which is the right answer for a caller that has not thought about it — a
-	// headless --once, a test — because it is the same answer a person's own
-	// conversation gets.
+	// before the install's default: an errand asks for nothing at all, and a
+	// task worker on the bash belt starts low. THE ZERO VALUE IS NOT A ROLE and
+	// falls through to DefaultEffort, which is the right answer for a caller
+	// that has not thought about it — a headless --once, a test — because it is
+	// the same answer a person's own conversation gets.
 	EffortRole effort.Role
 
 	// DefaultEffort is the install's `effort` row, read by the door
@@ -2089,17 +2092,15 @@ type Config struct {
 	// sits in. It is a conversation in every other way — a real model, a real
 	// transcript, a card it can answer — so InTask would be a lie about it.
 	//
-	// IT CHANGES EXACTLY ONE THING: an errand is never registered as a live
-	// delivery target (standing_run.go). A firing steered into an exchange is
-	// news typed into a forty-cell pane that closes with home, and the person
-	// sitting in an ordinary conversation in the same window is never told —
-	// which is what happened the first time a reminder made from home ever
-	// fired.
+	// IT TAKES THE EXCHANGE OUT OF WHAT BELONGS TO THE ROOM A PERSON SITS IN. A
+	// forty-cell pane that closes with home is not that room, so an errand never
+	// registers as a live window ([registerLiveSession]), and the typing probe,
+	// the newer-build notice, the launch's and the day's limits and a steward
+	// are none of its business either.
 	//
-	// Ratifying the exchange's OWN card is untouched by this, and the two are
-	// separate lanes on purpose: a card is answered through the agent the
-	// surface is holding ([Agent.ResolveStanding]), never through the registry,
-	// so an exchange still proposes and still hears yes.
+	// Ratifying the exchange's OWN card is untouched by this: a card is answered
+	// through the agent the surface is holding ([Agent.ResolveAutomation]), never
+	// through the registry, so an exchange still proposes and still hears yes.
 	Errand bool
 
 	// roomThread says this agent is a node somebody TALKS TO rather than a
@@ -2167,10 +2168,10 @@ type Config struct {
 	fixesDir string
 	// droppings is THE FAMILY'S SESSION FOLDER, carried by an agent that has no
 	// folder of its own: a task node's worker, a part's worker under that one, a
-	// fork's hand, an adaptive run's child, an auditor, a standing probe. It is
-	// read in exactly one place ([Config.droppingsPlace]) and answers exactly one
-	// question — where a job log or a stubbed tool result lands (landing.go
-	// states the law and the failure that wrote it).
+	// fork's hand, an adaptive run's child, an auditor. It is read in exactly
+	// one place ([Config.droppingsPlace]) and answers exactly one question —
+	// where a job log or a stubbed tool result lands (landing.go states the law
+	// and the failure that wrote it).
 	//
 	// IT IS NOT Place UNDER A SECOND NAME, and the distinction is the whole point.
 	// Setting Place on a worker would make the worker a SESSION: it would stamp
@@ -2252,12 +2253,12 @@ type Config struct {
 	// worker.
 	rootSession string
 
-	// standingItemID is the id of the standing item whose firing this agent IS
-	// (standing_run.go), and empty in every conversation and every ordinary task.
-	// It rides on the config for [Config.taskID]'s reason: the money a firing
-	// spends has to be attributable to the promise the person made, and the only
-	// thing that knows which promise is the runner that built this config.
-	standingItemID string
+	// automationID is the id of the automation whose run this agent IS
+	// (automation_run.go), and empty in every conversation and every ordinary
+	// task. It rides on the config for [Config.taskID]'s reason: the money a run
+	// spends has to be attributable to the automation the person saved, and the
+	// only thing that knows which one is the runner that built this config.
+	automationID string
 
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
@@ -2922,13 +2923,14 @@ type Agent struct {
 	// ([Agent.landVolatileLocked]), and no longer in message[0], because it
 	// moves every time a delta lands and message[0] is in front of everything.
 	cardText string
-	// standingText is the <standing> block message[0] currently carries
-	// (standing_world.go): the orders the person holds over this conversation,
-	// which the model must work within. It sits under mu beside the three blocks
-	// below for their reason, and it is re-rendered at the start of every turn —
-	// an unchanged set renders the same bytes, so a conversation whose orders
-	// have not moved leaves message[0] exactly as the provider cached it.
-	standingText string
+	// alwaysText is the <always> block message[0] currently carries
+	// (memory_always.go): the person's rules over this place, read from the
+	// memory store at the start of every turn. An unchanged set renders the same
+	// bytes, so a conversation whose rules have not moved leaves message[0]
+	// exactly as the provider cached it. A read that fails keeps the last block
+	// it had, because a rule the model was working under a turn ago has not
+	// stopped holding because a disk was busy.
+	alwaysText string
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
 	// named absolutely, with each one's own house rules scoped to it. It sits
@@ -2953,8 +2955,8 @@ type Agent struct {
 	// ([Agent.refreshSystemLocked] holds the whole argument).
 	//
 	// systemHead is everything in message[0] AHEAD of the record — the base
-	// prompt, the attached folders, the standing orders — as it was last
-	// rendered, and it is the whole of how that moment is recognised.
+	// prompt, the attached folders, the rules — as it was last rendered, and it
+	// is the whole of how that moment is recognised.
 	recordText  string
 	recordShown string
 	systemHead  string
@@ -3482,13 +3484,10 @@ type Agent struct {
 	// contract test cross the old deadline without sleeping or racing a machine.
 	taskNow   func() time.Time
 	taskTimer func(time.Duration) (<-chan time.Time, func())
-	// standingAnswers is the same wait, for standing cards (standing_contract.go).
-	standingAnswers map[uint64]chan StandingAnswer
-	// standingSeq numbers those cards. It is the agent's own sequence and not
-	// the task graph's, because a standing proposal is not a node: nothing is
-	// reserved, nothing is admitted, and the only thing the number has to do is
-	// name one outstanding question until it is answered (tools_standing.go).
-	standingSeq uint64
+	// automationAnswers and automationSeq are the same wait, for automation
+	// cards (automation_tool.go).
+	automationAnswers map[uint64]chan AutomationAnswer
+	automationSeq     uint64
 	// questionWords is THE WORDS of the questions this session has put, keyed by
 	// lane and token (question.go's [questionToken]).
 	//
@@ -3525,21 +3524,6 @@ type Agent struct {
 	// it: a node's most important event lands minutes after the turn that
 	// proposed it ended, when there is no hub to send it to.
 	taskWatchers []*eventStream
-	// standingNews is what fired while this window was SHUT, waiting for a
-	// reader ([Agent.drainStandingInbox]). It is a queue and not a send because
-	// the fold is built inside New — before the caller holds the agent, before
-	// any surface has subscribed to anything — so a send there would go to an
-	// empty list of watchers and the person would open a conversation with news
-	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
-	standingNews []Event
-	// standingHeld are the staged standing-inbox files a live, unsettled fold
-	// already owns, keyed by the staged file's path ([standing.DrainFile.Path]).
-	// A drain hands a file over; until the fold it fed is durably journaled and
-	// the file acknowledged, a repeat drain — construction and every surface
-	// attach both ask ([Agent.WatchTaskUpdates]) — must NOT queue the same notes
-	// again or acknowledge a file another fold is still waiting to retire. A
-	// path leaves this map when its acknowledgement runs.
-	standingHeld map[string]bool
 	// jobRows is the roster id minted for each background job, keyed by the
 	// registry's own number for it. The two numberings are separate counters and
 	// a row keyed on the registry's would collide with a task's, which is why

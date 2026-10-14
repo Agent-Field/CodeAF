@@ -6,9 +6,9 @@ package main
 // Every line goes through [session.RecordUsage], which is the same door the
 // engine writes through, and the ids on it JOIN — a line about a conversation
 // names a conversation on the disk, a line about a piece of work names a row in
-// that project's index, a line about a standing order names an item in the
-// standing store. That is what the spend page's `what it was for` column reads,
-// and a ledger of orphan ids would draw rows a person cannot follow anywhere.
+// that project's index, a line about an automation names one in the automations
+// store. That is what the spend page's `what it was for` column reads, and a
+// ledger of orphan ids would draw rows a person cannot follow anywhere.
 //
 // A LINE THAT SPENT NOTHING IS NOT WRITTEN — the ledger's own law, kept by its
 // writer — so nothing here is priced at zero.
@@ -20,7 +20,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // demoModels are the three the demo machine has spent money on. They are real
@@ -78,16 +77,16 @@ const demoDayAnchor = 9 * time.Hour
 // demoMoment is when a fixture line meant for daysAgo days ago is stamped, and
 // IT NEVER LEAVES THE DAY IT NAMES.
 //
-// The offsets the seeders add — a firing seventeen minutes before the last one,
-// a turn eleven minutes after the one before it — used to be added to `now`
-// itself, so a demo home built at ten past midnight stamped TODAY's standing
-// firing fifty minutes earlier, which is yesterday, and the spend page's
-// cost-per-firing clause then drew nothing on a fixture whose entire purpose is
-// to have something on every place. One built at half past eleven at night put
-// today's turns on tomorrow's row of the day axis. The day is chosen first, the
-// offset is applied inside it, and the result is clamped to the day at both
-// ends — and to `now` as well, because money spent in the future reads as a
-// broken fixture rather than a full one.
+// The offsets the seeders add — a turn eleven minutes after the one before it,
+// and in the standing orders this fixture used to seed, a firing seventeen
+// minutes before the last one — used to be added to `now` itself, so a demo
+// home built at ten past midnight stamped TODAY's firing fifty minutes earlier,
+// which is yesterday, and the page that read today's figure drew nothing on a
+// fixture whose entire purpose is to have something on every place. One built
+// at half past eleven at night put today's turns on tomorrow's row of the day
+// axis. The day is chosen first, the offset is applied inside it, and the
+// result is clamped to the day at both ends — and to `now` as well, because
+// money spent in the future reads as a broken fixture rather than a full one.
 func demoMoment(now time.Time, daysAgo int, offset time.Duration) time.Time {
 	day := now.AddDate(0, 0, -daysAgo)
 	start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
@@ -113,9 +112,11 @@ const usageDays = 14
 // The three SUBJECTS a line can name are all here, because the page's binding
 // column is only interesting when it has more than one thing to say: a
 // conversation (a turn somebody took), a piece of work (a task node's own
-// calls), and a standing order (a firing, which is unattended and which a person
-// recognises long before they recognise the run it spawned).
-func writeUsage(path string, projects map[string]*demoProject, ids map[string]string, now time.Time) (int, error) {
+// calls), and an automation (a run nobody was watching, which a person
+// recognises by the automation long before they recognise the run). The
+// automations' lines are bills, made by the runs that spent the money
+// (seed_automations.go), so they are written as they came.
+func writeUsage(path string, projects map[string]*demoProject, ids map[string]string, bills []session.UsageLine, now time.Time) (int, error) {
 	written := 0
 	// A stable, boring rhythm rather than a random one: the same fixture on two
 	// machines is the same fixture, and a demo that looked different every time
@@ -183,32 +184,6 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 					Session:   "node-" + task.entry.ID + "-" + id,
 					Root:      id,
 					Task:      task.entry.ID,
-					Workspace: project.dir,
-				}); err != nil {
-					return written, err
-				}
-				written++
-			}
-		}
-
-		// One standing check a day. A firing is cheap and unattended, so it runs
-		// on the smallest model and names its ITEM rather than the run it
-		// spawned — which is the id a person recognises.
-		if firing := spendingOrders(); len(firing) > 0 {
-			order := firing[next()%len(firing)]
-			if project := projects[order.project]; project != nil {
-				// A check names the role it was made for; internal/roles is the
-				// vocabulary, and it is NOT the five router slots — nothing in the
-				// program records which slot a call ran under.
-				if err := record(path, session.UsageLine{
-					At:        demoMoment(now, day, spread+time.Duration(next()%5)*19*time.Minute),
-					Model:     demoModels[len(demoModels)-1].slug,
-					Role:      string(roles.RoleIntake),
-					Calls:     1,
-					Input:     1_400 + 200*(next()%4),
-					Output:    300,
-					USD:       round(0.004 + 0.001*float64(next()%5)),
-					Standing:  order.item.ID,
 					Workspace: project.dir,
 				}); err != nil {
 					return written, err
@@ -290,6 +265,18 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 		}
 	}
 
+	// AND WHAT THE AUTOMATIONS' RUNS COST, one line per run that spent anything,
+	// stamped when the run ended. They are not a rhythm made up here: each is the
+	// figure its own run records, so the spend page and an automation's history
+	// add up to the same money. They are written last because they are already
+	// whole — no pick, no rotation, nothing for the lines above to share.
+	for _, bill := range bills {
+		if err := record(path, bill); err != nil {
+			return written, err
+		}
+		written++
+	}
+
 	// The writer is a background goroutine per ledger — it never blocks a turn —
 	// so nothing is on the disk until this returns.
 	session.FlushUsage()
@@ -324,17 +311,4 @@ func aliveOn(talks []demoTalk, daysAgo int) []demoTalk {
 		}
 	}
 	return alive
-}
-
-// spendingOrders is the standing orders that can cost money. A hold never wakes,
-// so it can never spend, and a ledger line against one would be a fact about
-// this fixture and about nothing the product does.
-func spendingOrders() []demoOrder {
-	var spending []demoOrder
-	for _, order := range demoOrders {
-		if order.item.When.Kind != standing.WhenHold {
-			spending = append(spending, order)
-		}
-	}
-	return spending
 }
