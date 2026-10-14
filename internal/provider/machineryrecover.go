@@ -11,47 +11,18 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// The recovery half of the fourth failure plane.
-//
-// [MachineryLeak] in machinery.go answers a yes/no about a reply whose content
-// is the model's own tool grammar written as text, and its answer is spent
-// entirely on throwing the reply away: the turn is dropped, asked again once,
-// rerouted, and on a single-model deployment that is the end of the work. The
-// person is told the model "answered in its own internal markup instead of
-// words" — which is true and useless, because the markup is very often a
-// perfectly well-formed tool call that the endpoint simply failed to parse out
-// of the model.
-//
-// So the throwaway is made conditional on there being nothing to keep. When the
-// leak parses into tool calls the request actually declared, with arguments
-// that parse as a JSON object, and with the markup carrying the reply rather
-// than being quoted inside it, those calls are put on the response and the turn
-// proceeds as the tool call it was always trying to be. Only a leak that cannot
-// be read that way is still cut.
-//
-// NOTHING HERE GUESSES. Three refusals, each load-bearing:
-//
-//   - a name the request did not advertise is not a call, it is prose about one;
-//   - arguments that do not parse as a JSON object are not arguments, and a
-//     half-read object is worse than none;
-//   - markup with a long tail of prose after it is somebody DESCRIBING tool
-//     calls, which is the one answer a repair must never destroy.
-//
-// Every refusal leaves the reply exactly as [MachineryLeak] found it, so the
-// existing cut is still the fallback for all of them. Recovery is an addition
-// to a guard that already worked, never a replacement of the thing that makes
-// it safe.
+// RecoverMachinery turns a reply whose tool call arrived as text back into a
+// real tool call, so a leak costs a retry instead of the turn. Nothing here
+// guesses: the tool must have been advertised, the arguments must parse, and
+// the markup must be the reply rather than a quotation in it. Every refusal
+// falls back to the cut that already existed.
 
-// recoverShapeFloor is the fraction of a recovered call's span that must carry
-// markup for the call to count as the reply's substance rather than a quotation
-// inside it. Twelve characters is below any real invocation (`<invoke
-// name="x">` alone is longer) and above any realistic piece of quoting.
+// Minimum markup in a recovered span. Below it the markup is a quotation
+// rather than the call; every real invocation is longer.
 const recoverShapeFloor = 12
 
-// A leak is the TAIL of the reply: a short lead-in ("I'll run the tests:") is
-// ordinary, but a long tail resuming after the markup is somebody talking about
-// tool calls. Both allowances are a floor AND a ratio, so a one-line reply is
-// judged by its line and a long one by its proportion.
+// A leak is the tail of the reply: a short lead-in is ordinary, a long tail
+// resuming after the markup is somebody talking about tool calls.
 const (
 	recoverLeadAllowance = 160
 	recoverLeadRatio     = 0.35
@@ -59,23 +30,11 @@ const (
 	recoverTailRatio     = 0.15
 )
 
-// The rule that actually separates a leaked call from a QUOTED one, and the
-// reason the two allowances above are not enough on their own.
-//
-// A reply explaining what a call looks like also spells the invocation, also
-// fences the tool's name in symbols, and is dense enough for [MachineryLeak] to
-// convict — the markup alone carries the density. What it has that a leak does
-// not is WORDS: prose around the markup, in the proportion a sentence is
-// written in. A leak is markup with a lead-in.
-//
-// Measured on replies this harness actually threw away (the three captured
-// leaks in testdata/machineryrecover_dsml.json): 0.25, 0.29 and 0.41 of the
-// reply is prose outside the markup. Two hand-written replies that quote an
-// invocation inside a sentence measure 0.57 and 0.64. The bound sits between the
-// two groups and nearer the leaks, because a false refusal is not a regression —
-// it falls back to the cut, which is exactly what happened before recovery
-// existed — while a false acceptance would dispatch a call the model never
-// meant to make.
+// What separates a leaked call from a quoted one. A reply explaining what a
+// call looks like is also dense enough for MachineryLeak to convict, and
+// differs only in having prose around the markup. The measured groups and
+// the bias behind the bound:
+// TestTheProseCeilingSeparatesCapturedLeaksFromQuotations.
 const recoverProseCeiling = 0.45
 
 // The fullwidth spelling folds to ASCII one character at a time, so every offset
@@ -139,17 +98,14 @@ type RecoveredCall struct {
 	Arguments string // compact JSON, the shape a ToolCall carries
 }
 
-// RecoverMachinery reads the tool calls hiding as text in a reply [MachineryLeak]
-// would have thrown away, and puts them on the response as real tool calls.
+// RecoverMachinery puts the tool calls hiding as text in a reply that
+// MachineryLeak would have cut onto response as real calls, returning
+// recoverOK. Any other reason leaves response untouched, and the caller
+// cuts exactly as it did before this existed.
 //
-// It returns the calls it recovered and the reason it stopped (recoverOK on
-// success). A non-OK reason leaves the response untouched, and the caller cuts
-// exactly as it did before this existed.
-//
-// THIS MUTATES response. A recovered reply becomes an answered one — its
-// finish reason reads tool_calls and the markup is dropped from the content so
-// it is never shown to the person as prose — because a turn that recovered its
-// call must go on to DISPATCH it, not display the grammar it was written in.
+// Mutates response: a recovered reply reads finish_reason tool_calls with
+// the markup dropped from content, so the turn dispatches the call
+// instead of showing the grammar it was written in.
 func RecoverMachinery(request *ai.Request, response *ai.Response) ([]RecoveredCall, string) {
 	if request == nil || response == nil || len(request.Tools) == 0 {
 		return nil, recoverNoText
@@ -187,11 +143,9 @@ func RecoverMachinery(request *ai.Request, response *ai.Response) ([]RecoveredCa
 	return calls, recoverOK
 }
 
-// ExplainMachinery is [RecoverMachinery] without the mutation: the calls hiding
-// in a reply, and why the verdict came out that way.
-//
-// permitted is the set of names the request advertised; an empty set skips the
-// name check, which is only right for a caller that has none to check against.
+// ExplainMachinery is RecoverMachinery without the mutation: the calls
+// found, and the reason. permitted is the request's advertised names; an
+// empty set skips the name check.
 func ExplainMachinery(text string, permitted map[string]bool) ([]RecoveredCall, string) {
 	if strings.TrimSpace(text) == "" {
 		return nil, recoverNoText
@@ -399,12 +353,9 @@ func recoveredJSONObject(text string) (string, int, bool) {
 	return "", 0, false
 }
 
-// recoveredShapeReason is the test that the markup is the reply's substance
-// rather than a quotation inside it — the one distinction prose-about-tools and
-// an actual tool call share and that no amount of structural matching settles on
-// its own. It returns recoverOK when the reply is a leak, recoverProse when the
-// markup is well-formed but the reply is mostly WORDS, and recoverShape for
-// every other refusal.
+// Whether the markup is the reply's substance or a quotation inside it:
+// recoverOK, recoverProse when the reply is mostly words, recoverShape
+// otherwise. This is the distinction structural matching cannot settle.
 func recoveredShapeReason(hay string, spans [][2]int) string {
 	if len(spans) == 0 {
 		return recoverShape

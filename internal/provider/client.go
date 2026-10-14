@@ -1458,18 +1458,11 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 	if !babbleGuardOn(ctx) || !MachineryLeak(request, response) {
 		return nil
 	}
-	// THE RECOVERY HALF, and the whole reason this guard can be reached at all:
-	// a leak that carries a well-formed call is not garbage, it is the call the
-	// endpoint failed to parse out of the model. Recovery puts it on the
-	// response and this returns nil, so the turn goes on to DISPATCH it —
-	// indistinguishable from a reply that arrived parsed, at every layer below,
-	// which is why no lane, retry or accounting is threaded through here. Only a
-	// leak that cannot be read that way is still thrown away.
-	//
-	// It runs INSIDE the guard's verdict on purpose. The parser will take a
-	// call out of a reply that is merely quoting one, and MachineryLeak's
-	// density floor is what keeps such a reply out of this function at all —
-	// see machineryrecover_test.go's TestRecoveryIsGatedBehindTheLeakVerdict.
+	// A leak carrying a well-formed call is that call, unparsed by the
+	// endpoint. Recovery dispatches it, which is why nothing downstream sees a
+	// difference and nothing here is threaded through. It runs inside the
+	// guard because the parser would otherwise take a quoted call as real:
+	// TestAQuotingReplyIsRefusedEvenThoughTheGuardConvictsIt.
 	if _, reason := RecoverMachinery(request, response); reason == recoverOK {
 		return nil
 	}
