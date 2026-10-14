@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Unconfigured reflex and mastermind helpers follow the live chat model
-pr: 1811
+pr: 1812
 surface: [chat, engine, docs]
 invalidates:
   - "An untouched reflex row chose Gemini while a cleared row followed the conversation. Both now follow the live chat model; a written model still wins."
