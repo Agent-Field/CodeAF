@@ -736,6 +736,14 @@ rule.
 
   </details>
 
+- **provider connections read complete bounded model catalogs** — [#1822](https://github.com/Agent-Field/codeaf/pull/1822) · `chat` `engine` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Connection checks read only four KiB of a successful model list, so ai&'s valid larger catalog became incomplete JSON and its key could not connect. Successful model-list probes now read the complete response up to discovery's shared sixteen-MiB bound and refuse oversized responses instead of accepting a truncated prefix.
+
+  </details>
+
 
 ### Internal
 
