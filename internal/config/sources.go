@@ -571,9 +571,21 @@ func runServiceProbe(ctx context.Context, address, key string, probe modelsource
 		return 0, nil, false
 	}
 	defer response.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<10))
+	// A successful model list must be read whole. The old refusal-sized read
+	// cut ai&'s valid 6,920-byte catalog into invalid JSON before admission.
+	// One byte beyond discovery's bound distinguishes an oversized response
+	// from a complete document that happens to end exactly at the limit.
+	listing := probe.Method == http.MethodGet && probe.Address == "/models" && acceptsStatus(probe.Accepts, response.StatusCode)
+	limit := int64(4 << 10)
+	if listing {
+		limit = catalog.MaxCatalogBytes + 1
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, limit))
 	if err != nil {
 		return 0, nil, false
+	}
+	if listing && len(body) > catalog.MaxCatalogBytes {
+		return response.StatusCode, nil, false
 	}
 	return response.StatusCode, body, true
 }
