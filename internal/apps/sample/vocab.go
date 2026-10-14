@@ -20,7 +20,7 @@ const (
 	vocabValues   = 4
 	vocabTextMax  = 80
 	vocabNoteMax  = 240
-	vocabTimeout  = 30 * time.Second
+	vocabTimeout  = 12 * time.Second // past this the preview uses the fixed generator
 	vocabFieldMax = 6
 )
 
@@ -53,11 +53,17 @@ func (v *vocab) value(typ, name string, f *spec.Field, i int) (string, bool) {
 	return values[i%len(values)], true
 }
 
-// vocabCache remembers one answer (or failure) per definition fingerprint, so
-// Check rounds and the preview share a single call.
+// vocabCache remembers one answer (or failure, including a timeout) per
+// definition fingerprint, so Check rounds and the preview share one call.
+// Callers for the same key wait on the call in flight; other keys never wait.
 type vocabCache struct {
 	mu   sync.Mutex
-	byID map[string]*vocab
+	byID map[string]*vocabEntry
+}
+
+type vocabEntry struct {
+	done  chan struct{}
+	words *vocab
 }
 
 func (c *vocabCache) get(ctx context.Context, model svc.Model, def *spec.Bundle) *vocab {
@@ -65,23 +71,46 @@ func (c *vocabCache) get(ctx context.Context, model svc.Model, def *spec.Bundle)
 		return nil
 	}
 	key := fingerprint(def)
+	entry, owner := c.claim(key)
+	if !owner {
+		select {
+		case <-entry.done:
+			return entry.words
+		case <-ctx.Done():
+			return nil
+		}
+	}
+	words, err := askVocab(ctx, model, def)
+	if err != nil && ctx.Err() != nil {
+		// A cancelled caller must not poison the cache: forget the entry.
+		c.forget(key, entry)
+		return nil
+	}
+	entry.words = words
+	close(entry.done)
+	return words
+}
+
+// claim returns the entry for key and whether this caller must fill it.
+func (c *vocabCache) claim(key string) (*vocabEntry, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if v, ok := c.byID[key]; ok {
-		return v
-	}
-	v, err := askVocab(ctx, model, def)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil // a cancelled caller should not poison the cache
-		}
-		v = nil
+	if entry, ok := c.byID[key]; ok {
+		return entry, false
 	}
 	if c.byID == nil {
-		c.byID = map[string]*vocab{}
+		c.byID = map[string]*vocabEntry{}
 	}
-	c.byID[key] = v
-	return v
+	entry := &vocabEntry{done: make(chan struct{})}
+	c.byID[key] = entry
+	return entry, true
+}
+
+func (c *vocabCache) forget(key string, entry *vocabEntry) {
+	c.mu.Lock()
+	delete(c.byID, key)
+	c.mu.Unlock()
+	close(entry.done) // waiters see nil words and use the fixed generator
 }
 
 func fingerprint(def *spec.Bundle) string {

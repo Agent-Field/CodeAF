@@ -201,3 +201,90 @@ func TestModelVocabularyIsUsedOnceAndValidated(t *testing.T) {
 		t.Fatalf("unusable vocabulary should fall back to the deterministic sample: %v", err)
 	}
 }
+
+// blockingModel holds calls for one app until released; others answer at once.
+type blockingModel struct {
+	app     string
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (m *blockingModel) Complete(ctx context.Context, call svc.ModelCall) (svc.ModelReply, error) {
+	m.calls.Add(1)
+	if call.App == m.app {
+		select {
+		case <-m.release:
+		case <-ctx.Done():
+			return svc.ModelReply{}, ctx.Err()
+		}
+	}
+	return svc.ModelReply{}, context.DeadlineExceeded
+}
+
+func TestVocabularyCallsDoNotBlockOtherAppsAndFailuresAreCached(t *testing.T) {
+	model := &blockingModel{app: "slow", release: make(chan struct{})}
+	service := New(svc.Config{}, &svc.Services{Model: model})
+	service.Now = sampleNow
+	slow, fast := studioApp(), studioApp()
+	slow.ID, fast.ID = "slow", "fast"
+	started := make(chan struct{})
+	finished := make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := service.Generate(context.Background(), &spec.Bundle{App: slow})
+		finished <- err
+	}()
+	<-started
+	for model.calls.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Generate(context.Background(), &spec.Bundle{App: fast})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a slow vocabulary call blocked another app")
+	}
+	close(model.release)
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+	before := model.calls.Load()
+	for _, app := range []*spec.App{slow, fast} {
+		if _, err := service.Generate(context.Background(), &spec.Bundle{App: app}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if model.calls.Load() != before {
+		t.Fatalf("a timed-out vocabulary call was asked again: %d → %d calls", before, model.calls.Load())
+	}
+}
+
+func TestFallbackItemTitlesUseTheirOwnNounWithATimeQualifier(t *testing.T) {
+	rows, err := GenerateAt(context.Background(), bugTrackerApp(), DefaultCount, 7, sampleNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows["release"] {
+		title := row.Fields["name"].(string)
+		words := strings.Fields(title)
+		if !strings.HasSuffix(title, " release") || !qualifierWord(words[0]) {
+			t.Errorf("fallback title should be <time qualifier> release: %q", title)
+		}
+	}
+}
+
+func qualifierWord(word string) bool {
+	for _, q := range titleQualifiers {
+		if q == word {
+			return true
+		}
+	}
+	return false
+}
