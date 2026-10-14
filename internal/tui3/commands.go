@@ -1032,7 +1032,13 @@ func helpText(file string, chords chordSpelling) string {
 		// The three rows are spelled through [chordSpelling.say] like the
 		// `alt+enter` row above them, so a Mac reads `opt+1…opt+8` and a Linux box
 		// reads what is authored here — one substitution, one door (chords.go).
-		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
+		//
+		// THE DIGITS ARE NAMED ONE BY ONE, AND NOT AS THE BAR'S ORDER. This row
+		// said "in the tab bar's own order" over a list in [placeOrder]'s order,
+		// and the two have differed since the bar was regrouped: memory is fifth
+		// on the bar and `alt+8` ([placeWordList] says why each word carries its
+		// number).
+		helpKeyRow(chords.say(chordJumpWords), "go to a place · "+placeWordList()),
 		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
 		"               on a place, tab is the next place · esc back",
 		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order,

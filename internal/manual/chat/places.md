@@ -268,7 +268,7 @@ conversation with no work stands under `completed`; the extra section can put th
 unused row below the visible screen. Use `↑` and `↓` to reach it. The count does not
 promise that every row fits on the screen at once.
 
-## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
+## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip next to the box
 
 The line over home's box is the same shape as the line over a conversation's own message
 box:
@@ -431,10 +431,12 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x delete`, `c copy name`, `n new in project`, `o open folder`, and
-`p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
-`its chats` and `open folder` on a project. On home, `→` opens the selected row's
-options at every width; the arrows stay in the list.
+verbs are the row's own — a question's first two answers on its own answer keys;
+`x delete`, `c copy name`, `n new in project` and `o open folder` on a conversation;
+`p pause` or `r resume it` on a standing item; `s stop it` on a task this window runs. A
+project's row is not a stop, so it has none: a click on it picks the folder for the next
+message. On home, `→` opens the selected row's options at every width; the arrows stay in
+the list and never cross to another column.
 
 While those options are drawn, **those letters are the verbs** and the composer is asleep.
 On wide home layouts they appear below the selected description in the middle column,
@@ -536,7 +538,7 @@ the left, and the **rail** at the right holds `projects` and `spend` at its top 
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
 naming what arrives there.
 
-Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
+Its own keys are in the **Home** page: `↑↓` walk the field, `→` opens a row's verbs and `←` closes them, a digit
 answers the question row drawing its answers, and `enter` opens a row. `tab` is the way to the
 next place, and the errand pane is taken into with `→` rather than `tab`. Home uses
 `alt+p` for the next conversation's project, `alt+e` for effort, `alt+a` for
@@ -623,7 +625,7 @@ The standing orders page has the whole of it.
 ## memory — what is held true
 
 What codeaf holds true about you and this machine, with what kind of thing each line is, how
-it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+8`. It is not on the tab bar.
+it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so do `alt+8` and `memory`, the fifth word on the tab bar — the numbers kept their old places, so the fifth word is not `alt+5`.
 
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
@@ -754,8 +756,9 @@ anywhere off the menu, puts it away and leaves everything else as it was.
 
 **The wordmark and the place you are standing in never fold**, and neither does the word the
 bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
-whether or not its word is on the row, and the numbers never move: the six on the bar are
-`alt+1`…`alt+6`, then standing and memory are `alt+7`…`alt+8`.
+whether or not its word is on the row, and the numbers never move — nor do they follow the
+bar's order: home `alt+1`, AI teams `alt+2`, chats `alt+3`, activity `alt+4`, spend `alt+5`,
+settings `alt+6`, standing `alt+7`, memory `alt+8`.
 
 The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts

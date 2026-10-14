@@ -422,7 +422,8 @@ no right side at all on the resting screen.
 
 Where to go for the whole figure instead:
 
-- **`→` then `its chats`** on the row lists every conversation in the project as a search;
+- **typing the project's name** into the box lists every conversation in it as a search
+  (a project's row is not a stop, so `→` has nothing to open there);
 - **the activity page** for the work a project has run, which is the record rather than a
   count;
 - **the spend place** for what it has cost.
@@ -473,7 +474,7 @@ every conversation in it, and `ctrl+t` on one of them starts a new one there.
 ones out of the way: `needs you` and `sessions` hold what wants you or is moving, and
 the conversation list shows the fifteen most recent conversations, with closed ones dimmed. A short frame folds what does not fit behind `N more`. Typing finds any conversation on the machine.
 
-## Which column am I in — move between the columns on home: ↑↓ walk a panel, ←→ cross columns
+## Which column am I in — move between the columns on home: ↑↓ walk the field, ←→ open a row's verbs
 
 **`↑` and `↓` walk the field**, from one panel into the next at its ends, and stop at
 both ends: `↑` off the top row stays on it and does not climb onto the tab bar. **`←` and
@@ -487,8 +488,9 @@ inside it. The conversation and question rows have no heading. The row you are o
 wears the same ground and its title goes bold; the row under your mouse pointer wears it too
 while the pointer is on it.
 
-**`→` opens a row's verbs, on every row and at every width**, and the chords work without
-the strip: `ctrl+o` opens a conversation's workspace, the workspace a standing order stands
+**`→` opens a row's verbs, on every row that has any and at every width** — on an `ask here`
+row it hands the errand's pane the keyboard instead — and the chords work without the
+strip: `ctrl+o` opens a conversation's workspace, the workspace a standing order stands
 over, or the conversation a `since you left` line happened in; `ctrl+y` copies the path,
 `ctrl+e` asks to delete a conversation or pauses a standing item, `ctrl+x` stops. The foot does not change from row to row and
 names none of them; `alt+.` draws the map when you want the rest.
@@ -517,7 +519,7 @@ own tab stack — so going back is `enter`. A window that has held only one conv
 **On a launch** — home greeting you — the cursor is on the conversation this window is
 holding, the row `esc` drops back into.
 
-**`↑` off the top row of home stays on it.** The tab bar, the row of six words, is
+**`↑` off the top row of home stays on it.** The tab bar, the row of seven words, is
 reached by clicking a word, by `tab`, or by a place's own chord (`alt+4` and the rest); on
 every other place `↑` off the top row still walks up onto it. On the bar `←`
 and `→` walk along the words without opening anything, `enter` or `↓` goes into the one under the
@@ -642,17 +644,20 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing and memory go: the six words on the tab bar
+## Where did standing and memory go: the seven words on the tab bar
 
-The top line reads `home  chats  AI teams  activity  memory  spend  settings`. `alt+1` through
-`alt+6` go to each; `chats` (`alt+3`) returns to your conversation.
+The top line reads `home  chats  AI teams  activity  memory  spend  settings` — memory is the
+fifth word, and standing is the one place not on it. **The numbers are not the bar's order**:
+each place kept the number it had before the bar was regrouped — `alt+1` home, `alt+2`
+AI teams, `alt+3` chats (back to your conversation), `alt+4` activity, `alt+5` spend,
+`alt+6` settings, `alt+7` standing, `alt+8` memory.
 
-- `/standing` (or `/orders`) and `alt+7` open Standing.
-- `/memory` (or `/memories`) and `alt+8` open Memory.
+- `/standing` (or `/orders`) and `alt+7` open Standing. Its word appears after the seven
+  while it is open, and `tab` from there returns to Home.
+- `/memory` (or `/memories`), `alt+8` and the word `memory` on the bar open Memory.
 
-Their words appear after the six while open. `tab` returns to Home; `alt+.` shows
-all eight numbered destinations. Search is on Home: type into its box to find a
-conversation. There is no separate Search tab or `/search` command.
+`alt+.` shows all eight numbered destinations. Search is on Home: type into its box to find
+a conversation. There is no separate Search tab or `/search` command.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -734,7 +739,8 @@ goes empty on the `start a new conversation` row, which is a chat that does not 
 
 ## Switch between sessions — enter on home
 
-`↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk a column and `←`/`→` cross between columns.
+`↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk the rows; `←`/`→` never cross to another column — `→`
+opens the row's verbs and `←` closes them, and with something typed they move the caret.
 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A `projects` row is the one exception: a click on it picks that
@@ -1627,8 +1633,9 @@ this folder as the first row of `projects`.
 ## Is there a key for home?
 
 Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
-six words on the tab bar, and each answers to its own position, `alt+1` through `alt+6`
-(standing and memory, the two places off the bar, answer `alt+7` and `alt+8`).
+seven words on the tab bar. The other numbers do not follow the bar: each still opens the
+place it opened before the bar was regrouped, so memory, the fifth word, is `alt+8`, and
+standing, which is off the bar, is `alt+7`; `alt+.` draws every place with its number.
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 
@@ -2371,8 +2378,8 @@ Top to bottom:
 3. Home ask exchanges retain their own answer rows.
 4. `since you left` — what landed while you were not in the room.
 5. **The projects.** This window's own project is drawn open with its remaining rows; every
-   other project is one folded line — `▸ wisp   6 · 2d` — that `enter` or a tap opens in
-   place.
+   other project is one folded line — `▸ wisp   6 · 2d` — that `enter`, `→` or a tap opens
+   in place, and `←` folds back.
 
 Each section shows **three rows** and folds the rest into `▸ …N more`; `enter` or a tap on
 that line opens it in place. A section with nothing in it is not drawn at all. **A row
@@ -2412,6 +2419,11 @@ Keys on the sheet:
 | a digit | answer the question the card is showing |
 | `→` or `m` | open everything behind `▸ more` |
 | `→` then `p` / `s`, or `ctrl+e` / `ctrl+x` | on a standing item: pause it, stop it |
+
+An `ask here` errand's row opens a sheet too — the exchange and its box — and it also opens
+by itself whenever the errand takes the keyboard: `ask here`, its chord, `→` on the row. Its
+keys are the pane's own: `tab` or `esc` back to the inbox, and `enter` sends what you typed
+(*Asking from home*).
 
 A standing item's sheet carries your words, where it is, when it goes off, what it has
 done, `4 runs · spent $0.08`, `ran 3 times this week · $0.04`, and how hard it thinks when

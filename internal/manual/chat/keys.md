@@ -850,19 +850,22 @@ home's box — which is the first box most people type into. `home` and `end` ar
 the exception and stay with the box that owns them: on the settings panel, the
 task page and the rewind sheet they move the **list**, not the caret.
 
-## cmd+right on home no longer puts a conversation away
+## cmd+right on home no longer acts on the row — ctrl+e asks to delete, from the end of the line
 
-`ctrl+e` sets the row under the cursor aside on home — a conversation goes to the
-archive, a standing item is paused, and the card's legend says `ctrl+e close`.
-`cmd+→` arrives as `ctrl+e` on a Mac, so reaching for the end of a sentence used
-to archive whatever the cursor was resting on.
+`ctrl+e` acts on the row under the cursor on home: on a conversation it **asks to delete
+it** — the confirmation *Permanently deleting a conversation from Home* describes, and
+nothing is deleted until you confirm — and on a standing item it pauses it. The card's
+legend says `ctrl+e delete` or `ctrl+e pause`. `cmd+→` arrives as `ctrl+e` on a Mac, so
+reaching for the end of a sentence used to act on whatever the cursor was resting on.
 
 **It reads the caret now.** With the caret somewhere before the end of what you
 typed, `ctrl+e` moves it to the end of the line and leaves the row alone; from the
-end of the line — and over an empty box — it is the put-away key the legend names.
-So one press is never destructive, and the way back out of the archive still
-works: type the name of a row you put away, the list finds it, and `ctrl+e` from
-there brings it back.
+end of the line — and over an empty box — it is the row's key the legend names.
+So one press never reaches the row.
+
+It used to put a conversation away in an archive, and `ctrl+e` on that dimmed row brought
+it back. Since 2026-10-07 it asks to delete instead, and **`enter` on a dimmed row** is what
+reopens a closed conversation.
 
 ## Click the box to put the caret there — in the conversation and on home
 
@@ -2264,9 +2267,9 @@ rather than the same one, and several go in a row. Its conversation, its work an
 draft are untouched; `→` reaches it and `enter` brings it back.
 
 **Tab closing does not archive the saved conversation.** Home shows up to three
-recently closed tabs as dimmed rows. `ctrl+e` or `→`, then `x close`, on Home also
-archives the conversation and closes its tab, removing it from the default chats
-list. Both routes keep work and drafts. Enter on a dimmed Home row reopens it.
+recently closed tabs as dimmed rows, and `enter` on one reopens it. Home has no archive key
+any more: `ctrl+e`, or `→` then `x delete`, on a conversation's row asks to delete it
+permanently, and nothing goes until you confirm.
 
 On the row marked `you are here`, the card closes and the window selects the most
 recently used remaining tab, or Home when none remain. This is the same action as
@@ -2331,13 +2334,15 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the seven main destinations on
-the top line, `home  chats  AI teams  activity  memory  spend  settings`, and each answers to its position there,
-`alt+1` through `alt+6`. **`alt+7` and `alt+8` are kept**, on the two places that
-are off the bar — standing and memory — so those keys still open a room rather than
-doing nothing; `alt+.` draws them all with their numbers. `alt+2` is the teams page, and
-`alt+3` is `chats`, the way back to the conversation in front (a new chat when none is open);
-it is not a room, so `tab` steps over it. Hold
+**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the seven words on
+the top line, `home  chats  AI teams  activity  memory  spend  settings`, and `alt+1` opens it.
+**The other numbers do not follow the bar's order** — they kept the destinations they had
+before the bar was regrouped: `alt+2` AI teams, `alt+3` chats, `alt+4` activity, `alt+5`
+spend, `alt+6` settings, `alt+7` standing, `alt+8` memory. So memory is the fifth word on the
+bar and `alt+8`, and standing, which is off the bar, is `alt+7`. `alt+.` draws every place
+with its number, and `/help` lists them the same way, digit by digit. `alt+3` is `chats`,
+the way back to the conversation in front (a new chat when none is open); it is not a room,
+so `tab` steps over it. Hold
 `alt` and press the digit. On macOS codeaf draws the modifier as `opt+`, after the name on
 that keycap; it is the same key and the same chord, and on Linux and on Windows it is drawn
 `alt+`. It arrives in every terminal codeaf runs in, which is why the numbers are on `alt`
@@ -2417,11 +2422,13 @@ what each holds), and its keys are a small grammar:
 | Key | On home |
 | --- | --- |
 | `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the field, from one panel into the next, and stop at both ends: `↑` off the top row stays there and does not climb onto the tab bar (reach the bar with a click, `tab`, or a place's chord) |
-| `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
+| `←` / `→` | never cross to another column: `→` opens the row's verbs on a strip under it and `←` closes them, and on an `ask here` row `→` hands its pane the keyboard. With something typed they move the caret |
 | a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `unread` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
 | `enter` | acts on the row under the cursor: a conversation opens, a `since you left` line opens its record, file or place, a `standing` row opens standing, a fold line opens or shuts its panel. `projects` and `spend` rows are not stops, so the cursor never reaches them; a click on a project picks the folder for the next message |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
+| `alt+enter` | with something typed: opens the **composer layer**, and a second press sends it off as a task (*Keys in the composer layer*). It is not a spelling of `ask here` |
+| `ctrl+enter` | with something typed: asks it here at once, without walking to the `ask here` row — only on a terminal that can tell it from a plain `enter`, so the foot names `↑ ask here` instead |
 | `esc` | clears the box if anything is in it, and closes home otherwise |
 | `alt+.` | the map |
 | `backspace`, `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` | edit the box |
@@ -2430,27 +2437,31 @@ what each holds), and its keys are a small grammar:
 **Opening home puts the cursor on the chat you were in before this one**, so `space` `space`
 then `enter` is a switch back; a window with only one conversation opens on its own row,
 which says `here`. The panel holding the cursor marks its heading with the cursor's ground,
-which is how you tell which column your arrows are in. **`alt+g` and `alt+q` are unbound on
+which is how you tell which panel your arrows are in. **`alt+g` and `alt+q` are unbound on
 home** — there is no list left to group or thin — and so is the answer strip above the box:
 the answers are on the `needs you` row itself.
 
-**`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
-opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
-of the list down by its own height, and while that strip is drawn its letters are the verbs
-and the box is asleep — a question's own answer keys and words, `x close`, `c copy name`, `n new in project`,
-`o open folder`, `p pause it` or `r resume it` on a standing item. `esc` or
-`←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
-never leave home's field, and on a panel's fold line (`N more`) `enter`
-opens the panel and shows the rest; on `N fewer` it folds them again.
-While something is typed the two arrows move the caret in the box instead.
+**`←` and `→` never cross home's columns.** Every row the cursor can stand on is in the
+field at the left; the rail at the right — `projects`, `spend` and the quiet panels — is
+read and clicked, never walked, so there is no column to cross to. (The arrows used to
+cross into the neighbouring column; that ended on 2026-09-17.) **`→` opens the row's
+verbs** on a strip drawn **directly under that row**, pushing the rest of the list down by
+its own height, and while that strip is drawn its letters are the verbs and the box is
+asleep — a question's own answer keys and words; `x delete`, `c copy name`,
+`n new in project` and `o open folder` on a conversation; `p pause` or `r resume it` on a
+standing item; `s stop it` on work this window is running. `esc` or `←` closes it, `enter`
+still opens the row, and walking off the row closes it too. A row with no verbs draws no
+strip: on an `ask here` row `→` hands the errand's pane the keyboard instead, and on a
+panel's fold line (`N more`) `enter` opens the panel and shows the rest; on `N fewer` it
+folds them again. While something is typed the two arrows move the caret in the box instead.
 
 **A letter always types**, unless the verb strip that names it is on screen — that visible
 strip is the one state where a printable key is a verb, and it is why it has to be drawn.
 Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
 actions otherwise ride chords, which can never begin a word, and they work from any column:
-**`ctrl+e` closes the conversation tab** — it leaves the open Home list and the
-default chats menu. Up to three closed rows stay dimmed on Home; typing finds older
-ones. Enter or `ctrl+e` on a closed row reopens it. **`ctrl+o`** opens
+**`ctrl+e` asks to delete the conversation** — the same confirmation `→` then `x delete`
+opens, and nothing is deleted until you confirm. Up to three closed tabs stay dimmed on
+Home; typing finds older ones, and `enter` on a dimmed row reopens it. **`ctrl+o`** opens
 its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row
 starts a new one in that row's folder; a click on a row of the `projects` panel instead
 picks the folder for the next message sent from home. On a standing item's row — in `needs you` while it asks, in
@@ -2515,20 +2526,25 @@ one `↑` reaches `ask here` and a second lands on the strongest match. Clearing
 the panels back. On a frame 136 columns or wider a card about the match under the cursor
 stands to the right of the list while you type; at rest there is no card.
 
-**On an `ask here` row** — the `?` rows an errand leaves at the end of the conversation list —
-the line under the box reads
-`↑↓ move · enter or tab answer this ask here · esc close`. `enter` or `tab` hands the
-keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
-`esc` or `tab` hands it back (*Asking from home*).
-
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
+
+## Keys on an ask here row — enter or → go in, and tab is the next place
+
+**On an `ask here` row** — the `?` row an errand leaves on home — the line under the box
+reads `↑↓ move · enter or → answer this ask here · esc close`, or
+`↑↓ move · enter answer this ask here · esc clear` while something is typed, when `→` moves
+the caret instead. `enter` or `→` hands the keyboard to the exchange's pane; **`tab` on the
+row is the next place**, not a way in. The pane reads
+`enter sends a follow-up · tab or esc back to the list`, and `tab` or `esc` there hands the
+keyboard back. The way back is that line's last clause and the one it keeps at sixty
+columns (*Asking from home*).
 
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
 **On every place, `↑` from the first row of the page lands the cursor on the tab bar**,
-the six place words on the top line after the `codeaf` wordmark (seven while you stand in
-standing or memory, whose word is drawn after the six). The chat tab strip is
+the seven words on the top line after the `codeaf` wordmark (eight while you stand in
+standing, whose word is drawn after the seven). The chat tab strip is
 not on a place. It is the row under that top line only while a conversation is in front.
 The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:

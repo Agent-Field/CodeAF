@@ -2530,6 +2530,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is the answer from home showing asterisks and hashes", "asking-from-home"},
 		{"does the ask here pane format the answer", "asking-from-home"},
 		{"can I ask two things from home at once", "asking-from-home"},
+		// The wave that made home's hints name only keys that do what they say.
+		// The pages said `alt+enter` was ask here's second chord, the row's foot
+		// said `enter or tab` when `tab` was the next place, and a narrow pane
+		// dropped the way back to the list first.
+		{"is there a shortcut for ask here", "asking-from-home"},
+		{"does alt+enter ask here", "asking-from-home"},
+		{"why does tab leave home from an ask here row", "keys"},
+		{"how do I leave the ask here pane on a narrow window", "asking-from-home"},
+		// And the box under the pane, which wore home's own sentence, and on a
+		// phone-width window was not drawn at all while it had the keyboard.
+		{"why does the ask here box say type a follow-up", "asking-from-home"},
+		{"I typed in ask here on my phone and nothing showed up", "asking-from-home"},
+		{"ask here on a phone", "asking-from-home"},
 		// A call inside an `ask here` errand that needed the person's ok had
 		// nowhere to be answered: the row said `working` for as long as the
 		// window was open. These are what somebody types looking at that row,
@@ -2675,12 +2688,24 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is the home screen empty", "home"},
 		{"what does the dim line under a panel heading mean", "home"},
 		{"how do I move between the columns on home", "home"},
+		// The arrows stopped crossing columns on 2026-09-17, and four pages went
+		// on saying they did; `→` opens the row's verbs and nothing crosses.
+		{"can I walk to the projects column with the arrow keys", "home"},
+		{"do the arrow keys cross columns on home", "places"},
+		{"what does the right arrow do on home", "places"},
+		// And ctrl+e, which the keys page said closed a tab after #1750 made it
+		// the delete confirmation.
+		{"what does ctrl+e do on home", "keys"},
 		{"why is the cursor on my previous chat when I open home", "home"},
 		{"why did home cut off panels on a small terminal", "home"},
 		{"what does 3 more mean on home", "home"},
 		{"how do I expand a panel on home to see the rest", "home"},
 		{"where did the card on home go", "home"},
 		{"where did standing and memory go from the tab bar", "home"},
+		// /help said the numbers came "in the tab bar's own order", and memory is
+		// the fifth word on the bar and `alt+8`.
+		{"why is memory alt+8 when it is fifth on the tab bar", "home"},
+		{"do the alt numbers follow the tab bar", "home"},
 		{"can I stop another window task from home", "home"},
 		{"is there a something is wrong panel", "home"},
 		// The wave that stopped guessing at the terminal's background and asked

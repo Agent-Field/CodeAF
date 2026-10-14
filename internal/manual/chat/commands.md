@@ -370,7 +370,7 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…8        go to a place · established shortcut order: home · AI teams · chats · activity · spend · settings · standing · memory
+alt+1…8        go to a place · 1 home · 2 AI teams · 3 chats · 4 activity · 5 spend · 6 settings · 7 standing · 8 memory
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
@@ -1299,7 +1299,7 @@ box, opens it on a one-conversation machine and on an empty one alike, and over 
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the six words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+of the seven words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
@@ -1313,8 +1313,8 @@ at the left, and the **rail** at the right holds `projects` and `spend` at its t
 quiet panels under them. An empty panel keeps its heading and one dim line naming what
 arrives there.
 
-`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
-conversation you came from. **Typing does two things at once**: what you type is a new
+`↑`/`↓` walk the field, `→` opens a row's verbs and `←` closes them (no arrow crosses
+columns), `enter` opens, `esc` closes back into the conversation you came from. **Typing does two things at once**: what you type is a new
 conversation waiting to be sent AND a live search over every project on the machine — the
 panels give way to the matches, with `start a new conversation: "…"` directly above the box
 holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
