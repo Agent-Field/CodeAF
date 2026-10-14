@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 const (
@@ -33,7 +35,7 @@ func Resolve(ctx context.Context) string {
 func (r *resolver) resolve(ctx context.Context) string {
 	r.once.Do(func() {
 		r.path = os.Getenv("PATH")
-		if _, optedOut := os.LookupEnv("CODEAF_NO_LOGIN_ENV"); runtime.GOOS != "darwin" || optedOut {
+		if _, optedOut := env.Lookup("CODEAF_NO_LOGIN_ENV"); runtime.GOOS != "darwin" || optedOut {
 			return
 		}
 		home, _ := os.UserHomeDir()

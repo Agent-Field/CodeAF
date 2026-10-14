@@ -17,5 +17,6 @@ If the login shell fails or times out, codeaf logs one line and keeps the
 inherited PATH plus those installed tool directories. Profile banners are
 ignored. Set `CODEAF_NO_LOGIN_ENV` in the app's launch environment to keep
 the inherited PATH exactly; any set value, including an empty value, opts out.
+The compatibility spelling of this environment variable also opts out.
 Other operating systems keep their inherited PATH. Terminal `chat`, `do` and
 `exec` launches continue to use the PATH they inherited.
