@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -267,7 +268,7 @@ func crewCents(m Money) (int64, error) {
 	return n, err
 }
 
-var crewTints = []string{"iris", "sage", "sand", "tide", "rose", "graphite"}
+var crewTints = spec.Tints
 
 func crewTintIndex(tint string) int {
 	for i, t := range crewTints {
