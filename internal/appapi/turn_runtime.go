@@ -2,7 +2,6 @@ package appapi
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -135,8 +134,7 @@ func (a *AgentRegistry) startTurnPump(id string, live *agentLive, events <-chan 
 }
 
 func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, events <-chan session.Event) {
-	failed := false
-	failureWords := "Stopped · the model provider could not finish this reply"
+	var stop *turnStop
 	endedNormally := false
 	for {
 		var event session.Event
@@ -185,10 +183,8 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		case session.EventNotice, session.EventCaption:
 			a.publishTurn(EventTurnEntry, TurnEntryEvent{Agent: id, Entry: DisplayEntry{Kind: "notice", Role: "note", Text: event.Text}})
 		case session.EventError:
-			failed = !errors.Is(event.Err, session.ErrSpendRail)
-			if event.Err != nil {
-				failureWords = "Stopped · " + redact.Secrets(event.Err.Error())
-			}
+			ended := turnStopOf(event.Err)
+			stop = &ended
 		case session.EventTurnDone:
 			endedNormally = true
 		case session.EventTitleChanged:
@@ -196,6 +192,8 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		}
 		a.mu.Unlock()
 	}
+	failed := stop != nil && stop.failed()
+	card := a.budgetCard(id, stop)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.live[id] != live || live.generation != generation || a.stopped {
@@ -230,14 +228,17 @@ func (a *AgentRegistry) pump(id string, live *agentLive, generation uint64, even
 		}
 		record.Agent.State = state
 		record.Agent.Version++
-		if failed {
-			record.Agent.Receipt = failureWords
-			r := a.turnReceipt(&record, failureWords, nil)
+		switch {
+		case stop != nil:
+			// THE CARD RIDES THE EVENT AND IS NOT SAVED: a question kept beside
+			// the transcript would still read as waiting after it was answered.
+			record.Agent.Receipt = stop.words
+			r := a.turnReceipt(&record, stop.words, nil)
 			r.By = "codeaf"
 			record.Receipts[len(record.Receipts)-1].Entry.By = r.By
+			r.Card = card
 			receipt = &r
-		}
-		if how == "stopped" {
+		case how == "stopped":
 			r := a.turnReceipt(&record, "Stopped", nil)
 			receipt = &r
 		}

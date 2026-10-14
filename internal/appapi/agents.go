@@ -133,6 +133,9 @@ type AgentRegistry struct {
 	after      func(time.Duration, func()) *time.Timer
 	done       chan struct{}
 	workers    sync.WaitGroup // watcher goroutines Close joins
+	// budgetAsk answers with the waiting budget question for an agent whose turn
+	// stopped at a spending cap; the spending watch binds it.
+	budgetAsk func(agent string) *Ask
 }
 
 func NewAgentRegistry(home string, open OpenAgent) *AgentRegistry {

@@ -18,6 +18,7 @@ func (s *Server) startSpendingWatch() {
 		return
 	}
 	s.SetInboxSource("spending", spendingInboxSource{s: s})
+	s.options.Agents.budgetAsk = s.agentBudgetAsk
 	if s.options.Agents.open == nil {
 		return
 	}
