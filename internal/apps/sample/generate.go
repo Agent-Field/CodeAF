@@ -78,8 +78,11 @@ func generate(ctx context.Context, app *spec.App, count int, seed int64, now tim
 		if app.Records[typ] == nil {
 			return nil, bridge.Errorf(bridge.CodeInvalid, "invalid record type "+typ)
 		}
-		rows[typ] = make([]bridge.Record, count)
-		for i := range count {
+	}
+	counts := rowCounts(app, count)
+	for _, typ := range keys(app.Records) {
+		rows[typ] = make([]bridge.Record, counts[typ])
+		for i := range counts[typ] {
 			at := now.Add(-time.Duration(i%30+1) * 24 * time.Hour).Format(time.RFC3339Nano)
 			rows[typ][i] = bridge.Record{ID: fmt.Sprintf("sample_%s_%04d", typ, i+1), Type: typ, Version: 1, Fields: map[string]any{}, CreatedAt: at, UpdatedAt: at, CreatedBy: svc.Owner, UpdatedBy: svc.Owner}
 		}
@@ -100,7 +103,7 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 	}
 	seen := map[string]map[string]bool{}
 	for name, f := range schema.Fields {
-		if f.Unique || name == schema.Title {
+		if f.Unique || name == schema.Title && distinctTitle(schema) {
 			seen[name] = map[string]bool{}
 		}
 	}
@@ -108,14 +111,16 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := fillFields(app, rows, schema, &row, i, seed, now, words); err != nil {
+		if err := fillFields(app, rows, schema, &row, i, seed, now, words, seen); err != nil {
 			return err
 		}
+		cohere(schema, row.Fields, i, now)
+		// Computed fields are evaluated from the generated inputs, never seeded.
 		row, err = rules.Prepare(row, svc.Owner, now, true)
 		if err != nil {
 			return err
 		}
-		if !readableTitle(fmt.Sprint(row.Fields[schema.Title])) {
+		if distinctTitle(schema) && !readableTitle(fmt.Sprint(row.Fields[schema.Title])) {
 			return bridge.Errorf(bridge.CodeInvalid, "sample needs a readable title for "+typ)
 		}
 		if err := checkUnique(row, seen); err != nil {
@@ -126,7 +131,7 @@ func fillType(ctx context.Context, app *spec.App, rows map[string][]bridge.Recor
 	return nil
 }
 
-func fillFields(app *spec.App, rows map[string][]bridge.Record, schema *spec.RecordType, row *bridge.Record, i int, seed int64, now time.Time, words *vocab) error {
+func fillFields(app *spec.App, rows map[string][]bridge.Record, schema *spec.RecordType, row *bridge.Record, i int, seed int64, now time.Time, words *vocab, seen map[string]map[string]bool) error {
 	c := cell{app: app, rows: rows, typ: row.Type, schema: schema, i: i, now: now, words: words}
 	// The title goes first so notes, emails and file names can mention it.
 	for _, name := range titleFirst(schema) {
@@ -139,6 +144,9 @@ func fillFields(app *spec.App, rows map[string][]bridge.Record, schema *spec.Rec
 		value, err := fieldValue(c)
 		if err != nil {
 			return bridge.Errorf(bridge.CodeInvalid, row.Type+"."+name+": "+err.Error())
+		}
+		if text, ok := value.(string); ok && seen[name] != nil && textual(f.Type) {
+			value = distinctText(text, seen[name])
 		}
 		row.Fields[name] = value
 		if name == schema.Title {
@@ -163,14 +171,18 @@ func checkUnique(row bridge.Record, seen map[string]map[string]bool) error {
 		if value == nil {
 			continue
 		}
-		data, _ := json.Marshal(value)
-		key := string(data)
+		key := quoted(value)
 		if values[key] {
 			return bridge.Errorf(bridge.CodeInvalid, "sample cannot make distinct values for "+row.Type+"."+name)
 		}
 		values[key] = true
 	}
 	return nil
+}
+
+func quoted(value any) string {
+	data, _ := json.Marshal(value)
+	return string(data)
 }
 
 func random(seed int64, parts ...string) *rand.Rand {

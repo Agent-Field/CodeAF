@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -30,7 +29,7 @@ type cell struct {
 
 func fieldValue(c cell) (any, error) {
 	if c.name == c.schema.Title && (c.f.Type == spec.FieldText || c.f.Type == spec.FieldLongtext) {
-		if title, ok := c.words.title(c.typ, c.i); ok {
+		if title, ok := c.words.title(c.typ, c.i); ok && !numberedTitle(c.name, c.f.Label) {
 			return title, nil
 		}
 		return rowTitle(c), nil
@@ -66,9 +65,10 @@ func useDefault(f *spec.Field) bool {
 		return false
 	}
 	// Defaults are stored values, not sample hints: relations need generated
-	// targets, dates need today's clock, and enums need all states on display.
+	// targets, dates need today's clock, enums need all states on display, and
+	// numbers and checkboxes start at their default but a lived-in list moved on.
 	switch f.Type {
-	case spec.FieldRef, spec.FieldRefs, spec.FieldDate, spec.FieldDatetime, spec.FieldEnum:
+	case spec.FieldRef, spec.FieldRefs, spec.FieldDate, spec.FieldDatetime, spec.FieldEnum, spec.FieldNumber, spec.FieldMoney, spec.FieldBool:
 		return false
 	default:
 		return !f.Unique
@@ -171,7 +171,7 @@ func scalarValue(c cell, kind spec.FieldType) (any, error) {
 	case spec.FieldDuration:
 		return fmt.Sprintf("PT%dH", c.i%8+1), nil
 	case spec.FieldBool:
-		return c.i%3 != 2, nil
+		return boolValue(c.name+" "+c.f.Label, c.i), nil
 	case spec.FieldPerson:
 		return svc.Owner, nil
 	case spec.FieldPeople:
@@ -179,6 +179,16 @@ func scalarValue(c cell, kind spec.FieldType) (any, error) {
 	default:
 		return addressValue(c, kind)
 	}
+}
+
+// Flags mark exceptions, so few rows carry them; other checkboxes are mostly on.
+var flagWords = []string{"flagged", "flag", "overdue", "late", "risk", "blocked", "urgent", "missed", "cancelled", "vip", "archived", "disputed"}
+
+func boolValue(semantic string, i int) bool {
+	if hasWord(semantic, flagWords...) {
+		return i%4 == 1
+	}
+	return i%3 != 2
 }
 
 // contactName is the person a row's contact fields belong to: the row itself
@@ -202,7 +212,7 @@ func addressValue(c cell, kind spec.FieldType) (any, error) {
 	case spec.FieldPhone:
 		return fmt.Sprintf("+1 416 555 %04d", i+100), nil
 	case spec.FieldURL:
-		return "https://www." + orgDomain(i), nil
+		return linkValue(c), nil
 	case spec.FieldFile:
 		return fileName(c), nil
 	case spec.FieldFiles:
@@ -214,10 +224,40 @@ func addressValue(c cell, kind spec.FieldType) (any, error) {
 	}
 }
 
-func fileName(c cell) string {
-	base := slug(c.title, "-")
-	if base == "" {
-		base = slug(label(c.schema.Label, c.typ), "-")
+// linkValue is a company's home page for a company, or a page about the row
+// on a company site for anything else.
+func linkValue(c cell) string {
+	site := "https://www." + orgDomain(c.i)
+	if kindOf(c.typ, c.schema).name == kindOrg || c.title == "" {
+		return site
 	}
-	return fmt.Sprintf("%s-%s.pdf", base, strings.ToLower(letters(c.i)))
+	return site + "/" + slug(c.title, "-")
+}
+
+// fileKinds give a file field the extension its name suggests.
+var fileKinds = []struct {
+	words []string
+	ext   string
+}{
+	{[]string{"audio", "recording", "podcast", "voice", "track", "mix"}, "mp3"},
+	{[]string{"video", "footage", "clip", "reel"}, "mp4"},
+	{[]string{"photo", "image", "picture", "artwork", "logo", "cover", "headshot", "thumbnail", "avatar", "scan"}, "jpg"},
+	{[]string{"spreadsheet", "sheet", "budget", "ledger"}, "xlsx"},
+}
+
+// fileName reads like an uploaded file: "Contract – Harbor Group.pdf".
+func fileName(c cell) string {
+	semantic := c.name + " " + c.f.Label
+	ext := "pdf"
+	for _, kind := range fileKinds {
+		if hasWord(semantic, kind.words...) {
+			ext = kind.ext
+			break
+		}
+	}
+	name := upperFirst(label(c.f.Label, c.name))
+	if c.title == "" {
+		return name + "." + ext
+	}
+	return name + " – " + c.title + "." + ext
 }

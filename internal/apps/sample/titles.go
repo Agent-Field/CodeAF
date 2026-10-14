@@ -1,6 +1,7 @@
 package sample
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -23,7 +24,15 @@ func titleValue(typ string, schema *spec.RecordType, f *spec.Field, i, offset in
 			}
 		}
 	}
+	if numberedTitle(schema.Title, f.Label) {
+		// Invoices, tickets and orders titled by number read "Invoice #1001".
+		return fmt.Sprintf("%s #%d", upperFirst(label(schema.Label, typ)), 1001+i)
+	}
 	return kindOf(typ, schema).title(typ, schema, i, offset)
+}
+
+func numberedTitle(name, display string) bool {
+	return hasWord(name+" "+display, "number", "no", "code", "reference", "ref", "id")
 }
 
 // rowTitle adds the person or company an item belongs to ("Spring deal —
@@ -31,7 +40,7 @@ func titleValue(typ string, schema *spec.RecordType, f *spec.Field, i, offset in
 // keep their own names.
 func rowTitle(c cell) string {
 	title := titleValue(c.typ, c.schema, c.f, c.i, typeOffset(c.app, c.typ))
-	if c.app == nil || c.i == 0 && useDefault(c.f) || kindOf(c.typ, c.schema).name != kindItem {
+	if c.app == nil || c.i == 0 && useDefault(c.f) || kindOf(c.typ, c.schema).name != kindItem || numberedTitle(c.name, c.f.Label) {
 		return title
 	}
 	if owner, _ := ownerTitle(c); owner != "" {
@@ -79,13 +88,28 @@ const (
 
 var recordKinds = []recordKind{
 	{kindPerson, func(typ string, s *spec.RecordType) bool {
-		return personTitle(typ) || personTitle(s.Label) || personField(s.Title, titleLabel(s))
+		return personField(s.Title, titleLabel(s)) || personType(typ, s) && !hasContactPerson(s)
 	}, func(_ string, _ *spec.RecordType, i, _ int) string { return personName(i) }},
 	{kindOrg, func(typ string, s *spec.RecordType) bool {
-		return orgTitle(typ) || orgTitle(s.Label) || orgField(s.Title, titleLabel(s))
+		return orgTitle(typ) || orgTitle(s.Label) || orgField(s.Title, titleLabel(s)) || personType(typ, s)
 	},
 		func(_ string, _ *spec.RecordType, i, _ int) string { return orgName(i) }},
 	{kindItem, func(string, *spec.RecordType) bool { return true }, itemTitle},
+}
+
+func personType(typ string, s *spec.RecordType) bool {
+	return personTitle(typ) || personTitle(s.Label)
+}
+
+// hasContactPerson reports a separate text field naming a person ("contact",
+// "contact name"): a client or customer with a contact is a company.
+func hasContactPerson(s *spec.RecordType) bool {
+	for name, f := range s.Fields {
+		if name != s.Title && f.Type == spec.FieldText && personField(name, f.Label) {
+			return true
+		}
+	}
+	return false
 }
 
 func kindOf(typ string, schema *spec.RecordType) recordKind {
