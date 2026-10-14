@@ -161,7 +161,8 @@ func (a *App) Harness(ctx context.Context, prompt string, schema map[string]any,
 	// THE REPOSITORY IS THE APP'S, NOT THE CALLER'S. Every agent names the
 	// folder it was handed; one that named another would be read nowhere.
 	if project := strings.TrimSpace(opts.ProjectDir); project != "" && filepath.Clean(project) != filepath.Clean(root) {
-		if real, err := filepath.EvalSymlinks(project); err != nil || !within(root, real) {
+		realRoot, rootErr := filepath.EvalSymlinks(root)
+		if real, err := filepath.EvalSymlinks(project); err != nil || rootErr != nil || !within(realRoot, real) {
 			return nil, fmt.Errorf("%s asked to read %s, which is not the repository this run reads", label, project)
 		}
 	}

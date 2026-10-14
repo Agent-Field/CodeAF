@@ -118,7 +118,10 @@ func runSession(ctx context.Context, complete func(context.Context, Request) (*a
 		}
 		validate = compiled
 	}
-	tools := toolbox{root: order.Root, limits: policy.Tools}
+	tools, err := newToolbox(order.Root, policy.Tools)
+	if err != nil {
+		return result, err
+	}
 	messages := []ai.Message{
 		textMessage("system", sessionSystem(order)),
 		textMessage("user", order.Prompt),
