@@ -119,6 +119,7 @@ ui.timestamps
 ui.work
 update.auto
 vision_model
+apps.builder.model
 work.workers
 working_set_tokens
 

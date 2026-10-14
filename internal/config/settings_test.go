@@ -25,6 +25,57 @@ func registry(t *testing.T, dir string) *Settings {
 	})
 }
 
+func TestAppsBuilderModelRowReportsTheLaunchPin(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		pin    string
+		value  string
+		pinned bool
+	}{
+		{name: "unset", value: "built in"},
+		{name: "blank", pin: " \t ", value: "built in"},
+		{name: "model", pin: "openai/gpt-5-mini", value: "openai/gpt-5-mini", pinned: true},
+		{name: "trimmed", pin: " openai/gpt-5-mini \t", value: "openai/gpt-5-mini", pinned: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CODEAF_APPS_BUILDER_MODEL", tc.pin)
+			row, found := registry(t, t.TempDir()).Row(KeyAppsBuilderModel)
+			if !found {
+				t.Fatal("the apps builder model row is not registered")
+			}
+			if row.Category != CategoryModels || row.Kind != SettingText || row.Env != "CODEAF_APPS_BUILDER_MODEL" {
+				t.Fatalf("apps builder model row = %+v", row)
+			}
+			if got := row.Value(); got != tc.value {
+				t.Errorf("value = %q, want %q", got, tc.value)
+			}
+			name, pinned := row.PinnedBy()
+			if pinned != tc.pinned || (pinned && name != row.Env) {
+				t.Errorf("pin = %q, %v; want pinned = %v", name, pinned, tc.pinned)
+			}
+			err := row.Apply("another/model")
+			if tc.pinned {
+				if err == nil || err.Error() != "apps builder model is set by CODEAF_APPS_BUILDER_MODEL" {
+					t.Errorf("pinned Apply = %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := row.Value(); got != "another/model" {
+					t.Errorf("saved value = %q, want another/model", got)
+				}
+				if err := row.Apply(""); err != nil {
+					t.Fatal(err)
+				}
+				if got := row.Value(); got != "built in" {
+					t.Errorf("cleared value = %q, want built in", got)
+				}
+			}
+		})
+	}
+}
+
 func TestSlackApplicationRowShowsOnlyThePersonsAnswer(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SLACK_OAUTH_CLIENT", "")
