@@ -201,7 +201,7 @@ const homeNeedsTaskFresh = 48 * time.Hour
 // be read as the screen having run out of room.
 var homeWhisper = map[homePanelID]string{
 	panelSessions: "your recent conversations appear here",
-	panelLeft:     "what landed while you were away",
+	panelLeft:     "what happened while you were away",
 	panelSpend:    "every chat and task is priced here",
 	panelNext:     `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"`,
 }
