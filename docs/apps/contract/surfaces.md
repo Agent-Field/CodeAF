@@ -87,7 +87,8 @@ Share     {doc, slug, url, on bool, by, at}
 | `comments.list` | `{doc, part?, state?}` → `{comments}` | read |
 | `comments.add` | `{doc, part, anchor, text, for}` → `Comment` | read (Viewer may not: User+) |
 | `comments.resolve` | `{id}` → `Comment` | User+ |
-| `comments.send` | `{id}` → `{thread, turn}` | turns it into an Ask on that part (agent.send with `part`) |
+| `parts.ask` | `{doc, part, version, text, anchor?, thread?}` → `{thread, turn}` | User+; Ask on a part: the app agent takes the agent lock, may write only that part (kind ask), streams on `app/<id>/agent/<thread>` like `agent.send` |
+| `comments.send` | `{id}` → `{thread, turn}` | calls `parts.ask` with the comment's part, text and anchor |
 | `share.set` | `{doc, on}` → `Share` | User+; off breaks the link at once |
 | `share.open` | `{slug}` → `DocInfo` | members only; always the latest versions |
 
