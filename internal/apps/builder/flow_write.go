@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -219,7 +220,7 @@ func (s *Service) writeUnit(ctx context.Context, b *build, plan prompt.Plan, pla
 		return nil, err
 	}
 	files, err := converse(ctx, s, b, text, func(reply string) (map[string][]byte, error) {
-		return expectFiles(reply, u.only)
+		return expectFiles(b.app, reply, u.only)
 	})
 	if err != nil {
 		return nil, err
@@ -230,8 +231,8 @@ func (s *Service) writeUnit(ctx context.Context, b *build, plan prompt.Plan, pla
 // expectFiles parses a WRITE reply and keeps exactly the files asked for. A
 // reply without one of them is a shape error, so the correction names every
 // path expected and the ones that came back.
-func expectFiles(reply string, only []string) (map[string][]byte, error) {
-	parsed, err := prompt.ParseFilesFor(reply, only)
+func expectFiles(app, reply string, only []string) (map[string][]byte, error) {
+	parsed, err := parseFiles(app, reply, only)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +298,7 @@ func (s *Service) fixOnly(ctx context.Context, b *build, files spec.Files, issue
 	}
 	want := fixPaths(issues, only)
 	changed, err := converse(ctx, s, b, text, func(reply string) (map[string][]byte, error) {
-		return fixReply(reply, want, only)
+		return fixReply(b.app, reply, want, only)
 	})
 	if pending, ok := shapeIssues(err, want); ok {
 		return files, pending, nil
@@ -338,11 +339,21 @@ func fixPaths(issues []spec.Issue, only string) []string {
 }
 
 // fixReply parses a FIX reply; a run retry keeps only its own file.
-func fixReply(reply string, want []string, only string) (map[string][]byte, error) {
+func fixReply(app, reply string, want []string, only string) (map[string][]byte, error) {
 	if only != "" {
-		return expectFiles(reply, want)
+		return expectFiles(app, reply, want)
 	}
-	return prompt.ParseFilesFor(reply, want)
+	return parseFiles(app, reply, want)
+}
+
+// parseFiles parses a files reply, noting in the debug log when it had to
+// place a wrong shape.
+func parseFiles(app, reply string, want []string) (map[string][]byte, error) {
+	files, shape, err := prompt.ParseFilesShaped(reply, want)
+	if shape != "" {
+		slog.Info("apps builder: placed a mis-shaped reply", "app", app, "shape", shape, "files", spec.Files(files).Paths())
+	}
+	return files, err
 }
 
 func asText(files spec.Files) map[string]string {

@@ -31,6 +31,13 @@ func ParseFiles(output string) (map[string][]byte, error) {
 // ParseFilesFor is ParseFiles for a reply that was asked for the paths in
 // want, which lets it place a reply holding one bare file's content.
 func ParseFilesFor(output string, want []string) (map[string][]byte, error) {
+	files, _, err := ParseFilesShaped(output, want)
+	return files, err
+}
+
+// ParseFilesShaped is ParseFilesFor that also names the wrong shape it
+// placed, "" when the reply was already a files object.
+func ParseFilesShaped(output string, want []string) (map[string][]byte, string, error) {
 	objects := jsonObjects(output)
 	all := make([]map[string]json.RawMessage, 0, len(objects))
 	keys := map[string]json.RawMessage{}
@@ -41,20 +48,25 @@ func ParseFilesFor(output string, want []string) (map[string][]byte, error) {
 			keys[key] = nil
 		}
 		if wrapped := objectEntries(entries["files"]); filesObject(wrapped) {
-			return filesFromObject(wrapped)
+			return placed(wrapped, "")
 		}
 	}
 	for _, entries := range all {
 		if filesObject(entries) {
-			return filesFromObject(entries)
+			return placed(entries, "")
 		}
 	}
 	for _, entries := range all {
-		if files := normalize(entries, want); files != nil {
-			return filesFromObject(files)
+		if files, shape := normalize(entries, want); files != nil {
+			return placed(files, shape)
 		}
 	}
-	return nil, &ShapeError{Keys: sortedKeys(keys), Want: want}
+	return nil, "", &ShapeError{Keys: sortedKeys(keys), Want: want}
+}
+
+func placed(entries map[string]json.RawMessage, shape string) (map[string][]byte, string, error) {
+	files, err := filesFromObject(entries)
+	return files, shape, err
 }
 
 func objectEntries(raw json.RawMessage) map[string]json.RawMessage {

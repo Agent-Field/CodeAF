@@ -38,15 +38,20 @@ func (e *ShapeError) wanted() string {
 // one way to read them: a files list, folders spelled as nested objects, one
 // wrapper key too many, or one bare screen. Anything else returns nil, so
 // the caller reports a ShapeError rather than guessing.
-func normalize(entries map[string]json.RawMessage, want []string) map[string]json.RawMessage {
-	for _, try := range []func(map[string]json.RawMessage, []string) map[string]json.RawMessage{
-		filesList, folders, wrapped, bareScreen,
-	} {
-		if files := try(entries, want); filesObject(files) {
-			return files
+func normalize(entries map[string]json.RawMessage, want []string) (map[string]json.RawMessage, string) {
+	for _, shape := range shapes {
+		if files := shape.place(entries, want); filesObject(files) {
+			return files, shape.name
 		}
 	}
-	return nil
+	return nil, ""
+}
+
+var shapes = []struct {
+	name  string
+	place func(map[string]json.RawMessage, []string) map[string]json.RawMessage
+}{
+	{"files list", filesList}, {"folder nesting", folders}, {"extra wrapper", wrapped}, {"bare screen", bareScreen},
 }
 
 // filesList reads {"files": [{"path": …, "content": …}, …]}.
