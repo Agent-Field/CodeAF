@@ -32,7 +32,8 @@ func waitSetup(t *testing.T, h *Handler) {
 	}
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	// generous: the worker finishes in ~1.3 s when idle, but shared CI/Mac hosts under load took >5 s; a real hang still fails
+	case <-time.After(30 * time.Second):
 		t.Fatal("setup worker did not finish")
 	}
 }
