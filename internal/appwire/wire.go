@@ -142,6 +142,21 @@ type Task struct {
 	// a running task: the phase it is in, the gap it is closing, or what it
 	// is waiting on. It is empty when there is nothing to say.
 	Line string `json:"line,omitempty"`
+	// The task as its own conversation (V65, V66): whether the person paused
+	// it, what it waits on and what waits on it, its model, its steps, cost and
+	// clock, who started it, its instructions, and its own tasks.
+	Paused       bool       `json:"paused,omitempty"`
+	WaitsOn      []string   `json:"waits_on,omitempty"`
+	HoldingUp    []string   `json:"holding_up,omitempty"`
+	Model        string     `json:"model,omitempty"`
+	Steps        *int       `json:"steps,omitempty"`
+	CostUSD      *float64   `json:"cost_usd,omitempty"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	StartedBy    string     `json:"started_by,omitempty"`
+	Instructions string     `json:"instructions,omitempty"`
+	Children     *int       `json:"children,omitempty"`
+	ChildrenDone *int       `json:"children_done,omitempty"`
+	FinishedAt   *time.Time `json:"finished_at,omitempty"`
 }
 
 // Crew is one codeaf team, with its members named by agent id.
@@ -176,6 +191,19 @@ type Ask struct {
 	// allow_once, deny and, unless the call is irreversible, always.
 	Options      []AskOption `json:"options,omitempty"`
 	Irreversible bool        `json:"irreversible,omitempty"`
+	// The decision dock's facts (V68): where the ask comes from, why now and
+	// the evidence, the choices with the asker's suggestion, the clock, the
+	// calls asked about together, the tasks it holds up, and whether a reason
+	// may go with the answer. Later says the person put it aside.
+	Source     *AskSource  `json:"source,omitempty"`
+	Reason     string      `json:"reason,omitempty"`
+	Evidence   *Evidence   `json:"evidence,omitempty"`
+	Choices    []AskChoice `json:"choices,omitempty"`
+	ClockUntil *time.Time  `json:"clock_until,omitempty"`
+	Batch      []BatchItem `json:"batch,omitempty"`
+	HoldingUp  []string    `json:"holding_up,omitempty"`
+	SayWhy     bool        `json:"say_why,omitempty"`
+	Later      bool        `json:"later,omitempty"`
 }
 
 // The subkinds of an approval, and the option ids a permission offers.
@@ -228,7 +256,20 @@ type Entry struct {
 	Quiet     bool   `json:"quiet,omitempty"`
 	ErrorKind string `json:"error_kind,omitempty"`
 	Status    int    `json:"status,omitempty"`
-	// A tool entry carries the facts of its call (worklog.go).
+	// A steer's and a note's state, the step a steer landed at and the step a
+	// note was read at; a note's direction; a footer's kind and figures; the
+	// files and links a message of the person's carried (convo.go).
+	State       string       `json:"state,omitempty"`
+	Step        *int         `json:"step,omitempty"`
+	From        string       `json:"from,omitempty"`
+	ReadAtStep  *int         `json:"read_at_step,omitempty"`
+	Footer      string       `json:"footer_kind,omitempty"`
+	RetryInS    *int         `json:"retry_in_s,omitempty"`
+	ModelFrom   string       `json:"model_from,omitempty"`
+	ModelTo     string       `json:"model_to,omitempty"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+	// A tool entry carries the facts of its call (worklog.go); a note entry
+	// names its task there too.
 	ToolFacts
 }
 
@@ -240,6 +281,13 @@ const (
 	EntryReceipt = "receipt"
 	EntryNotice  = "notice"
 	EntryError   = "error"
+	// Wave 3b: an interim message mid-turn, a steer, a note to or from a
+	// task, an earlier stretch summarized, and a turn's footer.
+	EntryUpdate  = "update"
+	EntrySteer   = "steer"
+	EntryNote    = "note"
+	EntrySummary = "summary"
+	EntryFooter  = "footer"
 )
 
 // The kinds a turn's failure is sorted into.

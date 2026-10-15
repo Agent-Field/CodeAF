@@ -349,6 +349,32 @@ and twelve once it ends. A command's whole output is kept on this Mac for a
 week under the app's folder in codeaf's home, so it can be opened after the
 reply ends, or after the app restarts.
 
+## The desktop app's conversation — steer or queue, the decision dock, and notes to a task
+
+In the desktop app a message typed while the agent works can steer or queue.
+A steer reaches the agent after its current step, like a correction typed in
+the terminal; if the reply ends first, the words are sent as the next message.
+Queued messages wait in order until the reply ends; they can be edited,
+reordered or taken out until then. Thinking shows while it happens and is not
+kept. Words the agent says before a step show as an update.
+
+The dock above the message box shows one question at a time: why it is asked,
+what it shows, the agent's suggested answer, the tasks waiting on it, and a
+clock only when the question has one. Later puts it aside; You decide takes
+the agent's suggestion. Commands asked about together are answered together
+or one by one. A note to a task says when a step of the task read it, and a
+task can be paused, resumed or tried again from its page.
+
+## The desktop app's Inbox — every open question in one list, Undo, and Later
+
+The app's Inbox lists every question any agent the app holds is waiting on,
+each with the two turns before it and where it comes from. An answer given
+there waits five seconds before it is sent, and Undo takes it back. Later puts
+a question aside without answering it. A question answered anywhere else, in
+the conversation, on a task's page or in the terminal, leaves the Inbox at
+once with its receipt. An agent with a question open is kept open until the
+question is answered.
+
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
 `codeaf connect` lists every model provider this profile knows, whether it is connected,

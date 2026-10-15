@@ -68,6 +68,16 @@ type appState struct {
 	file   appStateFile
 }
 
+// where is where this state is kept.
+func (s *appState) where() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.path == "" {
+		return appStatePath()
+	}
+	return s.path
+}
+
 // appStatePath is where the file lives under codeaf's home.
 func appStatePath() string {
 	return filepath.Join(home.Dir(), appStateFolder, appStateName)

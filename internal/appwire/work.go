@@ -211,14 +211,25 @@ var workMethods = map[string]method{
 			return nil, err
 		}
 		var p struct {
-			ID   string `json:"id"`
-			Text string `json:"text"`
+			ID       string `json:"id"`
+			Text     string `json:"text"`
+			ClientID string `json:"client_id"`
 		}
 		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Text) == "" {
 			return nil, Errorf(CodeBadParams, "tasks.note needs an id and some text")
+		}
+		// An engine that keeps notes as entries answers the note's entry.
+		if t, ok := e.(Talker); ok {
+			entry, err := t.NoteTask(p.ID, p.Text, p.ClientID)
+			if err != nil {
+				return nil, err
+			}
+			return struct {
+				Entry Entry `json:"entry"`
+			}{entry}, nil
 		}
 		return struct{}{}, w.ActOnTask(p.ID, "note", "", p.Text)
 	},

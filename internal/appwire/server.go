@@ -414,9 +414,10 @@ var methods = map[string]method{
 	},
 	"agents.send": func(e Engine, raw json.RawMessage) (any, error) {
 		var p struct {
-			ID       string `json:"id"`
-			Text     string `json:"text"`
-			ClientID string `json:"client_id"`
+			ID          string   `json:"id"`
+			Text        string   `json:"text"`
+			ClientID    string   `json:"client_id"`
+			Attachments []string `json:"attachments"`
 		}
 		if err := decode(raw, &p); err != nil {
 			return nil, err
@@ -427,7 +428,13 @@ var methods = map[string]method{
 		if strings.TrimSpace(p.Text) == "" {
 			return nil, Errorf(CodeBadParams, "agents.send needs some text")
 		}
-		turn, err := e.Send(p.ID, p.Text, p.ClientID)
+		var turn uint64
+		var err error
+		if t, ok := e.(Talker); ok && len(p.Attachments) > 0 {
+			turn, err = t.SendWith(p.ID, p.Text, p.ClientID, p.Attachments)
+		} else {
+			turn, err = e.Send(p.ID, p.Text, p.ClientID)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -464,10 +471,14 @@ var methods = map[string]method{
 	},
 	"asks.answer": func(e Engine, raw json.RawMessage) (any, error) {
 		var p struct {
-			Agent  string `json:"agent"`
-			ID     string `json:"id"`
-			Option string `json:"option"`
-			Text   string `json:"text"`
+			Agent     string `json:"agent"`
+			ID        string `json:"id"`
+			Option    string `json:"option"`
+			Text      string `json:"text"`
+			Why       string `json:"why"`
+			BatchItem string `json:"batch_item"`
+			Later     bool   `json:"later"`
+			YouDecide bool   `json:"you_decide"`
 		}
 		if err := decode(raw, &p); err != nil {
 			return nil, err
@@ -475,8 +486,16 @@ var methods = map[string]method{
 		if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "asks.answer needs an agent and an id")
 		}
-		if strings.TrimSpace(p.Option) == "" && strings.TrimSpace(p.Text) == "" {
-			return nil, Errorf(CodeBadParams, "asks.answer needs an option, some text, or both")
+		if strings.TrimSpace(p.Option) == "" && strings.TrimSpace(p.Text) == "" && !p.Later && !p.YouDecide {
+			return nil, Errorf(CodeBadParams, "asks.answer needs an option, some text, later or you_decide")
+		}
+		if t, ok := e.(Talker); ok {
+			return struct{}{}, t.AnswerAskWith(p.Agent, p.ID, AskAnswer{
+				Option: strings.TrimSpace(p.Option), Text: p.Text, Why: p.Why, BatchItem: p.BatchItem, Later: p.Later, YouDecide: p.YouDecide,
+			})
+		}
+		if p.Later || p.YouDecide || p.BatchItem != "" || p.Why != "" {
+			return nil, Errorf(CodeBadParams, "this engine answers with an option and words only")
 		}
 		return struct{}{}, e.AnswerAsk(p.Agent, p.ID, strings.TrimSpace(p.Option), p.Text)
 	},

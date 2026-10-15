@@ -154,6 +154,10 @@ type appConversation interface {
 	AppQuickTasks() ([]session.AppQuickTaskView, error)
 	AppQuickTaskAction(intent session.AppTaskIntent) ([]string, []string, error)
 	MoveTurnToTask() error
+	// Steer puts words into the running turn (internal/session's steer.go),
+	// and RetryTask runs a failed task again.
+	Steer(text string) (<-chan session.Event, error)
+	RetryTask(id uint64) error
 	JobNotices() ([]session.JobNotice, error)
 	RerunProcess(id int) (session.JobNotice, error)
 	Cancel(id string) (string, error)
@@ -266,6 +270,8 @@ type appBackend struct {
 	today func(time.Time) float64
 	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
 	turnLong time.Duration
+	// inbox is every open ask as one list (appinbox.go); emit is its tap.
+	inbox *appInbox
 	// toolQuiet is how long a call runs before its row is said again with a
 	// fresh tail ([appToolQuiet]).
 	toolQuiet time.Duration
@@ -304,12 +310,25 @@ type appAgent struct {
 	marks map[int]appTurnMark
 	// calls is the work log's record of this agent's tool calls (apptools.go).
 	calls *appCallLog
+	// queue is the person's messages waiting for the turn to end, attach the
+	// attachments kept for the next message, walk the last walk of the
+	// workspace's files, and sending the message being sent (appconvo.go).
+	queue   []appQueued
+	queueN  int
+	attach  map[string]appAttach
+	attachN int
+	walk    *appWalk
+	sending *appSending
 }
 
 // appTurnMark is what this process knows of one of the person's messages.
 type appTurnMark struct {
 	turn     uint64
 	clientID string
+	// text and attachments are the person's own words and the files and
+	// links that rode with them, where the engine was sent both as words.
+	text        string
+	attachments []appwire.Attachment
 }
 
 // appBoot is agents.create's ask, kept for the background open.
@@ -368,6 +387,16 @@ type appLive struct {
 	logs      map[string]string
 	// slept are the processes a sleep stopped, said once on wake.
 	slept []appSlept
+	// steers counts the turn's steers; adopting is how many fallen-through
+	// steers are about to become turns; batchDone are the answered calls of
+	// each batch of asks; notes are the notes sent to each task not yet
+	// read, and noteN counts them; closed says the conversation was let go.
+	steers    int
+	adopting  int
+	batchDone map[string][]appwire.BatchItem
+	notes     map[string][]appNotePending
+	noteN     int
+	closed    bool
 }
 
 // appConsentCall is the call one approval is about.
@@ -403,7 +432,6 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		turnLong:  appTurnLong,
 		toolQuiet: appToolQuiet,
 		follows:   map[string]*appFollow{},
-		emit:      emit,
 		open:      open,
 		now:       time.Now,
 		agents:    map[string]*appAgent{},
@@ -411,6 +439,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		sweepDone: make(chan struct{}),
 		mint:      appMint,
 	}
+	b.emit = b.newAppInbox(emit)
 	guard.Go("app/sweep", b.sweep)
 	return b
 }
@@ -977,6 +1006,8 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			b.callAsked(a, id, live, q.Subject.CallID, askID)
 		}
 		ask := appAskOf(id, q)
+		appAskFacts(id, &ask, q)
+		defer b.restateBatch(live, q)
 		restated, moved := false, false
 		var view appwire.Agent
 		b.locked(func() {
@@ -1033,6 +1064,11 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		}
 		at := b.now()
 		words := appReceipt(by, option, answer, at)
+		// HANDED BACK, the agent's own pick answered it, and the receipt says so.
+		if picked, decided := strings.CutPrefix(option, appDecideMark); decided {
+			option = "you_decide"
+			words = "You let it decide · it chose " + picked + " · " + at.Local().Format("15:04")
+		}
 		// A PROPOSAL ITS CLOCK STARTED closes with no answer from anybody; the
 		// task it became, already said, is what tells it from one taken back.
 		if q.Kind == session.QuestionTask && answer == nil {
@@ -1204,6 +1240,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 	}
 	var turn uint64
 	var n int
+	shown, attachments := text, []appwire.Attachment(nil)
 	b.locked(func() {
 		if live.running {
 			refused = appwire.Errorf(appwire.CodeBusy, "this agent is already working on a turn")
@@ -1212,12 +1249,20 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 		live.running, live.stopping = true, false
 		live.lastUse = b.now()
 		turn = b.turns.Add(1)
-		live.turn, live.steps = turn, 0
+		live.turn, live.steps, live.steers = turn, 0, 0
 		n = a.users
 		if a.marks == nil {
 			a.marks = map[int]appTurnMark{}
 		}
-		a.marks[n] = appTurnMark{turn: turn, clientID: clientID}
+		mark := appTurnMark{turn: turn, clientID: clientID}
+		if a.sending != nil {
+			mark.text, mark.attachments = a.sending.text, a.sending.attachments
+		}
+		a.marks[n] = mark
+		shown, attachments = text, mark.attachments
+		if mark.text != "" {
+			shown = mark.text
+		}
 	})
 	if refused != nil {
 		return 0, refused
@@ -1241,7 +1286,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: clientID,
+		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: shown, ClientID: clientID, Attachments: attachments,
 	}})
 	long := b.watchLong(id, live, turn, b.now())
 	b.newTurnCalls(a)
@@ -1250,6 +1295,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 		defer long.Stop()
 		defer tails()
 		b.pump(a, id, live, turn, n, text, events)
+		b.sendQueued(a, live)
 	})
 	return turn, nil
 }
@@ -1280,31 +1326,63 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	// where a tool call begins after its words, or where the turn ends, and
 	// it is counted only if it said something — the same rule the listing
 	// counts by ([appEntriesOf]), so both name it alike.
-	msg, notices := 0, 0
-	var reply, thinking strings.Builder
-	sayReply := func() {
+	msg, notices, summaries := 0, 0, 0
+	var reply strings.Builder
+	// A MESSAGE BEFORE A TOOL CALL IS AN UPDATE, the agent saying what it
+	// found mid-turn; the last one is the answer.
+	sayReply := func(kind string) {
 		words := strings.TrimSpace(reply.String())
 		if words != "" {
 			b.locked(func() { live.lastAnswer = words })
 			at := msg
-			entry(appwire.Entry{ID: appAnswerEntryID(n, at), Kind: appwire.EntryAnswer, Text: words, Thinking: strings.TrimSpace(thinking.String()), Msg: &at})
+			entry(appwire.Entry{ID: appAnswerEntryID(n, at), Kind: kind, Text: words, Msg: &at})
 			msg++
 		}
 		reply.Reset()
-		thinking.Reset()
+	}
+	// A THOUGHT IS SHOWN WHILE IT HAPPENS AND NEVER SAVED: its words go out
+	// as turn.thinking, and its length once the agent moves on.
+	var thoughtAt time.Time
+	endThought := func() {
+		if !thoughtAt.IsZero() {
+			live.box.Event(appwire.EventTurnThinkingDone, appwire.TurnThinkingDone{Agent: id, Turn: turn, Seconds: appwire.ThinkingSeconds(b.now().Sub(thoughtAt))})
+			thoughtAt = time.Time{}
+		}
 	}
 	titles := map[string]string{}
 	for event := range events {
 		switch event.Kind {
 		case session.EventTextDelta:
+			endThought()
 			reply.WriteString(event.Text)
 			live.box.Delta(id, turn, msg, appwire.DeltaText, event.Text)
 		case session.EventReasoning:
-			thinking.WriteString(event.Text)
+			if thoughtAt.IsZero() {
+				thoughtAt = b.now()
+			}
 			live.box.Delta(id, turn, msg, appwire.DeltaThinking, event.Text)
+		case session.EventRetrying:
+			// The attempt is void: what it streamed is dropped, here and on
+			// the page, and a move to another model is said once.
+			reply.Reset()
+			thoughtAt = time.Time{}
+			retry := appwire.TurnRetrying{Agent: id, Turn: turn, Attempt: 1}
+			if news := event.Retry; news != nil {
+				retry.Attempt = max(1, news.Attempt)
+				if strings.TrimSpace(news.Next) != "" {
+					footer := appFooter("f"+strconv.Itoa(n)+".m"+strconv.Itoa(retry.Attempt), id, turn, appwire.FooterFallback, redact.Secrets(strings.TrimSpace(event.Text)), b.now())
+					footer.ModelFrom, footer.ModelTo = news.Model, news.Next
+					live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: footer})
+				}
+			}
+			live.box.Event(appwire.EventTurnRetrying, retry)
+		case session.EventCompacted:
+			entry(appwire.Entry{ID: "c" + strconv.Itoa(n) + "." + strconv.Itoa(summaries), Kind: appwire.EntrySummary, Text: "Earlier messages summarized"})
+			summaries++
 		case session.EventToolBegin:
 			b.locked(func() { live.steps++ })
-			sayReply()
+			endThought()
+			sayReply(appwire.EntryUpdate)
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
 			row := b.callBegan(a, id, turn, event, title)
@@ -1329,6 +1407,11 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				title = redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, ""))
 			}
 			live.box.Event(appwire.EventTurnTool, b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
+			// THE SEVENTEENTH PROCESS is refused by the engine, and the turn
+			// says so once at its end.
+			if !succeeded && strings.Contains(event.Output+summary, "processes are running for this agent.") {
+				entry(appFooter("pl"+event.CallID, id, turn, appwire.FooterProcessLimit, strings.TrimSpace(summary), b.now()))
+			}
 		case session.EventConsentRequest:
 			call := appConsentCall{Tool: event.Tool, Args: event.Args}
 			b.locked(func() { live.consents[event.ID] = call })
@@ -1359,7 +1442,8 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			b.workEvent(id, live, event)
 		}
 	}
-	sayReply()
+	endThought()
+	sayReply(appwire.EntryAnswer)
 	byPerson := false
 	b.locked(func() {
 		byPerson = live.stopping
@@ -1382,9 +1466,13 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		at := b.now()
 		words := "Stopped · " + at.Local().Format("15:04")
 		if byPerson {
-			words = "Stopped · you · " + at.Local().Format("15:04")
+			words = "Stopped by you · " + at.Local().Format("15:04")
 		}
-		entry(appwire.Entry{ID: appStopEntryID(n), Kind: appwire.EntryReceipt, Text: words})
+		entry(appFooter(appStopEntryID(n), id, turn, appwire.FooterStoppedByYou, words, at))
+	case !ok && kind == appwire.ErrorProvider:
+		footer := appFooter(appErrorEntryID(n), id, turn, appwire.FooterProviderFailed, failure, b.now())
+		footer.ErrorKind, footer.Status = kind, status
+		entry(footer)
 	case !ok:
 		entry(appwire.Entry{ID: appErrorEntryID(n), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status})
 	}
@@ -1436,16 +1524,29 @@ func appReceiptEntryID(askID string) string { return "r" + askID }
 
 // appUserCount is how many of the person's messages a transcript holds.
 func appUserCount(transcript string) int {
-	record := session.ReadTranscript(transcript)
 	users := 0
-	for _, items := range [][]session.DisplayEntry{record.Earlier, record.Entries} {
-		for _, item := range items {
-			if item.Role == "user" {
-				users++
-			}
+	for _, item := range appRecordItems(session.ReadTranscript(transcript)) {
+		if item.Role == "user" {
+			users++
 		}
 	}
 	return users
+}
+
+// appSummaryRole marks where a compaction summarized what came before.
+const appSummaryRole = "summary"
+
+// appRecordItems is a record told once and whole: the conversation above the
+// last compaction, a mark where it was summarized, and the live transcript
+// beneath its floor.
+func appRecordItems(record session.Record) []session.DisplayEntry {
+	if len(record.Earlier) == 0 {
+		return record.Entries
+	}
+	items := append([]session.DisplayEntry(nil), record.Earlier...)
+	items = append(items, session.DisplayEntry{Role: appSummaryRole})
+	floor := min(max(record.Floor, 0), len(record.Entries))
+	return append(items, record.Entries[floor:]...)
 }
 
 // appDetailLimit bounds a tool's short result line.
@@ -1575,6 +1676,7 @@ func (b *appBackend) release(a *appAgent) {
 // finish gives a conversation that is no longer held back, and shuts its
 // outbox once the turn and the lanes have said their last.
 func (b *appBackend) finish(live *appLive) {
+	b.locked(func() { live.closed = true })
 	b.landPilots(live)
 	if live.stopTasks != nil {
 		live.stopTasks()
@@ -1736,7 +1838,7 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 		return []appwire.Entry{}, false, nil
 	}
 	record := session.ReadTranscript(transcript)
-	items := append(append([]session.DisplayEntry(nil), record.Earlier...), record.Entries...)
+	items := appRecordItems(record)
 	all := appEntriesOf(id, items, at, marks)
 	// A tool entry carries its call's facts, as its row did live.
 	calls := map[string]session.DisplayEntry{}
@@ -1779,10 +1881,27 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 // its client id, from marks; one sent before this launch has neither.
 func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, marks map[int]appTurnMark) []appwire.Entry {
 	entries := make([]appwire.Entry, 0, len(items))
-	n, m, k := -1, 0, 0
+	n, m, k, c := -1, 0, 0, 0
+	// A MESSAGE FOLLOWED BY A TOOL CALL BEFORE THE PERSON SPOKE AGAIN WAS AN
+	// UPDATE, as the live pump named it.
+	update := make([]bool, len(items))
+	called := false
+	for i := len(items) - 1; i >= 0; i-- {
+		switch items[i].Role {
+		case "user":
+			called = false
+		case "tool":
+			called = true
+		case "assistant":
+			update[i] = called
+		}
+	}
 	for i, item := range items {
 		entry := appwire.Entry{Agent: agent, At: at}
 		switch item.Role {
+		case appSummaryRole:
+			entry.ID, entry.Kind, entry.Text = "c"+strconv.Itoa(max(n, 0))+".s"+strconv.Itoa(c), appwire.EntrySummary, "Earlier messages summarized"
+			c++
 		case "user":
 			n, m, k = n+1, 0, 0
 			entry.ID, entry.Kind, entry.Text = appUserEntryID(n), appwire.EntryUser, item.Text
@@ -1802,6 +1921,9 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, mark
 			}
 			msg := m
 			entry.ID, entry.Kind, entry.Text, entry.Msg = appAnswerEntryID(n, msg), appwire.EntryAnswer, strings.TrimSpace(item.Text), &msg
+			if update[i] && item.Role == "assistant" {
+				entry.Kind = appwire.EntryUpdate
+			}
 			m++
 		case "tool":
 			call := item.CallID
@@ -1825,6 +1947,9 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, mark
 			entry.Turn = mark.turn
 			if entry.Kind == appwire.EntryUser {
 				entry.ClientID = mark.clientID
+				if mark.text != "" {
+					entry.Text, entry.Attachments = mark.text, mark.attachments
+				}
 			}
 		}
 		entries = append(entries, entry)
@@ -2148,6 +2273,7 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 		}
 		tasks = append(tasks, task)
 	}
+	appTaskExtras(tasks)
 	return tasks, nil
 }
 

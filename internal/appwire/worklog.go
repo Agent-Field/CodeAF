@@ -28,7 +28,7 @@ const EventToolOutput = "tool.output"
 
 // ToolFacts are one call's facts, on turn.tool and on its tool entry.
 type ToolFacts struct {
-	Kind      string     `json:"kind,omitempty"`
+	Kind      string     `json:"tool_kind,omitempty"`
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
 	// Batch is the same on every call the agent started together.

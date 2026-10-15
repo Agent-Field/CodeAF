@@ -37,7 +37,7 @@ const appTurnLong = 180 * time.Second
 
 // appMoveWait bounds how long agents.move_to_task waits for the reply's task:
 // the move happens at the reply's next step and writes a brief first.
-const appMoveWait = 2 * time.Minute
+const appMoveWait = 10 * time.Minute
 
 // appFollowEvery is how often a followed process's output is looked at.
 const appFollowEvery = 500 * time.Millisecond
@@ -161,6 +161,22 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 	if notice.Parent != 0 && notice.Parent != notice.ID {
 		task.Parent = appTaskID(agent, notice.Parent)
 	}
+	// The task as its own conversation: its model, its clock, its brief, what
+	// it waits on, and whether the person paused it.
+	task.Model, task.Paused = strings.TrimSpace(notice.Model), notice.Paused
+	task.Instructions = redact.Secrets(strings.TrimSpace(notice.Brief))
+	task.CostUSD = task.SpentUSD
+	if !notice.StartedAt.IsZero() {
+		started := notice.StartedAt
+		task.StartedAt = &started
+	}
+	if !notice.EndedAt.IsZero() && (state == appwire.TaskDone || state == appwire.TaskFailed || state == appwire.TaskUnverified) {
+		ended := notice.EndedAt
+		task.FinishedAt = &ended
+	}
+	for _, waited := range notice.DependsOn {
+		task.WaitsOn = append(task.WaitsOn, appTaskID(agent, waited))
+	}
 	switch {
 	case notice.Withdrawn != "":
 		task.State, task.Result = appwire.TaskFailed, notice.Withdrawn
@@ -207,6 +223,19 @@ func appTaskOfView(agent string, view session.AppTaskView) appwire.Task {
 		task.State = appwire.TaskRunning
 	default:
 		task.State = appwire.TaskFailed
+	}
+	task.Paused = view.State == "paused" || view.Held
+	task.Model, task.StartedBy = view.Model, view.Origin
+	task.Instructions = redact.Secrets(strings.TrimSpace(view.Brief))
+	task.CostUSD = task.SpentUSD
+	if view.Step > 0 {
+		steps := view.Step
+		task.Steps = &steps
+	}
+	for _, waited := range view.Waits {
+		if w, err := strconv.ParseUint(waited, 10, 64); err == nil {
+			task.WaitsOn = append(task.WaitsOn, appTaskID(agent, w))
+		}
 	}
 	return task
 }
@@ -545,11 +574,27 @@ func (b *appBackend) ActOnTask(id, action, verdict, text string) error {
 		// pressed hold or started typing in the card.
 		intent.Action = "hold"
 	}
-	if err := live.conn.Conv.AppTaskAction(intent); err != nil {
-		return appTaskError(err)
+	// A TASK THE APP HAS ALREADY SEEN START can be a moment ahead of the
+	// engine's own task list; the action is asked again for a few seconds
+	// rather than refused for a task that is there.
+	known := false
+	b.locked(func() { _, known = live.tasks[id] })
+	deadline := b.now().Add(appTaskSettleWait)
+	for {
+		err := live.conn.Conv.AppTaskAction(intent)
+		if err == nil {
+			return nil
+		}
+		if !known || !strings.Contains(err.Error(), "no such task") || b.now().After(deadline) {
+			return appTaskError(err)
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
-	return nil
 }
+
+// appTaskSettleWait bounds how long an action on a task the app has seen
+// waits for the engine's list to name it.
+const appTaskSettleWait = 3 * time.Second
 
 // appTaskError sorts an engine refusal about a task into the app's codes.
 func appTaskError(err error) error {
@@ -760,15 +805,23 @@ func (b *appBackend) processMoved(agent string, live *appLive, job *session.JobN
 		return
 	}
 	process := appProcessOf(agent, *job)
-	same := false
+	same, finished := false, false
 	b.locked(func() {
 		before, known := live.processes[process.ID]
 		live.processes[process.ID] = process
 		same = known && reflect.DeepEqual(before, process)
+		finished = known && before.State == appwire.ProcessRunning && (process.State == appwire.ProcessEnded || process.State == appwire.ProcessFailed)
 		live.logs[process.ID] = job.LogPath
 	})
 	if !same {
 		live.box.Event(appwire.EventProcessChanged, appwire.ProcessChanged{Process: process})
+	}
+	// A PROCESS THAT ENDS ON ITS OWN leaves one quiet line in the
+	// conversation, pointing at its output.
+	if finished {
+		footer := appFooter("pf"+process.ID, agent, 0, appwire.FooterProcessFinished, "Process finished · "+process.Title, b.now())
+		footer.Ref = process.ID
+		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: footer})
 	}
 }
 
@@ -867,9 +920,19 @@ func (b *appBackend) ProcessOutput(id string, from int) ([]string, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	// A long output is read from its last 512 KB, with a line saying so.
+	trimmed := false
+	if from == 0 {
+		if start := appTrimmedStart(path); start > 0 {
+			from, trimmed = start, true
+		}
+	}
 	lines, next, err := appReadLines(path, from, appOutputLines)
 	if err != nil {
 		return nil, 0, appEngineError(err)
+	}
+	if trimmed {
+		lines = append([]string{appTrimmedLine}, lines...)
 	}
 	return lines, next, nil
 }

@@ -159,6 +159,11 @@ type fakeConversation struct {
 	moves       int
 	// room is the lane one task's calls are watched on.
 	room chan session.Event
+	// steer is what a steer answers with, steered the words steered, and
+	// retried the tasks run again.
+	steer   chan session.Event
+	steered []string
+	retried []uint64
 	// onAnswer, when set, is what the engine does with an answer.
 	onAnswer func(session.Answer)
 }
@@ -166,10 +171,8 @@ type fakeConversation struct {
 func (f *fakeConversation) WatchTaskRoom(uint64) (<-chan session.Event, func(), error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.room == nil {
-		f.room = make(chan session.Event, 8)
-	}
-	lane := f.room
+	lane := make(chan session.Event, 8)
+	f.room = lane
 	var once sync.Once
 	return lane, func() { once.Do(func() { close(lane) }) }, nil
 }
@@ -294,6 +297,23 @@ func (f *fakeConversation) AppQuickTaskAction(intent session.AppTaskIntent) ([]s
 	}
 	return nil, nil, nil
 }
+func (f *fakeConversation) Steer(text string) (<-chan session.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.steered = append(f.steered, text)
+	if f.steer == nil {
+		return nil, session.ErrNothingToSteer
+	}
+	return f.steer, nil
+}
+
+func (f *fakeConversation) RetryTask(id uint64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.retried = append(f.retried, id)
+	return nil
+}
+
 func (f *fakeConversation) MoveTurnToTask() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -489,7 +509,7 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	got := rec.events[2 : done+2]
 	want := []string{
 		appwire.EventAgentChanged, appwire.EventTurnStarted, appwire.EventEntryAdded,
-		appwire.EventTurnDelta, appwire.EventTurnDelta, appwire.EventEntryAdded,
+		appwire.EventTurnThinking, appwire.EventTurnThinkingDone, appwire.EventTurnDelta, appwire.EventEntryAdded,
 		appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool,
 		appwire.EventTaskChanged, appwire.EventAgentChanged, appwire.EventTurnDone, appwire.EventAgentChanged,
 	}
@@ -506,18 +526,23 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if e := data[2].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUser || e.ID != "u0" || e.Text != "fix it" || e.Turn != turn || e.Agent != agent.ID {
 		t.Fatalf("the person's entry = %+v", e)
 	}
-	if d := data[3].(appwire.TurnDelta); d.Kind != appwire.DeltaThinking || d.Text != "hmm" {
+	// The thought is said live and never kept; the words before a tool call
+	// are an update.
+	if d := data[3].(appwire.TurnThinking); d.Text != "hmm" || d.Turn != turn {
 		t.Fatalf("thinking = %+v", d)
 	}
-	if d := data[4].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
+	if d := data[4].(appwire.TurnThinkingDone); d.Seconds < 1 {
+		t.Fatalf("thinking done = %+v", d)
+	}
+	if d := data[5].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
 		t.Fatalf("text = %+v", d)
 	}
-	if e := data[5].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryAnswer || e.ID != "a0.0" || e.Msg == nil || *e.Msg != 0 || e.Text != "hello world" || e.Thinking != "hmm" {
-		t.Fatalf("the answer entry = %+v", e)
+	if e := data[6].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUpdate || e.ID != "a0.0" || e.Msg == nil || *e.Msg != 0 || e.Text != "hello world" || e.Thinking != "" {
+		t.Fatalf("the update entry = %+v", e)
 	}
-	begin := data[6].(appwire.TurnTool)
-	end := data[7].(appwire.TurnTool)
-	failed := data[9].(appwire.TurnTool)
+	begin := data[7].(appwire.TurnTool)
+	end := data[8].(appwire.TurnTool)
+	failed := data[10].(appwire.TurnTool)
 	if begin.Phase != appwire.PhaseBegin || begin.Call != "c1" || begin.Name != "read" || begin.Title != "read go.mod" || begin.OK != nil {
 		t.Fatalf("begin = %+v", begin)
 	}
@@ -527,10 +552,10 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if failed.Phase != appwire.PhaseEnd || failed.OK == nil || *failed.OK || failed.Summary != "exit status 1" {
 		t.Fatalf("failed = %+v", failed)
 	}
-	if task := data[10].(appwire.TaskChanged).Task; task.ID != agent.ID+":3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
+	if task := data[11].(appwire.TaskChanged).Task; task.ID != agent.ID+":3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
 		t.Fatalf("task = %+v", task)
 	}
-	if d := data[12].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
+	if d := data[13].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
 		t.Fatalf("turn.done = %+v", d)
 	}
 }
@@ -576,8 +601,8 @@ func TestAppSendRefusesBusyAndReportsAFailedTurn(t *testing.T) {
 	for _, data := range rec.data {
 		if e, ok := data.(appwire.EntryAdded); ok {
 			switch e.Entry.Kind {
-			case appwire.EntryReceipt:
-				if strings.HasPrefix(e.Entry.Text, "Stopped · you · ") {
+			case appwire.EntryFooter:
+				if e.Entry.Footer == appwire.FooterStoppedByYou && strings.HasPrefix(e.Entry.Text, "Stopped by you · ") {
 					receipts++
 				}
 			case appwire.EntryError, appwire.EntryAnswer:
@@ -1073,7 +1098,7 @@ func TestAppSortsAProviderFailureAndRetriesIt(t *testing.T) {
 	if done.OK || done.ErrorKind != appwire.ErrorProvider || done.Status != 429 || done.Error != "upstream is rate limited" {
 		t.Fatalf("turn.done = %+v", done)
 	}
-	if e := errorEntry.Entry; e.Kind != appwire.EntryError || e.ErrorKind != appwire.ErrorProvider || e.Status != 429 || e.Text != done.Error {
+	if e := errorEntry.Entry; e.Kind != appwire.EntryFooter || e.Footer != appwire.FooterProviderFailed || e.ErrorKind != appwire.ErrorProvider || e.Status != 429 || e.Text != done.Error {
 		t.Fatalf("the error entry = %+v", e)
 	}
 	// The next try goes through.
@@ -1585,7 +1610,7 @@ func TestAppATurnWithToolsSaysEachMessageOnce(t *testing.T) {
 			switch v.Entry.Kind {
 			case appwire.EntryUser:
 				users = append(users, v.Entry)
-			case appwire.EntryAnswer:
+			case appwire.EntryAnswer, appwire.EntryUpdate:
 				answers = append(answers, v.Entry)
 			}
 		case appwire.TurnDelta:

@@ -375,15 +375,15 @@ func TestOutboxFoldsDeltasAndKeepsOrderWithToolsAndTheEnd(t *testing.T) {
 	box.Delta("a", 1, 0, DeltaText, "after")
 	box.Event(EventTurnDone, TurnDone{Agent: "a", Turn: 1, OK: true})
 	box.Close()
-	want := []string{EventTurnStarted, EventTurnDelta, EventTurnDelta, EventTurnTool, EventTurnDelta, EventTurnDone}
+	want := []string{EventTurnStarted, EventTurnDelta, EventTurnThinking, EventTurnTool, EventTurnDelta, EventTurnDone}
 	if strings.Join(rec.events, ",") != strings.Join(want, ",") {
 		t.Fatalf("events = %v", rec.events)
 	}
 	if got := rec.data[1].(TurnDelta); got.Text != "hello there" || got.Kind != DeltaText {
 		t.Fatalf("folded delta = %+v", got)
 	}
-	if got := rec.data[2].(TurnDelta); got.Text != "hmm" || got.Kind != DeltaThinking {
-		t.Fatalf("thinking delta = %+v", got)
+	if got := rec.data[2].(TurnThinking); got.Text != "hmm" || got.Turn != 1 {
+		t.Fatalf("thinking = %+v", got)
 	}
 	if got := rec.data[4].(TurnDelta); got.Text != "after" {
 		t.Fatalf("delta after the tool = %+v", got)

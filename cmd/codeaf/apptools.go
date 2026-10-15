@@ -98,11 +98,7 @@ func (l *appCallLog) locked(fn func()) {
 
 // outputRoot is the folder every agent's call output is kept under.
 func (b *appBackend) outputRoot() string {
-	path := b.state.path
-	if path == "" {
-		path = appStatePath()
-	}
-	return filepath.Join(filepath.Dir(path), "output")
+	return filepath.Join(filepath.Dir(b.state.where()), "output")
 }
 
 // callLog is one agent's call log, made the first time it is needed.
@@ -422,6 +418,7 @@ func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event ses
 		if c.file != nil {
 			_ = c.file.Close()
 			c.file = nil
+			appTrimOutput(c.path)
 		}
 		c.ended = true
 		row = b.rowLocked(agent, c)

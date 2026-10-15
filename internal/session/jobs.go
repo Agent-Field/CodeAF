@@ -843,7 +843,32 @@ func (r *jobRegistry) settled(one *job, code int) bool {
 // whole purpose is to outlive the turn would be killed by the very act of
 // answering the person. The job's lifetime is the session's, and Close is the
 // only thing that ends it early.
+// jobProcessCap is how many background processes one agent may have running
+// at once; the next is refused with [errJobProcessCap]'s sentence.
+const jobProcessCap = 16
+
+var errJobProcessCap = fmt.Errorf("%d processes are running for this agent.", jobProcessCap)
+
+// runningProcesses counts the background processes still running.
+func (r *jobRegistry) runningProcesses() int {
+	running := 0
+	for _, one := range r.all() {
+		if one.kind != jobKindBash {
+			continue
+		}
+		select {
+		case <-one.done:
+		default:
+			running++
+		}
+	}
+	return running
+}
+
 func (r *jobRegistry) start(command string) (*job, error) {
+	if r.runningProcesses() >= jobProcessCap {
+		return nil, errJobProcessCap
+	}
 	started, err := r.newJob(command, jobKindBash)
 	if err != nil {
 		return nil, err
@@ -1066,6 +1091,9 @@ type adoption struct {
 // WHAT THE CALLER KNOWS AND THIS DOES NOT is [adoption], the two facts about the
 // road the takeover came down.
 func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
+	if r.runningProcesses() >= jobProcessCap {
+		return nil, errJobProcessCap
+	}
 	started, err := r.newJob(taken.Command(), jobKindBash)
 	if err != nil {
 		return nil, err

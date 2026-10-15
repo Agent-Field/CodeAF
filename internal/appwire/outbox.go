@@ -141,9 +141,14 @@ func (o *Outbox) run() {
 			o.queue = nil
 		}
 		o.mu.Unlock()
-		if head.delta != nil {
+		switch {
+		case head.delta != nil && head.delta.Kind == DeltaThinking:
+			// A thought folds like text does and is said as turn.thinking:
+			// shown while it happens, never kept.
+			o.emit.Emit(EventTurnThinking, TurnThinking{Agent: head.delta.Agent, Turn: head.delta.Turn, Text: head.delta.Text})
+		case head.delta != nil:
 			o.emit.Emit(EventTurnDelta, *head.delta)
-		} else {
+		default:
 			o.emit.Emit(head.event, head.data)
 		}
 	}
