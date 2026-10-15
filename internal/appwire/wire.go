@@ -61,8 +61,11 @@ const (
 	EventTurnDelta    = "turn.delta"
 	EventTurnTool     = "turn.tool"
 	EventTurnDone     = "turn.done"
+	EventAskOpened    = "ask.opened"
+	EventAskClosed    = "ask.closed"
 	EventTaskChanged  = "task.changed"
 	EventCrewChanged  = "crew.changed"
+	EventCrewRemoved  = "crew.removed"
 	EventLog          = "log"
 )
 
@@ -117,6 +120,34 @@ type Crew struct {
 	Members []CrewMember `json:"members"`
 }
 
+// The two kinds of ask, and who closed one.
+const (
+	AskApproval = "approval"
+	AskQuestion = "question"
+
+	ClosedByApp       = "app"
+	ClosedByElsewhere = "elsewhere"
+	ClosedByStopped   = "stopped"
+)
+
+// Ask is one thing an agent is waiting on the person for: a tool call waiting
+// to be allowed, or a question the agent put. Options are the engine's own
+// choices, keyed by the id an answer names.
+type Ask struct {
+	ID      string      `json:"id"`
+	Agent   string      `json:"agent"`
+	Kind    string      `json:"kind"`
+	Title   string      `json:"title"`
+	Detail  string      `json:"detail,omitempty"`
+	Options []AskOption `json:"options,omitempty"`
+}
+
+// AskOption is one answer an ask offers.
+type AskOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
 // CrewMember is one conversation in a crew.
 type CrewMember struct {
 	Agent  string `json:"agent"`
@@ -154,11 +185,22 @@ type (
 		OK    bool   `json:"ok"`
 		Error string `json:"error,omitempty"`
 	}
+	AskOpened struct {
+		Ask Ask `json:"ask"`
+	}
+	AskClosed struct {
+		Agent string `json:"agent"`
+		ID    string `json:"id"`
+		By    string `json:"by"`
+	}
 	TaskChanged struct {
 		Task Task `json:"task"`
 	}
 	CrewChanged struct {
 		Crew Crew `json:"crew"`
+	}
+	CrewRemoved struct {
+		ID string `json:"id"`
 	}
 	Log struct {
 		Level   string `json:"level"`
@@ -195,6 +237,10 @@ type Engine interface {
 	Send(id, text string) (uint64, error)
 	Stop(id string) error
 	CloseAgent(id string) error
+	ListAsks(agent string) ([]Ask, error)
+	// AnswerAsk answers one open ask with an option, words, or both. An ask
+	// that is no longer open answers not_found.
+	AnswerAsk(agent, id, option, text string) error
 	ListTasks(agent string) ([]Task, error)
 	ListCrews() ([]Crew, error)
 	// Close releases every conversation the engine holds. It is called once,

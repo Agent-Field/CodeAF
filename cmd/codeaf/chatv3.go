@@ -778,6 +778,12 @@ type v3Options struct {
 	// posture every session has always had, where the model stopping is the
 	// session stopping.
 	Budget session.Budget
+	// LaunchDir is where the person stood, when the door knows it better than
+	// the process does. Empty is the process's own launch directory, which is
+	// every terminal door; `codeaf app` holds conversations in many folders
+	// from one process started wherever the desktop app was, so it names the
+	// workspace the person asked for instead.
+	LaunchDir string
 }
 
 // joinV3Notices puts the launch's dim lines on one row, in the order they were
@@ -881,6 +887,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// (Decision 26). A door that named a workspace has already answered the
 	// project question and its answer is taken as given.
 	launchDir := proc.LaunchDir
+	if named := strings.TrimSpace(opts.LaunchDir); named != "" {
+		launchDir = named
+	}
 
 	project, owned := v3Workspace(launchDir, opts.Workspace)
 	found, err := v3ResolveSession(strings.TrimSpace(opts.Session), project,

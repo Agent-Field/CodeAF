@@ -17,8 +17,9 @@ package main
 // ONE DIFFERENCE FROM A HOST, AND IT IS THE DIRECTORY. A host is one workspace
 // and moves the process into it; this process holds conversations in several
 // workspaces at once, so it moves nowhere. Every tool already resolves against
-// its conversation's own workspace rather than the process's directory, and the
-// launch directory a new conversation records is where the app was started.
+// its conversation's own workspace rather than the process's directory, and a
+// new conversation records the workspace the app asked for as where the person
+// stood, since the process's own directory is wherever the app was started.
 //
 // AND IT IS LAZY BY LAW. Starting up reads nothing but the flags, so the hello
 // line leaves before anything is opened; listing agents, tasks and crews reads
@@ -116,6 +117,11 @@ type appConversation interface {
 	Title() string
 	NeedsPerson() bool
 	WatchTaskUpdates() (<-chan session.Event, func())
+	// The question lane and its one answer door, the same pair the chat's
+	// question page uses: every approval and every question the conversation
+	// raises, answers and withdrawals included, from whichever window.
+	WatchQuestions() (<-chan session.Event, func())
+	ResolveQuestion(session.Answer) error
 }
 
 // appOpenAsk is which conversation to open: a saved one by transcript, or a
@@ -165,7 +171,7 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	}
 	loop, err := remote.Loopback(hello, remote.Options{
 		Boot: func(h remote.Hello) (*remote.Engine, error) {
-			return assembleEngine(h, workspace, transcript)
+			return assembleEngine(h, workspace, transcript, workspace)
 		},
 	})
 	if err != nil {
@@ -216,7 +222,31 @@ type appLive struct {
 	lastUse   time.Time
 	pumpDone  chan struct{}
 	lanesDone chan struct{}
+	asksDone  chan struct{}
+	stopAsks  func()
 	tasks     map[string]appwire.Task
+	// asks are the open asks in the order they were raised, and questions the
+	// engine's own question behind each, which is what an answer is built from.
+	asks      []appwire.Ask
+	questions map[string]session.Question
+	// answered names the asks this app answered, so their closing says so.
+	answered map[string]bool
+}
+
+// needsYou is the one reading of "waiting on the person": an open ask, or the
+// engine's own word for a wait the question lane does not carry. Callers hold
+// b.mu.
+func (live *appLive) needsYou() bool {
+	return len(live.asks) > 0 || live.conn.Conv.NeedsPerson()
+}
+
+// restingState is what an agent with no turn running reads as. Callers hold
+// b.mu.
+func (live *appLive) restingState() string {
+	if live.needsYou() {
+		return appwire.StateNeedsYou
+	}
+	return appwire.StateIdle
 }
 
 func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
@@ -451,7 +481,11 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	if conn.Assembled {
 		b.assembled.Store(true)
 	}
-	live := &appLive{conn: conn, box: appwire.NewOutbox(b.emit), lastUse: b.now(), tasks: map[string]appwire.Task{}, lanesDone: make(chan struct{})}
+	live := &appLive{
+		conn: conn, box: appwire.NewOutbox(b.emit), lastUse: b.now(),
+		tasks: map[string]appwire.Task{}, lanesDone: make(chan struct{}), asksDone: make(chan struct{}),
+		questions: map[string]session.Question{}, answered: map[string]bool{},
+	}
 	b.mu.Lock()
 	if conn.Transcript != "" {
 		a.transcript = conn.Transcript
@@ -466,10 +500,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	if model := conn.Conv.Model(); model != "" {
 		a.view.Model = model
 	}
-	a.view.State = appwire.StateIdle
-	if conn.Conv.NeedsPerson() {
-		a.view.State = appwire.StateNeedsYou
-	}
+	a.view.State = live.restingState()
 	if a.view.UpdatedAt.IsZero() {
 		a.view.UpdatedAt = b.now()
 	}
@@ -487,7 +518,141 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			}
 		}
 	}()
+	questions, stopQuestions := conn.Conv.WatchQuestions()
+	live.stopAsks = stopQuestions
+	go func() {
+		defer close(live.asksDone)
+		for event := range questions {
+			b.questionEvent(a, id, live, event)
+		}
+		// A LANE THAT ENDS WHILE THE CONVERSATION IS STILL HELD IS A DEAD
+		// CONNECTION: letting go stops the lane only after taking the
+		// conversation away, so the only other way it ends is the engine
+		// behind it going (internal/remote's bury finishes every lane).
+		b.died(a, live)
+	}()
 	return view
+}
+
+// appAskID is the stable id of one ask: the engine's own question key.
+func appAskID(q session.Question) string {
+	return string(q.Kind) + ":" + q.Token()
+}
+
+// appAskOf is the engine's question as the app's ask.
+func appAskOf(agent string, q session.Question) appwire.Ask {
+	ask := appwire.Ask{ID: appAskID(q), Agent: agent, Kind: appwire.AskQuestion, Title: strings.TrimSpace(q.Head), Detail: strings.TrimSpace(q.Reason)}
+	if q.Kind == session.QuestionConsent {
+		ask.Kind = appwire.AskApproval
+	}
+	for _, option := range q.Options {
+		ask.Options = append(ask.Options, appwire.AskOption{ID: option.Key, Label: option.Label})
+	}
+	return ask
+}
+
+// questionEvent keeps the open asks in step with the question lane and says
+// every change on the wire, the agent's state with it.
+func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event session.Event) {
+	if event.Question == nil {
+		return
+	}
+	q := *event.Question
+	askID := appAskID(q)
+	switch event.Kind {
+	case session.EventQuestion:
+		ask := appAskOf(id, q)
+		b.mu.Lock()
+		if _, open := live.questions[askID]; open {
+			// The lane replays what is open when it is subscribed again, and
+			// a question restated in place is the same ask.
+			live.questions[askID] = q
+			for i := range live.asks {
+				if live.asks[i].ID == askID {
+					live.asks[i] = ask
+				}
+			}
+			b.mu.Unlock()
+			return
+		}
+		live.questions[askID] = q
+		live.asks = append(live.asks, ask)
+		view, moved := b.restateLocked(a, live)
+		b.mu.Unlock()
+		live.box.Event(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+		if moved {
+			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		}
+	case session.EventQuestionAnswered, session.EventQuestionWithdrawn:
+		b.mu.Lock()
+		if _, open := live.questions[askID]; !open {
+			b.mu.Unlock()
+			return
+		}
+		by := appwire.ClosedByElsewhere
+		if live.answered[askID] {
+			by = appwire.ClosedByApp
+		}
+		b.dropAskLocked(live, askID)
+		view, moved := b.restateLocked(a, live)
+		b.mu.Unlock()
+		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by})
+		if moved {
+			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		}
+	}
+}
+
+// dropAskLocked forgets one ask. Callers hold b.mu.
+func (b *appBackend) dropAskLocked(live *appLive, askID string) {
+	delete(live.questions, askID)
+	delete(live.answered, askID)
+	kept := live.asks[:0]
+	for _, ask := range live.asks {
+		if ask.ID != askID {
+			kept = append(kept, ask)
+		}
+	}
+	live.asks = kept
+}
+
+// restateLocked recomputes a held agent's state after its asks moved, and
+// reports whether it changed. Callers hold b.mu.
+func (b *appBackend) restateLocked(a *appAgent, live *appLive) (appwire.Agent, bool) {
+	if a.live != live {
+		return a.view, false
+	}
+	state := live.restingState()
+	if live.running && state == appwire.StateIdle {
+		state = appwire.StateWorking
+	}
+	if state == a.view.State {
+		return a.view, false
+	}
+	a.view.State = state
+	return a.view, true
+}
+
+// died is a held conversation whose engine went away without being let go:
+// the agent reads stopped, its open asks close as stopped, and the next send
+// opens the conversation again.
+func (b *appBackend) died(a *appAgent, live *appLive) {
+	b.mu.Lock()
+	if a.live != live {
+		b.mu.Unlock()
+		return
+	}
+	a.live = nil
+	a.view.State = appwire.StateStopped
+	view := a.view
+	asks := live.asks
+	live.asks, live.questions = nil, map[string]session.Question{}
+	b.mu.Unlock()
+	for _, ask := range asks {
+		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: view.ID, ID: ask.ID, By: appwire.ClosedByStopped})
+	}
+	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	go b.finish(live)
 }
 
 // live answers the agent's held conversation, or nil.
@@ -535,6 +700,9 @@ func (b *appBackend) Send(id, text string) (uint64, error) {
 	}
 	b.mu.Lock()
 	a.view.State = appwire.StateWorking
+	if live.needsYou() {
+		a.view.State = appwire.StateNeedsYou
+	}
 	a.view.UpdatedAt = b.now()
 	view = a.view
 	live.pumpDone = make(chan struct{})
@@ -582,10 +750,6 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, ev
 			// A turn the person steered ends once per stretch; the last ending
 			// on the stream is the turn's.
 			ok, failure = true, ""
-		case session.EventConsentRequest, session.EventQuestion:
-			changed(func(v *appwire.Agent) { v.State = appwire.StateNeedsYou })
-		case session.EventQuestionAnswered, session.EventQuestionWithdrawn:
-			changed(func(v *appwire.Agent) { v.State = appwire.StateWorking })
 		case session.EventTitleChanged:
 			if title := strings.TrimSpace(event.Text); title != "" {
 				changed(func(v *appwire.Agent) { v.Title = title })
@@ -605,20 +769,18 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, ev
 		b.mu.Unlock()
 		return
 	}
-	a.view.State = appwire.StateIdle
-	if live.conn.Conv.NeedsPerson() {
-		a.view.State = appwire.StateNeedsYou
-	}
+	a.view.State = live.restingState()
 	a.view.UpdatedAt = b.now()
 	view := a.view
 	b.mu.Unlock()
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 }
 
-// appTaskState is a task's state in the protocol's five words. The engine's
-// interrupted (nothing is driving it, every step is kept) has no word of its
-// own on this wire and reads as failed; a state this build has never heard of
-// answers "" and the row is left out rather than given a word it did not say.
+// appTaskState is a task's state in the protocol's five words, and "" for a
+// state none of them says. That includes the engine's interrupted — nothing is
+// driving it and every step is kept — which the chat draws as `interrupted`,
+// apart from failed; until the protocol has a word for it such a task is left
+// out rather than given one it did not say.
 func appTaskState(state string) string {
 	switch session.TaskState(strings.TrimSpace(state)) {
 	case session.TaskQueued:
@@ -627,7 +789,7 @@ func appTaskState(state string) string {
 		return appwire.TaskRunning
 	case session.TaskDone:
 		return appwire.TaskDone
-	case session.TaskFailed, session.TaskInterrupted:
+	case session.TaskFailed:
 		return appwire.TaskFailed
 	case session.TaskUnverified:
 		return appwire.TaskUnverified
@@ -697,8 +859,17 @@ func (b *appBackend) release(a *appAgent) {
 	if live == nil {
 		return
 	}
+	b.finish(live)
+}
+
+// finish gives a conversation that is no longer held back, and shuts its
+// outbox once the turn and the lanes have said their last.
+func (b *appBackend) finish(live *appLive) {
 	if live.stopTasks != nil {
 		live.stopTasks()
+	}
+	if live.stopAsks != nil {
+		live.stopAsks()
 	}
 	live.conn.Release()
 	wait := time.After(appReleaseWait)
@@ -708,11 +879,68 @@ func (b *appBackend) release(a *appAgent) {
 		case <-wait:
 		}
 	}
-	select {
-	case <-live.lanesDone:
-	case <-wait:
+	for _, done := range []chan struct{}{live.lanesDone, live.asksDone} {
+		select {
+		case <-done:
+		case <-wait:
+		}
 	}
 	live.box.Close()
+}
+
+// ListAsks answers the agent's open asks. An agent with no conversation held
+// has none this process can answer.
+func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
+	a, err := b.find(id)
+	if err != nil {
+		return nil, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if a.live == nil {
+		return nil, nil
+	}
+	return append([]appwire.Ask(nil), a.live.asks...), nil
+}
+
+// AnswerAsk answers one open ask through the engine's own answer door, the one
+// the chat's question page uses. Its closing arrives on the question lane.
+func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
+	a, err := b.find(id)
+	if err != nil {
+		return err
+	}
+	b.mu.Lock()
+	live := a.live
+	var q session.Question
+	open := false
+	if live != nil {
+		q, open = live.questions[askID]
+	}
+	if !open {
+		b.mu.Unlock()
+		return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", askID)
+	}
+	if option != "" {
+		if _, offered := q.Option(option); !offered {
+			b.mu.Unlock()
+			return appwire.Errorf(appwire.CodeBadParams, "the ask %s offers no option %q", askID, option)
+		}
+	}
+	live.answered[askID] = true
+	live.lastUse = b.now()
+	b.mu.Unlock()
+	answer := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: option, Change: strings.TrimSpace(text)}
+	if option != "" {
+		answer.Picked = []string{option}
+	}
+	if err := live.conn.Conv.ResolveQuestion(answer); err != nil {
+		b.mu.Lock()
+		delete(live.answered, askID)
+		b.mu.Unlock()
+		return appEngineError(err)
+	}
+	return nil
 }
 
 // ListTasks reads the agent's tasks off its project's task index, and lays
@@ -862,6 +1090,12 @@ func (b *appBackend) Close() error {
 	return nil
 }
 
+func (b *appBackend) liveNeedsYou(live *appLive) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return live.needsYou()
+}
+
 func (b *appBackend) isClosing() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -903,7 +1137,7 @@ func (b *appBackend) sweepOnce() {
 		live := a.live
 		keep := live == nil || live.running || now.Sub(live.lastUse) < appAgentIdle
 		b.mu.Unlock()
-		if !keep && !live.conn.Conv.NeedsPerson() {
+		if !keep && !b.liveNeedsYou(live) {
 			// The state the app reads does not move: the conversation is as
 			// idle on disk as it was in memory.
 			b.release(a)
@@ -976,6 +1210,12 @@ func (w *appCrewWatch) run() {
 		for _, crew := range crews {
 			if w.known[crew.ID] != prints[crew.ID] {
 				w.emit.Emit(appwire.EventCrewChanged, appwire.CrewChanged{Crew: crew})
+			}
+		}
+		// A team deleted or closed is no longer a crew.
+		for id := range w.known {
+			if _, still := prints[id]; !still {
+				w.emit.Emit(appwire.EventCrewRemoved, appwire.CrewRemoved{ID: id})
 			}
 		}
 		w.known = prints

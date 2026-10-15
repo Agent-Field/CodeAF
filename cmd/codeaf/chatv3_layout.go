@@ -481,6 +481,12 @@ func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Pla
 // and it falls back to the workspace's own bucket for a launch that has no
 // folder at all (an explicit flat --session).
 func v3NextSession(current session.Place, workspace string) (session.Place, error) {
+	return v3NextSessionFrom(current, workspace, v3LaunchDir())
+}
+
+// v3NextSessionFrom is [v3NextSession] with the launch directory named by the
+// door rather than read off the process.
+func v3NextSessionFrom(current session.Place, workspace, launchDir string) (session.Place, error) {
 	if dir := strings.TrimSpace(current.Dir); dir != "" {
 		root := strings.TrimSpace(current.Workspace)
 		if current.Owned {
@@ -489,14 +495,14 @@ func v3NextSession(current session.Place, workspace string) (session.Place, erro
 			root = workspace
 		}
 		return v3MintSession(filepath.Dir(dir), root,
-			v3StampLaunchDir(v3LaunchDir(), root), current.Owned)
+			v3StampLaunchDir(launchDir, root), current.Owned)
 	}
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
 		return session.Place{}, err
 	}
 	return v3MintSession(bucket, workspace,
-		v3StampLaunchDir(v3LaunchDir(), workspace), false)
+		v3StampLaunchDir(launchDir, workspace), false)
 }
 
 // v3LaunchDir is where the person is standing, and "" when even that cannot be

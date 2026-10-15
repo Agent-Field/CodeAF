@@ -41,3 +41,6 @@ internal/manual/pages.pack.gz
 .furrow/
 bench/idle-surface/runs/
 work/
+# The desktop app's garbled sidecars (`make app-sidecar`), built for a bundle
+# and never committed.
+/dist/

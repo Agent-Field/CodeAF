@@ -133,6 +133,40 @@ type fakeConversation struct {
 	interrupted int
 	needs       bool
 	tasks       chan session.Event
+	questions   chan session.Event
+	endLane     func()
+	answers     []session.Answer
+	// onAnswer, when set, is what the engine does with an answer.
+	onAnswer func(session.Answer)
+}
+
+func (f *fakeConversation) WatchQuestions() (<-chan session.Event, func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	lane := make(chan session.Event, 8)
+	var once sync.Once
+	end := func() { once.Do(func() { close(lane) }) }
+	f.questions, f.endLane = lane, end
+	return lane, end
+}
+
+func (f *fakeConversation) ResolveQuestion(answer session.Answer) error {
+	f.mu.Lock()
+	f.answers = append(f.answers, answer)
+	on := f.onAnswer
+	f.mu.Unlock()
+	if on != nil {
+		on(answer)
+	}
+	return nil
+}
+
+// raise puts one event on the conversation's question lane.
+func (f *fakeConversation) raise(event session.Event) {
+	f.mu.Lock()
+	lane := f.questions
+	f.mu.Unlock()
+	lane <- event
 }
 
 func (f *fakeConversation) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -495,4 +529,244 @@ func TestAppHoldsARealConversationInProcess(t *testing.T) {
 	if !backend.assembled.Load() {
 		t.Fatal("the backend did not record that it built a conversation")
 	}
+}
+
+func appAskEvent(kind string) func(string, any) bool {
+	return func(event string, _ any) bool { return event == kind }
+}
+
+// ASKS ARE THE ENGINE'S QUESTIONS, OPENED AND CLOSED ON ITS QUESTION LANE. An
+// approval arrives with the engine's own choices and puts the agent at
+// needs_you; an option it does not offer is refused; answering one goes
+// through the engine's answer door and closes it by the app; one answered in
+// another window closes by elsewhere; and an ask no longer open is not found.
+func TestAppAsksOpenAnswerAndCloseThroughTheQuestionLane(t *testing.T) {
+	conv := &fakeConversation{}
+	conv.onAnswer = func(answer session.Answer) {
+		q := session.Question{Kind: answer.Kind, ID: answer.ID}
+		conv.raise(session.Event{Kind: session.EventQuestionAnswered, Question: &q, Answer: &answer})
+	}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := backend.CreateAgent(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	approval := session.Question{ID: 4, Kind: session.QuestionConsent, Head: "bash rm -rf build", Reason: "bash asks first", Options: session.AnswerOptions(session.QuestionConsent)}
+	conv.raise(session.Event{Kind: session.EventQuestion, Question: &approval})
+	i := rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.State == appwire.StateNeedsYou
+	})
+	rec.mu.Lock()
+	opened := rec.data[i].(appwire.AskOpened).Ask
+	rec.mu.Unlock()
+	if opened.ID != "consent:4" || opened.Kind != appwire.AskApproval || opened.Title != "bash rm -rf build" || opened.Detail != "bash asks first" || len(opened.Options) != 3 || opened.Options[2].Label != "deny" {
+		t.Fatalf("ask = %+v", opened)
+	}
+	asks, err := backend.ListAsks(agent.ID)
+	if err != nil || len(asks) != 1 || asks[0].ID != "consent:4" {
+		t.Fatalf("asks.list = %+v, %v", asks, err)
+	}
+	var wire *appwire.Error
+	if err := backend.AnswerAsk(agent.ID, "consent:4", "9", ""); !errors.As(err, &wire) || wire.Code != appwire.CodeBadParams {
+		t.Fatalf("answer with an option not offered = %v", err)
+	}
+	if err := backend.AnswerAsk(agent.ID, "consent:4", "1", ""); err != nil {
+		t.Fatal(err)
+	}
+	closed := rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskClosed))
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.State == appwire.StateIdle
+	})
+	rec.mu.Lock()
+	if c := rec.data[closed].(appwire.AskClosed); c.ID != "consent:4" || c.By != appwire.ClosedByApp {
+		rec.mu.Unlock()
+		t.Fatalf("ask.closed = %+v", c)
+	}
+	rec.mu.Unlock()
+	conv.mu.Lock()
+	got := conv.answers[0]
+	conv.mu.Unlock()
+	if got.Kind != session.QuestionConsent || got.ID != 4 || got.Key != "1" || len(got.Picked) != 1 {
+		t.Fatalf("the engine was handed %+v", got)
+	}
+
+	question := session.Question{ID: 7, Kind: session.QuestionAsk, Head: "Which database?", Options: []session.AnswerOption{{Key: "1", Label: "sqlite"}}}
+	conv.raise(session.Event{Kind: session.EventQuestion, Question: &question})
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		o, ok := data.(appwire.AskOpened)
+		return ok && o.Ask.ID == "ask:7" && o.Ask.Kind == appwire.AskQuestion
+	})
+	conv.raise(session.Event{Kind: session.EventQuestionAnswered, Question: &question})
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AskClosed)
+		return ok && c.ID == "ask:7" && c.By == appwire.ClosedByElsewhere
+	})
+	if err := backend.AnswerAsk(agent.ID, "ask:7", "1", ""); !errors.As(err, &wire) || wire.Code != appwire.CodeNotFound {
+		t.Fatalf("answering a closed ask = %v", err)
+	}
+}
+
+// A CONVERSATION WHOSE ENGINE DIES READS STOPPED. Its open asks close as
+// stopped, and the next send opens it again and works.
+func TestAppADeadConversationReadsStoppedAndTheNextSendReopensIt(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := backend.CreateAgent(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := session.Question{ID: 2, Kind: session.QuestionConsent, Head: "bash make", Options: session.AnswerOptions(session.QuestionConsent)}
+	conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
+	rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
+
+	conv.mu.Lock()
+	end := conv.endLane
+	conv.mu.Unlock()
+	end()
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AskClosed)
+		return ok && c.ID == "consent:2" && c.By == appwire.ClosedByStopped
+	})
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.State == appwire.StateStopped
+	})
+	if asks, _ := backend.ListAsks(agent.ID); len(asks) != 0 {
+		t.Fatalf("a stopped agent still lists %d asks", len(asks))
+	}
+	agents, _ := backend.ListAgents("")
+	for _, listed := range agents {
+		if listed.ID == agent.ID && listed.State != appwire.StateStopped {
+			t.Fatalf("listed as %s", listed.State)
+		}
+	}
+	if _, err := backend.Send(agent.ID, "again"); err != nil {
+		t.Fatalf("send after the engine died = %v", err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+	mu.Lock()
+	defer mu.Unlock()
+	if opens != 2 {
+		t.Fatalf("opened %d times, want the create and the reopen", opens)
+	}
+}
+
+// A REAL APPROVAL, ANSWERED FROM THE APP. The engine is built in this process
+// with every bash call asking first; the scripted model asks for one; the ask
+// opens with the engine's own choices, `allow once` is sent through the
+// engine's answer door, the ask closes by the app, the command runs and the
+// turn ends well. The conversation records the workspace the app asked for as
+// where the person stood, not the directory the app was started in.
+func TestAppAnswersARealApprovalAndRecordsTheWorkspaceAsTheLaunchFolder(t *testing.T) {
+	root := resolvedTempDir(t)
+	_, started := wakeEnvironment(t, root)
+	model := consentSource(t, "printf app-ask-probe")
+	t.Cleanup(model.Close)
+	t.Setenv("CODEAF_BASE_URL", model.URL)
+	state := filepath.Join(root, "state")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "config.json"), []byte(`{"tools.approvalMode":"prompt"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace := filepath.Join(root, "elsewhere")
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, appOpenInProcess)
+	defer backend.Close()
+	agent, err := backend.CreateAgent(workspace, "")
+	if err != nil {
+		t.Fatalf("create = %v", err)
+	}
+	backend.mu.Lock()
+	transcript := backend.agents[agent.ID].transcript
+	backend.mu.Unlock()
+	meta, err := session.LoadMeta(filepath.Dir(transcript))
+	if err != nil || meta.LaunchDir != workspace {
+		t.Fatalf("launch folder = %q (app started in %q), %v", meta.LaunchDir, started, err)
+	}
+
+	if _, err := backend.Send(agent.ID, "run the probe"); err != nil {
+		t.Fatal(err)
+	}
+	i := rec.waitFor(t, 30*time.Second, appAskEvent(appwire.EventAskOpened))
+	rec.mu.Lock()
+	ask := rec.data[i].(appwire.AskOpened).Ask
+	rec.mu.Unlock()
+	if ask.Kind != appwire.AskApproval || len(ask.Options) == 0 || ask.Options[0].Label != "allow once" {
+		t.Fatalf("ask = %+v", ask)
+	}
+	if err := backend.AnswerAsk(agent.ID, ask.ID, ask.Options[0].ID, ""); err != nil {
+		t.Fatalf("answer = %v", err)
+	}
+	rec.waitFor(t, 30*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AskClosed)
+		return ok && c.ID == ask.ID && c.By == appwire.ClosedByApp
+	})
+	d := rec.waitFor(t, 30*time.Second, appTurnDone)
+	rec.mu.Lock()
+	done := rec.data[d].(appwire.TurnDone)
+	var ran bool
+	for j, event := range rec.events {
+		if tool, ok := rec.data[j].(appwire.TurnTool); ok && event == appwire.EventTurnTool && tool.Phase == appwire.PhaseEnd && tool.Name == "bash" && tool.OK != nil && *tool.OK {
+			ran = true
+		}
+	}
+	rec.mu.Unlock()
+	if !done.OK || !ran {
+		t.Fatalf("turn.done = %+v, bash ran = %v", done, ran)
+	}
+}
+
+// A CREW THAT CLOSES OR DISAPPEARS IS REMOVED. Once the app has listed the
+// crews, a team closed in the teams file is announced as crew.removed with its
+// id, and a renamed one as crew.changed.
+func TestAppAnnouncesAClosedCrewAsRemoved(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	member := filepath.Join(profile, "places", "p", "0123abcd", "transcript.jsonl")
+	teamsNow := []teamstore.Team{
+		{ID: "0a0a0a0a0a0a", Name: "harbor", Members: []teamstore.Member{{Key: member, File: member}}},
+		{ID: "0b0b0b0b0b0b", Name: "dock", Members: []teamstore.Member{{Key: member, File: member}}},
+	}
+	if err := teamstore.Save(profile, teamsNow); err != nil {
+		t.Fatal(err)
+	}
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, nil)
+	defer backend.Close()
+	crews, err := backend.ListCrews()
+	if err != nil || len(crews) != 2 {
+		t.Fatalf("crews = %+v, %v", crews, err)
+	}
+	// The poll compares the file's stamp, so the change must land on a later one.
+	time.Sleep(20 * time.Millisecond)
+	teamsNow[0].State = teamstore.TeamClosed
+	teamsNow[1].Name = "pier"
+	if err := teamstore.Save(profile, teamsNow); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 4*appCrewPoll, func(event string, data any) bool {
+		removed, ok := data.(appwire.CrewRemoved)
+		return ok && removed.ID == "0a0a0a0a0a0a"
+	})
+	rec.waitFor(t, 4*appCrewPoll, func(event string, data any) bool {
+		changed, ok := data.(appwire.CrewChanged)
+		return ok && changed.Crew.Name == "pier"
+	})
 }

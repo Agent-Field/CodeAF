@@ -337,6 +337,37 @@ var methods = map[string]method{
 		}
 		return struct{}{}, e.CloseAgent(id)
 	},
+	"asks.list": func(e Engine, raw json.RawMessage) (any, error) {
+		id, err := decodeID(raw, "agent")
+		if err != nil {
+			return nil, err
+		}
+		asks, err := e.ListAsks(id)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Asks []Ask `json:"asks"`
+		}{nonNil(asks)}, nil
+	},
+	"asks.answer": func(e Engine, raw json.RawMessage) (any, error) {
+		var p struct {
+			Agent  string `json:"agent"`
+			ID     string `json:"id"`
+			Option string `json:"option"`
+			Text   string `json:"text"`
+		}
+		if err := decode(raw, &p); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.ID) == "" {
+			return nil, Errorf(CodeBadParams, "asks.answer needs an agent and an id")
+		}
+		if strings.TrimSpace(p.Option) == "" && strings.TrimSpace(p.Text) == "" {
+			return nil, Errorf(CodeBadParams, "asks.answer needs an option, some text, or both")
+		}
+		return struct{}{}, e.AnswerAsk(p.Agent, p.ID, strings.TrimSpace(p.Option), p.Text)
+	},
 	"tasks.list": func(e Engine, raw json.RawMessage) (any, error) {
 		id, err := decodeID(raw, "agent")
 		if err != nil {

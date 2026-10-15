@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check build-cross debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross app-sidecar app-sidecars debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -425,6 +425,56 @@ build-cross:
 	printf 'build-cross: total duration %ss (rounded up, an upper bound on the added time)\n' "$$(( (finished - started + 999999999) / 1000000000))"
 
 check: vet fmt-check test test-packed-manual size build-cross
+
+# ── the desktop app's sidecar ───────────────────────────────────────────────
+#
+# THE DESKTOP APP SHIPS codeaf INSIDE ITSELF, as a Tauri sidecar named for the
+# Rust target triple it runs on, and that copy is built with garble so the
+# bundle does not carry the program's own symbol and string table in the clear.
+# It is the release build otherwise: the packed manual, -trimpath, the same
+# stamp, the target's own furrow staged first, and CGO off, which is also how
+# the release cross-builds darwin.
+#
+# GARBLE IS PINNED, and installed into bin/tools under its version, because an
+# obfuscator that moves under a build is a binary nobody can reproduce. v0.18
+# requires Go 1.27 and this module is on 1.26, so v0.17 is the newest that
+# builds here; move both together when the module's Go line moves.
+#
+#   make app-sidecar APP_GOOS=darwin APP_GOARCH=arm64   # one triple
+#   make app-sidecars                                   # all four
+GARBLE_VERSION := v0.17.0
+GARBLE := bin/tools/garble-$(GARBLE_VERSION)
+APP_GOOS ?= $(shell go env GOOS)
+APP_GOARCH ?= $(shell go env GOARCH)
+APP_DIST := dist/app
+
+$(GARBLE):
+	@mkdir -p $(@D)/garble-$(GARBLE_VERSION).d
+	env -u GOOS -u GOARCH GOBIN=$(CURDIR)/$(@D)/garble-$(GARBLE_VERSION).d go install mvdan.cc/garble@$(GARBLE_VERSION)
+	mv $(@D)/garble-$(GARBLE_VERSION).d/garble $@
+	rmdir $(@D)/garble-$(GARBLE_VERSION).d
+
+app-sidecar: embed $(GARBLE)
+	@set -eu; \
+	case "$(APP_GOOS)/$(APP_GOARCH)" in \
+		darwin/arm64) triple=aarch64-apple-darwin ;; \
+		darwin/amd64) triple=x86_64-apple-darwin ;; \
+		linux/amd64) triple=x86_64-unknown-linux-gnu ;; \
+		linux/arm64) triple=aarch64-unknown-linux-gnu ;; \
+		*) printf 'app-sidecar: no desktop target for %s/%s\n' "$(APP_GOOS)" "$(APP_GOARCH)" >&2; exit 1 ;; \
+	esac; \
+	env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch -goos=$(APP_GOOS) -goarch=$(APP_GOARCH); \
+	mkdir -p $(APP_DIST); \
+	CGO_ENABLED=0 GOOS=$(APP_GOOS) GOARCH=$(APP_GOARCH) $(GARBLE) -literals -tiny build \
+		-tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" \
+		-o $(APP_DIST)/codeaf-$$triple ./cmd/codeaf; \
+	printf 'app-sidecar: %s\n' "$(APP_DIST)/codeaf-$$triple"
+
+app-sidecars:
+	@for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do \
+		$(MAKE) --no-print-directory app-sidecar APP_GOOS=$${target%/*} APP_GOARCH=$${target#*/} || exit 1; \
+	done
+
 
 # ── the changelog ───────────────────────────────────────────────────────────
 #

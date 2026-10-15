@@ -40,8 +40,12 @@ func (f *fakeEngine) Send(id, text string) (uint64, error) {
 	}
 	return 7, nil
 }
-func (f *fakeEngine) Stop(id string) error       { return errors.New("the engine went away") }
-func (f *fakeEngine) CloseAgent(id string) error { return nil }
+func (f *fakeEngine) Stop(id string) error                 { return errors.New("the engine went away") }
+func (f *fakeEngine) CloseAgent(id string) error           { return nil }
+func (f *fakeEngine) ListAsks(agent string) ([]Ask, error) { return nil, nil }
+func (f *fakeEngine) AnswerAsk(agent, id, option, text string) error {
+	return Errorf(CodeNotFound, "no open ask %s", id)
+}
 func (f *fakeEngine) ListTasks(agent string) ([]Task, error) {
 	return nil, nil
 }
@@ -156,6 +160,8 @@ func TestBadParamsAreAnsweredWithTheirCode(t *testing.T) {
 		`{"id":3,"method":"agents.create","params":[]}`,
 		`{"id":4,"method":"agents.send","params":{"id":"a1"}}`,
 		`{"id":5,"method":"tasks.list"}`,
+		`{"id":6,"method":"asks.list","params":{}}`,
+		`{"id":7,"method":"asks.answer","params":{"agent":"a1","id":"consent:1"}}`,
 	} {
 		w.send(line)
 		got := w.next()

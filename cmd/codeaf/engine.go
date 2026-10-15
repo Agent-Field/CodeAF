@@ -933,14 +933,15 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	if err := os.Chdir(workspace); err != nil {
 		return nil, fmt.Errorf("open %s: %w", workspace, err)
 	}
-	return assembleEngine(hello, workspace, sessionFlag)
+	return assembleEngine(hello, workspace, sessionFlag, "")
 }
 
 // assembleEngine is [bootEngine] after the chdir: the conversation built for a
 // hello in a workspace that is already resolved. `codeaf app` calls it directly
 // because it holds conversations in several workspaces in one process and so
-// cannot move the process into any one of them (app.go says what that costs).
-func assembleEngine(hello remote.Hello, workspace, sessionFlag string) (*remote.Engine, error) {
+// cannot move the process into any one of them; it names the launch directory a
+// new conversation records, which is otherwise the process's own.
+func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string) (*remote.Engine, error) {
 	// ONE PROCESS, ONE WORKSPACE — and, when this process is a host, SEVERAL
 	// CONVERSATIONS IN IT. The process half of a launch is opened once and
 	// shared ([openEngineProcess]): the profile, the model catalog, the harness
@@ -969,6 +970,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag string) (*remote.
 	// built INTO the session rather than switched on after it has opened
 	// ([engineLaunchOptions] holds the mapping).
 	launchOptions := engineLaunchOptions(hello, workspace, sessionFlag)
+	launchOptions.LaunchDir = launchDir
 	launch, err := openV3Launch(proc, launchOptions)
 	if err != nil {
 		return nil, err
@@ -988,7 +990,11 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag string) (*remote.
 	// ([remote.Hello.New] holds the whole of why the two intentions are two
 	// flags).
 	if hello.New {
-		place, err := v3NextSession(cfg.Place, workspace)
+		from := launchDir
+		if strings.TrimSpace(from) == "" {
+			from = v3LaunchDir()
+		}
+		place, err := v3NextSessionFrom(cfg.Place, workspace, from)
 		if err != nil {
 			return nil, err
 		}
