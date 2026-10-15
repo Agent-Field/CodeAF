@@ -227,7 +227,9 @@ plan could not be opened or its copy could not be cut, the answer is
 started in its place.` A typed `/task` answers the same sentence; the model, reading
 it at the proposal door, is told besides to propose it again or tell you what stopped
 it — words for the model, never shown to you. It reads as a failure, never as `task N started`,
-and the task is not quietly put on the older engine's tree. Only a build with no run
+and the task is not quietly put on the older engine's tree. The approved task's own
+row settles `failed` with that sentence as its reason — it is never left waiting to
+begin — and it is still listed failed after the conversation is reopened. Only a build with no run
 engine at all, or a conversation with nowhere to keep a plan, uses the older engine,
 because there the run road was never there to take.
 

@@ -964,6 +964,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	if spec.via != "" {
 		m, err := a.delegateFor(spec.via)
 		if err != nil {
+			a.settleUnstartedHandoff(p.id, spec.title, err)
 			return err.Error(), true, true
 		}
 		via = &m
@@ -992,6 +993,12 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	}
 	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
+	// AN APPROVED HAND-OFF THAT DID NOT START IS SETTLED WHERE IT IS SEEN. The
+	// card's last word was the approval ([taskWait.decided]), which every
+	// surface reads as work waiting to begin; the refusal below reaches only the
+	// model. So every ending of this door that started nothing publishes the
+	// row as failed, in the same words, before it answers.
+	a.settleUnstartedHandoff(p.id, spec.title, err)
 	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 		return refusal.Error(), true, true
 	}
@@ -1012,6 +1019,33 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, true
 	}
 	return "", false, false
+}
+
+// settleUnstartedHandoff ends the row of an approved hand-off whose run never
+// started: failed, with [runDidNotStart]'s sentence as what stopped it.
+//
+// WITHOUT IT THE APPROVAL WAS THE LAST THING ANY SURFACE HEARD. The card was
+// restated approved with its clock gone ([taskWait.decided]), which a surface
+// reads as work queued to begin, and nothing that followed was about this id:
+// the store refused it, no run row was published, and the refusal went back to
+// the model alone. A window, the app's task list and a turn's replay all kept a
+// queued task that nothing would ever start. The row is published the way every
+// other ending of a run is ([Agent.publishRunRow]), so it is said live, kept on
+// the checkpoint and the index, and read back as failed after a reopen — a true
+// account of an attempt, never deleted and never left pending.
+//
+// A nil error is a run that started, and [errRunRoadUnavailable] is a hand-off
+// the older engine is about to admit under the same id; neither is settled.
+func (a *Agent) settleUnstartedHandoff(id uint64, title string, err error) {
+	g := a.graph()
+	if g == nil || id == 0 || err == nil || errors.Is(err, errRunRoadUnavailable) {
+		return
+	}
+	reason := runDidNotStart(id, err)
+	a.publishRunRow(g, TaskNotice{
+		ID: id, Title: title, State: TaskFailed,
+		Report: reason, EndedAt: a.taskClockNow(),
+	})
 }
 
 // namedModel is the model a hand-off named for its work, and nothing when it

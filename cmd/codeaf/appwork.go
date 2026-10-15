@@ -204,6 +204,13 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 		Irreversible: notice.Irreversible, YourCall: state == appwire.TaskUnverified,
 		Result: redact.Secrets(strings.TrimSpace(notice.Result)), Files: appFiles(notice.Changed), SpentUSD: appFigure(notice.CostUSD),
 	}
+	// A FAILED TASK SAYS WHAT STOPPED IT. A run row that ended without working
+	// carries its reason as the report and no result — a hand-off whose run never
+	// started is the plainest case — and the engine's own read answers the same
+	// row with the report as its result ([session.Agent.AppTasks]).
+	if state == appwire.TaskFailed && task.Result == "" {
+		task.Result = redact.Secrets(strings.TrimSpace(notice.Report))
+	}
 	if notice.Parent != 0 && notice.Parent != notice.ID {
 		task.Parent = appTaskID(agent, notice.Parent)
 	}
