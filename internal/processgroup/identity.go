@@ -22,16 +22,15 @@ import "sync"
 type Identity struct {
 	PID   int    `json:"pid"`
 	Start uint64 `json:"start"`
-	// Boot names the boot the identity was recorded in, where the platform
-	// can say one. Empty means the platform cannot, and the start identity is
-	// then a wall-clock second that is already unique across boots.
+	// Boot names the boot the identity was recorded in. Without a boot identity,
+	// a persisted pid and start count cannot safely prove the original process.
 	Boot string `json:"boot,omitempty"`
 }
 
 // Identity reports what the group was recorded as, and false when no identity
 // was readable at launch — a group that can never be proven again.
 func (g Group) Identity() (Identity, bool) {
-	if !g.known || g.pid <= 0 {
+	if !g.known || g.pid <= 0 || BootID() == "" {
 		return Identity{}, false
 	}
 	return Identity{PID: g.pid, Start: g.start, Boot: BootID()}, true
@@ -44,16 +43,20 @@ func Restore(id Identity) Group {
 	if id.PID <= 0 {
 		return Group{}
 	}
-	if id.Boot != BootID() {
+	if id.Start == 0 || id.Boot == "" || BootID() == "" || id.Boot != BootID() {
 		return Group{pid: id.PID}
 	}
 	return Group{pid: id.PID, start: id.Start, known: true}
 }
 
-// SameBoot reports whether an identity was recorded in the boot this process
-// is running in. A platform that names no boot answers false only for an
-// identity that did name one.
-func SameBoot(id Identity) bool { return id.Boot == BootID() }
+// SameBoot reports a proven matching boot. Missing identity proves neither
+// that a boot is the same nor that it changed.
+func SameBoot(id Identity) bool { return id.Boot != "" && BootID() != "" && id.Boot == BootID() }
+
+// DifferentBoot proves an intervening machine restart. A caller deciding
+// whether to start a saved service must not treat unreadable identity as a
+// restart: the original process may still be running.
+func DifferentBoot(id Identity) bool { return id.Boot != "" && BootID() != "" && id.Boot != BootID() }
 
 var (
 	bootOnce sync.Once

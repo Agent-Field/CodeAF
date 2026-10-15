@@ -8,12 +8,14 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// readBootID is the second the machine booted, which names one boot as well as
-// any identifier would: two boots cannot start in the same second.
+// readBootID preserves the kernel's complete boot timestamp.
 func readBootID() string {
 	tv, err := unix.SysctlTimeval("kern.boottime")
 	if err != nil {
 		return ""
 	}
-	return strconv.FormatInt(int64(tv.Sec), 10)
+	if tv.Sec <= 0 || tv.Usec < 0 || tv.Usec >= 1_000_000 {
+		return ""
+	}
+	return strconv.FormatInt(int64(tv.Sec), 10) + ":" + strconv.FormatInt(int64(tv.Usec), 10)
 }
