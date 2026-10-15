@@ -84,9 +84,15 @@ mouth:
 The store measures every change that makes a line active — a new line, a
 replacement, a reworded line, a move, a put-back — inside its write transaction,
 against every block the owner reaches (`internal/store/memory_room.go`), and refuses
-one that would overflow any of them with `store.ErrMemoryFull` and a receipt naming
-the project. The legacy import alone is unbounded. The model's `remember` and
-`forget` act only on a turn the person typed. A person forgets a line on the Memories tab (`f` or `delete`, by its id)
+one that would overflow any of them with `store.MemoryFullError` (the owner and name
+of the block). The receipt is said from the conversation saying it
+(`session.MemoryFullWords`): `memory is full here`, `for <project>`, or `in another
+project`; over `--host` the name in the text is compared. A put-back or rewording onto
+words the owner already keeps active is refused with `store.ErrMemoryKept`. The legacy
+import alone is unbounded. The model's `remember` and `forget` act only on a turn the
+person typed: a turn the session opened (a landing, a job's ending) is armed only once
+the person's own line is drained into it, or when it was started to answer a line
+they typed in the last seconds of the turn before. A person forgets a line on the Memories tab (`f` or `delete`, by its id)
 and puts one back there (`u`); the model forgets with its `forget`, which names one
 line by its words, lists several matches and forgets nothing, and never guesses.
 There is no `/forget` command and no undo stack (both removed 2026-10-14): the tab
@@ -95,8 +101,9 @@ the tab); fixing the wording is `UpdateMemory(id, text)` (`e`).
 
 Receipts: `remembered · <line> · <where>`, `already remembered · …`,
 `forgot · <line>`, `put back · …`, `nothing remembered matches "<words>"`,
-`now for you everywhere`. One made on the person's behalf ends with `see or forget
-it on the Memories tab` (`memoryTakeBack`).
+`now for you everywhere`, `already kept · <line> · nothing was changed`. One made on
+the person's behalf ends with `see or forget it on the Memories tab`
+(`memoryTakeBack`).
 
 ## 4. The read path
 
@@ -119,11 +126,14 @@ After each completed turn, one reflex call (`reflex.Notice`, `roles.RoleReflex`)
 updates the state card. It may also keep **one** line, only when the person typed
 the turn and the `memory.enabled` row (`notice things to remember`) is on — read
 live on every turn, so no restart is needed. It may replace a numbered kept line
-(a correction), which supersedes the old one. It says
+(a correction), which supersedes the old one; a correction already kept lets the old
+line go and says `noticed · <old> is let go · already kept: <line> · …`. It says
 `noticed and remembered · <line> · <where> · see or forget it on the Memories
 tab` — on the turn's stream if it is still open, and otherwise on the standing lane
-every surface holds, so the last turn before a person quits still says it. An
-ask-here errand is not noticed. Turning the row
+every surface holds, so the last turn before a person quits still says it. Memory's
+notices are marked `Event.Unrecorded`, since no transcript carries them: tui3's keeper
+holds them for a conversation that is out of sight and files them with its parked
+receipts, drawn when the person brings it back. An ask-here errand is not noticed. Turning the row
 off stops only this: every kept line still rides.
 
 ## 6. Surfaces

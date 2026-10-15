@@ -43,8 +43,8 @@ the model uses its `remember` tool and you see
 model can also drop a line you ask it to with its `forget` tool, and says
 `forgot · <line> · put it back on the Memories tab`. It does either only on a
 turn **you typed**: a turn opened by a task's report, a team member's message or
-a watch's news keeps and forgets nothing, so words someone else wrote cannot plant
-a line in every future conversation.
+a watch's news keeps and forgets nothing — until you type into it — so words
+someone else wrote cannot plant a line in every future conversation.
 
 A line is one sentence, at most 512 characters, and a credential pasted into it
 is redacted before it is kept.
@@ -124,6 +124,10 @@ row counts what is kept, and says `N don't fit in front of the model · forget
 some` when a conversation here has more lines than fit. `+ remember something`
 keeps a new line; what you type is drawn in that row.
 
+When codeaf cannot ask which project this conversation is in, the foot says
+`couldn't ask which project this is · every project's lines are shown by name`,
+no group is `this project`, and the head row counts nothing that doesn't fit.
+
 On a frame 110 columns or wider a pane beside the list reads out the row under
 the cursor: the whole line, where it holds, who kept it, and where it was
 learned.
@@ -157,7 +161,9 @@ wording` — or open its card with `enter` and press `→` then `e`. The line's
 words load into its own row, where you edit them; `enter` saves and `esc`
 cancels. The line keeps where
 it holds and who kept it; its title follows the new words, so the list and the
-model both read the corrected line. The receipt says `fixed · <line>`.
+model both read the corrected line. The receipt says `fixed · <line>`; new
+words another line already says are refused with `already kept · <words> ·
+nothing was changed`.
 
 To change where a line holds instead, `→` offers the moves (see "Where a line
 holds").
@@ -167,7 +173,9 @@ holds").
 
 On the Memories tab: `→` on the line, then `f forget it` — or `delete`. The
 line moves under `let go`, marked `forgotten`; open `let go` with `→`, and
-`→` then `u put it back` on the line restores it, whenever you like.
+`→` then `u put it back` on the line restores it, whenever you like — unless the
+same words are kept again since, which says `already kept · <line> · nothing was
+changed` and leaves one line.
 
 Or ask in words — "forget that I use npm". The model's `forget` drops the
 **one** line those words name and says `forgot · <line> · put it back on the
@@ -216,6 +224,9 @@ Every time it keeps a line it says so in the conversation:
 
 `noticed and remembered · wants the change made directly · for you everywhere · see or forget it on the Memories tab`
 
+If you have moved to another conversation or home by then, the line waits and
+is drawn in its own conversation when you come back to it.
+
 The tab marks it `noticed`, and `→` then `f` (or `delete`) there forgets it. Most
 turns keep nothing. Turn noticing off with the `notice things to remember` row
 (see "How do I turn memory off").
@@ -230,7 +241,10 @@ one and says so:
 `noticed and remembered · deploys on Tuesdays · replaces deploys on Fridays · for this project · see or forget it on the Memories tab`
 
 The replaced line waits under `let go` on the Memories tab, marked `replaced`:
-put it back there, and forget the new one, to undo the change.
+put it back there, and forget the new one, to undo the change. When the
+correction is already kept, the old line is let go and nothing new is written:
+`noticed · deploys on Fridays is let go · already kept: deploys on Tuesdays · see
+or forget it on the Memories tab`.
 
 Nothing merges or rewrites lines while you are away any more. An earlier build
 ran a background tidy that merged and retired lines and said `memory tidied ·
@@ -257,13 +271,15 @@ and they only change when somebody keeps or forgets a line.
 Anything that would go past that in **any** conversation is refused: keeping a
 line, rewording one, moving one, or putting one back. A line for you everywhere
 or for this machine rides in every project's conversations, so it is refused when
-any project's would overflow, and the receipt names that project:
+any project's would overflow, and the receipt says whose:
 
-`memory is full here · forget a line on the Memories tab to make room`
-`memory is full for infra · forget a line on the Memories tab to make room`
+`memory is full here · forget a line on the Memories tab to make room` — this
+conversation's own lines;
+`memory is full for infra · …` — another project's, by name;
+`memory is full in another project · …` — one whose lines carry no name.
 
-Noticing says `noticed something worth keeping, but memory is full here · <line>`
-instead of keeping it.
+Noticing says `noticed something worth keeping, but memory is full here · <line>
+· forget a line on the Memories tab to make room` instead of keeping it.
 
 A store an earlier build filled with no bound can hold more than fits. Then what
 rides is chosen: lines that build kept as rules first, then this project's, then
