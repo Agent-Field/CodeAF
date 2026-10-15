@@ -22,6 +22,7 @@ package tui3
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -75,6 +76,16 @@ func (a *app) runProjectCommand(rest string) tea.Cmd {
 		return nil
 	}
 	path := a.resolvePath(rest)
+	// A PIN NAMES A FOLDER, NOT A SPELLING. A path taken through a symlink must
+	// pin the folder the link reaches, or home stores one project under the
+	// alias while a launch from the resolved path stores another — two
+	// projects, two histories, two engines for one folder (#1761). The stat
+	// below already pays the walk EvalSymlinks costs on a missing target, so a
+	// path that does not resolve simply falls through to the refusal word as
+	// it always did.
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
 	info, err := os.Stat(path)
 	if path == "" || err != nil || !info.IsDir() {
 		a.home.say(projectNoFolderWord+rest, "")

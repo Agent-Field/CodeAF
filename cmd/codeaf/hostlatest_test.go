@@ -31,6 +31,13 @@ import (
 func TestAPlainHelloKeysToTheConversationTheBootWouldOpen(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
+	// The fixture models a disk the CURRENT build wrote, and the current build
+	// names a workspace by its resolved path (#1761): on macOS the temporary
+	// root is reached through a link, so the fixture stands on the resolved
+	// spelling before it writes or asks anything.
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		workspace = resolved
+	}
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +70,11 @@ func TestAPlainHelloKeysToTheConversationTheBootWouldOpen(t *testing.T) {
 func TestAWorkspaceWithNoConversationKeysToNothingAndThenToWhatItOpened(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
+	// Same resolved fixture as above: the current build keys workspaces by
+	// their resolved path (#1761), so the fixture does too.
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		workspace = resolved
+	}
 
 	if key := engineHelloKey(remote.Hello{Version: remote.Version, Workspace: workspace}, workspace, ""); key != "" {
 		t.Fatalf("an empty workspace keyed to %s", key)

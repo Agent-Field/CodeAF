@@ -43,6 +43,13 @@ func ProjectKey(workspace string) (string, error) {
 	if err != nil {
 		return "", nil
 	}
+	// THE CANONICAL PATH IS THE RESOLVED ONE. A folder reached through a
+	// symlink is one project: the alias and the target hash to the same key, or
+	// memory would hold two owners for one folder (#1761). A path that does not
+	// resolve keeps the absolute spelling.
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		return hashKey(resolved), nil
+	}
 	return hashKey(absolute), nil
 }
 

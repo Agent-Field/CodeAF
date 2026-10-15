@@ -1344,6 +1344,14 @@ func engineWorkspace(path string) (string, error) {
 	}
 	path = strings.TrimSpace(path)
 	if path == "" {
+		// THE DEFAULT IS THE SAME DOOR AS THE NAMED ONE. Omitting --workspace
+		// means the home directory, and home reaches the resolution below only
+		// when somebody TYPES it — an omitted flag returned the raw spelling, so
+		// a home behind a symlink keyed two hosts depending on how it was said
+		// (#1761).
+		if resolved, err := filepath.EvalSymlinks(home); err == nil {
+			home = resolved
+		}
 		return home, nil
 	}
 	expanded, err := expandHome(path)
@@ -1354,6 +1362,14 @@ func engineWorkspace(path string) (string, error) {
 		expanded = filepath.Join(home, expanded)
 	}
 	expanded = filepath.Clean(expanded)
+	// A WORKSPACE IS NAMED BY ITS RESOLVED PATH, so a folder reached through a
+	// symlink keys the same project, conversation history and engine host as
+	// the folder it points at. Clean alone leaves both spellings distinct and
+	// sha256(Clean(...)) in enginehost.where then builds one host directory per
+	// spelling — two engines, two histories, one folder.
+	if resolved, err := filepath.EvalSymlinks(expanded); err == nil {
+		expanded = resolved
+	}
 	info, err := os.Stat(expanded)
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", expanded, err)
