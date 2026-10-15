@@ -269,3 +269,66 @@ func TestBusyWriterReturnsWithoutLosingPriorState(t *testing.T) {
 		t.Fatalf("failed write changed state: %v, %v", members, err)
 	}
 }
+
+// hasCycle asks the file itself whether any collection reaches itself.
+func hasCycle(t *testing.T, s *Store) bool {
+	t.Helper()
+	var cycle bool
+	err := s.db.QueryRow(`WITH RECURSIVE reach(start, id) AS (
+ SELECT collection_id, ref_id FROM memberships WHERE kind='collection'
+ UNION SELECT r.start, m.ref_id FROM memberships m JOIN reach r ON m.collection_id=r.id WHERE m.kind='collection'
+) SELECT EXISTS(SELECT 1 FROM reach WHERE start=id)`).Scan(&cycle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cycle
+}
+
+// THE OPPOSITE-EDGE RACE IS LOST BY EXACTLY ONE SIDE EVERY TIME. Two handles
+// (two processes, as far as SQLite can tell) add A→B and B→A at the same
+// moment, round after round with the winning edge taken out again between
+// rounds: never do both succeed, and the file never holds a cycle.
+func TestOppositeEdgesRacedManyTimesNeverBothLand(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "race.db")
+	first, second := openTestStore(t, path), openTestStore(t, path)
+	a, b := createTestCollection(t, first, "A"), createTestCollection(t, first, "B")
+	for round := 0; round < 60; round++ {
+		start := make(chan struct{})
+		errs := make([]error, 2)
+		var wg sync.WaitGroup
+		for i, s := range []*Store{first, second} {
+			wg.Add(1)
+			go func(i int, s *Store) {
+				defer wg.Done()
+				from, to := a.ID, b.ID
+				if i == 1 {
+					from, to = to, from
+				}
+				<-start
+				errs[i] = s.Add(ctx, from, Ref{Kind: CollectionKind, ID: to})
+			}(i, s)
+		}
+		close(start)
+		wg.Wait()
+		won := -1
+		switch {
+		case errs[0] == nil && errors.Is(errs[1], ErrCycle):
+			won = 0
+		case errs[1] == nil && errors.Is(errs[0], ErrCycle):
+			won = 1
+		default:
+			t.Fatalf("round %d: %v, %v", round, errs[0], errs[1])
+		}
+		if hasCycle(t, first) {
+			t.Fatalf("round %d left a cycle in the file", round)
+		}
+		from, to := a.ID, b.ID
+		if won == 1 {
+			from, to = to, from
+		}
+		if err := second.Remove(ctx, from, Ref{Kind: CollectionKind, ID: to}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

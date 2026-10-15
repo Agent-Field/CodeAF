@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -68,6 +69,17 @@ func userVersion(t *testing.T, s *Store) int {
 
 func fixedClock(s *Store, ms int64) { s.now = func() time.Time { return time.UnixMilli(ms) } }
 
+// withoutPlaces is nodes without the file positions their cursors name, which
+// differ between two collections holding the same references.
+func withoutPlaces(nodes []Node) []Node {
+	out := make([]Node, len(nodes))
+	for i, n := range nodes {
+		n.seq = 0
+		out[i] = n
+	}
+	return out
+}
+
 // A SCHEMA-1 FILE IS READ AS IT STANDS AND MIGRATED BY THE FIRST WRITE: the
 // reads leave every byte alone and say nothing of when anything was added,
 // and the first write rebuilds both tables in one transaction, keeping every
@@ -84,7 +96,7 @@ func TestSchemaOneFileIsReadThenMigratedInPlaceByTheFirstWrite(t *testing.T) {
 	if err != nil || len(list) != 2 || list[0].Count != 3 || list[0].LastAddedAt != 0 || list[0].CreatedAt != 0 || !*list[0].Holds || *list[1].Holds {
 		t.Fatalf("legacy list %+v, %v", list, err)
 	}
-	tree, err := s.Tree(ctx, "aaaa", 1, 10)
+	tree, err := s.Tree(ctx, "aaaa", 1, 10, "")
 	if err != nil || len(tree.Members) != 3 || tree.Members[0].Kind != CollectionKind || tree.Members[0].Children == nil || len(tree.Members[0].Children.Members) != 1 {
 		t.Fatalf("legacy tree %+v, %v", tree, err)
 	}
@@ -219,9 +231,9 @@ func TestDuplicateCopiesMembershipsWithTheirMoments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, _ := s.Tree(ctx, src.ID, 0, 10)
-	b, _ := s.Tree(ctx, copy.ID, 0, 10)
-	if !reflect.DeepEqual(a.Members, b.Members) || len(b.Members) != 3 || b.Members[0].AddedAt != 3000 {
+	a, _ := s.Tree(ctx, src.ID, 0, 10, "")
+	b, _ := s.Tree(ctx, copy.ID, 0, 10, "")
+	if !reflect.DeepEqual(withoutPlaces(a.Members), withoutPlaces(b.Members)) || len(b.Members) != 3 || b.Members[0].AddedAt != 3000 {
 		t.Fatalf("source %+v\ncopy %+v", a.Members, b.Members)
 	}
 	if b.Collection.CreatedAt != 9000 || b.Collection.Count != 3 || b.Collection.LastAddedAt != 3000 {
@@ -286,7 +298,7 @@ func TestRemoveThenRestoreKeepsThePlace(t *testing.T) {
 	if err != nil || added[0].AddedAt != 200 {
 		t.Fatalf("restore %v, %v", added, err)
 	}
-	tree, _ := s.Tree(ctx, c.ID, 0, 10)
+	tree, _ := s.Tree(ctx, c.ID, 0, 10, "")
 	var order []string
 	for _, n := range tree.Members {
 		order = append(order, n.ID)
@@ -364,16 +376,16 @@ func TestTreeHonoursLimitDepthAndTheNodeCap(t *testing.T) {
 	if _, _, err := s.AddRefs(ctx, mid.ID, many); err != nil {
 		t.Fatal(err)
 	}
-	tree, err := s.Tree(ctx, root.ID, 0, 500)
+	tree, err := s.Tree(ctx, root.ID, 0, 500, "")
 	if err != nil || len(tree.Members) != 1 || tree.Members[0].Children != nil || tree.Members[0].Count != 1701 || tree.Members[0].Name != "Mid" {
 		t.Fatalf("depth 0 %+v, %v", tree.Members, err)
 	}
-	tree, _ = s.Tree(ctx, root.ID, 1, 2)
+	tree, _ = s.Tree(ctx, root.ID, 1, 2, "")
 	kids := tree.Members[0].Children
 	if kids == nil || len(kids.Members) != 2 || !kids.More || kids.Members[0].ID != leaf.ID || kids.Members[1].ID != "chat-1699" {
 		t.Fatalf("depth 1 limit 2 %+v", kids)
 	}
-	tree, _ = s.Tree(ctx, root.ID, 2, 500)
+	tree, _ = s.Tree(ctx, root.ID, 2, 500, "")
 	total := 0
 	var count func(l *Level)
 	count = func(l *Level) {
@@ -392,7 +404,7 @@ func TestTreeHonoursLimitDepthAndTheNodeCap(t *testing.T) {
 	if _, err := s.db.Exec("INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection) VALUES (?,?,?,?,?)", leaf.ID, "collection", root.ID, "", root.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Tree(ctx, root.ID, 2, 1); err != nil {
+	if _, err := s.Tree(ctx, root.ID, 2, 1, ""); err != nil {
 		t.Fatal(err)
 	}
 	if e, err := s.Expand(ctx, root.ID, 3); err != nil || e.Collections != 2 {
@@ -414,5 +426,210 @@ func TestProcessAndCrewReferencesValidate(t *testing.T) {
 		if err := tc.ref.Validate(); (err == nil) != tc.ok {
 			t.Errorf("%+v: %v", tc.ref, err)
 		}
+	}
+}
+
+// legacyRows is every row of a schema-1 or schema-2 file in seq order, the
+// columns both schemas share, so a migration can be compared row for row.
+func legacyRows(t *testing.T, db *sql.DB) (collections, memberships []string) {
+	t.Helper()
+	read := func(query string) []string {
+		rows, err := db.Query(query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var a, b, c, d, e, f sql.NullString
+			if err := rows.Scan(&a, &b, &c, &d, &e, &f); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, fmt.Sprint(a.String, "|", b.String, "|", c.String, "|", d.String, "|", e.String, "|", f.String, "|", f.Valid))
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	return read("SELECT seq,id,name,'','','' FROM collections ORDER BY seq"),
+		read("SELECT seq,collection_id,kind,ref_id,session_id,target_collection FROM memberships ORDER BY seq")
+}
+
+// A MIGRATION THAT FAILS PARTWAY LEAVES THE SCHEMA-1 FILE AS IT WAS, byte
+// for byte, still readable with every row. The failure is a real one, not a
+// hook: a view that names the old memberships table lets the old tables be
+// dropped and then makes SQLite refuse the rename that follows ("error in
+// view ...: no such table: main.memberships"), so the transaction has
+// already copied, dropped and half rebuilt when it fails.
+func TestAMigrationThatFailsPartwayLeavesTheSchemaOneFileWhole(t *testing.T) {
+	ctx := context.Background()
+	path := writeLegacyStore(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE VIEW stale_members AS SELECT kind FROM memberships"); err != nil {
+		t.Fatal(err)
+	}
+	wantCollections, wantMemberships := legacyRows(t, db)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := openTestStore(t, path)
+	if _, err := s.Create(ctx, "New"); err == nil || !strings.Contains(err.Error(), "main.memberships") {
+		t.Fatalf("the injected failure did not fire after the old tables were dropped: %v", err)
+	}
+	if err := s.Add(ctx, "aaaa", Ref{Kind: ConversationKind, ID: "chat-2"}); err == nil {
+		t.Fatal("a write migrated past the failure")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("a failed migration changed the schema-1 file")
+	}
+	if userVersion(t, s) != legacySchemaVersion {
+		t.Fatal("a failed migration moved the version")
+	}
+	gotCollections, gotMemberships := legacyRows(t, s.db)
+	if !reflect.DeepEqual(gotCollections, wantCollections) || !reflect.DeepEqual(gotMemberships, wantMemberships) {
+		t.Fatalf("rows after a failed migration\n%v\n%v", gotCollections, gotMemberships)
+	}
+	other := openTestStore(t, path)
+	if list, err := other.List(ctx, nil); err != nil || len(list) != 2 || list[0].Count != 3 {
+		t.Fatalf("a fresh handle reads %+v, %v", list, err)
+	}
+}
+
+// A MIGRATION THAT SUCCEEDS KEEPS EVERY ROW: the same seq, collection, kind
+// (every schema-1 kind, the legacy standing one included), reference,
+// session and target, in the same order, for a file with more than a handful
+// of rows.
+func TestASuccessfulMigrationKeepsEveryRowInOrder(t *testing.T) {
+	ctx := context.Background()
+	path := writeLegacyStore(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 300; i++ {
+		var q string
+		switch i % 5 {
+		case 0:
+			q = fmt.Sprintf("INSERT INTO memberships(collection_id,kind,ref_id,session_id) VALUES ('aaaa','conversation','chat-x%d','')", i)
+		case 1:
+			q = fmt.Sprintf("INSERT INTO memberships(collection_id,kind,ref_id,session_id) VALUES ('bbbb','task','%d','chat-1')", i)
+		case 2:
+			q = fmt.Sprintf("INSERT INTO memberships(collection_id,kind,ref_id,session_id) VALUES ('aaaa','standing','s%d','')", i)
+		case 3:
+			q = fmt.Sprintf("INSERT INTO memberships(collection_id,kind,ref_id,session_id) VALUES ('bbbb','artifact','/tmp/f%d','')", i)
+		case 4:
+			q = fmt.Sprintf("INSERT INTO collections(id,name) VALUES ('c%d','C %d')", i, i)
+		}
+		if _, err := tx.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	wantCollections, wantMemberships := legacyRows(t, db)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s := openTestStore(t, path)
+	legacyTree, err := s.Tree(ctx, "aaaa", 0, LevelMax, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(ctx, "After"); err != nil {
+		t.Fatal(err)
+	}
+	if userVersion(t, s) != schemaVersion {
+		t.Fatal("the write did not migrate")
+	}
+	gotCollections, gotMemberships := legacyRows(t, s.db)
+	if !reflect.DeepEqual(gotCollections[:len(wantCollections)], wantCollections) || len(gotCollections) != len(wantCollections)+1 {
+		t.Fatalf("collections after migration differ:\n%v\n%v", gotCollections, wantCollections)
+	}
+	if !reflect.DeepEqual(gotMemberships, wantMemberships) {
+		t.Fatalf("memberships after migration differ")
+	}
+	migratedTree, err := s.Tree(ctx, "aaaa", 0, LevelMax, "")
+	if err != nil || !reflect.DeepEqual(migratedTree.Members, legacyTree.Members) {
+		t.Fatalf("the opened order moved across the migration: %v", err)
+	}
+}
+
+// NAMES FOLD AS strings.EqualFold DOES, simple one-rune folding with no
+// locale, and these are the cases a person would ask about. Each pair is
+// created in a fresh store; taken says the second is refused.
+func TestCollectionNamesFoldAsSimpleUnicodeCaseFolding(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct {
+		first, second string
+		taken         bool
+	}{
+		{"Ärger", "ärger", true},
+		{"ΣΊΣΥΦΟΣ", "σίσυφος", true},    // the final ς folds with Σ and σ
+		{"σίσυφοσ", "σίσυφος", true},    // a medial σ written last is the same name
+		{"Kelvin", "Kelvin", true},      // the Kelvin sign folds to K
+		{"İstanbul", "istanbul", false}, // dotted İ lowers to two runes: simple folding keeps them apart
+		{"İstanbul", "İSTANBUL", true},
+		{"Straße", "STRASSE", false}, // ß to SS is full folding, which this is not
+		{"café", "café", false},     // no normalization: precomposed and combining differ
+	} {
+		s := openTestStore(t, filepath.Join(t.TempDir(), "fold.db"))
+		first := createTestCollection(t, s, c.first)
+		_, err := s.Create(ctx, c.second)
+		if c.taken != errors.Is(err, ErrNameTaken) || (!c.taken && err != nil) {
+			t.Errorf("%q then %q: %v, want taken=%v", c.first, c.second, err, c.taken)
+		}
+		if c.taken {
+			if err := s.Rename(ctx, first.ID, c.second); err != nil {
+				t.Errorf("renaming %q to its own name %q: %v", c.first, c.second, err)
+			}
+		}
+	}
+}
+
+// TWO PROCESSES CREATING NAMES THAT DIFFER ONLY IN CASE, at once, on one
+// file: exactly one of each pair wins and the other is told the name is
+// taken.
+func TestConcurrentCaseOnlyCreatesFromTwoHandlesLetExactlyOneWin(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "race.db")
+	first, second := openTestStore(t, path), openTestStore(t, path)
+	createTestCollection(t, first, "seed")
+	const rounds = 30
+	for i := 0; i < rounds; i++ {
+		names := []string{fmt.Sprintf("Ärger %d", i), fmt.Sprintf("äRGER %d", i)}
+		start := make(chan struct{})
+		errs := make(chan error, 2)
+		for j, s := range []*Store{first, second} {
+			go func(name string, s *Store) {
+				<-start
+				_, err := s.Create(ctx, name)
+				errs <- err
+			}(names[j], s)
+		}
+		close(start)
+		e1, e2 := <-errs, <-errs
+		if !((e1 == nil && errors.Is(e2, ErrNameTaken)) || (e2 == nil && errors.Is(e1, ErrNameTaken))) {
+			t.Fatalf("round %d: %v, %v", i, e1, e2)
+		}
+	}
+	if list, err := first.List(ctx, nil); err != nil || len(list) != rounds+1 {
+		t.Fatalf("%d collections, %v", len(list), err)
 	}
 }

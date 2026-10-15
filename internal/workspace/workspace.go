@@ -37,6 +37,9 @@ var (
 	ErrInvalid  = errors.New("invalid collection or reference")
 	ErrNotFound = errors.New("collection not found")
 	ErrCycle    = errors.New("collection membership would form a cycle")
+	// ErrNotMember is a reference the collection does not hold, where a
+	// change needs one it does.
+	ErrNotMember = errors.New("that reference is not in this collection")
 	// ErrNameTaken is a name another collection already has, compared without
 	// regard to case: two collections a person cannot tell apart by name are
 	// one too many.

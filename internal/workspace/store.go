@@ -376,6 +376,14 @@ func newID() (string, error) {
 //
 // THE COMPARISON IS UNICODE CASE FOLDING IN GO, not SQLite's NOCASE, which
 // folds only ASCII: "Ärger" and "ärger" are one name to a person.
+//
+// IT IS strings.EqualFold, WHICH IS SIMPLE FOLDING, ONE RUNE FOR ONE RUNE,
+// with no locale and no normalization. So "ΣΊΣΥΦΟΣ" and "σίσυφος" are one
+// name (Σ, σ and the final ς fold together), and so are "K" and the Kelvin
+// sign. What simple folding cannot see stays apart: "İstanbul" (a dotted
+// capital I, whose lower case is two runes) and "istanbul" are two names, as
+// are "Straße" and "STRASSE", and a precomposed "é" and an "e" followed by a
+// combining accent. schema2_test pins every one of these.
 func nameTaken(ctx context.Context, tx *sql.Tx, name, except string) error {
 	rows, err := tx.QueryContext(ctx, "SELECT id,name FROM collections")
 	if err != nil {
@@ -623,23 +631,8 @@ func (s *Store) AddRefs(ctx context.Context, id string, refs []Addition) ([]Memb
 	for _, ref := range refs {
 		var target any
 		if ref.Kind == CollectionKind {
-			if err := requireCollection(ctx, tx, ref.ID); err != nil {
+			if err := nestable(ctx, tx, id, ref.ID); err != nil {
 				return nil, nil, storeError(err)
-			}
-			// THE CYCLE CHECK AND INSERT SHARE THE WRITER TRANSACTION. Two
-			// processes cannot both approve opposite edges against an old
-			// snapshot, and an earlier reference of this same call is
-			// already in the graph the next one is checked against.
-			var cycle bool
-			err := tx.QueryRowContext(ctx, `WITH RECURSIVE descendants(id) AS (
- VALUES (?) UNION
- SELECT m.ref_id FROM memberships m JOIN descendants d ON m.collection_id=d.id WHERE m.kind='collection'
-) SELECT EXISTS(SELECT 1 FROM descendants WHERE id=?)`, ref.ID, id).Scan(&cycle)
-			if err != nil {
-				return nil, nil, storeError(err)
-			}
-			if cycle {
-				return nil, nil, storeError(ErrCycle)
 			}
 			target = ref.ID
 		}
@@ -666,6 +659,105 @@ func (s *Store) AddRefs(ctx context.Context, id string, refs []Addition) ([]Memb
 		return nil, nil, storeError(err)
 	}
 	return added, already, nil
+}
+
+// nestable refuses putting the collection child inside id: ErrNotFound when
+// child does not exist, ErrCycle when child already holds id at any depth
+// (or is id).
+//
+// THE CYCLE CHECK AND THE WRITE SHARE THE CALLER'S WRITER TRANSACTION. Two
+// processes cannot both approve opposite edges against an old snapshot, and
+// an earlier reference of the same call is already in the graph the next one
+// is checked against.
+func nestable(ctx context.Context, tx *sql.Tx, id, child string) error {
+	if err := requireCollection(ctx, tx, child); err != nil {
+		return err
+	}
+	var cycle bool
+	err := tx.QueryRowContext(ctx, `WITH RECURSIVE descendants(id) AS (
+ VALUES (?) UNION
+ SELECT m.ref_id FROM memberships m JOIN descendants d ON m.collection_id=d.id WHERE m.kind='collection'
+) SELECT EXISTS(SELECT 1 FROM descendants WHERE id=?)`, child, id).Scan(&cycle)
+	if err != nil {
+		return err
+	}
+	if cycle {
+		return ErrCycle
+	}
+	return nil
+}
+
+// Relink puts to where from is in collection id, in one writer transaction:
+// to takes from's row, so its added_at and its place in every order are
+// from's. When to is already a member, from is simply removed and already
+// is true, and the member answered is to as it was. from that is not a member
+// is ErrNotMember; a collection to is checked as Add checks one (ErrNotFound,
+// ErrCycle). Whether a to of any other kind is really there now is its
+// owner's question, asked by the caller before this; the store keeps
+// references, never the things.
+func (s *Store) Relink(ctx context.Context, id string, from, to Ref) (Member, bool, error) {
+	if err := from.Validate(); err != nil {
+		return Member{}, false, storeError(err)
+	}
+	if err := to.Validate(); err != nil {
+		return Member{}, false, storeError(err)
+	}
+	ready, err := s.readyForWrite(ctx)
+	if err != nil {
+		return Member{}, false, storeError(err)
+	}
+	if !ready {
+		return Member{}, false, storeError(ErrNotFound)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Member{}, false, storeError(err)
+	}
+	defer tx.Rollback()
+	if err := requireCollection(ctx, tx, id); err != nil {
+		return Member{}, false, storeError(err)
+	}
+	membership := func(ref Ref) (seq, at int64, err error) {
+		err = tx.QueryRowContext(ctx, "SELECT seq,added_at FROM memberships WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=?",
+			id, ref.Kind, ref.ID, ref.SessionID).Scan(&seq, &at)
+		return seq, at, err
+	}
+	seq, at, err := membership(from)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Member{}, false, storeError(ErrNotMember)
+	}
+	if err != nil {
+		return Member{}, false, storeError(err)
+	}
+	if from.key() == to.key() {
+		return Member{Ref: to, AddedAt: at}, true, nil
+	}
+	if _, toAt, err := membership(to); err == nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM memberships WHERE seq=?", seq); err != nil {
+			return Member{}, false, storeError(err)
+		}
+		if err := tx.Commit(); err != nil {
+			return Member{}, false, storeError(err)
+		}
+		return Member{Ref: to, AddedAt: toAt}, true, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return Member{}, false, storeError(err)
+	}
+	var target any
+	if to.Kind == CollectionKind {
+		if err := nestable(ctx, tx, id, to.ID); err != nil {
+			return Member{}, false, storeError(err)
+		}
+		target = to.ID
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE memberships SET kind=?,ref_id=?,session_id=?,target_collection=? WHERE seq=?",
+		to.Kind, to.ID, to.SessionID, target, seq); err != nil {
+		return Member{}, false, storeError(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Member{}, false, storeError(err)
+	}
+	return Member{Ref: to, AddedAt: at}, false, nil
 }
 
 // Remove detaches a reference; it never removes or stops the referenced work.
