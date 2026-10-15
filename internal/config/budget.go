@@ -129,6 +129,9 @@ var removeProfileKey = profileKeyRemoval{}
 type profileKeyRemoval struct{}
 
 func writeProfileValues(profileDir string, updates map[string]any) error {
+	if err := refuseAppCredentialUpdates(updates); err != nil {
+		return err
+	}
 	if len(updates) == 0 {
 		return nil
 	}

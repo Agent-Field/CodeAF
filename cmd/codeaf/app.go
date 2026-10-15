@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -48,6 +49,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -99,6 +101,9 @@ func runApp(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// THE APP'S KEYS LIVE IN THIS PROCESS'S MEMORY, installed before anything
+	// can read a key, and no profile write may put one on disk while they are.
+	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir()}, backend)
@@ -127,6 +132,9 @@ type appConversation interface {
 	ResolveQuestion(session.Answer) error
 	SetModel(model string)
 	SetSpendRail(usd float64) error
+	// Usage is what the conversation has spent so far, by the provider's own
+	// figures, which its budget is measured against.
+	Usage() session.Usage
 	// ResolveConsentRemember answers one approval and says how long the answer
 	// lasts; the app uses it for an always that wrote a rule first.
 	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
@@ -223,6 +231,17 @@ type appBackend struct {
 	// warmed closes when [appBackend.Warm] has finished, which Close waits
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}
+	// keys are the keys the app handed over (appaccount.go); keyClient and
+	// keyAddress replace the network and the provider's address in a test.
+	keys       *config.AppCredentials
+	keyClient  *http.Client
+	keyAddress func(provider string) string
+	// signIn is the browser sign-in waiting for the person, if any.
+	signIn *openrouterauth.Flow
+	// state is the app's own file: setup, its settings, budgets and raises.
+	state *appState
+	// today replaces the usage ledger's figure for today in a test.
+	today func(time.Time) float64
 }
 
 // appAgent is every agent this process has heard of: listed off the disk,
@@ -237,6 +256,9 @@ type appAgent struct {
 	// failed is the words of the last turn that ended in failure, which is
 	// what agents.retry sends again; a turn that ends well clears it.
 	failed string
+	// failedKind is how that turn failed; a turn refused for money is run
+	// again when the limit is raised.
+	failedKind string
 	// boot is what agents.create asked of a conversation not yet open, taken
 	// by whichever road opens it first; opening says one is being assembled.
 	boot    *appBoot
@@ -278,6 +300,12 @@ type appLive struct {
 	consents map[uint64]appConsentCall
 	// stopping says the person stopped the running turn.
 	stopping bool
+	// money are the open budget asks this process raised itself, by ask id;
+	// budgetAsked is the last budget level asked about, so it is asked once;
+	// lastAnswer is the agent's last words, which a budget ask quotes.
+	money       map[string]appMoneyAsk
+	budgetAsked string
+	lastAnswer  string
 }
 
 // appConsentCall is the call one approval is about.
@@ -303,7 +331,13 @@ func (live *appLive) restingState() string {
 }
 
 func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
+	keys := config.AppCredentialSource()
+	if keys == nil {
+		keys = config.NewAppCredentials()
+	}
 	b := &appBackend{
+		keys:      keys,
+		state:     &appState{},
 		emit:      emit,
 		open:      open,
 		now:       time.Now,
@@ -470,6 +504,14 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 		}
 		return false
 	}
+	// AN AGENT NOBODY HAS TOUCHED FOR THE SETTING'S DAYS READS CLOSED: its
+	// journal is kept, and opening or sending to it opens it again.
+	idleDays := appIdleCloseDays
+	_ = b.state.read(func(f *appStateFile) { idleDays = f.idleDays() })
+	stale := time.Time{}
+	if idleDays > 0 {
+		stale = b.now().Add(-time.Duration(idleDays) * 24 * time.Hour)
+	}
 	seen := map[string]bool{}
 	var agents []appwire.Agent
 	for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
@@ -477,7 +519,11 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 			continue
 		}
 		seen[row.ID] = true
-		agents = append(agents, b.remember(row))
+		view := b.remember(row)
+		if !stale.IsZero() && view.State == appwire.StateIdle && !view.UpdatedAt.IsZero() && view.UpdatedAt.Before(stale) && !b.held(view.ID) {
+			view.State = appwire.StateClosed
+		}
+		agents = append(agents, view)
 	}
 	// A conversation this process created and nobody has spoken in yet is not
 	// on the walk, which skips empty shells; it is still the app's agent.
@@ -499,8 +545,12 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 // agent is named by them. A conversation that cannot be opened says so as a
 // failed turn and a stopped agent.
 func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
-	// engineWorkspace answers the home folder for no workspace at all.
-	resolved, err := engineWorkspace(ask.Workspace)
+	// No workspace is the work folder the person chose, or their home folder.
+	workspace := ask.Workspace
+	if strings.TrimSpace(workspace) == "" {
+		_ = b.state.read(func(f *appStateFile) { workspace = f.workFolder() })
+	}
+	resolved, err := engineWorkspace(workspace)
 	if err != nil {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	}
@@ -514,6 +564,21 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	text := strings.TrimSpace(ask.Text)
 	model := strings.TrimSpace(ask.Model)
 	a := b.agent(appAgentID(transcript))
+	if ask.BudgetUSD != nil && *ask.BudgetUSD > 0 {
+		// The budget is the app's to keep: the engine's figure is the open
+		// conversation's only, and it is bound again at every open.
+		usd, id := *ask.BudgetUSD, appAgentID(transcript)
+		err := b.state.write(func(f *appStateFile) error {
+			if f.Budgets == nil {
+				f.Budgets = map[string]float64{}
+			}
+			f.Budgets[id] = usd
+			return nil
+		})
+		if err != nil {
+			return appwire.Agent{}, appEngineError(err)
+		}
+	}
 	var view appwire.Agent
 	b.locked(func() {
 		a.transcript = transcript
@@ -569,7 +634,7 @@ func (b *appBackend) bootFailed(a *appAgent, text string, err error) {
 	var view appwire.Agent
 	b.locked(func() {
 		if text != "" {
-			a.failed = text
+			a.failed, a.failedKind = text, appwire.ErrorOther
 		}
 		a.boot = nil
 		if a.live == nil {
@@ -641,6 +706,10 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 			return appwire.Agent{}, false, appEngineError(err)
 		}
 	}
+	if err := b.bindBudget(view.ID, conn.Conv); err != nil {
+		conn.Release()
+		return appwire.Agent{}, false, appEngineError(err)
+	}
 	return b.hold(a, conn, workspace), true, nil
 }
 
@@ -653,7 +722,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		conn: conn, box: appwire.NewOutbox(b.emit), lastUse: b.now(),
 		tasks: map[string]appwire.Task{}, lanesDone: make(chan struct{}), asksDone: make(chan struct{}),
 		questions: map[string]session.Question{}, answered: map[string]string{},
-		consents: map[uint64]appConsentCall{},
+		consents: map[uint64]appConsentCall{}, money: map[string]appMoneyAsk{},
 	}
 	title, model := conn.Conv.Title(), conn.Conv.Model()
 	effort := conn.Conv.ReasoningFor(model)
@@ -908,6 +977,7 @@ func (b *appBackend) dropAskLocked(live *appLive, askID string) {
 	if q, ok := live.questions[askID]; ok && q.Kind == session.QuestionConsent {
 		delete(live.consents, q.ID)
 	}
+	delete(live.money, askID)
 	delete(live.questions, askID)
 	delete(live.answered, askID)
 	kept := live.asks[:0]
@@ -965,6 +1035,14 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 	}
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	guard.Go("app/finish", func() { b.finish(live) })
+}
+
+// held says this process holds a conversation for the agent id.
+func (b *appBackend) held(id string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	a := b.agents[id]
+	return a != nil && (a.live != nil || a.opening)
 }
 
 // live answers the agent's held conversation, or nil.
@@ -1030,6 +1108,18 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 	if !live.conn.Assembled && live.conn.Transcript != "" {
 		users := appUserCount(live.conn.Transcript)
 		b.locked(func() { a.users = users })
+	}
+	// THE DAY CAP IS CHECKED BEFORE THE ENGINE HEARS OF THE TURN: a refused
+	// turn sends nothing and costs nothing, and its words wait for a raise.
+	now := b.now()
+	if limit := b.dayCap(now); limit > 0 {
+		if spent := b.spentToday(now); spent >= limit {
+			return b.dayRefused(a, live, text, spent, limit), nil
+		}
+	}
+	// The agent's budget is bound again, so a raise for today ends at midnight.
+	if err := b.bindBudget(id, live.conn.Conv); err != nil {
+		return 0, appEngineError(err)
 	}
 	var turn uint64
 	var n int
@@ -1102,6 +1192,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	sayReply := func() {
 		words := strings.TrimSpace(reply.String())
 		if words != "" {
+			b.locked(func() { live.lastAnswer = words })
 			at := msg
 			entry(appwire.Entry{ID: appAnswerEntryID(n, at), Kind: appwire.EntryAnswer, Text: words, Thinking: strings.TrimSpace(thinking.String()), Msg: &at})
 			msg++
@@ -1175,9 +1266,9 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		if live.stopping {
 			ok, kind, status = false, appwire.ErrorStopped, 0
 		}
-		a.failed = ""
+		a.failed, a.failedKind = "", ""
 		if !ok {
-			a.failed = text
+			a.failed, a.failedKind = text, kind
 		}
 	})
 	switch {
@@ -1211,7 +1302,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	if held {
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	b.spendMoved()
+	b.spendMoved(func(spend appwire.Spend) { b.moneyAfter(a, live, spend.TodayUSD) })
 }
 
 // ── entry ids ───────────────────────────────────────────────────────────────
@@ -1451,6 +1542,9 @@ const appAnsweredMark = "app:"
 func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 	a, err := b.find(id)
 	if err != nil {
+		return err
+	}
+	if handled, err := b.answerMoney(a, askID, option, text); handled {
 		return err
 	}
 	var live *appLive
@@ -1777,22 +1871,6 @@ func appDefaultModel() string {
 	return v3TalkModel("", settings)
 }
 
-// Settings reads the profile's own rows; a figure nobody set is null.
-func (b *appBackend) Settings() (appwire.Settings, error) {
-	profile := config.ProfileDir()
-	settings := appwire.Settings{
-		DefaultModel: appDefaultModel(),
-		AsksBefore:   config.ToolApprovalModeAt(profile),
-		BudgetUSD:    appFigure(config.SpendRailUSDAt(profile)),
-	}
-	dayCap, err := config.DailyBudgetUSDAt(profile)
-	if err != nil {
-		return appwire.Settings{}, appEngineError(err)
-	}
-	settings.DayCapUSD = appFigure(dayCap)
-	return settings, nil
-}
-
 // appFigure is a money figure, or nil for none.
 func appFigure(usd float64) *float64 {
 	if usd <= 0 {
@@ -1804,15 +1882,7 @@ func appFigure(usd float64) *float64 {
 // SpendToday reads this machine's usage ledger for today.
 func (b *appBackend) SpendToday() (appwire.Spend, error) {
 	now := b.now()
-	lines, err := session.ReadUsage(session.UsageLedgerPath(), now.Add(-48*time.Hour))
-	if err != nil {
-		return appwire.Spend{}, appEngineError(err)
-	}
-	spend := appwire.Spend{TodayUSD: session.SpendToday(lines, now)}
-	if dayCap, err := config.DailyBudgetUSDAt(config.ProfileDir()); err == nil {
-		spend.DayCapUSD = appFigure(dayCap)
-	}
-	return spend, nil
+	return appwire.Spend{TodayUSD: b.spentToday(now), DayCapUSD: appFigure(b.dayCap(now))}, nil
 }
 
 // appSpendSettle is how long after a turn ends its spending is read again: the
@@ -1820,8 +1890,8 @@ func (b *appBackend) SpendToday() (appwire.Spend, error) {
 const appSpendSettle = 300 * time.Millisecond
 
 // spendMoved says spend.changed once a turn's spending has reached the ledger,
-// if today's figure moved.
-func (b *appBackend) spendMoved() {
+// if today's figure moved, and hands today's figure to after.
+func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 	time.AfterFunc(appSpendSettle, func() {
 		defer guard.Recover("app/spend")
 		if b.isClosing() {
@@ -1838,6 +1908,9 @@ func (b *appBackend) spendMoved() {
 		})
 		if moved {
 			b.emit.Emit(appwire.EventSpendChanged, appwire.SpendChanged{Spend: spend})
+		}
+		if after != nil {
+			after(spend)
 		}
 	})
 }
@@ -1966,6 +2039,10 @@ func (b *appBackend) Close() error {
 		}
 		b.closing = true
 		crews, warmed = b.crews, b.warmed
+		if b.signIn != nil {
+			b.signIn.Cancel()
+			b.signIn = nil
+		}
 		for _, a := range b.agents {
 			agents = append(agents, a)
 		}

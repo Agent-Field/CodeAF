@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -146,6 +147,7 @@ type fakeConversation struct {
 	rail        float64
 	remembered  []session.ConsentScope
 	texts       []string
+	cost        float64
 	// onAnswer, when set, is what the engine does with an answer.
 	onAnswer func(session.Answer)
 }
@@ -228,6 +230,11 @@ func (f *fakeConversation) ResolveConsentRemember(id uint64, allow bool, scope s
 	f.remembered = append(f.remembered, scope)
 	f.mu.Unlock()
 }
+func (f *fakeConversation) Usage() session.Usage {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return session.Usage{CostUSD: f.cost}
+}
 func (f *fakeConversation) Title() string     { return "" }
 func (f *fakeConversation) NeedsPerson() bool { f.mu.Lock(); defer f.mu.Unlock(); return f.needs }
 func (f *fakeConversation) WatchTaskUpdates() (<-chan session.Event, func()) {
@@ -292,11 +299,18 @@ const appFakeTranscript = "/state/v3/places/proj/5e55a0f1/transcript.jsonl"
 
 // newFakeBackend is a backend over a fake opener, minting the fake's own
 // folder rather than one on disk.
+//
+// Every fake backend keeps its own app file, because every fake agent has the
+// same id and a budget one test gave it must not reach the next.
 func newFakeBackend(rec appwire.Emitter, open appOpener) *appBackend {
 	backend := newAppBackend(rec, open)
 	backend.mint = func(string) (string, error) { return appFakeTranscript, nil }
+	backend.state = &appState{path: filepath.Join(os.TempDir(), "codeaf-app-test-"+strconv.Itoa(os.Getpid()), strconv.FormatUint(appFakeStates.Add(1), 10), appStateName)}
 	return backend
 }
+
+// appFakeStates numbers the fake backends' app files.
+var appFakeStates atomic.Uint64
 
 // mustCreate creates an agent and, when it was given no words, waits for its
 // conversation to be open, which agents.create does behind its answer.
@@ -1112,7 +1126,10 @@ func TestAppAlwaysWritesABashRule(t *testing.T) {
 	}
 }
 
-// settings.get reads the profile's rows, and a figure nobody set is null.
+// settings.get reads the profile's rows for what the terminal shares, and the
+// app's own file for the rest, with its defaults: a $20.00 day cap that is the
+// app's and not the terminal's daily limit, a twelve-second proposal clock,
+// seven idle days, and the home folder to work in.
 func TestAppSettingsAndSpendReadTheProfile(t *testing.T) {
 	profile := t.TempDir()
 	t.Setenv(config.ProfileDirEnv, profile)
@@ -1127,11 +1144,18 @@ func TestAppSettingsAndSpendReadTheProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.DefaultModel != "qwen/qwen3-coder" || settings.AsksBefore != "deny" || settings.BudgetUSD != nil || settings.DayCapUSD == nil || *settings.DayCapUSD != 12 {
+	homeDir, _ := os.UserHomeDir()
+	if settings.DefaultModel != "qwen/qwen3-coder" || settings.AsksBefore != "deny" || settings.BudgetUSD != nil || settings.DayCapUSD == nil || *settings.DayCapUSD != appDayCapDefault {
 		t.Fatalf("settings = %+v (day cap %v)", settings, settings.DayCapUSD)
 	}
+	if settings.ProposedTaskClockS != 12 || settings.IdleCloseDays != 7 || settings.WorkFolder != homeDir || settings.TaskCapUSD == nil || *settings.TaskCapUSD != config.CrewTaskCapDefault {
+		t.Fatalf("app settings = %+v", settings)
+	}
+	if daily, _ := config.DailyBudgetUSDAt(profile); daily != 12 {
+		t.Fatalf("the terminal's daily limit moved to %v", daily)
+	}
 	spend, err := backend.SpendToday()
-	if err != nil || spend.TodayUSD != 0 || spend.DayCapUSD == nil || *spend.DayCapUSD != 12 {
+	if err != nil || spend.TodayUSD != 0 || spend.DayCapUSD == nil || *spend.DayCapUSD != appDayCapDefault {
 		t.Fatalf("spend = %+v, %v", spend, err)
 	}
 }

@@ -109,6 +109,9 @@ func WriteSources(profileDir string, rows []PersistedSource) error {
 // existing three-rung implementation; another service reads its conventional
 // variable, its stored key, then the variable a person named.
 func SourceKeyAt(profileDir string, row PersistedSource, src modelsource.Source) string {
+	if key, ok := appKey(src.ID); ok {
+		return key
+	}
 	if strings.EqualFold(strings.TrimSpace(src.ID), modelsource.DefaultID) {
 		return APIKeyAt(profileDir)
 	}
@@ -171,6 +174,10 @@ func sourceHomes(set modelsource.Set, profileDir string) modelsource.Set {
 // rows from the profile snapshot it already read for api_key, while callers
 // that need a fresh reading keep using ResolveSources.
 func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyAt func(PersistedSource, modelsource.Source) string) modelsource.Set {
+	if key, ok := appKey(modelsource.DefaultID); ok {
+		defaultKey = key
+	}
+	rows = appSourceRows(rows)
 	defaultSource := modelsource.DefaultSource(defaultBase)
 	connected := []modelsource.Connected{{Source: defaultSource, Key: defaultKey, Address: defaultBase}}
 	vendored := modelsource.Vendored()
@@ -270,6 +277,9 @@ func CodexRememberedModels(service modelsource.Connected, profileDir string) []c
 // ConnectCodex keeps a completed browser sign-in, persists its service row and
 // seeds the picker from the account's own visible model list.
 func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Tokens) (modelsource.Outcome, error) {
+	if AppMode() {
+		return modelsource.Outcome{}, ErrAppKeys
+	}
 	if err := ctx.Err(); err != nil {
 		return modelsource.Outcome{}, err
 	}
@@ -370,6 +380,9 @@ func resolvedPlanPaused(row PersistedSource) string {
 // ConnectService proves a key and says what it reaches, and writes nothing on
 // any answer but yes. Ten seconds; a person is watching this one.
 func ConnectService(ctx context.Context, profileDir string, row PersistedSource, src modelsource.Source, authors []string) (modelsource.Outcome, error) {
+	if AppMode() {
+		return modelsource.Outcome{}, ErrAppKeys
+	}
 	if strings.TrimSpace(row.ID) == "" {
 		row.ID = src.ID
 	}

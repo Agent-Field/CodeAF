@@ -19,6 +19,7 @@ type fakeEngine struct {
 	block   chan struct{}
 	created CreateAsk
 	limit   int
+	patch   SettingsPatch
 }
 
 func (f *fakeEngine) ListAgents(workspace string) ([]Agent, error) {

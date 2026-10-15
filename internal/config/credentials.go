@@ -50,6 +50,11 @@ func Credentials(profileDir string) []string {
 	// OPENAI_API_KEY is a secret that must be kept out of a debug record.
 	add(os.Getenv("OPENAI_API_KEY"))
 	add(APIKeyAt(profileDir))
+	if source := appCredentials.Load(); source != nil {
+		for _, key := range source.Snapshot() {
+			add(key)
+		}
+	}
 	for _, service := range ResolveSources(profileDir, APIKeyAt(profileDir), DefaultBaseURL).All()[1:] {
 		add(service.Key)
 	}

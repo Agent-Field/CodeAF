@@ -69,6 +69,9 @@ const (
 	EventCrewChanged  = "crew.changed"
 	EventCrewRemoved  = "crew.removed"
 	EventLog          = "log"
+
+	EventSettingsChanged = "settings.changed"
+	EventProviderChanged = "provider.changed"
 )
 
 // Error is a refusal the app can read: a code from the closed set above and a
@@ -163,6 +166,15 @@ const (
 	OptionAllowOnce = "allow_once"
 	OptionDeny      = "deny"
 	OptionAlways    = "always"
+
+	// A budget ask about one agent offers raise (its text is the new figure),
+	// stop and tell (its text is what to tell the agent); one about the day cap
+	// offers raise_today and wait.
+	OptionRaise      = "raise"
+	OptionStop       = "stop"
+	OptionTell       = "tell"
+	OptionRaiseToday = "raise_today"
+	OptionWait       = "wait"
 )
 
 // Entry is one item of a conversation's transcript, in order. Which of the
@@ -233,12 +245,124 @@ const (
 )
 
 // Settings are the few defaults the app shows. A figure nobody set is null.
+// WorkFolder is where an agent created with no workspace works;
+// ProposedTaskClockS is how long a proposed task waits before it starts on its
+// own; IdleCloseDays is how long an agent nobody touches stays open.
 type Settings struct {
-	DefaultModel string   `json:"default_model"`
-	BudgetUSD    *float64 `json:"budget_usd"`
-	AsksBefore   string   `json:"asks_before"`
-	DayCapUSD    *float64 `json:"day_cap_usd"`
+	DefaultModel       string   `json:"default_model"`
+	BudgetUSD          *float64 `json:"budget_usd"`
+	AsksBefore         string   `json:"asks_before"`
+	DayCapUSD          *float64 `json:"day_cap_usd"`
+	WorkFolder         string   `json:"work_folder"`
+	TaskCapUSD         *float64 `json:"task_cap_usd"`
+	ProposedTaskClockS int      `json:"proposed_task_clock_s"`
+	IdleCloseDays      int      `json:"idle_close_days"`
+	Effort             string   `json:"effort,omitempty"`
 }
+
+// SettingsPatch is settings.set's params: only the fields present change. A
+// money figure sent as null is cleared, which the settings that always have a
+// figure refuse.
+type SettingsPatch struct {
+	DefaultModel       *string
+	BudgetUSD          *Figure
+	AsksBefore         *string
+	DayCapUSD          *Figure
+	WorkFolder         *string
+	TaskCapUSD         *Figure
+	ProposedTaskClockS *int
+	IdleCloseDays      *int
+	Effort             *string
+}
+
+// Figure is one money field of a patch: USD is nil for a figure sent as null.
+type Figure struct {
+	USD *float64
+}
+
+// Provider is one service a key or a sign-in connects. KeyHint is the last
+// four characters of the key in use, and SignIn says the provider can be
+// connected by a browser sign-in instead of a pasted key.
+type Provider struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	SignedIn bool   `json:"signed_in"`
+	KeyHint  string `json:"key_hint,omitempty"`
+	SignIn   bool   `json:"sign_in,omitempty"`
+}
+
+// KeyCheck is keys.check's answer. Status is the provider's own status code
+// for a rejection, or the word timeout when the provider never answered.
+type KeyCheck struct {
+	OK      bool    `json:"ok"`
+	Models  []Model `json:"models,omitempty"`
+	Status  any     `json:"status,omitempty"`
+	Message string  `json:"message,omitempty"`
+}
+
+// Setup is how far the person has come through first-run setup, kept by
+// codeaf so quitting halfway resumes at the same step.
+type Setup struct {
+	Step         SetupStep `json:"step"`
+	Provider     string    `json:"provider,omitempty"`
+	DefaultModel string    `json:"default_model,omitempty"`
+	DayCapUSD    *float64  `json:"day_cap_usd,omitempty"`
+	Start        string    `json:"start,omitempty"`
+}
+
+// SetupStep is a setup step: 1 to 4 on the wire as a number, or "done".
+type SetupStep struct {
+	N    int
+	Done bool
+}
+
+// The number of setup steps, and the one place a setup may say it starts.
+const (
+	SetupSteps  = 4
+	SetupAgents = "agents"
+)
+
+func (s SetupStep) MarshalJSON() ([]byte, error) {
+	if s.Done {
+		return []byte(`"done"`), nil
+	}
+	return json.Marshal(s.N)
+}
+
+func (s *SetupStep) UnmarshalJSON(raw []byte) error {
+	var word string
+	if json.Unmarshal(raw, &word) == nil {
+		if word != "done" {
+			return fmt.Errorf("step is 1 to %d or \"done\"", SetupSteps)
+		}
+		*s = SetupStep{Done: true}
+		return nil
+	}
+	var n int
+	if err := json.Unmarshal(raw, &n); err != nil || n < 1 || n > SetupSteps {
+		return fmt.Errorf("step is 1 to %d or \"done\"", SetupSteps)
+	}
+	*s = SetupStep{N: n}
+	return nil
+}
+
+// CapRaise is caps.raise's params: which cap, to what, and whether the raise
+// lasts until midnight (for: today) or from now on (for: good).
+type CapRaise struct {
+	Scope string  `json:"scope"`
+	ID    string  `json:"id"`
+	ToUSD float64 `json:"to_usd"`
+	For   string  `json:"for"`
+}
+
+// The two scopes a cap is raised in, and how long a raise lasts.
+const (
+	CapAgent = "agent"
+	CapDay   = "day"
+
+	RaiseToday = "today"
+	RaiseGood  = "good"
+)
 
 // Spend is today's spending on this machine against the daily cap, which is
 // null when there is none.
@@ -324,6 +448,15 @@ type (
 		Level   string `json:"level"`
 		Message string `json:"message"`
 	}
+	SettingsChanged struct {
+		Settings Settings `json:"settings"`
+	}
+	// ProviderChanged carries the key a browser sign-in produced, once, so
+	// the app can keep it in the keychain and hand it back at the next launch.
+	ProviderChanged struct {
+		Provider Provider `json:"provider"`
+		Key      string   `json:"key,omitempty"`
+	}
 )
 
 // The two delta kinds.
@@ -372,6 +505,17 @@ type Engine interface {
 	ListModels() ([]Model, error)
 	Settings() (Settings, error)
 	SpendToday() (Spend, error)
+	// Wave 2: providers and keys, first-run setup, settings and caps. A key
+	// is held in memory only; CheckKey makes exactly one provider request.
+	ListProviders() ([]Provider, error)
+	CheckKey(provider, key string) (KeyCheck, error)
+	SetKey(provider, key string) error
+	RemoveKey(provider string) error
+	SignIn(provider string) (string, error)
+	Setup() (Setup, error)
+	SetSetup(setup Setup) (Setup, error)
+	SetSettings(patch SettingsPatch) (Settings, error)
+	RaiseCap(raise CapRaise) error
 	// Close releases every conversation the engine holds. It is called once,
 	// when the process is leaving, and returns when they are all let go.
 	Close() error

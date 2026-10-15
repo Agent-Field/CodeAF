@@ -305,6 +305,30 @@ closes. Neither draws anything or reads a key. **`codeaf tick`** and **`codeaf w
 kept out of it as well, because they do nothing any more (see *codeaf wake and codeaf
 tick* below).
 
+## The desktop app's keys, day cap and budget asks — what codeaf app keeps
+
+Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.
+The app hands them to `codeaf app` at every launch and that process holds them in memory
+only: while it runs, a key never reaches the profile's `config.json`, and a provider the
+app disconnected is not quietly reconnected from a key in the profile or the shell. The
+app's key check is one request to the provider with ten seconds to answer; a rejected key
+is reported in the provider's own words and status code. Browser sign-in in the app is
+OpenRouter's only; the ChatGPT plan sign-in stays in the terminal (`codeaf connect codex`).
+
+The app has a day cap of its own, $20.00 unless its setup or settings chose another, and
+it is separate from the terminal's daily limit (`/budget day`), which keeps its own
+figure. A message sent once today's spending has reached the app's day cap is not sent at
+all; the agent asks instead, `Day cap reached · $40.00 of $40.00`, with *Raise for today*
+(back to the set figure at midnight) or *Wait until tomorrow*. An agent with a budget asks
+once it has spent four fifths of it — `It's close to its $5.00 budget` — and again when it
+reaches it, offering *Raise budget*, *Stop* or *Tell it something*. Raising either limit
+runs again the message it refused. Neither limit stops a turn halfway: a turn that crosses
+one finishes, and the next is the one that waits.
+
+The app's own settings (day cap, new agents' folder, the 12-second proposed-task clock,
+7 idle days before an agent reads closed) and its setup progress live in
+`app/state.json` under codeaf's home folder, so quitting setup halfway resumes there.
+
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
 `codeaf connect` lists every model provider this profile knows, whether it is connected,
