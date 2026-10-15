@@ -16,6 +16,7 @@ invalidates:
   - "Memory ran a pre-turn recall, a background tidy (role consolidate), contextual evidence, observed-outcome advisories and the memory_evidence tool. All of that is removed; the consolidate role is no longer registered, docs/contextual-memory.md is retired, and the memories_fts table is left in place this release for older engines still running."
   - "Remote wire Version was 21 with Memory.SetAlways and Memory.List. It is 22: those two are gone, Memory.Update carries only the words, and Memory.Move and Memory.Project are new."
   - "A far engine with no memory said `memory is off on this machine`. It now says `memory is unavailable on this machine · the store could not be opened`."
+  - "The fixed-prefix waivers were 4,691 full and 13,413 lean after #1829. With memory_evidence off the belt and forget beside remember on the full one, the prefix measures 52,497 and 44,893 bytes, and the waivers fall to 4,497 and 13,393 (PERF.md, internal/session/prefixbudget_test.go)."
   - "The model's forget asked for approval. It is seeded allow beside remember, because both say what they did in the conversation and the Memories tab takes it back."
 ---
 
