@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -854,11 +855,12 @@ func (w *BashWorker) recordSpend(taskID string, used session.Usage, shares map[s
 			_ = w.store.AddSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
 		}
 	}
-	// THE SHARES COVER THE SEAT WHEN THEY ACCOUNT FOR EVERY CALL AND TOKEN IT
-	// BANKED — whole numbers, compared exactly. Then any difference in dollars
-	// is the order the same charges were added in, not money; otherwise the
-	// difference is real, uncovered spend and is billed whole.
-	if covered.Calls == used.Calls && covered.Input == used.Input && covered.Output == used.Output {
+	// Integer coverage does not prove dollar coverage: a receipt may report
+	// cost without tokens. Only a few floating-point rounding units from the
+	// regrouped sum are noise; preserve every larger residual as unproven spend.
+	rounding := math.Abs(math.Nextafter(used.CostUSD, math.Inf(1))-used.CostUSD) * float64(len(models)+1)
+	if covered.Calls == used.Calls && covered.Input == used.Input && covered.Output == used.Output &&
+		math.Abs(used.CostUSD-covered.CostUSD) <= rounding {
 		return
 	}
 	_ = w.store.AddSpend(taskID, w.model, role, max(used.CostUSD-covered.CostUSD, 0),

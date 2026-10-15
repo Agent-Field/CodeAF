@@ -259,3 +259,14 @@ func TestTheAnsweredTallyFollowsTheAnsweringModel(t *testing.T) {
 		t.Fatalf("shares %+v do not sum to %+v", shares, total)
 	}
 }
+
+// A response's explicit model is stronger evidence than its request target,
+// even when the provider supplies no usage at all.
+func TestAnAnswerNamesItsActualModelWithoutUsage(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	var turn Usage
+	agent.addUsage(&turn, &ai.Response{Model: "m/served"}, "m/requested", "", laneFacts{})
+	if answers := agent.Answers(); len(answers) != 1 || answers["m/served"] != 1 {
+		t.Fatalf("answered model was replaced by request target: %+v", answers)
+	}
+}

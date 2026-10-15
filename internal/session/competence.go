@@ -279,11 +279,14 @@ func (m *modelShares) add(model string, call Usage) {
 }
 
 // noteAnswer counts one arrived response under the model that answered it, the
-// model the request was actually sent to after any fallback. No response is no
+// response names, or the actual request target after fallback when it names none. No response is no
 // answer. It is counted whether or not the response carried usage.
 func (a *Agent) noteAnswer(response *ai.Response, model string, calls int) {
 	if response == nil || calls <= 0 {
 		return
+	}
+	if answered := strings.TrimSpace(response.Model); answered != "" {
+		model = answered
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()

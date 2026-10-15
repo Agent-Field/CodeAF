@@ -168,3 +168,17 @@ func TestUncoveredCallsAreBilledUnmarkedAndCoveredOnesLeaveNoResidual(t *testing
 		t.Fatalf("covered shares wrote a residual: %+v", rows)
 	}
 }
+
+// Dollar-only receipts must not disappear merely because all token and call
+// counters were already covered, even below an arbitrary currency threshold.
+func TestUncoveredDollarOnlySpendIsRetained(t *testing.T) {
+	store := spendStore(t)
+	used := session.Usage{Input: 2, Calls: 1, CostUSD: 0.01 + 1e-12}
+	(&BashWorker{store: store, model: "m/built"}).recordSpend("root", used,
+		map[string]session.Usage{"m/served": {Input: 2, Calls: 1, CostUSD: 0.01}}, map[string]int{"m/served": 1})
+	rows := spendRows(t, store.Path(), "root")
+	if len(rows) != 2 || rows[spendRow{"m/built", false}] <= 0 ||
+		math.Abs(rows[spendRow{"m/served", true}]+rows[spendRow{"m/built", false}]-used.CostUSD) > math.SmallestNonzeroFloat64 {
+		t.Fatalf("a real dollar-only residual was discarded: %+v", rows)
+	}
+}
