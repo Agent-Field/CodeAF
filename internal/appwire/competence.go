@@ -44,8 +44,11 @@ type CompetenceMap struct {
 	Totals CompetenceTotals  `json:"totals"`
 	Policy CompetencePolicy  `json:"policy"`
 	ReadAt time.Time         `json:"read_at"`
-	// Truncated says the ledger was longer than one read takes and its oldest
-	// history was not read. Omitted is how many scopes, filters and models this
+	// Truncated is always false: a ledger longer than one read takes is the
+	// engine error "checked-result history exceeds this bounded read;
+	// competence unavailable" (code "engine"), never a map of its newest part,
+	// and a ledger with an unreadable row is "checked-result history has an
+	// unreadable row; competence unavailable". Omitted is how many scopes, filters and models this
 	// answer left out for size; Totals still count every scope that matched.
 	Truncated bool              `json:"truncated"`
 	Omitted   CompetenceOmitted `json:"omitted"`

@@ -99,13 +99,13 @@ func TestTheLedgerRefusesUncheckedAndUnattributedResults(t *testing.T) {
 	if !errors.Is(Append(path, anonymous), ErrIncomplete) {
 		t.Fatal("a result with no model was written")
 	}
-	// And a row that reached the file some other way is skipped on read.
+	// And a row that reached the file some other way makes the history
+	// unavailable on read: it may have been a failure.
 	if err := os.WriteFile(path, []byte(`{"v":1,"kind":"result","id":"x","model":"","place":"/p","work":"w","checks":[{"command":"a","outcome":"passed"}]}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	m, err := reader(path).Map(context.Background(), "", "")
-	if err != nil || len(m.Models) != 0 {
-		t.Fatalf("an unattributed row reached the map: %+v %v", m.Models, err)
+	if _, err := reader(path).Map(context.Background(), "", ""); !errors.Is(err, ErrUnreadableHistory) {
+		t.Fatalf("an unattributed row was read past: %v", err)
 	}
 }
 
@@ -377,8 +377,9 @@ func TestTheLatestResultStands(t *testing.T) {
 	}
 }
 
-// THE READ IS BOUNDED: a ledger past the window is read from its end and the
-// answer says so; a cancelled read answers nothing.
+// THE READ IS BOUNDED AND NEVER PARTIAL: a ledger past the bound answers
+// ErrHistoryLimit for the map and for evidence, with no groups or counts; a
+// cancelled read answers nothing.
 func TestTheReadIsBoundedAndCancellable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), LedgerName)
 	for i := 0; i < 50; i++ {
@@ -387,16 +388,102 @@ func TestTheReadIsBoundedAndCancellable(t *testing.T) {
 	r := reader(path)
 	r.MaxBytes = 2048
 	m, err := r.Map(context.Background(), "", "")
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrHistoryLimit) || len(m.Groups) != 0 || len(m.Models) != 0 {
+		t.Fatalf("a ledger past the bound answered %+v %v", m, err)
 	}
-	if !m.Truncated || len(m.Models) == 0 || len(m.Models) >= 50 || m.Model != "m49" {
-		t.Fatalf("bounded read: truncated=%v models=%d model=%s", m.Truncated, len(m.Models), m.Model)
+	if page, err := r.Evidence(context.Background(), "m49", "scope:x", "", "", 5); !errors.Is(err, ErrHistoryLimit) || page.Counts.All != 0 {
+		t.Fatalf("evidence past the bound answered %+v %v", page, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := reader(path).Map(ctx, "", ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled read answered %v", err)
+	}
+}
+
+// AN EARLY FAILURE THE BOUND WOULD HIDE MUST NOT BECOME STRONG. A failed check
+// inside the thirty days sits before enough later passes to push it past
+// MaxBytes; reading only the tail would class the scope Strong.
+func TestAFailureBeyondTheBoundIsNeverClassedAsStrong(t *testing.T) {
+	path := filepath.Join(t.TempDir(), LedgerName)
+	day := 24 * time.Hour
+	result(t, path, "m", "/w", "a", "early", 20*day, Failed)
+	for i := 0; i < 40; i++ {
+		result(t, path, "m", "/w", "a", fmt.Sprint("late", i), time.Duration(i+1)*time.Hour, Passed)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := reader(path)
+	r.MaxBytes = info.Size() * 3 / 4
+	m, err := r.Map(context.Background(), "m", "")
+	if !errors.Is(err, ErrHistoryLimit) {
+		t.Fatalf("map answered %v", err)
+	}
+	for _, group := range m.Groups {
+		if len(group.Scopes) != 0 {
+			t.Fatalf("a partial classification escaped: %+v", m.Groups)
+		}
+	}
+	if m.Totals != (Totals{}) || m.Truncated {
+		t.Fatalf("partial counts escaped: %+v", m)
+	}
+	if _, err := r.Evidence(context.Background(), "m", "scope:x", "", "", 5); !errors.Is(err, ErrHistoryLimit) {
+		t.Fatalf("evidence answered %v", err)
+	}
+	// Whole, the same ledger counts the failure the bound would have hidden.
+	whole, err := reader(path).Map(context.Background(), "m", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope := scopeIn(t, whole, Strong, "a"); scope.Failed != 1 || scope.Passed != 40 {
+		t.Fatalf("whole read %+v", scope)
+	}
+}
+
+// A ROW THAT CANNOT BE READ MAKES THE HISTORY UNAVAILABLE and the file is
+// left byte for byte as it was; a blank line is harmless.
+func TestAnUnreadableRowMakesTheHistoryUnavailable(t *testing.T) {
+	good := func(path string) {
+		result(t, path, "m", "/w", "a", "late", time.Hour, Passed)
+	}
+	cases := map[string]string{
+		"corrupt failed row": `{"v":1,"kind":"result","id":"task:c:1","model":"m","place":"/w","work":"a","at":"2026-10-14T00:00:00Z","checks":[{"command":"go te`,
+		"not json":           `not a row at all`,
+		"unknown kind":       `{"v":1,"kind":"mystery","id":"x","at":"2026-10-14T00:00:00Z","model":"m","place":"/w","work":"a"}`,
+		"unknown version":    `{"v":2,"kind":"result","id":"x","at":"2026-10-14T00:00:00Z","model":"m","place":"/w","work":"a","checks":[{"command":"a","outcome":"failed"}]}`,
+		"no checks":          `{"v":1,"kind":"result","id":"x","at":"2026-10-14T00:00:00Z","model":"m","place":"/w","work":"a"}`,
+		"overlong":           `{"v":1,"kind":"result","id":"` + strings.Repeat("x", maxRowBytes) + `"}`,
+	}
+	for name, row := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), LedgerName)
+			if err := os.WriteFile(path, []byte(row+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			good(path)
+			before, _ := os.ReadFile(path)
+			m, err := reader(path).Map(context.Background(), "m", "")
+			if !errors.Is(err, ErrUnreadableHistory) || m.Totals != (Totals{}) || len(m.Groups) != 0 {
+				t.Fatalf("map answered %+v %v", m, err)
+			}
+			if _, err := reader(path).Evidence(context.Background(), "m", "scope:x", "", "", 5); !errors.Is(err, ErrUnreadableHistory) {
+				t.Fatalf("evidence answered %v", err)
+			}
+			if after, _ := os.ReadFile(path); string(after) != string(before) {
+				t.Fatal("the read rewrote the ledger")
+			}
+		})
+	}
+	path := filepath.Join(t.TempDir(), LedgerName)
+	good(path)
+	file, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	file.WriteString("\n   \n")
+	file.Close()
+	m, err := reader(path).Map(context.Background(), "m", "")
+	if err != nil || m.Totals.Results != 1 {
+		t.Fatalf("blank lines broke the read: %+v %v", m.Totals, err)
 	}
 }
 

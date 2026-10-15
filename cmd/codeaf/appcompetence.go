@@ -94,6 +94,11 @@ func competenceError(err error) error {
 		return appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	case errors.Is(err, competence.ErrBadCursor):
 		return appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
+	case errors.Is(err, competence.ErrHistoryLimit):
+		// UNAVAILABLE, NOT PARTIAL: the ledger's own words are the person's.
+		return appwire.Errorf(appwire.CodeEngine, "checked-result history exceeds this bounded read; competence unavailable")
+	case errors.Is(err, competence.ErrUnreadableHistory):
+		return appwire.Errorf(appwire.CodeEngine, "checked-result history has an unreadable row; competence unavailable")
 	case errors.Is(err, context.DeadlineExceeded):
 		return appwire.Errorf(appwire.CodeEngine, "competence read timed out")
 	}

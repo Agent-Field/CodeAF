@@ -258,3 +258,21 @@ func TestTheCompetenceWireShapeIsExact(t *testing.T) {
 		}
 	}
 }
+
+// A LEDGER THE READER CANNOT ANSWER FOR IS UNAVAILABLE, in the engine's words,
+// from both doors: never a map of part of it.
+func TestCompetenceUnavailableHistoryIsAnHonestEngineError(t *testing.T) {
+	for _, test := range []struct {
+		err  error
+		want string
+	}{
+		{competence.ErrHistoryLimit, "checked-result history exceeds this bounded read; competence unavailable"},
+		{competence.ErrUnreadableHistory, "checked-result history has an unreadable row; competence unavailable"},
+	} {
+		var wire *appwire.Error
+		got := competenceError(test.err)
+		if !errors.As(got, &wire) || wire.Code != appwire.CodeEngine || wire.Message != test.want {
+			t.Fatalf("%v became %#v", test.err, got)
+		}
+	}
+}

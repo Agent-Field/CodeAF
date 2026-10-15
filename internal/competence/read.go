@@ -20,14 +20,21 @@ import (
 
 // THE READ IS BOUNDED AND IT IS ONE READ.
 //
-// Every question — the map, a page of evidence — reads the ledger's newest
-// [DefaultMaxBytes] once, folds it, and answers. Nothing is cached between
-// calls and nothing polls: a surface asks when it opens and when the person
-// asks again. A ledger larger than the bound is read from its end, so the
-// newest history is what is kept, and the answer says it was cut.
+// Every question — the map, a page of evidence — reads the whole ledger once,
+// folds it, and answers. Nothing is cached between calls and nothing polls: a
+// surface asks when it opens and when the person asks again.
+//
+// A CLASS IS A CLAIM ABOUT EVERY RESULT IN ITS WINDOW, so a read that did not
+// see every result answers NOTHING rather than a class. A ledger larger than
+// [DefaultMaxBytes] is [ErrHistoryLimit], and a ledger holding a row that
+// cannot be read is [ErrUnreadableHistory]: either way an old failed check may
+// be exactly what was missed, and a Strong drawn without it would be false.
+// Nothing is skipped, cut, guessed at or rewritten to get an answer; an empty
+// or absent ledger is the one honest "no evidence yet".
 
-// DefaultMaxBytes is how much of the ledger one read takes. A row is a few
-// hundred bytes, so this is on the order of a hundred thousand results.
+// DefaultMaxBytes is the largest ledger one read answers for. A row is a few
+// hundred bytes, so this is on the order of a hundred thousand results; past
+// it the read is [ErrHistoryLimit], never a partial answer.
 const DefaultMaxBytes int64 = 32 << 20
 
 // The evidence page bounds.
@@ -38,6 +45,17 @@ const (
 
 // ErrUnknownScope is a filter or scope id the map does not hold for this model.
 var ErrUnknownScope = errors.New("no such scope for this model")
+
+// ErrHistoryLimit is a ledger larger than one bounded read takes. Classifying
+// only its newest bytes could call a model strong while an older failed check
+// still inside the window went unseen, so no map or evidence is returned.
+var ErrHistoryLimit = errors.New("checked-result history exceeds this bounded read; competence unavailable")
+
+// ErrUnreadableHistory is a ledger holding a row this reader cannot take as a
+// checked result: not JSON, over-long, of a format or kind it does not know,
+// or missing what a result names. The row may have been a failed check, so no
+// map or evidence is returned. The ledger is left exactly as it is.
+var ErrUnreadableHistory = errors.New("checked-result history has an unreadable row; competence unavailable")
 
 // ErrBadCursor is a cursor that is not this package's, or not for this
 // model and scope.
@@ -148,8 +166,9 @@ type Map struct {
 	Totals  Totals         `json:"totals"`
 	Policy  PolicyView     `json:"policy"`
 	ReadAt  time.Time      `json:"read_at"`
-	// Truncated says the ledger was longer than one read takes, so the oldest
-	// history was not read; Omitted says what this answer left out for size.
+	// Truncated is always false on an answer, kept for the wire's shape: a
+	// ledger past one read is [ErrHistoryLimit], never a map of its newest
+	// part. Omitted says what this answer left out for size.
 	Truncated bool    `json:"truncated"`
 	Omitted   Omitted `json:"omitted"`
 }
@@ -213,7 +232,7 @@ func (i *item) outcome() Outcome {
 // folded is one read of the ledger.
 type folded struct {
 	byModel   map[string][]*item
-	truncated bool
+	truncated bool // always false: a ledger past the bound never folds
 	now       time.Time
 	policy    Policy
 }
@@ -243,7 +262,7 @@ func (r Reader) read(ctx context.Context) (*folded, error) {
 	// so what is held is one entry per result and never the file's rows.
 	results := map[string]*item{}
 	undos := map[string]time.Time{}
-	truncated, err := eachRow(ctx, path, limit, func(record Record) {
+	err := eachRow(ctx, path, limit, func(record Record) {
 		key := record.Model + "\x00" + record.ID
 		switch record.Kind {
 		case KindResult:
@@ -275,7 +294,6 @@ func (r Reader) read(ctx context.Context) (*folded, error) {
 	if err != nil {
 		return nil, err
 	}
-	out.truncated = truncated
 	// AN UNDO MARKS A RESULT; IT IS NEVER ONE. Work that finished with no check
 	// never counts, and taking it back does not make it count: an undo with no
 	// checked result beside it is dropped. An undo older than the result
@@ -294,71 +312,81 @@ func (r Reader) read(ctx context.Context) (*folded, error) {
 }
 
 // maxRowBytes is the longest line read as a row. The writer's own bounds keep
-// every row far under it; a longer line is somebody else's bytes and skipped.
+// every row far under it; a longer line is not one of this ledger's rows.
 const maxRowBytes = 64 << 10
 
-// eachRow hands every well-formed row in the newest limit bytes of the ledger
-// to fold, oldest first, and reports whether older bytes were left unread. A
-// line cut by the window's start, an over-long line and any line that is not a
-// row are skipped: a bad line costs one result, never the read.
-func eachRow(ctx context.Context, path string, limit int64, fold func(Record)) (bool, error) {
+// eachRow hands every row of the ledger to fold, oldest first, and answers
+// for the WHOLE ledger or for none of it.
+//
+// A ledger over limit bytes is [ErrHistoryLimit] before a byte of it is
+// folded. A line that is over-long, is not JSON, is of a format or kind this
+// reader does not know, or lacks what a result names is
+// [ErrUnreadableHistory]: skipping it would cost a result silently, and a
+// skipped failure flips a class. Only a blank line is ignored, and nothing is
+// deleted, repaired or recovered by guessing.
+func eachRow(ctx context.Context, path string, limit int64, fold func(Record)) error {
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return nil
 	}
 	if err != nil {
-		return false, err
+		return err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return false, err
+		return err
 	}
-	truncated := false
-	if size := info.Size(); size > limit {
-		truncated = true
-		if _, err := file.Seek(size-limit, io.SeekStart); err != nil {
-			return false, err
-		}
+	if info.Size() > limit {
+		return ErrHistoryLimit
 	}
+	// The reader is bounded too: a ledger that grew since the stat is read as
+	// it stood, and rows appended after are a later question's.
 	reader := bufio.NewReaderSize(io.LimitReader(file, limit), 64<<10)
 	var line []byte
-	skip := truncated
+	overlong := false
 	for count := 0; ; count++ {
 		if count%1024 == 0 && ctx.Err() != nil {
-			return false, ctx.Err()
+			return ctx.Err()
 		}
 		chunk, prefix, err := reader.ReadLine()
 		if err == io.EOF {
-			return truncated, nil
+			return nil
 		}
 		if err != nil {
-			return false, err
+			return err
 		}
 		if len(line)+len(chunk) <= maxRowBytes {
 			line = append(line, chunk...)
 		} else {
-			skip = true
+			overlong = true
 		}
 		if prefix {
 			continue
 		}
 		whole := bytes.TrimSpace(line)
 		line = line[:0]
-		if skip {
-			// The window began mid-line, or the line was past any row's size.
-			skip = false
+		if overlong {
+			return ErrUnreadableHistory
+		}
+		if len(whole) == 0 {
 			continue
 		}
 		var record Record
-		if len(whole) == 0 || json.Unmarshal(whole, &record) != nil {
-			continue
+		if json.Unmarshal(whole, &record) != nil || record.V != recordVersion {
+			return ErrUnreadableHistory
 		}
-		if record.Model == "" || record.ID == "" || record.Place == "" || record.Work == "" {
-			continue
+		if record.Model == "" || record.ID == "" || record.Place == "" || record.Work == "" || record.At.IsZero() {
+			return ErrUnreadableHistory
 		}
-		if record.Kind == KindResult && len(record.Checks) == 0 {
-			continue
+		switch record.Kind {
+		case KindResult:
+			if len(record.Checks) == 0 {
+				return ErrUnreadableHistory
+			}
+		case KindUndo:
+		default:
+			return ErrUnreadableHistory
 		}
 		fold(record)
 	}
