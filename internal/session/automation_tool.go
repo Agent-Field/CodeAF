@@ -414,19 +414,11 @@ func (a *Agent) automationChange(ctx context.Context, store *automation.Store, p
 	if err := item.Validate(); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
-	// THE CARD'S NEXT RUN IS THE ONE THE SAVE WILL GIVE IT: worked out again from
-	// now for a new schedule, the one it already has otherwise — none for a
-	// finished one — and none while it is paused, because a paused automation
-	// does not run whatever its schedule says.
-	var next time.Time
-	switch {
-	case item.Status == automation.StatusPaused:
-	case rescheduled:
-		if next, err = item.Schedule.First(now); err != nil {
-			return "Invalid arguments: " + err.Error(), true, nil
-		}
-	default:
-		next = stored.Next
+	// THE CARD'S NEXT RUN IS THE ONE THE SAVE WILL GIVE IT, by the one rule
+	// both doors keep ([automation.NextAfterChange]).
+	next, err := automation.NextAfterChange(stored, item, now)
+	if err != nil {
+		return "Invalid arguments: " + err.Error(), true, nil
 	}
 	whenWords := automation.Describe(item.Schedule, now)
 	if rescheduled {

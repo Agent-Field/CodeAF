@@ -285,6 +285,24 @@ A watch that looks through a tool is written without its look in the typed line 
 tool's arguments are not something anybody types on one line — and the edit leaves that
 look as it was.
 
+## A change that was not saved, or a reminder still finished — has already passed, a card answered too late, and renaming a finished reminder
+
+A one-time moment has to be still to come **when the card is saved**, not only when it is
+asked for. Move a reminder to 20:34 and answer the card at 20:34:05 and nothing is changed:
+a typed edit says `Wed 14 Oct 20:34:00 has already passed` and its card ends `not saved`;
+asked in the conversation, I am told `nothing was changed: Wed 14 Oct 20:34:00 has already
+passed`. The reminder stays as it was — finished, if it had already been said — so give it
+a moment still to come and it wakes again. A moment that passed in the current minute is
+said to the second; an older one, as `Wed 14 Oct 20:30 has already passed`.
+
+A finished reminder can be renamed, or given a new line to say, without moving it: the line
+`e` puts in the box keeps the moment it has, with its seconds when it has them
+(`at 2026-10-14T20:33:13`), and only a moment moved into the past is refused. It stays
+finished, with no next run, until a change gives it a moment still to come.
+
+A paused automation saved with a change stays paused: its card shows no next run, and a
+typed save says `saved weekly update · still paused — resume starts it again`.
+
 ## History — every run, read a run's whole result, why did I get this reminder, and open where it was asked
 
 `enter` on a row of `/automations` opens its history. The top says what it is — its title
@@ -572,7 +590,7 @@ A line that cannot be read says why and saves nothing:
 - `add needs a title first: add "weekly update" every "0 9 * * 1" do "…"`
 - `unknown word "daily" — the words are title, at, in, every, zone, say, do, look, files, until, time, usd, folder, once, worktree, checkout`
 - `cannot read the moment "someday" — say 18:00, 6pm, tomorrow 9am, monday 9am or 2026-10-12T09:00`
-- `Sat 10 Oct 09:00 has already passed`
+- `Sat 10 Oct 09:00 has already passed` — when the line is read, and again for an edit whose card is saved after its new moment
 - `a watch needs a rhythm to look on` · `a watch needs the condition it is looking for`
 - `an automation needs something to say or something to do`
 

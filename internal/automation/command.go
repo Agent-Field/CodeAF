@@ -228,8 +228,8 @@ func (c Command) Apply(base Automation, now time.Time) (Automation, error) {
 			a.Workspace = folder
 		}
 	}
-	if !a.Schedule.Repeats() && !a.Schedule.At.IsZero() && !a.Schedule.At.After(now) && c.touchesWhen() {
-		return Automation{}, fmt.Errorf("%s has already passed", a.Schedule.At.In(loc).Format("Mon 2 Jan 15:04"))
+	if !a.Schedule.Repeats() && !a.Schedule.At.IsZero() && !a.Schedule.At.After(now) && c.setsWhen(base, a) {
+		return Automation{}, errPassed(a.Schedule, now)
 	}
 	if err := a.Validate(); err != nil {
 		return Automation{}, err
@@ -237,17 +237,15 @@ func (c Command) Apply(base Automation, now time.Time) (Automation, error) {
 	return a, nil
 }
 
-// touchesWhen reports whether the line set the schedule, which is the only time
-// a moment in the past is the person's mistake rather than the automation's
-// history.
-func (c Command) touchesWhen() bool {
-	for _, cl := range c.clauses {
-		switch cl.word {
-		case "at", "in", "every", "zone":
-			return true
-		}
-	}
-	return c.Verb == VerbAdd
+// setsWhen reports whether the line put a's moment where it is, which is the
+// only time a moment in the past is the person's mistake rather than the
+// automation's history.
+//
+// AN EDIT LINE CARRIES THE MOMENT IT WAS WRITTEN WITH ([CommandLine]), so `at`
+// being in it says nothing: a finished reminder renamed keeps a moment that has
+// passed, and only a line that moves the moment is refused for where it put it.
+func (c Command) setsWhen(base, a Automation) bool {
+	return c.Verb == VerbAdd || ScheduleChanged(base.Schedule, a.Schedule)
 }
 
 // CommandLine is the `edit` line that makes an automation exactly what it is —
@@ -268,7 +266,7 @@ func CommandLine(a Automation) string {
 		if err != nil {
 			loc = time.Local
 		}
-		parts = append(parts, "at", a.Schedule.At.In(loc).Format(momentLayout))
+		parts = append(parts, "at", momentWord(a.Schedule.At.In(loc)))
 	}
 	if look := a.Look; look != nil {
 		switch {
@@ -307,6 +305,35 @@ func CommandLine(a Automation) string {
 // clock in the schedule's zone, to the minute.
 const momentLayout = "2006-01-02T15:04"
 
+// momentSecondsLayout is a moment written to the second and below. Reading it
+// takes any fraction of a second after the seconds, as Go's parsing does.
+const momentSecondsLayout = "2006-01-02T15:04:05"
+
+// momentWord writes a moment the way [parseMoment] reads it back as the same
+// instant: to the minute when that is all it has, and otherwise with its
+// seconds and their fraction.
+//
+// A WALL CLOCK THAT NAMES TWO INSTANTS CARRIES ITS OFFSET. In the hour a
+// fall-back repeats, `01:30` reads as the first one, so a moment in the second
+// is written as RFC 3339 with its offset, which [parseMoment] reads exactly.
+//
+// A MOMENT WITH SECONDS KEEPS THEM. `in 2m` and the conversation's `when.in`
+// make moments with seconds in them, and an edit line written to the minute
+// moved the moment it was meant to keep — earlier, so the next minute in the
+// box could be seconds away, and a save answered a beat late stored a moment
+// that had already passed.
+func momentWord(at time.Time) string {
+	layout := momentSecondsLayout + ".999999999"
+	if at.Second() == 0 && at.Nanosecond() == 0 {
+		layout = momentLayout
+	}
+	word := at.Format(layout)
+	if back, err := time.ParseInLocation(layout, word, at.Location()); err != nil || !back.Equal(at) {
+		return at.Format(time.RFC3339Nano)
+	}
+	return word
+}
+
 // parseMoment reads a moment the way a person types one: a time of day —
 // `18:00`, `6pm`, `6:30pm`, `18` — today, or after `today`, `tomorrow` or a
 // day of the week (`monday 9am`, `fri 17:30`, the next one to come); a date and
@@ -317,7 +344,7 @@ func parseMoment(text string, now time.Time, loc *time.Location) (time.Time, err
 	if at, err := time.Parse(time.RFC3339, text); err == nil {
 		return at, nil
 	}
-	for _, layout := range []string{momentLayout, "2006-01-02 15:04"} {
+	for _, layout := range []string{momentLayout, momentSecondsLayout, "2006-01-02 15:04", "2006-01-02 15:04:05"} {
 		if at, err := time.ParseInLocation(layout, text, loc); err == nil {
 			return at, nil
 		}

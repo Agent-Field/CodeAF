@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -537,5 +538,56 @@ func TestAHistoryKeepsItsNewestRunsAndTheirFolders(t *testing.T) {
 	}
 	if _, err := os.Stat(folder(kept.ID)); err != nil {
 		t.Fatalf("deleting the automation removed a worktree: %v", err)
+	}
+}
+
+// A FINISHED REMINDER MOVED LATER WAKES AGAIN, and a save that comes after the
+// new moment has passed is refused. A card answered late used to store the
+// passed moment as the next run, so the clock said the reminder at once and the
+// row was finished again a beat after the person saved it.
+func TestAFinishedReminderMovedLaterWakesAndALateSaveIsRefused(t *testing.T) {
+	s, now := openStore(t)
+	start := *now
+	finished := func() Automation {
+		t.Helper()
+		*now = start
+		r, err := s.Create(reminder(start.Add(2*time.Minute + 27*time.Second)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		*now = r.Schedule.At.Add(3 * time.Second)
+		if _, err := s.Take(r, *now); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := s.Get(r.ID)
+		if got.Status != StatusFinished {
+			t.Fatalf("a taken reminder is %q", got.Status)
+		}
+		return got
+	}
+
+	moved := finished()
+	moved.Schedule.At = now.Add(10 * time.Minute).Truncate(time.Minute)
+	saved, err := s.Update(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Status != StatusActive || !saved.Next.Equal(moved.Schedule.At) {
+		t.Fatalf("a finished reminder moved later is %q, next %v, want active at %v", saved.Status, saved.Next, moved.Schedule.At)
+	}
+
+	// The card went up with the next minute — 30 seconds away — and was
+	// answered 5 seconds after it.
+	late := finished()
+	late.Schedule.At = late.Schedule.At.Truncate(time.Minute).Add(time.Minute)
+	*now = late.Schedule.At.Add(5 * time.Second)
+	if _, err := s.Update(late); err == nil || !strings.Contains(err.Error(), "already passed") {
+		t.Fatalf("a moment that passed while the card was up was saved: %v", err)
+	}
+	if due, _ := s.Due(*now); len(due) != 0 {
+		t.Fatalf("a refused save left the reminder due: %+v", due)
+	}
+	if got, _ := s.Get(late.ID); got.Status != StatusFinished || got.Revision != late.Revision {
+		t.Fatalf("a refused save changed the reminder: %+v", got)
 	}
 }

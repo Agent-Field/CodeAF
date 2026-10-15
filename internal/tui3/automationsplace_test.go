@@ -3,6 +3,7 @@ package tui3
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -438,5 +439,151 @@ func TestAHostedWindowsTypedAutomationRunsInTheFarHome(t *testing.T) {
 	a.host = ""
 	if got := a.automationWorkspace(); got == "~" || got == "" {
 		t.Fatalf("a window on this machine sends %q", got)
+	}
+}
+
+// THE OWNER'S WALK: a reminder made with `in 2m` says its line and is finished;
+// `e` on its row puts its line in the box, the moment is moved to the next
+// minute, and the card is answered a beat after that minute came. That save
+// used to store the passed moment as the next run, so the clock said the
+// reminder at once and the row was finished again. It is refused now, and a
+// moment moved properly later wakes the reminder with that moment next.
+func TestAFinishedReminderEditedLaterWakesAgainAndALateSaveSaysSo(t *testing.T) {
+	a, store := automationLab(t)
+	now := time.Date(2026, 10, 14, 20, 31, 13, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+	store.SetClock(func() time.Time { return now })
+	finished := func() automation.Automation {
+		t.Helper()
+		drive(t, a, runCmd(a.automationsCommand(`add stretch in 2m say "stand up"`))...)
+		harnessSettled(t, a)
+		drive(t, a, key(session.AutomationSaveKey))
+		all, _ := store.List()
+		var made automation.Automation
+		for _, item := range all {
+			if item.Status == automation.StatusActive {
+				made = item
+			}
+		}
+		now = made.Schedule.At.Add(3 * time.Second)
+		if _, err := store.Take(made, now); err != nil {
+			t.Fatal(err)
+		}
+		readAutomationsNow(t, a)
+		got, _ := store.Get(made.ID)
+		if got.Status != automation.StatusFinished {
+			t.Fatalf("the said reminder is %q", got.Status)
+		}
+		return got
+	}
+	// editTo presses `e` on the reminder's row and sends its line with the
+	// moment moved to at.
+	editTo := func(item automation.Automation, at time.Time) {
+		t.Helper()
+		runCmd(a.openAutomationsAt(item.ID))
+		drive(t, a, key("right"), key("e"))
+		box := a.input.String()
+		line := regexp.MustCompile(` at [0-9T:.\-]+ `).ReplaceAllString(box, " at "+at.Format("2006-01-02T15:04")+" ")
+		if line == box {
+			t.Fatalf("the box holds no moment to move: %q", box)
+		}
+		a.input.reset()
+		drive(t, a, runCmd(a.automationsCommand(strings.TrimPrefix(line, "/"+placeAutomationsWord+" ")))...)
+		if a.auto == nil || a.auto.settled() || a.auto.head != typedEditHead {
+			t.Fatalf("the edit raised no card: %+v (%s)", a.auto, homeNotes(a))
+		}
+		if !a.auto.notice.Next.Equal(at) {
+			t.Fatalf("the card says the next run is %v, want %v", a.auto.notice.Next, at)
+		}
+		harnessSettled(t, a)
+	}
+
+	late := finished()
+	moment := late.Schedule.At.Truncate(time.Minute).Add(time.Minute)
+	editTo(late, moment)
+	now = moment.Add(5 * time.Second)
+	drive(t, a, key(session.AutomationSaveKey))
+	if due, _ := store.Due(now); len(due) != 0 {
+		t.Fatalf("a save answered after its moment left the reminder due at once: %+v", due)
+	}
+	if got, _ := store.Get(late.ID); got.Status != automation.StatusFinished {
+		t.Fatalf("a refused save left the reminder %q", got.Status)
+	}
+	if notes := homeNotes(a); !strings.Contains(notes, "already passed") {
+		t.Fatalf("the refusal does not say why: %q", notes)
+	}
+	if a.auto.verdict != autoNotSaved {
+		t.Fatalf("the late card settled as %q", a.auto.verdict)
+	}
+
+	moved := finished()
+	moment = now.Add(10 * time.Minute).Truncate(time.Minute)
+	editTo(moved, moment)
+	drive(t, a, key(session.AutomationSaveKey))
+	got, _ := store.Get(moved.ID)
+	if got.Status != automation.StatusActive || !got.Next.Equal(moment) {
+		t.Fatalf("a finished reminder moved later is %q, next %v, want active at %v", got.Status, got.Next, moment)
+	}
+}
+
+// AN EDIT'S CARD PROMISES THE NEXT RUN THE SAVE GIVES — the rule the
+// conversation's change keeps ([automation.NextAfterChange]): none for a
+// finished reminder whose moment stays, none while paused, and the one it has
+// for a rhythm the line did not change.
+func TestAnEditsCardSaysTheNextRunTheSaveGives(t *testing.T) {
+	a, store := automationLab(t, labWork("weekly update", "0 9 * * 1"), labWatch("ci on main"), labReminder("leave"))
+	byTitle := map[string]automation.Automation{}
+	for _, item := range a.watch.list {
+		byTitle[item.Title] = item
+	}
+	if _, err := store.SetStatus(byTitle["weekly update"].ID, automation.StatusPaused); err != nil {
+		t.Fatal(err)
+	}
+	reminder := byTitle["leave"]
+	if _, err := store.Take(reminder, reminder.Schedule.At.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	readAutomationsNow(t, a)
+	for _, item := range a.watch.list {
+		byTitle[item.Title] = item
+	}
+	cases := []struct {
+		title, more string
+		want        time.Time
+	}{
+		{"weekly update", "", time.Time{}},
+		// A paused rhythm given a new one still runs at none, and its receipt
+		// says it is paused rather than the slot the store keeps for it.
+		{"weekly update renamed", ` every "0 10 * * 1"`, time.Time{}},
+		{"leave", "", time.Time{}},
+		{"ci on main", "", byTitle["ci on main"].Next},
+	}
+	for _, c := range cases {
+		item := byTitle[c.title]
+		drive(t, a, runCmd(a.automationsCommand(automation.CommandLine(item)+` title "`+c.title+` renamed"`+c.more))...)
+		if a.auto == nil || a.auto.settled() {
+			t.Fatalf("%s: the edit raised no card (%s)", c.title, homeNotes(a))
+		}
+		if !a.auto.notice.Next.Equal(c.want) {
+			t.Fatalf("%s: the card says the next run is %v, want %v", c.title, a.auto.notice.Next, c.want)
+		}
+		harnessSettled(t, a)
+		drive(t, a, key(session.AutomationSaveKey))
+		saved, _ := store.Get(item.ID)
+		if saved.Title != c.title+" renamed" {
+			t.Fatalf("%s: saving the card stored %+v", c.title, saved)
+		}
+		if saved.Status == automation.StatusActive && !saved.Next.Equal(c.want) {
+			t.Fatalf("%s: the save gave next %v, the card said %v", c.title, saved.Next, c.want)
+		}
+		byTitle[saved.Title] = saved
+		if saved.Status != automation.StatusPaused {
+			continue
+		}
+		notes := homeNotes(a)
+		receipt := notes[strings.LastIndex(notes, typedSavedWord):]
+		if !strings.Contains(receipt, typedStillPaused) || strings.Contains(receipt, autoNextWord) {
+			t.Fatalf("%s: a paused save's receipt is %q, want it still paused and no next run", c.title, receipt)
+		}
 	}
 }

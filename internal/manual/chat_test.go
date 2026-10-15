@@ -2411,6 +2411,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you run something every monday morning", "automations"},
 		{"does it keep working when I close the terminal", "automations"},
 		{"how do I stop a reminder", "automations"},
+		// A change refused at save time, and a finished reminder renamed: asked
+		// by somebody who moved a reminder and found it still finished.
+		{"I moved my reminder later but it still says finished", "automations"},
+		{"why was my change to the reminder not saved", "automations"},
+		{"can I rename a finished reminder", "automations"},
 		// The two clocks, asked apart: how often a watch looks, which is its own
 		// rhythm now rather than one figure for everything, and the rhythm
 		// somebody names when they want the thing to stop.

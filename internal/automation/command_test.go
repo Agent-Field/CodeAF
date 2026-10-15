@@ -257,3 +257,119 @@ func TestAFolderUnderHomeIsKeptForTheStoreToRead(t *testing.T) {
 		t.Fatalf("the store kept %q, want this machine's %q", made.Workspace, filepath.Join(house, "app"))
 	}
 }
+
+// A MOMENT KEEPS ITS SECONDS ON THE WAY ROUND. `in 2m` and the conversation's
+// `when.in` make moments with seconds in them; an edit line written to the
+// minute moved the reminder by them, so the box put a different moment in front
+// of the person than the one it would run at.
+func TestCommandLineKeepsTheSecondsOfAMoment(t *testing.T) {
+	now, loc := commandNow(t)
+	for _, at := range []time.Time{
+		time.Date(2026, 10, 10, 14, 32, 27, 0, loc),
+		time.Date(2026, 10, 10, 14, 32, 27, 481_000_000, loc),
+		time.Date(2026, 10, 10, 14, 33, 0, 0, loc),
+	} {
+		original := Automation{ID: "r", Title: "stretch", Workspace: "/work/project", Schedule: Schedule{At: at, Zone: "America/Toronto"}, Action: Action{Say: "stand up"}}
+		line := CommandLine(original)
+		cmd, err := ParseCommand(line)
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		back, err := cmd.Apply(original, now)
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		if !back.Schedule.At.Equal(at) || ScheduleChanged(original.Schedule, back.Schedule) {
+			t.Fatalf("%s moved the moment %v to %v", line, at, back.Schedule.At)
+		}
+	}
+	if line := CommandLine(Automation{ID: "r", Schedule: Schedule{At: time.Date(2026, 10, 10, 14, 33, 0, 0, loc), Zone: "America/Toronto"}}); !strings.HasSuffix(line, " at 2026-10-10T14:33") {
+		t.Fatalf("a whole minute is written %q, want it to the minute", line)
+	}
+}
+
+// A FINISHED REMINDER'S OWN LINE IS NOT A MOMENT IN THE PAST TYPED BY MISTAKE.
+// Its moment is its history, so a line that leaves it where it was — a new
+// title, a new line to say — reads, and only a moment moved into the past is
+// refused.
+func TestAnEditThatKeepsAPassedMomentReads(t *testing.T) {
+	now, loc := commandNow(t)
+	finished := Automation{ID: "r", Title: "stretch", Workspace: "/work/project", Status: StatusFinished,
+		Schedule: Schedule{At: now.Add(-3*time.Minute - 27*time.Second), Zone: "America/Toronto"}, Action: Action{Say: "stand up"}}
+	cmd, err := ParseCommand(CommandLine(finished) + ` title "stretch again"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := cmd.Apply(finished, now)
+	if err != nil {
+		t.Fatalf("retitling a finished reminder: %v", err)
+	}
+	if edited.Title != "stretch again" || !edited.Schedule.At.Equal(finished.Schedule.At) {
+		t.Fatalf("the edit read as %+v", edited)
+	}
+	earlier := finished.Schedule.At.In(loc).Add(-time.Hour).Format("2006-01-02T15:04")
+	cmd, err = ParseCommand("edit r at " + earlier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cmd.Apply(finished, now); err == nil || !strings.Contains(err.Error(), "already passed") {
+		t.Fatalf("a moment moved into the past = %v, want it refused", err)
+	}
+}
+
+// A MOMENT IN THE HOUR A FALL-BACK REPEATS KEEPS WHICH ONE IT IS. Toronto's
+// clocks go from 01:59 EDT back to 01:00 EST on Sunday 1 November 2026, so
+// `01:30` names two instants; the line carries the offset for the second.
+func TestAMomentInARepeatedHourRoundTrips(t *testing.T) {
+	_, loc := commandNow(t)
+	second := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC).In(loc) // 01:30 EST
+	first := time.Date(2026, 11, 1, 5, 30, 0, 0, time.UTC).In(loc)  // 01:30 EDT
+	for _, c := range []struct {
+		at, now time.Time
+		status  Status
+		more    string
+	}{
+		// Saved unedited while it is still to come.
+		{second, second.Add(-3 * time.Hour), StatusActive, ""},
+		{first, first.Add(-3 * time.Hour), StatusActive, ""},
+		// Renamed after it was said.
+		{second, second.Add(time.Hour), StatusFinished, ` title "stretch again"`},
+	} {
+		original := Automation{ID: "r", Title: "stretch", Workspace: "/work/project", Status: c.status,
+			Schedule: Schedule{At: c.at, Zone: "America/Toronto"}, Action: Action{Say: "stand up"}}
+		line := CommandLine(original) + c.more
+		cmd, err := ParseCommand(line)
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		back, err := cmd.Apply(original, c.now)
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		if !back.Schedule.At.Equal(c.at) {
+			t.Fatalf("%s moved the moment %v to %v", line, c.at, back.Schedule.At)
+		}
+	}
+	if line := CommandLine(Automation{ID: "r", Schedule: Schedule{At: first, Zone: "America/Toronto"}}); !strings.HasSuffix(line, " at 2026-11-01T01:30") {
+		t.Fatalf("the first 01:30 is written %q, want the plain wall clock", line)
+	}
+}
+
+// A MOMENT THAT PASSED IN THIS VERY MINUTE IS SAID TO THE SECOND, so the
+// refusal does not read as 20:33 passing at 20:33.
+func TestAMomentPassedThisMinuteIsSaidToTheSecond(t *testing.T) {
+	now, loc := commandNow(t)
+	now = now.Add(5 * time.Second)
+	base := Automation{ID: "r", Title: "stretch", Workspace: "/work/project", Schedule: Schedule{At: now.Add(time.Hour), Zone: "America/Toronto"}, Action: Action{Say: "stand up"}}
+	cmd, err := ParseCommand("edit r at " + now.In(loc).Format("15:04"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cmd.Apply(base, now); err == nil || !strings.Contains(err.Error(), "14:30:00 has already passed") {
+		t.Fatalf("a moment passed this minute = %v", err)
+	}
+	cmd, _ = ParseCommand("edit r at 14:29")
+	if _, err := cmd.Apply(base, now); err == nil || !strings.HasSuffix(err.Error(), "14:29 has already passed") {
+		t.Fatalf("a moment passed before this minute = %v", err)
+	}
+}
