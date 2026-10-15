@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,8 +50,12 @@ func TestPlanUnstartedRunningRootShowsMachineHold(t *testing.T) {
 // a different one.
 type planFake struct {
 	*taskFake
-	plan  []session.PlanTaskRow
-	pages map[string]session.PlanTaskPage
+	// planMu guards plan and pages between the surface's off-loop reads and the
+	// verbs, which also run off the loop (offloop.go). A test that changes a
+	// page while a read may be out does it through setPage.
+	planMu sync.Mutex
+	plan   []session.PlanTaskRow
+	pages  map[string]session.PlanTaskPage
 
 	// THE SIX VERBS, each recording the call it was asked for so a test can read
 	// back the id and the words a key produced. `refuse` is the sentence every one
@@ -73,7 +78,13 @@ type planCall struct {
 	n    int
 }
 
-func (f *planFake) PlanTasks() []session.PlanTaskRow { return f.plan }
+// PlanTasks answers a copy, as the real store does: the surface holds what it
+// read, and a verb writing the next status must not reach into that.
+func (f *planFake) PlanTasks() []session.PlanTaskRow {
+	f.planMu.Lock()
+	defer f.planMu.Unlock()
+	return append([]session.PlanTaskRow(nil), f.plan...)
+}
 
 // PlanRunSummary and RefreshRunSummary keep this general plan fixture on the
 // local-store door while answering that it has no stored summary. Summary tests
@@ -87,8 +98,17 @@ func (f *planFake) RefreshRunSummary(context.Context, string, time.Time) (sessio
 }
 
 func (f *planFake) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
+	f.planMu.Lock()
+	defer f.planMu.Unlock()
 	page, ok := f.pages[id]
 	return page, ok
+}
+
+// setPage replaces one store page under the lock the off-loop read takes.
+func (f *planFake) setPage(id string, page session.PlanTaskPage) {
+	f.planMu.Lock()
+	f.pages[id] = page
+	f.planMu.Unlock()
 }
 
 func (f *planFake) PlanNote(id, text string) error {
@@ -103,6 +123,8 @@ func (f *planFake) PlanNote(id, text string) error {
 // note verb does: the next read carries it with its author and its moment, which
 // is the receipt the page draws and the store cannot draw itself.
 func (f *planFake) addNote(id, text string) {
+	f.planMu.Lock()
+	defer f.planMu.Unlock()
 	page, ok := f.pages[id]
 	if !ok {
 		return
@@ -148,12 +170,20 @@ func (f *planFake) PlanPriority(id string, n int) error {
 // setStatus writes a verb's effect back over the store row, which is what makes a
 // second `p` resume what the first paused: the toggle reads the status fresh
 // ([app.taskPlanPaused]) and the pane's next reading wears the new word.
+//
+// It writes a new slice rather than over the old one: [planAppWith] hands the
+// surface the fake's own rows, and a verb runs off the loop while the loop may
+// be drawing them.
 func (f *planFake) setStatus(id, status string) {
-	for i := range f.plan {
-		if f.plan[i].ID == id {
-			f.plan[i].Status = status
+	f.planMu.Lock()
+	defer f.planMu.Unlock()
+	rows := append([]session.PlanTaskRow(nil), f.plan...)
+	for i := range rows {
+		if rows[i].ID == id {
+			rows[i].Status = status
 		}
 	}
+	f.plan = rows
 }
 
 // planAppWith is [taskApp] over an agent that answers a plan: a pinned clock, a

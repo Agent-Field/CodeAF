@@ -363,7 +363,7 @@ func TestAProgramRoomReadsTheLandingTheStoreEndedAhead(t *testing.T) {
 			openProgramRoomNow(t, a)
 			page := agent.planFake.pages["7"]
 			page.Row.Status, page.Row.Ended = "done", a.now()
-			agent.planFake.pages["7"] = page
+			agent.planFake.setPage("7", page)
 			planBeat(t, a)
 			if a.room.done || !a.programRoomFollows() {
 				t.Fatalf("a store that ended ahead of the row took the room off the clock: done=%v", a.room.done)
@@ -385,10 +385,10 @@ func TestAProgramRoomReadsTheLandingTheStoreEndedAhead(t *testing.T) {
 				// The read that was out answers with the page before the landing.
 				stale := page
 				stale.Notes = nil
-				agent.planFake.pages["7"] = stale
+				agent.planFake.setPage("7", stale)
 				drain(t, a, out)
 			}
-			agent.planFake.pages["7"] = page
+			agent.planFake.setPage("7", page)
 			for range 2 {
 				drive(t, a, frameMsg{})
 			}
