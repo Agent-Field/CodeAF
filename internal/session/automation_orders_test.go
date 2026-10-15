@@ -33,6 +33,9 @@ func TestAStandingOrderIsProposedBeforeTheCardAndRatifiedByTheYes(t *testing.T) 
 			if q := AutomationQuestion(*event.Automation); q.Subject.Ref != held.ID {
 				t.Errorf("the card names %q, not the order %q", q.Subject.Ref, held.ID)
 			}
+			if head := AutomationHead(event.Automation.Automation); head == AutomationChangeHead {
+				t.Errorf("a proposed order's card is headed as a change: %q", head)
+			}
 			agent.ResolveAutomation(event.Automation.ID, AutomationAnswer{Save: yes})
 		})
 		all, _ := store.List()

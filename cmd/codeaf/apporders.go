@@ -167,15 +167,20 @@ func orderView(store *automation.Store, a automation.Automation, now time.Time) 
 
 // orderRunView is one run as an order's row says it.
 func orderRunView(run automation.Run) appwire.OrderRun {
-	v := appwire.OrderRun{ID: run.ID, DueAt: run.Due, At: run.Started, Late: run.Why == automation.WhyLate, Line: run.Line, USD: run.USD, Transcript: run.Transcript}
+	v := appwire.OrderRun{ID: run.ID, DueAt: run.Due, Late: run.Why == automation.WhyLate, Line: run.Line, USD: run.USD, Transcript: run.Transcript}
+	if !run.Started.IsZero() {
+		at := run.Started
+		v.At = &at
+	}
 	if run.Phase == automation.PhaseAsking {
 		v.AskID = appwire.OrderAskPrefix + strconv.FormatInt(run.ID, 10)
 	}
 	if run.Phase != automation.PhaseOver {
 		return v
 	}
-	if v.At.IsZero() {
-		v.At = run.Finished
+	if v.At == nil && !run.Finished.IsZero() {
+		at := run.Finished
+		v.At = &at
 	}
 	switch run.Outcome {
 	case automation.OutcomeSkipped:

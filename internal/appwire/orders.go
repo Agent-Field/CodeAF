@@ -110,7 +110,8 @@ type OrderRun struct {
 	// AskID is set on a run waiting for the person: the id asks.answer takes.
 	AskID string    `json:"ask_id,omitempty"`
 	DueAt time.Time `json:"due_at"`
-	At    time.Time `json:"at,omitempty"`
+	// At is when it started, or ended for a run that never started.
+	At *time.Time `json:"at,omitempty"`
 	// Result is set once it is over; Late says it started late, after a slot
 	// missed while the Mac was asleep or codeaf was closed.
 	Result string  `json:"result,omitempty"`
