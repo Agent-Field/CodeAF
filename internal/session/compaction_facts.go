@@ -149,7 +149,8 @@ func (a *Agent) ContextUse() ContextUse {
 func (a *Agent) CompactObserved(ctx context.Context, observe func(Event)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cut := &manualPassCut{cancel: cancel}
+	cut := &manualPassCut{cancel: cancel, done: make(chan struct{})}
+	defer close(cut.done)
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -183,7 +184,10 @@ func (a *Agent) CompactObserved(ctx context.Context, observe func(Event)) error 
 }
 
 // manualPassCut is the cut of one pass a surface asked for outside a turn.
-type manualPassCut struct{ cancel context.CancelFunc }
+type manualPassCut struct {
+	cancel context.CancelFunc
+	done   chan struct{} // closed once the pass has finished journaling
+}
 
 // cutManualPassLocked takes the running manual pass's cut, to be called with
 // the lock released.

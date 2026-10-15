@@ -70,3 +70,65 @@ func TestManualSummaryReservationRejectsAnotherPassBeforeStart(t *testing.T) {
 		t.Fatalf("second caller reached provider %d times before first pass started", n)
 	}
 }
+
+// Cancellation can return before a provider goroutine has handed its error
+// back. Close must give that pass the same bounded journal grace as a turn.
+type closingSummaryModel struct {
+	started chan struct{}
+	cut     chan struct{}
+	release chan struct{}
+}
+
+func (m *closingSummaryModel) CompleteWithMessages(ctx context.Context, _ []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	close(m.started)
+	<-ctx.Done()
+	close(m.cut)
+	<-m.release
+	return nil, ctx.Err()
+}
+
+func TestCloseJoinsAManualSummaryBeforeClosingItsJournal(t *testing.T) {
+	model := &closingSummaryModel{started: make(chan struct{}), cut: make(chan struct{}), release: make(chan struct{})}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(model.release) }) }
+	defer release()
+	agent, path := summaryAgent(t, model)
+	journaledPersonHeavy(agent, 1, 12, 20_000)
+	compacted := make(chan error, 1)
+	go func() { compacted <- agent.CompactObserved(context.Background(), nil) }()
+	select {
+	case <-model.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("manual summary did not start")
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- agent.Close() }()
+	select {
+	case <-model.cut:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not cancel the summary request")
+	}
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before the summary could journal its final fact: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	release()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not join the canceled summary")
+	}
+	select {
+	case <-compacted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("manual summary did not finish")
+	}
+	record := ReadTranscript(path)
+	if len(record.Passes) == 0 || record.Passes[len(record.Passes)-1].Failed != SummaryFailedInterrupted {
+		t.Fatal("the canceled summary's final fact was lost at Close")
+	}
+}

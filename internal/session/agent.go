@@ -2445,6 +2445,14 @@ func (a *Agent) Close() error {
 	file := a.file
 	cancel := a.cancel
 	done := a.done
+	// Closing admission above also closes the gap in which a new manual pass
+	// could have reserved its cancellation after the early cut. Join the pass
+	// before closing its journal, on the turn's same bounded grace.
+	cutPass = a.cutManualPassLocked()
+	var manualDone <-chan struct{}
+	if a.manualPass != nil {
+		manualDone = a.manualPass.done
+	}
 	// The graph THIS session owns, and nil for every session that does not: a
 	// task worker reaches its parent's graph through config.tasker, and a nil
 	// here is what keeps its close from shutting a door the parent still
@@ -2475,6 +2483,7 @@ func (a *Agent) Close() error {
 	// joins from inside its own goroutine.
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
+	cutPass()
 	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
 	// below can take time: a window that is closing is not somebody in front of
 	// this process, and every reader of the registry should stop counting it at
@@ -2520,11 +2529,18 @@ func (a *Agent) Close() error {
 	// process between the answer and the append would lose it (title.go).
 	a.waitForTitle()
 	a.closeDiscussions()
-	if done != nil {
+	if done != nil || manualDone != nil {
 		timer := time.NewTimer(closeGrace)
-		select {
-		case <-done:
-		case <-timer.C:
+	join:
+		for _, ended := range []<-chan struct{}{done, manualDone} {
+			if ended == nil {
+				continue
+			}
+			select {
+			case <-ended:
+			case <-timer.C:
+				break join
+			}
 		}
 		timer.Stop()
 	}
