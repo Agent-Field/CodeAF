@@ -383,6 +383,9 @@ type appAgent struct {
 	// failedKind is how that turn failed; a turn refused for money is run
 	// again when the limit is raised.
 	failedKind string
+	// failedShown is what that turn's entry showed, when it carried
+	// attachments: a retry sends the same words and shows the same message.
+	failedShown *appSending
 	// step is the title of the call the running turn is on, the live line
 	// a crew's member row and the agent's own row show while it works.
 	step string
@@ -401,14 +404,13 @@ type appAgent struct {
 	// calls is the work log's record of this agent's tool calls (apptools.go).
 	calls *appCallLog
 	// queue is the person's messages waiting for the turn to end, attach the
-	// attachments kept for the next message, walk the last walk of the
-	// workspace's files, and sending the message being sent (appconvo.go).
+	// attachments kept for the next message, and walk the last walk of the
+	// workspace's files (appconvo.go).
 	queue   []appQueued
 	queueN  int
 	attach  map[string]appAttach
 	attachN int
 	walk    *appWalk
-	sending *appSending
 }
 
 // appTurnMark is what this process knows of one of the person's messages.
@@ -425,6 +427,13 @@ type appTurnMark struct {
 type appBoot struct {
 	model  string
 	budget *float64
+}
+
+// appFirst is a created agent's first message: the words the model is sent,
+// and, when attachments rode on it, what its entry shows instead.
+type appFirst struct {
+	words, clientID string
+	shown           *appSending
 }
 
 // appLive is one conversation the process holds.
@@ -762,11 +771,31 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	if b.isClosing() {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
+	text := strings.TrimSpace(ask.Text)
+	// EVERY ATTACHMENT IS READ BEFORE ANYTHING IS MADE: one that is malformed,
+	// over a bound, or a file that is not there refuses the create whole, so a
+	// refusal leaves no folder, no agent and no event behind it. It is a stat
+	// per file, outside every lock.
+	if err := appwire.CheckAttachSources(ask.Attachments); err != nil {
+		return appwire.Agent{}, err
+	}
+	kept := make([]appAttach, 0, len(ask.Attachments))
+	for _, source := range ask.Attachments {
+		attach, err := b.prepareAttach(resolved, nil, appwire.Attachment{
+			Kind: source.Kind, Path: strings.TrimSpace(source.Path), URL: strings.TrimSpace(source.URL),
+		}, source.Text, true)
+		if err != nil {
+			return appwire.Agent{}, err
+		}
+		kept = append(kept, attach)
+	}
+	if err := appAttachChars(kept); err != nil {
+		return appwire.Agent{}, err
+	}
 	transcript, err := b.mint(resolved)
 	if err != nil {
 		return appwire.Agent{}, appEngineError(err)
 	}
-	text := strings.TrimSpace(ask.Text)
 	model := strings.TrimSpace(ask.Model)
 	a := b.agent(appAgentID(transcript))
 	if ask.BudgetUSD != nil && *ask.BudgetUSD > 0 {
@@ -785,13 +814,24 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 		}
 	}
 	var view appwire.Agent
+	first := appFirst{clientID: ask.ClientID}
 	b.locked(func() {
+		// The attachments are numbered as staged ones are, so an id on the
+		// first entry is never one a later chip is given.
+		for i := range kept {
+			a.attachN++
+			kept[i].view.ID = "at" + strconv.Itoa(a.attachN)
+		}
+		first.words, first.shown = appAttachWords(text, kept), appAttachShown(text, kept)
 		a.transcript = transcript
 		a.view.Title = session.FirstMessageName(text)
+		if a.view.Title == "" && len(kept) > 0 {
+			a.view.Title = session.FirstMessageName(kept[0].view.Title)
+		}
 		a.view.Workspace = resolved
 		a.view.Model = model
 		a.view.State = appwire.StateIdle
-		if text != "" {
+		if first.words != "" {
 			a.view.State = appwire.StateWorking
 		}
 		a.view.UpdatedAt = b.now()
@@ -801,36 +841,37 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
-	clientID := ask.ClientID
-	guard.Go("app/create", func() { b.bootAgent(a, text, clientID) })
+	guard.Go("app/create", func() { b.bootAgent(a, first) })
 	return view, nil
 }
 
 // bootAgent opens a created agent's conversation and starts its first turn.
-func (b *appBackend) bootAgent(a *appAgent, text, clientID string) {
+func (b *appBackend) bootAgent(a *appAgent, first appFirst) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	view, opened, err := b.ensureLocked(a)
 	b.locked(func() { a.opening = false })
 	if err != nil {
-		b.bootFailed(a, text, err)
+		b.bootFailed(a, first, err)
 		return
 	}
-	if text == "" {
+	if first.words == "" {
 		if opened {
 			b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
 		return
 	}
 	// The agent already reads working; the turn's own start says the rest.
-	if _, err := b.startLocked(a, text, clientID); err != nil {
-		b.bootFailed(a, text, err)
+	if _, err := b.startLocked(a, first.words, first.clientID, first.shown); err != nil {
+		b.bootFailed(a, first, err)
 	}
 }
 
 // bootFailed is a created agent whose conversation could not be opened or
 // started: a failed turn the person can retry, and an agent that reads stopped.
-func (b *appBackend) bootFailed(a *appAgent, text string, err error) {
+// The retry sends the same words and shows the same attachments.
+func (b *appBackend) bootFailed(a *appAgent, first appFirst, err error) {
+	text := first.words
 	words := err.Error()
 	var wire *appwire.Error
 	if errors.As(appEngineError(err), &wire) {
@@ -839,7 +880,7 @@ func (b *appBackend) bootFailed(a *appAgent, text string, err error) {
 	var view appwire.Agent
 	b.locked(func() {
 		if text != "" {
-			a.failed, a.failedKind = text, appwire.ErrorOther
+			a.failed, a.failedKind, a.failedShown = text, appwire.ErrorOther, first.shown
 		}
 		a.boot = nil
 		if a.live == nil {
@@ -1310,6 +1351,12 @@ func (b *appBackend) liveOf(a *appAgent) *appLive {
 
 // Send starts one turn, opening the conversation first if it is not held.
 func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
+	return b.send(id, text, clientID, nil)
+}
+
+// send is [appBackend.Send] with what the person's entry shows, when that is
+// not the words sent.
+func (b *appBackend) send(id, text, clientID string, shown *appSending) (uint64, error) {
 	a, err := b.find(id)
 	if err != nil {
 		return 0, err
@@ -1318,6 +1365,12 @@ func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
 	// opening it and starting the turn.
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	return b.sendLocked(a, text, clientID, shown)
+}
+
+// sendLocked opens a's conversation if it is not held and starts one turn on
+// it. The caller holds a.gate.
+func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSending) (uint64, error) {
 	view, opened, err := b.ensureLocked(a)
 	if err != nil {
 		return 0, err
@@ -1325,7 +1378,7 @@ func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
 	if opened {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	return b.startLocked(a, text, clientID)
+	return b.startLocked(a, text, clientID, shown)
 }
 
 // Retry sends the words of the agent's last failed turn again.
@@ -1335,15 +1388,18 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 		return 0, err
 	}
 	var text string
-	b.locked(func() { text = a.failed })
+	var shown *appSending
+	b.locked(func() { text, shown = a.failed, a.failedShown })
 	if text == "" {
 		return 0, appwire.Errorf(appwire.CodeNotFound, "this agent has no failed turn to run again")
 	}
-	return b.Send(id, text, "")
+	return b.send(id, text, "", shown)
 }
 
 // startLocked starts one turn on a held conversation. The caller holds a.gate.
-func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, error) {
+// shown, when set, is what the person's entry shows instead of text: their
+// own words and the attachments the text was written from.
+func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appSending) (uint64, error) {
 	var id string
 	var live *appLive
 	var refused error
@@ -1370,7 +1426,9 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 	now := b.now()
 	if limit := b.dayCap(now); limit > 0 {
 		if spent := b.spentToday(now); spent >= limit {
-			return b.dayRefused(a, live, text, spent, limit), nil
+			turn := b.dayRefused(a, live, text, spent, limit)
+			b.locked(func() { a.failedShown = shown })
+			return turn, nil
 		}
 	}
 	// The agent's budget is bound again, so a raise for today ends at midnight.
@@ -1379,7 +1437,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 	}
 	var turn uint64
 	var n int
-	shown, attachments := text, []appwire.Attachment(nil)
+	entryText, attachments := text, []appwire.Attachment(nil)
 	b.locked(func() {
 		if live.running {
 			refused = appwire.Errorf(appwire.CodeBusy, "this agent is already working on a turn")
@@ -1395,14 +1453,11 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 			a.marks = map[int]appTurnMark{}
 		}
 		mark := appTurnMark{turn: turn, clientID: clientID}
-		if a.sending != nil {
-			mark.text, mark.attachments = a.sending.text, a.sending.attachments
+		if shown != nil {
+			mark.text, mark.attachments = shown.text, shown.attachments
+			entryText, attachments = shown.text, shown.attachments
 		}
 		a.marks[n] = mark
-		shown, attachments = text, mark.attachments
-		if mark.text != "" {
-			shown = mark.text
-		}
 	})
 	if refused != nil {
 		return 0, refused
@@ -1426,7 +1481,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: shown, ClientID: clientID, Attachments: attachments,
+		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments,
 	}})
 	long := b.watchLong(id, live, turn, b.now())
 	b.newTurnCalls(a)
@@ -1633,9 +1688,12 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		if live.stopping {
 			ok, kind, status = false, appwire.ErrorStopped, 0
 		}
-		a.failed, a.failedKind = "", ""
+		a.failed, a.failedKind, a.failedShown = "", "", nil
 		if !ok {
 			a.failed, a.failedKind = text, kind
+			if mark := a.marks[n]; len(mark.attachments) > 0 {
+				a.failedShown = &appSending{text: mark.text, attachments: mark.attachments}
+			}
 		}
 	})
 	switch {
@@ -2165,7 +2223,9 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, mark
 			entry.Turn = mark.turn
 			if entry.Kind == appwire.EntryUser {
 				entry.ClientID = mark.clientID
-				if mark.text != "" {
+				// A message of attachments alone has no words of its own,
+				// and still shows as what the person sent.
+				if mark.text != "" || len(mark.attachments) > 0 {
 					entry.Text, entry.Attachments = mark.text, mark.attachments
 				}
 			}

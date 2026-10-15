@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -64,6 +65,8 @@ type appQueued struct {
 type appAttach struct {
 	view    appwire.Attachment
 	content string
+	// chars is a paste's length in characters, counted once.
+	chars int
 }
 
 // appNotePending is a note to a task not yet read.
@@ -726,32 +729,130 @@ func (b *appBackend) StatFiles(agent string, paths []string) ([]appwire.FileStat
 	return out, nil
 }
 
+// prepareAttach is one attachment made ready to ride on a message: a file
+// stat'ed against the workspace, a link parsed, a paste counted. It is the one
+// reading of an attachment, shared by a chip staged with attachments.add and a
+// source named on agents.create. present says a file must be there now — a
+// create has no chip to show a missing file on, so it refuses one instead.
+// A file is read no further than its stat: the model is sent its path, and
+// reads it with its own tools.
+func (b *appBackend) prepareAttach(workspace string, changed map[string]appwire.FileChange, attachment appwire.Attachment, text string, present bool) (appAttach, error) {
+	kept := appAttach{view: attachment}
+	switch attachment.Kind {
+	case appwire.AttachFile:
+		stat := b.statFile(workspace, changed, attachment.Path)
+		if present && stat.State == appwire.FileOutside {
+			// A path outside the workspace is still a path: it is there when
+			// it is there.
+			if _, err := os.Stat(appAttachFull(workspace, attachment.Path)); err != nil {
+				stat.State = appwire.FileMissing
+			}
+		}
+		if present && stat.State == appwire.FileMissing {
+			return appAttach{}, appwire.Errorf(appwire.CodeBadParams, "there is no file or folder at %s", attachment.Path)
+		}
+		kept.view.State, kept.view.Add, kept.view.Del = stat.State, stat.Add, stat.Del
+		kept.view.Title = filepath.Base(attachment.Path)
+	case appwire.AttachLink:
+		parsed, err := url.Parse(strings.TrimSpace(attachment.URL))
+		if err != nil || parsed.Host == "" {
+			return appAttach{}, appwire.Errorf(appwire.CodeBadParams, "that is not a link")
+		}
+		kept.view.URL, kept.view.Title = parsed.String(), parsed.Host
+	case appwire.AttachPaste:
+		chars := utf8.RuneCountInString(text)
+		if chars > appwire.MaxPasteChars {
+			return appAttach{}, appwire.Errorf(appwire.CodeBadParams, "one paste holds at most %d characters", appwire.MaxPasteChars)
+		}
+		lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
+		kept.view.Title, kept.view.Lines, kept.content, kept.chars = "Pasted text", &lines, text, chars
+	default:
+		return appAttach{}, appwire.Errorf(appwire.CodeBadParams, "kind is file, link or paste")
+	}
+	return kept, nil
+}
+
+// appAttachFull is a path as the workspace reads it.
+func appAttachFull(workspace, path string) string {
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(workspace, path)
+	}
+	return filepath.Clean(path)
+}
+
+// appAttachWords is the message the model is sent: the person's words, then
+// each attachment as words of its own. It is the one spelling of attachments
+// as context, whichever door they came in by. Words that are empty leave no
+// blank lines at the top.
+func appAttachWords(text string, kept []appAttach) string {
+	var words strings.Builder
+	words.WriteString(text)
+	for _, attach := range kept {
+		if words.Len() > 0 {
+			words.WriteString("\n\n")
+		}
+		switch attach.view.Kind {
+		case appwire.AttachFile:
+			words.WriteString("Attached file: " + attach.view.Path)
+		case appwire.AttachLink:
+			words.WriteString("Link: " + attach.view.URL)
+		case appwire.AttachPaste:
+			words.WriteString("Pasted text:\n```\n" + strings.TrimRight(attach.content, "\n") + "\n```")
+		}
+	}
+	return words.String()
+}
+
+// appAttachShown is what the person's entry shows for a message with
+// attachments: their own words and the attachments, not the words the model
+// was sent. No attachments is nil, the entry shows what was sent.
+func appAttachShown(text string, kept []appAttach) *appSending {
+	if len(kept) == 0 {
+		return nil
+	}
+	views := make([]appwire.Attachment, 0, len(kept))
+	for _, attach := range kept {
+		views = append(views, attach.view)
+	}
+	return &appSending{text: text, attachments: views}
+}
+
+// appAttachChars is the characters of paste a message carries, checked
+// against the one bound a message has whichever door it came in by.
+func appAttachChars(kept []appAttach) error {
+	total := 0
+	for _, attach := range kept {
+		total += attach.chars
+	}
+	if total > appwire.MaxAttachChars {
+		return appwire.Errorf(appwire.CodeBadParams, "the pastes come to %d characters; one message carries at most %d", total, appwire.MaxAttachChars)
+	}
+	return nil
+}
+
 // AddAttachment keeps a file, a link or a long paste for the next message.
 func (b *appBackend) AddAttachment(agent string, attachment appwire.Attachment, text string) (appwire.Attachment, error) {
 	a, err := b.find(agent)
 	if err != nil {
 		return appwire.Attachment{}, err
 	}
-	var workspace string
-	b.locked(func() { workspace = a.view.Workspace })
-	kept := appAttach{view: attachment}
-	switch attachment.Kind {
-	case appwire.AttachFile:
-		stat := b.statFile(workspace, b.changedInChat(a), attachment.Path)
-		kept.view.State, kept.view.Add, kept.view.Del = stat.State, stat.Add, stat.Del
-		kept.view.Title = filepath.Base(attachment.Path)
-	case appwire.AttachLink:
-		parsed, err := url.Parse(strings.TrimSpace(attachment.URL))
-		if err != nil || parsed.Host == "" {
-			return appwire.Attachment{}, appwire.Errorf(appwire.CodeBadParams, "that is not a link")
-		}
-		kept.view.URL, kept.view.Title = parsed.String(), parsed.Host
-	case appwire.AttachPaste:
+	if attachment.Kind == appwire.AttachPaste {
+		// A SHORT PASTE IS WORDS, NOT A CARD: the composer puts it into the
+		// message, and only a long one is kept to the side.
 		lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
 		if lines <= appPasteLines && len(text) <= appPasteChars {
 			return appwire.Attachment{}, appwire.Errorf(appwire.CodeBadParams, "a paste of %d lines goes into the message as text", lines)
 		}
-		kept.view.Title, kept.view.Lines, kept.content = "Pasted text", &lines, text
+	}
+	var workspace string
+	b.locked(func() { workspace = a.view.Workspace })
+	var changed map[string]appwire.FileChange
+	if attachment.Kind == appwire.AttachFile {
+		changed = b.changedInChat(a)
+	}
+	kept, err := b.prepareAttach(workspace, changed, attachment, text, false)
+	if err != nil {
+		return appwire.Attachment{}, err
 	}
 	b.locked(func() {
 		a.attachN++
@@ -778,15 +879,32 @@ func (b *appBackend) RemoveAttachment(agent, id string) error {
 // SendWith sends a message with its attachments, written into the words the
 // engine is sent, and keeps them on the person's entry.
 func (b *appBackend) SendWith(agent, text, clientID string, ids []string) (uint64, error) {
+	turn, _, err := b.sendWith(agent, text, clientID, ids)
+	return turn, err
+}
+
+// sendWith is [appBackend.SendWith], answering the attachments it carried.
+//
+// STAGED ATTACHMENTS ARE CONSUMED ONLY BY A TURN THAT STARTED. They are read,
+// not taken, while the turn is asked for, and dropped once it has begun; a
+// send that is refused — busy, a missing id, a conversation that would not
+// open — leaves every chip staged for the retry, and a chip added meanwhile is
+// a new id nothing here touches. The agent's gate is held from the read to the
+// drop, so two sends cannot both carry one chip into two turns, and each turn
+// carries exactly the snapshot it read.
+func (b *appBackend) sendWith(agent, text, clientID string, ids []string) (uint64, []appwire.Attachment, error) {
+	if err := appwire.CheckAttachIDs(ids); err != nil {
+		return 0, nil, err
+	}
 	a, err := b.find(agent)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
 	var kept []appAttach
 	var missing string
 	b.locked(func() {
-		// Every id is checked before any is consumed, so one missing chip
-		// leaves the other staged ones for the retry.
 		for _, id := range ids {
 			attach, ok := a.attach[id]
 			if !ok {
@@ -795,35 +913,32 @@ func (b *appBackend) SendWith(agent, text, clientID string, ids []string) (uint6
 			}
 			kept = append(kept, attach)
 		}
+	})
+	if missing != "" {
+		return 0, nil, appwire.Errorf(appwire.CodeNotFound, "there is no attachment %s", missing)
+	}
+	if err := appAttachChars(kept); err != nil {
+		return 0, nil, err
+	}
+	shown := appAttachShown(text, kept)
+	turn, err := b.sendLocked(a, appAttachWords(text, kept), clientID, shown)
+	if err != nil {
+		return 0, nil, err
+	}
+	b.locked(func() {
 		for _, id := range ids {
 			delete(a.attach, id)
 		}
 	})
-	if missing != "" {
-		return 0, appwire.Errorf(appwire.CodeNotFound, "there is no attachment %s", missing)
-	}
-	var words strings.Builder
-	words.WriteString(text)
 	var views []appwire.Attachment
-	for _, attach := range kept {
-		views = append(views, attach.view)
-		switch attach.view.Kind {
-		case appwire.AttachFile:
-			words.WriteString("\n\nAttached file: " + attach.view.Path)
-		case appwire.AttachLink:
-			words.WriteString("\n\nLink: " + attach.view.URL)
-		case appwire.AttachPaste:
-			words.WriteString("\n\nPasted text:\n```\n" + strings.TrimRight(attach.content, "\n") + "\n```")
-		}
+	if shown != nil {
+		views = shown.attachments
 	}
-	b.locked(func() { a.sending = &appSending{text: text, attachments: views} })
-	turn, err := b.Send(agent, words.String(), clientID)
-	b.locked(func() { a.sending = nil })
-	return turn, err
+	return turn, views, nil
 }
 
-// appSending is the words and attachments of the message being sent, which
-// its entry shows instead of the words the engine was given.
+// appSending is the words and attachments of a message whose entry shows
+// them instead of the words the engine was given.
 type appSending struct {
 	text        string
 	attachments []appwire.Attachment

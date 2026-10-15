@@ -3,6 +3,7 @@ package appwire
 import (
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Wave 3b (PROTOCOL.md, V65–V70): the conversation's own entries and events,
@@ -96,6 +97,88 @@ const (
 	FileMissing = "missing"
 	FileOutside = "outside"
 )
+
+// AttachSource is one attachment named by what it is rather than by a staged
+// id: agents.create carries these, because a conversation that does not exist
+// yet has nowhere to stage a chip. A file names a path (relative to the
+// workspace, or absolute) that must exist when it is accepted; a link its url;
+// a paste its text. Nothing else is read from it.
+type AttachSource struct {
+	Kind string `json:"kind" enum:"file,link,paste"`
+	Path string `json:"path,omitempty"`
+	Text string `json:"text,omitempty"`
+	URL  string `json:"url,omitempty"`
+}
+
+// The bounds of what one message may carry. ONE MESSAGE IS ONE TURN'S
+// CONTEXT, so the bounds hold the same whether the attachments were staged
+// first (agents.send, crews.message) or named on the create itself.
+const (
+	// MaxAttachments is how many attachments one message may carry.
+	MaxAttachments = 10
+	// MaxPasteChars is the most characters one paste may hold.
+	MaxPasteChars = 200000
+	// MaxAttachChars is the most characters of paste one message may carry.
+	MaxAttachChars = 400000
+)
+
+// CheckAttachSources is the shape of a create's attachments, checked before
+// anything is made: a known kind with its own field, within the bounds. It
+// reads no disk; whether a file is there is the engine's to say.
+func CheckAttachSources(sources []AttachSource) error {
+	if len(sources) > MaxAttachments {
+		return Errorf(CodeBadParams, "a message carries at most %d attachments, not %d", MaxAttachments, len(sources))
+	}
+	total := 0
+	for i, s := range sources {
+		switch s.Kind {
+		case AttachFile:
+			if strings.TrimSpace(s.Path) == "" {
+				return Errorf(CodeBadParams, "attachment %d is a file and needs a path", i+1)
+			}
+		case AttachLink:
+			if strings.TrimSpace(s.URL) == "" {
+				return Errorf(CodeBadParams, "attachment %d is a link and needs a url", i+1)
+			}
+		case AttachPaste:
+			if strings.TrimSpace(s.Text) == "" {
+				return Errorf(CodeBadParams, "attachment %d is a paste and needs its text", i+1)
+			}
+			n := utf8.RuneCountInString(s.Text)
+			if n > MaxPasteChars {
+				return Errorf(CodeBadParams, "attachment %d is a paste of %d characters; one paste holds at most %d", i+1, n, MaxPasteChars)
+			}
+			total += n
+		default:
+			return Errorf(CodeBadParams, "attachment %d: kind is file, link or paste", i+1)
+		}
+	}
+	if total > MaxAttachChars {
+		return Errorf(CodeBadParams, "the pastes come to %d characters; one message carries at most %d", total, MaxAttachChars)
+	}
+	return nil
+}
+
+// CheckAttachIDs is the shape of a send's staged attachment ids: within the
+// count, none empty, and none named twice. A repeated id is refused rather
+// than folded, so the context the model reads is never doubled and the app
+// learns its list was wrong.
+func CheckAttachIDs(ids []string) error {
+	if len(ids) > MaxAttachments {
+		return Errorf(CodeBadParams, "a message carries at most %d attachments, not %d", MaxAttachments, len(ids))
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if strings.TrimSpace(id) == "" {
+			return Errorf(CodeBadParams, "an attachment id is empty")
+		}
+		if seen[id] {
+			return Errorf(CodeBadParams, "attachment %s is named twice", id)
+		}
+		seen[id] = true
+	}
+	return nil
+}
 
 // Queued is one message waiting for the turn to end.
 type Queued struct {
@@ -399,6 +482,8 @@ var talkMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "a file needs a path, a link a url, and a paste its text")
 		case p.Kind != AttachFile && p.Kind != AttachLink && p.Kind != AttachPaste:
 			return nil, Errorf(CodeBadParams, "kind is file, link or paste")
+		case p.Kind == AttachPaste && utf8.RuneCountInString(p.Text) > MaxPasteChars:
+			return nil, Errorf(CodeBadParams, "one paste holds at most %d characters", MaxPasteChars)
 		}
 		attachment, err := t.AddAttachment(p.Agent, Attachment{Kind: p.Kind, Path: p.Path, URL: p.URL}, p.Text)
 		if err != nil {

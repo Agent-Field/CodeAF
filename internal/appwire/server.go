@@ -285,6 +285,9 @@ var methods = map[string]method{
 		if p.BudgetUSD != nil && *p.BudgetUSD < 0 {
 			return nil, Errorf(CodeBadParams, "budget_usd cannot be negative")
 		}
+		if err := CheckAttachSources(p.Attachments); err != nil {
+			return nil, err
+		}
 		agent, err := e.CreateAgent(p)
 		if err != nil {
 			return nil, err
@@ -391,12 +394,20 @@ var methods = map[string]method{
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.send needs an id")
 		}
-		if strings.TrimSpace(p.Text) == "" {
+		// Attachments alone are a message: their words are the turn's.
+		if strings.TrimSpace(p.Text) == "" && len(p.Attachments) == 0 {
 			return nil, Errorf(CodeBadParams, "agents.send needs some text")
 		}
 		var turn uint64
 		var err error
-		if t, ok := e.(Talker); ok && len(p.Attachments) > 0 {
+		if len(p.Attachments) > 0 {
+			t, terr := talker(e, "agents.send with attachments")
+			if terr != nil {
+				return nil, terr
+			}
+			if err := CheckAttachIDs(p.Attachments); err != nil {
+				return nil, err
+			}
 			turn, err = t.SendWith(p.ID, p.Text, p.ClientID, p.Attachments)
 		} else {
 			turn, err = e.Send(p.ID, p.Text, p.ClientID)

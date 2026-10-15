@@ -1380,6 +1380,9 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 	if !ok {
 		return appwire.Entry{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", target, t.Name)
 	}
+	if len(ask.Attachments) > 0 {
+		return b.crewMessageWith(t, member, target, ask)
+	}
 	turn, err := b.Send(target, ask.Text, ask.ClientID)
 	var wire *appwire.Error
 	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
@@ -1394,14 +1397,47 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 	if err != nil {
 		return appwire.Entry{}, err
 	}
-	if member.Key != t.Manager && t.Manager != "" {
-		// THE MANAGER IS TOLD AS A MEMBER'S WORDS REACH IT: one line on the
-		// crew's log, in its digest at its next step. It does not wake it.
-		_ = teamstore.AppendTraffic(b.crewProfile(), t.ID, teamstore.Entry{
-			Kind: teamstore.KindYou, From: teamstore.FromYou, To: member.Handle, ToKey: member.Key, Member: member.Key, Text: ask.Text,
-		})
-	}
+	b.tellManager(t, member, ask.Text)
 	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: ask.Text, ClientID: ask.ClientID}, nil
+}
+
+// crewMessageWith is a crew message carrying attachments staged on its
+// target. A MESSAGE WITH ATTACHMENTS IS NEVER QUEUED: the queue keeps words
+// only, so queueing it would send the words and lose the attachments. A busy
+// target refuses it instead, and every chip stays staged for the person to
+// send again when the turn ends.
+func (b *appBackend) crewMessageWith(t teamstore.Team, member teamstore.Member, target string, ask appwire.CrewMessage) (appwire.Entry, error) {
+	turn, views, err := b.sendWith(target, ask.Text, ask.ClientID, ask.Attachments)
+	var wire *appwire.Error
+	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
+		return appwire.Entry{}, appwire.Errorf(appwire.CodeBusy, "%s is working on a turn; the message was not sent and its attachments are still attached", member.Handle)
+	}
+	if err != nil {
+		return appwire.Entry{}, err
+	}
+	logged := ask.Text
+	if strings.TrimSpace(logged) == "" {
+		titles := make([]string, 0, len(views))
+		for _, view := range views {
+			titles = append(titles, view.Title)
+		}
+		logged = "Attached: " + strings.Join(titles, ", ")
+	}
+	b.tellManager(t, member, logged)
+	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: ask.Text, ClientID: ask.ClientID, Attachments: views}, nil
+}
+
+// tellManager puts the person's words to a member on the crew's log.
+// THE MANAGER IS TOLD AS A MEMBER'S WORDS REACH IT: one line on the crew's
+// log, in its digest at its next step. It does not wake it. Words to the
+// manager itself are not logged; it heard them.
+func (b *appBackend) tellManager(t teamstore.Team, member teamstore.Member, text string) {
+	if member.Key == t.Manager || t.Manager == "" {
+		return
+	}
+	_ = teamstore.AppendTraffic(b.crewProfile(), t.ID, teamstore.Entry{
+		Kind: teamstore.KindYou, From: teamstore.FromYou, To: member.Handle, ToKey: member.Key, Member: member.Key, Text: text,
+	})
 }
 
 // CrewLog is a crew's log after a cursor, oldest first.

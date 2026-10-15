@@ -16,7 +16,13 @@ import (
 // member that is only on disk.
 func crewBackend(t *testing.T) (*appBackend, *appRecorder, appwire.Agent, string) {
 	t.Helper()
-	backend, rec, agent := workBackend(t, &fakeConversation{})
+	return crewBackendOn(t, &fakeConversation{})
+}
+
+// crewBackendOn is [crewBackend] whose conversations are conv.
+func crewBackendOn(t *testing.T, conv *fakeConversation) (*appBackend, *appRecorder, appwire.Agent, string) {
+	t.Helper()
+	backend, rec, agent := workBackend(t, conv)
 	backend.profileDir = t.TempDir()
 	id := teamstore.NewID()
 	err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {

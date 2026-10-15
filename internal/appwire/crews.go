@@ -361,12 +361,17 @@ type MemberAsk struct {
 	To     string   `json:"to"`
 }
 
-// CrewMessage is crews.message's params.
+// CrewMessage is crews.message's params. To is empty (or "manager") for the
+// crew's manager, or a member's agent id. Attachments are ids staged with
+// attachments.add on that same target agent; with them the text may be empty.
+// A message with attachments is never queued behind a busy target: it is
+// refused busy and its attachments stay staged for the person to send again.
 type CrewMessage struct {
-	Crew     string `json:"crew"`
-	To       string `json:"to"`
-	Text     string `json:"text"`
-	ClientID string `json:"client_id"`
+	Crew        string   `json:"crew"`
+	To          string   `json:"to"`
+	Text        string   `json:"text"`
+	ClientID    string   `json:"client_id"`
+	Attachments []string `json:"attachments,omitempty"`
 }
 
 // Crewer is the engine's half of crews.
@@ -483,8 +488,11 @@ var crewMethods = map[string]method{
 		return crewOf(c.CrewUpdate(p))
 	}),
 	"crews.message": crewCall("crews.message", func(c Crewer, p CrewMessage) (*EntryResult, error) {
-		if strings.TrimSpace(p.Crew) == "" || strings.TrimSpace(p.Text) == "" {
+		if strings.TrimSpace(p.Crew) == "" || (strings.TrimSpace(p.Text) == "" && len(p.Attachments) == 0) {
 			return nil, Errorf(CodeBadParams, "crews.message needs a crew and some text")
+		}
+		if err := CheckAttachIDs(p.Attachments); err != nil {
+			return nil, err
 		}
 		entry, err := c.CrewMessage(p)
 		if err != nil {

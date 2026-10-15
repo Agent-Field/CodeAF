@@ -648,15 +648,22 @@ type Engine interface {
 }
 
 // CreateAsk is agents.create's params. An empty workspace is the person's home
-// folder; a non-empty Text starts the first turn at once.
+// folder; a non-empty Text, or any Attachments, starts the first turn at once.
+//
+// Attachments ride on that first message exactly as staged ones ride on
+// agents.send: the person's entry carries them as [Attachment]s and the model
+// is sent their words. They are checked whole — shape, bounds, and that each
+// file is there — BEFORE the conversation is made, so a refused create leaves
+// no agent behind. With attachments the text may be empty.
 //
 // It answers at once: the conversation is assembled behind the answer.
 type CreateAsk struct {
-	Workspace string   `json:"workspace"`
-	Model     string   `json:"model"`
-	BudgetUSD *float64 `json:"budget_usd"`
-	Text      string   `json:"text"`
-	ClientID  string   `json:"client_id"`
+	Workspace   string         `json:"workspace"`
+	Model       string         `json:"model"`
+	BudgetUSD   *float64       `json:"budget_usd"`
+	Text        string         `json:"text"`
+	ClientID    string         `json:"client_id"`
+	Attachments []AttachSource `json:"attachments,omitempty"`
 }
 
 // Warmer is an engine with something slow it can start on before anything is
