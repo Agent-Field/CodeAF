@@ -59,6 +59,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
 // appAgentIdle is how long a conversation the app holds may sit with no turn
@@ -366,6 +367,13 @@ type appBackend struct {
 	follows map[string]*appFollow
 	// asleep says the Mac is asleep (power.sleep until power.wake).
 	asleep bool
+	// collections is the collections store (appcollections.go), opened by
+	// the first call that finds a file to open and closed with the backend;
+	// collectionsPath replaces where it is in a test.
+	collectionsMu     sync.Mutex
+	collections       *workspace.Store
+	collectionsClosed bool
+	collectionsPath   string
 }
 
 // appAgent is every agent this process has heard of: listed off the disk,
@@ -2716,6 +2724,7 @@ func (b *appBackend) Close() error {
 		})
 	}
 	wg.Wait()
+	b.closeCollections()
 	return nil
 }
 

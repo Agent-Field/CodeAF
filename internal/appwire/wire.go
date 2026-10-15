@@ -33,6 +33,9 @@ const (
 	CodeBusy          = "busy"
 	CodeEngine        = "engine"
 	CodeClosed        = "closed"
+	// CodeCycle refuses a collections.add that would make a collection hold
+	// itself, at any depth.
+	CodeCycle = "cycle"
 )
 
 // The states an agent can be in, as the app draws them.
