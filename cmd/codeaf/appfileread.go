@@ -79,7 +79,7 @@ func (b *appBackend) ReadFile(agent, path string, offset int64, limit int) (appw
 		out.Kind = appwire.ReadUnreadable
 		return out, nil
 	}
-	out.Modified = info.ModTime().UTC().Format(time.RFC3339)
+	out.Modified = info.ModTime().UTC().Format(time.RFC3339Nano)
 	switch {
 	case info.IsDir():
 		out.Kind = appwire.ReadDirectory
