@@ -869,7 +869,8 @@ func TestTheAutoUpdateRowIsFiledWithThePracticeRows(t *testing.T) {
 	// THE FIRST SENTENCE SAYS WHAT THE ROW DOES, and the rest says what off
 	// means: manual installation, while the one launch check still runs.
 	for _, want := range []string{
-		"keeps this codeaf installation current in the background.",
+		"keeps a released codeaf current: a newer stable release installs as codeaf opens",
+		"Dev, staging, rc and source builds are never updated on their own.",
 		"Off, installation is manual",
 		"still checks once",
 	} {

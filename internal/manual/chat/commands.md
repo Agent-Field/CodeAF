@@ -340,10 +340,10 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/cache` | — | `clean now` | deletes the shared build cache now |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
-| `/update` | `/upgrade` | — | installs the newest stable release in the background for the next launch |
-| `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag for the next launch |
+| `/update` | `/upgrade` | — | installs the newest stable release in the background for the next launch, and unpins |
+| `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag for the next launch; a tag pins the file there |
 | `/update skip` | `/upgrade skip` | — | answers an open update offer not now, for that release only |
-| `/update never` | `/upgrade never` | — | turns `auto update` off; the setting row does the same |
+| `/update never` | `/upgrade never` | — | turns `automatic updates` off, so no release installs itself as codeaf opens or in the background; the setting row does the same |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |

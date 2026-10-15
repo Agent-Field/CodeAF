@@ -27,7 +27,19 @@ type InstallOptions struct {
 	// <tag>` or `update --version <tag>` — and a rollback is what they asked
 	// for. An automatic or channel-following update never sets it, so a stale
 	// caller cannot silently downgrade a file another window advanced.
+	//
+	// IT IS ALSO THE PIN. A release a person named stays where they put it: the
+	// record marks it pinned, and the automatic road refuses to move it until a
+	// person installs again without naming a tag, which unpins.
 	AllowDowngrade bool
+	// Automatic says nobody asked for this install at all: the launch's own road
+	// or the chat's countdown. It is refused while a person's pin holds the file,
+	// and it never writes or clears a pin.
+	Automatic bool
+	// Progress, when set, hears the release asset arriving: the bytes so far and
+	// the size the server announced, or -1 when it announced none. It is called
+	// between reads on the installing goroutine, so it must return quickly.
+	Progress func(received, total int64)
 }
 
 // InstallResult is the release and executable path that are ready to restart.
@@ -37,6 +49,8 @@ type InstallResult struct {
 	// Already is true when the target was already the requested release: a
 	// successful no-op, not a failure, and not something to alarm anyone about.
 	Already bool
+	// Pinned is true when the file is now pinned at Release by a person.
+	Pinned bool
 }
 
 // Install downloads, checks, and atomically replaces one executable.
@@ -95,10 +109,26 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	// while the file still hashes to it, so an externally replaced binary reads
 	// as unknown and a candidate newer than it is not refused on a stale fact.
 	record, recorded := lock.Record()
+	// A PERSON'S INSTALL SETS THE PIN EITHER WAY: naming a tag pins it, and
+	// anything else a person asks for unpins. The automatic road never changes
+	// it, because nobody said anything.
+	pin := options.AllowDowngrade && !options.Automatic
 	if recorded && record.Tag == release.Tag {
-		// ALREADY THERE IS SUCCESS. Nothing is downloaded, nothing is written,
-		// and the caller is told so it can stay quiet about it.
-		return InstallResult{Release: release, Path: target, Already: true}, nil
+		// ALREADY THERE IS SUCCESS. Nothing is downloaded and the caller is told
+		// so it can stay quiet about it — but a person naming the release that
+		// is already on disk has just pinned it there, and a person updating
+		// without naming one has just let it go, so the record learns which.
+		if !options.Automatic && record.Pinned != pin {
+			record.Pinned = pin
+			lock.writeRecord(record)
+		}
+		return InstallResult{Release: release, Path: target, Already: true, Pinned: record.Pinned}, nil
+	}
+	if recorded && record.Pinned && options.Automatic {
+		// THE PIN IS ASKED AGAIN UNDER THE LOCK. A launch reads it without the
+		// lock ([PinnedRelease]), so a person who pinned in another window a
+		// moment ago is still the one who decides.
+		return InstallResult{}, &RefusalError{Reason: "codeaf " + record.Tag + " is pinned on this machine · /update or codeaf update installs " + release.Tag + " and unpins it"}
 	}
 	// ONE BEST-EFFORT MOMENT FOR THE RELEASE BEING INSTALLED, AND ONLY WHERE IT
 	// IS THE FACT THAT ORDERS: a NAMED dev or staging tag is resolved without
@@ -146,7 +176,7 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	// reads only the constant): a 404 there is an answer, never a reason to go
 	// and ask somewhere else. The result records it.
 	release.Repository = primaryRepository
-	body, asset, checksums, err := options.Client.downloadRelease(ctx, release, asset, goos, goarch, extension)
+	body, asset, checksums, err := options.Client.downloadRelease(ctx, release, asset, goos, goarch, extension, options.Progress)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -182,8 +212,8 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	}
 	// The record names the bytes just written, so the next caller can tell what
 	// is on disk from what it believes is on disk.
-	lock.RecordInstalled(release.Tag, actual, release.PublishedAt)
-	return InstallResult{Release: release, Path: target}, nil
+	lock.recordInstalled(release.Tag, actual, release.PublishedAt, pin)
+	return InstallResult{Release: release, Path: target, Pinned: pin}, nil
 }
 
 // downloadRelease fetches the asset and its checksums from one release. The
@@ -191,12 +221,12 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 // published before the rename (v0.1.0): a person may still name that tag to roll
 // back to it, and checksums.txt beside it is what vouches for whichever name
 // answered.
-func (c *Client) downloadRelease(ctx context.Context, release Release, asset, goos, goarch, extension string) ([]byte, string, []byte, error) {
+func (c *Client) downloadRelease(ctx context.Context, release Release, asset, goos, goarch, extension string, progress func(received, total int64)) ([]byte, string, []byte, error) {
 	shownAsset := asset
-	body, err := c.downloadAsset(ctx, c.assetURL(release, asset), shownAsset)
+	body, err := c.downloadAsset(ctx, c.assetURL(release, asset), shownAsset, progress)
 	if isStatus(err, http.StatusNotFound) {
 		legacyAsset := "aforge-" + goos + "-" + goarch + extension // legacy-name
-		body, err = c.downloadAsset(ctx, c.assetURL(release, legacyAsset), shownAsset)
+		body, err = c.downloadAsset(ctx, c.assetURL(release, legacyAsset), shownAsset, progress)
 		if err == nil {
 			asset = legacyAsset
 		}
@@ -216,7 +246,7 @@ type downloadRead struct {
 	err   error
 }
 
-func (c *Client) downloadAsset(ctx context.Context, rawURL, asset string) ([]byte, error) {
+func (c *Client) downloadAsset(ctx context.Context, rawURL, asset string, progress func(received, total int64)) ([]byte, error) {
 	ceiling := c.downloadCeiling()
 	downloadContext, cancel := context.WithTimeout(ctx, ceiling)
 	defer cancel()
@@ -244,7 +274,19 @@ func (c *Client) downloadAsset(ctx context.Context, rawURL, asset string) ([]byt
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, &statusError{code: response.StatusCode, resource: asset}
 	}
-	return readDownloadBody(ctx, downloadContext, response.Body, asset, c.stallWindow(), ceiling)
+	return readDownloadBody(ctx, downloadContext, response.Body, asset, c.stallWindow(), ceiling, progressOf(progress, response.ContentLength))
+}
+
+// progressOf binds the announced size to a caller's progress hook, so the
+// reader below reports one number and never has to know what the server said.
+func progressOf(progress func(received, total int64), total int64) func(int64) {
+	if progress == nil {
+		return nil
+	}
+	if total <= 0 {
+		total = -1
+	}
+	return func(received int64) { progress(received, total) }
 }
 
 func responseHeaderTimedOut(err error) bool {
@@ -254,7 +296,7 @@ func responseHeaderTimedOut(err error) bool {
 // readDownloadBody watches successful reads rather than wall time. A slow link
 // that keeps delivering bytes is healthy; one silent read must not hold the
 // installer forever even though the HTTP client has no whole-body timeout.
-func readDownloadBody(parent, download context.Context, body io.Reader, asset string, stall, ceiling time.Duration) ([]byte, error) {
+func readDownloadBody(parent, download context.Context, body io.Reader, asset string, stall, ceiling time.Duration, progress func(int64)) ([]byte, error) {
 	reads := make(chan downloadRead, 1)
 	done := make(chan struct{})
 	defer close(done)
@@ -292,6 +334,9 @@ func readDownloadBody(parent, download context.Context, body io.Reader, asset st
 		case read := <-reads:
 			if len(read.bytes) > 0 {
 				downloaded = append(downloaded, read.bytes...)
+				if progress != nil {
+					progress(int64(len(downloaded)))
+				}
 				if !timer.Stop() {
 					select {
 					case <-timer.C:

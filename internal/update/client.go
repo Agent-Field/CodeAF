@@ -43,13 +43,7 @@ func CurlLine(executable, channel string) string {
 	default:
 		channel = "stable"
 	}
-	name := filepath.Base(strings.TrimSpace(executable))
-	if len(name) >= 4 && strings.EqualFold(name[len(name)-4:], ".exe") {
-		name = name[:len(name)-4]
-	}
-	if !installNamePattern.MatchString(name) {
-		name = "codeaf"
-	}
+	name := InstallName(executable)
 	if name == "devaf" {
 		return "curl -fsSL https://agentfield.ai/get/devaf | bash"
 	}
@@ -65,6 +59,23 @@ func CurlLine(executable, channel string) string {
 		line += "CODEAF_INSTALL_NAME=" + name + " "
 	}
 	return line + "bash"
+}
+
+// InstallName is the file name this executable was installed under, without a
+// Windows `.exe`: `codeaf`, `devaf`, `stageaf` or whatever `--name` chose. A
+// path that names no usable file reads as `codeaf`, the name every install road
+// falls back to. The curl line and the automatic updater's own rule
+// ([AutomaticFor]) both ask here, so they can never disagree about which file a
+// launch is.
+func InstallName(executable string) string {
+	name := filepath.Base(strings.TrimSpace(executable))
+	if len(name) >= 4 && strings.EqualFold(name[len(name)-4:], ".exe") {
+		name = name[:len(name)-4]
+	}
+	if !installNamePattern.MatchString(name) {
+		return "codeaf"
+	}
+	return name
 }
 
 const (

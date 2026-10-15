@@ -197,6 +197,7 @@ func TestRecordSupersedesUsesPublishedOrdering(t *testing.T) {
 func TestPackageManagedNamesTheOwner(t *testing.T) {
 	for _, row := range []struct{ path, want string }{
 		{"/opt/homebrew/bin/codeaf", "Homebrew"},
+		{"/home/linuxbrew/.linuxbrew/Cellar/codeaf/0.8.0/bin/codeaf", "Homebrew"},
 		{"/nix/store/abc-codeaf/bin/codeaf", "Nix"},
 		{"/usr/bin/codeaf", "the system package manager"},
 		{"/home/somebody/.local/bin/codeaf", ""},

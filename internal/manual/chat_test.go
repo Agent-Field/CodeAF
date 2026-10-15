@@ -3126,6 +3126,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I update codeaf", "running-from-the-terminal"},
 		{"update codeaf", "running-from-the-terminal"},
 		{"it says a new version is out every time I start", "running-from-the-terminal"},
+		// The launch that installs a release and starts on it before the chat
+		// opens, in the words of somebody who just watched it happen — and of
+		// somebody who wants it to stop, or to stay on the version they have.
+		{"does codeaf update itself automatically", "running-from-the-terminal"},
+		{"why did codeaf restart on a new version when I opened it", "running-from-the-terminal"},
+		{"how do I stop codeaf from updating itself", "running-from-the-terminal"},
+		{"pin codeaf to an older version", "running-from-the-terminal"},
+		{"how do I stay on an old version of codeaf", "running-from-the-terminal"},
+		{"will my devaf update itself", "running-from-the-terminal"},
 		// The ending #593 added, in the words somebody meets it in: on the
 		// stderr line they have just read, on the word in `--json`, and on the
 		// exit code they are staring at with a perfectly good answer above it.
