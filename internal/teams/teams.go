@@ -66,6 +66,10 @@ type Team struct {
 	// Manager is the conversation key of the member that manages the team, ""
 	// for none. It is always one of Members.
 	Manager string
+	// Founder is the conversation key of the manager the team was made under,
+	// "" when it was made with none or before this was written. It is a fact
+	// of the team's making and never moves with the manager seat.
+	Founder string
 	// Hue and Tier are the team's colour (hue.go).
 	Hue  float64
 	Tier int
@@ -120,7 +124,7 @@ var knownFields = map[string]bool{
 	"hue": true, "tier": true, "hue_cleared": true, "made": true,
 	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
-	"wrap": true, "former_members": true, "former_manager": true, "starts": true,
+	"wrap": true, "former_members": true, "former_manager": true, "starts": true, "founder": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -133,6 +137,7 @@ type wireTeam struct {
 	Members       []Member  `json:"members"`
 	FormerMembers []Member  `json:"former_members,omitempty"`
 	FormerManager string    `json:"former_manager,omitempty"`
+	Founder       string    `json:"founder,omitempty"`
 	Manager       string    `json:"manager"`
 	Hue           *float64  `json:"hue,omitempty"`
 	HueCleared    bool      `json:"hue_cleared,omitempty"`
@@ -164,7 +169,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 	if err := json.Unmarshal(raw, &all); err != nil {
 		return err
 	}
-	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Manager: w.Manager, Made: w.Made,
+	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Founder: w.Founder, Manager: w.Manager, Made: w.Made,
 		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap, Starts: w.Starts}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
@@ -193,7 +198,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // MarshalJSON writes the known fields in their order, then any field a later
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
-	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Manager: t.Manager, Made: t.Made,
+	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Founder: t.Founder, Manager: t.Manager, Made: t.Made,
 		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap, Starts: t.Starts}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.

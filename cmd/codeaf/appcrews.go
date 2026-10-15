@@ -1135,7 +1135,7 @@ func (b *appBackend) newTeam(name, parent string, members []teamstore.Member, ma
 				used = append(used, t.HueSpec())
 			}
 		}
-		team := teamstore.Team{ID: id, Name: name, Made: b.now()}
+		team := teamstore.Team{ID: id, Name: name, Made: b.now(), Founder: managerKey}
 		spec := teamstore.NextHue(used, nil)
 		if hue != nil {
 			spec.Hue = *hue
@@ -1213,16 +1213,87 @@ func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time
 	})
 }
 
-// crewReceipt says in the manager's conversation that the crew was made.
+// crewReceipt says in the founding manager's conversation that the crew was
+// made. It says the fact the teams file keeps ([teamstore.Team.Founder], Made
+// and Name) and no words, so a restart reads the same entry back from
+// [appBackend.crewFormedEntries] under the same id.
 func (b *appBackend) crewReceipt(manager, id, name string) {
 	if manager == "" {
 		return
 	}
-	at := b.now()
-	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: "rcrew:" + id, Agent: manager, Kind: appwire.EntryReceipt, At: at,
-		Text: "Made the crew " + name + " · you · " + at.Format("15:04"),
-	}})
+	for _, entry := range b.crewFormedEntries(manager) {
+		if entry.ID == appCrewFormedID(id) {
+			b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: entry})
+			return
+		}
+	}
+}
+
+// appCrewFormedID is the entry id of a crew's formation fact.
+func appCrewFormedID(crew string) string { return "rcrew:" + crew }
+
+// crewFormedEntries is the crews an agent's conversation founded, each as the
+// formation entry the conversation carried when it was made, oldest first.
+// One read of the teams file.
+func (b *appBackend) crewFormedEntries(agent string) []appwire.Entry {
+	file, err := teamstore.Load(b.crewProfile())
+	if err != nil {
+		return nil
+	}
+	var out []appwire.Entry
+	for _, t := range file.Teams {
+		if t.Founder == "" || t.Made.IsZero() {
+			continue
+		}
+		founder := appAgentID(t.Founder)
+		for _, m := range append(append([]teamstore.Member{}, t.Members...), t.FormerMembers...) {
+			if m.Key == t.Founder {
+				founder = appMemberAgent(m)
+				break
+			}
+		}
+		if founder != agent {
+			continue
+		}
+		out = append(out, appwire.Entry{
+			ID: appCrewFormedID(t.ID), Agent: agent, Kind: appwire.EntryReceipt, At: t.Made,
+			Op: &appwire.EntryOp{Kind: appwire.OpCrewFormed, Crew: t.ID, Name: t.Name},
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
+	return out
+}
+
+// appWithFormed puts formation entries among a transcript's entries by the
+// clock: before the first entry whose own instant is later. unknown is the
+// instant an entry carries when the record never said, which places nothing.
+func appWithFormed(all, formed []appwire.Entry, unknown time.Time, sources ...*[]int) []appwire.Entry {
+	for _, f := range formed {
+		at, seen := len(all), false
+		for i, e := range all {
+			if e.ID == f.ID {
+				seen = true
+				break
+			}
+			if at == len(all) && !e.At.Equal(unknown) && e.At.After(f.At) {
+				at = i
+			}
+		}
+		if seen {
+			continue
+		}
+		all = append(all, appwire.Entry{})
+		copy(all[at+1:], all[at:])
+		all[at] = f
+		if len(sources) > 0 && sources[0] != nil {
+			from := *sources[0]
+			from = append(from, -1)
+			copy(from[at+1:], from[at:])
+			from[at] = -1 // A formation fact has no transcript item to dress.
+			*sources[0] = from
+		}
+	}
+	return all
 }
 
 // CrewUpdate renames, recolours or resets a crew, and keeps its goal and end

@@ -309,10 +309,27 @@ type Entry struct {
 	ModelFrom   string       `json:"model_from,omitempty"`
 	ModelTo     string       `json:"model_to,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
+	// Op is a durable fact the conversation's record keeps beside its
+	// messages, said as the fact and never as words: the app words it.
+	Op *EntryOp `json:"op,omitempty"`
 	// A tool entry carries the facts of its call (worklog.go); a note entry
 	// names its task there too.
 	ToolFacts
 }
+
+// EntryOp is an operation the person or an agent did that the conversation
+// remembers. It rides a receipt entry whose Text is empty; the entry's id and
+// At are the same live and after a restart.
+type EntryOp struct {
+	Kind string `json:"kind" enum:"crew.formed"`
+	// Crew is the crew's id and Name its name; the entry's Agent is the
+	// manager it was made under.
+	Crew string `json:"crew,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// OpCrewFormed is a crew made under this conversation's agent as its manager.
+const OpCrewFormed = "crew.formed"
 
 // The kinds of entry.
 const (

@@ -2098,9 +2098,9 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	var more bool
 	err = appRecords.WithRecord(transcript, func(record session.Record) error {
 		var err error
-		page, more, err = appEntryPage(id, record, at, marks, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
+		page, more, err = appEntryPageWithFormed(id, record, at, marks, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
 			return b.appEntryFacts(a, item)
-		})
+		}, b.crewFormedEntries(id))
 		return err
 	})
 	if err != nil {
@@ -2128,8 +2128,15 @@ func appEntriesBusy(err error) error {
 // cursor are still told over the WHOLE record, because an id counts the
 // person's messages from the first and an update is known only by a later call.
 func appEntryPage(id string, record session.Record, at time.Time, marks map[int]appTurnMark, before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts) ([]appwire.Entry, bool, error) {
+	return appEntryPageWithFormed(id, record, at, marks, before, limit, facts, nil)
+}
+
+func appEntryPageWithFormed(id string, record session.Record, at time.Time, marks map[int]appTurnMark, before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts, formed []appwire.Entry) ([]appwire.Entry, bool, error) {
 	items := appRecordItems(record)
 	all, from := appEntryShapes(id, items, at, marks)
+	if len(formed) > 0 {
+		all = appWithFormed(all, formed, at, &from)
+	}
 	if words := strings.TrimSpace(record.Unreadable); words != "" {
 		all = append(all, appwire.Entry{ID: "unreadable", Agent: id, Kind: appwire.EntryNotice, At: at, Text: words})
 	}
@@ -2149,7 +2156,7 @@ func appEntryPage(id string, record session.Record, at time.Time, marks map[int]
 	start := max(end-limit, 0)
 	page := append([]appwire.Entry{}, all[start:end]...)
 	for i := range page {
-		if start+i < len(from) {
+		if start+i < len(from) && from[start+i] >= 0 {
 			appDressTool(&page[i], items[from[start+i]])
 		}
 	}

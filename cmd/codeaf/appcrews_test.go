@@ -5,6 +5,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -390,5 +391,55 @@ func TestAppAgedCrewMemberIsKeptOpenAndSaidOnceWhenHeld(t *testing.T) {
 	rec.mu.Unlock()
 	if changed != 1 {
 		t.Fatalf("agent.changed said %d times for the held member, want 1", changed)
+	}
+}
+
+// A CREW'S FORMATION IS A FACT THE MANAGER'S CONVERSATION KEEPS, said as the
+// fact and never as words: the entry the manager got live is, field for field,
+// the entry its record gives back after a restart, under one id, once.
+func TestAppCrewFormationReceiptIsTheSameFactLiveAndAfterRestart(t *testing.T) {
+	backend, rec, agent := workBackend(t, &fakeConversation{})
+	backend.profileDir = t.TempDir()
+	crew, err := backend.CrewCreate(appwire.CrewCreate{Name: "harbor", Agents: []string{agent.ID}, Manager: agent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var live []appwire.Entry
+	rec.mu.Lock()
+	for _, data := range rec.data {
+		if added, ok := data.(appwire.EntryAdded); ok && added.Entry.Kind == appwire.EntryReceipt {
+			live = append(live, added.Entry)
+		}
+	}
+	rec.mu.Unlock()
+	if len(live) != 1 || live[0].ID != "rcrew:"+crew.ID || live[0].Agent != agent.ID {
+		t.Fatalf("live receipts = %+v", live)
+	}
+	if live[0].Text != "" || live[0].Op == nil || live[0].Op.Kind != appwire.OpCrewFormed || live[0].Op.Crew != crew.ID || live[0].Op.Name != "harbor" {
+		t.Fatalf("the live receipt is not the bare fact: %+v", live[0])
+	}
+
+	// A RESTART: another backend over the same teams file, which has no memory
+	// of the live event.
+	fresh := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { fresh.Close() })
+	fresh.profileDir = backend.profileDir
+	back := fresh.crewFormedEntries(agent.ID)
+	if len(back) != 1 || !reflect.DeepEqual(back[0], live[0]) {
+		t.Fatalf("after restart = %+v, live = %+v", back, live[0])
+	}
+	// Read among the transcript's own entries it is added once, and a second
+	// read does not add it again.
+	user := appwire.Entry{ID: "u0", Kind: appwire.EntryUser, At: live[0].At.Add(time.Minute)}
+	once := appWithFormed([]appwire.Entry{user}, back, time.Time{})
+	if len(once) != 2 || once[0].ID != live[0].ID {
+		t.Fatalf("placed = %+v", once)
+	}
+	if again := appWithFormed(once, back, time.Time{}); len(again) != 2 {
+		t.Fatalf("read twice = %+v", again)
+	}
+	// A crew the conversation did not found is not its fact.
+	if other := fresh.crewFormedEntries("0123456789abcdef"); len(other) != 0 {
+		t.Fatalf("another agent's = %+v", other)
 	}
 }

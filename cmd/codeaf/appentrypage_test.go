@@ -220,3 +220,45 @@ func BenchmarkAppEntryPage(b *testing.B) {
 		}
 	}
 }
+
+func TestAppFormationIsPagedBeforeToolDressingWithoutMovingToolSources(t *testing.T) {
+	at := time.Date(2026, 10, 15, 14, 0, 0, 0, time.UTC)
+	record := appPageRecord(3, false)
+	for i := range record.Entries {
+		record.Entries[i].At = at.Add(time.Duration(i) * time.Minute)
+	}
+	formed := []appwire.Entry{{ID: "rcrew:one", Agent: "a1", Kind: appwire.EntryReceipt, At: at.Add(350 * time.Second), Op: &appwire.EntryOp{Kind: appwire.OpCrewFormed, Crew: "one", Name: "crew"}}}
+	items := appRecordItems(record)
+	want := appWithFormed(appEntriesOf("a1", items, at.Add(time.Hour), nil), formed, at.Add(time.Hour))
+	var got []appwire.Entry
+	before := ""
+	for {
+		dressed := 0
+		page, more, err := appEntryPageWithFormed("a1", record, at.Add(time.Hour), nil, before, 3, appCountedFacts(&dressed), formed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools := 0
+		for _, e := range page {
+			if e.Kind == appwire.EntryTool {
+				tools++
+				for i := range want {
+					if want[i].ID == e.ID {
+						want[i].ToolFacts = e.ToolFacts
+					}
+				}
+			}
+		}
+		if dressed != tools {
+			t.Fatalf("dressed %d facts for %d visible tools", dressed, tools)
+		}
+		got = append(page, got...)
+		if !more {
+			break
+		}
+		before = page[0].ID
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("formation paging changed entry order or tool source: got=%+v want=%+v", got, want)
+	}
+}
