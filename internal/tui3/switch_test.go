@@ -20,6 +20,12 @@ import (
 // no other test on this surface needs.
 type switchAgent struct {
 	*fakeAgent
+	// mu guards running, backlog and stops against Attach and its stop, which a
+	// kept conversation's watcher calls from its own goroutine (keeper.go), the
+	// way the real agents take a.mu. A test that changes running once a watcher
+	// may be live does it through setRunning. Reads and writes made from the
+	// test goroutine before any watcher starts, or after it stops, need no lock.
+	mu sync.Mutex
 	// backlog is what a turn already in flight has said. Attach hands it over in
 	// order and then stays open, which is what the real hub does under one hold
 	// of its lock.
@@ -36,6 +42,8 @@ type switchAgent struct {
 }
 
 func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if !s.running {
 		return nil, false, func() {}
 	}
@@ -43,7 +51,18 @@ func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
 	for _, ev := range s.backlog {
 		out <- ev
 	}
-	return out, true, func() { s.stops++ }
+	return out, true, func() {
+		s.mu.Lock()
+		s.stops++
+		s.mu.Unlock()
+	}
+}
+
+// setRunning changes what Attach answers once a watcher may be asking.
+func (s *switchAgent) setRunning(running bool) {
+	s.mu.Lock()
+	s.running = running
+	s.mu.Unlock()
 }
 
 func (s *switchAgent) PendingConsent() []uint64 { return s.pending }
