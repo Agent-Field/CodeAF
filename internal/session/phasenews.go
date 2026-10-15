@@ -396,6 +396,14 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 // `switching model` without naming the model would be telling somebody their
 // answer is changing hands and refusing to say to whom.
 func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since time.Time) {
+	a.tellPhaseUntil(phase, detail, then, since, time.Time{})
+}
+
+// tellPhaseUntil is [Agent.tellPhaseThen] for a stage with a real moment at its
+// end: the retry ladder's wait, whose deadline is when the step is asked again.
+// A surface counts down to it, which is why it is only ever a moment that will
+// really happen.
+func (a *Agent) tellPhaseUntil(phase provider.Phase, detail, then string, since, deadline time.Time) {
 	if a == nil {
 		return
 	}
@@ -418,15 +426,16 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 	// model id overwrote each other's stage and a node's own room could never be
 	// asked what its own node was doing.
 	news := PhaseNews{
-		Phase:   phase,
-		Since:   since,
-		Detail:  detail,
-		Then:    strings.TrimSpace(then),
-		Model:   model,
-		Role:    a.laneRole(),
-		Session: a.newsKey(),
-		Subject: a.newsSubject(),
-		At:      now,
+		Phase:    phase,
+		Since:    since,
+		Detail:   detail,
+		Then:     strings.TrimSpace(then),
+		Deadline: deadline,
+		Model:    model,
+		Role:     a.laneRole(),
+		Session:  a.newsKey(),
+		Subject:  a.newsSubject(),
+		At:       now,
 	}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
@@ -464,7 +473,7 @@ func (a *Agent) interruptPhase(phase provider.Phase, detail string, since time.T
 		}
 		// THE OLD STAGE KEEPS ITS OWN START, so its clock counts the whole stage
 		// rather than restarting at the moment the gate let go of the line.
-		a.tellPhaseThen(held.Phase, held.Detail, held.Then, held.Since)
+		a.tellPhaseUntil(held.Phase, held.Detail, held.Then, held.Since, held.Deadline)
 	}
 }
 

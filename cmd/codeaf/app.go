@@ -51,6 +51,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -236,11 +237,13 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
-	emit      appwire.Emitter
-	open      appOpener
-	now       func() time.Time
-	turns     atomic.Uint64
-	assembled atomic.Bool
+	// stopPhases puts the engine's phase news back the way it was.
+	stopPhases func()
+	emit       appwire.Emitter
+	open       appOpener
+	now        func() time.Time
+	turns      atomic.Uint64
+	assembled  atomic.Bool
 
 	mu      sync.Mutex
 	agents  map[string]*appAgent
@@ -396,7 +399,14 @@ type appLive struct {
 	batchDone map[string][]appwire.BatchItem
 	notes     map[string][]appNotePending
 	noteN     int
-	closed    bool
+	// retries counts the running turn's waits before a step is asked again,
+	// retryPhase and retryUntil are the last one said, and retrySaid says the
+	// next void attempt was already said with its countdown.
+	retries    int
+	retryPhase provider.Phase
+	retryUntil time.Time
+	retrySaid  bool
+	closed     bool
 }
 
 // appConsentCall is the call one approval is about.
@@ -440,6 +450,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		mint:      appMint,
 	}
 	b.emit = b.newAppInbox(emit)
+	b.stopPhases = b.listenPhases()
 	guard.Go("app/sweep", b.sweep)
 	return b
 }
@@ -1250,6 +1261,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 		live.lastUse = b.now()
 		turn = b.turns.Add(1)
 		live.turn, live.steps, live.steers = turn, 0, 0
+		live.retries, live.retrySaid, live.retryPhase = 0, false, ""
 		n = a.users
 		if a.marks == nil {
 			a.marks = map[int]appTurnMark{}
@@ -1366,16 +1378,28 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			// the page, and a move to another model is said once.
 			reply.Reset()
 			thoughtAt = time.Time{}
-			retry := appwire.TurnRetrying{Agent: id, Turn: turn, Attempt: 1}
+			// A wait already said with its countdown is not said twice; the
+			// attempt is the turn's own count of them either way.
+			announce := false
+			retry := appwire.TurnRetrying{Agent: id, Turn: turn}
+			b.locked(func() {
+				announce = !live.retrySaid
+				live.retrySaid = false
+				if announce {
+					live.retries++
+				}
+				retry.Attempt = max(1, live.retries)
+			})
 			if news := event.Retry; news != nil {
-				retry.Attempt = max(1, news.Attempt)
 				if strings.TrimSpace(news.Next) != "" {
 					footer := appFooter("f"+strconv.Itoa(n)+".m"+strconv.Itoa(retry.Attempt), id, turn, appwire.FooterFallback, redact.Secrets(strings.TrimSpace(event.Text)), b.now())
 					footer.ModelFrom, footer.ModelTo = news.Model, news.Next
 					live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: footer})
 				}
 			}
-			live.box.Event(appwire.EventTurnRetrying, retry)
+			if announce {
+				live.box.Event(appwire.EventTurnRetrying, retry)
+			}
 		case session.EventCompacted:
 			entry(appwire.Entry{ID: "c" + strconv.Itoa(n) + "." + strconv.Itoa(summaries), Kind: appwire.EntrySummary, Text: "Earlier messages summarized"})
 			summaries++
@@ -2362,6 +2386,9 @@ func (b *appBackend) Close() error {
 	}
 	close(b.sweepStop)
 	<-b.sweepDone
+	if b.stopPhases != nil {
+		b.stopPhases()
+	}
 	if warmed != nil {
 		<-warmed
 	}

@@ -2463,7 +2463,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			if verdict.Unbounded && cuts > 0 {
 				detail = waitingOnOneMachine(cuts, turnNow().Sub(waitingSince))
 			}
-			a.tellPhase(provider.PhaseRetrying, detail, time.Now())
+			// AND IT SAYS WHEN, so a surface can count down to the moment the
+			// step is asked again rather than draw a wait with no end.
+			began := time.Now()
+			a.tellPhaseUntil(provider.PhaseRetrying, detail, "", began, began.Add(wait))
 			waitBegan := turnNow()
 			waitErr := turnBackoff(ctx, wait)
 			if took := turnNow().Sub(waitBegan); took < wait {

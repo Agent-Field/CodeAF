@@ -148,6 +148,7 @@ func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string
 		live.running, live.stopping = true, false
 		turn = b.turns.Add(1)
 		live.turn, live.steps, live.steers = turn, 0, 0
+		live.retries, live.retrySaid, live.retryPhase = 0, false, ""
 		live.pumpDone = make(chan struct{})
 		if a.marks == nil {
 			a.marks = map[int]appTurnMark{}

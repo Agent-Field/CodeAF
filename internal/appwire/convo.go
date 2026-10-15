@@ -153,6 +153,9 @@ type (
 		Turn    uint64 `json:"turn"`
 		InS     *int   `json:"in_s,omitempty"`
 		Attempt int    `json:"attempt"`
+		// Reason is empty for a failed request being asked again, paced for a
+		// rate limit, and offline while the network is being waited for.
+		Reason string `json:"reason,omitempty"`
 	}
 	QueueChanged struct {
 		Agent  string   `json:"agent"`
