@@ -488,8 +488,21 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 			posture = dial.ResolvedApprovalPosture()
 		}
 	}
-	start, where, id := a.start, a.teamWhere(t), t.ID
+	start, where, id, seam, entry := a.start, a.teamWhere(t), t.ID, a.teamsSeam(), e.ID
 	return a.besideLine(func() func(bool) tea.Cmd {
+		// ONE WINDOW CARRIES OUT A START: the desktop app may hold this same
+		// manager, and the claim in the teams file says which of us does
+		// (internal/teams' startclaim.go). A seam that cannot write starts as
+		// before.
+		if seam.Update != nil {
+			claimed := true
+			if _, _, err := seam.Update(func(f *teamstore.File) error {
+				claimed = f.ClaimStart(id, entry)
+				return nil
+			}); err == nil && !claimed {
+				return func(bool) tea.Cmd { return nil }
+			}
+		}
 		conv, err := start(where)
 		// The session owns both the gate and its persisted posture. Apply it
 		// off the UI loop, before membership can wake the first turn.

@@ -3645,7 +3645,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// It is set at this chokepoint rather than per tool, so the early warm
 		// start carries it exactly as the batch does.
 		callCtx := withCallID(ctx, call.ID)
-		if hub != nil && a.config.LiveToolOutput {
+		if hub != nil && (a.config.LiveToolOutput || a.liveOutputWanted.Load() > 0) {
 			callCtx = bare.WithBashOutput(callCtx, &shellOutput{hub: hub, id: call.ID, tool: call.Function.Name, bytes: liveToolOutputBytes, lines: liveToolOutputLines})
 		}
 		text, isError, err := a.executeTaskTool(callCtx, tool, running, args)

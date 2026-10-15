@@ -31,7 +31,9 @@ type appRenamer interface {
 
 // tidyMarks lays the app's closed and archived marks over a listed agent.
 func (b *appBackend) tidyMarks(view *appwire.Agent, archived bool) {
-	held := b.held(view.ID)
+	// A CONVERSATION AT WORK OR WAITING ON THE PERSON IS SAID AS SUCH, whatever
+	// mark it carries: a terminal may be working in an agent the app closed.
+	held := b.held(view.ID) || view.State == appwire.StateWorking || view.State == appwire.StateNeedsYou
 	_ = b.state.read(func(f *appStateFile) {
 		if at, ok := f.Closed[view.ID]; ok && !held {
 			at := at
@@ -233,7 +235,6 @@ func (b *appBackend) sayAgent(a *appAgent) appwire.Agent {
 	var view appwire.Agent
 	b.locked(func() { view = a.view })
 	b.tidyMarks(&view, view.State == appwire.StateArchived)
-	view.Crews = b.crewsOf(view.ID)
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	return view
 }
@@ -305,3 +306,42 @@ func (b *appBackend) searchTasks(query string, limit int) []appwire.Hit {
 // appSearchWords is the search store's reading of every conversation's words,
 // or nil where the process keeps no store.
 type appSearchWords func(terms string, limit int) ([]store.ConversationHit, error)
+
+// dress lays what this process knows now over an agent about to be said: the
+// crews it is a member of, its live line, and working while a turn it holds
+// is running. A queued agent.changed reaches the window after the moment it
+// was made, so it is dressed with the state as it is when it goes out; it is
+// only ever moved up from idle, never down from what a road said.
+func (b *appBackend) dress(view *appwire.Agent) {
+	view.Crews = b.crewsOf(view.ID)
+	b.locked(func() {
+		a := b.agents[view.ID]
+		if a == nil {
+			return
+		}
+		live := a.live
+		if live != nil && live.running && view.State == appwire.StateIdle && !live.needsYou() {
+			view.State = appwire.StateWorking
+		}
+		view.Line = agentLineLocked(a, view.State)
+	})
+}
+
+// agentLineLocked is an agent's live one-liner for its state: the step it is
+// on, or the question it is waiting on, and nothing when there is nothing to
+// say. Callers hold b.mu.
+func agentLineLocked(a *appAgent, state string) string {
+	switch state {
+	case appwire.StateWorking:
+		return a.step
+	case appwire.StateNeedsYou:
+		if live := a.live; live != nil {
+			for _, ask := range live.asks {
+				if !ask.Later {
+					return ask.Title
+				}
+			}
+		}
+	}
+	return ""
+}

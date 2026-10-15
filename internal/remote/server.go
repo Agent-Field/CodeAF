@@ -280,6 +280,12 @@ type Engine struct {
 	// is automations off on this engine, the welcome says nothing, and every
 	// door answers a refusal rather than an empty list.
 	Automations *EngineAutomations
+
+	// JoinedWith takes the launch a window that JOINED this conversation asked
+	// for ([Hello.Join] with [Hello.Launch]) and applies what of it can be
+	// applied to a conversation another window opened, until release. Nil
+	// applies nothing.
+	JoinedWith func(shape LaunchShape) (release func())
 }
 
 // Options is what [Serve] needs, which is one function: how to open the
@@ -1715,6 +1721,9 @@ type server struct {
 	// go once, on the way out ([server.letWindowGo]); both happen on the one
 	// goroutine that runs [server.serve], so it needs no lock.
 	window func()
+	// joinedWith releases what a joining window's launch applied
+	// ([Engine.JoinedWith]), on the same road out as window.
+	joinedWith func()
 }
 
 func (s *server) serve(in io.Reader) (err error) {
@@ -1735,6 +1744,10 @@ func (s *server) serve(in io.Reader) (err error) {
 		// the conversation, and it holds on every road out — the detach, the
 		// torn pipe, the close, the refusal and the fault alike.
 		s.letWindowGo()
+		if release := s.joinedWith; release != nil {
+			s.joinedWith = nil
+			release()
+		}
 	}()
 
 	scan := bufio.NewScanner(in)
@@ -1917,6 +1930,14 @@ func (s *server) handshake(line []byte) error {
 	// are open already includes it (automations.go's [server.holdWindow]). A
 	// refusal below lets it go on the way out with everything else.
 	s.holdWindow(hello)
+	if hello.Join && hello.Launch != nil {
+		sess.mu.Lock()
+		apply := sess.engine.JoinedWith
+		sess.mu.Unlock()
+		if apply != nil {
+			s.joinedWith = apply(*hello.Launch)
+		}
+	}
 	// The arrival is one act: attached, welcomed, and caught up, with this
 	// connection's writer held throughout so nothing overtakes the welcome.
 	s.write.Lock()

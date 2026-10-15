@@ -207,6 +207,7 @@ func (b *appBackend) crewTick(run *appCrewRun, first bool) {
 	var changed []appwire.Crew
 	var removed []string
 	var members []appwire.CrewMember
+	var moved []string
 	run.locked(func() {
 		for id, view := range views {
 			raw, _ := json.Marshal(view)
@@ -233,6 +234,9 @@ func (b *appBackend) crewTick(run *appCrewRun, first bool) {
 				removed = append(removed, id)
 			}
 		}
+		if !first {
+			moved = appMembershipMoved(run.held, held)
+		}
 		run.held = held
 	})
 	sort.Slice(changed, func(i, j int) bool { return changed[i].ID < changed[j].ID })
@@ -245,6 +249,15 @@ func (b *appBackend) crewTick(run *appCrewRun, first bool) {
 	for _, id := range removed {
 		b.emit.Emit(appwire.EventCrewRemoved, appwire.CrewRemoved{ID: id})
 	}
+	// AN AGENT WHOSE CREWS CHANGED IS SAID AGAIN, so its row's crews are
+	// never older than the crews' own.
+	for _, id := range moved {
+		var a *appAgent
+		b.locked(func() { a = b.agents[id] })
+		if a != nil {
+			b.sayAgent(a)
+		}
+	}
 	for _, t := range read.file.Teams {
 		if !t.Closed() {
 			b.crewTraffic(run, read, t)
@@ -252,6 +265,23 @@ func (b *appBackend) crewTick(run *appCrewRun, first bool) {
 	}
 	b.crewPackets(run, read, first)
 	b.holdMembers(run, held)
+}
+
+// appMembershipMoved is every agent whose open crews differ between two looks.
+func appMembershipMoved(before, after map[string][]string) []string {
+	var moved []string
+	for id, crews := range after {
+		if strings.Join(crews, ",") != strings.Join(before[id], ",") {
+			moved = append(moved, id)
+		}
+	}
+	for id := range before {
+		if _, still := after[id]; !still {
+			moved = append(moved, id)
+		}
+	}
+	sort.Strings(moved)
+	return moved
 }
 
 // ── the view ────────────────────────────────────────────────────────────────
@@ -388,7 +418,7 @@ func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.
 			view.AlsoIn = append(view.AlsoIn, other.ID)
 		}
 	}
-	view.State, view.Model, view.Title = b.memberLive(agent, view.Title)
+	view.State, view.Model, view.Title, view.Line = b.memberLive(agent, view.Title)
 	if usd, set := b.agentBudget(agent, b.now()); set {
 		view.CapUSD = &usd
 	}
@@ -403,7 +433,7 @@ func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.
 
 // memberLive is a member's state, model and title as the app holds its agent:
 // the engine's member words (running, asking, idle, failed).
-func (b *appBackend) memberLive(agent, title string) (state, model, name string) {
+func (b *appBackend) memberLive(agent, title string) (state, model, name, line string) {
 	state, name = teamstore.StateIdle, title
 	b.locked(func() {
 		a := b.agents[agent]
@@ -422,8 +452,9 @@ func (b *appBackend) memberLive(agent, title string) (state, model, name string)
 		case a.failed != "":
 			state = teamstore.StateFailed
 		}
+		line = agentLineLocked(a, a.view.State)
 	})
-	return state, model, name
+	return state, model, name, line
 }
 
 // ── the log, and the manager's starts and stops ─────────────────────────────
@@ -520,9 +551,18 @@ func (b *appBackend) crewAct(run *appCrewRun, read appCrewRead, t teamstore.Team
 		if !ok || !b.isHeld(appMemberAgent(manager)) {
 			return
 		}
-		// ANOTHER WINDOW HOLDING THE SAME MANAGER MAY HAVE DONE IT ALREADY: a
-		// member under the handle that joined after the line is that start.
+		// ANOTHER WINDOW HOLDING THE SAME MANAGER — a terminal the app joined —
+		// CARRIES IT OUT INSTEAD when it claims the line first (internal/teams'
+		// startclaim.go). A member under the handle that joined after the line
+		// is a start by a window from before the claim.
 		if m, ok := t.ByHandle(e.To); ok && !m.JoinedAt.Before(e.At) {
+			return
+		}
+		claimed := false
+		if err := teamstore.Update(b.crewProfile(), func(f *teamstore.File) error {
+			claimed = f.ClaimStart(t.ID, e.ID)
+			return nil
+		}); err != nil || !claimed {
 			return
 		}
 		guard.Go("app/crew-start", func() { b.crewStart(t, manager, e) })

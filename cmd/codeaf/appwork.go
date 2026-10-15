@@ -54,8 +54,29 @@ const appPromoteWait = 5 * time.Second
 // appTaskID is a task's or a quick task's id on the wire.
 func appTaskID(agent string, n uint64) string { return agent + ":" + strconv.FormatUint(n, 10) }
 
-// appProcessID is a process's id on the wire.
-func appProcessID(agent string, job int) string { return agent + ":p" + strconv.Itoa(job) }
+// appProcessID is a process's id on the wire: its agent, the job's number,
+// and when it started.
+//
+// THE START IS PART OF THE ID because a job's number is only its
+// conversation's count, and that count starts again at 1 when the app is
+// opened again: the "p1" a quit stopped and the "p1" started after it are two
+// processes, and a window holding the first must never stop or rerun the
+// second.
+func appProcessID(agent string, job session.JobNotice) string {
+	id := agent + ":p" + strconv.Itoa(job.ID)
+	if stamp := appProcessStamp(job); stamp != "" {
+		id += "." + stamp
+	}
+	return id
+}
+
+// appProcessStamp is a job's start, as the last part of its id.
+func appProcessStamp(job session.JobNotice) string {
+	if job.Started.IsZero() {
+		return ""
+	}
+	return strconv.FormatInt(job.Started.UnixMilli(), 36)
+}
 
 // appSplitID is an id's agent and the agent's own number for the thing.
 func appSplitID(id string) (agent, local string, ok bool) {
@@ -66,14 +87,35 @@ func appSplitID(id string) (agent, local string, ok bool) {
 	return id[:i], id[i+1:], true
 }
 
-// appProcessJob is a process id's agent and job number.
-func appProcessJob(id string) (string, int, bool) {
+// appProcessJob is a process id's agent, job number and start stamp ("" for
+// an id written without one).
+func appProcessJob(id string) (string, int, string, bool) {
 	agent, local, ok := appSplitID(id)
 	if !ok || !strings.HasPrefix(local, "p") {
-		return "", 0, false
+		return "", 0, "", false
 	}
-	job, err := strconv.Atoi(local[1:])
-	return agent, job, err == nil && job > 0
+	number, stamp, _ := strings.Cut(local[1:], ".")
+	job, err := strconv.Atoi(number)
+	return agent, job, stamp, err == nil && job > 0
+}
+
+// processRow is the job a process id names, and none when the conversation's
+// job of that number is a different process, started at another time.
+func (b *appBackend) processRow(id string) (string, session.JobNotice, error) {
+	agent, job, stamp, ok := appProcessJob(id)
+	if !ok {
+		return "", session.JobNotice{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
+	}
+	rows, _, err := b.processRows(agent)
+	if err != nil {
+		return "", session.JobNotice{}, err
+	}
+	for _, row := range rows {
+		if row.ID == job && (stamp == "" || appProcessStamp(row) == stamp) {
+			return agent, row, nil
+		}
+	}
+	return "", session.JobNotice{}, appwire.Errorf(appwire.CodeNotFound, "there is no process %s", id)
 }
 
 // held answers the held conversation for an agent id, opening it if none is.
@@ -762,7 +804,7 @@ type appFollow struct {
 // appProcessOf is one job notice on the wire.
 func appProcessOf(agent string, job session.JobNotice) appwire.Process {
 	process := appwire.Process{
-		ID: appProcessID(agent, job.ID), Agent: agent, Title: redact.Secrets(job.Label()), Command: redact.Secrets(job.Command),
+		ID: appProcessID(agent, job), Agent: agent, Title: redact.Secrets(job.Label()), Command: redact.Secrets(job.Command),
 		StartedAt: job.Started, LastLine: redact.Secrets(appLastLine(job.LogPath)),
 	}
 	switch job.State {
@@ -888,20 +930,11 @@ func (b *appBackend) ListProcesses(agent string) ([]appwire.Process, error) {
 
 // processLog is where one process's output is spooled.
 func (b *appBackend) processLog(id string) (string, error) {
-	agent, job, ok := appProcessJob(id)
-	if !ok {
-		return "", appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
-	}
-	rows, _, err := b.processRows(agent)
+	_, row, err := b.processRow(id)
 	if err != nil {
 		return "", err
 	}
-	for _, row := range rows {
-		if row.ID == job {
-			return row.LogPath, nil
-		}
-	}
-	return "", appwire.Errorf(appwire.CodeNotFound, "there is no process %s", id)
+	return row.LogPath, nil
 }
 
 // appReadLines reads a spool's complete lines from line from, at most limit,
@@ -1026,10 +1059,11 @@ func (b *appBackend) follow(id, path string, from int, f *appFollow) {
 
 // StopProcess stops one running process.
 func (b *appBackend) StopProcess(id string) error {
-	agent, job, ok := appProcessJob(id)
-	if !ok {
-		return appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
+	agent, row, err := b.processRow(id)
+	if err != nil {
+		return err
 	}
+	job := row.ID
 	_, live, err := b.heldLive(agent)
 	if err != nil {
 		return err
@@ -1042,19 +1076,20 @@ func (b *appBackend) StopProcess(id string) error {
 
 // RerunProcess runs an ended process's command again, as a new process.
 func (b *appBackend) RerunProcess(id string) (appwire.Process, error) {
-	agent, job, ok := appProcessJob(id)
-	if !ok {
-		return appwire.Process{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
+	agent, row, err := b.processRow(id)
+	if err != nil {
+		return appwire.Process{}, err
 	}
+	job := row.ID
 	_, live, err := b.heldLive(agent)
 	if err != nil {
 		return appwire.Process{}, err
 	}
-	row, err := live.conn.Conv.RerunProcess(job)
+	again, err := live.conn.Conv.RerunProcess(job)
 	if err != nil {
 		return appwire.Process{}, appEngineError(err)
 	}
-	return appProcessOf(agent, row), nil
+	return appProcessOf(agent, again), nil
 }
 
 // ── running long ────────────────────────────────────────────────────────────
@@ -1165,7 +1200,7 @@ func (b *appBackend) Sleep() error {
 					continue
 				}
 				if _, err := live.conn.Conv.Cancel("job:" + strconv.Itoa(row.ID)); err == nil {
-					slept := appSlept{id: appProcessID(id, row.ID), label: row.Label()}
+					slept := appSlept{id: appProcessID(id, row), label: row.Label()}
 					b.locked(func() { live.slept = append(live.slept, slept) })
 				}
 			}

@@ -2393,6 +2393,10 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// liveOutputWanted counts the windows that joined this conversation asking
+	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
+	// beside the window that opened it with [Config.LiveToolOutput].
+	liveOutputWanted atomic.Int32
 	// crewDayHeld is the day's spend crews and their helpers are held to
 	// ([Agent.crewDay]), read once.
 	crewDayOnce sync.Once

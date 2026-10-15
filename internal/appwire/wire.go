@@ -113,6 +113,9 @@ type Agent struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// Crews are the crews this agent is a member of, open ones only.
 	Crews []string `json:"crews,omitempty"`
+	// Line is its live one-liner: the step it is on while it works, or the
+	// question it is waiting on.
+	Line string `json:"line,omitempty"`
 	// ClosedAt is when it was moved to Closed and ArchivedAt when it was put
 	// away; LastActiveAt is when the person last spoke in it, and SpentUSD
 	// what it has spent in all.

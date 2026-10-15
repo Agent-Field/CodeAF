@@ -384,6 +384,9 @@ and the other way round. While the app is open it does for a crew what a
 terminal window does for a team it holds: it opens the member a manager starts
 with `team_start` and stops the one a manager stops, and it keeps every member
 of an open crew open, so a member woken by its manager is seen working.
+When the app and a terminal both hold one manager, the first to claim a start
+opens the member and the other does nothing, so one `team_start` makes one
+member. Each member's row shows the step it is on, or the question it waits on.
 
 A question that climbs to you, a cap reached and a closing report arrive in the
 app's dock and Inbox as decisions; your answer decides them for the team.
@@ -451,6 +454,22 @@ can be paused from the app like any other task: nothing new starts under it and
 the worker stops at its next step until you resume it. Its page shows the
 worker's steps as its log, and a note you leave shows when the worker read it.
 A task is never renamed after a single file it touches.
+
+## A conversation open in a terminal and in the desktop app at once
+
+When the app opens an agent a terminal already has open, it joins that
+terminal's conversation instead of opening a second copy, even when the
+conversation lives in another folder's terminal (a crew member a manager
+started). If it cannot reach that terminal it says the conversation is open in
+another codeaf window rather than opening it twice.
+
+A joined conversation keeps the rules of the window that opened it, because
+they are how it behaves for everyone: a proposed task's clock, a choice's
+clock, moving a running reply to a task, naming, and saving proposed reminders
+as standing orders follow the terminal. One thing changes while the app is
+joined: a command's output streams as it arrives, in the app and in the
+terminal's row for that command. The app still says the agent is working
+whenever a turn runs, whoever started it.
 
 ## Standing orders in the desktop app — agree to a reminder or routine before it runs, and how it earns trust
 

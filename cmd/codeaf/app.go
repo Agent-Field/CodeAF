@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -224,23 +225,49 @@ type appConn struct {
 
 type appOpener func(appOpenAsk) (*appConn, error)
 
+// appHostDialTimeout bounds each host dial while looking for the one holding
+// a conversation.
+const appHostDialTimeout = 500 * time.Millisecond
+
 // appOpenInProcess opens a conversation for the app. A saved conversation that
 // a window's host already holds is JOINED there, as a second view of the same
 // conversation, because opening it here as well would be a second writer on its
 // journal. Everything else is built in this process.
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
+	clock := ask.ClockS
+	launch := &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true}
 	if ask.Transcript != "" && !ask.Minted {
+		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
+		// conversation another window opened can carry (engine.go's JoinedWith).
+		hello := remote.Hello{Workspace: ask.Workspace, Session: ask.Transcript, Join: true, Launch: launch}
 		if socket, err := enginehost.DialStartingHost(ask.Workspace); err == nil {
-			client, err := remote.Dial(socket, "", remote.Hello{Workspace: ask.Workspace, Session: ask.Transcript, Join: true})
+			client, err := remote.Dial(socket, "", hello)
 			if err == nil {
 				return appConnOf(client, func() { _ = client.Close() }, false), nil
 			}
 			_ = socket.Close()
 		}
+		// HELD, BUT NOT BY THIS WORKSPACE'S HOST: a crew member a manager
+		// started lives in its manager's host. Every host is asked, and the
+		// one holding it answers; opening it here as well would be refused by
+		// its journal's lock, and is never tried while somebody holds it.
+		if session.InUse(ask.Transcript) {
+			for _, path := range enginehost.Sockets() {
+				socket, err := net.DialTimeout("unix", path, appHostDialTimeout)
+				if err != nil {
+					continue
+				}
+				client, err := remote.Dial(socket, "", hello)
+				if err == nil {
+					return appConnOf(client, func() { _ = client.Close() }, false), nil
+				}
+				_ = socket.Close()
+			}
+			return nil, appwire.Errorf(appwire.CodeConflict, "this conversation is open in another codeaf window that the app cannot reach; close it there, or open it in that window")
+		}
 	}
 	workspace := ask.Workspace
 	transcript := ask.Transcript
-	clock := ask.ClockS
 	hello := remote.Hello{
 		Workspace: workspace,
 		Session:   transcript,
@@ -250,7 +277,7 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// own naming does not rename it afterwards.
 		// And only the person moves a running reply to a task, and a proposed
 		// task's clock is the app's, as is a suggested choice's.
-		Launch: &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true},
+		Launch: launch,
 	}
 	loop, err := remote.Loopback(hello, remote.Options{
 		Boot: func(h remote.Hello) (*remote.Engine, error) {
@@ -347,6 +374,9 @@ type appAgent struct {
 	// failedKind is how that turn failed; a turn refused for money is run
 	// again when the limit is raised.
 	failedKind string
+	// step is the title of the call the running turn is on, the live line
+	// a crew's member row and the agent's own row show while it works.
+	step string
 	// boot is what agents.create asked of a conversation not yet open, taken
 	// by whichever road opens it first; opening says one is being assembled.
 	boot    *appBoot
@@ -578,14 +608,16 @@ func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 	if a.transcript == "" {
 		a.transcript = row.Transcript
 	}
-	if a.live != nil || a.view.State == appwire.StateClosed || a.view.State == appwire.StateStopped {
+	disk := appRowView(row)
+	busyElsewhere := a.live == nil && (disk.State == appwire.StateWorking || disk.State == appwire.StateNeedsYou)
+	if !busyElsewhere && (a.live != nil || a.view.State == appwire.StateClosed || a.view.State == appwire.StateStopped) {
 		view := a.view
 		if view.Title == "" {
 			view.Title = row.Title
 		}
 		return view
 	}
-	a.view = appRowView(row)
+	a.view = disk
 	return a.view
 }
 
@@ -697,7 +729,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	})
 	sort.SliceStable(agents, func(i, j int) bool { return agents[i].UpdatedAt.After(agents[j].UpdatedAt) })
 	for i := range agents {
-		agents[i].Crews = b.crewsOf(agents[i].ID)
+		b.dress(&agents[i])
 	}
 	return agents, nil
 }
@@ -1484,6 +1516,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			sayReply(appwire.EntryUpdate)
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
+			b.locked(func() { a.step = title })
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
 			live.box.Event(appwire.EventTurnTool, row)
@@ -1581,6 +1614,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	b.locked(func() {
 		live.running = false
 		live.lastUse = b.now()
+		a.step = ""
 		// Let go or closed while the turn ran: that road has said the state.
 		if held = a.live == live; held {
 			a.view.State = live.restingState()

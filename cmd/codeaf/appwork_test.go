@@ -218,7 +218,7 @@ func TestAppProcessesOutputFollowStopAndSleep(t *testing.T) {
 	rec.mu.Lock()
 	process := rec.data[i].(appwire.ProcessChanged).Process
 	rec.mu.Unlock()
-	id := agent.ID + ":p3"
+	id := appProcessID(agent.ID, job)
 	if process.ID != id || process.Title != "link checker" || process.State != appwire.ProcessRunning || process.LastLine != "ok /docs" || process.ExitCode != nil {
 		t.Fatalf("the process = %+v", process)
 	}
@@ -257,7 +257,7 @@ func TestAppProcessesOutputFollowStopAndSleep(t *testing.T) {
 		t.Fatal(err)
 	}
 	rerun, err := backend.RerunProcess(id)
-	if err != nil || rerun.ID != agent.ID+":p103" || rerun.State != appwire.ProcessRunning {
+	if err != nil || !strings.HasPrefix(rerun.ID, agent.ID+":p103") || rerun.State != appwire.ProcessRunning {
 		t.Fatalf("rerun = %+v, %v", rerun, err)
 	}
 

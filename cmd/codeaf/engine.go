@@ -1266,6 +1266,18 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		// machine's clock running for somebody sitting at another one
 		// ([engineAutomations]).
 		Automations: engineAutomations(),
+		// A WINDOW THAT JOINS THIS CONVERSATION — the desktop app joining one a
+		// terminal opened — gets what of its launch one conversation can carry
+		// for two windows: a shell call's output as it arrives. The rest of a
+		// launch (its clocks, its hand-over, its naming, saving proposals as
+		// standing orders) is how the conversation behaves for EVERY window,
+		// and stays the rules of the window that opened it.
+		JoinedWith: func(shape remote.LaunchShape) func() {
+			if !shape.LiveToolOutput {
+				return func() {}
+			}
+			return agent.WantLiveToolOutput()
+		},
 	}, nil
 }
 
