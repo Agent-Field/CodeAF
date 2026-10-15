@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 )
@@ -77,20 +76,14 @@ func settler(e Engine, name string) (Settler, error) {
 }
 
 // settleCall decodes a method's params into P and answers what call answers.
-func settleCall[P any](name string, call func(Settler, P) (any, error)) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+func settleCall[P, R any](name string, call func(Settler, P) (*R, error)) method {
+	return typed(func(e Engine, p P) (*R, error) {
 		s, err := settler(e, name)
 		if err != nil {
 			return nil, err
 		}
-		var p P
-		if len(raw) > 0 && string(raw) != "null" {
-			if err := decode(raw, &p); err != nil {
-				return nil, err
-			}
-		}
 		return call(s, p)
-	}
+	})
 }
 
 // exportDay reads one end of an export's range, a calendar day.
@@ -103,24 +96,22 @@ func exportDay(name, day string) (time.Time, error) {
 }
 
 var settingsMethods = map[string]method{
-	"rules.list": settleCall("rules.list", func(s Settler, _ struct{}) (any, error) {
+	"rules.list": settleCall("rules.list", func(s Settler, _ struct{}) (*RulesResult, error) {
 		rules, err := s.Rules()
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Rules []Rule `json:"rules"`
-		}{nonNil(rules)}, nil
+		return &RulesResult{nonNil(rules)}, nil
 	}),
-	"rules.remove": settleCall("rules.remove", func(s Settler, p crewID) (any, error) {
+	"rules.remove": settleCall("rules.remove", func(s Settler, p crewID) (*Empty, error) {
 		if err := needID("rules.remove", p.ID); err != nil {
 			return nil, err
 		}
-		return struct{}{}, s.RemoveRule(p.ID)
+		return done(s.RemoveRule(p.ID))
 	}),
 	"memory.list": settleCall("memory.list", func(s Settler, p struct {
 		Limit int `json:"limit"`
-	}) (any, error) {
+	}) (*MemoriesResult, error) {
 		if p.Limit <= 0 || p.Limit > 500 {
 			p.Limit = 200
 		}
@@ -128,20 +119,18 @@ var settingsMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Memories []Memory `json:"memories"`
-		}{nonNil(memories)}, nil
+		return &MemoriesResult{nonNil(memories)}, nil
 	}),
-	"memory.forget": settleCall("memory.forget", func(s Settler, p crewID) (any, error) {
+	"memory.forget": settleCall("memory.forget", func(s Settler, p crewID) (*Empty, error) {
 		if err := needID("memory.forget", p.ID); err != nil {
 			return nil, err
 		}
-		return struct{}{}, s.ForgetMemory(p.ID)
+		return done(s.ForgetMemory(p.ID))
 	}),
 	"spend.export": settleCall("spend.export", func(s Settler, p struct {
 		From string `json:"from"`
 		To   string `json:"to"`
-	}) (any, error) {
+	}) (*PathResult, error) {
 		from, err := exportDay("from", p.From)
 		if err != nil {
 			return nil, err
@@ -157,13 +146,11 @@ var settingsMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Path string `json:"path"`
-		}{path}, nil
+		return &PathResult{path}, nil
 	}),
 	"models.pin": settleCall("models.pin", func(s Settler, p struct {
 		IDs []string `json:"ids"`
-	}) (any, error) {
+	}) (*SettingsResult, error) {
 		if len(p.IDs) > PinnedModelsMax {
 			return nil, Errorf(CodeBadParams, "at most %d models can be pinned", PinnedModelsMax)
 		}
@@ -178,8 +165,19 @@ var settingsMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Settings Settings `json:"settings"`
-		}{settings}, nil
+		return &SettingsResult{settings}, nil
 	}),
 }
+
+// The answers of this file's methods.
+type (
+	RulesResult struct {
+		Rules []Rule `json:"rules"`
+	}
+	MemoriesResult struct {
+		Memories []Memory `json:"memories"`
+	}
+	PathResult struct {
+		Path string `json:"path"`
+	}
+)

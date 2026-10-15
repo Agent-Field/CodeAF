@@ -309,16 +309,12 @@ func TestAppTurnLongAndMoveToTask(t *testing.T) {
 		t.Fatalf("turn.long = %+v", long)
 	}
 
-	moved := make(chan appwire.Task, 1)
-	failed := make(chan error, 1)
-	go func() {
-		task, err := backend.MoveToTask(agent.ID, turn)
-		if err != nil {
-			failed <- err
-			return
-		}
-		moved <- task
-	}()
+	// THE MOVE ANSWERS AT ONCE, while the step in flight is still running, and
+	// the task arrives on its own when the reply moves.
+	answered, err := backend.MoveToTask(agent.ID, turn)
+	if err != nil || !answered.Moving || answered.Task != nil {
+		t.Fatalf("the move answered %+v, %v", answered, err)
+	}
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		conv.mu.Lock()
@@ -333,16 +329,10 @@ func TestAppTurnLongAndMoveToTask(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	conv.lane(session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{ID: 11, Title: "refactor everything", State: session.TaskRunning}})
-	select {
-	case task := <-moved:
-		if task.ID != agent.ID+":11" {
-			t.Fatalf("moved to %+v", task)
-		}
-	case err := <-failed:
-		t.Fatal(err)
-	case <-time.After(3 * time.Second):
-		t.Fatal("the move did not answer")
-	}
+	rec.waitFor(t, 3*time.Second, func(event string, data any) bool {
+		changed, ok := data.(appwire.TaskChanged)
+		return ok && changed.Task.ID == agent.ID+":11"
+	})
 	close(hold)
 	rec.waitFor(t, 2*time.Second, appTurnDone)
 	if _, err := backend.MoveToTask(agent.ID, turn); err == nil {
@@ -414,5 +404,24 @@ func TestAppTasksListReadsAConversationsOwnTaskFile(t *testing.T) {
 	}
 	if backend.liveOf(backend.agent(id)) != nil {
 		t.Fatal("listing tasks opened the conversation")
+	}
+}
+
+// MOVING A REPLY WHOSE TASK IS ALREADY PROPOSED STARTS THAT TASK. The reply is
+// parked on the card, so it reaches no step to move at; the move answers the
+// card with yes and answers with the task.
+func TestAppMoveToTaskStartsAPendingProposal(t *testing.T) {
+	conv := &fakeConversation{}
+	backend, rec, agent := workBackend(t, conv)
+	conv.lane(session.Event{Kind: session.EventTaskProposal, Task: &session.TaskNotice{ID: 4, Title: "add a cache", Deadline: time.Now().Add(time.Minute)}})
+	taskChanged(rec, t, func(task appwire.Task) bool { return task.Title == "add a cache" && task.Proposed })
+	moved, err := backend.MoveToTask(agent.ID, 0)
+	if err != nil || moved.Task == nil || moved.Task.ID != agent.ID+":4" || moved.Moving {
+		t.Fatalf("the move answered %+v, %v", moved, err)
+	}
+	conv.mu.Lock()
+	defer conv.mu.Unlock()
+	if len(conv.intents) != 1 || conv.intents[0].Action != "start" || conv.intents[0].ID != "4" {
+		t.Fatalf("the card was answered with %+v", conv.intents)
 	}
 }

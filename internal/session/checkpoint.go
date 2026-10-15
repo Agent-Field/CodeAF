@@ -600,7 +600,7 @@ const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has b
 const checkpointCeilingNote = "this is running long · moving it to a task that is watched and can split"
 
 // checkpointAskedNote is the line a reply the person moved to a task leaves.
-const checkpointAskedNote = "moved to a task, as you asked · it is watched and can split"
+const checkpointAskedNote = "Moved to a task · the chat is free again"
 
 // errNothingToMove is [Agent.MoveTurnToTask]'s answer when no reply is running.
 var errNothingToMove = errors.New("no reply is running to move")
@@ -4637,7 +4637,10 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
+	// IN THE DESKTOP APP THE PERSON MOVED THIS REPLY, and the line above already
+	// said so; the task's start is not told a second time as though the harness
+	// had chosen the work. The terminal keeps its two lines.
+	said, id := a.launchRouteTaskTold(hub, verdict, asked, drawn, ahead, !a.config.HandOverOnAsk)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work

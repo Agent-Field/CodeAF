@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 )
@@ -79,7 +78,7 @@ type Order struct {
 	ID        string `json:"id"`
 	Agent     string `json:"agent,omitempty"`
 	Crew      string `json:"crew,omitempty"`
-	Kind      string `json:"kind"`
+	Kind      string `json:"kind" enum:"order,reminder,watch"`
 	Title     string `json:"title"`
 	Workspace string `json:"workspace,omitempty"`
 	// When is the schedule as a person says it, WhenExact the same exactly.
@@ -88,15 +87,15 @@ type Order struct {
 	// Does is the brief, or the reminder's line; Wont what it must never do.
 	Does      string `json:"does"`
 	Wont      string `json:"wont,omitempty"`
-	AnswersIn string `json:"answers_in"`
+	AnswersIn string `json:"answers_in" enum:"chat,crew,everywhere,not_here"`
 	// Trust is the ladder's rung, ApprovedRuns how many go's it has had, and
 	// TrustAfter how many make it trusted.
-	Trust           string     `json:"trust"`
+	Trust           string     `json:"trust" enum:"asks_first,earning,trusted"`
 	ApprovedRuns    int        `json:"approved_runs"`
 	TrustAfter      int        `json:"trust_after"`
 	BudgetPerRunUSD float64    `json:"budget_per_run_usd"`
 	TimePerRunS     int        `json:"time_per_run_s"`
-	State           string     `json:"state"`
+	State           string     `json:"state" enum:"proposed,active,paused,stopped,done"`
 	FiresAt         *time.Time `json:"fires_at,omitempty"`
 	LastRun         *OrderRun  `json:"last_run,omitempty"`
 	// Asking is the run waiting for the person's go, when one is.
@@ -114,7 +113,7 @@ type OrderRun struct {
 	At *time.Time `json:"at,omitempty"`
 	// Result is set once it is over; Late says it started late, after a slot
 	// missed while the Mac was asleep or codeaf was closed.
-	Result string  `json:"result,omitempty"`
+	Result string  `json:"result,omitempty" enum:"ok,quiet,incomplete,skipped,not_right"`
 	Late   bool    `json:"late,omitempty"`
 	Line   string  `json:"line,omitempty"`
 	USD    float64 `json:"usd,omitempty"`
@@ -171,20 +170,14 @@ func init() {
 }
 
 // orderCall decodes a method's params into P and answers what call answers.
-func orderCall[P any](name string, call func(Orderer, P) (any, error)) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+func orderCall[P, R any](name string, call func(Orderer, P) (*R, error)) method {
+	return typed(func(e Engine, p P) (*R, error) {
 		o, ok := e.(Orderer)
 		if !ok {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve %s", name)
 		}
-		var p P
-		if len(raw) > 0 && string(raw) != "null" {
-			if err := decode(raw, &p); err != nil {
-				return nil, err
-			}
-		}
 		return call(o, p)
-	}
+	})
 }
 
 type orderAt struct {
@@ -192,18 +185,21 @@ type orderAt struct {
 	Edits *OrderEdits `json:"edits,omitempty"`
 }
 
-func orderResult(o Order, err error) (any, error) {
+// OrderResult is the answer of a method that answers one order.
+type OrderResult struct {
+	Order Order `json:"order"`
+}
+
+func orderResult(o Order, err error) (*OrderResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return struct {
-		Order Order `json:"order"`
-	}{o}, nil
+	return &OrderResult{o}, nil
 }
 
 // stateCall is pause, resume and stop, which differ only in the state asked for.
 func stateCall(name, state string) method {
-	return orderCall(name, func(o Orderer, p orderAt) (any, error) {
+	return orderCall(name, func(o Orderer, p orderAt) (*OrderResult, error) {
 		if err := needID(name, p.ID); err != nil {
 			return nil, err
 		}
@@ -214,19 +210,17 @@ func stateCall(name, state string) method {
 var orderMethods = map[string]method{
 	"orders.list": orderCall("orders.list", func(o Orderer, p struct {
 		Agent string `json:"agent"`
-	}) (any, error) {
+	}) (*OrdersResult, error) {
 		orders, err := o.Orders(strings.TrimSpace(p.Agent))
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Orders []Order `json:"orders"`
-		}{nonNil(orders)}, nil
+		return &OrdersResult{nonNil(orders)}, nil
 	}),
 	"orders.runs": orderCall("orders.runs", func(o Orderer, p struct {
 		ID    string `json:"id"`
 		Limit int    `json:"limit"`
-	}) (any, error) {
+	}) (*RunsResult, error) {
 		if err := needID("orders.runs", p.ID); err != nil {
 			return nil, err
 		}
@@ -237,17 +231,15 @@ var orderMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Runs []OrderRun `json:"runs"`
-		}{nonNil(runs)}, nil
+		return &RunsResult{nonNil(runs)}, nil
 	}),
-	"orders.ratify": orderCall("orders.ratify", func(o Orderer, p orderAt) (any, error) {
+	"orders.ratify": orderCall("orders.ratify", func(o Orderer, p orderAt) (*OrderResult, error) {
 		if err := needID("orders.ratify", p.ID); err != nil {
 			return nil, err
 		}
 		return orderResult(o.RatifyOrder(p.ID, p.Edits))
 	}),
-	"orders.change": orderCall("orders.change", func(o Orderer, p orderAt) (any, error) {
+	"orders.change": orderCall("orders.change", func(o Orderer, p orderAt) (*OrderResult, error) {
 		if err := needID("orders.change", p.ID); err != nil {
 			return nil, err
 		}
@@ -256,11 +248,11 @@ var orderMethods = map[string]method{
 		}
 		return orderResult(o.ChangeOrder(p.ID, *p.Edits))
 	}),
-	"orders.not_now": orderCall("orders.not_now", func(o Orderer, p orderAt) (any, error) {
+	"orders.not_now": orderCall("orders.not_now", func(o Orderer, p orderAt) (*Empty, error) {
 		if err := needID("orders.not_now", p.ID); err != nil {
 			return nil, err
 		}
-		return struct{}{}, o.NotNowOrder(p.ID)
+		return done(o.NotNowOrder(p.ID))
 	}),
 	"orders.pause":  stateCall("orders.pause", OrderPaused),
 	"orders.resume": stateCall("orders.resume", OrderActive),
@@ -269,7 +261,7 @@ var orderMethods = map[string]method{
 		ID      string `json:"id"`
 		Run     int64  `json:"run"`
 		Verdict string `json:"verdict"`
-	}) (any, error) {
+	}) (*OrderResult, error) {
 		if err := needID("orders.run", p.ID); err != nil {
 			return nil, err
 		}
@@ -282,3 +274,13 @@ var orderMethods = map[string]method{
 		return nil, Errorf(CodeBadParams, "verdict is go, skip or not_right")
 	}),
 }
+
+// The answers of this file's methods.
+type (
+	OrdersResult struct {
+		Orders []Order `json:"orders"`
+	}
+	RunsResult struct {
+		Runs []OrderRun `json:"runs"`
+	}
+)

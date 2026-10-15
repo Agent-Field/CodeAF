@@ -28,6 +28,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -518,7 +519,120 @@ func (b *appBackend) answerOrderAsk(askID, option string) (bool, error) {
 		return true, appwire.Errorf(appwire.CodeBadParams, "the ask %s offers go, skip or not_right", askID)
 	}
 	_, err = b.OrderVerdict(r.AutomationID, run, option)
+	if err == nil {
+		appOrderAnswered.Store(run, option)
+	}
 	return true, err
+}
+
+// appOrderAnswered is the runs this app answered, with the option, so the
+// ask's closing says it was answered here.
+var appOrderAnswered sync.Map
+
+// appOrderAskID is a run's ask id. A RUN, NOT AN ORDER: an order asks once per
+// run, a run's number is never used twice in the store, and an answer is to
+// that run and no other.
+func appOrderAskID(run int64) string {
+	return appwire.OrderAskPrefix + strconv.FormatInt(run, 10)
+}
+
+// appOrderRunAsk is a run waiting for the person as an ask, so it is in
+// asks.list and the Inbox like every other thing waiting on them.
+func appOrderRunAsk(view appwire.Order, run automation.Run) appwire.Ask {
+	ask := appwire.Ask{
+		ID: appOrderAskID(run.ID), Agent: view.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindOrderRun,
+		Title: "Run " + view.Title + " now?", Detail: view.Does,
+		Subject: &appwire.AskSubject{Kind: appwire.SubjectAutomation, Ref: view.ID},
+		Options: []appwire.AskOption{
+			{ID: appwire.VerdictGo, Label: "Go"},
+			{ID: appwire.VerdictSkip, Label: "Skip this one"},
+			{ID: appwire.VerdictNotRight, Label: "Not right"},
+		},
+	}
+	if view.Trust == appwire.TrustAsksFirst || view.Trust == appwire.TrustEarning {
+		ask.Reason = "it asks before each run until it has earned trust"
+	}
+	return ask
+}
+
+// orderAsksOf is the runs waiting on the person for an agent's orders, as
+// asks.
+func (b *appBackend) orderAsksOf(agent string) []appwire.Ask {
+	store, err := b.ordersOf()
+	if err != nil {
+		return nil
+	}
+	runs, err := store.Asking()
+	if err != nil {
+		return nil
+	}
+	now := b.now()
+	var out []appwire.Ask
+	for _, run := range runs {
+		a, err := store.Get(run.AutomationID)
+		if err != nil {
+			continue
+		}
+		view := orderView(store, a, now)
+		if view.Agent == agent {
+			out = append(out, appOrderRunAsk(view, run))
+		}
+	}
+	return out
+}
+
+// sayOrderAsks opens an ask for every run newly waiting on the person and
+// closes the ask of every run that stopped waiting, against what was open.
+func (b *appBackend) sayOrderAsks(store *automation.Store, open map[int64]appwire.Ask) {
+	runs, err := store.Asking()
+	if err != nil {
+		return
+	}
+	now := b.now()
+	waiting := map[int64]bool{}
+	for _, run := range runs {
+		waiting[run.ID] = true
+		if _, known := open[run.ID]; known {
+			continue
+		}
+		a, err := store.Get(run.AutomationID)
+		if err != nil {
+			continue
+		}
+		ask := appOrderRunAsk(orderView(store, a, now), run)
+		open[run.ID] = ask
+		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+	}
+	for id, ask := range open {
+		if waiting[id] {
+			continue
+		}
+		delete(open, id)
+		closed := appwire.AskClosed{Agent: ask.Agent, ID: ask.ID, By: appwire.ClosedByElsewhere, At: now}
+		if option, ok := appOrderAnswered.LoadAndDelete(id); ok {
+			closed.By, closed.Option = appwire.ClosedByApp, option.(string)
+		}
+		b.emit.Emit(appwire.EventAskClosed, closed)
+	}
+}
+
+// sayOrderResult puts a finished run's line in the chat it answers in.
+func (b *appBackend) sayOrderResult(view appwire.Order, run automation.Run) {
+	if view.Agent == "" || !run.News() {
+		return
+	}
+	if view.AnswersIn != appwire.AnswersChat && view.AnswersIn != appwire.AnswersEverywhere {
+		return
+	}
+	result := orderRunView(run)
+	words := view.Title + " · " + result.Result
+	if line := strings.TrimSpace(run.Line); line != "" {
+		words += ": " + line
+	}
+	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+		ID: "order-run-" + strconv.FormatInt(run.ID, 10), Agent: view.Agent, Kind: appwire.EntryNotice,
+		At: b.now(), Text: redact.Secrets(words), Ref: appOrderAskID(run.ID),
+	}})
 }
 
 // watchOrders reads the store until stop closes and says what changed:
@@ -540,6 +654,10 @@ func (b *appBackend) watchOrders(stop <-chan struct{}) {
 			seen[a.ID] = orderPrint(a)
 		}
 	}
+	// THE RUNS ALREADY WAITING ARE SAID AT ONCE, so the Inbox holds them from
+	// the moment the app opens.
+	open := map[int64]appwire.Ask{}
+	b.sayOrderAsks(store, open)
 	ticker := time.NewTicker(appOrdersEvery)
 	defer ticker.Stop()
 	for {
@@ -549,6 +667,7 @@ func (b *appBackend) watchOrders(stop <-chan struct{}) {
 		case <-ticker.C:
 		}
 		cursor = b.ordersOnce(store, cursor, seen)
+		b.sayOrderAsks(store, open)
 	}
 }
 
@@ -581,6 +700,8 @@ func (b *appBackend) ordersOnce(store *automation.Store, cursor int64, seen map[
 				if run.Why == automation.WhyLate {
 					b.emit.Emit(appwire.EventOrderMissed, appwire.OrderChanged{Order: view})
 				}
+			case automation.PhaseOver:
+				b.sayOrderResult(view, run)
 			}
 		}
 		cursor = next

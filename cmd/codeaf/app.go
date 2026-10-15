@@ -82,11 +82,20 @@ func runApp(args []string) error {
 	flags := commandFlags("app")
 	homeFlag := flags.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf")
 	turnLong := flags.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long")
+	schema := flags.Bool("schema", false, "print the wire's JSON Schema, generated from its Go types, and exit")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() > 0 {
-		return fmt.Errorf("usage: codeaf app [--home dir]")
+		return fmt.Errorf("usage: codeaf app [--home dir] [--schema]")
+	}
+	if *schema {
+		out, err := appwire.SchemaJSON()
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(out)
+		return err
 	}
 	if dir := strings.TrimSpace(*homeFlag); dir != "" {
 		abs, err := filepath.Abs(dir)
@@ -1890,7 +1899,8 @@ func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
 			asks = append(asks, a.live.asks...)
 		}
 	})
-	return append(asks, b.crewAsksOf(id)...), nil
+	asks = append(asks, b.crewAsksOf(id)...)
+	return append(asks, b.orderAsksOf(id)...), nil
 }
 
 // appAnsweredMark starts the value [appLive.answered] holds for an ask this app

@@ -39,6 +39,10 @@ const appTurnLong = 180 * time.Second
 // the move happens at the reply's next step and writes a brief first.
 const appMoveWait = 10 * time.Minute
 
+// appMoveQuick is how long agents.move_to_task waits for a reply that moves at
+// once before it answers that the move is taken.
+const appMoveQuick = 300 * time.Millisecond
+
 // appFollowEvery is how often a followed process's output is looked at.
 const appFollowEvery = 500 * time.Millisecond
 
@@ -1113,14 +1117,39 @@ func (b *appBackend) watchLong(id string, live *appLive, turn uint64, started ti
 	})
 }
 
-// MoveToTask moves the running reply to a task at its next step and answers
-// that task.
-func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.Task, error) {
+// MoveToTask asks the running reply to move to a task and answers AT ONCE.
+// The engine moves a reply at its next step boundary, which can be a long way
+// off while a call is in flight; the person's ask is taken now, the answer says
+// so, and the task arrives on its own as task.changed with the move's notice.
+// A reply that ends before it could move leaves a notice saying so.
+func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.MoveResult, error) {
 	a, err := b.find(agent)
 	if err != nil {
-		return appwire.Task{}, err
+		return appwire.MoveResult{}, err
 	}
 	live := b.liveOf(a)
+	// A TASK THE REPLY ALREADY PROPOSED IS THE TASK IT MOVES TO. While its card
+	// waits, the reply is parked on the person's answer and reaches no step at
+	// which it could move, so moving it is saying yes to the card.
+	var proposed *appwire.Task
+	b.locked(func() {
+		if live == nil {
+			return
+		}
+		for _, task := range live.tasks {
+			if task.Proposed && task.Parent == "" && task.State != appwire.TaskFailed && task.State != appwire.TaskDone && (proposed == nil || task.ID > proposed.ID) {
+				found := task
+				proposed = &found
+			}
+		}
+	})
+	if proposed != nil {
+		if err := b.ActOnTask(proposed.ID, "start", "", ""); err != nil {
+			return appwire.MoveResult{}, err
+		}
+		proposed.Proposed = false
+		return appwire.MoveResult{Task: proposed}, nil
+	}
 	known := map[string]bool{}
 	running := false
 	b.locked(func() {
@@ -1128,22 +1157,24 @@ func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.Task, error)
 			return
 		}
 		running = live.running && (turn == 0 || live.turn == turn)
+		if turn == 0 {
+			turn = live.turn
+		}
 		for id := range live.tasks {
 			known[id] = true
 		}
 	})
 	if !running {
-		return appwire.Task{}, appwire.Errorf(appwire.CodeNotFound, "that reply is not running")
+		return appwire.MoveResult{}, appwire.Errorf(appwire.CodeNotFound, "that reply is not running")
 	}
 	if err := live.conn.Conv.MoveTurnToTask(); err != nil {
-		return appwire.Task{}, appEngineError(err)
+		return appwire.MoveResult{}, appEngineError(err)
 	}
-	deadline := time.Now().Add(appMoveWait)
-	for {
+	moved := func() (*appwire.Task, bool) {
 		var found *appwire.Task
 		still := false
 		b.locked(func() {
-			still = live.running && (turn == 0 || live.turn == turn)
+			still = live.running && live.turn == turn
 			for id, task := range live.tasks {
 				if !known[id] && task.Parent == "" {
 					found = &task
@@ -1151,17 +1182,36 @@ func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.Task, error)
 				}
 			}
 		})
-		if found != nil {
-			return *found, nil
-		}
-		if !still {
-			return appwire.Task{}, appwire.Errorf(appwire.CodeNotFound, "the reply finished before it could move to a task")
-		}
-		if time.Now().After(deadline) {
-			return appwire.Task{}, appwire.Errorf(appwire.CodeEngine, "the reply has not moved to a task yet; it moves at its next step")
-		}
-		time.Sleep(100 * time.Millisecond)
+		return found, still
 	}
+	// A reply between steps moves at once; the answer carries its task then.
+	quick := time.Now().Add(appMoveQuick)
+	for time.Now().Before(quick) {
+		if task, still := moved(); task != nil {
+			return appwire.MoveResult{Task: task}, nil
+		} else if !still {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	guard.Go("app/move-to-task", func() {
+		deadline := time.Now().Add(appMoveWait)
+		for time.Now().Before(deadline) {
+			task, still := moved()
+			if task != nil {
+				return
+			}
+			if !still {
+				b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+					ID: "move-" + strconv.FormatUint(turn, 10), Agent: agent, Turn: turn, Kind: appwire.EntryNotice,
+					At: b.now(), Text: "The reply finished before it could move to a task", Quiet: true,
+				}})
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
+	return appwire.MoveResult{Moving: true}, nil
 }
 
 // ── sleep ───────────────────────────────────────────────────────────────────

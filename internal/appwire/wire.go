@@ -109,7 +109,7 @@ type Agent struct {
 	// Effort is how hard the model is asked to think: low, medium or high,
 	// and empty when the conversation runs on the model's own default.
 	Effort    string    `json:"effort,omitempty"`
-	State     string    `json:"state"`
+	State     string    `json:"state" enum:"idle,working,needs_you,stopped,closed,archived"`
 	UpdatedAt time.Time `json:"updated_at"`
 	// Crews are the crews this agent is a member of, open ones only.
 	Crews []string `json:"crews,omitempty"`
@@ -190,8 +190,8 @@ const (
 type Ask struct {
 	ID      string `json:"id"`
 	Agent   string `json:"agent"`
-	Kind    string `json:"kind"`
-	Subkind string `json:"subkind,omitempty"`
+	Kind    string `json:"kind" enum:"approval,question"`
+	Subkind string `json:"subkind,omitempty" enum:"permission,budget,crew_decision,crew_proposal,order_run"`
 	Title   string `json:"title"`
 	Detail  string `json:"detail,omitempty"`
 	// Options carry the engine's own ids; for a permission they are
@@ -218,12 +218,17 @@ type Ask struct {
 	// card: an automation waiting to be agreed to, a task, a tool call, a crew
 	// proposal or decision. Nil is an ask about nothing in particular.
 	Subject *AskSubject `json:"subject,omitempty"`
+	// Proposal is a crew proposal's whole shape, on its Bring in helpers ask:
+	// the crew's name, the helpers with their handles and roles, the cap, the
+	// goal. It is kept in the app layer until it is answered, so the ask is
+	// asked again after a restart.
+	Proposal *Proposal `json:"proposal,omitempty"`
 }
 
 // AskSubject is the thing an ask is about: its kind and the id the app knows
 // it by.
 type AskSubject struct {
-	Kind string `json:"kind"`
+	Kind string `json:"kind" enum:"automation,task,call,run,page,account,crew_proposal,crew_decision,budget"`
 	Ref  string `json:"ref,omitempty"`
 }
 
@@ -265,7 +270,7 @@ type Entry struct {
 	ID    string    `json:"id"`
 	Agent string    `json:"agent"`
 	Turn  uint64    `json:"turn,omitempty"`
-	Kind  string    `json:"kind"`
+	Kind  string    `json:"kind" enum:"user,answer,tool,receipt,notice,error,update,steer,note,summary,footer"`
 	At    time.Time `json:"at"`
 	// Text is the words of a user, answer, receipt, notice or error entry.
 	Text     string `json:"text,omitempty"`
@@ -363,11 +368,11 @@ type Settings struct {
 	TaskCapUSD         *float64 `json:"task_cap_usd"`
 	ProposedTaskClockS int      `json:"proposed_task_clock_s"`
 	IdleCloseDays      int      `json:"idle_close_days"`
-	Effort             string   `json:"effort,omitempty"`
+	Effort             string   `json:"effort,omitempty" enum:"low,medium,high"`
 	// The General rows the window draws by (Wave 8): kept here so every window
 	// reads the same answer.
-	Appearance  string `json:"appearance"`
-	TextSize    string `json:"text_size"`
+	Appearance  string `json:"appearance" enum:"system,light,dark"`
+	TextSize    string `json:"text_size" enum:"small,medium,large"`
 	OpenAtLogin bool   `json:"open_at_login"`
 	DockBadge   bool   `json:"dock_badge"`
 	// The Models rows: the pinned models (⌥⌘1–3), the model checks run on and

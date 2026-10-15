@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 )
@@ -32,6 +31,8 @@ const (
 const (
 	SubkindCrewDecision = "crew_decision"
 	SubkindCrewProposal = "crew_proposal"
+	// SubkindOrderRun is a standing order's run asking before it goes.
+	SubkindOrderRun = "order_run"
 )
 
 // The answers a crew proposal offers.
@@ -408,20 +409,14 @@ func crewer(e Engine, name string) (Crewer, error) {
 }
 
 // crewCall decodes a method's params into P and answers what call answers.
-func crewCall[P any](name string, call func(Crewer, P) (any, error)) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+func crewCall[P, R any](name string, call func(Crewer, P) (*R, error)) method {
+	return typed(func(e Engine, p P) (*R, error) {
 		c, err := crewer(e, name)
 		if err != nil {
 			return nil, err
 		}
-		var p P
-		if len(raw) > 0 && string(raw) != "null" {
-			if err := decode(raw, &p); err != nil {
-				return nil, err
-			}
-		}
 		return call(c, p)
-	}
+	})
 }
 
 type crewID struct {
@@ -439,26 +434,29 @@ type crewResult struct {
 	Crew Crew `json:"crew"`
 }
 
-func crewOf(c Crew, err error) (any, error) {
+func crewOf(c Crew, err error) (*crewResult, error) {
 	if err != nil {
 		return nil, err
 	}
 	c.Members = nonNil(c.Members)
-	return crewResult{c}, nil
+	return &crewResult{c}, nil
 }
 
-func memberOf(m CrewMember, err error) (any, error) {
+// MemberResult is a member verb's answer.
+type MemberResult struct {
+	Member CrewMember `json:"member"`
+}
+
+func memberOf(m CrewMember, err error) (*MemberResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return struct {
-		Member CrewMember `json:"member"`
-	}{m}, nil
+	return &MemberResult{m}, nil
 }
 
 // memberVerb is one member verb.
 func memberVerb(verb string) method {
-	return crewCall("members."+verb, func(c Crewer, p MemberAsk) (any, error) {
+	return crewCall("members."+verb, func(c Crewer, p MemberAsk) (*MemberResult, error) {
 		if strings.TrimSpace(p.Crew) == "" {
 			return nil, Errorf(CodeBadParams, "members.%s needs a crew", verb)
 		}
@@ -467,22 +465,22 @@ func memberVerb(verb string) method {
 }
 
 var crewMethods = map[string]method{
-	"crews.get": crewCall("crews.get", func(c Crewer, p crewID) (any, error) {
+	"crews.get": crewCall("crews.get", func(c Crewer, p crewID) (*crewResult, error) {
 		if err := needID("crews.get", p.ID); err != nil {
 			return nil, err
 		}
 		return crewOf(c.CrewGet(p.ID))
 	}),
-	"crews.create": crewCall("crews.create", func(c Crewer, p CrewCreate) (any, error) {
+	"crews.create": crewCall("crews.create", func(c Crewer, p CrewCreate) (*crewResult, error) {
 		return crewOf(c.CrewCreate(p))
 	}),
-	"crews.update": crewCall("crews.update", func(c Crewer, p CrewUpdate) (any, error) {
+	"crews.update": crewCall("crews.update", func(c Crewer, p CrewUpdate) (*crewResult, error) {
 		if err := needID("crews.update", p.ID); err != nil {
 			return nil, err
 		}
 		return crewOf(c.CrewUpdate(p))
 	}),
-	"crews.message": crewCall("crews.message", func(c Crewer, p CrewMessage) (any, error) {
+	"crews.message": crewCall("crews.message", func(c Crewer, p CrewMessage) (*EntryResult, error) {
 		if strings.TrimSpace(p.Crew) == "" || strings.TrimSpace(p.Text) == "" {
 			return nil, Errorf(CodeBadParams, "crews.message needs a crew and some text")
 		}
@@ -490,15 +488,13 @@ var crewMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Entry Entry `json:"entry"`
-		}{entry}, nil
+		return &EntryResult{entry}, nil
 	}),
 	"crews.log": crewCall("crews.log", func(c Crewer, p struct {
 		ID    string `json:"id"`
 		After string `json:"after"`
 		Limit int    `json:"limit"`
-	}) (any, error) {
+	}) (*LinesCursorResult, error) {
 		if err := needID("crews.log", p.ID); err != nil {
 			return nil, err
 		}
@@ -506,29 +502,24 @@ var crewMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Lines  []LogLine `json:"lines"`
-			Cursor string    `json:"cursor"`
-		}{nonNil(lines), cursor}, nil
+		return &LinesCursorResult{nonNil(lines), cursor}, nil
 	}),
 	"crews.decisions": crewCall("crews.decisions", func(c Crewer, p struct {
 		ID  string `json:"id"`
 		All bool   `json:"all"`
-	}) (any, error) {
+	}) (*DecisionsResult, error) {
 		decisions, err := c.CrewDecisions(p.ID, p.All)
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Decisions []Decision `json:"decisions"`
-		}{nonNil(decisions)}, nil
+		return &DecisionsResult{nonNil(decisions)}, nil
 	}),
 	"crews.decide": crewCall("crews.decide", func(c Crewer, p struct {
 		Packet string `json:"packet"`
 		Option string `json:"option"`
 		Text   string `json:"text"`
 		Reason string `json:"reason"`
-	}) (any, error) {
+	}) (*DecisionResult, error) {
 		if strings.TrimSpace(p.Packet) == "" || (strings.TrimSpace(p.Option) == "" && strings.TrimSpace(p.Text) == "") {
 			return nil, Errorf(CodeBadParams, "crews.decide needs a packet and an option or some words")
 		}
@@ -536,14 +527,12 @@ var crewMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Decision Decision `json:"decision"`
-		}{d}, nil
+		return &DecisionResult{d}, nil
 	}),
 	"crews.manager": crewCall("crews.manager", func(c Crewer, p struct {
 		ID    string `json:"id"`
 		Agent string `json:"agent"`
-	}) (any, error) {
+	}) (*crewResult, error) {
 		if err := needID("crews.manager", p.ID); err != nil {
 			return nil, err
 		}
@@ -552,34 +541,34 @@ var crewMethods = map[string]method{
 	"crews.move": crewCall("crews.move", func(c Crewer, p struct {
 		IDs    []string `json:"ids"`
 		Parent string   `json:"parent"`
-	}) (any, error) {
+	}) (*Empty, error) {
 		if len(p.IDs) == 0 {
 			return nil, Errorf(CodeBadParams, "crews.move needs ids")
 		}
-		return struct{}{}, c.CrewMove(p.IDs, p.Parent)
+		return done(c.CrewMove(p.IDs, p.Parent))
 	}),
 	"crews.wrap_up": crewCall("crews.wrap_up", func(c Crewer, p struct {
 		ID   string `json:"id"`
 		Text string `json:"text"`
-	}) (any, error) {
+	}) (*Empty, error) {
 		if err := needID("crews.wrap_up", p.ID); err != nil {
 			return nil, err
 		}
-		return struct{}{}, c.CrewWrapUp(p.ID, p.Text)
+		return done(c.CrewWrapUp(p.ID, p.Text))
 	}),
-	"crews.close": crewCall("crews.close", func(c Crewer, p crewID) (any, error) {
+	"crews.close": crewCall("crews.close", func(c Crewer, p crewID) (*Empty, error) {
 		if err := needID("crews.close", p.ID); err != nil {
 			return nil, err
 		}
-		return struct{}{}, c.CrewClose(p.ID)
+		return done(c.CrewClose(p.ID))
 	}),
-	"crews.reopen": crewCall("crews.reopen", func(c Crewer, p crewID) (any, error) {
+	"crews.reopen": crewCall("crews.reopen", func(c Crewer, p crewID) (*crewResult, error) {
 		if err := needID("crews.reopen", p.ID); err != nil {
 			return nil, err
 		}
 		return crewOf(c.CrewReopen(p.ID))
 	}),
-	"crews.delete": crewCall("crews.delete", func(c Crewer, p crewID) (any, error) {
+	"crews.delete": crewCall("crews.delete", func(c Crewer, p crewID) (*IDsResult, error) {
 		if err := needID("crews.delete", p.ID); err != nil {
 			return nil, err
 		}
@@ -587,23 +576,19 @@ var crewMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			IDs []string `json:"ids"`
-		}{nonNil(ids)}, nil
+		return &IDsResult{nonNil(ids)}, nil
 	}),
-	"crews.defaults": crewCall("crews.defaults", func(c Crewer, _ struct{}) (any, error) {
+	"crews.defaults": crewCall("crews.defaults", func(c Crewer, _ struct{}) (*DefaultsResult, error) {
 		d, err := c.CrewDefaults()
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Defaults CrewDefaults `json:"defaults"`
-		}{d}, nil
+		return &DefaultsResult{d}, nil
 	}),
 	"crews.set_default": crewCall("crews.set_default", func(c Crewer, p struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`
-	}) (any, error) {
+	}) (*DefaultsResult, error) {
 		if strings.TrimSpace(p.Key) == "" {
 			return nil, Errorf(CodeBadParams, "crews.set_default needs a key")
 		}
@@ -611,11 +596,9 @@ var crewMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Defaults CrewDefaults `json:"defaults"`
-		}{d}, nil
+		return &DefaultsResult{d}, nil
 	}),
-	"crews.items": crewCall("crews.items", func(c Crewer, p crewID) (any, error) {
+	"crews.items": crewCall("crews.items", func(c Crewer, p crewID) (*ItemsResult, error) {
 		if err := needID("crews.items", p.ID); err != nil {
 			return nil, err
 		}
@@ -623,16 +606,14 @@ var crewMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Items []CrewItem `json:"items"`
-		}{nonNil(items)}, nil
+		return &ItemsResult{nonNil(items)}, nil
 	}),
 	"crews.link": crewCall("crews.link", func(c Crewer, p struct {
 		ID    string `json:"id"`
 		Kind  string `json:"kind"`
 		Ref   string `json:"ref"`
 		Title string `json:"title"`
-	}) (any, error) {
+	}) (*ItemResult, error) {
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Ref) == "" {
 			return nil, Errorf(CodeBadParams, "crews.link needs an id and a ref")
 		}
@@ -645,26 +626,24 @@ var crewMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Item CrewItem `json:"item"`
-		}{item}, nil
+		return &ItemResult{item}, nil
 	}),
 	"crews.unlink": crewCall("crews.unlink", func(c Crewer, p struct {
 		ID   string `json:"id"`
 		Item string `json:"item"`
-	}) (any, error) {
+	}) (*Empty, error) {
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Item) == "" {
 			return nil, Errorf(CodeBadParams, "crews.unlink needs an id and an item")
 		}
-		return struct{}{}, c.CrewUnlink(p.ID, p.Item)
+		return done(c.CrewUnlink(p.ID, p.Item))
 	}),
 	"crews.propose": crewCall("crews.propose", func(c Crewer, p struct {
 		Agent string `json:"agent"`
-	}) (any, error) {
+	}) (*Empty, error) {
 		if strings.TrimSpace(p.Agent) == "" {
 			return nil, Errorf(CodeBadParams, "crews.propose needs an agent")
 		}
-		return struct{}{}, c.CrewPropose(p.Agent)
+		return done(c.CrewPropose(p.Agent))
 	}),
 	"members.add":    memberVerb("add"),
 	"members.start":  memberVerb("start"),
@@ -677,21 +656,19 @@ var crewMethods = map[string]method{
 	"members.cap":    memberVerb("cap"),
 	"members.role":   memberVerb("role"),
 	"members.move":   memberVerb("move"),
-	"roles.list": crewCall("roles.list", func(c Crewer, _ struct{}) (any, error) {
+	"roles.list": crewCall("roles.list", func(c Crewer, _ struct{}) (*RolesResult, error) {
 		roles, err := c.Roles()
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Roles []Role `json:"roles"`
-		}{nonNil(roles)}, nil
+		return &RolesResult{nonNil(roles)}, nil
 	}),
 	"roles.update": crewCall("roles.update", func(c Crewer, p struct {
 		ID           string  `json:"id"`
 		Name         *string `json:"name"`
 		Instructions *string `json:"instructions"`
 		Model        *string `json:"model"`
-	}) (any, error) {
+	}) (*RoleResult, error) {
 		if err := needID("roles.update", p.ID); err != nil {
 			return nil, err
 		}
@@ -699,8 +676,41 @@ var crewMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Role Role `json:"role"`
-		}{role}, nil
+		return &RoleResult{role}, nil
 	}),
 }
+
+// The answers of this file's methods.
+type (
+	EntryResult struct {
+		Entry Entry `json:"entry"`
+	}
+	LinesCursorResult struct {
+		Lines  []LogLine `json:"lines"`
+		Cursor string    `json:"cursor"`
+	}
+	DecisionsResult struct {
+		Decisions []Decision `json:"decisions"`
+	}
+	DecisionResult struct {
+		Decision Decision `json:"decision"`
+	}
+	IDsResult struct {
+		IDs []string `json:"ids"`
+	}
+	DefaultsResult struct {
+		Defaults CrewDefaults `json:"defaults"`
+	}
+	ItemsResult struct {
+		Items []CrewItem `json:"items"`
+	}
+	ItemResult struct {
+		Item CrewItem `json:"item"`
+	}
+	RolesResult struct {
+		Roles []Role `json:"roles"`
+	}
+	RoleResult struct {
+		Role Role `json:"role"`
+	}
+)

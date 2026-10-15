@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 )
@@ -92,11 +91,7 @@ type toolCallParams struct {
 	Limit    int    `json:"limit"`
 }
 
-func decodeToolCall(raw json.RawMessage, name string) (toolCallParams, error) {
-	var p toolCallParams
-	if err := decode(raw, &p); err != nil {
-		return p, err
-	}
+func checkToolCall(p toolCallParams, name string) (toolCallParams, error) {
 	if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.Call) == "" {
 		return p, Errorf(CodeBadParams, "%s needs an agent and a call", name)
 	}
@@ -108,26 +103,26 @@ func decodeToolCall(raw json.RawMessage, name string) (toolCallParams, error) {
 
 // toolFollow is tools.follow or tools.unfollow.
 func toolFollow(name string, follow bool) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+	return typed(func(e Engine, p toolCallParams) (*Empty, error) {
 		r, err := toolReader(e, name)
 		if err != nil {
 			return nil, err
 		}
-		p, err := decodeToolCall(raw, name)
+		p, err = checkToolCall(p, name)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, r.FollowTool(p.Agent, p.Call, follow)
-	}
+		return done(r.FollowTool(p.Agent, p.Call, follow))
+	})
 }
 
 var toolMethods = map[string]method{
-	"tools.output": func(e Engine, raw json.RawMessage) (any, error) {
+	"tools.output": typed(func(e Engine, p toolCallParams) (*LinesNextLineTotalResult, error) {
 		r, err := toolReader(e, "tools.output")
 		if err != nil {
 			return nil, err
 		}
-		p, err := decodeToolCall(raw, "tools.output")
+		p, err = checkToolCall(p, "tools.output")
 		if err != nil {
 			return nil, err
 		}
@@ -135,12 +130,17 @@ var toolMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Lines    []string `json:"lines"`
-			NextLine int      `json:"next_line"`
-			Total    int      `json:"total"`
-		}{nonNil(lines), next, total}, nil
-	},
+		return &LinesNextLineTotalResult{nonNil(lines), next, total}, nil
+	}),
 	"tools.follow":   toolFollow("tools.follow", true),
 	"tools.unfollow": toolFollow("tools.unfollow", false),
 }
+
+// The answers of this file's methods.
+type (
+	LinesNextLineTotalResult struct {
+		Lines    []string `json:"lines"`
+		NextLine int      `json:"next_line"`
+		Total    int      `json:"total"`
+	}
+)

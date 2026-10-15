@@ -166,3 +166,48 @@ func TestAppOrderPauseResumeStop(t *testing.T) {
 		t.Fatal("a stopped order was resumed")
 	}
 }
+
+// A RUN WAITING ON THE PERSON IS AN ASK LIKE ANY OTHER: opened for the
+// Inbox, listed for its agent under the run's id, and closed as answered here
+// once the person answers it.
+func TestAppOrderRunIsAnAskEverywhere(t *testing.T) {
+	backend, rec, store := ordersBackend(t)
+	transcript := filepath.Join(t.TempDir(), "places", "proj", "abcd1234", "transcript.jsonl")
+	a, err := store.Create(automation.Automation{
+		Title: "weekly update", Schedule: automation.Schedule{Every: "1h", Zone: "UTC"},
+		Action: automation.Action{Do: "draft the weekly update"}, Workspace: t.TempDir(),
+		Status: automation.StatusProposed, Trust: automation.TrustAsksFirst,
+		Origin: automation.Origin{Transcript: transcript},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Ratify(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	run, err := store.QueueAsking(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, id := appAgentID(transcript), "order:"+strconv.FormatInt(run.ID, 10)
+	open := map[int64]appwire.Ask{}
+	backend.sayOrderAsks(store, open)
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		opened, ok := data.(appwire.AskOpened)
+		return ok && opened.Ask.ID == id && opened.Ask.Agent == agent && opened.Ask.Subkind == appwire.SubkindOrderRun
+	})
+	if asks := backend.orderAsksOf(agent); len(asks) != 1 || asks[0].ID != id || asks[0].Subject == nil || asks[0].Subject.Ref != a.ID {
+		t.Fatalf("the agent's asks = %+v", asks)
+	}
+	if err := backend.AnswerAsk(agent, id, appwire.VerdictGo, ""); err != nil {
+		t.Fatal(err)
+	}
+	backend.sayOrderAsks(store, open)
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		closed, ok := data.(appwire.AskClosed)
+		return ok && closed.ID == id && closed.By == appwire.ClosedByApp && closed.Option == appwire.VerdictGo
+	})
+	if asks := backend.orderAsksOf(agent); len(asks) != 0 {
+		t.Fatalf("an answered run still asks: %+v", asks)
+	}
+}

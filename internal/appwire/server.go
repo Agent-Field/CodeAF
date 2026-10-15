@@ -240,7 +240,7 @@ func (s *Server) handle(ctx context.Context, line []byte, engine Engine, infligh
 	inflight.Add(1)
 	go func() {
 		defer inflight.Done()
-		result, err := method(engine, params)
+		result, err := method.call(engine, params)
 		if ctx.Err() != nil && err != nil {
 			err = Errorf(CodeClosed, "codeaf is shutting down")
 		}
@@ -257,34 +257,31 @@ func (s *Server) handle(ctx context.Context, line []byte, engine Engine, infligh
 	return false
 }
 
-// method answers one request from its params, which are already known to be
-// a JSON object.
-type method func(Engine, json.RawMessage) (any, error)
-
 // methods is the dispatch table. shutdown is not in it: it is answered by the
 // loop itself, because it ends the loop.
 var methods = map[string]method{
-	"ping": func(Engine, json.RawMessage) (any, error) { return struct{}{}, nil },
-	"agents.list": func(e Engine, raw json.RawMessage) (any, error) {
-		var p struct {
-			Workspace string `json:"workspace"`
-		}
-		if err := decode(raw, &p); err != nil {
-			return nil, err
+	"ping": typed(func(Engine, struct{}) (*Empty, error) { return &Empty{}, nil }),
+	"agents.list": typed(func(e Engine, p AgentsListParams) (*AgentsResult, error) {
+		// A STATE AND A QUERY are answered by an engine that keeps them.
+		if t, ok := e.(Tidier); ok {
+			switch p.State {
+			case "", ListOpen, ListClosed, ListArchived, ListAll:
+			default:
+				return nil, Errorf(CodeBadParams, "state is open, closed, archived or all")
+			}
+			agents, err := t.ListAgentsIn(p.Workspace, p.State, p.Query)
+			if err != nil {
+				return nil, err
+			}
+			return &AgentsResult{nonNil(agents)}, nil
 		}
 		agents, err := e.ListAgents(p.Workspace)
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Agents []Agent `json:"agents"`
-		}{nonNil(agents)}, nil
-	},
-	"agents.create": func(e Engine, raw json.RawMessage) (any, error) {
-		var p CreateAsk
-		if err := decode(raw, &p); err != nil {
-			return nil, err
-		}
+		return &AgentsResult{nonNil(agents)}, nil
+	}),
+	"agents.create": typed(func(e Engine, p CreateAsk) (*agentResult, error) {
 		if p.BudgetUSD != nil && *p.BudgetUSD < 0 {
 			return nil, Errorf(CodeBadParams, "budget_usd cannot be negative")
 		}
@@ -292,17 +289,9 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return agentResult{agent}, nil
-	},
-	"agents.entries": func(e Engine, raw json.RawMessage) (any, error) {
-		var p struct {
-			ID     string `json:"id"`
-			Before string `json:"before"`
-			Limit  int    `json:"limit"`
-		}
-		if err := decode(raw, &p); err != nil {
-			return nil, err
-		}
+		return &agentResult{agent}, nil
+	}),
+	"agents.entries": typed(func(e Engine, p EntriesParams) (*EntriesResult, error) {
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.entries needs an id")
 		}
@@ -316,19 +305,12 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Entries []Entry `json:"entries"`
-			More    bool    `json:"more"`
-		}{nonNil(entries), more}, nil
-	},
-	"agents.set_model": func(e Engine, raw json.RawMessage) (any, error) {
-		var p struct {
-			ID    string `json:"id"`
-			Model string `json:"model"`
-		}
-		if err := decode(raw, &p); err != nil {
-			return nil, err
-		}
+		return &EntriesResult{nonNil(entries), more}, nil
+	}),
+	"agents.set_model": typed(func(e Engine, p struct {
+		ID    string `json:"id"`
+		Model string `json:"model"`
+	}) (*agentResult, error) {
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Model) == "" {
 			return nil, Errorf(CodeBadParams, "agents.set_model needs an id and a model")
 		}
@@ -336,16 +318,12 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return agentResult{agent}, nil
-	},
-	"agents.set_effort": func(e Engine, raw json.RawMessage) (any, error) {
-		var p struct {
-			ID     string `json:"id"`
-			Effort string `json:"effort"`
-		}
-		if err := decode(raw, &p); err != nil {
-			return nil, err
-		}
+		return &agentResult{agent}, nil
+	}),
+	"agents.set_effort": typed(func(e Engine, p struct {
+		ID     string `json:"id"`
+		Effort string `json:"effort" enum:"low,medium,high"`
+	}) (*agentResult, error) {
 		effort := strings.ToLower(strings.TrimSpace(p.Effort))
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.set_effort needs an id")
@@ -359,10 +337,10 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return agentResult{agent}, nil
-	},
-	"agents.retry": func(e Engine, raw json.RawMessage) (any, error) {
-		id, err := decodeID(raw, "id")
+		return &agentResult{agent}, nil
+	}),
+	"agents.retry": typed(func(e Engine, p IDParams) (*TurnResult, error) {
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -370,39 +348,31 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Turn uint64 `json:"turn"`
-		}{turn}, nil
-	},
-	"models.list": func(e Engine, _ json.RawMessage) (any, error) {
+		return &TurnResult{turn}, nil
+	}),
+	"models.list": typed(func(e Engine, _ struct{}) (*ModelsResult, error) {
 		models, err := e.ListModels()
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Models []Model `json:"models"`
-		}{nonNil(models)}, nil
-	},
-	"settings.get": func(e Engine, _ json.RawMessage) (any, error) {
+		return &ModelsResult{nonNil(models)}, nil
+	}),
+	"settings.get": typed(func(e Engine, _ struct{}) (*SettingsResult, error) {
 		settings, err := e.Settings()
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Settings Settings `json:"settings"`
-		}{settings}, nil
-	},
-	"spend.today": func(e Engine, _ json.RawMessage) (any, error) {
+		return &SettingsResult{settings}, nil
+	}),
+	"spend.today": typed(func(e Engine, _ struct{}) (*SpendResult, error) {
 		spend, err := e.SpendToday()
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Spend Spend `json:"spend"`
-		}{spend}, nil
-	},
-	"agents.open": func(e Engine, raw json.RawMessage) (any, error) {
-		id, err := decodeID(raw, "id")
+		return &SpendResult{spend}, nil
+	}),
+	"agents.open": typed(func(e Engine, p IDParams) (*agentResult, error) {
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -410,18 +380,14 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return agentResult{agent}, nil
-	},
-	"agents.send": func(e Engine, raw json.RawMessage) (any, error) {
-		var p struct {
-			ID          string   `json:"id"`
-			Text        string   `json:"text"`
-			ClientID    string   `json:"client_id"`
-			Attachments []string `json:"attachments"`
-		}
-		if err := decode(raw, &p); err != nil {
-			return nil, err
-		}
+		return &agentResult{agent}, nil
+	}),
+	"agents.send": typed(func(e Engine, p struct {
+		ID          string   `json:"id"`
+		Text        string   `json:"text"`
+		ClientID    string   `json:"client_id"`
+		Attachments []string `json:"attachments"`
+	}) (*TurnResult, error) {
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.send needs an id")
 		}
@@ -438,26 +404,24 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Turn uint64 `json:"turn"`
-		}{turn}, nil
-	},
-	"agents.stop": func(e Engine, raw json.RawMessage) (any, error) {
-		id, err := decodeID(raw, "id")
+		return &TurnResult{turn}, nil
+	}),
+	"agents.stop": typed(func(e Engine, p IDParams) (*Empty, error) {
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, e.Stop(id)
-	},
-	"agents.close": func(e Engine, raw json.RawMessage) (any, error) {
-		id, err := decodeID(raw, "id")
+		return done(e.Stop(id))
+	}),
+	"agents.close": typed(func(e Engine, p IDParams) (*Empty, error) {
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, e.CloseAgent(id)
-	},
-	"asks.list": func(e Engine, raw json.RawMessage) (any, error) {
-		id, err := decodeID(raw, "agent")
+		return done(e.CloseAgent(id))
+	}),
+	"asks.list": typed(func(e Engine, p AgentParams) (*AsksResult, error) {
+		id, err := required("agent", p.Agent)
 		if err != nil {
 			return nil, err
 		}
@@ -465,24 +429,18 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Asks []Ask `json:"asks"`
-		}{nonNil(asks)}, nil
-	},
-	"asks.answer": func(e Engine, raw json.RawMessage) (any, error) {
-		var p struct {
-			Agent     string `json:"agent"`
-			ID        string `json:"id"`
-			Option    string `json:"option"`
-			Text      string `json:"text"`
-			Why       string `json:"why"`
-			BatchItem string `json:"batch_item"`
-			Later     bool   `json:"later"`
-			YouDecide bool   `json:"you_decide"`
-		}
-		if err := decode(raw, &p); err != nil {
-			return nil, err
-		}
+		return &AsksResult{nonNil(asks)}, nil
+	}),
+	"asks.answer": typed(func(e Engine, p struct {
+		Agent     string `json:"agent"`
+		ID        string `json:"id"`
+		Option    string `json:"option"`
+		Text      string `json:"text"`
+		Why       string `json:"why"`
+		BatchItem string `json:"batch_item"`
+		Later     bool   `json:"later"`
+		YouDecide bool   `json:"you_decide"`
+	}) (*Empty, error) {
 		if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "asks.answer needs an agent and an id")
 		}
@@ -490,17 +448,17 @@ var methods = map[string]method{
 			return nil, Errorf(CodeBadParams, "asks.answer needs an option, some text, later or you_decide")
 		}
 		if t, ok := e.(Talker); ok {
-			return struct{}{}, t.AnswerAskWith(p.Agent, p.ID, AskAnswer{
+			return done(t.AnswerAskWith(p.Agent, p.ID, AskAnswer{
 				Option: strings.TrimSpace(p.Option), Text: p.Text, Why: p.Why, BatchItem: p.BatchItem, Later: p.Later, YouDecide: p.YouDecide,
-			})
+			}))
 		}
 		if p.Later || p.YouDecide || p.BatchItem != "" || p.Why != "" {
 			return nil, Errorf(CodeBadParams, "this engine answers with an option and words only")
 		}
-		return struct{}{}, e.AnswerAsk(p.Agent, p.ID, strings.TrimSpace(p.Option), p.Text)
-	},
-	"tasks.list": func(e Engine, raw json.RawMessage) (any, error) {
-		id, err := decodeID(raw, "agent")
+		return done(e.AnswerAsk(p.Agent, p.ID, strings.TrimSpace(p.Option), p.Text))
+	}),
+	"tasks.list": typed(func(e Engine, p AgentParams) (*TasksResult, error) {
+		id, err := required("agent", p.Agent)
 		if err != nil {
 			return nil, err
 		}
@@ -508,19 +466,11 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Tasks []Task `json:"tasks"`
-		}{nonNil(tasks)}, nil
-	},
-	"crews.list": func(e Engine, raw json.RawMessage) (any, error) {
-		var p struct {
-			Closed bool `json:"closed"`
-		}
-		if len(raw) > 0 && string(raw) != "null" {
-			if err := decode(raw, &p); err != nil {
-				return nil, err
-			}
-		}
+		return &TasksResult{nonNil(tasks)}, nil
+	}),
+	"crews.list": typed(func(e Engine, p struct {
+		Closed bool `json:"closed"`
+	}) (*CrewsResult, error) {
 		var crews []Crew
 		var err error
 		if c, ok := e.(Crewer); ok {
@@ -534,11 +484,52 @@ var methods = map[string]method{
 		for i := range crews {
 			crews[i].Members = nonNil(crews[i].Members)
 		}
-		return struct {
-			Crews []Crew `json:"crews"`
-		}{nonNil(crews)}, nil
-	},
+		return &CrewsResult{nonNil(crews)}, nil
+	}),
 }
+
+// The answers of the methods above that are not answered by a type of their
+// own elsewhere.
+type (
+	AgentsListParams struct {
+		Workspace string `json:"workspace"`
+		State     string `json:"state" enum:"open,closed,archived,all"`
+		Query     string `json:"query"`
+	}
+	EntriesParams struct {
+		ID     string `json:"id"`
+		Before string `json:"before"`
+		Limit  int    `json:"limit"`
+	}
+	AgentsResult struct {
+		Agents []Agent `json:"agents"`
+	}
+	EntriesResult struct {
+		Entries []Entry `json:"entries"`
+		More    bool    `json:"more"`
+	}
+	TurnResult struct {
+		Turn uint64 `json:"turn"`
+	}
+	ModelsResult struct {
+		Models []Model `json:"models"`
+	}
+	SettingsResult struct {
+		Settings Settings `json:"settings"`
+	}
+	SpendResult struct {
+		Spend Spend `json:"spend"`
+	}
+	AsksResult struct {
+		Asks []Ask `json:"asks"`
+	}
+	TasksResult struct {
+		Tasks []Task `json:"tasks"`
+	}
+	CrewsResult struct {
+		Crews []Crew `json:"crews"`
+	}
+)
 
 type agentResult struct {
 	Agent Agent `json:"agent"`
@@ -550,24 +541,6 @@ func decode(raw json.RawMessage, v any) error {
 		return Errorf(CodeBadParams, "the params could not be read: %v", err)
 	}
 	return nil
-}
-
-// decodeID reads the one required string a method takes.
-func decodeID(raw json.RawMessage, field string) (string, error) {
-	var p map[string]json.RawMessage
-	if err := decode(raw, &p); err != nil {
-		return "", err
-	}
-	var id string
-	if value, ok := p[field]; ok {
-		if err := json.Unmarshal(value, &id); err != nil {
-			return "", Errorf(CodeBadParams, "%s must be a string", field)
-		}
-	}
-	if strings.TrimSpace(id) == "" {
-		return "", Errorf(CodeBadParams, "%s is required", field)
-	}
-	return id, nil
 }
 
 // nonNil keeps an empty list a list on the wire, never null.

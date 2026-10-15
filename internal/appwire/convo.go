@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 )
@@ -218,11 +217,7 @@ type sayTo struct {
 	ClientID string `json:"client_id"`
 }
 
-func decodeSay(raw json.RawMessage, name string) (sayTo, error) {
-	var p sayTo
-	if err := decode(raw, &p); err != nil {
-		return p, err
-	}
+func checkSay(p sayTo, name string) (sayTo, error) {
 	if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Text) == "" {
 		return p, Errorf(CodeBadParams, "%s needs an id and some text", name)
 	}
@@ -237,11 +232,7 @@ type queueAt struct {
 	To    *int   `json:"to"`
 }
 
-func decodeQueueAt(raw json.RawMessage, name string) (queueAt, error) {
-	var p queueAt
-	if err := decode(raw, &p); err != nil {
-		return p, err
-	}
+func checkQueueAt(p queueAt, name string) (queueAt, error) {
 	if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.ID) == "" {
 		return p, Errorf(CodeBadParams, "%s needs an agent and an id", name)
 	}
@@ -250,49 +241,49 @@ func decodeQueueAt(raw json.RawMessage, name string) (queueAt, error) {
 
 // talkTask is one task verb that takes only an id, served by the Worker.
 func talkTaskVerb(action string) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+	return typed(func(e Engine, p IDParams) (*Empty, error) {
 		w, err := worker(e, "tasks."+action)
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, w.ActOnTask(id, action, "", "")
-	}
+		return done(w.ActOnTask(id, action, "", ""))
+	})
 }
 
 var talkMethods = map[string]method{
-	"agents.steer": func(e Engine, raw json.RawMessage) (any, error) {
+	"agents.steer": typed(func(e Engine, p sayTo) (*Empty, error) {
 		t, err := talker(e, "agents.steer")
 		if err != nil {
 			return nil, err
 		}
-		p, err := decodeSay(raw, "agents.steer")
+		p, err = checkSay(p, "agents.steer")
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, t.Steer(p.ID, p.Text, p.ClientID)
-	},
-	"agents.queue": func(e Engine, raw json.RawMessage) (any, error) {
+		return done(t.Steer(p.ID, p.Text, p.ClientID))
+	}),
+	"agents.queue": typed(func(e Engine, p sayTo) (*queueResult, error) {
 		t, err := talker(e, "agents.queue")
 		if err != nil {
 			return nil, err
 		}
-		p, err := decodeSay(raw, "agents.queue")
+		p, err = checkSay(p, "agents.queue")
 		if err != nil {
 			return nil, err
 		}
 		queued, err := t.Queue(p.ID, p.Text, p.ClientID)
-		return queueResult{nonNil(queued)}, err
-	},
-	"queue.edit": func(e Engine, raw json.RawMessage) (any, error) {
+		return &queueResult{nonNil(queued)}, err
+	}),
+	"queue.edit": typed(func(e Engine, p queueAt) (*queueResult, error) {
 		t, err := talker(e, "queue.edit")
 		if err != nil {
 			return nil, err
 		}
-		p, err := decodeQueueAt(raw, "queue.edit")
+		p, err = checkQueueAt(p, "queue.edit")
 		if err != nil {
 			return nil, err
 		}
@@ -300,26 +291,26 @@ var talkMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "queue.edit needs the new text; queue.remove takes a message out")
 		}
 		queued, err := t.EditQueued(p.Agent, p.ID, p.Text)
-		return queueResult{nonNil(queued)}, err
-	},
-	"queue.remove": func(e Engine, raw json.RawMessage) (any, error) {
+		return &queueResult{nonNil(queued)}, err
+	}),
+	"queue.remove": typed(func(e Engine, p queueAt) (*queueResult, error) {
 		t, err := talker(e, "queue.remove")
 		if err != nil {
 			return nil, err
 		}
-		p, err := decodeQueueAt(raw, "queue.remove")
+		p, err = checkQueueAt(p, "queue.remove")
 		if err != nil {
 			return nil, err
 		}
 		queued, err := t.RemoveQueued(p.Agent, p.ID)
-		return queueResult{nonNil(queued)}, err
-	},
-	"queue.move": func(e Engine, raw json.RawMessage) (any, error) {
+		return &queueResult{nonNil(queued)}, err
+	}),
+	"queue.move": typed(func(e Engine, p queueAt) (*queueResult, error) {
 		t, err := talker(e, "queue.move")
 		if err != nil {
 			return nil, err
 		}
-		p, err := decodeQueueAt(raw, "queue.move")
+		p, err = checkQueueAt(p, "queue.move")
 		if err != nil {
 			return nil, err
 		}
@@ -327,36 +318,28 @@ var talkMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "queue.move needs to, a place counted from zero")
 		}
 		queued, err := t.MoveQueued(p.Agent, p.ID, *p.To)
-		return queueResult{nonNil(queued)}, err
-	},
-	"asks.hold": func(e Engine, raw json.RawMessage) (any, error) {
+		return &queueResult{nonNil(queued)}, err
+	}),
+	"asks.hold": typed(func(e Engine, p struct {
+		Agent string `json:"agent"`
+		ID    string `json:"id"`
+	}) (*Empty, error) {
 		t, err := talker(e, "asks.hold")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			Agent string `json:"agent"`
-			ID    string `json:"id"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "asks.hold needs an agent and an id")
 		}
-		return struct{}{}, t.HoldAsk(p.Agent, p.ID)
-	},
-	"files.find": func(e Engine, raw json.RawMessage) (any, error) {
+		return done(t.HoldAsk(p.Agent, p.ID))
+	}),
+	"files.find": typed(func(e Engine, p struct {
+		Agent string `json:"agent"`
+		Query string `json:"query"`
+		Limit int    `json:"limit"`
+	}) (*GroupsResult, error) {
 		t, err := talker(e, "files.find")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			Agent string `json:"agent"`
-			Query string `json:"query"`
-			Limit int    `json:"limit"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.Agent) == "" || p.Limit < 0 {
@@ -369,43 +352,31 @@ var talkMethods = map[string]method{
 		for i := range groups {
 			groups[i].Files = nonNil(groups[i].Files)
 		}
-		return struct {
-			Groups []FileGroup `json:"groups"`
-		}{nonNil(groups)}, nil
-	},
-	"files.stat": func(e Engine, raw json.RawMessage) (any, error) {
+		return &GroupsResult{nonNil(groups)}, nil
+	}),
+	"files.stat": typed(func(e Engine, p struct {
+		Agent string   `json:"agent"`
+		Paths []string `json:"paths"`
+	}) (*FilesResult, error) {
 		t, err := talker(e, "files.stat")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			Agent string   `json:"agent"`
-			Paths []string `json:"paths"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.Agent) == "" || len(p.Paths) == 0 {
 			return nil, Errorf(CodeBadParams, "files.stat needs an agent and some paths")
 		}
 		files, err := t.StatFiles(p.Agent, p.Paths)
-		return struct {
-			Files []FileStat `json:"files"`
-		}{nonNil(files)}, err
-	},
-	"attachments.add": func(e Engine, raw json.RawMessage) (any, error) {
+		return &FilesResult{nonNil(files)}, err
+	}),
+	"attachments.add": typed(func(e Engine, p struct {
+		Agent string `json:"agent"`
+		Kind  string `json:"kind"`
+		Path  string `json:"path"`
+		Text  string `json:"text"`
+		URL   string `json:"url"`
+	}) (*AttachmentResult, error) {
 		t, err := talker(e, "attachments.add")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			Agent string `json:"agent"`
-			Kind  string `json:"kind"`
-			Path  string `json:"path"`
-			Text  string `json:"text"`
-			URL   string `json:"url"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		switch {
@@ -422,51 +393,41 @@ var talkMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Attachment Attachment `json:"attachment"`
-		}{attachment}, nil
-	},
+		return &AttachmentResult{attachment}, nil
+	}),
 	"tasks.pause":  talkTaskVerb("pause"),
 	"tasks.resume": talkTaskVerb("resume"),
-	"tasks.retry": func(e Engine, raw json.RawMessage) (any, error) {
+	"tasks.retry": typed(func(e Engine, p IDParams) (*Empty, error) {
 		t, err := talker(e, "tasks.retry")
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, t.RetryTask(id)
-	},
-	"tasks.brief": func(e Engine, raw json.RawMessage) (any, error) {
+		return done(t.RetryTask(id))
+	}),
+	"tasks.brief": typed(func(e Engine, p struct {
+		ID   string `json:"id"`
+		Text string `json:"text"`
+	}) (*Empty, error) {
 		w, err := worker(e, "tasks.brief")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			ID   string `json:"id"`
-			Text string `json:"text"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Text) == "" {
 			return nil, Errorf(CodeBadParams, "tasks.brief needs an id and the new brief")
 		}
-		return struct{}{}, w.ActOnTask(p.ID, "brief", "", p.Text)
-	},
-	"tasks.entries": func(e Engine, raw json.RawMessage) (any, error) {
+		return done(w.ActOnTask(p.ID, "brief", "", p.Text))
+	}),
+	"tasks.entries": typed(func(e Engine, p struct {
+		ID     string `json:"id"`
+		Before string `json:"before"`
+		Limit  int    `json:"limit"`
+	}) (*EntriesMoreResult, error) {
 		t, err := talker(e, "tasks.entries")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			ID     string `json:"id"`
-			Before string `json:"before"`
-			Limit  int    `json:"limit"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.ID) == "" || p.Limit < 0 {
@@ -479,14 +440,32 @@ var talkMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Entries []Entry `json:"entries"`
-			More    bool    `json:"more"`
-		}{nonNil(entries), more}, nil
-	},
+		return &EntriesMoreResult{nonNil(entries), more}, nil
+	}),
 }
 
 // ThinkingSeconds is how long a thought lasted, in whole seconds, at least one.
 func ThinkingSeconds(d time.Duration) int {
 	return max(1, int(d.Round(time.Second)/time.Second))
 }
+
+// The answers of this file's methods.
+type (
+	GroupsResult struct {
+		Groups []FileGroup `json:"groups"`
+	}
+	AttachmentResult struct {
+		Attachment Attachment `json:"attachment"`
+	}
+	EntriesMoreResult struct {
+		Entries []Entry `json:"entries"`
+		More    bool    `json:"more"`
+	}
+)
+
+// The answers of this file's methods.
+type (
+	FilesResult struct {
+		Files []FileStat `json:"files"`
+	}
+)

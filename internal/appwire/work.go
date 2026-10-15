@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 )
@@ -148,7 +147,7 @@ type Worker interface {
 	FollowProcess(id string, follow bool) error
 	StopProcess(id string) error
 	RerunProcess(id string) (Process, error)
-	MoveToTask(agent string, turn uint64) (Task, error)
+	MoveToTask(agent string, turn uint64) (MoveResult, error)
 	Sleep() error
 	Wake() error
 }
@@ -171,26 +170,26 @@ func worker(e Engine, name string) (Worker, error) {
 
 // taskVerb is one card verb that takes only an id.
 func taskVerb(action string) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+	return typed(func(e Engine, p IDParams) (*Empty, error) {
 		w, err := worker(e, "tasks."+action)
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, w.ActOnTask(id, action, "", "")
-	}
+		return done(w.ActOnTask(id, action, "", ""))
+	})
 }
 
 var workMethods = map[string]method{
-	"tasks.get": func(e Engine, raw json.RawMessage) (any, error) {
+	"tasks.get": typed(func(e Engine, p IDParams) (*PageResult, error) {
 		w, err := worker(e, "tasks.get")
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -199,26 +198,20 @@ var workMethods = map[string]method{
 			return nil, err
 		}
 		page.Files, page.Log, page.Notes = nonNil(page.Files), nonNil(page.Log), nonNil(page.Notes)
-		return struct {
-			Page TaskPage `json:"page"`
-		}{page}, nil
-	},
+		return &PageResult{page}, nil
+	}),
 	"tasks.start":   taskVerb("start"),
 	"tasks.hold":    taskVerb("hold"),
 	"tasks.decline": taskVerb("decline"),
 	"tasks.typing":  taskVerb("typing"),
 	"tasks.stop":    taskVerb("stop"),
-	"tasks.note": func(e Engine, raw json.RawMessage) (any, error) {
+	"tasks.note": typed(func(e Engine, p struct {
+		ID       string `json:"id"`
+		Text     string `json:"text"`
+		ClientID string `json:"client_id"`
+	}) (*TaskNoteResult, error) {
 		w, err := worker(e, "tasks.note")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			ID       string `json:"id"`
-			Text     string `json:"text"`
-			ClientID string `json:"client_id"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Text) == "" {
@@ -230,23 +223,17 @@ var workMethods = map[string]method{
 			if err != nil {
 				return nil, err
 			}
-			return struct {
-				Entry Entry `json:"entry"`
-			}{entry}, nil
+			return &TaskNoteResult{&entry}, nil
 		}
-		return struct{}{}, w.ActOnTask(p.ID, "note", "", p.Text)
-	},
-	"tasks.decide": func(e Engine, raw json.RawMessage) (any, error) {
+		return &TaskNoteResult{}, w.ActOnTask(p.ID, "note", "", p.Text)
+	}),
+	"tasks.decide": typed(func(e Engine, p struct {
+		ID      string `json:"id"`
+		Verdict string `json:"verdict"`
+		Text    string `json:"text"`
+	}) (*Empty, error) {
 		w, err := worker(e, "tasks.decide")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			ID      string `json:"id"`
-			Verdict string `json:"verdict"`
-			Text    string `json:"text"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.ID) == "" {
@@ -260,25 +247,25 @@ var workMethods = map[string]method{
 		if p.Verdict == VerdictNotRight && strings.TrimSpace(p.Text) == "" {
 			return nil, Errorf(CodeBadParams, "not_right needs the words to tell it")
 		}
-		return struct{}{}, w.ActOnTask(p.ID, "decide", p.Verdict, p.Text)
-	},
-	"quick.undo": func(e Engine, raw json.RawMessage) (any, error) {
+		return done(w.ActOnTask(p.ID, "decide", p.Verdict, p.Text))
+	}),
+	"quick.undo": typed(func(e Engine, p IDParams) (*Empty, error) {
 		w, err := worker(e, "quick.undo")
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, w.UndoQuick(id)
-	},
-	"quick.promote": func(e Engine, raw json.RawMessage) (any, error) {
+		return done(w.UndoQuick(id))
+	}),
+	"quick.promote": typed(func(e Engine, p IDParams) (*taskResult, error) {
 		w, err := worker(e, "quick.promote")
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -286,14 +273,14 @@ var workMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return taskResult{task}, nil
-	},
-	"processes.list": func(e Engine, raw json.RawMessage) (any, error) {
+		return &taskResult{task}, nil
+	}),
+	"processes.list": typed(func(e Engine, p AgentParams) (*ProcessesResult, error) {
 		w, err := worker(e, "processes.list")
 		if err != nil {
 			return nil, err
 		}
-		agent, err := decodeID(raw, "agent")
+		agent, err := required("agent", p.Agent)
 		if err != nil {
 			return nil, err
 		}
@@ -301,20 +288,14 @@ var workMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Processes []Process `json:"processes"`
-		}{nonNil(list)}, nil
-	},
-	"processes.output": func(e Engine, raw json.RawMessage) (any, error) {
+		return &ProcessesResult{nonNil(list)}, nil
+	}),
+	"processes.output": typed(func(e Engine, p struct {
+		ID       string `json:"id"`
+		FromLine int    `json:"from_line"`
+	}) (*LinesNextLineResult, error) {
 		w, err := worker(e, "processes.output")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			ID       string `json:"id"`
-			FromLine int    `json:"from_line"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.ID) == "" || p.FromLine < 0 {
@@ -324,20 +305,17 @@ var workMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Lines    []string `json:"lines"`
-			NextLine int      `json:"next_line"`
-		}{nonNil(lines), next}, nil
-	},
+		return &LinesNextLineResult{nonNil(lines), next}, nil
+	}),
 	"processes.follow":   processVerb(func(w Worker, id string) error { return w.FollowProcess(id, true) }),
 	"processes.unfollow": processVerb(func(w Worker, id string) error { return w.FollowProcess(id, false) }),
 	"processes.stop":     processVerb(func(w Worker, id string) error { return w.StopProcess(id) }),
-	"processes.rerun": func(e Engine, raw json.RawMessage) (any, error) {
+	"processes.rerun": typed(func(e Engine, p IDParams) (*ProcessResult, error) {
 		w, err := worker(e, "processes.rerun")
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -345,62 +323,92 @@ var workMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Process Process `json:"process"`
-		}{process}, nil
-	},
-	"agents.move_to_task": func(e Engine, raw json.RawMessage) (any, error) {
+		return &ProcessResult{process}, nil
+	}),
+	"agents.move_to_task": typed(func(e Engine, p struct {
+		ID   string `json:"id"`
+		Turn uint64 `json:"turn"`
+	}) (*MoveResult, error) {
 		w, err := worker(e, "agents.move_to_task")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			ID   string `json:"id"`
-			Turn uint64 `json:"turn"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.move_to_task needs an id")
 		}
-		task, err := w.MoveToTask(p.ID, p.Turn)
+		moved, err := w.MoveToTask(p.ID, p.Turn)
 		if err != nil {
 			return nil, err
 		}
-		return taskResult{task}, nil
-	},
-	"power.sleep": func(e Engine, _ json.RawMessage) (any, error) {
+		return &moved, nil
+	}),
+	"power.sleep": typed(func(e Engine, _ struct{}) (*Empty, error) {
 		w, err := worker(e, "power.sleep")
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, w.Sleep()
-	},
-	"power.wake": func(e Engine, _ json.RawMessage) (any, error) {
+		return done(w.Sleep())
+	}),
+	"power.wake": typed(func(e Engine, _ struct{}) (*Empty, error) {
 		w, err := worker(e, "power.wake")
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, w.Wake()
-	},
+		return done(w.Wake())
+	}),
 }
 
 // processVerb is one process verb that takes only an id.
 func processVerb(act func(Worker, string) error) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+	return typed(func(e Engine, p IDParams) (*Empty, error) {
 		w, err := worker(e, "processes")
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, act(w, id)
-	}
+		return done(act(w, id))
+	})
+}
+
+// MoveResult is agents.move_to_task's answer, given at once. Task is the task
+// the reply became when it had already moved; Moving says the move is taken
+// and the reply moves when the step in flight ends, its task arriving as
+// task.changed and one notice saying it moved.
+type MoveResult struct {
+	Task   *Task `json:"task,omitempty"`
+	Moving bool  `json:"moving,omitempty"`
+}
+
+// TaskNoteResult is tasks.note's answer: the note's entry, from an engine that
+// keeps notes as entries.
+type TaskNoteResult struct {
+	Entry *Entry `json:"entry,omitempty"`
 }
 
 type taskResult struct {
 	Task Task `json:"task"`
 }
+
+// The answers of this file's methods.
+type (
+	PageResult struct {
+		Page TaskPage `json:"page"`
+	}
+	ProcessesResult struct {
+		Processes []Process `json:"processes"`
+	}
+	ProcessResult struct {
+		Process Process `json:"process"`
+	}
+)
+
+// The answers of this file's methods.
+type (
+	LinesNextLineResult struct {
+		Lines    []string `json:"lines"`
+		NextLine int      `json:"next_line"`
+	}
+)

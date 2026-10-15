@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 )
@@ -63,36 +62,6 @@ func init() {
 	for name, m := range tidyMethods {
 		methods[name] = m
 	}
-	// agents.list takes a state and a query when the engine can answer them.
-	plain := methods["agents.list"]
-	methods["agents.list"] = func(e Engine, raw json.RawMessage) (any, error) {
-		t, ok := e.(Tidier)
-		if !ok {
-			return plain(e, raw)
-		}
-		var p struct {
-			Workspace string `json:"workspace"`
-			State     string `json:"state"`
-			Query     string `json:"query"`
-		}
-		if len(raw) > 0 && string(raw) != "null" {
-			if err := decode(raw, &p); err != nil {
-				return nil, err
-			}
-		}
-		switch p.State {
-		case "", ListOpen, ListClosed, ListArchived, ListAll:
-		default:
-			return nil, Errorf(CodeBadParams, "state is open, closed, archived or all")
-		}
-		agents, err := t.ListAgentsIn(p.Workspace, p.State, p.Query)
-		if err != nil {
-			return nil, err
-		}
-		return struct {
-			Agents []Agent `json:"agents"`
-		}{nonNil(agents)}, nil
-	}
 }
 
 func tidier(e Engine, name string) (Tidier, error) {
@@ -104,20 +73,14 @@ func tidier(e Engine, name string) (Tidier, error) {
 }
 
 // tidyCall decodes a method's params into P and answers what call answers.
-func tidyCall[P any](name string, call func(Tidier, P) (any, error)) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+func tidyCall[P, R any](name string, call func(Tidier, P) (*R, error)) method {
+	return typed(func(e Engine, p P) (*R, error) {
 		t, err := tidier(e, name)
 		if err != nil {
 			return nil, err
 		}
-		var p P
-		if len(raw) > 0 && string(raw) != "null" {
-			if err := decode(raw, &p); err != nil {
-				return nil, err
-			}
-		}
 		return call(t, p)
-	}
+	})
 }
 
 type tidyIDs struct {
@@ -136,27 +99,27 @@ func needIDs(name string, ids []string) error {
 	return nil
 }
 
-func agentOf(a Agent, err error) (any, error) {
+func agentOf(a Agent, err error) (*agentResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return agentResult{a}, nil
+	return &agentResult{a}, nil
 }
 
 var tidyMethods = map[string]method{
-	"agents.move_to_closed": tidyCall("agents.move_to_closed", func(t Tidier, p tidyIDs) (any, error) {
+	"agents.move_to_closed": tidyCall("agents.move_to_closed", func(t Tidier, p tidyIDs) (*Empty, error) {
 		if err := needIDs("agents.move_to_closed", p.IDs); err != nil {
 			return nil, err
 		}
-		return struct{}{}, t.MoveToClosed(p.IDs)
+		return done(t.MoveToClosed(p.IDs))
 	}),
-	"agents.archive": tidyCall("agents.archive", func(t Tidier, p tidyIDs) (any, error) {
+	"agents.archive": tidyCall("agents.archive", func(t Tidier, p tidyIDs) (*Empty, error) {
 		if err := needIDs("agents.archive", p.IDs); err != nil {
 			return nil, err
 		}
-		return struct{}{}, t.Archive(p.IDs)
+		return done(t.Archive(p.IDs))
 	}),
-	"agents.reopen": tidyCall("agents.reopen", func(t Tidier, p crewID) (any, error) {
+	"agents.reopen": tidyCall("agents.reopen", func(t Tidier, p crewID) (*agentResult, error) {
 		if err := needID("agents.reopen", p.ID); err != nil {
 			return nil, err
 		}
@@ -165,7 +128,7 @@ var tidyMethods = map[string]method{
 	"agents.rename": tidyCall("agents.rename", func(t Tidier, p struct {
 		ID    string `json:"id"`
 		Title string `json:"title"`
-	}) (any, error) {
+	}) (*agentResult, error) {
 		if err := needID("agents.rename", p.ID); err != nil {
 			return nil, err
 		}
@@ -176,7 +139,7 @@ var tidyMethods = map[string]method{
 	}),
 	"agents.idle": tidyCall("agents.idle", func(t Tidier, p struct {
 		Days int `json:"days"`
-	}) (any, error) {
+	}) (*IDsResult, error) {
 		if p.Days < 0 {
 			return nil, Errorf(CodeBadParams, "days cannot be negative")
 		}
@@ -184,14 +147,12 @@ var tidyMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			IDs []string `json:"ids"`
-		}{nonNil(ids)}, nil
+		return &IDsResult{nonNil(ids)}, nil
 	}),
 	"search.all": tidyCall("search.all", func(t Tidier, p struct {
 		Query    string `json:"query"`
 		PerGroup int    `json:"limit_per_group"`
-	}) (any, error) {
+	}) (*GroupsResult2, error) {
 		if strings.TrimSpace(p.Query) == "" {
 			return nil, Errorf(CodeBadParams, "search.all needs a query")
 		}
@@ -205,8 +166,13 @@ var tidyMethods = map[string]method{
 		for i := range groups {
 			groups[i].Hits = nonNil(groups[i].Hits)
 		}
-		return struct {
-			Groups []HitGroup `json:"groups"`
-		}{nonNil(groups)}, nil
+		return &GroupsResult2{nonNil(groups)}, nil
 	}),
 }
+
+// The answers of this file's methods.
+type (
+	GroupsResult2 struct {
+		Groups []HitGroup `json:"groups"`
+	}
+)

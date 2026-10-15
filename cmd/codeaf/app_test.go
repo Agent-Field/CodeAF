@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -369,6 +371,11 @@ type appRecorder struct {
 func newAppRecorder() *appRecorder { return &appRecorder{more: make(chan struct{}, 1)} }
 
 func (r *appRecorder) Emit(event string, data any) {
+	// EVERY EVENT IS ITS CONTRACT'S SHAPE: data of any other type is a wire
+	// break the app would reject, so a test that provokes one fails here.
+	if want := appwire.EventShape(event); want == nil || reflect.TypeOf(data) != want {
+		panic(fmt.Sprintf("event %s carried %T, and its contract is %v", event, data, want))
+	}
 	r.mu.Lock()
 	r.events = append(r.events, event)
 	r.data = append(r.data, data)

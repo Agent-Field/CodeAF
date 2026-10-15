@@ -136,9 +136,30 @@ func (b *appBackend) crews() *appCrewRun {
 	})
 	if start {
 		b.crewTick(run, true)
+		b.reopenProposals(run)
 		guard.Go("app/crews", func() { b.crewLoop(run) })
 	}
 	return run
+}
+
+// reopenProposals asks again about every crew proposal the person had not
+// answered when the app last closed: a proposal is kept in the app layer, so
+// its ask outlives a restart.
+func (b *appBackend) reopenProposals(run *appCrewRun) {
+	var kept []appwire.Proposal
+	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
+		for _, p := range f.Proposals {
+			if p != nil {
+				kept = append(kept, *p)
+			}
+		}
+	})
+	sort.Slice(kept, func(i, j int) bool { return kept[i].ID < kept[j].ID })
+	for _, p := range kept {
+		ask := appProposalAskOf(p)
+		run.locked(func() { run.asks[ask.ID] = ask })
+		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+	}
 }
 
 // crewLoop looks at the crews every beat until the app closes.

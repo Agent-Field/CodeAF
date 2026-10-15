@@ -16,38 +16,40 @@ func init() {
 }
 
 var setupMethods = map[string]method{
-	"providers.list": func(e Engine, _ json.RawMessage) (any, error) {
+	"providers.list": typed(func(e Engine, _ struct{}) (*ProvidersResult, error) {
 		providers, err := e.ListProviders()
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Providers []Provider `json:"providers"`
-		}{nonNil(providers)}, nil
-	},
-	"keys.check": func(e Engine, raw json.RawMessage) (any, error) {
+		return &ProvidersResult{nonNil(providers)}, nil
+	}),
+	"keys.check": shaped[KeyParams](func(e Engine, raw json.RawMessage) (*KeyCheck, error) {
 		provider, key, err := decodeKey(raw, "keys.check")
 		if err != nil {
 			return nil, err
 		}
-		return e.CheckKey(provider, key)
-	},
-	"keys.set": func(e Engine, raw json.RawMessage) (any, error) {
+		check, err := e.CheckKey(provider, key)
+		if err != nil {
+			return nil, err
+		}
+		return &check, nil
+	}),
+	"keys.set": shaped[KeyParams](func(e Engine, raw json.RawMessage) (*Empty, error) {
 		provider, key, err := decodeKey(raw, "keys.set")
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, e.SetKey(provider, key)
-	},
-	"keys.remove": func(e Engine, raw json.RawMessage) (any, error) {
-		provider, err := decodeID(raw, "provider")
+		return done(e.SetKey(provider, key))
+	}),
+	"keys.remove": typed(func(e Engine, p ProviderParams) (*Empty, error) {
+		provider, err := required("provider", p.Provider)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, e.RemoveKey(strings.ToLower(strings.TrimSpace(provider)))
-	},
-	"providers.sign_in": func(e Engine, raw json.RawMessage) (any, error) {
-		provider, err := decodeID(raw, "provider")
+		return done(e.RemoveKey(strings.ToLower(strings.TrimSpace(provider))))
+	}),
+	"providers.sign_in": typed(func(e Engine, p ProviderParams) (*URLResult, error) {
+		provider, err := required("provider", p.Provider)
 		if err != nil {
 			return nil, err
 		}
@@ -55,22 +57,16 @@ var setupMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			URL string `json:"url"`
-		}{url}, nil
-	},
-	"setup.get": func(e Engine, _ json.RawMessage) (any, error) {
+		return &URLResult{url}, nil
+	}),
+	"setup.get": typed(func(e Engine, _ struct{}) (*setupResult, error) {
 		setup, err := e.Setup()
 		if err != nil {
 			return nil, err
 		}
-		return setupResult{setup}, nil
-	},
-	"setup.set": func(e Engine, raw json.RawMessage) (any, error) {
-		var p Setup
-		if err := decode(raw, &p); err != nil {
-			return nil, err
-		}
+		return &setupResult{setup}, nil
+	}),
+	"setup.set": typed(func(e Engine, p Setup) (*setupResult, error) {
 		if p.Step == (SetupStep{}) {
 			return nil, Errorf(CodeBadParams, "setup.set needs a step")
 		}
@@ -84,9 +80,9 @@ var setupMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return setupResult{setup}, nil
-	},
-	"settings.set": func(e Engine, raw json.RawMessage) (any, error) {
+		return &setupResult{setup}, nil
+	}),
+	"settings.set": shaped[SettingsPatchWire](func(e Engine, raw json.RawMessage) (*SettingsResult, error) {
 		patch, err := decodeSettingsPatch(raw)
 		if err != nil {
 			return nil, err
@@ -95,15 +91,9 @@ var setupMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Settings Settings `json:"settings"`
-		}{settings}, nil
-	},
-	"caps.raise": func(e Engine, raw json.RawMessage) (any, error) {
-		var p CapRaise
-		if err := decode(raw, &p); err != nil {
-			return nil, err
-		}
+		return &SettingsResult{settings}, nil
+	}),
+	"caps.raise": typed(func(e Engine, p CapRaise) (*Empty, error) {
 		switch p.Scope {
 		case CapDay:
 		case CapAgent:
@@ -119,8 +109,42 @@ var setupMethods = map[string]method{
 		if !money(p.ToUSD) {
 			return nil, Errorf(CodeBadParams, "to_usd must be a positive amount")
 		}
-		return struct{}{}, e.RaiseCap(p)
-	},
+		return done(e.RaiseCap(p))
+	}),
+}
+
+// KeyParams is keys.check's and keys.set's params. The key is read by
+// [decodeKey], which never puts it into an error's words.
+type KeyParams struct {
+	Provider string `json:"provider"`
+	Key      string `json:"key"`
+}
+
+// ProviderParams is the params of a method that takes one provider.
+type ProviderParams struct {
+	Provider string `json:"provider"`
+}
+
+// SettingsPatchWire is settings.set's params as they travel: every field is
+// optional, and a field present is changed. A money field sent as null means
+// none. [decodeSettingsPatch] reads exactly these fields and refuses any other.
+type SettingsPatchWire struct {
+	DefaultModel       *string  `json:"default_model,omitempty"`
+	AsksBefore         *string  `json:"asks_before,omitempty"`
+	WorkFolder         *string  `json:"work_folder,omitempty"`
+	Effort             *string  `json:"effort,omitempty"`
+	BudgetUSD          *float64 `json:"budget_usd,omitempty" nullable:"true"`
+	DayCapUSD          *float64 `json:"day_cap_usd,omitempty" nullable:"true"`
+	TaskCapUSD         *float64 `json:"task_cap_usd,omitempty" nullable:"true"`
+	ProposedTaskClockS *int     `json:"proposed_task_clock_s,omitempty"`
+	IdleCloseDays      *int     `json:"idle_close_days,omitempty"`
+	Appearance         *string  `json:"appearance,omitempty" enum:"system,light,dark"`
+	TextSize           *string  `json:"text_size,omitempty" enum:"small,medium,large"`
+	OpenAtLogin        *bool    `json:"open_at_login,omitempty"`
+	DockBadge          *bool    `json:"dock_badge,omitempty"`
+	ChecksModel        *string  `json:"checks_model,omitempty"`
+	PlannerModel       *string  `json:"planner_model,omitempty"`
+	FallbackModel      *string  `json:"fallback_model,omitempty"`
 }
 
 type setupResult struct {
@@ -252,3 +276,13 @@ func decodeSettingsPatch(raw json.RawMessage) (SettingsPatch, error) {
 	}
 	return patch, nil
 }
+
+// The answers of this file's methods.
+type (
+	ProvidersResult struct {
+		Providers []Provider `json:"providers"`
+	}
+	URLResult struct {
+		URL string `json:"url"`
+	}
+)

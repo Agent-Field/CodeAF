@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 )
@@ -101,30 +100,26 @@ func inboxer(e Engine, name string) (Inboxer, error) {
 
 // inboxVerb is one Inbox verb that takes only an id.
 func inboxVerb(name string, act func(Inboxer, string) error) method {
-	return func(e Engine, raw json.RawMessage) (any, error) {
+	return typed(func(e Engine, p IDParams) (*Empty, error) {
 		i, err := inboxer(e, name)
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		return struct{}{}, act(i, id)
-	}
+		return done(act(i, id))
+	})
 }
 
 var inboxMethods = map[string]method{
-	"inbox.list": func(e Engine, raw json.RawMessage) (any, error) {
+	"inbox.list": typed(func(e Engine, p struct {
+		List  string `json:"list"`
+		Query string `json:"query"`
+	}) (*ItemsCountsResult, error) {
 		i, err := inboxer(e, "inbox.list")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			List  string `json:"list"`
-			Query string `json:"query"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if p.List == "" {
@@ -141,23 +136,16 @@ var inboxMethods = map[string]method{
 			items[k].Context = nonNil(items[k].Context)
 			items[k].Where.Path = nonNil(items[k].Where.Path)
 		}
-		return struct {
-			Items  []InboxItem `json:"items"`
-			Counts InboxCounts `json:"counts"`
-		}{nonNil(items), counts}, nil
-	},
-	"inbox.answer": func(e Engine, raw json.RawMessage) (any, error) {
+		return &ItemsCountsResult{nonNil(items), counts}, nil
+	}),
+	"inbox.answer": typed(func(e Engine, p struct {
+		ID     string `json:"id"`
+		Option string `json:"option"`
+		Text   string `json:"text"`
+		Why    string `json:"why"`
+	}) (*UndoUntilResult, error) {
 		i, err := inboxer(e, "inbox.answer")
 		if err != nil {
-			return nil, err
-		}
-		var p struct {
-			ID     string `json:"id"`
-			Option string `json:"option"`
-			Text   string `json:"text"`
-			Why    string `json:"why"`
-		}
-		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(p.ID) == "" || (strings.TrimSpace(p.Option) == "" && strings.TrimSpace(p.Text) == "") {
@@ -167,19 +155,17 @@ var inboxMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			UndoUntil time.Time `json:"undo_until"`
-		}{until}, nil
-	},
+		return &UndoUntilResult{until}, nil
+	}),
 	"inbox.undo":  inboxVerb("inbox.undo", func(i Inboxer, id string) error { return i.UndoInbox(id) }),
 	"inbox.later": inboxVerb("inbox.later", func(i Inboxer, id string) error { return i.LaterInbox(id, true) }),
 	"inbox.back":  inboxVerb("inbox.back", func(i Inboxer, id string) error { return i.LaterInbox(id, false) }),
-	"inbox.open": func(e Engine, raw json.RawMessage) (any, error) {
+	"inbox.open": typed(func(e Engine, p IDParams) (*AgentTaskResult, error) {
 		i, err := inboxer(e, "inbox.open")
 		if err != nil {
 			return nil, err
 		}
-		id, err := decodeID(raw, "id")
+		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -187,9 +173,25 @@ var inboxMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return struct {
-			Agent string `json:"agent"`
-			Task  string `json:"task,omitempty"`
-		}{agent, task}, nil
-	},
+		return &AgentTaskResult{agent, task}, nil
+	}),
 }
+
+// The answers of this file's methods.
+type (
+	ItemsCountsResult struct {
+		Items  []InboxItem `json:"items"`
+		Counts InboxCounts `json:"counts"`
+	}
+	AgentTaskResult struct {
+		Agent string `json:"agent"`
+		Task  string `json:"task,omitempty"`
+	}
+)
+
+// The answers of this file's methods.
+type (
+	UndoUntilResult struct {
+		UndoUntil time.Time `json:"undo_until"`
+	}
+)

@@ -249,3 +249,36 @@ func TestAppCrewsNestByMoveAndByCreate(t *testing.T) {
 		}
 	}
 }
+
+// A CREW PROPOSAL OUTLIVES A RESTART: it is kept in the app layer until it is
+// answered, and its ask comes back whole, carrying the proposal itself.
+func TestAppCrewProposalIsAskedAgainWhole(t *testing.T) {
+	backend, rec, agent, _ := crewBackend(t)
+	p := appwire.Proposal{ID: "prop1", Agent: agent.ID, Name: "site", Goal: "ship the site",
+		Helpers: []appwire.ProposalHelper{{Handle: "builder", Role: "writes pages", Brief: "write index.html"}}}
+	if err := backend.crewLayer().write(func(f *appCrewLayerFile) error {
+		if f.Proposals == nil {
+			f.Proposals = map[string]*appwire.Proposal{}
+		}
+		f.Proposals[p.ID] = &p
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	backend.reopenProposals(backend.crews())
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		opened, ok := data.(appwire.AskOpened)
+		return ok && opened.Ask.Proposal != nil && opened.Ask.Proposal.Helpers[0].Handle == "builder"
+	})
+	asks, err := backend.ListAsks(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, ask := range asks {
+		found = found || ask.Subkind == appwire.SubkindCrewProposal && ask.Proposal != nil && ask.Proposal.Name == "site"
+	}
+	if !found {
+		t.Fatalf("the proposal's ask is not listed: %+v", asks)
+	}
+}

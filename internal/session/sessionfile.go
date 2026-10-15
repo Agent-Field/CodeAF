@@ -2800,6 +2800,7 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 	if presentation == nil && message.Role == "assistant" {
 		presentation = &messagePresentation{Audience: "human"}
 	}
+	written := stamp()
 	wrote := s.writeLine(sessionEntry{
 		Presentation:     presentation,
 		Type:             "message",
@@ -2815,7 +2816,7 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		Note:             note,
 		ReplyTags:        tags,
 		Deliveries:       deliveries,
-		Timestamp:        stamp(),
+		Timestamp:        written,
 	})
 	if wrote {
 		s.mu.Lock()
@@ -2824,7 +2825,9 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		}
 		stamps := s.stamps
 		s.mu.Unlock()
-		stamps.remember(message, time.Now())
+		// The instant the line carries, read back the way a resume reads it,
+		// so the live reading and a reopened one are the same reading.
+		stamps.remember(message, lineInstant(written))
 	}
 	// The ids are indexed only once the line is really on disk: this index is
 	// what a resume trusts to say a landing has already been told.
