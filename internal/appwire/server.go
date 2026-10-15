@@ -513,7 +513,21 @@ var methods = map[string]method{
 		}{nonNil(tasks)}, nil
 	},
 	"crews.list": func(e Engine, raw json.RawMessage) (any, error) {
-		crews, err := e.ListCrews()
+		var p struct {
+			Closed bool `json:"closed"`
+		}
+		if len(raw) > 0 && string(raw) != "null" {
+			if err := decode(raw, &p); err != nil {
+				return nil, err
+			}
+		}
+		var crews []Crew
+		var err error
+		if c, ok := e.(Crewer); ok {
+			crews, err = c.CrewList(p.Closed)
+		} else {
+			crews, err = e.ListCrews()
+		}
 		if err != nil {
 			return nil, err
 		}

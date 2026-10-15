@@ -375,6 +375,26 @@ the conversation, on a task's page or in the terminal, leaves the Inbox at
 once with its receipt. An agent with a question open is kept open until the
 question is answered.
 
+## The desktop app's crews — they are your teams
+
+A crew in the desktop app is a codeaf team: the same teams, members, handles,
+manager, sub-teams, daily caps, team log and decisions you see in the Teams
+page, under another name. A crew made in the app is a team in the terminal,
+and the other way round. While the app is open it does for a crew what a
+terminal window does for a team it holds: it opens the member a manager starts
+with `team_start` and stops the one a manager stops, and it keeps every member
+of an open crew open, so a member woken by its manager is seen working.
+
+A question that climbs to you, a cap reached and a closing report arrive in the
+app's dock and Inbox as decisions; your answer decides them for the team.
+Closing a crew does not stop its conversations.
+
+A few things exist only in the app and the terminal never shows them: a crew's
+goal and end date, linked jobs, issues and pull requests, roles (instructions
+and a model sent to a member as a message), a member's own budget, pausing a
+member (its own turns are stopped until you resume it), and an agent's
+proposal to bring in helpers.
+
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
 `codeaf connect` lists every model provider this profile knows, whether it is connected,

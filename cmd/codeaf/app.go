@@ -112,6 +112,9 @@ func runApp(args []string) error {
 	if *turnLong > 0 {
 		backend.turnLong = *turnLong
 	}
+	// The crews are watched from the start: a manager's start or a member
+	// woken by its manager must not wait for the window to ask for crews.
+	guard.Go("app/crews-start", func() { backend.crews() })
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir()}, backend)
 	if backend.assembled.Load() {
 		// The process half every conversation shared, closed the way the pipe
@@ -184,6 +187,12 @@ type appConn struct {
 	Workspace  string
 	Transcript string
 	Release    func()
+	// Follow is the turns this connection did not start — the ones the
+	// conversation starts on its own and the ones another window sends —
+	// when the conversation is reached across a connection. Nil is a
+	// conversation held in this process, which hands its own turns over
+	// directly (appwakes.go).
+	Follow func() <-chan remote.Following
 	// Assembled says this process built the conversation itself, so the shared
 	// engine half must be closed when the app leaves.
 	Assembled bool
@@ -232,13 +241,20 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 
 func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 	welcome := client.Welcome()
-	return &appConn{Conv: client.Agent(), Workspace: welcome.Workspace, Transcript: welcome.SessionFile, Release: release, Assembled: assembled}
+	return &appConn{Conv: client.Agent(), Workspace: welcome.Workspace, Transcript: welcome.SessionFile, Release: release, Follow: client.Follow, Assembled: assembled}
 }
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
 	// stopPhases puts the engine's phase news back the way it was.
 	stopPhases func()
+	// profileDir is the profile whose teams are the crews, and the process's
+	// own when empty; layer is the crews' app layer and crewRun the watch over
+	// them, started by the first crew call.
+	profileDir string
+	crewOnce   sync.Once
+	layer      *appCrewLayer
+	crewRun    *appCrewRun
 	emit       appwire.Emitter
 	open       appOpener
 	now        func() time.Time
@@ -251,7 +267,6 @@ type appBackend struct {
 
 	sweepStop chan struct{}
 	sweepDone chan struct{}
-	crews     *appCrewWatch
 	// spent is the last figure spend.changed said, so it is said on a change.
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
@@ -399,6 +414,12 @@ type appLive struct {
 	batchDone map[string][]appwire.BatchItem
 	notes     map[string][]appNotePending
 	noteN     int
+	// msgBase and noteBase are where the next turn's answer and notice counts
+	// start, and lastN, lastMsgs and lastNotices are where the last turn left
+	// them under the person's message it answered.
+	msgBase, noteBase            int
+	lastN, lastMsgs, lastNotices int
+	stopWakes                    func()
 	// retries counts the running turn's waits before a step is asked again,
 	// retryPhase and retryUntil are the last one said, and retrySaid says the
 	// next void attempt was already said with its countdown.
@@ -640,6 +661,9 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 		}
 	})
 	sort.SliceStable(agents, func(i, j int) bool { return agents[i].UpdatedAt.After(agents[j].UpdatedAt) })
+	for i := range agents {
+		agents[i].Crews = b.crewsOf(agents[i].ID)
+	}
 	return agents, nil
 }
 
@@ -889,6 +913,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		// behind it going (internal/remote's bury finishes every lane).
 		b.died(a, live)
 	})
+	live.stopWakes = b.watchWakes(a, live)
 	return view
 }
 
@@ -1339,6 +1364,15 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	// it is counted only if it said something — the same rule the listing
 	// counts by ([appEntriesOf]), so both name it alike.
 	msg, notices, summaries := 0, 0, 0
+	// A turn that answers under a message other turns already answered (a
+	// woken one) starts its counts where they left off.
+	b.locked(func() {
+		msg, notices = live.msgBase, live.noteBase
+		live.msgBase, live.noteBase = 0, 0
+	})
+	defer func() {
+		b.locked(func() { live.lastN, live.lastMsgs, live.lastNotices = n, msg, notices })
+	}()
 	var reply strings.Builder
 	// A MESSAGE BEFORE A TOOL CALL IS AN UPDATE, the agent saying what it
 	// found mid-turn; the last one is the answer.
@@ -1708,6 +1742,9 @@ func (b *appBackend) finish(live *appLive) {
 	if live.stopAsks != nil {
 		live.stopAsks()
 	}
+	if live.stopWakes != nil {
+		live.stopWakes()
+	}
 	live.conn.Release()
 	wait := time.After(appReleaseWait)
 	if live.pumpDone != nil {
@@ -1732,12 +1769,13 @@ func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
 	if err != nil {
 		return nil, err
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if a.live == nil {
-		return nil, nil
-	}
-	return append([]appwire.Ask(nil), a.live.asks...), nil
+	var asks []appwire.Ask
+	b.locked(func() {
+		if a.live != nil {
+			asks = append(asks, a.live.asks...)
+		}
+	})
+	return append(asks, b.crewAsksOf(id)...), nil
 }
 
 // appAnsweredMark starts the value [appLive.answered] holds for an ask this app
@@ -1747,6 +1785,9 @@ const appAnsweredMark = "app:"
 // AnswerAsk answers one open ask through the engine's own answer door, the one
 // the chat's question page uses. Its closing arrives on the question lane.
 func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
+	if handled, err := b.answerCrewAsk(id, askID, option, text, ""); handled {
+		return err
+	}
 	a, err := b.find(id)
 	if err != nil {
 		return err
@@ -2310,44 +2351,6 @@ func appIndexTaskID(agent, raw string) string {
 	return raw
 }
 
-// ListCrews reads the teams file directly and starts watching it.
-func (b *appBackend) ListCrews() ([]appwire.Crew, error) {
-	crews, err := appReadCrews()
-	if err != nil {
-		return nil, appEngineError(err)
-	}
-	b.locked(func() {
-		if b.crews == nil && !b.closing {
-			b.crews = newAppCrewWatch(b.emit, crews)
-		}
-	})
-	return crews, nil
-}
-
-// appReadCrews is every open team, members named by agent id.
-func appReadCrews() ([]appwire.Crew, error) {
-	file, err := teamstore.Load(config.ProfileDir())
-	if err != nil {
-		return nil, err
-	}
-	var crews []appwire.Crew
-	for _, team := range file.Teams {
-		if team.Closed() {
-			continue
-		}
-		crew := appwire.Crew{ID: team.ID, Name: team.Name, Members: []appwire.CrewMember{}}
-		for _, member := range team.Members {
-			agent := appMemberAgent(member)
-			if member.Key == team.Manager {
-				crew.Manager = agent
-			}
-			crew.Members = append(crew.Members, appwire.CrewMember{Agent: agent, Handle: member.Handle})
-		}
-		crews = append(crews, crew)
-	}
-	return crews, nil
-}
-
 // appMemberAgent is a team member's agent id: its transcript's folder name.
 func appMemberAgent(member teamstore.Member) string {
 	transcript := member.File
@@ -2360,7 +2363,7 @@ func appMemberAgent(member teamstore.Member) string {
 // Close lets every conversation go and stops the watchers.
 func (b *appBackend) Close() error {
 	already := false
-	var crews *appCrewWatch
+	var crews *appCrewRun
 	var agents []*appAgent
 	var warmed chan struct{}
 	b.locked(func() {
@@ -2368,7 +2371,7 @@ func (b *appBackend) Close() error {
 			return
 		}
 		b.closing = true
-		crews, warmed = b.crews, b.warmed
+		crews, warmed = b.crewRun, b.warmed
 		if b.signIn != nil {
 			b.signIn.Cancel()
 			b.signIn = nil
@@ -2481,7 +2484,8 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 		live = a.live
 		keep = live == nil || live.running || now.Sub(live.lastUse) < appAgentIdle
 	})
-	if !keep && !b.liveNeedsYou(live) {
+	// A member of an open crew stays held while the crew is open.
+	if !keep && !b.liveNeedsYou(live) && !b.crewKeeps(a.view.ID) {
 		// The state the app reads does not move: the conversation is as
 		// idle on disk as it was in memory.
 		b.release(a)
@@ -2496,75 +2500,4 @@ func appEngineError(err error) error {
 		return wire
 	}
 	return &appwire.Error{Code: appwire.CodeEngine, Message: redact.Secrets(plainWords(err.Error()))}
-}
-
-// appCrewWatch emits crew.changed when the teams file changes under the app.
-type appCrewWatch struct {
-	emit  appwire.Emitter
-	stop  chan struct{}
-	done  chan struct{}
-	known map[string]string
-}
-
-func newAppCrewWatch(emit appwire.Emitter, crews []appwire.Crew) *appCrewWatch {
-	w := &appCrewWatch{emit: emit, stop: make(chan struct{}), done: make(chan struct{}), known: appCrewPrints(crews)}
-	guard.Go("app/crews", w.run)
-	return w
-}
-
-func appCrewPrints(crews []appwire.Crew) map[string]string {
-	prints := make(map[string]string, len(crews))
-	for _, crew := range crews {
-		prints[crew.ID] = fmt.Sprintf("%#v", crew)
-	}
-	return prints
-}
-
-func (w *appCrewWatch) run() {
-	defer close(w.done)
-	path := teamstore.Path(config.ProfileDir())
-	stamp := func() (time.Time, int64) {
-		info, err := os.Stat(path)
-		if err != nil {
-			return time.Time{}, -1
-		}
-		return info.ModTime(), info.Size()
-	}
-	at, size := stamp()
-	ticker := time.NewTicker(appCrewPoll)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-w.stop:
-			return
-		case <-ticker.C:
-		}
-		nowAt, nowSize := stamp()
-		if nowAt.Equal(at) && nowSize == size {
-			continue
-		}
-		at, size = nowAt, nowSize
-		crews, err := appReadCrews()
-		if err != nil {
-			continue
-		}
-		prints := appCrewPrints(crews)
-		for _, crew := range crews {
-			if w.known[crew.ID] != prints[crew.ID] {
-				w.emit.Emit(appwire.EventCrewChanged, appwire.CrewChanged{Crew: crew})
-			}
-		}
-		// A team deleted or closed is no longer a crew.
-		for id := range w.known {
-			if _, still := prints[id]; !still {
-				w.emit.Emit(appwire.EventCrewRemoved, appwire.CrewRemoved{ID: id})
-			}
-		}
-		w.known = prints
-	}
-}
-
-func (w *appCrewWatch) close() {
-	close(w.stop)
-	<-w.done
 }

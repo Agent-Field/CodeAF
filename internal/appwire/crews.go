@@ -1,0 +1,705 @@
+package appwire
+
+import (
+	"encoding/json"
+	"strings"
+	"time"
+)
+
+// Wave 5: crews (PROTOCOL.md). A crew IS a codeaf team: its fields are the
+// team's, read from the same store, renamed only where the app's words differ.
+// The few the design needs and teams do not keep are the app layer's, and are
+// commented so here.
+
+// The crews' events.
+const (
+	EventCrewLog         = "crew.log"
+	EventDecisionOpened  = "decision.opened"
+	EventDecisionChanged = "decision.changed"
+	EventMemberChanged   = "member.changed"
+)
+
+// A crew's states.
+const (
+	CrewWorking  = "working"
+	CrewNeedsYou = "needs_you"
+	CrewIdle     = "idle"
+	CrewClosed   = "closed"
+)
+
+// SubkindCrewDecision is a decision packet waiting on the person, as an ask;
+// SubkindCrewProposal is an agent's crew proposal (app layer).
+const (
+	SubkindCrewDecision = "crew_decision"
+	SubkindCrewProposal = "crew_proposal"
+)
+
+// The answers a crew proposal offers.
+const (
+	ProposalCreate = "create"
+	ProposalEdit   = "edit"
+	ProposalKeep   = "keep"
+)
+
+// CrewSettings are a crew's own overrides, each nil when it inherits.
+type CrewSettings struct {
+	QuestionsUp *bool    `json:"questions_up,omitempty"`
+	CapUSDDay   *float64 `json:"cap_usd_day,omitempty"`
+	DepthLimit  *int     `json:"depth_limit,omitempty"`
+	SubShare    *float64 `json:"sub_share,omitempty"`
+	Wake        *bool    `json:"wake,omitempty"`
+}
+
+// CrewOrigin is where an effective setting comes from.
+type CrewOrigin struct {
+	Kind string `json:"kind"`
+	Crew string `json:"crew,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// CrewEffective is every setting in force, each with its origin.
+type CrewEffective struct {
+	QuestionsUp     bool       `json:"questions_up"`
+	QuestionsUpFrom CrewOrigin `json:"questions_up_from"`
+	CapUSDDay       float64    `json:"cap_usd_day"`
+	CapFrom         CrewOrigin `json:"cap_from"`
+	DepthLimit      int        `json:"depth_limit"`
+	DepthFrom       CrewOrigin `json:"depth_from"`
+	SubShare        float64    `json:"sub_share"`
+	SubShareFrom    CrewOrigin `json:"sub_share_from"`
+	Wake            bool       `json:"wake"`
+	WakeFrom        CrewOrigin `json:"wake_from"`
+}
+
+// CrewDefaults are the five profile defaults every crew inherits from.
+type CrewDefaults struct {
+	QuestionsUp bool    `json:"questions_up"`
+	CapUSDDay   float64 `json:"cap_usd_day"`
+	DepthLimit  int     `json:"depth_limit"`
+	SubShare    float64 `json:"sub_share"`
+	Wake        bool    `json:"wake"`
+}
+
+// CrewSpend is a crew's spending today, every crew under it counted.
+type CrewSpend struct {
+	Day      string             `json:"day"`
+	USD      float64            `json:"usd"`
+	Calls    int                `json:"calls"`
+	ByMember map[string]float64 `json:"by_member,omitempty"`
+}
+
+// CrewWrap is a wrap-up in progress.
+type CrewWrap struct {
+	Started time.Time `json:"started"`
+	BoundS  int       `json:"bound_s"`
+}
+
+// CrewItem is one linked job, issue, pull request or file (app layer).
+type CrewItem struct {
+	ID    string    `json:"id"`
+	Crew  string    `json:"crew"`
+	Kind  string    `json:"kind"`
+	Ref   string    `json:"ref"`
+	Title string    `json:"title,omitempty"`
+	At    time.Time `json:"at"`
+}
+
+// Crew is one team.
+type Crew struct {
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	Parent        string        `json:"parent,omitempty"`
+	Root          bool          `json:"root,omitempty"`
+	Manager       string        `json:"manager,omitempty"`
+	Hue           float64       `json:"hue"`
+	Tier          int           `json:"tier"`
+	Tint          string        `json:"tint"`
+	MadeAt        *time.Time    `json:"made_at,omitempty"`
+	State         string        `json:"state"`
+	ClosedAt      *time.Time    `json:"closed_at,omitempty"`
+	ClosedWith    string        `json:"closed_with,omitempty"`
+	Report        string        `json:"report,omitempty"`
+	Wrap          *CrewWrap     `json:"wrap,omitempty"`
+	Settings      CrewSettings  `json:"settings"`
+	Effective     CrewEffective `json:"effective"`
+	Spend         CrewSpend     `json:"spend"`
+	Members       []CrewMember  `json:"members"`
+	FormerMembers []CrewMember  `json:"former_members,omitempty"`
+	Brief         string        `json:"brief,omitempty"`
+	// The app layer's.
+	Goal    string     `json:"goal,omitempty"`
+	EndsAt  *time.Time `json:"ends_at,omitempty"`
+	History []string   `json:"history,omitempty"`
+	Items   []CrewItem `json:"items,omitempty"`
+}
+
+// CrewReportsTo is the manager a member answers to.
+type CrewReportsTo struct {
+	Crew     string `json:"crew"`
+	Manager  string `json:"manager"`
+	Distance int    `json:"distance"`
+}
+
+// MemberWas is what a member was before its role or crew changed (app layer).
+type MemberWas struct {
+	Role string    `json:"role,omitempty"`
+	Crew string    `json:"crew,omitempty"`
+	At   time.Time `json:"at"`
+}
+
+// CrewMember is one conversation in a crew.
+type CrewMember struct {
+	Agent       string         `json:"agent"`
+	Crew        string         `json:"crew,omitempty"`
+	Handle      string         `json:"handle,omitempty"`
+	HandleBy    string         `json:"handle_by,omitempty"`
+	Title       string         `json:"title,omitempty"`
+	Workspace   string         `json:"workspace,omitempty"`
+	JoinedAt    *time.Time     `json:"joined_at,omitempty"`
+	Started     bool           `json:"started,omitempty"`
+	Home        bool           `json:"home,omitempty"`
+	Independent bool           `json:"independent,omitempty"`
+	ReportsTo   *CrewReportsTo `json:"reports_to,omitempty"`
+	AlsoIn      []string       `json:"also_in,omitempty"`
+	State       string         `json:"state,omitempty"`
+	Line        string         `json:"line,omitempty"`
+	SpentUSD    float64        `json:"spent_usd"`
+	Model       string         `json:"model,omitempty"`
+	// The app layer's.
+	Role   string     `json:"role,omitempty"`
+	CapUSD *float64   `json:"cap_usd,omitempty"`
+	Paused bool       `json:"paused,omitempty"`
+	Was    *MemberWas `json:"was,omitempty"`
+}
+
+// LogLine is one line of a crew's Traffic, as stored.
+type LogLine struct {
+	ID      string    `json:"id"`
+	Crew    string    `json:"crew"`
+	At      time.Time `json:"at"`
+	Kind    string    `json:"kind"`
+	From    string    `json:"from"`
+	To      string    `json:"to"`
+	Text    string    `json:"text"`
+	Handles []string  `json:"handles,omitempty"`
+	Answers string    `json:"answers,omitempty"`
+	Files   []string  `json:"files,omitempty"`
+	Member  string    `json:"member,omitempty"`
+	Agent   string    `json:"agent,omitempty"`
+	State   string    `json:"state,omitempty"`
+	Packet  string    `json:"packet,omitempty"`
+	Reply   string    `json:"reply,omitempty"`
+	Team    string    `json:"team,omitempty"`
+}
+
+// DecisionParty is one side of a decision.
+type DecisionParty struct {
+	Agent   string `json:"agent,omitempty"`
+	Handle  string `json:"handle,omitempty"`
+	Crew    string `json:"crew,omitempty"`
+	Context string `json:"context,omitempty"`
+}
+
+// DecisionOption is one answer and what follows from it.
+type DecisionOption struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Consequence string `json:"consequence"`
+}
+
+// DecisionPick is the option the raiser would choose, and why.
+type DecisionPick struct {
+	Option string `json:"option"`
+	Reason string `json:"reason"`
+}
+
+// DecisionHop is one climb of a decision.
+type DecisionHop struct {
+	From   string    `json:"from"`
+	To     string    `json:"to"`
+	By     string    `json:"by"`
+	Reason string    `json:"reason,omitempty"`
+	At     time.Time `json:"at"`
+}
+
+// CrewReport is a closing report.
+type CrewReport struct {
+	Done       string   `json:"done"`
+	Left       string   `json:"left,omitempty"`
+	Files      []string `json:"files,omitempty"`
+	SpendUSD   float64  `json:"spend_usd,omitempty"`
+	Incomplete bool     `json:"incomplete,omitempty"`
+}
+
+// CrewCap is a cap decision's facts.
+type CrewCap struct {
+	Crew     string  `json:"crew"`
+	Day      string  `json:"day"`
+	CapUSD   float64 `json:"cap_usd"`
+	SpentUSD float64 `json:"spent_usd"`
+	RaiseTo  float64 `json:"raise_to"`
+}
+
+// Decision is one decision packet, as stored.
+type Decision struct {
+	ID             string           `json:"id"`
+	Crew           string           `json:"crew"`
+	WaitsOn        string           `json:"waits_on"`
+	Kind           string           `json:"kind"`
+	RaisedBy       string           `json:"raised_by"`
+	Parties        []DecisionParty  `json:"parties,omitempty"`
+	Question       string           `json:"question"`
+	Options        []DecisionOption `json:"options,omitempty"`
+	Recommendation *DecisionPick    `json:"recommendation,omitempty"`
+	Report         *CrewReport      `json:"report,omitempty"`
+	Cap            *CrewCap         `json:"cap,omitempty"`
+	State          string           `json:"state"`
+	DecidedBy      string           `json:"decided_by,omitempty"`
+	Decision       string           `json:"decision,omitempty"`
+	Reason         string           `json:"reason,omitempty"`
+	Trail          []DecisionHop    `json:"trail,omitempty"`
+	Path           []string         `json:"path"`
+	Raised         time.Time        `json:"raised"`
+	At             time.Time        `json:"at"`
+}
+
+// RoleCopy is one member a role is given to.
+type RoleCopy struct {
+	Crew  string `json:"crew"`
+	Agent string `json:"agent"`
+}
+
+// Role is a named set of instructions and a model (app layer).
+type Role struct {
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	Instructions string     `json:"instructions"`
+	Model        string     `json:"model,omitempty"`
+	MadeAt       time.Time  `json:"made_at"`
+	Copies       []RoleCopy `json:"copies"`
+}
+
+// ProposalHelper is one helper a proposal would start.
+type ProposalHelper struct {
+	Handle string `json:"handle"`
+	Role   string `json:"role,omitempty"`
+	Brief  string `json:"brief"`
+	Model  string `json:"model,omitempty"`
+}
+
+// Proposal is an agent's proposal to become a crew (app layer).
+type Proposal struct {
+	ID        string           `json:"id"`
+	Agent     string           `json:"agent"`
+	Name      string           `json:"name"`
+	Hue       *float64         `json:"hue,omitempty"`
+	Helpers   []ProposalHelper `json:"helpers"`
+	Existing  []string         `json:"existing,omitempty"`
+	CapUSDDay *float64         `json:"cap_usd_day,omitempty"`
+	Goal      string           `json:"goal,omitempty"`
+	EndsAt    *time.Time       `json:"ends_at,omitempty"`
+	At        time.Time        `json:"at"`
+}
+
+// The data of the crews' events.
+type (
+	CrewLogEvent struct {
+		Line LogLine `json:"line"`
+	}
+	DecisionEvent struct {
+		Decision Decision `json:"decision"`
+	}
+	MemberChanged struct {
+		Member CrewMember `json:"member"`
+	}
+)
+
+// CrewCreate is crews.create's params: from agents, or from a proposal.
+type CrewCreate struct {
+	From      string        `json:"from"`
+	Name      string        `json:"name"`
+	Agents    []string      `json:"agents"`
+	Manager   string        `json:"manager"`
+	Parent    string        `json:"parent"`
+	Hue       *float64      `json:"hue"`
+	Tint      string        `json:"tint"`
+	Settings  *CrewSettings `json:"settings"`
+	Goal      string        `json:"goal"`
+	EndsAt    *time.Time    `json:"ends_at"`
+	Proposal  string        `json:"proposal"`
+	Edits     *Proposal     `json:"edits"`
+	CapUSDDay *float64      `json:"cap_usd_day"`
+}
+
+// CrewUpdate is crews.update's params; a nil field is left alone.
+type CrewUpdate struct {
+	ID       string        `json:"id"`
+	Name     *string       `json:"name"`
+	Hue      *float64      `json:"hue"`
+	Tint     *string       `json:"tint"`
+	Settings *CrewSettings `json:"settings"`
+	// Clear names settings to set back to inherit.
+	Clear  []string   `json:"clear"`
+	Goal   *string    `json:"goal"`
+	EndsAt *time.Time `json:"ends_at"`
+}
+
+// MemberAsk is the params of the member verbs.
+type MemberAsk struct {
+	Crew   string   `json:"crew"`
+	Agent  string   `json:"agent"`
+	Handle string   `json:"handle"`
+	Brief  string   `json:"brief"`
+	Role   string   `json:"role"`
+	Model  string   `json:"model"`
+	Reason string   `json:"reason"`
+	CapUSD *float64 `json:"cap_usd"`
+	To     string   `json:"to"`
+}
+
+// CrewMessage is crews.message's params.
+type CrewMessage struct {
+	Crew     string `json:"crew"`
+	To       string `json:"to"`
+	Text     string `json:"text"`
+	ClientID string `json:"client_id"`
+}
+
+// Crewer is the engine's half of crews.
+type Crewer interface {
+	CrewList(closed bool) ([]Crew, error)
+	CrewGet(id string) (Crew, error)
+	CrewCreate(ask CrewCreate) (Crew, error)
+	CrewUpdate(ask CrewUpdate) (Crew, error)
+	CrewMessage(ask CrewMessage) (Entry, error)
+	CrewLog(id, after string, limit int) ([]LogLine, string, error)
+	CrewDecisions(id string, all bool) ([]Decision, error)
+	CrewDecide(packet, option, text, reason string) (Decision, error)
+	CrewManager(id, agent string) (Crew, error)
+	CrewMove(ids []string, parent string) error
+	CrewWrapUp(id, text string) error
+	CrewClose(id string) error
+	CrewReopen(id string) (Crew, error)
+	CrewDelete(id string) ([]string, error)
+	CrewDefaults() (CrewDefaults, error)
+	CrewSetDefault(key, value string) (CrewDefaults, error)
+	CrewItems(id string) ([]CrewItem, error)
+	CrewLink(id, kind, ref, title string) (CrewItem, error)
+	CrewUnlink(id, item string) error
+	CrewPropose(agent string) error
+	Member(verb string, ask MemberAsk) (CrewMember, error)
+	Roles() ([]Role, error)
+	RoleUpdate(id string, name, instructions, model *string) (Role, error)
+}
+
+func init() {
+	for name, m := range crewMethods {
+		methods[name] = m
+	}
+}
+
+func crewer(e Engine, name string) (Crewer, error) {
+	c, ok := e.(Crewer)
+	if !ok {
+		return nil, Errorf(CodeUnknownMethod, "this engine does not serve %s", name)
+	}
+	return c, nil
+}
+
+// crewCall decodes a method's params into P and answers what call answers.
+func crewCall[P any](name string, call func(Crewer, P) (any, error)) method {
+	return func(e Engine, raw json.RawMessage) (any, error) {
+		c, err := crewer(e, name)
+		if err != nil {
+			return nil, err
+		}
+		var p P
+		if len(raw) > 0 && string(raw) != "null" {
+			if err := decode(raw, &p); err != nil {
+				return nil, err
+			}
+		}
+		return call(c, p)
+	}
+}
+
+type crewID struct {
+	ID string `json:"id"`
+}
+
+func needID(name, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return Errorf(CodeBadParams, "%s needs an id", name)
+	}
+	return nil
+}
+
+type crewResult struct {
+	Crew Crew `json:"crew"`
+}
+
+func crewOf(c Crew, err error) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	c.Members = nonNil(c.Members)
+	return crewResult{c}, nil
+}
+
+func memberOf(m CrewMember, err error) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	return struct {
+		Member CrewMember `json:"member"`
+	}{m}, nil
+}
+
+// memberVerb is one member verb.
+func memberVerb(verb string) method {
+	return crewCall("members."+verb, func(c Crewer, p MemberAsk) (any, error) {
+		if strings.TrimSpace(p.Crew) == "" {
+			return nil, Errorf(CodeBadParams, "members.%s needs a crew", verb)
+		}
+		return memberOf(c.Member(verb, p))
+	})
+}
+
+var crewMethods = map[string]method{
+	"crews.get": crewCall("crews.get", func(c Crewer, p crewID) (any, error) {
+		if err := needID("crews.get", p.ID); err != nil {
+			return nil, err
+		}
+		return crewOf(c.CrewGet(p.ID))
+	}),
+	"crews.create": crewCall("crews.create", func(c Crewer, p CrewCreate) (any, error) {
+		return crewOf(c.CrewCreate(p))
+	}),
+	"crews.update": crewCall("crews.update", func(c Crewer, p CrewUpdate) (any, error) {
+		if err := needID("crews.update", p.ID); err != nil {
+			return nil, err
+		}
+		return crewOf(c.CrewUpdate(p))
+	}),
+	"crews.message": crewCall("crews.message", func(c Crewer, p CrewMessage) (any, error) {
+		if strings.TrimSpace(p.Crew) == "" || strings.TrimSpace(p.Text) == "" {
+			return nil, Errorf(CodeBadParams, "crews.message needs a crew and some text")
+		}
+		entry, err := c.CrewMessage(p)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Entry Entry `json:"entry"`
+		}{entry}, nil
+	}),
+	"crews.log": crewCall("crews.log", func(c Crewer, p struct {
+		ID    string `json:"id"`
+		After string `json:"after"`
+		Limit int    `json:"limit"`
+	}) (any, error) {
+		if err := needID("crews.log", p.ID); err != nil {
+			return nil, err
+		}
+		lines, cursor, err := c.CrewLog(p.ID, p.After, p.Limit)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Lines  []LogLine `json:"lines"`
+			Cursor string    `json:"cursor"`
+		}{nonNil(lines), cursor}, nil
+	}),
+	"crews.decisions": crewCall("crews.decisions", func(c Crewer, p struct {
+		ID  string `json:"id"`
+		All bool   `json:"all"`
+	}) (any, error) {
+		decisions, err := c.CrewDecisions(p.ID, p.All)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Decisions []Decision `json:"decisions"`
+		}{nonNil(decisions)}, nil
+	}),
+	"crews.decide": crewCall("crews.decide", func(c Crewer, p struct {
+		Packet string `json:"packet"`
+		Option string `json:"option"`
+		Text   string `json:"text"`
+		Reason string `json:"reason"`
+	}) (any, error) {
+		if strings.TrimSpace(p.Packet) == "" || (strings.TrimSpace(p.Option) == "" && strings.TrimSpace(p.Text) == "") {
+			return nil, Errorf(CodeBadParams, "crews.decide needs a packet and an option or some words")
+		}
+		d, err := c.CrewDecide(p.Packet, p.Option, p.Text, p.Reason)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Decision Decision `json:"decision"`
+		}{d}, nil
+	}),
+	"crews.manager": crewCall("crews.manager", func(c Crewer, p struct {
+		ID    string `json:"id"`
+		Agent string `json:"agent"`
+	}) (any, error) {
+		if err := needID("crews.manager", p.ID); err != nil {
+			return nil, err
+		}
+		return crewOf(c.CrewManager(p.ID, p.Agent))
+	}),
+	"crews.move": crewCall("crews.move", func(c Crewer, p struct {
+		IDs    []string `json:"ids"`
+		Parent string   `json:"parent"`
+	}) (any, error) {
+		if len(p.IDs) == 0 {
+			return nil, Errorf(CodeBadParams, "crews.move needs ids")
+		}
+		return struct{}{}, c.CrewMove(p.IDs, p.Parent)
+	}),
+	"crews.wrap_up": crewCall("crews.wrap_up", func(c Crewer, p struct {
+		ID   string `json:"id"`
+		Text string `json:"text"`
+	}) (any, error) {
+		if err := needID("crews.wrap_up", p.ID); err != nil {
+			return nil, err
+		}
+		return struct{}{}, c.CrewWrapUp(p.ID, p.Text)
+	}),
+	"crews.close": crewCall("crews.close", func(c Crewer, p crewID) (any, error) {
+		if err := needID("crews.close", p.ID); err != nil {
+			return nil, err
+		}
+		return struct{}{}, c.CrewClose(p.ID)
+	}),
+	"crews.reopen": crewCall("crews.reopen", func(c Crewer, p crewID) (any, error) {
+		if err := needID("crews.reopen", p.ID); err != nil {
+			return nil, err
+		}
+		return crewOf(c.CrewReopen(p.ID))
+	}),
+	"crews.delete": crewCall("crews.delete", func(c Crewer, p crewID) (any, error) {
+		if err := needID("crews.delete", p.ID); err != nil {
+			return nil, err
+		}
+		ids, err := c.CrewDelete(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			IDs []string `json:"ids"`
+		}{nonNil(ids)}, nil
+	}),
+	"crews.defaults": crewCall("crews.defaults", func(c Crewer, _ struct{}) (any, error) {
+		d, err := c.CrewDefaults()
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Defaults CrewDefaults `json:"defaults"`
+		}{d}, nil
+	}),
+	"crews.set_default": crewCall("crews.set_default", func(c Crewer, p struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}) (any, error) {
+		if strings.TrimSpace(p.Key) == "" {
+			return nil, Errorf(CodeBadParams, "crews.set_default needs a key")
+		}
+		d, err := c.CrewSetDefault(p.Key, p.Value)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Defaults CrewDefaults `json:"defaults"`
+		}{d}, nil
+	}),
+	"crews.items": crewCall("crews.items", func(c Crewer, p crewID) (any, error) {
+		if err := needID("crews.items", p.ID); err != nil {
+			return nil, err
+		}
+		items, err := c.CrewItems(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Items []CrewItem `json:"items"`
+		}{nonNil(items)}, nil
+	}),
+	"crews.link": crewCall("crews.link", func(c Crewer, p struct {
+		ID    string `json:"id"`
+		Kind  string `json:"kind"`
+		Ref   string `json:"ref"`
+		Title string `json:"title"`
+	}) (any, error) {
+		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Ref) == "" {
+			return nil, Errorf(CodeBadParams, "crews.link needs an id and a ref")
+		}
+		switch p.Kind {
+		case "job", "issue", "pr", "file":
+		default:
+			return nil, Errorf(CodeBadParams, "kind is job, issue, pr or file")
+		}
+		item, err := c.CrewLink(p.ID, p.Kind, p.Ref, p.Title)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Item CrewItem `json:"item"`
+		}{item}, nil
+	}),
+	"crews.unlink": crewCall("crews.unlink", func(c Crewer, p struct {
+		ID   string `json:"id"`
+		Item string `json:"item"`
+	}) (any, error) {
+		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Item) == "" {
+			return nil, Errorf(CodeBadParams, "crews.unlink needs an id and an item")
+		}
+		return struct{}{}, c.CrewUnlink(p.ID, p.Item)
+	}),
+	"crews.propose": crewCall("crews.propose", func(c Crewer, p struct {
+		Agent string `json:"agent"`
+	}) (any, error) {
+		if strings.TrimSpace(p.Agent) == "" {
+			return nil, Errorf(CodeBadParams, "crews.propose needs an agent")
+		}
+		return struct{}{}, c.CrewPropose(p.Agent)
+	}),
+	"members.add":    memberVerb("add"),
+	"members.start":  memberVerb("start"),
+	"members.stop":   memberVerb("stop"),
+	"members.remove": memberVerb("remove"),
+	"members.handle": memberVerb("handle"),
+	"members.home":   memberVerb("home"),
+	"members.pause":  memberVerb("pause"),
+	"members.resume": memberVerb("resume"),
+	"members.cap":    memberVerb("cap"),
+	"members.role":   memberVerb("role"),
+	"members.move":   memberVerb("move"),
+	"roles.list": crewCall("roles.list", func(c Crewer, _ struct{}) (any, error) {
+		roles, err := c.Roles()
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Roles []Role `json:"roles"`
+		}{nonNil(roles)}, nil
+	}),
+	"roles.update": crewCall("roles.update", func(c Crewer, p struct {
+		ID           string  `json:"id"`
+		Name         *string `json:"name"`
+		Instructions *string `json:"instructions"`
+		Model        *string `json:"model"`
+	}) (any, error) {
+		if err := needID("roles.update", p.ID); err != nil {
+			return nil, err
+		}
+		role, err := c.RoleUpdate(p.ID, p.Name, p.Instructions, p.Model)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Role Role `json:"role"`
+		}{role}, nil
+	}),
+}

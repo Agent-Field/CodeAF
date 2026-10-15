@@ -111,6 +111,8 @@ type Agent struct {
 	Effort    string    `json:"effort,omitempty"`
 	State     string    `json:"state"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Crews are the crews this agent is a member of, open ones only.
+	Crews []string `json:"crews,omitempty"`
 }
 
 // Task is one node of an agent's task graph.
@@ -118,9 +120,12 @@ type Task struct {
 	ID    string `json:"id"`
 	Agent string `json:"agent"`
 	// Parent is the task that asked for this one, and empty for a task the
-	// agent itself started; Group names the adaptive run a task belongs to.
-	Parent    string    `json:"parent,omitempty"`
-	Group     string    `json:"group,omitempty"`
+	// agent itself started; Group names the adaptive run a task belongs to,
+	// and GroupTitle is that run's own name, the label a person reads over
+	// the group: the title of the run's own row.
+	Parent     string `json:"parent,omitempty"`
+	Group      string `json:"group,omitempty"`
+	GroupTitle string `json:"group_title,omitempty"`
 	Title     string    `json:"title"`
 	State     string    `json:"state"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -157,14 +162,6 @@ type Task struct {
 	Children     *int       `json:"children,omitempty"`
 	ChildrenDone *int       `json:"children_done,omitempty"`
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`
-}
-
-// Crew is one codeaf team, with its members named by agent id.
-type Crew struct {
-	ID      string       `json:"id"`
-	Name    string       `json:"name"`
-	Manager string       `json:"manager,omitempty"`
-	Members []CrewMember `json:"members"`
 }
 
 // The two kinds of ask, and who closed one.
@@ -204,6 +201,9 @@ type Ask struct {
 	HoldingUp  []string    `json:"holding_up,omitempty"`
 	SayWhy     bool        `json:"say_why,omitempty"`
 	Later      bool        `json:"later,omitempty"`
+	// Path is the crews a crew's decision climbed through to the person,
+	// "Backend → Release → you".
+	Path []string `json:"path,omitempty"`
 }
 
 // The subkinds of an approval, and the option ids a permission offers.
@@ -447,12 +447,6 @@ type Spend struct {
 type AskOption struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
-}
-
-// CrewMember is one conversation in a crew.
-type CrewMember struct {
-	Agent  string `json:"agent"`
-	Handle string `json:"handle,omitempty"`
 }
 
 // The data of each event, one struct per name so the field spellings live in

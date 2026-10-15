@@ -24,6 +24,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 const (
@@ -196,13 +197,11 @@ func (b *appBackend) inboxWhere(ask appwire.Ask) appwire.InboxWhere {
 	if taskTitle != "" {
 		where.Path = append(where.Path, taskTitle)
 	}
-	if crews, err := appReadCrews(); err == nil {
-		for _, crew := range crews {
-			for _, member := range crew.Members {
-				if member.Agent == ask.Agent {
-					where.Crew = crew.ID
-					where.Path = append([]string{crew.Name}, where.Path...)
-				}
+	if f, err := teamstore.Load(b.crewProfile()); err == nil {
+		for _, t := range f.Open() {
+			if _, ok := b.crewMemberOf(t, ask.Agent); ok {
+				where.Crew = t.ID
+				where.Path = append([]string{t.Name}, where.Path...)
 			}
 		}
 	}
@@ -212,6 +211,10 @@ func (b *appBackend) inboxWhere(ask appwire.Ask) appwire.InboxWhere {
 			at = 1
 		}
 		where.Path = append(where.Path[:at], append([]string{title}, where.Path[at:]...)...)
+	}
+	// A crew's decision names the crews it climbed through to the person.
+	if len(ask.Path) > 0 {
+		where.Path = append([]string(nil), ask.Path...)
 	}
 	return where
 }

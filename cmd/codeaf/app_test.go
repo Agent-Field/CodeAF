@@ -992,10 +992,12 @@ func TestAppAnswersARealApprovalAndRecordsTheWorkspaceAsTheLaunchFolder(t *testi
 	}
 }
 
-// A CREW THAT CLOSES OR DISAPPEARS IS REMOVED. Once the app has listed the
-// crews, a team closed in the teams file is announced as crew.removed with its
-// id, and a renamed one as crew.changed.
-func TestAppAnnouncesAClosedCrewAsRemoved(t *testing.T) {
+// A CREW THAT CLOSES IS SAID AGAIN AS CLOSED, AND ONE THAT DISAPPEARS IS
+// REMOVED. Once the app has listed the crews, a team closed in the teams file is
+// announced as crew.changed in the closed state (it stays readable and can be
+// reopened), a renamed one as crew.changed, and one deleted from the file as
+// crew.removed with its id.
+func TestAppAnnouncesAClosedCrewAndRemovesADeletedOne(t *testing.T) {
 	profile := t.TempDir()
 	t.Setenv(config.ProfileDirEnv, profile)
 	member := filepath.Join(profile, "places", "p", "0123abcd", "transcript.jsonl")
@@ -1021,12 +1023,20 @@ func TestAppAnnouncesAClosedCrewAsRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec.waitFor(t, 4*appCrewPoll, func(event string, data any) bool {
-		removed, ok := data.(appwire.CrewRemoved)
-		return ok && removed.ID == "0a0a0a0a0a0a"
+		changed, ok := data.(appwire.CrewChanged)
+		return ok && changed.Crew.ID == "0a0a0a0a0a0a" && changed.Crew.State == appwire.CrewClosed
 	})
 	rec.waitFor(t, 4*appCrewPoll, func(event string, data any) bool {
 		changed, ok := data.(appwire.CrewChanged)
 		return ok && changed.Crew.Name == "pier"
+	})
+	time.Sleep(20 * time.Millisecond)
+	if err := teamstore.Save(profile, teamsNow[1:]); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 4*appCrewPoll, func(event string, data any) bool {
+		removed, ok := data.(appwire.CrewRemoved)
+		return ok && removed.ID == "0a0a0a0a0a0a"
 	})
 }
 
