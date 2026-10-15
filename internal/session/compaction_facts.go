@@ -149,11 +149,14 @@ func (a *Agent) CompactObserved(ctx context.Context, observe func(Event)) error 
 		a.mu.Unlock()
 		return errAgentClosed
 	}
-	// A pass already running keeps its own cut; this one is refused below
-	// as in flight before it could need one.
-	if a.manualPass == nil {
-		a.manualPass = cut
+	// Reserve before releasing the lock: another manual caller must not
+	// enter the gap before compactWithPolicyResult sets compacting, or its
+	// request could run while Stop still holds this caller's cancellation.
+	if a.manualPass != nil {
+		a.mu.Unlock()
+		return ErrCompactionInFlight
 	}
+	a.manualPass = cut
 	a.mu.Unlock()
 	defer func() {
 		a.mu.Lock()

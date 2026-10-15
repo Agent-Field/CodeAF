@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -45,5 +46,27 @@ func TestStopCancelsAManualSummaryRetry(t *testing.T) {
 	}
 	if agent.ContextUse().Summarizing {
 		t.Fatal("manual summary still reports running after Stop")
+	}
+}
+
+// The cancellation reservation exists before the pass takes its compaction
+// gate. A second caller must not steal that gap and start uncancellable work.
+func TestManualSummaryReservationRejectsAnotherPassBeforeStart(t *testing.T) {
+	model := &summarizer{}
+	agent, _ := summaryAgent(t, model)
+	journaledPersonHeavy(agent, 1, 12, 20_000)
+	agent.mu.Lock()
+	agent.manualPass = &manualPassCut{cancel: func() {}}
+	agent.mu.Unlock()
+	defer func() {
+		agent.mu.Lock()
+		agent.manualPass = nil
+		agent.mu.Unlock()
+	}()
+	if err := agent.CompactObserved(context.Background(), nil); !errors.Is(err, ErrCompactionInFlight) {
+		t.Fatalf("second manual pass = %v, want ErrCompactionInFlight", err)
+	}
+	if n := model.calls(); n != 0 {
+		t.Fatalf("second caller reached provider %d times before first pass started", n)
 	}
 }
