@@ -4337,6 +4337,9 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 	// `lane` was read from the answer alone, so what the lane layer learns and
 	// draws is untouched by the declaration.
 	served = a.attributedEndpoint(model, served)
+	// THE ANSWER IS A FACT BEFORE IT IS A BILL: a response that carried no usage
+	// still came from a model (competence.go).
+	a.noteAnswer(response, model, 1)
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -5707,6 +5710,7 @@ func (a *Agent) addDetachedUsageAs(response *ai.Response, model string, calls in
 // see [Agent.addDetachedUsageAs]. It is variadic so that the thirty callers that
 // are on a turn's clock say nothing and mean it.
 func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool, detached ...bool) {
+	a.noteAnswer(response, model, calls)
 	if response == nil || response.Usage == nil {
 		return
 	}

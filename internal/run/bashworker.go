@@ -134,7 +134,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	defer func() {
 		used := settledWorkerUsage(agent, &receipts)
 		rep.USD, rep.TokensIn, rep.TokensOut = used.CostUSD, used.Input, used.Output
-		w.recordSpend(task.ID, used, agent.AnsweredUsage())
+		w.recordSpend(task.ID, used, agent.AnsweredUsage(), agent.Answers())
 	}()
 	runCtx, stop := context.WithCancel(provider.WithReceiptPending(ctx, receipts.owe))
 	defer stop()
@@ -801,52 +801,68 @@ func (w *BashWorker) storeEnding(id string) (storeEnding, bool) {
 // always sum to what the seat spent, so every reader of the task's price reads
 // the figure it always did. What they say about WHO answered is kept apart:
 //
-//   - money the responses attributed to a named model is one ANSWERED row per
-//     model ([plandb.Store.AddAnsweredSpend]), after any fallback;
-//   - money whose answer named no model is a row with no model;
-//   - money the breakdown does not cover — none was kept, or the seat's total
-//     holds figures from before this process tallied them — is one row on the
-//     model the seat was built on, as it always was, and NOT marked answered.
+//   - every model that GAVE AN ANSWER ([session.Agent.Answers]) is one ANSWERED
+//     row ([plandb.Store.AddAnsweredSpend]) carrying whatever money its calls
+//     banked — none, for a free or unmetered answer, which is still that model
+//     doing the work;
+//   - answers from no named model, and money banked under a model that gave no
+//     answer here (a late receipt), are unmarked rows;
+//   - money the per-model shares do not cover — none were kept, or the seat's
+//     total holds figures from before this process tallied them — is one row on
+//     the model the seat was built on, as it always was, and NOT marked.
 //
-// Only the first is a fact about who did the work; the other two are billing.
+// Only the first is a fact about who did the work; the rest are billing, and any
+// one of them leaves the work unattributable.
 //
 // It is best-effort whole and last, because the money is already in the Report
 // the supervisor absorbs and in the session's usage ledger; a store that
 // refuses this write leaves the run's own counters true, and a row here is a
-// reading of the run rather than the run's book. A turn that spent nothing
-// writes nothing rather than a zero row somebody reads as a figure.
-func (w *BashWorker) recordSpend(taskID string, used session.Usage, answered map[string]session.Usage) {
-	if used.CostUSD == 0 && used.Input == 0 && used.Output == 0 {
+// reading of the run rather than the run's book. A seat that neither spent nor
+// was answered writes nothing.
+func (w *BashWorker) recordSpend(taskID string, used session.Usage, shares map[string]session.Usage, answers map[string]int) {
+	if used.CostUSD == 0 && used.Input == 0 && used.Output == 0 && used.Calls == 0 && len(answers) == 0 {
 		return
 	}
 	role, err := w.store.RoleOf(taskID)
 	if err != nil {
 		role = plandb.RoleWork
 	}
-	models := make([]string, 0, len(answered))
-	for model := range answered {
+	seen := map[string]bool{}
+	var models []string
+	for model := range shares {
+		seen[model] = true
 		models = append(models, model)
 	}
+	for model := range answers {
+		if !seen[model] {
+			models = append(models, model)
+		}
+	}
 	sort.Strings(models)
-	rest := used
+	var covered session.Usage
 	for _, model := range models {
-		share := answered[model]
-		if share.CostUSD == 0 && share.Input == 0 && share.Output == 0 {
-			continue
+		share := shares[model]
+		covered.CostUSD += share.CostUSD
+		covered.Input += share.Input
+		covered.Output += share.Output
+		covered.Calls += share.Calls
+		answered := answers[model] > 0
+		switch {
+		case answered && model != "":
+			_ = w.store.AddAnsweredSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
+		case answered || share != (session.Usage{}):
+			_ = w.store.AddSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
 		}
-		rest.CostUSD -= share.CostUSD
-		rest.Input -= share.Input
-		rest.Output -= share.Output
-		if model == "" {
-			_ = w.store.AddSpend(taskID, "", role, share.CostUSD, share.Input, share.Output)
-			continue
-		}
-		_ = w.store.AddAnsweredSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
 	}
-	// A cent's billionth is float noise from subtracting the shares, not money.
-	if rest.CostUSD > 1e-9 || rest.Input > 0 || rest.Output > 0 {
-		_ = w.store.AddSpend(taskID, w.model, role, max(rest.CostUSD, 0), max(rest.Input, 0), max(rest.Output, 0))
+	// THE SHARES COVER THE SEAT WHEN THEY ACCOUNT FOR EVERY CALL AND TOKEN IT
+	// BANKED — whole numbers, compared exactly. Then any difference in dollars
+	// is the order the same charges were added in, not money; otherwise the
+	// difference is real, uncovered spend and is billed whole.
+	if covered.Calls == used.Calls && covered.Input == used.Input && covered.Output == used.Output {
+		return
 	}
+	_ = w.store.AddSpend(taskID, w.model, role, max(used.CostUSD-covered.CostUSD, 0),
+		max(used.Input-covered.Input, 0), max(used.Output-covered.Output, 0))
 }
 
 // stepRecorder appends one worker's step lines, and keeps the two readings

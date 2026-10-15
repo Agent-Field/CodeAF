@@ -3052,6 +3052,11 @@ type Agent struct {
 	// call banked under the name the response itself gave (competence.go's
 	// [Agent.AnsweredUsage]). It sums to usage's figures call for call.
 	answered modelShares
+	// answers is how many responses each model gave this session, counted where
+	// a response arrives whether or not it carried usage — a free or unmetered
+	// answer is still a model doing the work. A late receipt is money for an
+	// answer already counted, and adds none ([Agent.Answers]).
+	answers map[string]int
 	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
 	// never nil: a session built with no posture at all gets a [Person], which
 	// answers every question the way this package answered it before the

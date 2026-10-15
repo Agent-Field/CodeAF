@@ -39,6 +39,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
 	"github.com/Agent-Field/codeaf/internal/competence"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
@@ -97,12 +99,18 @@ func (a *Agent) recordRunProven(run *beltRun) {
 		return
 	}
 	sort.SliceStable(checks, func(i, j int) bool { return checks[i].CompletedAt.Before(checks[j].CompletedAt) })
+	// A DECLARED CHECK THAT COULD NOT RUN LEAVES THE RUN UNPROVEN, NOT PROVEN BY
+	// THE REST. Dropping it and folding the others would turn "the tests passed
+	// and the linter never started" into a pass on a run whose declared checks
+	// were not all read, so one such exit means the run is not written at all.
 	var runs []competence.CheckRun
 	for _, check := range checks {
 		for _, ran := range check.VerdictBasis.Runs {
-			if outcome, read := exitReading(ran.ExitCode); read {
-				runs = append(runs, competence.CheckRun{Command: ran.Command, Outcome: outcome})
+			outcome, read := exitReading(ran.ExitCode)
+			if !read {
+				return
 			}
+			runs = append(runs, competence.CheckRun{Command: ran.Command, Outcome: outcome})
 		}
 	}
 	if ended.IsZero() {
@@ -120,7 +128,8 @@ func (a *Agent) recordRunProven(run *beltRun) {
 
 // exitReading is what one recorded exit says: zero passed, any other exit the
 // check gave failed, and the shell's own "could not run it" codes (126, 127)
-// and a negative code are not a reading of the work.
+// and a negative code are not a reading of the work — and a run holding one is
+// not written ([Agent.recordRunProven]).
 //
 // A check a signal killed arrives as the shell's 128+signal (internal/exec/
 // bare), and one the run cut off or whose ending nobody saw arrives as 1 (the
@@ -269,10 +278,43 @@ func (m *modelShares) add(model string, call Usage) {
 	(*m)[model] = share
 }
 
-// AnsweredUsage is this session's money split by the model that answered each
-// call — after any fallback, by the response's own name — and nil when nothing
-// was banked. Its shares sum to [Agent.Usage]'s tokens and dollars. It routes
-// nothing; it is a reading of what already happened.
+// noteAnswer counts one arrived response under the model that answered it, the
+// model the request was actually sent to after any fallback. No response is no
+// answer. It is counted whether or not the response carried usage.
+func (a *Agent) noteAnswer(response *ai.Response, model string, calls int) {
+	if response == nil || calls <= 0 {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.answers == nil {
+		a.answers = map[string]int{}
+	}
+	a.answers[strings.TrimSpace(model)] += calls
+}
+
+// Answers is how many responses each model gave this session — known models by
+// name, an answer from no named model under "" — and nil when none arrived.
+// It is the fact of WHO answered, kept apart from [Agent.AnsweredUsage]'s
+// money, because an answer with no usage, or a free one, is still work a model
+// did. It routes nothing.
+func (a *Agent) Answers() map[string]int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.answers) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(a.answers))
+	for model, count := range a.answers {
+		out[model] = count
+	}
+	return out
+}
+
+// AnsweredUsage is this session's money split by the model each banked call
+// carried — after any fallback — and nil when nothing was banked. Its shares
+// sum to [Agent.Usage]'s tokens, dollars and calls. It is billing, and says who
+// answered only beside [Agent.Answers]. It routes nothing.
 func (a *Agent) AnsweredUsage() map[string]Usage {
 	a.mu.Lock()
 	defer a.mu.Unlock()

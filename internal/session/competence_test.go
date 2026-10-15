@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/competence"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
@@ -52,8 +53,8 @@ func journalledAgent(t *testing.T) (*Agent, string) {
 // runFixture is a settled run's plan store: a root, one work task spent on the
 // given models, and one check task whose basis is the given exits. A model is
 // an ANSWERED charge; "built:<id>" is a charge on the model a seat was built
-// on, the only kind written before answered charges existed; "" is a charge
-// whose answer named no model.
+// on, the only kind written before answered charges existed; "free:<id>" is an
+// answer that cost nothing; "" is a charge whose answer named no model.
 func runFixture(t *testing.T, agent *Agent, ground string, models []string, exits map[string]int) *beltRun {
 	t.Helper()
 	store, err := plandb.Open(filepath.Join(t.TempDir(), "plandb.db"), "p", "7", "Fix the parser", "fix it", agent.journalID())
@@ -79,6 +80,8 @@ func runFixture(t *testing.T, agent *Agent, ground string, models []string, exit
 		var err error
 		if built, ok := strings.CutPrefix(model, "built:"); ok || model == "" {
 			err = store.AddSpend("t-work", built, plandb.RoleWork, 0.01, 10, 10)
+		} else if free, ok := strings.CutPrefix(model, "free:"); ok {
+			err = store.AddAnsweredSpend("t-work", free, plandb.RoleWork, 0, 0, 0)
 		} else {
 			err = store.AddAnsweredSpend("t-work", model, plandb.RoleWork, 0.01, 10, 10)
 		}
@@ -96,10 +99,10 @@ func runFixture(t *testing.T, agent *Agent, ground string, models []string, exit
 
 // THE DEFAULT ROAD: A SETTLED RUN'S DECLARED-CHECK EXITS BECOME ONE RESULT, on
 // the one model its work was spent through and under the task row the
-// conversation knows it by. The shell's could-not-run codes are not readings.
+// conversation knows it by. A real non-zero exit beside a pass is a failure.
 func TestASettledRunWritesItsCheckExitsOnItsWorkModel(t *testing.T) {
 	agent, dir := journalledAgent(t)
-	run := runFixture(t, agent, dir, []string{"m/flash"}, map[string]int{"go test ./...": 0, "go vet ./...": 1, "missing-tool": 127})
+	run := runFixture(t, agent, dir, []string{"m/flash"}, map[string]int{"go test ./...": 0, "go vet ./...": 1})
 	agent.recordRunProven(run)
 	rows := ledgerRowsFor(t, agent.config.SessionFile)
 	if len(rows) != 1 {
@@ -110,10 +113,49 @@ func TestASettledRunWritesItsCheckExitsOnItsWorkModel(t *testing.T) {
 		row.Place != dir || row.Title != "Fix the parser" || row.Outcome != competence.Failed || row.Ran != 2 {
 		t.Fatalf("row %+v", row)
 	}
-	for _, check := range row.Checks {
-		if check.Command == "missing-tool" {
-			t.Fatalf("a check the shell could not start was recorded: %+v", row.Checks)
+}
+
+// A DECLARED CHECK THAT COULD NOT RUN LEAVES THE WHOLE RUN UNWRITTEN: one
+// physical pass beside a 126, a 127 or a negative code is not a pass.
+func TestARunWithACheckThatCouldNotRunWritesNothing(t *testing.T) {
+	for _, code := range []int{126, 127, -1} {
+		agent, dir := journalledAgent(t)
+		agent.recordRunProven(runFixture(t, agent, dir, []string{"m/flash"}, map[string]int{"go test ./...": 0, "golint ./...": code}))
+		if rows := ledgerRowsFor(t, agent.config.SessionFile); len(rows) != 0 {
+			t.Errorf("a pass beside exit %d wrote %+v", code, rows)
 		}
+	}
+}
+
+// AN ANSWER THAT COST NOTHING IS STILL AN ANSWER: a free model alone is the
+// run's model, and a free model beside a paid one is a second model.
+func TestAFreeAnswerCountsAsAModel(t *testing.T) {
+	agent, dir := journalledAgent(t)
+	agent.recordRunProven(runFixture(t, agent, dir, []string{"free:m/free"}, map[string]int{"go test ./...": 0}))
+	if rows := ledgerRowsFor(t, agent.config.SessionFile); len(rows) != 1 || rows[0].Model != "m/free" || rows[0].Outcome != competence.Passed {
+		t.Fatalf("a free model's run wrote %+v", rows)
+	}
+	other, otherDir := journalledAgent(t)
+	other.recordRunProven(runFixture(t, other, otherDir, []string{"m/a", "free:m/b"}, map[string]int{"go test ./...": 0}))
+	if rows := ledgerRowsFor(t, other.config.SessionFile); len(rows) != 0 {
+		t.Fatalf("a paid and a free model wrote %+v", rows)
+	}
+}
+
+// AN ANSWER IS COUNTED WHERE IT ARRIVES, with or without usage on it, under the
+// model it was asked of; a missing response is no answer, and a late receipt
+// banks money without making an answer of it.
+func TestAnswersAreCountedWithoutUsageAndNeverFromReceipts(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	var turn Usage
+	agent.addUsage(&turn, &ai.Response{}, "m/b", "", laneFacts{})
+	agent.addUsage(&turn, nil, "m/c", "", laneFacts{})
+	agent.bank(bankedCall{used: Usage{Input: 3, CostUSD: 0.01, Calls: 1}, model: "m/late"})
+	if answers := agent.Answers(); len(answers) != 1 || answers["m/b"] != 1 {
+		t.Fatalf("answers %+v", answers)
+	}
+	if shares := agent.AnsweredUsage(); shares["m/b"] != (Usage{}) {
+		t.Fatalf("an answer with no usage was billed: %+v", shares)
 	}
 }
 
@@ -126,9 +168,10 @@ func TestARunWithNoSingleWorkModelOrNoRunCheckWritesNothing(t *testing.T) {
 	}{
 		"two models": {[]string{"m/a", "m/b"}, map[string]int{"go test ./...": 0}},
 		"no spend":   {nil, map[string]int{"go test ./...": 0}},
-		"no run":     {[]string{"m/a"}, map[string]int{"missing-tool": 127}},
+		"no run":     {[]string{"m/a"}, nil},
 		// An answer that named no model is unknown, never the one beside it.
 		"unknown answer": {[]string{"m/a", ""}, map[string]int{"go test ./...": 0}},
+		"unknown alone":  {[]string{""}, map[string]int{"go test ./...": 0}},
 		// THE MODEL A SEAT WAS BUILT ON IS NEVER THE CHECKED MODEL: an old
 		// ledger, or a resumed run's earlier seat, with real exits beside it.
 		"built model only": {[]string{"built:m/flash"}, map[string]int{"go test ./...": 0}},

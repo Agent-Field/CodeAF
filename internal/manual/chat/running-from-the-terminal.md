@@ -1028,11 +1028,10 @@ Competence draws, read from a ledger of checked results kept beside the spending
 A checked result is one finished task whose declared checks — the tests, lint or build its
 proposal named — actually ran against the work and came back with a real exit status. Every
 check exiting zero is a pass; any failing is a failure. It is credited to the one model that
-answered the task's work, after any fallback. A task whose work was answered by two models,
-or that another task joined while it ran, is not counted, because nobody could say whose it
-was. A checker's opinion, a task that finished with no check, a check that could not start,
-and anything a model says about its own work are never counted; a check that was killed
-or cut off counts as failed. Undo does not
+answered the task's work, after any fallback, even a free one. A task answered by two models,
+that another task joined, or with a check that could not start, is not counted at all. A
+checker's opinion, a task that finished with no check, and anything a model says about its
+own work are never counted; a check that was killed or cut off counts as failed. Undo does not
 appear yet: the only undo there is takes back quick tasks, which run no checks.
 
 Results are grouped by place (the repository or folder) and kind of work (the words of the
