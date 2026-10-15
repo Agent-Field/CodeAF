@@ -298,6 +298,12 @@ func run() error {
 		// command that draws nothing and reads no keys would only be a puzzle
 		// in a list of commands that do.
 		return runRemoteEngine(os.Args[2:])
+	case "app":
+		// The desktop app's backend: JSON lines on this process's own pipes,
+		// every agent held in this one process (app.go). Like `engine` it is
+		// absent from the usage text, because the app starts it and a person
+		// never types it.
+		return runApp(os.Args[2:])
 	case "serve":
 		// The other half of reaching this machine, for the machines ssh cannot
 		// reach: it dials OUT to a relay and holds the connection open, so a

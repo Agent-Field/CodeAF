@@ -295,8 +295,10 @@ to a person: **`codeaf plandb`** answers the same commands the worker runs in ba
 critical-path` — against the run's own `plandb.db`, so a plan a worker is driving can be
 read the way the worker reads it.
 
-Four more exist and are deliberately kept out of the help text, because nothing types
-them by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
+Five more exist and are deliberately kept out of the help text, because nothing types
+them by hand: **`codeaf app`** is the backend the codeaf desktop app starts and speaks to
+over its own pipes, holding every agent the app opens in that one process;
+**`codeaf engine`** is the far half of `chat --host`, started by ssh, and
 **`codeaf clock`** is the one process that runs your automations while a codeaf window is
 open — a window starts it, and it leaves by itself half a minute after the last window
 closes. Neither draws anything or reads a key. **`codeaf tick`** and **`codeaf wake`** are

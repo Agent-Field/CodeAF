@@ -933,7 +933,14 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	if err := os.Chdir(workspace); err != nil {
 		return nil, fmt.Errorf("open %s: %w", workspace, err)
 	}
+	return assembleEngine(hello, workspace, sessionFlag)
+}
 
+// assembleEngine is [bootEngine] after the chdir: the conversation built for a
+// hello in a workspace that is already resolved. `codeaf app` calls it directly
+// because it holds conversations in several workspaces in one process and so
+// cannot move the process into any one of them (app.go says what that costs).
+func assembleEngine(hello remote.Hello, workspace, sessionFlag string) (*remote.Engine, error) {
 	// ONE PROCESS, ONE WORKSPACE — and, when this process is a host, SEVERAL
 	// CONVERSATIONS IN IT. The process half of a launch is opened once and
 	// shared ([openEngineProcess]): the profile, the model catalog, the harness
