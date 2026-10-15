@@ -548,16 +548,19 @@ func TestAnEditsCardSaysTheNextRunTheSaveGives(t *testing.T) {
 		byTitle[item.Title] = item
 	}
 	cases := []struct {
-		title string
-		want  time.Time
+		title, more string
+		want        time.Time
 	}{
-		{"weekly update", time.Time{}},
-		{"leave", time.Time{}},
-		{"ci on main", byTitle["ci on main"].Next},
+		{"weekly update", "", time.Time{}},
+		// A paused rhythm given a new one still runs at none, and its receipt
+		// says it is paused rather than the slot the store keeps for it.
+		{"weekly update renamed", ` every "0 10 * * 1"`, time.Time{}},
+		{"leave", "", time.Time{}},
+		{"ci on main", "", byTitle["ci on main"].Next},
 	}
 	for _, c := range cases {
 		item := byTitle[c.title]
-		drive(t, a, runCmd(a.automationsCommand(automation.CommandLine(item)+` title "`+c.title+` renamed"`))...)
+		drive(t, a, runCmd(a.automationsCommand(automation.CommandLine(item)+` title "`+c.title+` renamed"`+c.more))...)
 		if a.auto == nil || a.auto.settled() {
 			t.Fatalf("%s: the edit raised no card (%s)", c.title, homeNotes(a))
 		}
@@ -572,6 +575,15 @@ func TestAnEditsCardSaysTheNextRunTheSaveGives(t *testing.T) {
 		}
 		if saved.Status == automation.StatusActive && !saved.Next.Equal(c.want) {
 			t.Fatalf("%s: the save gave next %v, the card said %v", c.title, saved.Next, c.want)
+		}
+		byTitle[saved.Title] = saved
+		if saved.Status != automation.StatusPaused {
+			continue
+		}
+		notes := homeNotes(a)
+		receipt := notes[strings.LastIndex(notes, typedSavedWord):]
+		if !strings.Contains(receipt, typedStillPaused) || strings.Contains(receipt, autoNextWord) {
+			t.Fatalf("%s: a paused save's receipt is %q, want it still paused and no next run", c.title, receipt)
 		}
 	}
 }

@@ -229,7 +229,7 @@ func (c Command) Apply(base Automation, now time.Time) (Automation, error) {
 		}
 	}
 	if !a.Schedule.Repeats() && !a.Schedule.At.IsZero() && !a.Schedule.At.After(now) && c.setsWhen(base, a) {
-		return Automation{}, errPassed(a.Schedule)
+		return Automation{}, errPassed(a.Schedule, now)
 	}
 	if err := a.Validate(); err != nil {
 		return Automation{}, err
@@ -313,16 +313,25 @@ const momentSecondsLayout = "2006-01-02T15:04:05"
 // instant: to the minute when that is all it has, and otherwise with its
 // seconds and their fraction.
 //
+// A WALL CLOCK THAT NAMES TWO INSTANTS CARRIES ITS OFFSET. In the hour a
+// fall-back repeats, `01:30` reads as the first one, so a moment in the second
+// is written as RFC 3339 with its offset, which [parseMoment] reads exactly.
+//
 // A MOMENT WITH SECONDS KEEPS THEM. `in 2m` and the conversation's `when.in`
 // make moments with seconds in them, and an edit line written to the minute
 // moved the moment it was meant to keep — earlier, so the next minute in the
 // box could be seconds away, and a save answered a beat late stored a moment
 // that had already passed.
 func momentWord(at time.Time) string {
+	layout := momentSecondsLayout + ".999999999"
 	if at.Second() == 0 && at.Nanosecond() == 0 {
-		return at.Format(momentLayout)
+		layout = momentLayout
 	}
-	return at.Format(momentSecondsLayout + ".999999999")
+	word := at.Format(layout)
+	if back, err := time.ParseInLocation(layout, word, at.Location()); err != nil || !back.Equal(at) {
+		return at.Format(time.RFC3339Nano)
+	}
+	return word
 }
 
 // parseMoment reads a moment the way a person types one: a time of day —

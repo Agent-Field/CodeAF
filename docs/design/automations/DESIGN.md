@@ -65,9 +65,10 @@ The clauses are `title`, `at` (`18:00`, `tomorrow 18:00`, `2026-10-12T09:00`),
 `in` (`20m`), `every` (a cron line or an interval), `zone`, `say`, `do`, `look`
 (a command), `files` (a glob), `until` (the condition), `time` and `usd` (the
 limits), `folder`, and the flags `once`, `worktree` and `checkout`. An id may be
-any unique prefix. A moment that has already passed is refused, when it is
-typed and again when a card is saved after it; an edit that leaves a finished
-reminder's moment where it was is not. Every automation writes back out as the
+any unique prefix. A moment that has already passed is refused when it is
+typed, and a change is refused again when its card is saved after its new moment
+(`Store.Update`; an add answered late still runs once, late). An edit that leaves
+a finished reminder's moment where it was is not refused. Every automation writes back out as the
 `edit` line that would make it what it is — a moment with seconds keeps them
 (`2026-10-12T09:00:27`) — so the line `e` puts in the box changes nothing when
 it is saved unedited.

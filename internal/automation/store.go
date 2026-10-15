@@ -314,7 +314,8 @@ func (s *Store) List() ([]Automation, error) {
 // schedule, look, action, place and limits. Its status is left alone (that is
 // [Store.SetStatus]'s door). A changed schedule is worked out again from now,
 // a finished one-time automation given a new moment wakes again, and a new
-// moment that has already passed is refused ([NextAfterChange]). A watch
+// moment that has already passed is refused ([errPassed]) — a zone changed
+// alone too, which moves a one-time moment's instant as much as a new one. A watch
 // whose look or condition changed forgets what it had seen, so its first new
 // "yes" speaks.
 func (s *Store) Update(a Automation) (Automation, error) {
@@ -345,7 +346,7 @@ func (s *Store) Update(a Automation) (Automation, error) {
 			// person had just moved later would be finished again a beat after
 			// they saved it.
 			if !a.Schedule.Repeats() && !a.Schedule.At.After(now) {
-				return errPassed(a.Schedule)
+				return errPassed(a.Schedule, now)
 			}
 			a.Schedule = rescheduled(a.Schedule, now)
 			first, err := a.Schedule.First(now)
@@ -1040,13 +1041,19 @@ func rescheduled(s Schedule, now time.Time) Schedule {
 }
 
 // errPassed refuses a one-time moment that is not after now, said in the
-// schedule's own zone.
-func errPassed(s Schedule) error {
+// schedule's own zone. A moment in now's own minute is said to the second:
+// `20:33 has already passed` read at 20:33:05 looks like a clock disagreeing
+// with itself.
+func errPassed(s Schedule, now time.Time) error {
 	loc, err := s.location()
 	if err != nil {
 		loc = time.Local
 	}
-	return fmt.Errorf("%s has already passed", s.At.In(loc).Format("Mon 2 Jan 15:04"))
+	layout := "Mon 2 Jan 15:04"
+	if s.At.Truncate(time.Minute).Equal(now.Truncate(time.Minute)) {
+		layout += ":05"
+	}
+	return fmt.Errorf("%s has already passed", s.At.In(loc).Format(layout))
 }
 
 func newID() string {

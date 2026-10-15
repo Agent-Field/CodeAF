@@ -49,6 +49,8 @@ const (
 	typedReason     = "you typed it, so nothing is saved until you say so"
 	typedNoAutoWord = "no automation has the id "
 	typedSavedWord  = "saved "
+	// typedStillPaused is a paused automation's receipt in place of a next run.
+	typedStillPaused = "still paused — resume starts it again"
 )
 
 // automationsCommand is `/automations` and everything after it.
@@ -251,8 +253,13 @@ func (a *app) typedAutomationAnswered(card *automationCard, item automation.Auto
 				a.touch()
 				return nil
 			}
+			// A PAUSED ONE KEEPS A NEXT SLOT IT DOES NOT RUN AT, so the receipt
+			// says it is still paused, as its card said no next run.
 			receipt := typedSavedWord + strings.TrimSpace(saved.Title)
-			if !saved.Next.IsZero() {
+			switch {
+			case saved.Status == automation.StatusPaused:
+				receipt += " · " + typedStillPaused
+			case !saved.Next.IsZero():
 				receipt += " · " + autoNextWord + automation.Moment(saved.Next, now)
 			}
 			a.note(receipt)

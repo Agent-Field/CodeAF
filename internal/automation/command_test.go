@@ -316,3 +316,60 @@ func TestAnEditThatKeepsAPassedMomentReads(t *testing.T) {
 		t.Fatalf("a moment moved into the past = %v, want it refused", err)
 	}
 }
+
+// A MOMENT IN THE HOUR A FALL-BACK REPEATS KEEPS WHICH ONE IT IS. Toronto's
+// clocks go from 01:59 EDT back to 01:00 EST on Sunday 1 November 2026, so
+// `01:30` names two instants; the line carries the offset for the second.
+func TestAMomentInARepeatedHourRoundTrips(t *testing.T) {
+	_, loc := commandNow(t)
+	second := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC).In(loc) // 01:30 EST
+	first := time.Date(2026, 11, 1, 5, 30, 0, 0, time.UTC).In(loc)  // 01:30 EDT
+	for _, c := range []struct {
+		at, now time.Time
+		status  Status
+		more    string
+	}{
+		// Saved unedited while it is still to come.
+		{second, second.Add(-3 * time.Hour), StatusActive, ""},
+		{first, first.Add(-3 * time.Hour), StatusActive, ""},
+		// Renamed after it was said.
+		{second, second.Add(time.Hour), StatusFinished, ` title "stretch again"`},
+	} {
+		original := Automation{ID: "r", Title: "stretch", Workspace: "/work/project", Status: c.status,
+			Schedule: Schedule{At: c.at, Zone: "America/Toronto"}, Action: Action{Say: "stand up"}}
+		line := CommandLine(original) + c.more
+		cmd, err := ParseCommand(line)
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		back, err := cmd.Apply(original, c.now)
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		if !back.Schedule.At.Equal(c.at) {
+			t.Fatalf("%s moved the moment %v to %v", line, c.at, back.Schedule.At)
+		}
+	}
+	if line := CommandLine(Automation{ID: "r", Schedule: Schedule{At: first, Zone: "America/Toronto"}}); !strings.HasSuffix(line, " at 2026-11-01T01:30") {
+		t.Fatalf("the first 01:30 is written %q, want the plain wall clock", line)
+	}
+}
+
+// A MOMENT THAT PASSED IN THIS VERY MINUTE IS SAID TO THE SECOND, so the
+// refusal does not read as 20:33 passing at 20:33.
+func TestAMomentPassedThisMinuteIsSaidToTheSecond(t *testing.T) {
+	now, loc := commandNow(t)
+	now = now.Add(5 * time.Second)
+	base := Automation{ID: "r", Title: "stretch", Workspace: "/work/project", Schedule: Schedule{At: now.Add(time.Hour), Zone: "America/Toronto"}, Action: Action{Say: "stand up"}}
+	cmd, err := ParseCommand("edit r at " + now.In(loc).Format("15:04"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cmd.Apply(base, now); err == nil || !strings.Contains(err.Error(), "14:30:00 has already passed") {
+		t.Fatalf("a moment passed this minute = %v", err)
+	}
+	cmd, _ = ParseCommand("edit r at 14:29")
+	if _, err := cmd.Apply(base, now); err == nil || !strings.HasSuffix(err.Error(), "14:29 has already passed") {
+		t.Fatalf("a moment passed before this minute = %v", err)
+	}
+}
