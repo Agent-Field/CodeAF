@@ -63,12 +63,18 @@ func TestChatPresentationLeavesExistingProfileUntouched(t *testing.T) {
 	}
 }
 
-func TestChatPresentationPreservesHiddenResidentSettings(t *testing.T) {
+// The v1 resident's scheduler rows — the practice budget and its quiet period,
+// the arrival brief's absence, and tenure — used to stay registered and hidden
+// from chat. They went with the scheduler, so they are not rows at all: a
+// profile still holding one is a retired key ([retiredProfileKeys]).
+func TestChatPresentationHasNoRowsForTheRemovedScheduler(t *testing.T) {
 	r := registry(t, t.TempDir())
-	for _, key := range []string{KeyPracticeIdle, KeyPracticeBudget, KeyBriefAfter, KeyTenureAfter} {
-		row, ok := r.Row(key)
-		if !ok || !row.ChatPresentation().Hidden {
-			t.Fatalf("%s must remain registered but hidden from chat", key)
+	for _, key := range []string{"practice_budget_usd", "practice_idle", "brief_after", "tenure_after"} {
+		if _, ok := r.Row(key); ok {
+			t.Fatalf("%s is still a settings row; nothing reads it", key)
+		}
+		if !retiredProfileKeys[key] {
+			t.Fatalf("%s is not retired, so a profile holding it would be told it is ignored", key)
 		}
 	}
 	for _, slot := range ModelSlots() {

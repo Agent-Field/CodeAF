@@ -58,6 +58,10 @@ func TestNoSectionRepeatsAStaleDisplayClaim(t *testing.T) {
 		"| `auditor` | checker |",
 		"draws one tab per open conversation, and",
 		"names every open conversation, and",
+		// /help's digit row said it was in the tab bar's order, then in the
+		// "established shortcut order"; it pairs each digit with its place now.
+		"established shortcut order",
+		"in the tab bar's own order",
 	}
 	for _, section := range Chat().Sections() {
 		body := flatten(section.Body)
@@ -81,6 +85,53 @@ func TestNoSectionRepeatsStaleHelpSettingsGreetingOrManagerClaims(t *testing.T) 
 		"Tasks · Providers · Connections",
 		"a plain launch opens straight on home",
 		"deterministic `@manager-...` fallback",
+	}
+	for _, section := range Chat().Sections() {
+		text := flatten(section.Title + " " + section.Body)
+		for _, claim := range stale {
+			if strings.Contains(text, claim) {
+				t.Errorf("%s: %s still says %q", section.Page, section.Title, claim)
+			}
+		}
+	}
+}
+
+// HOME'S ARROWS STOPPED CROSSING COLUMNS ON 2026-09-17, when every row the cursor
+// can stand on moved into the field's one column and the rail stopped being
+// walked (internal/tui3's homegrid.go, THE ARROWS STAY IN THEIR COLUMN). Five
+// sections went on saying `←`/`→` cross columns, and two promised a project
+// row's `its chats` verb, which #1422 removed along with the row's stop.
+func TestNoSectionSaysHomesArrowsCrossColumns(t *testing.T) {
+	stale := []string{
+		"←→ cross columns",
+		"`←→` cross columns",
+		"`←`/`→` cross columns",
+		"`←`/`→` cross between columns",
+		"cross to the next column",
+		"cross home's columns first",
+		"`→` then `its chats`",
+		"`its chats` and `open folder` on a project",
+	}
+	for _, section := range Chat().Sections() {
+		text := flatten(section.Title + " " + section.Body)
+		for _, claim := range stale {
+			if strings.Contains(text, claim) {
+				t.Errorf("%s: %s still says %q", section.Page, section.Title, claim)
+			}
+		}
+	}
+}
+
+// HOME'S ctrl+e STOPPED CLOSING TABS ON 2026-10-07 (#1750): on a conversation's
+// row it opens the delete confirmation, and the strip's `x` is `x delete`. Three
+// sections of the keys page went on saying it closes, archives and reopens.
+func TestNoSectionSaysHomesCtrlEClosesATab(t *testing.T) {
+	stale := []string{
+		"`ctrl+e` closes the conversation tab",
+		"Enter or `ctrl+e` on a closed row reopens it",
+		"the card's legend says `ctrl+e close`",
+		"`x close`",
+		"it is the put-away key the legend names",
 	}
 	for _, section := range Chat().Sections() {
 		text := flatten(section.Title + " " + section.Body)

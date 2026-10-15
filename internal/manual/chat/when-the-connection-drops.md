@@ -309,9 +309,9 @@ to five minutes for a summary to finish; the chat stays responsive while it wait
 ## It said something "fell over once and will be tried again"
 
 That sentence is about one of the readings the surface keeps warm in the background over a
-connection — the places behind home, what has been spent, what is remembered, the standing
-items — and it means exactly what it says: the reading broke once, inside codeaf, and it
-will be asked for again on the next beat as if the far machine had simply not answered.
+connection — the places behind home, what has been spent, what is remembered — and it
+means exactly what it says: the reading broke once, inside codeaf, and it will be asked for
+again on the next beat as if the far machine had simply not answered.
 It is shown once, on the line where the connection's own one-off news appears, and never
 repeated, even if the same reading keeps breaking. The full record of what broke goes to
 the log file the surface writes beside the profile, `chat.log`. The fault is recorded and
@@ -321,9 +321,9 @@ the notice is queued before that background reading can start again.
 reading what has been spent over this connection fell over once and will be tried again
 ```
 
-The four readings are named `keeping the places current`, `reading what has been spent`,
-`reading what is remembered` and `reading the standing items`. Nothing on the page is lost:
-a page keeps drawing the last answer it was given until a new one arrives, and a page that
+The three readings are named `keeping the places current`, `reading what has been spent`
+and `reading what is remembered`. Nothing on the page is lost: a page keeps drawing the
+last answer it was given until a new one arrives, and a page that
 had never been answered draws nothing rather than a guess. A background reading is never
 started when there is no connection to make it on, so a surface that has no machine behind
 it is quiet rather than repeatedly failing.

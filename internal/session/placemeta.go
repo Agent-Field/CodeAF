@@ -397,11 +397,11 @@ func (a *Agent) stampMeta() {
 // exactly the separation home's spend band adds back up in one place
 // (internal/tui3's homeFacts).
 //
-// A STANDING FIRING HAS A PLACE OF ITS OWN and so stamps its own run folder
-// (standing_run.go's standingRunConfig). That is the right file for it: the
-// folder lives under the standing store rather than under v3/projects, nothing
-// home reads ever scans it, and what an item has spent is the ledger's answer
-// (internal/standing) and not this one.
+// AN AUTOMATION'S RUN HAS A PLACE OF ITS OWN and so stamps its own run folder
+// (automation_run.go). That is the right file for it: the folder lives under
+// the automations store rather than under v3/projects, nothing home reads ever
+// scans it, and what a run has spent is its own row's answer
+// (internal/automation) and not this one.
 //
 // ONE SMALL ATOMIC WRITE PER TURN. There is no other end-of-turn write to a
 // session's meta.json to ride — [Agent.stampUserLocked] runs at the START of a

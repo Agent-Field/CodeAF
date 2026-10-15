@@ -34,8 +34,8 @@ func (a *app) clearPlaceRowHover() {
 		return
 	}
 	rowHot := a.hot.kind == hoverTaskSheet || a.hot.kind == hoverHop
-	changed := a.home.hover >= 0 || a.mem.hover >= 0 || a.orders.hover >= 0 || a.spend.hover >= 0 || rowHot
-	a.home.hover, a.mem.hover, a.orders.hover, a.spend.hover = -1, -1, -1, -1
+	changed := a.home.hover >= 0 || a.mem.hover >= 0 || a.autoPlace.hover >= 0 || a.spend.hover >= 0 || rowHot
+	a.home.hover, a.mem.hover, a.autoPlace.hover, a.spend.hover = -1, -1, -1, -1
 	if rowHot {
 		a.hot = hoverAt{}
 	}

@@ -4,10 +4,10 @@ package tui3
 //
 // home.go's [app.homeDetail] owns the two lines nothing may displace — the
 // title and the place — and then asks this registry for the rest. A band says
-// what kind of thing it is about (a conversation, a standing item, a project),
-// what order it sits at, and how to draw itself for a given width; the registry
-// composes them top-down with one blank row between, and a frame too short for
-// all of them drops whole bands from the bottom ([homeBands]), so the most
+// what kind of thing it is about (a conversation or a project), what order it
+// sits at, and how to draw itself for a given width; the registry composes them
+// top-down with one blank row between, and a frame too short for all of them
+// drops whole bands from the bottom ([homeBands]), so the most
 // decision-relevant band is the one nearest the title.
 //
 // ── THE LAWS ──
@@ -43,7 +43,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // bandClauses lays whole facts into the fewest rows that hold them. THE LAST
@@ -202,8 +201,6 @@ type bandKind uint8
 const (
 	// bandKindSession is the card for one conversation — the row under the cursor.
 	bandKindSession bandKind = iota + 1
-	// bandKindItem is the card for one standing item.
-	bandKindItem
 	// bandKindProject is the card for a whole project: the cursor is on a heading
 	// or on a folded project line.
 	bandKindProject
@@ -222,8 +219,6 @@ type bandSubject struct {
 	kind bandKind
 	// row is the conversation, for bandKindSession.
 	row session.SessionRow
-	// item is the standing item, for bandKindItem.
-	item StandingItemView
 	// project is the whole project, for bandKindProject.
 	project string
 	// world is the reading the rows were built from, for bands that look past
@@ -235,13 +230,11 @@ type bandSubject struct {
 }
 
 // id is what fold state and caches key on: the transcript for a conversation,
-// the item id for an item, the directory for a project.
+// the directory for a project.
 func (s bandSubject) id() string {
 	switch s.kind {
 	case bandKindSession:
 		return s.row.Transcript
-	case bandKindItem:
-		return s.item.Item.ID
 	case bandKindProject:
 		return s.dir
 	}
@@ -275,24 +268,21 @@ const (
 	bandOrderGone        = 5   // the folder this project lived in is not there any more
 	bandOrderState       = 10  // what it is doing right now, and what it is stopped on
 	bandOrderAnswer      = 15  // the question it is stopped on, answerable from here
-	bandOrderNews        = 30  // what happened since you last looked
 	bandOrderWork        = 40  // the tasks it ran, with what they came to
 	bandOrderDeliverable = 50  // the files it produced
-	bandOrderNextUp      = 60  // the standing items that will wake, and when
 	bandOrderLeftOff     = 70  // where the conversation left off
 	bandOrderRepo        = 80  // where the repository stands
 	bandOrderFolders     = 85  // the folders it is about beyond the one it stands in
 	bandOrderSpend       = 90  // what it has cost
-	bandOrderThinking    = 93  // a standing item: the rung it thinks at
 	bandOrderKeys        = 100 // what the keyboard does here, always last
 )
 
 // THE REGISTRY OUTLIVED THE RESTING CARD THAT ASSEMBLED MOST OF THESE BANDS.
 // The grid (homegrid.go) retired that card, and the panels take what they need
-// from the reading rather than from here; but three surfaces still draw every
-// band a subject has — the card beside the typed search ([app.homeCardRows]),
-// the standing item's card ([StandingItemCard]) and the phone sheet
-// ([app.homeSheetBody]) — so it stays for as long as one of them asks.
+// from the reading rather than from here; but two surfaces still draw every
+// band a subject has — the card beside the typed search ([app.homeCardRows])
+// and the phone sheet ([app.homeSheetBody]) — so it stays for as long as one of
+// them asks.
 var (
 	homeBandRegistry []homeBand
 	homeBandsSorted  bool
@@ -611,12 +601,4 @@ func drawStateBand(a *app, ctx bandContext) []string {
 		}
 	}
 	return append(state, a.takeoverCard(row, width, pal)...)
-}
-
-// itemView is a convenience for bands that draw for items.
-func (s bandSubject) itemOrNil() *standing.Item {
-	if s.kind != bandKindItem {
-		return nil
-	}
-	return &s.item.Item
 }

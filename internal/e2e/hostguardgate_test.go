@@ -1,9 +1,13 @@
 package e2e
 
 // THE HOST GUARD IS A LAW FOR EVERY LAUNCHER. A codeaf process started by this
-// suite can install a background timer, so an unguarded launch can replace the
-// developer's timer with a unit pointing at a deleted checkout. Every five-minute
-// pass then fails (#1631). This untagged gate reads tagged sources as well.
+// suite takes the old feature's timers off whatever login it runs as, and a
+// window it opens starts the automations clock (hostguard_test.go says both
+// in full). An unguarded launch would do the first to the developer's own
+// launchd or systemd and the second against their home. It began as #1631, when
+// a launch could still INSTALL a timer and replaced the developer's with a unit
+// pointing at a deleted checkout. This untagged gate reads tagged sources as
+// well.
 
 import (
 	"go/ast"
@@ -69,7 +73,7 @@ func TestEveryLaunchOfCodeafStandsBehindTheHostGuard(t *testing.T) {
 					return true
 				})
 				if !guarded {
-					t.Errorf("%s:%d door no longer calls guardHost; use the temporary HOME and scheduler stubs before launching codeaf (#1631)", name, fset.Position(fn.Pos()).Line)
+					t.Errorf("%s:%d door no longer calls guardHost; use the temporary HOME and the machine's stand-ins before launching codeaf (#1631)", name, fset.Position(fn.Pos()).Line)
 					if key == "tmux_test.go/startWithEnv" {
 						ast.Inspect(fn.Body, func(node ast.Node) bool {
 							call, ok := node.(*ast.CallExpr)
@@ -78,7 +82,7 @@ func TestEveryLaunchOfCodeafStandsBehindTheHostGuard(t *testing.T) {
 								if literal && program == "tmux" && hostTmuxLaunch(call.Args[1:]) {
 									last, literal := hostString(call.Args[len(call.Args)-1])
 									if !literal || strings.Contains(last, "codeaf") {
-										t.Errorf("%s:%d tmux respawn-window can start codeaf without the host guard; the developer's timer then points at a deleted checkout and every five-minute pass fails (#1631)", name, fset.Position(call.Pos()).Line)
+										t.Errorf("%s:%d tmux respawn-window can start codeaf without the host guard; it would take the developer's old timers off their login and start a clock against their home (#1631)", name, fset.Position(call.Pos()).Line)
 									}
 								}
 							}
@@ -108,7 +112,7 @@ func TestEveryLaunchOfCodeafStandsBehindTheHostGuard(t *testing.T) {
 	}
 	for key := range hostGuardDoors {
 		if !found[key] {
-			t.Errorf("%s host guard door is missing; every codeaf launch needs a temporary HOME and scheduler stubs (#1631)", key)
+			t.Errorf("%s host guard door is missing; every codeaf launch needs a temporary HOME and the machine's stand-ins (#1631)", key)
 		}
 	}
 }
@@ -127,7 +131,7 @@ func hostGuardViolations(fset *token.FileSet, file *ast.File, name string) []str
 		_, allowed := hostGuardAllowlist[key]
 		guardedVars := map[string]bool{}
 		report := func(node ast.Node, reason string) {
-			problems = append(problems, name+":"+strconv.Itoa(fset.Position(node.Pos()).Line)+" "+reason+"; an unguarded codeaf can replace the developer's timer with a deleted checkout and break every five-minute pass (#1631). Use guardedCommand or startWithEnv")
+			problems = append(problems, name+":"+strconv.Itoa(fset.Position(node.Pos()).Line)+" "+reason+"; an unguarded codeaf takes the developer's old timers off their login and starts a clock against their home (#1631). Use guardedCommand or startWithEnv")
 		}
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
 			switch n := node.(type) {
@@ -226,7 +230,7 @@ func TestTheHostGuardGateCatchesAnUnguardedLauncher(t *testing.T) {
 	source := `package e2e
 import "os/exec"
 func fake(t any) {
-exec.Command(binary(t), "tick")
+exec.Command(binary(t), "clock")
 exec.Command("codeaf", "chat")
 exec.Command("tmux", "respawn-window", buildCommand())
 cmd := guardedCommand(t, nil, "", nil, "", "")

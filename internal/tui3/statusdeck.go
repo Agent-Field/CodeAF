@@ -523,16 +523,11 @@ func (a *app) deckItems() []deckItem {
 	// window whose engine carried none, which is the badge's own silence there.
 	add(deckSegWords[segYolo], a.approvalPostureWord(), deckActNone)
 	add("tasks", a.deckTaskWord(), deckActNone)
-	// phone lane: AND WHETHER ANYTHING IS KEEPING WATCH WITH NO WINDOW OPEN. It
-	// is the one fact here that is not a status-line segment at any width — the
-	// segment above says how MANY things are standing, and this says whether they
-	// are still looked at once every terminal is closed (homestanding.go's
-	// [app.watchLine]). A seam with no answer adds no line. It was /status's
-	// alone; the phone's sheet is the other half of that surface and was the one
-	// place a person could not reach it (statusnote.go says why the two lists are
-	// one list).
-	if word, ok := a.watchLine(); ok {
-		add(homeWatchLabel, word, deckActNone)
+	// AND WHAT IS ON THE CLOCK: how many automations will run again, which one
+	// is next, and how many are running now (automationsplace.go). Nothing at
+	// all when none are — the emptiness law applied to a whole line.
+	if word, ok := a.automationsStatusWord(); ok {
+		add(placeAutomationsWord, word, deckActNone)
 	}
 
 	// WHERE YOU ARE LIVES HERE NOW. The legend under the input used to carry the
@@ -562,17 +557,12 @@ var deckSegWords = [segCount]string{
 	// The crew's word is here so the array is complete, and [app.deckItems] never
 	// reads it: the crew is written under the model in full instead.
 	segCrew: "crew",
-	// The open count had NO word here either, for [segKeeping]'s reason and with
-	// the same result — an empty label with a figure hanging in the value column
-	// under nothing. It matters more now: the segment came off the status row on
-	// 2026-09-09 (foot.go's [groupOff]), so this page and /status are the only
-	// two places it is written down at all.
+	// The open count needs a word here: a segment with an empty label is a
+	// figure hanging in the value column under nothing. It matters more now: the
+	// segment came off the status row on 2026-09-09 (foot.go's [groupOff]), so
+	// this page and /status are the only two places it is written down at all.
 	segOpen:    "open",
 	segAmbient: "background",
-	// phone lane: the standing side had NO word at all here, so its segment came
-	// out of the loop above with an empty label and hung in the value column
-	// under nothing (homestanding.go's [app.keepingSegment] writes the fact).
-	segKeeping: "watching",
 	segDelta:   "changes",
 	segCost:    "spend",
 	segCtx:     "context",

@@ -45,7 +45,13 @@ Its stages are on the rail and head the lines of its page:
 6. **obligations** and **coverage**: lists what the change must do and checks it, and looks for gaps.
 7. **report**.
 
-Each reviewer is an agent session that reads the checkout, told it is part of a code review, with four read-only tools — read a file, list a folder, find files by name, look for text in files — for as many turns and minutes as its part of the review is given — from ten turns for the smallest to thirty for a reviewer — after which it is made to answer. At a shell, `--max-turns` and `--session-wall` set one limit for every reviewer instead. A review of a mid-sized pull request commonly takes half an hour to an hour.
+Each reviewer is an agent session that reads the checkout, told it is part of a code review, with four read-only tools — read a file, list a folder, find files by name, look for text in files — within the turns and minutes its part of the review is given — from ten turns for the smallest to thirty for a reviewer. It reserves thirty seconds of its time limit for the answer, or half the remaining time when the limit is shorter than a minute. At the reading cutoff it stops reading and answers from what it has already found; the answer must still finish within the original time limit. At a shell, `--max-turns` and `--session-wall` set one limit for every reviewer instead. A review of a mid-sized pull request commonly takes half an hour to an hour.
+
+A linked path to the repository is accepted as the same reading root. Files and links that lead outside that root are still refused.
+
+## Final answers — JSON Schema, supported response formats, unsupported endpoints
+
+Review's agents ask for a native schema-bound format on their final answers when the profile's cached model catalog publishes support. Reading turns keep their read-only tools. When support is unknown or absent, the schema stays in the prompt. An endpoint that explicitly refuses that format gets one prompt-only fallback inside the existing turn and time limits. Every answer is still checked against the original schema; invalid schemas, account refusals, provider outages and cancellation do not buy a formatting fallback.
 
 ## What /review shows while it runs — each reviewer's line, what it found, which files
 
@@ -60,6 +66,22 @@ When it finishes, the chat is handed a short account whose first line says what 
 
 A shell run's record folder is under `~/.codeaf/v3/carried/review/`, one folder per run.
 
+An assembled review can finish successfully while covering only part of the change.
+Its first line says `Partial review` when a session failed, a dimension degraded,
+or a time or dollar limit stopped work. The JSON report keeps those coverage facts,
+and the review it would post carries the same warning. A partial review cannot be
+posted as an approval; a valid partial report can still be posted as a comment or
+request for changes on your yes. Terminal success means the report was assembled,
+not that every check completed.
+
+A reported consistency defect must include its explanation and code
+location with a valid line range. Missing details end the run with a failure record
+instead of a postable review. Posting also refuses such malformed findings in older
+saved reports. Older reports with a known budget stop or degraded work need the
+coverage facts and posting warning before they can be posted.
+
+If the pipeline stops before it returns an assembled review, the run keeps `review-failure.json` and `review-failure.md` instead. They record the stage, reason, elapsed time, recorded spend and failed call counts. They contain no review and cannot be posted as one; the run still ends as failed or stopped on its ceiling.
+
 ## Post the review to GitHub — comment on the pull request, request changes, /review post
 
 `review` never posts during a review. When a review found something, the chat offers to post it and waits; only after you say yes does it propose `review` with the brief `post <the review-report.json path>`, which you can also type yourself: `/review post ~/.codeaf/v3/…/review-report.json` (the record folder works too). That run posts the review **as it stands** — its summary, its inline comments, and its event (a request for changes when something blocks, a comment when nothing does, an approval when it found nothing) — on the commit that was reviewed, even if the pull request has moved since. Posting needs a token that can write to the repository (see *Private repositories*); without one it ends `review did not finish: nothing was posted: posting to owner/repo#123 needs a GitHub token; set GH_TOKEN or sign in with gh auth login`. GitHub refuses a request for changes on your own pull request, so there it goes as a comment, and the account says so.
@@ -71,6 +93,8 @@ A run nobody set a limit for stops at **$5 and two hours**, or sooner where this
 It keeps three minutes of its time ceiling back to write its review. **A review its time ceiling cuts still reports**, and says so in its second line: `It reached its time ceiling of 2h while reviewing, so the reviewers still running were stopped and their parts of the change were not reviewed.` A run that reaches a ceiling before it has any review says `it reached the run's dollar ceiling before it finished, so it has no review` (or `time ceiling`).
 
 **Which models.** From the chat, the conversation's working seat reads the code and its light seat makes the single structured calls; a model you name for the hand-off reads the code instead. At a shell, `--model` and `--light` name them, else the profile's work seat does both.
+
+Both flags resolve model words through the profile's catalog, including floating aliases and provider-qualified names. An unknown model word is refused before any model call starts.
 
 ## Fixing what /review found — hand the findings to senior-dev, fix the blocking findings
 

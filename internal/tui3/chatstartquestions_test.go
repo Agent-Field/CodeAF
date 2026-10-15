@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -34,13 +35,9 @@ func startPageQuestions() []startPageQuestion {
 			Stakes:   session.StakesCostly,
 			Blocking: session.Blocking{Turn: true},
 		}},
-		{name: "standing order", q: session.Question{
-			ID: 9, Kind: session.QuestionStanding, Ask: session.AskChoice,
-			Form: session.FormCard, Asker: session.Asker{Kind: session.AskerEngine},
-			Head: "keep running the checks?", Reason: session.StandingAskReason,
-			Options: session.AnswerOptions(session.QuestionStanding),
-			Stakes:  session.StakesReversible,
-		}},
+		{name: "automation", q: session.AutomationQuestion(session.AutomationNotice{ID: 9, Automation: automation.Automation{
+			Title: "the checks", Schedule: automation.Schedule{Every: "1h"}, Action: automation.Action{Do: "run the checks"},
+		}})},
 		{name: "connect offer", q: session.ConnectQuestion("notion", "Notion", false, "", false)},
 		{name: "harness offer", q: session.HarnessQuestion(10, session.Event{
 			Text: "research", Hint: "finds an answer across sources",

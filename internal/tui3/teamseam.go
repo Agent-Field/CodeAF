@@ -37,7 +37,7 @@ import (
 // off with [teamHostedWord] (host.go's honesty table).
 
 // TeamsSeam is the teams file and the Traffic logs of the machine the session
-// runs on, as functions (the reason [StandingSeam] gives). The zero value is
+// runs on, as functions (the reason [LinkSeam] gives). The zero value is
 // this machine's own profile, which is every local launch.
 type TeamsSeam struct {
 	// Load is the teams as held, coloured around reserved, and the file's stamp

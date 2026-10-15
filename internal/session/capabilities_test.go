@@ -827,8 +827,7 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 		config.Media = &scriptedMedia{}
 		config.MediaModel = allMediaModels()
 		config.Memory = openTestBrain(t)
-		config.Standing = &Standing{}
-		config.standingItems = &fakeStanding{}
+		config.Automations = &Automations{Store: automationStoreFor(t), Zone: "UTC"}
 		config.Subharnesses = registryWith(t, &fakeGeneralist{}, &fakeRunner{manifest: theProgram()})
 		config.HarnessCards = true
 	})

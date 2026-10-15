@@ -478,7 +478,10 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 	// a count. [Dial] is float64 at both ends and in the middle because the thing
 	// on the dial is a quantity the asker chose — a share, a threshold, a rate —
 	// and declaring its ends whole would refuse "0 to 1, default 0.3" outright.
-	fractional := map[string]bool{"per_run_usd": true, "level": true, "fade": true,
+	//
+	// AND AN AUTOMATION'S `usd` IS MONEY, where fifty cents a run is an ordinary
+	// limit to set.
+	fractional := map[string]bool{"usd": true, "level": true, "fade": true,
 		"min": true, "max": true, "default": true}
 	for _, path := range toolArgumentSources(t) {
 		body, err := os.ReadFile(path)

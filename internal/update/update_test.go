@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -845,18 +846,87 @@ func TestC10RedirectsNeverCarryTheAPITokenToAnotherHost(t *testing.T) {
 	}
 }
 
-// TestC11RepositoryAndAssetFallbacksKeepOldReleasesInstallable proves C11.
-func TestC11RepositoryAndAssetFallbacksKeepOldReleasesInstallable(t *testing.T) {
+// requestLog is the paths a fake server was asked, kept under a lock because
+// the server's handler goroutines write while the test reads.
+type requestLog struct {
+	mu    sync.Mutex
+	paths []string
+}
+
+func (l *requestLog) record(path string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.paths = append(l.paths, path)
+}
+
+func (l *requestLog) list() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.paths...)
+}
+
+// onlyTheReleaseRepository fails the test for any request that names a
+// repository other than the one origin, in the API's spelling or the download
+// host's.
+func onlyTheReleaseRepository(t *testing.T, paths []string) {
+	t.Helper()
+	for _, path := range paths {
+		if !strings.HasPrefix(path, "/repos/"+primaryRepository+"/") && !strings.HasPrefix(path, "/"+primaryRepository+"/") {
+			t.Fatalf("a request left the release repository: %s\nall requests:\n%s", path, strings.Join(paths, "\n"))
+		}
+	}
+}
+
+// TestANotFoundFromTheReleaseRepositoryIsTheAnswer proves there is ONE origin.
+// A 404 from it ends the selection, the moment lookup and the download alike,
+// and nothing is asked of any other repository — not even when the caller
+// wrote another one on the release.
+func TestANotFoundFromTheReleaseRepositoryIsTheAnswer(t *testing.T) {
+	requests := &requestLog{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.record(r.URL.Path)
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	client := releaseClient(server, "v0.1.1")
+	for _, channel := range []string{"stable", "dev"} {
+		if release, err := client.Select(context.Background(), Choice{Channel: channel}); err == nil || !isStatus(err, http.StatusNotFound) {
+			t.Fatalf("%s selection = %+v, %v; want the repository's 404", channel, release, err)
+		}
+	}
+	if moment, found := client.TagPublished(context.Background(), "dev-20261001-0123456789ab"); found {
+		t.Fatalf("a 404 answered a publish moment %s", moment)
+	}
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(context.Background(), InstallOptions{
+		Client: client, Target: target, Release: Release{Tag: "v0.2.0", Repository: "Agent-Field/elsewhere"},
+	}); err == nil {
+		t.Fatal("an install found bytes nowhere and still succeeded")
+	}
+	if got, _ := os.ReadFile(target); string(got) != "old" {
+		t.Fatalf("the original was replaced: %q", got)
+	}
+	paths := requests.list()
+	if len(paths) == 0 {
+		t.Fatal("the server was never asked")
+	}
+	onlyTheReleaseRepository(t, paths)
+}
+
+// TestTheFormerAssetNameStillInstallsTheOneOldRelease proves C11's surviving
+// half: v0.1.0 was published before the rename under the former asset name, and
+// a person naming that tag still gets it — from the same release, vouched for
+// by the checksums.txt beside it.
+func TestTheFormerAssetNameStillInstallsTheOneOldRelease(t *testing.T) {
 	asset := []byte("old named release")
 	digest := sha256.Sum256(asset)
-	var paths []string
+	requests := &requestLog{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.Path)
+		requests.record(r.URL.Path)
 		switch {
-		case strings.Contains(r.URL.Path, "/repos/"+primaryRepository+"/"):
-			http.NotFound(w, r)
-		case strings.Contains(r.URL.Path, "/repos/"+legacyRepository+"/"):
-			fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
 		case strings.HasSuffix(r.URL.Path, "/aforge-"+runtime.GOOS+"-"+runtime.GOARCH): // legacy-name
 			_, _ = w.Write(asset)
 		case strings.HasSuffix(r.URL.Path, "/checksums.txt"):
@@ -866,24 +936,27 @@ func TestC11RepositoryAndAssetFallbacksKeepOldReleasesInstallable(t *testing.T) 
 		}
 	}))
 	defer server.Close()
-	client := releaseClient(server, "v0.1.1")
-	release, err := client.Select(context.Background(), Choice{Channel: "stable"})
-	if err != nil || release.Repository != legacyRepository {
-		t.Fatalf("release = %+v, error %v", release, err)
-	}
+	client := releaseClient(server, "v0.2.0")
 	target := filepath.Join(t.TempDir(), "codeaf")
-	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+	if err := os.WriteFile(target, []byte("new"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Install(context.Background(), InstallOptions{Client: client, Release: release, Target: target}); err != nil {
+	if _, err := Install(context.Background(), InstallOptions{
+		Client: client, Target: target, Release: Release{Tag: "v0.1.0"}, AllowDowngrade: true,
+	}); err != nil {
 		t.Fatal(err)
 	}
+	if got, _ := os.ReadFile(target); string(got) != string(asset) {
+		t.Fatalf("installed %q, want the release under its former asset name", got)
+	}
+	paths := requests.list()
 	joined := strings.Join(paths, "\n")
-	for _, want := range []string{"/repos/" + primaryRepository, "/repos/" + legacyRepository, "/codeaf-", "/aforge-"} { // legacy-name
+	for _, want := range []string{"/codeaf-", "/aforge-"} { // legacy-name
 		if !strings.Contains(joined, want) {
 			t.Fatalf("requests do not contain %q:\n%s", want, joined)
 		}
 	}
+	onlyTheReleaseRepository(t, paths)
 }
 
 // TestAssetFailureNamesTheCurrentAssetAndStatusWithoutExposingFallbacks proves D9.

@@ -54,9 +54,11 @@ Three product constraints shape the redesign:
    edge. This makes replication convergent and the history complete.
 5. **Every behavior-changing injection carries its why.** Trust is a schema
    property.
-6. **Memory, skills, and standing orders stay separate.** Memory is what is
-   true; a skill is how to do something; a standing order is a rule that
-   fires. Memory may reference either; it never becomes one.
+6. **Memory, skills, and automations stay separate.** Memory is what is
+   true, and a rule for all future work is a memory marked always; a skill is
+   how to do something; an automation is work on a clock. Memory may reference
+   either; it never becomes one. (Until 2026-10-10 rules were standing orders;
+   docs/design/automations/DESIGN.md says why they moved.)
 7. **Failures are journaled and visible.** "Just works" includes "tells you
    when it didn't."
 

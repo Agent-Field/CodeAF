@@ -267,11 +267,6 @@ func TestAnOldSpellingReachesTheSamePlaceAndSaysWhatItIsCalledNow(t *testing.T) 
 		old:  "--ensemble", now: "--passes",
 		wasTyped: typed("plan", "new", "a goal", "--ensemble", "3"),
 		nowTyped: typed("plan", "new", "a goal", "--passes", "3"),
-	}, {
-		name: "wake --max-seconds is --timeout",
-		old:  "--max-seconds", now: "--timeout",
-		wasTyped: typed("wake", "--max-seconds", "30"),
-		nowTyped: typed("wake", "--timeout", "30"),
 	}} {
 		t.Run(spelling.name, func(t *testing.T) {
 			wasParsed, said, wasEnding := watchParses(t, spelling.wasTyped)
@@ -343,7 +338,6 @@ func TestNoOldSpellingIsPrintedByHelp(t *testing.T) {
 		{"plan new", func(args []string) error { return runPlanNew("plan new", args) }},
 		{"plan run", func(args []string) error { return runGraph("plan run", args) }},
 		{"plan revise", func(args []string) error { return runRevise("plan revise", args) }},
-		{"wake", runWake},
 	} {
 		out, _ := captureUsage(t)
 		if code := exitCodeOf(door.run([]string{"--help"})); code != 0 {
@@ -540,7 +534,7 @@ func TestOneConceptIsSpelledOneWayOnEveryDoor(t *testing.T) {
 		{"model", "modelFlagHelp", []string{"runDo", "runExec", "runGraph", "runPlanNew", "runRevise", "runSubharnessCommand"}},
 		{"json", "jsonFlagHelp", []string{"runDo", "runExec", "runSubharnessCommand"}},
 		{"yes-spend", "yesSpendFlagHelp", []string{"runDo", "runGraph"}},
-		{"db", "storeFlagHelp", []string{"runDoctorWith", "runWhyTo", "runNotebookTo", "runServices", "runCompetenceTo", "runRebuildWith", "runWakeWith"}},
+		{"db", "storeFlagHelp", []string{"runDoctorWith", "runWhyTo", "runNotebookTo", "runServices", "runCompetenceTo", "runRebuildWith"}},
 	} {
 		for _, door := range concept.doors {
 			said, declared := sentenceFor[concept.flag][door]

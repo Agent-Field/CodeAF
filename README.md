@@ -207,14 +207,15 @@ that includes running your own.
 
 [![pool updated](https://img.shields.io/github/last-commit/Agent-Field/CodeAF/model-pool?label=pool%20updated)](https://github.com/Agent-Field/CodeAF/tree/model-pool)
 
-## Standing orders
+## Automations
 
-Rules, reminders and watches are one thing, and you set them up by saying them.
-"Never commit straight to main here." "Every Monday, draft the weekly update."
-"Tell me when CI goes red." A card asks once; `1` and it stands, in this project
-or everywhere, on the same daily spend limit as the rest.
-
-<img src="assets/readme/screens/standing.webp" alt="The standing place: orders, reminders and watches for this project and others, when each last woke and what it cost" width="100%">
+Reminders, scheduled work and watches are one thing, and you set them up by
+saying them. "Remind me at 6 to leave." "Every Monday at 9, draft the weekly
+update." "Tell me when CI on main goes red." A card shows exactly what will run,
+when, and what one run may spend; `1` saves it. They run while codeaf is open,
+anything missed while it was closed runs once when it opens, and `/automations`
+shows each one with its history. A rule for all future work — "never commit
+straight to main here" — is a memory marked always.
 
 ## Headless is the other front door
 
@@ -235,7 +236,7 @@ best answer and records the assumption. `exec` runs one worker with no plan;
 Most agents on a remote box mean ssh, tmux, and a terminal that lags on every
 key. CodeAF splits in two instead. The screen runs on the machine in front of
 you. The conversation runs on the machine that owns the work, and `home` shows
-that machine: its projects, tasks and standing orders.
+that machine: its projects, tasks and automations.
 
 <img src="assets/readme/anywhere.webp" alt="one conversation on devbox; your terminal on the same machine, your laptop over ssh, and your phone from a mobile terminal over ssh all attach to it" width="100%">
 
@@ -269,8 +270,8 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 | where you work | one window, one repository | every project on the machine, from one control room |
 | what you do | watch it type | describe work, answer what needs you, decide what lands |
 | what runs | one model, one thread | six seats chosen per call, and subharnesses built for one job |
-| how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
-| without you | it stops | headless, standing orders, a phone in your pocket |
+| how long it lasts | one session | conversations and tasks that outlive the window, automations on a clock |
+| without you | it stops | headless, automations, a phone in your pocket |
 
 ## Performance benchmark
 

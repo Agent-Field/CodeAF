@@ -652,6 +652,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// What the second press used to buy — the draft and everything parked
 		// above it written down before the program ends — is bought by
 		// [app.quit] itself, on this press, and is owed to a real SIGINT too.
+		//
+		// AN AUTOMATION IN HAND IS NO EXCEPTION. Automations run only while a
+		// window is open, and closing the last one pauses them: a run it cut off
+		// runs again, once, when a window next opens (internal/automation's
+		// clock.go). Nothing is lost by leaving, so nothing asks first.
 		return a.quit()
 	}
 
@@ -912,10 +917,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// every terminal there is until both of their names were bound (see the
 		// caret jumps below, and steer.go).
 		//
-		// It is above the newline pair below for standmark.go's reason exactly:
-		// those two are the other spellings of a different gesture, and a chord
-		// that fell through to them would open a line where somebody meant to
-		// correct an answer.
+		// It is above the newline pair below because those two are the other
+		// spellings of a different gesture, and a chord that fell through to
+		// them would open a line where somebody meant to correct an answer.
 		if a.state == stateWorking {
 			return a.enter()
 		}
@@ -928,10 +932,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// that one sits under enter: each of the three is a narrower claim than
 		// the one before it, and the narrowest is read last.
 		//
-		// It is above the newline pair below for standmark.go's reason exactly:
-		// those two are the other spellings of a different gesture, and a chord
-		// that fell through to them would open a line where somebody meant to
-		// stop an answer.
+		// It is above the newline pair below for the same reason: those two are
+		// the other spellings of a different gesture, and a chord that fell
+		// through to them would open a line where somebody meant to stop an
+		// answer.
 		return a.bargeIn()
 
 	case "shift+enter", "alt+enter", "ctrl+j":
@@ -1434,10 +1438,10 @@ func (a *app) enter() tea.Cmd { return a.enterLine() }
 
 // enterLine is the send key's whole road. The chord that used to add a marked
 // reading to it — ctrl+enter, "keep this true" — is queueing's now
-// (followup.go), and the marked door is the typed command alone
-// (standmark.go's [app.standingSay]); everything a message does to this surface
-// — the transcript line, the turn number, the recall history, the draft file —
-// is the same whichever way the sentence was handed over.
+// (followup.go), and the marked reading went with standing orders; everything a
+// message does to this surface — the transcript line, the turn number, the
+// recall history, the draft file — is the same whichever way the sentence was
+// handed over.
 func (a *app) enterLine() tea.Cmd {
 	if a.tmemberStart.key == a.frontTabKey() && a.tmemberStart.said.pending {
 		a.note("The member is still being added")
@@ -1530,8 +1534,6 @@ func (a *app) enterLine() tea.Cmd {
 	}
 	var tagDoor sendDoor
 	var tagWords string
-	var tagPlain []segment
-	tagShown := line
 	// A DEMOTION MUST SURVIVE THE RESET. [editor.reset] nils demotedTags, and
 	// the transcript is painted long after that, so the ranges are snapshotted
 	// here and threaded to the entry (app.go's [app.submittingShown]).
@@ -1540,7 +1542,6 @@ func (a *app) enterLine() tea.Cmd {
 		tag := tags[0]
 		tagDoor = commandDoor(string(a.input.value[tag.from+1 : tag.to]))
 		tagWords = removeSlashTag(a.input.value, tag)
-		tagPlain = plainWithoutTag(a.input.value, tag, plain)
 	}
 	a.input.reset()
 	a.endRecall()
@@ -1573,13 +1574,7 @@ func (a *app) enterLine() tea.Cmd {
 	// Send-door tags use the command's existing bare and argument forms. Both
 	// roads stop at a visible card or chooser, so this act cannot become silent
 	// work merely because the token arrived in pasted prose.
-	switch tagDoor {
-	case sendDoorStanding:
-		if tagWords == "" {
-			return a.openStanding()
-		}
-		return a.standingSayShown(tagWords, tagShown, plain, tagPlain)
-	case sendDoorTask:
+	if tagDoor == sendDoorTask {
 		return a.runTaskCommand(tagWords)
 	}
 	// A PICKED HARNESS TAKES THE SENTENCE, and it takes it whole: the person
@@ -1605,7 +1600,7 @@ func (a *app) enterLine() tea.Cmd {
 	// still happens at once, because those are things said to THIS SURFACE rather
 	// than to the model.
 	if a.parking() {
-		return a.park(line, false, plain)
+		return a.park(line, plain)
 	}
 	shownLine := line
 	line = a.expandPastes(line)

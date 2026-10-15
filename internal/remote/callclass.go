@@ -56,7 +56,7 @@ package remote
 // keystroke could sit behind a send. Running the ordered bodies on the
 // goroutine that reads the socket gave the order for free and took the READING
 // away with it: [MethodSubmit] alone rebinds the client, re-reads the person's
-// standing orders, reassembles the system prompt, journals the message and
+// rules, reassembles the system prompt, journals the message and
 // starts the naming errand before it returns, and for all of that the engine
 // was not reading its own pipe. A person who pressed Enter and then Esc was
 // queued behind their own send. [MethodCompact] was the extreme case — it does
@@ -153,7 +153,6 @@ func classify(method string) callClass {
 		MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,
 		MethodAttachedSkills, MethodSkillShelf,
 		MethodSessionsRecent, MethodHeldQuestions,
-		MethodStandingItems, MethodStandingWatch,
 		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,
 		MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryList, MethodMemoryProvenance,
 		MethodTaskRoom, MethodTaskPending, MethodTaskEffort,
@@ -161,16 +160,30 @@ func classify(method string) callClass {
 		// The wall's two model asks are reads of the naming role, asked off the
 		// update loop and bounded by the wall; queued behind a turn they would
 		// wait out the wall's patience and answer nobody.
-		MethodTeamsName, MethodTeamsPropose:
+		MethodTeamsName, MethodTeamsPropose,
+		// The automations readings are the watcher's beat (wire_automations.go):
+		// a store read every two seconds that a turn in flight must never hold
+		// up, or a run's line would arrive when the reply did.
+		MethodAutomationsList, MethodAutomationsRuns, MethodAutomationsChanges,
+		MethodAutomationsCursor, MethodAutomationsActive, MethodAutomationsWindows:
 		return classGetter
 	case MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
-		MethodStandingResolve, MethodHarness, MethodConnect, MethodConnectKey,
+		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
 		MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories,
+		MethodMemoryRememberAlways, MethodMemoryAlways, MethodMemorySetAlways,
 		MethodTake, MethodAnswerLaneOffer, MethodInterrupt, MethodUnqueueFollowUp,
 		MethodPlanNote, MethodPlanPause, MethodPlanResume, MethodPlanCancel, MethodPlanAmend, MethodPlanPriority,
-		MethodTyping:
+		MethodTyping,
+		// A person's change to an automation is a keystroke on a list, and it
+		// is about the machine's store rather than the conversation's order: a
+		// pause pressed while a reply streams owes that reply nothing. The claim
+		// is the one store write a window makes on its own behalf, and it is as
+		// small as a key.
+		MethodAutomationsCreate, MethodAutomationsUpdate, MethodAutomationsSetStatus,
+		MethodAutomationsDelete, MethodAutomationsRunNow, MethodAutomationsStopRun,
+		MethodAutomationsClaim:
 		return classAct
 	case MethodCompact:
 		return classWork

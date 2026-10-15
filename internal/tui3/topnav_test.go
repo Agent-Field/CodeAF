@@ -30,7 +30,7 @@ func navPlaces(a *app, width int, numbered bool) string {
 
 // navWidths are the widths the head is pinned at: a split pane, the classic
 // terminal, a laptop and a wide screen.
-var navWidths = []int{60, 80, 110, 160}
+var navWidths = []int{60, 80, navAllFit, 110, 160}
 
 // navChat is a conversation with three tabs on its strip, a team shown and
 // some money spent, the fixture every test here starts from.
@@ -61,6 +61,12 @@ func headRowsOf(a *app) []string {
 // strip, the rule and a blank, and the body under those five rows. A place
 // draws the air row, the rule and a blank and no strip, and the body starts on
 // the next row.
+// navAllFit is the width from which every place's word fits on row zero, so the
+// row cannot move between pages. Eight words need eighty-four columns; under
+// that, a place folded behind `more ▾` is lent the row while a person stands in
+// it, which moves the words after it — narrow_test.go's law, not this one.
+const navAllFit = 84
+
 func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 	for _, width := range navWidths {
 		a := navChat(t)
@@ -80,7 +86,7 @@ func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 			if a.tabRow != navRow || a.headHeight() != placeHeadRows {
 				t.Fatalf("at %d %s drew its nav on row %d and a %d-row head", width, to.word(), a.tabRow, a.headHeight())
 			}
-			if (width >= 80 && place[navRow] != chat[navRow]) || place[1] != chat[1] {
+			if (width >= navAllFit && place[navRow] != chat[navRow]) || place[1] != chat[1] {
 				t.Fatalf("at %d %s moved the nav or the air row under it:\nchat %q\nplace %q", width, to.word(), chat[navRow], place[navRow])
 			}
 			if !strings.HasPrefix(place[placeHeadRows-2], "─") || strings.TrimSpace(place[placeHeadRows-1]) != "" || strings.Contains(place[placeHeadRows-2], "harbor") {
@@ -93,7 +99,7 @@ func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 			// is where the place drew it, wherever both drew one.
 			for _, c := range chatNav {
 				for _, p := range a.tabs {
-					if width >= 80 && c.id == p.id && c != p {
+					if width >= navAllFit && c.id == p.id && c != p {
 						t.Fatalf("at %d %q moved from %+v on the chat to %+v on %s", width, c.id.word(), c, p, to.word())
 					}
 				}

@@ -567,9 +567,26 @@ const fixedPrefixTarget = 48_000
 // 190 bytes) and its item's frame are 203 bytes in both arms; 2026-10-07, on
 // dev baa2d7f0f with sec, the fixed prefix measures 57,749 and the lean
 // 50,171, and both waivers are sec's plus exactly that 203.
+//
+// 2026-10-10, automations replace standing orders
+// (docs/design/automations/DESIGN.md). `stand` and its 9,607 bytes leave every
+// belt that carried them, and `automation` — a smaller tool for the same
+// sentences — takes its place; the one-sentence paragraph the page composes
+// beside it is the same length as the one it replaces, and `watch`'s boundary
+// sentence names the idea rather than a verb some belts lack, eight bytes
+// shorter. The fixed prefix measures 52,713 bytes and the lean 44,935, and both
+// waivers FALL to sit exactly on the measurement: the bill this file has
+// carried for `stand` since it was first weighed is mostly paid.
+//
+// 2026-10-14, `automation` learns `change`. The op, its sentence in the tool's
+// description and the page's "one that exists is CHANGED, never proposed again"
+// were paid for out of what the description said twice — a watch's look and
+// condition, already said beside their own fields in the schema — and the `id`
+// field's list of the ops that take one. Both arms come out 22 bytes lighter,
+// at 52,691 and 44,913, and both waivers fall by exactly that.
 const (
-	fixedPrefixWaiver = 9_817
-	leanPrefixWaiver  = 18_689
+	fixedPrefixWaiver = 4_691
+	leanPrefixWaiver  = 13_413
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

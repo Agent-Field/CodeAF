@@ -9,7 +9,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE EFFORT LADDER, SURFACE BY SURFACE ───────────────────────────────────
@@ -94,7 +93,7 @@ func TestHomeNeverMovesTheInstallsRungBecauseTheMachineCardIsGone(t *testing.T) 
 	if _, ok := a.home.focusedLine(); !ok {
 		t.Fatal("home's own cursor came off its list, which is the state this wave retired")
 	}
-	if subject, ok := a.homeSubject(); !ok || subject.kind == bandKindItem {
+	if subject, ok := a.homeSubject(); !ok || subject.kind != bandKindSession {
 		t.Fatalf("the card is not about the row under the cursor (ok=%v)", ok)
 	}
 
@@ -105,132 +104,6 @@ func TestHomeNeverMovesTheInstallsRungBecauseTheMachineCardIsGone(t *testing.T) 
 	if got := config.DefaultEffortAt(a.profileDir); got != before {
 		t.Fatalf("alt+e on home moved the install's rung from %q to %q", before, got)
 	}
-}
-
-// ── a standing item's card: that item's own rung ─────────────────────────────
-
-// effortBand is [standBand] with the one door this lane adds, recording every
-// rung the store was asked to write.
-type effortBand struct {
-	*standBand
-	rungs   []effort.Rung
-	refusal error
-}
-
-func (b *effortBand) wire(a *app) {
-	b.standBand.wire(a)
-	a.stands.SetEffort = func(id string, rung effort.Rung) error {
-		if b.refusal != nil {
-			return b.refusal
-		}
-		b.rungs = append(b.rungs, rung)
-		for i := range b.standBand.items {
-			if b.standBand.items[i].ID == id {
-				b.standBand.items[i].Does.Effort = rung.String()
-			}
-		}
-		return nil
-	}
-}
-
-// itemHome is home with one standing item a cursor can be put on.
-//
-// THE ITEM IS FIRING, AND IT HAS TO BE. A watch earns a row on the resting grid
-// only while it is asking somebody something (`needs you`) or is actually
-// running (`running`, homepanel_running.go) — a watch that is merely set is not
-// news and is reached from the standing place or by typing its name. The rung is
-// a fact about the item and not about the pass it is on, so a running mark is
-// the cheapest honest way to put the cursor on one.
-func itemHome(t *testing.T) (*app, *effortBand) {
-	t.Helper()
-	lab := newHomeLab(t)
-	work := lab.workspace("alpha")
-	transcript := lab.session("alpha", "aaaa000000000001", "one", work, time.Now())
-	band := &effortBand{standBand: &standBand{
-		items: []standing.Item{
-			bandItem("one", "remind me on Fridays", work, standing.WhenEvery, "Fridays"),
-		},
-		running: map[string]standing.RunningMark{
-			"one": {PID: 4242, Since: time.Now().Add(-time.Minute), What: "reading the calendar"},
-		},
-	}}
-	a := lab.app(transcript)
-	band.wire(a)
-	a.openHome()
-	a.home.pointItemForTest("one")
-	return a, band
-}
-
-// AN ITEM'S CARD STATES ITS RUNG AND ALT+E MOVES IT THROUGH THE STORE'S OWN
-// DOOR — never through the whole-document write the pause and stop keys use,
-// which would undo whatever the ticker has moved since the card was drawn.
-func TestAStandingItemsCardStatesItsRungAndAltEMovesIt(t *testing.T) {
-	a, band := itemHome(t)
-
-	// A SENTINEL SAYS NOTHING UNTIL SOMEBODY RAISES IT. Its firings ask for no
-	// rung at all, and "nobody said" is not a rung to print.
-	subject, ok := a.homeSubject()
-	if !ok || subject.kind != bandKindItem {
-		t.Fatalf("the cursor is not on an item: %+v", subject)
-	}
-	before := plain(strings.Join(a.drawHomeBands(bandContext{subject: subject, width: 40,
-		now: time.Now(), pal: a.pal})[0], "\n"))
-	if strings.Contains(before, "thinking") {
-		t.Fatalf("an item nobody has dialled drew a rung:\n%s", before)
-	}
-
-	drive(t, a, key("alt+e"))
-	if len(band.rungs) != 1 || band.rungs[0] != effort.Low {
-		t.Fatalf("the store was asked for %v, want one call with the cheapest rung", band.rungs)
-	}
-	if !strings.Contains(a.home.msg, "thinking low") ||
-		!strings.Contains(a.home.msg, "remind me on Fridays") {
-		t.Fatalf("home said %q about the change", a.home.msg)
-	}
-	subject, _ = a.homeSubject()
-	after := itemCardText(a, subject)
-	if !strings.Contains(after, "thinking low") {
-		t.Fatalf("the item's card did not follow the write:\n%s", after)
-	}
-	if !strings.Contains(after, effortKeyClause) {
-		t.Fatalf("the item's card names no way to move it:\n%s", after)
-	}
-
-	// AND THE ENGINE'S OWN SENTENCE IS KEPT on a refusal, so a person is not
-	// left pressing the same key at a store that will not take it.
-	band.refusal = errors.New("that item is gone")
-	drive(t, a, key("alt+e"))
-	if a.home.msg != "that item is gone" {
-		t.Fatalf("a refused write said %q", a.home.msg)
-	}
-}
-
-// A READ-ONLY HOME SAYS SO rather than pretending, in the same sentence the
-// pause and stop keys already say it in.
-func TestAnItemCardWithNoDoorRefusesInTheWordsItAlreadyHas(t *testing.T) {
-	a, band := itemHome(t)
-	a.stands.SetEffort = nil
-	drive(t, a, key("alt+e"))
-	if len(band.rungs) != 0 {
-		t.Fatalf("a window with no door still wrote %v", band.rungs)
-	}
-	if a.home.msg != homeItemNoStore {
-		t.Fatalf("home said %q, want %q", a.home.msg, homeItemNoStore)
-	}
-	subject, _ := a.homeSubject()
-	if card := itemCardText(a, subject); strings.Contains(card, effortKeyClause) {
-		t.Fatalf("a card that cannot move the rung still named the key:\n%s", card)
-	}
-}
-
-// itemCardText is one subject's bands as a reader sees them.
-func itemCardText(a *app, subject bandSubject) string {
-	var out []string
-	for _, band := range a.drawHomeBands(bandContext{subject: subject, width: 40,
-		now: time.Now(), pal: a.pal}) {
-		out = append(out, band...)
-	}
-	return plain(strings.Join(out, "\n"))
 }
 
 // ── a task: the rung its workers run at ──────────────────────────────────────
@@ -347,8 +220,6 @@ func TestAltEOnAConversationRowChangesNothing(t *testing.T) {
 	a := lab.app(transcript)
 	dir := t.TempDir()
 	a.profileDir = dir
-	band := &effortBand{standBand: &standBand{}}
-	band.wire(a)
 	a.openHome()
 	line, ok := a.home.previewLine()
 	if !ok || line.kind != homeSession {
@@ -357,9 +228,6 @@ func TestAltEOnAConversationRowChangesNothing(t *testing.T) {
 	drive(t, a, key("alt+e"))
 	if got := config.DefaultEffortAt(dir); got != effort.Ship {
 		t.Fatalf("a press on a conversation row moved the install's rung to %q", got)
-	}
-	if len(band.rungs) != 0 {
-		t.Fatalf("a press on a conversation row wrote an item's rung: %v", band.rungs)
 	}
 	if a.home.msg != "" {
 		t.Fatalf("a key with no door under it explained itself: %q", a.home.msg)

@@ -96,10 +96,10 @@ func (a *app) memoryChangedSince(seen time.Time) int {
 	return learned + letGo
 }
 
-// The tasks and standing counts are not here: each is a reading of the records
-// its own place already holds, so a count is never a second walk of the same
-// cached world (place_tasks.go's [app.tasksChangedSince], place_standing.go's
-// [app.standingChangedSince]).
+// The tasks and automations counts are not here: each is a reading of the
+// records its own place already holds, so a count is never a second walk of the
+// same cached world (place_sessions.go's [app.tasksChangedSince],
+// place_automations.go's [placeAutomations.changed]).
 
 // ── the clock the places that are not home run on ───────────────────────────
 //

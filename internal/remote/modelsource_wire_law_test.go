@@ -20,6 +20,9 @@ var helloFields = map[string]bool{
 	"Surface": true, "Back": true, "Join": true, "New": true, "Watch": true,
 	// ClientID is a random per-window id for redial focus (#1553), not a credential.
 	"ClientID": true,
+	// Window says the connection is a person's window, so the far machine holds
+	// automations presence for it (wire_automations.go). A boolean, not a credential.
+	"Window": true,
 }
 
 // TestNoServiceKeyOrAddressCrossesTheWire refuses model-service credential

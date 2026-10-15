@@ -115,7 +115,7 @@ func TestVOIGateExceptionsJournalAndReturnToAsking(t *testing.T) {
 	if err != nil || ask || stat.AcceptanceRate != 1 {
 		t.Fatalf("accepted gate ask=%t stat=%+v err=%v", ask, stat, err)
 	}
-	for _, category := range []QuestionCategory{QuestionCategoryCharterRatification, QuestionCategoryRailRaise} {
+	for _, category := range []QuestionCategory{QuestionCategoryRailRaise, QuestionCategoryServiceConsent} {
 		ask, _, err = graph.ShouldAsk(category)
 		if err != nil || !ask {
 			t.Fatalf("exception %s ask=%t err=%v", category, ask, err)
@@ -148,7 +148,7 @@ func TestVOIGateExceptionsJournalAndReturnToAsking(t *testing.T) {
 func TestScopeIsGatedWhileConsentCategoriesStayExempt(t *testing.T) {
 	graph := metaStore(t)
 	consenting := []QuestionCategory{
-		QuestionCategoryCharterRatification, QuestionCategoryRailRaise, QuestionCategoryServiceConsent,
+		QuestionCategoryRailRaise, QuestionCategoryServiceConsent,
 	}
 	for _, category := range append([]QuestionCategory{QuestionCategoryScope}, consenting...) {
 		for index := 0; index < VOIMinSamples; index++ {
@@ -167,7 +167,7 @@ func TestScopeIsGatedWhileConsentCategoriesStayExempt(t *testing.T) {
 	}
 }
 
-func TestFiveTraitProjectionSupersedesSingletons(t *testing.T) {
+func TestTraitProjectionSupersedesSingletons(t *testing.T) {
 	graph := metaStore(t)
 	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{ID: "trait-job", Brief: "make a detailed release plan", Stage: 1}}}, Provenance{Origin: OriginUser, SessionID: "traits", Intent: "make a detailed release plan"}); err != nil {
 		t.Fatal(err)
@@ -179,19 +179,9 @@ func TestFiveTraitProjectionSupersedesSingletons(t *testing.T) {
 		t.Fatal(err)
 	}
 	answerMetaQuestion(t, graph, QuestionCategoryCompileAssumption, "no")
-	charter, err := NewCharter("trait-proposal", "watch release readiness", WatchSpec{Kind: WatchPoll, Poll: &PollWatch{Condition: "ready", Cadence: time.Hour}}, "ready", CharterAction{Template: "prepare"}, CharterRails{PerFiringBudgetUSD: .1, MaxFiringsPerDay: 1}, CharterProposed, Ratification{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.CreateCharter(charter.WithProposalShape("release-ready")); err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.DeclineCharterProposal(charter.ID, "not useful"); err != nil {
-		t.Fatal(err)
-	}
 	now := time.Now()
 	measured, err := graph.MeasureTraits(now)
-	if err != nil || len(measured) != 5 {
+	if err != nil || len(measured) != 4 {
 		t.Fatalf("traits=%+v err=%v", measured, err)
 	}
 	for _, trait := range measured {
@@ -200,11 +190,11 @@ func TestFiveTraitProjectionSupersedesSingletons(t *testing.T) {
 		}
 	}
 	first, err := graph.ProjectTraits(now)
-	if err != nil || len(first) != 5 {
+	if err != nil || len(first) != 4 {
 		t.Fatalf("first traits=%+v err=%v", first, err)
 	}
 	second, err := graph.ProjectTraits(now.Add(TraitRefreshInterval + time.Hour))
-	if err != nil || len(second) != 5 {
+	if err != nil || len(second) != 4 {
 		t.Fatalf("second traits=%+v err=%v", second, err)
 	}
 	all, err := graph.Facts(100)
@@ -223,7 +213,7 @@ func TestFiveTraitProjectionSupersedesSingletons(t *testing.T) {
 			history = append(history, fact)
 		}
 	}
-	if len(active) != 5 {
+	if len(active) != 4 {
 		t.Fatalf("active trait singletons=%d %+v", len(active), active)
 	}
 	for _, fact := range active {
@@ -231,32 +221,16 @@ func TestFiveTraitProjectionSupersedesSingletons(t *testing.T) {
 			t.Fatalf("trait fact=%+v", fact)
 		}
 	}
-	if len(history) != 5 {
+	if len(history) != 4 {
 		t.Fatalf("superseded traits=%d err=%v", len(history), err)
 	}
 	if err := graph.Rebuild(); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{TraitCorrectionStyle, TraitDefaultAcceptance, TraitProposalAppetite, TraitSpecGranularity, TraitExplorationTolerance} {
+	for _, name := range []string{TraitCorrectionStyle, TraitDefaultAcceptance, TraitSpecGranularity, TraitExplorationTolerance} {
 		if _, fact, ok, err := graph.Trait(name); err != nil || !ok || fact.Kind != FactTrait {
 			t.Fatalf("rebuilt trait %s ok=%t fact=%+v err=%v", name, ok, fact, err)
 		}
-	}
-}
-
-func TestLearningProgressAllocation(t *testing.T) {
-	metrics := AllocateLearningProgress([]ScopeSurprise{
-		{Scope: "improving", Samples: 8, LearningProgress: .3},
-		{Scope: "flat", Samples: 8, LearningProgress: 0},
-		{Scope: "cold", Samples: 2, ColdStart: true},
-		{Scope: "worsening", Samples: 8, LearningProgress: -.2},
-	})
-	by := map[string]float64{}
-	for _, metric := range metrics {
-		by[metric.Scope] = metric.Allocation
-	}
-	if by["improving"] <= by["cold"] || by["cold"] <= 0 || by["flat"] != 0 || by["worsening"] != 0 {
-		t.Fatalf("allocations=%v", by)
 	}
 }
 
@@ -330,8 +304,8 @@ func TestMeasuredTraitBlockIsTheCarveOutForBarredTraits(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := graph.RecordTrait(TraitProposalAppetite, TraitMeasurement{
-		Value: ProposalAppetiteValue{Acceptance: 0.75}, N: 4, Updated: now,
+	if _, err := graph.RecordTrait(TraitSpecGranularity, TraitMeasurement{
+		Value: SpecGranularityValue{MedianBriefBytes: 120, CorrectionDensity: 0.25}, N: 4, Updated: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +317,7 @@ func TestMeasuredTraitBlockIsTheCarveOutForBarredTraits(t *testing.T) {
 	}
 
 	block := graph.MeasuredTraitBlock(320)
-	for _, want := range []string{"corrects immediate", "accepts 75% of standing proposals"} {
+	for _, want := range []string{"corrects immediate", "asks in about 120 characters, and corrects 25% of jobs afterwards"} {
 		if !strings.Contains(block, want) {
 			t.Fatalf("trait block omitted %q:\n%s", want, block)
 		}

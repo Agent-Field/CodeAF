@@ -136,20 +136,20 @@ var commands = []command{
 	{name: "dismiss", args: "undo", desc: "restore dismissed task notifications"},
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
-	// does. /home, /memory, /standing, /history and /settings each open a place
-	// from the box; search and spend were reachable only by their `alt+` digit,
-	// `tab`, the tab bar, or typing a word on home — every one of which has to be
-	// learned somewhere else first. The digit on each row is read off the bar's
-	// order table ([placeChord]).
+	// does. /home, /memory, /automations, /history and /settings each open a
+	// place from the box; search and spend were reachable only by their `alt+`
+	// digit, `tab`, the tab bar, or typing a word on home — every one of which
+	// has to be learned somewhere else first. The digit on each row is read off
+	// the bar's order table ([placeChord]).
 	//
 	// /spend IS A PLACE AND NOT A READING, WHICH IS WHY IT MOVED. It used to be
 	// an alias of /cost, so the one word a person guesses for "what has this cost
 	// me" printed THIS CONVERSATION's bill and never said the machine-wide place
 	// existed. The two answer different questions — /cost is this conversation,
-	// spend is every window, task and standing run on the machine — and the word
-	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
-	// own row which question it is answering, so nobody who typed either word
-	// lands nowhere.
+	// spend is every window, task and automation run on the machine — and the
+	// word belongs to the bigger one. /cost keeps /usage and /tokens, and says on
+	// its own row which question it is answering, so nobody who typed either
+	// word lands nowhere.
 	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
 	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
 	// conversations big, and this is the team-level view, every member open or
@@ -177,33 +177,22 @@ var commands = []command{
 	// something has surprised them. /perms is here because it is what fingers
 	// type; the row shows the whole word.
 	{name: "permissions", desc: "what runs without asking · drop one with d", alias: []string{"perms"}},
-	// AND WHAT IS ALREADY TRUE HERE, beside what may run without asking
-	// (standingpage.go). The pair is the same question asked twice — one is what
-	// this thing may do when you ask it, the other is what it keeps doing when
+	// AND WHAT RUNS ON A CLOCK, beside what may run without asking
+	// (place_automations.go). The pair is the same question asked twice — one
+	// is what this thing may do when you ask it, the other is what it does when
 	// nobody asks — and this row sits under that one for the reason that one
 	// sits down here: [menuRows] shows eight rows at once, position in this
-	// table is a claim about frequency, and a page a person opens when something
-	// has surprised them may not push /compact into a scroll.
+	// table is a claim about frequency, and a page a person opens to check on
+	// something may not push /compact into a scroll.
 	//
 	// TWO ROWS FOR ONE COMMAND, the way /export and /crew have two, and for that
-	// reason: a single row carrying <words> would make the bare form — the page
-	// — unreachable from this list, because [app.runMenu] puts a row that TAKES
-	// something into the draft instead of running it.
-	//
-	// THE WORDS COME FIRST. Making an order is the act this command exists for —
-	// the owner's own ruling — and the page is the follow-up a person opens to
-	// see what their sentences became. So the row that starts an order leads,
-	// and the page rides under it wearing the "…or".
-	//
-	// The words go through the deliberate door (standmark.go's [app.standingSay]),
-	// which is what the tail of this row promises: it is the chord's own sentence
-	// said in the grammar of the list.
-	{name: "standing", args: "<words>", desc: "keep this true · a card, never work done once", door: sendDoorStanding},
-	// /orders is here because it is the other word people bring for the thing:
-	// a standing order is the concept, and half of them will type the noun they
-	// remember rather than the adjective this surface chose.
-	{name: "standing", desc: "…or what stands over this conversation · stop, pause or not here",
-		alias: []string{"orders"}},
+	// reason: a single row carrying arguments would make the bare form — the
+	// place — unreachable from this list, because [app.runMenu] puts a row that
+	// TAKES something into the draft instead of running it. The place leads,
+	// because the conversation is where most automations are made and the place
+	// is where a person comes to see them; the exact typed form rides under it.
+	{name: "automations", desc: "what runs on a clock · run, pause, edit or delete one"},
+	{name: "automations", args: "add <title> …", desc: "…or add one exactly, read back on a card first"},
 	// THE SHAPES OF WORK THIS CONVERSATION HAS SAVED (harnesspanel.go). It
 	// belongs topically beside /connect — one is what this surface may reach,
 	// the other is what it has learned to do — and it sits here instead for a
@@ -265,6 +254,13 @@ var commands = []command{
 	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
 	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
 	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
+	// AND THE RULES, the fourth errand onto what it knows: a line kept in front
+	// of every conversation and task rather than recalled when it seems to bear
+	// (internal/session's memory_always.go). Two rows for the /memories reason:
+	// the bare form is the list of what holds here, and a single row carrying
+	// <text> would make that list unreachable from the menu.
+	{name: "always", desc: "the rules in force here · in front of every conversation and task"},
+	{name: "always", args: "<text>", desc: "…keep one as a rule for this project · for you, from home"},
 	// AND WHAT codeaf WORKS WITH, beside what it knows about you: the crew a
 	// task runs on — worker, planner, checker — picked per task (crew.go). The
 	// bare form is the panel; the four shortcuts are how anything on it
@@ -364,7 +360,7 @@ var commands = []command{
 	// "…".
 	{name: "budget", desc: "what codeaf may spend · every limit on one tab", alias: []string{"limits"}},
 	{name: "budget", args: "<amount>", desc: "…set the day's limit · none removes it"},
-	{name: "budget", args: "<row> <amount>", desc: "…set one by name: day, conversation, plan, practice"},
+	{name: "budget", args: "<row> <amount>", desc: "…set one by name: day, conversation, plan"},
 	// THE DISK BESIDE THE MONEY: /cost is what this conversation has spent and
 	// this is what the machine is holding for it — the shared build cache task
 	// workers fill (internal/cachedir). Two rows for one command, /export's
@@ -433,7 +429,7 @@ var commands = []command{
 	// rows at once, so position is a claim about frequency. /attach stands with
 	// the doors onto moving a file, an errand it shares with /files; putting it
 	// higher would push /compact, which people reach for daily, into a scroll.
-	// standingpage_test.go pins that ordering.
+	// permissions_test.go pins that ordering.
 	//
 	// A PICTURE HANDED TO /attach STILL GOES ON AS A PICTURE. Its extension
 	// decides whether the model looks at it or reads a file, so one command
@@ -1032,7 +1028,13 @@ func helpText(file string, chords chordSpelling) string {
 		// The three rows are spelled through [chordSpelling.say] like the
 		// `alt+enter` row above them, so a Mac reads `opt+1…opt+8` and a Linux box
 		// reads what is authored here — one substitution, one door (chords.go).
-		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
+		//
+		// THE DIGITS ARE NAMED ONE BY ONE, AND NOT AS THE BAR'S ORDER. This row
+		// said "in the tab bar's own order" over a list in [placeOrder]'s order,
+		// and the two have differed since the bar was regrouped: memory is fifth
+		// on the bar and `alt+8` ([placeWordList] says why each word carries its
+		// number).
+		helpKeyRow(chords.say(chordJumpWords), "go to a place · "+placeWordList()),
 		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
 		"               on a place, tab is the next place · esc back",
 		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order,
@@ -1068,14 +1070,11 @@ func helpText(file string, chords chordSpelling) string {
 		// not have — while the keystroke itself arrives there as `super+enter`
 		// (steer.go binds both names). The substitution is chords.go's one door.
 		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
-		// THE QUEUE KEY (followup.go). It took over this sheet's standing-order
-		// chord on 2026-09-30 — queueing is pressed many times a session, marking a
-		// sentence is not — and the standing sentence's explicit door is the typed
-		// command, which works on every terminal this one does not.
+		// THE QUEUE KEY (followup.go), pressed many times a session.
 		// AND THE CAVEAT IS ON THE ROW for the chord's own limit: on a terminal that
 		// cannot tell ctrl+enter from a plain enter, the key arrives as a newline
 		// and queues nothing.
-		helpKeyRow(chords.say("ctrl+enter"), "mid-answer: queue the draft to run after the current turn · needs a terminal that can send it · /standing keeps a sentence true"),
+		helpKeyRow(chords.say("ctrl+enter"), "mid-answer: queue the draft to run after the current turn · needs a terminal that can send it"),
 		// THE ROW READS IN THE ROUTER'S ORDER. The empty-box key asks the running
 		// turn's window first ([app.toggleLatestWorkfold]) and falls through to
 		// thinking ([app.toggleLatestThought]); the row was rewritten when the key was.
@@ -1133,7 +1132,9 @@ func helpText(file string, chords chordSpelling) string {
 		helpKeyRow(chords.say("alt+backspace"), "delete the word behind the caret · ctrl+u the line · ctrl+k the rest of it"),
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
-		"p s n          in /standing: pause one · stop it · keep it out of here",
+		// THE AUTOMATIONS PLACE'S LETTERS, which work while → has drawn the row's
+		// keys (verbstrip.go); `s` stops a run in flight and is drawn only then.
+		"→ r p e d o    in /automations: show the row's keys · run it now · pause it · edit it · delete it · open where it was asked",
 		// THE TEAMS PAGE'S LETTERS, each the button of the same word on the
 		// selected team, and the chord that puts the keyboard on those buttons
 		// while the manager's conversation has the box (teamspagehost.go).

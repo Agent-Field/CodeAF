@@ -168,10 +168,18 @@ func (a *Agent) deliverConsent(id uint64, answer consentAnswer) {
 // off must not produce a question about a call that is never going to run.
 func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
 	policy := a.approvalGate()
+	args := json.RawMessage(call.Function.Arguments)
 	if policy == nil {
+		// EXCEPT A RULE, WHICH IS A QUESTION EVEN WITH NO POLICY AT ALL. An
+		// ungoverned session allows every call because nobody configured a
+		// gate, and that is a statement about tools; a rule is a statement to
+		// every conversation the person will have here, and no configuration
+		// can make it on their behalf (internal/approval's [approval.KeepsARule]).
+		if approval.KeepsARule(call.Function.Name, args) {
+			return approval.Decision{Action: approval.ActionPrompt, Rule: approval.KeepsARuleReason}, true
+		}
 		return approval.Decision{}, false
 	}
-	args := json.RawMessage(call.Function.Arguments)
 	decision := policy.Check(call.Function.Name, args)
 	return a.capabilitySays(call.Function.Name, args, decision), true
 }
@@ -244,7 +252,13 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	//     ran silently for the rest of the session. The memo is somebody saying
 	//     they are done being asked about ordinary work. It is not somebody
 	//     saying they have read a message that has not been written yet.
-	if !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+	//
+	// AND A RULE, which a memo about `remember` must never answer either: "stop
+	// asking me about remember" is somebody done being asked about notes, and a
+	// rule is a new instruction to every later conversation that they have not
+	// read yet ([approval.KeepsARule]).
+	keepsARule := approval.KeepsARule(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	if !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) && !keepsARule {
 		if remembered, known := a.rememberedConsent(call.Function.Name); known {
 			if remembered {
 				return toolResult{}, true
@@ -265,6 +279,15 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// it always did.
 	if a.guardianAllows(ctx, hub, call, decision) {
 		return toolResult{}, true
+	}
+
+	// A RULE WITH NOBODY TO CONFIRM IT IS NOT KEPT, and the model is told so in
+	// words it can act on rather than in the gate's generic refusal: a task, a
+	// headless run and a session with no surface attached all reach here, and
+	// the honest next step in each is the same — remember it as an ordinary line,
+	// or leave it for the person to set with /always.
+	if keepsARule && (a.config.InTask || !a.config.AskConsent || hub == nil) {
+		return refusal(ruleUnattendedWording), false
 	}
 
 	// INSIDE A TASK NODE the same law applies and the words are the node's own
@@ -375,7 +398,8 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 			Rule: consentRule(call, decision),
 			// And whether the memo is even available, so a surface can leave the
 			// "always" key off a question it would be dropped on (see Event.Memo).
-			Memo: true,
+			// A rule's question is one of those: no memo answers it.
+			Memo: !approval.KeepsARule(call.Function.Name, json.RawMessage(call.Function.Arguments)),
 			// Silence is not a no. The card draws this so the wait mode is not a
 			// hidden deny timer (F41).
 			Wait: ConsentWaiting,
@@ -585,6 +609,14 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		options = withoutWidening(options)
 		scope = []AnswerScope{ScopeOnce}
 	}
+	if approval.KeepsARule(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+		// NOR ON A RULE, for the same reason: every rule is asked about on its
+		// own, so a standing yes would be a key the next rule refuses to honour.
+		// It stays `costly` rather than `irreversible`, because a rule can be
+		// taken back from the memory place at any time.
+		options = withoutWidening(options)
+		scope = []AnswerScope{ScopeOnce}
+	}
 	return Question{
 		ID:      id,
 		Kind:    QuestionConsent,
@@ -618,6 +650,19 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 // window — home, a second terminal, the phone — and the tool's name closes it.
 const consentHeadLead = "needs your ok to run "
 
+// consentHeadRule is that line for a call that keeps a rule. "needs your ok to
+// run remember" would name a tool the person never asked about and hide the one
+// fact they are being asked: that a line is about to stand in front of every
+// conversation here. The line itself is on the row the question points at.
+const consentHeadRule = "needs your ok to keep a rule"
+
+// ruleUnattendedWording is what the model is told when it asked to keep a rule
+// and nobody was there to confirm it: in a task, a headless run, or a session
+// with no surface attached. It says what to do instead, because a refusal the
+// model can act on is worth more than one that only ends the attempt.
+const ruleUnattendedWording = "not kept as a rule: an always rule needs the person's ok, and nobody is here to give it. " +
+	"Remember it without always, or tell the person they can keep it with /always."
+
 // ConsentHead is the permission question's one line for a call: "needs your ok
 // to run bash", and for a manager's `team_start` the sentence the person is
 // actually being asked, "◆ manager wants to start @lexer". args is the call's
@@ -633,6 +678,9 @@ func ConsentHead(tool, args string) string {
 		if handle, _ := teamStartArgs(args); handle != "" {
 			return "◆ manager wants to start @" + handle
 		}
+	}
+	if approval.KeepsARule(tool, json.RawMessage(args)) {
+		return consentHeadRule
 	}
 	return consentHeadLead + tool
 }

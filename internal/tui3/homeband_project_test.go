@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE PROJECT CARD ────────────────────────────────────────────────────────
@@ -119,9 +118,8 @@ func TestTheProjectCardDrawsNothingForAnEmptyProject(t *testing.T) {
 	empty := projectCardWorld()
 	ctx := projectCardCtx(a, empty, 44)
 	for name, rows := range map[string][]string{
-		"conversations":  drawProjectSessionsBand(a, ctx),
-		"keeping an eye": drawProjectStandingBand(a, ctx),
-		"facts":          drawProjectFactsBand(a, ctx),
+		"conversations": drawProjectSessionsBand(a, ctx),
+		"facts":         drawProjectFactsBand(a, ctx),
 	} {
 		if len(rows) != 0 {
 			t.Errorf("the %s band drew %q for a project with nothing in it", name, rows)
@@ -171,88 +169,6 @@ func TestTheProjectCardFoldsItsConversationsPastFour(t *testing.T) {
 	}
 }
 
-// THE STANDING BAND READS THE CACHE THE LEFT COLUMN ALREADY FILLED, draws the
-// same glyph and the same rollup, and folds at three behind the same words.
-func TestTheProjectCardListsWhatIsKeepingAnEyeOnTheProject(t *testing.T) {
-	a := projectCardApp(t)
-	world := projectCardWorld(projectCardRowOf("s1", "pricing research", time.Hour, session.TaskRollup{}))
-
-	item := func(id, words, when string) StandingItemView {
-		return StandingItemView{Item: standing.Item{
-			ID: id, Words: words, Workspace: "/w/alpha",
-			When:   standing.When{Kind: standing.WhenEvery, Words: when},
-			Status: standing.StatusActive,
-		}}
-	}
-	views := []StandingItemView{
-		item("i1", "keep main green", "when CI goes red"),
-		item("i2", "remind me on Fridays", "Fridays"),
-		item("i3", "remind me on Sundays", "Sundays"),
-		item("i4", "remind me on Tuesdays", "Tuesdays"),
-	}
-	views[0].Item.NeedsPerson = "the fix touches migrations"
-	a.home.items = map[string][]StandingItemView{"/buckets/alpha": views}
-
-	ctx := projectCardCtx(a, world, 50)
-	rows := projectCardPlain(drawProjectStandingBand(a, ctx))
-	if len(rows) != homeItemsShown+2 {
-		t.Fatalf("the band drew %d rows, want %d:\n%s", len(rows), homeItemsShown+2, strings.Join(rows, "\n"))
-	}
-	want := []string{
-		homeAskGlyph + " keep main green",
-		"            " + tierYourCallWord + " · the fix touches migrations",
-		standWaitGlyph + " remind me on Fridays                     Fridays",
-		standWaitGlyph + " remind me on Sundays                     Sundays",
-		bandFoldGlyph + " …1 more " + projectItemsWord,
-	}
-	for i, row := range rows {
-		if row != want[i] {
-			t.Errorf("row %d\n got %q\nwant %q", i, row, want[i])
-		}
-	}
-	// The words on the door are the LEFT COLUMN'S OWN WORDS, not a second
-	// spelling of them.
-	if !strings.Contains(rows[len(rows)-1], strings.TrimSpace(homeItemsFoldWord)) {
-		t.Errorf("the fold line %q does not say %q", rows[len(rows)-1], homeItemsFoldWord)
-	}
-}
-
-// AND THE BAND ENDS WITH WHAT THEY ALL DID THIS WEEK — one line about the whole
-// band, below the fold, because the count includes the items the fold hides.
-func TestTheProjectCardCountsWhatItsWatchesDidThisWeek(t *testing.T) {
-	a := projectCardApp(t)
-	world := projectCardWorld(projectCardRowOf("s1", "pricing research", time.Hour, session.TaskRollup{}))
-	a.home.items = map[string][]StandingItemView{"/buckets/alpha": {
-		{Item: standing.Item{ID: "i1", Words: "check the deploy", Workspace: "/w/alpha",
-			When: standing.When{Kind: standing.WhenEvery, Words: "every morning"}, Status: standing.StatusActive}},
-		{Item: standing.Item{ID: "i2", Words: "remind me on Fridays", Workspace: "/w/alpha",
-			When: standing.When{Kind: standing.WhenEvery, Words: "Fridays"}, Status: standing.StatusActive}},
-	}}
-	ctx := projectCardCtx(a, world, 50)
-
-	// A SURFACE THAT CANNOT ASK THE LEDGER DRAWS NO SUCH LINE.
-	rows := projectCardPlain(drawProjectStandingBand(a, ctx))
-	if strings.Contains(strings.Join(rows, "\n"), homeWeekWord) {
-		t.Fatalf("a surface with no ledger reader drew a weekly line:\n%s", strings.Join(rows, "\n"))
-	}
-
-	a.stands.Runs = func(time.Time) map[string]standing.Spend {
-		return map[string]standing.Spend{
-			"i1": {Fired: 3, USD: 0.04},
-			"i2": {Fired: 1, USD: 0.02},
-			// Another project's item, which this card must not add in.
-			"i9": {Fired: 40, USD: 9},
-		}
-	}
-	rows = projectCardPlain(drawProjectStandingBand(a, ctx))
-	if len(rows) == 0 {
-		t.Fatal("the band drew nothing")
-	}
-	if want := "4 runs this week · $0.06"; rows[len(rows)-1] != want {
-		t.Fatalf("the last row of the band is %q, want %q", rows[len(rows)-1], want)
-	}
-}
-
 // THE FACTS LINE IS ONE LINE, AND EVERY CLAUSE OF IT IS EARNED.
 func TestTheProjectCardCountsWhatTheProjectHasAndOmitsWhatItHasNot(t *testing.T) {
 	a := projectCardApp(t)
@@ -290,17 +206,11 @@ func TestTheProjectCardClipsEveryRowToItsWidth(t *testing.T) {
 		projectCardRowOf("s1", "a conversation with a very long name indeed", time.Hour,
 			session.TaskRollup{Rows: make([]session.TaskIndexEntry, 4), Spend: 3}),
 	)
-	a.home.items = map[string][]StandingItemView{"/buckets/alpha": {{Item: standing.Item{
-		ID: "i1", Words: "tell me when the certificate is about to expire", Workspace: "/w/alpha",
-		When:   standing.When{Kind: standing.WhenEvery, Words: "every morning at nine o'clock"},
-		Status: standing.StatusActive,
-	}}}}
 
 	for _, width := range []int{80, 44, 20, 10, 6, 1} {
 		ctx := projectCardCtx(a, world, width)
 		var drawn []string
 		drawn = append(drawn, drawProjectSessionsBand(a, ctx)...)
-		drawn = append(drawn, drawProjectStandingBand(a, ctx)...)
 		drawn = append(drawn, drawProjectFactsBand(a, ctx)...)
 		if len(drawn) == 0 {
 			t.Fatalf("width %d drew nothing at all", width)
@@ -317,27 +227,22 @@ func TestNarrowProjectBandsKeepTheirTrailingFacts(t *testing.T) {
 	a := projectCardApp(t)
 	world := projectCardWorld(projectCardRowOf("s1", "a conversation with a long name", time.Hour,
 		session.TaskRollup{Rows: make([]session.TaskIndexEntry, 3), Spend: 2.5}))
-	a.home.items = map[string][]StandingItemView{"/buckets/alpha": {{Item: standing.Item{
-		ID: "i1", Words: "keep the release branch green", Workspace: "/w/alpha",
-		When: standing.When{Kind: standing.WhenEvery, Words: "every weekday morning"}, Status: standing.StatusActive,
-	}}}}
 	ctx := projectCardCtx(a, world, 30)
 	assertNarrowRows(t, "project conversations", drawProjectSessionsBand(a, ctx), 30, "1h")
-	assertNarrowRows(t, "project standing", drawProjectStandingBand(a, ctx), 30, "every weekday morning")
 	assertNarrowRows(t, "project facts", drawProjectFactsBand(a, ctx), 30, "last active 1h")
 }
 
-// THE THREE BANDS ARE REGISTERED FOR A PROJECT AND IN THIS ORDER: what is going
-// on, what is watching it, and the arithmetic last.
+// THE BANDS ARE REGISTERED FOR A PROJECT AND IN THIS ORDER: what is going on,
+// and the arithmetic last.
 func TestTheProjectBandsAreRegisteredInReadingOrder(t *testing.T) {
 	var names []string
 	for _, band := range homeBandsFor(bandKindProject) {
 		switch band.name {
-		case "projectsessions", "projectstanding", "projectfacts":
+		case "projectsessions", "projectfacts":
 			names = append(names, band.name)
 		}
 	}
-	want := []string{"projectsessions", "projectstanding", "projectfacts"}
+	want := []string{"projectsessions", "projectfacts"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("the project bands are %v, want %v", names, want)
 	}

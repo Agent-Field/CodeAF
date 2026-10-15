@@ -190,6 +190,16 @@ func addJSONColumn(db *sql.DB, table, column string) error {
 }
 
 func tableHasColumn(db *sql.DB, table, wanted string) (bool, error) {
+	return tableHasColumnOn(db, table, wanted)
+}
+
+// tableHasColumnOn is [tableHasColumn] against a caller's own handle, which is
+// what lets a migration ask INSIDE the immediate transaction that will alter the
+// table. Asked on the pool before that transaction begins, the answer can be
+// stale by the time the ALTER runs: two processes opening one old store at once
+// both read "absent", both alter, and the second open dies on a duplicate column
+// ([migrateMemoriesAlways] and [migrateMemoriesOwner] ask it here instead).
+func tableHasColumnOn(db memoryQuerier, table, wanted string) (bool, error) {
 	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return false, err

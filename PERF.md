@@ -95,6 +95,12 @@ render the summarizer reads caps a tool result at 2,000 bytes and a call's argum
 
 ## Connection recovery bounds
 
+Successful connection model lists share discovery's **16 MiB** response bound
+(`catalog.MaxCatalogBytes`). The connection probe reads one extra byte to refuse
+an oversized listing rather than admit a truncated prefix; error and one-token
+probe responses retain their **4 KiB** read bound. Probe timeouts are unchanged.
+These are network/memory safety bounds, not response-time performance targets.
+
 `internal/provider/connectivity.go` limits a connection-recovery episode to
 two minutes (`connectionRecoveryWindow`), including repeated loss after a
 successful probe. Caller deadlines and cancellation can end it earlier. Each
@@ -1510,12 +1516,12 @@ that pays some back lowers it in the same commit. It replaced a `t.Logf`, which
 nothing in the Makefile passes `-v` to — the one line saying the prefix was
 thousands of bytes over was printed where nobody would ever see it.
 
-The bill is not spread thin: `stand` is **9,607 bytes**, more than a quarter of
-the full tool block and nearly twice the next heaviest, and on a
-sixteen-thousand-token window it is roughly one token in six of everything that
-person has before they have said anything. Trimming it is a change to what the
-model is told, so it is owed by whoever owns the standing belt and not by this
-gate.
+The bill was not spread thin: `stand` was **9,607 bytes**, more than a quarter
+of the full tool block and nearly twice the next heaviest, and on a
+sixteen-thousand-token window it was roughly one token in six of everything that
+person had before they had said anything. Trimming it was a change to what the
+model is told, so it was owed by whoever owned the standing belt and not by this
+gate — and it was paid when automations replaced it (2026-10-10, below).
 
 **And the prefix is not the same size on every machine, which is why both
 figures are the widest machine's.** `grep` says a longer sentence about itself
@@ -1555,6 +1561,22 @@ guide is 190 bytes and its item in the hand-off paragraph's list 203, the same i
 both arms, and the caps rise by exactly that over sec's: measured on dev
 `baa2d7f0f` with sec (2026-10-07), the full cap is **57,817** bytes and the lean
 cap **50,189**, both dated in `prefixWaivers`.
+
+**Automations replace standing orders, and the `stand` bill is paid (2026-10-10).**
+`stand` and its **9,607** bytes leave every belt that carried them; `automation`,
+a smaller tool for the same sentences, takes its place, and the page's one
+sentence about leaving something behind stays the same length. The full prefix
+measures **52,713** bytes and the lean **44,935**, and both waivers fall to sit
+exactly on the measurement: the full cap is **52,713** (4,713 over its target)
+and the lean cap **44,935** (13,435 over).
+
+**`automation` learns `change`, and pays for it (2026-10-14).** The op, the
+sentence in the tool's description that says when to use it and the page's
+"one that exists is CHANGED, never proposed again" were taken out of what the
+description already said twice — a watch's look and condition, which the schema
+says beside their own fields — and out of the `id` field's list of the ops that
+take one. Both arms come out **22** bytes lighter: the full cap is **52,691**
+(4,691 over) and the lean cap **44,913** (13,413 over).
 
 ## Following through on a completion claim
 
@@ -2911,6 +2933,18 @@ cost grows with that partition, rather than losing punctuation or older duplicat
 behind a retrieval ceiling. The canonical event journal is not periodically pruned;
 projection/context work is bounded, while durable history continues to grow.
 
+Rules — memories marked always — ride in message[0] and close every task brief, so
+their block is bounded twice: at most **12 rules** (`alwaysBlockMost`) and **2,400
+runes** of rule lines (`alwaysBlockRunes`, half the routed block's 4,800), whole rules
+only, the newest waiting behind a `…N more` line. The block carries no age and no
+clock-derived byte, so it is byte-identical from turn to turn until a rule changes,
+which is what keeps the cached prefix warm (`prefixcache_test.go`). The read is one
+statement per turn start through the partial index `memories_always_active`, which
+holds only active rules, so it is a seek over the rule count; a failed read keeps the
+last block rather than re-pricing the prefix to say nothing. Rules are excluded from
+the router's shortlist, the binding reads and the memory tidy, so no line is paid for
+twice.
+
 ## Conversation deletion completion
 
 Permanent deletion joins the task run's completion channel with
@@ -2923,3 +2957,16 @@ receipts are atomically replaced and synced before committing deletion. Startup 
 walks only the two saved-conversation directory levels, without following symlinked buckets.
 `internal/session/deletion_revision_test.go` drives completion and timeout with held
 channels and a zero test grace rather than sleeping for the production deadline.
+
+## Learned provider-fact persistence
+
+Within one process, `quirksStore.saveMutex` serializes saves from before the
+snapshot through atomic file replacement, so an older snapshot cannot replace
+newer learned facts. The memo-reader mutex is still held only while copying
+maps, never across file I/O. Requests still schedule persistence asynchronously;
+waiting writers do not move a disk wait onto the request path. The existing
+unique temporary files and atomic rename remain unchanged. This is an in-process
+ordering guarantee, not a merge of caches written by separate processes.
+
+Restart fixtures drain their owned scheduled writes before discarding process
+memory. No timeout, response limit or request/retry budget changes.

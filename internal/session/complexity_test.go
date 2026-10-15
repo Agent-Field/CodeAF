@@ -449,7 +449,7 @@ func closes(events chan int) {
 	}
 }
 
-// ── AND THE SAME RATCHET OVER THE CONTEXTUAL AND STANDING ENGINE ─────────
+// ── AND THE SAME RATCHET OVER THE CONTEXTUAL AND AUTOMATIONS ENGINE ──────
 //
 // The ceiling above covered `task*.go` while the contextual memory work landed
 // in files whose names carry no such prefix, so four dozen functions over the
@@ -457,23 +457,21 @@ func closes(events chan int) {
 // were sitting in exactly those functions. The surface below is the files that
 // work actually landed in: the contextual reader, writer and outcome reader in
 // internal/session, the contextual store and its owner/sync/write doors, and
-// the standing ticker and inbox.
+// the automations clock, store and runner, which replaced the standing ticker
+// and inbox this surface used to hold.
 //
-// NO NEW CODE GETS A ROW. Every function in these files is new with the
-// contextual work except the standing ones ([Ticker.fire], [Ticker.one],
-// [Ticker.judge], [fingerprint], [boundedGlob], [standingRunner.Run]), and those
-// were either under the ceiling at dev's baseline or are held to it now rather
-// than given a number: the ratchet's whole value is that the next function over
-// is a function somebody has to split, not a figure somebody gets to write
-// down. The ledger is therefore empty and has to stay that way.
+// NO NEW CODE GETS A ROW. Every function in these files is held to the ceiling
+// rather than given a number: the ratchet's whole value is that the next
+// function over is a function somebody has to split, not a figure somebody gets
+// to write down. The ledger is therefore empty and has to stay that way.
 var contextualSurface = []struct {
 	dir      string
 	pkg      string
 	prefixes []string
 }{
-	{dir: ".", pkg: "session", prefixes: []string{"contextual", "standing_run"}},
+	{dir: ".", pkg: "session", prefixes: []string{"contextual", "automation_run"}},
 	{dir: "../store", pkg: "store", prefixes: []string{"contextual", "memory_owner", "memory_sync", "memory_write"}},
-	{dir: "../standing", pkg: "standing", prefixes: []string{"tick", "inbox"}},
+	{dir: "../automation", pkg: "automation", prefixes: []string{"clock", "store"}},
 }
 
 // contextualDebt is the ledger for the wider surface. It is EMPTY on purpose:

@@ -306,6 +306,12 @@ type questionShown struct {
 	// another conversation — has to be told that the next enter is an answer
 	// rather than a message, and this is where it is told.
 	commented func()
+	// elsewhere says the question is about ANOTHER SESSION than the one this
+	// window is holding — home's errand card, answered on the errand's own agent
+	// (homeexchange.go). Its answer leaves no receipt above this window's box:
+	// that line belongs to the conversation behind it, which never asked, and the
+	// card already keeps its answer where it was drawn.
+	elsewhere bool
 	// held is the lane's own hand on the first evidence that somebody is AT THE
 	// KEYBOARD, and it is called once per question.
 	//
@@ -594,10 +600,9 @@ func (a *app) raiseQuestion(q questionShown) {
 			q.clockAt, q.clockFor = a.questions[i].clockAt, a.questions[i].clockFor
 		}
 		// AND THE WORDS ON THE ANSWERS DO NOT CHANGE UNDER A HAND. A lane that
-		// dresses the engine's option list with the card's own spelling — the
-		// standing card's `yes, set it up` where the kind's list says `yes`,
-		// consent's `always, this command` where it says `always` — would
-		// otherwise have that dressing wiped off by the bare object a
+		// dresses the engine's option list with the card's own spelling —
+		// consent's `always, this command` where the kind's list says `always`
+		// — would otherwise have that dressing wiped off by the bare object a
 		// reattaching watcher re-sends, respelling every answer on screen while
 		// somebody read them. THE KEYS ARE THE TEST AND THE WORDS ARE NOT: a
 		// list offering the same answers is the same question said twice, and a
@@ -1502,11 +1507,14 @@ func (a *app) questionSubjectRow(q questionShown, width int) (string, bool) {
 // one line and two calls the person never saw asked about.
 func (a *app) questionSubjectAt(q session.Question) int {
 	if q.Subject.Kind == session.SubjectOrder {
-		// A STANDING ORDER'S SUBJECT IS ITS OWN CARD IN THE TRANSCRIPT
-		// (standing.go). It is paired on the id the engine minted before anybody
-		// was asked, exactly as a node's is, so there is no walk-by-name arm.
+		// AN AUTOMATION'S SUBJECT IS ITS OWN CARD IN THE TRANSCRIPT
+		// (automation.go). It is paired on the id minted before anybody was
+		// asked — the engine's for a proposal, this window's for a typed line,
+		// which are kept apart ([typedAutomationID]) — exactly as a node's is,
+		// so there is no walk-by-name arm.
 		for i := range a.entries {
-			if e := &a.entries[i]; e.kind == entryStanding && e.stand != nil && e.stand.id == q.Subject.ID {
+			e := &a.entries[i]
+			if e.kind == entryAutomation && e.auto != nil && !e.auto.news() && e.auto.id == q.Subject.ID {
 				return i
 			}
 		}
@@ -2702,8 +2710,14 @@ func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	// that has already been made. A page is a way of READING one question; when
 	// there is no question there is no page.
 	a.closeQuestionPage(token)
-	a.recordQuestion(q, answer)
-	a.countQuestionYes(q, answer)
+	// A QUESTION ABOUT ANOTHER SESSION LEAVES NO RECEIPT HERE AND COUNTS NO YES.
+	// The receipt is drawn above this window's box, in a conversation that never
+	// asked, and the rule a third yes offers would be written for this window's
+	// asks out of answers given about somebody else's ([questionShown.elsewhere]).
+	if !q.elsewhere {
+		a.recordQuestion(q, answer)
+		a.countQuestionYes(q, answer)
+	}
 	a.touch()
 }
 
@@ -3220,8 +3234,8 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	// side, and takes this key while there ARE words).
 	//
 	// AND THE WAY OUT IS NOT THE WHOLE QUESTION. A correction, a connect key or
-	// a standing card is still a question WITH ANSWERS, and every question with
-	// answers has a pointer the arrows walk ([questionPointerStart]) — a
+	// an automation card is still a question WITH ANSWERS, and every question
+	// with answers has a pointer the arrows walk ([questionPointerStart]) — a
 	// standing card whose Enter did nothing while the pointer stood on
 	// `1 keep this rule` was the owner, 2026-09-25 (#1506). So the give-up below
 	// yields to a pointer: enter over an empty box takes the answer the pointer
@@ -3231,8 +3245,8 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 		// THE POINTER STANDS FOR A PICK ONLY WHERE A PICK EXISTS. A connect
 		// question keeps exactly one answer, the way out, and that answer is
 		// taken by a digit, never by enter — enter there means the words ([#1506
-		// broke it wide]). A standing card is a real choice between answers, so
-		// a pointer standing on one of them IS the pick enter takes.
+		// broke it wide]). An automation card is a real choice between answers,
+		// so a pointer standing on one of them IS the pick enter takes.
 		choice := head.question.Ask == session.AskChoice || head.question.Ask == session.AskJudgement
 		under := choice && head.pick >= 0 && head.pick < len(head.question.Options)
 		picked := head.question.Pick != nil && strings.TrimSpace(head.question.Pick.Key) != ""
@@ -3445,10 +3459,9 @@ func (a *app) questionWritingRow(q questionShown) string {
 // questionChangeCarriesThePointer says whether the words `c` sends travel
 // with the pointed answer's key. THEY DO FOR THE MODEL'S OWN ASK — "2, but
 // keep the sqlite file" is one answer with a rider, and the asker reads the
-// key — and for nothing else: a standing card's change is a correction of
-// when or where and approves nothing, a consent's is a sentence beside the
-// call, and each of those lanes has read a bare [session.Answer.Change] since
-// before the block had a pointer.
+// key — and for nothing else: an automation card's change is a correction of
+// when, what or where and approves nothing, a consent's is a sentence beside
+// the call, and each of those lanes reads a bare [session.Answer.Change].
 func questionChangeCarriesThePointer(q session.Question) bool {
 	return q.Kind == session.QuestionAsk
 }
@@ -4486,11 +4499,9 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// on — which is what the question is ABOUT rather than a second copy of
 		// the asking.
 		return true
-	case session.QuestionStanding:
-		// THE STANDING CARD, whose chip row, cursor, digits and hint line are
-		// deleted (standing.go, pickrow.go). What is left there is the head, the
-		// bands, the draining meter and the news line — what the card SHOWS, as
-		// against what it ASKS.
+	case session.QuestionAutomation:
+		// THE AUTOMATION CARD (automation.go), which never had answers of its
+		// own: what is left there is what it SHOWS.
 		return true
 	case session.QuestionHarness:
 		// THE HARNESS LANE'S TWO QUESTIONS, which are one lane and were two

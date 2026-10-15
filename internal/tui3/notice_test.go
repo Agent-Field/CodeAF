@@ -705,17 +705,17 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 				t.Fatal("copy mode did not open")
 			}
 		},
-		eventModelSwitched:   func(t *testing.T, a *app) { a.switchModel("openai/gpt-4.1", 1_000_000) },
-		eventCompacted:       func(t *testing.T, a *app) { drive(t, a, compactedMsg{}) },
-		eventFilesOpened:     func(t *testing.T, a *app) { a.slash("/files") },
-		eventResumeOpened:    func(t *testing.T, a *app) { a.slash("/resume") },
-		eventCostShown:       func(t *testing.T, a *app) { a.slash("/cost") },
-		eventStandingOpened:  func(t *testing.T, a *app) { a.slash("/standing") },
-		eventDeliverableMade: func(t *testing.T, a *app) { a.exportDone(exportedMsg{path: "/tmp/lab/talk.md"}) },
-		eventAsked:           func(t *testing.T, a *app) { a.askHere("what is this") },
-		eventTaskTyped:       func(t *testing.T, a *app) { a.slash("/task") },
-		eventManualAsked:     func(t *testing.T, a *app) { a.slash("/manual") },
-		eventTabReopened:     func(t *testing.T, a *app) { drive(t, a, reopenPress()) },
+		eventModelSwitched:     func(t *testing.T, a *app) { a.switchModel("openai/gpt-4.1", 1_000_000) },
+		eventCompacted:         func(t *testing.T, a *app) { drive(t, a, compactedMsg{}) },
+		eventFilesOpened:       func(t *testing.T, a *app) { a.slash("/files") },
+		eventResumeOpened:      func(t *testing.T, a *app) { a.slash("/resume") },
+		eventCostShown:         func(t *testing.T, a *app) { a.slash("/cost") },
+		eventAutomationsOpened: func(t *testing.T, a *app) { a.slash("/automations") },
+		eventDeliverableMade:   func(t *testing.T, a *app) { a.exportDone(exportedMsg{path: "/tmp/lab/talk.md"}) },
+		eventAsked:             func(t *testing.T, a *app) { a.askHere("what is this") },
+		eventTaskTyped:         func(t *testing.T, a *app) { a.slash("/task") },
+		eventManualAsked:       func(t *testing.T, a *app) { a.slash("/manual") },
+		eventTabReopened:       func(t *testing.T, a *app) { drive(t, a, reopenPress()) },
 		eventAtOpened: func(t *testing.T, a *app) {
 			drive(t, a, key("@"), key("s"), key("h"))
 			if !a.comp.open {

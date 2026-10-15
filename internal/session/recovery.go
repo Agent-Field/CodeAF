@@ -103,7 +103,7 @@ func everyCallWrites(string) bool { return true }
 //
 // IT IS SPELLED ONCE, HERE, AND BOTH SIDES OF THE BUILD THAT CARE READ IT — the
 // mutating machinery above, which asks so it can guard and revert the file, and
-// task_run.go's [producedAFile], which asks so that a firing whose only act was
+// task_run.go's [producedAFile], which asks so that a turn whose only act was
 // a measure is not written up as having landed something. The action names are
 // the tool's own constants rather than three string literals, on the ONE SOURCE
 // OF TRUTH law: a respelt action must not be able to mean one thing where it is

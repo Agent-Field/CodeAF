@@ -24,7 +24,7 @@ package session
 //
 // EVERY FIELD IS A FACT A FRAME DRAWS, and nothing else is here: the transcript
 // is not (it is large, and it is asked for once), the workspace is not (the
-// welcome carries it and it never changes), the standing items are not (they
+// welcome carries it and it never changes), the automations are not (they
 // live on their own beat). The rule for adding a field is the one that put
 // these five here — a frame or a keystroke reads it, so waiting on the wire for
 // it is a terminal that has stopped repainting.

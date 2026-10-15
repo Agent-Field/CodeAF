@@ -1,16 +1,14 @@
 package tui3
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // phoneHome opens home on a phone-sized frame. Fifty by thirty is the size the
@@ -566,12 +564,14 @@ func TestThePhoneInboxCarriesSinceYouLeft(t *testing.T) {
 		Label: "the deploy went green", Status: string(session.TaskDone),
 		EndedAt: now.Add(-time.Minute),
 	})
-	dir := filepath.Dir(mine)
-	note := `{"at":"` + now.Add(-30*time.Minute).Format(time.RFC3339Nano) + `","words":"keep main green","text":"it is green"}`
-	if err := os.WriteFile(standing.InboxPath(dir), []byte(note+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	a := phoneHome(t, lab, mine)
+	// AN AUTOMATION THAT RAN WHILE NOBODY WAS LOOKING is a line of the
+	// section too, said the way its own conversation's line says it.
+	a.home.seen = now.Add(-2 * time.Hour)
+	a.home.autos = []automation.Automation{{ID: "w1", Title: "keep main green", Last: &automation.Run{
+		Phase: automation.PhaseOver, Outcome: automation.OutcomeDone, Line: "it is green", Finished: now.Add(-30 * time.Minute)}}}
+	a.home.inboxAt = time.Time{}
+	a.home.build()
 	text := phoneText(a)
 	if !strings.Contains(text, homePhoneNewsWord) {
 		t.Fatalf("no %q section:\n%s", homePhoneNewsWord, text)
@@ -609,7 +609,9 @@ func TestAnErrandOnAPhoneIsTheSameSheet(t *testing.T) {
 	if ex == nil {
 		t.Fatal("ask here made no errand")
 	}
-	a.home.sheet = homeSheet{open: true}
+	// NOTHING RAISES THE SHEET BY HAND. This test used to set the open flag
+	// itself, which hid that `ask here` at this tier never did (homesheet.go's
+	// [app.homeSheetShowing]): the pane having the keyboard IS the sheet.
 	if !a.homeSheetShowing() {
 		t.Fatal("the errand is not showing as a sheet")
 	}
@@ -627,27 +629,49 @@ func TestAnErrandOnAPhoneIsTheSameSheet(t *testing.T) {
 	}
 }
 
-// TestAPhoneInboxDrawsAStandingItemOnlyOnce is homephone.go's second law — A ROW
-// APPEARS ONCE — held for the third kind of row on that screen.
-//
-// A watch that needs somebody was lifted into `waiting on you` AND drawn again
-// under its own project four rows later: two lines each, four of the twenty-six
-// a pocket terminal has, on the one tier with none to spare.
-func TestAPhoneInboxDrawsAStandingItemOnlyOnce(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", now)
-	a := phoneHome(t, lab, mine)
-	const words = "tell me when CI goes red on master"
-	a.home.items = map[string][]StandingItemView{lab.project("-tmp-alpha"): {{Item: standing.Item{
-		ID: "watch", Words: words, NeedsPerson: "may I re-run the typecheck job?", Updated: now,
-	}}}}
-	a.home.rebuild()
-	text := phoneText(a)
-	if n := strings.Count(text, words); n != 1 {
-		t.Fatalf("the watch was drawn %d times, want once — lifted into `waiting on you` and not again under its project:\n%s", n, text)
+// THE SHEET'S BOX IS THE BOX THE KEYS GO TO, AND IT SAYS WHAT TYPING THERE
+// DOES. At this tier the sheet used to be raised by `enter` on the row alone, so
+// `ask here` — and its chord, and `→` on the row — handed the pane the keyboard
+// with the inbox still drawn: what was typed went into a box nobody could see,
+// under home's own `type to search or start something new`.
+func TestAskHereOnAPhoneTypesIntoTheSheetItRaised(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+	a := lab.app(mine, []session.Event{
+		text(session.EventTextDelta, "I will remind you at 6."),
+		{Kind: session.EventTurnDone},
+	})
+	a.width, a.height = phoneWidth, 30
+	a.openHome()
+	typeHome(a, "remind me at 6")
+	drive(t, a, key("up"), key("enter"))
+	ex := theExchange(a)
+	if ex == nil || !ex.focused {
+		t.Fatal("ask here on a phone did not hand the pane the keyboard")
 	}
-	if strings.Contains(text, "\n "+homePhoneWaitingWord+" ") {
-		t.Fatal("the watch still has a separate waiting heading")
+	screen := func() string { return strings.Join(phoneRows(a), "\n") }
+	if !a.homeSheetShowing() {
+		t.Fatalf("ask here on a phone left the inbox up:\n%s", screen())
+	}
+	if got := screen(); !strings.Contains(got, "› "+homeAskRestWord) || strings.Contains(got, placeRestWord) {
+		t.Fatalf("the sheet's box should rest on %q:\n%s", homeAskRestWord, got)
+	}
+	drive(t, a, key("x"))
+	if got := screen(); !strings.Contains(got, "› x") {
+		t.Fatalf("the letter typed is not on the screen:\n%s", got)
+	}
+	// AND OUT AND BACK IN: tab gives the list the keyboard and puts the inbox
+	// back, and → on the errand's row raises the sheet again with the
+	// half-typed follow-up still in its box.
+	drive(t, a, key("tab"))
+	if ex.focused || a.homeSheetShowing() {
+		t.Fatalf("tab did not put the inbox back:\n%s", screen())
+	}
+	drive(t, a, key("right"))
+	if !ex.focused || !a.homeSheetShowing() {
+		t.Fatalf("→ on the errand's row did not raise its sheet:\n%s", screen())
+	}
+	if got := screen(); !strings.Contains(got, "› x") {
+		t.Fatalf("the half-typed follow-up is gone from the sheet's box:\n%s", got)
 	}
 }

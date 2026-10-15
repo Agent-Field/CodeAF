@@ -24,7 +24,6 @@ func TestNodeSurgeryRecognitionTable(t *testing.T) {
 		{"do the tests first", store.CommandReprioritize, "surgery"},
 		{"restart the failed one", store.CommandRestart, "surgery"},
 		{"resume the migration", store.CommandResume, "surgery"},
-		{"stop watching PRs", store.CommandCharterRetire, "charter"},
 		{"write the tests before the implementation", "", "new"},
 		{"create a pause button", "", "new"},
 		{"explain how to cancel a subscription", "", "new"},
@@ -32,19 +31,15 @@ func TestNodeSurgeryRecognitionTable(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.message, func(t *testing.T) {
-			charterIntent, charter := charterManagement(test.message)
 			intent, surgery := nodeSurgery(test.message)
 			route := "new"
 			kind := store.CommandKind("")
-			if charter && (strings.Contains(strings.ToLower(test.message), "watch") ||
-				strings.Contains(strings.ToLower(test.message), "monitor")) {
-				route, kind = "charter", charterIntent.Kind
-			} else if surgery {
+			if surgery {
 				route, kind = "surgery", intent.Kind
 			}
 			if route != test.route || kind != test.kind {
-				t.Fatalf("route/kind = %s/%s, want %s/%s (charter=%t surgery=%t)",
-					route, kind, test.route, test.kind, charter, surgery)
+				t.Fatalf("route/kind = %s/%s, want %s/%s (surgery=%t)",
+					route, kind, test.route, test.kind, surgery)
 			}
 		})
 	}
@@ -172,10 +167,9 @@ func TestSurgeryReferentResolutionUniqueAmbiguousAndNone(t *testing.T) {
 	})
 }
 
-// "pause the migration while I think" is about work, and the standing-rule
-// reader must not claim it: a rule edit and a job pause share their verb, and
-// the difference is whether a rule exists to mean.
-func TestOrdinaryPauseFallsThroughCharterManagementToSurgery(t *testing.T) {
+// "pause the migration while I think" is about work: the verb reading reaches
+// the loop, and the stop tool aimed at the job journals the pause.
+func TestOrdinaryPauseReachesSurgery(t *testing.T) {
 	graph := openHeadStore(t)
 	spliceSurgeryJob(t, graph, "migration", "Schema migration", "migrate the schema")
 	user := postUser(t, graph, "pause-work", "pause the migration while I think")
@@ -183,9 +177,6 @@ func TestOrdinaryPauseFallsThroughCharterManagementToSurgery(t *testing.T) {
 	reading := deterministicReading(t, New(nil, graph), user)
 	if !strings.Contains(reading, `carries the verb "pause" aimed at existing work`) {
 		t.Fatalf("the pause reading never reached the loop:\n%s", reading)
-	}
-	if candidates, err := New(nil, graph).charterCandidates(charterReference("pause the migration while i think", "")); err != nil || len(candidates) != 0 {
-		t.Fatalf("charter management claimed a pause aimed at work: %+v err=%v", candidates, err)
 	}
 
 	head, _ := beltHead(graph, beltTurn{calls: []ai.ToolCall{

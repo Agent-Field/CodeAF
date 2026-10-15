@@ -844,7 +844,11 @@ func (a *Agent) bindingAuthorityFor(st *store.Store, owner string, conditions ma
 	}
 	out := make([]store.Memory, 0, len(rows))
 	for _, m := range rows {
-		if seen[m.ID] {
+		// A RULE IS ALREADY IN FRONT OF THE WORK — in the conversation's
+		// message[0] and in every task brief (memory_always.go) — so a binding
+		// read that carried it again would spend the shared note budget on a
+		// line the model is already reading, and say it twice.
+		if seen[m.ID] || m.Always {
 			continue
 		}
 		seen[m.ID] = true
@@ -867,7 +871,8 @@ func (a *Agent) bindingLexicalFallback(st *store.Store, cue string, conditions m
 	verdicts := a.contextualVerdicts(st, candidates, conditions)
 	for _, m := range candidates {
 		v := verdicts[m.ID]
-		if seen[m.ID] || !contextualVerdictKeeps(m, v) {
+		// A rule is already in front of the work; see [Agent.bindingAuthorityFor].
+		if seen[m.ID] || m.Always || !contextualVerdictKeeps(m, v) {
 			continue
 		}
 		seen[m.ID] = true

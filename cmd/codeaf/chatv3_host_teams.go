@@ -13,7 +13,7 @@ import (
 // and Traffic logs, which are where the far session's team tools keep them
 // (internal/remote's wire_teams.go).
 //
-// IT IS BUILT LIKE [hostStanding], for the one call the surface makes on its
+// IT IS BUILT LIKE [hostWorld], for the one call the surface makes on its
 // loop. [tui3.TeamsSeam.Load] is asked at an opening and must not block, so it
 // answers what is held and nothing else; when nothing is held yet it says so,
 // and the surface asks [tui3.TeamsSeam.ReadSince] off its loop, once, which
@@ -28,7 +28,7 @@ import (
 // falling back to the file on this disk, which the far session never reads.
 type hostTeams struct {
 	// read, write and traffic are the three wire doors, as closures for
-	// [hostStanding]'s reason: a test hands them a conflict without a pipe.
+	// [hostWorld]'s reason: a test hands them a conflict without a pipe.
 	read    func(stamp string, reserved []float64) (remote.TeamsReading, error)
 	write   func(base string, teams []teamstore.Team) (remote.TeamsReading, error)
 	traffic func(team, after string, limit int) (remote.TeamsTraffic, error)

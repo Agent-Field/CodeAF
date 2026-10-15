@@ -50,7 +50,8 @@ const (
 	// argument in internal/session's turnLambda.
 	RoleLeafAttached   Role = "leaf.attached"
 	RoleLeafUnattended Role = "leaf.unattended"
-	// RoleStanding is a standing order's run: unattended by construction.
+	// RoleStanding is an automation watch's judgment: unattended by
+	// construction. It keeps the name of the standing orders it first served.
 	RoleStanding Role = "standing"
 	// RoleMemory is the memory reflex and the consolidation pass.
 	RoleMemory Role = "memory"
@@ -398,7 +399,7 @@ func (r Role) Ceiling() time.Duration {
 // this is when we stop acting at all ([TurnGiveUp] × the same patience), so the
 // two scale together off one column and a role cannot be patient about one and
 // impatient about the other. Talk is ninety seconds, a task node's four and a
-// half minutes, a standing pass's nine, a probe's forty-five seconds.
+// half minutes, an automation check's nine, a probe's forty-five seconds.
 //
 // WHAT IT REPLACED, and why none of those numbers is missed: six attempts and
 // two minutes for a watched call, sixty attempts and ten minutes for a patient

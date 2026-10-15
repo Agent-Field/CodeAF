@@ -444,7 +444,7 @@ conversation with no folder at all still keeps them at
 `<workspace>/.codeaf/jobs/`.
 
 **You can see a job without asking.** Every job this conversation starts is a row in the
-`jobs` section on the column — a third section under `tasks` and `standing`, collapsed by
+`jobs` section on the column — a third section under `tasks` and `automations`, collapsed by
 default to one line of counts, not a row among the task families. The name is three or
 four words from a cheap model (the command until that name arrives); the handle is still
 `job 3`. The log path is on the job's page, not under the row. Opening the row opens that
@@ -562,10 +562,11 @@ tick remains available through `jobs output`. **The tick that ENDS the watch is
 different and it does wake you** — see the next section. Watches die with the
 session like any other job.
 
-For something that has to keep an eye on the world **after** this window is
-closed — "tell me when CI goes red", "every Monday draft the update", "keep main
-green" — a watch is the wrong tool and there is a right one: see the
-keeping-an-eye page.
+**A `watch` ends with this conversation.** For something on a clock — "tell me when CI on
+main goes red", "every Monday at 9 draft the update", "remind me at 6" — say it, and I
+propose an **automation**: a watch, scheduled work or a reminder, saved only once you answer
+its card and listed in `/automations`. It runs only while a codeaf window is open, never
+with every window closed. See *Automations*.
 
 ## Will it tell me when the watch finishes if I walk away — does a watch wake the conversation, or do I have to type first?
 
@@ -1320,11 +1321,12 @@ Plainly, so you do not have to find out the hard way.
   again.
 - **Which connected services were switched on.** Those are re-asked on a resume.
 
-**What does survive it deliberately** is anything you set up with a card —
-a reminder, a watch on the world, a rule, work that runs overnight. Those are
-not jobs: they outlive the window on purpose, they fire into the conversation
-that asked for them, and they are stopped by saying so. The keeping-an-eye page
-is the whole account of them.
+**What does survive it deliberately** is an automation — a reminder, scheduled work or a
+watch you saved on its card. It is not a job: codeaf's clock runs it, not this
+conversation, so it keeps running while any codeaf window is open — never with every
+window closed — says how each run went in the conversation that made it, and is paused or
+deleted in `/automations` or by saying so. *Automations* is the whole account. A rule —
+"always use tabs here" — survives as a memory marked always (`/always`, *What I remember*).
 
 What does survive: the transcript itself, which is written to the session file
 and replayed when you resume; the working state recorded with `track` and

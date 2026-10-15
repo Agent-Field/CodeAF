@@ -166,7 +166,7 @@ func runWorktreeContract(t *testing.T, w *world, attempt int) *contractAttempt {
 	defer source.stop()
 
 	started := time.Now()
-	said := w.say(agent, widgetAsk(ground), answerYes)
+	said := w.say(agent, widgetAsk(ground))
 	t.Logf("the chat called: %v", said.names())
 
 	run := &familyRun{t: t, w: w, agent: agent, place: place, ground: ground}

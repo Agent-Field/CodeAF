@@ -77,7 +77,7 @@ var prefixShapes = []prefixShape{{
 
 // conversationDoor wires what cmd/codeaf's interactive door wires, including the
 // two seams that decide whole sections of the page: somebody watching who can
-// answer a card, and a store for `stand` to leave something in.
+// answer a card, and a store for `automation` to leave something in.
 func conversationDoor(t *testing.T, config *Config) {
 	t.Helper()
 	config.AskConsent = true
@@ -87,8 +87,7 @@ func conversationDoor(t *testing.T, config *Config) {
 		return "", subharness.Usage{}, nil
 	}
 	config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) { return "", nil }
-	config.Standing = &Standing{}
-	config.standingItems = &fakeStanding{}
+	config.Automations = &Automations{Store: automationStoreFor(t), Zone: "UTC"}
 }
 
 // TestTheFixedPrefixOfEveryShapeIsMeasured prints the bill each door pays and

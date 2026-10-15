@@ -138,10 +138,6 @@ var salienceTable = []salienceCase{
 	{name: "EventHarnessProgress", chatOnly: "the same card's live edge", ev: session.Event{Kind: session.EventHarnessProgress, ID: 7}},
 	{name: "EventHarnessDesignDone", chatOnly: "the same card, settled", ev: session.Event{Kind: session.EventHarnessDesignDone, ID: 7}},
 	{name: "EventHarnessDesignRevising", chatOnly: "the same card, revising", ev: session.Event{Kind: session.EventHarnessDesignRevising, ID: 7}},
-	{name: "EventStandingProposal", chatOnly: "a standing order is a decision, and a decision needs the keyboard",
-		ev: session.Event{Kind: session.EventStandingProposal}},
-	{name: "EventStandingUpdate", chatOnly: "standing orders belong to the session, not to one node's work",
-		ev: session.Event{Kind: session.EventStandingUpdate}},
 	{name: "EventOrchestrateNote", chatOnly: "an adaptive run is a GRAPH and not a transcript; its page draws " +
 		"the graph (roomorch.go)", ev: session.Event{Kind: session.EventOrchestrateNote, Text: "planning"}},
 	{name: "EventOrchestrateFuel", chatOnly: "the same graph's budget", ev: session.Event{Kind: session.EventOrchestrateFuel}},
@@ -178,6 +174,12 @@ var salienceTable = []salienceCase{
 	// sentence about why the machine they named stopped answering.
 	{name: "EventRowNews", ev: session.Event{Kind: session.EventRowNews,
 		Text: "deepseek cannot serve this model; routing on auto for this model until you pin again"}},
+	{name: "EventAutomationProposal", chatOnly: "an automation is a decision, and a decision needs the keyboard " +
+		"of the person in the conversation; a node never sets one up (automation.go)",
+		ev: session.Event{Kind: session.EventAutomationProposal}},
+	{name: "EventAutomationUpdate", chatOnly: "automations belong to the machine and the conversation that made " +
+		"them, not to one node's work: the line is the conversation's (automation.go)",
+		ev: session.Event{Kind: session.EventAutomationUpdate}},
 	{name: "EventQuestionDiscussion", chatOnly: "a clarification belongs to the person's pending decision and arrives on the conversation's question subscription",
 		ev: session.Event{Kind: session.EventQuestionDiscussion, Discussion: &session.QuestionDiscussion{
 			ID: "clarify-1", Seq: 1, Event: &session.Event{Kind: session.EventTextDelta, Text: "the command only reads the report"},

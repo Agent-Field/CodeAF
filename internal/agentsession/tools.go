@@ -41,8 +41,26 @@ var skippedDirs = map[string]bool{
 
 // toolbox is the four tools over one repository.
 type toolbox struct {
-	root   string
+	root string
+	// alias is the absolute spelling the caller supplied, when an ancestor
+	// or the root itself is a link. Both names identify the same owned root.
+	alias  string
 	limits ToolLimits
+}
+
+func newToolbox(root string, limits ToolLimits) (toolbox, error) {
+	if strings.TrimSpace(root) == "" {
+		return toolbox{}, errors.New("the repository root is not set")
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return toolbox{}, err
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return toolbox{}, fmt.Errorf("cannot open the repository: %s", plainFSError(err))
+	}
+	return toolbox{root: real, alias: abs, limits: limits}, nil
 }
 
 // definitions is what the model is offered.
@@ -123,6 +141,11 @@ func (t toolbox) resolve(name string) (string, error) {
 	path := name
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(t.root, path)
+	} else if t.alias != "" && within(t.alias, filepath.Clean(path)) {
+		// Translate only the caller's owned root spelling, not an arbitrary
+		// external link into the repository. Keep every escape check below.
+		rel, _ := filepath.Rel(t.alias, filepath.Clean(path))
+		path = filepath.Join(t.root, rel)
 	}
 	path = filepath.Clean(path)
 	if !within(t.root, path) {

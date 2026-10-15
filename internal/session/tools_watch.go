@@ -212,8 +212,11 @@ type watchState struct {
 // sentence here is paid dozens of times in one task while the prose above it is
 // free. Every rule the long version stated survives; what went is the worked
 // examples and the second telling of what the `on` field already says. The
-// boundary with `stand` stays in full, because that one is a defect a real
-// model made (standing_boundary_test.go pins the words).
+// boundary with automations stays in full, because that one is a defect a real
+// model made: it reached for a watch to keep looking after the window closed.
+// The boundary names the IDEA and not the verb, because `watch` rides belts
+// that `automation` does not (a task's), and a description naming a tool its
+// belt lacks is the lie the absence law exists to prevent.
 //
 // The concurrency limit is INTERPOLATED, never typed: [watchMaxConcurrent] is
 // what claimWatch actually enforces and a digit here would be the second copy
@@ -225,10 +228,10 @@ type watchState struct {
 // sentence on every request of every turn is four bills for one rule, so it is
 // stated once on the page (prompts/system.md) and nowhere on the belt. What
 // stays here is the contract: the timer, the batching, the ceiling, and the
-// boundary with `stand`. The silent first tick moved UP from the `on` field
+// boundary with automations. The silent first tick moved UP from the `on` field
 // because it is true of every mode but one and belongs to the tool rather than
 // to the choice of mode.
-var watchDescription = "Run a command on a timer and hear only when there is news. A background job (jobs lists, kills and prints every tick); updates batch at the turn boundary, never mid-turn, and tick one is a silent baseline except on always. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking AFTER this window is closed is `stand`'s."
+var watchDescription = "Run a command on a timer and hear only when there is news. A background job (jobs lists, kills and prints every tick); updates batch at the turn boundary, never mid-turn, and tick one is a silent baseline except on always. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking after it closes is an automation."
 
 // Every bound in the schema is INTERPOLATED from the constant the parser clamps
 // against ([parseWatchArguments]), for the one-source-of-truth law's reason: a

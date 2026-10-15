@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -36,12 +37,12 @@ const sweepLogName = "sweep.log"
 // The call sits after successful openV3Process construction, so failed doors do
 // not start housekeeping and every later process in the same binary gets a pass.
 //
-// THE STANDING ROOT IS HANDED OVER RATHER THAN FOUND. The same pass reaps the
-// ambient side's own litter, an errand that came to nothing, a run that
-// delivered nothing, and internal/session is given the directory to walk so
-// that the rule can be pointed at a temp directory and proved. [v3StandingRoot]
-// is the one answer to where that is.
-var sweepHome func(context.Context, string, func(string)) = session.SweepHomeContext
+// THE ERRANDS ROOT IS HANDED OVER RATHER THAN FOUND. The same pass reaps home's
+// own litter, an errand that came to nothing, and internal/session is given the
+// directory to walk so that the rule can be pointed at a temp directory and
+// proved. [v3ErrandsRoot] is the one answer to where that is, and
+// [errandHeldByAutomation] keeps the errands an automation was saved from.
+var sweepHome func(context.Context, string, func(string) bool, func(string)) = session.SweepHomeContext
 
 func (p *v3Process) startPlaceSweep() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -50,7 +51,7 @@ func (p *v3Process) startPlaceSweep() {
 	p.sweepDone = done
 	guard.Go("chatv3/sweep-home", func() {
 		defer close(done)
-		sweepHome(ctx, v3StandingRoot(), func(line string) {
+		sweepHome(ctx, v3ErrandsRoot(), errandHeldByAutomation(), func(line string) {
 			if ctx.Err() == nil {
 				noteSweep(line)
 			}
@@ -64,6 +65,28 @@ func (p *v3Process) stopPlaceSweep() {
 	}
 	p.sweepCancel()
 	<-p.sweepDone
+}
+
+// errandHeldByAutomation answers whether an errand's folder is where an
+// automation was asked: "open where it was asked" reads that conversation for
+// as long as the automation exists, so the sweep must not reap it. A store that
+// cannot be read holds every folder — when unsure, keep.
+func errandHeldByAutomation() func(dir string) bool {
+	autos := v3Automations()
+	if autos == nil || autos.Store == nil {
+		return func(string) bool { return true }
+	}
+	list, err := autos.Store.List()
+	if err != nil {
+		return func(string) bool { return true }
+	}
+	origins := make(map[string]bool, len(list))
+	for _, item := range list {
+		if transcript := strings.TrimSpace(item.Origin.Transcript); transcript != "" {
+			origins[filepath.Clean(filepath.Dir(transcript))] = true
+		}
+	}
+	return func(dir string) bool { return origins[filepath.Clean(dir)] }
 }
 
 // noteSweep writes one line, and opens the file only when there is a line to

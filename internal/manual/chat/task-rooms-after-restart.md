@@ -122,8 +122,8 @@ different kinds of row, and only a task has a chat inside it.
   says `its log is on ` plus that machine's name.
 
 A job's row is easy to tell apart before you open it: it sits in the `jobs` section under
-`tasks` and `standing`, not among the families, and it has no dim under-line starting with
-`job` and a number — that line is gone. The handle `job 4` is on the page.
+the tasks and the automations, not among the families, and it has no dim under-line
+starting with `job` and a number — that line is gone. The handle `job 4` is on the page.
 
 Earlier versions of codeaf got this wrong in a way worth naming, in case you remember it: a
 job's page came up with a correct header — its name, `done`, its elapsed — over a body

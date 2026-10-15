@@ -367,7 +367,7 @@ func (n *TaskNode) instructionWith(tree taskTree, shaped shapedBrief) string {
 //
 // THE ASSEMBLED BRIEF OPENS ON THE SPEC'S, because [TaskGraph.briefLocked] builds
 // it that way — the admitted brief, then what the work ahead of it reported, then
-// the standing orders — so the written brief replaces the one it stood in for and
+// the person's rules — so the written brief replaces the one it stood in for and
 // everything assembled around it is kept.
 func (b shapedBrief) writtenLocked(n *TaskNode) taskContract {
 	assembled := n.brief

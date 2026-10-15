@@ -87,9 +87,9 @@ and that retention is not an automatic reuse path because a history receipt cann
 become independent observation. The notice/receipt attention state is bounded and
 evictable; the immutable events_no_delete journal still grows, and that raw audit
 growth is an explicit, honest limit rather than something pruned away. Completed/abandoned user-declared work can expire from
-recall. Existing idle maintenance and standing orders remain the only maintenance and
-scheduling machinery. Deferred intention retention alone does not guarantee a standing
-order was proposed or ratified.
+recall. Existing idle maintenance (the memory tidy, which rides the automations clock)
+and automations remain the only maintenance and scheduling machinery. Deferred intention
+retention alone does not guarantee an automation was proposed or saved.
 
 A recorded failure can carry one later observed successful alternative from the same
 turn and goal: the same tool class, an action sharing a meaningful token, taken at the

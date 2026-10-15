@@ -18,8 +18,14 @@ const (
 	CollectionKind   Kind = "collection"
 	ConversationKind Kind = "conversation"
 	TaskKind         Kind = "task"
-	StandingKind     Kind = "standing"
 	ArtifactKind     Kind = "artifact"
+	// StandingKind is an older build's reference to a standing item. Standing
+	// items are gone (automations replaced them), so the collections command
+	// refuses a new one, but a row that already names one is still a row: it
+	// can be found and taken out, and it resolves to nothing. The kind stays in
+	// the schema's own list for the same reason, and because a build that
+	// changed that list would be refused by every older one on the machine.
+	StandingKind Kind = "standing"
 )
 
 var (

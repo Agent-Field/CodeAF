@@ -165,11 +165,6 @@ type fakeAgent struct {
 	// levels is the reasoning strength held per model id, the session's own map
 	// as far as the surface can see it (internal/session's agent.go).
 	levels map[string]string
-	// marked is every sentence that went through the MARKED door — the typed
-	// command that means "keep this true" (standmark.go). It is kept beside `sent`
-	// rather than folded into it because which door a message took is the whole
-	// question those tests ask.
-	marked []string
 	// queue is the session side of the follow-up queue (followup.go), held in
 	// step with the surface's: a take-back the surface drew without this queue
 	// losing the message would be a removal the session never made.
@@ -532,6 +527,7 @@ const harnessTickSymbol = "github.com/Agent-Field/codeaf/internal/tui3.harnessTi
 // paying the old price.
 var blockingCommands = []string{
 	"waitDesign",
+	"waitErrand",
 	"waitEvent",
 	"waitGuestNotices",
 	"waitGuestQuestions",
@@ -767,21 +763,6 @@ func resolveThroughLanes(agent any, answer session.Answer) error {
 			return nil
 		}
 		door.ResolveConnect(answer.Ref, key == "1")
-		return nil
-	case session.QuestionStanding:
-		door, ok := agent.(standingAgent)
-		if !ok {
-			return errNoSuchLane
-		}
-		if words := strings.TrimSpace(answer.Words()); words != "" && key == "" {
-			door.ResolveStanding(answer.ID, session.StandingAnswer{Change: words})
-			return nil
-		}
-		action, found := session.AnswerFromKey(session.QuestionStanding, key)
-		if !found {
-			return errNoSuchLane
-		}
-		door.ResolveStanding(answer.ID, action.Standing)
 		return nil
 	}
 	return errNoSuchLane

@@ -82,8 +82,8 @@ package session
 // cache share is not — the journal this line's session id names has it), which
 // of the five router slots a call ran under (nothing records that anywhere; the
 // seat is the tier's chair and NOT the router's slot), and any title for a task
-// or a standing item — only their ids, which a page joins against the task
-// index and the standing store it is already reading.
+// or an automation — only their ids, which a page joins against the task index
+// and the automations it is already reading.
 
 import (
 	"bufio"
@@ -111,12 +111,11 @@ import (
 // of one path are two ledgers with half a person's spending in each.
 const UsageLedgerName = "usage.jsonl"
 
-// usageDayLayout is the LOCAL calendar day a line belongs to, spelled exactly
-// as internal/standing's daily ledger spells its own file names
-// (standing.go's LedgerPath). A day is the unit a person asks about — "what did
-// Tuesday cost" — and it is local because their Tuesday is, so a line carries
-// the day it was made in beside the instant it was made at, and no reader has
-// to re-derive a calendar from a timestamp in some other zone.
+// usageDayLayout is the LOCAL calendar day a line belongs to, as an ISO date.
+// A day is the unit a person asks about — "what did Tuesday cost" — and it is
+// local because their Tuesday is, so a line carries the day it was made in
+// beside the instant it was made at, and no reader has to re-derive a calendar
+// from a timestamp in some other zone.
 const usageDayLayout = "2006-01-02"
 
 // UsageLedgerPath is this machine's ledger, resolved through internal/home so
@@ -130,7 +129,7 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // Every field is a fact somebody asked for by name on the spend page, and there
 // is nothing here that is not: which day, which model, what for, how many calls,
 // how many tokens, how much money, and the three ids that say what the money was
-// spent ON — a conversation, a piece of work, a standing promise.
+// spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
 	// At is the instant the call was journaled, RFC3339 with nanoseconds.
 	At time.Time `json:"at"`
@@ -202,7 +201,7 @@ type UsageLine struct {
 	Task string `json:"task,omitempty"`
 	// Root is the CONVERSATION the work this call was made inside belongs to,
 	// and it is empty on a conversation's own line — where Session already names
-	// it — and on a standing firing no conversation asked for.
+	// it — and on an automation's run, which its automation owns.
 	//
 	// IT IS THE ONE FIELD THAT MAKES A FAMILY ADDABLE. Session on a node's line
 	// is the NODE's journal, which is a file nobody outside the family has heard
@@ -222,11 +221,17 @@ type UsageLine struct {
 	// field existed decodes without it, which reads as "this is not a family's
 	// line", and every one of them is a conversation's or a standing item's.
 	Root string `json:"root,omitempty"`
-	// Standing is the id of the standing item whose firing made this call, and
-	// empty everywhere else. A firing is InTask and may also carry a Task id;
-	// [UsageBySubject] prefers this one, because a person recognises the promise
-	// they made long before they recognise the run it spawned.
+	// Standing is the id of the standing item whose firing made the call, on a
+	// line an older build wrote. Nothing writes it now; it is read so the money
+	// those firings spent still belongs to a promise ([UsageBySubject] reads it
+	// as an automation).
 	Standing string `json:"standing,omitempty"`
+	// Automation is the automation whose run or watch made the call
+	// (automation_run.go), and empty on every other line. A run is InTask and
+	// may also carry a Task id; [UsageBySubject] prefers this one, because a
+	// person recognises the automation they saved long before they recognise
+	// the run it spawned.
+	Automation string `json:"automation,omitempty"`
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
 	Workspace string `json:"workspace,omitempty"`
@@ -968,9 +973,9 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		// The conversation the work is rooted in, which is nothing at all in a
 		// conversation: Session above is already that answer, and writing it
 		// twice would be the one-source-of-truth law broken on the same row.
-		Root:      strings.TrimSpace(a.config.rootSession),
-		Standing:  strings.TrimSpace(a.config.standingItemID),
-		Workspace: strings.TrimSpace(a.config.Workspace),
+		Root:       strings.TrimSpace(a.config.rootSession),
+		Automation: strings.TrimSpace(a.config.automationID),
+		Workspace:  strings.TrimSpace(a.config.Workspace),
 	}
 
 	// THE ROW'S TWO NAMES GO ON THROUGH ONE DOOR ([TagUsage]), and the seat
@@ -1212,6 +1217,6 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 	a.mu.Unlock()
 	RecordUnbilledCall(path, UsageLine{
 		Session: owner, Model: model, Task: usageTaskID(a.config.taskID),
-		Root: a.config.rootSession, Standing: a.config.standingItemID, Workspace: a.config.Workspace,
+		Root: a.config.rootSession, Automation: a.config.automationID, Workspace: a.config.Workspace,
 	})
 }
