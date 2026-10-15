@@ -372,7 +372,7 @@ starts on the new pin, and the rail is checked against the new ceiling.
 
 ## Which settings the setup does not ask about
 
-**The setup asks about two things and no more.** Memory stays on, tool approvals keep
+**The setup asks about two things and no more.** Noticing things to remember stays on, tool approvals keep
 prompting, and a proposed task keeps its 15-second countdown — none of them becomes a
 question there, because none can be answered usefully before you have seen codeaf do
 anything. They are taught where they happen: the countdown is on the task card, and the

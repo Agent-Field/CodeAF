@@ -482,11 +482,6 @@ type Snapshot struct {
 type Store struct {
 	db    *sql.DB
 	blobs *cas.Store
-	// fts says whether the memory index exists on this store. It is proved by
-	// a probe at open, not assumed: a build whose SQLite lost FTS5 opens with
-	// memory intact and only the lexical tier quiet (memory.go states the
-	// trade). The other FTS tables are unconditional at the schema step.
-	fts bool
 	// roleDefaults is the compiled-in floor of the role ladder (role_bindings.go)
 	// — process configuration rather than journaled policy, so it is installed
 	// on the handle and never written to the brain file.
@@ -797,10 +792,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(scopeAliasesSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize scope aliases schema: %w", err))
 	}
-	// Memories and their index are created together, and both with IF NOT
-	// EXISTS: there is no backfill to do because there is no older shape of
-	// this table to read from, and a store opened before the feature existed
-	// simply has no memories yet.
+	// The memories table is created with IF NOT EXISTS and then brought up to
+	// this build's shape by the two migrations below, which is what lets a store
+	// written by any earlier build open.
 	if _, err := db.Exec(memoriesSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize memories schema: %w", err))
 	}
@@ -813,19 +807,6 @@ func Open(path string) (*Store, error) {
 	if err := migrateMemoriesOwner(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate memory owners: %w", err))
 	}
-	// AND THE RULES COLUMN AFTER THE OWNERS, because its index names both: a
-	// store from before either existed has neither until the two passes above
-	// and this one have run, in this order (memory_always.go).
-	if err := migrateMemoriesAlways(db); err != nil {
-		return closeOnError(fmt.Errorf("migrate memory rules: %w", err))
-	}
-	// The memory index is created only where a probe proved FTS5 works; the
-	// flag is what every memory read checks before it asks the index anything.
-	// The OTHER FTS tables above are still unconditional — a build where FTS5
-	// is genuinely absent loses them at the schema step and says so, because
-	// conversation search without the index is not a degraded store, it is a
-	// different one.
-	ftsAvailable := createMemoriesFTS(db)
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
 	}
@@ -849,7 +830,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return closeOnError(fmt.Errorf("open content store: %w", err))
 	}
-	store := &Store{db: db, blobs: blobs, fts: ftsAvailable}
+	store := &Store{db: db, blobs: blobs}
 	if err := store.ensureSpine(); err != nil {
 		return closeOnError(err)
 	}

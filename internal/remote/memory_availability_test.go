@@ -14,9 +14,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// A model switch takes effect at the next request boundary. The same live
-// connection must observe both profile transitions through pushed facts.
-func TestRemoteMemoryAvailabilityFollowsAutomaticProfileBothWays(t *testing.T) {
+// A model switch takes effect at the next request boundary, and memory holds
+// across it both ways: the person's lines are not a casualty of a small window,
+// so the same live connection reads memory as available before and after.
+func TestRemoteMemoryHoldsAcrossAutomaticProfileChanges(t *testing.T) {
 	t.Setenv("CODEAF_PROMPT_PROFILE", "")
 	for _, initial := range []string{"test/small", "test/large"} {
 		t.Run(initial, func(t *testing.T) {
@@ -64,8 +65,10 @@ func TestRemoteMemoryAvailabilityFollowsAutomaticProfileBothWays(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = loop.Close() })
 			handle := loop.Client.Agent()
+			// MEMORY IS NOT A PROFILE CASUALTY: a small window and a large one both
+			// carry the person's lines, so the reading is true on both.
 			wantInitial := initial == "test/large"
-			if handle.Remembers() != wantInitial || far.Remembers() != wantInitial {
+			if !handle.Remembers() || !far.Remembers() {
 				t.Fatal("initial profile memory availability is wrong")
 			}
 			next := []string{"test/large", "test/small"}
@@ -98,7 +101,7 @@ func TestRemoteMemoryAvailabilityFollowsAutomaticProfileBothWays(t *testing.T) {
 					}
 				}
 				cancel()
-				want := model == "test/large"
+				want := true
 				if far.Remembers() != want {
 					t.Fatalf("engine memory=%v for %s", far.Remembers(), model)
 				}

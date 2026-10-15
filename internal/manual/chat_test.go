@@ -3977,27 +3977,28 @@ func TestTheRerunQuestionsReachTheirCorrectedSections(t *testing.T) {
 				"The next look on its rhythm simply tries again", "connecting the provider again (`/connect`)"},
 		},
 		{
-			// q5: the task's approved/confirmed binding is a local read before
-			// the first request, separate from the router's advisory shortlist.
+			// q5: a task's workers, an automation's run and a team's members all
+			// read the same memory section a conversation there carries.
 			question: "do saved memories and restrictions reach team managers, team members, and tasks",
 			page:     "what-i-remember",
-			title:    "Where is it kept, and does a task see it?",
-			says:     []string{"approved rules and confirmed", "no model, no router, no provider needed", "advisory lookup", "bounded"},
+			title:    "Does a task, an automation or a team member see my memory?",
+			says:     []string{"every worker's brief closes on the conversation's memory section", "read-only", "team's manager and members"},
 		},
 		{
-			// q5: the member page carries the same boundary at the start door.
+			// q5: the member page carries the same memory at the start door: the
+			// whole block from the first request, nothing fetched later.
 			question: "when a manager starts a member do the workspace's saved rules apply before its first request",
 			page:     "team-manager",
 			title:    "When a manager starts a member",
-			says:     []string{"before its first request", "advisory path", "not all guaranteed to fit"},
+			says:     []string{"in front of its first request", "Nothing is fetched later or picked per message", "fit is refused when it is kept rather than dropped later"},
 		},
 		{
-			// q4: the purpose-built forgetting section, reached by the words a
-			// person actually uses, and answering that a search is reading only.
+			// q4: the forgetting section, reached by the words a person actually
+			// uses, and answering that a search is reading only.
 			question: "search old conversations re-activate saved context decision memory",
 			page:     "what-i-remember",
-			title:    "Can a forgotten thing come back or will it be relearned",
-			says:     []string{"Searching an old conversation does not bring it back", "reading, not remembering", "suppression above that makes forgetting hold"},
+			title:    "Can a forgotten memory come back or be relearned",
+			says:     []string{"Searching an old conversation does not\nbring a forgotten line back", "search is reading, not\nremembering"},
 		},
 		{
 			// q1: nothing runs while the machine is off or every window is closed —
@@ -4034,16 +4035,12 @@ func TestTheRerunQuestionsReachTheirCorrectedSections(t *testing.T) {
 	}
 }
 
-// q3's rerun answer got the bottom line right — a remembered failure is not a
-// ban — but was materially wrong about the architecture and overpromised: it
-// said the line only reaches the model if it survives the router's ranking and
-// small relevance model, and that with changed inputs it WILL try the tool again.
-// The prior-OBSERVED-outcome advisory is read locally from the saved memories
-// before the first request, ranked by its own relevance to the turn, and does not
-// depend on that router path; it bans nothing, so the agent MAY retry or adapt
-// when the circumstances change, and the line never promises a retry. This probe
-// reaches that section by the actual question and a natural paraphrase, and
-// asserts the distinguishing content rather than a shared topic.
+// The question of whether a remembered failure stops codeaf trying a tool again
+// is still asked, and the answer moved: failed attempts are no longer kept at all
+// (the prior-outcome advisory was removed with the rest of the memory nobody
+// could see), so the honest answer is "no, nothing bans a tool", and the one
+// trace of a failure is the bash fix hint. This probe reaches that section by
+// the actual question and a natural paraphrase, and asserts that content.
 func TestAFailedMethodQuestionReachesTheObservedOutcomeAdvisory(t *testing.T) {
 	asks := []string{
 		"Does codeaf remembering a failed method mean it will never try that tool again? What if inputs change?",
@@ -4051,11 +4048,10 @@ func TestAFailedMethodQuestionReachesTheObservedOutcomeAdvisory(t *testing.T) {
 	}
 	const title = "Remembering a failed method or tool"
 	says := []string{
-		"read\n**locally**, from your saved memories, before the first request goes out",
-		"it does not\ndepend on the router's ranking or its small relevance model",
-		"It never bans the tool, and nothing reads a memory to block\na call.",
-		"When the inputs, the tree or the circumstances have changed the agent is\nfree to try it again",
-		"It never promises a retry either",
+		"codeaf does not remember which methods or tools failed",
+		"nothing it keeps\nbans a tool or a command",
+		"When the inputs have changed, the agent\nsimply runs, reads or adapts",
+		"never stops a command running",
 	}
 	for _, question := range asks {
 		reached := false
@@ -4081,25 +4077,18 @@ func TestAFailedMethodQuestionReachesTheObservedOutcomeAdvisory(t *testing.T) {
 	}
 }
 
-// q7's answer overpromised: asked what happens to a last week's failure when
-// the data file has changed, it guaranteed a rerun and said the stale failure
-// would be "retired rather than carried forward". Neither is promised. A
-// changed input does not automatically erase or retire the recorded history and
-// does not force a tool rerun; the past result stays a historical advisory, and
-// a fresh inspection of the changed file is what is needed before the prior
-// result may be called current. The agent may rerun, read or adapt. This probe
-// reaches the dedicated section by the asker's actual words and asserts the
-// retained-history-versus-current-proof distinction rather than the topic.
+// Asked what happens to last week's failure when the data file has changed, the
+// answer is now that no failure is carried forward at all: the agent reads the
+// changed file and runs what it needs, and the only trace is the fix hint, which
+// appears only for the same error text. This probe reaches the dedicated section
+// by the asker's actual words and asserts that content.
 func TestChangedInputQuestionReachesRetainedHistory(t *testing.T) {
 	const question = "If a command failed last week but the data file has changed, how will codeaf use that experience now?"
 	const title = "What happens to old command results when input files change?"
 	says := []string{
-		"command failed last week and the data file has changed",
-		"historical advisory",
-		"does not automatically erase or retire that history",
-		"does not force a rerun",
-		"fresh inspection of the\nchanged file",
-		"may rerun the command, read the changed file, or adapt",
+		"A command that failed before is\nnot remembered as a failure",
+		"the\nagent reads the file and runs what it needs now",
+		"only if the same error text comes back",
 	}
 	reached := false
 	for _, section := range Chat().Search(question, DefaultResults) {

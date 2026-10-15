@@ -4,15 +4,15 @@
 
 A **place** is a full-screen view in codeaf. The main bar groups your daily work first, then utilities:
 
-`Home` · `Chats` · `AI teams` · `Activity` · `Memory` · `Automations` · `Spend` · `Settings`
+`Home` · `Chats` · `AI teams` · `Activity` · `Memories` · `Automations` · `Spend` · `Settings`
 
-AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memory is always available, including before anything has been saved, and Automations stands beside it from the first launch — `/automations` and `alt+7` reach it too. Eight words need 84 columns; on a narrower frame the words on the right fold behind `more ▾`, which opens onto exactly the ones it folded.
+AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memories is always available, including before anything has been saved, and Automations stands beside it from the first launch — `/automations` and `alt+7` reach it too. Eight words need 86 columns; on a narrower frame the words on the right fold behind `more ▾`, which opens onto exactly the ones it folded.
 
 They are drawn on the **top line of every page**, right after the `codeaf` wordmark, on a
 place and in a conversation alike. This manual still calls that row of words **the bar**:
 
 ```
- >● codeaf   Home  Chats  AI teams  Activity  Memory  Automations  Spend  Settings      3 moving · $1.20
+ >● codeaf   Home  Chats  AI teams  Activity  Memories  Automations  Spend  Settings      3 moving · $1.20
 ──────────────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -214,8 +214,9 @@ Three gestures, the same on all seven places:
   mouse: the pointer only underlines a project's name, and a click picks that folder for
   the next message without moving the selection.
 - **a click on a row opens it**, exactly as `enter` on it would: on automations and spend the first press puts the cursor there and opens what the row names — on automations, that row's history. **A click
-  never spends**: on memory, where `enter` on a line asks the model about it, the press
-  opens the line's card instead, and on a shelf it folds the shelf. The verbs stay keys.
+  never spends**: on memory the press opens the line's card, exactly as `enter` does, and
+  on a group it opens or folds the group; asking the model about a line stays a verb. The verbs
+  stay keys.
   Home keeps the same grammar — one click on a row or a fold opens it, and a panel's
   heading opens the place it names — and settings only chooses, because its `enter`
   changes a value.
@@ -408,9 +409,9 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 or press the model name instead. `alt+p` also works on home, where it moves the draft
 to the next project. Other places bind neither chord.
 
-The last two classes are bound where there is something to bind. `alt+<letter>` today is
-`alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
-second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
+The last two classes are bound where there is something to bind. No place binds an
+`alt+<letter>` of its own today — the old memory place's `alt+s` went with its shelf walk, and
+home's panels have no second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
 two places have one: **activity** (when it ran) and **spend** (which days). Both draw the
 same control on their own head row, at the right of the line: `shift+← aug 12 – aug 25 →`,
@@ -419,7 +420,7 @@ The label between the arrows is the control and the reading at once, so the span
 screen once and the keys that move it are beside it. A place with no window to move answers
 those keys with nothing rather than with something that is not drawn, and so does a terminal
 too narrow to draw the control — and the zoom is bound only where its own clause fits, for
-the same reason. **Memory and automations have no time window**; their `shift+<arrow>` keys
+the same reason. **Memories and automations have no time window**; their `shift+<arrow>` keys
 do nothing.
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
@@ -432,7 +433,9 @@ automations it reads:
 r run now   p pause   e edit   d delete   o open where it was asked
 ```
 
-On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
+On memory they are `e fix the wording`, `f forget it`, the moves (`y hold it everywhere`,
+`p hold it in this project`, `m hold it on this machine`), `a ask me about it`, and
+`u put it back` on a line that was let go. On home the
 verbs are the row's own — a question's first two answers on its own answer keys;
 `x delete`, `c copy name`, `n new in project` and `o open folder` on a conversation;
 `s stop it` on a task this window runs. Home's `automations` panel has no verbs: `enter` on
@@ -513,7 +516,7 @@ Neither of them ever ends in `…`, and neither ever cuts inside a word.
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
 
-- the bar shows the established shortcut numbers beside each destination: `1 Home`, `3 Chats`, `2 AI teams`, `4 Activity`, `8 Memory`, `5 Spend`, `6 Settings`, followed by `7 Automations`, which the bar otherwise draws only while you are in it. Visual order does not change shortcut destinations.
+- the bar shows the established shortcut numbers beside each destination: `1 Home`, `3 Chats`, `2 AI teams`, `4 Activity`, `8 Memories`, `5 Spend`, `6 Settings`, followed by `7 Automations`, which the bar otherwise draws only while you are in it. Visual order does not change shortcut destinations.
 - the hint line becomes the chord list
 
 `?` over an empty box draws the same map, which is what that key means on a place — show me
@@ -633,30 +636,34 @@ saved the place is its heading over
 It has the slot the standing orders page had: standing orders are gone, `/standing` is not a
 command any more, and *Automations* has the whole of what replaced them.
 
-## memory — what is held true
+## memories — what is held true, and the Memories tab (it was called Memory)
 
-What codeaf holds true about you and this machine, with what kind of thing each line is, how
-it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so do `alt+8` and `Memory`, the fifth word on the tab bar — the numbers kept their old places, so the fifth word is not `alt+5`.
+The lines codeaf keeps in front of every conversation — what you told it, what the model
+kept, and what it noticed. `/memory` and `/memories` open it, and so do `alt+8` and
+`Memories`, the fifth word on the tab bar — the numbers kept their old places, so the fifth
+word is not `alt+5`. It is always on the bar, between `Activity` and `Automations`; until
+2026-10-14 its word was `Memory`, and typing `memory` on home still finds it.
 
-The page is **shelves** — you, this project, this machine — biggest first, with the biggest
-one open and the rest rolled up. Type to filter what is already on the page, **every letter
-including `u`**; the store is read when you walk in and on the place beat, never on a
-keystroke. `enter` opens or closes a shelf; `enter` on a LINE is `ask me about it` — the
-line goes into a fresh conversation as its opening message and you are taken there. A shelf
-shows three lines and five shelves show at once; `enter` on `▸ 37 more, on this shelf` or
-`▸ 2 more, shelves` draws the rest where they stand, and the same line, now `▾ 37 fewer`,
-puts them back. `alt+s` walks the shelves one at a time. `→` opens the verbs on a line — `c open the card`, which is
-where the full text and where it was learned live, `e fix the wording`, `f forget it`, and
-`u put it back` while there is something to put back.
+It is drawn the way the Activity tab is. Each **group** is a row of its own in the heading
+ink, with how many lines it holds and its fold mark after it: `you, everywhere · 4 ▾`.
+`you, everywhere`, `this machine` and `this project · <name>` are open; another project's
+lines, under that project's name, `couldn't tell which project`, and `let go` — what was
+forgotten or replaced — start folded. Every line hangs under its group on the tree's
+connectors (`├─`, `└─`), with two columns headed on the filter row: `kept by` and `age`.
+The head row counts what is kept: `12 kept`, then `2 don't fit in front of the model ·
+forget some` when lines overflow, and `3 let go`. `+ remember something` starts a new line,
+drawn in that row as you type it.
 
-The foot follows the row: `enter ask me about it · e fix the wording · f forget it` on a
-line, `enter open a shelf · type to filter · alt+s walk the shelves` on a shelf heading.
-**On a machine that has remembered nothing there are no shelves, so none of those keys is
-named** — the foot is `tab next place · esc` and nothing else, and the body is the heading
-`memory` over one line saying what to do instead: `what it has learned about you and this
-machine · /remember adds a line`.
+`→` opens a group and `←` folds it back up; `enter` does not fold anything. `enter` on a
+line opens its **card**; `→` on a line opens its verbs: `e fix the wording`, `f forget it`,
+a move to each place it does not hold yet (`y`, `p`, `m`), `a ask me about it`, and `u put
+it back` on a let-go line. On the card, `o open where it was learned`. `delete` forgets the
+line under the cursor. On a frame 110 columns or wider a pane beside the list reads out the
+row under the cursor, as the Activity tab's does.
 
-`delete` also forgets the line under the cursor.
+**On a machine that has remembered nothing there are no groups**: the page is its heading
+over one dim line, `the lines codeaf keeps in front of every conversation · /remember adds
+one`, and the foot is `tab next place · esc`.
 
 ## spend — what it cost, and why it counts another session or another machine
 
@@ -759,7 +766,7 @@ the line):
 6. and then the day's figure itself.
 
 **The count of things waiting on you never goes.** `2 ?` outlasts the money and the places,
-at every width. With activity and spending to show, an 80-column bar keeps daily work and Memory visible, while Spend and Settings remain under `more`. The menu preserves their names and shortcuts. Wider windows show all main destinations; narrower windows progressively fold them while keeping the current destination visible.
+at every width. With activity and spending to show, an 80-column bar keeps daily work and Memories visible, while Spend and Settings remain under `more`. The menu preserves their names and shortcuts. Wider windows show all main destinations; narrower windows progressively fold them while keeping the current destination visible.
 
 **`more ▾` is a door.** Click it and a small menu hangs under it listing exactly the places it
 folded, each with its key (`spend  alt+5`, `settings  alt+6`). The pointer lights a row and a
@@ -770,7 +777,7 @@ anywhere off the menu, puts it away and leaves everything else as it was.
 bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
 whether or not its word is on the row, and the numbers never move — nor do they follow the
 bar's order: home `alt+1`, AI teams `alt+2`, chats `alt+3`, activity `alt+4`, spend `alt+5`,
-settings `alt+6`, automations `alt+7`, memory `alt+8`.
+settings `alt+6`, automations `alt+7`, memories `alt+8`.
 
 The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts
@@ -793,16 +800,14 @@ an hour ago, `alt+4`, `alt+7` and `alt+8` all open:
 - **automations**, headed `automations`:
   `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"`
 - **memory**, headed `memory`:
-  `what it has learned about you and this machine · /remember adds a line`
-  If this build is not remembering anything at all, the rule under the page also says
-  `memory is off for this session · turn it on under /settings`.
+  `the lines codeaf keeps in front of every conversation · /remember adds one`
 - **spend**, headed `spend`: `every chat and task is priced here as it runs`
 
 On a narrow window the line wraps onto a second or third dim line under the first; it is
 never cut, and never ends in `…`. The moment the first thing arrives the line goes and the list begins under
 the same heading; nothing above it moves.
 - **spend** over `--host` says one dim line where its rows would be when its remote
-  store is unavailable. Memory follows the connected engine's store and setting; see
+  store is unavailable. Memory follows the connected engine's store; see
   *The places over --host* below for the exact words.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
@@ -834,7 +839,7 @@ A place you have never left has no stamp and therefore **no number at all** — 
 greets you with a bare bar rather than with a count over every tab. An unknown count is drawn
 as nothing rather than as a zero.
 
-On memory the number is the memories learned plus the ones let go of since you were last
+On memory the number is the lines kept plus the ones let go of since you were last
 there. On automations it is how many automations have last run to something worth telling
 you — anything but a watch's `nothing new` — since you last left the place, each counted
 once however many times it ran. The counts are recomputed on the same three-second beat the places read on, so a tab
@@ -923,12 +928,11 @@ honest dim sentence instead of falling through to this computer's files.
 
 ## Does memory work when I connect to another machine
 
-Yes. `/memory` and `alt+8` show the connected machine's saved notes, and edits
-and forgetting write back to that same store. `/remember <text>` saves a note,
-`/memories` lists them and `/forget <query>` drops the best match. Plain `codeaf`
-uses this machine's engine through these same doors. With memory off for the
-conversation, the commands and page say
-`memory is off for this session · turn it on under /settings`.
+Yes. `/memory` and `alt+8` show the connected machine's memories, and fixing,
+forgetting and moving a line write back to that same store. `/remember <text>`
+keeps a line there, `/memories` lists them, and the tab forgets a line there. Plain `codeaf` uses this machine's engine through these same doors.
+When that machine's memory store could not be opened, the commands and page say
+`memory is unavailable on this machine · the store could not be opened`.
 
 ## Can I put away a conversation on the other machine from home
 

@@ -135,7 +135,7 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	}
 	workerFor := func(model string, completer session.Completer) *BashWorker {
 		worker := NewBashWorker(store, workspace, model, completer)
-		// The person's rules ride on every worker this run seats, read once by
+		// The memory section rides on every worker this run seats, read once by
 		// the door that built the factory.
 		worker.always = always
 		// A run worker has no parent agent to inherit the web pair from. Bind

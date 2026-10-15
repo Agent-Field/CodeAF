@@ -304,10 +304,7 @@ func TestASkillShelfWorksWithMemoryOff(t *testing.T) {
 		t.Fatal("use_skill is not on the belt of a memory-off session that has a shelf")
 	}
 	if beltHas(agent, "remember") {
-		t.Fatal("remember is on the belt of a session whose memory is off")
-	}
-	if block := agent.memoryBlock(context.Background(), "draft the release notes"); block != "" {
-		t.Fatalf("a memory-off session rendered a memory block %q", block)
+		t.Fatal("remember is on the belt of a session with no memory store")
 	}
 	if out := useSkill(t, agent, `{"mode":"list"}`); !strings.Contains(out, "release-notes") {
 		t.Fatalf("use_skill list on the memory-off shelf = %q", out)

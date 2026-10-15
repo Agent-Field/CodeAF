@@ -1548,12 +1548,10 @@ func (g *TaskGraph) runFrontier() {
 	// ([TaskGraph.holdOnStartingLocked]), because the answer for the second
 	// node of a fan depends on the first one having started.
 	g.governor.observe(g.lanesTaken())
-	// AND THE PERSON'S RULES ARE RESOLVED BEFORE THE LOCK TOO, and at most once
-	// a pass, for the reading's reason: every node in one graph sits in one
-	// place, so the answer is the same for all of them, and reading them per
-	// starting node would be the same question asked ten times
-	// (memory_always.go).
-	orders := g.alwaysWorld()
+	// AND WHAT THE CONVERSATION REMEMBERS IS RESOLVED BEFORE THE LOCK TOO, and at
+	// most once a pass, for the reading's reason: every node in one graph sits in
+	// one place, so the answer is the same for all of them (memory.go).
+	orders := g.memoryWorld()
 
 	g.mu.Lock()
 	// A CLOSED SESSION HAS NO RUNNING NODES, so a pass that arrives after the
@@ -1913,8 +1911,8 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 // THE RULES COME LAST AND NOT FIRST. What the node is doing and what it was
 // told by the work ahead of it are the job; the rules are the conditions the
 // job is done under, and a brief that opened with them would read as the job
-// being about the conditions. `orders` is the person's rules
-// ([TaskGraph.alwaysWorld]), resolved ONCE per frontier pass outside this lock.
+// being about the conditions. `orders` is the conversation's memory section
+// ([TaskGraph.memoryWorld]), resolved ONCE per frontier pass outside this lock.
 func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	brief := g.inheritedLocked(node)
 	if finding := strings.TrimSpace(node.finding); finding != "" {
@@ -5080,13 +5078,6 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 		defer listed.settle(0)
 	}
 
-	// AND WHAT THE PERSON IS REMEMBERED TO WANT, READ ONCE FOR THE WHOLE RUN AND
-	// BESIDE IT (memory.go's [nodeMemory]). Every worker the body builds is handed
-	// the one answer, and the reading is joined here, on the one road out, so it
-	// cannot outlive the node it was read for (task_beside.go's law).
-	ctx, forgetMemory := a.withNodeMemory(ctx, node)
-	defer forgetMemory()
-
 	// WHICH BODY THIS NODE HAS. Everything above and below is the same for all
 	// four kinds — the deadline, the job row, the settle — and the middle is
 	// what a node of this spec IS: a worker in a worktree, a subharness being
@@ -5592,12 +5583,6 @@ func (a *Agent) landBashBeltUnaudited(ctx context.Context, node *TaskNode, tree 
 // get a working copy has to be able to say so to the person who asked for it.
 func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	log := taskLog(listed)
-	// WHAT THE PERSON IS REMEMBERED TO WANT IS READ WHILE THE WORLD IS MADE. The
-	// reading belongs to the run ([Agent.runTaskNode] joins it) and is only begun
-	// here, so its model call overlaps the working copy being carved rather than
-	// following it; the worker built below is handed whatever has come back by
-	// then, and the rest on its next request (memory.go's [nodeMemory]).
-	nodeMemoryOn(ctx, node).begin()
 	// THE WORLD IS MADE AND THEN ASKED WHETHER IT IS THE ONE THE BRIEF ASSUMED,
 	// and both happen before a single model call is bought. Either can settle the
 	// node outright, and both say so the same way.
@@ -7472,14 +7457,10 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // under the graph's lock and this package takes one lock at a time.
 //
 // AND THE ONE THING IT DOES INHERIT OF WHAT THE PERSON IS REMEMBERED TO WANT:
-// the same pre-turn router the conversation runs, asked against this node's
-// brief instead of a typed message (memory.go). It travels as WORDS and never as
-// the store itself — a family of eight nodes must not be eight writers on one
-// brain. IT IS NO LONGER ROUTED HERE. It was, as an argument to the constructor
-// below, which put one reflex call in front of every worker a node built; it is
-// now routed once per node, beside the work, and handed to this worker when it
-// has come back ([nodeMemory]). No store, no reflex, or a router that answered
-// nothing: the node opens with exactly the prompt it always did.
+// the conversation's memory section, closing the node's brief from its first
+// request ([TaskGraph.memoryWorld]). It travels as WORDS and never as the store
+// itself — a family of eight nodes must not be eight writers on one brain — and
+// nothing is routed or fetched for it: there is no router any more.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
 	return a.newTaskAgentOn(ctx, dir, node, suffix, "", false)
 }
@@ -7620,13 +7601,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	child, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
-		// AND THE PROJECT'S APPROVED BINDING RULES BEFORE THE FIRST ACTION. A
-		// worker has no brain of its own, so its parent's is LENT READ-ONLY: the
-		// same owner set, the same approved rules and confirmed decisions in front
-		// of the first provider request, and no write, extraction, import or verb
-		// (contextual_memory.go's [Agent.prepareWorkerBinding]). The node's own
-		// routed shortlist still arrives beside the work ([nodeMemory]); this is
-		// the half that may not be late, and a router outage cannot erase it.
+		// AND THE CONVERSATION'S MEMORY, READ-ONLY. A worker has no brain of its
+		// own, so its parent's is LENT: the same owner set and the same memory
+		// section closing its brief ([TaskGraph.memoryWorld]), and no write,
+		// noticing, import or verb.
 		bindingStore:     parent.bindingBrain(),
 		MemoryProjectKey: parent.MemoryProjectKey,
 		// The node learns from, and into, the PROJECT'S error→fix file rather
@@ -7861,74 +7839,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	if err != nil {
 		return nil, err
 	}
-	// AND WHAT THE PERSON IS REMEMBERED TO WANT, HANDED OVER RATHER THAN WAITED
-	// FOR. The node's brief is routed once, beside the work (memory.go's
-	// [nodeMemory]), and this worker gets the answer now if it has come back and
-	// on its next request if it has not. A worker built for a node whose run
-	// carries no reading — a store that is off, a test building one by hand —
-	// opens with exactly the prompt it always did.
-	// AND THE WORKER'S OBSERVATIONS HAVE A ROAD HOME, through the ONE primitive
-	// every worker constructor shares ([Agent.adoptWorkerObservation]). A node
-	// has no brain of its own, so its failing tools would be recorded nowhere
-	// without it. Only the task label is this node's own.
-	label := "task"
-	if nodeID != 0 {
-		label = fmt.Sprintf("task:%d", nodeID)
-	}
-	a.adoptWorkerObservation(child, label)
-	nodeMemoryOn(ctx, node).handTo(child)
 	return child, nil
-}
-
-// adoptWorkerObservation gives a freshly built child worker that node's OWN
-// road home: the root session's observation bridge and the frozen provenance
-// every receipt it forwards is stamped with. It is the ONE place a worker's
-// collector and origin are set, called by both worker constructors
-// ([Agent.newTaskAgentOn] and [orchestrateExec.newChild]), so an action-taking
-// node cannot be built carrying one half and not the other.
-//
-// IT LENDS THE BRIDGE, NEVER REBUILDS IT. The child has no brain, so it is
-// handed the root's collector and only ever passes it raw observations
-// (contextual_delegated.go); it gains no memory write from the pointer. The
-// child's own [Agent.Close] refuses to seal a collector it does not own, so a
-// node finishing cannot shut the bridge later nodes and turns still need — the
-// same one settlement every observation gets, never two.
-//
-// THE PROVENANCE IS FROZEN HERE, BEFORE THE WORKER RUNS. A first-level worker
-// inherits the root session's live binding circumstances; a nested worker
-// inherits its parent's already-frozen copy so a tree launched under one user
-// turn keeps that turn to the end. Only `task` — the node this worker belongs
-// to — is the caller's to name.
-func (a *Agent) adoptWorkerObservation(child *Agent, task string) {
-	if child == nil {
-		return
-	}
-	// THE WORKER'S OBSERVATIONS HAVE A ROAD HOME. The collector belongs to the
-	// root session and this worker only hands it raw observations.
-	child.outcomes = a.outcomes
-	origin := a.origin
-	if strings.TrimSpace(origin.Session) == "" && a.outcomes != nil {
-		origin = a.outcomes.rootOrigin()
-	}
-	if strings.TrimSpace(task) != "" {
-		origin.Task = task
-	} else {
-		origin.Task = "task"
-	}
-	// AND THIS WORKER'S OWN RUN IDENTITY. A node can have more than one worker
-	// Agent (a repair round, an auditor's sibling), and job ids restart per
-	// Agent, so the run identity — not the task label — is what keeps two
-	// workers' `job 1` from sharing one journal source.
-	origin.Run = child.sessionID()
-	if strings.TrimSpace(origin.Run) == "" || origin.Run == "unfiled" {
-		var b [16]byte
-		if _, err := rand.Read(b[:]); err == nil {
-			origin.Run = "worker-" + hex.EncodeToString(b[:])
-		} else {
-			origin.Run = "worker-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-		}
-	}
-	child.origin = origin
 }
 
 // seatTaskModelLocked answers the model a task worker may actually start on,

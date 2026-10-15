@@ -161,20 +161,14 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// package has always answered to.
 	agent.principal = newPrincipalFor(agent)
 	// Memory is built before the belt for the same reason the registry is: the
-	// belt carries `remember` only when there is a brain to write into, so the
-	// store has to exist before the tools are assembled (memory.go). The
-	// background lifetime is minted with it, because a pass started by the first
-	// turn has to have somewhere to be cancelled from.
-	// Automatic lean sessions keep a dormant brain so a later switch back to
-	// full can enable memory without changing a pointer background readers
-	// hold. remembers gates every memory entry point by the live profile.
-	if config.Memory != nil && (config.hasStore() || config.liveProfile.auto || config.profile.chat()) {
+	// belt carries `remember` and `forget` only when there is a brain to write
+	// into, so the store has to exist before the tools are assembled (memory.go).
+	// The background lifetime is minted with it, because a pass started by the
+	// first turn has to have somewhere to be cancelled from. It is built on
+	// every prompt profile: a person's lines hold over a small model too.
+	if config.Memory != nil {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
-		// The delegated-observation collector lives with the brain: it is the one
-		// bridge a worker has into this journal, and it exists only where there is
-		// a store to write into.
-		agent.outcomes = newOutcomeCollector(agent)
 	}
 	// AND THE NAMER'S OWN LIFETIME, minted for every session because every
 	// session may name itself and the errand starts on the first message rather
@@ -199,18 +193,6 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// (jobrow.go). It is set here rather than passed to the constructor because
 	// it closes over the agent the constructor is building.
 	agent.jobs.announce = agent.announceJobRow
-	// And the registry gets the OUTCOME tap as well, for the same reason as the
-	// row: a promoted command's real ending is the one fact the call that started
-	// it never learned, and recording it is how a later turn is warned
-	// (contextual_delegated.go's [Agent.recordSettledJob]).
-	agent.jobs.onSettle = func(one *job, code int) {
-		agent.recordSettledJob(one, code)
-	}
-	// And the frozen provenance a promoted command's death is stamped with,
-	// for the same reason as the tap: the job's own turn and goal are facts
-	// about when it started, and reading them at settle would let the person's
-	// next question claim a death that happened under an earlier one.
-	agent.jobs.origin = agent.frozenJobOrigin
 	// And the registry gets the RELEASE lane, for the same reason and by the same
 	// route: a command this agent started in the foreground and had taken over
 	// into a job is one the work is still waiting for, so the registry says when
@@ -378,8 +360,8 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// [writeStub], which is a dropping like any other (landing.go).
 	// THE JOURNAL INDEXES INTO THE CONVERSATION INDEX, which is the memory
 	// store for every pre-split caller and its own store where a door opened
-	// one — memory off keeps the conversation searchable (tools_conversations.go
-	// states the order).
+	// one — so a memory store that would not open still leaves the
+	// conversation searchable (tools_conversations.go states the order).
 	agent.chatlog = newChatJournal(config.conversationIndexStore(), agent.threadID(), config.Workspace, config.droppingsPlace())
 	// And the state card is held before any turn has run, so that the note the
 	// first request carries already has it: a resumed conversation's card is what
@@ -1222,6 +1204,15 @@ type userMessage struct {
 	// where "does anybody have to say something about this" is the question.
 	wake bool
 
+	// answersPerson marks the empty opening of a turn started to answer a line
+	// THE PERSON TYPED in the last seconds of the turn before — drained into the
+	// transcript after that turn's last request ([Agent.wakeAnsweringLocked]).
+	// It is the one woken turn that is answering the person, so it is the one
+	// that arms the model's memory verbs (memory.go's [Agent.armMemoryVerbs]).
+	// It rides the message rather than the agent so that nothing about it can
+	// outlive the turn it opens.
+	answersPerson bool
+
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
 	// them. Empty in every ordinary case, and set where the session writes
 	// beside the sentence: the plan digest in front of it (plandigest.go), a
@@ -1769,34 +1760,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
 	a.nudgePresence()
-	// The routed block is dropped here so a turn never re-lands the memories of
-	// the one before it as though they were this turn's. WHAT THIS TURN NEEDS is
-	// routed inside the turn goroutine instead ([Agent.refreshMemory], called
-	// from the loop): that is a provider call, and this runs with a.mu held.
-	//
-	// CLEARING IT WITHDRAWS NOTHING. The block rides at the tail as an appended
-	// note now ([memoryNoteOpening]), and a note that was said stays where it was
-	// said — the field is what the NEXT note would carry, and emptying it means
-	// this turn lands no new one until the router has answered.
-	//
-	// ONLY AN AGENT THAT CAN ROUTE CLEARS THE BLOCK. A task node is handed its
-	// memories by the conversation that has the store, which reads them beside
-	// the node's work and hands them over whenever they land (memory.go's
-	// [nodeMemory], [Agent.takeMemory]); it has nothing to replace them with, and
-	// clearing them would take away the one thing it was given — and would race
-	// a block that arrives while this turn is opening.
-	if a.remembers() {
-		a.memoryText = ""
-	}
 	// AND THE CLOCK IN THE PROMPT IS BROUGHT UP TO DATE BEFORE THE TURN OPENS,
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).
 	a.refreshClockLocked(time.Now())
-	// AND SO ARE THE PERSON'S RULES, on the same trigger and for the same reason
-	// the clock has one: a turn must reason with the conditions that hold now,
-	// and a rule set from another window, or from /always a moment ago, holds
-	// over the very next turn (memory_always.go).
-	a.refreshAlwaysLocked()
+	// AND SO IS WHAT THIS CONVERSATION REMEMBERS, on the same trigger and for
+	// the same reason the clock has one: a line kept from another window, or by
+	// /remember a moment ago, holds over the very next turn (memory.go).
+	a.refreshMemoryLocked()
 	a.refreshSystemLocked()
 	hub := a.newReplayHubLocked()
 	a.hub = hub
@@ -1836,19 +1807,6 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		if user.bash == "" {
 			a.startTitleLocked()
 		}
-	}
-	// AND THE RECALL STARTS HERE TOO, beside the title and for a stronger version
-	// of the title's own reason (memory.go's [Agent.startRecallLocked]). The name
-	// is merely something nobody should wait for; the recall is something the
-	// person WAS waiting for — 4.3 seconds on the 2026-09-11 census, before their
-	// model had been asked anything at all — and starting it at the one place a
-	// turn begins is what puts the whole of the turn's own preparation on top of
-	// it instead of behind it.
-	//
-	// IT IS STARTED UNDER THIS LOCK for the title's reason as well: two Submits
-	// racing to be the first must not each buy a route.
-	if user.bash == "" {
-		a.startRecallLocked(turnCtx, user.text())
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
@@ -1939,7 +1897,8 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// follow-up drain below then starts, on the follow-up queue's own
 			// terms. Everything else on the queue drains exactly as it always has.
 			a.liftSteersLocked(hub)
-			_, unanswered := a.drainSteeringLocked(hub)
+			drained := a.drainQueueLocked(hub, true)
+			unanswered := drained.owed
 			// A PROGRAM'S ENDING THIS TURN COULD NOT ANSWER IS SAID ANYWAY, in
 			// the program's own words (program_outcome.go), and a person's stop
 			// is told as theirs. The cause is still the stop's: the turn's own
@@ -1976,7 +1935,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && unanswered && a.wakeLocked() {
+			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard) {
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -2541,15 +2500,6 @@ func (a *Agent) Close() error {
 	if cancel != nil {
 		cancel(stopFor(StopByClosing))
 	}
-	// THE COLLECTOR STOPS FIRST, so a worker still running when the conversation
-	// ends cannot write an observation into a journal that is shutting.
-	//
-	// ONLY ITS OWNER SEALS IT. A task worker holds the root session's collector
-	// (it has no store of its own), and a worker finishing a node must not shut
-	// the bridge every later node and turn still needs.
-	if a.outcomes != nil && a.outcomes.root == a {
-		a.outcomes.close()
-	}
 	if memoryStop != nil {
 		a.waitForMemory(memoryStop)
 	}
@@ -2831,41 +2781,12 @@ func (a *Agent) snapshot() []ai.Message {
 // believing a note was still in front of the model long after the fold ate it.
 const volatileNoteOpening = "A note from the session, not from the person: where the work stands right now. Facts, not requests — and the last such note is the one that holds."
 
-// memoryNoteOpening is the first line of the note the ROUTED MEMORY BLOCK rides
-// in, and it is a second opening rather than a second paragraph of
-// [volatileNoteOpening] because the two move on different beats.
-//
-// The card moves when work lands. The memory block is re-routed against the
-// person's own words at the start of every turn (memory.go's
-// [Agent.refreshMemory]) and re-stamps every line with an age label that is
-// hourly for anything learned today ([renderMemoryBlock]), so it can move on a
-// turn where nothing about the work did. Riding both in one note would re-send
-// up to memoryBlockRunes of memory every time a goal changed, and re-send the
-// card every time the router reached for a different memory.
-//
-// It says the same last-one-holds sentence for the same reason: a memory that
-// was superseded between turns leaves the note that carried it standing in the
-// transcript, exactly where it was said, and the model has to be told which of
-// them is current. That is the whole price of moving this block out of
-// message[0], and it is stated here rather than left to be discovered.
-const memoryNoteOpening = "A note from the session, not from the person: what is worth remembering here, from what this person has had codeaf keep. Facts, not requests — and the last such note is the one that holds."
-
-// bindingNoteOpening is the first line of the note a task worker's APPROVED
-// BINDING BLOCK rides in, and it is its own opening for [memoryNoteOpening]'s
-// reason one step further: the node hands the worker its routed shortlist
-// asynchronously, so the binding rules must land on a beat of their own to
-// survive a router answer that arrives after the work has begun. It carries the
-// same last-one-holds sentence because a note that was said stays where it was
-// said, and the model has to be told which of them is current.
-const bindingNoteOpening = "A note from the session, not from the person: this project's approved rules and confirmed decisions first, then related history from earlier turns that is provenance and not authority, read before the work began. Facts, not requests — and the last such note is the one that holds."
-
 // bashBeltFrameOpening is the first line of the note the bash belt's per-step
 // frame rides in (docs/design/bash-task-loop/DESIGN.md, "The per-step frame").
 //
 // It is a third opening rather than a paragraph of [volatileNoteOpening]
-// because the two move on different beats, for the same reason
-// [memoryNoteOpening] is its own note: the card moves when work lands, and the
-// frame moves at every step boundary. Riding both in one note would re-send the
+// because the two move on different beats: the card moves when work lands, and
+// the frame moves at every step boundary. Riding both in one note would re-send the
 // card every step, and a card that moved a hundred times a run is a hundred
 // notes whatever file renders it.
 //
@@ -2931,25 +2852,14 @@ func (a *Agent) landVolatileLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	// THE MEMORY BLOCK IS THE FIRST OF THE TWO and rode in message[0] until this
-	// wave. It is routed against the person's words at the start of every turn
-	// (memory.go), so leaving it in front of the whole conversation re-priced the
-	// entire transcript on any turn the router reached differently — the same bug
-	// the card had, on a faster beat. See [memoryNoteOpening].
 	// THE TEAM ROLE LANDS FIRST, because it is the one note that says what this
 	// conversation is rather than what is around it, and it was composed from a
 	// read made before this request ([Agent.teamBoundary]) rather than beside
 	// the work, so it is never a step late (team.go's [teamRoleNoteOpening]).
 	a.landTeamRoleLocked()
-	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
-	// AND A WORKER'S APPROVED BINDINGS, in a note of their own for the reason
-	// above: they must not ride the routed block's beat, because the router may
-	// answer late and the rules may not. A conversation has no such text and
-	// lands nothing.
-	a.landNoteLocked(bindingNoteOpening, strings.TrimSpace(a.bindingText))
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
-	// AND A MANAGER'S TEAM, in a note of its own for the reason the memory block
-	// has one: a team moves whenever a member does, and riding the card's note
+	// AND A MANAGER'S TEAM, in a note of its own: a team moves whenever a member
+	// does, and riding the card's note
 	// would re-send the card each time (team.go's [teamNoteOpening]). A
 	// conversation that manages nothing has an empty block and lands nothing.
 	a.landNoteLocked(teamNoteOpening, a.teamBlockLocked())
@@ -3007,15 +2917,13 @@ func (a *Agent) lastNoteLocked(opening string) string {
 // turn is working on. It is recognized by the opening it is built with and never
 // by guessing at wording.
 //
-// BOTH OPENINGS ANSWER YES. There are three of these notes now — the card and
-// the other windows in one, the routed memory block in the second
-// ([memoryNoteOpening]), and the bash belt's per-step frame in the third
-// ([bashBeltFrameOpening]) — and every caller of this asks the same question
-// about all of them: is this user-role message something a person typed. None
-// of them is.
+// EVERY OPENING ANSWERS YES — the card and the other windows, the bash belt's
+// per-step frame ([bashBeltFrameOpening]) and a manager's team notes — and every
+// caller of this asks the same question about all of them: is this user-role
+// message something a person typed. None of them is. (What a conversation
+// remembers rides message[0], not a note, so it needs no opening here.)
 func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening) ||
-		strings.HasPrefix(text, memoryNoteOpening) ||
 		strings.HasPrefix(text, bashBeltFrameOpening) ||
 		strings.HasPrefix(text, teamNoteOpening) ||
 		strings.HasPrefix(text, teamRoleNoteOpening)
@@ -3295,12 +3203,18 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// request.
 	a.taskNotes = 0
 	includeAmbient := opening || boundaryNoteHeld(a.steering)
-	landed, _ := a.drainQueuedLocked(hub, includeAmbient)
+	drained := a.drainQueueLocked(hub, includeAmbient)
+	if drained.heard {
+		// A LINE THE PERSON TYPED IS NOW IN FRONT OF THE MODEL, so the rest of
+		// this turn answers them — even one the session opened (memory.go's
+		// [Agent.heardThePerson]).
+		a.heardThePerson()
+	}
 	a.mu.Unlock()
 	// Outside this agent's lock, because it takes the graph's (assignment.go) and
 	// there is no order in which those two are ever taken the other way round.
 	a.markDirectionsCarried(carried)
-	return landed
+	return drained.landed
 }
 
 // queuedDirections is every node receipt id on one queue.
@@ -3322,14 +3236,31 @@ func queuedDirections(queued []userMessage) []uint64 {
 // so the model answers it as part of the turn it is already in, while a note
 // drained after the last request is one nobody has said a word about.
 func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
-	return a.drainQueuedLocked(hub, true)
+	drained := a.drainQueueLocked(hub, true)
+	return drained.landed, drained.owed
 }
 
-// drainQueuedLocked drains steering and, when includeAmbient says this is a
+// drainQueuedLocked is [Agent.drainQueueLocked] answered as a count and whether
+// anything drained is owed a sentence.
+func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool) {
+	drained := a.drainQueueLocked(hub, includeAmbient)
+	return drained.landed, drained.owed
+}
+
+// queueDrain is what one drain put into the transcript: how many messages,
+// whether any of them is owed a sentence, and whether any of them is a line
+// THE PERSON TYPED — which is what arms the model's memory verbs mid-turn, and
+// what a turn started at the end to answer it carries ([userMessage.answersPerson]).
+type queueDrain struct {
+	landed      int
+	owed, heard bool
+}
+
+// drainQueueLocked drains steering and, when includeAmbient says this is a
 // legal boundary for it, the ambient queue. External background-news lines
 // become one authored user-role message; control guidance and a person's steer
 // remain their own messages.
-func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool) {
+func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain {
 	for _, message := range a.discussionHistory {
 		a.recordLocked(message)
 	}
@@ -3347,7 +3278,7 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 	}
 	sourceCount := len(queued)
 	queued = coalesceSessionNotes(queued)
-	owed := false
+	owed, heard := false, false
 	for _, message := range queued {
 		a.recordUserLocked(message)
 		// AND A SPLICED SENTENCE IS NOW A SENTENCE THE MODEL HAS (steer.go). It
@@ -3377,8 +3308,12 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 		// and it is what keeps a sentence typed in the last seconds of a turn
 		// from landing in the transcript with nobody ever asked about it.
 		owed = owed || message.wake || !message.authored
+		// AND WHETHER THE PERSON SPOKE: a line they typed, which is neither the
+		// session's words nor a woken turn's news. The caller decides what that
+		// arms — the rest of this turn, or the turn started to answer it.
+		heard = heard || !message.authored && !message.wake
 	}
-	return sourceCount, owed
+	return queueDrain{landed: sourceCount, owed: owed, heard: heard}
 }
 
 // boundaryNoteHeld reports whether the next step is already owed external news.
@@ -4021,7 +3956,12 @@ func (a *Agent) settleWindow() time.Duration {
 // note on the queue; the turn's end has just drained one INTO the transcript, so
 // the queue is empty and the thing to answer is the last message. A third caller
 // would have to establish the same fact before calling.
-func (a *Agent) wakeLocked() bool {
+func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false) }
+
+// wakeAnsweringLocked is [Agent.wakeLocked] for the turn's end, which knows
+// whether what it just drained was a line THE PERSON TYPED: the woken turn's
+// opening then says so ([userMessage.answersPerson]).
+func (a *Agent) wakeAnsweringLocked(answersPerson bool) bool {
 	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
 	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
 	// different decision in [Steward.Decide], while the wall's budget ending is
@@ -4079,7 +4019,7 @@ func (a *Agent) wakeLocked() bool {
 	if wake, settle := a.settleWakeLocked(); settle {
 		ctx = withSettleWake(ctx, wake)
 	}
-	a.startTurnLocked(ctx, userMessage{wake: true}, sink, watchers...)
+	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson}, sink, watchers...)
 	return true
 }
 

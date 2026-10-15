@@ -338,67 +338,33 @@ func TestACardThatMovesBetweenTurnsCostsOnlyTheTail(t *testing.T) {
 	}
 }
 
-// TestARoutedMemoryChangeLeavesMessageZeroByteIdentical is the same finding
-// one beat faster, and the one this wave landed.
-//
-// The card moves when work lands. The memory block is re-chosen against the
-// person's own words at the START OF EVERY TURN (memory.go's refreshMemory) and
-// every line it keeps is re-stamped with an age label that is hourly for
-// anything learned today, so it moves on turns where nothing about the work
-// did — and while it rode in message[0] each of those turns re-priced every
-// token of the conversation behind it. It rides at the tail now, so the
-// assertion is the strong one: message[0] itself, byte for byte.
-func TestARoutedMemoryChangeLeavesMessageZeroByteIdentical(t *testing.T) {
-	completer := &beltCompleter{scriptedCompleter: scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("first"), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("second"), nil
-		},
-	}}}
-	agent, _ := newTestAgent(t, completer, nil)
+// TestMemoryRidesMessageZeroAndMovesItOnlyWhenALineChanges is the memory
+// block's half of the prefix law. Every kept line rides message[0], so the
+// block must render byte for byte from one turn to the next — no age, no clock,
+// no re-choosing — and move only when somebody kept or forgot a line, which is
+// a deliberate act like attaching a folder.
+func TestMemoryRidesMessageZeroAndMovesItOnlyWhenALineChanges(t *testing.T) {
+	script := &reflexScript{}
+	agent, brain := brainAgent(t, script, nil)
+	remember(t, brain, "", "this person indents with tabs")
 
-	// The block a task node is opened with, and the block a router hands back,
-	// are the same field: this session has no store, so what is set here is what
-	// the turn carries (memory.go's takeMemory and refreshMemory).
-	agent.mu.Lock()
-	agent.memoryText = "\n<memory>\n- indent: this person indents with tabs (learned today)\n</memory>\n"
-	agent.mu.Unlock()
-
-	events, err := agent.Submit(context.Background(), "one")
-	if err != nil {
-		t.Fatalf("Submit one: %v", err)
+	collect(t, mustSubmit(t, agent, "one"))
+	settleMemory(agent)
+	collect(t, mustSubmit(t, agent, "two"))
+	settleMemory(agent)
+	if script.system(0) != script.system(1) {
+		t.Fatalf("message[0] moved with no line kept or forgotten, so every token behind it is re-billed uncached\nwas:  %.600s\nnow:  %.600s",
+			script.system(0), script.system(1))
 	}
-	collect(t, events)
-
-	// The subject moved, so the router reached for something else.
-	agent.mu.Lock()
-	agent.memoryText = "\n<memory>\n- ports: the dev server answers on 8081 (learned yesterday)\n</memory>\n"
-	agent.mu.Unlock()
-
-	events, err = agent.Submit(context.Background(), "two")
-	if err != nil {
-		t.Fatalf("Submit two: %v", err)
+	if !strings.Contains(script.system(0), "this person indents with tabs") {
+		t.Fatalf("the kept line never reached message[0]:\n%s", script.system(0))
 	}
-	collect(t, events)
-
-	first := wireMessages(t, completer.request(0))
-	second := wireMessages(t, completer.request(1))
-	if first[0] != second[0] {
-		t.Fatalf("message[0] moved, so every token of the conversation behind it is re-billed uncached\nwas:  %.600s\nnow:  %.600s",
-			first[0], second[0])
+	if _, err := agent.Remember("the dev server answers on 8081"); err != nil {
+		t.Fatal(err)
 	}
-	assertPrefix(t, "the turn after the routed memory moved", first, second)
-
-	// And it did reach the model, at the back — the prefix above is stable
-	// because the block moved to the tail and not because nothing happened.
-	tail := strings.Join(second[len(first):], "\n")
-	if !strings.Contains(tail, "answers on 8081") {
-		t.Fatalf("the newly routed memory never reached the request:\n%s", tail)
-	}
-	if !strings.Contains(tail, memoryNoteOpening) {
-		t.Fatalf("the block landed without the opening that says who is speaking:\n%s", tail)
+	collect(t, mustSubmit(t, agent, "three"))
+	if !strings.Contains(script.system(2), "answers on 8081") {
+		t.Fatalf("a line kept between turns never reached the next request:\n%s", script.system(2))
 	}
 }
 

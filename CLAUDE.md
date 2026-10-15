@@ -215,9 +215,11 @@ two cannot reach each other, and a page name may not exist in both.
 
 Also true and easy to forget: `internal/session/prompts/system.md` is what the model is
 told it can do. If a tool is conditional or absent, the prompt must not promise it. It has
-been wrong before — it advertised `note`/`forget` (which need a `Config.MemoryFile` that
-no door sets) and claimed `read` lists directories (it is `os.ReadFile`; a directory is an
-error).
+been wrong before — it advertised `note`/`forget` (which needed a `Config.MemoryFile` that
+no door set) and claimed `read` lists directories (it is `os.ReadFile`; a directory is an
+error). Today `remember` and `forget` ride only a writable conversation's full belt
+(`memoryTools` in `internal/session/memory.go`), and the page promises neither where the
+belt lacks it.
 
 ## Design laws the codebase enforces
 

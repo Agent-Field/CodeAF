@@ -157,7 +157,7 @@ func TestSettingsOrganizationRenderedDetailsAndPinnedScope(t *testing.T) {
 	a.openSettings()
 	cursorTo(t, a, config.KeyMemoryEnabled)
 	visible := strings.Join(strings.Fields(plain(frame(a))), " ")
-	for _, want := range []string{"Restart the CLI to apply this to already-open chats", "Turning this off does not delete saved memories."} {
+	for _, want := range []string{"Applies from the next turn", "nothing saved is deleted"} {
 		if !strings.Contains(visible, want) {
 			t.Fatalf("critical memory detail absent from rendered 80-column frame: %s\n%s", want, visible)
 		}

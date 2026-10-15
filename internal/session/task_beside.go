@@ -21,13 +21,13 @@ package session
 //
 // ── WHAT IS TRUE NOW ──
 //
-// Both calls are a [besideWork]: started next to the work, bound to the node's
-// own context, and joined before the node leaves the code that started them. What
-// each one's answer does when it lands is the caller's, because the two answers
-// reach the worker through two different doors — the memory block through the
-// note the next request is assembled with (memory.go's [nodeMemory]), the division
-// through the steering queue under the lock the runner's tail reads its news
-// under (task_divide_sketch.go's [sizingBeside]). What they share is the part
+// The division reading is a [besideWork]: started next to the work, bound to the
+// node's own context, and joined before the node leaves the code that started
+// it. Its answer reaches the worker through the steering queue under the lock
+// the runner's tail reads its news under (task_divide_sketch.go's
+// [sizingBeside]). The memory routing that once shared this door is gone: there
+// is no router, and the node's brief carries the memory section from its first
+// request ([TaskGraph.memoryWorld]). What they share is the part
 // that is easy to get wrong three times: who owns the goroutine, what cancels it,
 // and where it is waited for.
 //

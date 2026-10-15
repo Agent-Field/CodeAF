@@ -57,13 +57,14 @@ type BashWorker struct {
 	store     *plandb.Store
 	workspace string
 	model     string
-	// always is the person's rules over this place — memories marked always —
-	// rendered by the door ([session.AlwaysWorld]) and closed on by the worker's
-	// brief. It is the same section a task node of the conversation reads, so a
-	// plan-born worker works under the house rules too (#1549). It is set by the
-	// run's factory rather than taken by [NewBashWorker], because it is the
-	// factory's door that read them. Empty means no rule holds, and no section
-	// is rendered.
+	// always is the memory section over this place — every line kept for the
+	// person, this machine and this project — rendered by the door
+	// ([session.MemoryWorld]) and closed on by the worker's brief. It is the
+	// same section a task node of the conversation reads, so a plan-born worker
+	// works under the person's lines too (#1549). It is set by the run's
+	// factory rather than taken by [NewBashWorker], because it is the factory's
+	// door that read them. Empty means nothing is kept, and no section is
+	// rendered. (The name is the field's from when only rules rode here.)
 	always    string
 	completer session.Completer
 	// The door explains a refused account without changing the request road

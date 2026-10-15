@@ -1015,7 +1015,7 @@ Yes, in two ways: the transcript itself, and three tools that hold working state
 **outside** the transcript so a compaction cannot lose it.
 
 (Carrying something into a *later* conversation is a different mechanism and has
-its own page — `remember`, `/remember`, `/memories` and `/forget` are on
+its own page — `remember`, `forget`, `/remember`, `/memories` and the Memories tab are on
 what-i-remember.)
 
 **`track`** records one item. Arguments: `text` (required), `kind` (required —
@@ -1326,13 +1326,14 @@ watch you saved on its card. It is not a job: codeaf's clock runs it, not this
 conversation, so it keeps running while any codeaf window is open — never with every
 window closed — says how each run went in the conversation that made it, and is paused or
 deleted in `/automations` or by saying so. *Automations* is the whole account. A rule —
-"always use tabs here" — survives as a memory marked always (`/always`, *What I remember*).
+"always use tabs here" — survives as a memory (`/remember`, *What I remember*).
 
 What does survive: the transcript itself, which is written to the session file
 and replayed when you resume; the working state recorded with `track` and
 `commit`, kept in a file beside that session file; **anything remembered**, with
-the `remember` tool or `/remember` or by asking, which is kept per person and
-read by every conversation after this one (see what-i-remember); **a setting
+the `remember` tool or `/remember` or by asking — or noticed after a turn you
+typed, which the conversation says — kept for you, this machine or this project
+and in front of every conversation after this one (see what-i-remember); **a setting
 changed with `change_setting`**, which is written into your profile's
 `config.json` and read by every conversation after it; and anything written to
 disk by `write`, `edit` or a command you ran.

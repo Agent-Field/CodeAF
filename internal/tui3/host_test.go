@@ -253,7 +253,6 @@ func TestCommandsWithoutAFarDoorNameTheMachineAndTouchNoLocalState(t *testing.T)
 		{"memories", func() { a.runMemories("") }},
 		{"memory query", func() { a.runMemories("Ada") }},
 		{"remember", func() { a.runRemember("Ada likes tea") }},
-		{"forget", func() { a.runForget("Ada") }},
 		{"subharness", func() { a.openSubharness("") }},
 		{"harness", a.openHarness},
 	}

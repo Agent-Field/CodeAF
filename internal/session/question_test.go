@@ -325,7 +325,7 @@ func TestTheRecordRidesTheNextRebuildOfTheSystemPrompt(t *testing.T) {
 	agent.recordDecision(DecisionRecord{Head: "which storage shape", Picked: []string{"1"}, By: DecidedByPerson})
 
 	agent.mu.Lock()
-	agent.alwaysText = "\n\nAlways:\n- keep the tests green"
+	agent.memoryText = "\n<memory>\nMemory:\n\n- \"keep the tests green\"\n</memory>\n"
 	agent.refreshSystemLocked()
 	carried := messageText(agent.messages[0])
 	agent.mu.Unlock()
