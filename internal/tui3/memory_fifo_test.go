@@ -16,7 +16,7 @@ import (
 )
 
 // The gate holds only the first write. Both roads still apply every operation
-// through a real session and store, so a forget racing a save loses real data.
+// through a real session and store, so a read racing a save misses real data.
 type fifoMemorySession struct {
 	*session.Agent
 	entered, release chan struct{}
@@ -41,12 +41,12 @@ func (s *fifoMemorySession) Remember(text string) (string, error) {
 	return title, err
 }
 
-func (s *fifoMemorySession) Forget(query string) (string, error) {
-	title, err := s.Agent.Forget(query)
+func (s *fifoMemorySession) Memories(query string) ([]session.MemoryLine, error) {
+	lines, err := s.Agent.Memories(query)
 	s.mu.Lock()
-	s.applied = append(s.applied, "forget "+query)
+	s.applied = append(s.applied, "memories "+query)
 	s.mu.Unlock()
-	return title, err
+	return lines, err
 }
 
 func fifoMemoryApp(t *testing.T, hosted bool) (*app, *fifoMemorySession, func()) {
@@ -92,20 +92,20 @@ func TestMemoryTwoSavesApplyAndReportInIssueOrder(t *testing.T) {
 	testMemoryFIFO(t, "/remember amber dispatch beacon", "remembered ·", []string{"remember cobalt shipment fixture", "remember amber dispatch beacon"})
 }
 
-func TestMemorySaveThenForgetAppliesAndReportsInIssueOrder(t *testing.T) {
-	testMemoryFIFO(t, "/forget cobalt", "forgot ·", []string{"remember cobalt shipment fixture", "forget cobalt"})
+func TestMemorySaveThenReadAppliesAndReportsInIssueOrder(t *testing.T) {
+	testMemoryFIFO(t, "/memory cobalt", "· cobalt shipment fixture", []string{"remember cobalt shipment fixture", "memories cobalt"})
 }
 
 func TestMemoryIssueOrderSurvivesReversedCommandScheduling(t *testing.T) {
 	a, s, release := fifoMemoryApp(t, false)
 	first := a.slash("/remember cobalt shipment fixture")
-	second := a.slash("/forget cobalt")
+	second := a.slash("/memory cobalt")
 	secondReplies := make(chan tea.Msg, 1)
 	go func() { secondReplies <- second() }()
 	select {
 	case reply := <-secondReplies:
 		a.Update(reply)
-		t.Fatal("scheduling the second command first applied a forget before its save")
+		t.Fatal("scheduling the second command first ran a read before its save")
 	case <-time.After(100 * time.Millisecond):
 	}
 	firstReplies := make(chan tea.Msg, 1)
@@ -118,12 +118,12 @@ func TestMemoryIssueOrderSurvivesReversedCommandScheduling(t *testing.T) {
 	release()
 	a.Update(fifoMemoryReply(t, firstReplies))
 	a.Update(fifoMemoryReply(t, secondReplies))
-	if got := plain(lastNote(t, a)); !strings.Contains(got, "forgot · cobalt shipment fixture") {
-		t.Fatalf("later forget receipt = %q", got)
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "· cobalt shipment fixture") {
+		t.Fatalf("later read receipt = %q", got)
 	}
 }
 
-func TestMemoryLateSaveKeepsForgetQueuedThroughItsGrace(t *testing.T) {
+func TestMemoryLateSaveKeepsTheNextCommandQueuedThroughItsGrace(t *testing.T) {
 	a, s, release := fifoMemoryApp(t, true)
 	first := a.slash("/remember cobalt shipment fixture")
 	// Only the grace clock is controlled. The engine's ordinary wire deadline
@@ -135,7 +135,7 @@ func TestMemoryLateSaveKeepsForgetQueuedThroughItsGrace(t *testing.T) {
 	firstTicket := memoryTails.tickets[origin]
 	firstTicket.after = func(wait time.Duration) <-chan time.Time { graceStarted <- wait; return grace }
 	memoryTails.Unlock()
-	second := a.slash("/forget cobalt")
+	second := a.slash("/memory cobalt")
 	firstReplies, secondReplies := make(chan tea.Msg, 1), make(chan tea.Msg, 1)
 	go func() { firstReplies <- first() }()
 	select {
@@ -164,7 +164,7 @@ func TestMemoryLateSaveKeepsForgetQueuedThroughItsGrace(t *testing.T) {
 	}
 	select {
 	case <-secondReplies:
-		t.Fatal("forget overtook the engine's still-running late write")
+		t.Fatal("the read overtook the engine's still-running late write")
 	case <-time.After(100 * time.Millisecond):
 	}
 	a.Update(key("x"))
@@ -181,17 +181,13 @@ func TestMemoryLateSaveKeepsForgetQueuedThroughItsGrace(t *testing.T) {
 	// grace is therefore the bounded path that releases the queued operation.
 	grace <- time.Time{}
 	a.Update(fifoMemoryReply(t, secondReplies))
-	if got := plain(lastNote(t, a)); !strings.Contains(got, "forgot · cobalt shipment fixture") {
-		t.Fatalf("queued forget receipt = %q", got)
-	}
-	lines, err := s.Agent.Memories("cobalt")
-	if err != nil || len(lines) != 0 {
-		t.Fatalf("late save survived its later forget: %+v, %v", lines, err)
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "· cobalt shipment fixture") {
+		t.Fatalf("queued read receipt = %q, want it to see the late save", got)
 	}
 	s.mu.Lock()
 	got := append([]string(nil), s.applied...)
 	s.mu.Unlock()
-	if strings.Join(got, "\n") != "remember cobalt shipment fixture\nforget cobalt" {
+	if strings.Join(got, "\n") != "remember cobalt shipment fixture\nmemories cobalt" {
 		t.Fatalf("late operation order or retries = %q", got)
 	}
 	memoryTails.Lock()
@@ -260,7 +256,7 @@ func testMemoryFIFO(t *testing.T, secondLine, secondReceipt string, want []strin
 				t.Fatalf("application order = %q, want %q", got, want)
 			}
 			lines, err := s.Agent.Memories("cobalt")
-			if err != nil || (secondReceipt == "forgot ·" && len(lines) != 0) || (secondReceipt == "remembered ·" && len(lines) != 1) {
+			if err != nil || len(lines) != 1 {
 				t.Fatalf("final saved cobalt notes = %+v, %v", lines, err)
 			}
 		})
@@ -285,7 +281,7 @@ func TestMemorySurfaceShutdownReleasesQueuedCommandsWithoutStartingThem(t *testi
 			memoryTails.Lock()
 			firstTicket := memoryTails.tickets[origin]
 			memoryTails.Unlock()
-			second := a.slash("/forget cobalt")
+			second := a.slash("/memory cobalt")
 			memoryTails.Lock()
 			secondTicket := memoryTails.tickets[origin]
 			memoryTails.Unlock()
@@ -313,14 +309,14 @@ func TestMemorySurfaceShutdownReleasesQueuedCommandsWithoutStartingThem(t *testi
 			}
 			assertMemoryShutdownRetired(t, origin, firstTicket, secondTicket)
 			// A started save can still finish, but its discarded receipt must
-			// never be needed to retire the queue or start the queued forget.
+			// never be needed to retire the queue or start the queued read.
 			release()
 			if reply := fifoMemoryReply(t, firstReplies); reply != nil {
 				t.Fatalf("closed surface produced a late receipt: %#v", reply)
 			}
 			lines, err := s.Agent.Memories("cobalt")
 			if err != nil || len(lines) != 1 {
-				t.Fatalf("shutdown started the queued forget or undid the accepted save: %+v, %v", lines, err)
+				t.Fatalf("shutdown undid the accepted save: %+v, %v", lines, err)
 			}
 			s.mu.Lock()
 			applied := append([]string(nil), s.applied...)
@@ -343,7 +339,7 @@ func TestMemorySurfaceShutdownRetiresUndeliveredAndUnscheduledCommands(t *testin
 	firstTicket := memoryTails.tickets[origin]
 	memoryTails.Unlock()
 	_ = first() // Bubble Tea drops this receipt when the surface closes.
-	second := a.slash("/forget amber")
+	second := a.slash("/memory amber")
 	memoryTails.Lock()
 	secondTicket := memoryTails.tickets[origin]
 	memoryTails.Unlock()
@@ -368,7 +364,7 @@ func TestMemorySurfaceShutdownRetiresTimeoutGraceWithoutWaitingForClock(t *testi
 	firstTicket.after = func(time.Duration) <-chan time.Time { return grace }
 	memoryTails.Unlock()
 	a.Update(first())
-	second := a.slash("/forget amber")
+	second := a.slash("/memory amber")
 	memoryTails.Lock()
 	secondTicket := memoryTails.tickets[origin]
 	memoryTails.Unlock()

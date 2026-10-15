@@ -77,378 +77,124 @@ func prompt(request ai.Request) string {
 	return builder.String()
 }
 
-var index = []Stub{
-	{ID: "m3", Title: "standup is at 9:15", Type: "fact", Scope: "project"},
-	{ID: "m7", Title: "prefers dark themes", Type: "preference", Scope: "user"},
-}
+// ── notice ──────────────────────────────────────────────────────────────────
 
-// ── route ───────────────────────────────────────────────────────────────────
+var kept = []string{"deploys on Fridays", "prefers dark themes"}
 
 // A REPLY IS A REPLY WHATEVER IT IS WRAPPED IN. A small model fences its JSON,
 // prefaces it, or apologises after it, and every one of those is the right
-// answer with something around it — none of them may cost a turn its routing.
-func TestRouteReadsTheAnswerThroughWhateverTheModelWrappedItIn(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		reply string
-	}{
-		{"clean json", `{"inject":["m3"],"cmd":null}`},
-		{"fenced json", "```json\n{\"inject\":[\"m3\"],\"cmd\":null}\n```"},
-		{"prose either side", "Sure! Here is the answer:\n{\"inject\":[\"m3\"],\"cmd\":null}\nHope that helps."},
+// answer with something around it.
+func TestNoticeReadsTheAnswerThroughWhateverTheModelWrappedItIn(t *testing.T) {
+	for _, wrapped := range []string{
+		`{"keep":"uses tabs","scope":"user","replaces":0}`,
+		"```json\n{\"keep\":\"uses tabs\",\"scope\":\"user\",\"replaces\":0}\n```",
+		"Here you go: {\"keep\":\"uses tabs\",\"scope\":\"user\",\"replaces\":0} hope that helps",
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			client := &fake{replies: []string{test.reply}}
-			result, err := Route(context.Background(), client, "when is standup", index)
-			if err != nil {
-				t.Fatalf("Route: %v", err)
-			}
-			if len(result.Inject) != 1 || result.Inject[0] != "m3" {
-				t.Fatalf("Route injected %v, want [m3]", result.Inject)
-			}
-			if result.Cmd != nil {
-				t.Fatalf("Route found a command in an ordinary question: %+v", result.Cmd)
-			}
-			if len(client.calls) != 1 {
-				t.Fatalf("Route made %d calls for a readable answer, want 1", len(client.calls))
-			}
-		})
+		got, err := Notice(context.Background(), &fake{replies: []string{wrapped}}, "I use tabs everywhere", "noted", kept, true)
+		if err != nil {
+			t.Fatalf("Notice(%q): %v", wrapped, err)
+		}
+		if got.Keep != "uses tabs" || got.Scope != "user" {
+			t.Fatalf("Notice(%q) = %+v, want the line and its scope", wrapped, got)
+		}
 	}
 }
 
-func TestRouteRepairsOneUnreadableAnswerAndThenGivesUp(t *testing.T) {
-	client := &fake{replies: []string{"I'm not sure what you mean.", `{"inject":["m7"],"cmd":null}`}}
-	result, err := Route(context.Background(), client, "what themes do I like", index)
-	if err != nil {
-		t.Fatalf("Route after one repair: %v", err)
+func TestNoticeRepairsOneUnreadableAnswerAndThenGivesUp(t *testing.T) {
+	healed := &fake{replies: []string{"I think nothing", `{"keep":""}`}}
+	if _, err := Notice(context.Background(), healed, "hi", "hello", nil, true); err != nil {
+		t.Fatalf("one repair should heal: %v", err)
 	}
-	if len(result.Inject) != 1 || result.Inject[0] != "m7" {
-		t.Fatalf("the repaired answer injected %v, want [m7]", result.Inject)
+	if len(healed.calls) != 2 || !strings.Contains(prompt(healed.calls[1]), repairInstruction) {
+		t.Fatalf("the repair was not asked: %d calls", len(healed.calls))
 	}
-	if len(client.calls) != 2 {
-		t.Fatalf("Route made %d calls, want the first and one repair", len(client.calls))
+	broken := &fake{replies: []string{"nope", "still nope"}}
+	if _, err := Notice(context.Background(), broken, "hi", "hello", nil, true); !errors.Is(err, ErrReflexFailed) {
+		t.Fatalf("two unreadable answers err = %v, want ErrReflexFailed", err)
 	}
-	if repaired := prompt(client.calls[1]); !strings.Contains(repaired, repairInstruction) {
-		t.Fatalf("the repair call never asked for only the JSON object:\n%s", repaired)
+	if len(broken.calls) != 2 {
+		t.Fatalf("a hopeless answer cost %d calls, want two", len(broken.calls))
 	}
-
-	// Twice unreadable is a no-op, reported as one typed error, with nothing
-	// half-filled in the result: a turn cannot be partly routed.
-	client = &fake{replies: []string{"no idea", "still no idea"}}
-	result, err = Route(context.Background(), client, "when is standup", index)
-	if !errors.Is(err, ErrReflexFailed) {
-		t.Fatalf("Route error = %v, want ErrReflexFailed", err)
-	}
-	if len(result.Inject) != 0 || result.Cmd != nil {
-		t.Fatalf("a failed Route returned %+v, want the zero result", result)
-	}
-	if len(client.calls) != 2 {
-		t.Fatalf("Route made %d calls before giving up, want 2", len(client.calls))
+	failing := &fake{err: errors.New("provider down")}
+	if _, err := Notice(context.Background(), failing, "hi", "hello", nil, true); !errors.Is(err, ErrReflexFailed) {
+		t.Fatalf("a provider failure err = %v, want ErrReflexFailed", err)
 	}
 }
 
-// A PROVIDER THAT NEVER ANSWERED IS THE SAME NO-OP, and it costs one call, not
-// a retry: there is nothing to repair.
-func TestRouteTreatsAProviderFailureAsANoOp(t *testing.T) {
-	client := &fake{err: errors.New("provider: 502")}
-	result, err := Route(context.Background(), client, "when is standup", index)
-	if !errors.Is(err, ErrReflexFailed) {
-		t.Fatalf("Route error = %v, want ErrReflexFailed", err)
-	}
-	if len(result.Inject) != 0 {
-		t.Fatalf("a failed Route returned %+v, want the zero result", result)
-	}
-	if len(client.calls) != 1 {
-		t.Fatalf("Route made %d calls against a broken provider, want 1", len(client.calls))
-	}
-}
-
-func TestRouteKeepsOnlyIdsTheIndexActuallyHeldAndOnlyRealCommands(t *testing.T) {
-	client := &fake{replies: []string{`{"inject":["m3","m99",""],"cmd":{"name":"remember","arg":"deploys on Fridays"}}`}}
-	result, err := Route(context.Background(), client, "remember that I deploy on Fridays", index)
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
-	if len(result.Inject) != 1 || result.Inject[0] != "m3" {
-		t.Fatalf("Route injected %v, want only the id the index carried", result.Inject)
-	}
-	if result.Cmd == nil || result.Cmd.Name != "remember" || result.Cmd.Arg != "deploys on Fridays" {
-		t.Fatalf("Route read the command as %+v", result.Cmd)
-	}
-
-	// A command word this package does not know is an unreadable answer, which
-	// means the repair path — not a Cmd nothing downstream can act on.
-	client = &fake{replies: []string{`{"inject":[],"cmd":{"name":"memorise","arg":"x"}}`, `{"inject":[],"cmd":null}`}}
-	result, err = Route(context.Background(), client, "remember x", index)
-	if err != nil {
-		t.Fatalf("Route after repair: %v", err)
-	}
-	if result.Cmd != nil {
-		t.Fatalf("Route kept an invented command: %+v", result.Cmd)
-	}
-	if len(client.calls) != 2 {
-		t.Fatalf("an invented command took %d calls, want a repair", len(client.calls))
-	}
-}
-
-// An empty message routes to nothing WITHOUT PAYING FOR A CALL.
-func TestRouteDoesNotCallTheModelForAnEmptyMessage(t *testing.T) {
+func TestNoticeDoesNotCallTheModelForAnEmptyExchange(t *testing.T) {
 	client := &fake{}
-	result, err := Route(context.Background(), client, "   ", index)
-	if err != nil || len(result.Inject) != 0 || result.Cmd != nil {
-		t.Fatalf("Route(\"\") = %+v, %v", result, err)
-	}
-	if len(client.calls) != 0 {
-		t.Fatalf("Route called the model %d times for an empty message", len(client.calls))
+	got, err := Notice(context.Background(), client, "  ", "", kept, true)
+	if err != nil || got.Keep != "" || len(client.calls) != 0 {
+		t.Fatalf("empty exchange = %+v %v after %d calls, want nothing and no call", got, err, len(client.calls))
 	}
 }
 
-// ── what the model is shown ─────────────────────────────────────────────────
-
-func TestTheRouterIsShownACappedIndexAndACappedMessage(t *testing.T) {
-	long := make([]Stub, 0, 250)
-	for i := range 250 {
-		long = append(long, Stub{ID: stubID(i), Title: "line", Type: "fact", Scope: "user"})
-	}
-	client := &fake{replies: []string{`{"inject":[],"cmd":null}`}}
-	if _, err := Route(context.Background(), client, strings.Repeat("x", 5000), long); err != nil {
-		t.Fatalf("Route: %v", err)
-	}
-	// Counted off the rendering rather than off the whole prompt, which carries
-	// worked examples with index lines of their own.
-	if lines := strings.Count(renderIndex(long), "\n") + 1; lines != indexLimit {
-		t.Fatalf("the index rendered %d lines for 250 stubs, want %d", lines, indexLimit)
-	}
-	shown := prompt(client.calls[0])
-	if !strings.Contains(shown, stubID(indexLimit-1)) {
-		t.Fatalf("the router was not shown the last stub inside the cap")
-	}
-	if strings.Contains(shown, stubID(indexLimit)) {
-		t.Fatalf("the router was shown a stub past the cap")
-	}
-	if run := strings.Repeat("x", messageLimit+1); strings.Contains(shown, run) {
-		t.Fatalf("the router was shown more than %d characters of the message", messageLimit)
-	}
-	if run := strings.Repeat("x", messageLimit); !strings.Contains(shown, run) {
-		t.Fatalf("the router was shown less than %d characters of the message", messageLimit)
-	}
-}
-
-func stubID(i int) string {
-	return "m" + string(rune('a'+i/26)) + string(rune('a'+i%26))
-}
-
-func TestAnEmptyIndexReadsAsWordsRatherThanABlank(t *testing.T) {
-	if got := renderIndex(nil); got != "(nothing remembered yet)" {
-		t.Fatalf("an empty index renders %q", got)
-	}
-	if got := renderIndex([]Stub{{Title: "no id here"}}); got != "(nothing remembered yet)" {
-		t.Fatalf("a stub with no id renders %q, want it dropped", got)
-	}
-	if got := renderIndex(index); !strings.Contains(got, "- m3: standup is at 9:15 [fact/project]") {
-		t.Fatalf("the index renders %q", got)
-	}
-}
-
-// EVERY REFLEX CALL ADDS NO GENERATION PARAMETER. The prompt asks for the
-// small answer; the provider decides how to generate it.
-func TestEveryCallLeavesGenerationToTheProvider(t *testing.T) {
-	client := &fake{replies: []string{`{"inject":[],"cmd":null}`}}
-	if _, err := Route(context.Background(), client, "hello", index); err != nil {
-		t.Fatalf("Route: %v", err)
-	}
-	request := client.calls[0]
-	if request.MaxTokens != nil {
-		t.Fatalf("the request carried max_tokens = %d", *request.MaxTokens)
-	}
-	if request.Temperature != nil {
-		t.Fatalf("the request carried temperature %v, want none on the wire", *request.Temperature)
-	}
-	if request.Model != "" {
-		t.Fatalf("an unbound call named model %q; the client's own model answers", request.Model)
-	}
-}
-
-// ── extract ─────────────────────────────────────────────────────────────────
-
-// NOTHING TO REMEMBER IS THE COMMON ANSWER and it is taken at face value: no
-// enum is checked, because there is nothing in the answer to check.
-func TestExtractPassesNothingWorthKeepingStraightThrough(t *testing.T) {
-	client := &fake{replies: []string{`{"mem":0,"type":"","scope":"nonsense"}`}}
-	result, err := Extract(context.Background(), client, "what does this regex do", "it matches a date.", nil)
+// NOT ASKED IS NOT KEPT. With automatic saving off the call is a state-card
+// reading, and a model that answers a line anyway has the line dropped.
+func TestNoticeKeepsNothingWhenItWasNotAskedAbout(t *testing.T) {
+	client := &fake{replies: []string{`{"keep":"uses tabs","scope":"user","state":{"goal":"tidy the build"}}`}}
+	got, err := Notice(context.Background(), client, "I use tabs", "noted", kept, false)
 	if err != nil {
-		t.Fatalf("Extract: %v", err)
+		t.Fatal(err)
 	}
-	if result.Mem != 0 {
-		t.Fatalf("Extract read mem = %d, want 0", result.Mem)
+	if got.Keep != "" {
+		t.Fatalf("not asked about memory, kept %q", got.Keep)
 	}
-	if result.State != nil {
-		t.Fatalf("Extract invented a state delta: %+v", result.State)
+	if got.State == nil || got.State.Goal != "tidy the build" {
+		t.Fatalf("state = %+v, want the card's delta read either way", got.State)
 	}
-	if len(client.calls) != 1 {
-		t.Fatalf("mem 0 took %d calls, want 1 — its fields are not validated", len(client.calls))
+	if strings.Contains(userMessage(client.calls[0]), "KEPT:") || strings.Contains(prompt(client.calls[0]), "FIRST, keep") {
+		t.Fatal("a call not asking about memory was shown the memory question or the kept lines")
 	}
 }
 
-func TestExtractRepairsAKeptMemoryWithAWordItDoesNotKnow(t *testing.T) {
-	good := `{"mem":1,"type":"preference","scope":"user","title":"wants changes made not explained",` +
-		`"text":"Prefers the change made directly.","tags":["style",""]}`
-	client := &fake{replies: []string{`{"mem":1,"type":"vibe","scope":"user","title":"x","text":"y"}`, good}}
-	result, err := Extract(context.Background(), client, "stop explaining", "understood.", nil)
+func TestNoticeDropsAReplacementOutsideTheListAndDefaultsTheScope(t *testing.T) {
+	client := &fake{replies: []string{`{"keep":"deploys on Tuesdays","scope":"somewhere","replaces":7}`}}
+	got, err := Notice(context.Background(), client, "we deploy on Tuesdays now", "ok", kept, true)
 	if err != nil {
-		t.Fatalf("Extract after repair: %v", err)
+		t.Fatal(err)
 	}
-	if result.Type != "preference" || result.Scope != "user" {
-		t.Fatalf("Extract read %+v", result)
+	if got.Replaces != 0 || got.Scope != "project" {
+		t.Fatalf("got %+v, want no replacement and the project scope", got)
 	}
-	if len(result.Tags) != 1 || result.Tags[0] != "style" {
-		t.Fatalf("Extract kept tags %v, want the blank dropped", result.Tags)
-	}
-	if len(client.calls) != 2 {
-		t.Fatalf("an unknown type took %d calls, want a repair", len(client.calls))
-	}
-
-	// A scope it does not know is the same path, and twice is a no-op.
-	client = &fake{replies: []string{
-		`{"mem":1,"type":"fact","scope":"everywhere","title":"x","text":"y"}`,
-		`{"mem":1,"type":"fact","scope":"everywhere","title":"x","text":"y"}`,
-	}}
-	result, err = Extract(context.Background(), client, "a", "b", nil)
-	if !errors.Is(err, ErrReflexFailed) {
-		t.Fatalf("Extract error = %v, want ErrReflexFailed", err)
-	}
-	if result.Mem != 0 || result.Type != "" {
-		t.Fatalf("a failed Extract returned %+v, want the zero result", result)
+	inRange := &fake{replies: []string{`{"keep":"deploys on Tuesdays","scope":"project","replaces":1}`}}
+	got, _ = Notice(context.Background(), inRange, "we deploy on Tuesdays now", "ok", kept, true)
+	if got.Replaces != 1 {
+		t.Fatalf("replaces = %d, want line 1", got.Replaces)
 	}
 }
 
-func TestExtractReadsTheStateDeltaWhenTheExchangeMovedTheWork(t *testing.T) {
-	client := &fake{replies: []string{`{"mem":1,"type":"project_state","scope":"project",` +
-		`"title":"import done migration next","text":"The import script is finished.","tags":["import"],` +
-		`"state":{"goal":"move the data across","done":["import script"],"inflight":[],` +
-		`"next":["the migration"],"open":["which cutover window"],"refs":["scripts/import.go"]}}`}}
-	result, err := Extract(context.Background(), client, "import is done, migration next", "good — starting.", nil)
-	if err != nil {
-		t.Fatalf("Extract: %v", err)
+func TestTheKeptLinesAreShownNumberedAndAnEmptyListSaysSo(t *testing.T) {
+	client := &fake{replies: []string{`{"keep":""}`, `{"keep":""}`}}
+	_, _ = Notice(context.Background(), client, "hi", "hello", kept, true)
+	input := userMessage(client.calls[0])
+	if !strings.Contains(input, "1. deploys on Fridays") || !strings.Contains(input, "2. prefers dark themes") {
+		t.Fatalf("the kept lines were not numbered in:\n%s", input)
 	}
-	if result.State == nil {
-		t.Fatal("Extract dropped the state delta")
-	}
-	if result.State.Goal != "move the data across" {
-		t.Fatalf("the delta's goal = %q", result.State.Goal)
-	}
-	if len(result.State.Done) != 1 || result.State.Done[0] != "import script" {
-		t.Fatalf("the delta's done = %v", result.State.Done)
-	}
-	if len(result.State.Inflight) != 0 {
-		t.Fatalf("an empty list came back as %v, want nothing", result.State.Inflight)
-	}
-	if len(result.State.Next) != 1 || len(result.State.Open) != 1 || len(result.State.Refs) != 1 {
-		t.Fatalf("the delta read %+v", result.State)
-	}
-}
-
-func TestExtractDoesNotCallTheModelForAnEmptyExchange(t *testing.T) {
-	client := &fake{}
-	result, err := Extract(context.Background(), client, "", "  ", nil)
-	if err != nil || result.Mem != 0 {
-		t.Fatalf("Extract(\"\", \"\") = %+v, %v", result, err)
-	}
-	if len(client.calls) != 0 {
-		t.Fatalf("Extract called the model %d times for an empty exchange", len(client.calls))
+	_, _ = Notice(context.Background(), client, "hi", "hello", nil, true)
+	if !strings.Contains(userMessage(client.calls[1]), "(nothing yet)") {
+		t.Fatal("an empty kept list reads as a blank a small model would fill in")
 	}
 }
 
 func TestBothSidesOfTheExchangeAreClippedOnTheirOwn(t *testing.T) {
-	client := &fake{replies: []string{`{"mem":0}`}}
-	if _, err := Extract(context.Background(), client,
-		strings.Repeat("u", 4000), strings.Repeat("a", 4000), nil); err != nil {
-		t.Fatalf("Extract: %v", err)
+	client := &fake{replies: []string{`{"keep":""}`}}
+	long := strings.Repeat("a", messageLimit*2)
+	_, _ = Notice(context.Background(), client, "short question", long, nil, true)
+	input := userMessage(client.calls[0])
+	if !strings.Contains(input, "short question") {
+		t.Fatal("a long answer pushed the person's own words out")
 	}
-	shown := prompt(client.calls[0])
-	if !strings.Contains(shown, strings.Repeat("u", messageLimit)) ||
-		!strings.Contains(shown, strings.Repeat("a", messageLimit)) {
-		t.Fatal("one side of the exchange was clipped away entirely")
-	}
-	if strings.Contains(shown, strings.Repeat("u", messageLimit+1)) ||
-		strings.Contains(shown, strings.Repeat("a", messageLimit+1)) {
-		t.Fatalf("a side of the exchange was shown past %d characters", messageLimit)
+	if strings.Count(input, "a") > messageLimit+200 {
+		t.Fatal("the answer was not clipped")
 	}
 }
 
-// ── decide ──────────────────────────────────────────────────────────────────
-
-func TestDecideReadsAllFourAnswers(t *testing.T) {
-	candidate := ExtractResult{Mem: 1, Type: "fact", Scope: "project",
-		Title: "deploys on Tuesdays", Text: "Deploys go out on Tuesday mornings.", Tags: []string{"release"}}
-	neighbors := []Neighbor{{ID: "m2", Title: "deploys on Fridays", Text: "Deploys go out on Friday afternoons."}}
-
-	for _, test := range []struct {
-		name   string
-		reply  string
-		op     string
-		target string
-	}{
-		{"skip", `{"op":"skip","target_id":"","title":"","text":"","tags":[]}`, "skip", ""},
-		{"update", `{"op":"update","target_id":"m2","title":"t","text":"x","tags":["release"]}`, "update", "m2"},
-		{"supersede", `{"op":"SUPERSEDE","target_id":"m2","title":"t","text":"x"}`, "supersede", "m2"},
-		{"add", `{"op":"add","target_id":"","title":"t","text":"x"}`, "add", ""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			client := &fake{replies: []string{test.reply}}
-			result, err := Decide(context.Background(), client, candidate, neighbors)
-			if err != nil {
-				t.Fatalf("Decide: %v", err)
-			}
-			if result.Op != test.op || result.TargetID != test.target {
-				t.Fatalf("Decide read %+v, want op %q on %q", result, test.op, test.target)
-			}
-			if len(client.calls) != 1 {
-				t.Fatalf("Decide made %d calls for a readable answer", len(client.calls))
-			}
-		})
-	}
-}
-
-func TestDecideRepairsAnOperationItDoesNotKnow(t *testing.T) {
-	client := &fake{replies: []string{`{"op":"merge","target_id":"m2"}`, `{"op":"update","target_id":"m2","title":"t","text":"x"}`}}
-	result, err := Decide(context.Background(), client, ExtractResult{Mem: 1, Title: "t"}, nil)
-	if err != nil {
-		t.Fatalf("Decide after repair: %v", err)
-	}
-	if result.Op != "update" {
-		t.Fatalf("Decide read %+v", result)
-	}
-	if len(client.calls) != 2 {
-		t.Fatalf("an unknown op took %d calls, want a repair", len(client.calls))
-	}
-
-	client = &fake{replies: []string{`{"op":"merge"}`, `{"op":"merge"}`}}
-	result, err = Decide(context.Background(), client, ExtractResult{Mem: 1, Title: "t"}, nil)
-	if !errors.Is(err, ErrReflexFailed) {
-		t.Fatalf("Decide error = %v, want ErrReflexFailed", err)
-	}
-	if result.Op != "" {
-		t.Fatalf("a failed Decide returned %+v, want the zero result", result)
-	}
-}
-
-func TestDecideIsShownAtMostThreeNeighboursAndSaysSoWhenThereAreNone(t *testing.T) {
-	many := []Neighbor{
-		{ID: "m1", Title: "one"}, {ID: "m2", Title: "two"},
-		{ID: "m3", Title: "three"}, {ID: "m4", Title: "four"},
-	}
-	client := &fake{replies: []string{`{"op":"add","title":"t","text":"x"}`}}
-	if _, err := Decide(context.Background(), client, ExtractResult{Mem: 1, Title: "t"}, many); err != nil {
-		t.Fatalf("Decide: %v", err)
-	}
-	shown := prompt(client.calls[0])
-	// The prompt carries worked examples of its own, so the assertion is about
-	// the neighbour that must NOT be there rather than a count of lines.
-	if !strings.Contains(shown, "- m3: three") || strings.Contains(shown, "- m4: four") {
-		t.Fatalf("Decide was shown neighbours past the cap of %d:\n%s", neighborLimit, shown)
-	}
-	if got := decideInput(ExtractResult{Title: "t"}, nil); !strings.Contains(got, "(nothing stored near it)") {
-		t.Fatalf("an empty neighbour list renders %q", got)
+func TestEveryCallLeavesGenerationToTheProvider(t *testing.T) {
+	client := &fake{replies: []string{`{"keep":""}`}}
+	_, _ = Notice(context.Background(), client, "hi", "hello", nil, true)
+	if request := client.calls[0]; request.MaxTokens != nil || request.Temperature != nil {
+		t.Fatalf("a reflex call set generation controls: %+v", request)
 	}
 }
 
@@ -472,25 +218,19 @@ func TestModelWalksTheReflexRolesLadder(t *testing.T) {
 	if model != "vendor/tiny" {
 		t.Fatalf("Model = %q, want the reflex tier's own model", model)
 	}
-	// Nothing configured is the conversation's own model, which is the ladder's
-	// floor and the reason a fresh install still works.
 	if model, err = Model(nil, "vendor/conversation"); err != nil || model != "vendor/conversation" {
 		t.Fatalf("Model with nothing set = %q, %v", model, err)
 	}
 }
 
 func TestBindSendsEveryReflexCallToOneModel(t *testing.T) {
-	client := &fake{replies: []string{`{"inject":[],"cmd":null}`}}
-	if _, err := Route(context.Background(), Bind(client, "vendor/tiny"), "hello", index); err != nil {
-		t.Fatalf("Route: %v", err)
+	client := &fake{replies: []string{`{"keep":""}`}}
+	if _, err := Notice(context.Background(), Bind(client, "vendor/tiny"), "hello", "hi", nil, true); err != nil {
+		t.Fatalf("Notice: %v", err)
 	}
 	if got := client.calls[0].Model; got != "vendor/tiny" {
 		t.Fatalf("a bound call named model %q", got)
 	}
-	if request := client.calls[0]; request.MaxTokens != nil {
-		t.Fatalf("binding a model added max_tokens = %d", *request.MaxTokens)
-	}
-	// Binding nothing is not binding the empty string.
 	if _, ok := Bind(client, "  ").(bound); ok {
 		t.Fatal("Bind(\"\") wrapped the client in a pin to nowhere")
 	}
@@ -498,95 +238,16 @@ func TestBindSendsEveryReflexCallToOneModel(t *testing.T) {
 
 // ── the prompts ─────────────────────────────────────────────────────────────
 
-// The prompts name the words the parser accepts, because they are rendered from
-// the parser's own lists. A word missing here is a call that fails every time.
-func TestThePromptsSpellTheEnumsTheParserAccepts(t *testing.T) {
-	for _, word := range memoryTypes {
-		if !strings.Contains(extractPrompt, word) {
-			t.Fatalf("the extract prompt never names the type %q", word)
+// The prompt names the scope words the parser accepts, because it is rendered
+// from the parser's own list, and it says the time rule that tells a memory
+// from an automation.
+func TestTheNoticePromptSpellsTheScopesAndTheTimeRule(t *testing.T) {
+	for _, scope := range memoryScopes {
+		if !strings.Contains(noticePrompt, scope) {
+			t.Fatalf("the notice prompt never names the scope %q", scope)
 		}
 	}
-	for _, word := range memoryScopes {
-		if !strings.Contains(extractPrompt, word) {
-			t.Fatalf("the extract prompt never names the scope %q", word)
-		}
-	}
-	for _, word := range decideOps {
-		if !strings.Contains(decidePrompt, word) {
-			t.Fatalf("the decide prompt never names the operation %q", word)
-		}
-	}
-	for _, word := range commandNames {
-		if !strings.Contains(routePrompt, word) {
-			t.Fatalf("the route prompt never names the command %q", word)
-		}
-	}
-	for name, text := range map[string]string{
-		"route": routePrompt, "extract": extractPrompt, "decide": decidePrompt,
-	} {
-		if !strings.Contains(text, "ONE JSON object and nothing else") {
-			t.Fatalf("the %s prompt never demands one JSON object", name)
-		}
-	}
-}
-
-// The extractor is already reading the exchange, so it is asked one more
-// question for about ten output tokens: of the lines this turn was shown, which
-// ones actually bore on the answer.
-func TestExtractNamesTheInjectedMemoriesThatBoreOnTheAnswer(t *testing.T) {
-	client := &fake{replies: []string{`{"mem":0,"used":["m3","","m9"]}`}}
-	shownStubs := []Stub{
-		{ID: "m3", Title: "standup is at 9:15", Type: "fact", Scope: "project"},
-		{ID: "m7", Title: "prefers dark themes", Type: "preference", Scope: "user"},
-		{ID: "", Title: "a stub with no id"},
-	}
-	result, err := Extract(context.Background(), client, "what time is standup", "9:15.", shownStubs)
-	if err != nil {
-		t.Fatalf("Extract: %v", err)
-	}
-	// m9 was never injected, so it is dropped exactly as an invented inject id
-	// is: a memory reported as used that was never shown is a credit nobody can
-	// check.
-	if len(result.Used) != 1 || result.Used[0] != "m3" {
-		t.Fatalf("Extract read used = %v, want just the one line it was shown", result.Used)
-	}
-	shown := userMessage(client.calls[0])
-	if !strings.Contains(shown, "REMEMBERED:") || !strings.Contains(shown, "- m3: standup is at 9:15") {
-		t.Fatalf("the injected lines were not shown:\n%s", shown)
-	}
-	if strings.Contains(shown, "- : a stub with no id") {
-		t.Fatalf("a stub with no id was shown:\n%s", shown)
-	}
-}
-
-// AND THE SECTION IS ABSENT, NOT EMPTY, on the turns that were shown nothing.
-// A heading with no ids under it invites a small model to invent some.
-func TestExtractAsksNothingAboutMemoriesWhenNoneWereInjected(t *testing.T) {
-	client := &fake{replies: []string{`{"mem":0,"used":["m3"]}`}}
-	result, err := Extract(context.Background(), client, "write me a haiku", "here it is.", nil)
-	if err != nil {
-		t.Fatalf("Extract: %v", err)
-	}
-	if len(result.Used) != 0 {
-		t.Fatalf("Extract read used = %v on a turn that was shown nothing", result.Used)
-	}
-	// The system prompt names the section so the model knows what to do when it
-	// is there; what must be absent is the section itself, in the user message.
-	if asked := userMessage(client.calls[0]); strings.Contains(asked, "REMEMBERED") {
-		t.Fatalf("an empty remembered section was shown:\n%s", asked)
-	}
-}
-
-// Injected and unhelpful is the ordinary answer, and it has to be readable as
-// itself: the caller counts it AGAINST the memory.
-func TestExtractReportsInjectedMemoriesThatBoreOnNothing(t *testing.T) {
-	client := &fake{replies: []string{`{"mem":0,"used":[]}`}}
-	result, err := Extract(context.Background(), client, "write me a haiku", "here it is.",
-		[]Stub{{ID: "m7", Title: "prefers dark themes"}})
-	if err != nil {
-		t.Fatalf("Extract: %v", err)
-	}
-	if len(result.Used) != 0 {
-		t.Fatalf("Extract read used = %v, want nothing", result.Used)
+	if !strings.Contains(noticePrompt, "TIMELESS") || !strings.Contains(noticePrompt, "remind me at six") {
+		t.Fatal("the notice prompt lost the rule that anything with a time component is not a memory")
 	}
 }

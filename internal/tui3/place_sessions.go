@@ -2017,16 +2017,19 @@ func (placeTasks) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 // placeFold is the grammar's one door onto a place's tree: `→` opens the thing
 // under the cursor and `←` shuts it, on whichever place has one.
 //
-// TODAY EXACTLY ONE PLACE ANSWERS IT. That is a fact about the places and not a
-// shortcut — home's fold is a single line at the foot of a list rather than a
-// tree, and the other five have flat bodies — and the router asks through this
-// one name so a second place growing a tree is one arm here rather than another
-// claim on an arrow key in placekeys.go.
+// TWO PLACES ANSWER IT: the Activity tab's families and the Memories tab's
+// groups, drawn and folded the same way. Home's fold is a single line at the
+// foot of a list rather than a tree, and the other places have flat bodies;
+// the router asks through this one name so a place growing a tree is one arm
+// here rather than another claim on an arrow key in placekeys.go.
 func (a *app) placeFold(open bool) bool {
-	if !a.at(pageTasks) {
-		return false
+	switch {
+	case a.at(pageTasks):
+		return a.taskSheetFold(open)
+	case a.at(pageMemory):
+		return placeMemory{}.fold(a, open)
 	}
-	return a.taskSheetFold(open)
+	return false
 }
 
 // taskSheetFoldWord is what the foot says about the family under the cursor, and

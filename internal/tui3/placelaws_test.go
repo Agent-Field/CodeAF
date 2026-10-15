@@ -491,12 +491,7 @@ func (p panicMemory) RestoreMemory(id string) error {
 	return nil
 }
 
-func (p panicMemory) SetMemoryAlways(id string, always bool) error {
-	p.blame("make a line a rule")
-	return nil
-}
-
-func (p panicMemory) UpdateMemory(id, title, text string, tags []string) error {
+func (p panicMemory) UpdateMemory(id, text string) error {
 	p.blame("rewrite a line")
 	return nil
 }
@@ -509,11 +504,6 @@ func (p panicMemory) MemoryProvenance(id string) (string, string, time.Time, err
 func (p panicMemory) ChangedSince(since time.Time) (int, int, error) {
 	p.blame("count what changed")
 	return 0, 0, nil
-}
-
-func (p panicMemory) ListMemories(scope string, limit int) ([]store.Memory, error) {
-	p.blame("list what is remembered")
-	return nil, nil
 }
 
 // A FACT SPELLED TWICE IS A BUG (ARCHITECTURE.md), pinned for the words a strip
@@ -532,7 +522,7 @@ func (p panicMemory) ListMemories(scope string, limit int) ([]store.Memory, erro
 // than grepped — the same call [TestTheReadingLayersImportNoApp] makes and for
 // the same reason.
 func TestEachVerbWordIsSpelledOnce(t *testing.T) {
-	words := []string{memoryCardWord, memoryFixWord, memoryForgetWord, memoryUndoWord, memoryAlwaysWord, memoryWhenMattersWord}
+	words := []string{memoryFixWord, memoryForgetWord, memoryUndoWord, memoryMoveYouWord, memoryMoveHereWord, memoryMoveMachineWord, memoryAskWord, memorySourceWord}
 	seen := map[string]int{}
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(".")

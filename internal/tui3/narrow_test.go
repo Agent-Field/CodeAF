@@ -42,7 +42,7 @@ func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 		}
 		// AND THE AIR IS HELD: two blank cells between two words, whatever the
 		// width, because what a narrow row gives up is words and never air.
-		if width >= 120 && !strings.Contains(bar, "Home  Chats  AI teams  Activity  Memory  Automations  Spend  Settings") {
+		if width >= 120 && !strings.Contains(bar, "Home  Chats  AI teams  Activity  Memories  Automations  Spend  Settings") {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nand should carry the eight places two cells apart", width, bar)
 		}
 		if strings.Contains(bar, "   ") {
@@ -101,8 +101,8 @@ func TestANavTooNarrowForEveryWordFoldsIntoMore(t *testing.T) {
 		}
 	}
 	// AND A NAV THAT CARRIED EVERYTHING FOLDS NOTHING. Eight words need
-	// eighty-four columns, so eighty is a width that folds (above).
-	for _, width := range []int{84, 120, 160} {
+	// eighty-six columns, so eighty is a width that folds (above).
+	for _, width := range []int{86, 120, 160} {
 		if navPlaces(a, width, false); a.navMore.span.pressable() {
 			t.Fatalf("at %d columns every place is on the row and it still folds %v", width, a.navMore.folded)
 		}

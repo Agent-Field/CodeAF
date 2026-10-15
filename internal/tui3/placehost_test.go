@@ -60,7 +60,6 @@ func TestEveryPlaceOverHostSaysWhoseMachineItIsAbout(t *testing.T) {
 		id   page
 		line string
 	}{
-		{pageMemory, memoryRemoteWord},
 		{pageSpend, spendRemoteWord},
 	} {
 		t.Run(want.id.word(), func(t *testing.T) {

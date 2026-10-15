@@ -43,13 +43,7 @@ func CurlLine(executable, channel string) string {
 	default:
 		channel = "stable"
 	}
-	name := filepath.Base(strings.TrimSpace(executable))
-	if len(name) >= 4 && strings.EqualFold(name[len(name)-4:], ".exe") {
-		name = name[:len(name)-4]
-	}
-	if !installNamePattern.MatchString(name) {
-		name = "codeaf"
-	}
+	name := InstallName(executable)
 	if name == "devaf" {
 		return "curl -fsSL https://agentfield.ai/get/devaf | bash"
 	}
@@ -67,6 +61,23 @@ func CurlLine(executable, channel string) string {
 	return line + "bash"
 }
 
+// InstallName is the file name this executable was installed under, without a
+// Windows `.exe`: `codeaf`, `devaf`, `stageaf` or whatever `--name` chose. A
+// path that names no usable file reads as `codeaf`, the name every install road
+// falls back to. The curl line and the automatic updater's own rule
+// ([AutomaticFor]) both ask here, so they can never disagree about which file a
+// launch is.
+func InstallName(executable string) string {
+	name := filepath.Base(strings.TrimSpace(executable))
+	if len(name) >= 4 && strings.EqualFold(name[len(name)-4:], ".exe") {
+		name = name[:len(name)-4]
+	}
+	if !installNamePattern.MatchString(name) {
+		return "codeaf"
+	}
+	return name
+}
+
 const (
 	// CheckTimeout is the whole-exchange budget for a launch check and for
 	// `codeaf update --check`. THE CHECK CLOCK NEVER COVERS AN INSTALL: a
@@ -79,8 +90,13 @@ const (
 	downloadCeiling     = 15 * time.Minute
 )
 
+// primaryRepository is THE ONE ORIGIN a release is selected from and
+// downloaded from. The repository's former name is not a second one: GitHub
+// answers it only as a redirect to this repository, so it never held a release
+// this one lacks, and asking it after a 404 here could only ever reach a
+// repository somebody created under that name later — a stranger to every
+// checksum this program trusts.
 const primaryRepository = "Agent-Field/codeaf"
-const legacyRepository = "Agent-Field/aforge-v2" // legacy-name
 
 // Client talks to the release API and release asset host.
 type Client struct {
@@ -318,7 +334,9 @@ type Choice struct {
 	Published time.Time
 }
 
-// Release is one selected GitHub release and the repository that answered.
+// Release is one selected GitHub release. Repository names where it was
+// selected and is always [primaryRepository]; it is a record of that fact and
+// never an address — nothing reads it to decide where to ask.
 type Release struct {
 	Tag                string
 	Repository         string
@@ -354,16 +372,7 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 	if channel != "stable" && channel != "rc" && channel != "dev" && channel != "staging" {
 		return Release{}, fmt.Errorf("channel must be stable, rc, dev, or staging")
 	}
-	for index, repository := range []string{primaryRepository, legacyRepository} { // legacy-name
-		release, err := c.selectRepository(ctx, repository, channel, strings.TrimSpace(choice.Running))
-		if err == nil {
-			return release, nil
-		}
-		if !isStatus(err, http.StatusNotFound) || index == 1 {
-			return Release{}, err
-		}
-	}
-	return Release{}, errors.New("no release repository answered")
+	return c.selectRelease(ctx, channel, strings.TrimSpace(choice.Running))
 }
 
 // TagPublished asks the release API for ONE exact tag's publish moment, and it
@@ -385,34 +394,28 @@ func (c *Client) TagPublished(ctx context.Context, tag string) (time.Time, bool)
 	if strings.TrimSpace(c.APIBase) == "" {
 		return time.Time{}, false
 	}
-	for index, repository := range []string{primaryRepository, legacyRepository} { // legacy-name
-		rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + repository + "/releases/tags/" + url.PathEscape(tag)
-		body, err := c.get(ctx, rawURL, "application/vnd.github+json", true, "release API")
-		if err != nil {
-			if isStatus(err, http.StatusNotFound) && index == 0 {
-				continue
-			}
-			return time.Time{}, false
-		}
-		var row apiRelease
-		if json.Unmarshal(body, &row) != nil || strings.TrimSpace(row.TagName) != tag {
-			return time.Time{}, false
-		}
-		moment := row.stamp()
-		if moment.IsZero() {
-			return time.Time{}, false
-		}
-		return moment, true
+	rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + primaryRepository + "/releases/tags/" + url.PathEscape(tag)
+	body, err := c.get(ctx, rawURL, "application/vnd.github+json", true, "release API")
+	if err != nil {
+		return time.Time{}, false
 	}
-	return time.Time{}, false
+	var row apiRelease
+	if json.Unmarshal(body, &row) != nil || strings.TrimSpace(row.TagName) != tag {
+		return time.Time{}, false
+	}
+	moment := row.stamp()
+	if moment.IsZero() {
+		return time.Time{}, false
+	}
+	return moment, true
 }
 
-func (c *Client) selectRepository(ctx context.Context, repository, channel, running string) (Release, error) {
+func (c *Client) selectRelease(ctx context.Context, channel, running string) (Release, error) {
 	suffix := "releases/latest"
 	if channel != "stable" {
 		suffix = "releases?per_page=100"
 	}
-	rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + repository + "/" + suffix
+	rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + primaryRepository + "/" + suffix
 	body, err := c.get(ctx, rawURL, "application/vnd.github+json", true, "release API")
 	if err != nil {
 		return Release{}, err
@@ -425,7 +428,7 @@ func (c *Client) selectRepository(ctx context.Context, repository, channel, runn
 		if Kind(row.TagName) != "stable" {
 			return Release{}, fmt.Errorf("the latest release did not name a stable codeaf tag")
 		}
-		return Release{Tag: row.TagName, Repository: repository, PublishedAt: row.stamp()}, nil
+		return Release{Tag: row.TagName, Repository: primaryRepository, PublishedAt: row.stamp()}, nil
 	}
 	var rows []apiRelease
 	if err := json.Unmarshal(body, &rows); err != nil {
@@ -448,12 +451,15 @@ func (c *Client) selectRepository(ctx context.Context, repository, channel, runn
 		return Release{}, fmt.Errorf("no %s build has been published yet", channel)
 	}
 	return Release{
-		Tag: newest.TagName, Repository: repository, PublishedAt: newest.stamp(),
+		Tag: newest.TagName, Repository: primaryRepository, PublishedAt: newest.stamp(),
 		RunningPublishedAt: runningPublished,
 	}, nil
 }
 
+// assetURL names one file of a release on the download host. The repository in
+// it is the constant, not anything carried on the release, so no caller can
+// point a download at a second origin.
 func (c *Client) assetURL(release Release, name string) string {
 	base := strings.TrimRight(c.DownloadBase, "/")
-	return base + "/" + release.Repository + "/releases/download/" + url.PathEscape(release.Tag) + "/" + url.PathEscape(name)
+	return base + "/" + primaryRepository + "/releases/download/" + url.PathEscape(release.Tag) + "/" + url.PathEscape(name)
 }

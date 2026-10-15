@@ -20,16 +20,16 @@ import (
 // conflicts for whoever merges.
 //
 // EVERY DOOR HERE REFUSES RATHER THAN INVENTS. A nil closure is a capability
-// this engine does not have — memory turned off, a build with no index, a world
-// with no ledger — and it is answered as an error so that the surface can tell
-// "there is nothing there" from "nobody asked". That is [Engine.World]'s own
-// law, restated once here and not per method.
+// this engine does not have — a memory store that would not open, a build with
+// no index, a world with no ledger — and it is answered as an error so that the
+// surface can tell "there is nothing there" from "nobody asked". That is
+// [Engine.World]'s own law, restated once here and not per method.
 
 // engineOffWord leads every refusal in this file. It names the MACHINE and not
 // the connection, because that is the fact the surface turns into a sentence: a
-// person reading `memory is off on that machine` has learned something true
-// about the far end, where `memory is off for this session` would have been a
-// claim about a setting nobody consulted (internal/tui3's host.go).
+// person reading `memory is unavailable on this machine` has learned something
+// true about the far end, where a sentence about this window would have been a
+// claim about a store nobody consulted (internal/tui3's host.go).
 const engineOffWord = "engine: "
 
 // placesCall answers the three late places' methods, and says whether the method
@@ -145,23 +145,23 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 		payload, err := json.Marshal(hits)
 		return payload, true, err
 
-	case MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryList,
+	case MethodMemorySnapshot, MethodMemoryChanged,
 		MethodMemoryUpdate, MethodMemoryForget, MethodMemoryRestore,
-		MethodMemoryProvenance, MethodMemorySetAlways:
+		MethodMemoryProvenance:
 		if engine.Memory == nil {
-			// ONE REFUSAL FOR ALL EIGHT, because the store is one thing: an engine
-			// whose memory row is off has no snapshot to answer AND no line to
-			// forget, and eight different sentences about one absence would be
-			// eight chances for two screens to say it differently.
-			return nil, true, errors.New(engineOffWord + memoryOffWord)
+			// ONE REFUSAL FOR ALL OF THEM, because the store is one thing: an
+			// engine with no store has no snapshot to answer AND no line to
+			// forget, and several sentences about one absence would be several
+			// chances for two screens to say it differently.
+			return nil, true, errors.New(engineOffWord + memoryGoneWord)
 		}
 		payload, err := memoryCall(engine.Memory, call)
 		return payload, true, err
-	case MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories,
-		MethodMemoryRememberAlways, MethodMemoryAlways:
+	case MethodMemoryRemember, MethodMemoryMemories,
+		MethodMemoryRememberAlways, MethodMemoryAlways, MethodMemoryMove, MethodMemoryProject:
 		commands, ok := sess.current().(MemoryCommands)
 		if !ok || !commands.Remembers() {
-			return nil, true, errors.New(engineOffWord + memoryOffWord)
+			return nil, true, errors.New(engineOffWord + memoryGoneWord)
 		}
 		payload, err := memoryCommandCall(commands, call)
 		return payload, true, err
@@ -198,11 +198,11 @@ func keepsFolders(agent any) bool {
 // [engineOffWord]'s reason.
 const foldersOffWord = "this engine cannot keep the folders a conversation is about"
 
-// memoryOffWord is the far machine's memory row, off. It is spelled here and
-// matched on the surface ([Client.MemoryOff]) because the surface has to turn it
-// into a sentence of its own — `memory is off on that machine` — rather than
-// draw an engine's error text, which is machinery vocabulary.
-const memoryOffWord = "memory is off on this machine"
+// memoryGoneWord is the far machine's answer when its memory store could not be
+// opened. Memory has no off switch any more — the setting governs only the
+// noticing — so the one way a far engine has no memory is a store that would not
+// open, and this says so in the words the local surface uses for the same fact.
+const memoryGoneWord = "memory is unavailable on this machine · the store could not be opened"
 
 // ── THE SURFACE HALF OF THE FOLDERS ─────────────────────────────────────────
 //
@@ -264,7 +264,7 @@ func (a *Agent) RemovePlace(path string) error {
 	return nil
 }
 
-// memoryCall is the eight doors, dispatched. It is split out of [placesCall] so
+// memoryCall is the store's doors, dispatched. It is split out of [placesCall] so
 // that the nil check above happens exactly once for all of them.
 func memoryCall(mem EngineMemory, call Frame) (json.RawMessage, error) {
 	switch call.Method {
@@ -290,23 +290,12 @@ func memoryCall(mem EngineMemory, call Frame) (json.RawMessage, error) {
 		}
 		return json.Marshal(MemoryChange{Learned: learned, LetGo: letGo})
 
-	case MethodMemoryList:
-		args, err := arg[MemoryListArgs](call)
-		if err != nil {
-			return nil, err
-		}
-		found, err := mem.ListMemories(args.Scope, args.Limit)
-		if err != nil {
-			return nil, err
-		}
-		return json.Marshal(found)
-
 	case MethodMemoryUpdate:
 		args, err := arg[MemoryUpdateArgs](call)
 		if err != nil {
 			return nil, err
 		}
-		return nil, mem.UpdateMemory(args.ID, args.Title, args.Text, args.Tags)
+		return nil, mem.UpdateMemory(args.ID, args.Text)
 
 	case MethodMemoryForget:
 		id, err := arg[string](call)
@@ -333,20 +322,31 @@ func memoryCall(mem EngineMemory, call Frame) (json.RawMessage, error) {
 		}
 		return json.Marshal(MemoryOrigin{Session: where, Title: title, At: at})
 
-	case MethodMemorySetAlways:
-		args, err := arg[MemorySetAlwaysArgs](call)
-		if err != nil {
-			return nil, err
-		}
-		return nil, mem.SetMemoryAlways(args.ID, args.Always)
 	}
 	return nil, errors.New(engineOffWord + "no such memory door")
 }
 
 func memoryCommandCall(commands MemoryCommands, call Frame) (json.RawMessage, error) {
-	// /always CARRIES ITS OWN ARGUMENTS — the words and where they were typed —
-	// so it is answered before the three that carry a bare string.
+	// /always AND THE MOVE CARRY THEIR OWN ARGUMENTS, and the project reading
+	// carries none, so they are answered before the three that carry a bare
+	// string.
 	switch call.Method {
+	case MethodMemoryProject:
+		owner, err := commands.MemoryProject()
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(owner)
+	case MethodMemoryMove:
+		args, err := arg[MemoryMoveArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		receipt, err := commands.MoveMemory(args.ID, args.Scope)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(receipt)
 	case MethodMemoryRememberAlways:
 		args, err := arg[MemoryAlwaysArgs](call)
 		if err != nil {
@@ -374,17 +374,11 @@ func memoryCommandCall(commands MemoryCommands, call Frame) (json.RawMessage, er
 	}
 	switch call.Method {
 	case MethodMemoryRemember:
-		title, err := commands.Remember(text)
+		receipt, err := commands.Remember(text)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(title)
-	case MethodMemoryForgetQuery:
-		title, err := commands.Forget(text)
-		if err != nil {
-			return nil, err
-		}
-		return json.Marshal(title)
+		return json.Marshal(receipt)
 	case MethodMemoryMemories:
 		lines, err := commands.Memories(text)
 		if err != nil {

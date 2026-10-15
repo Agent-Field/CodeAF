@@ -419,4 +419,4 @@ cleanup is omitted from the saved conversation grid and membership pickers.
 
 No. Deleting a conversation removes its transcript, task records and team memberships. Memories
 already saved for a user, project or machine remain available, with their source identity.
-Use the Memory page to forget a saved memory separately. Deleting a team also preserves those memories.
+Use the Memories tab to forget a saved memory separately. Deleting a team also preserves those memories.

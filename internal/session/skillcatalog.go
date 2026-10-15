@@ -80,11 +80,11 @@ const (
 // `use_skill` and the page's own row for it — asks here, so the belt, the
 // prompt and the message can never be reading two different shelves.
 //
-// MEMORY OFF IS NO LONGER SKILLS OFF. The live door hands a shelf of its own
-// when it hands no memory (Config.Skills says why), so the sentence this
-// catalog once rendered for that case — skills exist, memory is off, turn it
-// on — would now be false, and is gone rather than kept for a door that
-// still names no shelf: such a door has no skills to explain.
+// NO MEMORY IS NOT NO SKILLS. The live door hands a shelf of its own when it
+// hands no memory (Config.Skills says why), so the sentence this catalog once
+// rendered for that case — skills exist, memory is off, turn it on — would now
+// be false, and is gone rather than kept for a door that still names no shelf:
+// such a door has no skills to explain.
 func (c Config) skillShelf() *store.Store {
 	if c.Skills != nil {
 		return c.Skills

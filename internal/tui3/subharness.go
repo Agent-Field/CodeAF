@@ -295,7 +295,7 @@ func subSpanWord(d time.Duration) string {
 // it. The zero value is closed.
 //
 // THE CARD IS A FIELD ON THE LIST AND NOT A SECOND OVERLAY, which is the memory
-// panel's own arrangement (place_memory.go's expanded row): one thing owns the
+// panel's own arrangement (place_memories.go's expanded row): one thing owns the
 // keyboard, one thing owns the block of rows the frame handed out, and esc walks
 // back out of whichever half is up rather than closing two things at once.
 type subPage struct {

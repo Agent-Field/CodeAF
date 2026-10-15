@@ -3,19 +3,19 @@ package session
 // THE LAW IN loop.go's HEADER, AS A TEST THAT FAILS THE BUILD.
 //
 // "The only wait a person experiences is the main model generating." Every
-// reading this harness makes on its own behalf — the recall that picks which
-// remembered lines a message needs, the judge that asks whether it was work, the
-// reader that sketches what is left of a long answer, the namer, the narrator —
-// runs BESIDE the work and may only interrupt it.
+// reading this harness makes on its own behalf — the judge that asks whether it
+// was work, the reader that sketches what is left of a long answer, the namer,
+// the narrator, the noticing pass after the turn — runs BESIDE the work and may
+// only interrupt it. (The person's remembered lines are not a reading: they ride
+// message[0] from one indexed read at the turn's start.)
 //
 // THIS FILE IS THE GATE THAT CATCHES THE NEXT SERIAL CALL WHOEVER ADDS IT. Every
 // reading is made three seconds slow and the two figures the law is about are
 // asserted in milliseconds. A turn that awaits any one of them cannot pass.
 //
 // AND THE QUALITY HALF IS ASSERTED BESIDE IT, because taking a wait off a path is
-// easy and keeping the answer is the hard part: a reading that lands before the
-// first word is applied to THIS request, one that lands after it is applied to
-// the next step, and neither is dropped.
+// easy and keeping the answer is the hard part: the mark's reading rides beside
+// the step and cuts it only when what it found changes the work.
 
 import (
 	"context"
@@ -30,7 +30,6 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
-	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
@@ -72,21 +71,14 @@ type paceCompleter struct {
 	taken int
 	// slow is what every reading costs.
 	slow time.Duration
-	// recallAfter, when set, holds the memory router's answer until it closes.
-	// A test that is ABOUT the recall landing during a particular request closes
-	// it from inside that request, which makes the ordering a fact of the
-	// fixture instead of a race the scheduler usually wins.
-	recallAfter <-chan struct{}
-	// route is what the memory router answers, and sketch what a mark's reader
-	// draws.
-	route  string
+	// sketch is what a mark's reader draws.
 	sketch string
 	// readings counts what was asked beside the work, by kind.
 	readings map[string]int
 	// mainAt is when each of the turn's own requests arrived.
 	mainAt []time.Time
 	// requests is every main request, joined, so a test can ask whether the
-	// answer carried the routed block.
+	// answer carried the memory block.
 	requests []string
 }
 
@@ -98,15 +90,7 @@ func (p *paceCompleter) CompleteWithMessages(ctx context.Context, messages []ai.
 		}
 		p.readings[kind]++
 		slow := p.slow
-		hold := p.recallAfter
 		p.mu.Unlock()
-		if kind == "recall" && hold != nil {
-			select {
-			case <-hold:
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		}
 		select {
 		case <-time.After(slow):
 		case <-ctx.Done():
@@ -153,12 +137,8 @@ func (p *paceCompleter) readingFor(messages []ai.Message) (string, string) {
 		return "title", ""
 	case isNameCall(messages):
 		return "name", ""
-	case strings.Contains(system, "memory router"):
-		return "recall", p.route
-	case strings.Contains(system, "worth remembering after this session ends"):
-		return "keep", `{"mem":0}`
-	case strings.Contains(system, "one candidate memory and the lines already stored"):
-		return "settle", `{"action":"skip"}`
+	case strings.Contains(system, "You read one exchange between a person and an assistant"):
+		return "notice", `{"keep":""}`
 	case askedForSketch(messages):
 		return "mark", p.sketch
 	case askedForRemains(messages):
@@ -261,8 +241,9 @@ func pacedTurn(t *testing.T, journal string) journalPace {
 // EVERY READING IS SLOW AND THE PERSON WAITS FOR NONE OF THEM.
 //
 // A five-step turn with a memory in the store, a crew with a mastermind, and a
-// mark crossed part way through — with the recall, the namer, the narrator, the
-// work-or-words judge and the mark's own reader each taking three seconds.
+// mark crossed part way through — with the namer, the narrator, the
+// work-or-words judge, the mark's own reader and the noticing pass each taking
+// three seconds.
 func TestTheOnlyWaitAPersonExperiencesIsTheModelGenerating(t *testing.T) {
 	// THE ONE RUNG THAT STILL ASKS ANYBODY TO READ THE WORK IS THE NET, so the
 	// script runs until the context it is filling can hold no more
@@ -273,7 +254,6 @@ func TestTheOnlyWaitAPersonExperiencesIsTheModelGenerating(t *testing.T) {
 	completer := &paceCompleter{
 		steps:  paceRounds(rounds, "all done"),
 		slow:   paceSlowReading,
-		route:  `{"inject":[],"cmd":null}`,
 		sketch: checkpointChainSketch,
 	}
 	agent, brain, journal := paceAgent(t, completer)
@@ -303,14 +283,16 @@ func TestTheOnlyWaitAPersonExperiencesIsTheModelGenerating(t *testing.T) {
 	// AND THE READINGS REALLY WERE ASKED. A law that passed because nothing ran
 	// beside the work would be the law deleted rather than kept, which is exactly
 	// what the decomposition row's names exist to make visible.
-	if completer.count("recall") == 0 {
-		t.Fatal("the recall was never asked — the law was not tested")
-	}
 	if completer.count("mark") == 0 {
 		t.Fatal("the mark's reader was never asked — the law was not tested")
 	}
-	if !namesAside(pace.Aside, "recall") || !namesAside(pace.Aside, "mark") {
-		t.Fatalf("the decomposition names %v, want the recall and the mark beside the work", pace.Aside)
+	if !namesAside(pace.Aside, "mark") {
+		t.Fatalf("the decomposition names %v, want the mark beside the work", pace.Aside)
+	}
+	// AND THE PERSON'S LINE RODE THE FIRST REQUEST, with no reading in front of
+	// it: the memory block is message[0], read once at the turn's start.
+	if !strings.Contains(completer.request(0), "prefers tabs over spaces in Go") {
+		t.Fatalf("the first request did not carry the remembered line:\n%s", completer.request(0))
 	}
 }
 
@@ -325,108 +307,6 @@ func namesAside(list []string, want string) bool {
 }
 
 // ── THE QUALITY HALF ────────────────────────────────────────────────────────
-
-// A RECALL THAT LANDS BEFORE THE FIRST WORD IS SPENT ON THIS ANSWER.
-//
-// The request is cut and asked again with the block in, once, and the person
-// sees nothing — there was nothing on their screen yet. This is the move that
-// makes taking the wait off the path cost no memories at all.
-func TestARecallThatLandsBeforeTheFirstWordIsAskedAgainWithIt(t *testing.T) {
-	// THE RECALL LANDS WHILE THE FIRST REQUEST IS ON THE WIRE, BY CONSTRUCTION.
-	// Started beside the turn and answering instantly, it used to win a second
-	// race as well: on two starved cores it sometimes answered before the first
-	// request was even assembled, which the product rightly handles by carrying
-	// the block in that request with no cut (memory.go's [recallAside.applyOrDefer],
-	// "A GENERATION THAT HAS NOT STARTED NEEDS NO CUTTING"). This step then waited
-	// for a cut that was never owed and the turn hung until collect gave up —
-	// about one run in forty on two CPUs, 2026-09-23. The router's answer is now
-	// held until this request is in flight, so the test proves the cut it names.
-	inFlight := make(chan struct{})
-	completer := &paceCompleter{
-		// The turn's first request waits for its own context, which is what a
-		// model that has not written a word yet looks like from here. The recall
-		// lands underneath it and cuts it; the second step is the re-ask.
-		steps: []step{
-			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-				close(inFlight)
-				<-ctx.Done()
-				return nil, ctx.Err()
-			},
-			func(context.Context, []ai.Message) (*ai.Response, error) {
-				return textResponse("reformatted"), nil
-			},
-		},
-		// Instant once the first request is out: this reading is meant to win
-		// the race against the first word.
-		slow:        0,
-		recallAfter: inFlight,
-	}
-	agent, brain, journal := paceAgent(t, completer)
-	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
-	completer.route = `{"inject":["` + tabs.ID + `"],"cmd":null}`
-
-	collect(t, mustSubmit(t, agent, "reformat this file the way I like it"))
-
-	pace := pacedTurn(t, journal)
-	if !namesAside(pace.Aside, "recall:reasked") {
-		t.Fatalf("the decomposition names %v, want the one cut-and-re-ask this turn bought", pace.Aside)
-	}
-	if completer.mainCalls() < 2 {
-		t.Fatalf("%d requests went out, want the cut one and the re-ask", completer.mainCalls())
-	}
-	// AND THE RE-ASK IS THE ONE THAT CARRIED THE MEMORY, which is the whole point:
-	// the block was routed, the answer was given with it, and nothing was dropped.
-	if !strings.Contains(completer.request(1), "prefers tabs over spaces in Go") {
-		t.Fatalf("the re-asked request did not carry the routed memory:\n%s", completer.request(1))
-	}
-}
-
-// A RECALL THAT LANDS AFTER THE FIRST WORD RIDES THE NEXT STEP, and says so.
-//
-// The alternative — dropping it — is what makes a reading that came back too
-// late indistinguishable from a store with nothing in it, and leaves the ranking
-// with nothing to learn from.
-func TestARecallThatLandsAfterTheFirstWordRidesTheNextStep(t *testing.T) {
-	completer := &paceCompleter{
-		steps: []step{
-			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-				// The first word arrives at once, so the request may not be cut.
-				provider.Emit(ctx, provider.StreamDelta, "looking")
-				arguments, _ := json.Marshal(struct {
-					Path string `json:"path"`
-				}{Path: "./0"})
-				select {
-				case <-time.After(400 * time.Millisecond):
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				}
-				return toolResponseWithText("call-0", "ls", string(arguments), "looking"), nil
-			},
-			func(context.Context, []ai.Message) (*ai.Response, error) {
-				return textResponse("reformatted"), nil
-			},
-		},
-		// Long enough to land behind the delta above, short enough to land inside
-		// the step it then rides.
-		slow: 100 * time.Millisecond,
-	}
-	agent, brain, journal := paceAgent(t, completer)
-	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
-	completer.route = `{"inject":["` + tabs.ID + `"],"cmd":null}`
-
-	collect(t, mustSubmit(t, agent, "reformat this file the way I like it"))
-
-	pace := pacedTurn(t, journal)
-	if !namesAside(pace.Aside, "recall:late") {
-		t.Fatalf("the decomposition names %v, want the block written down as late", pace.Aside)
-	}
-	if namesAside(pace.Aside, "recall:reasked") {
-		t.Fatal("the request was cut after the person had already read a word")
-	}
-	if !strings.Contains(completer.request(1), "prefers tabs over spaces in Go") {
-		t.Fatalf("the late block did not ride the next step:\n%s", completer.request(1))
-	}
-}
 
 // THE NET'S READING RUNS BESIDE THE NEXT STEP AND INTERRUPTS IT.
 //
@@ -447,7 +327,6 @@ func TestAMarksReadingRidesBesideTheStepAndCutsItOnIndependentParts(t *testing.T
 	completer := &paceCompleter{
 		steps:  append(steps, func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil }),
 		slow:   500 * time.Millisecond,
-		route:  `{"inject":[],"cmd":null}`,
 		sketch: checkpointSplitSketch,
 	}
 	agent, _, journal := paceAgent(t, completer)
@@ -510,7 +389,6 @@ func TestASlowListenerNeverHoldsTheTurnThatIsTellingIt(t *testing.T) {
 	rounds := 3
 	completer := &paceCompleter{
 		steps: paceRounds(rounds, "all done"),
-		route: `{"inject":[],"cmd":null}`,
 	}
 	agent, _, journal := paceAgent(t, completer)
 

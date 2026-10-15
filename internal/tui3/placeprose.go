@@ -133,7 +133,7 @@ var placeWhisper = map[page]placeBlank{
 	pageTasks:       {whisper: "work you send off with /task lands here, and its record stays"},
 	pageSpend:       {whisper: "every chat and task is priced here as it runs"},
 	pageAutomations: {whisper: `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"`},
-	pageMemory:      {whisper: "what it has learned about you and this machine · /remember adds a line"},
+	pageMemory:      {whisper: "the lines codeaf keeps in front of every conversation · /remember adds one"},
 }
 
 // placeWhisperLead is where the whisper hangs: the place's own lead, then the

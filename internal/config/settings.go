@@ -273,10 +273,14 @@ const (
 	// because a person who has silenced the tips has said they know the surface,
 	// and being told about features is the same conversation.
 	KeyHints = "ui.hints"
-	// KeyUpdateAuto is whether codeaf INSTALLS a new release in the background on
-	// its own. ON is the default: the check is one small request after the first
-	// frame, and a person who does not want it has a row, an environment variable
-	// and one chord on the offer itself. OFF means nothing is installed until the
+	// KeyUpdateAuto is whether codeaf INSTALLS a new release on its own. ON is
+	// the default: a released codeaf installs a newer stable release as it opens
+	// and starts on it (cmd/codeaf's prelaunch.go), and the chat's countdown
+	// installs in the background when that could not finish. Only a stable build
+	// named codeaf is ever moved this way; dev, staging, rc and source builds are
+	// told, never replaced ([codeupdate.AutomaticFor]). A person who does not want
+	// it has a row, an environment variable and one chord on the offer itself.
+	// OFF means nothing is installed until the
 	// person asks — `/update` still installs a release on request, because a
 	// person who typed it has said what they want — but the LAUNCH CHECK STILL
 	// RUNS and still names the release on one dim line, because knowing is not
@@ -323,12 +327,13 @@ const (
 	// as the default, silently, the way any word this build does not know reads
 	// ([TaskStartAt]).
 	KeyTaskStart = "task.start"
-	// KeyMemoryEnabled is whether this build remembers anything across
-	// conversations at all (internal/session's memory.go): the pre-turn router
-	// that decides which remembered lines a turn needs, the post-turn pass that
-	// decides whether the exchange held anything worth keeping, and the
-	// `remember` tool the model reaches for. Off is a conversation that starts
-	// knowing nothing about you, and that makes not one extra call.
+	// KeyMemoryEnabled is whether codeaf NOTICES things worth keeping on its
+	// own (internal/session's memory.go): after a turn the person typed, one
+	// small call may keep one line they said, and says so. It governs nothing
+	// else — the lines a person kept ride every conversation whether it is on
+	// or off, and /remember works either way — and it is read live, so a change
+	// applies from the next turn without a restart. The key keeps its old
+	// spelling because profiles on disk carry it.
 	KeyMemoryEnabled = "memory.enabled"
 
 	KeyModelRoles = "models.roles"
@@ -1077,6 +1082,11 @@ var OperatorEnvPins = []string{
 	"CODEAF_NO_UPDATE_CHECK",
 	"CODEAF_GITHUB_API",
 	"CODEAF_GITHUB_DOWNLOAD",
+	// What a launch that installed a release tells the build it hands the
+	// terminal to (cmd/codeaf's prelaunch.go): the build it replaced. codeaf
+	// sets it for exactly one exec and the new process clears it on arrival, so
+	// it is plumbing between two processes and never a person's choice.
+	"CODEAF_UPDATED_FROM",
 	// CODEAF_NO_AUTOMATIONS keeps a window from starting the clock that runs
 	// automations (internal/automation's Startable). The demo home sets it so a
 	// look at the fixture spends nothing on its invented automations; it is one
@@ -2244,12 +2254,15 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
-			Label: "memory", Choices: MemoryModes,
-			Hint: "when on, codeaf carries a handful of things across conversations: what you " +
-				"asked it to remember, preferences you stated, corrections you made. A small " +
-				"model decides before each message which of them bear on it, and after each " +
-				"answer whether anything new is worth keeping. Off remembers nothing and makes " +
-				"neither call. On is the default; /memories lists what is kept.",
+			Label: "notice things to remember", Choices: MemoryModes,
+			// THE ONE SPELLING OF WHAT THIS ROW DOES: the settings panel reads it
+			// as the row's detail and the settings tool reads it as its hint, so
+			// the two cannot disagree. Off comes first because it is what a
+			// person scanning the row needs to know before anything else.
+			Hint: "Off stops only the noticing: what you keep with /remember still rides every " +
+				"conversation, and nothing saved is deleted. On, after a turn you typed, codeaf may " +
+				"keep one line you said that should hold everywhere — a preference, a rule, a " +
+				"correction — and tells you; the Memories tab shows, forgets and puts back any of it.",
 			read:  func() string { return MemoryAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMemoryEnabled, raw, MemoryModes) },
 		},
@@ -2492,8 +2505,9 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyUpdateAuto, Category: CategoryPractice, Kind: SettingBool,
 			Label: "auto update",
-			Hint: "keeps this codeaf installation current in the background. " +
-				"The offer waits in the keys line for about ten seconds; it never blocks a keystroke. " +
+			Hint: "keeps a released codeaf current: a newer stable release installs as codeaf opens, then codeaf starts on it. " +
+				"When that cannot finish quickly, the offer waits in the keys line for about ten seconds and installs in the background. " +
+				"Dev, staging, rc and source builds are never updated on their own. " +
 				"Off, installation is manual — nothing is installed until you run /update — and codeaf " +
 				"still checks once and names a new release (CODEAF_NO_UPDATE_CHECK=1 makes no request at all).",
 			read:  func() string { return formatBool(UpdateAutoAt(dir)) },

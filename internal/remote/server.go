@@ -252,7 +252,7 @@ type Engine struct {
 	// is the only place on the surface that WRITES, so a wire that carried its
 	// readings and not its writes would hand a person a page of the far
 	// machine's memories whose `e` and `f` keys edited this laptop's. The store
-	// crosses whole or it does not cross, and nil is memory off over there —
+	// crosses whole or it does not cross, and nil is no memory store over there —
 	// which the surface says in those words rather than in this session's own
 	// ([EngineMemory]).
 	Memory             EngineMemory

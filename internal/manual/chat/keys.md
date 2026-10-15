@@ -787,7 +787,7 @@ it too** — the one place with a box (the Places page, *Typing on a place*). Ho
 down and sweeping selects instead, and releasing copies what is lit (see "how do I
 select text in the message box" above). While a picker's
 filter box is standing in the box's place — the model picker, `/resume`,
-`/files`, the memory panel — or while the composer layer is up, a click does not
+`/files` — or while the composer layer is up, a click does not
 move that box's caret; those are typed at and filtered, not edited by pointer.
 
 ## Why option+left or cmd+left does nothing — word jump and line jump on a Mac
@@ -831,8 +831,8 @@ The caret keys are one vocabulary and every box on the surface answers it: the
 message box, **home's box at the foot of the screen**, the errand pane on home,
 the `something else…` box on a question's own answer row, the settings filter and
 its value editor, the task page's filter, the rewind search, and every filterable
-overlay — the model picker, `/resume`, `/files`, the memory panel, the connect key
-box, the connections panel.
+overlay — the model picker, `/resume`, `/files`, the connect key box, the
+connections panel — and the Memories tab's filter and line editor.
 
 | Chord | Everywhere |
 |---|---|
@@ -881,7 +881,7 @@ memory are rows of their own bodies.
 Two things it does not do. With **nothing typed** there is no caret to place, so
 the click falls through to the place underneath — the row is carrying a dim
 sentence rather than a draft. And while a picker's filter box is standing in the
-box's place — the model picker, `/resume`, `/files`, the memory panel — or while
+box's place — the model picker, `/resume`, `/files` — or while
 the composer layer is up, a click does not move that box's caret; those are typed
 at and filtered, not edited by pointer.
 
@@ -902,7 +902,7 @@ at and filtered, not edited by pointer.
 The kills above work the same way in **every** box codeaf has, not only the
 message box: **home's own box**, the errand pane beside it, the model picker, the
 sessions roster, the deliverables list, the connect key box and panel, the memory
-panel, the settings filter and its value editor, the rewind search, and the task
+place's line editor, the settings filter and its value editor, the rewind search, and the task
 page's filter. In those boxes `ctrl+w` is a word kill too —
 they are the whole screen while they are up, and no tab could be closed from
 inside one.
@@ -1234,7 +1234,7 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
-## The thinking chip above the message box — `alt+e`, `/effort`, and making this chat think harder
+## The thinking chip above the message box — `alt+e`, `/effort`, and how to make this one chat think harder
 
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
@@ -2013,7 +2013,9 @@ Only in a conversation, with none of those claiming it and the box empty, is it 
 
 Two claims on `tab` were withdrawn when the places arrived, and both moved to a key that
 points the way they go: **the settings panel** changed its own section with `tab`, and now
-uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and now uses `alt+s`.
+uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and the Memories tab
+that replaced it has no shelf key at all — `→` opens a group and `←` folds it, as on the
+Activity tab.
 
 The welcome box is the one exception worth naming: **`tab` does not dismiss it**. Every
 other key does — that is the box's contract — but switching away is the opposite of
@@ -2338,11 +2340,11 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 inside a conversation, and `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the eight words on
-the top line, `home  chats  AI teams  activity  memory  automations  spend  settings`, and
+the top line, `home  chats  AI teams  activity  memories  automations  spend  settings`, and
 `alt+1` opens it. **The other numbers do not follow the bar's order** — they kept the
 destinations they had before the bar was regrouped: `alt+2` AI teams, `alt+3` chats,
-`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` memory. So
-memory is the fifth word on the bar and `alt+8`, and automations, the sixth, is `alt+7`.
+`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` memories. So
+memories is the fifth word on the bar and `alt+8`, and automations, the sixth, is `alt+7`.
 `alt+.` draws every place with its number, and `/help` lists them the same way, digit by
 digit. `alt+3` is `chats`, the way back to the conversation in front (a new chat when none
 is open); it is not a room, so `tab` steps over it. Hold
@@ -2392,7 +2394,7 @@ and open home just as they do from a draft; on spend and automations, which have
 type into, two bare spaces open it and any key between them disarms it. On home itself the
 door is a no-op: the page is already open, and two spaces type into home's own filter. It also does not answer from under a layer that owns the
 keyboard: on the settings panel space is the drawn verb on a row (`activate`),
-memory's card editor keeps every key while it is open, and inside a task's
+memory's line editor keeps every key while it is open, and inside a task's
 record — the room the roster opens on `enter` — `space` pages the card the way
 `pgdown` and `ctrl+f` do, so the door yields there and the key scrolls.
 
@@ -2932,7 +2934,7 @@ Only the left button acts. A press is resolved in this order:
    empty padding does nothing. Inside an old task's record card, the head row and the foot
    go back to the list and its body is read. On automations and spend a press on a
    row opens it on the first press too — an automation's row opens its history; on memory
-   it opens a line's card, or folds a shelf. On home a click puts the cursor on a row and a second click opens it. On the rewind timeline a click places the pick and a click on the
+   it opens a line's card, or opens or folds a group. On home a click puts the cursor on a row and a second click opens it. On the rewind timeline a click places the pick and a click on the
    point already placed does the rewind.
 2. An approval question block, then a connect offer, then a harness offer.
 3. The harness panel, the permissions panel, the connections panel — a press on a row
@@ -3393,7 +3395,7 @@ answer:
 | `ctrl+z` | **Bound**: undo in every box, with `ctrl+shift+z` to redo — see "Undo what I typed" |
 | `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak, which is why `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) are the first spelling and always will be, but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+8` reach the same seven places and the chats destination. The map's line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is up it draws the key map, on the terminals that can send `ctrl+<digit>` |
-| `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
+| `alt+<letter>` | Bound **only where a place says so, and only on that place** — and no place binds one today (the old memory place's `alt+s` shelf walk is gone). `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
 | `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Two places have one — activity (when it ran) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 

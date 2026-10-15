@@ -12,7 +12,6 @@ package session
 // notice a side-effect lives.
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -424,49 +423,40 @@ func toolNamed(belt []bare.Tool, want string) (bare.Tool, bool) {
 
 // ── the memory reflex ───────────────────────────────────────────────────────
 
-// THE REFLEX DOES NOT RUN ON A LEAN SESSION, and it is off by the switch that
-// already turns it off: no store is no block, no call and no verb
-// (memory_test.go's [TestWithoutAStoreThereIsNoBlockNoCallAndNoTool] is the same
-// law asserted from the other side).
-func TestALeanSessionRunsNoMemoryReflex(t *testing.T) {
+// A LEAN SESSION KEEPS ITS MEMORY. The person's lines are bounded and hold over
+// a small model exactly as over a large one, the one call after a turn runs on
+// the reflex tier and not on this window, and a page that told a small model
+// "memory is off" while the person's setting said on was the defect that made
+// the memory place look empty.
+func TestALeanSessionKeepsItsMemory(t *testing.T) {
 	t.Setenv(promptProfileEnv, "lean")
 	script := &reflexScript{}
 	agent, brain := brainAgent(t, script, nil)
 	remember(t, brain, "deploys", "we deploy from staging on Fridays")
 
-	if block := agent.memoryBlock(context.Background(), "how do I deploy this"); block != "" {
-		t.Fatalf("a lean session rendered the memory block %q", block)
+	if !agent.remembers() {
+		t.Fatal("a lean session dropped its store")
 	}
-	if routes, extracts, decides := script.counts(); routes+extracts+decides != 0 {
-		t.Fatalf("a lean session made %d/%d/%d reflex calls; the reflex is two model calls a turn nobody asked for", routes, extracts, decides)
+	if agent.hasTool("remember") || agent.hasTool("forget") {
+		t.Error("a lean belt carries the memory verbs its byte budget has no room for")
 	}
-	if agent.remembers() {
-		t.Error("a lean session still holds a brain, so the reflex has a way back")
+	collect(t, mustSubmit(t, agent, "how do I deploy this"))
+	if !strings.Contains(script.system(0), "we deploy from staging on Fridays") {
+		t.Fatal("a lean session's first request did not carry the person's line")
 	}
-	if agent.hasTool("remember") {
-		t.Error("`remember` is on a lean belt with no store behind it: absent, not broken")
-	}
-	// AND THE CONVERSATION'S OWN RECORD IS UNTOUCHED. Config.Memory is two
-	// things — the writable memory above and the record of what was said — and
-	// an earlier draft of this profile nil'd the field, which took the chat log
-	// with it (compaction_test.go's lossless floor caught it). What a lean
-	// prefix gives up is the reflex, not the session's memory of itself.
 	if agent.chatlog == nil {
-		t.Error("a lean session with a store opened no chat log: the record went with the reflex")
+		t.Error("a lean session with a store opened no chat log")
 	}
 	if !agent.hasTool("search_conversations") {
-		t.Error("a lean session cannot search the record: reading what was said costs nothing per turn")
+		t.Error("a lean session cannot search the record")
 	}
-	// AND THE PAGE AGREES, which is the whole point of flipping the same switch
-	// rather than inventing a second one: [Config.hasStore] is what the page's
-	// memory sentence is composed from, so it says memory is off by itself.
 	page := renderSystemAt(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC))
-	if !strings.Contains(page, "say plainly that memory is off") {
-		t.Error("a lean page still promises `remember`")
+	if !strings.Contains(page, "they can /remember it") {
+		t.Error("a lean page does not tell the model the person can keep a line themselves")
 	}
 }
 
-// AND A FULL SESSION WITH THE SAME BRAIN STILL ROUTES.
+// AND A FULL SESSION WITH THE SAME BRAIN KEEPS IT TOO.
 func TestAFullSessionKeepsItsReflex(t *testing.T) {
 	t.Setenv(promptProfileEnv, "full")
 	agent, _ := brainAgent(t, &reflexScript{}, nil)

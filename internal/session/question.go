@@ -1344,10 +1344,9 @@ func (q Question) SecretAnswer() bool { return q.Input.Secret }
 //
 // IT IS ENFORCED IN ONE PLACE BECAUSE THE READERS ARE THE PROBLEM. An answer
 // leaving [Agent.ResolveQuestion] takes four roads at once — the decision file
-// on disk, the questions lane every window and every `--host` frame reads, the
-// preference [Agent.rememberOverride] would write, and message[0]'s own
-// snapshot of the record, which is the model's next request — and a rule kept
-// at four doors is a rule that is kept at three. Observed on 2026-09-11: an
+// on disk, the questions lane every window and every `--host` frame reads, and
+// message[0]'s own snapshot of the record, which is the model's next request —
+// and a rule kept at three doors is a rule that is kept at two. Observed on 2026-09-11: an
 // OpenRouter key typed into the connect box was written to decisions.jsonl,
 // rendered into the system prompt as `with: sk-or-…` and sent to the provider.
 //
@@ -2030,9 +2029,6 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 		// person's own answer is what closes that gap (checkpoint.go).
 		a.rememberPersonCardAnswer(q, answer)
 	}
-	if said {
-		a.rememberOverride(q, answer)
-	}
 	if said || landingSaid {
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 	}
@@ -2044,36 +2040,6 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	// the raise).
 	a.nudgePresence()
 	return nil
-}
-
-// rememberOverride keeps the person's own reason for going against the pick, as
-// a durable preference rather than a note on one decision. The existing memory
-// door keeps it forgettable.
-//
-// IT RUNS BESIDE THE ANSWER AND NEVER IN FRONT OF IT. [Agent.RememberScoped]
-// weighs the new line against what is already kept, which is a model call
-// (memory.go's applyCandidate) — and this door is the one a person's keystroke
-// is waiting on, over a wire with a deadline on it. A preference written a
-// moment later is worth exactly what one written now is; a key that did not
-// land for as long as a reflex call takes is not.
-func (a *Agent) rememberOverride(q Question, answer Answer) {
-	why := strings.TrimSpace(answer.Why)
-	if why == "" || q.Pick == nil || answer.FirstKey() == q.Pick.Key {
-		return
-	}
-	scope := memoryScopeForAnswer(answer.Scope)
-	// AND IT IS A TRACKED BACKGROUND PASS AND NOT A BARE `go`, on the one
-	// mechanism every background memory pass in this package uses
-	// ([Agent.startMemoryJob]): the work is registered, so [Agent.Close] waits
-	// for it rather than leaving a reflex call writing into a store the session
-	// has finished with, and it is refused outright once the session is closing.
-	if !a.startMemoryJob() {
-		return
-	}
-	go func() {
-		defer a.memoryJobs.Done()
-		_, _ = a.RememberScoped("prefers "+why, scope)
-	}()
 }
 
 // questionForLandingAnswer is the words a landing answer is ABOUT, captured

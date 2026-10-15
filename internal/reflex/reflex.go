@@ -1,38 +1,35 @@
-// Package reflex is the per-turn tier's client: the small structured calls a
-// conversation makes AROUND an exchange rather than in it.
+// Package reflex is the per-turn tier's client: the one small structured call a
+// conversation makes AFTER an exchange rather than in it.
 //
-// Three calls live here. [Route] runs before the turn — it reads the message
-// just typed and the index of what is already remembered, and answers which
-// remembered lines this turn actually needs. [Extract] runs after it — it reads
-// the exchange and answers whether anything in it is worth keeping. [Decide]
-// settles what to do with something worth keeping when the store already holds
-// something near it.
+// [Notice] reads the exchange that just ended and answers two things in one
+// call: what the exchange did to the shape of the work (the state card's delta,
+// internal/session's card.go), and — when the conversation is allowed to keep
+// things on its own — whether the person said something durable worth keeping
+// for every future conversation.
 //
-// They share one shape and one law:
+// IT IS THE ONLY CALL. There used to be three: a router before every turn that
+// chose which remembered lines a message needed, this one, and a decider that
+// settled each new line against its neighbours. Every remembered line now rides
+// every turn (internal/session's memory.go), so there is nothing to route, and
+// this call is shown the lines already kept so it can say "that is already
+// kept" or "this replaces line 3" itself.
+//
+// It keeps the shape and the law the three shared:
 //
 //   - THE MODEL IS A REFLEX, NOT A THINKER, AND THE PROMPT IS WHERE THAT IS
-//     SAID. Every call goes out with a small prompt on [roles.RoleReflex] — its
-//     own tier ([roles.TierReflex]) precisely because a call made twice per turn
-//     is a different economy from one made once a session. Nothing here asks the
-//     model to reason; it sorts, it names, and it answers in a few words of
-//     JSON. It used to say so on the WIRE as well, with a 200-token ceiling and
-//     a required reasoning disable; neither travels now, because how deeply
-//     somebody else's model thinks is not this package's to decide. An effort
-//     already carried by the caller or the configured model remains intact;
-//     this helper adds none.
+//     SAID. The call goes out with a small prompt on [roles.RoleReflex]. Nothing
+//     here asks the model to reason; it names, and it answers in a few words of
+//     JSON. How deeply somebody else's model thinks is not this package's to
+//     decide, so no ceiling and no reasoning switch travel on the wire.
 //
 //   - REFLEX NEVER BREAKS A TURN. A model that answers with prose, with a code
-//     fence, or with an enum this package has never heard of costs ONE repair
-//     retry. A model that spends its ceiling and answers nothing gets ONE larger
-//     retry, then the session's low-tier fallback. After that every failure is a
-//     zero result and [ErrReflexFailed]. Every caller treats that as a no-op:
-//     the turn happens exactly as it would have if this package did not exist.
-//     That is why the failure is a typed error rather than a returned
-//     half-answer — there is no such thing as a partly-routed turn.
+//     fence, or with a word this package has never heard of costs ONE repair
+//     retry. A model that answers nothing gets the session's low-tier fallback.
+//     After that every failure is a zero result and [ErrReflexFailed], and every
+//     caller treats that as "nothing noticed".
 //
 // The package is the client only. It makes no decision about WHEN a call
-// happens, holds no store, and is wired into no loop; the chat integration and
-// the memory store are separate slices that build against the types below.
+// happens and holds no store.
 package reflex
 
 import (
@@ -71,61 +68,20 @@ type Completer interface {
 // reflex that can break a turn.
 var ErrReflexFailed = errors.New("reflex: no usable answer")
 
-const (
-	// THERE IS NO ANSWER CEILING HERE ANY MORE. There were two — 200 for an
-	// ordinary reflex reply, and ten times that for a model whose endpoint had
-	// been observed refusing or ignoring the thinking disable — and both were
-	// only ever honest in company with that disable, which is also gone (see
-	// [call]). What bounds a reflex reply now is the prompt and the model's own
-	// default. The limits below are all INPUT limits: what the model is shown.
+// messageLimit is how much of one side of an exchange the model is shown, in
+// runes. The durable thing a person says lives in the opening of a message far
+// more often than in its tail.
+const messageLimit = 2000
 
-	// messageLimit is how much of one side of an exchange the model is shown,
-	// in runes. A router that reads four paragraphs to decide which memory a
-	// turn needs is not a reflex, and the decision lives in the opening of a
-	// message far more often than in its tail.
-	messageLimit = 2000
+// keptLimit is how many already-kept lines the model is shown. It is the
+// conversation's whole memory block in the ordinary case; past it the oldest
+// are shown, which is the same order the block itself carries.
+const keptLimit = 80
 
-	// indexLimit is how many remembered lines the router is shown. Two hundred
-	// short titles is already a large prompt for a near-free model, and an index
-	// past that is a store that owes the router a ranking rather than a dump.
-	indexLimit = 200
-
-	// neighborLimit is how many near-duplicates [Decide] is shown. Three is
-	// what the store's own search returns as "close"; a fourth adds length to
-	// the prompt and nothing to the answer.
-	neighborLimit = 3
-)
-
-// The enums. They are declared once and rendered INTO the prompts (prompts.go),
-// so the words the model is told to use and the words this package accepts back
-// cannot drift — a validator that rejects a word its own prompt asked for is a
-// call that fails every time and looks like a bad model.
-var (
-	memoryTypes  = []string{"fact", "preference", "decision", "correction", "project_state"}
-	memoryScopes = []string{"user", "project", "env"}
-	decideOps    = []string{"add", "update", "supersede", "skip"}
-	commandNames = []string{"remember", "forget"}
-)
-
-// Stub is one line of the memory index as the router sees it: enough to decide
-// whether the line matters to this turn, and never the line's own text.
-type Stub struct{ ID, Title, Type, Scope string }
-
-// Cmd is an explicit instruction the person gave about memory itself. Name is
-// one of "remember" or "forget".
-type Cmd struct{ Name, Arg string }
-
-// RouteResult is the pre-turn answer: which remembered ids belong in this turn,
-// and the memory command the person typed, if they typed one.
-type RouteResult struct {
-	// Inject holds ids FROM THE INDEX IT WAS GIVEN. An id the model invented is
-	// dropped rather than passed on — the store would not find it, and a
-	// missing memory reported as an injected one is a lie the caller cannot
-	// check.
-	Inject []string
-	// Cmd is nil on almost every turn.
-	Cmd *Cmd
-}
+// memoryScopes is the one list of scope words, declared once and rendered INTO
+// the prompt (prompts.go) so the words the model is told to use and the words
+// this package accepts back cannot drift.
+var memoryScopes = []string{"user", "project", "env"}
 
 // StateDelta is what an exchange did to the shape of the work: where it is
 // going, what has landed, what is in flight, what is next, what is still open,
@@ -139,59 +95,21 @@ type StateDelta struct {
 	Refs     []string
 }
 
-// ExtractResult is the post-turn answer.
-//
-// Mem is the whole gate: 0 means the exchange held nothing worth carrying into
-// another session, which is the answer for most exchanges, and every other
-// field is then meaningless and unread.
-type ExtractResult struct {
-	Mem   int
-	Type  string
+// NoticeResult is the post-turn answer.
+type NoticeResult struct {
+	// Keep is the one line worth keeping for every future conversation, in the
+	// person's own terms, or "" — which is the answer for most exchanges, and
+	// always the answer when the call was not asked about memory.
+	Keep string
+	// Scope is where Keep holds: `user` (everywhere), `project` or `env` (this
+	// machine).
 	Scope string
-	Title string
-	Text  string
-	Tags  []string
-	// Source names the independent evidence, rather than treating the assistant's
-	// own conclusion as corroboration. Quotes and receipts are checked by the caller.
-	Source      string
-	SourceQuote string
-	ReceiptID   string
-	Authority   string
-	Conditions  []string
-	Rationale   string
-	Rejected    []string
-	Reconsider  string
-	WorkStatus  string
-	// State is present only when the exchange MOVED the work. A turn that
-	// answered a question changed nothing about where the work stands.
+	// Replaces is the 1-based number of the kept line Keep corrects or
+	// updates, or 0 when it replaces nothing. A number outside the list the
+	// call was shown is dropped rather than passed on.
+	Replaces int
+	// State is present only when the exchange MOVED the work.
 	State *StateDelta
-	// Used names the injected memory ids that actually BORE ON THE ANSWER, out
-	// of the ones this turn was shown. It is asked of a model that is already
-	// reading the exchange, so it costs no extra call and about ten output
-	// tokens.
-	//
-	// It exists because counting a retrieval as a use credits a memory for
-	// being INJECTED rather than for helping — RoMeRL (arXiv 2608.02508) names
-	// that the "memory-reward trap", and fixing the credit assignment is what
-	// shrank its memory pool 84.4% for +2.9pp accuracy. An id the model
-	// invented is dropped, exactly as [RouteResult.Inject] drops one.
-	//
-	// It is empty on every turn nothing was injected, and empty is also the
-	// honest answer when lines were shown and none of them mattered — the
-	// caller reads that difference against what it injected.
-	Used []string
-}
-
-// Neighbor is one thing the store already holds that sits near a candidate.
-type Neighbor struct{ ID, Title, Text string }
-
-// DecideResult is what to do with a candidate given what is already there.
-type DecideResult struct {
-	Op       string
-	TargetID string
-	Title    string
-	Text     string
-	Tags     []string
 }
 
 // Model resolves which model the reflex calls run on: the [roles] ladder for
@@ -321,135 +239,32 @@ func sameModel(left, right string) bool {
 	return right != "" && normalizeModel(left) == right
 }
 
-// Route answers which remembered lines this turn needs, before the turn runs.
+// Notice reads one exchange and answers what it did to the work and, when
+// askMemory is set, whether the person said something worth keeping. kept is
+// the lines this conversation already keeps, in the order its memory block
+// carries them; the model sees them numbered from 1.
 //
-// An empty list is the ordinary answer and is not a failure. A message with
-// nothing in it is answered without a call at all: there is nothing to route
-// against, and a reflex that bills for that would bill for every stray return.
-func Route(ctx context.Context, c Completer, userMsg string, index []Stub) (RouteResult, error) {
-	if strings.TrimSpace(userMsg) == "" {
-		return RouteResult{}, nil
-	}
-	// Recall is on the first answer's critical path, so the whole operation,
-	// including repair and model fallback, shares the interactive silence cap.
-	// A deadline here lets the caller proceed without memory when a provider
-	// stalls instead of inheriting the transport's multi-minute safety bound.
-	//
-	// IT IS THE ROLE'S OWN GIVE-UP AND NOT ITS CEILING, and the difference is the
-	// whole of what was wrong here. A role says two things about a silence: when
-	// to ACT on it ([lane.Role.Ceiling]) and when to STOP ([lane.Role.GiveUp]).
-	// This read the first as though it were the second, which made them the same
-	// instant — the hazard controller was told to move this call to another
-	// machine at exactly the moment the deadline killed it, so no recall in this
-	// build's history was ever rescued off a slow reflex endpoint. The 2026-09-11
-	// census measured what that produced: a mean of 4.3 seconds and a maximum of
-	// 10.7, with DekaLLM answering at a median of 5.5s beside DeepInfra's 1.7s.
-	//
-	// So the ceiling ACTS, two seconds in, and this is the bound it acts inside of.
-	//
-	// AND WHAT IT COSTS TO REACH IT IS A TURN WITHOUT ITS MEMORY, never a turn
-	// without its answer: the caller proceeds, which is why a flat bound is
-	// honest here and would not be on the reply itself. THE CALLER NO LONGER WAITS
-	// FOR IT AT ALL — internal/session runs this beside the turn and applies what
-	// it finds to whichever step is still ahead of it (loop.go's law) — so a
-	// window generous enough to let the rescue land is now the answer that costs
-	// the person nothing and keeps the most memories.
-	ctx, cancel := context.WithTimeout(ctx, lane.RoleRecall.GiveUp())
-	defer cancel()
-	known := make(map[string]bool, len(index))
-	for _, stub := range index {
-		if id := strings.TrimSpace(stub.ID); id != "" {
-			known[id] = true
-		}
-	}
-	// RECALL IS ON THE ANSWER'S CRITICAL PATH. Its output stays private, but
-	// somebody is waiting for it, so the existing chooser values latency and
-	// can recover within the shared cap instead of pricing it as background work.
-	var result RouteResult
-	err := ask(provider.WithRole(ctx, lane.RoleRecall), c, routePrompt, routeInput(userMsg, index), func(reply string) error {
-		var wire struct {
-			Inject []string `json:"inject"`
-			Cmd    *struct {
-				Name string `json:"name"`
-				Arg  string `json:"arg"`
-			} `json:"cmd"`
-		}
-		if err := decode(reply, &wire); err != nil {
-			return err
-		}
-		next := RouteResult{}
-		for _, id := range wire.Inject {
-			id = strings.TrimSpace(id)
-			if id != "" && known[id] {
-				next.Inject = append(next.Inject, id)
-			}
-		}
-		if wire.Cmd != nil {
-			name := strings.ToLower(strings.TrimSpace(wire.Cmd.Name))
-			if !allowed(commandNames, name) {
-				return fmt.Errorf("reflex: %q is not a memory command", wire.Cmd.Name)
-			}
-			next.Cmd = &Cmd{Name: name, Arg: strings.TrimSpace(wire.Cmd.Arg)}
-		}
-		result = next
-		return nil
-	})
-	if err != nil {
-		return RouteResult{}, err
-	}
-	return result, nil
-}
-
-// Extract answers whether an exchange held anything worth remembering — and,
-// when the turn was shown remembered lines, which of them actually bore on the
-// answer.
-//
-// injected is what the router put in front of the model for this exchange, and
-// it is shown to the extractor for that second question alone. An empty list
-// is the ordinary case and the question is then not asked at all: a heading
-// with nothing under it reads to a small model like a list it failed to
-// receive.
-//
-// Mem 0 is returned as it arrived, with NO further validation of the memory
-// fields: the model has said there is nothing here, they are whatever it left
-// in them, and refusing that answer over a stray type would turn "nothing to
-// remember" — the common case — into a retry on every turn. Used is read
-// whatever mem says, because whether a memory helped and whether the exchange
-// held something new are different questions about the same turn.
-func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string, injected []Stub) (ExtractResult, error) {
+// A Keep with no usable scope is answered as `project`, the default every other
+// door keeps by, rather than refused: a model that got the line right and the
+// scope word wrong has still noticed the line.
+func Notice(ctx context.Context, c Completer, userMsg, assistantMsg string, kept []string, askMemory bool) (NoticeResult, error) {
 	if strings.TrimSpace(userMsg) == "" && strings.TrimSpace(assistantMsg) == "" {
-		return ExtractResult{}, nil
+		return NoticeResult{}, nil
 	}
-	shown := make(map[string]bool, len(injected))
-	for _, stub := range injected {
-		if id := strings.TrimSpace(stub.ID); id != "" {
-			shown[id] = true
-		}
+	if len(kept) > keptLimit {
+		kept = kept[:keptLimit]
 	}
-	// THIS ONE IS THE MEMORY'S AND NOT THE TURN'S. What it asks is whether the
-	// exchange held something worth keeping, and what it costs and what it is
-	// worth are the memory reflex's ([lane.RoleMemory]) rather than a side
-	// errand's — the turn has already happened either way.
-	var result ExtractResult
-	err := ask(provider.WithRole(ctx, lane.RoleMemory), c, extractPrompt, extractInput(userMsg, assistantMsg, injected), func(reply string) error {
+	system := statePrompt
+	if askMemory {
+		system = noticePrompt
+	}
+	var result NoticeResult
+	err := ask(provider.WithRole(ctx, lane.RoleMemory), c, system, noticeInput(userMsg, assistantMsg, kept, askMemory), func(reply string) error {
 		var wire struct {
-			Mem         int      `json:"mem"`
-			Type        string   `json:"type"`
-			Scope       string   `json:"scope"`
-			Title       string   `json:"title"`
-			Text        string   `json:"text"`
-			Tags        []string `json:"tags"`
-			Used        []string `json:"used"`
-			Source      string   `json:"source"`
-			SourceQuote string   `json:"source_quote"`
-			ReceiptID   string   `json:"receipt_id"`
-			Authority   string   `json:"authority"`
-			Conditions  []string `json:"conditions"`
-			Rationale   string   `json:"rationale"`
-			Rejected    []string `json:"rejected"`
-			Reconsider  string   `json:"reconsider"`
-			WorkStatus  string   `json:"work_status"`
-			State       *struct {
+			Keep     string `json:"keep"`
+			Scope    string `json:"scope"`
+			Replaces int    `json:"replaces"`
+			State    *struct {
 				Goal     string   `json:"goal"`
 				Done     []string `json:"done"`
 				Inflight []string `json:"inflight"`
@@ -461,36 +276,17 @@ func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string, inj
 		if err := decode(reply, &wire); err != nil {
 			return err
 		}
-		if wire.Mem != 0 && wire.Mem != 1 {
-			return fmt.Errorf("reflex: mem is %d, which is neither 0 nor 1", wire.Mem)
+		next := NoticeResult{}
+		if askMemory {
+			next.Keep = strings.TrimSpace(wire.Keep)
 		}
-		next := ExtractResult{Mem: wire.Mem}
-		if wire.Mem == 1 {
-			next.Type = strings.ToLower(strings.TrimSpace(wire.Type))
+		if next.Keep != "" {
 			next.Scope = strings.ToLower(strings.TrimSpace(wire.Scope))
-			if !allowed(memoryTypes, next.Type) {
-				return fmt.Errorf("reflex: %q is not a memory type", wire.Type)
-			}
 			if !allowed(memoryScopes, next.Scope) {
-				return fmt.Errorf("reflex: %q is not a memory scope", wire.Scope)
+				next.Scope = "project"
 			}
-			next.Title = strings.TrimSpace(wire.Title)
-			next.Text = strings.TrimSpace(wire.Text)
-			next.Tags = cleaned(wire.Tags)
-			next.Source = strings.TrimSpace(wire.Source)
-			next.SourceQuote = clip(wire.SourceQuote, messageLimit)
-			next.ReceiptID = strings.TrimSpace(wire.ReceiptID)
-			next.Authority = strings.TrimSpace(wire.Authority)
-			next.Conditions = cleaned(wire.Conditions)
-			next.Rationale = clip(wire.Rationale, messageLimit)
-			next.Rejected = cleaned(wire.Rejected)
-			next.Reconsider = clip(wire.Reconsider, messageLimit)
-			next.WorkStatus = strings.TrimSpace(wire.WorkStatus)
-		}
-		for _, id := range wire.Used {
-			id = strings.TrimSpace(id)
-			if id != "" && shown[id] {
-				next.Used = append(next.Used, id)
+			if wire.Replaces >= 1 && wire.Replaces <= len(kept) {
+				next.Replaces = wire.Replaces
 			}
 		}
 		if wire.State != nil {
@@ -507,53 +303,10 @@ func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string, inj
 		return nil
 	})
 	if err != nil {
-		return ExtractResult{}, err
+		return NoticeResult{}, err
 	}
 	return result, nil
 }
-
-// Decide settles a candidate against what the store already holds near it: skip
-// it, refine one of them, replace one of them, or add it.
-//
-// A missing TargetID on an update or a supersede is NOT refused here — the
-// enum is what this package validates, and the store is the only thing that
-// knows whether an id is real. A caller that gets one treats it as a skip.
-func Decide(ctx context.Context, c Completer, candidate ExtractResult, neighbors []Neighbor) (DecideResult, error) {
-	// The memory's again, for [Extract]'s reason: this call exists only because
-	// something was already judged worth keeping, and what to do with it is a
-	// question about the store rather than about the turn.
-	var result DecideResult
-	err := ask(provider.WithRole(ctx, lane.RoleMemory), c, decidePrompt, decideInput(candidate, neighbors), func(reply string) error {
-		var wire struct {
-			Op       string   `json:"op"`
-			TargetID string   `json:"target_id"`
-			Title    string   `json:"title"`
-			Text     string   `json:"text"`
-			Tags     []string `json:"tags"`
-		}
-		if err := decode(reply, &wire); err != nil {
-			return err
-		}
-		op := strings.ToLower(strings.TrimSpace(wire.Op))
-		if !allowed(decideOps, op) {
-			return fmt.Errorf("reflex: %q is not one of %s", wire.Op, strings.Join(decideOps, ", "))
-		}
-		result = DecideResult{
-			Op:       op,
-			TargetID: strings.TrimSpace(wire.TargetID),
-			Title:    strings.TrimSpace(wire.Title),
-			Text:     strings.TrimSpace(wire.Text),
-			Tags:     cleaned(wire.Tags),
-		}
-		return nil
-	})
-	if err != nil {
-		return DecideResult{}, err
-	}
-	return result, nil
-}
-
-// ── the call ────────────────────────────────────────────────────────────────
 
 // ask makes one reflex call and, if the answer was not readable, exactly one
 // repair call. The answer-budget recovery lives inside [call], where the

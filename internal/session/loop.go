@@ -327,15 +327,11 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
-	// Binding context is read locally before any model or early tool request.
-	// Optional semantic recall can still race beside the reply.
-	cue := a.turnCue(user)
-	a.prepareBindingContext(ctx, cue)
-	// AND A TASK WORKER'S READ-ONLY APPROVED BINDINGS, DETERMINISTICALLY, before
-	// its first request: the node's routed shortlist arrives beside the work and
-	// may be late ([nodeMemory]), but an approved rule or confirmed decision may
-	// not be. A conversation owns a brain and returns here immediately.
-	a.prepareWorkerBinding(ctx, cue)
+	// WHAT THE LAST TURN'S MEMORY PASS HAD NOWHERE TO SAY is said first: it ran
+	// after that turn's stream had closed, so this stream is the first it gets
+	// (memory.go's [Agent.sayMemory]).
+	a.flushMemoryNotices()
+	a.armMemoryVerbs(user)
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}
@@ -474,26 +470,6 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// enters that package by any road. The pieces of orchestrate.go that no chat
 	// door reaches any more say so where they stand.
 
-	// AND THE READING THAT USED TO BE THE LAST THING BEFORE THE FIRST REQUEST:
-	// which of the things this person has had codeaf remember bear on what they
-	// just said (memory.go).
-	//
-	// IT IS NOT A LINE OF THIS FUNCTION ANY MORE. It is already in flight — it was
-	// started beside the title, at the one place a turn begins
-	// ([Agent.startRecallLocked]) — and what happens here is that the turn picks
-	// up the handle and carries it. This is the file's own law in the one place it
-	// was most expensively broken: the call census of 2026-09-11 measured the main
-	// model not being asked until a mistral-nemo call returned, on every single
-	// message.
-	//
-	// Everything about it still fails open — an empty block is a turn exactly as
-	// it would have been — and everything it finds is still applied: to this
-	// request if it is back before the first token, to the next step if it is not.
-	recall := a.takeRecall()
-	// AND THE RECALL DIES WITH THE TURN, for the route race's reason below: a
-	// block nobody can land any more must not go on paying for a reflex call.
-	defer recall.end()
-
 	// AND WHAT THE OTHER WINDOWS ON THIS PROJECT HAVE BEEN DOING (taskdelta.go),
 	// beside the work for the same law. It makes no model call — it opens the
 	// project index and one small JSON per live window — but a shared directory on
@@ -552,11 +528,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	partial := &partialBuffer{}
 	// reached is THE reading of what this attempt has put in front of the person,
 	// written by the stream observer below and asked by every door that may
-	// re-ask the request — the recall's block, and the person's own word
-	// (steer.go's [reachedThePerson]). It lives here beside the buffers it is a
+	// re-ask the request — the person's own word (steer.go's
+	// [reachedThePerson]). It lives here beside the buffers it is a
 	// fact about, and is emptied with them at the top of every attempt.
 	reached := &reachedThePerson{}
-	recall.watch(reached)
 	// Reasoning is accumulated beside, never inside, the partial answer. A
 	// completed step keeps it for continuation; an interrupted attempt drops it.
 	reasoning := &reasoningBuffer{}
@@ -617,11 +592,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			a.turnLane.token(time.Now())
 			// AND EVERY DOOR THAT MAY RE-ASK THIS REQUEST IS TOLD THE PERSON HAS
 			// STARTED READING. Past this instant a silent re-ask would take words
-			// off a screen somebody is looking at, so the recall lands on the next
-			// step instead (memory.go's [recallAside]) and the person's own word
-			// waits for the boundary rather than cutting (steer.go's
-			// [reachedThePerson], which is the ONE reading both of them ask). One
-			// atomic store per delta.
+			// off a screen somebody is looking at, so the person's own word waits
+			// for the boundary rather than cutting (steer.go's [reachedThePerson]).
+			// One atomic store per delta.
 			reached.drew()
 			pace.word(time.Now())
 			partial.write(event.Delta)
@@ -945,7 +918,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// out of the loop below, a turn handed over or stopped is exactly the turn an
 	// audit wants the decomposition of, and a row written at each exit is one law
 	// copied at every one of them.
-	defer func() { a.journalTurnPace(pace, recall, marked) }()
+	defer func() { a.journalTurnPace(pace, marked) }()
 
 	// TOOL COMPACTION MAY ONLY TOUCH HISTORY THAT WAS FROZEN BEFORE THIS TURN'S
 	// FIRST REQUEST. Every result appended below will have appeared verbatim in
@@ -1323,9 +1296,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			a.maybeTitle(ctx, hub)
 			// AND THE EXCHANGE IS READ FOR ANYTHING WORTH KEEPING, off this
 			// goroutine entirely and on the session's own lifetime rather than
-			// the turn's (memory.go). Nobody is waiting for it, nothing it finds
-			// reaches this turn, and it says nothing whatever happens to it.
-			a.learnFromTurn(user.text(), answer)
+			// the turn's (memory.go). Nobody is waiting for it and nothing it
+			// finds reaches this turn; a line it keeps is said on the standing
+			// lane, and a failure once per window.
+			a.learnFromTurn(user, answer)
 			return true
 		}
 
@@ -1594,23 +1568,8 @@ func (p *turnPace) row(aside []string) journalPace {
 // sent in four milliseconds because its recall had been deleted and a turn that
 // sent in four milliseconds with the recall, the work-or-words race and a mark's
 // drawing all running beside it are the same row without them.
-func (a *Agent) journalTurnPace(pace *turnPace, recall *recallAside, marked *markAside) {
+func (a *Agent) journalTurnPace(pace *turnPace, marked *markAside) {
 	var aside []string
-	if recall.everAsked() {
-		aside = append(aside, "recall")
-		if recall.reasked() {
-			// THE RE-ASK IS NAMED because it is the one move this law buys with a
-			// second request, and an audit that could not see it could not price it.
-			aside = append(aside, "recall:reasked")
-		}
-		if recall.wasLate() {
-			// AND SO IS THE LATENESS, which is the quality half: the block was
-			// routed, it could not be spent on the request it was routed for, and it
-			// rode the next step instead. Silence here is how a dropped reading
-			// looks exactly like a turn that had nothing to recall.
-			aside = append(aside, "recall:late")
-		}
-	}
 	if marked.everAsked() {
 		aside = append(aside, "mark")
 	}
@@ -2034,17 +1993,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if err := a.preparePromptProfile(model); err != nil {
 			return nil, model, err
 		}
-		messages, carried, policyActive := a.snapshotWithReasoning()
-		// AND THE SOURCE-AUTHORED FRAMEWORK METHOD POLICY, in the SYSTEM
-		// authority and never the quoted-history note, when this turn carries
-		// prior-outcome rows ([Agent.withFrameworkPolicy]): the same constant for
-		// an ordinary conversation, a manager and a task worker, added to THIS
-		// request's leading system message alone so a refresh cannot double-insert
-		// it and the transcript behind it never moves. The activation bit is the
-		// one TAKEN WITH the snapshot above, never reread here, so a routed pass
-		// that lands a new note between the snapshot and this line cannot pair its
-		// flag with rows the request does not carry.
-		messages = a.withFrameworkPolicy(messages, policyActive)
+		messages, carried := a.snapshotWithReasoning()
 		if wake, settle := settleWakeFrom(ctx); settle && wake.prompt != "" && len(messages) > 0 {
 			rolePage := textMessage("system", strings.TrimSpace(wake.prompt))
 			messages = append(messages[:1:1], append([]ai.Message{rolePage}, messages[1:]...)...)
@@ -2095,16 +2044,6 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// where the turn can actually be handed over (checkpoint.go).
 		if errors.Is(cause, errMarkCut) {
 			return response, model, errMarkCut
-		}
-		// AND THE RECALL'S RE-ASK IS TAKEN HERE, silently, because nothing failed.
-		// The block of remembered lines landed in the transcript while this request
-		// was in flight and before the person had read a word of it, so the request
-		// is simply assembled again with it in — one move, no backoff, no row and
-		// no sentence, since there is nothing a person could act on and nothing
-		// they saw. It happens at most once a turn ([recallAside]), and the
-		// provider's own prefix cache makes the second send the cheap one.
-		if errors.Is(cause, errRecallCut) {
-			continue
 		}
 		// AND SO IS THE PERSON'S OWN WORD, for the same reason and one more: they
 		// have read nothing of this request ([activeGeneration.productive] is what
@@ -3606,21 +3545,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	started := time.Now()
-	a.mu.Lock()
-	memoryTurn := a.turnSeq
-	a.mu.Unlock()
-	// THE CALL'S OWN CIRCUMSTANCES, TAKEN BEFORE IT RUNS. A snapshot read only
-	// after the action could certify a state the failure was never earned under;
-	// the pre-action identity is what tells an honest "the tree moved" from a
-	// claim earned against the post state.
-	pre := ""
-	if a.remembers() || a.outcomes != nil {
-		pre = a.captureSourceSnapshot(ctx).Identity
-	}
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
-	a.recordMemoryTool(ctx, memoryTurn, call, result)
-	a.recordOutcome(ctx, memoryTurn, call, result, pre)
-	a.refreshContextualImpactsAfterAction(result, call.Function.Name)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on
 	// [toolResult.harness] for this reason — every counter that judges the

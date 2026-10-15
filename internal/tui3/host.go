@@ -468,11 +468,6 @@ func (a *app) remoteProfileWord(thing string) string {
 // line's place segment, /status and the legend under the input all read, because
 // the connection is shown as the place and is shown nowhere else.
 const (
-	// memoryRemoteWord is the memory place over --host. It replaces
-	// [memoryOffNote], which would otherwise say memory is off for this session
-	// — and that is a claim about the far machine's settings that this surface
-	// has never asked about.
-	memoryRemoteWord = "memory shows what this machine has learned, and this session is on another"
 	// spendRemoteWord is the spend place over --host.
 	spendRemoteWord = "spend shows what this machine has cost, and this session is on another"
 )
