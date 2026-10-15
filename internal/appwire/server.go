@@ -144,6 +144,9 @@ type request struct {
 func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine Engine) error {
 	hello.Contract = Contract
 	s.Emit(EventHello, hello)
+	if warmer, ok := engine.(Warmer); ok {
+		go warmer.Warm()
+	}
 
 	lines := make(chan []byte)
 	readErr := make(chan error, 1)
@@ -335,6 +338,29 @@ var methods = map[string]method{
 		}
 		return agentResult{agent}, nil
 	},
+	"agents.set_effort": func(e Engine, raw json.RawMessage) (any, error) {
+		var p struct {
+			ID     string `json:"id"`
+			Effort string `json:"effort"`
+		}
+		if err := decode(raw, &p); err != nil {
+			return nil, err
+		}
+		effort := strings.ToLower(strings.TrimSpace(p.Effort))
+		if strings.TrimSpace(p.ID) == "" {
+			return nil, Errorf(CodeBadParams, "agents.set_effort needs an id")
+		}
+		switch effort {
+		case EffortLow, EffortMedium, EffortHigh:
+		default:
+			return nil, Errorf(CodeBadParams, "effort is low, medium or high")
+		}
+		agent, err := e.SetEffort(p.ID, effort)
+		if err != nil {
+			return nil, err
+		}
+		return agentResult{agent}, nil
+	},
 	"agents.retry": func(e Engine, raw json.RawMessage) (any, error) {
 		id, err := decodeID(raw, "id")
 		if err != nil {
@@ -388,8 +414,9 @@ var methods = map[string]method{
 	},
 	"agents.send": func(e Engine, raw json.RawMessage) (any, error) {
 		var p struct {
-			ID   string `json:"id"`
-			Text string `json:"text"`
+			ID       string `json:"id"`
+			Text     string `json:"text"`
+			ClientID string `json:"client_id"`
 		}
 		if err := decode(raw, &p); err != nil {
 			return nil, err
@@ -400,7 +427,7 @@ var methods = map[string]method{
 		if strings.TrimSpace(p.Text) == "" {
 			return nil, Errorf(CodeBadParams, "agents.send needs some text")
 		}
-		turn, err := e.Send(p.ID, p.Text)
+		turn, err := e.Send(p.ID, p.Text, p.ClientID)
 		if err != nil {
 			return nil, err
 		}

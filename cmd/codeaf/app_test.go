@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -139,6 +142,7 @@ type fakeConversation struct {
 	endLane     func()
 	answers     []session.Answer
 	model       string
+	effort      string
 	rail        float64
 	remembered  []session.ConsentScope
 	texts       []string
@@ -203,6 +207,16 @@ func (f *fakeConversation) Model() string {
 	return "deepseek/deepseek-v4-flash"
 }
 func (f *fakeConversation) SetModel(model string) { f.mu.Lock(); f.model = model; f.mu.Unlock() }
+func (f *fakeConversation) ReasoningFor(model string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.effort
+}
+func (f *fakeConversation) SetReasoningFor(model, level string) {
+	f.mu.Lock()
+	f.effort = level
+	f.mu.Unlock()
+}
 func (f *fakeConversation) SetSpendRail(usd float64) error {
 	f.mu.Lock()
 	f.rail = usd
@@ -273,6 +287,40 @@ func (r *appRecorder) waitFor(t *testing.T, within time.Duration, match func(str
 
 func appTurnDone(event string, _ any) bool { return event == appwire.EventTurnDone }
 
+// appFakeTranscript is the one conversation a fake opener holds.
+const appFakeTranscript = "/state/v3/places/proj/5e55a0f1/transcript.jsonl"
+
+// newFakeBackend is a backend over a fake opener, minting the fake's own
+// folder rather than one on disk.
+func newFakeBackend(rec appwire.Emitter, open appOpener) *appBackend {
+	backend := newAppBackend(rec, open)
+	backend.mint = func(string) (string, error) { return appFakeTranscript, nil }
+	return backend
+}
+
+// mustCreate creates an agent and, when it was given no words, waits for its
+// conversation to be open, which agents.create does behind its answer.
+func mustCreate(t *testing.T, backend *appBackend, ask appwire.CreateAsk) (appwire.Agent, error) {
+	t.Helper()
+	agent, err := backend.CreateAgent(ask)
+	if err != nil || strings.TrimSpace(ask.Text) != "" {
+		return agent, err
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		a, _ := backend.find(agent.ID)
+		if a != nil && backend.liveOf(a) != nil {
+			var view appwire.Agent
+			backend.locked(func() { view = a.view })
+			return view, nil
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the agent's conversation never opened")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 func fakeOpener(conv *fakeConversation, opens *int, releases *int, mu *sync.Mutex) appOpener {
 	return func(ask appOpenAsk) (*appConn, error) {
 		mu.Lock()
@@ -280,7 +328,7 @@ func fakeOpener(conv *fakeConversation, opens *int, releases *int, mu *sync.Mute
 		mu.Unlock()
 		return &appConn{
 			Conv: conv, Workspace: ask.Workspace,
-			Transcript: "/state/v3/places/proj/5e55a0f1/transcript.jsonl",
+			Transcript: appFakeTranscript,
 			Release:    func() { mu.Lock(); *releases++; mu.Unlock() },
 		}, nil
 	}
@@ -308,17 +356,17 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
 
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir(), Model: "deepseek/deepseek-v4-flash"})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir(), Model: "deepseek/deepseek-v4-flash"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if agent.ID != "5e55a0f1" || agent.State != appwire.StateIdle || agent.Model != "deepseek/deepseek-v4-flash" {
 		t.Fatalf("created = %+v", agent)
 	}
-	turn, err := backend.Send(agent.ID, "fix it")
+	turn, err := backend.Send(agent.ID, "fix it", "")
 	if err != nil || turn == 0 {
 		t.Fatalf("send = %d, %v", turn, err)
 	}
@@ -330,8 +378,9 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	// The first event is the create's own agent.changed.
-	got := rec.events[1 : done+2]
+	// The first two events are the create's own agent.changed and the one
+	// that says its conversation opened behind the answer.
+	got := rec.events[2 : done+2]
 	want := []string{
 		appwire.EventAgentChanged, appwire.EventTurnStarted, appwire.EventEntryAdded,
 		appwire.EventTurnDelta, appwire.EventTurnDelta, appwire.EventEntryAdded,
@@ -341,14 +390,14 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("events:\n got %v\nwant %v", got, want)
 	}
-	data := rec.data[1 : done+2]
+	data := rec.data[2 : done+2]
 	if s := data[0].(appwire.AgentChanged).Agent.State; s != appwire.StateWorking {
 		t.Fatalf("first change = %s, want working", s)
 	}
 	if d := data[1].(appwire.TurnStarted); d.Turn != turn || d.Agent != agent.ID {
 		t.Fatalf("turn.started = %+v", d)
 	}
-	if e := data[2].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUser || e.Text != "fix it" || e.Turn != turn || e.Agent != agent.ID {
+	if e := data[2].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUser || e.ID != "u0" || e.Text != "fix it" || e.Turn != turn || e.Agent != agent.ID {
 		t.Fatalf("the person's entry = %+v", e)
 	}
 	if d := data[3].(appwire.TurnDelta); d.Kind != appwire.DeltaThinking || d.Text != "hmm" {
@@ -357,13 +406,13 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if d := data[4].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
 		t.Fatalf("text = %+v", d)
 	}
-	if e := data[5].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryAnswer || e.Text != "hello world" || e.Thinking != "hmm" {
+	if e := data[5].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryAnswer || e.ID != "a0.0" || e.Msg == nil || *e.Msg != 0 || e.Text != "hello world" || e.Thinking != "hmm" {
 		t.Fatalf("the answer entry = %+v", e)
 	}
 	begin := data[6].(appwire.TurnTool)
 	end := data[7].(appwire.TurnTool)
 	failed := data[9].(appwire.TurnTool)
-	if begin.Phase != appwire.PhaseBegin || begin.Call != "c1" || begin.Name != "read" || begin.OK != nil {
+	if begin.Phase != appwire.PhaseBegin || begin.Call != "c1" || begin.Name != "read" || begin.Title != "read go.mod" || begin.OK != nil {
 		t.Fatalf("begin = %+v", begin)
 	}
 	if end.Phase != appwire.PhaseEnd || end.OK == nil || !*end.OK || end.Summary != "12 lines" {
@@ -388,16 +437,16 @@ func TestAppSendRefusesBusyAndReportsAFailedTurn(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := backend.Send(agent.ID, "one"); err != nil {
+	if _, err := backend.Send(agent.ID, "one", ""); err != nil {
 		t.Fatal(err)
 	}
-	_, err = backend.Send(agent.ID, "two")
+	_, err = backend.Send(agent.ID, "two", "")
 	var wire *appwire.Error
 	if !errors.As(err, &wire) || wire.Code != appwire.CodeBusy {
 		t.Fatalf("second send = %v, want busy", err)
@@ -423,11 +472,11 @@ func TestAppLetsAnIdleConversationGoAndTheNextSendReopensIt(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
 	clock := time.Now()
 	backend.now = func() time.Time { return clock }
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +505,7 @@ func TestAppLetsAnIdleConversationGoAndTheNextSendReopensIt(t *testing.T) {
 		t.Fatalf("state after letting go = %s", state)
 	}
 
-	if _, err := backend.Send(agent.ID, "again"); err != nil {
+	if _, err := backend.Send(agent.ID, "again", ""); err != nil {
 		t.Fatalf("send after letting go = %v", err)
 	}
 	rec.waitFor(t, 5*time.Second, appTurnDone)
@@ -474,10 +523,10 @@ func TestAppCloseSaysClosedAndUnknownIdsAreNotFound(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
 	t.Setenv(home.EnvVar, t.TempDir())
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +559,7 @@ func TestAppHoldsARealConversationInProcess(t *testing.T) {
 	_, workspace := wakeEnvironment(t, root)
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: workspace})
 	if err != nil {
 		backend.Close()
 		t.Fatalf("create = %v", err)
@@ -519,7 +568,7 @@ func TestAppHoldsARealConversationInProcess(t *testing.T) {
 		backend.Close()
 		t.Fatalf("agent = %+v", agent)
 	}
-	turn, err := backend.Send(agent.ID, "say done")
+	turn, err := backend.Send(agent.ID, "say done", "")
 	if err != nil {
 		backend.Close()
 		t.Fatalf("send = %v", err)
@@ -603,9 +652,9 @@ func TestAppAsksOpenAnswerAndCloseThroughTheQuestionLane(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,9 +729,9 @@ func TestAppADeadConversationReadsStoppedAndTheNextSendReopensIt(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -711,7 +760,7 @@ func TestAppADeadConversationReadsStoppedAndTheNextSendReopensIt(t *testing.T) {
 			t.Fatalf("listed as %s", listed.State)
 		}
 	}
-	if _, err := backend.Send(agent.ID, "again"); err != nil {
+	if _, err := backend.Send(agent.ID, "again", ""); err != nil {
 		t.Fatalf("send after the engine died = %v", err)
 	}
 	rec.waitFor(t, 5*time.Second, appTurnDone)
@@ -748,7 +797,7 @@ func TestAppAnswersARealApprovalAndRecordsTheWorkspaceAsTheLaunchFolder(t *testi
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
 	defer backend.Close()
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: workspace})
 	if err != nil {
 		t.Fatalf("create = %v", err)
 	}
@@ -760,7 +809,7 @@ func TestAppAnswersARealApprovalAndRecordsTheWorkspaceAsTheLaunchFolder(t *testi
 		t.Fatalf("launch folder = %q (app started in %q), %v", meta.LaunchDir, started, err)
 	}
 
-	if _, err := backend.Send(agent.ID, "run the probe"); err != nil {
+	if _, err := backend.Send(agent.ID, "run the probe", ""); err != nil {
 		t.Fatal(err)
 	}
 	i := rec.waitFor(t, 30*time.Second, appAskEvent(appwire.EventAskOpened))
@@ -841,11 +890,11 @@ func TestAppCreateWithTextStartsTheTurnAndNamesTheAgent(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
 	budget := 3.0
 	words := "Please fix the flaky parser test in the lexer package before lunch"
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Text: words, BudgetUSD: &budget})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Text: words, BudgetUSD: &budget})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -877,9 +926,9 @@ func TestAppSortsAProviderFailureAndRetriesIt(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -887,7 +936,7 @@ func TestAppSortsAProviderFailureAndRetriesIt(t *testing.T) {
 	if _, err := backend.Retry(agent.ID); !errors.As(err, &wire) || wire.Code != appwire.CodeNotFound {
 		t.Fatalf("retry with nothing failed = %v", err)
 	}
-	if _, err := backend.Send(agent.ID, "summarise the repo"); err != nil {
+	if _, err := backend.Send(agent.ID, "summarise the repo", ""); err != nil {
 		t.Fatal(err)
 	}
 	i := rec.waitFor(t, 5*time.Second, appTurnDone)
@@ -953,9 +1002,9 @@ func TestAppSetModelMovesTheConversation(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -984,13 +1033,13 @@ func TestAppAlwaysWritesABashRule(t *testing.T) {
 	var mu sync.Mutex
 	var opens, releases int
 	rec := newAppRecorder()
-	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer func() { close(hold); backend.Close() }()
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := backend.Send(agent.ID, "run the lexer tests"); err != nil {
+	if _, err := backend.Send(agent.ID, "run the lexer tests", ""); err != nil {
 		t.Fatal(err)
 	}
 	// The pump has seen the call once the turn's own event is behind it.
@@ -1067,19 +1116,26 @@ func TestAppSettingsAndSpendReadTheProfile(t *testing.T) {
 	}
 }
 
-// models.list answers what the profile remembers of the service's list, and
-// reaches no network when there is one.
-func TestAppModelsListReadsTheRememberedList(t *testing.T) {
-	profile := t.TempDir()
-	t.Setenv(config.ProfileDirEnv, profile)
-	t.Setenv(home.EnvVar, t.TempDir())
-	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1/v1")
+// MODELS.LIST IS THE TERMINAL'S PICKER. With an OpenRouter-style profile — a
+// key, the default service, its model list remembered from an earlier
+// listing — the answer is that list as the picker offers it, each row's
+// provider its own, and the model a new conversation runs on is marked
+// default; a profile whose default no list names still gets it, marked.
+func TestAppModelsListIsThePickersList(t *testing.T) {
+	root := resolvedTempDir(t)
+	_, _ = wakeEnvironment(t, root)
 	settings, err := config.LoadKeyless()
 	if err != nil {
 		t.Fatal(err)
 	}
 	options := catalog.Options{BaseURL: settings.BaseURL, Dir: settings.ProfileDir}
-	if err := catalog.Remember(options, []catalog.Model{{ID: "qwen/qwen3-coder", Name: "Qwen3 Coder"}, {ID: "deepseek/deepseek-v4-flash"}}); err != nil {
+	if err := catalog.Remember(options, []catalog.Model{
+		{ID: "deepseek/deepseek-v4.1-flash", Name: "DeepSeek V4.1 Flash", InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+		{ID: "qwen/qwen3-coder", Name: "Qwen3 Coder", InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(settings.ProfileDir), []byte(`{"model.talk":"deepseek/deepseek-v4.1-flash"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	backend := newAppBackend(newAppRecorder(), nil)
@@ -1089,17 +1145,18 @@ func TestAppModelsListReadsTheRememberedList(t *testing.T) {
 		t.Fatal(err)
 	}
 	byID := map[string]appwire.Model{}
+	defaults := 0
 	for _, m := range models {
 		byID[m.ID] = m
+		if m.Default {
+			defaults++
+		}
 	}
-	if m := byID["qwen/qwen3-coder"]; m.Name != "Qwen3 Coder" || m.Provider != "qwen" {
+	if m := byID["deepseek/deepseek-v4.1-flash"]; !m.Default || m.Provider != "deepseek" || defaults != 1 {
 		t.Fatalf("models = %+v", models)
 	}
-	if m := byID["deepseek/deepseek-v4-flash"]; m.Name != "deepseek/deepseek-v4-flash" || m.Provider != "deepseek" {
+	if m := byID["qwen/qwen3-coder"]; m.Provider != "qwen" || m.Default {
 		t.Fatalf("models = %+v", models)
-	}
-	if backend.models != nil {
-		t.Fatal("a remembered list still started a fetch")
 	}
 }
 
@@ -1123,11 +1180,11 @@ func TestAppARealAlwaysIsHonouredOnTheNextCall(t *testing.T) {
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
 	defer backend.Close()
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: workspace})
 	if err != nil {
 		t.Fatalf("create = %v", err)
 	}
-	first, err := backend.Send(agent.ID, "run the probe")
+	first, err := backend.Send(agent.ID, "run the probe", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1157,7 +1214,7 @@ func TestAppARealAlwaysIsHonouredOnTheNextCall(t *testing.T) {
 		return ok && c.Agent.State == appwire.StateIdle
 	})
 
-	second, err := backend.Send(agent.ID, "run it again")
+	second, err := backend.Send(agent.ID, "run it again", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1194,7 +1251,7 @@ func TestAppARealAgentKeepsItsFirstMessageName(t *testing.T) {
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
 	words := "say done and then tell me about the weather in the harbour today"
-	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace, Text: words})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: workspace, Text: words})
 	if err != nil {
 		backend.Close()
 		t.Fatalf("create = %v", err)
@@ -1221,5 +1278,219 @@ func TestAppARealAgentKeepsItsFirstMessageName(t *testing.T) {
 	agents, err := fresh.ListAgents(workspace)
 	if err != nil || len(agents) != 1 || agents[0].Title != want {
 		t.Fatalf("listed = %+v, %v", agents, err)
+	}
+}
+
+// AGENTS.CREATE ANSWERS AT ONCE. The answer leaves while the conversation is
+// still being assembled — here an opener that does not return until it is
+// let — with the agent already working and named; the turn starts once the
+// conversation is open. A conversation that cannot be opened ends as a failed
+// turn and a stopped agent the person can retry.
+func TestAppCreateAnswersBeforeTheConversationIsOpen(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}
+	gate := make(chan struct{})
+	var mu sync.Mutex
+	var opens, releases int
+	inner := fakeOpener(conv, &opens, &releases, &mu)
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+		<-gate
+		if !ask.Minted || ask.Model != "qwen/qwen3-coder" {
+			t.Errorf("the open was asked %+v", ask)
+		}
+		return inner(ask)
+	})
+	defer backend.Close()
+	start := time.Now()
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir(), Model: "qwen/qwen3-coder", Text: "fix the parser", ClientID: "c-1"})
+	took := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if took > 50*time.Millisecond || agent.State != appwire.StateWorking || agent.Title != "fix the parser" || agent.ID != "5e55a0f1" {
+		t.Fatalf("create took %v and answered %+v", took, agent)
+	}
+	if listed, _ := backend.ListAgents(""); len(listed) != 1 || listed[0].ID != agent.ID {
+		t.Fatalf("an agent being assembled is not listed: %+v", listed)
+	}
+	close(gate)
+	i := rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		e, ok := data.(appwire.EntryAdded)
+		return ok && e.Entry.Kind == appwire.EntryUser
+	})
+	rec.mu.Lock()
+	user := rec.data[i].(appwire.EntryAdded).Entry
+	rec.mu.Unlock()
+	if user.ClientID != "c-1" || user.ID != "u0" || user.Text != "fix the parser" {
+		t.Fatalf("the person's entry = %+v", user)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+
+	failing := newFakeBackend(rec, func(appOpenAsk) (*appConn, error) { return nil, errors.New("the profile could not be read") })
+	defer failing.Close()
+	broken, err := failing.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir(), Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		d, ok := data.(appwire.TurnDone)
+		return ok && d.Agent == broken.ID && !d.OK && strings.Contains(d.Error, "profile could not be read")
+	})
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.ID == broken.ID && c.Agent.State == appwire.StateStopped
+	})
+}
+
+// The engine's dim notices are quiet entries, and set_effort moves the level.
+func TestAppNoticesAreQuietAndEffortMoves(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{
+		{Kind: session.EventNotice, Text: "skills carried: skill-installer, find-skills"},
+		{Kind: session.EventTurnDone},
+	}}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Send(agent.ID, "go", ""); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		e, ok := data.(appwire.EntryAdded)
+		return ok && e.Entry.Kind == appwire.EntryNotice && e.Entry.Quiet && strings.HasPrefix(e.Entry.Text, "skills carried")
+	})
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+	moved, err := backend.SetEffort(agent.ID, appwire.EffortHigh)
+	if err != nil || moved.Effort != appwire.EffortHigh {
+		t.Fatalf("set_effort = %+v, %v", moved, err)
+	}
+}
+
+// appTwoMessageSource is a scripted model whose turn says something, calls one
+// shell command, and then says something else: two assistant messages with a
+// tool call between them.
+func appTwoMessageSource(t *testing.T, command string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var envelope struct {
+			Messages []struct {
+				Role string `json:"role"`
+			} `json:"messages"`
+			Tools  []json.RawMessage `json:"tools"`
+			Stream bool              `json:"stream"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&envelope); err != nil {
+			http.Error(writer, err.Error(), http.StatusBadRequest)
+			return
+		}
+		toolTurn := len(envelope.Tools) > 0 && (len(envelope.Messages) == 0 || envelope.Messages[len(envelope.Messages)-1].Role != "tool")
+		content := `"content":"All done, the probe printed."`
+		finish := "stop"
+		if toolTurn {
+			arguments, _ := json.Marshal(map[string]string{"command": command})
+			content = `"content":"Let me run the probe first.","tool_calls":[{"index":0,"id":"call-probe","type":"function","function":{"name":"bash","arguments":` + strconv.Quote(string(arguments)) + `}}]`
+			finish = "tool_calls"
+		}
+		body := `{"id":"two-messages","choices":[{"index":0,"delta":{"role":"assistant",` + content + `},"finish_reason":"` + finish + `"}]}`
+		if envelope.Stream {
+			writer.Header().Set("Content-Type", "text/event-stream")
+			_, _ = writer.Write([]byte("data: " + body + "\n\ndata: [DONE]\n\n"))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`))
+	}))
+}
+
+// ONE MESSAGE, ONE ENTRY. A real turn that says something, runs a tool and
+// says something else, recorded event by event: the person's message is one
+// user entry carrying the app's client id; each assistant message is exactly
+// one answer entry, with the msg its deltas carried; the tool row carries the
+// terminal's own line for the call; and agents.entries afterwards names every
+// one of those entries by the id it was sent with.
+func TestAppATurnWithToolsSaysEachMessageOnce(t *testing.T) {
+	root := resolvedTempDir(t)
+	_, workspace := wakeEnvironment(t, root)
+	model := appTwoMessageSource(t, "printf app-two-messages")
+	t.Cleanup(model.Close)
+	t.Setenv("CODEAF_BASE_URL", model.URL)
+	state := filepath.Join(root, "state")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "config.json"), []byte(`{"tools.approvalMode":"allow"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, appOpenInProcess)
+	defer backend.Close()
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace, Text: "run the probe", ClientID: "bubble-7"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := rec.waitFor(t, 30*time.Second, appTurnDone)
+	rec.mu.Lock()
+	events := append([]string(nil), rec.events[:d+1]...)
+	data := append([]any(nil), rec.data[:d+1]...)
+	rec.mu.Unlock()
+	if done := data[d].(appwire.TurnDone); !done.OK {
+		t.Fatalf("turn.done = %+v", done)
+	}
+	var users, answers []appwire.Entry
+	deltas := map[int]string{}
+	var title string
+	for j, event := range events {
+		switch v := data[j].(type) {
+		case appwire.EntryAdded:
+			switch v.Entry.Kind {
+			case appwire.EntryUser:
+				users = append(users, v.Entry)
+			case appwire.EntryAnswer:
+				answers = append(answers, v.Entry)
+			}
+		case appwire.TurnDelta:
+			if event == appwire.EventTurnDelta && v.Kind == appwire.DeltaText {
+				deltas[v.Msg] += v.Text
+			}
+		case appwire.TurnTool:
+			if v.Phase == appwire.PhaseBegin {
+				title = v.Title
+			}
+		}
+	}
+	if len(users) != 1 || users[0].ClientID != "bubble-7" || users[0].Text != "run the probe" {
+		t.Fatalf("user entries = %+v", users)
+	}
+	if len(answers) != 2 || answers[0].Msg == nil || *answers[0].Msg != 0 || answers[1].Msg == nil || *answers[1].Msg != 1 {
+		t.Fatalf("answer entries = %+v", answers)
+	}
+	if answers[0].Text != "Let me run the probe first." || answers[1].Text != "All done, the probe printed." {
+		t.Fatalf("answers = %q, %q", answers[0].Text, answers[1].Text)
+	}
+	if strings.TrimSpace(deltas[0]) != answers[0].Text || strings.TrimSpace(deltas[1]) != answers[1].Text {
+		t.Fatalf("deltas by message = %v", deltas)
+	}
+	if title != "bash printf app-two-messages" {
+		t.Fatalf("the tool's title = %q", title)
+	}
+	listed, _, err := backend.Entries(agent.ID, "", appwire.MaxEntries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]appwire.Entry{}
+	for _, e := range listed {
+		ids[e.ID] = e
+	}
+	for _, live := range append(users, answers...) {
+		if back, ok := ids[live.ID]; !ok || back.Kind != live.Kind || back.Text != live.Text {
+			t.Fatalf("live entry %s (%s %q) reads back as %+v; listed %+v", live.ID, live.Kind, live.Text, back, listed)
+		}
+	}
+	if tool, ok := ids["tcall-probe"]; !ok || tool.Title != "bash printf app-two-messages" {
+		t.Fatalf("the tool entry = %+v; listed %+v", tool, listed)
 	}
 }

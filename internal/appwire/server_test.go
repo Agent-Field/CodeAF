@@ -62,7 +62,10 @@ func (f *fakeEngine) OpenAgent(id string) (Agent, error) {
 	}
 	return Agent{ID: id, State: StateIdle}, nil
 }
-func (f *fakeEngine) Send(id, text string) (uint64, error) {
+func (f *fakeEngine) SetEffort(id, effort string) (Agent, error) {
+	return Agent{ID: id, Effort: effort, State: StateIdle}, nil
+}
+func (f *fakeEngine) Send(id, text, clientID string) (uint64, error) {
 	if f.block != nil {
 		<-f.block
 	}
@@ -364,11 +367,11 @@ func TestOutboxFoldsDeltasAndKeepsOrderWithToolsAndTheEnd(t *testing.T) {
 	box := NewOutbox(rec)
 	box.Event(EventTurnStarted, TurnStarted{Agent: "a", Turn: 1})
 	for _, word := range []string{"hel", "lo ", "there"} {
-		box.Delta("a", 1, DeltaText, word)
+		box.Delta("a", 1, 0, DeltaText, word)
 	}
-	box.Delta("a", 1, DeltaThinking, "hmm")
+	box.Delta("a", 1, 0, DeltaThinking, "hmm")
 	box.Event(EventTurnTool, TurnTool{Agent: "a", Turn: 1, Call: "c", Name: "read", Phase: PhaseBegin})
-	box.Delta("a", 1, DeltaText, "after")
+	box.Delta("a", 1, 0, DeltaText, "after")
 	box.Event(EventTurnDone, TurnDone{Agent: "a", Turn: 1, OK: true})
 	box.Close()
 	want := []string{EventTurnStarted, EventTurnDelta, EventTurnDelta, EventTurnTool, EventTurnDelta, EventTurnDone}
@@ -390,7 +393,7 @@ func TestOutboxSendsALoneDeltaAfterTheWindowAndAFullOneAtOnce(t *testing.T) {
 	rec := &recorder{}
 	box := NewOutbox(rec)
 	defer box.Close()
-	box.Delta("a", 1, DeltaText, "x")
+	box.Delta("a", 1, 0, DeltaText, "x")
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		rec.mu.Lock()
@@ -405,8 +408,8 @@ func TestOutboxSendsALoneDeltaAfterTheWindowAndAFullOneAtOnce(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	big := strings.Repeat("y", DeltaBytes)
-	box.Delta("a", 1, DeltaText, big)
-	box.Delta("a", 1, DeltaText, "z")
+	box.Delta("a", 1, 0, DeltaText, big)
+	box.Delta("a", 1, 0, DeltaText, "z")
 	box.Close()
 	if len(rec.events) != 3 {
 		t.Fatalf("events = %d, want the lone one, the full one and the next", len(rec.events))
@@ -482,5 +485,34 @@ func TestWaveOneMethodsAnswerTheirShapes(t *testing.T) {
 	w.send(`{"id":9,"method":"agents.set_model","params":{"id":"a1"}}`)
 	if got := w.next(); got["error"].(map[string]any)["code"] != CodeBadParams {
 		t.Fatalf("set_model without a model = %v", got)
+	}
+}
+
+// Two messages of one turn are never folded into one delta: the app keys
+// answers by message, and a fold across them would put one message's words
+// under the other.
+func TestOutboxKeepsMessagesApart(t *testing.T) {
+	rec := &recorder{}
+	box := NewOutbox(rec)
+	box.Delta("a", 1, 0, DeltaText, "first")
+	box.Delta("a", 1, 1, DeltaText, "second")
+	box.Close()
+	if len(rec.data) != 2 || rec.data[0].(TurnDelta).Msg != 0 || rec.data[1].(TurnDelta).Msg != 1 || rec.data[1].(TurnDelta).Text != "second" {
+		t.Fatalf("deltas = %+v", rec.data)
+	}
+}
+
+// agents.set_effort takes low, medium or high and nothing else.
+func TestSetEffortTakesThreeWords(t *testing.T) {
+	w := startWire(t, &fakeEngine{})
+	w.next()
+	w.send(`{"id":1,"method":"agents.set_effort","params":{"id":"a1","effort":"High"}}`)
+	got := w.next()
+	if agent := got["result"].(map[string]any)["agent"].(map[string]any); agent["effort"] != "high" {
+		t.Fatalf("set_effort = %v", got)
+	}
+	w.send(`{"id":2,"method":"agents.set_effort","params":{"id":"a1","effort":"max"}}`)
+	if got := w.next(); got["error"].(map[string]any)["code"] != CodeBadParams {
+		t.Fatalf("set_effort max = %v", got)
 	}
 }

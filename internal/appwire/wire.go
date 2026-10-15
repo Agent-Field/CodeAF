@@ -97,10 +97,13 @@ type Hello struct {
 // Agent is one conversation as the app sees it. ID is the conversation's
 // session id, which is its folder's name on disk and stable across launches.
 type Agent struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Workspace string    `json:"workspace"`
-	Model     string    `json:"model,omitempty"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Workspace string `json:"workspace"`
+	Model     string `json:"model,omitempty"`
+	// Effort is how hard the model is asked to think: low, medium or high,
+	// and empty when the conversation runs on the model's own default.
+	Effort    string    `json:"effort,omitempty"`
 	State     string    `json:"state"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -169,13 +172,24 @@ type Entry struct {
 	// Text is the words of a user, answer, receipt, notice or error entry.
 	Text     string `json:"text,omitempty"`
 	Thinking string `json:"thinking,omitempty"`
-	// Call, Name, OK and Summary describe a tool entry.
+	// ClientID echoes the id the app sent with the person's message, on that
+	// message's user entry.
+	ClientID string `json:"client_id,omitempty"`
+	// Msg is an answer's place among the assistant messages of its turn,
+	// counted from zero; the turn.delta lines of that message carry the same.
+	Msg *int `json:"msg,omitempty"`
+	// Call, Name, Title, Detail, OK and Summary describe a tool entry: Title
+	// is the one line the terminal shows for the call, Detail its short result.
 	Call    string `json:"call,omitempty"`
 	Name    string `json:"name,omitempty"`
+	Title   string `json:"title,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 	OK      *bool  `json:"ok,omitempty"`
 	Summary string `json:"summary,omitempty"`
-	// Ref is what a notice points at; ErrorKind and Status sort an error.
+	// Ref is what a notice points at, and Quiet marks a notice the terminal
+	// shows as one dim line; ErrorKind and Status sort an error.
 	Ref       string `json:"ref,omitempty"`
+	Quiet     bool   `json:"quiet,omitempty"`
 	ErrorKind string `json:"error_kind,omitempty"`
 	Status    int    `json:"status,omitempty"`
 }
@@ -203,7 +217,16 @@ type Model struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
+	// Default marks the model a new conversation runs on.
+	Default bool `json:"default,omitempty"`
 }
+
+// The three efforts agents.set_effort takes.
+const (
+	EffortLow    = "low"
+	EffortMedium = "medium"
+	EffortHigh   = "high"
+)
 
 // Settings are the few defaults the app shows. A figure nobody set is null.
 type Settings struct {
@@ -245,6 +268,7 @@ type (
 	TurnDelta struct {
 		Agent string `json:"agent"`
 		Turn  uint64 `json:"turn"`
+		Msg   int    `json:"msg"`
 		Kind  string `json:"kind"`
 		Text  string `json:"text"`
 	}
@@ -253,6 +277,8 @@ type (
 		Turn    uint64 `json:"turn"`
 		Call    string `json:"call"`
 		Name    string `json:"name"`
+		Title   string `json:"title,omitempty"`
+		Detail  string `json:"detail,omitempty"`
 		Phase   string `json:"phase"`
 		OK      *bool  `json:"ok,omitempty"`
 		Summary string `json:"summary,omitempty"`
@@ -328,7 +354,9 @@ type Engine interface {
 	SetModel(id, model string) (Agent, error)
 	Retry(id string) (uint64, error)
 	OpenAgent(id string) (Agent, error)
-	Send(id, text string) (uint64, error)
+	// Send starts a turn; clientID is echoed on the person's entry.
+	Send(id, text, clientID string) (uint64, error)
+	SetEffort(id, effort string) (Agent, error)
 	Stop(id string) error
 	CloseAgent(id string) error
 	ListAsks(agent string) ([]Ask, error)
@@ -347,11 +375,21 @@ type Engine interface {
 
 // CreateAsk is agents.create's params. An empty workspace is the person's home
 // folder; a non-empty Text starts the first turn at once.
+//
+// It answers at once: the conversation is assembled behind the answer.
 type CreateAsk struct {
 	Workspace string   `json:"workspace"`
 	Model     string   `json:"model"`
 	BudgetUSD *float64 `json:"budget_usd"`
 	Text      string   `json:"text"`
+	ClientID  string   `json:"client_id"`
+}
+
+// Warmer is an engine with something slow it can start on before anything is
+// asked of it. The server calls Warm once, on its own goroutine, after the
+// hello line is queued, so warming never delays the hello.
+type Warmer interface {
+	Warm()
 }
 
 // frame is one line on the way out: a response (ID set) or an event (Event

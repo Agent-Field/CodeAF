@@ -51,8 +51,8 @@ func NewOutbox(emit Emitter) *Outbox {
 }
 
 // Delta queues one chunk of streamed text, folding it into the chunk before it
-// when that one is the same turn and kind and still waiting.
-func (o *Outbox) Delta(agent string, turn uint64, kind, text string) {
+// when that one is the same turn, message and kind and still waiting.
+func (o *Outbox) Delta(agent string, turn uint64, msg int, kind, text string) {
 	if text == "" {
 		return
 	}
@@ -63,14 +63,14 @@ func (o *Outbox) Delta(agent string, turn uint64, kind, text string) {
 	}
 	if n := len(o.queue); n > 0 {
 		last := o.queue[n-1].delta
-		if last != nil && last.Agent == agent && last.Turn == turn && last.Kind == kind && len(last.Text) < DeltaBytes {
+		if last != nil && last.Agent == agent && last.Turn == turn && last.Msg == msg && last.Kind == kind && len(last.Text) < DeltaBytes {
 			last.Text += text
 			o.mu.Unlock()
 			o.poke()
 			return
 		}
 	}
-	o.queue = append(o.queue, outboxItem{delta: &TurnDelta{Agent: agent, Turn: turn, Kind: kind, Text: text}, born: o.now()})
+	o.queue = append(o.queue, outboxItem{delta: &TurnDelta{Agent: agent, Turn: turn, Msg: msg, Kind: kind, Text: text}, born: o.now()})
 	o.mu.Unlock()
 	o.poke()
 }

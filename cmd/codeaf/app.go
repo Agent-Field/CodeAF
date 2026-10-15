@@ -44,7 +44,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
-	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -53,6 +52,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // appAgentIdle is how long a conversation the app holds may sit with no turn
@@ -130,15 +130,20 @@ type appConversation interface {
 	// ResolveConsentRemember answers one approval and says how long the answer
 	// lasts; the app uses it for an always that wrote a rule first.
 	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
+	// How hard the model is asked to think, per model.
+	ReasoningFor(model string) string
+	SetReasoningFor(model, level string)
 }
 
 // appOpenAsk is which conversation to open: a saved one by transcript, or a
-// new one in a workspace.
+// new one in a workspace. Minted is a folder this process minted a moment ago
+// for agents.create: nobody else can be holding it, so it is never joined.
 type appOpenAsk struct {
 	Workspace  string
 	Transcript string
 	Model      string
 	New        bool
+	Minted     bool
 }
 
 // appConn is an opened conversation and the one way to give it back.
@@ -159,7 +164,7 @@ type appOpener func(appOpenAsk) (*appConn, error)
 // conversation, because opening it here as well would be a second writer on its
 // journal. Everything else is built in this process.
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
-	if ask.Transcript != "" {
+	if ask.Transcript != "" && !ask.Minted {
 		if socket, err := enginehost.DialStartingHost(ask.Workspace); err == nil {
 			client, err := remote.Dial(socket, "", remote.Hello{Workspace: ask.Workspace, Session: ask.Transcript, Join: true})
 			if err == nil {
@@ -210,11 +215,14 @@ type appBackend struct {
 	sweepStop chan struct{}
 	sweepDone chan struct{}
 	crews     *appCrewWatch
-	// models is the lazily warmed model list, made by the first models.list
-	// that found nothing remembered on disk and never before.
-	models *catalog.Catalog
 	// spent is the last figure spend.changed said, so it is said on a change.
 	spent float64
+	// mint makes a new conversation's folder and answers its transcript path:
+	// the one piece of agents.create that happens before the answer.
+	mint func(workspace string) (string, error)
+	// warmed closes when [appBackend.Warm] has finished, which Close waits
+	// for: the process half it opens is closed after the backend is.
+	warmed chan struct{}
 }
 
 // appAgent is every agent this process has heard of: listed off the disk,
@@ -229,6 +237,21 @@ type appAgent struct {
 	// failed is the words of the last turn that ended in failure, which is
 	// what agents.retry sends again; a turn that ends well clears it.
 	failed string
+	// boot is what agents.create asked of a conversation not yet open, taken
+	// by whichever road opens it first; opening says one is being assembled.
+	boot    *appBoot
+	opening bool
+	// users is how many messages of the person's the transcript holds, which
+	// is what an entry's id is counted from ([appUserEntryID]); counted says
+	// it has been read.
+	users   int
+	counted bool
+}
+
+// appBoot is agents.create's ask, kept for the background open.
+type appBoot struct {
+	model  string
+	budget *float64
 }
 
 // appLive is one conversation the process holds.
@@ -287,9 +310,22 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		agents:    map[string]*appAgent{},
 		sweepStop: make(chan struct{}),
 		sweepDone: make(chan struct{}),
+		mint:      appMint,
 	}
 	guard.Go("app/sweep", b.sweep)
 	return b
+}
+
+// appMint makes a new conversation's folder in workspace, the very folder a
+// host's new conversation is minted as, with the workspace stamped as where the
+// person stood. It is a directory and a small file, so agents.create can answer
+// with the agent's lasting id before anything slow happens.
+func appMint(workspace string) (string, error) {
+	place, err := v3NextSessionFrom(session.Place{}, workspace, workspace)
+	if err != nil {
+		return "", err
+	}
+	return place.Transcript(), nil
 }
 
 // appAgentID is a conversation's id from its transcript: the folder's name.
@@ -447,7 +483,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	// on the walk, which skips empty shells; it is still the app's agent.
 	b.locked(func() {
 		for id, a := range b.agents {
-			if !seen[id] && a.live != nil && matches(a.view.Workspace) {
+			if !seen[id] && (a.live != nil || a.opening) && matches(a.view.Workspace) {
 				agents = append(agents, a.view)
 			}
 		}
@@ -456,10 +492,12 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	return agents, nil
 }
 
-// CreateAgent opens a new conversation. With no workspace it is the person's
-// home folder; with a budget the conversation's own spend limit is set before
-// anything is spent; with words the first turn starts at once and the agent is
-// named by them.
+// CreateAgent answers a new agent AT ONCE and assembles its conversation
+// behind the answer. With no workspace it is the person's home folder; with a
+// budget the conversation's own spend limit is set before anything is spent;
+// with words the first turn starts as soon as the conversation is open and the
+// agent is named by them. A conversation that cannot be opened says so as a
+// failed turn and a stopped agent.
 func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	// engineWorkspace answers the home folder for no workspace at all.
 	resolved, err := engineWorkspace(ask.Workspace)
@@ -469,36 +507,81 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	if b.isClosing() {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
-	conn, err := b.open(appOpenAsk{Workspace: resolved, Model: strings.TrimSpace(ask.Model), New: true})
+	transcript, err := b.mint(resolved)
 	if err != nil {
 		return appwire.Agent{}, appEngineError(err)
 	}
-	if ask.BudgetUSD != nil && *ask.BudgetUSD > 0 {
-		if err := conn.Conv.SetSpendRail(*ask.BudgetUSD); err != nil {
-			conn.Release()
-			return appwire.Agent{}, appEngineError(err)
+	text := strings.TrimSpace(ask.Text)
+	model := strings.TrimSpace(ask.Model)
+	a := b.agent(appAgentID(transcript))
+	var view appwire.Agent
+	b.locked(func() {
+		a.transcript = transcript
+		a.view.Title = session.FirstMessageName(text)
+		a.view.Workspace = resolved
+		a.view.Model = model
+		a.view.State = appwire.StateIdle
+		if text != "" {
+			a.view.State = appwire.StateWorking
 		}
-	}
-	a := b.agent(appAgentID(conn.Transcript))
+		a.view.UpdatedAt = b.now()
+		a.boot = &appBoot{model: model, budget: ask.BudgetUSD}
+		a.opening = true
+		a.users, a.counted = 0, true
+		view = a.view
+	})
+	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	clientID := ask.ClientID
+	guard.Go("app/create", func() { b.bootAgent(a, text, clientID) })
+	return view, nil
+}
+
+// bootAgent opens a created agent's conversation and starts its first turn.
+func (b *appBackend) bootAgent(a *appAgent, text, clientID string) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
-	view := b.hold(a, conn, resolved)
-	text := strings.TrimSpace(ask.Text)
-	if title := session.FirstMessageName(text); title != "" {
-		b.locked(func() {
-			a.view.Title = title
-			view = a.view
-		})
+	view, opened, err := b.ensureLocked(a)
+	b.locked(func() { a.opening = false })
+	if err != nil {
+		b.bootFailed(a, text, err)
+		return
+	}
+	if text == "" {
+		if opened {
+			b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		}
+		return
+	}
+	// The agent already reads working; the turn's own start says the rest.
+	if _, err := b.startLocked(a, text, clientID); err != nil {
+		b.bootFailed(a, text, err)
+	}
+}
+
+// bootFailed is a created agent whose conversation could not be opened or
+// started: a failed turn the person can retry, and an agent that reads stopped.
+func (b *appBackend) bootFailed(a *appAgent, text string, err error) {
+	words := err.Error()
+	var wire *appwire.Error
+	if errors.As(appEngineError(err), &wire) {
+		words = wire.Message
+	}
+	var view appwire.Agent
+	b.locked(func() {
+		if text != "" {
+			a.failed = text
+		}
+		a.boot = nil
+		if a.live == nil {
+			a.view.State = appwire.StateStopped
+		}
+		view = a.view
+	})
+	if text != "" {
+		turn := b.turns.Add(1)
+		b.emit.Emit(appwire.EventTurnDone, appwire.TurnDone{Agent: view.ID, Turn: turn, OK: false, Error: words, ErrorKind: appwire.ErrorOther})
 	}
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
-	if text == "" {
-		return view, nil
-	}
-	if _, err := b.startLocked(a, text); err != nil {
-		return view, err
-	}
-	b.locked(func() { view = a.view })
-	return view, nil
 }
 
 // OpenAgent attaches a conversation to a saved agent and answers it.
@@ -529,10 +612,14 @@ func (b *appBackend) ensure(a *appAgent) (appwire.Agent, bool, error) {
 func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	var view appwire.Agent
 	var transcript, workspace string
+	var boot *appBoot
 	held := false
 	b.locked(func() {
 		view, held = a.view, a.live != nil
 		transcript, workspace = a.transcript, a.view.Workspace
+		if !held {
+			boot, a.boot = a.boot, nil
+		}
 	})
 	if held {
 		return view, false, nil
@@ -540,9 +627,19 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	if b.isClosing() {
 		return appwire.Agent{}, false, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
-	conn, err := b.open(appOpenAsk{Workspace: workspace, Transcript: transcript})
+	ask := appOpenAsk{Workspace: workspace, Transcript: transcript}
+	if boot != nil {
+		ask.Model, ask.Minted = boot.model, true
+	}
+	conn, err := b.open(ask)
 	if err != nil {
 		return appwire.Agent{}, false, appEngineError(err)
+	}
+	if boot != nil && boot.budget != nil && *boot.budget > 0 {
+		if err := conn.Conv.SetSpendRail(*boot.budget); err != nil {
+			conn.Release()
+			return appwire.Agent{}, false, appEngineError(err)
+		}
 	}
 	return b.hold(a, conn, workspace), true, nil
 }
@@ -559,8 +656,19 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		consents: map[uint64]appConsentCall{},
 	}
 	title, model := conn.Conv.Title(), conn.Conv.Model()
+	effort := conn.Conv.ReasoningFor(model)
+	var counted bool
+	b.locked(func() { counted = a.counted })
+	users := 0
+	if !counted && conn.Transcript != "" {
+		users = appUserCount(conn.Transcript)
+	}
 	var view appwire.Agent
 	b.locked(func() {
+		if !a.counted {
+			a.users, a.counted = users, true
+		}
+		a.view.Effort = effort
 		if conn.Transcript != "" {
 			a.transcript = conn.Transcript
 		}
@@ -787,7 +895,7 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		at := b.now()
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-			ID: id + "-" + askID, Agent: id, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(by, option, answer, at),
+			ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(by, option, answer, at),
 		}})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
@@ -852,7 +960,7 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 	for _, ask := range asks {
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: view.ID, ID: ask.ID, By: appwire.ClosedByStopped, At: at})
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-			ID: view.ID + "-" + ask.ID, Agent: view.ID, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(appwire.ClosedByStopped, "", nil, at),
+			ID: appReceiptEntryID(ask.ID), Agent: view.ID, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(appwire.ClosedByStopped, "", nil, at),
 		}})
 	}
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
@@ -867,7 +975,7 @@ func (b *appBackend) liveOf(a *appAgent) *appLive {
 }
 
 // Send starts one turn, opening the conversation first if it is not held.
-func (b *appBackend) Send(id, text string) (uint64, error) {
+func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
 	a, err := b.find(id)
 	if err != nil {
 		return 0, err
@@ -883,7 +991,7 @@ func (b *appBackend) Send(id, text string) (uint64, error) {
 	if opened {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	return b.startLocked(a, text)
+	return b.startLocked(a, text, clientID)
 }
 
 // Retry sends the words of the agent's last failed turn again.
@@ -897,14 +1005,13 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if text == "" {
 		return 0, appwire.Errorf(appwire.CodeNotFound, "this agent has no failed turn to run again")
 	}
-	return b.Send(id, text)
+	return b.Send(id, text, "")
 }
 
 // startLocked starts one turn on a held conversation. The caller holds a.gate.
-func (b *appBackend) startLocked(a *appAgent, text string) (uint64, error) {
+func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, error) {
 	var id string
 	var live *appLive
-	var turn uint64
 	var refused error
 	b.locked(func() {
 		id, live = a.view.ID, a.live
@@ -913,11 +1020,28 @@ func (b *appBackend) startLocked(a *appAgent, text string) (uint64, error) {
 			refused = appwire.Errorf(appwire.CodeEngine, "the conversation was let go before the turn could start")
 		case live.running:
 			refused = appwire.Errorf(appwire.CodeBusy, "this agent is already working on a turn")
-		default:
-			live.running, live.stopping = true, false
-			live.lastUse = b.now()
-			turn = b.turns.Add(1)
 		}
+	})
+	if refused != nil {
+		return 0, refused
+	}
+	// A conversation joined on a window's host can have heard from the person
+	// in that window too, so its count is read again before it is used.
+	if !live.conn.Assembled && live.conn.Transcript != "" {
+		users := appUserCount(live.conn.Transcript)
+		b.locked(func() { a.users = users })
+	}
+	var turn uint64
+	var n int
+	b.locked(func() {
+		if live.running {
+			refused = appwire.Errorf(appwire.CodeBusy, "this agent is already working on a turn")
+			return
+		}
+		live.running, live.stopping = true, false
+		live.lastUse = b.now()
+		turn = b.turns.Add(1)
+		n = a.users
 	})
 	if refused != nil {
 		return 0, refused
@@ -929,6 +1053,7 @@ func (b *appBackend) startLocked(a *appAgent, text string) (uint64, error) {
 	}
 	var view appwire.Agent
 	b.locked(func() {
+		a.users = n + 1
 		a.view.State = appwire.StateWorking
 		if live.needsYou() {
 			a.view.State = appwire.StateNeedsYou
@@ -940,15 +1065,16 @@ func (b *appBackend) startLocked(a *appAgent, text string) (uint64, error) {
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: appLiveEntryID(id, turn, 0), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text,
+		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: clientID,
 	}})
-	guard.Go("app/turn", func() { b.pump(a, id, live, turn, text, events) })
+	guard.Go("app/turn", func() { b.pump(a, id, live, turn, n, text, events) })
 	return turn, nil
 }
 
 // pump maps one turn's session events onto the wire. It never waits on the
-// writer: everything goes into the agent's outbox.
-func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, text string, events <-chan session.Event) {
+// writer: everything goes into the agent's outbox. n is the turn's place among
+// the person's messages, which every entry id of the turn is counted from.
+func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n int, text string, events <-chan session.Event) {
 	defer close(live.pumpDone)
 	ok, failure := true, ""
 	kind, status := "", 0
@@ -960,47 +1086,68 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, te
 		})
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	// The reply is said as an answer entry once a stretch of it is over: when
-	// a tool call starts after it, or when the turn ends.
-	entries := 0
 	entry := func(e appwire.Entry) {
-		entries++
-		e.ID, e.Agent, e.Turn, e.At = appLiveEntryID(id, turn, entries), id, turn, b.now()
+		e.Agent, e.Turn, e.At = id, turn, b.now()
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: e})
 	}
+	// EVERY ASSISTANT MESSAGE OF THE TURN HAS ITS INDEX, msg, and the app keys
+	// an answer by it: the deltas of message 0 append to answer 0, and answer
+	// 0's entry replaces them, so the words before a tool call and the words
+	// after it are two answers and neither is ever drawn twice. A message ends
+	// where a tool call begins after its words, or where the turn ends, and
+	// it is counted only if it said something — the same rule the listing
+	// counts by ([appEntriesOf]), so both name it alike.
+	msg, notices := 0, 0
 	var reply, thinking strings.Builder
 	sayReply := func() {
 		words := strings.TrimSpace(reply.String())
 		if words != "" {
-			entry(appwire.Entry{Kind: appwire.EntryAnswer, Text: words, Thinking: strings.TrimSpace(thinking.String())})
+			at := msg
+			entry(appwire.Entry{ID: appAnswerEntryID(n, at), Kind: appwire.EntryAnswer, Text: words, Thinking: strings.TrimSpace(thinking.String()), Msg: &at})
+			msg++
 		}
 		reply.Reset()
 		thinking.Reset()
 	}
+	titles := map[string]string{}
 	for event := range events {
 		switch event.Kind {
 		case session.EventTextDelta:
 			reply.WriteString(event.Text)
-			live.box.Delta(id, turn, appwire.DeltaText, event.Text)
+			live.box.Delta(id, turn, msg, appwire.DeltaText, event.Text)
 		case session.EventReasoning:
 			thinking.WriteString(event.Text)
-			live.box.Delta(id, turn, appwire.DeltaThinking, event.Text)
+			live.box.Delta(id, turn, msg, appwire.DeltaThinking, event.Text)
 		case session.EventToolBegin:
 			sayReply()
-			live.box.Event(appwire.EventTurnTool, appwire.TurnTool{Agent: id, Turn: turn, Call: event.CallID, Name: event.Tool, Phase: appwire.PhaseBegin, Summary: event.Hint})
+			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
+			titles[event.CallID] = title
+			live.box.Event(appwire.EventTurnTool, appwire.TurnTool{Agent: id, Turn: turn, Call: event.CallID, Name: event.Tool, Title: title, Phase: appwire.PhaseBegin, Summary: event.Hint})
 		case session.EventToolEnd, session.EventToolFailed:
 			succeeded := event.Kind == session.EventToolEnd
 			summary := event.Hint
 			if summary == "" && !succeeded {
 				summary = event.Text
+				if summary == "" && event.Err != nil {
+					summary = event.Err.Error()
+				}
 			}
-			live.box.Event(appwire.EventTurnTool, appwire.TurnTool{Agent: id, Turn: turn, Call: event.CallID, Name: event.Tool, Phase: appwire.PhaseEnd, OK: &succeeded, Summary: redact.Secrets(summary)})
+			summary = redact.Secrets(summary)
+			title := titles[event.CallID]
+			if title == "" {
+				title = redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, ""))
+			}
+			live.box.Event(appwire.EventTurnTool, appwire.TurnTool{Agent: id, Turn: turn, Call: event.CallID, Name: event.Tool, Title: title, Detail: appDetail(summary), Phase: appwire.PhaseEnd, OK: &succeeded, Summary: summary})
 		case session.EventConsentRequest:
 			call := appConsentCall{Tool: event.Tool, Args: event.Args}
 			b.locked(func() { live.consents[event.ID] = call })
 		case session.EventNotice:
+			// THE ENGINE'S NOTICES ARE ITS DIM LINES — the skills a turn
+			// carried, a request reshaped to land — drawn by the terminal as
+			// one muted row and never as a message, and quiet says the same.
 			if words := strings.TrimSpace(event.Text); words != "" {
-				entry(appwire.Entry{Kind: appwire.EntryNotice, Text: redact.Secrets(words)})
+				entry(appwire.Entry{ID: appLiveNoticeID(n, notices), Kind: appwire.EntryNotice, Text: redact.Secrets(words), Quiet: true})
+				notices++
 			}
 		case session.EventError:
 			ok = false
@@ -1030,7 +1177,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, te
 		}
 	})
 	if !ok {
-		entry(appwire.Entry{Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status})
+		entry(appwire.Entry{ID: appErrorEntryID(n), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status})
 	}
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
 	held := false
@@ -1051,10 +1198,56 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, te
 	b.spendMoved()
 }
 
-// appLiveEntryID names an entry said while its turn ran. The listing names the
-// same items by their place in the transcript instead ([appEntriesOf]).
-func appLiveEntryID(agent string, turn uint64, n int) string {
-	return agent + "-t" + strconv.FormatUint(turn, 10) + "-" + strconv.Itoa(n)
+// ── entry ids ───────────────────────────────────────────────────────────────
+//
+// AN ENTRY'S ID IS THE SAME LIVE AND READ BACK. Both are counted from the
+// conversation's own record: n is the place of the person's message among the
+// person's messages (u0, u1 …), an answer is the m-th assistant message after
+// it that said something (a<n>.<m>), and a tool entry is its call's own id
+// (t<call>). The live pump counts as it streams and the listing counts as it
+// reads, by one rule, so agents.entries names what entry.added named. What
+// only ever exists live — a turn's error, an ask's receipt, the engine's dim
+// notices — has an id of its own kind that the listing never makes.
+
+func appUserEntryID(n int) string { return "u" + strconv.Itoa(n) }
+
+func appAnswerEntryID(n, m int) string { return "a" + strconv.Itoa(n) + "." + strconv.Itoa(m) }
+
+func appToolEntryID(call string) string { return "t" + call }
+
+func appNoteEntryID(n, k int) string { return "n" + strconv.Itoa(n) + "." + strconv.Itoa(k) }
+
+func appLiveNoticeID(n, k int) string { return "q" + strconv.Itoa(n) + "." + strconv.Itoa(k) }
+
+func appErrorEntryID(n int) string { return "x" + strconv.Itoa(n) }
+
+func appReceiptEntryID(askID string) string { return "r" + askID }
+
+// appUserCount is how many of the person's messages a transcript holds.
+func appUserCount(transcript string) int {
+	record := session.ReadTranscript(transcript)
+	users := 0
+	for _, items := range [][]session.DisplayEntry{record.Earlier, record.Entries} {
+		for _, item := range items {
+			if item.Role == "user" {
+				users++
+			}
+		}
+	}
+	return users
+}
+
+// appDetailLimit bounds a tool's short result line.
+const appDetailLimit = 160
+
+// appDetail is a tool's short result line: its first line, bounded.
+func appDetail(text string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	line = strings.TrimSpace(line)
+	if runes := []rune(line); len(runes) > appDetailLimit {
+		line = string(runes[:appDetailLimit-1]) + "…"
+	}
+	return line
 }
 
 // appTurnFailure sorts a turn's error: its kind, the provider's status where
@@ -1330,7 +1523,7 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	record := session.ReadTranscript(transcript)
 	all := appEntriesOf(id, append(append([]session.DisplayEntry(nil), record.Earlier...), record.Entries...), at)
 	if words := strings.TrimSpace(record.Unreadable); words != "" {
-		all = append(all, appwire.Entry{ID: "e" + strconv.Itoa(len(all)), Agent: id, Kind: appwire.EntryNotice, At: at, Text: words})
+		all = append(all, appwire.Entry{ID: "unreadable", Agent: id, Kind: appwire.EntryNotice, At: at, Text: words})
 	}
 	end := len(all)
 	if before != "" {
@@ -1350,32 +1543,43 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	return page, start > 0, nil
 }
 
-// appEntriesOf is a transcript as the app's entries, named by their place in
-// it. The journal keeps no clock per message, so every entry carries the
-// conversation's own last moment.
+// appEntriesOf is a transcript as the app's entries, named by the rule the
+// live pump names them by (see the entry ids above). The journal keeps no
+// clock per message, so every entry carries the conversation's own last moment.
 func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time) []appwire.Entry {
 	entries := make([]appwire.Entry, 0, len(items))
-	for _, item := range items {
+	n, m, k := -1, 0, 0
+	for i, item := range items {
 		entry := appwire.Entry{Agent: agent, At: at}
 		switch item.Role {
 		case "user":
-			entry.Kind, entry.Text = appwire.EntryUser, item.Text
+			n, m, k = n+1, 0, 0
+			entry.ID, entry.Kind, entry.Text = appUserEntryID(n), appwire.EntryUser, item.Text
 		case "assistant":
 			if strings.TrimSpace(item.Text) == "" {
 				continue
 			}
-			entry.Kind, entry.Text = appwire.EntryAnswer, item.Text
+			msg := m
+			entry.ID, entry.Kind, entry.Text, entry.Msg = appAnswerEntryID(n, msg), appwire.EntryAnswer, strings.TrimSpace(item.Text), &msg
+			m++
 		case "tool":
-			entry.Kind, entry.Call, entry.Name, entry.Summary = appwire.EntryTool, item.CallID, item.Tool, redact.Secrets(item.Hint)
+			call := item.CallID
+			if call == "" {
+				call = "#" + strconv.Itoa(i)
+			}
+			entry.ID, entry.Kind, entry.Call, entry.Name = appToolEntryID(call), appwire.EntryTool, item.CallID, item.Tool
+			entry.Title = redact.Secrets(tui3.ToolTitle(item.Tool, item.Args, item.Hint))
+			entry.Summary = redact.Secrets(item.Hint)
+			entry.Detail = appDetail(redact.Secrets(item.Output))
 		case "note", "aside":
 			if strings.TrimSpace(item.Text) == "" {
 				continue
 			}
-			entry.Kind, entry.Text = appwire.EntryNotice, item.Text
+			entry.ID, entry.Kind, entry.Text = appNoteEntryID(n, k), appwire.EntryNotice, item.Text
+			k++
 		default:
 			continue
 		}
-		entry.ID = "e" + strconv.Itoa(len(entries))
 		entries = append(entries, entry)
 	}
 	return entries
@@ -1415,55 +1619,127 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 	return view, nil
 }
 
-// ListModels answers the models the configured service lists, from the list
-// remembered on disk. With nothing remembered the list is fetched once, behind
-// the answer, and the answer meanwhile is the built-in few for the default
-// service; nothing of this happens before the app asks.
+// SetEffort sets how hard the agent's model is asked to think, opening its
+// conversation first if none is held. The level is the conversation's own,
+// kept per model the way the terminal's ctrl+t keeps it.
+func (b *appBackend) SetEffort(id, effort string) (appwire.Agent, error) {
+	a, err := b.find(id)
+	if err != nil {
+		return appwire.Agent{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if _, _, err := b.ensureLocked(a); err != nil {
+		return appwire.Agent{}, err
+	}
+	var live *appLive
+	b.locked(func() {
+		live = a.live
+		live.lastUse = b.now()
+	})
+	model := live.conn.Conv.Model()
+	live.conn.Conv.SetReasoningFor(model, effort)
+	if now := live.conn.Conv.ReasoningFor(model); now != "" {
+		effort = now
+	}
+	var view appwire.Agent
+	b.locked(func() {
+		a.view.Effort = effort
+		view = a.view
+	})
+	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	return view, nil
+}
+
+// Warm opens the engine's process half — the profile, the model catalog, the
+// harness and skill shelves every conversation is built on — behind the hello,
+// so the first agents.create does not wait for it. It is what the terminal does
+// as it starts, network included.
+func (b *appBackend) Warm() {
+	run := false
+	b.locked(func() {
+		if !b.closing && b.warmed == nil {
+			b.warmed, run = make(chan struct{}), true
+		}
+	})
+	if !run {
+		return
+	}
+	defer close(b.warmed)
+	defer guard.Recover("app/warm")
+	_, _ = b.process()
+}
+
+// process is the engine's shared process half, opened once.
+func (b *appBackend) process() (*v3Process, error) {
+	proc, err := openEngineProcess()
+	if err == nil {
+		b.assembled.Store(true)
+	}
+	return proc, err
+}
+
+// appModelsWait bounds how long models.list waits for a model list still
+// arriving when nothing is remembered on disk yet.
+const appModelsWait = 3 * time.Second
+
+// ListModels answers exactly what the terminal's model picker offers for the
+// configured services — the same process catalog, the same per-service shelf,
+// the same caches, through the picker's own composer ([tui3.PickerModels]) —
+// with the model a new conversation runs on marked default, and added when no
+// list names it, so the answer is never empty while a turn can run.
 func (b *appBackend) ListModels() ([]appwire.Model, error) {
-	settings, err := config.LoadKeyless()
+	proc, err := b.process()
 	if err != nil {
 		return nil, appEngineError(err)
 	}
-	discovery := catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
-		HTTPClient: config.CatalogHTTPClient(settings.Sources.Default()),
+	read := func() []tui3.Model {
+		_, sources := proc.currentAccount()
+		return tui3.PickerModels(proc.ProfileDir, sources, proc.Shelf.pickerModels, proc.Shelf.modelsForService)
 	}
-	rows := catalog.Recall(discovery).ModelsNow()
-	if len(rows) == 0 {
-		var lazy *catalog.Catalog
-		b.locked(func() {
-			if b.models == nil && !b.closing {
-				b.models = catalog.LoadLazy(context.Background(), discovery)
-			}
-			lazy = b.models
-		})
-		if lazy != nil {
-			rows = lazy.ModelsNow()
-		}
+	rows := read()
+	if len(rows) == 0 && proc.Models != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), appModelsWait)
+		proc.Models.Warmed(ctx)
+		cancel()
+		rows = read()
 	}
-	models := make([]appwire.Model, 0, len(rows))
+	chosen := appDefaultModel()
+	models := make([]appwire.Model, 0, len(rows)+1)
+	seen := false
 	for _, row := range rows {
-		name := strings.TrimSpace(row.Name)
-		if name == "" {
-			name = row.ID
+		provider := strings.TrimSpace(row.Group)
+		if provider == "" {
+			provider, _, _ = strings.Cut(strings.TrimPrefix(row.ID, "~"), "/")
 		}
-		provider, _, _ := strings.Cut(strings.TrimPrefix(row.ID, "~"), "/")
-		models = append(models, appwire.Model{ID: row.ID, Name: name, Provider: provider})
+		model := appwire.Model{ID: row.ID, Name: row.ID, Provider: provider, Default: row.ID == chosen}
+		seen = seen || model.Default
+		models = append(models, model)
+	}
+	if !seen && chosen != "" {
+		provider, _, _ := strings.Cut(strings.TrimPrefix(chosen, "~"), "/")
+		models = append(models, appwire.Model{ID: chosen, Name: chosen, Provider: provider, Default: true})
 	}
 	return models, nil
+}
+
+// appDefaultModel is the model a new conversation runs on, by the rule every
+// local door opens one with ([v3TalkModel]).
+func appDefaultModel() string {
+	settings, err := config.LoadKeyless()
+	if err != nil {
+		return ""
+	}
+	return v3TalkModel("", settings)
 }
 
 // Settings reads the profile's own rows; a figure nobody set is null.
 func (b *appBackend) Settings() (appwire.Settings, error) {
 	profile := config.ProfileDir()
 	settings := appwire.Settings{
-		DefaultModel: config.ChatModelAt(profile),
+		DefaultModel: appDefaultModel(),
 		AsksBefore:   config.ToolApprovalModeAt(profile),
 		BudgetUSD:    appFigure(config.SpendRailUSDAt(profile)),
-	}
-	if settings.DefaultModel == "" {
-		// Nobody chose one: the model a new conversation opens on.
-		settings.DefaultModel = config.ChatDefaultAt(profile)
 	}
 	dayCap, err := config.DailyBudgetUSDAt(profile)
 	if err != nil {
@@ -1631,14 +1907,14 @@ func appMemberAgent(member teamstore.Member) string {
 func (b *appBackend) Close() error {
 	already := false
 	var crews *appCrewWatch
-	var models *catalog.Catalog
 	var agents []*appAgent
+	var warmed chan struct{}
 	b.locked(func() {
 		if already = b.closing; already {
 			return
 		}
 		b.closing = true
-		crews = b.crews
+		crews, warmed = b.crews, b.warmed
 		for _, a := range b.agents {
 			agents = append(agents, a)
 		}
@@ -1648,13 +1924,11 @@ func (b *appBackend) Close() error {
 	}
 	close(b.sweepStop)
 	<-b.sweepDone
+	if warmed != nil {
+		<-warmed
+	}
 	if crews != nil {
 		crews.close()
-	}
-	// No models.list can start a fetch once closing is set.
-	b.locked(func() { models = b.models })
-	if models != nil {
-		models.Close()
 	}
 	var wg sync.WaitGroup
 	for _, a := range agents {
