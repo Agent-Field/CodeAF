@@ -258,10 +258,10 @@ A dependency never changes that family. `pending` means admitted and not started
 the row stays under the task that requested it and wears
 `queued · waits: <that task>` to name the separate dependency.
 
-A task's **page** shows its children under its steps the same way, in `under it`,
-each drawn as the side list draws a task — mark, name, `#id`, the tree's `├─`/`└─`
-— with the command it is on while its worker is on one. Notes, pause, cancel and the
-rest of steering are unchanged by the tree.
+The tree's `├ `/`└ ` rails are the run's plan rows; a live worker's own
+children on its page are drawn in `under it` as the side list draws a task — mark,
+name, `#id` — with the command it is on while its worker is on one, no rails under
+them. Notes, pause, cancel and the rest of steering are unchanged by the tree.
 
 ## What step is a run task on?
 

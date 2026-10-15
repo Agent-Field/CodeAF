@@ -406,7 +406,13 @@ func (a *app) planRoomPartRows(width int) []row {
 	}
 	if len(plan.page.Children) > 0 {
 		out = append(out, row{entry: -1}, row{text: a.pal.dim(fit(planRoomPartsWord, width)), entry: -1})
-		for _, line := range a.planPageLines(planTwigsOf(plan.page.Children), 0, min(width, planPageKinWidth)) {
+		// THE CAP IS MEASURED ON THE COLUMN IT PROTECTS: the page draws its
+		// parts in a column at most [planPageKinWidth] cells wide, and a level
+		// budget taken from the page's own width would believe in room the
+		// narrower column does not have — hanging families deeper than their
+		// titles can afford.
+		kin := min(width, planPageKinWidth)
+		for _, line := range a.planPageLines(planTwigsOf(plan.page.Children), nil, kin, railLevels(kin)) {
 			out = append(out, row{text: line.text, entry: -1, plan: line.plan})
 		}
 	}
