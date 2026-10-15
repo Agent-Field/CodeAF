@@ -787,8 +787,15 @@ func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 		}
 		guard.Go("app/crew-hold", func() {
 			defer run.locked(func() { delete(run.opening, agent) })
-			if a, err := b.find(agent); err == nil {
-				_, _, _ = b.ensure(a)
+			a, err := b.find(agent)
+			if err != nil {
+				return
+			}
+			// ONE agent.changed FOR AN AGENT THIS OPENED, as heldLive says it:
+			// a list the app read while the agent was closed is otherwise
+			// never told. A conversation already held opens nothing.
+			if view, opened, err := b.ensure(a); err == nil && opened {
+				b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 			}
 		})
 	}

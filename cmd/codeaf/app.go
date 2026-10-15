@@ -729,7 +729,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 		}
 		seen[row.ID] = true
 		view := b.remember(row)
-		if !stale.IsZero() && view.State == appwire.StateIdle && !view.UpdatedAt.IsZero() && view.UpdatedAt.Before(stale) && !b.held(view.ID) {
+		if !stale.IsZero() && view.State == appwire.StateIdle && !view.UpdatedAt.IsZero() && view.UpdatedAt.Before(stale) && !b.held(view.ID) && !b.crewKeeps(view.ID) {
 			view.State = appwire.StateClosed
 		}
 		view.SpentUSD, view.LastActiveAt = row.Spend, row.At

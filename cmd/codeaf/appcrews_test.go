@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -321,5 +323,72 @@ func TestAppCrewUpdateClearHuePersistsAndConflictsAreRefused(t *testing.T) {
 	}
 	if crew, err = backend.CrewUpdate(appwire.CrewUpdate{ID: id, Tint: &rose}); err != nil || crew.Tint != "rose" {
 		t.Fatalf("recoloured crew = %+v, %v", crew, err)
+	}
+}
+
+// AN OPEN CREW'S MEMBER IS NEVER READ CLOSED FOR AGE, AND IS SAID ONCE WHEN THE
+// CREW OPENS IT. A member nobody spoke to for longer than the idle-close
+// setting lists as closed only while no open crew keeps it; the crew's own look
+// opens it, and the app is told with one agent.changed, as heldLive tells it.
+func TestAppAgedCrewMemberIsKeptOpenAndSaidOnceWhenHeld(t *testing.T) {
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
+	bucket, err := v3ProjectDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := writeV3Session(t, bucket, "00000000000000b1", "hello", time.Now().Add(-10*24*time.Hour))
+	transcript := session.Place{Dir: dir}.Transcript()
+
+	gate := make(chan struct{})
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+		<-gate
+		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	})
+	t.Cleanup(func() { backend.Close() })
+	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
+	backend.profileDir = t.TempDir()
+	err = teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		id := teamstore.NewID()
+		f.Teams = append(f.Teams, teamstore.Team{ID: id, Name: "harbor", Made: time.Now()})
+		return f.AddMember(id, teamstore.Member{Key: transcript, File: transcript, Where: "/w", Word: "old", Handle: "old"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentState := func() (string, string) {
+		agents, err := backend.ListAgents("")
+		if err != nil || len(agents) != 1 {
+			t.Fatalf("agents = %+v, %v", agents, err)
+		}
+		return agents[0].ID, agents[0].State
+	}
+	id, state := agentState()
+	if state != appwire.StateClosed {
+		t.Fatalf("before any crew keeps it, the aged member reads %q", state)
+	}
+
+	run := backend.crews()
+	backend.crewTick(run, false)
+	// The open is still waiting at the gate: the crew keeps the row open anyway.
+	if _, state := agentState(); state == appwire.StateClosed {
+		t.Fatal("an open crew's aged member listed closed")
+	}
+	close(gate)
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.ID == id && c.Agent.State != appwire.StateClosed
+	})
+	backend.crewTick(run, false)
+	changed := 0
+	rec.mu.Lock()
+	for _, data := range rec.data {
+		if c, ok := data.(appwire.AgentChanged); ok && c.Agent.ID == id {
+			changed++
+		}
+	}
+	rec.mu.Unlock()
+	if changed != 1 {
+		t.Fatalf("agent.changed said %d times for the held member, want 1", changed)
 	}
 }
