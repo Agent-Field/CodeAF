@@ -11,9 +11,13 @@
 // of its own work, not a calibration or a rating. The map this package draws
 // cannot be argued with by a model, because no model's words reach it.
 //
-// AN UNDO COUNTS AGAINST. A person taking a change back is the plainest reading
-// of it there is, and it is recorded beside the result it reverses rather than
-// replacing it, so "passed, then undone" stays both of those facts.
+// AN UNDO COUNTS AGAINST A CHECKED RESULT, AND IS NEVER ONE. A person taking a
+// change back is the plainest reading of it there is, and it is recorded beside
+// the result it reverses rather than replacing it, so "passed, then undone"
+// stays both of those facts. An undo of work that has no checked result is
+// dropped by every reader: work that finished without a check never counts,
+// and taking it back does not make it count. No door writes an undo today —
+// the one undo there is takes back quick tasks, which run no declared check.
 //
 // ── WHY A LEDGER OF ITS OWN ──
 //
@@ -56,7 +60,7 @@ const (
 	// row for an id is the one that stands: a reopened task settles again.
 	KindResult = "result"
 	// KindUndo is a person undoing that work. It marks the result with the same
-	// id, or stands alone as evidence against when the work had no checks.
+	// id when one stands; with none it is no evidence and is dropped.
 	KindUndo = "undo"
 )
 

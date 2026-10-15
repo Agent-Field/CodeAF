@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -681,8 +682,15 @@ func newBashTool(cwd string, caps Caps) Tool {
 				return commandCutWords(began, text), true, nil
 			}
 
+			// AN UNKNOWN ENDING IS NOT A CLEAN ONE. A shell that answered with no
+			// exit status at all — the wait itself failed — used to fall through
+			// to success here, and a check whose process nobody saw end was then
+			// read as a check that passed.
 			exitCode := exitCodeFromWait(waitErr)
-			if exitCode != 0 && exitCode != -1 {
+			if exitCode == exitUnknown {
+				return appendStatus(text, "Command ended without an exit status"), true, nil
+			}
+			if exitCode != 0 {
 				return appendStatus(text, fmt.Sprintf("Command exited with code %d", exitCode)), true, nil
 			}
 
@@ -700,16 +708,40 @@ func appendStatus(text, status string) string {
 	return text + "\n\n" + status
 }
 
-// exitCodeFromWait extracts the exit code from a cmd.Wait() error. Returns
-// -1 if the process was killed or the code is unavailable.
+// exitUnknown is the code for a wait that produced no exit status at all.
+const exitUnknown = -1
+
+// exitCodeFromWait is the exit status a cmd.Wait() error carries, in the
+// shell's own convention, and never a zero it did not see.
+//
+//   - A PROCESS A SIGNAL KILLED is 128 plus the signal, as a shell reports it
+//     (137 for SIGKILL). os.ProcessState.ExitCode answers -1 for one, and that
+//     -1 used to be read as a success by every caller of this tool.
+//   - exec.ErrWaitDelay is a process that EXITED ZERO whose output pipes a
+//     grandchild held open past WaitDelay (Go returns an ExitError instead when
+//     the exit was non-zero), so it is a zero.
+//   - Anything else is [exitUnknown]: nobody saw the process end.
 func exitCodeFromWait(err error) int {
 	if err == nil {
 		return 0
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return exitErr.ExitCode()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return 0
 	}
-	return -1
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return exitUnknown
+	}
+	if status, ok := exitErr.Sys().(interface {
+		Signaled() bool
+		Signal() syscall.Signal
+	}); ok && status.Signaled() {
+		return 128 + int(status.Signal())
+	}
+	if code := exitErr.ExitCode(); code >= 0 {
+		return code
+	}
+	return exitUnknown
 }
 
 // getShellConfig mirrors pi's shell.js:getShellConfig on Unix: /bin/bash if

@@ -796,15 +796,19 @@ func (w *BashWorker) storeEnding(id string) (storeEnding, bool) {
 	return storeEnding{}, false
 }
 
-// recordSpend writes the task's spend rows: one per model that ANSWERED the
-// seat's calls — after any fallback, by the response's own name — with the
-// role its shape gave it at the moment the turn ended and the dollars and
-// tokens those calls cost. The rows sum to what the seat spent, so every
-// reader of the task's price reads the figure it always did; what changed is
-// that a seat whose model failed over is no longer written down as the model
-// it was built on. A call whose answer named no model is a row with no model,
-// which a reader takes as unknown. With no breakdown at all the one row names
-// the seat's model, as it always has.
+// recordSpend writes the task's spend rows, with the role its shape gave it at
+// the moment the turn ended and the dollars and tokens its calls cost. The rows
+// always sum to what the seat spent, so every reader of the task's price reads
+// the figure it always did. What they say about WHO answered is kept apart:
+//
+//   - money the responses attributed to a named model is one ANSWERED row per
+//     model ([plandb.Store.AddAnsweredSpend]), after any fallback;
+//   - money whose answer named no model is a row with no model;
+//   - money the breakdown does not cover — none was kept, or the seat's total
+//     holds figures from before this process tallied them — is one row on the
+//     model the seat was built on, as it always was, and NOT marked answered.
+//
+// Only the first is a fact about who did the work; the other two are billing.
 //
 // It is best-effort whole and last, because the money is already in the Report
 // the supervisor absorbs and in the session's usage ledger; a store that
@@ -819,21 +823,29 @@ func (w *BashWorker) recordSpend(taskID string, used session.Usage, answered map
 	if err != nil {
 		role = plandb.RoleWork
 	}
-	if len(answered) == 0 {
-		_ = w.store.AddSpend(taskID, w.model, role, used.CostUSD, used.Input, used.Output)
-		return
-	}
 	models := make([]string, 0, len(answered))
 	for model := range answered {
 		models = append(models, model)
 	}
 	sort.Strings(models)
+	rest := used
 	for _, model := range models {
 		share := answered[model]
 		if share.CostUSD == 0 && share.Input == 0 && share.Output == 0 {
 			continue
 		}
-		_ = w.store.AddSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
+		rest.CostUSD -= share.CostUSD
+		rest.Input -= share.Input
+		rest.Output -= share.Output
+		if model == "" {
+			_ = w.store.AddSpend(taskID, "", role, share.CostUSD, share.Input, share.Output)
+			continue
+		}
+		_ = w.store.AddAnsweredSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
+	}
+	// A cent's billionth is float noise from subtracting the shares, not money.
+	if rest.CostUSD > 1e-9 || rest.Input > 0 || rest.Output > 0 {
+		_ = w.store.AddSpend(taskID, w.model, role, max(rest.CostUSD, 0), max(rest.Input, 0), max(rest.Output, 0))
 	}
 }
 

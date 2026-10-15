@@ -358,6 +358,13 @@ func migrateColumns(tx *sql.Tx) error {
 			return err
 		}
 	}
+	// A SPEND ROW SAYS WHETHER ITS MODEL ANSWERED. Rows written before the
+	// column, and every row [Store.AddSpend] writes, name the model a seat was
+	// built on and carry 0; only [Store.AddAnsweredSpend] writes 1, for money
+	// the response itself said its model answered.
+	if err := ensureColumn(tx, "spend", "answered", "INTEGER", "0"); err != nil {
+		return err
+	}
 	return ensureColumn(tx, "notes", "from", "TEXT", "'worker'")
 }
 

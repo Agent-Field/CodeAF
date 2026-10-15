@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,5 +126,135 @@ func TestTheAppReadsCompetenceEvidence(t *testing.T) {
 	}
 	if _, err := backend.CompetenceMap(appwire.CompetenceMapParams{Scope: "work:nope"}); err == nil {
 		t.Fatal("an unknown filter was accepted")
+	}
+}
+
+// keysOf is an object's keys, sorted.
+func keysOf(t *testing.T, value any) string {
+	t.Helper()
+	object, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("%v is not an object", value)
+	}
+	keys := make([]string, 0, len(object))
+	for key := range object {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
+}
+
+// THE WIRE'S EXACT SHAPE, from the real adapter over a fixed ledger and clock.
+// It pins the public spelling an app decodes — source.id/agent/title, never
+// the ledger's task or source_title — and, with COMPETENCE_WIRE_FIXTURE_DIR
+// set, writes the two answers there for an app's own regression.
+func TestTheCompetenceWireShapeIsExact(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(home.EnvVar, filepath.Join(root, "state"))
+	const agent = "0123456789abcdef"
+	const api, ffi = "/work/acme/api", "/work/acme/ffi"
+	conversation := filepath.Join(home.Join("v3", "projects"), encodeWorkspace(api), agent)
+	if err := os.MkdirAll(conversation, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(conversation, "meta.json"), []byte(`{"id":"`+agent+`","title":"Release","workspace":"`+api+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	transcript := filepath.Join(conversation, "transcript.jsonl")
+	gone := filepath.Join(root, "deleted", "transcript.jsonl")
+	now := time.Date(2026, 10, 15, 14, 2, 0, 0, time.UTC)
+	for _, row := range []struct {
+		task, place, title, transcript string
+		ago                            time.Duration
+		checks                         []competence.CheckRun
+	}{
+		{"3", api, "Fix the parser", transcript, 24 * time.Hour, []competence.CheckRun{
+			{Command: "go vet ./internal/parse/...", Outcome: competence.Passed},
+			{Command: "go test ./internal/parse/...", Outcome: competence.Failed}}},
+		{"2", api, "Fix the parser", transcript, 48 * time.Hour, []competence.CheckRun{
+			{Command: "go test ./internal/parse/...", Outcome: competence.Passed}}},
+		{"1", api, "Fix the parser", gone, 72 * time.Hour, []competence.CheckRun{
+			{Command: "go test ./internal/parse/...", Outcome: competence.Passed}}},
+		{"9", ffi, "Rust bindings", gone, 40 * 24 * time.Hour, []competence.CheckRun{
+			{Command: "cargo test", Outcome: competence.Passed}}},
+	} {
+		err := competence.Append(competence.LedgerPath(), competence.Record{
+			Kind: competence.KindResult, ID: competence.TaskID(agent, row.task), At: now.Add(-row.ago),
+			Model: "deepseek/deepseek-v4-flash", Place: row.place, PlaceKind: competence.PlaceRepo,
+			Work: competence.WorkOf(row.title), Title: row.title,
+			Source: competence.Source{Kind: competence.SourceTask, Agent: agent, Task: row.task, Transcript: row.transcript},
+			Checks: row.checks,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	reader := competenceReader()
+	reader.Now = func() time.Time { return now }
+	answer, err := readCompetenceMap(reader, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(answer.Groups[1].Scopes) != 1 || len(answer.Groups[3].Scopes) != 1 {
+		t.Fatalf("groups %+v", answer.Groups)
+	}
+	parser := answer.Groups[1].Scopes[0]
+	page, err := readCompetenceEvidence(reader, appwire.CompetenceEvidenceParams{Model: answer.Model, Scope: parser.ID, Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapJSON, _ := json.MarshalIndent(answer, "", "  ")
+	pageJSON, _ := json.MarshalIndent(page, "", "  ")
+
+	var wireMap, wirePage map[string]any
+	if err := json.Unmarshal(mapJSON, &wireMap); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(pageJSON, &wirePage); err != nil {
+		t.Fatal(err)
+	}
+	groups := wireMap["groups"].([]any)
+	wireScope := groups[1].(map[string]any)["scopes"].([]any)[0]
+	staleScope := groups[3].(map[string]any)["scopes"].([]any)[0]
+	items := wirePage["items"].([]any)
+	for name, test := range map[string]struct {
+		value any
+		want  string
+	}{
+		"map":         {wireMap, "filters,groups,model,models,omitted,policy,read_at,scope,totals,truncated"},
+		"scope":       {wireScope, "class,failed,id,last_at,passed,place,results,since,undone,work"},
+		"stale scope": {staleScope, "class,failed,id,last_at,passed,place,results,undone,work"},
+		"place":       {wireScope.(map[string]any)["place"], "id,path,place_kind,removed"},
+		"page":        {wirePage, "counts,items,model,next_cursor,scope"},
+		"item":        {items[0], "at,check,checks,id,outcome,source,source_missing,title"},
+		"source":      {items[0].(map[string]any)["source"], "agent,id,kind,title"},
+		"check":       {items[0].(map[string]any)["check"], "command,outcome"},
+		"omitted":     {wireMap["omitted"], "filters,models,scopes"},
+	} {
+		if got := keysOf(t, test.value); got != test.want {
+			t.Errorf("%s keys %s, want %s", name, got, test.want)
+		}
+	}
+	item := page.Items[0]
+	if item.Source.ID != agent+":3" || item.Source.Agent != agent || item.Source.Title != "Release" ||
+		item.Outcome != "failed" || item.Check.Command != "go test ./internal/parse/..." || item.SourceMissing != "" {
+		t.Fatalf("item %+v", item)
+	}
+	if answer.Groups[3].Scopes[0].Place.Removed != true || parser.Place.Removed {
+		t.Fatalf("removed: parser %v, bindings %v", parser.Place.Removed, answer.Groups[3].Scopes[0].Place.Removed)
+	}
+	next, err := readCompetenceEvidence(reader, appwire.CompetenceEvidenceParams{Model: answer.Model, Scope: parser.ID, Cursor: page.NextCursor, Limit: 2})
+	if err != nil || len(next.Items) != 1 || next.Items[0].SourceMissing != "conversation" || next.Items[0].Source.Title != "" || next.NextCursor != "" {
+		t.Fatalf("second page %+v %v", next, err)
+	}
+	if dir := os.Getenv("COMPETENCE_WIRE_FIXTURE_DIR"); dir != "" {
+		nextJSON, _ := json.MarshalIndent(next, "", "  ")
+		for name, data := range map[string][]byte{
+			"competence-map.json": mapJSON, "competence-evidence-page1.json": pageJSON, "competence-evidence-page2.json": nextJSON,
+		} {
+			if err := os.WriteFile(filepath.Join(dir, name), append(data, '\n'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

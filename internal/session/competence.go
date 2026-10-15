@@ -54,9 +54,10 @@ import (
 // the same tree.
 //
 // THE MODEL IS THE ONE THAT ANSWERED THE WORK — every model the run's work
-// seats' calls were answered by, after any fallback, read off its spend ledger
-// (internal/run's recordSpend, from [Agent.AnsweredUsage]) — and the run is
-// written only when that is exactly one known model. Two is a run nobody can
+// seats' calls were answered by, after any fallback, read off its spend
+// ledger's ANSWERED rows (internal/run's recordSpend, from
+// [Agent.AnsweredUsage]) — and the run is written only when every work row is
+// answered and they name exactly one model. Two is a run nobody can
 // attribute; none, or an answer that named no model, is a run nobody can name.
 // Neither is guessed, and the model a seat was BUILT on is never read here. A
 // program's run is work an outside program did, and is not this ledger's.
@@ -121,10 +122,9 @@ func (a *Agent) recordRunProven(run *beltRun) {
 // check gave failed, and the shell's own "could not run it" codes (126, 127)
 // and a negative code are not a reading of the work.
 //
-// ONE GAP IS UPSTREAM OF THIS READER: a check killed by a signal outside its
-// call's own deadline exits -1, which the bare bash answers as a success and
-// the trajectory then records as 0. Nothing that reaches this file can tell
-// the two apart.
+// A check a signal killed arrives as the shell's 128+signal (internal/exec/
+// bare), and one the run cut off or whose ending nobody saw arrives as 1 (the
+// run's trajectory): both are failures, and neither is ever a zero.
 func exitReading(code int) (competence.Outcome, bool) {
 	switch {
 	case code == 0:
@@ -163,9 +163,14 @@ func runTasks(all []*plandb.Task, root string) []*plandb.Task {
 // planOneWorkModel is the one model that answered the named tasks' WORK, read
 // off the spend ledger on its own read-only connection: rows whose role was
 // "work" when the money was spent, so a planner's and a checker's calls are
-// never the work's. It is false when the work was answered by no model, by
-// more than one, or by a call whose answer named none — an unknown is not the
-// seat's model, and a mixed run is not any one model's.
+// never the work's.
+//
+// EVERY WORK ROW MUST BE AN ANSWERED ONE ([plandb.Store.AddAnsweredSpend]). A
+// row on the model a seat was built on — every row written before answered
+// rows existed, a resumed run's earlier seats, money no breakdown covered —
+// says what was configured, not what answered, and one such row makes the
+// whole run unattributable even when its name matches the answered rows. It is
+// false too when the work was answered by no model or by more than one.
 func planOneWorkModel(path string, ids []string) (string, bool) {
 	if len(ids) == 0 {
 		return "", false
@@ -181,7 +186,7 @@ func planOneWorkModel(path string, ids []string) (string, bool) {
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	rows, err := db.Query(`SELECT DISTINCT TRIM(model) FROM spend WHERE role = ? AND task_id IN (`+marks+`) LIMIT 2`, args...)
+	rows, err := db.Query(`SELECT DISTINCT TRIM(model), answered FROM spend WHERE role = ? AND task_id IN (`+marks+`) LIMIT 3`, args...)
 	if err != nil {
 		return "", false
 	}
@@ -189,12 +194,13 @@ func planOneWorkModel(path string, ids []string) (string, bool) {
 	var models []string
 	for rows.Next() {
 		var model string
-		if rows.Scan(&model) != nil {
+		var answered int
+		if rows.Scan(&model, &answered) != nil || answered != 1 || model == "" {
 			return "", false
 		}
 		models = append(models, model)
 	}
-	if rows.Err() != nil || len(models) != 1 || models[0] == "" {
+	if rows.Err() != nil || len(models) != 1 {
 		return "", false
 	}
 	return models[0], true

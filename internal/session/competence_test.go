@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +50,10 @@ func journalledAgent(t *testing.T) (*Agent, string) {
 }
 
 // runFixture is a settled run's plan store: a root, one work task spent on the
-// given models, and one check task whose basis is the given exits.
+// given models, and one check task whose basis is the given exits. A model is
+// an ANSWERED charge; "built:<id>" is a charge on the model a seat was built
+// on, the only kind written before answered charges existed; "" is a charge
+// whose answer named no model.
 func runFixture(t *testing.T, agent *Agent, ground string, models []string, exits map[string]int) *beltRun {
 	t.Helper()
 	store, err := plandb.Open(filepath.Join(t.TempDir(), "plandb.db"), "p", "7", "Fix the parser", "fix it", agent.journalID())
@@ -72,7 +76,13 @@ func runFixture(t *testing.T, agent *Agent, ground string, models []string, exit
 		t.Fatal(err)
 	}
 	for _, model := range models {
-		if err := store.AddSpend("t-work", model, plandb.RoleWork, 0.01, 10, 10); err != nil {
+		var err error
+		if built, ok := strings.CutPrefix(model, "built:"); ok || model == "" {
+			err = store.AddSpend("t-work", built, plandb.RoleWork, 0.01, 10, 10)
+		} else {
+			err = store.AddAnsweredSpend("t-work", model, plandb.RoleWork, 0.01, 10, 10)
+		}
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -107,8 +117,8 @@ func TestASettledRunWritesItsCheckExitsOnItsWorkModel(t *testing.T) {
 	}
 }
 
-// A RUN NOBODY CAN ATTRIBUTE IS NO EVIDENCE: two work models, or none, or no
-// check that ran.
+// A RUN NOBODY CAN ATTRIBUTE IS NO EVIDENCE: two answering models, none, an
+// unknown one, a built-on name, or no check that ran.
 func TestARunWithNoSingleWorkModelOrNoRunCheckWritesNothing(t *testing.T) {
 	for name, fixture := range map[string]struct {
 		models []string
@@ -119,6 +129,11 @@ func TestARunWithNoSingleWorkModelOrNoRunCheckWritesNothing(t *testing.T) {
 		"no run":     {[]string{"m/a"}, map[string]int{"missing-tool": 127}},
 		// An answer that named no model is unknown, never the one beside it.
 		"unknown answer": {[]string{"m/a", ""}, map[string]int{"go test ./...": 0}},
+		// THE MODEL A SEAT WAS BUILT ON IS NEVER THE CHECKED MODEL: an old
+		// ledger, or a resumed run's earlier seat, with real exits beside it.
+		"built model only": {[]string{"built:m/flash"}, map[string]int{"go test ./...": 0}},
+		// And one such row spoils a run even when its name matches the answer.
+		"built beside answered": {[]string{"m/flash", "built:m/flash"}, map[string]int{"go test ./...": 0}},
 	} {
 		agent, dir := journalledAgent(t)
 		agent.recordRunProven(runFixture(t, agent, dir, fixture.models, fixture.exits))

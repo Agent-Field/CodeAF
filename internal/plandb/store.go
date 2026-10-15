@@ -2906,9 +2906,27 @@ func summarize(value state) Summary {
 // role it played, the dollars and the token counts. The ledger is append-only
 // — the summary reads it back and nothing here rewrites it — so the row lives
 // outside the whole-plan rewrite every other writer performs, and its own
-// transaction is all it needs. Nothing in the runtime calls this yet; the
-// wiring that spends is a later change.
+// transaction is all it needs.
+//
+// The model it names is NOT a fact about who answered: it is whatever the
+// caller had, usually the model a seat was built on. [Store.AddAnsweredSpend]
+// is the door for money the answer itself attributed.
 func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outTokens int) error {
+	return s.addSpend(taskID, model, role, usd, inTokens, outTokens, false)
+}
+
+// AddAnsweredSpend records one charge exactly as [Store.AddSpend] does, under
+// the model that ANSWERED the calls it paid for — the name the responses gave,
+// after any fallback — and marks the row so. Every reader of the money reads it
+// the same; a reader asking WHO did the work can tell it from a built-on name.
+func (s *Store) AddAnsweredSpend(taskID, model, role string, usd float64, inTokens, outTokens int) error {
+	if strings.TrimSpace(model) == "" {
+		return errors.New("an answered charge names the model that answered")
+	}
+	return s.addSpend(taskID, model, role, usd, inTokens, outTokens, true)
+}
+
+func (s *Store) addSpend(taskID, model, role string, usd float64, inTokens, outTokens int, answered bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.beginWrite()
@@ -2916,9 +2934,13 @@ func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outT
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO spend (task_id, model, role, usd, in_tokens, out_tokens, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	mark := 0
+	if answered {
+		mark = 1
+	}
+	if _, err := tx.Exec(`INSERT INTO spend (task_id, model, role, usd, in_tokens, out_tokens, at, answered) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(strings.TrimPrefix(taskID, "t-")), strings.TrimSpace(model), strings.TrimSpace(role),
-		usd, inTokens, outTokens, formatTime(s.now().UTC())); err != nil {
+		usd, inTokens, outTokens, formatTime(s.now().UTC()), mark); err != nil {
 		return err
 	}
 	return tx.Commit()

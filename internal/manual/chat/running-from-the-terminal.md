@@ -1030,8 +1030,9 @@ proposal named — actually ran against the work and came back with a real exit 
 check exiting zero is a pass; any failing is a failure. It is credited to the one model that
 answered the task's work, after any fallback. A task whose work was answered by two models,
 or that another task joined while it ran, is not counted, because nobody could say whose it
-was. A checker's opinion, a task that finished with no check, a check that never started or
-was cut off, and anything a model says about its own work are never counted. Undo does not
+was. A checker's opinion, a task that finished with no check, a check that could not start,
+and anything a model says about its own work are never counted; a check that was killed
+or cut off counts as failed. Undo does not
 appear yet: the only undo there is takes back quick tasks, which run no checks.
 
 Results are grouped by place (the repository or folder) and kind of work (the words of the
