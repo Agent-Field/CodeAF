@@ -149,7 +149,7 @@ func runApp(args []string) error {
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
-	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir()}, backend)
+	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir(), Features: []string{"agents.create.attachments", "crews.message.attachments"}}, backend)
 	if backend.assembled.Load() {
 		// The process half every conversation shared, closed the way the pipe
 		// engine closes it once its conversation is gone (engine.go).

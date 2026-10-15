@@ -93,10 +93,12 @@ func Errorf(code, format string, args ...any) *Error {
 
 // Hello is the first line codeaf writes, before it reads anything.
 type Hello struct {
-	Contract int    `json:"contract"`
-	Version  string `json:"version"`
-	PID      int    `json:"pid"`
-	Home     string `json:"home"`
+	// Features are additive request extensions; absent means unsupported.
+	Features []string `json:"features,omitempty"`
+	Contract int      `json:"contract"`
+	Version  string   `json:"version"`
+	PID      int      `json:"pid"`
+	Home     string   `json:"home"`
 }
 
 // Agent is one conversation as the app sees it. ID is the conversation's
