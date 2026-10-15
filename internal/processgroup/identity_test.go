@@ -4,6 +4,7 @@ package processgroup
 
 import (
 	"os/exec"
+	"runtime"
 	"testing"
 )
 
@@ -11,6 +12,9 @@ import (
 // process depends on: the identity read back from a file gates exactly as the
 // captured group did, and an identity from another boot gates nothing.
 func TestARestoredIdentityIsTheGroupItWasRecordedAs(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("this platform cannot prove persisted boot identity")
+	}
 	cmd := exec.Command("sleep", "30")
 	ConfigureDetached(cmd)
 	if err := cmd.Start(); err != nil {
