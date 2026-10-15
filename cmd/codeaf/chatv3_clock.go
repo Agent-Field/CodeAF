@@ -315,21 +315,6 @@ func clockRereadKeys(proc *v3Process) {
 	proc.Settings.Sources = config.ResolveSources(proc.ProfileDir, key, proc.Settings.BaseURL)
 }
 
-// v3MemoryPath is the brain's file when the memory row is on, and the empty
-// string when it is off. `codeaf do` reads the rules in force through it
-// (do_always.go).
-//
-// IT READS THE SAME ROW [v3Memory] READS and answers a path rather than a
-// handle, which is the difference between the conversation's need and a
-// one-shot read's: a window opens one store and keeps it for the session, while
-// a single read wants one briefly and wants it closed again afterwards.
-func v3MemoryPath(profileDir string) string {
-	if !config.MemoryEnabledAt(profileDir) {
-		return ""
-	}
-	return defaultChatDB()
-}
-
 // openV3ClockProcess is the clock's process: the person's settings, models,
 // connected accounts, memory and harnesses — what a run's configuration is
 // assembled from — and none of the launch's side effects. It returns its own

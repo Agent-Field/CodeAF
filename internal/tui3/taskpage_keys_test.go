@@ -23,7 +23,7 @@ func endPlanTask(counted *railPlanCounter, id, status string) {
 	counted.setStatus(id, status)
 	if page, ok := counted.planFake.pages[id]; ok {
 		page.Row.Status = status
-		counted.planFake.pages[id] = page
+		counted.planFake.setPage(id, page)
 	}
 }
 
@@ -103,7 +103,7 @@ func TestKeysTypedWhileAPartsRoomOpensAreTheBoxAndNothingElse(t *testing.T) {
 	counted.setStatus("3", "running")
 	part := counted.planFake.pages["3"]
 	part.Row.Status = "running"
-	counted.planFake.pages["3"] = part
+	counted.planFake.setPage("3", part)
 
 	held := &heldRailPlan{railPlanCounter: counted, started: make(chan struct{}), release: make(chan struct{})}
 	a.agent = held

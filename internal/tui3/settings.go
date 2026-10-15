@@ -260,10 +260,11 @@ var settingUI = map[string]settingMeta{
 		about: "ask puts it on the landed card for you. auto lets the chat read the " +
 			"work and decide, and ask you only when it cannot tell.",
 	},
+	// The noticing row's label and detail are the registry's own (config's
+	// settings.go Hint and its presentation), so the panel, the settings tool
+	// and the manual read one spelling of what it does.
 	config.KeyMemoryEnabled: {
-		tab: tabSession, label: "memory", widget: widgetCycle,
-		about: "a few things are carried from one conversation to the next. " +
-			"Off, each one starts knowing nothing about you.",
+		tab: tabSession, widget: widgetCycle,
 	},
 	// The countdown sits under the gate rows for the same reason the guardian
 	// does: it is not a fourth approval mode but the OTHER clock in the room —
@@ -814,7 +815,7 @@ func (s *sheet) finishCategory() {
 	title := settingTabs[s.tab]
 	shown := make([]sheetItem, 0, len(s.items))
 	if title == tabMemory {
-		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "View saved memories", about: "Inspect, correct or remove saved memories."}})
+		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "Open the Memories tab", about: "See every remembered line, who kept it, and fix, move, forget or put one back (" + placeChord(pageMemory) + ")."}})
 	}
 	advanced := make([]sheetItem, 0)
 	catalog := make([]sheetItem, 0)

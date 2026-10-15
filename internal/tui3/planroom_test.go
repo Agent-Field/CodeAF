@@ -351,7 +351,7 @@ func TestTheRunsTaskRoomFollowsAStepTheStoreRecordsLater(t *testing.T) {
 		t.Fatalf("the room opened with calls %q", got)
 	}
 	page.Steps = append(page.Steps, session.PlanStep{Kind: "step", Step: 2, Command: "go test ./..."})
-	fake.pages[row.ID] = page
+	fake.setPage(row.ID, page)
 	drive(t, a, planRoomTickMsg{gen: a.room.gen})
 	if got := roomCommands(a); len(got) != 2 || got[1] != "go test ./..." {
 		t.Fatalf("the beat did not bring the new step in once: %q", got)
@@ -372,7 +372,7 @@ func TestTheLiveStepLeavesTheRoomWhenTheTaskEnds(t *testing.T) {
 	row.Status, row.Live = "done", plandb.LiveStep{}
 	page.Row, page.Live = row, row.Live
 	page.Steps = []session.PlanStep{{Kind: "step", Step: 2, Command: "go test ./...", Observation: "ok"}}
-	fake.pages[row.ID] = page
+	fake.setPage(row.ID, page)
 	drive(t, a, planRoomTickMsg{gen: a.room.gen})
 	if !a.room.done {
 		t.Fatal("the room of a task that ended is not done")

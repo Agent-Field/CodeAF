@@ -30,7 +30,7 @@ not undo the write already in progress.
 ## Change settings by asking in chat
 
 You can ask codeaf to change supported preferences: “hide hints,” “expand completed
-tool details,” “turn timestamps off,” or “remember across chats.” It reads the
+tool details,” “turn timestamps off,” or “stop noticing things to remember.” It reads the
 `settings` tool first, then uses `change_setting` to save the requested value
 through the same registry as the panel. If these tools are not loaded, codeaf
 loads the `settings` capability group. It does not need to edit config files.
@@ -47,9 +47,8 @@ changed by chat refresh when the turn finishes; changes made directly in Setting
 refresh the interface immediately. Startup-only settings still need the CLI
 restart stated in their receipt. Chat-written routing, speed guard and pinned-host
 preferences also recommend restarting the CLI to ensure already-open chats use
-them; the panel has separate live controls for those settings. Saving memory
-preferences does not reopen a
-memory store already held by a running chat.
+them; the panel has separate live controls for those settings. The memory
+preference needs no restart: it applies from the next turn, in every open chat.
 
 Some controls remain yours to change in Settings: approvals, spending limits,
 task concurrency, review safeguards and credentials. Task workers do not have
@@ -94,17 +93,20 @@ An individual team's own Settings controls its supported overrides. Global
 defaults do not erase explicit team overrides. New-subteam budget share applies
 when a subteam is created; it does not redistribute existing budgets.
 
-## Memory settings — saved versus active, inspect and forget
+## Memory settings — notice things to remember, inspect and forget
 
-**Memory → remember across chats** controls the saved memory preference. It
-supports learning useful preferences and corrections from conversations without
-requiring every memory to be dictated. Use `/memory` or `/memories` to inspect
-saved memories; the memory page offers its supported correction and forgetting
-controls. A setting being on is not proof that any particular fact was saved.
+**Memory → notice things to remember** decides one thing: whether, after a turn
+you typed, codeaf may keep a line you said that should hold in every conversation
+— and tell you in the conversation. Off stops only that noticing. Lines kept
+with `/remember`, by asking, or on the Memories tab still
+ride every conversation, and nothing saved is deleted. It applies from the next
+turn, in every open chat, with no restart.
 
-Already-open chats keep the memory store they opened with. Restart the CLI to
-apply a changed preference to those chats. Turning memory off does not delete
-saved memories. Input history and unfinished drafts are separate Privacy choices.
+There is no switch that turns memory off altogether: what you kept is yours to
+forget, line by line. Use `/memory`, `/memories` or the Memories tab (`alt+8`) to
+see every line, and fix, move, forget or put back any of them there. The row's
+`Open the Memories tab` door goes straight to it. Input history and unfinished
+drafts are separate Privacy choices.
 
 ## Permissions, task timers and automatic work
 

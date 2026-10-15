@@ -163,8 +163,8 @@ func TestACarryOnAnsweredNoChangeEndsItAndKeepsTheAnswer(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 	exchange := learnedExchange(t, learned)
-	if !strings.Contains(exchange, "ASSISTANT STATEMENT (not corroboration):\n| seat | model | why |") ||
-		!strings.Contains(exchange, "| seat 01 |") || strings.Contains(exchange, "ASSISTANT STATEMENT (not corroboration):\n"+NoChangeReply) {
+	if !strings.Contains(exchange, "ASSISTANT:\n| seat | model | why |") ||
+		!strings.Contains(exchange, "| seat 01 |") || strings.Contains(exchange, "ASSISTANT:\n"+NoChangeReply) {
 		t.Errorf("the memory reflex did not receive the answer before the withdrawn token:\n%s", exchange)
 	}
 }
@@ -246,22 +246,25 @@ func TestNoChangeAfterCallsMadeForTheNoteIsReadAgain(t *testing.T) {
 	if err := agent.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if exchange := learnedExchange(t, learned); !strings.Contains(exchange, "ASSISTANT STATEMENT (not corroboration):\n"+NoChangeReply) {
+	if exchange := learnedExchange(t, learned); !strings.Contains(exchange, "ASSISTANT:\n"+NoChangeReply) {
 		t.Errorf("the memory reflex was not handed the non-withdrawn token reply:\n%s", exchange)
 	}
 }
 
 // observeMemoryExtraction reads the existing reflex seam without adding a
 // production hook. The checkpoint fixture already routes concurrent readers
-// through scriptedCompleter.aside; this wraps that route so the post-turn
-// extractor can answer without consuming one of the conversation's steps.
+// through scriptedCompleter.aside; this wraps that route so the noticing pass
+// after the turn can answer without consuming one of the conversation's steps.
 func observeMemoryExtraction(completer *scriptedCompleter) <-chan string {
 	learned := make(chan string, 1)
 	prior := completer.aside
 	completer.aside = func(messages []ai.Message) (*ai.Response, bool) {
-		if len(messages) > 1 && strings.Contains(messageText(messages[0]), "worth remembering after this session ends") {
-			learned <- messageText(messages[1])
-			return textResponse(`{"mem":0}`), true
+		if len(messages) > 1 && strings.Contains(messageText(messages[0]), "You read one exchange between a person and an assistant") {
+			select {
+			case learned <- messageText(messages[1]):
+			default:
+			}
+			return textResponse(`{"keep":""}`), true
 		}
 		if prior != nil {
 			return prior(messages)

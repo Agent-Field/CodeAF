@@ -207,18 +207,19 @@ func TestBashWorkerPageSaysToDeleteScratchBeforeDone(t *testing.T) {
 }
 
 // TestBeltWorkerBriefClosesOnTheRules is the #1549 regression: a plan-born
-// worker's document, composed from the store's task rows, carries the person's
-// rules LAST — the same road a task node's brief takes ([TaskGraph.briefLocked])
-// — so a worker seated from a plan works under the house rules too. The section
-// is already rendered ([AlwaysWorld]); the brief appends it whole.
+// worker's document, composed from the store's task rows, carries what the
+// conversation remembers LAST — the same road a task node's brief takes
+// ([TaskGraph.briefLocked]) — so a worker seated from a plan works under the
+// house rules too. The section is already rendered ([MemoryWorld]); the brief
+// appends it whole.
 func TestBeltWorkerBriefClosesOnTheRules(t *testing.T) {
 	store := askStore(t, "the run's ask")
-	rules := alwaysWorldHeading + ":\n\n" + alwaysWorldBinding + "\n\n- for this repo, never branch off a feature branch"
+	rules := memoryHeading + ":\n\n" + memoryPreamble + "\n\n- for this repo, never branch off a feature branch"
 	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "", rules)
 	if !strings.HasSuffix(strings.TrimSpace(doc), "- for this repo, never branch off a feature branch") {
 		t.Fatalf("a plan-born worker's brief does not close on the rules:\n%s", doc)
 	}
-	if !strings.Contains(doc, alwaysWorldHeading+":") {
+	if !strings.Contains(doc, memoryHeading+":") {
 		t.Fatalf("a plan-born worker's brief does not carry the rules section:\n%s", doc)
 	}
 }
@@ -233,7 +234,7 @@ func TestBeltWorkerBriefRendersNoRulesSectionWithoutRules(t *testing.T) {
 	if with != without {
 		t.Fatalf("whitespace-only rules grew the brief:\n--- without ---\n%s\n--- with ---\n%s", without, with)
 	}
-	if strings.Contains(with, alwaysWorldHeading+":") {
+	if strings.Contains(with, memoryHeading+":") {
 		t.Fatalf("empty rules rendered a section:\n%s", with)
 	}
 }
@@ -245,7 +246,7 @@ func TestBeltWorkerBriefStatesAssignedDirectoryWithoutRewritingReferences(t *tes
 		for _, role := range []string{plandb.RoleWork, plandb.RoleCheck} {
 			task := store.Task(id)
 			task.Role = role
-			rules := alwaysWorldHeading + ":\n\n- preserve the audit log"
+			rules := memoryHeading + ":\n\n- preserve the audit log"
 			doc := BeltWorkerBrief(store, task, id == planRootID, false, "", rules, "/assigned/copy")
 			if !strings.HasSuffix(doc, rules) {
 				t.Fatal("assigned directory displaced the rules")

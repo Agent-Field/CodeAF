@@ -383,7 +383,16 @@ import (
 // closes, with somebody watching, and a run in progress is recorded as codeaf
 // closing. So the number moves, and the door refuses the pair before either
 // half can be believed. NEVER TO SILENCE.
-const Version = 21
+//
+// VERSION 22 IS MEMORY WITH ONE STRENGTH (internal/session's memory.go). The
+// rule flag's door (`Memory.SetAlways`) and the flat list (`Memory.List`) are
+// gone, so is the `/forget` command's `Memory.ForgetQuery` (a person forgets a
+// line on the Memories tab, by its id), `Memory.Update` carries only the words,
+// the commands answer whole receipts, and `Memory.Move` and `Memory.Project`
+// are new. The number moves because a version-21 engine would answer the
+// place's move as "no such method" — a key that did nothing, and a person told
+// so in words that were not true.
+const Version = 22
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -1246,9 +1255,11 @@ type Welcome struct {
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
 
-	// Memory says the conversation's engine has its memory row enabled. It is
-	// carried once so a surface can distinguish an empty store from memory off
-	// without asking from its paint loop.
+	// Memory says the conversation's engine has its memory store open. It is
+	// carried once so a surface can distinguish an empty store from one that
+	// could not be opened without asking from its paint loop. (The memory row no
+	// longer governs this: it decides only whether the engine notices things to
+	// keep on its own.)
 	Memory bool `json:"memory,omitempty"`
 
 	// Teams says this engine ANSWERS THE TEAMS DOORS ([MethodTeamsRead],

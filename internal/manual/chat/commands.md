@@ -275,7 +275,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 
 `/standing` and `/orders` are not commands any more: they answer
 `there is no command called /standing · / lists them`. What runs on a clock is
-`/automations`, and a rule is a memory marked always, kept with `/always`.
+`/automations`, and a rule is a memory, kept with `/remember` (or `/always`, the same
+command).
 
 ## Programs, skills and memory commands
 
@@ -289,13 +290,10 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/review` | — | `[<pull request>] [what to focus on] \| post <report>` | when this build or far engine carries review, reviews a GitHub pull request (its link, `owner/repo#N` or `#N`), or with nothing after it the current branch's; `post <report>` posts a review it wrote, on your yes. It changes no files |
 | `/sec` | — | `[changes [since <ref>]] [quick \| thorough]` | when this build or far engine carries sec, audits the whole repository for security problems, or with `changes` only the branch's changes; with nothing after it, the whole repository. It changes no files |
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
-| `/memory` | — | — | opens the memory panel |
-| `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
-| `/memories` | — | — | opens the memory place |
-| `/remember` | — | `<text>` | keeps one thing across conversations |
-| `/forget` | — | `<query>` | forgets the best matching memory |
-| `/always` | — | — | lists the rules in force here — memories marked always, put in front of every conversation and task |
-| `/always` | — | `<text>` | keeps one as a rule, without asking: for this project, or for you everywhere when typed on home |
+| `/memory` | `/memories` | — | opens the Memories tab (`alt+8`) |
+| `/memory` | `/memories` | `<words>` | prints the remembered lines those words name into the conversation |
+| `/remember` | `/always` | `<text>` | keeps one line in front of every conversation: for this project, or for you everywhere when typed on home or in a conversation with no project; it says `remembered · <text> · <where>` |
+| `/always` | — | — | prints every line kept here — on home, the ones that hold everywhere |
 
 ## Crew and task commands
 
@@ -376,14 +374,14 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…8        go to a place · 1 home · 2 AI teams · 3 chats · 4 activity · 5 spend · 6 settings · 7 automations · 8 memory
+alt+1…8        go to a place · 1 home · 2 AI teams · 3 chats · 4 activity · 5 spend · 6 settings · 7 automations · 8 memories
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
 On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same. The digits follow that list, not the bar's
-left-to-right order: `alt+8` is memory, and `alt+7` is automations, which is on the bar
+left-to-right order: `alt+8` is memories, and `alt+7` is automations, which is on the bar
 only while you are in it.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -1050,7 +1048,8 @@ deletes anything; `codeaf cache clean --yes` skips the question for scripts.
 
 **What `/cache clean` will not do:** it does not delete conversations, reset the
 dashboard, or forget memories. To start a fresh conversation the command is `/new`;
-memories are dropped with `/forget`.
+a memory is forgotten on the Memories tab (`→` then `f`, or `delete`), or by asking. There is no
+`/forget` command any more.
 
 ## /model — pick a model
 
@@ -1915,8 +1914,9 @@ Settings now groups controls by what you want to change:
 `General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Privacy`
 
 General holds appearance, input and updates. Models holds model selection and
-advanced routing/context controls. Memory holds remembering across chats and a
-link to saved memories. Tasks controls delegated work; AI teams sets defaults
+advanced routing/context controls. Memory holds `notice things to remember` —
+whether codeaf may keep a line on its own after a turn you typed — and a link to
+the Memories tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
 Privacy holds history, drafts and data-sharing choices.

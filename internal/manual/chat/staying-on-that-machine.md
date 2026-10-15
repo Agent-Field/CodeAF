@@ -632,13 +632,13 @@ the same stream and its recorded events.
 ## Are saved memories available on the default engine launch?
 
 Yes. Plain `codeaf` holds the conversation in this machine's engine and reads
-its saved notes. `/memory` or `alt+8` opens the memory place; `/remember <text>`
-saves one note, `/memories` lists saved notes and `/forget <query>` removes the
-best match. The page and commands use the same engine store. A demo home's
-seeded notes are available on this road too.
+its memories. `/memory` or `alt+8` opens the Memories tab; `/remember <text>`
+keeps one line, `/memories` lists them, and the tab forgets one. The page and commands use the same engine store. A demo
+home's seeded lines are available on this road too.
 
-Over `--host`, these same doors reach the other machine's store. With memory
-off for the conversation, both the page and the commands say
-`memory is off for this session · turn it on under /settings`. The memory row
-applies when a conversation is built; an already running engine keeps its
-existing memory wiring until it is stopped and a new conversation is opened.
+Over `--host`, these same doors reach the other machine's store. When a
+machine's memory store could not be opened, the page and the commands say so
+(`memory is unavailable in this conversation · the store could not be opened`
+here, `memory is unavailable on this machine · …` from a far engine). The
+`notice things to remember` row is read on every turn, so even an engine that
+has been running for days follows a change from the next turn.

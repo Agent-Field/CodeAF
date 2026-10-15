@@ -3171,10 +3171,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// A checker can independently read the source a worker cited, without
 		// gaining the writable memory store or any additional mutation tool.
 		ConversationHistory: parent.conversationHistory(),
-		// AND THE PROJECT'S APPROVED BINDING RULES, LENT READ-ONLY, before the
-		// first request: a judge that must not gain the writable store still
-		// judges against the same owner's approved rules the node acted under
-		// (contextual_memory.go's [Agent.prepareWorkerBinding]).
+		// AND THE CONVERSATION'S MEMORY, LENT READ-ONLY: a judge that must not
+		// gain the writable store still reads the same owner's lines the node
+		// worked under ([TaskGraph.memoryWorld]).
 		bindingStore:     parent.bindingBrain(),
 		MemoryProjectKey: parent.MemoryProjectKey,
 		// The auditor reads rather than writes, but reading is what makes a

@@ -46,7 +46,7 @@ func TestATabWearsWhatChangedSinceYouLeftThatPlace(t *testing.T) {
 	a, brain := countingApp(t)
 	brain.learned, brain.letGo = 2, 1
 	left := time.Now().Add(-time.Hour)
-	session.NoteLookAt(a.placesRoot(), pageMemory.word(), left)
+	session.NoteLookAt(a.placesRoot(), pageMemory.lookKey(), left)
 
 	a.refreshPlaceCounts(time.Now())
 	if got := a.placeCount(pageMemory); got != 3 {
@@ -106,7 +106,7 @@ func TestTheUncountablePlacesAreNeverGivenANumber(t *testing.T) {
 func TestLeavingAPlaceWritesItsLookStampAndClearsItsNumber(t *testing.T) {
 	a, brain := countingApp(t)
 	brain.rows = []store.Memory{{ID: "m1", Title: "uses neovim", Scope: store.MemoryScopeUser}}
-	before := session.LastLookAt(a.placesRoot(), pageMemory.word())
+	before := session.LastLookAt(a.placesRoot(), pageMemory.lookKey())
 	if !before.IsZero() {
 		t.Fatalf("a place nobody has been in already has a stamp: %v", before)
 	}
@@ -115,7 +115,7 @@ func TestLeavingAPlaceWritesItsLookStampAndClearsItsNumber(t *testing.T) {
 		t.Fatal("the memory place did not open")
 	}
 	a.showPage(pageHome)
-	if session.LastLookAt(a.placesRoot(), pageMemory.word()).IsZero() {
+	if session.LastLookAt(a.placesRoot(), pageMemory.lookKey()).IsZero() {
 		t.Fatal("leaving the memory place wrote no look stamp")
 	}
 
@@ -176,7 +176,7 @@ func TestTheTabsGoOnCountingInEveryRoom(t *testing.T) {
 			// only on a machine that had one: with CODEAF_HOME pointed somewhere
 			// empty the stamp was dropped and the beat counted nothing.
 			a.homeRoot = t.TempDir()
-			session.NoteLookAt(a.placesRoot(), pageMemory.word(), time.Now().Add(-time.Hour))
+			session.NoteLookAt(a.placesRoot(), pageMemory.lookKey(), time.Now().Add(-time.Hour))
 
 			a.refreshPlaceCounts(time.Now())
 			if got := a.placeCount(pageMemory); got != 0 {

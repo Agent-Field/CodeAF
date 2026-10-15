@@ -645,6 +645,8 @@ func errandRole(role roles.Role) lane.Role {
 	case roles.RoleRouter, roles.RoleRouterConfirm, roles.RoleMarkReader,
 		roles.RoleGuardian, roles.RoleAuditor:
 		return lane.RoleJudge
+	// RoleConsolidate is registered by nothing in this build (roles.go says
+	// why it is still a word); a pin naming it still lands on the memory lane.
 	case roles.RoleReflex, roles.RoleConsolidate:
 		return lane.RoleMemory
 	case roles.RolePlanner, roles.RoleDesigner, roles.RoleDivision:

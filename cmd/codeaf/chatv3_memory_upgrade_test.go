@@ -105,14 +105,14 @@ func TestLaunchingOnADatabaseFromBeforeOwnersKeepsTheNote(t *testing.T) {
 	if kept.SourceSession != "session-old" || kept.SourceSeq != 7 {
 		t.Fatalf("the note's provenance = (%q, %d), want it preserved", kept.SourceSession, kept.SourceSeq)
 	}
-	// Search on the launched brain answers the note the person kept, under the
-	// owner the upgrade gave it.
-	found, err := brain.SearchMemories([]string{store.OwnerUser}, "receipts", 5)
+	// What a conversation is told on the launched brain is the note the person
+	// kept, under the owner the upgrade gave it.
+	found, err := brain.MemoriesFor([]string{store.OwnerUser})
 	if err != nil {
-		t.Fatalf("search the launched brain: %v", err)
+		t.Fatalf("read the launched brain: %v", err)
 	}
 	if len(found) != 1 || found[0].ID != "mem_kept" {
-		t.Fatalf("search on the launched brain = %v, want the kept note", found)
+		t.Fatalf("the launched brain carries %v, want the kept note", found)
 	}
 	if err := brain.Close(); err != nil {
 		t.Fatal(err)

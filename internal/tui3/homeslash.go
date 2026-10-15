@@ -267,7 +267,7 @@ func homeFate(word, rest string) string {
 		}
 		return fateAnswers
 	case "help", "status", "cost", "budget", "cache", "debug", "update",
-		"stop", "remember", "forget":
+		"stop", "remember":
 		return fateAnswers
 	case "always":
 		// BOTH FORMS ANSWER HERE, and home is where a rule is the person's

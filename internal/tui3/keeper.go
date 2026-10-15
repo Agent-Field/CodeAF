@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -253,6 +254,57 @@ type behindWatch struct {
 	workMu  sync.Mutex
 	jobs    map[int]struct{}
 	jobbing atomic.Bool
+	// notices are the lines this conversation said to the person while it was
+	// out of sight that NO RECORD CARRIES — memory's notices
+	// ([session.Event.Unrecorded]). A turn's events and the transcript are
+	// redrawn when the person comes back; these are not, so this watcher keeps
+	// them and the surface files them with the conversation's parked receipts
+	// ([app.keepHeldNotices]). A turn's own lines are held apart in turnNotices
+	// until that turn ends, because a person who comes back while it is still
+	// running is shown them again by the turn's own replay.
+	noticeMu    sync.Mutex
+	notices     []string
+	turnNotices []string
+}
+
+// holdNotice keeps one unrecorded line said while nobody is looking. The same
+// words held twice are one line: an adopted stream replays its turn.
+func (w *behindWatch) holdNotice(text string) {
+	w.noticeMu.Lock()
+	defer w.noticeMu.Unlock()
+	if !slices.Contains(w.notices, text) {
+		w.notices = append(w.notices, text)
+	}
+}
+
+// holdTurnNotice keeps one unrecorded line a turn said, until that turn ends.
+func (w *behindWatch) holdTurnNotice(text string) {
+	w.noticeMu.Lock()
+	defer w.noticeMu.Unlock()
+	w.turnNotices = append(w.turnNotices, text)
+}
+
+// turnNoticesLanded moves an ended turn's lines in with the rest.
+func (w *behindWatch) turnNoticesLanded() {
+	w.noticeMu.Lock()
+	landed := w.turnNotices
+	w.turnNotices = nil
+	w.noticeMu.Unlock()
+	for _, text := range landed {
+		w.holdNotice(text)
+	}
+}
+
+// takeNotices hands the held lines to the surface, once.
+func (w *behindWatch) takeNotices() []string {
+	if w == nil {
+		return nil
+	}
+	w.noticeMu.Lock()
+	defer w.noticeMu.Unlock()
+	taken := w.notices
+	w.notices = nil
+	return taken
 }
 
 // noteTask folds one task notice into [behindWatch.tasking], and reports whether
@@ -486,6 +538,7 @@ func (w *behindWatch) run() {
 		if turnStop != nil {
 			turnStop()
 		}
+		w.turnNoticesLanded()
 		turn, turnStop = next, stop
 		w.turning.Store(next != nil)
 	}
@@ -528,6 +581,11 @@ func (w *behindWatch) run() {
 			if w.noteTask(ev.Task) || w.noteJob(ev.Job) {
 				w.stir()
 			}
+			// AND A LINE NO RECORD CARRIES is kept for the person's return.
+			if ev.Kind == session.EventNotice && ev.Unrecorded && ev.Text != "" {
+				w.holdNotice(ev.Text)
+				w.stirName()
+			}
 		case _, ok := <-titles:
 			if !ok {
 				titles = nil
@@ -553,13 +611,17 @@ func (w *behindWatch) run() {
 			// another turn is still being drained replaces it, which is the
 			// session's own arrangement: a wake is handed over between turns.
 			replaceTurn(stream, nil)
-		case _, ok := <-turn:
+		case ev, ok := <-turn:
+			if ok && ev.Kind == session.EventNotice && ev.Unrecorded && ev.Text != "" {
+				w.holdTurnNotice(ev.Text)
+			}
 			if !ok {
 				turn = nil
 				if turnStop != nil {
 					turnStop()
 					turnStop = nil
 				}
+				w.turnNoticesLanded()
 				// A TURN FINISHED IN A CONVERSATION NOBODY IS LOOKING AT. It
 				// landed in its own journal and moved nothing on screen; the
 				// banner is the whole of what tells the person.
@@ -621,6 +683,7 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	if held == nil {
 		return next
 	}
+	a.keepHeldNotices(held)
 	// A CONVERSATION THAT HAS JUST NAMED ITSELF IS A REDRAW AND NOTHING ELSE.
 	// The tab reads the name off the agent on the frame ([hopRawTitle]), so the
 	// frame IS the whole of the refresh; every line below is about work landing,
@@ -1010,11 +1073,25 @@ func (a *app) bringForward(file string) (cmd tea.Cmd, owned bool) {
 	}
 	delete(a.behind, key)
 	held.watch.stop()
+	a.keepHeldNotices(held)
 	leaving, side := a.front(), a.detachConversation()
 	parked := a.stow(leaving, side)
 	cmd = tea.Batch(parked, a.attachConversation(held.conv, held.side))
 	a.rememberOpen(key)
 	return cmd, true
+}
+
+// keepHeldNotices files the lines a held conversation said while it was out of
+// sight ([behindWatch.takeNotices]) with its parked receipts, which are drawn
+// in that conversation when the person brings it back ([app.attachConversation])
+// rather than in whichever one is on screen now. It is said on every stir and
+// once more as the watcher stops on the way forward, so a line that arrived
+// between the two is not lost.
+func (a *app) keepHeldNotices(held *kept) {
+	if held == nil || held.side == nil {
+		return
+	}
+	held.side.parkNotes = append(held.side.parkNotes, held.watch.takeNotices()...)
 }
 
 // openBeside opens a transcript in ITS OWN workspace and puts the conversation
@@ -1212,6 +1289,7 @@ func (a *app) leaveFront(let func(Agent), say bool) (tea.Cmd, bool) {
 	held := a.behind[next]
 	delete(a.behind, next)
 	held.watch.stop()
+	a.keepHeldNotices(held)
 	leaving, file := a.agent, a.file
 	a.forget(a.convKey(file))
 	// AND THE CORRECTIONS IT WAS STILL WAITING ON GO WITH IT, BEFORE ITS RECORD IS

@@ -59,8 +59,10 @@ func TestChatSettingsReadWriteReadKeepsRawSemantics(t *testing.T) {
 		if tc.key == config.KeyHints && config.HintsAt(profile) != (tc.raw == "off") {
 			t.Fatal("hints inversion changed")
 		}
-		if tc.key == config.KeyMemoryEnabled && !strings.Contains(receipt, "Restart the CLI") {
-			t.Fatalf("memory falsely implies immediate activation: %s", receipt)
+		// The noticing row is read live on every turn, so its receipt says when
+		// the change lands rather than asking for a restart it does not need.
+		if tc.key == config.KeyMemoryEnabled && (!strings.Contains(receipt, "Applies from the next turn") || strings.Contains(receipt, "Restart")) {
+			t.Fatalf("memory's receipt does not say when it applies: %s", receipt)
 		}
 	}
 	values := profileJSON(t, profile)

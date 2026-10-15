@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,19 +12,20 @@ import (
 )
 
 // railPlanCounter proves that opening the store is a gesture, never paint.
+// The counts are bumped by reads the surface makes off the loop.
 type railPlanCounter struct {
 	*planFake
-	rows  int
-	pages int
+	rows  atomic.Int64
+	pages atomic.Int64
 }
 
 func (f *railPlanCounter) PlanTasks() []session.PlanTaskRow {
-	f.rows++
+	f.rows.Add(1)
 	return f.planFake.PlanTasks()
 }
 
 func (f *railPlanCounter) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
-	f.pages++
+	f.pages.Add(1)
 	return f.planFake.PlanTaskPage(id)
 }
 
@@ -55,12 +57,12 @@ func railTaskPageApp(t *testing.T, held bool) (*app, *railPlanCounter) {
 
 func TestRailClickReadsTheStoreAtTheGestureAndOpensTheTaskPage(t *testing.T) {
 	a, fake := railTaskPageApp(t, true)
-	if fake.pages != 0 {
-		t.Fatalf("building and drawing the conversation read %d task pages", fake.pages)
+	if fake.pages.Load() != 0 {
+		t.Fatalf("building and drawing the conversation read %d task pages", fake.pages.Load())
 	}
 	clickRail(t, a, 0)
-	if fake.pages != 1 {
-		t.Fatalf("rail click read task pages %d times, want once at the gesture", fake.pages)
+	if fake.pages.Load() != 1 {
+		t.Fatalf("rail click read task pages %d times, want once at the gesture", fake.pages.Load())
 	}
 	if plan := a.roomPlan(); plan == nil || plan.id != "2" {
 		t.Fatalf("rail click did not open the task room over store task 2: room=%v", a.roomOpen())
@@ -74,16 +76,16 @@ func TestRailEnterReadsTheStoreAtTheGestureAndOpensTheTaskPage(t *testing.T) {
 	a, fake := railTaskPageApp(t, true)
 	a.railWhere, a.railHold = railSpot{id: 2}, true
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if plan := a.roomPlan(); fake.pages != 1 || plan == nil || plan.id != "2" {
-		t.Fatalf("rail enter reads=%d room=%v", fake.pages, a.roomOpen())
+	if plan := a.roomPlan(); fake.pages.Load() != 1 || plan == nil || plan.id != "2" {
+		t.Fatalf("rail enter reads=%d room=%v", fake.pages.Load(), a.roomOpen())
 	}
 }
 
 func TestRailRowWithoutAStoredPageStillOpensItsRoom(t *testing.T) {
 	a, fake := railTaskPageApp(t, false)
 	clickRail(t, a, 0)
-	if fake.pages != 1 {
-		t.Fatalf("room fallback did %d page reads, want one gesture read", fake.pages)
+	if fake.pages.Load() != 1 {
+		t.Fatalf("room fallback did %d page reads, want one gesture read", fake.pages.Load())
 	}
 	if a.roomPlan() != nil || !a.roomOpen() || a.room.id != 2 {
 		t.Fatalf("absent page opened room=%v id=%d", a.roomOpen(), roomID(a))
@@ -93,16 +95,18 @@ func TestRailRowWithoutAStoredPageStillOpensItsRoom(t *testing.T) {
 func TestRailTaskPageSurvivesSettledFramesAndFramesDoNotReadTheAgent(t *testing.T) {
 	a, fake := railTaskPageApp(t, true)
 	clickRail(t, a, 0)
-	for i := range fake.plan {
-		fake.plan[i].Status = "done"
-	}
+	fake.editRows(func(rows []session.PlanTaskRow) {
+		for i := range rows {
+			rows[i].Status = "done"
+		}
+	})
 	for i := range a.taskSheet.mine.plan {
 		a.taskSheet.mine.plan[i].Status = "done"
 	}
 	settled := fake.planFake.pages["2"]
 	settled.Row.Status = "done"
-	fake.planFake.pages["2"] = settled
-	reads, pages := fake.rows, fake.pages
+	fake.planFake.setPage("2", settled)
+	reads, pages := fake.rows.Load(), fake.pages.Load()
 	for range 10 {
 		drive(t, a, frameMsg{})
 		frame, _, _ := a.frame()
@@ -112,8 +116,8 @@ func TestRailTaskPageSurvivesSettledFramesAndFramesDoNotReadTheAgent(t *testing.
 	}
 	// A ROOM ON A RUNNING TASK FOLLOWS IT ON ITS OWN BEAT, never on the paint
 	// clock: ten frames cost no read of the page and no read of the rows.
-	if fake.rows != reads || fake.pages != pages {
-		t.Fatalf("frames called the agent: row reads %d→%d, page reads %d→%d", reads, fake.rows, pages, fake.pages)
+	if fake.rows.Load() != reads || fake.pages.Load() != pages {
+		t.Fatalf("frames called the agent: row reads %d→%d, page reads %d→%d", reads, fake.rows.Load(), pages, fake.pages.Load())
 	}
 	if a.roomPlan() == nil {
 		t.Fatal("ten settled frames closed the task room")
@@ -140,8 +144,8 @@ func TestAChildRemainsOpenableFromARailTaskRoom(t *testing.T) {
 		t.Fatalf("the run's room does not draw its part:\n%s", got)
 	}
 	openPlanRoomNow(t, a, "3")
-	if plan := a.roomPlan(); fake.pages != 2 || plan == nil || plan.id != "3" {
-		t.Fatalf("child open reads=%d room=%v", fake.pages, a.roomOpen())
+	if plan := a.roomPlan(); fake.pages.Load() != 2 || plan == nil || plan.id != "3" {
+		t.Fatalf("child open reads=%d room=%v", fake.pages.Load(), a.roomOpen())
 	}
 	if got := planRoomText(t, a); !strings.Contains(got, "the child page") {
 		t.Fatalf("the child's room was not drawn:\n%s", got)

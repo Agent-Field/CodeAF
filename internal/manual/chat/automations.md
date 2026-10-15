@@ -18,7 +18,7 @@ you say yes**. `/automations` lists them, with what each one last came to.
 
 They run **only while a codeaf window is open** (*Does it run when codeaf is closed*). A
 rule such as "always use tabs here" is not an automation: it has no time and nothing to
-run, and it is kept as a memory marked always (*Rules are not automations*).
+run, and it is kept as a memory (*Rules are not automations*).
 
 ## How do I check on it later — have codeaf look again at a time, or keep watching and tell me
 
@@ -65,7 +65,8 @@ where (`in your checkout` or `in a separate worktree, kept for review`) and what
 may take and spend: `up to 30m and $5.00 a run`.
 
 **A run is your own conversation, done later.** It has your models, keys, connected
-accounts, memory, the rules you keep with `/always`, and **your own approval rules**.
+accounts, memory — the rules you keep with `/remember` among it — and **your own approval
+rules**.
 Nobody is there to ask, so a call your rules would ask you about is refused, and the first
 such refusal stops the run, naming the call:
 `weekly update · your call · needed your ok to run bash git push`. Allow that call with
@@ -203,7 +204,7 @@ refused: `the rhythm "0 0 30 2 *" never happens`. A rhythm under a minute is ref
 ## /automations — see every automation, when it runs next, how it last went, and what its mark or dot means
 
 `/automations` opens the list — so does `alt+7`, the `Automations` word on the tab bar
-(between `Memory` and `Spend`), or the `automations` heading on home. One row per
+(between `Memories` and `Spend`), or the `automations` heading on home. One row per
 automation: its mark, its title, and one dim sentence — its kind, its schedule, where it is
 now, and its last run:
 
@@ -283,6 +284,24 @@ a plain reminder: delete it and ask for the reminder.
 A watch that looks through a tool is written without its look in the typed line — a
 tool's arguments are not something anybody types on one line — and the edit leaves that
 look as it was.
+
+## A change that was not saved, or a reminder still finished — has already passed, a card answered too late, and renaming a finished reminder
+
+A one-time moment has to be still to come **when the card is saved**, not only when it is
+asked for. Move a reminder to 20:34 and answer the card at 20:34:05 and nothing is changed:
+a typed edit says `Wed 14 Oct 20:34:00 has already passed` and its card ends `not saved`;
+asked in the conversation, I am told `nothing was changed: Wed 14 Oct 20:34:00 has already
+passed`. The reminder stays as it was — finished, if it had already been said — so give it
+a moment still to come and it wakes again. A moment that passed in the current minute is
+said to the second; an older one, as `Wed 14 Oct 20:30 has already passed`.
+
+A finished reminder can be renamed, or given a new line to say, without moving it: the line
+`e` puts in the box keeps the moment it has, with its seconds when it has them
+(`at 2026-10-14T20:33:13`), and only a moment moved into the past is refused. It stays
+finished, with no next run, until a change gives it a moment still to come.
+
+A paused automation saved with a change stays paused: its card shows no next run, and a
+typed save says `saved weekly update · still paused — resume starts it again`.
 
 ## History — every run, read a run's whole result, why did I get this reminder, and open where it was asked
 
@@ -571,7 +590,7 @@ A line that cannot be read says why and saves nothing:
 - `add needs a title first: add "weekly update" every "0 9 * * 1" do "…"`
 - `unknown word "daily" — the words are title, at, in, every, zone, say, do, look, files, until, time, usd, folder, once, worktree, checkout`
 - `cannot read the moment "someday" — say 18:00, 6pm, tomorrow 9am, monday 9am or 2026-10-12T09:00`
-- `Sat 10 Oct 09:00 has already passed`
+- `Sat 10 Oct 09:00 has already passed` — when the line is read, and again for an edit whose card is saved after its new moment
 - `a watch needs a rhythm to look on` · `a watch needs the condition it is looking for`
 - `an automation needs something to say or something to do`
 
@@ -595,13 +614,15 @@ whole of it.
 
 "Always use tabs in this repository", "never force-push a shared branch", "our commits are
 written in the imperative" — these have no time and nothing to run, so they are not
-automations. **They are rules: memories marked always**, put in front of every turn of
-every conversation where they hold, and in the brief of every task started there.
+automations. **They are memories**, and every memory is put in front of every turn of every
+conversation where it holds, and in the brief of every task started there; there is no
+separate "rule" kind.
 
-`/always <text>` keeps one; bare `/always` lists the rules in force here. Said in a
-conversation, I keep one with `remember` set to always, on a card that asks you first.
-*What I remember* — its `Always` sections — has the rest: where a rule holds, how many ride
-along, and switching one off.
+`/remember <text>` (or `/always <text>`, the same command) keeps one; bare `/always` lists
+every line kept here. Said in a conversation, I keep one with `remember`, and the
+conversation says `remembered · <the line> · <where>`, and the Memories tab forgets it.
+*What I remember* has the rest: where a line holds, how many ride along, and forgetting
+one.
 
 ## How I set one up when you say it — the automation tool, and automation_report
 
@@ -633,8 +654,7 @@ What a standing order did is now one of two things:
 
 - **something on a clock** — a reminder, a routine, a watch — is an **automation**:
   `/automations`, or say it;
-- **a rule** — "always run the tests before you commit" — is a **memory marked always**:
-  `/always`.
+- **a rule** — "always run the tests before you commit" — is a **memory**: `/remember`.
 
 **Standing orders were not carried over.** None of them is listed or changed anywhere in
 codeaf any more: make again, as automations or rules, the ones you still want. Their old
