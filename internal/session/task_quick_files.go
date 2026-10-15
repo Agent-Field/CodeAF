@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/aymanbagabas/go-udiff"
@@ -85,8 +86,13 @@ func (a *Agent) executeTaskTool(ctx context.Context, tool bare.Tool, call ai.Too
 		return "this quick task has ended", true, nil
 	}
 	// A shell's effects cannot be bounded from its text. All shell execution asks
-	// first, which includes wrappers, aliases and scripts that hide a test run.
-	if quickToolNeedsPromotion(tool.Name) {
+	// first, which includes wrappers, aliases and scripts that hide a test run —
+	// EXCEPT A COMMAND THAT CAN CHANGE NOTHING: a search, a listing, `git
+	// status`, read by the same rule that lifts a prompt off such a call
+	// (internal/approval's ReadOnly, which never vouches for a compound line).
+	// A rename across a codebase starts by finding every use; finding them is
+	// not a reason to become a full task.
+	if quickToolNeedsPromotion(tool.Name) && !approval.ReadOnly(tool.Name, args) {
 		return a.proposeQuickPromotion(ctx, node, call, "This needs a full task before running a command or creating media")
 	}
 	path, _, writes := a.mutatingPath(call)

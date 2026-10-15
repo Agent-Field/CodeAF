@@ -4743,6 +4743,13 @@ type DisplayEntry struct {
 	// who sent it rather than as the aside's first line. Nil on every other
 	// entry; the aside's Text still holds the whole delivery as the model read it.
 	Team []TeamLine
+	// ForModel marks an "aside" the SESSION wrote to its model — a wake, a
+	// task's landing note, the carry-on after a quit, a checkpoint's question —
+	// as opposed to the model's own operational words. The person never typed
+	// it and it was never addressed to them: it is the model's instruction, and
+	// a surface that shows a conversation to a person leaves it out (a team's
+	// delivery, which carries [DisplayEntry.Team], is drawn as its card).
+	ForModel bool
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -4862,7 +4869,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		if role == "user" && strings.HasPrefix(messageContentText(msg), summaryNotePrefix) {
 			role = "note"
 		}
+		forModel := false
 		if role == "user" && journal.isNote(msg) {
+			forModel = true
 			// A LINE THE SESSION WROTE IS NOT THE PERSON'S. It is user-role in the
 			// transcript because that is the only role the model can be told
 			// something in, and the journal is the only place that remembers the
@@ -4915,8 +4924,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the
 			// model has to read it as (steer.go).
-			Steer: journal.steerMark(msg),
-			Team:  team,
+			Steer:    journal.steerMark(msg),
+			Team:     team,
+			ForModel: forModel,
 		})
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]

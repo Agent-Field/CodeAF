@@ -167,6 +167,7 @@ func (b *appBackend) askBudget(a *appAgent, live *appLive, spent, budget float64
 func (b *appBackend) openMoneyAsk(a *appAgent, live *appLive, scope string, ask appwire.Ask) {
 	ask.ID = "budget:" + scope + ":" + strconv.FormatUint(appMoneyAsks.Add(1), 10)
 	ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindBudget
+	ask.Subject = &appwire.AskSubject{Kind: appwire.SubjectBudget, Ref: scope}
 	opened, moved := false, false
 	var view appwire.Agent
 	b.locked(func() {

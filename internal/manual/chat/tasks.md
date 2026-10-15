@@ -5801,8 +5801,13 @@ restores every original file, including its permissions, and removes files
 that the quick task created. The bytes and hashes survive an engine restart.
 
 Before writing the 31st distinct file, the worker asks to become a full task.
-It also asks before **any shell call**, including tests hidden in scripts or
-aliases, before workspace restores or merges, and before media creation. Shell effects cannot be counted safely.
+It also asks before **any shell call that could change something**, including
+tests hidden in scripts or aliases, before workspace restores or merges, and
+before media creation. Shell effects cannot be counted safely, so only a
+command that cannot change anything — a search, a listing, `git status`, never
+a compound line — runs inside a quick task; that is how a rename finds every use
+without becoming a full task. In the desktop app quick tasks are always
+offered, even where full tasks are runs.
 There is no clock on this promotion. Promote starts an ordinary task after
 the quick worker leaves, continuing in the same folder with its existing
 edits and the blocked action in its brief. Cancel stops the quick worker and

@@ -491,6 +491,7 @@ func appProposalAskOf(p appwire.Proposal) appwire.Ask {
 	return appwire.Ask{
 		ID: appProposalAskPrefix + p.ID, Agent: p.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewProposal,
 		Title: "Bring in helpers: " + p.Name, Detail: strings.Join(detail, "\n"), Reason: p.Goal,
+		Subject: &appwire.AskSubject{Kind: appwire.SubjectCrewProposal, Ref: p.ID},
 		Options: []appwire.AskOption{
 			{ID: appwire.ProposalCreate, Label: "Make the crew"},
 			{ID: appwire.ProposalEdit, Label: "Edit"},

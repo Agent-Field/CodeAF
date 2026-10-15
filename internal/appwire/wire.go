@@ -214,7 +214,31 @@ type Ask struct {
 	// Path is the crews a crew's decision climbed through to the person,
 	// "Backend → Release → you".
 	Path []string `json:"path,omitempty"`
+	// Subject is what the ask is about, so the app draws that thing's own
+	// card: an automation waiting to be agreed to, a task, a tool call, a crew
+	// proposal or decision. Nil is an ask about nothing in particular.
+	Subject *AskSubject `json:"subject,omitempty"`
 }
+
+// AskSubject is the thing an ask is about: its kind and the id the app knows
+// it by.
+type AskSubject struct {
+	Kind string `json:"kind"`
+	Ref  string `json:"ref,omitempty"`
+}
+
+// The kinds of an ask's subject.
+const (
+	SubjectAutomation   = "automation"
+	SubjectTask         = "task"
+	SubjectCall         = "call"
+	SubjectRun          = "run"
+	SubjectPage         = "page"
+	SubjectAccount      = "account"
+	SubjectCrewProposal = "crew_proposal"
+	SubjectCrewDecision = "crew_decision"
+	SubjectBudget       = "budget"
+)
 
 // The subkinds of an approval, and the option ids a permission offers.
 const (

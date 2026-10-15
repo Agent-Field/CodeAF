@@ -2017,6 +2017,10 @@ type Config struct {
 	// until the person has trusted it (internal/automation's trust.go). The
 	// desktop app sets it; the terminal saves on the yes, as it always has.
 	StandingOrders bool
+	// QuickTasks keeps `quick_task` on a conversation's belt when its full
+	// tasks are runs in the plan store ([Config.mayQuickTask]). The desktop
+	// app sets it.
+	QuickTasks bool
 
 	// BashBackgroundAfterSeconds is how long a foreground command stays in the
 	// turn before the same running process is kept as a job (promote.go,

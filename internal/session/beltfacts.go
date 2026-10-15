@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec"
@@ -103,7 +104,13 @@ func (c Config) mayProposeTask() bool { return !c.InTask || (c.mayFanOut() && !c
 // written as its own predicate rather than as the other one spelled twice
 // because the page's bullet is about THIS verb, and a fact naming the wrong
 // predicate is a sentence nobody can check.
-func (c Config) mayQuickTask() bool { return c.mayProposeTask() && !c.oneTaskRoad() }
+//
+// THE DESKTOP APP KEEPS IT ([Config.QuickTasks]) where the terminal's one task
+// road takes it off: small work done in place, read and carried on from, is a
+// thing the app offers whatever road the full tasks take.
+func (c Config) mayQuickTask() bool {
+	return c.mayProposeTask() && (!c.oneTaskRoad() || c.QuickTasks && !c.InTask)
+}
 
 // oneTaskRoad says whether this agent is a conversation whose hand-offs are
 // runs in the plan store: the bash belt is asked for and a run engine is wired.
@@ -319,6 +326,28 @@ type beltFact struct {
 	// how a fact writes a fact of THIS launch into itself — the delegates this
 	// machine has (delegate_door.go) — where every other fact is a constant.
 	fill func(Config, string) string
+}
+
+// quickBesideRuns is the one-road wording with quick tasks kept beside it
+// ([Config.QuickTasks]): the run road stays the road for work that must be
+// checked and landed, and `quick_task` is named for the small work done where
+// the model stands. Every other wording is left as it is.
+func quickBesideRuns(c Config, text string) string {
+	if !c.oneTaskRoad() || !c.mayQuickTask() {
+		return text
+	}
+	const one = "You are one mind with a clock, and ONE way to put more minds on the work:\n`propose_task`."
+	if !strings.HasPrefix(text, one) {
+		return text
+	}
+	return "You are one mind with a clock, and two ways to put more minds on the work.\n" +
+		"A `quick_task` is a copy of your abilities working where you stand: it starts\n" +
+		"the instant you ask, reads and writes in this same folder, and its last message\n" +
+		"comes back to you as a note. It is for small work you will read and carry on\n" +
+		"with — a rename across files, a handful of edits — and it becomes a full task\n" +
+		"only when it must run a command that can change things or touches more than " +
+		strconv.Itoa(QuickTaskFileLimit) + " files.\n" +
+		"The other is `propose_task`." + strings.TrimPrefix(text, one)
 }
 
 // beltFacts is the whole of it, in the order the section reads.
@@ -586,6 +615,7 @@ var handoffFacts = []beltFact{{
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
 		"finishes it.",
+	fill: quickBesideRuns,
 }, delegateFact, {
 	tools:   []string{"build_harness", loadCapabilityToolName},
 	holds:   Config.mayDesignHarness,

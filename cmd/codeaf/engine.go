@@ -1051,6 +1051,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		cfg.ChoiceClockSeconds = hello.Launch.ChoiceClockS
 		cfg.JobQuitGrace = time.Duration(hello.Launch.QuitGraceS) * time.Second
 		cfg.StandingOrders = hello.Launch.StandingOrders
+		cfg.QuickTasks = hello.Launch.QuickTasks
 	}
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
 	if err != nil {

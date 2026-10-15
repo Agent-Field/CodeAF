@@ -829,6 +829,8 @@ type LaunchShape struct {
 	// is up, as proposed and not yet running ([session.Config.StandingOrders]);
 	// the desktop app sets it.
 	StandingOrders bool `json:"standingOrders,omitempty"`
+	// QuickTasks keeps quick tasks offered beside runs ([session.Config.QuickTasks]).
+	QuickTasks bool `json:"quickTasks,omitempty"`
 	// LiveToolOutput sends a model's shell output as it arrives
 	// ([session.Config.LiveToolOutput]); the desktop app sets it.
 	LiveToolOutput bool `json:"liveToolOutput,omitempty"`

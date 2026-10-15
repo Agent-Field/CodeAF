@@ -137,9 +137,12 @@ func (b *appBackend) resumeOne(id string, reply bool, tasks []string) {
 	if !ok || !reply {
 		return
 	}
-	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: "resumed-" + b.now().Format("20060102T150405"), Agent: id, Kind: appwire.EntryNotice, At: b.now(), Text: appResumedWord,
-	}})
+	// THE APP IS TOLD BY A MARKER, and the sentence the model is told to carry
+	// on with is the model's alone: it is a line the session wrote to its model
+	// and is never one of the conversation's entries.
+	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appFooter(
+		"resumed-"+b.now().Format("20060102T150405"), id, 0, appwire.FooterResumedAfterQuit, appResumedWord, b.now(),
+	)})
 	_, _ = door.ResumeAfterQuit()
 }
 

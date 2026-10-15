@@ -38,6 +38,9 @@ const (
 	FooterFallback        = "fallback"
 	FooterProcessFinished = "process_finished"
 	FooterProcessLimit    = "process_limit"
+	// FooterResumedAfterQuit is in front of a reply that carries on after the
+	// app was quit in the middle of it.
+	FooterResumedAfterQuit = "resumed_after_quit"
 )
 
 // CodeSent refuses an edit to a queued message that has already been sent.

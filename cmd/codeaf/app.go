@@ -235,7 +235,7 @@ const appHostDialTimeout = 500 * time.Millisecond
 // journal. Everything else is built in this process.
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	clock := ask.ClockS
-	launch := &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true}
+	launch := &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
 	if ask.Transcript != "" && !ask.Minted {
 		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
 		// conversation another window opened can carry (engine.go's JoinedWith).
@@ -1001,7 +1001,28 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 	for _, option := range appOptionsOf(q) {
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
+	ask.Subject = appAskSubject(agent, q.Subject)
 	return ask
+}
+
+// appAskSubject is what a question is about, in the app's words: an order is
+// an automation named by its id, a task node by its app task id.
+func appAskSubject(agent string, s session.SubjectRef) *appwire.AskSubject {
+	switch s.Kind {
+	case session.SubjectOrder:
+		return &appwire.AskSubject{Kind: appwire.SubjectAutomation, Ref: s.Ref}
+	case session.SubjectNode:
+		return &appwire.AskSubject{Kind: appwire.SubjectTask, Ref: appTaskID(agent, s.ID)}
+	case session.SubjectCall:
+		return &appwire.AskSubject{Kind: appwire.SubjectCall, Ref: s.CallID}
+	case session.SubjectRun:
+		return &appwire.AskSubject{Kind: appwire.SubjectRun, Ref: s.Ref}
+	case session.SubjectPage:
+		return &appwire.AskSubject{Kind: appwire.SubjectPage, Ref: s.Name}
+	case session.SubjectAccount:
+		return &appwire.AskSubject{Kind: appwire.SubjectAccount, Ref: s.Ref}
+	}
+	return nil
 }
 
 // appOption is one answer as the app names it, with the engine key behind it.
@@ -1449,8 +1470,20 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	var reply strings.Builder
 	// A MESSAGE BEFORE A TOOL CALL IS AN UPDATE, the agent saying what it
 	// found mid-turn; the last one is the answer.
+	// withheld says the reply's words so far could still be the withdrawal token
+	// ([session.NoChangeReply]), so they are kept back from the page until
+	// they cannot be: a reply that is only the token is never drawn.
+	withheld := true
 	sayReply := func(kind string) {
 		words := strings.TrimSpace(reply.String())
+		defer func() { withheld = true }()
+		if session.IsNoChangeReply(words) {
+			reply.Reset()
+			return
+		}
+		if withheld && words != "" {
+			live.box.Delta(id, turn, msg, appwire.DeltaText, reply.String())
+		}
 		if words != "" {
 			b.locked(func() { live.lastAnswer = words })
 			at := msg
@@ -1474,7 +1507,13 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		case session.EventTextDelta:
 			endThought()
 			reply.WriteString(event.Text)
-			live.box.Delta(id, turn, msg, appwire.DeltaText, event.Text)
+			switch {
+			case !withheld:
+				live.box.Delta(id, turn, msg, appwire.DeltaText, event.Text)
+			case !strings.HasPrefix(session.NoChangeReply, strings.TrimLeft(reply.String(), " \t\r\n")):
+				withheld = false
+				live.box.Delta(id, turn, msg, appwire.DeltaText, reply.String())
+			}
 		case session.EventReasoning:
 			if thoughtAt.IsZero() {
 				thoughtAt = b.now()
@@ -1484,6 +1523,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			// The attempt is void: what it streamed is dropped, here and on
 			// the page, and a move to another model is said once.
 			reply.Reset()
+			withheld = true
 			thoughtAt = time.Time{}
 			// A wait already said with its countdown is not said twice; the
 			// attempt is the turn's own count of them either way.
@@ -2057,6 +2097,18 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, mark
 			// session wrote, but it is the message the person watched stream
 			// under this id; read back as a notice it was that paragraph said
 			// a second time. Every other aside is the session's own dim line.
+			// A LINE THE SESSION WROTE TO ITS MODEL IS NOT SHOWN: it is the
+			// model's instruction — a wake, a landing note, the carry-on after a
+			// quit — and never words to the person. A team's delivery is the
+			// exception and is the crew's line.
+			if item.Role == "aside" && item.ForModel && len(item.Team) == 0 {
+				continue
+			}
+			// A REPLY THAT IS ONLY THE WITHDRAWAL TOKEN WITHDREW ITSELF: the
+			// answer before it stands, and the token is never drawn.
+			if item.Role == "assistant" && session.IsNoChangeReply(item.Text) {
+				continue
+			}
 			if item.Role == "aside" && !item.Interrupted {
 				entry.ID, entry.Kind, entry.Text, entry.Quiet = appNoteEntryID(n, k), appwire.EntryNotice, item.Text, true
 				k++

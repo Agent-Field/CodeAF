@@ -825,6 +825,7 @@ func appDecisionAsk(f *teamstore.File, p teamstore.Packet) appwire.Ask {
 	ask := appwire.Ask{
 		ID: appCrewAskPrefix + p.ID, Agent: decisionAgent(f, p), Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewDecision,
 		Title: d.Question, Path: d.Path, SayWhy: true,
+		Subject: &appwire.AskSubject{Kind: appwire.SubjectCrewDecision, Ref: p.ID},
 	}
 	if d.Recommendation != nil {
 		ask.Reason = d.Recommendation.Reason
