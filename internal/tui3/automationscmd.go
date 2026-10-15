@@ -17,6 +17,7 @@ package tui3
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -70,12 +71,14 @@ func (a *app) automationsCommand(rest string) tea.Cmd {
 			Schedule:  automation.Schedule{Zone: a.autos.Zone},
 			Origin:    automation.Origin{Transcript: a.file},
 		}
-		item, err := cmd.Apply(base, a.now())
+		now := a.now()
+		item, err := cmd.Apply(base, now)
 		if err != nil {
 			a.note(err.Error())
 			return nil
 		}
-		a.confirmTypedAutomation(item, false)
+		next, _ := item.Schedule.First(now)
+		a.confirmTypedAutomation(item, next, false)
 		return nil
 	}
 	item, ok := a.automationByID(cmd.ID)
@@ -85,12 +88,21 @@ func (a *app) automationsCommand(rest string) tea.Cmd {
 	}
 	switch cmd.Verb {
 	case automation.VerbEdit:
-		edited, err := cmd.Apply(item, a.now())
+		now := a.now()
+		edited, err := cmd.Apply(item, now)
 		if err != nil {
 			a.note(err.Error())
 			return nil
 		}
-		a.confirmTypedAutomation(edited, true)
+		// THE CARD'S NEXT RUN IS THE ONE THE SAVE WILL GIVE IT, by the rule the
+		// conversation's change keeps: none for a finished one whose moment
+		// stays, none while paused, the one it has for a schedule left alone.
+		next, err := automation.NextAfterChange(item, edited, now)
+		if err != nil {
+			a.note(err.Error())
+			return nil
+		}
+		a.confirmTypedAutomation(edited, next, true)
 		return nil
 	case automation.VerbRun:
 		return a.runAutomationNow(item)
@@ -151,10 +163,10 @@ func (a *app) automationByID(id string) (automation.Automation, bool) {
 // an automation by.
 const automationIDPrefixMin = 4
 
-// confirmTypedAutomation draws the card a typed add or edit ends on, and asks.
-func (a *app) confirmTypedAutomation(item automation.Automation, edit bool) {
+// confirmTypedAutomation draws the card a typed add or edit ends on, with the
+// next run the save will give it, and asks.
+func (a *app) confirmTypedAutomation(item automation.Automation, next time.Time, edit bool) {
 	now := a.now()
-	next, _ := item.Schedule.First(now)
 	a.typedSeq++
 	notice := session.AutomationNotice{
 		ID:         typedAutomationID(a.typedSeq),

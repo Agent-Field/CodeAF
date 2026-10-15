@@ -313,7 +313,8 @@ func (s *Store) List() ([]Automation, error) {
 // Update saves the person's change to an automation's own half — its title,
 // schedule, look, action, place and limits. Its status is left alone (that is
 // [Store.SetStatus]'s door). A changed schedule is worked out again from now,
-// and a finished one-time automation given a new moment wakes again. A watch
+// a finished one-time automation given a new moment wakes again, and a new
+// moment that has already passed is refused ([NextAfterChange]). A watch
 // whose look or condition changed forgets what it had seen, so its first new
 // "yes" speaks.
 func (s *Store) Update(a Automation) (Automation, error) {
@@ -339,9 +340,14 @@ func (s *Store) Update(a Automation) (Automation, error) {
 			a.Seen, a.Memo = "", ""
 		}
 		if ScheduleChanged(current.Schedule, a.Schedule) {
-			if a.Schedule.Repeats() && a.Schedule.Interval() > 0 {
-				a.Schedule.Anchor = now
+			// A MOMENT THAT PASSED WHILE THE CARD WAS UP IS REFUSED, not saved as
+			// the next run: the clock would take it at once and the reminder the
+			// person had just moved later would be finished again a beat after
+			// they saved it.
+			if !a.Schedule.Repeats() && !a.Schedule.At.After(now) {
+				return errPassed(a.Schedule)
 			}
+			a.Schedule = rescheduled(a.Schedule, now)
 			first, err := a.Schedule.First(now)
 			if err != nil {
 				return err
@@ -1004,6 +1010,43 @@ func lookChanged(a, b *Look) bool {
 // the save does not give.
 func ScheduleChanged(a, b Schedule) bool {
 	return !a.At.Equal(b.At) || strings.TrimSpace(a.Every) != strings.TrimSpace(b.Every) || a.Zone != b.Zone
+}
+
+// NextAfterChange is the next run [Store.Update] gives stored saved as changed
+// at now. It is the ONE reading a change's card says its next run by, through
+// either door — the conversation's change (internal/session's
+// automation_tool.go) and the typed edit (internal/tui3's automationscmd.go) —
+// so a card cannot promise a next run the save does not give: a new schedule
+// worked out again from now, the next run it already has for an unchanged one
+// (none for a finished one), and none while it is paused, because a paused
+// automation does not run whatever its schedule says.
+func NextAfterChange(stored, changed Automation, now time.Time) (time.Time, error) {
+	switch {
+	case stored.Status == StatusPaused:
+		return time.Time{}, nil
+	case !ScheduleChanged(stored.Schedule, changed.Schedule):
+		return stored.Next, nil
+	}
+	return rescheduled(changed.Schedule, now).First(now)
+}
+
+// rescheduled is a new schedule as [Store.Update] keeps it: an interval counts
+// from the moment it was changed.
+func rescheduled(s Schedule, now time.Time) Schedule {
+	if s.Repeats() && s.Interval() > 0 {
+		s.Anchor = now
+	}
+	return s
+}
+
+// errPassed refuses a one-time moment that is not after now, said in the
+// schedule's own zone.
+func errPassed(s Schedule) error {
+	loc, err := s.location()
+	if err != nil {
+		loc = time.Local
+	}
+	return fmt.Errorf("%s has already passed", s.At.In(loc).Format("Mon 2 Jan 15:04"))
 }
 
 func newID() string {

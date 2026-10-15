@@ -257,3 +257,62 @@ func TestAFolderUnderHomeIsKeptForTheStoreToRead(t *testing.T) {
 		t.Fatalf("the store kept %q, want this machine's %q", made.Workspace, filepath.Join(house, "app"))
 	}
 }
+
+// A MOMENT KEEPS ITS SECONDS ON THE WAY ROUND. `in 2m` and the conversation's
+// `when.in` make moments with seconds in them; an edit line written to the
+// minute moved the reminder by them, so the box put a different moment in front
+// of the person than the one it would run at.
+func TestCommandLineKeepsTheSecondsOfAMoment(t *testing.T) {
+	now, loc := commandNow(t)
+	for _, at := range []time.Time{
+		time.Date(2026, 10, 10, 14, 32, 27, 0, loc),
+		time.Date(2026, 10, 10, 14, 32, 27, 481_000_000, loc),
+		time.Date(2026, 10, 10, 14, 33, 0, 0, loc),
+	} {
+		original := Automation{ID: "r", Title: "stretch", Workspace: "/work/project", Schedule: Schedule{At: at, Zone: "America/Toronto"}, Action: Action{Say: "stand up"}}
+		line := CommandLine(original)
+		cmd, err := ParseCommand(line)
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		back, err := cmd.Apply(original, now)
+		if err != nil {
+			t.Fatalf("%s: %v", line, err)
+		}
+		if !back.Schedule.At.Equal(at) || ScheduleChanged(original.Schedule, back.Schedule) {
+			t.Fatalf("%s moved the moment %v to %v", line, at, back.Schedule.At)
+		}
+	}
+	if line := CommandLine(Automation{ID: "r", Schedule: Schedule{At: time.Date(2026, 10, 10, 14, 33, 0, 0, loc), Zone: "America/Toronto"}}); !strings.HasSuffix(line, " at 2026-10-10T14:33") {
+		t.Fatalf("a whole minute is written %q, want it to the minute", line)
+	}
+}
+
+// A FINISHED REMINDER'S OWN LINE IS NOT A MOMENT IN THE PAST TYPED BY MISTAKE.
+// Its moment is its history, so a line that leaves it where it was — a new
+// title, a new line to say — reads, and only a moment moved into the past is
+// refused.
+func TestAnEditThatKeepsAPassedMomentReads(t *testing.T) {
+	now, loc := commandNow(t)
+	finished := Automation{ID: "r", Title: "stretch", Workspace: "/work/project", Status: StatusFinished,
+		Schedule: Schedule{At: now.Add(-3*time.Minute - 27*time.Second), Zone: "America/Toronto"}, Action: Action{Say: "stand up"}}
+	cmd, err := ParseCommand(CommandLine(finished) + ` title "stretch again"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := cmd.Apply(finished, now)
+	if err != nil {
+		t.Fatalf("retitling a finished reminder: %v", err)
+	}
+	if edited.Title != "stretch again" || !edited.Schedule.At.Equal(finished.Schedule.At) {
+		t.Fatalf("the edit read as %+v", edited)
+	}
+	earlier := finished.Schedule.At.In(loc).Add(-time.Hour).Format("2006-01-02T15:04")
+	cmd, err = ParseCommand("edit r at " + earlier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cmd.Apply(finished, now); err == nil || !strings.Contains(err.Error(), "already passed") {
+		t.Fatalf("a moment moved into the past = %v, want it refused", err)
+	}
+}
