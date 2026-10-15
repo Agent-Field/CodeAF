@@ -131,21 +131,19 @@ A factory is the third picture: one line out, one line back.
 
 ## Subharnesses: specialists built for one job
 
-A general agent does everything a little. The work that matters most comes round
-in the same shape: review this pull request, fix this issue, audit these
-dependencies. A subharness is a specialist built for exactly that job, with its
-own plan, its own checks and the models that suit it. It takes typed input and
-returns typed output, so it delivers what it promised or is marked incomplete.
-A run is a task like any other, on `home`, with a room and a stop.
+Build a change, review a pull request, or audit local code. Each built-in specialist has a process for its own job and runs as a task beside your conversation. Open its task to follow the work or stop it; its result comes back to the chat. The built-in specialists run on macOS and Linux, with no extra specialist installation.
 
-<img src="assets/readme/subharness.webp" alt="Work that comes round again goes to a specialist: from home, review PR #412 routes to the pr-af subharness; each subharness takes typed input, runs its own plan and checks, and returns typed output or says incomplete, and the result comes back to home as a task" width="100%">
+| Specialist | Try it in the chat | What comes back |
+| --- | --- | --- |
+| [senior-dev](https://agentfield.ai/docs/codeaf/senior-dev): coding changes | `/senior-dev fix the retry bug and add tests` | A submitted change and the project's build and test results, or an explanation of what could not be checked. In git, it works in a private copy on its own branch. |
+| [sec](https://agentfield.ai/docs/codeaf/sec): local security audits | `/sec changes since main` | Security findings with evidence and suggested fixes; Markdown, JSON and SARIF reports. Use `/sec` alone for the whole repository. |
+| [review](https://agentfield.ai/docs/codeaf/review): GitHub pull requests | `/review owner/repo#123 focus on retries` | Findings with file locations, reasons, suggested fixes and review coverage; Markdown and JSON reports. |
 
-- **Coming soon, native:** [PR-AF](https://github.com/Agent-Field/pr-af), the #1
-  open-source code reviewer on Martian Code-Review-Bench.
-- **Native now:** `/senior-dev`, the developer subharness. First of ten
-  harnesses on DeepSWE, in the [benchmark below](#benchmarks).
-- **Your own:** "make me a harness for triaging flaky tests" designs one, saves
-  it, and `/subharness` runs it.
+**review** is imported from [PR-AF](https://github.com/Agent-Field/pr-af), and **sec** from [SEC-AF](https://github.com/Agent-Field/sec-af), under their codeaf command names. Both read source code without running your tests, build, app or exploits. They leave your code unchanged; posting a review or fixing findings is a separate action you request. Read the report's coverage and any incomplete analysis before acting on it. As always, it's important to note that a lack of findings does not and can not guarantee a lack of security problems.
+
+The [coding benchmark below](#benchmarks) measures senior-dev. PR-AF publishes its own [Martian Code-Review-Bench results](https://github.com/Agent-Field/pr-af#benchmark-position); those are results for the original project, not a measurement of codeaf's imported review specialist.
+
+**Your own saved programs:** ask codeaf to design a harness for recurring work, such as triaging flaky tests. Review and approve its design, then open `/subharness` to run it again. See [Saved shapes of work](internal/manual/chat/saved-shapes-of-work.md).
 
 ## Benchmarks
 
