@@ -19,7 +19,15 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-const schemaVersion = 1
+// schemaVersion is the schema this build writes. Schema 2 added when a
+// collection was made and when each membership was added, the crew and
+// process kinds, and deletes that cascade. legacySchemaVersion is the one
+// older schema this build still reads as it is and migrates on its first
+// write; anything else claiming to be ours is refused, never misread.
+const (
+	schemaVersion       = 2
+	legacySchemaVersion = 1
+)
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
 
 // LOCK WAITS ARE BOUNDED because every door here is a person's command and a
@@ -33,8 +41,20 @@ type schemaState uint8
 const (
 	schemaBlank schemaState = iota
 	schemaReady
+	schemaLegacy
 	schemaRefused
 )
+
+// version is the schema a state reads through: 0 for a blank file.
+func (s schemaState) version() int {
+	switch s {
+	case schemaReady:
+		return schemaVersion
+	case schemaLegacy:
+		return legacySchemaVersion
+	}
+	return 0
+}
 
 // Store owns collection metadata only. Transcripts, task checkpoints, standing
 // items and artifacts retain their existing owners and persistence formats.
@@ -43,12 +63,16 @@ const (
 // is also how `list`, `show` and `find` reach the file, and a read that built a
 // schema would write to a database nobody asked to change and take the writer
 // lock to do it — which is what put a plain read behind whichever peer happened
-// to be adding a membership. `ready` is that question already answered, and
-// `schemaMu` keeps two goroutines on one handle from both answering it.
+// to be adding a membership. `version` is that question already answered (0
+// while the file is blank), and `schemaMu` keeps two goroutines on one handle
+// from both answering it. The same law covers migration: a schema-1 file is
+// read as it stands and rebuilt only by the first write.
 type Store struct {
 	db       *sql.DB
 	schemaMu sync.Mutex
-	ready    bool
+	version  int
+	// now is the clock created_at and added_at are read from.
+	now func() time.Time
 }
 
 // Open creates a private collection store or checks an existing one. Unknown
@@ -93,7 +117,7 @@ func Open(path string) (*Store, error) {
 		return nil, collectionsOpenFailure(absolute, err)
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
+	s := &Store{db: db, now: time.Now}
 	state, err := s.snapshotSchema(context.Background())
 	if err != nil {
 		_ = db.Close()
@@ -105,7 +129,7 @@ func Open(path string) (*Store, error) {
 		}
 		return nil, collectionsOpenFailure(absolute, err)
 	}
-	s.ready = state == schemaReady
+	s.version = state.version()
 	return s, nil
 }
 
@@ -138,8 +162,8 @@ func (s *Store) snapshotSchema(ctx context.Context) (schemaState, error) {
 }
 
 // inspectSchema decides whether the database on the other end of q is ours and
-// built, ours and still blank, or somebody else's. It only ever reads; the
-// caller decides what view it reads through.
+// built (at this schema or the legacy one), ours and still blank, or somebody
+// else's. It only ever reads; the caller decides what view it reads through.
 func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	if err := ctx.Err(); err != nil {
 		return schemaBlank, err
@@ -151,16 +175,24 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	if err := q.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return schemaBlank, err
 	}
-	if app == applicationID && version == schemaVersion {
+	if app == applicationID && (version == schemaVersion || version == legacySchemaVersion) {
+		state := schemaReady
+		collections := "SELECT seq,id,name,created_at FROM collections LIMIT 0"
+		memberships := "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at FROM memberships LIMIT 0"
+		if version == legacySchemaVersion {
+			state = schemaLegacy
+			collections = "SELECT seq,id,name FROM collections LIMIT 0"
+			memberships = "SELECT seq,collection_id,kind,ref_id,session_id,target_collection FROM memberships LIMIT 0"
+		}
 		// Preparing the actual reads catches missing tables before reporting a
 		// successful open. We never recreate a damaged initialized schema.
-		if _, err := q.ExecContext(ctx, "SELECT seq,id,name FROM collections LIMIT 0"); err != nil {
-			return schemaReady, err
+		if _, err := q.ExecContext(ctx, collections); err != nil {
+			return state, err
 		}
-		if _, err := q.ExecContext(ctx, "SELECT seq,collection_id,kind,ref_id,session_id,target_collection FROM memberships LIMIT 0"); err != nil {
-			return schemaReady, err
+		if _, err := q.ExecContext(ctx, memberships); err != nil {
+			return state, err
 		}
-		return schemaReady, nil
+		return state, nil
 	}
 	if app != 0 || version != 0 {
 		return schemaRefused, fmt.Errorf("unsupported collections database (application %d, version %d)", app, version)
@@ -174,15 +206,73 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	return schemaBlank, nil
 }
 
+// schemaTables is schema 2's two tables under the names given, so the same
+// words build a fresh store and the copies a migration fills.
+//
+// EVERY DELETE CASCADES: a deleted collection takes its own memberships and
+// every membership naming it in another collection, and never the records any
+// of them referenced.
+func schemaTables(collections, memberships string) string {
+	return fmt.Sprintf(`
+CREATE TABLE %[1]s (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ name TEXT NOT NULL,
+ created_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE %[2]s (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ collection_id TEXT NOT NULL REFERENCES %[1]s(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN ('collection','conversation','task','standing','artifact','crew','process')),
+ ref_id TEXT NOT NULL,
+ session_id TEXT NOT NULL,
+ target_collection TEXT REFERENCES %[1]s(id) ON DELETE CASCADE,
+ added_at INTEGER NOT NULL DEFAULT 0,
+ CHECK ((kind='collection' AND target_collection IS NOT NULL AND target_collection=ref_id)
+     OR (kind!='collection' AND target_collection IS NULL)),
+ UNIQUE(collection_id,kind,ref_id,session_id)
+);
+`, collections, memberships)
+}
+
+const schemaIndexes = `
+CREATE INDEX memberships_reference ON memberships(kind,ref_id,session_id);
+CREATE INDEX memberships_target ON memberships(target_collection);
+`
+
+// migrateLegacy rebuilds a schema-1 file as schema 2 inside the caller's
+// immediate transaction: either every row arrives in the new tables, in the
+// same order under the same sequence numbers, or the file is left exactly as
+// it was. A row from schema 1 says nothing of when it was made, so its
+// created_at and added_at are 0, which every reader takes as unknown.
+//
+// THE TABLES ARE COPIED, NOT ALTERED, because SQLite cannot change a CHECK or
+// a foreign key in place. The old memberships go first so dropping the old
+// collections deletes nothing anything still points at, and renaming the copy
+// carries the foreign keys that name it along.
+func migrateLegacy(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, schemaTables("collections_v2", "memberships_v2")+`
+INSERT INTO collections_v2(seq,id,name,created_at) SELECT seq,id,name,0 FROM collections ORDER BY seq;
+INSERT INTO memberships_v2(seq,collection_id,kind,ref_id,session_id,target_collection,added_at)
+ SELECT seq,collection_id,kind,ref_id,session_id,target_collection,0 FROM memberships ORDER BY seq;
+DROP TABLE memberships;
+DROP TABLE collections;
+ALTER TABLE collections_v2 RENAME TO collections;
+ALTER TABLE memberships_v2 RENAME TO memberships;
+`+schemaIndexes)
+	return err
+}
+
 // ensureSchema serializes initialization on one handle and then takes SQLite's
-// immediate transaction so separate processes also agree which one builds it.
+// immediate transaction so separate processes also agree which one builds it,
+// or which one migrates a schema-1 file to this one.
 func (s *Store) ensureSchema(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return storeError(err)
 	}
 	s.schemaMu.Lock()
 	defer s.schemaMu.Unlock()
-	if s.ready {
+	if s.version == schemaVersion {
 		return nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -194,32 +284,18 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	if err != nil {
 		return storeError(err)
 	}
-	if state == schemaReady {
+	switch state {
+	case schemaReady:
 		if err := tx.Commit(); err != nil {
 			return storeError(err)
 		}
-		s.ready = true
+		s.version = schemaVersion
 		return nil
+	case schemaLegacy:
+		err = migrateLegacy(ctx, tx)
+	default:
+		_, err = tx.ExecContext(ctx, schemaTables("collections", "memberships")+schemaIndexes)
 	}
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE collections (
- seq INTEGER PRIMARY KEY AUTOINCREMENT,
- id TEXT NOT NULL UNIQUE,
- name TEXT NOT NULL
-);
-CREATE TABLE memberships (
- seq INTEGER PRIMARY KEY AUTOINCREMENT,
- collection_id TEXT NOT NULL REFERENCES collections(id),
- kind TEXT NOT NULL CHECK(kind IN ('collection','conversation','task','standing','artifact')),
- ref_id TEXT NOT NULL,
- session_id TEXT NOT NULL,
- target_collection TEXT REFERENCES collections(id),
- CHECK ((kind='collection' AND target_collection IS NOT NULL AND target_collection=ref_id)
-     OR (kind!='collection' AND target_collection IS NULL)),
- UNIQUE(collection_id,kind,ref_id,session_id)
-);
-CREATE INDEX memberships_reference ON memberships(kind,ref_id,session_id);
-`)
 	if err != nil {
 		return storeError(err)
 	}
@@ -229,45 +305,119 @@ CREATE INDEX memberships_reference ON memberships(kind,ref_id,session_id);
 	if err := tx.Commit(); err != nil {
 		return storeError(err)
 	}
-	s.ready = true
+	s.version = schemaVersion
 	return nil
 }
 
-// readyForRead refreshes a handle that first saw a blank file, because another
-// process may have initialized it since. The refresh is still only plain reads.
-func (s *Store) readyForRead(ctx context.Context) (bool, error) {
+// readyForRead answers the schema a read goes through, and 0 for a blank
+// file. A handle that saw a blank or a schema-1 file looks again, because
+// another process may have initialized or migrated it since. The look is
+// still only plain reads.
+func (s *Store) readyForRead(ctx context.Context) (int, error) {
 	if err := ctx.Err(); err != nil {
-		return false, storeError(err)
+		return 0, storeError(err)
 	}
 	s.schemaMu.Lock()
 	defer s.schemaMu.Unlock()
-	if s.ready {
-		return true, nil
+	if s.version == schemaVersion {
+		return s.version, nil
 	}
 	state, err := s.snapshotSchema(ctx)
 	if err != nil {
-		return false, storeError(err)
+		return 0, storeError(err)
 	}
-	s.ready = state == schemaReady
-	return s.ready, nil
+	s.version = state.version()
+	return s.version, nil
+}
+
+// readyForWrite is readyForRead for a change to a collection that must
+// already exist: false on a blank file, which such a change cannot find
+// anything in and must leave blank, and a schema-1 file migrated first.
+func (s *Store) readyForWrite(ctx context.Context) (bool, error) {
+	version, err := s.readyForRead(ctx)
+	if err != nil || version == 0 {
+		return false, err
+	}
+	if version != schemaVersion {
+		if err := s.ensureSchema(ctx); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// columns are the expressions a read uses for created_at and added_at: the
+// columns themselves at schema 2, and the unknown 0 on a schema-1 file.
+func columns(version int) (created, added string) {
+	if version >= schemaVersion {
+		return "c.created_at", "m.added_at"
+	}
+	return "0", "0"
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// millis is the store's clock in unix milliseconds.
+func (s *Store) millis() int64 { return s.now().UnixMilli() }
+
+// newID is a fresh collection id.
+func newID() (string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(random[:]), nil
+}
+
+// nameTaken refuses a name another collection already has, compared without
+// regard to case, inside the writer transaction so two writers cannot both
+// claim one. except is the collection being renamed, which may take its own
+// name in another case.
+//
+// THE COMPARISON IS UNICODE CASE FOLDING IN GO, not SQLite's NOCASE, which
+// folds only ASCII: "Ärger" and "ärger" are one name to a person.
+func nameTaken(ctx context.Context, tx *sql.Tx, name, except string) error {
+	rows, err := tx.QueryContext(ctx, "SELECT id,name FROM collections")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, other string
+		if err := rows.Scan(&id, &other); err != nil {
+			return err
+		}
+		if id != except && strings.EqualFold(other, name) {
+			return ErrNameTaken
+		}
+	}
+	return rows.Err()
+}
 
 func (s *Store) Create(ctx context.Context, name string) (Collection, error) {
 	if err := ValidateName(name); err != nil {
 		return Collection{}, storeError(err)
 	}
-	var random [16]byte
-	if _, err := rand.Read(random[:]); err != nil {
+	id, err := newID()
+	if err != nil {
 		return Collection{}, storeError(err)
 	}
 	if err := s.ensureSchema(ctx); err != nil {
 		return Collection{}, storeError(err)
 	}
-	c := Collection{ID: hex.EncodeToString(random[:]), Name: name}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO collections(id,name) VALUES (?,?)", c.ID, c.Name)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	defer tx.Rollback()
+	if err := nameTaken(ctx, tx, name, ""); err != nil {
+		return Collection{}, storeError(err)
+	}
+	c := Collection{ID: id, Name: name}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO collections(id,name,created_at) VALUES (?,?,?)", c.ID, c.Name, s.millis()); err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := tx.Commit(); err != nil {
 		return Collection{}, storeError(err)
 	}
 	return c, nil
@@ -277,33 +427,124 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 	if err := ValidateName(name); err != nil {
 		return storeError(err)
 	}
-	ready, err := s.readyForRead(ctx)
+	ready, err := s.readyForWrite(ctx)
 	if err != nil {
 		return storeError(err)
 	}
 	if !ready {
 		return storeError(ErrNotFound)
 	}
-	result, err := s.db.ExecContext(ctx, "UPDATE collections SET name=? WHERE id=?", name, id)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return storeError(err)
 	}
-	n, err := result.RowsAffected()
-	if err != nil {
+	defer tx.Rollback()
+	if err := requireCollection(ctx, tx, id); err != nil {
 		return storeError(err)
 	}
-	if n == 0 {
-		return storeError(ErrNotFound)
+	if err := nameTaken(ctx, tx, name, id); err != nil {
+		return storeError(err)
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, "UPDATE collections SET name=? WHERE id=?", name, id); err != nil {
+		return storeError(err)
+	}
+	return storeError(tx.Commit())
 }
 
-func (s *Store) Collections(ctx context.Context) ([]Collection, error) {
-	ready, err := s.readyForRead(ctx)
+// Delete removes a collection, its memberships, and every membership naming
+// it in another collection, and answers those other collections, oldest
+// first, because each of them changed too. The records any of it referenced
+// are untouched.
+func (s *Store) Delete(ctx context.Context, id string) ([]string, error) {
+	ready, err := s.readyForWrite(ctx)
 	if err != nil {
 		return nil, storeError(err)
 	}
 	if !ready {
+		return nil, storeError(ErrNotFound)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	defer tx.Rollback()
+	if err := requireCollection(ctx, tx, id); err != nil {
+		return nil, storeError(err)
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT c.id FROM collections c WHERE c.id!=? AND EXISTS(
+ SELECT 1 FROM memberships m WHERE m.collection_id=c.id AND m.kind='collection' AND m.ref_id=?) ORDER BY c.seq`, id, id)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	parents := make([]string, 0)
+	for rows.Next() {
+		var parent string
+		if err := rows.Scan(&parent); err != nil {
+			rows.Close()
+			return nil, storeError(err)
+		}
+		parents = append(parents, parent)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, storeError(err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM collections WHERE id=?", id); err != nil {
+		return nil, storeError(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, storeError(err)
+	}
+	return parents, nil
+}
+
+// Duplicate makes a new collection named name holding the same references as
+// id, each with the same added_at and in the same order. A copy holds what
+// its source holds and nothing holds the copy, so it can make no cycle.
+func (s *Store) Duplicate(ctx context.Context, id, name string) (Collection, error) {
+	if err := ValidateName(name); err != nil {
+		return Collection{}, storeError(err)
+	}
+	ready, err := s.readyForWrite(ctx)
+	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	if !ready {
+		return Collection{}, storeError(ErrNotFound)
+	}
+	copyID, err := newID()
+	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	defer tx.Rollback()
+	if err := requireCollection(ctx, tx, id); err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := nameTaken(ctx, tx, name, ""); err != nil {
+		return Collection{}, storeError(err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO collections(id,name,created_at) VALUES (?,?,?)", copyID, name, s.millis()); err != nil {
+		return Collection{}, storeError(err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection,added_at)
+ SELECT ?,kind,ref_id,session_id,target_collection,added_at FROM memberships WHERE collection_id=? ORDER BY seq`, copyID, id); err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Collection{}, storeError(err)
+	}
+	return Collection{ID: copyID, Name: name}, nil
+}
+
+func (s *Store) Collections(ctx context.Context) ([]Collection, error) {
+	version, err := s.readyForRead(ctx)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	if version == 0 {
 		return make([]Collection, 0), nil
 	}
 	rows, err := s.db.QueryContext(ctx, "SELECT id,name FROM collections ORDER BY seq")
@@ -336,85 +577,152 @@ func requireCollection(ctx context.Context, tx *sql.Tx, id string) error {
 	return err
 }
 
+// Addition is a reference to add and, when AddedAt is above zero, the moment
+// it was first added, which puts a removed reference back where it was.
+type Addition struct {
+	Ref
+	AddedAt int64
+}
+
+// Add files one reference. Adding one already there changes nothing.
 func (s *Store) Add(ctx context.Context, id string, ref Ref) error {
-	if err := ref.Validate(); err != nil {
-		return storeError(err)
+	_, _, err := s.AddRefs(ctx, id, []Addition{{Ref: ref}})
+	return err
+}
+
+// AddRefs files every reference in one writer transaction, all or nothing,
+// and answers what it added and what was already there. A collection
+// reference that would make a cycle refuses the whole call with ErrCycle; one
+// naming a collection that does not exist refuses it with ErrNotFound.
+func (s *Store) AddRefs(ctx context.Context, id string, refs []Addition) ([]Member, []Ref, error) {
+	for _, ref := range refs {
+		if err := ref.Validate(); err != nil {
+			return nil, nil, storeError(err)
+		}
+		if ref.AddedAt < 0 {
+			return nil, nil, storeError(fmt.Errorf("%w: added_at cannot be negative", ErrInvalid))
+		}
 	}
-	ready, err := s.readyForRead(ctx)
+	ready, err := s.readyForWrite(ctx)
 	if err != nil {
-		return storeError(err)
+		return nil, nil, storeError(err)
 	}
 	if !ready {
-		return storeError(ErrNotFound)
+		return nil, nil, storeError(ErrNotFound)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return storeError(err)
+		return nil, nil, storeError(err)
 	}
 	defer tx.Rollback()
 	if err := requireCollection(ctx, tx, id); err != nil {
-		return storeError(err)
+		return nil, nil, storeError(err)
 	}
-	var target any
-	if ref.Kind == CollectionKind {
-		if err := requireCollection(ctx, tx, ref.ID); err != nil {
-			return storeError(err)
-		}
-		// THE CYCLE CHECK AND INSERT SHARE THE WRITER TRANSACTION. Two
-		// processes cannot both approve opposite edges against an old snapshot.
-		var cycle bool
-		err := tx.QueryRowContext(ctx, `WITH RECURSIVE descendants(id) AS (
+	now := s.millis()
+	added, already := make([]Member, 0, len(refs)), make([]Ref, 0)
+	for _, ref := range refs {
+		var target any
+		if ref.Kind == CollectionKind {
+			if err := requireCollection(ctx, tx, ref.ID); err != nil {
+				return nil, nil, storeError(err)
+			}
+			// THE CYCLE CHECK AND INSERT SHARE THE WRITER TRANSACTION. Two
+			// processes cannot both approve opposite edges against an old
+			// snapshot, and an earlier reference of this same call is
+			// already in the graph the next one is checked against.
+			var cycle bool
+			err := tx.QueryRowContext(ctx, `WITH RECURSIVE descendants(id) AS (
  VALUES (?) UNION
  SELECT m.ref_id FROM memberships m JOIN descendants d ON m.collection_id=d.id WHERE m.kind='collection'
 ) SELECT EXISTS(SELECT 1 FROM descendants WHERE id=?)`, ref.ID, id).Scan(&cycle)
+			if err != nil {
+				return nil, nil, storeError(err)
+			}
+			if cycle {
+				return nil, nil, storeError(ErrCycle)
+			}
+			target = ref.ID
+		}
+		at := ref.AddedAt
+		if at == 0 {
+			at = now
+		}
+		result, err := tx.ExecContext(ctx, `INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection,added_at)
+ VALUES (?,?,?,?,?,?) ON CONFLICT(collection_id,kind,ref_id,session_id) DO NOTHING`, id, ref.Kind, ref.ID, ref.SessionID, target, at)
 		if err != nil {
-			return storeError(err)
+			return nil, nil, storeError(err)
 		}
-		if cycle {
-			return storeError(ErrCycle)
+		n, err := result.RowsAffected()
+		if err != nil {
+			return nil, nil, storeError(err)
 		}
-		target = ref.ID
+		if n == 0 {
+			already = append(already, ref.Ref)
+		} else {
+			added = append(added, Member{Ref: ref.Ref, AddedAt: at})
+		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection)
- VALUES (?,?,?,?,?) ON CONFLICT(collection_id,kind,ref_id,session_id) DO NOTHING`, id, ref.Kind, ref.ID, ref.SessionID, target)
-	if err != nil {
-		return storeError(err)
+	if err := tx.Commit(); err != nil {
+		return nil, nil, storeError(err)
 	}
-	return storeError(tx.Commit())
+	return added, already, nil
 }
 
 // Remove detaches a reference; it never removes or stops the referenced work.
 func (s *Store) Remove(ctx context.Context, id string, ref Ref) error {
-	if err := ref.Validate(); err != nil {
-		return storeError(err)
-	}
-	ready, err := s.readyForRead(ctx)
-	if err != nil {
-		return storeError(err)
-	}
-	if !ready {
-		return storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return storeError(err)
-	}
-	defer tx.Rollback()
-	if err := requireCollection(ctx, tx, id); err != nil {
-		return storeError(err)
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM memberships WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=?", id, ref.Kind, ref.ID, ref.SessionID); err != nil {
-		return storeError(err)
-	}
-	return storeError(tx.Commit())
+	_, err := s.RemoveRefs(ctx, id, []Ref{ref})
+	return err
 }
 
-func (s *Store) Members(ctx context.Context, id string) ([]Ref, error) {
-	ready, err := s.readyForRead(ctx)
+// RemoveRefs detaches every reference in one writer transaction and answers
+// what was there with when it was added, so the removal can be undone in
+// place. A reference that was not there is not an error and is not answered.
+func (s *Store) RemoveRefs(ctx context.Context, id string, refs []Ref) ([]Member, error) {
+	for _, ref := range refs {
+		if err := ref.Validate(); err != nil {
+			return nil, storeError(err)
+		}
+	}
+	ready, err := s.readyForWrite(ctx)
 	if err != nil {
 		return nil, storeError(err)
 	}
 	if !ready {
+		return nil, storeError(ErrNotFound)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	defer tx.Rollback()
+	if err := requireCollection(ctx, tx, id); err != nil {
+		return nil, storeError(err)
+	}
+	removed := make([]Member, 0, len(refs))
+	for _, ref := range refs {
+		var at int64
+		err := tx.QueryRowContext(ctx, "DELETE FROM memberships WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=? RETURNING added_at",
+			id, ref.Kind, ref.ID, ref.SessionID).Scan(&at)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, storeError(err)
+		}
+		removed = append(removed, Member{Ref: ref, AddedAt: at})
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, storeError(err)
+	}
+	return removed, nil
+}
+
+func (s *Store) Members(ctx context.Context, id string) ([]Ref, error) {
+	version, err := s.readyForRead(ctx)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	if version == 0 {
 		return nil, storeError(ErrNotFound)
 	}
 	var exists bool
@@ -444,11 +752,11 @@ func (s *Store) CollectionsFor(ctx context.Context, ref Ref) ([]Collection, erro
 	if err := ref.Validate(); err != nil {
 		return nil, storeError(err)
 	}
-	ready, err := s.readyForRead(ctx)
+	version, err := s.readyForRead(ctx)
 	if err != nil {
 		return nil, storeError(err)
 	}
-	if !ready {
+	if version == 0 {
 		return make([]Collection, 0), nil
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.name FROM collections c JOIN memberships m ON m.collection_id=c.id

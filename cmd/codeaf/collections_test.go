@@ -327,3 +327,30 @@ func TestCollectionsOnlyLetGoOfStandingItems(t *testing.T) {
 		t.Fatalf("the older row could not be taken out: %v %v", holding, err)
 	}
 }
+
+// DUPLICATE COPIES A COLLECTION'S REFERENCES AND DELETE TAKES ONLY THE
+// COLLECTION: the membership naming it elsewhere goes with it, and the
+// readable answer says the records are unchanged.
+func TestCollectionsDuplicateAndDelete(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "collections.db")
+	outer, inner := collectionCreate(t, db, "Outer"), collectionCreate(t, db, "Inner")
+	collectionCommand(t, db, "add", outer.ID, "collection", inner.ID)
+	collectionCommand(t, db, "add", inner.ID, "process", "chat:p1", "--session", "chat")
+	var copy workspace.Collection
+	if err := json.Unmarshal([]byte(collectionCommand(t, db, "duplicate", inner.ID, "Copy")), &copy); err != nil || copy.Name != "Copy" {
+		t.Fatalf("duplicate %+v, %v", copy, err)
+	}
+	if got := collectionPlain(t, db, "show", copy.ID); got != "process  chat:p1  conversation chat\n" {
+		t.Fatalf("copy holds %q", got)
+	}
+	if got := collectionPlain(t, db, "delete", inner.ID); got != "Collection deleted; the records it referenced are unchanged.\n" {
+		t.Fatalf("delete said %q", got)
+	}
+	if got := collectionCommand(t, db, "show", outer.ID); got != "[]\n" {
+		t.Fatalf("the membership naming a deleted collection stayed: %s", got)
+	}
+	err := runCollectionsTo([]string{"duplicate", copy.ID, "outer", "--db", db}, &bytes.Buffer{})
+	if !errors.Is(err, workspace.ErrNameTaken) {
+		t.Fatalf("a taken name in another case: %v", err)
+	}
+}

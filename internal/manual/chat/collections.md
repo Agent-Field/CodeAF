@@ -33,6 +33,9 @@ There is no command that lists conversation IDs.
 Run `codeaf collections` or `codeaf collections list` to list collections.
 `codeaf collections create "Marketing"` prints the new ID and name.
 Use that ID with `codeaf collections rename <collection-id> "Launch"`.
+Names are unique without regard to case, so `create` or `rename` to a name
+another collection already has answers `another collection already has that
+name`; renaming a collection to its own name in another case is allowed.
 `codeaf collections show <collection-id>` lists that collection's direct references.
 Order follows creation and insertion, rather than inferred relevance.
 Reading a fresh home or an existing empty file does not create a database.
@@ -64,12 +67,12 @@ belong to collections.
 ## Adding, removing and finding a chat or work reference
 
 Use `codeaf collections add <collection-id> <kind> <record-id>`.
-The kinds are `collection`, `conversation`, `task` and `artifact`. There is no kind
+The kinds are `collection`, `conversation`, `task`, `process`, `crew` and `artifact`. There is no kind
 for an automation. `standing` named a standing item, which codeaf no longer has: a
 row that already holds one can still be found and removed, and adding a new one is
 refused with `standing items are gone, so a collection cannot gain one`.
-A task also requires `--session <conversation-id>` because task numbers repeat
-in different conversations. For example, `codeaf collections add <collection-id>
+A task, and a process, also requires `--session <conversation-id>` because task
+numbers repeat in different conversations. For example, `codeaf collections add <collection-id>
 task 1 --session <conversation-id>` records that specific task.
 
 `artifact` takes a local file path, stored as an absolute path. A relative path
@@ -89,6 +92,15 @@ references this record.` `codeaf collections remove <collection-id> <kind>
 <record-id>` removes only that membership, answering `This collection no longer
 references it; the original record is unchanged.` It neither deletes the original
 record nor stops ongoing work. Repeating add or remove is harmless, and removing
-something that was never there is not an error. Collection deletion, automatic
-organization, inherited instructions and communication between conversations are
-not implemented by these commands.
+something that was never there is not an error. Automatic organization,
+inherited instructions and communication between conversations are not
+implemented by these commands.
+
+## Deleting or duplicating a collection
+
+`codeaf collections delete <collection-id>` deletes the collection, its
+memberships, and every membership naming it in another collection, answering
+`Collection deleted; the records it referenced are unchanged.` Nothing it
+referenced is deleted, moved or stopped. `codeaf collections duplicate
+<collection-id> <name>` makes a new collection holding the same references, in
+the same order; the new name follows the same uniqueness rule as `create`.
