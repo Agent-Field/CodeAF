@@ -113,8 +113,8 @@ func TestTheTaskLinkGrammarRecognizesOnlyWhatNamesATask(t *testing.T) {
 }
 
 // CODE IS NOT PROSE AND GETS NO LINKS — both ways task-shaped code reaches a
-// row: the fenced block behind its gutter, and the non-path inline span on the
-// raised plane.
+// row: the fenced block behind its gutter, and the non-path inline span in
+// prose's quieter inline-code ink.
 func TestTaskLinksSkipCode(t *testing.T) {
 	look := func(uint64) (string, bool) { return "Fix the nil-map", true }
 	pal := newPalette(tokens.ANSI256, false)
@@ -126,8 +126,8 @@ func TestTaskLinksSkipCode(t *testing.T) {
 		t.Fatalf("a fenced line grew %d links: %q", len(links), plain(out))
 	}
 
-	// AN INLINE SPAN, through the real renderer: a code span is drawn on the
-	// surface's one raised plane, and this pass reads the plane off the row.
+	// AN INLINE SPAN, through the real renderer: a code span is drawn without
+	// the raised plane, and this pass still tells it apart from prose.
 	st := tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal)
 	if !tokens.TrueColor.SheetGround() {
 		t.Skip("this profile has no raised plane to test")

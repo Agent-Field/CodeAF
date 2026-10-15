@@ -219,15 +219,17 @@ func TestInlineCodePathsAndCodeSpendOneMarkEach(t *testing.T) {
 	row := rows[0]
 	sheet := tokens.Sheet.Bg(tokens.TrueColor, tokens.FocusNormal)
 	path := pal.underline("internal/tui3/pathlink.go")
-	code := sheet + tokens.TextPrimary.Fg(tokens.TrueColor, tokens.FocusNormal) + "len(x)"
 	if !strings.Contains(row, path) {
 		t.Fatalf("the path does not wear the palette underline: %q", row)
 	}
 	if strings.Contains(row, sheet+tokens.TextPrimary.Fg(tokens.TrueColor, tokens.FocusNormal)+"internal/tui3/pathlink.go") {
 		t.Fatalf("the path also wears the raised plane: %q", row)
 	}
-	if !strings.Contains(row, code) {
-		t.Fatalf("ordinary inline code lost the raised plane: %q", row)
+	if strings.Contains(row, sheet) {
+		t.Fatalf("inline code kept the raised code plane: %q", row)
+	}
+	if !strings.Contains(row, "len(x)") {
+		t.Fatalf("ordinary inline code disappeared: %q", row)
 	}
 	if strings.Count(row, sgrUnderOn) != 1 {
 		t.Fatalf("ordinary inline code also wears an underline: %q", row)
