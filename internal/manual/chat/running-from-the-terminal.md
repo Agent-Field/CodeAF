@@ -1021,9 +1021,8 @@ No competence evidence yet.
 
 ## What has each model proven — checked results, with codeaf competence --json
 
-`codeaf competence --json` answers a different question from the text above: **which model
-passes its checks, and where**. It prints the same map the desktop app's Settings → Models →
-Competence draws, read from a ledger of checked results kept beside the spending ledger.
+`codeaf competence --json` prints the desktop Competence map: **which model passes checks,
+and where**, from the checked-results ledger beside spending.
 
 A checked result is one finished task whose declared checks — the tests, lint or build its
 proposal named — actually ran against the work and came back with a real exit status. Every
@@ -1042,10 +1041,10 @@ two in five or fewer is `weak`; everything between is `frontier`.
 `--model <id>` maps that exact model; left alone it is the model with the newest result.
 `--scope <id>` narrows to one place, kind of work or scope from the map's own `filters`.
 
-Results are kept when the task or the conversation is deleted. **Work finished before this
-ledger existed is not on it**, because nothing then recorded which model's checks ran, so a
-machine starts with an empty map: `"model": ""` and four empty groups. It is read-only: it
-calls no model and changes nothing about which model runs.
+Deleting a source keeps its results. **Earlier work is not inferred**: a new ledger starts
+with `"model": ""` and four empty groups. No model is called and routing never changes.
+A complete read is bounded to 32 MiB and 10 seconds. Oversized or unreadable history is
+unavailable, never classified from a partial subset.
 
 ## The Model Pool — what this machine reads from it, with codeaf pool
 

@@ -17,5 +17,6 @@ check proved which goal), a run answered by more than one model (a free answer
 counts) or by an unnamed one, a run with any declared check the shell could not
 start (126/127 or negative — never folded as a pass from the rest), and undo — `quick.undo` takes back quick tasks, which run no declared checks.
 The app wire is in docs/design/app-v3/PROTOCOL.md under V76; an engine without it
-answers `unknown_method`. Both reads are bounded (newest 32 MiB, 10 s, ≤300 scopes)
-and call no model.
+answers `unknown_method`. Both reads are bounded (complete snapshot ≤32 MiB, 10 s, ≤300 displayed scopes)
+and call no model. Oversized or unreadable history is unavailable, never classified
+from a partial subset; output omission counts do not imply incomplete scope evidence.
