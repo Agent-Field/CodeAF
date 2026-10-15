@@ -55,6 +55,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -114,7 +115,30 @@ func runApp(args []string) error {
 	}
 	// The crews are watched from the start: a manager's start or a member
 	// woken by its manager must not wait for the window to ask for crews.
+	backend.memoryStore = func() (*store.Store, error) {
+		proc, err := openEngineProcess()
+		if err != nil || proc.Memory == nil {
+			return nil, errors.New("memory is off")
+		}
+		return proc.Memory, nil
+	}
+	backend.searchWords = func(terms string, limit int) ([]store.ConversationHit, error) {
+		proc, err := openEngineProcess()
+		if err != nil || proc.Search == nil {
+			return nil, errors.New("conversation search is unavailable")
+		}
+		return proc.Search.SearchConversations(terms, limit)
+	}
 	guard.Go("app/crews-start", func() { backend.crews() })
+	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
+	// standing orders runs while it is open (apporders.go).
+	orders, closeOrders := appOrdersStore()
+	backend.orderStore = orders
+	defer closeOrders()
+	defer keepAutomationsWindow("app")()
+	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
+	// And what the last quit stopped in the middle of a reply carries on.
+	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir()}, backend)
 	if backend.assembled.Load() {
 		// The process half every conversation shared, closed the way the pipe
@@ -225,8 +249,8 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// An app agent keeps the name its first message gave it: the engine's
 		// own naming does not rename it afterwards.
 		// And only the person moves a running reply to a task, and a proposed
-		// task's clock is the app's.
-		Launch: &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock, LiveToolOutput: true},
+		// task's clock is the app's, as is a suggested choice's.
+		Launch: &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true},
 	}
 	loop, err := remote.Loopback(hello, remote.Options{
 		Boot: func(h remote.Hello) (*remote.Engine, error) {
@@ -246,6 +270,15 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// searchWords reads every conversation's words for search.all; nil keeps
+	// the messages group empty.
+	searchWords appSearchWords
+	// memoryStore is the memory store the Settings window lists; nil is memory
+	// off.
+	memoryStore appMemoryStore
+	// orderStore is the automations store standing orders are kept in
+	// (apporders.go); nil is standing orders off.
+	orderStore appOrderStore
 	// stopPhases puts the engine's phase news back the way it was.
 	stopPhases func()
 	// profileDir is the profile whose teams are the crews, and the process's
@@ -649,6 +682,8 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 		if !stale.IsZero() && view.State == appwire.StateIdle && !view.UpdatedAt.IsZero() && view.UpdatedAt.Before(stale) && !b.held(view.ID) {
 			view.State = appwire.StateClosed
 		}
+		view.SpentUSD, view.LastActiveAt = row.Spend, row.At
+		b.tidyMarks(&view, row.Archived)
 		agents = append(agents, view)
 	}
 	// A conversation this process created and nobody has spoken in yet is not
@@ -830,6 +865,8 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	if err != nil {
 		return appwire.Agent{}, false, appEngineError(err)
 	}
+	// Opening an agent that was closed or put away takes it out again.
+	b.unmarkTidy(view.ID)
 	if boot != nil && boot.budget != nil && *boot.budget > 0 {
 		if err := conn.Conv.SetSpendRail(*boot.budget); err != nil {
 			conn.Release()
@@ -1112,7 +1149,11 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			known := false
 			b.locked(func() { task, known = live.tasks[appTaskID(id, q.ID)] })
 			if known && !task.Proposed && task.State != appwire.TaskFailed {
-				words = "Started on its own · " + at.Local().Format("15:04")
+				// THE RECEIPT SAYS HOW LONG THE CLOCK WAS, so a person reading it
+				// later knows what they had to answer in.
+				clock := appProposedClockS
+				_ = b.state.read(func(f *appStateFile) { clock = f.clock() })
+				words = "Started on its own after " + strconv.Itoa(clock) + "s · " + at.Local().Format("15:04")
 			}
 		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
@@ -1785,6 +1826,9 @@ const appAnsweredMark = "app:"
 // AnswerAsk answers one open ask through the engine's own answer door, the one
 // the chat's question page uses. Its closing arrives on the question lane.
 func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
+	if handled, err := b.answerOrderAsk(askID, option); handled {
+		return err
+	}
 	if handled, err := b.answerCrewAsk(id, askID, option, text, ""); handled {
 		return err
 	}
@@ -2387,6 +2431,9 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	// What was mid-reply and what was running is written down before anything
+	// stops, so the next start can carry on (appquit.go).
+	b.markQuit(agents)
 	close(b.sweepStop)
 	<-b.sweepDone
 	if b.stopPhases != nil {

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"strings"
 )
 
@@ -41,4 +42,29 @@ func (a *Agent) stampLiteralName(name string) {
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.Title, meta.ShortTitle, meta.LiteralName = name, "", true
 	})
+}
+
+// RenameByPerson gives the conversation the name a person typed. It is the
+// person's word and so outranks every namer: it is written as a literal name to
+// the journal's title line, which a resume reads back, and to the folder's
+// row, and a namer running beside the turn finds the conversation already
+// named ([Agent.setTitleIfUnnamed]) and leaves it.
+func (a *Agent) RenameByPerson(title string) error {
+	title = strings.Join(strings.Fields(title), " ")
+	if title == "" {
+		return errors.New("a name needs some words")
+	}
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return errors.New("this conversation has closed")
+	}
+	a.title = title
+	file := a.file
+	a.mu.Unlock()
+	if file != nil {
+		file.appendNamedTitle(title, true)
+	}
+	a.stampLiteralName(title)
+	return nil
 }

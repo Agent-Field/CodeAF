@@ -58,6 +58,25 @@ type appStateFile struct {
 	IdleCloseDays      *int                `json:"idle_close_days,omitempty"`
 	Budgets            map[string]float64  `json:"budgets,omitempty"`
 	Raises             map[string]appRaise `json:"raises,omitempty"`
+	// ResumeAfterQuit is the agents the last quit stopped in the middle of a
+	// reply, and QuitStopped the processes it stopped (appquit.go).
+	// QuitReplies is those of them that were in the middle of a reply, and
+	// QuitTasks the tasks they had running.
+	ResumeAfterQuit []string          `json:"resume_after_quit,omitempty"`
+	QuitReplies     []string          `json:"quit_replies,omitempty"`
+	QuitTasks       []string          `json:"quit_tasks,omitempty"`
+	QuitStopped     []appwire.Process `json:"quit_stopped,omitempty"`
+	// Closed and Archived are when the person moved each agent to Closed or
+	// put it away (apptidy.go).
+	Closed   map[string]time.Time `json:"closed,omitempty"`
+	Archived map[string]time.Time `json:"archived,omitempty"`
+	// The Settings window's General rows and pinned models (appsettings.go);
+	// a nil row is one nobody set, which reads as its default.
+	Appearance   string   `json:"appearance,omitempty"`
+	TextSize     string   `json:"text_size,omitempty"`
+	OpenAtLogin  *bool    `json:"open_at_login,omitempty"`
+	DockBadge    *bool    `json:"dock_badge,omitempty"`
+	PinnedModels []string `json:"pinned_models,omitempty"`
 }
 
 // appState is the file, loaded once and written whole.
@@ -162,6 +181,19 @@ func (f appStateFile) clone() appStateFile {
 	for k, v := range f.Raises {
 		out.Raises[k] = v
 	}
+	out.Closed = make(map[string]time.Time, len(f.Closed))
+	for k, v := range f.Closed {
+		out.Closed[k] = v
+	}
+	out.Archived = make(map[string]time.Time, len(f.Archived))
+	for k, v := range f.Archived {
+		out.Archived[k] = v
+	}
+	out.ResumeAfterQuit = append([]string(nil), f.ResumeAfterQuit...)
+	out.QuitReplies = append([]string(nil), f.QuitReplies...)
+	out.QuitTasks = append([]string(nil), f.QuitTasks...)
+	out.QuitStopped = append([]appwire.Process(nil), f.QuitStopped...)
+	out.PinnedModels = append([]string(nil), f.PinnedModels...)
 	return out
 }
 
@@ -290,6 +322,7 @@ func (b *appBackend) Settings() (appwire.Settings, error) {
 	if rung := config.DefaultEffortAt(profile); rung.Valid() {
 		settings.Effort = rung.String()
 	}
+	settingsExtra(&settings, file, profile)
 	return settings, nil
 }
 
@@ -345,6 +378,9 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 		if err := config.WriteDefaultEffort(profile, rung); err != nil {
 			return appwire.Settings{}, appEngineError(err)
 		}
+	}
+	if err := b.applyExtra(patch, profile); err != nil {
+		return appwire.Settings{}, err
 	}
 	if patch.WorkFolder != nil && *patch.WorkFolder != "" {
 		if _, err := engineWorkspace(*patch.WorkFolder); err != nil {

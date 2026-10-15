@@ -1646,6 +1646,15 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	notice = carryRunRow(g, notice)
+	// A ROW A PERSON HOLDS STAYS HELD through every republish the run makes,
+	// until it is released or it settles.
+	if _, held := a.appHeldRuns.Load(notice.ID); held {
+		if notice.State.settled() {
+			a.appHeldRuns.Delete(notice.ID)
+		} else {
+			notice.Paused = true
+		}
+	}
 	if crew := a.crews.get(notice.ID); crew != nil {
 		crew.persistMu.Lock()
 		defer crew.persistMu.Unlock()

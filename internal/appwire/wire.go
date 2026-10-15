@@ -113,6 +113,13 @@ type Agent struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// Crews are the crews this agent is a member of, open ones only.
 	Crews []string `json:"crews,omitempty"`
+	// ClosedAt is when it was moved to Closed and ArchivedAt when it was put
+	// away; LastActiveAt is when the person last spoke in it, and SpentUSD
+	// what it has spent in all.
+	ClosedAt     *time.Time `json:"closed_at,omitempty"`
+	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
+	LastActiveAt time.Time  `json:"last_active_at"`
+	SpentUSD     float64    `json:"spent_usd,omitempty"`
 }
 
 // Task is one node of an agent's task graph.
@@ -123,12 +130,12 @@ type Task struct {
 	// agent itself started; Group names the adaptive run a task belongs to,
 	// and GroupTitle is that run's own name, the label a person reads over
 	// the group: the title of the run's own row.
-	Parent     string `json:"parent,omitempty"`
-	Group      string `json:"group,omitempty"`
-	GroupTitle string `json:"group_title,omitempty"`
-	Title     string    `json:"title"`
-	State     string    `json:"state"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Parent     string    `json:"parent,omitempty"`
+	Group      string    `json:"group,omitempty"`
+	GroupTitle string    `json:"group_title,omitempty"`
+	Title      string    `json:"title"`
+	State      string    `json:"state"`
+	UpdatedAt  time.Time `json:"updated_at"`
 	// Proposed is a task waiting for the person's yes; ClockUntil is when it
 	// starts on its own, absent while the clock is held and always absent
 	// for Irreversible work. YourCall is a finished task waiting for the
@@ -330,6 +337,19 @@ type Settings struct {
 	ProposedTaskClockS int      `json:"proposed_task_clock_s"`
 	IdleCloseDays      int      `json:"idle_close_days"`
 	Effort             string   `json:"effort,omitempty"`
+	// The General rows the window draws by (Wave 8): kept here so every window
+	// reads the same answer.
+	Appearance  string `json:"appearance"`
+	TextSize    string `json:"text_size"`
+	OpenAtLogin bool   `json:"open_at_login"`
+	DockBadge   bool   `json:"dock_badge"`
+	// The Models rows: the pinned models (⌥⌘1–3), the model checks run on and
+	// the one plans are made on (empty follows the default), and the model a
+	// call falls to when its own cannot answer (empty for none).
+	PinnedModels  []string `json:"pinned_models"`
+	ChecksModel   string   `json:"checks_model"`
+	PlannerModel  string   `json:"planner_model"`
+	FallbackModel string   `json:"fallback_model"`
 }
 
 // SettingsPatch is settings.set's params: only the fields present change. A
@@ -345,6 +365,13 @@ type SettingsPatch struct {
 	ProposedTaskClockS *int
 	IdleCloseDays      *int
 	Effort             *string
+	Appearance         *string
+	TextSize           *string
+	OpenAtLogin        *bool
+	DockBadge          *bool
+	ChecksModel        *string
+	PlannerModel       *string
+	FallbackModel      *string
 }
 
 // Figure is one money field of a patch: USD is nil for a figure sent as null.

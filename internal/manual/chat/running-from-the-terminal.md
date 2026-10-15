@@ -395,6 +395,84 @@ and a model sent to a member as a message), a member's own budget, pausing a
 member (its own turns are stopped until you resume it), and an agent's
 proposal to bring in helpers.
 
+## Closing, archiving and renaming agents in the desktop app — and finding one
+
+In the desktop app, Move to Closed lets an agent's conversation go and takes it
+off the rail; nothing in it is deleted, and opening it or sending to it opens
+it again. Archive closes it and puts it away with the same archive mark the
+terminal's conversation list uses, so it is listed only when you ask for
+archived agents; Reopen brings either back exactly as it was. Select idle picks
+the open agents nobody has spoken in for the idle days in Settings (seven
+unless you change it). Rename gives an agent the name you type, and codeaf never
+renames it after that. Search (⌘K) finds agents and crews by name, tasks by
+title, and the words of every conversation.
+
+## The desktop app's Settings window — what each row changes
+
+The desktop app's Settings window reads and writes the same places the
+terminal does wherever there is one. The default model is the profile's chat
+model; the Checks and Planner models are the crew's high and planner rows (the
+ones /crew changes), and leaving them empty follows the default; the fallback
+model is the profile's fallback list. Day cap, per-agent budget and task cap
+are the spending limits; the proposed-task clock also times a choice with a
+suggested answer. Appearance, text size, open at login, the dock badge and the
+three pinned models (⌥⌘1–3) are the app's own. Permissions lists every
+always-allow rule, a tool's or a command pattern's, and removing one takes it
+out of the profile; Memory lists what codeaf remembers and forgets a line on
+request; Export writes a CSV of every billed call between two days into the
+app's exports folder. Signing in to GitHub is not in the app yet.
+
+## Quitting the desktop app — agents pause and resume, processes stop
+
+Quitting the desktop app does not fail the work in it. An agent in the middle
+of a reply is stopped where it stands and carries on by itself the next time
+the app opens, with "Resumed after quit" in front of it; a task it had running
+is picked up where its record stands. A process the model started is sent
+SIGTERM, then SIGKILL five seconds later, and the Processes list says "stopped
+by quit". Automations are not touched by a quit and fire again once the app is
+open. A conversation the app joined in a terminal window is that window's, and
+quitting the app only lets go of it.
+
+## The desktop app's clocks — a proposed task, and a choice with a suggestion
+
+In the desktop app a proposed task waits on a clock (twelve seconds unless you
+change it in Settings) and starts on its own when it runs out; its receipt
+says how long the clock was, as in "Started on its own after 12s". A choice the
+agent asks with a suggested answer runs on the same clock and takes the
+suggestion when it runs out ("Picks Suggested in 12s"); holding the card or
+typing in it stops the clock. A choice with no suggestion, anything
+irreversible, and a project that set its own rule for choices never run on it.
+In the terminal neither clock applies unless you set one with /autonomy.
+
+## Pausing a handed-over task in the desktop app
+
+A reply you moved to a task, and any task codeaf handed over to run on its own,
+can be paused from the app like any other task: nothing new starts under it and
+the worker stops at its next step until you resume it. Its page shows the
+worker's steps as its log, and a note you leave shows when the worker read it.
+A task is never renamed after a single file it touches.
+
+## Standing orders in the desktop app — agree to a reminder or routine before it runs, and how it earns trust
+
+In the desktop app, a reminder or a piece of scheduled work an agent proposes
+is saved as proposed the moment its card appears, and NOTHING RUNS until you
+agree: Save on the card, or Ratify in the orders list, makes it active; Don't
+save or Not now takes it away; a card left unanswered keeps it proposed. These
+are the same automations `/automations` lists in the terminal.
+
+Scheduled work proposed this way asks before each run: when it comes due it
+waits for your Go, Skip or Not right (showing its budget per run), and later
+times are passed over while it waits. Five Go's make it trusted, and it runs
+alone after that; one Not right puts it back to asking first. Run now counts as
+a Go. Reminders and watches never ask. Pause keeps the trust; Stop ends it for
+good and keeps its history. Each order says where its results go: this chat,
+the crew, everywhere, or not here.
+
+The app keeps the clock running while it is open. Nothing runs while it is
+closed or the Mac sleeps; a time missed then runs once, late, and the app says
+it was missed. A run waiting for your Go shows as queued in the terminal's
+list, and only the desktop app can answer it.
+
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
 `codeaf connect` lists every model provider this profile knows, whether it is connected,

@@ -146,41 +146,16 @@ func appNodeState(n *TaskNode) string {
 func (a *Agent) AppTasks() ([]AppTaskView, error) {
 	out := []AppTaskView{}
 	cap, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
-	graph := a.tasker()
 	graphIDs := map[string]bool{}
-	if graph != nil {
-		graph.mu.Lock()
-		nodes := make([]*TaskNode, 0, len(graph.order))
-		for _, id := range graph.order {
-			nodes = append(nodes, graph.nodes[id])
+	out = a.appGraphTasks(out, cap, graphIDs)
+	// A HANDED-OVER TASK is a run's row, not a node (task_app_runs.go).
+	for _, row := range a.appRunRows() {
+		id := strconv.FormatUint(row.ID, 10)
+		if graphIDs[id] {
+			continue
 		}
-		graph.mu.Unlock()
-		for _, node := range nodes {
-			if node == nil || node.spec.quick != nil {
-				continue
-			}
-			notice := node.notice()
-			_, live, _ := a.taskLiveRead(node.id, taskLiveMaxTail)
-			graph.mu.Lock()
-			view := AppTaskView{ID: strconv.FormatUint(node.id, 10), Title: notice.Title, Brief: notice.Brief, State: appNodeState(node), Model: notice.Model, Cap: cap, Spent: notice.CostUSD, Step: live.Steps, Result: notice.Report, Files: append([]string{}, notice.Changed...), Notes: node.appNotesLocked(), WorkLog: live.Lines, Elapsed: int64(notice.Elapsed.Seconds()), Version: node.app.Version + 1, Origin: "proposed"}
-			if node.app.Brief != "" {
-				view.Brief = node.app.Brief
-			}
-			if node.parent != 0 {
-				view.Parent = strconv.FormatUint(node.parent, 10)
-			}
-			for _, id := range node.dependsOn {
-				view.Waits = append(view.Waits, strconv.FormatUint(id, 10))
-			}
-			if len(view.Files) == 0 {
-				view.Files = append([]string{}, node.wrote...)
-			}
-			journal := node.journal
-			graph.mu.Unlock()
-			view.WorkLog = appTaskWorkLog(view.WorkLog, journal)
-			graphIDs[view.ID] = true
-			out = append(out, view)
-		}
+		graphIDs[id] = true
+		out = append(out, a.appRunView(row, cap))
 	}
 	for _, row := range a.PlanTasks() {
 		if graphIDs[row.ID] {
@@ -201,6 +176,48 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 	out = append(out, a.appProposalViews(cap)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
+}
+
+// appGraphTasks is the task graph's own nodes as the app lists them, each
+// marked in ids so the rows after it are not listed twice.
+func (a *Agent) appGraphTasks(out []AppTaskView, cap float64, ids map[string]bool) []AppTaskView {
+	graph := a.tasker()
+	if graph == nil {
+		return out
+	}
+	graph.mu.Lock()
+	nodes := make([]*TaskNode, 0, len(graph.order))
+	for _, id := range graph.order {
+		nodes = append(nodes, graph.nodes[id])
+	}
+	graph.mu.Unlock()
+	for _, node := range nodes {
+		if node == nil || node.spec.quick != nil {
+			continue
+		}
+		notice := node.notice()
+		_, live, _ := a.taskLiveRead(node.id, taskLiveMaxTail)
+		graph.mu.Lock()
+		view := AppTaskView{ID: strconv.FormatUint(node.id, 10), Title: notice.Title, Brief: notice.Brief, State: appNodeState(node), Model: notice.Model, Cap: cap, Spent: notice.CostUSD, Step: live.Steps, Result: notice.Report, Files: append([]string{}, notice.Changed...), Notes: node.appNotesLocked(), WorkLog: live.Lines, Elapsed: int64(notice.Elapsed.Seconds()), Version: node.app.Version + 1, Origin: "proposed"}
+		if node.app.Brief != "" {
+			view.Brief = node.app.Brief
+		}
+		if node.parent != 0 {
+			view.Parent = strconv.FormatUint(node.parent, 10)
+		}
+		for _, id := range node.dependsOn {
+			view.Waits = append(view.Waits, strconv.FormatUint(id, 10))
+		}
+		if len(view.Files) == 0 {
+			view.Files = append([]string{}, node.wrote...)
+		}
+		journal := node.journal
+		graph.mu.Unlock()
+		view.WorkLog = appTaskWorkLog(view.WorkLog, journal)
+		ids[view.ID] = true
+		out = append(out, view)
+	}
+	return out
 }
 
 func (a *Agent) AppTask(id string) (AppTaskView, bool, error) {
@@ -261,6 +278,11 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 		return err
 	}
 	node := a.taskNode(id)
+	if numeric == nil && node == nil {
+		if run, ok := a.appRunRow(id); ok {
+			return a.appRunAction(run, intent)
+		}
+	}
 	if numeric != nil || node == nil {
 		return a.appPlanAction(intent)
 	}
@@ -347,6 +369,16 @@ func (a *Agent) appGraphAction(node *TaskNode, intent AppTaskIntent, row AppTask
 		return a.appTaskNote(node, intent)
 	case "decide":
 		return a.appTaskDecide(node.id, intent, row.State)
+	case "continue":
+		// A task the app's quit left with nothing driving it goes back on the
+		// frontier as itself ([Agent.ContinueTask]); any other is left alone.
+		node.graph.mu.Lock()
+		interrupted := node.state == TaskInterrupted
+		node.graph.mu.Unlock()
+		if !interrupted {
+			return nil
+		}
+		return a.ContinueTask(node.id, "")
 	}
 	return errors.New("unknown task action")
 }

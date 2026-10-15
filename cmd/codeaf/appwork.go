@@ -269,6 +269,23 @@ func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNo
 		if task.Group == "" {
 			task.Group = before.Group
 		}
+		// THE GROUP'S LABEL IS ITS RUN'S OWN ROW'S TITLE: the row with the run's
+		// id and no parent is the run itself.
+		if task.Group != "" {
+			if task.Parent == "" {
+				task.GroupTitle = task.Title
+			} else {
+				for _, other := range live.tasks {
+					if other.Group == task.Group && other.Parent == "" {
+						task.GroupTitle = other.Title
+						break
+					}
+				}
+			}
+			if task.GroupTitle == "" {
+				task.GroupTitle = before.GroupTitle
+			}
+		}
 		if task.Result == "" && task.State == before.State {
 			task.Result = before.Result
 		}
@@ -866,7 +883,7 @@ func (b *appBackend) ListProcesses(agent string) ([]appwire.Process, error) {
 		}
 		out = append(out, process)
 	}
-	return out, nil
+	return b.quitStopped(agent, out), nil
 }
 
 // processLog is where one process's output is spooled.

@@ -17,7 +17,24 @@ const (
 	// MethodAppMoveToTask asks that the running reply move to a task at its
 	// next step boundary ([session.Agent.MoveTurnToTask]).
 	MethodAppMoveToTask = "App.MoveToTask"
+	// MethodAppResumeAfterQuit carries on a reply the app was closed in the
+	// middle of ([session.Agent.ResumeAfterQuit]).
+	MethodAppResumeAfterQuit = "App.ResumeAfterQuit"
+	// MethodAppRename gives the conversation the name a person typed
+	// ([session.Agent.RenameByPerson]).
+	MethodAppRename = "App.Rename"
 )
+
+// appRenameDoor is the conversation a person can rename.
+type appRenameDoor interface{ RenameByPerson(title string) error }
+
+// AppRenameArgs is the name a person typed.
+type AppRenameArgs struct {
+	Title string `json:"title"`
+}
+
+// appQuitDoor is the conversation that can carry on after the app's quit.
+type appQuitDoor interface{ ResumeAfterQuit() bool }
 
 type appTaskPageResult struct {
 	Task  session.AppTaskView
@@ -39,6 +56,22 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 		return nil, errors.New("engine: app tasks are unavailable")
 	}
 	switch call.Method {
+	case MethodAppRename:
+		rename, ok := agent.(appRenameDoor)
+		if !ok {
+			return nil, errors.New("engine: this conversation cannot be renamed")
+		}
+		args, err := arg[AppRenameArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return nil, rename.RenameByPerson(args.Title)
+	case MethodAppResumeAfterQuit:
+		quit, ok := agent.(appQuitDoor)
+		if !ok {
+			return nil, errors.New("engine: this conversation cannot carry on by itself")
+		}
+		return json.Marshal(quit.ResumeAfterQuit())
 	case MethodAppMoveToTask:
 		return nil, door.MoveTurnToTask()
 	case MethodAppTasks:
@@ -123,5 +156,23 @@ func (a *Agent) AppQuickTaskAction(intent session.AppTaskIntent) ([]string, []st
 // MoveTurnToTask asks the engine to move the running reply to a task.
 func (a *Agent) MoveTurnToTask() error {
 	_, err := a.c.call(nil, MethodAppMoveToTask, nil)
+	return err
+}
+
+// ResumeAfterQuit asks the engine to carry on the reply the app was closed in
+// the middle of, and answers whether a turn was queued.
+func (a *Agent) ResumeAfterQuit() (bool, error) {
+	raw, err := a.c.call(nil, MethodAppResumeAfterQuit, nil)
+	if err != nil {
+		return false, err
+	}
+	var queued bool
+	err = json.Unmarshal(raw, &queued)
+	return queued, err
+}
+
+// RenameByPerson gives the conversation the name a person typed.
+func (a *Agent) RenameByPerson(title string) error {
+	_, err := a.c.call(nil, MethodAppRename, AppRenameArgs{Title: title})
 	return err
 }

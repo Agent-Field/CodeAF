@@ -2548,7 +2548,11 @@ func (a *Agent) Close() error {
 	// here is a requested one, so no job reports its own death onto a steering
 	// queue nobody will drain.
 	if a.jobs != nil {
-		a.jobs.shutdown(jobShutdownGrace)
+		grace := jobShutdownGrace
+		if a.config.JobQuitGrace > 0 {
+			grace = a.config.JobQuitGrace
+		}
+		a.jobs.shutdown(grace)
 	}
 	a.finishProcessRecords()
 

@@ -189,6 +189,14 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	// its own is waiting and this engine cannot derive that from anything.
 	q.Blocking = Blocking{Turn: waits, Tasks: in.Blocking.Tasks}
 	q.Policy = a.autonomyFor(q.Ask)
+	// A CHOICE WITH A SUGGESTED ANSWER RUNS ON THE SURFACE'S CLOCK when the
+	// surface asked for one and the project set nothing for choices itself; a
+	// choice with no suggestion has nothing for a clock to take, and stays.
+	if secs := a.config.ChoiceClockSeconds; secs > 0 && q.Ask == AskChoice && q.Pick != nil && q.Policy.Kind == PolicyAsk {
+		if _, set := a.readAutonomy()[AskChoice]; !set {
+			q.Policy = Policy{Kind: PolicyRecommendThenAuto, After: time.Duration(secs) * time.Second}
+		}
+	}
 	if q.Stakes == StakesIrreversible {
 		q.Policy = Policy{Kind: PolicyAsk}
 	}

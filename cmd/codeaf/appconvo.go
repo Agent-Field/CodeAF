@@ -403,6 +403,12 @@ func (b *appBackend) restateBatch(live *appLive, q session.Question) {
 // them, one call of a batch or all of them, putting it aside for later, or
 // handing the choice back to the agent's own suggestion.
 func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) error {
+	if handled, err := b.answerOrderAsk(id, answer.Option); handled {
+		return err
+	}
+	if handled, err := b.answerCrewAsk(agent, id, answer.Option, answer.Text, answer.Why); handled {
+		return err
+	}
 	a, err := b.find(agent)
 	if err != nil {
 		return err
@@ -989,6 +995,17 @@ func (b *appBackend) TaskEntries(id, before string, limit int) ([]appwire.Entry,
 		}
 	}
 	if view, found, err := live.conn.Conv.AppTask(local); err == nil && found {
+		// A HANDED-OVER TASK KEEPS NO ROOM OF ITS OWN: its workers' steps are
+		// on its record instead, and they are its log, one line a step.
+		if len(all) == 0 {
+			for i, line := range view.WorkLog {
+				if line = strings.TrimSpace(line); line != "" {
+					entry := appwire.Entry{ID: id + "/step" + strconv.Itoa(i+1), Agent: agent, Kind: appwire.EntryNotice, At: at, Text: redact.Secrets(line), Quiet: true}
+					entry.ToolFacts.Task = id
+					all = append(all, entry)
+				}
+			}
+		}
 		for i, note := range view.Notes {
 			entry := appwire.Entry{ID: id + "/note" + strconv.Itoa(i), Agent: agent, Kind: appwire.EntryNote, At: at, Text: redact.Secrets(note.Text), From: "you", State: appwire.NoteWaiting}
 			if note.Direction != 0 {

@@ -177,6 +177,25 @@ func decodeSettingsPatch(raw json.RawMessage) (SettingsPatch, error) {
 		*into = &n
 		return nil
 	}
+	flag := func(name string, into **bool) error {
+		var b bool
+		if err := json.Unmarshal(fields[name], &b); err != nil {
+			return Errorf(CodeBadParams, "%s must be true or false", name)
+		}
+		*into = &b
+		return nil
+	}
+	oneOf := func(name string, into **string, allowed ...string) error {
+		if err := text(name, into); err != nil {
+			return err
+		}
+		for _, a := range allowed {
+			if **into == a {
+				return nil
+			}
+		}
+		return Errorf(CodeBadParams, "%s is %s", name, strings.Join(allowed, ", "))
+	}
 	figure := func(name string, into **Figure) error {
 		if strings.TrimSpace(string(fields[name])) == "null" {
 			*into = &Figure{}
@@ -210,6 +229,20 @@ func decodeSettingsPatch(raw json.RawMessage) (SettingsPatch, error) {
 			err = whole(name, &patch.ProposedTaskClockS)
 		case "idle_close_days":
 			err = whole(name, &patch.IdleCloseDays)
+		case "appearance":
+			err = oneOf(name, &patch.Appearance, AppearanceSystem, AppearanceLight, AppearanceDark)
+		case "text_size":
+			err = oneOf(name, &patch.TextSize, TextSmall, TextMedium, TextLarge)
+		case "open_at_login":
+			err = flag(name, &patch.OpenAtLogin)
+		case "dock_badge":
+			err = flag(name, &patch.DockBadge)
+		case "checks_model":
+			err = text(name, &patch.ChecksModel)
+		case "planner_model":
+			err = text(name, &patch.PlannerModel)
+		case "fallback_model":
+			err = text(name, &patch.FallbackModel)
 		default:
 			err = Errorf(CodeBadParams, "settings has no field %s", name)
 		}

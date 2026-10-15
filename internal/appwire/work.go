@@ -109,6 +109,9 @@ type Process struct {
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
 	ExitCode  *int       `json:"exit_code,omitempty"`
 	LastLine  string     `json:"last_line,omitempty"`
+	// Reason is why a stopped process stopped, when something other than a
+	// person stopped it: "stopped by quit".
+	Reason string `json:"reason,omitempty"`
 }
 
 // The data of this wave's events.

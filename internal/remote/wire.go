@@ -818,6 +818,17 @@ type LaunchShape struct {
 	// ProposalClockS, when set, is how many seconds a proposed task waits before
 	// it starts on its own ([session.Config.TaskAutoApproveSeconds]).
 	ProposalClockS *int `json:"proposalClockS,omitempty"`
+	// ChoiceClockS, when above zero, is how many seconds a choice with a
+	// suggested answer waits before taking it ([session.Config.ChoiceClockSeconds]).
+	ChoiceClockS int `json:"choiceClockS,omitempty"`
+	// QuitGraceS, when above zero, is how many seconds the conversation's running
+	// processes get between SIGTERM and SIGKILL when it closes
+	// ([session.Config.JobQuitGrace]).
+	QuitGraceS int `json:"quitGraceS,omitempty"`
+	// StandingOrders saves what the `automation` tool proposes before the card
+	// is up, as proposed and not yet running ([session.Config.StandingOrders]);
+	// the desktop app sets it.
+	StandingOrders bool `json:"standingOrders,omitempty"`
 	// LiveToolOutput sends a model's shell output as it arrives
 	// ([session.Config.LiveToolOutput]); the desktop app sets it.
 	LiveToolOutput bool `json:"liveToolOutput,omitempty"`

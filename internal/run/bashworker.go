@@ -388,6 +388,12 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 					// not end the task.
 					_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryNotesKind, Notes: had})
 				}
+				// A PERSON'S HOLD STOPS THE WORK AT THIS STEP, not only the parts
+				// not yet started: the worker waits here, between actions, until
+				// the hold is released or the run is cut ([holdWhileHeld]).
+				if ending.kind == endingNone && !stalled {
+					holdWhileHeld(ctx, w.store, task.ID)
+				}
 				// THE STORE'S OWN ENDING IS DETECTED AFTER THE COMMAND RUNS. A
 				// `plandb done`, or a `plandb wait`, that the worker itself just
 				// ran is the end of the loop: the shim's verb is already in the
@@ -1007,4 +1013,20 @@ func planVerbs(command string) []string {
 // never a second attempt at a handle that is closed.
 func (w *BashWorker) clearLiveStep(taskID string) {
 	_ = w.store.ClearLive(taskID)
+}
+
+// heldPoll is how often a held worker looks again for its release.
+var heldPoll = time.Second
+
+// holdWhileHeld waits while a person's hold is on the task or a task above it,
+// and answers at once when there is none. The model is not called while it
+// waits, so a hold costs nothing, and a cut run ends the wait.
+func holdWhileHeld(ctx context.Context, store *plandb.Store, taskID string) {
+	for store != nil && store.HeldInLineage(taskID) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(heldPoll):
+		}
+	}
 }

@@ -37,6 +37,10 @@ import (
 // the question in words. "It does not need to" is a legitimate answer and two
 // of these give it.
 var wakeRoads = map[string]string{
+	"ResumeAfterQuit": "the desktop app opening again after its quit stopped a reply part-way " +
+		"(resume_quit.go). It is addressed to THE CONVERSATION'S OWN MODEL, to finish the answer " +
+		"to the person's own last message, and it only exists because that person had the app " +
+		"open, was answered part-way, and has opened it again",
 	"wakeNote": "the constructor itself; it addresses nobody and carries no words of its own",
 	"jobNote": "the registry's background-job ending; the model started this work and its tool " +
 		"contract promised the ending would return instead of being polled",

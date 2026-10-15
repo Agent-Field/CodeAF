@@ -404,6 +404,21 @@ func (s *Store) Task(id string) *Task {
 	return task
 }
 
+// HeldInLineage says a person's hold is on this task or a task above it, the
+// same reading the ready frontier makes ([pausedInLineage]). A worker already
+// running asks it between its steps, so a hold reaches work in hand at its
+// next step and not only work not yet started. An unknown task is not held.
+func (s *Store) HeldInLineage(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.errIfClosed() != nil {
+		return false
+	}
+	s.refresh()
+	task := s.data.Tasks[strings.TrimPrefix(id, "t-")]
+	return task != nil && pausedInLineage(s.data, task)
+}
+
 // Resolve answers one task for a word the model may have written loosely:
 // an exact id first, then `t-` + the word, then a unique prefix of either.
 // Ids fuzzy-match because the doctrine leans on that; a prefix that fits
@@ -1084,6 +1099,28 @@ func (s *Store) hold(id string, paused bool) (*Task, error) {
 		if task.ID == next.RootID {
 			return errors.New("the harness owns the root task")
 		}
+		if task.Paused == paused {
+			return errNoChange
+		}
+		task.Paused, task.UpdatedAt = paused, now
+		return nil
+	})
+}
+
+// HoldRun is a PERSON'S hold on the whole run, set on the root, which [Pause]
+// refuses to anyone. No worker may hold the run it is part of, and this verb is
+// not on the worker's command line; a person may, and the hold reads as every
+// other hold does: nothing under the root leaves the ready frontier, and a
+// worker already running waits at its next step ([Store.HeldInLineage]).
+// Statuses are untouched, so releasing it lets the run carry on as it stood.
+func (s *Store) HoldRun(paused bool) (*Task, error) {
+	s.mu.Lock()
+	root := s.data.RootID
+	s.mu.Unlock()
+	if root == "" {
+		return nil, errors.New("there is no run to hold")
+	}
+	return s.changeTask(root, func(next *state, task *Task, now time.Time) error {
 		if task.Paused == paused {
 			return errNoChange
 		}

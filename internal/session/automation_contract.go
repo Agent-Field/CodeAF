@@ -181,7 +181,7 @@ func AutomationQuestion(notice AutomationNotice) Question {
 		Asker:   Asker{Kind: AskerModel},
 		Head:    AutomationHead(notice.Automation),
 		Reason:  AutomationAskReason,
-		Subject: SubjectRef{Kind: SubjectOrder, ID: notice.ID, Name: strings.TrimSpace(notice.Automation.Title)},
+		Subject: SubjectRef{Kind: SubjectOrder, ID: notice.ID, Ref: notice.Automation.ID, Name: strings.TrimSpace(notice.Automation.Title)},
 		Options: options,
 		Stakes:  StakesReversible,
 		// THE TURN IS STOPPED ON IT: the `automation` call waits for the answer

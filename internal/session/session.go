@@ -2000,6 +2000,23 @@ type Config struct {
 	// straight off the sheet, and a surface counting it down draws the same
 	// number the person typed.
 	TaskAutoApproveSeconds int
+	// ChoiceClockSeconds, when above zero, puts a clock on a choice the asker
+	// recommended an answer for, when the project has no row of its own for
+	// choices: the card shows the suggested answer and takes it when the clock
+	// runs out, unless the person answers first. Zero leaves a choice waiting,
+	// which is the terminal's arrangement; the desktop app sets it.
+	ChoiceClockSeconds int
+	// JobQuitGrace, when above zero, is how long the conversation's running
+	// processes are given between SIGTERM and SIGKILL when it closes, in place
+	// of the two seconds a terminal's quit gives them. The desktop app sets it.
+	JobQuitGrace time.Duration
+	// StandingOrders saves what the `automation` tool proposes as a proposed
+	// standing order before its card is up, so the app can list it and agree
+	// to it from its own window: the card's yes ratifies it and its no deletes
+	// it. Nothing runs before the yes. Work saved this way asks before each run
+	// until the person has trusted it (internal/automation's trust.go). The
+	// desktop app sets it; the terminal saves on the yes, as it always has.
+	StandingOrders bool
 
 	// BashBackgroundAfterSeconds is how long a foreground command stays in the
 	// turn before the same running process is kept as a job (promote.go,
@@ -3456,6 +3473,9 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// appHeldRuns is every run row a person holds from the app, by its number,
+	// so each republish of the row keeps saying it is held (task_app_runs.go).
+	appHeldRuns sync.Map
 	// runSummaryBusy holds the roots whose card reading is being bought right
 	// now ([Agent.RefreshRunSummary]), so a second surface that asks in the same
 	// moment keeps the last reading rather than paying for a second one.

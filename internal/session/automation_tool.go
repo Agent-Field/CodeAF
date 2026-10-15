@@ -203,7 +203,29 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 		CostWords:  a.automationCostWords(item, now),
 		Options:    AutomationOptions(item),
 	}
+	// A STANDING ORDER IS SAVED BEFORE THE CARD IS UP, as proposed: the app
+	// lists it and can agree to it from its own window, and the card names it.
+	// Nothing runs before the yes, and the card's no takes it away again.
+	proposed := ""
+	if a.config.StandingOrders {
+		item.Status = automation.StatusProposed
+		if item.Action.Do != "" && item.Trust == "" {
+			item.Trust = automation.TrustAsksFirst
+		}
+		held, err := store.Create(item)
+		if err != nil {
+			return "nothing was saved: " + err.Error(), true, nil
+		}
+		proposed, item, notice.Automation = held.ID, held, held
+		a.emitAutomationUpdate("proposed", held, "")
+	}
 	answer, err := a.askAutomation(ctx, &notice)
+	if proposed != "" {
+		answer, err = a.settleProposed(store, proposed, answer, err)
+		if errors.Is(err, errAutomationUnanswered) {
+			return "the card was left unanswered — it is kept as proposed, and nothing runs until the person agrees to it", false, nil
+		}
+	}
 	if err != nil {
 		out, failed := automationNoAnswer(err, "set up", "saved")
 		return out, failed, nil
@@ -214,7 +236,12 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 		}
 		return "nothing was saved: the person said no.", false, nil
 	}
-	saved, err := store.Create(item)
+	var saved automation.Automation
+	if proposed != "" {
+		saved, err = store.Get(proposed)
+	} else {
+		saved, err = store.Create(item)
+	}
 	if err != nil {
 		return "nothing was saved: " + err.Error(), true, nil
 	}
@@ -227,6 +254,41 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 		return line + "\n" + automationRunNowHandoff(saved), false, nil
 	}
 	return line + "\nThey answered the card. Your WHOLE reply is one short line saying what is now set up and when it first runs — no preamble, and do not ask again.", false, nil
+}
+
+// settleProposed carries the card's answer to an order saved as proposed: a
+// yes ratifies it, unless the person already agreed to it from the app's own
+// window, and a no or a change takes it away. A card that went unanswered
+// leaves the order proposed, listed for the person to agree to later.
+func (a *Agent) settleProposed(store *automation.Store, id string, answer AutomationAnswer, err error) (AutomationAnswer, error) {
+	if err != nil {
+		current, getErr := store.Get(id)
+		switch {
+		case getErr != nil:
+		case current.Status != automation.StatusProposed:
+			return AutomationAnswer{Save: true}, nil
+		case !errors.Is(err, errAutomationUnanswered):
+			// Nobody could be asked at all, so nothing is left proposed.
+			_ = store.Delete(id)
+		}
+		return answer, err
+	}
+	if !answer.Save {
+		if current, getErr := store.Get(id); getErr == nil && current.Status == automation.StatusProposed {
+			_ = store.Delete(id)
+		}
+		return answer, nil
+	}
+	current, getErr := store.Get(id)
+	if getErr != nil {
+		return AutomationAnswer{}, getErr
+	}
+	if current.Status == automation.StatusProposed {
+		if _, err := store.Ratify(id); err != nil {
+			return AutomationAnswer{}, err
+		}
+	}
+	return answer, nil
 }
 
 // automationRunNowHandoff hands the action back to the model to do ONCE, now,

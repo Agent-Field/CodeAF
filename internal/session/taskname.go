@@ -286,10 +286,42 @@ func taskNameNeeded(title string) bool {
 	if title == "" || unusableName(title) {
 		return true
 	}
-	if strings.ContainsAny(title, "/\\") {
+	if strings.ContainsAny(title, "/\\") || bareFileName(title) {
 		return true
 	}
 	return len(strings.Fields(title)) > TaskNameWords
+}
+
+// bareFileName says a title is one file's name and nothing else: a single word
+// with an extension that has a letter in it.
+//
+// IT IS FILING FOR THE SAME REASON A PATH IS. A task asked to write ten notes
+// was renamed "note1.md" while it ran — the namer answered with the first file
+// the work touches, and the row then named one tenth of the job. A version
+// number ("v1.2.3") is not caught, because its last part has no letter.
+func bareFileName(title string) bool {
+	if len(strings.Fields(title)) != 1 {
+		return false
+	}
+	dot := strings.LastIndexByte(title, '.')
+	if dot <= 0 || dot == len(title)-1 {
+		return false
+	}
+	ext := title[dot+1:]
+	if len(ext) > 5 {
+		return false
+	}
+	letter := false
+	for _, r := range ext {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+			letter = true
+		case r >= '0' && r <= '9':
+		default:
+			return false
+		}
+	}
+	return letter
 }
 
 // taskNameSubject is what the namer reads: the gloss, then the front of the
