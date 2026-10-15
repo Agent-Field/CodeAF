@@ -131,11 +131,7 @@ A factory is the third picture: one line out, one line back.
 
 ## Subharnesses: specialists built for one job
 
-Build a change, review a pull request, or audit local code. Each built-in
-specialist has a process for its own job and runs as a task beside your
-conversation. Open its task to follow the work or stop it; its result comes
-back to the chat. The built-in specialists run on macOS and Linux, with no
-extra specialist installation.
+Build a change, review a pull request, or audit local code. Each built-in specialist has a process for its own job and runs as a task beside your conversation. Open its task to follow the work or stop it; its result comes back to the chat. The built-in specialists run on macOS and Linux, with no extra specialist installation.
 
 | Specialist | Try it in the chat | What comes back |
 | --- | --- | --- |
@@ -143,22 +139,11 @@ extra specialist installation.
 | [sec](https://agentfield.ai/docs/codeaf/sec): local security audits | `/sec changes since main` | Security findings with evidence and suggested fixes; Markdown, JSON and SARIF reports. Use `/sec` alone for the whole repository. |
 | [review](https://agentfield.ai/docs/codeaf/review): GitHub pull requests | `/review owner/repo#123 focus on retries` | Findings with file locations, reasons, suggested fixes and review coverage; Markdown and JSON reports. |
 
-**review** is imported from [PR-AF](https://github.com/Agent-Field/pr-af), and
-**sec** from [SEC-AF](https://github.com/Agent-Field/sec-af), under their codeaf
-command names. Both read source code without running your tests, build, app or
-exploits. They leave your code unchanged; posting a review or fixing findings
-is a separate action you request. Read the report's coverage and any incomplete
-analysis before acting on it. No findings does not guarantee there are no bugs
-or security problems.
+**review** is imported from [PR-AF](https://github.com/Agent-Field/pr-af), and **sec** from [SEC-AF](https://github.com/Agent-Field/sec-af), under their codeaf command names. Both read source code without running your tests, build, app or exploits. They leave your code unchanged; posting a review or fixing findings is a separate action you request. Read the report's coverage and any incomplete analysis before acting on it. As always, it's important to note that a lack of findings does not and can not guarantee a lack of security problems.
 
-The [coding benchmark below](#benchmarks) measures senior-dev. PR-AF publishes
-its own [Martian Code-Review-Bench results](https://github.com/Agent-Field/pr-af#benchmark-position);
-those are results for the original project, not a measurement of codeaf's
-imported review specialist.
+The [coding benchmark below](#benchmarks) measures senior-dev. PR-AF publishes its own [Martian Code-Review-Bench results](https://github.com/Agent-Field/pr-af#benchmark-position); those are results for the original project, not a measurement of codeaf's imported review specialist.
 
-**Your own saved programs:** ask codeaf to design a harness for recurring work,
-such as triaging flaky tests. Review and approve its design, then open
-`/subharness` to run it again. See [Saved shapes of work](internal/manual/chat/saved-shapes-of-work.md).
+**Your own saved programs:** ask codeaf to design a harness for recurring work, such as triaging flaky tests. Review and approve its design, then open `/subharness` to run it again. See [Saved shapes of work](internal/manual/chat/saved-shapes-of-work.md).
 
 ## Benchmarks
 
