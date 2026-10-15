@@ -71,8 +71,9 @@ func TestAutomaticProfilePreservesLoadedCapabilities(t *testing.T) {
 	if err := agent.preparePromptProfile(agent.Model()); err != nil {
 		t.Fatal(err)
 	}
-	if !agent.config.promptProfile().lean() || !agent.hasTool("propose_task") || agent.remembers() || agent.hasTool("remember") {
-		t.Fatal("lean profile lost explicitly loaded tasks or retained memory")
+	// The lean shape keeps the person's memory and drops only the verbs.
+	if !agent.config.promptProfile().lean() || !agent.hasTool("propose_task") || !agent.remembers() || agent.hasTool("remember") {
+		t.Fatal("lean profile lost explicitly loaded tasks or the memory, or kept the memory verbs")
 	}
 }
 

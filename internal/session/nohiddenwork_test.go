@@ -436,7 +436,9 @@ func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
 	if purposes < 8 {
 		t.Fatalf("only %d calls through the one door were found; the law is reading the wrong tree", purposes)
 	}
-	if ownCalls < 3 {
+	// Two roads build their own client today, automation_run.go and
+	// tools_doc.go; the memory tidy that made a third went on 2026-10-14.
+	if ownCalls < 2 {
 		t.Fatalf("only %d completions were found in the %d files that build their own client; "+
 			"the law is reading the wrong tree", ownCalls, len(ownClients))
 	}

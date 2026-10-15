@@ -31,8 +31,8 @@ func (c *observedCompleter) CompleteWithMessages(ctx context.Context, messages [
 }
 
 func TestAReflexAddsNoOutputOrReasoningControl(t *testing.T) {
-	client := &observedCompleter{response: reply(`{"inject":[],"cmd":null}`)}
-	if _, err := Route(context.Background(), client, "what did we decide?", index); err != nil {
+	client := &observedCompleter{response: reply(`{"keep":""}`)}
+	if _, err := Notice(context.Background(), client, "what did we decide?", "nothing yet", kept, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := client.requests[0].MaxTokens; got != nil {
@@ -47,9 +47,9 @@ func TestAReflexAddsNoOutputOrReasoningControl(t *testing.T) {
 }
 
 func TestAReflexPreservesAnExplicitCallerEffort(t *testing.T) {
-	client := &observedCompleter{response: reply(`{"inject":[],"cmd":null}`)}
+	client := &observedCompleter{response: reply(`{"keep":""}`)}
 	ctx := provider.WithConfiguredReasoningEffort(context.Background(), provider.EffortHigh)
-	if _, err := Route(ctx, client, "what did we decide?", index); err != nil {
+	if _, err := Notice(ctx, client, "what did we decide?", "nothing yet", kept, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := client.efforts[0]; got != provider.EffortHigh {
@@ -59,9 +59,9 @@ func TestAReflexPreservesAnExplicitCallerEffort(t *testing.T) {
 
 func TestAnUnboundEmptyReflexAnswerIsNotRetried(t *testing.T) {
 	silent := &fake{replies: []string{"", ""}}
-	_, err := Route(context.Background(), silent, "what did we decide?", index)
+	_, err := Notice(context.Background(), silent, "what did we decide?", "nothing yet", kept, true)
 	if !errors.Is(err, ErrReflexFailed) {
-		t.Fatalf("Route error = %v, want %v", err, ErrReflexFailed)
+		t.Fatalf("Notice error = %v, want %v", err, ErrReflexFailed)
 	}
 	if len(silent.calls) != 1 {
 		t.Fatalf("an empty answer cost %d calls, want exactly one", len(silent.calls))
@@ -73,20 +73,20 @@ func TestABoundEmptyAnswerFallsBackOnceAndSaysSoOnce(t *testing.T) {
 	const low = "test-vendor/low"
 	client := &fake{responses: []*ai.Response{
 		reply(""),
-		reply(`{"inject":["m7"],"cmd":null}`),
-		reply(`{"inject":[],"cmd":null}`),
+		reply(`{"keep":"prefers dark themes","scope":"user"}`),
+		reply(`{"keep":""}`),
 	}}
 	var notices []string
 	bound := (&Session{}).Bind(client, primary, low, func(text string) {
 		notices = append(notices, text)
 	})
 
-	result, err := Route(context.Background(), bound, "what themes do I like?", index)
+	result, err := Notice(context.Background(), bound, "I like dark themes", "noted", nil, true)
 	if err != nil {
-		t.Fatalf("Route after fallback: %v", err)
+		t.Fatalf("Notice after fallback: %v", err)
 	}
-	if len(result.Inject) != 1 || result.Inject[0] != "m7" {
-		t.Fatalf("Route returned %+v, want the low tier's answer", result)
+	if result.Keep != "prefers dark themes" {
+		t.Fatalf("Notice returned %+v, want the low tier's answer", result)
 	}
 	if len(client.calls) != 2 {
 		t.Fatalf("fallback used %d calls, want primary then low", len(client.calls))
@@ -103,8 +103,8 @@ func TestABoundEmptyAnswerFallsBackOnceAndSaysSoOnce(t *testing.T) {
 		t.Fatalf("notices = %q, want the one fallback line", notices)
 	}
 
-	if _, err := Route(context.Background(), bound, "what themes should I use?", index); err != nil {
-		t.Fatalf("later Route on fallback: %v", err)
+	if _, err := Notice(context.Background(), bound, "what themes should I use?", "dark ones", nil, true); err != nil {
+		t.Fatalf("later Notice on fallback: %v", err)
 	}
 	if len(client.calls) != 3 || client.calls[2].Model != low {
 		t.Fatalf("later calls = %+v, want the low tier directly", client.calls)

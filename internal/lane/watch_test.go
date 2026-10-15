@@ -629,8 +629,8 @@ func TestTheCallsOwnPatienceIsWhatItMaySpendRescuingItself(t *testing.T) {
 // reversed rather than removed.
 //
 // WHY THE LAW IS NOT "EVERY WATCHED ROLE AFFORDS MORE THAN EVERY UNWATCHED
-// ONE". Patience varies thirty-fold WITHIN each group — `recall` waits 18
-// seconds and `talk` ninety, `probe` 45 and `standing` nine minutes — so no
+// ONE". Patience varies many-fold WITHIN each group — `talk` waits ninety
+// seconds and `media` nine minutes, `probe` 45 and `standing` nine minutes — so no
 // per-second price can make the totals order that way, and a price that did
 // would be saying a nine-minute wait is worth less than an eighteen-second one.
 // What a wait is worth is how long it is TIMES what a second of it is worth; the

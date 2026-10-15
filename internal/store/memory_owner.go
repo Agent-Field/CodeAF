@@ -38,6 +38,10 @@ const (
 	OwnerMachine       = "machine"
 	OwnerLegacyProject = "project:legacy"
 
+	// OwnerKindProject is what [OwnerKindOf] answers for any project owner,
+	// the quarantine included.
+	OwnerKindProject = "project"
+
 	// legacyTag marks a row the migration quarantined. It survives re-homing
 	// on purpose: a memory's source is never cleaned off it, and a person who
 	// wants to know which rows came in blind can search for the tag.
@@ -59,7 +63,7 @@ func OwnerKindOf(owner string) string {
 		return owner
 	case strings.HasPrefix(owner, "project:"):
 		if key := strings.TrimPrefix(owner, "project:"); key != "" {
-			return "project"
+			return OwnerKindProject
 		}
 	}
 	return ""
@@ -76,7 +80,7 @@ func OwnerScopeOf(owner string) string {
 		return MemoryScopeUser
 	case OwnerMachine:
 		return MemoryScopeEnv
-	case "project":
+	case OwnerKindProject:
 		return MemoryScopeProject
 	}
 	return MemoryScopeUser

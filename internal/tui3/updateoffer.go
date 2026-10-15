@@ -46,6 +46,27 @@ type UpdateCoordinator struct {
 	Disable func() error
 	// Refusal names why this executable cannot be replaced in place, or "".
 	Refusal func() string
+	// Automatic is the BUILD's half of the automatic road
+	// ([codeupdate.AutomaticFor]): whether this file may move to this release
+	// without anybody asking. Only a stable codeaf moving to a newer stable
+	// does; every other build gets the quiet line. Nil leaves the road open, so
+	// a window wired before the rule existed behaves as it always did.
+	Automatic func(codeupdate.Available) bool
+	// Deferred is the release a person stopped with ctrl+c while the launch
+	// was installing it, before this window opened. It gets the quiet line
+	// rather than a second countdown.
+	Deferred string
+}
+
+// automatic reports whether this window may count down to a release at all.
+func (c *UpdateCoordinator) automatic(available codeupdate.Available) bool {
+	if c == nil {
+		return false
+	}
+	if deferred := strings.TrimSpace(c.Deferred); deferred != "" && deferred == strings.TrimSpace(available.Latest) {
+		return false
+	}
+	return c.Automatic == nil || c.Automatic(available)
 }
 
 // updateSkipKey is the offer's one action: "not now", said about one exact
@@ -215,11 +236,19 @@ func (a *app) updateOfferHint(width int) string {
 	case updateDownloading:
 		return "Updating codeaf in the background · keep working"
 	case updateReady:
-		return "codeaf " + o.tag + " installed · this session keeps running"
+		return updateReadyLine(o.tag)
 	case updateFailed:
 		return "codeaf " + o.tag + " could not be installed · /update retries"
 	}
 	return ""
+}
+
+// updateReadyLine is what a finished install says, in the keys line and in
+// the transcript alike: what landed and the one thing to do about it. It is
+// short on purpose — the engine and window details it used to spell out are
+// the manual's to explain, not every install's to recite.
+func updateReadyLine(tag string) string {
+	return "codeaf " + strings.TrimSpace(tag) + " installed · restart to use the new version"
 }
 
 // spellGrace prints a short count for the keys line.
@@ -268,7 +297,7 @@ func (a *app) updateOfferNote() string {
 	case updateDownloading:
 		return "updating codeaf in the background · this session keeps running"
 	case updateReady:
-		return "codeaf " + o.tag + " installed · this session keeps running · new windows open the updated app; work already running keeps its current engine until all its windows and work close"
+		return updateReadyLine(o.tag)
 	case updateFailed:
 		return "codeaf " + o.tag + " could not be installed · this version keeps running · /update retries"
 	}
@@ -288,6 +317,28 @@ func quietUpdateNotice(available codeupdate.Available) string {
 // offering a road the product knows it will refuse is not guidance.
 func refusedUpdateNotice(available codeupdate.Available) string {
 	return updateAheadNotice(available)
+}
+
+// pinnedUpdateNotice names the release for a file a person pinned by naming a
+// tag. `/update` with no tag is the road that moves it forward and unpins it.
+func pinnedUpdateNotice(available codeupdate.Available) string {
+	return updateAheadNotice(available) + ", pinned · /update installs it and unpins"
+}
+
+// pinnedNote is the line a person's own install adds when it left the file
+// pinned, so the pin is never a surprise found later.
+func pinnedNote(tag string) string {
+	return "codeaf " + strings.TrimSpace(tag) + " is pinned · it is not updated on its own until /update runs without a version"
+}
+
+// updatedFromNote is the first line of a window a launch has just updated
+// onto: the old build's own line is under the chat now.
+func updatedFromNote(from, now string) string {
+	line := "codeaf updated from " + strings.TrimSpace(from)
+	if now = strings.TrimSpace(now); now != "" {
+		line += " to " + now
+	}
+	return line + " as it opened · automatic updates in /settings turns this off"
 }
 
 // updateAheadNotice is the head both launch notices open with: what is out and

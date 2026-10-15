@@ -570,7 +570,7 @@ func (a *app) shelfSkillFacts() ([]shelfSkillRow, bool) {
 //
 // IT IS ASKED OF THE AGENT AND NOT OF A STORE THE SURFACE HOLDS, because the
 // shelf is the session's: the store it reads is chosen by the door — the
-// memory database, or with memory off a shelf built from the skill folders
+// memory database, or without one a shelf built from the skill folders
 // alone — and a surface that read some store of its own would be a second
 // answer to "which skills can this conversation use". It was one, once: it
 // read the memory seam, which the live door wraps without any reading of

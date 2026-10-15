@@ -1329,17 +1329,8 @@ func (c *Client) ChangedSince(at time.Time) (int, int, error) {
 	return out.Learned, out.LetGo, nil
 }
 
-func (c *Client) ListMemories(scope string, limit int) ([]store.Memory, error) {
-	var out []store.Memory
-	payload, err := c.call(nil, MethodMemoryList, MemoryListArgs{Scope: scope, Limit: limit})
-	if err == nil {
-		err = json.Unmarshal(payload, &out)
-	}
-	return out, err
-}
-
-func (c *Client) UpdateMemory(id, title, text string, tags []string) error {
-	_, err := c.call(nil, MethodMemoryUpdate, MemoryUpdateArgs{ID: id, Title: title, Text: text, Tags: tags})
+func (c *Client) UpdateMemory(id, text string) error {
+	_, err := c.call(nil, MethodMemoryUpdate, MemoryUpdateArgs{ID: id, Text: text})
 	return err
 }
 func (c *Client) ForgetMemory(id string) error {
@@ -1360,13 +1351,6 @@ func (c *Client) MemoryProvenance(id string) (string, string, time.Time, error) 
 		return "", "", time.Time{}, err
 	}
 	return out.Session, out.Title, out.At, nil
-}
-
-// SetMemoryAlways is the place's `a`: one line made a rule on the engine
-// machine, or a rule made an ordinary line again.
-func (c *Client) SetMemoryAlways(id string, always bool) error {
-	_, err := c.call(nil, MethodMemorySetAlways, MemorySetAlwaysArgs{ID: id, Always: always})
-	return err
 }
 
 // RememberAlways is /always through the conversation's own engine, answering
@@ -1393,24 +1377,34 @@ func (c *Client) AlwaysMemories(everywhere bool) ([]session.MemoryLine, error) {
 	return lines, err
 }
 
+// Remember and MoveMemory each answer the receipt the engine's
+// conversation wrote: it is the one that knows where a line holds.
 func (c *Client) Remember(text string) (string, error) {
-	payload, err := c.call(nil, MethodMemoryRemember, text)
-	if err != nil {
-		return "", err
-	}
-	var title string
-	err = json.Unmarshal(payload, &title)
-	return title, err
+	return c.receipt(MethodMemoryRemember, text)
 }
 
-func (c *Client) ForgetQuery(query string) (string, error) {
-	payload, err := c.call(nil, MethodMemoryForgetQuery, query)
+func (c *Client) MoveMemory(id, scope string) (string, error) {
+	return c.receipt(MethodMemoryMove, MemoryMoveArgs{ID: id, Scope: scope})
+}
+
+// MemoryProject is the owner the engine's conversation keeps project lines
+// under, or "" when it has none or the engine could not say.
+// MemoryProject asks the engine's conversation which owner its project lines
+// land in. A wire that did not answer is an error and NOT "no project": a tab
+// that read it as no project would draw this project's lines as another's and
+// offer moves that land somewhere the person did not mean.
+func (c *Client) MemoryProject() (string, error) {
+	return c.receipt(MethodMemoryProject, nil)
+}
+
+func (c *Client) receipt(method string, args any) (string, error) {
+	payload, err := c.call(nil, method, args)
 	if err != nil {
 		return "", err
 	}
-	var title string
-	err = json.Unmarshal(payload, &title)
-	return title, err
+	var receipt string
+	err = json.Unmarshal(payload, &receipt)
+	return receipt, err
 }
 
 func (c *Client) Memories(query string) ([]session.MemoryLine, error) {

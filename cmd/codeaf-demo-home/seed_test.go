@@ -203,7 +203,7 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	// ── automations: every kind and state, and a fortnight of runs ────────────
 	automationIDs := assertAutomations(t, dir, now, built, rows)
 
-	// ── memory: three shelves, both counters, and one let go ──────────────────
+	// ── memory: three shelves, who kept each line, and one let go ─────────────
 	brain, err := store.Open(filepath.Join(dir, ".codeaf", "graph.db"))
 	if err != nil {
 		t.Fatalf("open the memory store: %v", err)
@@ -213,31 +213,31 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the memory snapshot: %v", err)
 	}
-	if shelves.Total != built.Memories {
-		t.Fatalf("the store holds %d memories out of %d written", shelves.Total, built.Memories)
+	if shelves.Held+shelves.LetGoCount != built.Memories {
+		t.Fatalf("the store holds %d memories out of %d written", shelves.Held+shelves.LetGoCount, built.Memories)
 	}
 	if len(shelves.Shelves) != 3 {
-		t.Fatalf("the page draws %d shelves; all three scopes should have something on them", len(shelves.Shelves))
+		t.Fatalf("the page draws %d shelves; the person, this machine and the project should each have something", len(shelves.Shelves))
 	}
-	if shelves.Held == 0 || shelves.LetGo == 0 {
-		t.Fatalf("the page wants held and let-go rows and has held=%d letGo=%d", shelves.Held, shelves.LetGo)
+	if shelves.Held == 0 || shelves.LetGoCount == 0 {
+		t.Fatalf("the page wants held and let-go rows and has held=%d letGo=%d", shelves.Held, shelves.LetGoCount)
 	}
-	used, missed := 0, 0
+	origins := map[string]bool{}
 	for _, shelf := range shelves.Shelves {
 		if len(shelf.Memories) == 0 {
-			t.Fatalf("the %q shelf came back with no rows on it", shelf.Scope)
+			t.Fatalf("the %q shelf came back with no rows on it", shelf.Owner)
 		}
 		for _, memory := range shelf.Memories {
-			if memory.UseCount > 0 {
-				used++
-			}
-			if memory.MissCount > 0 {
-				missed++
-			}
+			origins[memory.Origin] = true
+		}
+		if store.OwnerKindOf(shelf.Owner) == store.OwnerKindProject && shelf.ProjectName == "" {
+			t.Fatalf("the project shelf carries no project name: %+v", shelf)
 		}
 	}
-	if used == 0 || missed == 0 {
-		t.Fatalf("the ranking columns want both counters and have used=%d missed=%d", used, missed)
+	for _, origin := range []string{store.OriginPerson, store.OriginModel, store.OriginNoticed} {
+		if !origins[origin] {
+			t.Fatalf("no seeded line was kept by %q, so the page never draws that word", origin)
+		}
 	}
 
 	// ── spend: fourteen days, three models, and every subject bound ───────────

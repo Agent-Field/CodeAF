@@ -49,11 +49,11 @@ once the session has tasks to come back to and no running-turn line owns that ro
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, AI
 teams, activity, automations, memory, spend and settings. All seven are on the tab bar with
-the way back to the chats, `Home  Chats  AI teams  Activity  Memory  Automations  Spend
+the way back to the chats, `Home  Chats  AI teams  Activity  Memories  Automations  Spend
 Settings`; `tab` walks the rooms on the bar.
 `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump straight to any of those seven or back
 to the chats from wherever you are standing, a place or a conversation — by number and not
-by position on the bar, so memory, the fifth word, is `alt+8`, and automations `alt+7` — and
+by position on the bar, so memories, the fifth word, is `alt+8`, and automations `alt+7` — and
 each has commands of its own (`/home`, `/teams`, `/history`,
 `/automations`, `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven: it is something you do to this conversation rather than
@@ -107,7 +107,7 @@ navigation from reading. The strip is that chat's row. Home, teams, sessions, sp
 settings and every other place do not draw it:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings                 $1.20 / $20 · thu 10:31pm
+ >● codeaf   home  chats  AI teams  activity  memories  automations  spend  settings                 $1.20 / $20 · thu 10:31pm
      openrouter price scrape       Refactor the rail scope...      Shipping the parser ×   +   ▦ All
   ──────────────────────────────────────────────────────────────────────────────────────────────────
 ```
@@ -889,7 +889,7 @@ looks like something to build and still has room to grow (see the keys page). Th
 the one slot and the tag's line wins whenever both would show. While the spelling-out call
 is out, the slot turns a small spinner in front of the same words. Neither ever moves the
 message box: this line is on the frame in every state. A sentence that reads like a rule
-gets no line of its own: a rule is kept with `/always` (*What I remember*).
+gets no line of its own: a rule is kept with `/remember` or `/always` (*What I remember*).
 
 One line in that slot is not about the next keystroke: `alt+l tasks` (`alt+l traffic` in a
 manager's chat), which appears
@@ -1440,7 +1440,7 @@ The top line is the program's name and the places on the left, and the machine's
 signs on the right:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memories  automations  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
 ```
 
 When there is not room for all of it, things give way **one at a time, in a fixed order**
@@ -3374,7 +3374,7 @@ with `ask here`, is not on it; `/automations` (`alt+7`) lists every one.
 
 **Standing orders are gone**, and with them the column's `standing` section, its
 `+ /standing` door and the `◦ 2 standing orders` line at its foot: what ran on a clock is
-an automation, and a rule is a memory marked always (`/always`). A window that cannot read
+an automation, and a rule is a memory (`/remember`, or `/always`, the same command). A window that cannot read
 automations — a store that would not open, or a `--host` engine on a build without them —
 draws no automations section at all.
 
@@ -3641,16 +3641,15 @@ leaves within milliseconds of the tool result before it.
 Everything else codeaf asks on your behalf during a turn runs **beside** the
 answer, never in front of it:
 
-- the **memory lookup**, picking which remembered lines belong in this message
-  (*What I remember*);
 - the **naming** of the conversation, on your first message (*Why does my tab say
   Untitled*);
 - the **work-or-words judge**, asking whether what you typed was really a job for
   a task (*Tasks*);
 - the **step captions** over a running batch;
 - the **reading of a long answer**, asking what is left of your question;
-- the **keeping pass** after the turn, deciding whether the exchange held anything
-  worth remembering.
+- the **noticing pass** after a turn you typed, deciding whether you said anything
+  that should hold in every conversation — and saying so in the conversation when it
+  keeps a line (*What I remember*).
 
 None of them can delay you, and none of them is thrown away either. A reading that
 answers in time is applied to the step in front of it. One that answers late is
@@ -4199,7 +4198,7 @@ are inside codeaf, and it changes as you move:
   the name the moment the conversation has one
 - a task page: `Fix the nil-map crash · task · codeaf`
 - any other place — activity, automations, memory, spend, settings, AI teams: its own
-  word, as in `memory · codeaf` or `automations · codeaf`
+  word, as in `memories · codeaf` or `automations · codeaf`
 - over `--host`, the machine comes before the product: `Token counter @ devbox · codeaf`
   (home at rest there is `codeaf @ devbox`)
 

@@ -29,7 +29,7 @@ func runUpdate(args []string) error {
 	rc := flags.Bool("rc", false, "use the newest release candidate")
 	dev := flags.Bool("dev", false, "use the newest dev build")
 	staging := flags.Bool("staging", false, "use the newest staging build")
-	version := flags.String("version", "", "install one exact release tag")
+	version := flags.String("version", "", "install one exact release tag and pin it there until a plain codeaf update")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
@@ -126,13 +126,23 @@ func runUpdate(args []string) error {
 	}
 	if result.Already {
 		fmt.Fprintf(updateOut, "codeaf: %s is already installed at %s\n", result.Release.Tag, result.Path)
+		sayPinned(result)
 		return nil
 	}
 	fmt.Fprintf(updateOut, "codeaf: installed %s at %s\n", result.Release.Tag, result.Path)
+	sayPinned(result)
 	if err := updateVersionLine(result.Path, updateOut, updateErr); err != nil {
 		return updateFailure(fmt.Errorf("run the installed codeaf: %w", err), curl)
 	}
 	return nil
+}
+
+// sayPinned names the pin a named tag just set, so a person who rolled back to
+// chase a bug is not surprised by the next launch leaving it there.
+func sayPinned(result codeupdate.InstallResult) {
+	if result.Pinned {
+		fmt.Fprintf(updateOut, "codeaf: %s is pinned · it is not updated on its own until `codeaf update` runs without --version\n", result.Release.Tag)
+	}
 }
 
 func sayUpdateCheck(running string, release codeupdate.Release, choice codeupdate.Choice) error {

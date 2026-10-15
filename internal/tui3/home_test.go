@@ -3568,7 +3568,7 @@ func TestThePlaceDoorIsShutOnHome(t *testing.T) {
 // editor, and this holds it: the two spaces type into the card, and the person
 // stays where they are.
 func TestTheDoorStaysShutOverTheMemoryCardEditor(t *testing.T) {
-	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, UseCount: 7, Scope: store.MemoryScopeUser}})
+	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, Owner: store.OwnerUser}})
 	memory.origins["m1"] = memoryOrigin{title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
 	// THE DOOR HAS TO EXIST FOR THIS TEST TO MEAN ANYTHING. The gesture is bound
 	// only on a machine home is reachable from ([app.homeDoorOpen] — a.canOpen()),
@@ -3582,14 +3582,18 @@ func TestTheDoorStaysShutOverTheMemoryCardEditor(t *testing.T) {
 		t.Fatal("the door is shut, so this test would hold nothing: give the fixture a seam")
 	}
 	a.slash("/memory")
+	if got, ok := a.mem.choice(); !ok || got.ID != "m1" {
+		t.Fatalf("the cursor did not open on the first line kept")
+	}
+	drive(t, a, key("up")) // onto the person's group
 	if _, ok := a.mem.shelfUnder(); !ok {
-		t.Fatalf("the cursor did not open on a shelf heading")
+		t.Fatalf("up did not land on a group")
 	}
-	drive(t, a, key("enter")) // roll the biggest shelf up
+	drive(t, a, key("left")) // fold the group
 	if strings.Contains(plain(frame(a)), "uses neovim") {
-		t.Fatalf("enter did not close the shelf")
+		t.Fatalf("← did not fold the group")
 	}
-	drive(t, a, key("enter")) // and back open, the way the hand walks it
+	drive(t, a, key("right")) // and open it again, the way the hand walks it
 	drive(t, a, key("down"))  // onto the line under the cursor
 	if got, ok := a.mem.choice(); !ok || got.ID != "m1" {
 		t.Fatalf("down did not land on the line: %v %v; frame:\n%s", got, ok, plain(frame(a)))

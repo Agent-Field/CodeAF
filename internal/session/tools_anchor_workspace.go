@@ -84,11 +84,13 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	// mint, and an unprovable workspace answers "" — the quarantine — exactly as
 	// the launching doors answer it.
 	a.config.MemoryProjectKey = anchoredProjectKey(resolved)
-	// AND THE NEXT ACTION-CAPABLE REQUEST MUST CARRY THE NEW PROJECT'S RULES,
-	// not the scratch project's cached block: recompute and land the binding note
-	// now, while the owner is settled, so a call that acts after this anchor is
-	// bound to the repository it acts in ([Agent.rebindAfterAnchor]).
-	a.rebindAfterAnchor()
+	a.config.MemoryProjectName = gitidentity.ProjectName(resolved)
+	// AND THE NEXT REQUEST MUST CARRY THE NEW PROJECT'S MEMORY, not the scratch
+	// folder's: the block is re-read and message[0] rebuilt now, so a call made
+	// after this anchor works under the lines kept for the repository it acts
+	// in. It is a deliberate act, which is what message[0] moves on (memory.go).
+	a.refreshMemoryLocked()
+	a.refreshSystemLocked()
 	tools := a.belt()
 	definitions, err := toolDefinitions(tools)
 	if err != nil {

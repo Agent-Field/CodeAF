@@ -41,8 +41,10 @@ func TestAModelWithNoToolsReadsTheChatPage(t *testing.T) {
 			t.Fatalf("chat page still carries %q", gone)
 		}
 	}
-	if len(agent.beltDefinitions()) != 0 || agent.remembers() {
-		t.Fatalf("belt %d tools, memory %v: want none and off", len(agent.beltDefinitions()), agent.remembers())
+	// NO TOOLS, AND THE PERSON'S MEMORY STILL HOLDS: the block rides the chat
+	// page as it rides every other one, and without a belt there are no verbs.
+	if len(agent.beltDefinitions()) != 0 || !agent.remembers() {
+		t.Fatalf("belt %d tools, memory %v: want none, and the memory kept", len(agent.beltDefinitions()), agent.remembers())
 	}
 	if full := len(renderSystem(Config{Workspace: agent.config.Workspace, Model: "tool/model"})); len(page)*3 > full {
 		t.Fatalf("chat page is %d bytes against a working page of %d", len(page), full)

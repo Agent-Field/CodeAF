@@ -98,10 +98,11 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 	}
 }
 
-// MEMORY OFF IS A DOOR THAT OPENS NO BRAIN. That is what makes "no block and no
-// calls" a property of the wiring rather than a branch every caller has to
-// remember (internal/session's memory.go states the law).
-func TestTheDoorOpensNoBrainWhenMemoryIsOff(t *testing.T) {
+// THE MEMORY ROW IS NOT A DOOR THAT OPENS NO BRAIN. It governs only what the
+// pass after a turn keeps on the person's behalf, read live by the conversation
+// (internal/session's memory.go), so the door opens the store either way.
+func TestTheDoorOpensTheBrainWhateverTheNoticingRowSays(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	dir := t.TempDir()
 	registry := config.NewSettings(config.SettingsOptions{
 		ProfileDir: dir,
@@ -116,8 +117,11 @@ func TestTheDoorOpensNoBrainWhenMemoryIsOff(t *testing.T) {
 	if err := row.Apply(config.MemoryOff); err != nil {
 		t.Fatalf("turning memory off: %v", err)
 	}
-	if brain := v3Memory(dir); brain != nil {
-		_ = brain.Close()
-		t.Fatal("the door opened a brain with memory turned off")
+	// THE ROW GOVERNS ONLY WHAT IS NOTICED FOR THE PERSON: the lines they kept
+	// go on riding every turn, so the door opens the store either way.
+	brain := v3Memory(dir)
+	if brain == nil {
+		t.Fatal("the door opened no brain with automatic saving off, which would drop every line the person kept")
 	}
+	_ = brain.Close()
 }

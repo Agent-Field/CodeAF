@@ -536,8 +536,9 @@ const (
 	// through the door; it is to make them say the same word the door says.
 	//
 	// THEY REACHED THE CALL LOG WITH NO TAG AT ALL UNTIL THIS PR, which meant the
-	// two slowest unattended errands this build makes — a memory tidy-up and an
-	// automation's check, both of which run while nobody is there — were
+	// two slowest unattended errands this build made — a memory tidy-up (since
+	// removed) and an automation's check, both of which ran while nobody was
+	// there — were
 	// indistinguishable from a turn that had lost its name. They carry the most
 	// money per call of anything nobody is waiting for.
 
@@ -545,8 +546,7 @@ const (
 	// role, the call site writes `callPurpose(roles.RoleX)` and no constant is
 	// declared here — restating a role's string would be the same word in two
 	// places, and the point of a small closed block is that what IS in it stands
-	// out. The memory tidy-up is [roles.RoleConsolidate] and says so at its own
-	// call; the two below are not roles at all.
+	// out. The two below are not roles at all.
 	//
 	// purposeAutomationCheck is one automation watch's judgment: does what its
 	// look saw meet the condition? It is the ONE DELIBERATE DIVERGENCE: the call

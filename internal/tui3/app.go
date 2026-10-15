@@ -1681,11 +1681,12 @@ type app struct {
 	// blocks stacked at the transcript tail is a wall; several share one block
 	// (formingblock.go).
 	waits []preflight
-	// mem is the memory place's state: the snapshot it is drawing, the shelves that
-	// are unrolled, and the filter (place_memory.go).
+	// mem is the Memories tab's state: the snapshot it is drawing, the groups
+	// that are open, and the filter (place_memories.go).
 	mem memoryPlace
-	// memory is the store the place reads and changes. It is optional because
-	// memory-off sessions must have no capability behind the place.
+	// memory is the store the tab reads and changes. It is optional because a
+	// session whose memory store could not be opened has no capability behind
+	// the tab.
 	memory memoryStore
 	// searchStatus names the web plug the next call will use.
 	searchStatus func() string
@@ -3227,6 +3228,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
+	}
+	if from := strings.TrimSpace(opts.UpdatedFrom); from != "" {
+		a.note(updatedFromNote(from, a.updateRunning))
 	}
 	if a.resumed && a.file != "" {
 		a.note(a.resumedNote())
@@ -5410,6 +5414,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case memoryReplyMsg:
 		a.adoptMemoryReply(msg)
+		return a, nil
+
+	case memoryPlaceDoneMsg:
+		a.adoptMemoryPlaceDone(msg)
+		return a, nil
+
+	case memoryOriginMsg:
+		a.adoptMemoryOrigin(msg)
 		return a, nil
 
 	case compactedMsg:
@@ -8063,12 +8075,9 @@ func (a *app) slash(line string) tea.Cmd {
 	case "remember":
 		return a.runRemember(rest)
 
-	case "forget":
-		return a.runForget(rest)
-
 	case "always":
-		// The person's rules (memory.go's [app.runAlways]): bare, the ones in
-		// force here; with words, one kept.
+		// The same errand as /remember (memory.go's [app.runAlways]): bare,
+		// every line kept here; with words, one kept.
 		return a.runAlways(rest)
 
 	case "crew":

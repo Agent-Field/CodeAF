@@ -317,7 +317,7 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	// after the six with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+7`…`alt+8` are on it.
 	if bar := after[navRow]; !strings.Contains(bar, "1 Home") || !strings.Contains(bar, "2 AI teams") || !strings.Contains(bar, "3 Chats") ||
-		!strings.Contains(bar, "6 Settings") || !strings.Contains(bar, "7 Automations") || !strings.Contains(bar, "8 Memory") || strings.Contains(bar, "9 search") {
+		!strings.Contains(bar, "6 Settings") || !strings.Contains(bar, "7 Automations") || !strings.Contains(bar, "8 Memories") || strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -813,19 +813,19 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 // the automations beside it. Numbered shortcuts retain their previous
 // destinations.
 //
-// EIGHT WORDS NEED EIGHTY-FOUR COLUMNS. At eighty the two utilities on the
+// EIGHT WORDS NEED EIGHTY-SIX COLUMNS. At eighty the two utilities on the
 // right fold behind `more ▾`, and nothing a person can reach is lost: the fold
 // is a door onto exactly them (navmore.go).
 func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
-	for _, width := range []int{84, 120, 200} {
+	for _, width := range []int{86, 120, 200} {
 		bar := navPlaces(a, width, false)
-		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Automations", "Spend", "Settings") {
+		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memories", "Automations", "Spend", "Settings") {
 			t.Fatalf("at %d columns the bar is not the eight places in order: %q", width, bar)
 		}
 	}
 	bar := navPlaces(a, 80, false)
-	if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Automations") {
+	if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memories", "Automations") {
 		t.Fatalf("at 80 columns the bar does not keep the automations beside memory: %q", bar)
 	}
 	if !pagesHold(a.navMore.folded, pageSpend) || !pagesHold(a.navMore.folded, pageSettings) {
@@ -837,7 +837,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	if a.page == pageAutomations {
 		t.Fatal("the lab opened on the automations, which proves nothing about the bar at rest")
 	}
-	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Memory  Automations  Spend") {
+	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Memories  Automations  Spend") {
 		t.Fatalf("at rest the bar does not carry the automations between memory and spend: %q", bar)
 	}
 }

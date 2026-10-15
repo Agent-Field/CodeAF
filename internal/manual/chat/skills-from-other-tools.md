@@ -63,10 +63,11 @@ is known by its own folder name, not Claude Code's `plugin:skill` spelling.
 
 ## Do skills work with memory off
 
-Yes. Turning `memory.enabled` off stops codeaf remembering anything about you
-across conversations; it does not take your skills away. codeaf builds the
-shelf from the folders for that conversation's process and discards it when
-the process ends.
+Yes. Turning `memory.enabled` (`notice things to remember`) off stops only
+codeaf keeping lines about you on its own; it does not take your skills away,
+and the shelf stays in the memory database. If that database could not be opened
+at all, codeaf builds the shelf from the folders for that conversation's process
+and discards it when the process ends.
 
 ## What is not read
 

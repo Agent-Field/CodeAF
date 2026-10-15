@@ -473,6 +473,10 @@ type Options struct {
 	// retry loop, and the cross-terminal install lock. Nil leaves the launch
 	// notice as a one-line note with no offer behind it.
 	UpdateAuto *UpdateCoordinator
+	// UpdatedFrom is the build the launch replaced before this window opened
+	// (cmd/codeaf's prelaunch.go), or "". The window's first lines say so,
+	// because what the old build printed is under the chat by now.
+	UpdatedFrom string
 
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the

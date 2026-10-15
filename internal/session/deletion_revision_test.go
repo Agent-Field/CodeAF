@@ -245,9 +245,9 @@ func TestConversationDeletionPreservesSavedMemoriesAndTheirSourceIdentity(t *tes
 		t.Fatal(err)
 	}
 	for _, m := range memories {
-		rows, err := brain.GetMemories([]string{m.Owner}, []string{m.ID})
-		if err != nil || len(rows) != 1 || rows[0].SourceSession != "conversation" {
-			t.Fatalf("saved memory changed: %+v %v", rows, err)
+		row, found, err := brain.MemoryRecord(m.ID)
+		if err != nil || !found || row.Status != store.MemoryActive || row.SourceSession != "conversation" {
+			t.Fatalf("saved memory changed: %+v %v %v", row, found, err)
 		}
 	}
 }
