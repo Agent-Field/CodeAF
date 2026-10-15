@@ -691,6 +691,13 @@ type Event struct {
 	Tool       string
 	Hint       string
 	Err        error
+	// ErrKind, ErrStatus and ErrWords sort an EventError for a reader on the
+	// far side of a wire, where the typed cause cannot travel and only Err's
+	// sentence does ([ClassifyTurnError]). They are empty on every other kind
+	// and on an event that never crossed a wire.
+	ErrKind   string `json:"ErrKind,omitempty"`
+	ErrStatus int    `json:"ErrStatus,omitempty"`
+	ErrWords  string `json:"ErrWords,omitempty"`
 	// Discard says an EventError ended a cut attempt whose streamed text was
 	// never a reply. The surface withdraws that attempt before drawing the
 	// error, as it does for EventRetrying, without counting another retry.
@@ -1205,6 +1212,10 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// DeterministicNames names the conversation from its first message by rule
+	// ([FirstMessageName]) instead of asking a model, for the desktop app.
+	DeterministicNames bool
+
 	// WaitForBeltSteps is for the run worker that enforces its limits and
 	// delivers notes from tool-end events. Its sole event reader must close
 	// Event.BeltStepHandled after processing each such event. Other agents

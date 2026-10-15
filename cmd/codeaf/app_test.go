@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -136,6 +138,10 @@ type fakeConversation struct {
 	questions   chan session.Event
 	endLane     func()
 	answers     []session.Answer
+	model       string
+	rail        float64
+	remembered  []session.ConsentScope
+	texts       []string
 	// onAnswer, when set, is what the engine does with an answer.
 	onAnswer func(session.Answer)
 }
@@ -172,6 +178,7 @@ func (f *fakeConversation) raise(event session.Event) {
 func (f *fakeConversation) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
 	f.mu.Lock()
 	f.submits++
+	f.texts = append(f.texts, text)
 	script, hold := f.script, f.hold
 	f.mu.Unlock()
 	events := make(chan session.Event)
@@ -186,8 +193,27 @@ func (f *fakeConversation) Submit(ctx context.Context, text string) (<-chan sess
 	}()
 	return events, nil
 }
-func (f *fakeConversation) Interrupt()        { f.mu.Lock(); f.interrupted++; f.mu.Unlock() }
-func (f *fakeConversation) Model() string     { return "deepseek/deepseek-v4-flash" }
+func (f *fakeConversation) Interrupt() { f.mu.Lock(); f.interrupted++; f.mu.Unlock() }
+func (f *fakeConversation) Model() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.model != "" {
+		return f.model
+	}
+	return "deepseek/deepseek-v4-flash"
+}
+func (f *fakeConversation) SetModel(model string) { f.mu.Lock(); f.model = model; f.mu.Unlock() }
+func (f *fakeConversation) SetSpendRail(usd float64) error {
+	f.mu.Lock()
+	f.rail = usd
+	f.mu.Unlock()
+	return nil
+}
+func (f *fakeConversation) ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope) {
+	f.mu.Lock()
+	f.remembered = append(f.remembered, scope)
+	f.mu.Unlock()
+}
 func (f *fakeConversation) Title() string     { return "" }
 func (f *fakeConversation) NeedsPerson() bool { f.mu.Lock(); defer f.mu.Unlock(); return f.needs }
 func (f *fakeConversation) WatchTaskUpdates() (<-chan session.Event, func()) {
@@ -285,7 +311,7 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
 
-	agent, err := backend.CreateAgent(t.TempDir(), "deepseek/deepseek-v4-flash")
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir(), Model: "deepseek/deepseek-v4-flash"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,8 +333,8 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	// The first event is the create's own agent.changed.
 	got := rec.events[1 : done+2]
 	want := []string{
-		appwire.EventAgentChanged, appwire.EventTurnStarted,
-		appwire.EventTurnDelta, appwire.EventTurnDelta,
+		appwire.EventAgentChanged, appwire.EventTurnStarted, appwire.EventEntryAdded,
+		appwire.EventTurnDelta, appwire.EventTurnDelta, appwire.EventEntryAdded,
 		appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool,
 		appwire.EventTaskChanged, appwire.EventAgentChanged, appwire.EventTurnDone, appwire.EventAgentChanged,
 	}
@@ -322,15 +348,21 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if d := data[1].(appwire.TurnStarted); d.Turn != turn || d.Agent != agent.ID {
 		t.Fatalf("turn.started = %+v", d)
 	}
-	if d := data[2].(appwire.TurnDelta); d.Kind != appwire.DeltaThinking || d.Text != "hmm" {
+	if e := data[2].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUser || e.Text != "fix it" || e.Turn != turn || e.Agent != agent.ID {
+		t.Fatalf("the person's entry = %+v", e)
+	}
+	if d := data[3].(appwire.TurnDelta); d.Kind != appwire.DeltaThinking || d.Text != "hmm" {
 		t.Fatalf("thinking = %+v", d)
 	}
-	if d := data[3].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
+	if d := data[4].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
 		t.Fatalf("text = %+v", d)
 	}
-	begin := data[4].(appwire.TurnTool)
-	end := data[5].(appwire.TurnTool)
-	failed := data[7].(appwire.TurnTool)
+	if e := data[5].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryAnswer || e.Text != "hello world" || e.Thinking != "hmm" {
+		t.Fatalf("the answer entry = %+v", e)
+	}
+	begin := data[6].(appwire.TurnTool)
+	end := data[7].(appwire.TurnTool)
+	failed := data[9].(appwire.TurnTool)
 	if begin.Phase != appwire.PhaseBegin || begin.Call != "c1" || begin.Name != "read" || begin.OK != nil {
 		t.Fatalf("begin = %+v", begin)
 	}
@@ -340,10 +372,10 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if failed.Phase != appwire.PhaseEnd || failed.OK == nil || *failed.OK || failed.Summary != "exit status 1" {
 		t.Fatalf("failed = %+v", failed)
 	}
-	if task := data[8].(appwire.TaskChanged).Task; task.ID != "3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
+	if task := data[10].(appwire.TaskChanged).Task; task.ID != "3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
 		t.Fatalf("task = %+v", task)
 	}
-	if d := data[10].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
+	if d := data[12].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
 		t.Fatalf("turn.done = %+v", d)
 	}
 }
@@ -358,7 +390,7 @@ func TestAppSendRefusesBusyAndReportsAFailedTurn(t *testing.T) {
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
-	agent, err := backend.CreateAgent(t.TempDir(), "")
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +427,7 @@ func TestAppLetsAnIdleConversationGoAndTheNextSendReopensIt(t *testing.T) {
 	defer backend.Close()
 	clock := time.Now()
 	backend.now = func() time.Time { return clock }
-	agent, err := backend.CreateAgent(t.TempDir(), "")
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +477,7 @@ func TestAppCloseSaysClosedAndUnknownIdsAreNotFound(t *testing.T) {
 	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
 	t.Setenv(home.EnvVar, t.TempDir())
-	agent, err := backend.CreateAgent(t.TempDir(), "")
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +510,7 @@ func TestAppHoldsARealConversationInProcess(t *testing.T) {
 	_, workspace := wakeEnvironment(t, root)
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
-	agent, err := backend.CreateAgent(workspace, "")
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace})
 	if err != nil {
 		backend.Close()
 		t.Fatalf("create = %v", err)
@@ -529,6 +561,28 @@ func TestAppHoldsARealConversationInProcess(t *testing.T) {
 	if !backend.assembled.Load() {
 		t.Fatal("the backend did not record that it built a conversation")
 	}
+
+	// The transcript reads back with nothing held: the person's words, then
+	// the reply, oldest first; a page of one is the newest, with more before.
+	entries, more, err := backend.Entries(agent.ID, "", appwire.MaxEntries)
+	if err != nil || more || len(entries) < 2 {
+		t.Fatalf("entries = %+v, more %v, %v", entries, more, err)
+	}
+	if first := entries[0]; first.Kind != appwire.EntryUser || first.Text != "say done" {
+		t.Fatalf("first entry = %+v", first)
+	}
+	last := entries[len(entries)-1]
+	if last.Kind != appwire.EntryAnswer || !strings.Contains(last.Text, "done") {
+		t.Fatalf("last entry = %+v", last)
+	}
+	page, more, err := backend.Entries(agent.ID, "", 1)
+	if err != nil || !more || len(page) != 1 || page[0].ID != last.ID {
+		t.Fatalf("a page of one = %+v, more %v, %v", page, more, err)
+	}
+	earlier, _, err := backend.Entries(agent.ID, last.ID, 1)
+	if err != nil || len(earlier) != 1 || earlier[0].ID != entries[len(entries)-2].ID {
+		t.Fatalf("the page before = %+v, %v", earlier, err)
+	}
 }
 
 func appAskEvent(kind string) func(string, any) bool {
@@ -551,7 +605,7 @@ func TestAppAsksOpenAnswerAndCloseThroughTheQuestionLane(t *testing.T) {
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
-	agent, err := backend.CreateAgent(t.TempDir(), "")
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,7 +620,8 @@ func TestAppAsksOpenAnswerAndCloseThroughTheQuestionLane(t *testing.T) {
 	rec.mu.Lock()
 	opened := rec.data[i].(appwire.AskOpened).Ask
 	rec.mu.Unlock()
-	if opened.ID != "consent:4" || opened.Kind != appwire.AskApproval || opened.Title != "bash rm -rf build" || opened.Detail != "bash asks first" || len(opened.Options) != 3 || opened.Options[2].Label != "deny" {
+	if opened.ID != "consent:4" || opened.Kind != appwire.AskApproval || opened.Subkind != appwire.SubkindPermission || opened.Title != "bash rm -rf build" || opened.Detail != "bash asks first" || len(opened.Options) != 3 ||
+		opened.Options[0].ID != appwire.OptionAllowOnce || opened.Options[1].ID != appwire.OptionDeny || opened.Options[1].Label != "deny" || opened.Options[2].ID != appwire.OptionAlways {
 		t.Fatalf("ask = %+v", opened)
 	}
 	asks, err := backend.ListAsks(agent.ID)
@@ -574,10 +629,10 @@ func TestAppAsksOpenAnswerAndCloseThroughTheQuestionLane(t *testing.T) {
 		t.Fatalf("asks.list = %+v, %v", asks, err)
 	}
 	var wire *appwire.Error
-	if err := backend.AnswerAsk(agent.ID, "consent:4", "9", ""); !errors.As(err, &wire) || wire.Code != appwire.CodeBadParams {
-		t.Fatalf("answer with an option not offered = %v", err)
+	if err := backend.AnswerAsk(agent.ID, "consent:4", "1", ""); !errors.As(err, &wire) || wire.Code != appwire.CodeBadParams {
+		t.Fatalf("answer with the engine's key instead of the app's = %v", err)
 	}
-	if err := backend.AnswerAsk(agent.ID, "consent:4", "1", ""); err != nil {
+	if err := backend.AnswerAsk(agent.ID, "consent:4", appwire.OptionAllowOnce, ""); err != nil {
 		t.Fatal(err)
 	}
 	closed := rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskClosed))
@@ -586,11 +641,15 @@ func TestAppAsksOpenAnswerAndCloseThroughTheQuestionLane(t *testing.T) {
 		return ok && c.Agent.State == appwire.StateIdle
 	})
 	rec.mu.Lock()
-	if c := rec.data[closed].(appwire.AskClosed); c.ID != "consent:4" || c.By != appwire.ClosedByApp {
+	if c := rec.data[closed].(appwire.AskClosed); c.ID != "consent:4" || c.By != appwire.ClosedByApp || c.Option != appwire.OptionAllowOnce || c.At.IsZero() {
 		rec.mu.Unlock()
 		t.Fatalf("ask.closed = %+v", c)
 	}
+	receipt, ok := rec.data[closed+1].(appwire.EntryAdded)
 	rec.mu.Unlock()
+	if !ok || receipt.Entry.Kind != appwire.EntryReceipt || !strings.HasPrefix(receipt.Entry.Text, "Allowed once · you · ") {
+		t.Fatalf("the receipt = %+v", receipt)
+	}
 	conv.mu.Lock()
 	got := conv.answers[0]
 	conv.mu.Unlock()
@@ -623,7 +682,7 @@ func TestAppADeadConversationReadsStoppedAndTheNextSendReopensIt(t *testing.T) {
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
 	defer backend.Close()
-	agent, err := backend.CreateAgent(t.TempDir(), "")
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -689,7 +748,7 @@ func TestAppAnswersARealApprovalAndRecordsTheWorkspaceAsTheLaunchFolder(t *testi
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
 	defer backend.Close()
-	agent, err := backend.CreateAgent(workspace, "")
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace})
 	if err != nil {
 		t.Fatalf("create = %v", err)
 	}
@@ -769,4 +828,398 @@ func TestAppAnnouncesAClosedCrewAsRemoved(t *testing.T) {
 		changed, ok := data.(appwire.CrewChanged)
 		return ok && changed.Crew.Name == "pier"
 	})
+}
+
+// CREATED WITH WORDS, AN AGENT STARTS AT ONCE AND IS NAMED BY THEM. No
+// workspace is the home folder; the budget is the conversation's own limit,
+// set before the first turn; the title is the first words cut at forty
+// characters with an ellipsis; the turn starts with the words given.
+func TestAppCreateWithTextStartsTheTurnAndNamesTheAgent(t *testing.T) {
+	homeDir := resolvedTempDir(t)
+	t.Setenv("HOME", homeDir)
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	budget := 3.0
+	words := "Please fix the flaky parser test in the lexer package before lunch"
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Text: words, BudgetUSD: &budget})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agent.Workspace != homeDir {
+		t.Fatalf("workspace = %q, want the home folder %q", agent.Workspace, homeDir)
+	}
+	if want := session.FirstMessageName(words); agent.Title != want || !strings.HasSuffix(want, "…") || len([]rune(want)) > 41 {
+		t.Fatalf("title = %q, want %q", agent.Title, want)
+	}
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		started, ok := data.(appwire.TurnStarted)
+		return ok && started.Agent == agent.ID
+	})
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+	conv.mu.Lock()
+	defer conv.mu.Unlock()
+	if conv.rail != budget || len(conv.texts) != 1 || conv.texts[0] != words {
+		t.Fatalf("rail %v, sent %q", conv.rail, conv.texts)
+	}
+}
+
+// A FAILED TURN IS SORTED AND CAN BE RUN AGAIN. A provider's refusal ends the
+// turn as provider with its status and its own words, and leaves an error
+// entry; agents.retry sends the same words again; with nothing failed it is
+// not found.
+func TestAppSortsAProviderFailureAndRetriesIt(t *testing.T) {
+	refused := &provider.APIError{Status: 429, Message: "upstream is rate limited"}
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventError, Err: refused}}}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire *appwire.Error
+	if _, err := backend.Retry(agent.ID); !errors.As(err, &wire) || wire.Code != appwire.CodeNotFound {
+		t.Fatalf("retry with nothing failed = %v", err)
+	}
+	if _, err := backend.Send(agent.ID, "summarise the repo"); err != nil {
+		t.Fatal(err)
+	}
+	i := rec.waitFor(t, 5*time.Second, appTurnDone)
+	rec.mu.Lock()
+	done := rec.data[i].(appwire.TurnDone)
+	errorEntry, _ := rec.data[i-1].(appwire.EntryAdded)
+	rec.mu.Unlock()
+	if done.OK || done.ErrorKind != appwire.ErrorProvider || done.Status != 429 || done.Error != "upstream is rate limited" {
+		t.Fatalf("turn.done = %+v", done)
+	}
+	if e := errorEntry.Entry; e.Kind != appwire.EntryError || e.ErrorKind != appwire.ErrorProvider || e.Status != 429 || e.Text != done.Error {
+		t.Fatalf("the error entry = %+v", e)
+	}
+	// The next try goes through.
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.State == appwire.StateIdle
+	})
+	conv.mu.Lock()
+	conv.script = []session.Event{{Kind: session.EventTurnDone}}
+	conv.mu.Unlock()
+	turn, err := backend.Retry(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		d, ok := data.(appwire.TurnDone)
+		return ok && d.Turn == turn && d.OK
+	})
+	conv.mu.Lock()
+	texts := append([]string(nil), conv.texts...)
+	conv.mu.Unlock()
+	if len(texts) != 2 || texts[1] != "summarise the repo" {
+		t.Fatalf("sent %q", texts)
+	}
+	if _, err := backend.Retry(agent.ID); !errors.As(err, &wire) || wire.Code != appwire.CodeNotFound {
+		t.Fatalf("retry after a good turn = %v", err)
+	}
+}
+
+// The error kinds a turn's failure is sorted into.
+func TestAppTurnFailureKinds(t *testing.T) {
+	for _, c := range []struct {
+		err    error
+		kind   string
+		status int
+	}{
+		{&provider.APIError{Status: 502, Message: "bad gateway"}, appwire.ErrorProvider, 502},
+		{session.ErrSpendRail, appwire.ErrorBudget, 0},
+		{context.Canceled, appwire.ErrorStopped, 0},
+		{errors.New("disk full"), appwire.ErrorOther, 0},
+	} {
+		kind, status, words := appTurnFailure(session.Event{Kind: session.EventError, Err: c.err})
+		if kind != c.kind || status != c.status || words == "" {
+			t.Errorf("%v: kind %q status %d words %q", c.err, kind, status, words)
+		}
+	}
+}
+
+// agents.set_model moves the conversation and says so.
+func TestAppSetModelMovesTheConversation(t *testing.T) {
+	conv := &fakeConversation{}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err := backend.SetModel(agent.ID, "qwen/qwen3-coder")
+	if err != nil || moved.Model != "qwen/qwen3-coder" {
+		t.Fatalf("set_model = %+v, %v", moved, err)
+	}
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.Model == "qwen/qwen3-coder"
+	})
+}
+
+// ALWAYS WRITES A RULE THE ENGINE HONOURS. The approval names the command the
+// turn announced; answering always banks that one command line in the
+// person's own profile and hands the engine the rule-scoped answer, so the
+// next call like it is answered by the rule. A call that cannot be undone
+// offers no always at all.
+func TestAppAlwaysWritesABashRule(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	hold := make(chan struct{})
+	conv := &fakeConversation{hold: hold, script: []session.Event{
+		{Kind: session.EventConsentRequest, ID: 4, Tool: "bash", Args: `{"command":"go test ./internal/lexer/"}`},
+	}}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer func() { close(hold); backend.Close() }()
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Send(agent.ID, "run the lexer tests"); err != nil {
+		t.Fatal(err)
+	}
+	// The pump has seen the call once the turn's own event is behind it.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		backend.mu.Lock()
+		_, seen := backend.agents[agent.ID].live.consents[4]
+		backend.mu.Unlock()
+		if seen {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the turn's approval call was never recorded")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	q := session.Question{ID: 4, Kind: session.QuestionConsent, Head: "bash go test ./internal/lexer/", Options: session.AnswerOptions(session.QuestionConsent)}
+	conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
+	rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
+	if err := backend.AnswerAsk(agent.ID, "consent:4", appwire.OptionAlways, ""); err != nil {
+		t.Fatal(err)
+	}
+	conv.mu.Lock()
+	remembered, answers := conv.remembered, len(conv.answers)
+	conv.mu.Unlock()
+	if len(remembered) != 1 || remembered[0] != session.ConsentRule || answers != 0 {
+		t.Fatalf("remembered %v, answered %d through the question door", remembered, answers)
+	}
+	if rules := config.BashApprovalsAt(profile); !strings.Contains(rules, "go test ./internal/lexer/") {
+		t.Fatalf("the profile's shell rules = %s", rules)
+	}
+	// The engine retires the question once the call goes on; the receipt says always.
+	conv.raise(session.Event{Kind: session.EventQuestionWithdrawn, Question: &q})
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		e, ok := data.(appwire.EntryAdded)
+		return ok && e.Entry.Kind == appwire.EntryReceipt && strings.HasPrefix(e.Entry.Text, "Always allowed · you · ")
+	})
+
+	final := session.Question{ID: 5, Kind: session.QuestionConsent, Head: "bash rm -rf dist", Stakes: session.StakesIrreversible, Options: session.AnswerOptions(session.QuestionConsent)}
+	conv.raise(session.Event{Kind: session.EventQuestion, Question: &final})
+	i := rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		o, ok := data.(appwire.AskOpened)
+		return ok && o.Ask.ID == "consent:5"
+	})
+	rec.mu.Lock()
+	ask := rec.data[i].(appwire.AskOpened).Ask
+	rec.mu.Unlock()
+	if !ask.Irreversible || len(ask.Options) != 2 || ask.Options[0].ID != appwire.OptionAllowOnce || ask.Options[1].ID != appwire.OptionDeny {
+		t.Fatalf("an irreversible ask = %+v", ask)
+	}
+}
+
+// settings.get reads the profile's rows, and a figure nobody set is null.
+func TestAppSettingsAndSpendReadTheProfile(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	if err := os.WriteFile(config.BudgetConfigPath(profile), []byte(`{"model.talk":"qwen/qwen3-coder","tools.approvalMode":"deny","daily_budget_usd":12}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backend := newAppBackend(newAppRecorder(), nil)
+	defer backend.Close()
+	settings, err := backend.Settings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.DefaultModel != "qwen/qwen3-coder" || settings.AsksBefore != "deny" || settings.BudgetUSD != nil || settings.DayCapUSD == nil || *settings.DayCapUSD != 12 {
+		t.Fatalf("settings = %+v (day cap %v)", settings, settings.DayCapUSD)
+	}
+	spend, err := backend.SpendToday()
+	if err != nil || spend.TodayUSD != 0 || spend.DayCapUSD == nil || *spend.DayCapUSD != 12 {
+		t.Fatalf("spend = %+v, %v", spend, err)
+	}
+}
+
+// models.list answers what the profile remembers of the service's list, and
+// reaches no network when there is one.
+func TestAppModelsListReadsTheRememberedList(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1/v1")
+	settings, err := config.LoadKeyless()
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := catalog.Options{BaseURL: settings.BaseURL, Dir: settings.ProfileDir}
+	if err := catalog.Remember(options, []catalog.Model{{ID: "qwen/qwen3-coder", Name: "Qwen3 Coder"}, {ID: "deepseek/deepseek-v4-flash"}}); err != nil {
+		t.Fatal(err)
+	}
+	backend := newAppBackend(newAppRecorder(), nil)
+	defer backend.Close()
+	models, err := backend.ListModels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]appwire.Model{}
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+	if m := byID["qwen/qwen3-coder"]; m.Name != "Qwen3 Coder" || m.Provider != "qwen" {
+		t.Fatalf("models = %+v", models)
+	}
+	if m := byID["deepseek/deepseek-v4-flash"]; m.Name != "deepseek/deepseek-v4-flash" || m.Provider != "deepseek" {
+		t.Fatalf("models = %+v", models)
+	}
+	if backend.models != nil {
+		t.Fatal("a remembered list still started a fetch")
+	}
+}
+
+// A REAL ALWAYS, HONOURED BY THE ENGINE. Every shell call asks first; the
+// first turn's call is answered always from the app, which writes the command
+// down as a rule; the second turn makes the same call and is not asked at all,
+// because the engine's own gate now reads the rule.
+func TestAppARealAlwaysIsHonouredOnTheNextCall(t *testing.T) {
+	root := resolvedTempDir(t)
+	_, workspace := wakeEnvironment(t, root)
+	model := consentSource(t, "printf app-always-probe")
+	t.Cleanup(model.Close)
+	t.Setenv("CODEAF_BASE_URL", model.URL)
+	state := filepath.Join(root, "state")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "config.json"), []byte(`{"tools.approvalMode":"prompt"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, appOpenInProcess)
+	defer backend.Close()
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("create = %v", err)
+	}
+	first, err := backend.Send(agent.ID, "run the probe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := rec.waitFor(t, 30*time.Second, appAskEvent(appwire.EventAskOpened))
+	rec.mu.Lock()
+	ask := rec.data[i].(appwire.AskOpened).Ask
+	rec.mu.Unlock()
+	if ask.Subkind != appwire.SubkindPermission || len(ask.Options) != 3 || ask.Options[2].ID != appwire.OptionAlways {
+		t.Fatalf("ask = %+v", ask)
+	}
+	if err := backend.AnswerAsk(agent.ID, ask.ID, appwire.OptionAlways, ""); err != nil {
+		t.Fatalf("answer = %v", err)
+	}
+	rec.waitFor(t, 30*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AskClosed)
+		return ok && c.ID == ask.ID && c.By == appwire.ClosedByApp && c.Option == appwire.OptionAlways
+	})
+	rec.waitFor(t, 30*time.Second, func(event string, data any) bool {
+		d, ok := data.(appwire.TurnDone)
+		return ok && d.Turn == first && d.OK
+	})
+	if rules := config.BashApprovalsAt(config.ProfileDir()); !strings.Contains(rules, "printf app-always-probe") {
+		t.Fatalf("the profile's shell rules = %s", rules)
+	}
+	rec.waitFor(t, 30*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.State == appwire.StateIdle
+	})
+
+	second, err := backend.Send(agent.ID, "run it again")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := rec.waitFor(t, 30*time.Second, func(event string, data any) bool {
+		done, ok := data.(appwire.TurnDone)
+		return ok && done.Turn == second
+	})
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if done := rec.data[d].(appwire.TurnDone); !done.OK {
+		t.Fatalf("second turn = %+v", done)
+	}
+	asked, ran := 0, false
+	for j := i + 1; j <= d; j++ {
+		if _, ok := rec.data[j].(appwire.AskOpened); ok {
+			asked++
+		}
+		if tool, ok := rec.data[j].(appwire.TurnTool); ok && tool.Turn == second && tool.Phase == appwire.PhaseEnd && tool.Name == "bash" && tool.OK != nil && *tool.OK {
+			ran = true
+		}
+	}
+	if asked != 0 || !ran {
+		t.Fatalf("after always: asked %d more times, the call ran = %v", asked, ran)
+	}
+}
+
+// AN APP AGENT KEEPS THE NAME ITS FIRST MESSAGE GAVE IT. A real conversation
+// created with words is named by them at once, the engine's own naming does
+// not rename it once the turn is answered, and the disk says the same name
+// after the conversation is let go.
+func TestAppARealAgentKeepsItsFirstMessageName(t *testing.T) {
+	root := resolvedTempDir(t)
+	_, workspace := wakeEnvironment(t, root)
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, appOpenInProcess)
+	words := "say done and then tell me about the weather in the harbour today"
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace, Text: words})
+	if err != nil {
+		backend.Close()
+		t.Fatalf("create = %v", err)
+	}
+	want := session.FirstMessageName(words)
+	if agent.Title != want {
+		backend.Close()
+		t.Fatalf("title = %q, want %q", agent.Title, want)
+	}
+	rec.waitFor(t, 30*time.Second, appTurnDone)
+	if err := backend.Close(); err != nil {
+		t.Fatal(err)
+	}
+	rec.mu.Lock()
+	for j, event := range rec.events {
+		if c, ok := rec.data[j].(appwire.AgentChanged); ok && event == appwire.EventAgentChanged && c.Agent.Title != want {
+			rec.mu.Unlock()
+			t.Fatalf("renamed to %q", c.Agent.Title)
+		}
+	}
+	rec.mu.Unlock()
+	fresh := newAppBackend(newAppRecorder(), nil)
+	defer fresh.Close()
+	agents, err := fresh.ListAgents(workspace)
+	if err != nil || len(agents) != 1 || agents[0].Title != want {
+		t.Fatalf("listed = %+v, %v", agents, err)
+	}
 }

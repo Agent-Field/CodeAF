@@ -29,6 +29,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -43,8 +44,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -122,6 +125,11 @@ type appConversation interface {
 	// raises, answers and withdrawals included, from whichever window.
 	WatchQuestions() (<-chan session.Event, func())
 	ResolveQuestion(session.Answer) error
+	SetModel(model string)
+	SetSpendRail(usd float64) error
+	// ResolveConsentRemember answers one approval and says how long the answer
+	// lasts; the app uses it for an always that wrote a rule first.
+	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
 }
 
 // appOpenAsk is which conversation to open: a saved one by transcript, or a
@@ -167,7 +175,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		Session:   transcript,
 		New:       ask.New,
 		Model:     ask.Model,
-		Launch:    &remote.LaunchShape{Interactive: true},
+		// An app agent keeps the name its first message gave it: the engine's
+		// own naming does not rename it afterwards.
+		Launch: &remote.LaunchShape{Interactive: true, DeterministicNames: true},
 	}
 	loop, err := remote.Loopback(hello, remote.Options{
 		Boot: func(h remote.Hello) (*remote.Engine, error) {
@@ -200,6 +210,11 @@ type appBackend struct {
 	sweepStop chan struct{}
 	sweepDone chan struct{}
 	crews     *appCrewWatch
+	// models is the lazily warmed model list, made by the first models.list
+	// that found nothing remembered on disk and never before.
+	models *catalog.Catalog
+	// spent is the last figure spend.changed said, so it is said on a change.
+	spent float64
 }
 
 // appAgent is every agent this process has heard of: listed off the disk,
@@ -211,6 +226,9 @@ type appAgent struct {
 	view       appwire.Agent
 	transcript string
 	live       *appLive
+	// failed is the words of the last turn that ended in failure, which is
+	// what agents.retry sends again; a turn that ends well clears it.
+	failed string
 }
 
 // appLive is one conversation the process holds.
@@ -229,8 +247,20 @@ type appLive struct {
 	// engine's own question behind each, which is what an answer is built from.
 	asks      []appwire.Ask
 	questions map[string]session.Question
-	// answered names the asks this app answered, so their closing says so.
-	answered map[string]bool
+	// answered names the asks this app answered and the option it gave, so
+	// their closing says so.
+	answered map[string]string
+	// consents are the approvals' calls as the turn announced them, by the
+	// engine's question id: what an always is written down from.
+	consents map[uint64]appConsentCall
+	// stopping says the person stopped the running turn.
+	stopping bool
+}
+
+// appConsentCall is the call one approval is about.
+type appConsentCall struct {
+	Tool string
+	Args string
 }
 
 // needsYou is the one reading of "waiting on the person": an open ask, or the
@@ -258,13 +288,28 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		sweepStop: make(chan struct{}),
 		sweepDone: make(chan struct{}),
 	}
-	go b.sweep()
+	guard.Go("app/sweep", b.sweep)
 	return b
 }
 
 // appAgentID is a conversation's id from its transcript: the folder's name.
 func appAgentID(transcript string) string {
 	return filepath.Base(filepath.Dir(filepath.Clean(transcript)))
+}
+
+// locked runs fn holding b.mu. Every critical section in this file goes
+// through it or opens with a deferred unlock, so a panic a guard absorbs never
+// leaves the lock held (internal/guard's lock law).
+func (b *appBackend) locked(fn func()) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	fn()
+}
+
+// agent answers the record for id, making one if this is the first time.
+func (b *appBackend) agent(id string) (a *appAgent) {
+	b.locked(func() { a = b.agentLocked(id) })
+	return a
 }
 
 // agentLocked answers the record for id, making one if this is the first time.
@@ -318,10 +363,13 @@ func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 // find answers the agent for id, reading the disk for one this process has not
 // heard of yet.
 func (b *appBackend) find(id string) (*appAgent, error) {
-	b.mu.Lock()
-	a := b.agents[id]
-	b.mu.Unlock()
-	if a != nil && a.transcript != "" {
+	var a *appAgent
+	held := false
+	b.locked(func() {
+		a = b.agents[id]
+		held = a != nil && a.transcript != ""
+	})
+	if held {
 		return a, nil
 	}
 	row, ok := appRowOnDisk(id)
@@ -397,38 +445,59 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	}
 	// A conversation this process created and nobody has spoken in yet is not
 	// on the walk, which skips empty shells; it is still the app's agent.
-	b.mu.Lock()
-	for id, a := range b.agents {
-		if !seen[id] && a.live != nil && matches(a.view.Workspace) {
-			agents = append(agents, a.view)
+	b.locked(func() {
+		for id, a := range b.agents {
+			if !seen[id] && a.live != nil && matches(a.view.Workspace) {
+				agents = append(agents, a.view)
+			}
 		}
-	}
-	b.mu.Unlock()
+	})
 	sort.SliceStable(agents, func(i, j int) bool { return agents[i].UpdatedAt.After(agents[j].UpdatedAt) })
 	return agents, nil
 }
 
-// CreateAgent opens a new conversation in workspace.
-func (b *appBackend) CreateAgent(workspace, model string) (appwire.Agent, error) {
-	resolved, err := engineWorkspace(workspace)
+// CreateAgent opens a new conversation. With no workspace it is the person's
+// home folder; with a budget the conversation's own spend limit is set before
+// anything is spent; with words the first turn starts at once and the agent is
+// named by them.
+func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
+	// engineWorkspace answers the home folder for no workspace at all.
+	resolved, err := engineWorkspace(ask.Workspace)
 	if err != nil {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	}
 	if b.isClosing() {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
-	conn, err := b.open(appOpenAsk{Workspace: resolved, Model: strings.TrimSpace(model), New: true})
+	conn, err := b.open(appOpenAsk{Workspace: resolved, Model: strings.TrimSpace(ask.Model), New: true})
 	if err != nil {
 		return appwire.Agent{}, appEngineError(err)
 	}
-	id := appAgentID(conn.Transcript)
-	b.mu.Lock()
-	a := b.agentLocked(id)
-	b.mu.Unlock()
+	if ask.BudgetUSD != nil && *ask.BudgetUSD > 0 {
+		if err := conn.Conv.SetSpendRail(*ask.BudgetUSD); err != nil {
+			conn.Release()
+			return appwire.Agent{}, appEngineError(err)
+		}
+	}
+	a := b.agent(appAgentID(conn.Transcript))
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	view := b.hold(a, conn, resolved)
+	text := strings.TrimSpace(ask.Text)
+	if title := session.FirstMessageName(text); title != "" {
+		b.locked(func() {
+			a.view.Title = title
+			view = a.view
+		})
+	}
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	if text == "" {
+		return view, nil
+	}
+	if _, err := b.startLocked(a, text); err != nil {
+		return view, err
+	}
+	b.locked(func() { view = a.view })
 	return view, nil
 }
 
@@ -458,14 +527,16 @@ func (b *appBackend) ensure(a *appAgent) (appwire.Agent, bool, error) {
 
 // ensureLocked is [appBackend.ensure] for a caller already holding a.gate.
 func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
-	b.mu.Lock()
-	if a.live != nil {
-		view := a.view
-		b.mu.Unlock()
+	var view appwire.Agent
+	var transcript, workspace string
+	held := false
+	b.locked(func() {
+		view, held = a.view, a.live != nil
+		transcript, workspace = a.transcript, a.view.Workspace
+	})
+	if held {
 		return view, false, nil
 	}
-	transcript, workspace := a.transcript, a.view.Workspace
-	b.mu.Unlock()
 	if b.isClosing() {
 		return appwire.Agent{}, false, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
@@ -484,43 +555,46 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	live := &appLive{
 		conn: conn, box: appwire.NewOutbox(b.emit), lastUse: b.now(),
 		tasks: map[string]appwire.Task{}, lanesDone: make(chan struct{}), asksDone: make(chan struct{}),
-		questions: map[string]session.Question{}, answered: map[string]bool{},
+		questions: map[string]session.Question{}, answered: map[string]string{},
+		consents: map[uint64]appConsentCall{},
 	}
-	b.mu.Lock()
-	if conn.Transcript != "" {
-		a.transcript = conn.Transcript
-	}
-	if conn.Workspace != "" {
-		workspace = conn.Workspace
-	}
-	a.view.Workspace = workspace
-	if title := conn.Conv.Title(); title != "" {
-		a.view.Title = title
-	}
-	if model := conn.Conv.Model(); model != "" {
-		a.view.Model = model
-	}
-	a.view.State = live.restingState()
-	if a.view.UpdatedAt.IsZero() {
-		a.view.UpdatedAt = b.now()
-	}
-	a.live = live
-	view := a.view
-	b.mu.Unlock()
+	title, model := conn.Conv.Title(), conn.Conv.Model()
+	var view appwire.Agent
+	b.locked(func() {
+		if conn.Transcript != "" {
+			a.transcript = conn.Transcript
+		}
+		if conn.Workspace != "" {
+			workspace = conn.Workspace
+		}
+		a.view.Workspace = workspace
+		if title != "" {
+			a.view.Title = title
+		}
+		if model != "" {
+			a.view.Model = model
+		}
+		a.view.State = live.restingState()
+		if a.view.UpdatedAt.IsZero() {
+			a.view.UpdatedAt = b.now()
+		}
+		a.live = live
+		view = a.view
+	})
 	lane, stop := conn.Conv.WatchTaskUpdates()
 	live.stopTasks = stop
 	id := view.ID
-	go func() {
+	guard.Go("app/tasks", func() {
 		defer close(live.lanesDone)
 		for event := range lane {
 			if event.Kind == session.EventTaskUpdate && event.Task != nil {
 				b.taskNotice(id, live, event.Task)
 			}
 		}
-	}()
+	})
 	questions, stopQuestions := conn.Conv.WatchQuestions()
 	live.stopAsks = stopQuestions
-	go func() {
+	guard.Go("app/asks", func() {
 		defer close(live.asksDone)
 		for event := range questions {
 			b.questionEvent(a, id, live, event)
@@ -530,7 +604,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		// conversation away, so the only other way it ends is the engine
 		// behind it going (internal/remote's bury finishes every lane).
 		b.died(a, live)
-	}()
+	})
 	return view
 }
 
@@ -543,12 +617,106 @@ func appAskID(q session.Question) string {
 func appAskOf(agent string, q session.Question) appwire.Ask {
 	ask := appwire.Ask{ID: appAskID(q), Agent: agent, Kind: appwire.AskQuestion, Title: strings.TrimSpace(q.Head), Detail: strings.TrimSpace(q.Reason)}
 	if q.Kind == session.QuestionConsent {
-		ask.Kind = appwire.AskApproval
+		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindPermission
+		ask.Irreversible = q.Stakes == session.StakesIrreversible
 	}
-	for _, option := range q.Options {
-		ask.Options = append(ask.Options, appwire.AskOption{ID: option.Key, Label: option.Label})
+	for _, option := range appOptionsOf(q) {
+		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	return ask
+}
+
+// appOption is one answer as the app names it, with the engine key behind it.
+type appOption struct {
+	id, key, label string
+}
+
+// appOptionsOf is a question's answers in the app's names. A permission's are
+// allow_once, deny and always, in that order, and always is left off a call
+// that cannot be undone. Any other question keeps the engine's own keys, and so
+// does a permission whose answers are not the three the gate offers.
+func appOptionsOf(q session.Question) []appOption {
+	var plain []appOption
+	for _, option := range q.Options {
+		plain = append(plain, appOption{id: option.Key, key: option.Key, label: option.Label})
+	}
+	if q.Kind != session.QuestionConsent {
+		return plain
+	}
+	byID := map[string]appOption{}
+	for _, option := range q.Options {
+		action, known := session.AnswerFromKey(session.QuestionConsent, option.Key)
+		if !known {
+			return plain
+		}
+		id := appwire.OptionAllowOnce
+		switch {
+		case !action.Allow:
+			id = appwire.OptionDeny
+		case action.Scope == session.ConsentToolSession:
+			id = appwire.OptionAlways
+		}
+		if _, twice := byID[id]; twice {
+			return plain
+		}
+		byID[id] = appOption{id: id, key: option.Key, label: option.Label}
+	}
+	var mapped []appOption
+	for _, id := range []string{appwire.OptionAllowOnce, appwire.OptionDeny, appwire.OptionAlways} {
+		option, offered := byID[id]
+		if !offered || (id == appwire.OptionAlways && q.Stakes == session.StakesIrreversible) {
+			continue
+		}
+		mapped = append(mapped, option)
+	}
+	return mapped
+}
+
+// appOptionNamed finds the answer the app named by its id.
+func appOptionNamed(q session.Question, id string) (appOption, bool) {
+	for _, option := range appOptionsOf(q) {
+		if option.id == id {
+			return option, true
+		}
+	}
+	return appOption{}, false
+}
+
+// appOptionOfKey is the app's name for an answer the engine reports by key.
+func appOptionOfKey(q session.Question, key string) string {
+	for _, option := range appOptionsOf(q) {
+		if option.key == key {
+			return option.id
+		}
+	}
+	return ""
+}
+
+// appReceipt is the line a closed ask leaves in the conversation: what was
+// decided, by whom, and when, in the person's own clock.
+func appReceipt(by, option string, answer *session.Answer, at time.Time) string {
+	word := "Answered"
+	switch option {
+	case appwire.OptionAllowOnce:
+		word = "Allowed once"
+	case appwire.OptionDeny:
+		word = "Denied"
+	case appwire.OptionAlways:
+		word = "Always allowed"
+	}
+	who := "you"
+	switch by {
+	case appwire.ClosedByStopped:
+		return "Not answered · the agent stopped · " + at.Local().Format("15:04")
+	case appwire.ClosedByElsewhere:
+		if answer == nil {
+			return "No longer needed · " + at.Local().Format("15:04")
+		}
+		if answer.DecidedBy == session.DecidedByDial {
+			who = "your settings"
+		}
+	}
+	return word + " · " + who + " · " + at.Local().Format("15:04")
 }
 
 // questionEvent keeps the open asks in step with the question lane and says
@@ -562,41 +730,65 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 	switch event.Kind {
 	case session.EventQuestion:
 		ask := appAskOf(id, q)
-		b.mu.Lock()
-		if _, open := live.questions[askID]; open {
-			// The lane replays what is open when it is subscribed again, and
-			// a question restated in place is the same ask.
-			live.questions[askID] = q
-			for i := range live.asks {
-				if live.asks[i].ID == askID {
-					live.asks[i] = ask
+		restated, moved := false, false
+		var view appwire.Agent
+		b.locked(func() {
+			if _, open := live.questions[askID]; open {
+				// The lane replays what is open when it is subscribed again,
+				// and a question restated in place is the same ask.
+				restated = true
+				live.questions[askID] = q
+				for i := range live.asks {
+					if live.asks[i].ID == askID {
+						live.asks[i] = ask
+					}
 				}
+				return
 			}
-			b.mu.Unlock()
+			live.questions[askID] = q
+			live.asks = append(live.asks, ask)
+			view, moved = b.restateLocked(a, live)
+		})
+		if restated {
 			return
 		}
-		live.questions[askID] = q
-		live.asks = append(live.asks, ask)
-		view, moved := b.restateLocked(a, live)
-		b.mu.Unlock()
 		live.box.Event(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
 	case session.EventQuestionAnswered, session.EventQuestionWithdrawn:
-		b.mu.Lock()
-		if _, open := live.questions[askID]; !open {
-			b.mu.Unlock()
+		open, moved := false, false
+		by, option := appwire.ClosedByElsewhere, ""
+		var answer *session.Answer
+		var view appwire.Agent
+		b.locked(func() {
+			if _, open = live.questions[askID]; !open {
+				return
+			}
+			if event.Kind == session.EventQuestionAnswered {
+				answer = event.Answer
+				if answer == nil {
+					answer = &session.Answer{}
+				}
+				option = appOptionOfKey(live.questions[askID], answer.Key)
+			}
+			if given := live.answered[askID]; given != "" {
+				by, option = appwire.ClosedByApp, strings.TrimPrefix(given, appAnsweredMark)
+				if answer == nil {
+					answer = &session.Answer{}
+				}
+			}
+			b.dropAskLocked(live, askID)
+			view, moved = b.restateLocked(a, live)
+		})
+		if !open {
 			return
 		}
-		by := appwire.ClosedByElsewhere
-		if live.answered[askID] {
-			by = appwire.ClosedByApp
-		}
-		b.dropAskLocked(live, askID)
-		view, moved := b.restateLocked(a, live)
-		b.mu.Unlock()
-		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by})
+		at := b.now()
+		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
+		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+			ID: id + "-" + askID, Agent: id, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(by, option, answer, at),
+		}})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
@@ -605,6 +797,9 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 
 // dropAskLocked forgets one ask. Callers hold b.mu.
 func (b *appBackend) dropAskLocked(live *appLive, askID string) {
+	if q, ok := live.questions[askID]; ok && q.Kind == session.QuestionConsent {
+		delete(live.consents, q.ID)
+	}
 	delete(live.questions, askID)
 	delete(live.answered, askID)
 	kept := live.asks[:0]
@@ -637,22 +832,31 @@ func (b *appBackend) restateLocked(a *appAgent, live *appLive) (appwire.Agent, b
 // the agent reads stopped, its open asks close as stopped, and the next send
 // opens the conversation again.
 func (b *appBackend) died(a *appAgent, live *appLive) {
-	b.mu.Lock()
-	if a.live != live {
-		b.mu.Unlock()
+	mine := false
+	var view appwire.Agent
+	var asks []appwire.Ask
+	b.locked(func() {
+		if mine = a.live == live; !mine {
+			return
+		}
+		a.live = nil
+		a.view.State = appwire.StateStopped
+		view = a.view
+		asks = live.asks
+		live.asks, live.questions = nil, map[string]session.Question{}
+	})
+	if !mine {
 		return
 	}
-	a.live = nil
-	a.view.State = appwire.StateStopped
-	view := a.view
-	asks := live.asks
-	live.asks, live.questions = nil, map[string]session.Question{}
-	b.mu.Unlock()
+	at := b.now()
 	for _, ask := range asks {
-		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: view.ID, ID: ask.ID, By: appwire.ClosedByStopped})
+		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: view.ID, ID: ask.ID, By: appwire.ClosedByStopped, At: at})
+		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+			ID: view.ID + "-" + ask.ID, Agent: view.ID, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(appwire.ClosedByStopped, "", nil, at),
+		}})
 	}
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
-	go b.finish(live)
+	guard.Go("app/finish", func() { b.finish(live) })
 }
 
 // live answers the agent's held conversation, or nil.
@@ -671,68 +875,118 @@ func (b *appBackend) Send(id, text string) (uint64, error) {
 	// The gate keeps the idle sweep from letting the conversation go between
 	// opening it and starting the turn.
 	a.gate.Lock()
+	defer a.gate.Unlock()
 	view, opened, err := b.ensureLocked(a)
 	if err != nil {
-		a.gate.Unlock()
 		return 0, err
 	}
 	if opened {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	b.mu.Lock()
-	live := a.live
-	if live.running {
-		b.mu.Unlock()
-		a.gate.Unlock()
-		return 0, appwire.Errorf(appwire.CodeBusy, "this agent is already working on a turn")
+	return b.startLocked(a, text)
+}
+
+// Retry sends the words of the agent's last failed turn again.
+func (b *appBackend) Retry(id string) (uint64, error) {
+	a, err := b.find(id)
+	if err != nil {
+		return 0, err
 	}
-	live.running = true
-	live.lastUse = b.now()
-	turn := b.turns.Add(1)
-	b.mu.Unlock()
+	var text string
+	b.locked(func() { text = a.failed })
+	if text == "" {
+		return 0, appwire.Errorf(appwire.CodeNotFound, "this agent has no failed turn to run again")
+	}
+	return b.Send(id, text)
+}
+
+// startLocked starts one turn on a held conversation. The caller holds a.gate.
+func (b *appBackend) startLocked(a *appAgent, text string) (uint64, error) {
+	var id string
+	var live *appLive
+	var turn uint64
+	var refused error
+	b.locked(func() {
+		id, live = a.view.ID, a.live
+		switch {
+		case live == nil:
+			refused = appwire.Errorf(appwire.CodeEngine, "the conversation was let go before the turn could start")
+		case live.running:
+			refused = appwire.Errorf(appwire.CodeBusy, "this agent is already working on a turn")
+		default:
+			live.running, live.stopping = true, false
+			live.lastUse = b.now()
+			turn = b.turns.Add(1)
+		}
+	})
+	if refused != nil {
+		return 0, refused
+	}
 	events, err := live.conn.Conv.Submit(context.Background(), text)
 	if err != nil {
-		b.mu.Lock()
-		live.running = false
-		b.mu.Unlock()
-		a.gate.Unlock()
+		b.locked(func() { live.running = false })
 		return 0, appEngineError(err)
 	}
-	b.mu.Lock()
-	a.view.State = appwire.StateWorking
-	if live.needsYou() {
-		a.view.State = appwire.StateNeedsYou
-	}
-	a.view.UpdatedAt = b.now()
-	view = a.view
-	live.pumpDone = make(chan struct{})
-	b.mu.Unlock()
+	var view appwire.Agent
+	b.locked(func() {
+		a.view.State = appwire.StateWorking
+		if live.needsYou() {
+			a.view.State = appwire.StateNeedsYou
+		}
+		a.view.UpdatedAt = b.now()
+		view = a.view
+		live.pumpDone = make(chan struct{})
+	})
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
-	go b.pump(a, id, live, turn, events)
-	a.gate.Unlock()
+	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+		ID: appLiveEntryID(id, turn, 0), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text,
+	}})
+	guard.Go("app/turn", func() { b.pump(a, id, live, turn, text, events) })
 	return turn, nil
 }
 
 // pump maps one turn's session events onto the wire. It never waits on the
 // writer: everything goes into the agent's outbox.
-func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, events <-chan session.Event) {
+func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, text string, events <-chan session.Event) {
 	defer close(live.pumpDone)
 	ok, failure := true, ""
+	kind, status := "", 0
 	changed := func(mutate func(*appwire.Agent)) {
-		b.mu.Lock()
-		mutate(&a.view)
-		view := a.view
-		b.mu.Unlock()
+		var view appwire.Agent
+		b.locked(func() {
+			mutate(&a.view)
+			view = a.view
+		})
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	}
+	// The reply is said as an answer entry once a stretch of it is over: when
+	// a tool call starts after it, or when the turn ends.
+	entries := 0
+	entry := func(e appwire.Entry) {
+		entries++
+		e.ID, e.Agent, e.Turn, e.At = appLiveEntryID(id, turn, entries), id, turn, b.now()
+		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: e})
+	}
+	var reply, thinking strings.Builder
+	sayReply := func() {
+		words := strings.TrimSpace(reply.String())
+		if words != "" {
+			entry(appwire.Entry{Kind: appwire.EntryAnswer, Text: words, Thinking: strings.TrimSpace(thinking.String())})
+		}
+		reply.Reset()
+		thinking.Reset()
 	}
 	for event := range events {
 		switch event.Kind {
 		case session.EventTextDelta:
+			reply.WriteString(event.Text)
 			live.box.Delta(id, turn, appwire.DeltaText, event.Text)
 		case session.EventReasoning:
+			thinking.WriteString(event.Text)
 			live.box.Delta(id, turn, appwire.DeltaThinking, event.Text)
 		case session.EventToolBegin:
+			sayReply()
 			live.box.Event(appwire.EventTurnTool, appwire.TurnTool{Agent: id, Turn: turn, Call: event.CallID, Name: event.Tool, Phase: appwire.PhaseBegin, Summary: event.Hint})
 		case session.EventToolEnd, session.EventToolFailed:
 			succeeded := event.Kind == session.EventToolEnd
@@ -741,15 +995,20 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, ev
 				summary = event.Text
 			}
 			live.box.Event(appwire.EventTurnTool, appwire.TurnTool{Agent: id, Turn: turn, Call: event.CallID, Name: event.Tool, Phase: appwire.PhaseEnd, OK: &succeeded, Summary: redact.Secrets(summary)})
-		case session.EventError:
-			ok, failure = false, "the turn ended with an error"
-			if event.Err != nil {
-				failure = redact.Secrets(event.Err.Error())
+		case session.EventConsentRequest:
+			call := appConsentCall{Tool: event.Tool, Args: event.Args}
+			b.locked(func() { live.consents[event.ID] = call })
+		case session.EventNotice:
+			if words := strings.TrimSpace(event.Text); words != "" {
+				entry(appwire.Entry{Kind: appwire.EntryNotice, Text: redact.Secrets(words)})
 			}
+		case session.EventError:
+			ok = false
+			kind, status, failure = appTurnFailure(event)
 		case session.EventTurnDone:
 			// A turn the person steered ends once per stretch; the last ending
 			// on the stream is the turn's.
-			ok, failure = true, ""
+			ok, failure, kind, status = true, "", "", 0
 		case session.EventTitleChanged:
 			if title := strings.TrimSpace(event.Text); title != "" {
 				changed(func(v *appwire.Agent) { v.Title = title })
@@ -760,20 +1019,64 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, ev
 			}
 		}
 	}
-	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure})
-	b.mu.Lock()
-	live.running = false
-	live.lastUse = b.now()
-	if a.live != live {
-		// Let go or closed while the turn ran: that road has said the state.
-		b.mu.Unlock()
-		return
+	sayReply()
+	b.locked(func() {
+		if !ok && live.stopping {
+			kind = appwire.ErrorStopped
+		}
+		a.failed = ""
+		if !ok {
+			a.failed = text
+		}
+	})
+	if !ok {
+		entry(appwire.Entry{Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status})
 	}
-	a.view.State = live.restingState()
-	a.view.UpdatedAt = b.now()
-	view := a.view
-	b.mu.Unlock()
-	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
+	held := false
+	var view appwire.Agent
+	b.locked(func() {
+		live.running = false
+		live.lastUse = b.now()
+		// Let go or closed while the turn ran: that road has said the state.
+		if held = a.live == live; held {
+			a.view.State = live.restingState()
+			a.view.UpdatedAt = b.now()
+			view = a.view
+		}
+	})
+	if held {
+		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	}
+	b.spendMoved()
+}
+
+// appLiveEntryID names an entry said while its turn ran. The listing names the
+// same items by their place in the transcript instead ([appEntriesOf]).
+func appLiveEntryID(agent string, turn uint64, n int) string {
+	return agent + "-t" + strconv.FormatUint(turn, 10) + "-" + strconv.Itoa(n)
+}
+
+// appTurnFailure sorts a turn's error: its kind, the provider's status where
+// there is one, and the words a person reads, which for a provider refusal are
+// the provider's own.
+func appTurnFailure(event session.Event) (kind string, status int, words string) {
+	kind, status, words = event.ErrKind, event.ErrStatus, event.ErrWords
+	if kind == "" && event.Err != nil {
+		kind, status, words = session.ClassifyTurnError(event.Err)
+	}
+	switch kind {
+	case session.TurnErrorProvider, session.TurnErrorBudget, session.TurnErrorStopped:
+	default:
+		kind = appwire.ErrorOther
+	}
+	if kind != session.TurnErrorProvider || strings.TrimSpace(words) == "" {
+		words = "the turn ended with an error"
+		if event.Err != nil {
+			words = event.Err.Error()
+		}
+	}
+	return kind, status, redact.Secrets(strings.TrimSpace(words))
 }
 
 // appTaskState is a task's state in the protocol's five words, and "" for a
@@ -805,16 +1108,20 @@ func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNo
 		return
 	}
 	task := appwire.Task{ID: strconv.FormatUint(notice.ID, 10), Agent: id, Title: notice.Title, State: state, UpdatedAt: b.now()}
-	b.mu.Lock()
-	if before, ok := live.tasks[task.ID]; ok && before.State == task.State && (task.Title == "" || before.Title == task.Title) {
-		b.mu.Unlock()
+	same := false
+	b.locked(func() {
+		if before, ok := live.tasks[task.ID]; ok && before.State == task.State && (task.Title == "" || before.Title == task.Title) {
+			same = true
+			return
+		}
+		if task.Title == "" {
+			task.Title = live.tasks[task.ID].Title
+		}
+		live.tasks[task.ID] = task
+	})
+	if same {
 		return
 	}
-	if task.Title == "" {
-		task.Title = live.tasks[task.ID].Title
-	}
-	live.tasks[task.ID] = task
-	b.mu.Unlock()
 	live.box.Event(appwire.EventTaskChanged, appwire.TaskChanged{Task: task})
 }
 
@@ -826,6 +1133,7 @@ func (b *appBackend) Stop(id string) error {
 		return err
 	}
 	if live := b.liveOf(a); live != nil {
+		b.locked(func() { live.stopping = live.running })
 		live.conn.Conv.Interrupt()
 	}
 	return nil
@@ -838,24 +1146,28 @@ func (b *appBackend) CloseAgent(id string) error {
 	if err != nil {
 		return err
 	}
-	a.gate.Lock()
-	b.release(a)
-	b.mu.Lock()
-	a.view.State = appwire.StateClosed
-	view := a.view
-	b.mu.Unlock()
-	a.gate.Unlock()
+	view := b.closeAgent(a)
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	return nil
+}
+
+// closeAgent lets a's conversation go and marks it closed.
+func (b *appBackend) closeAgent(a *appAgent) (view appwire.Agent) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	b.release(a)
+	b.locked(func() {
+		a.view.State = appwire.StateClosed
+		view = a.view
+	})
+	return view
 }
 
 // release gives a's conversation back and flushes its last events. Callers
 // hold a.gate.
 func (b *appBackend) release(a *appAgent) {
-	b.mu.Lock()
-	live := a.live
-	a.live = nil
-	b.mu.Unlock()
+	var live *appLive
+	b.locked(func() { live, a.live = a.live, nil })
 	if live == nil {
 		return
 	}
@@ -903,6 +1215,10 @@ func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
 	return append([]appwire.Ask(nil), a.live.asks...), nil
 }
 
+// appAnsweredMark starts the value [appLive.answered] holds for an ask this app
+// answered, so an answer of words alone, with no option, is still marked.
+const appAnsweredMark = "app:"
+
 // AnswerAsk answers one open ask through the engine's own answer door, the one
 // the chat's question page uses. Its closing arrives on the question lane.
 func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
@@ -910,37 +1226,300 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 	if err != nil {
 		return err
 	}
-	b.mu.Lock()
-	live := a.live
+	var live *appLive
 	var q session.Question
-	open := false
-	if live != nil {
-		q, open = live.questions[askID]
-	}
-	if !open {
-		b.mu.Unlock()
-		return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", askID)
-	}
-	if option != "" {
-		if _, offered := q.Option(option); !offered {
-			b.mu.Unlock()
-			return appwire.Errorf(appwire.CodeBadParams, "the ask %s offers no option %q", askID, option)
+	var key string
+	var refused error
+	b.locked(func() {
+		live = a.live
+		open := false
+		if live != nil {
+			q, open = live.questions[askID]
 		}
+		if !open {
+			refused = appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", askID)
+			return
+		}
+		if option != "" {
+			picked, offered := appOptionNamed(q, option)
+			if !offered {
+				refused = appwire.Errorf(appwire.CodeBadParams, "the ask %s offers no option %q", askID, option)
+				return
+			}
+			key = picked.key
+		}
+		live.answered[askID] = appAnsweredMark + option
+		live.lastUse = b.now()
+	})
+	if refused != nil {
+		return refused
 	}
-	live.answered[askID] = true
-	live.lastUse = b.now()
-	b.mu.Unlock()
-	answer := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: option, Change: strings.TrimSpace(text)}
-	if option != "" {
-		answer.Picked = []string{option}
+	if q.Kind == session.QuestionConsent && option == appwire.OptionAlways && b.rememberAlways(b.consentCall(live, q.ID)) {
+		// THE RULE IS WRITTEN FIRST and the answer says so, and the engine
+		// reads the rules again before it lets the call go: the next call
+		// like this one is answered by the person's own settings.
+		live.conn.Conv.ResolveConsentRemember(q.ID, true, session.ConsentRule)
+		return nil
+	}
+	answer := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: key, Change: strings.TrimSpace(text)}
+	if key != "" {
+		answer.Picked = []string{key}
 	}
 	if err := live.conn.Conv.ResolveQuestion(answer); err != nil {
-		b.mu.Lock()
-		delete(live.answered, askID)
-		b.mu.Unlock()
+		b.locked(func() { delete(live.answered, askID) })
 		return appEngineError(err)
 	}
 	return nil
+}
+
+// appConsentWait bounds how long an always waits for the turn to have said
+// which call it is about. The question and the call travel on two lanes and the
+// question can arrive first; the wait is only ever paid on an always.
+const appConsentWait = 2 * time.Second
+
+// consentCall is the call approval id is about, as the turn announced it.
+func (b *appBackend) consentCall(live *appLive, id uint64) appConsentCall {
+	deadline := time.Now().Add(appConsentWait)
+	for {
+		var call appConsentCall
+		seen := false
+		b.locked(func() { call, seen = live.consents[id] })
+		if seen || time.Now().After(deadline) {
+			return call
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// rememberAlways writes an always down as a rule in the person's own profile:
+// the one command line for a shell call, the tool for any other. It reports
+// whether the rule is written; when it is not (a compound command, a settings
+// row that already answers otherwise, a call the turn never announced) the
+// always is the engine's own, for the rest of this conversation.
+func (b *appBackend) rememberAlways(call appConsentCall) bool {
+	tool := strings.TrimSpace(call.Tool)
+	if tool == "" {
+		return false
+	}
+	profile := config.ProfileDir()
+	if tool == "bash" {
+		var args struct {
+			Command string `json:"command"`
+		}
+		if err := json.Unmarshal([]byte(call.Args), &args); err != nil || strings.TrimSpace(args.Command) == "" {
+			return false
+		}
+		return config.RememberBashApproval(profile, args.Command) == nil
+	}
+	return config.RememberToolApproval(profile, tool, "allow") == nil
+}
+
+// Entries reads the agent's transcript off the disk, whether or not a
+// conversation is held for it: the journal is written as the turn goes.
+func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, bool, error) {
+	a, err := b.find(id)
+	if err != nil {
+		return nil, false, err
+	}
+	var transcript string
+	var at time.Time
+	b.locked(func() { transcript, at = a.transcript, a.view.UpdatedAt })
+	if transcript == "" {
+		return []appwire.Entry{}, false, nil
+	}
+	record := session.ReadTranscript(transcript)
+	all := appEntriesOf(id, append(append([]session.DisplayEntry(nil), record.Earlier...), record.Entries...), at)
+	if words := strings.TrimSpace(record.Unreadable); words != "" {
+		all = append(all, appwire.Entry{ID: "e" + strconv.Itoa(len(all)), Agent: id, Kind: appwire.EntryNotice, At: at, Text: words})
+	}
+	end := len(all)
+	if before != "" {
+		end = -1
+		for i, entry := range all {
+			if entry.ID == before {
+				end = i
+				break
+			}
+		}
+		if end < 0 {
+			return nil, false, appwire.Errorf(appwire.CodeNotFound, "this conversation has no entry %s", before)
+		}
+	}
+	start := max(end-limit, 0)
+	page := append([]appwire.Entry{}, all[start:end]...)
+	return page, start > 0, nil
+}
+
+// appEntriesOf is a transcript as the app's entries, named by their place in
+// it. The journal keeps no clock per message, so every entry carries the
+// conversation's own last moment.
+func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time) []appwire.Entry {
+	entries := make([]appwire.Entry, 0, len(items))
+	for _, item := range items {
+		entry := appwire.Entry{Agent: agent, At: at}
+		switch item.Role {
+		case "user":
+			entry.Kind, entry.Text = appwire.EntryUser, item.Text
+		case "assistant":
+			if strings.TrimSpace(item.Text) == "" {
+				continue
+			}
+			entry.Kind, entry.Text = appwire.EntryAnswer, item.Text
+		case "tool":
+			entry.Kind, entry.Call, entry.Name, entry.Summary = appwire.EntryTool, item.CallID, item.Tool, redact.Secrets(item.Hint)
+		case "note", "aside":
+			if strings.TrimSpace(item.Text) == "" {
+				continue
+			}
+			entry.Kind, entry.Text = appwire.EntryNotice, item.Text
+		default:
+			continue
+		}
+		entry.ID = "e" + strconv.Itoa(len(entries))
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+// SetModel moves the agent to another model, opening its conversation first if
+// none is held: the choice is the conversation's own and is saved with it.
+func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "name a model")
+	}
+	a, err := b.find(id)
+	if err != nil {
+		return appwire.Agent{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if _, _, err := b.ensureLocked(a); err != nil {
+		return appwire.Agent{}, err
+	}
+	var live *appLive
+	b.locked(func() {
+		live = a.live
+		live.lastUse = b.now()
+	})
+	live.conn.Conv.SetModel(model)
+	if now := live.conn.Conv.Model(); now != "" {
+		model = now
+	}
+	var view appwire.Agent
+	b.locked(func() {
+		a.view.Model = model
+		view = a.view
+	})
+	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	return view, nil
+}
+
+// ListModels answers the models the configured service lists, from the list
+// remembered on disk. With nothing remembered the list is fetched once, behind
+// the answer, and the answer meanwhile is the built-in few for the default
+// service; nothing of this happens before the app asks.
+func (b *appBackend) ListModels() ([]appwire.Model, error) {
+	settings, err := config.LoadKeyless()
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	discovery := catalog.Options{
+		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+		HTTPClient: config.CatalogHTTPClient(settings.Sources.Default()),
+	}
+	rows := catalog.Recall(discovery).ModelsNow()
+	if len(rows) == 0 {
+		var lazy *catalog.Catalog
+		b.locked(func() {
+			if b.models == nil && !b.closing {
+				b.models = catalog.LoadLazy(context.Background(), discovery)
+			}
+			lazy = b.models
+		})
+		if lazy != nil {
+			rows = lazy.ModelsNow()
+		}
+	}
+	models := make([]appwire.Model, 0, len(rows))
+	for _, row := range rows {
+		name := strings.TrimSpace(row.Name)
+		if name == "" {
+			name = row.ID
+		}
+		provider, _, _ := strings.Cut(strings.TrimPrefix(row.ID, "~"), "/")
+		models = append(models, appwire.Model{ID: row.ID, Name: name, Provider: provider})
+	}
+	return models, nil
+}
+
+// Settings reads the profile's own rows; a figure nobody set is null.
+func (b *appBackend) Settings() (appwire.Settings, error) {
+	profile := config.ProfileDir()
+	settings := appwire.Settings{
+		DefaultModel: config.ChatModelAt(profile),
+		AsksBefore:   config.ToolApprovalModeAt(profile),
+		BudgetUSD:    appFigure(config.SpendRailUSDAt(profile)),
+	}
+	if settings.DefaultModel == "" {
+		// Nobody chose one: the model a new conversation opens on.
+		settings.DefaultModel = config.ChatDefaultAt(profile)
+	}
+	dayCap, err := config.DailyBudgetUSDAt(profile)
+	if err != nil {
+		return appwire.Settings{}, appEngineError(err)
+	}
+	settings.DayCapUSD = appFigure(dayCap)
+	return settings, nil
+}
+
+// appFigure is a money figure, or nil for none.
+func appFigure(usd float64) *float64 {
+	if usd <= 0 {
+		return nil
+	}
+	return &usd
+}
+
+// SpendToday reads this machine's usage ledger for today.
+func (b *appBackend) SpendToday() (appwire.Spend, error) {
+	now := b.now()
+	lines, err := session.ReadUsage(session.UsageLedgerPath(), now.Add(-48*time.Hour))
+	if err != nil {
+		return appwire.Spend{}, appEngineError(err)
+	}
+	spend := appwire.Spend{TodayUSD: session.SpendToday(lines, now)}
+	if dayCap, err := config.DailyBudgetUSDAt(config.ProfileDir()); err == nil {
+		spend.DayCapUSD = appFigure(dayCap)
+	}
+	return spend, nil
+}
+
+// appSpendSettle is how long after a turn ends its spending is read again: the
+// ledger is written behind the turn, not in front of its ending.
+const appSpendSettle = 300 * time.Millisecond
+
+// spendMoved says spend.changed once a turn's spending has reached the ledger,
+// if today's figure moved.
+func (b *appBackend) spendMoved() {
+	time.AfterFunc(appSpendSettle, func() {
+		defer guard.Recover("app/spend")
+		if b.isClosing() {
+			return
+		}
+		spend, err := b.SpendToday()
+		if err != nil {
+			return
+		}
+		moved := false
+		b.locked(func() {
+			moved = spend.TodayUSD != b.spent
+			b.spent = spend.TodayUSD
+		})
+		if moved {
+			b.emit.Emit(appwire.EventSpendChanged, appwire.SpendChanged{Spend: spend})
+		}
+	})
 }
 
 // ListTasks reads the agent's tasks off its project's task index, and lays
@@ -950,17 +1529,18 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	b.mu.Lock()
-	transcript := a.transcript
-	fallback := a.view.UpdatedAt
+	var transcript string
+	var fallback time.Time
 	var heard map[string]appwire.Task
-	if a.live != nil {
-		heard = make(map[string]appwire.Task, len(a.live.tasks))
-		for k, v := range a.live.tasks {
-			heard[k] = v
+	b.locked(func() {
+		transcript, fallback = a.transcript, a.view.UpdatedAt
+		if a.live != nil {
+			heard = make(map[string]appwire.Task, len(a.live.tasks))
+			for k, v := range a.live.tasks {
+				heard[k] = v
+			}
 		}
-	}
-	b.mu.Unlock()
+	})
 	var tasks []appwire.Task
 	index := map[string]int{}
 	if path := session.TaskIndexPath(transcript); path != "" {
@@ -1006,11 +1586,11 @@ func (b *appBackend) ListCrews() ([]appwire.Crew, error) {
 	if err != nil {
 		return nil, appEngineError(err)
 	}
-	b.mu.Lock()
-	if b.crews == nil && !b.closing {
-		b.crews = newAppCrewWatch(b.emit, crews)
-	}
-	b.mu.Unlock()
+	b.locked(func() {
+		if b.crews == nil && !b.closing {
+			b.crews = newAppCrewWatch(b.emit, crews)
+		}
+	})
 	return crews, nil
 }
 
@@ -1049,22 +1629,32 @@ func appMemberAgent(member teamstore.Member) string {
 
 // Close lets every conversation go and stops the watchers.
 func (b *appBackend) Close() error {
-	b.mu.Lock()
-	if b.closing {
-		b.mu.Unlock()
+	already := false
+	var crews *appCrewWatch
+	var models *catalog.Catalog
+	var agents []*appAgent
+	b.locked(func() {
+		if already = b.closing; already {
+			return
+		}
+		b.closing = true
+		crews = b.crews
+		for _, a := range b.agents {
+			agents = append(agents, a)
+		}
+	})
+	if already {
 		return nil
 	}
-	b.closing = true
-	crews := b.crews
-	agents := make([]*appAgent, 0, len(b.agents))
-	for _, a := range b.agents {
-		agents = append(agents, a)
-	}
-	b.mu.Unlock()
 	close(b.sweepStop)
 	<-b.sweepDone
 	if crews != nil {
 		crews.close()
+	}
+	// No models.list can start a fetch once closing is set.
+	b.locked(func() { models = b.models })
+	if models != nil {
+		models.Close()
 	}
 	var wg sync.WaitGroup
 	for _, a := range agents {
@@ -1072,7 +1662,7 @@ func (b *appBackend) Close() error {
 			continue
 		}
 		wg.Add(1)
-		go func(a *appAgent) {
+		guard.Go("app/close", func() {
 			defer wg.Done()
 			// Stop first: a turn still running is interrupted rather than left
 			// holding the gate while the process leaves.
@@ -1081,13 +1671,18 @@ func (b *appBackend) Close() error {
 			if live := b.liveOf(a); live != nil && live.conn.Assembled {
 				live.conn.Conv.Interrupt()
 			}
-			a.gate.Lock()
-			b.release(a)
-			a.gate.Unlock()
-		}(a)
+			b.letGo(a)
+		})
 	}
 	wg.Wait()
 	return nil
+}
+
+// letGo gives a's conversation back under its gate.
+func (b *appBackend) letGo(a *appAgent) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	b.release(a)
 }
 
 func (b *appBackend) liveNeedsYou(live *appLive) bool {
@@ -1121,28 +1716,36 @@ func (b *appBackend) sweep() {
 // runs or a question waits for the person, whatever the clock says.
 func (b *appBackend) sweepOnce() {
 	now := b.now()
-	b.mu.Lock()
 	var idle []*appAgent
-	for _, a := range b.agents {
-		if live := a.live; live != nil && !live.running && now.Sub(live.lastUse) >= appAgentIdle {
-			idle = append(idle, a)
+	b.locked(func() {
+		for _, a := range b.agents {
+			if live := a.live; live != nil && !live.running && now.Sub(live.lastUse) >= appAgentIdle {
+				idle = append(idle, a)
+			}
 		}
-	}
-	b.mu.Unlock()
+	})
 	for _, a := range idle {
-		if !a.gate.TryLock() {
-			continue
-		}
-		b.mu.Lock()
-		live := a.live
-		keep := live == nil || live.running || now.Sub(live.lastUse) < appAgentIdle
-		b.mu.Unlock()
-		if !keep && !b.liveNeedsYou(live) {
-			// The state the app reads does not move: the conversation is as
-			// idle on disk as it was in memory.
-			b.release(a)
-		}
-		a.gate.Unlock()
+		b.sweepAgent(a, now)
+	}
+}
+
+// sweepAgent lets one idle conversation go, unless something took its gate or
+// woke it since the look.
+func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
+	if !a.gate.TryLock() {
+		return
+	}
+	defer a.gate.Unlock()
+	var live *appLive
+	keep := true
+	b.locked(func() {
+		live = a.live
+		keep = live == nil || live.running || now.Sub(live.lastUse) < appAgentIdle
+	})
+	if !keep && !b.liveNeedsYou(live) {
+		// The state the app reads does not move: the conversation is as
+		// idle on disk as it was in memory.
+		b.release(a)
 	}
 }
 
@@ -1166,7 +1769,7 @@ type appCrewWatch struct {
 
 func newAppCrewWatch(emit appwire.Emitter, crews []appwire.Crew) *appCrewWatch {
 	w := &appCrewWatch{emit: emit, stop: make(chan struct{}), done: make(chan struct{}), known: appCrewPrints(crews)}
-	go w.run()
+	guard.Go("app/crews", w.run)
 	return w
 }
 

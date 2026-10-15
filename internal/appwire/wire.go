@@ -63,6 +63,8 @@ const (
 	EventTurnDone     = "turn.done"
 	EventAskOpened    = "ask.opened"
 	EventAskClosed    = "ask.closed"
+	EventEntryAdded   = "entry.added"
+	EventSpendChanged = "spend.changed"
 	EventTaskChanged  = "task.changed"
 	EventCrewChanged  = "crew.changed"
 	EventCrewRemoved  = "crew.removed"
@@ -134,12 +136,88 @@ const (
 // to be allowed, or a question the agent put. Options are the engine's own
 // choices, keyed by the id an answer names.
 type Ask struct {
-	ID      string      `json:"id"`
-	Agent   string      `json:"agent"`
-	Kind    string      `json:"kind"`
-	Title   string      `json:"title"`
-	Detail  string      `json:"detail,omitempty"`
-	Options []AskOption `json:"options,omitempty"`
+	ID      string `json:"id"`
+	Agent   string `json:"agent"`
+	Kind    string `json:"kind"`
+	Subkind string `json:"subkind,omitempty"`
+	Title   string `json:"title"`
+	Detail  string `json:"detail,omitempty"`
+	// Options carry the engine's own ids; for a permission they are
+	// allow_once, deny and, unless the call is irreversible, always.
+	Options      []AskOption `json:"options,omitempty"`
+	Irreversible bool        `json:"irreversible,omitempty"`
+}
+
+// The subkinds of an approval, and the option ids a permission offers.
+const (
+	SubkindPermission = "permission"
+	SubkindBudget     = "budget"
+
+	OptionAllowOnce = "allow_once"
+	OptionDeny      = "deny"
+	OptionAlways    = "always"
+)
+
+// Entry is one item of a conversation's transcript, in order. Which of the
+// optional fields are set depends on Kind.
+type Entry struct {
+	ID    string    `json:"id"`
+	Agent string    `json:"agent"`
+	Turn  uint64    `json:"turn,omitempty"`
+	Kind  string    `json:"kind"`
+	At    time.Time `json:"at"`
+	// Text is the words of a user, answer, receipt, notice or error entry.
+	Text     string `json:"text,omitempty"`
+	Thinking string `json:"thinking,omitempty"`
+	// Call, Name, OK and Summary describe a tool entry.
+	Call    string `json:"call,omitempty"`
+	Name    string `json:"name,omitempty"`
+	OK      *bool  `json:"ok,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	// Ref is what a notice points at; ErrorKind and Status sort an error.
+	Ref       string `json:"ref,omitempty"`
+	ErrorKind string `json:"error_kind,omitempty"`
+	Status    int    `json:"status,omitempty"`
+}
+
+// The kinds of entry.
+const (
+	EntryUser    = "user"
+	EntryAnswer  = "answer"
+	EntryTool    = "tool"
+	EntryReceipt = "receipt"
+	EntryNotice  = "notice"
+	EntryError   = "error"
+)
+
+// The kinds a turn's failure is sorted into.
+const (
+	ErrorProvider = "provider"
+	ErrorBudget   = "budget"
+	ErrorStopped  = "stopped"
+	ErrorOther    = "other"
+)
+
+// Model is one model the configured keys can use.
+type Model struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+}
+
+// Settings are the few defaults the app shows. A figure nobody set is null.
+type Settings struct {
+	DefaultModel string   `json:"default_model"`
+	BudgetUSD    *float64 `json:"budget_usd"`
+	AsksBefore   string   `json:"asks_before"`
+	DayCapUSD    *float64 `json:"day_cap_usd"`
+}
+
+// Spend is today's spending on this machine against the daily cap, which is
+// null when there is none.
+type Spend struct {
+	TodayUSD  float64  `json:"today_usd"`
+	DayCapUSD *float64 `json:"day_cap_usd"`
 }
 
 // AskOption is one answer an ask offers.
@@ -180,18 +258,28 @@ type (
 		Summary string `json:"summary,omitempty"`
 	}
 	TurnDone struct {
-		Agent string `json:"agent"`
-		Turn  uint64 `json:"turn"`
-		OK    bool   `json:"ok"`
-		Error string `json:"error,omitempty"`
+		Agent     string `json:"agent"`
+		Turn      uint64 `json:"turn"`
+		OK        bool   `json:"ok"`
+		Error     string `json:"error,omitempty"`
+		ErrorKind string `json:"error_kind,omitempty"`
+		Status    int    `json:"status,omitempty"`
 	}
 	AskOpened struct {
 		Ask Ask `json:"ask"`
 	}
 	AskClosed struct {
-		Agent string `json:"agent"`
-		ID    string `json:"id"`
-		By    string `json:"by"`
+		Agent  string    `json:"agent"`
+		ID     string    `json:"id"`
+		By     string    `json:"by"`
+		Option string    `json:"option,omitempty"`
+		At     time.Time `json:"at"`
+	}
+	EntryAdded struct {
+		Entry Entry `json:"entry"`
+	}
+	SpendChanged struct {
+		Spend Spend `json:"spend"`
 	}
 	TaskChanged struct {
 		Task Task `json:"task"`
@@ -232,7 +320,13 @@ type Emitter interface {
 // result or an error ([Error] for a code the app can act on).
 type Engine interface {
 	ListAgents(workspace string) ([]Agent, error)
-	CreateAgent(workspace, model string) (Agent, error)
+	CreateAgent(ask CreateAsk) (Agent, error)
+	// Entries answers up to limit transcript entries before the one named
+	// (the newest when before is empty), oldest first, and whether there are
+	// older ones still. It reads the disk for an agent nothing holds.
+	Entries(id, before string, limit int) ([]Entry, bool, error)
+	SetModel(id, model string) (Agent, error)
+	Retry(id string) (uint64, error)
 	OpenAgent(id string) (Agent, error)
 	Send(id, text string) (uint64, error)
 	Stop(id string) error
@@ -243,9 +337,21 @@ type Engine interface {
 	AnswerAsk(agent, id, option, text string) error
 	ListTasks(agent string) ([]Task, error)
 	ListCrews() ([]Crew, error)
+	ListModels() ([]Model, error)
+	Settings() (Settings, error)
+	SpendToday() (Spend, error)
 	// Close releases every conversation the engine holds. It is called once,
 	// when the process is leaving, and returns when they are all let go.
 	Close() error
+}
+
+// CreateAsk is agents.create's params. An empty workspace is the person's home
+// folder; a non-empty Text starts the first turn at once.
+type CreateAsk struct {
+	Workspace string   `json:"workspace"`
+	Model     string   `json:"model"`
+	BudgetUSD *float64 `json:"budget_usd"`
+	Text      string   `json:"text"`
 }
 
 // frame is one line on the way out: a response (ID set) or an event (Event

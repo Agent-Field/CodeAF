@@ -17,6 +17,10 @@ import (
 // an [Outbox], whose sender is the one that waits here.
 const writerQueue = 1024
 
+// MaxEntries is the most transcript entries one agents.entries answers, and
+// what a request that names no limit gets.
+const MaxEntries = 200
+
 // handlerGrace is how long a leaving process waits for calls still in flight
 // to answer after the engine has been closed under them. A call that has not
 // answered by then is abandoned; the process is exiting either way.
@@ -274,21 +278,102 @@ var methods = map[string]method{
 		}{nonNil(agents)}, nil
 	},
 	"agents.create": func(e Engine, raw json.RawMessage) (any, error) {
-		var p struct {
-			Workspace string `json:"workspace"`
-			Model     string `json:"model"`
-		}
+		var p CreateAsk
 		if err := decode(raw, &p); err != nil {
 			return nil, err
 		}
-		if strings.TrimSpace(p.Workspace) == "" {
-			return nil, Errorf(CodeBadParams, "agents.create needs a workspace")
+		if p.BudgetUSD != nil && *p.BudgetUSD < 0 {
+			return nil, Errorf(CodeBadParams, "budget_usd cannot be negative")
 		}
-		agent, err := e.CreateAgent(p.Workspace, p.Model)
+		agent, err := e.CreateAgent(p)
 		if err != nil {
 			return nil, err
 		}
 		return agentResult{agent}, nil
+	},
+	"agents.entries": func(e Engine, raw json.RawMessage) (any, error) {
+		var p struct {
+			ID     string `json:"id"`
+			Before string `json:"before"`
+			Limit  int    `json:"limit"`
+		}
+		if err := decode(raw, &p); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(p.ID) == "" {
+			return nil, Errorf(CodeBadParams, "agents.entries needs an id")
+		}
+		if p.Limit < 0 {
+			return nil, Errorf(CodeBadParams, "limit cannot be negative")
+		}
+		if p.Limit == 0 || p.Limit > MaxEntries {
+			p.Limit = MaxEntries
+		}
+		entries, more, err := e.Entries(p.ID, p.Before, p.Limit)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Entries []Entry `json:"entries"`
+			More    bool    `json:"more"`
+		}{nonNil(entries), more}, nil
+	},
+	"agents.set_model": func(e Engine, raw json.RawMessage) (any, error) {
+		var p struct {
+			ID    string `json:"id"`
+			Model string `json:"model"`
+		}
+		if err := decode(raw, &p); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Model) == "" {
+			return nil, Errorf(CodeBadParams, "agents.set_model needs an id and a model")
+		}
+		agent, err := e.SetModel(p.ID, strings.TrimSpace(p.Model))
+		if err != nil {
+			return nil, err
+		}
+		return agentResult{agent}, nil
+	},
+	"agents.retry": func(e Engine, raw json.RawMessage) (any, error) {
+		id, err := decodeID(raw, "id")
+		if err != nil {
+			return nil, err
+		}
+		turn, err := e.Retry(id)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Turn uint64 `json:"turn"`
+		}{turn}, nil
+	},
+	"models.list": func(e Engine, _ json.RawMessage) (any, error) {
+		models, err := e.ListModels()
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Models []Model `json:"models"`
+		}{nonNil(models)}, nil
+	},
+	"settings.get": func(e Engine, _ json.RawMessage) (any, error) {
+		settings, err := e.Settings()
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Settings Settings `json:"settings"`
+		}{settings}, nil
+	},
+	"spend.today": func(e Engine, _ json.RawMessage) (any, error) {
+		spend, err := e.SpendToday()
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Spend Spend `json:"spend"`
+		}{spend}, nil
 	},
 	"agents.open": func(e Engine, raw json.RawMessage) (any, error) {
 		id, err := decodeID(raw, "id")

@@ -172,6 +172,18 @@ func (a *Agent) startTitleLocked() {
 	// tax on every turn.
 	a.titleTried = true
 	ctx := a.titleCtx
+	// A CONVERSATION NAMED BY RULE IS NAMED FROM ITS FIRST MESSAGE, with no
+	// model asked: the desktop app shows a name the moment a person sends
+	// (appnames.go), and a generated label arriving later would rename it.
+	if a.config.DeterministicNames {
+		name := FirstMessageName(question)
+		a.titleJobs.Add(1)
+		go func() {
+			defer a.titleJobs.Done()
+			a.publishTitle(ctx, conversationTitle{full: name})
+		}()
+		return
+	}
 	model := a.model
 	a.titleJobs.Add(1)
 	go func() {
@@ -370,7 +382,9 @@ func (a *Agent) publishTitle(ctx context.Context, title conversationTitle) {
 		return
 	}
 	// The title the handle is read off exists now (handlepick.go).
-	a.chooseTeamHandlesLater(title.full, nil)
+	if !a.config.DeterministicNames {
+		a.chooseTeamHandlesLater(title.full, nil)
+	}
 	event := Event{Kind: EventTitleChanged, Text: title.full}
 	a.mu.Lock()
 	hub := a.hub
@@ -486,12 +500,16 @@ func (a *Agent) setTitleIfUnnamed(title string, _ ...string) bool {
 	file := a.file
 	a.mu.Unlock()
 	if file != nil {
-		file.appendTitle(title, "")
+		file.appendNamedTitle(title, a.config.DeterministicNames)
 	}
 	// The folder's row says what the journal says. Until now it has carried the
 	// person's opening words as a placeholder (placemeta.go); this is the name
 	// the conversation actually earned.
-	a.stampTitle(title)
+	if a.config.DeterministicNames {
+		a.stampLiteralName(title)
+	} else {
+		a.stampTitle(title)
+	}
 	return true
 }
 

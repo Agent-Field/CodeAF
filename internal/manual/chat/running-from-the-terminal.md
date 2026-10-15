@@ -296,10 +296,8 @@ critical-path` — against the run's own `plandb.db`, so a plan a worker is driv
 read the way the worker reads it.
 
 Five more exist and are deliberately kept out of the help text, because nothing types
-them by hand: **`codeaf app`** is the backend the codeaf desktop app starts and speaks to
-over its own pipes, holding every agent the app opens in that one process — the app
-answers approvals and questions through it, and a dead conversation shows there as stopped
-until the next message reopens it;
+them by hand: **`codeaf app`** is the backend the codeaf desktop app starts and talks to
+over its own pipes, holding every agent the app shows in that one process;
 **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
 **`codeaf clock`** is the one process that runs your automations while a codeaf window is
 open — a window starts it, and it leaves by itself half a minute after the last window

@@ -14,9 +14,11 @@ import (
 
 // fakeEngine answers every method from fixed values and records closing.
 type fakeEngine struct {
-	mu     sync.Mutex
-	closed int
-	block  chan struct{}
+	mu      sync.Mutex
+	closed  int
+	block   chan struct{}
+	created CreateAsk
+	limit   int
 }
 
 func (f *fakeEngine) ListAgents(workspace string) ([]Agent, error) {
@@ -25,8 +27,34 @@ func (f *fakeEngine) ListAgents(workspace string) ([]Agent, error) {
 	}
 	return []Agent{{ID: "a1", Title: "one", Workspace: "/w", State: StateIdle}}, nil
 }
-func (f *fakeEngine) CreateAgent(workspace, model string) (Agent, error) {
-	return Agent{ID: "new", Workspace: workspace, Model: model, State: StateIdle}, nil
+func (f *fakeEngine) CreateAgent(ask CreateAsk) (Agent, error) {
+	f.mu.Lock()
+	f.created = ask
+	f.mu.Unlock()
+	return Agent{ID: "new", Workspace: ask.Workspace, Model: ask.Model, State: StateIdle}, nil
+}
+func (f *fakeEngine) Entries(id, before string, limit int) ([]Entry, bool, error) {
+	f.mu.Lock()
+	f.limit = limit
+	f.mu.Unlock()
+	if id != "a1" {
+		return nil, false, Errorf(CodeNotFound, "no agent %s", id)
+	}
+	return []Entry{{ID: "e0", Agent: id, Kind: EntryUser, Text: "hi"}}, true, nil
+}
+func (f *fakeEngine) SetModel(id, model string) (Agent, error) {
+	return Agent{ID: id, Model: model, State: StateIdle}, nil
+}
+func (f *fakeEngine) Retry(id string) (uint64, error) {
+	return 0, Errorf(CodeNotFound, "nothing failed")
+}
+func (f *fakeEngine) ListModels() ([]Model, error) { return nil, nil }
+func (f *fakeEngine) Settings() (Settings, error) {
+	return Settings{DefaultModel: "deepseek/deepseek-v4-flash", AsksBefore: "prompt"}, nil
+}
+func (f *fakeEngine) SpendToday() (Spend, error) {
+	cap := 5.0
+	return Spend{TodayUSD: 1.25, DayCapUSD: &cap}, nil
 }
 func (f *fakeEngine) OpenAgent(id string) (Agent, error) {
 	if id != "a1" {
@@ -385,5 +413,74 @@ func TestOutboxSendsALoneDeltaAfterTheWindowAndAFullOneAtOnce(t *testing.T) {
 	}
 	if rec.data[1].(TurnDelta).Text != big || rec.data[2].(TurnDelta).Text != "z" {
 		t.Fatal("a full delta was folded past its size")
+	}
+}
+
+// THE WAVE-ONE METHODS ON THE WIRE. agents.create passes the whole ask and
+// refuses a negative budget; agents.entries caps the page and answers a list
+// and whether there is more; models.list answers an empty list rather than
+// null; settings.get says a figure nobody set as null; spend.today carries
+// the cap; agents.retry with nothing failed is not found.
+func TestWaveOneMethodsAnswerTheirShapes(t *testing.T) {
+	engine := &fakeEngine{}
+	w := startWire(t, engine)
+	w.next()
+
+	w.send(`{"id":1,"method":"agents.create","params":{"text":"fix the parser","budget_usd":2.5}}`)
+	got := w.next()
+	if got["id"] != float64(1) || got["result"] == nil {
+		t.Fatalf("agents.create = %v", got)
+	}
+	engine.mu.Lock()
+	created := engine.created
+	engine.mu.Unlock()
+	if created.Workspace != "" || created.Text != "fix the parser" || created.BudgetUSD == nil || *created.BudgetUSD != 2.5 {
+		t.Fatalf("the engine was asked %+v", created)
+	}
+	w.send(`{"id":2,"method":"agents.create","params":{"budget_usd":-1}}`)
+	if got := w.next(); got["error"].(map[string]any)["code"] != CodeBadParams {
+		t.Fatalf("negative budget = %v", got)
+	}
+
+	w.send(`{"id":3,"method":"agents.entries","params":{"id":"a1","limit":5000}}`)
+	got = w.next()
+	result := got["result"].(map[string]any)
+	if entries := result["entries"].([]any); len(entries) != 1 || result["more"] != true {
+		t.Fatalf("agents.entries = %v", got)
+	}
+	engine.mu.Lock()
+	limit := engine.limit
+	engine.mu.Unlock()
+	if limit != MaxEntries {
+		t.Fatalf("limit = %d, want the cap %d", limit, MaxEntries)
+	}
+	w.send(`{"id":4,"method":"agents.entries","params":{}}`)
+	if got := w.next(); got["error"].(map[string]any)["code"] != CodeBadParams {
+		t.Fatalf("entries without an id = %v", got)
+	}
+
+	w.send(`{"id":5,"method":"models.list"}`)
+	if got := w.next(); got["result"].(map[string]any)["models"] == nil {
+		t.Fatalf("models.list = %v", got)
+	}
+	w.send(`{"id":6,"method":"settings.get"}`)
+	got = w.next()
+	settings := got["result"].(map[string]any)["settings"].(map[string]any)
+	if value, present := settings["budget_usd"]; !present || value != nil || settings["asks_before"] != "prompt" {
+		t.Fatalf("settings.get = %v", got)
+	}
+	w.send(`{"id":7,"method":"spend.today"}`)
+	got = w.next()
+	spend := got["result"].(map[string]any)["spend"].(map[string]any)
+	if spend["today_usd"] != 1.25 || spend["day_cap_usd"] != 5.0 {
+		t.Fatalf("spend.today = %v", got)
+	}
+	w.send(`{"id":8,"method":"agents.retry","params":{"id":"a1"}}`)
+	if got := w.next(); got["error"].(map[string]any)["code"] != CodeNotFound {
+		t.Fatalf("agents.retry = %v", got)
+	}
+	w.send(`{"id":9,"method":"agents.set_model","params":{"id":"a1"}}`)
+	if got := w.next(); got["error"].(map[string]any)["code"] != CodeBadParams {
+		t.Fatalf("set_model without a model = %v", got)
 	}
 }

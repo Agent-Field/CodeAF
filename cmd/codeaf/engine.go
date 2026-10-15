@@ -1040,6 +1040,10 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// The builder came out of the shape above with the adaptive runner already
 	// decided: "runs are on" and "build it through [v3OpenSession]" are one fact
 	// (chatv3_lanes.go says why they cannot be two).
+	// The desktop app names its conversations by rule ([session.FirstMessageName]).
+	if hello.Launch != nil {
+		cfg.DeterministicNames = hello.Launch.DeterministicNames
+	}
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
 	if err != nil {
 		return nil, err

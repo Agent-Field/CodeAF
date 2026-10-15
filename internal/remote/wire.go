@@ -800,6 +800,10 @@ const (
 // how a surface tells "the engine built what I asked for" from "I joined
 // somebody else's conversation".
 type LaunchShape struct {
+	// DeterministicNames names the conversation from its first message by rule
+	// rather than by a model ([session.FirstMessageName]); the desktop app sets it.
+	DeterministicNames bool `json:"deterministicNames,omitempty"`
+
 	Yolo      bool    `json:"yolo,omitempty"`
 	NoCompact bool    `json:"noCompact,omitempty"`
 	OneModel  bool    `json:"oneModel,omitempty"`
@@ -1904,6 +1908,11 @@ func WireEvent(ev session.Event) EventWire {
 	w := EventWire{Event: ev}
 	if ev.Err != nil {
 		w.Err = ev.Err.Error()
+		// The typed cause does not survive JSON, so its sorting rides beside
+		// the sentence for a surface that has to tell a refusal from a stop.
+		if ev.Kind == session.EventError && w.Event.ErrKind == "" {
+			w.Event.ErrKind, w.Event.ErrStatus, w.Event.ErrWords = session.ClassifyTurnError(ev.Err)
+		}
 	}
 	w.Event.Err = nil
 	return w
