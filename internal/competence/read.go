@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // THE READ IS BOUNDED AND IT IS ONE READ.
@@ -319,11 +320,9 @@ const maxRowBytes = 64 << 10
 // for the WHOLE ledger or for none of it.
 //
 // A ledger over limit bytes is [ErrHistoryLimit] before a byte of it is
-// folded. A line that is over-long, is not JSON, is of a format or kind this
-// reader does not know, or lacks what a result names is
-// [ErrUnreadableHistory]: skipping it would cost a result silently, and a
-// skipped failure flips a class. Only a blank line is ignored, and nothing is
-// deleted, repaired or recovered by guessing.
+// folded. The read is then bounded to the size that was checked: a row
+// appended after the stat belongs to the NEXT read, and is never read as a
+// line cut at some other boundary. See [scanRows] for what a row must be.
 func eachRow(ctx context.Context, path string, limit int64, fold func(Record)) error {
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -340,9 +339,16 @@ func eachRow(ctx context.Context, path string, limit int64, fold func(Record)) e
 	if info.Size() > limit {
 		return ErrHistoryLimit
 	}
-	// The reader is bounded too: a ledger that grew since the stat is read as
-	// it stood, and rows appended after are a later question's.
-	reader := bufio.NewReaderSize(io.LimitReader(file, limit), 64<<10)
+	return scanRows(ctx, file, info.Size(), fold)
+}
+
+// scanRows reads exactly the first size bytes of src as rows. A line that is
+// over-long, is not JSON, or fails [validRow] is [ErrUnreadableHistory]:
+// skipping it would cost a result silently, and a skipped failure flips a
+// class. Only a blank line is ignored, and nothing is deleted, repaired or
+// recovered by guessing.
+func scanRows(ctx context.Context, src io.Reader, size int64, fold func(Record)) error {
+	reader := bufio.NewReaderSize(io.LimitReader(src, size), 64<<10)
 	var line []byte
 	overlong := false
 	for count := 0; ; count++ {
@@ -373,23 +379,56 @@ func eachRow(ctx context.Context, path string, limit int64, fold func(Record)) e
 			continue
 		}
 		var record Record
-		if json.Unmarshal(whole, &record) != nil || record.V != recordVersion {
-			return ErrUnreadableHistory
-		}
-		if record.Model == "" || record.ID == "" || record.Place == "" || record.Work == "" || record.At.IsZero() {
-			return ErrUnreadableHistory
-		}
-		switch record.Kind {
-		case KindResult:
-			if len(record.Checks) == 0 {
-				return ErrUnreadableHistory
-			}
-		case KindUndo:
-		default:
+		if json.Unmarshal(whole, &record) != nil || !validRow(record) {
 			return ErrUnreadableHistory
 		}
 		fold(record)
 	}
+}
+
+// validRow is whether a row is one this reader's writer could have written,
+// held to the writer's bounds without repeating its redaction or clipping.
+// A row that is anything else may have been a failed check, so the read gives
+// up on it rather than fold it as something it was not.
+func validRow(r Record) bool {
+	if r.V != recordVersion || r.At.IsZero() ||
+		r.Model == "" || r.ID == "" || r.Place == "" || r.Work == "" || r.Source.Agent == "" {
+		return false
+	}
+	switch r.Source.Kind {
+	case SourceTask, SourceConversation:
+	default:
+		return false
+	}
+	switch r.Kind {
+	case KindUndo:
+		return r.Outcome == "" && len(r.Checks) == 0
+	case KindResult:
+	default:
+		return false
+	}
+	// The row's own outcome is passed or failed; an empty one is only the
+	// reading of a row whose every check is valid, never of a garbled one.
+	switch r.Outcome {
+	case "", Passed, Failed:
+	default:
+		return false
+	}
+	if len(r.Checks) == 0 || len(r.Checks) > MaxChecks {
+		return false
+	}
+	anyFailed := false
+	for _, check := range r.Checks {
+		if check.Outcome != Passed && check.Outcome != Failed {
+			return false
+		}
+		if strings.TrimSpace(check.Command) == "" || len(check.Command) > maxCommand*utf8.UTFMax {
+			return false
+		}
+		anyFailed = anyFailed || check.Outcome == Failed
+	}
+	// A pass cannot be recorded beside a check that failed.
+	return !(r.Outcome == Passed && anyFailed)
 }
 
 // shortID is a stable id for one string.

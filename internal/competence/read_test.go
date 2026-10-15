@@ -730,3 +730,63 @@ func TestALargeLedgerIsGroupedInOnePassAndStopsWhenCancelled(t *testing.T) {
 		t.Fatalf("grouping a cancelled read answered %v", err)
 	}
 }
+
+// A ROW APPENDED AFTER THE SIZE WAS CHECKED BELONGS TO THE NEXT READ: the scan
+// stops at the snapshot, and bytes past it — even half a line — are neither
+// read nor an error.
+func TestTheScanStopsAtTheSnapshotItWasGiven(t *testing.T) {
+	row := func(id string) string {
+		return `{"v":1,"kind":"result","id":"` + id + `","at":"2026-10-14T00:00:00Z","model":"m","place":"/w","work":"a",` +
+			`"source":{"kind":"task","agent":"c"},"outcome":"passed","checks":[{"command":"go test","outcome":"passed"}]}` + "\n"
+	}
+	snapshot := row("one") + row("two")
+	grown := snapshot + row("three")[:40]
+	var ids []string
+	err := scanRows(context.Background(), strings.NewReader(grown), int64(len(snapshot)), func(r Record) { ids = append(ids, r.ID) })
+	if err != nil || strings.Join(ids, ",") != "one,two" {
+		t.Fatalf("snapshot read %v %v", ids, err)
+	}
+}
+
+// A ROW IS HELD TO WHAT THE WRITER WRITES: an outcome or check that is not a
+// pass or a failure, an empty command or an unknown source never folds.
+func TestValidRowHoldsARowToTheWriter(t *testing.T) {
+	good := func() Record {
+		return Record{V: 1, Kind: KindResult, ID: "task:c:1", At: testNow, Model: "m", Place: "/w", Work: "a",
+			Source: Source{Kind: SourceTask, Agent: "c"}, Outcome: Failed,
+			Checks: []CheckRun{{Command: "go test", Outcome: Failed}}}
+	}
+	if !validRow(good()) {
+		t.Fatal("a row the writer would write was refused")
+	}
+	legacy := good()
+	legacy.Outcome = ""
+	if !validRow(legacy) {
+		t.Fatal("a row with no outcome and valid checks was refused")
+	}
+	undone := Record{V: 1, Kind: KindUndo, ID: "x", At: testNow, Model: "m", Place: "/w", Work: "a", Source: Source{Kind: SourceTask, Agent: "c"}}
+	if !validRow(undone) {
+		t.Fatal("an undo was refused")
+	}
+	for name, mutate := range map[string]func(*Record){
+		"garbage outcome":       func(r *Record) { r.Outcome = "garbage" },
+		"undone outcome":        func(r *Record) { r.Outcome = Undone },
+		"unknown check outcome": func(r *Record) { r.Checks[0].Outcome = "unread" },
+		"empty check outcome":   func(r *Record) { r.Checks[0].Outcome = "" },
+		"empty command":         func(r *Record) { r.Checks[0].Command = "  " },
+		"huge command":          func(r *Record) { r.Checks[0].Command = strings.Repeat("c", 4*maxCommand+1) },
+		"too many checks":       func(r *Record) { r.Checks = make([]CheckRun, MaxChecks+1) },
+		"passed beside failed":  func(r *Record) { r.Outcome = Passed },
+		"unknown source":        func(r *Record) { r.Source.Kind = "dream" },
+		"no agent":              func(r *Record) { r.Source.Agent = "" },
+		"no time":               func(r *Record) { r.At = time.Time{} },
+		"unknown version":       func(r *Record) { r.V = 2 },
+	} {
+		r := good()
+		r.Checks = append([]CheckRun(nil), r.Checks...)
+		mutate(&r)
+		if validRow(r) {
+			t.Fatalf("%s was accepted", name)
+		}
+	}
+}

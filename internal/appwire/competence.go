@@ -47,8 +47,10 @@ type CompetenceMap struct {
 	// Truncated is always false: a ledger longer than one read takes is the
 	// engine error "checked-result history exceeds this bounded read;
 	// competence unavailable" (code "engine"), never a map of its newest part,
-	// and a ledger with an unreadable row is "checked-result history has an
-	// unreadable row; competence unavailable". Omitted is how many scopes, filters and models this
+	// and a ledger with an unreadable row (not JSON, over-long, an unknown
+	// format, kind, source or outcome, or a check that is not a pass or a
+	// failure with a command) is "checked-result history has an unreadable
+	// row; competence unavailable". Omitted is how many scopes, filters and models this
 	// answer left out for size; Totals still count every scope that matched.
 	Truncated bool              `json:"truncated"`
 	Omitted   CompetenceOmitted `json:"omitted"`
