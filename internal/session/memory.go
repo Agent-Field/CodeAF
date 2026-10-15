@@ -187,10 +187,6 @@ type memoryBrain struct {
 	// typed is whether the person typed the turn now running. The model's
 	// `remember` and `forget` act only on such a turn ([Agent.memoryTools]).
 	typed atomic.Bool
-	// heard is a line the person typed that reached the transcript after the
-	// running turn's loop had ended — the line the follow-up turn started for it
-	// answers ([Agent.armMemoryVerbs]).
-	heard atomic.Bool
 	// failureSaid is when the last failure line went out.
 	failureSaid time.Time
 }
@@ -944,34 +940,22 @@ func personTyped(user userMessage) bool {
 
 // armMemoryVerbs is said at the start of every turn: the model's memory verbs
 // act only on a turn the person typed ([memoryNotTypedWords]). A turn the
-// session opened — a task's landing, a job's ending — is not armed, with one
-// exception: the empty turn started to answer a line the person typed in the
-// last seconds of the turn before ([Agent.heardThePerson]), which is answering
-// them.
+// session opened — a task's landing, a job's ending, an answer to a question —
+// is not armed, with one exception: the empty turn started to answer a line the
+// person typed in the last seconds of the turn before
+// ([userMessage.answersPerson]), which is answering them.
 func (a *Agent) armMemoryVerbs(user userMessage) {
 	if a.memory != nil {
-		heard := a.memory.heard.Swap(false)
-		a.memory.typed.Store(personTyped(user) || heard && user.wake && user.empty())
+		a.memory.typed.Store(personTyped(user) || user.answersPerson)
 	}
 }
 
-// heardThePerson is a line the person typed reaching the transcript
-// ([Agent.drainQueuedLocked]). Mid-turn it arms the verbs for the rest of the
-// turn, so a steer typed into a woken turn still has them; after the turn's
-// loop has ended it arms the turn started to answer it.
+// heardThePerson is a line the person typed drained into the running turn
+// ([Agent.drainSteering]): it arms the verbs for the rest of that turn, so a
+// steer typed into a woken turn still has them. The next turn arms afresh.
 func (a *Agent) heardThePerson() {
 	if a.memory != nil {
 		a.memory.typed.Store(true)
-		a.memory.heard.Store(true)
-	}
-}
-
-// endMemoryVerbs is said when a turn's loop ends: a line the person typed
-// during the turn was answered by it, so only one drained after this point is
-// owed the next turn's verbs.
-func (a *Agent) endMemoryVerbs() {
-	if a.memory != nil {
-		a.memory.heard.Store(false)
 	}
 }
 

@@ -90,9 +90,11 @@ of the block). The receipt is said from the conversation saying it
 project`; over `--host` the name in the text is compared. A put-back or rewording onto
 words the owner already keeps active is refused with `store.ErrMemoryKept`. The legacy
 import alone is unbounded. The model's `remember` and `forget` act only on a turn the
-person typed: a turn the session opened (a landing, a job's ending) is armed only once
-the person's own line is drained into it, or when it was started to answer a line
-they typed in the last seconds of the turn before. A person forgets a line on the Memories tab (`f` or `delete`, by its id)
+person typed: a turn the session opened (a landing, a job's ending, an answer to an
+`ask` on an idle conversation, which the clock can give) is armed only once the
+person's own line is drained into it, or when it was started to answer a line they
+typed in the last seconds of the turn before — which its opening message says
+(`userMessage.answersPerson`), so nothing about it outlives that turn. A person forgets a line on the Memories tab (`f` or `delete`, by its id)
 and puts one back there (`u`); the model forgets with its `forget`, which names one
 line by its words, lists several matches and forgets nothing, and never guesses.
 There is no `/forget` command and no undo stack (both removed 2026-10-14): the tab

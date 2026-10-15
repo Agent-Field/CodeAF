@@ -223,3 +223,54 @@ func TestATurnsMemoryNoticeIsKeptOnlyOnceTheTurnEnds(t *testing.T) {
 		t.Fatalf("an ended turn's line was not kept exactly once: %q", got)
 	}
 }
+
+// wakeLaneAgent is an agent whose wake lane a test drives by hand: each stream
+// sent on it is a turn the conversation started by itself.
+type wakeLaneAgent struct {
+	*fakeAgent
+	wakes chan (<-chan session.Event)
+}
+
+func (w *wakeLaneAgent) WatchWakes() (<-chan (<-chan session.Event), func()) {
+	return w.wakes, func() {}
+}
+
+// A LINE A WOKEN TURN SAYS WHILE ITS CONVERSATION IS OUT OF SIGHT is kept once
+// that turn ends — the watcher reads it off the turn's own stream, which it is
+// draining anyway, and nothing else would ever say it again.
+func TestAWokenTurnsMemoryNoticeIsKeptWhenTheTurnEnds(t *testing.T) {
+	const said = "noticed and remembered · wants tabs in Go · for this project · see or forget it on the Memories tab"
+	away := &wakeLaneAgent{fakeAgent: &fakeAgent{model: "m"}, wakes: make(chan (<-chan session.Event), 1)}
+	out := make(chan behindStirMsg, stirDepth)
+	watch := startBehindWatch("/tmp/lab/away.jsonl", away, out)
+	defer watch.stop()
+
+	turn := make(chan session.Event, 2)
+	turn <- session.Event{Kind: session.EventNotice, Text: said, Unrecorded: true}
+	close(turn)
+	away.wakes <- turn
+	deadline := time.Now().Add(2 * time.Second)
+	var kept []string
+	for len(kept) == 0 && time.Now().Before(deadline) {
+		kept = watch.takeNotices()
+		time.Sleep(time.Millisecond)
+	}
+	if len(kept) != 1 || kept[0] != said {
+		t.Fatalf("the woken turn's line was kept as %q", kept)
+	}
+}
+
+// AND A LINE THAT ARRIVED AFTER THE LAST STIR IS NOT LOST ON THE WAY FORWARD:
+// bringing the conversation back takes what the watcher still holds as it stops.
+func TestAHeldNoticeComesForwardWithItsConversation(t *testing.T) {
+	a, _, _, _, held := parkedKeeperLab(t, nil)
+	held.watch.holdNotice("noticed and remembered · wants tabs in Go")
+	cmd, ours := a.bringForward("/tmp/lab/held.jsonl")
+	if !ours {
+		t.Fatal("the held conversation could not come forward")
+	}
+	drain(t, a, cmd)
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "noticed and remembered · wants tabs in Go") {
+		t.Fatalf("the held line did not come forward with its conversation: %q", got)
+	}
+}

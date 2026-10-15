@@ -44,7 +44,9 @@ model can also drop a line you ask it to with its `forget` tool, and says
 `forgot · <line> · put it back on the Memories tab`. It does either only on a
 turn **you typed**: a turn opened by a task's report, a team member's message or
 a watch's news keeps and forgets nothing — until you type into it — so words
-someone else wrote cannot plant a line in every future conversation.
+someone else wrote cannot plant a line in every future conversation. Answering
+one of its questions after its turn has ended counts the same way, because the
+clock can answer one for you: say "remember that", or `/remember` it.
 
 A line is one sentence, at most 512 characters, and a credential pasted into it
 is redacted before it is kept.

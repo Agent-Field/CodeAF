@@ -1204,6 +1204,15 @@ type userMessage struct {
 	// where "does anybody have to say something about this" is the question.
 	wake bool
 
+	// answersPerson marks the empty opening of a turn started to answer a line
+	// THE PERSON TYPED in the last seconds of the turn before — drained into the
+	// transcript after that turn's last request ([Agent.wakeAnsweringLocked]).
+	// It is the one woken turn that is answering the person, so it is the one
+	// that arms the model's memory verbs (memory.go's [Agent.armMemoryVerbs]).
+	// It rides the message rather than the agent so that nothing about it can
+	// outlive the turn it opens.
+	answersPerson bool
+
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
 	// them. Empty in every ordinary case, and set where the session writes
 	// beside the sentence: the plan digest in front of it (plandigest.go), a
@@ -1888,7 +1897,8 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// follow-up drain below then starts, on the follow-up queue's own
 			// terms. Everything else on the queue drains exactly as it always has.
 			a.liftSteersLocked(hub)
-			_, unanswered := a.drainSteeringLocked(hub)
+			drained := a.drainQueueLocked(hub, true)
+			unanswered := drained.owed
 			// A PROGRAM'S ENDING THIS TURN COULD NOT ANSWER IS SAID ANYWAY, in
 			// the program's own words (program_outcome.go), and a person's stop
 			// is told as theirs. The cause is still the stop's: the turn's own
@@ -1925,7 +1935,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && unanswered && a.wakeLocked() {
+			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard) {
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -3193,12 +3203,18 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// request.
 	a.taskNotes = 0
 	includeAmbient := opening || boundaryNoteHeld(a.steering)
-	landed, _ := a.drainQueuedLocked(hub, includeAmbient)
+	drained := a.drainQueueLocked(hub, includeAmbient)
+	if drained.heard {
+		// A LINE THE PERSON TYPED IS NOW IN FRONT OF THE MODEL, so the rest of
+		// this turn answers them — even one the session opened (memory.go's
+		// [Agent.heardThePerson]).
+		a.heardThePerson()
+	}
 	a.mu.Unlock()
 	// Outside this agent's lock, because it takes the graph's (assignment.go) and
 	// there is no order in which those two are ever taken the other way round.
 	a.markDirectionsCarried(carried)
-	return landed
+	return drained.landed
 }
 
 // queuedDirections is every node receipt id on one queue.
@@ -3220,14 +3236,31 @@ func queuedDirections(queued []userMessage) []uint64 {
 // so the model answers it as part of the turn it is already in, while a note
 // drained after the last request is one nobody has said a word about.
 func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
-	return a.drainQueuedLocked(hub, true)
+	drained := a.drainQueueLocked(hub, true)
+	return drained.landed, drained.owed
 }
 
-// drainQueuedLocked drains steering and, when includeAmbient says this is a
+// drainQueuedLocked is [Agent.drainQueueLocked] answered as a count and whether
+// anything drained is owed a sentence.
+func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool) {
+	drained := a.drainQueueLocked(hub, includeAmbient)
+	return drained.landed, drained.owed
+}
+
+// queueDrain is what one drain put into the transcript: how many messages,
+// whether any of them is owed a sentence, and whether any of them is a line
+// THE PERSON TYPED — which is what arms the model's memory verbs mid-turn, and
+// what a turn started at the end to answer it carries ([userMessage.answersPerson]).
+type queueDrain struct {
+	landed      int
+	owed, heard bool
+}
+
+// drainQueueLocked drains steering and, when includeAmbient says this is a
 // legal boundary for it, the ambient queue. External background-news lines
 // become one authored user-role message; control guidance and a person's steer
 // remain their own messages.
-func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool) {
+func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain {
 	for _, message := range a.discussionHistory {
 		a.recordLocked(message)
 	}
@@ -3245,7 +3278,7 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 	}
 	sourceCount := len(queued)
 	queued = coalesceSessionNotes(queued)
-	owed := false
+	owed, heard := false, false
 	for _, message := range queued {
 		a.recordUserLocked(message)
 		// AND A SPLICED SENTENCE IS NOW A SENTENCE THE MODEL HAS (steer.go). It
@@ -3275,14 +3308,12 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 		// and it is what keeps a sentence typed in the last seconds of a turn
 		// from landing in the transcript with nobody ever asked about it.
 		owed = owed || message.wake || !message.authored
-		// AND A LINE THE PERSON TYPED ARMS THE MODEL'S MEMORY VERBS, even in a
-		// turn the session opened (memory.go's [Agent.heardThePerson]): from
-		// here on the session is answering them.
-		if !message.authored && !message.wake {
-			a.heardThePerson()
-		}
+		// AND WHETHER THE PERSON SPOKE: a line they typed, which is neither the
+		// session's words nor a woken turn's news. The caller decides what that
+		// arms — the rest of this turn, or the turn started to answer it.
+		heard = heard || !message.authored && !message.wake
 	}
-	return sourceCount, owed
+	return queueDrain{landed: sourceCount, owed: owed, heard: heard}
 }
 
 // boundaryNoteHeld reports whether the next step is already owed external news.
@@ -3925,7 +3956,12 @@ func (a *Agent) settleWindow() time.Duration {
 // note on the queue; the turn's end has just drained one INTO the transcript, so
 // the queue is empty and the thing to answer is the last message. A third caller
 // would have to establish the same fact before calling.
-func (a *Agent) wakeLocked() bool {
+func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false) }
+
+// wakeAnsweringLocked is [Agent.wakeLocked] for the turn's end, which knows
+// whether what it just drained was a line THE PERSON TYPED: the woken turn's
+// opening then says so ([userMessage.answersPerson]).
+func (a *Agent) wakeAnsweringLocked(answersPerson bool) bool {
 	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
 	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
 	// different decision in [Steward.Decide], while the wall's budget ending is
@@ -3983,7 +4019,7 @@ func (a *Agent) wakeLocked() bool {
 	if wake, settle := a.settleWakeLocked(); settle {
 		ctx = withSettleWake(ctx, wake)
 	}
-	a.startTurnLocked(ctx, userMessage{wake: true}, sink, watchers...)
+	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson}, sink, watchers...)
 	return true
 }
 

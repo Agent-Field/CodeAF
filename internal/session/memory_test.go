@@ -43,6 +43,9 @@ type reflexScript struct {
 	// onTurn, when set, is called at each of the turn's own requests, before
 	// it is answered and with no lock held.
 	onTurn func()
+	// failTurn, when set, is the turn request (counted from 1) that fails with
+	// a permanent provider error instead of answering.
+	failTurn int
 
 	notices, turns int
 	// asked records, per noticing call, whether it was asked about memory.
@@ -88,6 +91,9 @@ func (r *reflexScript) CompleteWithMessages(ctx context.Context, messages []ai.M
 	}
 	r.turns++
 	r.systems = append(r.systems, system)
+	if r.failTurn == r.turns {
+		return nil, errors.New("insufficient_quota: out of budget")
+	}
 	answer := r.answer
 	if answer == "" {
 		answer = "done"
@@ -693,6 +699,53 @@ func TestTheVerbsAreArmedOnlyByATurnThePersonTyped(t *testing.T) {
 	}
 }
 
+// A TURN THAT FAILS ARMS NOTHING AFTER IT. The person types into a turn that
+// then fails on a provider error: their line reaches the transcript at the
+// turn's end, and no turn is started to answer it. The next task's landing wakes
+// the conversation, and that turn must not have the verbs — nothing the failed
+// turn heard may outlive it.
+func TestAFailedTurnArmsNothingAfterIt(t *testing.T) {
+	script := &reflexScript{failTurn: 2}
+	agent, _ := brainAgent(t, script, nil)
+	var mu sync.Mutex
+	var armed []bool
+	script.onTurn = func() {
+		mu.Lock()
+		armed = append(armed, agent.memory.typed.Load())
+		steer := len(armed) == 2
+		mu.Unlock()
+		if steer {
+			events, err := agent.Submit(context.Background(), "and keep it short")
+			if err != nil {
+				t.Errorf("steer the failing turn: %v", err)
+				return
+			}
+			go func() {
+				for range events { //nolint:revive // draining is the point
+				}
+			}()
+		}
+	}
+	collect(t, mustSubmit(t, agent, "hello"))
+	collect(t, mustSubmit(t, agent, "now tidy the build"))
+	waitIdle(t, agent)
+	agent.enqueueSteering("task 1 finished: the build is green")
+	waitFor(t, "the woken turn", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(armed) >= 3
+	})
+	waitIdle(t, agent)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(armed) != 3 {
+		t.Fatalf("turn requests armed = %v, want the two typed turns and one woken one", armed)
+	}
+	if armed[2] {
+		t.Fatal("a task's landing after a failed turn armed the memory verbs")
+	}
+}
+
 // A LINE THE PERSON TYPED, DRAINED MID-TURN, ARMS THE REST OF THAT TURN and
 // nothing after it: the next turn a task's landing wakes is not armed by a line
 // the turn before already answered.
@@ -701,12 +754,11 @@ func TestASteerArmsOnlyTheTurnItLandsIn(t *testing.T) {
 	agent.armMemoryVerbs(wakeNote("task 1 finished: the build is green"))
 	agent.mu.Lock()
 	agent.steering = append(agent.steering, userText("and keep it short"))
-	agent.drainQueuedLocked(nil, false)
 	agent.mu.Unlock()
+	agent.drainSteering(nil)
 	if !agent.memory.typed.Load() {
 		t.Fatal("a line the person typed into a woken turn did not arm the verbs")
 	}
-	agent.endMemoryVerbs()
 	agent.armMemoryVerbs(userMessage{wake: true})
 	if agent.memory.typed.Load() {
 		t.Fatal("a line its own turn answered armed the next woken turn")
@@ -730,6 +782,11 @@ func TestANoticedLineIsSaidOnTheStandingLane(t *testing.T) {
 		select {
 		case event := <-lane:
 			if event.Kind == EventNotice && strings.HasPrefix(event.Text, "noticed and remembered · wants the change made directly") {
+				// AND IT SAYS NO RECORD CARRIES IT, which is what a surface
+				// holding this conversation out of sight keeps it by.
+				if !event.Unrecorded {
+					t.Fatal("a memory notice was not marked unrecorded")
+				}
 				return
 			}
 		case <-deadline:
