@@ -21,8 +21,8 @@ import (
 // circle is the whole set and that every step of it lands.
 
 // TAB WALKS THE WHOLE CIRCLE AND EVERY ROOM ON IT OPENS. On a surface with no
-// brain, no store and nothing run, all four still take the frame — and the three
-// off the bar, reached by their digits, take it too.
+// brain, no store and nothing run, every room on the bar still takes the frame —
+// and a room off the bar, reached by its digit, would take it too.
 func TestTabWalksEveryPlaceAndEachOneOpens(t *testing.T) {
 	a := placeApp(t)
 	ring := barPages(pageHome, false)
@@ -91,7 +91,7 @@ func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 	if !strings.Contains(screen, whisperOf(pageMemory)) {
 		t.Fatalf("the place with no store does not say what arrives here:\n%s", screen)
 	}
-	if !strings.Contains(screen, memoryOffNote) {
+	if !strings.Contains(screen, memoryUnavailableNote) {
 		t.Fatalf("the place with no store does not say so:\n%s", screen)
 	}
 }
@@ -216,8 +216,7 @@ func TestTheLaunchHomeAndTheOpenedHomeAreBuiltTheSameWay(t *testing.T) {
 	// never written into (homeband_deliverables.go), so an unread one is a read
 	// waiting to happen rather than a panic waiting to happen.
 	for name, ok := range map[string]bool{
-		"last": launched.last != nil, "news": launched.news != nil,
-		"expanded": launched.expanded != nil, "itemsOpen": launched.itemsOpen != nil,
+		"last": launched.last != nil, "expanded": launched.expanded != nil,
 	} {
 		if !ok {
 			t.Fatalf("the launch home has no %s map", name)

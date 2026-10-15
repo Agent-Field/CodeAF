@@ -67,8 +67,10 @@ func TestTheFateReadsTheArgumentWhereItChangesTheAnswer(t *testing.T) {
 	for _, want := range []struct {
 		word, rest, fate string
 	}{
-		{"standing", "", fatePlace},
-		{"standing", "keep the tests green", fateNeedsChat},
+		{"automations", "", fatePlace},
+		{"automations", "add leave at 18:00 say \"time to leave\"", fateNeedsChat},
+		{"automations", "pause 3f2a", fateAnswers},
+		{"standing", "", ""},
 		{"crew", "", fateCrew},
 		{"crew", "cap 5", fateCrew},
 		{"redo", "stronger", fateNeedsChat},

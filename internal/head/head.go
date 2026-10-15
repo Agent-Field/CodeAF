@@ -60,7 +60,7 @@ const (
 	// noSuchTargetReply is the same honesty when the description was clear and
 	// matched nothing. There is no third option here: either it acts, or it
 	// asks, or it says this.
-	noSuchTargetReply = "I don't see any work or standing rule like that."
+	noSuchTargetReply = "I don't see any work like that."
 	// manualRouteSections is the router's grounding read. It is smaller than
 	// the belt's because the router carries the snapshot, the notebook and the
 	// thread in the same prompt, and the manual must not crowd them out.
@@ -93,7 +93,6 @@ type Head struct {
 	store          *store.Store
 	knowledge      func() string
 	competence     func() string
-	standingWatch  func() string
 	dailyBudgetUSD float64
 	modalities     interface {
 		Supports(string, string, string) bool
@@ -233,13 +232,6 @@ func (h *Head) WithSelfKnowledge(knowledge func() string) *Head {
 // structured data is voiced by the head's existing single routing call.
 func (h *Head) WithCompetenceMap(competence func() string) *Head {
 	h.competence = competence
-	return h
-}
-
-// WithStandingWatch registers the same calm status block used by doctor. It
-// is read only for presence-shaped questions.
-func (h *Head) WithStandingWatch(status func() string) *Head {
-	h.standingWatch = status
 	return h
 }
 

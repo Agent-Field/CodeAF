@@ -146,9 +146,9 @@ and the rule that changing any cap changes the doc in the same commit — are in
 [PERF.md](PERF.md).
 
 `make demo-home` builds a **throwaway home with something on every place** — three
-projects, twelve conversations, standing orders, memories, a fourteen-day spending
+projects, twelve conversations, automations, memories, a fourteen-day spending
 ledger — and opens `bin/codeaf` against it with `HOME` pointed there. Use it when you
-want to SEE a page full: on a machine that has just started using codeaf the standing,
+want to SEE a page full: on a machine that has just started using codeaf the automations,
 memory and spend pages correctly draw nothing, which is indistinguishable from a page
 that is broken. It never touches `~/.codeaf`. The seeder is `cmd/codeaf-demo-home` and
 `docs/design/home-rethink/HANDOFF.md` says what is in the fixture and how to add to it.
@@ -215,9 +215,11 @@ two cannot reach each other, and a page name may not exist in both.
 
 Also true and easy to forget: `internal/session/prompts/system.md` is what the model is
 told it can do. If a tool is conditional or absent, the prompt must not promise it. It has
-been wrong before — it advertised `note`/`forget` (which need a `Config.MemoryFile` that
-no door sets) and claimed `read` lists directories (it is `os.ReadFile`; a directory is an
-error).
+been wrong before — it advertised `note`/`forget` (which needed a `Config.MemoryFile` that
+no door set) and claimed `read` lists directories (it is `os.ReadFile`; a directory is an
+error). Today `remember` and `forget` ride only a writable conversation's full belt
+(`memoryTools` in `internal/session/memory.go`), and the page promises neither where the
+belt lacks it.
 
 ## Design laws the codebase enforces
 
@@ -356,14 +358,18 @@ terminal against a real model, and it is how a wave verifies that the surface
 still behaves:
 
 ```sh
-make test-e2e-tui                                              # TestTUIE2E alone, ~17m, 40m ceiling
+make test-e2e-tui                                              # TestTUIE2E alone, 40m ceiling
 make test-e2e                                                 # whole tagged package, 120m ceiling
 go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/
 ```
 
-It needs a provider key and `tmux`, costs a few cents. `TestTUIE2E` alone is
-about **seventeen minutes** (most of it one subtest waiting out a five-minute
-standing pass). The whole tagged package does not fit in forty minutes —
+It needs a provider key and `tmux`, costs a few cents. `TestTUIE2E` alone was
+about **seventeen minutes**, most of it one subtest waiting out a five-minute
+standing pass; that subtest went with standing orders on 2026-10-10, and the
+suite has not been timed since. Automations have a keyless proof of their own —
+`go test -tags e2e -run TestAutomationsE2E -count=1 -v ./internal/e2e/` drives
+the real binary against a scripted model endpoint, so it needs only `tmux` and
+`bin/codeaf`. The whole tagged package does not fit in forty minutes —
 ManualOnTheWire, QuestionsE2E and the roomfeed twins run first and eat the
 budget — so `make test-e2e` gives it two hours. It SKIPS
 rather than fails with no key, no tmux or no `bin/codeaf`, so run `make build`

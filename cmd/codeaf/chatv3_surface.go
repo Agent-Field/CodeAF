@@ -80,7 +80,19 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		// A BREW, DISTRO OR NIX FILE, OR ONE IN A FOLDER THIS ACCOUNT CANNOT
 		// WRITE, is not ours to replace in place.
 		Refusal: func() string { return codeupdate.InstallRefusal(executable, curl) },
+		// THE BUILD'S HALF OF THE AUTOMATIC ROAD, decided by the check off the
+		// frame on the resolved file (codeupdate.AutomaticFor), exactly as the
+		// launch's own road decides it (prelaunch.go): only a stable codeaf
+		// moving to a newer stable counts down. devaf, stageaf, a dev build, a
+		// release candidate and every other name hear the quiet line instead.
+		Automatic: func(available codeupdate.Available) bool { return available.Automatic },
+		// The release a person already stopped with ctrl+c before this window
+		// opened. Counting down to it again would be asking twice.
+		Deferred: launchUpdate.deferred,
 	}
+	// A BUILD THE LAUNCH JUST INSTALLED SAYS SO once it is on screen, because
+	// the line the old build printed is under the chat now.
+	options.UpdatedFrom = launchUpdate.updatedFrom
 	options.UpdateCheck = func(check context.Context) (codeupdate.Available, bool) {
 		return codeupdate.CheckLaunch(check, codeupdate.CheckOptions{
 			Running: revision, ProfileDir: options.ProfileDir, Client: client,

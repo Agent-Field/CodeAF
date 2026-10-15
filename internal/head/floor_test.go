@@ -130,27 +130,6 @@ func TestNothingAboveTheFloorIsEverSilentlySteered(t *testing.T) {
 	}
 }
 
-// TestReminderActionKeepsTheWholeMessage is the logic report's L7 sibling. The
-// action split on the LAST " to ", so "remind me to submit the report to
-// finance" promised to say "finance" — the reminder destroyed by the parse
-// meant to extract it. The message begins after the cue and runs to the end,
-// including every "to" inside it.
-func TestReminderActionKeepsTheWholeMessage(t *testing.T) {
-	for _, test := range []struct{ instruction, want string }{
-		{"remind me to submit the report to finance", "Say: submit the report to finance"},
-		{"remind me tomorrow to call Mom", "Say: call Mom"},
-		{"notify me at 9 to send the invoice to accounting and to legal",
-			"Say: send the invoice to accounting and to legal"},
-		{"alert me to move the deploy to Friday", "Say: move the deploy to Friday"},
-		// No " to " after the cue at all: the whole sentence is the reminder.
-		{"remind me about standup", "Say this reminder: remind me about standup"},
-	} {
-		if got := reminderAction(test.instruction); got != test.want {
-			t.Errorf("reminderAction(%q) = %q, want %q", test.instruction, got, test.want)
-		}
-	}
-}
-
 // TestRailConsentCoversTheStepTheQuestionQuoted is L19's head half. The posted
 // question names an item the journal has not seen — "and the next step costs
 // $15.00" — and promises "I'll continue"; consent then recomputed the raise from

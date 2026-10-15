@@ -1,21 +1,18 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/standing"
-	"golang.org/x/sys/unix"
 )
 
-// The door is machinery, not a command, so it must not appear in the list of
-// things a person can usefully type — for the same reason `engine` does not.
-func TestTickIsAbsentFromTheUsageText(t *testing.T) {
-	for _, word := range []string{"codeaf tick", " tick "} {
+// The old timer's verb and the clock are machinery, not commands, so neither
+// appears in the list of things a person can usefully type — for the same
+// reason `engine` does not.
+func TestTickAndClockAreAbsentFromTheUsageText(t *testing.T) {
+	for _, word := range []string{"codeaf tick", " tick ", "codeaf clock"} {
 		if strings.Contains(usageText, word) {
 			t.Fatalf("the usage text offers %q", word)
 		}
@@ -27,15 +24,8 @@ func TestTickIsAbsentFromTheUsageText(t *testing.T) {
 //
 // THERE ARE EXACTLY THREE PLACES A KEY CAN COME FROM and all three are shut
 // here, because the alternative is a test that quietly buys a real judgment on
-// somebody's account. [config.LoadKeyless] resolves the key through
-// [config.APIKeyAt], which reads OPENROUTER_API_KEY, then OPENAI_API_KEY, then
-// the `api_key` field of `config.json` in the profile — and nothing else: there
-// is no keychain seam and no second file. Empty reads as unset for the two
-// variables. The profile is the one that hides: it is [config.ProfileDirEnv],
-// taken straight from the environment rather than from the state root this test
-// already moved, so a developer with CODEAF_PROFILE_DIR exported would have
-// reached their own persisted key past every temporary directory here. It is
-// pointed at an empty one, which has no config.json and therefore no key.
+// somebody's account: OPENROUTER_API_KEY, OPENAI_API_KEY, and the `api_key`
+// field of `config.json` in the profile, which is pointed at an empty folder.
 func keyless(t *testing.T) {
 	t.Helper()
 	t.Setenv(config.APIKeyEnv, "")
@@ -43,108 +33,11 @@ func keyless(t *testing.T) {
 	t.Setenv(config.ProfileDirEnv, t.TempDir())
 }
 
-// The whole door, on a machine that has never been given a key: `codeaf tick`
-// builds its pass, takes the lock, walks the one item there is, looks at the
-// world, and cannot buy the judgment that would decide whether to fire. THE
-// WALK STILL HAPPENS AND THE WAKE LINE STILL SAYS SO — a pass that will mostly
-// do nothing is not allowed to demand credentials before it finds out
-// (chatv3_standing.go's v3StandingTicker builds keyless).
-//
-// THE MACHINE IS KEYLESS ON PURPOSE AND THE TEST DOES NOT SKIP. Both variables
-// are emptied rather than merely left alone, so this is the same walk on a
-// developer's shell as on the CI runner — and so a key that IS exported can
-// never turn the last step below into a real model call somebody pays for.
-//
-// The probe is a command every machine has rather than the `gh run list` this
-// was written with, so that what the walk reports is this build's own doing and
-// not whether the box has the GitHub CLI installed.
-func TestTickWalksTheItemsAndWritesAWakeLine(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv(home.EnvVar, state)
-	keyless(t)
-
-	store, err := standing.Open(home.Join("v3", "standing"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	made, err := store.Create(standing.Item{
-		Words:     "remind me at 6 to leave",
-		Workspace: state,
-		When:      standing.When{Kind: standing.WhenProbe, Probe: standing.Probe{Command: "echo nothing to report"}},
-		Does:      standing.Action{Kind: standing.ActionSay, Say: "leave now"},
-		Rails:     standing.Rails{PerRunUSD: 0.05, MaxPerDay: 3},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := runTick(nil); err != nil {
-		t.Fatalf("a pass on a machine with no key should still walk: %v", err)
-	}
-	raw, err := os.ReadFile(store.WakeLogPath())
-	if err != nil {
-		t.Fatalf("the pass wrote no wake line: %v", err)
-	}
-	line := strings.TrimSpace(string(raw))
-	// ONE ITEM WAS REACHED AND ITS LOOK WAS UNDECIDED, not failed.
-	//
-	// A MACHINE WITH NO KEY IS A PROVIDER THAT COULD NOT ANSWER, which the
-	// three-way reader reads as `unknown`: the look is counted as CHECKED (the
-	// walk did reach the world's question) and NOT as an error, and NOTHING IS
-	// WRITTEN on the item, so it stays due and the next pass faces the same
-	// question. Reading it as an error would publish a failure that did not
-	// happen; reading it as a `no` would consume the opportunity the person is
-	// waiting on. The cost is that a machine with no key shows `checked` and
-	// keeps trying rather than a row that says why — stated, not hidden.
-	for _, field := range []string{"examined=1", "checked=1", "errors=0", "fired=0", "said=0"} {
-		if !strings.Contains(line, field) {
-			t.Fatalf("the wake line does not say %s: %q", field, line)
-		}
-	}
-	// Nothing fired: a firing needs a yes, and nobody was able to say one.
-	if _, err := os.Stat(filepath.Join(store.RunsDir(made.ID), "0001")); !os.IsNotExist(err) {
-		t.Fatalf("a pass that could not judge ran something anyway: %v", err)
-	}
-	// AND THE ITEM IS STILL ACTIVE AND STILL DUE, because an unknown writes
-	// nothing at all ([Ticker.one]'s stateUndecided).
-	after, err := store.Get(made.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if after.Status != standing.StatusActive {
-		t.Fatalf("an undecided look changed the item's status to %q", after.Status)
-	}
-}
-
-// The pass that does the least there is: a window already holds the tick lock,
-// so this one declines it and leaves. NOTHING IS READ AND NOTHING IS SPENT, and
-// again no key is set — a pass that will do nothing costs nothing and needs
-// nothing, which is why the door builds keyless.
-func TestTickLeavesQuietlyWhenAWindowIsAlreadyKeepingWatch(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv(home.EnvVar, state)
-	keyless(t)
-	store, err := standing.Open(home.Join("v3", "standing"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	held, err := os.OpenFile(store.LockPath(), os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer held.Close()
-	if err := unix.Flock(int(held.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
-	// A pass somebody else is already running is a success, not a failure.
-	if err := runTick(nil); err != nil {
-		t.Fatalf("a held lock was reported as an error: %v", err)
-	}
-}
-
-func TestTickTakesNoArguments(t *testing.T) {
+// THE CLOCK TAKES NO ARGUMENTS, and one that finds another clock holding the
+// lock leaves without a word.
+func TestClockTakesNoArguments(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
-	if err := runTick([]string{"--now"}); err == nil {
+	if err := runClock([]string{"--now"}); err == nil {
 		t.Fatal("an argument was accepted by a door that has none")
 	}
 }

@@ -60,8 +60,8 @@ Questions arrive as cards you can answer with `1`–`9`, arrows, or free text.
 
 Over time it asks less: once you have accepted a category's default enough
 times, codeaf stops asking it and simply declares the assumption instead. The
-questions that carry consent — ratifying a standing goal, raising your budget,
-keeping a server alive — are never silenced this way.
+questions that carry consent — raising your budget, keeping a server alive —
+are never silenced this way.
 
 ## Attachments, images, documents
 

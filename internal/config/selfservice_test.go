@@ -36,7 +36,7 @@ func TestTheRestraintRowsAreNotSelfService(t *testing.T) {
 		KeyToolApprovalMode, KeyToolApprovals, KeyBashApprovals,
 		KeyGuardian, KeyConsentTimeout, KeyTaskAutoApprove,
 		// What may be spent without asking.
-		KeyDailyBudget, KeyPlanConsent, KeyPracticeBudget, KeySpendRail,
+		KeyDailyBudget, KeyPlanConsent, KeySpendRail,
 		KeyTaskRepairRounds, KeyWorkingSet, KeyContextReuse,
 		// How hard the machine may be worked.
 		KeyTaskParallel, KeyTaskMaxLoad, KeyTaskMinFreeMB, KeyBashBackgroundAfter,

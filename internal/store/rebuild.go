@@ -74,12 +74,6 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM self_receipts`); err != nil {
 		return fmt.Errorf("rebuild self receipts: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM charters_fts`); err != nil {
-		return fmt.Errorf("rebuild charter index: %w", err)
-	}
-	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
-		return fmt.Errorf("rebuild charters: %w", err)
-	}
 	if _, err := tx.Exec(`DELETE FROM services_fts`); err != nil {
 		return fmt.Errorf("rebuild service index: %w", err)
 	}
@@ -98,9 +92,6 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM facts_fts`); err != nil {
 		return fmt.Errorf("rebuild facts index: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM memories_fts`); err != nil {
-		return fmt.Errorf("rebuild memory index: %w", err)
-	}
 	if _, err := tx.Exec(`DELETE FROM memories`); err != nil {
 		return fmt.Errorf("rebuild memories: %w", err)
 	}
@@ -114,7 +105,7 @@ func (s *Store) Rebuild() error {
 		return fmt.Errorf("rebuild meta parameters: %w", err)
 	}
 	for _, event := range events {
-		if err := replayEvent(tx, event, s.fts); err != nil {
+		if err := replayEvent(tx, event); err != nil {
 			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
 		}
 	}
@@ -159,7 +150,7 @@ func readEvents(tx *sql.Tx) ([]Event, error) {
 	return events, nil
 }
 
-func replayEvent(tx *sql.Tx, event Event, fts bool) error {
+func replayEvent(tx *sql.Tx, event Event) error {
 	switch event.Kind {
 	case EventSpineCreated:
 		var payload spinePayload
@@ -452,12 +443,6 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 		}
 		return applyAgentQuestionResolution(tx, payload, event.Seq, event.Time)
 
-	case EventStandingWatchOffered, EventStandingWatchEnabled,
-		EventStandingWatchDeclined, EventStandingWatchStoodDown, EventStandingWatchPass:
-		// Standing-watch state is journal-native. Validate it on replay; status
-		// and the never-ask-twice gate read event order directly.
-		return decodeStandingWatchEvent(event.Kind, event.Payload)
-
 	case EventUsageRecorded:
 		var payload NodeUsage
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
@@ -613,7 +598,7 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 		return applyQuestionStatus(tx, payload, event.Seq)
 
 	case EventQuestionPracticeStarted:
-		var payload QuestionPracticeStarted
+		var payload questionPracticeStarted
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
@@ -642,35 +627,35 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 			// rebuilds to exactly the fold's outcome.
 			return nil
 		}
-		return applyMemoryAdd(tx, payload, event.Seq, fts)
+		return applyMemoryAdd(tx, payload, event.Seq)
 
 	case EventMemoryUpdate:
 		var payload memoryUpdatePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemoryUpdate(tx, payload, event.Seq, fts)
+		return applyMemoryUpdate(tx, payload, event.Seq)
 
 	case EventMemorySupersede:
 		var payload memorySupersedePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemorySupersede(tx, payload, event.Seq, fts)
+		return applyMemorySupersede(tx, payload, event.Seq)
 
 	case EventMemoryForget:
 		var payload memoryForgetPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemoryForget(tx, payload, event.Seq, fts)
+		return applyMemoryForget(tx, payload, event.Seq)
 
 	case EventMemoryRestore:
 		var payload memoryRestorePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemoryRestore(tx, payload, event.Seq, fts)
+		return applyMemoryRestore(tx, payload, event.Seq)
 
 	case EventMemoryRehomed:
 		// A RE-HOME IS A PERMISSION CHANGE TO THE ROW, so the replay must
@@ -678,17 +663,19 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 		// back to quarantine on every rebuild.
 		return applyMemoryRehomed(tx, event.Payload, event.Seq)
 
+	case EventMemoryMoved:
+		// A MOVE IS A PERMISSION CHANGE TO THE ROW, replayed for the reason a
+		// re-home is.
+		var payload memoryMovedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyMemoryMoved(tx, payload, event.Seq)
+
 	case EventMemorySkipped, EventMemoryWriteFailed:
 		// Observability events: they name what a device went through and touch
 		// no view. Durable in the journal, a no-op in the views.
 		return nil
-
-	case EventMemoryRanking:
-		var payload memoryRankingPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return err
-		}
-		return applyMemoryRanking(tx, payload)
 
 	case EventScopeAliased:
 		var payload scopeAliasedPayload
@@ -743,17 +730,22 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 		}
 		return applyParameterChange(tx, payload, event.Seq)
 
-	case EventCharterCreated, EventCharterRevised, EventCharterStatusChanged,
-		EventCharterWatchAdvanced, EventCharterWoken, EventSentinelChecked,
-		EventCharterFired, EventCharterFiringBlocked, EventCharterFiringDeferred,
-		EventCharterProposalDeclined, EventCharterFiringProposed, EventCharterFiringDeclined,
-		EventCharterFiringReviewed, EventCharterPromoted, EventCharterDemoted:
-		return replayCharterEvent(tx, event)
-
 	default:
 		// The journal is expected to gain accounting and artifact events that do
 		// not affect the materialized views. Unknown kinds therefore remain
 		// durable but are intentionally a no-op during reconstruction.
+		//
+		// SO DO THE MEMORY EVENTS THIS BUILD NO LONGER WRITES: the ranking
+		// snapshots, the always flag and the contextual evidence, outcome and
+		// impact rows. They stay in the journal and change no view.
+		//
+		// THE v1 SCHEDULER'S EVENTS LAND HERE NOW. Charters, their wakes,
+		// sentinel checks, firings, tenure and the standing-watch decisions
+		// were journaled by machinery that has been removed (see
+		// docs/design/automations/DESIGN.md), and the one table they built is
+		// no longer read by anything, so an old journal that holds them
+		// rebuilds everything else exactly as it did and simply leaves them
+		// where they are.
 		return nil
 	}
 }

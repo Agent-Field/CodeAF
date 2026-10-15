@@ -160,22 +160,6 @@ const (
 	EventAgentQuestionSurfaced EventKind = "agent_question_surfaced"
 	EventAgentQuestionResolved EventKind = "agent_question_resolved"
 
-	// Standing-watch policy is global to this brain file. Offered is the
-	// durable never-ask-twice gate; enabled and declined are the user's final
-	// decision; pass is one completed headless wake observation.
-	EventStandingWatchOffered  EventKind = "standing_watch_offered"
-	EventStandingWatchEnabled  EventKind = "standing_watch_enabled"
-	EventStandingWatchDeclined EventKind = "standing_watch_declined"
-	// EventStandingWatchStoodDown is the reverse gear. Enabled and declined
-	// used to be terminal by construction, which made an unattended-presence
-	// consent one the product accepted and structurally refused to give back —
-	// while the timer repaired itself against the user's own hands every five
-	// minutes. Standing down is a fifth state rather than a rewrite of the
-	// fourth because the journal is append-only and the fact that the user once
-	// said yes is part of the history.
-	EventStandingWatchStoodDown EventKind = "standing_watch_stood_down"
-	EventStandingWatchPass      EventKind = "standing_watch_pass"
-
 	// Usage and surprise are journaled separately because a planned leaf's
 	// prediction becomes known when the complete plan lands, after its spend.
 	EventUsageRecorded    EventKind = "usage_recorded"
@@ -264,24 +248,6 @@ const (
 	// EventParameterChanged is the sole bounded self-tuning mutation surface.
 	EventParameterChanged EventKind = "parameter_changed"
 
-	// Charter events keep standing intent and every watch decision in the same
-	// append-only policy record as the work a firing creates.
-	EventCharterCreated          EventKind = "charter_created"
-	EventCharterRevised          EventKind = "charter_revised"
-	EventCharterStatusChanged    EventKind = "charter_status_changed"
-	EventCharterWatchAdvanced    EventKind = "charter_watch_advanced"
-	EventCharterWoken            EventKind = "charter_woken"
-	EventSentinelChecked         EventKind = "sentinel_checked"
-	EventCharterFired            EventKind = "charter_fired"
-	EventCharterFiringBlocked    EventKind = "charter_firing_blocked"
-	EventCharterFiringDeferred   EventKind = "charter_firing_deferred"
-	EventCharterProposalDeclined EventKind = "charter_proposal_declined"
-	EventCharterFiringProposed   EventKind = "charter_firing_proposed"
-	EventCharterFiringDeclined   EventKind = "charter_firing_declined"
-	EventCharterFiringReviewed   EventKind = "charter_firing_reviewed"
-	EventCharterPromoted         EventKind = "charter_promoted"
-	EventCharterDemoted          EventKind = "charter_demoted"
-
 	// Service events are the durable ownership record for processes promoted
 	// out of a leaf's background-job registry.
 	EventServicePromoted  EventKind = "service_promoted"
@@ -323,6 +289,12 @@ type Provenance struct {
 	Intent    string `json:"intent"`
 	// CharterID points work back to the standing responsibility whose firing or
 	// self-maintenance inquiry admitted it. It is empty for ordinary user work.
+	//
+	// NOTHING SETS IT ANY MORE. The v1 resident's charters went with its
+	// scheduler (docs/design/automations/DESIGN.md), but the field is part of
+	// every splice event a store already holds and the nodes column replay
+	// writes it into, so it stays: dropping it would need a migration to say
+	// nothing new, and an old journal must still replay byte for byte.
 	CharterID string `json:"charter_id,omitempty"`
 	// Attachments are user-supplied image paths kept separate from visible
 	// intent text so every leaf can receive them as multimodal content.
@@ -510,11 +482,6 @@ type Snapshot struct {
 type Store struct {
 	db    *sql.DB
 	blobs *cas.Store
-	// fts says whether the memory index exists on this store. It is proved by
-	// a probe at open, not assumed: a build whose SQLite lost FTS5 opens with
-	// memory intact and only the lexical tier quiet (memory.go states the
-	// trade). The other FTS tables are unconditional at the schema step.
-	fts bool
 	// roleDefaults is the compiled-in floor of the role ladder (role_bindings.go)
 	// — process configuration rather than journaled policy, so it is installed
 	// on the handle and never written to the brain file.
@@ -816,9 +783,6 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(selfReceiptSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize self receipt schema: %w", err))
 	}
-	if _, err := db.Exec(charterSchema); err != nil {
-		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
-	}
 	if _, err := db.Exec(serviceSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize service schema: %w", err))
 	}
@@ -828,10 +792,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(scopeAliasesSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize scope aliases schema: %w", err))
 	}
-	// Memories and their index are created together, and both with IF NOT
-	// EXISTS: there is no backfill to do because there is no older shape of
-	// this table to read from, and a store opened before the feature existed
-	// simply has no memories yet.
+	// The memories table is created with IF NOT EXISTS and then brought up to
+	// this build's shape by the two migrations below, which is what lets a store
+	// written by any earlier build open.
 	if _, err := db.Exec(memoriesSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize memories schema: %w", err))
 	}
@@ -844,13 +807,6 @@ func Open(path string) (*Store, error) {
 	if err := migrateMemoriesOwner(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate memory owners: %w", err))
 	}
-	// The memory index is created only where a probe proved FTS5 works; the
-	// flag is what every memory read checks before it asks the index anything.
-	// The OTHER FTS tables above are still unconditional — a build where FTS5
-	// is genuinely absent loses them at the schema step and says so, because
-	// conversation search without the index is not a degraded store, it is a
-	// different one.
-	ftsAvailable := createMemoriesFTS(db)
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
 	}
@@ -874,7 +830,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return closeOnError(fmt.Errorf("open content store: %w", err))
 	}
-	store := &Store{db: db, blobs: blobs, fts: ftsAvailable}
+	store := &Store{db: db, blobs: blobs}
 	if err := store.ensureSpine(); err != nil {
 		return closeOnError(err)
 	}

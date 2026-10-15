@@ -30,7 +30,7 @@ func TestWorkTabAppearsAfterConversationOnlyForALiveRun(t *testing.T) {
 	if len(tabs) != 2 || !tabs[0].here || !tabs[1].work || tabs[1].word != "Root" {
 		t.Fatalf("live run tabs = %+v, want conversation then titled work tab", tabs)
 	}
-	fake.plan[0].Status, fake.plan[1].Status = "done", "done"
+	fake.editRows(func(rows []session.PlanTaskRow) { rows[0].Status, rows[1].Status = "done", "done" })
 	a.workTabStable()
 	a.workTabStable()
 	if tabs := a.tabList(); len(tabs) != 1 || tabs[0].work {
@@ -86,7 +86,7 @@ func TestTheRunsRoomDrawsNoAuthorAsAStoreID(t *testing.T) {
 		{Author: "2ytmh2", Body: "the worker's own note"},
 		{Person: true, Body: "keep the middleware order"},
 	}
-	fake.pages["t-root"] = page
+	fake.setPage("t-root", page)
 	a.height = 40
 	openWorkTabNow(t, a)
 	text := planRoomText(t, a)
@@ -106,7 +106,7 @@ func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 		t.Fatal("esc left the run's room open")
 	}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Root", session.TaskDone, session.TaskNotice{Report: "the importer landed"})})
-	fake.plan[0].Status, fake.plan[1].Status = "done", "done"
+	fake.editRows(func(rows []session.PlanTaskRow) { rows[0].Status, rows[1].Status = "done", "done" })
 	a.workTabStable()
 	a.workTabStable()
 	if got := taskText(a); !strings.Contains(got, "Root") {

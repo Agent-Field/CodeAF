@@ -155,19 +155,6 @@ func needsAsked(in *homeGridInput) []needsItem {
 			if _, ok := answerable(row.session, in.now); ok && whole {
 				cell.answers = answersWord(row.session.Presence.Question)
 			}
-		case switcherStanding:
-			// THE THREAD IT BELONGS TO HEADS THE DESCRIPTION, spelled as
-			// `threads` spells that conversation, for a watch asked for in one;
-			// a watch made from home's own box belongs to no thread and has no
-			// title line.
-			cell.thread = needsThreadOf(in, row.item.Item.Origin.Transcript)
-			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
-			// A watch asked for in a conversation opens that conversation; one
-			// made from home's own box has none — its exchange is kept under the
-			// item's folder rather than as a session ([standing.Origin.Exchange])
-			// — and `enter` opens the item where it does live, on standing
-			// ([app.homeItemEnter]). The row names neither door
-			// ([needsAnswersCap] states the rule).
 		}
 		item.line = switcherRowLine(row, cell)
 		items = append(items, item)

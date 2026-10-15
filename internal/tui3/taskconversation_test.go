@@ -287,7 +287,8 @@ func TestTheCallInFlightLeavesWhenItReturns(t *testing.T) {
 	back := programPage(row, programTurns())
 	back.Program.Turns[2].Ended = taskFixtureNow
 	back.Program.Actions = append(back.Program.Actions, delegate.Shown{At: taskFixtureNow, Step: "implement", Text: "ran go test ./internal/auth/...", Outcome: "passes"})
-	fake.pages[row.ID], fake.pages[planTaskIDWord(row.ID)] = back, back
+	fake.setPage(row.ID, back)
+	fake.setPage(planTaskIDWord(row.ID), back)
 	planBeat(t, a)
 	lines := programPageLines(a)
 	page := strings.Join(lines, "\n")
@@ -541,13 +542,13 @@ func TestDrawingAProgramsPageReadsNothing(t *testing.T) {
 	a.agent = counted
 	a.width, a.height = 80, 30
 	openPlanPage(t, a)
-	rows, pages := counted.rows, counted.pages
+	rows, pages := counted.rows.Load(), counted.pages.Load()
 	for i := 0; i < 3; i++ {
 		programPageLines(a)
 		a.programOf().calls = !a.programOf().calls
 	}
-	if counted.rows != rows || counted.pages != pages {
-		t.Fatalf("drawing the page read the agent: rows %d→%d, pages %d→%d", rows, counted.rows, pages, counted.pages)
+	if counted.rows.Load() != rows || counted.pages.Load() != pages {
+		t.Fatalf("drawing the page read the agent: rows %d→%d, pages %d→%d", rows, counted.rows.Load(), pages, counted.pages.Load())
 	}
 }
 
@@ -566,17 +567,17 @@ func TestTheRailRowOfAProgramsRunSaysItsStageAndSpend(t *testing.T) {
 	if node == nil {
 		t.Fatal("the run's row never reached the rail")
 	}
-	reads := counted.rows
+	reads := counted.rows.Load()
 	under := plain(strings.Join(a.railUnder(node, 40), "\n"))
 	if !strings.Contains(under, "implement") || !strings.Contains(under, "$1.24") {
 		t.Fatalf("the rail row of a program's run reads %q, want its stage and its spend", under)
 	}
-	if counted.rows != reads || counted.pages != 0 {
-		t.Fatalf("drawing the rail row read the agent: rows %d→%d, pages %d", reads, counted.rows, counted.pages)
+	if counted.rows.Load() != reads || counted.pages.Load() != 0 {
+		t.Fatalf("drawing the rail row read the agent: rows %d→%d, pages %d", reads, counted.rows.Load(), counted.pages.Load())
 	}
 	// A RUN NO PROGRAM WAS HANDED IS UNCHANGED.
 	row.Program, row.Stage = "", ""
-	fake.plan[0] = row
+	fake.editRows(func(rows []session.PlanTaskRow) { rows[0] = row })
 	a.planRows = fake.plan
 	plainUnder := plain(strings.Join(a.railUnder(node, 40), "\n"))
 	if strings.Contains(plainUnder, "implement") || strings.Contains(plainUnder, "$1.24") {

@@ -252,6 +252,24 @@ type Record struct {
 	// Empty for a call to an endpoint that is not a router, and for one sent
 	// with no preference at all.
 	Lane string `json:"lane,omitempty"`
+	// Lanes is the SET this attempt actually went out demanding, when it
+	// demanded more than one. Since the chooser was taught to admit the whole
+	// set it believed in (`provider.only` with `allow_fallbacks` off over every
+	// machine that survived the gate), the router is free to pick any member of
+	// it, so [Lane] above is no longer the only machine the request would
+	// accept. Served matching [Lane] exactly stopped being the question; served
+	// being INSIDE this set is, and a reader with only [Lane] cannot tell "the
+	// router chose another machine we admitted" from "the router went somewhere
+	// we never named".
+	//
+	// Empty when the attempt demanded nothing (it ranked machines and the router
+	// was free to leave the set) or demanded exactly one - the single case
+	// [Lane] alone already answers - which is also the state of every row written
+	// before the set-demanding chooser existed. The members are the endpoint
+	// names as the composed demand carried them. [Lane] need not belong to this
+	// set: a retry narrowed from three machines to two can retain the excluded
+	// ranked head as [Lane] while [Lanes] names the surviving pair.
+	Lanes []string `json:"lanes,omitempty"`
 	// Hedged marks the row of a call that was rescued by a second request to
 	// another lane. Both halves of the pair leave their own rows; this is what
 	// says they were a pair.

@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/automation"
 )
 
 // A PERSON'S CARD ANSWER IS ON THE PAGE THE CHECKER READS, and a gap that
 // answer already chose does not carry the turn on.
 //
-// The measured failure: the person pressed `just once`, the tool said nothing
+// The measured failure: the person declined the card, the tool said nothing
 // was set up, the digest clipped that result, and the checker raised "the
 // recurring reminder was never set up" three times. This drives [Agent.checkerPage]
 // through [Agent.checkpointReopen]. A checker that cannot see the answer line
@@ -37,14 +38,14 @@ func TestAPersonsCardAnswerReachesTheCheckerAndClosesTheGap(t *testing.T) {
 			if askedForRemains(messages) {
 				shown := messageText(messages[len(messages)-1])
 				page.Store(shown)
-				if strings.Contains(shown, "only now, don't repeat") {
+				if strings.Contains(shown, "Don't save") {
 					return textResponse(checkpointNothingLeft), nil
 				}
 				return textResponse(gap), nil
 			}
 			switch call := done.Add(1); call {
 			case 1:
-				return toolResponse("s1", "stand", aRepeatingCheck()), nil
+				return toolResponse("s1", "automation", aRepeatingReminder()), nil
 			case 2:
 				// The last act is a write, so the cheap turn is still read
 				// (checkpoint.go's exposure gate) without climbing a mark.
@@ -54,60 +55,58 @@ func TestAPersonsCardAnswerReachesTheCheckerAndClosesTheGap(t *testing.T) {
 			}
 		}
 	}
-	store := newFakeStanding(t)
+	store := automationStoreFor(t)
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointWritingAgent(t, completer, func(config *Config) {
-		config.Standing = &Standing{}
-		config.standingItems = store
+		config.Automations = &Automations{Store: store, Zone: "UTC"}
 	})
 
 	events, err := agent.Submit(watchedContext(agent), "check the marketing slack every 3 hours")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
-	collected := drainAnsweringStanding(t, events, func(event Event) {
+	collected := drainAnsweringAutomation(t, events, func(event Event) {
 		if err := agent.ResolveQuestion(Answer{
-			Kind: QuestionStanding, ID: event.Standing.ID, Key: StandingOnceKey,
+			Kind: QuestionAutomation, ID: event.Automation.ID, Key: DeclineKey,
 		}); err != nil {
 			t.Errorf("ResolveQuestion: %v", err)
 		}
 	})
 	shown, _ := page.Load().(string)
-	if !strings.Contains(shown, `the person answered the card "`+StandingHeadCheck+`": only now, don't repeat`) {
+	if !strings.Contains(shown, `the person answered the card "wants to remind you": Don't save`) {
 		t.Fatalf("the checker was not shown the card answer:\npage:\n%s\ntranscript:\n%s\nevents: %v", shown, transcriptText(agent), kinds(collected))
 	}
 	if strings.Contains(transcriptText(agent), checkpointCarryOnLead) {
 		t.Fatal("a gap the person chose carried the turn on")
 	}
-	if len(store.created) != 0 {
-		t.Fatal("a once answer created a standing item")
+	if saved, err := store.List(); err != nil || len(saved) != 0 {
+		t.Fatalf("a declined card saved %v (%v)", saved, err)
 	}
 	_ = collected
 }
 
-// aRepeatingCheck is the measured proposal: a check every three hours, the
-// one kind whose card offers only now.
-func aRepeatingCheck() string {
+// aRepeatingReminder is the measured proposal: a line said every three hours.
+func aRepeatingReminder() string {
 	body := map[string]any{
-		"op":         "propose",
-		"words":      "check the marketing slack every 3 hours",
-		"when":       map[string]any{"kind": "every", "every": "3h"},
-		"does":       map[string]any{"kind": "say", "say": "check the marketing slack"},
-		"when_words": "every 3 hours",
-		"cost_words": "nothing to speak of, one line each time",
+		"op":    "propose",
+		"title": "marketing slack",
+		"words": "check the marketing slack every 3 hours",
+		"when":  map[string]any{"every": "3h", "words": "every 3 hours"},
+		"say":   "check the marketing slack",
 	}
 	raw, _ := json.Marshal(body)
 	return string(raw)
 }
 
-func TestPersonCardAnswerLineKeepsOnceAndAnyOtherCard(t *testing.T) {
-	standing := Question{
-		Kind: QuestionStanding,
-		Head: "wants to keep an eye on: run the tests",
+func TestPersonCardAnswerLineNamesThePickedAnswer(t *testing.T) {
+	card := Question{
+		Kind:    QuestionAutomation,
+		Head:    "wants to schedule work",
+		Options: AutomationOptions(automation.Automation{Schedule: automation.Schedule{Every: "1h"}, Action: automation.Action{Do: "run the tests"}}),
 	}
-	once := personCardAnswerLine(standing, Answer{Kind: QuestionStanding, Key: StandingOnceKey, DecidedBy: DecidedByPerson})
-	if once != `the person answered the card "wants to keep an eye on: run the tests": only now, don't repeat` {
-		t.Fatalf("once line = %q", once)
+	declined := personCardAnswerLine(card, Answer{Kind: QuestionAutomation, Key: DeclineKey, DecidedBy: DecidedByPerson})
+	if declined != `the person answered the card "wants to schedule work": Don't save` {
+		t.Fatalf("decline line = %q", declined)
 	}
 	consent := Question{
 		Kind: QuestionConsent, Head: "may I run the tests",

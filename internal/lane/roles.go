@@ -50,13 +50,11 @@ const (
 	// argument in internal/session's turnLambda.
 	RoleLeafAttached   Role = "leaf.attached"
 	RoleLeafUnattended Role = "leaf.unattended"
-	// RoleStanding is a standing order's run: unattended by construction.
+	// RoleStanding is an automation watch's judgment: unattended by
+	// construction. It keeps the name of the standing orders it first served.
 	RoleStanding Role = "standing"
 	// RoleMemory is the memory reflex and the consolidation pass.
 	RoleMemory Role = "memory"
-	// RoleRecall prepares a person's next answer. Its output is private, but
-	// its delay is interactive because the main request has not started yet.
-	RoleRecall Role = "recall"
 	// RoleAuxiliary is a side errand of the turn's — a title, a route question,
 	// a fold-up, a reply check. It is the role the reflex tier mostly serves.
 	RoleAuxiliary Role = "auxiliary"
@@ -291,8 +289,11 @@ const Hysteresis = 250 * time.Millisecond
 // TWO OF THEM MOVED ON 2026-09-11, AND BOTH MOVED FOR ONE REASON: A CEILING
 // OUTSIDE ITS OWN CALLER'S WINDOW CAN NEVER FIRE.
 //
-//   - RECALL, 1 → 0.2. Its caller (internal/reflex's Route) bounded the whole
-//     routing pass at this role's CEILING, which made the two numbers the same
+//   - RECALL, 1 → 0.2. (The recall role was deleted on 2026-10-14 with the
+//     pre-turn memory read it served; the bullet stays because JUDGE's figure
+//     below is reasoned the same way.) Its caller (internal/reflex's Route)
+//     bounded the whole routing pass at this role's CEILING, which made the two
+//     numbers the same
 //     number: the hazard controller was told to act on silence at exactly the
 //     instant the call was killed, so a recall on a slow machine was never once
 //     moved to a fast one. The 2026-09-11 census measured the consequence —
@@ -329,7 +330,6 @@ var roles = map[Role]RoleFacts{
 	RoleLeafAttached:   {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
 	RoleLeafUnattended: {Interactive: false, QualityNeed: 0.9, Horizon: 50, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleStanding:       {Interactive: false, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
-	RoleRecall:         {Interactive: true, Critical: true, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 0.2},
 	RoleMemory:         {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleAuxiliary:      {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 1},
@@ -398,7 +398,7 @@ func (r Role) Ceiling() time.Duration {
 // this is when we stop acting at all ([TurnGiveUp] × the same patience), so the
 // two scale together off one column and a role cannot be patient about one and
 // impatient about the other. Talk is ninety seconds, a task node's four and a
-// half minutes, a standing pass's nine, a probe's forty-five seconds.
+// half minutes, an automation check's nine, a probe's forty-five seconds.
 //
 // WHAT IT REPLACED, and why none of those numbers is missed: six attempts and
 // two minutes for a watched call, sixty attempts and ten minutes for a patient

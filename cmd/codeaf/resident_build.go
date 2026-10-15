@@ -13,10 +13,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// newResidentReconciler assembles the store-driven resident role shared by an
-// interactive chat owner and a bounded wake pass. Surface concerns are added
-// by chat after this returns; wake deliberately has no session-open or arrival
-// brief side effects.
+// newResidentReconciler assembles the store-driven resident role `codeaf do`
+// runs its errand on. Surface concerns are added by the caller after this
+// returns. (A bounded `codeaf wake` pass shared it once; that pass went with
+// the v1 scheduler.)
 // The three clients divide by the kind of call: chatClient talks (compiling,
 // distilling, titling, narrating — the resident's own small verdicts),
 // planClient structures (the task graph, replans, contracts, the delivery
@@ -25,8 +25,8 @@ import (
 // oneShotErrand says this reconciler serves `codeaf do`: one errand, run once,
 // with nobody who could answer a question about it. It is a fact about the
 // surface, not a judgement about the work, and it travels to both halves that
-// would otherwise have to guess it — the compiler's temporal classification and
-// the reconciler's charter draft.
+// would otherwise have to guess it — the compiler's prompt and the
+// reconciler's handling of the ask's own words.
 //
 // It is the only signal the verbatim law needs, and it is the right one: the
 // compile stage is unchanged for everybody, and the reconciler that applies the
@@ -70,12 +70,9 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
 		WithReflector(reflectAcrossJobs(settings, chatClient, graph)).
-		WithCharterProposals().
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
-		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
 		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot)).
-		WithCancelRethink(rethinkAfterCancel(settings, planClient, plans, graph)).
-		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
+		WithCancelRethink(rethinkAfterCancel(settings, planClient, plans, graph))
 }
 
 // rethinkAfterCancel is the settle watcher's half of the cancel journey: work
@@ -107,7 +104,6 @@ func rethinkAfterCancel(settings config.Config, planClient *liveClient,
 // scattered compiles across providers, and the 5.5 KB compiler prompt was
 // written cold every single time. One constant key keeps it warm from compile
 // to compile, exactly as "distill", "gate", "narrate" and the rest already do.
-// The standing-charter compiler runs on this same context and inherits it.
 //
 // plans is here for one reason and it is not planning: the compiler's structural
 // reading of the ask — the thing scale is reconciled from — has no seat on
@@ -155,7 +151,6 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, 
 			BuildsOn:        brief.BuildsOn,
 			Question:        brief.Question,
 			QuestionOptions: brief.QuestionOptions,
-			Charter:         brief.Charter,
 			ServiceIntent:   brief.ServiceIntent,
 			WorkModel:       brief.WorkModel,
 			ModelNote:       brief.ModelNote,

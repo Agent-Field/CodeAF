@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -491,6 +492,7 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 			cfg.Workspace = workspace
 		}
 		cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
+		cfg.MemoryProjectName = gitidentity.ProjectName(cfg.Workspace)
 		return cfg, nil
 	}
 	if err := prepareOwnedWorkspace(place); err != nil {
@@ -502,8 +504,10 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 	// folder — /new, a resume, a picker — is a conversation that may be in a
 	// different project, and a memory scoped to the wrong key is a memory in
 	// the wrong place. Recomputed here, where the workspace is settled, so
-	// every door through this function agrees about whose project this is.
+	// every door through this function agrees about whose project this is —
+	// and the name moves with it, so a line kept here says where it holds.
 	cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
+	cfg.MemoryProjectName = gitidentity.ProjectName(cfg.Workspace)
 	return cfg, nil
 }
 

@@ -118,9 +118,9 @@ func TestTakeBackStaysWithItsComposerRecipient(t *testing.T) {
 func TestTakeBackPreservesDemotedSlashTag(t *testing.T) {
 	_, a := wired(nil)
 	a.state, a.stream, a.keysDisambiguated = stateWorking, make(chan session.Event), true
-	a.input.setText("say /standing")
+	a.input.setText("say /task")
 	if !a.demoteTagBehindCaret() || len(a.liveTags()) != 0 {
-		t.Fatal("could not demote the standing tag")
+		t.Fatal("could not demote the task tag")
 	}
 	drive(t, a, key("ctrl+enter"))
 	drive(t, a, press(2, queuedRowY(t, a, 0)))
@@ -247,20 +247,20 @@ func TestRefusedTakeBackAdoptsItsTurnAfterTheParentCloses(t *testing.T) {
 
 func TestTakeBackMergesPasteNumbersPlainTagsAndTheExistingTray(t *testing.T) {
 	_, a := queuedConversation(t)
-	a.input.setText(pasteToken(1, 3) + " say /standing")
+	a.input.setText(pasteToken(1, 3) + " say /task")
 	a.pastes = []pasteChip{{n: 1, text: "old\ndocument\nbody"}}
 	if !a.demoteTagBehindCaret() {
 		t.Fatal("could not demote queued tag")
 	}
 	drive(t, a, key("ctrl+enter"))
-	a.input.setText("keep /standing " + pasteToken(9, 3))
-	a.input.demotedTags = []segment{{from: 5, to: 14}}
+	a.input.setText("keep /task " + pasteToken(9, 3))
+	a.input.demotedTags = []segment{{from: 5, to: 10}}
 	a.pastes = []pasteChip{{n: 9, text: "new\ndocument\nbody"}}
 	a.chips = []chip{{path: "/tmp/current.png"}}
 	a.harnChip = "picked"
 	a.input.cursor = 2
 	drive(t, a, press(2, queuedRowY(t, a, 0)))
-	want := "keep /standing " + pasteToken(9, 3) + "\n" + pasteToken(10, 3) + " say /standing"
+	want := "keep /task " + pasteToken(9, 3) + "\n" + pasteToken(10, 3) + " say /task"
 	if a.input.String() != want || len(a.pastes) != 2 || a.pastes[1].n != 10 || len(a.liveTags()) != 0 || len(a.input.demotedTags) != 2 || len(a.chips) != 1 || a.harnChip != "picked" || a.input.cursor != len([]rune(want)) {
 		t.Fatalf("merge damaged the composers: text=%q pastes=%+v plain=%+v tray=%+v harness=%q caret=%d", a.input.String(), a.pastes, a.input.demotedTags, a.chips, a.harnChip, a.input.cursor)
 	}
@@ -406,16 +406,6 @@ func TestLastTakeBackLetsTheParkedMessageRunAfterParentClose(t *testing.T) {
 	}
 }
 
-func TestStandingCommandKeepsThePickedHarnessAndPicturesOnTheTray(t *testing.T) {
-	a, agent, _ := standMarkLab(t)
-	a.harnChip = "picked"
-	a.chips = []chip{{path: "/tmp/current.png"}}
-	typeLine(t, a, "/standing always run the tests")
-	if len(agent.marked) != 1 || agent.marked[0] != "always run the tests" || a.harnChip != "picked" || len(a.chips) != 1 {
-		t.Fatalf("standing command did not keep the tray: marked=%v harness=%q chips=%+v", agent.marked, a.harnChip, a.chips)
-	}
-}
-
 func TestCtrlEnterCommitsTheSelectedSlashCommand(t *testing.T) {
 	agent, a := wired(nil)
 	store := history.New(filepath.Join(t.TempDir(), "history.jsonl"))
@@ -485,7 +475,7 @@ func TestCtrlEnterLeavesTheModelPickersChordAlone(t *testing.T) {
 
 // The corpus is the model's only account of these doors. A behavior test alone
 // cannot catch a page that still tells it to deny a key or invent a refusal.
-func TestQueueManualDescribesMergeAndDoesNotInventAStandingTrayRefusal(t *testing.T) {
+func TestQueueManualDescribesMergeAndDraftInput(t *testing.T) {
 	keys, ok := manual.Chat().Page("keys")
 	if !ok {
 		t.Fatal("keys page is missing")
@@ -496,50 +486,19 @@ func TestQueueManualDescribesMergeAndDoesNotInventAStandingTrayRefusal(t *testin
 	if strings.Contains(keys, "`ctrl+enter` needs the\nsame support") {
 		t.Error("queue manual denies input from a terminal without a kitty reply")
 	}
-	standing, ok := manual.Chat().Page("standing-orders")
-	if !ok {
-		t.Fatal("standing page is missing")
-	}
-	if strings.Contains(standing, "hint is also absent wherever the command would refuse") {
-		t.Error("standing manual turns the full tray's absent hint into a refusal")
-	}
 }
 
 func TestTakeBackKeepsPlainTagsWhenQueueingTrimsTheDraft(t *testing.T) {
 	_, a := queuedConversation(t)
-	a.input.setText(" \tsay /standing \n")
-	a.input.cursor = len([]rune(" \tsay /standing"))
+	a.input.setText(" \tsay /task \n")
+	a.input.cursor = len([]rune(" \tsay /task"))
 	if !a.demoteTagBehindCaret() {
 		t.Fatal("could not demote the tag before the trailing whitespace")
 	}
 	drive(t, a, key("ctrl+enter"))
 	drive(t, a, press(2, queuedRowY(t, a, 0)))
-	if a.input.String() != "say /standing" || len(a.liveTags()) != 0 || len(a.input.demotedTags) != 1 || a.input.demotedTags[0] != (segment{from: 4, to: 13}) {
+	if a.input.String() != "say /task" || len(a.liveTags()) != 0 || len(a.input.demotedTags) != 1 || a.input.demotedTags[0] != (segment{from: 4, to: 9}) {
 		t.Fatalf("queue trimming lost the plain tag's position: draft=%q plain=%+v", a.input.String(), a.input.demotedTags)
-	}
-}
-
-// A LIVE SEND TAG KEEPS ENTER'S DOOR. Queueing its words would spend the tag
-// without ever asking the standing door to keep the sentence true.
-func TestCtrlEnterKeepsALiveStandingTagsDoorMidTurn(t *testing.T) {
-	a, agent, _ := standMarkLab(t)
-	a.state, a.stream, a.keysDisambiguated = stateWorking, make(chan session.Event), true
-	typeInto(t, a, "always run the tests /standing")
-	if len(a.liveTags()) != 1 {
-		t.Fatal("the draft has no live standing tag")
-	}
-	if a.queueSendOffered() || a.queueFootOffered() || strings.Contains(a.hintWord(), queueFootWord) {
-		t.Error("the queue key or foot offers to discard the live standing tag")
-	}
-	drive(t, a, key("ctrl+enter"))
-	if a.followWaiting() != 0 || len(a.parks) != 1 || !a.parks[0].standing || a.parks[0].text != "always run the tests" || !a.input.empty() {
-		t.Fatalf("ctrl+enter bypassed the standing door: follows=%+v parks=%+v draft=%q", a.follows, a.parks, a.input.String())
-	}
-	// The door runs immediately, and its marked words wait for this turn's end
-	// just as they do on plain enter. The parked send must still be marked.
-	drive(t, a, streamClosedMsg{gen: a.gen})
-	if len(agent.marked) != 1 || agent.marked[0] != "always run the tests" {
-		t.Fatalf("the standing words lost their mark after the running turn: %v", agent.marked)
 	}
 }
 
@@ -570,9 +529,9 @@ func TestFollowUpKeepsQueuedDemotionsInTheTranscript(t *testing.T) {
 // Duplicate or stale offsets must not become additional plain annotations.
 func TestFollowUpUnionsOnlyValidQueuedDemotions(t *testing.T) {
 	_, a := wired(nil)
-	words := "say /model now /standing"
+	words := "say /model now /task"
 	model := segment{from: 4, to: 10}
-	door := segment{from: 15, to: 24}
+	door := segment{from: 15, to: 20}
 	a.follows = []queued{{
 		text: words, ch: make(chan session.Event),
 		demoted: []segment{model, model, door, {from: -1, to: 4}, {from: 4, to: 99}, {from: 0, to: 3}},
@@ -586,21 +545,21 @@ func TestFollowUpUnionsOnlyValidQueuedDemotions(t *testing.T) {
 
 // Backspace's real send-door demotion still queues as words, and the started
 // transcript must retain the same plain range after the composer resets.
-func TestFollowUpKeepsABackspacedStandingTagPlain(t *testing.T) {
+func TestFollowUpKeepsABackspacedTaskTagPlain(t *testing.T) {
 	_, a := queuedConversation(t)
-	typeInto(t, a, "say /standing")
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"))
-	want := segment{from: 4, to: 13}
-	if a.input.String() != "say /standing" || !containsSegment(a.input.demotedTags, want) || len(a.liveTags()) != 0 {
-		t.Fatal("backspace did not demote the standing tag")
+	want := segment{from: 4, to: 9}
+	if a.input.String() != "say /task" || !containsSegment(a.input.demotedTags, want) || len(a.liveTags()) != 0 {
+		t.Fatal("backspace did not demote the task tag")
 	}
 	drive(t, a, key("ctrl+enter"))
 	if len(a.follows) != 1 || !containsSegment(a.follows[0].demoted, want) {
-		t.Fatalf("the demoted standing tag did not queue as words: %+v", a.follows)
+		t.Fatalf("the demoted task tag did not queue as words: %+v", a.follows)
 	}
 	_, _ = a.route(streamClosedMsg{gen: a.gen})
 	e := lastUserEntry(t, a)
-	if e.text != "say /standing" || len(e.plainTags) != 1 || e.plainTags[0] != want {
+	if e.text != "say /task" || len(e.plainTags) != 1 || e.plainTags[0] != want {
 		t.Fatalf("the backspaced tag did not stay plain: text=%q plain=%+v", e.text, e.plainTags)
 	}
 }

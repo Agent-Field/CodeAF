@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 )
@@ -69,13 +70,13 @@ func (a *app) openDemoQuestion(env func(string) string) {
 	}
 	if build, known := blockDemos[name]; known {
 		// AND THE BLOCK'S OWN FIXTURES, on the same terms and for the same
-		// reason. The five lanes that moved onto it in the questions wave — the
-		// standing card, the harness offer, a finished design, the connect offer
-		// and the key it asks for — are each raised by MINUTES of real work: a
-		// reminder proposed by a turn, a design written by a model, an account
-		// the session reached for. A screen capture that has to pay for all of
-		// that first is a screen capture nobody takes twice, and a renderer
-		// nobody has looked at is not done.
+		// reason. The lanes it carries — the automation card, the harness offer,
+		// a finished design, the connect offer and the key it asks for — are
+		// each raised by MINUTES of real work: a reminder proposed by a turn, a
+		// design written by a model, an account the session reached for. A
+		// screen capture that has to pay for all of that first is a screen
+		// capture nobody takes twice, and a renderer nobody has looked at is not
+		// done.
 		a.raiseQuestion(questionShown{question: build()})
 		// The DRAW is what stamps a question as seen, and the guard is measured
 		// from the stamp — so the fixture spends it up front, exactly as the
@@ -224,7 +225,7 @@ func demoQuestionPairs() session.Question {
 // demoQuestionDial is a setting with a sentence under it.
 func demoQuestionDial() session.Question {
 	return session.Question{
-		ID: 5, Kind: session.QuestionStanding, Ask: session.AskJudgement, Form: session.FormRoom,
+		ID: 5, Kind: session.QuestionAutomation, Ask: session.AskJudgement, Form: session.FormRoom,
 		Asker:  session.Asker{Kind: session.AskerEngine},
 		Head:   "how much may it decide on its own here?",
 		Reason: "you have taken its pick on the last four questions in this project",
@@ -279,37 +280,21 @@ var blockDemos = map[string]func() session.Question{
 	// seen without a model.
 	"evidence":        demoQuestionReading,
 	"evidence-layout": demoQuestionLayout,
-	"standing":        demoStandingCard,
+	"automation":      demoAutomationCard,
 	"harness-offer":   demoHarnessOffer,
 	"design":          demoHarnessDesign,
 	"connect":         demoConnectOffer,
 	"connect-key":     demoConnectKey,
 }
 
-// demoStandingCard is the reminder a turn proposed: a choice with four answers
-// and a correction lane under it.
-func demoStandingCard() session.Question {
-	return session.Question{
-		ID:     1,
-		Kind:   session.QuestionStanding,
-		Ask:    session.AskChoice,
-		Form:   session.FormCard,
-		Asker:  session.Asker{Kind: session.AskerModel},
-		Head:   session.StandingHeadCheck,
-		Reason: session.StandingAskReason,
-		Stakes: session.StakesReversible,
-		// THE WORDS ARE THE CARD'S OWN CONSTANTS and never a second spelling of
-		// them (standing.go, and the law a test in this package holds): a fixture
-		// that said the answers itself would be a picture of a card this program
-		// does not draw.
-		Options: []session.AnswerOption{
-			{Key: standYesKey, Label: standYesWord, Consequence: standYesCost},
-			{Key: session.StandingOnceKey, Label: standOnceWord, Consequence: standOnceCost},
-			{Key: session.StandingNoKey, Label: standNoWordChip, Safe: true, Consequence: standNoCost},
-		},
-		Input: session.InputShape{Kind: session.InputText, Prompt: standChangeCost},
-		Scope: []session.AnswerScope{session.ScopeOnce, session.ScopeAlways},
-	}
+// demoAutomationCard is the scheduled work a turn proposed: the engine's own
+// construction of the question, so the fixture is a picture of a card this
+// program draws and never a second spelling of one.
+func demoAutomationCard() session.Question {
+	return session.AutomationQuestion(session.AutomationNotice{ID: 1, Automation: automation.Automation{
+		Title: "weekly update", Words: "every Monday at 9, draft the weekly update",
+		Schedule: automation.Schedule{Every: "0 9 * * 1"}, Action: automation.Action{Do: "draft the weekly update"},
+	}})
 }
 
 // demoHarnessOffer is the offer to run a saved program: one line, two answers.

@@ -69,7 +69,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -90,7 +89,6 @@ import (
 // drive a scripted agent and never open a socket.
 type WrappedAgent interface {
 	Submit(ctx context.Context, text string) (<-chan session.Event, error)
-	SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error)
 	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
 	FollowUp(text string) (<-chan session.Event, error)
 	Steer(text string) (<-chan session.Event, error)
@@ -114,7 +112,6 @@ type WrappedAgent interface {
 	SetReasoningFor(model, level string)
 	ResolveConsent(id uint64, allow bool)
 	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
-	ResolveStanding(id uint64, answer session.StandingAnswer)
 	ResolveHarness(id uint64, run bool, model string)
 	ResolveConnect(id string, approve bool)
 	ResolveConnectKey(id string, key string)
@@ -219,36 +216,16 @@ type Engine struct {
 	// session directory off its own disk, and a remote one cannot see it.
 	Recent func() []session.Summary
 
-	// StandingItems and StandingSave are this MACHINE'S ambient side, for the
-	// same reason Recent is here: the store is a directory of documents under
-	// the engine's own state root, a local surface opens it directly, and a
-	// remote one has no way to. The workspace is a path on THIS disk, which is
-	// the only kind of path an item's own Workspace field ever holds.
-	//
-	// Nil is the ambient side off for this engine, and it is answered as a
-	// refusal rather than as an empty list — a capability that cannot work is
-	// absent, and the surface keeps the difference between "no items" and "no
-	// door" (internal/remote's Client.StandingItems says what it does with it).
-	StandingItems func(workspace string) ([]standing.Item, error)
-	// StandingSave writes one item back. THE STORE'S OWN REFUSAL IS THE ERROR:
-	// internal/standing validates what it is asked to write, and a surface that
-	// redrew a row as paused over a rejected write would be lying about this
-	// disk, so nothing here softens it.
-	StandingSave func(item standing.Item) error
-	// StandingWatch reads this machine's scheduler. Nil means this engine has no
-	// scheduler to ask, which the surface renders as no line.
-	StandingWatch func() (standing.WatchStatus, bool)
-
 	// ── the places ──────────────────────────────────────────────────────────
 	//
 	// THE PLACES ARE A LISTING OF THIS MACHINE'S DISK, and until version 4 the
 	// surface listed its own instead. Over --host that meant the tasks place
 	// walked the LAPTOP's `~/.codeaf/v3` and drew what it found — eight rows and
 	// a total in dollars — under a conversation running here. These doors are
-	// how it asks the right machine, and they are the same shape Recent and
-	// StandingItems already are: nil is the reading absent rather than empty,
-	// answered as a refusal, so the surface keeps the difference between "there
-	// is nothing there" and "nobody asked".
+	// how it asks the right machine, and they are the same shape Recent
+	// already is: nil is the reading absent rather than empty, answered as a
+	// refusal, so the surface keeps the difference between "there is nothing
+	// there" and "nobody asked".
 
 	// World is the walk of this machine's places root: every project, every
 	// conversation in it, and the work each of those ran. It is the reading five
@@ -275,7 +252,7 @@ type Engine struct {
 	// is the only place on the surface that WRITES, so a wire that carried its
 	// readings and not its writes would hand a person a page of the far
 	// machine's memories whose `e` and `f` keys edited this laptop's. The store
-	// crosses whole or it does not cross, and nil is memory off over there —
+	// crosses whole or it does not cross, and nil is no memory store over there —
 	// which the surface says in those words rather than in this session's own
 	// ([EngineMemory]).
 	Memory             EngineMemory
@@ -293,6 +270,16 @@ type Engine struct {
 	// answered as a refusal and the card says so, rather than the surface reading
 	// a path on its own disk that only exists on this one.
 	TaskRecord func(uri string, tail int) (session.TaskRecord, error)
+
+	// ── the automations ─────────────────────────────────────────────────────
+	//
+	// Automations is THIS MACHINE'S automations ([EngineAutomations]): the
+	// store a window over --host or --at reads and changes, the zone a rhythm
+	// typed there is read in, and the presence an attached window holds here for
+	// as long as it is attached ([Hello.Window]). It is the places' shape: nil
+	// is automations off on this engine, the welcome says nothing, and every
+	// door answers a refusal rather than an empty list.
+	Automations *EngineAutomations
 }
 
 // Options is what [Serve] needs, which is one function: how to open the
@@ -1285,6 +1272,12 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// hand, asked of the agent it has open — for [Welcome.Skills]'s stated
 		// reason (skills.go).
 		Skills: skillsKnown(sess.agent),
+		// Whether this engine answers the automations doors, and the zone a
+		// rhythm typed over the connection is read in. Both are about the
+		// MACHINE and not the conversation, so they are asked of the engine and
+		// survive every swap (wire_automations.go).
+		Automations:     sess.engine.Automations.on(),
+		AutomationsZone: sess.engine.Automations.zone(),
 	}
 }
 
@@ -1349,7 +1342,7 @@ func factsMoved(kind session.EventKind) bool {
 		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
 		session.EventConnectAsk, session.EventConnectDone,
 		session.EventTaskProposal, session.EventTaskUpdate,
-		session.EventStandingProposal, session.EventStandingUpdate,
+		session.EventAutomationProposal, session.EventAutomationUpdate,
 		session.EventHarnessOffer, session.EventHarnessRun, session.EventHarnessDesignDone,
 		session.EventHarnessDesignRevising, session.EventOrchestratePause, session.EventOrchestrateFuel,
 		session.EventSubharnessAsk, session.EventSubharnessProposal, session.EventSubharnessProposalOff:
@@ -1690,7 +1683,7 @@ type server struct {
 	//
 	// IT IS WHY A KEYSTROKE NO LONGER WAITS FOR A SEND. Everything the engine
 	// does between Submit and the first request leaving — the client rebind,
-	// the standing orders, the system prompt, the journal write, the naming
+	// the person's rules, the system prompt, the journal write, the naming
 	// errand — used to run on the reader, and every frame behind it on this
 	// socket waited for all of it (callclass.go's header).
 	ordered *orderedLane
@@ -1715,6 +1708,13 @@ type server struct {
 	// happens after the lane has drained.
 	detached atomic.Bool
 	goodbye  atomic.Bool
+
+	// window releases the automations presence this connection holds on this
+	// machine because its hello said it is a window ([Hello.Window]), and nil
+	// is a connection that holds none. It is taken during the handshake and let
+	// go once, on the way out ([server.letWindowGo]); both happen on the one
+	// goroutine that runs [server.serve], so it needs no lock.
+	window func()
 }
 
 func (s *server) serve(in io.Reader) (err error) {
@@ -1730,6 +1730,11 @@ func (s *server) serve(in io.Reader) (err error) {
 		s.side.Wait()
 		s.stopObservers()
 		s.leave()
+		// AND A WINDOW THAT HAS GONE IS NOT COUNTED. Last, after the room has
+		// been left, because it is a fact about this MACHINE rather than about
+		// the conversation, and it holds on every road out — the detach, the
+		// torn pipe, the close, the refusal and the fault alike.
+		s.letWindowGo()
 	}()
 
 	scan := bufio.NewScanner(in)
@@ -1907,6 +1912,11 @@ func (s *server) handshake(line []byte) error {
 		return s.refuse("engine: the workspace opened no conversation")
 	}
 	s.session = sess
+	// A WINDOW FROM ANOTHER MACHINE IS A WINDOW OPEN ON THIS ONE, and it is
+	// counted before it is welcomed, so its first reading of how many windows
+	// are open already includes it (automations.go's [server.holdWindow]). A
+	// refusal below lets it go on the way out with everything else.
+	s.holdWindow(hello)
 	// The arrival is one act: attached, welcomed, and caught up, with this
 	// connection's writer held throughout so nothing overtakes the welcome.
 	s.write.Lock()
@@ -2512,13 +2522,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MARKED DRAFT IS THE SAME CALL THROUGH THE OTHER DOOR. What differs
-		// is the instruction the engine puts in front of the sentence, which
-		// lives on this side of the wire (internal/session's standing_mark.go).
-		if args.Standing {
-			events, err := agent.SubmitStanding(context.Background(), args.Text)
-			return s.stream(MethodSubmit, args.Text, events, err)
-		}
 		events, err := agent.Submit(context.Background(), args.Text)
 		return s.stream(MethodSubmit, args.Text, events, err)
 
@@ -2833,14 +2836,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.ResolveConsentRemember(args.ID, args.Allow, args.Scope)
 		return nil, nil
 
-	case MethodStandingResolve:
-		args, err := arg[StandingArgs](call)
-		if err != nil {
-			return nil, err
-		}
-		agent.ResolveStanding(args.ID, args.Answer)
-		return nil, nil
-
 	case MethodHarness:
 		args, err := arg[HarnessArgs](call)
 		if err != nil {
@@ -3114,46 +3109,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return json.Marshal(record)
 
-	case MethodStandingItems:
-		workspace, err := arg[string](call)
-		if err != nil {
-			return nil, err
-		}
-		sess.mu.Lock()
-		items := sess.engine.StandingItems
-		sess.mu.Unlock()
-		if items == nil {
-			return nil, errors.New("engine: this engine keeps an eye on nothing")
-		}
-		found, err := items(workspace)
-		if err != nil {
-			return nil, err
-		}
-		return json.Marshal(found)
-
-	case MethodStandingSave:
-		item, err := arg[standing.Item](call)
-		if err != nil {
-			return nil, err
-		}
-		sess.mu.Lock()
-		save := sess.engine.StandingSave
-		sess.mu.Unlock()
-		if save == nil {
-			return nil, errors.New("engine: this engine keeps an eye on nothing")
-		}
-		return nil, save(item)
-
-	case MethodStandingWatch:
-		sess.mu.Lock()
-		watch := sess.engine.StandingWatch
-		sess.mu.Unlock()
-		if watch == nil {
-			return nil, errors.New("engine: this engine cannot read background checks")
-		}
-		status, known := watch()
-		return json.Marshal(StandingWatchResult{Status: status, Known: known})
-
 	case MethodSessionNew:
 		sess.mu.Lock()
 		fresh := sess.engine.Fresh
@@ -3199,6 +3154,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return payload, err
 	}
 	if payload, handled, err := teamAskCall(agent, call); handled {
+		return payload, err
+	}
+	// And the automations doors, which answer about this MACHINE's store and
+	// not about the conversation, so they are the same for every surface in the
+	// room and survive every swap (automations.go).
+	if payload, handled, err := s.automationsCall(call); handled {
 		return payload, err
 	}
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)

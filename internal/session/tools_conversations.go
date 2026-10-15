@@ -78,7 +78,7 @@ func (c Config) conversationHistory() ConversationHistoryReader {
 // conversationIndexStore is the store this session's conversation is INDEXED
 // into: the explicit index when the door opened one, else the memory store,
 // which every door before the split passed for both purposes. Nil indexes
-// nothing — and indexing nothing with memory off was the old defect.
+// nothing — and indexing nothing without a memory store was the old defect.
 func (c Config) conversationIndexStore() *store.Store {
 	if c.MemoryIndex != nil {
 		return c.MemoryIndex

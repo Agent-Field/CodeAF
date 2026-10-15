@@ -298,7 +298,6 @@ func TestAWaitingMessageThatCannotBeSteeredIsLeftAloneAndNotAdvertised(t *testin
 		hold parked
 	}{
 		{"a message with pictures", parked{text: "what is this", chips: []chip{{}}}},
-		{"a message marked to keep true", parked{text: "always run the tests", standing: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, agent := steerableTurn(t, "reading the tree. ")

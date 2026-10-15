@@ -449,62 +449,62 @@ func closes(events chan int) {
 	}
 }
 
-// ── AND THE SAME RATCHET OVER THE CONTEXTUAL AND STANDING ENGINE ─────────
+// ── AND THE SAME RATCHET OVER THE MEMORY AND AUTOMATIONS ENGINE ──────────
 //
 // The ceiling above covered `task*.go` while the contextual memory work landed
 // in files whose names carry no such prefix, so four dozen functions over the
 // ceiling were invisible to it — and the defects the external review filed
 // were sitting in exactly those functions. The surface below is the files that
-// work actually landed in: the contextual reader, writer and outcome reader in
-// internal/session, the contextual store and its owner/sync/write doors, and
-// the standing ticker and inbox.
+// replaced it: the memory door in internal/session, the memory store and its
+// owner, snapshot and write doors, the reflex that notices, and the automations
+// clock, store and runner, which replaced the standing ticker and inbox this
+// surface used to hold. (The contextual files it was written for were deleted
+// on 2026-10-14 with the layer they held.)
 //
-// NO NEW CODE GETS A ROW. Every function in these files is new with the
-// contextual work except the standing ones ([Ticker.fire], [Ticker.one],
-// [Ticker.judge], [fingerprint], [boundedGlob], [standingRunner.Run]), and those
-// were either under the ceiling at dev's baseline or are held to it now rather
-// than given a number: the ratchet's whole value is that the next function over
-// is a function somebody has to split, not a figure somebody gets to write
-// down. The ledger is therefore empty and has to stay that way.
-var contextualSurface = []struct {
+// NO NEW CODE GETS A ROW. Every function in these files is held to the ceiling
+// rather than given a number: the ratchet's whole value is that the next
+// function over is a function somebody has to split, not a figure somebody gets
+// to write down. The ledger is therefore empty and has to stay that way.
+var engineSurface = []struct {
 	dir      string
 	pkg      string
 	prefixes []string
 }{
-	{dir: ".", pkg: "session", prefixes: []string{"contextual", "standing_run"}},
-	{dir: "../store", pkg: "store", prefixes: []string{"contextual", "memory_owner", "memory_sync", "memory_write"}},
-	{dir: "../standing", pkg: "standing", prefixes: []string{"tick", "inbox"}},
+	{dir: ".", pkg: "session", prefixes: []string{"memory", "automation_run"}},
+	{dir: "../store", pkg: "store", prefixes: []string{"memory"}},
+	{dir: "../reflex", pkg: "reflex", prefixes: []string{"reflex", "prompts"}},
+	{dir: "../automation", pkg: "automation", prefixes: []string{"clock", "store"}},
 }
 
-// contextualDebt is the ledger for the wider surface. It is EMPTY on purpose:
+// engineDebt is the ledger for the wider surface. It is EMPTY on purpose:
 // the legacy debt in `task*.go` is the debt this gate was fitted around, and no
 // new code gets a row. A row added here needs a dev baseline figure and a reason
 // in whyTheDebtIsStillThere, not a number chosen to make this test pass.
-var contextualDebt = map[string]int{}
+var engineDebt = map[string]int{}
 
-// TestNoRoadInTheContextualEngineHasMoreEndingsThanTheCeiling is the ratchet
+// TestNoRoadInTheMemoryEngineHasMoreEndingsThanTheCeiling is the ratchet
 // over that wider surface. Its complaints name the file and the number, so the
 // owning lane can act on one without reading this test.
-func TestNoRoadInTheContextualEngineHasMoreEndingsThanTheCeiling(t *testing.T) {
-	measured := measureContextualComplexity(t)
-	for _, complaint := range judgeComplexity(measured, contextualDebt) {
+func TestNoRoadInTheMemoryEngineHasMoreEndingsThanTheCeiling(t *testing.T) {
+	measured := measureEngineComplexity(t)
+	for _, complaint := range judgeComplexity(measured, engineDebt) {
 		t.Error(complaint)
 	}
-	for name := range contextualDebt {
+	for name := range engineDebt {
 		if strings.TrimSpace(whyTheDebtIsStillThere[name]) == "" {
-			t.Errorf("contextualDebt carries %q and whyTheDebtIsStillThere does not say what that debt is", name)
+			t.Errorf("engineDebt carries %q and whyTheDebtIsStillThere does not say what that debt is", name)
 		}
 	}
 }
 
-// measureContextualComplexity walks every declared surface and answers what each
+// measureEngineComplexity walks every declared surface and answers what each
 // function in it measures. Functions are keyed by their package as well as their
 // name, because two packages may perfectly well answer the same verb.
-func measureContextualComplexity(t *testing.T) map[string]measuredFunction {
+func measureEngineComplexity(t *testing.T) map[string]measuredFunction {
 	t.Helper()
 	measured := map[string]measuredFunction{}
 	files := 0
-	for _, surface := range contextualSurface {
+	for _, surface := range engineSurface {
 		forEachSourceFile(t, surface.dir, func(name string, file *ast.File) {
 			if !hasAnyPrefix(name, surface.prefixes) {
 				return
@@ -527,8 +527,8 @@ func measureContextualComplexity(t *testing.T) map[string]measuredFunction {
 	// The floor guards against a walk that quietly stops finding anything — a
 	// renamed package, a moved file — which would turn the ratchet into a test
 	// that always passes.
-	if files < 12 {
-		t.Fatalf("only %d contextual source files were scanned; the surface holds more, so the walk is broken rather than clean", files)
+	if files < 10 {
+		t.Fatalf("only %d engine source files were scanned; the surface holds more, so the walk is broken rather than clean", files)
 	}
 	return measured
 }

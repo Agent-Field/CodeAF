@@ -227,7 +227,7 @@ func TestRetrospectiveDigestNonzeroOnlyAndSilentWhenEmpty(t *testing.T) {
 		}
 		reconciler := New(graph, nil, nil).WithReflector(func(_ context.Context, _ []JobSketch) ([]Learned, error) {
 			return []Learned{{Scope: "repo:codeaf", Kind: store.FactLesson, Body: "the series proved one stable lesson"}}, nil
-		}).WithCharterProposals()
+		})
 		if err := reconciler.SessionOpened(context.Background(), "reflection", "tui", time.Hour); err != nil {
 			t.Fatal(err)
 		}
@@ -244,9 +244,8 @@ func TestRetrospectiveDigestNonzeroOnlyAndSilentWhenEmpty(t *testing.T) {
 				digest = message.Body
 			}
 		}
-		if digest == "" || !strings.Contains(digest, "1 proposal made") ||
-			!strings.Contains(digest, "1 belief learned") || strings.Contains(digest, "territory") ||
-			strings.Contains(digest, "skill") {
+		if digest == "" || !strings.Contains(digest, "1 belief learned") || strings.Contains(digest, "proposal") ||
+			strings.Contains(digest, "territory") || strings.Contains(digest, "skill") {
 			t.Fatalf("retrospective digest = %q", digest)
 		}
 	})

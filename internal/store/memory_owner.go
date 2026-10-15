@@ -38,6 +38,10 @@ const (
 	OwnerMachine       = "machine"
 	OwnerLegacyProject = "project:legacy"
 
+	// OwnerKindProject is what [OwnerKindOf] answers for any project owner,
+	// the quarantine included.
+	OwnerKindProject = "project"
+
 	// legacyTag marks a row the migration quarantined. It survives re-homing
 	// on purpose: a memory's source is never cleaned off it, and a person who
 	// wants to know which rows came in blind can search for the tag.
@@ -59,7 +63,7 @@ func OwnerKindOf(owner string) string {
 		return owner
 	case strings.HasPrefix(owner, "project:"):
 		if key := strings.TrimPrefix(owner, "project:"); key != "" {
-			return "project"
+			return OwnerKindProject
 		}
 	}
 	return ""
@@ -76,7 +80,7 @@ func OwnerScopeOf(owner string) string {
 		return MemoryScopeUser
 	case OwnerMachine:
 		return MemoryScopeEnv
-	case "project":
+	case OwnerKindProject:
 		return MemoryScopeProject
 	}
 	return MemoryScopeUser
@@ -163,15 +167,20 @@ func ownerFilterSQL(owners []string) (string, []any) {
 // widened, and a store that already carries the column from an earlier or
 // interrupted upgrade.
 func migrateMemoriesOwner(db *sql.DB) error {
-	found, err := tableHasColumn(db, "memories", "owner")
-	if err != nil {
-		return err
-	}
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
 	defer tx.Rollback()
+	// THE COLUMN IS ASKED ABOUT INSIDE THE TRANSACTION THAT ADDS IT. It used to
+	// be read on the pool first, so two processes opening one old store at once
+	// both read "no owner column", both took this (immediate) transaction in turn,
+	// and the second died on a duplicate column. Read here, the second one waits
+	// for the first's commit and then finds the column it made.
+	found, err := tableHasColumnOn(tx, "memories", "owner")
+	if err != nil {
+		return fmt.Errorf("migrate memory owners: %w", err)
+	}
 	if !found {
 		if _, err := tx.Exec(`ALTER TABLE memories ADD COLUMN owner TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("migrate memory owners: %w", err)

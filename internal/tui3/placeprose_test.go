@@ -22,7 +22,7 @@ func TestPlaceProseKeepsOneFoldGrammarAndOneSectionBreath(t *testing.T) {
 }
 
 func TestTheSixPlacesDoNotRegrowRetiredProseHelpers(t *testing.T) {
-	files := []string{"switcher.go", "tasksplace.go", "standingplace.go", "memoryplace.go", "spendplace.go"}
+	files := []string{"switcher.go", "tasksplace.go", "automationsplace.go", "memoryplace.go", "spendplace.go"}
 	retired := []string{"tasksMoneyInk", "standingMoneyInk", "spendMoneyInk", "formatMemoryNumber", "commaInt"}
 	for _, name := range files {
 		body, err := os.ReadFile(name)
@@ -63,19 +63,16 @@ func TestSettledTasksStayNeutralWhileMoneyKeepsItsMeaning(t *testing.T) {
 // EVERY PLACE WITH A TIME WINDOW DRAWS THE SAME CONTROL, on its own head row:
 // the label between the arrows, which is the control and the reading at once.
 //
-// The three used to answer this three ways. Standing drew the arrows; spend drew
-// a legend that named the keys and never the span; THE TASKS PLACE DREW NOTHING
-// AT ALL while binding all four keys, which is the exact defect verbstrip.go's
-// law is written against — four keys bound and nothing on screen naming them.
+// They used to answer this three ways: one place drew the arrows, spend drew a
+// legend that named the keys and never the span, and THE TASKS PLACE DREW
+// NOTHING AT ALL while binding all four keys, which is the exact defect
+// verbstrip.go's law is written against — four keys bound and nothing on screen
+// naming them.
 func TestEveryPlaceWithATimeWindowDrawsTheSameControl(t *testing.T) {
 	pal := newPalette(tokens.NoColor, false)
 	win := session.LastDays(time.Date(2026, time.August, 25, 12, 0, 0, 0, time.Local), 14)
 	label := "shift+← " + win.Label() + " →"
 
-	standing := plain(standingHeaderRow(120, win, pal))
-	if !strings.Contains(standing, label) {
-		t.Fatalf("the standing head row draws no control: %q", standing)
-	}
 	// Row zero is the spend place's pointer line; the window control is under it.
 	spend := plain(spendTestReading().rows(120, pal)[1])
 	if !strings.Contains(spend, label) {

@@ -405,15 +405,13 @@ const (
 	// "trying again". It never ends a turn: either the next attempt streams, or
 	// EventError arrives with the sentence about giving up.
 	EventRetrying
-	// EventStandingProposal asks the person whether one standing item — a
-	// reminder, a watch, a rule, an overnight job — may stand (standing_contract.go).
-	// Standing carries the card; the ID inside it is the token a surface hands back
-	// to [Agent.ResolveStanding]. Nothing stands until the answer is yes.
-	EventStandingProposal
-	// EventStandingUpdate reports a standing item changing under a live window: it
-	// was ratified, it fired, it was paused, retired, or it needs the person. It is
-	// a report, never a question.
-	EventStandingUpdate
+	// TWO KINDS WERE RETIRED HERE WITH STANDING ORDERS (the proposal and the
+	// update, replaced by [EventAutomationProposal] and [EventAutomationUpdate]
+	// at the end of this block). Their numbers are kept, never sent, so every
+	// kind after them keeps the integer it has on the wire and in anything a
+	// surface wrote down — this block's own law, stated over [EventRowNews].
+	_
+	_
 	// EventSubharnessAsk is a running subharness putting one question to the
 	// person (subharness_env.go, the Env's ask() door). ID is the run's task
 	// node, Text is the question in the program's own words, and Args carries
@@ -582,7 +580,7 @@ const (
 	//
 	// IT IS A SECOND DESCRIPTION AND NEVER A REPLACEMENT. Every lane goes on
 	// emitting the event it always emitted — EventConsentRequest,
-	// EventTaskProposal, EventStandingProposal and the rest — so a surface that
+	// EventTaskProposal, EventAutomationProposal and the rest — so a surface that
 	// ignores this kind is exactly what it was. A surface that draws it draws
 	// one object for every lane instead of thirteen cards.
 	//
@@ -635,6 +633,14 @@ const (
 	// EventToolOutput carries literal stdout/stderr in Text while a user shell
 	// command is running. CallID owns the bytes; its result still ends the call.
 	EventToolOutput
+	// EventAutomationProposal asks the person whether to save one automation
+	// (automation_tool.go); Automation carries the card. Nothing is saved until
+	// it is answered.
+	EventAutomationProposal
+	// EventAutomationUpdate reports an automation changing because of a call
+	// in this turn — saved, paused, resumed, deleted, asked to run now. It is a
+	// report and never a question.
+	EventAutomationUpdate
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -688,7 +694,14 @@ type Event struct {
 	// Discard says an EventError ended a cut attempt whose streamed text was
 	// never a reply. The surface withdraws that attempt before drawing the
 	// error, as it does for EventRetrying, without counting another retry.
-	Discard       bool `json:"Discard,omitempty"`
+	Discard bool `json:"Discard,omitempty"`
+	// Unrecorded says an EventNotice is in no record a returning surface
+	// redraws: memory's notices ([Agent.sayMemory]) are said to the person and
+	// never written into the transcript. A surface holding this conversation
+	// out of sight keeps such a line and draws it when the person brings the
+	// conversation back (tui3's keeper.go). Every other notice is either in the
+	// transcript already or said for the moment it is said in.
+	Unrecorded    bool `json:"Unrecorded,omitempty"`
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
 	// Skills is the ordered list of skill names this turn carried, on the
@@ -938,9 +951,9 @@ type Event struct {
 	// card from a value that never carried those.
 	TaskPhase *TaskPhaseNotice
 
-	// Standing carries one EventStandingProposal or EventStandingUpdate's payload
-	// (standing_contract.go). It is nil on every other kind.
-	Standing *StandingNotice
+	// Automation carries one EventAutomationProposal or EventAutomationUpdate's
+	// payload (automation_tool.go). It is nil on every other kind.
+	Automation *AutomationNotice `json:",omitempty"`
 
 	// Subharness carries one EventSubharnessProposal's intake card
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
@@ -1291,55 +1304,45 @@ type Config struct {
 	// through internal/home so CODEAF_HOME moves it with everything else.
 	ArtifactsIndex string
 
-	// Memory is the brain this session remembers into (memory.go): the store's
-	// event-sourced memories, routed into the prompt before a turn and written
-	// after one. NIL IS MEMORY OFF — no <memory> block, no reflex call, and no
-	// `remember` on the belt, so the model does not have the verb.
+	// Memory is the store this conversation remembers into (memory.go): every
+	// line it keeps rides its message[0], and the pass after a turn may keep a
+	// new one. NIL IS NO MEMORY — no block, no noticing, and no `remember` or
+	// `forget` on the belt, so the model does not have the verbs.
 	//
 	// It is the caller's store rather than one this package opens, for the
 	// reason SessionFile is a path rather than a directory: where a person's
-	// state lives is the surface's decision, and the door is also where the
-	// memory.enabled row is read. A door that turns memory off hands nothing
-	// here, which is what makes "no calls" structural.
+	// state lives is the surface's decision. The memory.enabled row does NOT
+	// decide whether one is handed over — it governs only the noticing pass,
+	// and is read here live ([Agent.noticing]).
 	Memory *store.Store
-	// bindingStore is the brain a TASK WORKER is LENT READ-ONLY, so its first
-	// provider request carries the project's approved binding rules without the
-	// worker gaining any memory write, extraction, import or the remember/forget
-	// verbs ([Config.bindingOnlyMemory]'s posture, expressed here as a store that
-	// is never [Config.Memory]). It is the parent conversation's own brain handed
-	// down the worker tree, so every node and auditor reads the SAME owner set the
-	// conversation that started it reads. NIL IS NO BINDING, which is memory off
-	// and every caller that predates this field; a worker then opens exactly as it
-	// did, with no approved block and no new authority. It is read-only by the
-	// plumbing that uses it ([Agent.prepareWorkerBinding] never writes it).
+	// bindingStore is the store a TASK WORKER is LENT READ-ONLY: the parent
+	// conversation's own, handed down the worker tree so a node's brief closes
+	// on the same memory block the conversation that started it carries
+	// ([TaskGraph.memoryWorld]). It is never [Config.Memory], so a worker gains
+	// no noticing and no verbs. Nil is no memory section in the brief.
 	bindingStore *store.Store
-	// bindingOnlyMemory makes a brain READ-ONLY. It exists for the authorized
-	// standing run, which must see the owner's approved binding rules before
-	// its first action without gaining any general memory write: extraction,
-	// dependency observation, dismissal, import and the remember/forget verbs
-	// are all refused, while the same canonical identity, query and context
-	// machinery answers the read. Nothing is written from a posture that only
-	// borrowed the brain to be bound.
+	// bindingOnlyMemory makes [Config.Memory] READ-ONLY. It exists for an
+	// automation's run, which reads the memory block in front of its first
+	// action and must never write: no noticing, no `remember` or `forget` on its
+	// belt, and no lines said, because nobody is there.
 	bindingOnlyMemory bool
 	// Skills is the store the skill shelf is read from: the catalog section,
 	// the skills a message carries, and `use_skill`. NIL FALLS BACK TO
 	// Memory, so a door that names no shelf of its own reads the shelf in the
 	// store it remembers into, exactly as every door did before this field.
 	//
-	// IT IS A SEPARATE FIELD BECAUSE SKILLS ARE NOT MEMORY. A person who
-	// turned memory off asked for a conversation that carries nothing about
-	// them across conversations; they did not ask to lose the skills they
-	// installed for Claude Code or Codex, which live in folders on disk and
-	// say nothing about them. So a door with memory off hands no Memory — no
-	// block, no reflex call, no `remember` — and still hands a shelf here:
-	// one that holds only what the folders hold, built from those folders by
-	// the same import pass, and thrown away with the process (cmd/codeaf's
-	// v3SkillShelf). The folders stay the one source of truth either way.
+	// IT IS A SEPARATE FIELD BECAUSE SKILLS ARE NOT MEMORY. A door whose
+	// memory store would not open hands no Memory — no block, no noticing, no
+	// `remember` — and still hands a shelf here: one that holds only what the
+	// skill folders hold, built from those folders by the same import pass, and
+	// thrown away with the process (cmd/codeaf's v3SkillShelf). The folders stay
+	// the one source of truth either way.
 	Skills *store.Store
 
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.
-	// Nil falls back to Memory, so a memory-off root grants no history access.
+	// Nil falls back to Memory, so a root with no memory store grants no
+	// history access.
 	ConversationHistory ConversationHistoryReader
 
 	// MemoryImport is the legacy memory.md this session carries into the store
@@ -1365,11 +1368,17 @@ type Config struct {
 	// read is scoped to the conversation's project, and it is NEVER inherited by
 	// a config copy that was not written to carry it.
 	MemoryProjectKey string
+	// MemoryProjectName is the name a person knows that project by — the
+	// repository's name, or the folder's — written beside every project memory
+	// this conversation keeps, so the memory place can say where a line holds
+	// without reversing an opaque key. It moves with the key and is never
+	// relied on for permission: [Config.MemoryProjectKey] is the identity.
+	MemoryProjectName string
 
 	// MemoryIndex is the store THIS SESSION'S CONVERSATION is indexed into,
-	// and it is deliberately not [Config.Memory]: with memory off, the session
-	// writes nothing about the person and still writes its own words where the
-	// next search can find them. Nil indexes nothing, which is a session built
+	// and it is deliberately not [Config.Memory]: when the memory store would not
+	// open, the session still writes its own words where the next search can
+	// find them. Nil indexes nothing, which is a session built
 	// by a caller that opens no store at all.
 	//
 	// Every reader falls back to Memory when this is unset, so a door that
@@ -1519,16 +1528,15 @@ type Config struct {
 	// the same choices whichever way this is set.
 	TaskSettle string
 
-	// Standing is the ambient side (standing_contract.go, internal/standing).
-	// Nil is off: no belt tool, no card, no ticking from this process.
-	Standing *Standing
+	// Automations is the door to the automations store (automation_tool.go).
+	// Nil is off: no `automation` tool and no card — which is what a run of an
+	// automation is given, because nothing an automation does may arm another.
+	Automations *Automations
 
-	// standingItems overrides where [Standing.Store] would be read, and it is
-	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
-	// else: the store is a concrete *standing.Store on the seam a door fills,
-	// and a test that wants to watch what a ratified card actually writes needs
-	// a fake behind the same three methods (tools_standing.go's standingStore).
-	standingItems standingStore
+	// AutomationRun is set on the session ONE RUN of an automation's work runs
+	// in, and only there: it puts `automation_report` on the belt and receives
+	// what the run reports (automation_run.go).
+	AutomationRun *AutomationRun
 
 	// ProfileDir is the person's profile directory — the one holding the
 	// config.json that /settings writes (internal/config's settings registry).
@@ -1903,18 +1911,16 @@ type Config struct {
 
 	// Effort is the rung this session was HANDED — the work's own rung, filling
 	// the ladder's task scope. It is set on a child: a task worker gets the
-	// task's rung, a standing firing gets the item's. EMPTY IS THE HONEST
-	// DEFAULT and means nobody set one for this piece of work, which is every
-	// conversation a person opens themselves.
+	// task's rung. EMPTY IS THE HONEST DEFAULT and means nobody set one for this
+	// piece of work, which is every conversation a person opens themselves.
 	Effort effort.Rung
 
 	// EffortRole is what this session is FOR, and it is the rung of last resort
-	// before the install's default: a standing firing and its checks stay cheap
-	// however deep the install is dialled, and an errand asks for nothing at
-	// all. THE ZERO VALUE IS NOT A ROLE and falls through to DefaultEffort,
-	// which is the right answer for a caller that has not thought about it — a
-	// headless --once, a test — because it is the same answer a person's own
-	// conversation gets.
+	// before the install's default: an errand asks for nothing at all, and a
+	// task worker on the bash belt starts low. THE ZERO VALUE IS NOT A ROLE and
+	// falls through to DefaultEffort, which is the right answer for a caller
+	// that has not thought about it — a headless --once, a test — because it is
+	// the same answer a person's own conversation gets.
 	EffortRole effort.Role
 
 	// DefaultEffort is the install's `effort` row, read by the door
@@ -2089,17 +2095,15 @@ type Config struct {
 	// sits in. It is a conversation in every other way — a real model, a real
 	// transcript, a card it can answer — so InTask would be a lie about it.
 	//
-	// IT CHANGES EXACTLY ONE THING: an errand is never registered as a live
-	// delivery target (standing_run.go). A firing steered into an exchange is
-	// news typed into a forty-cell pane that closes with home, and the person
-	// sitting in an ordinary conversation in the same window is never told —
-	// which is what happened the first time a reminder made from home ever
-	// fired.
+	// IT TAKES THE EXCHANGE OUT OF WHAT BELONGS TO THE ROOM A PERSON SITS IN. A
+	// forty-cell pane that closes with home is not that room, so an errand never
+	// registers as a live window ([registerLiveSession]), and the typing probe,
+	// the newer-build notice, the launch's and the day's limits and a steward
+	// are none of its business either.
 	//
-	// Ratifying the exchange's OWN card is untouched by this, and the two are
-	// separate lanes on purpose: a card is answered through the agent the
-	// surface is holding ([Agent.ResolveStanding]), never through the registry,
-	// so an exchange still proposes and still hears yes.
+	// Ratifying the exchange's OWN card is untouched by this: a card is answered
+	// through the agent the surface is holding ([Agent.ResolveAutomation]), never
+	// through the registry, so an exchange still proposes and still hears yes.
 	Errand bool
 
 	// roomThread says this agent is a node somebody TALKS TO rather than a
@@ -2167,10 +2171,10 @@ type Config struct {
 	fixesDir string
 	// droppings is THE FAMILY'S SESSION FOLDER, carried by an agent that has no
 	// folder of its own: a task node's worker, a part's worker under that one, a
-	// fork's hand, an adaptive run's child, an auditor, a standing probe. It is
-	// read in exactly one place ([Config.droppingsPlace]) and answers exactly one
-	// question — where a job log or a stubbed tool result lands (landing.go
-	// states the law and the failure that wrote it).
+	// fork's hand, an adaptive run's child, an auditor. It is read in exactly
+	// one place ([Config.droppingsPlace]) and answers exactly one question —
+	// where a job log or a stubbed tool result lands (landing.go states the law
+	// and the failure that wrote it).
 	//
 	// IT IS NOT Place UNDER A SECOND NAME, and the distinction is the whole point.
 	// Setting Place on a worker would make the worker a SESSION: it would stamp
@@ -2252,12 +2256,12 @@ type Config struct {
 	// worker.
 	rootSession string
 
-	// standingItemID is the id of the standing item whose firing this agent IS
-	// (standing_run.go), and empty in every conversation and every ordinary task.
-	// It rides on the config for [Config.taskID]'s reason: the money a firing
-	// spends has to be attributable to the promise the person made, and the only
-	// thing that knows which promise is the runner that built this config.
-	standingItemID string
+	// automationID is the id of the automation whose run this agent IS
+	// (automation_run.go), and empty in every conversation and every ordinary
+	// task. It rides on the config for [Config.taskID]'s reason: the money a run
+	// spends has to be attributable to the automation the person saved, and the
+	// only thing that knows which one is the runner that built this config.
+	automationID string
 
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
@@ -2579,16 +2583,6 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
-	// outcomes is the observation-only bridge from delegated workers to this
-	// conversation's journal (contextual_delegated.go). It is shared with every
-	// worker this session builds; a worker only hands it a raw observation and
-	// gains no memory write, approval or promotion power from it. `origin` is
-	// the worker's FROZEN provenance — root session, user turn, goal, task and
-	// owner, captured before it launched — so nothing it reports is attributed
-	// to whatever turn is live when the report lands.
-	outcomes *outcomeCollector
-	origin   delegatedOrigin
-
 	// laneStop cancels the session's lane context, including probes. laneDone
 	// joins the optional sheet beat, whose cache writes must finish before Close
 	// returns. Both are established before the agent is published.
@@ -2628,7 +2622,7 @@ type Agent struct {
 	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
 	// of this conversation posted into the store's thread as it lands, so that a
 	// stub and a fold point at text somebody can still read. It is nil when there
-	// is no store, which is memory off, and it sits outside mu holding its own
+	// is no store, and it sits outside mu holding its own
 	// lock for the reason memory does — its writer outlives the turn.
 	chatlog *chatJournal
 
@@ -2888,51 +2882,22 @@ type Agent struct {
 	// stop, so a late watch read cannot stop a later turn.
 	teamTurnAt     time.Time
 	teamTurnSerial uint64
-	// memoryText is the <memory> block message[0] currently carries: what the
-	// router asked for at the start of this turn, or the block a task node was
-	// opened with (memory.go). It is under mu because it is rendered into the
-	// transcript's first message, and it is REPLACED per turn rather than
-	// appended to — a turn's memories are that turn's.
+	// memoryText is the <memory> block message[0] currently carries: every line
+	// this conversation keeps, read from the store at the start of every turn
+	// (memory.go's [Agent.refreshMemoryLocked]). An unchanged set renders the
+	// same bytes, so a conversation whose memory has not moved leaves message[0]
+	// exactly as the provider cached it.
 	memoryText string
-	// bindingText is the project's APPROVED BINDING BLOCK as read before the
-	// first request of a task worker (contextual_memory.go's
-	// [Agent.prepareWorkerBinding]). It is a note of its OWN rather than the
-	// routed block's, because a node hands the worker its semantic shortlist
-	// asynchronously ([Agent.takeMemory]) and that hand may land at any moment;
-	// keeping the binding rules in their own field and their own note is what
-	// lets the deterministic, may-not-be-late half survive a late router answer.
-	// It is empty for every conversation, which lands nothing.
-	bindingText string
-	// frameworkPolicy says the note this turn's request carries has relevant
-	// prior-outcome rows, which is the ONE condition under which the
-	// source-authored [frameworkMethodPolicy] rides the request's SYSTEM message.
-	// It is set BESIDE the rows themselves, under the SAME a.mu mutation, by the
-	// before-request reads ([Agent.prepareBindingContext],
-	// [Agent.prepareWorkerBinding], [Agent.refreshMemory] via
-	// [Agent.withBindingContextMeta]), and it is TAKEN WITH the message snapshot
-	// at the request seam ([Agent.snapshotWithReasoning]) so
-	// [Agent.withFrameworkPolicy] never rereads a later flag against older
-	// messages. The policy and the rows therefore always travel together and the
-	// same bit serves a conversation, a manager and a task worker. False is the
-	// ordinary state and adds nothing.
-	frameworkPolicy bool
 	// cardText is the <state> block (card.go): what this conversation is doing,
 	// as the post-turn pass has folded it. It sits under mu because it is
 	// rendered into the transcript — at the TAIL, in the volatile note
 	// ([Agent.landVolatileLocked]), and no longer in message[0], because it
 	// moves every time a delta lands and message[0] is in front of everything.
 	cardText string
-	// standingText is the <standing> block message[0] currently carries
-	// (standing_world.go): the orders the person holds over this conversation,
-	// which the model must work within. It sits under mu beside the three blocks
-	// below for their reason, and it is re-rendered at the start of every turn —
-	// an unchanged set renders the same bytes, so a conversation whose orders
-	// have not moved leaves message[0] exactly as the provider cached it.
-	standingText string
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
 	// named absolutely, with each one's own house rules scoped to it. It sits
-	// under mu beside the two blocks above and it is REBUILT ONLY WHEN THE SET
+	// under mu beside the memory block above and it is REBUILT ONLY WHEN THE SET
 	// MOVES — a person attaching or removing a folder, or a conversation being
 	// reopened onto the set its meta.json remembers — because message[0] sits in
 	// front of everything and what does not move must render byte for byte.
@@ -2953,8 +2918,8 @@ type Agent struct {
 	// ([Agent.refreshSystemLocked] holds the whole argument).
 	//
 	// systemHead is everything in message[0] AHEAD of the record — the base
-	// prompt, the attached folders, the standing orders — as it was last
-	// rendered, and it is the whole of how that moment is recognised.
+	// prompt, the attached folders, the rules — as it was last rendered, and it
+	// is the whole of how that moment is recognised.
 	recordText  string
 	recordShown string
 	systemHead  string
@@ -3100,13 +3065,7 @@ type Agent struct {
 	// same fact published, so the door that decides whether a pick is NEWS can
 	// compare against the model the work is on rather than the one the session
 	// remembers (steer.go's [Agent.rideModel]).
-	riding string
-	// recall is the pre-turn memory routing STARTED BESIDE THE TITLE and never
-	// waited on (memory.go's [recallAside]). It is under mu because
-	// [Agent.startTurnLocked] writes it with the lock held and the turn's own
-	// goroutine takes it a moment later; it is nil for every turn of a session
-	// that remembers nothing, which is the whole of the cost to those.
-	recall   *recallAside
+	riding   string
 	steering []userMessage
 	// steerGrace is the one armed second look at a correction that arrived
 	// while a foreground bash was still too young to adopt (steer_grace.go).
@@ -3482,13 +3441,10 @@ type Agent struct {
 	// contract test cross the old deadline without sleeping or racing a machine.
 	taskNow   func() time.Time
 	taskTimer func(time.Duration) (<-chan time.Time, func())
-	// standingAnswers is the same wait, for standing cards (standing_contract.go).
-	standingAnswers map[uint64]chan StandingAnswer
-	// standingSeq numbers those cards. It is the agent's own sequence and not
-	// the task graph's, because a standing proposal is not a node: nothing is
-	// reserved, nothing is admitted, and the only thing the number has to do is
-	// name one outstanding question until it is answered (tools_standing.go).
-	standingSeq uint64
+	// automationAnswers and automationSeq are the same wait, for automation
+	// cards (automation_tool.go).
+	automationAnswers map[uint64]chan AutomationAnswer
+	automationSeq     uint64
 	// questionWords is THE WORDS of the questions this session has put, keyed by
 	// lane and token (question.go's [questionToken]).
 	//
@@ -3525,21 +3481,6 @@ type Agent struct {
 	// it: a node's most important event lands minutes after the turn that
 	// proposed it ended, when there is no hub to send it to.
 	taskWatchers []*eventStream
-	// standingNews is what fired while this window was SHUT, waiting for a
-	// reader ([Agent.drainStandingInbox]). It is a queue and not a send because
-	// the fold is built inside New — before the caller holds the agent, before
-	// any surface has subscribed to anything — so a send there would go to an
-	// empty list of watchers and the person would open a conversation with news
-	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
-	standingNews []Event
-	// standingHeld are the staged standing-inbox files a live, unsettled fold
-	// already owns, keyed by the staged file's path ([standing.DrainFile.Path]).
-	// A drain hands a file over; until the fold it fed is durably journaled and
-	// the file acknowledged, a repeat drain — construction and every surface
-	// attach both ask ([Agent.WatchTaskUpdates]) — must NOT queue the same notes
-	// again or acknowledge a file another fold is still waiting to retire. A
-	// path leaves this map when its acknowledgement runs.
-	standingHeld map[string]bool
 	// jobRows is the roster id minted for each background job, keyed by the
 	// registry's own number for it. The two numberings are separate counters and
 	// a row keyed on the registry's would collide with a task's, which is why

@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -100,14 +101,14 @@ const spellOutRoom = 120
 // because a call to decide whether to offer a call is the cost this feature was
 // supposed to be an alternative to.
 //
-// SO FALSE NEGATIVES ARE FREE AND THE LIST STAYS SHORT — standmark.go's rule
-// about the same slot, for the same reason: a wider list would put a dim line
-// under half the drafts on this surface. They are matched at a word boundary by
-// [standMarkAt], which is this surface's one reading of "this phrase, at the
-// start of a word", and spelled without a trailing space on purpose so that
-// build, builds and building are all one entry. `add ` is the one exception and
-// carries its own space, because the three letters on their own are the front of
-// address and additional and would put the hint under drafts about neither.
+// SO FALSE NEGATIVES ARE FREE AND THE LIST STAYS SHORT: a wider list would put a
+// dim line under half the drafts on this surface. They are matched at a word
+// boundary by [wordStartsAt], which is this surface's one reading of "this
+// phrase, at the start of a word", and spelled without a trailing space on
+// purpose so that build, builds and building are all one entry. `add ` is the
+// one exception and carries its own space, because the three letters on their
+// own are the front of address and additional and would put the hint under
+// drafts about neither.
 var spellOutMakings = []string{
 	"build",
 	"create",
@@ -178,15 +179,6 @@ func (a *app) spellDoor() (spellOutAgent, bool) {
 // A HINT MAY ONLY NAME A KEY THAT WORKS (render.go's [app.hintWord] states the
 // whole law), so this one predicate is both the advertisement's condition and
 // the key's guard, and the two cannot come apart.
-//
-// AND IT IS WHERE THE SLOT IS SHARED. Two conditional hints now want the same
-// cells — this one and the standing chord's (standmark.go) — and THE STANDING
-// HINT WINS, said once, here, rather than as an ordering in the slot's switch.
-// The reason is which mistake each one prevents: a standing sentence read as
-// one-off work is a rule that silently never existed, and a making-shaped draft
-// sent unexpanded is a good answer to a slightly vague question. They collide
-// about as often as somebody types "always build" — and when they do, the
-// costlier miss keeps the line.
 func (a *app) spellOffered() bool {
 	if a.input.empty() || a.state == stateWorking || a.spell.asking {
 		return false
@@ -201,9 +193,6 @@ func (a *app) spellOffered() bool {
 		return false
 	}
 	if _, ok := a.spellDoor(); !ok {
-		return false
-	}
-	if a.standSayOffered() {
 		return false
 	}
 	return looksMaking(a.input.value)
@@ -222,7 +211,7 @@ func looksMaking(draft []rune) bool {
 	head := strings.ToLower(string(draft))
 	trimmed := strings.TrimSpace(head)
 	// A COMMAND IS SAID TO THIS SURFACE AND NOT TO THE MODEL, so there is no
-	// request here to spell out (standmark.go reads a slash the same way).
+	// request here to spell out.
 	if strings.HasPrefix(trimmed, "/") {
 		return false
 	}
@@ -234,11 +223,27 @@ func looksMaking(draft []rune) bool {
 		}
 	}
 	for _, verb := range spellOutMakings {
-		if standMarkAt(head, verb) {
+		if wordStartsAt(head, verb) {
 			return true
 		}
 	}
 	return false
+}
+
+// wordStartsAt is "this phrase appears, at the start of a word". The draft is
+// already lower-cased.
+func wordStartsAt(head, shape string) bool {
+	for at := 0; ; {
+		found := strings.Index(head[at:], shape)
+		if found < 0 {
+			return false
+		}
+		found += at
+		if found == 0 || !unicode.IsLetter(rune(head[found-1])) {
+			return true
+		}
+		at = found + 1
+	}
 }
 
 // spellShowing reports whether the block is on the frame — and it is the law
@@ -308,10 +313,10 @@ func (a *app) spellKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // spellAsk makes the one call.
 //
-// It goes through a command rather than the Update loop for [app.submitStanding]'s
-// reason: the call talks to a provider and the loop is not a place to wait. The
-// hint slot turns the build's spinner while it is out, and [app.wake] is what
-// keeps the frames coming for it — nothing else on the surface is moving.
+// It goes through a command rather than the Update loop because the call talks
+// to a provider and the loop is not a place to wait. The hint slot turns the
+// build's spinner while it is out, and [app.wake] is what keeps the frames
+// coming for it — nothing else on the surface is moving.
 func (a *app) spellAsk() tea.Cmd {
 	door, ok := a.spellDoor()
 	if !ok {

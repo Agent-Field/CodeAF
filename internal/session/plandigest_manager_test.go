@@ -138,29 +138,6 @@ func armDigestOn(t *testing.T, agent *Agent) {
 	armPlanStore(t, agent, path, "chat-a")
 }
 
-// A DRAFT MARKED STANDING OPENS ON THE ROWS TOO. It is a sentence the person
-// said while work ran, and it can make a running row wrong as surely as any
-// other; the digest reached the plain sentence only.
-func TestAMarkedDraftOpensOnTheRunsRows(t *testing.T) {
-	store := newFakeStanding(t)
-	completer := &scriptedCompleter{steps: []step{finalText("that cannot stand")}}
-	agent := standingAgent(t, completer, store, nil)
-	armDigestOn(t, agent)
-
-	events, err := agent.SubmitStanding(context.Background(), "what time is it?")
-	if err != nil {
-		t.Fatalf("SubmitStanding: %v", err)
-	}
-	drainAnsweringStanding(t, events, nil)
-	opening := firstUserText(t, completer)
-	if !strings.Contains(opening, planDigestHeading) || !strings.Contains(opening, "Move the schema") {
-		t.Fatalf("a marked draft did not open on the run's rows:\n%s", opening)
-	}
-	if !strings.Contains(opening, standingMarkInstruction) || !strings.HasSuffix(opening, "what time is it?") {
-		t.Fatalf("the digest displaced the mark or the sentence:\n%s", opening)
-	}
-}
-
 // A MESSAGE WITH PICTURES OPENS ON THE ROWS TOO, and its pictures still ride
 // with it. A screenshot is often the very thing that changes the plan.
 func TestAMessageWithPicturesOpensOnTheRunsRows(t *testing.T) {

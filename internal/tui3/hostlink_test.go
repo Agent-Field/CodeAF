@@ -371,5 +371,5 @@ func TestWaitedWordSaysASpanTheWayAPersonWouldSayIt(t *testing.T) {
 
 // The compile-time promise the door depends on: a held question carries an
 // unwrapped session event, because the card is drawn from the event itself.
-var _ = HeldQuestion{Kind: heldStanding, Event: session.Event{}, Since: time.Time{}}
-var _ = []string{heldConsent, heldStanding, heldHarness, heldConnect}
+var _ = HeldQuestion{Kind: heldConsent, Event: session.Event{}, Since: time.Time{}}
+var _ = []string{heldConsent, heldHarness, heldConnect}

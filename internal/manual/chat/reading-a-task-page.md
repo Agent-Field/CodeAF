@@ -58,12 +58,14 @@ wall-clock time.
 
 ## The card quotes three backticks instead of a sentence — a code fence at the top of a task's report
 
-**The quoted line on a landed card is the report's first line that says something**, not its
-literal first line. A task that answers with a diff, a command's output or a JSON block
-opens its report with the code fence around that answer, and a fence marker — three
-backticks or three tildes, with or without a language word like `go` or `diff` after it — is
-punctuation rather than a sentence. Blank lines and fence markers are passed over, and the
-first line that is neither is what the card quotes.
+**The quoted line a task shows is the report's first line that says something**, not its
+literal first line, and this holds everywhere a report is quoted: the landed card in the
+conversation, the row on the `/tasks` table, the work band on the home page, and the task
+record. A task that answers with a diff, a command's output or a JSON block opens its report
+with the code fence around that answer, and a fence marker — three backticks or three
+tildes, with or without a language word like `go` or `diff` after it — is punctuation rather
+than a sentence. Blank lines and fence markers are passed over, and the first line that is
+neither is what gets quoted.
 
 So a report that is nothing but a fenced block quotes the first line inside the block, which
 is the answer itself:
@@ -77,9 +79,11 @@ A report with no line to quote at all draws no quotation marks — an empty pair
 card claiming the work said something. The card falls back to its subtitle and, failing
 that, to `started 14:02` on its own.
 
-Until 2026-09-11 the card took the report's first line literally, so work that answered
+Until 2026-09-11 every surface took the report's first line literally, so work that answered
 inside a fence drew a quoted half of three backticks and nothing else — the one line the
-card exists for spent on the punctuation around the answer.
+quote exists for spent on the punctuation around the answer. The landed card learned to skip
+the fence first; the tasks table, the home panels and the task record quote the sentence
+too, because every surface now reads the report through one shared reader.
 
 ## Why most of the work is hidden on a task page — the `▸ worked` chips, the caption outline, and `ctrl+e`
 
@@ -365,8 +369,9 @@ Three things that look like the same picture and are not:
   page then says `nothing on this page yet — it fills in as the task works`. The roster's row for it
   says `queued`; the page fills when it starts.
 - **A row that was never a task.** A background job — a server, a build, a watch, a video
-  render — sits in the `jobs` section under `tasks` and `standing`, not among the families,
-  and its page is a card, not a chat, because a job has no agent and writes no transcript.
+  render — sits in the `jobs` section under the tasks and the automations, not among the
+  families, and its page is a card, not a chat, because a job has no agent and writes no
+  transcript.
   What it shows is the name, the handle `job 4`, the command, the clock or ending, and the
   end of its log. A job that has not written its first line yet draws no tail and no error.
   Its row is the one under the `jobs` label.

@@ -13,7 +13,6 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/provider"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // (f) a session written to disk reopens as the same transcript.
@@ -496,48 +495,20 @@ func TestSessionFileIsLockedWhileOpen(t *testing.T) {
 	t.Cleanup(func() { _ = third.Close() })
 
 	// The claim is the descriptor, not a file on the side: nothing may be left
-	// in the directory for a crashed process to strand.
-	//
-	// ONE RESIDENT IS REQUIRED AND IT IS NOT A CLAIM. A conversation's folder is
-	// ALSO a standing inbox, so opening this session folds it in
-	// ([Agent.drainStandingInbox]) and [standing.Drain] serializes every inbox
-	// mutation on a per-folder flock kept in [standing.InboxLockName] inside the
-	// folder. It is created empty and the claim it carries is the flock the
-	// kernel owns, so a crashed process leaves no ordered lock behind and the
-	// session claim is still the descriptor — which is what the refused second
-	// open and the immediate open after Close above already prove from the
-	// outside. The assertion here is that NOTHING ELSE was stranded: only the
-	// session file and that one named, empty lock file may exist.
+	// in the directory for a crashed process to strand. The session file is
+	// the folder's one resident.
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		t.Fatalf("readdir: %v", err)
 	}
 	var unexpected []string
 	for _, entry := range entries {
-		if entry.Name() == "session.jsonl" || entry.Name() == standing.InboxLockName {
-			continue
+		if entry.Name() != "session.jsonl" {
+			unexpected = append(unexpected, entry.Name())
 		}
-		unexpected = append(unexpected, entry.Name())
 	}
 	if len(unexpected) != 0 {
-		t.Fatalf("directory holds unexpected entries %v, want only the session file and %s", unexpected, standing.InboxLockName)
-	}
-	// THE LOCK FILE LOSES NOTHING WHEN A PROCESS DIES: it is an flock container,
-	// not a record, so it stays zero bytes however long it lives.
-	info, err := os.Stat(filepath.Join(directory, standing.InboxLockName))
-	if err != nil {
-		t.Fatalf("the inbox lock that the fold requires was not created: %v", err)
-	}
-	if info.Size() != 0 {
-		t.Fatalf("the inbox lock holds %d bytes, want an empty flock container", info.Size())
-	}
-	for _, entry := range entries {
-		if entry.Name() == "session.jsonl" {
-			continue
-		}
-		if !strings.HasPrefix(entry.Name(), ".") {
-			t.Fatalf("the fold left a non-dot file in the session folder: %s", entry.Name())
-		}
+		t.Fatalf("directory holds unexpected entries %v, want only the session file", unexpected)
 	}
 }
 

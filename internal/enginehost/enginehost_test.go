@@ -29,9 +29,6 @@ import (
 type stubAgent struct{}
 
 func (stubAgent) Submit(context.Context, string) (<-chan session.Event, error) { return nil, nil }
-func (stubAgent) SubmitStanding(context.Context, string) (<-chan session.Event, error) {
-	return nil, nil
-}
 func (stubAgent) SubmitImage(context.Context, string, []session.Image) (<-chan session.Event, error) {
 	return nil, nil
 }
@@ -49,7 +46,6 @@ func (stubAgent) ReasoningLevels() map[string]string                        { re
 func (stubAgent) SetReasoningFor(string, string)                            {}
 func (stubAgent) ResolveConsent(uint64, bool)                               {}
 func (stubAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
-func (stubAgent) ResolveStanding(uint64, session.StandingAnswer)            {}
 func (stubAgent) ResolveHarness(uint64, bool, string)                       {}
 func (stubAgent) ResolveConnect(string, bool)                               {}
 func (stubAgent) ResolveConnectKey(string, string)                          {}

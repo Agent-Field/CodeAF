@@ -10,8 +10,8 @@ import (
 //
 // prompts/system.md is one embedded text read by every agent this package
 // builds — the conversation, a worker that may hand parts out, a worker on the
-// floor of the tree, a standing check — and the belt those agents get is not one
-// belt. Five families come off it by their own gates (tools.go): the settings
+// floor of the tree, an automation's run — and the belt those agents get is not
+// one belt. Five families come off it by their own gates (tools.go): the settings
 // pair and `watch` inside a task, `search_conversations` where no store was
 // opened, `tasks` and `propose_task` on the floor of the tree, `use_service`
 // where there is no account hub. A sentence in the page naming one of those is
@@ -28,10 +28,10 @@ import (
 // So the tool-naming facts of the session-facts section live HERE and are
 // composed at render time, each from THE PREDICATE THAT PUTS ITS TOOL ON THE
 // BELT. Where a tool is absent the fragment says what to do instead rather than
-// saying nothing, in the voice the page's own `remember` and `stand` sentences
-// already use ("Without `remember`, say plainly that memory is off"): a worker
-// told the truth spends its turn on the work, and a worker told nothing spends
-// it guessing.
+// saying nothing, in the voice the page's own `remember` sentence already uses
+// ("Without `remember`, say you cannot keep it"): a worker told the
+// truth spends its turn on the work, and a worker told nothing spends it
+// guessing.
 //
 // prompt_belt_test.go is the both-ways proof, over every agent shape this
 // package builds.
@@ -46,9 +46,9 @@ const (
 	handoffFactsToken = "HANDOFF_FACTS"
 	programFactsToken = "PROGRAM_FACTS"
 	// AND THE FOURTH IS A PARAGRAPH OF ITS OWN AND NOT A RUN OF BULLETS. What
-	// can be left behind to fire later is `stand`'s alone ([standingFacts]), so
-	// the token stands on its own line where the section used to open.
-	standingFactsToken = "STANDING_FACTS"
+	// can be left behind to run later is `automation`'s alone
+	// ([automationFacts]), so the token stands on its own line.
+	automationFactsToken = "AUTOMATION_FACTS"
 )
 
 // ── the predicates ──────────────────────────────────────────────────────────
@@ -58,23 +58,6 @@ const (
 // prompt is built before the agent exists (agent.go's newAgent). The belt
 // functions read these SAME predicates, which is what makes it impossible for
 // the two to disagree about a tool.
-
-// hasStore controls writable memory and its prompt extraction. Conversation
-// search has its own read-only predicate so workers can inherit just that door.
-//
-// AND A LEAN PREFIX HAS NO WRITABLE MEMORY (promptprofile.go). The reflex is two
-// model calls on every turn on top of the one the person is waiting for, which
-// on a small open-weight seat is the most expensive thing in the turn that
-// nobody asked for — so the brain is not built (agent.go's newAgent), `remember`
-// is not on the belt, and the page's own "Without `remember`, say plainly that
-// memory is off" clause becomes the truth rather than a fallback.
-//
-// THE STORE ITSELF IS UNTOUCHED, and that distinction is the whole of this line.
-// Config.Memory is also the conversation's own RECORD — the chat log every
-// session writes and `search_conversations` reads — and taking that away would
-// be a session that forgets what was said, which is not what "the reflex is off"
-// means and is not what any window is short of.
-func (c Config) hasStore() bool { return c.Memory != nil && !c.promptProfile().lean() }
 
 // maySeeSettings says whether the settings pair belongs on this belt
 // (tools_settings.go). It comes off inside a task for the sharpest reason on
@@ -152,16 +135,19 @@ func (c Config) mayTickItems() bool { return c.quickItems != nil }
 // the agent at the moment the prompt is rendered.
 func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 
-// mayStand says whether `stand` belongs on this belt, and it is
-// [Config.standingStore] — the ONE reading of that availability, which
-// [Agent.standingTools] builds the tool from (tools_standing.go). It is not a
-// second reading of the two fields: the belt and the page must not be able to
-// disagree about whether anything can be scheduled from here.
+// mayAutomate says whether `automation` belongs on this belt, and it is the ONE
+// reading of that availability, which [Agent.automationTools] builds the tool
+// from (automation_tool.go): a store behind the conversation, and a
+// conversation that is not itself a task or an automation's run. The belt and
+// the page must not be able to disagree about whether anything can be
+// scheduled from here.
 //
 // It is the sharpest absence on the belt — a model told it can leave something
 // behind will plan a whole reply around one — and it is the predicate the page's
-// standing section is composed from.
-func (c Config) mayStand() bool { return c.standingStore() != nil }
+// automation paragraph is composed from.
+func (c Config) mayAutomate() bool {
+	return c.automationStore() != nil && c.AutomationRun == nil && !c.InTask
+}
 
 // signsGitWork says whether the attribution law belongs on this belt, and the
 // answer is always yes. It used to be the person's `attribution` row, and that
@@ -343,15 +329,15 @@ var beltFacts = []beltFact{{
 }, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
-	// the `Project` footer is rendered for all of them — and the second was
-	// telling a worker with no `stand` to reach for `when.in`, which is the
+	// the `Project` footer is rendered for all of them — and the second would be
+	// telling a worker with no `automation` to reach for `when.in`, which is the
 	// defect this file was written for, one section further down the same page.
-	tools:   []string{"stand"},
-	holds:   Config.mayStand,
-	present: "- YOU KNOW WHAT TIME IT IS: `Project`'s `Now` line gives local time to the minute, offset, zone by name and weekday, so NEVER run `date` for it. It does not tick inside a turn, so when a MINUTE matters use `stand`'s `when.in` or the `now:` line a `stand` result ends with.",
+	tools:   []string{"automation"},
+	holds:   Config.mayAutomate,
+	present: "- YOU KNOW WHAT TIME IT IS: `Project`'s `Now` line gives local time to the minute, offset, zone by name and weekday, so NEVER run `date` for it. It does not tick inside a turn, so when a MINUTE matters use `automation`'s `when.in` or the `now:` line an `automation` result ends with.",
 	// AND THE ABSENT CASE MUST NOT CONTRADICT ITSELF. It cannot say NEVER run
 	// `date` and in the same breath send the model to the clock, because with no
-	// `stand` the shell IS the only clock: the rule stays what it is for the
+	// `automation` the shell IS the only clock: the rule stays what it is for the
 	// four facts the footer already gives, and the one case it does not cover is
 	// named as the exception.
 	absent: "- YOU KNOW WHAT TIME IT IS: `Project`'s `Now` line gives local time to the minute, offset, zone by name and weekday, so never shell out for any of those four. It does not tick inside a turn, so a moment that must be exact to the MINUTE is the one case for a single `date` call.",
@@ -645,60 +631,46 @@ var programFacts = []beltFact{{
 	absent: "",
 }}
 
-// standingFacts is what the page says about work that outlives this window, and
-// it is now ONE SENTENCE where it was a 2,482-byte section.
+// automationFacts is what the page says about work that outlives this turn, and
+// it is ONE SENTENCE.
 //
 // EXISTENCE IS THE PAGE'S; MECHANICS RIDE WITH THE VERB; CONSEQUENCES RIDE WITH
 // THE EVENT. Those are the three classes the prompt diet files every law under
-// (docs/design/prompt-diet/DESIGN.md §2), and the old section was all three of
-// them stacked in message[0]:
+// (docs/design/prompt-diet/DESIGN.md §2):
 //
 //   - EXISTENCE — that a sentence can be left behind rather than done — is the
 //     only part needed BEFORE the model plans, because "remind me at 6" has to
-//     be recognised as `stand`'s before anything else happens. That is the
-//     sentence below, and it stays.
-//   - MECHANICS — the waking kinds, the hold, `when.in` against `when.at`, the
-//     RFC3339 arithmetic, what a card offers, what it costs — are needed at the
-//     CALL, and tools_standing.go's [standDescription] and [standSchemaJSON]
-//     already own every one of them, at greater length and beside the field
-//     each governs. The page was the second copy.
-//   - CONSEQUENCES — what to do when one fires — are needed only on the turn one
-//     fires, and standing_run.go's [standingNewsRule] is already appended to the
-//     firing's own line: "this already happened. Relay it to the person in one
-//     line. Do not call stand again for it". The page was the second copy of
-//     that too, and a page that explains a message the message explains itself
-//     is a page paid for on every request for a turn most sessions never have.
+//     be recognised as `automation`'s before anything else happens. That is the
+//     sentence below.
+//   - MECHANICS — the kinds, `when.in` against `when.at`, the cron line, what a
+//     card offers, what one run may spend — are needed at the CALL, and
+//     automation_tool.go's [automationDescription] and [automationSchemaJSON]
+//     own every one of them, beside the field each governs.
+//   - CONSEQUENCES — what a run said, what it did — reach the person through
+//     the window, not through the model: a run's line in the conversation that
+//     made it does not wake a turn at all.
 //
-// The rest — background checks running with no window open, the card's four
-// answers, that "remind me in 1 minute" IS the timer — is ON DEMAND: the chat
-// manual's keeping-an-eye and standing-orders pages carry all of it in the words
-// a person asks it in, and `manual` is a tool the model has.
-//
-// The absent case is the sentence the page already carried for it, which is why
-// this row leaves [promptNamesBeyondTheBelt] with one entry fewer: that ledger is
-// for what predates the seam, and this no longer does.
-var standingFacts = []beltFact{{
-	tools: []string{"stand"},
-	holds: Config.mayStand,
-	present: "SOMETHING TO LEAVE BEHIND — a reminder, a watch on the world, a rhythm, a rule\n" +
-		"that binds work nobody has done yet — is `stand`'s: \"remind me at 6\", \"tell me\n" +
-		"when CI goes red\", \"every Monday draft the update\", \"always run the tests\".\n" +
-		"PROPOSE IT, and never do it instead of proposing it, which answers a request\n" +
-		"they did not make. `stand`'s own description says how to tell one from the work\n" +
-		"in front of you and how to say when. Propose future intentions with prerequisites,\n" +
-		"scope and rails; respect their ratification.",
+// The rest — that automations run only while codeaf is open, the history, the
+// keys on the list — is ON DEMAND: the chat manual carries it in the words a
+// person asks it in, and `manual` is a tool the model has.
+var automationFacts = []beltFact{{
+	tools: []string{"automation"},
+	holds: Config.mayAutomate,
+	present: "SOMETHING TO LEAVE BEHIND — a reminder, work on a rhythm, a watch on the\n" +
+		"world — is `automation`'s: \"remind me at 6\", \"every Monday draft the update\",\n" +
+		"\"tell me when CI goes red\". PROPOSE IT, and never do it instead of proposing\n" +
+		"it, which answers a request they did not make; one that exists is CHANGED,\n" +
+		"never proposed again. `automation`'s own description says how to tell one\n" +
+		"from the work in front of you and how to say when.",
 	// AND THE ABSENT CASE NAMES NO VERB: a sentence naming a tool this belt does
 	// not carry is the lie the whole file exists to prevent (prompt_belt_test.go
-	// asks it of every shape). Neither case carries a heading any more, because
-	// a heading over one sentence is a heading nobody needs.
+	// asks it of every shape).
 	//
-	// IT DENIES SCHEDULING AND NOTHING ELSE. An earlier wording said nothing
-	// this agent does keeps working once the window closes, which is far wider
-	// than the missing verb and false on this build: work handed to a task
-	// outlives the turn that started it, is checkpointed and comes home on its
-	// own (task_run.go), and a session is restored rather than lost. What
-	// [Config.mayStand] actually decides is whether a thing can be left to fire
-	// LATER, so that is the whole of what this sentence says.
+	// IT DENIES SCHEDULING AND NOTHING ELSE. Work handed to a task outlives the
+	// turn that started it, is checkpointed and comes home on its own
+	// (task_run.go), and a session is restored rather than lost. What
+	// [Config.mayAutomate] actually decides is whether a thing can be left to
+	// run LATER, so that is the whole of what this sentence says.
 	absent: "NOTHING CAN BE SCHEDULED FROM HERE: there is no way to leave a reminder, a\n" +
 		"rhythm or a condition to watch behind you, so say so plainly rather than\n" +
 		"promising to check back later. Work already handed off is a different thing\n" +
@@ -743,7 +715,7 @@ var promptSections = []promptSection{
 	{token: beltFactsToken, facts: beltFacts, join: "\n"},
 	{token: handoffFactsToken, facts: handoffFacts, join: "\n\n"},
 	{token: programFactsToken, facts: programFacts, join: "\n\n"},
-	{token: standingFactsToken, facts: standingFacts, join: "\n\n"},
+	{token: automationFactsToken, facts: automationFacts, join: "\n\n"},
 }
 
 // renderBeltFacts composes the section for one shape.
@@ -817,9 +789,8 @@ func promptWithBeltFacts(config Config) string {
 // honest:
 //
 //   - WRITTEN FOR BOTH CASES ALREADY. The page names the tool and, in the same
-//     breath, says what to do without it — "Without `remember`, say plainly that
-//     memory is off", "Without `stand` this build cannot watch anything once the
-//     window closes". prompt_belt_test.go holds these to that: where the belt
+//     breath, says what to do without it — "Without `remember`, say you cannot
+//     keep it". prompt_belt_test.go holds these to that: where the belt
 //     lacks the tool, the sentence stating the absence must be in the rendered
 //     prompt.
 //
@@ -830,7 +801,7 @@ func promptWithBeltFacts(config Config) string {
 //
 // The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
-	"remember": "Without `remember`, say plainly that memory is off",
+	"remember": "Without `remember`, say you cannot keep it",
 	// A hand inherits the caller's page but intentionally carries a smaller,
 	// closed belt; its appended tail is the truthful capability account.
 	"ask": "Use `ask` only as the last rung",

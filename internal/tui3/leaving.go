@@ -64,9 +64,9 @@ func (a *app) leavingDraft() string {
 // foldedParkedDraft is quitting's text-only insurance assembled from either
 // the conversation in front or a held conversation's sidecar.
 //
-// STRUCTURED PARKS NEVER GO ON DISK. Pictures, paste bodies and standing marks
-// remain process memory while a conversation is held; the plain draft file is
-// the last-resort record that can promise only that nobody's typed words vanish.
+// STRUCTURED PARKS NEVER GO ON DISK. Pictures and paste bodies remain process
+// memory while a conversation is held; the plain draft file is the last-resort
+// record that can promise only that nobody's typed words vanish.
 func foldedParkedDraft(text string, parks []parked) string {
 	if len(parks) == 0 {
 		return text

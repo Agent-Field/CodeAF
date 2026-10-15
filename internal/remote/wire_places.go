@@ -82,7 +82,7 @@ const (
 	// ── the memory doors ────────────────────────────────────────────────────
 	//
 	// THE MEMORY PLACE IS THE ONLY PLACE ON THIS SURFACE THAT WRITES, and that is
-	// why there are seven of these rather than one reading. A place that listed
+	// why there are eight of these rather than one reading. A place that listed
 	// the far machine's memories and edited this one's would be worse than a
 	// place that crossed nothing at all: every row on it would be true and every
 	// key on it would land somewhere else. So the whole seam crosses, readings
@@ -101,23 +101,31 @@ const (
 	// let go of since an instant — the two figures the memory tab's number is
 	// made of. A zero instant answers zeros, which the store already promises.
 	MethodMemoryChanged = "Memory.ChangedSince" // time.Time → MemoryChange
-	// MethodMemoryList is the flat list behind `/memories` and behind the undo,
-	// which has to re-read after a restore.
-	MethodMemoryList = "Memory.List" // MemoryListArgs → []store.Memory
 	// MethodMemoryUpdate is `e` on a line: the wording, fixed.
 	MethodMemoryUpdate = "Memory.Update" // MemoryUpdateArgs → nothing
 	// MethodMemoryForget is `f` on a line, and MethodMemoryRestore is the undo
 	// that takes it back. Both carry the id and nothing else.
 	MethodMemoryForget  = "Memory.Forget"  // string (id) → nothing
 	MethodMemoryRestore = "Memory.Restore" // string (id) → nothing
-	// These three are the transcript commands, which operate on the session's
-	// memory engine rather than the store editor behind the memory place.
-	MethodMemoryRemember    = "Memory.Remember"    // string → title
-	MethodMemoryForgetQuery = "Memory.ForgetQuery" // string → title
-	MethodMemoryMemories    = "Memory.Memories"    // string → []session.MemoryLine
+	// These are the commands, which act for the CONVERSATION — its project
+	// decides where a line holds — rather than on the store editor behind the
+	// memory place. Each answers the receipt the surface prints.
+	MethodMemoryRemember = "Memory.Remember" // string → receipt
+	MethodMemoryMemories = "Memory.Memories" // string → []session.MemoryLine
+	// MethodMemoryMove is the place moving one line to where the person says
+	// it holds — for them everywhere, this machine, or this conversation's
+	// project — which only the conversation can resolve.
+	MethodMemoryMove = "Memory.Move" // MemoryMoveArgs → receipt
+	// MethodMemoryProject is the owner this conversation's project lines land
+	// in, so the place can say which shelf is "this project".
+	MethodMemoryProject = "Memory.Project" // nothing → string
 	// MethodMemoryProvenance is where and when one memory was learned, asked for
 	// the ONE id whose card is open rather than for every row on the page.
 	MethodMemoryProvenance = "Memory.Provenance" // string (id) → MemoryOrigin
+	// MethodMemoryRememberAlways and MethodMemoryAlways are /always, the same
+	// errand as /remember under the word people were taught, and its listing.
+	MethodMemoryRememberAlways = "Memory.RememberAlways" // MemoryAlwaysArgs → receipt
+	MethodMemoryAlways         = "Memory.Always"         // MemoryAlwaysArgs → []session.MemoryLine
 )
 
 // LedgerArgs is how far back the spend place is looking.
@@ -175,20 +183,26 @@ type MemoryChange struct {
 	LetGo   int `json:"letGo,omitempty"`
 }
 
-// MemoryListArgs is the flat list, by scope and bounded.
-type MemoryListArgs struct {
-	Scope string `json:"scope,omitempty"`
-	Limit int    `json:"limit,omitempty"`
+// MemoryUpdateArgs is one memory's wording, fixed. The title is re-derived
+// from the words on the far end, so it does not travel.
+type MemoryUpdateArgs struct {
+	ID   string `json:"id"`
+	Text string `json:"text,omitempty"`
 }
 
-// MemoryUpdateArgs is one memory's wording, fixed. Every field travels whole —
-// the store's Update replaces rather than patches, and a wire that carried only
-// what changed would have to know which of the four a person touched.
-type MemoryUpdateArgs struct {
-	ID    string   `json:"id"`
-	Title string   `json:"title,omitempty"`
-	Text  string   `json:"text,omitempty"`
-	Tags  []string `json:"tags,omitempty"`
+// MemoryMoveArgs is one line and where it should hold: `user`, `env` or
+// `project`.
+type MemoryMoveArgs struct {
+	ID    string `json:"id"`
+	Scope string `json:"scope"`
+}
+
+// MemoryAlwaysArgs is /always as the wire carries it: the rule's words (empty
+// for the listing), and whether it was typed where no conversation is in front
+// of the person, which keeps it for them everywhere rather than in a project.
+type MemoryAlwaysArgs struct {
+	Text       string `json:"text,omitempty"`
+	Everywhere bool   `json:"everywhere,omitempty"`
 }
 
 // MemoryOrigin is where and when one memory was learned: the conversation's own
@@ -201,21 +215,19 @@ type MemoryOrigin struct {
 }
 
 // EngineMemory is the ENGINE MACHINE'S memory store as this wire needs it, and
-// it is deliberately the same seven methods internal/tui3's MemoryStore asks
-// for — one interface, satisfied by the same adapter at both ends, so that a
+// it is deliberately the same methods internal/tui3's MemoryStore asks for — one interface, satisfied by the same adapter at both ends, so that a
 // method added to the place cannot land here as a method the far end silently
 // does not have (cmd/codeaf's [v3Brain] satisfies both by construction).
 //
 // NIL IS MEMORY OFF ON THAT MACHINE, and it is answered as a refusal rather than
-// as an empty store — the same reading [Engine.World] and [Engine.StandingItems]
+// as an empty store — the same reading [Engine.World] and [Engine.Automations]
 // already ask for. The surface keeps the difference, because "that machine
 // remembers nothing" and "that machine is not remembering" are two sentences and
 // only one of them is about a setting.
 type EngineMemory interface {
 	Snapshot(limit int) (store.MemoryShelves, error)
 	ChangedSince(t time.Time) (learned, letGo int, err error)
-	ListMemories(scope string, limit int) ([]store.Memory, error)
-	UpdateMemory(id, title, text string, tags []string) error
+	UpdateMemory(id, text string) error
 	ForgetMemory(id string) error
 	RestoreMemory(id string) error
 	MemoryProvenance(id string) (sessionID, sessionTitle string, writtenAt time.Time, err error)
@@ -227,8 +239,17 @@ type EngineMemory interface {
 type MemoryCommands interface {
 	Remembers() bool
 	Remember(text string) (string, error)
-	Forget(query string) (string, error)
 	Memories(query string) ([]session.MemoryLine, error)
+	// RememberAlways and AlwaysMemories are /always: the same errand as
+	// /remember, and its listing.
+	RememberAlways(text string, everywhere bool) (string, error)
+	AlwaysMemories(everywhere bool) ([]session.MemoryLine, error)
+	// MoveMemory moves one line to where the person says it holds, resolved
+	// against this conversation's project, and answers the receipt.
+	MoveMemory(id, scope string) (string, error)
+	// MemoryProject is the owner this conversation's project lines land in, or
+	// "" when it has no project of its own.
+	MemoryProject() (string, error)
 }
 
 // ConversationDeleteArgs carries explicit manager choices from the confirmation.

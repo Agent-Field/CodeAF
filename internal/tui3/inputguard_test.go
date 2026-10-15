@@ -232,23 +232,19 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 	}
 }
 
-// AND THE STANDING CARD IS THE FOURTH QUESTION UNDER THAT RULE.
+// AND THE AUTOMATION CARD IS THE FOURTH QUESTION UNDER THAT RULE.
 //
-// It is not a row of the table above because home answers a standing card by
-// DIGIT rather than by letter — the card's own answers are enter, esc and its
-// numbered chips (standing.go), and home answers it in place on the asking
-// window's row (homeband_answer.go, which is where that half is held). What is
-// the same is the half this holds: the card arriving takes home down, so a
-// decision the session is blocked on is asked on the screen the person is
+// It is not a row of the table above because the card is answered by DIGIT
+// rather than by letter — its answers are its numbered chips (automation.go).
+// What is the same is the half this holds: the card arriving takes home down,
+// so a decision the session is blocked on is asked on the screen the person is
 // looking at rather than behind it.
-func TestAStandingCardArrivingTakesHomeDownLikeTheQuestionsAboveIt(t *testing.T) {
-	a, _, _ := standApp(t)
+func TestAnAutomationCardArrivingTakesHomeDownLikeTheQuestionsAboveIt(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
 	a.openHome()
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
-		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
-	})})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: automationProposal(1, "every Monday at 9 draft the weekly update")})
 	if a.at(pageHome) {
-		t.Fatal("home stayed up over a standing card the session is waiting on")
+		t.Fatal("home stayed up over an automation card the session is waiting on")
 	}
 }
 

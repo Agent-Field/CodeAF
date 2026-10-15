@@ -251,7 +251,7 @@ func askOneOnTheWire(t *testing.T, w *world, question asked.Question) (wireAsk, 
 	for attempt := 1; attempt <= wireAttempts; attempt++ {
 		started := time.Now()
 		agent, place := w.open(aPlainWorkspace(t), manualConfig)
-		out := w.say(agent, question.Ask, answerYes)
+		out := w.say(agent, question.Ask)
 		usd, models := ledgerSince(t, started)
 		spent += usd
 		found.broke = out.Err != nil

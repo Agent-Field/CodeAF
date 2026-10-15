@@ -496,24 +496,25 @@ func UsageByModel(lines []UsageLine) []ModelSpend {
 
 // The three things money is ever spent ON, in the words a row shows.
 //
-// THEY ARE A CLOSED THREE BECAUSE THE LEDGER HOLDS THREE IDS. There is no
-// fourth kind hiding in the file: a line was made inside a piece of work, inside
-// a promise the person made, or inside a conversation they were having.
+// THEY ARE A CLOSED THREE BECAUSE THE LEDGER HOLDS THREE KINDS OF ID. There is
+// no fourth kind hiding in the file: a line was made inside a piece of work,
+// inside an automation the person agreed to, or inside a conversation they
+// were having.
 const (
 	SubjectTask         = "task"
-	SubjectStanding     = "standing"
+	SubjectAutomation   = "automation"
 	SubjectConversation = "conversation"
 )
 
 // SubjectSpend is one row of "what it was for": which thing, and what it cost.
 type SubjectSpend struct {
-	// Kind is one of [SubjectTask], [SubjectStanding], [SubjectConversation].
+	// Kind is one of [SubjectTask], [SubjectAutomation], [SubjectConversation].
 	Kind string
-	// ID is the thing's own id — a node's id within its session, a standing
-	// item's id, or the conversation's 16 hex. It is what a page JOINS on to get
-	// a title: this file has no titles and will not invent any, so a page reads
-	// the name off the task index, the standing store or the session it is
-	// already holding.
+	// ID is the thing's own id — a node's id within its session, an
+	// automation's id, or the conversation's 16 hex. It is what a page JOINS on
+	// to get a title: this file has no titles and will not invent any, so a page
+	// reads the name off the task index, the automations store or the session it
+	// is already holding.
 	ID string
 	// Session is the journal the calls were made under — which for a piece of
 	// work is THE NODE'S OWN transcript and not the conversation that asked for
@@ -542,7 +543,7 @@ type SubjectSpend struct {
 	// Workspace is the project the money was spent against, and empty where the
 	// line named none.
 	Workspace string
-	// Label is the row's KIND WORD and nothing more: "task", "standing", "chat"
+	// Label is the row's KIND WORD and nothing more: "task", "automation", "chat"
 	// ([UsageSubjectWord], which says why they are that short). It is
 	// deliberately not a title — see ID — and it is here so that the three
 	// spellings live in one place rather than in each page that draws them.
@@ -554,12 +555,13 @@ type SubjectSpend struct {
 
 // UsageBySubject groups the lines by what they were spent on, dearest first.
 //
-// A STANDING FIRING IS A STANDING FIRING AND NOT A TASK, even though it runs
-// with a node's id beside it: a person recognises the promise they made months
-// ago long before they recognise the run it spawned this morning, so the
-// standing id wins wherever a line carries both. After that a task id wins over
-// a conversation, for the same reason — the work is the thing that was asked
-// for.
+// AN AUTOMATION'S RUN IS THE AUTOMATION'S AND NOT A TASK, even where it runs
+// with a node's id beside it: a person recognises the thing they agreed to
+// months ago long before they recognise the run it made this morning, so the
+// automation's id wins wherever a line carries both. A line written by the
+// standing orders automations replaced is read the same way, under the id it
+// was written with. After that a task id wins over a conversation, for the same
+// reason — the work is the thing that was asked for.
 //
 // AND WORK WITH NO ID OF ITS OWN BELONGS TO THE CONVERSATION IT WAS ROOTED IN.
 // A fork's hand, and the check that reads what a node left, are whole agents
@@ -577,8 +579,10 @@ func UsageBySubject(lines []UsageLine) []SubjectSpend {
 	for _, line := range lines {
 		kind, id := SubjectConversation, strings.TrimSpace(line.Session)
 		switch {
+		case strings.TrimSpace(line.Automation) != "":
+			kind, id = SubjectAutomation, strings.TrimSpace(line.Automation)
 		case strings.TrimSpace(line.Standing) != "":
-			kind, id = SubjectStanding, strings.TrimSpace(line.Standing)
+			kind, id = SubjectAutomation, strings.TrimSpace(line.Standing)
 		case strings.TrimSpace(line.Task) != "":
 			kind, id = SubjectTask, strings.TrimSpace(line.Task)
 		case strings.TrimSpace(line.Root) != "":
@@ -592,10 +596,10 @@ func UsageBySubject(lines []UsageLine) []SubjectSpend {
 			// the journal it happened to run in.
 			at.session = id
 		}
-		if kind == SubjectStanding {
-			// A promise fires in a new folder every time, so grouping a standing
-			// row by the session it happened in would draw one row per firing —
-			// which is a log, not an answer to "what was this for".
+		if kind == SubjectAutomation {
+			// An automation runs in a new folder every time, so grouping its row
+			// by the session it happened in would draw one row per run — which
+			// is a log, not an answer to "what was this for".
 			at.session = ""
 		}
 		row := totals[at]
@@ -650,8 +654,8 @@ func UsageSubjectWord(kind string) string {
 	switch kind {
 	case SubjectTask:
 		return "task"
-	case SubjectStanding:
-		return "standing"
+	case SubjectAutomation:
+		return "automation"
 	case SubjectConversation:
 		return "chat"
 	}

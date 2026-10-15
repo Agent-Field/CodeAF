@@ -108,7 +108,7 @@ const (
 	// subNotStartedWord leads a refusal from the launching door. What comes back
 	// from there is a sentence written for a person ("there is nothing here to
 	// run"), so it is said as it stands rather than wrapped in a second sentence
-	// about a key that did not work ([standingPlace.ask] states the law).
+	// about a key that did not work.
 	subNotStartedWord = "did not start · "
 
 	// ── THE THIRD DOOR: THE CARD CHAT ITSELF RAISED ─────────────────────────
@@ -121,13 +121,13 @@ const (
 	// assumed to know (docs/DESIGN-LANGUAGE.md refuses that trade by name).
 
 	// subNoChipWord is the way out, ON the card: the chip that is never dropped
-	// for want of room ([app.pickRow]'s `keep`). It is the standing card's own
+	// for want of room ([app.pickRow]'s `keep`). It is the task proposal's own
 	// word for the same answer, because one answer gets one spelling wherever it
 	// is drawn.
 	subNoChipWord = "no"
 	// The two consequence lines, and each says what PRESSING THIS does rather
-	// than what the card contains — the line under a stand card's answers makes
-	// the same distinction ([app.standSays]). The fields above already state
+	// than what the card contains — an automation card's answers make the same
+	// distinction ([session.AutomationOptions]). The fields above already state
 	// what would run; these state where it would run and what is left behind.
 	subSaysRun = "it runs as a task beside this conversation — you can watch it, answer it, stop it"
 	subSaysNo  = "nothing runs, and we carry on here"
@@ -154,7 +154,7 @@ const (
 	// the chips are walked with ←/→ and taken with enter, and both `0` and `esc`
 	// are the no — `esc` because it is the dismiss key everywhere in a
 	// conversation, `0` because it is the decline every card on this surface
-	// answers to (standing.go's [session.StandingNoKey]).
+	// answers to ([session.DeclineKey]).
 	subOfferVerbs = "←→ · enter takes it · 0 or esc, no"
 	// subEditHint is the placeholder in the box while one field is being typed
 	// into. It takes the filter's place — one box under the overlay, answering
@@ -174,7 +174,7 @@ const (
 
 // subharnessAgent is the slice of the engine this surface needs, and it is
 // asserted rather than added to [Agent] — the subharness side is OPTIONAL,
-// exactly as the standing side is ([standingHereAgent] says why at length). A
+// exactly as the spell-out door is ([spellOutAgent] says why). A
 // scripted agent that has never heard of one is a session with the whole feature
 // off, and it must stay representable; so is a conversation held over a
 // connection, where the registry belongs to the far machine and the verb is
@@ -295,7 +295,7 @@ func subSpanWord(d time.Duration) string {
 // it. The zero value is closed.
 //
 // THE CARD IS A FIELD ON THE LIST AND NOT A SECOND OVERLAY, which is the memory
-// panel's own arrangement (place_memory.go's expanded row): one thing owns the
+// panel's own arrangement (place_memories.go's expanded row): one thing owns the
 // keyboard, one thing owns the block of rows the frame handed out, and esc walks
 // back out of whichever half is up rather than closing two things at once.
 type subPage struct {
@@ -454,11 +454,11 @@ func (c *subCard) asked() bool { return c != nil && c.offer != 0 }
 // runs (internal/session's ResolveSubharness) — and the way out is LAST so that
 // it is the chip [app.pickRow] never drops for want of room. Its key is the `0`
 // every other card on this surface declines with, off both ends of the numbering
-// so that it means the same thing on every card ([session.StandingNoKey]).
+// so that it means the same thing on every card ([session.DeclineKey]).
 func (c *subCard) row() []pickChoice {
 	return []pickChoice{
 		{key: "1", word: subRunWord},
-		{key: session.StandingNoKey, word: subNoChipWord},
+		{key: session.DeclineKey, word: subNoChipWord},
 	}
 }
 
@@ -723,8 +723,7 @@ func (c *subCard) note(index int) string {
 
 // draw is the overlay's block. IT TAKES THE APP rather than a palette alone,
 // because the card chat raised draws its answers with the shared answer row
-// (pickrow.go), which is the app's — the same bargain the standing card's rows
-// make ([StandingCardRows]).
+// (pickrow.go), which is the app's.
 func (p *subPage) draw(a *app, width, n int, hover int) []string {
 	pal := a.pal
 	if n <= 0 || !p.open {
@@ -757,8 +756,7 @@ func (p *subPage) draw(a *app, width, n int, hover int) []string {
 //
 // THE HEADING IS A [overlayFill.plain] LINE, which is what makes it unpressable
 // without anything downstream having to know it is a heading — plain records the
-// line as belonging to row -1, and the press below already swallows -1
-// (standingpage.go makes the same bargain).
+// line as belonging to row -1, and the press below already swallows -1.
 //
 // AND THE HEADING IS MUTED RATHER THAN ACCENT. A heading is furniture and sits
 // in the same place every time; the accent budget is one lit element per screen
@@ -848,8 +846,8 @@ func (p *subPage) drawCard(a *app, width, n int, hover int) []string {
 
 // openSubharness is /subharness, with or without a name after it.
 //
-// The list is read HERE and not held from boot, on the terms /permissions and
-// /standing read their own rows: a bundle another window saved a minute ago is
+// The list is read HERE and not held from boot, on the terms /permissions
+// reads its own rows: a bundle another window saved a minute ago is
 // one this list has to know about, and asking costs one walk of a map the
 // registry already holds.
 //
@@ -1051,7 +1049,7 @@ func (a *app) takeSubharnessAnswer(at int) tea.Cmd {
 // moveSubharnessAnswer walks the answers and STOPS at their ends rather than
 // wrapping, which is this surface's law about a chip row and its reason: a
 // cursor that reappeared at the far end would put the decline under a key
-// pressed to reach the yes ([app.moveStanding]).
+// pressed to reach the yes.
 func (a *app) moveSubharnessAnswer(delta int) {
 	card := a.subPage.card
 	if !card.asked() {
@@ -1161,7 +1159,7 @@ func (a *app) subCardKey(msg tea.KeyPressMsg) tea.Cmd {
 			break
 		}
 		listNavigate(msg, &editor{}, c.move, func() {}, subRowsMax-1)
-	case "1", session.StandingNoKey:
+	case "1", session.DeclineKey:
 		// THE TWO DIGITS THE ANSWER ROW DRAWS, and only on the card that draws
 		// them. They are claimed wherever the cursor is standing, because a
 		// question a person has read is a question they may answer without first
@@ -1169,7 +1167,7 @@ func (a *app) subCardKey(msg tea.KeyPressMsg) tea.Cmd {
 		// digit while no box is open (the box above has already returned).
 		if c.asked() {
 			at := 0
-			if msg.String() == session.StandingNoKey {
+			if msg.String() == session.DeclineKey {
 				at = c.declineAt()
 			}
 			cmd = a.takeSubharnessAnswer(at)
@@ -1289,10 +1287,9 @@ func (a *app) settleSubharnessRun(msg subStartedMsg) {
 
 // subPagePress resolves a click on one of the overlay's rows.
 //
-// THE POINTER MOVES THE CURSOR AND NEVER ACTS, which is the standing page's own
-// rule and it is the right one here for a sharper reason: one of these rows
-// starts work and spends money, and a click that did that would be a gesture
-// nobody could aim.
+// THE POINTER MOVES THE CURSOR AND NEVER ACTS, and here the reason is sharp:
+// one of these rows starts work and spends money, and a click that did that
+// would be a gesture nobody could aim.
 func (a *app) subPagePress(y int) tea.Cmd {
 	p := &a.subPage
 	mark, ok := a.chromeAt(y)

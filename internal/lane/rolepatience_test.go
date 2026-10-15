@@ -302,7 +302,7 @@ func TestNoProbeRidesARoleSomebodyIsWaitingOn(t *testing.T) {
 // one within a month — and not from a machine's, which is a list somebody has to
 // maintain against a fleet that moves. The two files that decide where a request
 // goes are held to it here with go/ast, so the day somebody writes `if role ==
-// RoleRecall` in the chooser, or `if id.Lane == "…"`, the build says where.
+// RoleJudge` in the chooser, or `if id.Lane == "…"`, the build says where.
 //
 // WHAT IT LOOKS FOR IS A COMPARISON, because a comparison is where a name
 // becomes a branch. A string literal is otherwise perfectly ordinary in these
@@ -349,7 +349,7 @@ func TestTheChoiceNamesNoRoleAndNoMachine(t *testing.T) {
 			// A SWITCH IS THE SAME BRANCH WITH NO OPERATOR IN IT, which is how
 			// the first version of this law was got past: a case list holds bare
 			// identifiers and the comparison the compiler makes is invisible to
-			// go/ast. `switch role { case RoleRecall: }` is exactly the thing
+			// go/ast. `switch role { case RoleJudge: }` is exactly the thing
 			// the bar forbids and it contains no [ast.BinaryExpr] at all.
 			case *ast.SwitchStmt:
 				for _, statement := range found.Body.List {

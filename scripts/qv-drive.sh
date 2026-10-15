@@ -93,7 +93,7 @@ fi
 
 # The matrix the brief asks for: every view the chooser can reach, at the three
 # widths, in both themes and both tiers.
-for fixture in permission irreversible weighed standing harness-offer design connect connect-key; do
+for fixture in permission irreversible weighed automation harness-offer design connect connect-key; do
   for cols in 120 96 56; do
     for theme in dark light; do
       for tier in rich ascii; do

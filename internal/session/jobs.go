@@ -104,16 +104,13 @@ const (
 	// is news, and it asks for nothing.
 	//
 	// A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION, which is
-	// the delivery class docs/design/prompt-diet/DESIGN.md §2 files this under
-	// and the pattern [standingNewsRule] was already written in — right down to
-	// the opening words, because a job's ending and a standing item's firing are
-	// the same kind of arrival and a model should not have to learn two frames
-	// for it. Saying it here costs the turn a job ends on; saying it on the page
-	// cost every request of every turn.
+	// the delivery class docs/design/prompt-diet/DESIGN.md §2 files this under.
+	// Saying it here costs the turn a job ends on; saying it on the page cost
+	// every request of every turn.
 	//
-	// IT NAMES WHAT IT IS FORBIDDING for [standingNewsRule]'s reason: a model
-	// holding `bash` reads an exit code as an invitation to run the thing again,
-	// and a model holding `jobs` reads a quiet job as something to go and check.
+	// IT NAMES WHAT IT IS FORBIDDING because a model holding `bash` reads an
+	// exit code as an invitation to run the thing again, and a model holding
+	// `jobs` reads a quiet job as something to go and check.
 	jobExitNewsRule = "— this already happened: relay it if it matters, never re-run it and never poll for it."
 )
 
@@ -176,12 +173,6 @@ type job struct {
 	id      int
 	command string
 	kind    jobKind
-	// origin is the provenance FROZEN AT LAUNCH: the root session, turn, goal
-	// and owner whose work this job is. It is written once in [newJob] and read
-	// without the lock, so a job that settles long after the turn that started
-	// it cannot be stamped with whatever turn is live when it dies
-	// (contextual_delegated.go's [Agent.recordSettledJob]).
-	origin jobOrigin
 	// label and detail are a watch's short name and its terms ("every 10s on
 	// change"), empty for a bash job. They are set once at start and read
 	// without the lock.
@@ -501,17 +492,6 @@ type jobRegistry struct {
 	// watch will ever say — so it is owed exactly as a process job's exit is, and
 	// agent.go's lane reads this bool to decide which of the two it queues.
 	notifyWatch func(string, string, bool)
-	// onSettle is the observational tap a bash job's REAL ending reaches. A
-	// promoted command answered "still running as job N", so its true exit code,
-	// arriving long after that call returned, would otherwise die with the note.
-	// It is set by the agent that owns the registry and fires only for a
-	// non-requested settlement; it is nil in every registry built without one.
-	onSettle func(*job, int)
-	// origin answers the frozen provenance of a job about to be launched. It
-	// is a function for [jobRegistry.notify]'s reason: the registry starts
-	// processes and has no idea what a turn is, and a caller with nothing to
-	// stamp leaves it nil and pays nothing.
-	origin func() jobOrigin
 	// announce carries one job's row to the roster — the column beside the
 	// conversation, where work this session started shows whatever door started
 	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
@@ -658,12 +638,6 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		done:    make(chan struct{}),
 	}
 	started.sink = newJobSink(logFile, spoolPath)
-	// THE ORIGIN IS TAKEN AT LAUNCH, ONCE. A job's real ending may arrive long
-	// after the turn that started it, and it must be stamped with the turn that
-	// owns it rather than the one that happens to be live when it settles.
-	if r.origin != nil {
-		started.origin = r.origin()
-	}
 	// Closing asks for maintenance before the job publishes its final state.
 	// Claim and startup also sweep, while a log write never does.
 	started.sink.finishRetention = func() { r.askRetention(directory, started.sink) }
@@ -1110,9 +1084,6 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	// CANCELLATION is not a demonstrated failure of the command. The gate is
 	// `requested` here, not only in the doc comment, so a killed job can never
 	// be journaled as one that failed.
-	if !requested && r.onSettle != nil && watched.kind == jobKindBash {
-		r.onSettle(watched, code)
-	}
 
 	if requested {
 		// A DEATH THIS SESSION ASKED FOR RELEASES THE WORK AT ONCE. The registry's
@@ -1775,7 +1746,7 @@ func (s *jobSink) lastNonEmptyLine() string {
 // IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
 // goes through [bare.StreamingShell] instead, which is this choice plus the
 // line-buffering that keeps a long command's log from being empty until it
-// exits. What is left on this one is a watch's tick and a standing order's step
+// exits. What is left on this one is a watch's tick and an automation's look
 // — commands that are short by construction and read only after they end.
 func jobShell() (string, []string) {
 	if _, err := os.Stat("/bin/bash"); err == nil {

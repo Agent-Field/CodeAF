@@ -41,15 +41,12 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Scope = "This chat and the profile default"
 	}
 	switch s.Key {
-	case KeyPracticeIdle, KeyPracticeBudget, KeyBriefAfter, KeyTenureAfter, KeySplitPct:
+	case KeySplitPct:
 		p.Hidden = true // Resident-only controls have no live chat consumer.
 	case KeyMemoryEnabled:
-		p.Category, p.Label = "Memory", "remember across chats"
-		p.Description = "Learns useful preferences and corrections from conversations and recalls relevant memories. /memories lets you inspect what is saved. Turning this off does not delete saved memories."
-		p.Activation = "Restart the CLI to apply this to already-open chats"
-	case KeyStandingBackground:
-		p.Label = "background reminders"
-		p.Description = "Check reminders, watches and routines while the CLI is closed. Uses a timer under your login; the machine must be awake and you must be logged in."
+		// The detail is the row's own Hint (settings.go), not a second copy.
+		p.Category, p.Label = "Memory", "notice things to remember"
+		p.Activation = "Applies from the next turn"
 	case KeyUpdateAuto:
 		p.Label = "automatic updates"
 	case KeyMouse:
@@ -209,7 +206,9 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	}
 	switch s.Key {
 	case KeyMemoryEnabled:
-		p.Aliases = append(p.Aliases, "remember", "learn", "forget", "recall")
+		// "remember across chats" is the row's label until 2026-10-14, kept so
+		// the words a person learned still find it.
+		p.Aliases = append(p.Aliases, "remember across chats", "remember", "learn", "forget", "recall", "memory", "notice", "automatic")
 	case KeyTelemetry:
 		p.Aliases = append(p.Aliases, "analytics", "tracking", "privacy", "data sharing")
 	case KeyTaskMinFreeMB:

@@ -35,6 +35,7 @@ type offerLab struct {
 	result    codeupdate.InstallResult
 	failWith  error
 	allow     *bool
+	automatic bool
 }
 
 func newOfferLab(t *testing.T, coordinator *UpdateCoordinator) *offerLab {
@@ -52,6 +53,7 @@ func newOfferLab(t *testing.T, coordinator *UpdateCoordinator) *offerLab {
 		},
 		InstallUpdate: func(_ context.Context, options codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 			*lab.allow = options.AllowDowngrade
+			lab.automatic = options.Automatic
 			if lab.failWith != nil {
 				return codeupdate.InstallResult{}, lab.failWith
 			}
@@ -605,7 +607,7 @@ func TestTheGraceWaitsWhereTheOfferCannotBeAnswered(t *testing.T) {
 	}{
 		{"the settings page", func(a *app) { a.raisePlace(pageSettings) }},
 		{"the memory page", func(a *app) { a.raisePlace(pageMemory) }},
-		{"the standing page", func(a *app) { a.raisePlace(pageStanding) }},
+		{"the standing page", func(a *app) { a.raisePlace(pageAutomations) }},
 		{"the first-run sheet", func(a *app) { a.setup.open = true }},
 		{"a team's card", func(a *app) { a.tsheet.on = true }},
 		{"the move picker", func(a *app) { a.tmove.on = true }},

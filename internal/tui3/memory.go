@@ -14,36 +14,45 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// THE THREE COMMANDS ONTO WHAT codeaf REMEMBERS ABOUT YOU.
+// THE COMMANDS ONTO WHAT codeaf REMEMBERS.
 //
-// Memory is otherwise invisible by design: a small model decides before each
-// message which remembered lines bear on it and the rest of the time nothing is
-// said about any of it (internal/session's memory.go). That is the right default
-// and it is also exactly why these three exist — a thing that quietly carries
-// facts about a person between sessions has to be a thing that person can read,
-// add to and empty by hand.
+// Every line codeaf keeps rides every conversation in its scope
+// (internal/session's memory.go), so a person must be able to read it, add to
+// it and take things out of it by hand — and every receipt says exactly what
+// changed and where it holds. The conversation writes the receipt, because it
+// is the one that knows which project a line kept here holds in.
 //
-// Saves, removals and queries answer in the transcript so their receipts stay
-// scrollable. Bare /memory and /memories open the place when it is available.
+//	/remember <text>   keep one line (here: this project; on home: everywhere)
+//	/always <text>     the same, under the word people were taught
+//	/memory [<words>]  open the Memories tab, or print the lines that match
+//
+// THERE IS NO /forget. Taking a line out is done on the Memories tab, where
+// the line is in front of the person with who kept it and where it holds — a
+// typed query that had to name one line out of fifty was a guess with a
+// receipt, and the tab is a choice. The model's own `forget` stays, for
+// "forget that" said in words.
+//
+// Receipts answer in the transcript so they stay scrollable, and on home's own
+// message line when the command was typed there.
 
 // memoryAgent is the slice of *session.Agent these three need. It is asserted
 // rather than added to [Agent] for [taskAgent]'s reason: memory is OPTIONAL —
 // a session with no store simply does not have it, and every scripted agent in
 // this package's tests has never heard of one.
 type memoryAgent interface {
-	// Remembers is the wiring question, and it is on this interface rather than
-	// left to an error because the two answers read differently on screen:
-	// nothing remembered YET is an empty store, and memory OFF is a row in
-	// /settings. A surface that could only see a failed call would say the first
-	// when it meant the second.
+	// Remembers is whether this conversation has a memory store at all — true
+	// whatever the noticing row says, because lines the person kept hold either
+	// way.
 	Remembers() bool
-	// Remember keeps one thing and answers with the title it landed under.
+	// Remember keeps one line and answers the receipt.
 	Remember(text string) (string, error)
-	// Forget drops the best match and answers with the title it dropped, or ""
-	// when nothing matched.
-	Forget(query string) (string, error)
 	// Memories lists what is kept, or the matches for a query.
 	Memories(query string) ([]session.MemoryLine, error)
+	// MoveMemory moves one line to where the person says it holds, and
+	// MemoryProject is the owner this conversation keeps project lines under —
+	// the two things only the conversation can resolve.
+	MoveMemory(id, scope string) (string, error)
+	MemoryProject() (string, error)
 }
 
 // brain is the agent under this surface, when it has one at all.
@@ -58,11 +67,11 @@ func (a *app) brain() (memoryAgent, bool) {
 	return nil, false
 }
 
-// memoryOffNote is the one line every one of the three prints when this build
-// is not remembering anything. It names the row that turns it on, because "no"
-// without "and here is how to change that" is the half of an answer that sends
-// somebody to the manual.
-const memoryOffNote = "memory is off for this session · turn it on under /settings"
+// memoryUnavailableNote is the one line every command prints when this
+// conversation has no memory store at all — which happens only when the store
+// could not be opened, and the launch said why. It names no setting: no setting
+// turns memory off (the memory row governs only what is noticed for you).
+const memoryUnavailableNote = "memory is unavailable in this conversation · the store could not be opened"
 
 // memoryReplyMsg belongs to the conversation that issued the command. The
 // agent alone is not enough: a remote handle can survive a transcript swap.
@@ -70,6 +79,9 @@ type memoryReplyMsg struct {
 	agent Agent
 	file  string
 	text  string
+	// home says the command was typed on home, so its receipt is said on home's
+	// own message line as well as in the conversation behind it.
+	home bool
 	// delivered releases the next operation only after this receipt has been
 	// routed, so command scheduling cannot reverse the transcript's order.
 	delivered func()
@@ -155,6 +167,7 @@ func (ticket *memoryTicket) finish(origin memoryConversation, grace <-chan time.
 // returns to the surface, so typing and repainting never wait for the engine.
 func (a *app) memoryCall(call func() (string, error)) tea.Cmd {
 	origin := memoryConversation{surface: a, agent: a.agent, file: a.file}
+	home := a.at(pageHome)
 	ctx := a.ctx
 	ticket := queueMemory(origin)
 	return func() tea.Msg {
@@ -179,7 +192,7 @@ func (a *app) memoryCall(call func() (string, error)) tea.Cmd {
 		if errors.Is(err, remote.ErrLate) {
 			grace = ticket.after(roles.PatienceFor(roles.RoleReflex))
 		}
-		return memoryReplyMsg{agent: origin.agent, file: origin.file, text: text,
+		return memoryReplyMsg{agent: origin.agent, file: origin.file, text: text, home: home,
 			delivered: func() { ticket.finish(origin, grace) }}
 	}
 }
@@ -189,6 +202,14 @@ func (a *app) adoptMemoryReply(msg memoryReplyMsg) {
 		defer msg.delivered()
 	}
 	if msg.agent == a.agent && msg.file == a.file {
+		// A RECEIPT FOR A COMMAND TYPED ON HOME IS SAID ON HOME. It arrives after
+		// the dispatch that typed it has returned, so home's echo flag is down;
+		// raising it around this one note is what puts the receipt where the
+		// person is looking (app.go's [app.noteWritten]).
+		if msg.home {
+			a.echoHome = true
+			defer func() { a.echoHome = false }()
+		}
 		a.note(msg.text)
 		return
 	}
@@ -202,20 +223,30 @@ func (a *app) adoptMemoryReply(msg memoryReplyMsg) {
 	}
 }
 
-// runRemember is /remember: keep one thing across conversations.
+// runRemember is /remember: keep one line. Typed in a conversation it holds in
+// that conversation's project; typed on home, with no conversation in front of
+// the person, it holds for them everywhere. The conversation says which.
 func (a *app) runRemember(text string) tea.Cmd {
 	a.noticeEvent(eventRemembered)
 	agent, ok := a.brain()
 	if !ok {
-		a.note(memoryOffNote)
+		a.note(memoryUnavailableNote)
 		return nil
 	}
 	if strings.TrimSpace(text) == "" {
 		a.note("/remember <text> · what should be kept?")
 		return nil
 	}
+	everywhere := a.at(pageHome)
+	keeper, keeps := a.agent.(alwaysAgent)
 	return a.memoryCall(func() (string, error) {
-		title, err := agent.Remember(text)
+		var receipt string
+		var err error
+		if everywhere && keeps {
+			receipt, err = keeper.RememberAlways(text, true)
+		} else {
+			receipt, err = agent.Remember(text)
+		}
 		if err != nil {
 			if errors.Is(err, remote.ErrLate) {
 				// A LATE RECEIPT IS NOT A FAILED WRITE. The engine keeps the save
@@ -224,37 +255,41 @@ func (a *app) runRemember(text string) tea.Cmd {
 			}
 			return "could not remember that · " + err.Error(), err
 		}
-		return "remembered · " + title, nil
+		return receipt, nil
 	})
 }
 
-// runForget drops ONE match because silently removing every match could erase
-// notes the person never meant to name, with no surface door to their contents.
-func (a *app) runForget(query string) tea.Cmd {
-	agent, ok := a.brain()
+// alwaysAgent is the slice of the agent that keeps a line for the person
+// everywhere and lists what holds: /always, and /remember typed on home. Both
+// the in-process session and the wire's agent answer it (internal/remote's
+// memory.go).
+type alwaysAgent interface {
+	RememberAlways(text string, everywhere bool) (string, error)
+	AlwaysMemories(everywhere bool) ([]session.MemoryLine, error)
+}
+
+// runAlways is /always: the same errand as /remember, kept because people were
+// taught the word — and bare, the list of what holds here (everywhere, on
+// home).
+func (a *app) runAlways(text string) tea.Cmd {
+	if strings.TrimSpace(text) != "" {
+		return a.runRemember(text)
+	}
+	if _, ok := a.brain(); !ok {
+		a.note(memoryUnavailableNote)
+		return nil
+	}
+	lister, ok := a.agent.(alwaysAgent)
 	if !ok {
-		a.note(memoryOffNote)
-		return nil
+		return a.runMemories("")
 	}
-	if strings.TrimSpace(query) == "" {
-		a.note("/forget <query> · what should be dropped?")
-		return nil
-	}
+	everywhere := a.at(pageHome)
 	return a.memoryCall(func() (string, error) {
-		title, err := agent.Forget(query)
+		lines, err := lister.AlwaysMemories(everywhere)
 		if err != nil {
-			// A PARTIAL FORGET SAYS SO. Some evidence was retired and some
-			// could not be; claiming either "forgot" or a bare failure would
-			// be untrue.
-			if title != "" {
-				return "partly forgot · " + title + " · " + err.Error(), err
-			}
-			return "could not forget that · " + err.Error(), err
+			return "could not read what is remembered · " + err.Error(), err
 		}
-		if title == "" {
-			return "nothing matched " + query, nil
-		}
-		return "forgot · " + title, nil
+		return memoriesText("", lines), nil
 	})
 }
 
@@ -263,7 +298,7 @@ func (a *app) runForget(query string) tea.Cmd {
 func (a *app) runMemories(query string) tea.Cmd {
 	agent, ok := a.brain()
 	if !ok {
-		a.note(memoryOffNote)
+		a.note(memoryUnavailableNote)
 		return nil
 	}
 	return a.memoryCall(func() (string, error) {
@@ -275,28 +310,27 @@ func (a *app) runMemories(query string) tea.Cmd {
 	})
 }
 
-// memoriesText renders the list: one memory per line, its title, what it says,
-// and the id that names it. It is a function of its arguments so the emptiness
-// law and the shape of a row are testable without a screen.
+// memoriesText renders the list: one line per memory, its words, then where it
+// holds and who kept it. It is a function of its arguments so the emptiness law
+// and the shape of a row are testable without a screen.
 //
 // THE EMPTY STATE IS ONE LINE AND IT NAMES THE REASON. Nothing remembered at
-// all and nothing matching a word are different facts about the same store, and
-// a person who typed a query wants to know which one they got.
+// all and nothing matching a word are different facts about the same store.
 func memoriesText(query string, lines []session.MemoryLine) string {
 	if len(lines) == 0 {
 		if strings.TrimSpace(query) != "" {
 			return "nothing remembered matches " + strings.TrimSpace(query)
 		}
-		return "nothing is remembered yet"
+		return "nothing is remembered here yet · /remember <text> keeps a line"
 	}
 	rows := make([]string, 0, len(lines))
 	for _, line := range lines {
-		row := line.Text
-		if title := strings.TrimSpace(line.Title); title != "" && title != line.Text {
-			row = title + " — " + line.Text
+		row := "· " + line.Text
+		if line.Where != "" {
+			row += "  · " + line.Where
 		}
-		if line.ID != "" {
-			row += "  (" + line.ID + ")"
+		if word := memoryOriginWord(line.Origin); word != "" {
+			row += " · " + word
 		}
 		rows = append(rows, row)
 	}

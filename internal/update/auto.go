@@ -30,6 +30,11 @@ const (
 	maxAutoFailures = 3
 	autoRetryBase   = 6 * time.Hour
 	autoRetryCap    = 72 * time.Hour
+	// slowInstallQuiet is how long a release that did not arrive inside the
+	// launch's own clock is left to the chat's background road. Without it a
+	// slow connection would pay that whole clock on every launch for the same
+	// release, and the chat installs it regardless.
+	slowInstallQuiet = 24 * time.Hour
 
 	autoStateName = "update-state.json"
 )
@@ -44,6 +49,24 @@ type AutoState struct {
 	Failures      int       `json:"failures,omitempty"`
 	LastAttemptAt time.Time `json:"last_attempt_at,omitempty"`
 	LastError     string    `json:"last_error,omitempty"`
+	// SlowRelease and SlowAt name the release a launch could not download
+	// inside its own clock, and when. It is not a failure — nothing went wrong
+	// but the connection's speed — so it never counts toward
+	// [maxAutoFailures]; it only keeps the next launches from waiting on the
+	// same download again ([AutoState.SlowRecently]).
+	SlowRelease string    `json:"slow_release,omitempty"`
+	SlowAt      time.Time `json:"slow_at,omitempty"`
+}
+
+// SlowRecently reports whether a launch ran out of time downloading this exact
+// release within [slowInstallQuiet]. A later release is a new question.
+func (s AutoState) SlowRecently(tag string, now time.Time) bool {
+	tag = strings.TrimSpace(tag)
+	if tag == "" || tag != strings.TrimSpace(s.SlowRelease) || s.SlowAt.IsZero() {
+		return false
+	}
+	age := now.Sub(s.SlowAt)
+	return age >= 0 && age < slowInstallQuiet
 }
 
 // Dismissed reports whether this exact release was answered "not now".
@@ -305,6 +328,20 @@ func AutoFailure(profileDir, tag string, err error) AutoState {
 	return state
 }
 
+// AutoSlow records that a launch ran out of its own clock downloading a release.
+// Like [AutoFailure] it never claims a write it did not make: a write that did
+// not land costs at most one more wait on the next launch.
+func AutoSlow(profileDir, tag string) {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return
+	}
+	_, _ = mutateAutoState(profileDir, func(state *AutoState) {
+		state.SlowRelease = tag
+		state.SlowAt = time.Now()
+	})
+}
+
 // AutoSuccess clears the failure belonging to a release now installed.
 //
 // IT DOES NOT CLEAR A DISMISSAL. The person's "not now" for another tag is a
@@ -318,6 +355,8 @@ func AutoSuccess(profileDir string) AutoState {
 		state.Failures = 0
 		state.LastAttemptAt = time.Time{}
 		state.LastError = ""
+		state.SlowRelease = ""
+		state.SlowAt = time.Time{}
 	})
 	if saveErr != nil {
 		return LoadAutoState(profileDir)
@@ -361,6 +400,13 @@ type installRecord struct {
 	SHA256      string    `json:"sha256,omitempty"`
 	PublishedAt time.Time `json:"published_at,omitempty"`
 	InstalledAt time.Time `json:"installed_at,omitempty"`
+	// Pinned says a PERSON put this exact release here by name — `/update
+	// <tag>` or `codeaf update --version <tag>` — so the automatic road leaves
+	// the file alone until a person moves it again. It lives in the record and
+	// not in a profile because it is a fact about this FILE: two profiles share
+	// one executable, and a file replaced by curl or a package manager no longer
+	// hashes to the record, which drops the pin with it.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // canonicalTarget resolves a target to the ABSOLUTE, LINK-FREE path whose file
@@ -464,12 +510,23 @@ func (l *InstallLock) Record() (installRecord, bool) {
 // RecordInstalled writes what this target now holds. The caller holds the lock
 // and has just written those bytes.
 func (l *InstallLock) RecordInstalled(tag, digest string, published time.Time) {
+	l.recordInstalled(tag, digest, published, false)
+}
+
+// recordInstalled is [InstallLock.RecordInstalled] with the pin said out loud:
+// the installer pins exactly the release a person named and unpins on every
+// other install a person asked for.
+func (l *InstallLock) recordInstalled(tag, digest string, published time.Time, pinned bool) {
+	l.writeRecord(installRecord{
+		Tag: strings.TrimSpace(tag), SHA256: strings.ToLower(strings.TrimSpace(digest)),
+		PublishedAt: published.UTC(), InstalledAt: time.Now().UTC(), Pinned: pinned,
+	})
+}
+
+// writeRecord replaces the record through the held handle.
+func (l *InstallLock) writeRecord(record installRecord) {
 	if l == nil || l.file == nil {
 		return
-	}
-	record := installRecord{
-		Tag: strings.TrimSpace(tag), SHA256: strings.ToLower(strings.TrimSpace(digest)),
-		PublishedAt: published.UTC(), InstalledAt: time.Now().UTC(),
 	}
 	raw, err := json.Marshal(record)
 	if err != nil {
@@ -485,6 +542,42 @@ func (l *InstallLock) RecordInstalled(tag, digest string, published time.Time) {
 		return
 	}
 	_ = l.file.Sync()
+}
+
+// PinnedRelease names the release a person pinned this executable at, or ""
+// when nothing is pinned. A pin is believed exactly as the rest of the record
+// is — only while the file still hashes to it — so a codeaf replaced by curl or
+// a package manager has no pin left to honour.
+//
+// IT READS WITHOUT TAKING THE LOCK, because a launch asks it on every start and
+// must neither create the lock file beside an executable that was never
+// updated nor wait on an install another window is running. A record that
+// cannot be read reads as no pin; the installer asks again UNDER the lock
+// before the automatic road writes anything ([InstallOptions.Automatic]), so a
+// pin written a moment later is still honoured.
+func PinnedRelease(target string) string {
+	target = canonicalTarget(target)
+	if target == "" {
+		return ""
+	}
+	file, err := os.Open(installLockPath(target))
+	if err != nil {
+		return ""
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, maxInstallRecordBytes))
+	_ = file.Close()
+	if err != nil {
+		return ""
+	}
+	var record installRecord
+	if json.Unmarshal(raw, &record) != nil || !record.Pinned || record.Tag == "" || record.SHA256 == "" {
+		return ""
+	}
+	actual, err := sha256File(target)
+	if err != nil || !strings.EqualFold(actual, record.SHA256) {
+		return ""
+	}
+	return record.Tag
 }
 
 // Release drops the lock. It is safe on a nil lock and safe to call twice.
@@ -608,6 +701,8 @@ func PackageManaged(target string) string {
 	}
 	prefixes := []struct{ prefix, manager string }{
 		{"/opt/homebrew/", "Homebrew"},
+		// Homebrew on Linux keeps its prefix under its own account.
+		{"/home/linuxbrew/.linuxbrew/", "Homebrew"},
 		{"/usr/local/Cellar/", "Homebrew"},
 		{"/nix/store/", "Nix"},
 		{"/usr/bin/", "the system package manager"},

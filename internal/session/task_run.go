@@ -1238,9 +1238,9 @@ func (g *TaskGraph) runRowsLocked() []TaskNotice {
 func newTaskGraph() *TaskGraph {
 	// A GRAPH IS ALONE IN ITS PROCESS UNTIL IT IS TOLD OTHERWISE. The caller
 	// that knows several conversations share one machine says so by putting its
-	// own account on their Config ([Config.TaskLanes], read in [Agent.graph]
-	// and [standingWideWork]); until then the only lanes this graph's reading
-	// can be divided by are its own.
+	// own account on their Config ([Config.TaskLanes], read in [Agent.graph]);
+	// until then the only lanes this graph's reading can be divided by are its
+	// own.
 	return &TaskGraph{nodes: make(map[uint64]*TaskNode, 1), lanes: NewTaskLanes()}
 }
 
@@ -1548,12 +1548,10 @@ func (g *TaskGraph) runFrontier() {
 	// ([TaskGraph.holdOnStartingLocked]), because the answer for the second
 	// node of a fan depends on the first one having started.
 	g.governor.observe(g.lanesTaken())
-	// AND THE PERSON'S STANDING ORDERS ARE RESOLVED BEFORE THE LOCK TOO, and at
-	// most once a pass, for the reading's reason: every node in one graph sits
-	// in one place, so the answer is the same for all of them, and reading a
-	// folder per starting node would be the same question asked ten times
-	// (standing_world.go).
-	orders := g.standingWorld()
+	// AND WHAT THE CONVERSATION REMEMBERS IS RESOLVED BEFORE THE LOCK TOO, and at
+	// most once a pass, for the reading's reason: every node in one graph sits in
+	// one place, so the answer is the same for all of them (memory.go).
+	orders := g.memoryWorld()
 
 	g.mu.Lock()
 	// A CLOSED SESSION HAS NO RUNNING NODES, so a pass that arrives after the
@@ -1905,16 +1903,16 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 }
 
 // briefLocked assembles what one node is handed: its own brief, then what the
-// work before it learned, then the standing orders the person holds over this
-// place. The headings are plain words rather than markers because the node reads
-// them as prose — it is a colleague being told what the last shift found and
-// what the house rules are, not a data structure.
+// work before it learned, then the rules the person holds over this place. The
+// headings are plain words rather than markers because the node reads them as
+// prose — it is a colleague being told what the last shift found and what the
+// house rules are, not a data structure.
 //
-// THE ORDERS COME LAST AND NOT FIRST. What the node is doing and what it was
-// told by the work ahead of it are the job; the orders are the conditions the
+// THE RULES COME LAST AND NOT FIRST. What the node is doing and what it was
+// told by the work ahead of it are the job; the rules are the conditions the
 // job is done under, and a brief that opened with them would read as the job
-// being about the conditions. `orders` is [TaskGraph.standingWorld]'s answer,
-// resolved ONCE per frontier pass outside this lock.
+// being about the conditions. `orders` is the conversation's memory section
+// ([TaskGraph.memoryWorld]), resolved ONCE per frontier pass outside this lock.
 func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	brief := g.inheritedLocked(node)
 	if finding := strings.TrimSpace(node.finding); finding != "" {
@@ -1944,7 +1942,7 @@ const inheritedReportFloor = 512
 // inheritedLocked is the half of the brief above that A PART OF THIS WORK
 // INHERITS: what the node was admitted with, and what the work before it
 // learned. It is a function of its own because the division road composes every
-// part's world on it (task_divide_compose.go), and the standing orders are the
+// part's world on it (task_divide_compose.go), and the person's rules are the
 // one section it must not carry — the frontier appends those to each part in its
 // own right a moment later, so a part composed on the whole assembled brief
 // would read the house rules twice.
@@ -2193,19 +2191,6 @@ func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 func (g *TaskGraph) announce(node *TaskNode) {
 	if g.report != nil {
 		g.report(node)
-	}
-}
-
-// reportHome is [TaskGraph.report] for a graph whose home is filled in AFTER it
-// is built, which is the shape a standing firing's own graph has: the session
-// that is going to own it cannot be constructed until the graph is in its config
-// (standing_run.go's [standingWideWork]). A conversation's graph binds the
-// method directly ([Agent.graph]) because by then there is an agent to bind to;
-// this reads the same field one moment later and answers nothing before there
-// is one.
-func (g *TaskGraph) reportHome(node *TaskNode) {
-	if g != nil && g.home != nil {
-		g.home.reportTaskNode(node)
 	}
 }
 
@@ -3198,7 +3183,7 @@ func (a *Agent) enterPhase(node *TaskNode, phase string, round, rounds int, text
 // for. The same is true of a PART's check, whose owner is its parent's worker.
 //
 // So it goes the way a node's ordinary updates already go — the conversation's
-// own hub and its standing subscription ([TaskGraph.reportHome],
+// own hub and its standing subscription ([Agent.reportTaskNode],
 // [Agent.TaskUpdates]) — and the receiver stands in only for a graph that has no
 // conversation behind it, which is every scripted graph in the tests.
 func (n *TaskNode) phaseTeller(noticed *Agent) *Agent {
@@ -4179,13 +4164,13 @@ func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record s
 // there is no worker left in there to have one.
 //
 // AND THE FOLD IS ONLY FOR NEWS THAT WOULD OTHERWISE LEAVE THE FAMILY. When
-// this agent is itself the parent's reader — a standing firing is the agent
-// standing in its own root node, and it reads that node's pieces as the graph's
-// home rather than from a seat (standing_run.go) — falling through to it IS the
-// family reading its own news, and a fold in front of it would take the report
-// away from the one reader waiting on it: the part marked reported, nothing
-// owed, no wake, and the firing parked forever on a generation nobody closes.
-// So the fold is asked only when the last reader in line is somebody else.
+// this agent is itself the parent's reader — the agent working as that node
+// ([Agent.standsIn]), which reads the node's pieces as itself rather than from
+// a seat — falling through to it IS the family reading its own news, and a fold
+// in front of it would take the report away from the one reader waiting on it:
+// the part marked reported, nothing owed, no wake, and the reader parked
+// forever on a generation nobody closes. So the fold is asked only when the
+// last reader in line is somebody else.
 //
 // A NODE WITH NO PARENT HAS ONE READER and the room is not consulted at all: it
 // was proposed here, and here is where its news is owed.
@@ -4401,12 +4386,13 @@ type landingAddress struct {
 // is what lets the page stop explaining a message it may never see.
 //
 // A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION. That is the
-// pattern [checkpointCarryOnLead] and [standingNewsRule] were already written
-// in, and docs/design/prompt-diet/DESIGN.md §2 files it as a delivery class of
-// its own: what to do about an event is needed only on the turn it happens, so
-// it rides the event and costs nothing on the thousands of turns where no task
-// lands. The paragraphs prompts/system.md used to spend on the woken turn and on
-// the four words were the same law, paid for on every request of every turn.
+// pattern [checkpointCarryOnLead] and the standing orders' news rule were
+// already written in, and docs/design/prompt-diet/DESIGN.md §2 files it as a
+// delivery class of its own: what to do about an event is needed only on the
+// turn it happens, so it rides the event and costs nothing on the thousands of
+// turns where no task lands. The paragraphs prompts/system.md used to spend on
+// the woken turn and on the four words were the same law, paid for on every
+// request of every turn.
 //
 // IT SAYS WHO IS SPEAKING, in [volatileNoteOpening]'s register and for its
 // reason. This note can START A TURN with nobody having typed, and a small model
@@ -4878,15 +4864,8 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 // the work it handed off. A surface holds it for the life of the session and
 // stops reading when it stops drawing.
 //
-// AND THE FIRST SUBSCRIBER IS HANDED WHAT ARRIVED WHILE THE WINDOW WAS SHUT.
-// The fold was built inside New ([Agent.drainStandingInbox]), where there was
-// nobody to send it to, so it waited here for the surface to open the lane; the
-// stream is unbounded, so handing it over is an append and never a wait. It is
-// handed over ONCE — a second lane on the same session is a second view of the
-// same conversation, not a second person arriving.
-//
-// EVERY subscriber is handed the task ROSTER, by contrast, not only the first:
-// the rows are facts about the graph rather than news, and a lane opened by a
+// EVERY subscriber is handed the task ROSTER: the rows are facts about the
+// graph rather than news, and a lane opened by a
 // surface with nothing drawn yet — a conversation resumed from its checkpoint,
 // one switched back to behind home — needs all of them to rebuild its column
 // ([Agent.replayTaskRoster]).
@@ -4908,18 +4887,6 @@ func (a *Agent) TaskUpdates() <-chan Event {
 //
 // stop is never nil and calling it twice is calling it once.
 func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
-	// AND A SURFACE ATTACHING IS THE OTHER MOMENT SOMEBODY CAME BACK. The
-	// inbox road ends in a drain that ran inside New ([Agent.drainStandingInbox]),
-	// which was the whole story while every window built its own engine. Since
-	// #653 an interactive launch joins this workspace's session host, and a host
-	// that outlived the last window hands the next one the SAME agent
-	// (internal/enginehost's Host.join) — so a firing filed under the project
-	// while nobody was here would sit in that file forever, read by nothing,
-	// because no agent was ever constructed to read it. Draining here is the
-	// same fold and the same rows, asked for by the surface rather than by the
-	// boot; the file is emptied as it is read, so a second lane finds nothing
-	// and this costs a stat on every attach.
-	a.drainStandingInbox()
 	stream := newEventStream()
 	a.mu.Lock()
 	if a.closed {
@@ -4928,8 +4895,6 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 		return stream.out, func() {}
 	}
 	a.taskWatchers = append(a.taskWatchers, stream)
-	news := a.standingNews
-	a.standingNews = nil
 	a.mu.Unlock()
 	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
 	// a surface that has no rows yet — a conversation resumed from its
@@ -4940,13 +4905,6 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	// that watched all along re-hears what it already drew, and drawing a row
 	// twice is drawing it once (tui3's taskUpdate keys rows by id).
 	a.replayTaskRoster(stream)
-	// THE BACKLOG GOES OUT BEFORE THE STREAM DOES: news the standing side raised
-	// while nobody was watching is replayed onto this stream, so a surface that
-	// attached a moment late still sees the card rather than a lane that looks
-	// like it never fired.
-	for _, event := range news {
-		stream.send(event)
-	}
 	var once sync.Once
 	return stream.out, func() {
 		once.Do(func() {
@@ -5119,13 +5077,6 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	if err == nil {
 		defer listed.settle(0)
 	}
-
-	// AND WHAT THE PERSON IS REMEMBERED TO WANT, READ ONCE FOR THE WHOLE RUN AND
-	// BESIDE IT (memory.go's [nodeMemory]). Every worker the body builds is handed
-	// the one answer, and the reading is joined here, on the one road out, so it
-	// cannot outlive the node it was read for (task_beside.go's law).
-	ctx, forgetMemory := a.withNodeMemory(ctx, node)
-	defer forgetMemory()
 
 	// WHICH BODY THIS NODE HAS. Everything above and below is the same for all
 	// four kinds — the deadline, the job row, the settle — and the middle is
@@ -5632,12 +5583,6 @@ func (a *Agent) landBashBeltUnaudited(ctx context.Context, node *TaskNode, tree 
 // get a working copy has to be able to say so to the person who asked for it.
 func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	log := taskLog(listed)
-	// WHAT THE PERSON IS REMEMBERED TO WANT IS READ WHILE THE WORLD IS MADE. The
-	// reading belongs to the run ([Agent.runTaskNode] joins it) and is only begun
-	// here, so its model call overlaps the working copy being carved rather than
-	// following it; the worker built below is handed whatever has come back by
-	// then, and the rest on its next request (memory.go's [nodeMemory]).
-	nodeMemoryOn(ctx, node).begin()
 	// THE WORLD IS MADE AND THEN ASKED WHETHER IT IS THE ONE THE BRIEF ASSUMED,
 	// and both happen before a single model call is bought. Either can settle the
 	// node outright, and both say so the same way.
@@ -7100,10 +7045,9 @@ var savingTools = map[string]bool{
 }
 
 // producedAFile reports whether ONE call actually put something on disk, and it
-// is what every reader of a finished call asks — what a standing firing came to
-// (standing_run.go), whether the work moved (looped.go's [loopWatch.count]),
-// whether a landing turn saved anything, and which file a step changed
-// ([changedPath]).
+// is what every reader of a finished call asks — whether the work moved
+// (looped.go's [loopWatch.count]), whether a landing turn saved anything, and
+// which file a step changed ([changedPath]).
 //
 // THE HAND'S NAME WAS NOT ENOUGH AND THIS IS WHERE THAT STOPPED BEING TRUE.
 // [savingTools] answers whether a VERB can save, which is the right question for
@@ -7513,14 +7457,10 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // under the graph's lock and this package takes one lock at a time.
 //
 // AND THE ONE THING IT DOES INHERIT OF WHAT THE PERSON IS REMEMBERED TO WANT:
-// the same pre-turn router the conversation runs, asked against this node's
-// brief instead of a typed message (memory.go). It travels as WORDS and never as
-// the store itself — a family of eight nodes must not be eight writers on one
-// brain. IT IS NO LONGER ROUTED HERE. It was, as an argument to the constructor
-// below, which put one reflex call in front of every worker a node built; it is
-// now routed once per node, beside the work, and handed to this worker when it
-// has come back ([nodeMemory]). No store, no reflex, or a router that answered
-// nothing: the node opens with exactly the prompt it always did.
+// the conversation's memory section, closing the node's brief from its first
+// request ([TaskGraph.memoryWorld]). It travels as WORDS and never as the store
+// itself — a family of eight nodes must not be eight writers on one brain — and
+// nothing is routed or fetched for it: there is no router any more.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
 	return a.newTaskAgentOn(ctx, dir, node, suffix, "", false)
 }
@@ -7661,13 +7601,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	child, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
-		// AND THE PROJECT'S APPROVED BINDING RULES BEFORE THE FIRST ACTION. A
-		// worker has no brain of its own, so its parent's is LENT READ-ONLY: the
-		// same owner set, the same approved rules and confirmed decisions in front
-		// of the first provider request, and no write, extraction, import or verb
-		// (contextual_memory.go's [Agent.prepareWorkerBinding]). The node's own
-		// routed shortlist still arrives beside the work ([nodeMemory]); this is
-		// the half that may not be late, and a router outage cannot erase it.
+		// AND THE CONVERSATION'S MEMORY, READ-ONLY. A worker has no brain of its
+		// own, so its parent's is LENT: the same owner set and the same memory
+		// section closing its brief ([TaskGraph.memoryWorld]), and no write,
+		// noticing, import or verb.
 		bindingStore:     parent.bindingBrain(),
 		MemoryProjectKey: parent.MemoryProjectKey,
 		// The node learns from, and into, the PROJECT'S error→fix file rather
@@ -7902,74 +7839,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	if err != nil {
 		return nil, err
 	}
-	// AND WHAT THE PERSON IS REMEMBERED TO WANT, HANDED OVER RATHER THAN WAITED
-	// FOR. The node's brief is routed once, beside the work (memory.go's
-	// [nodeMemory]), and this worker gets the answer now if it has come back and
-	// on its next request if it has not. A worker built for a node whose run
-	// carries no reading — a store that is off, a test building one by hand —
-	// opens with exactly the prompt it always did.
-	// AND THE WORKER'S OBSERVATIONS HAVE A ROAD HOME, through the ONE primitive
-	// every worker constructor shares ([Agent.adoptWorkerObservation]). A node
-	// has no brain of its own, so its failing tools would be recorded nowhere
-	// without it. Only the task label is this node's own.
-	label := "task"
-	if nodeID != 0 {
-		label = fmt.Sprintf("task:%d", nodeID)
-	}
-	a.adoptWorkerObservation(child, label)
-	nodeMemoryOn(ctx, node).handTo(child)
 	return child, nil
-}
-
-// adoptWorkerObservation gives a freshly built child worker that node's OWN
-// road home: the root session's observation bridge and the frozen provenance
-// every receipt it forwards is stamped with. It is the ONE place a worker's
-// collector and origin are set, called by both worker constructors
-// ([Agent.newTaskAgentOn] and [orchestrateExec.newChild]), so an action-taking
-// node cannot be built carrying one half and not the other.
-//
-// IT LENDS THE BRIDGE, NEVER REBUILDS IT. The child has no brain, so it is
-// handed the root's collector and only ever passes it raw observations
-// (contextual_delegated.go); it gains no memory write from the pointer. The
-// child's own [Agent.Close] refuses to seal a collector it does not own, so a
-// node finishing cannot shut the bridge later nodes and turns still need — the
-// same one settlement every observation gets, never two.
-//
-// THE PROVENANCE IS FROZEN HERE, BEFORE THE WORKER RUNS. A first-level worker
-// inherits the root session's live binding circumstances; a nested worker
-// inherits its parent's already-frozen copy so a tree launched under one user
-// turn keeps that turn to the end. Only `task` — the node this worker belongs
-// to — is the caller's to name.
-func (a *Agent) adoptWorkerObservation(child *Agent, task string) {
-	if child == nil {
-		return
-	}
-	// THE WORKER'S OBSERVATIONS HAVE A ROAD HOME. The collector belongs to the
-	// root session and this worker only hands it raw observations.
-	child.outcomes = a.outcomes
-	origin := a.origin
-	if strings.TrimSpace(origin.Session) == "" && a.outcomes != nil {
-		origin = a.outcomes.rootOrigin()
-	}
-	if strings.TrimSpace(task) != "" {
-		origin.Task = task
-	} else {
-		origin.Task = "task"
-	}
-	// AND THIS WORKER'S OWN RUN IDENTITY. A node can have more than one worker
-	// Agent (a repair round, an auditor's sibling), and job ids restart per
-	// Agent, so the run identity — not the task label — is what keeps two
-	// workers' `job 1` from sharing one journal source.
-	origin.Run = child.sessionID()
-	if strings.TrimSpace(origin.Run) == "" || origin.Run == "unfiled" {
-		var b [16]byte
-		if _, err := rand.Read(b[:]); err == nil {
-			origin.Run = "worker-" + hex.EncodeToString(b[:])
-		} else {
-			origin.Run = "worker-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-		}
-	}
-	child.origin = origin
 }
 
 // seatTaskModelLocked answers the model a task worker may actually start on,

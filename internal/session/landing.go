@@ -36,8 +36,8 @@ package session
 // this package runs is deliberately not a second session and carries no Place at
 // all: a task node's worker (task_run.go's [Agent.newTaskAgent]), a part's
 // worker under that one, an adaptive run's child
-// (orchestrate.go), an auditor (task_audit.go), a standing item's probe
-// (standing_run.go). That is the right decision about identity — a Place is a
+// (orchestrate.go), an auditor (task_audit.go), an automation watch's look
+// (automation_run.go). That is the right decision about identity — a Place is a
 // meta.json to stamp, a work/ to paint into and an id to file a transcript
 // under, and a worker owns none of them.
 //

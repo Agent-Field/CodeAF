@@ -91,9 +91,8 @@ func (a *Agent) preparePromptProfile(model string) error {
 	a.tools = append([]bare.Tool(nil), tools...)
 	a.definitions = definitions
 	a.armMu.Unlock()
-	if next.lean() {
-		a.memoryText = ""
-	}
+	// The memory block stays: a lean page keeps the person's lines (they are
+	// bounded the same over any window) and loses only the verbs.
 	a.rerenderSystemLocked(time.Now())
 	// The last usage figure counted the old prefix. The new request is weighed
 	// again by the provider after the new prompt and schemas are encoded.

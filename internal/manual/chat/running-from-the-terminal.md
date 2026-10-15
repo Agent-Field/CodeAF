@@ -2,30 +2,83 @@
 
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
-At launch, a stable, dev or staging build behind the newest release of its own
-channel is told about it, and with `automatic updates` on (the default) the install
-begins on its own after a brief pause: the sentence `codeaf <newest> is out ·
-installs in 10s · <skip chord> skip · /update` waits in the keys line, counted
-down from about ten seconds. It never blocks a keystroke. `/update` while it
-is up installs immediately — that is the release the offer is about, not a
-rollback; the skip chord, or `/update skip`, answers that one release, it is
-never offered again, and a later release is a new question; `/update never` turns
-`automatic updates` off, and so does the `automatic updates` row on `/settings`' **General** tab. Turning it off does not
-cancel an install already downloading, and the launch check still makes its one
-request and names what is out. A release whose automatic install failed
-three times stops being tried on its own.
+Every launch of a release build checks the newest release of the channel it
+follows, and what happens next depends on the build:
 
-A release candidate gets the notice when its stable line is published. An equal
-or ahead build gets nothing. Source and unstamped builds make no launch request,
-and their `/update` answers `this codeaf was built from source · rebuild with
-make build, or install a release: curl -fsSL https://agentfield.ai/get/codeaf |
-bash`. A codeaf owned by Homebrew, Nix or the system package manager, or one in a
-folder this account cannot write, is never replaced in place: with `automatic updates`
-on or off the launch names the manager and the curl line, not `/update`.
+- A released codeaf — a stable tag, in a file named `codeaf` — with `automatic
+  updates` on (the default) installs the newest stable release BEFORE the chat
+  opens and starts on it. The terminal says `updating codeaf <running> to
+  <newest> · ctrl+c opens <running> now`, then `codeaf <newest> installed ·
+  opening it`, and the chat's first line says `codeaf updated from <old> to
+  <new> as it opened · automatic updates in /settings turns this off`.
+- Every other build is told and never replaced unasked: dev and staging builds,
+  release candidates, `devaf`, `stageaf`, any other file name, a pinned file,
+  and any codeaf with `automatic updates` off. Before the chat opens the
+  terminal prints `codeaf <newest> is out · you have <running> · codeaf update
+  installs it` (with the file's own name: `devaf update`), and the chat says
+  `codeaf <newest> is out · you have <running> · /update installs it for the
+  next launch`. Nothing is downloaded until you ask.
 
-With `automatic updates` off, the launch check still runs and still says `codeaf <newest>
-is out · you have <running> · /update installs it for the next launch`, but
-nothing is downloaded until you ask.
+A release candidate is told when its stable line is published. An equal or
+ahead build gets nothing. Source and unstamped builds — `make build`, `go run`
+— make no launch request at all, and their `/update` answers `this codeaf was
+built from source · rebuild with make build, or install a release: curl -fsSL
+https://agentfield.ai/get/codeaf | bash`. A codeaf owned by Homebrew, Nix or the
+system package manager, or one in a folder this account cannot write, is never
+replaced in place: the launch names the manager and the curl line instead.
+
+## Does it update itself automatically — automatic updates — auto update on launch — restart on the new version — stop updating itself
+
+Only a released codeaf moving to a newer stable release is updated without
+being asked, and only where a person is waiting: standard input and output are
+a terminal, `CI` is unset, and the launch is not `--once`. The look is cached
+for 24 hours and otherwise waits at most 1.5 seconds; a look that got no answer
+is not waited on again for an hour. The install waits at most 20 seconds and
+then hands the terminal to the new build with the same arguments.
+
+Every way it stops short opens the build already on disk. ctrl+c says `update
+stopped · opening <running>`, and that window does not count down to the same
+release again. A slow download says `codeaf <newest> is still downloading ·
+opening <running> now · the chat installs it in the background`, and for a day
+that release is left to the chat rather than waited on at launch. A failure says
+`codeaf <newest> could not be installed · <reason> · opening <running>` and
+counts: a release backs off for hours after a failure and stops being tried on
+its own after three. A release you skipped, or one backing off, prints nothing
+at launch.
+
+When the launch could not finish, the chat's offer takes over: `codeaf <newest>
+is out · installs in 10s · <skip chord> skip · /update` waits in the keys line,
+counted down from about ten seconds, then installs in the background and says
+`codeaf <newest> installed · restart to use the new version`. It never blocks a
+keystroke or restarts the conversation. `/update` while it is up
+installs at once; the skip chord, or `/update skip`, answers that one release
+and it is never offered again.
+
+To stop all of it, turn off `automatic updates` on `/settings`' **General**
+tab or type `/update never`; launches still say what is out.
+`CODEAF_NO_UPDATE_CHECK=1` makes no request at all. Turning the row off does not
+cancel an install already downloading.
+
+## Pin a version — stay on an older version — roll back to an earlier release
+
+`codeaf update --version <tag>` or `/update <tag>` installs that exact release
+and PINS it: ``codeaf: <tag> is pinned · it is not updated on its own until
+`codeaf update` runs without --version`` (the chat says `… until /update runs
+without a version`). Naming the release already installed pins it in place
+without a download. Naming a tag is also the only way to roll back.
+
+A pinned file is never updated on its own. Its launches say `codeaf <newest> is
+out · you have <running>, pinned · codeaf update installs it and unpins`, and an
+automatic install that races a pin is refused with `codeaf <tag> is pinned on
+this machine · /update or codeaf update installs <newest> and unpins it`.
+
+A plain `codeaf update`, `codeaf update --stable`, or `/update` with no tag
+installs the newest release and unpins. The pin belongs to the file, not to a
+profile: it is kept beside it in `<file>.install.lock`, every profile running
+that file sees it, and a file reinstalled with the curl line is no longer
+pinned.
+
+## /update in the chat — install in the background — skip — never — channel — rollback
 
 `/update` downloads the release, checks its sha256 and replaces this executable
 IN THE BACKGROUND; `/upgrade` is its alias. It never quits, never restarts the
@@ -45,7 +98,10 @@ two terminals, or two profiles sharing one codeaf, cannot replace it at once, an
 a window that resolves a release another terminal has already superseded installs
 nothing.
 
-Set `CODEAF_NO_UPDATE_CHECK=1` to skip only the launch check. Dev and staging
+## Skip the update check — CODEAF_NO_UPDATE_CHECK — update-check.json — which curl line reinstalls this file
+
+Set `CODEAF_NO_UPDATE_CHECK=1` to skip the launch check and the update before
+the chat opens. Dev and staging
 answers are cached beside `config.json` for one hour in `update-check.dev.json`
 and `update-check.staging.json`; stable and rc use `update-check.json` for 24
 hours. A cached newer release is still shown. The curl line reinstalls this file
@@ -61,7 +117,8 @@ stable release its launch line just named, and a file under any other name gets
 
 `codeaf update` and `codeaf update --check` default to dev on a `dev-*` build,
 staging on a `staging-*` build, and stable on stable or rc. `--stable`, `--rc`,
-`--dev`, `--staging`, or `--version <tag>` overrides that choice.
+`--dev`, `--staging`, or `--version <tag>` overrides that choice. `--version
+<tag>` also pins the file at that release, and any install without it unpins.
 
 `--check` exits 3 when the selected release is newer, and also whenever a dev or
 staging tag is selected from a build of another channel, because a channel tag
@@ -137,7 +194,8 @@ terminal, when `CI` is set, or when the install runs in your home folder or `/` 
 neither does codeaf: what the anonymous usage counts carry is written in `docs/TELEMETRY.md`
 in the repository, and the `telemetry` switch in `/settings` turns them off.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
-running the install line again works too.
+running the install line again works too. With `automatic updates` on, a codeaf
+installed this way also installs each new stable release itself as it opens.
 
 ## What is devaf — dev build beside codeaf — side by side — two versions — install under a different file name — --name
 
@@ -161,7 +219,9 @@ may contain ASCII letters, digits, `.`, `_`, and `-`, and must begin with a
 letter or digit. codeaf and devaf share `~/.codeaf`, including keys and
 conversations, and one engine per workspace; opening a workspace with the other
 build retires an idle host or joins a busy compatible one. A devaf launch checks
-the dev channel hourly, and bare `/update` keeps following dev.
+the dev channel hourly, and bare `/update` keeps following dev. A devaf is never
+updated on its own: a launch behind the newest dev build says `codeaf <newest>
+is out · you have <running> · devaf update installs it` and opens as it is.
 
 ## What is stageaf — staging build beside codeaf — try the next release early — install staging — how often does staging update
 
@@ -177,6 +237,8 @@ channel and name lines. It installs `~/.codeaf/bin/stageaf` (`stageaf.exe` on
 Windows) beside an untouched codeaf. `stageaf version` still starts with `codeaf`.
 It shares `~/.codeaf` with codeaf and devaf, including keys and conversations.
 A stageaf launch checks the staging channel hourly; bare `/update` follows staging.
+Like devaf it is never updated on its own; `stageaf update` installs the newest
+staging build when you ask.
 
 The promotion runs once a week and moves staging to the newest dev commit at
 the Friday 17:00 Toronto-time cutoff when the full check passes. When the check
@@ -211,7 +273,7 @@ Without that variable, codeaf looks for `rtk` on `PATH`, then its managed copy. 
 to rtk carry `RTK_TELEMETRY_DISABLED=1` and `RTK_NO_TOML=1`: codeaf does not opt you
 into a third party's collection.
 
-## Running codeaf from the terminal — can I run this without the chat
+## Running codeaf from the terminal — can I run this without the chat, every verb a terminal takes
 
 Typing `codeaf` with no arguments opens the conversation. Everything else is a verb after
 it, and there are five kinds:
@@ -221,7 +283,7 @@ talk to it              chat · resume
 hand it work            do "<task>" · exec "<prompt>" · run <program>
 look at what happened   why self · why <task-id> · notebook · competence · services ·
                         logs · models · doctor · manual · version
-housekeeping            connect · disconnect · cache · cache clean · rebuild · wake ·
+housekeeping            connect · disconnect · cache · cache clean · rebuild ·
                         serve · devices · help env
 plan work by hand       plan new "<goal>" · plan show <plan.json> ·
                         plan revise <plan.json> "…" · plan run <plan.json>
@@ -233,10 +295,13 @@ to a person: **`codeaf plandb`** answers the same commands the worker runs in ba
 critical-path` — against the run's own `plandb.db`, so a plan a worker is driving can be
 read the way the worker reads it.
 
-Two more exist and are deliberately kept out of the help text, because nothing types them
-by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
-**`codeaf tick`** is the one bounded pass the background timer runs every five minutes.
-Neither draws anything or reads a key.
+Four more exist and are deliberately kept out of the help text, because nothing types
+them by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
+**`codeaf clock`** is the one process that runs your automations while a codeaf window is
+open — a window starts it, and it leaves by itself half a minute after the last window
+closes. Neither draws anything or reads a key. **`codeaf tick`** and **`codeaf wake`** are
+kept out of it as well, because they do nothing any more (see *codeaf wake and codeaf
+tick* below).
 
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
@@ -586,51 +651,16 @@ not one word on stderr. It is an escape hatch for scripts already written, it ap
 the script to is `stop` in `--json`, which names why a run ended in a word rather than a
 number and is the same word on all three commands.
 
-## What does codeaf wake do — running the background pass by hand, once
+## codeaf wake and codeaf tick — the old background passes
 
-`codeaf wake` does one bounded pass of the work that normally happens on the five-minute
-timer, prints what it did, and exits. **It starts no permanent process and no worker
-runner.** Unlike everything else on this page that only reads, it spends: it makes model
-calls.
+`codeaf wake` and `codeaf tick` were background passes an operating-system timer used to
+run; they now do nothing. Nothing is scheduled on the machine any more: automations run
+only while a window is open.
 
-```
-codeaf wake [--db path] [--timeout 2m]
-```
-
-`--timeout` defaults to **2m**. It takes a duration — `--timeout 5m`, `--timeout 90s` — and
-a bare number is still read as seconds, so `--timeout 120` is the same wall. Zero or less
-is refused at the flag: `--timeout: must be positive`. Inside that wall it takes at most
-**32** passes, and stops early the moment a pass changes nothing.
-
-The flag used to be `--max-seconds`, which was the same wall spelled a third way and in the
-unit rather than in the quantity: `codeaf wake --max-seconds 5m` was a parse error on a
-machine where `codeaf do --timeout 5m` works. **`--max-seconds` still works for one
-release** and says so on stderr the first time it is used:
-
-```
-note: `--max-seconds` is now `--timeout` — the old spelling works for one more release.
-```
-
-**It defers to a live one.** If something else already holds the role for that store, it
-prints one line and does nothing:
-
-```
-resident alive (pid 41207) — skipping wake
-```
-
-The exception is a holder that is alive but has stopped completing passes. Waiting on that
-forever is how a stalled process quietly stops every check on the machine, so it says so
-and goes anyway:
-
-```
-resident (pid 41207) has not ticked since 2026-09-02T11:04:18Z — waking anyway
-```
-
-The last line counts what the pass did:
-
-```
-examined 3, checked 2, fired 1, no 0, errors 0, rail waits 0, practice 0, learning 2
-```
+Both still answer, quietly and with exit status **0**, because a timer an older version
+installed goes on running them until this version's first start removes it — and an
+unknown command would exit 1, which the timer reports as a failure every five minutes.
+Neither is listed in `--help`, and neither takes, checks or refuses a flag.
 
 ## What did that task actually do — see one piece of work's turn-by-turn record, with codeaf why
 
@@ -710,14 +740,14 @@ codeaf why self      --db ~/.codeaf/runs/codeaf-do-3f81c2/graph.db
 ```
 
 `--db` means the same thing on `why`, `notebook`, `competence`, `services`, `doctor`,
-`rebuild`, `wake` and `do`. **None of them will create a store**: a `--db` that is not a
-regular file is refused, each in its own words — `open receipts: <path> is not a regular
-database file` from `why`, `open notebook: …`, `open competence map: …`, `open store: …`
-from `rebuild`, `open wake store: …`.
+`rebuild` and `do`. **None of them will create a store**: a `--db` that is not a regular
+file is refused, each in its own words — `open receipts: <path> is not a regular database
+file` from `why`, `open notebook: …`, `open competence map: …`, `open store: …` from
+`rebuild`.
 
 **A conversation's tasks are somewhere else entirely.** A task commissioned in the chat
 writes its transcript to a file beside the conversation, not into this store, and its room
-in the chat replays it. `why` is the reader for headless work and for the background pass.
+in the chat replays it. `why` is the reader for headless work.
 
 ## What have I spent today — the receipts, with codeaf why self
 
@@ -1023,7 +1053,7 @@ safe in a shell prompt, a CI step or a bug report.
 model catalog, but spends nothing of yours.
 
 **These spend**, because all of them call a model: `chat`, `do`, `exec`, `run`,
-`plan new`, `plan revise`, `plan run` and `wake`. The door opens when the default
+`plan new`, `plan revise` and `plan run`. The door opens when the default
 service has a key or any connected service holds its credential — a Codex sign-in, an
 Ollama connection, a vendor key. So with no OpenRouter key a headless command still
 starts once another service is connected; point it at that service's model with
@@ -1189,7 +1219,7 @@ on every command.
 | `--budget N` | `--token-budget N` | *budget* is a word about **money** everywhere else here — `CODEAF_DAILY_BUDGET`, `/budget`, `--max-cost` — so `--budget 150000` read as $150,000 |
 | `--run-budget N` | `--total-token-budget N` | the same, for the whole-run wall |
 | `--turns N` | `--max-turns N` | it is a limit, and every other limit says so |
-| `--max-seconds N` | `--timeout 2m` | one duration flag, one spelling, on `do`, `exec`, `plan run` and `wake` |
+| `--max-seconds N` | `--timeout 2m` | one duration flag, one spelling, on `do`, `exec` and `plan run` |
 | `--brief` | `--instructions` | it writes a self-contained instruction for every step |
 | `--contracts=false` | `--no-method` | a boolean that defaults on needs a negative spelling, and what it turns off is a **working method** |
 | `--ensemble 0\|-1\|N` | `--passes auto\|off\|N` | a tri-state is words, not magic integers |
@@ -1226,28 +1256,28 @@ codeaf doctor [--db path]
 Every row is labelled in the words a developer would search for:
 
 ```
+key              set · OPENROUTER_API_KEY
 store            /home/you/.codeaf/graph.db · 496 KiB
 resident         this terminal while open
-background timer not installed · last wake not yet
 spend            rail $20.00
 model calls      /home/you/.codeaf/logs/calls.jsonl · 26 KiB
 ```
 
-`store` names the file the journal and every derived table live in, and how big it is —
-`· not created` on a machine that has not made one yet. `background timer` is the row about
-the five-minute pass: whether it is installed, when it last woke, when it next checks, and
-`· checks look stalled` when an installed one has not woken for several cadences. `spend`
+`key` comes first: whether this machine can reach a model at all, and where the key came
+from — never the key itself. `store` names the file the journal and every derived table
+live in, and how big it is — `· not created` on a machine that has not made one yet. `spend`
 is the day against its limit, and `model calls` is where the call log is and what it
-weighs. A machine with charters or unanswered questions on it prints a `standing` row too.
+weighs. `store` used to read `brain` — nobody looking for where their data lives searches
+for a brain.
 
-Both of the first two labels are recent. `store` used to read `brain` — nobody looking for
-where their data lives searches for a brain — and `background timer` used to be named after
-a piece of the *other* product in this binary, which is not a thing the chat has at all.
+**There is no background timer row any more.** Earlier versions printed one about a
+five-minute pass an operating-system timer ran, and a `standing` row counting what that
+pass kept; codeaf no longer installs anything on the machine, so there is nothing for
+either row to read.
 
 **It leaves out what it has not measured.** A machine that has spent nothing today prints
 the limit and no figure beside it, rather than `$0.00` — a zero nobody measured reads as a
-machine that counted, which is the opposite of the truth. Same for the counts beside it:
-nothing to say is nothing printed.
+machine that counted, which is the opposite of the truth.
 
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.

@@ -29,12 +29,12 @@ func TestARefusedMachineReachesTheWiresIgnoreAndNotJustTheOrder(t *testing.T) {
 		laneBelief(model, "molasses", 900, 16, 0.8),
 	)
 
-	// A recall is the call that sits in front of a keypress: ten seconds of
-	// patience, and an answer nobody reads a token of. Its length comes from the
+	// A hand's question is a call somebody is waiting on: the tool row is open
+	// in front of them, with ten seconds of patience. Its length comes from the
 	// conversation, which is where a model with no receipts yet gets it
 	// (workload.go) — four hundred tokens, which the slow machine would take
 	// twenty-five seconds to write.
-	ctx := WithRole(context.Background(), lanes.RoleRecall)
+	ctx := WithRole(context.Background(), lanes.RoleTool)
 	if _, err := client.CompleteWithMessages(ctx, answeringAtLength(400)); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestACacheAffinityCannotOutrankARefusal(t *testing.T) {
 	// machine short of a person naming it.
 	client.pins.hold("a-conversation", lanes.LedgerModel(model), "molasses")
 
-	ctx := WithRole(context.Background(), lanes.RoleRecall)
+	ctx := WithRole(context.Background(), lanes.RoleTool)
 	ctx = WithCacheKey(ctx, "a-conversation")
 	if _, err := client.CompleteWithMessages(ctx, answeringAtLength(400)); err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestNoProbeRidesAWaitedRoleOverManyRequests(t *testing.T) {
 	// and carried on the context ([Client.withLaneChoice]); two hundred calls on
 	// one context would be one draw asserted two hundred times.
 	for round := 0; round < 200; round++ {
-		ctx := WithRole(context.Background(), lanes.RoleRecall)
+		ctx := WithRole(context.Background(), lanes.RoleTool)
 		if _, err := client.CompleteWithMessages(ctx, answeringAtLength(60)); err != nil {
 			t.Fatalf("round %d: %v", round, err)
 		}

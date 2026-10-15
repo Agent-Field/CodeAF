@@ -39,16 +39,16 @@ opens the one a request fits, even when the request shares no words with it.
 
 ## Can you use skills with memory off
 
-Yes. Skills do not depend on the `memory.enabled` setting. With memory on, the
-shelf lives in the same database memory uses. With memory off, codeaf opens no
-memory database at all and builds a shelf of its own at launch from the skill
-folders on disk, and throws it away when the conversation's process ends. The
-same skills are found either way, a message still carries the skills that suit
-it, `use_skill` is still on the belt, and `/skill` still attaches them.
-
-What memory off does change: the procedures codeaf saved after watching them
-run live in the memory database, so with memory off only the skills in
-folders are on the shelf.
+Yes. Skills do not depend on the `notice things to remember` setting (the
+`memory.enabled` row): turning it off stops only codeaf keeping lines on its own,
+and the shelf lives in the same database memory uses either way. Only when that
+database could not be opened at all does codeaf build a shelf of its own at
+launch from the skill folders on disk, and throw it away when the
+conversation's process ends. The same folder skills are found either way, a
+message still carries the skills that suit it, `use_skill` is still on the belt,
+and `/skill` still attaches them. The procedures codeaf saved after watching
+them run live in that database, so without it only the skills in folders are on
+the shelf.
 
 ## Where the shelf comes from
 

@@ -1643,8 +1643,8 @@ func (w *settlementWatch) moved() (bool, error) {
 // check answers the only question the watcher has: is this errand over?
 //
 // A command that was rejected is over immediately — the compiler asked
-// something, or drafted a charter, and neither has an answer coming in a
-// process with no one at the keyboard. Otherwise the errand is over when every
+// something, and no answer is coming in a process with no one at the
+// keyboard. Otherwise the errand is over when every
 // node this session owns has stopped. Extensions are covered without a special
 // case: a gate that buys another round splices before the node it is extending
 // lands, so there is no instant at which the graph looks finished and is not.
@@ -1713,8 +1713,8 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 }
 
 // refusalWords is what a rejected command has to say for itself. The receipt
-// the reconciler posted is the real answer — a compiler question, a charter
-// awaiting ratification — and the command's own result is the summary of it.
+// the reconciler posted is the real answer — a compiler question, say — and
+// the command's own result is the summary of it.
 //
 // Whatever it is, it goes through [plainWords] on the way out. A refusal that
 // happened deep in the stack arrives here as everything that wrapped it, and
@@ -3706,6 +3706,11 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT, the same way it must on the
 	// resident road: routed through the context, the supervisor stops launching,
 	// drains what is in flight, and what it reached is composed and printed.
+	// THE MEMORY SECTION IS READ BEFORE THE RUN'S CLOCK STARTS. It is a birth
+	// fact of the run, and opening the store to read it is setup, not work:
+	// under a short --timeout the open alone could spend the whole deadline
+	// before a single node had started.
+	memorySection := doMemory(workspace)
 	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	ctx, cancel := context.WithTimeout(signalled, request.timeout)
@@ -3731,7 +3736,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, doStanding(workspace), completerFor, settings.Sources),
+		}, memorySection, completerFor, settings.Sources),
 	})
 	errand := runErrandOutcome(summary, workspace, bound)
 	// THE RUN'S OWN CLOCK, read off the context because the summary's word is

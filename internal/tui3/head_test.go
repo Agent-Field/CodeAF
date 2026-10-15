@@ -67,8 +67,10 @@ func headPulseWhole() string {
 // THE CONVERSATION'S HEAD IS THE NAV, THE AIR ROW, THE STRIP, THE RULE AND A
 // BLANK. The body starts under exactly those five rows. At eighty columns the
 // pulse has given up the clock, the moving count and the words of `2 want you`,
-// whose count stays as `2 ?`, to keep every place on the row (topnav.go's
-// ladder); wider, it says everything.
+// whose count stays as `2 ?`, and the two utilities on the right have folded
+// behind `more`; at a hundred and twenty it has given up the clock and the
+// moving count to keep all eight places on the row (topnav.go's ladder); wider,
+// it says everything.
 func TestTheConversationWearsThePlacesHead(t *testing.T) {
 	a := headLab(t)
 	for _, size := range headSizes {
@@ -79,14 +81,14 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		if size.w == 80 {
 			pulse = "2 ? · $0.14"
 		} else if size.w == 120 {
-			pulse = "2 want you · 1 moving · $0.14 / " + railFigure(20)
+			pulse = "2 want you · $0.14 / " + railFigure(20)
 		}
 		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], pulse) {
 			t.Fatalf("at %dx%d the chat's first row is not the nav with the pulse at its end:\n%q", size.w, size.h, head[0])
 		}
-		words := []string{"Home", "Chats", "AI teams", "Activity", "Memory", "Spend", "Settings"}
+		words := []string{"Home", "Chats", "AI teams", "Activity", "Memories", "Automations", "Spend", "Settings"}
 		if size.w == 80 {
-			words = []string{"Home", "Chats", "AI teams", "Activity", "Memory", "More"}
+			words = []string{"Home", "Chats", "AI teams", "Activity", "Memories", "More"}
 		}
 		if !placeWordsInOrder(head[0], words...) {
 			t.Fatalf("at %dx%d the chat's first row does not carry the places:\n%q", size.w, size.h, head[0])

@@ -80,13 +80,11 @@ package session
 //     load-then-ask inside a turn, so the `questions` group is put on the belt at
 //     construction through the one arming door ([Agent.armFamily]) and is not
 //     offered by the loading verb.
-//  4. THE MEMORY REFLEX DOES NOT RUN and the project's instruction file rides
-//     under [leanInstructionLimit]. The reflex is two model calls every turn on
-//     top of the one the person is waiting for; on a small window it is the most
-//     expensive thing in the turn that nobody asked for. It is off by the
-//     predicate that already decides writable memory ([Config.hasStore]) rather
-//     than by a switch of its own — and the conversation's own record is
-//     untouched, because reading what was said costs nothing per turn.
+//  4. THE PROJECT'S INSTRUCTION FILE rides under [leanInstructionLimit].
+//     Memory is NOT a lean casualty: the person's kept lines are bounded
+//     ([store.MemoryBlockRunes]) and hold over a small model exactly as
+//     over a large one, and the one call after a turn runs on the reflex tier,
+//     not on this window.
 //
 // ── AND FULL IS UNTOUCHED ──
 //
@@ -292,10 +290,9 @@ type leanSection struct {
 // default would make the lean arm quietly lose every law written after this
 // file.
 //
-// THE HEADINGS ARE MATCHED AGAINST THE COMPOSED PAGE, which is why
-// `Things that keep working after this window` is here at all: it is not a
-// heading in prompts/system.md but one composed into it from beltfacts.go's
-// [standingFacts]. promptprofile_test.go fails if a row names a heading the
+// THE HEADINGS ARE MATCHED AGAINST THE COMPOSED PAGE, not against
+// prompts/system.md alone, because the page is composed from beltfacts.go's
+// sections too. promptprofile_test.go fails if a row names a heading the
 // widest page does not have, so a rename cannot silently stop a drop.
 var leanPageSections = []leanSection{{
 	heading: "How you spend the time",
@@ -306,12 +303,11 @@ var leanPageSections = []leanSection{{
 		"also the one page a worker and a conversation read byte-identically " +
 		"(taskprompt_test.go), so a profile that trimmed it here would break that pin " +
 		"as well as the outcome.",
-	// THE STANDING SECTION USED TO BE A ROW HERE and is not one any more: the
-	// diet took `# Things that keep working after this window` off the page for
-	// EVERY shape, leaving one sentence composed from [standingFacts] and no
-	// heading at all. A row naming it would now decide nothing, which
-	// promptprofile_test.go refuses — and it is the right outcome: a law the lean
-	// arm did not need turned out to be a law nobody needed on the page.
+	// THE SECTION ON WORK THAT OUTLIVES THE WINDOW USED TO BE A ROW HERE and is
+	// not one any more: the diet took `# Things that keep working after this
+	// window` off the page for EVERY shape, leaving one sentence composed from
+	// [automationFacts] and no heading at all. A row naming it would now decide
+	// nothing, which promptprofile_test.go refuses.
 }, {
 	heading: "Messages from codeaf",
 	keeps:   true,

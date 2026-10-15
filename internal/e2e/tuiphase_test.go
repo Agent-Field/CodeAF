@@ -12,8 +12,9 @@ package e2e
 // stall would be a subtest that fails on a good day, which is the one kind of
 // red nobody chases twice. So the turn is real, the screen is real, and the
 // sentences are caught when the run is slow enough to say them and written down
-// as a FINDING when it is not. That is exactly what the live strip's three
-// words already do next door in tui_e2e_test.go, and for the same reason.
+// as a FINDING when it is not. That is what this file does with the live
+// strip's three words too, below, and for the same reason: a fast reply is not
+// a defect.
 //
 // AND WHAT IS CAUGHT IS READ WHOLE. A glimpse that only logged would be a
 // waiter in name: the moment either sentence IS on the screen, this file
@@ -54,8 +55,14 @@ func TestTUIPhaseClock(t *testing.T) {
 	// time to read, let alone one the controller has time to weigh.
 	ask := "plan a week of evening meals for four people and say why each night works"
 	r.lit(ask)
-	time.Sleep(600 * time.Millisecond)
-	r.ctrlEnter()
+	r.waitFor(15*time.Second, say(t, "homeStartWord"))
+	// IT IS ASKED HERE, ON HOME: one ↑ off the action row is `ask here`, and
+	// the hint under the box says so before enter is pressed. That is the door
+	// every terminal can reach — the chord it once took is bound but no longer
+	// offered, because most terminals cannot send it.
+	r.keys("Up")
+	r.waitFor(10*time.Second, say(t, "homeAskHereHint"))
+	r.keys("Enter")
 	r.waitFor(30*time.Second, "plan a week of evening meals")
 
 	// THE LIVE STRIP FIRST, so that a run which caught no wait can be told from

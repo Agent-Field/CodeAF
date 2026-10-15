@@ -12,36 +12,11 @@ import (
 // The acts the cue ladder used to reach terminally, as tools.
 //
 // Every one of these was a recognizer's payload: a prefix test decided the
-// sentence was a correction, or a rule edit, or a service command, and then
-// journaled and spoke without anything with judgment seeing the message. The
-// machinery underneath is untouched — the same correction block with the same
-// dispute line, the same charter transition table, the same service kinds, the
-// same gates. What moved is who decides, and the difference shows up on exactly
-// the sentences the prefix tests were never going to cover.
-
-// charterAcknowledgement is acknowledgeCharterCommand's sentence without the
-// posting. The question-answer path still posts it directly, because an answer
-// to a durable question is settled where it is answered; a tool hands it back
-// for the loop to say in its own words.
-func charterAcknowledgement(kind store.CommandKind) string {
-	switch kind {
-	case store.CommandCharterRatify:
-		return "Standing it up."
-	case store.CommandCharterPause:
-		return "Pausing that rule."
-	case store.CommandCharterRetire:
-		return "Retiring that rule."
-	case store.CommandCharterOnce:
-		return "Keeping it one-time."
-	case store.CommandCharterCadence:
-		return "Changing when that runs."
-	case store.CommandCharterWording:
-		return "Changing what it says."
-	case store.CommandCharterProbation:
-		return "Asking before firing again."
-	}
-	return "Updating that standing rule."
-}
+// sentence was a correction, or a service command, and then journaled and spoke
+// without anything with judgment seeing the message. The machinery underneath
+// is untouched — the same correction block with the same dispute line, the same
+// service kinds, the same gates. What moved is who decides, and the difference
+// shows up on exactly the sentences the prefix tests were never going to cover.
 
 // retirementReason is why something was taken off the shelf: their own sentence
 // when there is one, and the plain fact of it when they clicked instead.
@@ -194,8 +169,8 @@ func (run *beltRun) say(args map[string]any) (string, bool) {
 }
 
 // controlCandidates answers a verb that knows what it wants to do and not what
-// to do it to. It is a READ: the union of the live jobs and the standing rules
-// the words reach, handed back for the loop to name or to ask about. The old
+// to do it to. It is a READ: the live jobs the words reach, handed back for the
+// loop to name or to ask about. The old
 // path chose for the user when exactly one thing matched, which is how a request
 // to withdraw fourteen queued tasks became "Cancelling line-scan."
 func (run *beltRun) controlCandidates(kind store.CommandKind, describes string) (string, bool) {
@@ -208,18 +183,13 @@ func (run *beltRun) controlCandidates(kind store.CommandKind, describes string) 
 		return "that could not be looked up: " + err.Error(), true
 	}
 	if len(candidates) == 0 {
-		return "nothing on the board and no standing rule matches those words", false
+		return "nothing on the board matches those words", false
 	}
 	if len(candidates) > describedTargetCap {
 		candidates = candidates[:describedTargetCap]
 	}
 	lines := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.isRule() {
-			lines = append(lines, "- standing rule "+candidate.rule.ID+" | "+firstLine(candidate.rule.Invariant)+
-				" | a standing rule — stopping it retires it")
-			continue
-		}
 		lines = append(lines, "- "+candidate.job.Node.ID+" | "+surgeryTargetLabel(candidate.job.Node)+
 			" | "+surgeryTargetHint(candidate.job))
 	}

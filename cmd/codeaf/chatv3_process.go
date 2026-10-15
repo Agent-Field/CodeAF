@@ -93,19 +93,16 @@ type v3Process struct {
 	// answer to give. Each conversation still gets its own memory pass and its
 	// own context, which is per-agent already.
 	Memory *store.Store
-	// Search is the store the CONVERSATION INDEX lives in — the same file as
-	// Memory when memory is on, and the same file opened alone when it is off.
-	// THAT IS THE WHOLE DECOUPLING: the memory row turns off what the session
-	// REMEMBERS, never what the next conversation can SEARCH. It used to be
-	// one field and one decision, so turning memory off also closed the
-	// conversation index and the search verb with it — a person who turned
-	// memory off lost a feature they never asked to lose.
+	// Search is the store the CONVERSATION INDEX lives in — the same handle as
+	// Memory, and the same file opened alone when the memory store would not
+	// open. THAT IS THE WHOLE DECOUPLING: a memory store that failed takes away
+	// what the session REMEMBERS, never what the next conversation can SEARCH.
 	//
 	// Search is legitimately PROFILE-scoped, for Memory's reason (one handle
 	// per file per process; two pools on one file arbitrate through a timeout).
 	Search *store.Store
 	// Skills is the skill shelf every conversation this process opens reads:
-	// the Memory store itself when memory is on, and otherwise a store of its
+	// the Memory store itself, and when it would not open a store of its
 	// own that holds nothing but the skills the folders on disk hold
 	// ([v3SkillShelf]). It is profile-scoped for Memory's reason, and one
 	// handle for its reason too.
@@ -132,14 +129,11 @@ type v3Process struct {
 	// mu guards everything below: the lazily opened history file and the list of
 	// agents this process has built. Both are touched from the surface's
 	// goroutine and from the door's defer, which are not the same one.
-	mu              sync.Mutex
-	recall          *history.Store
-	agents          []*session.Agent
-	standingStarted bool
-	standingStop    chan struct{}
-	standingDone    chan struct{}
-	sweepCancel     context.CancelFunc
-	sweepDone       chan struct{}
+	mu          sync.Mutex
+	recall      *history.Store
+	agents      []*session.Agent
+	sweepCancel context.CancelFunc
+	sweepDone   chan struct{}
 	// catalogs are the lazy catalogs this process opened beside Models — a
 	// direct service's own listing, asked for when a conversation is opened on
 	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
@@ -235,11 +229,6 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		}
 		return nil, err
 	}
-	// AND THE BACKGROUND CHECKS ARE PUT BACK IF THEY DRIFTED, once per process,
-	// in the background, saying nothing on screen (chatv3_standing.go). A timer
-	// naming a program that has moved is a timer that runs nothing, and this is
-	// the one moment this build knows where the program actually is.
-	startBackgroundRepair(settings.ProfileDir)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
 	// this is: `codeaf` typed in repo/cmd/ is a conversation about the
 	// repository, and the subdirectory is recorded rather than resolved away
@@ -272,9 +261,10 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
 	memory := v3Memory(settings.ProfileDir)
-	// THE SEARCH STORE IS THE MEMORY STORE WHEN MEMORY IS ON — one handle, one
-	// file — and its own handle of the same file when memory is off. Never two
-	// handles at once: [v3Process.Memory]'s law is about one file, one pool.
+	// THE SEARCH STORE IS THE MEMORY STORE — one handle, one file — and its own
+	// handle of the same file only when the memory store could not be opened.
+	// Never two handles at once: [v3Process.Memory]'s law is about one file, one
+	// pool.
 	var search *store.Store
 	if memory != nil {
 		search = memory
@@ -660,11 +650,6 @@ func (p *v3Process) closeAll() {
 	// it is the process's own errand and not a conversation's.
 	stopPoolErrands(p.ProfileDir)
 
-	// Stop the standing clock before closing anything it may borrow. Waiting
-	// for its loop also waits for a pass already in flight, so no standing
-	// writer can outlive this process close.
-	p.stopStandingTicks()
-
 	var waiting sync.WaitGroup
 	for _, agent := range agents {
 		waiting.Add(1)
@@ -699,15 +684,15 @@ func (p *v3Process) closeAll() {
 	if p.Memory != nil {
 		_ = p.Memory.Close()
 	}
-	// THE SEARCH HANDLE CLOSES ONLY WHEN IT IS NOT THE MEMORY'S. When memory
-	// is on the two fields are one handle and the close above already took
-	// it; when memory is off the search store was opened on its own, and a
-	// handle left open here is a WAL that never checkpoints and a file the
-	// next process reads mid-write.
+	// THE SEARCH HANDLE CLOSES ONLY WHEN IT IS NOT THE MEMORY'S. Ordinarily the
+	// two fields are one handle and the close above already took it; when the
+	// memory store could not be opened the search store was opened on its own,
+	// and a handle left open here is a WAL that never checkpoints and a file
+	// the next process reads mid-write.
 	if p.Search != nil && p.Search != p.Memory {
 		_ = p.Search.Close()
 	}
-	// The memory-off shelf goes with the process that built it: it was only
+	// The storeless shelf goes with the process that built it: it was only
 	// ever a reading of the skill folders, and the next launch reads them
 	// again.
 	if p.skillsDir != "" {
@@ -988,6 +973,7 @@ func (s *v3Seam) anchor(agent interface {
 	// on the scratch folder would scope every later launch's project reads and
 	// writes to a project this conversation is no longer in.
 	s.boot.Config.MemoryProjectKey = v3ProjectKey(resolved)
+	s.boot.Config.MemoryProjectName = gitidentity.ProjectName(resolved)
 	s.boot.Place = s.boot.Config.Place
 	if bucket, bucketErr := v3ProjectDir(resolved); bucketErr == nil {
 		s.boot.Bucket = bucket

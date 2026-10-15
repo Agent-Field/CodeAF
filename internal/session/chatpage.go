@@ -20,8 +20,9 @@ import (
 // So a conversation on such a model reads this page instead: who it is, what it
 // cannot do and what to say about that, how to answer, the codeaf messages it
 // must not answer as the person's, and the project facts that are true of this
-// minute. The belt is empty ([Agent.belt]) and memory is off, as on a lean
-// prefix. It lasts while the model does: the conversation's next request on a
+// minute. The belt is empty ([Agent.belt]), so it can neither keep nor forget a
+// line — though the lines already kept ride in front of it as on every page
+// (memory.go). It lasts while the model does: the conversation's next request on a
 // model that can use tools gets the working page back (promptprofile_live.go).
 
 //go:embed prompts/chat.md

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -15,160 +14,6 @@ import (
 // the thing being tested is not a code path — it is that this sentence is never
 // visible unless the journal has been made to agree with it.
 const theFalseClaim = "Done — it won't fire anymore."
-
-// The reproduced J8 failure, five runs out of five: the person says "stand down
-// the stretch reminder", the head emits a cancel with no target, the store
-// refuses a targetless cancel, nothing is journaled, and the reply says it
-// won't fire anymore while the rule stays active. The head made a claim about
-// the world that the store contradicted.
-//
-// What must happen instead is not an error message. The thread named the thing,
-// the store can address it, and the honest outcome is the act: a command row
-// against that rule, a receipt tied to that row, and a status that has moved by
-// the time the reconciler has run. The verb no longer arrives as a router's
-// terminal decision — it is the stop tool, aimed at the rule id a read handed
-// over — and the sentence is allowed on screen for exactly one reason: the row
-// underneath it makes it true.
-func TestStandingDownARuleResolvesTheRuleTheThreadNamed(t *testing.T) {
-	graph := openHeadStore(t)
-	charter := activateHeadCharter(t, graph, "stretch",
-		"Every hour, the stretch reminder fires.")
-	user := postUser(t, graph, "j8", "stand down the stretch reminder")
-	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
-			"targets": []string{charter.ID}, "words": user.Body})}},
-		beltTurn{text: theFalseClaim})
-	if err := head.answer(context.Background(), user); err != nil {
-		t.Fatal(err)
-	}
-
-	commands, err := graph.PendingCommands(0)
-	if err != nil || len(commands) != 1 {
-		t.Fatalf("commands = %+v err=%v", commands, err)
-	}
-	if commands[0].Target != charter.ID || commands[0].Kind != store.CommandCharterRetire {
-		t.Fatalf("journaled command = %+v, want a retirement of %q", commands[0], charter.ID)
-	}
-	reply := waitForAgentReply(t, graph, "j8", user.Seq)
-	if reply.CommandSeq != commands[0].Seq {
-		t.Fatalf("reply is not the receipt for the journaled row: %+v", reply)
-	}
-	if reply.Body != theFalseClaim {
-		t.Fatalf("reply = %q, want the claim the row underneath it makes true", reply.Body)
-	}
-
-	if err := resident.New(graph, nil, nil).Tick(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	settled, found, err := graph.Charter(charter.ID)
-	if err != nil || !found || settled.Status != store.CharterRetired {
-		t.Fatalf("charter after the reconciler = %+v found=%t err=%v", settled, found, err)
-	}
-}
-
-// The same shape with two rules a description could equally mean. One plain
-// question naming both is the right answer; acting on a coin flip and saying it
-// is done is the same lie by another route, so nothing may be journaled here.
-//
-// The question is no longer posted by the recognizer that failed to choose — the
-// tool hands back the rules the words reach and refuses to pick, and the ask
-// tool posts the durable numbered question. Both halves of the old law survive:
-// the candidates are named the way the person would recognise them, and the
-// journal is empty until they answer.
-func TestStandingDownAnAmbiguousRuleAsksInsteadOfClaiming(t *testing.T) {
-	graph := openHeadStore(t)
-	activateHeadCharter(t, graph, "stretch", "Every hour, the stretch reminder fires.")
-	activateHeadCharter(t, graph, "water", "Every evening, the water reminder fires.")
-	user := postUser(t, graph, "j8-ambiguous", "stand down the reminder")
-	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
-			"words": user.Body})}},
-		beltTurn{calls: []ai.ToolCall{beltCall("c2", beltToolAsk, map[string]any{
-			"question": "Which rule do you mean?",
-			"options": []string{"Every hour, the stretch reminder fires.",
-				"Every evening, the water reminder fires."}})}})
-	if err := head.answer(context.Background(), user); err != nil {
-		t.Fatal(err)
-	}
-
-	reply := waitForAgentReply(t, graph, "j8-ambiguous", user.Seq)
-	if !strings.HasPrefix(reply.Body, "Which rule do you mean?") || len(reply.Options) != 2 {
-		t.Fatalf("ambiguous reply = %+v", reply)
-	}
-	assertNothingClaimed(t, graph, "j8-ambiguous", user.Seq)
-	commands, err := graph.PendingCommands(0)
-	if err != nil || len(commands) != 0 {
-		t.Fatalf("an ambiguous stand-down journaled work: %+v err=%v", commands, err)
-	}
-
-	// And the refusal the loop was handed says why, with both rules in the words
-	// they were ratified in — the model cannot ask well about rules it was never
-	// shown.
-	run := &beltRun{head: New(nil, graph), user: user}
-	candidates, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
-		"words": user.Body}))
-	if failed {
-		t.Fatalf("a targetless withdrawal errored instead of offering candidates: %s", candidates)
-	}
-	if !strings.Contains(candidates, "more than one thing matches") ||
-		!strings.Contains(candidates, "stretch reminder") || !strings.Contains(candidates, "water reminder") {
-		t.Fatalf("the candidate list is not both rules by name:\n%s", candidates)
-	}
-	if run.acted {
-		t.Fatal("offering candidates journaled something")
-	}
-}
-
-// A job and a standing rule that both answer to the description. The head
-// genuinely does not know which was meant, and the two are ranked by machinery
-// that shares no scale, so guessing is the one thing it must not do — one
-// description reaches both halves of the world, and both come back.
-func TestATargetlessStopReachesJobsAndRulesAlike(t *testing.T) {
-	graph := openHeadStore(t)
-	spliceSurgeryJob(t, graph, "stretch-report", "Stretch goals report", "write the stretch goals report")
-	activateHeadCharter(t, graph, "stretch", "Every hour, the stretch reminder fires.")
-	user := postUser(t, graph, "j8-mixed", "stand down the stretch one")
-
-	run := &beltRun{head: New(nil, graph), user: user}
-	candidates, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
-		"words": user.Body}))
-	if failed {
-		t.Fatalf("a targetless stop errored instead of offering candidates: %s", candidates)
-	}
-	sawJob := strings.Contains(candidates, "stretch-report") &&
-		strings.Contains(candidates, "Stretch goals report")
-	sawRule := strings.Contains(candidates, "standing rule stretch") &&
-		strings.Contains(candidates, "the stretch reminder fires")
-	if !sawJob || !sawRule {
-		t.Fatalf("the candidate list dropped one half of the world:\n%s", candidates)
-	}
-	// A rule is not cancelled by the verb aimed at work, and the list says so
-	// rather than offering a candidate that would have to be refused.
-	if !strings.Contains(candidates, "a standing rule — stopping it retires it") {
-		t.Fatalf("the rule half does not say how it is acted on:\n%s", candidates)
-	}
-	if run.acted {
-		t.Fatal("a targetless stop acted on a description")
-	}
-
-	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
-			"words": user.Body})}},
-		beltTurn{calls: []ai.ToolCall{beltCall("c2", beltToolAsk, map[string]any{
-			"question": "Which one do you mean?",
-			"options":  []string{"Stretch goals report", "the hourly stretch reminder"}})}})
-	if err := head.answer(context.Background(), user); err != nil {
-		t.Fatal(err)
-	}
-	reply := waitForAgentReply(t, graph, "j8-mixed", user.Seq)
-	if !strings.HasPrefix(reply.Body, "Which one do you mean?") || len(reply.Options) != 2 {
-		t.Fatalf("mixed reply = %+v", reply)
-	}
-	assertNothingClaimed(t, graph, "j8-mixed", user.Seq)
-	if commands, err := graph.PendingCommands(0); err != nil || len(commands) != 0 {
-		t.Fatalf("a mixed stand-down journaled work: %+v err=%v", commands, err)
-	}
-}
 
 // Nothing to point at. The person still gets a sentence, and the sentence says
 // what is true: there is no such thing running. The tool is what makes that
@@ -181,7 +26,7 @@ func TestStandingDownSomethingThatIsNotRunningSaysSoPlainly(t *testing.T) {
 	run := &beltRun{head: New(nil, graph), user: user}
 	missed, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
 		"words": user.Body}))
-	if failed || !strings.Contains(missed, "nothing on the board and no standing rule matches those words") {
+	if failed || !strings.Contains(missed, "nothing on the board matches those words") {
 		t.Fatalf("the miss was not reported plainly: %q", missed)
 	}
 	if run.acted {

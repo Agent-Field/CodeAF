@@ -234,14 +234,13 @@ type RunSpec struct {
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
 	Crew delegate.Crew
-	// Standing is the person's standing orders over this place, already
-	// rendered as the section a worker's brief closes on ([StandingWorld],
-	// resolved once per run against the conversation's own place). It is the
-	// same answer a task node starting in this conversation reads
-	// ([TaskGraph.standingWorld]) — a plan-born worker and a node worker must
-	// never disagree about what stands (#1549). Empty when nothing stands or
-	// the ambient side is off: no orders is no section, never an empty heading.
-	Standing string
+	// Memory is what the conversation remembers, already rendered as the
+	// section a worker's brief closes on ([MemoryWorld], read once per run for
+	// the conversation's own owners). It is the same answer a task node of this
+	// conversation reads ([TaskGraph.memoryWorld]): a plan-born worker and a
+	// node worker must never disagree about what holds (#1549). Empty when
+	// nothing is kept: no lines is no section, never an empty heading.
+	Memory string
 }
 
 // ProgramEnding is a delegated run's program's own ending when it did not
@@ -1097,11 +1096,10 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		ProgramBriefNote:   run.folder.BriefNote(),
 		ProgramFolderHold:  run.folder.Hold(),
 		Crew:               programCrew,
-		// THE ORDERS ARE RESOLVED HERE AND NOT PER WORKER, for the same reason
-		// the frontier resolves them once per pass: every worker of one run
-		// sits in one place, and reading a folder per worker would be the same
-		// question asked ten times (standing_world.go).
-		Standing: a.standingWorld(),
+		// WHAT THE CONVERSATION REMEMBERS IS RESOLVED HERE AND NOT PER WORKER,
+		// for the same reason the frontier resolves it once per pass: every
+		// worker of one run sits in one place.
+		Memory: a.memoryWorld(),
 	}
 }
 

@@ -156,8 +156,9 @@ codeaf chat --once "summarize the changes"  # print one reply and exit
 codeaf resume
 ```
 
-`enter` sends a message or steers a running answer. `ctrl+enter` makes a standing
-order. `esc` interrupts or, pressed twice at rest, opens rewind. `ctrl+c` interrupts
+`enter` sends a message or steers a running answer. `ctrl+enter` mid-answer queues
+the draft to run after the current turn. `esc` interrupts or, pressed twice at rest,
+opens rewind. `ctrl+c` interrupts
 mid-turn; twice within 1.5 seconds while idle quits.
 
 <details>
@@ -188,12 +189,12 @@ mid-turn; twice within 1.5 seconds while idle quits.
 </details>
 
 Once the conversation has begun, a column stands down the right-hand side of a wide
-terminal — the tasks and standing orders over this conversation, or, while there are
-none, `+ /task` and `+ /standing` with `❯ ctrl+g hide` under them.
+terminal — the tasks and automations of this conversation, or, while there are none,
+`+ /task` and `+ /automations` with `❯ ctrl+g hide` under them.
 
 Slash commands cover models, conversations, work, memory, permissions, and spending.
 Start with `/help`. Common doors are `/model`, `/new`, `/resume`, `/workspace`, `/task`,
-`/history`, `/standing`, `/memory`, `/remember`, `/permissions`, `/status`, `/cost`,
+`/history`, `/automations`, `/memory`, `/remember`, `/permissions`, `/status`, `/cost`,
 `/spend`, `/budget`, `/compact`, `/rewind`, `/manual`, `/help`, and `/quit`. `/drafts`
 keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 
@@ -208,7 +209,8 @@ keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 | `/workspace <path>` | `anchor this conversation to a project` |
 | `/task <brief>` | `start work you can walk away from` |
 | `/history` | `every task this project has run · ctrl+.` |
-| `/standing <words>` | `keep this true · a card, never work done once` |
+| `/automations` | `what runs on a clock · run, pause, edit or delete one` |
+| `/automations add <title> …` | `…or add one exactly, read back on a card first` |
 | `/memory` | `inspect and change what is remembered` |
 | `/remember <text>` | `keep one thing across conversations` |
 | `/permissions` | `what runs without asking · drop one with d` |
@@ -262,13 +264,14 @@ capability that cannot work is left off it rather than offered and failing.
 | --- | --- |
 | Files and shell | `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` |
 | Documents and jobs | `read_document`, `jobs`, `manual` |
-| Interaction and work | `ask`, `watch`, `tasks`, `propose_task`, `quick_task`, `items`, `divide_work`, `stand` |
-| Memory and workspace | `remember`, `recall`, `track`, `commit`, `workspace`, `workspace_snapshots`, `workspace_restore`, `workspace_fork`, `workspace_merge`, `search_conversations` |
+| Interaction and work | `ask`, `watch`, `tasks`, `propose_task`, `quick_task`, `items`, `divide_work`, `automation` |
+| Memory and workspace | `remember`, `forget`, `recall`, `track`, `commit`, `workspace`, `workspace_snapshots`, `workspace_restore`, `workspace_fork`, `workspace_merge`, `search_conversations` |
 | Web | `web_search`, `web_fetch` |
 | Settings and accounts | `settings`, `change_setting`, `services`, `use_service`, `gmail_search`, `gmail_read`, `gmail_send`, `calendar_list`, `calendar_create`, `slack_search`, `slack_read_thread`, `slack_list_channels`, `slack_send` |
 | Media | `generate_image`, `speak`, `generate_music`, `generate_video`, `view_image`, `edit_video`, `load_capability` |
 
-`remember` needs memory switched on. The four `workspace_*` tools need a folder under
+`remember` and `forget` need a memory store, a turn the person typed, and the full prompt
+profile (a lean one leaves them off; the person can still `/remember`). The four `workspace_*` tools need a folder under
 Furrow watch. The five `gmail_*` and `calendar_*` tools arrive only with a connected
 Google account and the four `slack_*` only with Slack; `/connect` — `your connected
 accounts · connect another` — is the door, and any other keyed account brings one
@@ -289,9 +292,21 @@ A task page shows the instruction, folded work and calls, steering, the report, 
 pinned line with activity, duration, cost and call count. `/task <brief>` is the direct
 door; `/history` opens the project's task history.
 
-Standing orders use `/standing <words>` or `ctrl+enter`. They become cards and stay true
-after the conversation. Memory keeps person-, project-, or machine-scoped records in
-`graph.db`; `/memory`, `/memories`, `/remember` and `/forget` change them.
+Automations are work codeaf does on a clock: a reminder (`remind me at 6 to leave`),
+scheduled work (`every Monday at 9, draft the weekly update`), or a watch (`tell me when
+CI on main goes red`). Say one in a conversation, or type it exactly with
+`/automations add …`; either way it is read back on a card and nothing is saved until
+you say yes. They run only while a codeaf window is open, and anything that fell due
+while it was closed runs once when it opens, marked late. `/automations` lists them,
+with every run's history.
+
+Memory keeps one-line records for the person, a project or this machine in `graph.db`,
+and every line held where a conversation is rides in front of it, its tasks and its
+automations' runs. `/remember <text>` (or `/always <text>`, the same command) keeps one;
+`/memory` and `/memories` open the Memories tab (`alt+8`), where a line is fixed, moved,
+forgotten or put back. A rule for all future work — `always run the tests before a
+commit` — is a memory like any other. There is no `/forget` command: forget on the tab,
+or ask.
 
 ## Models, keys, and spending
 
@@ -384,7 +399,7 @@ but it reaches the network for the catalog and stops with
 
 </details>
 
-See [the headless contract](docs/HEADLESS.md) and [ambient work](docs/AMBIENT.md).
+See [the headless contract](docs/HEADLESS.md) and [automations](docs/design/automations/DESIGN.md).
 
 ## Work on another machine
 
@@ -426,4 +441,4 @@ and [AGENTS.md](AGENTS.md) before contributing.
 
 Start with [the documentation map](docs/README.md); the enduring references are the
 [design language](docs/DESIGN-LANGUAGE.md), [remote access](docs/REMOTE.md), the
-[headless contract](docs/HEADLESS.md) and [ambient work](docs/AMBIENT.md).
+[headless contract](docs/HEADLESS.md) and [automations](docs/design/automations/DESIGN.md).

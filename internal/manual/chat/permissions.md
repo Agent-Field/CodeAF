@@ -740,8 +740,8 @@ in for you on a call that acts in your name. It does not run on the early-start
 path.
 
 **It is the one thing codeaf asks that really does hold the work up**, and it says
-so while it does. Everything else a turn asks on your behalf — the memory lookup,
-the judges, the reader of a long answer — runs beside your answer and can never
+so while it does. Everything else a turn asks on your behalf — the judges, the
+reader of a long answer, the noticing pass after it — runs beside your answer and can never
 delay it (*Screen*). This one decides whether the command runs at all, so there is
 nothing for it to run alongside. It answers in **ten seconds or not at all**, and
 for the whole of that the status line reads
@@ -797,8 +797,8 @@ A blanket allow — the settings row set to `allow`, or `--yolo` — becomes a
 
 The floor holds under the **default**, and it yields to a rule that **names the
 tool**. `gmail_send:allow` in `tools.approval` runs it silently. So does a
-capability set to `yes`. So does a remembered "always" answer. Nothing else
-lifts it.
+capability set to `yes`. So does a remembered "always" answer to this approval
+question. Nothing else lifts it.
 
 ## Neither floor can be swallowed by "stop asking me"
 
@@ -842,8 +842,11 @@ underneath whatever you wrote:
 - **Reads of this machine** — `read`, `grep`, `find`, `ls`.
 - **`jobs`**, whose list and output are reads of processes you already started.
   Its kill is **not** on the floor; that inherits the blanket mode.
-- **The agent's own bookkeeping** — `remember`, `track` and `recall`. These
-  write to and read from the working state codeaf keeps for itself.
+- **The agent's own bookkeeping** — `track` and `recall`, which write to and read
+  from the working state codeaf keeps for itself, and `remember` and `forget`,
+  which keep or forget one of your memory lines. Neither memory verb is silent:
+  the conversation says `remembered · …` or `forgot · …`, and the Memories tab
+  takes it straight back.
 - **`manual`**, which reads pages compiled into this binary and touches no disk
   at all. Asking you to approve codeaf looking up its own documentation would be
   asking about the wrong thing.
@@ -892,7 +895,7 @@ The whole list, by settings key:
   rows, the model that answers in your place, the reminder that pauses rather
   than answering no, and the task clock that starts work if you say nothing.
 - **What may be spent without asking you** — `daily_budget_usd`,
-  `plan_consent_usd`, `practice_budget_usd`, `session.spendRailUSD`,
+  `plan_consent_usd`, `session.spendRailUSD`,
   `task.repair_rounds`, `working_set_tokens`, `context_reuse_pct`. The last three
   are rails too: each is a number that multiplies what one piece of unattended
   work costs.
@@ -1089,7 +1092,11 @@ needs approval but no resolver is attached: <rule>
 ```
 
 Inside a task node the refusal reads
-`refused in a task: <rule> — nobody to ask`. A wait that ends without an answer
+`refused in a task: <rule> — nobody to ask`. An automation's scheduled work runs
+under your own rules with nobody to ask, so the first call they would ask about is
+refused and stops the run as `your call`, naming it —
+`needed your ok to run bash git push`; an `always` you give in a conversation lets
+later runs through (*Automations*). A wait that ends without an answer
 is never worded as a person's no. A timed-out question refuses with
 `not approved: the question timed out`. A turn (or the agent) that ends first
 refuses with `not approved: ended before an answer`.

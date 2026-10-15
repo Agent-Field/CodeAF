@@ -77,7 +77,8 @@ func (a *app) closeStrip() {
 
 // openStrip is `→` on a row that has verbs. It answers false when the row has
 // none, and the arrow keeps every other meaning it already had on that place —
-// which on home is the fold ladder and the walk across the columns.
+// which on home is the way into an errand's pane and the fold ladder of the
+// phone's inbox.
 func (a *app) openStrip() bool {
 	verbs := a.rowVerbs()
 	if len(verbs) == 0 {
@@ -310,8 +311,16 @@ func (a *app) rowVerbs() []verb {
 // spelled here, and the two home already had are borrowed from its own legend
 // rather than written a second time.
 const (
-	memoryCardWord   = "open the card"
 	memoryFixWord    = "fix the wording"
 	memoryForgetWord = "forget it"
 	memoryUndoWord   = "put it back"
+	// The three moves, one per place a line can hold, each offered only where
+	// the line is not (place_memories.go's [placeMemory.verbs]).
+	memoryMoveYouWord     = "hold it everywhere"
+	memoryMoveHereWord    = "hold it in this project"
+	memoryMoveMachineWord = "hold it on this machine"
+	// memoryAskWord opens a conversation about the line, and memorySourceWord
+	// opens the conversation it was learned in.
+	memoryAskWord    = "ask me about it"
+	memorySourceWord = "open where it was learned"
 )

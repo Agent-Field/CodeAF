@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // Version is the protocol's version. The hello and the welcome both carry it,
@@ -362,7 +361,38 @@ import (
 // and the person is never told their word did nothing. NEVER TO SILENCE.
 // Version 20 adds the explicit human shell door and streamed shell output.
 // Older peers must refuse rather than treat a shell command as model input.
-const Version = 20
+//
+// VERSION 21 CARRIES THE AUTOMATIONS DOORS AND [Hello.Window]
+// (wire_automations.go). A window over --host or --at shows the FAR machine's
+// automations — its conversation proposes into that machine's store and that
+// machine's clock runs them — and the far clock runs only while a window is
+// open over there. So the delta is thirteen calls onto that machine's store,
+// one per function of the surface's automations seam, and one field on the
+// hello that makes the connection a window open on the far machine for as long
+// as it is attached.
+//
+// THE DOORS ALONE COULD HAVE RIDDEN VERSION 20 behind [Welcome.Automations],
+// the way the teams doors did: an engine without them says nothing at the door
+// and the window draws no automations. [Hello.Window] could not, because what it
+// carries is not a reading but whether the far clock runs at all. It is an
+// omitempty boolean — exactly the shape an older decoder drops without a word —
+// and a version-20 engine that already runs automations (the build just before
+// this one) would drop it and count no window for a person sitting in front of
+// a conversation there, while a version-20 surface would never say it. Either
+// way that machine's clock stops half a minute after its last local window
+// closes, with somebody watching, and a run in progress is recorded as codeaf
+// closing. So the number moves, and the door refuses the pair before either
+// half can be believed. NEVER TO SILENCE.
+//
+// VERSION 22 IS MEMORY WITH ONE STRENGTH (internal/session's memory.go). The
+// rule flag's door (`Memory.SetAlways`) and the flat list (`Memory.List`) are
+// gone, so is the `/forget` command's `Memory.ForgetQuery` (a person forgets a
+// line on the Memories tab, by its id), `Memory.Update` carries only the words,
+// the commands answer whole receipts, and `Memory.Move` and `Memory.Project`
+// are new. The number moves because a version-21 engine would answer the
+// place's move as "no such method" — a key that did nothing, and a person told
+// so in words that were not true.
+const Version = 22
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -495,7 +525,6 @@ const (
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
-	MethodStandingResolve = "ResolveStanding"        // StandingArgs → nothing
 	// MethodQuestionResolve is the ONE door for an answer to any question, over
 	// the wire (docs/design/questions/DESIGN.md). It carries
 	// [session.Answer] whole — the lane, the token, the keys, the words beside
@@ -642,18 +671,8 @@ const (
 	MethodSessionNew     = "Session.New"     // nothing → Welcome (the engine swaps to a fresh session)
 	MethodSessionOpen    = "Session.Open"    // string (path) → Welcome (the engine swaps to that session)
 
-	// Standing doors. They are in the Session group and not the Agent one
-	// because they are about the ENGINE MACHINE'S STORE rather than about the
-	// conversation: a local surface opens internal/standing on its own disk and
-	// a remote one cannot, which is the same reason Sessions.Recent exists. The
-	// items belong to the machine that runs them, so a session swap leaves them
-	// exactly where they were.
-	MethodStandingItems = "Standing.Items" // string (workspace) → []standing.Item
-	MethodStandingSave  = "Standing.Save"  // standing.Item → nothing (the error carries a refused write)
-	MethodStandingWatch = "Standing.Watch" // nothing → StandingWatchResult
-
 	// The PLACES doors, and they are in the Session group for the reason
-	// Sessions.Recent and Standing.Items are: each one is a reading of THE
+	// Sessions.Recent is: each one is a reading of THE
 	// ENGINE MACHINE'S DISK rather than of the conversation. A local surface
 	// walks its own state root and reads its own ledger; a remote one has no
 	// way to, and every screen it drew off this laptop's copy was a confident
@@ -667,11 +686,10 @@ const (
 
 	// MethodPlacesWorld is the walk of the engine machine's places root: every
 	// project, every conversation in it, and the work each of those ran
-	// ([session.ReadWorld]). It is the reading FIVE of the surface's seven
-	// places are built from — home lists it, tasks reads the task rows inside
-	// it, standing walks its projects to ask what else keeps an eye on that
-	// machine, spend joins its titles onto the ledger's ids, and search opens
-	// the conversation behind a hit out of it — so one door answers all five.
+	// ([session.ReadWorld]). It is the reading FOUR of the surface's places are
+	// built from — home lists it, tasks reads the task rows inside it, spend
+	// joins its titles onto the ledger's ids, and search opens the conversation
+	// behind a hit out of it — so one door answers all four.
 	MethodPlacesWorld = "Places.World" // nothing → session.World
 	// MethodPing is one empty frame out and one empty frame back. The surface
 	// times that round trip on its own machine; a timestamp carried between two
@@ -814,12 +832,6 @@ func (l *LaunchShape) Same(other *LaunchShape) bool {
 		theirs = *other
 	}
 	return mine == theirs
-}
-
-// StandingWatchResult keeps "not installed" distinct from "could not read".
-type StandingWatchResult struct {
-	Status standing.WatchStatus `json:"status"`
-	Known  bool                 `json:"known"`
 }
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
@@ -967,6 +979,29 @@ type Hello struct {
 	// who drives (driver.go) — and a watcher that tries to type anyway is refused
 	// with a sentence rather than dropped.
 	Watch bool `json:"watch,omitempty"`
+
+	// ── version 21 ──────────────────────────────────────────────────────────
+
+	// Window says this connection is A PERSON'S WINDOW OPEN ON THE ENGINE'S
+	// MACHINE, and the engine holds that machine's automations presence for it
+	// until the connection closes, however it closes (wire_automations.go).
+	//
+	// IT EXISTS BECAUSE THE FAR CLOCK COUNTS WINDOWS AND THIS ONE IS ELSEWHERE.
+	// Automations run only while a codeaf window is open on the machine they
+	// belong to, and every window on that machine says so with a lock file of
+	// its own (internal/automation's presence.go). A window over --host or --at
+	// is a process on another machine entirely: no file on the far disk could
+	// name it, so without this the far clock would stop half a minute after a
+	// person sat down in front of its automations.
+	//
+	// ONLY THE TWO DOORS TO ANOTHER MACHINE SAY IT, AND ONLY ON THE CONNECTION
+	// THAT LIVES AS LONG AS THE WINDOW. The local engine road is a window on this
+	// same machine that already holds its own presence, and saying it there
+	// would count one window twice; a conversation opened beside the first one
+	// is another connection of the SAME window, and the boot connection is never
+	// retired while the window is open (cmd/codeaf's chatv3_beside.go). A
+	// headless `--once` is a script and not a window, and says nothing.
+	Window bool `json:"window,omitempty"`
 }
 
 // StreamCursor is one "I have seen this stream through here".
@@ -1207,9 +1242,11 @@ type Welcome struct {
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
 
-	// Memory says the conversation's engine has its memory row enabled. It is
-	// carried once so a surface can distinguish an empty store from memory off
-	// without asking from its paint loop.
+	// Memory says the conversation's engine has its memory store open. It is
+	// carried once so a surface can distinguish an empty store from one that
+	// could not be opened without asking from its paint loop. (The memory row no
+	// longer governs this: it decides only whether the engine notices things to
+	// keep on its own.)
 	Memory bool `json:"memory,omitempty"`
 
 	// Teams says this engine ANSWERS THE TEAMS DOORS ([MethodTeamsRead],
@@ -1297,6 +1334,23 @@ type Welcome struct {
 	// false keeps the picker's own sentence for a conversation that cannot
 	// carry attached skills rather than a list whose every choice goes nowhere.
 	Skills bool `json:"skills,omitempty"`
+
+	// ── version 21 ──────────────────────────────────────────────────────────
+
+	// Automations says this engine ANSWERS THE AUTOMATIONS DOORS from its own
+	// machine's store (wire_automations.go), and AutomationsZone is the zone a
+	// rhythm typed in an attached window is read in: THIS machine's, because
+	// the clock that reads the rhythm is here. Empty is a machine that could not
+	// name its zone, which the store reads as the machine's own.
+	//
+	// IT IS CARRIED FOR [Welcome.Teams]' REASON: the window decides at the door
+	// whether it has automations over this connection, before anything is
+	// drawn. ABSENCE IS false, and false leaves the window's seam zero, which
+	// the surface reads as no automations over this connection — never as this
+	// laptop's own store, whose automations run on a different machine beside
+	// conversations this one cannot see.
+	Automations     bool   `json:"automations,omitempty"`
+	AutomationsZone string `json:"automationsZone,omitempty"`
 }
 
 // SkillShelfArgs asks for one reading of the conversation's skill shelf, on
@@ -1368,16 +1422,6 @@ type InterruptArgs struct {
 
 type SubmitArgs struct {
 	Text string `json:"text"`
-	// Standing says the person MARKED this draft as something to keep true
-	// (internal/session's standing_mark.go), so the engine opens the turn
-	// through SubmitStanding rather than Submit.
-	//
-	// IT IS A FIELD RATHER THAN A METHOD OF ITS OWN because the two differ in
-	// what the engine puts in front of the sentence and in nothing a wire can
-	// see: same argument, same StreamRef, same event frames. An older engine
-	// that does not read it runs the ordinary turn, which is the one direction
-	// this may fail in that leaves the person's words intact.
-	Standing bool `json:"standing,omitempty"`
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the
@@ -1589,8 +1633,8 @@ type PathFact struct {
 // So this carries the raw event and the identity needed to answer it, and the
 // surface replays it through the same door a live one goes through.
 type HeldQuestion struct {
-	// Kind is which resolve-door answers this: "consent", "standing",
-	// "harness", "connect". It is a string rather than an enum because the
+	// Kind is which resolve-door answers this: "consent", "harness" or
+	// "connect" (held.go). It is a string rather than an enum because the
 	// envelope is the contract and a newer engine holding a kind this build
 	// does not draw must not be a broken conversation — an unknown kind is
 	// SKIPPED by the surface, which leaves the question waiting for a build
@@ -1806,22 +1850,6 @@ type ConsentArgs struct {
 	ID    uint64               `json:"id"`
 	Allow bool                 `json:"allow"`
 	Scope session.ConsentScope `json:"scope,omitempty"`
-}
-
-// StandingArgs carries ResolveStanding: which card, and what the person said to
-// it. It is the standing lane's ConsentArgs — one id and one answer — and the
-// answer travels WHOLE rather than field by field, because
-// [session.StandingAnswer] is the engine's own type and a field added there must
-// arrive without a wire change (this file's header states that bargain).
-//
-// KEEPWATCH'S THIRD STATE IS LOAD-BEARING AND SURVIVES BECAUSE IT IS A POINTER.
-// The field answers a question that is only ever ASKED of a person's first
-// standing item, so nil means nobody was asked, and encoding/json writes a nil
-// pointer as null and reads null back as nil. A bool would have turned "never
-// asked" into "said no" on the far machine.
-type StandingArgs struct {
-	ID     uint64                 `json:"id"`
-	Answer session.StandingAnswer `json:"answer"`
 }
 
 // AutonomyArgs is one shape of question and what may answer it from now on.

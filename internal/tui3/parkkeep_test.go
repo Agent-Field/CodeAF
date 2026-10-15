@@ -58,7 +58,7 @@ func parkedKeeperLab(t *testing.T, parks []parked) (*app, *switchAgent, *fakeAge
 // Attach is the authority behind follow-up priority.
 func landHeld(t *testing.T, a *app, agent *switchAgent, key string, held *kept, running bool) {
 	t.Helper()
-	agent.running = running
+	agent.setRunning(running)
 	held.watch.landed.Store(true)
 	held.watch.armed.Store(true)
 	drive(t, a, runCmd(a.behindStir(behindStirMsg{key: key}))...)
@@ -108,20 +108,19 @@ func TestAWaitingPictureSendsInItsHeldConversationAndTheWatcherAdoptsItsTurn(t *
 }
 
 // The factored start keeps every front-send door available behind the screen:
-// standing messages keep their mark, paste chips unfold, and a hosted ordinary
-// file crosses the same fileSubmitter seam as the attachment tray.
-func TestHeldWaitingMessagesUseStandingPasteAndRemoteFileDoors(t *testing.T) {
-	standing := &fakeAgent{model: "m"}
-	_, _, start := parkedStart(standing, t.Context(), false, parked{
-		text:     "keep [paste 1 · 3 lines] true",
-		pastes:   []pasteChip{{n: 1, text: "one\ntwo\nthree"}},
-		standing: true,
+// paste chips unfold, and a hosted ordinary file crosses the same fileSubmitter
+// seam as the attachment tray.
+func TestHeldWaitingMessagesUsePasteAndRemoteFileDoors(t *testing.T) {
+	plainAgent := &fakeAgent{model: "m"}
+	_, _, start := parkedStart(plainAgent, t.Context(), false, parked{
+		text:   "keep [paste 1 · 3 lines] true",
+		pastes: []pasteChip{{n: 1, text: "one\ntwo\nthree"}},
 	})
 	if _, err := start(); err != nil {
 		t.Fatal(err)
 	}
-	if len(standing.marked) != 1 || !strings.Contains(standing.marked[0], "one\ntwo\nthree") {
-		t.Fatalf("the marked paste went through as %q", standing.marked)
+	if len(plainAgent.sent) != 1 || !strings.Contains(plainAgent.sent[0], "one\ntwo\nthree") {
+		t.Fatalf("the paste went through as %q", plainAgent.sent)
 	}
 
 	document := filepath.Join(t.TempDir(), "notes.txt")
@@ -186,7 +185,7 @@ func TestHeldWaitingMessagesGoOnePerLandingAfterSessionFollowUpsAndNeverTwice(t 
 
 func TestComingBackDuringAHeldSendNeverSendsItTwice(t *testing.T) {
 	a, agent, _, key, held := parkedKeeperLab(t, []parked{{text: "only once"}})
-	agent.running = false
+	agent.setRunning(false)
 	cmd := a.sendBehindParked(key, held)
 	if cmd == nil || !held.side.parkSending || !held.side.parks[0].sending {
 		t.Fatal("the held send did not mark its queue head before crossing")

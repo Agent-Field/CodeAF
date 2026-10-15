@@ -37,12 +37,12 @@ type Role string
 const (
 	// RoleTitle names a session from its opening exchange.
 	RoleTitle Role = "title"
-	// RoleConsolidate is the dreaming pass over what a session has remembered:
-	// one call over fifty short lines whose whole instruction is "merge the
-	// duplicates and drop what is superseded" (internal/session's
-	// memory_consolidate.go, which owns the call and registers it). Low — the
-	// archetypal cheap call, made while nobody is waiting, over a file the next
-	// idle minute passes over again.
+	// RoleConsolidate was the chat's dreaming pass over what a session had
+	// remembered, registered by internal/session's memory_consolidate.go. That
+	// tidy-up is gone (2026-10-14): a memory now changes only when somebody says
+	// so, and the conversation tells them. NOTHING REGISTERS THE ROLE ANY MORE;
+	// it stays in the vocabulary so a `models.roles.consolidate` pin written by
+	// an older build still parses rather than reading as a typo.
 	RoleConsolidate Role = "consolidate"
 	// RoleGuardian answers "is this specific tool call safe to run without
 	// asking the person?" — a cheap binary classification, so it sits low.
@@ -95,12 +95,12 @@ const (
 	// mistakes nobody downstream can see to correct. Registered from
 	// internal/session/task_audit.go, which owns the call.
 	RoleAuditor Role = "auditor"
-	// RoleReflex is the per-turn pair: the pre-turn router that reads the
-	// message you just typed and answers which remembered lines belong in this
-	// turn, and the post-turn extractor that reads the exchange and answers
-	// whether anything in it is worth keeping. Both answer in a few words of
-	// JSON, both run every single turn, and neither is allowed to think — which
-	// is why they are their own tier rather than the low one. Registered here
+	// RoleReflex is the post-turn reading: one call after each finished turn
+	// that updates the conversation's state card and, on a turn the person
+	// typed, answers whether they said anything that should hold in every
+	// conversation (internal/reflex's Notice). It answers in a few words of JSON
+	// and runs every single turn — which is why it is its own tier rather than
+	// the low one. Registered here
 	// with the built-ins because the tier IS the role's whole design, and a
 	// reflex role assigned anywhere else would be the same mistake as putting
 	// the reflex model on the high tier.
@@ -221,14 +221,15 @@ const (
 	// call.
 	RoleRepair Role = "repair"
 
-	// RoleSentinel is one standing item's cheap yes-or-no: is what this check
-	// found worth telling the person about.
+	// RoleSentinel is an automation watch's cheap yes-or-no: does what its look
+	// saw meet the condition the person asked to be told about.
 	//
 	// IT SITS LOW for the guardian's reason — it reads a few kilobytes and
-	// answers one binary question, and a wrong no costs a check that said nothing
+	// answers one binary question, and a wrong no costs a look that said nothing
 	// rather than money. It is also the call this build makes most often with
-	// nobody in front of it, once per check of every item forever. Registered
-	// from internal/session/standing_run.go, which owns the call.
+	// nobody in front of it, once per look of every watch. Registered from
+	// internal/session/livesessions.go; internal/session/automation_run.go owns
+	// the call.
 	RoleSentinel Role = "sentinel"
 
 	// RoleSpellOut expands a half-written request into what it obviously meant,
@@ -433,7 +434,7 @@ var roleDescriptions = map[Role]string{
 	RoleHandoff:       "the instruction a handed-over turn gives whoever finishes it",
 	RoleDivision:      "the parts a worker hands its own work out in",
 	RoleCareful:       "a part of a task that needs judgement",
-	RoleReflex:        "reads every turn for memory — routing and keeping",
+	RoleReflex:        "reads each finished turn — what to remember, and where the work stands",
 	RoleVision:        "reads images for a model that cannot see them",
 	RoleShaper:        "the brief a task you started yourself is given",
 	RoleTaskName:      "the two or three words a task is called",

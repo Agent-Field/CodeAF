@@ -138,8 +138,8 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 	request := a.taskRequest()
 	// THE SAME POINTER THE PARENT WAS HANDED, so a part still finds the
 	// person's turn and never this node's own journal (task_brief.go). A
-	// standing firing carries an empty origin on purpose, and every part
-	// under it inherits that emptiness rather than a guessed path.
+	// session with no person turn carries an empty origin on purpose, and every
+	// part under it inherits that emptiness rather than a guessed path.
 	origin := a.taskOriginRef()
 	// AND THE WORKING CONTEXT, COMPILED ONCE FOR THE WHOLE DIVISION
 	// (admission.go), for the reason the model and the ratings are read once

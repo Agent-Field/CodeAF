@@ -15,12 +15,12 @@ import (
 // deserves an unambiguous door, and a gate that fires on a sentence the judge
 // was still interpreting would be a gate on nothing.
 //
-// One tool covers four kinds because the person's intent is one intent: they
+// One tool covers three kinds because the person's intent is one intent: they
 // point at things they own and say stop. What "stop" means for each kind is the
-// store's own vocabulary — cancel work, retire a rule or a learned way, stop a
-// service — and the only reading taken from the words is whether they want it
-// HELD rather than ended, which the two kinds that support holding honour and
-// the two that do not ignore.
+// store's own vocabulary — cancel work, retire a learned way, stop a service —
+// and the only reading taken from the words is whether they want it HELD rather
+// than ended, which work honours and the other two ignore. (Standing rules were
+// a fourth kind, and went with the v1 scheduler.)
 //
 // The consent machinery is untouched and reached by the same road control used:
 // beltSet resolves the ids over their open subtrees under the store's legality
@@ -43,10 +43,10 @@ func (run *beltRun) stop(args map[string]any) (string, bool) {
 	}
 	if len(targets) == 0 {
 		// A withdrawal that knows what it wants to do and not what to do it to is
-		// an ordinary thing to say. The union of the live jobs and the standing
-		// rules the words reach is the honest answer — handed back as candidates
-		// rather than acted on, because choosing for the person is how a request
-		// to withdraw fourteen queued tasks became "Cancelling line-scan."
+		// an ordinary thing to say. The live jobs the words reach are the honest
+		// answer — handed back as candidates rather than acted on, because
+		// choosing for the person is how a request to withdraw fourteen queued
+		// tasks became "Cancelling line-scan."
 		return run.controlCandidates(store.CommandCancel, strings.TrimSpace(beltString(args, "words")))
 	}
 	if len(targets) > beltControlIDCap {
@@ -58,7 +58,6 @@ func (run *beltRun) stop(args map[string]any) (string, bool) {
 	holding := stopHolds(words)
 
 	var jobs []string
-	var rules []store.Charter
 	var services []store.Service
 	var crafts []string
 	for _, target := range targets {
@@ -81,8 +80,6 @@ func (run *beltRun) stop(args map[string]any) (string, bool) {
 		switch found := run.head.resolveTarget(target); found.kind {
 		case targetJob:
 			jobs = append(jobs, found.job.ID)
-		case targetRule:
-			rules = append(rules, found.rule)
 		case targetService:
 			services = append(services, found.service)
 		case targetCraft:
@@ -104,20 +101,6 @@ func (run *beltRun) stop(args map[string]any) (string, bool) {
 			return answer, failed
 		}
 		said = append(said, answer)
-	}
-	for _, rule := range rules {
-		kind := store.CommandCharterRetire
-		if holding {
-			kind = store.CommandCharterPause
-		}
-		command, err := run.head.store.RequestCommand(store.Command{
-			SessionID: run.user.SessionID, Kind: kind, Target: rule.ID, Instruction: string(kind),
-		})
-		if err != nil {
-			return "that could not be queued: " + err.Error(), true
-		}
-		run.record(command.Seq, charterAcknowledgement(kind))
-		said = append(said, strings.ToLower(strings.TrimSuffix(charterAcknowledgement(kind), ".")))
 	}
 	for _, service := range services {
 		command, err := run.head.store.RequestCommand(store.Command{

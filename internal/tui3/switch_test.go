@@ -20,6 +20,12 @@ import (
 // no other test on this surface needs.
 type switchAgent struct {
 	*fakeAgent
+	// mu guards running, backlog and stops against Attach and its stop, which a
+	// kept conversation's watcher calls from its own goroutine (keeper.go), the
+	// way the real agents take a.mu. A test that changes running once a watcher
+	// may be live does it through setRunning. Reads and writes made from the
+	// test goroutine before any watcher starts, or after it stops, need no lock.
+	mu sync.Mutex
 	// backlog is what a turn already in flight has said. Attach hands it over in
 	// order and then stays open, which is what the real hub does under one hold
 	// of its lock.
@@ -36,6 +42,8 @@ type switchAgent struct {
 }
 
 func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if !s.running {
 		return nil, false, func() {}
 	}
@@ -43,7 +51,18 @@ func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
 	for _, ev := range s.backlog {
 		out <- ev
 	}
-	return out, true, func() { s.stops++ }
+	return out, true, func() {
+		s.mu.Lock()
+		s.stops++
+		s.mu.Unlock()
+	}
+}
+
+// setRunning changes what Attach answers once a watcher may be asking.
+func (s *switchAgent) setRunning(running bool) {
+	s.mu.Lock()
+	s.running = running
+	s.mu.Unlock()
 }
 
 func (s *switchAgent) PendingConsent() []uint64 { return s.pending }
@@ -160,7 +179,7 @@ func TestASwitchDoesNotBringBackAQuestionTheEngineHasResolved(t *testing.T) {
 
 // A switch keeps the box and the waiting queue as two different things. The
 // turn is still running, so folding the queue into a draft would throw away its
-// pictures, paste bodies and standing mark and leave nothing to send at close.
+// pictures and paste bodies and leave nothing to send at close.
 func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	agent := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(agent)
@@ -169,7 +188,7 @@ func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	paste := pasteChip{n: 1, text: "one\ntwo\nthree"}
 	a.parks = []parked{
 		{text: "and check the tests", chips: []chip{shot}, pastes: []pasteChip{paste}},
-		{text: "then push", standing: true},
+		{text: "then push"},
 	}
 	agent.running = true
 	typeChars(t, a, "one more thing")
@@ -178,7 +197,7 @@ func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	if side.draft != "one more thing" {
 		t.Fatalf("the box went into the sidecar as %q", side.draft)
 	}
-	if len(side.parks) != 2 || side.parks[0].text != "and check the tests" || len(side.parks[0].chips) != 1 || len(side.parks[0].pastes) != 1 || !side.parks[1].standing {
+	if len(side.parks) != 2 || side.parks[0].text != "and check the tests" || len(side.parks[0].chips) != 1 || len(side.parks[0].pastes) != 1 || side.parks[1].text != "then push" {
 		t.Fatalf("the structured queue went into the sidecar as %+v", side.parks)
 	}
 	drain(t, a, a.attachConversation(conv, side))
@@ -186,7 +205,7 @@ func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	if a.input.String() != "one more thing" {
 		t.Fatalf("the box came back as %q", a.input.String())
 	}
-	if len(a.parks) != 2 || len(a.parks[0].chips) != 1 || len(a.parks[0].pastes) != 1 || !a.parks[1].standing {
+	if len(a.parks) != 2 || len(a.parks[0].chips) != 1 || len(a.parks[0].pastes) != 1 || a.parks[1].text != "then push" {
 		t.Fatalf("the structured queue came back as %+v", a.parks)
 	}
 	drawn := plain(strings.Join(a.parkedRows(120), "\n"))

@@ -254,7 +254,7 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 	// there, and that the few verbs it names are real tools.
 	for _, name := range []string{
 		beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
-		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory, beltToolSearch,
+		beltToolCompetence, beltToolSpending, beltToolHistory, beltToolSearch,
 		beltToolTask, beltToolChange, beltToolStop, beltToolBash, beltToolNote, beltToolWrite,
 		beltToolAnswerQuestion, beltToolSay, beltToolAsk, beltToolInterrupt,
 	} {

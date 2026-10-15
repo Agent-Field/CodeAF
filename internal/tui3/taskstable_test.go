@@ -18,7 +18,7 @@ import (
 // their headings, and the rows inside one of them have three different prices so
 // that descending is distinguishable from arriving.
 func tasksTableFixture() (session.World, session.UsageWindow, time.Time) {
-	loc := time.FixedZone("fixture", -4*60*60)
+	loc := time.Local // #1808: the window buckets in local time, so a fixed foreign offset would shift the dates by $TZ
 	now := time.Date(2026, time.September, 11, 12, 0, 0, 0, loc)
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
 	work := func(room, id, label, status string, ended time.Time, files int, cost float64) session.TaskIndexEntry {

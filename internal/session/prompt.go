@@ -254,16 +254,16 @@ const claudeFileName = "CLAUDE.md"
 //
 // It is not a live clock either way, and the prompt says so: the minute a turn
 // opens with is the minute it reasons with, and anything that must be resolved
-// against the real clock goes through `stand`'s own `when.in`
-// (tools_standing.go).
+// against the real clock goes through `automation`'s own `when.in`
+// (automation_tool.go).
 const clockRefresh = 10 * time.Minute
 
 // isWorker says whether this agent IS a task node — the thing prompts/worker.md
 // is written to, at any depth of the tree.
 //
 // IT IS THE NODE AND NOT [Config.InTask], which is the posture rather than the
-// role: a standing check's probe and a hand both run InTask because there is
-// nobody there to ask and neither of them may hand work out (standing_run.go,
+// role: an automation's look and a hand both run InTask because there is
+// nobody there to ask and neither of them may hand work out (automation_run.go,
 // fork.go), and neither has a brief, an acceptance or a branch that comes home.
 // A page telling either of them to own an outcome and report on it would be the
 // same lie the floor node was being told, pointed the other way. The task id is
@@ -333,8 +333,8 @@ func renderSystemAt(config Config, now time.Time) string {
 
 	// EVERY WORKER IS TOLD WHAT IT IS, floor of the tree included. The role page
 	// names no conditional verb, so the one predicate under it is whether this
-	// agent is a task node at all ([Config.isWorker]) — a standing check and a
-	// hand are neither, and each opens on a page of its own.
+	// agent is a task node at all ([Config.isWorker]) — a hand is not one, and
+	// opens on a page of its own.
 	if config.isWorker() {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(workerPrompt, "\n"))
@@ -502,9 +502,9 @@ func workerFooter(config Config, now time.Time) string {
 // Inside the threshold nothing moves and the prompt is byte-identical.
 //
 // A stamp that is minutes old is still a stamp, so an ABSOLUTE moment is
-// computed from it and a RELATIVE one — "in two minutes" — goes to `stand`'s
-// own `when.in`, which resolves against the real clock at the moment of the
-// call (tools_standing.go).
+// computed from it and a RELATIVE one — "in two minutes" — goes to
+// `automation`'s own `when.in`, which resolves against the real clock at the
+// moment of the call (automation_tool.go).
 func nowLine(now time.Time) string {
 	zone := now.Location().String()
 	if zone == "" || zone == "Local" {
@@ -523,7 +523,8 @@ func nowLine(now time.Time) string {
 // at breakfast and spoken to at lunch used to carry breakfast's minute in its
 // instructions, so "remind me in 1 minute" was worked out from a stamp two
 // hours behind the wall clock and landed in the PAST. Re-rendering here is the
-// fix at the source; tools_standing.go's refusal is the net under it.
+// fix at the source; automation_tool.go's refusal of a moment already past is
+// the net under it.
 //
 // AND THE COMMON PATH IS BYTE-IDENTICAL. Inside [clockRefresh] this returns
 // without touching a.system, so the cached prefix of a busy conversation is

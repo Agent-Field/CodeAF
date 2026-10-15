@@ -173,15 +173,17 @@ const (
 	// no such message, [fromTranscript] steps over it so a rewind cannot cut it,
 	// and a rebuild earns it again from scratch.
 	entrySeam
-	// entryStanding is ONE STANDING ITEM touching the conversation (standing.go):
-	// the ratification card while it is a question, and — in its other shape —
-	// the single dim line an item that already stands writes when it has news.
+	// entryAutomation is ONE AUTOMATION touching the conversation
+	// (automation.go): the card a proposal or a typed line raises while it is a
+	// question, and — in its other shape — one dim line of news about an
+	// automation or a run of one. The lines are the surface's own and never the
+	// model's.
 	//
 	// It is a kind of its own rather than a second [entryTask] because the two
-	// blocks are answered by different engines and settle into different
-	// records, and rather than a note because a note is a static sentence where
-	// this opens as a question with a clock on it.
-	entryStanding
+	// blocks are answered by different doors and settle into different records,
+	// and rather than a note because a note is a static sentence where this
+	// opens as a question.
+	entryAutomation
 	// entryTeam is ONE NOTE A CONVERSATION'S TEAM SENT IT, drawn as the quoted
 	// cards it is (teamcard.go) rather than as the session's dim lane or the
 	// person's own line.
@@ -351,7 +353,7 @@ type entry struct {
 
 	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
 	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
-	// [entry.stand] are: the outcome lands on the block minutes after it was
+	// [entry.auto] are: the outcome lands on the block minutes after it was
 	// drawn, and the lane that lands it holds the block by index rather than
 	// copying it.
 	//
@@ -595,9 +597,9 @@ type entry struct {
 	// card: a row and the verdict on it must not be able to disagree.
 	card *taskCard
 	// conn is the sign-in this entry draws, for kind entryConnect and for
-	// nothing else (connect.go). It is a POINTER for the reason the two cards
-	// above are: the row opens waiting and a later event settles it in place, and
-	// the row and that state must never be able to disagree.
+	// nothing else (connect.go). It is a POINTER for the reason the card above
+	// is: the row opens waiting and a later event settles it in place, and the
+	// row and that state must never be able to disagree.
 	conn *connectCard
 	// done is the card a landed node writes, for kind entryDone and for nothing
 	// else (taskdone.go). Like [entry.card] it is a POINTER, because the card
@@ -605,11 +607,11 @@ type entry struct {
 	// full context is showing — and the row and that state must never disagree.
 	done    *taskDone
 	harness *harnessCard
-	// stand is the standing proposal — or the one line of news — this entry
-	// draws, for kind entryStanding and for nothing else (standing.go). It is a
-	// POINTER for [entry.card]'s reason: the answer lane holds the same card,
-	// and the row and the verdict on it must never be able to disagree.
-	stand *standingCard
+	// auto is the automation card or line this entry draws, for kind
+	// entryAutomation and nothing else (automation.go). It is a POINTER for
+	// [entry.card]'s reason: the answer lane holds the same card, and the row
+	// and the verdict on it must never be able to disagree.
+	auto *automationCard
 
 	// pending says this is the PERSON'S OWN LINE, echoed before the engine has
 	// agreed to take it — the gap a connection puts between pressing enter and
@@ -987,9 +989,9 @@ type app struct {
 	chatCreditWarning   string
 	homeCreditWarning   string
 	// errandHome is the person's own home directory, resolved ONCE at `open` and
-	// held: the `~` project an item that belongs to no repository runs in
-	// ([app.errandPlace], [app.readBareBands], and homeexchange.go's
-	// [errandHomeDir] is where it comes from).
+	// held: the `~` project an errand that belongs to no repository runs in
+	// ([app.errandPlace]; homeexchange.go's [errandHomeDir] is where it comes
+	// from).
 	//
 	// IT IS A FIELD BECAUSE THE FRAME ASKS FOR IT. The composer's own line names
 	// where a send lands on every paint — `app.View → … → a.composerOpensAt →
@@ -1679,11 +1681,12 @@ type app struct {
 	// blocks stacked at the transcript tail is a wall; several share one block
 	// (formingblock.go).
 	waits []preflight
-	// mem is the memory place's state: the snapshot it is drawing, the shelves that
-	// are unrolled, and the filter (place_memory.go).
+	// mem is the Memories tab's state: the snapshot it is drawing, the groups
+	// that are open, and the filter (place_memories.go).
 	mem memoryPlace
-	// memory is the store the place reads and changes. It is optional because
-	// memory-off sessions must have no capability behind the place.
+	// memory is the store the tab reads and changes. It is optional because a
+	// session whose memory store could not be opened has no capability behind
+	// the tab.
 	memory memoryStore
 	// searchStatus names the web plug the next call will use.
 	searchStatus func() string
@@ -2053,18 +2056,22 @@ type app struct {
 	// update arrives on both the turn's stream and the standing one; taskLane is
 	// that standing subscription and taskGen the generation it belongs to.
 	task *taskCard
-	// THE STANDING SIDE (standing.go, homestanding.go). stand is the standing
-	// card that owns the answer lane, or nil; stands is the seam onto the store
-	// home draws items out of and writes a pause or a stop back through. Both
-	// are nil on every surface whose door has not wired the ambient side, which
-	// is a surface where no card is ever drawn and home shows no item band — a
+	// THE AUTOMATIONS SIDE (automation.go, automationwatch.go). auto is the
+	// automation card still asking, if one is; autos is the seam onto the
+	// machine's automations store and watch is what this window last read
+	// through it. The seam is zero on every surface whose door wired no store,
+	// which is a surface where no card is drawn and the place lists nothing — a
 	// capability that cannot work is absent, not broken.
-	stand  *standingCard
-	stands StandingSeam
+	auto  *automationCard
+	autos AutomationsSeam
+	watch automationsWatch
+	// typedSeq numbers the cards this window raises for typed automations
+	// (automationscmd.go).
+	typedSeq uint64
 	// THE LINK SIDE (hostlink.go). link is what the door can tell this surface
 	// about the connection the conversation is on the far end of. Its zero value
 	// is every local session — no segment, no notice, no waiting room — which is
-	// the same absence the seam above draws when the ambient side is off.
+	// the same absence the seam above draws when automations are off.
 	link LinkSeam
 	// newsSilenceSaid is whether this window has already said that its engine
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
@@ -2083,19 +2090,7 @@ type app struct {
 	// spell is the spell-it-out block under the draft, and the call that made it
 	// while one is out (spellout.go). Its resting state is the zero value, which
 	// is every frame of a conversation nobody has pressed the chord in.
-	spell spellState
-	// keepN, keepFiring and keepAt are the status segment's cached reading of
-	// the store, and keepAt is when it was taken ([app.keepingCount] says why a
-	// segment asked on every frame may not walk a directory).
-	keepN      int
-	keepFiring bool
-	keepAt     time.Time
-	// standRail and standRailAt are the MARGIN's cached reading of what stands
-	// over this conversation, on the same beat and for the same reason
-	// (margin.go's [app.marginStanding]): the column is laid out twice a frame,
-	// and what it is asking about is a directory of documents.
-	standRail       []StandingItemView
-	standRailAt     time.Time
+	spell           spellState
 	tasks           map[uint64]*taskNode
 	typedTaskBriefs map[uint64]string
 	taskOrder       []uint64
@@ -2256,9 +2251,8 @@ type app struct {
 	// down twenty rows of one project forks one command and not twenty
 	// (homeband_repo.go's [app.refreshRepoOf]).
 	repoAsking map[string]bool
-	// newsAsking and leftOffAsking are the same idea for the two readings a card
-	// takes of its own row (homecardread.go).
-	newsAsking    map[string]bool
+	// leftOffAsking is the same idea for the reading a card takes of its own
+	// row (homecardread.go).
 	leftOffAsking map[string]bool
 	// homeFrames counts the frames home has BUILT. It is PERF.md's instrument
 	// and nothing reads it but the pins (home.go's [app.homeFrame]).
@@ -2527,12 +2521,12 @@ type app struct {
 	// thing the switcher's own row can measure an age from — every other row
 	// measures from the sidecar its detach left (keeper.go's [aside.since]).
 	frontAt time.Time
-	// errand builds the agent behind `ask here` and standingRoot is where its
-	// folder is made ([Options.Errand], [Options.StandingRoot], homeexchange.go).
+	// errand builds the agent behind `ask here` and errandsRoot is where its
+	// folder is made ([Options.Errand], [Options.ErrandsRoot], homeexchange.go).
 	// A nil seam is a window that cannot ask from home and says so, which is a
 	// capability that is absent rather than broken.
-	errand       func(ErrandOrders) (Agent, error)
-	standingRoot string
+	errand      func(ErrandOrders) (Agent, error)
+	errandsRoot string
 	// exchanges is every errand this window has open, oldest first.
 	//
 	// IT IS ON THE APP AND NOT ON [homeView] BECAUSE AN EXCHANGE OUTLIVES THE
@@ -2634,12 +2628,11 @@ type app struct {
 	// drafts (draftring.go): closed, it costs the frame nothing.
 	draftPage draftPanel
 
-	// orders is the standing place's state: the shelves of what stands here — this
-	// conversation's orders, this project's and the machine's (place_standing.go).
-	// It reads the engine's own seam, so a surface whose agent has no ambient
-	// side opens on the three sentences saying what a standing order IS; closed,
-	// it costs the frame nothing.
-	orders standingPlace
+	// autoPlace is the automations place's state: the list, the history it
+	// opens onto, and the cursor (place_automations.go). It reads what the
+	// watcher last read off the store, so a surface with no store opens on the
+	// sentence saying what an automation IS; closed, it costs the frame nothing.
+	autoPlace automationsPlace
 
 	// subPage is /subharness: the list of programs this conversation can run,
 	// and the intake card that starts one (subharness.go). It reads the engine's
@@ -2763,6 +2756,14 @@ type app struct {
 	// not need to be told what they are looking at.
 	focused   bool
 	seenFocus bool
+	// notifyRoute is how this window's banners reach the screen, and
+	// notifyFirst whether it has raised one yet — shared with the commands
+	// that raise them, which is why it is a pointer (desktopnotify.go).
+	notifyRoute NotifyRoute
+	notifyFirst *atomic.Bool
+	// msgLink is the address a click on the message line opens, while the line
+	// still says msgLinkFor: a line replaced by another takes its link with it.
+	msgLink, msgLinkFor string
 	// lastQuestionKey is the last proof somebody was AT THIS WINDOW. Question
 	// delivery alone reads it, against awayAfter, so every arrival agrees on
 	// when this window became unattended.
@@ -2956,7 +2957,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		elsewhereOf:         opts.Elsewhere,
 		anchorWorkspace:     opts.AnchorWorkspace,
 		errand:              opts.Errand,
-		standingRoot:        opts.StandingRoot,
+		errandsRoot:         opts.ErrandsRoot,
 		leaveAnswer:         opts.Answer,
 		host:                host,
 		engineRoad:          opts.EngineRoad,
@@ -3010,7 +3011,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		recentSessions:      opts.RecentSessions,
 		resume:              opts.Resume,
 		shared:              opts.SharedAgent,
-		stands:              opts.Standing,
+		autos:               opts.Automations,
+		notifyRoute:         opts.Notify,
+		notifyFirst:         new(atomic.Bool),
 		teamsDisk:           teamsDisk{door: opts.Teams},
 		link:                opts.Link,
 		conns:               opts.Connections,
@@ -3188,7 +3191,6 @@ func newApp(ctx context.Context, opts Options) *app {
 		// linear mode's rule is the same for both.
 		a.welcome.step = welcomeFrames
 	}
-	a.noteStandingHere()
 	a.measureContext()
 	// AND WHAT THE CONVERSATION HAS ALREADY SPENT IS ASKED FOR ON THIS FRAME,
 	// beside the context it is measured with. The engine restores the total from
@@ -3226,6 +3228,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
+	}
+	if from := strings.TrimSpace(opts.UpdatedFrom); from != "" {
+		a.note(updatedFromNote(from, a.updateRunning))
 	}
 	if a.resumed && a.file != "" {
 		a.note(a.resumedNote())
@@ -3442,6 +3447,10 @@ func (a *app) Init() tea.Cmd {
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
+		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
+		// its own (automationwatch.go): this window learns of a run whichever
+		// process ran it.
+		a.readAutomations(),
 		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE, once,
 		// here (autonomysheet.go's [app.readAutonomy]). It is a door, so it may not
 		// be asked from the update loop where it is READ — when a question is
@@ -4591,10 +4600,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, a.permPanelPress(msg.Mouse().Y)
 			}
 			// THE STANDING PAGE USED TO BE READ HERE, under the two registry
-			// panels. It is a PLACE now and is read with the other three of them,
-			// above — one rung for every surface that takes the whole frame,
-			// rather than one place resolved among the overlays that are drawn
-			// inside a conversation.
+			// panels, until it became a PLACE read with the others above — one
+			// rung for every surface that takes the whole frame, rather than one
+			// place resolved among the overlays that are drawn inside a
+			// conversation. The automations place that replaced it is read there.
 			//
 			// AND /subharness IS THE FOURTH OF THESE PANELS, on the standing
 			// page's old terms and for a sharper version of its reason: one of
@@ -4740,13 +4749,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// AND THE MONEY SEGMENT IS A DOOR ONTO THE SPENDING TAB, read here
 			// for the same reason and in the same way: two segments of one row,
-			// neither of them swallowing the other's columns (moneydoor.go). The
-			// standing count was a third and is a line at the foot of the task
-			// column now, answered by that column's own press (standdoor.go).
+			// neither of them swallowing the other's columns (moneydoor.go).
 			if cmd := a.moneyPress(msg.Mouse().X, msg.Mouse().Y); cmd != nil {
 				return a, cmd
 			}
-			// AND THE MODEL SEGMENT IS THE FOURTH: the status row's identity
+			// AND THE MODEL SEGMENT IS THE SECOND: the status row's identity
 			// cluster carries the name of what is answering, and pressing a name
 			// is how a person changes it (render.go's [app.identityParts]).
 			if a.statusPress(msg.Mouse().X, msg.Mouse().Y) {
@@ -5185,10 +5192,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// is what says the work is over.
 		return a, tea.Batch(a.jobPageRead(msg), a.wake())
 
-	case homeNewsMsg:
-		a.tookHomeNews(msg)
-		return a, nil
-
 	case homeLeftOffMsg:
 		a.tookHomeLeftOff(msg)
 		return a, nil
@@ -5247,6 +5250,30 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// over" into "the order you actually use them", and it lands mid-list
 		// without touching the filter somebody is typing (folderplace.go).
 		return a, a.tookFolderStore(msg)
+
+	case automationsReadMsg:
+		// WHAT THE AUTOMATIONS HAVE BEEN DOING, read off their store by a
+		// command: the lines for this conversation, the desktop notifications
+		// this window claims, the snapshot the quit question reads, and the next
+		// reading (automationwatch.go).
+		return a, a.automationsRead(msg)
+
+	case automationsRunsMsg:
+		// ONE AUTOMATION'S HISTORY, read for the place that opened it
+		// (place_automations.go).
+		a.tookAutomationRuns(msg)
+		return a, nil
+
+	case automationsBeatMsg:
+		// TIME TO READ THE STORE AGAIN: the reading is a command of its own,
+		// and its answer arms the next beat (automationwatch.go).
+		return a, a.readAutomations()
+
+	case automationNotifyMsg:
+		// A BANNER A COMMAND RAISED: the terminal's escape when the banner rides
+		// the terminal, and the first one's line about where banners are turned
+		// on (desktopnotify.go).
+		return a, a.automationNotified(msg)
 
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
@@ -5387,6 +5414,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case memoryReplyMsg:
 		a.adoptMemoryReply(msg)
+		return a, nil
+
+	case memoryPlaceDoneMsg:
+		a.adoptMemoryPlaceDone(msg)
+		return a, nil
+
+	case memoryOriginMsg:
+		a.adoptMemoryOrigin(msg)
 		return a, nil
 
 	case compactedMsg:
@@ -5713,9 +5748,6 @@ func (a *app) paint() tea.Cmd {
 	// The countdown on an open proposal runs down here, on the clock that is
 	// already turning — no ticker of its own (task.go).
 	a.tickTasks()
-	// AND THE STANDING CARD'S, which drains toward a decline rather than toward
-	// an approval (standing.go).
-	a.tickStanding()
 	// And the question block's reading clock, on the same terms (question.go).
 	// It is the one clock here that NEVER answers at expiry: it holds, the tail
 	// says paused, and the work goes on waiting (F41).
@@ -5752,13 +5784,6 @@ func (a *app) paint() tea.Cmd {
 		// counting down and a reading clock running out are the two things on
 		// that block that change without a key being pressed (question.go).
 		a.questionAnimating() ||
-		// AND THE STANDING SIDE IS THE NINTH: a card's meter draining toward a
-		// decline, and the status segment breathing while a firing is in flight.
-		// The second of them is the only thing on this list that is happening in
-		// ANOTHER PROCESS — the loop closes because a firing emits an update, the
-		// update wakes this clock, and the clock keeps turning while the store
-		// says the run is still out (homestanding.go, standing.go).
-		a.standingAnimating() ||
 		// AND THE REWIND ARM IS THE SEVENTH, and the only one of them that turns
 		// with nothing on screen moving at all: the hint slot says "esc again to
 		// rewind" for half a second, and something has to be drawing the frame
@@ -6264,24 +6289,17 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.closeHome()
 		a.proposeTask(ev)
 
-	case session.EventStandingProposal:
-		// A DECISION OUTRANKS A PANEL, for the reason the task proposal above
-		// states: the card takes the keyboard's answer lane, and a lane behind a
-		// fullscreen sheet is a turn blocked on keys nobody can reach.
+	case session.EventAutomationProposal:
+		// A DECISION OUTRANKS A PANEL, for the task proposal's reason above.
 		a.closeSettings()
-		// AND HOME, in the words the task proposal above states.
 		a.closeHome()
-		a.proposeStanding(ev)
+		a.proposeAutomation(ev)
 
-	case session.EventStandingUpdate:
-		// One dim line and never two (standing.go), and THE ENGINE IS WHAT MAKES
-		// THAT TRUE: an item being set up, paused or stopped is the direct result
-		// of a `stand` call and comes down the turn's own stream — this case —
-		// while a FIRING arrives when no turn is running and comes down the
-		// standing lane instead (session's tools_standing.go, emitStandingNews
-		// beside emitStandingUpdate). The two are exclusive, so this fold has no
-		// de-dup to do; the task lane below is the case that does.
-		a.standingUpdate(ev)
+	case session.EventAutomationUpdate:
+		// One dim line: the direct result of an `automation` call in this turn.
+		// A RUN's news never comes down a turn's stream; this window reads it
+		// off the store (automationwatch.go).
+		a.automationUpdate(ev)
 
 	case session.EventTaskUpdate:
 		// A PROPOSAL'S FORMING BLOCK ENDS HERE, because this is the first breath
@@ -7752,6 +7770,9 @@ func (a *app) slash(line string) tea.Cmd {
 		if cmd, more := a.closeFront(); more {
 			return cmd
 		}
+		// AND THE LAST ONE LEAVES AT ONCE, an automation in hand or not: closing
+		// codeaf pauses automations, and a run it cut off runs again when a
+		// window next opens (ctrl+c's own case in input.go says the same).
 		return a.quit()
 
 	case "dismiss":
@@ -7987,22 +8008,11 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openDrafts()
 		return nil
 
-	case "standing":
-		// WHAT IS ALREADY TRUE HERE, as a list, with the three keys that take one
-		// back on it (standingpage.go). Nothing on that page is NAMED at the command
-		// line: an order is a sentence somebody said out loud months ago, and the
-		// only way anybody could name one is by reading it off this page first.
-		//
-		// SO THE WORDS AFTER IT ARE A NEW ORDER AND NEVER A QUERY, which is the one
-		// thing an argument here could honestly mean. They go through the deliberate
-		// door — the same road ctrl+enter takes, with the same guarantee that they
-		// are shaped into a card and never carried out as one-off work (standmark.go)
-		// — because a person who typed the word for the thing has said what they
-		// meant at least as plainly as a chord does.
-		if rest == "" {
-			return a.showPage(pageStanding)
-		}
-		return a.standingSay(rest)
+	case "automations":
+		// THE AUTOMATIONS, as a list, or one of the exact typed forms that add,
+		// change, run, pause, resume or delete one with no model in between
+		// (automationscmd.go).
+		return a.automationsCommand(rest)
 
 	case "harness", "harnesses":
 		// The registry, as a list. No argument form, for /connect's reason: a
@@ -8065,8 +8075,10 @@ func (a *app) slash(line string) tea.Cmd {
 	case "remember":
 		return a.runRemember(rest)
 
-	case "forget":
-		return a.runForget(rest)
+	case "always":
+		// The same errand as /remember (memory.go's [app.runAlways]): bare,
+		// every line kept here; with words, one kept.
+		return a.runAlways(rest)
 
 	case "crew":
 		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is

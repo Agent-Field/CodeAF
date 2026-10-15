@@ -315,8 +315,8 @@ func TestAnsweringLeavesTheSystemPromptByteForByte(t *testing.T) {
 }
 
 // AND IT RIDES ALONG THE NEXT TIME THE PROMPT IS REBUILT FOR SOME OTHER REASON —
-// a folder attached, a standing order agreed — which is a moment the prefix is
-// being paid for anyway.
+// a folder attached, a rule set — which is a moment the prefix is being paid
+// for anyway.
 func TestTheRecordRidesTheNextRebuildOfTheSystemPrompt(t *testing.T) {
 	agent, _ := questionSession(t, "rrrr2222rrrr2222", nil)
 	agent.mu.Lock()
@@ -325,7 +325,7 @@ func TestTheRecordRidesTheNextRebuildOfTheSystemPrompt(t *testing.T) {
 	agent.recordDecision(DecisionRecord{Head: "which storage shape", Picked: []string{"1"}, By: DecidedByPerson})
 
 	agent.mu.Lock()
-	agent.standingText = "\n\nstanding orders\n- keep the tests green"
+	agent.memoryText = "\n<memory>\nMemory:\n\n- \"keep the tests green\"\n</memory>\n"
 	agent.refreshSystemLocked()
 	carried := messageText(agent.messages[0])
 	agent.mu.Unlock()
@@ -515,8 +515,8 @@ func TestAnAnswerFileWrittenByAnOlderWindowStillReads(t *testing.T) {
 	// AND A WHOLE ANSWER ROUND-TRIPS, keeping the four fields filled for whoever
 	// reads it next.
 	whole := Answer{
-		At: time.Now().UTC(), Kind: QuestionStanding, ID: 9, Key: StandingOnceKey,
-		Picked: []string{StandingOnceKey}, Change: "but not on Sundays",
+		At: time.Now().UTC(), Kind: QuestionAutomation, ID: 9, Key: AutomationRunNowKey,
+		Picked: []string{AutomationRunNowKey}, Change: "but not on Sundays",
 		Blanks: map[string]string{"when": "six"}, DecidedBy: DecidedByPerson,
 		Scope: ScopeProject, Why: "I only want it on weekdays",
 	}
@@ -528,7 +528,7 @@ func TestAnAnswerFileWrittenByAnOlderWindowStillReads(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshalling: %v", err)
 	}
-	if back.Key != StandingOnceKey || back.Change != whole.Change ||
+	if back.Key != AutomationRunNowKey || back.Change != whole.Change ||
 		back.Blanks["when"] != "six" || back.Scope != ScopeProject || back.Why != whole.Why {
 		t.Fatalf("the whole answer did not round-trip: %+v", back)
 	}

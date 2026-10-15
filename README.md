@@ -131,21 +131,19 @@ A factory is the third picture: one line out, one line back.
 
 ## Subharnesses: specialists built for one job
 
-A general agent does everything a little. The work that matters most comes round
-in the same shape: review this pull request, fix this issue, audit these
-dependencies. A subharness is a specialist built for exactly that job, with its
-own plan, its own checks and the models that suit it. It takes typed input and
-returns typed output, so it delivers what it promised or is marked incomplete.
-A run is a task like any other, on `home`, with a room and a stop.
+Build a change, review a pull request, or audit local code. Each built-in specialist has a process for its own job and runs as a task beside your conversation. Open its task to follow the work or stop it; its result comes back to the chat. The built-in specialists run on macOS and Linux, with no extra specialist installation.
 
-<img src="assets/readme/subharness.webp" alt="Work that comes round again goes to a specialist: from home, review PR #412 routes to the pr-af subharness; each subharness takes typed input, runs its own plan and checks, and returns typed output or says incomplete, and the result comes back to home as a task" width="100%">
+| Specialist | Try it in the chat | What comes back |
+| --- | --- | --- |
+| [senior-dev](https://agentfield.ai/docs/codeaf/senior-dev): coding changes | `/senior-dev fix the retry bug and add tests` | A submitted change and the project's build and test results, or an explanation of what could not be checked. In git, it works in a private copy on its own branch. |
+| [sec](https://agentfield.ai/docs/codeaf/sec): local security audits | `/sec changes since main` | Security findings with evidence and suggested fixes; Markdown, JSON and SARIF reports. Use `/sec` alone for the whole repository. |
+| [review](https://agentfield.ai/docs/codeaf/review): GitHub pull requests | `/review owner/repo#123 focus on retries` | Findings with file locations, reasons, suggested fixes and review coverage; Markdown and JSON reports. |
 
-- **Coming soon, native:** [PR-AF](https://github.com/Agent-Field/pr-af), the #1
-  open-source code reviewer on Martian Code-Review-Bench.
-- **Native now:** `/senior-dev`, the developer subharness. First of ten
-  harnesses on DeepSWE, in the [benchmark below](#benchmarks).
-- **Your own:** "make me a harness for triaging flaky tests" designs one, saves
-  it, and `/subharness` runs it.
+**review** is imported from [PR-AF](https://github.com/Agent-Field/pr-af), and **sec** from [SEC-AF](https://github.com/Agent-Field/sec-af), under their codeaf command names. Both read source code without running your tests, build, app or exploits. They leave your code unchanged; posting a review or fixing findings is a separate action you request. Read the report's coverage and any incomplete analysis before acting on it. As always, it's important to note that a lack of findings does not and can not guarantee a lack of security problems.
+
+The [coding benchmark below](#benchmarks) measures senior-dev. PR-AF publishes its own [Martian Code-Review-Bench results](https://github.com/Agent-Field/pr-af#benchmark-position); those are results for the original project, not a measurement of codeaf's imported review specialist.
+
+**Your own saved programs:** ask codeaf to design a harness for recurring work, such as triaging flaky tests. Review and approve its design, then open `/subharness` to run it again. See [Saved shapes of work](internal/manual/chat/saved-shapes-of-work.md).
 
 ## Benchmarks
 
@@ -207,14 +205,15 @@ that includes running your own.
 
 [![pool updated](https://img.shields.io/github/last-commit/Agent-Field/CodeAF/model-pool?label=pool%20updated)](https://github.com/Agent-Field/CodeAF/tree/model-pool)
 
-## Standing orders
+## Automations
 
-Rules, reminders and watches are one thing, and you set them up by saying them.
-"Never commit straight to main here." "Every Monday, draft the weekly update."
-"Tell me when CI goes red." A card asks once; `1` and it stands, in this project
-or everywhere, on the same daily spend limit as the rest.
-
-<img src="assets/readme/screens/standing.webp" alt="The standing place: orders, reminders and watches for this project and others, when each last woke and what it cost" width="100%">
+Reminders, scheduled work and watches are one thing, and you set them up by
+saying them. "Remind me at 6 to leave." "Every Monday at 9, draft the weekly
+update." "Tell me when CI on main goes red." A card shows exactly what will run,
+when, and what one run may spend; `1` saves it. They run while codeaf is open,
+anything missed while it was closed runs once when it opens, and `/automations`
+shows each one with its history. A rule for all future work — "never commit
+straight to main here" — is a memory marked always.
 
 ## Headless is the other front door
 
@@ -235,7 +234,7 @@ best answer and records the assumption. `exec` runs one worker with no plan;
 Most agents on a remote box mean ssh, tmux, and a terminal that lags on every
 key. CodeAF splits in two instead. The screen runs on the machine in front of
 you. The conversation runs on the machine that owns the work, and `home` shows
-that machine: its projects, tasks and standing orders.
+that machine: its projects, tasks and automations.
 
 <img src="assets/readme/anywhere.webp" alt="one conversation on devbox; your terminal on the same machine, your laptop over ssh, and your phone from a mobile terminal over ssh all attach to it" width="100%">
 
@@ -269,8 +268,8 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 | where you work | one window, one repository | every project on the machine, from one control room |
 | what you do | watch it type | describe work, answer what needs you, decide what lands |
 | what runs | one model, one thread | six seats chosen per call, and subharnesses built for one job |
-| how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
-| without you | it stops | headless, standing orders, a phone in your pocket |
+| how long it lasts | one session | conversations and tasks that outlive the window, automations on a clock |
+| without you | it stops | headless, automations, a phone in your pocket |
 
 ## Performance benchmark
 

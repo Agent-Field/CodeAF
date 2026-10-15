@@ -24,11 +24,23 @@ func TestTheKeySheetNamesTheWayToEveryPlace(t *testing.T) {
 			t.Errorf("/help never names %q — a person who reads the whole sheet still does not know the places exist:\n%s", want, sheet)
 		}
 	}
-	// AND IT SAYS WHICH DIGIT IS WHICH, in the tab bar's own order and read off
-	// [placeOrder] rather than typed out a second time.
+	// AND IT SAYS WHICH DIGIT IS WHICH, read off [placeOrder] rather than typed
+	// out a second time.
 	if !strings.Contains(sheet, placeWordList()) {
 		t.Errorf("/help names %s but never says which place each digit opens (want the list %q):\n%s",
 			chordJumpWords, placeWordList(), sheet)
+	}
+	// DIGIT BY DIGIT, AND NEVER AS THE BAR'S ORDER. The sheet said the list was
+	// "in the tab bar's own order", and since [placeBarOrder] regrouped the bar
+	// it is not: memory is fifth on the bar and `alt+8`. So every place is named
+	// beside the digit that reaches it, and the claim is gone.
+	for _, id := range placeOrder {
+		if want := itoa(placeDigitOf(id)) + " " + id.word(); !strings.Contains(sheet, want) {
+			t.Errorf("/help never pairs %s's digit with its word (want %q):\n%s", id.word(), want, sheet)
+		}
+	}
+	if strings.Contains(sheet, "bar's own order") {
+		t.Errorf("/help still says the digits follow the tab bar, which they do not:\n%s", sheet)
 	}
 	// AND WHAT `tab` MEANS ONCE YOU ARE ON ONE. The sheet's own `tab` row is
 	// about the last conversation, which is true where it is read and says
@@ -170,7 +182,7 @@ func TestThePaletteFillsTheFrameAndSaysWhatIsHidden(t *testing.T) {
 func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	pal := newPalette(0, false)
 	doors := map[page]string{
-		pageTasks: "/task", pageStanding: `"remind me at 6"`, pageMemory: "/remember",
+		pageTasks: "/task", pageAutomations: `"remind me at 6"`, pageMemory: "/remember",
 		pageSpend: "as it runs",
 	}
 	for id, door := range doors {
@@ -181,7 +193,7 @@ func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	}
 
 	// MEMORY — a foot that promises only what is bound.
-	bare := readMemory(store.MemoryShelves{}, nil, "", time.Time{})
+	bare := readMemory(store.MemoryShelves{}, "", nil, nil, "", time.Time{})
 	a := newTestApp(nil)
 	a.width, a.height = 120, 40
 	a.mem.reading = bare
@@ -199,13 +211,13 @@ func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	// AND A PAGE WITH ONE LINE ON IT IS A PAGE, NOT A LESSON. The head row is
 	// there from the first memory on and the whisper is gone, so the eighth
 	// memory no longer swaps three paragraphs for a head row in one frame.
-	some := readMemory(store.MemoryShelves{Total: 3, Held: 3,
-		Shelves: []store.MemoryShelf{{Scope: store.MemoryScopeUser, Held: 3}}}, nil, "", time.Time{})
+	some := readMemory(store.MemoryShelves{Held: 3,
+		Shelves: []store.MemoryShelf{{Owner: store.OwnerUser, Held: 3}}}, "", nil, nil, "", time.Time{})
 	shown := ""
 	for _, line := range some.rows(120, pal) {
 		shown += ansi.Strip(line) + "\n"
 	}
-	if !strings.Contains(shown, "3 held") || strings.Contains(shown, placeWhisper[pageMemory].whisper) {
+	if !strings.Contains(shown, "3 kept") || strings.Contains(shown, placeWhisper[pageMemory].whisper) {
 		t.Errorf("a page with three memories on it is not headed by its count:\n%s", shown)
 	}
 }

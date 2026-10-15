@@ -57,12 +57,15 @@ type BashWorker struct {
 	store     *plandb.Store
 	workspace string
 	model     string
-	// standing is the person's standing orders over this place, rendered by
-	// the door ([session.StandingWorld]) and closed on by the worker's brief.
-	// It is the same section a task node of the conversation reads, so a
-	// plan-born worker works under the house rules too (#1549). Empty means
-	// nothing stands, and no section is rendered.
-	standing  string
+	// always is the memory section over this place — every line kept for the
+	// person, this machine and this project — rendered by the door
+	// ([session.MemoryWorld]) and closed on by the worker's brief. It is the
+	// same section a task node of the conversation reads, so a plan-born worker
+	// works under the person's lines too (#1549). It is set by the run's
+	// factory rather than taken by [NewBashWorker], because it is the factory's
+	// door that read them. Empty means nothing is kept, and no section is
+	// rendered. (The name is the field's from when only rules rode here.)
+	always    string
 	completer session.Completer
 	// The door explains a refused account without changing the request road
 	// already owned by the injected completer.
@@ -78,8 +81,8 @@ type BashWorker struct {
 // copy every worker of the run shares, and the model is the seat's. The
 // completer is the seat's provider: a test scripts it, a run hands the door's
 // own.
-func NewBashWorker(store *plandb.Store, workspace, model, standing string, completer session.Completer) *BashWorker {
-	return &BashWorker{store: store, workspace: workspace, model: model, standing: standing, completer: completer}
+func NewBashWorker(store *plandb.Store, workspace, model string, completer session.Completer) *BashWorker {
+	return &BashWorker{store: store, workspace: workspace, model: model, completer: completer}
 }
 
 // Run hosts one agent's turn loop for the task until the agent ends its turn
@@ -147,7 +150,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// THE BRIEF IS SAID ONCE, on the first round. Every round after it goes out
 	// on the harness's own note, because a round only begins again when the last
 	// one ended on words with no action.
-	brief := session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx), w.standing, w.workspace)
+	brief := session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx), w.always, w.workspace)
 	// noAction counts replies in a row that carried no tool call. A reply that
 	// did call a tool resets the run to one — its own trailing words are the
 	// first of the new run — and the fourth in a row fails the task.

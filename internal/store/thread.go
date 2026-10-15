@@ -49,9 +49,13 @@ const (
 	BriefFailure   BriefItemKind = "failure"
 	BriefCancelled BriefItemKind = "cancelled"
 	BriefQuestion  BriefItemKind = "question"
-	BriefCharter   BriefItemKind = "charter"
-	BriefFact      BriefItemKind = "fact"
-	BriefSkill     BriefItemKind = "skill"
+	// BriefCharter was a standing rule that fired while the person was away.
+	// Nothing fires one any more — the v1 scheduler is gone — but a brief an
+	// older build posted still carries the kind, and decodeBrief refuses a
+	// message whose items it does not recognise, so it stays readable.
+	BriefCharter BriefItemKind = "charter"
+	BriefFact    BriefItemKind = "fact"
+	BriefSkill   BriefItemKind = "skill"
 	// BriefCraft is a learned way of working — a whole workflow the resident
 	// distilled and can run again — as against BriefSkill, which is one small
 	// executable it forged. Crafts rode as skills until this kind existed, which
@@ -81,15 +85,17 @@ type BriefItem struct {
 // deterministic journal facts; Items and the containing message Body are the
 // resident's composed voice. SinceSeq and ThroughSeq make the interval auditable.
 type Brief struct {
-	SinceSeq      int64 `json:"since_seq"`
-	ThroughSeq    int64 `json:"through_seq"`
-	Done          int   `json:"done,omitempty"`
-	Failed        int   `json:"failed,omitempty"`
-	Cancelled     int   `json:"cancelled,omitempty"`
-	Questions     int   `json:"questions,omitempty"`
-	CharterFired  int   `json:"charter_fired,omitempty"`
-	FactsLearned  int   `json:"facts_learned,omitempty"`
-	SkillsLearned int   `json:"skills_learned,omitempty"`
+	SinceSeq   int64 `json:"since_seq"`
+	ThroughSeq int64 `json:"through_seq"`
+	Done       int   `json:"done,omitempty"`
+	Failed     int   `json:"failed,omitempty"`
+	Cancelled  int   `json:"cancelled,omitempty"`
+	Questions  int   `json:"questions,omitempty"`
+	// CharterFired is the BriefCharter rows' count, kept for the same reason:
+	// it is always zero in a brief this build writes.
+	CharterFired  int `json:"charter_fired,omitempty"`
+	FactsLearned  int `json:"facts_learned,omitempty"`
+	SkillsLearned int `json:"skills_learned,omitempty"`
 	// Waiting counts the standing rows — what is stopped on the user now, not
 	// what happened in the window. Every other total is a fact about the past.
 	Waiting int         `json:"waiting,omitempty"`
@@ -153,24 +159,6 @@ const (
 	// next one to be claimed.
 	CommandSetModel CommandKind = "set_model"
 
-	// Charter commands are requested through the same durable reconciler queue
-	// as graph mutations. Their target names a charter rather than a node.
-	CommandCharterRatify  CommandKind = "charter_ratify"
-	CommandCharterPause   CommandKind = "charter_pause"
-	CommandCharterRetire  CommandKind = "charter_retire"
-	CommandCharterCadence CommandKind = "charter_cadence"
-	// CommandCharterWording changes what a standing rule says or does without
-	// touching when it runs. It is the other half of editing a rule by talking
-	// about it: "change it to Tuesday" retimes, "make it say take the bins out
-	// too" rewords, and before this the second sentence had nowhere to land.
-	CommandCharterWording   CommandKind = "charter_wording"
-	CommandCharterOnce      CommandKind = "charter_once"
-	CommandCharterFire      CommandKind = "charter_fire"
-	CommandCharterDecline   CommandKind = "charter_decline"
-	CommandCharterAlways    CommandKind = "charter_always"
-	CommandCharterNever     CommandKind = "charter_never"
-	CommandCharterProbation CommandKind = "charter_probation"
-
 	CommandServiceStop        CommandKind = "service_stop"
 	CommandServiceRestart     CommandKind = "service_restart"
 	CommandServiceAutoRestart CommandKind = "service_auto_restart"
@@ -202,11 +190,6 @@ const (
 	// because a skill IS a belief with an artifact hanging off it, and that
 	// number is the one handle every surface already has for it.
 	CommandSkillRetire CommandKind = "skill_retire"
-
-	// Standing-watch commands carry the one global unattended-presence
-	// decision. They deliberately have no graph-node or charter target.
-	CommandStandingWatchEnable  CommandKind = "standing_watch_enable"
-	CommandStandingWatchDecline CommandKind = "standing_watch_decline"
 
 	// CommandHandover asks whoever currently holds the resident role to give it
 	// up; Instruction says who is asking and why, in plain words. It is a
@@ -813,11 +796,7 @@ func requestCommandTx(tx *sql.Tx, command Command) (Command, error) {
 		return Command{}, fmt.Errorf("request command: %w: unknown issuer %q", ErrInvalid, command.Issuer)
 	}
 	if command.Target != "" {
-		if isCharterCommand(command.Kind) {
-			if err := requireCharter(tx, command.Target); err != nil {
-				return Command{}, err
-			}
-		} else if isServiceCommand(command.Kind) {
+		if isServiceCommand(command.Kind) {
 			var status ServiceStatus
 			if err := tx.QueryRow(`SELECT status FROM services WHERE id=?`, command.Target).Scan(&status); err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
@@ -1190,18 +1169,38 @@ func validRole(role Role) bool {
 func validCommandKind(kind CommandKind) bool {
 	switch kind {
 	case CommandSplice, CommandAmend, CommandCancel, CommandRedirect, CommandExpedite, CommandPause, CommandResume,
-		CommandReprioritize, CommandRestart, CommandSetModel, CommandCharterRatify,
-		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterWording,
-		CommandCharterOnce,
-		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
+		CommandReprioritize, CommandRestart, CommandSetModel,
 		CommandServiceStop, CommandServiceRestart, CommandServiceAutoRestart,
 		CommandCraftRun, CommandCraftRevert, CommandCraftRetire, CommandSkillRetire,
-		CommandStandingWatchEnable, CommandStandingWatchDecline, CommandHandover,
-		CommandHeadInterrupt:
+		CommandHandover, CommandHeadInterrupt:
 		return true
 	default:
 		return false
 	}
+}
+
+// retiredSchedulerCommands are the v1 resident scheduler's verbs, spelled as an
+// older build journaled them: the eleven that edited a standing rule and the
+// two that answered the offer to keep watching with no terminal open.
+//
+// THEY ARE NOT COMMAND KINDS ANY MORE. The scheduler they drove is gone
+// (docs/design/automations/DESIGN.md), so validCommandKind refuses a new one
+// at the door. They are written down here, once, for the one place they can
+// still turn up — a store an older build left holding one unresolved — so the
+// resident can settle it with a sentence a person can read instead of the
+// generic refusal, which would quote the spelling back at them.
+var retiredSchedulerCommands = map[CommandKind]bool{
+	"charter_ratify": true, "charter_pause": true, "charter_retire": true,
+	"charter_cadence": true, "charter_wording": true, "charter_once": true,
+	"charter_fire": true, "charter_decline": true, "charter_always": true,
+	"charter_never": true, "charter_probation": true,
+	"standing_watch_enable": true, "standing_watch_decline": true,
+}
+
+// RetiredSchedulerCommand reports whether kind is one of the v1 scheduler's
+// verbs ([retiredSchedulerCommands]).
+func RetiredSchedulerCommand(kind CommandKind) bool {
+	return retiredSchedulerCommands[kind]
 }
 
 func isServiceCommand(kind CommandKind) bool {
@@ -1294,22 +1293,10 @@ func validateNodeCommand(tx *sql.Tx, kind CommandKind, target string) error {
 	return nil
 }
 
-func isCharterCommand(kind CommandKind) bool {
-	switch kind {
-	case CommandCharterRatify, CommandCharterPause, CommandCharterRetire,
-		CommandCharterCadence, CommandCharterWording, CommandCharterOnce, CommandCharterFire,
-		CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
-		return true
-	default:
-		return false
-	}
-}
-
 // isGlobalCommand names the kinds that address the whole store rather than a
 // node in the graph. A handover joins them: it is about which process is
 // serving, and there is no node it could point at. A head interrupt joins
 // them for the same reason: the turn in flight is not a node either.
 func isGlobalCommand(kind CommandKind) bool {
-	return kind == CommandStandingWatchEnable || kind == CommandStandingWatchDecline ||
-		kind == CommandHandover || kind == CommandHeadInterrupt
+	return kind == CommandHandover || kind == CommandHeadInterrupt
 }

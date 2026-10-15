@@ -42,8 +42,8 @@ func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 		}
 		// AND THE AIR IS HELD: two blank cells between two words, whatever the
 		// width, because what a narrow row gives up is words and never air.
-		if width >= 80 && !strings.Contains(bar, "Home  Chats  AI teams  Activity  Memory  Spend  Settings") {
-			t.Fatalf("at %d columns the nav drew\n\t%q\nand should carry the six places two cells apart", width, bar)
+		if width >= 120 && !strings.Contains(bar, "Home  Chats  AI teams  Activity  Memories  Automations  Spend  Settings") {
+			t.Fatalf("at %d columns the nav drew\n\t%q\nand should carry the eight places two cells apart", width, bar)
 		}
 		if strings.Contains(bar, "   ") {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nwith the air between two words changed", width, bar)
@@ -70,7 +70,7 @@ func pagesHold(list []page, id page) bool {
 // never in a bare count a person cannot press.
 func TestANavTooNarrowForEveryWordFoldsIntoMore(t *testing.T) {
 	a := placeApp(t)
-	for _, width := range []int{34, 40, 48} {
+	for _, width := range []int{34, 40, 48, 80} {
 		bar := navPlaces(a, width, false)
 		if !strings.Contains(bar, navLabel(a.page)) {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nand folded the place you are standing in (%q)", width, bar, a.page.word())
@@ -100,8 +100,9 @@ func TestANavTooNarrowForEveryWordFoldsIntoMore(t *testing.T) {
 			t.Fatalf("at %d columns the nav is %d cells wide and runs past the frame", width, got)
 		}
 	}
-	// AND A NAV THAT CARRIED EVERYTHING FOLDS NOTHING.
-	for _, width := range []int{80, 120, 160} {
+	// AND A NAV THAT CARRIED EVERYTHING FOLDS NOTHING. Eight words need
+	// eighty-six columns, so eighty is a width that folds (above).
+	for _, width := range []int{86, 120, 160} {
 		if navPlaces(a, width, false); a.navMore.span.pressable() {
 			t.Fatalf("at %d columns every place is on the row and it still folds %v", width, a.navMore.folded)
 		}

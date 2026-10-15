@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -96,65 +95,5 @@ func TestTheRebuildReceiptCountsStepsAndNotNodes(t *testing.T) {
 	if !strings.Contains(receipt, "steps") {
 		t.Fatalf("`codeaf rebuild` says nothing about what it rebuilt: %q\n"+
 			"  want a receipt reading `rebuilt N steps from M journaled events`", receipt)
-	}
-}
-
-// ── THE EMPTINESS LAW REACHES THE WAKE RECEIPT ─────────────────────────────
-//
-// `codeaf wake` printed all eight of its figures every time, so an ordinary
-// quiet pass read `examined 3, checked 2, fired 1, no 0, errors 0, rail waits 0,
-// practice 0, learning 2` — four numbers asserting a measurement where nothing
-// had happened. Unknown or zero draws NOTHING; the one sanctioned exception is
-// the live status line's `$0.00`, which exists so a status segment does not jump
-// sideways as it redraws, and a receipt printed once is not that.
-
-func TestTheWakeReceiptSaysOnlyWhatHappened(t *testing.T) {
-	said := wakePassWords(resident.WatchPass{
-		Examined: 3, Checked: 2, Fired: 1,
-	}, 0, 2)
-	if said != "examined 3, checked 2, fired 1, learning 2" {
-		t.Fatalf("a quiet pass reported %q\n  want %q\n"+
-			"  every clause it dropped was a zero, and a zero is a measurement nobody took",
-			said, "examined 3, checked 2, fired 1, learning 2")
-	}
-
-	// EVERY CLAUSE STILL APPEARS WHEN IT HAS SOMETHING TO SAY. A receipt that
-	// dropped a count it should have printed would pass the row above, so each of
-	// the eight is driven on its own with one thing in it.
-	for _, only := range []struct {
-		what string
-		pass resident.WatchPass
-		// practice and learning are counted off the journal rather than the
-		// pass, so they are their own two arguments and their own two rows.
-		practice, learning int
-		want               string
-	}{
-		{what: "examined", pass: resident.WatchPass{Examined: 7}, want: "examined 7"},
-		{what: "checked", pass: resident.WatchPass{Checked: 7}, want: "checked 7"},
-		{what: "fired", pass: resident.WatchPass{Fired: 7}, want: "fired 7"},
-		{what: "no", pass: resident.WatchPass{No: 7}, want: "no 7"},
-		{what: "errors", pass: resident.WatchPass{Errors: 7}, want: "errors 7"},
-		{what: "rail waits", pass: resident.WatchPass{RailWaits: 7}, want: "rail waits 7"},
-		{what: "practice", practice: 7, want: "practice 7"},
-		{what: "learning", learning: 7, want: "learning 7"},
-	} {
-		if got := wakePassWords(only.pass, only.practice, only.learning); got != only.want {
-			t.Fatalf("a pass whose only count was %s reported %q, want %q", only.what, got, only.want)
-		}
-	}
-}
-
-// AND A PASS ON WHICH NOTHING HAPPENED SAYS SO IN A SENTENCE.
-//
-// Eight zeroes and a reader that failed look identical, which is why the
-// emptiness law asks for the sentence rather than for the line to disappear.
-func TestAWakePassThatFoundNothingSaysSoRatherThanPrintingZeroes(t *testing.T) {
-	said := wakePassWords(resident.WatchPass{}, 0, 0)
-	if strings.ContainsRune(said, '0') {
-		t.Fatalf("a pass on which nothing happened printed a figure: %q", said)
-	}
-	if said != "nothing was waiting to be looked at." {
-		t.Fatalf("a pass on which nothing happened said %q\n  want %q",
-			said, "nothing was waiting to be looked at.")
 	}
 }
