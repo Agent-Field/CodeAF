@@ -49,12 +49,13 @@ const (
 
 // Why a diff is unavailable.
 const (
-	DiffReasonTimeout   = "timeout"    // git took longer than FileDiffSeconds
-	DiffReasonNoGit     = "no_git"     // there is no git program here
-	DiffReasonFilter    = "filter"     // the file passes through a git filter, which is never run
-	DiffReasonUnsafe    = "unsafe"     // git refuses the repository's ownership
-	DiffReasonTooLarge  = "too_large"  // an untracked file over FileReadMax
-	DiffReasonGitFailed = "git_failed" // any other refusal; Detail carries git's first line
+	DiffReasonTimeout   = "timeout"             // git took longer than FileDiffSeconds
+	DiffReasonNoGit     = "no_git"              // there is no git program here
+	DiffReasonFilter    = "filter"              // the file passes through a git filter, which is never run
+	DiffReasonUnsafe    = "unsafe"              // git refuses the repository's ownership
+	DiffReasonTooLarge  = "too_large"           // an untracked file over FileReadMax
+	DiffReasonGitFailed = "git_failed"          // any other refusal; Detail carries git's first line
+	DiffReasonChanged   = "changed_during_read" // the file changed between comparison operations
 )
 
 // FileDiff is one path compared with its base. Resolved is the canonical

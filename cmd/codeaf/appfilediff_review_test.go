@@ -38,3 +38,45 @@ func TestAppDiffReviewInvalidUTF8TrackedText(t *testing.T) {
 		t.Fatalf("invalid UTF-8 became a text diff: binary=%v bytes=%d", d.Binary, len(d.Text))
 	}
 }
+
+func TestAppDiffReviewSourceRevisionGuard(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "source.txt")
+	_, missing := os.Stat(path)
+	if !appSameDiffSource(nil, missing, nil, missing) {
+		t.Fatal("a deleted file that stays deleted changed revision")
+	}
+	write(t, path, "original\n")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !appSameDiffSource(before, nil, before, nil) {
+		t.Fatal("an unchanged file changed revision")
+	}
+	if appSameDiffSource(nil, missing, before, nil) || appSameDiffSource(before, nil, nil, missing) {
+		t.Fatal("creation or deletion was not detected")
+	}
+	write(t, path, "different length\n")
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appSameDiffSource(before, nil, after, nil) {
+		t.Fatal("a rewritten file was not detected")
+	}
+	other := path + ".new"
+	write(t, other, "original\n")
+	if err := os.Chtimes(other, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(other, path); err != nil {
+		t.Fatal(err)
+	}
+	after, err = os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appSameDiffSource(before, nil, after, nil) {
+		t.Fatal("atomic replacement with the same size and time was not detected")
+	}
+}

@@ -75,8 +75,8 @@ func (b *appBackend) DiffFile(agent, path, base string) (appwire.FileDiff, error
 // appDiff is the whole answer for full (absolute, cleaned) under root, the
 // canonical workspace, compared with requested when it names a commit and with
 // HEAD otherwise. requested has passed appwire.ValidDiffBase.
-func appDiff(ctx context.Context, path, full, root, requested string) appwire.FileDiff {
-	out := appwire.FileDiff{Path: path, Resolved: full}
+func appDiff(ctx context.Context, path, full, root, requested string) (out appwire.FileDiff) {
+	out = appwire.FileDiff{Path: path, Resolved: full}
 	resolved, err := filepath.EvalSymlinks(full)
 	exists := err == nil
 	if !exists {
@@ -85,6 +85,17 @@ func appDiff(ctx context.Context, path, full, root, requested string) appwire.Fi
 	}
 	out.Resolved = resolved
 	out.Outside = !appWithin(root, resolved)
+	before, beforeErr := os.Stat(resolved)
+	defer func() {
+		if out.State != appwire.DiffChanged && out.State != appwire.DiffUnchanged && out.State != appwire.DiffUntracked {
+			return
+		}
+		after, afterErr := os.Stat(resolved)
+		if !appSameDiffSource(before, beforeErr, after, afterErr) {
+			out.State, out.Reason, out.Detail = appwire.DiffUnavailable, appwire.DiffReasonChanged, "file changed during comparison"
+			out.Text, out.Lines, out.Truncated, out.Binary, out.Add, out.Del = "", 0, false, false, nil, nil
+		}
+	}()
 	if exists {
 		if info, err := os.Stat(resolved); err == nil && info.IsDir() {
 			out.State, out.Reason, out.Detail = appwire.DiffUnavailable, appwire.DiffReasonGitFailed, "a folder has no diff of its own"
@@ -261,6 +272,15 @@ func appDiff(ctx context.Context, path, full, root, requested string) appwire.Fi
 		out.Binary, out.Text, out.Lines, out.Truncated, out.Add, out.Del = true, "", 0, false, nil, nil
 	}
 	return out
+}
+
+// Statistics and hunks are separate read operations. Never combine facts from
+// different revisions when another process edits, replaces, or removes a file.
+func appSameDiffSource(before os.FileInfo, beforeErr error, after os.FileInfo, afterErr error) bool {
+	if errors.Is(beforeErr, fs.ErrNotExist) && errors.Is(afterErr, fs.ErrNotExist) {
+		return true
+	}
+	return beforeErr == nil && afterErr == nil && os.SameFile(before, after) && before.Mode() == after.Mode() && before.Size() == after.Size() && before.ModTime().Equal(after.ModTime())
 }
 
 // appTreeTooLarge says whether a `ls-tree -z -l` entry is a blob over
