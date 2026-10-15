@@ -429,8 +429,8 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	}
 }
 
-// A turn that errs ends not ok with the reason, and a second send while one is
-// running is refused busy rather than queued behind it.
+// A second send while a turn runs is refused busy rather than queued behind
+// it, and a turn the person stops ends stopped, said once as a receipt.
 func TestAppSendRefusesBusyAndReportsAFailedTurn(t *testing.T) {
 	hold := make(chan struct{})
 	conv := &fakeConversation{hold: hold, script: []session.Event{{Kind: session.EventError, Err: errors.New("the provider refused")}}}
@@ -459,8 +459,28 @@ func TestAppSendRefusesBusyAndReportsAFailedTurn(t *testing.T) {
 	rec.mu.Lock()
 	d := rec.data[i].(appwire.TurnDone)
 	rec.mu.Unlock()
-	if d.OK || !strings.Contains(d.Error, "the provider refused") {
+	// The person stopped it, so it ends stopped — with one receipt saying so,
+	// and no error entry and no answer made of the word.
+	if d.OK || d.ErrorKind != appwire.ErrorStopped || d.Error != "stopped" {
 		t.Fatalf("turn.done = %+v", d)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	receipts := 0
+	for _, data := range rec.data {
+		if e, ok := data.(appwire.EntryAdded); ok {
+			switch e.Entry.Kind {
+			case appwire.EntryReceipt:
+				if strings.HasPrefix(e.Entry.Text, "Stopped · you · ") {
+					receipts++
+				}
+			case appwire.EntryError, appwire.EntryAnswer:
+				t.Fatalf("a stopped turn said %+v", e.Entry)
+			}
+		}
+	}
+	if receipts != 1 {
+		t.Fatalf("%d stop receipts", receipts)
 	}
 }
 
@@ -1492,5 +1512,49 @@ func TestAppATurnWithToolsSaysEachMessageOnce(t *testing.T) {
 	}
 	if tool, ok := ids["tcall-probe"]; !ok || tool.Title != "bash printf app-two-messages" {
 		t.Fatalf("the tool entry = %+v; listed %+v", tool, listed)
+	}
+}
+
+// EVERY TASK, NESTED ONES INCLUDED, IS SAID AS IT MOVES. A proposal is a queued
+// task; its first update moves it under the same id; a sub-task names its
+// parent and an adaptive run's rows name their group.
+func TestAppSaysNestedTasksLive(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{
+		{Kind: session.EventTaskProposal, Task: &session.TaskNotice{ID: 1, Title: "outer"}},
+		{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{ID: 1, Title: "outer", State: session.TaskRunning}},
+		{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{ID: 2, Title: "middle", Parent: 1, State: session.TaskQueued}},
+		{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{ID: 3, Title: "inner", Parent: 2, Run: "run-9", State: session.TaskRunning}},
+		{Kind: session.EventTurnDone},
+	}}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Send(agent.ID, "make three nested tasks", ""); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+	var changes []appwire.Task
+	rec.mu.Lock()
+	for _, data := range rec.data {
+		if c, ok := data.(appwire.TaskChanged); ok {
+			changes = append(changes, c.Task)
+		}
+	}
+	rec.mu.Unlock()
+	if len(changes) != 4 || changes[0].State != appwire.TaskQueued || changes[1].State != appwire.TaskRunning || changes[1].ID != "1" {
+		t.Fatalf("task.changed = %+v", changes)
+	}
+	if changes[2].Parent != "1" || changes[3].Parent != "2" || changes[3].Group != "run-9" {
+		t.Fatalf("nested = %+v", changes)
+	}
+	tasks, err := backend.ListTasks(agent.ID)
+	if err != nil || len(tasks) != 3 {
+		t.Fatalf("tasks.list = %+v, %v", tasks, err)
 	}
 }

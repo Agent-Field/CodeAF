@@ -110,8 +110,12 @@ type Agent struct {
 
 // Task is one node of an agent's task graph.
 type Task struct {
-	ID        string    `json:"id"`
-	Agent     string    `json:"agent"`
+	ID    string `json:"id"`
+	Agent string `json:"agent"`
+	// Parent is the task that asked for this one, and empty for a task the
+	// agent itself started; Group names the adaptive run a task belongs to.
+	Parent    string    `json:"parent,omitempty"`
+	Group     string    `json:"group,omitempty"`
 	Title     string    `json:"title"`
 	State     string    `json:"state"`
 	UpdatedAt time.Time `json:"updated_at"`

@@ -695,7 +695,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	guard.Go("app/tasks", func() {
 		defer close(live.lanesDone)
 		for event := range lane {
-			if event.Kind == session.EventTaskUpdate && event.Task != nil {
+			if (event.Kind == session.EventTaskUpdate || event.Kind == session.EventTaskProposal) && event.Task != nil {
 				b.taskNotice(id, live, event.Task)
 			}
 		}
@@ -1160,23 +1160,39 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if title := strings.TrimSpace(event.Text); title != "" {
 				changed(func(v *appwire.Agent) { v.Title = title })
 			}
-		case session.EventTaskUpdate:
+		case session.EventTaskUpdate, session.EventTaskProposal:
 			if event.Task != nil {
 				b.taskNotice(id, live, event.Task)
 			}
 		}
 	}
 	sayReply()
+	byPerson := false
 	b.locked(func() {
-		if !ok && live.stopping {
-			kind = appwire.ErrorStopped
+		byPerson = live.stopping
+		// A STOPPED TURN ENDS CLEANLY ON THE ENGINE'S SIDE — an interrupt is
+		// not an error there — so the person's stop is what says it stopped.
+		if live.stopping {
+			ok, kind, status = false, appwire.ErrorStopped, 0
 		}
 		a.failed = ""
 		if !ok {
 			a.failed = text
 		}
 	})
-	if !ok {
+	switch {
+	case !ok && kind == appwire.ErrorStopped:
+		// A STOP IS NOT AN ANSWER AND NOT AN ERROR. It is said once, as a
+		// receipt, and the turn's end says stopped; the words the turn had
+		// streamed are the answer they already were.
+		failure = "stopped"
+		at := b.now()
+		words := "Stopped · " + at.Local().Format("15:04")
+		if byPerson {
+			words = "Stopped · you · " + at.Local().Format("15:04")
+		}
+		entry(appwire.Entry{ID: appStopEntryID(n), Kind: appwire.EntryReceipt, Text: words})
+	case !ok:
 		entry(appwire.Entry{ID: appErrorEntryID(n), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status})
 	}
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
@@ -1220,6 +1236,8 @@ func appNoteEntryID(n, k int) string { return "n" + strconv.Itoa(n) + "." + strc
 func appLiveNoticeID(n, k int) string { return "q" + strconv.Itoa(n) + "." + strconv.Itoa(k) }
 
 func appErrorEntryID(n int) string { return "x" + strconv.Itoa(n) }
+
+func appStopEntryID(n int) string { return "s" + strconv.Itoa(n) }
 
 func appReceiptEntryID(askID string) string { return "r" + askID }
 
@@ -1296,19 +1314,35 @@ func appTaskState(state string) string {
 // taskNotice turns one task update into task.changed, once per change: the
 // same update can arrive on the turn's stream and on the task lane.
 func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNotice) {
-	state := appTaskState(string(notice.State))
+	// A PROPOSAL IS A TASK THAT HAS NOT STARTED, which is queued: it carries
+	// no state of its own until its first update, under the same id.
+	raw := string(notice.State)
+	if strings.TrimSpace(raw) == "" {
+		raw = string(session.TaskQueued)
+	}
+	state := appTaskState(raw)
 	if state == "" {
 		return
 	}
-	task := appwire.Task{ID: strconv.FormatUint(notice.ID, 10), Agent: id, Title: notice.Title, State: state, UpdatedAt: b.now()}
+	task := appwire.Task{ID: strconv.FormatUint(notice.ID, 10), Agent: id, Title: notice.Title, State: state, Group: notice.Run, UpdatedAt: b.now()}
+	if notice.Parent != 0 && notice.Parent != notice.ID {
+		task.Parent = strconv.FormatUint(notice.Parent, 10)
+	}
 	same := false
 	b.locked(func() {
 		if before, ok := live.tasks[task.ID]; ok && before.State == task.State && (task.Title == "" || before.Title == task.Title) {
 			same = true
 			return
 		}
+		before := live.tasks[task.ID]
 		if task.Title == "" {
-			task.Title = live.tasks[task.ID].Title
+			task.Title = before.Title
+		}
+		if task.Parent == "" {
+			task.Parent = before.Parent
+		}
+		if task.Group == "" {
+			task.Group = before.Group
 		}
 		live.tasks[task.ID] = task
 	})
@@ -1555,9 +1589,19 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time) []ap
 		case "user":
 			n, m, k = n+1, 0, 0
 			entry.ID, entry.Kind, entry.Text = appUserEntryID(n), appwire.EntryUser, item.Text
-		case "assistant":
+		case "assistant", "aside":
 			if strings.TrimSpace(item.Text) == "" {
 				continue
+			}
+			// AN ANSWER CUT SHORT BY A STOP IS STILL THE ANSWER IT WAS. The
+			// journal keeps it apart from the conversation, as a line the
+			// session wrote, but it is the message the person watched stream
+			// under this id; read back as a notice it was that paragraph said
+			// a second time. Every other aside is the session's own dim line.
+			if item.Role == "aside" && !item.Interrupted {
+				entry.ID, entry.Kind, entry.Text, entry.Quiet = appNoteEntryID(n, k), appwire.EntryNotice, item.Text, true
+				k++
+				break
 			}
 			msg := m
 			entry.ID, entry.Kind, entry.Text, entry.Msg = appAnswerEntryID(n, msg), appwire.EntryAnswer, strings.TrimSpace(item.Text), &msg
@@ -1571,11 +1615,11 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time) []ap
 			entry.Title = redact.Secrets(tui3.ToolTitle(item.Tool, item.Args, item.Hint))
 			entry.Summary = redact.Secrets(item.Hint)
 			entry.Detail = appDetail(redact.Secrets(item.Output))
-		case "note", "aside":
+		case "note":
 			if strings.TrimSpace(item.Text) == "" {
 				continue
 			}
-			entry.ID, entry.Kind, entry.Text = appNoteEntryID(n, k), appwire.EntryNotice, item.Text
+			entry.ID, entry.Kind, entry.Text, entry.Quiet = appNoteEntryID(n, k), appwire.EntryNotice, item.Text, true
 			k++
 		default:
 			continue
@@ -1840,13 +1884,20 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 				title = row.Label
 			}
 			index[row.ID] = len(tasks)
-			tasks = append(tasks, appwire.Task{ID: row.ID, Agent: id, Title: title, State: state, UpdatedAt: at})
+			parent := row.Parent
+			if parent == row.ID {
+				parent = ""
+			}
+			tasks = append(tasks, appwire.Task{ID: row.ID, Agent: id, Parent: parent, Title: title, State: state, UpdatedAt: at})
 		}
 	}
 	for taskID, task := range heard {
 		if i, ok := index[taskID]; ok {
 			if task.Title == "" {
 				task.Title = tasks[i].Title
+			}
+			if task.Parent == "" {
+				task.Parent = tasks[i].Parent
 			}
 			tasks[i] = task
 			continue
