@@ -224,6 +224,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 	a.earlierFloor = countEntries(a.messages)
 	pass := compactionPass{stubbed: results, stored: a.chatlog != nil}
 	pass.at, pass.tokensAfter = passInstant(), a.meterTokensLocked()
+	pass.startedAt = pass.at
 	pass.full = a.contextFullLocked(pass.tokensAfter)
 	fact := a.recordPassLocked(passFact(pass, before))
 	if a.file != nil {

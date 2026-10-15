@@ -9,5 +9,6 @@ invalidates:
   - "A display reading of a journal (ReadTranscript, the record cache) told only the region above the LAST pass, so after a second summary the person's earlier messages were unreachable. Record.Earlier is now stacked across every marker and Record.Passes places each pass. A live or resumed Agent still holds one hop and no summary bodies."
   - "The app listed every compaction as 'Earlier messages summarized', including passes that only stubbed tool output. Summary entries now carry compaction facts under id cs<seq>, and the words are set only for a pass that summarized."
   - "A /compact asked for outside a turn could not be stopped and said nothing until it ended. Interrupt, StopWork and Close now cut it, the remote engine streams its events as `pass` frames, and the app has agents.compact ending on compaction.ended."
+  - "A pass was placed where it ENDED, so a message steered in while its summary was written read back above the marker. CompactionFact.StartedAt and Arrived (journaled as startedAt/arrived, on the wire as started_at) place it where it began, live and after a reload."
   - "session.Facts said only what the conversation weighs. It now also carries contextWindow, compactAt and summarizing; an unknown window is absent, never the package's default."
 ---

@@ -247,6 +247,11 @@ type sessionEntry struct {
 	KeptFrom    string `json:"keptFrom,omitempty"`
 	KeptUntil   string `json:"keptUntil,omitempty"`
 	SummaryFail string `json:"summaryFailed,omitempty"`
+	// StartedAt is when the pass began and Arrived how many message lines
+	// written before this one joined the conversation after it began (while
+	// its summary was being written); the pass is placed before them.
+	StartedAt   string `json:"startedAt,omitempty"`
+	Arrived     int    `json:"arrived,omitempty"`
 	ContextFull bool   `json:"contextFull,omitempty"`
 
 	// Window is HOW MANY MESSAGE LINES THE PASS RE-JOURNALED BEHIND THIS MARKER
@@ -2040,10 +2045,16 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// whole once a pass could summarize the person's own words — after
 			// a second summary it opened on the first summary's note.
 			asked, stopped = false, ""
+			// THE PASS STANDS WHERE IT BEGAN: the messages that arrived while
+			// its summary was written are journaled above its marker, and are
+			// placed after it.
+			start := earlierRows
 			if rebuild {
 				earlier = append(earlier[:0], messages...)
 			} else {
 				beyond := messages[min(overlap, len(messages)):]
+				before := max(0, len(beyond)-max(entry.Arrived, 0))
+				start += countEntries(beyond[:before])
 				earlier = append(earlier, beyond...)
 				earlierRows += countEntries(beyond)
 			}
@@ -2061,7 +2072,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if overlap = compactionOverlap(entry); overlap < 0 {
 				earlier, overlap, earlierRows, placed = earlier[:0], 0, 0, false
 			}
-			passes = appendPass(passes, entry, earlierRows, rebuild)
+			passes = appendPass(passes, entry, start, rebuild)
 			// A REGION THAT CANNOT BE PLACED TAKES ITS PASSES' PLACES WITH IT:
 			// the conversation they stood in is no longer told, so they are
 			// kept as facts (their sequence still counts) placed nowhere.
@@ -2084,7 +2095,8 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// conversation as it stood then, and nothing is rebuilt.
 			place := 0
 			if !rebuild {
-				place = earlierRows + countEntries(messages[min(overlap, len(messages)):])
+				tail := messages[min(overlap, len(messages)):]
+				place = earlierRows + countEntries(tail[:max(0, len(tail)-max(entry.Arrived, 0))])
 			}
 			passes = appendPass(passes, entry, place, rebuild)
 		case "caption":
@@ -2938,6 +2950,8 @@ func (s *sessionFile) appendCompactionFailed(fact CompactionFact) {
 		TokensAfter:  fact.TokensAfter,
 		SummaryFail:  fact.Failed,
 		ContextFull:  fact.Full,
+		StartedAt:    journalInstant(fact.StartedAt),
+		Arrived:      fact.Arrived,
 		Timestamp:    journalInstant(fact.At),
 	})
 }
@@ -2974,7 +2988,7 @@ func journalInstant(at time.Time) string {
 // records, placed at entry.
 func compactionFactOf(entry sessionEntry, place int) CompactionFact {
 	return CompactionFact{
-		At: lineInstant(entry.Timestamp), Entry: place,
+		At: lineInstant(entry.Timestamp), StartedAt: lineInstant(entry.StartedAt), Arrived: entry.Arrived, Entry: place,
 		TokensBefore: entry.TokensBefore, TokensAfter: entry.TokensAfter,
 		Stubbed: entry.Stubbed, Folded: entry.Folded, Summarized: entry.Summarized,
 		Summary: entry.Kept, Model: entry.KeptModel, Turns: entry.KeptTurns,
@@ -2998,6 +3012,8 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		KeptUntil:    journalInstant(pass.coversUntil),
 		SummaryFail:  pass.failed,
 		ContextFull:  pass.full,
+		StartedAt:    journalInstant(pass.startedAt),
+		Arrived:      pass.arrived,
 		// The length is written BEFORE the window it describes, which is the only
 		// order that survives a crash halfway through: a reader that finds fewer
 		// lines than the number promised has a truncated file and can say so,

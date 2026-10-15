@@ -103,6 +103,16 @@ func appCompactionEntry(agent string, fact session.CompactionFact, state string)
 		until := fact.CoversUntil
 		facts.CoversUntil = &until
 	}
+	// The entry stands where the pass began, so its settling replaces it in
+	// place rather than at the moment it ended.
+	if !fact.StartedAt.IsZero() {
+		started := fact.StartedAt
+		facts.StartedAt, at = &started, started
+	}
+	if state != appwire.CompactionSummarizing && !fact.At.IsZero() {
+		ended := fact.At
+		facts.EndedAt = &ended
+	}
 	entry := appwire.Entry{ID: appCompactionEntryID(fact.Seq), Agent: agent, Kind: appwire.EntrySummary, At: at, Compaction: facts}
 	if state == appwire.CompactionSettled && fact.Summarized > 0 {
 		entry.Text = appCompactionWords

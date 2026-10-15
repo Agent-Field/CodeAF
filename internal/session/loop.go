@@ -4936,6 +4936,8 @@ type compactionPass struct {
 	// wrote it, what that summary stands for, and why a summary it asked for
 	// did not land.
 	at           time.Time
+	startedAt    time.Time
+	arrived      int
 	tokensAfter  int
 	summary      string
 	summaryModel string
@@ -5007,6 +5009,9 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	// waiting on a lock the pass is holding while the pass waits on the surface
 	// (phasenews.go). Nothing is being claimed here, so an in-flight pass that
 	// is refused below still ends this clock on the way out.
+	// The instant the pass began: where it stands in the conversation is
+	// before anything that arrives while it runs ([CompactionFact.StartedAt]).
+	startedAt := passInstant()
 	a.tellPhase(provider.PhaseTidying, "the conversation", time.Now())
 	defer a.endPhase()
 	// The definitions are outside the transcript and take the belt's own lock.
@@ -5041,7 +5046,7 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	// The system message needs no removing — shapeEntries drops it.
 	earlier := shapeEntries(a.messages, a.file, a.presentation)
 
-	pass := compactionPass{stored: a.chatlog != nil}
+	pass := compactionPass{stored: a.chatlog != nil, startedAt: startedAt}
 	if !policy.active {
 		pass.stubbed = a.stubOldOutputsLocked()
 	}
@@ -5077,12 +5082,13 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 			// THE ONE PROOF A SUMMARY IS BEING WRITTEN, sent with the lock
 			// released and before the request: a surface shows the wait for
 			// as long as it lasts and no longer.
-			hub.send(Event{Kind: EventSummaryStarted, Compaction: &CompactionFact{Seq: seq, At: passInstant(), TokensBefore: tokensBefore}})
+			hub.send(Event{Kind: EventSummaryStarted, Compaction: &CompactionFact{Seq: seq, At: startedAt, StartedAt: startedAt, TokensBefore: tokensBefore}})
 			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
 			summary, answeredBy, err := a.writeSummaryAs(ctx, plan)
 			a.mu.Lock()
 			a.summarizing = false
 			appendedDuringSummary = max(0, len(a.messages)-lengthBeforeSummary)
+			pass.arrived = appendedDuringSummary
 			if err == nil {
 				pass.summarized, why = a.spliceSummaryLocked(plan, summary)
 			} else {
@@ -5122,6 +5128,7 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 		if attempted {
 			tokens := a.meterTokensLocked()
 			fact := a.recordPassLocked(CompactionFact{
+				StartedAt: startedAt, Arrived: pass.arrived,
 				TokensBefore: tokensBefore, TokensAfter: tokens, Failed: pass.failed,
 				Full: a.contextFullLocked(tokens),
 			})

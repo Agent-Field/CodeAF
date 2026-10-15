@@ -318,3 +318,47 @@ func TestContextUseNeverReportsAGuessedWindow(t *testing.T) {
 		t.Fatalf("ContextUse tokens %d, ContextTokens %d: one figure", use.Tokens, known.ContextTokens())
 	}
 }
+
+// A PASS STANDS WHERE IT BEGAN. A message that arrives while the summary is
+// being written came after the pass started, and the record places the pass
+// before it — the same place a live surface drew it when it began.
+func TestAMessageArrivingDuringASummaryIsPlacedAfterThePass(t *testing.T) {
+	var agent *Agent
+	model := &summarizer{answer: func(_ int, _ []ai.Message) (*ai.Response, error) {
+		// The person steers while the request is out: journaled like any
+		// message, under the lock the pass released.
+		journaledPersonHeavy(agent, 13, 1, 64)
+		return textResponse(summaryWords), nil
+	}}
+	agent, path := summaryAgent(t, model)
+	journaledPersonHeavy(agent, 1, 12, 20_000)
+	events, err := observed(t, agent, context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, settled := events[0].Compaction, events[len(events)-1].Compaction
+	if started.StartedAt.IsZero() || !settled.StartedAt.Equal(started.StartedAt) || settled.Arrived != 2 {
+		t.Fatalf("started %+v settled %+v; want one start instant and the 2 arrived messages", started, settled)
+	}
+	record := ReadTranscript(path)
+	if len(record.Passes) != 1 || !record.Passes[0].StartedAt.Equal(started.StartedAt) || record.Passes[0].Arrived != 2 {
+		t.Fatalf("journal pass = %+v", record.Passes)
+	}
+	told := append(append([]DisplayEntry(nil), record.Earlier...), record.Entries[record.Floor:]...)
+	place := record.Passes[0].Entry
+	if place <= 0 || place >= len(told) {
+		t.Fatalf("pass placed at %d of %d", place, len(told))
+	}
+	if !strings.HasPrefix(told[place].Text, "question 13:") || !strings.HasPrefix(told[place-2].Text, "question 12:") {
+		t.Fatalf("pass placed before %.20q after %.20q; want between question 12's turn and the message that arrived", told[place].Text, told[place-2].Text)
+	}
+	seen := 0
+	for _, entry := range told {
+		if strings.HasPrefix(entry.Text, "question 13:") {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("the arrived message is told %d times, want once", seen)
+	}
+}

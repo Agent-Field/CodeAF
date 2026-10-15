@@ -59,6 +59,11 @@ type Compaction struct {
 	CoversUntil  *time.Time `json:"covers_until,omitempty"`
 	Failed       string     `json:"failed,omitempty" enum:"interrupted,declined,empty,changed,not_shorter,error"`
 	Full         bool       `json:"full,omitempty"`
+	// StartedAt is when the pass began — where it stands in the
+	// conversation, before anything that arrived while it ran — and EndedAt
+	// when it settled or failed; absent while it runs.
+	StartedAt *time.Time `json:"started_at,omitempty"`
+	EndedAt   *time.Time `json:"ended_at,omitempty"`
 }
 
 // EventCompactionEnded ends every agents.compact the app asked for, once,

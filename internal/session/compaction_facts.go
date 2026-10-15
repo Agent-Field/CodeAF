@@ -29,8 +29,14 @@ type CompactionFact struct {
 	// were made, failures included. It is the same live and after a resume,
 	// so a surface can name a pass by it.
 	Seq int `json:"seq"`
-	// At is when the pass ended (or, on [EventSummaryStarted], began).
-	At time.Time `json:"at"`
+	// At is when the pass ended (or, on [EventSummaryStarted], began), and
+	// StartedAt when it began. Arrived is how many messages joined the
+	// conversation while its summary was being written: they came AFTER the
+	// pass began, so the pass is placed before them ([CompactionFact.Entry]),
+	// live and after a resume alike.
+	At        time.Time `json:"at"`
+	StartedAt time.Time `json:"startedAt,omitempty"`
+	Arrived   int       `json:"arrived,omitempty"`
 	// Entry is where the pass sits in the conversation told once and whole
 	// ([Record]): how many display entries of it come before the pass. Set
 	// only on [Record.Passes]; zero on an event, which a surface places at the
@@ -256,7 +262,7 @@ func passInstant() time.Time { return time.Now().UTC().Round(0) }
 // passFact is a pass that edited the transcript, as the fact it is kept as.
 func passFact(pass compactionPass, tokensBefore int) CompactionFact {
 	return CompactionFact{
-		At: pass.at, TokensBefore: tokensBefore, TokensAfter: pass.tokensAfter,
+		At: pass.at, StartedAt: pass.startedAt, Arrived: pass.arrived, TokensBefore: tokensBefore, TokensAfter: pass.tokensAfter,
 		Stubbed: pass.stubbed, Folded: pass.folded, Summarized: pass.summarized,
 		Summary: pass.summary, Model: pass.summaryModel, Turns: pass.turns,
 		CoversFrom: pass.coversFrom, CoversUntil: pass.coversUntil,
