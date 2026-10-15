@@ -360,6 +360,15 @@ func (c *Clock) start(ctx context.Context, run Run) {
 		}
 		return
 	}
+	// WORK NOT YET TRUSTED WAITS FOR THE PERSON'S GO (trust.go), unless this
+	// is the run they already said go to.
+	if a.NeedsAsk() && a.Granted != run.ID {
+		c.mu.Unlock()
+		if err := c.Store.AskRun(run.ID); err != nil {
+			c.log("could not ask about a run of " + a.Title + ": " + err.Error())
+		}
+		return
+	}
 	isWork := a.Action.Do != ""
 	switch {
 	case isWork && c.work >= MaxWork:

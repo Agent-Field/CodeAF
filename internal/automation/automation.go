@@ -72,6 +72,13 @@ const (
 	// StatusFinished is a one-time automation that has run, or a once-watch
 	// that has spoken. It stays in the list with its history.
 	StatusFinished Status = "finished"
+	// StatusProposed is a standing order an agent proposed and the person has
+	// not ratified. NOTHING RUNS BEFORE RATIFY: it is in the list and wakes for
+	// nothing until [Store.Ratify].
+	StatusProposed Status = "proposed"
+	// StatusStopped is one the person stopped for good. It stays in the list
+	// with its history and wakes for nothing; it is not resumed.
+	StatusStopped Status = "stopped"
 )
 
 // Automation is one thing codeaf does on a clock. The top half is what the
@@ -113,6 +120,21 @@ type Automation struct {
 	// so the next look can say what changed. It is the look's own business and
 	// opaque to everything else.
 	Memo string `json:"memo,omitempty"`
+
+	// Trust is how far the person lets it run alone (trust.go): every run
+	// asked first, earning trust over Approved runs, or trusted. Empty is
+	// trusted, which every automation saved before the ladder existed is.
+	Trust    Trust `json:"trust,omitempty"`
+	Approved int   `json:"approved,omitempty"`
+	// Granted is the run the person last said go to, which the clock then
+	// starts without asking again.
+	Granted int64 `json:"granted,omitempty"`
+	// AnswersIn is where its results are said: the chat it was made in, the
+	// crew, everywhere, or nowhere but its own row. Empty is the chat.
+	AnswersIn Scope `json:"answersIn,omitempty"`
+	// Crew is the crew it belongs to, and Wont what it is told never to do.
+	Crew string `json:"crew,omitempty"`
+	Wont string `json:"wont,omitempty"`
 
 	// Last is the most recent run that ended, filled in by [Store.List] and
 	// [Store.Get] from the runs table so a list can say what each one last came
@@ -237,9 +259,19 @@ func (a Automation) Validate() error {
 		return errors.New("a limit cannot be negative")
 	}
 	switch a.Status {
-	case "", StatusActive, StatusPaused, StatusFinished:
+	case "", StatusActive, StatusPaused, StatusFinished, StatusProposed, StatusStopped:
 	default:
 		return fmt.Errorf("unknown status %q", a.Status)
+	}
+	switch a.Trust {
+	case "", TrustAsksFirst, TrustEarning, TrustTrusted:
+	default:
+		return fmt.Errorf("unknown trust %q", a.Trust)
+	}
+	switch a.AnswersIn {
+	case "", ScopeChat, ScopeCrew, ScopeEverywhere, ScopeNotHere:
+	default:
+		return fmt.Errorf("unknown place to answer in %q", a.AnswersIn)
 	}
 	return nil
 }
@@ -253,6 +285,9 @@ const (
 	PhaseQueued  Phase = "queued"
 	PhaseRunning Phase = "running"
 	PhaseOver    Phase = "over"
+	// PhaseAsking is a run waiting for the person's go before it starts,
+	// because its automation is not yet trusted to run alone (trust.go).
+	PhaseAsking Phase = "asking"
 )
 
 // Outcome is what a run came to. The words a person reads are [Outcome.Word].
@@ -275,6 +310,9 @@ const (
 	// OutcomeUnchecked is a watch whose look or judgment could not be made.
 	// It changes nothing about what the watch has seen.
 	OutcomeUnchecked Outcome = "unchecked"
+	// OutcomeSkipped is a run the person was asked about and passed over, or
+	// said was not right.
+	OutcomeSkipped Outcome = "skipped"
 )
 
 // Word is the outcome as a person reads it.
@@ -292,6 +330,8 @@ func (o Outcome) Word() string {
 		return "stopped"
 	case OutcomeUnchecked:
 		return "couldn't check"
+	case OutcomeSkipped:
+		return "skipped"
 	}
 	return ""
 }
@@ -300,7 +340,7 @@ func (o Outcome) Word() string {
 // its conversation and a notification. A quiet look is the one that is not —
 // QUIET IS THE DESIGN, and a watch that checked faithfully all day says so on
 // its row, not in a stream of "nothing new".
-func (o Outcome) Delivered() bool { return o != OutcomeQuiet && o != "" }
+func (o Outcome) Delivered() bool { return o != OutcomeQuiet && o != OutcomeSkipped && o != "" }
 
 // Why says what woke a run.
 type Why string

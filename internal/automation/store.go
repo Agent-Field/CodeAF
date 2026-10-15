@@ -217,7 +217,11 @@ func (s *Store) Create(a Automation) (Automation, error) {
 	if a.ID == "" {
 		a.ID = newID()
 	}
-	a.Status = StatusActive
+	// A PROPOSED ONE STAYS PROPOSED: it is saved so it can be shown and
+	// changed, and nothing runs before the person ratifies it (trust.go).
+	if a.Status != StatusProposed {
+		a.Status = StatusActive
+	}
 	a.Created, a.Updated = now, now
 	a.Revision = 1
 	a.Seen, a.Memo = "", ""
@@ -337,6 +341,10 @@ func (s *Store) Update(a Automation) (Automation, error) {
 		}
 		a.Workspace = workspace
 		a.Status, a.Next, a.Seen, a.Memo = current.Status, current.Next, current.Seen, current.Memo
+		// THE LADDER IS THE STORE'S TO MOVE, never an edit's: a changed brief
+		// keeps the trust it had, and only a verdict or the person's own
+		// trust setting moves it.
+		a.Trust, a.Approved, a.Granted = current.Trust, current.Approved, current.Granted
 		if lookChanged(current.Look, a.Look) {
 			a.Seen, a.Memo = "", ""
 		}
@@ -397,6 +405,13 @@ func (s *Store) SetStatus(id string, status Status) (Automation, error) {
 		if a.Status == status || a.Status == StatusFinished {
 			saved = a
 			return nil
+		}
+		// A PROPOSED ONE IS RATIFIED, NEVER RESUMED, and a stopped one is over.
+		switch a.Status {
+		case StatusProposed:
+			return fmt.Errorf("%s has not been agreed to yet", a.Title)
+		case StatusStopped:
+			return fmt.Errorf("%s was stopped", a.Title)
 		}
 		a.Status = status
 		if status == StatusActive {
@@ -655,12 +670,20 @@ func (s *Store) advance(a Automation, next time.Time) error {
 
 // QueueNow asks for a run outside the schedule. Any window may ask; the clock
 // takes it on its next look, within seconds.
-func (s *Store) QueueNow(id string) (Run, error) {
+func (s *Store) QueueNow(id string) (Run, error) { return s.queueNow(id, PhaseQueued) }
+
+// QueueAsking asks for a run outside the schedule that waits for the person's
+// go before the clock may start it: the person's own "run it now" on work not
+// yet trusted, answered with [Store.Answer] at once. Queued any other way,
+// the clock could start it between the two writes.
+func (s *Store) QueueAsking(id string) (Run, error) { return s.queueNow(id, PhaseAsking) }
+
+func (s *Store) queueNow(id string, phase Phase) (Run, error) {
 	if _, err := s.Get(id); err != nil {
 		return Run{}, err
 	}
 	now := s.now()
-	run := Run{AutomationID: id, Due: now, Why: WhyNow, Phase: PhaseQueued}
+	run := Run{AutomationID: id, Due: now, Why: WhyNow, Phase: phase}
 	err := s.write(func(tx *sql.Tx, seq int64) error {
 		var waiting int
 		if err := tx.QueryRow(`SELECT count(*) FROM runs WHERE automation_id = ? AND phase != ?`, id, string(PhaseOver)).Scan(&waiting); err != nil {
@@ -670,7 +693,7 @@ func (s *Store) QueueNow(id string) (Run, error) {
 			return errors.New("it is already running")
 		}
 		res, err := tx.Exec(`INSERT INTO runs (automation_id, due_ms, why, phase, seq) VALUES (?, ?, ?, ?, ?)`,
-			id, ms(now), string(WhyNow), string(PhaseQueued), seq)
+			id, ms(now), string(WhyNow), string(phase), seq)
 		if err != nil {
 			return err
 		}
