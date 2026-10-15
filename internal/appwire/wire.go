@@ -603,6 +603,10 @@ type (
 	}
 	SettingsChanged struct {
 		Settings Settings `json:"settings"`
+		// TaskModels is settings.models.get's answer as it reads now, sent by
+		// an engine that serves Task models whenever settings change; absent
+		// from an engine that does not ([TaskModelsLister]).
+		TaskModels *TaskModels `json:"task_models,omitempty"`
 	}
 	// ProviderChanged carries the key a browser sign-in produced, once, so
 	// the app can keep it in the keychain and hand it back at the next launch.

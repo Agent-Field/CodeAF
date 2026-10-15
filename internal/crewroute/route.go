@@ -315,6 +315,13 @@ type Decision struct {
 	// against their estimates ([router.CrewLog.CostFactor]); EstUSD carries
 	// it. Zero is none learned yet.
 	CostFactor float64 `json:",omitempty"`
+	// Mode is how the roles were chosen at admission ([ModeAuto], [ModeOne]);
+	// empty on a decision from before modes, which reads as auto.
+	Mode Mode `json:",omitempty"`
+	// Warnings are what was wrong with the saved pins at admission: a pin the
+	// allowed models no longer admit (the role was routed instead), or a pin
+	// whose provider was unavailable.
+	Warnings []SeatWarning `json:",omitempty"`
 }
 
 // Unspent is the actual cost a line is drawn with when there is none worth
