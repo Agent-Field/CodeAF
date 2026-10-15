@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -83,4 +84,25 @@ func (m *spendMemory) bytes() int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.reads
+}
+
+func TestTeamSpendIsBitStableAcrossLedgerMapOrder(t *testing.T) {
+	pairs := []spendPair{{session: "a"}, {session: "b"}, {session: "c"}, {session: "d"}}
+	amounts := []float64{0.1, 0.2, 0.014895096, 1e-18}
+	ids := map[string]string{"a": "member", "b": "member", "c": "member", "d": "member"}
+	var first Spend
+	for n := 0; n < 256; n++ {
+		totals := map[spendPair]spendSum{}
+		for i := range pairs {
+			j := (i + n) % len(pairs)
+			totals[pairs[j]] = spendSum{usd: amounts[j], calls: 1}
+		}
+		var got Spend
+		sumTeamSpend(&got, ids, totals)
+		if n == 0 {
+			first = got
+		} else if !reflect.DeepEqual(first, got) {
+			t.Fatalf("quiet sum drifted: first=%+v got=%+v", first, got)
+		}
+	}
 }

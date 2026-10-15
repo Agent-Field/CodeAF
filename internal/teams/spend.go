@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -94,13 +95,32 @@ func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
 	if err != nil {
 		return out, err
 	}
-	for pair, sum := range totals {
+	sumTeamSpend(&out, ids, totals)
+	return out, nil
+}
+
+// sumTeamSpend orders contributing ledger pairs before adding floats. A map's
+// iteration order must not change a quiet team's reported money or wake watchers.
+func sumTeamSpend(out *Spend, ids map[string]string, totals map[spendPair]spendSum) {
+	pairs := make([]spendPair, 0)
+	for pair := range totals {
+		if _, ok := ids[pair.session]; ok {
+			pairs = append(pairs, pair)
+		} else if _, ok := ids[pair.root]; ok {
+			pairs = append(pairs, pair)
+		}
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].session == pairs[j].session {
+			return pairs[i].root < pairs[j].root
+		}
+		return pairs[i].session < pairs[j].session
+	})
+	for _, pair := range pairs {
+		sum := totals[pair]
 		key, ok := ids[pair.session]
 		if !ok {
-			key, ok = ids[pair.root]
-		}
-		if !ok {
-			continue
+			key = ids[pair.root]
 		}
 		out.USD += sum.usd
 		out.Calls += sum.calls
@@ -109,7 +129,6 @@ func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
 		}
 		out.ByMember[key] += sum.usd
 	}
-	return out, nil
 }
 
 // SpendStamp is one stamp over what a team's spend is read from: the teams
