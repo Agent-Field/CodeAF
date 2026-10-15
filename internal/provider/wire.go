@@ -408,6 +408,20 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// of it for a while, could not see the demand a rescue adds, and offered a
 	// pinned request no first rung at all (issue #266).
 	wire.Provider = c.wirePreferences(model, knobs)
+	// AND THE DEMANDED SET THAT TRAVELLED IS KEPT FOR THE ROW. `provider.only`
+	// as it was just composed is this attempt's real demand - narrowed by a
+	// rescue to one arm, by a refusal to the machines that have not refused - and
+	// not the set the call was decided on. The row records it from here so a
+	// rescue's row does not claim the whole original set (calllog.go's
+	// [demandedLanes]). It is cleared when no preference went out so a widened
+	// retry does not inherit the last attempt's demand.
+	if knobs.trace != nil {
+		if wire.Provider != nil && len(wire.Provider.Only) > 0 {
+			knobs.trace.demandedOnly = append([]string(nil), wire.Provider.Only...)
+		} else {
+			knobs.trace.demandedOnly = nil
+		}
+	}
 	// AND WHETHER THE ASK WAS REALLY MADE IS RECORDED WHERE IT IS REALLY
 	// WRITTEN. A base answers the #433 question with what comes back from a
 	// request that carried a preference, and the widened retry that follows a
