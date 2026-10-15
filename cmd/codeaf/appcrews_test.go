@@ -443,3 +443,54 @@ func TestAppCrewFormationReceiptIsTheSameFactLiveAndAfterRestart(t *testing.T) {
 		t.Fatalf("another agent's = %+v", other)
 	}
 }
+
+// A MEMBER'S BRIEF IS ITS START LINE, never its first user message: a person's
+// later message (or a files-only prompt) to the member does not become what its
+// manager told it, it survives a restart, and a member nobody started has none.
+func TestAppMemberBriefIsTheManagersStartLineAndNothingElse(t *testing.T) {
+	backend, _, _, id := crewBackend(t)
+	webAgent := "b0b0b0b0"
+	// The member was started by its manager with this brief.
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		for i := range f.Teams {
+			if f.Teams[i].ID != id {
+				continue
+			}
+			for j := range f.Teams[i].Members {
+				if f.Teams[i].Members[j].Handle == "web" {
+					f.Teams[i].Members[j].Started = true
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const brief = "Own the web client; BIRCH-9304 is yours."
+	if err := teamstore.AppendTraffic(backend.profileDir, id, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: appFakeTranscript, To: "web", Text: brief}); err != nil {
+		t.Fatal(err)
+	}
+	// Then you message it directly: a later line that is not the brief.
+	if err := teamstore.AppendTraffic(backend.profileDir, id, teamstore.Entry{Kind: teamstore.KindYou, From: teamstore.FromYou, To: "web", Text: "see the attached screenshot"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := backend.MemberBrief(id, webAgent)
+	if err != nil || got.Text != brief || got.From != "lead" {
+		t.Fatalf("brief = %+v, %v", got, err)
+	}
+	// A restart reads the same words from the log.
+	fresh := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { fresh.Close() })
+	fresh.profileDir = backend.profileDir
+	if again, err := fresh.MemberBrief(id, webAgent); err != nil || again.Text != brief {
+		t.Fatalf("after restart = %+v, %v", again, err)
+	}
+	// The manager was not started by a start line: no brief, none invented.
+	if none, err := backend.MemberBrief(id, appMemberAgent(teamstore.Member{Key: appFakeTranscript, File: appFakeTranscript})); err != nil || none.Text != "" {
+		t.Fatalf("manager brief = %+v, %v", none, err)
+	}
+	var wire *appwire.Error
+	if _, err := backend.MemberBrief(id, "ffffffff"); !errors.As(err, &wire) || wire.Code != appwire.CodeNotFound {
+		t.Fatalf("a stranger has a brief: %v", err)
+	}
+}

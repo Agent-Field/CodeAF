@@ -397,6 +397,7 @@ type Crewer interface {
 	CrewUnlink(id, item string) error
 	CrewPropose(agent string) error
 	Member(verb string, ask MemberAsk) (CrewMember, error)
+	MemberBrief(crew, agent string) (MemberBrief, error)
 	Roles() ([]Role, error)
 	RoleUpdate(id string, name, instructions, model *string) (Role, error)
 }
@@ -447,6 +448,15 @@ func crewOf(c Crew, err error) (*crewResult, error) {
 	}
 	c.Members = nonNil(c.Members)
 	return &crewResult{c}, nil
+}
+
+// MemberBrief is the words a manager started a member with, read from the
+// crew's own start line. Text is empty when the record holds none: a member a
+// person added, a crew's first manager, or a start older than the log.
+type MemberBrief struct {
+	Text string     `json:"text,omitempty"`
+	From string     `json:"from,omitempty"`
+	At   *time.Time `json:"at,omitempty"`
 }
 
 // MemberResult is a member verb's answer.
@@ -654,6 +664,23 @@ var crewMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "crews.propose needs an agent")
 		}
 		return done(c.CrewPropose(p.Agent))
+	}),
+	"members.brief": crewCall("members.brief", func(c Crewer, p struct {
+		Crew  string `json:"crew"`
+		Agent string `json:"agent"`
+	}) (*struct {
+		Brief MemberBrief `json:"brief"`
+	}, error) {
+		if strings.TrimSpace(p.Crew) == "" || strings.TrimSpace(p.Agent) == "" {
+			return nil, Errorf(CodeBadParams, "members.brief needs a crew and an agent")
+		}
+		brief, err := c.MemberBrief(p.Crew, p.Agent)
+		if err != nil {
+			return nil, err
+		}
+		return &struct {
+			Brief MemberBrief `json:"brief"`
+		}{brief}, nil
 	}),
 	"members.add":    memberVerb("add"),
 	"members.start":  memberVerb("start"),
