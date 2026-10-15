@@ -1,6 +1,6 @@
 ---
 kind: internal
-title: the held-send and plan tests pass under -race, because their fakes now lock what the off-loop readers touch
+title: the held-send and plan tests pass under -race; their fakes now lock what off-loop readers touch
 pr: 1836
 surface: [chat]
 invalidates:
