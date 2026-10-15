@@ -1458,6 +1458,14 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 	if !babbleGuardOn(ctx) || !MachineryLeak(request, response) {
 		return nil
 	}
+	// A leak carrying a well-formed call is that call, unparsed by the
+	// endpoint. Recovery dispatches it, which is why nothing downstream sees a
+	// difference and nothing here is threaded through. It runs inside the
+	// guard because the parser would otherwise take a quoted call as real:
+	// TestAQuotingReplyIsRefusedEvenThoughTheGuardConvictsIt.
+	if _, reason := RecoverMachinery(request, response); reason == recoverOK {
+		return nil
+	}
 	cut := &StreamCut{Reason: CutMachinery}
 	c.stampCut(ctx, cut, served, began, tokens)
 	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
