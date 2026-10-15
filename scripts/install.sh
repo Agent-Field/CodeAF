@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
+# The one repository releases come from. Its former name is only GitHub's
+# redirect to it, so a 404 here is the answer: no other repository is asked.
 REPOSITORY="Agent-Field/codeaf"
-LEGACY_REPOSITORY="Agent-Field/aforge-v2" # Remove after the one-release repository fallback. # legacy-name
 CHANNEL="${CHANNEL:-stable}"
 INSTALL_NAME="${CODEAF_INSTALL_NAME:-codeaf}"
 VERSION="${VERSION:-}"
@@ -327,17 +328,7 @@ api_problem() {
 release_api_get() {
   local suffix="$1"
   local destination="$2"
-  if http_get "$GITHUB_API/repos/$REPOSITORY/$suffix" "$destination" "application/vnd.github+json" 1; then
-    return 0
-  fi
-  if [[ "$HTTP_STATUS" == "404" && "$REPOSITORY" != "$LEGACY_REPOSITORY" ]]; then
-    # Remove after the renamed repository has carried releases for one release.
-    if http_get "$GITHUB_API/repos/$LEGACY_REPOSITORY/$suffix" "$destination" "application/vnd.github+json" 1; then
-      REPOSITORY="$LEGACY_REPOSITORY"
-      return 0
-    fi
-  fi
-  return 1
+  http_get "$GITHUB_API/repos/$REPOSITORY/$suffix" "$destination" "application/vnd.github+json" 1
 }
 
 extract_tags() {
@@ -533,17 +524,8 @@ if [[ "$VERBOSE" == "1" ]]; then
 	fi
 fi
 spin_label "Downloading codeaf $TAG for $OS/$ARCH"
-DOWNLOAD_REPOSITORY="$REPOSITORY"
-if ! download_release "$DOWNLOAD_REPOSITORY"; then
-	if [[ "$HTTP_STATUS" == "404" && "$DOWNLOAD_REPOSITORY" != "$LEGACY_REPOSITORY" ]]; then
-		# Remove after the renamed repository has carried releases for one release.
-		DOWNLOAD_REPOSITORY="$LEGACY_REPOSITORY"
-		if ! download_release "$DOWNLOAD_REPOSITORY"; then
-			fail "no codeaf-${OS}-${ARCH}${extension} in release ${TAG}; check the tag on the Releases page"
-		fi
-	else
-		fail "no codeaf-${OS}-${ARCH}${extension} in release ${TAG}; check the tag on the Releases page"
-	fi
+if ! download_release "$REPOSITORY"; then
+	fail "no codeaf-${OS}-${ARCH}${extension} in release ${TAG}; check the tag on the Releases page"
 fi
 
 expected=$(awk -v name="$ASSET" '$2 == name || $2 == "*" name {print $1; exit}' "$TMP_ROOT/checksums.txt")
