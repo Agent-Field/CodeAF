@@ -51,8 +51,8 @@ func TestPlanUnstartedRunningRootShowsMachineHold(t *testing.T) {
 type planFake struct {
 	*taskFake
 	// planMu guards plan and pages between the surface's off-loop reads and the
-	// verbs, which also run off the loop (offloop.go). A test that changes a
-	// page while a read may be out does it through setPage.
+	// verbs, which also run off the loop (offloop.go). Tests change them through
+	// setPage, editRows and setPlan, since a read may be out at any time.
 	planMu sync.Mutex
 	plan   []session.PlanTaskRow
 	pages  map[string]session.PlanTaskPage
@@ -108,6 +108,22 @@ func (f *planFake) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
 func (f *planFake) setPage(id string, page session.PlanTaskPage) {
 	f.planMu.Lock()
 	f.pages[id] = page
+	f.planMu.Unlock()
+}
+
+// editRows changes the store's rows in place under the same lock. In place on
+// purpose: [planAppWith] hands the surface these rows, so an edit here moves
+// what the surface holds, the way a run moving its store does.
+func (f *planFake) editRows(edit func(rows []session.PlanTaskRow)) {
+	f.planMu.Lock()
+	edit(f.plan)
+	f.planMu.Unlock()
+}
+
+// setPlan replaces the store's rows; the surface learns of them on its next read.
+func (f *planFake) setPlan(rows []session.PlanTaskRow) {
+	f.planMu.Lock()
+	f.plan = rows
 	f.planMu.Unlock()
 }
 
@@ -582,7 +598,7 @@ func planPageWithSteps(row session.PlanTaskRow, n int) session.PlanTaskPage {
 func appendPlanStep(fake *planFake, id string, n int) {
 	page := fake.pages[id]
 	page.Steps = append(page.Steps, session.PlanStep{Step: n, Command: planStepCommand(n)})
-	fake.pages[id] = page
+	fake.setPage(id, page)
 }
 
 // planDrawnKin is the connector cell the place draws each plan row with, in draw
@@ -725,7 +741,7 @@ func TestTheRunsPlanIsReadAgainOnItsOwnBeat(t *testing.T) {
 	if got := len(a.taskSheet.mine.plan); got != 1 {
 		t.Fatalf("the first reading holds %d plan rows, want the run's one", got)
 	}
-	fake.plan = append(fake.plan, session.PlanTaskRow{ID: "p1", Parent: "1", Title: "a part the run added", Status: "running"})
+	fake.setPlan(append(fake.plan, session.PlanTaskRow{ID: "p1", Parent: "1", Title: "a part the run added", Status: "running"}))
 	now = now.Add(elsewhereEvery - time.Millisecond)
 	readPlanRows(t, a)
 	if got := len(a.taskSheet.mine.plan); got != 1 {

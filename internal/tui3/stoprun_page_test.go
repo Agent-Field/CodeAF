@@ -68,7 +68,7 @@ func TestStopOnAPartsRoomIsTheCardAndThenTheStoresOwnCancel(t *testing.T) {
 	counted.setStatus("3", "running")
 	part := counted.planFake.pages["3"]
 	part.Row.Status = "running"
-	counted.planFake.pages["3"] = part
+	counted.planFake.setPage("3", part)
 	openPlanRoomNow(t, a, "3")
 	if plan := a.roomPlan(); plan == nil || plan.id != "3" {
 		t.Fatal("the part's room did not open")

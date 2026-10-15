@@ -96,7 +96,7 @@ func TestWhileTheRowsAreOnTheirWayTheFrameDrawsWhatItHeld(t *testing.T) {
 	a.agent = slow
 	a.taskSheet.regroup(a)
 
-	fake.plan = append(fake.plan, session.PlanTaskRow{ID: "p1", Parent: "1", Title: "a part the run added", Status: "running"})
+	fake.setPlan(append(fake.plan, session.PlanTaskRow{ID: "p1", Parent: "1", Title: "a part the run added", Status: "running"}))
 	a.railStamp++
 	cmd := a.refreshPlanRows()
 	if cmd == nil {

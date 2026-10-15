@@ -151,7 +151,7 @@ func TestAProgramRoomNamesItsTaskOnceAndHidesItsBriefBehindADropdown(t *testing.
 	a, agent := programRoomApp(t, 120, 40)
 	page := agent.planFake.pages["7"]
 	page.Description = strings.Repeat("the store interface changes and every caller moves with it. ", 12) + "THE LAST WORDS"
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	openProgramRoomNow(t, a)
 	width, _ := a.size()
 	head := func() []string {
@@ -198,7 +198,7 @@ func TestAProgramsOpenBriefIsAWholeDocumentTheRoomScrolls(t *testing.T) {
 		items = append(items, "- item "+strconv.Itoa(i)+" keeps __init__.py as it is")
 	}
 	page.Description = "THE WORK\n\nFIRST ACTION: read the spec.\n" + strings.Join(items, "\n") + "\n\nWHAT TO PRODUCE\n\nTHE LAST WORDS"
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	openProgramRoomNow(t, a)
 	a.roomScroll(-3)
 	before := a.room.offset
@@ -266,7 +266,7 @@ func TestAProgramsStepOpensToItsWholeStepAndShutsAgain(t *testing.T) {
 	program.Actions = append(program.Actions, delegate.Shown{At: at, Step: "explore", Text: "ran go test ./...",
 		Outcome: "fails · exit 1", Detail: "bash: go test ./...\n\n--- FAIL: TestTheWholeOutput"})
 	page.Program = &program
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	openProgramRoomNow(t, a)
 	var target row
 	for _, r := range a.roomRows(a.bodyWidth()) {
@@ -300,16 +300,16 @@ func TestAProgramRoomFollowsWhileRunningAndStopsAfterItSettles(t *testing.T) {
 	if !a.programRoomFollows() {
 		t.Fatal("a room on a running program is not on the paint clock")
 	}
-	reads := agent.railPlanCounter.pages
+	reads := agent.railPlanCounter.pages.Load()
 	for range 5 {
 		drive(t, a, frameMsg{})
 	}
-	if agent.railPlanCounter.pages != reads {
-		t.Fatalf("frames inside one beat read the page %d times", agent.railPlanCounter.pages-reads)
+	if agent.railPlanCounter.pages.Load() != reads {
+		t.Fatalf("frames inside one beat read the page %d times", agent.railPlanCounter.pages.Load()-reads)
 	}
 	for beat := 1; beat <= 3; beat++ {
 		planBeat(t, a)
-		if got := agent.railPlanCounter.pages - reads; got != beat {
+		if got := agent.railPlanCounter.pages.Load() - reads; got != int64(beat) {
 			t.Fatalf("after %d beats the page was read %d times, want once a beat", beat, got)
 		}
 	}
@@ -317,13 +317,13 @@ func TestAProgramRoomFollowsWhileRunningAndStopsAfterItSettles(t *testing.T) {
 	page := agent.planFake.pages["7"]
 	page.Row.Status, page.Row.Ended = "done", a.now()
 	page.Notes = []session.PlanTaskNote{{Body: "the work landed on branch senior-dev/auth"}}
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, page.Row.Title, session.TaskDone,
 		session.TaskNotice{StartedAt: programRunBegan, EndedAt: a.now()})})
-	before := agent.railPlanCounter.pages
+	before := agent.railPlanCounter.pages.Load()
 	drive(t, a, frameMsg{})
-	if agent.railPlanCounter.pages != before+1 {
-		t.Fatalf("the landing was read %d times, want once", agent.railPlanCounter.pages-before)
+	if agent.railPlanCounter.pages.Load() != before+1 {
+		t.Fatalf("the landing was read %d times, want once", agent.railPlanCounter.pages.Load()-before)
 	}
 	if !strings.Contains(roomText(a), "the work landed on branch senior-dev/auth") {
 		t.Fatalf("the room did not end on the page the store ended on:\n%s", roomText(a))
@@ -334,12 +334,12 @@ func TestAProgramRoomFollowsWhileRunningAndStopsAfterItSettles(t *testing.T) {
 	if a.programRoomFollows() {
 		t.Fatal("a settled program's room keeps the paint clock turning")
 	}
-	settled := agent.railPlanCounter.pages
+	settled := agent.railPlanCounter.pages.Load()
 	for range 3 {
 		planBeat(t, a)
 	}
-	if agent.railPlanCounter.pages != settled {
-		t.Fatalf("a settled program's room was read %d more times", agent.railPlanCounter.pages-settled)
+	if agent.railPlanCounter.pages.Load() != settled {
+		t.Fatalf("a settled program's room was read %d more times", agent.railPlanCounter.pages.Load()-settled)
 	}
 }
 
@@ -485,7 +485,7 @@ func TestAProgramRunReadsOneFigureOnTheRoomTheRailAndTheCard(t *testing.T) {
 	// The store was seeded sixteen seconds before the run's hand-off.
 	page := agent.planFake.pages["7"]
 	page.Row.Started = programRunBegan.Add(-16 * time.Second)
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	rail := strings.Split(plain(a.railTelemetry(a.tasks[7], 40)), railSep)[0]
 	openProgramRoomNow(t, a)
 	facts, _ := a.programFactsWord(120)
@@ -498,7 +498,7 @@ func TestAProgramRunReadsOneFigureOnTheRoomTheRailAndTheCard(t *testing.T) {
 	now := ended.Add(3 * time.Second)
 	a.clock = func() time.Time { return now }
 	page.Row.Status, page.Row.Ended = "done", ended.Add(2*time.Second)
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, page.Row.Title, session.TaskDone,
 		session.TaskNotice{StartedAt: programRunBegan, EndedAt: ended, Elapsed: ended.Sub(programRunBegan)})})
 	drive(t, a, frameMsg{})
@@ -530,7 +530,7 @@ func TestAProgramRoomsClockStopsAtTheProgramsExit(t *testing.T) {
 	exit := programRunBegan.Add(20 * time.Minute)
 	page := agent.planFake.pages["7"]
 	page.Row.Ended = exit
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	now := exit.Add(65 * time.Second)
 	a.clock = func() time.Time { return now }
 	drain(t, a, a.programRoomRead())
@@ -590,7 +590,7 @@ func TestAStepThatChangedAFileWearsItsLinesInTheDiffsColours(t *testing.T) {
 		delegate.Shown{At: at, Step: "implement", Text: "edited internal/auth/middleware.go", Lines: true, Added: 123, Removed: 21},
 		delegate.Shown{At: at.Add(time.Second), Step: "implement", Text: "read internal/auth/store.go"})
 	page.Program = &program
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	openProgramRoomNow(t, a)
 	var edited, read string
 	for _, r := range a.roomRows(a.bodyWidth()) {
@@ -640,7 +640,7 @@ func TestAProgramRoomsSeamNamesTheModelsItsRunWasLaunchedOn(t *testing.T) {
 	program.Models = []string{"deepseek/deepseek-v4-pro", "moonshotai/kimi-k2.6", "z-ai/glm-5.1"}
 	program.Effort = "high"
 	page.Program = &program
-	agent.planFake.pages["7"] = page
+	agent.planFake.setPage("7", page)
 	a.closeRoom()
 	openProgramRoomNow(t, a)
 	frame, _, _ := a.frame()
@@ -718,7 +718,7 @@ func TestProgramRoomStartingRefusalKeepsThePersonsWords(t *testing.T) {
 			a, agent := programRoomApp(t, 120, 28)
 			page := agent.planFake.pages["7"]
 			page.Program.Listens = true
-			agent.planFake.pages["7"] = page
+			agent.planFake.setPage("7", page)
 			openProgramRoomNow(t, a)
 			// The held node is what owns the room's ending, so queued remains live.
 			a.programOf().page.Row.Status = state

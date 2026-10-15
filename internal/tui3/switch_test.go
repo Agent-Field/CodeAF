@@ -20,10 +20,11 @@ import (
 // no other test on this surface needs.
 type switchAgent struct {
 	*fakeAgent
-	// mu guards what Attach reads. A kept conversation's watcher calls Attach
-	// from its own goroutine (keeper.go), the way the real agents take a.mu, so
-	// a test that changes the answer while a watcher is live does it through
-	// setRunning.
+	// mu guards running, backlog and stops against Attach and its stop, which a
+	// kept conversation's watcher calls from its own goroutine (keeper.go), the
+	// way the real agents take a.mu. A test that changes running once a watcher
+	// may be live does it through setRunning. Reads and writes made from the
+	// test goroutine before any watcher starts, or after it stops, need no lock.
 	mu sync.Mutex
 	// backlog is what a turn already in flight has said. Attach hands it over in
 	// order and then stays open, which is what the real hub does under one hold

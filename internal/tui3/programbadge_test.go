@@ -188,14 +188,14 @@ func TestDrawingAProgramsBadgeReadsNothingFromTheAgent(t *testing.T) {
 	// AN OLDER ENGINE'S ROW, naming no program: the badge is read off the held
 	// plan row.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, row.Title, session.TaskRunning, session.TaskNotice{StartedAt: programRunBegan})})
-	rows, pages := counted.rows, counted.pages
+	rows, pages := counted.rows.Load(), counted.pages.Load()
 	if drawn := plain(strings.Join(a.railRows(a.viewHeight()), "\n")); !strings.Contains(drawn, "[sd]") {
 		t.Fatalf("a node named only by its held plan row wears no badge:\n%s", drawn)
 	}
 	a.stripRow(90)
 	a.taskSheetOwnRows()
-	if counted.rows != rows || counted.pages != pages {
-		t.Fatalf("drawing the badge read the agent: rows %d→%d, pages %d→%d", rows, counted.rows, pages, counted.pages)
+	if counted.rows.Load() != rows || counted.pages.Load() != pages {
+		t.Fatalf("drawing the badge read the agent: rows %d→%d, pages %d→%d", rows, counted.rows.Load(), pages, counted.pages.Load())
 	}
 }
 
