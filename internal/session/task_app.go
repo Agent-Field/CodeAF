@@ -44,6 +44,12 @@ type AppQuickFile struct {
 	// Added and Removed are this file's own changed lines.
 	Added, Removed int
 }
+
+// AppActionProposalModel is the proposal card's Change model: it moves one
+// proposed (or held) task's model before it starts and is refused for anything
+// else, so it can never retarget work already running or touch the agent.
+const AppActionProposalModel = "proposal_model"
+
 type AppTaskIntent struct {
 	ID, Action, Text, Model, Verb string
 	State                         *string
@@ -267,6 +273,10 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 			return err
 		}
 	}
+	if intent.Action == AppActionProposalModel {
+		// Past its proposal a task's model is RetargetTask's promise, not this card's.
+		return errors.New("that task must be a proposed task to change its model")
+	}
 	row, found, err := a.AppTask(intent.ID)
 	if err != nil {
 		return err
@@ -292,7 +302,7 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 // A proposal's clock and model are edited under the same lock as its answer.
 func (a *Agent) appProposalAction(id uint64, intent AppTaskIntent) (bool, error) {
 	var choice taskModelChoice
-	if intent.Action == "model" {
+	if intent.Action == "model" || intent.Action == AppActionProposalModel {
 		choice = a.resolveTaskModel(intent.Model)
 	}
 	a.mu.Lock()
@@ -314,7 +324,11 @@ func (a *Agent) appProposalAction(id uint64, intent AppTaskIntent) (bool, error)
 		a.mu.Unlock()
 		a.HoldTask(id)
 		return true, nil
-	case "model":
+	case "model", AppActionProposalModel:
+		if intent.Action == AppActionProposalModel && strings.TrimSpace(intent.Model) == "" {
+			a.mu.Unlock()
+			return true, errors.New("choose one known model")
+		}
 		if choice.problem != "" || choice.model == "" {
 			a.mu.Unlock()
 			return true, errors.New("choose one known model")

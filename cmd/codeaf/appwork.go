@@ -662,6 +662,27 @@ func (b *appBackend) ActOnTask(id, action, verdict, text string) error {
 	}
 }
 
+// SetTaskModel is the proposal card's Change model: one proposed task's model,
+// never the agent's, with the card's own state and version honoured.
+func (b *appBackend) SetTaskModel(id, model, state string, version *uint64) error {
+	agent, local, ok := appSplitID(id)
+	if !ok {
+		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
+	}
+	_, live, err := b.heldLive(agent)
+	if err != nil {
+		return err
+	}
+	intent := session.AppTaskIntent{ID: local, Action: session.AppActionProposalModel, Model: strings.TrimSpace(model), Version: version}
+	if state = strings.TrimSpace(state); state != "" {
+		intent.State = &state
+	}
+	if err := live.conn.Conv.AppTaskAction(intent); err != nil {
+		return appTaskError(err)
+	}
+	return nil
+}
+
 // appTaskSettleWait bounds how long an action on a task the app has seen
 // waits for the engine's list to name it.
 const appTaskSettleWait = 3 * time.Second
@@ -672,7 +693,7 @@ func appTaskError(err error) error {
 	switch {
 	case strings.Contains(words, "no such task"), strings.Contains(words, "no such quick task"):
 		return appwire.Errorf(appwire.CodeNotFound, "%s", plainWords(words))
-	case strings.Contains(words, "stale"), strings.Contains(words, "not waiting"), strings.Contains(words, "finished"), strings.Contains(words, "unknown"), strings.Contains(words, "must be"):
+	case strings.Contains(words, "stale"), strings.Contains(words, "not waiting"), strings.Contains(words, "finished"), strings.Contains(words, "unknown"), strings.Contains(words, "must be"), strings.Contains(words, "choose one"):
 		return appwire.Errorf(appwire.CodeBadParams, "%s", plainWords(words))
 	}
 	return appEngineError(err)

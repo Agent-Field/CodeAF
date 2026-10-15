@@ -152,6 +152,15 @@ type Worker interface {
 	Wake() error
 }
 
+// TaskModeler is the optional half of a Worker that can move one proposed task
+// to another model: tasks.model. An engine without it refuses the method as
+// unknown, and no other verb changes a task's model.
+type TaskModeler interface {
+	// SetTaskModel names the one proposed task, the model and, optionally, the
+	// state and version of the card the person saw; a stale card is refused.
+	SetTaskModel(id, model, state string, version *uint64) error
+}
+
 func init() {
 	for name, m := range workMethods {
 		methods[name] = m
@@ -248,6 +257,21 @@ var workMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "not_right needs the words to tell it")
 		}
 		return done(w.ActOnTask(p.ID, "decide", p.Verdict, p.Text))
+	}),
+	"tasks.model": typed(func(e Engine, p struct {
+		ID      string  `json:"id"`
+		Model   string  `json:"model"`
+		State   string  `json:"state"`
+		Version *uint64 `json:"version"`
+	}) (*Empty, error) {
+		m, ok := e.(TaskModeler)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve tasks.model")
+		}
+		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Model) == "" {
+			return nil, Errorf(CodeBadParams, "tasks.model needs an id and a model")
+		}
+		return done(m.SetTaskModel(p.ID, p.Model, p.State, p.Version))
 	}),
 	"quick.undo": typed(func(e Engine, p IDParams) (*Empty, error) {
 		w, err := worker(e, "quick.undo")

@@ -422,3 +422,58 @@ func TestAppQuickStoppedTaskCanUndoItsCapturedWrites(t *testing.T) {
 		t.Fatalf("captured file remains: %v", err)
 	}
 }
+
+// The proposal card's Change model moves one proposal's model and nothing else.
+func TestAppProposalModelChangesOnlyTheSelectedProposal(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.AskConsent = true; c.TaskAutoApproveSeconds = 12 })
+	hub := newEventHub()
+	agent.mu.Lock()
+	agent.hub = hub
+	agent.mu.Unlock()
+	agent.config.TaskModels = func() []string { return []string{"alpha/one", "beta/two"} }
+	before := agent.Model()
+	agent.taskTimer = func(time.Duration) (<-chan time.Time, func()) { return make(chan time.Time), func() {} }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for id := uint64(1); id <= 2; id++ {
+		if _, err := agent.openTask(ctx, id, taskSpec{title: "Proposal", brief: "work", acceptance: taskPersonAcceptance}, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := agent.AppTaskAction(AppTaskIntent{ID: "1", Action: AppActionProposalModel, Model: "beta/two"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := agent.AppTasks()
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("rows %+v %v", rows, err)
+	}
+	if rows[0].Model != "beta/two" || rows[1].Model == "beta/two" {
+		t.Fatalf("model moved the wrong proposal: %+v", rows)
+	}
+	if agent.Model() != before {
+		t.Fatalf("agent model changed %q -> %q", before, agent.Model())
+	}
+	// Unknown, empty, stale and not-a-proposal are refused and change nothing.
+	stale := rows[0].Version + 9
+	for name, intent := range map[string]AppTaskIntent{
+		"unknown": {ID: "2", Model: "nope/none"},
+		"empty":   {ID: "2", Model: " "},
+		"stale":   {ID: "2", Model: "alpha/one", Version: &stale},
+		"state":   {ID: "2", Model: "alpha/one", State: ptr("running")},
+		"missing": {ID: "9", Model: "alpha/one"},
+	} {
+		intent.Action = AppActionProposalModel
+		if err := agent.AppTaskAction(intent); err == nil {
+			t.Fatalf("%s: accepted", name)
+		}
+	}
+	rows, _ = agent.AppTasks()
+	if rows[1].Model == "alpha/one" {
+		t.Fatalf("a refused change landed: %+v", rows[1])
+	}
+	for _, id := range []uint64{1, 2} {
+		agent.ResolveTask(id, TaskAnswer{Approved: false})
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
