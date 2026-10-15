@@ -809,6 +809,9 @@ type LaunchShape struct {
 	// ProposalClockS, when set, is how many seconds a proposed task waits before
 	// it starts on its own ([session.Config.TaskAutoApproveSeconds]).
 	ProposalClockS *int `json:"proposalClockS,omitempty"`
+	// LiveToolOutput sends a model's shell output as it arrives
+	// ([session.Config.LiveToolOutput]); the desktop app sets it.
+	LiveToolOutput bool `json:"liveToolOutput,omitempty"`
 
 	Yolo      bool    `json:"yolo,omitempty"`
 	NoCompact bool    `json:"noCompact,omitempty"`

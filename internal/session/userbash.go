@@ -96,7 +96,7 @@ func displayToolOutput(id, output string) string {
 // is retained across writes so remote JSON frames cannot corrupt split runes.
 type shellOutput struct {
 	hub          *eventHub
-	id           string
+	id, tool     string
 	bytes, lines int
 	pending      []byte
 	cut          bool
@@ -122,12 +122,12 @@ func (w *shellOutput) Write(p []byte) (int, error) {
 		}
 	}
 	if end > 0 {
-		w.hub.send(Event{Kind: EventToolOutput, Tool: "bash", CallID: w.id, Text: strings.ToValidUTF8(string(w.pending[:end]), "�")})
+		w.hub.send(Event{Kind: EventToolOutput, Tool: w.tool, CallID: w.id, Text: strings.ToValidUTF8(string(w.pending[:end]), "�")})
 	}
 	w.pending = append(w.pending[:0], w.pending[end:]...)
 	if w.cut {
 		w.pending = nil
-		w.hub.send(Event{Kind: EventToolOutput, Tool: "bash", CallID: w.id, Text: "\n[Live output limit reached; the final result includes the saved output path.]\n"})
+		w.hub.send(Event{Kind: EventToolOutput, Tool: w.tool, CallID: w.id, Text: "\n[Live output limit reached; the final result includes the saved output path.]\n"})
 	}
 	return n, nil
 }
@@ -158,7 +158,7 @@ func (a *Agent) runUserBash(ctx context.Context, hub *eventHub, command string) 
 		output, failed = "Command cancelled", true
 	} else {
 		caps := a.resultCaps()
-		writer := &shellOutput{hub: hub, id: call.ID, bytes: caps.MaxBytes, lines: caps.MaxLines}
+		writer := &shellOutput{hub: hub, id: call.ID, tool: "bash", bytes: caps.MaxBytes, lines: caps.MaxLines}
 		var err error
 		output, failed, err = bare.RunBash(ctx, a.config.Workspace, json.RawMessage(checked.Function.Arguments), caps, writer)
 		if err != nil {

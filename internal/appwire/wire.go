@@ -228,6 +228,8 @@ type Entry struct {
 	Quiet     bool   `json:"quiet,omitempty"`
 	ErrorKind string `json:"error_kind,omitempty"`
 	Status    int    `json:"status,omitempty"`
+	// A tool entry carries the facts of its call (worklog.go).
+	ToolFacts
 }
 
 // The kinds of entry.
@@ -432,6 +434,7 @@ type (
 		Phase   string `json:"phase"`
 		OK      *bool  `json:"ok,omitempty"`
 		Summary string `json:"summary,omitempty"`
+		ToolFacts
 	}
 	TurnDone struct {
 		Agent     string `json:"agent"`

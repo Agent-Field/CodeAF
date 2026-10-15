@@ -880,6 +880,15 @@ type Event struct {
 	// the same field with two answers.
 	CallID string
 
+	// Exit is the exit code a call's result reports, on EventToolEnd and
+	// EventToolFailed, and nil when it reports none.
+	Exit *int `json:"Exit,omitempty"`
+
+	// Batch names the calls the model asked for together, which run at once:
+	// the first call's id, on every EventToolBegin of a batch of two or more,
+	// and empty on a call that ran alone.
+	Batch string `json:"Batch,omitempty"`
+
 	// ArgsText is the RAW, PARTIAL arguments text of a forming call: exactly what
 	// the provider has streamed so far, uncompacted and unparsed. It is set on
 	// EventToolForming and empty everywhere else — Args is the display JSON of a
@@ -1020,7 +1029,9 @@ type Event struct {
 	// [Agent.ResolveConnect]. Service is the account's id — "google" — on all
 	// three kinds; ServiceName is the word a person reads — "Google" — on the
 	// ask. AuthURL is the page to open, on EventConnectAuth only. Account and
-	// Failed are the outcome, on EventConnectDone only.
+	// Failed are the outcome, on EventConnectDone only. Service and
+	// ServiceName also name the account an EventToolBegin's call acts through,
+	// and are empty on a call that reaches no account.
 	ConnectID   string
 	Service     string
 	ServiceName string
@@ -1220,6 +1231,11 @@ type Config struct {
 	// task by the checkpoints on their own; it moves only when the person asks
 	// ([Agent.MoveTurnToTask]), and the app says the reply is running long.
 	HandOverOnAsk bool
+
+	// LiveToolOutput is the desktop app's too: a shell call the model makes
+	// sends its output as it arrives (EventToolOutput), as one the person
+	// typed always does, so a work log can show what a long command is saying.
+	LiveToolOutput bool
 
 	// WaitForBeltSteps is for the run worker that enforces its limits and
 	// delivers notes from tool-end events. Its sole event reader must close

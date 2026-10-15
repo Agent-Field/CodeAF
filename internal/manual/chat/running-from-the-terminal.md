@@ -338,6 +338,17 @@ to sleep the app stops every running process and the agent reads asleep; on
 waking, each stopped process leaves one line, such as `link checker stopped
 while this Mac slept · Rerun`, and nothing is restarted for you.
 
+## The desktop app's work log — what each step says, and a command's whole output
+
+Each step in the app's work log says its kind (read, search, command, edit,
+web, an account, a task, or a step that asked you first), when it started and
+ended, which steps the agent started together, a command's exit code, and
+whether it repeats an earlier command of the same reply. An edit says the
+lines it added and removed. A command still going shows its last three lines,
+and twelve once it ends. A command's whole output is kept on this Mac for a
+week under the app's folder in codeaf's home, so it can be opened after the
+reply ends, or after the app restarts.
+
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
 `codeaf connect` lists every model provider this profile knows, whether it is connected,

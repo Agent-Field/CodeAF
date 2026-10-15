@@ -18,3 +18,13 @@ New methods: `tasks.get`, `tasks.start` / `hold` / `decline` / `typing` /
 `irreversible`, `your_call`, `result`, `files`, `spent_usd` and the live
 `line`; listed entries carry `turn` and `client_id` for messages this launch
 sent. Events: `quick.changed`, `process.changed`, `process.output`, `turn.long`.
+
+The work log's detail: `turn.tool` and tool entries carry `kind`, `started_at`,
+`ended_at`, `batch`, `exit_code`, `retried_of`, `files`, `connector`, `task`,
+`ask`, `input`, `tail` and `lines`, and a call running past five seconds is
+said again at most every half second with a fresh tail. `tools.output` reads a
+call's whole output by line, after the turn too, and `tools.follow` /
+`tools.unfollow` say a running call's new lines as `tool.output` events. The
+engine sends a model's shell output as it arrives when the launch asks for it
+(`liveToolOutput`), and tool begin and end events carry the batch, the account
+and the exit code.

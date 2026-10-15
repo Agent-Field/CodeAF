@@ -1044,6 +1044,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	if hello.Launch != nil {
 		cfg.DeterministicNames = hello.Launch.DeterministicNames
 		cfg.HandOverOnAsk = hello.Launch.HandOverOnAsk
+		cfg.LiveToolOutput = hello.Launch.LiveToolOutput
 		if clock := hello.Launch.ProposalClockS; clock != nil {
 			cfg.TaskAutoApproveSeconds = *clock
 		}

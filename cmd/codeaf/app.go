@@ -212,7 +212,7 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// own naming does not rename it afterwards.
 		// And only the person moves a running reply to a task, and a proposed
 		// task's clock is the app's.
-		Launch: &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock},
+		Launch: &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock, LiveToolOutput: true},
 	}
 	loop, err := remote.Loopback(hello, remote.Options{
 		Boot: func(h remote.Hello) (*remote.Engine, error) {
@@ -266,6 +266,9 @@ type appBackend struct {
 	today func(time.Time) float64
 	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
 	turnLong time.Duration
+	// toolQuiet is how long a call runs before its row is said again with a
+	// fresh tail ([appToolQuiet]).
+	toolQuiet time.Duration
 	// follows are the processes whose output the app is following.
 	follows map[string]*appFollow
 	// asleep says the Mac is asleep (power.sleep until power.wake).
@@ -299,6 +302,8 @@ type appAgent struct {
 	// marks are the turn number and client id of each message of the
 	// person's this process sent, by its place, so a listing can say them.
 	marks map[int]appTurnMark
+	// calls is the work log's record of this agent's tool calls (apptools.go).
+	calls *appCallLog
 }
 
 // appTurnMark is what this process knows of one of the person's messages.
@@ -396,6 +401,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		keys:      keys,
 		state:     &appState{},
 		turnLong:  appTurnLong,
+		toolQuiet: appToolQuiet,
 		follows:   map[string]*appFollow{},
 		emit:      emit,
 		open:      open,
@@ -967,6 +973,9 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 	askID := appAskID(q)
 	switch event.Kind {
 	case session.EventQuestion:
+		if q.Subject.Kind == session.SubjectCall {
+			b.callAsked(a, id, live, q.Subject.CallID, askID)
+		}
 		ask := appAskOf(id, q)
 		restated, moved := false, false
 		var view appwire.Agent
@@ -1235,8 +1244,11 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: clientID,
 	}})
 	long := b.watchLong(id, live, turn, b.now())
+	b.newTurnCalls(a)
+	tails := b.tickTools(a, id, live)
 	guard.Go("app/turn", func() {
 		defer long.Stop()
+		defer tails()
 		b.pump(a, id, live, turn, n, text, events)
 	})
 	return turn, nil
@@ -1295,7 +1307,13 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			sayReply()
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
-			live.box.Event(appwire.EventTurnTool, appwire.TurnTool{Agent: id, Turn: turn, Call: event.CallID, Name: event.Tool, Title: title, Phase: appwire.PhaseBegin, Summary: event.Hint})
+			row := b.callBegan(a, id, turn, event, title)
+			row.Summary = event.Hint
+			live.box.Event(appwire.EventTurnTool, row)
+		case session.EventToolOutput:
+			b.callOutput(a, id, live, event)
+		case session.EventToolFinished:
+			b.callFinished(a, event)
 		case session.EventToolEnd, session.EventToolFailed:
 			succeeded := event.Kind == session.EventToolEnd
 			summary := event.Hint
@@ -1310,7 +1328,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if title == "" {
 				title = redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, ""))
 			}
-			live.box.Event(appwire.EventTurnTool, appwire.TurnTool{Agent: id, Turn: turn, Call: event.CallID, Name: event.Tool, Title: title, Detail: appDetail(summary), Phase: appwire.PhaseEnd, OK: &succeeded, Summary: summary})
+			live.box.Event(appwire.EventTurnTool, b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
 		case session.EventConsentRequest:
 			call := appConsentCall{Tool: event.Tool, Args: event.Args}
 			b.locked(func() { live.consents[event.ID] = call })
@@ -1334,6 +1352,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				changed(func(v *appwire.Agent) { v.Title = title })
 			}
 		case session.EventTaskUpdate, session.EventTaskProposal, session.EventTaskPhase, session.EventJobUpdate:
+			// A task a running task call made is that call's task.
+			if task := event.Task; task != nil && (event.Kind == session.EventTaskProposal || task.State == "" || task.State == session.TaskQueued) {
+				b.callTask(a, appTaskID(id, task.ID))
+			}
 			b.workEvent(id, live, event)
 		}
 	}
@@ -1714,7 +1736,20 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 		return []appwire.Entry{}, false, nil
 	}
 	record := session.ReadTranscript(transcript)
-	all := appEntriesOf(id, append(append([]session.DisplayEntry(nil), record.Earlier...), record.Entries...), at, marks)
+	items := append(append([]session.DisplayEntry(nil), record.Earlier...), record.Entries...)
+	all := appEntriesOf(id, items, at, marks)
+	// A tool entry carries its call's facts, as its row did live.
+	calls := map[string]session.DisplayEntry{}
+	for _, item := range items {
+		if item.Role == "tool" && item.CallID != "" {
+			calls[item.CallID] = item
+		}
+	}
+	for i := range all {
+		if item, ok := calls[all[i].Call]; ok && all[i].Kind == appwire.EntryTool {
+			all[i].ToolFacts = b.appEntryFacts(a, item)
+		}
+	}
 	if words := strings.TrimSpace(record.Unreadable); words != "" {
 		all = append(all, appwire.Entry{ID: "unreadable", Agent: id, Kind: appwire.EntryNotice, At: at, Text: words})
 	}
@@ -1880,6 +1915,7 @@ func (b *appBackend) Warm() {
 	defer close(b.warmed)
 	defer guard.Recover("app/warm")
 	_, _ = b.process()
+	b.sweepOutputs()
 }
 
 // process is the engine's shared process half, opened once.

@@ -398,14 +398,20 @@ const maxTimeoutMs = 2147483647
 
 type bashOutputKey struct{}
 
+// WithBashOutput is a context whose shell calls mirror their raw output to
+// output as it arrives, the way [RunBash] does for a command the person typed.
+func WithBashOutput(ctx context.Context, output io.Writer) context.Context {
+	if output == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, bashOutputKey{}, output)
+}
+
 // RunBash runs the ordinary non-interactive shell and mirrors its raw output to
 // a caller-owned writer as it arrives. The runner retains its normal bounds,
 // cancellation, process isolation and spill handling.
 func RunBash(ctx context.Context, cwd string, args json.RawMessage, caps Caps, output io.Writer) (string, bool, error) {
-	if output != nil {
-		ctx = context.WithValue(ctx, bashOutputKey{}, output)
-	}
-	return newBashTool(cwd, caps).Execute(ctx, args)
+	return newBashTool(cwd, caps).Execute(WithBashOutput(ctx, output), args)
 }
 
 func newBashTool(cwd string, caps Caps) Tool {

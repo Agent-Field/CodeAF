@@ -255,6 +255,13 @@ const argsLimit = 32768
 // or two of a file or a build log, which is what an expanded row is for.
 const outputLimit = 4000
 
+// liveToolOutputBytes and liveToolOutputLines bound what one call sends as it
+// runs ([Config.LiveToolOutput]); its result is bounded by the runner as ever.
+const (
+	liveToolOutputBytes = 8 << 20
+	liveToolOutputLines = 200000
+)
+
 // ── the turn ────────────────────────────────────────────────────────────────
 
 // settleBoundTripped reports whether the settle turn has spent its bound, and
@@ -3430,14 +3437,27 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// pairs a finished row with the row it has been drawing — so one rendering is
 	// not an optimization of three, it is the honest spelling of them.
 	rendered := make([]string, len(calls))
+	// Calls started together carry one name for their batch: the first call's
+	// id, and nothing on a call that runs alone.
+	batch := ""
+	if len(calls) > 1 {
+		batch = calls[0].ID
+	}
 	for index, call := range calls {
 		rendered[index] = argsText(call)
+		service, serviceName := a.serviceOf(call.Function.Name), ""
+		if service != "" {
+			serviceName = a.serviceName(service)
+		}
 		hub.send(Event{
-			Kind:   EventToolBegin,
-			Tool:   call.Function.Name,
-			Hint:   a.gloss(call),
-			Args:   rendered[index],
-			CallID: call.ID,
+			Kind:        EventToolBegin,
+			Tool:        call.Function.Name,
+			Hint:        a.gloss(call),
+			Args:        rendered[index],
+			CallID:      call.ID,
+			Batch:       batch,
+			Service:     service,
+			ServiceName: serviceName,
 		})
 	}
 
@@ -3553,6 +3573,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				Args:   rendered[index],
 				Output: capOutput(results[index].text),
 				CallID: call.ID,
+				Exit:   resultExit(results[index].text),
 				// WHOSE FAILURE THIS WAS travels with it. Everything counting
 				// steps out of band — the runner's no-progress ledger above all —
 				// reads events and not results, so a fact kept only on the result
@@ -3574,9 +3595,28 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			Args:   rendered[index],
 			Output: capOutput(results[index].text),
 			CallID: call.ID,
+			Exit:   resultExit(results[index].text),
 		})
 	}
 	return results
+}
+
+// resultExitRe is the status line a shell call's result ends with when its
+// command exited with a code other than zero.
+var resultExitRe = regexp.MustCompile(`Command exited with code (-?\d+)`)
+
+// resultExit is the exit code a call's result reports, or nil for a result
+// that reports none: a command that exited zero says nothing about it.
+func resultExit(text string) *int {
+	all := resultExitRe.FindAllStringSubmatch(text, -1)
+	if len(all) == 0 {
+		return nil
+	}
+	code, err := strconv.Atoi(all[len(all)-1][1])
+	if err != nil {
+		return nil
+	}
+	return &code
 }
 
 // executeTool dispatches one call to the matching belt tool.
@@ -3676,7 +3716,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// somehow, and the id on the row is the only handle it has (promote.go).
 		// It is set at this chokepoint rather than per tool, so the early warm
 		// start carries it exactly as the batch does.
-		text, isError, err := a.executeTaskTool(withCallID(ctx, call.ID), tool, running, args)
+		callCtx := withCallID(ctx, call.ID)
+		if hub != nil && a.config.LiveToolOutput {
+			callCtx = bare.WithBashOutput(callCtx, &shellOutput{hub: hub, id: call.ID, tool: call.Function.Name, bytes: liveToolOutputBytes, lines: liveToolOutputLines})
+		}
+		text, isError, err := a.executeTaskTool(callCtx, tool, running, args)
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
 		// yet — it goes out with the batch, in call order, because that is the
 		// order the transcript is written in — but the fact that this call is

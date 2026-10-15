@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -307,17 +308,29 @@ func (b *appBackend) relineLocked(live *appLive, key string) (appwire.Task, bool
 
 // appTaskRoom is a conversation that can be watched one task at a time, the
 // door the terminal's task rail reads a running task's current call through.
-// A conversation joined in a window's host has none, and its tasks' lines are
-// what the engine says about them.
 type appTaskRoom interface {
 	WatchTaskRoom(id uint64) (<-chan session.Event, func(), error)
 }
 
+// appTaskJournal is a conversation in another process, whose tasks are read
+// off the tail of their own journals, as the terminal's hosted task page does.
+type appTaskJournal interface {
+	TaskRoom(id uint64, tail int) (session.TaskRecord, error)
+}
+
+// appPilotTail is how much of a task's journal one look reads, in bytes: the
+// call in flight is the last thing written.
+const appPilotTail = 128 << 10
+
+// appPilotBeat is how often a task's journal is looked at for its call.
+const appPilotBeat = time.Second
+
 // flyPilot watches one running task's calls, once, so its line can say the
 // call it is making: `write essay3.md`, `bash go test ./...`.
 func (b *appBackend) flyPilot(live *appLive, key string, n uint64) {
-	room, ok := live.conn.Conv.(appTaskRoom)
-	if !ok {
+	room, watches := live.conn.Conv.(appTaskRoom)
+	journal, reads := live.conn.Conv.(appTaskJournal)
+	if !watches && !reads {
 		return
 	}
 	flying := false
@@ -330,10 +343,19 @@ func (b *appBackend) flyPilot(live *appLive, key string, n uint64) {
 	if flying {
 		return
 	}
-	lane, stop, err := room.WatchTaskRoom(n)
-	if err != nil {
-		b.locked(func() { delete(live.pilots, key) })
-		return
+	var lane <-chan session.Event
+	var stop func()
+	if watches {
+		var err error
+		if lane, stop, err = room.WatchTaskRoom(n); err != nil {
+			b.locked(func() { delete(live.pilots, key) })
+			return
+		}
+	} else {
+		done := make(chan struct{})
+		var once sync.Once
+		stop = func() { once.Do(func() { close(done) }) }
+		lane = appJournalLane(journal, n, done)
 	}
 	if stop == nil {
 		stop = func() {}
@@ -351,6 +373,61 @@ func (b *appBackend) flyPilot(live *appLive, key string, n uint64) {
 		return
 	}
 	guard.Go("app/pilot", func() { b.pilot(live, key, lane) })
+}
+
+// appJournalLane turns looks at a task's journal into the call events a
+// watched lane would carry: a begin when a call is in flight, an end when
+// none is. It closes when done does.
+func appJournalLane(journal appTaskJournal, n uint64, done <-chan struct{}) <-chan session.Event {
+	lane := make(chan session.Event, 1)
+	guard.Go("app/pilot-journal", func() {
+		defer close(lane)
+		tick := time.NewTicker(appPilotBeat)
+		defer tick.Stop()
+		said := ""
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+			}
+			record, err := journal.TaskRoom(n, appPilotTail)
+			if err != nil {
+				continue
+			}
+			event := session.Event{Kind: session.EventToolEnd}
+			read := session.ReadTranscriptBytes(record.Journal)
+			if last := appInFlight(read.Entries); last != nil {
+				event = session.Event{Kind: session.EventToolBegin, Tool: last.Tool, Args: last.Args, Hint: last.Hint}
+			}
+			now := event.Tool + "\x00" + event.Args
+			if now == said {
+				continue
+			}
+			said = now
+			select {
+			case lane <- event:
+			case <-done:
+				return
+			}
+		}
+	})
+	return lane
+}
+
+// appInFlight is the call a journal's tail has asked for and not yet heard
+// back from, or nil.
+func appInFlight(entries []session.DisplayEntry) *session.DisplayEntry {
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Role != "tool" {
+			continue
+		}
+		if entries[i].Answered {
+			return nil
+		}
+		return &entries[i]
+	}
+	return nil
 }
 
 // pilot folds one task's call events into its line until the lane closes.

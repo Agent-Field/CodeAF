@@ -56,3 +56,27 @@ func PickerModels(profileDir string, sources modelsource.Set, defaults func() []
 func TaskPhaseWords(phase string, round, rounds int) string {
 	return taskPhaseWords(phase, round, rounds)
 }
+
+// ToolTarget is what a call is about, as its row says it after the tool's
+// name: the command, the path, the query. "" when the call names nothing.
+func ToolTarget(tool, args, hint string) string {
+	return toolTarget(tool, args, hint)
+}
+
+// ToolFileChange is the file a call writes and the lines it adds and removes,
+// by the same counts the terminal's row draws (+12 −3), and false for a call
+// that writes no file it can count.
+func ToolFileChange(tool, args string) (path string, adds, dels int, ok bool) {
+	fields := argsOf(args)
+	path = argString(fields, "path")
+	switch tool {
+	case "edit":
+		adds, dels, _ = editStat(args)
+	case "write":
+		content, _ := argBody(argString(fields, "content"))
+		adds = lineCount(content)
+	default:
+		return "", 0, 0, false
+	}
+	return path, adds, dels, path != ""
+}
