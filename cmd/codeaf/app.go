@@ -2069,6 +2069,12 @@ func (b *appBackend) rememberAlways(call appConsentCall) bool {
 	return config.RememberToolApproval(profile, tool, "allow") == nil
 }
 
+// appRecords keeps the readings of journals that have not changed, so paging
+// back through a long conversation parses its journal once rather than once a
+// page, and bounds how many readings run at once. Its limits are the session
+// package's own.
+var appRecords = session.NewRecordCache(session.RecordCacheLimits{})
+
 // Entries reads the agent's transcript off the disk, whether or not a
 // conversation is held for it: the journal is written as the turn goes.
 func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, bool, error) {
@@ -2088,21 +2094,42 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	if transcript == "" {
 		return []appwire.Entry{}, false, nil
 	}
-	record := session.ReadTranscript(transcript)
+	var page []appwire.Entry
+	var more bool
+	err = appRecords.WithRecord(transcript, func(record session.Record) error {
+		var err error
+		page, more, err = appEntryPage(id, record, at, marks, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
+			return b.appEntryFacts(a, item)
+		})
+		return err
+	})
+	if err != nil {
+		return nil, false, appEntriesBusy(err)
+	}
+	return page, more, nil
+}
+
+// appEntriesBusy says a reading refused at the gate as busy, so a client asks
+// again rather than drawing an empty conversation; any other error is itself.
+func appEntriesBusy(err error) error {
+	if errors.Is(err, session.ErrRecordReadBusy) {
+		return appwire.Errorf(appwire.CodeBusy, "too many conversations are being read at once; ask again in a moment")
+	}
+	return err
+}
+
+// appEntryPage is one page of a record's entries, newest last, and whether
+// older entries sit before it.
+//
+// THE PAGE IS CUT BEFORE ANY TOOL ROW IS DRESSED OR ITS FACTS READ. A tool's
+// title and lines are redacted and its facts can open its output file, so
+// doing that for every call in a long conversation and then keeping two
+// hundred was most of the cost of a page; the entries, their ids and the
+// cursor are still told over the WHOLE record, because an id counts the
+// person's messages from the first and an update is known only by a later call.
+func appEntryPage(id string, record session.Record, at time.Time, marks map[int]appTurnMark, before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts) ([]appwire.Entry, bool, error) {
 	items := appRecordItems(record)
-	all := appEntriesOf(id, items, at, marks)
-	// A tool entry carries its call's facts, as its row did live.
-	calls := map[string]session.DisplayEntry{}
-	for _, item := range items {
-		if item.Role == "tool" && item.CallID != "" {
-			calls[item.CallID] = item
-		}
-	}
-	for i := range all {
-		if item, ok := calls[all[i].Call]; ok && all[i].Kind == appwire.EntryTool {
-			all[i].ToolFacts = b.appEntryFacts(a, item)
-		}
-	}
+	all, from := appEntryShapes(id, items, at, marks)
 	if words := strings.TrimSpace(record.Unreadable); words != "" {
 		all = append(all, appwire.Entry{ID: "unreadable", Agent: id, Kind: appwire.EntryNotice, At: at, Text: words})
 	}
@@ -2121,6 +2148,33 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	}
 	start := max(end-limit, 0)
 	page := append([]appwire.Entry{}, all[start:end]...)
+	for i := range page {
+		if start+i < len(from) {
+			appDressTool(&page[i], items[from[start+i]])
+		}
+	}
+	// A tool entry carries its call's facts, as its row did live. The call a
+	// page names is the LAST item to carry its id, as it always was.
+	wanted := map[string]bool{}
+	for _, entry := range page {
+		if entry.Kind == appwire.EntryTool && entry.Call != "" {
+			wanted[entry.Call] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return page, start > 0, nil
+	}
+	calls := make(map[string]session.DisplayEntry, len(wanted))
+	for _, item := range items {
+		if item.Role == "tool" && wanted[item.CallID] {
+			calls[item.CallID] = item
+		}
+	}
+	for i := range page {
+		if item, ok := calls[page[i].Call]; ok && page[i].Kind == appwire.EntryTool {
+			page[i].ToolFacts = facts(item)
+		}
+	}
 	return page, start > 0, nil
 }
 
@@ -2131,7 +2185,31 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 // A message this process sent carries its turn number, and the person's entry
 // its client id, from marks; one sent before this launch has neither.
 func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, marks map[int]appTurnMark) []appwire.Entry {
+	entries, from := appEntryShapes(agent, items, at, marks)
+	for i := range entries {
+		appDressTool(&entries[i], items[from[i]])
+	}
+	return entries
+}
+
+// appDressTool writes a tool entry's title, summary and detail line, which
+// are the costly part of an entry: each is redacted. Any other entry is left
+// as it is.
+func appDressTool(entry *appwire.Entry, item session.DisplayEntry) {
+	if entry.Kind != appwire.EntryTool {
+		return
+	}
+	entry.Title = redact.Secrets(tui3.ToolTitle(item.Tool, item.Args, item.Hint))
+	entry.Summary = redact.Secrets(item.Hint)
+	entry.Detail = appDetail(redact.Secrets(item.Output))
+}
+
+// appEntryShapes is the entries with their ids, kinds and words, and for each
+// the index of the item it was told from, with tool entries not yet dressed.
+// Ids are counted over the whole record, so this is always told whole.
+func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, marks map[int]appTurnMark) ([]appwire.Entry, []int) {
 	entries := make([]appwire.Entry, 0, len(items))
+	from := make([]int, 0, len(items))
 	n, m, k, c := -1, 0, 0, 0
 	// A MESSAGE FOLLOWED BY A TOOL CALL BEFORE THE PERSON SPOKE AGAIN WAS AN
 	// UPDATE, as the live pump named it.
@@ -2207,9 +2285,6 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, mark
 				call = "#" + strconv.Itoa(i)
 			}
 			entry.ID, entry.Kind, entry.Call, entry.Name = appToolEntryID(call), appwire.EntryTool, item.CallID, item.Tool
-			entry.Title = redact.Secrets(tui3.ToolTitle(item.Tool, item.Args, item.Hint))
-			entry.Summary = redact.Secrets(item.Hint)
-			entry.Detail = appDetail(redact.Secrets(item.Output))
 		case "note":
 			if strings.TrimSpace(item.Text) == "" {
 				continue
@@ -2231,8 +2306,9 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, mark
 			}
 		}
 		entries = append(entries, entry)
+		from = append(from, i)
 	}
-	return entries
+	return entries, from
 }
 
 // SetModel moves the agent to another model, opening its conversation first if
