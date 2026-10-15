@@ -41,6 +41,13 @@ type Member struct {
 	// (a [KindStart] the interface carried out), which is the second rule a
 	// home is picked by.
 	Started bool `json:"started,omitempty"`
+	// StartEntry is the id of the [KindStart] line, in this team's log, that
+	// the interface carried out to make this membership: the member's brief
+	// by identity rather than by the handle, which a person can change and a
+	// later member can take. Empty on a membership nobody started and on every
+	// one made before it was kept ([StartFor] answers those only when the log
+	// proves which line is theirs). The recipient is this record's Key.
+	StartEntry string `json:"start_entry,omitempty"`
 	// HandleBy is who chose Handle: [HandleByWords] for the word list's
 	// instant guess, [HandleByModel] for the title model's word, and
 	// [HandleByTyped] for a handle a person or the manager gave. "" is a

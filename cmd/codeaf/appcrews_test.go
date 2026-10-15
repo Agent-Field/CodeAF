@@ -494,3 +494,90 @@ func TestAppMemberBriefIsTheManagersStartLineAndNothingElse(t *testing.T) {
 		t.Fatalf("a stranger has a brief: %v", err)
 	}
 }
+
+// A MEMBER'S BRIEF IS ITS OWN START LINE BY IDENTITY, not by handle: after the
+// member is renamed and a second member takes the old handle, each reads the
+// brief it was started with, across a restart, and a member whose line is gone
+// or was never recorded has none rather than a neighbour's.
+func TestAppMemberBriefSurvivesRenameAndHandleReuse(t *testing.T) {
+	backend, _, _, id := crewBackend(t)
+	profile := backend.profileDir
+	first := "b0b0b0b0"
+	const (
+		briefOne = "Own the web client; BIRCH-9304 is yours."
+		briefTwo = "Take the billing export; ASH-2217 is yours."
+	)
+	startOne, err := teamstore.AppendTrafficID(profile, id, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: "web", Text: briefOne})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := teamstore.AppendTraffic(profile, id, teamstore.Entry{Kind: teamstore.KindYou, From: teamstore.FromYou, To: "web", Text: "a later prompt, not a brief"}); err != nil {
+		t.Fatal(err)
+	}
+	secondKey := "/state/v3/places/proj/c1c1c1c1/transcript.jsonl"
+	secondAgent := appMemberAgent(teamstore.Member{Key: secondKey, File: secondKey})
+	// The first member is renamed before anyone else is started under "web".
+	err = teamstore.Update(profile, func(f *teamstore.File) error {
+		for i := range f.Teams {
+			for j := range f.Teams[i].Members {
+				if f.Teams[i].Members[j].Handle == "web" {
+					f.Teams[i].Members[j].Started, f.Teams[i].Members[j].StartEntry = true, startOne
+				}
+			}
+		}
+		return f.SetHandle(id, "/state/v3/places/proj/b0b0b0b0/transcript.jsonl", "api")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startTwo, err := teamstore.AppendTrafficID(profile, id, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: "web", Text: briefTwo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = teamstore.Update(profile, func(f *teamstore.File) error {
+		return f.AddMember(id, teamstore.Member{Key: secondKey, File: secondKey, Where: "/w", Word: "billing", Handle: "web", Started: true, StartEntry: startTwo})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(b *appBackend, label string) {
+		t.Helper()
+		if got, err := b.MemberBrief(id, first); err != nil || got.Text != briefOne || got.From != "lead" {
+			t.Fatalf("%s: renamed member = %+v, %v", label, got, err)
+		}
+		if got, err := b.MemberBrief(id, secondAgent); err != nil || got.Text != briefTwo || got.From != "lead" {
+			t.Fatalf("%s: reusing member = %+v, %v", label, got, err)
+		}
+	}
+	check(backend, "live")
+	fresh := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { fresh.Close() })
+	fresh.profileDir = profile
+	check(fresh, "after restart")
+
+	// A recorded line that is gone is unknown: nobody else's words, no manager.
+	err = teamstore.Update(profile, func(f *teamstore.File) error {
+		for i := range f.Teams {
+			for j := range f.Teams[i].Members {
+				if f.Teams[i].Members[j].Key == secondKey {
+					f.Teams[i].Members[j].StartEntry = "000000000999"
+				}
+				if f.Teams[i].Members[j].Handle == "api" {
+					f.Teams[i].Members[j].StartEntry, f.Teams[i].Members[j].Handle = "", "web"
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := fresh.MemberBrief(id, secondAgent); err != nil || got.Text != "" || got.From != "" || got.At != nil {
+		t.Fatalf("absent line = %+v, %v", got, err)
+	}
+	// The first record kept no id, but the log wrote its key onto the line when
+	// it was appended: that is exact provenance, and it is still its own words.
+	if got, err := fresh.MemberBrief(id, first); err != nil || got.Text != briefOne {
+		t.Fatalf("legacy by recipient key = %+v, %v", got, err)
+	}
+}

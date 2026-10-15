@@ -518,7 +518,7 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 				err = fmt.Errorf("inherit approvals: %w", err)
 			}
 		}
-		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, conv, err) }
+		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, entry, conv, err) }
 	})
 }
 
@@ -529,7 +529,7 @@ func (a *app) trafficStartRefused(handle, why string) {
 
 // trafficStarted is the start's conversation back from the engine: held
 // behind, joined to the team under its handle, and said beside the manager.
-func (a *app) trafficStarted(id, handle string, conv Conversation, err error) tea.Cmd {
+func (a *app) trafficStarted(id, handle, entry string, conv Conversation, err error) tea.Cmd {
 	if err != nil || conv.Agent == nil {
 		why := "the conversation did not open"
 		if err != nil {
@@ -549,7 +549,7 @@ func (a *app) trafficStarted(id, handle string, conv Conversation, err error) te
 	a.trafficBehindTop(key)
 	a.chatTabBar = tabBar{}
 	if t.ID != "" {
-		m := teamMember{Key: key, File: conv.SessionFile, Where: conv.Workspace, Handle: handle}
+		m := teamMember{Key: key, File: conv.SessionFile, Where: conv.Workspace, Handle: handle, StartEntry: entry}
 		if err := a.teamEdit(func(f *teamstore.File) error {
 			if err := f.AddMember(t.ID, m); err != nil {
 				return err

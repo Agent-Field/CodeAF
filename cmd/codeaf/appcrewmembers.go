@@ -672,10 +672,12 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	return b.CrewGet(id)
 }
 
-// MemberBrief is what a manager started a member with: the text of the start
-// line its crew's log holds for that handle, read on demand for one member. A
-// member nobody started, or one whose start line is gone, has none; nothing is
-// inferred from its conversation.
+// MemberBrief is what a manager started a member with: the start line that
+// made this very membership, read by its recorded id (teamstore.StartFor), so a
+// renamed member keeps its own brief and a later member under its old handle
+// does not receive it. A member nobody started, or one whose line cannot be
+// proved to be its own, has none; nothing is inferred from its conversation or
+// from who manages the crew now.
 func (b *appBackend) MemberBrief(crew, agent string) (appwire.MemberBrief, error) {
 	t, _, err := b.crewTeam(crew)
 	if err != nil {
@@ -685,27 +687,17 @@ func (b *appBackend) MemberBrief(crew, agent string) (appwire.MemberBrief, error
 	if !ok {
 		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", agent, t.Name)
 	}
-	if !m.Started || strings.TrimSpace(m.Handle) == "" {
-		return appwire.MemberBrief{}, nil
-	}
-	entries, err := teamstore.ReadTraffic(b.crewProfile(), t.ID, "", 0)
+	e, ok, err := teamstore.StartFor(b.crewProfile(), t, m)
 	if err != nil {
 		return appwire.MemberBrief{}, appEngineError(err)
 	}
-	for i := len(entries) - 1; i >= 0; i-- {
-		e := entries[i]
-		if e.Kind != teamstore.KindStart || e.From != teamstore.FromManager || e.To != m.Handle {
-			continue
-		}
-		if e.Team != "" && e.Team != t.ID {
-			continue
-		}
-		at := e.At
-		from := ""
-		if boss, ok := t.Member(e.FromKey); ok {
-			from = boss.Handle
-		}
-		return appwire.MemberBrief{Text: redact.Secrets(strings.TrimSpace(e.Text)), From: from, At: &at}, nil
+	if !ok {
+		return appwire.MemberBrief{}, nil
 	}
-	return appwire.MemberBrief{}, nil
+	at := e.At
+	from := ""
+	if boss, ok := t.Member(e.FromKey); ok {
+		from = boss.Handle
+	}
+	return appwire.MemberBrief{Text: redact.Secrets(strings.TrimSpace(e.Text)), From: from, At: &at}, nil
 }
