@@ -338,7 +338,7 @@ func (s *Store) Update(a Automation) (Automation, error) {
 		if lookChanged(current.Look, a.Look) {
 			a.Seen, a.Memo = "", ""
 		}
-		if scheduleChanged(current.Schedule, a.Schedule) {
+		if ScheduleChanged(current.Schedule, a.Schedule) {
 			if a.Schedule.Repeats() && a.Schedule.Interval() > 0 {
 				a.Schedule.Anchor = now
 			}
@@ -997,7 +997,12 @@ func lookChanged(a, b *Look) bool {
 	return a.Command != b.Command || a.Files != b.Files || a.Tool != b.Tool || string(a.Args) != string(b.Args) || a.Condition != b.Condition
 }
 
-func scheduleChanged(a, b Schedule) bool {
+// ScheduleChanged reports whether b is a different schedule from a: another
+// moment, another rhythm or another zone. It is the ONE reading of that, which
+// [Store.Update] reschedules on and a change's card works its next run out by
+// (internal/session's automation_tool.go), so the card cannot promise a next run
+// the save does not give.
+func ScheduleChanged(a, b Schedule) bool {
 	return !a.At.Equal(b.At) || strings.TrimSpace(a.Every) != strings.TrimSpace(b.Every) || a.Zone != b.Zone
 }
 

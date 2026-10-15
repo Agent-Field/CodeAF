@@ -34,15 +34,17 @@ const typedAutomationKind session.QuestionKind = "surface-automation"
 // of question with its own card by id alone (question.go).
 func typedAutomationID(seq uint64) uint64 { return 1<<40 + seq }
 
-// The words a typed card says.
+// The words a typed card says. An edit's head and answers are the engine's
+// own ([session.AutomationChangeHead], [session.AutomationOptions]), because a
+// change asked for in the conversation raises the same card and the two must
+// not drift apart.
 const (
 	typedAddHead    = "save this automation?"
-	typedEditHead   = "save this change?"
+	typedEditHead   = session.AutomationChangeHead
 	typedSaveLabel  = "Save"
 	typedNoLabel    = "Don't save"
 	typedNoSays     = "Nothing is saved."
 	typedSaveSays   = "It runs on this schedule while codeaf is open."
-	typedEditSays   = "The automation runs this way from its next time."
 	typedReason     = "you typed it, so nothing is saved until you say so"
 	typedNoAutoWord = "no automation has the id "
 	typedSavedWord  = "saved "
@@ -168,7 +170,7 @@ func (a *app) confirmTypedAutomation(item automation.Automation, edit bool) {
 	head := typedAddHead
 	if edit {
 		head = typedEditHead
-		notice.Options[0].Consequence = typedEditSays
+		notice.Options = session.AutomationOptions(item)
 	}
 	if a.auto != nil && !a.auto.settled() {
 		a.auto.verdict = autoEndedWord

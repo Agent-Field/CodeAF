@@ -252,28 +252,37 @@ catches up for the paused time; a one-time reminder resumed after its moment run
 late. A finished one offers no pause. The foot names the row's verbs:
 `enter its history · → verbs: run now, pause, edit, delete, open where it was asked · tab next place · esc`.
 
-## Change an automation — edit its time, what it does or where it runs
+## Change an automation — move my reminder to 5pm, reschedule it, edit its time, what it does or where it runs
 
-Press `→` then `e` on its row in `/automations`, and the automation's own line lands in the
+**Ask me.** "Move my water reminder to 5pm", "make the weekly update Tuesdays", "have the
+CI watch look every 30 minutes": I find it with the `automation` tool's `list` and change
+it in place with its `change` op, sending only what changes. Its card is headed
+`save this change?` and shows the automation as it would be, with `next run` where a new
+one says `first run`: `1 Save` says
+`The automation runs this way from its next time.`, `0 Don't save` says `Nothing is saved.`,
+and a correction typed under it goes back to me. Saved, it leaves one dim line —
+`drink water · changed` — and it keeps its id, its history, where it runs and the
+conversation its news arrives in. No second automation is left beside the old one.
+
+**Or press `→` then `e`** on its row in `/automations`, and its own line lands in the
 message box, exactly as it would have to be typed:
 
 ```
 /automations edit 3f2a9c1e5b7d4a60 title "weekly update" zone America/Toronto every "0 9 * * 1" do "draft the weekly update from the git log" folder /home/you/code/app
 ```
 
-Change what you want and press enter. Nothing is saved yet: a card headed
-`save this change?` shows the automation as it would be, and `1 Save` saves it —
-`saved weekly update · next Mon 12 Oct at 09:00`. Any clause you leave out stays as it
-was. A new schedule is worked out again from now, and a finished one-time automation given
-a new moment wakes again. A watch whose look or condition changed forgets what it had
-seen, so its next yes speaks.
+Change what you want and press enter: the same `save this change?` card, and `1 Save` says
+`saved weekly update · next Mon 12 Oct at 09:00`. Any clause you leave out stays as it was.
 
-A watch that looks through a tool is written without its look — a tool's arguments are not
-something anybody types on one line — and the edit leaves that look as it was.
+Either way, a new schedule is worked out again from now, and **a finished one-time reminder
+given a new moment wakes again**. A new rhythm keeps the zone the old one was read in. A
+watch whose look or condition changed forgets what it had seen, so its next yes speaks. A
+paused automation stays paused until it is resumed. A change cannot turn a watch back into
+a plain reminder: delete it and ask for the reminder.
 
-**I have no verb that changes an existing automation in place.** In a conversation I can
-pause, resume, run, delete, list it and read its history; changing one is `e`, or a new
-proposal that replaces it.
+A watch that looks through a tool is written without its look in the typed line — a
+tool's arguments are not something anybody types on one line — and the edit leaves that
+look as it was.
 
 ## History — every run, read a run's whole result, why did I get this reminder, and open where it was asked
 
@@ -598,11 +607,13 @@ along, and switching one off.
 
 You never name a tool. When what you say is a reminder, scheduled work or a watch, I call
 the **`automation`** tool to propose it, and its card is what you see. The same tool
+**changes** one that exists — "move my reminder to 5pm" — on a `save this change?` card,
 **lists** the automations with their ids, **pauses**, **resumes**, **deletes** and **runs**
 one now, and reads one's **history** — so "pause the CI watch", "delete the weekly update"
-and "what did the nightly bump do on Tuesday" work in any conversation. A change made that
-way needs no card and leaves one dim line in the conversation — `ci on main · paused`,
-`weekly update · deleted` — while making a new one always goes through its card.
+and "what did the nightly bump do on Tuesday" work in any conversation. A pause, resume,
+delete or run made that way needs no card and leaves one dim line in the conversation —
+`ci on main · paused`, `weekly update · deleted` — while making a new one or changing one
+always goes through its card.
 
 A run of scheduled work ends by calling **`automation_report`** with `done` or `incomplete`
 and a short summary: that summary is the line you read, and a run that never calls it is
