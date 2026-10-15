@@ -854,11 +854,22 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 		entry.ToolFacts.Task = id
 	})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: entry})
+	handed := false
 	if err := b.ActOnTask(id, "note", "", text); err != nil {
-		return appwire.Entry{}, err
+		// A TASK HANDED OVER FROM INSIDE THE WORK runs as a crew of its own and
+		// is not on the engine's task list, so its note goes through the door the
+		// task's own room speaks through. Nothing there says at which step the
+		// note was read, so it stays waiting.
+		if err := b.steerHandedTask(live, local, text, err); err != nil {
+			return appwire.Entry{}, err
+		}
+		handed = true
 	}
 	entry.State = appwire.NoteWaiting
 	live.box.Event(appwire.EventNoteChanged, appwire.NoteChanged{Task: id, ID: entry.ID, State: appwire.NoteWaiting})
+	if handed {
+		return entry, nil
+	}
 	start := false
 	b.locked(func() {
 		if live.notes == nil {
@@ -871,6 +882,32 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 		guard.Go("app/note-read", func() { b.watchNotes(live, id, local) })
 	}
 	return entry, nil
+}
+
+// appTaskSteerer is the door a task's own room sends words through.
+type appTaskSteerer interface {
+	SteerTask(id uint64, text string) (session.SteerReceipt, error)
+}
+
+// steerHandedTask sends a note to a task the engine's task list does not name,
+// and answers the original refusal when that door cannot take it either.
+func (b *appBackend) steerHandedTask(live *appLive, local, text string, refused error) error {
+	var wire *appwire.Error
+	if !errors.As(refused, &wire) || wire.Code != appwire.CodeNotFound {
+		return refused
+	}
+	n, err := strconv.ParseUint(local, 10, 64)
+	if err != nil {
+		return refused
+	}
+	steerer, ok := live.conn.Conv.(appTaskSteerer)
+	if !ok {
+		return refused
+	}
+	if _, err := steerer.SteerTask(n, text); err != nil {
+		return appTaskError(err)
+	}
+	return nil
 }
 
 // watchNotes looks at a task's notes until every note sent to it is read.

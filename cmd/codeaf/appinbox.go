@@ -361,7 +361,9 @@ func (b *appBackend) AnswerInbox(id, option, text, why string) (time.Time, error
 				if !send {
 					return
 				}
-				if err := b.AnswerAskWith(agent, ask, appwire.AskAnswer{Option: option, Text: text, Why: why}); err != nil {
+				// ONE INBOX ITEM IS ONE QUESTION: an ask that came in a batch is
+				// answered alone here, and its siblings stay in the Inbox.
+				if err := b.AnswerAskWith(agent, ask, appwire.AskAnswer{Option: option, Text: text, Why: why, BatchItem: ask}); err != nil {
 					in.locked(func() {
 						delete(in.held, id)
 						delete(in.from, id)
