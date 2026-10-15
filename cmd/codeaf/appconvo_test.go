@@ -315,3 +315,41 @@ func TestAppLongOutputIsTrimmedToItsLast512KB(t *testing.T) {
 		t.Fatalf("trimmed to %d bytes, %v", len(data), err)
 	}
 }
+
+// STAGED ATTACHMENT CLEANUP: removing one chip leaves the others, removing it
+// again is fine, an unknown agent is refused, a send naming a missing id
+// consumes nothing, and a good send consumes exactly what it carried.
+func TestAppStagedAttachmentsAreRemovedExactly(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}
+	backend, _, agent := workBackend(t, conv)
+	long := strings.Repeat("--- FAIL: TestLoad\n", 20)
+	one, err := backend.AddAttachment(agent.ID, appwire.Attachment{Kind: appwire.AttachPaste}, long)
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := backend.AddAttachment(agent.ID, appwire.Attachment{Kind: appwire.AttachPaste}, long)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.RemoveAttachment(agent.ID, one.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.RemoveAttachment(agent.ID, one.ID); err != nil {
+		t.Fatalf("a repeat remove failed: %v", err)
+	}
+	if err := backend.RemoveAttachment("nobody", one.ID); err == nil {
+		t.Fatal("an unknown agent was accepted")
+	}
+	if _, err := backend.SendWith(agent.ID, "hi", "m-1", []string{two.ID, one.ID}); err == nil {
+		t.Fatal("a send naming a removed attachment succeeded")
+	}
+	if _, err := backend.SendWith(agent.ID, "hi", "m-2", []string{two.ID}); err != nil {
+		t.Fatalf("the other chip was consumed by the failed send: %v", err)
+	}
+	if _, err := backend.SendWith(agent.ID, "again", "m-3", []string{two.ID}); err == nil {
+		t.Fatal("a sent attachment was still staged")
+	}
+	if err := backend.RemoveAttachment(agent.ID, two.ID); err != nil {
+		t.Fatalf("cleanup after a send failed: %v", err)
+	}
+}

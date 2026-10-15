@@ -190,6 +190,17 @@ type Talker interface {
 	TaskEntries(id, before string, limit int) ([]Entry, bool, error)
 }
 
+// AttachmentRemover is the optional half of attachments: an engine that keeps
+// staged attachments lets the app drop one that will not be sent. It is a
+// separate interface so a Talker without staging needs no stub; one that is
+// not an AttachmentRemover refuses attachments.remove as unknown.
+type AttachmentRemover interface {
+	// RemoveAttachment drops one staged attachment. It is idempotent: an id
+	// that is missing or already sent is not an error, so cleanup after a
+	// failed send is harmless. An unknown agent is still an error.
+	RemoveAttachment(agent, id string) error
+}
+
 func init() {
 	for name, m := range talkMethods {
 		methods[name] = m
@@ -394,6 +405,19 @@ var talkMethods = map[string]method{
 			return nil, err
 		}
 		return &AttachmentResult{attachment}, nil
+	}),
+	"attachments.remove": typed(func(e Engine, p struct {
+		Agent string `json:"agent"`
+		ID    string `json:"id"`
+	}) (*Empty, error) {
+		r, ok := e.(AttachmentRemover)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve attachments.remove")
+		}
+		if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.ID) == "" {
+			return nil, Errorf(CodeBadParams, "attachments.remove needs an agent and an id")
+		}
+		return done(r.RemoveAttachment(p.Agent, p.ID))
 	}),
 	"tasks.pause":  talkTaskVerb("pause"),
 	"tasks.resume": talkTaskVerb("resume"),

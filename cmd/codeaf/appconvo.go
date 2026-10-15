@@ -764,6 +764,17 @@ func (b *appBackend) AddAttachment(agent string, attachment appwire.Attachment, 
 	return kept.view, nil
 }
 
+// RemoveAttachment drops one staged attachment and nothing else. A missing or
+// already sent id is fine, so cleaning up after a failed send is harmless.
+func (b *appBackend) RemoveAttachment(agent, id string) error {
+	a, err := b.find(agent)
+	if err != nil {
+		return err
+	}
+	b.locked(func() { delete(a.attach, id) })
+	return nil
+}
+
 // SendWith sends a message with its attachments, written into the words the
 // engine is sent, and keeps them on the person's entry.
 func (b *appBackend) SendWith(agent, text, clientID string, ids []string) (uint64, error) {
@@ -774,6 +785,8 @@ func (b *appBackend) SendWith(agent, text, clientID string, ids []string) (uint6
 	var kept []appAttach
 	var missing string
 	b.locked(func() {
+		// Every id is checked before any is consumed, so one missing chip
+		// leaves the other staged ones for the retry.
 		for _, id := range ids {
 			attach, ok := a.attach[id]
 			if !ok {
