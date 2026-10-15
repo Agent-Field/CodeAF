@@ -4931,6 +4931,19 @@ type compactionPass struct {
 	// summarySkipped explains an attempted summary that did not land after
 	// the free rungs changed the conversation.
 	summarySkipped string
+	// The pass as facts, journaled on its marker (compaction_facts.go):
+	// what the conversation weighed after it, the summary it spliced and who
+	// wrote it, what that summary stands for, and why a summary it asked for
+	// did not land.
+	at           time.Time
+	tokensAfter  int
+	summary      string
+	summaryModel string
+	turns        int
+	coversFrom   time.Time
+	coversUntil  time.Time
+	failed       string
+	full         bool
 	// stored says the full record went somewhere a later session can still read
 	// it — the store's thread (chatlog.go). It is what makes the difference
 	// between the two announce lines honest.
@@ -5051,21 +5064,37 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	why := ""
 	appendedDuringSummary := 0
 	attempted := false
+	seq := a.passSeq + 1
 	if summaryWanted(policy, pass, a.transcriptTokensLocked()) {
 		plan, short, ok := a.planSummaryLocked(policy)
 		why = short
 		if ok {
 			attempted = true
 			lengthBeforeSummary := len(a.messages)
+			turns, from, until := a.summaryProvenanceLocked(plan)
+			a.summarizing = true
 			a.mu.Unlock()
+			// THE ONE PROOF A SUMMARY IS BEING WRITTEN, sent with the lock
+			// released and before the request: a surface shows the wait for
+			// as long as it lasts and no longer.
+			hub.send(Event{Kind: EventSummaryStarted, Compaction: &CompactionFact{Seq: seq, At: passInstant(), TokensBefore: tokensBefore}})
 			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
-			summary, err := a.writeSummary(ctx, plan)
+			summary, answeredBy, err := a.writeSummaryAs(ctx, plan)
 			a.mu.Lock()
+			a.summarizing = false
 			appendedDuringSummary = max(0, len(a.messages)-lengthBeforeSummary)
 			if err == nil {
 				pass.summarized, why = a.spliceSummaryLocked(plan, summary)
 			} else {
 				why = summaryFailedWhy(ctx, err)
+			}
+			if pass.summarized > 0 {
+				// The model that ANSWERED, which a reroute can make different
+				// from the one the plan asked for.
+				pass.summary, pass.summaryModel = summary, answeredBy
+				pass.turns, pass.coversFrom, pass.coversUntil = turns, from, until
+			} else {
+				pass.failed = summaryFailedWord(ctx, err, why)
 			}
 		}
 	}
@@ -5083,7 +5112,26 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	if pass.empty() {
 		// No eligible material was reduced. A manual pass and a routine pass
 		// protect different tails, so this is not a claim about total size.
+		//
+		// A SUMMARY THAT WAS ASKED FOR AND DID NOT LAND IS STILL A FACT. The
+		// surface that showed it being written has to be told it ended, and
+		// a resumed conversation has to say the same thing, so the failure is
+		// numbered, kept and journaled like a pass — with no marker, because
+		// the transcript did not move.
+		var failure *CompactionFact
+		if attempted {
+			tokens := a.meterTokensLocked()
+			fact := a.recordPassLocked(CompactionFact{
+				TokensBefore: tokensBefore, TokensAfter: tokens, Failed: pass.failed,
+				Full: a.contextFullLocked(tokens),
+			})
+			a.file.appendCompactionFailed(fact)
+			failure = &fact
+		}
 		a.mu.Unlock()
+		if failure != nil {
+			hub.send(Event{Kind: EventSummaryFailed, Compaction: failure})
+		}
 		return false, "", &NothingToCompact{Why: why}
 	}
 
@@ -5119,6 +5167,8 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	a.contextTokens = 0
 	a.contextBeltTokens = belt
 	tokensAfter := a.meterTokensLocked()
+	pass.at, pass.tokensAfter, pass.full = passInstant(), tokensAfter, a.contextFullLocked(tokensAfter)
+	fact := a.recordPassLocked(passFact(pass, tokensBefore))
 	// The whole rebuilt window is re-journaled behind the marker, not just the
 	// tail: a stub and a fold are edits to messages the file already holds ABOVE
 	// the marker, and replay discards everything above it. Writing the window is
@@ -5133,7 +5183,7 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	a.mu.Unlock()
 
 	if hub != nil {
-		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter), Summarized: pass.summarized})
+		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter), Summarized: pass.summarized, Compaction: &fact})
 	}
 	return true, pass.summarySkipped, nil
 }

@@ -641,6 +641,19 @@ const (
 	// in this turn — saved, paused, resumed, deleted, asked to run now. It is a
 	// report and never a question.
 	EventAutomationUpdate
+	// EventSummaryStarted says a compaction pass has asked the conversation's
+	// model for a summary and is waiting on it, with the session lock released
+	// (compact_summary.go). It is the one proof a summary is being written:
+	// [EventCompacting] is sent only after the transcript was edited.
+	// [Event.Compaction] carries the pass's sequence number and the weight it
+	// started from. It is always followed by [EventCompacted] or
+	// [EventSummaryFailed] carrying the same sequence number.
+	EventSummaryStarted
+	// EventSummaryFailed ends a summary that did not land in a pass that then
+	// changed nothing; [Event.Compaction] says why ([CompactionFact.Failed]).
+	// A pass whose free rungs did change the conversation ends on
+	// [EventCompacted] instead, with the same Failed reason set on it.
+	EventSummaryFailed
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -738,6 +751,12 @@ type Event struct {
 	// with no summary serialises exactly as it did before this field, and a
 	// surface talking to an older engine folds every pass.
 	Summarized int `json:"Summarized,omitempty"`
+
+	// Compaction is the pass as facts, on [EventCompacted],
+	// [EventSummaryStarted] and [EventSummaryFailed] (compaction_facts.go).
+	// Nil on every other kind and from a peer built before it existed, which
+	// a surface reads as "unknown" and never as "nothing happened".
+	Compaction *CompactionFact `json:"Compaction,omitempty"`
 
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
@@ -2816,6 +2835,18 @@ type Agent struct {
 	// put in place of the conversation above. A surface draws the region instead
 	// of them, so the conversation is told once ([EarlierHistory]).
 	earlierFloor int
+	// passSeq is how many compaction passes this conversation has made,
+	// failures included, and keptTurns and keptFrom the newest summary's
+	// provenance (compaction_facts.go). Restored from the journal on resume.
+	// That is all a live agent keeps of its passes: the journal holds them.
+	passSeq   int
+	keptTurns int
+	keptFrom  time.Time
+	// summarizing is true while a pass waits on a summary request.
+	summarizing bool
+	// manualPass is the cut of a pass a surface asked for outside any turn,
+	// while it runs ([Agent.CompactObserved]); Stop cuts it with the turn.
+	manualPass *manualPassCut
 	// personAsk is the last thing THE PERSON typed, kept apart from the
 	// transcript because the transcript cannot answer the question. Every user
 	// message in a.messages is user-role, including the ones the session wrote

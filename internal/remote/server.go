@@ -1345,6 +1345,7 @@ func (sess *Session) announce() {
 func factsMoved(kind session.EventKind) bool {
 	switch kind {
 	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
+		session.EventSummaryStarted, session.EventSummaryFailed,
 		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
 		session.EventConnectAsk, session.EventConnectDone,
 		session.EventTaskProposal, session.EventTaskUpdate,
@@ -2686,7 +2687,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return mustJSON(door.AnswerLaneOffer(yes)), nil
 
 	case MethodCompact:
-		err := agent.Compact(context.Background())
+		err := sess.compactSaid(agent)
 		if why, skipped := session.SummarySkippedWhy(err); skipped {
 			// An older surface ignores a successful call's optional result and
 			// still reads a true success, while a newer one can show the reason.

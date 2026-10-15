@@ -232,6 +232,22 @@ type sessionEntry struct {
 	// Summarized is how many messages a summary note replaced
 	// (compact_summary.go). The note itself is in the window like any line.
 	Summarized int `json:"summarized,omitempty"`
+	// The rest of the pass as facts (compaction_facts.go): what the
+	// conversation weighed after it, the summary it spliced (Kept, its body
+	// without the note's framing) and the model that wrote it, how many of the
+	// person's messages that summary stands for and when they were written,
+	// and why a summary it asked for did not land. On a `compaction_failed`
+	// line only TokensBefore, TokensAfter, Failed and Full are set. All are
+	// absent from a marker written before they existed, which a reader takes
+	// as unknown.
+	TokensAfter int    `json:"tokensAfter,omitempty"`
+	Kept        string `json:"kept,omitempty"`
+	KeptModel   string `json:"keptModel,omitempty"`
+	KeptTurns   int    `json:"keptTurns,omitempty"`
+	KeptFrom    string `json:"keptFrom,omitempty"`
+	KeptUntil   string `json:"keptUntil,omitempty"`
+	SummaryFail string `json:"summaryFailed,omitempty"`
+	ContextFull bool   `json:"contextFull,omitempty"`
 
 	// Window is HOW MANY MESSAGE LINES THE PASS RE-JOURNALED BEHIND THIS MARKER
 	// — the length of the rebuilt window [sessionFile.appendCompaction] writes
@@ -1856,18 +1872,22 @@ func replaySessionFile(path string) (replayedSession, error) {
 // both reading doors, because it is the same fact about the same file.
 func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, error) {
 	var (
-		messages   []ai.Message
-		reasoning  []provider.MessageReasoning
-		earlier    []ai.Message
-		overlap    int
-		title      string
-		shortTitle string
-		id         string
-		lines      int
-		scanned    int
-		spent      Usage
-		created    []fileChange
-		requests   RequestBooks
+		messages  []ai.Message
+		reasoning []provider.MessageReasoning
+		earlier   []ai.Message
+		overlap   int
+		passes    []CompactionFact
+		// earlierRows is countEntries(earlier), kept as the region grows so
+		// placing a pass never re-counts the conversation above it.
+		earlierRows int
+		title       string
+		shortTitle  string
+		id          string
+		lines       int
+		scanned     int
+		spent       Usage
+		created     []fileChange
+		requests    RequestBooks
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -2008,11 +2028,25 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// re-read of the lines above the marker (which would resurrect turns
 			// a rewind took back).
 			//
-			// The LAST marker wins because each one overwrites the snapshot the
-			// one before it took. See [replayedSession.earlier] for why the
-			// nested regions are not stacked.
+			// A RESUME KEEPS ONE HOP AND A READING KEEPS THE WHOLE. A conversation
+			// being resumed needs only the region the latest marker replaced —
+			// the snapshot each marker overwrites — because that is all a live
+			// agent holds for scrollback, and holding more would undo the
+			// memory compaction exists to save. A READING for display (rebuild
+			// false: [ReadTranscript], the record cache behind a page) is
+			// transient and wants the conversation told once and whole, so its
+			// region is STACKED: the region the older markers left followed by
+			// what the transcript held beyond their floor. One hop stopped being
+			// whole once a pass could summarize the person's own words — after
+			// a second summary it opened on the first summary's note.
 			asked, stopped = false, ""
-			earlier = append(earlier[:0], messages...)
+			if rebuild {
+				earlier = append(earlier[:0], messages...)
+			} else {
+				beyond := messages[min(overlap, len(messages)):]
+				earlier = append(earlier, beyond...)
+				earlierRows += countEntries(beyond)
+			}
 			// Everything before this marker is what the pass replaces. The
 			// name is not a message and survives the cut: a compacted session
 			// is the same session, still called what it was called.
@@ -2023,8 +2057,18 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// conversation — a reader that could not say where the copy ends has
 			// nothing it can honestly draw, and drops the region rather than
 			// showing the session to itself twice.
+			placed := true
 			if overlap = compactionOverlap(entry); overlap < 0 {
-				earlier, overlap = earlier[:0], 0
+				earlier, overlap, earlierRows, placed = earlier[:0], 0, 0, false
+			}
+			passes = appendPass(passes, entry, earlierRows, rebuild)
+			// A REGION THAT CANNOT BE PLACED TAKES ITS PASSES' PLACES WITH IT:
+			// the conversation they stood in is no longer told, so they are
+			// kept as facts (their sequence still counts) placed nowhere.
+			if !placed {
+				for index := range passes {
+					passes[index].Entry = -1
+				}
 			}
 			messages = append(messages[:0], rebuilt...)
 			reasoning = append(reasoning[:0], make([]provider.MessageReasoning, len(rebuilt))...)
@@ -2034,6 +2078,15 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if len(entry.Parts) > 0 && len(rebuilt) > 0 {
 				rememberParts(images, rebuilt[0], entry.Parts)
 			}
+		case "compaction_failed":
+			// A summary that did not land in a pass that changed nothing. The
+			// transcript did not move, so the fact is placed at the end of the
+			// conversation as it stood then, and nothing is rebuilt.
+			place := 0
+			if !rebuild {
+				place = earlierRows + countEntries(messages[min(overlap, len(messages)):])
+			}
+			passes = appendPass(passes, entry, place, rebuild)
 		case "caption":
 			// ONE BATCH'S NARRATION. It rebuilds no message — nothing was ever
 			// said to the model here — so it only indexes, and the LAST line for
@@ -2238,6 +2291,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		reasoning:      reasoning,
 		earlier:        earlier,
 		overlap:        overlap,
+		passes:         passes,
 		title:          title,
 		shortTitle:     shortTitle,
 		id:             id,
@@ -2402,8 +2456,10 @@ type replayedSession struct {
 	// still holds in full and the model no longer carries. Nil for a journal
 	// that was never compacted, which is nearly all of them.
 	//
-	// THE REGION IS ONE HOP AND IS NOT STACKED, and that is a deliberate reading
-	// of a file that could be read the other way. A modern pass RE-JOURNALS THE
+	// ON A RESUME THE REGION IS ONE HOP; a reading for display stacks it
+	// (readJournal's `compaction` case says why each), applying every older
+	// marker's floor so nothing is told twice. What follows is why the one-hop
+	// reading is safe for a live agent to hold. A modern pass RE-JOURNALS THE
 	// WHOLE REBUILT WINDOW behind its marker ([sessionFile.appendCompaction]), so
 	// the lines after an older marker already contain everything before it, edited
 	// — a walk that ignored the older markers to "reach the raw beginning" would
@@ -2420,7 +2476,11 @@ type replayedSession struct {
 	//
 	// Zero whenever earlier is empty, and never anything else: a region that
 	// cannot be placed is not kept.
-	overlap    int
+	overlap int
+	// passes is every compaction marker and failed summary the file records,
+	// in order. A reading for display places each in the conversation told
+	// once and keeps its summary; a resume keeps neither.
+	passes     []CompactionFact
 	title      string
 	shortTitle string
 	// id is the header's session id, empty for a file that has no header yet.
@@ -2865,6 +2925,64 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 //
 // The counts ride the marker so a surface reading the file back can say what the
 // pass did without re-deriving it. Nothing rebuilds from them.
+// appendCompactionFailed records a summary that did not land in a pass that
+// changed nothing. It is not a marker — the transcript did not move — so a
+// reader keeps it as a fact and rebuilds nothing from it.
+func (s *sessionFile) appendCompactionFailed(fact CompactionFact) {
+	if s == nil {
+		return
+	}
+	s.writeLine(sessionEntry{
+		Type:         "compaction_failed",
+		TokensBefore: fact.TokensBefore,
+		TokensAfter:  fact.TokensAfter,
+		SummaryFail:  fact.Failed,
+		ContextFull:  fact.Full,
+		Timestamp:    journalInstant(fact.At),
+	})
+}
+
+// passStamp is a pass's own instant as its marker's timestamp, or now.
+func passStamp(at time.Time) string {
+	if at.IsZero() {
+		return stamp()
+	}
+	return journalInstant(at)
+}
+
+// appendPass numbers one journaled pass and keeps it. A resume keeps no
+// summary bodies ([Agent.restorePasses] takes the count and the newest
+// provenance), so a long conversation's notes are not held to be dropped.
+func appendPass(passes []CompactionFact, entry sessionEntry, place int, rebuild bool) []CompactionFact {
+	fact := compactionFactOf(entry, place)
+	fact.Seq = len(passes) + 1
+	if rebuild {
+		fact.Summary = ""
+	}
+	return append(passes, fact)
+}
+
+// journalInstant is a time as the journal spells one, and "" for none.
+func journalInstant(at time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	return at.UTC().Format(time.RFC3339Nano)
+}
+
+// compactionFactOf is a journaled marker or failure line as the fact it
+// records, placed at entry.
+func compactionFactOf(entry sessionEntry, place int) CompactionFact {
+	return CompactionFact{
+		At: lineInstant(entry.Timestamp), Entry: place,
+		TokensBefore: entry.TokensBefore, TokensAfter: entry.TokensAfter,
+		Stubbed: entry.Stubbed, Folded: entry.Folded, Summarized: entry.Summarized,
+		Summary: entry.Kept, Model: entry.KeptModel, Turns: entry.KeptTurns,
+		CoversFrom: lineInstant(entry.KeptFrom), CoversUntil: lineInstant(entry.KeptUntil),
+		Failed: entry.SummaryFail, Full: entry.ContextFull,
+	}
+}
+
 func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, window []ai.Message, sidecars ...[]provider.MessageReasoning) {
 	s.writeLine(sessionEntry{
 		Type:         "compaction",
@@ -2872,12 +2990,20 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		Stubbed:      pass.stubbed,
 		Folded:       pass.folded,
 		Summarized:   pass.summarized,
+		TokensAfter:  pass.tokensAfter,
+		Kept:         pass.summary,
+		KeptModel:    pass.summaryModel,
+		KeptTurns:    pass.turns,
+		KeptFrom:     journalInstant(pass.coversFrom),
+		KeptUntil:    journalInstant(pass.coversUntil),
+		SummaryFail:  pass.failed,
+		ContextFull:  pass.full,
 		// The length is written BEFORE the window it describes, which is the only
 		// order that survives a crash halfway through: a reader that finds fewer
 		// lines than the number promised has a truncated file and can say so,
 		// where a count written afterwards would simply never arrive.
 		Window:    len(window),
-		Timestamp: stamp(),
+		Timestamp: passStamp(pass.at),
 	})
 	for index, message := range window {
 		// Marks belong to the original message, before projecting a fresh

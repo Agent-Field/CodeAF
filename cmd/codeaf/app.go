@@ -28,6 +28,7 @@ package main
 // rebuilt transparently by the next send.
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -37,6 +38,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -228,6 +230,9 @@ type appConn struct {
 	// conversation held in this process, which hands its own turns over
 	// directly (appwakes.go).
 	Follow func() <-chan remote.Following
+	// Passes is the compaction passes asked for outside any turn, as their
+	// events arrive (appcompaction.go); nil where the connection has none.
+	Passes func() <-chan session.Event
 	// Assembled says this process built the conversation itself, so the shared
 	// engine half must be closed when the app leaves.
 	Assembled bool
@@ -302,7 +307,7 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 
 func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 	welcome := client.Welcome()
-	return &appConn{Conv: client.Agent(), Workspace: welcome.Workspace, Transcript: welcome.SessionFile, Release: release, Follow: client.Follow, Assembled: assembled}
+	return &appConn{Conv: client.Agent(), Workspace: welcome.Workspace, Transcript: welcome.SessionFile, Release: release, Follow: client.Follow, Passes: client.Passes, Assembled: assembled}
 }
 
 // appBackend is the [appwire.Engine] over this process's conversations.
@@ -509,6 +514,10 @@ type appLive struct {
 	msgBase, noteBase            int
 	lastN, lastMsgs, lastNotices int
 	stopWakes                    func()
+	// stopPasses stops the pass lane's reader, and compacting says a pass
+	// the app asked for is running (appcompaction.go).
+	stopPasses func()
+	compacting bool
 	// retries counts the running turn's waits before a step is asked again,
 	// retryPhase and retryUntil are the last one said, and retrySaid says the
 	// next void attempt was already said with its countdown.
@@ -1012,6 +1021,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			a.view.Model = model
 		}
 		a.view.State = live.restingState()
+		a.view.Context = appContextOf(conn.Conv)
 		if a.view.UpdatedAt.IsZero() {
 			a.view.UpdatedAt = b.now()
 		}
@@ -1041,6 +1051,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		b.died(a, live)
 	})
 	live.stopWakes = b.watchWakes(a, live)
+	live.stopPasses = b.watchPasses(a, live)
 	return view
 }
 
@@ -1619,9 +1630,19 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if announce {
 				live.box.Event(appwire.EventTurnRetrying, retry)
 			}
-		case session.EventCompacted:
-			entry(appwire.Entry{ID: "c" + strconv.Itoa(n) + "." + strconv.Itoa(summaries), Kind: appwire.EntrySummary, Text: "Earlier messages summarized"})
-			summaries++
+		case session.EventCompacted, session.EventSummaryStarted, session.EventSummaryFailed:
+			// A PASS IS ITS FACTS (appcompaction.go): its entry is named by its
+			// sequence, so the summarizing entry is replaced by how it ended.
+			// An engine too old to say them gets the line it always got, said
+			// only for a pass that summarized.
+			if pass, ok := appPassEvent(id, event); ok {
+				pass.Turn = turn
+				live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: pass})
+			} else if event.Kind == session.EventCompacted && event.Summarized > 0 {
+				entry(appwire.Entry{ID: "c" + strconv.Itoa(n) + "." + strconv.Itoa(summaries), Kind: appwire.EntrySummary, Text: appCompactionWords})
+				summaries++
+			}
+			b.noteContext(a, live)
 		case session.EventToolBegin:
 			b.locked(func() { live.steps++ })
 			endThought()
@@ -1651,6 +1672,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				title = redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, ""))
 			}
 			live.box.Event(appwire.EventTurnTool, b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
+			b.noteContext(a, live)
 			// THE SEVENTEENTH PROCESS is refused by the engine, and the turn
 			// says so once at its end.
 			if !succeeded && strings.Contains(event.Output+summary, "processes are running for this agent.") {
@@ -1674,6 +1696,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			// A turn the person steered ends once per stretch; the last ending
 			// on the stream is the turn's.
 			ok, failure, kind, status = true, "", "", 0
+			b.noteContext(a, live)
 		case session.EventTitleChanged:
 			if title := strings.TrimSpace(event.Text); title != "" {
 				changed(func(v *appwire.Agent) { v.Title = title })
@@ -1784,17 +1807,47 @@ func appUserCount(transcript string) int {
 // appSummaryRole marks where a compaction summarized what came before.
 const appSummaryRole = "summary"
 
-// appRecordItems is a record told once and whole: the conversation above the
-// last compaction, a mark where it was summarized, and the live transcript
-// beneath its floor.
+// appRecordItems is a record told once and whole: every line above every
+// compaction, the live transcript beneath the last one's floor, and a mark
+// for each pass at its own place, carrying the pass ([appRecordPass]).
 func appRecordItems(record session.Record) []session.DisplayEntry {
-	if len(record.Earlier) == 0 {
+	if len(record.Earlier) == 0 && len(record.Passes) == 0 {
 		return record.Entries
 	}
-	items := append([]session.DisplayEntry(nil), record.Earlier...)
-	items = append(items, session.DisplayEntry{Role: appSummaryRole})
 	floor := min(max(record.Floor, 0), len(record.Entries))
-	return append(items, record.Entries[floor:]...)
+	if len(record.Passes) == 0 {
+		// A region with no pass facts — a record told by an engine from
+		// before they existed — is marked once, where the region ends.
+		items := append([]session.DisplayEntry(nil), record.Earlier...)
+		items = append(items, session.DisplayEntry{Role: appSummaryRole})
+		return append(items, record.Entries[floor:]...)
+	}
+	told := len(record.Earlier) + len(record.Entries) - floor
+	items := make([]session.DisplayEntry, 0, told+len(record.Passes))
+	// In place order; a pass's sequence breaks a tie, so two passes at one
+	// place stand in the order they were made.
+	passes := slices.Clone(record.Passes)
+	slices.SortStableFunc(passes, func(x, y session.CompactionFact) int { return cmp.Compare(x.Entry, y.Entry) })
+	mark := func(at int) {
+		for len(passes) > 0 && passes[0].Entry <= at {
+			pass := passes[0]
+			passes = passes[1:]
+			if pass.Entry < 0 {
+				continue
+			}
+			items = append(items, session.DisplayEntry{Role: appSummaryRole, Pass: &pass})
+		}
+	}
+	position := 0
+	for _, part := range [][]session.DisplayEntry{record.Earlier, record.Entries[floor:]} {
+		for _, item := range part {
+			mark(position)
+			items = append(items, item)
+			position++
+		}
+	}
+	mark(told)
+	return items
 }
 
 // appDetailLimit bounds a tool's short result line.
@@ -1934,6 +1987,9 @@ func (b *appBackend) finish(live *appLive) {
 	}
 	if live.stopWakes != nil {
 		live.stopWakes()
+	}
+	if live.stopPasses != nil {
+		live.stopPasses()
 	}
 	live.conn.Release()
 	wait := time.After(appReleaseWait)
@@ -2250,7 +2306,11 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		}
 		switch item.Role {
 		case appSummaryRole:
-			entry.ID, entry.Kind, entry.Text = "c"+strconv.Itoa(max(n, 0))+".s"+strconv.Itoa(c), appwire.EntrySummary, "Earlier messages summarized"
+			if item.Pass != nil && item.Pass.Seq > 0 {
+				entry = appCompactionEntry(agent, *item.Pass, appCompactionState(*item.Pass))
+			} else {
+				entry.ID, entry.Kind, entry.Text = "c"+strconv.Itoa(max(n, 0))+".s"+strconv.Itoa(c), appwire.EntrySummary, appCompactionWords
+			}
 			c++
 		case "user":
 			n, m, k = n+1, 0, 0

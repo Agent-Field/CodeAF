@@ -296,6 +296,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// is the one place the two are converted, by doing the shaping.
 		agent.earlier = shapeEntries(replayed.earlier, file)
 		agent.earlierFloor = len(shapeEntries(restored[:replayed.overlap], file))
+		agent.restorePasses(replayed.passes)
 		// AND THE PICTURES ARE MADE SAFE HERE RATHER THAN IN THE REPLAY. A
 		// session resumed onto a model without vision — the journal remembers
 		// the model it was written on, the person can start it on another — would
@@ -2163,6 +2164,7 @@ func (a *Agent) interruptNamed(door StopDoor, name string) {
 	a.interrupt.begin()
 	a.mu.Lock()
 	cancel := a.cancel
+	cutPass := a.cutManualPassLocked()
 	a.dropFollowUpsLocked()
 	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
 	// not later by the turn's own cleanup. The cancel below is made with the
@@ -2175,6 +2177,7 @@ func (a *Agent) interruptNamed(door StopDoor, name string) {
 	// and that is idempotent (steer_grace.go).
 	a.stopSteerGraceLocked()
 	a.mu.Unlock()
+	cutPass()
 	if cancel != nil {
 		cancel(stopAs(door, name))
 	}
@@ -2364,6 +2367,11 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
 func (a *Agent) Close() error {
+	// A pass a surface asked for outside any turn ends with the conversation.
+	a.mu.Lock()
+	cutPass := a.cutManualPassLocked()
+	a.mu.Unlock()
+	cutPass()
 	// WHAT THE RECORD ALREADY HOLDS IS SETTLED BEFORE THE DOOR SHUTS, so an idle
 	// session that read a landing in its last turn does not re-tell it tomorrow.
 	// What the record does NOT hold stays owed, which is the whole point: a note
@@ -4135,6 +4143,9 @@ func textMessage(role, text string) ai.Message {
 // never saw the events, and starting empty would leave it looking at a session
 // that is visibly working and saying nothing.
 type eventHub struct {
+	// observe, when set, receives every event in place of subscribers: a
+	// pass a surface asked for outside any turn ([Agent.CompactObserved]).
+	observe      func(Event)
 	replayCursor ReplayCursor
 	mu           sync.Mutex
 	subscribers  []*eventStream
@@ -4346,6 +4357,10 @@ func (h *eventHub) send(event Event) (landed bool) {
 	// panic in the middle of a request.
 	if h == nil {
 		return false
+	}
+	if h.observe != nil {
+		h.observe(event)
+		return true
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -4610,6 +4625,9 @@ type DisplayEntry struct {
 	// mark, so a line from a file written before the mark existed still arrives as
 	// "user", which is exactly what it always was.
 	Role string
+	// Pass is a compaction pass a READER placed in a listing it built from a
+	// [Record] ([Record.Passes]); this package's own shaping never sets it.
+	Pass *CompactionFact
 	// Answer marks a completed tool-free response or an explicit human update. This
 	// boundary survives replay so a later response cannot demote its message.
 	Answer bool

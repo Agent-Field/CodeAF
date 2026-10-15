@@ -222,6 +222,8 @@ type Client struct {
 	// want it — the events themselves are queued on the stream regardless, and
 	// the transcript is the authority on a turn that ended.
 	following chan Following
+	// passes is the compaction passes asked for outside any turn (passes.go).
+	passes chan session.Event
 
 	// dead is the reason this connection stopped, or nil while it is alive.
 	// Every method reads it first, so a surface driving a corpse gets an error
@@ -294,6 +296,7 @@ func newClient(host string, hello Hello) *Client {
 		driver:     Driver{Yours: true},
 		driverWake: make(chan struct{}),
 		following:  make(chan Following, followingRoom),
+		passes:     make(chan session.Event, passRoom),
 	}
 }
 
@@ -884,6 +887,9 @@ func (c *Client) read() {
 			// /status are drawn from, and neither had anything to draw from on
 			// a conversation whose engine is another process (news.go).
 			c.laneNewsFrame(frame.Payload)
+		case passFrameKind:
+			// A pass somebody asked for outside any turn (passes.go).
+			c.passFrame(frame.Payload)
 		case "facts":
 			// The engine stating something nobody asked for. It is taken on the
 			// reader goroutine before the surface is notified of a changed name.

@@ -46,6 +46,13 @@ type Facts struct {
 	// ContextTokens is what the conversation weighs right now
 	// ([Agent.ContextTokens]).
 	ContextTokens int `json:"contextTokens,omitempty"`
+	// ContextWindow and CompactAt are the window the conversation runs in and
+	// the weight at which it compacts on its own, and Summarizing says a
+	// summary request is in flight ([Agent.ContextUse], read with
+	// ContextTokens under one lock). Absent means unknown — never zero room.
+	ContextWindow int  `json:"contextWindow,omitempty"`
+	CompactAt     int  `json:"compactAt,omitempty"`
+	Summarizing   bool `json:"summarizing,omitempty"`
 	// Reasoning is the level held for each model id anybody has dialled, keyed
 	// the way [ReasoningKey] folds an id.
 	//
@@ -153,6 +160,10 @@ func FactsOf(source FactSource) Facts {
 		Spent:         source.Usage(),
 		ContextTokens: source.ContextTokens(),
 		Reasoning:     source.ReasoningLevels(),
+	}
+	if door, ok := source.(interface{ ContextUse() ContextUse }); ok {
+		use := door.ContextUse()
+		facts.ContextTokens, facts.ContextWindow, facts.CompactAt, facts.Summarizing = use.Tokens, use.Window, use.Threshold, use.Summarizing
 	}
 	if door, ok := source.(interface{ Remembers() bool }); ok {
 		memory := door.Remembers()

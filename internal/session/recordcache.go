@@ -452,6 +452,7 @@ func recordReserve(size int64) int64 {
 func recordVectors(record Record) int64 {
 	cost := int64(len(record.Entries)+len(record.Earlier)) * int64(unsafe.Sizeof(DisplayEntry{}))
 	cost += int64(len(record.Requests.Recent)) * int64(unsafe.Sizeof(RequestLine{}))
+	cost += int64(len(record.Passes)) * int64(unsafe.Sizeof(CompactionFact{}))
 	for _, entries := range [][]DisplayEntry{record.Entries, record.Earlier} {
 		for i := range entries {
 			entry := &entries[i]
@@ -474,6 +475,12 @@ func recordCost(record Record) int64 {
 	cost += entriesCost(record.Entries) + entriesCost(record.Earlier)
 	cost += int64(len(record.Unreadable))
 	cost += int64(cap(record.Requests.Recent)) * int64(unsafe.Sizeof(RequestLine{}))
+	// A pass's summary is the one long string it carries; the journal holds
+	// it on the marker line, so this is bounded by the file like the rest.
+	cost += int64(cap(record.Passes)) * int64(unsafe.Sizeof(CompactionFact{}))
+	for i := range record.Passes {
+		cost += int64(len(record.Passes[i].Summary) + len(record.Passes[i].Model) + len(record.Passes[i].Failed))
+	}
 	return cost
 }
 
@@ -494,6 +501,9 @@ func entriesCost(entries []DisplayEntry) int64 {
 		if entry.Steer != nil {
 			cost += int64(unsafe.Sizeof(SteerMark{})) + int64(len(entry.Steer.Landing))
 		}
+		if entry.Pass != nil {
+			cost += int64(unsafe.Sizeof(CompactionFact{})) + int64(len(entry.Pass.Summary)+len(entry.Pass.Model)+len(entry.Pass.Failed))
+		}
 		cost += int64(cap(entry.Team)) * int64(unsafe.Sizeof(TeamLine{}))
 		for _, line := range entry.Team {
 			cost += int64(len(line.Team) + len(line.From) + len(line.To) + len(line.Kind) + len(line.Text) + len(line.Thread))
@@ -508,6 +518,7 @@ func cloneRecord(record Record) Record {
 	record.Entries = cloneEntries(record.Entries)
 	record.Earlier = cloneEntries(record.Earlier)
 	record.Requests.Recent = slices.Clone(record.Requests.Recent)
+	record.Passes = slices.Clone(record.Passes)
 	return record
 }
 
@@ -524,6 +535,10 @@ func cloneEntries(entries []DisplayEntry) []DisplayEntry {
 		if entry.Steer != nil {
 			steer := *entry.Steer
 			entry.Steer = &steer
+		}
+		if entry.Pass != nil {
+			pass := *entry.Pass
+			entry.Pass = &pass
 		}
 	}
 	return out

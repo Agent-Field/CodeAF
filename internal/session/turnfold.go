@@ -223,6 +223,9 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 	a.earlier = earlier
 	a.earlierFloor = countEntries(a.messages)
 	pass := compactionPass{stubbed: results, stored: a.chatlog != nil}
+	pass.at, pass.tokensAfter = passInstant(), a.meterTokensLocked()
+	pass.full = a.contextFullLocked(pass.tokensAfter)
+	fact := a.recordPassLocked(passFact(pass, before))
 	if a.file != nil {
 		window := make([]ai.Message, len(a.messages)-1)
 		copy(window, a.messages[1:])
@@ -232,7 +235,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 
 	if hub != nil {
 		hint := strings.TrimSuffix(strings.TrimPrefix(marker, "["), "]")
-		hub.send(Event{Kind: EventCompacted, Hint: hint})
+		hub.send(Event{Kind: EventCompacted, Hint: hint, Compaction: &fact})
 	}
 }
 

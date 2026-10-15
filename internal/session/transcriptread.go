@@ -84,6 +84,9 @@ type Record struct {
 	Entries []DisplayEntry
 	Earlier []DisplayEntry
 	Floor   int
+	// Passes is every compaction pass the record holds, oldest first, each
+	// placed in `Earlier` followed by `Entries[Floor:]` ([CompactionFact.Entry]).
+	Passes []CompactionFact
 	// Unreadable is what a page must SAY about this reading, and "" for a record
 	// read whole — which is nearly all of them.
 	//
@@ -241,6 +244,7 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 		Entries:    shapeEntries(replayed.messages, journal),
 		Earlier:    shapeEntries(replayed.earlier, journal),
 		Floor:      len(shapeEntries(replayed.messages[:overlap], journal)),
+		Passes:     replayed.passes,
 		Unreadable: unreadPastLine(replayed.unread),
 		Requests:   replayed.requests,
 	}

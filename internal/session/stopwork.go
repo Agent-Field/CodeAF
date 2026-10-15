@@ -21,6 +21,8 @@ func (a *Agent) StopWork() error {
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
 	cancel, done := a.cancel, a.done
+	// A pass a surface asked for outside any turn is work too.
+	defer a.cutManualPassLocked()()
 	// Keep completed runs inspectable, and mark cancellation as the person's
 	// decision before cutting their contexts. Close deliberately discards this
 	// registry; stopping a conversation must preserve it.

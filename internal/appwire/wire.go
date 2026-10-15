@@ -128,6 +128,9 @@ type Agent struct {
 	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
 	LastActiveAt time.Time  `json:"last_active_at"`
 	SpentUSD     float64    `json:"spent_usd,omitempty"`
+	// Context is what the conversation weighs against its window
+	// (compaction.go); absent when nothing holds the conversation.
+	Context *AgentContext `json:"context,omitempty"`
 }
 
 // Task is one node of an agent's task graph.
@@ -315,6 +318,8 @@ type Entry struct {
 	// Op is a durable fact the conversation's record keeps beside its
 	// messages, said as the fact and never as words: the app words it.
 	Op *EntryOp `json:"op,omitempty"`
+	// Compaction is a summary entry's pass, as facts (compaction.go).
+	Compaction *Compaction `json:"compaction,omitempty"`
 	// A tool entry carries the facts of its call (worklog.go); a note entry
 	// names its task there too.
 	ToolFacts
