@@ -2585,6 +2585,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I pressed esc on a reminder card and it did not say no", "automations"},
 		{"where did 2 change when or where go on the standing card", "automations"},
 		{"how do I change the time on a standing card", "automations"},
+		// The wave that gave `automation` its `change` op. Before it the chat
+		// could only propose a second automation beside the first, and the page
+		// said so; these are the sentences a person says to the one they have.
+		{"move my reminder to 5pm", "automations"},
+		{"can you reschedule my water reminder", "automations"},
+		{"why is my old reminder still there after I asked you to change it", "automations"},
 		// The wave that gave the engine on the far machine its own ambient
 		// side. This is what a person asks before they rely on it — and what an
 		// attached window keeps running there now is that machine's automations.

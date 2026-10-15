@@ -578,16 +578,23 @@ const fixedPrefixTarget = 48_000
 // waivers FALL to sit exactly on the measurement: the bill this file has
 // carried for `stand` since it was first weighed is mostly paid.
 //
+// 2026-10-14, `automation` learns `change`. The op, its sentence in the tool's
+// description and the page's "one that exists is CHANGED, never proposed again"
+// were paid for out of what the description said twice — a watch's look and
+// condition, already said beside their own fields in the schema — and the `id`
+// field's list of the ops that take one. Both arms come out 22 bytes lighter,
+// at 52,691 and 44,913, and both waivers fall by exactly that.
+//
 // 2026-10-14, one memory strength. The page's memory sentence says what
 // `remember` keeps and that a timed thing is an automation; `memory_evidence`
 // leaves the belt with the evidence it read, and `forget` joins `remember` as
 // a one-field verb on the full belt (the lean belt carries neither, its page
 // saying the person can /remember). The fixed prefix
-// measures 52,519 bytes and the lean 44,915, and both waivers FALL — by 194 and
+// measures 52,497 bytes and the lean 44,893, and both waivers FALL — by 194 and
 // by 20 — to sit exactly on the measurement.
 const (
-	fixedPrefixWaiver = 4_519
-	leanPrefixWaiver  = 13_415
+	fixedPrefixWaiver = 4_497
+	leanPrefixWaiver  = 13_393
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

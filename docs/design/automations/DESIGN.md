@@ -40,11 +40,15 @@ codeaf is open`), because the model judges every look; with no known price for
 the judging model it shows nothing.
 
 **Three ways in, one card.** Said in a conversation (the model calls the
-`automation` tool); typed with exact syntax (`/automations add …`, no model in
-between); or edited on the list (`e` puts the automation's own
-`/automations edit …` line in the box). All three end on a card, and nothing is
-saved before the person says yes on it. A typed line's card is the surface's
-own (`save this automation?`, `save this change?`), because no model asked.
+`automation` tool — `propose` for a new one, `change` with its id for one that
+exists); typed with exact syntax (`/automations add …`, no model in between); or
+edited on the list (`e` puts the automation's own `/automations edit …` line in
+the box). All three end on a card, and nothing is saved before the person says
+yes on it. A typed add's card is the surface's own (`save this automation?`),
+because no model asked. A change's card is `save this change?` from either door —
+the model's `change` or a typed `edit` — with only `1 Save` and `0 Don't save`:
+an automation with an id on a card is a change to it, and session's
+`AutomationHead` and `AutomationOptions` decide that once for both.
 
 **The typed grammar** is a word and one value per clause, a value with a space
 in it quoted (`internal/automation`'s `command.go`):

@@ -44,8 +44,8 @@ type AutomationNotice struct {
 	CostWords string `json:"costWords,omitempty"`
 	// Options are the card's answers, from [AutomationOptions].
 	Options []AnswerOption `json:"options,omitempty"`
-	// Update is set on a report: "saved", "paused", "resumed", "deleted",
-	// "running". Text is its one line.
+	// Update is set on a report: "saved", "changed", "paused", "resumed",
+	// "deleted", "running". Text is its one line.
 	Update string `json:"update,omitempty"`
 	Text   string `json:"text,omitempty"`
 }
@@ -86,8 +86,21 @@ func (a *Agent) ResolveAutomation(id uint64, answer AutomationAnswer) {
 	}
 }
 
+// AutomationChangeHead is the first line of a card that changes an automation
+// already saved, whichever door raised it: the model's `change`, or a typed
+// `/automations edit` (internal/tui3's automationscmd.go).
+const AutomationChangeHead = "save this change?"
+
 // AutomationHead is the card's first line: what KIND of thing is being asked.
+//
+// A CARD ABOUT AN AUTOMATION WITH AN ID IS A CHANGE TO IT. A proposal's
+// automation is given its id only when it is saved, so the id is the one fact
+// that tells the two cards apart, on the engine's side of the wire and on every
+// surface's, without a field of its own to keep in step.
 func AutomationHead(item automation.Automation) string {
+	if strings.TrimSpace(item.ID) != "" {
+		return AutomationChangeHead
+	}
 	switch item.Kind() {
 	case automation.KindReminder:
 		return "wants to remind you"
@@ -113,7 +126,18 @@ func AutomationRunsNow(item automation.Automation) bool {
 
 // AutomationOptions are one card's answers. The keys do not move: 1 saves, 2
 // saves and runs it now, 0 saves nothing. The decline is last and safe.
+//
+// A CHANGE HAS NO "RUN IT NOW" ([AutomationHead] says which card is a change).
+// What it settles is how the automation runs from here on, and running one now
+// is `run`, a verb of its own; so both doors that change one offer exactly
+// these two answers.
 func AutomationOptions(item automation.Automation) []AnswerOption {
+	if strings.TrimSpace(item.ID) != "" {
+		return []AnswerOption{
+			{Key: AutomationSaveKey, Label: "Save", Consequence: "The automation runs this way from its next time."},
+			{Key: AutomationNoKey, Label: "Don't save", Consequence: "Nothing is saved.", Safe: true},
+		}
+	}
 	options := []AnswerOption{{Key: AutomationSaveKey, Label: "Save", Consequence: automationSaveConsequence(item)}}
 	if AutomationRunsNow(item) {
 		label, consequence := "Save and run it now", "Saves it, then does it once now, here, while you watch."

@@ -1570,14 +1570,22 @@ measures **52,713** bytes and the lean **44,935**, and both waivers fall to sit
 exactly on the measurement: the full cap is **52,713** (4,713 over its target)
 and the lean cap **44,935** (13,435 over).
 
+**`automation` learns `change`, and pays for it (2026-10-14).** The op, the
+sentence in the tool's description that says when to use it and the page's
+"one that exists is CHANGED, never proposed again" were taken out of what the
+description already said twice — a watch's look and condition, which the schema
+says beside their own fields — and out of the `id` field's list of the ops that
+take one. Both arms come out **22** bytes lighter: the full cap is **52,691**
+(4,691 over) and the lean cap **44,913** (13,413 over).
+
 **One memory strength (2026-10-14).** The page's memory sentence names `remember`
 and says a timed thing is an automation; `memory_evidence` leaves the belt with the
 evidence it read, and `forget` joins `remember` as a one-field verb on the full
 belt, while the lean belt carries neither and its page says the person can
 `/remember`. The full prefix
-measures **52,519** bytes and the lean **44,915**; both waivers fall to the
-measurement, so the full cap is **52,519** (4,519 over its target) and the lean
-cap **44,915** (13,415 over).
+measures **52,497** bytes and the lean **44,893**; both waivers fall to the
+measurement, so the full cap is **52,497** (4,497 over its target) and the lean
+cap **44,893** (13,393 over).
 
 ## Following through on a completion claim
 
