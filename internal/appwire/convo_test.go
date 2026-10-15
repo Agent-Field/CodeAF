@@ -78,3 +78,39 @@ func TestFilesReadRoute(t *testing.T) {
 		t.Fatalf("an engine without reading answered %v", err)
 	}
 }
+
+type differEngine struct {
+	fakeEngine
+	agent, path, base string
+}
+
+func (d *differEngine) DiffFile(agent, path, base string) (FileDiff, error) {
+	d.agent, d.path, d.base = agent, path, base
+	return FileDiff{Path: path, State: DiffUnchanged}, nil
+}
+
+// FILES.DIFF reaches an engine that diffs with an optional base, refuses a
+// missing path and a base git could read as an option or a range, and is
+// unknown elsewhere.
+func TestFilesDiffRoute(t *testing.T) {
+	m, ok := methods["files.diff"]
+	if !ok {
+		t.Fatal("files.diff is not registered")
+	}
+	eng := &differEngine{}
+	if _, err := m.call(eng, json.RawMessage(`{"agent":"a1","path":"-x.go"}`)); err != nil || eng.base != "" || eng.path != "-x.go" {
+		t.Fatalf("no base: %v, %+v", err, eng)
+	}
+	if _, err := m.call(eng, json.RawMessage(`{"agent":"a1","path":"x","base":"main"}`)); err != nil || eng.base != "main" {
+		t.Fatalf("a base: %v, %+v", err, eng)
+	}
+	var wire *Error
+	for _, bad := range []string{`{"agent":"a1"}`, `{"agent":"a1","path":"x","base":"--output=y"}`, `{"agent":"a1","path":"x","base":"a..b"}`} {
+		if _, err := m.call(eng, json.RawMessage(bad)); !errors.As(err, &wire) || wire.Code != CodeBadParams {
+			t.Fatalf("%s answered %v", bad, err)
+		}
+	}
+	if _, err := m.call(&fakeEngine{}, json.RawMessage(`{"agent":"a1","path":"x"}`)); !errors.As(err, &wire) || wire.Code != CodeUnknownMethod {
+		t.Fatalf("an engine without diffing answered %v", err)
+	}
+}
