@@ -2080,7 +2080,13 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, mark
 		}
 	}
 	for i, item := range items {
+		// Each entry carries the instant its own line was written; the
+		// conversation's latest moment stands in only where the record never
+		// said.
 		entry := appwire.Entry{Agent: agent, At: at}
+		if !item.At.IsZero() {
+			entry.At = item.At
+		}
 		switch item.Role {
 		case appSummaryRole:
 			entry.ID, entry.Kind, entry.Text = "c"+strconv.Itoa(max(n, 0))+".s"+strconv.Itoa(c), appwire.EntrySummary, "Earlier messages summarized"
@@ -2111,6 +2117,13 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, mark
 			}
 			if item.Role == "aside" && !item.Interrupted {
 				entry.ID, entry.Kind, entry.Text, entry.Quiet = appNoteEntryID(n, k), appwire.EntryNotice, item.Text, true
+				// A TEAM'S DELIVERY IS ITS LINES. The words around them are the
+				// session's instruction to its model, and so is any other note
+				// that rode in the same message; the crew's lines are what the
+				// person reads.
+				if len(item.Team) > 0 {
+					entry.Text = appTeamDelivery(item.Team)
+				}
 				k++
 				break
 			}
@@ -2633,4 +2646,22 @@ func appEngineError(err error) error {
 		return wire
 	}
 	return &appwire.Error{Code: appwire.CodeEngine, Message: redact.Secrets(plainWords(err.Error()))}
+}
+
+// appTeamDelivery is a team delivery's lines as the person reads them: who
+// said each, and what.
+func appTeamDelivery(lines []session.TeamLine) string {
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		who := line.From
+		switch who {
+		case "you", "manager":
+		case "system":
+			who = "codeaf"
+		default:
+			who = "@" + who
+		}
+		out = append(out, who+": "+strings.TrimSpace(line.Text))
+	}
+	return redact.Secrets(strings.Join(out, "\n"))
 }

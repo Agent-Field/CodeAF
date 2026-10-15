@@ -203,3 +203,49 @@ func TestAppTintIsTheNearestNamedHue(t *testing.T) {
 		t.Fatalf("an uncoloured team = %s", got)
 	}
 }
+
+// A CREW MOVES UNDER ANOTHER, AND ONE MADE UNDER A PARENT STAYS THERE. A
+// member that runs the crew under its own is that crew in the parent's view,
+// not a plain member, and a move the check refuses is refused in words.
+func TestAppCrewsNestByMoveAndByCreate(t *testing.T) {
+	backend, _, _, harbor := crewBackend(t)
+	web := teamstore.Member{Key: "/state/v3/places/proj/b0b0b0b0/transcript.jsonl", File: "/state/v3/places/proj/b0b0b0b0/transcript.jsonl", Where: "/w", Word: "web", Handle: "web"}
+	api := teamstore.Member{Key: "/state/v3/places/proj/c0c0c0c0/transcript.jsonl", File: "/state/v3/places/proj/c0c0c0c0/transcript.jsonl", Where: "/w", Word: "api", Handle: "api"}
+	dock := teamstore.NewID()
+	err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: dock, Name: "dock", Made: time.Now()})
+		if err := f.AddMember(dock, api); err != nil {
+			return err
+		}
+		return f.SetManager(dock, api.Key)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.CrewMove([]string{dock}, harbor); err != nil {
+		t.Fatalf("the move was refused: %v", err)
+	}
+	if err := backend.CrewMove([]string{harbor}, dock); err == nil || !strings.Contains(err.Error(), "inside it") {
+		t.Fatalf("a crew went under its own child: %v", err)
+	}
+	pier, err := backend.newTeam("pier", harbor, []teamstore.Member{web}, web.Key, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("a crew made under a parent was refused: %v", err)
+	}
+	crew, err := backend.CrewGet(pier)
+	if err != nil || crew.Parent != harbor {
+		t.Fatalf("the new crew = %+v, %v", crew, err)
+	}
+	parent, err := backend.CrewGet(harbor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range parent.Members {
+		if m.Handle == "web" && m.Leads != pier {
+			t.Fatalf("the member running pier reads as a plain member: %+v", m)
+		}
+		if m.Handle == "lead" && m.Leads != "" {
+			t.Fatalf("the parent's manager leads a child it does not run: %+v", m)
+		}
+	}
+}

@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: codeaf app hides lines meant for the model, names what each ask is about, and keeps small renames quick
+title: codeaf app hides lines meant for the model, names what each ask is about, keeps renames quick
 pr: 0
 surface: [engine]
 ---

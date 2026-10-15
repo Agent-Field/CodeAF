@@ -1212,6 +1212,9 @@ type sessionFile struct {
 	// no duration, which is the lie a room opened after landing used to tell.
 	tooks map[string]journalTook
 
+	// stamps is when each message's line was written (entrytime.go).
+	stamps *stampIndex
+
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
 	// It is the file's answer to "what did this cost before today", and the agent
@@ -1720,6 +1723,10 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.steers = replayed.steers
 	journal.captions = replayed.captions
 	journal.tooks = replayed.tooks
+	journal.stamps = replayed.stamps
+	if journal.stamps == nil {
+		journal.stamps = &stampIndex{}
+	}
 	journal.restored = replayed.usage
 
 	if !replayed.existed {
@@ -1872,6 +1879,8 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// mark is on the LINE, and once the line has been rebuilt into a message
 	// there is nothing left to read it off (see [sessionFile.notes]).
 	presentation := &presentationIndex{}
+	// And when each message was written, off the same line (entrytime.go).
+	stamps := &stampIndex{}
 	notes := make(map[string]bool)
 	// And the caption index, for the notes' reason exactly: a `caption` line is
 	// news about a batch that is not carried by any message, so this pass is the
@@ -1960,6 +1969,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				mark = legacyPresentation(entry)
 			}
 			presentation.remember(message, mark)
+			stamps.remember(message, lineInstant(entry.Timestamp))
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
 				rememberNote(notes, message)
@@ -2234,6 +2244,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		images:         images,
 		notes:          notes,
 		presentation:   presentation,
+		stamps:         stamps,
 		replyTags:      replyTags,
 		delivered:      delivered,
 		noteDeliveries: noteDeliveries,
@@ -2437,6 +2448,8 @@ type replayedSession struct {
 	// tooks is how long each call ran, keyed by the call's own id — the index
 	// [sessionFile.tooks] is opened holding.
 	tooks map[string]journalTook
+	// stamps is when each message's line was written (entrytime.go).
+	stamps *stampIndex
 	// unread is the 1-based line of the file this reading could not get past, and
 	// zero for a file read to its end. Everything above it is in `messages`; the
 	// number is what lets a caller say WHICH line rather than "something went
@@ -2804,6 +2817,15 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		Deliveries:       deliveries,
 		Timestamp:        stamp(),
 	})
+	if wrote {
+		s.mu.Lock()
+		if s.stamps == nil {
+			s.stamps = &stampIndex{}
+		}
+		stamps := s.stamps
+		s.mu.Unlock()
+		stamps.remember(message, time.Now())
+	}
 	// The ids are indexed only once the line is really on disk: this index is
 	// what a resume trusts to say a landing has already been told.
 	if wrote && len(deliveries) > 0 {

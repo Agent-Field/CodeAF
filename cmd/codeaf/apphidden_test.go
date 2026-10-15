@@ -30,6 +30,22 @@ func TestLinesForTheModelAreNotEntries(t *testing.T) {
 	}
 }
 
+// A TEAM'S DELIVERY READS AS ITS LINES ALONE. The session's words to its
+// model around them, and a nudge that rode in the same message, are never
+// shown.
+func TestATeamDeliveryShowsOnlyItsLines(t *testing.T) {
+	text := "Your team's replies started this turn; the person did not speak.\n\n" +
+		"Team traffic in \"harbor\":\nfrom @web #4: index is ready\n(rule)\n\n[stuck] You have repeated read 3 times."
+	items := []session.DisplayEntry{{Role: "aside", Text: text, ForModel: true, Team: []session.TeamLine{
+		{Team: "harbor", From: "web", Text: "index is ready"},
+		{Team: "harbor", From: "manager", Text: "ship it"},
+	}}}
+	entries := appEntriesOf("a", items, time.Now(), nil)
+	if len(entries) != 1 || entries[0].Text != "@web: index is ready\nmanager: ship it" {
+		t.Fatalf("entries = %+v", entries)
+	}
+}
+
 // AN ASK SAYS WHAT IT IS ABOUT: an automation by its order id, a task by its
 // app id, a call by its id.
 func TestAnAskCarriesItsSubject(t *testing.T) {

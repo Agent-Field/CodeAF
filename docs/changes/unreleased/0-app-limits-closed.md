@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: codeaf app says crews, live lines and working everywhere, starts a member once, and keeps process ids apart
+title: codeaf app says crews and live lines everywhere, starts a member once, keeps process ids apart
 pr: 0
 surface: [engine]
 ---

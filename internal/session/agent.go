@@ -4750,6 +4750,10 @@ type DisplayEntry struct {
 	// a surface that shows a conversation to a person leaves it out (a team's
 	// delivery, which carries [DisplayEntry.Team], is drawn as its card).
 	ForModel bool
+	// At is when the message this entry came from was written to the journal,
+	// and the zero time when the record never said (entrytime.go). A tool entry
+	// carries its call's message's instant.
+	At time.Time
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -4927,6 +4931,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			Steer:    journal.steerMark(msg),
 			Team:     team,
 			ForModel: forModel,
+			At:       journal.written(msg),
 		})
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]
@@ -4954,6 +4959,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				// the same figure EventToolFinished carried while the window was
 				// open. Zero when the file never recorded one.
 				Took: journal.took(call.ID),
+				At:   journal.written(msg),
 			})
 		}
 	}

@@ -161,6 +161,7 @@ type CrewMember struct {
 	Independent bool           `json:"independent,omitempty"`
 	ReportsTo   *CrewReportsTo `json:"reports_to,omitempty"`
 	AlsoIn      []string       `json:"also_in,omitempty"`
+	Leads       string         `json:"leads,omitempty"` // the child crew this member manages
 	State       string         `json:"state,omitempty"`
 	Line        string         `json:"line,omitempty"`
 	SpentUSD    float64        `json:"spent_usd"`

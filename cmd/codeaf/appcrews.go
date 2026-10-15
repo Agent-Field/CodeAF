@@ -37,6 +37,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -417,6 +418,11 @@ func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.
 		if other.ID != t.ID && !other.Closed() && other.Holds(m.Key) {
 			view.AlsoIn = append(view.AlsoIn, other.ID)
 		}
+		// A MEMBER THAT RUNS A CREW UNDER THIS ONE IS THAT CREW here, not a
+		// plain member: it answers to this crew's manager for the crew it runs.
+		if other.Parent == t.ID && !other.Closed() && other.Manager == m.Key {
+			view.Leads = other.ID
+		}
 	}
 	view.State, view.Model, view.Title, view.Line = b.memberLive(agent, view.Title)
 	if usd, set := b.agentBudget(agent, b.now()); set {
@@ -479,7 +485,36 @@ func appLogLine(t teamstore.Team, e teamstore.Entry) appwire.LogLine {
 			line.Agent = appAgentID(key)
 		}
 	}
+	// THE LOG NAMES PEOPLE, NOT SEATS. A line is from and to a member by its
+	// handle, the person ("you"), or everyone; the manager is the member that
+	// holds the seat. A line codeaf wrote about a member is that member's.
+	manager := teamstore.FromManager
+	if m, ok := t.Member(t.Manager); ok && m.Handle != "" {
+		manager = m.Handle
+	}
+	line.From = appLogParty(t, e.From, e.Member, manager)
+	line.To = appLogParty(t, e.To, "", manager)
+	// The manager's mark in a line codeaf wrote is the manager's handle.
+	if e.Kind == teamstore.KindEvent || e.Kind == teamstore.KindPacket {
+		line.Text = strings.ReplaceAll(line.Text, "◆", "@"+manager)
+	}
 	return line
+}
+
+// appLogParty is one end of a log line as the log names it.
+func appLogParty(t teamstore.Team, word, member, manager string) string {
+	switch word {
+	case teamstore.FromManager:
+		return manager
+	case teamstore.ToRoom:
+		return teamstore.ToEveryone
+	case teamstore.FromSystem:
+		if m, ok := t.Member(member); ok && m.Handle != "" {
+			return m.Handle
+		}
+		return "codeaf"
+	}
+	return word
 }
 
 // crewTraffic says a crew's new log lines and acts on its manager's starts and
@@ -595,10 +630,22 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return
 	}
-	_, live, err := b.heldLive(agent.ID)
+	a, live, err := b.heldLive(agent.ID)
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return
+	}
+	// A STARTED MEMBER IS NAMED BY ITS BRIEF, the way a conversation a person
+	// opens is named by its first message: the brief is its first message. The
+	// conversation names its own record the same way when its turn reads the
+	// brief; this is the name the list shows from the first moment.
+	if name := session.FirstMessageName(e.Text); name != "" {
+		b.locked(func() {
+			if strings.TrimSpace(a.view.Title) == "" {
+				a.view.Title = name
+			}
+		})
+		b.sayAgent(a)
 	}
 	posture := strings.TrimSpace(e.Approval)
 	if posture == "" {
@@ -1226,7 +1273,37 @@ func (b *appBackend) CrewUpdate(ask appwire.CrewUpdate) (appwire.Crew, error) {
 			return appwire.Crew{}, appEngineError(err)
 		}
 	}
-	return b.CrewGet(ask.ID)
+	crew, err := b.CrewGet(ask.ID)
+	if err != nil {
+		return crew, err
+	}
+	// A CAP THE PERSON SET IS SAID IN THE MANAGER'S CHAT, where the spending
+	// it bounds is decided.
+	cleared := false
+	for _, key := range ask.Clear {
+		cleared = cleared || key == "cap_usd_day"
+	}
+	if ask.Settings != nil && ask.Settings.CapUSDDay != nil || cleared {
+		words := crew.Name + " cap cleared"
+		if !cleared {
+			words = fmt.Sprintf("%s cap set to $%.2f", crew.Name, *ask.Settings.CapUSDDay)
+		}
+		b.crewSettingReceipt(crew.Manager, crew.ID, "cap", words)
+	}
+	return crew, nil
+}
+
+// crewSettingReceipt writes a receipt for a crew setting the person changed
+// into the manager's chat.
+func (b *appBackend) crewSettingReceipt(manager, id, setting, words string) {
+	if manager == "" {
+		return
+	}
+	at := b.now()
+	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+		ID: "rcrew:" + id + ":" + setting + ":" + strconv.FormatInt(at.UnixNano(), 36), Agent: manager,
+		Kind: appwire.EntryReceipt, At: at, Text: words + " · you · " + at.Format("15:04"),
+	}})
 }
 
 // crewTeam is one team as it stands, or not_found.
@@ -1421,7 +1498,8 @@ func (b *appBackend) CrewMove(ids []string, parent string) error {
 	defaults := teamstore.DefaultsAt(b.crewProfile())
 	return b.crewEdit(func(f *teamstore.File) error {
 		target := f.MoveTarget(parent)
-		if block, blocked := f.MoveCheck(ids, target, defaults); blocked {
+		// The check answers whether the move MAY go: false comes with why not.
+		if block, ok := f.MoveCheck(ids, target, defaults); !ok {
 			return appwire.Errorf(appwire.CodeBadParams, "%s", appMoveWords(block))
 		}
 		return f.Move(ids, target)
@@ -1437,6 +1515,14 @@ func appMoveWords(block teamstore.MoveBlock) string {
 		return fmt.Sprintf("crews may go %d deep there, and this would make %d", block.Limit, block.Depth+block.Need)
 	case "here":
 		return "it is already there"
+	case "self":
+		return "a crew cannot go under itself"
+	case "inside":
+		return block.Name + " cannot go under a crew inside it"
+	case "root":
+		return "All crews stays at the top"
+	case "gone":
+		return "that crew is gone"
 	}
 	return "that move is not allowed"
 }

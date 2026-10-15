@@ -87,6 +87,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // titleSystem is all the system message says, and it is deliberately not the
@@ -530,6 +531,13 @@ func (a *Agent) firstExchangeLocked() (string, string) {
 		switch message.Role {
 		case "user":
 			if a.sessionNoteLocked(message) {
+				// A MEMBER A MANAGER STARTED HAS NO MESSAGE OF THE PERSON'S: its
+				// first words are the brief it was started with, delivered by
+				// the session. That brief is what the conversation is about, so
+				// it names the conversation when nothing the person typed has.
+				if question == "" && !shellOpening {
+					question = teamBrief(messageContentText(message))
+				}
 				continue
 			}
 			// Do not borrow an answer from a later, unrelated user turn. After
@@ -1041,4 +1049,15 @@ func healedTitle(stored string) string {
 		return cleanConversationTitle(stored).full
 	}
 	return stored
+}
+
+// teamBrief is the words of the brief a team delivery started this
+// conversation with, and "" for a message that carries none.
+func teamBrief(text string) string {
+	for _, line := range teamNewsLines(text) {
+		if line.Kind == teams.KindStart {
+			return strings.TrimSpace(line.Text)
+		}
+	}
+	return ""
 }

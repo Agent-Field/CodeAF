@@ -1,6 +1,6 @@
 ---
 kind: added
-title: codeaf app pauses handed-over tasks, resumes work after a quit, and runs a suggested choice on a clock
+title: codeaf app pauses handed-over tasks, resumes after a quit, runs a suggested choice on a clock
 pr: 0
 surface: [engine]
 ---
