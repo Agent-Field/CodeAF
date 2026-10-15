@@ -172,12 +172,13 @@ const (
 // may touch a disk or a door; and the test that walks [commands] can then ask it
 // about every row without an app.
 //
-// THE ARGUMENT IS PART OF THE QUESTION, because three commands mean two different
-// things with and without one: `/standing` is a page and `/standing <words>`
-// raises a card in a conversation; `/task` is the task page and `/task <brief>` starts work; `/memory` is
-// the place and `/memory <query>` prints. A table keyed on the name alone would
-// send a person to the wrong one of each pair. The drop-up asks with the row's
-// own placeholder ([command.args]), which is empty on exactly the bare rows.
+// THE ARGUMENT IS PART OF THE QUESTION, because three commands mean different
+// things with and without one: `/task` is the task page and `/task <brief>`
+// starts work; `/memory` is the place and `/memory <query>` prints;
+// `/automations` is the place and `/automations add …` raises a card. A table
+// keyed on the name alone would send a person to the wrong one of each pair.
+// The drop-up asks with the row's own placeholder ([command.args]), which is
+// empty on exactly the bare rows.
 //
 // A WORD NOBODY DEFINED HAS NO FATE, and the dispatch answers it the way it
 // always did — `there is no command called /x · / lists them`, on home's line.
@@ -219,13 +220,19 @@ func homeFate(word, rest string) string {
 		// exactly like /files. The pin it used to be here is /project
 		// (projectcmd.go).
 		return fateNeedsChat
-	case "standing":
-		// Bare it is the standing place; with words it is a card raised in a
-		// conversation, and there has to be one.
-		if rest == "" {
+	case "automations":
+		// Bare, or `list`, it is the automations place. `add` and `edit` end on
+		// a card, and a card is drawn in a conversation — which also becomes
+		// the automation's origin, the room its runs' lines are said in — so
+		// there has to be one. The verbs that act on one automation by its id
+		// (run, pause, resume, delete) answer on home's own line.
+		switch verb, _, _ := strings.Cut(strings.ToLower(rest), " "); verb {
+		case "", "list":
 			return fatePlace
+		case "add", "edit":
+			return fateNeedsChat
 		}
-		return fateNeedsChat
+		return fateAnswers
 	case "task":
 		// AND A BARE /task IS A PAGE AND NOT A USAGE LINE (commands.go's
 		// [app.runTaskCommand] says why). It used to open a conversation at the
@@ -250,9 +257,8 @@ func homeFate(word, rest string) string {
 		// /crew and /model. The crew is the machine's, the model has a target
 		// rule home can pin — and a thinking rung is the CONVERSATION's own scope
 		// (effortchip.go), so there is nothing here for it to be set on. Home's
-		// own rung is not this one either: `alt+e` on a standing item's card
-		// moves that item's, and the install's default is the `thinking` row of
-		// /settings (effortscope.go).
+		// own rung is not this one either: the install's default is the
+		// `thinking` row of /settings (effortscope.go).
 		return fateNeedsChat
 	case "memory", "memories":
 		// Bare it is the memory place; a query prints matching rows.
@@ -262,6 +268,10 @@ func homeFate(word, rest string) string {
 		return fateAnswers
 	case "help", "status", "cost", "budget", "cache", "debug", "update",
 		"stop", "remember", "forget":
+		return fateAnswers
+	case "always":
+		// BOTH FORMS ANSWER HERE, and home is where a rule is the person's
+		// everywhere rather than one project's (memory.go's [app.runAlways]).
 		return fateAnswers
 	}
 	return ""

@@ -14,7 +14,6 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/resident"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -880,103 +879,25 @@ func TestAffirmativeRailReplyVocabulary(t *testing.T) {
 	}
 }
 
-func TestStandingRecognitionTable(t *testing.T) {
-	tests := []struct {
-		instruction string
-		standing    bool
-	}{
-		{"Whenever a PR opens, review it.", true},
-		{"Every morning send me a digest.", true},
-		{"Each time the build fails, summarize it.", true},
-		{"Keep the suite green.", true},
-		{"Watch this folder for new PDFs.", true},
-		{"Remind me when the deployment finishes.", true},
-		{"Remind me in 20 minutes to stretch.", true},
-		{"Make sure the release branch stays green.", true},
-		{"Summarize this file.", false},
-		{"Build the widget and keep the API name.", false},
-		{"When I say go, do X once.", false},
-		{"Review every file in this directory once.", false},
+// The temporal route that drafted a standing rule out of a recurring-sounding
+// ask went with the v1 scheduler. Such an ask is compiled like any other — by
+// the one compile call, into ordinary work that carries its sentence verbatim —
+// and nothing is held back for a ratification card that no longer exists.
+func TestARecurringSoundingAskCompilesAsOrdinaryWork(t *testing.T) {
+	const ask = "remind me every monday at 9 to water the plants"
+	client := &fakeClient{responses: []string{`{"goal":"Water the plants."}`}}
+	brief, err := NewCompiler(client).Compile(context.Background(), ask, "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, test := range tests {
-		t.Run(test.instruction, func(t *testing.T) {
-			if got := RecognizesStandingIntent(test.instruction); got != test.standing {
-				t.Fatalf("standing = %t, want %t", got, test.standing)
-			}
-		})
+	if strings.TrimSpace(brief.Question) != "" || len(brief.QuestionOptions) != 0 {
+		t.Fatalf("a recurring-sounding ask was asked about: %+v", brief)
 	}
-}
-
-func TestCompilerBuildsStandingCharterDraftFields(t *testing.T) {
-	tests := []struct {
-		name        string
-		instruction string
-		context     string
-		wantKind    store.WatchKind
-		wantCadence string
-		wantCron    func(t *testing.T, schedule store.CronSchedule)
-		wantExpiry  string
-		wantMax     int
-		wantCost    float64
-	}{
-		{
-			name: "measured recurring invariant", instruction: "Every morning review new PRs.",
-			context: "reflex: avg cost=$0.07", wantKind: store.WatchCron,
-			wantCadence: "Every morning",
-			wantCron: func(t *testing.T, schedule store.CronSchedule) {
-				if schedule.Kind != store.CronDaily || schedule.Hour != 9 || schedule.Minute != 0 {
-					t.Fatalf("morning cadence compiled to %+v, want daily 09:00", schedule)
-				}
-			},
-			wantExpiry: "never", wantMax: 10, wantCost: 0.07,
-		},
-		{
-			name: "reminder degenerate charter", instruction: "Remind me tomorrow at 9 to call Mom.",
-			wantKind: store.WatchCron, wantCadence: "tomorrow at 9",
-			wantCron: func(t *testing.T, schedule store.CronSchedule) {
-				tomorrow := time.Now().AddDate(0, 0, 1)
-				if schedule.Kind != store.CronAt || schedule.At.Hour() != 9 ||
-					schedule.At.Minute() != 0 || schedule.At.Day() != tomorrow.Day() {
-					t.Fatalf("reminder cadence compiled to %+v, want at tomorrow 09:00", schedule)
-				}
-			},
-			wantExpiry: "once", wantMax: 1, wantCost: standing.DefaultPerRunUSD,
-		},
+	if !strings.Contains(brief.Goal, ask) {
+		t.Fatalf("goal = %q, want the ask carried verbatim", brief.Goal)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			client := &fakeClient{responses: []string{
-				`{"invariant":"model rewrite","watch":{},"sentinel":"Has the condition occurred?","action":"Carry out the requested action.","rails":{}}`,
-			}}
-			brief, err := NewCompiler(client).Compile(context.Background(), test.instruction, test.context)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if brief.Charter == nil || brief.Question == "" || len(brief.QuestionOptions) != 3 {
-				t.Fatalf("standing brief = %+v", brief)
-			}
-			charter := brief.Charter
-			if charter.Invariant != test.instruction || charter.Watch.Kind != test.wantKind ||
-				charter.Watch.Cadence != test.wantCadence {
-				t.Fatalf("charter watch/invariant = %+v", charter)
-			}
-			if charter.Watch.Spec.Kind != store.WatchCron || charter.Watch.Spec.Cron == nil {
-				t.Fatalf("cadence words did not compile to a typed cron spec: %+v", charter.Watch.Spec)
-			}
-			test.wantCron(t, *charter.Watch.Spec.Cron)
-			if charter.Rails.Expiry != test.wantExpiry || charter.Rails.MaxPerDay != test.wantMax ||
-				charter.Rails.EstimatedCostUSD != test.wantCost ||
-				strings.TrimSpace(charter.Rails.MaxPerDayJustification) == "" {
-				t.Fatalf("charter rails = %+v", charter.Rails)
-			}
-			if charter.Sentinel == "" || charter.Action == "" ||
-				(test.name == "reminder degenerate charter" && charter.Action != "Say: call Mom.") {
-				t.Fatalf("charter judgment/action missing: %+v", charter)
-			}
-			if reminder := test.name == "reminder degenerate charter"; charter.SayOnly != reminder {
-				t.Fatalf("say-only = %t, want %t", charter.SayOnly, reminder)
-			}
-		})
+	if client.calls != 1 {
+		t.Fatalf("the ask took %d model calls, want the one compile", client.calls)
 	}
 }
 
@@ -1031,97 +952,6 @@ func TestCompilerQuestionOptionsPreserveOrder(t *testing.T) {
 	}
 }
 
-func TestRatificationOptionRoundTrip(t *testing.T) {
-	for _, test := range []struct {
-		name       string
-		reply      string
-		wantStatus store.CharterStatus
-		wantOnce   bool
-	}{
-		{name: "affirmative activates", reply: "yes", wantStatus: store.CharterActive},
-		{name: "numeric activates", reply: "1", wantStatus: store.CharterActive},
-		{name: "decline stays disarmed", reply: "3", wantStatus: store.CharterRetired, wantOnce: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			graph := openHeadStore(t)
-			client := &fakeClient{responses: []string{
-				`{"watch":{},"sentinel":"Is there a new PR?","action":"Review the new PR.","rails":{}}`,
-			}}
-			compiler := NewCompiler(client)
-			compile := func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
-				brief, err := compiler.Compile(ctx, instruction, graphContext)
-				if err != nil {
-					return resident.Compiled{}, err
-				}
-				return resident.Compiled{
-					Goal: brief.Goal, Assumptions: brief.Assumptions, Scale: brief.Scale,
-					BuildsOn: brief.BuildsOn, Question: brief.Question,
-					QuestionOptions: brief.QuestionOptions, Charter: brief.Charter,
-				}, nil
-			}
-			reconciler := resident.New(graph, compile, nil)
-			command, err := graph.RequestCommand(store.Command{
-				SessionID: "ratify", Kind: store.CommandSplice,
-				Instruction: "Whenever a PR opens, review it.",
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := reconciler.Tick(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-			question := waitForAgentReply(t, graph, "ratify", command.Seq)
-			if len(question.Options) != 3 || question.Options[0].Label != "yes, stand this up" {
-				t.Fatalf("ratification question = %+v", question)
-			}
-			user, err := graph.PostMessage(store.Message{
-				SessionID: "ratify", Role: store.RoleUser, Body: test.reply,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
-				t.Fatal(err)
-			}
-			if err := reconciler.Tick(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-			charters, err := graph.Charters()
-			if err != nil || len(charters) != 1 || charters[0].Status != test.wantStatus {
-				t.Fatalf("charters = %+v err=%v", charters, err)
-			}
-			if test.wantStatus == store.CharterActive {
-				// The point of the whole seam: a recognized then ratified ask
-				// lands in the one canonical table the watch engine reads.
-				due, err := graph.DueCharters(time.Now().Add(time.Minute), 10)
-				if err != nil {
-					t.Fatal(err)
-				}
-				visible := false
-				for _, charter := range due {
-					visible = visible || charter.ID == charters[0].ID
-				}
-				if !visible {
-					t.Fatalf("ratified charter is invisible to the watch engine: due=%+v", due)
-				}
-			}
-			if test.wantOnce {
-				nodes, err := graph.Nodes()
-				if err != nil {
-					t.Fatal(err)
-				}
-				found := false
-				for _, node := range nodes {
-					found = found || (node.Parent == store.RootID && node.Provenance.Intent == charters[0].Invariant)
-				}
-				if !found {
-					t.Fatal("declining standing did not splice the requested action once")
-				}
-			}
-		})
-	}
-}
-
 func TestGenericQuestionNumericSelectionContinuesCompile(t *testing.T) {
 	graph := openHeadStore(t)
 	compile := func(context.Context, string, string) (resident.Compiled, error) {
@@ -1160,159 +990,6 @@ func TestGenericQuestionNumericSelectionContinuesCompile(t *testing.T) {
 		!strings.Contains(pending[0].Instruction, "Answer to compiler question: London") {
 		t.Fatalf("continued command = %+v err=%v", pending, err)
 	}
-}
-
-// Managing a standing rule was a prefix test that journaled and spoke without
-// anything with judgment seeing the sentence. It is the verb triad now: the
-// same transition table, the same store commands, the same one-line receipts —
-// and the transition is read off the person's own words against a rule id a
-// read handed over, rather than off the words a sentence happened to open with.
-// Withdrawal is stop's; every other edit is change's.
-func TestConversationalCharterManagement(t *testing.T) {
-	tests := []struct {
-		name        string
-		message     string
-		tool        string
-		wantStatus  store.CharterStatus
-		wantCadence string
-	}{
-		{name: "pause", message: "pause the morning digest", tool: beltToolStop,
-			wantStatus: store.CharterPaused},
-		{name: "retire", message: "stop watching the morning digest", tool: beltToolStop,
-			wantStatus: store.CharterRetired},
-		{name: "edit cadence", message: "make the morning digest hourly", tool: beltToolChange,
-			wantStatus: store.CharterActive, wantCadence: "hourly"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			graph := openHeadStore(t)
-			charter := activateHeadCharter(t, graph, "digest",
-				"Every morning send the release digest.")
-			args := map[string]any{"target": charter.ID, "words": test.message}
-			if test.tool == beltToolStop {
-				args = map[string]any{"targets": []string{charter.ID}, "words": test.message}
-			}
-			client := &beltClient{turns: []beltTurn{
-				{calls: []ai.ToolCall{beltCall("r1", test.tool, args)}},
-				{text: "Done — that rule is updated."},
-			}}
-			user, err := graph.PostMessage(store.Message{
-				SessionID: "manage", Role: store.RoleUser, Body: test.message,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := New(client, graph).answer(context.Background(), user); err != nil {
-				t.Fatal(err)
-			}
-			if err := resident.New(graph, nil, nil).Tick(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-			updated, found, err := graph.Charter(charter.ID)
-			if err != nil || !found || updated.Status != test.wantStatus {
-				t.Fatalf("updated charter = %+v found=%t err=%v", updated, found, err)
-			}
-			if test.wantCadence != "" {
-				if updated.Watch.Cadence != test.wantCadence {
-					t.Fatalf("cadence = %q, want %q", updated.Watch.Cadence, test.wantCadence)
-				}
-				if updated.Watch.Cron == nil || updated.Watch.Cron.Kind != store.CronEveryHours ||
-					updated.Watch.Cron.Interval != 1 {
-					t.Fatalf("cadence edit did not produce a typed hourly schedule: %+v", updated.Watch)
-				}
-			}
-			messages, err := graph.Messages("manage", user.Seq, 0)
-			if err != nil || len(messages) < 2 || messages[len(messages)-1].Role != store.RoleSystem ||
-				strings.Contains(messages[len(messages)-1].Body, "\n") {
-				t.Fatalf("management receipts = %+v err=%v", messages, err)
-			}
-		})
-	}
-}
-
-// Two rules the words reach equally is ambiguity, and ambiguity is never picked
-// for the person. The disambiguation used to be a durable question minted by the
-// recognizer itself; the rule tool now hands the candidates back as a tool
-// RESULT — acting on neither — and the ask tool puts the choice to the person as
-// the same durable numbered options. Nothing is journaled either way, which is
-// the property that mattered.
-func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
-	graph := openHeadStore(t)
-	activateHeadCharter(t, graph, "frontend-prs", "Whenever frontend PRs open, review them.")
-	activateHeadCharter(t, graph, "backend-prs", "Whenever backend PRs open, review them.")
-	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("r1", beltToolStop, map[string]any{
-			"words": "stop watching PRs"})}},
-		{calls: []ai.ToolCall{beltCall("a1", beltToolAsk, map[string]any{
-			"question": "Which rule do you mean?",
-			"options":  []string{"the frontend PR reviews", "the backend PR reviews"}})}},
-		// The ask tool's own result tells the loop the question IS the reply, so
-		// the turn that follows it says nothing. See the assertion below: a
-		// second voice over a numbered question is the thread answering itself.
-		{text: ""},
-	}}
-	user, err := graph.PostMessage(store.Message{
-		SessionID: "ambiguous-charter", Role: store.RoleUser, Body: "stop watching PRs",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := New(client, graph).answer(context.Background(), user); err != nil {
-		t.Fatal(err)
-	}
-	// The tool that could have acted refused to choose, and said so in a
-	// sentence the loop had to read before it could ask anything.
-	candidates := ""
-	for _, message := range client.seen {
-		if message.Role == "tool" && len(message.Content) > 0 && candidates == "" {
-			candidates = message.Content[0].Text
-		}
-	}
-	if !strings.Contains(candidates, "more than one thing matches") {
-		t.Fatalf("the withdrawal picked for the user instead of handing back candidates: %q", candidates)
-	}
-
-	reply := waitForAgentReply(t, graph, "ambiguous-charter", user.Seq)
-	if !strings.HasPrefix(reply.Body, "Which rule do you mean?") || len(reply.Options) != 2 {
-		t.Fatalf("ambiguous reply = %+v", reply)
-	}
-	// It is a row the person can click, and it says so in types rather than in
-	// a JSON blob inside its own prose (13.3 bug 1).
-	assertClickableAsk(t, reply, "Which rule do you mean?", "the frontend PR reviews", "the backend PR reviews")
-	// The question IS the reply: a second voice over the top of it would be the
-	// thread answering its own question.
-	if replies := agentRepliesAfter(t, graph, "ambiguous-charter", user.Seq); len(replies) != 1 {
-		t.Fatalf("the ask was spoken over: %+v", replies)
-	}
-	pending, err := graph.PendingCommands(0)
-	if err != nil || len(pending) != 0 {
-		t.Fatalf("ambiguous management emitted commands: %+v err=%v", pending, err)
-	}
-}
-
-func activateHeadCharter(t *testing.T, graph *store.Store, id, invariant string) store.Charter {
-	t.Helper()
-	charter, err := graph.DraftCharter(id, "manage", 0, store.CharterSpec{
-		Invariant: invariant,
-		Watch: store.CharterWatch{
-			Kind: store.WatchCron, Cadence: "every morning", Schedule: "0 9 * * *",
-		},
-		Sentinel: "Is a delivery due?", Action: "Send the digest.",
-		Rails: store.CharterSpecRails{
-			EstimatedCostUSD: 0.05, MaxPerDay: 1,
-			MaxPerDayJustification: "one scheduled delivery", Expiry: "never",
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.SetCharterStatus(id, store.CharterActive, store.Ratification{
-		Origin: store.OriginUser, SessionID: "manage", Evidence: "yes, stand this up",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	charter.Status = store.CharterActive
-	return charter
 }
 
 // A document is not something the talk model can see. It must stay off the

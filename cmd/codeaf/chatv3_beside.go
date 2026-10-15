@@ -50,7 +50,7 @@ package main
 // ── AND THE BOOT CONNECTION IS THE WINDOW'S DOOR ONTO THE MACHINE ───────────
 //
 // The places, the ledger, the memory store, the search index, the recent list
-// and the standing items are facts about the ENGINE'S MACHINE rather than about
+// and the automations are facts about the ENGINE'S MACHINE rather than about
 // any conversation, but the protocol dispatches every call against a session. So
 // they ride the boot connection, and THE BOOT CONNECTION IS NEVER RETIRED BY A
 // CONVERSATION ENDING: closing the conversation on it ends that session and

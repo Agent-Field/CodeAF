@@ -119,13 +119,12 @@ func lawElsewhere(t *testing.T, at string) string {
 		// The harness messages a law can ride on, by the symbol a lane would go
 		// and edit. A name missing here is a message nobody has registered yet.
 		messages := map[string]string{
-			"standingNewsRule":     standingNewsRule,
 			"checkpointChoiceRule": checkpointChoiceRule,
 			"carriedResultsRule":   carriedResultsRule,
 		}
 		text, known := messages[name]
 		if !known {
-			t.Fatalf("code:%s is not a message this test knows; add it beside standingNewsRule", name)
+			t.Fatalf("code:%s is not a message this test knows; add it beside checkpointChoiceRule", name)
 		}
 		return text
 	}
@@ -216,14 +215,13 @@ var lawRegistry = []lawUnit{
 	{id: "media.prompt-decides-quality", class: lawDemand, at: "group:media", key: "a prompt built from the genre's own clichés"},
 	{id: "harness.recipe-or-program", class: lawDemand, at: "group:harnesses", key: "a saved PROGRAM rather than a recipe"},
 	{id: "settings.refusal-is-theirs", class: lawDemand, at: "group:settings", key: "relay it exactly as written, and point them at `/settings`"},
-	{id: "standing.background-checks", class: lawDemand, at: "manual:keeping-an-eye", key: "background checks are on out of the box, and nobody asks you first"},
-	{id: "standing.a-minute-is-a-timer", class: lawDemand, at: "manual:keeping-an-eye", key: "ordinary standing one-off"},
+	// `standing.background-checks` and `standing.a-minute-is-a-timer` were filed
+	// here against the chat manual's keeping-an-eye page. Both laws described the
+	// standing side — an operating-system timer on by default, and a one-minute
+	// reminder riding it — which automations replaced (docs/design/automations/
+	// DESIGN.md): nothing is installed on the machine any more, and the page they
+	// lived on is gone with the feature. They were deleted, not moved.
 	{id: "accounts.never-sent-twice", class: lawDemand, at: "manual:accounts", key: "Each outgoing mail or Slack message goes out **once**"},
-
-	// ── and the one that rides with the EVENT. A fired standing item announces
-	// itself and says what to do about itself, so the page explaining that
-	// message was the second copy of a rule the message already carries.
-	{id: "standing.news-is-not-a-request", class: lawEvent, at: "code:standingNewsRule", key: "Do not call stand again for it"},
 
 	// ── and the three laws of a turn that has run long (inherit.go). WHAT
 	// `inherit` DOES IS A FACT ABOUT ONE FIELD OF ONE VERB, so it rides that

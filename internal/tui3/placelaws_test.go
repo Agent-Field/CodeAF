@@ -13,7 +13,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -235,7 +235,7 @@ func TestNoPlaceFileMentionsTheBar(t *testing.T) {
 // and nobody notices until a frame is slow.
 func TestTheReadingLayersImportNoApp(t *testing.T) {
 	readings := []string{
-		"switcher.go", "tasksplace.go", "standingplace.go",
+		"switcher.go", "tasksplace.go", "automationsplace.go",
 		"memoryplace.go", "spendplace.go", "placeprose.go",
 	}
 	fset := token.NewFileSet()
@@ -415,21 +415,15 @@ func TestAPlaceNeverReadsTheDiskOnADraw(t *testing.T) {
 			// full-text index: each is a file or a database, and none of them may
 			// be touched between one frame and the next.
 			a.memory = panicMemory{t: t, place: place.id.word()}
-			// THE STANDING SEAM IS WIRED WHETHER THE LAB WIRED IT OR NOT. A fence
-			// that was installed only where the lab had already put a seam asked
+			// THE AUTOMATIONS SEAM IS WIRED WHETHER THE LAB WIRED IT OR NOT. A
+			// fence installed only where the lab had already put a seam asks
 			// nothing at all of the labs that leave it nil — which is how the spend
-			// place came to walk the whole standing store on every window
-			// keystroke with this test green. A place reads `nil` as "there is no
-			// store to ask", so a nil seam does not exercise the question; this
-			// hands every place a store that is a fault to touch.
-			a.stands.Items = func(string) []standing.Item {
-				t.Fatalf("the %s place read the standing store on a draw or a keystroke", place.id.word())
-				return nil
-			}
-			a.stands.All = func() []standing.Item {
-				t.Fatalf("the %s place walked the standing store on a draw or a keystroke", place.id.word())
-				return nil
-			}
+			// place once came to walk a whole store on every window keystroke with
+			// this test green. A place reads `nil` as "there is no store to ask",
+			// so a nil seam does not exercise the question; this hands every place
+			// a store that is a fault to touch, and the watcher's last reading is
+			// what a place may read instead.
+			a.autos = panicAutomations(t, place.id.word())
 
 			for _, width := range []int{44, 60, 120, 200} {
 				a.width = width
@@ -497,6 +491,11 @@ func (p panicMemory) RestoreMemory(id string) error {
 	return nil
 }
 
+func (p panicMemory) SetMemoryAlways(id string, always bool) error {
+	p.blame("make a line a rule")
+	return nil
+}
+
 func (p panicMemory) UpdateMemory(id, title, text string, tags []string) error {
 	p.blame("rewrite a line")
 	return nil
@@ -533,7 +532,7 @@ func (p panicMemory) ListMemories(scope string, limit int) ([]store.Memory, erro
 // than grepped — the same call [TestTheReadingLayersImportNoApp] makes and for
 // the same reason.
 func TestEachVerbWordIsSpelledOnce(t *testing.T) {
-	words := []string{memoryCardWord, memoryFixWord, memoryForgetWord, memoryUndoWord}
+	words := []string{memoryCardWord, memoryFixWord, memoryForgetWord, memoryUndoWord, memoryAlwaysWord, memoryWhenMattersWord}
 	seen := map[string]int{}
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(".")
@@ -600,5 +599,36 @@ func TestPlaceNavigationNamesPreserveAliases(t *testing.T) {
 		if _, ok := parsePageWord(word); ok {
 			t.Errorf("%q resolved despite being empty, ambiguous, or unknown", word)
 		}
+	}
+}
+
+// panicAutomations is an automations seam that is a fault to touch: every door
+// fails the test rather than answering, for [panicMemory]'s reason.
+func panicAutomations(t *testing.T, place string) AutomationsSeam {
+	fail := func(door string) {
+		t.Fatalf("the %s place called the automations door %s on a draw or a keystroke", place, door)
+	}
+	return AutomationsSeam{
+		List:    func() ([]automation.Automation, error) { fail("List"); return nil, nil },
+		Runs:    func(string, int) ([]automation.Run, error) { fail("Runs"); return nil, nil },
+		Changes: func(int64) ([]automation.Run, int64, error) { fail("Changes"); return nil, 0, nil },
+		Cursor:  func() (int64, error) { fail("Cursor"); return 0, nil },
+		Active:  func() ([]automation.Run, error) { fail("Active"); return nil, nil },
+		Create: func(automation.Automation) (automation.Automation, error) {
+			fail("Create")
+			return automation.Automation{}, nil
+		},
+		Update: func(automation.Automation) (automation.Automation, error) {
+			fail("Update")
+			return automation.Automation{}, nil
+		},
+		SetStatus: func(string, automation.Status) (automation.Automation, error) {
+			fail("SetStatus")
+			return automation.Automation{}, nil
+		},
+		Delete:  func(string) error { fail("Delete"); return nil },
+		RunNow:  func(string) error { fail("RunNow"); return nil },
+		StopRun: func(int64) error { fail("StopRun"); return nil },
+		Claim:   func(int64) bool { fail("Claim"); return false },
 	}
 }

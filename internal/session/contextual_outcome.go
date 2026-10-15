@@ -383,7 +383,7 @@ func outcomeLiveTurn(live string) (uint64, bool) {
 var alternativeExcludedTools = map[string]bool{
 	"read": true, "ls": true, "glob": true, "grep": true, "find": true,
 	"search": true, "list": true, "view": true, "open": true, "head": true,
-	"tail": true, "cat": true, "remember": true, "stand": true, "forget": true,
+	"tail": true, "cat": true, "remember": true, "automation": true, "forget": true,
 	"ask": true, "manual": true, "tasks": true, "jobs": true, "settings": true,
 	"skill": true, "workspace": true,
 }

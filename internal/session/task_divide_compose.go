@@ -89,7 +89,7 @@ type divisionFamily struct {
 //
 // THE GROUND IS WHAT A PART INHERITS ([TaskGraph.inheritedLocked]): the brief the
 // work was admitted with AND the reports of whatever ran before it, which is
-// where a family's findings actually are. It stops short of the standing orders,
+// where a family's findings actually are. It stops short of the person's rules,
 // which the frontier appends to every part in its own right — a part composed on
 // the whole assembled brief would read the house rules twice.
 //
@@ -257,7 +257,7 @@ func fit(text string, room int) string {
 
 // inheritedBrief is the work being divided, as a part of it inherits it: what
 // this node was admitted with and what the work before it learned, read under the
-// graph's lock ([TaskGraph.inheritedLocked] says why the standing orders are not
+// graph's lock ([TaskGraph.inheritedLocked] says why the person's rules are not
 // in it).
 //
 // IT IS NOT [TaskNode.assembledBrief], and the difference is the one section a

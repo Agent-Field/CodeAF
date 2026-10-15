@@ -10,43 +10,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 func ambientBandContext(a *app, row session.SessionRow, now time.Time, width int) bandContext {
 	return bandContext{subject: bandSubject{kind: bandKindSession, row: row}, width: width, now: now, pal: a.pal}
-}
-
-func TestNewsBandReadsWithoutDrainingFoldsAndFits(t *testing.T) {
-	dir := t.TempDir()
-	row := session.SessionRow{ID: "0123456789abcdef", Dir: dir, Transcript: filepath.Join(dir, session.TranscriptName)}
-	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
-	for i, text := range []string{"report landed", "tests passed", "deploy needs a look", "invoice filed"} {
-		if err := standing.Deliver(dir, standing.Note{At: now.Add(-time.Duration(i+1) * time.Minute), Words: "keep main green", Text: text}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	a := newTestApp(nil)
-	ctx := ambientBandContext(a, row, now, 34)
-	takeHomeNews(a, ctx.subject, now)
-	rows := drawNewsBand(a, ctx)
-	got := plain(strings.Join(rows, "\n"))
-	if !strings.Contains(got, "◆ 4 things since you left") || !strings.Contains(got, "1m · keep main green") || !strings.Contains(got, "report landed") || !strings.Contains(got, "▸ …1 more things") {
-		t.Fatalf("news band:\n%s", got)
-	}
-	if _, err := os.Stat(standing.InboxPath(dir)); err != nil {
-		t.Fatalf("drawing drained the inbox: %v", err)
-	}
-	for _, line := range rows {
-		if ansi.StringWidth(line) > 34 {
-			t.Fatalf("news row is %d cells: %q", ansi.StringWidth(line), plain(line))
-		}
-	}
-	assertNarrowRows(t, "news", drawNewsBand(a, ambientBandContext(a, row, now, 30)), 30, "report landed")
-	empty := session.SessionRow{Transcript: filepath.Join(t.TempDir(), session.TranscriptName)}
-	if got := drawNewsBand(newTestApp(nil), ambientBandContext(newTestApp(nil), empty, now, 34)); len(got) != 0 {
-		t.Fatalf("empty news drew %q", got)
-	}
 }
 
 func TestDeliverablesBandFiltersSessionFoldsAndFits(t *testing.T) {

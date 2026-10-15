@@ -1,10 +1,8 @@
 package tui3
 
-import "strings"
-
 func init() {
 	registerHomeBand(homeBand{name: "keys", order: bandOrderKeys,
-		kinds: []bandKind{bandKindSession, bandKindItem}, draw: drawKeysBand})
+		kinds: []bandKind{bandKindSession}, draw: drawKeysBand})
 }
 
 // drawKeysBand is the quiet legend at the foot of every actionable card.
@@ -32,27 +30,6 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 		}
 		aside := "ctrl+e delete"
 		clauses = []string{"enter open", "ctrl+t new chat here", "ctrl+o open folder", "ctrl+y copy path", aside, "→ more"}
-	case bandKindItem:
-		clauses = []string{"ctrl+e pause", "ctrl+x stop"}
-		// AND `enter` ONLY WHERE THERE IS A CONVERSATION BEHIND THE ITEM. An item
-		// made at home has no origin to open ([app.homeItemEnter] refuses it in
-		// words), so naming the key here would advertise a door this row has
-		// already decided it does not have — which is this legend's own law, said
-		// three paragraphs up about a conversation whose folder is gone, and the
-		// design's: A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN.
-		open := homeItemEnterWord
-		if strings.TrimSpace(ctx.subject.item.Item.Origin.Transcript) == "" {
-			open = homeItemStandingWord
-		}
-		clauses = append([]string{open}, clauses...)
-		// AND THE RUNG'S CHORD ONLY WHERE THERE IS A DOOR TO MOVE IT THROUGH,
-		// which is the same rule the three above are drawn under — a read-only
-		// window keeps every key that asks nothing of the disk and loses the ones
-		// that do (homestanding.go's [app.homeItemWrite] refuses in words).
-		if a.stands.SetEffort != nil {
-			clauses = append(clauses, a.chords.say(effortKeyClause))
-		}
-		clauses = append(clauses, "→ more")
 	default:
 		return nil
 	}

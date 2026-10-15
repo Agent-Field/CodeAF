@@ -71,6 +71,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/reportline"
 )
 
 // taskIndexName is the file, in the session directory. One name, shared by
@@ -994,10 +995,16 @@ func taskURI(path string) string {
 	return ""
 }
 
-// taskOutcome is the report's first sentence, capped. The whole report is in
-// the transcript this row points at.
+// taskOutcome is the report's first prose sentence, capped. It reads through
+// reportline.FirstProse (#931), the same reading internal/tui3's landed card
+// takes, so a report that opens with a fenced block — a diff, a command's output,
+// a JSON result — writes its first real line into this row rather than the three
+// backticks around the answer. The whole report is in the transcript this row
+// points at. The surfaces this feeds (the tasks table, the home panels, the task
+// record) can no longer recover the sentence once the fence has been written here,
+// which is why the reading belongs at this source and not downstream.
 func taskOutcome(report string) string {
-	line := strings.TrimSpace(firstLine(report))
+	line := reportline.FirstProse(report)
 	if len(line) > taskOutcomeLimit {
 		line = strings.TrimSpace(line[:taskOutcomeLimit]) + "…"
 	}

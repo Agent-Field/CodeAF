@@ -16,7 +16,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/relay"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // liveRelay starts a real relay and hands back its address.
@@ -352,11 +351,9 @@ func (s *stubAgent) EarlierHistory() session.EarlierHistory {
 }
 
 func (s *stubAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
-func (s *stubAgent) ResolveStanding(uint64, session.StandingAnswer)            {}
 
 func (s *stubAgent) RewindAt(int) ([]session.DisplayEntry, error) {
 	return nil, errors.New("not here")
 }
 
 var _ remote.WrappedAgent = (*stubAgent)(nil)
-var _ = standing.Item{}

@@ -27,9 +27,9 @@ import (
 //
 // IT IS CALLED `hop` HERE AND `the switcher` TO A PERSON. This package already
 // spends the word `switcher` on home's own reading (switcher.go), which is a
-// different thing — a whole page, ranked, grouped, with standing orders and a
-// ledger in it — and two `switcher`s in one package would be two things nobody
-// can tell apart in a stack trace.
+// different thing — a whole page, ranked, grouped, with a ledger in it — and
+// two `switcher`s in one package would be two things nobody can tell apart in a
+// stack trace.
 //
 // ── WHY IT IS BUILT ONLY FROM MEMORY ────────────────────────────────────────
 //

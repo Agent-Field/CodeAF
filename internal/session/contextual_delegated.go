@@ -325,7 +325,7 @@ func (c *outcomeCollector) observe(worker *Agent, call ai.ToolCall, result toolR
 	}
 	// A BRAIN THAT WAS ONLY LENT TO BIND IS NEVER WRITTEN THROUGH. The collector
 	// is built beside the brain and hangs off the root session, so a
-	// binding-only standing run has one even though [Agent.memoryWritable] is
+	// binding-only automation run has one even though [Agent.memoryWritable] is
 	// false; a nested task worker carries this collector and a frozen origin
 	// ([Agent.newTaskAgentOn]), so without this line the worker's failing tool
 	// calls would be journaled as project attempts and the run's READ-ONLY

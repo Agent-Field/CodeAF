@@ -311,12 +311,6 @@ func (a *app) placeHasDraft() bool { return a.at(pageHome) }
 //
 // It is read from home's [placeHome.owns], after the phone sheet and before
 // the grid; no other place has a draft ([app.placeHasDraft]).
-//
-// `alt+e` ON A STANDING ITEM'S CARD IS THAT ITEM'S. The card names the key
-// for the item's own rung (homeband_keys.go), and a card that named a key the
-// draft then took would be the surface lying about the next keystroke; so on
-// that one row routes straight to the card ([app.cycleHomeEffort]),
-// and the draft's rung is still one press on its cell.
 func (a *app) placeTargetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.placeHasDraft() {
 		return nil, false
@@ -329,11 +323,6 @@ func (a *app) placeTargetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.moveTarget()
 		return nil, true
 	case effortKey:
-		if a.at(pageHome) {
-			if subject, ok := a.homeSubject(); ok && subject.kind == bandKindItem {
-				return a.cycleHomeEffort(), true
-			}
-		}
 		return a.cycleTargetEffort(), true
 	case approvalKey:
 		return a.cycleTargetApproval(), true

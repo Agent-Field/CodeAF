@@ -19,7 +19,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -435,11 +434,11 @@ var settingUI = map[string]settingMeta{
 
 	// ── Spending ────────────────────────────────────────────────────────────
 	//
-	// MONEY, AND NOTHING THAT IS NOT MONEY. The four rows are the four rails a
+	// MONEY, AND NOTHING THAT IS NOT MONEY. The three rows are the three rails a
 	// person can actually turn, and the label of each one is THE SCOPE it bounds
-	// — per day, per conversation, per plan, practice — because that is the
-	// question being asked and `daily budget` / `session ceiling` are the names
-	// of the keys behind it. The order they read in, and the three readings that
+	// — per day, per conversation, per plan — because that is the question being
+	// asked and `daily budget` / `session ceiling` are the names of the keys
+	// behind it. The order they read in, and the three readings that
 	// stand between them, are settingspend.go's ([spendingItems]).
 	//
 	// EVERY HINT ENDS WITH WHAT HAPPENS AT THE LINE. A rail whose consequence is
@@ -458,12 +457,6 @@ var settingUI = map[string]settingMeta{
 			"price and waits for your go-ahead — it asks, it does not stop. " +
 			"none never asks.",
 	},
-	config.KeyPracticeBudget: {
-		tab: tabSpending, label: "practice", widget: widgetText,
-		about: "the slice of the day codeaf may spend practicing on itself. When " +
-			"it is gone practice stops until tomorrow and your own work is " +
-			"untouched. 0 here turns practice off rather than uncapping it.",
-	},
 	// It is `per conversation` and not `session ceiling` for this tab's whole
 	// reason: the label is the SCOPE and the person is reading a column of
 	// scopes. It sat on Session for four waves, one tab away from every other
@@ -479,35 +472,11 @@ var settingUI = map[string]settingMeta{
 	//
 	// This machine and this project: what codeaf does with its own time here,
 	// and what it may reach on your behalf.
-	config.KeyPracticeIdle: {
-		tab: tabWorkspace, label: "quiet before practice", widget: widgetText,
-		about: "how long the room stays quiet before codeaf starts practicing.",
-	},
-	config.KeyBriefAfter: {
-		tab: tabWorkspace, label: "arrival brief after", widget: widgetText,
-		about: "how long you have to be away before codeaf greets you with a " +
-			"summary. 0 always briefs.",
-	},
-	config.KeyTenureAfter: {
-		tab: tabWorkspace, label: "tenure after", widget: widgetText,
-		about: "how many clean firings a standing charter needs before it earns tenure.",
-	},
-	// And beside it, the switch on the whole ambient side's timing. It is on
-	// this tab rather than under Session because it is not about this
-	// conversation at all: it is about what happens on this machine when there
-	// is no conversation. The line says what it DOES rather than what it
-	// installs — the row's own hint names the launchd agent and the systemd
-	// timer for anybody who wants to go and look.
-	config.KeyStandingBackground: {
-		tab: tabWorkspace, label: "background checks", widget: widgetCycle,
-		about: "reminders, watches and routines are checked every " +
-			everyWord(standing.Interval) + " with no window open. " +
-			"Off checks only while one is.",
-	},
+	//
 	// THE UPDATE ROW READS THE WAY UP ITS KEY DOES, unlike the hints row above:
-	// on means codeaf keeps itself current. It sits on Workspace beside
-	// `background checks`, because both answer what this MACHINE does on its own
-	// rather than how the surface draws itself.
+	// on means codeaf keeps itself current. It sits on Workspace because it
+	// answers what this MACHINE does on its own rather than how the surface
+	// draws itself.
 	config.KeyUpdateAuto: {
 		tab: tabWorkspace, label: "auto update", widget: widgetToggle,
 		// NO `about`: the registry's own hint is the sentence, said once.
@@ -651,19 +620,18 @@ var settingUI = map[string]settingMeta{
 	// a setting a person can reach many ways has to read the same in all of them:
 	// this row is where the INSTALL'S rung is written, and the nearer scopes that
 	// outrank it — a conversation's own rung beside the model above the message box
-	// (effortchip.go), a task's (taskeffort.go), a standing item's
-	// (homeband_thinking.go), and the level dialled onto one model in `/model`
-	// (palette.go) — take the same chord or key over their own surfaces. A row
-	// that set a default without saying the default could be overridden is a row
-	// people come back to confused.
+	// (effortchip.go), a task's (taskeffort.go), and the level dialled onto one
+	// model in `/model` (palette.go) — take the same chord or key over their own
+	// surfaces. A row that set a default without saying the default could be
+	// overridden is a row people come back to confused.
 	//
-	// HOME'S RESTING CARD USED TO BE A SECOND DOOR ONTO THIS ROW and is retired
-	// (homeeffort.go says why), so the sentence no longer offers it.
+	// HOME'S RESTING CARD USED TO BE A SECOND DOOR ONTO THIS ROW and is retired,
+	// so the sentence no longer offers it.
 	config.KeyEffort: {
 		tab: tabProviders, label: "thinking", widget: widgetCycle,
 		about: "how hard the model thinks, unless something nearer the work says " +
 			"otherwise. " + effortKey + " moves the rung of whatever you stand on — the rung " +
-			"beside the model above the message box for one conversation, a task, or a standing item — and " +
+			"beside the model above the message box for one conversation or a task — and " +
 			"ctrl+t in /model dials one model. This row answers for everything nobody dialled.",
 	},
 	// It belongs on this tab and not under Session because it is a question
@@ -1245,11 +1213,6 @@ func (a *app) registry() *config.Settings {
 		// has no way to ask a running surface what it has spent.
 		SpentTodayUSD:       a.spentTodayUSD,
 		SpentThisSessionUSD: a.spentThisSessionUSD,
-		// The `background checks` row's own hand: this machine's timer, read for
-		// the row's value and turned by its write. Nil on a machine that cannot
-		// have one, and the row is then absent rather than present and refusing
-		// (internal/config's backgroundRow).
-		BackgroundChecks: a.stands.Background,
 		// A key written through the row — from the first-run screen or from the
 		// sheet — reaches the running session here, in the same breath as the
 		// file (firstrun.go's [app.handAPIKey]). It is the one row whose write

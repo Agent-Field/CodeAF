@@ -4,7 +4,7 @@
 
 codeaf spends real money, so it works against a ceiling: **$500.00 a day** by
 default, resetting at your local midnight. The ceiling counts everything —
-your jobs, charter firings, media, document OCR, its own practice.
+your jobs, media, document OCR, and the work codeaf does on its own.
 
 That figure is deliberately large. It is a **backstop against something going
 wrong**, not a budget: nobody chose it for you, so it sits where nobody would
@@ -24,10 +24,9 @@ money row will accept, in its own words, is `an amount in dollars, like 5 or 2.5
 amount — a number, or none for no limit`.
 
 **A money row with nothing set reads its own word for that, never `$0`.** The
-daily ceiling reads `no limit`, the consent gate reads `never asks`, and the
-practice carve-out reads `practice off`. `$0` is not shown on any of them,
-because on two of the three it would read as *zero dollars allowed* — the exact
-opposite of what a zero there means.
+daily ceiling reads `no limit` and the consent gate reads `never asks`. `$0` is
+not shown on either, because on the ceiling it would read as *zero dollars
+allowed* — the exact opposite of what a zero there means.
 
 ## Why a cost reads $0.0005 and never $0.00 — a fraction of a cent, did that cost nothing, is that free
 
@@ -86,16 +85,11 @@ belong to no single job.
 "What did that cost?" about one particular job is answered from that job's own
 record instead, which also carries what it produced.
 
-## Per-job and per-firing limits
+## Per-job limits
 
 There is no fixed per-job dollar cap — a job's budget is written into its brief,
-grounded in what similar work has actually cost.
-
-Charters are capped explicitly: each one carries a per-firing budget (default
-**$5.00**) and a max-per-day (default **10**). A firing that would cross the
-daily rail is deferred and you are asked first. A per-firing budget of **0** is
-no per-firing limit — such a charter is bounded by the daily rail and its
-max-per-day alone.
+grounded in what similar work has actually cost. (Charters had a per-firing
+budget of their own; they were removed, and nothing fires on a schedule now.)
 
 ## When a worker runs out of time — what happens to what it did
 
@@ -226,18 +220,6 @@ and repaired exactly as before, a piece whose review **passed** is finished and
 settled on that review even if it ran out of room getting there, and the first
 fruitless round is always bought — work can run out before it writes its first
 file.
-
-## The practice carve-out
-
-codeaf's own practice has its own pocket: **$50.00 a day**, spent as at most two
-firings of half of it. When that is gone, practice stops for the day. It never
-asks you to raise a rail on its own behalf — it just defers. The daily rail
-still applies on top.
-
-**This is the one pocket where `0` does not mean "no limit".** Zero turns
-practice off, and the row says so: it reads `practice off`. Practice is work
-codeaf does while nobody is watching, so there is no way to ask for it unbounded,
-on purpose.
 
 ## The provider rate limiter
 

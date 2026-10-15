@@ -15,7 +15,8 @@ One terminal can hold several at once — up to eight, each on its own project, 
 in front and the rest running behind it; `tab` and home move between them. It is
 not a background service and it does not keep working after you close the window:
 the work happens while you are here, except for jobs and tasks it has already
-started, which have their own rules.
+started, which have their own rules, and automations — reminders, scheduled work and
+watches — which run on a clock only while a codeaf window is open (*Automations*).
 
 ## What it is called
 
@@ -692,8 +693,7 @@ one move. Nothing is copied out first and nothing is mirrored anywhere else.
 
 codeaf removes a conversation of its own accord in exactly one case: one you **started in a
 temp directory**, seven days after you last said anything to it. Every other conversation
-under `~/.codeaf/v3/projects/` stays whatever its age. See *What gets cleaned up, and when*
-on the keeping-an-eye page.
+under `~/.codeaf/v3/projects/` stays whatever its age.
 
 **Three ways to keep the work instead**, all of them before the fact rather than after:
 

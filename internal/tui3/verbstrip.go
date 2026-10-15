@@ -77,7 +77,8 @@ func (a *app) closeStrip() {
 
 // openStrip is `→` on a row that has verbs. It answers false when the row has
 // none, and the arrow keeps every other meaning it already had on that place —
-// which on home is the fold ladder and the walk across the columns.
+// which on home is the way into an errand's pane and the fold ladder of the
+// phone's inbox.
 func (a *app) openStrip() bool {
 	verbs := a.rowVerbs()
 	if len(verbs) == 0 {
@@ -314,4 +315,10 @@ const (
 	memoryFixWord    = "fix the wording"
 	memoryForgetWord = "forget it"
 	memoryUndoWord   = "put it back"
+	// The two spellings of `a`, one per state of the line under the cursor: an
+	// ordinary line is made a rule, put in front of every conversation and task
+	// where it holds; a rule goes back to coming up only when it bears on the
+	// work (internal/session's memory_always.go).
+	memoryAlwaysWord      = "make it always"
+	memoryWhenMattersWord = "only when it matters"
 )

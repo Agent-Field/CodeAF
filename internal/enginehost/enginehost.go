@@ -175,11 +175,11 @@ const spawnWait = 10 * time.Second
 //
 // THE SPAWN RACE IS GUARDED BY THE LOCK THE HOST ITSELF HOLDS, which is the
 // discipline this tree already uses for anything one machine may only do once
-// (internal/filelock, and the standing tick's own lock). Whoever takes the lock
-// spawns; whoever finds it busy knows a host is alive or being born and simply
-// waits for the socket. Two spawns that race are not a fault either — the
-// second host to start finds the lock held and exits without a word — so the
-// worst case here is one wasted process, never two hosts on one workspace.
+// (internal/filelock, and the automations clock's own lock). Whoever takes the
+// lock spawns; whoever finds it busy knows a host is alive or being born and
+// simply waits for the socket. Two spawns that race are not a fault either —
+// the second host to start finds the lock held and exits without a word — so
+// the worst case here is one wasted process, never two hosts on one workspace.
 //
 // Every failure answers the same way: no connection and a reason, which the
 // caller reads as "serve this one on the pipe".

@@ -82,8 +82,8 @@ func TestRuntimeSearchExclusionsBothEngines(t *testing.T) {
 				"state[custom]/v3/projects/p/s/work/source-session-work.go",
 				"state[custom]/v3/projects/p/s/trees/1/logs/source-tree-log.go",
 				"state[custom]/runs/codeaf-do-test/work/source-do-work.go",
-				"state[custom]/v3/standing/task/runs/run/trees/1/source-standing.go",
-				"state[custom]/v3/standing/exchanges/chat/work/source-exchange.go",
+				"state[custom]/v3/automations/runs/task/run/trees/1/source-automation.go",
+				"state[custom]/v3/errands/chat/work/source-errand.go",
 			}
 			runtime := []string{
 				"state[custom]/v3/history.jsonl",
@@ -94,8 +94,8 @@ func TestRuntimeSearchExclusionsBothEngines(t *testing.T) {
 				"state[custom]/v3/projects/p/s/tasks/runtime-task.jsonl",
 				"state[custom]/v3/projects/p/s/transcript.jsonl",
 				"state[custom]/runs/codeaf-do-test/tasks/root/runtime-do.jsonl",
-				"state[custom]/v3/standing/task/runs/run/logs/runtime-standing.log",
-				"state[custom]/v3/standing/exchanges/chat/tasks/runtime-exchange.jsonl",
+				"state[custom]/v3/automations/runs/task/run/logs/runtime-automation.log",
+				"state[custom]/v3/errands/chat/tasks/runtime-errand.jsonl",
 			}
 			for _, name := range append(append([]string{}, source...), runtime...) {
 				runtimeSearchWrite(t, filepath.Join(root, name), "needle\n")

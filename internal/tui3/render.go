@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/reportline"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -645,7 +646,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// paragraphs.
 		if (e.kind == entryNote && !wasNote) ||
 			wasCluster || wasBlock || wasUser || e.kind == entryUser || e.kind == entrySteer || e.kind == entryTask ||
-			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
+			(e.kind == entryAutomation && e.auto != nil && !e.auto.news()) ||
 			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
 			// [answerBreath]). It is asked HERE, inside the same condition as the
 			// four rules above it, because [gap] is not idempotent: two calls are
@@ -675,9 +676,9 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// [taskLink]).
 		links := 0
 		for n, text := range rows {
-			// A STANDING CARD HAS NO PRESSABLE ROW ANY MORE. Its answers are the
+			// AN AUTOMATION CARD HAS NO PRESSABLE ROW. Its answers are the
 			// question, and the question is drawn — and pressed — above the box
-			// like every other one (standing.go, question.go's [app.questionPress]).
+			// like every other one (automation.go, question.go's [app.questionPress]).
 			drawn := row{text: text, entry: i, hit: hit}
 			// THE LINK PASS RUNS ON THE MODEL'S OWN ROWS AND ON NOTHING ELSE
 			// (markdown.go). It is applied HERE — after the block was rendered and
@@ -728,7 +729,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		}
 		wasCluster = false
 		wasNote = e.kind == entryNote
-		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
+		wasBlock = e.kind == entryTask || (e.kind == entryAutomation && e.auto != nil && !e.auto.news())
 		// The change-of-speaker gap belongs to the person's message and not to a
 		// kind of block: a divider between the question and the reply carries the
 		// mark forward, because the reply still opens under their words.
@@ -984,12 +985,6 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	// its spinner is a function of the frame (connect.go). It rejoins the cache
 	// the moment it settles, which is the moment it stops moving.
 	if e.kind == entryConnect && e.conn != nil && e.conn.state == connectWaiting {
-		return a.renderEntry(i, e, width)
-	}
-	// AND AN OPEN STANDING CARD, for the reason the proposal above is not: its
-	// meter drains toward the moment the engine declines it (standing.go). It
-	// rejoins the cache the moment it is answered.
-	if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && !e.stand.news() {
 		return a.renderEntry(i, e, width)
 	}
 	// AND A CORRECTION THAT IS STILL MOVING, for the reason all four of those are
@@ -1308,8 +1303,8 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 	case entryTask:
 		return a.taskCardRows(e.card, width, a.sel == i)
 
-	case entryStanding:
-		return StandingCardRows(a, e.stand, width, a.sel == i)
+	case entryAutomation:
+		return AutomationCardRows(a, e.auto, width, a.sel == i)
 
 	case entryHarness:
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
@@ -2032,13 +2027,6 @@ const (
 	// weaker of the two. The phone sheet and /status still carry it.
 	segOpen
 	segAmbient
-	// segKeeping is the standing side's own presence: how many things are
-	// keeping an eye on this project (homestanding.go). It is OFF THE LINE as
-	// well, and unlike the open count it went somewhere: it is a line at the
-	// foot of the task column now (task.go's [app.railFootRows]), beside the
-	// counts of what that column is holding, which is where the rest of this
-	// project's live work is already written down.
-	segKeeping
 	segDelta
 	segCost
 	segCtx
@@ -2076,14 +2064,14 @@ const (
 // THE PAINT IS CARRIED RATHER THAN ASKED FOR AGAIN, AND THAT IS THE WHOLE OF
 // WHY THIS FIELD EXISTS. Every width decision this row makes is made from the
 // PLAIN cluster ([app.paintParts] says so out loud): the gap between the two
-// clusters, the right-aligned row's indent, and the columns the keeping and
-// money doors are pressed on (standdoor.go, moneydoor.go) are all arithmetic on
-// what the plain string measured. So a painted segment that measures one cell
-// more than the text it was measured as makes a row a cell wider than the
-// frame — and the renderer under us composes into a cell grid exactly the
-// terminal's width, so what happens is not a wrap but a QUIET CUT: the last
-// cell of the row is dropped, and `⠋ working · 10s` is drawn `⠋ working · 10`.
-// The two doors are meanwhile one column left of where they are drawn.
+// clusters, the right-aligned row's indent, and the columns its doors are
+// pressed on (moneydoor.go) are all arithmetic on what the plain string
+// measured. So a painted segment that measures one cell more than the text it
+// was measured as makes a row a cell wider than the frame — and the renderer
+// under us composes into a cell grid exactly the terminal's width, so what
+// happens is not a wrap but a QUIET CUT: the last cell of the row is dropped,
+// and `⠋ working · 10s` is drawn `⠋ working · 10`. The doors are meanwhile one
+// column left of where they are drawn.
 //
 // The state word is where that happened. It carries the turn's count-up clock,
 // [app.stateSegment] reads [app.now] to build it, and `now` is `time.Now()` in
@@ -2638,14 +2626,13 @@ func (a *app) telemetry(width int) []hudPart {
 	add(segAmbient, a.ambientSegment())
 	add(segYolo, a.approvalSegment())
 	// THE FACTS OFF THE LINE. The crew word, the session delta, the per-turn
-	// burn, the open count and the standing count are not drawn on the status
-	// row (foot.go's [groupOff]) — the phone sheet and /status still say all
-	// five, and this list is where both read.
+	// burn and the open count are not drawn on the status row (foot.go's
+	// [groupOff]) — the phone sheet and /status still say all four, and this
+	// list is where both read.
 	add(segCrew, a.crewSegment())
 	add(segDelta, a.deltaSegment())
 	add(segBurn, a.burnSegment())
 	add(segOpen, a.openSegment())
-	add(segKeeping, a.keepingSegment())
 	add(segRate, a.liveRiderAt(-1))
 	// A LINK THAT HAS STOPPED WORKING OUTRANKS EVERY NUMBER ON THIS LINE, and
 	// says so by never being dropped: it is not in [dropOrder], so a narrow
@@ -2737,9 +2724,6 @@ func (a *app) paintPart(part hudPart) string {
 	if part.paint != "" {
 		return part.paint
 	}
-	// The standing count is not here any more: it is a line at the foot of the
-	// task column, and it is painted where it is drawn (task.go's
-	// [app.railStandingLine]).
 	switch part.kind {
 	case segCost:
 		// MONEY IS A DOOR AND A BOUND, and this is the only segment on the line
@@ -3311,7 +3295,7 @@ func (a *app) stateWord() (string, string) {
 	}
 	// Required input outranks work. A proposal with a deadline starts on its
 	// own; it offers an intervention, not a question that blocks progress.
-	if a.asking() || a.awaitingStanding() || a.awaitingSubharness() ||
+	if a.asking() || a.awaitingSubharness() ||
 		(a.awaitingTask() && a.task.deadline.IsZero()) {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}
@@ -3410,7 +3394,7 @@ func (a *app) legend(width int) string {
 	// (styles.go). The question is bottom-anchored and so is this border — the two
 	// of them framing the question is the surface pointing at it with both hands.
 	paint := a.pal.dim
-	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
+	if a.asking() || a.awaitingTask() {
 		paint = a.pal.ask
 	}
 	// THE LADDER, in the order of what a person can recover elsewhere. Each rung
@@ -4014,13 +3998,11 @@ func (a *app) hintWord() string {
 			return filesCopyVerbs
 		}
 		return filesVerbs
-	case a.at(pageStanding):
-		// The standing page names its verbs here because they are the half of it
-		// nobody can guess, and it names the ones the ROW UNDER THE CURSOR
-		// actually has: one of them stops a thing for good, and an order in
-		// another project cannot be excepted from a place it never reached
-		// ([standingPlace.hint]).
-		return a.orders.hint(a)
+	case a.at(pageAutomations):
+		// The automations place names its verbs here because they are the half
+		// of it nobody can guess, and it names the ones the ROW UNDER THE CURSOR
+		// actually has ([automationsPlace.hint]).
+		return a.autoPlace.hint(a)
 	case a.crewUI.open:
 		// The crew panel prints its keys in its own bottom edge (crewpanel.go),
 		// and a slot repeating them would say the same thing twice on one screen.
@@ -4109,37 +4091,20 @@ func (a *app) hintWord() string {
 	case a.spell.asking:
 		// THE EXPANSION IS OUT. The slot the chord was named in is where the
 		// spinner for it belongs — the person pressed a key at the end of this
-		// line and this is the line answering (spellout.go). It ranks above the two
-		// offers below because it is not an offer: it is something happening.
+		// line and this is the line answering (spellout.go). It ranks above the
+		// offer below because it is not an offer: it is something happening.
 		return a.spellWorkingWord()
 	case a.slashTagHint() != "":
-		// A LIVE TAG OWNS ENTER, so its line outranks the two optional chords
-		// below. A HINT MAY ONLY NAME A KEY THAT WORKS, and exactly one tag is the
+		// A LIVE TAG OWNS ENTER, so its line outranks the optional chord below.
+		// A HINT MAY ONLY NAME A KEY THAT WORKS, and exactly one tag is the
 		// only state where enter has the promised alternate meaning.
 		return a.slashTagHint()
-	case a.standSayOffered():
-		// THE DRAFT LOOKS LIKE A CONDITION, so the slot says the typed door that
-		// makes it one (standmark.go). It ranks HERE — under the running turn,
-		// over the column's own line — for this slot's ordering law: it is read
-		// at the bottom of [app.key]'s plain switch, so every state above has
-		// already taken the keyboard, and esc while an answer is streaming is a
-		// key the person is far more likely to want next.
-		//
-		// It costs no rows. The legend is on the frame in every state, and this is
-		// the slot it already carries — so a draft that starts looking like a rule
-		// changes one word at the end of a line and moves nothing.
-		return standSayHint
 	case a.spellOffered():
 		// AND THE DRAFT LOOKS LIKE SOMETHING TO BUILD, with room left to say what
-		// it means, so the slot offers to spell it out (spellout.go). It ranks
-		// directly UNDER the standing hint because these two are the only lines
-		// here that are about the sentence being typed rather than about a state
-		// the surface is in — but the sharing itself is decided in
-		// [app.spellOffered], which answers no while the standing hint is up, so
-		// this ordering is a statement of the same rule and never a second one.
+		// it means, so the slot offers to spell it out (spellout.go).
 		//
-		// It costs no rows, for the reason the line above it costs none: this is
-		// the legend, which is on the frame in every state.
+		// It costs no rows: this is the legend, which is on the frame in every
+		// state.
 		return spellOutHint
 	case a.railAway && a.railAvail() && a.headHint() == "":
 		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's
@@ -4562,45 +4527,11 @@ func firstLine(s string) string {
 }
 
 // firstProseLine is the first line of a report that says something, and it is
-// what the quoted half of a card is built from.
-//
-// A REPORT IS THE MODEL'S OWN MARKDOWN, and a model that has just run a command
-// or produced a diff opens with the fence around it rather than with a sentence
-// — the fence is not a defect in the report, it is how the answer is spelled.
-// The literal first line of such a report is ``` or ~~~, which is a row of
-// punctuation and says nothing at all; quoting it spends the one line the card
-// exists to draw on the wrapper around the answer.
-//
-// SO THE WHOLE LAW IS ONE SENTENCE: a blank line says nothing, a fence marker
-// says nothing, and the first line that is neither is what the work came to.
-// The markers are read by [mdFenceOpen], the same door the renderer reads them
-// through, so a marker with a language word after it — go, sh, diff, json —
-// is a marker here for exactly the reason it is one there: a line this surface
-// would DRAW as prose is quoted as prose, and there is no second opinion about
-// what a fence is.
-//
-// THAT MEANS A REPORT THAT IS NOTHING BUT A FENCED BLOCK QUOTES THE FIRST LINE
-// INSIDE IT, which is the point rather than an exception to it: the work's
-// answer IS the block's contents, and a reading that stepped over the whole
-// block to look for prose underneath would quote nothing at all — the emptiness
-// law doing the opposite of its job, going silent where there was something to
-// say.
-//
-// AND A REPORT WITH NO PROSE AT ALL RETURNS NOTHING, which hands the row to the
-// emptiness law where it does belong: the card falls back to its subtitle and,
-// failing that, draws the start stamp alone rather than an empty pair of
-// quotation marks claiming the work said something ([app.doneUnder] does that
-// already, and nothing here has to learn it twice).
+// what the quoted half of a card is built from. It is the surface's wrapper over
+// reportline.FirstProse — the one reading every surface and the engine share, so
+// a report that opens with a fence is quoted by its first sentence here and on the
+// tasks table and the home panels alike (#931), with no second opinion about what
+// a fence is.
 func firstProseLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if _, _, fence := mdFenceOpen(trimmed); fence {
-			continue
-		}
-		return trimmed
-	}
-	return ""
+	return reportline.FirstProse(s)
 }

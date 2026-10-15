@@ -11,9 +11,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -310,7 +310,7 @@ func TestTheSpendTablesEndWhereTheChartEnds(t *testing.T) {
 		if rule >= width-len(placeLead) {
 			t.Fatalf("at %d cells the chart fills the frame, so this test proves nothing", width)
 		}
-		for _, heading := range []string{spendSubjectsWord, spendStandingWord} {
+		for _, heading := range []string{spendSubjectsWord, spendAutomationWord} {
 			for _, row := range spendSectionRows(t, rows, heading) {
 				money := regexp.MustCompile(`\$[0-9,]+\.[0-9]{2}$`).FindString(strings.TrimRight(row, " "))
 				if money == "" {
@@ -387,7 +387,7 @@ func TestASpendNameColumnIsNeverSqueezedToKeepAField(t *testing.T) {
 	r := spendTestReading().unfolding(true)
 	var work []session.SubjectSpend
 	for _, subject := range r.subjects {
-		if subject.Kind != session.SubjectStanding {
+		if subject.Kind != session.SubjectAutomation {
 			work = append(work, subject)
 		}
 	}
@@ -465,7 +465,7 @@ func TestTheSpendSubjectFactsStandInColumns(t *testing.T) {
 	r := spendTestReading().unfolding(true)
 	var work []session.SubjectSpend
 	for _, subject := range r.subjects {
-		if subject.Kind != session.SubjectStanding {
+		if subject.Kind != session.SubjectAutomation {
 			work = append(work, subject)
 		}
 	}
@@ -514,7 +514,7 @@ func TestTheSpendKindWordsAreColumnWords(t *testing.T) {
 	for kind, want := range map[string]string{
 		session.SubjectTask:                       "task",
 		session.SubjectConversation:               "chat",
-		session.SubjectStanding:                   "standing",
+		session.SubjectAutomation:                 "automation",
 		"something this build has never heard of": "",
 	} {
 		if got := session.UsageSubjectWord(kind); got != want {
@@ -523,41 +523,38 @@ func TestTheSpendKindWordsAreColumnWords(t *testing.T) {
 	}
 }
 
-// AND THE PROMISES ARE A TABLE OF THEIR OWN, with the two facts that are theirs
-// and nobody else's: how often the promise went off, and what one firing cost.
-//
-// Mixed in with the work they wore a `standing · 88 firings` tag crammed into the
-// project's column and a kind word that had to be suppressed to stop the row
-// saying `standing` twice — two special cases in a table of three rows. Given a
-// heading of their own they simply have their own columns.
-func TestTheSpendPromisesAreATableOfTheirOwn(t *testing.T) {
+// AND THE AUTOMATIONS ARE A TABLE OF THEIR OWN, with the two facts that are
+// theirs and nobody else's: how often they called the model, and what one call
+// cost. Given a heading of their own they simply have their own columns. A
+// ledger line written by a standing order before automations replaced them is
+// read into the same table under the id it was written with.
+func TestTheSpendAutomationsAreATableOfTheirOwn(t *testing.T) {
 	r := spendTestReading()
 	rows := plainSpendRows(r.rows(120, newPalette(tokens.NoColor, false)))
 	// The fold line stands at the foot of the page, under whichever table was
 	// drawn last, so the section runs to the end of the rows and the promise is
 	// the first of them.
-	table := spendSectionRows(t, rows, spendStandingWord)
+	table := spendSectionRows(t, rows, spendAutomationWord)
 	if len(table) == 0 {
-		t.Fatalf("the promises table is empty:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("the automations table is empty:\n%s", strings.Join(rows, "\n"))
 	}
-	for _, want := range []string{"repo-watch", "88 firings", "$0.04 a run", "$3.31"} {
+	for _, want := range []string{"repo-watch", "88 calls", "$0.04 a call", "$3.31"} {
 		if !strings.Contains(table[0], want) {
-			t.Fatalf("the promise row does not carry %q: %q", want, table[0])
+			t.Fatalf("the automation row does not carry %q: %q", want, table[0])
 		}
 	}
-	// AND NO ROW SAYS `standing` TWICE, which is what the old shared table did the
-	// moment its kind word was not suppressed.
+	// AND NO ROW SAYS `automation` TWICE: the table's heading says what its rows
+	// are, so a row that said it again would be saying it twice.
 	for _, row := range rows {
-		if strings.Count(row, "standing") > 1 {
-			t.Fatalf("a row says `standing` twice: %q", row)
+		if strings.Count(row, "automation") > 1 {
+			t.Fatalf("a row says `automation` twice: %q", row)
 		}
 	}
-	// AND A PROMISE THAT COSTS A SLIVER A RUN READS AS THE MONEY COLUMN'S FLOOR
-	// rather than as the words `under a cent a run`, which used to stand in the
-	// kind word's place and could not be lined up against anything.
-	sliver := session.SubjectSpend{Kind: session.SubjectStanding, ID: "repo-watch", Calls: 400, USD: 0.4}
+	// AND AN AUTOMATION THAT COSTS A SLIVER A CALL READS AS THE MONEY COLUMN'S
+	// FLOOR, which can be lined up against everything else in the column.
+	sliver := session.SubjectSpend{Kind: session.SubjectAutomation, ID: "repo-watch", Calls: 400, USD: 0.4}
 	if got := spendEachFigure(sliver); got != "$0.01" {
-		t.Fatalf("a sliver a run reads %q, want the money column's floor", got)
+		t.Fatalf("a sliver a call reads %q, want the money column's floor", got)
 	}
 }
 
@@ -1111,49 +1108,28 @@ func TestBOnTheSpendPlacesStripOpensTheLimits(t *testing.T) {
 	}
 }
 
-// THE WINDOW IS ARITHMETIC OVER WHAT IS ALREADY HELD, AND THE STORE IS READ ON
-// THE BEAT AND NOWHERE ELSE.
+// THE WINDOW IS ARITHMETIC OVER WHAT IS ALREADY HELD.
 //
 // place_spend.go promises this in as many words — "the lines are already in
 // memory, so moving the window is arithmetic and never a read … which is what
 // lets a person hold the arrow down" — and for one wave it was false: the
 // rebuild every window keystroke ends with joined ids against titles, and the
-// standing half of that join asked the seam once per project, each ask being a
-// walk of the standing root and a parse of every document under it. Held down,
-// that is a directory walk per repeat.
-//
-// The count here is what makes the promise checkable: one read on the way in,
-// none for any number of arrows, and one more when the three-second beat says
-// the world may have moved.
-func TestTheSpendWindowMovesWithoutTouchingTheStandingStore(t *testing.T) {
+// half of that join that named promises walked a store once per project. Held
+// down, that is a directory walk per repeat. The names now come from what the
+// watcher already read, so the store is a fault to touch here at all.
+func TestTheSpendWindowMovesWithoutTouchingTheAutomationsStore(t *testing.T) {
 	a := spendLab(t, spendFixture())
-	reads := 0
-	a.stands.All = func() []standing.Item {
-		reads++
-		return []standing.Item{standOrder("watch-1", "watch the filings", standing.AltitudeMachine)}
-	}
-	a.stands.Items = func(string) []standing.Item {
-		t.Fatal("the spend place asked for one project's orders, which is the seam it walked N+1 times")
-		return nil
-	}
-	// The open is where the join is made, and it is made once.
+	// THE NAMES COME FROM THE WATCHER'S LAST READING, which is in memory; the
+	// store itself is a fault to touch from here, on the way in, on any number
+	// of arrows, and on the beat.
+	a.watch.list = []automation.Automation{{ID: "watch-1", Title: "watch the filings"}}
+	a.autos = panicAutomations(t, "spend")
 	a.showPage(pageSpend)
-	if reads != 1 {
-		t.Fatalf("walking in read the standing store %d times, want one", reads)
-	}
 	for i := 0; i < 20; i++ {
 		drive(t, a, key("shift+left"))
 		drive(t, a, key("shift+right"))
 	}
-	if reads != 1 {
-		t.Fatalf("forty window keystrokes read the standing store %d times, want the one from the open", reads)
-	}
-	// AND THE BEAT IS WHERE IT IS ALLOWED TO COST SOMETHING. A page that never
-	// re-read would name a promise made in another window by its id forever.
 	a.placeBeat(a.placeGen)
-	if reads != 2 {
-		t.Fatalf("the beat left the standing store read %d times, want a second read", reads)
-	}
 }
 
 // FOCUS WAKES AT THE CENTRE OF MASS. The spend place is asked "what did it cost,
@@ -1343,16 +1319,16 @@ func TestTheSpendPageDrawsOneCutAndItsHeadingSwapsThem(t *testing.T) {
 	}
 }
 
-// AND THE PROMISES RIDE WITH `by topic`, because a promise is one of the things
-// money was FOR — a third heading, not a third cut.
-func TestTheSpendPromisesRideWithTheTopicCut(t *testing.T) {
+// AND THE AUTOMATIONS RIDE WITH `by topic`, because an automation is one of
+// the things money was FOR — a third heading, not a third cut.
+func TestTheSpendAutomationsRideWithTheTopicCut(t *testing.T) {
 	a := spendLab(t, spendFixture())
-	if got := placeFrameText(a); !strings.Contains(got, spendStandingWord) {
-		t.Fatalf("`by topic` left the promises out:\n%s", got)
+	if got := placeFrameText(a); !strings.Contains(got, spendAutomationWord) {
+		t.Fatalf("`by topic` left the automations out:\n%s", got)
 	}
 	a.stepSpendSlice(1)
-	if got := placeFrameText(a); strings.Contains(got, spendStandingWord) {
-		t.Fatalf("`by model` drew the promises:\n%s", got)
+	if got := placeFrameText(a); strings.Contains(got, spendAutomationWord) {
+		t.Fatalf("`by model` drew the automations:\n%s", got)
 	}
 }
 

@@ -2032,11 +2032,11 @@ them, and one dim line at the foot of the column, `ctrl+. earlier`, is the door 
 Work finishing never puts the column away, and neither does `/new`: that takes this
 session's tasks with it and leaves the column standing.
 
-Under the task list the same column carries `+ /task`, then a section labelled `standing`
-(the orders standing over this conversation) and, when this conversation has started any, a
-third labelled `jobs`. The standing orders page has that half; *Background jobs on the
-column* below has the jobs section. The header and the band stand still at the top while
-the list under them scrolls.
+Under the task list the same column carries `+ /task`, then the automations this
+conversation set up, ending in `+ /automations` — *Automations* has that half, under *The
+automations in a conversation's side column* — and, when this conversation has started any,
+a third section labelled `jobs` (*Background jobs on the column* below). The header and the
+band stand still at the top while the list under them scrolls.
 
 **The column is permanent** from 100 columns up: it stands from the session's first
 keystroke, before any task exists, and work fills it rather than raising it. It is a
@@ -2045,9 +2045,9 @@ It is the same width in every chat and whichever word is in front, so switching 
 opening a group, a new row and the band appearing never move the conversation beside it.
 From 120 columns up `alt+w` widens it by 16 columns, when the conversation keeps at least
 56. The one frame without it is the untouched empty conversation, which opens on a centred
-greeting and no column at all until you type, a task lands, or a standing order reaches it
-(*The empty screen* page). Under 100 columns there is no column and no edge, and `alt+t` (or
-`alt+l`) lays the same column over the body instead.
+greeting and no column at all until you type, a task lands, or it has an automation of its
+own to list (*The empty screen* page). Under 100 columns there is no column and no edge,
+and `alt+t` (or `alt+l`) lays the same column over the body instead.
 
 ## Where did the workers go on the task page — find them as rows under their task
 
@@ -2111,10 +2111,11 @@ There is no subtitle here. The column is a presence list; the proposal card and 
 card both carry the sentence.
 
 Under the task rows, one dim `+ /task` row closes the list; press it and `/task ` is typed
-into your message box. Then a blank line, then the column's `standing` section. There are
-no state totals at the foot: the header counts the tasks and each group's heading counts its
-own. The session's spend and tokens are on the status row. When anything stands over this
-project, a `◦ 2 standing orders` line follows and opens `/standing`.
+into your message box. Then a blank line, then the automations this conversation set up —
+at most three, each its mark and title, a press opening `/automations` on it — and their
+`+ /automations` row (*Automations*). There are no state totals at the foot: the header
+counts the tasks and each group's heading counts its own. The session's spend and tokens
+are on the status row.
 
 Below those are up to two door lines: `ctrl+. earlier` when the full-screen page holds work
 this column does not, and, while the column holds the keyboard or the pointer is on it,
@@ -2129,9 +2130,9 @@ on what is moving.
 ## Background jobs on the column — the jobs list on the right, what is running in the background, why a long command shows on the right, the row for a server, build or watch
 
 **A background job is not a row among the tasks.** It used to sit in the roster with the
-tasks. It is now a **third section** on the same column, under the tasks and `standing`,
-labelled `jobs`. This covers everything the `jobs` tool can list except a task's own
-worker, which already has a roster row of its own:
+tasks. It is now a **third section** on the same column, under the tasks and the
+automations, labelled `jobs`. This covers everything the `jobs` tool can list except a
+task's own worker, which already has a roster row of its own:
 
 - a command run with `bash background:true` — a server, a long build, a sweep
 - a foreground command the `background after` clock kept running as a job
@@ -2379,8 +2380,8 @@ around it.
   row is teaching.
 
 Finish the sentence and send it and it is `/task <brief>` like any other: codeaf sizes the
-work, shapes the brief and starts it. The column's other section, `standing`, ends in a
-`+ /standing` row that works the same way.
+work, shapes the brief and starts it. The column's automations section ends in a
+`+ /automations` row that works the same way, typing `/automations ` (*Automations*).
 
 ## What a bare /task does — /task with nothing after it opens the task page
 
@@ -3470,10 +3471,10 @@ chips off the end and says how many went, `a accept · n not right · +1` and th
 fit. Every letter keeps working whether or not it is printed.
 
 **`alt+e` inside a room moves that task's thinking rung**, one step up each press and back
-round to `low` from `max`. It is the same chord home uses on the machine's own default and
-on a standing item, bound here to the task whose page you are standing in; the keys page
-has the whole of it. A worker already running keeps the rung it started with, so the line
-codeaf writes says `task 7 · thinking · high · its next call takes it`.
+to `auto` after `max`. It is the same chord the conversation uses on its own rung and home
+on the next conversation's, bound here to the task whose page you are standing in; the keys
+page has the whole of it. A worker already running keeps the rung it started with, so the
+line codeaf writes says `task 7 · thinking · high · its next call takes it`.
 
 **The header has separate click targets.** Ancestor crumbs open their exact task;
 the root and the `esc/← main` end return to the conversation. The current crumb does
@@ -4250,13 +4251,10 @@ A task that was never read for width at all (`/task solo`, the `single` row, a p
 did not mark wide) says nothing up front and can still split, off the items its own brief
 already names.
 
-**And so can work that runs while you are asleep.** A standing order that fires and starts
-work is on this road too, armed the same last way — off the items its own brief names,
-with no sizing call, because a firing runs on a rhythm you set once and a model call every
-night to re-read the same sentence is a bill nobody agreed to. The tests still decide and
-the plan is still read once before the parts exist, and the machine is still respected: a
-division at 3am on a loaded box is admitted and the parts wait for it. The firing stays open until its parts are home and their spend is on its
-own cost row. The standing orders page has the rest of what an unattended run is.
+**Scheduled work is not on this road.** A run of an automation's work — "every night at 2,
+bump the dependencies" — is a session of its own with no verb for handing work out: it
+cannot start a task, so it never divides, and a brief naming eleven items is done by that
+one run, inside its own time and money (*Automations*).
 
 ## Where the parts show up on the screen, and how to stop them
 
@@ -5624,8 +5622,8 @@ runs and background jobs, including a chat held in the background. Other
 conversations are untouched. The card says `the reply, tasks and jobs stop;
 nothing is deleted` when it knows about tasks or jobs. Cancellation news cannot
 wake another reply. Only a fresh user message resumes work once cancellation
-finishes; reopening the tab does not. Stopping does not delete standing orders
-or change what quitting the whole app means.
+finishes; reopening the tab does not. Stopping does not delete or pause an
+automation, or change what quitting the whole app means.
 
 ## Accepting a saved task after its Git registration was released
 

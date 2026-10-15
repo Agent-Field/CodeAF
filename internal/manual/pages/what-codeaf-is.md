@@ -34,18 +34,17 @@ resolves it against what is actually live.
 
 The graph is a file on disk, written as things happen, not at the end. Close the
 terminal mid-job and the work keeps going; the workforce is not the terminal.
-Restart and you get the same thread, the same board, the same notebook, and the
-same standing goals.
+Restart and you get the same thread, the same board, and the same notebook.
 
 If codeaf crashes after you wrote a message but before it replied, it replays
 that message on the next start. It will not silently swallow what you asked for.
 
 ## What it does when you are not there
 
-Because it is durable, it does not need you present to be useful. It keeps
-standing goals on their own watches, it practices in idle time, it revises what
-it believes, and it folds all of it into one card waiting for you when you come
-back. That is its own page — ask about the daily rhythm.
+Because it is durable, it does not need you present to be useful. It finishes
+the work you started, it revises what it believes, and it folds all of it into
+one card waiting for you when you come back. That is its own page — ask about
+the daily rhythm.
 
 ## Learning codeaf by asking codeaf
 

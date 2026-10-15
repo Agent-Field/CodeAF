@@ -41,15 +41,12 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Scope = "This chat and the profile default"
 	}
 	switch s.Key {
-	case KeyPracticeIdle, KeyPracticeBudget, KeyBriefAfter, KeyTenureAfter, KeySplitPct:
+	case KeySplitPct:
 		p.Hidden = true // Resident-only controls have no live chat consumer.
 	case KeyMemoryEnabled:
 		p.Category, p.Label = "Memory", "remember across chats"
 		p.Description = "Learns useful preferences and corrections from conversations and recalls relevant memories. /memories lets you inspect what is saved. Turning this off does not delete saved memories."
 		p.Activation = "Restart the CLI to apply this to already-open chats"
-	case KeyStandingBackground:
-		p.Label = "background reminders"
-		p.Description = "Check reminders, watches and routines while the CLI is closed. Uses a timer under your login; the machine must be awake and you must be logged in."
 	case KeyUpdateAuto:
 		p.Label = "automatic updates"
 	case KeyMouse:

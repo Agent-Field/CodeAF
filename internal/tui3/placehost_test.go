@@ -103,7 +103,7 @@ func TestAHostedSurfaceWithNoWorldSeamReadsNothing(t *testing.T) {
 // it could perfectly well have shown.
 func TestThePlacesThatCrossDrawNoRefusal(t *testing.T) {
 	a := hostedPlaceLab(t)
-	for _, id := range []page{pageHome, pageTasks, pageStanding} {
+	for _, id := range []page{pageHome, pageTasks, pageAutomations} {
 		if line := placeFor(id).remote(a); line != "" {
 			t.Fatalf("%s still refuses over --host: %q", id.word(), line)
 		}

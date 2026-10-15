@@ -777,6 +777,7 @@ func TestTheHarnessOverlapsEveryWaiterItNames(t *testing.T) {
 	// table without a case here fails this test rather than slipping through.
 	built := map[string]tea.Cmd{
 		"waitDesign":         waitDesign(events, 1),
+		"waitErrand":         waitErrand(nil, events),
 		"waitEvent":          waitEvent(events, 1),
 		"waitGuestNotices":   waitGuestNotices(events, 1),
 		"waitGuestQuestions": waitGuestQuestions(events, 1),

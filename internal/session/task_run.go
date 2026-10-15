@@ -1238,9 +1238,9 @@ func (g *TaskGraph) runRowsLocked() []TaskNotice {
 func newTaskGraph() *TaskGraph {
 	// A GRAPH IS ALONE IN ITS PROCESS UNTIL IT IS TOLD OTHERWISE. The caller
 	// that knows several conversations share one machine says so by putting its
-	// own account on their Config ([Config.TaskLanes], read in [Agent.graph]
-	// and [standingWideWork]); until then the only lanes this graph's reading
-	// can be divided by are its own.
+	// own account on their Config ([Config.TaskLanes], read in [Agent.graph]);
+	// until then the only lanes this graph's reading can be divided by are its
+	// own.
 	return &TaskGraph{nodes: make(map[uint64]*TaskNode, 1), lanes: NewTaskLanes()}
 }
 
@@ -1548,12 +1548,12 @@ func (g *TaskGraph) runFrontier() {
 	// ([TaskGraph.holdOnStartingLocked]), because the answer for the second
 	// node of a fan depends on the first one having started.
 	g.governor.observe(g.lanesTaken())
-	// AND THE PERSON'S STANDING ORDERS ARE RESOLVED BEFORE THE LOCK TOO, and at
-	// most once a pass, for the reading's reason: every node in one graph sits
-	// in one place, so the answer is the same for all of them, and reading a
-	// folder per starting node would be the same question asked ten times
-	// (standing_world.go).
-	orders := g.standingWorld()
+	// AND THE PERSON'S RULES ARE RESOLVED BEFORE THE LOCK TOO, and at most once
+	// a pass, for the reading's reason: every node in one graph sits in one
+	// place, so the answer is the same for all of them, and reading them per
+	// starting node would be the same question asked ten times
+	// (memory_always.go).
+	orders := g.alwaysWorld()
 
 	g.mu.Lock()
 	// A CLOSED SESSION HAS NO RUNNING NODES, so a pass that arrives after the
@@ -1905,16 +1905,16 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 }
 
 // briefLocked assembles what one node is handed: its own brief, then what the
-// work before it learned, then the standing orders the person holds over this
-// place. The headings are plain words rather than markers because the node reads
-// them as prose — it is a colleague being told what the last shift found and
-// what the house rules are, not a data structure.
+// work before it learned, then the rules the person holds over this place. The
+// headings are plain words rather than markers because the node reads them as
+// prose — it is a colleague being told what the last shift found and what the
+// house rules are, not a data structure.
 //
-// THE ORDERS COME LAST AND NOT FIRST. What the node is doing and what it was
-// told by the work ahead of it are the job; the orders are the conditions the
+// THE RULES COME LAST AND NOT FIRST. What the node is doing and what it was
+// told by the work ahead of it are the job; the rules are the conditions the
 // job is done under, and a brief that opened with them would read as the job
-// being about the conditions. `orders` is [TaskGraph.standingWorld]'s answer,
-// resolved ONCE per frontier pass outside this lock.
+// being about the conditions. `orders` is the person's rules
+// ([TaskGraph.alwaysWorld]), resolved ONCE per frontier pass outside this lock.
 func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	brief := g.inheritedLocked(node)
 	if finding := strings.TrimSpace(node.finding); finding != "" {
@@ -1944,7 +1944,7 @@ const inheritedReportFloor = 512
 // inheritedLocked is the half of the brief above that A PART OF THIS WORK
 // INHERITS: what the node was admitted with, and what the work before it
 // learned. It is a function of its own because the division road composes every
-// part's world on it (task_divide_compose.go), and the standing orders are the
+// part's world on it (task_divide_compose.go), and the person's rules are the
 // one section it must not carry — the frontier appends those to each part in its
 // own right a moment later, so a part composed on the whole assembled brief
 // would read the house rules twice.
@@ -2193,19 +2193,6 @@ func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 func (g *TaskGraph) announce(node *TaskNode) {
 	if g.report != nil {
 		g.report(node)
-	}
-}
-
-// reportHome is [TaskGraph.report] for a graph whose home is filled in AFTER it
-// is built, which is the shape a standing firing's own graph has: the session
-// that is going to own it cannot be constructed until the graph is in its config
-// (standing_run.go's [standingWideWork]). A conversation's graph binds the
-// method directly ([Agent.graph]) because by then there is an agent to bind to;
-// this reads the same field one moment later and answers nothing before there
-// is one.
-func (g *TaskGraph) reportHome(node *TaskNode) {
-	if g != nil && g.home != nil {
-		g.home.reportTaskNode(node)
 	}
 }
 
@@ -3198,7 +3185,7 @@ func (a *Agent) enterPhase(node *TaskNode, phase string, round, rounds int, text
 // for. The same is true of a PART's check, whose owner is its parent's worker.
 //
 // So it goes the way a node's ordinary updates already go — the conversation's
-// own hub and its standing subscription ([TaskGraph.reportHome],
+// own hub and its standing subscription ([Agent.reportTaskNode],
 // [Agent.TaskUpdates]) — and the receiver stands in only for a graph that has no
 // conversation behind it, which is every scripted graph in the tests.
 func (n *TaskNode) phaseTeller(noticed *Agent) *Agent {
@@ -4179,13 +4166,13 @@ func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record s
 // there is no worker left in there to have one.
 //
 // AND THE FOLD IS ONLY FOR NEWS THAT WOULD OTHERWISE LEAVE THE FAMILY. When
-// this agent is itself the parent's reader — a standing firing is the agent
-// standing in its own root node, and it reads that node's pieces as the graph's
-// home rather than from a seat (standing_run.go) — falling through to it IS the
-// family reading its own news, and a fold in front of it would take the report
-// away from the one reader waiting on it: the part marked reported, nothing
-// owed, no wake, and the firing parked forever on a generation nobody closes.
-// So the fold is asked only when the last reader in line is somebody else.
+// this agent is itself the parent's reader — the agent working as that node
+// ([Agent.standsIn]), which reads the node's pieces as itself rather than from
+// a seat — falling through to it IS the family reading its own news, and a fold
+// in front of it would take the report away from the one reader waiting on it:
+// the part marked reported, nothing owed, no wake, and the reader parked
+// forever on a generation nobody closes. So the fold is asked only when the
+// last reader in line is somebody else.
 //
 // A NODE WITH NO PARENT HAS ONE READER and the room is not consulted at all: it
 // was proposed here, and here is where its news is owed.
@@ -4401,12 +4388,13 @@ type landingAddress struct {
 // is what lets the page stop explaining a message it may never see.
 //
 // A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION. That is the
-// pattern [checkpointCarryOnLead] and [standingNewsRule] were already written
-// in, and docs/design/prompt-diet/DESIGN.md §2 files it as a delivery class of
-// its own: what to do about an event is needed only on the turn it happens, so
-// it rides the event and costs nothing on the thousands of turns where no task
-// lands. The paragraphs prompts/system.md used to spend on the woken turn and on
-// the four words were the same law, paid for on every request of every turn.
+// pattern [checkpointCarryOnLead] and the standing orders' news rule were
+// already written in, and docs/design/prompt-diet/DESIGN.md §2 files it as a
+// delivery class of its own: what to do about an event is needed only on the
+// turn it happens, so it rides the event and costs nothing on the thousands of
+// turns where no task lands. The paragraphs prompts/system.md used to spend on
+// the woken turn and on the four words were the same law, paid for on every
+// request of every turn.
 //
 // IT SAYS WHO IS SPEAKING, in [volatileNoteOpening]'s register and for its
 // reason. This note can START A TURN with nobody having typed, and a small model
@@ -4878,15 +4866,8 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 // the work it handed off. A surface holds it for the life of the session and
 // stops reading when it stops drawing.
 //
-// AND THE FIRST SUBSCRIBER IS HANDED WHAT ARRIVED WHILE THE WINDOW WAS SHUT.
-// The fold was built inside New ([Agent.drainStandingInbox]), where there was
-// nobody to send it to, so it waited here for the surface to open the lane; the
-// stream is unbounded, so handing it over is an append and never a wait. It is
-// handed over ONCE — a second lane on the same session is a second view of the
-// same conversation, not a second person arriving.
-//
-// EVERY subscriber is handed the task ROSTER, by contrast, not only the first:
-// the rows are facts about the graph rather than news, and a lane opened by a
+// EVERY subscriber is handed the task ROSTER: the rows are facts about the
+// graph rather than news, and a lane opened by a
 // surface with nothing drawn yet — a conversation resumed from its checkpoint,
 // one switched back to behind home — needs all of them to rebuild its column
 // ([Agent.replayTaskRoster]).
@@ -4908,18 +4889,6 @@ func (a *Agent) TaskUpdates() <-chan Event {
 //
 // stop is never nil and calling it twice is calling it once.
 func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
-	// AND A SURFACE ATTACHING IS THE OTHER MOMENT SOMEBODY CAME BACK. The
-	// inbox road ends in a drain that ran inside New ([Agent.drainStandingInbox]),
-	// which was the whole story while every window built its own engine. Since
-	// #653 an interactive launch joins this workspace's session host, and a host
-	// that outlived the last window hands the next one the SAME agent
-	// (internal/enginehost's Host.join) — so a firing filed under the project
-	// while nobody was here would sit in that file forever, read by nothing,
-	// because no agent was ever constructed to read it. Draining here is the
-	// same fold and the same rows, asked for by the surface rather than by the
-	// boot; the file is emptied as it is read, so a second lane finds nothing
-	// and this costs a stat on every attach.
-	a.drainStandingInbox()
 	stream := newEventStream()
 	a.mu.Lock()
 	if a.closed {
@@ -4928,8 +4897,6 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 		return stream.out, func() {}
 	}
 	a.taskWatchers = append(a.taskWatchers, stream)
-	news := a.standingNews
-	a.standingNews = nil
 	a.mu.Unlock()
 	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
 	// a surface that has no rows yet — a conversation resumed from its
@@ -4940,13 +4907,6 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	// that watched all along re-hears what it already drew, and drawing a row
 	// twice is drawing it once (tui3's taskUpdate keys rows by id).
 	a.replayTaskRoster(stream)
-	// THE BACKLOG GOES OUT BEFORE THE STREAM DOES: news the standing side raised
-	// while nobody was watching is replayed onto this stream, so a surface that
-	// attached a moment late still sees the card rather than a lane that looks
-	// like it never fired.
-	for _, event := range news {
-		stream.send(event)
-	}
 	var once sync.Once
 	return stream.out, func() {
 		once.Do(func() {
@@ -7100,10 +7060,9 @@ var savingTools = map[string]bool{
 }
 
 // producedAFile reports whether ONE call actually put something on disk, and it
-// is what every reader of a finished call asks — what a standing firing came to
-// (standing_run.go), whether the work moved (looped.go's [loopWatch.count]),
-// whether a landing turn saved anything, and which file a step changed
-// ([changedPath]).
+// is what every reader of a finished call asks — whether the work moved
+// (looped.go's [loopWatch.count]), whether a landing turn saved anything, and
+// which file a step changed ([changedPath]).
 //
 // THE HAND'S NAME WAS NOT ENOUGH AND THIS IS WHERE THAT STOPPED BEING TRUE.
 // [savingTools] answers whether a VERB can save, which is the right question for

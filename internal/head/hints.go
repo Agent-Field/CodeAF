@@ -92,13 +92,6 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 		add("mentions a status word without naming a set; read the board before assuming which work it means")
 	}
 
-	// Durable intent. The compiler turns a splice carrying this shape into a
-	// standing rule plus a ratification card, so the loop needs to know that
-	// commissioning it is not the same as commissioning one errand.
-	if RecognizesStandingIntent(message) && !selfQuestionPhrased(strings.ToLower(message)) {
-		add("reads as DURABLE intent — work spawned from it becomes a standing rule the person is asked to ratify, not a one-off errand")
-	}
-
 	// The five redirect cue classes, including impatience. `cued` also decides
 	// how much a bare pronoun is worth further down: with a cue in hand "it" is
 	// doing referential work and the only open question is which job, and
@@ -144,12 +137,6 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 		default:
 			add("reads as a redirection of work already underway")
 		}
-	}
-
-	// A standing rule addressed by name or by verb.
-	if intent, managing := charterManagement(message); managing {
-		add("reads as an edit to a STANDING RULE (%s), described as %q",
-			charterOptionAction(intent.Kind), truncateBytes(intent.Reference, hintPhraseBytes))
 	}
 
 	// A service the person is running. recognizesShutdownAll is the one total

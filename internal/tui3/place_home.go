@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE HOME PLACE ──────────────────────────────────────────────────────────
@@ -64,12 +63,12 @@ import (
 // reading twice.
 //
 // THE READING IS switcher.go's AND THIS FILE OWNS ONLY THE WIRING. [readSwitcher]
-// is pure — a world, the standing bands, a look stamp and a clock in, a list of
-// lines out — and everything this file does is turn those lines into lines of
-// home's own column so that every door, card, digit and key that already worked
-// on a conversation or a standing item goes on working on it untouched. A
-// switcher row for a conversation IS a [homeSession] row; a switcher row for a
-// watch IS a [homeItem] row, painted from the panel cell it wears (homegrid.go).
+// is pure — a world, the automations the watcher last read, a look stamp and a
+// clock in, a list of lines out — and everything this file does is turn those
+// lines into lines of home's own column so that every door, card, digit and key
+// that already worked on a conversation goes on working on it untouched. A
+// switcher row for a conversation IS a [homeSession] row, painted from the
+// panel cell it wears (homegrid.go).
 //
 // AND TYPING IS UNTOUCHED. The moment there is something in the box the column
 // is [homeView.buildWorld]'s drop-up again, ranked by [homeRank], with `ask
@@ -190,18 +189,7 @@ func (a *app) homeRowVerbs() []verb {
 	if line.cell != nil && line.cell.row != nil {
 		return a.homeReadingVerbs(line, *line.cell.row)
 	}
-	// A ROW THE TYPED SURFACE BUILT, WHICH THE READING NEVER SAW. Under a query
-	// the column is [homeRank]'s drop-up and a standing item's row is the one
-	// thing on it with verbs — the two actions home has been ADVERTISING on such
-	// a row without binding (`homeItemActions`, homestanding.go), bound to ctrl+e
-	// and ctrl+x, which the line never named, and whose bare `p` and `s` typed.
-	if !line.standsForItem() {
-		return nil
-	}
-	return []verb{
-		{key: 'p', word: homeItemPauseWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }},
-		{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusRetired) }},
-	}
+	return nil
 }
 
 // homeReadingVerbs is [switcherVerbsFor]'s verbs for one row, less the ones
@@ -253,16 +241,18 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 		do = func() tea.Cmd { return a.homeOpenFolder(row.session) }
 	case v.key == 'c' && row.kind == switcherConversation:
 		do = func() tea.Cmd { return a.homeCopyName(row.session) }
-	case v.key == 'p':
-		do = func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }
-	case v.key == 'r':
-		do = func() tea.Cmd { return a.homeItemWrite(line, standing.StatusActive) }
 	}
 	return verb{key: v.key, word: v.word, do: do}
 }
 
 // homeArchiveRow closes the same tab the row names, keeping its work and draft.
 // Reopening returns through the normal conversation door, restoring the tab too.
+//
+// NO KEY REACHES IT ANY MORE. `ctrl+e` and the strip's `x` on a conversation's
+// row became the delete confirmation (#1750, [app.conversationDeleteOpen]), and
+// home has had no archive key since. It stays because the tests make their
+// closed rows with it — a closed row is still a state home draws, dimmed, and
+// still reopens on `enter` ([app.homeOpenLine]).
 func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 	if a.homeConversationClosed(row) {
 		return a.homeOpenLine(homeLine{kind: homeSession, row: row})
@@ -495,7 +485,7 @@ func (placeHome) rowID(a *app) string {
 	if !ok {
 		return ""
 	}
-	parts := []string{strconv.Itoa(int(line.kind)), line.project, line.dir, line.row.Transcript, line.item.ID}
+	parts := []string{strconv.Itoa(int(line.kind)), line.project, line.dir, line.row.Transcript}
 	if line.ex != nil {
 		parts = append(parts, line.ex.id)
 	}

@@ -77,7 +77,7 @@ func TestABackgroundInstallLeavesTheAskHereRoadOpen(t *testing.T) {
 	called := 0
 	a := newTestApp(&fakeAgent{model: "test/model"})
 	a.updateInFlight = true
-	a.standingRoot = t.TempDir()
+	a.errandsRoot = t.TempDir()
 	a.errand = func(ErrandOrders) (Agent, error) {
 		called++
 		return &errandAgent{fakeAgent: fakeAgent{model: "test/model"}}, nil

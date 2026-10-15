@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── WHAT A COLUMN OWES SOMEBODY GLANCING AT IT ──────────────────────────────
@@ -157,40 +156,6 @@ func TestALandedRowGivesItsBlockToTheHintLine(t *testing.T) {
 
 // ── 2. the sections do not fight for space ──────────────────────────────────
 
-// THE STANDING SECTION KEEPS ITS ROWS UNDER A ROSTER OF ANY LENGTH. This is the
-// screenshot's second defect: the orders that govern the conversation were
-// reachable only by scrolling past every landed job in the session.
-func TestTheStandingSectionIsNotStarvedByALongRoster(t *testing.T) {
-	a, _ := marginApp(t,
-		standOrder("p1", "keep the tests green", standing.AltitudeProject),
-		standOrder("p2", "draft the weekly update", standing.AltitudeProject),
-	)
-	railLanded(a, 40)
-
-	rail := marginRail(a)
-	for _, want := range []string{
-		marginDoorWord(marginTaskType),
-		marginStandWord, "keep the tests green", "draft the weekly update",
-		marginDoorWord(marginStandType),
-	} {
-		if !strings.Contains(rail, want) {
-			t.Fatalf("forty landed rows squeezed %q off the column:\n%s", want, rail)
-		}
-	}
-	// AND THE ROSTER STILL HAS THE COLUMN. The block is reserved, not
-	// bottom-anchored: what is left over is the work's, and the work is what a
-	// person opened the column for.
-	shown := 0
-	for i := 1; i <= 40; i++ {
-		if strings.Contains(rail, railBuild(i)) {
-			shown++
-		}
-	}
-	if shown < railWorkFloor {
-		t.Fatalf("the reserved block left the roster %d rows:\n%s", shown, rail)
-	}
-}
-
 // THE HEADER STAYS WHILE THE TASKS SCROLL, and the first row of the list is
 // right under it with no spacer between.
 func TestTheHeaderStaysWhileTheRosterScrolls(t *testing.T) {
@@ -202,39 +167,6 @@ func TestTheHeaderStaysWhileTheRosterScrolls(t *testing.T) {
 	if len(rows) < 2 || !strings.Contains(rows[0], sideTasksWord+" 40") ||
 		strings.TrimSpace(strings.TrimPrefix(rows[1], "│")) == "" {
 		t.Fatalf("the header moved while scrolling:\n%s", strings.Join(rows, "\n"))
-	}
-}
-
-// PAST A HANDFUL THE ORDERS ARE COUNTED RATHER THAN DRAWN, and the count is on
-// the label — the same shape the tasks label already carries its own count in.
-func TestTheStandingLabelCountsTheOrdersItCouldNotDraw(t *testing.T) {
-	orders := make([]standing.Item, 0, marginStandMax+3)
-	for i := 0; i < marginStandMax+3; i++ {
-		orders = append(orders, standOrder("p"+itoa(i), "order number "+itoa(i), standing.AltitudeProject))
-	}
-	a, _ := marginApp(t, orders...)
-
-	rail := marginRail(a)
-	drawn := 0
-	for i := 0; i < marginStandMax+3; i++ {
-		if strings.Contains(rail, "order number "+itoa(i)) {
-			drawn++
-		}
-	}
-	if drawn != marginStandMax {
-		t.Fatalf("the column drew %d orders, want %d:\n%s", drawn, marginStandMax, rail)
-	}
-	if !strings.Contains(rail, marginStandWord+" · 3 "+marginStandMoreWord) {
-		t.Fatalf("the label does not count what it is not showing:\n%s", rail)
-	}
-}
-
-// AND A SECTION SHOWING EVERYTHING IT HAS SAYS NOTHING ABOUT WHAT IT IS NOT
-// HIDING — the emptiness law, applied to a count.
-func TestTheStandingLabelIsBareWhenEveryOrderIsDrawn(t *testing.T) {
-	a, _ := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
-	if rail := marginRail(a); strings.Contains(rail, marginStandMoreWord) {
-		t.Fatalf("a section showing all it has reported on what it is not hiding:\n%s", rail)
 	}
 }
 

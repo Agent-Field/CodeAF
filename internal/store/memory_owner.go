@@ -163,15 +163,20 @@ func ownerFilterSQL(owners []string) (string, []any) {
 // widened, and a store that already carries the column from an earlier or
 // interrupted upgrade.
 func migrateMemoriesOwner(db *sql.DB) error {
-	found, err := tableHasColumn(db, "memories", "owner")
-	if err != nil {
-		return err
-	}
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
 	defer tx.Rollback()
+	// THE COLUMN IS ASKED ABOUT INSIDE THE TRANSACTION THAT ADDS IT. It used to
+	// be read on the pool first, so two processes opening one old store at once
+	// both read "no owner column", both took this (immediate) transaction in turn,
+	// and the second died on a duplicate column. Read here, the second one waits
+	// for the first's commit and then finds the column it made.
+	found, err := tableHasColumnOn(tx, "memories", "owner")
+	if err != nil {
+		return fmt.Errorf("migrate memory owners: %w", err)
+	}
 	if !found {
 		if _, err := tx.Exec(`ALTER TABLE memories ADD COLUMN owner TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("migrate memory owners: %w", err)

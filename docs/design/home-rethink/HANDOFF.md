@@ -41,9 +41,10 @@ comes back to the same home. It writes inside that directory and nowhere else �
 | tasks | 13 rows across the three buckets — one running, one needing your look with a 101-character title, eight landed (one of them a `saved shape`), three failed |
 | a conversation's own work | `Sweeping the Frame Budget` keeps a checkpointed task graph of 6 nodes and 3 background jobs in its session folder — see below |
 | belt runs | the conversation's own session folder (`plandb.db` beside its transcript) holds three runs tied to `Sweeping the Frame Budget`: a running auth-flow rewrite with done, running, pending, dependent, nested and check rows; an older completed poem run; and an older index run with a failed child. Every task has a trajectory, the live rows have commands, and notes and spend make their rows draw. |
-| standing | 4 orders in `v3/standing/*.json` — one needing your look, one fired today with a check line and `earning trust 3/5`, one paused, one rule (`holds`) — plus day ledgers so cost per firing draws |
+| automations | 7 in `v3/automations/automations.db` across the three projects — a weekday reminder, a reminder still to come, the morning sweep (work on a cron line, in the checkout), a dependency bump every two days in a separate worktree, a watch on CI (a command, every fifteen minutes), a once-watch on `pricing.json` that spoke and finished, and one paused — with about sixty runs over the fortnight: every outcome (`done`, `nothing new`, `your call`, `incomplete`, `stopped`, `couldn't check`), catch-ups marked late after a weekend away, a late start and an early finish, and every run of work with its session folder on disk under `runs/` |
+| a conversation's automation lines | three of the seven were said in conversations, and their `Words` are turns those journals really have — so opening `Standing Up the Watches` draws the red CI run and the look it could not decide, and `What the Discount Means` draws the look the provider never answered and the one where its watch spoke |
 | memory | 12 memories over all three shelves in `graph.db`, with varied use and miss counts and one let go |
-| spend | ~57 lines over 14 days across three models, bound to conversations, work and standing orders — every id joins to a row that is really there |
+| spend | ~100 lines over 14 days across three models, bound to conversations, work and automations — an automation's lines are its own runs' costs, so the spend page and its history add up to the same money, and every id joins to a row that is really there |
 | search | every turn of every conversation in the message index |
 | home's `since you left` | a `.last-look` stamp twelve hours old under `v3/projects`, which is the ORIGIN news is measured from — without it that panel whispers on a fixture full of landed work, because a machine home has never been closed on has no origin and "the first look marks NOTHING as news" (`internal/session/look.go`) |
 | made for you | 3 deliverables, with the files behind them on the disk |
@@ -95,10 +96,41 @@ the engine replays every restored job onto the lane the surface is listening on,
 page draw nothing on a resumed conversation however much the fixture seeds, and that is a
 surface defect rather than a hole in this file.
 
+### The automations — a fortnight of history, and a clock that never starts
+
+`seed_automations.go` makes every automation through `automation.Store.Create`, exactly as
+a card's yes does, and writes its history through the clock's own doors — `Take`, `Start`,
+`Finish`, `SetSeen`, `FinishWatch` and the person's `SetStatus`. The one thing it adds is
+WHEN: `Store.SetClock` (`internal/automation`, written for this and called by nothing in
+the product) tells those doors what time it was.
+
+**The history is the clock replayed, not typed.** The fixture says when a window was open —
+working days from 08:40 to 18:20, a weekend away nine and eight days back, a late start, an
+early finish, and the window the person is sitting in now — and walks every automation
+through those windows the way the clock does: a slot is taken on time while a window is
+open, and whatever passed while none was is caught up once, late, when the next one opens.
+Which runs are late, and when each automation next wakes, is the schedule's own arithmetic;
+only what each run came to is written down, newest first, and a watch's history is held to
+the clock's rule for speaking (on the change to yes, quiet while it stays true).
+
+**No automation runs in a demo home.** A window starts `codeaf clock` against the home it was
+opened on, and the clock would run the seeded work for real — the sweep and the dependency
+bump are unattended sessions on the person's own key, and the watch on CI asks a model every
+fifteen minutes. So `--launch` and the hand-open line both set `CODEAF_NO_AUTOMATIONS=1`: the
+window still reads the store, lists the automations and draws their lines, and nothing runs.
+The cost is that an automation made inside the demo is saved and never runs.
+`TestTheDemoHomeNeverStartsTheAutomationsClock` holds the launcher and
+`automation.Startable` to that.
+
+**And nothing is left in hand.** Every run is over before the fixture's now and every active
+automation next wakes after it — at noon and on both sides of midnight
+(`TestTheDemoHomesLedgersStayInsideTheirOwnDays`) — because a run left `running` would make
+the quit question ask about work nobody is doing.
+
 ### How it is built, and the two rules it keeps
 
 `cmd/codeaf-demo-home` writes through **the engine's own writers** — `session.SaveMeta`,
-`session.RecordUsage`, `session.RecordArtifact`, `standing.Store`, `store.Store` — so what
+`session.RecordUsage`, `session.RecordArtifact`, `automation.Store`, `store.Store` — so what
 the surface reads back is what the product itself produces. There is exactly one place
 that spells a file shape for itself, and it says so: a session journal is written by a
 live agent through an unexported type and there is no seam for "write me a conversation
@@ -124,11 +156,11 @@ and the panel fills. A screenshot of the demo with an empty `running` is a scree
 the missing heartbeat, not of the panel.
 
 `TestTheDemoHomeFillsEveryPlace` reads all of it back through `session.ReadWorld`,
-`session.Peek`, `session.ReadTaskIndex`, the standing store, `store.MemorySnapshot`,
+`session.Peek`, `session.ReadTaskIndex`, the automations store, `store.MemorySnapshot`,
 `session.ReadUsage`, `Store.SearchConversations` and `session.ReadArtifacts`, and insists
 every place has rows — so the fixture cannot rot in silence.
 
-### Two things the demo makes visible that are not the fixture's fault
+### Three things the demo makes visible that are not the fixture's fault
 
 - Every memory reads `now` and `new today`, because the memory store stamps an event with
   its own clock and there is no door that backdates one. A demo built this morning
@@ -138,3 +170,10 @@ every place has rows — so the fixture cannot rot in silence.
   joins on `TaskIndexEntry.Name`, which is the kebab-cased mention handle, rather than on
   `Label`, which is the title as a row draws it. Worth a one-line fix in a lane that owns
   that page.
+- The spend page's `what it was for` column cannot name an automation yet.
+  `session.UsageBySubject` has no automation subject, so a ledger line carrying
+  `UsageLine.Automation` is grouped as a conversation: a watch's judgments as one row with
+  no id, and each run of work under its own run number. The lines are the ones the product
+  writes; the reader that turns them into one row per automation, titled, is part of
+  re-homing spend attribution onto automations
+  (`docs/design/automations/DESIGN.md`, "Re-homed, not deleted").

@@ -3471,7 +3471,7 @@ func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
 // HOME, and a letter between them disarms the door (placekeys.go's
 // [app.placeHomeGesture]).
 func TestDoubleSpaceFromABoxlessPlaceGoesHome(t *testing.T) {
-	for _, where := range []page{pageSpend, pageStanding} {
+	for _, where := range []page{pageSpend, pageAutomations} {
 		lab := newHomeLab(t)
 		a, box := driveToPlace(t, lab, where)
 		if box != nil {

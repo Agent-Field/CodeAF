@@ -13,10 +13,10 @@ import (
 // (topnav.go), and a press on it hangs this menu under it, listing exactly the
 // places it folded, each with the key that reaches it:
 //
-//	╭──────────────────╮
-//	│ settings  alt+6  │
-//	│ standing  alt+7  │
-//	╰──────────────────╯
+//	╭─────────────────────╮
+//	│ settings     alt+6  │
+//	│ automations  alt+7  │
+//	╰─────────────────────╯
 //
 // It is modal as every menu here is (teammenu.go): while it is up it has the
 // keyboard, `↑` `↓` walk it, `enter` goes to the place under the cursor and

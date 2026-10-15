@@ -647,17 +647,19 @@ started with `inherit`, or a reply the ceiling carried on — and that one opens
 this conversation exactly as it stands, every result in it, reading none of it again
 (*tasks*, under *Can it keep what it read*). Every other task inherits **not the
 transcript**: one assembled brief is its whole world, and your own message is the first
-part of it (below, under *What the task actually reads*). The
-one thing it is given of what codeaf remembers about you is the handful of lines its own
-brief needs: the conversation asks the router once, against that brief, and puts the
-answer at the top of the task's instructions (what-i-remember). The task itself never
-writes a memory — a family of eight tasks would be eight writers on one brain, each blind
-to the others. If it runs on a **different model from the conversation**, its context
+part of it (below, under *What the task actually reads*).
+Of what codeaf remembers about you it is given two things: the handful of lines its own
+brief needs — the conversation asks the router once, against that brief, and puts the
+answer at the top of the task's instructions — and your rules, the memories marked always
+that hold where it starts, which close its brief (what-i-remember, under *Always*). The
+task itself never writes a memory — a family of eight tasks would be eight writers on one
+brain, each blind to the others. If it runs on a **different model from the conversation**, its context
 window is set to 0 rather than reusing a window measured for another model.
 
-**Three tools are missing from its belt:** `watch`, and the settings pair `settings` and
-`change_setting` — a task works in a copy of its own with nobody watching it, so a watch's news
-would arrive in a conversation it does not have, and a permanent change to your machine
+**Four tools are missing from its belt:** `watch`, `automation`, and the settings pair
+`settings` and `change_setting` — a task works in a copy of its own with nobody watching it,
+so a watch's news would arrive in a conversation it does not have, an automation's card
+would have nobody to answer it (*Automations*), and a permanent change to your machine
 that no transcript ever showed you is exactly what a task must not be able to make.
 
 **A piece is told it owns the piece.** Your message travels to every task and sub-task
@@ -715,8 +717,8 @@ cost-oriented working set. With an unknown context size no larger line is invent
 ## Can a task change my settings — can a task look up an old conversation, can a task start a watch, my task said it cannot do that from here
 
 A task can search earlier conversations when its parent has history access.
-Settings changes and watches still require the conversation. The worker's
-instructions describe the tools it actually carries:
+Settings changes, watches and automations still require the conversation. The
+worker's instructions describe the tools it actually carries:
 
 - **Change a setting.** `settings` and `change_setting` are off inside a task. A
   worker runs in a copy of its own with nobody watching, and a permanent change
@@ -735,6 +737,9 @@ instructions describe the tools it actually carries:
   require an extra file unless the request or the work's own claim requires one.
 - **Start a watch.** `watch` delivers its news into a conversation and a task has
   none. A worker waits with an ordinary foreground `bash` call.
+- **Set up a reminder, scheduled work or a watch on a clock.** `automation` is off
+  inside a task, on either road, so a task cannot leave anything behind to run later.
+  Ask for it in the conversation, where its card can be answered (*Automations*).
 - **See the work that already ran** — but only at the bottom of the tree. A task
   keeps `tasks` and `propose_task` while it may still hand pieces out; a piece
   that was handed out by a piece is standing on the floor and has neither. Its
@@ -3178,9 +3183,8 @@ bytes. A long or nuanced ask can be cut, and the cut is marked with `…`. The p
 recourse: the worker may open that path at that line and read what you actually typed. What
 it must ship is still what the brief says.
 
-**An empty pointer draws nothing.** A standing order that fired with no person turn behind
-it, or a task restored from a checkpoint written before this existed, has no origin
-section. Unknown is absent, not a guessed path.
+**An empty pointer draws nothing.** A task restored from a checkpoint written before this
+existed has no origin section. Unknown is absent, not a guessed path.
 
 A task handed out from inside another task, and every part of a division, inherit the same
 pointer — they still point at your turn, never at the parent task's own journal.

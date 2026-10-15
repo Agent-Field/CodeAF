@@ -119,10 +119,6 @@ var settingReaders = map[string]string{
 	KeyIcons:          "iconMode",
 	KeyDailyBudget:    "DailyBudgetUSD",
 	KeyPlanConsent:    "PlanConsentUSD",
-	KeyPracticeBudget: "PracticeBudgetUSD",
-	KeyPracticeIdle:   "PracticeIdle",
-	KeyBriefAfter:     "BriefAfter",
-	KeyTenureAfter:    "CODEAF_TENURE_AFTER",
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
 	// The model-name row names the one resolver every door turns it into a
@@ -168,9 +164,8 @@ var settingReaders = map[string]string{
 	KeyDraftPersist:   "KeyDraftPersist",
 	// The telemetry row is answered by the package the events come from:
 	// internal/telemetry reads the CODEAF_TELEMETRY pin itself (its off
-	// state), so the row names the pin the far side touches — the same
-	// spelling [KeyTenureAfter] uses for its pin. cmd/codeaf's door will
-	// tighten this to its own accessor when it wires the package in.
+	// state), so the row names the pin the far side touches. cmd/codeaf's
+	// door will tighten this to its own accessor when it wires the package in.
 	KeyTelemetry: "CODEAF_TELEMETRY",
 	// The v3 session's rows name what READS the value on the far side, which
 	// for these six is not a function in this package: the two approval rows
@@ -293,8 +288,8 @@ var settingReaders = map[string]string{
 	KeyGoogleOAuthSecret: "GoogleOAuthClientAt",
 	KeySlackOAuthClient:  "SlackOAuthClientAt",
 	// The context law's knobs are read live by ctxbudget on every call — the
-	// environment name is the reader, as with tenure; Load seeds the
-	// persisted half through ctxbudget.Configure.
+	// environment name is the reader; Load seeds the persisted half through
+	// ctxbudget.Configure.
 	KeyContextFill:       "CODEAF_CONTEXT_FILL_PCT",
 	KeyCompletionReserve: "CODEAF_COMPLETION_RESERVE",
 	KeyWorkingSet:        "CODEAF_WORKING_SET",

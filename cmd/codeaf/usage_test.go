@@ -65,7 +65,6 @@ func TestAskingForHelpIsNotAFailure(t *testing.T) {
 		{"logs", runLogs},
 		{"why", runWhy},
 		{"competence", runCompetence},
-		{"wake", runWake},
 		{"rebuild", runRebuild},
 		{"notebook", runNotebook},
 		{"cache", runCache},

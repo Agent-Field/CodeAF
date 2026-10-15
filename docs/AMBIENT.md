@@ -1,5 +1,16 @@
 # The ambient side — what codeaf does when you are not asking
 
+> **Superseded, 2026-10-10.** Standing items are gone from the code:
+> `internal/standing`, the `stand` tool, the `/standing` page, the standing
+> card, the inbox, the operating-system timer and `codeaf tick` (now a hidden
+> verb that does nothing, kept for timers an older build installed). Existing
+> items were not migrated; `~/.codeaf/v3/standing/` is left on disk and no
+> longer read. What replaces them is automations —
+> docs/design/automations/DESIGN.md — which run only while a codeaf window is
+> open, and rules, which are memories marked always. Home's `ask here` stayed,
+> with its errands under `~/.codeaf/v3/errands`. The rest of this page is
+> history.
+
 *Design doc, 2026-08-20; brought level with the code 2026-08-21. Status: BUILT —
 `internal/standing` (the files, the pass, the OS timer), `internal/session`
 (the card, the sentinel, the runner) and `internal/tui3` (home's band, the

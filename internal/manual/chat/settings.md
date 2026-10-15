@@ -67,15 +67,18 @@ For example, `show hints` presents the positive choice while preserving the
 existing stored preference. Renaming or moving a control does not reset it.
 
 Some controls previously visible in chat settings belonged to the separate
-resident: practice idle time, practice spending, arrival briefs and tenure.
-They are omitted here instead of suggesting that changing them teaches this chat.
-Their stored values remain intact. Internal model slots that this surface cannot
+resident's background routine: practice idle time, practice spending, arrival
+briefs and tenure. That routine was removed and the rows went with it; a value an
+older version saved stays in the profile, read by nothing, and is never reported
+as an unknown setting. Internal model slots that this surface cannot
 change are omitted; supported model controls remain in Models.
 
 ## General — interface preferences and hints
 
 **General** contains mouse interaction, completed tool details, tool icons, chat
-switching, the task sidebar, updates and background reminders. **Show hints** is
+switching, the task sidebar and updates. There is no background reminders row: codeaf
+installs no timer, and automations run only while a codeaf window is open
+(*Automations*). **Show hints** is
 positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
@@ -139,5 +142,5 @@ and **shared model recommendations** (formerly Model Pool). Recommendations can
 control is not a promise that all the others are disabled. Search accepts old
 labels as well as the new organization.
 
-Resident-only practice controls remain in resident configuration. They do not
-appear in chat settings, and `/budget practice` cannot edit them from chat.
+There is no practice limit any more: codeaf no longer practises on its own, and
+`/budget practice` answers with exactly that.

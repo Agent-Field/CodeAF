@@ -44,7 +44,7 @@ const (
 	pageNone page = iota
 	pageHome
 	pageTasks
-	pageStanding
+	pageAutomations
 	pageMemory
 	pageSpend
 	pageSettings
@@ -250,8 +250,8 @@ type place interface {
 	// ONLY HOME HAS A BOX THAT SENDS ANYTHING (the owner's ruling, 2026-09-17).
 	// Tasks and memory keep an editor because typing there FILTERS or
 	// SEARCHES, and each of them draws its own letters in its own body; the
-	// standing and spend places take no text at all, and the foot under every
-	// place but home draws no box. The shared composer that used to sit under
+	// automations and spend places take no text at all, and the foot under
+	// every place but home draws no box. The shared composer that used to sit under
 	// all seven — `enter talk about it · alt+enter send it off as a task` — was a
 	// box on six pages where `enter` opened a row and the sentence went nowhere.
 	box(a *app) *editor
@@ -395,19 +395,25 @@ var placeRegistry = map[page]place{}
 
 // placeOrder preserves the established numbered shortcuts for existing users.
 // Visual order is independent: moving a destination must not retrain a shortcut.
-var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory}
+var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageAutomations, pageMemory}
 
 // placeBarOrder groups daily work before utilities. Memory stays discoverable
-// even before the first saved memory; standing orders remain available in the map.
-var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageStanding}
+// even before the first saved memory, and automations sit beside it on the bar
+// from the first launch: a reminder said in a conversation has to have
+// somewhere visible to be found again, and a word that appeared only while a
+// person stood in it was a place nobody knew was there.
+var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageAutomations, pageSpend, pageSettings}
 
-const placeBarPlaces = 7
+// placeBarPlaces is how many of [placeBarOrder] the bar draws at rest. It is
+// all of them; [barPages] still knows how to lend the bar a room that is off
+// it, for the day one is added that does not fit.
+const placeBarPlaces = 8
 
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
 // the others — a bar with no word lit is a bar that does not know where you
-// are. With the map up (`every`) it is all of them, numbered, so the two that
-// are off the bar are on the one surface whose job is to show every key.
+// are. With the map up (`every`) it is all of them, numbered, so a room off the
+// bar would still be on the one surface whose job is to show every key.
 func barPages(here page, every bool) []page {
 	if every {
 		return placeBarOrder
@@ -464,18 +470,25 @@ func pages() []page {
 	return rooms
 }
 
-// placeWordList is the seven words in digit order, for the one sentence on the
-// key sheet that has to say which digit is which (commands.go).
+// placeWordList is every place's word with the digit that reaches it, in digit
+// order — `1 home · 2 AI teams · 3 chats · …` — for the one sentence on the key
+// sheet that has to say which digit is which (commands.go).
 //
 // IT IS READ OFF [placeOrder] AND NOT TYPED OUT, because a hand-written list on
 // the help sheet is a second answer to what `alt+3` opens — and the day a place
 // is added or the order changes, the sheet is the last thing anybody would think
 // to edit. One source of truth (CLAUDE.md's design laws).
+//
+// AND EVERY WORD CARRIES ITS DIGIT, because the digits are NOT the tab bar's
+// order. [placeBarOrder] regrouped the bar and kept every number where it was,
+// so memory is the fifth word on the bar and `alt+8`. A bare list in digit order
+// is a list a reader counts along against the bar they can see, which is how
+// the sheet came to call this list "the tab bar's own order".
 func placeWordList() string {
 	words := make([]string, 0, len(placeOrder))
 	for _, id := range placeOrder {
 		if pl, ok := placeRegistry[id]; ok {
-			words = append(words, pl.word())
+			words = append(words, itoa(placeDigitOf(id))+" "+pl.word())
 		}
 	}
 	return strings.Join(words, " · ")
@@ -518,7 +531,7 @@ func (p page) lookKey() string {
 
 // counted answers whether a number in front of a place would mean anything.
 //
-// A COLLECTION CAN BE COUNTED AND A STATE CANNOT. Home, tasks, standing and
+// A COLLECTION CAN BE COUNTED AND A STATE CANNOT. Home, tasks, automations and
 // memory each hold a pile of things, so "two of them changed" is a fact about
 // the place. Spend is a sum, and settings is how
 // this machine is set — a number in front of either would be a number
@@ -529,10 +542,11 @@ func (p page) counted() bool {
 }
 
 // parsePageWord is the typed surface's half of the tab bar: a person who types
-// `sta` is offered the standing place beside the chats that match (SCREEN 1g).
+// `aut` is offered the automations place beside the chats that match (SCREEN
+// 1g).
 //
 // AN EXACT WORD BEATS A PREFIX, and a prefix that fits two places is no answer
-// at all — `s` is `standing`, `spend` and `settings` at once, and
+// at all — `s` is `sessions`, `spend` and `settings` at once, and
 // offering the first of those would be the surface guessing. So an ambiguous
 // prefix offers nothing, and the person types one more letter.
 // placeNames keeps older typed destinations working when their display label changes.
@@ -942,8 +956,8 @@ func placeHitsOf[H any](hits []placeHit, blank H) []H {
 }
 
 // placeLineHits is [placeHitsOf] for the places whose rows answer with a LINE OF
-// THEIR OWN BODY — the standing list, memory and spend all do — where a
-// row that answers to nothing is -1.
+// THEIR OWN BODY — memory and spend both do — where a row that answers to
+// nothing is -1.
 func placeLineHits(hits []placeHit) []int { return placeHitsOf(hits, -1) }
 
 // placeFrame is THE frame. Every place is drawn in it, and the head, the foot
@@ -1461,11 +1475,6 @@ func scopeAddress(line homeLine) string {
 	if path := strings.TrimSpace(line.row.ProjectDir); path != "" {
 		return path
 	}
-	// A standing item: the project root the order belongs to, which
-	// [standing.Item.Workspace] holds as a resolved path for exactly this.
-	if path := strings.TrimSpace(line.item.Workspace); path != "" {
-		return path
-	}
 	// A project heading: the project's own path, which is an address where its
 	// name is not.
 	return strings.TrimSpace(line.proj.Path)
@@ -1619,7 +1628,17 @@ func boxFloor(height int) int {
 // placeRestWord is what home's box row says with nothing typed in it — the
 // design's own sentence (SCREEN 2b). It is home's alone now: no other place
 // draws a box ([place.box]).
-func (a *app) placeRestWord() string { return "› " + placeRestWord }
+//
+// AND AN ERRAND'S PANE SAYS ITS OWN. While the pane holds the keyboard the box
+// at the foot is the pane's ([placeHome.box]), and typing there writes a
+// follow-up — so home's sentence over it promised a search and a new start the
+// box under the keys does not do ([exchangeRestWord]).
+func (a *app) placeRestWord() string {
+	if ex := a.paneExchange(); ex != nil && ex.focused {
+		return "› " + exchangeRestWord(ex)
+	}
+	return "› " + placeRestWord
+}
 
 // placeHintSaid is the line under the composer, IN THE ONE SPELLING EVERY
 // CONSTANT ON THIS SURFACE IS AUTHORED IN. Home writes its own sentence for
@@ -2005,7 +2024,15 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// line, so its keys are read by the same grammar ([paintHint]) rather than
 	// dimmed flat, and the door's clause keeps the colour every other key on
 	// this surface wears.
-	return " " + a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim)), true
+	line := a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim))
+	// AND A LINE THAT NAMES SOMEWHERE TO GO CARRIES THE WAY THERE: the address
+	// [app.tellHere] was handed with it, for as long as the line still says it.
+	// It wraps the line whole, after the fitting, because a link occupies no
+	// cells (opener.go's [linkify]).
+	if a.msgLink != "" && msg == a.msgLinkFor && path == "" {
+		line = linkify(line, a.msgLink)
+	}
+	return " " + line, true
 }
 
 // ── opening a place ─────────────────────────────────────────────────────────
@@ -2216,8 +2243,8 @@ func (a *app) placeBodyWheel(delta int) (tea.Cmd, bool) {
 // from the last. `back` is `shift+tab`, the same circle walked the other way.
 //
 // THE CIRCLE IS THE BAR ([barPages]). `tab` is the bar walked by a key, so it
-// goes where the words are: the four, and the room you are standing in when it
-// is one of the three off the bar — from which `tab` goes on to home.
+// goes where the words are, and from a room off the bar, were there one, it
+// goes on to home.
 func nextPage(at page, back bool) page {
 	// `tab` walks the rooms, and the chats are the way out of them rather than
 	// one of them (place_chats.go), so the walk steps over the word.

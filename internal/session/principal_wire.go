@@ -56,9 +56,10 @@ func newPrincipalFor(a *Agent) Principal {
 	// node has a brief and an auditor of its own, an errand is forty cells that
 	// close with home. Every one of them is built from a fresh Config literal
 	// today and would inherit none of this — but two roads COPY the
-	// conversation's config wholesale (standing_run.go), and a third written
-	// next year will too. The guard belongs here, once, where the answer is
-	// decided, rather than as a line every copier has to remember.
+	// conversation's config wholesale (automation_run.go's look and its work),
+	// and a third written next year will too. The guard belongs here, once,
+	// where the answer is decided, rather than as a line every copier has to
+	// remember.
 	if a.config.InTask || a.config.Errand {
 		return NewPerson()
 	}

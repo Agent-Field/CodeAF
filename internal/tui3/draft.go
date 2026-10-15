@@ -132,12 +132,12 @@ func draftPrefix(workspace string) string {
 // character on a fast typist's keyboard and once per chunk of a large paste.
 //
 // THE CALLERS THAT DO CHANGE THE TRANSCRIPT ALREADY SAY SO. Answering a proposal
-// (task.go), settling a standing card (standing.go), steering a room
-// (room.go, roomorch.go), pulling a parked message back (park.go), dropping a
-// picture chip (attach.go) and completing a file (files.go) all touch — or mark
-// their own block stale — on the line above their `return a.edited()`, because
-// each of them is a change to what is IN the list rather than to what is being
-// typed under it. Nothing was ever relying on this call to do it for them.
+// (task.go), steering a room (room.go, roomorch.go), pulling a parked message
+// back (park.go), dropping a picture chip (attach.go) and completing a file
+// (files.go) all touch — or mark their own block stale — on the line above
+// their `return a.edited()`, because each of them is a change to what is IN the
+// list rather than to what is being typed under it. Nothing was ever relying on
+// this call to do it for them.
 func (a *app) edited() tea.Cmd {
 	if len(a.input.value) == 0 {
 		// An empty box is a new draft. Plainness belongs to the sentence that

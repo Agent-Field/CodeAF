@@ -136,7 +136,7 @@ func TestTaskIssuedCommandsStayInsideTheirSubtree(t *testing.T) {
 		{"another task's leaf", Command{Kind: CommandCancel, Issuer: TaskIssuer("mine"), Target: "theirs-leaf", Instruction: "stop theirs"}},
 		{"a targeted splice outside", Command{Kind: CommandSplice, Issuer: TaskIssuer("mine"), Target: "theirs", Instruction: "add work there"}},
 		{"an untargeted splice", Command{Kind: CommandSplice, Issuer: TaskIssuer("mine"), Instruction: "add work anywhere"}},
-		{"a global command", Command{Kind: CommandStandingWatchEnable, Issuer: TaskIssuer("mine"), Instruction: "watch for me"}},
+		{"a global command", Command{Kind: CommandHandover, Issuer: TaskIssuer("mine"), Instruction: "hand the role over"}},
 		{"a root the graph never had", Command{Kind: CommandPause, Issuer: TaskIssuer("ghost"), Target: "mine-leaf", Instruction: "hold it"}},
 		{"an unknown issuer", Command{Kind: CommandPause, Issuer: "janitor", Target: "mine-leaf", Instruction: "hold it"}},
 		{"a task naming no root", Command{Kind: CommandPause, Issuer: "task:", Target: "mine-leaf", Instruction: "hold it"}},

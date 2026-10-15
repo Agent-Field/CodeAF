@@ -323,7 +323,6 @@ func (q *quietAgent) ReasoningLevels() map[string]string                        
 func (q *quietAgent) SetReasoningFor(string, string)                            {}
 func (q *quietAgent) ResolveConsent(uint64, bool)                               {}
 func (q *quietAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
-func (q *quietAgent) ResolveStanding(uint64, session.StandingAnswer)            {}
 func (q *quietAgent) ResolveHarness(uint64, bool, string)                       {}
 func (q *quietAgent) ResolveConnect(string, bool)                               {}
 func (q *quietAgent) ResolveConnectKey(string, string)                          {}

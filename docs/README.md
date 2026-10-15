@@ -18,7 +18,7 @@ One page that says where everything is. Start here.
 
 | Doc | What it covers |
 | --- | --- |
-| [STANDING.md](STANDING.md) | Standing goals — recognition not declaration, ratification, the ambient rail, the watch |
+| [STANDING.md](STANDING.md) | Standing goals — history: the v1 machinery is removed; see [automations](design/automations/DESIGN.md) |
 | [LEARNING.md](LEARNING.md) | Learning that compounds — the notebook, the skill forge, experiments, playbooks, the router |
 | [META.md](META.md) | Meta-learning — the journal as training data about the learning itself |
 | [JOBS.md](JOBS.md) | Background jobs — two primitives, turn-boundary reporting, nothing outlives its leaf |
