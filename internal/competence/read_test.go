@@ -777,6 +777,7 @@ func TestValidRowHoldsARowToTheWriter(t *testing.T) {
 		"huge command":          func(r *Record) { r.Checks[0].Command = strings.Repeat("c", 4*maxCommand+1) },
 		"too many checks":       func(r *Record) { r.Checks = make([]CheckRun, MaxChecks+1) },
 		"passed beside failed":  func(r *Record) { r.Outcome = Passed },
+		"failed beside passed":  func(r *Record) { r.Checks[0].Outcome = Passed },
 		"unknown source":        func(r *Record) { r.Source.Kind = "dream" },
 		"no agent":              func(r *Record) { r.Source.Agent = "" },
 		"no time":               func(r *Record) { r.At = time.Time{} },

@@ -427,8 +427,9 @@ func validRow(r Record) bool {
 		}
 		anyFailed = anyFailed || check.Outcome == Failed
 	}
-	// A pass cannot be recorded beside a check that failed.
-	return !(r.Outcome == Passed && anyFailed)
+	// The writer always keeps the deciding failed check, even when it caps
+	// the shown list. A stated outcome must agree with that retained evidence.
+	return r.Outcome == "" || (r.Outcome == Failed) == anyFailed
 }
 
 // shortID is a stable id for one string.
