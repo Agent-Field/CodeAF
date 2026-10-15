@@ -14,17 +14,23 @@ import (
 type fakeCollector struct {
 	*fakeEngine
 	depth, limit int
+	after        string
 	added        []Member
+	from, to     Ref
 }
 
-func (f *fakeCollector) ListCollections(holds *Ref) ([]Collection, error) {
+func (f *fakeCollector) ListCollections(holds *Ref, after string, limit int) (CollectionsResult, error) {
+	f.after, f.limit = after, limit
+	if after == "bogus" {
+		return CollectionsResult{}, Errorf(CodeBadParams, "that page cursor was not given by this listing")
+	}
 	at := time.UnixMilli(1000).UTC()
 	yes := holds != nil
 	c := Collection{ID: "c1", Name: "Launch", CreatedAt: &at, Count: 2, LastAddedAt: &at}
 	if holds != nil {
 		c.Holds = &yes
 	}
-	return []Collection{c}, nil
+	return CollectionsResult{Collections: []Collection{c}, Next: "n1", Total: 3}, nil
 }
 func (f *fakeCollector) CreateCollection(name string) (Collection, error) {
 	if name == "Taken" {
@@ -56,13 +62,22 @@ func (f *fakeCollector) AddToCollection(id string, refs []Member) (CollectionAdd
 func (f *fakeCollector) RemoveFromCollection(id string, refs []Ref) (CollectionRemoveResult, error) {
 	return CollectionRemoveResult{}, nil
 }
-func (f *fakeCollector) OpenCollection(id string, depth, limit int) (CollectionOpenResult, error) {
-	f.depth, f.limit = depth, limit
-	return CollectionOpenResult{Collection: Collection{ID: id, Name: "Launch"}}, nil
+func (f *fakeCollector) OpenCollection(id string, depth, limit int, after string) (CollectionOpenResult, error) {
+	f.depth, f.limit, f.after = depth, limit, after
+	return CollectionOpenResult{Collection: Collection{ID: id, Name: "Launch"}, More: true, Next: "o1"}, nil
 }
 func (f *fakeCollector) ExpandCollection(id string, depth, limit int) (CollectionExpandResult, error) {
 	f.depth, f.limit = depth, limit
-	return CollectionExpandResult{Collection: Collection{ID: id, Name: "Launch"}}, nil
+	return CollectionExpandResult{Collection: Collection{ID: id, Name: "Launch"}, Unavailable: 1, Unread: 2,
+		UnavailableRefs: []ExpandedRef{{Member: Member{Ref: Ref{Kind: RefCrew, ID: "k"}}, Target: Target{State: TargetUnknown, Reason: "the crew list could not be asked: busy"}}}}, nil
+}
+func (f *fakeCollector) RelinkCollection(id string, from, to Ref) (CollectionRelinkResult, error) {
+	f.from, f.to = from, to
+	if from.ID == "absent" {
+		return CollectionRelinkResult{}, Errorf(CodeNotFound, "that reference is not in this collection")
+	}
+	at := time.UnixMilli(2000).UTC()
+	return CollectionRelinkResult{Member: Member{Ref: to, AddedAt: &at}}, nil
 }
 
 func startCollectorWire(t *testing.T) (*wire, *fakeCollector) {
@@ -229,5 +244,121 @@ func TestTheSchemaDescribesCollections(t *testing.T) {
 	}
 	if words, _ := doc.Defs["Target"].Properties["state"]["enum"].([]any); len(words) != 4 {
 		t.Errorf("target.state words = %v", words)
+	}
+}
+
+// PAGING, HONEST EXPANSION AND RELINK ARE SHAPES THE WIRE CHECKS: a cursor
+// and a list limit are bounded here, relink needs both refs and refuses
+// adding the legacy kind, and every new field arrives as PROTOCOL.md says.
+func TestCollectionsPagingExpandAndRelinkOnTheWire(t *testing.T) {
+	w, engine := startCollectorWire(t)
+	w.next()
+	call := func(id int, line string) map[string]any {
+		t.Helper()
+		w.send(line)
+		got := w.next()
+		if got["id"] != float64(id) {
+			t.Fatalf("%s = %v", line, got)
+		}
+		return got
+	}
+	code := func(got map[string]any) any {
+		if e, ok := got["error"].(map[string]any); ok {
+			return e["code"]
+		}
+		return nil
+	}
+	for i, line := range []string{
+		`{"id":1,"method":"collections.list","params":{"limit":0}}`,
+		`{"id":2,"method":"collections.list","params":{"limit":1001}}`,
+		`{"id":3,"method":"collections.list","params":{"after":"has space"}}`,
+		`{"id":4,"method":"collections.open","params":{"id":"c1","after":"a\u0007"}}`,
+		`{"id":5,"method":"collections.relink","params":{"id":"c1","from":{"kind":"conversation","id":"a"}}}`,
+		`{"id":6,"method":"collections.relink","params":{"id":"c1","to":{"kind":"conversation","id":"a"}}}`,
+		`{"id":7,"method":"collections.relink","params":{"from":{"kind":"conversation","id":"a"},"to":{"kind":"conversation","id":"b"}}}`,
+		`{"id":8,"method":"collections.relink","params":{"id":"c1","from":{"kind":"conversation","id":"a"},"to":{"kind":"standing","id":"s"}}}`,
+		`{"id":9,"method":"collections.relink","params":{"id":"c1","from":{"kind":"conversation","id":"a"},"to":{"kind":"artifact","id":"rel"}}}`,
+	} {
+		if got := call(i+1, line); code(got) != CodeBadParams {
+			t.Fatalf("%s = %v", line, got)
+		}
+	}
+	got := call(10, `{"id":10,"method":"collections.list","params":{"after":"c0","limit":2}}`)
+	result := got["result"].(map[string]any)
+	if result["next"] != "n1" || result["total"] != float64(3) || engine.after != "c0" || engine.limit != 2 {
+		t.Fatalf("list page = %v (engine after %q limit %d)", got, engine.after, engine.limit)
+	}
+	call(11, `{"id":11,"method":"collections.list"}`)
+	if engine.after != "" || engine.limit != CollectionsListMax {
+		t.Fatalf("list defaults after %q limit %d", engine.after, engine.limit)
+	}
+	if got := call(12, `{"id":12,"method":"collections.list","params":{"after":"bogus"}}`); code(got) != CodeBadParams {
+		t.Fatalf("a foreign cursor = %v", got)
+	}
+	got = call(13, `{"id":13,"method":"collections.open","params":{"id":"c1","after":"o0"}}`)
+	if r := got["result"].(map[string]any); r["next"] != "o1" || r["more"] != true || engine.after != "o0" {
+		t.Fatalf("open page = %v", got)
+	}
+	got = call(14, `{"id":14,"method":"collections.expand","params":{"id":"c1"}}`)
+	r := got["result"].(map[string]any)
+	unavailable, _ := r["unavailable_refs"].([]any)
+	if r["unavailable"] != float64(1) || r["unread"] != float64(2) || len(unavailable) != 1 {
+		t.Fatalf("expand = %v", got)
+	}
+	if target := unavailable[0].(map[string]any)["target"].(map[string]any); target["state"] != TargetUnknown || target["reason"] == "" {
+		t.Fatalf("unavailable target = %v", target)
+	}
+	got = call(15, `{"id":15,"method":"collections.relink","params":{"id":"c1","from":{"kind":"standing","id":"s"},"to":{"kind":"conversation","id":"b"}}}`)
+	r = got["result"].(map[string]any)
+	if m := r["member"].(map[string]any); m["id"] != "b" || m["added_at"] != "1970-01-01T00:00:02Z" || r["already"] != false || engine.from.Kind != RefStanding {
+		t.Fatalf("relink = %v", got)
+	}
+	if got := call(16, `{"id":16,"method":"collections.relink","params":{"id":"c1","from":{"kind":"conversation","id":"absent"},"to":{"kind":"conversation","id":"b"}}}`); code(got) != CodeNotFound {
+		t.Fatalf("relink of a non-member = %v", got)
+	}
+}
+
+// The schema carries this wave's later fields: relink, the page cursor and
+// total, a target's reason and expand's unavailable and unread counts.
+func TestTheSchemaDescribesCollectionPagingAndRelink(t *testing.T) {
+	out, err := SchemaJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Methods map[string]struct {
+			Params map[string]any `json:"params"`
+			Result map[string]any `json:"result"`
+		} `json:"methods"`
+		Defs map[string]struct {
+			Properties map[string]map[string]any `json:"properties"`
+			Required   []string                  `json:"required"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc.Methods["collections.relink"]; !ok {
+		t.Fatal("schema lacks collections.relink")
+	}
+	for def, fields := range map[string][]string{
+		"CollectionsResult":      {"collections", "next", "total"},
+		"CollectionOpenResult":   {"next", "more"},
+		"CollectionExpandResult": {"unavailable", "unavailable_refs", "unread", "missing", "more"},
+		"CollectionRelinkResult": {"member", "already"},
+		"Target":                 {"reason"},
+	} {
+		for _, f := range fields {
+			if doc.Defs[def].Properties[f] == nil {
+				t.Errorf("schema %s lacks %s", def, f)
+			}
+		}
+	}
+	for _, def := range []string{"CollectionsResult", "CollectionOpenResult"} {
+		for _, r := range doc.Defs[def].Required {
+			if r == "next" {
+				t.Errorf("%s.next is required; it is present only when more remain", def)
+			}
+		}
 	}
 }

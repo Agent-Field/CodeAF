@@ -34,7 +34,7 @@ const (
 	RefStanding     = "standing"
 )
 
-// The states of a target.
+// The states of a target. An unknown target carries its reason.
 const (
 	TargetLive    = "live"
 	TargetDeleted = "deleted"
@@ -44,15 +44,17 @@ const (
 
 // The bounds of this wave's methods.
 const (
-	CollectionRefsMax       = 200  // refs in one add or remove
-	CollectionsListMax      = 1000 // collections one listing answers
-	CollectionOpenDepth     = 2    // levels below the top open opens
-	CollectionOpenLimit     = 500  // members per level, and expand's most refs
-	CollectionExpandMax     = 3    // levels expand reads
-	CollectionExpandDefault = 200  // refs expand answers when not told
-	CollectionNodesMax      = 1500 // nodes one open answers in all
-	collectionNameMax       = 256
-	collectionIDMax         = 4096
+	CollectionRefsMax        = 200  // refs in one add or remove
+	CollectionsListMax       = 1000 // collections one page of a listing answers, and its default
+	CollectionUnavailableMax = 50   // unavailable refs expand names, of all it counts
+	collectionCursorMax      = 8192
+	CollectionOpenDepth      = 2    // levels below the top open opens
+	CollectionOpenLimit      = 500  // members per level, and expand's most refs
+	CollectionExpandMax      = 3    // levels expand reads
+	CollectionExpandDefault  = 200  // refs expand answers when not told
+	CollectionNodesMax       = 1500 // nodes one open answers in all
+	collectionNameMax        = 256
+	collectionIDMax          = 4096
 )
 
 // Ref is one reference: a task and a process carry their agent as SessionID,
@@ -85,9 +87,12 @@ type Collection struct {
 
 // Target is what a member was found to be now, never stored. In is where it
 // lives, outer first; Count is a crew's members or a collection's direct
-// members; Repo, Branch and Path place a file inside a git work tree.
+// members; Repo, Branch and Path place a file inside a git work tree. Reason
+// is said only of an unknown target: which owner could not be asked and why,
+// in words fit for a person, with no secret and no path in them.
 type Target struct {
 	State  string   `json:"state" enum:"live,deleted,missing,unknown"`
+	Reason string   `json:"reason,omitempty"`
 	Title  string   `json:"title,omitempty"`
 	In     []string `json:"in,omitempty"`
 	Status string   `json:"status,omitempty"`
@@ -120,8 +125,13 @@ type ExpandedRef struct {
 
 // The answers of this wave's methods.
 type (
+	// CollectionsResult is one page of collections: Next is the cursor the
+	// following page starts from, present only when more remain, and Total
+	// every collection there is.
 	CollectionsResult struct {
 		Collections []Collection `json:"collections"`
+		Next        string       `json:"next,omitempty"`
+		Total       int          `json:"total"`
 	}
 	CollectionResult struct {
 		Collection Collection `json:"collection"`
@@ -133,17 +143,37 @@ type (
 	CollectionRemoveResult struct {
 		Removed []Member `json:"removed"`
 	}
+	// CollectionOpenResult is a collection opened: More says something was
+	// cut (the top level or the node budget), and Next, present only when
+	// the top level has more, is where its next page starts.
 	CollectionOpenResult struct {
 		Collection Collection `json:"collection"`
 		Members    []Node     `json:"members"`
 		More       bool       `json:"more"`
+		Next       string     `json:"next,omitempty"`
 	}
+	// CollectionExpandResult is a collection flattened. NOTHING IS LEFT OUT
+	// UNCOUNTED: Missing is refs whose thing is gone (deleted nested
+	// collections included), Unavailable refs whose owner could not be asked
+	// (never in Missing), the first CollectionUnavailableMax of them named in
+	// UnavailableRefs with their reasons, Unread nested collections deeper
+	// than the depth asked, and More a cut by the limit or the store's own
+	// bound.
 	CollectionExpandResult struct {
-		Collection  Collection    `json:"collection"`
-		Refs        []ExpandedRef `json:"refs"`
-		Missing     int           `json:"missing"`
-		Collections int           `json:"collections"`
-		More        bool          `json:"more"`
+		Collection      Collection    `json:"collection"`
+		Refs            []ExpandedRef `json:"refs"`
+		Missing         int           `json:"missing"`
+		Unavailable     int           `json:"unavailable"`
+		UnavailableRefs []ExpandedRef `json:"unavailable_refs"`
+		Unread          int           `json:"unread"`
+		Collections     int           `json:"collections"`
+		More            bool          `json:"more"`
+	}
+	// CollectionRelinkResult is the member that took a ref's place, and
+	// whether it was already there (the old ref was then only removed).
+	CollectionRelinkResult struct {
+		Member  Member `json:"member"`
+		Already bool   `json:"already"`
 	}
 	// CollectionChanged is said after any change made through this door, once
 	// per collection changed; Deleted says it is gone.
@@ -156,17 +186,22 @@ type (
 // Collector is the optional engine half of collections. One that is not a
 // Collector answers every collections method unknown_method and carries no
 // "collections" feature. Bounds and shapes are checked here before it is
-// asked; depth and limit arrive already defaulted.
+// asked; depth and limit arrive already defaulted, and a cursor is only
+// checked for its size here: what it means is the engine's, which answers
+// one it did not give bad_params.
 type Collector interface {
-	ListCollections(holds *Ref) ([]Collection, error)
+	ListCollections(holds *Ref, after string, limit int) (CollectionsResult, error)
 	CreateCollection(name string) (Collection, error)
 	RenameCollection(id, name string) (Collection, error)
 	DuplicateCollection(id, name string) (Collection, error)
 	DeleteCollection(id string) error
 	AddToCollection(id string, refs []Member) (CollectionAddResult, error)
 	RemoveFromCollection(id string, refs []Ref) (CollectionRemoveResult, error)
-	OpenCollection(id string, depth, limit int) (CollectionOpenResult, error)
+	OpenCollection(id string, depth, limit int, after string) (CollectionOpenResult, error)
 	ExpandCollection(id string, depth, limit int) (CollectionExpandResult, error)
+	// RelinkCollection puts to in from's place, in one write: not_found
+	// when from is not a member or to is not there now, cycle as add.
+	RelinkCollection(id string, from, to Ref) (CollectionRelinkResult, error)
 }
 
 func collector(e Engine, name string) (Collector, error) {
@@ -276,6 +311,15 @@ func bounded(field string, v *int, lo, hi, def int) (int, error) {
 	return *v, nil
 }
 
+// collectionCursor refuses a cursor no engine could have given: too long, or
+// with spaces or control characters in it.
+func collectionCursor(after string) error {
+	if after != "" && (!plainText(after, collectionCursorMax) || strings.IndexFunc(after, unicode.IsSpace) >= 0) {
+		return Errorf(CodeBadParams, "after is a cursor a previous page gave")
+	}
+	return nil
+}
+
 // collectionOf answers one collection or the error.
 func collectionOf(c Collection, err error) (*CollectionResult, error) {
 	if err != nil {
@@ -294,6 +338,12 @@ type (
 		Depth *int   `json:"depth"`
 		Limit *int   `json:"limit"`
 	}
+	collectionOpenParams struct {
+		ID    string `json:"id"`
+		Depth *int   `json:"depth"`
+		Limit *int   `json:"limit"`
+		After string `json:"after"`
+	}
 )
 
 func init() {
@@ -304,21 +354,28 @@ func init() {
 
 var collectionMethods = map[string]method{
 	"collections.list": collectCall("collections.list", func(c Collector, p struct {
-		Holds *Ref `json:"holds"`
+		Holds *Ref   `json:"holds"`
+		After string `json:"after"`
+		Limit *int   `json:"limit"`
 	}) (*CollectionsResult, error) {
 		if p.Holds != nil {
 			if err := CheckRef(*p.Holds, false); err != nil {
 				return nil, err
 			}
 		}
-		list, err := c.ListCollections(p.Holds)
+		if err := collectionCursor(p.After); err != nil {
+			return nil, err
+		}
+		limit, err := bounded("limit", p.Limit, 1, CollectionsListMax, CollectionsListMax)
 		if err != nil {
 			return nil, err
 		}
-		if len(list) > CollectionsListMax {
-			list = list[:CollectionsListMax]
+		r, err := c.ListCollections(p.Holds, p.After, limit)
+		if err != nil {
+			return nil, err
 		}
-		return &CollectionsResult{nonNil(list)}, nil
+		r.Collections = nonNil(r.Collections)
+		return &r, nil
 	}),
 	"collections.create": collectCall("collections.create", func(c Collector, p struct {
 		Name string `json:"name"`
@@ -395,8 +452,11 @@ var collectionMethods = map[string]method{
 		r.Removed = nonNil(r.Removed)
 		return &r, nil
 	}),
-	"collections.open": collectCall("collections.open", func(c Collector, p collectionBoundParams) (*CollectionOpenResult, error) {
+	"collections.open": collectCall("collections.open", func(c Collector, p collectionOpenParams) (*CollectionOpenResult, error) {
 		if err := needID("collections.open", p.ID); err != nil {
+			return nil, err
+		}
+		if err := collectionCursor(p.After); err != nil {
 			return nil, err
 		}
 		depth, err := bounded("depth", p.Depth, 0, CollectionOpenDepth, 1)
@@ -407,7 +467,7 @@ var collectionMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		r, err := c.OpenCollection(p.ID, depth, limit)
+		r, err := c.OpenCollection(p.ID, depth, limit, p.After)
 		if err != nil {
 			return nil, err
 		}
@@ -430,7 +490,30 @@ var collectionMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		r.Refs = nonNil(r.Refs)
+		r.Refs, r.UnavailableRefs = nonNil(r.Refs), nonNil(r.UnavailableRefs)
+		return &r, nil
+	}),
+	"collections.relink": collectCall("collections.relink", func(c Collector, p struct {
+		ID   string `json:"id"`
+		From *Ref   `json:"from"`
+		To   *Ref   `json:"to"`
+	}) (*CollectionRelinkResult, error) {
+		if err := needID("collections.relink", p.ID); err != nil {
+			return nil, err
+		}
+		if p.From == nil || p.To == nil {
+			return nil, Errorf(CodeBadParams, "collections.relink needs from and to")
+		}
+		if err := CheckRef(*p.From, false); err != nil {
+			return nil, err
+		}
+		if err := CheckRef(*p.To, true); err != nil {
+			return nil, err
+		}
+		r, err := c.RelinkCollection(p.ID, *p.From, *p.To)
+		if err != nil {
+			return nil, err
+		}
 		return &r, nil
 	}),
 }

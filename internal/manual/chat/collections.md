@@ -36,6 +36,10 @@ Use that ID with `codeaf collections rename <collection-id> "Launch"`.
 Names are unique without regard to case, so `create` or `rename` to a name
 another collection already has answers `another collection already has that
 name`; renaming a collection to its own name in another case is allowed.
+Case is compared letter by letter without regard to language: `Ärger` and
+`ärger` are one name, and so are `ΣΊΣΥΦΟΣ` and `σίσυφος`, but `İstanbul` and
+`istanbul`, or `Straße` and `STRASSE`, are two. `list` and `show` print every
+collection and every reference, however many there are.
 `codeaf collections show <collection-id>` lists that collection's direct references.
 Order follows creation and insertion, rather than inferred relevance.
 Reading a fresh home or an existing empty file does not create a database.

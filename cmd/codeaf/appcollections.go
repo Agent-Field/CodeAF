@@ -14,7 +14,8 @@ package main
 // one look for a git work tree per directory; a collection of a thousand
 // files in one repository costs one walk up to its .git. No transcript is
 // read to resolve anything, and a member whose owner cannot be asked is
-// "unknown", which says nothing about the member itself.
+// "unknown", which says nothing about the member itself, with a reason that
+// names the owner and why it could not be asked.
 
 import (
 	"bufio"
@@ -24,6 +25,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,6 +33,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
@@ -105,6 +108,8 @@ func appCollectionError(err error) error {
 		return appwire.Errorf(appwire.CodeCycle, "%s", workspace.ErrCycle.Error())
 	case errors.Is(err, workspace.ErrNotFound):
 		return appwire.Errorf(appwire.CodeNotFound, "%s", workspace.ErrNotFound.Error())
+	case errors.Is(err, workspace.ErrNotMember):
+		return appwire.Errorf(appwire.CodeNotFound, "%s", workspace.ErrNotMember.Error())
 	case errors.Is(err, workspace.ErrInvalid):
 		return appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	case errors.Is(err, workspace.ErrBusy):
@@ -151,24 +156,28 @@ func describeCollection(s *workspace.Store, id string) (appwire.Collection, erro
 	return appWireCollection(summary), nil
 }
 
-// ListCollections is every collection, oldest first.
-func (b *appBackend) ListCollections(holds *appwire.Ref) ([]appwire.Collection, error) {
+// ListCollections is one page of collections, oldest first, with the cursor
+// of the next page when more remain and how many there are in all.
+func (b *appBackend) ListCollections(holds *appwire.Ref, after string, limit int) (appwire.CollectionsResult, error) {
 	s, err := b.collectionStore(false)
-	if err != nil || s == nil {
-		return []appwire.Collection{}, err
+	if err != nil {
+		return appwire.CollectionsResult{}, err
+	}
+	if s == nil {
+		return appwire.CollectionsResult{Collections: []appwire.Collection{}}, nil
 	}
 	var ref *workspace.Ref
 	if holds != nil {
 		r := appStoreRef(*holds)
 		ref = &r
 	}
-	list, err := s.List(context.Background(), ref)
+	page, err := s.ListPage(context.Background(), ref, after, limit)
 	if err != nil {
-		return nil, appCollectionError(err)
+		return appwire.CollectionsResult{}, appCollectionError(err)
 	}
-	out := make([]appwire.Collection, 0, len(list))
-	for _, c := range list {
-		out = append(out, appWireCollection(c))
+	out := appwire.CollectionsResult{Collections: make([]appwire.Collection, 0, len(page.Collections)), Next: page.Next, Total: page.Total}
+	for _, c := range page.Collections {
+		out.Collections = append(out.Collections, appWireCollection(c))
 	}
 	return out, nil
 }
@@ -287,13 +296,14 @@ func (b *appBackend) RemoveFromCollection(id string, refs []appwire.Ref) (appwir
 	return out, nil
 }
 
-// OpenCollection is a collection's members with what each is now.
-func (b *appBackend) OpenCollection(id string, depth, limit int) (appwire.CollectionOpenResult, error) {
+// OpenCollection is one page of a collection's members with what each is
+// now, continuing after the cursor a previous page gave.
+func (b *appBackend) OpenCollection(id string, depth, limit int, after string) (appwire.CollectionOpenResult, error) {
 	s, err := b.existingStore()
 	if err != nil {
 		return appwire.CollectionOpenResult{}, err
 	}
-	tree, err := s.Tree(context.Background(), id, depth, limit)
+	tree, err := s.Tree(context.Background(), id, depth, limit, after)
 	if err != nil {
 		return appwire.CollectionOpenResult{}, appCollectionError(err)
 	}
@@ -315,7 +325,7 @@ func (b *appBackend) OpenCollection(id string, depth, limit int) (appwire.Collec
 		}
 		return out
 	}
-	return appwire.CollectionOpenResult{Collection: appWireCollection(tree.Collection), Members: nodes(tree.Level), More: tree.More}, nil
+	return appwire.CollectionOpenResult{Collection: appWireCollection(tree.Collection), Members: nodes(tree.Level), More: tree.More, Next: tree.Next}, nil
 }
 
 // collectionTarget is a nested collection as the store found it.
@@ -328,7 +338,13 @@ func collectionTarget(n workspace.Node) appwire.Target {
 }
 
 // ExpandCollection is every live reference a collection holds through its
-// nested collections, each once, outer levels first.
+// nested collections, each once, outer levels first, at most limit.
+//
+// EVERY REFERENCE THE STORE ANSWERED IS ACCOUNTED FOR, past the limit too: a
+// live one is answered or cut (more), a gone one is missing (a deleted nested
+// collection with them), and one whose owner could not be asked is
+// unavailable, the first of them named with the reason. An unavailable ref
+// is never missing: nobody knows it is gone.
 func (b *appBackend) ExpandCollection(id string, depth, limit int) (appwire.CollectionExpandResult, error) {
 	s, err := b.existingStore()
 	if err != nil {
@@ -338,24 +354,133 @@ func (b *appBackend) ExpandCollection(id string, depth, limit int) (appwire.Coll
 	if err != nil {
 		return appwire.CollectionExpandResult{}, appCollectionError(err)
 	}
-	out := appwire.CollectionExpandResult{Collection: appWireCollection(e.Collection), Refs: []appwire.ExpandedRef{}, Collections: e.Collections, More: e.More}
+	out := appwire.CollectionExpandResult{
+		Collection: appWireCollection(e.Collection), Refs: []appwire.ExpandedRef{}, UnavailableRefs: []appwire.ExpandedRef{},
+		Missing: e.Deleted, Unread: e.Unread, Collections: e.Collections, More: e.More,
+	}
 	r := newCollectionResolver(b)
 	for _, m := range e.Refs {
 		target := r.target(m.Ref)
 		switch target.State {
 		case appwire.TargetDeleted, appwire.TargetMissing:
 			out.Missing++
-			continue
 		case appwire.TargetUnknown:
-			continue
+			out.Unavailable++
+			if len(out.UnavailableRefs) < appwire.CollectionUnavailableMax {
+				out.UnavailableRefs = append(out.UnavailableRefs, appwire.ExpandedRef{Member: appWireMember(m), Target: target})
+			}
+		default:
+			if len(out.Refs) == limit {
+				out.More = true
+				continue
+			}
+			out.Refs = append(out.Refs, appwire.ExpandedRef{Member: appWireMember(m), Target: target})
 		}
-		if len(out.Refs) == limit {
-			out.More = true
-			break
-		}
-		out.Refs = append(out.Refs, appwire.ExpandedRef{Member: appWireMember(m), Target: target})
 	}
 	return out, nil
+}
+
+// RelinkCollection puts to in from's place, keeping from's added_at and
+// place, in one write. to is asked of its owner first and never written
+// unless it is there now: a file must be a regular file at that path, any
+// other kind must resolve live, and a collection is checked by the store as
+// add checks one.
+func (b *appBackend) RelinkCollection(id string, from, to appwire.Ref) (appwire.CollectionRelinkResult, error) {
+	s, err := b.existingStore()
+	if err != nil {
+		return appwire.CollectionRelinkResult{}, err
+	}
+	if err := b.relinkable(to); err != nil {
+		return appwire.CollectionRelinkResult{}, err
+	}
+	m, already, err := s.Relink(context.Background(), id, appStoreRef(from), appStoreRef(to))
+	if err != nil {
+		return appwire.CollectionRelinkResult{}, appCollectionError(err)
+	}
+	// Relinking a member to itself changed nothing, so it says nothing.
+	if from != to {
+		b.collectionChanged(id, false)
+	}
+	return appwire.CollectionRelinkResult{Member: appWireMember(m), Already: already}, nil
+}
+
+// relinkable is nil when to is there now, not_found when it is not, and the
+// engine's failure, with the reason, when its owner could not be asked.
+func (b *appBackend) relinkable(to appwire.Ref) error {
+	switch to.Kind {
+	case appwire.RefCollection:
+		return nil
+	case appwire.RefArtifact:
+		info, err := os.Stat(to.ID)
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			return appwire.Errorf(appwire.CodeNotFound, "nothing is at that path now")
+		}
+		if err != nil {
+			return appwire.Errorf(appwire.CodeEngine, "%s", appUnaskedReason("the file system", err))
+		}
+		if !info.Mode().IsRegular() {
+			return appwire.Errorf(appwire.CodeNotFound, "nothing is at that path now but a folder or another thing that is not a file")
+		}
+		return nil
+	}
+	t := newCollectionResolver(b).target(appStoreRef(to))
+	switch t.State {
+	case appwire.TargetLive:
+		return nil
+	case appwire.TargetUnknown:
+		return appwire.Errorf(appwire.CodeEngine, "%s", t.Reason)
+	}
+	return appwire.Errorf(appwire.CodeNotFound, "that %s is not there now", to.Kind)
+}
+
+// ── reasons ────────────────────────────────────────────────────────────────
+
+// appUnknown is a target whose owner could not be asked, and why.
+func appUnknown(owner string, err error) appwire.Target {
+	return appwire.Target{State: appwire.TargetUnknown, Reason: appUnaskedReason(owner, err)}
+}
+
+// appReasonMax is the longest reason a target carries, in runes.
+const appReasonMax = 200
+
+// appPathWords finds a path inside a sentence: an absolute or home-relative
+// path standing as its own word.
+var appPathWords = regexp.MustCompile(`(^|[\s'"(=])~?/[^\s'"()]*`)
+
+// appUnaskedReason is one short sentence: which owner could not be asked and
+// why. A REASON CARRIES NO SECRET AND NO PATH: the operating system's words
+// lose the path they name, what is left goes through the secret redactor,
+// and any path still standing in it is said as "a path".
+func appUnaskedReason(owner string, err error) string {
+	why := "it did not answer"
+	if err != nil {
+		var wire *appwire.Error
+		var pathErr *fs.PathError
+		var linkErr *os.LinkError
+		var sysErr *os.SyscallError
+		switch {
+		case errors.As(err, &wire):
+			why = wire.Message
+		case errors.As(err, &pathErr) && pathErr.Err != nil:
+			why = pathErr.Err.Error()
+		case errors.As(err, &linkErr) && linkErr.Err != nil:
+			why = linkErr.Err.Error()
+		case errors.As(err, &sysErr) && sysErr.Err != nil:
+			why = sysErr.Err.Error()
+		default:
+			why = plainWords(err.Error())
+		}
+		why, _, _ = strings.Cut(why, "\n")
+		why = appPathWords.ReplaceAllString(redact.Secrets(why), "${1}a path")
+		why = strings.TrimSpace(why)
+		if r := []rune(why); len(r) > appReasonMax {
+			why = string(r[:appReasonMax]) + "…"
+		}
+		if why == "" {
+			why = "it did not answer"
+		}
+	}
+	return owner + " could not be asked: " + why
 }
 
 // ── resolution ─────────────────────────────────────────────────────────────
@@ -393,33 +518,33 @@ func newCollectionResolver(b *appBackend) *collectionResolver {
 func (r *collectionResolver) target(ref workspace.Ref) appwire.Target {
 	switch ref.Kind {
 	case workspace.ConversationKind:
-		a, state := r.agent(ref.ID)
-		if state != "" {
-			return appwire.Target{State: state}
+		a, not := r.agent(ref.ID)
+		if not != nil {
+			return *not
 		}
 		return appwire.Target{State: appwire.TargetLive, Title: a.Title, Status: a.State, In: r.crewPathOf(a.ID)}
 	case workspace.TaskKind:
-		a, state := r.agent(ref.SessionID)
-		if state != "" {
-			return appwire.Target{State: state}
+		a, not := r.agent(ref.SessionID)
+		if not != nil {
+			return *not
 		}
 		n, err := strconv.ParseUint(ref.ID, 10, 64)
 		if err != nil {
 			return appwire.Target{State: appwire.TargetDeleted}
 		}
-		task, state := appFindOwned(r.tasks, a.ID, appTaskID(a.ID, n), r.b.ListTasks)
-		if state != "" {
-			return appwire.Target{State: state}
+		task, not := appFindOwned(r.tasks, a.ID, appTaskID(a.ID, n), r.b.ListTasks, "the task list of its conversation")
+		if not != nil {
+			return *not
 		}
 		return appwire.Target{State: appwire.TargetLive, Title: task.Title, Status: task.State, In: append(r.crewPathOf(a.ID), a.Title)}
 	case workspace.ProcessKind:
-		a, state := r.agent(ref.SessionID)
-		if state != "" {
-			return appwire.Target{State: state}
+		a, not := r.agent(ref.SessionID)
+		if not != nil {
+			return *not
 		}
-		p, state := appFindOwned(r.procs, a.ID, ref.ID, r.b.ListProcesses)
-		if state != "" {
-			return appwire.Target{State: state}
+		p, not := appFindOwned(r.procs, a.ID, ref.ID, r.b.ListProcesses, "the process list of its conversation")
+		if not != nil {
+			return *not
 		}
 		title := p.Title
 		if strings.TrimSpace(title) == "" {
@@ -428,7 +553,7 @@ func (r *collectionResolver) target(ref workspace.Ref) appwire.Target {
 		return appwire.Target{State: appwire.TargetLive, Title: title, Status: p.State, In: append(r.crewPathOf(a.ID), a.Title)}
 	case workspace.CrewKind:
 		if !r.readCrews() {
-			return appwire.Target{State: appwire.TargetUnknown}
+			return appUnknown("the crew list", r.crewsErr)
 		}
 		i, ok := r.crewByID[ref.ID]
 		if !ok {
@@ -441,16 +566,16 @@ func (r *collectionResolver) target(ref workspace.Ref) appwire.Target {
 		return r.file(ref.ID)
 	case workspace.CollectionKind:
 		// A nested collection is found by the store in the same read that
-		// found it a member; one reaching here was not.
-		return appwire.Target{State: appwire.TargetUnknown}
+		// found it a member; one reaching here was not, so it is gone.
+		return appwire.Target{State: appwire.TargetDeleted}
 	}
 	// A standing item names nothing codeaf runs any more.
 	return appwire.Target{State: appwire.TargetDeleted}
 }
 
-// agent is one agent off the one listing, or the state a member of it is in
-// when there is no such agent ("deleted") or no listing ("unknown").
-func (r *collectionResolver) agent(id string) (appwire.Agent, string) {
+// agent is one agent off the one listing, or the target a member of it is
+// when there is no such agent (deleted) or no listing (unknown, and why).
+func (r *collectionResolver) agent(id string) (appwire.Agent, *appwire.Target) {
 	if !r.agentsRead {
 		r.agentsRead = true
 		list, err := r.b.ListAgents("")
@@ -461,18 +586,20 @@ func (r *collectionResolver) agent(id string) (appwire.Agent, string) {
 		}
 	}
 	if r.agentsErr != nil {
-		return appwire.Agent{}, appwire.TargetUnknown
+		t := appUnknown("the conversation list", r.agentsErr)
+		return appwire.Agent{}, &t
 	}
 	a, ok := r.agents[id]
 	if !ok {
-		return appwire.Agent{}, appwire.TargetDeleted
+		return appwire.Agent{}, &appwire.Target{State: appwire.TargetDeleted}
 	}
-	return a, ""
+	return a, nil
 }
 
 // appFindOwned is one task or process of an agent, read with list once per
-// agent per call.
-func appFindOwned[T any](cache map[string]appOwned[T], agent, id string, list func(string) ([]T, error)) (T, string) {
+// agent per call, or the target it is when it is not there; owner names the
+// list in an unknown target's reason.
+func appFindOwned[T any](cache map[string]appOwned[T], agent, id string, list func(string) ([]T, error), owner string) (T, *appwire.Target) {
 	owned, ok := cache[agent]
 	if !ok {
 		items, err := list(agent)
@@ -486,15 +613,16 @@ func appFindOwned[T any](cache map[string]appOwned[T], agent, id string, list fu
 	if owned.err != nil {
 		var wire *appwire.Error
 		if errors.As(owned.err, &wire) && wire.Code == appwire.CodeNotFound {
-			return zero, appwire.TargetDeleted
+			return zero, &appwire.Target{State: appwire.TargetDeleted}
 		}
-		return zero, appwire.TargetUnknown
+		t := appUnknown(owner, owned.err)
+		return zero, &t
 	}
 	item, ok := owned.byID[id]
 	if !ok {
-		return zero, appwire.TargetDeleted
+		return zero, &appwire.Target{State: appwire.TargetDeleted}
 	}
-	return item, ""
+	return item, nil
 }
 
 func appOwnedID(item any) string {
@@ -574,7 +702,7 @@ func (r *collectionResolver) file(path string) appwire.Target {
 		return appwire.Target{State: appwire.TargetMissing}
 	}
 	if err != nil {
-		return appwire.Target{State: appwire.TargetUnknown}
+		return appUnknown("the file system", err)
 	}
 	t := appwire.Target{State: appwire.TargetLive, Title: filepath.Base(path)}
 	dir := filepath.Dir(path)
