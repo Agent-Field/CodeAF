@@ -233,6 +233,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	expectsSchemaJSON + `,` +
 	checksSchemaJSON + `,` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
+	`"irreversible":{"type":"boolean","description":"True for work that cannot be undone; it never starts on a clock"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
 	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
 	`"effort":{"type":"string","enum":["best","cheap"],"description":"Only when the person asked"},` +
@@ -248,13 +249,14 @@ var taskSchemaWithoutViaJSON = strings.Replace(taskSchemaJSON, taskViaSchemaJSON
 
 // taskArguments is the wire form.
 type taskArguments struct {
-	Title       string `json:"title"`
-	Summary     string `json:"summary"`
-	Brief       string `json:"brief"`
-	Deliverable string `json:"deliverable"`
-	Where       string `json:"where"`
-	Ground      string `json:"ground"`
-	Acceptance  string `json:"acceptance"`
+	Irreversible bool   `json:"irreversible,omitempty"`
+	Title        string `json:"title"`
+	Summary      string `json:"summary"`
+	Brief        string `json:"brief"`
+	Deliverable  string `json:"deliverable"`
+	Where        string `json:"where"`
+	Ground       string `json:"ground"`
+	Acceptance   string `json:"acceptance"`
 	// Expects is what this brief assumes is already true of the folder the
 	// worker will get, checked before it is allowed to spend anything
 	// (handoffcontract.go). It is optional and the harness never writes one.
@@ -287,7 +289,9 @@ type taskArguments struct {
 // a person may still move afterwards is `model`, and only from inside the node's
 // own room — see the field itself.
 type taskSpec struct {
-	title string
+	// Irreversible work always waits for an explicit answer.
+	irreversible bool
+	title        string
 	// named says A MODEL ALREADY WROTE THIS TITLE as a name, rather than the
 	// door cutting one out of a sentence it had to hand. It is the whole of what
 	// decides whether the work is named again (taskname.go): a name the shaper
@@ -1128,7 +1132,8 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		return taskSpec{}, "Invalid arguments: " + err.Error()
 	}
 	spec := taskSpec{
-		title: strings.TrimSpace(parsed.Title),
+		title:        strings.TrimSpace(parsed.Title),
+		irreversible: parsed.Irreversible,
 		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
 		// namer leaves it alone (taskname.go).
 		named:       strings.TrimSpace(parsed.Title) != "",
@@ -1231,10 +1236,12 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 // [taskWait] is waiting. Holding closes hold exactly once but keeps answer alive, because
 // typing removes the clock rather than answering the question.
 type taskQuestion struct {
-	answer chan TaskAnswer
-	hold   chan struct{}
-	held   bool
-	notice TaskNotice
+	// Version distinguishes model and hold edits while the proposal is open.
+	appVersion uint64
+	answer     chan TaskAnswer
+	hold       chan struct{}
+	held       bool
+	notice     TaskNotice
 }
 
 // ResolveTask answers one EventTaskProposal. A surface hands back the id the
@@ -1270,15 +1277,14 @@ func (a *Agent) HoldTask(id uint64) {
 		return
 	}
 	question.held = true
+	question.appVersion++
 	question.notice.Deadline = time.Time{}
 	notice := question.notice
 	hub := a.hub
 	close(question.hold)
 	a.mu.Unlock()
 
-	if hub != nil {
-		hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
-	}
+	a.broadcastTaskProposal(hub, notice)
 }
 
 // openTask puts one proposal in front of the person, starts its clock, and
@@ -1312,6 +1318,9 @@ func (a *Agent) HoldTask(id uint64) {
 // elsewhere is the preflight's one line about other windows already in these
 // files, or "" — a fact the card draws beside the work, not a reason to wait.
 func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewhere string) (*taskWait, error) {
+	if owner := a.taskProposalOwner(spec); owner != a {
+		return owner.openTask(ctx, id, spec, elsewhere)
+	}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -1321,6 +1330,13 @@ func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewher
 	// runs inside a turn, and the turn's fan-out is where its question is seen.
 	hub := a.hub
 	clock, countdown := a.taskClock(hub)
+	if spec.irreversible {
+		clock = false
+		if hub == nil && len(a.taskWatchers) == 0 {
+			a.mu.Unlock()
+			return nil, errors.New("this task needs your answer in a watching session")
+		}
+	}
 	var deadline time.Time
 	if clock {
 		deadline = a.taskClockNow().Add(countdown)
@@ -1467,12 +1483,9 @@ func (w *taskWait) decided(answer TaskAnswer) {
 	hub := a.hub
 	notice := w.question.notice
 	a.mu.Unlock()
-	if hub == nil {
-		return
-	}
 	notice.Deadline = time.Time{}
 	notice.Decided = &answer
-	hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
+	a.broadcastTaskProposal(hub, notice)
 }
 
 // answer is what the wait came to, waiting for it if it has not come to
@@ -1521,9 +1534,7 @@ func (w *taskWait) withdraw() {
 	a.mu.Unlock()
 	notice.Deadline = time.Time{}
 	notice.Withdrawn = taskWithdrawnReason
-	if hub != nil {
-		hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
-	}
+	a.broadcastTaskProposal(hub, notice)
 }
 
 // taskClock is the clock's law from [Agent.openTask]'s comment, decided once
@@ -1548,16 +1559,17 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 		answer: make(chan TaskAnswer, 1),
 		hold:   make(chan struct{}),
 		notice: TaskNotice{
-			ID:         id,
-			Title:      spec.title,
-			Summary:    spec.summary,
-			Brief:      spec.brief,
-			Acceptance: spec.acceptance,
-			Where:      taskCardWhere(config, id, spec),
-			Ground:     spec.ground,
-			Mode:       spec.mode,
-			DependsOn:  spec.dependsOn,
-			Deadline:   deadline,
+			ID:           id,
+			Title:        spec.title,
+			Summary:      spec.summary,
+			Brief:        spec.brief,
+			Acceptance:   spec.acceptance,
+			Where:        taskCardWhere(config, id, spec),
+			Ground:       spec.ground,
+			Mode:         spec.mode,
+			DependsOn:    spec.dependsOn,
+			Deadline:     deadline,
+			Irreversible: spec.irreversible,
 			// What it will run on, and — when one word fit more than one model
 			// — what it could run on instead. A surface draws the first as a
 			// fact and offers the second as a choice; both are settled by the
@@ -1577,9 +1589,6 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 // put it in. A nil hub is a headless run, and a headless run has nobody to
 // show a card to; the clock admits the work on its own.
 func (a *Agent) announceTask(hub *eventHub, question *taskQuestion) {
-	if hub == nil {
-		return
-	}
 	// AND THE WARM LINE, WHERE THE HANDOFF CAME OUT OF THE WORK ITSELF. It
 	// goes ABOVE the card because it is the reason the card is there, and it
 	// is [EventNotice] — the dim one-liner a surface already draws for
@@ -1590,15 +1599,11 @@ func (a *Agent) announceTask(hub *eventHub, question *taskQuestion) {
 	// nobody groomed). Silence still starts it, so the person is told and the
 	// work opens; what the card adds is a window to redirect, which is more
 	// than an auto-start could give them and not less.
-	if a.alreadyWorking() {
+	if hub != nil && a.alreadyWorking() {
 		hub.send(Event{Kind: EventNotice, Text: taskEscalationNote})
 	}
 	notice := question.notice
-	hub.send(Event{
-		Kind: EventTaskProposal,
-		Tool: "propose_task",
-		Task: &notice,
-	})
+	a.broadcastTaskProposal(hub, notice)
 }
 
 // taskSilenceAdmits is what an expired clock has to ask before it may approve
@@ -1783,4 +1788,18 @@ func (a *Agent) PendingTasks() []uint64 {
 // clock is exactly the field the two would drift on.
 func (a *Agent) proposalAsk(id uint64, notice TaskNotice) Question {
 	return a.proposalQuestion(id, notice)
+}
+
+// A proposal stays visible after its originating turn ends, like a running task.
+func (a *Agent) broadcastTaskProposal(hub *eventHub, notice TaskNotice) {
+	event := Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice}
+	if hub != nil {
+		hub.send(event)
+	}
+	a.mu.Lock()
+	watchers := append([]*eventStream(nil), a.taskWatchers...)
+	a.mu.Unlock()
+	for _, watcher := range watchers {
+		watcher.send(event)
+	}
 }

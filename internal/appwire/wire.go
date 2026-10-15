@@ -80,6 +80,8 @@ const (
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Changed names the files a conflict is about ([CodeConflict]).
+	Changed []string `json:"changed,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -122,6 +124,24 @@ type Task struct {
 	Title     string    `json:"title"`
 	State     string    `json:"state"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Proposed is a task waiting for the person's yes; ClockUntil is when it
+	// starts on its own, absent while the clock is held and always absent
+	// for Irreversible work. YourCall is a finished task waiting for the
+	// person's verdict (tasks.decide).
+	Proposed     bool       `json:"proposed,omitempty"`
+	ClockUntil   *time.Time `json:"clock_until,omitempty"`
+	Irreversible bool       `json:"irreversible,omitempty"`
+	YourCall     bool       `json:"your_call,omitempty"`
+	// Result is what the task said it did, Files what it changed, and
+	// BudgetUSD and SpentUSD its cap and what it has spent.
+	Result    string       `json:"result,omitempty"`
+	Files     []FileChange `json:"files,omitempty"`
+	BudgetUSD *float64     `json:"budget_usd,omitempty"`
+	SpentUSD  *float64     `json:"spent_usd,omitempty"`
+	// Line is the task's live status line, the one the terminal draws under
+	// a running task: the phase it is in, the gap it is closing, or what it
+	// is waiting on. It is empty when there is nothing to say.
+	Line string `json:"line,omitempty"`
 }
 
 // Crew is one codeaf team, with its members named by agent id.
@@ -233,6 +253,8 @@ type Model struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
+	// ProviderName is the provider's own name, as the picker heads its group.
+	ProviderName string `json:"provider_name,omitempty"`
 	// Default marks the model a new conversation runs on.
 	Default bool `json:"default,omitempty"`
 }

@@ -544,6 +544,9 @@ type TaskNotice struct {
 	// countdown (task.autoapprove_seconds). A zero Deadline means the clock is
 	// off or has been held by typing, and only an answer resolves the proposal.
 	Deadline time.Time
+	// Irreversible marks work that cannot be undone, which never starts on a
+	// clock: its Deadline is always zero and only an answer admits it.
+	Irreversible bool
 	// Withdrawn is set on the one rebroadcast of a proposal that takes it back
 	// before anybody's answer admitted it, and it is the reason in the engine's
 	// words. It happens to exactly one kind of proposal: one whose card went up

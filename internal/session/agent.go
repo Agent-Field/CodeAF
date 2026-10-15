@@ -1800,6 +1800,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.refreshSystemLocked()
 	hub := a.newReplayHubLocked()
 	a.hub = hub
+	// An ask to move a reply that ended before a boundary is not carried into
+	// the next reply.
+	a.moveAsked.Store(false)
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
@@ -2597,6 +2600,7 @@ func (a *Agent) Close() error {
 	if a.jobs != nil {
 		a.jobs.shutdown(jobShutdownGrace)
 	}
+	a.finishProcessRecords()
 
 	// AND THE SESSION STOPS SAYING IT IS HERE, and takes its presence file with
 	// it (taskpresence.go). It happens after the jobs round because work still

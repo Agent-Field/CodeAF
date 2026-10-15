@@ -148,8 +148,30 @@ type fakeConversation struct {
 	remembered  []session.ConsentScope
 	texts       []string
 	cost        float64
+	// The task, quick task and process doors' scripted answers, and what was
+	// asked of them.
+	appTasks    []session.AppTaskView
+	quickTasks  []session.AppQuickTaskView
+	intents     []session.AppTaskIntent
+	undoChanged []string
+	jobs        []session.JobNotice
+	cancels     []string
+	moves       int
+	// room is the lane one task's calls are watched on.
+	room chan session.Event
 	// onAnswer, when set, is what the engine does with an answer.
 	onAnswer func(session.Answer)
+}
+
+func (f *fakeConversation) WatchTaskRoom(uint64) (<-chan session.Event, func(), error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.room == nil {
+		f.room = make(chan session.Event, 8)
+	}
+	lane := f.room
+	var once sync.Once
+	return lane, func() { once.Do(func() { close(lane) }) }, nil
 }
 
 func (f *fakeConversation) WatchQuestions() (<-chan session.Event, func()) {
@@ -229,6 +251,76 @@ func (f *fakeConversation) ResolveConsentRemember(id uint64, allow bool, scope s
 	f.mu.Lock()
 	f.remembered = append(f.remembered, scope)
 	f.mu.Unlock()
+}
+func (f *fakeConversation) AppTasks() ([]session.AppTaskView, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]session.AppTaskView(nil), f.appTasks...), nil
+}
+func (f *fakeConversation) AppTask(id string) (session.AppTaskView, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, view := range f.appTasks {
+		if view.ID == id {
+			return view, true, nil
+		}
+	}
+	return session.AppTaskView{}, false, nil
+}
+func (f *fakeConversation) AppTaskAction(intent session.AppTaskIntent) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.intents = append(f.intents, intent)
+	return nil
+}
+func (f *fakeConversation) AppQuickTasks() ([]session.AppQuickTaskView, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]session.AppQuickTaskView(nil), f.quickTasks...), nil
+}
+func (f *fakeConversation) AppQuickTaskAction(intent session.AppTaskIntent) ([]string, []string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.intents = append(f.intents, intent)
+	if intent.Action == "undo" && len(f.undoChanged) > 0 {
+		return nil, append([]string(nil), f.undoChanged...), nil
+	}
+	if intent.Action == "undo" {
+		for i := range f.quickTasks {
+			if f.quickTasks[i].ID == intent.ID {
+				f.quickTasks[i].State = "undone"
+			}
+		}
+	}
+	return nil, nil, nil
+}
+func (f *fakeConversation) MoveTurnToTask() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.moves++
+	return nil
+}
+func (f *fakeConversation) JobNotices() ([]session.JobNotice, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]session.JobNotice(nil), f.jobs...), nil
+}
+func (f *fakeConversation) RerunProcess(id int) (session.JobNotice, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, job := range f.jobs {
+		if job.ID == id {
+			job.ID, job.State = id+100, session.JobRunning
+			return job, nil
+		}
+	}
+	return session.JobNotice{}, errors.New("no such process")
+}
+func (f *fakeConversation) Cancel(id string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cancels = append(f.cancels, id)
+	return "stopped", nil
 }
 func (f *fakeConversation) Usage() session.Usage {
 	f.mu.Lock()
@@ -435,7 +527,7 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if failed.Phase != appwire.PhaseEnd || failed.OK == nil || *failed.OK || failed.Summary != "exit status 1" {
 		t.Fatalf("failed = %+v", failed)
 	}
-	if task := data[10].(appwire.TaskChanged).Task; task.ID != "3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
+	if task := data[10].(appwire.TaskChanged).Task; task.ID != agent.ID+":3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
 		t.Fatalf("task = %+v", task)
 	}
 	if d := data[12].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
@@ -1196,10 +1288,10 @@ func TestAppModelsListIsThePickersList(t *testing.T) {
 			defaults++
 		}
 	}
-	if m := byID["deepseek/deepseek-v4.1-flash"]; !m.Default || m.Provider != "deepseek" || defaults != 1 {
+	if m := byID["deepseek/deepseek-v4.1-flash"]; !m.Default || m.Provider != "openrouter" || m.ProviderName != "OpenRouter" || defaults != 1 {
 		t.Fatalf("models = %+v", models)
 	}
-	if m := byID["qwen/qwen3-coder"]; m.Provider != "qwen" || m.Default {
+	if m := byID["qwen/qwen3-coder"]; m.Provider != "openrouter" || m.Default {
 		t.Fatalf("models = %+v", models)
 	}
 }
@@ -1571,10 +1663,10 @@ func TestAppSaysNestedTasksLive(t *testing.T) {
 		}
 	}
 	rec.mu.Unlock()
-	if len(changes) != 4 || changes[0].State != appwire.TaskQueued || changes[1].State != appwire.TaskRunning || changes[1].ID != "1" {
+	if len(changes) != 4 || changes[0].State != appwire.TaskQueued || changes[1].State != appwire.TaskRunning || changes[1].ID != agent.ID+":1" || !changes[0].Proposed {
 		t.Fatalf("task.changed = %+v", changes)
 	}
-	if changes[2].Parent != "1" || changes[3].Parent != "2" || changes[3].Group != "run-9" {
+	if changes[2].Parent != agent.ID+":1" || changes[3].Parent != agent.ID+":2" || changes[3].Group != "run-9" {
 		t.Fatalf("nested = %+v", changes)
 	}
 	tasks, err := backend.ListTasks(agent.ID)

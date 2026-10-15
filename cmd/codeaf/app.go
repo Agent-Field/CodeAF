@@ -49,6 +49,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -77,6 +78,7 @@ const appReleaseWait = 5 * time.Second
 func runApp(args []string) error {
 	flags := commandFlags("app")
 	homeFlag := flags.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf")
+	turnLong := flags.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
@@ -106,6 +108,9 @@ func runApp(args []string) error {
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	if *turnLong > 0 {
+		backend.turnLong = *turnLong
+	}
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir()}, backend)
 	if backend.assembled.Load() {
 		// The process half every conversation shared, closed the way the pipe
@@ -141,6 +146,17 @@ type appConversation interface {
 	// How hard the model is asked to think, per model.
 	ReasoningFor(model string) string
 	SetReasoningFor(model, level string)
+	// The task graph's app reads and verbs (internal/session's task_app.go),
+	// the move of a running reply to a task, and the job registry's notices.
+	AppTasks() ([]session.AppTaskView, error)
+	AppTask(id string) (session.AppTaskView, bool, error)
+	AppTaskAction(intent session.AppTaskIntent) error
+	AppQuickTasks() ([]session.AppQuickTaskView, error)
+	AppQuickTaskAction(intent session.AppTaskIntent) ([]string, []string, error)
+	MoveTurnToTask() error
+	JobNotices() ([]session.JobNotice, error)
+	RerunProcess(id int) (session.JobNotice, error)
+	Cancel(id string) (string, error)
 }
 
 // appOpenAsk is which conversation to open: a saved one by transcript, or a
@@ -152,6 +168,9 @@ type appOpenAsk struct {
 	Model      string
 	New        bool
 	Minted     bool
+	// ClockS is how many seconds a proposed task waits before it starts on
+	// its own: the app's own setting, never the terminal's.
+	ClockS int
 }
 
 // appConn is an opened conversation and the one way to give it back.
@@ -183,6 +202,7 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	}
 	workspace := ask.Workspace
 	transcript := ask.Transcript
+	clock := ask.ClockS
 	hello := remote.Hello{
 		Workspace: workspace,
 		Session:   transcript,
@@ -190,7 +210,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		Model:     ask.Model,
 		// An app agent keeps the name its first message gave it: the engine's
 		// own naming does not rename it afterwards.
-		Launch: &remote.LaunchShape{Interactive: true, DeterministicNames: true},
+		// And only the person moves a running reply to a task, and a proposed
+		// task's clock is the app's.
+		Launch: &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock},
 	}
 	loop, err := remote.Loopback(hello, remote.Options{
 		Boot: func(h remote.Hello) (*remote.Engine, error) {
@@ -242,6 +264,12 @@ type appBackend struct {
 	state *appState
 	// today replaces the usage ledger's figure for today in a test.
 	today func(time.Time) float64
+	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
+	turnLong time.Duration
+	// follows are the processes whose output the app is following.
+	follows map[string]*appFollow
+	// asleep says the Mac is asleep (power.sleep until power.wake).
+	asleep bool
 }
 
 // appAgent is every agent this process has heard of: listed off the disk,
@@ -268,6 +296,15 @@ type appAgent struct {
 	// it has been read.
 	users   int
 	counted bool
+	// marks are the turn number and client id of each message of the
+	// person's this process sent, by its place, so a listing can say them.
+	marks map[int]appTurnMark
+}
+
+// appTurnMark is what this process knows of one of the person's messages.
+type appTurnMark struct {
+	turn     uint64
+	clientID string
 }
 
 // appBoot is agents.create's ask, kept for the background open.
@@ -306,6 +343,26 @@ type appLive struct {
 	money       map[string]appMoneyAsk
 	budgetAsked string
 	lastAnswer  string
+	// turn is the running turn's number and steps how many tool calls it has
+	// made, which turn.long says.
+	turn  uint64
+	steps int
+	// phases are the running tasks' phase words, quicks and conflicts the
+	// quick tasks as last said and the files an undo found changed, and
+	// processes and logs the processes as last said and their spools.
+	phases map[string]string
+	// said is what each running task last said about its present (the gap
+	// it is closing, what it waits on, its own phase), calls the call each
+	// is making right now, and pilots the way to stop watching each one.
+	said      map[string]string
+	calls     map[string]string
+	pilots    map[string]func()
+	quicks    map[string]appwire.Quick
+	conflicts map[string][]string
+	processes map[string]appwire.Process
+	logs      map[string]string
+	// slept are the processes a sleep stopped, said once on wake.
+	slept []appSlept
 }
 
 // appConsentCall is the call one approval is about.
@@ -338,6 +395,8 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	b := &appBackend{
 		keys:      keys,
 		state:     &appState{},
+		turnLong:  appTurnLong,
+		follows:   map[string]*appFollow{},
 		emit:      emit,
 		open:      open,
 		now:       time.Now,
@@ -692,7 +751,8 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	if b.isClosing() {
 		return appwire.Agent{}, false, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
-	ask := appOpenAsk{Workspace: workspace, Transcript: transcript}
+	ask := appOpenAsk{Workspace: workspace, Transcript: transcript, ClockS: appProposedClockS}
+	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
 	}
@@ -723,6 +783,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		tasks: map[string]appwire.Task{}, lanesDone: make(chan struct{}), asksDone: make(chan struct{}),
 		questions: map[string]session.Question{}, answered: map[string]string{},
 		consents: map[uint64]appConsentCall{}, money: map[string]appMoneyAsk{},
+		phases: map[string]string{}, quicks: map[string]appwire.Quick{}, conflicts: map[string][]string{},
+		processes: map[string]appwire.Process{}, logs: map[string]string{},
+		said: map[string]string{}, calls: map[string]string{}, pilots: map[string]func(){},
 	}
 	title, model := conn.Conv.Title(), conn.Conv.Model()
 	effort := conn.Conv.ReasoningFor(model)
@@ -764,9 +827,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	guard.Go("app/tasks", func() {
 		defer close(live.lanesDone)
 		for event := range lane {
-			if (event.Kind == session.EventTaskUpdate || event.Kind == session.EventTaskProposal) && event.Task != nil {
-				b.taskNotice(id, live, event.Task)
-			}
+			b.workEvent(id, live, event)
 		}
 	})
 	questions, stopQuestions := conn.Conv.WatchQuestions()
@@ -962,9 +1023,20 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			return
 		}
 		at := b.now()
+		words := appReceipt(by, option, answer, at)
+		// A PROPOSAL ITS CLOCK STARTED closes with no answer from anybody; the
+		// task it became, already said, is what tells it from one taken back.
+		if q.Kind == session.QuestionTask && answer == nil {
+			var task appwire.Task
+			known := false
+			b.locked(func() { task, known = live.tasks[appTaskID(id, q.ID)] })
+			if known && !task.Proposed && task.State != appwire.TaskFailed {
+				words = "Started on its own · " + at.Local().Format("15:04")
+			}
+		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-			ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(by, option, answer, at),
+			ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: words,
 		}})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
@@ -1131,7 +1203,12 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 		live.running, live.stopping = true, false
 		live.lastUse = b.now()
 		turn = b.turns.Add(1)
+		live.turn, live.steps = turn, 0
 		n = a.users
+		if a.marks == nil {
+			a.marks = map[int]appTurnMark{}
+		}
+		a.marks[n] = appTurnMark{turn: turn, clientID: clientID}
 	})
 	if refused != nil {
 		return 0, refused
@@ -1157,7 +1234,11 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string) (uint64, er
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: clientID,
 	}})
-	guard.Go("app/turn", func() { b.pump(a, id, live, turn, n, text, events) })
+	long := b.watchLong(id, live, turn, b.now())
+	guard.Go("app/turn", func() {
+		defer long.Stop()
+		b.pump(a, id, live, turn, n, text, events)
+	})
 	return turn, nil
 }
 
@@ -1210,6 +1291,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			thinking.WriteString(event.Text)
 			live.box.Delta(id, turn, msg, appwire.DeltaThinking, event.Text)
 		case session.EventToolBegin:
+			b.locked(func() { live.steps++ })
 			sayReply()
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
@@ -1251,10 +1333,8 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if title := strings.TrimSpace(event.Text); title != "" {
 				changed(func(v *appwire.Agent) { v.Title = title })
 			}
-		case session.EventTaskUpdate, session.EventTaskProposal:
-			if event.Task != nil {
-				b.taskNotice(id, live, event.Task)
-			}
+		case session.EventTaskUpdate, session.EventTaskProposal, session.EventTaskPhase, session.EventJobUpdate:
+			b.workEvent(id, live, event)
 		}
 	}
 	sayReply()
@@ -1402,45 +1482,23 @@ func appTaskState(state string) string {
 	return ""
 }
 
-// taskNotice turns one task update into task.changed, once per change: the
-// same update can arrive on the turn's stream and on the task lane.
-func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNotice) {
-	// A PROPOSAL IS A TASK THAT HAS NOT STARTED, which is queued: it carries
-	// no state of its own until its first update, under the same id.
-	raw := string(notice.State)
-	if strings.TrimSpace(raw) == "" {
-		raw = string(session.TaskQueued)
-	}
-	state := appTaskState(raw)
-	if state == "" {
-		return
-	}
-	task := appwire.Task{ID: strconv.FormatUint(notice.ID, 10), Agent: id, Title: notice.Title, State: state, Group: notice.Run, UpdatedAt: b.now()}
-	if notice.Parent != 0 && notice.Parent != notice.ID {
-		task.Parent = strconv.FormatUint(notice.Parent, 10)
-	}
-	same := false
-	b.locked(func() {
-		if before, ok := live.tasks[task.ID]; ok && before.State == task.State && (task.Title == "" || before.Title == task.Title) {
-			same = true
-			return
+// workEvent is one task, phase or process event, from the turn's stream or
+// the task lane: both carry the same news and each change is said once.
+func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
+	switch event.Kind {
+	case session.EventTaskUpdate, session.EventTaskProposal:
+		if event.Task != nil {
+			b.taskNotice(id, live, event.Task, event.Kind == session.EventTaskProposal)
 		}
-		before := live.tasks[task.ID]
-		if task.Title == "" {
-			task.Title = before.Title
+	case session.EventTaskPhase:
+		if event.TaskPhase != nil {
+			b.taskPhase(id, live, event.TaskPhase)
 		}
-		if task.Parent == "" {
-			task.Parent = before.Parent
+	case session.EventJobUpdate:
+		if event.Job != nil {
+			b.processMoved(id, live, event.Job)
 		}
-		if task.Group == "" {
-			task.Group = before.Group
-		}
-		live.tasks[task.ID] = task
-	})
-	if same {
-		return
 	}
-	live.box.Event(appwire.EventTaskChanged, appwire.TaskChanged{Task: task})
 }
 
 // Stop interrupts the running turn. An agent with nothing held has nothing
@@ -1495,6 +1553,7 @@ func (b *appBackend) release(a *appAgent) {
 // finish gives a conversation that is no longer held back, and shuts its
 // outbox once the turn and the lanes have said their last.
 func (b *appBackend) finish(live *appLive) {
+	b.landPilots(live)
 	if live.stopTasks != nil {
 		live.stopTasks()
 	}
@@ -1644,12 +1703,18 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	}
 	var transcript string
 	var at time.Time
-	b.locked(func() { transcript, at = a.transcript, a.view.UpdatedAt })
+	marks := map[int]appTurnMark{}
+	b.locked(func() {
+		transcript, at = a.transcript, a.view.UpdatedAt
+		for n, mark := range a.marks {
+			marks[n] = mark
+		}
+	})
 	if transcript == "" {
 		return []appwire.Entry{}, false, nil
 	}
 	record := session.ReadTranscript(transcript)
-	all := appEntriesOf(id, append(append([]session.DisplayEntry(nil), record.Earlier...), record.Entries...), at)
+	all := appEntriesOf(id, append(append([]session.DisplayEntry(nil), record.Earlier...), record.Entries...), at, marks)
 	if words := strings.TrimSpace(record.Unreadable); words != "" {
 		all = append(all, appwire.Entry{ID: "unreadable", Agent: id, Kind: appwire.EntryNotice, At: at, Text: words})
 	}
@@ -1674,7 +1739,10 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 // appEntriesOf is a transcript as the app's entries, named by the rule the
 // live pump names them by (see the entry ids above). The journal keeps no
 // clock per message, so every entry carries the conversation's own last moment.
-func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time) []appwire.Entry {
+//
+// A message this process sent carries its turn number, and the person's entry
+// its client id, from marks; one sent before this launch has neither.
+func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time, marks map[int]appTurnMark) []appwire.Entry {
 	entries := make([]appwire.Entry, 0, len(items))
 	n, m, k := -1, 0, 0
 	for i, item := range items {
@@ -1717,6 +1785,12 @@ func appEntriesOf(agent string, items []session.DisplayEntry, at time.Time) []ap
 			k++
 		default:
 			continue
+		}
+		if mark, ok := marks[n]; ok && n >= 0 {
+			entry.Turn = mark.turn
+			if entry.Kind == appwire.EntryUser {
+				entry.ClientID = mark.clientID
+			}
 		}
 		entries = append(entries, entry)
 	}
@@ -1824,23 +1898,40 @@ const appModelsWait = 3 * time.Second
 // ListModels answers exactly what the terminal's model picker offers for the
 // configured services — the same process catalog, the same per-service shelf,
 // the same caches, through the picker's own composer ([tui3.PickerModels]) —
-// with the model a new conversation runs on marked default, and added when no
-// list names it, so the answer is never empty while a turn can run.
+// in the picker's groups and order, with the model a new conversation runs on
+// marked default, and added when no list names it, so the answer is never
+// empty while a turn can run.
+//
+// A MODEL'S PROVIDER IS THE SERVICE THE PICKER GROUPS IT UNDER: the name it was
+// connected as ("local" for a custom endpoint written that way, "codex" for
+// the ChatGPT sign-in, "openrouter" for the default), and provider_name the
+// service's own name. Only services with a key are listed, as in the picker.
 func (b *appBackend) ListModels() ([]appwire.Model, error) {
 	proc, err := b.process()
 	if err != nil {
 		return nil, appEngineError(err)
 	}
-	read := func() []tui3.Model {
-		_, sources := proc.currentAccount()
-		return tui3.PickerModels(proc.ProfileDir, sources, proc.Shelf.pickerModels, proc.Shelf.modelsForService)
-	}
-	rows := read()
-	if len(rows) == 0 && proc.Models != nil {
+	// THE DEFAULT SERVICE'S CATALOG IS WAITED FOR EVEN WHEN ANOTHER SERVICE HAS
+	// ANSWERED: a list read before it lands is every other service's models
+	// and none of the default's, which reads as the default not being there.
+	if proc.Models != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), appModelsWait)
 		proc.Models.Warmed(ctx)
 		cancel()
-		rows = read()
+	}
+	_, sources := proc.currentAccount()
+	rows := tui3.PickerModels(proc.ProfileDir, sources, proc.Shelf.pickerModels, proc.Shelf.modelsForService)
+	names := map[string]string{}
+	for _, service := range sources.All() {
+		group := strings.ToLower(strings.TrimSpace(service.Source.Written))
+		if group == "" {
+			group = strings.ToLower(strings.TrimSpace(service.Source.Name))
+		}
+		name := strings.TrimSpace(service.Source.Name)
+		if modelsource.IsCustomID(service.Source.ID) || name == "" {
+			name = strings.TrimSpace(service.Source.Written)
+		}
+		names[group] = name
 	}
 	chosen := appDefaultModel()
 	models := make([]appwire.Model, 0, len(rows)+1)
@@ -1848,15 +1939,25 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 	for _, row := range rows {
 		provider := strings.TrimSpace(row.Group)
 		if provider == "" {
-			provider, _, _ = strings.Cut(strings.TrimPrefix(row.ID, "~"), "/")
+			provider = modelsource.DefaultID
 		}
-		model := appwire.Model{ID: row.ID, Name: row.ID, Provider: provider, Default: row.ID == chosen}
+		name := row.ID
+		if row.Direct {
+			name = strings.TrimPrefix(row.ID, provider+"/")
+		}
+		model := appwire.Model{ID: row.ID, Name: name, Provider: provider, ProviderName: names[provider], Default: row.ID == chosen}
+		if model.ProviderName == "" && provider == modelsource.DefaultID {
+			model.ProviderName = modelsource.DefaultSource("").Name
+		}
 		seen = seen || model.Default
 		models = append(models, model)
 	}
 	if !seen && chosen != "" {
-		provider, _, _ := strings.Cut(strings.TrimPrefix(chosen, "~"), "/")
-		models = append(models, appwire.Model{ID: chosen, Name: chosen, Provider: provider, Default: true})
+		provider := modelsource.DefaultID
+		if service, bare := sources.For(chosen); bare != chosen && service.Source.Written != "" {
+			provider = strings.ToLower(service.Source.Written)
+		}
+		models = append(models, appwire.Model{ID: chosen, Name: chosen, Provider: provider, ProviderName: names[provider], Default: true})
 	}
 	return models, nil
 }
@@ -1915,8 +2016,11 @@ func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 	})
 }
 
-// ListTasks reads the agent's tasks off its project's task index, and lays
-// over them what the held conversation has said since.
+// ListTasks reads the agent's tasks off the disk whether or not its
+// conversation is held — its own checkpoint first, which holds every task it
+// ever had, finished ones included, then its project's task index for any the
+// checkpoint does not name — and lays over them what a held conversation has
+// said since.
 func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 	a, err := b.find(id)
 	if err != nil {
@@ -1936,6 +2040,38 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 	})
 	var tasks []appwire.Task
 	index := map[string]int{}
+	add := func(task appwire.Task) {
+		if _, dup := index[task.ID]; dup {
+			return
+		}
+		index[task.ID] = len(tasks)
+		tasks = append(tasks, task)
+	}
+	for _, notice := range session.ReadSessionTasks(transcript) {
+		if notice.Kind == session.TaskKindQuick {
+			continue
+		}
+		// A TASK THE CONVERSATION LEFT RUNNING WHEN IT CLOSED is interrupted:
+		// nothing is driving it. The protocol has no word for that, and it is
+		// not done, so it is listed as failed with the reason as its result.
+		if notice.State == session.TaskInterrupted {
+			notice.State = session.TaskFailed
+			if strings.TrimSpace(notice.Result) == "" {
+				notice.Result = "Interrupted"
+			}
+		}
+		at := notice.EndedAt
+		if at.IsZero() {
+			at = notice.StartedAt
+		}
+		if at.IsZero() {
+			at = fallback
+		}
+		notice := notice
+		if task, ok := appTaskOf(id, &notice, false, "", at); ok {
+			add(task)
+		}
+	}
 	if path := session.TaskIndexPath(transcript); path != "" {
 		for _, row := range session.ReadTaskIndex(path) {
 			if row.SessionID != id {
@@ -1956,12 +2092,11 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 			if title == "" {
 				title = row.Label
 			}
-			index[row.ID] = len(tasks)
-			parent := row.Parent
-			if parent == row.ID {
-				parent = ""
+			parent := ""
+			if row.Parent != "" && row.Parent != row.ID {
+				parent = appIndexTaskID(id, row.Parent)
 			}
-			tasks = append(tasks, appwire.Task{ID: row.ID, Agent: id, Parent: parent, Title: title, State: state, UpdatedAt: at})
+			add(appwire.Task{ID: appIndexTaskID(id, row.ID), Agent: id, Parent: parent, Title: title, State: state, UpdatedAt: at, YourCall: state == appwire.TaskUnverified})
 		}
 	}
 	for taskID, task := range heard {
@@ -1978,6 +2113,15 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 		tasks = append(tasks, task)
 	}
 	return tasks, nil
+}
+
+// appIndexTaskID is a task index row's id on the wire: the agent's own number
+// named with the agent, as every task id is (appwork.go).
+func appIndexTaskID(agent, raw string) string {
+	if n, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 64); err == nil {
+		return appTaskID(agent, n)
+	}
+	return raw
 }
 
 // ListCrews reads the teams file directly and starts watching it.
@@ -2042,6 +2186,10 @@ func (b *appBackend) Close() error {
 		if b.signIn != nil {
 			b.signIn.Cancel()
 			b.signIn = nil
+		}
+		for id, f := range b.follows {
+			close(f.stop)
+			delete(b.follows, id)
 		}
 		for _, a := range b.agents {
 			agents = append(agents, a)

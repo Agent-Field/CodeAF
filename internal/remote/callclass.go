@@ -146,7 +146,7 @@ const lateCallTail = " did not answer in time"
 
 func classify(method string) callClass {
 	switch method {
-	case MethodPing,
+	case MethodAppTasks, MethodAppTask, MethodAppQuickTasks, MethodPing,
 		MethodModel, MethodTitle, MethodUsage, MethodContextTokens,
 		MethodTranscript, MethodEarlier, MethodRewindPoints, MethodPlanSpend,
 		MethodPlanTasks, MethodPlanTaskPage, MethodPlanTaskWork, MethodPlanRunSummary, MethodRefreshRunSummary,
@@ -161,13 +161,16 @@ func classify(method string) callClass {
 		// update loop and bounded by the wall; queued behind a turn they would
 		// wait out the wall's patience and answer nobody.
 		MethodTeamsName, MethodTeamsPropose,
+		// The desktop app's task and process readings are drawn while a reply
+		// streams, so they are never queued behind it.
+		MethodProcessList,
 		// The automations readings are the watcher's beat (wire_automations.go):
 		// a store read every two seconds that a turn in flight must never hold
 		// up, or a run's line would arrive when the reply did.
 		MethodAutomationsList, MethodAutomationsRuns, MethodAutomationsChanges,
 		MethodAutomationsCursor, MethodAutomationsActive, MethodAutomationsWindows:
 		return classGetter
-	case MethodQuestionResolve, MethodQuestionHold,
+	case MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodProcessRerun, MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
 		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,

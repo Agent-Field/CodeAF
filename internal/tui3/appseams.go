@@ -49,3 +49,10 @@ func PickerModels(profileDir string, sources modelsource.Set, defaults func() []
 	}
 	return rows
 }
+
+// TaskPhaseWords is what the terminal draws under a running task for the phase
+// it is in — "checking what it left", "closing gaps · round 1 of 2", "sizing
+// the work" — and "" for plain working, which says nothing.
+func TaskPhaseWords(phase string, round, rounds int) string {
+	return taskPhaseWords(phase, round, rounds)
+}

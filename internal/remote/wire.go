@@ -803,6 +803,12 @@ type LaunchShape struct {
 	// DeterministicNames names the conversation from its first message by rule
 	// rather than by a model ([session.FirstMessageName]); the desktop app sets it.
 	DeterministicNames bool `json:"deterministicNames,omitempty"`
+	// HandOverOnAsk keeps a running reply in the conversation until the person
+	// moves it to a task ([session.Config.HandOverOnAsk]); the desktop app sets it.
+	HandOverOnAsk bool `json:"handOverOnAsk,omitempty"`
+	// ProposalClockS, when set, is how many seconds a proposed task waits before
+	// it starts on its own ([session.Config.TaskAutoApproveSeconds]).
+	ProposalClockS *int `json:"proposalClockS,omitempty"`
 
 	Yolo      bool    `json:"yolo,omitempty"`
 	NoCompact bool    `json:"noCompact,omitempty"`

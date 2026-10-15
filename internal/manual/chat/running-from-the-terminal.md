@@ -329,6 +329,15 @@ The app's own settings (day cap, new agents' folder, the 12-second proposed-task
 7 idle days before an agent reads closed) and its setup progress live in
 `app/state.json` under codeaf's home folder, so quitting setup halfway resumes there.
 
+## The desktop app's processes — stop, rerun, and what a Mac going to sleep does to them
+
+The app lists each conversation's background processes, running and ended, for
+seven days, and shows a process's output by line or follows it live. Stop
+stops it; Rerun starts its command again as a new process. When the Mac goes
+to sleep the app stops every running process and the agent reads asleep; on
+waking, each stopped process leaves one line, such as `link checker stopped
+while this Mac slept · Rerun`, and nothing is restarted for you.
+
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
 `codeaf connect` lists every model provider this profile knows, whether it is connected,

@@ -1216,6 +1216,11 @@ type Config struct {
 	// ([FirstMessageName]) instead of asking a model, for the desktop app.
 	DeterministicNames bool
 
+	// HandOverOnAsk is the desktop app's: a running reply is never moved to a
+	// task by the checkpoints on their own; it moves only when the person asks
+	// ([Agent.MoveTurnToTask]), and the app says the reply is running long.
+	HandOverOnAsk bool
+
 	// WaitForBeltSteps is for the run worker that enforces its limits and
 	// delivers notes from tool-end events. Its sole event reader must close
 	// Event.BeltStepHandled after processing each such event. Other agents
@@ -2168,6 +2173,10 @@ type Config struct {
 	// reason too: no surface sets it, the executor wires it from the node
 	// (task_run.go's newTaskAgentOn).
 	quickItems func(done int, add []string) string
+	// taskControl binds file receipts and step holds to the node that owns them.
+	taskControl *TaskNode
+	// The saved per-task cap applies across this node's worker and repair rounds.
+	taskCapUSD float64
 
 	// fixesDir is the project bucket the error→fix sidecar keeps its file in
 	// (fixstore.go), and it is set only when this agent is a NODE. A node's
@@ -2371,7 +2380,10 @@ type Agent struct {
 	// that lock. Atomic publication keeps both roads on the same figure.
 	liveSpendRail    atomic.Uint64
 	liveSpendRailSet atomic.Bool
-	client           Completer
+	// moveAsked is the person's ask to move the running reply to a task, taken
+	// at the next step boundary ([Agent.MoveTurnToTask]).
+	moveAsked atomic.Bool
+	client    Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.

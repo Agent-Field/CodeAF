@@ -293,8 +293,9 @@ var watcherReads = map[string]bool{
 	MethodTaskWatch:     true,
 	MethodQuestionWatch: true,
 	MethodPlanTaskPage:  true,
-	MethodDetach:        true,
-	MethodPing:          true,
+	MethodAppTasks:      true, MethodAppTask: true, MethodAppQuickTasks: true,
+	MethodDetach: true,
+	MethodPing:   true,
 }
 
 func watcherMay(method string) bool { return watcherReads[method] }

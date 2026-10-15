@@ -111,8 +111,9 @@ which is what lets it start the instant it is asked for and finish with nothing 
 writing; what a quick task holds is only the files it named when it started and the ones
 it has already written, and a write of one of those is refused with the task named until
 it finishes. Two quick tasks that name the same file run one after the other rather than
-at once. The *tasks* page has it under *What a quick task is*. Everything below is about
-the ordinary kind.
+at once. Before a shell call (tests included), media creation or the 31st file, it asks
+to become an ordinary task. Its existing edits stay in the same folder. The *tasks* page
+describes Undo and promotion. Everything below is about the ordinary kind.
 
 By default, no. Each code task gets its own checkout of **the repository the work is about**
 — its ground, resolved from what this conversation has been reading and editing (above) — on

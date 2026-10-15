@@ -208,6 +208,7 @@ func (a *Agent) announceJobRow(info jobInfo) {
 // outlives the turn that started it for the same reason a node does and the
 // subscribers who already hold that lane are who will draw it.
 func (a *Agent) emitJobUpdate(notice JobNotice) {
+	a.keepProcessNotice(notice)
 	event := Event{Kind: EventJobUpdate, Job: &notice}
 	a.mu.Lock()
 	hub := a.hub

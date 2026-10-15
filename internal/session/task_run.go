@@ -90,6 +90,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -280,6 +281,11 @@ const (
 // brief is assembled once at start (runFrontier's JIT assembly) from spec.brief
 // plus prerequisites' reports and is not the spec.
 type TaskNode struct {
+	// File captures serialize before and after bytes across concurrent tool calls.
+	quickIO sync.Mutex
+	// App holds are checkpointed with the node, so a restart never grants a resume.
+	app     appTaskRecord
+	appWake chan struct{}
 	// Continuation choices preserve the completed attempt until work is reopened.
 	nextModel  string
 	nextEffort *string
@@ -1602,6 +1608,7 @@ func (g *TaskGraph) runFrontier() {
 		// hand, and never at proposal time when they did not exist yet.
 		node.brief = g.briefLocked(node, orders)
 		node.state = TaskRunning
+		node.app.Version++
 		node.started = time.Now()
 		// The hold is lifted by the start itself, so the running update this
 		// node is about to send carries no reason to be waiting.
@@ -1879,6 +1886,9 @@ func (g *TaskGraph) doomedDependencies(ids []uint64) (missing, failed []uint64) 
 // not finish is a node whose brief can never be assembled, and leaving it
 // queued forever would be a task the person watches wait on nothing.
 func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
+	if node.app.Paused {
+		return false, ""
+	}
 	ready := true
 	for _, id := range node.dependsOn {
 		prerequisite := g.nodes[id]
@@ -2094,6 +2104,7 @@ func shareReports(reports []string, pot int) []string {
 func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
+	node.app.Version++
 	node.ended = time.Now()
 	if !node.started.IsZero() {
 		// The age stops here. A finished node's elapsed is a fact about how long
@@ -2155,6 +2166,7 @@ func (g *TaskGraph) handBackSlotLocked(node *TaskNode) {
 func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
+	node.app.Version++
 	node.ended = time.Now()
 	// AND THE SETTLE'S OWN CLAIM IS HANDED BACK IN THE SAME WRITE — the claim
 	// covers everything down to the resettle ([TaskNode.claimSettle]), so
@@ -7617,6 +7629,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		workerSeat = effort.RoleWork
 	}
 
+	taskCapUSD, _ := config.CrewTaskSpendCap(parent.ProfileDir)
 	child, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
@@ -7755,8 +7768,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// handed over afterwards would be a verb the model is never told it has.
 		// It is nil for every other node — there is no list to tick — which is
 		// what keeps `items` off every other belt in this build (task_quick.go).
-		writeScope: node.quickScope(),
-		quickItems: node.quickDoor(),
+		writeScope:  node.quickScope(),
+		quickItems:  node.quickDoor(),
+		taskControl: node,
+		taskCapUSD:  taskCapUSD,
 		// AND THE DESIGN THREAD'S ONE EXTRA HAND, wired here for roomThread's
 		// reason: a belt is assembled once, when the agent is constructed
 		// (agent.go), so a door handed over after this call would be a verb the

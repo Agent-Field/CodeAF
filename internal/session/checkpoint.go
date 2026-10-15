@@ -599,6 +599,26 @@ const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has b
 // "can" and not "will".
 const checkpointCeilingNote = "this is running long · moving it to a task that is watched and can split"
 
+// checkpointAskedNote is the line a reply the person moved to a task leaves.
+const checkpointAskedNote = "moved to a task, as you asked · it is watched and can split"
+
+// errNothingToMove is [Agent.MoveTurnToTask]'s answer when no reply is running.
+var errNothingToMove = errors.New("no reply is running to move")
+
+// MoveTurnToTask asks that the running reply move to a task at its next step
+// boundary. It answers at once; the task arrives on the task lane like any
+// other, and a reply that ends first simply ends.
+func (a *Agent) MoveTurnToTask() error {
+	a.mu.Lock()
+	running := a.hub != nil
+	a.mu.Unlock()
+	if !running {
+		return errNothingToMove
+	}
+	a.moveAsked.Store(true)
+	return nil
+}
+
 // checkpointHandoffAsk is what the model is asked for on the way out, and it is
 // the LAST thing this turn does with it.
 //
@@ -2144,6 +2164,9 @@ const (
 	// every drop above because nothing was decided about the WORK: the seam has
 	// no owner to admit a task on behalf of ([Agent.handOverRunningTurn]).
 	checkpointCeilingAbandoned = "dropped:turn-abandoned"
+	// checkpointCeilingAppHolds is a reply in the desktop app, which only the
+	// person moves to a task ([Config.HandOverOnAsk]).
+	checkpointCeilingAppHolds = "dropped:the-person-moves-it"
 )
 
 // THE LAW: ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
@@ -2175,6 +2198,8 @@ const (
 	checkpointSeamCeiling = "ceiling"
 	checkpointSeamWall    = "wall"
 	checkpointSeamCarry   = "carry-on"
+	// checkpointSeamAsked is the person moving the reply ([Agent.MoveTurnToTask]).
+	checkpointSeamAsked = "asked"
 )
 
 // journalCarryOnAwaited writes down the one ending the carry-on road takes on
@@ -2884,6 +2909,17 @@ func checkpointLastSaid(messages []ai.Message) string {
 // injected, nothing is said, the model is not told it was looked at, and the
 // meter simply walks on to the next mark.
 func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string, calls []ai.ToolCall, taken *Decision, aside *markAside) bool {
+	// IN THE DESKTOP APP THE PERSON MOVES A RUNNING REPLY, NOT THE CLOCK. No
+	// mark, ceiling, write seam or wall share moves it on its own; the app says
+	// the reply is running long and the person's ask is taken here, at the
+	// first boundary after it, through the one door every other move uses.
+	if a.config.HandOverOnAsk {
+		if !a.moveAsked.Swap(false) {
+			return false
+		}
+		return a.handOverRunningTurn(ctx, hub, turn, started, model,
+			checkpointAskedNote, checkpointSeamAsked, meter.rounds, meter, meter.raced, checkpointRead{}, taken).moved
+	}
 	if !a.checkpoints(ctx, user) {
 		return false
 	}
@@ -4176,6 +4212,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// a failed reader may fall back to the original ask, but cancellation must not.
 	if ctx.Err() != nil {
 		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
+	// IN THE DESKTOP APP ONLY THE PERSON MOVES A REPLY ([Config.HandOverOnAsk]):
+	// every other road into this function leaves the turn running.
+	if a.config.HandOverOnAsk && seam != checkpointSeamAsked {
+		return checkpointHandover{decision: checkpointCeilingAppHolds}
 	}
 	// THE FLOOR STANDS IN FRONT OF EVERYTHING ELSE. A caller that reached here
 	// through [Agent.checkpoints] already asked, but looped.go's looping

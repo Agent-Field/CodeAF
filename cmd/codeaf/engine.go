@@ -1043,6 +1043,10 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// The desktop app names its conversations by rule ([session.FirstMessageName]).
 	if hello.Launch != nil {
 		cfg.DeterministicNames = hello.Launch.DeterministicNames
+		cfg.HandOverOnAsk = hello.Launch.HandOverOnAsk
+		if clock := hello.Launch.ProposalClockS; clock != nil {
+			cfg.TaskAutoApproveSeconds = *clock
+		}
 	}
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
 	if err != nil {
