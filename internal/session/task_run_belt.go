@@ -1989,6 +1989,9 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	a.deliverBeltRunLanding(run, summary, landing)
 	a.settleBeltRun(run, summary, landing)
+	// AND WHAT ITS CHECKS PROVED is written while the store is still open
+	// (competence.go).
+	a.recordRunProven(run)
 	// THE CREW'S OUTCOME is the TASK's — was the result kept — and never the
 	// route's, which the seats' first calls wrote already (taskcrew.go). A run
 	// that finished and whose landing nobody refused is accepted: merged, in

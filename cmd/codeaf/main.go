@@ -575,8 +575,8 @@ Housekeeping — changes state on disk or on the network
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]
 ` + collectionsSummary + `
-  codeaf competence [--db path] [--model slug]
-      what it has been measured as good at
+  codeaf competence [--db path] [--model slug] [--json [--scope id]]
+      what it has been measured as good at; --json, what each model proved
   codeaf services [--db path]
       long-running processes it was asked to keep
   codeaf services stop <name> [--db path]

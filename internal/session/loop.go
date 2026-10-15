@@ -4243,6 +4243,10 @@ func (a *Agent) bank(call bankedCall) {
 	a.usage.CostUSD += call.used.CostUSD
 	a.usage.Calls += call.used.Calls
 	a.usage.EmptyReflex += call.used.EmptyReflex
+	// AND UNDER THE MODEL THAT ANSWERED, which is the name this call carries
+	// rather than the one the seat was built on: a fallback mid-run is a
+	// different model doing the work (competence.go).
+	a.answered.add(call.model, call.used)
 	// AND THE RUNNING TURN'S OWN SHARE MOVES ON THE SAME CALL, for this door's
 	// own reason: an abandoned turn never writes the seal that would carry its
 	// cost, so the only honest figure to journal it with is the one accumulated

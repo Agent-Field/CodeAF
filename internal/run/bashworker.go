@@ -134,7 +134,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	defer func() {
 		used := settledWorkerUsage(agent, &receipts)
 		rep.USD, rep.TokensIn, rep.TokensOut = used.CostUSD, used.Input, used.Output
-		w.recordSpend(task.ID, used.CostUSD, used.Input, used.Output)
+		w.recordSpend(task.ID, used, agent.AnsweredUsage())
 	}()
 	runCtx, stop := context.WithCancel(provider.WithReceiptPending(ctx, receipts.owe))
 	defer stop()
@@ -796,23 +796,45 @@ func (w *BashWorker) storeEnding(id string) (storeEnding, bool) {
 	return storeEnding{}, false
 }
 
-// recordSpend writes the task's one spend row: the model this seat was built
-// on, the role its shape gave it at the moment the turn ended, and the dollars
-// and tokens its calls cost. It is best-effort whole and last, because the money
-// is already in the Report the supervisor absorbs and in the session's usage
-// ledger; a store that refuses this write leaves the run's own counters true,
-// and a row here is a reading of the run rather than the run's book. A turn that
-// spent nothing writes nothing rather than a zero row somebody reads as a
-// figure.
-func (w *BashWorker) recordSpend(taskID string, usd float64, inTokens, outTokens int) {
-	if usd == 0 && inTokens == 0 && outTokens == 0 {
+// recordSpend writes the task's spend rows: one per model that ANSWERED the
+// seat's calls — after any fallback, by the response's own name — with the
+// role its shape gave it at the moment the turn ended and the dollars and
+// tokens those calls cost. The rows sum to what the seat spent, so every
+// reader of the task's price reads the figure it always did; what changed is
+// that a seat whose model failed over is no longer written down as the model
+// it was built on. A call whose answer named no model is a row with no model,
+// which a reader takes as unknown. With no breakdown at all the one row names
+// the seat's model, as it always has.
+//
+// It is best-effort whole and last, because the money is already in the Report
+// the supervisor absorbs and in the session's usage ledger; a store that
+// refuses this write leaves the run's own counters true, and a row here is a
+// reading of the run rather than the run's book. A turn that spent nothing
+// writes nothing rather than a zero row somebody reads as a figure.
+func (w *BashWorker) recordSpend(taskID string, used session.Usage, answered map[string]session.Usage) {
+	if used.CostUSD == 0 && used.Input == 0 && used.Output == 0 {
 		return
 	}
 	role, err := w.store.RoleOf(taskID)
 	if err != nil {
 		role = plandb.RoleWork
 	}
-	_ = w.store.AddSpend(taskID, w.model, role, usd, inTokens, outTokens)
+	if len(answered) == 0 {
+		_ = w.store.AddSpend(taskID, w.model, role, used.CostUSD, used.Input, used.Output)
+		return
+	}
+	models := make([]string, 0, len(answered))
+	for model := range answered {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	for _, model := range models {
+		share := answered[model]
+		if share.CostUSD == 0 && share.Input == 0 && share.Output == 0 {
+			continue
+		}
+		_ = w.store.AddSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
+	}
 }
 
 // stepRecorder appends one worker's step lines, and keeps the two readings

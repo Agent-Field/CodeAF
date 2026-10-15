@@ -3048,6 +3048,10 @@ type Agent struct {
 	// under mu.
 	team  teamSeat
 	usage Usage
+	// answered is the session's money once per model that ANSWERED it, every
+	// call banked under the name the response itself gave (competence.go's
+	// [Agent.AnsweredUsage]). It sums to usage's figures call for call.
+	answered modelShares
 	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
 	// never nil: a session built with no posture at all gets a [Person], which
 	// answers every question the way this package answered it before the

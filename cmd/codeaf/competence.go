@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -21,12 +22,31 @@ func runCompetence(args []string) error {
 func runCompetenceTo(args []string, output io.Writer, now time.Time) error {
 	flags := commandFlags("competence")
 	database := flags.String("db", defaultChatDB(), storeFlagHelp)
-	modelFlag := flags.String("model", "", "working model whose profile buckets to include")
+	modelFlag := flags.String("model", "", "working model whose profile buckets to include; with --json, the exact model id to map")
+	jsonFlag := flags.Bool("json", false, "print what each model has proven from its checked results, as the app's competence.map answers it")
+	scopeFlag := flags.String("scope", "", "with --json, a place, kind-of-work or scope id to narrow the map to")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: codeaf competence [--db path] [--model slug]")
+		return fmt.Errorf("usage: codeaf competence [--db path] [--model slug] [--json [--scope id]]")
+	}
+	// --json IS A DIFFERENT QUESTION, NOT A DIFFERENT SPELLING. The text below
+	// is the resident's territory and profile calibration; --json is the
+	// checked-results ledger (internal/competence), the same map the app draws,
+	// so it never reads the resident's store and never picks a model for the
+	// person: an empty --model is the model with the newest evidence.
+	if *jsonFlag {
+		read, err := readCompetenceMap(competenceReader(), strings.TrimSpace(*modelFlag), strings.TrimSpace(*scopeFlag))
+		if err != nil {
+			return err
+		}
+		encoder := json.NewEncoder(output)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(read)
+	}
+	if strings.TrimSpace(*scopeFlag) != "" {
+		return fmt.Errorf("--scope narrows the --json map; add --json")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {

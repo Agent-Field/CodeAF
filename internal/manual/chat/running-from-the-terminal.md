@@ -1019,6 +1019,34 @@ machine would run work on. **On a machine with no evidence the whole answer is o
 No competence evidence yet.
 ```
 
+## What has each model proven — checked results, with codeaf competence --json
+
+`codeaf competence --json` answers a different question from the text above: **which model
+passes its checks, and where**. It prints the same map the desktop app's Settings → Models →
+Competence draws, read from a ledger of checked results kept beside the spending ledger.
+
+A checked result is one finished task whose declared checks — the tests, lint or build its
+proposal named — actually ran against the work and came back with a real exit status. Every
+check exiting zero is a pass; any failing is a failure. It is credited to the one model that
+answered the task's work, after any fallback. A task whose work was answered by two models,
+or that another task joined while it ran, is not counted, because nobody could say whose it
+was. A checker's opinion, a task that finished with no check, a check that never started or
+was cut off, and anything a model says about its own work are never counted. Undo does not
+appear yet: the only undo there is takes back quick tasks, which run no checks.
+
+Results are grouped by place (the repository or folder) and kind of work (the words of the
+task's title) into `strong`, `frontier`, `weak` and `stale`. A scope with no result in the last
+30 days is `stale`. Otherwise four in five passing, with at least three results, is `strong`;
+two in five or fewer is `weak`; everything between is `frontier`.
+
+`--model <id>` maps that exact model; left alone it is the model with the newest result.
+`--scope <id>` narrows to one place, kind of work or scope from the map's own `filters`.
+
+Results are kept when the task or the conversation is deleted. **Work finished before this
+ledger existed is not on it**, because nothing then recorded which model's checks ran, so a
+machine starts with an empty map: `"model": ""` and four empty groups. It is read-only: it
+calls no model and changes nothing about which model runs.
+
 ## The Model Pool — what this machine reads from it, with codeaf pool
 
 The public Model Pool is a signed index of measured models. It does not seat

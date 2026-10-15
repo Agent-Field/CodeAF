@@ -3286,6 +3286,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why the setup examples change every three seconds", "getting-started"},
 		{"asking what a quoted /task command does", "commands"},
 		{"how to turn telemetry off now", "running-from-the-terminal"},
+		// THE CHECKED-RESULTS MAP, asked the way somebody choosing a model asks it.
+		{"which model passes its tests most often", "running-from-the-terminal"},
+		{"what has each model proven with checks", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
 	}
