@@ -21,6 +21,10 @@ import (
 // answered and marked outside, never refused and never writable. Nothing is
 // opened that is not a regular file, and nothing over the bound is read at all.
 func (b *appBackend) ReadFile(agent, path string, offset int64, limit int) (appwire.FileRead, error) {
+	if offset < 0 || limit < 0 {
+		return appwire.FileRead{}, appwire.Errorf(appwire.CodeBadParams, "files.read needs a non-negative offset and page limit")
+	}
+	limit = min(limit, appwire.FilePageMax)
 	a, err := b.find(agent)
 	if err != nil {
 		return appwire.FileRead{}, err
@@ -134,6 +138,9 @@ func (b *appBackend) ReadFile(agent, path string, offset int64, limit int) (appw
 			for end > offset && !utf8.RuneStart(data[end]) {
 				end--
 			}
+		}
+		if end == offset {
+			return appwire.FileRead{}, appwire.Errorf(appwire.CodeBadParams, "page limit is too small for the next UTF-8 character")
 		}
 		next := end
 		out.Next = &next

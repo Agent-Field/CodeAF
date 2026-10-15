@@ -175,6 +175,18 @@ func TestAppReadFilePagesCutAtLinesAndCharacters(t *testing.T) {
 		t.Fatalf("a long line page = %d bytes, next %v", len(page.Text), page.Next)
 	}
 	var wire *appwire.Error
+	for _, p := range []struct {
+		offset int64
+		limit  int
+	}{{0, 1}, {-1, 100}, {0, -1}} {
+		if _, err := backend.ReadFile(agent.ID, "one.txt", p.offset, p.limit); !errors.As(err, &wire) || wire.Code != appwire.CodeBadParams {
+			t.Fatalf("invalid page %+v answered %v", p, err)
+		}
+	}
+	bounded := readOK(t, backend, agent.ID, "one.txt", 0, appwire.FilePageMax*2)
+	if len(bounded.Text) > appwire.FilePageMax || bounded.Next == nil || *bounded.Next <= 0 {
+		t.Fatalf("direct read bypassed page bound: %d bytes, next %v", len(bounded.Text), bounded.Next)
+	}
 	if _, err := backend.ReadFile(agent.ID, "one.txt", 1, 100); !errors.As(err, &wire) || wire.Code != appwire.CodeBadParams {
 		t.Fatalf("an offset inside a character answered %v", err)
 	}
