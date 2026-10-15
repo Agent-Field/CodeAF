@@ -98,7 +98,10 @@ type Team struct {
 	// hued says the team has a colour: the file gave it one or [Team.SetHue]
 	// did. A hue of 0 is a real hue, so absence is kept apart from the value.
 	// extra is every field a later build wrote that this one does not know.
-	hued  bool
+	hued bool
+	// noHue says the colour was cleared on purpose, so [File.Colour] leaves the
+	// team uncoloured instead of handing it a fresh one on the next load.
+	noHue bool
 	extra map[string]json.RawMessage
 }
 
@@ -114,7 +117,7 @@ type File struct {
 // knownFields is every key [Team] reads itself.
 var knownFields = map[string]bool{
 	"id": true, "name": true, "parent": true, "members": true, "manager": true,
-	"hue": true, "tier": true, "made": true,
+	"hue": true, "tier": true, "hue_cleared": true, "made": true,
 	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
 	"wrap": true, "former_members": true, "former_manager": true, "starts": true,
@@ -132,6 +135,7 @@ type wireTeam struct {
 	FormerManager string    `json:"former_manager,omitempty"`
 	Manager       string    `json:"manager"`
 	Hue           *float64  `json:"hue,omitempty"`
+	HueCleared    bool      `json:"hue_cleared,omitempty"`
 	Tier          *int      `json:"tier,omitempty"`
 	Made          time.Time `json:"made"`
 	// The lifecycle, written only for a closed team.
@@ -171,6 +175,9 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 	if w.Tier != nil {
 		t.Tier = *w.Tier
 	}
+	// A colour wins over the marker: a build that predates the marker may have
+	// coloured the team again, and that colour is the later word.
+	t.noHue = w.HueCleared && w.Hue == nil
 	for k, v := range all {
 		if knownFields[k] {
 			continue
@@ -201,6 +208,7 @@ func (t Team) MarshalJSON() ([]byte, error) {
 		hue, tier := t.Hue, t.Tier
 		w.Hue, w.Tier = &hue, &tier
 	}
+	w.HueCleared = t.noHue && !t.Hued()
 	raw, err := json.Marshal(w)
 	if err != nil || len(t.extra) == 0 {
 		return raw, err
@@ -236,7 +244,14 @@ func (t Team) Hued() bool { return t.hued || t.Hue != 0 || t.Tier != 0 }
 func (t Team) HueSpec() HueSpec { return HueSpec{Hue: t.Hue, Tier: t.Tier} }
 
 // SetHue gives the team a colour.
-func (t *Team) SetHue(h HueSpec) { t.Hue, t.Tier, t.hued = h.Hue, h.Tier, true }
+func (t *Team) SetHue(h HueSpec) { t.Hue, t.Tier, t.hued, t.noHue = h.Hue, h.Tier, true, false }
+
+// ClearHue takes the team's colour away and remembers that it was meant, so
+// [File.Colour] does not give it another. [Team.SetHue] colours it again.
+func (t *Team) ClearHue() { t.Hue, t.Tier, t.hued, t.noHue = 0, 0, false, true }
+
+// HueCleared reports whether the team's colour was cleared on purpose.
+func (t Team) HueCleared() bool { return t.noHue && !t.Hued() }
 
 // Holds reports whether key is one of the team's members.
 func (t Team) Holds(key string) bool { return t.member(key) >= 0 }
@@ -607,7 +622,7 @@ func (f *File) Colour(reserved []float64) bool {
 	}
 	changed := false
 	for i := range f.Teams {
-		if f.Teams[i].Hued() {
+		if f.Teams[i].Hued() || f.Teams[i].HueCleared() {
 			continue
 		}
 		next := NextHue(used, reserved)

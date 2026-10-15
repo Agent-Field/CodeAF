@@ -1229,6 +1229,13 @@ func (b *appBackend) CrewUpdate(ask appwire.CrewUpdate) (appwire.Crew, error) {
 	if err != nil {
 		return appwire.Crew{}, err
 	}
+	clearHue := false
+	for _, key := range ask.Clear {
+		clearHue = clearHue || key == "hue"
+	}
+	if clearHue && (ask.Hue != nil || strings.TrimSpace(tint) != "") {
+		return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "a crew cannot be given a colour and have it cleared in one update")
+	}
 	err = b.crewEdit(func(f *teamstore.File) error {
 		i := teamstore.Index(f.Teams, ask.ID)
 		if i < 0 {
@@ -1248,6 +1255,9 @@ func (b *appBackend) CrewUpdate(ask appwire.CrewUpdate) (appwire.Crew, error) {
 		}
 		if hue != nil {
 			f.Teams[i].SetHue(teamstore.HueSpec{Hue: *hue, Tier: f.Teams[i].Tier})
+		}
+		if clearHue {
+			f.Teams[i].ClearHue()
 		}
 		if ask.Settings != nil || len(ask.Clear) > 0 {
 			return f.SetSettings(ask.ID, func(s *teamstore.Settings) {

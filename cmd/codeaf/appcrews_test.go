@@ -282,3 +282,38 @@ func TestAppCrewProposalIsAskedAgainWhole(t *testing.T) {
 		t.Fatalf("the proposal's ask is not listed: %+v", asks)
 	}
 }
+
+// CLEARING A CREW'S HUE LEAVES IT UNCOLOURED ACROSS RELOADS, A LATER TINT
+// COLOURS IT AGAIN, AND ASKING FOR BOTH IN ONE UPDATE IS REFUSED.
+func TestAppCrewUpdateClearHuePersistsAndConflictsAreRefused(t *testing.T) {
+	backend, _, _, id := crewBackend(t)
+	sage, rose := "sage", "rose"
+	if _, err := backend.CrewUpdate(appwire.CrewUpdate{ID: id, Tint: &sage}); err != nil {
+		t.Fatal(err)
+	}
+	hue := 40.0
+	for _, ask := range []appwire.CrewUpdate{
+		{ID: id, Hue: &hue, Clear: []string{"hue"}},
+		{ID: id, Tint: &rose, Clear: []string{"hue"}},
+	} {
+		if _, err := backend.CrewUpdate(ask); err == nil {
+			t.Fatalf("%+v was accepted", ask)
+		}
+	}
+	crew, err := backend.CrewUpdate(appwire.CrewUpdate{ID: id, Clear: []string{"hue"}})
+	if err != nil || crew.Tint != appTintGraphite {
+		t.Fatalf("cleared crew = %+v, %v", crew, err)
+	}
+	for i := 0; i < 2; i++ {
+		f, err := teamstore.LoadHued(backend.profileDir, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tm := f.Teams[teamstore.Index(f.Teams, id)]; tm.Hued() || !tm.HueCleared() {
+			t.Fatalf("reload %d: %+v", i, tm)
+		}
+	}
+	if crew, err = backend.CrewUpdate(appwire.CrewUpdate{ID: id, Tint: &rose}); err != nil || crew.Tint != "rose" {
+		t.Fatalf("recoloured crew = %+v, %v", crew, err)
+	}
+}

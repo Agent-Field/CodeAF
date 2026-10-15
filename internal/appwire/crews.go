@@ -340,7 +340,9 @@ type CrewUpdate struct {
 	Hue      *float64      `json:"hue"`
 	Tint     *string       `json:"tint"`
 	Settings *CrewSettings `json:"settings"`
-	// Clear names settings to set back to inherit.
+	// Clear names settings to set back to inherit. The word "hue" clears the
+	// crew's colour instead; it stays uncoloured until a hue or tint is set, and
+	// it cannot be sent with one.
 	Clear  []string   `json:"clear"`
 	Goal   *string    `json:"goal"`
 	EndsAt *time.Time `json:"ends_at"`
