@@ -42,17 +42,20 @@ func ReadEntry(profileDir, teamID, id string) (Entry, bool, error) {
 // when none can be proved to be theirs.
 //
 // A membership that kept its line ([Member.StartEntry]) is answered by reading
-// that line, and it must be a manager's start that is not addressed to a
-// different conversation. Any other membership is answered only when the log
-// makes it unambiguous, by the one rule that needs no reading of words: exactly
-// one manager start in the whole retained log is addressed to this member's
-// key, or (for a start the interface wrote before the member existed) is the
-// only one ever addressed to its handle, the log still begins at its first
-// entry, and no former member held that handle. Anything else is unknown.
+// that line, and it must be a manager's start of THIS team that is not
+// addressed to a different conversation; no other line is ever fetched in its
+// place. Any other membership is answered only when the log makes it
+// unambiguous, by the one rule that needs no reading of words: exactly one
+// manager start in the whole retained log is addressed to this member's key,
+// or (for a start the interface wrote before the member existed) is the only
+// one ever addressed to its handle, the log still begins at its first entry,
+// and no former member held that handle. Anything else is unknown, and a log
+// that cannot be read through is an error, never an empty answer.
 func StartFor(profileDir string, t Team, m Member) (Entry, bool, error) {
 	if m.StartEntry != "" {
 		e, ok, err := ReadEntry(profileDir, t.ID, m.StartEntry)
-		if err != nil || !ok || !isManagerStart(e) || e.ToKey != "" && e.ToKey != m.Key {
+		if err != nil || !ok || !isManagerStart(e) || e.ID != m.StartEntry ||
+			e.Team != "" && e.Team != t.ID || e.ToKey != "" && e.ToKey != m.Key {
 			return Entry{}, false, err
 		}
 		return e, true, nil
@@ -61,38 +64,47 @@ func StartFor(profileDir string, t Team, m Member) (Entry, bool, error) {
 		return Entry{}, false, nil
 	}
 	path := TrafficPath(profileDir, t.ID)
+	// Only a candidate and a count are kept: two matches are as unknown as
+	// two hundred, so the scan stops at the second.
 	var (
-		byKey, byHandle []Entry
+		byKey, byHandle Entry
+		nKey, nHandle   int
 		first           int64
 		seen            bool
 	)
 	for _, p := range []string{trafficRotated(path), path} {
-		err := scanTrafficFile(p, func(id int64, line []byte) {
+		err := scanTrafficFile(p, func(id int64, line []byte) bool {
 			if !seen {
 				first, seen = id, true
 			}
 			if !bytes.Contains(line, []byte(`"kind":"start"`)) {
-				return
+				return true
 			}
 			e, ok := parseTrafficLine(line)
-			if !ok || !isManagerStart(e) {
-				return
+			if !ok || !isManagerStart(e) || e.Team != "" && e.Team != t.ID {
+				return true
 			}
 			switch {
 			case e.ToKey == m.Key:
-				byKey = append(byKey, e)
+				nKey++
+				byKey = e
 			case m.Handle != "" && e.To == m.Handle:
-				byHandle = append(byHandle, e) // counted so a shared name is seen
+				nHandle++
+				byHandle = e // counted so a shared name is seen
 			}
+			return nKey < 2 && nHandle < 2
 		})
 		if err != nil {
 			return Entry{}, false, err
 		}
+		if nKey >= 2 || nHandle >= 2 {
+			break
+		}
 	}
-	if len(byKey) == 1 {
-		return byKey[0], true, nil
+	if nKey == 1 {
+		return byKey, true, nil
 	}
-	if len(byKey) > 0 || len(byHandle) != 1 || !m.Started || byHandle[0].ToKey != "" || !seen || first > 1 {
+	if nKey > 0 || nHandle != 1 || !m.Started || byHandle.ToKey != "" || !seen || first > 1 {
 		return Entry{}, false, nil
 	}
 	for _, f := range t.FormerMembers {
@@ -100,17 +112,31 @@ func StartFor(profileDir string, t Team, m Member) (Entry, bool, error) {
 			return Entry{}, false, nil
 		}
 	}
-	return byHandle[0], true, nil
+	return byHandle, true, nil
 }
 
 func isManagerStart(e Entry) bool {
 	return e.Kind == KindStart && e.From == FromManager
 }
 
+// maxScanLine is the longest line one scan will hold. A line past it is
+// corruption (an entry is a short record), and a scan that skipped it could
+// have skipped the start line it was looking for, so it is an error.
+const maxScanLine = 1 << 20
+
+// ErrTrafficUnreadable is a log a scan cannot vouch for: a line past
+// [maxScanLine], or a file far past the size rotation keeps it under.
+var ErrTrafficUnreadable = errors.New("the crew's log cannot be read through")
+
 // scanTrafficFile calls visit with the id and raw bytes of each complete line
-// of one file that carries an id, one line in memory at a time. A missing file
-// is nothing. It is bounded by the rotation size, never by the team's age.
-func scanTrafficFile(path string, visit func(id int64, line []byte)) error {
+// of one file that carries an id, one line in memory at a time, until visit
+// answers false. A missing file is nothing.
+//
+// It reads the size the file had when it was opened and not a byte more, so
+// an append during the scan is the next scan's, and it holds no line longer
+// than [maxScanLine]; both bounds fail with [ErrTrafficUnreadable] instead of
+// answering as though the log were short.
+func scanTrafficFile(path string, visit func(id int64, line []byte) bool) error {
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -119,14 +145,32 @@ func scanTrafficFile(path string, visit func(id int64, line []byte)) error {
 		return err
 	}
 	defer file.Close()
-	r := bufio.NewReader(file)
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	// Rotation keeps a file near trafficRotateBytes (it can pass it by one
+	// line); a file several times that was not written by this log.
+	if info.Size() > 2*trafficRotateBytes+maxScanLine {
+		return fmt.Errorf("%w: %s is %d bytes", ErrTrafficUnreadable, path, info.Size())
+	}
+	r := bufio.NewReaderSize(io.LimitReader(file, info.Size()), 64<<10)
+	var line []byte
 	for {
-		line, err := r.ReadBytes('\n')
+		chunk, err := r.ReadSlice('\n')
+		if len(line)+len(chunk) > maxScanLine {
+			return fmt.Errorf("%w: a line in %s is past %d bytes", ErrTrafficUnreadable, path, maxScanLine)
+		}
+		line = append(line, chunk...)
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
 		if len(line) > 0 && line[len(line)-1] == '\n' {
-			if id, ok := lineID(line); ok {
-				visit(id, line)
+			if id, ok := lineID(line); ok && !visit(id, line) {
+				return nil
 			}
 		}
+		line = line[:0]
 		if err == io.EOF {
 			return nil
 		}

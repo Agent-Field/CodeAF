@@ -2,6 +2,9 @@ package teams
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +76,38 @@ func TestStartForLegacyMembershipsAreUnknownUnlessUnambiguous(t *testing.T) {
 	must(t, err)
 	if _, ok, _ := StartFor(dir, team, only); ok {
 		t.Fatal("two starts to one handle returned a brief")
+	}
+}
+
+// A LOG THAT CANNOT BE READ THROUGH IS AN ERROR, NOT A SHORT LOG: a line past
+// the scan's bound would otherwise be skipped, and the start line it hid
+// reported as absent.
+func TestStartForLegacyScanRefusesAnOverlongLine(t *testing.T) {
+	dir := t.TempDir()
+	team := Team{ID: "t1"}
+	_, err := AppendTrafficID(dir, "t1", Entry{Kind: KindStart, From: FromManager, To: "web", Text: "only brief"})
+	must(t, err)
+	f, err := os.OpenFile(TrafficPath(dir, "t1"), os.O_APPEND|os.O_WRONLY, 0o600)
+	must(t, err)
+	_, err = f.WriteString(`{"id":"000000000002","kind":"you","text":"` + strings.Repeat("x", maxScanLine+10) + "\"}\n")
+	must(t, err)
+	must(t, f.Close())
+	_, ok, err := StartFor(dir, team, Member{Key: "k1", Handle: "web", Started: true})
+	if ok || !errors.Is(err, ErrTrafficUnreadable) {
+		t.Fatalf("overlong line: ok=%v err=%v", ok, err)
+	}
+}
+
+// A start line recorded by id but filed under another team is no brief, and a
+// scan stops counting at a second match.
+func TestStartForIgnoresAnotherTeamsLine(t *testing.T) {
+	dir := t.TempDir()
+	id, err := AppendTrafficID(dir, "t1", Entry{Kind: KindStart, From: FromManager, To: "web", Team: "other", Text: "not ours"})
+	must(t, err)
+	if _, ok, _ := StartFor(dir, Team{ID: "t1"}, Member{Key: "k1", Handle: "web", Started: true, StartEntry: id}); ok {
+		t.Fatal("a line of another team was a brief by id")
+	}
+	if _, ok, _ := StartFor(dir, Team{ID: "t1"}, Member{Key: "k1", Handle: "web", Started: true}); ok {
+		t.Fatal("a line of another team was a brief by handle")
 	}
 }

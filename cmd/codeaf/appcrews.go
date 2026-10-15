@@ -691,6 +691,13 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	// would hide the brief from it (the session reads nothing older than a
 	// member's joining). The terminal's start writes none either.
 	member.Handle, member.JoinedAt, member.Started = handle, time.Time{}, true
+	// THE MEMBERSHIP KEEPS THE ID OF THE LINE THAT MADE IT, so its brief is
+	// that line by identity and survives a rename or a handle reused later.
+	// Only a manager's start of this crew is recorded; the terminal's start
+	// writes the same field (internal/tui3/teamtraffic.go).
+	if e.Kind == teamstore.KindStart && e.From == teamstore.FromManager && (e.Team == "" || e.Team == t.ID) {
+		member.StartEntry = e.ID
+	}
 	err = teamstore.Update(b.crewProfile(), func(f *teamstore.File) error {
 		if err := f.AddMember(t.ID, member); err != nil {
 			return err

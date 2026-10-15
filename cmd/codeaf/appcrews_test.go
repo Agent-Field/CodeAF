@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -580,4 +582,108 @@ func TestAppMemberBriefSurvivesRenameAndHandleReuse(t *testing.T) {
 	if got, err := fresh.MemberBrief(id, first); err != nil || got.Text != briefOne {
 		t.Fatalf("legacy by recipient key = %+v, %v", got, err)
 	}
+}
+
+// A STARTED MEMBER'S BRIEF SURVIVES RENAME AND HANDLE REUSE THROUGH THE REAL
+// START: the membership crewStart itself writes keeps the id of its start line,
+// so nothing here records StartEntry by hand. Two members are started under one
+// handle, the first is renamed in between, and each reads its own words, live
+// and after a restart.
+func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		minted  int
+		release int
+	)
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, nil)
+	backend.mint = func(string) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		minted++
+		return filepath.Join(t.TempDir(), "conv-"+strconv.Itoa(minted), "transcript.jsonl"), nil
+	}
+	backend.open = func(ask appOpenAsk) (*appConn, error) {
+		if ask.Transcript == "" {
+			return nil, errors.New("opened without a transcript")
+		}
+		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { mu.Lock(); release++; mu.Unlock() }}, nil
+	}
+	t.Cleanup(func() { backend.Close() })
+	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
+	backend.profileDir = t.TempDir()
+	lead, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leadMember, err := backend.agentMember(lead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leadMember.Handle = "lead"
+	id := teamstore.NewID()
+	err = teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: id, Name: "harbor", Made: time.Now()})
+		if err := f.AddMember(id, leadMember); err != nil {
+			return err
+		}
+		return f.SetManager(id, leadMember.Key)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := func(brief string) string {
+		t.Helper()
+		sid, err := teamstore.AppendTrafficID(backend.profileDir, id, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: leadMember.Key, To: "web", Text: brief})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, ok, err := teamstore.ReadEntry(backend.profileDir, id, sid)
+		if err != nil || !ok {
+			t.Fatalf("start line %s: %v %v", sid, ok, err)
+		}
+		file, err := teamstore.Load(backend.profileDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		team, _ := file.Team(id)
+		manager, _ := team.Member(team.Manager)
+		backend.crewStart(team, manager, e)
+		return sid
+	}
+	const (
+		briefOne = "Own the web client; BIRCH-9304 is yours."
+		briefTwo = "Take the billing export; ASH-2217 is yours."
+	)
+	startOne := start(briefOne)
+	file, _ := teamstore.Load(backend.profileDir)
+	team, _ := file.Team(id)
+	first, ok := team.ByHandle("web")
+	if !ok || first.StartEntry != startOne || !first.Started {
+		t.Fatalf("crewStart recorded %+v, want start entry %s", first, startOne)
+	}
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error { return f.SetHandle(id, first.Key, "api") }); err != nil {
+		t.Fatal(err)
+	}
+	startTwo := start(briefTwo)
+	file, _ = teamstore.Load(backend.profileDir)
+	team, _ = file.Team(id)
+	second, ok := team.ByHandle("web")
+	if !ok || second.Key == first.Key || second.StartEntry != startTwo {
+		t.Fatalf("second member %+v (first %+v), want start entry %s", second, first, startTwo)
+	}
+	check := func(b *appBackend, label string) {
+		t.Helper()
+		if got, err := b.MemberBrief(id, appMemberAgent(first)); err != nil || got.Text != briefOne {
+			t.Fatalf("%s: renamed member = %+v, %v", label, got, err)
+		}
+		if got, err := b.MemberBrief(id, appMemberAgent(second)); err != nil || got.Text != briefTwo {
+			t.Fatalf("%s: reusing member = %+v, %v", label, got, err)
+		}
+	}
+	check(backend, "live")
+	fresh := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { fresh.Close() })
+	fresh.profileDir = backend.profileDir
+	check(fresh, "after restart")
 }
