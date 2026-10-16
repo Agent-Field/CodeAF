@@ -24,7 +24,7 @@ import (
 // children when a root exists, parentless teams when none does. A real root's
 // own roster (the global manager, and the top managers seated beside him) is a
 // separate group, never a top and never an invented one in a rootless file.
-// TEAMS-UNION-CONTRACT.md is the account.
+// The public scope and cursor contract is in docs/design/app-v3/PROTOCOL.md.
 
 const (
 	// appTeamsOwnersMax and appTeamsPairsMax bound the union a request holds.
