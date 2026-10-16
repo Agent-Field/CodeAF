@@ -276,6 +276,9 @@ func mediaKindOf(mime string) string {
 
 // sniffMedia is the media content type of the head of a file, or "".
 func sniffMedia(head []byte) string {
+	if mp3Frames(head) {
+		return "audio/mpeg"
+	}
 	if len(head) > 512 {
 		head = head[:512]
 	}
