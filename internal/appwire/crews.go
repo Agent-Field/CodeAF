@@ -371,12 +371,16 @@ type MemberAsk struct {
 // attachments.add on that same target agent; with them the text may be empty.
 // A message with attachments is never queued behind a busy target: it is
 // refused busy and its attachments stay staged for the person to send again.
+// Said and Reads are agents.send's ([AgentMessage]), and a message carrying
+// either is likewise never queued: it is refused busy.
 type CrewMessage struct {
-	Crew        string   `json:"crew"`
-	To          string   `json:"to"`
-	Text        string   `json:"text"`
-	ClientID    string   `json:"client_id"`
-	Attachments []string `json:"attachments,omitempty"`
+	Crew        string        `json:"crew"`
+	To          string        `json:"to"`
+	Text        string        `json:"text"`
+	Said        *string       `json:"said,omitempty"`
+	ClientID    string        `json:"client_id"`
+	Attachments []string      `json:"attachments,omitempty"`
+	Reads       []MessageRead `json:"reads,omitempty"`
 }
 
 // Crewer is the engine's half of crews.

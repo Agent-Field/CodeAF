@@ -86,6 +86,73 @@ type Attachment struct {
 	State string `json:"state,omitempty"`
 }
 
+// MessageRead is one read of a reference the app performed to write a
+// person's message — a collection it expanded at send time — as it found it
+// at that moment. The engine keeps it on the message's line and reads it back
+// on the message's entry; it never reads the reference again, and the model
+// is sent none of it. Count is exactly how many references the read returned,
+// Items the first few of them (descriptors, never contents); Missing,
+// Unavailable and Unread count what it could not return and More says it was
+// cut. Complete is the app's own answer, and may not be true while anything
+// was unavailable, unread or cut. The counts and flags are always present.
+type MessageRead struct {
+	Source      MessageReference   `json:"source"`
+	Count       int                `json:"count"`
+	Missing     int                `json:"missing"`
+	Unavailable int                `json:"unavailable"`
+	Unread      int                `json:"unread"`
+	More        bool               `json:"more"`
+	Complete    bool               `json:"complete"`
+	Warnings    []string           `json:"warnings,omitempty"`
+	Items       []MessageReference `json:"items,omitempty"`
+}
+
+// MessageReference names what a read was of, or one thing it returned, in the
+// app's own words. Kind is required, with at least one of id, name, path or
+// url.
+type MessageReference struct {
+	Kind  string `json:"kind"`
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Owner string `json:"owner,omitempty"`
+	Path  string `json:"path,omitempty"`
+	URL   string `json:"url,omitempty"`
+}
+
+// AgentMessage is a person's message with what the app knows about it beyond
+// the words the model reads: Said, when set, is the person's own words (empty
+// for a message of attachments or reads alone), never replaced by Text; Reads
+// are the reads Text was written from. Attachments are staged ids, as
+// agents.send takes them.
+type AgentMessage struct {
+	Text        string
+	Said        *string
+	ClientID    string
+	Attachments []string
+	Reads       []MessageRead
+}
+
+// MessageSender is the optional engine half of agents.send and crews.message
+// carrying said or reads. One that is not a MessageSender answers such a send
+// unknown_method rather than running it without what it carried; a send with
+// neither goes by Send or SendWith exactly as before.
+type MessageSender interface {
+	SendMessage(agent string, message AgentMessage) (uint64, error)
+}
+
+// FeatureMessageReads is hello's word for an engine that is a [MessageSender]:
+// agents.send and crews.message keep said and reads on the person's message.
+const FeatureMessageReads = "messages.reads"
+
+// withMessageReadsFeature is hello carrying [FeatureMessageReads] when the
+// engine serves it.
+func withMessageReadsFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(MessageSender); !ok {
+		return hello
+	}
+	return withFeature(hello, FeatureMessageReads)
+}
+
 // The attachment kinds and a file's states.
 const (
 	AttachFile  = "file"

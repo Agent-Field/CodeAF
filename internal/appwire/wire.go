@@ -334,6 +334,10 @@ type Entry struct {
 	ModelFrom   string       `json:"model_from,omitempty"`
 	ModelTo     string       `json:"model_to,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
+	// Reads, on a person's message, are the reads of references its words
+	// were written from, as the app found them when it sent it (convo.go's
+	// [MessageRead]); absent on every message sent without them.
+	Reads []MessageRead `json:"reads,omitempty"`
 	// Op is a durable fact the conversation's record keeps beside its
 	// messages, said as the fact and never as words: the app words it.
 	Op *EntryOp `json:"op,omitempty"`

@@ -854,10 +854,65 @@ func appAttachmentsOf(person *session.PersonMark) []appwire.Attachment {
 }
 
 // appSubmission is the message the engine is asked to run and keep: the words
-// the model is sent, and the person's own words and attachments beside them.
+// the model is sent, and the person's own words, attachments and reads beside
+// them.
 func appSubmission(text string, shown *appSending) session.Submission {
 	said := shown.text
-	return session.Submission{Text: text, Said: &said, Attachments: shown.described}
+	return session.Submission{Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads}
+}
+
+// appKeptReads is a message's reads as the record will keep them, or the
+// refusal the engine would answer, as bad_params before anything is done.
+func appKeptReads(reads []appwire.MessageRead) ([]session.MessageRead, error) {
+	if len(reads) == 0 {
+		return nil, nil
+	}
+	given := make([]session.MessageRead, 0, len(reads))
+	for _, read := range reads {
+		items := make([]session.MessageReference, 0, len(read.Items))
+		for _, item := range read.Items {
+			items = append(items, session.MessageReference(item))
+		}
+		given = append(given, session.MessageRead{
+			Source: session.MessageReference(read.Source), Count: read.Count, Missing: read.Missing,
+			Unavailable: read.Unavailable, Unread: read.Unread, More: read.More, Complete: read.Complete,
+			Warnings: read.Warnings, Items: items,
+		})
+	}
+	kept, err := session.KeptReads(given)
+	if err != nil {
+		return nil, appwire.Errorf(appwire.CodeBadParams, "%s", plainWords(err.Error()))
+	}
+	return kept, nil
+}
+
+// appReadsOf is a message's reads as an entry shows them, nil for a message
+// sent without any.
+func appReadsOf(reads []session.MessageRead) []appwire.MessageRead {
+	if len(reads) == 0 {
+		return nil
+	}
+	out := make([]appwire.MessageRead, 0, len(reads))
+	for _, read := range reads {
+		var items []appwire.MessageReference
+		for _, item := range read.Items {
+			items = append(items, appwire.MessageReference(item))
+		}
+		out = append(out, appwire.MessageRead{
+			Source: appwire.MessageReference(read.Source), Count: read.Count, Missing: read.Missing,
+			Unavailable: read.Unavailable, Unread: read.Unread, More: read.More, Complete: read.Complete,
+			Warnings: append([]string(nil), read.Warnings...), Items: items,
+		})
+	}
+	return out
+}
+
+// appPersonReads is a recorded message's reads as an entry shows them.
+func appPersonReads(person *session.PersonMark) []appwire.MessageRead {
+	if person == nil {
+		return nil
+	}
+	return appReadsOf(person.Reads)
 }
 
 // appAttachChars is the characters of paste a message carries, checked
@@ -922,11 +977,26 @@ func (b *appBackend) RemoveAttachment(agent, id string) error {
 // SendWith sends a message with its attachments, written into the words the
 // engine is sent, and keeps them on the person's entry.
 func (b *appBackend) SendWith(agent, text, clientID string, ids []string) (uint64, error) {
-	turn, _, err := b.sendWith(agent, text, clientID, ids)
+	turn, _, err := b.sendMessage(agent, appwire.AgentMessage{Text: text, ClientID: clientID, Attachments: ids})
 	return turn, err
 }
 
-// sendWith is [appBackend.SendWith], answering the attachments it carried.
+// SendMessage sends a message with what the app knows about it beyond the words
+// the model reads: the person's own words, which the entry and the record show
+// in place of Text, the staged attachments, and the reads Text was written
+// from.
+func (b *appBackend) SendMessage(agent string, message appwire.AgentMessage) (uint64, error) {
+	turn, _, err := b.sendMessage(agent, message)
+	return turn, err
+}
+
+// sendMessage is [appBackend.SendMessage], answering what the person's entry
+// shows, nil when that is the words sent.
+//
+// THE PERSON'S WORDS ARE THEIRS: Said, when the app gave it, is what the entry
+// and the record show, and never the expanded Text the model is sent. Reads are
+// checked whole before anything else, and kept exactly as the record will keep
+// them, so the live entry and every later reading say the same.
 //
 // STAGED ATTACHMENTS ARE CONSUMED ONLY BY A TURN THAT STARTED. They are read,
 // not taken, while the turn is asked for, and dropped once it has begun; a
@@ -935,8 +1005,13 @@ func (b *appBackend) SendWith(agent, text, clientID string, ids []string) (uint6
 // a new id nothing here touches. The agent's gate is held from the read to the
 // drop, so two sends cannot both carry one chip into two turns, and each turn
 // carries exactly the snapshot it read.
-func (b *appBackend) sendWith(agent, text, clientID string, ids []string) (uint64, []appwire.Attachment, error) {
+func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (uint64, *appSending, error) {
+	ids := message.Attachments
 	if err := appwire.CheckAttachIDs(ids); err != nil {
+		return 0, nil, err
+	}
+	reads, err := appKeptReads(message.Reads)
+	if err != nil {
 		return 0, nil, err
 	}
 	a, err := b.find(agent)
@@ -963,8 +1038,18 @@ func (b *appBackend) sendWith(agent, text, clientID string, ids []string) (uint6
 	if err := appAttachChars(kept); err != nil {
 		return 0, nil, err
 	}
-	shown := appAttachShown(text, kept)
-	turn, err := b.sendLocked(a, appAttachWords(text, kept), clientID, shown)
+	said := message.Text
+	if message.Said != nil {
+		said = *message.Said
+	}
+	shown := appAttachShown(said, kept)
+	if shown == nil && (message.Said != nil || len(reads) > 0) {
+		shown = &appSending{text: said}
+	}
+	if shown != nil {
+		shown.reads = reads
+	}
+	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -973,11 +1058,7 @@ func (b *appBackend) sendWith(agent, text, clientID string, ids []string) (uint6
 			delete(a.attach, id)
 		}
 	})
-	var views []appwire.Attachment
-	if shown != nil {
-		views = shown.attachments
-	}
-	return turn, views, nil
+	return turn, shown, nil
 }
 
 // appSending is the words and attachments of a message whose entry shows
@@ -988,6 +1069,9 @@ type appSending struct {
 	// described is the same attachments as the record keeps them
 	// ([appDescribed]), in the same order.
 	described []session.MessageAttachment
+	// reads are the reads the words were written from, as the record keeps
+	// them ([appKeptReads]).
+	reads []session.MessageRead
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────

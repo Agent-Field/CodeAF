@@ -1517,7 +1517,7 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 	if !ok {
 		return appwire.Entry{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", target, t.Name)
 	}
-	if len(ask.Attachments) > 0 {
+	if len(ask.Attachments) > 0 || ask.Said != nil || len(ask.Reads) > 0 {
 		return b.crewMessageWith(t, member, target, ask)
 	}
 	turn, err := b.Send(target, ask.Text, ask.ClientID)
@@ -1539,29 +1539,43 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 }
 
 // crewMessageWith is a crew message carrying attachments staged on its
-// target. A MESSAGE WITH ATTACHMENTS IS NEVER QUEUED: the queue keeps words
-// only, so queueing it would send the words and lose the attachments. A busy
-// target refuses it instead, and every chip stays staged for the person to
-// send again when the turn ends.
+// target, the person's own words apart from the text, or reads. A MESSAGE
+// CARRYING ANY OF THEM IS NEVER QUEUED: the queue keeps words only, so
+// queueing it would send the words and lose the rest. A busy target refuses it
+// instead, and every chip stays staged for the person to send again when the
+// turn ends.
 func (b *appBackend) crewMessageWith(t teamstore.Team, member teamstore.Member, target string, ask appwire.CrewMessage) (appwire.Entry, error) {
-	turn, views, err := b.sendWith(target, ask.Text, ask.ClientID, ask.Attachments)
+	turn, shown, err := b.sendMessage(target, appwire.AgentMessage{Text: ask.Text, Said: ask.Said, ClientID: ask.ClientID, Attachments: ask.Attachments, Reads: ask.Reads})
 	var wire *appwire.Error
 	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
-		return appwire.Entry{}, appwire.Errorf(appwire.CodeBusy, "%s is working on a turn; the message was not sent and its attachments are still attached", member.Handle)
+		if len(ask.Attachments) > 0 {
+			return appwire.Entry{}, appwire.Errorf(appwire.CodeBusy, "%s is working on a turn; the message was not sent and its attachments are still attached", member.Handle)
+		}
+		return appwire.Entry{}, appwire.Errorf(appwire.CodeBusy, "%s is working on a turn; the message was not sent", member.Handle)
 	}
 	if err != nil {
 		return appwire.Entry{}, err
 	}
-	logged := ask.Text
-	if strings.TrimSpace(logged) == "" {
+	// The manager is told what the person said, never the expanded words the
+	// member's model was sent.
+	text := ask.Text
+	var views []appwire.Attachment
+	var reads []appwire.MessageRead
+	if shown != nil {
+		text, views, reads = shown.text, shown.attachments, appReadsOf(shown.reads)
+	}
+	logged := text
+	if strings.TrimSpace(logged) == "" && len(views) > 0 {
 		titles := make([]string, 0, len(views))
 		for _, view := range views {
 			titles = append(titles, view.Title)
 		}
 		logged = "Attached: " + strings.Join(titles, ", ")
 	}
-	b.tellManager(t, member, logged)
-	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: ask.Text, ClientID: ask.ClientID, Attachments: views}, nil
+	if strings.TrimSpace(logged) != "" {
+		b.tellManager(t, member, logged)
+	}
+	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: ask.ClientID, Attachments: views, Reads: reads}, nil
 }
 
 // tellManager puts the person's words to a member on the crew's log.

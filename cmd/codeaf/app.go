@@ -1486,7 +1486,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	}
 	var turn uint64
 	var n int
-	entryText, attachments := text, []appwire.Attachment(nil)
+	entryText, attachments, reads := text, []appwire.Attachment(nil), []appwire.MessageRead(nil)
 	b.locked(func() {
 		if live.running {
 			refused = appwire.Errorf(appwire.CodeBusy, "this agent is already working on a turn")
@@ -1503,7 +1503,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 		}
 		a.marks[n] = appTurnMark{turn: turn, clientID: clientID}
 		if shown != nil {
-			entryText, attachments = shown.text, shown.attachments
+			entryText, attachments, reads = shown.text, shown.attachments, appReadsOf(shown.reads)
 		}
 	})
 	if refused != nil {
@@ -1537,7 +1537,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments,
+		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments, Reads: reads,
 	}})
 	long := b.watchLong(id, live, turn, b.now())
 	b.newTurnCalls(a)
@@ -2466,6 +2466,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 			// rode on them, as the record keeps them on the message's line; a
 			// line without that mark is its words, and has no attachments.
 			entry.ID, entry.Kind, entry.Text, entry.Attachments = appUserEntryID(n), appwire.EntryUser, item.Text, appAttachmentsOf(item.Person)
+			entry.Reads = appPersonReads(item.Person)
 		case "assistant", "aside":
 			if strings.TrimSpace(item.Text) == "" {
 				continue
@@ -3039,6 +3040,11 @@ func appEngineError(err error) error {
 	var wire *appwire.Error
 	if errors.As(err, &wire) {
 		return wire
+	}
+	// A description of the message the engine would not keep is the app's to
+	// correct, not the engine failing.
+	if errors.Is(err, session.ErrMessageMark) {
+		return &appwire.Error{Code: appwire.CodeBadParams, Message: redact.Secrets(plainWords(err.Error()))}
 	}
 	return &appwire.Error{Code: appwire.CodeEngine, Message: redact.Secrets(plainWords(err.Error()))}
 }

@@ -144,6 +144,7 @@ type request struct {
 func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine Engine) error {
 	hello.Contract = Contract
 	hello = withCollectionsFeature(hello, engine)
+	hello = withMessageReadsFeature(hello, engine)
 	s.Emit(EventHello, hello)
 	if warmer, ok := engine.(Warmer); ok {
 		go warmer.Warm()
@@ -387,10 +388,12 @@ var methods = map[string]method{
 		return &agentResult{agent}, nil
 	}),
 	"agents.send": typed(func(e Engine, p struct {
-		ID          string   `json:"id"`
-		Text        string   `json:"text"`
-		ClientID    string   `json:"client_id"`
-		Attachments []string `json:"attachments"`
+		ID          string        `json:"id"`
+		Text        string        `json:"text"`
+		Said        *string       `json:"said"`
+		ClientID    string        `json:"client_id"`
+		Attachments []string      `json:"attachments"`
+		Reads       []MessageRead `json:"reads"`
 	}) (*TurnResult, error) {
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.send needs an id")
@@ -401,7 +404,19 @@ var methods = map[string]method{
 		}
 		var turn uint64
 		var err error
-		if len(p.Attachments) > 0 {
+		if p.Said != nil || len(p.Reads) > 0 {
+			// WHAT THE MESSAGE CARRIED IS SENT WITH IT OR NOT AT ALL: an engine
+			// with no door for it refuses, rather than running the words and
+			// keeping a message the person did not send.
+			s, ok := e.(MessageSender)
+			if !ok {
+				return nil, Errorf(CodeUnknownMethod, "this engine does not serve agents.send with said or reads")
+			}
+			if err := CheckAttachIDs(p.Attachments); err != nil {
+				return nil, err
+			}
+			turn, err = s.SendMessage(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads})
+		} else if len(p.Attachments) > 0 {
 			t, terr := talker(e, "agents.send with attachments")
 			if terr != nil {
 				return nil, terr

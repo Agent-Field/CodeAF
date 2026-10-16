@@ -250,6 +250,12 @@ func (m Submission) mark() (*messagePresentation, error) {
 	return mark, nil
 }
 
+// KeptReads is reads as the record will keep them — trimmed, and copies of
+// their own — or the refusal [Agent.SubmitMessage] would answer them with, so a
+// door can refuse a message before it does anything else for it, and show the
+// person exactly what a reading of the record will show them later.
+func KeptReads(reads []MessageRead) ([]MessageRead, error) { return keptReads(reads) }
+
 // keptReads is the record's own copy of a message's reads, every bound checked
 // on the bytes as given, and nil when there are none. NOTHING IS TRIMMED TO
 // FIT: a count is the door's observation, so a read that does not fit refuses

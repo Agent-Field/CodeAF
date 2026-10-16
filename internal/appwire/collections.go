@@ -229,12 +229,17 @@ func withCollectionsFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Collector); !ok {
 		return hello
 	}
+	return withFeature(hello, FeatureCollections)
+}
+
+// withFeature is hello carrying feature once, on a list of its own.
+func withFeature(hello Hello, feature string) Hello {
 	for _, f := range hello.Features {
-		if f == FeatureCollections {
+		if f == feature {
 			return hello
 		}
 	}
-	hello.Features = append(append([]string(nil), hello.Features...), FeatureCollections)
+	hello.Features = append(append([]string(nil), hello.Features...), feature)
 	return hello
 }
 
