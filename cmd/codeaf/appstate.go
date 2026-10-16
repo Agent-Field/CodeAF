@@ -420,7 +420,10 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 	if err != nil {
 		return appwire.Settings{}, err
 	}
-	b.emit.Emit(appwire.EventSettingsChanged, appwire.SettingsChanged{Settings: settings})
+	// THE TASK MODELS RIDE THIS EVENT ONLY WHEN THIS PATCH CHANGED ONE OF
+	// THEIR ROWS — the checker and planner pins are the Checks and Planner
+	// rows — so a budget, an appearance or a folder is never held up by them.
+	b.settingsChanged(settings, patch.ChecksModel != nil || patch.PlannerModel != nil)
 	if patch.DayCapUSD != nil {
 		b.spendSay()
 	}
