@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/provider"
+
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -78,9 +80,9 @@ func TestLateUnattributedMoneyIsNotAssignedToTheCurrentRun(t *testing.T) {
 	old := withRunIdentity(context.Background())
 	newer := withRunIdentity(old)
 	var turn Usage
-	a.addUsage(&turn, billedCall("test/model", 3, 1, .1), "test/model", "", laneFacts{}, runIdentity(old))
+	a.addUsage(&turn, billedCall("test/model", 3, 1, .1), "test/model", "", laneFacts{}, provider.BillingFact{}, runIdentity(old))
 	a.bank(bankedCall{used: Usage{Input: 2, Output: 1, CostUSD: .2, Calls: 1}, model: "test/model", ledger: true, late: true})
-	a.addUsage(&turn, billedCall("test/model", 4, 2, .3), "test/model", "", laneFacts{}, runIdentity(newer))
+	a.addUsage(&turn, billedCall("test/model", 4, 2, .3), "test/model", "", laneFacts{}, provider.BillingFact{}, runIdentity(newer))
 	FlushUsage()
 	rows, err := ReadUsage(ledger, time.Time{})
 	if err != nil {

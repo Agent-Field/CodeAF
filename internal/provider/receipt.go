@@ -167,7 +167,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		base = traces[0].attemptBase
 	}
 	if response != nil && response.Usage != nil {
-		c.bill(ctx, model, response)
+		c.bill(ctx, model, response, traces...)
 		return
 	}
 	// A DIRECT SERVICE HAS NO OPENROUTER GENERATION ROUTE TO ASK. Its missing
@@ -185,7 +185,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		model = served
 	}
 	result := Reconciled{
-		Billed: Billed{Node: callNode(ctx), Model: model},
+		Billed: Billed{Node: callNode(ctx), Model: model, Billing: c.answeredBilling(traces...)},
 		Reason: strings.TrimSpace(reason),
 		Hedged: hedgeLaneFrom(ctx) != "",
 	}
@@ -296,6 +296,9 @@ func (c *Client) reconcile(work receiptWork) {
 		if found {
 			billed.Node = result.Node
 			billed.Model = result.Model
+			// The road is the attempt's, captured when the receipt was owed;
+			// the receipt document says nothing about it.
+			billed.Billing = result.Billing
 			result.Billed = billed
 			result.Found = true
 			// Recovery is reached only when the stream had no usage block, so

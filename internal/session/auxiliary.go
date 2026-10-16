@@ -292,6 +292,10 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		}
 		releaseRung()
 		if callErr == nil && response != nil {
+			// THE ROAD THIS ANSWER CAME DOWN goes with the answer to whichever
+			// caller banks it ([Agent.addUsageAs]); the slot is this attempt's
+			// own, so nothing else's road is in it.
+			noteAnswerBilling(response, served.TakeBilling())
 			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
 			// turn does (loop.go's [Agent.addUsage]). Without it the journal's
 			// call lines covered only the conversation's own requests, and a

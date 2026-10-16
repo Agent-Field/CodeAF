@@ -124,6 +124,12 @@ type callTrace struct {
 	// attemptBase is the address this attempt actually used, including an
 	// explicitly authorized plan overflow. It never leaves the process.
 	attemptBase string
+	// attemptBilling is the billing fact this attempt went out under — the
+	// client's own road, or metered once the plan overflow was taken — set in
+	// the same breath as attemptBase so the answer is billed as the road that
+	// served it (billingfact.go). attemptBilled says it was set at all.
+	attemptBilling BillingFact
+	attemptBilled  bool
 	// open is the attempt that has a start row on the wire and nothing under it
 	// yet, and nil whenever the log is square.
 	//

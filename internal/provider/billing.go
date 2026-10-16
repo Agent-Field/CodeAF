@@ -56,6 +56,11 @@ type Billed struct {
 	CompletionTokens int
 	CachedTokens     int
 	Cost             float64
+	// Billing is the fact the answered attempt went out under, captured at
+	// that attempt (billingfact.go). It rides a late receipt unchanged, so a
+	// receipt is billed as the road that was charged rather than as whatever
+	// the client says when the receipt arrives.
+	Billing BillingFact
 }
 
 // Empty reports a response the adapter cannot bill: the provider sent no usage
@@ -208,9 +213,17 @@ func reconcileFrom(ctx context.Context) ReconcileSink {
 // reads it: the slot's model unless the routing lane recorded a served rung,
 // because a row naming the model somebody asked for is a row that cannot be
 // summed per model after an escalation.
-func (c *Client) bill(ctx context.Context, model string, response *ai.Response) {
+func (c *Client) bill(ctx context.Context, model string, response *ai.Response, traces ...*callTrace) {
+	if response == nil || response.Usage == nil {
+		return
+	}
+	// THE CALLER'S SLOT HEARS THE ROAD BEFORE ANY SINK IS ASKED FOR, because a
+	// session banks the answer itself and arms no sink: the fact has to reach
+	// it beside the answer or not at all.
+	fact := c.answeredBilling(traces...)
+	noteAnsweredBilling(ctx, fact)
 	sink := billingFrom(ctx)
-	if sink == nil || response == nil || response.Usage == nil {
+	if sink == nil {
 		return
 	}
 	if served := CallFrom(ctx).Model(); served != "" {
@@ -222,6 +235,7 @@ func (c *Client) bill(ctx context.Context, model string, response *ai.Response) 
 		PromptTokens:     response.Usage.PromptTokens,
 		CompletionTokens: response.Usage.CompletionTokens,
 		CachedTokens:     response.Usage.CacheReadTokens(),
+		Billing:          fact,
 	}
 	if response.Usage.Cost != nil {
 		billed.Cost = *response.Usage.Cost
@@ -235,12 +249,12 @@ func (c *Client) bill(ctx context.Context, model string, response *ai.Response) 
 // billAnswered bills an answer that arrived whole. One with no usage block is
 // settled like a cut one when the work asked for that ([WithUnmeteredReceipts]),
 // and billed the ordinary way — which banks nothing for it — otherwise.
-func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Response, answerBytes int) {
+func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Response, answerBytes int, traces ...*callTrace) {
 	if response != nil && response.Usage == nil && unmeteredReceiptsFrom(ctx) {
-		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes)
+		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes, traces...)
 		return
 	}
-	c.bill(ctx, model, response)
+	c.bill(ctx, model, response, traces...)
 }
 
 // BillingSinkFrom and CallNodeFrom read back what a leaf's context was armed

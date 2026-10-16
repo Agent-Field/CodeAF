@@ -377,10 +377,17 @@ func recordPoolUsage(settings config.Config, model string, used *ai.Usage) {
 	}
 	if used != nil {
 		line.Input, line.Output = used.PromptTokens, used.CompletionTokens
+		// AND THE ROW SAYS WHICH OF THE TWO IT IS, so a provider's charge and a
+		// figure multiplied here are never read as the same kind of fact.
 		if used.Cost != nil {
 			line.USD = *used.Cost
+			line.Price = session.UsagePriceProvider
 		} else if prompt, completion, known := settings.ClientConfig(model).ModelPrice(model); known {
 			line.USD = float64(used.PromptTokens)*prompt + float64(used.CompletionTokens)*completion
+			line.Price = session.UsagePriceList
+		}
+		if line.USD <= 0 {
+			line.Price = ""
 		}
 	}
 	session.RecordUsage(session.UsageLedgerPath(), line)

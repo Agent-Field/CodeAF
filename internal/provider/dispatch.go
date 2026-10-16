@@ -469,6 +469,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// this loop with a new body and the same trace.
 		if knobs.trace != nil {
 			knobs.trace.attemptBase = currentBase
+			knobs.trace.attemptBilling = c.attemptBilling(usingOverflow)
+			knobs.trace.attemptBilled = true
 		}
 		knobs.trace.begin()
 		if attempt > 0 && switchedDoor {

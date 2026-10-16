@@ -131,6 +131,29 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
+	// ID names this one row, once, so two readers that meet the same row — a
+	// process's own notice of what it just banked and the same row read back
+	// off the disk — can count it once. It is stamped by [RecordUsage] when the
+	// row is first handed over and is NEVER rewritten: a row already carrying
+	// one keeps it. Rows written before this field existed have none, and
+	// every reader counts them by position, exactly as it always did.
+	ID string `json:"id,omitempty"`
+	// Billing is what kind of money this call was — "metered", "included" in a
+	// plan — and is written ONLY where the road that answered stated it
+	// (internal/provider's billingfact.go): a bound billing door, or the plan
+	// overflow a person opted into. Absent means nobody said, which a cap
+	// reads as money it may have to stop and a page reads as unknown. It is
+	// never inferred from a zero price, a direct key, a label or a sign-in.
+	Billing string `json:"billing,omitempty"`
+	// BillingBasis is the statement Billing came from — `door:<source>/<door>`
+	// or `overflow:<door>` — and is present exactly when Billing is.
+	BillingBasis string `json:"billing_basis,omitempty"`
+	// Price is where USD came from: "provider" for the charge the provider's
+	// own usage block carried, "receipt" for its later receipt, "list" for
+	// counted tokens times the model's published price. Absent is nobody said,
+	// which is every row before this field and every row whose writer did not
+	// state it; USD itself keeps its old meaning either way.
+	Price string `json:"price,omitempty"`
 	// Run is the immutable execution that made this call, when its caller
 	// supplied one. Older, auxiliary, or late receipt rows may have no identity;
 	// absence must never be read as a single aggregate run.
@@ -822,6 +845,11 @@ func RecordUsage(path string, line UsageLine) {
 	if strings.TrimSpace(line.Day) == "" {
 		line.Day = line.At.Local().Format(usageDayLayout)
 	}
+	// THE ROW IS NAMED HERE, the one door every ledger row passes, so no
+	// writer can forget to and none can name it twice ([UsageLine.ID]).
+	if strings.TrimSpace(line.ID) == "" {
+		line.ID = newUsageRowID()
+	}
 	payload, err := json.Marshal(line)
 	if err != nil {
 		dropUsageRow()
@@ -967,6 +995,7 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		USD:        used.CostUSD,
 		Empty:      used.EmptyReflex > 0,
 		Reconciled: call.reconciled,
+		Price:      usagePrice(used.CostUSD, call.price),
 
 		Session: session,
 		Run:     call.run,
@@ -997,6 +1026,7 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		seat, _ = SeatOfAgent(a.agentKind())
 	}
 	line = TagUsage(line, roles.Role(call.role), seat)
+	line = withUsageBilling(line, call.billing)
 
 	// THE LANE HALF OF THE LINE GOES ON THROUGH ONE DOOR, and it comes in as an
 	// argument rather than being read from anywhere here — because the only

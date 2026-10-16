@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/provider"
+
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/competence"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -148,8 +150,8 @@ func TestAFreeAnswerCountsAsAModel(t *testing.T) {
 func TestAnswersAreCountedWithoutUsageAndNeverFromReceipts(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	var turn Usage
-	agent.addUsage(&turn, &ai.Response{}, "m/b", "", laneFacts{})
-	agent.addUsage(&turn, nil, "m/c", "", laneFacts{})
+	agent.addUsage(&turn, &ai.Response{}, "m/b", "", laneFacts{}, provider.BillingFact{})
+	agent.addUsage(&turn, nil, "m/c", "", laneFacts{}, provider.BillingFact{})
 	agent.bank(bankedCall{used: Usage{Input: 3, CostUSD: 0.01, Calls: 1}, model: "m/late"})
 	if answers := agent.Answers(); len(answers) != 1 || answers["m/b"] != 1 {
 		t.Fatalf("answers %+v", answers)
@@ -265,7 +267,7 @@ func TestTheAnsweredTallyFollowsTheAnsweringModel(t *testing.T) {
 func TestAnAnswerNamesItsActualModelWithoutUsage(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	var turn Usage
-	agent.addUsage(&turn, &ai.Response{Model: "m/served"}, "m/requested", "", laneFacts{})
+	agent.addUsage(&turn, &ai.Response{Model: "m/served"}, "m/requested", "", laneFacts{}, provider.BillingFact{})
 	if answers := agent.Answers(); len(answers) != 1 || answers["m/served"] != 1 {
 		t.Fatalf("answered model was replaced by request target: %+v", answers)
 	}

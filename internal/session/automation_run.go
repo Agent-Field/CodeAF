@@ -473,6 +473,7 @@ func (r *automationRunner) Judge(ctx context.Context, item automation.Automation
 	// the standing sentinel it replaces never reached the usage ledger at all.
 	RecordUsage(UsageLedgerPath(), UsageLine{
 		Model: model, Role: string(roles.RoleSentinel), Calls: 1, Input: in, Output: out, USD: usd,
+		Price:      usagePrice(usd, usagePriceProvider),
 		Automation: item.ID, Workspace: item.Workspace,
 	})
 	word, line := automationVerdictWords(response.Text())

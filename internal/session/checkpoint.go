@@ -5170,7 +5170,7 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// measurement of one request written down about another (usage_ledger.go's
 	// emptiness law for the five lane keys).
 	turn.Turns++
-	a.addUsage(turn, response, model, provider.ServedEndpointFrom(ctx).Name(), laneFacts{})
+	a.addUsage(turn, response, model, provider.ServedEndpointFrom(ctx).Name(), laneFacts{}, provider.ServedEndpointFrom(ctx).TakeBilling())
 
 	brief := strings.TrimSpace(response.Text())
 	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that

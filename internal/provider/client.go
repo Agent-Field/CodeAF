@@ -48,6 +48,12 @@ type Config struct {
 	// BillingDoor is the person-facing name of a bound road. Empty is a service
 	// with one road and preserves every older status line.
 	BillingDoor string
+	// Billing is what the bound road states about money: metered, included in
+	// a plan, or nobody said ([BillingFact]). It is set ONLY by the config
+	// door from the connected service's billing door, and every attempt that
+	// goes out on this client's own road carries it (billingfact.go). The zero
+	// value is unknown and is never read as included.
+	Billing BillingFact
 	// PlanOverflow is the separately billed road a paused subscription may use.
 	// It is inert unless OverflowOnPlanPause is true, which is never the default.
 	PlanOverflow        string
@@ -1170,7 +1176,7 @@ func (c *Client) completionInOnePiece(
 		// for it an answer with no usage block is priced by its receipt
 		// ([Client.billAnswered]). The bare door banks nothing without usage, so
 		// that charge reached no book at all.
-		c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
+		c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)), knobs.trace)
 		return nil, false, cut
 	}
 	reasonWord, servedWell := answerOutcome(&response)
@@ -1193,7 +1199,7 @@ func (c *Client) completionInOnePiece(
 	})
 	// The money, banked at the same instant the log row is written and for the
 	// same reason: this is where the fact is known. See billing.go.
-	c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
+	c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)), knobs.trace)
 	return &response, len(relearned) > 0, nil
 }
 
@@ -2250,7 +2256,7 @@ func (c *Client) completeWithMessagesStreaming(
 			ttft: firstTokenAfter(began, firstToken),
 		})
 		// Through the answered door, for the reason the whole-body twin gives.
-		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len(), knobs.trace)
 		return nil, false, cut
 	}
 	// A RESCUE IS NOT THE TURN UNTIL IT READS AS LANGUAGE. The hedge used
@@ -2266,7 +2272,7 @@ func (c *Client) completeWithMessagesStreaming(
 		})
 		// A rescue that is not language was still paid for, so it goes through
 		// the answered door too.
-		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len(), knobs.trace)
 		return nil, false, cut
 	}
 	// PAST EVERY GUARD, SO THIS LANE SERVED — the recovery half of the quality
@@ -2296,7 +2302,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
 	// blind to one of the two transports is a ledger nobody can reconcile.
-	c.billAnswered(ctx, c.modelFor(request), response, content.Len())
+	c.billAnswered(ctx, c.modelFor(request), response, content.Len(), knobs.trace)
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, relearned, nil

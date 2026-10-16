@@ -998,12 +998,16 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		Direct:      !strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID),
 		KeyOptional: service.Source.KeyOptional,
 		BillingDoor: service.Door.Name,
+		Billing:     billingFactOf(service),
 		Effort:      effort,
 	}
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
 		configured.APIKey = codexauth.Sentinel
 		configured.HTTPClient = codexauth.Client(service.Home)
 		configured.BillingDoor = ""
+		// A sign-in is not a plan statement: until the plan claim is read and
+		// verified, a codex call's billing is nobody's word.
+		configured.Billing = provider.BillingFact{}
 		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
 	}
 	if service.Overflow != nil {
@@ -1012,6 +1016,23 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		configured.OverflowOnPlanPause = service.PlanPaused == PlanPausedUseMeter
 	}
 	return configured
+}
+
+// billingFactOf is the billing statement the connected service's bound door
+// makes, and nothing else. A named door says metered or included in so many
+// words (`modelsource.Door.Metered`, proved when it was connected); a service
+// with no named door — the default router, a one-door vendor, a custom
+// endpoint, a local runner — states nothing, and the client's fact stays
+// unknown rather than being inferred from a price, a key shape or a label.
+func billingFactOf(service modelsource.Connected) provider.BillingFact {
+	door := strings.TrimSpace(service.Door.ID)
+	if door == "" {
+		return provider.BillingFact{}
+	}
+	if service.Door.Metered {
+		return provider.MeteredDoorFact(service.Source.ID, door)
+	}
+	return provider.IncludedDoorFact(service.Source.ID, door)
 }
 
 // WithoutSeatPin is the settings a raw request path takes: the same account,

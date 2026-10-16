@@ -1041,7 +1041,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				// THE LANE IS READ BEFORE THE MONEY IS BANKED, because the row the
 				// money writes is this call's and the witness is what measured it.
 				facts := a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
-				a.addUsage(&turn, response, model, served.Name(), facts, runIdentity(ctx))
+				a.addUsage(&turn, response, model, served.Name(), facts, served.TakeBilling(), runIdentity(ctx))
 				a.tellLaneNews(model, facts, hedge)
 				droppedCall := forming.any() || warm.anyAnnounced()
 				a.keepSteeredPartial(partial, reasoning, droppedCall, hub, cutDroppedCallNote(err))
@@ -1097,7 +1097,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// ledger line carries ([Agent.addUsage]) rather than something held back
 		// for the turn's seal to collect.
 		facts := a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
-		a.addUsage(&turn, response, model, served.Name(), facts, runIdentity(ctx))
+		a.addUsage(&turn, response, model, served.Name(), facts, served.TakeBilling(), runIdentity(ctx))
 		// AND THE SURFACE IS TOLD WHO ANSWERED, on the same line and at the same
 		// grain (lanenews.go). It is the push half of a seam whose pull half
 		// cannot exist: a status line cannot see a stream, and the arrow between
@@ -4213,6 +4213,13 @@ type bankedCall struct {
 	// honest number the compaction threshold prefers over an estimate — and
 	// zero where nobody said.
 	context int
+	// billing is the road the answered attempt went out under, captured by the
+	// transport at that attempt and handed here with the answer — never read
+	// back from the client or the turn at bank time (usage_billing.go).
+	billing provider.BillingFact
+	// price is where the money figure came from, when the caller knows it
+	// ([UsageLine.Price]); empty is nobody said.
+	price string
 }
 
 // bank is THE ONE DOOR MONEY GOES THROUGH, and it is the fix for issue #269.
@@ -4301,6 +4308,7 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 	a.bank(bankedCall{
 		used: used, model: receipt.Model, lane: lane, ledger: true,
 		late: true, reconciled: true,
+		billing: receipt.Billing, price: usagePriceReceipt,
 	})
 	// AND THE REQUEST LEAVES ITS OWN LINE, for [journalCall]'s law said another
 	// way: EVERY request this session makes writes one, and a request whose
@@ -4333,7 +4341,7 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 // standing (runTurn re-latches on an answer from further down the chain), and
 // `served` is the endpoint the router says answered, "" when nothing said.
 // `lane` is what the witness measured about THIS request and nothing else.
-func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts, runIDs ...string) {
+func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts, billing provider.BillingFact, runIDs ...string) {
 	// The row's endpoint is the answer's own naming or, for a service that
 	// declared the one machine it is, that declared name ([Agent.attributedEndpoint]).
 	// `lane` was read from the answer alone, so what the lane layer learns and
@@ -4395,7 +4403,7 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 	if len(runIDs) > 0 {
 		run = runIDs[0]
 	}
-	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole), run: run})
+	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole), run: run, billing: billing, price: usagePriceProvider})
 
 	// AND THE TURN KEEPS THE SAME SHARE PER ANSWERING MODEL, under the very
 	// name the row above banks, so a turn that hopped seals one usage line per
@@ -5740,7 +5748,15 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
 	// watches the turn's own stream — and the turn's figures on this row would be
 	// a measurement of one request filed against another.
-	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0]})
+	// AN ERRAND'S ROAD WAS NOTED BY ITS OWN LADDER beside the answer it
+	// returned ([noteAnswerBilling]); an answer nobody noted is banked with no
+	// billing and no price word, which is "nobody said".
+	billing, noted := takeAnswerBilling(response)
+	price := ""
+	if noted {
+		price = usagePriceProvider
+	}
+	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0], billing: billing, price: price})
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.

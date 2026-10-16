@@ -2538,6 +2538,27 @@ The status line shows **this conversation and its task family**, combining the c
 ledger reading with the conversation meter. `/cost` prints that same scope with its
 breakdown; `/spend` opens the ledger for the whole machine.
 
+## Does the usage file say whether a call was paid for or included in my plan
+
+Only where the road that answered said so. Each line in `~/.codeaf/v3/usage.jsonl` written by
+this build also carries:
+
+- `id` — the line's own name, given once when the line is written and never changed, so the
+  same call read twice is still one call. Older lines have none.
+- `billing` — `metered` or `included`, written **only** when the billing door you connected
+  through states it: a provider's plan door says `included`, its pay-as-you-go door says
+  `metered`, and a paused plan that you allowed to overflow onto pay-as-you-go writes
+  `metered` for the calls that went that way. `billing_basis` names the door it came from.
+  A service with one road, the default router, a custom endpoint and a ChatGPT sign-in state
+  nothing, so their lines carry no `billing` at all. A zero cost, a direct key or a `:free`
+  model name is never read as included.
+- `price` — where the cost came from: `provider` for the charge on the answer itself,
+  `receipt` for a cut stream's later receipt, `list` for counted tokens times the model's
+  published price. A line with no cost has no `price`.
+
+A late receipt keeps the billing of the request it belongs to, even if the connection was
+changed before the receipt arrived. Nothing here stops or limits a call; it is a record.
+
 ## The spend place — what days and models cost, and what the money was for
 
 `alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
