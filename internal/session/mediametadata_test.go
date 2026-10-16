@@ -460,3 +460,35 @@ func TestPerceptionKeepsTheVersionReadBeforeAFileChangesDuringTheCall(t *testing
 		})
 	}
 }
+
+// The native file picker uses RecordAttachment, not GeneratedMedia. Recording
+// already-probed container facts must not require a model call or a decoder.
+func TestAttachedContainerUsesOnlyTheBoundedHeaderProbe(t *testing.T) {
+	for name, data := range map[string][]byte{
+		"known.wav":     wavFile(1, 32000, 32000, 32000),
+		"larger.wav":    wavFile(1, 32000, 128000, 128000),
+		"truncated.wav": wavFile(1, 32000, 32000, 100),
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path, index := filepath.Join(dir, name), filepath.Join(dir, "artifacts.jsonl")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if id := RecordAttachment(index, "native", path); id == "" {
+				t.Fatal("attachment not recorded")
+			}
+			rows := ReadArtifacts(index)
+			if len(rows) != 1 || rows[0].Media == nil {
+				t.Fatalf("rows = %+v", rows)
+			}
+			want := int64(0)
+			if name == "known.wav" {
+				want = 1000
+			}
+			if rows[0].Media.DurationMS != want {
+				t.Fatalf("duration = %d, want %d", rows[0].Media.DurationMS, want)
+			}
+		})
+	}
+}

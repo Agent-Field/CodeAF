@@ -546,6 +546,9 @@ func RecordAttachment(index, sessionID, path string) string {
 			fact.Width, fact.Height = w, h
 		}
 	}
+	// Reuse only the bytes already held by the bounded header probe. A container
+	// whose metadata or declared payload is not present stays unknown.
+	fact.measureContainer(head)
 	fact.stampFile(canonical)
 	return RecordMedia(index, Artifact{
 		Path:    canonical,

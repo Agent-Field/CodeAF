@@ -613,3 +613,8 @@ An arrival selects the best match unless you chose a row with the arrows since
 the query last changed; that choice survives while still offered. A changed query
 returns to the best match. On home, clicking a row inserts it immediately. A space
 or punctuation after a chosen mention keeps the list closed so you can write on.
+
+The app records sound and video length only when the file's bounded header
+probe can establish it. A larger or unsupported container may still play while
+its recorded length stays unknown; range notes remain unavailable for that
+source. Playback time from the browser does not fill in the missing fact.
