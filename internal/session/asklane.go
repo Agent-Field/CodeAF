@@ -213,8 +213,26 @@ func (a *Agent) startAskClock(open *askOpen) {
 		a.mu.Unlock()
 		return
 	}
-	open.clock = time.AfterFunc(open.q.Policy.After, func() { a.askClockRanOut(id) })
+	armAskClockLocked(open, open.q.Policy.After, func(gen uint64) { a.askClockEnded(id, gen, true) })
 	a.mu.Unlock()
+}
+
+// armAskClockLocked is the only way a question's timer is set: it stops the
+// one before, and the timer it arms carries its own arming so a callback of an
+// older one can tell it is stale.
+//
+// A STOPPED TIMER CAN STILL CALL. [time.Timer.Stop] reports false for a timer
+// whose callback has already begun, and that callback may be waiting on a.mu
+// while the clock is deferred and started again; read after, its question
+// looks clocked and it would take the pick against the NEW deadline. So
+// every callback names its arming and does nothing unless it is still the one.
+func armAskClockLocked(open *askOpen, after time.Duration, fire func(gen uint64)) {
+	if open.clock != nil {
+		open.clock.Stop()
+	}
+	open.clockGen++
+	gen := open.clockGen
+	open.clock = time.AfterFunc(after, func() { fire(gen) })
 }
 
 // stopAskClocksLocked is the session's own end of the book's close, called from
@@ -233,13 +251,18 @@ func (a *Agent) stopAskClocksLocked() { a.asked.stopClocksLocked() }
 
 // askClockRanOut takes the asker's own pick for the person, through the one door
 // every other answer goes through — so it is recorded, announced and delivered
-// exactly as a key press would be, and marked as what it is.
-func (a *Agent) askClockRanOut(id uint64) {
+// exactly as a key press would be, and marked as what it is. It is the clock
+// running now that ran out; a timer's own callback is [Agent.askClockEnded].
+func (a *Agent) askClockRanOut(id uint64) { a.askClockEnded(id, 0, false) }
+
+// askClockEnded is one timer's end: gen is the arming it carries, read only
+// when armed, so a stale timer decides nothing ([armAskClockLocked]).
+func (a *Agent) askClockEnded(id, gen uint64, armed bool) {
 	a.mu.Lock()
 	open := a.asked.atLocked(id)
-	if open == nil || open.settled != nil || open.held || open.deferred || a.closed {
-		// A DEFERRED CLOCK IS NOT RUNNING: a timer that fired as the surface
-		// deferred it lost that race (askclock.go).
+	if open == nil || open.settled != nil || open.held || open.deferred || a.closed || (armed && open.clockGen != gen) {
+		// A DEFERRED CLOCK IS NOT RUNNING, and a timer armed before the
+		// clock was deferred is not the clock (askclock.go).
 		//
 		// NOTHING THIS CLOCK COULD SAY WOULD REACH ANYBODY once the session has
 		// closed, and a decision nobody read is worse than no decision: the next

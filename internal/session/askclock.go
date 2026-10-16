@@ -38,6 +38,10 @@ var askClockDeferLimit = 5 * time.Minute
 // running clock, one a person held, one already answered or deferred, and to
 // every lane but the model's own question, which is the only lane whose clock
 // lives here.
+//
+// AND NOTHING TO A QUESTION THAT BLOCKS. A turn parked on it or work named as
+// waiting on it ([Blocking.Blocks]) is exactly what must reach the person at
+// once, so the engine refuses to defer it whatever the surface believed.
 func (a *Agent) DeferQuestionClock(kind QuestionKind, token string) bool {
 	if child, answer, ok := a.discussionAnswer(Answer{Kind: kind, Ref: token}); ok {
 		return child.DeferQuestionClock(kind, answerToken(answer))
@@ -48,16 +52,15 @@ func (a *Agent) DeferQuestionClock(kind QuestionKind, token string) bool {
 	}
 	a.mu.Lock()
 	open := a.asked.atLocked(id)
-	if open == nil || open.settled != nil || open.held || open.deferred || open.clock == nil || open.q.Deadline.IsZero() || a.closed {
+	if open == nil || open.settled != nil || open.held || open.deferred || open.clock == nil || open.q.Deadline.IsZero() || open.q.Blocking.Blocks() || a.closed {
 		a.mu.Unlock()
 		return false
 	}
-	open.clock.Stop()
 	open.deferred = true
 	open.q.Deadline = time.Time{}
 	// THE BOUND IS THE SAME TIMER, so a deferred question carries one timer
 	// exactly as a clocked one does and Close stops it the same way.
-	open.clock = time.AfterFunc(askClockDeferLimit, func() { a.StartQuestionClock(QuestionAsk, strconv.FormatUint(id, 10)) })
+	armAskClockLocked(open, askClockDeferLimit, func(gen uint64) { a.startDeferredClock(id, gen, true) })
 	q := open.q
 	a.mu.Unlock()
 	a.restateQuestion(q)
@@ -75,19 +78,23 @@ func (a *Agent) StartQuestionClock(kind QuestionKind, token string) bool {
 	if !ok {
 		return false
 	}
+	return a.startDeferredClock(id, 0, false)
+}
+
+// startDeferredClock is [Agent.StartQuestionClock] by id; armed is the bound's
+// own timer, which starts nothing unless it is still the live arming — a bound
+// from an earlier deferral must not start a later one early.
+func (a *Agent) startDeferredClock(id, gen uint64, armed bool) bool {
 	a.mu.Lock()
 	open := a.asked.atLocked(id)
-	if open == nil || open.settled != nil || open.held || !open.deferred || a.closed {
+	if open == nil || open.settled != nil || open.held || !open.deferred || a.closed || (armed && open.clockGen != gen) {
 		a.mu.Unlock()
 		return false
-	}
-	if open.clock != nil {
-		open.clock.Stop()
 	}
 	open.deferred = false
 	after := open.q.Policy.After
 	open.q.Deadline = time.Now().Add(after)
-	open.clock = time.AfterFunc(after, func() { a.askClockRanOut(id) })
+	armAskClockLocked(open, after, func(gen uint64) { a.askClockEnded(id, gen, true) })
 	q := open.q
 	a.mu.Unlock()
 	a.restateQuestion(q)

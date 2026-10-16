@@ -100,6 +100,9 @@ type askOpen struct {
 	// — which is every ratify and every ask whose turn did not wait
 	// (asklane.go's [Agent.startAskClock]).
 	clock *time.Timer
+	// clockGen is which arming of clock is the live one; asklane.go's
+	// [armAskClockLocked] is the only writer.
+	clockGen uint64
 	// held says a person pressed a key on this question and the clock will never
 	// answer it. There is no way back: a clock that resumed would fire exactly
 	// when somebody looked away mid-decision.
