@@ -58,6 +58,12 @@ func newAppMemberCrew(t *testing.T) *appMemberCrew {
 // the member's conversation refusing to open while refuse is set.
 func newAppMemberCrewRefusing(t *testing.T, refuse bool) *appMemberCrew {
 	t.Helper()
+	return newAppMemberCrewWithRefusals(t, refuse, false)
+}
+
+// Both refusal flags are set before the first crew look can open a member.
+func newAppMemberCrewWithRefusals(t *testing.T, refuse, noKey bool) *appMemberCrew {
+	t.Helper()
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	bucket, err := v3ProjectDir(t.TempDir())
 	if err != nil {
@@ -68,6 +74,7 @@ func newAppMemberCrewRefusing(t *testing.T, refuse bool) *appMemberCrew {
 
 	c := &appMemberCrew{conv: &fakeConversation{}, turns: make(chan remote.Following, 1)}
 	c.refuse.Store(refuse)
+	c.noKey.Store(noKey)
 	lead := &fakeConversation{}
 	var mu sync.Mutex
 	c.rec = newAppRecorder()
@@ -388,8 +395,7 @@ func TestAppCrewMemberWaitingForTheKeyIsNotSaid(t *testing.T) {
 	}
 	t.Cleanup(func() { appCrewWarn = was })
 
-	c := newAppMemberCrewRefusing(t, false)
-	c.noKey.Store(true)
+	c := newAppMemberCrewWithRefusals(t, false, true)
 	if _, _, err := c.backend.CrewLog(c.crew, "", 0); err != nil {
 		t.Fatal(err)
 	}
