@@ -383,6 +383,11 @@ type appBackend struct {
 	// actions is the admission of session.act (appsessionactions.go): which
 	// attempts are running, on which conversation.
 	actions appActionGate
+	// createAction and settleAction write a session action's claim
+	// (appsessionactionclaim.go); nil is [appActionClaims.create] and
+	// [appActionClaims.settle].
+	createAction func(appActionClaims, appActionClaim) (bool, error)
+	settleAction func(appActionClaims, appActionClaim) error
 	// warmed closes when [appBackend.Warm] has finished, which Close waits
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}

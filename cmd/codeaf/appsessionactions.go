@@ -41,6 +41,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -77,6 +78,64 @@ type (
 		RememberAlways(text string, everywhere bool) (string, error)
 	}
 )
+
+// appActionDoors is what a conversation's handle can be SHOWN to do of the
+// three. session.actions advertises from it and session.act refuses from it,
+// so an advert and a call can never disagree.
+//
+// A HANDLE TO A FAR ENGINE HAS EVERY METHOD, SO ITS TYPE PROVES NOTHING. A
+// remote.Agent — every conversation the app holds, over a loopback or --host —
+// carries StartTaskEffort and RememberAlways whatever the engine behind it can
+// do; the far server asks its own agent per call. So a choice is offered over
+// such a handle only where a FAR fact says it works, and otherwise it is left
+// out rather than guessed:
+//
+//   - effort: no far fact states that the far agent can choose a task's crew
+//     (internal/remote's server refuses "cannot choose a task's crew" per
+//     call), so over a far handle no effort is offered and one asked for is
+//     refused before anything is claimed.
+//   - everywhere: the far server answers Remember and RememberAlways through
+//     ONE check of one interface (internal/remote's places.go,
+//     MemoryCommands), and the two halves speak one protocol version or do not
+//     connect, so a far engine that keeps a project line keeps an everywhere
+//     line. Remembers() is that far fact, and it gates both scopes alike.
+//   - programs: the far catalogue read answers an empty report when it fails,
+//     so an empty report from a far handle is not known to mean "none"
+//     ([appActionDoors.programs]).
+type appActionDoors struct {
+	task    appTaskDoor
+	effort  appEffortDoor // nil unless it is proven
+	program appProgramDoor
+	memory  appMemoryDoor
+	always  appAlwaysDoor
+	far     bool
+}
+
+// appActionDoorsOf is the doors of conv, as far as they can be shown.
+func appActionDoorsOf(conv appConversation) appActionDoors {
+	_, far := conv.(*remote.Agent)
+	d := appActionDoors{far: far}
+	d.task, _ = conv.(appTaskDoor)
+	if !far {
+		d.effort, _ = conv.(appEffortDoor)
+	}
+	d.program, _ = conv.(appProgramDoor)
+	d.memory, _ = conv.(appMemoryDoor)
+	d.always, _ = conv.(appAlwaysDoor)
+	return d
+}
+
+// programs is the engine's catalogue and whether it is KNOWN. A conversation
+// in this process answers its own rows, so none is a fact; a far handle
+// answers the zero report when its read fails, so none from it is unknown —
+// never "carries no programs" and never "no program named …".
+func (d appActionDoors) programs() (rows []session.DelegateRow, known bool) {
+	rows = d.program.Delegates().Rows
+	return rows, len(rows) > 0 || !d.far
+}
+
+// The words for a catalogue that could not be known.
+const appActionNoCatalogue = "the engine's programs could not be read, or it reported none"
 
 // appActionGate is the process's admission: which attempts are running, on
 // which conversation. The zero value is ready.
@@ -178,6 +237,7 @@ const (
 	appActionNoteIntent     = "an earlier attempt may have started this and was never recorded as finished; check the task list or the memory before asking again with a new client_id"
 	appActionNoteUnanswered = "the engine did not answer, so it is not known whether this started; check the task list or the memory before asking again with a new client_id"
 	appActionNoteFailed     = "the producer answered an error, which does not prove nothing was started or kept; check the task list or the memory before asking again with a new client_id"
+	appActionNoteUnsettled  = "the engine could not confirm that this answer was recorded; a later read of this client_id may say uncertain instead of this answer"
 )
 
 // receipt is a claim as the wire carries it.
@@ -225,18 +285,31 @@ func appActionUnreadable(err error) error {
 }
 
 // SessionActions says what the conversation's engine can do of the three.
+//
+// IT IS A READ AND IT IS BOUNDED LIKE ONE: it may open the conversation, and
+// over --host it asks the far engine for its catalogue, so it holds one of the
+// read slots session.action.get shares until both have answered. A full gate
+// is busy at once; nothing queues, and no goroutine is started to wait.
 func (b *appBackend) SessionActions(agent string) (appwire.ActionCapabilities, error) {
+	release, ok := b.actions.reading()
+	if !ok {
+		return appwire.ActionCapabilities{}, appActionReadsBusy()
+	}
+	defer release()
 	_, live, err := b.heldLive(agent)
 	if err != nil {
 		return appwire.ActionCapabilities{}, err
 	}
-	conv := live.conn.Conv
-	out := appwire.ActionCapabilities{Agent: agent}
+	return appActionDoorsOf(live.conn.Conv).capabilities(agent), nil
+}
 
+// capabilities is the advert of these doors: always the three, in order, each
+// available or absent with its reason.
+func (d appActionDoors) capabilities(agent string) appwire.ActionCapabilities {
 	task := appwire.ActionCapability{Action: appwire.ActionTaskStart}
-	if _, ok := conv.(appTaskDoor); ok {
+	if d.task != nil {
 		task.Available = true
-		if _, ok := conv.(appEffortDoor); ok {
+		if d.effort != nil {
 			task.Efforts = []string{appwire.EffortBest, appwire.EffortCheap}
 		}
 	} else {
@@ -244,9 +317,11 @@ func (b *appBackend) SessionActions(agent string) (appwire.ActionCapabilities, e
 	}
 
 	program := appwire.ActionCapability{Action: appwire.ActionProgramStart}
-	if door, ok := conv.(appProgramDoor); !ok {
+	if d.program == nil {
 		program.Why = "this conversation has no program door"
-	} else if rows := door.Delegates().Rows; len(rows) == 0 {
+	} else if rows, known := d.programs(); !known {
+		program.Why = appActionNoCatalogue
+	} else if len(rows) == 0 {
 		program.Why = "this engine carries no programs"
 	} else {
 		program.Available = true
@@ -258,19 +333,23 @@ func (b *appBackend) SessionActions(agent string) (appwire.ActionCapabilities, e
 	}
 
 	memory := appwire.ActionCapability{Action: appwire.ActionMemoryRemember}
-	if door, ok := conv.(appMemoryDoor); !ok {
+	if d.memory == nil {
 		memory.Why = "this conversation has no memory door"
-	} else if !door.Remembers() {
+	} else if !d.memory.Remembers() {
 		memory.Why = "this conversation keeps no memory"
 	} else {
 		memory.Available = true
 		memory.Scopes = []string{appwire.ScopeProject}
-		if _, ok := conv.(appAlwaysDoor); ok {
+		if d.always != nil {
 			memory.Scopes = append(memory.Scopes, appwire.ScopeEverywhere)
 		}
 	}
-	out.Actions = []appwire.ActionCapability{task, program, memory}
-	return out, nil
+	return appwire.ActionCapabilities{Agent: agent, Actions: []appwire.ActionCapability{task, program, memory}}
+}
+
+// appActionReadsBusy is a full read gate.
+func appActionReadsBusy() error {
+	return appwire.Errorf(appwire.CodeBusy, "too many reads of actions are running; ask again in a moment")
 }
 
 // SessionActionGet reads the persisted receipt of a client_id. Not found says
@@ -278,18 +357,19 @@ func (b *appBackend) SessionActions(agent string) (appwire.ActionCapabilities, e
 func (b *appBackend) SessionActionGet(agent, clientID string) (appwire.ActionReceipt, error) {
 	release, ok := b.actions.reading()
 	if !ok {
-		return appwire.ActionReceipt{}, appwire.Errorf(appwire.CodeBusy, "too many reads of action records are running; ask again in a moment")
+		return appwire.ActionReceipt{}, appActionReadsBusy()
 	}
 	defer release()
-	if f, ok := b.actions.flight(appClaimName(clientID)); ok {
+	key := appClaimName(clientID)
+	claim, found, err := b.actionRecord(key, clientID, true)
+	if err != nil {
+		return appwire.ActionReceipt{}, appActionUnreadable(err)
+	}
+	if f, ok := b.actions.flight(key); ok && (!found || claim.State == appActionIntent) {
 		if f.agent != agent {
 			return appwire.ActionReceipt{}, appwire.Errorf(appwire.CodeConflict, "that client_id is already used for another conversation")
 		}
 		return f.inProgress(), nil
-	}
-	claim, found, err := b.actionClaims().read(clientID)
-	if err != nil {
-		return appwire.ActionReceipt{}, appActionUnreadable(err)
 	}
 	if !found {
 		return appwire.ActionReceipt{}, appwire.Errorf(appwire.CodeNotFound,
@@ -301,6 +381,30 @@ func (b *appBackend) SessionActionGet(agent, clientID string) (appwire.ActionRec
 	return claim.receipt(true), nil
 }
 
+// actionRecord reads clientID's record for a lookup. THE RECORD IS READ BEFORE
+// THE FLIGHT IS LOOKED AT, and that order is what makes the pair true: an
+// attempt registers its flight before it claims and releases it only after it
+// has settled, so a record at intent read first, with this process's flight
+// still there after, is that flight running. A flight looked at first could
+// be missed by an attempt that is admitted and claims a moment later, and its
+// intent then read as somebody else's. When watch is set and the record says
+// intent with no flight here, it is read once more, because the flight may
+// have settled and gone between the two looks.
+func (b *appBackend) actionRecord(key, clientID string, watch bool) (appActionClaim, bool, error) {
+	claims := b.actionClaims()
+	claim, found, err := claims.read(clientID)
+	if err != nil || !found || !watch || claim.State != appActionIntent {
+		return claim, found, err
+	}
+	if _, running := b.actions.flight(key); running {
+		return claim, found, nil
+	}
+	if again, ok, err := claims.read(clientID); err == nil && ok {
+		return again, true, nil
+	}
+	return claim, found, nil
+}
+
 // SessionAct runs one action under its client_id. See the file's head for the
 // order; every return before the claim made nothing.
 func (b *appBackend) SessionAct(ask appwire.ActionAsk) (appwire.ActionReceipt, error) {
@@ -308,20 +412,20 @@ func (b *appBackend) SessionAct(ask appwire.ActionAsk) (appwire.ActionReceipt, e
 	key := appClaimName(ask.ClientID)
 	claims := b.actionClaims()
 
-	// A REPEAT IS A LOOKUP, never busy and never an admission: what is running
-	// now, then what the record says.
+	// A REPEAT IS A LOOKUP, never busy and never an admission: what the record
+	// says, and whether this process is running it.
 	replay := func(own bool) (appwire.ActionReceipt, bool, error) {
+		claim, found, err := b.actionRecord(key, ask.ClientID, !own)
+		if err != nil {
+			return appwire.ActionReceipt{}, true, appActionUnreadable(err)
+		}
 		// THE ATTEMPT THIS CALL IS RUNNING IS NOT A REPEAT OF ITSELF: once
 		// admitted, only the record can say another attempt got there first.
-		if f, ok := b.actions.flight(key); ok && !own {
+		if f, ok := b.actions.flight(key); ok && !own && (!found || claim.State == appActionIntent) {
 			if err := appActionConflict(ask.Agent, ask.Action, digest, f.agent, f.action, f.digest); err != nil {
 				return appwire.ActionReceipt{}, true, err
 			}
 			return f.inProgress(), true, nil
-		}
-		claim, found, err := claims.read(ask.ClientID)
-		if err != nil {
-			return appwire.ActionReceipt{}, true, appActionUnreadable(err)
 		}
 		if !found {
 			return appwire.ActionReceipt{}, false, nil
@@ -370,14 +474,25 @@ func (b *appBackend) SessionAct(ask appwire.ActionAsk) (appwire.ActionReceipt, e
 		V: appActionClaimV, ClientID: ask.ClientID, Action: ask.Action, Agent: ask.Agent,
 		Digest: digest, State: appActionIntent, At: b.now().UTC(),
 	}
-	made, err := claims.create(claim)
+	create := appActionClaims.create
+	if b.createAction != nil {
+		create = b.createAction
+	}
+	made, err := create(claims, claim)
 	if err != nil {
 		return appwire.ActionReceipt{}, appwire.Errorf(appwire.CodeEngine,
 			"the engine could not record this attempt, so it did not start it (%s)", redact.Secrets(plainWords(err.Error())))
 	}
 	if !made {
 		// Another process holds the name; what it recorded is the answer.
-		r, _, err := replay(true)
+		r, found, err := replay(true)
+		if err == nil && !found {
+			// THE NAME WAS TAKEN AND ITS RECORD IS GONE: somebody claimed this
+			// client_id, so its absence now is not "nothing was sent", and an
+			// empty answer is no receipt at all. Nothing ran here.
+			return appwire.ActionReceipt{}, appwire.Errorf(appwire.CodeUncertain,
+				"another attempt claimed that client_id and its record could not be read back, so this engine cannot say whether it ran; look at the task list or the memory before asking again with a new client_id")
+		}
 		return r, err
 	}
 
@@ -418,10 +533,16 @@ func (b *appBackend) SessionAct(ask appwire.ActionAsk) (appwire.ActionReceipt, e
 	if runErr == nil {
 		r.Task, r.Memory = task, memory
 	}
-	if err := claims.settle(settled); err != nil {
-		// The caller still gets the producer's real answer; the record stays
-		// at intent, so a later read says uncertain and never "not sent".
-		r.Note = "the engine could not record this receipt, so a later read of it will say it is uncertain"
+	settle := appActionClaims.settle
+	if b.settleAction != nil {
+		settle = b.settleAction
+	}
+	if err := settle(claims, settled); err != nil {
+		// The caller still gets the producer's real answer. WHAT THE RECORD
+		// SAYS NOW IS NOT KNOWN: the rename may have landed before the folder
+		// sync failed, so it may read as this answer, or still as the claim,
+		// which a later read calls uncertain — never "not sent".
+		r.Note = appActionNoteUnsettled
 	}
 	return r, nil
 }
@@ -446,6 +567,11 @@ type appActionRunner func(ctx context.Context) (*appwire.ActionTask, *appwire.Ac
 // actionRun checks that the conversation can do what the ask says, with
 // nothing written and nothing called, and answers the call to make.
 func (b *appBackend) actionRun(conv appConversation, ask appwire.ActionAsk) (appActionRunner, error) {
+	return b.actionRunWith(appActionDoorsOf(conv), ask)
+}
+
+// actionRunWith is [appBackend.actionRun] over doors already shown.
+func (b *appBackend) actionRunWith(doors appActionDoors, ask appwire.ActionAsk) (appActionRunner, error) {
 	agent := ask.Agent
 	taskOf := func(program string, solo bool, id uint64, title, note string) *appwire.ActionTask {
 		return &appwire.ActionTask{
@@ -455,13 +581,12 @@ func (b *appBackend) actionRun(conv appConversation, ask appwire.ActionAsk) (app
 	switch ask.Action {
 	case appwire.ActionTaskStart:
 		in := ask.Task
-		door, ok := conv.(appTaskDoor)
-		if !ok {
+		door, effortDoor := doors.task, doors.effort
+		if door == nil {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "this conversation has no task door")
 		}
-		effortDoor, hasEffort := conv.(appEffortDoor)
-		if in.Effort != "" && !hasEffort {
-			return nil, appwire.Errorf(appwire.CodeBadParams, "this conversation cannot choose a task's crew")
+		if in.Effort != "" && effortDoor == nil {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "this conversation cannot be shown to choose a task's crew, so no effort is offered here")
 		}
 		brief := strings.TrimSpace(in.Brief)
 		// THE PERSON'S STANDING `single` ANSWER IS FOLDED IN as the terminal's
@@ -484,15 +609,20 @@ func (b *appBackend) actionRun(conv appConversation, ask appwire.ActionAsk) (app
 
 	case appwire.ActionProgramStart:
 		in := ask.Program
-		door, ok := conv.(appProgramDoor)
-		if !ok {
+		door := doors.program
+		if door == nil {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "this conversation has no program door")
 		}
 		// THE PROGRAM IS A NAME IN THE ENGINE'S OWN CATALOGUE — the far build's
 		// over --host — and the producer checks it again. No second registry.
+		// A catalogue that could not be known refuses nothing by name: it is
+		// the engine's failure, and nothing is claimed or started.
+		rows, known := doors.programs()
+		if !known {
+			return nil, appwire.Errorf(appwire.CodeEngine, "%s, so nothing was started", appActionNoCatalogue)
+		}
 		var row *session.DelegateRow
 		var have []string
-		rows := door.Delegates().Rows
 		for i := range rows {
 			have = append(have, rows[i].Name)
 			if rows[i].Name == in.Program {
@@ -516,8 +646,8 @@ func (b *appBackend) actionRun(conv appConversation, ask appwire.ActionAsk) (app
 
 	case appwire.ActionMemoryRemember:
 		in := ask.Memory
-		door, ok := conv.(appMemoryDoor)
-		if !ok {
+		door := doors.memory
+		if door == nil {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "this conversation has no memory door")
 		}
 		if !door.Remembers() {
@@ -527,8 +657,8 @@ func (b *appBackend) actionRun(conv appConversation, ask appwire.ActionAsk) (app
 		if scope == "" {
 			scope = appwire.ScopeProject
 		}
-		always, hasAlways := conv.(appAlwaysDoor)
-		if scope == appwire.ScopeEverywhere && !hasAlways {
+		always := doors.always
+		if scope == appwire.ScopeEverywhere && always == nil {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "this conversation cannot keep a line everywhere")
 		}
 		text := strings.TrimSpace(in.Text)

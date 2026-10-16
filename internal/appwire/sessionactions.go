@@ -137,7 +137,8 @@ type ActionCapability struct {
 	// --host, the far build's.
 	Programs []ActionProgram `json:"programs,omitempty"`
 	// Scopes are the scopes memory.remember takes here; Efforts what task.start
-	// takes beside none.
+	// takes beside none. Each lists only what the engine can be SHOWN to
+	// honour: a choice a far handle's type merely permits is left out.
 	Scopes  []string `json:"scopes,omitempty"`
 	Efforts []string `json:"efforts,omitempty"`
 }

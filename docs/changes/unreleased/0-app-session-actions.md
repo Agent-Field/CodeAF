@@ -26,5 +26,12 @@ producer proves by type that its error came before an effect. Only what the engi
 can refuse before it claims or calls anything (malformed asks, an unknown program, a
 door the conversation lacks, memory off) is refused, as an RPC error with no record.
 
+Only what the engine can be shown to do is offered. Every conversation the app holds is
+reached through the engine wire, whose handle has every method whatever the far engine
+can do, so `/task --best` and `--cheap` are not offered there (no far fact states them)
+and a `task.effort` is refused before anything is claimed; an empty program catalogue
+from that wire is unknown, not "none". `session.actions` shares the bounded read gate
+with `session.action.get`.
+
 Not built here: every other action in the slash catalogue. This does not make the
 desktop's 51 commands work; it makes three of them possible.

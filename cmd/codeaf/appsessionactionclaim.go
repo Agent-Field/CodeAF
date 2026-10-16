@@ -37,8 +37,16 @@ import (
 // The folder is a plain one beside the app's state file, a link in its place
 // is refused, a name is the sha256 of the client_id (a client_id never becomes
 // a path), a claim is created with an exclusive link and rewritten whole by
-// rename, both synced with their folder, and one is read through a bound.
+// rename, both synced with their folder, and one is read through a bound from
+// a descriptor proven to be the plain file that was looked at.
 // Claims are never swept: one small file per accepted action.
+//
+// A FILESYSTEM CALL CANNOT BE CANCELLED. A read, a link, a rename or a sync of
+// a claim runs on the request's own goroutine until the disk answers, and the
+// admission slot it holds is held until then: a hung disk holds the slot, and
+// the gate answers busy to the next caller rather than queueing it. Nothing
+// starts a goroutine or a timer to abandon such a call, because an abandoned
+// write is one whose outcome nobody would know.
 
 // appActionClaimsName is the claims' folder, beside the app's state file.
 const appActionClaimsName = "session-actions"
@@ -92,31 +100,9 @@ func (c appActionClaims) read(clientID string) (claim appActionClaim, found bool
 		return appActionClaim{}, false, err
 	}
 	defer root.Close()
-	name := appClaimName(clientID)
-	info, err := root.Lstat(name)
-	if errors.Is(err, fs.ErrNotExist) {
-		return appActionClaim{}, false, nil
-	}
-	if err != nil {
+	raw, found, err := appReadClaimFile(root, appClaimName(clientID), appActionClaimMax)
+	if err != nil || !found {
 		return appActionClaim{}, false, err
-	}
-	if !info.Mode().IsRegular() {
-		return appActionClaim{}, false, errors.New("the record of that client_id is not a plain file")
-	}
-	file, err := root.OpenFile(name, os.O_RDONLY, 0)
-	if err != nil {
-		return appActionClaim{}, false, err
-	}
-	defer file.Close()
-	if opened, err := file.Stat(); err != nil || !os.SameFile(info, opened) {
-		return appActionClaim{}, false, errors.New("the record of that client_id changed while it was read")
-	}
-	raw, err := io.ReadAll(io.LimitReader(file, appActionClaimMax+1))
-	if err != nil {
-		return appActionClaim{}, false, err
-	}
-	if len(raw) > appActionClaimMax {
-		return appActionClaim{}, false, errors.New("the record of that client_id is larger than any record")
 	}
 	if err := json.Unmarshal(raw, &claim); err != nil {
 		return appActionClaim{}, false, fmt.Errorf("the record of that client_id cannot be read: %w", err)
@@ -126,6 +112,55 @@ func (c appActionClaims) read(clientID string) (claim appActionClaim, found bool
 		return appActionClaim{}, false, errors.New("the record of that client_id is not one this engine wrote")
 	}
 	return claim, true, nil
+}
+
+// appReadClaimFile reads name in root through limit. found is false only when
+// the name is provably not there.
+//
+// IT NEVER BLOCKS IN OPEN. The name is looked at first, and anything but a
+// plain file — a link, a pipe, a device — is refused unread, as before. A pipe
+// put in its place AFTER that look would hold an ordinary open until a writer
+// came, and with it this request's admission slot; so the open is
+// non-blocking, and the DESCRIPTOR it answers must itself be a plain file and
+// the very file that was looked at. A link swapped in is resolved only inside
+// the claims' folder (os.Root), and is then refused by that same check.
+func appReadClaimFile(root *os.Root, name string, limit int64) (raw []byte, found bool, err error) {
+	info, err := root.Lstat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, false, errors.New("the record of that client_id is not a plain file")
+	}
+	raw, err = appReadClaimAt(root, name, info, limit)
+	if err != nil {
+		return nil, false, err
+	}
+	return raw, true, nil
+}
+
+// appReadClaimAt opens name without waiting and reads it through limit, only
+// if the descriptor is a plain file and the very file seen was.
+func appReadClaimAt(root *os.Root, name string, seen fs.FileInfo, limit int64) ([]byte, error) {
+	file, err := root.OpenFile(name, appClaimReadFlag, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	if opened, err := file.Stat(); err != nil || !opened.Mode().IsRegular() || !os.SameFile(seen, opened) {
+		return nil, errors.New("the record of that client_id changed while it was read")
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > limit {
+		return nil, errors.New("the record of that client_id is larger than any record")
+	}
+	return raw, nil
 }
 
 // create claims claim.ClientID, durably. made is false when it is already

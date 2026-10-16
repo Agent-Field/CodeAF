@@ -856,8 +856,52 @@ func TestAnUnansweredProducerIsUncertainAndNeverRetried(t *testing.T) {
 	}
 }
 
-// IF THE CLAIM CANNOT BE WRITTEN THE PRODUCER IS NOT CALLED.
+// IF THE CLAIM CANNOT BE WRITTEN THE PRODUCER IS NOT CALLED, and the engine
+// says so with proof: `engine`, "did not start it", no record, and the same
+// client_id runs once when the folder can be written again. The folder here
+// is READABLE — the lookup before the claim succeeds and finds nothing — so it
+// is the create that fails, not the read.
 func TestAClaimThatCannotBeWrittenStopsTheProducer(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into a folder whatever its mode says")
+	}
+	h := newActionHarness(t)
+	agent := h.agent()
+	dir := filepath.Join(filepath.Dir(h.b.state.where()), appActionClaimsName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	_, e := h.w.act(taskAsk(agent, "t-w", "x"))
+	wantCode(t, e, appwire.CodeEngine)
+	if !strings.Contains(e.Message, "did not start it") {
+		t.Fatalf("the refusal must say nothing started: %q", e.Message)
+	}
+	if len(h.p.briefs) != 0 {
+		t.Fatalf("the producer ran without a claim: %v", h.p.briefs)
+	}
+	_, e = h.w.get(agent, "t-w")
+	wantCode(t, e, appwire.CodeNotFound)
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		r, e := h.w.act(taskAsk(agent, "t-w", "x"))
+		if e != nil || r.State != appwire.ActionDone || r.Replayed != (i == 1) {
+			t.Fatalf("try %d once writable: %+v %v", i, r, e)
+		}
+	}
+	if tasks, _, _ := h.p.counts(); tasks != 1 {
+		t.Fatalf("the producer ran %d times", tasks)
+	}
+}
+
+// A CLAIMS FOLDER THAT CANNOT EVEN BE READ IS UNCERTAIN, NOT "NEW": a file where
+// the folder should be fails the lookup, and the producer is not called.
+func TestAClaimsFolderThatCannotBeReadIsUncertain(t *testing.T) {
 	h := newActionHarness(t)
 	agent := h.agent()
 	dir := filepath.Join(filepath.Dir(h.b.state.where()), appActionClaimsName)
@@ -868,12 +912,9 @@ func TestAClaimThatCannotBeWrittenStopsTheProducer(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, e := h.w.act(taskAsk(agent, "t-w", "x"))
-	if e == nil {
-		t.Fatal("an unwritable claim was accepted")
-	}
-	if e.Code != appwire.CodeEngine && e.Code != appwire.CodeUncertain {
-		t.Fatalf("code %s", e.Code)
-	}
+	wantCode(t, e, appwire.CodeUncertain)
+	_, e = h.w.get(agent, "t-w")
+	wantCode(t, e, appwire.CodeUncertain)
 	if len(h.p.briefs) != 0 {
 		t.Fatalf("the producer ran without a claim: %v", h.p.briefs)
 	}
