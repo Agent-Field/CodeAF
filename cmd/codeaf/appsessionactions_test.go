@@ -962,7 +962,7 @@ func TestMemoryRememberKeepsAuthoredTextThroughTheProducer(t *testing.T) {
 	h := newActionHarness(t)
 	agent := h.agent()
 	r, e := h.w.act(memoryAsk(agent, "m-1", "  we deploy on Fridays  ", ""))
-	if e != nil || r.State != appwire.ActionDone || r.Memory == nil || r.Memory.Scope != appwire.ScopeProject ||
+	if e != nil || r.State != appwire.ActionDone || r.Memory == nil || r.Memory.Scope != "" ||
 		r.Memory.Receipt != "remembered · we deploy on Fridays · for this project" || r.Task != nil {
 		t.Fatalf("%+v %v", r, e)
 	}

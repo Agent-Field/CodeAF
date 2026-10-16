@@ -333,58 +333,67 @@ func TestFarDoorsOfferOnlyWhatTheyCanShow(t *testing.T) {
 	}
 }
 
-// A PROJECT LINE THAT FELL BACK TO EVERYWHERE SAYS EVERYWHERE. The producer
-// keeps a line for the person everywhere when the conversation has no project,
-// and says so as the receipt's last words; the scope the caller reads, now and
-// on every replay, is where the line holds, not what was asked. A line that
-// merely QUOTES those words, or a project that has one, is left as asked.
-func TestAProjectLineWidenedByTheProducerReportsEverywhere(t *testing.T) {
+// A PROJECT LINE STATES NO SCOPE; AN EVERYWHERE LINE STATES EVERYWHERE. The
+// project door keeps the line for the project, or for the person everywhere
+// when the conversation has none, and answers only a sentence, so the scope is
+// absent on the answer, the replay and the read whatever that sentence says;
+// the sentence itself is the producer's, unchanged. The everywhere method
+// fixes where the line holds, so its scope is stated. A record an earlier
+// build wrote with the ASKED scope reads with none.
+func TestOnlyTheEverywhereMethodStatesWhereALineHolds(t *testing.T) {
 	h := newActionHarness(t)
 	agent := h.agent()
+	widened := "for you everywhere, since this conversation has no project of its own"
 	h.p.mu.Lock()
-	h.p.memReach = memoryNoProjectReach
+	h.p.memReach = widened
 	h.p.mu.Unlock()
 	r, e := h.w.act(memoryAsk(agent, "w-1", "ship on Fridays", appwire.ScopeProject))
-	if e != nil || r.State != appwire.ActionDone || r.Memory == nil || r.Memory.Scope != appwire.ScopeEverywhere ||
-		!strings.HasSuffix(r.Memory.Receipt, memoryNoProjectReach) {
-		t.Fatalf("a widened line: %+v %v", r, e)
+	if e != nil || r.State != appwire.ActionDone || r.Memory == nil || r.Memory.Scope != "" ||
+		r.Memory.Receipt != "remembered · ship on Fridays · "+widened {
+		t.Fatalf("a project line: %+v %v", r, e)
 	}
 	again, e := h.w.act(memoryAsk(agent, "w-1", "ship on Fridays", ""))
-	if e != nil || !again.Replayed || again.Memory == nil || again.Memory.Scope != appwire.ScopeEverywhere {
-		t.Fatalf("the replay forgot where the line holds: %+v %v", again, e)
+	if e != nil || !again.Replayed || again.Memory == nil || again.Memory.Scope != "" {
+		t.Fatalf("the replay states a scope nobody knows: %+v %v", again, e)
 	}
-	if got, e := h.w.get(agent, "w-1"); e != nil || got.Memory == nil || got.Memory.Scope != appwire.ScopeEverywhere {
-		t.Fatalf("the read forgot where the line holds: %+v %v", got, e)
+	if got, e := h.w.get(agent, "w-1"); e != nil || got.Memory == nil || got.Memory.Scope != "" {
+		t.Fatalf("the read states a scope nobody knows: %+v %v", got, e)
+	}
+	every, e := h.w.act(memoryAsk(agent, "w-2", "tabs", appwire.ScopeEverywhere))
+	if e != nil || every.Memory == nil || every.Memory.Scope != appwire.ScopeEverywhere {
+		t.Fatalf("an everywhere line: %+v %v", every, e)
+	}
+	if got, e := h.w.get(agent, "w-2"); e != nil || got.Memory == nil || got.Memory.Scope != appwire.ScopeEverywhere {
+		t.Fatalf("the read of an everywhere line: %+v %v", got, e)
 	}
 
-	// Not widened: the project's own receipt, and a quote of the words.
-	for _, c := range []struct{ reach, text, want string }{
-		{"", "plain", appwire.ScopeProject},
-		{"for this project", memoryNoProjectReach + " is a phrase", appwire.ScopeProject},
-	} {
-		h.p.mu.Lock()
-		h.p.memReach = c.reach
-		h.p.mu.Unlock()
-		got, e := h.w.act(memoryAsk(agent, "w-"+c.text[:5], c.text, ""))
-		if e != nil || got.Memory == nil || got.Memory.Scope != c.want {
-			t.Fatalf("%q: %+v %v", c.text, got, e)
-		}
+	old := memoryAsk(agent, "w-old", "an older record", appwire.ScopeProject)
+	if made, err := h.b.actionClaims().create(appActionClaim{V: appActionClaimV, ClientID: "w-old", Action: old.Action, Agent: agent,
+		Digest: appActionDigest(old), State: appActionDone, At: time.Now().UTC(),
+		Memory: &appwire.ActionMemory{Scope: appwire.ScopeProject}}); err != nil || !made {
+		t.Fatalf("the older record: %v %v", made, err)
+	}
+	if got, e := h.w.get(agent, "w-old"); e != nil || got.State != appwire.ActionDone || got.Memory == nil || got.Memory.Scope != "" {
+		t.Fatalf("an older record's asked scope read as where the line holds: %+v %v", got, e)
 	}
 }
 
-// THE FIRST CLAIM'S FOLDER IS MADE DURABLE BEFORE THE CLAIM IS. The order is
-// observed, not a power loss: when the parent is asked to sync, the claims
-// folder exists and holds no claim yet; a second claim in the same folder does
-// not sync the parent again.
-func TestTheFirstClaimSyncsTheNewFolderBeforeAnyClaimIsMade(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "state", appActionClaimsName)
+// EVERY CLAIM MAKES ITS FOLDER CHAIN DURABLE BEFORE THE CLAIM IS. The order is
+// observed, not a power loss: when the state folder is synced the claims
+// folder is in it and holds none of this claim yet, and then the state
+// folder's parent is synced; a second claim in the same folder does both
+// again, because a folder that exists may be another process's, not yet
+// synced.
+func TestEveryClaimSyncsItsFolderChainBeforeTheClaimIsMade(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	dir := filepath.Join(state, appActionClaimsName)
 	var seen []string
-	c := appActionClaims{appStartClaims: appStartClaims{dir: dir}, syncParent: func(folder string) error {
+	c := appActionClaims{appStartClaims: appStartClaims{dir: dir}, syncFolder: func(folder string) error {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			t.Errorf("the folder was not there when its parent was synced: %v", err)
+			t.Errorf("the claims folder was not there when %s was synced: %v", folder, err)
 		}
-		seen = append(seen, folder+" holding "+strconv.Itoa(len(entries)))
+		seen = append(seen, folder+" with "+strconv.Itoa(len(entries)))
 		return nil
 	}}
 	claim := appActionClaim{V: appActionClaimV, ClientID: "d-1", Action: appwire.ActionTaskStart, Agent: "a", Digest: "x", State: appActionIntent, At: time.Now().UTC()}
@@ -395,21 +404,80 @@ func TestTheFirstClaimSyncsTheNewFolderBeforeAnyClaimIsMade(t *testing.T) {
 	if made, err := c.create(claim); err != nil || !made {
 		t.Fatalf("%v %v", made, err)
 	}
-	if want := []string{filepath.Dir(dir) + " holding 0"}; strings.Join(seen, ";") != strings.Join(want, ";") {
-		t.Fatalf("parent syncs %v, want exactly %v", seen, want)
+	want := []string{state + " with 0", filepath.Dir(state) + " with 0", state + " with 1", filepath.Dir(state) + " with 1"}
+	if strings.Join(seen, ";") != strings.Join(want, ";") {
+		t.Fatalf("syncs %v, want exactly %v", seen, want)
 	}
 }
 
-// A PARENT THAT CANNOT BE SYNCED STOPS THE PRODUCER, BEFORE ANY CLAIM. The
-// claim is not written (no record, nothing to read back as one), the wire
+// A CLAIMS FOLDER ANOTHER PROCESS HAS MADE AND NOT YET SYNCED IS NOT TRUSTED.
+// The other process made the folder and is stalled before its own sync; this
+// one sees the folder, and its producer does not run, and no claim exists,
+// until its own sync of the chain has answered.
+func TestAFolderAnotherProcessHasNotSyncedHoldsTheProducerUntilTheSync(t *testing.T) {
+	h := newActionHarness(t)
+	agent := h.agent()
+	dir := h.b.actionClaims().dir
+	if err := os.MkdirAll(dir, appStateFolderMode); err != nil {
+		t.Fatal(err) // the other process's Mkdir, its sync never reached
+	}
+	entered, release := make(chan string, 4), make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	h.b.createAction = func(c appActionClaims, claim appActionClaim) (bool, error) {
+		c.syncFolder = func(folder string) error {
+			entered <- folder
+			<-release
+			return nil
+		}
+		return c.create(claim)
+	}
+	done := make(chan appwire.ActionReceipt, 1)
+	go func() {
+		r, e := h.w.act(taskAsk(agent, "seen-1", "go"))
+		if e != nil {
+			t.Errorf("the claim after the sync: %v", e)
+		}
+		done <- r
+	}()
+	select {
+	case got := <-entered:
+		if got != filepath.Dir(dir) {
+			t.Fatalf("the first sync was of %s, want the state folder %s", got, filepath.Dir(dir))
+		}
+	case r := <-done:
+		t.Fatalf("the claim was made without syncing the folder it found: %+v", r)
+	}
+	if tasks, _, _ := h.p.counts(); tasks != 0 {
+		t.Fatalf("the producer ran %d times before the folder was synced", tasks)
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Fatalf("a claim was written before the folder was synced: %v %v", entries, err)
+	}
+	close(release)
+	if r := <-done; r.State != appwire.ActionDone {
+		t.Fatalf("%+v", r)
+	}
+	if tasks, _, _ := h.p.counts(); tasks != 1 {
+		t.Fatalf("the producer ran %d times", tasks)
+	}
+}
+
+// A FOLDER CHAIN THAT CANNOT BE SYNCED STOPS THE PRODUCER, BEFORE ANY CLAIM.
+// The claim is not written (no record, nothing to read back as one), the wire
 // answers engine "did not start it", and the same client_id runs once as soon
-// as the disk answers.
-func TestAFirstFolderThatCannotBeMadeDurableStopsTheProducer(t *testing.T) {
+// as the disk answers, syncing the chain itself again.
+func TestAFolderThatCannotBeMadeDurableStopsTheProducer(t *testing.T) {
 	h := newActionHarness(t)
 	agent := h.agent()
 	fail, syncs := true, 0
 	h.b.createAction = func(c appActionClaims, claim appActionClaim) (bool, error) {
-		c.syncParent = func(string) error {
+		c.syncFolder = func(string) error {
 			syncs++
 			if fail {
 				return errors.New("the disk said no")
@@ -427,7 +495,7 @@ func TestAFirstFolderThatCannotBeMadeDurableStopsTheProducer(t *testing.T) {
 		t.Fatalf("the producer ran %d times on a folder the disk may not keep", tasks)
 	}
 	if _, found, err := h.b.actionClaims().read("dur-1"); found || err != nil {
-		t.Fatalf("a claim exists after the failed first folder: found=%v err=%v", found, err)
+		t.Fatalf("a claim exists after the failed sync: found=%v err=%v", found, err)
 	}
 	fail = false
 	r, e := h.w.act(taskAsk(agent, "dur-1", "go"))
@@ -437,24 +505,9 @@ func TestAFirstFolderThatCannotBeMadeDurableStopsTheProducer(t *testing.T) {
 	if tasks, _, _ := h.p.counts(); tasks != 1 {
 		t.Fatalf("the producer ran %d times", tasks)
 	}
-	// The failed attempt left no folder that looks made: the retry synced the
-	// parent itself instead of resting on an entry never proven durable.
-	if syncs != 2 {
-		t.Fatalf("the parent was synced %d times across a failure and its retry, want 2", syncs)
-	}
-}
-
-// THE WORDS THE SCOPE IS READ FROM ARE THE PRODUCER'S. memoryNoProjectReach is
-// a copy of session.memoryReach's widened spelling (the producer's receipt is
-// the only fact a far handle gives), so the copy is held to the source: if the
-// producer rewords it, this fails instead of the scope quietly going back to
-// saying project.
-func TestTheWidenedReachWordsAreTheProducers(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "session", "memory.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(raw), `return "`+memoryNoProjectReach+`"`) {
-		t.Fatalf("internal/session/memory.go no longer returns %q from memoryReach", memoryNoProjectReach)
+	// One failed sync, then the retry's two: it did not rest on the folder
+	// the failed attempt left.
+	if syncs != 3 {
+		t.Fatalf("the chain was synced %d times across a failure and its retry, want 3", syncs)
 	}
 }

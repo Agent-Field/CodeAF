@@ -33,12 +33,15 @@ and a `task.effort` is refused before anything is claimed; an empty program cata
 from that wire is unknown, not "none". `session.actions` shares the bounded read gate
 with `session.action.get`.
 
-A memory receipt's `scope` is where the line actually holds: a project line the
-producer kept for the person everywhere, because the conversation has no project, says
-`everywhere`. The first claim of a home syncs the new claims folder in its parent before
-the claim is made, and a failure there answers `engine` "did not start it" with nothing
-run; it does not sync the state folder's own entry above it, and claims no more than a
-process crash.
+A memory receipt's `scope` is optional and present only for an `everywhere` line, where
+the method fixes where the line holds. A project line may hold for the project or, when
+the conversation has none, for the person everywhere; the producer says which only in
+its receipt sentence, so that `scope` is absent (unknown), never `project`, and is never
+read out of the sentence. Every claim first syncs the claims folder's entry in
+`<home>/app` and that folder's entry in `<home>` (not only the claim that made the
+folder: another process's new folder can be seen before it synced it); a failed sync
+answers `engine` "did not start it" with nothing run. `<home>`'s own entry is not synced
+here, so a claim survives a process crash, and a power loss once `<home>` is on disk.
 
 Not built here: every other action in the slash catalogue. This does not make the
 desktop's 51 commands work; it makes three of them possible.

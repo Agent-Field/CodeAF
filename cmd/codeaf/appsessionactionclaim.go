@@ -83,9 +83,9 @@ type appActionClaim struct {
 // appActionClaims is the claims' folder.
 type appActionClaims struct {
 	appStartClaims
-	// syncParent makes a newly created claims folder's entry durable in its
-	// parent. Nil is [appSyncFolder]; a test replaces it to see the order.
-	syncParent func(folder string) error
+	// syncFolder makes the entries a folder holds durable. Nil is
+	// [appSyncFolder]; a test replaces it to see the order.
+	syncFolder func(folder string) error
 }
 
 // actionClaims is the backend's claims, beside its state file.
@@ -103,34 +103,33 @@ func appSyncFolder(folder string) error {
 	return appSyncRoot(root)
 }
 
-// openToClaim is the claims folder opened for a first or a later claim. A
-// folder that does not exist yet is created, and its entry in the parent is
-// synced BEFORE anything is claimed in it: a claim synced inside a folder the
-// disk does not yet keep can vanish whole with the folder, and the producer
-// would then run again for a client_id it already ran for. A failure here is
-// returned before any claim exists, so the producer is never called on it.
-// The parent is the app's existing state folder and keeps its authority: it
-// is created as it always was, never widened or chosen by the caller.
+// openToClaim is the claims folder opened for a claim, with the chain that
+// holds it made durable FIRST, on every claim: the claims folder's entry in the
+// app's state folder, and the state folder's entry in its own parent. A claim
+// synced inside a folder the disk does not yet keep can vanish whole with the
+// folder after a power loss, and the producer would then run again for a
+// client_id it already ran for. It is every claim, not only the one that made
+// the folder, because a folder another process has just made can be seen
+// before that process has synced it. Above the state folder's parent nothing
+// is synced here: that is the codeaf home, which exists before any
+// conversation does, and its own entry is not this record's to vouch for.
+// A failure is returned before any claim exists, so the producer is never
+// called on it. The state folder keeps its authority: it is created as it
+// always was, never widened or chosen by the caller.
 func (c appActionClaims) openToClaim() (*os.Root, error) {
-	if _, err := os.Lstat(c.dir); errors.Is(err, fs.ErrNotExist) {
-		parent := filepath.Dir(c.dir)
-		if err := os.MkdirAll(parent, appStateFolderMode); err != nil {
-			return nil, err
-		}
-		// Another process may have made it a moment ago and not yet synced
-		// it, so an existing folder is synced too, not trusted.
-		if err := os.Mkdir(c.dir, appStateFolderMode); err != nil && !errors.Is(err, fs.ErrExist) {
-			return nil, err
-		}
-		sync := c.syncParent
-		if sync == nil {
-			sync = appSyncFolder
-		}
-		if err := sync(parent); err != nil {
-			// A folder left behind would look made, and the next claim would
-			// skip this sync and rest on a folder never proven durable. Remove
-			// takes only an empty one, so another process's claims stay.
-			_ = os.Remove(c.dir)
+	state := filepath.Dir(c.dir)
+	if err := os.MkdirAll(state, appStateFolderMode); err != nil {
+		return nil, err
+	}
+	if err := os.Mkdir(c.dir, appStateFolderMode); err != nil && !errors.Is(err, fs.ErrExist) {
+		return nil, err
+	}
+	sync := c.syncFolder
+	if sync == nil {
+		sync = appSyncFolder
+	}
+	for _, folder := range []string{state, filepath.Dir(state)} {
+		if err := sync(folder); err != nil {
 			return nil, fmt.Errorf("the claims folder could not be made durable: %w", err)
 		}
 	}

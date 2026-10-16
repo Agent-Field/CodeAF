@@ -246,6 +246,11 @@ func (c appActionClaim) receipt(replayed bool) appwire.ActionReceipt {
 		Action: c.Action, Agent: c.Agent, ClientID: c.ClientID, Digest: c.Digest, At: c.At,
 		Replayed: replayed, Task: c.Task, Memory: c.Memory,
 	}
+	if c.Memory != nil && c.Memory.Scope != appwire.ScopeEverywhere {
+		// A record an earlier build of this branch wrote carries the scope
+		// that was ASKED; only "everywhere" was ever where the line held.
+		r.Memory = &appwire.ActionMemory{}
+	}
 	switch c.State {
 	case appActionDone:
 		r.State = appwire.ActionDone
@@ -663,36 +668,25 @@ func (b *appBackend) actionRunWith(doors appActionDoors, ask appwire.ActionAsk) 
 		}
 		text := strings.TrimSpace(in.Text)
 		return func(context.Context) (*appwire.ActionTask, *appwire.ActionMemory, error) {
-			var receipt string
-			var err error
+			// THE SCOPE IS STATED ONLY WHERE THE METHOD FIXES IT. RememberAlways
+			// with everywhere keeps the line for the person in every project
+			// whatever the conversation is. Remember keeps it for the project,
+			// or for the person everywhere when the conversation has none, and
+			// answers only a sentence, so which one it did is not known here
+			// and the scope is left out rather than read from those words.
 			if scope == appwire.ScopeEverywhere {
-				receipt, err = always.RememberAlways(text, true)
-			} else {
-				receipt, err = door.Remember(text)
+				receipt, err := always.RememberAlways(text, true)
+				if err != nil {
+					return nil, nil, err
+				}
+				return nil, &appwire.ActionMemory{Receipt: receipt, Scope: appwire.ScopeEverywhere}, nil
 			}
+			receipt, err := door.Remember(text)
 			if err != nil {
 				return nil, nil, err
 			}
-			return nil, &appwire.ActionMemory{Receipt: receipt, Scope: appliedMemoryScope(scope, receipt)}, nil
+			return nil, &appwire.ActionMemory{Receipt: receipt}, nil
 		}, nil
 	}
 	return nil, appwire.Errorf(appwire.CodeBadParams, "unknown action %q", ask.Action)
-}
-
-// memoryNoProjectReach is the producer's own closing words when a project line
-// fell back to the person's everywhere because the conversation has no
-// project (session.memoryReach). It is the only fact a far handle gives about
-// where the line landed, so it is matched as the receipt's END, never inside
-// the quoted line.
-const memoryNoProjectReach = "for you everywhere, since this conversation has no project of its own"
-
-// appliedMemoryScope is the scope the line actually holds in. A project
-// request that the producer widened reports everywhere, so a receipt's scope
-// never says "project" over a line every project can read. Anything else is
-// what was asked, unchanged.
-func appliedMemoryScope(asked, receipt string) string {
-	if asked == appwire.ScopeProject && strings.HasSuffix(strings.TrimSpace(receipt), memoryNoProjectReach) {
-		return appwire.ScopeEverywhere
-	}
-	return asked
 }
