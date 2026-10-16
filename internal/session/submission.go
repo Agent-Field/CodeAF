@@ -285,7 +285,7 @@ func (m Submission) mark() (*messagePresentation, error) {
 			if err := checkRangeSource(given.Source); err != nil {
 				return nil, fmt.Errorf("%w: attachment %d's source %v", ErrMessageMark, index+1, err)
 			}
-			kept.Source = cloneSource(given.Source)
+			kept.Source = cloneMediaReference(given.Source)
 			kept.Source.SourceID, kept.Source.Path, kept.Source.Version = strings.Clone(given.Source.SourceID), strings.Clone(given.Source.Path), strings.Clone(given.Source.Version)
 		}
 		mark.Attachments = append(mark.Attachments, kept)
@@ -456,7 +456,7 @@ func cloneAttachments(attachments []MessageAttachment) []MessageAttachment {
 			lines := *count
 			out[index].Lines = &lines
 		}
-		out[index].Source = cloneSource(out[index].Source)
+		out[index].Source = cloneMediaReference(out[index].Source)
 	}
 	return out
 }

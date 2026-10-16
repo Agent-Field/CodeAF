@@ -100,7 +100,7 @@ type MediaReference struct {
 }
 
 // cloneSource is a source with every pointer its own.
-func cloneSource(source *MediaReference) *MediaReference {
+func cloneMediaReference(source *MediaReference) *MediaReference {
 	if source == nil {
 		return nil
 	}
@@ -436,7 +436,7 @@ func cloneMedia(media []MessageMedia) []MessageMedia {
 	}
 	out := append([]MessageMedia(nil), media...)
 	for index := range out {
-		out[index].Source = cloneSource(out[index].Source)
+		out[index].Source = cloneMediaReference(out[index].Source)
 	}
 	return out
 }
@@ -560,7 +560,7 @@ func readComposedImages(ctx context.Context, media []SubmissionMedia, roles map[
 		if config, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil && config.Width > 0 && config.Height > 0 {
 			fact.Width, fact.Height = config.Width, config.Height
 		}
-		fact.Source = cloneSource(item.Source)
+		fact.Source = cloneMediaReference(item.Source)
 		images = append(images, Image{Path: path, MIME: mediaType, Bytes: data})
 		kept = append(kept, fact)
 	}
