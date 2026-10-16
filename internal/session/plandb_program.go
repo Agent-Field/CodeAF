@@ -343,6 +343,7 @@ func planEndingForPage(ending *delegate.EndFacts, copies planRunCopies) *delegat
 	kept := *ending
 	kept.Claim, kept.Observed = copies.strip(kept.Claim), copies.strip(kept.Observed)
 	kept.AnalysisIncomplete = copies.strip(kept.AnalysisIncomplete)
+	kept.SubmissionReason = copies.strip(kept.SubmissionReason)
 	if len(kept.Reports) > 0 {
 		kept.Reports = make([]string, len(ending.Reports))
 		for i, name := range ending.Reports {

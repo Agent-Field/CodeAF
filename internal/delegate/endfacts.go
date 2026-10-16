@@ -59,6 +59,17 @@ type EndFacts struct {
 	Observed string `json:"observed,omitempty"`
 	// Submitted says the program handed in a change of its own.
 	Submitted *bool `json:"submitted,omitempty"`
+	// SubmissionReason, InnerStatus, VerificationFailing and VerificationCommands
+	// are senior-dev's own spelling of its claim and its check, kept as it wrote
+	// them so a surface can use the mappers [Terminal.Claim] and
+	// [Terminal.Observed] already have. InnerStatus is the program's verdict on
+	// its own work (`pass`, `pass-unverified`, `fail`) and is NOT the run's
+	// status, which is the line's own; a handed-in change ends `done` whatever
+	// the inner word says. A count that was not said is nil, never 0.
+	SubmissionReason     string `json:"submission_reason,omitempty"`
+	InnerStatus          string `json:"status,omitempty"`
+	VerificationFailing  *int   `json:"verification_failing,omitempty"`
+	VerificationCommands *int   `json:"verification_commands,omitempty"`
 	// Reports are the report files the program wrote, as it named them.
 	Reports []string `json:"reports,omitempty"`
 	// The counts. A review says Findings and Blocking; an audit says Confirmed,
@@ -95,6 +106,7 @@ type HuntFailure struct {
 // Empty says the copy holds nothing.
 func (f EndFacts) Empty() bool {
 	return f.Claim == "" && f.Observed == "" && f.Submitted == nil && len(f.Reports) == 0 &&
+		f.SubmissionReason == "" && f.InnerStatus == "" && f.VerificationFailing == nil && f.VerificationCommands == nil &&
 		f.Findings == nil && f.Blocking == nil && f.Confirmed == nil && f.Likely == nil &&
 		f.Inconclusive == nil && f.RuledOut == nil && f.Partial == nil &&
 		f.AnalysisIncomplete == "" && f.HuntCoverage == nil
@@ -107,6 +119,10 @@ func endFactsOf(data map[string]json.RawMessage) *EndFacts {
 	facts.Claim = endText(data["claim"])
 	facts.Observed = endText(data["observed"])
 	facts.Submitted = endBool(data["submitted"])
+	facts.SubmissionReason = endText(data["submission_reason"])
+	facts.InnerStatus = label(endText(data["status"]))
+	facts.VerificationFailing = endCount(data["verification_failing"])
+	facts.VerificationCommands = endCount(data["verification_commands"])
 	facts.Reports = endReports(data["reports"])
 	facts.Findings = endCount(data["findings"])
 	facts.Blocking = endCount(data["blocking"])
@@ -136,6 +152,7 @@ func endDataOf(facts *EndFacts) json.RawMessage {
 		func(f *EndFacts) { f.Reports = nil },
 		func(f *EndFacts) { f.Observed = "" },
 		func(f *EndFacts) { f.Claim = "" },
+		func(f *EndFacts) { f.SubmissionReason = "" },
 		func(f *EndFacts) { f.AnalysisIncomplete = "" },
 	}
 	for i := 0; ; i++ {
@@ -215,16 +232,23 @@ func endCount(raw json.RawMessage) *int {
 // endReports is a flat list of strings. A list holding anything else is
 // dropped whole, because a list with an element removed is a different list.
 func endReports(raw json.RawMessage) []string {
-	var names []string
+	var names []*string
 	if !endDecodable(raw) || json.Unmarshal(raw, &names) != nil {
 		return nil
 	}
-	kept := make([]string, 0, min(len(names), endReportsMax))
 	for _, name := range names {
+		// A null element decodes as an empty string and would be filtered away
+		// silently; it is a malformed list, and the whole list goes.
+		if name == nil {
+			return nil
+		}
+	}
+	kept := make([]string, 0, min(len(names), endReportsMax))
+	for _, element := range names {
 		if len(kept) == endReportsMax {
 			break
 		}
-		if name = cut(oneLine(name), endReportCap); name != "" {
+		if name := cut(oneLine(*element), endReportCap); name != "" {
 			kept = append(kept, name)
 		}
 	}
@@ -240,16 +264,23 @@ func endCoverage(raw json.RawMessage) *HuntCoverage {
 	}
 	var fields struct {
 		Attempted *float64 `json:"attempted"`
-		Failures  []struct {
-			Strategy string `json:"strategy"`
-			Reason   string `json:"reason"`
+		Failures  []*struct {
+			Strategy *string `json:"strategy"`
+			Reason   *string `json:"reason"`
 		} `json:"failures"`
-		Unknown bool `json:"unknown"`
+		Unknown *bool `json:"unknown"`
 	}
 	if json.Unmarshal(raw, &fields) != nil {
 		return nil
 	}
-	coverage := HuntCoverage{Unknown: fields.Unknown}
+	// A failure row that is null, or lacks either text, would be written as a
+	// hunt that failed for no reason; the account is malformed and goes whole.
+	for _, failure := range fields.Failures {
+		if failure == nil || failure.Strategy == nil || failure.Reason == nil {
+			return nil
+		}
+	}
+	coverage := HuntCoverage{Unknown: fields.Unknown != nil && *fields.Unknown}
 	if fields.Attempted != nil {
 		n := *fields.Attempted
 		if n < 0 || n > endCountMax || n != math.Trunc(n) {
@@ -264,12 +295,16 @@ func endCoverage(raw json.RawMessage) *HuntCoverage {
 			break
 		}
 		coverage.Failures = append(coverage.Failures, HuntFailure{
-			Strategy: label(failure.Strategy), Reason: cut(oneLine(failure.Reason), endReasonCap)})
+			Strategy: label(*failure.Strategy), Reason: cut(oneLine(*failure.Reason), endReasonCap)})
 	}
 	return &coverage
 }
 
-// endDecodable says a key's value is present and small enough to read at all.
+// endDecodable says a key's value is present, small enough to read at all, and
+// not JSON null. NULL IS ABSENT, NOT A ZERO: json.Unmarshal of null into a
+// scalar succeeds and leaves false, 0 or "", which would invent a known false or
+// a known zero count from a program that said nothing.
 func endDecodable(raw json.RawMessage) bool {
-	return len(raw) > 0 && len(raw) <= endValueCap
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) > 0 && len(trimmed) <= endValueCap && !bytes.Equal(trimmed, []byte("null"))
 }

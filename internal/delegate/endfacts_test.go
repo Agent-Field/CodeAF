@@ -77,10 +77,12 @@ func TestTheEndLineAndTheShownEndingAreGoldenOnTheWire(t *testing.T) {
 	}
 }
 
-// A REAL SENIOR-DEV RUN SPELLS ITS CLAIM AND ITS CHECK IN ITS OWN KEYS, and the
-// allow-list does not translate them: the line keeps `submitted` and nothing
-// is made up. The status and the sentence are exactly what they were.
-func TestARecordedSeniorDevEndingKeepsOnlyWhatItSaid(t *testing.T) {
+// A REAL SENIOR-DEV RUN KEEPS ITS OWN CLAIM AND CHECK, raw: the line carries
+// submission_reason, the inner status and the verification counts exactly as the
+// program wrote them, and the terminal's own mappers read the same sentences
+// from them. Nothing is made up from prose, and the run's status stays the
+// protocol's.
+func TestARecordedSeniorDevEndingKeepsItsClaimAndItsCheck(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("testdata", "senior-dev-stream.ndjson"))
 	if err != nil {
 		t.Fatal(err)
@@ -93,11 +95,81 @@ func TestARecordedSeniorDevEndingKeepsOnlyWhatItSaid(t *testing.T) {
 	if action.Status != StatusPass || action.Message != "submitted and verified: tests pass" {
 		t.Fatalf("the old fields moved: %+v", action)
 	}
-	if string(action.Data) != `{"submitted":true}` {
-		t.Fatalf("data = %s, want only the submitted fact", action.Data)
+	want := `{"submitted":true,"submission_reason":"tests pass","status":"pass","verification_failing":0,"verification_commands":1}`
+	if string(action.Data) != want {
+		t.Fatalf("data = %s, want %s", action.Data, want)
 	}
-	if facts := action.Ending(); facts == nil || facts.Claim != "" || facts.Observed != "" {
-		t.Fatalf("a claim or an observation was made up: %+v", facts)
+	facts := action.Ending()
+	if facts == nil || facts.Claim != "" || facts.Observed != "" || facts.SubmissionReason != reading.Terminal.Claim() ||
+		facts.InnerStatus != reading.Terminal.Verdict() || facts.VerificationFailing == nil || *facts.VerificationFailing != 0 ||
+		facts.VerificationCommands == nil || *facts.VerificationCommands != 1 || facts.Submitted == nil || !*facts.Submitted {
+		t.Fatalf("facts = %+v", facts)
+	}
+}
+
+// THE INNER STATUS IS NOT THE RUN'S: a handed-in change whose own check failed
+// ends `done` on the line, and the inner `fail` and its counts ride beside it.
+func TestASubmittedRunWhoseCheckFailedStillEndsDoneAndKeepsTheCheck(t *testing.T) {
+	terminal := Terminal{Status: StatusPass, Message: "submitted, check failed", Data: map[string]json.RawMessage{
+		"submitted": json.RawMessage(`true`), "status": json.RawMessage(`"fail"`), "submission_reason": json.RawMessage(`"fixed it"`),
+		"verification_failing": json.RawMessage(`2`), "verification_commands": json.RawMessage(`3`)}}
+	action := EndAction(endAt, terminal)
+	facts := action.Ending()
+	if action.Status != StatusPass || facts == nil || facts.InnerStatus != "fail" || *facts.VerificationFailing != 2 || *facts.VerificationCommands != 3 {
+		t.Fatalf("action = %+v facts = %+v", action, facts)
+	}
+}
+
+// A COUNT THAT WAS NOT SAID IS NOT ZERO, and JSON null is not saying it.
+func TestNullAndMalformedFactsAreAbsentNotZero(t *testing.T) {
+	data := map[string]json.RawMessage{
+		"submitted": json.RawMessage(`null`), "partial": json.RawMessage(` null `), "findings": json.RawMessage(`null`),
+		"blocking": json.RawMessage(`null`), "verification_failing": json.RawMessage(`null`), "verification_commands": json.RawMessage(`"3"`),
+		"claim": json.RawMessage(`null`), "status": json.RawMessage(`null`), "confirmed": json.RawMessage(`1.5`)}
+	if action := EndAction(endAt, Terminal{Status: StatusPass, Data: data}); len(action.Data) != 0 || action.Ending() != nil {
+		t.Fatalf("a fact was invented: data = %s", action.Data)
+	}
+	// A count that is really zero stays a known zero beside the nulls.
+	data["findings"] = json.RawMessage(`0`)
+	facts := EndAction(endAt, Terminal{Status: StatusPass, Data: data}).Ending()
+	if facts == nil || facts.Findings == nil || *facts.Findings != 0 || facts.Blocking != nil || facts.Submitted != nil || facts.VerificationFailing != nil {
+		t.Fatalf("facts = %+v", facts)
+	}
+}
+
+// A LIST WITH AN ELEMENT REMOVED IS A DIFFERENT LIST: a null or non-string
+// report name drops the whole list, and a coverage with a null or half-empty
+// failure row drops the whole account, so no failed hunt is invented.
+func TestMalformedListsAndCoverageRowsAreDroppedWhole(t *testing.T) {
+	for name, raw := range map[string]string{
+		"null element": `[null,"a"]`,
+		"null last":    `["a",null]`,
+		"number":       `["a",1]`,
+		"not a list":   `"a"`,
+		"object":       `{"0":"a"}`,
+	} {
+		if facts := EndAction(endAt, Terminal{Status: StatusPass, Data: map[string]json.RawMessage{"reports": json.RawMessage(raw), "findings": json.RawMessage(`1`)}}).Ending(); facts == nil || facts.Reports != nil {
+			t.Errorf("reports %s: facts = %+v", name, facts)
+		}
+	}
+	for name, raw := range map[string]string{
+		"null row":       `{"attempted":3,"failures":[null]}`,
+		"null strategy":  `{"attempted":3,"failures":[{"strategy":null,"reason":"x"}]}`,
+		"missing reason": `{"attempted":3,"failures":[{"strategy":"injection"}]}`,
+		"null reason":    `{"attempted":3,"failures":[{"strategy":"injection","reason":null}]}`,
+		"good then null": `{"attempted":3,"failures":[{"strategy":"a","reason":"b"},null]}`,
+		"null attempted": `{"attempted":null,"failures":[]}`,
+		"fractional":     `{"attempted":1.5}`,
+		"null whole":     `null`,
+	} {
+		if facts := EndAction(endAt, Terminal{Status: StatusPass, Data: map[string]json.RawMessage{"hunt_coverage": json.RawMessage(raw), "findings": json.RawMessage(`1`)}}).Ending(); facts == nil || facts.HuntCoverage != nil {
+			t.Errorf("coverage %s: facts = %+v", name, facts)
+		}
+	}
+	good := EndAction(endAt, Terminal{Status: StatusPass, Data: map[string]json.RawMessage{
+		"reports": json.RawMessage(`["a.md","b.json"]`), "hunt_coverage": json.RawMessage(`{"attempted":2,"failures":[{"strategy":"a","reason":"b"}]}`)}}).Ending()
+	if good == nil || len(good.Reports) != 2 || good.HuntCoverage == nil || good.HuntCoverage.Attempted != 2 || len(good.HuntCoverage.Failures) != 1 {
+		t.Fatalf("good = %+v", good)
 	}
 }
 
