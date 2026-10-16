@@ -389,8 +389,10 @@ func Remember(options Options, models []Model) error {
 	// so their pure rows are carried over and laid back on the rows given.
 	var media *mediaCache
 	if mediaEligible(options, source, base) {
-		if previous, ok := readCache(path, source, base); ok {
+		if previous, ok := readCache(path, source, base); ok && previous.Media != nil {
+			// The rows given are the new GENERAL rows; the snapshot follows them.
 			media = previous.Media
+			media.General = models
 			models = mergeMedia(models, media)
 		}
 	}
@@ -568,7 +570,14 @@ func load(ctx context.Context, options Options) (*rows, error) {
 	cached, cachedOK := readCache(path, source, base)
 	eligible := mediaEligible(options, source, base)
 	if cachedOK && eligible && options.mediaOnly {
-		return topUpMedia(ctx, options, cached, path, source, base)
+		if _, ok := generalOf(cached); ok {
+			return topUpMedia(ctx, options, cached, path)
+		}
+		// The cache merged dedicated rows without keeping the general ones, so
+		// the chat rows' own capabilities cannot be recovered from it. Say so by
+		// refetching the general listing, once, here; the retry throttle on the
+		// dedicated compartment bounds how often this can be asked for.
+		options.Refresh = true
 	}
 	if cachedOK && !options.Refresh && (options.serveStale || now().Before(cached.FetchedAt.Add(TTL))) {
 		// A fresh cache is served without any request, as it always was, even
@@ -627,9 +636,10 @@ func load(ctx context.Context, options Options) (*rows, error) {
 // topUpMedia reads the dedicated listings over a cache whose general rows it
 // leaves exactly as they were, and writes the result back. Whatever it cannot
 // read stays as the cache had it, dated, and is reported stale.
-func topUpMedia(ctx context.Context, options Options, cached cache, path, source, base string) (*rows, error) {
+func topUpMedia(ctx context.Context, options Options, cached cache, path string) (*rows, error) {
 	now := nowOf(options)
-	models, media, state := refreshMedia(ctx, options, cached.Models, cached.Media, now().UTC())
+	general, _ := generalOf(cached)
+	models, media, state := refreshMedia(ctx, options, general, cached.Media, now().UTC())
 	if err := ctx.Err(); err != nil {
 		return cachedRows(cached, options, now()), err
 	}

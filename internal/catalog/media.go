@@ -135,6 +135,15 @@ func (s MediaState) due() bool { return s.Images.due || s.Videos.due }
 type mediaCache struct {
 	Images mediaKindCache `json:"images"`
 	Videos mediaKindCache `json:"videos"`
+	// General is the general /models rows exactly as they were fetched, BEFORE
+	// any dedicated row was laid over them. The cache's own Models are the
+	// merged result (an older reader wants one list), and a merged row cannot be
+	// un-merged: a hybrid keeps its chat capabilities and a generator does not,
+	// and nothing in the merged row says which part came from where. Every
+	// re-merge therefore starts from this snapshot and the current dedicated
+	// rows, so a model a listing retired is gone and a repriced one has ONE
+	// price. Empty in a cache a build without this field wrote: see [generalOf].
+	General []Model `json:"general,omitempty"`
 }
 
 type mediaKindCache struct {
@@ -179,11 +188,28 @@ func kindStateOf(kind mediaKindCache, now time.Time) MediaKind {
 	return state
 }
 
+// generalOf is the pristine general rows a cache can vouch for. A cache that
+// never merged a dedicated listing holds only general rows in Models. One that
+// did holds them in the snapshot. One that merged WITHOUT keeping the snapshot
+// (a build from before the field) cannot say which capabilities were the chat
+// row's own, and the answer is "unknown" — the caller must refetch the general
+// listing rather than pretend to recover them.
+func generalOf(cached cache) ([]Model, bool) {
+	if cached.Media == nil {
+		return cached.Models, true
+	}
+	if len(cached.Media.General) > 0 {
+		return cached.Media.General, true
+	}
+	return nil, false
+}
+
 // refreshMedia reads both dedicated listings (at most two requests, in
-// parallel, joined before it returns) and merges them over models. A listing
-// that fails keeps the previous rows and date of its compartment and is
-// reported stale; it never empties the catalog.
-func refreshMedia(ctx context.Context, options Options, models []Model, prior *mediaCache, now time.Time) ([]Model, *mediaCache, MediaState) {
+// parallel, joined before it returns) and merges them over the GENERAL rows
+// given — never over rows already merged. A listing that fails keeps the
+// previous rows and date of its compartment and is reported stale; it never
+// empties the catalog. A listing that succeeds REPLACES its compartment.
+func refreshMedia(ctx context.Context, options Options, general []Model, prior *mediaCache, now time.Time) ([]Model, *mediaCache, MediaState) {
 	next := &mediaCache{}
 	if prior != nil {
 		*next = *prior
@@ -220,10 +246,13 @@ func refreshMedia(ctx context.Context, options Options, models []Model, prior *m
 	}
 	settle(&next.Images, imageRows, imageErr)
 	settle(&next.Videos, videoRows, videoErr)
-	return mergeMedia(models, next), next, mediaStateOf(next, now)
+	next.General = general
+	return mergeMedia(general, next), next, mediaStateOf(next, now)
 }
 
-// mergeMedia lays the pure dedicated rows over the general rows.
+// mergeMedia lays the pure dedicated rows over the GENERAL rows. Its first
+// argument must never be an earlier result of itself: the overlay adds and
+// unions, so merging twice keeps what the first merge added.
 //
 // The dedicated listing is authoritative for what a media model takes and
 // returns, so its modalities, parameters and prices win. The general row stays

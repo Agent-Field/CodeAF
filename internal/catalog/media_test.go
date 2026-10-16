@@ -765,3 +765,222 @@ func TestExistingGeneralBehaviorIsUnchangedByTheDedicatedListings(t *testing.T) 
 		}
 	}
 }
+
+// ---- Refresh must REPLACE a dedicated compartment, never accumulate into it. ----
+
+func videoListing(rows ...string) mediaReply {
+	return okReply(`{"data":[` + strings.Join(rows, ",") + `]}`)
+}
+
+func videoRowJSON(id string, centsPerSecond string) string {
+	return fmt.Sprintf(`{"id":%q,"supported_resolutions":["480p"],"pricing_skus":{"cents_per_video_output_second_480p":%q}}`, id, centsPerSecond)
+}
+
+const hybridGeneral = `{"data":[
+ {"id":"hybrid/draws-and-talks","context_length":1000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["max_tokens"]},
+ {"id":"other/chat","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000001"}}]}`
+
+func mediaOptions(router *mediaRouter, dir string, at time.Time) Options {
+	return Options{BaseURL: DefaultBaseURL, Dir: dir, HTTPClient: router.client(), Now: func() time.Time { return at }}
+}
+
+func TestAFreshDedicatedRefreshRetiresRemovedModelsAndReplacesPrices(t *testing.T) {
+	dir := t.TempDir()
+	first := newMediaRouter(t, map[string]mediaReply{
+		generalPath: okReply(hybridGeneral),
+		imagesPath:  okReply(fixtureBytes(t, "openrouter-images.json")),
+		videosPath:  videoListing(videoRowJSON("vendor/retired", "2"), videoRowJSON("vendor/repriced", "2")),
+	})
+	loadAt(t, first, dir, day, nil)
+
+	second := newMediaRouter(t, map[string]mediaReply{
+		generalPath: okReply(hybridGeneral),
+		imagesPath:  okReply(fixtureBytes(t, "openrouter-images.json")),
+		videosPath:  videoListing(videoRowJSON("vendor/repriced", "3"), videoRowJSON("vendor/new", "5")),
+	})
+	c := loadAt(t, second, dir, day.Add(time.Hour), func(o *Options) { o.Refresh = true })
+	assertRetiredAndRepriced(t, c)
+
+	// And the same truth survives a trip through the disk.
+	assertRetiredAndRepriced(t, loadAt(t, newMediaRouter(t, nil), dir, day.Add(2*time.Hour), nil))
+}
+
+func assertRetiredAndRepriced(t *testing.T, c *Catalog) {
+	t.Helper()
+	if _, ok := c.Model("vendor/retired"); ok {
+		t.Error("a model the fresh listing no longer publishes is still offered")
+	}
+	prices := c.MediaPrices("vendor/repriced")
+	if len(prices) != 1 || prices[0].USD != 0.03 {
+		t.Errorf("a repriced model has %+v, want exactly the new 3 cents", prices)
+	}
+	if _, ok := c.Model("vendor/new"); !ok {
+		t.Error("a newly published model is missing")
+	}
+}
+
+func TestALazyTopUpOfAnOlderCacheRetiresAndRepricesThroughTheDisk(t *testing.T) {
+	dir := t.TempDir()
+	legacy := `{"fetched_at":"` + day.Format(time.RFC3339) + `","priced":true,"models":[` +
+		`{"id":"hybrid/draws-and-talks","input_modalities":["text"],"output_modalities":["text"],"prompt_price":0.000001,"completion_price":0.000002}]}`
+	if err := os.WriteFile(filepath.Join(dir, cacheName), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waitPersisted := func(want time.Time) {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			if cached, ok := readCache(cachePath(dir, "", DefaultBaseURL), "", DefaultBaseURL); ok && cached.Media != nil && cached.Media.Videos.FetchedAt.Equal(want) {
+				return
+			}
+			select {
+			case <-deadline:
+				t.Fatalf("the top-up for %v was never persisted", want)
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+	lazyAt := func(router *mediaRouter, at time.Time, persisted time.Time) {
+		lazy := LoadLazy(context.Background(), mediaOptions(router, dir, at))
+		waitPersisted(persisted)
+		lazy.Close()
+		if router.count(generalPath) != 0 {
+			t.Errorf("a media top-up refetched the general listing")
+		}
+	}
+	t1, t2, t3 := day.Add(time.Hour), day.Add(2*time.Hour), day.Add(3*time.Hour)
+
+	lazyAt(newMediaRouter(t, map[string]mediaReply{
+		imagesPath: okReply(fixtureBytes(t, "openrouter-images.json")),
+		videosPath: videoListing(videoRowJSON("vendor/retired", "2"), videoRowJSON("vendor/repriced", "2")),
+	}), t1, t1)
+
+	// A failed attempt in between: the old rows stay, and say they are stale.
+	down := newMediaRouter(t, map[string]mediaReply{imagesPath: {status: 500}, videosPath: {status: 500}})
+	if _, err := load(context.Background(), func() Options { o := mediaOptions(down, dir, t2); o.mediaOnly = true; return o }()); err != nil {
+		t.Fatal(err)
+	}
+	between := Load(context.Background(), mediaOptions(newMediaRouter(t, nil), dir, t2.Add(time.Minute)))
+	if s := between.MediaState(); !s.Videos.Known || !s.Videos.Stale || !s.Videos.FetchedAt.Equal(t1) {
+		t.Fatalf("after a failed top-up the standing is %+v", s.Videos)
+	}
+	if _, ok := between.Model("vendor/retired"); !ok {
+		t.Error("a transient failure dropped a model it had no evidence against")
+	}
+
+	// The retry interval passes and the listing answers differently.
+	lazyAt(newMediaRouter(t, map[string]mediaReply{
+		imagesPath: okReply(fixtureBytes(t, "openrouter-images.json")),
+		videosPath: videoListing(videoRowJSON("vendor/repriced", "3"), videoRowJSON("vendor/new", "5")),
+	}), t3, t3)
+	assertRetiredAndRepriced(t, Load(context.Background(), mediaOptions(newMediaRouter(t, nil), dir, t3.Add(time.Minute))))
+}
+
+func TestARetiredGeneratorHandsAHybridBackExactlyItsChatCapabilities(t *testing.T) {
+	dir := t.TempDir()
+	hybridImage := `{"id":"hybrid/draws-and-talks","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]},"supported_parameters":{"aspect_ratio":{"type":"enum","values":["1:1"]}}}`
+	first := newMediaRouter(t, map[string]mediaReply{
+		generalPath: okReply(hybridGeneral),
+		imagesPath:  okReply(`{"data":[` + hybridImage + `]}`),
+		videosPath:  videoListing(videoRowJSON("vendor/v", "2")),
+	})
+	c := loadAt(t, first, dir, day, nil)
+	if !c.Supports("hybrid/draws-and-talks", "output", "image") || !c.Supports("hybrid/draws-and-talks", "output", "text") {
+		t.Fatalf("the hybrid was not merged: %v", mustModel(t, c, "hybrid/draws-and-talks").OutputModalities)
+	}
+
+	// The image listing now publishes a different model entirely.
+	second := newMediaRouter(t, map[string]mediaReply{
+		generalPath: okReply(hybridGeneral),
+		imagesPath:  okReply(`{"data":[{"id":"vendor/other-painter","architecture":{"input_modalities":["text"],"output_modalities":["image"]}}]}`),
+		videosPath:  videoListing(videoRowJSON("vendor/v", "2")),
+	})
+	for name, c := range map[string]*Catalog{
+		"in the refresh":  loadAt(t, second, dir, day.Add(time.Hour), func(o *Options) { o.Refresh = true }),
+		"after reopening": loadAt(t, newMediaRouter(t, nil), dir, day.Add(2*time.Hour), nil),
+	} {
+		h := mustModel(t, c, "hybrid/draws-and-talks")
+		if fmt.Sprint(h.OutputModalities) != "[text]" || fmt.Sprint(h.InputModalities) != "[text]" {
+			t.Errorf("%s: modalities in/out = %v/%v, want the chat row's own", name, h.InputModalities, h.OutputModalities)
+		}
+		if h.Media != nil || len(h.Dedicated) != 0 || len(h.MediaPrices) != 0 {
+			t.Errorf("%s: a retired generator left media facts behind: %+v", name, h)
+		}
+		if h.PromptPrice != 0.000001 || h.CompletionPrice != 0.000002 || h.ContextLength != 1000 || len(h.Parameters) != 1 {
+			t.Errorf("%s: the chat facts changed: %+v", name, h)
+		}
+		if _, ok := c.Model("vendor/other-painter"); !ok {
+			t.Errorf("%s: the new generator is missing", name)
+		}
+	}
+}
+
+func mustModel(t *testing.T, c *Catalog, id string) Model {
+	t.Helper()
+	model, ok := c.Model(id)
+	if !ok {
+		t.Fatalf("%s is missing", id)
+	}
+	return model
+}
+
+func TestACacheThatMergedWithoutKeepingTheGeneralRowsRefetchesThemBoundedly(t *testing.T) {
+	dir := t.TempDir()
+	// What the first version of this feature wrote: merged Models, dedicated
+	// rows, no general snapshot. The painter below is a merged-in generator
+	// that must not survive, and the chat row's text cannot be proven from it.
+	merged := `{"fetched_at":"` + day.Format(time.RFC3339) + `","priced":true,"models":[` +
+		`{"id":"hybrid/draws-and-talks","input_modalities":["text","image"],"output_modalities":["text","image"],"dedicated":["image"]},` +
+		`{"id":"vendor/retired","input_modalities":["text"],"output_modalities":["video"],"dedicated":["video"]}],` +
+		`"media":{"images":{"fetched_at":"` + day.Format(time.RFC3339) + `","tried_at":"` + day.Format(time.RFC3339) + `"},"videos":{"fetched_at":"` + day.Format(time.RFC3339) + `","tried_at":"` + day.Format(time.RFC3339) + `"}}}`
+	if err := os.WriteFile(filepath.Join(dir, cacheName), []byte(merged), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := generalOf(mustCache(t, dir)); ok {
+		t.Fatal("a snapshot-less merged cache claims to know its general rows")
+	}
+	router := newMediaRouter(t, map[string]mediaReply{
+		generalPath: okReply(hybridGeneral),
+		imagesPath:  okReply(fixtureBytes(t, "openrouter-images.json")),
+		videosPath:  videoListing(videoRowJSON("vendor/v", "2")),
+	})
+	options := mediaOptions(router, dir, day.Add(30*time.Minute))
+	options.mediaOnly = true
+	if _, err := load(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	if router.count(generalPath) != 1 || router.count(imagesPath) != 1 || router.count(videosPath) != 1 {
+		t.Errorf("recovery asked %v, want one of each listing", router.asked)
+	}
+	c := Recall(Options{BaseURL: DefaultBaseURL, Dir: dir, Now: func() time.Time { return day.Add(time.Hour) }})
+	if _, ok := c.Model("vendor/retired"); ok {
+		t.Error("a retired generator from the unrecoverable cache survived the refetch")
+	}
+	if h := mustModel(t, c, "hybrid/draws-and-talks"); len(h.Dedicated) != 0 || fmt.Sprint(h.OutputModalities) != "[text]" {
+		t.Errorf("the hybrid was not rebuilt from the fresh general row: %+v", h)
+	}
+	if _, ok := generalOf(mustCache(t, dir)); !ok {
+		t.Error("the recovered cache still does not keep its general rows")
+	}
+}
+
+func TestAnUnreadableOrUnsupportedSkuIsUnknownNotAFreeModel(t *testing.T) {
+	body := videoListing(
+		`{"id":"vendor/blank","supported_resolutions":["480p"],"pricing_skus":{"cents_per_video_output_second_480p":"","cents_per_image_input":"abc"}}`,
+		`{"id":"vendor/tokens","supported_resolutions":["480p"],"pricing_skus":{"video_tokens":"0.00001","duration_seconds":"0.05"}}`,
+		`{"id":"vendor/null","supported_resolutions":["480p"],"pricing_skus":null}`,
+		`{"id":"vendor/free","supported_resolutions":["480p"],"pricing_skus":{"cents_per_image_input":"0"}}`)
+	replies := realReplies(t)
+	replies[videosPath] = body
+	c := loadAt(t, newMediaRouter(t, replies), t.TempDir(), day, nil)
+	for _, id := range []string{"vendor/blank", "vendor/tokens", "vendor/null"} {
+		row := mustModel(t, c, id)
+		if len(row.MediaPrices) != 0 || !row.PriceUnknown {
+			t.Errorf("%s: an unreadable price became %+v (unknown=%v)", id, row.MediaPrices, row.PriceUnknown)
+		}
+	}
+	// Only an explicit published zero is a zero.
+	if free := c.MediaPrices("vendor/free"); len(free) != 1 || free[0].USD != 0 || free[0].Billable != "image_input" {
+		t.Errorf("a published zero = %+v", free)
+	}
+}
