@@ -776,6 +776,13 @@ func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
 // each advertises image input, Qwen VL when advertised, then the first model
 // with image input. Unlike generation slots, an unadvertised default is never
 // invented: no result means view_image can preserve its calm refusal.
+//
+// EVERY CANDIDATE MUST BE A PAIR OF EYES, NOT A PAINTER. Image input is also
+// what an image editor takes, and its answer is a picture: handed a photograph
+// and asked what is in it, it draws one. A candidate therefore has to take
+// images AND answer in text and nothing else ([seesAndAnswersInText]) — the
+// same reading the perception slots apply. The explicit slot above is the
+// person's own word and is not second-guessed.
 func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel string) string {
 	if configured := strings.TrimSpace(c.VisionModel); configured != "" {
 		return configured
@@ -785,15 +792,48 @@ func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel
 	}
 	for _, candidate := range []string{talkModel, workModel, preferredVisionModel} {
 		candidate = strings.TrimSpace(candidate)
-		if candidate != "" && models.Supports(candidate, "input", "image") {
+		if candidate == "" {
+			continue
+		}
+		if row, ok := models.Model(candidate); ok && seesAndAnswersInText(row) {
 			return candidate
 		}
 	}
-	candidates := models.ModelsWithInput("image")
-	if len(candidates) > 0 {
-		return candidates[0].ID
+	for _, candidate := range models.ModelsWithInput("image") {
+		if seesAndAnswersInText(candidate) {
+			return candidate.ID
+		}
 	}
 	return ""
+}
+
+// seesAndAnswersInText says a row takes images and replies in words. A row
+// that publishes no output list at all is a cache written before modalities
+// were kept, and is read as it always was: by its input alone.
+func seesAndAnswersInText(model catalog.Model) bool {
+	if !hasInput(model, "image") {
+		return false
+	}
+	return len(model.OutputModalities) == 0 ||
+		(hasOutput(model, "text") && !generatesMedia(model))
+}
+
+func hasInput(model catalog.Model, modality string) bool {
+	for _, input := range model.InputModalities {
+		if strings.EqualFold(strings.TrimSpace(input), modality) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOutput(model catalog.Model, modality string) bool {
+	for _, output := range model.OutputModalities {
+		if strings.EqualFold(strings.TrimSpace(output), modality) {
+			return true
+		}
+	}
+	return false
 }
 
 // chatCandidatesWithInput is the three PERCEPTION slots' shared question: a

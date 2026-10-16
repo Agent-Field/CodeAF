@@ -120,6 +120,32 @@ func TestVisionModelResolutionOrder(t *testing.T) {
 	}
 }
 
+// An image editor takes pictures in and gives a picture back. Merging the
+// dedicated image listing put dozens of them in the catalog with exactly the
+// input a vision proxy looks for, and one of them was first.
+func TestVisionModelResolutionNeverPicksAPainterAsEyes(t *testing.T) {
+	t.Setenv("CODEAF_VISION_MODEL", "")
+	configured := settings(t)
+	models := runtimeCatalog(t, `
+		{"id":"paint/edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}},
+		{"id":"paint/captioning-edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image","text"]}},
+		{"id":"eyes/real","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}}`)
+	// A painter chosen as the live talk or work model is passed over too.
+	if got := configured.ResolveVisionModel(models, "paint/edit", "paint/captioning-edit"); got != "eyes/real" {
+		t.Fatalf("vision = %q, want the first model that answers in text only", got)
+	}
+	onlyPainters := runtimeCatalog(t, `
+		{"id":"paint/edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}}`)
+	if got := configured.ResolveVisionModel(onlyPainters, "paint/edit", ""); got != "" {
+		t.Fatalf("vision = %q, want no proxy rather than an image generator", got)
+	}
+	// The person's own slot is never second-guessed.
+	t.Setenv("CODEAF_VISION_MODEL", "paint/edit")
+	if got := settings(t).ResolveVisionModel(models, "eyes/real", ""); got != "paint/edit" {
+		t.Fatalf("explicit vision = %q, want the operator's choice untouched", got)
+	}
+}
+
 type configRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn configRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
