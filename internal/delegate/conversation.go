@@ -106,16 +106,12 @@ func WriteProgram(dir string, record ProgramRecord) error {
 
 // ReadProgram reads the record; ok is false for a run that handed its task to
 // no program, or whose program has neither said hello nor ended yet.
+//
+// EVERY READER OF THE RECORD IS BOUNDED: a regular file of at most
+// [ProgramRecordCap], opened without blocking, so a page or a row read never
+// waits on a FIFO or reads a planted giant left where the record goes.
 func ReadProgram(dir string) (ProgramRecord, bool) {
-	data, err := os.ReadFile(filepath.Join(dir, ProgramFile))
-	if err != nil {
-		return ProgramRecord{}, false
-	}
-	var record ProgramRecord
-	if json.Unmarshal(data, &record) != nil || record.Name == "" {
-		return ProgramRecord{}, false
-	}
-	return record, true
+	return ReadProgramWithin(dir, ProgramRecordCap)
 }
 
 // MainThread is the thread a call belongs to when the program gave it no

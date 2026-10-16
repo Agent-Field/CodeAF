@@ -68,8 +68,9 @@ const (
 	// ProgramReadComplete: every line the record's process wrote; the actions,
 	// earlier_actions, last_stage and ending are exact.
 	ProgramReadComplete = "complete"
-	// ProgramReadPartial: not all of them (read_cut says why). The actions
-	// carried are some of the process's; there is no count, no last stage and
+	// ProgramReadPartial: not all of them (read_cut says why). Actions are
+	// carried only under "damaged", where the read went on to the launch's end;
+	// a read stopped early carries none. There is no count, no last stage and
 	// no ending, and no claim that there are none.
 	ProgramReadPartial = "partial"
 	// ProgramReadUnknown: no line can be tied to the record's process (a run

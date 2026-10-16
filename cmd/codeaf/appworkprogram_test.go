@@ -244,6 +244,7 @@ func TestTasksProgramActionsPagesOverTheRealServer(t *testing.T) {
 	conv := &pagingConversation{fakeConversation: &fakeConversation{}, pages: map[string]session.AppProgramActionsPage{
 		"4@c.60": {Read: session.AppProgramReadComplete, Actions: []delegate.Shown{{Text: "read a.go " + secret}}, EarlierActions: 59, Before: "c.59"},
 		"4@gone": {Gone: true},
+		"4@old":  {Actions: []delegate.Shown{{Text: "an older engine's page"}}, Before: "c.1", EarlierActions: 1},
 	}}
 	var mu sync.Mutex
 	var opens, releases int
@@ -296,6 +297,9 @@ func TestTasksProgramActionsPagesOverTheRealServer(t *testing.T) {
 	}
 	if raw, _ := json.Marshal(page); strings.Contains(string(raw), secret) {
 		t.Fatalf("a secret crossed: %s", raw)
+	}
+	if page, failed := ask(5, agent.ID+":4", "old"); failed != nil || page["read"] != appwire.ProgramReadUnknown || page["actions"] != nil || page["before"] != nil {
+		t.Fatalf("a page with no read state = %v (%v)", page, failed)
 	}
 	if _, failed := ask(2, agent.ID+":4", "gone"); failed == nil || failed["code"] != appwire.CodeConflict {
 		t.Fatalf("an earlier run's cursor answered %v", failed)

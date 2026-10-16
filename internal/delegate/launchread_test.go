@@ -194,9 +194,35 @@ func TestALaunchThatCouldNotBeReadWholeSaysWhy(t *testing.T) {
 		if page.Complete || page.Cut != ReadCutBudget || page.Actions != nil || page.Total != 0 {
 			t.Fatalf("page = %+v", page)
 		}
+		// A read stopped before the launch's end carries no window: it would be
+		// neither the newest nor next to the page after it.
 		page = ReadLaunchActions(context.Background(), dir, mine, reader, -1, 10, ReadBudget{Bytes: 16 << 20, Lines: 50})
-		if page.Complete || page.Cut != ReadCutBudget {
+		if page.Complete || page.Cut != ReadCutBudget || page.Actions != nil || page.Total != 0 || page.First != 0 {
 			t.Fatalf("line budget: page = %+v", page)
+		}
+		if page = ReadLaunchActions(context.Background(), dir, mine, reader, 120, 10, ReadBudget{Bytes: 16 << 20, Lines: 50}); page.Actions != nil {
+			t.Fatalf("an older page cut by the line budget carried %d actions", len(page.Actions))
+		}
+	})
+	t.Run("a short launch at the end of a log longer than the budget", func(t *testing.T) {
+		dir := t.TempDir()
+		other := NewLaunch()
+		writeLog(t, dir, StartAction(launchAt, other))
+		for range 400 {
+			writeLog(t, dir, step(other, strings.Repeat("o", 150)))
+		}
+		writeLog(t, dir, StartAction(launchAt, mine), step(mine, "a"))
+		// A budget that is not a multiple of the search window still reads a
+		// launch that fits it.
+		if page := ReadLaunchActions(context.Background(), dir, mine, reader, -1, 10, ReadBudget{Bytes: 4 << 10, Lines: 100}); !page.Complete || texts(page.Actions) != "a" {
+			t.Fatalf("page = %+v", page)
+		}
+		// And a launch whose start was never written, in a log over the budget,
+		// is not read as the whole log.
+		lost := NewLaunch()
+		writeLog(t, dir, step(lost, "b"))
+		if page := ReadLaunchActions(context.Background(), dir, lost, reader, -1, 10, ReadBudget{Bytes: 4 << 10, Lines: 100}); page.Complete || page.Cut != ReadCutBudget {
+			t.Fatalf("lost start: page = %+v", page)
 		}
 	})
 	t.Run("a read whose caller has left", func(t *testing.T) {

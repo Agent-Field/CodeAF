@@ -116,6 +116,12 @@ func (b *appBackend) ProgramActions(id, before string) (appwire.ProgramActionsRe
 	if page.Gone {
 		return appwire.ProgramActionsResult{}, appwire.Errorf(appwire.CodeConflict, "that page is of an earlier run of the program; read the task again")
 	}
+	// A PAGE IS ONLY WHAT ITS READ STATE SAYS IT IS: a far engine's page with a
+	// read state this build does not know carries nothing, as a task read's
+	// program would not.
+	if page.Read != session.AppProgramReadComplete && page.Read != session.AppProgramReadPartial {
+		page = session.AppProgramActionsPage{Read: session.AppProgramReadUnknown}
+	}
 	out := appwire.ProgramActionsResult{Read: page.Read, ReadCut: page.ReadCut}
 	out.Actions, out.EarlierActions, out.Before = appProgramActions(page.Read, page.Actions, page.EarlierActions, page.Before)
 	return out, nil

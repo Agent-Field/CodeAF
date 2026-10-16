@@ -115,10 +115,14 @@ func ReadLaunchActions(ctx context.Context, dir, launch string, read ActionReade
 	page := LaunchPage{Complete: true}
 	var window []Shown
 	lastShownIsEnd := false
+	// stopped says the read ended before the launch's last line. Its window is
+	// then neither the newest nor next to the page after it, so it is not
+	// carried at all: a damaged line read past still leaves a true window.
+	stopped := false
 	lines := 0
 	err = eachLine(ctx, io.NewSectionReader(file, from, size-from), func(line []byte, ok bool) bool {
 		if lines++; budget.Lines > 0 && lines > budget.Lines {
-			page.Complete, page.Cut = false, ReadCutBudget
+			page.Complete, page.Cut, stopped = false, ReadCutBudget, true
 			return false
 		}
 		var action Action
@@ -154,11 +158,14 @@ func ReadLaunchActions(ctx context.Context, dir, launch string, read ActionReade
 		}
 		return true
 	})
-	if err != nil && page.Complete {
-		page.Complete, page.Cut = false, ReadCutUnreadable
+	if err != nil {
+		page.Complete, page.Cut, stopped = false, ReadCutUnreadable, true
 		if ctx.Err() != nil {
 			page.Cut = ReadCutDeadline
 		}
+	}
+	if stopped {
+		return LaunchPage{Cut: page.Cut}
 	}
 	if !lastShownIsEnd {
 		page.Ending, page.EndStatus = nil, ""
@@ -244,10 +251,13 @@ func launchStart(ctx context.Context, file io.ReaderAt, size int64, launch strin
 		if ctx.Err() != nil {
 			return 0, ReadCutDeadline
 		}
-		start := max(end-launchWindow, 0)
-		if most > 0 && size-start > most {
+		// THE BUDGET IS THE LAUNCH'S SPAN, checked against what was searched and
+		// then against where the start was found, so a short launch is read
+		// whatever the budget's size against the window's.
+		if most > 0 && size-end >= most {
 			return 0, ReadCutBudget
 		}
+		start := max(end-launchWindow, 0)
 		// The window reaches past its end by the needle's length, so a needle cut
 		// by the edge between two windows is found whole in the earlier one.
 		n := int(min(end+int64(len(needle)), size) - start)
@@ -256,10 +266,16 @@ func launchStart(ctx context.Context, file io.ReaderAt, size int64, launch strin
 		}
 		for at := bytes.LastIndex(buf[:n], needle); at >= 0; at = bytes.LastIndex(buf[:at], needle) {
 			if from, ok := startLineAt(file, start+int64(at), launch); ok {
+				if most > 0 && size-from > most {
+					return 0, ReadCutBudget
+				}
 				return from, ""
 			}
 		}
 		end = start
+	}
+	if most > 0 && size > most {
+		return 0, ReadCutBudget
 	}
 	return 0, ""
 }

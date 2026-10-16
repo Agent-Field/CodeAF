@@ -93,8 +93,9 @@ const (
 	AppProgramReadComplete = "complete"
 	// AppProgramReadPartial: the process's lines could not all be read — more
 	// than the budget, a damaged line among them, a refusal of the disk, the
-	// read's deadline. The actions carried are some of the process's; nothing
-	// is said of how many there are, where it stands or how it ended.
+	// read's deadline. Actions are carried only past a damaged line, when the
+	// read still reached the launch's end; nothing is said of how many there
+	// are, where it stands or how it ended.
 	AppProgramReadPartial = "partial"
 	// AppProgramReadUnknown: no line can be tied to the record's process — a
 	// record written before launches were, or none yet (a relaunch before its
@@ -145,7 +146,7 @@ func (a *Agent) AppProgramActions(id, before string) (AppProgramActionsPage, boo
 	if !ok {
 		return AppProgramActionsPage{}, false, errors.New("that is not a page of a program's actions")
 	}
-	_, source, found := a.planTaskPageFor(id, false)
+	source, found := a.planProgramSourceOf(id)
 	if !found {
 		return AppProgramActionsPage{}, false, nil
 	}
@@ -169,7 +170,7 @@ func (a *Agent) AppProgramActions(id, before string) (AppProgramActionsPage, boo
 // actions is only ever the launch its cursor was cut from.
 func (a *Agent) appProgramRead(ctx context.Context, source planProgramSource, before int, want string) *AppProgramView {
 	taskDir := plandb.TaskDir(source.dir, source.id)
-	record, known := delegate.ReadProgramWithin(taskDir, 1<<20)
+	record, known := delegate.ReadProgramWithin(taskDir, delegate.ProgramRecordCap)
 	if !known && strings.TrimSpace(source.carried) != "" {
 		record, known = delegate.ProgramRecord{Name: strings.TrimSpace(source.carried)}, true
 	}

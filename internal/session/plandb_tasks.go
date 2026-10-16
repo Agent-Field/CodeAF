@@ -343,6 +343,34 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	return page, ok
 }
 
+// planTaskIn is the store holding this conversation's task id, and the task.
+func planTaskIn(stores []*plandb.Store, chat, id string) (*plandb.Store, *plandb.Task) {
+	for _, candidate := range stores {
+		if found := candidate.Task(planTaskID(id)); found != nil && found.Chat == chat {
+			return candidate, found
+		}
+	}
+	return nil, nil
+}
+
+// planProgramSourceOf is where one task's program is read from, found without
+// building the task's page: a page of a program's older actions needs the
+// task's folder, the program the live run carries and the run's copy, and
+// none of the plan's rows, trajectories or spend.
+func (a *Agent) planProgramSourceOf(id string) (planProgramSource, bool) {
+	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
+	if len(stores) == 0 {
+		return planProgramSource{}, false
+	}
+	store, task := planTaskIn(stores, plan.chat, id)
+	if task == nil {
+		return planProgramSource{}, false
+	}
+	return planProgramSource{dir: filepath.Dir(store.Path()), id: task.ID, carried: a.planCarriedPrograms()[task.ID],
+		copies: a.planDisplayRunCopy().or(a.planTaskRunCopy(task.ID))}, true
+}
+
 // planProgramSource is where one task's program is read from: its store's
 // folder, its id there, the program the live run carries for it, and the run's
 // copy its words are read without.
@@ -361,14 +389,7 @@ func (a *Agent) planTaskPageFor(id string, withProgram bool) (PlanTaskPage, plan
 	if len(stores) == 0 {
 		return PlanTaskPage{}, planProgramSource{}, false
 	}
-	var store *plandb.Store
-	var task *plandb.Task
-	for _, candidate := range stores {
-		if found := candidate.Task(planTaskID(id)); found != nil && found.Chat == plan.chat {
-			store, task = candidate, found
-			break
-		}
-	}
+	store, task := planTaskIn(stores, plan.chat, id)
 	if task == nil {
 		return PlanTaskPage{}, planProgramSource{}, false
 	}
