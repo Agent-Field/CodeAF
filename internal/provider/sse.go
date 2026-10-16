@@ -42,6 +42,11 @@ type sseDecoder struct {
 	// speaking — the stall watch — would never hear it (streamguard.go says
 	// what it buys). It is called from the read loop, so it must be cheap.
 	alive func()
+	// limit, when positive, bounds one message's bytes. A reader that expects
+	// one big payload (a music clip) sets it so a stream that never sends a
+	// separator cannot grow the stitch buffer without end. Zero is unbounded,
+	// which is what every chat stream has always been.
+	limit int
 	// chunk and wire are the decode targets, held here rather than declared per
 	// event: a streamed answer is thousands of events, and the address of a
 	// local one escapes into json.Unmarshal every single time.
@@ -60,6 +65,9 @@ type sseDecoder struct {
 // is now the only copy: a bigger buffer is fewer syscalls and no more memory
 // traffic.
 const sseReadBuffer = 64 << 10
+
+// errSSEMessageTooLarge is returned when one message passes the decoder's limit.
+var errSSEMessageTooLarge = errors.New("stream message is over the size limit")
 
 func newSSEDecoder(reader io.Reader) *sseDecoder {
 	return &sseDecoder{reader: bufio.NewReaderSize(reader, sseReadBuffer)}
@@ -110,6 +118,9 @@ func (d *sseDecoder) next() ([]byte, error) {
 			// be megabytes. A piece that does not fit the read buffer carries
 			// no '\n' at all, so it is stitched onto the message and cannot be
 			// mistaken for the blank line below.
+			if d.limit > 0 && len(d.message)+len(line) > d.limit {
+				return nil, errSSEMessageTooLarge
+			}
 			d.message = append(d.message, line...)
 			continue
 		}
@@ -137,6 +148,9 @@ func (d *sseDecoder) next() ([]byte, error) {
 					return payload, nil
 				}
 				continue
+			}
+			if d.limit > 0 && len(d.message)+len(line) > d.limit {
+				return nil, errSSEMessageTooLarge
 			}
 			d.message = append(d.message, line...)
 		}

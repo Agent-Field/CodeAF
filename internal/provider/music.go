@@ -44,6 +44,10 @@ import (
 // response must not be able to take the process with it.
 const maxMusicResponseBytes = 128 << 20
 
+// musicEnvelopeSlack is the room one event's JSON framing (ids, usage, format)
+// gets beyond the base64 of a full-size clip.
+const musicEnvelopeSlack = 64 << 10
+
 // MusicRequest is a composition brief. There is deliberately NO DURATION and no
 // format: the endpoint takes neither, a call returns whatever length the model
 // decides to write, and a field that was accepted and ignored would be a knob
@@ -136,7 +140,7 @@ func (c *MediaClient) GenerateMusic(ctx context.Context, request MusicRequest) (
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		payload, _ := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes))
+		payload, _ := readMediaBody(response, maxMediaResponseBytes, "music error response")
 		return nil, apiError(response.StatusCode, payload)
 	}
 	return readMusicStream(response.Body)
@@ -155,7 +159,17 @@ func (c *MediaClient) GenerateMusic(ctx context.Context, request MusicRequest) (
 // boundaries and a split that happened to land elsewhere would corrupt the file
 // in a way nothing here could detect.
 func readMusicStream(stream io.Reader) (*MusicResponse, error) {
+	return readMusicStreamUnder(stream, maxMusicResponseBytes)
+}
+
+// readMusicStreamUnder is [readMusicStream] with the decoded-clip ceiling as a
+// parameter, so a test can prove the refusal with kilobytes instead of 128 MB.
+func readMusicStreamUnder(stream io.Reader, maxClip int) (*MusicResponse, error) {
+	maxEncoded := base64.StdEncoding.EncodedLen(maxClip)
 	decoder := newSSEDecoder(stream)
+	// One event may carry the whole clip, so a single message is allowed the
+	// encoded size of the largest clip plus the JSON around it, and no more.
+	decoder.limit = maxEncoded + musicEnvelopeSlack
 	var (
 		encoded bytes.Buffer
 		format  string
@@ -167,6 +181,9 @@ func readMusicStream(stream io.Reader) (*MusicResponse, error) {
 			break
 		}
 		if err != nil {
+			if errors.Is(err, errSSEMessageTooLarge) {
+				return nil, fmt.Errorf("music generation returned a clip over the %d byte limit; ask for a shorter piece: %w", maxClip, ErrMediaTooLarge)
+			}
 			return nil, fmt.Errorf("read music stream: %w", err)
 		}
 		var chunk musicChunk
@@ -195,8 +212,11 @@ func readMusicStream(stream io.Reader) (*MusicResponse, error) {
 			if format == "" {
 				format = strings.ToLower(strings.TrimSpace(audio.Format))
 			}
-			if encoded.Len()+len(audio.Data) > maxMusicResponseBytes {
-				return nil, fmt.Errorf("music generation returned more than %d bytes", maxMusicResponseBytes)
+			// The cumulative ENCODED size is what is held, so it is what is
+			// bounded: base64 of the largest allowed clip. Anything past it
+			// is refused rather than cut, so no clip is ever truncated.
+			if encoded.Len()+len(audio.Data) > maxEncoded {
+				return nil, fmt.Errorf("music generation returned a clip over the %d byte limit; ask for a shorter piece: %w", maxClip, ErrMediaTooLarge)
 			}
 			encoded.WriteString(audio.Data)
 		}
@@ -207,7 +227,12 @@ func readMusicStream(stream io.Reader) (*MusicResponse, error) {
 		// and never sends an audio delta at all.
 		return nil, fmt.Errorf("the model returned no audio — it may not be a music model")
 	}
-	clip, err := base64.StdEncoding.DecodeString(encoded.String())
+	clip := make([]byte, base64.StdEncoding.DecodedLen(encoded.Len()))
+	n, err := base64.StdEncoding.Decode(clip, encoded.Bytes())
+	clip = clip[:n]
+	if len(clip) > maxClip {
+		return nil, fmt.Errorf("music generation returned a clip over the %d byte limit; ask for a shorter piece: %w", maxClip, ErrMediaTooLarge)
+	}
 	if err != nil || len(clip) == 0 {
 		return nil, fmt.Errorf("music generation returned audio that could not be decoded")
 	}
