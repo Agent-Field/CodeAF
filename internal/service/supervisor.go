@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -476,6 +478,44 @@ func (s *Supervisor) List(owner string) []Row {
 	}
 	sort.Slice(rows, func(i, j int) bool { return idLess(rows[i].ID, rows[j].ID) })
 	return rows
+}
+
+// Page is one owner's services in id order strictly after the id given (""
+// for the first), at most limit rows, whether more follow, and a revision
+// naming the owner's whole membership — which ids it has, never their states —
+// so a reader paging through them can tell when the set it is paging changed
+// under it.
+//
+// IT BUILDS ONLY THE ROWS IT ANSWERS. An owner may keep any number of
+// services; the membership and the order are read from the ids held in
+// memory, and a row (with its health and episode) is made for the page alone.
+func (s *Supervisor) Page(owner, after string, limit int) (rows []Row, more bool, revision string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]string, 0)
+	for id, e := range s.entries {
+		if e.rec.Owner == owner {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return idLess(ids[i], ids[j]) })
+	sum := sha256.New()
+	for _, id := range ids {
+		sum.Write([]byte(id))
+		sum.Write([]byte{0})
+	}
+	revision = hex.EncodeToString(sum.Sum(nil)[:12])
+	start := 0
+	if after != "" {
+		start = sort.Search(len(ids), func(i int) bool { return idLess(after, ids[i]) })
+	}
+	for i := start; i < len(ids); i++ {
+		if len(rows) == limit {
+			return rows, true, revision
+		}
+		rows = append(rows, s.rowLocked(s.entries[ids[i]]))
+	}
+	return rows, false, revision
 }
 
 // All is every owner's services, oldest first: the host's view, for a quit

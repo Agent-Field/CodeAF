@@ -157,6 +157,10 @@ type Process struct {
 	OutputTruncated bool            `json:"output_truncated,omitempty"`
 	StartedBy       *ProcessStarter `json:"started_by,omitempty"`
 	UnknownReason   string          `json:"unknown_reason,omitempty"`
+	// Cut says this row's long text (its command, its last line, a
+	// service's words) was shortened so one row stays under a page's per-row
+	// bound; the process itself is unchanged. processes.page only.
+	Cut bool `json:"cut,omitempty"`
 }
 
 // ProcessStarter is who started a process, present only when the agent that

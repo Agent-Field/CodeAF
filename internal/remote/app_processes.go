@@ -149,13 +149,24 @@ func serveAppProcesses(agent WrappedAgent, call Frame) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		door, ok := agent.(interface {
+		// AN ENGINE'S AGENT ANSWERS BY NUMBER; A REMOTE AGENT SERVED ONWARD (a
+		// relay) answers by number within a context. Both are the same door.
+		var record session.JobNotice
+		var found bool
+		switch door := agent.(type) {
+		case interface {
 			ProcessRecord(int) (session.JobNotice, bool, error)
-		})
-		if !ok {
+		}:
+			record, found, err = door.ProcessRecord(args.ID)
+		case interface {
+			ProcessRecord(context.Context, int) (session.JobNotice, bool, error)
+		}:
+			ctx, cancel := context.WithTimeout(context.Background(), processPageDeadline)
+			record, found, err = door.ProcessRecord(ctx, args.ID)
+			cancel()
+		default:
 			return nil, errors.New("no such process action")
 		}
-		record, found, err := door.ProcessRecord(args.ID)
 		if err != nil {
 			return nil, err
 		}

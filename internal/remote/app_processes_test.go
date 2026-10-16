@@ -161,3 +161,18 @@ func TestAppProcessPageAndRecordKeepTheCallersDeadline(t *testing.T) {
 		}
 	}
 }
+
+type relayRecordFake struct{ *fakeAgent }
+
+func (relayRecordFake) ProcessRecord(_ context.Context, id int) (session.JobNotice, bool, error) {
+	return session.JobNotice{ID: id, Command: "relayed"}, true, nil
+}
+
+// A REMOTE AGENT SERVED ONWARD ANSWERS THE RECORD DOOR TOO: its ProcessRecord
+// takes a context, and the server accepts either shape.
+func TestAppProcessRecordDoorAcceptsTheContextShape(t *testing.T) {
+	raw, err := serveAppProcesses(relayRecordFake{&fakeAgent{}}, Frame{Method: MethodProcessRecord, Payload: json.RawMessage(`{"id":5}`)})
+	if err != nil || !strings.Contains(string(raw), "relayed") || !strings.Contains(string(raw), `"found":true`) {
+		t.Fatalf("relayed record: %s %v", raw, err)
+	}
+}

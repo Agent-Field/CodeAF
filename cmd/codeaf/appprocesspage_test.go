@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -204,36 +206,231 @@ func TestProcessPageOfAnOlderHeldEngineIsPagedFromItsList(t *testing.T) {
 	}
 }
 
-// A CUT KEEPS EACH ROW'S PHASE: a cut saved row continues the saved history
-// below it, a cut live row continues the live rows, and a kept-running service
-// is never cut — if the services alone overrun, the page says incomplete.
-func TestProcessPageFitCutsInPhaseAndNeverDropsAService(t *testing.T) {
-	started := time.Unix(1_700_000_000, 0)
-	liveRow := session.ProcessPageRow{JobNotice: session.JobNotice{ID: 30, State: session.JobRunning, Started: started}, Live: true}
-	saved := session.ProcessPageRow{JobNotice: session.JobNotice{ID: 7, State: session.JobDone, Started: started}}
-	page := session.ProcessPage{Rows: []session.ProcessPageRow{liveRow, saved}, Revision: "e1"}
-	build := func() *appwire.ProcessPageResult {
-		return &appwire.ProcessPageResult{Processes: []appwire.Process{
-			{ID: "a:s1", Agent: "a", Service: &appwire.Service{Name: "web"}},
-			appProcessBase("a", liveRow.JobNotice),
-			appProcessBase("a", saved.JobNotice),
-		}}
+// fakeServices is an agent's services in id order, paged as the supervisor
+// pages them, with a membership revision.
+type fakeServices struct {
+	ids     []int
+	command string
+}
+
+func (f *fakeServices) page(after string, n int) ([]appwire.Process, bool, string) {
+	rev := fmt.Sprint(f.ids)
+	start := 0
+	if after != "" {
+		a, _ := strconv.Atoi(strings.TrimPrefix(after, "s"))
+		for start < len(f.ids) && f.ids[start] <= a {
+			start++
+		}
 	}
-	size := func(p appwire.Process) int { raw, _ := json.Marshal(p); return len(raw) + 1 }
-	out := build()
-	total := size(out.Processes[0]) + size(out.Processes[1]) + size(out.Processes[2])
-	appFitProcessRows(out, page, "a", total, total-1)
-	if len(out.Processes) != 2 || out.Next != session.ProcessCursorBefore("e1", 7) || out.Incomplete {
-		t.Fatalf("cut saved row: %+v", out)
+	var out []appwire.Process
+	for k := start; k < len(f.ids); k++ {
+		if len(out) == n {
+			return out, true, rev
+		}
+		out = append(out, appwire.Process{ID: "a:s" + strconv.Itoa(f.ids[k]), Agent: "a", Command: f.command, State: appwire.ProcessRunning, Service: &appwire.Service{Name: "svc"}})
 	}
-	out = build()
-	appFitProcessRows(out, page, "a", total, size(out.Processes[0]))
-	if len(out.Processes) != 1 || out.Next != session.ProcessCursorLive("e1", 30) || out.Incomplete {
-		t.Fatalf("cut live row: next=%q %+v", out.Next, out)
+	return out, false, rev
+}
+
+// fakeEngine answers rows in walk order and honours exactly the cursors the
+// page and the engine itself give: the one that begins with a row, in its
+// phase.
+type fakeEngine struct {
+	rows []session.ProcessPageRow
+	rev  string
+}
+
+func (f *fakeEngine) at(cursor string) (int, bool) {
+	if cursor == "" {
+		return 0, true
 	}
-	out = build()
-	appFitProcessRows(out, page, "a", total, 1)
-	if len(out.Processes) != 1 || out.Processes[0].Service == nil || !out.Incomplete {
-		t.Fatalf("service cut or silently dropped: %+v", out)
+	for k, r := range f.rows {
+		if appEngineCursorAt(f.rev, r) == cursor {
+			return k, true
+		}
 	}
+	return 0, false
+}
+
+func (f *fakeEngine) page(_ context.Context, ask session.ProcessPageAsk) (session.ProcessPage, error) {
+	k, ok := f.at(ask.Cursor)
+	if !ok {
+		return session.ProcessPage{}, fmt.Errorf("that cursor is not one a page gave: %q", ask.Cursor)
+	}
+	page := session.ProcessPage{Revision: f.rev}
+	for ; k < len(f.rows); k++ {
+		if len(page.Rows) == ask.Limit {
+			page.Next = appEngineCursorAt(f.rev, f.rows[k])
+			break
+		}
+		page.Rows = append(page.Rows, f.rows[k])
+	}
+	return page, nil
+}
+
+func engineRows(live, saved int) []session.ProcessPageRow {
+	var rows []session.ProcessPageRow
+	for id := 1000 + live; id > 1000; id-- {
+		rows = append(rows, session.ProcessPageRow{JobNotice: session.JobNotice{ID: id, State: session.JobRunning}, Live: true})
+	}
+	for id := saved; id > 0; id-- {
+		rows = append(rows, session.ProcessPageRow{JobNotice: session.JobNotice{ID: id, State: session.JobDone}})
+	}
+	return rows
+}
+
+func rowOfTest(row session.ProcessPageRow) appwire.Process {
+	return appProcessBase("a", row.JobNotice)
+}
+
+// walkComposed walks every page and answers the ids in order, checking each
+// page's row count and encoded size.
+func walkComposed(t *testing.T, svc *fakeServices, eng *fakeEngine, limit, budget int) []string {
+	t.Helper()
+	var got []string
+	cursor := ""
+	for pages := 0; pages < 2000; pages++ {
+		out, err := appComposeProcessPage(context.Background(), cursor, limit, budget, svc.page, eng.page, rowOfTest)
+		if err != nil {
+			t.Fatalf("limit %d budget %d page %d: %v", limit, budget, pages, err)
+		}
+		raw, _ := json.Marshal(out)
+		if len(out.Processes) > limit || len(raw) > budget {
+			t.Fatalf("limit %d budget %d: page of %d rows, %d bytes", limit, budget, len(out.Processes), len(raw))
+		}
+		if len(out.Processes) == 0 && out.Next != "" && out.Next == cursor {
+			t.Fatalf("a page that moved nowhere at %q", cursor)
+		}
+		for _, p := range out.Processes {
+			got = append(got, p.ID)
+		}
+		if out.Next == "" {
+			return got
+		}
+		cursor = out.Next
+	}
+	t.Fatal("pages never ended")
+	return nil
+}
+
+func wantComposed(svc *fakeServices, eng *fakeEngine) []string {
+	var want []string
+	for _, id := range svc.ids {
+		want = append(want, "a:s"+strconv.Itoa(id))
+	}
+	for _, r := range eng.rows {
+		want = append(want, appProcessID("a", r.JobNotice))
+	}
+	return want
+}
+
+func sameIDs(t *testing.T, label string, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s: %d rows, want %d: %v", label, len(got), len(want), got)
+	}
+	for k := range want {
+		if got[k] != want[k] {
+			t.Fatalf("%s: row %d is %s, want %s", label, k, got[k], want[k])
+		}
+	}
+}
+
+// EVERY ROW COUNTS, SERVICES INCLUDED: more services than a page, a page that
+// ends exactly on the last service, on a live row and on a saved row — the
+// whole walk is every service, then every live process, then the history,
+// once each, every page within its limit.
+func TestProcessPageServicesLiveAndHistoryAreOneBoundedWalk(t *testing.T) {
+	var ids []int
+	for k := 1; k <= 130; k++ {
+		ids = append(ids, k)
+	}
+	svc := &fakeServices{ids: ids}
+	eng := &fakeEngine{rows: engineRows(5, 20), rev: "e1"}
+	want := wantComposed(svc, eng)
+	for _, limit := range []int{1, 2, 7, 50, 65, 100} {
+		sameIDs(t, fmt.Sprintf("limit %d", limit), walkComposed(t, svc, eng, limit, appwire.ProcessPageReplyMax), want)
+	}
+	exact := &fakeServices{ids: ids[:50]}
+	sameIDs(t, "services exactly a page", walkComposed(t, exact, eng, 50, appwire.ProcessPageReplyMax), wantComposed(exact, eng))
+	none := &fakeServices{}
+	sameIDs(t, "no services", walkComposed(t, none, eng, 3, appwire.ProcessPageReplyMax), wantComposed(none, eng))
+}
+
+// THE BYTES COUNT TOO: services alone larger than a reply are paged by bytes,
+// never sent over the budget and never dropped, and the engine's rows follow.
+func TestProcessPageServicesArePagedByBytesNotDropped(t *testing.T) {
+	svc := &fakeServices{ids: []int{1, 2, 3, 4, 5, 6, 7, 8, 9}, command: strings.Repeat("x", 100<<10)}
+	eng := &fakeEngine{rows: engineRows(2, 3), rev: "e1"}
+	budget := appProcessPageEnvelope + 250<<10
+	sameIDs(t, "byte-paged", walkComposed(t, svc, eng, 100, budget), wantComposed(svc, eng))
+	huge := &fakeServices{ids: []int{1, 2}, command: strings.Repeat("y", 8<<20)}
+	out, err := appComposeProcessPage(context.Background(), "", 100, appwire.ProcessPageReplyMax, huge.page, eng.page, rowOfTest)
+	raw, _ := json.Marshal(out)
+	if err != nil || len(out.Processes) == 0 || !out.Processes[0].Cut || len(raw) > appwire.ProcessPageReplyMax {
+		t.Fatalf("an oversize service: rows=%d bytes=%d err=%v", len(out.Processes), len(raw), err)
+	}
+	sameIDs(t, "oversize rows cut, not dropped", walkComposed(t, huge, eng, 100, appwire.ProcessPageReplyMax), wantComposed(huge, eng))
+}
+
+// A SERVICE SET THAT CHANGED UNDER A READER STILL IN THE SERVICES IS SAID;
+// ONE THAT CHANGES AFTER THE READER HAS LEFT THEM IS NEWS FOR process.changed.
+func TestProcessPageServiceMembershipChangeIsStaleOnlyWhileInServices(t *testing.T) {
+	svc := &fakeServices{ids: []int{1, 2, 3, 4}}
+	eng := &fakeEngine{rows: engineRows(1, 4), rev: "e1"}
+	first, err := appComposeProcessPage(context.Background(), "", 2, appwire.ProcessPageReplyMax, svc.page, eng.page, rowOfTest)
+	if err != nil || first.Next == "" {
+		t.Fatalf("first: %+v %v", first, err)
+	}
+	svc.ids = []int{1, 2, 3, 4, 5}
+	if _, err := appComposeProcessPage(context.Background(), first.Next, 2, appwire.ProcessPageReplyMax, svc.page, eng.page, rowOfTest); !errors.Is(err, session.ErrProcessStale) {
+		t.Fatalf("a changed service set was paged on: %v", err)
+	}
+	if err := appProcessPageError(session.ErrProcessStale); !isCode(err, appwire.CodeStaleCursor) {
+		t.Fatalf("stale on the wire: %v", err)
+	}
+	second, _ := appComposeProcessPage(context.Background(), "", 5, appwire.ProcessPageReplyMax, svc.page, eng.page, rowOfTest)
+	svc.ids = []int{1}
+	if _, err := appComposeProcessPage(context.Background(), second.Next, 5, appwire.ProcessPageReplyMax, svc.page, eng.page, rowOfTest); err != nil {
+		t.Fatalf("a reader past the services went stale on a service change: %v", err)
+	}
+	if _, err := appComposeProcessPage(context.Background(), "garbage", 5, appwire.ProcessPageReplyMax, svc.page, eng.page, rowOfTest); err == nil {
+		t.Fatal("a garbage cursor was accepted")
+	}
+}
+
+// AN OLD ENGINE'S LIST HAS NO LIVE PHASE: a byte cut on a running row from it
+// continues with a cursor that list can parse, and the walk is whole.
+func TestProcessPageCutOnAnOldEnginesListStaysParseable(t *testing.T) {
+	var jobs []session.JobNotice
+	for id := 1; id <= 12; id++ {
+		state := session.JobDone
+		if id%3 == 0 {
+			state = session.JobRunning
+		}
+		jobs = append(jobs, session.JobNotice{ID: id, Kind: session.JobKindCommand, Command: strings.Repeat("z", 60<<10), State: state, Started: time.Unix(int64(id), 0)})
+	}
+	engine := func(_ context.Context, ask session.ProcessPageAsk) (session.ProcessPage, error) {
+		return appPageList(jobs, ask)
+	}
+	var got []string
+	cursor := ""
+	for pages := 0; pages < 100; pages++ {
+		out, err := appComposeProcessPage(context.Background(), cursor, 100, appProcessPageEnvelope+130<<10, (&fakeServices{}).page, engine, rowOfTest)
+		if err != nil {
+			t.Fatalf("page %d: %v", pages, err)
+		}
+		for _, p := range out.Processes {
+			got = append(got, p.ID)
+		}
+		if out.Next == "" {
+			break
+		}
+		cursor = out.Next
+	}
+	var want []string
+	for id := 12; id >= 1; id-- {
+		want = append(want, appProcessID("a", jobs[id-1]))
+	}
+	sameIDs(t, "old engine list", got, want)
 }

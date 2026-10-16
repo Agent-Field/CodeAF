@@ -29,7 +29,7 @@ const (
 	ProcessPageLimitDefault = 50
 	ProcessPageLimitMax     = 100
 	ProcessPageReplyMax     = 4 << 20
-	ProcessCursorMax        = 512
+	ProcessCursorMax        = 1024
 	ProcessLogBytesDefault  = 64 << 10
 	ProcessLogBytesMax      = 512 << 10
 	ProcessReadTimeout      = 2 * time.Second
