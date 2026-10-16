@@ -54,6 +54,20 @@ type renderAttempt struct {
 	cancel context.CancelCauseFunc
 }
 
+// imageAttemptDoor is how this agent records an image attempt, or nil for an
+// agent built with no job registry and so no ledger at all: the throwaway agent
+// a saved harness's belt is built on (harness_belt.go), which never journals.
+// That is a door with nowhere to record, like the command line's, and it keeps
+// that door's behavior. It is NOT the closed or unwritable case — a session's
+// registry outlives its Close, so those reach [Agent.beginImageAttempt] and are
+// refused there with nothing sent.
+func (a *Agent) imageAttemptDoor() func(context.Context, string) (*renderAttempt, error) {
+	if a.renderJobs() == nil {
+		return nil
+	}
+	return a.beginImageAttempt
+}
+
 // beginImageAttempt writes an image attempt's start row and marks this call as
 // having made a render record. It refuses, and nothing may be sent, when the
 // session is closed or the row cannot be journaled.

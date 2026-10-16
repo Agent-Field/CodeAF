@@ -692,8 +692,7 @@ How the record ends:
   pictures are the media this same call made.
 - `failed` — the provider refused or errored, sent nothing usable, or nothing
   could be saved.
-- `cancelled` — it was stopped, or the turn ended while the provider was still
-  working.
+- `cancelled` — it was stopped, or the turn ended while the provider worked.
 
 In the codeaf desktop app, a picture can be stopped from the render history while the
 provider is working; in the terminal, stopping the turn stops it. A render stop
@@ -709,7 +708,7 @@ guessed zero. A figure that arrives after a stop is added to the same stopped
 record. A call refused before any request (no model chosen, none advertised)
 is `failed` and `not_charged`. Several pictures from `n` are one
 request and one record, naming the model the request asked for. `codeaf image`
-on the command line keeps no such record.
+and a saved harness's run keep no such record.
 
 ## What does a picture, a voiceover, a piece of music or a video cost?
 

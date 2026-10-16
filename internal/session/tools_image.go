@@ -128,8 +128,9 @@ type ImageGen struct {
 	// it wins over Record when both are set.
 	RecordMedia func(path, prompt string, fact MediaFact)
 	// attempt writes the call's render record before the provider is asked
-	// (render_attempt.go). The belt sets it; the command line's door has no
-	// session and no ledger, so it leaves it nil and records nothing.
+	// (render_attempt.go). A conversation's belt sets it; the command line's
+	// door and a saved harness's belt have no ledger by construction, so they
+	// leave it nil and record nothing ([Agent.imageAttemptDoor]).
 	attempt func(ctx context.Context, model string) (*renderAttempt, error)
 }
 
@@ -161,7 +162,7 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 				Workspace:    a.config.Workspace,
 				Directory:    ImagesDir(a.config.Place, a.config.Workspace),
 				Account:      a.accountImageRung,
-				attempt:      a.beginImageAttempt,
+				attempt:      a.imageAttemptDoor(),
 				RecordMedia: func(path, prompt string, fact MediaFact) {
 					a.recordImageMedia(path, prompt, fact.WithMade(madeBy(ctx, nil)))
 				},

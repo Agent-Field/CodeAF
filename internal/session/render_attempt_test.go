@@ -398,3 +398,27 @@ func imageFilesUnder(t *testing.T, root string) []string {
 	})
 	return found
 }
+
+// A saved harness's belt is built on an agent with no ledger by construction,
+// like the command line's door: its picture is sent and simply not recorded.
+// Refusing it would make every harness that draws fail for want of a journal it
+// was never meant to have.
+func TestAHarnessBeltPaintsWithoutALedger(t *testing.T) {
+	media := newGatedImages(&provider.ImageResponse{Data: onePNG(t)}, true)
+	close(media.release)
+	workspace := t.TempDir()
+	var paint func(context.Context, json.RawMessage) (string, bool, error)
+	for _, tool := range HarnessBelt(workspace, HarnessBeltSeams{Media: media, MediaModel: mediaModels(map[string]string{modalityImage: "paint/model"})}) {
+		if tool.Name == "generate_image" {
+			paint = tool.Execute
+		}
+	}
+	if paint == nil {
+		t.Fatal("no generate_image on the harness belt")
+	}
+	ctx, mark := withMediaAttempt(context.Background())
+	out, bad, err := paint(ctx, json.RawMessage(`{"prompt":"a harbour"}`))
+	if err != nil || bad || media.calls.Load() != 1 || mark.Load() {
+		t.Fatalf("out=%q bad=%v err=%v calls=%d marked=%v", out, bad, err, media.calls.Load(), mark.Load())
+	}
+}
