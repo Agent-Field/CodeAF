@@ -160,26 +160,32 @@ func (b *appBackend) reserveReference(a *appAgent) error {
 // already be durable even if its receipt was lost, so those files are retained.
 func (b *appBackend) closeReferences(agents []*appAgent) {
 	for _, a := range agents {
-		a.gate.Lock()
-		var copies []session.MediaReferenceCopy
-		b.locked(func() {
-			for id, attach := range a.attach {
-				if attach.reference == nil {
-					continue
-				}
-				if !attach.reference.attempted {
-					copies = append(copies, attach.reference.copy)
-				}
-				delete(a.attach, id)
-				a.referenceN--
-				b.referenceN--
-			}
-		})
-		a.gate.Unlock()
-		for _, copy := range copies {
+		for _, copy := range b.detachReferences(a) {
 			_ = copy.Remove()
 		}
 	}
+}
+
+// Detach under the same gate a send holds, but release it before disk cleanup.
+// Attempted copies are forgotten here and retained on disk exactly as before.
+func (b *appBackend) detachReferences(a *appAgent) []session.MediaReferenceCopy {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	var copies []session.MediaReferenceCopy
+	b.locked(func() {
+		for id, attach := range a.attach {
+			if attach.reference == nil {
+				continue
+			}
+			if !attach.reference.attempted {
+				copies = append(copies, attach.reference.copy)
+			}
+			delete(a.attach, id)
+			a.referenceN--
+			b.referenceN--
+		}
+	})
+	return copies
 }
 
 // The surface may repeat a staged reference in submission.media, but its source

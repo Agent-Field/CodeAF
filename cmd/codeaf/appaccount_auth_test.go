@@ -143,3 +143,72 @@ func TestAppCodexProviderIsAccountNotAPIKey(t *testing.T) {
 		t.Fatal("probed pasted key for account")
 	}
 }
+
+// A browser/cancellation callback may re-enter the backend to read its state.
+// Probe before re-entry so a regression fails instead of hanging the test.
+type accountCancelFlow struct {
+	accountTestFlow
+	onCancel func()
+}
+
+func (f *accountCancelFlow) Cancel() { f.onCancel() }
+
+func TestAppAccountCancellationCallbacksSeeCancelledWithoutHoldingTheLock(t *testing.T) {
+	b, _, _ := workBackend(t, &fakeConversation{})
+	auth := &appAccountAuth{attempt: "owned", state: "pending"}
+	defer b.locked(func() { b.accountAuth = nil })
+	var states []string
+	locked := false
+	probe := func() {
+		if !auth.mu.TryLock() {
+			locked = true
+			return
+		}
+		auth.mu.Unlock()
+		states = append(states, accountTestState(b))
+	}
+	auth.cancel = probe
+	auth.flow = &accountCancelFlow{onCancel: probe}
+	b.locked(func() { b.accountAuth = auth })
+	if err := b.CancelSignIn("codex", "owned"); err != nil {
+		t.Fatal(err)
+	}
+	if locked || len(states) != 2 || states[0] != "cancelled" || states[1] != "cancelled" {
+		t.Fatalf("callbacks held the lock or saw a pre-cancellation state: locked=%t states=%v", locked, states)
+	}
+}
+
+func TestAppAccountARecoveredPanicDoesNotKeepTheOperationLocked(t *testing.T) {
+	for _, where := range []string{"view", "cancel callback"} {
+		t.Run(where, func(t *testing.T) {
+			b, _, _ := workBackend(t, &fakeConversation{})
+			auth := &appAccountAuth{attempt: "owned", state: "pending", cancel: func() {}}
+			auth.flow = &accountCancelFlow{onCancel: func() { panic("synthetic browser cancellation failure") }}
+			b.locked(func() { b.accountAuth = auth })
+			defer b.locked(func() { b.accountAuth = nil })
+			panicked := func() (caught bool) {
+				defer func() { caught = recover() != nil }()
+				if where == "view" {
+					b.accountAuthView(nil)
+				} else {
+					_ = b.CancelSignIn("codex", "owned")
+				}
+				return false
+			}()
+			if !panicked {
+				t.Fatal("the test did not reach the failing operation")
+			}
+			if !auth.mu.TryLock() {
+				t.Fatal("a recovered operation failure kept the account lock")
+			}
+			auth.mu.Unlock()
+			want := "pending"
+			if where == "cancel callback" {
+				want = "cancelled"
+			}
+			if got := accountTestState(b); got != want {
+				t.Fatalf("state after the failure = %q, want %q", got, want)
+			}
+		})
+	}
+}

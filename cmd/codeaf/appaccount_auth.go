@@ -26,6 +26,56 @@ type appAccountAuth struct {
 	message string
 }
 
+// Each transition owns its lock only until the state is decided. Credential
+// writes, browser cancellation and provider events run after that lock is gone.
+func (a *appAccountAuth) status() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.state
+}
+
+// An empty result means cancellation already won. "saving" is the commit
+// boundary: no cancellation can claim to undo a write after this transition.
+func (a *appAccountAuth) finishWait(err error) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.state != "pending" {
+		return ""
+	}
+	if err != nil {
+		a.state, a.message = "failed", "Sign-in was not completed. Try again."
+	} else {
+		a.state = "saving"
+	}
+	return a.state
+}
+
+func (a *appAccountAuth) finishSave(err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err != nil {
+		a.state, a.message = "failed", "Could not save the account. Try signing in again."
+	} else {
+		a.state = "signed_in"
+	}
+}
+
+func (a *appAccountAuth) cancelAttempt(attempt string) (bool, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.attempt != attempt {
+		return false, nil
+	}
+	if a.state == "saving" {
+		return false, appwire.Errorf(appwire.CodeBusy, "account sign-in is being saved")
+	}
+	if a.state != "pending" {
+		return false, nil
+	}
+	a.state = "cancelled"
+	return true, nil
+}
+
 func (b *appBackend) accountAuthView(view *appwire.Provider) {
 	var auth *appAccountAuth
 	b.locked(func() { auth = b.accountAuth })
@@ -33,8 +83,8 @@ func (b *appBackend) accountAuthView(view *appwire.Provider) {
 		return
 	}
 	auth.mu.Lock()
+	defer auth.mu.Unlock()
 	view.SignInState, view.SignInError, view.SignInAttempt = auth.state, auth.message, auth.attempt
-	auth.mu.Unlock()
 }
 
 func (b *appBackend) accountSignIn() (string, error) {
@@ -56,9 +106,7 @@ func (b *appBackend) beginAccountSignIn(begin func(context.Context) (appAccountF
 			return
 		}
 		if old := b.accountAuth; old != nil {
-			old.mu.Lock()
-			state := old.state
-			old.mu.Unlock()
+			state := old.status()
 			if state == "pending" {
 				auth = old
 				return
@@ -81,30 +129,16 @@ func (b *appBackend) beginAccountSignIn(begin func(context.Context) (appAccountF
 			defer cancel()
 			defer flow.Cancel()
 			tokens, e := flow.Wait(ctx)
-			auth.mu.Lock()
-			if auth.state != "pending" {
-				auth.mu.Unlock()
+			state := auth.finishWait(e)
+			if state == "" {
 				return
 			}
-			if e != nil {
-				auth.state = "failed"
-				auth.message = "Sign-in was not completed. Try again."
-				auth.mu.Unlock()
-				b.providerChanged("codex", "")
-				return
-			}
-			auth.state = "saving"
-			auth.mu.Unlock()
 			b.providerChanged("codex", "")
-			e = save(ctx, tokens)
-			auth.mu.Lock()
-			if e != nil {
-				auth.state = "failed"
-				auth.message = "Could not save the account. Try signing in again."
-			} else {
-				auth.state = "signed_in"
+			if state != "saving" {
+				return
 			}
-			auth.mu.Unlock()
+			e = save(ctx, tokens)
+			auth.finishSave(e)
 			if e == nil {
 				b.keysMoved("codex")
 			}
@@ -127,23 +161,17 @@ func (b *appBackend) CancelSignIn(provider, attempt string) error {
 	if auth == nil {
 		return nil
 	}
-	auth.mu.Lock()
-	if auth.attempt != attempt {
-		auth.mu.Unlock()
+	cancelled, err := auth.cancelAttempt(attempt)
+	if err != nil {
+		return err
+	}
+	if !cancelled {
 		return nil
 	}
-	if auth.state == "saving" {
-		auth.mu.Unlock()
-		return appwire.Errorf(appwire.CodeBusy, "account sign-in is being saved")
-	}
-	if auth.state != "pending" {
-		auth.mu.Unlock()
-		return nil
-	}
-	auth.state = "cancelled"
+	// The cancelled state wins before callbacks run. Neither callback may hold
+	// auth.mu: it can wake Wait or re-enter a read of the operation's state.
 	auth.cancel()
 	auth.flow.Cancel()
-	auth.mu.Unlock()
 	b.providerChanged(provider, "")
 	return nil
 }
