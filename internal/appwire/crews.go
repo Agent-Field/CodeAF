@@ -139,7 +139,17 @@ type Crew struct {
 	Goal    string     `json:"goal,omitempty"`
 	EndsAt  *time.Time `json:"ends_at,omitempty"`
 	History []string   `json:"history,omitempty"`
-	Items   []CrewItem `json:"items,omitempty"`
+	// HistoryTasks is History with its owner: the tasks the founding manager
+	// had when the crew was made, each with the agent that owned it then.
+	HistoryTasks []CrewHistoryTask `json:"history_tasks,omitempty"`
+	Items        []CrewItem        `json:"items,omitempty"`
+}
+
+// CrewHistoryTask is one task from before a crew was made. Task is its id in
+// Owner's own task list; Owner is the agent that held it then and keeps it.
+type CrewHistoryTask struct {
+	Task  string `json:"task"`
+	Owner string `json:"owner"`
 }
 
 // CrewReportsTo is the manager a member answers to.

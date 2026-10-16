@@ -887,3 +887,29 @@ func TestAppCrewSaysSinceWhenNoMemberHasRun(t *testing.T) {
 	backend.locked(func() { backend.agents["b0b0b0b0"].view.UpdatedAt = later })
 	check(appwire.CrewNeedsYou, later)
 }
+
+func TestCrewHistoryTasksCarryTheirOwner(t *testing.T) {
+	kept := &appCrewExtra{History: []string{"7", "9"}, HistoryOwner: "agent-a"}
+	got := crewHistoryTasks(kept, "agent-b")
+	want := []appwire.CrewHistoryTask{{Task: "7", Owner: "agent-a"}, {Task: "9", Owner: "agent-a"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("owner kept at creation must win over the founder: %v", got)
+	}
+	// A layer from before the owner was kept: the founder, the manager it was made under.
+	legacy := &appCrewExtra{History: []string{"7"}}
+	if got := crewHistoryTasks(legacy, "agent-b"); len(got) != 1 || got[0].Owner != "agent-b" || got[0].Task != "7" {
+		t.Fatalf("legacy falls back to the founder: %v", got)
+	}
+	// Neither: nothing is guessed. No ids: nothing to say.
+	if got := crewHistoryTasks(legacy, ""); got != nil {
+		t.Fatalf("no owner, no records: %v", got)
+	}
+	if got := crewHistoryTasks(&appCrewExtra{HistoryOwner: "agent-a"}, "agent-b"); got != nil {
+		t.Fatalf("no ids, no records: %v", got)
+	}
+	// The legacy string list is still what the layer file keeps.
+	raw, _ := json.Marshal(kept)
+	if !strings.Contains(string(raw), `"history":["7","9"]`) {
+		t.Fatalf("legacy history lost: %s", raw)
+	}
+}

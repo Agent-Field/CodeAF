@@ -372,6 +372,7 @@ func (b *appBackend) crewView(read appCrewRead, t teamstore.Team) appwire.Crew {
 	}
 	if extra := read.layer.Crews[t.ID]; extra != nil {
 		view.Goal, view.EndsAt, view.History = extra.Goal, extra.EndsAt, extra.History
+		view.HistoryTasks = crewHistoryTasks(extra, t.Founder)
 		view.Items = append(view.Items, extra.Items...)
 	}
 	view.State = b.crewState(read, t, view)
@@ -1292,8 +1293,29 @@ func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time
 	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		extra := f.crew(id)
 		extra.Goal, extra.EndsAt, extra.History = strings.TrimSpace(goal), ends, history
+		if len(history) > 0 {
+			extra.HistoryOwner = manager
+		}
 		return nil
 	})
+}
+
+// crewHistoryTasks pairs the kept task ids with the agent that held them. A
+// layer from before the owner was kept falls back to the team's founder, the
+// manager it was made under; with neither, nothing is said rather than guessed.
+func crewHistoryTasks(extra *appCrewExtra, founder string) []appwire.CrewHistoryTask {
+	owner := extra.HistoryOwner
+	if owner == "" {
+		owner = founder
+	}
+	if owner == "" || len(extra.History) == 0 {
+		return nil
+	}
+	out := make([]appwire.CrewHistoryTask, 0, len(extra.History))
+	for _, id := range extra.History {
+		out = append(out, appwire.CrewHistoryTask{Task: id, Owner: owner})
+	}
+	return out
 }
 
 // crewReceipt says in the founding manager's conversation that the crew was
