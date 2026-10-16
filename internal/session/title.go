@@ -721,9 +721,11 @@ func unusableName(name string) bool {
 // same rule in a second place. The underscore is deliberately left alone — it
 // is a character inside identifiers a person may genuinely have named, and
 // [cleanTitle] already unwelds the one case where it is a separator.
+var titleMarkup = strings.NewReplacer("*", "", "`", "")
+
 func stripMarkup(title string) string {
 	title = strings.TrimLeft(title, "#> \t")
-	title = strings.NewReplacer("*", "", "`", "").Replace(title)
+	title = titleMarkup.Replace(title)
 	title = stripListMarker(title)
 	return strings.TrimSpace(title)
 }
@@ -760,12 +762,23 @@ func stripListMarker(title string) string {
 // of them appearing anywhere in an answer means the model handed the
 // instruction back rather than doing what it said. They are matched against the
 // normalized answer, so case, quotes and punctuation do not hide an echo.
-var instructionPhrases = []string{
-	"name this session",
-	"name this conversation twice",
-	"name this piece of work",
-	"what is this work trying to find out",
-}
+var instructionPhrases = func() []string {
+	phrases := []string{"name this session", "name this conversation twice", "name this piece of work", "what is this work trying to find out"}
+	for i, phrase := range phrases {
+		phrases[i] = " " + strings.Join(normalizedWords(phrase), " ") + " "
+	}
+	return phrases
+}()
+
+// Immutable prompt vocabulary is shared by saved-title readers.
+var instructionVocabulary = func() [][]string {
+	prompts := []string{titlePrompt, legacyTitlePrompt, taskNamePrompt, jobNamePrompt, captionPrompt}
+	words := make([][]string, len(prompts))
+	for i, prompt := range prompts {
+		words[i] = uniqueWords(normalizedWords(prompt))
+	}
+	return words
+}()
 
 // instructionEchoDivisor sets how much of a prompt an answer may borrow: an
 // answer holding one in every two of a prompt's distinct words — HALF of them —
@@ -788,7 +801,7 @@ func namesTheInstruction(name string) bool {
 	}
 	joined := " " + strings.Join(said, " ") + " "
 	for _, phrase := range instructionPhrases {
-		if strings.Contains(joined, " "+strings.Join(normalizedWords(phrase), " ")+" ") {
+		if strings.Contains(joined, phrase) {
 			return true
 		}
 	}
@@ -796,10 +809,10 @@ func namesTheInstruction(name string) bool {
 	for _, word := range said {
 		spoken[word] = true
 	}
-	for _, prompt := range []string{titlePrompt, legacyTitlePrompt, taskNamePrompt, jobNamePrompt, captionPrompt} {
+	for _, vocabulary := range instructionVocabulary {
 		asked := 0
 		shared := 0
-		for _, word := range uniqueWords(normalizedWords(prompt)) {
+		for _, word := range vocabulary {
 			asked++
 			if spoken[word] {
 				shared++

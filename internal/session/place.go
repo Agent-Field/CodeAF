@@ -310,11 +310,12 @@ func LoadMeta(dir string) (Meta, error) {
 	// before the name arrived. Only a folder that actually holds one of these
 	// pays for that read ([openingPlaceholder]), and the next thing said in the
 	// session stamps the words back onto the file ([Agent.stampUserLocked]).
-	if !meta.LiteralName && strings.TrimSpace(meta.Title) != "" && healedTitle(meta.Title) == "" {
-		meta.Title = openingPlaceholder(dir)
-	}
 	if !meta.LiteralName {
-		meta.Title = healedTitle(meta.Title)
+		title := healedTitle(meta.Title)
+		if strings.TrimSpace(meta.Title) != "" && title == "" {
+			title = healedTitle(openingPlaceholder(dir))
+		}
+		meta.Title = title
 	}
 	meta.ShortTitle = "" // Old tab labels no longer participate in naming.
 	return meta, nil
