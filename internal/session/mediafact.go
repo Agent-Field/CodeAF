@@ -163,6 +163,11 @@ type MediaFact struct {
 	Batch        string `json:"batch,omitempty"`
 	VariantIndex int    `json:"variant_index,omitempty"`
 	Returned     int    `json:"returned_count,omitempty"`
+	// Declared and Change are set only on a file a shell command declared as an
+	// output (origin published): the path as the model spelled it, and what the
+	// engine observed around that one command (see shell_outputs.go).
+	Declared string `json:"declared,omitempty"`
+	Change   string `json:"change,omitempty"`
 	// Run, Message and Tool are immutable ids of the turn that made it, where
 	// the tool site knew them.
 	Run     string `json:"run,omitempty"`

@@ -37,6 +37,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I reconnected my key but my pinned model still will not start", "models-and-cost"},
 		{"I added credit and the one model is still refused", "models-and-cost"},
 
+		{"can a python chart you made show up in your answer without me editing markdown", "making-pictures-audio-and-video"},
 		{"what can you do", "what-i-can-do"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).

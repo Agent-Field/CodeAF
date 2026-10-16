@@ -399,6 +399,22 @@ const maxTimeoutMs = 2147483647
 
 type bashOutputKey struct{}
 
+type bashExitKey struct{}
+
+// WithBashExit returns a context whose bash call reports the exit status of the
+// process it ran, once, and only when the process ended on the ordinary path
+// with a status somebody saw. It is the structured answer to "did the command
+// actually run to its end in this call": it is NEVER called for rejected
+// arguments, a failed start, a timeout, a cancellation, a call handed to the
+// job registry, or a wait that produced no status, so a caller never has to
+// read the result text to learn any of those.
+func WithBashExit(ctx context.Context, observe func(code int)) context.Context {
+	if observe == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, bashExitKey{}, observe)
+}
+
 // WithBashOutput is a context whose shell calls mirror their raw output to
 // output as it arrives, the way [RunBash] does for a command the person typed.
 func WithBashOutput(ctx context.Context, output io.Writer) context.Context {
@@ -689,6 +705,9 @@ func newBashTool(cwd string, caps Caps) Tool {
 			exitCode := exitCodeFromWait(waitErr)
 			if exitCode == exitUnknown {
 				return appendStatus(text, "Command ended without an exit status"), true, nil
+			}
+			if observe, _ := ctx.Value(bashExitKey{}).(func(int)); observe != nil {
+				observe(exitCode)
 			}
 			if exitCode != 0 {
 				return appendStatus(text, fmt.Sprintf("Command exited with code %d", exitCode)), true, nil

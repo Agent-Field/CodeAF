@@ -622,6 +622,31 @@ wrong is silent.
 **`edit_video` works in tasks, in adaptive runs and inside saved harnesses**
 under the same one condition, exactly as the making verbs do.
 
+## Can you show a chart, plot or picture that a Python script or command made, right in your answer?
+
+Yes, for a picture. When I run a command that makes a chart, a plot or a rendering
+for you, I list its path in `bash`'s `outputs` argument **before** it runs, and
+codeaf looks at that path before and after the command and keeps the picture as
+a source of that very answer — you do not have to edit any markdown.
+
+What it will and will not do:
+
+- **At most 8 paths**, under the working folder, each png, jpeg, gif or webp
+  under the image limit. Anything else is reported as not registered, with the
+  reason, and nothing is guessed from the command, its output or a file name.
+- **Only when the command finishes in that call** with exit status 0. A command
+  run with `background:true`, one handed to a job, or one that failed, timed out
+  or was interrupted registers nothing: the file it may write later is not
+  promised.
+- **Made, or only shown.** A path that was absent before and is a file after is
+  recorded as `created`; one that was already there is shown as it was found
+  (`unchanged`, or `modified` when it changed) and is never recorded as made now.
+  If another background process was running, it is `unknown`. A picture only
+  looked at with `view_image` stays something I looked at.
+- A file that changes while it is being read, or a record that cannot be written,
+  is reported as not registered or unknown, never as done. A file being there
+  says nothing about a paid generation.
+
 ## Where do I find the file for the image you generated — where pictures, audio, music and video end up?
 
 In one of three places, decided by whose folder the workspace is:

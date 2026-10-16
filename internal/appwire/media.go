@@ -115,7 +115,7 @@ const (
 type MediaSource struct {
 	ID     string `json:"id"`
 	Kind   string `json:"kind" enum:"image,audio,video,document"`
-	Origin string `json:"origin" enum:"attachment,generated,evidence"`
+	Origin string `json:"origin" enum:"attachment,generated,evidence,published"`
 	// Path is the recorded canonical path, for display and for the app's
 	// native side to open ONLY when State is available.
 	Path  string `json:"path"`
@@ -159,6 +159,13 @@ type MediaSource struct {
 	InputMessages        []string `json:"input_messages,omitempty"`
 	InputMessagesOmitted bool     `json:"input_messages_omitted,omitempty"`
 	Said                 string   `json:"said,omitempty"`
+	// Published only (origin published — a file a shell command declared as an
+	// output): Declared is the path the model spelled and Change what the engine
+	// observed around that one command: created (absent before, a file after),
+	// unchanged, modified, or unknown. It never says who wrote the file and never
+	// implies a charge.
+	Declared string `json:"declared,omitempty"`
+	Change   string `json:"change,omitempty" enum:"created,unchanged,modified,unknown"`
 	// Evidence only (origin evidence — a file the agent looked at): Verb is
 	// looked_at · listened_to · watched · read; Saw is the looking model's words
 	// verbatim (SawOmitted when too long to keep whole); SeenBy is the model

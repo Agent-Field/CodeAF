@@ -162,7 +162,7 @@ func (a *Agent) belt() []bare.Tool {
 	for index, tool := range tools {
 		switch tool.Name {
 		case "bash":
-			tools[index] = a.backgroundBash(tool)
+			tools[index] = a.backgroundBash(a.publishingBash(tool))
 		case "read":
 			tools[index] = a.pdfRead(tool)
 		case "write":

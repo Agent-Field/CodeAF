@@ -11,8 +11,9 @@ package session
 //
 // THE ROADS THAT SEE CREATION (and the ones that do not) are listed in
 // docs/changes/unreleased/0-app-deliverables.md. `write` and the five media
-// tools are seams. `bash` is not: it can create any file and the harness holds
-// no handle on what a shell did, so a file a shell (or a task worker) created
+// tools are seams. `bash` is a seam ONLY for a path the model declared in its
+// `outputs` argument (shell_outputs.go): the engine looked at that path before
+// and after the one command. Any other file a shell (or a task worker) created
 // is NOT recorded today. That is a stated gap, not a quiet one; a task's added
 // files and an owned workspace's untracked files are the two roads a later
 // change can observe from git.

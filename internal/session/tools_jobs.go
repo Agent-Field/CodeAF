@@ -220,7 +220,13 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			// The id and the path, and nothing else. There is no output yet by
 			// construction, and the two things the model needs next — how to ask
 			// about it, where to read it — are both here.
-			return fmt.Sprintf("job %d started; log at %s", started.id, started.logPath), false, nil
+			text := fmt.Sprintf("job %d started; log at %s", started.id, started.logPath)
+			// A JOB ENDS LATER, and what it writes is not this call's to
+			// promise (shell_outputs.go): declared outputs claim nothing here.
+			if _, declared := shellOutputsArgs(args); declared {
+				text += "\nOutputs not registered: a background job ends after this call."
+			}
+			return text, false, nil
 		},
 	}
 }
