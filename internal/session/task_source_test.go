@@ -7,6 +7,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -366,7 +367,7 @@ func TestPlanRowsTakeTheirSourceFromTheRecordThatOwnsThemNeverFromANumberCollisi
 
 // DISMISS WORKS ON A ROW OF A RUN'S PLAN STORE TOO, persisted with the same set,
 // and a plan row still running or waiting is refused.
-func TestDismissWorksOnAPlanRowAndRefusesALiveOne(t *testing.T) {
+func TestPlanDismissIsRefusedWithoutMutationAndLegacyRestoreStillWorks(t *testing.T) {
 	folder := filepath.Join(t.TempDir(), sourceOwner)
 	place := Place{Dir: folder}
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
@@ -396,28 +397,32 @@ func TestDismissWorksOnAPlanRowAndRefusesALiveOne(t *testing.T) {
 	if v := viewOf(t, agent, "t-alone"); v.State != "failed" || v.Dismissed {
 		t.Fatalf("t-alone = %+v", v)
 	}
-	if err := act(agent, "t-alone", "dismiss"); err != nil {
-		t.Fatalf("dismiss a failed plan row: %v", err)
+	for _, id := range []string{"t-alone", "t-bad", "t-live"} {
+		before := viewOf(t, agent, id)
+		if err := act(agent, id, "dismiss"); !errors.Is(err, ErrPlanDismissUnsupported) {
+			t.Fatalf("dismiss %s = %v", id, err)
+		}
+		after := viewOf(t, agent, id)
+		if after.Dismissed || before.State != after.State || before.Result != after.Result || before.Spent != after.Spent {
+			t.Fatalf("unsupported dismissal changed %s", id)
+		}
 	}
-	if v := viewOf(t, agent, "t-alone"); !v.Dismissed || v.State != "failed" || v.Result != viewOf(t, agent, "t-alone").Result {
-		t.Fatalf("after dismiss = %+v", v)
-	}
-	if err := act(agent, "t-bad", "dismiss"); err == nil || !strings.Contains(err.Error(), "still waits on it") {
-		t.Fatalf("dismissing a failure a waiting row hangs on = %v", err)
-	}
-	if err := act(agent, "t-live", "dismiss"); err == nil {
-		t.Fatal("a row that has not finished was hidden")
+	// An older checkpoint may already contain a hidden plan row. Restoring is safe
+	// and remains available: it only makes the existing failure visible again.
+	if err := agent.graph().setDismissed("t-alone", true, false); err != nil {
+		t.Fatal(err)
 	}
 	owner, err := NewWorkSource().Owner(context.Background(), sourceOwner, folder)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fact, _ := owner.Find("t-alone"); !fact.Node.Dismissed {
-		t.Fatal("the work graph does not hide the dismissed plan row")
+		t.Fatal("legacy hidden record was lost")
 	}
 	if err := act(agent, "t-alone", "restore"); err != nil || viewOf(t, agent, "t-alone").Dismissed {
 		t.Fatalf("restore: %v", err)
 	}
+
 }
 
 // AN ADAPTIVE RUN IS ONE BLOCK: its root row is born with the message it was started

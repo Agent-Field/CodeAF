@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // The two actions [Agent.AppTaskAction] takes for this, spelled as the app
@@ -126,11 +127,11 @@ func appDismissible(row AppTaskView, rows []AppTaskView) error {
 // every road the graph holds — nodes and run rows: a retry, a resume or a new
 // dependent is admitted under this lock, so none can land between this answer
 // and the write that follows it. A plan row lives in its own store and is
-// answered by [Agent.appDismissAction]'s read after the write instead.
+// refused by [Agent.appDismissAction] before any read or mutation.
 func (g *TaskGraph) dismissibleLocked(id string) error {
 	n, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
-		return nil
+		return fmt.Errorf("task %s: no such task", id)
 	}
 	if node := g.nodes[n]; node != nil {
 		// A STOP IS KNOWN BY THE ENDING AS WELL AS THE FLAG: a restored node has only the
@@ -149,7 +150,7 @@ func (g *TaskGraph) dismissibleLocked(id string) error {
 			return fmt.Errorf("task %s is not a settled failure: it is %s", id, appRunRowState(row))
 		}
 	} else {
-		return nil
+		return fmt.Errorf("task %s: no such task", id)
 	}
 	for _, other := range g.nodes {
 		if other == nil || other.id == n || other.state.settled() {
@@ -180,15 +181,15 @@ func (g *TaskGraph) dismissibleLocked(id string) error {
 	return nil
 }
 
-// dismissInterleave is a test seam: it runs between a plan row's dismissal and
-// the read that verifies it, which is the one window a plan store's own writers
-// can use. It is nil outside the test that stands in that window.
-var dismissInterleave func()
-
 // appDismissAction is tasks.dismiss and tasks.restore for every road. Dismissing
 // what is already dismissed, and restoring what is not, succeed and change
 // nothing, so a replayed request is not an error.
+var ErrPlanDismissUnsupported = errors.New("dismissing plan tasks is not supported yet; nothing was changed")
+
 func (a *Agent) appDismissAction(intent AppTaskIntent) error {
+	if intent.Action == AppActionDismiss && strings.HasPrefix(intent.ID, "t-") {
+		return ErrPlanDismissUnsupported
+	}
 	rows, err := a.AppTasks()
 	if err != nil {
 		return err
@@ -199,6 +200,9 @@ func (a *Agent) appDismissAction(intent AppTaskIntent) error {
 // appDismissWith is [Agent.appDismissAction] over rows already read, so a test can
 // hand it a read that has gone stale.
 func (a *Agent) appDismissWith(intent AppTaskIntent, rows []AppTaskView) error {
+	if intent.Action == AppActionDismiss && strings.HasPrefix(intent.ID, "t-") {
+		return ErrPlanDismissUnsupported
+	}
 	var row AppTaskView
 	found := false
 	for _, candidate := range rows {
@@ -229,47 +233,9 @@ func (a *Agent) appDismissWith(intent AppTaskIntent, rows []AppTaskView) error {
 	if err := graph.setDismissed(row.ID, hide, hide); err != nil {
 		return err
 	}
-	if hide && !a.holdsRecord(graph, row.ID) {
-		// A PLAN ROW: its dependents are filed in its own store, outside the graph's
-		// lock, so the read that decided is read again now that the change is on the
-		// record, and a dependent that arrived in between puts it back.
-		if dismissInterleave != nil {
-			dismissInterleave()
-		}
-		fresh, err := a.AppTasks()
-		if err == nil {
-			for _, candidate := range fresh {
-				if candidate.ID == row.ID {
-					err = appDismissible(candidate, fresh)
-					break
-				}
-			}
-		}
-		if err != nil {
-			if undo := graph.setDismissed(row.ID, false, false); undo != nil {
-				return fmt.Errorf("could not undo a dismissal that no longer holds: %w", undo)
-			}
-			return err
-		}
-	}
+
 	a.announceDismissal(graph, row.ID, hide)
 	return nil
-}
-
-// holdsRecord says the graph itself holds this task — a node or a run row — so
-// [TaskGraph.dismissibleLocked] has already answered for it under the lock.
-func (a *Agent) holdsRecord(g *TaskGraph, id string) bool {
-	n, err := strconv.ParseUint(id, 10, 64)
-	if err != nil {
-		return false
-	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.nodes[n] != nil {
-		return true
-	}
-	_, ok := g.runRowLocked(n)
-	return ok
 }
 
 // announceDismissal says the change on the road the task is on: a node through

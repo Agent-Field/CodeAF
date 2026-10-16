@@ -6,10 +6,11 @@ package session
 // back is not a hide.
 
 import (
+	"bytes"
+	"errors"
 	"sync"
 	"sync/atomic"
 
-	"github.com/Agent-Field/codeaf/internal/plandb"
 	"os"
 	"path/filepath"
 	"strings"
@@ -367,47 +368,37 @@ func TestDismissAndRetryInterleavedNeverLeaveAWorkingTaskHidden(t *testing.T) {
 
 // A PLAN ROW'S DEPENDENTS ARE FILED IN ITS OWN STORE: one that arrives between the
 // decision and the write is caught by the read after it, and the dismissal is put back.
-func TestAPlanRowThatGainsADependentDuringDismissalIsPutBack(t *testing.T) {
-	folder := filepath.Join(t.TempDir(), sourceOwner)
-	place := Place{Dir: folder}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.SessionFile, config.Place = place.Transcript(), place
-	})
-	path := filepath.Join(folder, planStoreFilename)
-	if err := os.MkdirAll(folder, 0o755); err != nil {
+// A PLAN STORE CANNOT BE USED AS A READ-WRITE ATOMICITY GUESS. Until the
+// producer offers a stable admission operation, refusal comes before reading
+// its database or touching the task checkpoint.
+func TestPlanDismissRefusesBeforeReadingAnUnreadableStore(t *testing.T) {
+	agent, _, started, _ := failedConversation(t)
+	path := filepath.Join(t.TempDir(), "plan.db")
+	original := []byte("not a sqlite database")
+	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := plandb.Open(path, "the run", planRootID, "The run", "drive", sourceOwner)
+	armPlanStore(t, agent, path, sourceOwner)
+	checkpoint := taskCheckpointPath(agent.config.SessionFile)
+	before, err := os.ReadFile(checkpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "bad", Title: "fails"}}); err != nil {
+	if err := act(agent, "t-bad", "dismiss"); !errors.Is(err, ErrPlanDismissUnsupported) {
+		t.Fatalf("dismiss = %v", err)
+	}
+	after, err := os.ReadFile(checkpoint)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Claim("bad", "w"); err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(before, after) || agent.graph().isDismissed("t-bad") {
+		t.Fatal("refused dismissal changed the checkpoint")
 	}
-	if _, err := store.Fail("bad", "w", "exit 1"); err != nil {
-		t.Fatal(err)
+	got, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(got, original) {
+		t.Fatal("refusal touched unreadable plan")
 	}
-	store.Close()
-	armPlanStore(t, agent, path, sourceOwner)
-	dismissInterleave = func() {
-		s, err := plandb.Open(path, "the run", planRootID, "The run", "drive", sourceOwner)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		defer s.Close()
-		if _, err := s.AddMany([]plandb.TaskSpec{{ID: "late", Title: "arrives mid-dismissal", Dependencies: []plandb.Dependency{{TaskID: "bad", Kind: plandb.DepBlocks}}}}); err != nil {
-			t.Error(err)
-		}
-	}
-	defer func() { dismissInterleave = nil }()
-	if err := act(agent, "t-bad", "dismiss"); err == nil || !strings.Contains(err.Error(), "still waits on it") {
-		t.Fatalf("dismissal = %v, want it refused for the dependent that arrived", err)
-	}
-	if viewOf(t, agent, "t-bad").Dismissed || agent.graph().isDismissed("t-bad") {
-		t.Fatal("the plan row stayed hidden")
+	if started.Load() != 0 {
+		t.Fatal("refusal dispatched work")
 	}
 }
