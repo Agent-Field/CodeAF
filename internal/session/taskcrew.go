@@ -355,6 +355,7 @@ func (a *Agent) RedoStronger(ctx context.Context, row uint64) (uint64, string, e
 	if !crew.anyStarted() {
 		wish = crewWish{again: &prior}
 	}
+	ctx = withTaskSource(ctx, a.graph().sourceOfID(row))
 	id, title, _, err := a.startTaskRun(withCrewWish(ctx, wish), crew.brief, true, "")
 	if err != nil {
 		if strings.Contains(err.Error(), crewroute.ErrStrongest.Error()) {

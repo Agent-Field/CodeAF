@@ -178,10 +178,12 @@ type taskSourceKey struct{}
 
 // withTaskSource carries a captured source to the road that admits the work.
 func withTaskSource(ctx context.Context, source *TaskSource) context.Context {
-	if !source.valid() {
-		return ctx
-	}
-	return context.WithValue(ctx, taskSourceKey{}, source)
+	return context.WithValue(ctx, taskSourceKey{}, cloneSource(source))
+}
+
+func taskSourceCaptured(ctx context.Context) bool {
+	_, ok := ctx.Value(taskSourceKey{}).(*TaskSource)
+	return ok
 }
 
 // taskSourceFrom is the source a door captured, or nil.
@@ -190,11 +192,10 @@ func taskSourceFrom(ctx context.Context) *TaskSource {
 	return cloneSource(source)
 }
 
-// expectRunSource records the source a run row will be born with. A nil source
-// records nothing, and the row then falls back to whoever publishes it
-// ([Agent.runBorn]).
+// expectRunSource captures the source a run row is born with, including a
+// truthful unknown; delayed publication must not adopt a later person message.
 func (a *Agent) expectRunSource(id uint64, source *TaskSource) {
-	if id != 0 && source.valid() {
+	if id != 0 {
 		a.runSources.Store(id, cloneSource(source))
 	}
 }
@@ -273,9 +274,6 @@ func (g *TaskGraph) planLinks() map[string]*TaskSource {
 
 // inheritedSource is the source a spec admitted without one is born with.
 func (g *TaskGraph) inheritedSource(spec taskSpec, admitter *Agent) *TaskSource {
-	if spec.quick != nil {
-		return nil
-	}
 	if spec.parent != 0 {
 		return g.sourceOfID(spec.parent)
 	}

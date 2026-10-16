@@ -1400,7 +1400,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// the conversation's current one; a root takes what its admitting agent is
 	// answering now; and nobody typed into a woken turn, so it has none
 	// (task_source.go).
-	if !spec.source.valid() {
+	if !spec.sourceCaptured && !spec.source.valid() {
 		spec.source = g.inheritedSource(spec, admitter)
 	}
 	node := &TaskNode{

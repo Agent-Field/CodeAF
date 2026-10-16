@@ -690,6 +690,7 @@ func (a *Agent) promoteQuickDirect(node *TaskNode) error {
 	}
 	title, model, parent, owner := node.spec.title, node.spec.model, node.parent, node.owner
 	ground := node.Ground
+	source := cloneSource(node.spec.source)
 	depends := []uint64{}
 	if !node.state.settled() {
 		depends = append(depends, node.id)
@@ -706,7 +707,7 @@ func (a *Agent) promoteQuickDirect(node *TaskNode) error {
 	if err != nil {
 		return err
 	}
-	spec := taskSpec{admission: a.admissionContext(), title: title, named: true, brief: brief, acceptance: taskPersonAcceptance, model: model, ground: ground, where: "in place", mode: TaskModeInPlace, parent: parent, owner: owner, dependsOn: depends}
+	spec := taskSpec{admission: a.admissionContext(), source: source, sourceCaptured: true, title: title, named: true, brief: brief, acceptance: taskPersonAcceptance, model: model, ground: ground, where: "in place", mode: TaskModeInPlace, parent: parent, owner: owner, dependsOn: depends}
 	node.graph.admit(id, spec)
 	if cancel != nil {
 		cancel()

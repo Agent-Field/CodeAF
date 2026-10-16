@@ -325,6 +325,8 @@ type taskSpec struct {
 	// it was admitted and never read back out of any text (task_source.go). Nil
 	// is unknown.
 	source *TaskSource
+	// sourceCaptured preserves a captured unknown on promotion or delayed admission.
+	sourceCaptured bool
 	// admission is the WORKING CONTEXT this node was admitted with: bounded
 	// quotations of what was said around the work, with who said them, and
 	// handles to the calls that already ran (admission.go). Every door compiles
@@ -771,6 +773,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// may type again while the card is open, and the card is still about the message
 	// that made it (task_source.go). A node inherits its own block.
 	spec.source = a.bornSource()
+	spec.sourceCaptured = true
 	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
 	// already holds (taskstands.go) before anybody is asked anything, so the card
 	// the person answers names the project rather than a folder under a session.
@@ -932,6 +935,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
 		return answer, refused, nil
 	}
+	a.runSources.Delete(p.id) // The fallback graph owns the captured spec; no run row will consume this marker.
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil

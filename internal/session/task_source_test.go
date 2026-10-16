@@ -469,3 +469,68 @@ func TestProjectedSourceWordsAreScrubbedThenCutOnAValidByteBound(t *testing.T) {
 		t.Fatalf("a multi-byte source was cut to %d bytes", len(multi.Text))
 	}
 }
+
+func TestQuickPromotionPreservesRecordedSourceOrUnknownDuringALaterMessage(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(strconv.FormatBool(legacy), func(t *testing.T) {
+			agent, node, _ := appNodeFixture(t, true)
+			heardAs(agent, "first message that made the quick task")
+			original := agent.bornSource()
+			node.graph.mu.Lock()
+			node.state = TaskDone
+			if !legacy {
+				node.spec.source = cloneSource(original)
+			}
+			node.graph.mu.Unlock()
+			graph := stubbedGraph(agent, func(n *TaskNode) { n.graph.complete(n, TaskDone) })
+			heardAs(agent, "later unrelated message")
+			if err := agent.promoteQuickDirect(node); err != nil {
+				t.Fatal(err)
+			}
+			promoted := graph.node(2)
+			if promoted == nil {
+				t.Fatal("promotion admitted no full task")
+			}
+			got := promoted.source()
+			if legacy && got != nil {
+				t.Fatalf("legacy source was fabricated from current turn: %+v", got)
+			}
+			if !legacy && (got == nil || got.ID != original.ID) {
+				t.Fatalf("promotion source=%+v want original %+v", got, original)
+			}
+		})
+	}
+}
+
+func TestQuickAdmissionRecordsTheActualMessageBeforeALaterTurn(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := stubbedGraph(agent, func(n *TaskNode) { n.graph.complete(n, TaskDone) })
+	heardAs(agent, "original quick request")
+	graph.admit(graph.reserve(), taskSpec{title: "quick", brief: "q", acceptance: "a", quick: newQuickTaskSpec("read a file", nil, nil)})
+	got := graph.node(1).source()
+	if got == nil || got.Text != "original quick request" {
+		t.Fatalf("source=%+v", got)
+	}
+	heardAs(agent, "a later message")
+	if graph.node(1).source().ID != got.ID {
+		t.Fatal("later message changed recorded quick source")
+	}
+}
+
+func TestExplicitUnknownSourceNeverFallsBackToANewerMessage(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	heardAs(agent, "unrelated current message")
+	ctx := withTaskSource(context.Background(), nil)
+	if !taskSourceCaptured(ctx) || taskSourceFrom(ctx) != nil {
+		t.Fatal("explicit unknown was not retained")
+	}
+	agent.expectRunSource(99, taskSourceFrom(ctx))
+	if got := agent.runBorn(99); got != nil {
+		t.Fatalf("a delayed run took unrelated current source %+v", got)
+	}
+	graph := stubbedGraph(agent, func(n *TaskNode) { n.graph.complete(n, TaskDone) })
+	graph.admit(graph.reserve(), taskSpec{title: "legacy promotion", brief: "b", acceptance: "a", sourceCaptured: true})
+	if got := graph.node(1).source(); got != nil {
+		t.Fatalf("explicit captured unknown took current source %+v", got)
+	}
+}

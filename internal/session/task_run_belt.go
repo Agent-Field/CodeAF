@@ -450,7 +450,11 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, quest
 	}
 
 	id := g.reserve()
-	a.expectRunSource(id, taskSourceFrom(ctx))
+	source := taskSourceFrom(ctx)
+	if !taskSourceCaptured(ctx) {
+		source = a.bornSource()
+	}
+	a.expectRunSource(id, source)
 	title := taskPersonTitle(brief)
 	// The default run door uses the same placement evidence as a proposal or
 	// legacy task. Starting from home must not discard the named project.
@@ -458,6 +462,7 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, quest
 		title: title, request: brief, brief: brief, acceptance: taskPersonAcceptance,
 	})
 	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, stand, question); err != nil {
+		a.runSources.Delete(id)
 		if errors.Is(err, errRunRoadUnavailable) {
 			return a.startTaskLegacy(ctx, brief, solo)
 		}

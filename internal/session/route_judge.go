@@ -1144,7 +1144,7 @@ func (a *Agent) launchRouteTaskTold(hub *eventHub, verdict routeVerdict, title s
 		// written by a judge that read their turn and summarised it, so the node
 		// would otherwise open on a summary of a summary.
 		request: a.taskRequest(),
-		source:  a.bornSource(),
+		source:  a.bornSource(), sourceCaptured: true,
 		// AND WHERE THOSE WORDS LIVE, the same pointer every other door sets
 		// (task_brief.go). The checkpoint road reaches here through
 		// [Agent.handOverRunningTurn] and does not build a spec of its own, so

@@ -181,11 +181,10 @@ func (g *TaskGraph) dismissibleLocked(id string) error {
 	return nil
 }
 
-// appDismissAction is tasks.dismiss and tasks.restore for every road. Dismissing
-// what is already dismissed, and restoring what is not, succeed and change
-// nothing, so a replayed request is not an error.
+// ErrPlanDismissUnsupported refuses external-plan hiding before any read or mutation.
 var ErrPlanDismissUnsupported = errors.New("dismissing plan tasks is not supported yet; nothing was changed")
 
+// appDismissAction applies reversible visibility only where admission is atomic.
 func (a *Agent) appDismissAction(intent AppTaskIntent) error {
 	if intent.Action == AppActionDismiss && strings.HasPrefix(intent.ID, "t-") {
 		return ErrPlanDismissUnsupported

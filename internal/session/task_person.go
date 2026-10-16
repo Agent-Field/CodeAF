@@ -132,7 +132,7 @@ func (a *Agent) startTaskLegacy(ctx context.Context, brief string, solo bool) (u
 	spec := taskSpec{
 		title: taskPersonTitle(brief), summary: firstLine(brief), request: brief,
 		origin: a.taskOriginRef(), brief: brief, acceptance: taskPersonAcceptance,
-		source:   taskSourceFrom(ctx),
+		source: taskSourceFrom(ctx), sourceCaptured: taskSourceCaptured(ctx),
 		model:    a.resolveTaskModel("").model,
 		unshaped: true, unsized: !solo,
 		// AND WHAT WAS SAID AROUND IT, from the one compiler every door uses
