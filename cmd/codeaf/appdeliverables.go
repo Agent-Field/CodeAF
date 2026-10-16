@@ -253,6 +253,10 @@ func (b *appBackend) deliverScope(q appwire.DeliverablesQuery) (map[string]bool,
 			}
 		}
 		return nil, appwire.Errorf(appwire.CodeNotFound, "there is no crew %s", q.Crew)
+	case appwire.ScopeTeams:
+		// The teams union is resolved against the request's own deadline
+		// (listTeamsUnion); falling through here would read as every conversation.
+		return nil, appwire.Errorf(appwire.CodeEngine, "the teams scope is not resolved here")
 	}
 	return nil, nil
 }
@@ -286,6 +290,9 @@ func (b *appBackend) deliverQuery(q appwire.DeliverablesQuery, count bool) (sess
 
 // ListDeliverables answers deliverables.list.
 func (b *appBackend) ListDeliverables(q appwire.DeliverablesQuery) (appwire.DeliverablesPage, error) {
+	if q.Scope == appwire.ScopeTeams {
+		return b.listTeamsUnion(q)
+	}
 	query, liveOK, err := b.deliverQuery(q, false)
 	if err != nil {
 		return appwire.DeliverablesPage{}, err
@@ -293,9 +300,16 @@ func (b *appBackend) ListDeliverables(q appwire.DeliverablesQuery) (appwire.Deli
 	deadline := time.Now().Add(appDeliverListTime)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
+	return b.deliverPage(ctx, deadline, query, liveOK, q.Cursor, q.Limit, nil)
+}
+
+// deliverPage is one page of query within ctx and deadline. decorate, when set,
+// adds what a scope knows about each row's owner.
+func (b *appBackend) deliverPage(ctx context.Context, deadline time.Time, query session.DeliverableQuery, liveOK func(appwire.Deliverable) bool, cursor string, limit int, decorate func(*appwire.Deliverable)) (appwire.DeliverablesPage, error) {
 	env := b.deliverEnvWithin(ctx)
-	built := map[string]appwire.Deliverable{}
-	scan, err := session.ListDeliverables(appMediaIndex(), query, q.Cursor, q.Limit, deadline,
+	type owned struct{ agent, id string }
+	built := map[owned]appwire.Deliverable{}
+	scan, err := session.ListDeliverables(appMediaIndex(), query, cursor, limit, deadline,
 		appwire.MediaReplyBudget-8192, func(row session.DeliverableRow) (int, bool, error) {
 			d, ok := env.describe(row)
 			if !ok {
@@ -304,11 +318,14 @@ func (b *appBackend) ListDeliverables(q appwire.DeliverablesQuery) (appwire.Deli
 			if !liveOK(d) {
 				return 0, false, nil
 			}
+			if decorate != nil {
+				decorate(&d)
+			}
 			raw, err := json.Marshal(d)
 			if err != nil {
 				return 0, false, err
 			}
-			built[row.ID] = d
+			built[owned{row.Artifact.Session, row.ID}] = d
 			return len(raw) + 1, true, nil
 		})
 	if err != nil {
@@ -316,13 +333,16 @@ func (b *appBackend) ListDeliverables(q appwire.DeliverablesQuery) (appwire.Deli
 	}
 	page := appwire.DeliverablesPage{Deliverables: make([]appwire.Deliverable, 0, len(scan.Rows)), Next: scan.Next, Incomplete: scan.Incomplete}
 	for _, row := range scan.Rows {
-		page.Deliverables = append(page.Deliverables, built[row.ID])
+		page.Deliverables = append(page.Deliverables, built[owned{row.Artifact.Session, row.ID}])
 	}
 	return page, nil
 }
 
 // CountDeliverables answers deliverables.count.
 func (b *appBackend) CountDeliverables(q appwire.DeliverablesQuery) (appwire.DeliverablesCount, error) {
+	if q.Scope == appwire.ScopeTeams {
+		return b.countTeamsUnion(q)
+	}
 	query, liveOK, err := b.deliverQuery(q, true)
 	if err != nil {
 		return appwire.DeliverablesCount{}, err
@@ -330,8 +350,12 @@ func (b *appBackend) CountDeliverables(q appwire.DeliverablesQuery) (appwire.Del
 	deadline := time.Now().Add(appDeliverListTime)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
+	return b.deliverCount(ctx, deadline, query, liveOK, q.Cursor)
+}
+
+func (b *appBackend) deliverCount(ctx context.Context, deadline time.Time, query session.DeliverableQuery, liveOK func(appwire.Deliverable) bool, cursor string) (appwire.DeliverablesCount, error) {
 	env := b.deliverEnvWithin(ctx)
-	scan, err := session.ListDeliverables(appMediaIndex(), query, q.Cursor, 0, deadline, 0,
+	scan, err := session.ListDeliverables(appMediaIndex(), query, cursor, 0, deadline, 0,
 		func(row session.DeliverableRow) (int, bool, error) {
 			d, ok := env.describe(row)
 			if !ok {

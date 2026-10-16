@@ -103,11 +103,27 @@ type Deliverable struct {
 	// capability this engine does not yet offer, and none is forged.
 	PreviewUnavailable string           `json:"preview_unavailable,omitempty" enum:"source_gone"`
 	Kept               *DeliverableKept `json:"kept,omitempty"`
+	// Teams and Ambiguous are present only under scope "teams". Teams is every
+	// recorded membership of the row's exact owning conversation (never one
+	// guessed assignment); Ambiguous says those memberships reach more than one
+	// top-level team, so no single team made this row.
+	Teams     []DeliverableTeam `json:"teams,omitempty"`
+	Ambiguous bool              `json:"ambiguous,omitempty"`
+}
+
+// DeliverableTeam is one team holding a deliverable's owner, and the canonical
+// top-level team above it (the team itself when it is top-level).
+type DeliverableTeam struct {
+	Team string `json:"team"`
+	Top  string `json:"top"`
+	// Root marks the real root's own roster (Top is then empty). It is not a
+	// top-level team and never makes a row ambiguous.
+	Root bool `json:"root,omitempty"`
 }
 
 // DeliverablesQuery is the one filter list and count share.
 type DeliverablesQuery struct {
-	Scope  string   `json:"scope" enum:"agent,crew,global"`
+	Scope  string   `json:"scope" enum:"agent,crew,global,teams"`
 	Agent  string   `json:"agent,omitempty"`
 	Crew   string   `json:"crew,omitempty"`
 	Member string   `json:"member,omitempty"`
@@ -121,6 +137,12 @@ type DeliverablesQuery struct {
 	Limit  int    `json:"limit,omitempty"`
 }
 
+// ScopeTeams is the deliverables scope over every open team and descendant: the
+// union of their members, managers included, loose agents excluded. Crew, when
+// given with it, names one canonical top-level team and restricts the union to
+// that team's whole subtree; the real root's id names the root's own roster.
+const ScopeTeams = "teams"
+
 // DeliverablesPage is deliverables.list's answer. Next absent means the whole
 // history was read; Incomplete says a page is short because a bound was spent
 // (or, with no Next, that superseded rows could not all be ruled out).
@@ -128,6 +150,8 @@ type DeliverablesPage struct {
 	Deliverables []Deliverable `json:"deliverables"`
 	Next         string        `json:"next,omitempty"`
 	Incomplete   bool          `json:"incomplete,omitempty"`
+	// Revision is the team membership the page was read against (scope teams).
+	Revision string `json:"revision,omitempty"`
 }
 
 // DeliverablesCount is deliverables.count's answer: how many matched in the
@@ -136,6 +160,7 @@ type DeliverablesCount struct {
 	Count      int    `json:"count"`
 	Next       string `json:"next,omitempty"`
 	Incomplete bool   `json:"incomplete,omitempty"`
+	Revision   string `json:"revision,omitempty"`
 }
 
 // DeliverableText is deliverables.read's answer.
@@ -233,8 +258,12 @@ func checkDeliverablesQuery(q DeliverablesQuery, method string) error {
 			return Errorf(CodeBadParams, "%s with scope crew needs a crew", method)
 		}
 	case "global":
+	case ScopeTeams:
+		if strings.TrimSpace(q.Agent) != "" || strings.TrimSpace(q.Member) != "" {
+			return Errorf(CodeBadParams, "%s with scope teams takes no agent or member; crew may name one top-level team", method)
+		}
 	default:
-		return Errorf(CodeBadParams, "%s needs a scope of agent, crew or global", method)
+		return Errorf(CodeBadParams, "%s needs a scope of agent, crew, global or teams", method)
 	}
 	return nil
 }

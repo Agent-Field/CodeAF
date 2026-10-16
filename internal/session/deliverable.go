@@ -618,7 +618,8 @@ func ListDeliverables(index string, q DeliverableQuery, cursor string, limit int
 		return DeliverableScan{}, err
 	}
 	var needles [][]byte
-	if q.Sessions != nil {
+	byValue := len(q.Sessions) > deliverNeedleMax
+	if q.Sessions != nil && !byValue {
 		for id := range q.Sessions {
 			needles = append(needles, mediaNeedle(id))
 		}
@@ -630,6 +631,9 @@ func ListDeliverables(index string, q DeliverableQuery, cursor string, limit int
 	var endedAt int64 = -1
 	var projectErr error
 	boundary, err := scanBackward(file, end, mediaScanBudget, deadline, func(start int64, line []byte) bool {
+		if byValue && !lineNamesSession(line, q.Sessions) {
+			return true
+		}
 		if needles != nil {
 			hit := false
 			for _, needle := range needles {
