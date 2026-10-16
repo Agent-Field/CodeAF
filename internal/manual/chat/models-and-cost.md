@@ -1345,8 +1345,8 @@ fix — `reconnect openrouter with /connect, or unpin the worker from glm-5.3-fl
 - **A key changed while the call was in flight** is not blamed: the refusal belongs to the
   key the call carried when it was sent.
 - **Credit read after the refusal.** For a payment refusal, a balance read that finds
-  credit, taken after the refusal, lifts it. A balance read before it does not, and a
-  fresh reading of none keeps it.
+  credit, begun after the refusal, lifts it. A read begun before it does not, even if it
+  answered after, and a fresh reading of none keeps it.
 
 A refusal written by an older build named no key. It is lifted when the key is seen to
 change after it. The first key this build sees is where it starts counting, so a key you

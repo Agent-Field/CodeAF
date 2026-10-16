@@ -124,13 +124,16 @@ func crewHeldAgainstNow(profileDir string, history []router.CrewRouteOutcome, no
 			}
 			provider := strings.ToLower(o.Provider)
 			seen := facts.seen[provider]
+			// A refusal with no time it was made cannot be older than
+			// anything: only its print, which needs no time, can lift it.
+			dated := !o.At.IsZero()
 			switch {
-			case o.Cred != "" && o.Cred != facts.prints[provider]:
+			case o.Cred != "" && facts.prints[provider] != "" && o.Cred != facts.prints[provider]:
 				drop = true
-			case o.Cred == "" && !seen.Since.IsZero() && o.At.Before(seen.Since):
+			case o.Cred == "" && dated && !seen.Since.IsZero() && o.At.Before(seen.Since):
 				drop = true
 			}
-			if at, ok := facts.credit[provider]; ok && o.Kind == "payment" && at.After(o.At) {
+			if at, ok := facts.credit[provider]; ok && dated && o.Kind == "payment" && at.After(o.At) {
 				drop = true
 			}
 		}
@@ -142,6 +145,21 @@ func crewHeldAgainstNow(profileDir string, history []router.CrewRouteOutcome, no
 		}
 	}
 	return out
+}
+
+// CrewRefusalApplies is whether one route failure still holds against the
+// route now, by the same facts route health reads ([crewHeldAgainstNow]): an
+// auth or payment refusal does not when a known credential in force is not the one
+// it refused, when the credential changed after an unprinted one, or, for
+// payment, when credit was read after it. Every other kind of failure — a rate
+// limit, a route gone, a timeout — still applies: no fact here says otherwise.
+// A failure with no time it was made is lifted only by its print. It reads only
+// the profile's facts about failure's own provider, and keeps nothing.
+func CrewRefusalApplies(profileDir string, failure router.CrewRouteOutcome) bool {
+	if !crewCredentialRefusal(failure.Kind) {
+		return true
+	}
+	return len(crewHeldAgainstNow(profileDir, []router.CrewRouteOutcome{failure}, time.Now())) == 1
 }
 
 // crewCredentialFacts are, for each provider a refusal in history names, the

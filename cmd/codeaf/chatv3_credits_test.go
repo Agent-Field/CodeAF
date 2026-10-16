@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -351,5 +352,43 @@ func TestAFreshConversationOpensOnTheDefaultTheBalanceAnswersNow(t *testing.T) {
 	onFree.Model, onFree.Config.Model = config.FreeChatModel, config.FreeChatModel
 	if got := v3FreshDefault(&onFree, ""); got.Model != config.DefaultModel || got.Config.ContextWindow != windows[config.DefaultModel] {
 		t.Fatalf("a topped-up profile's new conversation opened on %q with window %d", got.Model, got.Config.ContextWindow)
+	}
+}
+
+// A BALANCE READ IS DATED WHEN IT BEGAN. A read that went out before a payment
+// refusal and answered after it, with credit, does not lift that refusal; the
+// next read, begun after the refusal, does. Fixture server only.
+func TestACreditReadThatBeganBeforeAPaymentRefusalDoesNotLiftIt(t *testing.T) {
+	var refusal router.CrewRouteOutcome
+	refuseDuring := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/credits" {
+			if refuseDuring {
+				// The account refuses a paid call while this read is out.
+				refusal = router.CrewRouteOutcome{At: time.Now(), Send: "z-ai/glm-5.3-flash", Provider: "openrouter", Paid: true, Kind: "payment"}
+				refuseDuring = false
+			}
+			fmt.Fprint(w, `{"data":{"total_credits":5,"total_usage":0}}`)
+			return
+		}
+		fmt.Fprint(w, `{"data":{"limit_remaining":null}}`)
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	if err := config.WriteAPIKey(dir, "key-A"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v3ReadAndStoreCredits(context.Background(), dir, server.URL, "key-A"); err != nil {
+		t.Fatal(err)
+	}
+	refusal.Cred = config.CrewDispatchFor(dir, "openrouter").Cred
+	if !config.CrewRefusalApplies(dir, refusal) {
+		t.Fatal("credit read before the refusal, answered after it, lifted the refusal")
+	}
+	if _, err := v3ReadAndStoreCredits(context.Background(), dir, server.URL, "key-A"); err != nil {
+		t.Fatal(err)
+	}
+	if config.CrewRefusalApplies(dir, refusal) {
+		t.Fatal("credit read after the refusal did not lift it")
 	}
 }
