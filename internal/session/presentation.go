@@ -22,13 +22,15 @@ import (
 //
 // On a PERSON'S line (Audience [audiencePerson]) Text is their own words where
 // the door that sent the message said them apart from what the model reads,
-// and Attachments are what rode on it ([Agent.SubmitMessage]). Neither changes
-// the content; both are absent from every line no such door wrote.
+// Attachments are what rode on it, and Reads are the reads of references its
+// words were written from ([Agent.SubmitMessage]). None of them changes the
+// content; all are absent from every line no such door wrote.
 type messagePresentation struct {
 	Audience    string              `json:"audience"`
 	Text        *string             `json:"text,omitempty"`
 	Interrupted bool                `json:"interrupted,omitempty"`
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
+	Reads       []MessageRead       `json:"reads,omitempty"`
 	SkillsBlock string              `json:"-"`
 }
 

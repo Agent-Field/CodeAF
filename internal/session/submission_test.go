@@ -187,7 +187,7 @@ func TestASubmissionThatDoesNotFitRecordsNothing(t *testing.T) {
 		"negative size": {Text: "x", Attachments: []MessageAttachment{{Kind: "paste", Bytes: ptr(int64(-1))}}},
 		"long field":    {Text: "x", Attachments: []MessageAttachment{{Kind: "file", Path: strings.Repeat("p", maxAttachmentField+1)}}},
 	} {
-		if _, err := agent.SubmitMessage(context.Background(), message); !errors.Is(err, errSubmissionMark) {
+		if _, err := agent.SubmitMessage(context.Background(), message); !errors.Is(err, ErrMessageMark) {
 			t.Fatalf("%s: SubmitMessage = %v", name, err)
 		}
 	}
@@ -403,11 +403,11 @@ func TestMarksAreLetGoWithTheMessagesTheyDescribe(t *testing.T) {
 // copy that holds nothing of the caller's string alive.
 func TestAMarksBoundsAreOnTheBytesGiven(t *testing.T) {
 	padded := strings.Repeat(" ", maxAttachmentField) + "a.go"
-	if _, err := (Submission{Attachments: []MessageAttachment{{Kind: "file", Path: padded}}}).mark(); !errors.Is(err, errSubmissionMark) {
+	if _, err := (Submission{Attachments: []MessageAttachment{{Kind: "file", Path: padded}}}).mark(); !errors.Is(err, ErrMessageMark) {
 		t.Fatalf("a padded path = %v", err)
 	}
 	said := strings.Repeat("\n", maxSaidBytes) + "words"
-	if _, err := (Submission{Said: &said}).mark(); !errors.Is(err, errSubmissionMark) {
+	if _, err := (Submission{Said: &said}).mark(); !errors.Is(err, ErrMessageMark) {
 		t.Fatalf("padded words = %v", err)
 	}
 	path := "  " + strings.Repeat("d/", 100) + "a.go  "

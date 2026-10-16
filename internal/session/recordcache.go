@@ -465,6 +465,11 @@ func recordVectors(record Record) int64 {
 				for _, attachment := range entry.Person.Attachments {
 					cost += attachmentSizes(attachment)
 				}
+				cost += int64(len(entry.Person.Reads)) * int64(unsafe.Sizeof(MessageRead{}))
+				for _, read := range entry.Person.Reads {
+					cost += int64(len(read.Items))*int64(unsafe.Sizeof(MessageReference{})) +
+						int64(len(read.Warnings))*int64(unsafe.Sizeof(""))
+				}
 			}
 			if entry.Steer != nil {
 				cost += int64(unsafe.Sizeof(SteerMark{}))
@@ -521,9 +526,26 @@ func entriesCost(entries []DisplayEntry) int64 {
 				cost += int64(len(attachment.ID)+len(attachment.Kind)+len(attachment.Name)+len(attachment.Path)+len(attachment.URL)) +
 					attachmentSizes(attachment)
 			}
+			cost += int64(cap(entry.Person.Reads)) * int64(unsafe.Sizeof(MessageRead{}))
+			for _, read := range entry.Person.Reads {
+				cost += referenceCost(read.Source)
+				cost += int64(cap(read.Items)) * int64(unsafe.Sizeof(MessageReference{}))
+				for _, item := range read.Items {
+					cost += referenceCost(item)
+				}
+				cost += int64(cap(read.Warnings)) * int64(unsafe.Sizeof(""))
+				for _, warning := range read.Warnings {
+					cost += int64(len(warning))
+				}
+			}
 		}
 	}
 	return cost
+}
+
+// referenceCost is the bytes one reference's strings hold.
+func referenceCost(ref MessageReference) int64 {
+	return int64(len(ref.Kind) + len(ref.ID) + len(ref.Name) + len(ref.Owner) + len(ref.Path) + len(ref.URL))
 }
 
 // attachmentSizes is what one descriptor's measured sizes hold beside it.
@@ -559,7 +581,7 @@ func cloneEntries(entries []DisplayEntry) []DisplayEntry {
 		entry.ReplyTags = slices.Clone(entry.ReplyTags)
 		entry.Team = slices.Clone(entry.Team)
 		if entry.Person != nil {
-			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments)}
+			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments), Reads: cloneReads(entry.Person.Reads)}
 			entry.Person = &person
 		}
 		if entry.Steer != nil {

@@ -605,6 +605,26 @@ func steerMessage(steer *turnSteer) userMessage {
 // copy of that assembly, and it is not cheap enough to carry along. A surface
 // with a picture to add sends it that way, and it lands at the same boundary.
 func (a *Agent) Steer(words string) (<-chan Event, error) {
+	return a.steerMarked(words, nil)
+}
+
+// SteerMessage is [Agent.Steer] for a door that knows more about the
+// correction than its words, as [Agent.SubmitMessage] is [Agent.Submit]: the
+// model reads Text, and the record keeps the person's own words, attachments
+// and reads on the correction's own line — on its steer line when a boundary
+// carries it, on the message it becomes when it falls through. A mark that does
+// not fit refuses the correction whole, before anything is queued.
+func (a *Agent) SteerMessage(message Submission) (<-chan Event, error) {
+	mark, err := message.mark()
+	if err != nil {
+		return nil, err
+	}
+	return a.steerMarked(message.Text, mark)
+}
+
+// steerMarked is Steer's body with the person's mark beside the words, nil for
+// a door that said nothing beyond them.
+func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan Event, error) {
 	words = strings.TrimSpace(words)
 	if words == "" {
 		return nil, errors.New("session: empty message")
@@ -623,7 +643,9 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 		note:   SteerNote{ID: a.nextSteerID(), Words: words, At: time.Now()},
 		stream: newEventStream(),
 	}
-	a.steering = append(a.steering, steerMessage(steer))
+	queued := steerMessage(steer)
+	queued.person = person
+	a.steering = append(a.steering, queued)
 	hub := a.hub
 	// A QUESTION THE PERSON TALKED PAST IS LET GO OF BEFORE ANYTHING ELSE IS
 	// DECIDED. `ask` parks the turn on the person, so a correction queued behind
@@ -890,8 +912,12 @@ func (a *Agent) liftSteersLocked(hub *eventHub) {
 		// seam. [eventHub.drop] is the wrong door for this — it ends the reader —
 		// and it is the only other way off a hub.
 		hub.release(steer.stream)
+		// What the person said about the correction goes with it, or the
+		// message it becomes is kept without it.
+		follow := userText(steer.note.Words)
+		follow.person = message.person
 		a.followups = append(a.followups, followUp{
-			message: userText(steer.note.Words),
+			message: follow,
 			stream:  steer.stream,
 		})
 	}

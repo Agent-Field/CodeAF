@@ -2036,6 +2036,24 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 // turn end coming to drain it, and a message that sat in a queue until the
 // person happened to ask something else would be a silent hold.
 func (a *Agent) FollowUp(text string) (<-chan Event, error) {
+	return a.followUpMarked(text, nil)
+}
+
+// FollowUpMessage is [Agent.FollowUp] for a door that knows more about the
+// message than its words, as [Agent.SubmitMessage] is [Agent.Submit]: the
+// model reads Text when its turn comes, and the record keeps the mark on the
+// message's own line. A mark that does not fit refuses the message whole,
+// before anything is queued.
+func (a *Agent) FollowUpMessage(message Submission) (<-chan Event, error) {
+	mark, err := message.mark()
+	if err != nil {
+		return nil, err
+	}
+	return a.followUpMarked(message.Text, mark)
+}
+
+// followUpMarked is FollowUp's body with the person's mark beside the words.
+func (a *Agent) followUpMarked(text string, person *messagePresentation) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -2050,14 +2068,16 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 		return nil, errWorkStopping
 	}
 	stream := newEventStream()
+	user := userText(text)
+	user.person = person
 	if a.running {
-		a.followups = append(a.followups, followUp{message: userText(text), stream: stream})
+		a.followups = append(a.followups, followUp{message: user, stream: stream})
 		return stream.out, nil
 	}
 	if err := a.railBlockLocked(); err != nil {
 		return refuseOn(stream, err), nil
 	}
-	return a.startTurnLocked(context.Background(), userText(text), stream), nil
+	return a.startTurnLocked(context.Background(), user, stream), nil
 }
 
 // followUp is one queued message and the stream its turn will speak on. The
@@ -4884,6 +4904,10 @@ type PersonMark struct {
 	// Attachments are what rode on the message, in the order it carried them,
 	// each a copy of the record's own descriptor.
 	Attachments []MessageAttachment
+	// Reads are the reads of references the message's words were written
+	// from, as the door observed them when it sent the message — never looked
+	// up again — each a copy of the record's own.
+	Reads []MessageRead
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -5024,10 +5048,11 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			displayText = presentation.personWords(msg)
 			// AND WHAT THE PERSON SENT IS SHOWN AS THEY SENT IT, where the door
 			// that sent it said so on the line itself: their own words in place
-			// of the paragraph the model was handed, and the attachments that
-			// rode on it. A line with no such mark is shown as it always was.
+			// of the paragraph the model was handed, the attachments that rode
+			// on it and the reads its words were written from. A line with no
+			// such mark is shown as it always was.
 			if mark := presentation.of(msg).person(); mark != nil {
-				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments)}
+				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads)}
 				if mark.Text != nil {
 					displayText, person.Authored = *mark.Text, true
 				}
