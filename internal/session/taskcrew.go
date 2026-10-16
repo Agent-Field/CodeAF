@@ -1117,26 +1117,102 @@ func (c *taskCrew) seats(key string) bool {
 }
 
 // sendFor is the send id a request for key goes to now: key, or where the
-// seat has moved.
+// seat has moved. A call that names no role keeps this meaning.
 func (c *taskCrew) sendFor(key string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.sendForLocked(key)
+}
+
+// sendForLocked is [taskCrew.sendFor] for a caller that already holds c.mu.
+func (c *taskCrew) sendForLocked(key string) string {
 	if to := c.swaps[key]; to != "" {
 		return to
 	}
 	return key
 }
 
-// sendForSeat is [taskCrew.sendFor] for a call a role made: where a person
-// moved that role, else where its send id has moved.
+// sendForSeat is where one role's call for key goes now.
+//
+// A SAVED PIN, A PIN FOR THIS TASK, AND ONE MODEL FOR EVERY ROLE hold the
+// exact send the decision records for that role. An unpinned role that shares
+// the original key and falls back writes one global swap, and that swap
+// remembers only the first role's destination. It must not drag a role that
+// is held, and it must not drag a role whose own recorded move is a different
+// model. An unpinned role with no move of its own still follows the shared
+// swap. A person who named a send for the role keeps that send.
+//
+// A call with no seat is [taskCrew.sendFor]. Every map this reads is read
+// under c.mu. The walk is this one role — three seats at most — and nothing
+// here reads the profile.
 func (c *taskCrew) sendForSeat(seat crewroute.Seat, key string) string {
 	c.mu.Lock()
-	to := c.seatSends[seat]
-	c.mu.Unlock()
-	if to != "" && seat != "" && c.original[seat] == key {
+	defer c.mu.Unlock()
+	if seat == "" {
+		return c.sendForLocked(key)
+	}
+	return c.dispatchSeatLocked(seat, key)
+}
+
+// dispatchSeatLocked resolves one role's send. The caller holds c.mu.
+func (c *taskCrew) dispatchSeatLocked(seat crewroute.Seat, key string) string {
+	if to, ok := c.explicitSeatSendLocked(seat, key); ok {
 		return to
 	}
-	return c.sendFor(key)
+	if c.original[seat] == key && c.seatHoldsExactLocked(seat) {
+		return c.recordedSendLocked(seat, key)
+	}
+	if moved := c.ownFallbackLocked(seat, key); moved != "" {
+		return moved
+	}
+	return c.sendForLocked(key)
+}
+
+// explicitSeatSendLocked is the send a person named for this role, when this
+// call is for the role's original key. The caller holds c.mu.
+func (c *taskCrew) explicitSeatSendLocked(seat crewroute.Seat, key string) (string, bool) {
+	to := c.seatSends[seat]
+	if to == "" || c.original[seat] != key {
+		return "", false
+	}
+	return to, true
+}
+
+// seatHoldsExactLocked is whether this role stays on the send the decision
+// records: a saved pin, a pin for this task, or one model for every role.
+// The caller holds c.mu.
+func (c *taskCrew) seatHoldsExactLocked(seat crewroute.Seat) bool {
+	if c.decision.Mode == crewroute.ModeOne {
+		return true
+	}
+	if c.taskPins[seat] {
+		return true
+	}
+	return c.decision.Seat(seat).Pinned
+}
+
+// recordedSendLocked is the send the decision records for seat, or key when
+// the decision has none. The caller holds c.mu.
+func (c *taskCrew) recordedSendLocked(seat crewroute.Seat, key string) string {
+	if pick := c.decision.Seat(seat).Send; pick != "" {
+		return pick
+	}
+	return key
+}
+
+// ownFallbackLocked is this unpinned role's own recorded move off key: the
+// rung [Agent.moveCrewSeat] wrote onto the decision. Empty when the role is
+// still on key, so the shared swap — another role's destination — is not
+// what a role with its own move calls. The caller holds c.mu.
+func (c *taskCrew) ownFallbackLocked(seat crewroute.Seat, key string) string {
+	if c.original[seat] != key {
+		return ""
+	}
+	pick := c.decision.Seat(seat).Send
+	if pick == "" || pick == key {
+		return ""
+	}
+	return pick
 }
 
 // hasStarted is whether a send id has answered a call on this task.
