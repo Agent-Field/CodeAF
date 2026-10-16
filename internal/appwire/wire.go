@@ -228,6 +228,9 @@ type Ask struct {
 	// Path is the crews a crew's decision climbed through to the person,
 	// "Backend → Release → you".
 	Path []string `json:"path,omitempty"`
+	// DecisionKind is, on a crew_decision ask only, the decision packet's
+	// kind: question, conflict, cap, judgement or closing (Decision.Kind).
+	DecisionKind string `json:"decision_kind,omitempty" enum:"question,conflict,cap,judgement,closing"`
 	// Subject is what the ask is about, so the app draws that thing's own
 	// card: an automation waiting to be agreed to, a task, a tool call, a crew
 	// proposal or decision. Nil is an ask about nothing in particular.

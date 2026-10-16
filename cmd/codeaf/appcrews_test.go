@@ -121,7 +121,7 @@ func TestAppCrewDecisionIsAnAskAndAnsweringItDecides(t *testing.T) {
 		}
 		return ok && o.Ask.Subkind == appwire.SubkindCrewDecision
 	})
-	if opened.Agent != agent.ID || opened.ID != appCrewAskPrefix+p.ID || len(opened.Path) != 2 || opened.Path[0] != "harbor" || opened.Path[1] != "you" {
+	if opened.Agent != agent.ID || opened.ID != appCrewAskPrefix+p.ID || len(opened.Path) != 2 || opened.Path[0] != "harbor" || opened.Path[1] != "you" || opened.DecisionKind != teamstore.PacketQuestion {
 		t.Fatalf("the ask = %+v", opened)
 	}
 	asks, _ := backend.ListAsks(agent.ID)
