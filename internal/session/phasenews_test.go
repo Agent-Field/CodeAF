@@ -385,11 +385,11 @@ func heldSince(news []PhaseNews, phase provider.Phase) (said int, starts map[tim
 // neither of those facts is about the length of the interval.
 func TestAHeldPhaseKeepsSayingItselfAndStopsWhenItEnds(t *testing.T) {
 	log := watchPhases(t)
-	held := phaseHeldBeat
-	phaseHeldBeat = 2 * time.Millisecond
-	t.Cleanup(func() { phaseHeldBeat = held })
-
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.phase.mu.Lock()
+	agent.phase.beat = 2 * time.Millisecond
+	agent.phase.mu.Unlock()
+	t.Cleanup(agent.endPhase)
 	// A STAGE THAT HAS ALREADY OUTLASTED THE WINDOW. This is the shape the
 	// quarter-hour reading had: begun long ago, still running, and owed a clock
 	// that says how long it has really been.
@@ -433,6 +433,54 @@ func TestAHeldPhaseKeepsSayingItselfAndStopsWhenItEnds(t *testing.T) {
 	last := log.all()
 	if len(last) == 0 || last[len(last)-1].Phase != "" {
 		t.Fatalf("the stage did not take itself off the screen; phases were %v", phaseWords(last))
+	}
+}
+
+// TestTheBeatIntervalIsCapturedPerAgentWhenTheStageStarts proves the interval is
+// read once, under the heart's lock, at the moment a stage begins: a later
+// change to the agent's beat does not touch a running stage, and a second agent
+// keeps the production default.
+func TestTheBeatIntervalIsCapturedPerAgentWhenTheStageStarts(t *testing.T) {
+	log := watchPhases(t)
+	fast, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	slow, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	fast.phase.mu.Lock()
+	fast.phase.beat = time.Millisecond
+	fast.phase.mu.Unlock()
+	t.Cleanup(fast.endPhase)
+	t.Cleanup(slow.endPhase)
+
+	slow.tellPhase(provider.PhaseChecking, "slow", time.Time{})
+	fast.tellPhase(provider.PhaseChecking, "fast", time.Time{})
+	// Rewriting the seam after the stage began must not retime the running beat.
+	fast.phase.mu.Lock()
+	fast.phase.beat = time.Hour
+	fast.phase.mu.Unlock()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		n := 0
+		for _, one := range log.all() {
+			if one.Detail == "fast" {
+				n++
+			}
+		}
+		if n >= 4 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the fast agent's captured beat was not used; said %d times", n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	slowSaid := 0
+	for _, one := range log.all() {
+		if one.Detail == "slow" {
+			slowSaid++
+		}
+	}
+	if slowSaid != 1 {
+		t.Fatalf("the default-beat agent said itself %d times, want only its start", slowSaid)
 	}
 }
 
