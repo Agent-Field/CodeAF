@@ -248,6 +248,12 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	// be recorded is never sent: a paid request with no record of having been
 	// made is the gap the record exists to close (render_attempt.go). From here
 	// every road out writes the record's one ending; close is the backstop.
+	//
+	// A call whose turn has already ended starts nothing: there is no request
+	// to record, and the answer is the one the provider's client would give.
+	if err := ctx.Err(); err != nil {
+		return "Image generation failed (" + model + "): " + err.Error(), true
+	}
 	requestCtx := ctx
 	var attempt *renderAttempt
 	if gen.attempt != nil {
@@ -258,12 +264,14 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		attempt, requestCtx = started, started.ctx
 		defer attempt.close()
 	}
-	end := func(patch renderPatch) {
-		if attempt != nil {
-			attempt.end(patch)
-		}
+	// end reports false only when a Stop already wrote the ending.
+	end := func(patch renderPatch) bool {
+		return attempt == nil || attempt.end(patch)
 	}
 	stoppedText := "Image generation was stopped (" + model + "); nothing was saved. Only waiting stopped here — the provider was not told to cancel, so whether it charged is unknown."
+	// After the provider answered, what it reported charging is already on the
+	// record, so the stop says that rather than "unknown".
+	stoppedAfterReply := "Image generation was stopped (" + model + ") after the provider answered; nothing was saved, and whatever it reported charging is recorded."
 
 	response, err := gen.Client.GenerateImage(requestCtx, provider.ImageRequest{
 		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
@@ -283,15 +291,21 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		attempt.charge(response.Usage)
 	}
 	if attempt != nil && attempt.stopped() {
+		if response != nil {
+			return stoppedAfterReply, true
+		}
 		return stoppedText, true
 	}
 	if err != nil {
 		text := "Image generation failed (" + model + "): " + err.Error()
+		patch := renderPatch{state: RenderFailed, err: text}
 		if requestCtx.Err() != nil {
 			// The turn ended under the call: only waiting stopped.
-			end(renderPatch{state: RenderCancelled})
-		} else {
-			end(renderPatch{state: RenderFailed, err: text})
+			patch = renderPatch{state: RenderCancelled}
+		}
+		if !end(patch) {
+			// A Stop landed after the provider returned and before the ending.
+			return stoppedText, true
 		}
 		if requested > 1 {
 			// A provider that cannot give n pictures says so; the answer is the
@@ -330,7 +344,7 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	// THE POINT OF NO RETURN, atomic with a Stop: one accepted before this line
 	// means nothing is written; one after it is told it came too late.
 	if attempt != nil && !attempt.commit() {
-		return stoppedText, true
+		return stoppedAfterReply, true
 	}
 
 	numbered := requested > 1

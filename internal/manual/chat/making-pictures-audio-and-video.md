@@ -694,9 +694,8 @@ How the record ends:
   could be saved.
 - `cancelled` — it was stopped, or the turn ended while the provider worked.
 
-In the codeaf desktop app, a picture can be stopped from the render history while the
-provider is working; in the terminal, stopping the turn stops it. A render stop
-answers `cancelled` (nothing will be saved), `too_late` (the picture had
+In the terminal, stopping the turn stops it. The desktop app's render stop
+(`render.cancel`) works on a picture while the provider is working, and answers `cancelled` (nothing will be saved), `too_late` (the picture had
 already been accepted for saving and will land) or `already_ended`. After
 `cancelled` the call says `Image generation was stopped (<model>); nothing was saved.
 Only waiting stopped here — the provider was not told to cancel, so whether it

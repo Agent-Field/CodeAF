@@ -99,9 +99,10 @@ func (t *renderAttempt) commit() bool {
 	return t.ledger.commitAttempt(t.id)
 }
 
-// end writes the one terminal, unless a Stop already did.
-func (t *renderAttempt) end(patch renderPatch) {
-	t.ledger.settle(t.id, patch, time.Now())
+// end writes the one terminal, unless a Stop already did; false says one did,
+// because an accepted Stop is the only other writer of this record's ending.
+func (t *renderAttempt) end(patch renderPatch) bool {
+	return t.ledger.settle(t.id, patch, time.Now())
 }
 
 // stopped says this attempt's own Stop was accepted, as opposed to the turn

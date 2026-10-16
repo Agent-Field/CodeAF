@@ -579,6 +579,12 @@ type jobRegistry struct {
 	// in a session that had not rendered yet with a saved record and no event,
 	// and wrote the field under a lock its reader did not take.
 	renderNotify func(RenderRecord)
+	// rendersClosed is set, under mu, by [jobRegistry.closeRenders]; a ledger
+	// first opened after it is closed at once. NOT BY A STOP-WORK ROUND: that
+	// round reopens the registry for the next message, and a closed ledger
+	// would refuse every later picture and lose the endings of the renders
+	// the round was ending.
+	rendersClosed bool
 	// gate is the process-wide render admission this registry draws on. It is
 	// [processRenders] outside tests; a test hands two registries one private
 	// gate to prove the total is shared without disturbing other tests.
@@ -975,15 +981,28 @@ func (r *jobRegistry) renderLedger() *renderLedger {
 		r.mu.Unlock()
 		ledger := openRenderLedger(place.join(placeRenders), place.ID(), time.Now())
 		ledger.notify = r.renderNotify
+		r.mu.Lock()
+		closed := r.rendersClosed
 		r.renders = ledger
+		r.mu.Unlock()
+		if closed {
+			ledger.close()
+		}
 	})
 	return r.renders
 }
 
-// closeRenders releases the ledger's file at shutdown. It opens nothing.
+// closeRenders releases the ledger's file when the session itself ends
+// ([Agent.Close], an automation's run), and makes any ledger opened after it a
+// closed one, so a call that outlived the close records nothing and sends
+// nothing. It opens nothing; it is idempotent.
 func (r *jobRegistry) closeRenders() {
-	if r.renders != nil {
-		r.renders.close()
+	r.mu.Lock()
+	r.rendersClosed = true
+	ledger := r.renders
+	r.mu.Unlock()
+	if ledger != nil {
+		ledger.close()
 	}
 }
 
@@ -1565,7 +1584,6 @@ func (r *jobRegistry) shutdown(grace time.Duration) {
 	// its grace are tidied too. A pass reads one folder at a time and is
 	// bounded, so the wait carries no timer of its own.
 	defer r.joinRetention()
-	defer r.closeRenders()
 
 	var claimed []*job
 	for _, candidate := range r.all() {

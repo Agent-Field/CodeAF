@@ -71,9 +71,14 @@ func (a *Agent) CancelRender(id string) (RenderCancel, error) {
 	// A synchronous attempt (an image) has no job: its Stop is the ledger's
 	// own, answered in the same three words (render_attempt.go).
 	if record.Job == 0 {
-		if outcome, held := ledger.stopAttempt(id); held {
-			record, _ = ledger.get(id)
+		outcome, held := ledger.stopAttempt(id)
+		record, _ = ledger.get(id)
+		if held {
 			return RenderCancel{Outcome: outcome, Render: record}, nil
+		}
+		// It ended between the read above and the stop: already ended.
+		if record.State != RenderRunning {
+			return RenderCancel{Outcome: RenderOutcomeEnded, Render: record}, nil
 		}
 	}
 	target := jobs.find(record.Job)

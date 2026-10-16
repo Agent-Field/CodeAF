@@ -63,8 +63,8 @@ func attemptAgent(t *testing.T, media MediaGenerator) (*Agent, string) {
 	})
 }
 
-// callImage runs generate_image as dispatch would: with the call's own id, its
-// run, and both call-local marks planted.
+// callImage runs generate_image as dispatch would: with the call's own id and
+// the media-attempt mark planted.
 func callImage(t *testing.T, ctx context.Context, agent *Agent, args string) (string, bool, bool) {
 	t.Helper()
 	ctx, mark := withMediaAttempt(withCallID(ctx, "img_call"))
@@ -420,5 +420,95 @@ func TestAHarnessBeltPaintsWithoutALedger(t *testing.T) {
 	out, bad, err := paint(ctx, json.RawMessage(`{"prompt":"a harbour"}`))
 	if err != nil || bad || media.calls.Load() != 1 || mark.Load() {
 		t.Fatalf("out=%q bad=%v err=%v calls=%d marked=%v", out, bad, err, media.calls.Load(), mark.Load())
+	}
+}
+
+// A STOP-WORK ROUND IS NOT THE END OF THE CONVERSATION. It shuts the registry
+// and a fresh message reopens it; the render ledger was closed by that round
+// and never reopened, which refused every later picture. It stays open now.
+func TestAnImageAfterStopWorkAndAFreshMessageIsRecorded(t *testing.T) {
+	media := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2))}
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("ok"), nil },
+	}}, func(c *Config) {
+		c.Media = media
+		c.MediaModel = mediaModels(map[string]string{modalityImage: "paint/model"})
+	})
+	if _, bad, _ := callImage(t, context.Background(), agent, `{"prompt":"before"}`); bad {
+		t.Fatal("the first picture failed")
+	}
+	if err := agent.StopWork(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "work stop to settle", func() bool { agent.mu.Lock(); defer agent.mu.Unlock(); return !agent.workStopping })
+	events, err := agent.Submit(context.Background(), "fresh request")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	out, bad, marked := callImage(t, context.Background(), agent, `{"prompt":"after"}`)
+	if bad || !marked {
+		t.Fatalf("a picture after stop-work: bad=%v marked=%v %s", bad, marked, out)
+	}
+	page, err := agent.Renders(10, "")
+	if err != nil || len(page.Renders) != 2 || page.Renders[0].State != RenderFinished {
+		t.Fatalf("history after stop-work: %+v %v", page, err)
+	}
+}
+
+// A picture still with the provider when a stop-work round runs keeps its
+// ending on disk: nothing is left retained in the process for want of a
+// journal, and the history stays readable.
+func TestAStopWorkRoundUnderAnImageLeavesItsEndingSaved(t *testing.T) {
+	media := newGatedImages(&provider.ImageResponse{Data: onePNG(t)}, false)
+	path := filepath.Join(t.TempDir(), "renders.jsonl")
+	agent, _ := attemptAgent(t, media)
+	agent.jobs.rendersOnce.Do(func() {
+		agent.jobs.renders = openRenderLedger(path, "s", time.Now())
+		agent.jobs.renders.notify = agent.emitRenderUpdate
+	})
+	running, done := startGated(t, context.Background(), agent, media)
+	if err := agent.StopWork(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "work stop to settle", func() bool { agent.mu.Lock(); defer agent.mu.Unlock(); return !agent.workStopping })
+	close(media.release)
+	<-done
+	got, err := agent.Render(running.ID)
+	if err != nil || got.State == RenderRunning || got.Persistence != "" || processRenderHistory.hasPending(path) {
+		t.Fatalf("ending = %+v %v pending=%v", got, err, processRenderHistory.hasPending(path))
+	}
+	if _, err := agent.Renders(10, ""); err != nil {
+		t.Fatalf("history after the round: %v", err)
+	}
+}
+
+// A conversation that closed before its ledger was ever opened refuses a
+// picture all the same: the ledger opened afterwards is a closed one.
+func TestAClosedSessionRefusesAnImageEvenBeforeItsLedgerOpened(t *testing.T) {
+	media := newGatedImages(&provider.ImageResponse{Data: onePNG(t)}, true)
+	close(media.release)
+	agent, _ := attemptAgent(t, media)
+	tool := beltTool(t, agent, "generate_image")
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, mark := withMediaAttempt(withCallID(context.Background(), "late"))
+	out, bad, err := tool.Execute(ctx, json.RawMessage(`{"prompt":"x"}`))
+	if err != nil || !bad || mark.Load() || media.calls.Load() != 0 || !strings.Contains(out, "No request was sent") {
+		t.Fatalf("out=%q bad=%v err=%v marked=%v calls=%d", out, bad, err, mark.Load(), media.calls.Load())
+	}
+}
+
+// A Stop for a picture that has ended answers already_ended, never "its job is
+// not in this session" — job 0 is no job. (The narrower race, an attempt that
+// ends between CancelRender's read and its stop, takes the same branch.)
+func TestCancellingAnImageThatJustEndedIsAlreadyEnded(t *testing.T) {
+	agent, _ := attemptAgent(t, &scriptedMedia{base64: base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2))})
+	callImage(t, context.Background(), agent, `{"prompt":"x"}`)
+	got := onlyRender(t, agent)
+	answer, err := agent.CancelRender(got.ID)
+	if err != nil || answer.Outcome != RenderOutcomeEnded {
+		t.Fatalf("cancel = %+v %v", answer, err)
 	}
 }

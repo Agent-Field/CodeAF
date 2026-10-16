@@ -390,6 +390,7 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	agent.jobs.renderNotify = agent.emitRenderUpdate
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()
+	defer agent.jobs.closeRenders()
 	defer agent.jobs.shutdown(jobShutdownGrace)
 	call := func(name string, args json.RawMessage) toolResult {
 		tc := ai.ToolCall{ID: "automation-look", Type: "function", Function: ai.ToolCallFunction{Name: name, Arguments: string(args)}}

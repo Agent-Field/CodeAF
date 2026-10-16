@@ -76,3 +76,39 @@ func TestMediaAttemptCostsDisplayEntryNoBytes(t *testing.T) {
 		t.Fatalf("DisplayEntry is %d bytes; budget is 296", size)
 	}
 }
+
+// Two calls in ONE reply under one id cannot say which result is whose, so
+// neither keeps the fact: unknown, never lent to the sibling.
+func TestMediaAttemptIsUnknownForSiblingsSharingAnID(t *testing.T) {
+	twin := func(context.Context, []ai.Message) (*ai.Response, error) {
+		response := toolResponse("twin", "generate_image", `{"prompt":"a lighthouse"}`)
+		calls := &response.Choices[0].Message.ToolCalls
+		*calls = append(*calls, ai.ToolCall{ID: "twin", Type: "function", Function: ai.ToolCallFunction{Name: "generate_image", Arguments: `{"prompt":"x","n":11}`}})
+		return response, nil
+	}
+	provider := &scriptedCompleter{steps: []step{twin, func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil }}}
+	media := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2))}
+	agent, _ := newTestAgent(t, provider, func(c *Config) {
+		c.Media = media
+		c.MediaModel = mediaModels(map[string]string{modalityImage: "paint/model"})
+	})
+	if _, err := agent.armFamily([]bare.Tool{beltTool(t, agent, "generate_image")}); err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, agent, "go"))
+	if page, _ := agent.Renders(10, ""); len(page.Renders) != 1 {
+		t.Fatalf("records = %+v", page.Renders)
+	}
+	seen := 0
+	for _, entry := range agent.Transcript() {
+		if entry.Role == "tool" && entry.CallID == "twin" {
+			seen++
+			if entry.ToolResult.MediaAttempt() {
+				t.Fatalf("a sibling sharing an id kept the fact: %+v", entry)
+			}
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("saw %d entries", seen)
+	}
+}

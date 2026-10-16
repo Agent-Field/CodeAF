@@ -2654,6 +2654,7 @@ func (a *Agent) Close() error {
 			grace = a.config.JobQuitGrace
 		}
 		a.jobs.shutdown(grace)
+		a.jobs.closeRenders()
 	}
 	a.finishProcessRecords()
 
