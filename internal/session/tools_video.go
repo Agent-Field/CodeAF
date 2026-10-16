@@ -173,6 +173,7 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 				started.releaseRender()
 				return "Could not start the video render: " + err.Error(), true, nil
 			}
+			markMediaAttempt(callCtx)
 			fmt.Fprintf(started.sink, "filming on %s: %s\n", model, firstLine(prompt))
 
 			go a.renderVideo(ctx, client, started, request, parsed.Path, model, madeBy(callCtx, append(append([]string(nil), parsed.FramePaths...), parsed.ReferencePaths...)))

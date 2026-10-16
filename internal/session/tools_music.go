@@ -163,6 +163,7 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 				started.releaseRender()
 				return "Could not start the music render: " + err.Error(), true, nil
 			}
+			markMediaAttempt(callCtx)
 			fmt.Fprintf(started.sink, "composing on %s: %s\n", model, firstLine(prompt))
 
 			go a.composeMusic(ctx, client, started, provider.MusicRequest{

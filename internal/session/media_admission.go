@@ -34,6 +34,7 @@ func (a *Agent) refuseMediaAdmission(ctx context.Context, kind string, route Med
 	if err != nil {
 		return message + " The refused attempt could not be saved: " + err.Error(), true, nil
 	}
+	markMediaAttempt(ctx)
 	// The engine made no provider request: zero is a known local admission fact,
 	// never an inference from an absent provider usage receipt.
 	zero := float64(0)

@@ -127,6 +127,10 @@ type ImageGen struct {
 	// RecordMedia is Record with the structured fact of the file (mediafact.go);
 	// it wins over Record when both are set.
 	RecordMedia func(path, prompt string, fact MediaFact)
+	// attempt writes the call's render record before the provider is asked
+	// (render_attempt.go). The belt sets it; the command line's door has no
+	// session and no ledger, so it leaves it nil and records nothing.
+	attempt func(ctx context.Context, model string) (*renderAttempt, error)
 }
 
 // generateImageTool wraps the shared road ([generateImage]) in the belt's
@@ -157,6 +161,7 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 				Workspace:    a.config.Workspace,
 				Directory:    ImagesDir(a.config.Place, a.config.Workspace),
 				Account:      a.accountImageRung,
+				attempt:      a.beginImageAttempt,
 				RecordMedia: func(path, prompt string, fact MediaFact) {
 					a.recordImageMedia(path, prompt, fact.WithMade(madeBy(ctx, nil)))
 				},
@@ -238,7 +243,28 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		return rejectToolArguments(ctx, "Invalid arguments: reference "+refusal), true
 	}
 
-	response, err := gen.Client.GenerateImage(ctx, provider.ImageRequest{
+	// THE ATTEMPT IS RECORDED BEFORE ANYTHING IS PAID FOR, and one that cannot
+	// be recorded is never sent: a paid request with no record of having been
+	// made is the gap the record exists to close (render_attempt.go). From here
+	// every road out writes the record's one ending; close is the backstop.
+	requestCtx := ctx
+	var attempt *renderAttempt
+	if gen.attempt != nil {
+		started, err := gen.attempt(ctx, model)
+		if err != nil {
+			return "Could not start the image: " + err.Error() + ". No request was sent.", true
+		}
+		attempt, requestCtx = started, started.ctx
+		defer attempt.close()
+	}
+	end := func(patch renderPatch) {
+		if attempt != nil {
+			attempt.end(patch)
+		}
+	}
+	stoppedText := "Image generation was stopped (" + model + "); nothing was saved. Only waiting stopped here — the provider was not told to cancel, so whether it charged is unknown."
+
+	response, err := gen.Client.GenerateImage(requestCtx, provider.ImageRequest{
 		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
 		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
 		Size:            strings.TrimSpace(parsed.Size),
@@ -249,8 +275,23 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	if response != nil && gen.Account != nil {
 		gen.Account(model, response.Usage)
 	}
+	// And the same receipt goes to the attempt's record the moment the call
+	// returns, whatever became of it meanwhile: before an ending it rides into
+	// the ending, after a Stop it is a receipt on the cancelled record.
+	if response != nil && attempt != nil {
+		attempt.charge(response.Usage)
+	}
+	if attempt != nil && attempt.stopped() {
+		return stoppedText, true
+	}
 	if err != nil {
 		text := "Image generation failed (" + model + "): " + err.Error()
+		if requestCtx.Err() != nil {
+			// The turn ended under the call: only waiting stopped.
+			end(renderPatch{state: RenderCancelled})
+		} else {
+			end(renderPatch{state: RenderFailed, err: text})
+		}
 		if requested > 1 {
 			// A provider that cannot give n pictures says so; the answer is the
 			// caller's to act on, and asking again as several calls would spend
@@ -260,6 +301,7 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		return text, true
 	}
 	if response == nil {
+		end(renderPatch{state: RenderFailed, err: "the provider returned no image"})
 		return "Image generation returned no image (" + model + ")", true
 	}
 	// THE BILL IS PAID ONCE PER PROVIDER RESPONSE, BEFORE ANYTHING CAN REFUSE IT.
@@ -268,6 +310,7 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	// provider reported is the only one there is to record (see
 	// [ImageGen.Account]). It is never once per picture.
 	if len(response.Data) == 0 {
+		end(renderPatch{state: RenderFailed, err: "the provider returned no image"})
 		return "Image generation returned no image (" + model + ")", true
 	}
 	// Only the pictures that were asked for are kept: a provider that returns
@@ -278,8 +321,15 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		items = items[:requested]
 	}
 	if why := imageReplyRefusal(items); why != "" {
+		end(renderPatch{state: RenderFailed, err: "the reply was more than can be kept: " + why})
 		return fmt.Sprintf("Image generation returned more than can be kept (%s): %s, so none were saved. "+
 			"No request was retried; any provider-reported charge was recorded. Ask for fewer images or a smaller size.", model, why), true
+	}
+
+	// THE POINT OF NO RETURN, atomic with a Stop: one accepted before this line
+	// means nothing is written; one after it is told it came too late.
+	if attempt != nil && !attempt.commit() {
+		return stoppedText, true
 	}
 
 	numbered := requested > 1
@@ -293,9 +343,13 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		response.Data[i].Base64 = ""
 		if saveErr != nil {
 			if !numbered {
+				// The record names no path and quotes no file-system error: a
+				// render record is never a way to learn where files live.
 				if errors.Is(saveErr, errUnreadableImage) {
+					end(renderPatch{state: RenderFailed, committed: true, err: "the provider's image was unreadable"})
 					return "Image generation returned an unreadable image (" + model + ")", true
 				}
+				end(renderPatch{state: RenderFailed, committed: true, err: "the image could not be saved"})
 				return "Could not save the generated image: " + saveErr.Error(), true
 			}
 			if errors.Is(saveErr, errUnreadableImage) {
@@ -320,6 +374,13 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 			gen.Record(path, parsed.Prompt)
 		}
 		saved = append(saved, describeGeneratedImage(path, data, model))
+	}
+	// The record's ending carries no path: the files are the media rows this
+	// call made, found by its run and call id, never by a path on the record.
+	if len(saved) == 0 {
+		end(renderPatch{state: RenderFailed, committed: true, err: "none of the images could be saved"})
+	} else {
+		end(renderPatch{state: RenderFinished, committed: true})
 	}
 	if !numbered {
 		return saved[0], false

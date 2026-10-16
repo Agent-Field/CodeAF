@@ -3,6 +3,7 @@ package session
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -20,7 +21,7 @@ import (
 )
 
 // THE RENDER LEDGER is the durable, typed account of every video and music
-// render: when it started, how it ended, whether a file was ever committed, and
+// render and every image attempt (render_attempt.go): when it started, how it ended, whether a file was ever committed, and
 // what the provider reported it cost. It exists so no surface has to read prose
 // notes to know any of that. The contract is
 // the render contract (RENDER-CONTRACT.md in the media design notes).
@@ -456,6 +457,14 @@ type RenderPage struct {
 type renderLive struct {
 	rec   RenderRecord
 	usage *ai.Usage // a charge reported before the ending, carried into it
+	// stop and committed belong to a SYNCHRONOUS attempt (render_attempt.go),
+	// which has no job to hold them. They are memory only, written and read
+	// under the ledger's lock, so the commit, the stop and the terminal check
+	// are one step: a stop either seals cancelled before the bytes are kept or
+	// finds them already committed. A job's render leaves both zero and keeps
+	// its own gate ([job.commitRender]).
+	stop      context.CancelCauseFunc
+	committed bool
 }
 
 type renderLedger struct {
@@ -613,6 +622,13 @@ func (l *renderLedger) begin(job int, kind, model, run, call string, now time.Ti
 }
 
 func (l *renderLedger) beginChecked(job int, kind, model, run, call string, now time.Time) (string, error) {
+	return l.beginWith(job, kind, model, run, call, nil, now)
+}
+
+// beginWith is [renderLedger.beginChecked] for an attempt that can be stopped
+// through the ledger: stop is installed with the start row, under the same
+// lock, so no Stop can find the attempt running without a way to stop it.
+func (l *renderLedger) beginWith(job int, kind, model, run, call string, stop context.CancelCauseFunc, now time.Time) (string, error) {
 	l.mu.Lock()
 	var notices []RenderRecord
 	defer func() {
@@ -643,7 +659,7 @@ func (l *renderLedger) beginChecked(job int, kind, model, run, call string, now 
 		l.owner.release(l.store.path, rec.ID)
 		return "", fmt.Errorf("the render start could not be saved: %w", err)
 	}
-	l.live[rec.ID] = &renderLive{rec: rec}
+	l.live[rec.ID] = &renderLive{rec: rec, stop: stop}
 	notices = append(notices, rec)
 	return rec.ID, nil
 }
@@ -685,10 +701,20 @@ func (l *renderLedger) applyEnd(rec *RenderRecord, patch renderPatch, now time.T
 // A render already ended answers false and writes nothing.
 func (l *renderLedger) settle(id string, patch renderPatch, now time.Time) bool {
 	l.mu.Lock()
+	rec, ok := l.settleLocked(id, patch, now)
+	l.mu.Unlock()
+	if ok {
+		l.emit(rec)
+	}
+	return ok
+}
+
+// settleLocked is [renderLedger.settle] for a caller already holding l.mu; the
+// caller emits the record it returns after letting the lock go.
+func (l *renderLedger) settleLocked(id string, patch renderPatch, now time.Time) (RenderRecord, bool) {
 	entry := l.live[id]
 	if entry == nil || entry.rec.State != RenderRunning {
-		l.mu.Unlock()
-		return false
+		return RenderRecord{}, false
 	}
 	if patch.usage == nil {
 		patch.usage = entry.usage
@@ -699,10 +725,7 @@ func (l *renderLedger) settle(id string, patch renderPatch, now time.Time) bool 
 		entry.rec.Persistence = "unavailable"
 		l.owner.retain(l.store.path, entry.rec, renderEvEnd)
 	}
-	rec := entry.rec
-	l.mu.Unlock()
-	l.emit(rec)
-	return true
+	return entry.rec, true
 }
 
 // charge reports what the provider said it charged, whenever it says it. Before

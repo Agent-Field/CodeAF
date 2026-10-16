@@ -31,7 +31,8 @@ func (a *Agent) renderJobs() *jobRegistry {
 	return a.jobs
 }
 
-// Renders lists this session's video and music renders, newest first.
+// Renders lists this session's renders — image attempts, video and music —
+// newest first.
 func (a *Agent) Renders(limit int, cursor string) (RenderPage, error) {
 	jobs := a.renderJobs()
 	if jobs == nil {
@@ -66,6 +67,14 @@ func (a *Agent) CancelRender(id string) (RenderCancel, error) {
 	}
 	if record.State != RenderRunning {
 		return RenderCancel{Outcome: RenderOutcomeEnded, Render: record}, nil
+	}
+	// A synchronous attempt (an image) has no job: its Stop is the ledger's
+	// own, answered in the same three words (render_attempt.go).
+	if record.Job == 0 {
+		if outcome, held := ledger.stopAttempt(id); held {
+			record, _ = ledger.get(id)
+			return RenderCancel{Outcome: outcome, Render: record}, nil
+		}
 	}
 	target := jobs.find(record.Job)
 	if target == nil {
