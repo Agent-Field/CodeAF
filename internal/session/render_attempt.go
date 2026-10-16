@@ -38,6 +38,11 @@ import (
 // the attempt can tell its own Stop from a turn that ended under it.
 var errRenderStopped = errors.New("the render was stopped")
 
+// errAttemptOver releases an attempt's context once the call is done with it.
+// It is a named cause rather than nil so nothing reading the context can take
+// the attempt's own tidying for a stop.
+var errAttemptOver = errors.New("the image attempt is over")
+
 // renderAttempt is the tool call's handle on its one record. It holds no state
 // of its own beyond the context it hands the provider.
 type renderAttempt struct {
@@ -62,7 +67,7 @@ func (a *Agent) beginImageAttempt(ctx context.Context, model string) (*renderAtt
 	made := madeBy(ctx, nil)
 	id, err := ledger.beginWith(0, modalityImage, model, made.Run, made.Tool, cancel, time.Now())
 	if err != nil {
-		cancel(nil)
+		cancel(errAttemptOver)
 		return nil, err
 	}
 	markMediaAttempt(ctx)
@@ -97,7 +102,7 @@ func (t *renderAttempt) stopped() bool {
 func (t *renderAttempt) close() {
 	t.ledger.settle(t.id, renderPatch{state: RenderFailed, err: "the attempt ended without an outcome"}, time.Now())
 	t.ledger.release(t.id)
-	t.cancel(nil)
+	t.cancel(errAttemptOver)
 }
 
 // commitAttempt is [job.commitRender] for an attempt with no job.
