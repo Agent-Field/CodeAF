@@ -29,6 +29,10 @@ const (
 	// CheckoutOutMax is the most status text one read keeps; past it the process
 	// is killed and the answer says incomplete.
 	CheckoutOutMax = 4 << 20
+	// CheckoutTotalMax is the most git output one call reads, every command and
+	// both status reads together. A status over about half of it cannot be read
+	// twice, so its counts are too_large.
+	CheckoutTotalMax = 6 << 20
 )
 
 // What an entry is.
@@ -48,6 +52,15 @@ const (
 	CheckoutOpCherryPick = "cherry_pick"
 	CheckoutOpRevert     = "revert"
 	CheckoutOpBisect     = "bisect"
+)
+
+// Why a reply carries no line counts.
+const (
+	LinesIncomplete = "incomplete"          // the status was cut, so no revision covers the counts
+	LinesChanged    = "changed_during_read" // the status read after the counts differs from the one before
+	LinesTimeout    = "timeout"             // the call's deadline ended during the counts
+	LinesTooLarge   = "too_large"           // the counts' own output passed its bound
+	LinesGitFailed  = "git_failed"          // git refused or answered something unreadable
 )
 
 // Why there is no land.
@@ -72,6 +85,17 @@ type CheckoutEntry struct {
 	// Submodule says the path is a submodule: only its recorded commit is
 	// compared, its own work tree is never entered.
 	Submodule bool `json:"submodule,omitempty"`
+	// Added and Removed are the entry's line counts, ABSENT when unknown and
+	// never zero for unknown. A tracked entry's are the NET change of the work
+	// tree (staged and unstaged together) against the status's base: the HEAD
+	// commit it names, or the empty tree when unborn; the index is not the base,
+	// so edits staged and unstaged that cancel read 0 and 0. A rename counts
+	// the edits since its original path. Untracked, conflicted, copied,
+	// submodule and filtered entries have none: an untracked file is never
+	// opened. Binary says git found the content binary, with the counts absent.
+	Added   *int `json:"added,omitempty"`
+	Removed *int `json:"removed,omitempty"`
+	Binary  bool `json:"binary,omitempty"`
 }
 
 // CheckoutCounts is the whole status counted. A path changed both in the index
@@ -120,6 +144,12 @@ type CheckoutStatus struct {
 	Next       string       `json:"next,omitempty"`
 	Incomplete bool         `json:"incomplete,omitempty"`
 	Land       CheckoutLand `json:"land"`
+	// LinesUnavailable, when set, says no entry on this reply carries counts and
+	// why: the status was cut (incomplete), changed between the two reads that
+	// must agree (changed_during_read), or the counts' own reads ran out of time
+	// (timeout), output (too_large) or git (git_failed). Absent means counts were
+	// attempted and each entry's own fields are the whole account.
+	LinesUnavailable string `json:"lines_unavailable,omitempty" enum:"incomplete,changed_during_read,timeout,too_large,git_failed"`
 }
 
 // CheckoutQuery is checkout.status's request.

@@ -31,6 +31,11 @@ import (
 // appCheckoutOutMax is the most status text one read keeps; a test lowers it.
 var appCheckoutOutMax = appwire.CheckoutOutMax
 
+// appCheckoutTotalMax is the most git output one whole call reads, every command
+// together; a test lowers it. It is smaller than two full status reads on
+// purpose: a status too big to be read twice cannot have its counts confirmed.
+var appCheckoutTotalMax = appwire.CheckoutTotalMax
+
 // appStatusSlots holds one token per status being read.
 var appStatusSlots = make(chan struct{}, appwire.CheckoutJobs)
 
@@ -59,15 +64,15 @@ func (b *appBackend) CheckoutStatus(q appwire.CheckoutQuery) (appwire.CheckoutSt
 // appCheckout reads dir's status and cuts the page the query asks for.
 func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appwire.CheckoutStatus, error) {
 	empty := appwire.CheckoutStatus{Entries: []appwire.CheckoutEntry{}}
-	g := appGit{ctx: ctx}
-	gitDir, fail := g.out(dir, 4<<10, "rev-parse", "--absolute-git-dir")
+	g := &appMeter{g: appGit{ctx: ctx}, left: appCheckoutTotalMax}
+	roots, fail := g.out(dir, 8<<10, "rev-parse", "--absolute-git-dir", "--show-toplevel")
 	if fail != nil {
 		if fail.notRepo() {
 			return empty, nil
 		}
 		return empty, appCheckoutFailure(fail)
 	}
-	gitDir = strings.TrimSuffix(gitDir, "\n")
+	gitDir, top, _ := strings.Cut(strings.TrimSuffix(roots, "\n"), "\n")
 
 	// The driver names are read from the person's configuration and only named
 	// back to git as empty commands; nothing configured is run.
@@ -99,22 +104,26 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 	}
 
 	args := append(blank, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--ignore-submodules=dirty")
-	text, overflow, fail := g.capped(dir, appCheckoutOutMax, 0, args...)
+	readStatus := func() (string, bool, *appGitFail) {
+		text, overflow, fail := g.capped(dir, appCheckoutOutMax, 0, args...)
+		if fail == nil && overflow {
+			// What was kept ends mid-record; only whole records are read. The final
+			// terminator goes too, so the parser never sees an empty record where a
+			// rename's original path was cut away and calls it a rename from nothing.
+			if cut := strings.LastIndexByte(text, 0); cut >= 0 {
+				text = text[:cut]
+			} else {
+				text = ""
+			}
+		}
+		return text, overflow, fail
+	}
+	text, overflow, fail := readStatus()
 	if fail != nil {
 		if fail.notRepo() {
 			return empty, nil
 		}
 		return empty, appCheckoutFailure(fail)
-	}
-	if overflow {
-		// What was kept ends mid-record; only whole records are read. The final
-		// terminator goes too, so the parser never sees an empty record where a
-		// rename's original path was cut away and calls it a rename from nothing.
-		if cut := strings.LastIndexByte(text, 0); cut >= 0 {
-			text = text[:cut]
-		} else {
-			text = ""
-		}
 	}
 	out, entries := appParseStatus(text)
 	out.Repo, out.Operation = true, appOperation(gitDir)
@@ -142,6 +151,9 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 	// cannot name what was never read, so a cursor into it would be a promise.
 	if end < len(entries) {
 		out.Next = out.Revision + ":" + strconv.Itoa(end)
+	}
+	if reason := appPageLines(g, dir, top, gitDir, blank, named, &out, overflow, readStatus, text); reason != "" {
+		out.LinesUnavailable = reason
 	}
 	return out, nil
 }

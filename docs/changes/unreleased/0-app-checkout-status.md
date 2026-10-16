@@ -21,3 +21,11 @@ Untracked files are listed individually (`--untracked-files=all`) rather than as
 their directory, within the same byte budget. A status cut by that budget keeps
 only whole records: a rename whose original path was cut is dropped, not sent
 as a rename from nothing.
+
+Entries now carry optional `added`/`removed`/`binary` (net tracked change against
+the status's base; untracked, conflicted and filter-governed entries have none)
+and the reply may carry `lines_unavailable`. They come from `git diff-index`
+because `git diff` rewrites the index's stat cache even with optional locks off.
+All git reads of a call share one 6 MiB budget. Agreement between the two status
+reads is checked by status text plus the index's and each counted path's stat
+stamp, which is not a content hash.

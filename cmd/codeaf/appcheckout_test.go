@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -367,5 +368,291 @@ func TestCheckoutStatusListsUntrackedFilesInDirectories(t *testing.T) {
 	}
 	if len(paths) != 2 || paths[0] != "dir/deep/two.txt" || paths[1] != "dir/one.txt" || got.Counts.Untracked != 2 {
 		t.Fatalf("paths %v counts %+v", paths, got.Counts)
+	}
+}
+
+func entryOf(t *testing.T, st appwire.CheckoutStatus, path string) appwire.CheckoutEntry {
+	t.Helper()
+	for _, e := range st.Entries {
+		if e.Path == path {
+			return e
+		}
+	}
+	t.Fatalf("no entry %s in %+v", path, st.Entries)
+	return appwire.CheckoutEntry{}
+}
+
+func wantLines(t *testing.T, e appwire.CheckoutEntry, added, removed int) {
+	t.Helper()
+	if e.Added == nil || e.Removed == nil || *e.Added != added || *e.Removed != removed || e.Binary {
+		t.Fatalf("%s: want +%d -%d, got %+v", e.Path, added, removed, e)
+	}
+}
+
+func wantUnknown(t *testing.T, e appwire.CheckoutEntry) {
+	t.Helper()
+	if e.Added != nil || e.Removed != nil {
+		t.Fatalf("%s: counts must be unknown, got %+v", e.Path, e)
+	}
+}
+
+// COUNTS ARE THE NET CHANGE OF THE WORK TREE AGAINST HEAD: an edit staged and
+// then reverted on disk cancels to 0 and 0, and one staged then edited again is
+// one net count, not two.
+func TestCheckoutStatusLinesNetAgainstHead(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "b.txt"), "1\n2\n3\n")
+	gitT(t, repo, "add", "b.txt")
+	gitT(t, repo, "commit", "-q", "-m", "b")
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\n") // +1
+	write(t, filepath.Join(repo, "b.txt"), "1\nTWO\n3\n")             // +1 -1
+	gitT(t, repo, "add", "a.txt", "b.txt")
+	write(t, filepath.Join(repo, "b.txt"), "1\n2\n3\n") // reverted on disk: net nothing
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\nfive\n")
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || got.LinesUnavailable != "" {
+		t.Fatalf("%v %q", err, got.LinesUnavailable)
+	}
+	wantLines(t, entryOf(t, got, "a.txt"), 2, 0)
+	b := entryOf(t, got, "b.txt")
+	if b.Index == "" || b.Worktree == "" {
+		t.Fatalf("b.txt should be staged and edited back: %+v", b)
+	}
+	wantLines(t, b, 0, 0)
+}
+
+func TestCheckoutStatusLinesModifiedDeletedAndBinary(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "bin.dat"), "a\x00b\n")
+	write(t, filepath.Join(repo, "gone.txt"), "x\ny\n")
+	gitT(t, repo, "add", "bin.dat", "gone.txt")
+	gitT(t, repo, "commit", "-q", "-m", "more")
+	write(t, filepath.Join(repo, "bin.dat"), "a\x00c\x00\n")
+	if err := os.Remove(filepath.Join(repo, "gone.txt")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(repo, "a.txt"), "one\nTWO\nthree\n")
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLines(t, entryOf(t, got, "a.txt"), 1, 1)
+	wantLines(t, entryOf(t, got, "gone.txt"), 0, 2)
+	if b := entryOf(t, got, "bin.dat"); !b.Binary || b.Added != nil || b.Removed != nil {
+		t.Fatalf("binary: %+v", b)
+	}
+}
+
+// A RENAME COUNTS ITS EDITS SINCE THE ORIGINAL PATH, and a pure rename is 0/0.
+func TestCheckoutStatusLinesRename(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "r1.txt"), "l1\nl2\nl3\nl4\nl5\nl6\n")
+	write(t, filepath.Join(repo, "r2.txt"), "m1\nm2\nm3\nm4\nm5\nm6\n")
+	gitT(t, repo, "add", "r1.txt", "r2.txt")
+	gitT(t, repo, "commit", "-q", "-m", "r")
+	gitT(t, repo, "mv", "r1.txt", "n1.txt")
+	gitT(t, repo, "mv", "r2.txt", "n2.txt")
+	write(t, filepath.Join(repo, "n2.txt"), "m1\nm2\nm3\nm4\nm5\nm6\nm7\n")
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || got.LinesUnavailable != "" {
+		t.Fatalf("%v %q", err, got.LinesUnavailable)
+	}
+	wantLines(t, entryOf(t, got, "n1.txt"), 0, 0)
+	wantLines(t, entryOf(t, got, "n2.txt"), 1, 0)
+	if entryOf(t, got, "n2.txt").OldPath != "r2.txt" {
+		t.Fatal("pairing lost")
+	}
+}
+
+// UNBORN HAS NO HEAD: staged files count against the empty tree, and untracked
+// ones are unknown. Nothing is called zero for want of a commit.
+func TestCheckoutStatusLinesUnborn(t *testing.T) {
+	diffRepo(t)
+	fresh := t.TempDir()
+	gitT(t, fresh, "init", "-q", "-b", "trunk")
+	write(t, filepath.Join(fresh, "s.txt"), "1\n2\n3\n")
+	gitT(t, fresh, "add", "s.txt")
+	write(t, filepath.Join(fresh, "u.txt"), "x\ny")
+	got, err := checkoutT(t, fresh, appwire.CheckoutQuery{})
+	if err != nil || !got.Unborn || got.LinesUnavailable != "" {
+		t.Fatalf("%v %+v", err, got)
+	}
+	wantLines(t, entryOf(t, got, "s.txt"), 3, 0)
+	wantUnknown(t, entryOf(t, got, "u.txt"))
+}
+
+// UNTRACKED FILES ARE NEVER OPENED: a pipe or a link swapped in for one cannot
+// hang the read or leave the checkout, because there is no read. Their counts
+// are unknown, and the call returns at once.
+func TestCheckoutStatusLinesUntrackedAreNeverOpened(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "d", "t.txt"), "1\n2\n")
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	write(t, outside, "s\n")
+	if err := os.Symlink(outside, filepath.Join(repo, "link.txt")); err != nil {
+		t.Skip("no symlinks")
+	}
+	if err := syscall.Mkfifo(filepath.Join(repo, "pipe"), 0o644); err != nil {
+		t.Skip("no fifos")
+	}
+	done := make(chan appwire.CheckoutStatus, 1)
+	go func() {
+		got, _ := checkoutT(t, repo, appwire.CheckoutQuery{})
+		done <- got
+	}()
+	select {
+	case got := <-done:
+		for _, e := range got.Entries {
+			wantUnknown(t, e)
+			if e.Binary {
+				t.Fatalf("%s claimed binary", e.Path)
+			}
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a fifo in the checkout hung checkout.status")
+	}
+}
+
+// A CUT STATUS ATTACHES NO COUNTS AND SAYS WHY.
+func TestCheckoutStatusLinesCutStatus(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "a.txt"), "changed\n")
+	for i := 0; i < 40; i++ {
+		write(t, filepath.Join(repo, "untracked-file-"+strconv.Itoa(i)+".txt"), "x\n")
+	}
+	was := appCheckoutOutMax
+	appCheckoutOutMax = 700
+	defer func() { appCheckoutOutMax = was }()
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{Limit: 200})
+	if err != nil || !got.Incomplete || got.LinesUnavailable != appwire.LinesIncomplete {
+		t.Fatalf("%v incomplete=%v lines=%q", err, got.Incomplete, got.LinesUnavailable)
+	}
+	for _, e := range got.Entries {
+		wantUnknown(t, e)
+	}
+}
+
+// THE STATUS MUST AGREE BEFORE AND AFTER THE COUNTS: when the checkout changes
+// between, no count from the earlier diff is attached to the later page.
+func TestCheckoutStatusLinesChangedDuringRead(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "a.txt"), "changed\n")
+	appLinesBetween = func() { write(t, filepath.Join(repo, "late.txt"), "x\n") }
+	defer func() { appLinesBetween = func() {} }()
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || got.LinesUnavailable != appwire.LinesChanged {
+		t.Fatalf("%v %q", err, got.LinesUnavailable)
+	}
+	wantUnknown(t, entryOf(t, got, "a.txt"))
+}
+
+// A required filter still cannot fail or run, and a file it governs has no
+// count rather than a count of bytes it would have rewritten.
+func TestCheckoutStatusLinesFilteredPathIsUnknown(t *testing.T) {
+	repo := diffRepo(t)
+	marker := filepath.Join(t.TempDir(), "ran")
+	write(t, filepath.Join(repo, ".gitattributes"), "*.dat filter=lfsish\n")
+	write(t, filepath.Join(repo, "a.dat"), "a\n")
+	gitT(t, repo, "add", ".gitattributes", "a.dat")
+	gitT(t, repo, "commit", "-q", "-m", "filtered")
+	gitT(t, repo, "config", "filter.lfsish.clean", "touch '"+marker+"'; cat")
+	gitT(t, repo, "config", "filter.lfsish.required", "true")
+	write(t, filepath.Join(repo, "a.dat"), "b\n")
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\n")
+	time.Sleep(1100 * time.Millisecond)
+	_ = os.Chtimes(filepath.Join(repo, "a.dat"), time.Now(), time.Now())
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || got.LinesUnavailable != "" {
+		t.Fatalf("%v %q", err, got.LinesUnavailable)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the clean filter ran")
+	}
+	wantUnknown(t, entryOf(t, got, "a.dat"))
+	wantLines(t, entryOf(t, got, "a.txt"), 1, 0)
+}
+
+// THE STATUS TEXT CAN STAY THE SAME WHILE THE CONTENT DOES NOT: a modified file
+// edited again between the two reads is still " M", so the counts of the first
+// diff must not be attached to it.
+func TestCheckoutStatusLinesContentEditWithSameStatus(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\n")
+	appLinesBetween = func() { write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\nfive\nsix\n") }
+	defer func() { appLinesBetween = func() {} }()
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || got.LinesUnavailable != appwire.LinesChanged {
+		t.Fatalf("%v %q", err, got.LinesUnavailable)
+	}
+	wantUnknown(t, entryOf(t, got, "a.txt"))
+}
+
+// A STAGING CHANGE WITH THE SAME STATUS TEXT STILL MOVES THE INDEX STAMP.
+func TestCheckoutStatusLinesIndexRewrittenBetweenReads(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\n")
+	gitT(t, repo, "add", "a.txt")
+	appLinesBetween = func() {
+		write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\n") // same bytes, new mtime
+		gitT(t, repo, "add", "a.txt")
+	}
+	defer func() { appLinesBetween = func() {} }()
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || got.LinesUnavailable != appwire.LinesChanged {
+		t.Fatalf("%v %q", err, got.LinesUnavailable)
+	}
+}
+
+// ONE BYTE BUDGET COVERS THE WHOLE CALL: a status that fits once but not twice
+// is read, and its counts are too_large, not confirmed against a short re-read.
+func TestCheckoutStatusAggregateBudget(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "a.txt"), "changed\n")
+	for i := 0; i < 5; i++ {
+		write(t, filepath.Join(repo, "untracked-"+strconv.Itoa(i)+".txt"), "x\n")
+	}
+	was := appCheckoutTotalMax
+	defer func() { appCheckoutTotalMax = was }()
+	// First measure what the whole call spends.
+	appCheckoutTotalMax = 1 << 20
+	ok, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || ok.LinesUnavailable != "" || ok.Incomplete {
+		t.Fatalf("roomy budget: %v %q", err, ok.LinesUnavailable)
+	}
+	// Room for one status and the small reads, not for the second status.
+	for budget := 330; budget < 700; budget += 10 {
+		appCheckoutTotalMax = budget
+		got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+		if err != nil {
+			continue
+		}
+		if got.LinesUnavailable == appwire.LinesTooLarge {
+			wantUnknown(t, entryOf(t, got, "a.txt"))
+			return
+		}
+	}
+	t.Fatal("no budget made the second status read overflow the shared pool")
+}
+
+// COUNTING WRITES NOTHING EITHER: `git diff` refreshes the index's stat cache
+// even with optional locks off, so the counts use diff-index and the index file
+// keeps its bytes and its modification time.
+func TestCheckoutStatusLinesLeaveTheIndexAlone(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "a.txt"), "one\nTWO\nthree\n")
+	gitT(t, repo, "add", "a.txt")
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\n") // staged edit reverted on disk
+	index := filepath.Join(repo, ".git", "index")
+	before, _ := os.ReadFile(index)
+	was, _ := os.Stat(index)
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || got.LinesUnavailable != "" {
+		t.Fatalf("%v %q", err, got.LinesUnavailable)
+	}
+	wantLines(t, entryOf(t, got, "a.txt"), 0, 0)
+	after, _ := os.ReadFile(index)
+	now, _ := os.Stat(index)
+	if !bytes.Equal(before, after) || !was.ModTime().Equal(now.ModTime()) {
+		t.Fatal("counting the lines rewrote the index")
 	}
 }
