@@ -523,7 +523,7 @@ func entriesCost(entries []DisplayEntry) int64 {
 		}
 		if entry.Person != nil {
 			cost += composedSizes(entry.Person.Composed)
-			cost += int64(unsafe.Sizeof(PersonMark{})) + int64(cap(entry.Person.Attachments))*int64(unsafe.Sizeof(MessageAttachment{}))
+			cost += int64(unsafe.Sizeof(PersonMark{})) + int64(len(entry.Person.ClientID)) + int64(cap(entry.Person.Attachments))*int64(unsafe.Sizeof(MessageAttachment{}))
 			for _, attachment := range entry.Person.Attachments {
 				cost += int64(len(attachment.ID)+len(attachment.Kind)+len(attachment.Name)+len(attachment.Path)+len(attachment.URL)) +
 					attachmentSizes(attachment)
@@ -583,7 +583,7 @@ func cloneEntries(entries []DisplayEntry) []DisplayEntry {
 		entry.ReplyTags = slices.Clone(entry.ReplyTags)
 		entry.Team = slices.Clone(entry.Team)
 		if entry.Person != nil {
-			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments), Reads: cloneReads(entry.Person.Reads), Composed: cloneComposed(entry.Person.Composed), Queued: entry.Person.Queued}
+			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments), Reads: cloneReads(entry.Person.Reads), Composed: cloneComposed(entry.Person.Composed), Queued: entry.Person.Queued, ClientID: entry.Person.ClientID}
 			entry.Person = &person
 		}
 		if entry.Steer != nil {

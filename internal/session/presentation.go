@@ -35,9 +35,13 @@ type messagePresentation struct {
 	// Composed is what a composed submission added to a person's line: its
 	// durable id, its pictures as measured, its annotation and how the pictures
 	// reached a model ([Agent.SubmitComposed]).
-	Composed    *ComposedMark `json:"composed,omitempty"`
-	Queued      bool          `json:"queued,omitempty"`
-	SkillsBlock string        `json:"-"`
+	Composed *ComposedMark `json:"composed,omitempty"`
+	Queued   bool          `json:"queued,omitempty"`
+	// ClientID is the door's own opaque name for this person's message, kept
+	// exactly as accepted ([Submission.ClientID]). It is correlation and
+	// nothing else: no request, route or replay reads it.
+	ClientID    string `json:"client_id,omitempty"`
+	SkillsBlock string `json:"-"`
 }
 
 // person is the part of a mark a person's message carries into the record: the

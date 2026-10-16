@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -68,6 +69,17 @@ type Submission struct {
 	// Attachments are what rode on the message, in the order it carried them.
 	Attachments []MessageAttachment
 	Queued      bool
+	// ClientID is the door's own opaque name for this message, at most
+	// [MaxClientIDBytes] bytes of valid UTF-8 with no control characters. It is
+	// kept exactly as given on the message's own line and read back on its
+	// entry ([PersonMark.ClientID]), so a door can recognise its message after
+	// the process that sent it is gone.
+	//
+	// IT IS CORRELATION, NEVER IDEMPOTENCY. The session does not look it up,
+	// refuse a repeat of it or skip a send because of it; two messages with one
+	// ClientID are two messages. Empty is "the door named none", and the model
+	// is sent nothing of it.
+	ClientID string
 	// Reads are the reads of references the door performed to write Text, in
 	// the order it performed them, as it found them at that moment.
 	Reads []MessageRead
@@ -166,6 +178,9 @@ const (
 	// are a part of Text in every door that has a reason to say them apart,
 	// so the bound is the content's own scale rather than a separate one.
 	maxSaidBytes = 1 << 20
+	// MaxClientIDBytes is the longest a message's ClientID may be. It is a
+	// correlation token, not content.
+	MaxClientIDBytes = 256
 )
 
 // ErrMessageMark is every refusal of a mark that does not fit, so a door can
@@ -199,7 +214,10 @@ func (a *Agent) SubmitMessage(ctx context.Context, message Submission) (<-chan E
 // it says nothing beyond the words. The copy is the record's own: nothing the
 // caller does to its slices afterwards reaches a line or a reading.
 func (m Submission) mark() (*messagePresentation, error) {
-	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued {
+	if err := checkClientID(m.ClientID); err != nil {
+		return nil, err
+	}
+	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" {
 		return nil, nil
 	}
 	reads, err := keptReads(m.Reads)
@@ -213,7 +231,7 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if len(m.Attachments) > MaxMessageAttachments {
 		return nil, fmt.Errorf("%w: %d attachments, and one message names at most %d", ErrMessageMark, len(m.Attachments), MaxMessageAttachments)
 	}
-	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued}
+	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued, ClientID: strings.Clone(m.ClientID)}
 	// Text stays nil when the door did not say the person's words apart: the
 	// line's own content is theirs, and a copy of it here would be the same
 	// words written twice on one line.
@@ -259,6 +277,16 @@ func (m Submission) mark() (*messagePresentation, error) {
 	}
 	mark.Reads = reads
 	return mark, nil
+}
+
+// checkClientID refuses an ID the record would not keep as given: past the
+// bound, not text, or holding a control character. NOTHING IS TRIMMED OR
+// CHANGED TO FIT, because a door matches on the exact bytes it sent.
+func checkClientID(id string) error {
+	if len(id) > MaxClientIDBytes || !utf8.ValidString(id) || strings.IndexFunc(id, unicode.IsControl) >= 0 {
+		return fmt.Errorf("%w: the client id is not text of at most %d bytes without control characters", ErrMessageMark, MaxClientIDBytes)
+	}
+	return nil
 }
 
 // KeptReads is reads as the record will keep them — trimmed, and copies of
