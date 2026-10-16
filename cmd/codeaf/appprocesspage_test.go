@@ -203,3 +203,37 @@ func TestProcessPageOfAnOlderHeldEngineIsPagedFromItsList(t *testing.T) {
 		t.Fatalf("crew scope: %v", err)
 	}
 }
+
+// A CUT KEEPS EACH ROW'S PHASE: a cut saved row continues the saved history
+// below it, a cut live row continues the live rows, and a kept-running service
+// is never cut — if the services alone overrun, the page says incomplete.
+func TestProcessPageFitCutsInPhaseAndNeverDropsAService(t *testing.T) {
+	started := time.Unix(1_700_000_000, 0)
+	liveRow := session.ProcessPageRow{JobNotice: session.JobNotice{ID: 30, State: session.JobRunning, Started: started}, Live: true}
+	saved := session.ProcessPageRow{JobNotice: session.JobNotice{ID: 7, State: session.JobDone, Started: started}}
+	page := session.ProcessPage{Rows: []session.ProcessPageRow{liveRow, saved}, Revision: "e1"}
+	build := func() *appwire.ProcessPageResult {
+		return &appwire.ProcessPageResult{Processes: []appwire.Process{
+			{ID: "a:s1", Agent: "a", Service: &appwire.Service{Name: "web"}},
+			appProcessBase("a", liveRow.JobNotice),
+			appProcessBase("a", saved.JobNotice),
+		}}
+	}
+	size := func(p appwire.Process) int { raw, _ := json.Marshal(p); return len(raw) + 1 }
+	out := build()
+	total := size(out.Processes[0]) + size(out.Processes[1]) + size(out.Processes[2])
+	appFitProcessRows(out, page, "a", total, total-1)
+	if len(out.Processes) != 2 || out.Next != session.ProcessCursorBefore("e1", 7) || out.Incomplete {
+		t.Fatalf("cut saved row: %+v", out)
+	}
+	out = build()
+	appFitProcessRows(out, page, "a", total, size(out.Processes[0]))
+	if len(out.Processes) != 1 || out.Next != session.ProcessCursorLive("e1", 30) || out.Incomplete {
+		t.Fatalf("cut live row: next=%q %+v", out.Next, out)
+	}
+	out = build()
+	appFitProcessRows(out, page, "a", total, 1)
+	if len(out.Processes) != 1 || out.Processes[0].Service == nil || !out.Incomplete {
+		t.Fatalf("service cut or silently dropped: %+v", out)
+	}
+}

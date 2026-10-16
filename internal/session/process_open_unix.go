@@ -79,3 +79,7 @@ func notExist(err error) error {
 // rootReadFlags are added when a record is opened through the store's root:
 // no link at the last name, and no waiting on a FIFO.
 const rootReadFlags = unix.O_NOFOLLOW | unix.O_NONBLOCK
+
+// linkRefused says an open failed because the name was a link it would not
+// follow.
+func linkRefused(err error) bool { return errors.Is(err, unix.ELOOP) }

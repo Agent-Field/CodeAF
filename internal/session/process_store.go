@@ -176,10 +176,13 @@ func readSmall(root *os.Root, name string, limit int64) ([]byte, error) {
 	}
 	file, err := root.OpenFile(name, os.O_RDONLY|rootReadFlags, 0)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, err
+		// A link swapped in at the name is refused as not a record; any other
+		// failure (permissions, too many open files, the disk) is the caller's
+		// to see as itself, never mistaken for a damaged record.
+		if linkRefused(err) {
+			return nil, errNotRegular
 		}
-		return nil, errNotRegular
+		return nil, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
@@ -695,12 +698,20 @@ func (s processStore) open(foldTime time.Duration) (*os.Root, processHead, error
 		return nil, processHead{}, err
 	}
 	head, found, err := readHead(root)
-	if err != nil {
-		if head, err = s.rebuildHead(root); err != nil {
+	switch {
+	case err != nil && badRecord(err):
+		// ONLY A HEAD THAT IS THERE AND IS NOT ONE IS REBUILT. A head that could
+		// not be read for any other reason — too many open files, permissions,
+		// a failing disk — is a good head this call cannot see, and replacing it
+		// would throw away its epoch, its fold marks and its lost count.
+		if head, err = s.rebuildHead(root, time.Now().Add(max(foldTime, processRebuildFloor))); err != nil {
 			root.Close()
 			return nil, processHead{}, err
 		}
 		found = true
+	case err != nil:
+		root.Close()
+		return nil, processHead{}, err
 	}
 	if !found {
 		head = processHead{Epoch: randomToken(8)}
@@ -718,26 +729,37 @@ func (s processStore) open(foldTime time.Duration) (*os.Root, processHead, error
 	return root, head, nil
 }
 
-// processRebuildEntries bounds the folder listing a head rebuild reads.
-const processRebuildEntries = 1 << 20
+// processRebuildEntries bounds the folder listing a head rebuild reads, and
+// processRebuildFloor is the least time it is given; it otherwise shares the
+// opening call's fold time, because it runs under the record lock every
+// writer waits on.
+const (
+	processRebuildEntries = 1 << 20
+	processRebuildFloor   = 50 * time.Millisecond
+)
 
-// rebuildHead replaces an unreadable head. The records are the truth and the
-// head only indexes them, so the high-water number is found again from the
-// store's own folder (never anywhere else), in bounded batches. The epoch is
-// new — every old cursor is stale, which is true — and every legacy array is
-// folded again from byte 0, which is idempotent. A store with more entries
-// than the bound counts the rest lost rather than claiming to have seen them.
-func (s processStore) rebuildHead(root *os.Root) (processHead, error) {
-	head := processHead{Epoch: randomToken(8)}
-	_ = root.Rename(processHeadName, processHeadName+".unreadable-"+randomToken(4))
+// rebuildHead replaces a head that is there and unreadable. The records are
+// the truth and the head only indexes them, so the high-water number is found
+// again from the store's own folder (never anywhere else), in batches, until
+// the listing ends, its entry bound or its deadline. The epoch is new — every
+// old cursor is stale, which is true — and every legacy array is folded again
+// from byte 0, which is idempotent.
+//
+// THE REBUILT HEAD IS NEVER COMPLETE. What the old head counted lost, and
+// whether the listing reached every record, cannot be known, so Lost starts at
+// one and every page of this store says incomplete. A listing cut short also
+// leaves numbers above the highest it saw unreachable until a write raises
+// the high-water number past them, which is one more reason not to claim the
+// history whole.
+func (s processStore) rebuildHead(root *os.Root, deadline time.Time) (processHead, error) {
+	head := processHead{Epoch: randomToken(8), Lost: 1}
 	dir, err := root.Open(".")
 	if err != nil {
 		return processHead{}, err
 	}
 	defer dir.Close()
-	seen := 0
-	for seen < processRebuildEntries {
-		entries, err := dir.ReadDir(1024)
+	for seen := 0; seen < processRebuildEntries && time.Now().Before(deadline); {
+		entries, err := dir.ReadDir(256)
 		for _, e := range entries {
 			seen++
 			name := e.Name()
@@ -751,10 +773,8 @@ func (s processStore) rebuildHead(root *os.Root) (processHead, error) {
 		if err != nil {
 			break
 		}
-		if seen >= processRebuildEntries {
-			head.Lost++
-		}
 	}
+	_ = root.Rename(processHeadName, processHeadName+".unreadable-"+randomToken(4))
 	return head, writeHead(root, head)
 }
 
@@ -1039,7 +1059,16 @@ func (s processStore) page(ctx context.Context, ask ProcessPageAsk, limit int, v
 	}
 	budget := newPageBudget()
 	page := ProcessPage{Revision: epoch}
-	skip := map[int]bool{}
+	// EVERY LIVE NUMBER IS LEFT OUT OF EVERY SAVED-HISTORY PAGE, whichever page
+	// this is. A live job has a record from its first notice, and the live
+	// rows were (or will be) answered in the live phase; skipping only the
+	// rows on this page let a job shown live on page one come back on the
+	// first history page, and a sleep or a quit reading these pages stopped it
+	// twice.
+	skip := make(map[int]bool, len(live))
+	for _, row := range live {
+		skip[row.ID] = true
+	}
 	if ask.Cursor == "" || cur.live {
 		for _, row := range live {
 			if cur.live && row.ID >= cur.before {
@@ -1051,7 +1080,6 @@ func (s processStore) page(ctx context.Context, ask ProcessPageAsk, limit int, v
 				return page, nil
 			}
 			page.Rows = append(page.Rows, row)
-			skip[row.ID] = true
 		}
 		cur = processCursor{epoch: epoch, top: true}
 	}
@@ -1196,6 +1224,15 @@ func liveProcessesOfAgent(dir string, a *Agent) []int {
 		}
 	}
 	return ids
+}
+
+// ProcessCursorLive is the cursor a page would give to continue the live rows
+// below id, before the saved history begins.
+func ProcessCursorLive(revision string, id int) string {
+	if revision == "" || id < 1 {
+		return ""
+	}
+	return encodeProcessPosition(revision, "L"+strconv.Itoa(id+1))
 }
 
 // ProcessCursorBefore is the cursor a page would give to continue below id in

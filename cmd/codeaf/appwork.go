@@ -14,6 +14,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -109,7 +110,9 @@ func appProcessJob(id string) (string, int, string, bool) {
 // reads that one record (appprocesspage.go), never the whole list.
 func (b *appBackend) processRow(id string) (string, session.JobNotice, error) {
 	agent, _, _, _ := appProcessJob(id)
-	record, _, err := b.processRecord(id)
+	ctx, cancel := context.WithTimeout(context.Background(), appwire.ProcessReadTimeout)
+	defer cancel()
+	record, _, err := b.processRecord(ctx, id)
 	if err != nil {
 		return "", session.JobNotice{}, err
 	}

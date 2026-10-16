@@ -32,7 +32,7 @@ type appProcessPager interface {
 }
 
 type appProcessRecorder interface {
-	ProcessRecord(int) (session.JobNotice, bool, error)
+	ProcessRecord(context.Context, int) (session.JobNotice, bool, error)
 }
 
 // THE CONVERSATION THE APP HOLDS IS A REMOTE AGENT, even in process, so the
@@ -79,7 +79,7 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 		out.Processes = append(out.Processes, appProcessPageRow(ask.Agent, convDir, row))
 	}
 	out.Processes = b.quitStoppedOver(ask.Agent, out.Processes)
-	appFitProcessPage(out, page)
+	appFitProcessPage(out, page, ask.Agent)
 	return out, nil
 }
 
@@ -211,19 +211,46 @@ func (b *appBackend) quitStoppedOver(agent string, list []appwire.Process) []app
 }
 
 // appFitProcessPage keeps the encoded reply under the wire's budget. Rows cut
-// here are not lost: Next continues from the first one cut.
-func appFitProcessPage(out *appwire.ProcessPageResult, page session.ProcessPage) {
+// here are not lost: Next continues from the first one cut, IN ITS OWN PHASE —
+// a cut live row continues the live rows ("L"), a cut saved row continues the
+// saved history below it. A kept-running service is never cut: the services
+// lead the first page and are few, and one cut here would have no cursor to
+// come back on. If the services alone still overrun, the page says so with
+// incomplete rather than dropping them.
+func appFitProcessPage(out *appwire.ProcessPageResult, page session.ProcessPage, agent string) {
 	raw, err := json.Marshal(out)
 	if err != nil || len(raw) <= appwire.ProcessPageReplyMax {
 		return
 	}
-	size := len(raw)
-	for len(out.Processes) > 0 && size > appwire.ProcessPageReplyMax {
+	appFitProcessRows(out, page, agent, len(raw), appwire.ProcessPageReplyMax)
+}
+
+// appFitProcessRows is the cut, with its size and budget given, so the rule
+// can be proved without a four-megabyte fixture.
+func appFitProcessRows(out *appwire.ProcessPageResult, page session.ProcessPage, agent string, size, budget int) {
+	live := map[string]bool{}
+	for _, row := range page.Rows {
+		if row.Live {
+			live[appProcessID(agent, row.JobNotice)] = true
+		}
+	}
+	for size > budget && len(out.Processes) > 0 {
 		last := out.Processes[len(out.Processes)-1]
+		if last.Service != nil {
+			out.Incomplete = true
+			return
+		}
+		_, job, _, ok := appProcessJob(last.ID)
+		if !ok {
+			out.Incomplete = true
+			return
+		}
 		one, _ := json.Marshal(last)
 		size -= len(one) + 1
 		out.Processes = out.Processes[:len(out.Processes)-1]
-		if _, job, _, ok := appProcessJob(last.ID); ok {
+		if live[last.ID] {
+			out.Next = session.ProcessCursorLive(page.Revision, job)
+		} else {
 			out.Next = session.ProcessCursorBefore(page.Revision, job)
 		}
 	}
@@ -259,7 +286,7 @@ func (b *appBackend) ReadProcessLog(ctx context.Context, ask appwire.ProcessLogA
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	record, convDir, err := b.processRecord(ask.ID)
+	record, convDir, err := b.processRecord(ctx, ask.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +309,7 @@ func (b *appBackend) ReadProcessLog(ctx context.Context, ask appwire.ProcessLogA
 // its conversation or, when none here does, its store, and the conversation's
 // folder its log must be under. The start stamp in the id must match, so an id
 // never reaches another run of the same number.
-func (b *appBackend) processRecord(id string) (session.JobNotice, string, error) {
+func (b *appBackend) processRecord(ctx context.Context, id string) (session.JobNotice, string, error) {
 	agent, job, stamp, ok := appProcessJob(id)
 	if !ok {
 		return session.JobNotice{}, "", appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
@@ -302,7 +329,7 @@ func (b *appBackend) processRecord(id string) (session.JobNotice, string, error)
 	if live := b.liveOf(a); live != nil {
 		recorder, can := live.conn.Conv.(appProcessRecorder)
 		if can {
-			record, found, err = recorder.ProcessRecord(job)
+			record, found, err = recorder.ProcessRecord(ctx, job)
 		}
 		if !can || errors.Is(err, remote.ErrProcessPageUnserved) {
 			_, row, rerr := b.processRowFromList(id)

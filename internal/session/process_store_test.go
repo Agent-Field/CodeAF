@@ -672,47 +672,91 @@ func TestProcessUnreadableHeadIsRebuiltNotFatal(t *testing.T) {
 	if len(all) != 4 || all[0].ID != 8 || all[1].ID != 7 {
 		t.Fatalf("rebuilt: %+v", all)
 	}
+	if page, _ := ReadProcessPage(context.Background(), agent.SessionPath(), ProcessPageAsk{}); !page.Incomplete {
+		t.Fatal("a rebuilt history claimed to be complete")
+	}
 	if _, err := ReadProcessPage(context.Background(), agent.SessionPath(), ProcessPageAsk{Cursor: page.Next}); !errors.Is(err, ErrProcessStale) {
 		t.Fatalf("an old cursor survived the rebuild: %v", err)
 	}
 }
 
-// LIVE ROWS ARE PAGED: more live jobs than a page carry over with their own
-// continuation before the saved history begins.
+// LIVE ROWS ARE PAGED, AND NO LIVE JOB IS EVER ANSWERED TWICE. Every live job
+// also has a saved record (its first notice writes one), so the whole walk —
+// live pages, the turn to the saved history, every history page — is checked
+// as one sequence, at limits that end a page exactly on the last live row, on
+// a live row and on a history row.
 func TestProcessLiveRowsArePagedBeforeTheHistory(t *testing.T) {
 	dir := t.TempDir()
 	seedStore(t, dir, 1, 2, 3)
+	s := processStore{dir: dir}
+	root, head, _ := s.open(time.Second)
+	for id := 21; id <= 30; id++ {
+		_, _ = s.put(root, &head, JobNotice{ID: id, Kind: JobKindCommand, State: JobRunning, Started: time.Unix(int64(id), 0)}, false)
+	}
+	root.Close()
 	var live []ProcessPageRow
 	for id := 30; id > 20; id-- {
-		live = append(live, ProcessPageRow{JobNotice: JobNotice{ID: id, State: JobRunning}, Live: true})
-	}
-	s := processStore{dir: dir}
-	var got []int
-	cursor := ""
-	for pages := 0; pages < 10; pages++ {
-		page, err := s.page(context.Background(), ProcessPageAsk{Cursor: cursor}, 4, nil, live, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(page.Rows) > 4 {
-			t.Fatalf("page over its limit: %d", len(page.Rows))
-		}
-		for _, r := range page.Rows {
-			got = append(got, r.ID)
-		}
-		if page.Next == "" {
-			break
-		}
-		cursor = page.Next
+		live = append(live, ProcessPageRow{JobNotice: JobNotice{ID: id, State: JobRunning, Started: time.Unix(int64(id), 0)}, Live: true})
 	}
 	want := []int{30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 3, 2, 1}
-	if len(got) != len(want) {
-		t.Fatalf("live then history: %v", got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("live then history: %v", got)
+	for _, limit := range []int{1, 3, 4, 5, 10, 11, 13, 100} {
+		var got []int
+		cursor := ""
+		for pages := 0; pages < 40; pages++ {
+			page, err := s.page(context.Background(), ProcessPageAsk{Cursor: cursor}, limit, nil, live, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page.Rows) > limit {
+				t.Fatalf("limit %d: page of %d", limit, len(page.Rows))
+			}
+			for _, r := range page.Rows {
+				got = append(got, r.ID)
+			}
+			if page.Next == "" {
+				break
+			}
+			cursor = page.Next
 		}
+		if len(got) != len(want) {
+			t.Fatalf("limit %d: %v", limit, got)
+		}
+		for k := range want {
+			if got[k] != want[k] {
+				t.Fatalf("limit %d: %v", limit, got)
+			}
+		}
+	}
+}
+
+// AN UNREADABLE HEAD IS REBUILT; A HEAD THAT MERELY COULD NOT BE OPENED IS
+// LEFT ALONE, and a rebuild keeps to its deadline.
+func TestProcessHeadIsRebuiltOnlyWhenItIsNotOne(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("permissions do not refuse root")
+	}
+	dir := t.TempDir()
+	seedStore(t, dir, 1, 2)
+	s := processStore{dir: dir}
+	path := filepath.Join(dir, processStoreName, processHeadName)
+	before, _ := os.ReadFile(path)
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.open(time.Second); err == nil {
+		t.Fatal("an unopenable head was answered")
+	}
+	_ = os.Chmod(path, 0o600)
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("a good head was replaced: %v", err)
+	}
+	root, _ := s.openRoot(false)
+	defer root.Close()
+	start := time.Now()
+	head, err := s.rebuildHead(root, time.Now().Add(-time.Second))
+	if err != nil || head.Lost < 1 || time.Since(start) > time.Second {
+		t.Fatalf("an expired rebuild: %+v %v %v", head, err, time.Since(start))
 	}
 }
 

@@ -57,3 +57,7 @@ func openRegularIn(anchor string, rel ...string) (*os.File, error) {
 // rootReadFlags has nothing to add here: links are refused by the inspection
 // in readSmall, and there are no FIFOs to wait on.
 const rootReadFlags = 0
+
+// linkRefused has no no-follow open to refuse here; readSmall's inspection
+// refuses links before the open.
+func linkRefused(error) bool { return false }

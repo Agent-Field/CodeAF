@@ -44,7 +44,9 @@ type processRecordReply struct {
 var ErrProcessPageUnserved = errors.New("this engine cannot page processes")
 
 func (a *Agent) ProcessPage(ctx context.Context, ask session.ProcessPageAsk) (session.ProcessPage, error) {
-	raw, err := a.c.call(nil, MethodProcessPage, ProcessPageArgs{Limit: ask.Limit, Cursor: ask.Cursor})
+	// THE CALLER'S DEADLINE TRAVELS WITH THE CALL: a page asked for within two
+	// seconds gives up at two, never at the wire's own longer ceiling.
+	raw, err := a.c.call(ctx, MethodProcessPage, ProcessPageArgs{Limit: ask.Limit, Cursor: ask.Cursor})
 	if err != nil {
 		if strings.Contains(err.Error(), "no such process action") {
 			return session.ProcessPage{}, ErrProcessPageUnserved
@@ -59,8 +61,8 @@ func (a *Agent) ProcessPage(ctx context.Context, ask session.ProcessPageAsk) (se
 	return page, err
 }
 
-func (a *Agent) ProcessRecord(id int) (session.JobNotice, bool, error) {
-	raw, err := a.c.call(nil, MethodProcessRecord, ProcessRecordArgs{ID: id})
+func (a *Agent) ProcessRecord(ctx context.Context, id int) (session.JobNotice, bool, error) {
+	raw, err := a.c.call(ctx, MethodProcessRecord, ProcessRecordArgs{ID: id})
 	if err != nil {
 		if strings.Contains(err.Error(), "no such process action") {
 			return session.JobNotice{}, false, ErrProcessPageUnserved
