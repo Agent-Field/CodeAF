@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,6 +61,10 @@ type OwnerFacts struct {
 	Stamp string
 	Facts []workgraph.Fact
 	Issue string
+	// Externals are the other conversations this one's tasks wait on, sorted: the
+	// sources a target's state is read from, so a caller can name them in its
+	// revision.
+	Externals []string
 
 	byID map[string]int32
 }
@@ -214,11 +219,25 @@ func readOwner(ctx context.Context, owner, dir, stamp string) (*OwnerFacts, erro
 		return nil, err
 	}
 	out.byID = make(map[string]int32, len(out.Facts))
+	others := map[string]bool{}
 	for i := range out.Facts {
 		out.byID[out.Facts[i].Node.Ref.Task] = int32(i)
+		for _, w := range out.Facts[i].Waits {
+			if w.On.Owner != owner {
+				others[w.On.Owner] = true
+			}
+		}
 	}
+	for other := range others {
+		out.Externals = append(out.Externals, other)
+	}
+	sort.Strings(out.Externals)
 	return out, nil
 }
+
+// FileStamp names a file's present state (size, modification instant, inode), "-"
+// when it is not there: the identity a caller caches a read of the file under.
+func FileStamp(path string) string { return wgStamp(path) }
 
 func firstIssue(a, b string) string {
 	if a != "" {

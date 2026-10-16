@@ -61,6 +61,11 @@ func v3OpenSession(cfg session.Config) (*session.Agent, error) {
 	// Every conversation this process opens counts its task lanes in one
 	// account, because they are all running on one machine.
 	cfg.TaskLanes = v3MachineLanes
+	// AND THEY READ EACH OTHER'S TASKS through one reader, for the waits a task
+	// can hold on another conversation's task (session's task_external.go).
+	if cfg.ExternalTasks == nil {
+		cfg.ExternalTasks = workGraphs.externalTasks()
+	}
 	cfg, runs := v3Adaptive(cfg)
 	agent, err := session.New(cfg)
 	if err != nil {
