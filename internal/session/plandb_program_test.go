@@ -406,6 +406,7 @@ func TestAProgramsPageCarriesTheEndingsFactsFromItsLog(t *testing.T) {
 		Data: map[string]json.RawMessage{
 			"reports":  json.RawMessage(`["/tmp/copy/review-report.md","/tmp/copy/review-report.json"]`),
 			"findings": json.RawMessage(`7`), "blocking": json.RawMessage(`2`),
+			"hunt_coverage": json.RawMessage(`{"attempted":2,"failures":[{"strategy":"a","reason":"failed in /tmp/copy/x.go"}]}`),
 			"claim": json.RawMessage(`"wrote /tmp/copy/review-report.md"`), "transcript": json.RawMessage(`"not on the list"`)}})
 	if err := delegate.AppendAction(dir, ending); err != nil {
 		t.Fatal(err)
@@ -420,6 +421,7 @@ func TestAProgramsPageCarriesTheEndingsFactsFromItsLog(t *testing.T) {
 	}
 	facts := shown[0].Ending
 	if strings.Join(facts.Reports, " ") != "review-report.md review-report.json" || facts.Claim != "wrote review-report.md" ||
+		facts.HuntCoverage == nil || facts.HuntCoverage.Failures[0].Reason != "failed in x.go" ||
 		facts.Findings == nil || *facts.Findings != 7 || facts.Blocking == nil || *facts.Blocking != 2 {
 		t.Fatalf("facts = %+v", facts)
 	}

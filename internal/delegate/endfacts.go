@@ -23,7 +23,7 @@ package delegate
 import (
 	"bytes"
 	"encoding/json"
-	"math"
+	"strconv"
 	"strings"
 )
 
@@ -91,7 +91,7 @@ type EndFacts struct {
 // HuntCoverage is how many hunts an audit attempted and which failed, as the
 // audit measured them.
 type HuntCoverage struct {
-	Attempted int           `json:"attempted"`
+	Attempted *int          `json:"attempted,omitempty"`
 	Failures  []HuntFailure `json:"failures,omitempty"`
 	// Unknown marks accounting the audit could not read.
 	Unknown bool `json:"unknown,omitempty"`
@@ -156,13 +156,14 @@ func endDataOf(facts *EndFacts) json.RawMessage {
 		func(f *EndFacts) { f.AnalysisIncomplete = "" },
 	}
 	for i := 0; ; i++ {
-		var buf bytes.Buffer
-		enc := json.NewEncoder(&buf)
-		enc.SetEscapeHTML(false)
-		if enc.Encode(copied) != nil {
+		// MEASURED AS IT IS WRITTEN: json.Marshal escapes <, > and & the way
+		// AppendAction's own marshal of this raw message will, so the cap is
+		// the file's byte count and not a smaller one.
+		line, err := json.Marshal(copied)
+		if err != nil {
 			return nil
 		}
-		if line := bytes.TrimSpace(buf.Bytes()); len(line) <= EndDataCap {
+		if len(line) <= EndDataCap {
 			if copied.Empty() {
 				return nil
 			}
@@ -218,11 +219,12 @@ func endBool(raw json.RawMessage) *bool {
 // endCount is a whole, non-negative number, and nil for anything else — a
 // string, a fraction, a negative, a boolean.
 func endCount(raw json.RawMessage) *int {
-	var n float64
-	if !endDecodable(raw) || json.Unmarshal(raw, &n) != nil {
+	if !endDecodable(raw) {
 		return nil
 	}
-	if n < 0 || n > endCountMax || n != math.Trunc(n) {
+	// Read as digits, not as a float: 0.99999999999999999 is not 1.
+	n, err := strconv.ParseInt(string(bytes.TrimSpace(raw)), 10, 64)
+	if err != nil || n < 0 || n > endCountMax {
 		return nil
 	}
 	whole := int(n)
@@ -233,27 +235,20 @@ func endCount(raw json.RawMessage) *int {
 // dropped whole, because a list with an element removed is a different list.
 func endReports(raw json.RawMessage) []string {
 	var names []*string
-	if !endDecodable(raw) || json.Unmarshal(raw, &names) != nil {
+	if !endDecodable(raw) || json.Unmarshal(raw, &names) != nil || len(names) == 0 || len(names) > endReportsMax {
 		return nil
 	}
-	for _, name := range names {
-		// A null element decodes as an empty string and would be filtered away
-		// silently; it is a malformed list, and the whole list goes.
-		if name == nil {
+	kept := make([]string, 0, len(names))
+	for _, element := range names {
+		// A null or empty element is a malformed list, and the whole list goes.
+		if element == nil {
 			return nil
 		}
-	}
-	kept := make([]string, 0, min(len(names), endReportsMax))
-	for _, element := range names {
-		if len(kept) == endReportsMax {
-			break
+		name := cut(oneLine(*element), endReportCap)
+		if name == "" {
+			return nil
 		}
-		if name := cut(oneLine(*element), endReportCap); name != "" {
-			kept = append(kept, name)
-		}
-	}
-	if len(kept) == 0 {
-		return nil
+		kept = append(kept, name)
 	}
 	return kept
 }
@@ -262,40 +257,38 @@ func endCoverage(raw json.RawMessage) *HuntCoverage {
 	if !endDecodable(raw) {
 		return nil
 	}
-	var fields struct {
-		Attempted *float64 `json:"attempted"`
-		Failures  []*struct {
-			Strategy *string `json:"strategy"`
-			Reason   *string `json:"reason"`
-		} `json:"failures"`
-		Unknown *bool `json:"unknown"`
-	}
+	// Exact, case-sensitive keys, as the top level reads them.
+	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil {
 		return nil
 	}
-	// A failure row that is null, or lacks either text, would be written as a
-	// hunt that failed for no reason; the account is malformed and goes whole.
-	for _, failure := range fields.Failures {
-		if failure == nil || failure.Strategy == nil || failure.Reason == nil {
-			return nil
-		}
+	coverage := HuntCoverage{Attempted: endCount(fields["attempted"])}
+	if unknown := endBool(fields["unknown"]); unknown != nil {
+		coverage.Unknown = *unknown
 	}
-	coverage := HuntCoverage{Unknown: fields.Unknown != nil && *fields.Unknown}
-	if fields.Attempted != nil {
-		n := *fields.Attempted
-		if n < 0 || n > endCountMax || n != math.Trunc(n) {
-			return nil
-		}
-		coverage.Attempted = int(n)
-	} else if !coverage.Unknown {
+	if coverage.Attempted == nil && !coverage.Unknown {
 		return nil
 	}
-	for _, failure := range fields.Failures {
-		if len(coverage.Failures) == endFailuresMax {
-			break
+	if rawFailures := fields["failures"]; len(rawFailures) > 0 {
+		var rows []map[string]*string
+		if !endDecodable(rawFailures) || json.Unmarshal(rawFailures, &rows) != nil {
+			return nil
 		}
-		coverage.Failures = append(coverage.Failures, HuntFailure{
-			Strategy: label(*failure.Strategy), Reason: cut(oneLine(*failure.Reason), endReasonCap)})
+		// A row that is null, or lacks either text, would be written as a hunt
+		// that failed for no reason; the account is malformed and goes whole.
+		for _, row := range rows {
+			if row == nil || row["strategy"] == nil || row["reason"] == nil {
+				return nil
+			}
+			strategy, reason := label(*row["strategy"]), cut(oneLine(*row["reason"]), endReasonCap)
+			if strategy == "" || reason == "" {
+				return nil
+			}
+			if len(coverage.Failures) == endFailuresMax {
+				continue // the account names the first hunts only; Attempted stays whole
+			}
+			coverage.Failures = append(coverage.Failures, HuntFailure{Strategy: strategy, Reason: reason})
+		}
 	}
 	return &coverage
 }

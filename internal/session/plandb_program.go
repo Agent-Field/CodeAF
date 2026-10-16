@@ -350,6 +350,14 @@ func planEndingForPage(ending *delegate.EndFacts, copies planRunCopies) *delegat
 			kept.Reports[i] = copies.strip(name)
 		}
 	}
+	if ending.HuntCoverage != nil {
+		coverage := *ending.HuntCoverage
+		coverage.Failures = make([]delegate.HuntFailure, len(ending.HuntCoverage.Failures))
+		for i, failure := range ending.HuntCoverage.Failures {
+			coverage.Failures[i] = delegate.HuntFailure{Strategy: copies.strip(failure.Strategy), Reason: copies.strip(failure.Reason)}
+		}
+		kept.HuntCoverage = &coverage
+	}
 	return &kept
 }
 

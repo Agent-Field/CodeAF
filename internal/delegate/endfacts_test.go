@@ -168,7 +168,7 @@ func TestMalformedListsAndCoverageRowsAreDroppedWhole(t *testing.T) {
 	}
 	good := EndAction(endAt, Terminal{Status: StatusPass, Data: map[string]json.RawMessage{
 		"reports": json.RawMessage(`["a.md","b.json"]`), "hunt_coverage": json.RawMessage(`{"attempted":2,"failures":[{"strategy":"a","reason":"b"}]}`)}}).Ending()
-	if good == nil || len(good.Reports) != 2 || good.HuntCoverage == nil || good.HuntCoverage.Attempted != 2 || len(good.HuntCoverage.Failures) != 1 {
+	if good == nil || len(good.Reports) != 2 || good.HuntCoverage == nil || good.HuntCoverage.Attempted == nil || *good.HuntCoverage.Attempted != 2 || len(good.HuntCoverage.Failures) != 1 {
 		t.Fatalf("good = %+v", good)
 	}
 }
@@ -306,4 +306,30 @@ func mustJSON(t *testing.T, s string) json.RawMessage {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+// THE CAP IS THE FILE'S: a text of < > & is six bytes each once the log's own
+// marshal escapes it, and the line on disk must still fit and read back.
+func TestTheEndLineOnDiskHoldsTheCapAndReadsBack(t *testing.T) {
+	loud := mustJSON(t, strings.Repeat("&", endTextCap))
+	dir := t.TempDir()
+	terminal := Terminal{Status: StatusPass, Message: "m", Data: map[string]json.RawMessage{
+		"claim": loud, "observed": loud, "submission_reason": loud, "analysis_incomplete": loud}}
+	if err := AppendAction(dir, EndAction(endAt, terminal)); err != nil {
+		t.Fatal(err)
+	}
+	logged, err := ReadActions(dir, 0)
+	if err != nil || len(logged) != 1 || len(logged[0].Data) > EndDataCap || logged[0].Ending() == nil {
+		t.Fatalf("read back %d bytes, %+v, %v", len(logged[0].Data), logged[0].Ending(), err)
+	}
+}
+
+// A COUNT NOBODY SAID IS NOT ZERO, in a coverage as anywhere, and a count that
+// is not whole digits is not a count.
+func TestCoverageAttemptedUnsaidAndFractionalCountsAreAbsent(t *testing.T) {
+	facts := EndAction(endAt, Terminal{Status: StatusPass, Data: map[string]json.RawMessage{
+		"hunt_coverage": json.RawMessage(`{"unknown":true}`), "findings": json.RawMessage(`0.99999999999999999`), "blocking": json.RawMessage(`1.0`)}}).Ending()
+	if facts == nil || facts.HuntCoverage == nil || facts.HuntCoverage.Attempted != nil || !facts.HuntCoverage.Unknown || facts.Findings != nil || facts.Blocking != nil {
+		t.Fatalf("facts = %+v", facts)
+	}
 }
