@@ -20,7 +20,8 @@ package session
 // HEAD commit its rows were judged against, and a cursor from any other is
 // refused, never re-aimed at a nearby place.
 //
-// There is no merge here. Landing a branch is the desktop's act.
+// There is no merge here. Landing a branch is the person's own act, planned
+// and confirmed through task_branch_land.go.
 
 import (
 	"bufio"

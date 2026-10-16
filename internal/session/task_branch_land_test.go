@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -373,4 +374,130 @@ func TestEveryBoundFactMovesTheRevision(t *testing.T) {
 		}
 		seen[p.digest()] = name
 	}
+}
+
+// A merge git refuses is said as far as it was seen: never "nothing was
+// changed", and never a refusal at all when a hook was there to run.
+func TestARefusedMergeIsSaidOnlyAsFarAsItWasSeen(t *testing.T) {
+	refuseMerge := func(t *testing.T) {
+		real := landCommand
+		t.Cleanup(func() { landCommand = real })
+		landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
+			for _, arg := range args {
+				if arg == "merge" {
+					return exec.CommandContext(ctx, "git", "merge", "--no-such-option")
+				}
+			}
+			return real(ctx, dir, args...)
+		}
+	}
+	t.Run("no hook", func(t *testing.T) {
+		repo, place := landRepo(t)
+		plan := planLand(t, place, repo)
+		refuseMerge(t)
+		head := headOf(t, repo)
+		_, err := LandTaskBranch(landCtx(t), place, repo, plan)
+		refusal := wantRefusal(t, err, LandRefused)
+		if strings.Contains(refusal.Said, "nothing was changed") || !strings.Contains(refusal.Said, "ignore") {
+			t.Fatalf("said %q", refusal.Said)
+		}
+		untouched(t, repo, head)
+	})
+	t.Run("hook present", func(t *testing.T) {
+		repo, place := landRepo(t)
+		os.WriteFile(filepath.Join(repo, ".git", "hooks", "post-merge"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+		plan := planLand(t, place, repo)
+		refuseMerge(t)
+		_, err := LandTaskBranch(landCtx(t), place, repo, plan)
+		var uncertain *LandUncertain
+		if !errors.As(err, &uncertain) {
+			t.Fatalf("want uncertain with a hook present, got %v", err)
+		}
+	})
+}
+
+// looseObjects writes n small blobs straight into the object store, one git.
+func looseObjects(t *testing.T, repo string, n int) {
+	t.Helper()
+	dir := t.TempDir()
+	var paths strings.Builder
+	for i := 0; i < n; i++ {
+		path := filepath.Join(dir, fmt.Sprint(i))
+		os.WriteFile(path, []byte(fmt.Sprint("blob ", i)), 0o644)
+		paths.WriteString(path + "\n")
+	}
+	cmd := exec.Command("git", "hash-object", "-w", "--stdin-paths")
+	cmd.Dir, cmd.Stdin = repo, strings.NewReader(paths.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("hash-object: %v %s", err, out)
+	}
+}
+
+// gcRepo is landRepo with automatic gc due after any merge, and a pre-auto-gc
+// hook that leaves a marker outside the repository and then declines the gc,
+// so no gc ever runs or detaches here.
+func gcRepo(t *testing.T) (repo string, place Place, marker string) {
+	t.Helper()
+	repo, place = landRepo(t)
+	marker = filepath.Join(t.TempDir(), "pre-auto-gc-ran")
+	hook := "#!/bin/sh\necho ran > '" + marker + "'\nexit 1\n"
+	os.WriteFile(filepath.Join(repo, ".git", "hooks", "pre-auto-gc"), []byte(hook), 0o755)
+	gitT(t, repo, "config", "gc.auto", "1")
+	gitT(t, repo, "config", "gc.autoDetach", "false")
+	looseObjects(t, repo, 2000)
+	return repo, place, marker
+}
+
+// A land runs no automatic maintenance: the hook it would start is one the
+// plan never named, and a detached gc outlives every kill.
+func TestALandStartsNoAutomaticMaintenance(t *testing.T) {
+	// The control: the same repository, merged by plain git, does start it.
+	control, _, fired := gcRepo(t)
+	gitT(t, control, "merge", "-q", "--no-edit", landBranch)
+	if _, err := os.Stat(fired); err != nil {
+		t.Fatalf("the fixture never starts automatic gc, so it proves nothing: %v", err)
+	}
+	repo, place, marker := gcRepo(t)
+	plan := planLand(t, place, repo)
+	if _, err := LandTaskBranch(landCtx(t), place, repo, plan); err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("pre-auto-gc ran during a land: %v", err)
+	}
+}
+
+// A real refusal with a hook that ran before it: git rewrote ORIG_HEAD and the
+// reference-transaction hook wrote its marker, so the answer may not say that
+// nothing changed, and with a hook present it is not a refusal at all.
+func TestARefusalAfterAHookRanIsNeverNothingChanged(t *testing.T) {
+	repo, place := landRepo(t)
+	marker := filepath.Join(t.TempDir(), "transaction")
+	hook := "#!/bin/sh\necho \"$1\" >> '" + marker + "'\nexit 0\n"
+	os.WriteFile(filepath.Join(repo, ".git", "hooks", "reference-transaction"), []byte(hook), 0o755)
+	plan := planLand(t, place, repo)
+	real := landCommand
+	t.Cleanup(func() { landCommand = real })
+	landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
+		for _, arg := range args {
+			if arg == "merge" {
+				os.WriteFile(filepath.Join(repo, "b.txt"), []byte("in the way\n"), 0o644)
+				break
+			}
+		}
+		return real(ctx, dir, args...)
+	}
+	head := headOf(t, repo)
+	_, err := LandTaskBranch(landCtx(t), place, repo, plan)
+	var uncertain *LandUncertain
+	if !errors.As(err, &uncertain) || strings.Contains(uncertain.Said, "nothing was changed") || uncertain.Facts.Head != head {
+		t.Fatalf("want uncertain naming the facts, got %v", err)
+	}
+	if data, err := os.ReadFile(marker); err != nil || len(data) == 0 {
+		t.Fatalf("the hook did not run, so this proves nothing: %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(repo, "b.txt")); string(data) != "in the way\n" {
+		t.Fatalf("b.txt is %q", data)
+	}
+	untouched(t, repo, head)
 }
