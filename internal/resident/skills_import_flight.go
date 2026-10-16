@@ -42,9 +42,10 @@ type importKey struct {
 }
 
 type importEntry struct {
-	run     sync.Mutex
-	started atomic.Uint64
-	holders int // guarded by importFlight.mu
+	run       sync.Mutex
+	started   atomic.Uint64
+	completed uint64 // guarded by run; a panicked pass never advances it
+	holders   int    // guarded by importFlight.mu
 }
 
 var importPasses = newImportFlight()
@@ -56,21 +57,8 @@ func newImportFlight() *importFlight {
 // publish runs a complete scan and publication alone on one shelf. Other
 // shelves never wait here. The private gate is released after the pass settles.
 func (f *importFlight) publish(shelf *store.Store, write func()) {
-	f.mu.Lock()
-	gate := f.shelves[shelf]
-	if gate == nil {
-		gate = &shelfGate{}
-		f.shelves[shelf] = gate
-	}
-	gate.holders++
-	f.mu.Unlock()
-	defer func() {
-		f.mu.Lock()
-		if gate.holders--; gate.holders == 0 {
-			delete(f.shelves, shelf)
-		}
-		f.mu.Unlock()
-	}()
+	gate := f.holdShelf(shelf)
+	defer f.releaseShelf(shelf, gate)
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
 	write()
@@ -79,32 +67,59 @@ func (f *importFlight) publish(shelf *store.Store, write func()) {
 // do runs pass at least once, started after do was called, sharing it with any
 // concurrent caller on the same key.
 func (f *importFlight) do(key importKey, pass func()) {
+	entry, arrived := f.holdEntry(key)
+	defer f.releaseEntry(key, entry)
+
+	entry.run.Lock()
+	defer entry.run.Unlock()
+	if entry.completed > arrived {
+		return
+	}
+	number := entry.started.Add(1)
+	pass()
+	entry.completed = number
+}
+
+func (f *importFlight) holdShelf(shelf *store.Store) *shelfGate {
 	f.mu.Lock()
+	defer f.mu.Unlock()
+	gate := f.shelves[shelf]
+	if gate == nil {
+		gate = &shelfGate{}
+		f.shelves[shelf] = gate
+	}
+	gate.holders++
+	return gate
+}
+
+func (f *importFlight) releaseShelf(shelf *store.Store, gate *shelfGate) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if gate.holders--; gate.holders == 0 {
+		delete(f.shelves, shelf)
+	}
+}
+
+func (f *importFlight) holdEntry(key importKey) (*importEntry, uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	entry := f.entries[key]
 	if entry == nil {
 		entry = &importEntry{}
 		f.entries[key] = entry
 	}
 	entry.holders++
-	// Read under the same hold that counts the caller in, so "holders" and
-	// "arrived" cannot disagree about who was here before a pass started.
-	arrived := entry.started.Load()
-	f.mu.Unlock()
-	defer func() {
-		f.mu.Lock()
-		if entry.holders--; entry.holders == 0 {
-			delete(f.entries, key)
-		}
-		f.mu.Unlock()
-	}()
+	// Capture arrival with its holder registration, before any pass can be
+	// adopted. A caller arriving during a pass still requires a later one.
+	return entry, entry.started.Load()
+}
 
-	entry.run.Lock()
-	defer entry.run.Unlock()
-	if entry.started.Load() > arrived {
-		return
+func (f *importFlight) releaseEntry(key importKey, entry *importEntry) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if entry.holders--; entry.holders == 0 {
+		delete(f.entries, key)
 	}
-	entry.started.Add(1)
-	pass()
 }
 
 func (f *importFlight) idle() int {

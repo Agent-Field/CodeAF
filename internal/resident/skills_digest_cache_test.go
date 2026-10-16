@@ -429,3 +429,106 @@ func TestConcurrentWorkspacePassesLeaveOneFactPerFolder(t *testing.T) {
 		t.Fatal("gates leaked")
 	}
 }
+
+func TestImportFlightPanicReleasesWaitersAndRequiresSuccessfulPass(t *testing.T) {
+	flight := newImportFlight()
+	key := importKey{project: "panic-retry"}
+	// Hold the run mutex until both callers have arrived before any pass starts.
+	entry, _ := flight.holdEntry(key)
+	entry.run.Lock()
+	var unlockOnce sync.Once
+	unlock := func() { unlockOnce.Do(entry.run.Unlock) }
+	defer unlock()
+	defer flight.releaseEntry(key, entry)
+	var passes, panics atomic.Int64
+	done := make(chan struct{}, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			defer func() {
+				if recover() != nil {
+					panics.Add(1)
+				}
+				done <- struct{}{}
+			}()
+			flight.do(key, func() {
+				flight.publish(nil, func() {
+					if passes.Add(1) == 1 {
+						panic("scanner failed")
+					}
+				})
+			})
+		}()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for flight.waiting(key) != 3 {
+		if time.Now().After(deadline) {
+			t.Fatal("callers did not arrive behind held run")
+		}
+		runtime.Gosched()
+	}
+	unlock()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("scanner panic stranded a waiter or shelf gate")
+		}
+	}
+	if passes.Load() != 2 || panics.Load() != 1 {
+		t.Fatalf("passes=%d panics=%d; failed scan must not count as a completed import", passes.Load(), panics.Load())
+	}
+	flight.do(key, func() { passes.Add(1) })
+	if passes.Load() != 3 {
+		t.Fatal("later import did not run after panic recovery")
+	}
+}
+
+func TestDigestCachePanicSettlesOwnedReadAndAllowsRetry(t *testing.T) {
+	dir := t.TempDir()
+	writeTreeFile(t, filepath.Join(dir, "SKILL.md"), "body")
+	cache := settledCache(8)
+	signature, cacheable, err := treeSignature(dir, cache.now())
+	if err != nil || !cacheable {
+		t.Fatalf("fixture signature: cacheable=%v err=%v", cacheable, err)
+	}
+	_, done, hit, owner := cache.claimRead(dir, signature)
+	if hit || !owner {
+		t.Fatal("fixture did not own a cold read")
+	}
+	// Force a publication panic after real content I/O while the read owns its
+	// admission. No production test hook or global state is changed.
+	cache.m = nil
+	panicked := false
+	func() {
+		defer func() { panicked = recover() != nil }()
+		_, _ = cache.read(dir, signature, done)
+	}()
+	if !panicked {
+		t.Fatal("fixture did not panic while publishing")
+	}
+	select {
+	case <-done:
+	default:
+		t.Fatal("panicked reader left its completion channel open")
+	}
+	retried := make(chan error, 1)
+	go func() {
+		cache.mu.Lock()
+		defer cache.mu.Unlock()
+		if len(cache.reading) != 0 {
+			retried <- fmt.Errorf("panicked read retained admission")
+			return
+		}
+		cache.m = make(map[string]*cachedDigest)
+		retried <- nil
+	}()
+	select {
+	case err := <-retried:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("reader panic retained the cache mutex")
+	}
+	wantDigest(t, cache, dir)
+}

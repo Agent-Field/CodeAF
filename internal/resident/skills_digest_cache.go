@@ -78,40 +78,48 @@ func (c *digestCache) digest(dir string) (string, error) {
 		return contentDigest(dir)
 	}
 	for {
-		c.mu.Lock()
-		if entry, ok := c.m[dir]; ok && entry.signature == signature {
-			c.tick++
-			entry.used = c.tick
-			digest := entry.digest
-			c.mu.Unlock()
+		value, done, hit, owner := c.claimRead(dir, signature)
+		if hit {
 			c.hits.Add(1)
-			return digest, nil
+			return value, nil
 		}
-		// Another launch is already hashing this very folder: wait for it and
-		// compare again, so N workspaces over one shared skills root read its
-		// bytes once. The signature is re-checked rather than the answer
-		// borrowed, because the folder may have changed after the reader's walk.
-		if done, busy := c.reading[dir]; busy {
-			c.mu.Unlock()
+		if !owner {
 			<-done
 			continue
 		}
-		done := make(chan struct{})
-		c.reading[dir] = done
-		c.mu.Unlock()
 		return c.read(dir, signature, done)
 	}
+}
+
+// claimRead holds the mutex only while choosing a cached result, an existing
+// reader to wait for, or ownership of a new read. No file I/O waits under it.
+func (c *digestCache) claimRead(dir string, signature [sha256.Size]byte) (value string, done chan struct{}, hit, owner bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if entry, ok := c.m[dir]; ok && entry.signature == signature {
+		c.tick++
+		entry.used = c.tick
+		return entry.digest, nil, true, false
+	}
+	if pending, busy := c.reading[dir]; busy {
+		return "", pending, false, false
+	}
+	done = make(chan struct{})
+	c.reading[dir] = done
+	return "", done, false, true
+}
+
+func (c *digestCache) finishRead(dir string, done chan struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.reading, dir)
+	close(done)
 }
 
 // read is the one reader for dir; it publishes its result and releases the
 // folder even when contentDigest fails.
 func (c *digestCache) read(dir string, signature [sha256.Size]byte, done chan struct{}) (string, error) {
-	defer func() {
-		c.mu.Lock()
-		delete(c.reading, dir)
-		c.mu.Unlock()
-		close(done)
-	}()
+	defer c.finishRead(dir, done)
 	// The signature was taken BEFORE the read, so an edit landing mid-read
 	// leaves an old signature beside newer content and the next walk misses.
 	c.reads.Add(1)
