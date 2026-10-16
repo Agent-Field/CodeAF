@@ -162,3 +162,45 @@ func TestFilesCompleteRoute(t *testing.T) {
 		t.Fatalf("an engine without completion answered %v", err)
 	}
 }
+
+// checkoutEngine is an Engine that reads a checkout, recording the query.
+type checkoutEngine struct {
+	fakeEngine
+	q CheckoutQuery
+}
+
+func (c *checkoutEngine) CheckoutStatus(q CheckoutQuery) (CheckoutStatus, error) {
+	c.q = q
+	return CheckoutStatus{Repo: true, Land: CheckoutLand{Available: true}}, nil
+}
+
+// CHECKOUT.STATUS bounds its page, refuses what is malformed, is unknown on an
+// engine that cannot read a checkout, and ALWAYS says there is no land: an
+// engine cannot claim a landing this protocol has no door for.
+func TestCheckoutStatusRoute(t *testing.T) {
+	m, ok := methods["checkout.status"]
+	if !ok {
+		t.Fatal("checkout.status is not registered")
+	}
+	eng := &checkoutEngine{}
+	got, err := m.call(eng, json.RawMessage(`{"agent":"a1"}`))
+	if err != nil || eng.q.Limit != CheckoutPageDefault {
+		t.Fatalf("default limit: %v %+v", err, eng.q)
+	}
+	status := got.(*CheckoutStatus)
+	if status.Land.Available || status.Land.Reason != CheckoutLandNoProducer || status.Entries == nil {
+		t.Fatalf("answer %+v", status)
+	}
+	if _, err := m.call(eng, json.RawMessage(`{"agent":"a1","limit":100000,"cursor":"c"}`)); err != nil || eng.q.Limit != CheckoutPageMax || eng.q.Cursor != "c" {
+		t.Fatalf("max limit: %v %+v", err, eng.q)
+	}
+	var wire *Error
+	for _, bad := range []string{`{}`, `{"agent":"  "}`, `{"agent":"a1","limit":-1}`} {
+		if _, err := m.call(eng, json.RawMessage(bad)); !errors.As(err, &wire) || wire.Code != CodeBadParams {
+			t.Fatalf("%s answered %v", bad, err)
+		}
+	}
+	if _, err := m.call(&fakeEngine{}, json.RawMessage(`{"agent":"a1"}`)); !errors.As(err, &wire) || wire.Code != CodeUnknownMethod {
+		t.Fatalf("an engine without a checkout answered %v", err)
+	}
+}
