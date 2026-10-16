@@ -467,6 +467,7 @@ func (a *Agent) imageSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	reading := senseReading{note: senseNote("vision", seer), text: answer}
 	memo.put(key, reading)
+	a.recordEvidence(ctx, absolute, entry.mediaType, "image", data, EvidenceLookedAt, answer, seer, false)
 	return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 }
 
@@ -555,6 +556,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 			default:
 				reading := senseReading{note: senseNote("transcript", scribe), text: text}
 				memo.put(key, reading)
+				a.recordEvidence(ctx, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, text, scribe, true)
 				return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 			}
 		}
@@ -568,6 +570,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 		if err == nil {
 			reading := senseReading{note: senseNote("audio", listener), text: answer}
 			memo.put(key, reading)
+			a.recordEvidence(ctx, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, answer, listener, false)
 			return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 		}
 		failures = append(failures, listener+": "+oneLineReason(err.Error()))
@@ -575,6 +578,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 
 	if thin.text != "" {
 		memo.put(key, thin)
+		a.recordEvidence(ctx, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, thin.text, scribe, true)
 		return thin.note + piReadLaw(a.resultCaps(), thin.text, offset, limit), false, nil
 	}
 	// Every rung named, in the order they were tried, because "which one broke"
@@ -667,6 +671,7 @@ func (a *Agent) videoSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	reading := senseReading{note: senseNote("video", watcher), text: answer}
 	memo.put(key, reading)
+	a.recordEvidence(ctx, absolute, entry.mediaType, "video", data, EvidenceWatched, answer, watcher, false)
 	return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 }
 

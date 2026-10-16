@@ -121,6 +121,9 @@ type ImageGen struct {
 	Directory    string
 	Account      func(model string, usage *ai.Usage)
 	Record       func(path, prompt string)
+	// RecordMedia is Record with the structured fact of the file (mediafact.go);
+	// it wins over Record when both are set.
+	RecordMedia func(path, prompt string, fact MediaFact)
 }
 
 // generateImageTool wraps the shared road ([generateImage]) in the belt's
@@ -142,7 +145,9 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 				Workspace:    a.config.Workspace,
 				Directory:    ImagesDir(a.config.Place, a.config.Workspace),
 				Account:      a.accountImageRung,
-				Record:       a.recordImageArtifact,
+				RecordMedia: func(path, prompt string, fact MediaFact) {
+					a.recordImageMedia(path, prompt, fact.WithMade(madeBy(ctx, nil)))
+				},
 			}, parsed)
 			return text, failed, nil
 		},
@@ -159,19 +164,18 @@ func (a *Agent) accountImageRung(model string, usage *ai.Usage) {
 	a.addAuxiliaryUsage(&ai.Response{Usage: usage}, model, 1)
 }
 
-// recordImageArtifact is the road's artifacts hook: a picture the harness made
+// recordImageMedia is the road's artifacts hook: a picture the harness made
 // is a DELIVERABLE, so it earns a row in the index a person finds their work
 // again by (artifacts.go). The recording is silent in both directions: it
 // happens after the bytes are safely down, and a failure to write the lookup
 // file is not news the model can act on.
-func (a *Agent) recordImageArtifact(path, prompt string) {
-	RecordArtifact(a.config.ArtifactsIndex, Artifact{
+func (a *Agent) recordImageMedia(path, prompt string, fact MediaFact) {
+	a.recordMedia(Artifact{
 		Path:    path,
-		Session: a.journalID(),
 		Title:   mediaTitle(prompt, path),
 		Kind:    "image",
 		Created: time.Now(),
-	})
+	}, fact)
 }
 
 // GenerateImage is the whole road behind generate_image, as a plain function
@@ -216,8 +220,11 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		return "Invalid arguments: reference " + refusal, true
 	}
 
+	// One picture per call is what the tool asks for; the count recorded with
+	// the file is this very number, not a guess about variants.
+	const requested = 1
 	response, err := gen.Client.GenerateImage(ctx, provider.ImageRequest{
-		Model: model, Prompt: prompt, N: 1, OutputFormat: "png",
+		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
 		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
 		Size:            strings.TrimSpace(parsed.Size),
 		InputReferences: references,
@@ -249,7 +256,12 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return "Could not save the generated image: " + err.Error(), true
 	}
-	if gen.Record != nil {
+	if gen.RecordMedia != nil {
+		// The facts are the ones the road itself holds: the bytes it wrote, the
+		// usage the provider reported, and the reference paths exactly as given.
+		gen.RecordMedia(path, parsed.Prompt, GeneratedMedia(path, data, model).
+			WithUsage(response.Usage).WithReferences(parsed.ReferencePaths).WithRequested(requested))
+	} else if gen.Record != nil {
 		gen.Record(path, parsed.Prompt)
 	}
 	return describeGeneratedImage(path, data, model), false

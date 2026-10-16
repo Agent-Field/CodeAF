@@ -221,6 +221,16 @@ type job struct {
 	// Such a job does not report its own death: the caller already knows, and
 	// a note saying so would be the agent telling itself what it just did.
 	killRequested bool
+	// committed is a RENDER's point of no return: the provider's bytes have
+	// arrived and the job has decided to save them. It and killRequested are
+	// both written under mu, and exactly one of them can win — see
+	// [job.commitRender] and [job.requestKillRender].
+	committed bool
+	// permit is the process-wide render place this job holds, if it is a render
+	// ([renderGate]). It is released by [job.releaseRender] when the PROVIDER
+	// GOROUTINE exits — never at a stop, and never because the row changed state.
+	permit     *renderGate
+	permitOnce sync.Once
 	// personStopped says the requested death this job is about to have is A
 	// PERSON'S STOP ([Agent.cancelJob]) rather than the model's `jobs kill` or a
 	// shutdown.
@@ -360,6 +370,39 @@ func (j *job) requestKill() bool {
 	return true
 }
 
+// commitRender is a render's gate between "the provider answered" and "a file
+// is written", and it is ATOMIC WITH THE STOP: it refuses when a stop was
+// already accepted and otherwise makes any later stop lose. So a stop either
+// lands before the file exists (nothing is ever written) or finds the render
+// already committed (and is told so), and there is no third outcome in which a
+// file appears after a stop was acknowledged.
+func (j *job) commitRender() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.killRequested {
+		return false
+	}
+	j.committed = true
+	return true
+}
+
+// requestKillRender is [job.requestKill] for a render: it claims the stop unless
+// the render has already committed to saving its file, and says which. A render
+// that has committed is NOT marked killed, because the file will exist and its
+// note must still reach the model.
+func (j *job) requestKillRender() (claimed, committed bool) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.state != jobRunning {
+		return false, false
+	}
+	if j.committed {
+		return false, true
+	}
+	j.killRequested = true
+	return true, false
+}
+
 // payOwed settles this job's debt, reporting whether there was one to settle.
 //
 // It is idempotent on purpose. The places that pay a debt — the two roads out of
@@ -473,6 +516,13 @@ func (j *job) signal(sig syscall.Signal) {
 // for a turn: a job started in one turn is still running, and still listable,
 // three turns later, and Close is what ends it.
 type jobRegistry struct {
+	// renderMu makes "count the running renders, then add one" one step, so two
+	// renders starting together cannot both pass the cap.
+	renderMu sync.Mutex
+	// gate is the process-wide render admission this registry draws on. It is
+	// [processRenders] outside tests; a test hands two registries one private
+	// gate to prove the total is shared without disturbing other tests.
+	gate      *renderGate
 	workspace string
 	// place is the session folder, and it is what decides where the logs land
 	// (landing.go). The zero Place keeps them under the workspace, which is the
@@ -842,6 +892,68 @@ func (r *jobRegistry) runningProcesses() int {
 	return running
 }
 
+// jobRenderCap is how many provider generations (video, music) one agent may
+// have running at once. It is a separate count from the process cap because a
+// render is a goroutine holding a response buffer, not a process.
+const jobRenderCap = 3
+
+// renderGate is a counting admission that never blocks: a place is taken or the
+// caller is told no. It bounds how many provider render calls (each able to hold
+// up to the media client's response ceiling, 512 MiB for video, plus its
+// decoding and transient copies) exist in the PROCESS at once. IT BOUNDS THE
+// NUMBER OF RENDERS ONLY and is not a memory guarantee: 3 x 512 MiB plus
+// decoding is the worst case it permits, and a byte budget is later work.
+type renderGate struct{ places chan struct{} }
+
+func newRenderGate(places int) *renderGate {
+	return &renderGate{places: make(chan struct{}, places)}
+}
+
+func (g *renderGate) tryAcquire() bool {
+	select {
+	case g.places <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *renderGate) release() { <-g.places }
+
+// processRenders is the one gate every agent in this process draws on.
+var processRenders = newRenderGate(jobRenderCap)
+
+var errProcessRenderCap = fmt.Errorf("%d renders are already running in this process, counting stopped ones whose provider has not answered yet; try again when one returns.", jobRenderCap)
+
+// releaseRender gives the job's process-wide place back, once. The render
+// goroutines defer it so that every road out of them — success, failure, a
+// stop, a panic — returns the place.
+func (j *job) releaseRender() {
+	j.permitOnce.Do(func() {
+		if j.permit != nil {
+			j.permit.release()
+		}
+	})
+}
+
+var errRenderCap = fmt.Errorf("%d renders are already running for this agent; wait for one to finish or stop one with jobs kill.", jobRenderCap)
+
+// runningRenders counts the renders still running.
+func (r *jobRegistry) runningRenders() int {
+	running := 0
+	for _, one := range r.all() {
+		if one.kind != jobKindRender {
+			continue
+		}
+		select {
+		case <-one.done:
+		default:
+			running++
+		}
+	}
+	return running
+}
+
 func (r *jobRegistry) start(command string) (*job, error) {
 	if r.runningProcesses() >= jobProcessCap {
 		return nil, errJobProcessCap
@@ -942,6 +1054,38 @@ func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFu
 // a watch's loop is tools_watch.go's: this registry owns the id, the log, the
 // row and the kill.
 func (r *jobRegistry) startRender(label, prompt string) (*job, context.Context, error) {
+	// THE PROCESS-WIDE PLACE COMES FIRST AND IS NON-BLOCKING. It is held until
+	// the provider goroutine actually returns, so a stopped render whose provider
+	// ignores the cancel keeps its place and cannot be replaced by an endless
+	// stream of new ones. Every refusal and rollback below gives it back.
+	gate := r.gate
+	if gate == nil {
+		gate = processRenders
+	}
+	if !gate.tryAcquire() {
+		return nil, nil, errProcessRenderCap
+	}
+	started, ctx, err := r.startRenderHolding(label, prompt)
+	if err != nil {
+		gate.release()
+		return nil, nil, err
+	}
+	started.permit = gate
+	return started, ctx, nil
+}
+
+// startRenderHolding is the per-registry part of [jobRegistry.startRender]; the
+// caller owns the process-wide place and gives it back if this fails.
+func (r *jobRegistry) startRenderHolding(label, prompt string) (*job, context.Context, error) {
+	// A RENDER HOLDS ITS WHOLE ANSWER IN MEMORY (up to the provider client's
+	// ceiling, 512 MB for video) and a goroutine until it settles, so the number
+	// running at once is bounded. The next is refused up front, before any money
+	// is spent, and a settled render frees its place.
+	r.renderMu.Lock()
+	defer r.renderMu.Unlock()
+	if r.runningRenders() >= jobRenderCap {
+		return nil, nil, errRenderCap
+	}
 	started, err := r.newJob(prompt, jobKindRender)
 	if err != nil {
 		return nil, nil, err
@@ -1223,7 +1367,19 @@ func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 	if target == nil {
 		return fmt.Sprintf("No job %d.", id), true
 	}
-	if !target.requestKill() {
+	// A render that already has its bytes and has decided to save them is not
+	// stopped: the file will exist, and its note is still coming. Saying
+	// "nothing was saved" there would be false.
+	if target.kind == jobKindRender {
+		claimed, committed := target.requestKillRender()
+		if committed {
+			return fmt.Sprintf("%s (job %d) had already finished rendering and is being saved; it was not stopped, and its note will name the file", target.label, id), false
+		}
+		if !claimed {
+			info := target.info()
+			return fmt.Sprintf("Job %d already %s.", id, statusText(info)), true
+		}
+	} else if !target.requestKill() {
 		info := target.info()
 		return fmt.Sprintf("Job %d already %s.", id, statusText(info)), true
 	}
@@ -1249,12 +1405,14 @@ func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 	if target.kind == jobKindTask {
 		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), false
 	}
-	// A render is STOPPED and nothing was saved, which is the whole of what the
-	// model needs to know: no file landed, and no note about this job is
-	// coming. The label is the noun — "video", "music" — so the sentence names
-	// what was lost without this switch growing a case per modality.
+	// A render is STOPPED HERE and nothing was saved: no file landed (the
+	// commit gate guarantees it) and no note about this job is coming. The
+	// label is the noun — "video", "music". What this does NOT say is that the
+	// provider's job ended: nothing here tells the provider to cancel, so
+	// whether it is still running or charged is unknown, and the sentence says
+	// so rather than imply a refund.
 	if target.kind == jobKindRender {
-		return fmt.Sprintf("%s (job %d) stopped; no %s was saved", target.label, id, target.label), false
+		return fmt.Sprintf("%s (job %d) stopped; no %s was saved. Only waiting stopped here — the provider was not told to cancel, so whether it is charged is unknown", target.label, id, target.label), false
 	}
 	return fmt.Sprintf("job %d killed", id), false
 }
@@ -1327,8 +1485,13 @@ func statusText(info jobInfo) string {
 			return "finished"
 		}
 		// Nor has a render: it either landed a file or failed, and both of
-		// those already reached the model as a note.
+		// those already reached the model as a note. The two are still told
+		// apart here, because a list that says "finished" for a render that
+		// produced nothing is a list that lies.
 		if info.kind == jobKindRender {
+			if info.code != 0 {
+				return "failed"
+			}
 			return "finished"
 		}
 		return fmt.Sprintf("exited(%d)", info.code)

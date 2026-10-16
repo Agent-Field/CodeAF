@@ -47,6 +47,9 @@ type Artifact struct {
 	Kind string `json:"kind,omitempty"`
 	// Created is when it landed; every ordering in this file is on it.
 	Created time.Time `json:"created"`
+	// Media is the structured fact of a media file (mediafact.go). Optional
+	// and additive: a row without it is a legacy row and keeps listing.
+	Media *MediaFact `json:"media,omitempty"`
 }
 
 // artifactsMu serializes this process's appends; two processes are serialized
@@ -57,32 +60,34 @@ var artifactsMu sync.Mutex
 // appendTaskIndex's reason: the caller has just produced real work, and there
 // is nothing it could usefully do with the news that a lookup file could not
 // be written. A row with no path or no title is not a citation and is not
-// written.
-func RecordArtifact(path string, artifact Artifact) {
+// written. It answers whether the row was written, for the caller that must not
+// hand out an id for a row that is not there.
+func RecordArtifact(path string, artifact Artifact) bool {
 	if strings.TrimSpace(path) == "" {
-		return
+		return false
 	}
 	if strings.TrimSpace(artifact.Path) == "" || strings.TrimSpace(artifact.Title) == "" {
-		return
+		return false
 	}
 	line, err := json.Marshal(artifact)
 	if err != nil {
-		return
+		return false
 	}
 	artifactsMu.Lock()
 	defer artifactsMu.Unlock()
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return
+			return false
 		}
 	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return
+		return false
 	}
 	defer file.Close()
 	// ONE write, so O_APPEND's atomic offset covers the whole row.
-	_, _ = file.Write(append(line, '\n'))
+	_, err = file.Write(append(line, '\n'))
+	return err == nil
 }
 
 // ReadArtifacts reads the rows at path, NEWEST FIRST, and tolerates

@@ -1197,6 +1197,7 @@ func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (ui
 			delete(a.attach, id)
 		}
 	})
+	b.recordAttachedMedia(a, kept)
 	return turn, shown, nil
 }
 
@@ -1586,4 +1587,19 @@ func appTrimmedStart(path string) int {
 		}
 	}
 	return lines + 1
+}
+
+// recordAttachedMedia notes the files a person attached to a sent message in
+// the media index, so they can be listed as sources (origin attachment). Only a
+// file that reads as an image, a sound or a video is noted, and only its head is
+// read. It happens after the message is sent and its failure is silence.
+func (b *appBackend) recordAttachedMedia(a *appAgent, kept []appAttach) {
+	var workspace string
+	b.locked(func() { workspace = a.view.Workspace })
+	id := filepath.Base(filepath.Dir(a.transcript))
+	for _, attach := range kept {
+		if attach.view.Kind == appwire.AttachFile {
+			session.RecordAttachment(appMediaIndex(), id, appAttachFull(workspace, attach.view.Path))
+		}
+	}
 }

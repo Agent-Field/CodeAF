@@ -121,13 +121,12 @@ func (a *Agent) speakTool(client MediaGenerator, defaultModel string) bare.Tool 
 			if err := os.WriteFile(path, response.Audio, 0o644); err != nil {
 				return "Could not save the generated audio: " + err.Error(), true, nil
 			}
-			RecordArtifact(a.config.ArtifactsIndex, Artifact{
+			a.recordMedia(Artifact{
 				Path:    path,
-				Session: a.journalID(),
 				Title:   mediaTitle(text, path),
 				Kind:    "audio",
 				Created: time.Now(),
-			})
+			}, GeneratedMedia(path, response.Audio, model).WithUsage(response.Usage).WithSaid(text).WithMade(madeBy(ctx, nil)))
 			return describeGeneratedAudio(a.config.Workspace, path, len(response.Audio), model), false, nil
 		},
 	}

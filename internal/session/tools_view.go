@@ -169,6 +169,7 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 		// wrong, and an API error can carry a whole HTML page.
 		return seer + " could not look at " + shown + ": " + oneLineReason(err.Error()), true, nil
 	}
+	a.recordEvidence(ctx, absolute, mediaType, "image", data, EvidenceLookedAt, answer, seer, false)
 	// "seen by <model>" is the same sentence internal/exec's own view_image
 	// returns, and it is said out loud for image.go's reason: a second model
 	// answering in the first one's voice, silently, would be the surface lying

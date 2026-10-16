@@ -301,7 +301,14 @@ next step:
 A compose that fails says so the same way: `job 4 failed: music generation
 failed (<model>): …`. It shows in `jobs list` as `job 4 · music · running · 12.3s
 · a calm solo piano loop`, and `jobs kill 4` stops it — `music (job 4) stopped;
-no music was saved`. Like every job, it dies when the conversation ends.
+no music was saved. Only waiting stopped here — the provider was not told to
+cancel, so whether it is charged is unknown`. A stop that arrives after the piece
+has finished is answered `had already finished rendering and is being saved`, and
+the file and its note still arrive. A compose that fails lists as `failed`, and
+nothing retries it. At most 3 renders (video and music together) run at once across the
+whole program, and a stopped one still counts until the provider actually answers;
+the next is refused until a place frees. A reply over the size limit is
+refused, never saved cut short. Like every job, it dies when the conversation ends.
 
 **There is no length argument**, because the endpoint has none: the model writes
 a piece of its own choosing — half a minute to a minute in practice — and you
@@ -387,8 +394,12 @@ Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`,
 
 The render **is** a job: it shows in `jobs list` as
 `job 3 · video · running · 42.1s · a ferry at dawn`, and `jobs kill 3` stops it —
-`video (job 3) stopped; no video was saved`. Like every job, it dies when the
-conversation ends. The provider gives up after **10 minutes** and no file is
+`video (job 3) stopped; no video was saved. Only waiting stopped here — the
+provider was not told to cancel, so whether it is charged is unknown`. A stop that
+arrives after the render has finished is answered `had already finished rendering
+and is being saved`; the file and its note still arrive. A render that fails lists
+as `failed` and is never retried, and a video reply over 512MB is refused rather
+than saved cut short. Like every job, it dies when the conversation ends. The provider gives up after **10 minutes** and no file is
 saved.
 
 ## Can you make a longer video — several clips, a whole story, 2 minutes of film?

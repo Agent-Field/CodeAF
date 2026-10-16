@@ -27,8 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,7 +107,7 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 		Name:        "generate_video",
 		Description: generateVideoDescription,
 		Schema:      a.mediaSchema(generateVideoSchemaJSON, "video"),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(callCtx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateVideoArguments
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
@@ -160,7 +159,7 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			}
 			fmt.Fprintf(started.sink, "filming on %s: %s\n", model, firstLine(prompt))
 
-			go a.renderVideo(ctx, client, started, request, parsed.Path, model)
+			go a.renderVideo(ctx, client, started, request, parsed.Path, model, madeBy(callCtx, append(append([]string(nil), parsed.FramePaths...), parsed.ReferencePaths...)))
 
 			// The id, the model and the log, and nothing else. There is no
 			// output yet by construction, and the three things the model needs
@@ -195,7 +194,9 @@ func (a *Agent) videoFrames(paths []string) ([]provider.ImageReference, string) 
 // started it and dies to `jobs kill` and to Close like any other job. Nothing
 // here returns an error to anybody: the caller is a goroutine, and the only
 // audience for a failure is the model, which hears about it in the note.
-func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, rendering *job, request provider.VideoRequest, asked, model string) {
+func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, rendering *job, request provider.VideoRequest, asked, model string, made mediaMade) {
+	// Keep admission until the actual provider goroutine exits, including late cancellation.
+	defer rendering.releaseRender()
 	response, err := client.GenerateVideo(ctx, request)
 	if err != nil {
 		a.failVideo(rendering, videoFailure(model, err))
@@ -211,25 +212,32 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 	// states the law).
 	a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 
-	path, err := a.mediaDestination(asked, request.Prompt, videoExtension,
-		VideoDir(a.config.Place, a.config.Workspace))
-	if err == nil {
-		err = os.MkdirAll(filepath.Dir(path), 0o755)
-	}
-	if err == nil {
-		err = os.WriteFile(path, response.Video, 0o644)
-	}
-	if err != nil {
+	path, landing, err := a.landRender(rendering, asked, request.Prompt, videoExtension,
+		VideoDir(a.config.Place, a.config.Workspace), response.Video, writeFileAtomic)
+	switch landing {
+	case renderStopped:
+		// The provider finished after the stop was accepted. The bytes are
+		// dropped unwritten, and the log says what is and is not known.
+		reason := "stopped before the video was saved; the provider had already finished it, so it may have been charged"
+		fmt.Fprintln(rendering.sink, reason)
+		a.jobs.finish(rendering, 1, "job "+strconv.Itoa(rendering.id)+" "+reason)
+		return
+	case renderNotSaved:
 		a.failVideo(rendering, "could not save the generated video: "+err.Error())
 		return
 	}
-	RecordArtifact(a.config.ArtifactsIndex, Artifact{
+	// The fact keeps what the render was given (frames first, then style
+	// references, exactly as named) and the length the file's own boxes state.
+	fact := GeneratedMedia(path, response.Video, model).WithUsage(response.Usage).WithMade(made)
+	if length, _, ok := mp4Facts(response.Video); ok {
+		fact = fact.WithDuration(length)
+	}
+	a.recordMedia(Artifact{
 		Path:    path,
-		Session: a.journalID(),
 		Title:   mediaTitle(request.Prompt, path),
 		Kind:    "video",
 		Created: time.Now(),
-	})
+	}, fact)
 
 	landed := describeGeneratedVideo(a.config.Workspace, path, response.Video, model)
 	fmt.Fprintln(rendering.sink, landed)
@@ -237,8 +245,9 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 }
 
 // failVideo ends a render that produced nothing. The exit code is 1 for the
-// same reason a failed command's is: `jobs list` renders a video's status as
-// "finished" either way, and the code is what a reader of the log has left.
+// same reason a failed command's is, and it is what `jobs list` reads to say
+// "failed" rather than "finished". A failure is never retried: the provider
+// call is made once, and any further attempt is the model's decision.
 func (a *Agent) failVideo(rendering *job, reason string) {
 	fmt.Fprintln(rendering.sink, reason)
 	a.jobs.finish(rendering, 1, fmt.Sprintf("job %d failed: %s", rendering.id, reason))
@@ -253,7 +262,7 @@ func videoFailure(model string, err error) string {
 	case errors.Is(err, provider.ErrVideoTimeout):
 		return "video generation timed out (" + model + "); no video was saved"
 	case errors.Is(err, context.Canceled):
-		return "video generation was stopped (" + model + "); no video was saved"
+		return "video generation was stopped (" + model + "); no video was saved. The provider was not told to cancel, so whether it is charged is unknown"
 	default:
 		return "video generation failed (" + model + "): " + clip(firstLine(err.Error()), jobExitNoteLimit)
 	}

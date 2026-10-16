@@ -228,7 +228,7 @@ func (a *Agent) frameVideo(ctx context.Context, parsed editVideoArguments) (stri
 	if err := video.SaveFrame(ctx, full, at, destination); err != nil {
 		return "Could not save the frame: " + err.Error(), true, nil
 	}
-	a.recordVideoArtifact(destination, said, "image")
+	a.recordVideoArtifact(ctx, destination, said, "image", nil)
 
 	// The picture's own geometry is read back off the file, for the same reason
 	// every other answer here is: a size this claimed rather than measured would
@@ -292,7 +292,7 @@ func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (strin
 	if err != nil {
 		return "Could not join the clips: " + err.Error(), true, nil
 	}
-	a.recordVideoArtifact(destination, said, "video")
+	a.recordVideoArtifact(ctx, destination, said, "video", &facts)
 	return a.describeVideoFile(destination, facts) + fmt.Sprintf(", joined from %d clips", len(clips)), false, nil
 }
 
@@ -343,7 +343,7 @@ func (a *Agent) scoreVideo(ctx context.Context, parsed editVideoArguments) (stri
 	if err != nil {
 		return "Could not score the video: " + err.Error(), true, nil
 	}
-	a.recordVideoArtifact(destination, said, "video")
+	a.recordVideoArtifact(ctx, destination, said, "video", &facts)
 
 	// Whether the piece was looped or trimmed is MEASURED, not assumed, and it
 	// is worth saying: it is the difference between a score that repeats — where
@@ -447,14 +447,21 @@ func formatList(allowed map[string]bool) string {
 // deliverables index, so `/files` finds a cut or a frame again by name and date
 // exactly as it finds a generated one. A file the person may want back is a
 // deliverable whether a provider made it or ffmpeg did.
-func (a *Agent) recordVideoArtifact(path, said, kind string) {
-	RecordArtifact(a.config.ArtifactsIndex, Artifact{
+//
+// Its media fact is the file as it now is (DerivedMedia), with a length and a
+// frame size only when the caller's probe measured them: ffmpeg made it, so
+// there is no provider usage and the charge stays unknown.
+func (a *Agent) recordVideoArtifact(ctx context.Context, path, said, kind string, measured *video.Facts) {
+	fact := DerivedMedia(path).WithMade(madeBy(ctx, nil))
+	if measured != nil {
+		fact = fact.WithDuration(measured.Length).WithSize(measured.Width, measured.Height)
+	}
+	a.recordMedia(Artifact{
 		Path:    path,
-		Session: a.journalID(),
 		Title:   mediaTitle(said, path),
 		Kind:    kind,
 		Created: time.Now(),
-	})
+	}, fact)
 }
 
 // describeVideoFile is the one sentence every action that touches a video
