@@ -18,6 +18,17 @@ import (
 	"github.com/Agent-Field/codeaf/internal/delegate"
 )
 
+// The bounds of the app's read of a program. AppProgramActionsMax is how many
+// of the newest actions cross to the app (the wire's own bound is the same
+// number; a test holds the two together); a hello naming more than
+// appProgramStagesMax stages, or a stage longer than appProgramStageBytes,
+// carries NO stages, because half a list would read as the program's.
+const (
+	AppProgramActionsMax = 60
+	appProgramStagesMax  = 128
+	appProgramStageBytes = 80
+)
+
 // AppProgramView is a program's task as the app reads it. A nil view is a task
 // no program was handed.
 type AppProgramView struct {
@@ -73,17 +84,38 @@ func (a *Agent) appProgramView(page PlanTaskPage) *AppProgramView {
 		Name: p.Name, StartedAt: p.StartedAt, EndedAt: p.EndedAt, LastStage: p.LastStage,
 		CeilingUSD: p.CeilingUSD, Calls: p.Calls, Models: append([]string(nil), p.Models...), Effort: p.Effort,
 		Listens: p.Listens, Listening: p.Listening, Started: p.Started, InboxClosed: p.InboxClosed,
-		Actions: append([]delegate.Shown(nil), p.Actions...), EarlierActions: p.EarlierActions,
-		EndStatus: p.EndStatus,
+		EarlierActions: p.EarlierActions, EndStatus: p.EndStatus,
+	}
+	// ONLY THE NEWEST ACTIONS CROSS, WITHOUT THEIR DETAIL: the app never draws
+	// it, and over --host four hundred of them would be read to be thrown away.
+	actions := p.Actions
+	if len(actions) > AppProgramActionsMax {
+		view.EarlierActions += len(actions) - AppProgramActionsMax
+		actions = actions[len(actions)-AppProgramActionsMax:]
+	}
+	view.Actions = append([]delegate.Shown(nil), actions...)
+	for i := range view.Actions {
+		view.Actions[i].Detail = ""
+	}
+	if len(p.LastStage) > appProgramStageBytes {
+		view.LastStage = ""
 	}
 	if p.Ending != nil {
 		ending := *p.Ending
 		view.Ending = &ending
 	}
+	if len(p.Stages) > appProgramStagesMax {
+		return view
+	}
 	standing := ""
+	var stages []AppProgramStage
 	for _, stage := range p.Stages {
 		standing = AppProgramStageWord(program, stage, standing)
-		view.Stages = append(view.Stages, AppProgramStage{Name: stage, Word: standing})
+		if len(stage) > appProgramStageBytes || len(standing) > appProgramStageBytes {
+			return view
+		}
+		stages = append(stages, AppProgramStage{Name: stage, Word: standing})
 	}
+	view.Stages = stages
 	return view
 }

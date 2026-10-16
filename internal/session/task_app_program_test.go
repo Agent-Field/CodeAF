@@ -128,3 +128,58 @@ func TestAnOrdinaryTaskAppReadCarriesNoProgram(t *testing.T) {
 		t.Fatalf("the ordinary task was not among %d rows", len(rows))
 	}
 }
+
+// A RELAUNCH BEGINS A NEW PROCESS ON AN OLD LOG: the previous run's ending and
+// last stage are not the new run's, whether or not it has logged a line yet.
+func TestARelaunchedProgramDoesNotWearTheLastRunsEnding(t *testing.T) {
+	end := delegate.EndAction(time.Date(2026, 10, 16, 9, 30, 0, 0, time.UTC), delegate.Terminal{Status: delegate.StatusPass, Message: "handed in"})
+	agent, dir := programAppFixture(t, end)
+	if p := appTaskOf(t, agent).Program; p.Ending == nil || p.LastStage != "intake" {
+		t.Fatalf("before the relaunch: %+v", p)
+	}
+	folder := plandb.TaskDir(dir, "alpha")
+	record, _ := delegate.ReadProgram(folder)
+	record.StartedAt, record.EndedAt = time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC), time.Time{}
+	if err := delegate.WriteProgram(folder, record); err != nil {
+		t.Fatal(err)
+	}
+	if p := appTaskOf(t, agent).Program; p.Ending != nil || p.EndStatus != "" || p.LastStage != "" {
+		t.Fatalf("the new process wears the old run: ending %v last %q", p.Ending, p.LastStage)
+	}
+	// A record with no start cannot tie the log to a process.
+	record.StartedAt = time.Time{}
+	if err := delegate.WriteProgram(folder, record); err != nil {
+		t.Fatal(err)
+	}
+	if p := appTaskOf(t, agent).Program; p.Ending != nil || p.LastStage != "" {
+		t.Fatalf("an unstarted record reports a position: %+v", p)
+	}
+}
+
+// AN ENDING THE READER DROPPED IS NOT THE LAST SHOWN ACTION'S.
+func TestAnUnshownEndingIsNotReportedAsTheLastAction(t *testing.T) {
+	at := time.Date(2026, 10, 16, 9, 1, 0, 0, time.UTC)
+	logged := []delegate.Action{
+		{At: at, Kind: delegate.ActionStep, Step: "explore", Command: "read a.go"},
+		{At: at, Kind: delegate.ActionEnd, Status: delegate.StatusPass},
+	}
+	shown, _, final := planProgramActionsTracked(logged, planProgramOf(nil, "x"), planRunCopies{})
+	if len(shown) != 1 || final {
+		t.Fatalf("shown %d final %v", len(shown), final)
+	}
+	if _, ending, _ := planProgramPosition(logged, shown, final, at.Add(-time.Hour)); ending != nil {
+		t.Fatal("the step before an unshown ending was reported as the ending")
+	}
+}
+
+func TestTheAppReadKeepsTheNewestActionsWithoutDetailAndDropsOverlongStages(t *testing.T) {
+	agent := &Agent{}
+	page := PlanTaskPage{Program: &PlanProgram{Name: "x", Stages: []string{"a", string(make([]byte, 200))}, EarlierActions: 3}}
+	for i := 0; i < AppProgramActionsMax+10; i++ {
+		page.Program.Actions = append(page.Program.Actions, delegate.Shown{Text: "t", Detail: "big"})
+	}
+	view := agent.appProgramView(page)
+	if len(view.Actions) != AppProgramActionsMax || view.EarlierActions != 13 || view.Actions[0].Detail != "" || len(view.Stages) != 0 {
+		t.Fatalf("view = %d actions, %d earlier, %d stages", len(view.Actions), view.EarlierActions, len(view.Stages))
+	}
+}

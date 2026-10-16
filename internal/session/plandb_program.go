@@ -279,8 +279,9 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort,
 		Listening: record.Listening, InboxClosed: record.InboxClosed, Listens: planProgramOf(programs, record.Name).Listens,
 		Started: !record.StartedAt.IsZero(), StartedAt: record.StartedAt, EndedAt: record.EndedAt}
-	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
-	program.LastStage, program.Ending, program.EndStatus = planProgramPosition(logged, program.Actions)
+	var endShown bool
+	program.Actions, program.EarlierActions, endShown = planProgramActionsTracked(logged, planProgramOf(programs, record.Name), copies)
+	program.LastStage, program.Ending, program.EndStatus = planProgramPosition(logged, program.Actions, endShown, record.StartedAt)
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)
 	}
@@ -305,24 +306,34 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 
 // planProgramPosition reads the two typed facts of where a run stands off the
 // raw log: the stage its newest stage line names, and its ending when the log's
-// LAST line is the `end` line and that line is shown. Nothing is read from a
-// word, so an ending a later stage line has outlived is not reported.
-func planProgramPosition(logged []delegate.Action, shown []delegate.Shown) (string, *delegate.Shown, string) {
+// LAST line is the `end` line and that line is the last one shown (endShown).
+// Nothing is read from a word.
+//
+// THE LOG OUTLIVES THE PROCESS. It is only ever appended to, while a program
+// handed off again gets a new record with a new start, so a line is the current
+// run's only when it was received at or after the record's StartedAt. A record
+// with no start (written before it existed, or not yet written) cannot tie the
+// log to a process, and then neither fact is reported: unknown, not the last
+// run's.
+func planProgramPosition(logged []delegate.Action, shown []delegate.Shown, endShown bool, started time.Time) (string, *delegate.Shown, string) {
+	if started.IsZero() {
+		return "", nil, ""
+	}
 	stage := ""
-	for i := len(logged) - 1; i >= 0; i-- {
+	for i := len(logged) - 1; i >= 0 && !logged[i].At.Before(started); i-- {
 		if logged[i].Kind == delegate.ActionStage && strings.TrimSpace(logged[i].Stage) != "" {
 			stage = logged[i].Stage
 			break
 		}
 	}
-	if len(logged) == 0 || len(shown) == 0 {
+	if len(logged) == 0 || len(shown) == 0 || !endShown {
 		return stage, nil, ""
 	}
-	last, tail := logged[len(logged)-1], shown[len(shown)-1]
-	if last.Kind != delegate.ActionEnd || !tail.At.Equal(last.At) {
+	last := logged[len(logged)-1]
+	if last.Kind != delegate.ActionEnd || last.At.Before(started) {
 		return stage, nil, ""
 	}
-	ending := tail
+	ending := shown[len(shown)-1]
 	return stage, &ending, last.Status
 }
 
@@ -346,9 +357,18 @@ func planProgramOf(programs []delegate.Delegate, name string) delegate.Delegate 
 // what it shows, every text cut to its head; and how many shown actions came
 // before those.
 func planProgramActionsFor(logged []delegate.Action, program delegate.Delegate, copies planRunCopies) ([]delegate.Shown, int) {
+	shown, earlier, _ := planProgramActionsTracked(logged, program, copies)
+	return shown, earlier
+}
+
+// planProgramActionsTracked is [planProgramActionsFor] that also says whether
+// the log's final line is the last action shown, which is how an ending is
+// known to be the line the reader showed and not an earlier one.
+func planProgramActionsTracked(logged []delegate.Action, program delegate.Delegate, copies planRunCopies) ([]delegate.Shown, int, bool) {
 	read := program.Reader()
 	var shown []delegate.Shown
-	for _, action := range logged {
+	finalShown := false
+	for i, action := range logged {
 		action.Command = copies.strip(action.Command)
 		action.Observation = copies.strip(action.Observation)
 		action.Message = copies.strip(action.Message)
@@ -364,13 +384,14 @@ func planProgramActionsFor(logged []delegate.Action, program delegate.Delegate, 
 			continue
 		}
 		shown = append(shown, line)
+		finalShown = i == len(logged)-1
 	}
 	earlier := 0
 	if len(shown) > planProgramActions {
 		earlier = len(shown) - planProgramActions
 		shown = shown[earlier:]
 	}
-	return shown, earlier
+	return shown, earlier, finalShown
 }
 
 // planEndingForPage is an ending's facts as the page carries them: the run's own

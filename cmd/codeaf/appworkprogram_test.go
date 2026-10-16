@@ -94,6 +94,9 @@ func TestProgramStagesFollowEachRealProgramsHello(t *testing.T) {
 }
 
 func TestProgramOnTheWireIsBoundedRedactedAndHonestlyPartial(t *testing.T) {
+	if appwire.ProgramActionsMax != session.AppProgramActionsMax {
+		t.Fatalf("the wire bound %d and the engine's %d drifted", appwire.ProgramActionsMax, session.AppProgramActionsMax)
+	}
 	lines := []delegate.Action{delegate.StageAction(time.Time{}, delegate.StageRecord{Stage: "intake", Status: "captured"})}
 	for i := 0; i < appwire.ProgramActionsMax+25; i++ {
 		lines = append(lines, delegate.StepAction(time.Time{}, delegate.StepRecord{Tool: "read", Step: "explore", Command: "read file.go key sk-abcdefghijklmnopqrstuvwxyz123456"}))
@@ -104,12 +107,17 @@ func TestProgramOnTheWireIsBoundedRedactedAndHonestlyPartial(t *testing.T) {
 	if len(wire.Actions) != appwire.ProgramActionsMax || wire.EarlierActions != 7+len(view.Actions)-appwire.ProgramActionsMax || wire.EarlierActions < 26 {
 		t.Fatalf("%d actions, %d earlier", len(wire.Actions), wire.EarlierActions)
 	}
+	secret := "sk-abcdefghijklmnopqrstuvwxyz123456"
+	view.Stages = []session.AppProgramStage{{Name: secret, Word: secret}}
+	view.Ending = &delegate.Shown{Text: "done", Reason: secret, Ending: &delegate.EndFacts{Claim: secret, Reports: []string{secret}}}
+	view.Actions[0].Reason, view.Actions[0].Model = secret, secret
+	wire = appTaskProgram(view)
 	raw, _ := json.Marshal(wire)
 	if strings.Contains(string(raw), "sk-abcdefghijklmnopqrstuvwxyz123456") {
 		t.Fatalf("a secret reached the wire: %s", raw)
 	}
-	if wire.Ending != nil || wire.StartedAt != nil || appTaskProgram(nil) != nil {
-		t.Fatalf("an unfinished unstarted run claims an ending or a clock: %+v", wire)
+	if wire.StartedAt != nil || appTaskProgram(nil) != nil {
+		t.Fatalf("an unstarted run claims a clock: %+v", wire)
 	}
 }
 

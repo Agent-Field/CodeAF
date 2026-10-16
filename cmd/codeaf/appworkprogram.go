@@ -31,7 +31,7 @@ func appTaskProgram(view *session.AppProgramView) *appwire.TaskProgram {
 		out.EndedAt = &at
 	}
 	for _, stage := range view.Stages {
-		out.Stages = append(out.Stages, appwire.ProgramStage{Name: stage.Name, Word: stage.Word})
+		out.Stages = append(out.Stages, appwire.ProgramStage{Name: redact.Secrets(stage.Name), Word: redact.Secrets(stage.Word)})
 	}
 	actions := view.Actions
 	if len(actions) > appwire.ProgramActionsMax {
