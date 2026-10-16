@@ -641,15 +641,13 @@ func load(requireKey bool) (Config, error) {
 }
 
 // ResolveImageModel applies the runtime preference order: an explicit slot,
-// Seedream 5.0 Pro then Krea 2 Medium Turbo as each is advertised, then the
-// catalog's first image output model. Catalog's offline fallbacks make the
-// last resort usable while keeping the ordinary path free of unverified
-// defaults.
+// then Seedream 5.0 Pro or Krea 2 Medium Turbo — and only when the catalog
+// advertises it AND has published a price for it. There is no "first image
+// model" rung: see [DefaultMediaRoute], which also says why there was no
+// answer. Empty means no default, and the caller keeps image generation off
+// the belt or shows [MediaRoute.Err].
 func (c Config) ResolveImageModel(models *catalog.Catalog) string {
-	if configured := strings.TrimSpace(c.ImageModel); configured != "" {
-		return configured
-	}
-	return resolveOutputModel(models, "image", preferredImageModel, fallbackImageModel)
+	return c.ResolveImageRoute(models).Model
 }
 
 // ResolveSpeechModel prefers Fish Audio S2.1 Pro, then Fish Audio S1, then
@@ -762,13 +760,11 @@ func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
 	}
 }
 
-// ResolveVideoModel prefers Seedance 2.5, then Seedance 2.0 Mini as each is
-// advertised, then the catalog's first exact video-output model.
+// ResolveVideoModel prefers Seedance 2.5, then Seedance 2.0 Mini — each only
+// when advertised and carrying a published per-second price. There is no
+// "first video model" rung; see [DefaultMediaRoute].
 func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
-	if configured := strings.TrimSpace(c.VideoModel); configured != "" {
-		return configured
-	}
-	return resolveOutputModel(models, "video", preferredVideoModel, fallbackVideoModel)
+	return c.ResolveVideoRoute(models).Model
 }
 
 // ResolveVisionModel applies the inspection-proxy order at the moment a leaf

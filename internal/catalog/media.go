@@ -106,8 +106,19 @@ type MediaKind struct {
 
 // MediaState is the standing of both dedicated listings.
 type MediaState struct {
+	// Applicable says this catalog is one that reads the dedicated listings at
+	// all (the OpenRouter source on its own base). False means the question
+	// "was the video listing read?" has no answer here, and the general rows are
+	// all there is; true with a kind that is not [MediaKind.Known] means the
+	// listing has never been read on this install.
+	Applicable     bool
 	Images, Videos MediaKind
 }
+
+// unreadMedia is the standing of a catalog that is eligible for the dedicated
+// listings and has read neither: the compiled-in fallback rows, and an install
+// whose first fetch failed.
+func unreadMedia(eligible bool) MediaState { return MediaState{Applicable: eligible} }
 
 // Authoritative says the named kind ("image" or "video") was read and is
 // current, so that a model's ABSENCE from the catalog may be reported as "no
@@ -170,8 +181,9 @@ func mediaStateOf(cached *mediaCache, now time.Time) MediaState {
 		cached = &mediaCache{}
 	}
 	return MediaState{
-		Images: kindStateOf(cached.Images, now),
-		Videos: kindStateOf(cached.Videos, now),
+		Applicable: true,
+		Images:     kindStateOf(cached.Images, now),
+		Videos:     kindStateOf(cached.Videos, now),
 	}
 }
 
@@ -816,6 +828,39 @@ func (c *Catalog) MediaStateNow() MediaState {
 		return MediaState{}
 	}
 	return resolved.media
+}
+
+// PublishedPrice says the dedicated listing, or the general one, genuinely
+// published a finite price for what this model makes ("image" or "video"), in
+// a unit a person can be told. It is the test a DEFAULT must pass before it is
+// chosen for someone who chose nothing.
+//
+// Prompt/completion token zeros do not establish a generation tariff. Some
+// image models really bill output tokens, but this catalog does not yet carry
+// that output tariff separately; it remains unknown here. Unreadable units
+// remain unknown too. A positive published per-request price counts for an
+// image, while an explicit dedicated per-image zero remains a known zero.
+func (m Model) PublishedPrice(output string) bool {
+	switch strings.ToLower(strings.TrimSpace(output)) {
+	case kindVideo:
+		for _, price := range m.MediaPrices {
+			if price.Billable == "video_output" && price.Unit == "second" && finitePrice(price.USD) {
+				return true
+			}
+		}
+	case kindImage:
+		for _, price := range m.MediaPrices {
+			if price.Billable == "image_output" && (price.Unit == "image" || price.Unit == "megapixel") && finitePrice(price.USD) {
+				return true
+			}
+		}
+		return m.RequestPrice > 0 && finitePrice(m.RequestPrice)
+	}
+	return false
+}
+
+func finitePrice(value float64) bool {
+	return value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 // MediaPrices answers the published per-unit prices of one model, and nil when

@@ -444,6 +444,7 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err e
 			// rather than to eleven names it never published.
 			if strings.TrimSpace(options.Source) == "" && normalizeBase(options.BaseURL) == DefaultBaseURL {
 				resolved, err = newRows(hardcodedFallbacks()), errUnreadable
+				resolved.media = unreadMedia(mediaEligible(options, strings.TrimSpace(options.Source), normalizeBase(options.BaseURL)))
 			} else {
 				resolved, err = newRows(nil), errUnreadable
 			}
@@ -482,6 +483,7 @@ func LoadLazy(ctx context.Context, options Options) *Catalog {
 		preview = cachedRows(cached, options, nowOf(options)())
 	} else if source == "" && base == DefaultBaseURL {
 		preview = newRows(hardcodedFallbacks())
+		preview.media = unreadMedia(mediaEligible(options, source, base))
 	}
 	warmCtx, cancel := context.WithCancel(ctx)
 	resolved := &Catalog{
@@ -625,7 +627,9 @@ func load(ctx context.Context, options Options) (*rows, error) {
 		return cachedRows(cached, options, now()), err
 	}
 	if source == "" && base == DefaultBaseURL {
-		return newRows(hardcodedFallbacks()), err
+		fallback := newRows(hardcodedFallbacks())
+		fallback.media = unreadMedia(eligible)
+		return fallback, err
 	}
 	// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — handing eleven
 	// OpenRouter ids to a service that never published them puts four verbs on

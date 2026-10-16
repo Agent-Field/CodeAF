@@ -84,6 +84,11 @@ var curatedMediaModels = map[string]string{
 // the most expensive thing on the shelf.
 func CandidateMediaModel(models *catalog.Catalog, modality string) string {
 	modality = strings.ToLower(strings.TrimSpace(modality))
+	// Drawing and filming spend money, so their catalog rung is the same gated
+	// default as the settings resolvers: never a row that merely came first.
+	if _, routed := curatedRoutes[modality]; routed {
+		return DefaultMediaRoute(models, modality).Model
+	}
 	candidates := ModelCandidates(models, modality)
 	if len(candidates) == 0 {
 		return ""
@@ -137,7 +142,14 @@ func provisionalModelID(id string) bool {
 // FallbackMediaModel is the curated rung, and empty for a modality this build
 // has no remembered name for.
 func FallbackMediaModel(modality string) string {
-	return curatedMediaModels[strings.ToLower(strings.TrimSpace(modality))]
+	modality = strings.ToLower(strings.TrimSpace(modality))
+	// The curated NAME of a spending modality is only a default once the catalog
+	// has priced it, and that check is [DefaultMediaRoute]'s. Handing the bare
+	// name to a caller that only checks capability would bypass it.
+	if _, routed := curatedRoutes[modality]; routed {
+		return ""
+	}
+	return curatedMediaModels[modality]
 }
 
 type scoredModel struct {

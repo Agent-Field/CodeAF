@@ -984,3 +984,40 @@ func TestAnUnreadableOrUnsupportedSkuIsUnknownNotAFreeModel(t *testing.T) {
 		t.Errorf("a published zero = %+v", free)
 	}
 }
+
+func TestPublishedPriceNeedsAFiniteUnitPriceAndNeverATokenZero(t *testing.T) {
+	cases := []struct {
+		name   string
+		model  Model
+		output string
+		want   bool
+	}{
+		{"video per second", Model{MediaPrices: []MediaPrice{{Billable: "video_output", Unit: "second", USD: 0.02}}}, "video", true},
+		{"video published zero is a published price", Model{MediaPrices: []MediaPrice{{Billable: "video_output", Unit: "second", USD: 0}}}, "video", true},
+		{"video token zero", Model{PromptPrice: 0, CompletionPrice: 0}, "video", false},
+		{"video request price is not a per-second price", Model{RequestPrice: 0.5}, "video", false},
+		{"video input still price only", Model{MediaPrices: []MediaPrice{{Billable: "image_input", Unit: "image", USD: 0.01}}}, "video", false},
+		{"image per megapixel", Model{MediaPrices: []MediaPrice{{Billable: "image_output", Unit: "megapixel", USD: 0.014}}}, "image", true},
+		{"image request price", Model{RequestPrice: 0.04}, "image", true},
+		{"image zero request", Model{RequestPrice: 0}, "image", false},
+		{"image negative", Model{MediaPrices: []MediaPrice{{Billable: "image_output", Unit: "image", USD: -1}}}, "image", false},
+		{"unknown modality", Model{RequestPrice: 1}, "music", false},
+	}
+	for _, c := range cases {
+		if got := c.model.PublishedPrice(c.output); got != c.want {
+			t.Errorf("%s: PublishedPrice = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestMediaStateSaysWhetherTheDedicatedListingsApplyAtAll(t *testing.T) {
+	custom := Load(context.Background(), Options{BaseURL: "https://x.example/v1", Dir: t.TempDir(),
+		HTTPClient: catalogClient(t, 200, `{"data":[{"id":"a/b"}]}`, nil)})
+	if custom.MediaState().Applicable {
+		t.Error("a custom endpoint claims dedicated listings")
+	}
+	offline := Load(context.Background(), Options{BaseURL: DefaultBaseURL, Dir: t.TempDir(), HTTPClient: catalogClient(t, 503, "x", nil)})
+	if s := offline.MediaState(); !s.Applicable || s.Authoritative("video") || s.Videos.Known {
+		t.Errorf("an unread OpenRouter catalog = %+v, want applicable and unconfirmed", s)
+	}
+}
