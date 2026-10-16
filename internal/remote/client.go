@@ -1740,15 +1740,60 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 // words ([session.Agent.SubmitMessage]): it travels on the same call, so the
 // engine records the words and the mark on one line or neither.
 func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error) {
-	if message.Said != nil || len(message.Attachments) > 0 || len(message.Reads) > 0 {
-		a.c.mu.Lock()
-		known := a.c.welcome.MessageMarks
-		a.c.mu.Unlock()
-		if !known {
-			return nil, errors.New("engine: this engine cannot keep a message's description; update it before sending")
-		}
+	if argsOf(message).marked() && !a.MessageMarksKnown() {
+		return nil, errors.New("engine: this engine cannot keep a message's description; update it before sending")
 	}
-	return a.open(ctx, MethodSubmit, SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads})
+	return a.open(ctx, MethodSubmit, argsOf(message))
+}
+
+// SteerMessage is Steer with what the door knows about the correction beyond
+// its words ([session.Agent.SteerMessage]). An engine that has not said it keeps
+// a correction's mark is refused BEFORE ANYTHING IS SENT: run as its words
+// alone it would lose what the person read, and the correction would already be
+// in the turn. A submission with no mark is Steer.
+func (a *Agent) SteerMessage(message session.Submission) (<-chan session.Event, error) {
+	if !argsOf(message).marked() {
+		return a.Steer(message.Text)
+	}
+	if !a.SteerMarksKnown() {
+		return nil, errors.New("engine: this engine cannot keep a correction's description; update it before sending")
+	}
+	return a.open(nil, MethodSteer, argsOf(message))
+}
+
+// FollowUpMessage is FollowUp with what the door knows about the message beyond
+// its words ([session.Agent.FollowUpMessage]), refused before anything is sent
+// to an engine that has not said it keeps a follow-up's mark. Its stream is
+// remembered for the take-back exactly as a plain follow-up's is.
+func (a *Agent) FollowUpMessage(message session.Submission) (<-chan session.Event, error) {
+	if !argsOf(message).marked() {
+		return a.FollowUp(message.Text)
+	}
+	if !a.FollowUpMarksKnown() {
+		return nil, errors.New("engine: this engine cannot keep a follow-up's description; update it before sending")
+	}
+	return a.followUp(argsOf(message))
+}
+
+// MessageMarksKnown, SteerMarksKnown and FollowUpMarksKnown are what the
+// engine said in its welcome about keeping a mark on Submit, Steer and
+// FollowUp, so a surface can refuse a marked message before it queues it.
+func (a *Agent) MessageMarksKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageMarks })
+}
+
+func (a *Agent) SteerMarksKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.SteerMarks })
+}
+
+func (a *Agent) FollowUpMarksKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.FollowUpMarks })
+}
+
+func (a *Agent) welcomeSays(fact func(Welcome) bool) bool {
+	a.c.mu.Lock()
+	defer a.c.mu.Unlock()
+	return fact(a.c.welcome)
 }
 
 // SubmitBash explicitly runs the person's command; ordinary Submit never
@@ -1777,7 +1822,12 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []session.I
 // because the take-back ([Agent.UnqueueFollowUp]) names the stream and the wire
 // needs the id that channel stands for.
 func (a *Agent) FollowUp(text string) (<-chan session.Event, error) {
-	payload, err := a.c.call(nil, MethodFollowUp, SubmitArgs{Text: text})
+	return a.followUp(SubmitArgs{Text: text})
+}
+
+// followUp is the FollowUp call's one body, plain or marked.
+func (a *Agent) followUp(args SubmitArgs) (<-chan session.Event, error) {
+	payload, err := a.c.call(nil, MethodFollowUp, args)
 	if err != nil {
 		return nil, err
 	}

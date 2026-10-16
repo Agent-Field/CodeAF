@@ -1044,6 +1044,12 @@ type Welcome struct {
 	// attachments and reference-read facts together. Absence is an older
 	// engine: a marked submission must be refused before any words are sent.
 	MessageMarks bool `json:"messageMarks,omitempty"`
+	// SteerMarks and FollowUpMarks say the same of Steer and FollowUp: the
+	// engine keeps a correction's or a follow-up's mark on the line the words
+	// land on. Each is its own fact — an engine that keeps a Submit's mark need
+	// not keep a Steer's — and absence refuses a marked call before it is sent.
+	SteerMarks    bool `json:"steerMarks,omitempty"`
+	FollowUpMarks bool `json:"followUpMarks,omitempty"`
 	// SessionInstance identifies this live conversation owner, not its durable
 	// transcript. A replaced engine can reopen the same file with stream IDs
 	// starting over, so a returning surface must forget the previous owner IDs.
@@ -1461,6 +1467,23 @@ type SubmitArgs struct {
 	Said        *string                     `json:"said,omitempty"`
 	Attachments []session.MessageAttachment `json:"attachments,omitempty"`
 	Reads       []session.MessageRead       `json:"reads,omitempty"`
+}
+
+// marked is whether the call carries a mark beside its words. Submit, Steer
+// and FollowUp each take one; a marked call is kept with its mark or refused
+// whole, and never run as its words alone.
+func (a SubmitArgs) marked() bool {
+	return a.Said != nil || len(a.Attachments) > 0 || len(a.Reads) > 0
+}
+
+// submission is the call as the agent's own door for a mark takes it.
+func (a SubmitArgs) submission() session.Submission {
+	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads}
+}
+
+// argsOf is a submission as the wire carries it.
+func argsOf(message session.Submission) SubmitArgs {
+	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads}
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the

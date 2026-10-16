@@ -1209,6 +1209,39 @@ func messageMarksKnown(agent any) bool {
 	return ok
 }
 
+// markedDoor is the agent's door for a marked Steer or FollowUp.
+type markedDoor = func(session.Submission) (<-chan session.Event, error)
+
+func steerMarksDoor(agent any) (markedDoor, bool) {
+	door, ok := agent.(interface {
+		SteerMessage(session.Submission) (<-chan session.Event, error)
+	})
+	if !ok {
+		return nil, false
+	}
+	return door.SteerMessage, true
+}
+
+func followUpMarksDoor(agent any) (markedDoor, bool) {
+	door, ok := agent.(interface {
+		FollowUpMessage(session.Submission) (<-chan session.Event, error)
+	})
+	if !ok {
+		return nil, false
+	}
+	return door.FollowUpMessage, true
+}
+
+func steerMarksKnown(agent any) bool {
+	_, ok := steerMarksDoor(agent)
+	return ok
+}
+
+func followUpMarksKnown(agent any) bool {
+	_, ok := followUpMarksDoor(agent)
+	return ok
+}
+
 func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
@@ -1222,6 +1255,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 	}
 	return Welcome{
 		MessageMarks:               messageMarksKnown(sess.agent),
+		SteerMarks:                 steerMarksKnown(sess.agent),
+		FollowUpMarks:              followUpMarksKnown(sess.agent),
 		Version:                    Version,
 		Workspace:                  sess.engine.Workspace,
 		SessionFile:                sess.engine.SessionFile,
@@ -2564,12 +2599,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		door, marked := agent.(interface {
 			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
 		})
-		hasMark := args.Said != nil || len(args.Attachments) > 0 || len(args.Reads) > 0
+		hasMark := args.marked()
 		if hasMark && !marked {
 			return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
 		}
 		if hasMark {
-			events, err = door.SubmitMessage(context.Background(), session.Submission{Text: args.Text, Said: args.Said, Attachments: args.Attachments, Reads: args.Reads})
+			events, err = door.SubmitMessage(context.Background(), args.submission())
 		} else {
 			events, err = agent.Submit(context.Background(), args.Text)
 		}
@@ -2593,7 +2628,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := agent.FollowUp(args.Text)
+		// A MARKED FOLLOW-UP IS QUEUED WITH ITS MARK OR REFUSED before anything
+		// is queued; its stream is registered for the take-back below exactly as
+		// a plain one's is.
+		var events <-chan session.Event
+		if args.marked() {
+			door, ok := followUpMarksDoor(agent)
+			if !ok {
+				return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
+			}
+			events, err = door(args.submission())
+		} else {
+			events, err = agent.FollowUp(args.Text)
+		}
 		return s.stream(MethodFollowUp, args.Text, events, err)
 
 	case MethodUnqueueFollowUp:
@@ -2629,7 +2676,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := agent.Steer(args.Text)
+		// A MARKED CORRECTION IS SPLICED WITH ITS MARK OR REFUSED before it
+		// reaches the turn.
+		var events <-chan session.Event
+		if args.marked() {
+			door, ok := steerMarksDoor(agent)
+			if !ok {
+				return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
+			}
+			events, err = door(args.submission())
+		} else {
+			events, err = agent.Steer(args.Text)
+		}
 		return s.stream(MethodSteer, args.Text, events, err)
 
 	case MethodSubmitImage:
