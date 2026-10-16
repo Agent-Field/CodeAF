@@ -1206,6 +1206,7 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		restated, moved := false, false
 		var view appwire.Agent
 		b.locked(func() {
+			ask.HoldingUp = askHoldingUpLocked(live, ask)
 			if _, open := live.questions[askID]; open {
 				// The lane replays what is open when it is subscribed again,
 				// and a question restated in place is the same ask.

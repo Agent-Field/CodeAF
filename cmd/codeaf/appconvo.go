@@ -337,11 +337,6 @@ func appAskFacts(agent string, ask *appwire.Ask, q session.Question) {
 		until := q.Deadline
 		ask.ClockUntil = &until
 	}
-	for _, task := range q.Blocking.Tasks {
-		if n, err := strconv.ParseUint(strings.TrimSpace(task), 10, 64); err == nil {
-			ask.HoldingUp = append(ask.HoldingUp, appTaskID(agent, n))
-		}
-	}
 	ask.SayWhy = q.Kind == session.QuestionConsent
 }
 
@@ -1190,10 +1185,10 @@ func appTaskExtras(tasks []appwire.Task) {
 				done[task.Parent]++
 			}
 		}
-		for _, waited := range task.WaitsOn {
-			if i, ok := byID[waited]; ok && task.State != appwire.TaskDone && task.State != appwire.TaskFailed {
-				tasks[i].HoldingUp = append(tasks[i].HoldingUp, task.ID)
-			}
+	}
+	for waited, waiters := range appWaiters(tasks) {
+		if i, ok := byID[waited]; ok {
+			tasks[i].HoldingUp = waiters
 		}
 	}
 	for i := range tasks {
@@ -1202,6 +1197,71 @@ func appTaskExtras(tasks []appwire.Task) {
 			tasks[i].Children, tasks[i].ChildrenDone = &count, &finished
 		}
 	}
+}
+
+// appTaskOpen is a task that has not ended: neither done nor failed.
+func appTaskOpen(task appwire.Task) bool {
+	return task.State != appwire.TaskDone && task.State != appwire.TaskFailed
+}
+
+// appWaiters is the task graph read backwards, from the engine's own
+// dependencies (Task.WaitsOn): for each task, the open tasks that wait on it
+// directly, in the order the list gives them. Task.holding_up and
+// Ask.holding_up are both read from it.
+func appWaiters(tasks []appwire.Task) map[string][]string {
+	waiters := map[string][]string{}
+	for _, task := range tasks {
+		if !appTaskOpen(task) {
+			continue
+		}
+		for _, waited := range task.WaitsOn {
+			waiters[waited] = append(waiters[waited], task.ID)
+		}
+	}
+	return waiters
+}
+
+// appHoldingUpLimit bounds how many tasks an ask says it holds up.
+const appHoldingUpLimit = 256
+
+// appAskHoldingUp is what an ask from a task holds up: that task, then every
+// open task whose dependencies reach it, nearest first, each once however the
+// graph loops, and no more than [appHoldingUpLimit]. It is nil for an ask
+// that comes from no task: what a model names as blocked is never read here.
+func appAskHoldingUp(source string, tasks []appwire.Task) []string {
+	if source == "" {
+		return nil
+	}
+	waiters := appWaiters(tasks)
+	out := []string{source}
+	seen := map[string]bool{source: true}
+	for i := 0; i < len(out) && len(out) < appHoldingUpLimit; i++ {
+		for _, w := range waiters[out[i]] {
+			if seen[w] {
+				continue
+			}
+			seen[w] = true
+			out = append(out, w)
+			if len(out) == appHoldingUpLimit {
+				break
+			}
+		}
+	}
+	return out
+}
+
+// askHoldingUpLocked is an ask's holding_up from the agent's task graph as it
+// stands. Callers hold b.mu.
+func askHoldingUpLocked(live *appLive, ask appwire.Ask) []string {
+	if ask.Source == nil || ask.Source.Task == "" {
+		return nil
+	}
+	tasks := make([]appwire.Task, 0, len(live.tasks))
+	for _, task := range live.tasks {
+		tasks = append(tasks, task)
+	}
+	sort.Slice(tasks, func(i, j int) bool { return tasks[i].ID < tasks[j].ID })
+	return appAskHoldingUp(ask.Source.Task, tasks)
 }
 
 // ── long output ─────────────────────────────────────────────────────────────

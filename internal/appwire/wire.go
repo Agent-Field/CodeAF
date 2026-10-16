@@ -210,6 +210,12 @@ type Ask struct {
 	// the evidence, the choices with the asker's suggestion, the clock, the
 	// calls asked about together, the tasks it holds up, and whether a reason
 	// may go with the answer. Later says the person put it aside.
+	//
+	// HoldingUp is set only on an ask whose source is a task: that task's id,
+	// then every open task whose waits_on reaches it, nearest first, each
+	// once, at most 256, read from the engine's task dependencies as they
+	// stood when the ask was raised or restated. It is never read from what a
+	// model names as blocked, nor from how many tasks are open.
 	Source     *AskSource  `json:"source,omitempty"`
 	Reason     string      `json:"reason,omitempty"`
 	Evidence   *Evidence   `json:"evidence,omitempty"`

@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -145,13 +147,24 @@ func TestAppQueueIsEditedReorderedAndSentInOrder(t *testing.T) {
 func TestAppAskCarriesTheDocksFactsAndCanBeHandedBack(t *testing.T) {
 	conv := &fakeConversation{}
 	backend, rec, agent := workBackend(t, conv)
+	// The engine's graph: 5 waits on 4, 6 on 5, and 7, done, on 4.
+	backend.locked(func() {
+		live := backend.agents[agent.ID].live
+		for _, task := range []appwire.Task{
+			{ID: agent.ID + ":5", State: appwire.TaskRunning, WaitsOn: []string{agent.ID + ":4"}},
+			{ID: agent.ID + ":6", State: appwire.TaskQueued, WaitsOn: []string{agent.ID + ":5"}},
+			{ID: agent.ID + ":7", State: appwire.TaskDone, WaitsOn: []string{agent.ID + ":4"}},
+		} {
+			live.tasks[task.ID] = task
+		}
+	})
 	deadline := time.Now().Add(12 * time.Second).Round(time.Second)
 	q := session.Question{
 		ID: 9, Kind: session.QuestionAsk, Ask: session.AskChoice, Head: "Should trailing commas be on by default?", Reason: "the parser accepts both",
 		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 4},
 		Options: []session.AnswerOption{{Key: "strict", Label: "Keep strict", Body: "Opt in with strict: false."}, {Key: "tolerant", Label: "Tolerant by default"}},
 		Pick:    &session.Pick{Key: "strict"}, Deadline: deadline,
-		Blocking: session.Blocking{Tasks: []string{"5"}},
+		Blocking: session.Blocking{Tasks: []string{"99", "the parser"}},
 		Attach:   []session.Block{{Kind: session.BlockText, Body: "a\nb\nc\nd\ne\nf\ng\nh\ni\nj"}},
 	}
 	conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
@@ -165,7 +178,7 @@ func TestAppAskCarriesTheDocksFactsAndCanBeHandedBack(t *testing.T) {
 	if len(ask.Choices) != 2 || !ask.Choices[0].Suggested || ask.Choices[1].Suggested || ask.Choices[0].Detail == "" {
 		t.Fatalf("the choices = %+v", ask.Choices)
 	}
-	if ask.ClockUntil == nil || !ask.ClockUntil.Equal(deadline) || len(ask.HoldingUp) != 1 || ask.HoldingUp[0] != agent.ID+":5" {
+	if ask.ClockUntil == nil || !ask.ClockUntil.Equal(deadline) || !reflect.DeepEqual(ask.HoldingUp, []string{agent.ID + ":4", agent.ID + ":5", agent.ID + ":6"}) {
 		t.Fatalf("the clock and what it holds up = %+v", ask)
 	}
 	if ask.Evidence == nil || len(ask.Evidence.Lines) != appEvidenceLines || ask.Evidence.More != 2 {
@@ -351,5 +364,42 @@ func TestAppStagedAttachmentsAreRemovedExactly(t *testing.T) {
 	}
 	if err := backend.RemoveAttachment(agent.ID, two.ID); err != nil {
 		t.Fatalf("cleanup after a send failed: %v", err)
+	}
+}
+
+// WHAT AN ASK HOLDS UP IS THE ENGINE'S GRAPH, NEVER A MODEL'S WORDS: the task
+// it comes from and every open task whose dependencies reach it, nearest
+// first, each once however the graph loops; ended tasks hold nothing up, and
+// an ask from no task says nothing.
+func TestAppAskHoldingUpIsTheTaskGraph(t *testing.T) {
+	task := func(id, state string, waits ...string) appwire.Task {
+		return appwire.Task{ID: id, State: state, WaitsOn: waits}
+	}
+	cases := []struct {
+		name   string
+		source string
+		tasks  []appwire.Task
+		want   []string
+	}{
+		{"a chain", "a", []appwire.Task{task("a", appwire.TaskRunning), task("b", appwire.TaskQueued, "a"), task("c", appwire.TaskQueued, "b")}, []string{"a", "b", "c"}},
+		{"a cycle", "a", []appwire.Task{task("a", appwire.TaskRunning, "c"), task("b", appwire.TaskQueued, "a"), task("c", appwire.TaskQueued, "b")}, []string{"a", "b", "c"}},
+		{"ended tasks", "a", []appwire.Task{task("a", appwire.TaskRunning), task("b", appwire.TaskDone, "a"), task("c", appwire.TaskQueued, "b"), task("d", appwire.TaskFailed, "a"), task("e", appwire.TaskRunning, "a")}, []string{"a", "e"}},
+		{"no source task", "", []appwire.Task{task("b", appwire.TaskQueued, "a")}, nil},
+	}
+	for _, c := range cases {
+		if got := appAskHoldingUp(c.source, c.tasks); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: holding up %v, want %v", c.name, got, c.want)
+		}
+	}
+	var wide []appwire.Task
+	for i := range appHoldingUpLimit * 2 {
+		wide = append(wide, task(strconv.Itoa(i), appwire.TaskQueued, "root"))
+	}
+	if got := appAskHoldingUp("root", wide); len(got) != appHoldingUpLimit {
+		t.Errorf("a wide graph says %d tasks, want the bound %d", len(got), appHoldingUpLimit)
+	}
+	live := &appLive{tasks: map[string]appwire.Task{"b": task("b", appwire.TaskQueued, "a")}}
+	if got := askHoldingUpLocked(live, appwire.Ask{Source: &appwire.AskSource{Kind: "reply"}}); got != nil {
+		t.Errorf("an ask from no task holds up %v", got)
 	}
 }
