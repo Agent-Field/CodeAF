@@ -160,9 +160,9 @@ func TestARaiseForTodayExpiresAtLocalMidnightAndIsClearedByAWrite(t *testing.T) 
 	if got, err := DailyBudgetUSDAtTime(dir, midnight.AddDate(0, 0, 5)); err != nil || got != 40 {
 		t.Fatalf("days later = %v, %v", got, err)
 	}
-	// A raise cannot name an end more than a day ahead.
-	if got, err := DailyBudgetUSDAtTime(dir, now.AddDate(0, 0, -3)); err == nil {
-		t.Fatalf("a raise ending days ahead was read as %v", got)
+	// A backward clock correction ignores a far-future raise and uses the tighter base.
+	if got, err := DailyBudgetUSDAtTime(dir, now.AddDate(0, 0, -3)); err != nil || got != 40 {
+		t.Fatalf("a far-future raise did not fall to base: %v, %v", got, err)
 	}
 	if err := WriteDailyBudgetUSD(dir, 45); err != nil {
 		t.Fatal(err)
