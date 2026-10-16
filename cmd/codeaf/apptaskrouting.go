@@ -146,12 +146,16 @@ func appBlockedOf(b session.TaskRoutingBlock) *appwire.TaskRoutingWait {
 func appRoutingOf(id string, v session.TaskRoutingView) appwire.TaskRouting {
 	out := appwire.TaskRouting{
 		TaskID: id, State: v.State, Mode: string(v.Mode), Running: v.Running, Settled: v.Settled,
-		Restored: v.Restored, EstimateUSD: v.EstimateUSD, SpentUSD: v.SpentUSD, Calls: v.Calls, UnknownCalls: v.UnknownCalls,
+		Restored: v.Restored, EstimateUSD: v.EstimateUSD, Calls: v.Calls, UnknownCalls: v.UnknownCalls,
 		HelperUSD: v.HelperUSD, Class: v.Class, StoppedAction: v.Stopped, ChangeCount: v.ChangeCount,
 		RestoreCount: v.RestoreCount, RoleFacts: v.RoleFacts,
 	}
 	if v.Effort == string(crewroute.EffortBest) || v.Effort == string(crewroute.EffortCheap) {
 		out.Effort = v.Effort
+	}
+	if v.SpentKnown {
+		spent := v.SpentUSD
+		out.SpentUSD = &spent
 	}
 	if v.TaskCapUSD > 0 {
 		capUSD := v.TaskCapUSD

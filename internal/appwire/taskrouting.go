@@ -69,7 +69,7 @@ type TaskRouting struct {
 	EstimateUSD *float64 `json:"estimate_usd"`
 	// SpentUSD is what calls with a known cost spent; UnknownCalls is how many
 	// answered calls had no known cost and are NOT in SpentUSD.
-	SpentUSD     float64  `json:"spent_usd"`
+	SpentUSD     *float64 `json:"spent_usd"`
 	Calls        int      `json:"calls"`
 	UnknownCalls int      `json:"unknown_calls"`
 	HelperUSD    float64  `json:"helper_usd"`

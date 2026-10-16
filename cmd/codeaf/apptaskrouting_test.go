@@ -15,7 +15,7 @@ import (
 func TestTaskRoutingReachesTheEngineAndRefusalsAreAnswers(t *testing.T) {
 	est := 0.12
 	conv := &fakeConversation{routing: session.TaskRoutingView{
-		State: session.TaskRoutingRouted, Mode: crewroute.ModeAuto, Running: true, EstimateUSD: &est, SpentUSD: 0.07, Calls: 3, UnknownCalls: 1, ChangeCount: 1,
+		State: session.TaskRoutingRouted, Mode: crewroute.ModeAuto, Running: true, EstimateUSD: &est, SpentUSD: 0.07, SpentKnown: true, Calls: 3, UnknownCalls: 1, ChangeCount: 1,
 		Roles: []session.TaskRoutingRole{
 			{Seat: crewroute.Worker, Model: "z-ai/glm-5.3", Provider: "OpenRouter", Kind: crewroute.Metered, Source: session.TaskRoleAuto, Status: session.TaskRoleUsed, SpentUSD: 0.06, SpentKnown: true, Calls: 2,
 				Price: &crewroute.RoutePrice{Prompt: 4e-7, Completion: 1.6e-6}},

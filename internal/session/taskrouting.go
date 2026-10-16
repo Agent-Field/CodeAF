@@ -171,14 +171,17 @@ type TaskRoutingView struct {
 	// SpentUSD is what answered calls with a known cost spent, helpers
 	// included; Calls and UnknownCalls count the answered calls and those
 	// whose cost nobody could say, which SpentUSD does not include.
+	// SpentKnown is false on a record that kept no task tally.
 	SpentUSD            float64
+	SpentKnown          bool
 	Calls, UnknownCalls int
-	HelperUSD           float64
-	TaskCapUSD          float64
-	Class, Why, Effort  string
-	Note, Stopped       string
-	Considered          int
-	Warnings            []crewroute.SeatWarning
+	// HelperUSD is the part of SpentUSD helper calls spent.
+	HelperUSD          float64
+	TaskCapUSD         float64
+	Class, Why, Effort string
+	Note, Stopped      string
+	Considered         int
+	Warnings           []crewroute.SeatWarning
 	// Changes are the newest changes, oldest first; ChangeCount is every one.
 	Changes     []TaskCrewChange
 	ChangeCount int
@@ -317,13 +320,16 @@ func taskRoutingOf(id string, r *TaskCrewRecord, settled bool, changes int) Task
 	} else {
 		view.Changes = append([]TaskCrewChange(nil), r.Changes...)
 	}
+	// THE TASK'S TALLY ALREADY HOLDS ITS HELPERS: a helper call is guarded on
+	// the same task tally the roles are ([Agent.helperGuard]), so HelperUSD is
+	// a breakout of SpentUSD, never added to it. A record with no guard kept
+	// no task tally, and its spend is unknown.
 	g := r.Guard
 	if g != nil {
 		view.TaskCapUSD = g.TaskCap
-		view.SpentUSD = g.TaskSpent
+		view.SpentUSD, view.SpentKnown = g.TaskSpent, true
 		view.Calls, view.UnknownCalls = g.TaskCalls, g.TaskUnknown
 	}
-	view.SpentUSD += r.HelperUSD
 	facts := r.RoleFacts >= 1
 	view.RoleFacts, view.RestoreCount = facts, r.RestoreCount
 	known, total := true, 0.0
@@ -1244,14 +1250,16 @@ func (c *taskCrew) routingRecord(changes int) *TaskCrewRecord {
 	g := c.guard
 	c.mu.Unlock()
 	if g != nil {
+		// g.mu then bookMu, the checkpoint's order: a role's first booking
+		// makes its tally under g.mu before it books under bookMu, so the
+		// roles read here are exactly the ones the task figure includes.
 		g.mu.Lock()
+		defer g.mu.Unlock()
 		r.Guard = &crewGuardRecord{TaskCap: g.TaskCap, SeatSpent: map[crewroute.Seat]float64{}}
-		task, seats := g.Task, maps.Clone(g.seatSpent)
-		g.mu.Unlock()
-		// One booking's task and role figures, read together.
 		g.bookMu.Lock()
-		r.Guard.TaskSpent, r.Guard.TaskCalls, r.Guard.TaskUnknown = task.snapshot()
-		for seat, tally := range seats {
+		defer g.bookMu.Unlock()
+		r.Guard.TaskSpent, r.Guard.TaskCalls, r.Guard.TaskUnknown = g.Task.snapshot()
+		for seat, tally := range g.seatSpent {
 			spent, calls, unknown := tally.snapshot()
 			r.Guard.SeatSpent[seat] = spent
 			if r.Guard.SeatCalls == nil {
@@ -1259,7 +1267,6 @@ func (c *taskCrew) routingRecord(changes int) *TaskCrewRecord {
 			}
 			r.Guard.SeatCalls[seat], r.Guard.SeatUnknown[seat] = calls, unknown
 		}
-		g.bookMu.Unlock()
 	}
 	return r
 }

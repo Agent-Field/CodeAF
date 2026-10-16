@@ -462,6 +462,9 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			// says which line it met — never "/redo stronger".
 			return nil, c.agent.stopCrew(c.run, err)
 		}
+		// THE ROLE HAS STARTED the moment its call is admitted and about to
+		// leave — not when the provider answers — and only that role.
+		crew.seatStarting(seat)
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
 		callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
@@ -841,6 +844,21 @@ func (c *taskCrew) anyStarted() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.started) > 0
+}
+
+// seatStarting marks a role started at its admitted call and clears its
+// pending change. An unmarked call (no seat) marks nothing.
+func (c *taskCrew) seatStarting(seat crewroute.Seat) {
+	if seat == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.seatStarted == nil {
+		c.seatStarted = map[crewroute.Seat]bool{}
+	}
+	c.seatStarted[seat] = true
+	delete(c.pending, seat)
 }
 
 // crewAnswered notes that a role's call answered on send: the role has run —
