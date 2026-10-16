@@ -118,6 +118,14 @@ func appPageLines(g *appMeter, dir, top, gitDir string, blank []string, named ma
 		}
 		return appwire.LinesGitFailed
 	}
+	// THE PATHS ARE THE STATUS'S, AND PORCELAIN SPELLS THEM FROM THE REPOSITORY
+	// ROOT whatever folder the workspace is. Every command that is handed one
+	// therefore runs AT the root: from a subfolder the literal pathspecs would
+	// name other files, find nothing and call it an unchanged file (0 and 0).
+	if top == "" {
+		return appwire.LinesGitFailed
+	}
+	dir = top
 	got := map[int]appLine{}
 	stamps := func() string {
 		var b strings.Builder

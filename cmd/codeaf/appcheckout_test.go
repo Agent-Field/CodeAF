@@ -656,3 +656,37 @@ func TestCheckoutStatusLinesLeaveTheIndexAlone(t *testing.T) {
 		t.Fatal("counting the lines rewrote the index")
 	}
 }
+
+// A WORKSPACE THAT IS A SUBFOLDER OF THE REPOSITORY gets the same counts as the
+// root does: status paths are root-relative, so the count and attribute commands
+// run at the root. Run from the subfolder they named nothing and answered 0/0.
+func TestCheckoutStatusLinesFromSubfolderWorkspace(t *testing.T) {
+	repo := diffRepo(t)
+	marker := filepath.Join(t.TempDir(), "ran")
+	write(t, filepath.Join(repo, ".gitattributes"), "*.dat filter=lfsish\n")
+	write(t, filepath.Join(repo, "sub", "inner.txt"), "i1\ni2\ni3\ni4\ni5\ni6\ni7\ni8\n")
+	write(t, filepath.Join(repo, "sub", "f.dat"), "a\n")
+	gitT(t, repo, "add", ".gitattributes", "sub")
+	gitT(t, repo, "commit", "-q", "-m", "sub")
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\nfive\n")                         // root file: +2
+	write(t, filepath.Join(repo, "sub", "inner.txt"), "i1\ni2\ni3\ni4\ni5\ni6\ni7\ni8\ni9\nj\nk\n") // nested: +3
+	write(t, filepath.Join(repo, "sub", "f.dat"), "b\n")                                            // filter-governed: unknown
+	gitT(t, repo, "mv", "sub/inner.txt", "sub/moved.txt")
+	// The filter is configured LAST: the setup's own git commands refresh the
+	// index and would run it, and this test is about what checkout.status runs.
+	gitT(t, repo, "config", "filter.lfsish.clean", "touch '"+marker+"'; cat")
+	gitT(t, repo, "config", "filter.lfsish.required", "true")
+
+	for _, workspace := range []string{repo, filepath.Join(repo, "sub")} {
+		got, err := checkoutT(t, workspace, appwire.CheckoutQuery{})
+		if err != nil || got.LinesUnavailable != "" {
+			t.Fatalf("%s: %v %q", workspace, err, got.LinesUnavailable)
+		}
+		wantLines(t, entryOf(t, got, "a.txt"), 2, 0)
+		wantLines(t, entryOf(t, got, "sub/moved.txt"), 3, 0)
+		wantUnknown(t, entryOf(t, got, "sub/f.dat"))
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the clean filter ran")
+	}
+}
