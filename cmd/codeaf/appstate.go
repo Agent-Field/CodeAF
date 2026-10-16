@@ -30,7 +30,7 @@ import (
 )
 
 // The app's own defaults. The day cap is what first-run setup offers at its
-// third step; the terminal's daily limit keeps its own default.
+// second step; the terminal's daily limit keeps its own default.
 const (
 	appDayCapDefault      = 20.0
 	appProposedClockS     = 12
@@ -51,8 +51,12 @@ type appRaise struct {
 // appStateFile is the app's file. A nil figure is one nobody set, which reads
 // as its default; a day cap of zero is one the person turned off.
 type appStateFile struct {
-	Setup      *appwire.Setup `json:"setup,omitempty"`
-	WorkFolder string         `json:"work_folder,omitempty"`
+	Setup *appwire.Setup `json:"setup,omitempty"`
+	// SetupSteps is how many steps the kept setup's step is counted in. A
+	// file kept before setup became three steps has none, and its step is
+	// counted in four ([appSetupStepFromFour]).
+	SetupSteps int    `json:"setup_steps,omitempty"`
+	WorkFolder string `json:"work_folder,omitempty"`
 	// DayCapUSD is LEGACY and read-only: the daily limit is the profile's
 	// (appdaylimit.go), and this is read once, to hand it over.
 	DayCapUSD          *float64            `json:"day_cap_usd,omitempty"`
@@ -247,8 +251,35 @@ func (f *appStateFile) workFolder() string {
 	return ""
 }
 
+// appSetupStepsBefore is how many steps setup had before the welcome and the
+// connecting step became one.
+const appSetupStepsBefore = 4
+
+// appSetupStepFromFour is where a step kept by a four-step build lands now:
+// the welcome (1) and connecting a provider (2) are both the new first step,
+// because the welcome is now the head of the connecting step; the defaults (3)
+// are the second, and how to start (4) is the third. "done" stays done.
+//
+// A PERSON HALFWAY THROUGH SETUP WHEN THEIR APP UPDATES IS NEVER STRANDED:
+// without this a kept 3 would reopen on the last step, skipping the defaults,
+// and a kept 4 would be no step at all.
+func appSetupStepFromFour(step appwire.SetupStep) appwire.SetupStep {
+	if step.Done {
+		return step
+	}
+	switch {
+	case step.N <= 2:
+		return appwire.SetupStep{N: 1}
+	case step.N >= appSetupStepsBefore:
+		return appwire.SetupStep{N: appwire.SetupSteps}
+	default:
+		return appwire.SetupStep{N: step.N - 1}
+	}
+}
+
 // Setup answers how far first-run setup has come; a setup never started is at
-// step one, offering the app's day cap.
+// step one, offering the app's day cap. A setup a four-step build kept is
+// answered in three steps.
 func (b *appBackend) Setup() (appwire.Setup, error) {
 	// The day cap offered is the profile's limit, whatever the saved step says.
 	base, err := b.dayBase()
@@ -259,6 +290,9 @@ func (b *appBackend) Setup() (appwire.Setup, error) {
 	err = b.state.read(func(f *appStateFile) {
 		if f.Setup != nil {
 			setup = *f.Setup
+			if f.SetupSteps == 0 {
+				setup.Step = appSetupStepFromFour(setup.Step)
+			}
 			return
 		}
 		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}}
@@ -291,6 +325,7 @@ func (b *appBackend) SetSetup(setup appwire.Setup) (appwire.Setup, error) {
 	err := b.state.write(func(f *appStateFile) error {
 		kept := setup
 		f.Setup = &kept
+		f.SetupSteps = appwire.SetupSteps
 		return nil
 	})
 	if err != nil {

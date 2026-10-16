@@ -112,7 +112,16 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 		live.turn, live.steps, live.steers = turn, 0, 0
 		live.retries, live.retrySaid, live.retryPhase = 0, false, ""
 		live.pumpDone = make(chan struct{})
+		// A TURN THAT WAKES WHILE AN ASK WAITS ON THE PERSON STILL NEEDS THEM,
+		// exactly as a turn the person sends does ([appBackend.startLocked]).
+		// A woken turn's question can reach the question lane before this
+		// turn is adopted here, and a crew member mostly runs woken turns: a
+		// plain working would put "running" on its row and on its crew while
+		// it sat blocked on the person's word.
 		a.view.State = appwire.StateWorking
+		if live.needsYou() {
+			a.view.State = appwire.StateNeedsYou
+		}
 		a.view.UpdatedAt = b.now()
 		view = a.view
 	})

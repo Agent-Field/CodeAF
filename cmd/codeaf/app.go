@@ -53,7 +53,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
-	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -129,14 +128,14 @@ func runApp(args []string) error {
 	// The crews are watched from the start: a manager's start or a member
 	// woken by its manager must not wait for the window to ask for crews.
 	backend.memoryStore = func() (*store.Store, error) {
-		proc, err := openEngineProcess()
+		proc, err := openAppEngineProcess()
 		if err != nil || proc.Memory == nil {
 			return nil, errors.New("memory is off")
 		}
 		return proc.Memory, nil
 	}
 	backend.searchWords = func(terms string, limit int) ([]store.ConversationHit, error) {
-		proc, err := openEngineProcess()
+		proc, err := openAppEngineProcess()
 		if err != nil || proc.Search == nil {
 			return nil, errors.New("conversation search is unavailable")
 		}
@@ -309,6 +308,13 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	}
 	loop, err := remote.Loopback(hello, remote.Options{
 		Boot: func(h remote.Hello) (*remote.Engine, error) {
+			// THE APP'S OWN OPENER FIRST, so a process half that failed for the
+			// want of a key before the window handed one over is opened again
+			// now; [assembleEngine] then finds it open. Without it a first
+			// message sent after the key arrived failed on the memo's old error.
+			if _, err := openAppEngineProcess(); err != nil {
+				return nil, err
+			}
 			return assembleEngine(h, workspace, transcript, workspace)
 		},
 	})
@@ -366,16 +372,26 @@ type appBackend struct {
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}
 	// keys are the keys the app handed over (appaccount.go); keyClient and
-	// keyAddress replace the network and the provider's address in a test.
+	// keyAddress replace the network and OpenRouter's address in a test, and
+	// vendored and codexBegin the other providers' descriptions and the
+	// ChatGPT sign-in's browser flow.
 	keys       *config.AppCredentials
 	keyClient  *http.Client
 	keyAddress func(provider string) string
+	vendored   func() []modelsource.Source
+	codexBegin func(context.Context) (codexConnectFlow, error)
 	// balances is providers.balance's memory and lifetime (appproviderbalance.go),
 	// made by the first ask.
 	balances *appBalances
-	// signIn is the browser sign-in waiting for the person, if any.
-	signIn      *openrouterauth.Flow
+	// signIn is OpenRouter's browser sign-in waiting for the person, if any.
+	signIn appSignIn
+	// accountAuth is the ChatGPT account's sign-in, waiting or the last one to
+	// end (appaccount_auth.go): its own slot, because it has an attempt and a
+	// state the window reads, where OpenRouter's has neither.
 	accountAuth *appAccountAuth
+	// providerWarm closes when the latest fetch of the providers' model lists
+	// is over ([appBackend.warmProviderModels]); models.list waits a moment for it.
+	providerWarm chan struct{}
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
 	// dayAuth is the daily limit's one-time hand-over from this file's old cap.
@@ -434,6 +450,13 @@ type appAgent struct {
 	// by whichever road opens it first; opening says one is being assembled.
 	boot    *appBoot
 	opening bool
+	// minted says this process made the conversation's folder (agents.create),
+	// which is what lets it take a blank one away again at quit; briefed says
+	// a crew's brief is on its way to it, the first message of a member a
+	// manager started, which it reads off the crew's log rather than from the
+	// person.
+	minted  bool
+	briefed bool
 	// users is how many messages of the person's the transcript holds, which
 	// is what an entry's id is counted from ([appUserEntryID]); counted says
 	// it has been read.
@@ -698,6 +721,13 @@ func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 		}
 		return view
 	}
+	// A NAME THIS PROCESS KNOWS OUTLIVES A ROW THAT HAS NONE: a member a
+	// manager started is named by its brief here, and its folder's row may
+	// never say so, because a conversation does not name itself from a crew's
+	// note (session's firstExchangeLocked).
+	if disk.Title == "" {
+		disk.Title = a.view.Title
+	}
 	a.view = disk
 	return a.view
 }
@@ -799,15 +829,31 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 		b.tidyMarks(&view, row.Archived)
 		agents = append(agents, view)
 	}
-	// A conversation this process created and nobody has spoken in yet is not
-	// on the walk, which skips empty shells; it is still the app's agent.
+	// A CONVERSATION THE WALK DID NOT FIND IS LISTED ONLY ONCE SOMEBODY HAS
+	// SAID SOMETHING IN IT. The walk skips a folder the person never spoke in,
+	// so what this process holds beyond it is an agent made here whose first
+	// words are on their way, a crew member a manager started, whose first
+	// message is its brief, or a blank conversation, which is never listed
+	// (appblank.go). The journal is read outside the lock.
+	type beyondWalk struct {
+		view       appwire.Agent
+		transcript string
+		said       bool
+	}
+	var beyond []beyondWalk
 	b.locked(func() {
 		for id, a := range b.agents {
 			if !seen[id] && (a.live != nil || a.opening) && matches(a.view.Workspace) {
-				agents = append(agents, a.view)
+				beyond = append(beyond, beyondWalk{view: a.view, transcript: a.transcript, said: a.saidLocked()})
 			}
 		}
 	})
+	for _, held := range beyond {
+		if held.said || appSpokenIn(held.transcript) {
+			agents = append(agents, held.view)
+		}
+	}
+	b.nameUntitled(agents)
 	sort.SliceStable(agents, func(i, j int) bool { return agents[i].UpdatedAt.After(agents[j].UpdatedAt) })
 	for i := range agents {
 		b.dress(&agents[i])
@@ -906,12 +952,17 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 		}
 		a.view.UpdatedAt = b.now()
 		a.boot = &appBoot{model: model, budget: ask.BudgetUSD}
-		a.opening = true
+		a.opening, a.minted = true, true
 		a.users, a.counted = 0, true
 		view = a.view
 	})
 	view = b.stampAgentBudget(a)
-	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	// A BLANK AGENT IS NOT ANNOUNCED. The caller has its answer; the first
+	// words, or the name a manager's start gives a member, are what bring it
+	// to every window (appblank.go).
+	if first.words != "" {
+		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	}
 	guard.Go("app/create", func() { b.bootAgent(a, first) })
 	return view, nil
 }
@@ -927,7 +978,11 @@ func (b *appBackend) bootAgent(a *appAgent, first appFirst) {
 		return
 	}
 	if first.words == "" {
-		if opened {
+		// Opened blank, it is said only once something was said in it in
+		// the meantime; otherwise its first words say it (appblank.go).
+		said := false
+		b.locked(func() { said = a.saidLocked() })
+		if opened && said {
 			b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
 		return
@@ -1039,7 +1094,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 // hold makes conn the agent's live conversation. Callers hold a.gate.
 func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.Agent {
 	if conn.Assembled {
-		b.assembled.Store(true)
+		b.markAssembled()
 	}
 	live := &appLive{
 		conn: conn, box: appwire.NewOutbox(b.emit), lastUse: b.now(),
@@ -1053,6 +1108,16 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	startTitles := b.prepareTitles(a, live)
 	title, model := conn.Conv.Title(), conn.Conv.Model()
 	effort := conn.Conv.ReasoningFor(model)
+	// A CONVERSATION WITH NO NAME OF ITS OWN THAT A CREW KNOWS goes by the
+	// word its crew calls it, which for a member a manager started is its
+	// brief's first words: held again after a relaunch, nothing else names it.
+	if strings.TrimSpace(title) == "" {
+		var id, known string
+		b.locked(func() { id, known = a.view.ID, a.view.Title })
+		if strings.TrimSpace(known) == "" {
+			title = b.memberNames()[id]
+		}
+	}
 	var counted bool
 	b.locked(func() { counted = a.counted })
 	users := 0
@@ -1699,9 +1764,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	// an answer by it: the deltas of message 0 append to answer 0, and answer
 	// 0's entry replaces them, so the words before a tool call and the words
 	// after it are two answers and neither is ever drawn twice. A message ends
-	// where a tool call begins after its words, or where the turn ends, and
-	// it is counted only if it said something — the same rule the listing
-	// counts by ([appEntriesOf]), so both name it alike.
+	// where a tool call begins after its words, where the engine closes a reply
+	// made in words alone ([session.EventAssistantDone]), or where the turn
+	// ends, and it is counted only if it said something — the same rule the
+	// listing counts by ([appEntriesOf]), so both name it alike.
 	msg, notices, summaries := 0, 0, 0
 	// A turn that answers under a message other turns already answered (a
 	// woken one) starts its counts where they left off.
@@ -1713,30 +1779,44 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		b.locked(func() { live.lastN, live.lastMsgs, live.lastNotices = n, msg, notices })
 	}()
 	var reply strings.Builder
+	// replyRun is the run that streamed the reply so far, or empty once two
+	// runs have streamed into it.
 	var replyRun string
-	// A MESSAGE BEFORE A TOOL CALL IS AN UPDATE, the agent saying what it
-	// found mid-turn; the last one is the answer.
 	// withheld says the reply's words so far could still be the withdrawal token
 	// ([session.NoChangeReply]), so they are kept back from the page until
 	// they cannot be: a reply that is only the token is never drawn.
 	withheld := true
+	// sayReply ends the message being streamed and says it as kind, unless it
+	// said nothing or only withdrew itself.
+	//
+	// A MESSAGE IS AN UPDATE ONLY WHEN ITS OWN TOOL CALL COMES NEXT, which is
+	// how the listing names it ([appUpdates]): the reply open when a tool
+	// begins is an update, the agent saying what it found mid-turn, and every
+	// other reply is an answer — the one the engine closed in words alone
+	// ([session.EventAssistantDone]) at once, and the one the turn ends on at
+	// its end. A TURN CAN SAY SEVERAL: a stopped turn is sent back to work (the
+	// completion check's carry-on, a nudge, team news landing at the boundary)
+	// and answers again with no tool call between. Each is its own message, as
+	// it is in the record — run together, a withdrawal ("[no change]") was
+	// drawn glued to the answer it withdrew from, and every message after it
+	// took the wrong id.
 	sayReply := func(kind string) {
-		words := strings.TrimSpace(reply.String())
-		defer func() { withheld = true; replyRun = "" }()
-		if session.IsNoChangeReply(words) {
+		words, run := strings.TrimSpace(reply.String()), replyRun
+		defer func() {
 			reply.Reset()
+			withheld = true
+			replyRun = ""
+		}()
+		if words == "" || session.IsNoChangeReply(words) {
 			return
 		}
-		if withheld && words != "" {
+		if withheld {
 			live.box.Delta(id, turn, msg, appwire.DeltaText, reply.String())
 		}
-		if words != "" {
-			b.locked(func() { live.lastAnswer = words })
-			at := msg
-			entry(appwire.Entry{ID: appAnswerEntryID(n, at), Kind: kind, Text: words, Msg: &at, RunID: replyRun})
-			msg++
-		}
-		reply.Reset()
+		b.locked(func() { live.lastAnswer = words })
+		at := msg
+		msg++
+		entry(appwire.Entry{ID: appAnswerEntryID(n, at), Kind: kind, Text: words, Msg: &at, RunID: run})
 	}
 	// A THOUGHT IS SHOWN WHILE IT HAPPENS AND NEVER SAVED: its words go out
 	// as turn.thinking, and its length once the agent moves on.
@@ -1765,6 +1845,11 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				withheld = false
 				live.box.Delta(id, turn, msg, appwire.DeltaText, reply.String())
 			}
+		case session.EventAssistantDone:
+			// THE REPLY IS IN THE RECORD AND COMPLETE, made in words alone, so
+			// it is an answer, and whatever the turn says next is another
+			// message.
+			sayReply(appwire.EntryAnswer)
 		case session.EventReasoning:
 			if thoughtAt.IsZero() {
 				thoughtAt = b.now()
@@ -1853,6 +1938,14 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			// THE ENGINE'S NOTICES ARE ITS DIM LINES — the skills a turn
 			// carried, a request reshaped to land — drawn by the terminal as
 			// one muted row and never as a message, and quiet says the same.
+			// A LINE SAYING THE TURN WAS SENT BACK TO WORK IS NOT ONE OF THEM
+			// HERE: the terminal folds it away with the turn's work once the
+			// turn settles, the app has no fold for a notice, and the turn
+			// going on is what the worked line already says
+			// ([session.IsCarryOnNotice]).
+			if session.IsCarryOnNotice(event.Text) {
+				break
+			}
 			if words := strings.TrimSpace(event.Text); words != "" {
 				notice := appwire.Entry{ID: appLiveNoticeID(n, notices), Kind: appwire.EntryNotice, Text: redact.Secrets(words), Quiet: true}
 				// ONLY WHAT THE PRODUCER TYPED travels as a fact; a notice
@@ -2812,16 +2905,30 @@ func (b *appBackend) Warm() {
 	b.sweepOutputs()
 }
 
-// process is the engine's shared process half, opened once.
+// process is the engine's shared process half. Once open it is kept; an open
+// that failed is tried again on the next call ([openAppEngineProcess]),
+// because the window may ask for models before it has handed over the key the
+// open needs.
 func (b *appBackend) process() (*v3Process, error) {
 	if err := b.settleDayLimit(); err != nil {
 		return nil, err
 	}
-	proc, err := openEngineProcess()
+	proc, err := openAppEngineProcess()
 	if err == nil {
-		b.assembled.Store(true)
+		b.markAssembled()
 	}
 	return proc, err
+}
+
+// markAssembled records that the process half is open. The first time, the
+// providers it has no model list for yet are fetched in the background
+// ([appBackend.warmProviderModels]): a provider connected before the process
+// opened — the keys a launch hands over, a setup finished on its first screen
+// — would otherwise offer nothing in models.list until the next fetch.
+func (b *appBackend) markAssembled() {
+	if !b.assembled.Swap(true) {
+		b.warmProviderModels()
+	}
 }
 
 // appModelsWait bounds how long models.list waits for a model list still
@@ -2839,7 +2946,19 @@ const appModelsWait = 3 * time.Second
 // connected as ("local" for a custom endpoint written that way, "codex" for
 // the ChatGPT sign-in, "openrouter" for the default), and provider_name the
 // service's own name. Only services with a key are listed, as in the picker.
+//
+// WITH NO PROVIDER CONNECTED THE ANSWER IS AN EMPTY LIST, NOT A FAILURE. Nothing
+// has failed: there is no model a turn could run on, which is the ordinary
+// state of an app whose setup was skipped. It used to be the process half's
+// refusal to open, spelled for a terminal ("export OPENROUTER_API_KEY and run
+// it again"); and once a process half that had opened lost its last provider,
+// it was the default model alone, offered although nothing could run it.
+// Connected is the rule providers.list answers signed_in by
+// ([appBackend.providerConnected]), so the two never disagree.
 func (b *appBackend) ListModels() ([]appwire.Model, error) {
+	if !b.providerConnected() {
+		return []appwire.Model{}, nil
+	}
 	proc, err := b.process()
 	if err != nil {
 		return nil, appEngineError(err)
@@ -2847,11 +2966,22 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 	// THE DEFAULT SERVICE'S CATALOG IS WAITED FOR EVEN WHEN ANOTHER SERVICE HAS
 	// ANSWERED: a list read before it lands is every other service's models
 	// and none of the default's, which reads as the default not being there.
+	// AND A PROVIDER JUST CONNECTED IS WAITED FOR TOO, within the same few
+	// seconds: its list is being fetched behind the connection, and a list read
+	// before it lands offers none of the models the person just connected.
+	ctx, cancel := context.WithTimeout(context.Background(), appModelsWait)
 	if proc.Models != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), appModelsWait)
 		proc.Models.Warmed(ctx)
-		cancel()
 	}
+	var warming chan struct{}
+	b.locked(func() { warming = b.providerWarm })
+	if warming != nil {
+		select {
+		case <-warming:
+		case <-ctx.Done():
+		}
+	}
+	cancel()
 	_, sources := proc.currentAccount()
 	rows := tui3.PickerModels(proc.ProfileDir, sources, proc.Shelf.pickerModels, proc.Shelf.modelsForService)
 	names := map[string]string{}
@@ -2886,6 +3016,31 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			model.ProviderName = modelsource.DefaultSource("").Name
 		}
 		seen = seen || model.Default
+		models = append(models, model)
+	}
+	// A PROVIDER THAT LISTS NO MODELS STILL OFFERS ITS OWN. The terminal's
+	// picker draws such a provider as a line that says to type a model id,
+	// which a menu cannot do; the app offers the model the terminal moves a
+	// conversation onto when that provider connects
+	// ([modelsource.Source.PreferredModel]), and offers nothing where there is
+	// no such model rather than guess one.
+	offered := map[string]bool{}
+	for _, model := range models {
+		offered[model.Provider] = true
+	}
+	for _, service := range sources.All() {
+		group := strings.ToLower(strings.TrimSpace(service.Source.Written))
+		if strings.EqualFold(service.Source.ID, modelsource.DefaultID) || group == "" || offered[group] || !service.HasCredentials() {
+			continue
+		}
+		preferred := service.Source.PreferredModel(service.Door, nil)
+		if preferred == "" {
+			continue
+		}
+		id := service.Qualify(preferred)
+		model := appwire.Model{ID: id, Name: preferred, Provider: group, ProviderName: names[group], Default: id == chosen}
+		seen = seen || model.Default
+		offered[group] = true
 		models = append(models, model)
 	}
 	if !seen && chosen != "" {
@@ -3147,6 +3302,12 @@ func (b *appBackend) Close() error {
 	}
 	wg.Wait()
 	b.closeReferences(agents)
+	// A BLANK CONVERSATION LIVES NO LONGER THAN THE PROCESS THAT MADE IT
+	// (appblank.go): with everything let go, each one this process made that
+	// nobody said anything in is taken away.
+	for _, a := range agents {
+		b.reapBlank(a)
+	}
 	b.closeCollections()
 	// Kept-running processes stay up through a quit; services.stop_all is
 	// how a quit stops them (appservices.go).
@@ -3226,8 +3387,19 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 	}
 }
 
+// appNoProvider is what the app is told when something could not start
+// because no model provider is connected.
+const appNoProvider = "no model provider is connected"
+
 // appEngineError keeps a wire error's code and calls anything else the
 // engine's failure, in words fit for a person.
+//
+// THE MISSING-KEY REFUSAL IS SAID IN THE APP'S WORDS. The terminal's remedy for
+// it is to export OPENROUTER_API_KEY and run the command again, which a person
+// in the app can do nothing with: the app connects providers itself, and a
+// refusal that names a variable reads as something broken. It arrives as a
+// value from the process half and as a sentence from across the loopback, so
+// both are recognised ([appMissingKey]).
 func appEngineError(err error) error {
 	var wire *appwire.Error
 	if errors.As(err, &wire) {
@@ -3238,7 +3410,25 @@ func appEngineError(err error) error {
 	if errors.Is(err, session.ErrMessageMark) {
 		return &appwire.Error{Code: appwire.CodeBadParams, Message: redact.Secrets(plainWords(err.Error()))}
 	}
+	if appMissingKey(err) {
+		return &appwire.Error{Code: appwire.CodeEngine, Message: appNoProvider}
+	}
 	return &appwire.Error{Code: appwire.CodeEngine, Message: redact.Secrets(plainWords(err.Error()))}
+}
+
+// appMissingKey says whether err is the refusal for want of any provider: the
+// value itself ([config.ErrNoAPIKey]), its sentence from across the loopback,
+// or the wire error [appEngineError] made of either. It is the one reading of
+// that refusal, so whatever waits on a key reads it the way it is said.
+func appMissingKey(err error) bool {
+	if err == nil {
+		return false
+	}
+	var wire *appwire.Error
+	if errors.As(err, &wire) && wire.Message == appNoProvider {
+		return true
+	}
+	return errors.Is(err, config.ErrNoAPIKey) || strings.Contains(strings.ToLower(err.Error()), strings.ToLower(config.ErrNoAPIKey.Error()))
 }
 
 // appTeamLines is a team delivery's lines as facts, words redacted as the

@@ -310,14 +310,13 @@ tick* below).
 Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.
 The app hands them to `codeaf app` at every launch and that process holds them in memory
 only: while it runs, a key never reaches the profile's `config.json`, and a provider the
-app disconnected is not quietly reconnected from a key in the profile or the shell. The
-app's key check is one request to the provider with ten seconds to answer; a rejected key
-is reported in the provider's own words and status code. Browser sign-in in the app is
-OpenRouter's only; the ChatGPT plan sign-in stays in the terminal (`codeaf connect codex`).
+app disconnected is not quietly reconnected from a key in the profile or the shell. A
+rejected key is reported in the provider's own words and status code. Which providers the
+app connects, and how, is *Connecting a provider from the app* below.
 
-The app has a day cap of its own, $20.00 unless its setup or settings chose another, and
-it is separate from the terminal's daily limit (`/budget day`), which keeps its own
-figure. A message sent once today's spending has reached the app's day cap is not sent at
+The app's day cap is the profile's daily limit, the same one `/budget day` sets: setup,
+Settings and the terminal all read and change that one figure, and a cap an older app
+kept for itself is adopted into it once, keeping the tighter positive limit. A message sent once today's spending has reached the day cap is not sent at
 all; the agent asks instead, `Day cap reached · $40.00 of $40.00`, with *Raise for today*
 (back to the set figure at midnight) or *Wait until tomorrow*. An agent with a budget asks
 once it has spent four fifths of it — `It's close to its $5.00 budget` — and again when it
@@ -325,9 +324,36 @@ reaches it, offering *Raise budget*, *Stop* or *Tell it something*. Raising eith
 runs again the message it refused. Neither limit stops a turn halfway: a turn that crosses
 one finishes, and the next is the one that waits.
 
-The app's own settings (day cap, new agents' folder, the 12-second proposed-task clock,
-7 idle days before an agent reads closed) and its setup progress live in
-`app/state.json` under codeaf's home folder, so quitting setup halfway resumes there.
+The app's own settings (new agents' folder, the 12-second proposed-task clock, 7 idle
+days before an agent reads closed) and its setup progress live in `app/state.json` under
+codeaf's home folder, so quitting setup halfway resumes there; the day cap is not among
+them, because it is the profile's.
+
+## Connecting a provider from the app — Ollama, a custom endpoint, Codex, regions
+
+The app's setup and its Settings offer every provider `/connect` offers, in the
+same order, and ask each for what `/connect` asks: OpenRouter a key or a browser
+sign-in; DeepSeek, MiniMax and ai& a key; Z.ai, Moonshot and Alibaba Qwen a region
+(International or China) and then a key; Ollama and a custom OpenAI-compatible endpoint
+an address, with a key only if they want one; Codex the ChatGPT plan sign-in in the
+browser and nothing else. Setup connects as many of them as you like, one after another,
+or none at all, and Settings connects one later; with none connected, setup says there
+are no models yet instead of offering a default.
+
+OpenRouter's key is checked with one request and ten seconds to answer. Every other
+provider is checked the way `/connect` checks it: its model list, a one-token call where
+it has none, and for a provider with a coding plan each way of paying in turn, plan
+first. What the check found besides the key — the region, the plan the key opened, the
+address — is kept in the profile where the terminal reads it; the key is not. A provider
+that lists no models offers the model `/connect` would move a conversation onto.
+
+The ChatGPT sign-in is the one credential the app leaves in the profile, exactly where
+the terminal keeps it, because its tokens change on every refresh; the app keeps no key
+for it. One sign-in waits for the browser at a time, for up to ten minutes, and it can be
+cancelled while it waits without signing anything out. Removing it in the app signs the
+account out of that profile, as `codeaf disconnect codex` does — a sign-in still waiting
+is cancelled first, and one already being saved has to finish before it can be removed.
+Removing Ollama or a custom endpoint disconnects it.
 
 ## The desktop app's processes — stop, rerun, and what a Mac going to sleep does to them
 

@@ -63,11 +63,11 @@ func (b *appBackend) TaskModels() (appwire.TaskModels, error) {
 	if err != nil {
 		return appwire.TaskModels{}, err
 	}
-	return taskModelsWire(profile, state), nil
+	return b.taskModelsWire(profile, state), nil
 }
 
 // taskModelsWire is the configuration as the wire carries it.
-func taskModelsWire(profile string, state config.TaskModelsState) appwire.TaskModels {
+func (b *appBackend) taskModelsWire(profile string, state config.TaskModelsState) appwire.TaskModels {
 	out := appwire.TaskModels{
 		// READ_AT IS WHEN THE READ BEGAN ([config.TaskModelsState.ObservedAt]),
 		// never when it finished: a slow read that started first must not
@@ -100,7 +100,7 @@ func taskModelsWire(profile string, state config.TaskModelsState) appwire.TaskMo
 		if service, ok := sources.ByID(p.ID); ok && p.Connected {
 			view.KeyHint = appKeyHint(service.Key)
 		}
-		view.Fix = taskModelsFix(p)
+		view.Fix = b.taskModelsFix(p)
 		out.Providers = append(out.Providers, view)
 	}
 	return out
@@ -108,12 +108,13 @@ func taskModelsWire(profile string, state config.TaskModelsState) appwire.TaskMo
 
 // taskModelsFix is the one fix THIS ENGINE CAN START for a provider: a browser
 // sign-in only where providers.sign_in serves one, a key only where a pasted
-// key connects it, and nothing otherwise — a plan whose sign-in ran out is
-// signed in again where it was made, which is not here.
-func taskModelsFix(p config.TaskModelProvider) string {
+// key connects it — never for the ChatGPT sign-in, which takes no key, nor an
+// address — and nothing otherwise: a plan whose sign-in ran out is signed in
+// again where it was made, which is not here.
+func (b *appBackend) taskModelsFix(p config.TaskModelProvider) string {
 	connectable, signIn := false, false
-	if provider, ok := appProviderNamed(p.ID); ok {
-		connectable, signIn = true, provider.signIn
+	if provider, ok := b.appProviderNamed(p.ID); ok {
+		connectable, signIn = provider.kind == appwire.ProviderKey, provider.signIn
 	}
 	switch {
 	case p.State == config.ProviderStateNoKey && connectable:

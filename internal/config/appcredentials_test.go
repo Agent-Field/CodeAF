@@ -1,12 +1,15 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
@@ -61,5 +64,71 @@ func TestAppCredentialsOutrankTheProfileAndNeverReachIt(t *testing.T) {
 	restore()
 	if AppMode() {
 		t.Fatal("the app's mode outlived its keys")
+	}
+}
+
+// THE APP KEEPS A CONNECTION WITHOUT ITS KEY. Proving a service writes
+// nothing; keeping it writes the row with no key, even when handed one; a row
+// the terminal already wrote with its own key is rewritten beside it, and
+// over it, without losing that key; Codex's sign-in is kept with no key in its
+// row, and its marker is no exception: like any key the profile does not
+// already hold, it is refused.
+func TestAppKeepsAConnectionWithoutItsKey(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	stub := sourcestub.New("llama-local")
+	defer stub.Close()
+	if err := WriteSources(dir, []PersistedSource{{ID: "deepseek", Written: "deepseek", Key: "sk-deepseek-terminal-0000000001", Order: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	restore := UseAppCredentials(NewAppCredentials())
+	defer restore()
+
+	ollama := vendoredSource(t, "ollama")
+	row := PersistedSource{ID: "ollama", Written: "ollama", Address: stub.URL() + "/"}
+	outcome, proved, keep := ProveService(context.Background(), row, ollama, "")
+	if !keep || outcome.Kind != modelsource.OutcomeConnected || len(outcome.ModelIDs) != 1 || proved.Listed == nil || !*proved.Listed {
+		t.Fatalf("proof = %+v, %+v, %v", outcome, proved, keep)
+	}
+	if rows := PersistedSources(dir); len(rows) != 1 {
+		t.Fatalf("a proof wrote %+v", rows)
+	}
+	proved.Key = "sk-ollama-app-0000000002"
+	if err := KeepAppSource(dir, proved); err != nil {
+		t.Fatalf("keeping beside the terminal's own row: %v", err)
+	}
+	rows := PersistedSources(dir)
+	if len(rows) != 2 || rows[1].ID != "ollama" || rows[1].Key != "" || rows[1].Order != 2 || rows[1].Address != stub.URL() {
+		t.Fatalf("kept rows = %+v", rows)
+	}
+	if rows[0].Key != "sk-deepseek-terminal-0000000001" {
+		t.Fatal("the terminal's own row lost its key")
+	}
+	// Ollama answers at the address it was kept at, not only at its usual one.
+	if service, ok := ResolveSources(dir, "", DefaultBaseURL).ByID("ollama"); !ok || service.Address != stub.URL() {
+		t.Fatalf("ollama resolves to %+v", service)
+	}
+	// A hosted vendor's address is never the person's to move.
+	if err := KeepAppSource(dir, PersistedSource{ID: "deepseek", Written: "deepseek", Address: "https://elsewhere.example/v1"}); err != nil {
+		t.Fatal(err)
+	}
+	if service, _ := ResolveSources(dir, "", DefaultBaseURL).ByID("deepseek"); service.Address != "https://api.deepseek.com/v1" {
+		t.Fatalf("deepseek moved to %q", service.Address)
+	}
+	if rows := PersistedSources(dir); rows[0].Key != "sk-deepseek-terminal-0000000001" {
+		t.Fatal("keeping the app's row took the terminal's key away")
+	}
+	if err := persistConnectedSource(dir, PersistedSource{ID: "codex", Written: "codex"}); err != nil {
+		t.Fatalf("the keyless sign-in row was refused: %v", err)
+	}
+	if err := persistConnectedSource(dir, PersistedSource{ID: "codex", Written: "codex", Key: codexauth.Sentinel}); !errors.Is(err, ErrAppKeys) {
+		t.Fatalf("the sign-in marker the profile does not hold was answered %v", err)
+	}
+	if err := persistConnectedSource(dir, PersistedSource{ID: "minimax", Written: "minimax", Key: "sk-minimax-app-0000000003"}); !errors.Is(err, ErrAppKeys) {
+		t.Fatalf("a new key was answered %v", err)
+	}
+	raw, _ := os.ReadFile(BudgetConfigPath(dir))
+	if strings.Contains(string(raw), "app-0") {
+		t.Fatalf("an app key reached the profile: %s", raw)
 	}
 }

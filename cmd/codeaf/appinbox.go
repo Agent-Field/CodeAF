@@ -203,12 +203,18 @@ func (b *appBackend) inboxWhere(ask appwire.Ask) appwire.InboxWhere {
 	if taskTitle != "" {
 		where.Path = append(where.Path, taskTitle)
 	}
+	// A CREW MEMBER'S OWN ASK IS NAMED BY ITS CREW AND ITS HANDLE, "Trudeau
+	// Watch / verifier": its permission prompt never becomes a packet, so the
+	// Inbox is where it reaches the person, and the person knows a member by
+	// the handle the crew's Team and Log call it, never by a conversation title
+	// they did not write. One crew is named, the one it works in.
 	if f, err := teamstore.Load(b.crewProfile()); err == nil {
-		for _, t := range f.Open() {
-			if _, ok := b.crewMemberOf(t, ask.Agent); ok {
-				where.Crew = t.ID
-				where.Path = append([]string{t.Name}, where.Path...)
+		if t, m, ok := appCrewSeat(f, ask.Agent); ok {
+			where.Crew = t.ID
+			if m.Handle != "" {
+				title = m.Handle
 			}
+			where.Path = append([]string{t.Name}, where.Path...)
 		}
 	}
 	if title != "" {

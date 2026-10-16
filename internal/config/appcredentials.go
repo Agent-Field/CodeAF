@@ -109,7 +109,9 @@ func (c *AppCredentials) Snapshot() map[string]string {
 
 // appSourceRows adds the services the app holds a key for to the persisted
 // rows, without touching config.json. A persisted row still owns its region and
-// endpoint; the app's key only answers for it.
+// endpoint; the app's key only answers for it. A custom connection IS its
+// address, so a key held for one the profile has no row for reaches nothing
+// and adds nothing.
 func appSourceRows(rows []PersistedSource) []PersistedSource {
 	source := appCredentials.Load()
 	if source == nil {
@@ -122,7 +124,7 @@ func appSourceRows(rows []PersistedSource) []PersistedSource {
 	}
 	var ids []string
 	for id, key := range keys {
-		if key != "" && !known[id] && id != modelsource.DefaultID {
+		if key != "" && !known[id] && id != modelsource.DefaultID && !modelsource.IsCustomID(id) {
 			ids = append(ids, id)
 		}
 	}
@@ -135,9 +137,20 @@ func appSourceRows(rows []PersistedSource) []PersistedSource {
 }
 
 // refuseAppCredentialUpdates guards the one profile writer: in the app's
-// process no secret row and no service row carrying a key is written. Every
-// other setting is written as it always is.
-func refuseAppCredentialUpdates(updates map[string]any) error {
+// process no secret row is written, and no service row carrying a key the
+// profile does not already hold. Every other setting is written as it always
+// is.
+//
+// A ROW THAT WAS ALREADY ON DISK IS NOT A KEY REACHING IT. The service rows are
+// one list written whole, so the app keeping a keyless row for one provider
+// rewrites every other row beside it — and a profile the terminal also uses can
+// hold a key the terminal wrote. Refusing those rows would refuse every app
+// connection on such a profile while protecting nothing, so a row whose key is
+// byte-identical to the one the profile already holds for that id passes —
+// which is also how a ChatGPT sign-in the terminal kept, its row carrying the
+// sign-in's marker for a key, survives the app's rewrite. The app's own
+// sign-in writes its row with no key at all ([ConnectCodex]).
+func refuseAppCredentialUpdates(profileDir string, updates map[string]any) error {
 	if !AppMode() {
 		return nil
 	}
@@ -160,10 +173,15 @@ func refuseAppCredentialUpdates(updates map[string]any) error {
 			if json.Unmarshal(raw, &rows) != nil {
 				return ErrAppKeys
 			}
+			held := make(map[string]string)
+			for _, row := range PersistedSources(profileDir) {
+				held[strings.ToLower(strings.TrimSpace(row.ID))] = row.Key
+			}
 			for _, row := range rows {
-				if row.Key != "" {
-					return ErrAppKeys
+				if row.Key == "" || row.Key == held[strings.ToLower(strings.TrimSpace(row.ID))] {
+					continue
 				}
+				return ErrAppKeys
 			}
 		}
 	}

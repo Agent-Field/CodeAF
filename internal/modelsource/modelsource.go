@@ -140,9 +140,15 @@ type Source struct {
 	// KeyOptional is true only when this service explicitly accepts no key.
 	// It is a fact about the service, never inferred from a validation function.
 	KeyOptional bool
-	Probe       Probe
-	Listing     Listing
-	ProbeModel  string
+	// AddressOwned says the address is the person's to give: the service runs
+	// wherever they run it, so a persisted row may carry an address of its own
+	// and Address is only where it usually is. Ollama's is; a vendor's hosted
+	// API never is, because there the address belongs to the vendor and moving
+	// it would send the key somewhere the vendor is not.
+	AddressOwned bool
+	Probe        Probe
+	Listing      Listing
+	ProbeModel   string
 	// A ROW'S PREFERRED MUST BE ANSWERABLE ON EVERY DOOR IT CAN BIND. The door
 	// is chosen by what the key proves, so this is the vendor's best model both
 	// its subscription and metered roads serve, not simply its flagship.
@@ -548,7 +554,7 @@ func Vendored() []Source {
 		},
 		{
 			ID: "ollama", Written: "ollama", Name: "Ollama",
-			Address: "http://localhost:11434/v1", KeyOptional: true,
+			Address: "http://localhost:11434/v1", KeyOptional: true, AddressOwned: true,
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 		{
@@ -684,7 +690,10 @@ const (
 type Outcome struct {
 	Kind       OutcomeKind
 	VendorSaid string
-	Models     int
+	// Status is the service's own status code on a refusal, when it answered
+	// one; zero when it did not, or when the outcome is not a refusal.
+	Status int
+	Models int
 	// ModelIDs are the non-empty ids carried by an answered listing. Keeping
 	// them lets the surface retain the list it already paid for instead of
 	// making a second catalog-shaped response the only road to the picker.

@@ -82,12 +82,18 @@ func budgetFigure(b appwire.AgentBudget) float64 {
 // $5, and changing settings.budget_usd moves neither.
 func TestAgentBudgetCreatedCustomIsReadAsItsOwn(t *testing.T) {
 	conv := &railConv{fakeConversation: &fakeConversation{cost: 1.25}}
-	backend := budgetBackend(t, conv)
+	backend, rec := budgetRecordedBackend(t, conv)
 	five := 5.0
 	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir(), BudgetUSD: &five})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A blank conversation is never listed (appblank.go), so the agent is
+	// spoken to before the list is read.
+	if _, err := backend.Send(agent.ID, "draft the release notes", ""); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
 	two := 2.0
 	if _, err := backend.SetSettings(appwire.SettingsPatch{BudgetUSD: &appwire.Figure{USD: &two}}); err != nil {
 		t.Fatal(err)
