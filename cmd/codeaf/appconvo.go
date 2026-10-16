@@ -1479,8 +1479,8 @@ func (b *appBackend) watchNotes(live *appLive, id, local string) {
 		var read []appwire.NoteChanged
 		var left []appNotePending
 		for _, note := range pending {
-			if note.index < len(view.Notes) && view.Notes[note.index].ReadAtStep != nil {
-				step := *view.Notes[note.index].ReadAtStep
+			if at := appPendingNoteAt(view.Notes, note); at >= 0 && view.Notes[at].ReadAtStep != nil {
+				step := *view.Notes[at].ReadAtStep
 				read = append(read, appwire.NoteChanged{Task: id, ID: note.entry.ID, State: appwire.NoteRead, ReadAtStep: &step, ClientID: note.entry.ClientID})
 				continue
 			}
@@ -1495,6 +1495,31 @@ func (b *appBackend) watchNotes(live *appLive, id, local string) {
 			return
 		}
 	}
+}
+
+// appPendingNoteAt is where a sent note sits on the page, or -1 while unknown.
+// A note with a client id is found by that key and only when exactly one note
+// has it: the page also lists the person's steers that were not sent through the
+// app, so a position counted before the send can name a different note. A note
+// with no key keeps the position it was sent at.
+func appPendingNoteAt(notes []session.AppTaskNote, note appNotePending) int {
+	if note.entry.ClientID == "" {
+		if note.index < len(notes) {
+			return note.index
+		}
+		return -1
+	}
+	at := -1
+	for i, n := range notes {
+		if n.ClientID != note.entry.ClientID {
+			continue
+		}
+		if at >= 0 {
+			return -1
+		}
+		at = i
+	}
+	return at
 }
 
 // appTaskSettled says a task's state is one no step follows.

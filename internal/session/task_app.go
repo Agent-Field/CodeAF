@@ -84,8 +84,9 @@ type AppTaskNote struct {
 	ClientID string `json:"client_id,omitempty"`
 }
 
-// AppNoteClientIDMax bounds a note's client id in bytes.
-const AppNoteClientIDMax = 128
+// AppNoteClientIDMax bounds a note's client id in bytes; it is the one limit
+// message client ids already keep.
+const AppNoteClientIDMax = MaxClientIDBytes
 
 // AppNoteClientID is clientID if it can be kept as a note's key, else "". An
 // oversized or malformed key is dropped whole, never truncated, because a

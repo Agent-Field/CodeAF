@@ -270,7 +270,7 @@ func TestAppTaskNoteIsReadAtAStep(t *testing.T) {
 	}
 	step := 5
 	conv.mu.Lock()
-	conv.appTasks[0].Notes = []session.AppTaskNote{{Text: "Also cover the empty-array case.", ReadAtStep: &step}}
+	conv.appTasks[0].Notes = []session.AppTaskNote{{Text: "Also cover the empty-array case.", ClientID: "n-1", ReadAtStep: &step}}
 	conv.mu.Unlock()
 	i := rec.waitFor(t, 6*time.Second, func(event string, data any) bool {
 		changed, ok := data.(appwire.NoteChanged)
@@ -485,5 +485,47 @@ func TestAppTaskPageCarriesTheNotesClientID(t *testing.T) {
 	conv.mu.Unlock()
 	if intent.ClientID != "" {
 		t.Fatalf("an oversized key reached the engine: %+v", intent)
+	}
+}
+
+// A note's read event follows its client id, not the position counted before the
+// send: a person's steer typed elsewhere can sit before it on the page.
+func TestAppTaskNoteReadFollowsItsClientIDNotItsPosition(t *testing.T) {
+	step := 3
+	conv := &fakeConversation{appTasks: []session.AppTaskView{{ID: "4", Title: "t", State: "running"}}}
+	backend, rec, agent := workBackend(t, conv)
+	conv.mu.Lock()
+	conv.appTasks[0].Notes = []session.AppTaskNote{{Text: "a", ClientID: "c-a"}, {Text: "steer", ReadAtStep: &step}}
+	conv.mu.Unlock()
+	entry, err := backend.NoteTask(agent.ID+":4", "mine", "c-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The page now lists the new note BEFORE the earlier read steer, at index 1.
+	read := 5
+	conv.mu.Lock()
+	conv.appTasks[0].Notes = []session.AppTaskNote{{Text: "a", ClientID: "c-a"}, {Text: "mine", ClientID: "c-7"}, {Text: "steer", ReadAtStep: &step}}
+	conv.mu.Unlock()
+	time.Sleep(2 * appNoteBeat)
+	rec.mu.Lock()
+	for _, data := range rec.data {
+		if c, ok := data.(appwire.NoteChanged); ok && c.State == appwire.NoteRead {
+			rec.mu.Unlock()
+			t.Fatalf("read reported from another note's receipt: %+v", c)
+		}
+	}
+	rec.mu.Unlock()
+	conv.mu.Lock()
+	conv.appTasks[0].Notes[1].ReadAtStep = &read
+	conv.mu.Unlock()
+	i := rec.waitFor(t, 6*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.NoteChanged)
+		return ok && c.State == appwire.NoteRead
+	})
+	rec.mu.Lock()
+	got := rec.data[i].(appwire.NoteChanged)
+	rec.mu.Unlock()
+	if got.ID != entry.ID || got.ClientID != "c-7" || got.ReadAtStep == nil || *got.ReadAtStep != 5 {
+		t.Fatalf("read = %+v", got)
 	}
 }
