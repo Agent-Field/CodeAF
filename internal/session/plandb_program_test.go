@@ -396,6 +396,43 @@ func TestAProgramsPageCarriesTheNewestActionsAndCountsTheRest(t *testing.T) {
 	}
 }
 
+// AN ENDING'S FACTS REACH THE PAGE FROM THE LOG ON DISK, with the run's own copy
+// taken out of the files they name as it is out of the line's words, and they
+// survive the trip to another machine unchanged.
+func TestAProgramsPageCarriesTheEndingsFactsFromItsLog(t *testing.T) {
+	dir := t.TempDir()
+	at := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	ending := delegate.EndAction(at, delegate.Terminal{Status: delegate.StatusPass, Message: "7 findings, 2 blocking the merge",
+		Data: map[string]json.RawMessage{
+			"reports":  json.RawMessage(`["/tmp/copy/review-report.md","/tmp/copy/review-report.json"]`),
+			"findings": json.RawMessage(`7`), "blocking": json.RawMessage(`2`),
+			"claim": json.RawMessage(`"wrote /tmp/copy/review-report.md"`), "transcript": json.RawMessage(`"not on the list"`)}})
+	if err := delegate.AppendAction(dir, ending); err != nil {
+		t.Fatal(err)
+	}
+	logged, err := delegate.ReadActions(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shown, _ := planProgramActionsFor(logged, planProgramOf(nil, "review"), planRunCopies{live: "/tmp/copy"})
+	if len(shown) != 1 || shown[0].Text != "7 findings, 2 blocking the merge" || shown[0].Ending == nil {
+		t.Fatalf("shown = %+v", shown)
+	}
+	facts := shown[0].Ending
+	if strings.Join(facts.Reports, " ") != "review-report.md review-report.json" || facts.Claim != "wrote review-report.md" ||
+		facts.Findings == nil || *facts.Findings != 7 || facts.Blocking == nil || *facts.Blocking != 2 {
+		t.Fatalf("facts = %+v", facts)
+	}
+	wire, err := json.Marshal(shown)
+	if err != nil || strings.Contains(string(wire), "transcript") {
+		t.Fatalf("wire = %s, %v", wire, err)
+	}
+	var back []delegate.Shown
+	if err := json.Unmarshal(wire, &back); err != nil || !reflect.DeepEqual(back, shown) {
+		t.Fatalf("the page changed on the wire: %+v, %v", back, err)
+	}
+}
+
 // A NOTE NOBODY READS IS NOT A NOTE DELIVERED. A program's worker never reads
 // its task's notes, so the note doors refuse one for a program's task — in the
 // person's voice and the conversation's alike — and write nothing, while an

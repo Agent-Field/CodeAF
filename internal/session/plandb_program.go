@@ -319,6 +319,7 @@ func planProgramActionsFor(logged []delegate.Action, program delegate.Delegate, 
 		line.Text = planTextHead(copies.strip(line.Text))
 		line.Outcome = planTextHead(line.Outcome)
 		line.Reason = planTextHead(line.Reason)
+		line.Ending = planEndingForPage(line.Ending, copies)
 		if line.Text == "" {
 			continue
 		}
@@ -330,6 +331,25 @@ func planProgramActionsFor(logged []delegate.Action, program delegate.Delegate, 
 		shown = shown[earlier:]
 	}
 	return shown, earlier
+}
+
+// planEndingForPage is an ending's facts as the page carries them: the run's own
+// copy taken out of every text a program wrote about its files, as the line's
+// own words have it, and every fact else exactly as the log kept it.
+func planEndingForPage(ending *delegate.EndFacts, copies planRunCopies) *delegate.EndFacts {
+	if ending == nil {
+		return nil
+	}
+	kept := *ending
+	kept.Claim, kept.Observed = copies.strip(kept.Claim), copies.strip(kept.Observed)
+	kept.AnalysisIncomplete = copies.strip(kept.AnalysisIncomplete)
+	if len(kept.Reports) > 0 {
+		kept.Reports = make([]string, len(ending.Reports))
+		for i, name := range ending.Reports {
+			kept.Reports[i] = copies.strip(name)
+		}
+	}
+	return &kept
 }
 
 // planTurnForPage is one turn as a page carries it: every text cut to its head

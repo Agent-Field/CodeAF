@@ -34,7 +34,7 @@ import (
 const ActionsFile = "delegate-actions.jsonl"
 
 // The kinds of line the log holds: a stage record, a step record, and the
-// terminal record's status and message.
+// terminal record's status, message and allow-listed facts.
 const (
 	ActionStage = "stage"
 	ActionStep  = "step"
@@ -46,7 +46,9 @@ type Action struct {
 	// At is when codeaf received the record.
 	At   time.Time `json:"at"`
 	Kind string    `json:"kind"`
-	// Stage, Status and Data are a stage's; Status is the ending's too.
+	// Stage, Status and Data are a stage's; Status is the ending's too, and so is
+	// Data, as the allow-listed facts of the terminal's ([EndFacts]) — never the
+	// terminal's data whole.
 	Stage  string          `json:"stage,omitempty"`
 	Status string          `json:"status,omitempty"`
 	Data   json.RawMessage `json:"data,omitempty"`
@@ -79,9 +81,10 @@ func StepAction(at time.Time, record StepRecord) Action {
 }
 
 // EndAction is the terminal record as the log's last line: its status and its
-// sentence. The rest of the record is the result's, which the run keeps whole.
+// sentence, and the allow-listed facts of its data ([EndFacts]). The rest of the
+// record is the result's, which the run keeps whole.
 func EndAction(at time.Time, t Terminal) Action {
-	return Action{At: at, Kind: ActionEnd, Status: t.Status, Message: t.Message}
+	return Action{At: at, Kind: ActionEnd, Status: t.Status, Message: t.Message, Data: endDataOf(endFactsOf(t.Data))}
 }
 
 // capped is the line as it is written: every text held to the reader's own
@@ -93,7 +96,13 @@ func (a Action) capped() Action {
 	a.Message = cut(a.Message, turnTextCap)
 	a.Tool, a.Step = label(a.Tool), label(a.Step)
 	a.Stage, a.Status = label(a.Stage), label(a.Status)
-	a.Data = stageData(a.Data)
+	if a.Kind == ActionEnd {
+		// THE ENDING'S DATA IS RE-PROJECTED THROUGH THE ALLOW-LIST HERE TOO, so a
+		// line built by hand reaches the file as the same bounded facts.
+		a.Data = endDataOf(endFactsOfRaw(a.Data))
+	} else {
+		a.Data = stageData(a.Data)
+	}
 	return a
 }
 
@@ -191,6 +200,12 @@ type Shown struct {
 	Memory bool   `json:"memory,omitempty"`
 	Model  string `json:"model,omitempty"`
 	Reason string `json:"reason,omitempty"`
+	// Ending is the typed facts of an ending line ([EndFacts]): what the program
+	// claimed beside what it observed, its report files and its counts. Nil for
+	// every other line and for an ending that kept none. It is set by
+	// [Delegate.Reader] from the log, never by a program's vocabulary, and it
+	// changes none of the words above.
+	Ending *EndFacts `json:"ending,omitempty"`
 }
 
 // ActionReader reads a program's action log for its page: each line, in the
@@ -219,6 +234,7 @@ func (d Delegate) Reader() ActionReader {
 			return Shown{}, false
 		}
 		shown.At = action.At
+		shown.Ending = action.Ending()
 		return shown, true
 	}
 }
