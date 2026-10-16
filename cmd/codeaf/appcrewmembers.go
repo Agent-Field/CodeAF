@@ -20,6 +20,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -672,12 +673,13 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	return b.CrewGet(id)
 }
 
-// MemberBrief is what a manager started a member with: the start line that
-// made this very membership, read by its recorded id (teamstore.StartFor), so a
-// renamed member keeps its own brief and a later member under its old handle
-// does not receive it. A member nobody started, or one whose line cannot be
-// proved to be its own, has none; nothing is inferred from its conversation or
-// from who manages the crew now.
+// MemberBrief is a member's brief: the start line that made this very
+// membership, read by its recorded id (teamstore.StartFor), so a renamed member
+// keeps its own brief and a later member under its old handle does not receive
+// it; or, when it was changed since, the newest change, with every change kept
+// on the membership (teamstore.ReviseBrief). A member nobody started and
+// nobody briefed has none; nothing is inferred from its conversation or from
+// who manages the crew now.
 func (b *appBackend) MemberBrief(crew, agent string) (appwire.MemberBrief, error) {
 	t, _, err := b.crewTeam(crew)
 	if err != nil {
@@ -687,17 +689,106 @@ func (b *appBackend) MemberBrief(crew, agent string) (appwire.MemberBrief, error
 	if !ok {
 		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", agent, t.Name)
 	}
+	return b.memberBrief(t, m)
+}
+
+func (b *appBackend) memberBrief(t teamstore.Team, m teamstore.Member) (appwire.MemberBrief, error) {
+	var out appwire.MemberBrief
 	e, ok, err := teamstore.StartFor(b.crewProfile(), t, m)
 	if err != nil {
 		return appwire.MemberBrief{}, appEngineError(err)
 	}
+	if ok {
+		at := e.At
+		if boss, ok := t.Member(e.FromKey); ok {
+			out.From = boss.Handle
+		}
+		out.Text, out.At = redact.Secrets(strings.TrimSpace(e.Text)), &at
+	}
+	for _, r := range m.BriefRevisions() {
+		out.Revisions = append(out.Revisions, appwire.BriefRevision{
+			Text: redact.Secrets(r.Text), Before: redact.Secrets(r.Before), By: appBriefAuthor(t, r), At: r.At, Post: r.Entry,
+		})
+	}
+	if cur, ok := m.CurrentBrief(); ok {
+		at := cur.At
+		out.Text, out.At = redact.Secrets(cur.Text), &at
+	}
+	return out, nil
+}
+
+// appBriefAuthor names who changed a brief: "you", or the handle the changer
+// has in this crew now (the manager's seat by the manager's handle).
+func appBriefAuthor(t teamstore.Team, r teamstore.BriefRevision) string {
+	if r.By == teamstore.FromYou {
+		return "you"
+	}
+	if r.ByKey != "" {
+		if m, ok := t.Member(r.ByKey); ok && m.Handle != "" {
+			return m.Handle
+		}
+	}
+	if r.By == teamstore.FromManager {
+		if m, ok := t.Member(t.Manager); ok && m.Handle != "" {
+			return m.Handle
+		}
+	}
+	return r.By
+}
+
+// MemberBriefSet changes a member's brief in place, as the person: the member
+// reads the new words at its next step. Nothing is posted to its conversation,
+// nothing is restarted, and a role the member carries is left as it is: the
+// brief replaces the one it was started with, never its role. base, when set,
+// is the revision the person edited (its post, "" for a brief never changed);
+// a brief changed since is refused as a conflict and nothing is written.
+func (b *appBackend) MemberBriefSet(crew, agent, text string, base *string) (appwire.MemberBrief, error) {
+	t, _, err := b.crewTeam(crew)
+	if err != nil {
+		return appwire.MemberBrief{}, err
+	}
+	if t.Closed() {
+		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeClosed, "%s is closed; its briefs are read-only", t.Name)
+	}
+	m, ok := b.crewMemberOf(t, agent)
 	if !ok {
-		return appwire.MemberBrief{}, nil
+		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", agent, t.Name)
 	}
-	at := e.At
-	from := ""
-	if boss, ok := t.Member(e.FromKey); ok {
-		from = boss.Handle
+	if m.Key == t.Manager {
+		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeBadParams, "%s manages %s; a manager has no brief to change here", m.Handle, t.Name)
 	}
-	return appwire.MemberBrief{Text: redact.Secrets(strings.TrimSpace(e.Text)), From: from, At: &at}, nil
+	// The words it replaces, when it was never changed: its start line.
+	before := ""
+	if _, has := m.CurrentBrief(); !has {
+		e, ok, err := teamstore.StartFor(b.crewProfile(), t, m)
+		if err != nil {
+			return appwire.MemberBrief{}, appEngineError(err)
+		}
+		if ok {
+			before = e.Text
+		}
+	}
+	change := teamstore.BriefChange{By: teamstore.FromYou, Text: redact.Secrets(text), Before: before, Base: base, At: b.now()}
+	if _, err := teamstore.ReviseBrief(b.crewProfile(), t.ID, m.Key, change); err != nil {
+		switch {
+		case errors.Is(err, teamstore.ErrBriefUnchanged), errors.Is(err, teamstore.ErrBriefTooLong):
+			return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
+		case errors.Is(err, teamstore.ErrBriefStale):
+			return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeConflict, "%s's brief was changed since you opened it; read it again", m.Handle)
+		case errors.Is(err, teamstore.ErrClosed):
+			return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeClosed, "%s is closed; its briefs are read-only", t.Name)
+		case errors.Is(err, teamstore.ErrBriefNoMember):
+			return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", agent, t.Name)
+		}
+		return appwire.MemberBrief{}, appEngineError(err)
+	}
+	t, _, err = b.crewTeam(crew)
+	if err != nil {
+		return appwire.MemberBrief{}, err
+	}
+	m, ok = b.crewMemberOf(t, agent)
+	if !ok {
+		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", agent, t.Name)
+	}
+	return b.memberBrief(t, m)
 }

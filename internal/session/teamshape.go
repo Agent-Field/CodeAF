@@ -28,7 +28,8 @@ type TeamLine struct {
 	// To is where the line was aimed: "room", "everyone", "manager" or a
 	// member's handle, and "" for the conversation reading it.
 	To string
-	// Kind is [teams.KindNote], [teams.KindDirective], or [teams.KindStart] for
+	// Kind is [teams.KindNote], [teams.KindDirective], [teams.KindBrief] for a
+	// brief changed in place (teams' brief.go), or [teams.KindStart] for
 	// the brief a manager started this conversation with.
 	Kind string
 	// Text is the line's words, whole lines kept.
@@ -90,6 +91,26 @@ func teamLineParts(line string) (TeamLine, bool) {
 	}
 	parsed := TeamLine{Kind: teams.KindNote, Text: text}
 	switch {
+	case strings.HasPrefix(head, teamBriefChangedWord):
+		who, rest, _ := strings.Cut(strings.TrimPrefix(head, teamBriefChangedWord), " #")
+		switch who {
+		case "the person":
+			parsed.From = teams.FromYou
+		case "manager":
+			parsed.From = teams.FromManager
+		case "codeaf":
+			parsed.From = teams.FromSystem
+		default:
+			handle, ok := strings.CutPrefix(who, "@")
+			if !ok || handle == "" || strings.Contains(handle, " ") {
+				return TeamLine{}, false
+			}
+			parsed.From = handle
+		}
+		parsed.Kind, head = teams.KindBrief, ""
+		if rest != "" {
+			head = " #" + rest
+		}
 	case strings.HasPrefix(head, teamBriefWord):
 		parsed.From, parsed.Kind, head = teams.FromManager, teams.KindStart, strings.TrimPrefix(head, teamBriefWord)
 	case strings.HasPrefix(head, "◆ directive from manager"):

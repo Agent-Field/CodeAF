@@ -54,6 +54,11 @@ type Member struct {
 	// handle written before this was kept, and is read as the word list's
 	// ([Member.HandleDerived]).
 	HandleBy string `json:"handle_by,omitempty"`
+	// Briefs are the changes made to this member's brief after it started,
+	// oldest first, the newest [BriefRevisionsKept] (brief.go). Empty on a
+	// membership whose brief never changed and on every one written before
+	// they were kept: nobody's edit is ever inferred.
+	Briefs []BriefRevision `json:"briefs,omitempty"`
 	// Unknown membership fields survive whole-file updates from this build.
 	extra map[string]json.RawMessage
 }

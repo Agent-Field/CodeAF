@@ -391,6 +391,7 @@ type Crewer interface {
 	CrewUpdate(ask CrewUpdate) (Crew, error)
 	CrewMessage(ask CrewMessage) (Entry, error)
 	CrewLog(id, after string, limit int) ([]LogLine, string, error)
+	CrewLogAt(ask LogAnchorAsk) (LogAnchor, error)
 	CrewDecisions(id string, all bool) ([]Decision, error)
 	CrewDecide(packet, option, text, reason string) (Decision, error)
 	CrewManager(id, agent string) (Crew, error)
@@ -407,6 +408,7 @@ type Crewer interface {
 	CrewPropose(agent string) error
 	Member(verb string, ask MemberAsk) (CrewMember, error)
 	MemberBrief(crew, agent string) (MemberBrief, error)
+	MemberBriefSet(crew, agent, text string, base *string) (MemberBrief, error)
 	Roles() ([]Role, error)
 	RoleUpdate(id string, name, instructions, model *string) (Role, error)
 }
@@ -459,13 +461,53 @@ func crewOf(c Crew, err error) (*crewResult, error) {
 	return &crewResult{c}, nil
 }
 
-// MemberBrief is the words a manager started a member with, read from the
-// crew's own start line. Text is empty when the record holds none: a member a
-// person added, a crew's first manager, or a start older than the log.
+// LogAnchorAsk names one crew log line from a conversation's own record: the
+// agent whose chat holds it (the receipt's sender, the delivery's addressee),
+// the line's id (a handoff's or a delivery's post) and the crew name the record
+// gave. Around is how many lines on each side to read with it (at most
+// [LogAnchorAroundMax]).
+type LogAnchorAsk struct {
+	Agent    string `json:"agent"`
+	Post     string `json:"post"`
+	CrewName string `json:"crew_name,omitempty"`
+	Around   int    `json:"around,omitempty"`
+}
+
+// LogAnchorAroundMax bounds a log anchor's neighbours on each side.
+const LogAnchorAroundMax = 10
+
+// LogAnchor is the crew whose log holds an anchored line and that line with its
+// neighbours, oldest first, read by id (never by words or time). Closed says
+// the crew is closed: its log is read-only history.
+type LogAnchor struct {
+	Crew   string    `json:"crew"`
+	Closed bool      `json:"closed,omitempty"`
+	Lines  []LogLine `json:"lines"`
+}
+
+// MemberBrief is a member's brief: the words its manager started it with, or
+// the newest change made to them since (members.brief.set). Text is empty when
+// the record holds neither: a member a person added, a crew's first manager,
+// or a start older than the log. From is who started it (a handle); At when
+// the brief now in force was written. Revisions are the changes, oldest first
+// (at most 16); none means the brief was never changed — nothing is inferred
+// for a brief from before changes were kept.
 type MemberBrief struct {
-	Text string     `json:"text,omitempty"`
-	From string     `json:"from,omitempty"`
-	At   *time.Time `json:"at,omitempty"`
+	Text      string          `json:"text,omitempty"`
+	From      string          `json:"from,omitempty"`
+	At        *time.Time      `json:"at,omitempty"`
+	Revisions []BriefRevision `json:"revisions,omitempty"`
+}
+
+// BriefRevision is one change to a member's brief: who made it ("you" or a
+// member's handle), when, the words before and after, and the crew log entry
+// that delivered it (a LogLine id), which the member read at its next step.
+type BriefRevision struct {
+	Text   string    `json:"text"`
+	Before string    `json:"before,omitempty"`
+	By     string    `json:"by"`
+	At     time.Time `json:"at"`
+	Post   string    `json:"post,omitempty"`
 }
 
 // MemberResult is a member verb's answer.
@@ -532,6 +574,24 @@ var crewMethods = map[string]method{
 			return nil, err
 		}
 		return &LinesCursorResult{nonNil(lines), cursor}, nil
+	}),
+	"crews.log.at": crewCall("crews.log.at", func(c Crewer, p LogAnchorAsk) (*struct {
+		Anchor LogAnchor `json:"anchor"`
+	}, error) {
+		if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.Post) == "" {
+			return nil, Errorf(CodeBadParams, "crews.log.at needs an agent and a post")
+		}
+		if p.Around < 0 || p.Around > LogAnchorAroundMax {
+			return nil, Errorf(CodeBadParams, "crews.log.at reads at most %d lines on each side", LogAnchorAroundMax)
+		}
+		anchor, err := c.CrewLogAt(p)
+		if err != nil {
+			return nil, err
+		}
+		anchor.Lines = nonNil(anchor.Lines)
+		return &struct {
+			Anchor LogAnchor `json:"anchor"`
+		}{anchor}, nil
 	}),
 	"crews.decisions": crewCall("crews.decisions", func(c Crewer, p struct {
 		ID  string `json:"id"`
@@ -684,6 +744,28 @@ var crewMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "members.brief needs a crew and an agent")
 		}
 		brief, err := c.MemberBrief(p.Crew, p.Agent)
+		if err != nil {
+			return nil, err
+		}
+		return &struct {
+			Brief MemberBrief `json:"brief"`
+		}{brief}, nil
+	}),
+	"members.brief.set": crewCall("members.brief.set", func(c Crewer, p struct {
+		Crew  string  `json:"crew"`
+		Agent string  `json:"agent"`
+		Text  string  `json:"text"`
+		Base  *string `json:"base"`
+	}) (*struct {
+		Brief MemberBrief `json:"brief"`
+	}, error) {
+		if strings.TrimSpace(p.Crew) == "" || strings.TrimSpace(p.Agent) == "" {
+			return nil, Errorf(CodeBadParams, "members.brief.set needs a crew and an agent")
+		}
+		if strings.TrimSpace(p.Text) == "" {
+			return nil, Errorf(CodeBadParams, "a brief needs words")
+		}
+		brief, err := c.MemberBriefSet(p.Crew, p.Agent, p.Text, p.Base)
 		if err != nil {
 			return nil, err
 		}

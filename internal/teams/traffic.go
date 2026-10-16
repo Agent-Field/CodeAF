@@ -42,6 +42,9 @@ const (
 	KindPacket   = "packet"   // a decision packet was raised, decided or escalated
 	KindClose    = "close"    // the team was closed
 	KindReopen   = "reopen"   // the team was reopened
+	// KindBrief replaces a member's brief in place (brief.go): the member
+	// reads it at its next step; it wakes nobody and restarts nothing.
+	KindBrief = "brief"
 )
 
 // Addresses that are not a member's handle.
@@ -62,6 +65,7 @@ const (
 var kinds = map[string]bool{
 	KindEvent: true, KindNote: true, KindDirective: true, KindStop: true, KindStart: true, KindYou: true,
 	KindQuestion: true, KindAnswer: true, KindPacket: true, KindClose: true, KindReopen: true,
+	KindBrief: true,
 }
 
 // Entry is one line of the Traffic log. This shape is the contract between

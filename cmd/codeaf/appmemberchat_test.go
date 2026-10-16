@@ -70,3 +70,61 @@ func TestTeamPostCallCarriesItsHandoff(t *testing.T) {
 		t.Fatalf("a running post carried %+v", h)
 	}
 }
+
+// THE RECORD ITSELF, READ BACK: a real journal (a person's question, an answer,
+// then a manager's directive the session journaled as its own note, work, a
+// team_post and the turn's last message) shaped by the session and listed by
+// the app. The answer before the directive stays an answer, the delivery says
+// its sender and kind as facts, the post says where it went, and the turn's
+// last message is its answer.
+func TestJournalReadBackKeepsAnswersAndTypedDeliveryFacts(t *testing.T) {
+	const record = `{"type":"session","version":1,"id":"n1","cwd":"/tmp/lab"}
+{"type":"message","role":"user","content":"Read the attached file and reply only with its verification token.","timestamp":"2026-10-15T23:06:41Z"}
+{"type":"message","role":"assistant","content":"","toolCalls":[{"id":"c1","function":{"name":"read","arguments":"{\"path\":\"crew-attachment-check.txt\"}"}}],"timestamp":"2026-10-15T23:06:42Z"}
+{"type":"message","role":"tool","toolCallId":"c1","content":"The nested crew attachment token is BIRCH-9304.","timestamp":"2026-10-15T23:06:42Z"}
+{"type":"message","role":"assistant","content":"BIRCH-9304","timestamp":"2026-10-15T23:06:43Z"}
+{"type":"message","role":"user","note":true,"content":"Team traffic in \"Verification\" for you (@observer). These are the team's messages, not the person's words:\n◆ directive from manager #8: Job A (read-only validation). Run the suite twice.\n(The person's own words in this conversation outrank the manager. Reply with team_post.)","timestamp":"2026-10-15T23:46:44Z"}
+{"type":"message","role":"assistant","content":"Run 1 was 62 tests / OK. Running it a second time now.","toolCalls":[{"id":"c2","function":{"name":"bash","arguments":"{\"command\":\"make test\"}"}}],"timestamp":"2026-10-15T23:46:49Z"}
+{"type":"message","role":"tool","toolCallId":"c2","content":"OK","timestamp":"2026-10-15T23:46:51Z"}
+{"type":"message","role":"assistant","content":"Both runs matched. Reporting now.","toolCalls":[{"id":"c3","function":{"name":"team_post","arguments":"{\"to\":\"manager\",\"text\":\"Job A done, both runs match.\"}"}}],"timestamp":"2026-10-15T23:46:55Z"}
+{"type":"message","role":"tool","toolCallId":"c3","content":"Posted to the manager in \"Verification\" as #10, answering #8. It arrives at the start of their next step.","timestamp":"2026-10-15T23:46:55Z"}
+{"type":"message","role":"assistant","content":"Job A done and reported to the manager.","timestamp":"2026-10-15T23:46:56Z"}
+`
+	items := session.ReadTranscriptBytes([]byte(record)).Entries
+	entries := appEntriesOf("a", items, time.Now(), nil)
+	var kinds []string
+	for _, e := range entries {
+		if e.Kind != appwire.EntryTool {
+			kinds = append(kinds, e.Kind+":"+e.Text)
+		}
+	}
+	want := []string{
+		"user:Read the attached file and reply only with its verification token.",
+		"answer:BIRCH-9304",
+		"notice:manager: Job A (read-only validation). Run the suite twice.",
+		"update:Run 1 was 62 tests / OK. Running it a second time now.",
+		"update:Both runs matched. Reporting now.",
+		"answer:Job A done and reported to the manager.",
+	}
+	if strings.Join(kinds, "|") != strings.Join(want, "|") {
+		t.Fatalf("kinds\n%v\nwant\n%v", kinds, want)
+	}
+	var notice appwire.Entry
+	for _, e := range entries {
+		if e.Kind == appwire.EntryNotice {
+			notice = e
+		}
+	}
+	if len(notice.Team) != 1 || notice.Team[0].From != "manager" || notice.Team[0].Kind != "directive" || strings.TrimLeft(notice.Team[0].Post, "0") != "8" || notice.Team[0].CrewName != "Verification" {
+		t.Fatalf("delivery facts = %+v", notice.Team)
+	}
+	var post *appwire.Handoff
+	for _, item := range items {
+		if item.Tool == "team_post" {
+			post = appHandoff(item.Tool, item.Args, item.Output)
+		}
+	}
+	if post == nil || !post.Delivered || post.To != "manager" || strings.TrimLeft(post.Post, "0") != "10" || strings.TrimLeft(post.Answers, "0") != "8" {
+		t.Fatalf("handoff = %+v", post)
+	}
+}

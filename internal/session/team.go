@@ -802,6 +802,9 @@ func teamLine(role teamRole, entry teams.Entry) string {
 		}
 		return ""
 	}
+	if entry.Kind == teams.KindBrief {
+		return teamBriefChangedLine(role, entry)
+	}
 	if entry.Kind != teams.KindNote && entry.Kind != teams.KindDirective {
 		return ""
 	}

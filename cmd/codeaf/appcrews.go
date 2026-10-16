@@ -1615,6 +1615,73 @@ func (b *appBackend) CrewLog(id, after string, limit int) ([]appwire.LogLine, st
 	return lines, cursor, nil
 }
 
+// appLogAnchorAround is how many neighbours an anchor reads on each side when
+// the ask names none.
+const appLogAnchorAround = 2
+
+// CrewLogAt is one crew log line a conversation's own record points at (a
+// handoff's post, a delivery's post), with its neighbours. THE LINE IS FOUND
+// BY FACTS, NEVER BY WORDS OR TIME: a crew the agent is a member of, with the
+// name the record gave, whose log holds that very id written by or to that
+// member. Two crews that both qualify are refused rather than guessed between,
+// and a line rotated out of the log is not_found, never a nearby one.
+func (b *appBackend) CrewLogAt(ask appwire.LogAnchorAsk) (appwire.LogAnchor, error) {
+	post, ok := teamstore.ThreadID(ask.Post)
+	if !ok {
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeBadParams, "%q is not a crew log line", ask.Post)
+	}
+	around := ask.Around
+	if around == 0 {
+		around = appLogAnchorAround
+	}
+	profile := b.crewProfile()
+	f, err := teamstore.Load(profile)
+	if err != nil {
+		return appwire.LogAnchor{}, appEngineError(err)
+	}
+	var (
+		found   []appwire.LogAnchor
+		inCrews int
+	)
+	for _, t := range f.Teams {
+		if ask.CrewName != "" && t.Name != ask.CrewName {
+			continue
+		}
+		m, ok := b.crewMemberOf(t, ask.Agent)
+		if !ok {
+			continue
+		}
+		inCrews++
+		entries, ok, err := teamstore.ReadAround(profile, t.ID, post, around)
+		if err != nil {
+			return appwire.LogAnchor{}, appEngineError(err)
+		}
+		if !ok {
+			continue
+		}
+		var mine bool
+		lines := make([]appwire.LogLine, 0, len(entries))
+		for _, e := range entries {
+			if e.ID == post {
+				mine = teamstore.Involves(e, m)
+			}
+			lines = append(lines, appLogLine(t, e))
+		}
+		if mine {
+			found = append(found, appwire.LogAnchor{Crew: t.ID, Closed: t.Closed(), Lines: lines})
+		}
+	}
+	switch {
+	case len(found) == 1:
+		return found[0], nil
+	case len(found) > 1:
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeConflict, "line %s is in more than one of this agent's crews", teamstore.ThreadNumber(post))
+	case inCrews == 0:
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "this agent is no longer in a crew named %q", ask.CrewName)
+	}
+	return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "line %s is no longer in the crew's log", teamstore.ThreadNumber(post))
+}
+
 // CrewDecisions is the decisions waiting (or all of them) for one crew, or
 // every decision waiting on the person.
 func (b *appBackend) CrewDecisions(id string, all bool) ([]appwire.Decision, error) {

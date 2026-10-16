@@ -356,7 +356,7 @@ func recentOf(log []teams.Entry) []teams.Entry {
 
 // teamBriefText is how many characters of a brief are delivered. A brief is
 // the whole assignment, so it is allowed more than a message.
-const teamBriefText = 12000
+const teamBriefText = teams.BriefTextMax
 
 // teamBriefLine is a [teams.KindStart] entry as the member it started is told
 // it: the manager's brief, marked as the manager's, on the new conversation's
@@ -377,6 +377,35 @@ func teamBriefLine(role teamRole, entry teams.Entry) string {
 // teamBriefWord opens the brief's line, beside "◆ from manager" and
 // "◆ directive from manager".
 const teamBriefWord = "◆ brief from manager"
+
+// teamBriefChangedLine is a member's brief replaced in place (teams' brief.go),
+// told to that member only: "◆ brief changed by the person #12: …". It is the
+// whole new brief, which stands in place of the one it was started with.
+func teamBriefChangedLine(role teamRole, entry teams.Entry) string {
+	if role.manager || role.handle == "" || entry.To != role.handle {
+		return ""
+	}
+	text := strings.TrimSpace(entry.Text)
+	if text == "" {
+		return ""
+	}
+	return teamBriefChangedWord + teamBriefChanger(entry.From) + teamNumber(entry) + ": " + indentAfterFirst(cutRunesTeam(text, teamBriefText))
+}
+
+// teamBriefChangedWord opens a changed brief's line; teamBriefChanger names who.
+const teamBriefChangedWord = "◆ brief changed by "
+
+func teamBriefChanger(from string) string {
+	switch from {
+	case teams.FromYou:
+		return "the person"
+	case teams.FromManager:
+		return "manager"
+	case teams.FromSystem:
+		return "codeaf"
+	}
+	return "@" + strings.TrimPrefix(from, "@")
+}
 
 // teamCursorBefore is the cursor that reads id itself next: the id one below
 // it, zero-padded the way [teams.AppendTraffic] pads.
