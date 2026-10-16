@@ -175,8 +175,8 @@ func (c *checkoutEngine) CheckoutStatus(q CheckoutQuery) (CheckoutStatus, error)
 }
 
 // CHECKOUT.STATUS bounds its page, refuses what is malformed, is unknown on an
-// engine that cannot read a checkout, and ALWAYS says there is no land: an
-// engine cannot claim a landing this protocol has no door for.
+// engine that cannot read a checkout. A reader cannot manufacture a landing
+// capability without implementing the plan and confirmed-land producer.
 func TestCheckoutStatusRoute(t *testing.T) {
 	m, ok := methods["checkout.status"]
 	if !ok {
@@ -202,5 +202,26 @@ func TestCheckoutStatusRoute(t *testing.T) {
 	}
 	if _, err := m.call(&fakeEngine{}, json.RawMessage(`{"agent":"a1"}`)); !errors.As(err, &wire) || wire.Code != CodeUnknownMethod {
 		t.Fatalf("an engine without a checkout answered %v", err)
+	}
+}
+
+type checkoutLandEngine struct{ checkoutEngine }
+
+func (*checkoutLandEngine) PlanBranchLand(BranchLandPlanQuery) (BranchLandPlan, error) {
+	panic("checkout.status must not prepare a land")
+}
+
+func (*checkoutLandEngine) LandBranch(BranchLandQuery) (BranchLanded, error) {
+	panic("checkout.status must never land a branch")
+}
+
+func TestCheckoutStatusNamesTheActualLandProducerWithoutRunningIt(t *testing.T) {
+	got, err := methods["checkout.status"].call(&checkoutLandEngine{}, json.RawMessage(`{"agent":"a1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := got.(*CheckoutStatus)
+	if !status.Land.Available || status.Land.Reason != "" {
+		t.Fatalf("confirmed-land producer is hidden: %+v", status.Land)
 	}
 }

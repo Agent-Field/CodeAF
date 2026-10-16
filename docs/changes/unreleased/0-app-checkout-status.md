@@ -1,11 +1,11 @@
 ---
 kind: added
-title: codeaf app reads the workspace checkout's status, and says it cannot land
+title: codeaf app reads checkout status and reports its confirmed-land capability
 pr: 0
 surface: [engine]
 invalidates:
   - "The app could list a conversation's unmerged task branches and diff one file, but had no account of the checkout itself: what is staged, edited, untracked, renamed or in conflict. checkout.status {agent, cursor?, limit?} now answers that, 100 entries a page (200 at most), from the same workspace files.diff and branches.list use."
-  - "Landing work from the app has no producer, and now says so. Agent.Land merges the standing copy of a referred folder, not the task branches branches.list names, and binds no plan or revision; the app's consent questions approve a tool call, not a plan. Every checkout.status answers land {available: false, reason: no_producer} and no land method exists. A two-phase plan/confirm protocol is written in PROTOCOL.md as a proposal, not built."
+  - "checkout.status now reports whether the engine implements both branches.land.plan and branches.land. A reader cannot claim the capability itself. Availability does not prepare a plan or authorize a merge: the native host still confirms the exact bound plan, and the producer refuses changed or unsafe checkouts."
 ---
 
 Read-only git through the runner files.diff uses: no optional locks, no

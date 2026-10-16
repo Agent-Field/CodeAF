@@ -11,11 +11,9 @@ import "strings"
 // listing that was cut short are each ABSENT or marked, never zero and never a
 // short list called whole.
 //
-// There is no landing here. The result says so in [CheckoutLand] rather than
-// leaving a client to guess from a missing method: the only producer that
-// merges work into a checkout lands a standing copy of a referred folder, binds
-// no plan or revision, and is not the producer of the branches branches.list
-// names, so offering a "land" over this wire would be a git merge wrapper.
+// Landing is a separate, native-host-confirmed operation. [CheckoutLand] says
+// whether this engine implements that producer; it is not permission to land
+// any branch or a promise that a particular plan will pass its checks.
 
 // The bounds of checkout.status.
 const (
@@ -109,7 +107,7 @@ type CheckoutCounts struct {
 }
 
 // CheckoutLand says whether this engine can land work into the checkout through
-// the wire. It never can today; Reason says why in a word a client can switch on.
+// the wire. Availability is a producer capability, not a branch eligibility check.
 type CheckoutLand struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty" enum:"no_producer"`
@@ -188,9 +186,13 @@ func init() {
 		if got.Entries == nil {
 			got.Entries = []CheckoutEntry{}
 		}
-		// THE LAND FACT IS THE WIRE'S, NOT THE ENGINE'S: no engine may claim a
-		// landing this protocol has no door for.
+		// THE LAND FACT IS THE WIRE'S, NOT AN UNCHECKED CLAIM FROM THE READER.
+		// Only an engine implementing both plan and confirmed-land methods has
+		// the producer. The native host must still confirm each exact plan.
 		got.Land = CheckoutLand{Reason: CheckoutLandNoProducer}
+		if _, ok := e.(BranchLander); ok {
+			got.Land = CheckoutLand{Available: true}
+		}
 		return &got, nil
 	})
 }
