@@ -18,6 +18,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -386,6 +387,19 @@ func TestAnInvalidSubmissionIsRefusedBeforeAnythingIsReadOrRecorded(t *testing.T
 }
 
 func TestAPictureThatCannotBeCarriedIsRefusedWithoutBeingRead(t *testing.T) {
+	// TotalAlloc measures the whole process. Run this unchanged allocation law
+	// alone so background work left by other session tests cannot enter its interval.
+	const childEnv = "CODEAF_TEST_IMAGE_REFUSAL_ALLOCATION_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
+		child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAPictureThatCannotBeCarriedIsRefusedWithoutBeingRead$", "-test.count=1", "-test.timeout=30s")
+		child.Env = append(os.Environ(), childEnv+"=1")
+		if output, err := child.CombinedOutput(); err != nil {
+			t.Fatalf("isolated allocation law: %v\n%s", err, output)
+		}
+		return
+	}
 	completer := &scriptedCompleter{}
 	journal := filepath.Join(t.TempDir(), "session.jsonl")
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
