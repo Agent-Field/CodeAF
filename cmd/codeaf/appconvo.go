@@ -816,16 +816,20 @@ func appAttachShown(text string, kept []appAttach) *appSending {
 
 // appDescribed is one attachment as the record keeps it: what it is, what it
 // is called and where it is, and its size where this side measured one — a
-// paste, whose words the model is sent whole. Never its contents, and never
-// a fact that changes after the send, such as whether a file has changed.
+// paste, whose words the model is sent whole. A file's size is left unsaid:
+// this side reads no further than its stat's state, and an unmeasured size is
+// absent rather than zero. Never its contents, and never a fact that changes
+// after the send, such as whether a file has changed.
 func appDescribed(attach appAttach) session.MessageAttachment {
 	described := session.MessageAttachment{
 		ID: attach.view.ID, Kind: attach.view.Kind, Name: attach.view.Title, Path: attach.view.Path, URL: attach.view.URL,
 	}
 	if attach.view.Kind == appwire.AttachPaste {
-		described.Bytes = int64(len(attach.content))
+		bytes := int64(len(attach.content))
+		described.Bytes = &bytes
 		if attach.view.Lines != nil {
-			described.Lines = *attach.view.Lines
+			lines := *attach.view.Lines
+			described.Lines = &lines
 		}
 	}
 	return described
@@ -840,8 +844,8 @@ func appAttachmentsOf(described []session.MessageAttachment) []appwire.Attachmen
 	views := make([]appwire.Attachment, 0, len(described))
 	for _, d := range described {
 		view := appwire.Attachment{ID: d.ID, Kind: d.Kind, Path: d.Path, URL: d.URL, Title: d.Name}
-		if d.Lines > 0 {
-			lines := d.Lines
+		if d.Lines != nil {
+			lines := *d.Lines
 			view.Lines = &lines
 		}
 		views = append(views, view)

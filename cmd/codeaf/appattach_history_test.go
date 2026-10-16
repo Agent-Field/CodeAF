@@ -182,10 +182,10 @@ func TestAppAttachmentsSurviveAReopenedRecord(t *testing.T) {
 	if len(described) != 4 || !described[2].Authored || described[2].Text != "" || described[3].Authored || described[3].Attachments != nil {
 		t.Fatalf("the record reads %+v", described)
 	}
-	if got := described[2].Attachments; len(got) != 1 || got[0].Bytes != int64(len(long)) || got[0].Lines != 20 {
+	if got := described[2].Attachments; len(got) != 1 || got[0].Bytes == nil || *got[0].Bytes != int64(len(long)) || got[0].Lines == nil || *got[0].Lines != 20 {
 		t.Fatalf("the paste's description = %+v", got)
 	}
-	if got := described[0].Attachments; got[1].Bytes != int64(len("--- FAIL: TestLoad\nexpected 1\n")) || got[0].Bytes != 0 {
+	if got := described[0].Attachments; got[1].Bytes == nil || *got[1].Bytes != int64(len("--- FAIL: TestLoad\nexpected 1\n")) || got[0].Bytes != nil || got[0].Lines != nil {
 		t.Fatalf("the created message's descriptions = %+v", got)
 	}
 

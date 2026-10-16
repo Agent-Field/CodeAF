@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -59,7 +60,7 @@ func journalMarks(t *testing.T, path string) []map[string]any {
 var (
 	submittedFiles = []MessageAttachment{
 		{ID: "at1", Kind: "file", Name: "notes.md", Path: "notes.md"},
-		{ID: "at2", Kind: "paste", Name: "Pasted text", Bytes: 31, Lines: 2},
+		{ID: "at2", Kind: "paste", Name: "Pasted text", Bytes: ptr(int64(31)), Lines: ptr(2)},
 	}
 	submittedAlone = []MessageAttachment{{ID: "at3", Kind: "link", Name: "example.com", URL: "https://example.com/7"}}
 )
@@ -172,7 +173,7 @@ func TestASubmissionThatDoesNotFitRecordsNothing(t *testing.T) {
 	for name, message := range map[string]Submission{
 		"too many":      {Text: "x", Attachments: many},
 		"no kind":       {Text: "x", Said: &words, Attachments: []MessageAttachment{{Name: "a"}}},
-		"negative size": {Text: "x", Attachments: []MessageAttachment{{Kind: "paste", Bytes: -1}}},
+		"negative size": {Text: "x", Attachments: []MessageAttachment{{Kind: "paste", Bytes: ptr(int64(-1))}}},
 		"long field":    {Text: "x", Attachments: []MessageAttachment{{Kind: "file", Path: strings.Repeat("p", maxAttachmentField+1)}}},
 	} {
 		if _, err := agent.SubmitMessage(context.Background(), message); !errors.Is(err, errSubmissionMark) {
@@ -275,4 +276,167 @@ func TestAMarkSurvivesSteeringAndCompaction(t *testing.T) {
 		t.Fatalf("the re-journaled window = %#v", replayed.messages)
 	}
 	assert("after compaction", shapeEntries(replayed.messages, &sessionFile{presentation: replayed.presentation, steers: replayed.steers}))
+}
+
+// indexHeld is what a presentation index holds alive: its marks, and the bytes
+// of the first part each mark's key keeps reachable.
+func indexHeld(p *presentationIndex) (marks, bytes int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for key := range p.entries {
+		bytes += len(key.Text)
+	}
+	return len(p.entries), bytes
+}
+
+// liveMarked is how many of the transcript's messages carry a mark, and their
+// first parts' bytes.
+func liveMarked(agent *Agent) (marks, bytes int) {
+	for _, message := range agent.messages {
+		if agent.presentation.of(message) != nil {
+			marks++
+			bytes += len(message.Content[0].Text)
+		}
+	}
+	return marks, bytes
+}
+
+// A SESSION HOLDS THE MARKS OF WHAT IT HOLDS, AND NO MORE. Round after round of
+// marked messages carrying large pastes is compacted away, and one more is cut
+// by a rewind; after every boundary the index holds exactly the marks of
+// messages still in the transcript — never the folded or cut ones, whose
+// pastes it would otherwise keep alive for the life of the session — and the
+// record, read again, still holds every message's own words and attachments.
+func TestMarksAreLetGoWithTheMessagesTheyDescribe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &summarizer{}, func(c *Config) { c.SessionFile = path; c.ContextWindow = 16_384 })
+	paste := strings.Repeat("pasted log line ", 24_000/16)
+	send := func(said string) {
+		t.Helper()
+		user := userText(said + "\n\nPasted text:\n```\n" + paste + "\n```")
+		var err error
+		user.person, err = Submission{Said: &said, Attachments: []MessageAttachment{{ID: said, Kind: "paste", Bytes: ptr(int64(len(paste)))}}}.mark()
+		if err != nil {
+			t.Fatal(err)
+		}
+		agent.mu.Lock()
+		agent.recordUserLocked(user)
+		agent.recordLocked(textMessage("assistant", "answer to "+said))
+		agent.mu.Unlock()
+	}
+	bounded := func(when string) {
+		t.Helper()
+		agent.mu.Lock()
+		defer agent.mu.Unlock()
+		marks, bytes := indexHeld(agent.presentation)
+		live, liveBytes := liveMarked(agent)
+		if marks != live || bytes != liveBytes {
+			t.Fatalf("%s: the index holds %d marks over %d bytes; the transcript holds %d over %d", when, marks, bytes, live, liveBytes)
+		}
+	}
+	var sent []string
+	const rounds = 5
+	for round := 1; round <= rounds; round++ {
+		for i := 1; i <= 5; i++ {
+			said := "question " + string(rune('0'+round)) + "." + string(rune('0'+i))
+			send(said)
+			sent = append(sent, said)
+		}
+		before, _ := indexHeld(agent.presentation)
+		if err := agent.Compact(context.Background()); err != nil {
+			t.Fatalf("round %d: compact = %v", round, err)
+		}
+		if after, _ := indexHeld(agent.presentation); after >= before {
+			t.Fatalf("round %d: the pass let go of no marks (%d before, %d after)", round, before, after)
+		}
+		bounded("after compaction")
+	}
+	send("cut")
+	if _, err := agent.Rewind(); err != nil {
+		t.Fatal(err)
+	}
+	bounded("after a rewind")
+	if marks, _ := indexHeld(agent.presentation); marks > 5 {
+		t.Fatalf("after %d rounds the index still holds %d marks", rounds, marks)
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	record := ReadTranscript(path)
+	told := append(append([]DisplayEntry(nil), record.Earlier...), record.Entries[record.Floor:]...)
+	seen := map[string]int{}
+	for _, entry := range personEntries(told) {
+		if !entry.Authored || len(entry.Attachments) != 1 || entry.Attachments[0].ID != entry.Text || entry.Attachments[0].Bytes == nil || *entry.Attachments[0].Bytes != int64(len(paste)) {
+			t.Fatalf("a message read back as %#v", entry)
+		}
+		seen[entry.Text]++
+	}
+	for _, said := range sent {
+		if seen[said] != 1 {
+			t.Fatalf("%q was read back %d times; the record holds %v", said, seen[said], seen)
+		}
+	}
+	reopened, _ := newTestAgent(t, answering(), func(c *Config) { c.SessionFile = path })
+	reopened.mu.Lock()
+	marks, _ := indexHeld(reopened.presentation)
+	live, _ := liveMarked(reopened)
+	reopened.mu.Unlock()
+	if marks != live {
+		t.Fatalf("a reopened session holds %d marks for %d messages it carries", marks, live)
+	}
+}
+
+// A BOUND IS A BOUND ON WHAT WAS GIVEN. Padding cannot carry a field or the
+// person's words past their bound by being trimmed off, and what is kept is a
+// copy that holds nothing of the caller's string alive.
+func TestAMarksBoundsAreOnTheBytesGiven(t *testing.T) {
+	padded := strings.Repeat(" ", maxAttachmentField) + "a.go"
+	if _, err := (Submission{Attachments: []MessageAttachment{{Kind: "file", Path: padded}}}).mark(); !errors.Is(err, errSubmissionMark) {
+		t.Fatalf("a padded path = %v", err)
+	}
+	said := strings.Repeat("\n", maxSaidBytes) + "words"
+	if _, err := (Submission{Said: &said}).mark(); !errors.Is(err, errSubmissionMark) {
+		t.Fatalf("padded words = %v", err)
+	}
+	path := "  " + strings.Repeat("d/", 100) + "a.go  "
+	words := "  hello  "
+	mark, err := Submission{Said: &words, Attachments: []MessageAttachment{{Kind: " file ", Path: path}}}.mark()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := mark.Attachments[0].Path
+	given := unsafe.StringData(path)
+	at := uintptr(unsafe.Pointer(unsafe.StringData(kept)))
+	if kept != strings.TrimSpace(path) || mark.Attachments[0].Kind != "file" || *mark.Text != "hello" ||
+		(at >= uintptr(unsafe.Pointer(given)) && at < uintptr(unsafe.Pointer(given))+uintptr(len(path))) {
+		t.Fatalf("the kept fields = %#v, %q", mark.Attachments[0], *mark.Text)
+	}
+}
+
+// A MEASURED ZERO IS NOT AN UNMEASURED SIZE. An empty file the door measured
+// reads back as zero bytes, and one it did not measure reads back with no size.
+func TestAMeasuredZeroSizeIsKeptApartFromAnUnknownOne(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, answering(), func(c *Config) { c.SessionFile = path })
+	said := "two files"
+	events, err := agent.SubmitMessage(context.Background(), Submission{Text: "two files\n\nAttached file: empty\n\nAttached file: big", Said: &said, Attachments: []MessageAttachment{
+		{Kind: "file", Path: "empty", Bytes: ptr(int64(0)), Lines: ptr(0)},
+		{Kind: "file", Path: "big"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	users := personEntries(ReadTranscript(path).Entries)
+	if len(users) != 1 || len(users[0].Attachments) != 2 {
+		t.Fatalf("read back %#v", users)
+	}
+	empty, big := users[0].Attachments[0], users[0].Attachments[1]
+	if empty.Bytes == nil || *empty.Bytes != 0 || empty.Lines == nil || *empty.Lines != 0 || big.Bytes != nil || big.Lines != nil {
+		t.Fatalf("the sizes read back as %#v and %#v", empty, big)
+	}
 }

@@ -232,6 +232,8 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 		copy(window, a.messages[1:])
 		a.file.appendCompaction(pass, before, window)
 	}
+	// The stubbed results' marks go with the results ([presentationIndex.retain]).
+	a.retainPresentationLocked()
 	a.mu.Unlock()
 
 	if hub != nil {

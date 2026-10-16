@@ -189,6 +189,9 @@ func (a *Agent) cutLocked(index int) []DisplayEntry {
 	}
 	a.messages = a.messages[:index]
 	a.messageReasoning = a.messageReasoning[:index]
+	// And so are their marks, which would hold the same bytes
+	// ([presentationIndex.retain]).
+	a.retainPresentationLocked()
 	return removed
 }
 

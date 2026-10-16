@@ -3048,6 +3048,8 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 			// back without its attachments.
 			if kept := presentation.person(); kept != nil {
 				s.presentation.remember(message, kept)
+				// That copy is read by the write below and by nothing after it.
+				defer s.presentation.forget(message)
 			}
 		}
 		// AND SO IS A SPLICED ONE, for the same reason: a steer re-written without

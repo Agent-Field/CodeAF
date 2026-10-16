@@ -5194,6 +5194,9 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 		windowReasoning := append([]provider.MessageReasoning(nil), a.messageReasoning[1:]...)
 		a.file.appendCompaction(pass, tokensBefore, window, windowReasoning)
 	}
+	// AND WHAT THE PASS LET GO OF IS LET GO OF: the marks of messages it folded
+	// away are the last thing holding their words ([presentationIndex.retain]).
+	a.retainPresentationLocked()
 	a.mu.Unlock()
 
 	if hub != nil {

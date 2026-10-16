@@ -32,7 +32,9 @@ import (
 
 // MessageAttachment is one file, link or paste that rode on a person's message,
 // as the door that sent the message described it. Every field is optional but
-// Kind, and an empty field is "the door did not say", never a zero fact.
+// Kind. An empty string is "the door did not say". A size is a pointer so that
+// an unmeasured size and a measured zero are two answers: nil was never
+// measured, and a value — zero included — is what the door measured.
 type MessageAttachment struct {
 	// ID is the door's own name for the attachment, unique within the message.
 	ID string `json:"id,omitempty"`
@@ -45,10 +47,11 @@ type MessageAttachment struct {
 	Path string `json:"path,omitempty"`
 	// URL is a link's address.
 	URL string `json:"url,omitempty"`
-	// Bytes is the attachment's size, where the door measured it.
-	Bytes int64 `json:"bytes,omitempty"`
-	// Lines is how many lines it held, where the door counted them.
-	Lines int `json:"lines,omitempty"`
+	// Bytes is the attachment's size in bytes, nil where the door did not
+	// measure it.
+	Bytes *int64 `json:"bytes,omitempty"`
+	// Lines is how many lines it held, nil where the door did not count them.
+	Lines *int `json:"lines,omitempty"`
 }
 
 // Submission is a person's message with what the door knows about it beyond
@@ -110,6 +113,10 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if m.Said == nil && len(m.Attachments) == 0 {
 		return nil, nil
 	}
+	// EVERY BOUND IS CHECKED ON THE BYTES AS GIVEN, before anything is trimmed:
+	// a trimmed field is a slice of the caller's string, so a bound checked
+	// after trimming could be passed by padding, and a short kept field could
+	// hold a huge string alive behind it. What is kept is a fresh copy.
 	if len(m.Attachments) > MaxMessageAttachments {
 		return nil, fmt.Errorf("%w: %d attachments, and one message names at most %d", errSubmissionMark, len(m.Attachments), MaxMessageAttachments)
 	}
@@ -118,33 +125,44 @@ func (m Submission) mark() (*messagePresentation, error) {
 	// line's own content is theirs, and a copy of it here would be the same
 	// words written twice on one line.
 	if m.Said != nil {
-		said := strings.TrimSpace(*m.Said)
-		if len(said) > maxSaidBytes || !utf8.ValidString(said) {
+		if len(*m.Said) > maxSaidBytes || !utf8.ValidString(*m.Said) {
 			return nil, fmt.Errorf("%w: the person's words are not text of at most %d bytes", errSubmissionMark, maxSaidBytes)
 		}
+		// Trimmed as [Agent.Submit] trims the words it is given.
+		said := strings.Clone(strings.TrimSpace(*m.Said))
 		mark.Text = &said
 	}
 	if len(m.Attachments) > 0 {
 		mark.Attachments = make([]MessageAttachment, 0, len(m.Attachments))
 	}
-	for index, attachment := range m.Attachments {
-		attachment.ID = strings.TrimSpace(attachment.ID)
-		attachment.Kind = strings.TrimSpace(attachment.Kind)
-		attachment.Name = strings.TrimSpace(attachment.Name)
-		attachment.Path = strings.TrimSpace(attachment.Path)
-		attachment.URL = strings.TrimSpace(attachment.URL)
-		if attachment.Kind == "" {
-			return nil, fmt.Errorf("%w: attachment %d has no kind", errSubmissionMark, index+1)
-		}
-		for _, field := range []string{attachment.ID, attachment.Kind, attachment.Name, attachment.Path, attachment.URL} {
+	for index, given := range m.Attachments {
+		for _, field := range []string{given.ID, given.Kind, given.Name, given.Path, given.URL} {
 			if len(field) > maxAttachmentField || !utf8.ValidString(field) {
 				return nil, fmt.Errorf("%w: attachment %d has a field that is not text of at most %d bytes", errSubmissionMark, index+1, maxAttachmentField)
 			}
 		}
-		if attachment.Bytes < 0 || attachment.Lines < 0 {
+		if (given.Bytes != nil && *given.Bytes < 0) || (given.Lines != nil && *given.Lines < 0) {
 			return nil, fmt.Errorf("%w: attachment %d has a negative size", errSubmissionMark, index+1)
 		}
-		mark.Attachments = append(mark.Attachments, attachment)
+		kept := MessageAttachment{
+			ID:   keptField(given.ID),
+			Kind: keptField(given.Kind),
+			Name: keptField(given.Name),
+			Path: keptField(given.Path),
+			URL:  keptField(given.URL),
+		}
+		if kept.Kind == "" {
+			return nil, fmt.Errorf("%w: attachment %d has no kind", errSubmissionMark, index+1)
+		}
+		if given.Bytes != nil {
+			bytes := *given.Bytes
+			kept.Bytes = &bytes
+		}
+		if given.Lines != nil {
+			lines := *given.Lines
+			kept.Lines = &lines
+		}
+		mark.Attachments = append(mark.Attachments, kept)
 	}
 	return mark, nil
 }
@@ -154,11 +172,29 @@ func (m Submission) mark() (*messagePresentation, error) {
 // a person's words and attachments from.
 const audiencePerson = "person"
 
-// cloneAttachments is a reading's own copy of a mark's descriptors, so a
-// [DisplayEntry] handed to a caller shares nothing with the index behind it.
+// keptField is one descriptor field as the record keeps it: trimmed, and a copy
+// of its own rather than a window onto the caller's string.
+func keptField(field string) string {
+	return strings.Clone(strings.TrimSpace(field))
+}
+
+// cloneAttachments is a reading's own copy of a mark's descriptors, sizes
+// included, so a [DisplayEntry] handed to a caller shares nothing with the
+// index behind it.
 func cloneAttachments(attachments []MessageAttachment) []MessageAttachment {
 	if len(attachments) == 0 {
 		return nil
 	}
-	return append([]MessageAttachment(nil), attachments...)
+	out := append([]MessageAttachment(nil), attachments...)
+	for index := range out {
+		if size := out[index].Bytes; size != nil {
+			bytes := *size
+			out[index].Bytes = &bytes
+		}
+		if count := out[index].Lines; count != nil {
+			lines := *count
+			out[index].Lines = &lines
+		}
+	}
+	return out
 }

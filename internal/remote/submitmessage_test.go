@@ -28,7 +28,8 @@ func (m *markedAgent) SubmitMessage(ctx context.Context, message session.Submiss
 // with no such door — an engine from before the mark — runs the words alone.
 func TestSubmitCarriesTheMessagesMarkToTheAgentsDoor(t *testing.T) {
 	said := ""
-	attachments := []session.MessageAttachment{{ID: "at1", Kind: "file", Name: "notes.md", Path: "notes.md"}, {ID: "at2", Kind: "paste", Name: "Pasted text", Bytes: 12, Lines: 2}}
+	pasteBytes, pasteLines := int64(12), 2
+	attachments := []session.MessageAttachment{{ID: "at1", Kind: "file", Name: "notes.md", Path: "notes.md"}, {ID: "at2", Kind: "paste", Name: "Pasted text", Bytes: &pasteBytes, Lines: &pasteLines}}
 	marked := &markedAgent{fakeAgent: &fakeAgent{model: "m"}}
 	s := &server{out: io.Discard, session: NewSession(&Engine{Agent: marked}, false)}
 	if _, err := s.invoke(Frame{Kind: "call", ID: 1, Method: MethodSubmit, Payload: mustJSON(SubmitArgs{Text: "Attached file: notes.md", Said: &said, Attachments: attachments})}); err != nil {

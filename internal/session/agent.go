@@ -296,6 +296,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// is the one place the two are converted, by doing the shaping.
 		agent.earlier = shapeEntries(replayed.earlier, file)
 		agent.earlierFloor = len(shapeEntries(restored[:replayed.overlap], file))
+		// The region above the last pass is shaped and let go of, so its marks
+		// go with it ([presentationIndex.retain]).
+		agent.presentation.retain(agent.messages)
 		agent.restorePasses(replayed.passes)
 		// AND THE PICTURES ARE MADE SAFE HERE RATHER THAN IN THE REPLAY. A
 		// session resumed onto a model without vision — the journal remembers
@@ -2713,7 +2716,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	// nothing outlives them, because a replay is a reading of the conversation
 	// and that paragraph was never part of one.
 	kept := user.journaled()
-	a.rememberPersonLocked(user, kept)
+	defer a.rememberPersonLocked(user, kept)()
 	// The store's copy is taken before the journal's early return: a session
 	// with no file still has a conversation worth keeping, and the person's own
 	// words are the last thing that should depend on which layout they opened in.
@@ -2762,10 +2765,14 @@ func (a *Agent) recordUserLocked(user userMessage) {
 //
 // A skills block the session already marked on the model's copy keeps its
 // provenance: the two marks are one mark on one message.
-func (a *Agent) rememberPersonLocked(user userMessage, kept ai.Message) {
+//
+// It answers the release of the record's copy, which the caller defers past the
+// journal write: that copy is read by the write and by nothing after it, and a
+// mark left on it would keep its words alive for the life of the session.
+func (a *Agent) rememberPersonLocked(user userMessage, kept ai.Message) func() {
 	mark := user.person
 	if mark == nil || len(user.message.Content) == 0 {
-		return
+		return func() {}
 	}
 	if a.presentation == nil {
 		a.presentation = &presentationIndex{}
@@ -2775,9 +2782,28 @@ func (a *Agent) rememberPersonLocked(user userMessage, kept ai.Message) {
 		live.SkillsBlock = prior.SkillsBlock
 	}
 	a.presentation.remember(user.message, &live)
-	if len(kept.Content) > 0 && &kept.Content[0] != &user.message.Content[0] {
-		a.presentation.remember(kept, mark.person())
+	if a.file == nil || len(kept.Content) == 0 || &kept.Content[0] == &user.message.Content[0] {
+		return func() {}
 	}
+	a.presentation.remember(kept, mark.person())
+	return func() { a.presentation.forget(kept) }
+}
+
+// retainPresentationLocked cuts the presentation marks back to the messages
+// this session still holds — the transcript and every queue of messages not yet
+// in it — after a boundary that let messages go ([presentationIndex.retain]).
+func (a *Agent) retainPresentationLocked() {
+	queued := make([]ai.Message, 0, len(a.steering)+len(a.ambient)+len(a.followups))
+	for _, user := range a.steering {
+		queued = append(queued, user.message)
+	}
+	for _, user := range a.ambient {
+		queued = append(queued, user.message)
+	}
+	for _, follow := range a.followups {
+		queued = append(queued, follow.message.message)
+	}
+	a.presentation.retain(a.messages, queued)
 }
 
 func (a *Agent) record(message ai.Message) {

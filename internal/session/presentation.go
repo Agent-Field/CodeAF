@@ -66,6 +66,64 @@ func (p *presentationIndex) remember(message ai.Message, mark *messagePresentati
 	p.entries[&message.Content[0]] = *mark
 }
 
+// forget drops one message's mark. It is for a copy whose only reader has
+// already read it — the record's own copy of a person's line, once the line is
+// written ([Agent.recordUserLocked]).
+func (p *presentationIndex) forget(message ai.Message) {
+	if p == nil || len(message.Content) == 0 {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.entries, &message.Content[0])
+}
+
+// retain keeps the marks of the messages given and drops every other one.
+//
+// A MARK IS KEYED BY ITS MESSAGE'S FIRST PART, AND THE KEY KEEPS THE WHOLE PART
+// ARRAY ALIVE. A message a compaction folded away or a rewind cut is gone from
+// the conversation, but its mark would hold its content — a person's message
+// can carry hundreds of kilobytes of paste the model was sent — for as long as
+// the session lives. So at each boundary that lets messages go, the index is
+// cut back to the messages something still holds. The record is untouched: a
+// line's mark is on the line, and a reopen reads it from there.
+//
+// It is one walk of what is live and one of the index, at a boundary that has
+// already walked the transcript; nothing per token or per message pays for it.
+func (p *presentationIndex) retain(live ...[]ai.Message) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.entries) == 0 {
+		return
+	}
+	kept := make(map[*ai.ContentPart]messagePresentation)
+	for _, messages := range live {
+		for index := range messages {
+			if len(messages[index].Content) == 0 {
+				continue
+			}
+			key := &messages[index].Content[0]
+			if mark, ok := p.entries[key]; ok {
+				kept[key] = mark
+			}
+		}
+	}
+	p.entries = kept
+}
+
+// size is how many marks the index holds.
+func (p *presentationIndex) size() int {
+	if p == nil {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.entries)
+}
+
 func (p *presentationIndex) of(message ai.Message) *messagePresentation {
 	if p == nil || len(message.Content) == 0 {
 		return nil
