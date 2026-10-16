@@ -232,14 +232,14 @@ func (a *Agent) keepAvailable() bool {
 // supervisor's own.
 var keepRunningProperty = strings.ReplaceAll(keepRunningShape, "{every}", service.CheckEvery.String())
 
-const keepRunningShape = `{"type":"object","description":"Keep this command running after the turn as a supervised service. The person is asked first, once per command and folder; the command then runs in the current folder, is checked every {every}, and is restarted under the policy the person keeps. Give exactly one health check.","properties":{"name":{"type":"string","description":"a short name for it, e.g. web dev server"},"health":{"type":"object","description":"exactly one: a port that accepts connections, a URL that answers 200, or a command that exits 0","properties":{"port":{"type":"integer"},"url":{"type":"string"},"cmd":{"type":"string"}}},"restart":{"type":"string","enum":["on_failure","always","never"],"description":"the restart policy to propose; the person decides"},"service_id":{"type":"string","description":"to fix one of your kept-running processes that failed or stopped (for example a port conflict) instead of adding another: its id, like s3. Its row then runs this command, folder and check under the same id; the person is asked again for the changed command. Refused while it is still running or stopping: the person stops it first."}},"required":["health"]}`
+const keepRunningShape = `{"type":"object","description":"Run after this turn with consent, in the current folder; checks every {every}. The user owns policy.","properties":{"name":{"type":"string","description":"Short display name."},"health":{"type":"object","description":"Exactly one: TCP port, HTTP URL returning 200, or command exiting 0.","properties":{"port":{"type":"integer"},"url":{"type":"string"},"cmd":{"type":"string"}}},"restart":{"type":"string","enum":["on_failure","always","never"],"description":"Proposed; the user decides."},"service_id":{"type":"string","description":"Repair your stopped/failed service (e.g. s3) on its same row. Changed command/check needs approval; stop it first if running."}},"required":["health"]}`
 
 // keepSentence is the bash description's line about it.
 func (a *Agent) keepSentence() string {
 	if !a.keepAvailable() {
 		return ""
 	}
-	return " To keep a server or watcher running after this turn, pass keep_running with one health check; the person is asked, and nohup or & are not a way around that."
+	return " Use keep_running to ask before keeping servers/watchers after this turn; never bypass consent with nohup or &."
 }
 
 // schemaWithKeep adds keep_running to bash's schema where it can work.
