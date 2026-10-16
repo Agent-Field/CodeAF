@@ -539,10 +539,12 @@ func TestLedgerRunWithTenThousandModels(t *testing.T) {
 func TestLedgerRefusesFiguresItCannotAdd(t *testing.T) {
 	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	for name, lines := range map[string][]UsageLine{
-		"cost":     {{At: at, USD: math.MaxFloat64}, {Run: "r", At: at, USD: math.MaxFloat64}},
-		"calls":    {{At: at, Calls: math.MaxInt}, {At: at, Calls: 2}},
-		"tokens":   {{At: at, Input: math.MaxInt}, {Run: "r", At: at, Input: math.MaxInt}, {At: at, Input: 2}},
-		"negative": {{At: at, Output: -5, USD: cent}},
+		"cost":           {{At: at, USD: math.MaxFloat64}, {Run: "r", At: at, USD: math.MaxFloat64}},
+		"calls":          {{At: at, Calls: math.MaxInt}, {At: at, Calls: 2}},
+		"tokens":         {{At: at, Input: math.MaxInt}, {Run: "r", At: at, Input: math.MaxInt}, {At: at, Input: 2}},
+		"negative":       {{At: at, Output: -5, USD: cent}},
+		"negative cost":  {{At: at, USD: -cent}},
+		"negative calls": {{At: at, Calls: -1, USD: cent}},
 	} {
 		path := writeLedger(t, lines, nil, "")
 		if _, err := QueryUsageLedger(path, UsageQuery{}, "", 0, DefaultUsageLedgerBudget); !errors.Is(err, ErrUsageLedgerFigures) {
@@ -550,6 +552,9 @@ func TestLedgerRefusesFiguresItCannotAdd(t *testing.T) {
 		}
 		if _, _, err := EachUsageLedgerEntry(path, UsageQuery{}, DefaultUsageLedgerBudget, func(UsageEntry) error { return nil }); !errors.Is(err, ErrUsageLedgerFigures) {
 			t.Fatalf("%s: walk %v", name, err)
+		}
+		if _, err := QueryUsageReport(path, UsageQuery{From: at, To: at.AddDate(0, 0, 1)}, time.UTC, UsageReportBudget{}); !errors.Is(err, ErrUsageLedgerFigures) {
+			t.Fatalf("%s: report %v", name, err)
 		}
 	}
 	// One of the two huge figures alone is a figure, and is answered.

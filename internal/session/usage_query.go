@@ -502,7 +502,7 @@ func (e *UsageEntry) hasModel(model string) bool {
 // sum the totals could hold, every row's share of it can too.
 func (t *UsageLedgerTotals) count(line UsageLine) error {
 	calls := max(line.Calls, 1)
-	if line.Input < 0 || line.Output < 0 || math.IsNaN(line.USD) || math.IsInf(line.USD, 0) ||
+	if line.Input < 0 || line.Output < 0 || line.USD < 0 || line.Calls < 0 || math.IsNaN(line.USD) || math.IsInf(line.USD, 0) ||
 		t.Records == math.MaxInt || t.Calls > math.MaxInt-calls ||
 		t.Input > math.MaxInt64-int64(line.Input) || t.Output > math.MaxInt64-int64(line.Output) {
 		return ErrUsageLedgerFigures
