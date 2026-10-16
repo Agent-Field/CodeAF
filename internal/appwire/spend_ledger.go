@@ -33,6 +33,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // The two grains a ledger row has.
@@ -99,10 +100,11 @@ type SpendLedgerExportParams struct {
 // SpendLedgerRow is one row at its grain. time is the first call's instant and
 // end the last's, both with the engine's local offset.
 type SpendLedgerRow struct {
-	Grain      string    `json:"grain" enum:"run,call"`
-	Key        string    `json:"key"`
-	Run        string    `json:"run,omitempty"`
-	Time       time.Time `json:"time"`
+	Grain string    `json:"grain" enum:"run,call"`
+	Key   string    `json:"key"`
+	Run   string    `json:"run,omitempty"`
+	Time  time.Time `json:"time"
+ "unicode/utf8"`
 	End        time.Time `json:"end"`
 	Kind       string    `json:"kind,omitempty" enum:"agent,task,automation"`
 	Subject    string    `json:"subject,omitempty"`
@@ -310,6 +312,13 @@ var spendLedgerMethods = map[string]method{
 // checkSpendLedgerReply refuses an answer too large to carry, saying what to
 // ask for instead.
 func checkSpendLedgerReply(result SpendLedgerResult, limit int) error {
+	if !spendLedgerFitsBeforeEncoding(result) {
+		fewer := "ask for fewer rows with a smaller limit, or "
+		if limit <= 1 {
+			fewer = ""
+		}
+		return Errorf(CodeBadParams, "spend.ledger: this page exceeds the %d byte encoding budget; %snarrow the filter — a model, run or shorter range", SpendLedgerReplyMax, fewer)
+	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		return Errorf(CodeEngine, "spend.ledger: the page could not be written as JSON: %v", err)
@@ -322,6 +331,49 @@ func checkSpendLedgerReply(result SpendLedgerResult, limit int) error {
 		fewer = ""
 	}
 	return Errorf(CodeBadParams, "spend.ledger: this page is %d bytes, more than the %d one answer may carry; %snarrow the filter — a model, a run, or a shorter range — because a single run that used very many models is one row however small the page", len(data), SpendLedgerReplyMax, fewer)
+}
+
+// Bound strings BEFORE json.Marshal allocates its complete encoded buffer. A
+// page may name a very long held title even though its usage rows were small.
+// Reserve a conservative fixed allowance for field names, numbers and times;
+// string escaping is counted without copying the strings.
+func spendLedgerFitsBeforeEncoding(result SpendLedgerResult) bool {
+	if len(result.Rows) > SpendLedgerLimitMax {
+		return false
+	}
+	remaining := SpendLedgerReplyMax - (len(result.Rows)+1)*1024
+	take := func(s string) bool {
+		remaining -= 2
+		for len(s) > 0 && remaining >= 0 {
+			r, n := utf8.DecodeRuneInString(s)
+			cost := n
+			switch {
+			case r == '"' || r == '\\' || r == '\b' || r == '\f' || r == '\n' || r == '\r' || r == '\t':
+				cost = 2
+			case r < 0x20 || r == '<' || r == '>' || r == '&' || r == 0x2028 || r == 0x2029 || (r == utf8.RuneError && n == 1):
+				cost = 6
+			}
+			remaining -= cost
+			s = s[n:]
+		}
+		return remaining >= 0
+	}
+	if !take(result.From) || !take(result.To) || !take(result.Next) {
+		return false
+	}
+	for _, row := range result.Rows {
+		for _, s := range []string{row.Grain, row.Key, row.Run, row.Kind, row.Subject, row.Name, row.Session, row.Root, row.Task, row.Automation, row.Workspace} {
+			if !take(s) {
+				return false
+			}
+		}
+		for _, model := range row.Models {
+			if !take(model) {
+				return false
+			}
+		}
+	}
+	return remaining >= 0
 }
 
 // ── the file ────────────────────────────────────────────────────────────────

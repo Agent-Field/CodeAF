@@ -273,3 +273,22 @@ func TestSpendLedgerCSVCostKeepsItsPrecision(t *testing.T) {
 		t.Fatalf("cost %q", cost)
 	}
 }
+
+func TestSpendLedgerLargeNamesAreRefusedBeforeJSONCopies(t *testing.T) {
+	result := SpendLedgerResult{Rows: []SpendLedgerRow{{Name: strings.Repeat("<", SpendLedgerReplyMax/3)}}}
+	if checkSpendLedgerReply(result, 1) == nil {
+		t.Fatal("large escaped title was accepted")
+	}
+	measured := testing.Benchmark(func(b *testing.B) {
+		for range b.N {
+			_ = checkSpendLedgerReply(result, 1)
+		}
+	})
+	if measured.AllocedBytesPerOp() > 64<<10 {
+		t.Fatalf("oversized title was copied before refusal: %d bytes per check", measured.AllocedBytesPerOp())
+	}
+	small := SpendLedgerResult{Rows: []SpendLedgerRow{{Name: "A \"quoted\" model & title"}}}
+	if err := checkSpendLedgerReply(small, 1); err != nil {
+		t.Fatal(err)
+	}
+}
