@@ -133,25 +133,53 @@ func (g *TaskGraph) dismissibleLocked(id string) error {
 	if err != nil {
 		return fmt.Errorf("task %s: no such task", id)
 	}
-	if node := g.nodes[n]; node != nil {
-		// A STOP IS KNOWN BY THE ENDING AS WELL AS THE FLAG: a restored node has only the
-		// ending, and its stop is still the person's, kept as it is.
-		if node.endingLocked() == TaskEndingStopped {
-			return fmt.Errorf("task %s is stopped: a stop is kept as it was", id)
-		}
-		if node.spec.quick != nil || node.state != TaskFailed || node.stopped || node.app.Declined || node.app.Paused || g.deleted[n] {
-			return fmt.Errorf("task %s is not a settled failure: it is %s", id, appNodeState(node))
-		}
-	} else if row, ok := g.runRowLocked(n); ok {
-		if row.Ending == TaskEndingStopped {
-			return fmt.Errorf("task %s is stopped: a stop is kept as it was", id)
-		}
-		if row.State != TaskFailed || row.Stopped || row.Paused || row.park != nil {
-			return fmt.Errorf("task %s is not a settled failure: it is %s", id, appRunRowState(row))
-		}
-	} else {
-		return fmt.Errorf("task %s: no such task", id)
+	if err := g.dismissibleTargetLocked(id, n); err != nil {
+		return err
 	}
+	if err := g.dismissibleNodeDependentsLocked(id, n); err != nil {
+		return err
+	}
+	return g.dismissibleRunDependentsLocked(id, n)
+}
+
+// The producer determines which settled-failure facts are authoritative. These
+// helpers remain under the caller's graph lock through the checkpoint write.
+func (g *TaskGraph) dismissibleTargetLocked(id string, n uint64) error {
+	if node := g.nodes[n]; node != nil {
+		return g.dismissibleNodeLocked(id, n, node)
+	}
+	if row, ok := g.runRowLocked(n); ok {
+		return dismissibleRun(id, row)
+	}
+	return fmt.Errorf("task %s: no such task", id)
+}
+
+// dismissibleNodeLocked checks durable node state, including deleted and quick work.
+func (g *TaskGraph) dismissibleNodeLocked(id string, n uint64, node *TaskNode) error {
+	// A STOP IS KNOWN BY THE ENDING AS WELL AS THE FLAG: a restored node has only the
+	// ending, and its stop is still the person's, kept as it is.
+	if node.endingLocked() == TaskEndingStopped {
+		return fmt.Errorf("task %s is stopped: a stop is kept as it was", id)
+	}
+	if node.spec.quick != nil || node.state != TaskFailed || node.stopped || node.app.Declined || node.app.Paused || g.deleted[n] {
+		return fmt.Errorf("task %s is not a settled failure: it is %s", id, appNodeState(node))
+	}
+	return nil
+}
+
+// dismissibleRun checks the run producer's own stop, pause and parked facts.
+func dismissibleRun(id string, row TaskNotice) error {
+	if row.Ending == TaskEndingStopped {
+		return fmt.Errorf("task %s is stopped: a stop is kept as it was", id)
+	}
+	if row.State != TaskFailed || row.Stopped || row.Paused || row.park != nil {
+		return fmt.Errorf("task %s is not a settled failure: it is %s", id, appRunRowState(row))
+	}
+	return nil
+}
+
+// dismissibleNodeDependentsLocked refuses live node children and waiters first.
+func (g *TaskGraph) dismissibleNodeDependentsLocked(id string, n uint64) error {
 	for _, other := range g.nodes {
 		if other == nil || other.id == n || other.state.settled() {
 			continue
@@ -165,6 +193,11 @@ func (g *TaskGraph) dismissibleLocked(id string) error {
 			}
 		}
 	}
+	return nil
+}
+
+// dismissibleRunDependentsLocked checks run-owned children and dependencies.
+func (g *TaskGraph) dismissibleRunDependentsLocked(id string, n uint64) error {
 	for _, row := range g.runRowsLocked() {
 		if row.ID == n || row.State.settled() {
 			continue

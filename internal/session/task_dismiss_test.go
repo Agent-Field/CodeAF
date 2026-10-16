@@ -402,3 +402,33 @@ func TestPlanDismissRefusesBeforeReadingAnUnreadableStore(t *testing.T) {
 		t.Fatal("refusal dispatched work")
 	}
 }
+
+// Guard diagnostics remain exact across producer-specific validation, including
+// the caller's original ID spelling. This uses restored records, not UI rows.
+func TestDismissProducerGuardsKeepTheirExactRefusals(t *testing.T) {
+	agent, _, _, _ := failedConversation(t)
+	g := agent.graph()
+	cases := []struct{ id, want string }{
+		{"1", ""}, {"7", ""},
+		{"missing", "task missing: no such task"},
+		{"99", "task 99: no such task"},
+		{"08", "task 08 is stopped: a stop is kept as it was"},
+		{"4", "task 4 is not a settled failure: it is done"},
+		{"2", "task 2 is not settled work to hide: 3 still waits on it"},
+		{"5", "task 5 still has 6 under it, which is waiting"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			g.mu.Lock()
+			defer g.mu.Unlock()
+			err := g.dismissibleLocked(tc.id)
+			got := ""
+			if err != nil {
+				got = err.Error()
+			}
+			if got != tc.want {
+				t.Fatalf("refusal = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
