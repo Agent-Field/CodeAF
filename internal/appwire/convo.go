@@ -144,13 +144,47 @@ type MessageSender interface {
 // agents.send and crews.message keep said and reads on the person's message.
 const FeatureMessageReads = "messages.reads"
 
-// withMessageReadsFeature is hello carrying [FeatureMessageReads] when the
-// engine serves it.
+// MessageSteerer is the optional engine half of agents.steer carrying said or
+// reads. One that is not answers such a correction unknown_method, before the
+// turn hears anything; a correction with neither goes by Steer as before.
+// Attachments is always empty: a correction carries none.
+type MessageSteerer interface {
+	SteerMessage(agent string, message AgentMessage) error
+}
+
+// MessageQueuer is the optional engine half of agents.queue and queue.edit
+// carrying said or reads. The queue keeps the whole message — the words the
+// model will read, said and reads — and shows the person's own words; one
+// that is not a MessageQueuer answers such a call unknown_method with the
+// queue as it was. Attachments is always empty: a queued message carries none.
+type MessageQueuer interface {
+	QueueMessage(agent string, message AgentMessage) ([]Queued, error)
+	// EditQueuedMessage replaces one queued message whole, checking the
+	// replacement before anything changes; an id already sent is CodeSent.
+	EditQueuedMessage(agent, id string, message AgentMessage) ([]Queued, error)
+}
+
+// FeatureSteerReads and FeatureQueueReads are hello's words for an engine
+// that is a [MessageSteerer] or a [MessageQueuer]. Each says only its own: an
+// engine that keeps a sent message's reads need not keep a queued one's.
+const (
+	FeatureSteerReads = "agents.steer.reads"
+	FeatureQueueReads = "agents.queue.reads"
+)
+
+// withMessageReadsFeature is hello carrying [FeatureMessageReads],
+// [FeatureSteerReads] and [FeatureQueueReads] for each door the engine has.
 func withMessageReadsFeature(hello Hello, e Engine) Hello {
-	if _, ok := e.(MessageSender); !ok {
-		return hello
+	if _, ok := e.(MessageSender); ok {
+		hello = withFeature(hello, FeatureMessageReads)
 	}
-	return withFeature(hello, FeatureMessageReads)
+	if _, ok := e.(MessageSteerer); ok {
+		hello = withFeature(hello, FeatureSteerReads)
+	}
+	if _, ok := e.(MessageQueuer); ok {
+		hello = withFeature(hello, FeatureQueueReads)
+	}
+	return hello
 }
 
 // The attachment kinds and a file's states.
@@ -247,10 +281,13 @@ func CheckAttachIDs(ids []string) error {
 	return nil
 }
 
-// Queued is one message waiting for the turn to end.
+// Queued is one message waiting for the turn to end. Text is the person's own
+// words — said, when the message carried it — and never the body the model
+// will read; Reads are the reads that body was written from.
 type Queued struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ID    string        `json:"id"`
+	Text  string        `json:"text"`
+	Reads []MessageRead `json:"reads,omitempty"`
 }
 
 // FileGroup is one group of files.find's answer.
@@ -373,24 +410,54 @@ type queueResult struct {
 
 // sayTo is agents.steer and agents.queue's params.
 type sayTo struct {
-	ID       string `json:"id"`
-	Text     string `json:"text"`
-	ClientID string `json:"client_id"`
+	ID          string        `json:"id"`
+	Text        string        `json:"text"`
+	Said        *string       `json:"said"`
+	ClientID    string        `json:"client_id"`
+	Attachments []string      `json:"attachments"`
+	Reads       []MessageRead `json:"reads"`
 }
 
 func checkSay(p sayTo, name string) (sayTo, error) {
 	if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Text) == "" {
 		return p, Errorf(CodeBadParams, "%s needs an id and some text", name)
 	}
-	return p, nil
+	return p, refuseAttachments(p.Attachments, name)
+}
+
+// refuseAttachments is a correction or a queued message carrying
+// attachments, refused rather than run without them: neither road keeps one.
+func refuseAttachments(ids []string, name string) error {
+	if len(ids) > 0 {
+		return Errorf(CodeBadParams, "%s does not carry attachments; send them with agents.send", name)
+	}
+	return nil
+}
+
+// marked is whether a message carries anything beyond its words.
+func marked(said *string, reads []MessageRead) bool {
+	return said != nil || len(reads) > 0
 }
 
 // queueAt is the queue methods' params.
 type queueAt struct {
-	Agent string `json:"agent"`
-	ID    string `json:"id"`
-	Text  string `json:"text"`
-	To    *int   `json:"to"`
+	Agent       string        `json:"agent"`
+	ID          string        `json:"id"`
+	Text        string        `json:"text"`
+	Said        *string       `json:"said"`
+	Attachments []string      `json:"attachments"`
+	Reads       []MessageRead `json:"reads"`
+	To          *int          `json:"to"`
+}
+
+// queuer is the engine's door for a queued message's said and reads, or a
+// refusal that leaves the queue as it was.
+func queuer(e Engine, name string) (MessageQueuer, error) {
+	q, ok := e.(MessageQueuer)
+	if !ok {
+		return nil, Errorf(CodeUnknownMethod, "this engine does not serve %s with said or reads", name)
+	}
+	return q, nil
 }
 
 func checkQueueAt(p queueAt, name string) (queueAt, error) {
@@ -425,6 +492,13 @@ var talkMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
+		if marked(p.Said, p.Reads) {
+			s, ok := e.(MessageSteerer)
+			if !ok {
+				return nil, Errorf(CodeUnknownMethod, "this engine does not serve agents.steer with said or reads")
+			}
+			return done(s.SteerMessage(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Reads: p.Reads}))
+		}
 		return done(t.Steer(p.ID, p.Text, p.ClientID))
 	}),
 	"agents.queue": typed(func(e Engine, p sayTo) (*queueResult, error) {
@@ -436,7 +510,16 @@ var talkMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		queued, err := t.Queue(p.ID, p.Text, p.ClientID)
+		var queued []Queued
+		if marked(p.Said, p.Reads) {
+			q, qerr := queuer(e, "agents.queue")
+			if qerr != nil {
+				return nil, qerr
+			}
+			queued, err = q.QueueMessage(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Reads: p.Reads})
+		} else {
+			queued, err = t.Queue(p.ID, p.Text, p.ClientID)
+		}
 		return &queueResult{nonNil(queued)}, err
 	}),
 	"queue.edit": typed(func(e Engine, p queueAt) (*queueResult, error) {
@@ -451,7 +534,21 @@ var talkMethods = map[string]method{
 		if strings.TrimSpace(p.Text) == "" {
 			return nil, Errorf(CodeBadParams, "queue.edit needs the new text; queue.remove takes a message out")
 		}
-		queued, err := t.EditQueued(p.Agent, p.ID, p.Text)
+		if err := refuseAttachments(p.Attachments, "queue.edit"); err != nil {
+			return nil, err
+		}
+		// A PLAIN EDIT REPLACES THE WHOLE MESSAGE with plain words, the old
+		// said and reads included; only an edit that carries them keeps any.
+		var queued []Queued
+		if marked(p.Said, p.Reads) {
+			q, qerr := queuer(e, "queue.edit")
+			if qerr != nil {
+				return nil, qerr
+			}
+			queued, err = q.EditQueuedMessage(p.Agent, p.ID, AgentMessage{Text: p.Text, Said: p.Said, Reads: p.Reads})
+		} else {
+			queued, err = t.EditQueued(p.Agent, p.ID, p.Text)
+		}
 		return &queueResult{nonNil(queued)}, err
 	}),
 	"queue.remove": typed(func(e Engine, p queueAt) (*queueResult, error) {
