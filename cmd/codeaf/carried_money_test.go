@@ -6,6 +6,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,9 +17,15 @@ import (
 )
 
 // carriedOwingFunnel answers at once with no usage block and owes the call's
-// receipt, which lands after a delay — the provider's own order: owed before
-// the fetch, answered after the sink has the money.
-type carriedOwingFunnel struct{ late time.Duration }
+// receipt, which lands only once release is closed — the provider's own order:
+// owed before the fetch, answered after the sink has the money. The test closes
+// release when the run itself says it is waiting for the price, so the receipt
+// can never settle ahead of the wait however the scheduler runs; patience bounds
+// the goroutine so a run that never waits cannot leak it.
+type carriedOwingFunnel struct {
+	release  <-chan struct{}
+	patience time.Duration
+}
 
 func (f carriedOwingFunnel) completerFor(string) modelapi.Completer { return f }
 
@@ -31,13 +38,33 @@ func (f carriedOwingFunnel) CompleteWithMessages(ctx context.Context, _ []ai.Mes
 	sink := provider.ReconcileSinkFrom(ctx)
 	go func() {
 		defer done()
-		time.Sleep(f.late)
+		select {
+		case <-f.release:
+		case <-time.After(f.patience):
+		}
 		sink(provider.Reconciled{Billed: provider.Billed{Model: request.Model, PromptTokens: 52139, CompletionTokens: 4895, Cost: 0.058188488}, Found: true})
 	}()
 	return &ai.Response{Model: request.Model, Choices: []ai.Choice{{
 		Message:      ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "cut short"}}},
 		FinishReason: "stop",
 	}}}, nil
+}
+
+// settlingTrigger is a stderr that lets go of its gate the first time the run
+// says it is waiting for a price: the one event that proves the run is parked
+// on the receipt.
+type settlingTrigger struct {
+	*lockedBuffer
+	once sync.Once
+	gate chan struct{}
+}
+
+func (s *settlingTrigger) Write(p []byte) (int, error) {
+	n, err := s.lockedBuffer.Write(p)
+	if strings.Contains(string(p), "waiting up to") {
+		s.once.Do(func() { close(s.gate) })
+	}
+	return n, err
 }
 
 // A SHELL RUN WAITS FOR THE PRICE OF ITS LAST CALL, SAYS SO, AND FILES IT. The
@@ -47,10 +74,14 @@ func (f carriedOwingFunnel) CompleteWithMessages(ctx context.Context, _ []ai.Mes
 // own clock in its record folder.
 func TestAShellRunWaitsForItsLastCallsPriceAndKeepsItsClock(t *testing.T) {
 	_, printed := hostWithRealChild(t, 0)
+	gate := make(chan struct{})
+	told := &settlingTrigger{lockedBuffer: &lockedBuffer{}, gate: gate}
+	// The receipt is held until the run says it is waiting; the patience only
+	// frees the goroutine if it never does, and the assertions below then fail.
+	owing := carriedOwingFunnel{release: gate, patience: 30 * time.Second}
 	carriedModels = func() (carriedRoad, error) {
-		return carriedRoad{completerFor: carriedOwingFunnel{late: 300 * time.Millisecond}.completerFor, seat: "seat/model"}, nil
+		return carriedRoad{completerFor: owing.completerFor, seat: "seat/model"}, nil
 	}
-	told := &lockedBuffer{}
 	previous := carriedStderr
 	carriedStderr = told
 	t.Cleanup(func() { carriedStderr = previous })
