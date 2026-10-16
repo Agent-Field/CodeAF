@@ -120,6 +120,8 @@ type personSourceID struct {
 type spokenSource struct {
 	id     personSourceID
 	spoken time.Time
+	// clientID is opaque authored-note correlation, not a retry identity or model instruction.
+	clientID string
 	// forwarded says the person was NOT in this node's room when they said it —
 	// the model chose the address and this door carried their words there. It
 	// decides which of the two receipt lines the worker reads
