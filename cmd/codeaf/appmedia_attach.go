@@ -33,6 +33,23 @@ func (r *appReference) submission(id string) session.SubmissionMedia {
 // is admitted before I/O: two active copies and 64 unsent/in-flight snapshots
 // for the process, at most ten per conversation. No background worker is spawned.
 func (b *appBackend) AttachMedia(agent, source, version string) (appwire.Attachment, error) {
+	return b.attachReference(agent, source, nil, func(ctx context.Context, row session.MediaRow, roots []string, destination string) (session.MediaReferenceCopy, error) {
+		return session.CopyMediaReference(ctx, row, roots, version, destination)
+	})
+}
+
+// AttachMediaFrame keeps one frame of an exact recorded video, supplied as PNG
+// bytes, as an engine-owned image whose provenance names the clip and the moment.
+// The same admission as AttachMedia applies; the bytes are validated before any
+// file exists and the video's recorded version must still be live.
+func (b *appBackend) AttachMediaFrame(agent, source, version string, atMS int64, png []byte) (appwire.Attachment, error) {
+	at := atMS
+	return b.attachReference(agent, source, &at, func(ctx context.Context, row session.MediaRow, roots []string, destination string) (session.MediaReferenceCopy, error) {
+		return session.SnapshotMediaFrame(ctx, row, roots, version, at, png, destination)
+	})
+}
+
+func (b *appBackend) attachReference(agent, source string, atMS *int64, snapshot func(context.Context, session.MediaRow, []string, string) (session.MediaReferenceCopy, error)) (appwire.Attachment, error) {
 	a, err := b.find(agent)
 	if err != nil {
 		return appwire.Attachment{}, err
@@ -65,11 +82,11 @@ func (b *appBackend) AttachMedia(agent, source, version string) (appwire.Attachm
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), appMediaGetTime)
 	defer cancel()
-	snapshot, err := session.CopyMediaReference(ctx, row, roots, version, destination)
+	snap, err := snapshot(ctx, row, roots, destination)
 	if err != nil {
-		return appwire.Attachment{}, appwire.Errorf(appwire.CodeBadParams, "could not attach recorded image: %v", err)
+		return appwire.Attachment{}, appwire.Errorf(appwire.CodeBadParams, "could not attach recorded media: %v", err)
 	}
-	ref := &appReference{copy: snapshot, source: session.MediaReference{SourceID: row.Fact.ID, Path: row.Fact.Canonical}}
+	ref := &appReference{copy: snap, source: session.MediaReference{SourceID: row.Fact.ID, Path: row.Fact.Canonical, AtMS: atMS}}
 	var view appwire.Attachment
 	closing := false
 	b.locked(func() {
@@ -78,7 +95,11 @@ func (b *appBackend) AttachMedia(agent, source, version string) (appwire.Attachm
 			return
 		}
 		a.attachN++
-		view = appwire.Attachment{ID: "at" + strconv.Itoa(a.attachN), Kind: appwire.AttachFile, Path: snapshot.Path, Title: filepath.Base(row.Fact.Canonical), Media: &appwire.AttachmentMedia{SHA256: snapshot.SHA256, Source: appWireReference(&ref.source)}}
+		title := filepath.Base(row.Fact.Canonical)
+		if atMS != nil {
+			title = filepath.Base(snap.Path)
+		}
+		view = appwire.Attachment{ID: "at" + strconv.Itoa(a.attachN), Kind: appwire.AttachFile, Path: snap.Path, Title: title, Media: &appwire.AttachmentMedia{SHA256: snap.SHA256, Source: appWireReference(&ref.source)}}
 		if a.attach == nil {
 			a.attach = map[string]appAttach{}
 		}
@@ -86,7 +107,7 @@ func (b *appBackend) AttachMedia(agent, source, version string) (appwire.Attachm
 		kept = true
 	})
 	if closing {
-		_ = snapshot.Remove()
+		_ = snap.Remove()
 		return appwire.Attachment{}, appwire.Errorf(appwire.CodeBusy, "the engine is closing")
 	}
 	return view, nil
