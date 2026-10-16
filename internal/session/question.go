@@ -792,6 +792,10 @@ type Question struct {
 	Attach []Block `json:"attach,omitempty"`
 	// Asked is when it was put.
 	Asked time.Time `json:"asked,omitzero"`
+	// Keep is a keep-running card's whole proposal (keep_running.go), so a
+	// surface draws its command, folder and check from the card itself rather
+	// than from Head and Reason. Nil on every other question.
+	Keep *KeepNotice `json:"keep,omitempty"`
 	// Deadline is when a clock takes the question, and it is ZERO ON EVERY
 	// QUESTION THAT HAS NO CLOCK — which is all of them but the task proposal
 	// today. A WAIT THAT ENDED IS NOT A NO (consent.go): what a deadline does is
@@ -1459,6 +1463,13 @@ func questionAsked(event Event) (string, bool) {
 			return "", false
 		}
 		return questionToken(QuestionAutomation, strconv.FormatUint(event.Automation.ID, 10)), true
+
+	case EventKeepRunning:
+		// A restated card carries its answer and asks nothing ([KeepNotice]).
+		if event.Keep == nil || event.Keep.ID == 0 || event.Keep.Decided != "" || event.Keep.Withdrawn != "" {
+			return "", false
+		}
+		return questionToken(QuestionKeep, strconv.FormatUint(event.Keep.ID, 10)), true
 
 	case EventHarnessOffer:
 		if event.ID == 0 {
@@ -2231,6 +2242,14 @@ func (a *Agent) applyToLane(answer Answer) error {
 	case QuestionFuel:
 		_, err := a.ResolveOrchestrate(answer.Ref, fuelAnswer(key, words))
 		return err
+	case QuestionKeep:
+		// A KEEP-RUNNING CARD IS ANSWERED BY ITS KEY AND NOTHING ELSE: words are
+		// not a policy, and a person who wants something different says so in
+		// a message once the card is answered.
+		if !a.ResolveKeep(answer.ID, key) {
+			return errAnswerEmpty
+		}
+		return nil
 	}
 	return errAnswerUnknownLane
 }
@@ -2401,6 +2420,10 @@ func (a *Agent) OpenQuestions() []Question {
 	for id := range a.automationAnswers {
 		automations = append(automations, id)
 	}
+	keeps := make([]KeepNotice, 0, len(a.keepAsks))
+	for _, ask := range a.keepAsks {
+		keeps = append(keeps, ask.notice)
+	}
 	proposals := make(map[uint64]TaskNotice, len(a.taskAnswers))
 	for id, proposal := range a.taskAnswers {
 		if proposal != nil {
@@ -2435,6 +2458,9 @@ func (a *Agent) OpenQuestions() []Question {
 
 	for _, id := range consent {
 		open = append(open, a.consentQuestion(id))
+	}
+	for _, notice := range keeps {
+		open = append(open, KeepQuestion(notice))
 	}
 	for id, ask := range connects {
 		open = append(open, a.connectQuestion(id, ask))

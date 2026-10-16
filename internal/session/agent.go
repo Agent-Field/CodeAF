@@ -1868,6 +1868,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// it is safe to run twice — a disowned turn hands back nothing, because
 			// the turn that replaced it has already handed back whatever was owed.
 			a.handBackUnsettled()
+			// A process the person declined to keep running ends with the turn
+			// that started it (keep_running.go).
+			a.endTurnJobs(seq)
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING. [Agent.Abandon] has already done
 			// every act below — drained the queues, cleared running, closed the

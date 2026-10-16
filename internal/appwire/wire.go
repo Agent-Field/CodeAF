@@ -199,7 +199,7 @@ type Ask struct {
 	ID      string `json:"id"`
 	Agent   string `json:"agent"`
 	Kind    string `json:"kind" enum:"approval,question"`
-	Subkind string `json:"subkind,omitempty" enum:"permission,budget,crew_decision,crew_proposal,order_run"`
+	Subkind string `json:"subkind,omitempty" enum:"permission,budget,crew_decision,crew_proposal,order_run,keep_running,service_health"`
 	Title   string `json:"title"`
 	Detail  string `json:"detail,omitempty"`
 	// Options carry the engine's own ids; for a permission they are
@@ -240,12 +240,16 @@ type Ask struct {
 	// goal. It is kept in the app layer until it is answered, so the ask is
 	// asked again after a restart.
 	Proposal *Proposal `json:"proposal,omitempty"`
+	// KeepRunning is a keep-running ask's whole proposal (services.go): the
+	// exact command and folder, its one check, the proposed policy, and the
+	// fixed timings it will run under.
+	KeepRunning *KeepRunning `json:"keep_running,omitempty"`
 }
 
 // AskSubject is the thing an ask is about: its kind and the id the app knows
 // it by.
 type AskSubject struct {
-	Kind string `json:"kind" enum:"automation,task,call,run,page,account,crew_proposal,crew_decision,budget"`
+	Kind string `json:"kind" enum:"automation,task,call,run,page,account,crew_proposal,crew_decision,budget,service"`
 	Ref  string `json:"ref,omitempty"`
 }
 

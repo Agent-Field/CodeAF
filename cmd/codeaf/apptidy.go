@@ -98,19 +98,40 @@ func (b *appBackend) MoveToClosed(ids []string) error {
 		if err != nil {
 			return err
 		}
-		b.closeAgent(a)
-		if err := b.state.write(func(f *appStateFile) error {
-			if f.Closed == nil {
-				f.Closed = map[string]time.Time{}
+		if err := b.closeOne(a, func() error {
+			if err := b.state.write(func(f *appStateFile) error {
+				if f.Closed == nil {
+					f.Closed = map[string]time.Time{}
+				}
+				f.Closed[id] = now
+				return nil
+			}); err != nil {
+				return appEngineError(err)
 			}
-			f.Closed[id] = now
 			return nil
 		}); err != nil {
-			return appEngineError(err)
+			return err
 		}
 		b.sayAgent(a)
 	}
 	return nil
+}
+
+// closeOne is the one way the app lets an agent go from a person's Close or
+// Archive: what the agent kept running is fenced and stopped FIRST, and an
+// agent whose process would not stop is left exactly as it was, open and
+// unmarked, with the error saying which. mark runs after the conversation is
+// let go and before the fence is released, so nothing starts in between.
+// Only this agent's own services are touched.
+func (b *appBackend) closeOne(a *appAgent, mark func() error) error {
+	var agentID string
+	b.locked(func() { agentID = a.view.ID })
+	defer b.fenceAgentServices(agentID)()
+	if err := b.stopAgentServices(agentID); err != nil {
+		return err
+	}
+	b.closeAgent(a)
+	return mark()
 }
 
 // Archive closes each agent and puts it away.
@@ -121,22 +142,26 @@ func (b *appBackend) Archive(ids []string) error {
 		if err != nil {
 			return err
 		}
-		b.closeAgent(a)
-		var transcript string
-		b.locked(func() { transcript = a.transcript })
-		if transcript != "" {
-			if err := session.SetArchived(filepath.Dir(transcript), true); err != nil {
+		if err := b.closeOne(a, func() error {
+			var transcript string
+			b.locked(func() { transcript = a.transcript })
+			if transcript != "" {
+				if err := session.SetArchived(filepath.Dir(transcript), true); err != nil {
+					return appEngineError(err)
+				}
+			}
+			if err := b.state.write(func(f *appStateFile) error {
+				if f.Archived == nil {
+					f.Archived = map[string]time.Time{}
+				}
+				f.Archived[id] = now
+				return nil
+			}); err != nil {
 				return appEngineError(err)
 			}
-		}
-		if err := b.state.write(func(f *appStateFile) error {
-			if f.Archived == nil {
-				f.Archived = map[string]time.Time{}
-			}
-			f.Archived[id] = now
 			return nil
 		}); err != nil {
-			return appEngineError(err)
+			return err
 		}
 		b.locked(func() { a.view.State = appwire.StateArchived })
 		b.sayAgent(a)

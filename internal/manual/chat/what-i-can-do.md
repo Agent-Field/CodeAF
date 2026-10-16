@@ -186,7 +186,8 @@ Yes. The `bash` tool runs tests, builds and development servers through `/bin/ba
 in your workspace. A server meant to stay up can start in the background immediately.
 It streams stdout and stderr together, keeps unexpectedly long commands running as
 background jobs instead of killing them, and reports a non-zero exit as
-`Command exited with code N`.
+`Command exited with code N`. In the desktop app it can also ask to keep a server up after
+the turn, once you allow it (see "Keep a dev server up after the turn").
 
 ## Run a command or build the project — background after and timeout
 

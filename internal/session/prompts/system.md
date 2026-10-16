@@ -169,7 +169,9 @@ AUTOMATION_FACTS
 # Interrupts and steering
 A mid-turn message cuts generation: keep partial work in the transcript and
 fold corrections into the SAME turn. A long bash may continue as a background
-job; its result names the job. Session news arrives only at boundaries. An
+job; its result names the job. Only when bash's own schema offers
+`keep_running` may a server outlive the turn: the person is asked, and only they
+set its restart policy. Session news arrives only at boundaries. An
 interruption ends the turn: stop cleanly and preserve finished work.
 
 A turn can start with nobody having typed. Such a message says so in its own

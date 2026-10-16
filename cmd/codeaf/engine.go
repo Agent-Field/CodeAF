@@ -980,6 +980,9 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// and it is the one fact the shared assembly cannot know for itself.
 	cfg := launch.Config
 	cfg.AskConsent = !hello.Headless
+	// The app's one supervisor of kept-running processes, when this process
+	// is the app's (appservices.go); every other engine has none.
+	cfg.Services = appServiceDoor.Load()
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
 	// through the very pair [remote.Engine.Fresh] below is written from

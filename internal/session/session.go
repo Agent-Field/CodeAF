@@ -39,6 +39,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
@@ -654,6 +655,12 @@ const (
 	// A pass whose free rungs did change the conversation ends on
 	// [EventCompacted] instead, with the same Failed reason set on it.
 	EventSummaryFailed
+	// EventKeepRunning asks the person whether to keep one command running
+	// after the turn, and, restated with its answer, is the receipt of what
+	// they said (keep_running.go). Keep carries the card.
+	// IT IS PINNED AT EventAutomationUpdate + 3, after the two summary
+	// ordinals above; persisted event numbers must not move.
+	EventKeepRunning = EventAutomationUpdate + 3
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -989,6 +996,10 @@ type Event struct {
 	// Automation carries one EventAutomationProposal or EventAutomationUpdate's
 	// payload (automation_tool.go). It is nil on every other kind.
 	Automation *AutomationNotice `json:",omitempty"`
+
+	// Keep carries one EventKeepRunning's card (keep_running.go). It is nil on
+	// every other kind.
+	Keep *KeepNotice `json:",omitempty"`
 
 	// Subharness carries one EventSubharnessProposal's intake card
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
@@ -2029,6 +2040,10 @@ type Config struct {
 	// processes are given between SIGTERM and SIGKILL when it closes, in place
 	// of the two seconds a terminal's quit gives them. The desktop app sets it.
 	JobQuitGrace time.Duration
+	// Services is the door to the processes a person agreed to keep running
+	// (internal/service), shared by every conversation in this codeaf. Nil is
+	// off: bash then has no keep_running argument at all (keep_running.go).
+	Services *service.Supervisor
 	// StandingOrders saves what the `automation` tool proposes as a proposed
 	// standing order before its card is up, so the app can list it and agree
 	// to it from its own window: the card's yes ratifies it and its no deletes
@@ -3552,6 +3567,12 @@ type Agent struct {
 	// cards (automation_tool.go).
 	automationAnswers map[uint64]chan AutomationAnswer
 	automationSeq     uint64
+	// keepAsks and keepSeq are the same wait, for keep-running cards, and
+	// turnJobs are the jobs a "deny" left to end with the turn that started
+	// them, by job id and turn (keep_running.go).
+	keepAsks map[uint64]*keepAsk
+	keepSeq  uint64
+	turnJobs map[int]uint64
 	// questionWords is THE WORDS of the questions this session has put, keyed by
 	// lane and token (question.go's [questionToken]).
 	//

@@ -111,6 +111,9 @@ type Process struct {
 	// Reason is why a stopped process stopped, when something other than a
 	// person stopped it: "stopped by quit".
 	Reason string `json:"reason,omitempty"`
+	// Service is set on a kept-running process (services.go); an ordinary
+	// process has none.
+	Service *Service `json:"service,omitempty"`
 }
 
 // The data of this wave's events.

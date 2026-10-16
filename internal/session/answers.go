@@ -254,6 +254,8 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: "2", Label: "finish on what is done", Consequence: "it writes up what it already has"},
 			{Key: "3", Label: "stop", Consequence: "the run ends where it stands"},
 		}
+	case QuestionKeep:
+		return KeepOptions()
 	case QuestionLanding, QuestionConflict:
 		// THE LANDING KEYS ARE TASK-STATES' OWN, LETTER FOR LETTER
 		// (docs/design/task-states/DESIGN.md): `[a] <yes> · [n] <no> · [s] tell

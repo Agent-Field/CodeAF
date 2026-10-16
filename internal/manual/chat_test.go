@@ -3192,6 +3192,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a running chat when I close its tab", "screen"},
 		{"what does keep running do", "screen"},
 		{"what is the difference between keep running and stop work", "screen"},
+		{"can my dev server stay up after the turn", "kept-running"},
+		{"what does allow never restart mean", "kept-running"},
+		{"how often is my dev server health checked", "kept-running"},
 		{"k doesn't do anything on the close tab card any more", "screen"},
 		{"how do I close a tab without stopping the work", "screen"},
 		// ctrl+r in /model (internal/tui3's modelrefresh.go), asked the ways

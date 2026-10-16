@@ -372,7 +372,7 @@ func (b *appBackend) AnswerInbox(id, option, text, why string) (time.Time, error
 				}
 				// ONE INBOX ITEM IS ONE QUESTION: an ask that came in a batch is
 				// answered alone here, and its siblings stay in the Inbox.
-				if err := b.AnswerAskWith(agent, ask, appwire.AskAnswer{Option: option, Text: text, Why: why, BatchItem: ask}); err != nil {
+				if err := b.answerInboxItem(id, agent, ask, appwire.AskAnswer{Option: option, Text: text, Why: why, BatchItem: ask}); err != nil {
 					in.locked(func() {
 						delete(in.held, id)
 						delete(in.from, id)
@@ -411,6 +411,9 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 	agent, askID, ok := appInboxSplit(id)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)
+	}
+	if service, err := b.laterServiceItem(id, askID, later); service {
+		return err
 	}
 	a, err := b.find(agent)
 	if err != nil {

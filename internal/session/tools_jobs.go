@@ -185,12 +185,19 @@ const backgroundProperty = `{"type":"boolean","description":"Spawn the command i
 func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 	return bare.Tool{
 		Name:        inner.Name,
-		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds),
-		Schema:      schemaWithBackground(inner.Schema),
+		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds) + a.keepSentence(),
+		Schema:      a.schemaWithKeep(schemaWithBackground(inner.Schema)),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Command    string `json:"command"`
-				Background bool   `json:"background"`
+				Command     string           `json:"command"`
+				Background  bool             `json:"background"`
+				KeepRunning *keepRunningArgs `json:"keep_running"`
+			}
+			// A command to keep running is its own road: a person is asked
+			// first, and it is started as a service or not at all
+			// (keep_running.go).
+			if err := decodeToolArguments(args, &parsed); err == nil && parsed.KeepRunning != nil {
+				return a.keepRunning(ctx, parsed.Command, *parsed.KeepRunning)
 			}
 			// A call whose arguments do not parse belongs to bare: it owns the
 			// wording of every other bash error, and a second parser reporting
@@ -315,7 +322,7 @@ func (a *Agent) jobsTool() bare.Tool {
 			}
 			switch parsed.Action {
 			case "list":
-				return a.jobs.list(), false, nil
+				return a.jobs.list() + a.keptRunningList(), false, nil
 			case "output":
 				if parsed.ID == nil {
 					return "Invalid arguments: id is required for output", true, nil

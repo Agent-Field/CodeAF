@@ -957,7 +957,8 @@ func (b *appBackend) ListProcesses(agent string) ([]appwire.Process, error) {
 		}
 		out = append(out, process)
 	}
-	return b.quitStopped(agent, out), nil
+	// One list: the agent's kept-running processes are its processes too.
+	return append(b.quitStopped(agent, out), b.serviceProcesses(agent)...), nil
 }
 
 // processLog is where one process's output is spooled.
@@ -998,6 +999,9 @@ func appReadLines(path string, from, limit int) ([]string, int, error) {
 
 // ProcessOutput answers a process's output from a line on.
 func (b *appBackend) ProcessOutput(id string, from int) ([]string, int, error) {
+	if _, _, ok := appServiceID(id); ok {
+		return b.serviceProcessOutput(id, from)
+	}
 	path, err := b.processLog(id)
 	if err != nil {
 		return nil, 0, err
@@ -1022,6 +1026,9 @@ func (b *appBackend) ProcessOutput(id string, from int) ([]string, int, error) {
 // FollowProcess starts or stops the live tail of one process's output, which
 // arrives as process.output only while it is followed.
 func (b *appBackend) FollowProcess(id string, follow bool) error {
+	if _, _, ok := appServiceID(id); ok {
+		return b.serviceFollow(id, follow)
+	}
 	path, err := b.processLog(id)
 	if err != nil {
 		return err
@@ -1091,6 +1098,9 @@ func (b *appBackend) follow(id, path string, from int, f *appFollow) {
 
 // StopProcess stops one running process.
 func (b *appBackend) StopProcess(id string) error {
+	if _, _, ok := appServiceID(id); ok {
+		return b.serviceProcessStop(id)
+	}
 	agent, row, err := b.processRow(id)
 	if err != nil {
 		return err
@@ -1108,6 +1118,9 @@ func (b *appBackend) StopProcess(id string) error {
 
 // RerunProcess runs an ended process's command again, as a new process.
 func (b *appBackend) RerunProcess(id string) (appwire.Process, error) {
+	if _, _, ok := appServiceID(id); ok {
+		return b.StartService(id)
+	}
 	agent, row, err := b.processRow(id)
 	if err != nil {
 		return appwire.Process{}, err

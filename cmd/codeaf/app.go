@@ -142,6 +142,10 @@ func runApp(args []string) error {
 		}
 		return proc.Search.SearchConversations(terms, limit)
 	}
+	// ONE SUPERVISOR FOR EVERY CONVERSATION THE APP BUILDS (appservices.go).
+	services := openAppServices()
+	appServiceDoor.Store(services)
+	backend.attachServices(services)
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
 	// standing orders runs while it is open (apporders.go).
@@ -379,6 +383,12 @@ type appBackend struct {
 	collections       *workspace.Store
 	collectionsClosed bool
 	collectionsPath   string
+	// services is the app's one supervisor of kept-running processes
+	// (appservices.go); nil is the capability absent.
+	services *appServices
+	// notices are the episodes' kept notices (appnotices.go), opened once.
+	notices     *appNoticeLog
+	noticesOnce sync.Once
 }
 
 // appAgent is every agent this process has heard of: listed off the disk,
@@ -1067,6 +1077,10 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindPermission
 		ask.Irreversible = q.Stakes == session.StakesIrreversible
 	}
+	if q.Kind == session.QuestionKeep {
+		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindKeepRunning
+		ask.KeepRunning = appKeepFacts(q)
+	}
 	for _, option := range appOptionsOf(q) {
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
@@ -1107,6 +1121,9 @@ func appOptionsOf(q session.Question) []appOption {
 	var plain []appOption
 	for _, option := range q.Options {
 		plain = append(plain, appOption{id: option.Key, key: option.Key, label: option.Label})
+	}
+	if keep, ok := appKeepOptions(q); ok {
+		return keep
 	}
 	if q.Kind != session.QuestionConsent {
 		return plain
@@ -1171,6 +1188,10 @@ func appReceipt(by, option string, answer *session.Answer, at time.Time) string 
 		word = "Denied"
 	case appwire.OptionAlways:
 		word = "Always allowed"
+	case appwire.OptionAllow:
+		word = "Kept running"
+	case appwire.OptionAllowNever:
+		word = "Kept running, never restarted"
 	}
 	who := "you"
 	switch by {
@@ -1947,6 +1968,16 @@ func (b *appBackend) CloseAgent(id string) error {
 	if err != nil {
 		return err
 	}
+	// CLOSING AN AGENT STOPS WHAT IT KEPT RUNNING, and waits for it to be
+	// gone; letting it go idle does not. A process that would not stop leaves
+	// the agent open, its process listed and the error saying which.
+	var agentID string
+	b.locked(func() { agentID = a.view.ID })
+	// Nothing new starts for it from here until its conversation is let go.
+	defer b.fenceAgentServices(agentID)()
+	if err := b.stopAgentServices(agentID); err != nil {
+		return err
+	}
 	view := b.closeAgent(a)
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	return nil
@@ -2163,7 +2194,8 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	var more bool
 	err = appRecords.WithRecord(transcript, func(record session.Record) error {
 		var err error
-		page, more, err = appEntryPageWithFormed(id, record, at, marks, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
+		notes := func() (*appNoticeReader, error) { return b.noticeLog().Reader(id) }
+		page, more, err = appEntryPageOf(id, record, at, marks, notes, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
 			return b.appEntryFacts(a, item)
 		}, b.crewFormedEntries(id))
 		return err
@@ -2193,10 +2225,29 @@ func appEntriesBusy(err error) error {
 // cursor are still told over the WHOLE record, because an id counts the
 // person's messages from the first and an update is known only by a later call.
 func appEntryPage(id string, record session.Record, at time.Time, marks map[int]appTurnMark, before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts) ([]appwire.Entry, bool, error) {
-	return appEntryPageWithFormed(id, record, at, marks, before, limit, facts, nil)
+	return appEntryPageOf(id, record, at, marks, nil, before, limit, facts, nil)
 }
 
+// appEntryPageWithFormed is [appEntryPage] with a crew's formation facts laid
+// in at their moments (appcrews.go).
 func appEntryPageWithFormed(id string, record session.Record, at time.Time, marks map[int]appTurnMark, before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts, formed []appwire.Entry) ([]appwire.Entry, bool, error) {
+	return appEntryPageOf(id, record, at, marks, nil, before, limit, facts, formed)
+}
+
+// appEntryPageWith is [appEntryPage] with the agent's kept notices of its
+// kept-running processes (appnotices.go) laid in by time.
+func appEntryPageWith(id string, record session.Record, at time.Time, marks map[int]appTurnMark, notes func() (*appNoticeReader, error), before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts) ([]appwire.Entry, bool, error) {
+	return appEntryPageOf(id, record, at, marks, notes, before, limit, facts, nil)
+}
+
+// appEntryPageOf is one page with both: the crew's formation facts are laid
+// into the entries first, so they are cursors like any other entry, and the
+// kept notices of its kept-running processes are then laid in by time, each
+// after the last entry at or before its moment. The record of notices is read
+// backwards from the page's cursor, so a page holds at most limit of them
+// however long the record is, and a notice's id is a cursor like any other
+// entry's.
+func appEntryPageOf(id string, record session.Record, at time.Time, marks map[int]appTurnMark, notes func() (*appNoticeReader, error), before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts, formed []appwire.Entry) ([]appwire.Entry, bool, error) {
 	items := appRecordItems(record)
 	all, from := appEntryShapes(id, items, at, marks)
 	if len(formed) > 0 {
@@ -2205,7 +2256,21 @@ func appEntryPageWithFormed(id string, record session.Record, at time.Time, mark
 	if words := strings.TrimSpace(record.Unreadable); words != "" {
 		all = append(all, appwire.Entry{ID: "unreadable", Agent: id, Kind: appwire.EntryNotice, At: at, Text: words})
 	}
+	var reader *appNoticeReader
+	if notes != nil {
+		r, err := notes()
+		if err != nil {
+			return nil, false, err
+		}
+		reader = r
+	}
+	if reader != nil {
+		defer reader.Close()
+	}
 	end := len(all)
+	// bound is the moment notices on this page come before; a page cut at a
+	// transcript entry holds only notices from before it.
+	var bound *time.Time
 	if before != "" {
 		end = -1
 		for i, entry := range all {
@@ -2214,11 +2279,92 @@ func appEntryPageWithFormed(id string, record session.Record, at time.Time, mark
 				break
 			}
 		}
+		if end >= 0 {
+			cut := all[end].At
+			bound = &cut
+		} else if reader != nil && strings.HasPrefix(before, "svc") {
+			// A notice's id: the page is what came before that notice.
+			for {
+				n, ok := reader.Prev()
+				if !ok {
+					break
+				}
+				if n.id() == before {
+					end = len(all)
+					for end > 0 && all[end-1].At.After(n.At) {
+						end--
+					}
+					break
+				}
+			}
+		}
 		if end < 0 {
 			return nil, false, appwire.Errorf(appwire.CodeNotFound, "this conversation has no entry %s", before)
 		}
 	}
-	start := max(end-limit, 0)
+	if reader != nil && bound != nil {
+		for {
+			n, ok := reader.Peek()
+			if !ok || n.At.Before(*bound) {
+				break
+			}
+			reader.Prev()
+		}
+	}
+	// Walked back from the cursor: a notice at or after the entry before it
+	// comes first, and a notice id given once in a page is not given twice.
+	var notices []appwire.Entry
+	order := make([]bool, 0, limit) // true is a notice
+	seen := map[string]bool{}
+	start := end
+	for len(order) < limit {
+		n, haveN := appwire.Entry{}, false
+		if reader != nil {
+			if notice, ok := reader.Peek(); ok && (start == 0 || !notice.At.Before(all[start-1].At)) {
+				reader.Prev()
+				if seen[notice.id()] {
+					continue
+				}
+				seen[notice.id()] = true
+				n, haveN = appServiceNoticeEntry(notice), true
+			}
+		}
+		if haveN {
+			notices = append(notices, n)
+			order = append(order, true)
+			continue
+		}
+		if start == 0 {
+			break
+		}
+		start--
+		order = append(order, false)
+	}
+	more := start > 0
+	if reader != nil && !more {
+		_, more = reader.Peek()
+	}
+	transcript, err := appDressedPage(items, all, from, start, end, facts)
+	if err != nil {
+		return nil, false, err
+	}
+	page := make([]appwire.Entry, 0, len(order))
+	ti, ni := 0, len(notices)-1
+	for i := len(order) - 1; i >= 0; i-- {
+		if order[i] {
+			page = append(page, notices[ni])
+			ni--
+		} else {
+			page = append(page, transcript[ti])
+			ti++
+		}
+	}
+	return page, more, nil
+}
+
+// appDressedPage is the transcript entries start to end, each tool row
+// dressed and given its call's facts, which is only done for a page.
+func appDressedPage(items []session.DisplayEntry, all []appwire.Entry, from []int, start, end int, facts func(session.DisplayEntry) appwire.ToolFacts) ([]appwire.Entry, error) {
 	page := append([]appwire.Entry{}, all[start:end]...)
 	for i := range page {
 		if start+i < len(from) && from[start+i] >= 0 {
@@ -2234,7 +2380,7 @@ func appEntryPageWithFormed(id string, record session.Record, at time.Time, mark
 		}
 	}
 	if len(wanted) == 0 {
-		return page, start > 0, nil
+		return page, nil
 	}
 	calls := make(map[string]session.DisplayEntry, len(wanted))
 	for _, item := range items {
@@ -2247,7 +2393,7 @@ func appEntryPageWithFormed(id string, record session.Record, at time.Time, mark
 			page[i].ToolFacts = facts(item)
 		}
 	}
-	return page, start > 0, nil
+	return page, nil
 }
 
 // appEntriesOf is a transcript as the app's entries, named by the rule the
@@ -2794,6 +2940,9 @@ func (b *appBackend) Close() error {
 	}
 	wg.Wait()
 	b.closeCollections()
+	// Kept-running processes stay up through a quit; services.stop_all is
+	// how a quit stops them (appservices.go).
+	b.closeServices()
 	return nil
 }
 
@@ -2862,7 +3011,7 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 		keep = live == nil || live.running || now.Sub(live.lastUse) < appAgentIdle
 	})
 	// A member of an open crew stays held while the crew is open.
-	if !keep && !b.liveNeedsYou(live) && !b.crewKeeps(a.view.ID) {
+	if !keep && !b.liveNeedsYou(live) && !b.crewKeeps(a.view.ID) && !b.serviceKeeps(a.view.ID) {
 		// The state the app reads does not move: the conversation is as
 		// idle on disk as it was in memory.
 		b.release(a)
