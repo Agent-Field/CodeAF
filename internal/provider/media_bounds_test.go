@@ -102,10 +102,10 @@ func musicEvent(data string) string {
 func TestMusicStreamRefusesACumulativeOversizeClipInsteadOfTruncatingIt(t *testing.T) {
 	chunk := strings.Repeat("AAAA", 8) // 24 decoded bytes per event
 	stream := musicEvent(chunk) + musicEvent(chunk) + musicEvent(chunk) + "data: [DONE]\n\n"
-	if _, err := readMusicStreamUnder(strings.NewReader(stream), 72); err != nil {
+	if _, err := readMusicStream(strings.NewReader(stream), 72); err != nil {
 		t.Fatalf("clip of exactly the ceiling: %v", err)
 	}
-	_, err := readMusicStreamUnder(strings.NewReader(stream), 71)
+	_, err := readMusicStream(strings.NewReader(stream), 71)
 	if !errors.Is(err, ErrMediaTooLarge) {
 		t.Fatalf("clip over the ceiling err = %v, want ErrMediaTooLarge", err)
 	}
@@ -114,7 +114,7 @@ func TestMusicStreamRefusesACumulativeOversizeClipInsteadOfTruncatingIt(t *testi
 // One event with no separator cannot grow the stitch buffer past the limit.
 func TestMusicStreamBoundsASingleEndlessMessage(t *testing.T) {
 	endless := io.MultiReader(strings.NewReader("data: {\"x\":\""), io.LimitReader(zerosOf('a'), 1<<20))
-	_, err := readMusicStreamUnder(endless, 1024)
+	_, err := readMusicStream(endless, 1024)
 	if !errors.Is(err, ErrMediaTooLarge) {
 		t.Fatalf("endless message err = %v, want ErrMediaTooLarge", err)
 	}

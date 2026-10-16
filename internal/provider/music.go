@@ -143,7 +143,7 @@ func (c *MediaClient) GenerateMusic(ctx context.Context, request MusicRequest) (
 		payload, _ := readMediaBody(response, maxMediaResponseBytes, "music error response")
 		return nil, apiError(response.StatusCode, payload)
 	}
-	return readMusicStream(response.Body)
+	return readMusicStream(response.Body, maxMusicResponseBytes)
 }
 
 // readMusicStream drains the event stream and returns the assembled clip.
@@ -158,13 +158,12 @@ func (c *MediaClient) GenerateMusic(ctx context.Context, request MusicRequest) (
 // would still be wrong, because base64 is only decodable on 4-character
 // boundaries and a split that happened to land elsewhere would corrupt the file
 // in a way nothing here could detect.
-func readMusicStream(stream io.Reader) (*MusicResponse, error) {
-	return readMusicStreamUnder(stream, maxMusicResponseBytes)
-}
-
-// readMusicStreamUnder is [readMusicStream] with the decoded-clip ceiling as a
-// parameter, so a test can prove the refusal with kilobytes instead of 128 MB.
-func readMusicStreamUnder(stream io.Reader, maxClip int) (*MusicResponse, error) {
+//
+// maxClip is the decoded-clip ceiling, a parameter so a test can prove the
+// refusal with kilobytes instead of 128 MB; production passes
+// [maxMusicResponseBytes]. (The funnel law pins this function by name as the one
+// music reader, so there is deliberately no wrapper around it.)
+func readMusicStream(stream io.Reader, maxClip int) (*MusicResponse, error) {
 	maxEncoded := base64.StdEncoding.EncodedLen(maxClip)
 	decoder := newSSEDecoder(stream)
 	// One event may carry the whole clip, so a single message is allowed the
