@@ -398,7 +398,8 @@ func TestUnionCycleAndMissingParentAreRefused(t *testing.T) {
 			unionTeam("p", "pp", "", "w"), unionTeam("pp", "p", "", "v"),
 		}, "team q1 is under itself"},
 		{"long cycle", append(reverseChain(3000)[:2999], unionTeam("c2999", "c0", "", "k")), "team c0 is under itself"},
-		{"missing parent deep in a chain", append(reverseChain(3000), unionTeam("x", "c1500x", "", "kx")), "team x sits under c1500x, which is not there"},
+		{"missing parent on an appended leaf", append(reverseChain(3000), unionTeam("x", "c1500x", "", "kx")), "team x sits under c1500x, which is not there"},
+		{"missing parent partway up a chain", brokenChain(3000, 1500), "team c1500 sits under nowhere, which is not there"},
 	}
 	for _, c := range cases {
 		_, err := buildTeamsUnion(context.Background(), c.teams)
@@ -406,6 +407,14 @@ func TestUnionCycleAndMissingParentAreRefused(t *testing.T) {
 			t.Errorf("%s: %v", c.name, err)
 		}
 	}
+}
+
+// brokenChain is a reverse chain whose team at cut names a parent that is not
+// there, so every walk from below climbs into the gap.
+func brokenChain(depth, cut int) []teamstore.Team {
+	teams := reverseChain(depth)
+	teams[cut].Parent = "nowhere"
+	return teams
 }
 
 // The revision's records cannot run into each other: two tops "p" and "q"
