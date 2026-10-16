@@ -100,3 +100,50 @@ func TestProcessReadsBeyondTheAdmissionAreBusy(t *testing.T) {
 		}
 	}
 }
+
+type crewProcessEngine struct {
+	processEngine
+	crew ProcessPageAsk
+}
+
+func (c *crewProcessEngine) PageCrewProcesses(_ context.Context, ask ProcessPageAsk) (*ProcessPageResult, error) {
+	c.crew = ask
+	return &ProcessPageResult{Roster: ProcessRosterRecorded, Owners: &ProcessOwners{Total: 2}}, nil
+}
+
+// THE CREW FORMS ARE A FEATURE OF THE ENGINES THAT NAME IT: without it both
+// forms are bad_params and hello does not say it; with it they reach the crew
+// half, never the agent half, after the same bounds are checked.
+func TestProcessCrewFormsAreAFeatureOfTheEnginesThatServeThem(t *testing.T) {
+	plain := &processEngine{}
+	for _, ask := range []string{`{"crew":"c"}`, `{"scope":"all"}`} {
+		if _, err := methods["processes.page"].call(plain, json.RawMessage(ask)); codeOf(err) != CodeBadParams {
+			t.Fatalf("%s without the feature: %v", ask, err)
+		}
+	}
+	if h := withProcessFeatures(Hello{}, plain); len(h.Features) != 2 {
+		t.Fatalf("hello names %v", h.Features)
+	}
+	eng := &crewProcessEngine{}
+	if h := withProcessFeatures(Hello{}, eng); len(h.Features) != 3 || h.Features[1] != FeatureProcessesCrew {
+		t.Fatalf("hello names %v", h.Features)
+	}
+	res, err := methods["processes.page"].call(eng, json.RawMessage(`{"crew":"c","limit":7,"cursor":"c1.x"}`))
+	raw, _ := json.Marshal(res)
+	if err != nil || eng.crew.Crew != "c" || *eng.crew.Limit != 7 || eng.page.Cursor != "" ||
+		string(raw) != `{"processes":[],"roster":"recorded","owners":{"total":2,"done":0}}` {
+		t.Fatalf("crew page: %s %v", raw, err)
+	}
+	if _, err := methods["processes.page"].call(eng, json.RawMessage(`{"scope":"all"}`)); err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	for _, bad := range []string{`{"crew":"c","agent":"a"}`, `{"scope":"all","crew":"c"}`, `{"scope":"all","limit":101}`, `{"scope":"crew"}`, `{"scope":"x"}`} {
+		if _, err := methods["processes.page"].call(eng, json.RawMessage(bad)); codeOf(err) != CodeBadParams {
+			t.Fatalf("%s: %v", bad, err)
+		}
+	}
+	// The agent form on a crew engine is unchanged.
+	if _, err := methods["processes.page"].call(eng, json.RawMessage(`{"agent":"a"}`)); err != nil || eng.page.Agent != "a" {
+		t.Fatalf("agent form: %v", err)
+	}
+}

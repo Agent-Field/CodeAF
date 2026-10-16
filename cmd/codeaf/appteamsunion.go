@@ -65,6 +65,15 @@ func appTeamsBusy() error {
 // the shared reader's own, so the two cannot disagree about how large a teams
 // file may be.
 func (b *appBackend) teamsUnion(ctx context.Context) (*appTeamsUnion, error) {
+	file, err := b.teamsSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return buildTeamsUnion(ctx, file.Teams)
+}
+
+// teamsSnapshot is one read-only, ctx-aware read of the stored teams.
+func (b *appBackend) teamsSnapshot(ctx context.Context) (*teamstore.File, error) {
 	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile(), teamstore.SnapshotMaxBytes)
 	switch {
 	case errors.Is(err, teamstore.ErrSnapshotTooLarge):
@@ -74,7 +83,7 @@ func (b *appBackend) teamsUnion(ctx context.Context) (*appTeamsUnion, error) {
 	case err != nil:
 		return nil, appEngineError(err)
 	}
-	return buildTeamsUnion(ctx, file.Teams)
+	return file, nil
 }
 
 // appTeamsCycles marks every team that sits on a parent cycle, in one walk of
@@ -123,6 +132,67 @@ func appTeamsCycles(teams []teamstore.Team, byID map[string]int, tick func() err
 	return onCycle, nil
 }
 
+// appTeamsShape is a stored list's recorded tree, structurally checked.
+type appTeamsShape struct {
+	// byID maps a team id to its position in the list plus one.
+	byID map[string]int
+	// rootID is the real root's id, "" when the file has none.
+	rootID string
+	// children maps a team id (or "" for the parentless) to its children's
+	// positions, in file order.
+	children map[string][]int
+}
+
+// appTeamsStructure checks the recorded tree and nothing about who may do what:
+// ids are present and unique, at most one root, no cycle, no missing parent,
+// the root has no parent and nothing is top-level beside it. Every loop is
+// linear in the list, and tick is the shared look at the request's context.
+// Both the deliverables union and the process history read the tree through it.
+func appTeamsStructure(teams []teamstore.Team, tick func() error) (appTeamsShape, error) {
+	shape := appTeamsShape{byID: make(map[string]int, len(teams)), children: map[string][]int{}}
+	for i, t := range teams {
+		if err := tick(); err != nil {
+			return shape, err
+		}
+		switch {
+		case t.ID == "":
+			return shape, appTeamsInconsistent("a team has no id")
+		case shape.byID[t.ID] != 0:
+			return shape, appTeamsInconsistent("team id %s is used twice", t.ID)
+		}
+		shape.byID[t.ID] = i + 1
+		if t.Root {
+			if shape.rootID != "" {
+				return shape, appTeamsInconsistent("more than one team is the root")
+			}
+			shape.rootID = t.ID
+		}
+	}
+	onCycle, err := appTeamsCycles(teams, shape.byID, tick)
+	if err != nil {
+		return shape, err
+	}
+	for i, t := range teams {
+		if err := tick(); err != nil {
+			return shape, err
+		}
+		if t.Parent != "" && shape.byID[t.Parent] == 0 {
+			return shape, appTeamsInconsistent("team %s sits under %s, which is not there", t.ID, t.Parent)
+		}
+		if t.Parent == t.ID || onCycle[i] {
+			return shape, appTeamsInconsistent("team %s is under itself", t.ID)
+		}
+		if t.Root && t.Parent != "" {
+			return shape, appTeamsInconsistent("the root team sits under another team")
+		}
+		if shape.rootID != "" && !t.Root && t.Parent == "" {
+			return shape, appTeamsInconsistent("team %s is top-level beside the root", t.ID)
+		}
+		shape.children[t.Parent] = append(shape.children[t.Parent], i)
+	}
+	return shape, nil
+}
+
 // buildTeamsUnion is the union of a stored list; it changes nothing in it.
 // Every loop is linear in the list and looks at ctx as it goes.
 func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnion, error) {
@@ -133,49 +203,11 @@ func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnio
 		}
 		return nil
 	}
-	byID := make(map[string]int, len(teams))
-	rootID := ""
-	for i, t := range teams {
-		if err := tick(); err != nil {
-			return nil, err
-		}
-		switch {
-		case t.ID == "":
-			return nil, appTeamsInconsistent("a team has no id")
-		case byID[t.ID] != 0:
-			return nil, appTeamsInconsistent("team id %s is used twice", t.ID)
-		}
-		byID[t.ID] = i + 1
-		if t.Root {
-			if rootID != "" {
-				return nil, appTeamsInconsistent("more than one team is the root")
-			}
-			rootID = t.ID
-		}
-	}
-	onCycle, err := appTeamsCycles(teams, byID, tick)
+	shape, err := appTeamsStructure(teams, tick)
 	if err != nil {
 		return nil, err
 	}
-	children := map[string][]int{}
-	for i, t := range teams {
-		if err := tick(); err != nil {
-			return nil, err
-		}
-		if t.Parent != "" && byID[t.Parent] == 0 {
-			return nil, appTeamsInconsistent("team %s sits under %s, which is not there", t.ID, t.Parent)
-		}
-		if t.Parent == t.ID || onCycle[i] {
-			return nil, appTeamsInconsistent("team %s is under itself", t.ID)
-		}
-		if t.Root && t.Parent != "" {
-			return nil, appTeamsInconsistent("the root team sits under another team")
-		}
-		if rootID != "" && !t.Root && t.Parent == "" {
-			return nil, appTeamsInconsistent("team %s is top-level beside the root", t.ID)
-		}
-		children[t.Parent] = append(children[t.Parent], i)
-	}
+	byID, rootID, children := shape.byID, shape.rootID, shape.children
 	if rootID != "" && teams[byID[rootID]-1].Closed() {
 		return nil, appTeamsInconsistent("the root team is closed")
 	}

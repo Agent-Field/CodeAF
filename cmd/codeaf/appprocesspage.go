@@ -73,12 +73,40 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 	}
 	var transcript string
 	b.locked(func() { transcript = a.transcript })
-	live := b.liveOf(a)
 	convDir := ""
 	if transcript != "" {
 		convDir = filepath.Dir(transcript)
 	}
-	stopped := b.quitStoppedSet(ask.Agent)
+	owner := appProcessOwner{
+		agent: ask.Agent, live: b.liveOf(a), convDir: convDir,
+		read: func(ctx context.Context, sessionAsk session.ProcessPageAsk) (session.ProcessPage, error) {
+			return session.ReadProcessPage(ctx, transcript, sessionAsk)
+		},
+	}
+	out, err := b.pageOwner(ctx, owner, ask.Cursor, limit, appwire.ProcessPageReplyMax)
+	if err != nil {
+		return nil, appProcessPageError(err)
+	}
+	return out, nil
+}
+
+// appProcessOwner is where one conversation's history is read from. A held
+// conversation (live) is asked through its own engine; otherwise read answers
+// from its store. convDir is the folder its managed logs are under, "" when
+// that folder is not one this reader may open (the last line is then left out
+// rather than read unsafely).
+type appProcessOwner struct {
+	agent   string
+	live    *appLive
+	convDir string
+	read    func(context.Context, session.ProcessPageAsk) (session.ProcessPage, error)
+}
+
+// pageOwner is one page of one conversation's history, under limit rows and
+// budget bytes: the page the agent form answers, and the visit a crew page
+// makes to each of its owners.
+func (b *appBackend) pageOwner(ctx context.Context, o appProcessOwner, cursor string, limit, budget int) (*appwire.ProcessPageResult, error) {
+	stopped := b.quitStoppedSet(o.agent)
 	services := func(after string, n int) ([]appwire.Process, bool, string) {
 		svc, err := b.servicesOf()
 		if err != nil {
@@ -86,7 +114,7 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 			// membership has its own fixed revision.
 			return nil, false, ""
 		}
-		rows, more, revision := svc.sup.Page(ask.Agent, after, n)
+		rows, more, revision := svc.sup.Page(o.agent, after, n)
 		out := make([]appwire.Process, 0, len(rows))
 		for _, row := range rows {
 			// NO TAIL IS READ FOR A PAGED SERVICE: its last line is absent
@@ -97,23 +125,19 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 		return out, more, revision
 	}
 	engine := func(ctx context.Context, sessionAsk session.ProcessPageAsk) (session.ProcessPage, error) {
-		if live != nil {
-			return b.heldProcessPage(ctx, live, sessionAsk)
+		if o.live != nil {
+			return b.heldProcessPage(ctx, o.live, sessionAsk)
 		}
-		return session.ReadProcessPage(ctx, transcript, sessionAsk)
+		return o.read(ctx, sessionAsk)
 	}
 	rowOf := func(row session.ProcessPageRow) appwire.Process {
-		p := appProcessPageRow(ask.Agent, convDir, row)
+		p := appProcessPageRow(o.agent, o.convDir, row)
 		if stopped[p.ID] && p.State != appwire.ProcessRunning {
 			p.State, p.Reason, p.ExitCode, p.UnknownReason = appwire.ProcessStopped, appQuitStoppedWord, nil, ""
 		}
 		return p
 	}
-	out, err := appComposeProcessPage(ctx, ask.Cursor, limit, appwire.ProcessPageReplyMax, services, engine, rowOf)
-	if err != nil {
-		return nil, appProcessPageError(err)
-	}
-	return out, nil
+	return appComposeProcessPage(ctx, cursor, limit, budget, services, engine, rowOf)
 }
 
 // The app's page cursor, around the engine's.

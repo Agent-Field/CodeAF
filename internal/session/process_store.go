@@ -153,7 +153,14 @@ var processLegacyNames = [2]string{"processes.json", placeNodeJournals + "/proce
 
 // processStore is one conversation's history, rooted at the conversation's
 // folder.
-type processStore struct{ dir string }
+//
+// anchor, when set, is the conversation's folder already opened as a root (see
+// [ReadProcessPageWithinRoot]): every READ then goes through it, so no component
+// of the path above the folder can be swapped for a link mid-page.
+type processStore struct {
+	dir    string
+	anchor *os.Root
+}
 
 func (s processStore) root() string { return filepath.Join(s.dir, processStoreName) }
 
@@ -236,6 +243,9 @@ func randomToken(n int) string {
 // openRoot opens the store, creating it only when create is set. A store that
 // is a link or not a directory is refused.
 func (s processStore) openRoot(create bool) (*os.Root, error) {
+	if s.anchor != nil && !create {
+		return openDirWithin(s.anchor, processStoreName)
+	}
 	path := s.root()
 	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) && create {
@@ -408,8 +418,8 @@ func (h processHead) markFor(file string) (legacyMark, bool) {
 // legacyPending says whether some legacy array is present and not folded in
 // to its end as it now stands.
 func (s processStore) legacyPending(head processHead) bool {
-	for k, path := range processLegacyFiles(s.dir) {
-		now, ok := legacyMarkOf(path, processLegacyNames[k])
+	for k := range processLegacyNames {
+		now, ok := s.legacyMarkAt(k)
 		if !ok {
 			continue
 		}
@@ -463,8 +473,14 @@ var errLegacyBudget = errors.New("legacy fold budget used")
 // the scanner knows the exact byte every element starts at, which is what lets
 // a pass cut by its budget resume there.
 func scanLegacy(path string, from, budget int64, deadline time.Time, fn func(JobNotice) error) (legacyScan, error) {
+	return scanLegacyOpened(func() (*os.File, error) { return openRegularNoFollow(path) }, from, budget, deadline, fn)
+}
+
+// scanLegacyOpened is [scanLegacy] over a file the caller opens, so an
+// anchored reader can open it through its root.
+func scanLegacyOpened(open func() (*os.File, error), from, budget int64, deadline time.Time, fn func(JobNotice) error) (legacyScan, error) {
 	scan := legacyScan{next: from}
-	file, err := openRegularNoFollow(path)
+	file, err := open()
 	if errors.Is(err, fs.ErrNotExist) {
 		scan.done = true
 		return scan, nil
@@ -941,8 +957,8 @@ func pageRow(n JobNotice, vouch func(int) (JobNotice, bool)) ProcessPageRow {
 // cursor into it goes stale the moment either file changes.
 func (s processStore) legacyEpoch() string {
 	var parts []string
-	for k, path := range processLegacyFiles(s.dir) {
-		if m, ok := legacyMarkOf(path, processLegacyNames[k]); ok {
+	for k := range processLegacyNames {
+		if m, ok := s.legacyMarkAt(k); ok {
 			parts = append(parts, strconv.FormatInt(m.Size, 36)+"."+strconv.FormatInt(m.MTime, 36))
 		}
 	}
@@ -957,8 +973,8 @@ func (s processStore) readLegacyRows(ctx context.Context) ([]JobNotice, bool) {
 	byID := map[int]JobNotice{}
 	incomplete := false
 	deadline, _ := ctx.Deadline()
-	for _, path := range processLegacyFiles(s.dir) {
-		scan, err := scanLegacy(path, 0, processLegacyReadCap, deadline, func(n JobNotice) error {
+	for k := range processLegacyNames {
+		scan, err := scanLegacyOpened(func() (*os.File, error) { return s.openLegacy(k) }, 0, processLegacyReadCap, deadline, func(n JobNotice) error {
 			n.StartedBy, n.Task = "", 0
 			if old, ok := byID[n.ID]; ok && (old.Over() || !n.Over()) {
 				return nil

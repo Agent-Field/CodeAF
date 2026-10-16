@@ -22,6 +22,10 @@ import (
 const (
 	FeatureProcessesPage = "processes.page"
 	FeatureProcessesLog  = "processes.log"
+	// FeatureProcessesCrew says processes.page also serves the crew forms:
+	// {crew} for one team's recorded subtree and {scope:"all"} for every
+	// recorded team. An engine without it answers both as bad_params.
+	FeatureProcessesCrew = "processes.crew"
 )
 
 // The bounds a request is checked against before anything is read.
@@ -38,13 +42,31 @@ const (
 	ProcessReadsInFlight = 4
 )
 
-// The page's scopes. Only an agent's own history is served; a crew's needs a
-// member set the engine owns with its own revision, and is refused rather than
-// approximated.
+// The page's scopes. An agent's own history is the default; the crew forms are
+// served only by an engine that names FeatureProcessesCrew, from the member set
+// that engine owns, and are refused rather than approximated.
 const (
 	ProcessScopeAgent = "agent"
 	ProcessScopeCrew  = "crew"
+	ProcessScopeAll   = "all"
 )
+
+// ProcessRosterRecorded is the fixed caption of a crew page's roster: the
+// membership as the team file records it at the first page, not who is
+// working now and not who was there on any earlier day.
+const ProcessRosterRecorded = "recorded"
+
+// The reasons an owner's history could not be read in a crew walk.
+const (
+	ProcessOwnerMissing    = "missing"
+	ProcessOwnerUnreadable = "unreadable"
+	ProcessOwnerTimeout    = "timeout"
+	ProcessOwnerStale      = "stale"
+)
+
+// ProcessPartialMax bounds how many owners one page names as partial; the rest
+// are counted in ProcessOwners.More.
+const ProcessPartialMax = 32
 
 // Why a process's state is unknown.
 const (
@@ -67,6 +89,33 @@ type ProcessPageResult struct {
 	Next       string    `json:"next,omitempty"`
 	Incomplete bool      `json:"incomplete,omitempty"`
 	Revision   string    `json:"revision,omitempty"`
+	// Roster and Owners are answered by the crew forms only. Roster is always
+	// ProcessRosterRecorded. Owners says how much of the roster has been read
+	// and which owners could not be: a crew walk is complete only when Next is
+	// absent and Owners.Partial is empty throughout.
+	Roster string         `json:"roster,omitempty"`
+	Owners *ProcessOwners `json:"owners,omitempty"`
+}
+
+// ProcessOwners is a crew walk's progress. Done counts owners read to their end
+// or named partial; Total is every owner the roster holds. Partial names the
+// owners that became partial on THIS page (at most ProcessPartialMax), More
+// counts those not named, and Unread counts every owner partial so far. A
+// partial owner is skipped for the rest of the walk, never silently dropped.
+type ProcessOwners struct {
+	Total   int                   `json:"total"`
+	Done    int                   `json:"done"`
+	Unread  int                   `json:"unread,omitempty"`
+	Partial []ProcessOwnerPartial `json:"partial,omitempty"`
+	More    int                   `json:"more,omitempty"`
+}
+
+// ProcessOwnerPartial names one owner a crew walk could not read: its agent
+// id, or the member key when no conversation could be named, and why.
+type ProcessOwnerPartial struct {
+	Agent  string `json:"agent,omitempty"`
+	Key    string `json:"key,omitempty"`
+	Reason string `json:"reason"`
 }
 
 // ProcessLogAsk is processes.log's params. Offset absent reads the tail.
@@ -97,6 +146,12 @@ type ProcessPager interface {
 	PageProcesses(ctx context.Context, ask ProcessPageAsk) (*ProcessPageResult, error)
 }
 
+// ProcessCrewPager is the optional crew half of ProcessPager. An engine that
+// has it names FeatureProcessesCrew.
+type ProcessCrewPager interface {
+	PageCrewProcesses(ctx context.Context, ask ProcessPageAsk) (*ProcessPageResult, error)
+}
+
 type ProcessLogReader interface {
 	ReadProcessLog(ctx context.Context, ask ProcessLogAsk) (*ProcessLogResult, error)
 }
@@ -104,6 +159,9 @@ type ProcessLogReader interface {
 func withProcessFeatures(hello Hello, e Engine) Hello {
 	if _, ok := e.(ProcessPager); ok {
 		hello = withFeature(hello, FeatureProcessesPage)
+		if _, ok := e.(ProcessCrewPager); ok {
+			hello = withFeature(hello, FeatureProcessesCrew)
+		}
 	}
 	if _, ok := e.(ProcessLogReader); ok {
 		hello = withFeature(hello, FeatureProcessesLog)
@@ -113,11 +171,48 @@ func withProcessFeatures(hello Hello, e Engine) Hello {
 
 // CheckProcessPageAsk is the effective limit, or bad_params.
 func CheckProcessPageAsk(p ProcessPageAsk) (int, error) {
-	if p.Crew != "" || (p.Scope != "" && p.Scope != ProcessScopeAgent) {
-		return 0, Errorf(CodeBadParams, "crew process history is not served yet; page each agent's own")
+	if ProcessCrewForm(p) {
+		return 0, Errorf(CodeBadParams, "crew process history is not served here; page each agent's own")
 	}
 	if p.Agent == "" || !plainText(p.Agent, 128) {
 		return 0, Errorf(CodeBadParams, "processes.page needs an agent")
+	}
+	limit := ProcessPageLimitDefault
+	if p.Limit != nil {
+		limit = *p.Limit
+		if limit < 1 || limit > ProcessPageLimitMax {
+			return 0, Errorf(CodeBadParams, "limit is 1 to %d", ProcessPageLimitMax)
+		}
+	}
+	if len(p.Cursor) > ProcessCursorMax {
+		return 0, Errorf(CodeBadParams, "cursor is one a previous page gave")
+	}
+	return limit, nil
+}
+
+// ProcessCrewForm says the ask is not an agent's own: it names a crew, or a
+// scope other than the agent's.
+func ProcessCrewForm(p ProcessPageAsk) bool {
+	return p.Crew != "" || (p.Scope != "" && p.Scope != ProcessScopeAgent)
+}
+
+// CheckProcessCrewAsk is the effective limit of a crew form, or bad_params.
+// The forms are exactly {crew} (scope absent or "crew") and {scope:"all"};
+// any agent beside them, a scope that is not one of those, or both a crew and
+// "all" is refused.
+func CheckProcessCrewAsk(p ProcessPageAsk) (int, error) {
+	bad := func() (int, error) {
+		return 0, Errorf(CodeBadParams, `crew process history takes a crew, or scope "all", and no agent`)
+	}
+	switch {
+	case p.Agent != "":
+		return bad()
+	case p.Crew != "" && (p.Scope != "" && p.Scope != ProcessScopeCrew):
+		return bad()
+	case p.Crew == "" && p.Scope != ProcessScopeAll:
+		return bad()
+	case p.Crew != "" && !plainText(p.Crew, 128):
+		return bad()
 	}
 	limit := ProcessPageLimitDefault
 	if p.Limit != nil {
@@ -184,7 +279,17 @@ func init() {
 		if !ok {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve processes.page")
 		}
-		if _, err := CheckProcessPageAsk(p); err != nil {
+		var serve func(context.Context, ProcessPageAsk) (*ProcessPageResult, error) = pager.PageProcesses
+		if ProcessCrewForm(p) {
+			crew, ok := e.(ProcessCrewPager)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "this engine does not serve crew process history; page each agent's own")
+			}
+			if _, err := CheckProcessCrewAsk(p); err != nil {
+				return nil, err
+			}
+			serve = crew.PageCrewProcesses
+		} else if _, err := CheckProcessPageAsk(p); err != nil {
 			return nil, err
 		}
 		release, err := admitProcessRead()
@@ -194,7 +299,7 @@ func init() {
 		defer release()
 		ctx, cancel := context.WithTimeout(context.Background(), ProcessReadTimeout)
 		defer cancel()
-		res, err := pager.PageProcesses(ctx, p)
+		res, err := serve(ctx, p)
 		if err != nil {
 			return nil, processReadError("processes.page", err)
 		}
