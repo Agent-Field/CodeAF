@@ -283,9 +283,6 @@ func CodexRememberedModels(service modelsource.Connected, profileDir string) []c
 // ConnectCodex keeps a completed browser sign-in, persists its service row and
 // seeds the picker from the account's own visible model list.
 func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Tokens) (modelsource.Outcome, error) {
-	if AppMode() {
-		return modelsource.Outcome{}, ErrAppKeys
-	}
 	if err := ctx.Err(); err != nil {
 		return modelsource.Outcome{}, err
 	}
@@ -293,7 +290,12 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 		return modelsource.Outcome{}, err
 	}
 	listed := true
-	row := PersistedSource{ID: "codex", Written: "codex", Key: codexauth.Sentinel, Listed: &listed}
+	row := PersistedSource{ID: "codex", Written: "codex", Listed: &listed}
+	// Account tokens stay in the existing owner-only Codex store. App profiles
+	// never write a key or sentinel into their generic provider rows.
+	if !AppMode() {
+		row.Key = codexauth.Sentinel
+	}
 	if err := persistConnectedSource(profileDir, row); err != nil {
 		_ = codexauth.Remove(profileDir)
 		return modelsource.Outcome{}, err

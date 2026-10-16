@@ -516,11 +516,15 @@ type Figure struct {
 // four characters of the key in use, and SignIn says the provider can be
 // connected by a browser sign-in instead of a pasted key.
 type Provider struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	SignedIn bool   `json:"signed_in"`
-	KeyHint  string `json:"key_hint,omitempty"`
-	SignIn   bool   `json:"sign_in,omitempty"`
+	SignInAttempt string `json:"sign_in_attempt,omitempty"`
+	AuthKind      string `json:"auth_kind,omitempty"`
+	SignInState   string `json:"sign_in_state,omitempty"`
+	SignInError   string `json:"sign_in_error,omitempty"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	SignedIn      bool   `json:"signed_in"`
+	KeyHint       string `json:"key_hint,omitempty"`
+	SignIn        bool   `json:"sign_in,omitempty"`
 }
 
 // KeyCheck is keys.check's answer. Status is the provider's own status code

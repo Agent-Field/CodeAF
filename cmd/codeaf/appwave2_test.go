@@ -118,8 +118,8 @@ func TestAppKeysAreHeldInMemoryAndOutrankTheProfile(t *testing.T) {
 	if p := byID["deepseek"]; !p.SignedIn || p.KeyHint != "…7c2e" || p.SignIn {
 		t.Fatalf("deepseek = %+v", p)
 	}
-	if _, listed := byID["codex"]; listed {
-		t.Fatal("the codex sign-in, which keeps tokens on disk, is listed")
+	if p := byID["codex"]; p.AuthKind != "account" || !p.SignIn || p.KeyHint != "" {
+		t.Fatalf("Codex must be an account, not a pasted key: %+v", p)
 	}
 	rec.waitFor(t, time.Second, func(event string, data any) bool {
 		changed, ok := data.(appwire.ProviderChanged)

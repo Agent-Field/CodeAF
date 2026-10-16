@@ -371,7 +371,8 @@ type appBackend struct {
 	// made by the first ask.
 	balances *appBalances
 	// signIn is the browser sign-in waiting for the person, if any.
-	signIn *openrouterauth.Flow
+	signIn      *openrouterauth.Flow
+	accountAuth *appAccountAuth
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
 	// today replaces the usage ledger's figure for today in a test.
@@ -2998,6 +2999,10 @@ func (b *appBackend) Close() error {
 			return
 		}
 		b.closing = true
+		if b.accountAuth != nil {
+			b.accountAuth.cancel()
+			b.accountAuth.flow.Cancel()
+		}
 		crews, warmed, balances = b.crewRun, b.warmed, b.balances
 		if b.signIn != nil {
 			b.signIn.Cancel()

@@ -10,7 +10,7 @@ package main
 // keys.check is EXACTLY ONE request to the provider, with no redirect
 // followed and ten seconds to answer, and a rejection is said in the
 // provider's own words with its own status code. A browser sign-in exists
-// where the engine already has one: OpenRouter's.
+// where the engine already has one: OpenRouter keys or a Codex account.
 
 import (
 	"context"
@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -51,13 +52,13 @@ type appProvider struct {
 }
 
 // appProviders is every service a pasted key connects, OpenRouter first. The
-// Codex sign-in, a local Ollama and a custom endpoint are not here: the first
-// keeps its tokens on disk, and the other two are addresses rather than keys.
+// Codex uses its existing engine-owned account token store; local Ollama and
+// custom endpoints are addresses rather than these key/account connections.
 func appProviders() []appProvider {
 	providers := []appProvider{{
 		id: modelsource.DefaultID, name: modelsource.DefaultSource("").Name,
 		check: strings.TrimRight(config.DefaultBaseURL, "/") + "/models/user", signIn: true,
-	}}
+	}, {id: "codex", name: "Codex (ChatGPT account)", signIn: true}}
 	for _, source := range modelsource.Vendored() {
 		if source.ID == "codex" || source.KeyOptional || modelsource.IsCustomID(source.ID) {
 			continue
@@ -98,6 +99,12 @@ func appKeyHint(key string) string {
 // would find a key, wherever that key came from.
 func (b *appBackend) providerView(p appProvider, sources modelsource.Set) appwire.Provider {
 	view := appwire.Provider{ID: p.id, Name: p.name, SignIn: p.signIn}
+	if p.id == "codex" {
+		view.AuthKind = "account"
+		view.SignedIn = codexauth.Connected(config.ProfileDir())
+		b.accountAuthView(&view)
+		return view
+	}
 	key := ""
 	if service, ok := sources.ByID(p.id); ok {
 		key = service.Key
@@ -135,7 +142,7 @@ func (b *appBackend) providerChanged(id, key string) {
 // CheckKey proves a key with one request and keeps nothing.
 func (b *appBackend) CheckKey(provider, key string) (appwire.KeyCheck, error) {
 	p, ok := appProviderNamed(provider)
-	if !ok {
+	if !ok || p.id == "codex" {
 		return appwire.KeyCheck{}, appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", provider)
 	}
 	trace.Secret(key)
@@ -242,7 +249,7 @@ func appProviderWords(raw []byte, status int) string {
 // SetKey holds a provider's key for this launch and makes it live in every
 // conversation the process holds.
 func (b *appBackend) SetKey(provider, key string) error {
-	if _, ok := appProviderNamed(provider); !ok {
+	if _, ok := appProviderNamed(provider); !ok || provider == "codex" {
 		return appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", provider)
 	}
 	b.keys.Set(provider, key)
@@ -254,6 +261,9 @@ func (b *appBackend) SetKey(provider, key string) error {
 // RemoveKey disconnects a provider for the rest of this launch, and a key in
 // the profile or the shell does not quietly take its place.
 func (b *appBackend) RemoveKey(provider string) error {
+	if provider == "codex" {
+		return appwire.Errorf(appwire.CodeBadParams, "account sign-out is not a key removal")
+	}
 	if _, ok := appProviderNamed(provider); !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "codeaf has no provider %s", provider)
 	}
@@ -284,6 +294,9 @@ func (b *appBackend) keysMoved(provider string) {
 // produces is held like a pasted one and handed to the app once, on
 // provider.changed, for the keychain.
 func (b *appBackend) SignIn(provider string) (string, error) {
+	if provider == "codex" {
+		return b.accountSignIn()
+	}
 	p, ok := appProviderNamed(provider)
 	if !ok || !p.signIn {
 		return "", appwire.Errorf(appwire.CodeBadParams, "%s has no browser sign-in; paste a key instead", provider)

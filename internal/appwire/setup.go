@@ -15,7 +15,48 @@ func init() {
 	}
 }
 
+type ProviderSignInCanceler interface{ CancelSignIn(string, string) error }
+
+type ProviderSignInStart struct {
+	URL     string `json:"url"`
+	Attempt string `json:"attempt"`
+}
+type ProviderSignInStarter interface {
+	StartSignIn(string) (ProviderSignInStart, error)
+}
+type providerCancelParams struct {
+	Provider string `json:"provider"`
+	Attempt  string `json:"attempt"`
+}
+
 var setupMethods = map[string]method{
+	"providers.sign_in_start": typed(func(e Engine, p ProviderParams) (*ProviderSignInStart, error) {
+		provider, err := required("provider", p.Provider)
+		if err != nil {
+			return nil, err
+		}
+		starter, ok := e.(ProviderSignInStarter)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "account sign-in is unavailable")
+		}
+		result, err := starter.StartSignIn(strings.ToLower(strings.TrimSpace(provider)))
+		return &result, err
+	}),
+	"providers.sign_in_cancel": typed(func(e Engine, p providerCancelParams) (*Empty, error) {
+		provider, err := required("provider", p.Provider)
+		if err != nil {
+			return nil, err
+		}
+		c, ok := e.(ProviderSignInCanceler)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "provider sign-in cancellation is unavailable")
+		}
+		attempt, err := required("attempt", p.Attempt)
+		if err != nil {
+			return nil, err
+		}
+		return done(c.CancelSignIn(strings.ToLower(strings.TrimSpace(provider)), attempt))
+	}),
 	"providers.list": typed(func(e Engine, _ struct{}) (*ProvidersResult, error) {
 		providers, err := e.ListProviders()
 		if err != nil {
