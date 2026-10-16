@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"sync"
+	"weak"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -80,15 +81,16 @@ func newUsageRowID() string {
 // answerBillingNotes is how many errand answers may be waiting at once. An
 // errand is banked in the breath after it returns, so a handful is the
 // ordinary depth; the bound only keeps a caller that never banks from holding
-// answers alive.
+// answers alive. Keys are weak: even one unbanked response may hold a large
+// payload, so a count bound alone would not bound retained answer memory.
 const answerBillingNotes = 64
 
 var answerBillings = struct {
 	mu    sync.Mutex
-	notes map[*ai.Response]provider.BillingFact
-	ring  [answerBillingNotes]*ai.Response
+	notes map[weak.Pointer[ai.Response]]provider.BillingFact
+	ring  [answerBillingNotes]weak.Pointer[ai.Response]
 	next  int
-}{notes: map[*ai.Response]provider.BillingFact{}}
+}{notes: map[weak.Pointer[ai.Response]]provider.BillingFact{}}
 
 // noteAnswerBilling remembers which road one returned answer came down.
 func noteAnswerBilling(response *ai.Response, fact provider.BillingFact) {
@@ -97,16 +99,17 @@ func noteAnswerBilling(response *ai.Response, fact provider.BillingFact) {
 	}
 	answerBillings.mu.Lock()
 	defer answerBillings.mu.Unlock()
-	if _, held := answerBillings.notes[response]; held {
-		answerBillings.notes[response] = fact
+	key := weak.Make(response)
+	if _, held := answerBillings.notes[key]; held {
+		answerBillings.notes[key] = fact
 		return
 	}
-	if old := answerBillings.ring[answerBillings.next]; old != nil {
+	if old := answerBillings.ring[answerBillings.next]; old != (weak.Pointer[ai.Response]{}) {
 		delete(answerBillings.notes, old)
 	}
-	answerBillings.ring[answerBillings.next] = response
+	answerBillings.ring[answerBillings.next] = key
 	answerBillings.next = (answerBillings.next + 1) % answerBillingNotes
-	answerBillings.notes[response] = fact
+	answerBillings.notes[key] = fact
 }
 
 // takeAnswerBilling hands back, once, the road one answer was noted with. The
@@ -118,14 +121,15 @@ func takeAnswerBilling(response *ai.Response) (provider.BillingFact, bool) {
 	}
 	answerBillings.mu.Lock()
 	defer answerBillings.mu.Unlock()
-	fact, held := answerBillings.notes[response]
+	key := weak.Make(response)
+	fact, held := answerBillings.notes[key]
 	if !held {
 		return provider.BillingFact{}, false
 	}
-	delete(answerBillings.notes, response)
+	delete(answerBillings.notes, key)
 	for i, waiting := range answerBillings.ring {
-		if waiting == response {
-			answerBillings.ring[i] = nil
+		if waiting == key {
+			answerBillings.ring[i] = weak.Pointer[ai.Response]{}
 			break
 		}
 	}

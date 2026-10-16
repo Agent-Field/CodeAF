@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -233,8 +234,25 @@ func TestAnErrandNoteGivesWayWithoutTouchingMoney(t *testing.T) {
 		t.Fatalf("the newest note = %+v, %t, want %+v", fact, noted, plan)
 	}
 	for i := range answerBillings.ring {
-		if waiting := answerBillings.ring[i]; waiting != nil {
+		if waiting := answerBillings.ring[i].Value(); waiting != nil {
 			takeAnswerBilling(waiting)
 		}
+	}
+}
+
+func TestAnUnbankedBillingNoteDoesNotRetainItsAnswer(t *testing.T) {
+	collected := func() <-chan struct{} {
+		done := make(chan struct{})
+		response := &ai.Response{}
+		runtime.AddCleanup(response, func(ch chan struct{}) { close(ch) }, done)
+		noteAnswerBilling(response, provider.IncludedDoorFact("test", "plan"))
+		runtime.KeepAlive(response)
+		return done
+	}()
+	runtime.GC()
+	select {
+	case <-collected:
+	case <-time.After(10 * time.Second):
+		t.Fatal("billing metadata retained an unbanked answer")
 	}
 }
