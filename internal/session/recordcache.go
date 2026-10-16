@@ -501,7 +501,7 @@ func entriesCost(entries []DisplayEntry) int64 {
 	cost := int64(cap(entries)) * int64(unsafe.Sizeof(DisplayEntry{}))
 	for i := range entries {
 		entry := &entries[i]
-		cost += int64(len(entry.Role) + len(entry.Text) + len(entry.Tool) + len(entry.Hint) +
+		cost += int64(len(entry.RunID) + len(entry.Role) + len(entry.Text) + len(entry.Tool) + len(entry.Hint) +
 			len(entry.CallID) + len(entry.Args) + len(entry.Output) + len(entry.Caption) + len(entry.CaptionCategory))
 		cost += int64(cap(entry.ImageRefs)) * int64(unsafe.Sizeof(""))
 		for _, ref := range entry.ImageRefs {

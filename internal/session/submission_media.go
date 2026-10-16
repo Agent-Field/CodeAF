@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+	"unsafe"
 
 	_ "golang.org/x/image/webp" // registered for the header-only dimension probe
 )
@@ -412,24 +413,37 @@ func composedSizes(mark *ComposedMark) int64 {
 	if mark == nil {
 		return 0
 	}
-	cost := int64(len(mark.MessageID))
+	cost := int64(unsafe.Sizeof(*mark)) + int64(len(mark.MessageID))
+	cost += int64(cap(mark.Media)) * int64(unsafe.Sizeof(MessageMedia{}))
 	for _, media := range mark.Media {
-		cost += int64(len(media.ID)+len(media.Path)+len(media.MIME)+len(media.SHA256)+len(media.Role)) + 64
-		if media.Source != nil {
-			cost += int64(len(media.Source.SourceID)+len(media.Source.Path)+len(media.Source.Version)) + 16
-		}
-	}
-	if note := mark.Annotation; note != nil {
-		cost += int64(len(note.Original)+len(note.Marked)+len(note.MarksPath)) + 16
-		for _, m := range note.Marks {
-			cost += int64(len(m.Note)) + 96
-			if m.Shade != nil {
-				cost += int64(len(m.Shade.Points)) * 16
+		cost += int64(len(media.ID) + len(media.Path) + len(media.MIME) + len(media.SHA256) + len(media.Role))
+		if source := media.Source; source != nil {
+			cost += int64(unsafe.Sizeof(*source)) + int64(len(source.SourceID)+len(source.Path)+len(source.Version))
+			if source.AtMS != nil {
+				cost += int64(unsafe.Sizeof(*source.AtMS))
 			}
 		}
 	}
-	if mark.Delivery != nil {
-		cost += int64(len(mark.Delivery.Mode) + len(mark.Delivery.Model))
+	if note := mark.Annotation; note != nil {
+		cost += int64(unsafe.Sizeof(*note)) + int64(len(note.Original)+len(note.Marked)+len(note.MarksPath))
+		cost += int64(cap(note.Marks)) * int64(unsafe.Sizeof(AnnotationMark{}))
+		for _, m := range note.Marks {
+			cost += int64(len(m.Kind) + len(m.Note))
+			for _, point := range []*Point{m.At, m.From, m.To} {
+				if point != nil {
+					cost += int64(unsafe.Sizeof(*point))
+				}
+			}
+			if shade := m.Shade; shade != nil {
+				cost += int64(unsafe.Sizeof(*shade)) + int64(cap(shade.Points))*int64(unsafe.Sizeof(Point{}))
+				if shade.AreaPercent != nil {
+					cost += int64(unsafe.Sizeof(*shade.AreaPercent))
+				}
+			}
+		}
+	}
+	if delivery := mark.Delivery; delivery != nil {
+		cost += int64(unsafe.Sizeof(*delivery)) + int64(len(delivery.Mode)+len(delivery.Model))
 	}
 	return cost
 }

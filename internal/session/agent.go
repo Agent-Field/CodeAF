@@ -4768,21 +4768,6 @@ type DisplayEntry struct {
 	// because a record holds one entry per line and a bool alone between two
 	// words of alignment costs eight bytes on every one of them.
 	ForModel bool
-	Text     string
-	Tool     string // set when the entry is one call in a batch
-	Hint     string // the call's gloss, as the tool cluster rendered it
-
-	// CallID is the provider's own identity for a tool entry's call, exactly as
-	// the record holds it, and "" for every entry that is not a call.
-	//
-	// IT IS THE ONLY THING A LIVE END CAN PAIR ON. A page opened on work already
-	// running draws its rows out of the record and then keeps listening; the end
-	// that arrives a second later has to land on the row that is already there,
-	// or the same call is drawn twice — once running forever, once finished. The
-	// id is what the two halves have in common, so it is carried rather than
-	// dropped at the shaping.
-	CallID string
-
 	// Answered is whether the record already holds the RESULT of this call.
 	//
 	// IT IS DERIVED FROM AN ABSENCE, and the absence is load-bearing: the
@@ -4795,6 +4780,21 @@ type DisplayEntry struct {
 	// returned nothing and a call that has not returned are different facts and a
 	// page speaks about them differently.
 	Answered bool
+
+	Text string
+	Tool string // set when the entry is one call in a batch
+	Hint string // the call's gloss, as the tool cluster rendered it
+
+	// CallID is the provider's own identity for a tool entry's call, exactly as
+	// the record holds it, and "" for every entry that is not a call.
+	//
+	// IT IS THE ONLY THING A LIVE END CAN PAIR ON. A page opened on work already
+	// running draws its rows out of the record and then keeps listening; the end
+	// that arrives a second later has to land on the row that is already there,
+	// or the same call is drawn twice — once running forever, once finished. The
+	// id is what the two halves have in common, so it is carried rather than
+	// dropped at the shaping.
+	CallID string
 
 	// Args and Output are a TOOL entry's payload, in exactly the two shapes a
 	// live surface already holds them in ([Event.Args] and [Event.Output]): the

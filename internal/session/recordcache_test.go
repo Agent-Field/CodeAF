@@ -460,6 +460,26 @@ func TestCloneAndCostCoverEveryFieldOfAnEntry(t *testing.T) {
 	}
 }
 
+// Retained backing arrays count even when only one media item or mark is used.
+func TestComposedCostCountsSpareCapacity(t *testing.T) {
+	var entry DisplayEntry
+	fill(reflect.ValueOf(&entry).Elem())
+	mark := entry.Person.Composed
+	media := make([]MessageMedia, 1, 7)
+	copy(media, mark.Media)
+	mark.Media = media
+	marks := make([]AnnotationMark, 1, 5)
+	copy(marks, mark.Annotation.Marks)
+	mark.Annotation.Marks = marks
+	points := make([]Point, 1, 11)
+	copy(points, marks[0].Shade.Points)
+	marks[0].Shade.Points = points
+	entries := []DisplayEntry{entry}
+	if got, want := entriesCost(entries), deepCost(reflect.ValueOf(entries)); got != want {
+		t.Fatalf("entriesCost = %d, retained fields hold %d", got, want)
+	}
+}
+
 // fill gives every string, slice and pointer in v something to hold.
 func fill(v reflect.Value) {
 	switch v.Kind() {

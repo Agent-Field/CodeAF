@@ -481,8 +481,9 @@ func TestAPersonsMarkCostsAnEntryNothing(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("the figure is a 64-bit layout")
 	}
-	if size := unsafe.Sizeof(DisplayEntry{}); size > 288 {
-		t.Fatalf("DisplayEntry is %d bytes; it was 288 before the person's mark", size)
+	// RunID adds 16 bytes; packing Answered with the other bools recovers 8.
+	if size := unsafe.Sizeof(DisplayEntry{}); size > 296 {
+		t.Fatalf("DisplayEntry is %d bytes; budget is 296 including the producing turn", size)
 	}
 }
 
