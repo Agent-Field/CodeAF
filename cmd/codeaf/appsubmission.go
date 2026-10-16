@@ -100,7 +100,10 @@ func appSessionReference(ref *appwire.MediaReference) *session.MediaReference {
 	if ref == nil {
 		return nil
 	}
-	out := session.MediaReference{SourceID: ref.SourceID, Path: ref.Path, Version: ref.Version}
+	// Caller-provided references describe what the surface knows. Only an
+	// engine-owned snapshot may claim a version verified by this engine;
+	// appReferenceImages replaces those references after this conversion.
+	out := session.MediaReference{SourceID: ref.SourceID, Path: ref.Path}
 	if ref.AtMS != nil {
 		at := *ref.AtMS
 		out.AtMS = &at

@@ -243,3 +243,23 @@ func TestAppReferenceImagesIgnoreASurfaceSuppliedSource(t *testing.T) {
 		t.Fatalf("a request's source was believed: %+v", got)
 	}
 }
+
+func TestPlainSubmissionCannotClaimVerifiedSourceVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "picture.png")
+	if err := os.WriteFile(path, framePictureBytes(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	at := int64(125)
+	composed, err := appComposedOf(filepath.Dir(path), []appAttach{{view: appwire.Attachment{
+		ID: "at1", Kind: appwire.AttachFile, Path: path,
+	}}}, &appwire.MessageSubmission{Media: []appwire.SubmissionMedia{{
+		ID: "at1", Source: &appwire.MediaReference{SourceID: "caller-reference", Version: "forged", AtMS: &at},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := composed.media[0].Source
+	if source == nil || source.Version != "" || source.SourceID != "caller-reference" || source.AtMS == nil || *source.AtMS != at {
+		t.Fatalf("plain caller source gained verified identity or lost descriptive facts: %+v", source)
+	}
+}
