@@ -1215,8 +1215,14 @@ func (b *appBackend) askedHue(hue *float64, tint string) (*float64, error) {
 // parent when it has one and the parent may nest.
 func (b *appBackend) newTeam(name, parent string, members []teamstore.Member, managerKey string, hue *float64, settings *appwire.CrewSettings, cap *float64) (string, error) {
 	id := teamstore.NewID()
+	return id, b.newTeamAs(id, name, parent, members, managerKey, hue, settings, cap)
+}
+
+// newTeamAs is [appBackend.newTeam] under an id the caller chose, so a caller
+// that has to know whether a failed write committed anyway can look for it.
+func (b *appBackend) newTeamAs(id, name, parent string, members []teamstore.Member, managerKey string, hue *float64, settings *appwire.CrewSettings, cap *float64) error {
 	defaults := teamstore.DefaultsAt(b.crewProfile())
-	err := b.crewEdit(func(f *teamstore.File) error {
+	return b.crewEdit(func(f *teamstore.File) error {
 		for _, t := range f.Open() {
 			if strings.EqualFold(strings.TrimSpace(t.Name), name) {
 				return appwire.Errorf(appwire.CodeBadParams, "a crew already uses the name %s", name)
@@ -1266,7 +1272,6 @@ func (b *appBackend) newTeam(name, parent string, members []teamstore.Member, ma
 		}
 		return nil
 	})
-	return id, err
 }
 
 // appApplySettings writes the settings that were given.

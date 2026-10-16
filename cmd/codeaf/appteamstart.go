@@ -18,24 +18,39 @@ import (
 //
 // crews.create's start_manager and crews.root.start (internal/appwire/crewstart.go
 // is the shape). This file is the engine's whole policy for them and it is
-// glue: the team is made by [appBackend.newTeam], the root and its seating by
-// internal/teams (MakeRoot, SetManager, tidyRoot), the manager conversation and
-// its first message by [appBackend.createAgentHeld]. Nothing here ranks, routes,
-// writes words for the person or falls back to another model.
+// glue: the team is made by [appBackend.newTeamAs], the root and its seating by
+// internal/teams (MakeRoot, RemoveMember, SetManager, tidyRoot), the manager
+// conversation and its first message by [appBackend.createAgentHeld]. Nothing
+// here ranks, routes, writes words for the person or falls back to another
+// model.
 //
-// THE ORDER IS THE ROLLBACK. Everything that can be refused is checked before
-// anything is made; one folder is minted; ONE teams write commits (and
-// re-validates under the file's own lock); only then does the conversation take
-// the folder and the first turn start. A refusal before the commit takes the
-// folder back, so a refused start leaves no team, no agent and no message, and
-// the goal can reach a model only after the team it belongs to exists.
+// THE ORDER IS THE ROLLBACK, AND THE CLAIM IS THE MEMORY. Everything that can
+// be refused is checked, and every attachment read, before anything is made;
+// one folder is minted; the request is CLAIMED on disk (appteamstartclaim.go)
+// under the crew id the commit will use; ONE teams write commits (and
+// re-validates under the file's own lock); the claim is rewritten to say the
+// goal may be handed over; only then does the conversation take the folder and
+// the first turn start. A refusal before the commit takes the folder and the
+// claim back, so a refused start leaves no team, no agent and no message, and
+// the goal can reach a model only after its team AND the durable intent of its
+// request exist.
 //
-// ONE START RUNS AT A TIME. A second concurrent start is refused busy rather
-// than queued: no waiting line, no goroutine per caller. An outcome the caller
-// could not see is theirs to resolve with the same request_id, which is only
-// ever a lookup once the crew is recorded — nothing here replays on its own.
+// A FAILED READ IS NEVER "NEW". A repeat whose claim, teams file or crew cannot
+// be read is answered uncertain and starts nothing; so is a claim whose start
+// has not finished. A write that failed is looked for under the id it would
+// have written before it is called refused.
+//
+// ONE START RUNS AT A TIME in this process. A second concurrent start is
+// refused busy rather than queued: no waiting line, no goroutine per caller.
+// Across processes the claim's exclusive link and the teams file's lock are the
+// authority. An outcome the caller could not see is theirs to resolve with the
+// same request_id, which is only ever a lookup once claimed — nothing here
+// replays on its own.
 
-// appStartRecord is what the crew layer keeps of the request that made a crew.
+// appStartRecord is what the first, unreleased cut of this door kept on the
+// crew layer for the request that made a crew. It is READ, never written: a
+// request it names is never taken for a new one, and what it cannot say — whether
+// its goal was accepted — stays unknown.
 type appStartRecord struct {
 	RequestID   string `json:"request_id"`
 	Fingerprint string `json:"fingerprint"`
@@ -74,13 +89,14 @@ func (b *appBackend) CrewStart(ask appwire.CrewCreate) (appwire.CrewStartResult,
 	if err != nil {
 		return appwire.CrewStartResult{}, err
 	}
-	// Attachments are read whole before anything is made, as agents.create does.
-	for _, source := range ask.Attachments {
-		if _, err := b.prepareAttach(workspace, nil, appwire.Attachment{
-			Kind: source.Kind, Path: strings.TrimSpace(source.Path), URL: strings.TrimSpace(source.URL),
-		}, source.Text, true); err != nil {
-			return appwire.CrewStartResult{}, err
-		}
+	// The manager's first message is prepared here, ONCE: its attachments are
+	// read whole before anything is made, and the reading is what is held.
+	prep, err := b.prepareCreate(appwire.CreateAsk{
+		Workspace: workspace, Model: ask.Model, Text: ask.Goal, Said: ask.Said,
+		ClientID: ask.ClientID, Attachments: ask.Attachments,
+	})
+	if err != nil {
+		return appwire.CrewStartResult{}, err
 	}
 	hue, err := b.askedHue(ask.Hue, ask.Tint)
 	if err != nil {
@@ -94,80 +110,223 @@ func (b *appBackend) CrewStart(ask appwire.CrewCreate) (appwire.CrewStartResult,
 		}
 		members = append(members, m)
 	}
+	words := prep.text != "" || len(prep.kept) > 0
 	transcript, err := b.mint(workspace)
 	if err != nil {
 		return appwire.CrewStartResult{}, appEngineError(err)
 	}
 	manager := b.startMember(transcript, workspace)
-	id, err := b.newTeam(ask.Name, ask.Parent, append(members, manager), manager.Key, hue, ask.Settings, ask.CapUSDDay)
-	if err != nil {
+	claim := appStartClaim{
+		V: appStartClaimV, RequestID: ask.RequestID, Fingerprint: print, State: appClaimIntent,
+		Crew: teamstore.NewID(), Manager: appAgentID(transcript), ManagerKey: manager.Key,
+		ClientID: ask.ClientID, Goal: words,
+	}
+	claims := b.startClaims()
+	b.locked(func() { b.starting = ask.RequestID })
+	defer b.locked(func() { b.starting = "" })
+	made, err := claims.create(claim)
+	if err != nil || !made {
 		b.takeBack(transcript)
-		return appwire.CrewStartResult{}, err
+		if err != nil {
+			return appwire.CrewStartResult{}, appwire.Errorf(appwire.CodeEngine, "the start could not be recorded, so nothing was made: %s", plainWords(err.Error()))
+		}
+		// Another start, here or in another process, holds this request.
+		if got, done, err := b.startReplay(ask.RequestID, print); done || err != nil {
+			return got, err
+		}
+		return appwire.CrewStartResult{}, appwire.Errorf(appwire.CodeBusy, "this request is being started; try again in a moment")
 	}
-	b.crewExtraOnCreate(id, "", ask.Goal, ask.EndsAt)
-	// FROM HERE THE TEAM EXISTS: a failure is reported as that, never as nothing.
-	words := ask.Goal != "" || len(ask.Attachments) > 0
-	agent, launch, err := b.createAgentHeld(appwire.CreateAsk{
-		Workspace: workspace, Model: ask.Model, Text: ask.Goal, Said: ask.Said,
-		ClientID: ask.ClientID, Attachments: ask.Attachments,
-	}, transcript)
+	if err := b.newTeamAs(claim.Crew, ask.Name, ask.Parent, append(members, manager), manager.Key, hue, ask.Settings, ask.CapUSDDay); err != nil {
+		// A WRITE THAT FAILED MAY HAVE LANDED: it is looked for by its own id.
+		switch committed, lookErr := b.teamCommitted(claim.Crew); {
+		case lookErr != nil:
+			// The claim and the folder stay: a repeat of this request is
+			// answered from them, and is never a second team.
+			return appwire.CrewStartResult{}, appwire.Errorf(appwire.CodeUncertain,
+				"the crew %s may have been made; ask again with the same request_id", ask.Name)
+		case !committed:
+			claims.drop(ask.RequestID)
+			b.takeBack(transcript)
+			return appwire.CrewStartResult{}, err
+		}
+	}
+	b.crewExtraOnCreate(claim.Crew, "", ask.Goal, ask.EndsAt)
+	// FROM HERE THE TEAM EXISTS: a failure is reported as that, never as
+	// nothing, and the goal is handed over only once the claim says it may be.
+	if words {
+		if b.isClosing() {
+			return b.startNotSent(claims, claim, prep, transcript, "codeaf is shutting down")
+		}
+		commit := appStartClaims.commit
+		if b.commitStart != nil {
+			commit = b.commitStart
+		}
+		if err := commit(claims, claim); err != nil {
+			return b.startNotSent(claims, claim, prep, transcript, "the start could not be recorded: "+plainWords(err.Error()))
+		}
+	}
+	agent, launch, err := b.createAgentHeld(prep, transcript)
 	if err != nil {
-		return appwire.CrewStartResult{}, appStartedButNot(ask.Name, err)
+		// The claim may say committed here, and a repeat then says unknown;
+		// this answer knows better, because launch was never called.
+		return b.startNotSent(claims, claim, prep, transcript, appStartedWords(err))
 	}
-	record := &appStartRecord{RequestID: ask.RequestID, Fingerprint: print, Manager: agent.ID, ClientID: ask.ClientID, Goal: words}
-	// The record is written before the first turn starts: if it is lost the
-	// worst outcome is a goal not sent, never one sent twice.
-	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
-		f.crew(id).Start = record
-		return nil
-	})
-	b.crewReceipt(agent.ID, id, ask.Name)
+	b.crewReceipt(agent.ID, claim.Crew, ask.Name)
 	launch()
-	crew, err := b.CrewGet(id)
-	if err != nil {
-		return appwire.CrewStartResult{}, err
-	}
 	state := appwire.GoalNone
 	if words {
 		state = appwire.GoalStarting
 	}
+	return b.startAnswer(claim, false, appwire.CrewGoal{State: state, ClientID: ask.ClientID})
+}
+
+// startNotSent answers a team that was made and a goal that was provably never
+// handed to its manager. The claim is rewritten withheld when it still can be
+// (best-effort: one left at intent is answered unknown, never not_sent, by a
+// repeat). The manager is held as an ordinary idle conversation, opened with
+// no words, so the person can send it the goal themselves.
+func (b *appBackend) startNotSent(claims appStartClaims, claim appStartClaim, prep appCreatePrep, transcript, why string) (appwire.CrewStartResult, error) {
+	if current, found, err := claims.read(claim.RequestID); err == nil && found && current.State == appClaimIntent {
+		_ = claims.withhold(claim)
+	}
+	if !b.isClosing() {
+		bare := appCreatePrep{ask: appwire.CreateAsk{Workspace: prep.ask.Workspace, Model: prep.ask.Model}, resolved: prep.resolved}
+		if _, launch, err := b.createAgentHeld(bare, transcript); err == nil {
+			launch()
+		}
+	}
+	return b.startAnswer(claim, false, appwire.CrewGoal{State: appwire.GoalNotSent, ClientID: claim.ClientID, Error: why})
+}
+
+// startAnswer is a started (or repeated) request's reply: its crew read back.
+// A crew that cannot be read back is said to be uncertain, never absent.
+func (b *appBackend) startAnswer(claim appStartClaim, replayed bool, goal appwire.CrewGoal) (appwire.CrewStartResult, error) {
+	crew, err := b.CrewGet(claim.Crew)
+	if err != nil {
+		return appwire.CrewStartResult{}, appwire.Errorf(appwire.CodeUncertain,
+			"the crew request_id %s made cannot be read back; ask again with the same request_id", claim.RequestID)
+	}
 	return appwire.CrewStartResult{Crew: crew, Start: appwire.CrewStarted{
-		RequestID: ask.RequestID, Manager: agent.ID, Goal: appwire.CrewGoal{State: state, ClientID: ask.ClientID},
+		RequestID: claim.RequestID, Replayed: replayed, Manager: claim.Manager, Goal: goal,
 	}}, nil
 }
 
-// startReplay answers a request this engine already accepted: the recorded crew
-// and nothing executed. done is false when the request is new. The same id with
-// different words is refused rather than answered with another team.
+// teamCommitted says whether a team with id is in the teams file, and errors
+// when the file cannot be read: a failed read is not an absent team.
+func (b *appBackend) teamCommitted(id string) (bool, error) {
+	file, err := teamstore.Load(b.crewProfile())
+	if err != nil {
+		return false, err
+	}
+	_, ok := file.Team(id)
+	return ok, nil
+}
+
+// startReplay answers a request already claimed: the crew it made and nothing
+// executed. done is false ONLY when the request is provably new — no claim on
+// disk and no earlier record names it. Everything that cannot be read, and
+// every record that cannot be resolved to one answer, is refused uncertain.
 func (b *appBackend) startReplay(request, fingerprint string) (appwire.CrewStartResult, bool, error) {
-	var found *appStartRecord
-	var crewID string
-	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
+	claim, found, err := b.startClaims().read(request)
+	if err != nil {
+		return appwire.CrewStartResult{}, true, appStartUnknown(request, err)
+	}
+	if !found {
+		return b.startLegacy(request, fingerprint)
+	}
+	if claim.Fingerprint != fingerprint {
+		return appwire.CrewStartResult{}, true, appwire.Errorf(appwire.CodeBadParams, "request_id %s was used for a different team", request)
+	}
+	var mine bool
+	b.locked(func() { mine = b.starting == request })
+	if mine && claim.State == appClaimIntent {
+		// This process is starting it right now.
+		return appwire.CrewStartResult{}, true, appwire.Errorf(appwire.CodeBusy, "this request is being started; try again in a moment")
+	}
+	here, err := b.teamCommitted(claim.Crew)
+	switch {
+	case err != nil:
+		return appwire.CrewStartResult{}, true, appStartUnknown(request, err)
+	case !here && claim.State == appClaimCommitted:
+		return appwire.CrewStartResult{}, true, appStartGone(request)
+	case !here && claim.State == appClaimWithheld:
+		return appwire.CrewStartResult{}, true, appwire.Errorf(appwire.CodeBadParams,
+			"request_id %s started a crew that has since been deleted; its goal was never sent. Start another with a new request_id", request)
+	case !here:
+		// Claimed and never committed — or committing right now, in another
+		// process. Nothing was handed over: the hand-over waits for the commit.
+		return appwire.CrewStartResult{}, true, appwire.Errorf(appwire.CodeUncertain,
+			"an earlier start with request_id %s has not finished, or stopped before its crew was made; nothing was sent for it. Look at the crews before starting it again with a new request_id", request)
+	}
+	goal := appwire.CrewGoal{State: appwire.GoalNone, ClientID: claim.ClientID}
+	if claim.Goal {
+		// ONLY WITHHELD PROVES THE GOAL UNSENT. An intent claim whose crew
+		// exists may belong to a start, in another process, that is about to
+		// hand it over; it is unknown, like a committed one.
+		goal.State = appwire.GoalUnknown
+		if claim.State == appClaimWithheld {
+			goal.State = appwire.GoalNotSent
+		}
+	}
+	got, err := b.startAnswer(claim, true, goal)
+	return got, true, err
+}
+
+// startLegacy answers a request the unreleased first cut recorded on the crew
+// layer. One record resolved to a live crew is a repeat whose goal is unknown;
+// two records, a layer that cannot be read, or a crew that cannot be read are
+// refused; no record at all is the only "new".
+func (b *appBackend) startLegacy(request, fingerprint string) (appwire.CrewStartResult, bool, error) {
+	var found []appStartRecord
+	var crews []string
+	err := b.crewLayer().read(func(f *appCrewLayerFile) {
 		for id, extra := range f.Crews {
 			if extra != nil && extra.Start != nil && extra.Start.RequestID == request {
-				found, crewID = extra.Start, id
-				return
+				found, crews = append(found, *extra.Start), append(crews, id)
+				if len(found) > 1 {
+					return
+				}
 			}
 		}
 	})
-	if found == nil {
+	switch {
+	case err != nil:
+		return appwire.CrewStartResult{}, true, appStartUnknown(request, err)
+	case len(found) == 0:
 		return appwire.CrewStartResult{}, false, nil
+	case len(found) > 1:
+		return appwire.CrewStartResult{}, true, appwire.Errorf(appwire.CodeUncertain,
+			"more than one earlier record names request_id %s, so which crew it made cannot be said; nothing is started for it", request)
 	}
-	crew, err := b.CrewGet(crewID)
-	if err != nil {
-		// The crew is gone and takes its key with it.
-		return appwire.CrewStartResult{}, false, nil
-	}
-	if found.Fingerprint != fingerprint {
+	record := found[0]
+	if record.Fingerprint != fingerprint {
 		return appwire.CrewStartResult{}, true, appwire.Errorf(appwire.CodeBadParams, "request_id %s was used for a different team", request)
 	}
-	state := appwire.GoalNone
-	if found.Goal {
-		state = appwire.GoalEarlier
+	here, err := b.teamCommitted(crews[0])
+	switch {
+	case err != nil:
+		return appwire.CrewStartResult{}, true, appStartUnknown(request, err)
+	case !here:
+		return appwire.CrewStartResult{}, true, appStartGone(request)
 	}
-	return appwire.CrewStartResult{Crew: crew, Start: appwire.CrewStarted{
-		RequestID: request, Replayed: true, Manager: found.Manager, Goal: appwire.CrewGoal{State: state, ClientID: found.ClientID},
-	}}, true, nil
+	goal := appwire.CrewGoal{State: appwire.GoalNone, ClientID: record.ClientID}
+	if record.Goal {
+		goal.State = appwire.GoalUnknown
+	}
+	got, err := b.startAnswer(appStartClaim{RequestID: request, Crew: crews[0], Manager: record.Manager}, true, goal)
+	return got, true, err
+}
+
+// appStartUnknown refuses a request whose earlier outcome cannot be read.
+func appStartUnknown(request string, err error) error {
+	return appwire.Errorf(appwire.CodeUncertain,
+		"what request_id %s did earlier cannot be read (%s); nothing is started for it", request, plainWords(err.Error()))
+}
+
+// appStartGone refuses a request whose crew has been deleted since.
+func appStartGone(request string) error {
+	return appwire.Errorf(appwire.CodeBadParams,
+		"request_id %s started a crew that has since been deleted, and its goal may have been sent; start another with a new request_id", request)
 }
 
 // appStartFingerprint is what makes two requests the same one: the whole ask,
@@ -179,20 +338,20 @@ func appStartFingerprint(ask appwire.CrewCreate) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// appStartedButNot says a team exists whose manager could not be started, in
-// the code the cause had.
-func appStartedButNot(name string, cause error) error {
-	words := cause.Error()
-	code := appwire.CodeEngine
+// appStartedWords is why a made team's manager could not be held, in words.
+func appStartedWords(cause error) string {
 	var wire *appwire.Error
 	if errors.As(cause, &wire) {
-		words, code = wire.Message, wire.Code
+		return wire.Message
 	}
-	return appwire.Errorf(code, "the crew %s was made, but its manager's conversation could not be started: %s", name, words)
+	return plainWords(cause.Error())
 }
 
 // RootStart is crews.root.start: the person's explicit act that makes the root
 // ("All teams") and its manager. Everything already true is returned as it is.
+// A root manager whose conversation is gone — its folder removed, or deleted
+// for good — is replaced, and LEAVES the root rather than staying a member of
+// it; one whose conversation cannot be checked is not replaced on a guess.
 func (b *appBackend) RootStart(ask appwire.RootStartAsk) (appwire.RootStartResult, error) {
 	if !b.startMu.TryLock() {
 		return appwire.RootStartResult{}, appwire.Errorf(appwire.CodeBusy, "a team is already being started; try again in a moment")
@@ -218,12 +377,23 @@ func (b *appBackend) RootStart(ask appwire.RootStartAsk) (appwire.RootStartResul
 	err = b.crewEdit(func(f *teamstore.File) error {
 		rootID, rootMade, taken = "", false, false
 		if r, ok := f.Root(); ok {
-			if r.Manager != "" && appConversationHere(r, r.Manager) {
-				// Another start won while this one minted: it is the answer.
-				rootID, taken = r.ID, true
-				return nil
-			}
 			rootID = r.ID
+			if r.Manager != "" {
+				here, err := appConversationHere(r, r.Manager)
+				if err != nil {
+					return appwire.Errorf(appwire.CodeEngine, "whether the global manager's conversation is still there cannot be read: %s", plainWords(err.Error()))
+				}
+				if here {
+					// Another start won while this one minted: it is the answer.
+					taken = true
+					return nil
+				}
+				// THE MANAGER WHOSE CONVERSATION IS GONE LEAVES THE ROOT, so the
+				// root never holds a member nobody can open.
+				if err := f.RemoveMember(r.ID, r.Manager); err != nil {
+					return err
+				}
+			}
 		} else {
 			rootID, rootMade = f.MakeRoot(b.now()), true
 		}
@@ -233,17 +403,28 @@ func (b *appBackend) RootStart(ask appwire.RootStartAsk) (appwire.RootStartResul
 		return f.SetManager(rootID, manager.Key)
 	})
 	if err != nil {
-		b.takeBack(transcript)
-		return appwire.RootStartResult{}, err
+		// A WRITE THAT FAILED MAY HAVE LANDED: it is looked for by the key of
+		// the conversation it would have seated.
+		file, lookErr := teamstore.Load(b.crewProfile())
+		if lookErr != nil {
+			return appwire.RootStartResult{}, appwire.Errorf(appwire.CodeUncertain,
+				"the global manager may have been made; look at All teams before starting it again")
+		}
+		root, ok := file.Root()
+		if !ok || root.Manager != manager.Key {
+			b.takeBack(transcript)
+			return appwire.RootStartResult{}, err
+		}
+		rootID, taken = root.ID, false
 	}
 	if taken {
 		b.takeBack(transcript)
 		existing, _, err := b.rootHeld()
 		return existing, err
 	}
-	agent, launch, err := b.createAgentHeld(appwire.CreateAsk{Workspace: workspace, Model: ask.Model}, transcript)
+	agent, launch, err := b.createAgentHeld(appCreatePrep{ask: appwire.CreateAsk{Workspace: workspace, Model: ask.Model}, resolved: workspace}, transcript)
 	if err != nil {
-		return appwire.RootStartResult{}, appStartedButNot(teamstore.RootName, err)
+		return appwire.RootStartResult{}, appwire.Errorf(appwire.CodeEngine, "the global manager was made, but its conversation could not be held: %s", appStartedWords(err))
 	}
 	launch()
 	crew, err := b.CrewGet(rootID)
@@ -254,14 +435,22 @@ func (b *appBackend) RootStart(ask appwire.RootStartAsk) (appwire.RootStartResul
 }
 
 // rootHeld is the root when it already has a manager whose conversation is
-// still there: the answer to a start that has nothing left to make.
+// still there: the answer to a start that has nothing left to make. A
+// conversation that cannot be checked is an error, not a missing manager.
 func (b *appBackend) rootHeld() (appwire.RootStartResult, bool, error) {
 	file, err := teamstore.Load(b.crewProfile())
 	if err != nil {
 		return appwire.RootStartResult{}, false, appEngineError(err)
 	}
 	root, ok := file.Root()
-	if !ok || root.Manager == "" || !appConversationHere(root, root.Manager) {
+	if !ok || root.Manager == "" {
+		return appwire.RootStartResult{}, false, nil
+	}
+	here, err := appConversationHere(root, root.Manager)
+	if err != nil {
+		return appwire.RootStartResult{}, false, appwire.Errorf(appwire.CodeEngine, "whether the global manager's conversation is still there cannot be read: %s", plainWords(err.Error()))
+	}
+	if !here {
 		return appwire.RootStartResult{}, false, nil
 	}
 	m, _ := root.Member(root.Manager)
@@ -272,23 +461,38 @@ func (b *appBackend) rootHeld() (appwire.RootStartResult, bool, error) {
 	return appwire.RootStartResult{Crew: crew, Manager: appMemberAgent(m)}, true, nil
 }
 
-// appConversationHere says the conversation a team member names still has its
-// folder. A conversation that has not had its first turn has no transcript yet,
-// only its folder, so the folder is what is looked for.
-func appConversationHere(t teamstore.Team, key string) bool {
+// appConversationHere says the conversation a team member names is still
+// there. A conversation that has not had its first turn has no transcript yet,
+// only its folder, so the folder is what is looked for; a folder that carries
+// the permanent-deletion mark ([teamstore.ConversationDeletedFile]) is gone
+// even though it is still on disk. Only a folder PROVABLY absent or marked is
+// gone: anything that cannot be read is an error.
+func appConversationHere(t teamstore.Team, key string) (bool, error) {
 	m, ok := t.Member(key)
 	if !ok {
-		return false
+		return false, nil
 	}
+	var dirs []string
 	for _, path := range []string{m.File, m.Key} {
-		if path == "" {
-			continue
-		}
-		if _, err := os.Stat(filepath.Dir(path)); err == nil {
-			return true
+		if filepath.IsAbs(path) {
+			dirs = append(dirs, filepath.Dir(path))
 		}
 	}
-	return false
+	for _, dir := range dirs {
+		if _, err := os.Stat(filepath.Join(dir, teamstore.ConversationDeletedFile)); err == nil {
+			return false, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir); err == nil {
+			return true, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 // startWorkspace is the folder a manager conversation is made in: the one asked

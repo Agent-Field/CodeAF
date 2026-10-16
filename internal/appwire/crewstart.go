@@ -30,25 +30,35 @@ const (
 	CrewRequestIDMax    = 128
 )
 
-// The states of a started team's goal message.
+// The states of a started team's goal message. They say what the engine KNOWS
+// and nothing more: a goal that may have reached the manager is never called
+// unsent, and one that was not handed over is never called sent.
 const (
 	// GoalNone: no goal was given, so nothing was sent.
 	GoalNone = "none"
 	// GoalStarting: the manager's first turn is being started behind the answer;
 	// its acceptance or failure arrives on the ordinary turn events.
 	GoalStarting = "starting"
-	// GoalEarlier: this request was accepted before. The goal is never re-sent.
-	GoalEarlier = "earlier"
+	// GoalNotSent: the team and its manager exist and the goal was provably
+	// never handed to the manager (Error says why). It is not sent later by
+	// itself; a person sends it to the manager as an ordinary message.
+	GoalNotSent = "not_sent"
+	// GoalUnknown: a repeat of a request whose goal may have been handed to
+	// the manager. It is NEVER sent again; whether it was accepted is read from
+	// the manager's entries, by the client id when one was given.
+	GoalUnknown = "unknown"
 )
 
 // CrewGoal is the state of a started team's goal message.
 type CrewGoal struct {
 	State    string `json:"state"`
 	ClientID string `json:"client_id,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // CrewStarted is what a started team adds to crews.create's reply: the request
 // it answers, the one manager conversation (an agent id), and its goal.
+// Replayed is a repeat of a request already claimed: nothing was made or sent.
 type CrewStarted struct {
 	RequestID string   `json:"request_id"`
 	Replayed  bool     `json:"replayed,omitempty"`

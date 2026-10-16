@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -144,7 +145,7 @@ func TestStartCrewSendsTheGoalOnceAsTheManagersFirstMessage(t *testing.T) {
 		Name: "Docs site", StartManager: true, ManagerStartsMembers: true, RequestID: "r-1",
 		Goal: "Rebuild the docs site on Astro; keep every URL working.", Said: &said, ClientID: "c-1",
 	})
-	if err != nil || !again.Start.Replayed || again.Start.Goal.State != appwire.GoalEarlier || again.Crew.ID != got.Crew.ID || again.Start.Manager != got.Start.Manager {
+	if err != nil || !again.Start.Replayed || again.Start.Goal.State != appwire.GoalUnknown || again.Crew.ID != got.Crew.ID || again.Start.Manager != got.Start.Manager {
 		t.Fatalf("the repeat = %+v %v", again, err)
 	}
 	if h.mintedCount() != 1 || len(sentTexts(conv)) != 1 {
@@ -498,5 +499,436 @@ func TestCrewStartShapeIsCheckedBeforeTheEngine(t *testing.T) {
 		if err := ask.CheckStart(); err == nil {
 			t.Errorf("%s was accepted", name)
 		}
+	}
+}
+
+// ── the durable claim, uncertainty and exact words (after review R1–R6) ──────
+
+// startClaimOf reads a request's claim as the engine would.
+func startClaimOf(t *testing.T, h *startHarness, request string) (appStartClaim, bool) {
+	t.Helper()
+	claim, found, err := h.b.startClaims().read(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return claim, found
+}
+
+// THE CLAIM IS ON DISK BEFORE THE GOAL MOVES: by the time the manager's
+// conversation is opened to be handed the goal, the request's claim already
+// says committed and names the crew and the manager the answer names.
+func TestStartGoalIsHandedOverOnlyUnderACommittedClaim(t *testing.T) {
+	h := newStartHarness(t)
+	var seen []string
+	inner := h.b.open
+	h.b.open = func(ask appOpenAsk) (*appConn, error) {
+		claim, found, err := h.b.startClaims().read("r-c")
+		seen = append(seen, claim.State)
+		if err != nil || !found {
+			t.Errorf("opened with no readable claim: %v", err)
+		}
+		return inner(ask)
+	}
+	got, err := h.b.CrewStart(appwire.CrewCreate{Name: "Claimed", StartManager: true, ManagerStartsMembers: true, RequestID: "r-c", Goal: "go", ClientID: "c-c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.rec.waitFor(t, 5*time.Second, reviewTurnDoneFor(got.Start.Manager))
+	claim, _ := startClaimOf(t, h, "r-c")
+	if len(seen) == 0 || seen[0] != appClaimCommitted || claim.Crew != got.Crew.ID || claim.Manager != got.Start.Manager || claim.ClientID != "c-c" || !claim.Goal {
+		t.Fatalf("states at open %v, claim %+v, answer %+v", seen, claim, got)
+	}
+	// A refused start takes its claim back with its folder.
+	if _, err := h.b.CrewStart(appwire.CrewCreate{Name: "Claimed", StartManager: true, ManagerStartsMembers: true, RequestID: "r-d", Goal: "go"}); startCode(t, err) != appwire.CodeBadParams {
+		t.Fatalf("a taken name: %v", err)
+	}
+	if _, found := startClaimOf(t, h, "r-d"); found {
+		t.Fatal("a refused start left its claim behind")
+	}
+}
+
+// A CLAIM THAT CANNOT BE WRITTEN AS COMMITTED NEVER LETS THE GOAL GO: the team
+// and its manager exist and are answered by their real ids, the goal is
+// not_sent with why, nothing reaches the model, and a repeat says the same.
+func TestStartCommitFailureAnswersNotSentAndSendsNothing(t *testing.T) {
+	h := newStartHarness(t)
+	h.b.commitStart = func(appStartClaims, appStartClaim) error { return errors.New("the disk is full") }
+	got, err := h.b.CrewStart(appwire.CrewCreate{Name: "Held", StartManager: true, ManagerStartsMembers: true, RequestID: "r-n", Goal: "never twice", ClientID: "c-n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Start.Goal.State != appwire.GoalNotSent || !strings.Contains(got.Start.Goal.Error, "the disk is full") ||
+		got.Start.Goal.ClientID != "c-n" || got.Crew.Manager != got.Start.Manager || got.Start.Manager == "" {
+		t.Fatalf("%+v", got)
+	}
+	// The manager is held as an ordinary idle conversation, opened with no words.
+	h.rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		d, ok := data.(appwire.AgentChanged)
+		return ok && d.Agent.ID == got.Start.Manager && d.Agent.State == appwire.StateIdle && h.conv(got.Start.Manager) != nil
+	})
+	if n := reviewGoalSends(h, "never twice"); n != 0 {
+		t.Fatalf("the goal was sent %d times", n)
+	}
+	h.b.commitStart = nil
+	again, err := h.b.CrewStart(appwire.CrewCreate{Name: "Held", StartManager: true, ManagerStartsMembers: true, RequestID: "r-n", Goal: "never twice", ClientID: "c-n"})
+	if err != nil || !again.Start.Replayed || again.Start.Goal.State != appwire.GoalNotSent || again.Crew.ID != got.Crew.ID {
+		t.Fatalf("%+v %v", again, err)
+	}
+	if n := reviewGoalSends(h, "never twice"); n != 0 {
+		t.Fatalf("the repeat sent the goal %d times", n)
+	}
+}
+
+// EVERY CLAIM THAT CANNOT BE RESOLVED IS REFUSED, NEVER NEW: an unreadable one,
+// one whose crew was never committed, one whose crew was deleted after its goal
+// may have gone, and a link where the claims' folder should be. None mints.
+func TestStartUnresolvableClaimsAreNeverNew(t *testing.T) {
+	ask := func(id string) appwire.CrewCreate {
+		return appwire.CrewCreate{Name: "X " + id, StartManager: true, ManagerStartsMembers: true, RequestID: id, Goal: "g"}
+	}
+	t.Run("unreadable", func(t *testing.T) {
+		h := newStartHarness(t)
+		dir := h.b.startClaims().dir
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, appClaimName("r-u")), []byte("{half"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.b.CrewStart(ask("r-u")); startCode(t, err) != appwire.CodeUncertain || h.mintedCount() != 0 {
+			t.Fatalf("%v minted %d", err, h.mintedCount())
+		}
+	})
+	t.Run("intent without its crew", func(t *testing.T) {
+		h := newStartHarness(t)
+		a := ask("r-i")
+		a.Name, a.Goal = strings.TrimSpace(a.Name), strings.TrimSpace(a.Goal)
+		made, err := h.b.startClaims().create(appStartClaim{V: appStartClaimV, RequestID: "r-i", Fingerprint: appStartFingerprint(a), State: appClaimIntent, Crew: "t-never", Manager: "m", ManagerKey: "/k", Goal: true})
+		if err != nil || !made {
+			t.Fatal(made, err)
+		}
+		if _, err := h.b.CrewStart(ask("r-i")); startCode(t, err) != appwire.CodeUncertain || h.mintedCount() != 0 {
+			t.Fatalf("%v minted %d", err, h.mintedCount())
+		}
+	})
+	t.Run("crew deleted after its goal", func(t *testing.T) {
+		h := newStartHarness(t)
+		got, err := h.b.CrewStart(ask("r-g"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.rec.waitFor(t, 5*time.Second, reviewTurnDoneFor(got.Start.Manager))
+		if err := h.b.CrewClose(got.Crew.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.b.CrewDelete(got.Crew.ID); err != nil {
+			t.Fatal(err)
+		}
+		before := h.mintedCount()
+		if _, err := h.b.CrewStart(ask("r-g")); startCode(t, err) != appwire.CodeBadParams || h.mintedCount() != before || reviewGoalSends(h, "g") != 1 {
+			t.Fatalf("%v minted %d sent %d", err, h.mintedCount()-before, reviewGoalSends(h, "g"))
+		}
+	})
+	t.Run("a link for the folder", func(t *testing.T) {
+		h := newStartHarness(t)
+		elsewhere := t.TempDir()
+		if err := os.Symlink(elsewhere, h.b.startClaims().dir); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.b.CrewStart(ask("r-l")); err == nil {
+			t.Fatal("a start was made through a link")
+		}
+		if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 || len(h.file(t).Teams) != 0 || h.folders(t) != 0 {
+			t.Fatalf("wrote %d entries through the link; teams %d folders %d", len(entries), len(h.file(t).Teams), h.folders(t))
+		}
+	})
+}
+
+// RECORDS THE FIRST CUT LEFT ON THE CREW LAYER are read, never written: one
+// record of a live crew is a repeat whose goal is unknown, and two records of
+// one request are refused every time — never answered "new" in map order.
+func TestStartLegacyRecordsStayUnknownAndDuplicatesAreRefused(t *testing.T) {
+	h := newStartHarness(t)
+	agent, err := h.b.CreateAgent(appwire.CreateAsk{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crew, err := h.b.CrewCreate(appwire.CrewCreate{Name: "Old", Agents: []string{agent.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	minted := h.mintedCount()
+	ask := appwire.CrewCreate{Name: "Old", StartManager: true, ManagerStartsMembers: true, RequestID: "r-old", Goal: "g"}
+	print := appStartFingerprint(ask)
+	_ = h.b.crewLayer().write(func(f *appCrewLayerFile) error {
+		f.crew(crew.ID).Start = &appStartRecord{RequestID: "r-old", Fingerprint: print, Manager: agent.ID, Goal: true}
+		return nil
+	})
+	got, err := h.b.CrewStart(ask)
+	if err != nil || !got.Start.Replayed || got.Start.Goal.State != appwire.GoalUnknown || got.Crew.ID != crew.ID {
+		t.Fatalf("%+v %v", got, err)
+	}
+	_ = h.b.crewLayer().write(func(f *appCrewLayerFile) error {
+		f.crew("gone").Start = &appStartRecord{RequestID: "r-old", Fingerprint: print, Manager: "old", Goal: true}
+		return nil
+	})
+	for i := 0; i < 32; i++ {
+		if _, done, err := h.b.startReplay("r-old", print); !done || err == nil {
+			t.Fatalf("lookup %d of two records: done=%v err=%v", i, done, err)
+		}
+	}
+	if h.mintedCount() != minted {
+		t.Fatal("a legacy request minted")
+	}
+}
+
+// AN ACCEPTED-THEN-LOST FIRST MESSAGE IS SAID TO BE UNCERTAIN and never armed
+// for a retry, and a repeat of the request says unknown, never sent twice.
+func TestStartLostReceiptIsUncertainAndNeverRetried(t *testing.T) {
+	h := newStartHarness(t)
+	inner := h.b.open
+	h.b.open = func(ask appOpenAsk) (*appConn, error) {
+		conn, err := inner(ask)
+		if err == nil {
+			conn.Conv = &acceptedThenLost{fakeConversation: conn.Conv.(*fakeConversation)}
+		}
+		return conn, err
+	}
+	ask := appwire.CrewCreate{Name: "Lost", StartManager: true, ManagerStartsMembers: true, RequestID: "r-l", Goal: "only once", ClientID: "c-l"}
+	got, err := h.b.CrewStart(ask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var done appwire.TurnDone
+	h.rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		d, ok := data.(appwire.TurnDone)
+		if ok && d.Agent == got.Start.Manager {
+			done = d
+		}
+		return ok && d.Agent == got.Start.Manager
+	})
+	if done.OK || done.ErrorKind != appwire.ErrorUncertain || !strings.Contains(done.Error, "may have been sent") {
+		t.Fatalf("%+v", done)
+	}
+	if _, err := h.b.Retry(got.Start.Manager); startCode(t, err) != appwire.CodeNotFound {
+		t.Fatalf("an uncertain first message was offered again: %v", err)
+	}
+	again, err := h.b.CrewStart(ask)
+	if err != nil || !again.Start.Replayed || again.Start.Goal.State != appwire.GoalUnknown || again.Start.Goal.ClientID != "c-l" {
+		t.Fatalf("%+v %v", again, err)
+	}
+	if n := reviewGoalSends(h, "only once"); n != 1 {
+		t.Fatalf("the goal reached the engine %d times", n)
+	}
+}
+
+// A FIRST MESSAGE THAT NEVER REACHED ITS CONVERSATION IS RETRIED WITH ITS OWN
+// CLIENT ID; a retry whose own hand-over is lost answers uncertain and is not
+// offered a second time.
+func TestRetryOfAnUnsentFirstMessageKeepsItsClientIDAndAnUnsureRetryIsNotRepeated(t *testing.T) {
+	h := newStartHarness(t)
+	var healed atomic.Bool
+	var seen []string
+	inner := h.b.open
+	h.b.open = func(ask appOpenAsk) (*appConn, error) {
+		if !healed.Load() {
+			return nil, errors.New("the profile could not be read")
+		}
+		conn, err := inner(ask)
+		if err == nil {
+			conn.Conv = &clientIDsSeen{acceptedThenLost: &acceptedThenLost{fakeConversation: conn.Conv.(*fakeConversation)}, seen: &seen}
+		}
+		return conn, err
+	}
+	got, err := h.b.CrewStart(appwire.CrewCreate{Name: "Twice", StartManager: true, ManagerStartsMembers: true, RequestID: "r-t", Goal: "once", ClientID: "c-t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		d, ok := data.(appwire.TurnDone)
+		return ok && !d.OK && d.Agent == got.Start.Manager && d.ErrorKind == appwire.ErrorOther
+	})
+	var client string
+	if a, err := h.b.find(got.Start.Manager); err == nil {
+		h.b.locked(func() { client = a.failedClient })
+	}
+	if client != "c-t" {
+		t.Fatalf("the retry would carry %q", client)
+	}
+	healed.Store(true)
+	if _, err := h.b.Retry(got.Start.Manager); startCode(t, err) != appwire.CodeUncertain {
+		t.Fatalf("a lost retry: %v", err)
+	}
+	if _, err := h.b.Retry(got.Start.Manager); startCode(t, err) != appwire.CodeNotFound {
+		t.Fatalf("an uncertain retry was offered again: %v", err)
+	}
+	if n := reviewGoalSends(h, "once"); n != 1 {
+		t.Fatalf("the goal reached the engine %d times", n)
+	}
+	if len(seen) != 1 || seen[0] != "c-t" {
+		t.Fatalf("the retry carried client ids %q", seen)
+	}
+}
+
+// clientIDsSeen is a lost-receipt conversation that notes the client id each
+// message was handed over with.
+type clientIDsSeen struct {
+	*acceptedThenLost
+	seen *[]string
+}
+
+func (c *clientIDsSeen) SubmitMessage(ctx context.Context, m session.Submission) (<-chan session.Event, error) {
+	c.fakeConversation.mu.Lock()
+	*c.seen = append(*c.seen, m.ClientID)
+	c.fakeConversation.mu.Unlock()
+	return c.acceptedThenLost.SubmitMessage(ctx, m)
+}
+
+// THE PERSON'S WORDS ARE KEPT EXACTLY: said is not trimmed, and an empty said
+// beside a goal is the empty entry it has always meant, not the goal.
+func TestStartKeepsSaidExactlyAsAuthored(t *testing.T) {
+	for _, said := range []string{"  please, ship it\n", ""} {
+		h := newStartHarness(t)
+		got, err := h.b.CrewStart(appwire.CrewCreate{Name: "Words", StartManager: true, ManagerStartsMembers: true, RequestID: "r-w", Goal: "Ship the release.", Said: &said})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var user appwire.Entry
+		h.rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+			d, ok := data.(appwire.EntryAdded)
+			if ok && d.Entry.Kind == appwire.EntryUser && d.Entry.Agent == got.Start.Manager {
+				user = d.Entry
+				return true
+			}
+			return false
+		})
+		if user.Text != said {
+			t.Fatalf("said %q, entry %q", said, user.Text)
+		}
+		if sent := sentTexts(h.conv(got.Start.Manager)); len(sent) != 1 || sent[0] != "Ship the release." {
+			t.Fatalf("%q", sent)
+		}
+	}
+}
+
+// A ROOT MANAGER WHOSE CONVERSATION CANNOT BE CHECKED IS NOT REPLACED ON A
+// GUESS: the start refuses and nothing is minted.
+func TestRootStartDoesNotReplaceAManagerItCannotCheck(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not bind root")
+	}
+	h := newStartHarness(t)
+	first, err := h.b.RootStart(appwire.RootStartAsk{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(h.places, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(h.places, 0o700) })
+	minted := h.mintedCount()
+	if _, err := h.b.RootStart(appwire.RootStartAsk{}); err == nil || h.mintedCount() != minted {
+		t.Fatalf("err %v, minted %d more", err, h.mintedCount()-minted)
+	}
+	_ = os.Chmod(h.places, 0o700)
+	again, err := h.b.RootStart(appwire.RootStartAsk{})
+	if err != nil || again.ManagerCreated || again.Manager != first.Manager {
+		t.Fatalf("%+v %v", again, err)
+	}
+}
+
+// A REAL CONVERSATION (in-process engine, scripted model on loopback, fake key)
+// keeps the person's said and the client id on the persisted first line, and
+// after a restart the same request is a repeat that mints nothing, opens no
+// first turn and leaves exactly one person line in the record.
+func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
+	root := resolvedTempDir(t)
+	_, workspace := wakeEnvironment(t, root)
+	rec := newAppRecorder()
+	first := newAppBackend(rec, appOpenInProcess)
+	closed := false
+	defer func() {
+		if !closed {
+			first.Close()
+		}
+	}()
+	said := "please rebuild the docs"
+	ask := appwire.CrewCreate{Name: "Docs", StartManager: true, ManagerStartsMembers: true, RequestID: "r-7",
+		Goal: "Rebuild the docs site; keep URLs.", Said: &said, ClientID: "c-7", Workspace: workspace}
+	got, err := first.CrewStart(ask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 60*time.Second, reviewTurnDoneFor(got.Start.Manager))
+	member, err := first.agentMember(got.Start.Manager)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	closed = true
+	if n := appUserCount(member.File); n != 1 {
+		t.Fatalf("the record holds %d person lines", n)
+	}
+	second := newAppBackend(newAppRecorder(), appOpenInProcess)
+	defer second.Close()
+	minted := 0
+	mint := second.mint
+	second.mint = func(w string) (string, error) {
+		minted++
+		return mint(w)
+	}
+	entries, _, err := second.Entries(got.Start.Manager, "", appwire.MaxEntries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if users := appUsersOf(entries); len(users) != 1 || users[0].Text != said || users[0].ClientID != "c-7" {
+		t.Fatalf("the reopened record's person lines: %+v", users)
+	}
+	again, err := second.CrewStart(ask)
+	if err != nil || !again.Start.Replayed || again.Start.Goal.State != appwire.GoalUnknown ||
+		again.Start.Manager != got.Start.Manager || again.Crew.ID != got.Crew.ID {
+		t.Fatalf("the repeat after restart: %+v %v", again, err)
+	}
+	a, err := second.find(got.Start.Manager)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var booting bool
+	second.locked(func() { booting = a.boot != nil || a.opening })
+	if minted != 0 || booting {
+		t.Fatalf("the repeat minted %d and left a first turn booting: %v", minted, booting)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if n := appUserCount(member.File); n != 1 {
+		t.Fatalf("after the repeat the record holds %d person lines", n)
+	}
+}
+
+// AN INTENT CLAIM WHOSE CREW EXISTS IS NOT PROOF OF AN UNSENT GOAL: the start
+// holding it may be about to hand it over, in another process, or may have
+// died before it could. A repeat says unknown and sends nothing.
+func TestStartIntentClaimWithItsCrewIsAnUnknownRepeat(t *testing.T) {
+	h := newStartHarness(t)
+	agent, err := h.b.CreateAgent(appwire.CreateAsk{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crew, err := h.b.CrewCreate(appwire.CrewCreate{Name: "Elsewhere", Agents: []string{agent.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask := appwire.CrewCreate{Name: "Elsewhere", StartManager: true, ManagerStartsMembers: true, RequestID: "r-e", Goal: "g"}
+	if made, err := h.b.startClaims().create(appStartClaim{V: appStartClaimV, RequestID: "r-e", Fingerprint: appStartFingerprint(ask),
+		State: appClaimIntent, Crew: crew.ID, Manager: agent.ID, ManagerKey: "/k", Goal: true}); err != nil || !made {
+		t.Fatal(made, err)
+	}
+	minted := h.mintedCount()
+	got, err := h.b.CrewStart(ask)
+	if err != nil || !got.Start.Replayed || got.Start.Goal.State != appwire.GoalUnknown || h.mintedCount() != minted {
+		t.Fatalf("%+v %v minted %d", got, err, h.mintedCount()-minted)
 	}
 }

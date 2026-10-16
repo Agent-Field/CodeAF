@@ -365,9 +365,15 @@ type appBackend struct {
 	// unmint takes back a folder mint made when what it was made for was
 	// refused (appteamstart.go); nil is [appUnmint].
 	unmint func(transcript string)
+	// commitStart rewrites a team start's claim to say its goal may be handed
+	// over (appteamstartclaim.go); nil is [appStartClaims.commit].
+	commitStart func(appStartClaims, appStartClaim) error
 	// startMu is the one team start in flight (appteamstart.go): a second
 	// concurrent start is refused busy, never queued.
 	startMu sync.Mutex
+	// starting is the request_id of the start in flight under startMu, read
+	// under mu: a claim of it with no crew yet is that start, not a lost one.
+	starting string
 	// warmed closes when [appBackend.Warm] has finished, which Close waits
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}
@@ -433,6 +439,10 @@ type appAgent struct {
 	// failedShown is what that turn's entry showed, when it carried
 	// attachments: a retry sends the same words and shows the same message.
 	failedShown *appSending
+	// failedClient is the client id of a first message that failed before it
+	// was handed to its conversation (bootFailed), which a retry carries: that
+	// message never reached the accepted line, so its id is still unused.
+	failedClient string
 	// step is the title of the call the running turn is on, the live line
 	// a crew's member row and the agent's own row show while it works.
 	step string
@@ -828,7 +838,11 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 // agent is named by them. A conversation that cannot be opened says so as a
 // failed turn and a stopped agent.
 func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
-	view, launch, err := b.createAgentHeld(ask, "")
+	prep, err := b.prepareCreate(ask)
+	if err != nil {
+		return appwire.Agent{}, err
+	}
+	view, launch, err := b.createAgentHeld(prep, "")
 	if err != nil {
 		return appwire.Agent{}, err
 	}
@@ -836,13 +850,22 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	return view, nil
 }
 
-// createAgentHeld is [appBackend.CreateAgent] up to, and not including, the
-// background open and first turn: it answers the agent and a launch that
-// starts them. A caller that must make something else true BEFORE the first
-// message can reach the model (a team the manager belongs to) holds the launch
-// until it is, and never calls it when that fails. minted, when set, is the
-// conversation folder's transcript the caller already made with b.mint.
-func (b *appBackend) createAgentHeld(ask appwire.CreateAsk, minted string) (appwire.Agent, func(), error) {
+// appCreatePrep is an agents.create made ready before anything exists: its
+// folder resolved and every attachment read, ONCE. A caller that has to make
+// something else true between the reading and the making (a team start, which
+// commits its team in between) hands this value on rather than reading the
+// attachments a second time, so a file that goes away in between cannot turn
+// into a refusal after the thing it was refused for already exists.
+type appCreatePrep struct {
+	ask      appwire.CreateAsk
+	resolved string
+	text     string
+	kept     []appAttach
+}
+
+// prepareCreate is everything agents.create can refuse, checked with nothing
+// made: the workspace, shutdown, and every attachment read whole.
+func (b *appBackend) prepareCreate(ask appwire.CreateAsk) (appCreatePrep, error) {
 	// No workspace is the work folder the person chose, or their home folder.
 	workspace := ask.Workspace
 	if strings.TrimSpace(workspace) == "" {
@@ -850,18 +873,17 @@ func (b *appBackend) createAgentHeld(ask appwire.CreateAsk, minted string) (appw
 	}
 	resolved, err := engineWorkspace(workspace)
 	if err != nil {
-		return appwire.Agent{}, nil, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
+		return appCreatePrep{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	}
 	if b.isClosing() {
-		return appwire.Agent{}, nil, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
+		return appCreatePrep{}, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
-	text := strings.TrimSpace(ask.Text)
 	// EVERY ATTACHMENT IS READ BEFORE ANYTHING IS MADE: one that is malformed,
 	// over a bound, or a file that is not there refuses the create whole, so a
 	// refusal leaves no folder, no agent and no event behind it. It is a stat
 	// per file, outside every lock.
 	if err := appwire.CheckAttachSources(ask.Attachments); err != nil {
-		return appwire.Agent{}, nil, err
+		return appCreatePrep{}, err
 	}
 	kept := make([]appAttach, 0, len(ask.Attachments))
 	for _, source := range ask.Attachments {
@@ -869,13 +891,26 @@ func (b *appBackend) createAgentHeld(ask appwire.CreateAsk, minted string) (appw
 			Kind: source.Kind, Path: strings.TrimSpace(source.Path), URL: strings.TrimSpace(source.URL),
 		}, source.Text, true)
 		if err != nil {
-			return appwire.Agent{}, nil, err
+			return appCreatePrep{}, err
 		}
 		kept = append(kept, attach)
 	}
 	if err := appAttachChars(kept); err != nil {
-		return appwire.Agent{}, nil, err
+		return appCreatePrep{}, err
 	}
+	return appCreatePrep{ask: ask, resolved: resolved, text: strings.TrimSpace(ask.Text), kept: kept}, nil
+}
+
+// createAgentHeld is [appBackend.CreateAgent] after its preparation and up to,
+// and not including, the background open and first turn: it answers the agent
+// and a launch that starts them. A caller that must make something else true
+// BEFORE the first message can reach the model (a team the manager belongs to,
+// and the durable record of the request that made it) holds the launch until
+// it is, and never calls it when that fails. minted, when set, is the
+// conversation folder's transcript the caller already made with b.mint; with
+// it and no budget, nothing here can refuse.
+func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire.Agent, func(), error) {
+	ask, resolved, text, kept := prep.ask, prep.resolved, prep.text, prep.kept
 	transcript := minted
 	if transcript == "" {
 		var err error
@@ -911,10 +946,11 @@ func (b *appBackend) createAgentHeld(ask appwire.CreateAsk, minted string) (appw
 		}
 		first.words = appAttachWords(text, kept)
 		// THE PERSON'S OWN WORDS are what the entry and the record show when
-		// they gave them; the model is sent first.words either way.
+		// they gave them, exactly as given, as agents.send keeps said; the
+		// model is sent first.words either way.
 		said := text
 		if ask.Said != nil {
-			said = strings.TrimSpace(*ask.Said)
+			said = *ask.Said
 		}
 		first.shown = appAttachShown(said, kept)
 		if first.shown == nil && ask.Said != nil && first.words != "" {
@@ -972,8 +1008,13 @@ func (b *appBackend) bootAgent(a *appAgent, first appFirst) {
 }
 
 // bootFailed is a created agent whose conversation could not be opened or
-// started: a failed turn the person can retry, and an agent that reads stopped.
-// The retry sends the same words and shows the same attachments.
+// started: a failed turn, and an agent that reads stopped. A failure BEFORE the
+// words were handed to the conversation is one the person can retry: the retry
+// sends the same words, shows the same attachments and carries the same client
+// id, since the first attempt never reached the accepted line. A failure of the
+// hand-over itself ([appUnsureSend]) is NOT armed for a retry: the host may
+// have taken the words, and a retry could send them twice. It says so, and the
+// accepted line is the client's to look for by its client id.
 func (b *appBackend) bootFailed(a *appAgent, first appFirst, err error) {
 	text := first.words
 	words := err.Error()
@@ -981,10 +1022,16 @@ func (b *appBackend) bootFailed(a *appAgent, first appFirst, err error) {
 	if errors.As(appEngineError(err), &wire) {
 		words = wire.Message
 	}
+	kind := appwire.ErrorOther
+	unsure := appSendUnsure(err)
+	if unsure {
+		kind = appwire.ErrorUncertain
+		words = appUnsureWords + " (" + words + ")"
+	}
 	var view appwire.Agent
 	b.locked(func() {
-		if text != "" {
-			a.failed, a.failedKind, a.failedShown = text, appwire.ErrorOther, first.shown
+		if text != "" && !unsure {
+			a.failed, a.failedKind, a.failedShown, a.failedClient = text, appwire.ErrorOther, first.shown, first.clientID
 		}
 		a.boot = nil
 		if a.live == nil {
@@ -994,9 +1041,31 @@ func (b *appBackend) bootFailed(a *appAgent, first appFirst, err error) {
 	})
 	if text != "" {
 		turn := b.turns.Add(1)
-		b.emit.Emit(appwire.EventTurnDone, appwire.TurnDone{Agent: view.ID, Turn: turn, OK: false, Error: words, ErrorKind: appwire.ErrorOther})
+		b.emit.Emit(appwire.EventTurnDone, appwire.TurnDone{Agent: view.ID, Turn: turn, OK: false, Error: words, ErrorKind: kind})
 	}
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+}
+
+// appUnsureWords is what a person reads when words were handed to a
+// conversation and no answer came back: they may have been sent.
+const appUnsureWords = "this message may have been sent; look at the conversation before sending it again"
+
+// appUnsureSend is a turn whose words were handed to the conversation and
+// whose hand-over then failed: a dropped link or a host that took the message
+// without saying how can both look like this, so the words MAY HAVE BEEN
+// SENT. It wraps the wire error the send has always answered, so a caller that
+// does not ask reads exactly what it read before; the first message of a
+// created agent and agents.retry ask, and never offer such words again as
+// though they were proven unsent.
+type appUnsureSend struct{ err error }
+
+func (e *appUnsureSend) Error() string { return e.err.Error() }
+func (e *appUnsureSend) Unwrap() error { return e.err }
+
+// appSendUnsure says err is a hand-over that may have delivered its words.
+func appSendUnsure(err error) bool {
+	var unsure *appUnsureSend
+	return errors.As(err, &unsure)
 }
 
 // OpenAgent attaches a conversation to a saved agent and answers it.
@@ -1510,9 +1579,9 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	var text string
+	var text, clientID string
 	var shown *appSending
-	b.locked(func() { text, shown = a.failed, a.failedShown })
+	b.locked(func() { text, shown, clientID = a.failed, a.failedShown, a.failedClient })
 	if text == "" {
 		return 0, appwire.Errorf(appwire.CodeNotFound, "this agent has no failed turn to run again")
 	}
@@ -1525,7 +1594,18 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 			shown = nil
 		}
 	}
-	return b.send(id, text, "", shown)
+	turn, err := b.send(id, text, clientID, shown)
+	if appSendUnsure(err) {
+		// THE RETRY MAY HAVE BEEN SENT. Its words are not offered again: a
+		// second press could send them twice.
+		b.locked(func() {
+			if a.failed == text {
+				a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
+			}
+		})
+		return 0, appwire.Errorf(appwire.CodeUncertain, "%s", appUnsureWords)
+	}
+	return turn, err
 }
 
 // startLocked starts one turn on a held conversation. The caller holds a.gate.
@@ -1672,7 +1752,8 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	}
 	if err != nil {
 		b.locked(func() { live.running = false })
-		return 0, appEngineError(err)
+		// The words were handed over: whether the host took them is not known.
+		return 0, &appUnsureSend{err: appEngineError(err)}
 	}
 	var view appwire.Agent
 	b.locked(func() {
@@ -1931,7 +2012,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		if live.stopping {
 			ok, kind, status = false, appwire.ErrorStopped, 0
 		}
-		a.failed, a.failedKind, a.failedShown = "", "", nil
+		a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
 		if !ok {
 			a.failed, a.failedKind, a.failedShown = text, kind, shown
 		}

@@ -470,6 +470,10 @@ const (
 	ErrorBudget   = "budget"
 	ErrorStopped  = "stopped"
 	ErrorOther    = "other"
+	// ErrorUncertain is a turn whose words were handed to the conversation and
+	// no answer came back: they MAY HAVE BEEN SENT, so no retry is offered for
+	// them. It is additive: an app that does not know the word reads a failure.
+	ErrorUncertain = "uncertain"
 )
 
 // Model is one model the configured keys can use.
