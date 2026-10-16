@@ -21,6 +21,16 @@ package session
 // and a proposal that changes the check is asked about again. Only the person
 // changes a policy afterwards, from the row.
 //
+// A KEPT SERVICE THAT FAILED IS MENDED IN PLACE. keep_running.service_id names
+// one of this conversation's own services that has no process, and the changed
+// command, folder or check replaces it on that same row, under that same id,
+// instead of becoming a second row beside the failed one
+// ([service.Supervisor.Repair]). It is the same card asked the same way — the
+// old command's yes is never the new one's — and it is refused before any card
+// for an id that is not this conversation's, a service still running or
+// stopping, or a change that would duplicate another of its services. A deny
+// leaves the failed row exactly as it was.
+//
 // A CAPABILITY THAT CANNOT WORK IS ABSENT. With no supervisor, no conversation
 // folder to own the service, nobody to ask, or inside a task, bash has no
 // keep_running argument at all ([Agent.keepAvailable]).
@@ -82,6 +92,10 @@ type KeepNotice struct {
 	Service *service.Row `json:"service,omitempty"`
 	// Job is the ordinary job a deny started, ending with this turn.
 	Job int `json:"job,omitempty"`
+	// Replaces is the id of the kept service an allow repairs in place, and
+	// ReplacesName its name; both are empty for a new service.
+	Replaces     string `json:"replaces,omitempty"`
+	ReplacesName string `json:"replacesName,omitempty"`
 }
 
 // keepRunningArgs is bash's keep_running argument.
@@ -93,6 +107,23 @@ type keepRunningArgs struct {
 		Cmd  string `json:"cmd"`
 	} `json:"health"`
 	Restart string `json:"restart"`
+	// ServiceID names one of this conversation's kept services to repair in
+	// place rather than keep a new one.
+	ServiceID string `json:"service_id"`
+}
+
+// serviceRepairer is the supervisor's in-place repair. It is asserted rather
+// than assumed so a Services door without it leaves service_id refused, never
+// half-working.
+type serviceRepairer interface {
+	Repairable(owner, id string, spec service.Spec) (service.Row, error)
+	Repair(owner, id string, spec service.Spec, policy service.Policy, from service.Provenance) (service.Row, error)
+}
+
+// keepRepairer is the Services door's repair, when it has one.
+func (a *Agent) keepRepairer() (serviceRepairer, bool) {
+	repairer, ok := any(a.config.Services).(serviceRepairer)
+	return repairer, ok && a.config.Services != nil
 }
 
 type keepAsk struct {
@@ -122,7 +153,19 @@ func KeepOptions() []AnswerOption {
 
 // KeepHead is the card's first line.
 func KeepHead(notice KeepNotice) string {
+	if notice.Replaces != "" {
+		return "keep " + firstLine(notice.Command) + " running after this turn, in place of " + keepServiceWords(notice.Replaces, notice.ReplacesName) + "?"
+	}
 	return "keep " + firstLine(notice.Command) + " running after this turn?"
+}
+
+// keepServiceWords is a kept service as a card or a result names it: "s3 (web
+// dev server)".
+func keepServiceWords(id, name string) string {
+	if name == "" {
+		return id
+	}
+	return id + " (" + name + ")"
 }
 
 // KeepQuestion is one card as a question on the block — the ONE construction
@@ -189,7 +232,7 @@ func (a *Agent) keepAvailable() bool {
 // supervisor's own.
 var keepRunningProperty = strings.ReplaceAll(keepRunningShape, "{every}", service.CheckEvery.String())
 
-const keepRunningShape = `{"type":"object","description":"Keep this command running after the turn as a supervised service. The person is asked first, once per command and folder; the command then runs in the current folder, is checked every {every}, and is restarted under the policy the person keeps. Give exactly one health check.","properties":{"name":{"type":"string","description":"a short name for it, e.g. web dev server"},"health":{"type":"object","description":"exactly one: a port that accepts connections, a URL that answers 200, or a command that exits 0","properties":{"port":{"type":"integer"},"url":{"type":"string"},"cmd":{"type":"string"}}},"restart":{"type":"string","enum":["on_failure","always","never"],"description":"the restart policy to propose; the person decides"}},"required":["health"]}`
+const keepRunningShape = `{"type":"object","description":"Keep this command running after the turn as a supervised service. The person is asked first, once per command and folder; the command then runs in the current folder, is checked every {every}, and is restarted under the policy the person keeps. Give exactly one health check.","properties":{"name":{"type":"string","description":"a short name for it, e.g. web dev server"},"health":{"type":"object","description":"exactly one: a port that accepts connections, a URL that answers 200, or a command that exits 0","properties":{"port":{"type":"integer"},"url":{"type":"string"},"cmd":{"type":"string"}}},"restart":{"type":"string","enum":["on_failure","always","never"],"description":"the restart policy to propose; the person decides"},"service_id":{"type":"string","description":"to fix one of your kept-running processes that failed or stopped (for example a port conflict) instead of adding another: its id, like s3. Its row then runs this command, folder and check under the same id; the person is asked again for the changed command. Refused while it is still running or stopping: the person stops it first."}},"required":["health"]}`
 
 // keepSentence is the bash description's line about it.
 func (a *Agent) keepSentence() string {
@@ -251,8 +294,19 @@ func (a *Agent) keepRunning(ctx context.Context, command string, args keepRunnin
 	// The started-by line is the person's own request, redacted like
 	// everything else a row carries.
 	from := service.Provenance{Label: redact.Secrets(firstLine(asked)), Turn: turn, CallID: callID}
+	// A REPAIR IS REFUSED BEFORE ANYBODY IS ASKED. An id that is not this
+	// conversation's, a service still running or stopping, or a duplicate is
+	// said now, with no card raised and nothing started or signalled.
+	var repairing service.Row
+	if id := strings.TrimSpace(args.ServiceID); id != "" {
+		row, refusal := a.keepRepairable(id, spec)
+		if refusal != "" {
+			return refusal, true, nil
+		}
+		repairing = row
+	}
 	if policy, ok := a.config.Services.Approved(spec); ok {
-		text, isError, _ := a.keepStarted(spec, policy, from, true)
+		text, isError, _ := a.keepStarted(spec, policy, from, true, repairing.ID)
 		return text, isError, nil
 	}
 
@@ -260,6 +314,7 @@ func (a *Agent) keepRunning(ctx context.Context, command string, args keepRunnin
 		CallID: callID, Asked: time.Now().UTC(), Name: spec.Name, Command: redact.Secrets(spec.Command), Dir: spec.Dir,
 		Health: redactedHealth(spec.Health), HealthWords: redact.Secrets(spec.Health.Words()),
 		Policy: proposed, PolicyWords: KeepPolicyWords(proposed),
+		Replaces: repairing.ID, ReplacesName: repairing.Name,
 	}
 	key, err := a.askKeep(ctx, &notice)
 	if err != nil {
@@ -271,7 +326,7 @@ func (a *Agent) keepRunning(ctx context.Context, command string, args keepRunnin
 		if key == KeepAllowNeverKey {
 			policy, decided = service.PolicyNever, KeepAllowedNever
 		}
-		text, isError, row := a.keepStarted(spec, policy, from, false)
+		text, isError, row := a.keepStarted(spec, policy, from, false, repairing.ID)
 		if row.ID != "" {
 			notice.Service = &row
 		}
@@ -291,13 +346,61 @@ func (a *Agent) keepRunning(ctx context.Context, command string, args keepRunnin
 		a.mu.Unlock()
 		notice.Job = started.id
 		a.keepReceipt(notice, KeepDenied)
-		return fmt.Sprintf("The person chose not to keep it running. It runs as job %d for this turn only and stops when this turn ends; log at %s", started.id, started.logPath), false, nil
+		unchanged := ""
+		if repairing.ID != "" {
+			unchanged = " " + repairing.ID + " is unchanged."
+		}
+		return fmt.Sprintf("The person chose not to keep it running. It runs as job %d for this turn only and stops when this turn ends; log at %s.%s", started.id, started.logPath, unchanged), false, nil
 	}
 }
 
-// keepStarted keeps spec under policy and says what came of it, with the row.
-func (a *Agent) keepStarted(spec service.Spec, policy service.Policy, from service.Provenance, remembered bool) (string, bool, service.Row) {
-	row, err := a.config.Services.Keep(a.keepOwner(), spec, policy, from)
+// keepRepairable answers the row service_id names when it can be repaired to
+// spec, or the refusal the model reads in place of a card.
+func (a *Agent) keepRepairable(id string, spec service.Spec) (service.Row, string) {
+	repairer, ok := a.keepRepairer()
+	if !ok {
+		return service.Row{}, "service_id is not available here, so nothing was started or changed. Propose it without service_id to keep it as a new process."
+	}
+	// The id is said back, so one the model made up is bounded before it is.
+	shown := id
+	if len(shown) > 16 {
+		shown = shown[:16] + "…"
+	}
+	row, err := repairer.Repairable(a.keepOwner(), id, spec)
+	switch {
+	case err == nil:
+		return row, ""
+	case errors.Is(err, service.ErrNotFound):
+		return service.Row{}, fmt.Sprintf("%s is not one of this conversation's kept-running processes; jobs list shows yours. Nothing was started or changed.", shown)
+	case errors.Is(err, service.ErrRunning):
+		return service.Row{}, fmt.Sprintf("%s is still running, and a replacement never runs beside it. Nothing was started or changed. Ask the person to stop it from its row, then propose the change again.", shown)
+	case errors.Is(err, service.ErrStopping):
+		return service.Row{}, fmt.Sprintf("%s is still stopping. Nothing was started or changed; propose the change again once it has stopped.", shown)
+	case errors.Is(err, service.ErrDuplicate):
+		return service.Row{}, "another of this conversation's kept-running processes already has that command in this folder. Nothing was started or changed."
+	}
+	return service.Row{}, "Not kept running: " + err.Error() + ". Nothing was started or changed."
+}
+
+// keepStarted keeps spec under policy — repairing the service repairs names in
+// place, when it names one — and says what came of it, with the row.
+func (a *Agent) keepStarted(spec service.Spec, policy service.Policy, from service.Provenance, remembered bool, repairs string) (string, bool, service.Row) {
+	var row service.Row
+	var err error
+	if repairs != "" {
+		repairer, ok := a.keepRepairer()
+		if !ok {
+			return "Not kept running: service_id is not available here.", true, row
+		}
+		row, err = repairer.Repair(a.keepOwner(), repairs, spec, policy, from)
+		if err != nil && row.ID == "" {
+			// The card was answered; what changed while it waited is said, and
+			// the row is as it was.
+			return fmt.Sprintf("Not kept running: %s. %s is unchanged and nothing was started.", err.Error(), repairs), true, row
+		}
+	} else {
+		row, err = a.config.Services.Keep(a.keepOwner(), spec, policy, from)
+	}
 	if err != nil && row.ID == "" {
 		return "Not kept running: " + err.Error() + ".", true, row
 	}
@@ -308,8 +411,11 @@ func (a *Agent) keepStarted(spec service.Spec, policy service.Policy, from servi
 		return fmt.Sprintf("Kept as %s, but it is not running: %s.", row.ID, row.Reason), true, row
 	}
 	lead := "Kept running"
+	if repairs != "" {
+		lead = "Replaced its command and kept it running"
+	}
 	if remembered {
-		lead = "Kept running (the person already approved this command in this folder)"
+		lead += " (the person already approved this command in this folder)"
 	}
 	return fmt.Sprintf("%s as %s (%s) · checks %s every %s · %s · log at %s. It keeps running after this turn; only the person changes its restart policy.",
 		lead, row.ID, row.Name, row.HealthWords, service.CheckEvery, KeepPolicyWords(row.Policy), row.LogPath), false, row
