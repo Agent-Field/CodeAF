@@ -30,7 +30,16 @@ package session
 // there is no index and no cache, so nothing grows with the history except the
 // time a scan takes. What it HOLDS is bounded: the runs in the range, under an
 // explicit budget ([UsageLedgerBudget]) that refuses — asking for a shorter
-// range — rather than answering with less than the range holds; and a page.
+// range — rather than answering with less than the range holds; and a page,
+// chosen from them by a buffer of twice its size rather than by sorting them
+// all. The budget is an ESTIMATE of the runs' weight, used to refuse early; it
+// is not a promise about the process's resident memory.
+//
+// A FIGURE THAT CANNOT BE ADDED UP IS REFUSED, NEVER WRAPPED. A ledger line with
+// negative tokens, or sums that would overflow an integer or leave the finite
+// floats, is an answer this reader cannot give truthfully; it says so
+// ([ErrUsageLedgerFigures]) rather than answering a wrapped count or a cost of
+// infinity that no reply could carry.
 
 import (
 	"bufio"
@@ -42,7 +51,9 @@ import (
 	"hash/fnv"
 	"io"
 	"io/fs"
+	"math"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -76,6 +87,13 @@ var (
 	ErrUsageLedgerTooLarge = errors.New("this range holds too many runs to answer at once; ask for a shorter date range")
 	// ErrUsageCursor is a cursor this query did not make.
 	ErrUsageCursor = errors.New("the cursor does not belong to this query; start again without one")
+	// ErrUsageLedgerChanged is a cursor whose ledger was replaced, cut
+	// shorter or rewritten since the first page was read: continuing would
+	// page through a different file as though it were the same one.
+	ErrUsageLedgerChanged = errors.New("the spending ledger was replaced or rewritten since the first page; start again without a cursor")
+	// ErrUsageLedgerFigures is a range whose figures cannot be added up
+	// truthfully: a negative count, or sums past what a number can hold.
+	ErrUsageLedgerFigures = errors.New("this range holds usage figures too large or invalid to add up; ask for a shorter date range or a narrower filter")
 	// ErrUsageQuery is a query that cannot be asked as written.
 	ErrUsageQuery = errors.New("the spending query is not valid")
 )
@@ -148,6 +166,28 @@ type UsageEntry struct {
 
 	bytes   int64
 	emitted bool
+	// modelSet is Models as a set once a row has met more than
+	// [usageModelSlice] of them. UNTIL A ROW IS FINISHED ([UsageEntry.finished])
+	// Models is in the order the models were met: inserting each one in sorted
+	// place would be quadratic in a row with a hundred thousand of them.
+	modelSet map[string]struct{}
+}
+
+// usageModelSlice is how many distinct models a row looks for by walking its
+// list; past it, a set. Ordinary runs use one or two.
+const usageModelSlice = 8
+
+// usageModelBytes is the estimate one distinct model adds to its row beside
+// its own bytes: a slice slot and, past [usageModelSlice], a set entry.
+const usageModelBytes = 64
+
+// finished is the row as it is handed out: its models sorted in a slice of
+// their own, and no set.
+func (e UsageEntry) finished() UsageEntry {
+	models := slices.Clone(e.Models)
+	slices.Sort(models)
+	e.Models, e.modelSet = models, nil
+	return e
 }
 
 // Priced reports whether any line in the row carried a figure: a row with
@@ -397,11 +437,17 @@ func (e *UsageEntry) add(line UsageLine) {
 	}
 	if model := strings.TrimSpace(line.Model); model == "" {
 		e.UnnamedModel++
-	} else if i := sort.SearchStrings(e.Models, model); i == len(e.Models) || e.Models[i] != model {
-		e.Models = append(e.Models, "")
-		copy(e.Models[i+1:], e.Models[i:])
-		e.Models[i] = model
-		e.bytes += int64(len(model)) + 16
+	} else if !e.hasModel(model) {
+		e.Models = append(e.Models, model)
+		if e.modelSet != nil {
+			e.modelSet[model] = struct{}{}
+		} else if len(e.Models) > usageModelSlice {
+			e.modelSet = make(map[string]struct{}, len(e.Models)*2)
+			for _, m := range e.Models {
+				e.modelSet[m] = struct{}{}
+			}
+		}
+		e.bytes += int64(len(model)) + usageModelBytes
 	}
 	e.Records++
 	e.Calls += max(line.Calls, 1)
@@ -420,10 +466,32 @@ func (e *UsageEntry) add(line UsageLine) {
 	}
 }
 
-// count adds one line to the totals.
-func (t *UsageLedgerTotals) count(line UsageLine) {
+// hasModel reports whether the row has already met model.
+func (e *UsageEntry) hasModel(model string) bool {
+	if e.modelSet != nil {
+		_, ok := e.modelSet[model]
+		return ok
+	}
+	return slices.Contains(e.Models, model)
+}
+
+// count adds one line to the totals, refusing a figure it cannot add.
+//
+// THE TOTALS ARE CHECKED AND THE ROWS ARE NOT, because every figure a row adds
+// is non-negative once this has passed and a row is a part of the totals: a
+// sum the totals could hold, every row's share of it can too.
+func (t *UsageLedgerTotals) count(line UsageLine) error {
+	calls := max(line.Calls, 1)
+	if line.Input < 0 || line.Output < 0 || math.IsNaN(line.USD) || math.IsInf(line.USD, 0) ||
+		t.Records == math.MaxInt || t.Calls > math.MaxInt-calls ||
+		t.Input > math.MaxInt64-int64(line.Input) || t.Output > math.MaxInt64-int64(line.Output) {
+		return ErrUsageLedgerFigures
+	}
+	if line.USD > 0 && math.IsInf(t.USD+line.USD, 0) {
+		return ErrUsageLedgerFigures
+	}
 	t.Records++
-	t.Calls += max(line.Calls, 1)
+	t.Calls += calls
 	t.Input += int64(line.Input)
 	t.Output += int64(line.Output)
 	if line.USD > 0 {
@@ -442,6 +510,7 @@ func (t *UsageLedgerTotals) count(line UsageLine) {
 	if line.Run == "" {
 		t.UnknownRunRecords++
 	}
+	return nil
 }
 
 func usageCallEntry(offset int64, line UsageLine) UsageEntry {
@@ -496,45 +565,79 @@ func usageBefore(a, b UsageEntry) bool {
 	return a.Key < b.Key
 }
 
-// usageCursor is where a page ended: the last row's start and key, and the
-// query that made it.
+// usageCursor is where a page ended — the last row's start and key, and the
+// query that made it — and WHICH BYTES the first page read: the length of the
+// ledger it read (always a line boundary) and a hash of that prefix's ends.
 type usageCursor struct {
 	V     int    `json:"v"`
 	Start int64  `json:"s"`
 	Key   string `json:"k"`
 	Query string `json:"q"`
+	Floor int64  `json:"n"`
+	Ends  string `json:"h"`
 }
 
-func encodeUsageCursor(q UsageQuery, last UsageEntry) string {
-	raw, _ := json.Marshal(usageCursor{V: 1, Start: last.Start.UnixNano(), Key: last.Key, Query: q.fingerprint()})
+// usageCursorVersion is the cursor's shape; an older shape is refused.
+const usageCursorVersion = 2
+
+// usageEndBytes is how much of each end of the read prefix a cursor's hash
+// covers: enough to tell another file, and a fixed cost however long the
+// ledger is.
+const usageEndBytes = 4096
+
+// usageReading is the prefix of the ledger one paging reads, said by a cursor.
+type usageReading struct {
+	floor int64
+	ends  string
+}
+
+// usagePrefixEnds hashes the first and last [usageEndBytes] of the first floor
+// bytes of file. It reads at fixed offsets, so a scan's position is untouched
+// and an append made meanwhile is not read.
+func usagePrefixEnds(file *os.File, floor int64) (string, error) {
+	h := fnv.New64a()
+	if file != nil && floor > 0 {
+		buf := make([]byte, min(floor, usageEndBytes))
+		for _, at := range []int64{0, floor - int64(len(buf))} {
+			if _, err := file.ReadAt(buf, at); err != nil {
+				return "", err
+			}
+			h.Write(buf)
+		}
+	}
+	return strconv.FormatInt(floor, 36) + "." + strconv.FormatUint(h.Sum64(), 36), nil
+}
+
+func encodeUsageCursor(q UsageQuery, last UsageEntry, reading usageReading) string {
+	raw, _ := json.Marshal(usageCursor{V: usageCursorVersion, Start: last.Start.UnixNano(), Key: last.Key, Query: q.fingerprint(), Floor: reading.floor, Ends: reading.ends})
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
-func decodeUsageCursor(q UsageQuery, cursor string) (*UsageEntry, error) {
+func decodeUsageCursor(q UsageQuery, cursor string) (*UsageEntry, *usageReading, error) {
 	cursor = strings.TrimSpace(cursor)
 	if cursor == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if len(cursor) > 1024 {
-		return nil, ErrUsageCursor
+		return nil, nil, ErrUsageCursor
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return nil, ErrUsageCursor
+		return nil, nil, ErrUsageCursor
 	}
 	var c usageCursor
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&c) != nil || c.V != 1 || c.Key == "" || c.Query != q.fingerprint() {
-		return nil, ErrUsageCursor
+	if decoder.Decode(&c) != nil || c.V != usageCursorVersion || c.Key == "" || c.Query != q.fingerprint() || c.Floor < 0 || c.Ends == "" {
+		return nil, nil, ErrUsageCursor
 	}
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		return nil, ErrUsageCursor
+		return nil, nil, ErrUsageCursor
 	}
 	if !strings.HasPrefix(c.Key, "run:") && !strings.HasPrefix(c.Key, "call:") {
-		return nil, ErrUsageCursor
+		return nil, nil, ErrUsageCursor
 	}
-	return &UsageEntry{Start: time.Unix(0, c.Start), Key: c.Key}, nil
+	return &UsageEntry{Start: time.Unix(0, c.Start), Key: c.Key}, &usageReading{floor: c.Floor, ends: c.Ends}, nil
 }
 
 // QueryUsageLedger answers one page of the ledger at path: the totals of
@@ -546,9 +649,16 @@ func decodeUsageCursor(q UsageQuery, cursor string) (*UsageEntry, error) {
 // line on the way past, so a page of one and a page of five hundred say the
 // same totals, and paging to the end visits exactly Totals.Entries rows.
 //
-// A PAGE IS READ FRESH. The ledger grows while a person reads it; a later page
-// is a later reading, and the cursor — a position in the order, not an offset
-// into a list — keeps the rows already seen from being seen again.
+// EVERY PAGE OF ONE PAGING READS THE SAME BYTES. The first page reads the
+// whole ledger and its cursor carries how far that was; a later page reads
+// that prefix again and no further. So the ledger growing meanwhile — the one
+// change it ever has — leaves every page and every total exactly as the first
+// page said them, and what was recorded since is the next paging's, from no
+// cursor. A ledger shorter than that prefix, or whose prefix no longer has the
+// same first and last bytes, is another file (rotated, restored, rewritten)
+// and the cursor is refused with [ErrUsageLedgerChanged] rather than
+// continued through it. A rewrite that keeps the length and both ends is not
+// seen; nothing in codeaf rewrites the ledger.
 func QueryUsageLedger(path string, q UsageQuery, cursor string, limit int, budget UsageLedgerBudget) (UsageLedgerPage, error) {
 	q, err := q.normalized()
 	if err != nil {
@@ -560,7 +670,7 @@ func QueryUsageLedger(path string, q UsageQuery, cursor string, limit int, budge
 	case limit < 0 || limit > UsageLedgerPageMax:
 		return UsageLedgerPage{}, fmt.Errorf("%w: limit is 1 to %d", ErrUsageQuery, UsageLedgerPageMax)
 	}
-	after, err := decodeUsageCursor(q, cursor)
+	after, reading, err := decodeUsageCursor(q, cursor)
 	if err != nil {
 		return UsageLedgerPage{}, err
 	}
@@ -570,39 +680,70 @@ func QueryUsageLedger(path string, q UsageQuery, cursor string, limit int, budge
 	}
 	defer done()
 
+	readLimit := int64(-1)
+	if reading != nil {
+		if file == nil && reading.floor > 0 {
+			return UsageLedgerPage{}, ErrUsageLedgerChanged
+		}
+		if file != nil {
+			info, err := file.Stat()
+			if err != nil {
+				return UsageLedgerPage{}, err
+			}
+			if info.Size() < reading.floor {
+				return UsageLedgerPage{}, ErrUsageLedgerChanged
+			}
+		}
+		ends, err := usagePrefixEnds(file, reading.floor)
+		if err != nil {
+			return UsageLedgerPage{}, err
+		}
+		if ends != reading.ends {
+			return UsageLedgerPage{}, ErrUsageLedgerChanged
+		}
+		readLimit = reading.floor
+	}
+
 	var page UsageLedgerPage
 	runs := newUsageRuns(budget)
-	// THE CALL ROWS ARE NOT HELD, only the best limit+1 of them after the
-	// cursor: a buffer that is trimmed back whenever it doubles, so a range of
-	// a million unattributed calls costs a page's worth of memory.
-	var calls []UsageEntry
-	callsAfter := 0
+	// THE PAGE IS CHOSEN, NOT SORTED OUT OF EVERYTHING. Only the best limit+1
+	// rows after the cursor are held: a buffer trimmed back whenever it
+	// doubles, so a range of a million unattributed calls costs a page's worth
+	// of memory — and the runs, once the scan has added them up, pass through
+	// the same buffer rather than being copied out of their map and sorted.
+	var best []UsageEntry
+	remaining := 0
 	keep := limit + 1
 	trim := func() {
-		sort.Slice(calls, func(i, j int) bool { return usageBefore(calls[i], calls[j]) })
-		if len(calls) > keep {
-			calls = calls[:keep]
+		sort.Slice(best, func(i, j int) bool { return usageBefore(best[i], best[j]) })
+		if len(best) > keep {
+			clear(best[keep:])
+			best = best[:keep]
+		}
+	}
+	offer := func(entry UsageEntry) {
+		if after != nil && !usageBefore(*after, entry) {
+			return
+		}
+		remaining++
+		best = append(best, entry)
+		if len(best) >= 2*keep {
+			trim()
 		}
 	}
 	if file != nil {
-		page.Stats, err = scanUsageLines(file, -1, func(offset int64, line UsageLine) error {
+		page.Stats, err = scanUsageLines(file, readLimit, func(offset int64, line UsageLine) error {
 			line.Run = strings.TrimSpace(line.Run)
 			if !q.matches(line) {
 				return nil
 			}
-			page.Totals.count(line)
+			if err := page.Totals.count(line); err != nil {
+				return err
+			}
 			if line.Run != "" {
 				return runs.add(line)
 			}
-			entry := usageCallEntry(offset, line)
-			if after != nil && !usageBefore(*after, entry) {
-				return nil
-			}
-			callsAfter++
-			calls = append(calls, entry)
-			if len(calls) >= 2*keep {
-				trim()
-			}
+			offer(usageCallEntry(offset, line))
 			return nil
 		})
 		if err != nil {
@@ -611,23 +752,27 @@ func QueryUsageLedger(path string, q UsageQuery, cursor string, limit int, budge
 	}
 	page.Totals.Runs = len(runs.rows)
 	page.Totals.Entries = page.Totals.Runs + page.Totals.UnknownRunRecords
-
-	candidates := calls
-	remaining := callsAfter
 	for _, row := range runs.rows {
-		if after != nil && !usageBefore(*after, *row) {
-			continue
+		offer(*row)
+	}
+	trim()
+
+	// The page is copied into a slice of exactly its length, so nothing the
+	// caller keeps holds the buffer, the runs, or the sets they counted
+	// models in.
+	page.Entries = make([]UsageEntry, min(limit, len(best)))
+	for i := range page.Entries {
+		page.Entries[i] = best[i].finished()
+	}
+	if remaining > len(page.Entries) && len(page.Entries) > 0 {
+		if reading == nil {
+			ends, err := usagePrefixEnds(file, page.Stats.Bytes)
+			if err != nil {
+				return UsageLedgerPage{}, err
+			}
+			reading = &usageReading{floor: page.Stats.Bytes, ends: ends}
 		}
-		remaining++
-		candidates = append(candidates, *row)
-	}
-	sort.Slice(candidates, func(i, j int) bool { return usageBefore(candidates[i], candidates[j]) })
-	if len(candidates) > limit {
-		candidates = candidates[:limit]
-	}
-	page.Entries = candidates
-	if remaining > len(candidates) && len(candidates) > 0 {
-		page.Next = encodeUsageCursor(q, candidates[len(candidates)-1])
+		page.Next = encodeUsageCursor(q, page.Entries[len(page.Entries)-1], *reading)
 	}
 	return page, nil
 }
@@ -662,7 +807,9 @@ func EachUsageLedgerEntry(path string, q UsageQuery, budget UsageLedgerBudget, f
 		if !q.matches(line) {
 			return nil
 		}
-		totals.count(line)
+		if err := totals.count(line); err != nil {
+			return err
+		}
 		if line.Run != "" {
 			return runs.add(line)
 		}
@@ -682,14 +829,14 @@ func EachUsageLedgerEntry(path string, q UsageQuery, budget UsageLedgerBudget, f
 			return nil
 		}
 		if line.Run == "" {
-			return fn(usageCallEntry(offset, line))
+			return fn(usageCallEntry(offset, line).finished())
 		}
 		row := runs.rows[line.Run]
 		if row == nil || row.emitted {
 			return nil
 		}
 		row.emitted = true
-		return fn(*row)
+		return fn(row.finished())
 	})
 	if err != nil {
 		return UsageLedgerTotals{}, stats, err

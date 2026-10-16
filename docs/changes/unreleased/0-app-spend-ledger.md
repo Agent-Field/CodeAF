@@ -21,3 +21,15 @@ calls are counted, not shown as $0. Both methods are optional: an engine
 without them answers `unknown_method`. `spend.export` is unchanged. Every
 request reads the ledger linearly from the start; a range with more than
 100 000 runs is refused, and a third concurrent reading answers `busy`.
+
+A page holds the page: the runs are added up under that budget (an estimate,
+not a resident-memory promise) and the page is chosen from them without
+sorting them all. One answer is at most 2 MiB of JSON and a larger one is
+refused, asking for a smaller limit or narrower filter, never cut. Figures that
+would overflow or leave the finite floats are refused. A cursor pins the bytes
+the first page read, so appends never move a paging, and a ledger rotated, cut
+or rewritten under it refuses the cursor. Names come only from what the app
+holds for the rows answered, so an older conversation the app is not holding is
+unnamed. Without `overwrite`, a folder that cannot make hard links is refused
+rather than checked and renamed. CSV costs are full precision, not rounded to
+four places.

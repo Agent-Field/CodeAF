@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -227,5 +228,48 @@ func TestSpendLedgerCSVRecord(t *testing.T) {
 	}
 	if records[3][col["name"]] != "q" || records[3][col["by"]] != "" {
 		t.Fatalf("row 3 falls back to its run: %q", records[3])
+	}
+}
+
+// hugeLedgerEngine answers one run row that met a hundred thousand models.
+type hugeLedgerEngine struct{ ledgerEngine }
+
+func (h *hugeLedgerEngine) SpendLedger(ask SpendLedgerAsk) (SpendLedgerResult, error) {
+	models := make([]string, 100_000)
+	for i := range models {
+		models[i] = "provider/model-" + strings.Repeat("x", 8) + "-" + string(rune('a'+i%26))
+	}
+	return SpendLedgerResult{From: ask.Filter.From, To: ask.Filter.To, Rows: []SpendLedgerRow{{Grain: SpendGrainRun, Key: "run:r", Run: "r", Models: models, Records: 100_000, Calls: 100_000}}}, nil
+}
+
+// AN ANSWER TOO LARGE TO CARRY IS REFUSED, SAYING WHAT TO ASK INSTEAD, and
+// never arrives with its models cut to fit.
+func TestSpendLedgerRefusesAnAnswerTooLargeToCarry(t *testing.T) {
+	call := serveOver(t, &hugeLedgerEngine{})
+	for limit, want := range map[string]string{"1": "narrow the filter", "50": "smaller limit"} {
+		frame := call(`{"id":1,"method":"spend.ledger","params":{"from":"2026-10-01","to":"2026-10-15","limit":` + limit + `}}`)
+		e, _ := frame["error"].(map[string]any)
+		message, _ := e["message"].(string)
+		if frameCode(frame) != CodeBadParams || !strings.Contains(message, want) || !strings.Contains(message, "2097152") {
+			t.Fatalf("limit %s: %v", limit, frame)
+		}
+		if _, answered := frame["result"]; answered {
+			t.Fatalf("limit %s: a cut answer arrived", limit)
+		}
+	}
+	// The ordinary page is under it.
+	if frame := serveOver(t, &ledgerEngine{})(`{"id":1,"method":"spend.ledger","params":{"from":"2026-10-01","to":"2026-10-15"}}`); frame["result"] == nil {
+		t.Fatalf("an ordinary page was refused: %v", frame)
+	}
+}
+
+// THE FILE'S COST IS THE LEDGER'S, NOT A ROUNDING OF IT: a five-hundredth of a
+// cent is written whole, so the column sums to the stated bill.
+func TestSpendLedgerCSVCostKeepsItsPrecision(t *testing.T) {
+	usd := 1.0 / 512
+	record := SpendLedgerCSVRecord(SpendLedgerRow{Grain: SpendGrainCall, Key: "call:1", CostUSD: &usd, Models: []string{}})
+	cost := record[slices.Index(SpendLedgerCSVHeader, "cost_usd")]
+	if cost != "0.001953125" {
+		t.Fatalf("cost %q", cost)
 	}
 }

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -288,27 +290,33 @@ func TestAppSpendLedgerRefusals(t *testing.T) {
 	if wireErrorCode(err) != appwire.CodeBadParams {
 		t.Fatalf("another range's cursor: %v", err)
 	}
-	if wireErrorCode(appLedgerError(session.ErrUsageLedgerTooLarge)) != appwire.CodeBadParams {
-		t.Fatal("too large is not the asker's to fix")
+	for _, err := range []error{session.ErrUsageLedgerTooLarge, session.ErrUsageLedgerChanged, session.ErrUsageLedgerFigures} {
+		if wireErrorCode(appLedgerError(err)) != appwire.CodeBadParams {
+			t.Fatalf("%v is not the asker's to fix", err)
+		}
 	}
 }
 
-// A NAME IS JOINED, NEVER GUESSED: a task's title needs the conversation it
-// ran in, and a thing nothing holds a title for has none.
+// A NAME IS JOINED, NEVER GUESSED: a conversation's title is the held
+// agent's, a task's needs the conversation it ran in and that conversation
+// held open, and a thing nothing holds a title for has none.
 func TestAppSpendLedgerNamesAreJoinedNotInferred(t *testing.T) {
-	names := appLedgerNames{
-		conversations: map[string]string{"c1": "Release notes"},
-		tasks:         map[string]map[string]string{"c1": {"7": "Fix the build"}},
-		automations:   map[string]string{"nightly": "Nightly triage"},
-	}
+	b := &appBackend{agents: map[string]*appAgent{
+		"c1": {view: appwire.Agent{ID: "c1", Title: "Release notes"}, live: &appLive{tasks: map[string]appwire.Task{appTaskID("c1", 7): {Title: "Fix the build"}}}},
+		"c2": {view: appwire.Agent{ID: "c2", Title: "Closed one"}},
+	}}
+	names := b.ledgerNamer()
+	names.automation = func(id string) string { return map[string]string{"nightly": "Nightly triage"}[id] }
 	for _, c := range []struct {
 		entry session.UsageEntry
 		want  string
 	}{
 		{session.UsageEntry{Kind: session.SubjectConversation, Subject: "c1"}, "Release notes"},
+		{session.UsageEntry{Kind: session.SubjectConversation, Subject: "c9"}, ""},
 		{session.UsageEntry{Kind: session.SubjectTask, Subject: "7", Root: "c1"}, "Fix the build"},
 		{session.UsageEntry{Kind: session.SubjectTask, Subject: "7"}, ""},
 		{session.UsageEntry{Kind: session.SubjectTask, Subject: "7", Root: "c2"}, ""},
+		{session.UsageEntry{Kind: session.SubjectTask, Subject: "x", Root: "c1"}, ""},
 		{session.UsageEntry{Kind: session.SubjectAutomation, Subject: "nightly"}, "Nightly triage"},
 		{session.UsageEntry{Subject: "c1"}, ""},
 	} {
@@ -318,9 +326,154 @@ func TestAppSpendLedgerNamesAreJoinedNotInferred(t *testing.T) {
 	}
 }
 
+// NAMING IS PAID PER ROW ANSWERED, NEVER PER THING THE MACHINE HOLDS: a page
+// of one asks one name, an export asks each automation once until the cache
+// is full and never keeps more than it, and nothing else is read.
+func TestAppSpendLedgerNamesAreBoundedLookups(t *testing.T) {
+	zone := time.UTC
+	at := time.Date(2026, 10, 14, 6, 0, 0, 0, zone)
+	var lines []session.UsageLine
+	for i := 0; i < 3*appLedgerNameCache; i++ {
+		for range 2 {
+			lines = append(lines, session.UsageLine{At: at.Add(time.Duration(i) * time.Second), Automation: fmt.Sprintf("auto%04d", i), USD: 1.0 / 1024})
+		}
+	}
+	ledgerAt(t, zone, lines, "")
+	b := &appBackend{}
+	asked := map[string]int{}
+	namer := b.ledgerNamer()
+	namer.automation = func(id string) string { asked[id]++; return "title " + id }
+	filter := appwire.SpendLedgerFilter{From: "2026-10-14", To: "2026-10-14"}
+	query, err := appLedgerQuery(filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := session.QueryUsageLedger(appLedgerPath(), query, "", 1, session.DefaultUsageLedgerBudget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row := appLedgerRow(page.Entries[0], namer, zone); row.Name != "title "+row.Subject || len(asked) != 1 {
+		t.Fatalf("a page of one asked %d names: %+v", len(asked), row)
+	}
+	clear(asked)
+	namer = b.ledgerNamer()
+	namer.automation = func(id string) string { asked[id]++; return "title " + id }
+	rows := 0
+	if _, _, err := session.EachUsageLedgerEntry(appLedgerPath(), query, session.DefaultUsageLedgerBudget, func(e session.UsageEntry) error {
+		rows++
+		if appLedgerRow(e, namer, zone).Name != "title "+e.Subject {
+			t.Fatalf("row %s unnamed", e.Key)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(namer.automations) != appLedgerNameCache || rows != len(lines) {
+		t.Fatalf("the cache holds %d after %d rows", len(namer.automations), rows)
+	}
+	for id, n := range asked {
+		cached := id < fmt.Sprintf("auto%04d", appLedgerNameCache)
+		if cached && n != 1 || !cached && n != 2 {
+			t.Fatalf("%s asked %d times", id, n)
+		}
+	}
+}
 func ledgerJSON(data []byte, err error) []byte {
 	if err != nil {
 		panic(err)
 	}
 	return data
+}
+
+// A FILE CREATED AT THE DESTINATION WHILE THE EXPORT WAS WRITING SURVIVES IT,
+// on a folder that takes links and on one that does not: the first refuses as
+// "already exists", the second refuses outright rather than look and rename,
+// and neither leaves its temporary file behind.
+func TestAppSpendLedgerExportNeverReplacesAConcurrentFile(t *testing.T) {
+	ledgerAt(t, time.UTC, appLedgerFixture(time.UTC)[:200], "")
+	b := &appBackend{}
+	filter := appwire.SpendLedgerFilter{From: "2026-10-14", To: "2026-10-14"}
+	oldLink := appLinkFile
+	t.Cleanup(func() { appLinkFile = oldLink })
+	for name, link := range map[string]func(string, string) error{
+		"links":    os.Link,
+		"no links": func(string, string) error { return &os.LinkError{Op: "link", Err: syscall.ENOTSUP} },
+	} {
+		dir := t.TempDir()
+		dest := filepath.Join(dir, "spend.csv")
+		appLinkFile = func(from, to string) error {
+			if err := os.WriteFile(to, []byte("theirs\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return link(from, to)
+		}
+		_, err := b.ExportSpendLedger(appwire.SpendLedgerExportAsk{Filter: filter, Destination: dest})
+		if wireErrorCode(err) != appwire.CodeBadParams {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if name == "no links" && !strings.Contains(err.Error(), "choose another folder") {
+			t.Fatalf("%s: the refusal does not say what to do: %v", name, err)
+		}
+		keptIntact(t, dir, dest, "theirs\n")
+	}
+
+	// On a folder without links and nothing at the destination, it is still
+	// refused, and nothing is there after.
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "spend.csv")
+	appLinkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: syscall.EXDEV} }
+	if _, err := b.ExportSpendLedger(appwire.SpendLedgerExportAsk{Filter: filter, Destination: dest}); wireErrorCode(err) != appwire.CodeBadParams {
+		t.Fatalf("no links, nothing there: %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("a refused export left %d entries", len(entries))
+	}
+}
+
+// THE TEMPORARY FILE IS REMOVED AFTER A LINK PLACES THE EXPORT, and a removal
+// that fails does not undo the export it followed.
+func TestAppSpendLedgerExportRemovesItsTemporaryName(t *testing.T) {
+	ledgerAt(t, time.UTC, appLedgerFixture(time.UTC)[:200], "")
+	b := &appBackend{}
+	oldRemove := appRemoveFile
+	t.Cleanup(func() { appRemoveFile = oldRemove })
+	var removed []string
+	appRemoveFile = func(path string) error {
+		removed = append(removed, path)
+		os.Remove(path)
+		return errors.New("refused")
+	}
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "spend.csv")
+	out, err := b.ExportSpendLedger(appwire.SpendLedgerExportAsk{Filter: appwire.SpendLedgerFilter{From: "2026-10-14", To: "2026-10-14"}, Destination: dest})
+	if err != nil || out.Rows == 0 {
+		t.Fatalf("%v %+v", err, out)
+	}
+	if len(removed) != 1 || !strings.HasPrefix(filepath.Base(removed[0]), ".codeaf-ledger-") {
+		t.Fatalf("removed %q", removed)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatalf("the folder holds %d entries", len(entries))
+	}
+}
+
+// A RANGE WHOSE FIGURES CANNOT BE ADDED UP IS REFUSED BY BOTH DOORS, by name,
+// and the export's destination is left exactly as it was.
+func TestAppSpendLedgerRefusesFiguresItCannotAdd(t *testing.T) {
+	at := time.Date(2026, 10, 14, 6, 0, 0, 0, time.UTC)
+	ledgerAt(t, time.UTC, []session.UsageLine{{At: at, USD: math.MaxFloat64}, {At: at, Run: "r", USD: math.MaxFloat64}}, "")
+	b := &appBackend{}
+	filter := appwire.SpendLedgerFilter{From: "2026-10-14", To: "2026-10-14"}
+	if _, err := b.SpendLedger(appwire.SpendLedgerAsk{Filter: filter, Limit: 10}); wireErrorCode(err) != appwire.CodeBadParams || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("page: %v", err)
+	}
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "spend.csv")
+	if err := os.WriteFile(dest, []byte("kept\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ExportSpendLedger(appwire.SpendLedgerExportAsk{Filter: filter, Destination: dest, Overwrite: true}); wireErrorCode(err) != appwire.CodeBadParams {
+		t.Fatalf("export: %v", err)
+	}
+	keptIntact(t, dir, dest, "kept\n")
 }

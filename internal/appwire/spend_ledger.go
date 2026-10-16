@@ -55,6 +55,14 @@ const (
 	SpendLedgerLimitMax     = 500
 )
 
+// SpendLedgerReplyMax is the most bytes one spend.ledger answer may be, as
+// JSON. A page of 500 rows is not a bound by itself: one run may have met a
+// hundred thousand models, and every text field may be as long as a ledger line.
+// AN ANSWER PAST IT IS REFUSED, NEVER CUT: dropping models or rows to fit would
+// show a preview that disagrees with the file saved from it. The export is not
+// held to it, because it streams to disk a row at a time.
+const SpendLedgerReplyMax = 2 << 20
+
 // SpendLedgerFilter is the one question both methods ask. from and to are
 // local calendar days, both included, and required. Every other field is an
 // exact match on what the ledger wrote; subject needs kind.
@@ -269,6 +277,9 @@ var spendLedgerMethods = map[string]method{
 			return nil, err
 		}
 		result.Rows = nonNil(result.Rows)
+		if err := checkSpendLedgerReply(result, p.Limit); err != nil {
+			return nil, err
+		}
 		return &result, nil
 	}),
 	"spend.ledger.export": shaped[SpendLedgerExportParams](func(e Engine, raw json.RawMessage) (*SpendLedgerExportResult, error) {
@@ -296,6 +307,23 @@ var spendLedgerMethods = map[string]method{
 	}),
 }
 
+// checkSpendLedgerReply refuses an answer too large to carry, saying what to
+// ask for instead.
+func checkSpendLedgerReply(result SpendLedgerResult, limit int) error {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return Errorf(CodeEngine, "spend.ledger: the page could not be written as JSON: %v", err)
+	}
+	if len(data) <= SpendLedgerReplyMax {
+		return nil
+	}
+	fewer := "ask for fewer rows with a smaller limit, or "
+	if limit <= 1 {
+		fewer = ""
+	}
+	return Errorf(CodeBadParams, "spend.ledger: this page is %d bytes, more than the %d one answer may carry; %snarrow the filter — a model, a run, or a shorter range — because a single run that used very many models is one row however small the page", len(data), SpendLedgerReplyMax, fewer)
+}
+
 // ── the file ────────────────────────────────────────────────────────────────
 
 // SpendLedgerCSVHeader is spend.ledger.export's columns, in order. The first
@@ -312,6 +340,12 @@ var SpendLedgerCSVHeader = []string{
 // subject's own id, and then to the run's, when nothing holds a title; a cost
 // nobody could price is an empty cell. Every text cell that a spreadsheet
 // would read as a formula is written with a leading apostrophe.
+//
+// THE COST IS WRITTEN AT ITS FULL PRECISION, NOT ROUNDED TO FOUR PLACES. Most
+// calls cost less than a hundredth of a cent, so a column of four-decimal
+// figures would sum to a different bill from the one the totals state —
+// money lost in the file without a word. The shortest decimal that reads back
+// as the same number is written; a spreadsheet can round it for display.
 func SpendLedgerCSVRecord(row SpendLedgerRow) []string {
 	name := row.Name
 	if name == "" {

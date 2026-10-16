@@ -9,11 +9,20 @@ package main
 // things the money was spent on — and the one safe way to put a file where the
 // person asked for it.
 //
-// A NAME IS JOINED, NEVER INFERRED. A conversation's title is the one its
-// journal settled on; a task's is the index row with that id IN THAT
-// CONVERSATION (an id alone is not unique, so a line with no root names no
-// task); an automation's is the store's. Anything none of them holds has no
-// name, and the client — or the CSV — falls back to the id the ledger wrote.
+// A NAME IS JOINED, NEVER INFERRED. A conversation's title is the one the app
+// holds for that agent; a task's is the task with that id IN THAT
+// CONVERSATION as the open conversation last said it (an id alone is not
+// unique, so a line with no root names no task); an automation's is the
+// store's. Anything none of them holds has no name, and the client — or the
+// CSV — falls back to the id the ledger wrote.
+//
+// A NAME IS LOOKED UP FOR THE ROWS BEING ANSWERED, AND NOTHING ELSE IS READ. A
+// page asks for the names of its own rows and an export for each row as it is
+// written: a map lookup in what the app already holds, and one store read per
+// automation, remembered in a cache that stops growing at
+// [appLedgerNameCache]. No conversation's journal is opened and no list of
+// every conversation is walked, so the cost of naming does not grow with the
+// history — only with the rows the question answers.
 //
 // THE FILE IS WHOLE OR IT IS NOT THERE. It is written beside the destination
 // under a temporary name, synced, and only then moved into place; any failure
@@ -29,6 +38,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -69,7 +79,8 @@ func appLedgerError(err error) error {
 	switch {
 	case errors.Is(err, session.ErrUsageScanBusy):
 		return appwire.Errorf(appwire.CodeBusy, "%s", err.Error())
-	case errors.Is(err, session.ErrUsageQuery), errors.Is(err, session.ErrUsageCursor), errors.Is(err, session.ErrUsageLedgerTooLarge):
+	case errors.Is(err, session.ErrUsageQuery), errors.Is(err, session.ErrUsageCursor), errors.Is(err, session.ErrUsageLedgerTooLarge),
+		errors.Is(err, session.ErrUsageLedgerChanged), errors.Is(err, session.ErrUsageLedgerFigures):
 		return appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	}
 	return appEngineError(err)
@@ -85,10 +96,7 @@ func (b *appBackend) SpendLedger(ask appwire.SpendLedgerAsk) (appwire.SpendLedge
 	if err != nil {
 		return appwire.SpendLedgerResult{}, appLedgerError(err)
 	}
-	var names appLedgerNames
-	if len(page.Entries) > 0 {
-		names = b.ledgerNames()
-	}
+	names := b.ledgerNamer()
 	zone := appLedgerZone()
 	rows := make([]appwire.SpendLedgerRow, 0, len(page.Entries))
 	for _, entry := range page.Entries {
@@ -108,7 +116,7 @@ func (b *appBackend) ExportSpendLedger(ask appwire.SpendLedgerExportAsk) (appwir
 	if err != nil {
 		return appwire.SpendLedgerExportResult{}, appLedgerError(err)
 	}
-	names := b.ledgerNames()
+	names := b.ledgerNamer()
 	zone := appLedgerZone()
 	var (
 		totals session.UsageLedgerTotals
@@ -144,7 +152,7 @@ func (b *appBackend) ExportSpendLedger(ask appwire.SpendLedgerExportAsk) (appwir
 }
 
 // appLedgerRow is one ledger row on the wire.
-func appLedgerRow(entry session.UsageEntry, names appLedgerNames, zone *time.Location) appwire.SpendLedgerRow {
+func appLedgerRow(entry session.UsageEntry, names *appLedgerNamer, zone *time.Location) appwire.SpendLedgerRow {
 	row := appwire.SpendLedgerRow{
 		Grain: entry.Grain, Key: entry.Key, Run: entry.Run,
 		Time: entry.Start.In(zone), End: entry.End.In(zone),
@@ -194,73 +202,114 @@ func appLedgerTotals(t session.UsageLedgerTotals) appwire.SpendLedgerTotals {
 	}
 }
 
-// appLedgerNames is the titles the app holds, by what they name.
-type appLedgerNames struct {
-	conversations map[string]string
-	// tasks is keyed by conversation and then task id.
-	tasks       map[string]map[string]string
+// appLedgerNameCache is the most automation titles one answer remembers.
+// Past it each further one is read from the store when its row is met and not
+// kept, so a range of very many automations costs reads, never memory.
+const appLedgerNameCache = 256
+
+// appLedgerNamer names one answer's rows from what the app already holds.
+type appLedgerNamer struct {
+	// conversation and task answer a held agent's title and a held task's,
+	// by the agent's id and by the conversation and the task's id there.
+	conversation func(id string) string
+	task         func(conversation, id string) string
+	// automation reads one automation's title from the store.
+	automation  func(id string) string
 	automations map[string]string
 }
 
-// ledgerNames reads the titles once: every conversation and task the places
-// walk holds, and every automation in the store when standing orders are on.
-func (b *appBackend) ledgerNames() appLedgerNames {
-	names := appLedgerNames{conversations: map[string]string{}, tasks: map[string]map[string]string{}, automations: map[string]string{}}
-	for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
-		if title := strings.TrimSpace(row.Title); title != "" {
-			names.conversations[row.ID] = title
-		}
-		for _, entry := range row.Tasks.Rows {
-			title, conversation := strings.TrimSpace(entry.Title), strings.TrimSpace(entry.SessionID)
-			if title == "" || conversation == "" {
-				continue
+// ledgerNamer is the namer over this backend's agents and automations.
+func (b *appBackend) ledgerNamer() *appLedgerNamer {
+	n := &appLedgerNamer{
+		conversation: func(id string) (title string) {
+			b.locked(func() {
+				if a := b.agents[id]; a != nil {
+					title = a.view.Title
+				}
+			})
+			return strings.TrimSpace(title)
+		},
+		task: func(conversation, id string) (title string) {
+			n, err := strconv.ParseUint(id, 10, 64)
+			if err != nil {
+				return ""
 			}
-			if names.tasks[conversation] == nil {
-				names.tasks[conversation] = map[string]string{}
-			}
-			names.tasks[conversation][strings.TrimSpace(entry.ID)] = title
-		}
+			b.locked(func() {
+				if a := b.agents[conversation]; a != nil && a.live != nil {
+					title = a.live.tasks[appTaskID(conversation, n)].Title
+				}
+			})
+			return strings.TrimSpace(title)
+		},
+		automation:  func(string) string { return "" },
+		automations: map[string]string{},
 	}
 	if b.orderStore != nil {
-		if store := b.orderStore(); store != nil {
-			if list, err := store.List(); err == nil {
-				for _, a := range list {
-					if title := strings.TrimSpace(a.Title); title != "" {
-						names.automations[a.ID] = title
-					}
-				}
+		n.automation = func(id string) string {
+			store := b.orderStore()
+			if store == nil {
+				return ""
 			}
+			a, err := store.Get(id)
+			if err != nil {
+				return ""
+			}
+			return strings.TrimSpace(a.Title)
 		}
 	}
-	return names
+	return n
 }
 
 // of is the title of what the row's money was spent on, or "".
-func (n appLedgerNames) of(entry session.UsageEntry) string {
+func (n *appLedgerNamer) of(entry session.UsageEntry) string {
+	if entry.Subject == "" {
+		return ""
+	}
 	switch entry.Kind {
 	case session.SubjectConversation:
-		return n.conversations[entry.Subject]
+		return n.conversation(entry.Subject)
 	case session.SubjectAutomation:
-		return n.automations[entry.Subject]
+		if title, known := n.automations[entry.Subject]; known {
+			return title
+		}
+		title := n.automation(entry.Subject)
+		if len(n.automations) < appLedgerNameCache {
+			n.automations[entry.Subject] = title
+		}
+		return title
 	case session.SubjectTask:
 		if entry.Root == "" {
 			return ""
 		}
-		return n.tasks[entry.Root][entry.Subject]
+		return n.task(entry.Root, entry.Subject)
 	}
 	return ""
 }
+
+// appLinkFile and appRemoveFile are the two filesystem steps that place an
+// export without overwrite; a test replaces them.
+var (
+	appLinkFile   = os.Link
+	appRemoveFile = os.Remove
+)
 
 // appWriteWhole writes what fill writes to path, whole or not at all, and
 // answers the bytes written.
 //
 // THE TEMPORARY FILE IS A SIBLING, so the last step is a rename within one
 // directory, which a reader sees as the old file or the new one and never part
-// of either. It is made 0600, written, synced and closed before it moves; on
-// any failure it is removed. Without overwrite the move is a hard link, which
-// refuses an existing destination atomically — a file someone else wrote there
-// a moment ago is not replaced — and only a filesystem that has no links falls
-// back to checking first.
+// of either. It is made 0600, written, synced and closed before it moves.
+//
+// WITHOUT OVERWRITE THE MOVE IS A HARD LINK AND NOTHING ELSE. A link refuses an
+// existing destination atomically, so a file someone else wrote there a moment
+// ago is not replaced. A folder that cannot take a link (some network and
+// removable filesystems) is REFUSED, with what to do instead: the only other
+// way would be to look first and rename after, and a file created between the
+// look and the rename would be destroyed without a word.
+//
+// THE TEMPORARY FILE IS ALWAYS REMOVED unless it became the destination by
+// rename — after a failure, and after a link has placed it (the link is the
+// destination's own name for the same bytes).
 func appWriteWhole(path string, overwrite bool, fill func(io.Writer) error) (int64, error) {
 	dir := filepath.Dir(path)
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
@@ -281,11 +330,11 @@ func appWriteWhole(path string, overwrite bool, fill func(io.Writer) error) (int
 		return 0, appEngineError(err)
 	}
 	tempPath := temp.Name()
-	keep := false
+	renamed := false
 	defer func() {
-		if !keep {
-			_ = temp.Close()
-			_ = os.Remove(tempPath)
+		_ = temp.Close()
+		if !renamed {
+			_ = appRemoveFile(tempPath)
 		}
 	}()
 	if err := temp.Chmod(appStateFileMode); err != nil {
@@ -305,25 +354,20 @@ func appWriteWhole(path string, overwrite bool, fill func(io.Writer) error) (int
 		return 0, err
 	}
 	if overwrite {
-		err = os.Rename(tempPath, path)
-	} else {
-		err = os.Link(tempPath, path)
+		if err := os.Rename(tempPath, path); err != nil {
+			return 0, fmt.Errorf("the export could not be put in place: %w", err)
+		}
+		renamed = true
+	} else if err := appLinkFile(tempPath, path); err != nil {
 		switch {
-		case err == nil:
-			_ = os.Remove(tempPath)
 		case errors.Is(err, fs.ErrExist):
 			return 0, appwire.Errorf(appwire.CodeBadParams, "the destination already exists; pass overwrite to replace it")
-		case errors.Is(err, syscall.EPERM), errors.Is(err, syscall.ENOTSUP), errors.Is(err, syscall.EXDEV), errors.Is(err, syscall.EMLINK):
-			if _, statErr := os.Lstat(path); statErr == nil {
-				return 0, appwire.Errorf(appwire.CodeBadParams, "the destination already exists; pass overwrite to replace it")
-			}
-			err = os.Rename(tempPath, path)
+		case errors.Is(err, syscall.EPERM), errors.Is(err, syscall.ENOTSUP), errors.Is(err, syscall.EOPNOTSUPP),
+			errors.Is(err, syscall.EXDEV), errors.Is(err, syscall.EMLINK), errors.Is(err, syscall.ENOSYS):
+			return 0, appwire.Errorf(appwire.CodeBadParams, "this folder cannot place a new file without the risk of replacing one created there at the same moment; choose another folder, or pass overwrite to replace whatever is at the destination")
 		}
-	}
-	if err != nil {
 		return 0, fmt.Errorf("the export could not be put in place: %w", err)
 	}
-	keep = true
 	if handle, err := os.Open(dir); err == nil {
 		_ = handle.Sync()
 		_ = handle.Close()
