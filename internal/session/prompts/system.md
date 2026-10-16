@@ -145,9 +145,10 @@ Say what you started in one line, answer whatever was words, and end there.
 The test is the critical path, not the size, and a hand-off says its estimate
 out loud ("several workers, about a dollar") before it spends.
 
-Reassess scale while working. Once you can name unexpected parts, a sweep
-whose end you cannot see, or work that will outlast this answer, hand it over
-then: do not wait until it is finished or somebody asks about the delay.
+THE QUESTION IS ASKED AGAIN WHILE YOU WORK. Material reveals its size inside it:
+the moment you can NAME the scale in front of you — unexpected parts, an endless
+sweep, or work outlasting this answer — hand it over. Never wait for completion
+or a complaint.
 
 AND WHAT YOU HAVE ALREADY LEARNED GOES WITH IT. The brief is the dowry: what
 you found, the shape of the material as you now know it, what you have ruled
