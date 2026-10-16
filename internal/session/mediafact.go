@@ -169,7 +169,9 @@ type MediaFact struct {
 	Message string `json:"message,omitempty"`
 	Tool    string `json:"tool,omitempty"`
 	// References are the exact reference_paths the generator was given.
-	References []string `json:"references,omitempty"`
+	References           []string `json:"references,omitempty"`
+	InputMessages        []string `json:"input_messages,omitempty"`
+	InputMessagesOmitted bool     `json:"input_messages_omitted,omitempty"`
 	// Said is the exact text given to speak.
 	Said string `json:"said,omitempty"`
 	// The rest is set only on evidence — a file the agent LOOKED AT (origin
@@ -433,6 +435,7 @@ func (f MediaFact) WithCallUsage(usage *ai.Usage) MediaFact {
 // neither.
 type mediaMade struct {
 	Inputs    []string
+	Messages  mediaInputMessages
 	Run, Tool string
 }
 
@@ -440,12 +443,14 @@ type mediaMade struct {
 // immutable execution id, the tool is the provider's id for this very call.
 // Either may be absent (a test, a door with no turn) and is then left unset.
 func madeBy(ctx context.Context, inputs []string) mediaMade {
-	return mediaMade{Inputs: inputs, Run: runIdentity(ctx), Tool: callIDFrom(ctx)}
+	return mediaMade{Inputs: inputs, Messages: mediaInputsFrom(ctx), Run: runIdentity(ctx), Tool: callIDFrom(ctx)}
 }
 
 // WithMade stamps the call's inputs and identity onto a fact.
 func (f MediaFact) WithMade(made mediaMade) MediaFact {
 	f.Run, f.Tool = made.Run, made.Tool
+	f.InputMessages = append([]string(nil), made.Messages.IDs...)
+	f.InputMessagesOmitted = made.Messages.Omitted
 	return f.WithReferences(made.Inputs)
 }
 

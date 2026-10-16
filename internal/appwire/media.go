@@ -152,11 +152,13 @@ type MediaSource struct {
 	RequestedCount *int `json:"requested_count,omitempty"`
 	// Run is the turn's immutable execution id and Tool the provider's id for
 	// the tool call that made the file, both read off the call itself.
-	Run        string   `json:"run,omitempty"`
-	Message    string   `json:"message,omitempty"`
-	Tool       string   `json:"tool,omitempty"`
-	References []string `json:"references,omitempty"`
-	Said       string   `json:"said,omitempty"`
+	Run                  string   `json:"run,omitempty"`
+	Message              string   `json:"message,omitempty"`
+	Tool                 string   `json:"tool,omitempty"`
+	References           []string `json:"references,omitempty"`
+	InputMessages        []string `json:"input_messages,omitempty"`
+	InputMessagesOmitted bool     `json:"input_messages_omitted,omitempty"`
+	Said                 string   `json:"said,omitempty"`
 	// Evidence only (origin evidence — a file the agent looked at): Verb is
 	// looked_at · listened_to · watched · read; Saw is the looking model's words
 	// verbatim (SawOmitted when too long to keep whole); SeenBy is the model

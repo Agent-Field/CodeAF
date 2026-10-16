@@ -97,7 +97,7 @@ func TestMediaCacheIsBoundedAndCopiesRecords(t *testing.T) {
 	path := mediaFile(t, dir, "p.png")
 	for i := 0; i < mediaCacheRecords+300; i++ {
 		RecordMedia(index, Artifact{Path: path, Session: "s1", Title: "t", Kind: "image", Created: time.Now()},
-			GeneratedMedia(path, []byte{byte(i)}, "m").WithReferences([]string{"a", "b"}))
+			GeneratedMedia(path, []byte{byte(i)}, "m").WithReferences([]string{"a", "b"}).WithMade(mediaMade{Messages: mediaInputMessages{IDs: []string{"actual-input"}}}))
 	}
 	listAll(t, index, "s1")
 	mediaCache.mu.Lock()
@@ -110,9 +110,10 @@ func TestMediaCacheIsBoundedAndCopiesRecords(t *testing.T) {
 	id := listAll(t, index, "s1")[0]
 	first, _ := FindMedia(index, "s1", id, time.Time{})
 	first.Fact.References[0] = "tampered"
+	first.Fact.InputMessages[0] = "tampered"
 	first.Fact.Model = "tampered"
 	again, _ := FindMedia(index, "s1", id, time.Time{})
-	if again.Fact.References[0] != "a" || again.Fact.Model == "tampered" && again.Fact.References[0] != "a" {
+	if again.Fact.InputMessages[0] != "actual-input" || again.Fact.References[0] != "a" || again.Fact.Model == "tampered" && again.Fact.References[0] != "a" {
 		t.Fatalf("a cached record was changed through a copy: %+v", again.Fact.References)
 	}
 }

@@ -1014,7 +1014,8 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// the person's wait to be sent anywhere ends and where a tool-result gap
 		// closes.
 		pace.sending(sentAt)
-		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reached, reasoning, warm, forming, frozenToolHistory)
+		inputCapture := &mediaInputCapture{}
+		response, answered, err := a.completeWithRetryReasoning(withMediaInputCapture(ctx, inputCapture), hub, model, rung, partial, reached, reasoning, warm, forming, frozenToolHistory)
 		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
@@ -1379,15 +1380,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// so the loop — the one place the reading's cost is a fact rather than an
 		// instruction — spends the hand-off itself. Conversations only: a task
 		// worker's own reads are its work, not a sweep.
+		// Post-response tools receive the successful request snapshot. Early warm
+		// reads already started on their own context and deliberately stay unknown.
+		batchCtx := withMediaInputs(toolCtx, inputCapture.messages)
 		var results []toolResult
 		if !a.config.InTask && chatRunEngine != nil && sweep.due(calls) {
-			if handed := a.handoffReadSweep(toolCtx, episode, hub, user, calls, sweep, warm); handed != nil {
+			if handed := a.handoffReadSweep(batchCtx, episode, hub, user, calls, sweep, warm); handed != nil {
 				results = handed
 			} else {
-				results = a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+				results = a.runToolsWarm(batchCtx, episode, calls, hub, warm)
 			}
 		} else {
-			results = a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+			results = a.runToolsWarm(batchCtx, episode, calls, hub, warm)
 			sweep.count(calls)
 		}
 		// THE GAP THE LAW IS ABOUT STARTS HERE. Everything between this line and
@@ -2038,6 +2042,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			Window: a.window(), Reserve: ctxbudget.CompletionReserve(), PromptFloor: promptFloor,
 		})
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
+		inputMessages := a.preparedMediaInputs(messages)
 		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
 			ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
@@ -2051,6 +2056,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// it is deliberate: a person typing into a turn has said they want the
 		// boundary whatever else happened.
 		if err == nil {
+			publishMediaInputs(ctx, inputMessages)
 			return response, model, nil
 		}
 		// AND THE MARK'S READING TRAVELS OUT, because what it wants is the

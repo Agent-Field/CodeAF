@@ -55,3 +55,10 @@ func TestAppRunProjectionKeepsActualLiveAnswerAndToolProducer(t *testing.T) {
 		t.Fatalf("saw %d answers and %d tool events", answers, tools)
 	}
 }
+
+func TestAppMediaInputMessagesRemainKnownSubsetNotSingleCausality(t *testing.T) {
+	source := appMediaSource(session.MediaRow{Fact: session.MediaFact{InputMessages: []string{"known-one", "known-two"}, InputMessagesOmitted: true}}, session.MediaLive{}, false)
+	if len(source.InputMessages) != 2 || source.InputMessages[1] != "known-two" || !source.InputMessagesOmitted || source.Message != "" {
+		t.Fatalf("source lineage invented: %+v", source)
+	}
+}
