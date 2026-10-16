@@ -346,9 +346,11 @@ type appBackend struct {
 	turns      atomic.Uint64
 	assembled  atomic.Bool
 
-	mu      sync.Mutex
-	agents  map[string]*appAgent
-	closing bool
+	mu               sync.Mutex
+	referenceWorkers int
+	referenceN       int // in-flight and staged reference snapshots, under mu
+	agents           map[string]*appAgent
+	closing          bool
 
 	sweepStop chan struct{}
 	sweepDone chan struct{}
@@ -438,11 +440,12 @@ type appAgent struct {
 	// queue is the person's messages waiting for the turn to end, attach the
 	// attachments kept for the next message, and walk the last walk of the
 	// workspace's files (appconvo.go).
-	queue   []appQueued
-	queueN  int
-	attach  map[string]appAttach
-	attachN int
-	walk    *appWalk
+	queue      []appQueued
+	queueN     int
+	attach     map[string]appAttach
+	attachN    int
+	referenceN int // in-flight and staged reference snapshots, under b.mu
+	walk       *appWalk
 }
 
 // appTurnMark is what this process knows of one of the person's messages: the
@@ -3047,6 +3050,7 @@ func (b *appBackend) Close() error {
 		})
 	}
 	wg.Wait()
+	b.closeReferences(agents)
 	b.closeCollections()
 	// Kept-running processes stay up through a quit; services.stop_all is
 	// how a quit stops them (appservices.go).

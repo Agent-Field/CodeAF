@@ -64,8 +64,9 @@ func (b *appBackend) SendComposed(agent string, message appwire.AgentMessage) (a
 // is checked here, before the conversation is opened or a turn is asked for, so
 // a refusal leaves every chip staged.
 func appComposedOf(workspace string, kept []appAttach, given *appwire.MessageSubmission) (*appComposed, error) {
+	explicit := given != nil
 	if given == nil {
-		return nil, nil
+		given = &appwire.MessageSubmission{}
 	}
 	staged := make(map[string]appAttach, len(kept))
 	for _, attach := range kept {
@@ -83,6 +84,10 @@ func appComposedOf(workspace string, kept []appAttach, given *appwire.MessageSub
 		composed.media = append(composed.media, session.SubmissionMedia{
 			ID: media.ID, Path: appAttachFull(workspace, attach.view.Path), Source: appSessionReference(media.Source),
 		})
+	}
+	composed.media = appReferenceImages(kept, composed.media)
+	if !explicit && len(composed.media) == 0 && given.Annotation == nil {
+		return nil, nil
 	}
 	composed.annotation = appSessionAnnotation(given.Annotation)
 	if err := (session.Submission{Media: composed.media, Annotation: composed.annotation}).Check(); err != nil {

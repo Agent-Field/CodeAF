@@ -94,9 +94,11 @@ type MediaReference struct {
 // what an [Annotation] names. Path is read by the engine, once, at the moment
 // the message is accepted.
 type SubmissionMedia struct {
-	ID     string          `json:"id"`
-	Path   string          `json:"path"`
-	Source *MediaReference `json:"source,omitempty"`
+	// ExpectedSHA256 binds an engine-owned snapshot to the exact bytes staged.
+	ExpectedSHA256 string          `json:"expected_sha256,omitempty"`
+	ID             string          `json:"id"`
+	Path           string          `json:"path"`
+	Source         *MediaReference `json:"source,omitempty"`
 }
 
 // Point is a position on a picture in picture coordinates, 0 to 100 on both axes.
@@ -210,6 +212,12 @@ func (m Submission) checkComposed() error {
 		ids[media.ID] = true
 		if err := checkPath(media.Path); err != nil || strings.TrimSpace(media.Path) == "" {
 			return markError("picture %d has no path of at most %d bytes", n, maxAttachmentField)
+		}
+		if media.ExpectedSHA256 != "" {
+			decoded, err := hex.DecodeString(media.ExpectedSHA256)
+			if err != nil || len(decoded) != sha256.Size {
+				return markError("picture %d has an invalid expected image digest", n)
+			}
 		}
 		if err := checkReference(media.Source); err != nil {
 			return markError("picture %d's source %v", n, err)
@@ -477,6 +485,9 @@ func readComposedImages(ctx context.Context, media []SubmissionMedia, roles map[
 			return nil, nil, markError("%s is not an image this surface can send — png, jpeg, webp and gif are", filepath.Base(path))
 		}
 		sum := sha256.Sum256(data)
+		if item.ExpectedSHA256 != "" && hex.EncodeToString(sum[:]) != item.ExpectedSHA256 {
+			return nil, nil, markError("the staged reference image changed; attach it again")
+		}
 		fact := MessageMedia{
 			ID: strings.Clone(item.ID), Path: strings.Clone(path), MIME: mediaType, Bytes: int64(len(data)),
 			SHA256: hex.EncodeToString(sum[:]), Role: roles[item.ID],

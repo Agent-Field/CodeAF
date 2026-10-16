@@ -193,6 +193,9 @@ func withMessageReadsFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(ComposedSender); ok {
 		hello = withFeature(hello, FeatureMessageMedia)
 	}
+	if _, ok := e.(MediaAttacher); ok {
+		hello = withFeature(hello, FeatureMediaAttach)
+	}
 	return hello
 }
 

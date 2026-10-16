@@ -68,8 +68,9 @@ type appQueued struct {
 
 // appAttach is one attachment the composer added, with what it carries.
 type appAttach struct {
-	view    appwire.Attachment
-	content string
+	reference *appReference
+	view      appwire.Attachment
+	content   string
 	// chars is a paste's length in characters, counted once.
 	chars int
 }
@@ -1153,7 +1154,22 @@ func (b *appBackend) RemoveAttachment(agent, id string) error {
 	if err != nil {
 		return err
 	}
-	b.locked(func() { delete(a.attach, id) })
+	// A send holds the same gate through acceptance. Never delete a snapshot
+	// while that send may be consuming it.
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	var copy *appReference
+	b.locked(func() {
+		copy = a.attach[id].reference
+		if copy != nil {
+			a.referenceN--
+			b.referenceN--
+		}
+		delete(a.attach, id)
+	})
+	if copy != nil && !copy.attempted {
+		return copy.copy.Remove()
+	}
 	return nil
 }
 
@@ -1246,12 +1262,18 @@ func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (ui
 		}
 		shown.composed = composed
 	}
+	attempted := b.referenceAttempt(kept)
 	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
 	if err != nil {
+		b.referenceRefused(attempted, err)
 		return 0, nil, err
 	}
 	b.locked(func() {
 		for _, id := range ids {
+			if a.attach[id].reference != nil {
+				a.referenceN--
+				b.referenceN--
+			}
 			delete(a.attach, id)
 		}
 	})

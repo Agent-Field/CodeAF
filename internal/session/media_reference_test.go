@@ -127,3 +127,67 @@ func TestMediaReferenceCancellationAndByteLimitLeaveNothing(t *testing.T) {
 		t.Fatal("cancelled/oversize copy leaked")
 	}
 }
+
+func TestMediaReferenceSnapshotDigestIsCheckedAtMessageAcceptance(t *testing.T) {
+	row, root, dest, _ := referenceFixture(t)
+	copy, err := CopyMediaReference(context.Background(), row, []string{root}, row.Version(), dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer copy.Remove()
+	media := []SubmissionMedia{{ID: "ref", Path: copy.Path, ExpectedSHA256: copy.SHA256}}
+	if _, _, err := readComposedImages(context.Background(), media, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Another valid image with the same dimensions is still a different picture.
+	var changed bytes.Buffer
+	picture := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	picture.Pix[0] = 255
+	picture.Pix[3] = 255
+	if err := png.Encode(&changed, picture); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(copy.Path, changed.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := readComposedImages(context.Background(), media, nil); err == nil {
+		t.Fatal("modified snapshot was accepted")
+	}
+}
+
+func TestMediaReferenceCleanupCannotBeRedirectedOrDeleteReplacement(t *testing.T) {
+	row, root, dest, _ := referenceFixture(t)
+	copy, err := CopyMediaReference(context.Background(), row, []string{root}, row.Version(), dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := copy.Path
+	copy.Path = row.Fact.Canonical
+	if err := copy.Remove(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(row.Fact.Canonical); err != nil {
+		t.Fatal("exported path redirected cleanup")
+	}
+	if _, err := os.Stat(actual); !os.IsNotExist(err) {
+		t.Fatal("owned snapshot not removed")
+	}
+	copy, err = CopyMediaReference(context.Background(), row, []string{root}, row.Version(), dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := copy.Path + ".new"
+	if err := os.WriteFile(replacement, []byte("user replacement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, copy.Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := copy.Remove(); !errors.Is(err, ErrMediaReference) {
+		t.Fatalf("replacement identity accepted: %v", err)
+	}
+	data, err := os.ReadFile(copy.Path)
+	if err != nil || string(data) != "user replacement" {
+		t.Fatal("replacement was removed")
+	}
+}

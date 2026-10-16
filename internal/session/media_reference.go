@@ -18,12 +18,37 @@ var ErrMediaReference = errors.New("that recorded image is no longer available a
 // newly created snapshot, never the source. The caller keeps it on accepted or
 // uncertain delivery, since a durable message may now refer to it.
 type MediaReferenceCopy struct {
-	Path string
-	dir  string
+	Path   string
+	SHA256 string
+	dir    string
+	name   string
+	owned  os.FileInfo
 }
 
 func (c MediaReferenceCopy) Remove() error {
-	if err := os.Remove(c.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	// Cleanup uses only the private creation record, never mutable exported Path.
+	if c.dir == "" || c.name == "" || c.owned == nil {
+		return nil
+	}
+	root, err := os.OpenRoot(c.dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Lstat(c.name)
+	if errors.Is(err, os.ErrNotExist) {
+		return os.Remove(c.dir)
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || !os.SameFile(c.owned, info) {
+		return ErrMediaReference
+	}
+	if err := root.Remove(c.name); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	if err := os.Remove(c.dir); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -46,9 +71,16 @@ func CopyMediaReference(ctx context.Context, row MediaRow, roots []string, versi
 	if err != nil {
 		return MediaReferenceCopy{}, err
 	}
-	copy := MediaReferenceCopy{Path: filepath.Join(dir, "image"+filepath.Ext(live.Path)), dir: dir}
+	copy := MediaReferenceCopy{Path: filepath.Join(dir, filepath.Base(live.Path)), dir: dir, name: filepath.Base(live.Path)}
 	out, err := os.OpenFile(copy.Path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
+		_ = os.Remove(dir)
+		return MediaReferenceCopy{}, err
+	}
+	copy.owned, err = out.Stat()
+	if err != nil {
+		_ = out.Close()
+		_ = os.Remove(copy.Path)
 		_ = os.Remove(dir)
 		return MediaReferenceCopy{}, err
 	}
@@ -77,17 +109,15 @@ func CopyMediaReference(ctx context.Context, row MediaRow, roots []string, versi
 	if err := out.Close(); err != nil {
 		return MediaReferenceCopy{}, err
 	}
+	copy.SHA256 = hex.EncodeToString(hash.Sum(nil))
 	keep = true
 	return copy, nil
 }
 
 func openMediaReference(ctx context.Context, row MediaRow, roots []string, version string) (*os.File, os.FileInfo, MediaLive, error) {
-	if !row.Recorded || row.Kind != "image" || version == "" || row.Version() != version {
-		return nil, nil, MediaLive{}, ErrMediaReference
-	}
-	live := ResolveMedia(row, roots)
-	if live.State != MediaAvailable {
-		return nil, nil, MediaLive{}, ErrMediaReference
+	live, err := referenceLive(row, roots, version)
+	if err != nil {
+		return nil, nil, MediaLive{}, err
 	}
 	file, err := os.Open(live.Path)
 	if err != nil {
@@ -119,6 +149,17 @@ func openMediaReference(ctx context.Context, row MediaRow, roots []string, versi
 	}
 	keep = true
 	return file, before, live, nil
+}
+
+func referenceLive(row MediaRow, roots []string, version string) (MediaLive, error) {
+	if !row.Recorded || row.Kind != "image" || version == "" || row.Version() != version {
+		return MediaLive{}, ErrMediaReference
+	}
+	live := ResolveMedia(row, roots)
+	if live.State != MediaAvailable {
+		return MediaLive{}, ErrMediaReference
+	}
+	return live, nil
 }
 
 func referenceIdentity(info os.FileInfo) string {
