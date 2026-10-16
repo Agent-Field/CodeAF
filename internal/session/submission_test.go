@@ -203,14 +203,19 @@ func TestASubmissionThatDoesNotFitRecordsNothing(t *testing.T) {
 	}
 	collect(t, events)
 	users := personEntries(agent.Transcript())
-	if len(users) != 1 || users[0].Text != "plain" || authored(users[0]) || users[0].Person != nil {
+	if len(users) != 1 || users[0].Text != "plain" || authored(users[0]) || users[0].Person == nil || users[0].Person.Composed == nil || users[0].Person.Composed.MessageID == "" || users[0].Person.Composed.Delivery != nil {
 		t.Fatalf("a submission with no mark read back as %#v", users)
 	}
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if marks := journalMarks(t, path); len(marks) != 1 || marks[0] != nil {
+	marks := journalMarks(t, path)
+	if len(marks) != 1 || marks[0] == nil {
 		t.Fatalf("the journal holds %v", marks)
+	}
+	composed, ok := marks[0]["composed"].(map[string]any)
+	if !ok || composed["messageId"] != users[0].Person.Composed.MessageID || composed["delivery"] != nil {
+		t.Fatalf("plain message identity/delivery changed: %v", marks)
 	}
 }
 
