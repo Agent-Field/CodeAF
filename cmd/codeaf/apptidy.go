@@ -339,6 +339,11 @@ type appSearchWords func(terms string, limit int) ([]store.ConversationHit, erro
 // only ever moved up from idle, never down from what a road said.
 func (b *appBackend) dress(view *appwire.Agent) {
 	view.Crews = b.crewsOf(view.ID)
+	// Its own budget as the app's file keeps it (appbudget.go); the open
+	// conversation's own reading is agents.budget.get's, never a list's.
+	if budget, err := b.budgetRecord(view.ID); err == nil {
+		view.Budget = &budget
+	}
 	b.locked(func() {
 		a := b.agents[view.ID]
 		if a == nil {

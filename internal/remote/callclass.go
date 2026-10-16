@@ -147,7 +147,7 @@ const lateCallTail = " did not answer in time"
 func classify(method string) callClass {
 	switch method {
 	case MethodAppTasks, MethodAppTask, MethodAppTaskRouting, MethodAppTaskRoutingOptions, MethodAppQuickTasks, MethodPing,
-		MethodModel, MethodTitle, MethodUsage, MethodContextTokens,
+		MethodModel, MethodTitle, MethodUsage, MethodContextTokens, MethodSpendRail,
 		MethodTranscript, MethodEarlier, MethodRewindPoints, MethodPlanSpend,
 		MethodPlanTasks, MethodPlanTaskPage, MethodPlanTaskWork, MethodPlanRunSummary, MethodRefreshRunSummary,
 		MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,

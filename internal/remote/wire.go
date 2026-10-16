@@ -520,6 +520,7 @@ const (
 	MethodModel           = "Model"                  // nothing → string
 	MethodSetModel        = "SetModel"               // string → nothing
 	MethodSetSpendRail    = "SetSpendRail"           // dollars → nothing
+	MethodSpendRail       = "SpendRail"              // nothing → dollars, zero for none; an older engine answers "no such method"
 	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
 	MethodReasoningFor    = "ReasoningFor"           // string → string
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing

@@ -2766,6 +2766,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return nil, binder.SetSpendRail(usd)
 
+	case MethodSpendRail:
+		reader, ok := agent.(interface{ SpendRail() float64 })
+		if !ok {
+			return nil, errors.New("conversation limit cannot be read here")
+		}
+		return json.Marshal(reader.SpendRail())
+
 	case MethodSetContext:
 		tokens, err := arg[int](call)
 		if err != nil {

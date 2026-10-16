@@ -63,17 +63,17 @@ func appParseUSD(text string) (float64, bool) {
 }
 
 // agentBudget is the budget in force for one agent at now: the app's figure
-// with any raise for today over it, or the profile's own conversation limit
-// when the app never set one. set says the figure is the app's.
+// with any raise for today over it, zero for an agent the person said has no
+// limit, or the profile's own conversation limit when the app holds neither.
+// set says the figure is the app's.
 func (b *appBackend) agentBudget(id string, now time.Time) (usd float64, set bool) {
-	_ = b.state.read(func(f *appStateFile) {
-		base, ok := f.Budgets[id]
-		if ok && base > 0 {
-			usd, set = f.raised("agent:"+id, base, now), true
-		}
-	})
-	if set {
-		return usd, true
+	var record appwire.AgentBudget
+	_ = b.state.read(func(f *appStateFile) { record = f.agentBudgetAt(id, now) })
+	switch record.Source {
+	case appwire.BudgetSet:
+		return *record.USD, true
+	case appwire.BudgetUnlimited:
+		return 0, true
 	}
 	return config.SpendRailUSDAt(config.ProfileDir()), false
 }
@@ -368,6 +368,15 @@ func (b *appBackend) RaiseCap(raise appwire.CapRaise) error {
 			if f.Budgets == nil {
 				f.Budgets = map[string]float64{}
 			}
+			if _, none := f.Unlimited[raise.ID]; none {
+				// AN AGENT WITH NO LIMIT HAS NOTHING TO RAISE for today: a
+				// figure until midnight would be a cap it does not have now.
+				// For good, the person has chosen a figure.
+				if raise.For == appwire.RaiseToday {
+					return appwire.Errorf(appwire.CodeBadParams, "this agent has no budget to raise; set one with agents.budget.set")
+				}
+				delete(f.Unlimited, raise.ID)
+			}
 			if raise.For == appwire.RaiseToday {
 				if _, ok := f.Budgets[raise.ID]; !ok {
 					f.Budgets[raise.ID] = config.SpendRailUSDAt(config.ProfileDir())
@@ -390,6 +399,8 @@ func (b *appBackend) RaiseCap(raise appwire.CapRaise) error {
 				return appEngineError(err)
 			}
 		}
+		view := b.stampAgentBudget(a)
+		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		b.closeMoneyAsks(a, appwire.CapAgent, appwire.OptionRaise, "Budget raised to "+appUSD(raise.ToUSD))
 		b.retryRefused(a)
 		return nil

@@ -58,6 +58,10 @@ type appStateFile struct {
 	IdleCloseDays      *int                `json:"idle_close_days,omitempty"`
 	Budgets            map[string]float64  `json:"budgets,omitempty"`
 	Raises             map[string]appRaise `json:"raises,omitempty"`
+	// Unlimited is the agents a person said have no budget of their own, and
+	// when (appbudget.go). A zero in Budgets never meant that, so it is kept
+	// apart rather than read into a figure an older file already holds.
+	Unlimited map[string]time.Time `json:"budgets_unlimited,omitempty"`
 	// ResumeAfterQuit is the agents the last quit stopped in the middle of a
 	// reply, and QuitStopped the processes it stopped (appquit.go).
 	// QuitReplies is those of them that were in the middle of a reply, and
@@ -180,6 +184,10 @@ func (f appStateFile) clone() appStateFile {
 	out.Raises = make(map[string]appRaise, len(f.Raises))
 	for k, v := range f.Raises {
 		out.Raises[k] = v
+	}
+	out.Unlimited = make(map[string]time.Time, len(f.Unlimited))
+	for k, v := range f.Unlimited {
+		out.Unlimited[k] = v
 	}
 	out.Closed = make(map[string]time.Time, len(f.Closed))
 	for k, v := range f.Closed {

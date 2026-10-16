@@ -874,6 +874,7 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 		a.users, a.counted = 0, true
 		view = a.view
 	})
+	view = b.stampAgentBudget(a)
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	guard.Go("app/create", func() { b.bootAgent(a, first) })
 	return view, nil

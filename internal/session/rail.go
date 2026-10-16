@@ -44,6 +44,13 @@ func (a *Agent) SetSpendRail(usd float64) error {
 	return nil
 }
 
+// SpendRail is the conversation limit this session checks its next turn
+// against, and zero for none: the figure a surface last bound, or the one the
+// session was built with. It is the engine's own fact, so a surface that keeps
+// a record of its own can say what is actually in force rather than what it
+// meant to bind.
+func (a *Agent) SpendRail() float64 { return a.spendRailUSD() }
+
 func (a *Agent) spendRailUSD() float64 {
 	if a.liveSpendRailSet.Load() {
 		return math.Float64frombits(a.liveSpendRail.Load())

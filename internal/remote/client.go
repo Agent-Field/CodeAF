@@ -2004,6 +2004,24 @@ func (a *Agent) SetSpendRail(usd float64) error {
 	return err
 }
 
+// SpendRail reads the conversation limit the engine checks its next turn
+// against, zero for none. An engine too old to say answers an error, which a
+// caller reports as not knowing rather than as no limit.
+func (a *Agent) SpendRail() (float64, error) {
+	raw, err := a.c.call(nil, MethodSpendRail, nil)
+	if err != nil {
+		return 0, err
+	}
+	var usd *float64
+	if err := json.Unmarshal(raw, &usd); err != nil {
+		return 0, err
+	}
+	if usd == nil || *usd < 0 {
+		return 0, errors.New("conversation limit response is not a non-negative amount")
+	}
+	return *usd, nil
+}
+
 // SetContextWindow is deliberately a no-op here. The surface's catalog belongs
 // to the laptop; SetModel makes the engine consult its own catalog and move its
 // own compaction point. The method remains on the interface for local agents

@@ -4337,3 +4337,15 @@ is a pin, and the allowed models are the same rule.
 - Unticking a pinned model keeps the pin; the role says it is pinned to a model that is not
   allowed, and is picked by Auto until you allow it again or unpin it.
 
+
+## One conversation's budget
+
+An individual conversation limit measures its lifetime spend, including earlier turns restored
+from its journal; it is separate from the daily budget and a task's cap. In the desktop app,
+Agent → Set Budget changes that agent's limit, or explicitly sets no limit. The saved choice
+survives closing and reopening the agent. Work already running is not cut short; the next turn
+checks the updated limit. A raise for today lasts until the next local midnight.
+
+The Agent panel shows a recorded or observed individual cap, never the current global default
+as a guess. If an older conversation has no saved individual limit and is not open, its cap
+can remain unknown until its engine answers. Changing the default is a separate Settings action.

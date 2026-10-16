@@ -131,6 +131,9 @@ type Agent struct {
 	// Context is what the conversation weighs against its window
 	// (compaction.go); absent when nothing holds the conversation.
 	Context *AgentContext `json:"context,omitempty"`
+	// Budget is this agent's own spend limit (budget.go), which is never
+	// settings.budget_usd; absent from an engine that does not say.
+	Budget *AgentBudget `json:"budget,omitempty"`
 }
 
 // Task is one node of an agent's task graph.
