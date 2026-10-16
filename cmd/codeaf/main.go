@@ -44,13 +44,18 @@ import (
 )
 
 func main() {
+	// THE DEVELOPER-ONLY PROFILE STARTS FIRST AND STOPS LAST, and is inert
+	// unless CODEAF_DIAGNOSTIC_PROFILE_DIR is set (diagnostics.go).
+	stopDiagnostics := startDiagnostics()
 	home.Adopt(log.Printf)
 	// CODEAF SCHEDULES NOTHING ON THE MACHINE. The timers the feature that
 	// automations replaced installed are taken off this login on every start,
 	// whoever installed them (internal/automation's legacy.go).
 	automation.RemoveOldTimers()
 	registerRunningCLI()
-	os.Exit(execute())
+	code := execute()
+	stopDiagnostics()
+	os.Exit(code)
 }
 
 // registerRunningCLI tells the worker harness which binary a worker's `codeaf`
