@@ -2792,6 +2792,9 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			name = strings.TrimPrefix(row.ID, provider+"/")
 		}
 		model := appwire.Model{ID: row.ID, Name: name, Provider: provider, ProviderName: names[provider], Default: row.ID == chosen}
+		if row.ListedAt > 0 {
+			model.ListedAt = row.ListedAt
+		}
 		if model.ProviderName == "" && provider == modelsource.DefaultID {
 			model.ProviderName = modelsource.DefaultSource("").Name
 		}

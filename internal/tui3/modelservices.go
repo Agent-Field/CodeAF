@@ -837,6 +837,9 @@ func surfaceModels(rows []modelcatalog.Model) []Model {
 			Output: row.OutputModalities, Input: row.InputModalities,
 			Reasoning: row.Reasons() || row.ReasoningLevels(),
 		}
+		if row.Created > 0 {
+			model.ListedAt = row.Created
+		}
 		if !row.PriceUnknown {
 			model.PromptPrice = row.PromptPrice
 			model.CompletionPrice = row.CompletionPrice

@@ -2470,6 +2470,9 @@ func v3Models(models v3Catalog) []tui3.Model {
 			// same three states in words).
 			Reasoning: row.Reasons() || row.ReasoningLevels(),
 		}
+		if row.Created > 0 {
+			model.ListedAt = row.Created
+		}
 		// PriceUnknown is OpenRouter's "-1", which it uses for its own routers:
 		// they charge whatever the model they pick charges, and nobody yet knows
 		// what that is. Passing the parsed numbers through anyway would tell the

@@ -42,8 +42,11 @@ import (
 // session keeps whatever window it was configured with (design-law-v2 §16
 // EMPTINESS, and the same rule catalog.Model.ContextLength states).
 type Model struct {
-	ID            string `json:"id"`
-	ContextLength int    `json:"context_length,omitempty"`
+	ID string `json:"id"`
+	// ListedAt is the provider catalog's listing time, in Unix seconds.
+	// Zero is unknown; this is not a release date inferred from a model name.
+	ListedAt      int64 `json:"listed_at,omitempty"`
+	ContextLength int   `json:"context_length,omitempty"`
 
 	// The three prices are PER TOKEN in US dollars, as the catalog publishes
 	// them. They are here — on a row a picker draws — because of one line this
@@ -358,6 +361,9 @@ func cleanModels(models []Model) []Model {
 			continue
 		}
 		seen[model.ID] = true
+		if model.ListedAt < 0 {
+			model.ListedAt = 0
+		}
 		if model.ContextLength < 0 {
 			model.ContextLength = 0
 		}

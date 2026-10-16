@@ -441,6 +441,8 @@ type Model struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
+	// ListedAt is the provider catalog listing time in Unix seconds; absent is unknown.
+	ListedAt int64 `json:"listed_at,omitempty"`
 	// ProviderName is the provider's own name, as the picker heads its group.
 	ProviderName string `json:"provider_name,omitempty"`
 	// Default marks the model a new conversation runs on.

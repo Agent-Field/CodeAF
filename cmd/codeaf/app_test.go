@@ -1342,8 +1342,8 @@ func TestAppModelsListIsThePickersList(t *testing.T) {
 	}
 	options := catalog.Options{BaseURL: settings.BaseURL, Dir: settings.ProfileDir}
 	if err := catalog.Remember(options, []catalog.Model{
-		{ID: "deepseek/deepseek-v4.1-flash", Name: "DeepSeek V4.1 Flash", InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
-		{ID: "qwen/qwen3-coder", Name: "Qwen3 Coder", InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+		{ID: "deepseek/deepseek-v4.1-flash", Name: "DeepSeek V4.1 Flash", Created: 1760000000, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+		{ID: "qwen/qwen3-coder", Name: "Qwen3 Coder", Created: -100, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1364,12 +1364,32 @@ func TestAppModelsListIsThePickersList(t *testing.T) {
 			defaults++
 		}
 	}
-	if m := byID["deepseek/deepseek-v4.1-flash"]; !m.Default || m.Provider != "openrouter" || m.ProviderName != "OpenRouter" || defaults != 1 {
+	if m := byID["deepseek/deepseek-v4.1-flash"]; !m.Default || m.Provider != "openrouter" || m.ProviderName != "OpenRouter" || defaults != 1 || m.ListedAt != 1760000000 {
 		t.Fatalf("models = %+v", models)
 	}
-	if m := byID["qwen/qwen3-coder"]; m.Provider != "openrouter" || m.Default {
+	if m := byID["qwen/qwen3-coder"]; m.Provider != "openrouter" || m.Default || m.ListedAt != 0 {
 		t.Fatalf("models = %+v", models)
 	}
+	if err := os.WriteFile(config.BudgetConfigPath(settings.ProfileDir), []byte(`{"model.talk":"unlisted/model-2099-12-31"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	models, err = backend.ListModels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range models {
+		if m.ID == "unlisted/model-2099-12-31" {
+			found = true
+			if !m.Default || m.ListedAt != 0 {
+				t.Fatalf("fallback invented listing time: %+v", m)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing default fallback")
+	}
+
 }
 
 // A REAL ALWAYS, HONOURED BY THE ENGINE. Every shell call asks first; the
