@@ -706,6 +706,7 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
+	RunID          string       `json:"RunID,omitempty"`
 	ReplayCursor   ReplayCursor `json:",omitempty"`
 	ReplayObserved bool         `json:"-"`
 

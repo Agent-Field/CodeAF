@@ -61,6 +61,7 @@ const (
 // appCall is one tool call as the work log knows it.
 type appCall struct {
 	id, tool, args, hint, title string
+	run                         string
 	turn                        uint64
 	facts                       appwire.ToolFacts
 	ended                       bool
@@ -214,6 +215,7 @@ func (b *appBackend) callBegan(a *appAgent, agent string, turn uint64, event ses
 			c.facts.StartedAt = &at
 			log.turn = append(log.turn, c)
 		}
+		c.run = event.RunID
 		c.tool, c.args, c.hint, c.title, c.turn = event.Tool, event.Args, event.Hint, title, turn
 		kind := appToolKind(event.Tool, event.Service)
 		if c.facts.Ask != "" {
@@ -278,7 +280,7 @@ func (b *appBackend) rowLocked(agent string, c *appCall) appwire.TurnTool {
 	if c.ended {
 		phase = appwire.PhaseEnd
 	}
-	row := appwire.TurnTool{Agent: agent, Turn: c.turn, Call: c.id, Name: c.tool, Title: c.title, Phase: phase, OK: c.ok, Summary: c.summary, Detail: c.detail}
+	row := appwire.TurnTool{RunID: c.run, Agent: agent, Turn: c.turn, Call: c.id, Name: c.tool, Title: c.title, Phase: phase, OK: c.ok, Summary: c.summary, Detail: c.detail}
 	row.ToolFacts = c.factsLocked()
 	return row
 }
@@ -388,6 +390,9 @@ func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event ses
 				log.calls[event.CallID] = c
 				log.order = append(log.order, event.CallID)
 			}
+		}
+		if c.run == "" {
+			c.run = event.RunID
 		}
 		if c.title == "" {
 			c.title = title

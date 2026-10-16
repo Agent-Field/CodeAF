@@ -310,6 +310,7 @@ const (
 // Entry is one item of a conversation's transcript, in order. Which of the
 // optional fields are set depends on Kind.
 type Entry struct {
+	RunID string    `json:"run_id,omitempty"`
 	ID    string    `json:"id"`
 	Agent string    `json:"agent"`
 	Turn  uint64    `json:"turn,omitempty"`
@@ -624,6 +625,7 @@ type (
 		Text  string `json:"text"`
 	}
 	TurnTool struct {
+		RunID   string `json:"run_id,omitempty"`
 		Agent   string `json:"agent"`
 		Turn    uint64 `json:"turn"`
 		Call    string `json:"call"`

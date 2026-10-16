@@ -173,8 +173,8 @@ func assembledReasoningDetails(raw json.RawMessage) json.RawMessage {
 	return append(out, ']')
 }
 
-func (a *Agent) recordAssistant(message ai.Message, reasoning provider.MessageReasoning) {
-	a.recordPresentedAssistant(message, reasoning, nil)
+func (a *Agent) recordAssistant(message ai.Message, reasoning provider.MessageReasoning, runs ...string) {
+	a.recordPresentedAssistant(message, reasoning, nil, runs...)
 }
 
 // snapshotWithReasoning takes both aligned slices under one lock. THE SIDECAR

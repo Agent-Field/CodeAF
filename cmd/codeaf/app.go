@@ -1646,6 +1646,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		b.locked(func() { live.lastN, live.lastMsgs, live.lastNotices = n, msg, notices })
 	}()
 	var reply strings.Builder
+	var replyRun string
 	// A MESSAGE BEFORE A TOOL CALL IS AN UPDATE, the agent saying what it
 	// found mid-turn; the last one is the answer.
 	// withheld says the reply's words so far could still be the withdrawal token
@@ -1654,7 +1655,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	withheld := true
 	sayReply := func(kind string) {
 		words := strings.TrimSpace(reply.String())
-		defer func() { withheld = true }()
+		defer func() { withheld = true; replyRun = "" }()
 		if session.IsNoChangeReply(words) {
 			reply.Reset()
 			return
@@ -1665,7 +1666,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		if words != "" {
 			b.locked(func() { live.lastAnswer = words })
 			at := msg
-			entry(appwire.Entry{ID: appAnswerEntryID(n, at), Kind: kind, Text: words, Msg: &at})
+			entry(appwire.Entry{ID: appAnswerEntryID(n, at), Kind: kind, Text: words, Msg: &at, RunID: replyRun})
 			msg++
 		}
 		reply.Reset()
@@ -1683,6 +1684,11 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	for event := range events {
 		switch event.Kind {
 		case session.EventTextDelta:
+			if reply.Len() == 0 {
+				replyRun = event.RunID
+			} else if replyRun != event.RunID {
+				replyRun = ""
+			}
 			endThought()
 			reply.WriteString(event.Text)
 			switch {
@@ -2512,7 +2518,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		// Each entry carries the instant its own line was written; the
 		// conversation's latest moment stands in only where the record never
 		// said.
-		entry := appwire.Entry{Agent: agent, At: at}
+		entry := appwire.Entry{Agent: agent, At: at, RunID: item.RunID}
 		if !item.At.IsZero() {
 			entry.At = item.At
 		}

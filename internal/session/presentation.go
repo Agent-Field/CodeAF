@@ -26,6 +26,7 @@ import (
 // words were written from ([Agent.SubmitMessage]). None of them changes the
 // content; all are absent from every line no such door wrote.
 type messagePresentation struct {
+	RunID       string              `json:"run_id,omitempty"`
 	Audience    string              `json:"audience"`
 	Text        *string             `json:"text,omitempty"`
 	Interrupted bool                `json:"interrupted,omitempty"`
@@ -164,7 +165,16 @@ func humanPresentation(text string) *messagePresentation {
 	return &messagePresentation{Audience: "human", Text: &text}
 }
 
-func (a *Agent) recordPresentedAssistant(message ai.Message, reasoning provider.MessageReasoning, mark *messagePresentation) {
+func (a *Agent) recordPresentedAssistant(message ai.Message, reasoning provider.MessageReasoning, mark *messagePresentation, runs ...string) {
+	if len(runs) > 0 && runs[0] != "" {
+		if mark == nil {
+			mark = &messagePresentation{Audience: "human"}
+		} else {
+			copy := *mark
+			mark = &copy
+		}
+		mark.RunID = runs[0]
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.presentation == nil {

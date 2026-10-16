@@ -1173,7 +1173,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 					}
 				}
 			} else {
-				a.recordAssistant(ai.Message{Role: "assistant", Content: assistantContent(response)}, reasoning.snapshot())
+				a.recordAssistant(ai.Message{Role: "assistant", Content: assistantContent(response)}, reasoning.snapshot(), runIdentity(ctx))
 				assistantDone = true
 			}
 			// The step's text is in the transcript now. Resetting here rather
@@ -1319,7 +1319,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		severed := a.considerSeverance(calls, store.ClassifyEnd(provider.FinishReason(response), true), &salvages)
 
 		assistant := ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls}
-		a.recordAssistant(assistant, reasoning.snapshot())
+		a.recordAssistant(assistant, reasoning.snapshot(), runIdentity(ctx))
 		visibleText := strings.TrimSpace(messageContentText(assistant)) != ""
 		partial.reset()
 		usedTools = true
@@ -1639,7 +1639,7 @@ func (a *Agent) keepPartial(partial *partialBuffer, hub *eventHub) {
 	if a.stoppedSoup(text, hub) {
 		return
 	}
-	a.recordPresentedAssistant(textMessage("assistant", text), provider.MessageReasoning{}, interruptedPresentation(text))
+	a.recordPresentedAssistant(textMessage("assistant", text), provider.MessageReasoning{}, interruptedPresentation(text), hubRunID(hub))
 }
 
 // stoppedSoup is the keep path's one question, and its one word to the person
@@ -1727,7 +1727,7 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 		return
 	}
 	mark := interruptedPresentation(visible)
-	a.recordPresentedAssistant(textMessage("assistant", text), reasoning.snapshot(), mark)
+	a.recordPresentedAssistant(textMessage("assistant", text), reasoning.snapshot(), mark, hubRunID(hub))
 }
 
 // sealTurn stamps the turn's wall duration, folds it into the session total,

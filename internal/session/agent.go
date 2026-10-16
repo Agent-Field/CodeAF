@@ -1796,6 +1796,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.moveAsked.Store(false)
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	turnCtx = withRunIdentity(turnCtx)
+	hub.runID = runIdentity(turnCtx)
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
 	// the context because the waits that need it are several frames down inside
@@ -4257,6 +4258,8 @@ func textMessage(role, text string) ai.Message {
 // never saw the events, and starting empty would leave it looking at a session
 // that is visibly working and saying nothing.
 type eventHub struct {
+	// runID is immutable before this hub is published to a turn reader.
+	runID string
 	// observe, when set, receives every event in place of subscribers: a
 	// pass a surface asked for outside any turn ([Agent.CompactObserved]).
 	observe      func(Event)
@@ -4472,6 +4475,9 @@ func (h *eventHub) send(event Event) (landed bool) {
 	if h == nil {
 		return false
 	}
+	if event.RunID == "" && foregroundRunEvent(event.Kind) {
+		event.RunID = h.runID
+	}
 	if h.observe != nil {
 		h.observe(event)
 		return true
@@ -4529,7 +4535,7 @@ func (h *eventHub) foldedLocked() {
 // this comparison, or be excluded from folding, to survive a late attach.
 
 func foldsInto(prev, next Event) bool {
-	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
+	if prev.Kind != next.Kind || prev.Addressed != next.Addressed || prev.RunID != next.RunID {
 		return false
 	}
 	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning ||
@@ -4724,6 +4730,8 @@ func (s *eventStream) pump() {
 // from this display shape even though the journal keeps it for model continuity;
 // nothing about the wire itself is shown to the person.
 type DisplayEntry struct {
+	// RunID is the immutable producing turn, absent on legacy records.
+	RunID string
 	// Role is "user" | "assistant" | "tool" | "note" | "aside".
 	//
 	// "note" is a system-injected marker a surface draws as a rule of its own — a
@@ -5070,7 +5078,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			}
 		}
 		interrupted, explicitlyHuman := false, false
+		run := ""
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
+			run = mark.RunID
 			interrupted = mark.Interrupted
 			explicitlyHuman = mark.Audience == "human"
 			if mark.Audience == "operational" {
@@ -5095,6 +5105,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		}
 		entries = append(entries, DisplayEntry{
 			Role:        role,
+			RunID:       run,
 			Answer:      role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
 			Addressed:   role == "assistant" && (update || interrupted && explicitlyHuman),
 			Interrupted: interrupted,
@@ -5120,6 +5131,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			told, family := journal.caption(call.ID)
 			entries = append(entries, DisplayEntry{
 				Role:   "tool",
+				RunID:  run,
 				Tool:   call.Function.Name,
 				CallID: call.ID,
 				Hint:   gloss(*call),
