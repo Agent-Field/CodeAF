@@ -440,11 +440,12 @@ func sameStamp(info os.FileInfo, stamp recordStamp) bool {
 
 // recordReserve is what a journal of size bytes is expected to cost once read.
 // The record keeps the display text of each line, capped, plus a fixed shape
-// of a few hundred bytes per entry, which for a journal of short lines is
-// about four times the file. A record that comes out larger than this is read
-// but not kept.
+// of 296 bytes per entry on 64-bit hosts. Short journal lines can expand
+// beyond four times the file, before their strings and nested metadata are
+// counted. Reserve five times the file plus room for small records. This is
+// still an estimate: a record that comes out larger is read but not kept.
 func recordReserve(size int64) int64 {
-	return 4*size + 64<<10
+	return 5*size + 64<<10
 }
 
 // recordVectors is what a copy of a record costs: its own slices, with the

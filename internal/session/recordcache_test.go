@@ -354,6 +354,35 @@ func TestAnEvictedRecordIsCountedUntilItsLastCopyReturns(t *testing.T) {
 	}
 }
 
+// SHORT LINES EXPAND INTO ENTRY STRUCTURES, not just display strings. The
+// estimate must cover the measured record so that an ordinary settled journal
+// can actually be retained after its shared parse.
+func TestTheReservationCoversShortLineRecords(t *testing.T) {
+	for _, turns := range []int{40, 2000, 10000} {
+		t.Run(strconv.Itoa(turns), func(t *testing.T) {
+			journal := recordJournal(turns, false)
+			path := filepath.Join(t.TempDir(), "node.jsonl")
+			writeRecord(t, path, journal)
+			record := ReadTranscript(path)
+			estimate, cost := recordReserve(int64(len(journal))), recordCost(record)
+			if estimate < cost {
+				t.Fatalf("reservation %d does not cover measured record %d (%d entries)", estimate, cost, len(record.Entries))
+			}
+			cache := settledCache(RecordCacheLimits{})
+			read(t, cache, path)
+			if got := cache.Stats(); got.Retained != cost || got.Reserved != 0 || got.Entries != 1 {
+				t.Fatalf("after parse: %+v, want retained cost %d", got, cost)
+			}
+			if got := read(t, cache, path); !reflect.DeepEqual(got, record) {
+				t.Fatal("cached record differs from the full reading")
+			}
+			if got := cache.Stats(); got.Parses != 1 || got.Hits != 1 || got.Retained > cache.limits.Bytes || got.Reserved != 0 {
+				t.Fatalf("after cache hit: %+v", got)
+			}
+		})
+	}
+}
+
 // READINGS OF ONE UNCHANGED FILE SHARE ONE PARSE.
 func TestTwoReadingsOfOneFileShareOneParse(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "node.jsonl")
