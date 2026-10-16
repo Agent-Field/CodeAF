@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -138,9 +139,10 @@ func TestNullAndMalformedFactsAreAbsentNotZero(t *testing.T) {
 }
 
 // A LIST WITH AN ELEMENT REMOVED IS A DIFFERENT LIST: a null or non-string
-// report name drops the whole list, and a coverage with a null or half-empty
-// failure row drops the whole account, so no failed hunt is invented.
-func TestMalformedListsAndCoverageRowsAreDroppedWhole(t *testing.T) {
+// report name drops the whole list. A coverage that does not read whole is
+// kept as UNKNOWN, never dropped: an audit's counts with no coverage beside
+// them would read as an audit whose every hunt finished.
+func TestMalformedListsAreDroppedWholeAndMalformedCoverageIsUnknown(t *testing.T) {
 	for name, raw := range map[string]string{
 		"null element": `[null,"a"]`,
 		"null last":    `["a",null]`,
@@ -162,7 +164,8 @@ func TestMalformedListsAndCoverageRowsAreDroppedWhole(t *testing.T) {
 		"fractional":     `{"attempted":1.5}`,
 		"null whole":     `null`,
 	} {
-		if facts := EndAction(endAt, Terminal{Status: StatusPass, Data: map[string]json.RawMessage{"hunt_coverage": json.RawMessage(raw), "findings": json.RawMessage(`1`)}}).Ending(); facts == nil || facts.HuntCoverage != nil {
+		facts := EndAction(endAt, Terminal{Status: StatusPass, Data: map[string]json.RawMessage{"hunt_coverage": json.RawMessage(raw), "findings": json.RawMessage(`1`)}}).Ending()
+		if facts == nil || !reflect.DeepEqual(facts.HuntCoverage, &HuntCoverage{Unknown: true}) {
 			t.Errorf("coverage %s: facts = %+v", name, facts)
 		}
 	}
@@ -213,7 +216,7 @@ func TestTheEndingKeepsNothingOffTheListAndNothingOfTheWrongShape(t *testing.T) 
 		"cost_usd":            json.RawMessage(`9`),
 	}
 	action := EndAction(endAt, Terminal{Status: StatusPass, Message: "m", Data: data})
-	if string(action.Data) != `{"claim":"done","inconclusive":4,"ruled_out":0}` {
+	if string(action.Data) != `{"claim":"done","inconclusive":4,"ruled_out":0,"hunt_coverage":{"unknown":true}}` {
 		t.Fatalf("data = %s", action.Data)
 	}
 	for _, leak := range []string{"SECRET", "nested", "cost_usd", "deliverable"} {
@@ -238,8 +241,8 @@ func TestAHostileEndingIsBoundedAndNeverPanics(t *testing.T) {
 		failures = append(failures, `{"strategy":"`+strings.Repeat("s", 100)+`","reason":"`+strings.Repeat("é", 300)+`"}`)
 	}
 	var names []string
-	for i := 0; i < 100; i++ {
-		names = append(names, `"`+strings.Repeat("r", 1000)+`"`)
+	for i := 0; i < endReportsMax; i++ {
+		names = append(names, `"`+strings.Repeat("r", endReportCap)+`"`)
 	}
 	data := map[string]json.RawMessage{
 		"claim":         json.RawMessage(deep),
@@ -251,7 +254,14 @@ func TestAHostileEndingIsBoundedAndNeverPanics(t *testing.T) {
 	if len(action.Data) > EndDataCap {
 		t.Fatalf("data is %d bytes", len(action.Data))
 	}
-	if facts := action.Ending(); facts == nil || facts.HuntCoverage == nil || len(facts.HuntCoverage.Failures) != endFailuresMax ||
+	// Twenty failures is more than the copy names, so the account is unknown,
+	// not sixteen of a hundred.
+	if facts := action.Ending(); facts == nil || !reflect.DeepEqual(facts.HuntCoverage, &HuntCoverage{Unknown: true}) {
+		t.Fatalf("facts = %+v", facts)
+	}
+	most := `{"attempted":16,"failures":[` + strings.Join(failures[:endFailuresMax], ",") + `]}`
+	if facts := EndAction(endAt, Terminal{Status: StatusPass, Data: map[string]json.RawMessage{"hunt_coverage": json.RawMessage(most)}}).Ending(); facts == nil ||
+		facts.HuntCoverage == nil || len(facts.HuntCoverage.Failures) != endFailuresMax ||
 		len(facts.HuntCoverage.Failures[0].Reason) > endReasonCap || len(facts.HuntCoverage.Failures[0].Strategy) > labelCap {
 		t.Fatalf("facts = %+v", facts)
 	}
@@ -260,7 +270,7 @@ func TestAHostileEndingIsBoundedAndNeverPanics(t *testing.T) {
 	worst := map[string]json.RawMessage{
 		"claim": mustJSON(t, loud), "observed": mustJSON(t, loud), "analysis_incomplete": mustJSON(t, loud),
 		"reports":       json.RawMessage(`[` + strings.Join(names, ",") + `]`),
-		"hunt_coverage": json.RawMessage(`{"attempted":1,"failures":[` + strings.Join(failures, ",") + `]}`),
+		"hunt_coverage": json.RawMessage(most),
 	}
 	if worst := EndAction(endAt, Terminal{Status: StatusPass, Data: worst}); len(worst.Data) > EndDataCap || len(worst.Data) == 0 {
 		t.Fatalf("the worst case wrote %d bytes", len(worst.Data))

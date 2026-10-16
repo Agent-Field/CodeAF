@@ -41,8 +41,9 @@ const (
 	// endReportsMax and endReportCap bound the list of report files.
 	endReportsMax = 16
 	endReportCap  = 256
-	// endFailuresMax bounds the hunts a coverage account names; the count of
-	// attempts is kept whole.
+	// endFailuresMax bounds the hunts a coverage account names. An account
+	// that names more is kept as unknown, never cut: sixteen of twenty failures
+	// is a different account from twenty of twenty.
 	endFailuresMax = 16
 	endReasonCap   = 240
 	// endCountMax is the largest count kept. A program that says more has said
@@ -89,12 +90,33 @@ type EndFacts struct {
 }
 
 // HuntCoverage is how many hunts an audit attempted and which failed, as the
-// audit measured them.
+// audit measured them. It is either Unknown alone or a whole account — an
+// Attempted of at least one and every failure, never more failures than
+// attempts — which is exactly what sec's own reader (schemas.Coverage) accepts.
 type HuntCoverage struct {
 	Attempted *int          `json:"attempted,omitempty"`
 	Failures  []HuntFailure `json:"failures,omitempty"`
 	// Unknown marks accounting the audit could not read.
 	Unknown bool `json:"unknown,omitempty"`
+}
+
+// MarshalJSON writes the account in the only two shapes it reads back as:
+// `{"unknown":true}` alone, or an attempted count with its failures ALWAYS AS A
+// LIST. An omitted empty list would read back as missing failures, which is
+// unknown, so "none of four failed" would become "could not be read" on the
+// next read.
+func (c HuntCoverage) MarshalJSON() ([]byte, error) {
+	if c.Unknown || c.Attempted == nil {
+		return []byte(`{"unknown":true}`), nil
+	}
+	failures := c.Failures
+	if failures == nil {
+		failures = []HuntFailure{}
+	}
+	return json.Marshal(struct {
+		Attempted int           `json:"attempted"`
+		Failures  []HuntFailure `json:"failures"`
+	}{*c.Attempted, failures})
 }
 
 // HuntFailure is one hunt that failed and the reason it gave.
@@ -132,7 +154,9 @@ func endFactsOf(data map[string]json.RawMessage) *EndFacts {
 	facts.RuledOut = endCount(data["ruled_out"])
 	facts.Partial = endBool(data["partial"])
 	facts.AnalysisIncomplete = endText(data["analysis_incomplete"])
-	facts.HuntCoverage = endCoverage(data["hunt_coverage"])
+	if raw, present := data["hunt_coverage"]; present {
+		facts.HuntCoverage = endCoverage(raw)
+	}
 	if facts.Empty() {
 		return nil
 	}
@@ -148,7 +172,14 @@ func endDataOf(facts *EndFacts) json.RawMessage {
 	}
 	copied := *facts
 	drops := []func(*EndFacts){
-		func(f *EndFacts) { f.HuntCoverage = nil },
+		// A COVERAGE IS NEVER DROPPED, ONLY BLURRED: an audit's counts with no
+		// coverage beside them read as an audit whose every hunt finished, so
+		// an account too big to keep is kept as unknown, which is a few bytes.
+		func(f *EndFacts) {
+			if f.HuntCoverage != nil {
+				f.HuntCoverage = &HuntCoverage{Unknown: true}
+			}
+		},
 		func(f *EndFacts) { f.Reports = nil },
 		func(f *EndFacts) { f.Observed = "" },
 		func(f *EndFacts) { f.Claim = "" },
@@ -233,6 +264,10 @@ func endCount(raw json.RawMessage) *int {
 
 // endReports is a flat list of strings. A list holding anything else is
 // dropped whole, because a list with an element removed is a different list.
+// A NAME IS A PATH AND IS NEVER REWRITTEN: one that is empty, longer than
+// [endReportCap], or that [oneLine] would change (a newline, a tab, a doubled
+// or edge space) drops the whole list rather than being cut or folded into a
+// path that names a different file.
 func endReports(raw json.RawMessage) []string {
 	var names []*string
 	if !endDecodable(raw) || json.Unmarshal(raw, &names) != nil || len(names) == 0 || len(names) > endReportsMax {
@@ -244,8 +279,8 @@ func endReports(raw json.RawMessage) []string {
 		if element == nil {
 			return nil
 		}
-		name := cut(oneLine(*element), endReportCap)
-		if name == "" {
+		name := *element
+		if name == "" || len(name) > endReportCap || oneLine(name) != name {
 			return nil
 		}
 		kept = append(kept, name)
@@ -253,44 +288,92 @@ func endReports(raw json.RawMessage) []string {
 	return kept
 }
 
+// endCoverage reads an audit's hunt coverage by sec's own rules
+// (schemas.Coverage), so the line never says more than the program's reader
+// would. A key that is present is an account: either it reads whole, or it is
+// UNKNOWN — NEVER ABSENT, NEVER A ZERO. An audit's counts beside no coverage
+// read as an audit whose every hunt finished, and `{"attempted":4}` alone reads
+// as none of four failing; both are claims sec itself refuses to make.
+//
+//   - `unknown: true` is unknown alone, whatever else the account says.
+//   - Otherwise attempted must be a whole count of at least one, failures a
+//     present, non-null list no longer than attempted, and every row must name
+//     its strategy and its reason.
+//   - Anything else — null, a non-object, a value too big to decode, a
+//     malformed row, more failures than the copy keeps — is unknown.
+//
+// THE KEYS ARE THE PRODUCER'S, EXACTLY. sec marshals schemas.HuntCoverage, so
+// its keys are always `attempted`, `failures` and `unknown`, and a row's
+// `strategy` and `reason`. sec's reader matches keys without regard to case;
+// this one does not guess which of two spellings would win, so a key that
+// differs from one of those only in case makes the account unknown rather than
+// silently ignored — an ignored `Unknown: true` would read as a whole account.
+// Numbers are whole digits as everywhere here; a spelling sec's own marshal
+// never writes (1.0, 1e2) is unknown, which says less than sec, never more.
 func endCoverage(raw json.RawMessage) *HuntCoverage {
+	unknown := &HuntCoverage{Unknown: true}
 	if !endDecodable(raw) {
-		return nil
+		return unknown
 	}
-	// Exact, case-sensitive keys, as the top level reads them.
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil {
-		return nil
+	fields, ok := endObject(raw, "attempted", "failures", "unknown")
+	if !ok {
+		return unknown
 	}
-	coverage := HuntCoverage{Attempted: endCount(fields["attempted"])}
-	if unknown := endBool(fields["unknown"]); unknown != nil {
-		coverage.Unknown = *unknown
-	}
-	if coverage.Attempted == nil && !coverage.Unknown {
-		return nil
-	}
-	if rawFailures := fields["failures"]; len(rawFailures) > 0 {
-		var rows []map[string]*string
-		if !endDecodable(rawFailures) || json.Unmarshal(rawFailures, &rows) != nil {
-			return nil
+	if rawUnknown, present := fields["unknown"]; present && !isNull(rawUnknown) {
+		said := endBool(rawUnknown)
+		if said == nil || *said {
+			return unknown
 		}
-		// A row that is null, or lacks either text, would be written as a hunt
-		// that failed for no reason; the account is malformed and goes whole.
-		for _, row := range rows {
-			if row == nil || row["strategy"] == nil || row["reason"] == nil {
-				return nil
-			}
-			strategy, reason := label(*row["strategy"]), cut(oneLine(*row["reason"]), endReasonCap)
-			if strategy == "" || reason == "" {
-				return nil
-			}
-			if len(coverage.Failures) == endFailuresMax {
-				continue // the account names the first hunts only; Attempted stays whole
-			}
-			coverage.Failures = append(coverage.Failures, HuntFailure{Strategy: strategy, Reason: reason})
+	}
+	attempted := endCount(fields["attempted"])
+	rawFailures := fields["failures"]
+	if attempted == nil || *attempted < 1 || !endDecodable(rawFailures) {
+		return unknown
+	}
+	var rows []json.RawMessage
+	if json.Unmarshal(rawFailures, &rows) != nil || rows == nil || len(rows) > *attempted || len(rows) > endFailuresMax {
+		return unknown
+	}
+	coverage := HuntCoverage{Attempted: attempted}
+	for _, rawRow := range rows {
+		row, ok := endObject(rawRow, "strategy", "reason")
+		if !ok {
+			return unknown
 		}
+		var strategy, reason *string
+		if json.Unmarshal(row["strategy"], &strategy) != nil || json.Unmarshal(row["reason"], &reason) != nil ||
+			strategy == nil || reason == nil {
+			return unknown
+		}
+		kept := HuntFailure{Strategy: label(*strategy), Reason: cut(oneLine(*reason), endReasonCap)}
+		if kept.Strategy == "" || kept.Reason == "" {
+			return unknown
+		}
+		coverage.Failures = append(coverage.Failures, kept)
 	}
 	return &coverage
+}
+
+// endObject decodes a JSON object whose keys are compared exactly, and refuses
+// one that spells any of names in another case: such a key is not the
+// producer's and its meaning to a case-blind reader depends on order.
+func endObject(raw json.RawMessage, names ...string) (map[string]json.RawMessage, bool) {
+	var fields map[string]json.RawMessage
+	if !endDecodable(raw) || json.Unmarshal(raw, &fields) != nil || fields == nil {
+		return nil, false
+	}
+	for key := range fields {
+		for _, name := range names {
+			if key != name && strings.EqualFold(key, name) {
+				return nil, false
+			}
+		}
+	}
+	return fields, true
+}
+
+func isNull(raw json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
 // endDecodable says a key's value is present, small enough to read at all, and
