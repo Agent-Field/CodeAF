@@ -501,8 +501,9 @@ func TestAClosedSessionRefusesAnImageEvenBeforeItsLedgerOpened(t *testing.T) {
 }
 
 // A Stop for a picture that has ended answers already_ended, never "its job is
-// not in this session" — job 0 is no job. (The narrower race, an attempt that
-// ends between CancelRender's read and its stop, takes the same branch.)
+// not in this session" — job 0 is no job. This covers the record read as ended;
+// an attempt released between CancelRender's read and its stop takes the
+// re-read branch in render_app.go, which no test reaches deterministically.
 func TestCancellingAnImageThatJustEndedIsAlreadyEnded(t *testing.T) {
 	agent, _ := attemptAgent(t, &scriptedMedia{base64: base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2))})
 	callImage(t, context.Background(), agent, `{"prompt":"x"}`)

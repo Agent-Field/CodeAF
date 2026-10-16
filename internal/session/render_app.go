@@ -72,13 +72,16 @@ func (a *Agent) CancelRender(id string) (RenderCancel, error) {
 	// own, answered in the same three words (render_attempt.go).
 	if record.Job == 0 {
 		outcome, held := ledger.stopAttempt(id)
-		record, _ = ledger.get(id)
+		after, err := ledger.get(id)
+		if err != nil {
+			return RenderCancel{}, err
+		}
 		if held {
-			return RenderCancel{Outcome: outcome, Render: record}, nil
+			return RenderCancel{Outcome: outcome, Render: after}, nil
 		}
 		// It ended between the read above and the stop: already ended.
-		if record.State != RenderRunning {
-			return RenderCancel{Outcome: RenderOutcomeEnded, Render: record}, nil
+		if after.State != RenderRunning {
+			return RenderCancel{Outcome: RenderOutcomeEnded, Render: after}, nil
 		}
 	}
 	target := jobs.find(record.Job)
