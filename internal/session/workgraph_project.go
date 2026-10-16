@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/workgraph"
@@ -175,6 +176,15 @@ func wgAnchor(journal string, line int) *workgraph.TextAnchor {
 }
 
 // wgRoute is the crew a run row was accepted onto, role by role.
+// wgPrice is the accepted route's published tariff as the record stored it; nil
+// stays nil, which the graph says as unknown.
+func wgPrice(p *crewroute.RoutePrice) *workgraph.RoutePrice {
+	if p == nil {
+		return nil
+	}
+	return &workgraph.RoutePrice{Prompt: p.Prompt, Completion: p.Completion, CacheRead: p.CacheRead}
+}
+
 func wgRoute(rec *TaskCrewRecord) []workgraph.RouteSeat {
 	if rec == nil || !rec.Routed {
 		return nil
@@ -184,7 +194,7 @@ func wgRoute(rec *TaskCrewRecord) []workgraph.RouteSeat {
 		if pick.Model == "" {
 			continue
 		}
-		out = append(out, workgraph.RouteSeat{Role: string(pick.Seat), Model: wgTitle(pick.Model), Pinned: pick.Pinned || rec.TaskPins[pick.Seat]})
+		out = append(out, workgraph.RouteSeat{Role: string(pick.Seat), Model: wgTitle(pick.Model), Pinned: pick.Pinned || rec.TaskPins[pick.Seat], Price: wgPrice(pick.Price)})
 	}
 	return out
 }
@@ -306,7 +316,7 @@ func planFact(owner string, t *plandb.Task, group *workgraph.GroupRef, spend map
 	tok := wgPlanToken(t.ID)
 	n := workgraph.GraphNode{
 		ID: owner + ":" + tok, Ref: workgraph.TaskRef{Owner: owner, Task: tok}, Kind: "plan",
-		Title: wgTitle(t.Title), State: planStateWord(t), Paused: t.Paused,
+		Title: wgTitle(t.Title), State: planStateWord(t), StateDetail: string(t.Status), Paused: t.Paused,
 		Stopped:      t.Status == plandb.StatusCancelled && planStopReason(t.Error),
 		Clock:        workgraph.Clock{AdmittedAt: workgraph.Stamp(t.CreatedAt), EndedAt: workgraph.Stamp(t.CompletedAt)},
 		Instructions: wgText("admitted_brief", t.Description, workgraph.MaxTextRunes),

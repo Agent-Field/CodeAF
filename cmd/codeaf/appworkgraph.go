@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,9 +43,21 @@ const (
 	// graphMaxExternal is the most other conversations a scope reads only to
 	// say the state of a task its own tasks wait on.
 	graphMaxExternal = 64
-	// graphCacheEntries and graphCacheNodes bound the snapshots held.
+	// The snapshots held: at most graphCacheEntries of them and
+	// session.WorkSnapshotBytes between them, counted by Snapshot.Bytes. One
+	// bigger than that is served and not kept. graphPending is how many
+	// DISTINCT builds may be queued or running (a request for a build already
+	// pending joins it for free), and graphBuildBytes the weight of builds
+	// running at once, a build weighing graphBuildWeight bytes a fact.
 	graphCacheEntries = 8
-	graphCacheNodes   = 600_000
+	graphPending      = 8
+	graphBuildBytes   = 64 << 20
+	graphBuildWeight  = 4608
+	// graphRequestBytes is the working set of requests loading at once, weighed
+	// by their files' sizes, and graphRequestWaiters how many may wait for room;
+	// the next is told busy.
+	graphRequestBytes   = 64 << 20
+	graphRequestWaiters = 16
 	// graphMaxUnread is how many unreadable conversations an answer names.
 	graphMaxUnread = 16
 )
@@ -60,6 +73,8 @@ type appWorkGraph struct {
 	once   sync.Once
 	source *session.WorkSource
 	cache  *workgraph.Cache
+	// requests admits the working set of a request before it reads anything.
+	requests *workgraph.Gate
 
 	mu    sync.Mutex
 	dirs  map[string]string
@@ -75,7 +90,10 @@ type crewMemo struct {
 func (g *appWorkGraph) init() {
 	g.once.Do(func() {
 		g.source = session.NewWorkSource()
-		g.cache = workgraph.NewCache(graphCacheEntries, graphCacheNodes)
+		g.cache = workgraph.NewCache(workgraph.CacheLimits{
+			Bytes: session.WorkSnapshotBytes, Entries: graphCacheEntries, Pending: graphPending, BuildBytes: graphBuildBytes,
+		})
+		g.requests = workgraph.NewGate(graphRequestBytes).Limit(graphRequestWaiters)
 		g.dirs = map[string]string{}
 	})
 }
@@ -105,6 +123,28 @@ func (b *appBackend) WorkGraph(ctx context.Context, req workgraph.GraphRequest) 
 	if err != nil {
 		return nil, err
 	}
+	held, err := g.requests.Acquire(ctx, g.requestWeight(plan))
+	if err != nil {
+		return nil, err
+	}
+	defer g.requests.Release(held)
+	res, err := g.answer(ctx, req, plan)
+	if errors.Is(err, session.ErrWorkBusy) {
+		return nil, workgraph.ErrBusy
+	}
+	return res, err
+}
+
+// requestWeight is what a plan's files hold at peak once read.
+func (g *appWorkGraph) requestWeight(plan graphPlan) int64 {
+	var w int64
+	for _, o := range plan.owners {
+		w += g.source.RawWeight(o.dir)
+	}
+	return w
+}
+
+func (g *appWorkGraph) answer(ctx context.Context, req workgraph.GraphRequest, plan graphPlan) (*workgraph.GraphResult, error) {
 	loaded, err := g.load(ctx, plan)
 	if err != nil {
 		return nil, err
@@ -113,13 +153,22 @@ func (b *appBackend) WorkGraph(ctx context.Context, req workgraph.GraphRequest) 
 	if req.IfRevision != "" && req.IfRevision == revision {
 		return unchangedGraph(req, revision), nil
 	}
-	snap, err := g.cache.Get(ctx, req.Scope, revision, func(ctx context.Context) (workgraph.Input, error) {
+	snap, err := g.cache.GetWeighted(ctx, req.Scope, revision, int64(loaded.factCount())*graphBuildWeight, func(ctx context.Context) (workgraph.Input, error) {
 		return loaded.input(ctx, g, plan, revision)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return snap.Answer(ctx, req)
+}
+
+// factCount is how many facts the build will be given.
+func (l *graphLoaded) factCount() int {
+	n := 0
+	for _, o := range l.owners {
+		n += len(o.Facts)
+	}
+	return min(n, workgraph.MaxScopeNodes)
 }
 
 func unchangedGraph(req workgraph.GraphRequest, revision string) *workgraph.GraphResult {

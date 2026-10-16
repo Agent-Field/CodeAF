@@ -44,6 +44,8 @@ func workGraphError(err error) error {
 		return Errorf(CodeBadParams, "%s", trimPrefix(err.Error(), "workgraph: bad request: "))
 	case errors.Is(err, workgraph.ErrNotFound):
 		return Errorf(CodeNotFound, "%s", trimPrefix(err.Error(), "workgraph: not found: "))
+	case errors.Is(err, workgraph.ErrBusy):
+		return Errorf(CodeBusy, "work.graph is busy with other scopes; try again")
 	case errors.Is(err, context.DeadlineExceeded):
 		return Errorf(CodeEngine, "work.graph took longer than %s", workgraph.BuildTimeout)
 	case errors.Is(err, context.Canceled):

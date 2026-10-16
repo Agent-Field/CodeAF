@@ -184,6 +184,11 @@ func TestTheSourceStatesLandingFilesAndTheRecordedClock(t *testing.T) {
 	if n.Clock.AdmittedAt.After(time.Now()) || n.Clock.StateAt.Before(*n.Clock.AdmittedAt) {
 		t.Fatalf("clock is not the events': %+v", n.Clock)
 	}
+	// A plan row keeps the store's own status word beside the mapped state, so
+	// queued-and-waiting ("pending") is told from queued-and-free ("ready").
+	if plan, _ := owner.Find("t-b"); plan.Node.StateDetail != string(plandb.StatusPending) && plan.Node.StateDetail != string(plandb.StatusReady) {
+		t.Fatalf("plan b state_detail = %q", plan.Node.StateDetail)
+	}
 	// A plan row never carries a start it was not given.
 	plan, _ := owner.Find("t-a")
 	if plan.Node.Clock.StartedAt != nil || plan.Node.Clock.AdmittedAt == nil {
@@ -321,10 +326,20 @@ func TestTheProjectionCarriesTheRecordedAnchorAndRouteOnly(t *testing.T) {
 		}
 	}
 	crew := &TaskCrewRecord{Routed: true, TaskPins: map[crewroute.Seat]bool{crewroute.Checker: true}}
-	crew.Decision.Crew = []crewroute.Pick{{Seat: crewroute.Worker, Model: "a/worker"}, {Seat: crewroute.Checker, Model: "a/checker"}}
+	crew.Decision.Crew = []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "a/worker", Price: &crewroute.RoutePrice{Prompt: 1e-6, Completion: 4e-6, CacheRead: 1e-7}},
+		{Seat: crewroute.Checker, Model: "a/checker"},
+	}
 	run := runFact(sourceOwner, runRecord{ID: 5, Title: "r", State: TaskDone, CrewState: crew}, nil)
 	if len(run.Node.Route) != 2 || run.Node.Route[0].Model != "a/worker" || run.Node.Route[0].Pinned || !run.Node.Route[1].Pinned {
 		t.Fatalf("route = %+v", run.Node.Route)
+	}
+	// The price is the accepted route's own tariff; a pick that stored none is unknown, not free.
+	if p := run.Node.Route[0].Price; p == nil || p.Prompt != 1e-6 || p.Completion != 4e-6 || p.CacheRead != 1e-7 {
+		t.Fatalf("worker price = %+v", p)
+	}
+	if run.Node.Route[1].Price != nil {
+		t.Fatalf("an unpriced pick carries a price: %+v", run.Node.Route[1].Price)
 	}
 	if got := runFact(sourceOwner, runRecord{ID: 6, Title: "r", State: TaskDone}, nil); got.Node.Route != nil {
 		t.Fatalf("a row with no crew has a route: %+v", got.Node.Route)

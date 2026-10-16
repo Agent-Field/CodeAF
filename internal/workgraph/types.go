@@ -339,6 +339,17 @@ type RouteSeat struct {
 	Role   string `json:"role"`
 	Model  string `json:"model"`
 	Pinned bool   `json:"pinned,omitempty"`
+	// Price is the accepted route's own published tariff at admission. Absent
+	// is unknown — a record written before tariffs were stored, or a route
+	// nobody prices — never a price of nothing.
+	Price *RoutePrice `json:"price,omitempty"`
+}
+
+// RoutePrice is one route's published price in dollars per token.
+type RoutePrice struct {
+	Prompt     float64 `json:"prompt"`
+	Completion float64 `json:"completion"`
+	CacheRead  float64 `json:"cache_read"`
 }
 
 // GraphTotals are the scope's true sizes, whatever the page holds.
@@ -450,11 +461,17 @@ type GraphNode struct {
 	// unverified, interrupted). Paused, Stopped and Declined are the person's
 	// holds and endings, which the state word alone does not carry. Ending is
 	// why a failed task stopped, in the engine's word.
-	State    string `json:"state" enum:"queued,running,done,failed,unverified,interrupted"`
-	Paused   bool   `json:"paused,omitempty"`
-	Stopped  bool   `json:"stopped,omitempty"`
-	Declined bool   `json:"declined,omitempty"`
-	Ending   string `json:"ending,omitempty"`
+	State string `json:"state" enum:"queued,running,done,failed,unverified,interrupted"`
+	// StateDetail is the producing store's own status word when it has finer
+	// ones than State does — a plan row's "pending", "ready", "claimed",
+	// "running", "done", "failed" or "cancelled" — so that queued can be told
+	// apart as waiting on prerequisites ("pending") or free to start ("ready").
+	// Absent where State is already the store's own word.
+	StateDetail string `json:"state_detail,omitempty"`
+	Paused      bool   `json:"paused,omitempty"`
+	Stopped     bool   `json:"stopped,omitempty"`
+	Declined    bool   `json:"declined,omitempty"`
+	Ending      string `json:"ending,omitempty"`
 	// Parent is the task that handed this one out (its wire id), empty at the
 	// top of a family. ParentState says whether that parent is among the nodes:
 	// "root" (none), "node", or "missing" (the record names a parent its owner

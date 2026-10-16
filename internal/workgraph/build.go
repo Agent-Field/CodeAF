@@ -49,7 +49,9 @@ type Snapshot struct {
 	crews    []CrewFact
 	people   []MemberFact
 
-	metrics  GraphMetrics
+	metrics GraphMetrics
+	// bytes is the conservative size the cache budgets this snapshot at.
+	bytes    int64
 	totals   GraphTotals
 	coverage Coverage
 	diag     Diagnostics
@@ -400,6 +402,7 @@ func (b *builder) finish() error {
 		s.totals.ByState[s.nodes[i].State]++
 	}
 	s.coverage = b.coverage()
+	s.bytes = s.estimateBytes()
 	return nil
 }
 
@@ -466,6 +469,12 @@ func cloneNode(n *GraphNode) *GraphNode {
 		c.Instructions = &t
 	}
 	c.Route = append([]RouteSeat(nil), n.Route...)
+	for i := range c.Route {
+		if p := n.Route[i].Price; p != nil {
+			price := *p
+			c.Route[i].Price = &price
+		}
+	}
 	if n.Landing != nil {
 		l := *n.Landing
 		l.At = copyTime(n.Landing.At)

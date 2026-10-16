@@ -68,6 +68,14 @@ type WorkLimits struct {
 	PlanMax int64
 	// IndexMax is the most bytes of a check index read: its NEWEST bytes.
 	IndexMax int64
+	// Flights bounds the distinct conversation reads in flight at once, and
+	// IndexFlights the check-index reads; past either a new read is refused with
+	// [ErrWorkBusy]. RawBytes bounds the WEIGHT of the reads decoding at once
+	// (their files' bytes, taken at the decode's own inflation): a read waits
+	// for room, cancellably, and one heavier than the whole runs alone.
+	Flights      int
+	IndexFlights int
+	RawBytes     int64
 	// Facts is the most facts one conversation yields; Waits the most stored
 	// waits one task yields. Past either the rest is left out and the
 	// conversation says partial.
@@ -75,17 +83,37 @@ type WorkLimits struct {
 	Waits int
 }
 
-// The defaults. A task's projection is ~1 KiB, so these hold ~190 000 tasks.
+// THE AGGREGATE BUDGET. Everything the work graph holds on to or has in flight
+// sums to at most 128 MiB, so that it is a number a laptop can be promised:
+//
+//	conversations remembered   32 MiB   (this file)
+//	check indexes remembered    8 MiB   (this file)
+//	raw reads decoding at once 32 MiB   (this file, weighed at decode inflation)
+//	snapshots remembered       56 MiB   (cmd/codeaf, workgraph.Cache)
+//
+// A scope too big for the snapshot share (at ~1.4 KiB a task, about 40 000
+// tasks) is served in full and not remembered: each ask pays the cold cost
+// honestly. A task's projection is ~1 KiB, so a conversation is bounded at
+// 20 000 facts and its checkpoint at 16 MiB.
 const (
-	defaultCacheBytes  = 192 << 20
-	defaultCacheOwners = 4096
-	defaultIndexBytes  = 32 << 20
-	defaultIndexFiles  = 64
-	defaultFileMax     = 48 << 20
-	defaultPlanMax     = 64 << 20
-	defaultIndexMax    = 32 << 20
-	defaultFacts       = 100_000
-	defaultWaits       = 1024
+	// WorkSnapshotBytes is the share the app's snapshot cache is built with,
+	// written here so the whole budget is added up in one place.
+	WorkSnapshotBytes   = 56 << 20
+	defaultCacheBytes   = 32 << 20
+	defaultCacheOwners  = 4096
+	defaultIndexBytes   = 8 << 20
+	defaultIndexFiles   = 64
+	defaultFileMax      = 16 << 20
+	defaultPlanMax      = 16 << 20
+	defaultIndexMax     = 8 << 20
+	defaultFacts        = 20_000
+	defaultWaits        = 1024
+	defaultFlights      = 8
+	defaultIndexFlights = 4
+	defaultRawBytes     = 32 << 20
+	// rawInflation is how many times its file's bytes a decode holds at peak:
+	// the raw bytes, the decoded structs and the projected facts.
+	rawInflation = 3
 )
 
 func (l WorkLimits) withDefaults() WorkLimits {
@@ -106,6 +134,9 @@ func (l WorkLimits) withDefaults() WorkLimits {
 	set(&l.FileMax, defaultFileMax)
 	set(&l.PlanMax, defaultPlanMax)
 	set(&l.IndexMax, defaultIndexMax)
+	set(&l.RawBytes, defaultRawBytes)
+	setN(&l.Flights, defaultFlights)
+	setN(&l.IndexFlights, defaultIndexFlights)
 	setN(&l.Facts, defaultFacts)
 	setN(&l.Waits, defaultWaits)
 	return l
@@ -167,6 +198,7 @@ type WorkSource struct {
 	limits WorkLimits
 	owners *byteLRU
 	index  *byteLRU
+	raw    *workgraph.Gate
 	parses atomic.Int64
 }
 
@@ -176,7 +208,10 @@ func NewWorkSource() *WorkSource { return NewWorkSourceLimits(WorkLimits{}) }
 // NewWorkSourceLimits is an empty source with the given bounds.
 func NewWorkSourceLimits(l WorkLimits) *WorkSource {
 	l = l.withDefaults()
-	return &WorkSource{limits: l, owners: newByteLRU(l.CacheBytes, l.CacheOwners), index: newByteLRU(l.IndexBytes, l.IndexFiles)}
+	return &WorkSource{
+		limits: l, raw: workgraph.NewGate(l.RawBytes),
+		owners: newByteLRU(l.CacheBytes, l.CacheOwners, l.Flights), index: newByteLRU(l.IndexBytes, l.IndexFiles, l.IndexFlights),
+	}
 }
 
 // Parses is how many conversation projections have been built from disk, for
@@ -253,6 +288,11 @@ func (s *WorkSource) Owner(ctx context.Context, owner, dir string) (*OwnerFacts,
 		return v.(*OwnerFacts), nil
 	}
 	v, err := s.owners.do(ctx, dir+"\x00"+owner+"\x00"+stamp, func(rctx context.Context) (any, error) {
+		held, err := s.raw.Acquire(rctx, s.rawWeight(dir))
+		if err != nil {
+			return nil, err
+		}
+		defer s.raw.Release(held)
 		return s.readStable(rctx, owner, dir, stamp)
 	})
 	if err != nil {
@@ -260,6 +300,24 @@ func (s *WorkSource) Owner(ctx context.Context, owner, dir string) (*OwnerFacts,
 	}
 	return v.(*OwnerFacts), nil
 }
+
+// rawWeight is what decoding the conversation's files holds at peak, from their
+// sizes alone: the checkpoint and the plan stores with their journals, each at
+// the inflation of its decode and never more than the bound the read itself
+// refuses at.
+func (s *WorkSource) rawWeight(dir string) int64 {
+	tasks := min(wgSize(Place{Dir: dir}.Tasks()), s.limits.FileMax)
+	db := filepath.Join(dir, planStoreFilename)
+	var plan int64
+	for _, path := range append(planArchivePaths(db), db) {
+		plan += wgSize(path) + wgSize(path+"-wal")
+	}
+	return (tasks + min(plan, s.limits.PlanMax)) * rawInflation
+}
+
+// RawWeight is what reading the conversation in dir would hold at peak, so a
+// caller can ask for room before it asks for the conversation.
+func (s *WorkSource) RawWeight(dir string) int64 { return s.rawWeight(dir) }
 
 // readStable reads a conversation and keeps it only if its files held still.
 //
@@ -528,6 +586,11 @@ func (s *WorkSource) Checks(ctx context.Context, path string) (*CheckIndex, erro
 		return v.(*CheckIndex), nil
 	}
 	v, err := s.index.do(ctx, path+"\x00"+stamp, func(rctx context.Context) (any, error) {
+		held, err := s.raw.Acquire(rctx, min(s.limits.IndexMax, max(1, wgSize(path))))
+		if err != nil {
+			return nil, err
+		}
+		defer s.raw.Release(held)
 		index, err := readCheckIndex(rctx, path, stamp, s.limits.IndexMax)
 		if err != nil {
 			return nil, err
@@ -539,6 +602,14 @@ func (s *WorkSource) Checks(ctx context.Context, path string) (*CheckIndex, erro
 		return nil, err
 	}
 	return v.(*CheckIndex), nil
+}
+
+// wgSize is a plain file's size, and zero for anything else.
+func wgSize(path string) int64 {
+	if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
+		return info.Size()
+	}
+	return 0
 }
 
 // readCheckIndex streams the NEWEST `limit` bytes of the index and keeps only

@@ -16,11 +16,14 @@ package session
 // Reads are coalesced: callers asking for the same key and stamp at once share
 // one read, run on a goroutine of its own under its own deadline and with no
 // lock held. A caller whose context ends stops waiting, and when the last waiter
-// leaves, the read is cancelled.
+// leaves, the read is cancelled. The number of DISTINCT reads in flight is
+// bounded too: past it a new read is refused with [ErrWorkBusy] instead of
+// queueing a goroutine for it.
 
 import (
 	"container/list"
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,10 +46,16 @@ type lruFlight struct {
 	err     error
 }
 
+// ErrWorkBusy is the answer when the source already has as many distinct reads
+// in flight as it admits. It is an answer and not a failure of the files: the
+// same ask a moment later is served.
+var ErrWorkBusy = errors.New("the work source is busy reading other conversations")
+
 type byteLRU struct {
 	mu         sync.Mutex
 	maxBytes   int64
 	maxEntries int
+	maxFlights int
 	bytes      int64
 	lru        *list.List
 	by         map[string]*list.Element
@@ -55,11 +64,12 @@ type byteLRU struct {
 	evicted    atomic.Int64
 	unretained atomic.Int64
 	coalesced  atomic.Int64
+	refused    atomic.Int64
 }
 
-func newByteLRU(maxBytes int64, maxEntries int) *byteLRU {
+func newByteLRU(maxBytes int64, maxEntries, maxFlights int) *byteLRU {
 	return &byteLRU{
-		maxBytes: max(maxBytes, 1), maxEntries: max(maxEntries, 1),
+		maxBytes: max(maxBytes, 1), maxEntries: max(maxEntries, 1), maxFlights: max(maxFlights, 1),
 		lru: list.New(), by: map[string]*list.Element{}, flights: map[string]*lruFlight{},
 	}
 }
@@ -125,6 +135,14 @@ func (c *byteLRU) do(ctx context.Context, flight string, read func(context.Conte
 	if ok {
 		c.coalesced.Add(1)
 	} else {
+		if len(c.flights) >= c.maxFlights {
+			// ADMISSION: another distinct read would be one more goroutine and one
+			// more decode in memory. Callers for a read already in flight join it
+			// above and cost nothing; only a NEW read is refused.
+			c.mu.Unlock()
+			c.refused.Add(1)
+			return nil, ErrWorkBusy
+		}
 		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), workReadTimeout)
 		f = &lruFlight{done: make(chan struct{}), cancel: cancel}
 		c.flights[flight] = f

@@ -6,11 +6,14 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -190,7 +193,7 @@ func TestAWaiterThatLeavesCancelsTheReadAndTheNextCallerSucceeds(t *testing.T) {
 		t.Fatal("a cancelled caller kept waiting")
 	}
 	got, err := source.Owner(context.Background(), wgOwnerOf(dirs[0]), dirs[0])
-	if err != nil || len(got.Facts) != 30000 {
+	if err != nil || len(got.Facts) != defaultFacts || got.Issue != WorkIssuePartial {
 		t.Fatalf("next caller: %d facts, %v", len(got.Facts), err)
 	}
 }
@@ -295,5 +298,107 @@ func BenchmarkOwnerEvictingReads(b *testing.B) {
 		if _, err := source.Owner(ctx, wgOwnerOf(d), d); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// MANY DISTINCT OWNERS AT ONCE: two hundred different conversations are asked for
+// in the same instant. At most Flights of them are read; the rest are refused as
+// busy at the door, with no goroutine queued for them, and the ones admitted all
+// come back whole.
+func TestManyDistinctOwnersAtOnceAreAdmittedUpToTheFlightLimit(t *testing.T) {
+	dirs := wgOwners(t, 200, 40)
+	const flights = 4
+	source := NewWorkSourceLimits(WorkLimits{Flights: flights})
+	baseline := runtime.NumGoroutine()
+	var wg sync.WaitGroup
+	var served, busy atomic.Int64
+	start := make(chan struct{})
+	for _, dir := range dirs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			got, err := source.Owner(context.Background(), wgOwnerOf(dir), dir)
+			switch {
+			case err == nil && len(got.Facts) == 40:
+				served.Add(1)
+			case errors.Is(err, ErrWorkBusy):
+				busy.Add(1)
+			default:
+				t.Errorf("%v (%v)", err, got)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if served.Load() < flights || busy.Load() == 0 || served.Load()+busy.Load() != 200 {
+		t.Fatalf("served %d, busy %d", served.Load(), busy.Load())
+	}
+	if refused := source.owners.refused.Load(); refused != busy.Load() {
+		t.Fatalf("refused %d, callers told busy %d", refused, busy.Load())
+	}
+	time.Sleep(50 * time.Millisecond)
+	if extra := runtime.NumGoroutine() - baseline; extra > 4 {
+		t.Fatalf("%d goroutines left behind", extra)
+	}
+}
+
+// THE RAW GATE: the weight of reads decoding at once never passes the gate, a
+// read heavier than the whole runs alone, and a waiter that leaves frees its room.
+func TestRawDecodesAreWeighedAndTheGateNeverOverfills(t *testing.T) {
+	dirs := wgOwners(t, 12, 200)
+	one := NewWorkSource().rawWeight(dirs[0])
+	if one <= 0 {
+		t.Fatalf("weight %d", one)
+	}
+	// The gate fits two decodes; twelve conversations are read, flights allowed.
+	source := NewWorkSourceLimits(WorkLimits{Flights: 12, RawBytes: one * 2})
+	var wg sync.WaitGroup
+	for _, dir := range dirs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := source.Owner(context.Background(), wgOwnerOf(dir), dir); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if source.Parses() < 12 {
+		t.Fatalf("parses %d", source.Parses())
+	}
+	// A gate smaller than any one decode still reads, alone.
+	tiny := NewWorkSourceLimits(WorkLimits{RawBytes: 1})
+	if got, err := tiny.Owner(context.Background(), wgOwnerOf(dirs[0]), dirs[0]); err != nil || len(got.Facts) != 200 {
+		t.Fatalf("a heavy read alone: %v", err)
+	}
+}
+
+// A caller waiting for room at the gate stops at its own deadline.
+func TestAReadWaitingForRawRoomStopsWithItsCaller(t *testing.T) {
+	dirs := wgOwners(t, 2, 50)
+	source := NewWorkSourceLimits(WorkLimits{RawBytes: 1})
+	held, err := source.raw.Acquire(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := source.Owner(ctx, wgOwnerOf(dirs[0]), dirs[0]); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
+	}
+	source.raw.Release(held)
+	if _, err := source.Owner(context.Background(), wgOwnerOf(dirs[0]), dirs[0]); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The aggregate budget is a number somebody can add up: the source's three
+// shares plus the snapshot cache's must not pass 128 MiB.
+func TestTheAggregateBudgetIsAtMostOneHundredTwentyEightMiB(t *testing.T) {
+	l := WorkLimits{}.withDefaults()
+	sum := l.CacheBytes + l.IndexBytes + l.RawBytes + WorkSnapshotBytes
+	if sum > 128<<20 {
+		t.Fatalf("source %d + index %d + raw %d + snapshots %d = %d MiB", l.CacheBytes>>20, l.IndexBytes>>20, l.RawBytes>>20, WorkSnapshotBytes>>20, sum>>20)
 	}
 }

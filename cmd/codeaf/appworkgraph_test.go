@@ -224,3 +224,46 @@ func TestWorkGraphUnchangedPagingAndRefusals(t *testing.T) {
 		t.Fatalf("unsafe task id = %v", bad)
 	}
 }
+
+// A SCOPE TOO BIG FOR THE SNAPSHOT SHARE is answered in full and paged normally,
+// and never remembered: each ask pays the build, the cache holds nothing of it,
+// and the totals are the true ones — the cache was made to forget, the graph was
+// not cut.
+func TestAScopeOverTheSnapshotBudgetIsServedColdAndNeverKept(t *testing.T) {
+	_, w, crew := graphFixture(t)
+	scope := `{"kind":"crew","id":"` + crew + `"}`
+	prior := workGraphs.cache
+	t.Cleanup(func() { workGraphs.cache = prior })
+	workGraphs.cache = workgraph.NewCache(workgraph.CacheLimits{Bytes: 512, Entries: 8, Pending: 4, BuildBytes: 1 << 20})
+	builds, _ := workGraphs.cache.Stats()
+	for i := 0; i < 2; i++ {
+		got := w.graph(`{"scope":` + scope + `}`)
+		if got.Totals.Nodes != 3 || len(got.Nodes) != 3 {
+			t.Fatalf("ask %d answered %d of %d nodes", i, len(got.Nodes), got.Totals.Nodes)
+		}
+	}
+	if entries, held := workGraphs.cache.Held(); entries != 0 || held != 0 {
+		t.Fatalf("an over-budget snapshot is held: %d entries, %d bytes", entries, held)
+	}
+	if after, _ := workGraphs.cache.Stats(); after-builds != 2 {
+		t.Fatalf("builds went %d -> %d; an uncached scope pays each time", builds, after)
+	}
+}
+
+// Past the pending-build limit the wire says busy, and says it to the caller who
+// would have started one build too many.
+func TestWorkGraphSaysBusyWhenTooManyDistinctBuildsAreQueued(t *testing.T) {
+	_, w, crew := graphFixture(t)
+	prior := workGraphs.cache
+	t.Cleanup(func() { workGraphs.cache = prior })
+	workGraphs.cache = workgraph.NewCache(workgraph.CacheLimits{Bytes: 1 << 20, Entries: 8, Pending: 1, BuildBytes: 1 << 20})
+	hold := make(chan struct{})
+	started := make(chan struct{})
+	go workGraphs.cache.Get(context.Background(), workgraph.GraphScope{Kind: workgraph.ScopeCrew, ID: "other"}, "r",
+		func(ctx context.Context) (workgraph.Input, error) { close(started); <-hold; return workgraph.Input{}, ctx.Err() })
+	<-started
+	defer close(hold)
+	if _, bad := w.call(`{"scope":{"kind":"crew","id":"` + crew + `"}}`); bad == nil || bad["code"] != appwire.CodeBusy {
+		t.Fatalf("a build beyond the pending limit answered %v", bad)
+	}
+}
