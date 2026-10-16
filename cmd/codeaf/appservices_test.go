@@ -419,7 +419,12 @@ func TestARemovedServiceStillOpensItsOutput(t *testing.T) {
 	if _, err := w.backend.StopService(id); err != nil {
 		t.Fatal(err)
 	}
-	w.changed(t, id, func(p appwire.Process) bool { return !p.Service.Running && !p.Service.Stopping })
+	// The first event of a kept service is its launch, which also says not
+	// running; only the stopped state with the grace over means the process is
+	// proven gone and removal is allowed.
+	w.changed(t, id, func(p appwire.Process) bool {
+		return p.State == appwire.ProcessStopped && !p.Service.Running && !p.Service.Stopping
+	})
 	if err := w.backend.RemoveService(id); err != nil {
 		t.Fatal(err)
 	}
