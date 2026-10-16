@@ -44,6 +44,16 @@ type Attender interface {
 	Since(agent, after string) (Since, error)
 }
 
+// TaskSincer is [Attender.Since] over one task's own record (tasks.since). An
+// [Engine] that is not one refuses tasks.since as unknown.
+type TaskSincer interface {
+	// TaskSince counts what the task's record holds after one of its entries
+	// (an id tasks.entries served). The count is the record's own entries:
+	// the notes and sub-task rows tasks.entries lists after them are not in
+	// it, and an entry that is not on the record is Found false.
+	TaskSince(task, after string) (Since, error)
+}
+
 func attender(e Engine, name string) (Attender, error) {
 	a, ok := e.(Attender)
 	if !ok {
@@ -87,6 +97,20 @@ var attentionMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "agents.since needs an id and the entry to count after")
 		}
 		since, err := a.Since(p.ID, p.After)
+		return &since, err
+	}),
+	"tasks.since": typed(func(e Engine, p struct {
+		ID    string `json:"id"`
+		After string `json:"after"`
+	}) (*Since, error) {
+		t, ok := e.(TaskSincer)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve tasks.since")
+		}
+		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.After) == "" {
+			return nil, Errorf(CodeBadParams, "tasks.since needs a task id and the entry to count after")
+		}
+		since, err := t.TaskSince(p.ID, p.After)
 		return &since, err
 	}),
 }

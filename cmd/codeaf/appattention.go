@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -134,13 +135,55 @@ func (b *appBackend) Since(agent, after string) (appwire.Since, error) {
 	return since, nil
 }
 
-// appSinceOf is [appBackend.Since] over shaped entries; files reads one tool
-// entry's changed files and is called at most [appSinceFacts] times.
-//
-// A TURN is what the person sees as one: each of their messages opens one, and
-// what the conversation did on its own before the next of their messages — a
-// wake, a crew's delivery, the rest of a reply — is one more.
-func appSinceOf(all []appwire.Entry, after string, files func(int) []appwire.FileChange) appwire.Since {
+// TaskSince counts what one task's own record holds after one of its entries:
+// the same room journal tail tasks.entries reads, read once, shaped once.
+// Entry ids are the task's ("<task>/<entry>"); an anchor that is not on the
+// record (a note, a sub-task row, a step line, or a place older than the tail
+// the room keeps) is not found and nothing is counted.
+func (b *appBackend) TaskSince(id, after string) (appwire.Since, error) {
+	agent, local, ok := appSplitID(id)
+	if !ok {
+		return appwire.Since{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
+	}
+	n, err := strconv.ParseUint(local, 10, 64)
+	if err != nil {
+		return appwire.Since{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
+	}
+	prefix := id + "/"
+	after = strings.TrimSpace(after)
+	if !strings.HasPrefix(after, prefix) {
+		return appwire.Since{}, nil
+	}
+	a, live, err := b.heldLive(agent)
+	if err != nil {
+		return appwire.Since{}, err
+	}
+	journal, ok := live.conn.Conv.(appTaskJournal)
+	if !ok {
+		return appwire.Since{}, nil
+	}
+	record, err := journal.TaskRoom(n, session.TaskJournalTail)
+	if err != nil {
+		return appwire.Since{}, appEngineError(err)
+	}
+	items := appRecordItems(session.ReadTranscriptBytes(record.Journal))
+	all, from := appEntryShapes(agent, items, b.now(), nil)
+	since := appSinceOf(all, from, items, strings.TrimPrefix(after, prefix), func(i int) []appwire.FileChange {
+		if i >= len(from) || from[i] < 0 {
+			return nil
+		}
+		return b.appEntryFacts(a, items[from[i]]).Files
+	})
+	if since.First != "" {
+		since.First = prefix + since.First
+	}
+	return since, nil
+}
+
+// appSinceOf is [appBackend.Since] over shaped entries: from is each entry's
+// item, items the record's items, and files reads one tool entry's changed
+// files, at most [appSinceFacts] times.
+func appSinceOf(all []appwire.Entry, from []int, items []session.DisplayEntry, after string, files func(int) []appwire.FileChange) appwire.Since {
 	place := -1
 	for i, entry := range all {
 		if entry.ID == after {

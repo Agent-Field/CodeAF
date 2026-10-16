@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,5 +159,64 @@ func TestAppSinceCountsTurnsAndFilesAfterAPlace(t *testing.T) {
 	over := appSinceOf(long, "u0", func(int) []appwire.FileChange { reads++; return nil })
 	if over.Files != nil || reads != appSinceFacts {
 		t.Fatalf("past the bound: files %v after %d reads", over.Files, reads)
+	}
+}
+
+// roomConversation is the fake conversation with one task's room journal.
+type roomConversation struct {
+	*fakeConversation
+	journal []byte
+	reads   int
+}
+
+func (c *roomConversation) TaskRoom(id uint64, tail int) (session.TaskRecord, error) {
+	c.reads++
+	if id != 4 {
+		return session.TaskRecord{}, errors.New("no such task")
+	}
+	return session.TaskRecord{Kept: true, Journal: c.journal}, nil
+}
+
+// A TASK'S PLACE IS COUNTED FROM ITS OWN RECORD, read once a call: the entries
+// after it with the task's own ids, and nothing for a place the record does not
+// hold or an engine with no room.
+func TestAppTaskSinceCountsTheTasksOwnRecord(t *testing.T) {
+	conv := &fakeConversation{}
+	backend, _, agent := workBackend(t, conv)
+	var journal strings.Builder
+	journal.WriteString(`{"type":"session","version":1,"id":"n4","cwd":"/tmp/lab"}` + "\n")
+	for n := range 3 {
+		journal.WriteString(`{"type":"message","role":"user","content":"step ` + strconv.Itoa(n) + `"}` + "\n")
+		journal.WriteString(`{"type":"message","role":"assistant","content":"did ` + strconv.Itoa(n) + `"}` + "\n")
+	}
+	room := &roomConversation{fakeConversation: conv, journal: []byte(journal.String())}
+	task := agent.ID + ":4"
+
+	if since, err := backend.TaskSince(task, task+"/a1.0"); err != nil || since.Found {
+		t.Fatalf("an engine with no room = %+v, %v", since, err)
+	}
+	backend.locked(func() { backend.agents[agent.ID].live.conn.Conv = room })
+	page, _, err := backend.TaskEntries(task, "", 200)
+	if err != nil || len(page) != 6 {
+		t.Fatalf("the task's entries = %+v, %v", page, err)
+	}
+	reads := room.reads
+	since, err := backend.TaskSince(task, page[1].ID)
+	if err != nil || !since.Found || since.Entries != 4 || since.First != page[2].ID || since.Files == nil || *since.Files != 0 {
+		t.Fatalf("since %s = %+v, %v", page[1].ID, since, err)
+	}
+	if since.Turns != nil && *since.Turns != 2 {
+		t.Fatalf("two of the person's turns counted as %d", *since.Turns)
+	}
+	if room.reads != reads+1 {
+		t.Fatalf("one count read the room %d times", room.reads-reads)
+	}
+	for _, place := range []string{task + "/note0", "a1.0", task + "/u99.0"} {
+		if gone, err := backend.TaskSince(task, place); err != nil || gone.Found || gone.Turns != nil || gone.Entries != 0 {
+			t.Fatalf("a place the record does not hold (%s) = %+v, %v", place, gone, err)
+		}
+	}
+	if _, err := backend.TaskSince("nonsense", "x"); err == nil {
+		t.Fatal("a task id that is not one was counted")
 	}
 }
