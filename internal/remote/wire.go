@@ -822,8 +822,13 @@ const (
 // how a surface tells "the engine built what I asked for" from "I joined
 // somebody else's conversation".
 type LaunchShape struct {
-	// DeterministicNames names the conversation from its first message by rule
-	// rather than by a model ([session.FirstMessageName]); the desktop app sets it.
+	// IntentNames names the conversation from what the person opened it with —
+	// their own words and the names of the files they attached — by the model
+	// they configured for titles ([session.Config.IntentNames]); the desktop app
+	// sets it.
+	IntentNames bool `json:"intentNames,omitempty"`
+	// DeterministicNames retains legacy first-word naming without a model call.
+	// It is independent of IntentNames, including when old and new clients share a host.
 	DeterministicNames bool `json:"deterministicNames,omitempty"`
 	// HandOverOnAsk keeps a running reply in the conversation until the person
 	// moves it to a task ([session.Config.HandOverOnAsk]); the desktop app sets it.

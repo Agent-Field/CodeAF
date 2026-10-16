@@ -146,6 +146,12 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	if len(rungs) > roleFallThroughs+1 {
 		rungs = rungs[:roleFallThroughs+1]
 	}
+	// AN ERRAND THAT MAY NOT SUCCEED TAKES THE PERSON'S ROUTE AND NO OTHER
+	// (intentname.go): the rungs below the first are what the session falls
+	// back to so that a call that must be answered is, and a label is not one.
+	if firstRungOnly(ctx) && len(rungs) > 1 {
+		rungs = rungs[:1]
+	}
 	patience := roles.PatienceFor(role)
 	// THE PATIENCE IS THE ERRAND'S AND NOT EACH RUNG'S, and that is the whole of
 	// what changed here on 2026-09-10.

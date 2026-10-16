@@ -164,6 +164,15 @@ func (a *Agent) startTitleLocked() {
 	if a.config.InTask {
 		return
 	}
+	// A CONVERSATION NAMED BY INTENT IS NAMED FROM ITS FIRST MESSAGE AND NEVER
+	// FROM A LATER DOOR (intentname.go): the end of a turn, a wake and a resume
+	// buy nothing. The one thing this door still does for it is the brief a
+	// team's manager started a member with, which is a first message nobody
+	// typed and is named by the rule it always was.
+	if a.config.IntentNames && !a.config.DeterministicNames {
+		a.startBriefNameLocked()
+		return
+	}
 	question, answer := a.firstExchangeLocked()
 	if question == "" {
 		return
@@ -173,9 +182,6 @@ func (a *Agent) startTitleLocked() {
 	// tax on every turn.
 	a.titleTried = true
 	ctx := a.titleCtx
-	// A CONVERSATION NAMED BY RULE IS NAMED FROM ITS FIRST MESSAGE, with no
-	// model asked: the desktop app shows a name the moment a person sends
-	// (appnames.go), and a generated label arriving later would rename it.
 	if a.config.DeterministicNames {
 		name := FirstMessageName(question)
 		a.titleJobs.Add(1)
@@ -383,25 +389,10 @@ func (a *Agent) publishTitle(ctx context.Context, title conversationTitle) {
 		return
 	}
 	// The title the handle is read off exists now (handlepick.go).
-	if !a.config.DeterministicNames {
+	if !a.config.IntentNames && !a.config.DeterministicNames {
 		a.chooseTeamHandlesLater(title.full, nil)
 	}
-	event := Event{Kind: EventTitleChanged, Text: title.full}
-	a.mu.Lock()
-	hub := a.hub
-	watchers := make([]*eventStream, len(a.titleWatchers))
-	copy(watchers, a.titleWatchers)
-	a.mu.Unlock()
-	// THE TURN'S HUB WHEN THERE IS ONE, because that is where every surface
-	// reading this conversation's turn already is, and the standing lane for the
-	// case this change created: an answer that finished before the name did. A
-	// surface on both roads assigns the same name twice.
-	if hub != nil {
-		hub.send(event)
-	}
-	for _, watcher := range watchers {
-		watcher.send(event)
-	}
+	a.announceTitle(ctx)
 }
 
 // TitleChanges is the standing subscription to the name this session gives
@@ -498,19 +489,12 @@ func (a *Agent) setTitleIfUnnamed(title string, _ ...string) bool {
 		return false
 	}
 	a.title = title
-	file := a.file
+	a.titleLiteral = a.config.DeterministicNames || a.config.IntentNames
+	if a.file != nil {
+		a.file.appendNamedTitle(title, a.titleLiteral)
+	}
 	a.mu.Unlock()
-	if file != nil {
-		file.appendNamedTitle(title, a.config.DeterministicNames)
-	}
-	// The folder's row says what the journal says. Until now it has carried the
-	// person's opening words as a placeholder (placemeta.go); this is the name
-	// the conversation actually earned.
-	if a.config.DeterministicNames {
-		a.stampLiteralName(title)
-	} else {
-		a.stampTitle(title)
-	}
+	a.stampCurrentName()
 	return true
 }
 
@@ -763,7 +747,7 @@ func stripListMarker(title string) string {
 // instruction back rather than doing what it said. They are matched against the
 // normalized answer, so case, quotes and punctuation do not hide an echo.
 var instructionPhrases = func() []string {
-	phrases := []string{"name this session", "name this conversation twice", "name this piece of work", "what is this work trying to find out"}
+	phrases := []string{"name this session", "name this conversation twice", "name this conversation in at most", "name this piece of work", "what is this work trying to find out"}
 	for i, phrase := range phrases {
 		phrases[i] = " " + strings.Join(normalizedWords(phrase), " ") + " "
 	}
@@ -772,7 +756,7 @@ var instructionPhrases = func() []string {
 
 // Immutable prompt vocabulary is shared by saved-title readers.
 var instructionVocabulary = func() [][]string {
-	prompts := []string{titlePrompt, legacyTitlePrompt, taskNamePrompt, jobNamePrompt, captionPrompt}
+	prompts := []string{titlePrompt, legacyTitlePrompt, intentPrompt, taskNamePrompt, jobNamePrompt, captionPrompt}
 	words := make([][]string, len(prompts))
 	for i, prompt := range prompts {
 		words[i] = uniqueWords(normalizedWords(prompt))
@@ -1073,4 +1057,33 @@ func teamBrief(text string) string {
 		}
 	}
 	return ""
+}
+
+// startBriefNameLocked names a conversation a team's manager started from the
+// brief it was started with, by rule, when nothing a person typed has come
+// first. It is the one road a conversation named by intent still reaches by the
+// end of a turn, and it keeps the rule it was always named by: a brief is
+// delivered by the session and is not words anybody authored for a name to
+// represent.
+func (a *Agent) startBriefNameLocked() {
+	for _, message := range a.messages {
+		if message.Role != "user" {
+			continue
+		}
+		if !a.sessionNoteLocked(message) {
+			return
+		}
+		brief := teamBrief(messageContentText(message))
+		if brief == "" {
+			continue
+		}
+		a.titleTried = true
+		name, ctx := FirstMessageName(brief), a.titleCtx
+		a.titleJobs.Add(1)
+		go func() {
+			defer a.titleJobs.Done()
+			a.publishTitle(ctx, conversationTitle{full: name})
+		}()
+		return
+	}
 }

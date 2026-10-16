@@ -1275,9 +1275,16 @@ type TaskLanding struct {
 }
 
 type Config struct {
-	// DeterministicNames names the conversation from its first message by rule
-	// ([FirstMessageName]) instead of asking a model, for the desktop app.
+	// DeterministicNames preserves the legacy no-model naming request.
+	// When both naming flags are set this free rule takes precedence.
 	DeterministicNames bool
+
+	// IntentNames is the desktop app's naming: the conversation is named from
+	// what the person opened it with — their own words and the names of the
+	// files they attached — by the model they configured for titles, once, with
+	// those words as the name until it answers (intentname.go). It replaces the
+	// rule that used to name the conversation from its first words.
+	IntentNames bool
 
 	// HandOverOnAsk is the desktop app's: a running reply is never moved to a
 	// task by the checkpoints on their own; it moves only when the person asks
@@ -3686,6 +3693,14 @@ type Agent struct {
 
 	title      string
 	titleTried bool
+	// titleProvisional is the name this session wrote at acceptance and has not
+	// yet been replaced or claimed: the one name a model's answer may replace
+	// (intentname.go). Empty in every session that is not named by intent, and
+	// in every one whose name has been claimed by the person.
+	titleProvisional string
+	titleLiteral     bool
+	// Serializes current-name metadata snapshots and writes, outside a.mu.
+	titleStampMu sync.Mutex
 
 	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
 	// that may be running. They are memoryCtx's bargain above, for the same

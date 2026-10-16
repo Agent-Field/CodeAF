@@ -1832,6 +1832,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		if user.bash == "" {
 			a.startTitleLocked()
 		}
+		// A DESKTOP CONVERSATION IS NAMED FROM WHAT THE PERSON OPENED WITH, and
+		// the shell opening is one of the things that decides it too
+		// (intentname.go).
+		a.startIntentNameLocked(user)
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
@@ -2781,7 +2785,22 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	// and this line — the one place the person's own words reach the journal —
 	// is the only honest witness to that. A session with no folder stamps
 	// nothing (placemeta.go).
-	a.stampUserLocked(messageContentText(kept))
+	a.stampUserLocked(a.placeholderWordsLocked(user, kept))
+}
+
+// placeholderWordsLocked is what the folder's row carries as the conversation's
+// working name until it has a better one. It is the person's opening words —
+// and, for a conversation named by intent, the intent itself: their own words
+// or their attached files' names, never the words the model was sent, which
+// begin with the harness's own "Attached file:" line for a message of files
+// alone (intentname.go).
+func (a *Agent) placeholderWordsLocked(user userMessage, kept ai.Message) string {
+	if a.config.IntentNames && !a.config.DeterministicNames && user.bash == "" {
+		if name := intentOf(user).fallback(); name != "" {
+			return name
+		}
+	}
+	return messageContentText(kept)
 }
 
 // rememberPersonLocked marks the person's message with what its door said about

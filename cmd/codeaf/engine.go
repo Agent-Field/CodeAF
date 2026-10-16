@@ -1043,8 +1043,10 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// The builder came out of the shape above with the adaptive runner already
 	// decided: "runs are on" and "build it through [v3OpenSession]" are one fact
 	// (chatv3_lanes.go says why they cannot be two).
-	// The desktop app names its conversations by rule ([session.FirstMessageName]).
+	// The desktop app names its conversations from what the person opened them
+	// with ([session.Config.IntentNames]); the legacy deterministic flag remains a separate no-model policy.
 	if hello.Launch != nil {
+		cfg.IntentNames = hello.Launch.IntentNames
 		cfg.DeterministicNames = hello.Launch.DeterministicNames
 		cfg.HandOverOnAsk = hello.Launch.HandOverOnAsk
 		cfg.LiveToolOutput = hello.Launch.LiveToolOutput

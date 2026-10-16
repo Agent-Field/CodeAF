@@ -83,8 +83,42 @@ func TestAppCreateRefusesBadAttachmentsAndMakesNothing(t *testing.T) {
 	}
 }
 
+// A LINK OR A PASTE ALONE HAS NO FILE NAME TO BE NAMED FROM: the tab draws what
+// its chip says until the person's conversation has a name of its own, and a
+// path never reaches the title however the files are spelled.
+func TestAppCreateNamesAMessageOfNonFilesFromItsChipAndNeverFromAPath(t *testing.T) {
+	work := t.TempDir()
+	if err := os.WriteFile(filepath.Join(work, "report.pdf"), []byte("%PDF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct {
+		name    string
+		sources []appwire.AttachSource
+		want    string
+	}{
+		{"a link", []appwire.AttachSource{{Kind: appwire.AttachLink, URL: "https://example.com/issue/7"}}, "example.com"},
+		{"a paste", []appwire.AttachSource{{Kind: appwire.AttachPaste, Text: "one\ntwo"}}, "Pasted text"},
+		{"a file by its absolute path", []appwire.AttachSource{{Kind: appwire.AttachFile, Path: filepath.Join(work, "report.pdf")}}, "report.pdf"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			conv := &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}
+			var mu sync.Mutex
+			var opens, releases int
+			backend := newFakeBackend(newAppRecorder(), fakeOpener(conv, &opens, &releases, &mu))
+			defer backend.Close()
+			agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: work, Attachments: row.sources})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if agent.Title != row.want || strings.Contains(agent.Title, string(filepath.Separator)) {
+				t.Fatalf("title = %q, want %q", agent.Title, row.want)
+			}
+		})
+	}
+}
+
 // ATTACHMENTS ALONE ARE A FIRST MESSAGE: the agent answers working, named for
-// its first attachment, its first entry shows no words and every attachment,
+// its attached files, its first entry shows no words and every attachment,
 // and the model is sent exactly their words, once.
 func TestAppCreateWithAttachmentsAloneStartsOnTheirWords(t *testing.T) {
 	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}
@@ -109,7 +143,7 @@ func TestAppCreateWithAttachmentsAloneStartsOnTheirWords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if agent.State != appwire.StateWorking || agent.Title != "notes.md" {
+	if agent.State != appwire.StateWorking || agent.Title != "notes.md, docs" {
 		t.Fatalf("the created agent = %+v", agent)
 	}
 	user := entryWith(rec, t, func(e appwire.Entry) bool { return e.Kind == appwire.EntryUser })

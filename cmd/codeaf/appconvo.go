@@ -986,6 +986,15 @@ func appAttachShown(text string, kept []appAttach) *appSending {
 	return &appSending{text: text, attachments: views, described: described}
 }
 
+// appDescribedAll is every attachment as the record keeps it, in order.
+func appDescribedAll(kept []appAttach) []session.MessageAttachment {
+	described := make([]session.MessageAttachment, 0, len(kept))
+	for _, attach := range kept {
+		described = append(described, appDescribed(attach))
+	}
+	return described
+}
+
 // appDescribed is one attachment as the record keeps it: what it is, what it
 // is called and where it is, and its size where this side measured one — a
 // paste, whose words the model is sent whole. A file's size is left unsaid:

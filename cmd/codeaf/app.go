@@ -260,7 +260,7 @@ const appHostDialTimeout = 500 * time.Millisecond
 // journal. Everything else is built in this process.
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	clock := ask.ClockS
-	launch := &remote.LaunchShape{Interactive: true, DeterministicNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
+	launch := &remote.LaunchShape{Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
 	if ask.Transcript != "" && !ask.Minted {
 		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
 		// conversation another window opened can carry (engine.go's JoinedWith).
@@ -409,6 +409,7 @@ type appAgent struct {
 	// gate serializes opening and letting go of this one agent, so two sends
 	// racing for a closed conversation open it once.
 	gate       sync.Mutex
+	nameGate   sync.Mutex // serializes a rename RPC and its view update
 	view       appwire.Agent
 	transcript string
 	live       *appLive
@@ -478,16 +479,18 @@ type appFirst struct {
 
 // appLive is one conversation the process holds.
 type appLive struct {
-	conn      *appConn
-	box       *appwire.Outbox
-	stopTasks func()
-	running   bool
-	lastUse   time.Time
-	pumpDone  chan struct{}
-	lanesDone chan struct{}
-	asksDone  chan struct{}
-	stopAsks  func()
-	tasks     map[string]appwire.Task
+	conn       *appConn
+	box        *appwire.Outbox
+	stopTasks  func()
+	stopTitles func()
+	titlesDone chan struct{}
+	running    bool
+	lastUse    time.Time
+	pumpDone   chan struct{}
+	lanesDone  chan struct{}
+	asksDone   chan struct{}
+	stopAsks   func()
+	tasks      map[string]appwire.Task
 	// renders is the last record sent for each render, by id: the same news
 	// arrives on the turn's stream and on the task lane, and each change is
 	// said once (apprender.go).
@@ -874,7 +877,14 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 		}
 		first.words, first.shown = appAttachWords(text, kept), appAttachShown(text, kept)
 		a.transcript = transcript
-		a.view.Title = session.FirstMessageName(text)
+		// THE NAME THE TAB DRAWS UNTIL THE ENGINE'S ARRIVES is the one the engine
+		// itself writes at acceptance: the person's words, or the names of the
+		// files they attached when they said nothing, cut to forty characters
+		// (session.OpeningName). Attachment paths do not become file names.
+		a.view.Title = session.OpeningName(text, appDescribedAll(kept))
+		// A message of a link or a paste alone has no name of the person's to
+		// represent: the tab draws what its chip says, as it always has, and the
+		// engine leaves the conversation unnamed (intentname.go).
 		if a.view.Title == "" && len(kept) > 0 {
 			a.view.Title = session.FirstMessageName(kept[0].view.Title)
 		}
@@ -1084,6 +1094,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		// behind it going (internal/remote's bury finishes every lane).
 		b.died(a, live)
 	})
+	b.watchTitles(a, live)
 	live.stopWakes = b.watchWakes(a, live)
 	live.stopPasses = b.watchPasses(a, live)
 	return view
@@ -1657,14 +1668,6 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	defer close(live.pumpDone)
 	ok, failure := true, ""
 	kind, status := "", 0
-	changed := func(mutate func(*appwire.Agent)) {
-		var view appwire.Agent
-		b.locked(func() {
-			mutate(&a.view)
-			view = a.view
-		})
-		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
-	}
 	entry := func(e appwire.Entry) {
 		e.Agent, e.Turn, e.At = id, turn, b.now()
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: e})
@@ -1840,8 +1843,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			ok, failure, kind, status = true, "", "", 0
 			b.noteContext(a, live)
 		case session.EventTitleChanged:
-			if title := strings.TrimSpace(event.Text); title != "" {
-				changed(func(v *appwire.Agent) { v.Title = title })
+			// A standing lane is the sole name source when supported; duplicated
+			// turn events must not race a newer detached or manual name.
+			if live.titlesDone == nil {
+				b.titleChanged(a, live, event.Text)
 			}
 		case session.EventTaskUpdate, session.EventTaskProposal, session.EventTaskPhase, session.EventJobUpdate, session.EventRenderUpdate, session.EventMediaUpdate:
 			// A task a running task call made is that call's task.
@@ -2136,6 +2141,9 @@ func (b *appBackend) release(a *appAgent) {
 func (b *appBackend) finish(live *appLive) {
 	b.locked(func() { live.closed = true })
 	b.landPilots(live)
+	if live.stopTitles != nil {
+		live.stopTitles()
+	}
 	if live.stopTasks != nil {
 		live.stopTasks()
 	}
@@ -2156,7 +2164,10 @@ func (b *appBackend) finish(live *appLive) {
 		case <-wait:
 		}
 	}
-	for _, done := range []chan struct{}{live.lanesDone, live.asksDone} {
+	for _, done := range []chan struct{}{live.lanesDone, live.asksDone, live.titlesDone} {
+		if done == nil {
+			continue
+		}
 		select {
 		case <-done:
 		case <-wait:

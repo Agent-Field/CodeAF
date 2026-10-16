@@ -220,6 +220,8 @@ func (b *appBackend) Rename(id, title string) (appwire.Agent, error) {
 	if err != nil {
 		return appwire.Agent{}, err
 	}
+	a.nameGate.Lock()
+	defer a.nameGate.Unlock()
 	door, ok := live.conn.Conv.(appRenamer)
 	if !ok {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, "this conversation cannot be renamed")

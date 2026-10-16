@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/catalog"
@@ -1103,7 +1104,7 @@ func TestAppCreateWithTextStartsTheTurnAndNamesTheAgent(t *testing.T) {
 	if agent.Workspace != homeDir {
 		t.Fatalf("workspace = %q, want the home folder %q", agent.Workspace, homeDir)
 	}
-	if want := session.FirstMessageName(words); agent.Title != want || !strings.HasSuffix(want, "…") || len([]rune(want)) > 41 {
+	if want := session.OpeningName(words, nil); agent.Title != want || !strings.HasSuffix(want, "…") || len([]rune(want)) > 40 {
 		t.Fatalf("title = %q, want %q", agent.Title, want)
 	}
 	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
@@ -1473,44 +1474,90 @@ func TestAppARealAlwaysIsHonouredOnTheNextCall(t *testing.T) {
 	}
 }
 
-// AN APP AGENT KEEPS THE NAME ITS FIRST MESSAGE GAVE IT. A real conversation
-// created with words is named by them at once, the engine's own naming does
-// not rename it once the turn is answered, and the disk says the same name
-// after the conversation is let go.
-func TestAppARealAgentKeepsItsFirstMessageName(t *testing.T) {
+// AN APP AGENT IS NAMED FROM WHAT ITS FIRST MESSAGE WAS ABOUT, ONCE, BY THE
+// MODEL THE PERSON CONFIGURED FOR TITLES. A real conversation created with
+// words and a file is drawn under the opening name at once — the words, never
+// the file's path — and the engine's own name replaces it when the local model
+// answers. The model was shown the words and the file's NAME and nothing the
+// harness wrote; a later message, a second turn and a reopen buy no second name,
+// and the disk says the same name after the conversation is let go.
+func TestAppARealAgentIsNamedOnceFromItsIntent(t *testing.T) {
 	root := resolvedTempDir(t)
-	_, workspace := wakeEnvironment(t, root)
+	model, workspace := wakeEnvironment(t, root)
+	if err := os.WriteFile(filepath.Join(workspace, "plan.md"), []byte("# plan\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
 	words := "say done and then tell me about the weather in the harbour today"
-	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: workspace, Text: words})
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: workspace, Text: words, Attachments: []appwire.AttachSource{
+		{Kind: appwire.AttachFile, Path: "plan.md"},
+	}})
 	if err != nil {
 		backend.Close()
 		t.Fatalf("create = %v", err)
 	}
-	want := session.FirstMessageName(words)
-	if agent.Title != want {
+	opening := session.OpeningName(words, []session.MessageAttachment{{Kind: "file", Path: "plan.md"}})
+	if agent.Title != opening || utf8.RuneCountInString(agent.Title) > session.AppNameLimit || strings.Contains(agent.Title, "plan.md") {
 		backend.Close()
-		t.Fatalf("title = %q, want %q", agent.Title, want)
+		t.Fatalf("title = %q, want the opening name %q", agent.Title, opening)
 	}
 	rec.waitFor(t, 30*time.Second, appTurnDone)
+	// The engine's name — the local model's whole answer — arrives as an
+	// ordinary agent change.
+	rec.waitFor(t, 30*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && event == appwire.EventAgentChanged && c.Agent.ID == agent.ID && c.Agent.Title == "done"
+	})
+	// A second message is a second turn, and no second name.
+	appTurnDoneFor(t, rec, appSendWithWhenIdle(t, backend, agent.ID, "and now the tides, please", "c-2", nil))
 	if err := backend.Close(); err != nil {
 		t.Fatal(err)
 	}
-	rec.mu.Lock()
-	for j, event := range rec.events {
-		if c, ok := rec.data[j].(appwire.AgentChanged); ok && event == appwire.EventAgentChanged && c.Agent.Title != want {
-			rec.mu.Unlock()
-			t.Fatalf("renamed to %q", c.Agent.Title)
+	asked := namerRequests(model)
+	if len(asked) != 1 {
+		t.Fatalf("the title model was asked %d times, want once", len(asked))
+	}
+	for _, want := range []string{words, "plan.md"} {
+		if !strings.Contains(asked[0], want) {
+			t.Fatalf("the title model was not shown %q:\n%s", want, asked[0])
 		}
 	}
-	rec.mu.Unlock()
-	fresh := newAppBackend(newAppRecorder(), nil)
-	defer fresh.Close()
+	for _, banned := range []string{"Attached file", workspace, "tides"} {
+		if strings.Contains(asked[0], banned) {
+			t.Fatalf("the title model was shown %q:\n%s", banned, asked[0])
+		}
+	}
+
+	// Let go and read back: the disk says the engine's name, and opening the
+	// conversation again and speaking buys nothing.
+	freshRec := newAppRecorder()
+	fresh := newAppBackend(freshRec, appOpenInProcess)
 	agents, err := fresh.ListAgents(workspace)
-	if err != nil || len(agents) != 1 || agents[0].Title != want {
+	if err != nil || len(agents) != 1 || agents[0].Title != "done" {
+		fresh.Close()
 		t.Fatalf("listed = %+v, %v", agents, err)
 	}
+	appTurnDoneFor(t, freshRec, appSendWithWhenIdle(t, fresh, agent.ID, "one more thing", "c-3", nil))
+	fresh.Close()
+	if again := namerRequests(model); len(again) != 1 {
+		t.Fatalf("reopening and speaking bought %d more names", len(again)-1)
+	}
+}
+
+// namerRequests is what each title request carried, from the local model's own
+// record: the requests whose system message is the namer's.
+func namerRequests(model *recordingModel) []string {
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	var asked []string
+	for _, request := range model.requests {
+		texts := request.texts()
+		if len(texts) > 0 && texts[0] == "You name conversations." {
+			asked = append(asked, strings.Join(texts[1:], "\n"))
+		}
+	}
+	return asked
 }
 
 // AGENTS.CREATE ANSWERS AT ONCE. The answer leaves while the conversation is
