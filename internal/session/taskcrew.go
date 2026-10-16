@@ -908,46 +908,21 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 		if pick.Send != current || crew.original[seat] != key {
 			continue
 		}
-		if pick.Pinned || decision.Mode == crewroute.ModeOne {
-			// A PINNED ROLE — a saved pin, a pin for this task, one model for
-			// every role — HOLDS ITS EXACT MODEL when its route fails. Only a
-			// person moves it; the history says it failed, when and why.
-			if !crew.heldLocked(seat, pick.Send, string(kind)) {
-				crew.noteChangeLocked(TaskCrewChange{At: time.Now(), Seat: seat, From: pick.Model, FromProvider: pick.Provider, FromSend: pick.Send,
-					By: TaskCrewByEngine, Kind: TaskCrewChangeHeld, Why: string(kind)})
-			}
+		// A PINNED ROLE — a saved pin, a pin for this task, one model for
+		// every role — HOLDS ITS EXACT MODEL when its route fails. Only a
+		// person moves it; the history says it failed, when and why.
+		if seatHoldsItsModel(pick, decision.Mode) {
+			noteHeldFailureLocked(crew, seat, pick, kind)
 			continue
 		}
-		rescue := config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
-		if run.recoveredCrew != nil {
-			rescue = crew.rescue[seat]
-		}
-		rung, ok := crew.takeRungLocked(seat, append(append([]crewroute.Pick(nil), crew.ladders[seat]...), rescue...))
+		rung, ok := crew.takeRungLocked(seat, rescueLadderLocked(a, run, crew, decision, seat))
 		if !ok {
 			continue
 		}
-		decision = withFreeNotice(decision.WithRung(seat, rung, crewWhy(kind, provided)), rung)
-		crew.noteChangeLocked(TaskCrewChange{Seat: seat, From: pick.Model, FromProvider: pick.Provider, FromSend: pick.Send, To: rung.Model, ToProvider: rung.Provider, ToSend: rung.Send,
-			By: TaskCrewByEngine, Kind: TaskCrewChangeFallback, Why: string(kind)})
-		if crew.seatSends[seat] != "" {
-			crew.seatSends[seat] = rung.Send
-		} else {
-			shared = true
-		}
-		if next.Send == "" {
-			next = rung
-		}
+		decision, next, shared = fallBackSeatLocked(crew, decision, seat, pick, rung, kind, provided, next, shared)
 	}
 	if next.Send == "" {
-		action := crew.actionLocked(kind, provided, until)
-		stopped := crewStopsOn(kind) || len(crew.broke) > 0 || len(crew.gone) > 0
-		if stopped {
-			// THE CAUSE IS KNOWN, SO THE LINE SAYS THE ONE THING TO DO — and
-			// not "/redo stronger", which no stronger crew on the same
-			// account could make work.
-			decision.Stopped = action
-			crew.decision = decision
-		}
+		action, stopped, decision := nowhereLeftLocked(crew, decision, kind, provided, until)
 		crew.mu.Unlock()
 		if stopped {
 			a.republishCrew(run, decision, current+" could not start · "+action)
@@ -964,6 +939,66 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 	crew.mu.Unlock()
 	a.republishCrew(run, decision, fmt.Sprintf("%s could not start (%s) · moved to %s", current, crewWhy(kind, provided), next.Send))
 	return "", true
+}
+
+// seatHoldsItsModel is a role a failure must not move: a pin, or one model
+// for every role. Only a person changes it.
+func seatHoldsItsModel(pick crewroute.Pick, mode crewroute.Mode) bool {
+	return pick.Pinned || mode == crewroute.ModeOne
+}
+
+// noteHeldFailureLocked records that a held role's route failed, once per
+// send and reason. The caller holds crew.mu.
+func noteHeldFailureLocked(crew *taskCrew, seat crewroute.Seat, pick crewroute.Pick, kind provider.RouteFailure) {
+	if crew.heldLocked(seat, pick.Send, string(kind)) {
+		return
+	}
+	crew.noteChangeLocked(TaskCrewChange{At: time.Now(), Seat: seat, From: pick.Model, FromProvider: pick.Provider, FromSend: pick.Send,
+		By: TaskCrewByEngine, Kind: TaskCrewChangeHeld, Why: string(kind)})
+}
+
+// rescueLadderLocked is the rungs a seat may fall to: its own ladder, then
+// the rescue list. A crew restored from a checkpoint uses the rescue it kept,
+// not today's settings. The caller holds crew.mu.
+func rescueLadderLocked(a *Agent, run *beltRun, crew *taskCrew, decision crewroute.Decision, seat crewroute.Seat) []crewroute.Pick {
+	rescue := config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
+	if run.recoveredCrew != nil {
+		rescue = crew.rescue[seat]
+	}
+	return append(append([]crewroute.Pick(nil), crew.ladders[seat]...), rescue...)
+}
+
+// fallBackSeatLocked moves one seat onto rung and remembers the first such
+// rung as where the shared send goes. A seat that had its own send keeps
+// that send pointed at the rung; a shared send is swapped once, outside.
+// The caller holds crew.mu.
+func fallBackSeatLocked(crew *taskCrew, decision crewroute.Decision, seat crewroute.Seat, pick, rung crewroute.Pick, kind provider.RouteFailure, provided string, next crewroute.Pick, shared bool) (crewroute.Decision, crewroute.Pick, bool) {
+	decision = withFreeNotice(decision.WithRung(seat, rung, crewWhy(kind, provided)), rung)
+	crew.noteChangeLocked(TaskCrewChange{Seat: seat, From: pick.Model, FromProvider: pick.Provider, FromSend: pick.Send, To: rung.Model, ToProvider: rung.Provider, ToSend: rung.Send,
+		By: TaskCrewByEngine, Kind: TaskCrewChangeFallback, Why: string(kind)})
+	if crew.seatSends[seat] != "" {
+		crew.seatSends[seat] = rung.Send
+	} else {
+		shared = true
+	}
+	if next.Send == "" {
+		next = rung
+	}
+	return decision, next, shared
+}
+
+// nowhereLeftLocked is the one action when no seat could move. A cause a
+// person can fix — credit, a key, a limit — stops the task on that action,
+// rather than offering a stronger crew on the same account. The caller holds
+// crew.mu and unlocks after.
+func nowhereLeftLocked(crew *taskCrew, decision crewroute.Decision, kind provider.RouteFailure, provided string, until time.Time) (string, bool, crewroute.Decision) {
+	action := crew.actionLocked(kind, provided, until)
+	stopped := crewStopsOn(kind) || len(crew.broke) > 0 || len(crew.gone) > 0
+	if stopped {
+		decision.Stopped = action
+		crew.decision = decision
+	}
+	return action, stopped, decision
 }
 
 // crewFailedLocked writes a failed first call to the router's log for every

@@ -954,33 +954,57 @@ func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 // of its own on the brief, which is not what was asked for, so its failure is
 // answered as a refusal.
 func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec taskSpec, elsewhere string) (string, bool, bool) {
-	if !(bashBeltAsked() || spec.via != "") || chatRunEngine == nil || a.config.InTask {
+	if !a.runRoadOwns(spec) {
 		return "", false, false
 	}
 	a.mu.Lock()
 	question := questionAtTaskHandoff(a.owedAsks)
 	a.mu.Unlock()
-	var via *delegate.Delegate
-	if spec.via != "" {
-		m, err := a.delegateFor(spec.via)
-		if err != nil {
-			a.settleUnstartedHandoff(p.id, spec.title, err)
-			return err.Error(), true, true
-		}
-		via = &m
+	via, err := a.handoffDelegate(spec)
+	if err != nil {
+		a.settleUnstartedHandoff(p.id, spec.title, err)
+		return err.Error(), true, true
 	}
-	description := proposalBrief(spec, via)
-	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
-	// This context is the turn's, and the turn cancels it on its way out
-	// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
-	// the moment the model finished its sentence. The values ride along, the
-	// cancellation does not. What ends it instead is the conversation: the
-	// person's stop (stoprun.go) or the room closing ([Agent.cutBeltRun]).
-	//
-	// WHETHER IT JOINED is the start door's answer and not a look taken
-	// before it: in a batch committed at one moment none of the hand-offs
-	// could see a live run beforehand, and the one that opened the run is
-	// decided under the start lock ([Agent.startOrJoinTaskRunVia]).
+	joined, stand, asked, err := a.startApprovedHandoff(ctx, p, spec, via, question)
+	// A ROLE WITH NOTHING ALLOWED TO RUN ON IS A QUESTION, NOT A FAILURE: the
+	// task waits, asks, and starts from here once a model is allowed
+	// (taskrouting.go). Nothing ran and nothing was moved onto another model.
+	if receipt, parked := a.parkUnroutedHandoff(ctx, p, spec, elsewhere, via, err); parked {
+		return receipt, false, true
+	}
+	return a.handoffAnswer(p, spec, elsewhere, via, asked, stand, joined, err)
+}
+
+// runRoadOwns is an approved hand-off this door starts as a run: the bash
+// belt, or a named program. A session inside a task, or one with no run
+// engine, leaves the hand-off to the older road.
+func (a *Agent) runRoadOwns(spec taskSpec) bool {
+	if chatRunEngine == nil || a.config.InTask {
+		return false
+	}
+	return bashBeltAsked() || spec.via != ""
+}
+
+// handoffDelegate is the program a hand-off named, or nil when it named none.
+// A name this session cannot resolve is the error, and the hand-off does not start.
+func (a *Agent) handoffDelegate(spec taskSpec) (*delegate.Delegate, error) {
+	if spec.via == "" {
+		return nil, nil
+	}
+	m, err := a.delegateFor(spec.via)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// startApprovedHandoff registers the run. The context it is given outlives
+// the turn that launched it: that turn cancels its own context on the way out
+// (agent.go, `defer cancel(nil)`), and a run driven under it would stop when
+// the model finished its sentence. What ends the run is the conversation, the
+// person's stop or the room closing. Whether it joined a run already underway
+// is this door's answer, decided under the start lock.
+func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spec taskSpec, via *delegate.Delegate, question string) (bool, taskStand, []string, error) {
 	stand := p.stand
 	if via != nil {
 		stand = delegateStand(stand.dir)
@@ -991,19 +1015,16 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		prior = a.keepProgramAttempt(p.id, a.programAttemptOf())
 		ctx = withProgramWish(ctx, programWish{thinking: spec.thinking, carry: a.programCarryOf(prior, via.Name)})
 	}
-	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
+	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalBrief(spec, via), spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
-	// A ROLE WITH NOTHING ALLOWED TO RUN ON IS A QUESTION, NOT A FAILURE: the
-	// task waits, asks, and starts from here once a model is allowed
-	// (taskrouting.go). Nothing ran and nothing was moved onto another model.
-	if receipt, parked := a.parkUnroutedHandoff(ctx, p, spec, elsewhere, via, err); parked {
-		return receipt, false, true
-	}
-	// AN APPROVED HAND-OFF THAT DID NOT START IS SETTLED WHERE IT IS SEEN. The
-	// card's last word was the approval ([taskWait.decided]), which every
-	// surface reads as work waiting to begin; the refusal below reaches only the
-	// model. So every ending of this door that started nothing publishes the
-	// row as failed, in the same words, before it answers.
+	return joined, stand, asked, err
+}
+
+// handoffAnswer is what an approved hand-off that was this door's to start
+// says back. A start that failed is settled as failed before the model hears
+// it, except a run road that is not there at all, which the older engine
+// still admits under the same id.
+func (a *Agent) handoffAnswer(p *stagedProposal, spec taskSpec, elsewhere string, via *delegate.Delegate, asked []string, stand taskStand, joined bool, err error) (string, bool, bool) {
 	a.settleUnstartedHandoff(p.id, spec.title, err)
 	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 		return refusal.Error(), true, true
