@@ -1041,7 +1041,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				// THE LANE IS READ BEFORE THE MONEY IS BANKED, because the row the
 				// money writes is this call's and the witness is what measured it.
 				facts := a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
-				a.addUsage(&turn, response, model, served.Name(), facts)
+				a.addUsage(&turn, response, model, served.Name(), facts, runIdentity(ctx))
 				a.tellLaneNews(model, facts, hedge)
 				droppedCall := forming.any() || warm.anyAnnounced()
 				a.keepSteeredPartial(partial, reasoning, droppedCall, hub, cutDroppedCallNote(err))
@@ -1097,7 +1097,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// ledger line carries ([Agent.addUsage]) rather than something held back
 		// for the turn's seal to collect.
 		facts := a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
-		a.addUsage(&turn, response, model, served.Name(), facts)
+		a.addUsage(&turn, response, model, served.Name(), facts, runIdentity(ctx))
 		// AND THE SURFACE IS TOLD WHO ANSWERED, on the same line and at the same
 		// grain (lanenews.go). It is the push half of a seam whose pull half
 		// cannot exist: a status line cannot see a stream, and the arrow between
@@ -4192,6 +4192,8 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // is not a call), whether this was a step of the conversation, and whether its
 // money arrived too late to belong to the turn now running.
 type bankedCall struct {
+	// run is captured from the call's immutable execution context, never the current turn.
+	run    string
 	used   Usage
 	model  string
 	role   string
@@ -4331,7 +4333,7 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 // standing (runTurn re-latches on an answer from further down the chain), and
 // `served` is the endpoint the router says answered, "" when nothing said.
 // `lane` is what the witness measured about THIS request and nothing else.
-func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts) {
+func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts, runIDs ...string) {
 	// The row's endpoint is the answer's own naming or, for a service that
 	// declared the one machine it is, that declared name ([Agent.attributedEndpoint]).
 	// `lane` was read from the answer alone, so what the lane layer learns and
@@ -4389,7 +4391,11 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 	// It is the same fact the model-call log's tag carries (loop.go), read from
 	// the one config row that states it; an ordinary conversation or worker
 	// leaves it empty and the row names no role, which is what it always did.
-	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole)})
+	run := ""
+	if len(runIDs) > 0 {
+		run = runIDs[0]
+	}
+	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole), run: run})
 
 	// AND THE TURN KEEPS THE SAME SHARE PER ANSWERING MODEL, under the very
 	// name the row above banks, so a turn that hopped seals one usage line per

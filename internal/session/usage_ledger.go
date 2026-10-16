@@ -131,6 +131,10 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
+	// Run is the immutable execution that made this call, when its caller
+	// supplied one. Older, auxiliary, or late receipt rows may have no identity;
+	// absence must never be read as a single aggregate run.
+	Run string `json:"run,omitempty"`
 	// At is the instant the call was journaled, RFC3339 with nanoseconds.
 	At time.Time `json:"at"`
 	// Day is At's LOCAL calendar day, "2006-01-02". It is written down rather
@@ -965,6 +969,7 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		Reconciled: call.reconciled,
 
 		Session: session,
+		Run:     call.run,
 		// The node this row belongs to: the node this agent IS, or — for a
 		// checker, which is not the node — the node it CHECKS
 		// ([Config.checksNode]). The two are never both set, and the figure is

@@ -1795,6 +1795,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// the next reply.
 	a.moveAsked.Store(false)
 	turnCtx, cancel := context.WithCancelCause(ctx)
+	turnCtx = withRunIdentity(turnCtx)
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
 	// the context because the waits that need it are several frames down inside
@@ -2011,6 +2012,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// turn opens empty and reads its note off the steering queue, and a
 		// matcher that went looking in the transcript would score the last thing
 		// somebody typed against a turn they did not start.
+		a.file.appendRunIdentity(turnCtx)
 		completed = a.runTurn(turnCtx, hub, user)
 	}()
 	return events
