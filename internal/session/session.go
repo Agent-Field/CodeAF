@@ -2969,6 +2969,9 @@ type Agent struct {
 	// carried on every direction forwarded under it, so two lives cannot be
 	// mistaken for one (task_forward.go).
 	personScope string
+	// directiveSeq counts the `/task` directives this life has heard, so each
+	// is a source of its own (task_source.go). Guarded by mu.
+	directiveSeq uint64
 	// personHeard is the turn [Agent.personAsk] was typed into, and it is what
 	// tells "the person is asking for this right now" from "the person last said
 	// something two turns ago". A woken turn — a task landed, a job exited —
@@ -3564,6 +3567,9 @@ type Agent struct {
 	// appHeldRuns is every run row a person holds from the app, by its number,
 	// so each republish of the row keeps saying it is held (task_app_runs.go).
 	appHeldRuns sync.Map
+	// runSources is the source captured for a run row before its first publish,
+	// by the row's number (task_source.go). The first publish consumes it.
+	runSources sync.Map
 	// runSummaryBusy holds the roots whose card reading is being bought right
 	// now ([Agent.RefreshRunSummary]), so a second surface that asks in the same
 	// moment keeps the last reading rather than paying for a second one.

@@ -450,6 +450,7 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, quest
 	}
 
 	id := g.reserve()
+	a.expectRunSource(id, taskSourceFrom(ctx))
 	title := taskPersonTitle(brief)
 	// The default run door uses the same placement evidence as a proposal or
 	// legacy task. Starting from home must not discard the named project.
@@ -1646,6 +1647,8 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	notice = carryRunRow(g, notice)
+	notice = a.sourcedRunRow(g, notice)
+	notice.Dismissed = g.isDismissed(strconv.FormatUint(notice.ID, 10))
 	// A ROW A PERSON HOLDS STAYS HELD through every republish the run makes,
 	// until it is released or it settles.
 	if _, held := a.appHeldRuns.Load(notice.ID); held {

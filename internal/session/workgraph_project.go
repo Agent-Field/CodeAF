@@ -215,6 +215,20 @@ func wgRoute(rec *TaskCrewRecord) []workgraph.RouteSeat {
 	return out
 }
 
+// wgSource is a recorded source as the graph's fact: bounded again and scrubbed,
+// because a graph is read by more than the person whose machine it is. A record
+// with no valid source has none, and nothing stands in for it.
+func wgSource(s *TaskSource) *workgraph.TaskSource {
+	if !s.valid() {
+		return nil
+	}
+	text, cut := boundSourceText(s.Text)
+	return &workgraph.TaskSource{
+		ID: s.ID, Kind: s.Kind, Text: redact.Secrets(text), Cut: cut || s.Cut,
+		At: workgraph.Stamp(s.At),
+	}
+}
+
 // kindOf is the engine's kind word for a record.
 func wgKind(r taskRecord) string {
 	if r.Kind == TaskKindQuick || r.Quick != nil {
@@ -243,6 +257,7 @@ func nodeFact(owner string, r taskRecord) workgraph.Fact {
 		Landing: wgLanding(r.Merge, r.EndedAt), Files: wgFiles(r.Changed, r.Wrote),
 		Spend: wgSpend(r.CostUSD, wgTokens(r)), Links: "recorded",
 		ElapsedMS: wgElapsed(r.ElapsedMS, r.State), Attempt: r.Attempt,
+		Source: wgSource(r.Source),
 	}
 	if r.Parent != 0 {
 		n.Parent = wgID(owner, r.Parent)
@@ -290,7 +305,7 @@ func runFact(owner string, r runRecord, titles map[uint64]string) workgraph.Fact
 		Clock:   workgraph.Clock{StartedAt: workgraph.Stamp(r.StartedAt), EndedAt: workgraph.Stamp(r.EndedAt)},
 		Landing: wgLanding(r.Merge, r.EndedAt), Files: wgFiles(r.Changed, nil),
 		Spend: wgSpend(r.CostUSD, 0), Links: "unrecorded", Route: wgRoute(r.CrewState),
-		ElapsedMS: wgElapsed(r.ElapsedMS, r.State),
+		ElapsedMS: wgElapsed(r.ElapsedMS, r.State), Source: wgSource(r.Source),
 	}
 	if r.State == TaskInterrupted {
 		n.State = string(TaskRunning)

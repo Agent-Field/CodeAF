@@ -363,6 +363,10 @@ type GraphTotals struct {
 	Members  int `json:"members,omitempty"`
 	// ByState counts nodes by their engine state word.
 	ByState map[string]int `json:"by_state,omitempty"`
+	// Dismissed is how many of the nodes the person hid from the default view. They
+	// are STILL COUNTED in Nodes and ByState (a hidden failure is still a failure),
+	// so a surface's default count is its figure minus these.
+	Dismissed int `json:"dismissed,omitempty"`
 }
 
 // Coverage says how much of the truth the answer is built from, so a missing
@@ -446,6 +450,34 @@ const (
 	TargetMissing = "missing"
 )
 
+// The kinds of [TaskSource].
+const (
+	SourceMessage   = "message"
+	SourceDirective = "directive"
+)
+
+// MaxSourceBytes bounds the words a source carries. The engine cuts a message
+// to this before it records it; a projection cuts again so no producer can exceed it.
+const MaxSourceBytes = 4096
+
+// TaskSource is the message or directive that started a task: a captured fact
+// of the producer's, recorded when the work was admitted and never read out of a
+// title, a body, a time or an order. Every task made from one message carries
+// the same ID, which is what lets a surface draw them as one block. ABSENT IS
+// UNKNOWN — a record from before sources were captured, or work nobody typed
+// into — and is never filled in.
+type TaskSource struct {
+	// ID names the message or directive. It is opaque: compare it, do not parse it.
+	ID   string `json:"id"`
+	Kind string `json:"kind" enum:"message,directive"`
+	// Text is the person's words, the first MaxSourceBytes bytes of them, with
+	// secrets redacted; Cut says they were shortened.
+	Text string `json:"text,omitempty"`
+	Cut  bool   `json:"cut,omitempty"`
+	// At is when the session heard it; absent when unknown.
+	At *time.Time `json:"at,omitempty"`
+}
+
 // GraphNode is one task.
 type GraphNode struct {
 	// ID is the task's wire id, Ref its identity and Seq its owner's admission
@@ -496,6 +528,12 @@ type GraphNode struct {
 	// Crew is the sub-crew the task's owner sits in, inside the scope; absent
 	// outside a crew scope and for an owner in no crew of it.
 	Crew *CrewPlace `json:"crew,omitempty"`
+
+	// Source is the message or directive that started the task, and Dismissed says
+	// the person hid it from the default view (reversibly; the work is unchanged).
+	// Both are facts of the record: a task with no Source has none recorded.
+	Source    *TaskSource `json:"source,omitempty"`
+	Dismissed bool        `json:"dismissed,omitempty"`
 
 	Clock        Clock      `json:"clock"`
 	Instructions *GraphText `json:"instructions,omitempty"`

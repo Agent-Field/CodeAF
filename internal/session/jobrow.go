@@ -166,6 +166,11 @@ func (a *Agent) announceJobRow(info jobInfo) {
 		// person reading it afterwards.
 		Report: jobRowLead(info.id, info.logPath),
 	}
+	if minted {
+		notice.Source = a.bornSource()
+	} else {
+		notice = a.sourcedRunRow(a.graph(), notice)
+	}
 	// THE ORDER IS THE FAMILY SEAM'S ORDER, and for its reasons
 	// ([orchestrateFamily.publish]): the news goes to whoever is watching before
 	// it goes to a file. No lock of the registry's is held across either call —

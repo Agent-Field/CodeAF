@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
 
 // appTurnLong is how long a reply runs before the app is told it is running
@@ -246,7 +247,23 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 		task.Line = appTaskLine(notice, phase)
 	}
 	task.Models = appNoticeModels(notice, task.Proposed)
+	task.Source, task.Dismissed = appSourceOf(notice.Source), notice.Dismissed
 	return task, true
+}
+
+// appSourceOf is a recorded source on the wire: bounded again and scrubbed, and
+// nil when the engine captured none. A source is never made up here.
+func appSourceOf(source *session.TaskSource) *appwire.TaskSource {
+	if source == nil || source.ID == "" || (source.Kind != appwire.SourceMessage && source.Kind != appwire.SourceDirective) {
+		return nil
+	}
+	text, cut := workgraph.Cut(source.Text, session.MaxTaskSourceBytes)
+	out := &appwire.TaskSource{ID: source.ID, Kind: source.Kind, Text: redact.Secrets(text), Cut: cut || source.Cut}
+	if !source.At.IsZero() {
+		at := source.At
+		out.At = &at
+	}
+	return out
 }
 
 // appTaskOfView is one task as the engine's app read describes it.
@@ -281,6 +298,11 @@ func appTaskOfView(agent string, view session.AppTaskView) appwire.Task {
 	task.Paused = view.State == "paused" || view.Held
 	task.Models = appModelsChip(view.RoutingState, view.Crew, view.TaskPins, view.Model)
 	task.Model, task.StartedBy = view.Model, view.Origin
+	task.Source, task.Dismissed = appSourceOf(view.Source), view.Dismissed
+	if !view.FinishedAt.IsZero() && (task.State == appwire.TaskDone || task.State == appwire.TaskFailed) {
+		ended := view.FinishedAt
+		task.FinishedAt = &ended
+	}
 	task.Instructions = redact.Secrets(strings.TrimSpace(view.Brief))
 	task.CostUSD = task.SpentUSD
 	// THE STEP COUNT IS SENT WHEN IT IS KNOWN AND OMITTED WHEN IT IS NOT, which
@@ -329,6 +351,11 @@ func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNo
 		}
 		if task.Parent == "" {
 			task.Parent = before.Parent
+		}
+		// A SOURCE IS A FACT OF ADMISSION AND NEVER MOVES: an update that leaves it out
+		// has not changed it.
+		if task.Source == nil {
+			task.Source = before.Source
 		}
 		if task.Group == "" {
 			task.Group = before.Group
@@ -811,6 +838,9 @@ func (b *appBackend) ActOnTask(id, action, verdict, text string) error {
 	for {
 		err := live.conn.Conv.AppTaskAction(intent)
 		if err == nil {
+			if action == session.AppActionDismiss || action == session.AppActionRestore {
+				b.sayDismissal(id, local, live)
+			}
 			return nil
 		}
 		if !known || !strings.Contains(err.Error(), "no such task") || b.now().After(deadline) {
@@ -818,6 +848,36 @@ func (b *appBackend) ActOnTask(id, action, verdict, text string) error {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
+}
+
+// sayDismissal says task.changed for a task the person just hid or brought
+// back, read from the engine AFTER its action returned, so the event carries the
+// state the checkpoint holds and not the one the app hoped for. A plan row has no
+// notice road of its own, which is why the app's door says this itself for every
+// road rather than only for the ones that do.
+func (b *appBackend) sayDismissal(id, local string, live *appLive) {
+	view, found, err := live.conn.Conv.AppTask(local)
+	if err != nil || !found {
+		return
+	}
+	agent, _, _ := appSplitID(id)
+	task := appTaskOfView(agent, view)
+	task.ID = id
+	b.locked(func() {
+		if before, known := live.tasks[id]; known {
+			// The cached task keeps everything the notice road said; the engine's read
+			// moves only what dismissing moves.
+			before.Dismissed, before.UpdatedAt = task.Dismissed, b.now()
+			if before.Source == nil {
+				before.Source = task.Source
+			}
+			task = before
+		} else {
+			task.UpdatedAt = b.now()
+		}
+		live.tasks[id] = task
+	})
+	live.box.Event(appwire.EventTaskChanged, appwire.TaskChanged{Task: task})
 }
 
 // SetTaskModel is the proposal card's Change model: one proposed task's model,
@@ -851,7 +911,8 @@ func appTaskError(err error) error {
 	switch {
 	case strings.Contains(words, "no such task"), strings.Contains(words, "no such quick task"):
 		return appwire.Errorf(appwire.CodeNotFound, "%s", plainWords(words))
-	case strings.Contains(words, "stale"), strings.Contains(words, "not waiting"), strings.Contains(words, "finished"), strings.Contains(words, "unknown"), strings.Contains(words, "must be"), strings.Contains(words, "choose one"):
+	case strings.Contains(words, "stale"), strings.Contains(words, "not waiting"), strings.Contains(words, "finished"), strings.Contains(words, "unknown"), strings.Contains(words, "must be"), strings.Contains(words, "choose one"),
+		strings.Contains(words, "not a settled failure"), strings.Contains(words, "not settled work to hide"), strings.Contains(words, "still has"):
 		return appwire.Errorf(appwire.CodeBadParams, "%s", plainWords(words))
 	}
 	return appEngineError(err)

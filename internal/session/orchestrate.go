@@ -1617,6 +1617,18 @@ func (f *orchestrateFamily) publish(notice TaskNotice) {
 	if f.rows == nil {
 		f.rows = make(map[uint64]TaskNotice, 8)
 	}
+	// WHICH MESSAGE STARTED THIS RUN, said once on its root row and carried by every
+	// row after it, workers included: a run is one block (task_source.go).
+	if prev, drawn := f.rows[notice.ID]; drawn {
+		notice.Source = cloneSource(prev.Source)
+	} else if !notice.Source.valid() {
+		if root, ok := f.rows[f.root]; ok && notice.ID != f.root {
+			notice.Source = cloneSource(root.Source)
+		} else {
+			notice.Source = f.agent.bornSource()
+		}
+	}
+	notice.Dismissed = f.agent.graph().isDismissed(strconv.FormatUint(notice.ID, 10))
 	if _, drawn := f.rows[notice.ID]; !drawn {
 		f.shown = append(f.shown, notice.ID)
 	}

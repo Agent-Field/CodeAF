@@ -37,6 +37,14 @@ type AppTaskView struct {
 	StepsKnown bool
 	Elapsed    int64
 	Version    uint64
+	// Source is the message or directive that started the task, captured when it
+	// was admitted; nil is unknown (task_source.go). Dismissed says the person hid
+	// it from the default view (task_dismiss.go); it changes nothing about the work.
+	Source    *TaskSource
+	Dismissed bool
+	// FinishedAt is when the work ended, as the record kept it; the zero time is
+	// unknown.
+	FinishedAt time.Time
 	// RoutingState and Crew are the task's models in brief (taskrouting.go):
 	// the published decision, never a settings read.
 	RoutingState string
@@ -232,7 +240,7 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 		if state == "incomplete" {
 			state = "failed"
 		}
-		out = append(out, AppTaskView{ID: row.ID, Parent: row.Parent, Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
+		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
 	}
 	out = append(out, a.appProposalViews(cap)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -263,6 +271,7 @@ func (a *Agent) appGraphTasks(out []AppTaskView, cap float64, ids map[string]boo
 		if node.app.Brief != "" {
 			view.Brief = node.app.Brief
 		}
+		view.Source, view.Dismissed, view.FinishedAt = cloneSource(node.spec.source), graph.dismissed[view.ID], node.ended
 		if node.parent != 0 {
 			view.Parent = strconv.FormatUint(node.parent, 10)
 		}
@@ -340,6 +349,11 @@ func appExpect(intent AppTaskIntent, state string, version uint64) error {
 // AppTaskAction keeps admission and landing separate: a proposal answers a wait;
 // a finished task uses the existing continuation, check and acceptance doors.
 func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
+	// DISMISS AND RESTORE ARE ONE GENERIC FACT FOR EVERY ROAD, so they are settled
+	// before the road is chosen (task_dismiss.go).
+	if intent.Action == AppActionDismiss || intent.Action == AppActionRestore {
+		return a.appDismissAction(intent)
+	}
 	id, numeric := strconv.ParseUint(intent.ID, 10, 64)
 	if numeric == nil {
 		if handled, err := a.appProposalAction(id, intent); handled {
@@ -706,7 +720,7 @@ func (a *Agent) appProposalViews(cap float64) []AppTaskView {
 		if question.held {
 			state = "held"
 		}
-		view := AppTaskView{RoutingState: TaskRoutingPicking, ID: strconv.FormatUint(id, 10), Title: notice.Title, Brief: notice.Brief, State: state, Model: notice.Model, Deadline: notice.Deadline, Held: question.held, Cap: cap, Origin: "proposed", Version: question.appVersion + 1}
+		view := AppTaskView{Source: cloneSource(notice.Source), RoutingState: TaskRoutingPicking, ID: strconv.FormatUint(id, 10), Title: notice.Title, Brief: notice.Brief, State: state, Model: notice.Model, Deadline: notice.Deadline, Held: question.held, Cap: cap, Origin: "proposed", Version: question.appVersion + 1}
 		for _, depends := range notice.DependsOn {
 			view.Waits = append(view.Waits, strconv.FormatUint(depends, 10))
 		}

@@ -72,6 +72,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -161,6 +162,10 @@ type taskRecord struct {
 	// always did: the brief has no origin section.
 	OriginJournal string `json:"origin_journal,omitempty"`
 	OriginLine    int    `json:"origin_line,omitempty"`
+	// Source is the message or directive that started the task (task_source.go),
+	// captured at admission. Absent in every checkpoint written before it existed:
+	// the task has no known source, and nothing is reconstructed.
+	Source *TaskSource `json:"source,omitempty"`
 	// Admission is the working context the node was admitted with: bounded
 	// quotations of what was said around the work and handles to the calls that
 	// already ran (admission.go). A resumed node that lost it would be re-opened
@@ -759,6 +764,9 @@ type runRecord struct {
 	// runs from these records long before any plan row is read. Absent is every
 	// run no program had, and every record written before the field existed.
 	Program string `json:"program,omitempty"`
+	// Source is the message or directive that started the run (task_source.go);
+	// absent on a row written before it existed.
+	Source *TaskSource `json:"source,omitempty"`
 
 	State   TaskState `json:"state"`
 	Stopped bool      `json:"stopped,omitempty"`
@@ -840,6 +848,9 @@ type taskDocument struct {
 	Seq     uint64       `json:"seq"`
 	Nodes   []taskRecord `json:"nodes"`
 	Runs    []runRecord  `json:"runs,omitempty"`
+	// Dismissed names the tasks the person hid, by app id (task_dismiss.go). An
+	// added, omitted-when-empty field, so version-1 files stay version-1 files.
+	Dismissed []string `json:"dismissed,omitempty"`
 }
 
 // taskStore is the file and the lock that serializes writes to it.
@@ -1123,6 +1134,12 @@ func (g *TaskGraph) documentLocked() taskDocument {
 	for _, notice := range g.runRowsLocked() {
 		document.Runs = append(document.Runs, runRowRecord(notice))
 	}
+	for id, hidden := range g.dismissed {
+		if hidden {
+			document.Dismissed = append(document.Dismissed, id)
+		}
+	}
+	sort.Strings(document.Dismissed)
 	return document
 }
 
@@ -1149,6 +1166,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Title:      notice.Title,
 		Kind:       notice.Kind,
 		Program:    notice.Program,
+		Source:     cloneSource(notice.Source),
 		State:      state,
 		Stopped:    notice.Stopped,
 		Report:     notice.Report,
@@ -1196,6 +1214,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		Title:     record.Title,
 		Kind:      record.Kind,
 		Program:   record.Program,
+		Source:    cloneSource(record.Source),
 		State:     record.State,
 		Stopped:   record.Stopped,
 		Report:    record.Report,
@@ -1300,6 +1319,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Request:        n.spec.request,
 		OriginJournal:  n.spec.origin.journal,
 		OriginLine:     n.spec.origin.line,
+		Source:         cloneSource(n.spec.source),
 		Admission:      recordedAdmission(n.spec.admission),
 		Brief:          n.spec.brief,
 		Deliverable:    n.spec.deliverable,
@@ -2039,6 +2059,12 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	if document.Seq > g.seq {
 		g.seq = document.Seq
 	}
+	for _, id := range document.Dismissed {
+		if g.dismissed == nil {
+			g.dismissed = make(map[string]bool, len(document.Dismissed))
+		}
+		g.dismissed[id] = true
+	}
 	// THE ADAPTIVE RUNS' ROWS COME BACK AS ROWS AND AS NOTHING ELSE. They are put
 	// where the live ones live — [TaskGraph.runs], which the roster replay walks —
 	// so the column has ONE door and ONE row-space whether a run is happening now
@@ -2189,6 +2215,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			summary:     record.Summary,
 			request:     record.Request,
 			origin:      taskOrigin{journal: record.OriginJournal, line: record.OriginLine},
+			source:      cloneSource(record.Source),
 			admission:   restoredAdmission(record.Admission),
 			brief:       record.Brief,
 			deliverable: record.Deliverable,

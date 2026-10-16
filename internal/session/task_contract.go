@@ -485,6 +485,13 @@ type TaskNotice struct {
 	// publisher that forgets it has not changed it ([Agent.publishRunRow] carries
 	// it forward).
 	Program string
+	// Source is the message or directive this row's work was started by, captured
+	// when the row was first kept and carried by every republish (task_source.go).
+	// Nil is unknown.
+	Source *TaskSource
+	// Dismissed says the person hid this task from the default view. It is a
+	// visibility fact and changes nothing about the work (task_dismiss.go).
+	Dismissed bool
 	// Ceiling is the finite allowance a proposed program run will start with,
 	// spelled for the approval card. Ordinary tasks leave it empty.
 	Ceiling string

@@ -237,6 +237,11 @@ var workMethods = map[string]method{
 	"tasks.decline": taskVerb("decline"),
 	"tasks.typing":  taskVerb("typing"),
 	"tasks.stop":    taskVerb("stop"),
+	// DISMISS HIDES A SETTLED FAILURE FROM THE DEFAULT VIEW AND RESTORE UNDOES IT.
+	// Neither retries, cancels, declines or deletes anything; the engine refuses a
+	// task that is not a settled failure or that something live waits on.
+	"tasks.dismiss": taskVerb("dismiss"),
+	"tasks.restore": taskVerb("restore"),
 	"tasks.note": typed(func(e Engine, p struct {
 		ID       string `json:"id"`
 		Text     string `json:"text"`

@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,6 +46,9 @@ type PlanTaskRow struct {
 	ID      string
 	Title   string
 	Status  string
+	// Source is the message or directive that started the run this row belongs
+	// to, read from the run's own record (task_source.go); nil is unknown.
+	Source *TaskSource `json:",omitempty"`
 	// Hold is why a ready part or an unstarted root has no worker yet. It
 	// crosses the remote wire only while admission refused this row's start.
 	Hold string `json:",omitempty"`
@@ -301,8 +305,24 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		// ([Agent.startKnownTaskRun]), so a comparison against the word `root`
 		// counted nothing on any real run and its row wore no progress.
 		root := store.RootID()
+		// A PLAN ROW'S BLOCK is that of the node or run row its id (or its nearest
+		// ancestor's) names by number (planRowSource). Looked up once per number.
+		parents := make(map[string]string, len(tasks))
+		for _, task := range tasks {
+			parents[task.ID] = task.ParentID
+		}
+		memo := map[string]*TaskSource{}
+		known := func(number string) *TaskSource {
+			if source, ok := memo[number]; ok {
+				return source
+			}
+			n, _ := strconv.ParseUint(number, 10, 64)
+			memo[number] = a.tasker().sourceOfID(n)
+			return memo[number]
+		}
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
+			row.Source = cloneSource(planRowSource(task.ID, func(id string) string { return parents[id] }, known))
 			planCarriedRow(&row, carried[task.ID])
 			clocks.apply(&row, dir, task, root)
 			a.markPlanInterrupted(&row)

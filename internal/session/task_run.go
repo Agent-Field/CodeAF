@@ -1026,6 +1026,10 @@ type TaskGraph struct {
 	nodes map[uint64]*TaskNode
 	// Deleted ids cannot admit later children or return through run updates.
 	deleted map[uint64]bool
+	// dismissed is the set of tasks the person hid from the default view, by the
+	// id the app reads them under (a number, or a plan row's "t-…"). It is a
+	// visibility fact only and is persisted in the checkpoint (task_dismiss.go).
+	dismissed map[string]bool
 	// plan is the bash belt's plan store side (plandb_plan.go), nil on every
 	// session outside the experiment and until the first ordinary task seeds
 	// it. planMu is ITS gate, and the lock order is written at the top of
@@ -1391,6 +1395,14 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// WHOSE TURN HANDED THIS OUT, read once, before the node exists
 	// (turnhandoff.go).
 	admitter := g.admittingAgent(spec)
+	// WHICH MESSAGE OR DIRECTIVE STARTED IT, stamped at this one door for the
+	// roads that did not carry one: a child inherits its parent's block and never
+	// the conversation's current one; a root takes what its admitting agent is
+	// answering now; and nobody typed into a woken turn, so it has none
+	// (task_source.go).
+	if !spec.source.valid() {
+		spec.source = g.inheritedSource(spec, admitter)
+	}
 	node := &TaskNode{
 		graph:      g,
 		id:         id,
@@ -3786,9 +3798,11 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		thinking = *n.nextEffort
 	}
 	return TaskNotice{
-		Thinking: thinking,
-		ID:       n.id,
-		Title:    n.spec.title,
+		Thinking:  thinking,
+		ID:        n.id,
+		Source:    cloneSource(n.spec.source),
+		Dismissed: n.graph.dismissed[strconv.FormatUint(n.id, 10)],
+		Title:     n.spec.title,
 		// Reopened task pages need the contract even when no proposal card survives.
 		Brief:      n.spec.brief,
 		Summary:    n.spec.summary,
@@ -4890,6 +4904,10 @@ func (a *Agent) readsTheDecisionLocked(node *TaskNode) bool {
 // A surface reading both sees an in-turn update on both, exactly as a surface
 // holding two Submit channels sees each event on each (see [Agent.Submit]).
 func (a *Agent) emitTaskUpdate(notice TaskNotice) {
+	// WHETHER THE PERSON HID IT is the graph's fact, said on the one door every
+	// move goes through, so no road that builds a notice by hand can un-hide a task
+	// by forgetting to say so (task_dismiss.go).
+	notice.Dismissed = a.tasker().isDismissed(strconv.FormatUint(notice.ID, 10))
 	event := Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice}
 	a.mu.Lock()
 	hub := a.hub

@@ -321,6 +321,10 @@ type taskSpec struct {
 	// before origins were carried, a test that never set one — and
 	// [composeBrief] draws nothing for it.
 	origin taskOrigin
+	// source is the message or directive that started this work, captured when
+	// it was admitted and never read back out of any text (task_source.go). Nil
+	// is unknown.
+	source *TaskSource
 	// admission is the WORKING CONTEXT this node was admitted with: bounded
 	// quotations of what was said around the work, with who said them, and
 	// handles to the calls that already ran (admission.go). Every door compiles
@@ -763,6 +767,10 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// so a nested worker still finds the person's turn, not its parent's
 	// journal.
 	spec.origin = a.taskOriginRef()
+	// AND WHICH MESSAGE IT CAME FROM, captured now and not at approval: the person
+	// may type again while the card is open, and the card is still about the message
+	// that made it (task_source.go). A node inherits its own block.
+	spec.source = a.bornSource()
 	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
 	// already holds (taskstands.go) before anybody is asked anything, so the card
 	// the person answers names the project rather than a folder under a session.
@@ -918,6 +926,9 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// is not there at all (no engine linked, no place for a store) leaves this
 	// door for the older one ([Agent.commitProposalToRun]).
 	ctx = withCrewWish(ctx, a.proposalCrewWish(p.id, crewWish{effort: spec.crewEffort, worker: namedModel(spec)}))
+	// THE BLOCK THE ROW WILL BE BORN IN is the one captured when the card was raised,
+	// whichever road publishes its first row (task_source.go).
+	a.expectRunSource(p.id, spec.source)
 	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
 		return answer, refused, nil
 	}
@@ -1015,6 +1026,7 @@ func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spe
 		prior = a.keepProgramAttempt(p.id, a.programAttemptOf())
 		ctx = withProgramWish(ctx, programWish{thinking: spec.thinking, carry: a.programCarryOf(prior, via.Name)})
 	}
+	a.expectRunSource(p.id, spec.source)
 	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalBrief(spec, via), spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
 	return joined, stand, asked, err
@@ -1622,6 +1634,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 		notice: TaskNotice{
 			ID:           id,
 			Title:        spec.title,
+			Source:       cloneSource(spec.source),
 			Summary:      spec.summary,
 			Brief:        spec.brief,
 			Acceptance:   spec.acceptance,

@@ -16,6 +16,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
 
 // Contract is the protocol revision this build speaks, carried on the hello
@@ -193,7 +195,25 @@ type Task struct {
 	// Models is the task's models in brief (V80); tasks.routing.get has the
 	// rest. Absent from an engine that does not route tasks.
 	Models *TaskModelsChip `json:"models,omitempty"`
+	// Source is the message or directive that started the task, captured by the
+	// engine when the work was admitted (V92). ABSENT IS UNKNOWN: a task recorded
+	// before sources were captured has none, and an app must not infer one from
+	// its title, its words or its time. Tasks made by a task share their parent's.
+	Source *TaskSource `json:"source,omitempty"`
+	// Dismissed says the person hid this settled failure from the default view
+	// (tasks.dismiss, undone by tasks.restore). The task is otherwise unchanged
+	// and is still listed; a surface leaves it out of its default counts.
+	Dismissed bool `json:"dismissed,omitempty"`
 }
+
+// TaskSource is [workgraph.TaskSource]: one spelling on both wires.
+type TaskSource = workgraph.TaskSource
+
+// The kinds of [TaskSource].
+const (
+	SourceMessage   = workgraph.SourceMessage
+	SourceDirective = workgraph.SourceDirective
+)
 
 // The two kinds of ask, and who closed one.
 const (

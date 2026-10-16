@@ -75,6 +75,9 @@ func nodeBytes(n *GraphNode) int64 {
 		b += timeBytes(t)
 	}
 	b += textBytes(n.Instructions)
+	if n.Source != nil {
+		b += int64(unsafe.Sizeof(*n.Source)) + strBytes(n.Source.ID) + strBytes(n.Source.Kind) + strBytes(n.Source.Text) + timeBytes(n.Source.At)
+	}
 	for _, r := range n.Route {
 		b += int64(unsafe.Sizeof(r)) + strBytes(r.Role) + strBytes(r.Model)
 		if r.Price != nil {

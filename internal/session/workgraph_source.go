@@ -179,6 +179,12 @@ type OwnerFacts struct {
 	Externals []string
 
 	byID map[string]int32
+
+	// hidden and sources are the document's dismissed set and each node's recorded
+	// source by number, held only while one conversation is projected so a plan row
+	// can be given its run's block; both are dropped before the projection is kept.
+	hidden  map[string]bool
+	sources map[string]*TaskSource
 }
 
 // Find is the fact for a task token ("12" or "t-ab"), if the conversation has it.
@@ -383,26 +389,64 @@ func (s *WorkSource) readOwner(ctx context.Context, owner, dir, stamp string) (*
 	if plan.issue != "" {
 		out.Issue = firstIssue(out.Issue, plan.issue)
 	} else {
+		// A PLAN ROW BELONGS TO THE BLOCK OF THE RUN ITS STORE IS ROOTED AT, read from
+		// that run's own record by its exact id; a store whose root names no record
+		// of the document has no known source. The hidden set is keyed by the row's
+		// own wire token.
+		parents := make(map[string]string, len(plan.facts))
+		for _, fact := range plan.facts {
+			parents[fact.Node.Ref.Task] = planParentToken(fact.Node)
+		}
+		for i := range plan.facts {
+			node := &plan.facts[i].Node
+			node.Dismissed = out.hidden[node.Ref.Task]
+			node.Source = wgSource(planRowSource(node.Ref.Task,
+				func(id string) string { return parents[id] },
+				func(number string) *TaskSource { return out.sources[number] }))
+		}
 		out.add(s.limits, plan.facts)
 	}
+	out.hidden, out.sources = nil, nil
 	return out, s.seal(ctx, out)
+}
+
+// planParentToken is the plan token of a plan fact's parent, or "".
+func planParentToken(n workgraph.GraphNode) string {
+	_, parent, _ := strings.Cut(n.Parent, ":")
+	return parent
 }
 
 // projectDocument projects the checkpoint's nodes and run rows, up to the
 // per-conversation bound.
 func (s *WorkSource) projectDocument(ctx context.Context, out *OwnerFacts, doc taskDocument) error {
 	titles := wgRunTitles(doc.Runs)
+	// THE HIDDEN SET IS THE DOCUMENT'S OWN, read with the rest of it, so the graph
+	// and the app's list cannot disagree about what a restart brings back.
+	hidden := make(map[string]bool, len(doc.Dismissed))
+	for _, id := range doc.Dismissed {
+		hidden[id] = true
+	}
+	out.hidden = hidden
+	out.sources = make(map[string]*TaskSource)
 	for i, r := range doc.Nodes {
 		if i%loopCheck == 0 && ctx.Err() != nil {
 			return ctx.Err()
 		}
-		out.add(s.limits, []workgraph.Fact{nodeFact(out.Owner, r)})
+		fact := nodeFact(out.Owner, r)
+		fact.Node.Dismissed = hidden[strconv.FormatUint(r.ID, 10)]
+		out.sources[strconv.FormatUint(r.ID, 10)] = r.Source
+		out.add(s.limits, []workgraph.Fact{fact})
 	}
 	for i, r := range doc.Runs {
 		if i%loopCheck == 0 && ctx.Err() != nil {
 			return ctx.Err()
 		}
-		out.add(s.limits, []workgraph.Fact{runFact(out.Owner, r, titles)})
+		fact := runFact(out.Owner, r, titles)
+		fact.Node.Dismissed = hidden[strconv.FormatUint(r.ID, 10)]
+		if _, known := out.sources[strconv.FormatUint(r.ID, 10)]; !known {
+			out.sources[strconv.FormatUint(r.ID, 10)] = r.Source
+		}
+		out.add(s.limits, []workgraph.Fact{fact})
 	}
 	return nil
 }

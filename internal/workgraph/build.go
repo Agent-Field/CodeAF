@@ -400,6 +400,9 @@ func (b *builder) finish() error {
 	s.totals.ByState = map[string]int{}
 	for i := range s.nodes {
 		s.totals.ByState[s.nodes[i].State]++
+		if s.nodes[i].Dismissed {
+			s.totals.Dismissed++
+		}
 	}
 	s.coverage = b.coverage()
 	s.bytes = s.estimateBytes()
@@ -472,6 +475,11 @@ func cloneNode(n *GraphNode) *GraphNode {
 	if n.ElapsedMS != nil {
 		ms := *n.ElapsedMS
 		c.ElapsedMS = &ms
+	}
+	if n.Source != nil {
+		src := *n.Source
+		src.At = copyTime(n.Source.At)
+		c.Source = &src
 	}
 	c.Route = append([]RouteSeat(nil), n.Route...)
 	for i := range c.Route {

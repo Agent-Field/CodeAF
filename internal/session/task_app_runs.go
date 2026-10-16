@@ -90,6 +90,8 @@ func (a *Agent) appRunView(row TaskNotice, cap float64) AppTaskView {
 		Model: row.Model, Cap: cap, Spent: row.CostUSD, Result: row.Report, Files: append([]string{}, row.Changed...),
 		Elapsed: int64(row.Elapsed.Seconds()), Deadline: row.Deadline, Held: row.Paused, Version: 1, Origin: "asked",
 	}
+	view.Source, view.FinishedAt = cloneSource(row.Source), row.EndedAt
+	view.Dismissed = a.tasker().isDismissed(view.ID)
 	if row.Parent != 0 {
 		view.Parent = strconv.FormatUint(row.Parent, 10)
 	}

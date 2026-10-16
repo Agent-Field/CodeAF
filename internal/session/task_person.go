@@ -82,6 +82,9 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	// The run road falls back here for every store it cannot serve, so the road
 	// below is the whole of this door whenever the belt is not asked for — which
 	// is every build and every caller that never asked.
+	// A TYPED TASK IS ITS OWN SOURCE: the command's words, captured here once so
+	// both roads below record the same directive (task_source.go).
+	ctx = withTaskSource(ctx, a.directiveSource(brief))
 	if bashBeltAsked() {
 		return a.startTaskRun(ctx, brief, solo, "")
 	}
@@ -129,6 +132,7 @@ func (a *Agent) startTaskLegacy(ctx context.Context, brief string, solo bool) (u
 	spec := taskSpec{
 		title: taskPersonTitle(brief), summary: firstLine(brief), request: brief,
 		origin: a.taskOriginRef(), brief: brief, acceptance: taskPersonAcceptance,
+		source:   taskSourceFrom(ctx),
 		model:    a.resolveTaskModel("").model,
 		unshaped: true, unsized: !solo,
 		// AND WHAT WAS SAID AROUND IT, from the one compiler every door uses
