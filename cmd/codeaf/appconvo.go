@@ -997,7 +997,11 @@ func appAttachmentsOf(person *session.PersonMark) []appwire.Attachment {
 // them.
 func appSubmission(text string, shown *appSending) session.Submission {
 	said := shown.text
-	return session.Submission{Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads}
+	submission := session.Submission{Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads}
+	if shown.composed != nil {
+		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
+	}
+	return submission
 }
 
 // appKeptReads is a message's reads as the record will keep them, or the
@@ -1188,6 +1192,20 @@ func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (ui
 	if shown != nil {
 		shown.reads = reads
 	}
+	// THE PICTURES ARE RESOLVED AND CHECKED WHOLE BEFORE THE CONVERSATION IS
+	// OPENED: a message the engine would refuse leaves every chip staged.
+	var workspace string
+	b.locked(func() { workspace = a.view.Workspace })
+	composed, err := appComposedOf(workspace, kept, message.Submission)
+	if err != nil {
+		return 0, nil, err
+	}
+	if composed != nil {
+		if shown == nil {
+			shown = &appSending{text: said, reads: reads}
+		}
+		shown.composed = composed
+	}
 	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
 	if err != nil {
 		return 0, nil, err
@@ -1212,6 +1230,9 @@ type appSending struct {
 	// reads are the reads the words were written from, as the record keeps
 	// them ([appKeptReads]).
 	reads []session.MessageRead
+	// composed is the message's pictures and annotation, and what the engine
+	// answered once it kept it (appsubmission.go); nil on a message of words.
+	composed *appComposed
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────

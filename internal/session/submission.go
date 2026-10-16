@@ -70,6 +70,11 @@ type Submission struct {
 	// Reads are the reads of references the door performed to write Text, in
 	// the order it performed them, as it found them at that moment.
 	Reads []MessageRead
+	// Media are the pictures that ride on this message as real image parts, in
+	// order, after Text; Annotation is what the person marked on them. Either
+	// makes the message a composed one ([Agent.SubmitComposed]).
+	Media      []SubmissionMedia
+	Annotation *Annotation
 }
 
 // ── what the door read to write the message ─────────────────────────────────
@@ -177,6 +182,11 @@ var ErrMessageMark = errors.New("session: the message's description does not fit
 // recorded, so a refusal leaves nothing behind. A submission with no mark —
 // Said nil, no attachments and no reads — is exactly [Agent.Submit].
 func (a *Agent) SubmitMessage(ctx context.Context, message Submission) (<-chan Event, error) {
+	if len(message.Media) > 0 || message.Annotation != nil {
+		// Pictures are never dropped to fit a door that cannot carry them.
+		_, events, err := a.SubmitComposed(ctx, message)
+		return events, err
+	}
 	mark, err := message.mark()
 	if err != nil {
 		return nil, err

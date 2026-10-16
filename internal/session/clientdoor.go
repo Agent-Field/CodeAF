@@ -804,7 +804,10 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	})
 	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
 	// is this package's to change (callwindow.go says why it cannot be earlier).
-	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
+	// THE ONE PLACE A PICTURE BECOMES BYTES: references in the transcript are read
+	// back, verified and encoded for this request alone, under its budget
+	// (imageref.go). A copy is made only when a reference is present.
+	response, err := client.CompleteWithMessages(toldItsWindow(ctx), materializeImageRefs(messages), append(options, ai.WithModel(wire))...)
 	if helper != nil {
 		helper.after(ctx, model, response, held)
 		crewTaskOf(ctx).addHelperSpend(response)

@@ -345,6 +345,15 @@ type Entry struct {
 	// were written from, as the app found them when it sent it (convo.go's
 	// [MessageRead]); absent on every message sent without them.
 	Reads []MessageRead `json:"reads,omitempty"`
+	// MessageID is the durable identity the engine minted when it accepted a
+	// person's message that carried pictures; Delivery says how the pictures
+	// reached a model and SeenBy names the vision model that looked when it was
+	// not the one talking; Annotation is what the person marked on them
+	// (media_submission.go). All absent on every other entry.
+	MessageID  string      `json:"message_id,omitempty"`
+	Delivery   string      `json:"delivery,omitempty" enum:"text,image,description"`
+	SeenBy     string      `json:"seen_by,omitempty"`
+	Annotation *Annotation `json:"annotation,omitempty"`
 	// Op is a durable fact the conversation's record keeps beside its
 	// messages, said as the fact and never as words: the app words it.
 	Op *EntryOp `json:"op,omitempty"`

@@ -31,7 +31,11 @@ type messagePresentation struct {
 	Interrupted bool                `json:"interrupted,omitempty"`
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
 	Reads       []MessageRead       `json:"reads,omitempty"`
-	SkillsBlock string              `json:"-"`
+	// Composed is what a composed submission added to a person's line: its
+	// durable id, its pictures as measured, its annotation and how the pictures
+	// reached a model ([Agent.SubmitComposed]).
+	Composed    *ComposedMark `json:"composed,omitempty"`
+	SkillsBlock string        `json:"-"`
 }
 
 // person is the part of a mark a person's message carries into the record: the

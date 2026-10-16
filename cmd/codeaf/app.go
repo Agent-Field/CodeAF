@@ -1473,6 +1473,15 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	if shown != nil && !appKeepsQueuedMarks(live.conn.Conv) {
 		return 0, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a message's said, reads or attachments; update its engine before sending")
 	}
+	// PICTURES ARE NEVER SENT AS WORDS ALONE: a conversation whose engine has not
+	// said it takes them refuses the message before the turn, and the chips stay.
+	var composer appComposer
+	if shown != nil && shown.composed != nil {
+		var ok bool
+		if composer, ok = live.conn.Conv.(appComposer); !ok || !composer.ComposedKnown() {
+			return 0, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot take pictures with a message; update its engine before sending")
+		}
+	}
 	// A conversation joined on a window's host can have heard from the person
 	// in that window too, so its count is read again before it is used.
 	if !live.conn.Assembled && live.conn.Transcript != "" {
@@ -1523,7 +1532,15 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	// riding on it is the plain Submit it always was.
 	var events <-chan session.Event
 	var err error
-	if shown != nil {
+	var composedMark *session.ComposedMark
+	if composer != nil {
+		var receipt session.SubmissionReceipt
+		receipt, events, err = composer.SubmitComposed(context.Background(), appSubmission(text, shown))
+		if err == nil {
+			shown.composed.receipt = &receipt
+			composedMark = &session.ComposedMark{MessageID: receipt.MessageID, Media: receipt.Media, Annotation: shown.composed.annotation, Delivery: &session.MessageDelivery{Mode: receipt.Delivery, Model: receipt.SeenBy}}
+		}
+	} else if shown != nil {
 		events, err = live.conn.Conv.SubmitMessage(context.Background(), appSubmission(text, shown))
 	} else {
 		events, err = live.conn.Conv.Submit(context.Background(), text)
@@ -1545,9 +1562,11 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	})
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
-	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+	userEntry := appwire.Entry{
 		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments, Reads: reads,
-	}})
+	}
+	appComposedFields(&userEntry, composedMark)
+	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: userEntry})
 	long := b.watchLong(id, live, turn, b.now())
 	b.newTurnCalls(a)
 	tails := b.tickTools(a, id, live)
@@ -2476,6 +2495,9 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 			// line without that mark is its words, and has no attachments.
 			entry.ID, entry.Kind, entry.Text, entry.Attachments = appUserEntryID(n), appwire.EntryUser, item.Text, appAttachmentsOf(item.Person)
 			entry.Reads = appPersonReads(item.Person)
+			if item.Person != nil {
+				appComposedFields(&entry, item.Person.Composed)
+			}
 		case "assistant", "aside":
 			if strings.TrimSpace(item.Text) == "" {
 				continue

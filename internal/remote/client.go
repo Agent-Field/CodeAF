@@ -1740,10 +1740,43 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 // words ([session.Agent.SubmitMessage]): it travels on the same call, so the
 // engine records the words and the mark on one line or neither.
 func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error) {
+	if argsOf(message).composed() {
+		_, events, err := a.SubmitComposed(ctx, message)
+		return events, err
+	}
 	if argsOf(message).marked() && !a.MessageMarksKnown() {
 		return nil, errors.New("engine: this engine cannot keep a message's description; update it before sending")
 	}
 	return a.open(ctx, MethodSubmit, argsOf(message))
+}
+
+// SubmitComposed is Submit for a message that carries pictures and what the
+// person marked on them ([session.Agent.SubmitComposed]). The engine reads the
+// files, on ITS machine, so the paths must mean something there; an engine that
+// has not said it takes them is refused BEFORE ANYTHING IS SENT, because run as
+// its words alone the pictures would be silently dropped.
+func (a *Agent) SubmitComposed(ctx context.Context, message session.Submission) (session.SubmissionReceipt, <-chan session.Event, error) {
+	if !a.ComposedKnown() {
+		return session.SubmissionReceipt{}, nil, errors.New("engine: this engine cannot take pictures with a message; update it before sending")
+	}
+	payload, err := a.c.call(ctx, MethodSubmit, argsOf(message))
+	if err != nil {
+		return session.SubmissionReceipt{}, nil, err
+	}
+	var ref StreamRef
+	if err := json.Unmarshal(payload, &ref); err != nil {
+		return session.SubmissionReceipt{}, nil, err
+	}
+	if ref.Receipt == nil {
+		return session.SubmissionReceipt{}, nil, errors.New("engine: the engine took the message without saying how")
+	}
+	return *ref.Receipt, a.c.stream(ref.Stream).events(), nil
+}
+
+// ComposedKnown is what the engine said in its welcome about taking a message
+// that carries pictures.
+func (a *Agent) ComposedKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.ComposedMessages })
 }
 
 // SteerMessage is Steer with what the door knows about the correction beyond
@@ -1752,6 +1785,9 @@ func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (
 // alone it would lose what the person read, and the correction would already be
 // in the turn. A submission with no mark is Steer.
 func (a *Agent) SteerMessage(message session.Submission) (<-chan session.Event, error) {
+	if argsOf(message).composed() {
+		return nil, errors.New("engine: a correction carries no pictures; send them as a message")
+	}
 	if !argsOf(message).marked() {
 		return a.Steer(message.Text)
 	}
@@ -1766,6 +1802,9 @@ func (a *Agent) SteerMessage(message session.Submission) (<-chan session.Event, 
 // to an engine that has not said it keeps a follow-up's mark. Its stream is
 // remembered for the take-back exactly as a plain follow-up's is.
 func (a *Agent) FollowUpMessage(message session.Submission) (<-chan session.Event, error) {
+	if argsOf(message).composed() {
+		return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
+	}
 	if !argsOf(message).marked() {
 		return a.FollowUp(message.Text)
 	}

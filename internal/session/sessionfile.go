@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -1066,6 +1064,10 @@ type journalPart struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
 	MIME   string `json:"mime,omitempty"`
+	// Bytes is the picture's size when it was accepted, absent on a line written
+	// before it was recorded. It lets a request know what a picture costs
+	// without opening the file.
+	Bytes int64 `json:"bytes,omitempty"`
 }
 
 // contentPart turns one reference back into content for the live transcript.
@@ -1077,31 +1079,20 @@ type journalPart struct {
 // the same bytes on the wire. Anything else — moved, deleted, edited, unreadable,
 // grown past the limit — is a text part that says which picture is missing.
 func (p journalPart) contentPart() ai.ContentPart {
-	if p.Type != journalPartImage {
-		return p.placeholder()
-	}
-	info, err := os.Stat(p.Path)
-	if err != nil || info.IsDir() || info.Size() > maxImageBytes {
-		return p.placeholder()
-	}
-	data, err := os.ReadFile(p.Path)
-	if err != nil || len(data) > maxImageBytes {
-		return p.placeholder()
-	}
-	sum := sha256.Sum256(data)
-	if hex.EncodeToString(sum[:]) != p.SHA256 {
+	if p.Type != journalPartImage || len(p.SHA256) != 64 {
 		return p.placeholder()
 	}
 	mediaType := strings.TrimSpace(p.MIME)
 	if mediaType == "" {
 		mediaType = imageMediaTypes[strings.ToLower(filepath.Ext(p.Path))]
 	}
-	if mediaType == "" {
+	if mediaType == "" || strings.TrimSpace(p.Path) == "" {
 		return p.placeholder()
 	}
-	return ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
-		URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
-	}}
+	// NO FILE IS OPENED HERE. A replay of two hundred pictures is two hundred
+	// references; the bytes are read, and checked against this digest, by the
+	// request that carries them (imageref.go).
+	return imageRef{Path: p.Path, MIME: mediaType, Bytes: p.Bytes, SHA256: p.SHA256}.part()
 }
 
 // reference is one journaled part as a REFERENCE AND NOTHING MORE: where the

@@ -354,7 +354,7 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return &TurnResult{turn}, nil
+		return &TurnResult{Turn: turn}, nil
 	}),
 	"models.list": typed(func(e Engine, _ struct{}) (*ModelsResult, error) {
 		models, err := e.ListModels()
@@ -395,6 +395,9 @@ var methods = map[string]method{
 		ClientID    string        `json:"client_id"`
 		Attachments []string      `json:"attachments"`
 		Reads       []MessageRead `json:"reads"`
+		// Submission names which attachments go as pictures and what was marked
+		// on them (media_submission.go).
+		Submission *MessageSubmission `json:"submission,omitempty"`
 	}) (*TurnResult, error) {
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.send needs an id")
@@ -405,6 +408,26 @@ var methods = map[string]method{
 		}
 		var turn uint64
 		var err error
+		if p.Submission != nil {
+			// THE PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT: an
+			// engine with no door for them refuses before it reads anything, and
+			// the staged attachments stay staged.
+			c, ok := e.(ComposedSender)
+			if !ok {
+				return nil, Errorf(CodeUnknownMethod, "this engine does not serve agents.send with pictures")
+			}
+			if err := CheckAttachIDs(p.Attachments); err != nil {
+				return nil, err
+			}
+			if err := p.Submission.Check(p.Attachments); err != nil {
+				return nil, err
+			}
+			receipt, err := c.SendComposed(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads, Submission: p.Submission})
+			if err != nil {
+				return nil, err
+			}
+			return &TurnResult{Turn: receipt.Turn, MessageID: receipt.MessageID, Delivery: receipt.Delivery, SeenBy: receipt.SeenBy, Queued: receipt.Queued}, nil
+		}
 		if p.Said != nil || len(p.Reads) > 0 {
 			// WHAT THE MESSAGE CARRIED IS SENT WITH IT OR NOT AT ALL: an engine
 			// with no door for it refuses, rather than running the words and
@@ -432,7 +455,7 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return &TurnResult{turn}, nil
+		return &TurnResult{Turn: turn}, nil
 	}),
 	"agents.stop": typed(func(e Engine, p IDParams) (*Empty, error) {
 		id, err := required("id", p.ID)
@@ -538,6 +561,12 @@ type (
 	}
 	TurnResult struct {
 		Turn uint64 `json:"turn"`
+		// MessageID, Delivery, SeenBy and Queued answer an agents.send that
+		// carried a submission (media_submission.go) and are otherwise absent.
+		MessageID string `json:"message_id,omitempty"`
+		Delivery  string `json:"delivery,omitempty" enum:"text,image,description"`
+		SeenBy    string `json:"seen_by,omitempty"`
+		Queued    bool   `json:"queued,omitempty"`
 	}
 	ModelsResult struct {
 		Models []Model `json:"models"`

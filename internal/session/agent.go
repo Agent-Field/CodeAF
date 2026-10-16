@@ -2322,7 +2322,10 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	if f.unguarded {
 		ctx = provider.WithoutBabbleGuard(ctx)
 	}
-	return f.inner.CompleteWithMessages(ctx, messages, options...)
+	// A reference is never forwarded: a request that reached here without passing
+	// completeWithNamedModel is materialized now (imageref.go), and one that did
+	// pass has none left to find.
+	return f.inner.CompleteWithMessages(ctx, materializeImageRefs(messages), options...)
 }
 
 // ownLineageKey marks a call that brings its own prompt-cache lineage
@@ -4910,6 +4913,10 @@ type PersonMark struct {
 	// from, as the door observed them when it sent the message — never looked
 	// up again — each a copy of the record's own.
 	Reads []MessageRead
+	// Composed is what a composed submission recorded: the message's durable
+	// id, its pictures as the engine measured them, its annotation and how the
+	// pictures reached a model. Nil on every message no such door sent.
+	Composed *ComposedMark
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -5054,7 +5061,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			// on it and the reads its words were written from. A line with no
 			// such mark is shown as it always was.
 			if mark := presentation.of(msg).person(); mark != nil {
-				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads)}
+				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed)}
 				if mark.Text != nil {
 					displayText, person.Authored = *mark.Text, true
 				}

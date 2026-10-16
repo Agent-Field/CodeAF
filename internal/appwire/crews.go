@@ -384,6 +384,8 @@ type CrewMessage struct {
 	ClientID    string        `json:"client_id"`
 	Attachments []string      `json:"attachments,omitempty"`
 	Reads       []MessageRead `json:"reads,omitempty"`
+	// Submission is refused: a crew message carries no pictures.
+	Submission *MessageSubmission `json:"submission,omitempty"`
 }
 
 // Crewer is the engine's half of crews.
@@ -564,6 +566,9 @@ var crewMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "crews.message needs a crew and some text")
 		}
 		if err := CheckAttachIDs(p.Attachments); err != nil {
+			return nil, err
+		}
+		if err := refuseSubmission(p.Submission, "crews.message"); err != nil {
 			return nil, err
 		}
 		entry, err := c.CrewMessage(p)

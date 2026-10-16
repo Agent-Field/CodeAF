@@ -460,6 +460,7 @@ func recordVectors(record Record) int64 {
 				int64(len(entry.ReplyTags))*int64(unsafe.Sizeof(TaskReplyTag{})) +
 				int64(len(entry.Team))*int64(unsafe.Sizeof(TeamLine{}))
 			if entry.Person != nil {
+				cost += composedSizes(entry.Person.Composed)
 				cost += int64(unsafe.Sizeof(PersonMark{})) +
 					int64(len(entry.Person.Attachments))*int64(unsafe.Sizeof(MessageAttachment{}))
 				for _, attachment := range entry.Person.Attachments {
@@ -521,6 +522,7 @@ func entriesCost(entries []DisplayEntry) int64 {
 			cost += int64(len(line.Team) + len(line.From) + len(line.To) + len(line.Kind) + len(line.Text) + len(line.Thread))
 		}
 		if entry.Person != nil {
+			cost += composedSizes(entry.Person.Composed)
 			cost += int64(unsafe.Sizeof(PersonMark{})) + int64(cap(entry.Person.Attachments))*int64(unsafe.Sizeof(MessageAttachment{}))
 			for _, attachment := range entry.Person.Attachments {
 				cost += int64(len(attachment.ID)+len(attachment.Kind)+len(attachment.Name)+len(attachment.Path)+len(attachment.URL)) +
@@ -581,7 +583,7 @@ func cloneEntries(entries []DisplayEntry) []DisplayEntry {
 		entry.ReplyTags = slices.Clone(entry.ReplyTags)
 		entry.Team = slices.Clone(entry.Team)
 		if entry.Person != nil {
-			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments), Reads: cloneReads(entry.Person.Reads)}
+			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments), Reads: cloneReads(entry.Person.Reads), Composed: cloneComposed(entry.Person.Composed)}
 			entry.Person = &person
 		}
 		if entry.Steer != nil {

@@ -84,6 +84,9 @@ type Attachment struct {
 	Add   *int   `json:"add,omitempty"`
 	Del   *int   `json:"del,omitempty"`
 	State string `json:"state,omitempty"`
+	// Media is what the engine measured of a picture it sent with the message
+	// (media_submission.go); absent on every attachment sent as words.
+	Media *AttachmentMedia `json:"media,omitempty"`
 }
 
 // MessageRead is one read of a reference the app performed to write a
@@ -130,6 +133,9 @@ type AgentMessage struct {
 	ClientID    string
 	Attachments []string
 	Reads       []MessageRead
+	// Submission names which staged attachments are pictures and what was
+	// marked on them (media_submission.go); only agents.send carries one.
+	Submission *MessageSubmission
 }
 
 // MessageSender is the optional engine half of agents.send and crews.message
@@ -183,6 +189,9 @@ func withMessageReadsFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(MessageQueuer); ok {
 		hello = withFeature(hello, FeatureQueueReads)
+	}
+	if _, ok := e.(ComposedSender); ok {
+		hello = withFeature(hello, FeatureMessageMedia)
 	}
 	return hello
 }
@@ -416,11 +425,16 @@ type sayTo struct {
 	ClientID    string        `json:"client_id"`
 	Attachments []string      `json:"attachments"`
 	Reads       []MessageRead `json:"reads"`
+	// Submission is refused: a correction or a queued message carries no pictures.
+	Submission *MessageSubmission `json:"submission,omitempty"`
 }
 
 func checkSay(p sayTo, name string) (sayTo, error) {
 	if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Text) == "" {
 		return p, Errorf(CodeBadParams, "%s needs an id and some text", name)
+	}
+	if err := refuseSubmission(p.Submission, name); err != nil {
+		return p, err
 	}
 	return p, refuseAttachments(p.Attachments, name)
 }
@@ -448,6 +462,8 @@ type queueAt struct {
 	Attachments []string      `json:"attachments"`
 	Reads       []MessageRead `json:"reads"`
 	To          *int          `json:"to"`
+	// Submission is refused: a queued message carries no pictures.
+	Submission *MessageSubmission `json:"submission,omitempty"`
 }
 
 // queuer is the engine's door for a queued message's said and reads, or a
@@ -464,7 +480,7 @@ func checkQueueAt(p queueAt, name string) (queueAt, error) {
 	if strings.TrimSpace(p.Agent) == "" || strings.TrimSpace(p.ID) == "" {
 		return p, Errorf(CodeBadParams, "%s needs an agent and an id", name)
 	}
-	return p, nil
+	return p, refuseSubmission(p.Submission, name)
 }
 
 // talkTask is one task verb that takes only an id, served by the Worker.

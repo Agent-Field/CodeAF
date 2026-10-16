@@ -1202,6 +1202,16 @@ func memoryCommandsKnown(agent any) bool {
 	return ok && door.Remembers()
 }
 
+// composedDoor is the agent's door for a Submit that carries pictures.
+type composedDoor interface {
+	SubmitComposed(context.Context, session.Submission) (session.SubmissionReceipt, <-chan session.Event, error)
+}
+
+func composedKnown(agent any) bool {
+	_, ok := agent.(composedDoor)
+	return ok
+}
+
 func messageMarksKnown(agent any) bool {
 	_, ok := agent.(interface {
 		SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
@@ -1255,6 +1265,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 	}
 	return Welcome{
 		MessageMarks:               messageMarksKnown(sess.agent),
+		ComposedMessages:           composedKnown(sess.agent),
 		SteerMarks:                 steerMarksKnown(sess.agent),
 		FollowUpMarks:              followUpMarksKnown(sess.agent),
 		Version:                    Version,
@@ -2600,6 +2611,22 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
 		})
 		hasMark := args.marked()
+		if args.composed() {
+			// PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT, and the
+			// receipt rides the answer that names the stream.
+			composer, ok := agent.(composedDoor)
+			if !ok {
+				return nil, errors.New("engine: this session cannot take pictures with a message; update the engine before sending it")
+			}
+			receipt, events, err := composer.SubmitComposed(context.Background(), args.submission())
+			if err != nil {
+				return nil, err
+			}
+			if _, err := s.stream(MethodSubmit, args.Text, events, nil); err != nil {
+				return nil, err
+			}
+			return json.Marshal(StreamRef{Stream: s.pending.id, Receipt: &receipt})
+		}
 		if hasMark && !marked {
 			return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
 		}
@@ -2632,6 +2659,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// is queued; its stream is registered for the take-back below exactly as
 		// a plain one's is.
 		var events <-chan session.Event
+		if args.composed() {
+			return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
+		}
 		if args.marked() {
 			door, ok := followUpMarksDoor(agent)
 			if !ok {
@@ -2679,6 +2709,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// A MARKED CORRECTION IS SPLICED WITH ITS MARK OR REFUSED before it
 		// reaches the turn.
 		var events <-chan session.Event
+		if args.composed() {
+			return nil, errors.New("engine: a correction carries no pictures; send them as a message")
+		}
 		if args.marked() {
 			door, ok := steerMarksDoor(agent)
 			if !ok {
