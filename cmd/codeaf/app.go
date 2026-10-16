@@ -1595,6 +1595,9 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	userEntry.Queued = shown != nil && shown.queued && appKeepsQueued(live.conn.Conv)
 	appComposedFields(&userEntry, composedMark)
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: userEntry})
+	// First messages, ordinary sends and retries share this acceptance point.
+	// Staged or refused attachments never become media sources.
+	b.recordAttachedMedia(a, attachments)
 	long := b.watchLong(id, live, turn, b.now())
 	b.newTurnCalls(a)
 	tails := b.tickTools(a, id, live)

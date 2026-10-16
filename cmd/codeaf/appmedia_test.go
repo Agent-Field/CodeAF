@@ -260,3 +260,38 @@ func TestAppMediaProjectsOneBatchChargeWithoutDividingIt(t *testing.T) {
 		t.Fatalf("wrong batch projection: %+v", got)
 	}
 }
+
+// A first-message attachment is indexed only after the actual conversation
+// accepts it, just like a later send. The persisted index survives reopen.
+func TestAppFirstMessageNotesAttachedMediaAsSources(t *testing.T) {
+	root := resolvedTempDir(t)
+	_, workspace := wakeEnvironment(t, root)
+	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
+	old := appMediaIndex
+	appMediaIndex = func() string { return index }
+	t.Cleanup(func() { appMediaIndex = old })
+	picture := filepath.Join(workspace, "first.png")
+	writePNG(t, picture, 9, 6)
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, appOpenInProcess)
+	t.Cleanup(func() { _ = backend.Close() })
+	agent, err := backend.CreateAgent(appwire.CreateAsk{Workspace: workspace, Text: "acknowledge", Attachments: []appwire.AttachSource{{Kind: appwire.AttachFile, Path: picture}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 30*time.Second, appTurnDone)
+	page, err := backend.ListMedia(agent.ID, "", 10)
+	if err != nil || len(page.Sources) != 1 || page.Sources[0].Origin != "attachment" || page.Sources[0].Path != picture || page.Sources[0].Width == nil || *page.Sources[0].Width != 9 {
+		t.Fatalf("first sources = %+v %v", page, err)
+	}
+	sourceID := page.Sources[0].ID
+	if err := backend.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := newAppBackend(newAppRecorder(), appOpenInProcess)
+	defer reopened.Close()
+	page, err = reopened.ListMedia(agent.ID, "", 10)
+	if err != nil || len(page.Sources) != 1 || page.Sources[0].ID != sourceID {
+		t.Fatalf("reopened sources = %+v %v", page, err)
+	}
+}
