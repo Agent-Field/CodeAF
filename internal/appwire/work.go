@@ -57,13 +57,33 @@ type FileChange struct {
 	Del  int    `json:"del"`
 }
 
-// TaskNote is one note the person sent a task, and the step it was read at.
+// TaskNote is one note on a task's page, who said it, and the step it was read
+// at.
 type TaskNote struct {
-	ID         string    `json:"id"`
-	Text       string    `json:"text"`
-	At         time.Time `json:"at"`
-	ReadAtStep *int      `json:"read_at_step,omitempty"`
+	ID   string    `json:"id"`
+	Text string    `json:"text"`
+	At   time.Time `json:"at"`
+	// From is WHO SAID IT: [NoteFromYou] or [NoteFromTask], carried from the
+	// engine's own record of each note's origin and never read back out of its
+	// words.
+	//
+	// AN ABSENT ORIGIN IS UNKNOWN AND NOT YOURS. It is omitempty so a note from
+	// a record that never labelled one serialises exactly as it did before this
+	// field existed; an app that reads the absence as the person's would be
+	// making the claim this field was added to stop. A surface with no origin
+	// draws the note without attributing it.
+	From       string `json:"from,omitempty" enum:"you,task"`
+	ReadAtStep *int   `json:"read_at_step,omitempty"`
 }
+
+// Who a task note is from.
+const (
+	// NoteFromYou is the person at a keyboard: a note typed into the task.
+	NoteFromYou = "you"
+	// NoteFromTask is the work's own line, or another agent's coordination with
+	// it — anything the person did not type.
+	NoteFromTask = "task"
+)
 
 // TaskPage is everything one task's page draws.
 type TaskPage struct {

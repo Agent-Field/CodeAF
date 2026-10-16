@@ -1,11 +1,8 @@
 package session
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -126,19 +123,25 @@ func (a *Agent) appRunDetail(view *AppTaskView, key string) {
 			continue
 		}
 		dir := filepath.Dir(store.Path())
-		steps, reads := appTrajectoryRead(filepath.Join(plandb.TaskDir(dir, key), planTrajectoryFile))
-		view.WorkLog = steps
-		if view.Step == 0 {
-			view.Step = len(steps)
+		steps, reads := appTrajectorySteps(filepath.Join(plandb.TaskDir(dir, key), planTrajectoryFile), appTaskStepsMax)
+		view.Steps = steps
+		view.WorkLog = appTrajectoryLines(steps)
+		if len(steps) > 0 {
+			view.StepsKnown = true
+			if view.Step == 0 {
+				view.Step = len(steps)
+			}
+		} else {
+			view.StepsKnown = view.Step > 0
 		}
 		if view.Brief == "" {
 			view.Brief = task.Description
 		}
-		for _, note := range store.Notes(key, 200) {
+		for _, note := range store.Notes(key, appTaskStepsMax) {
 			if note.From != plandb.NoteFromPerson {
 				continue
 			}
-			seen := AppTaskNote{Text: note.Body}
+			seen := AppTaskNote{Text: note.Body, From: AppNoteFromPerson}
 			if step, ok := reads[note.ID]; ok {
 				seen.ReadAtStep = &step
 			}
@@ -148,41 +151,29 @@ func (a *Agent) appRunDetail(view *AppTaskView, key string) {
 	}
 }
 
-// appTrajectoryRead reads a task's trajectory: the command of every step, in
-// order, and for every note the worker was handed, the step it had reached.
-// A missing or unreadable file is no steps and no reads.
-func appTrajectoryRead(path string) ([]string, map[string]int) {
-	reads := map[string]int{}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, reads
+// appTrajectoryLines is a run's steps as the worded tail a model reads, kept
+// beside the facts so [AppTaskView.WorkLog] still answers what it always did.
+// It composes the sentence FROM the facts rather than the other way round,
+// which is the direction that loses nothing.
+func appTrajectoryLines(steps []AppTaskStep) []string {
+	if len(steps) == 0 {
+		return nil
 	}
-	defer file.Close()
-	var steps []string
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for scanner.Scan() {
-		var line struct {
-			Kind    string   `json:"kind"`
-			Step    int      `json:"step"`
-			Command string   `json:"command"`
-			Notes   []string `json:"notes"`
+	lines := make([]string, 0, len(steps))
+	for _, step := range steps {
+		said := step.Command
+		if said == "" {
+			said = step.Target
 		}
-		if json.Unmarshal(scanner.Bytes(), &line) != nil {
+		if said == "" {
+			said = step.Text
+		}
+		if said = strings.TrimSpace(said); said == "" {
 			continue
 		}
-		switch line.Kind {
-		case "step":
-			steps = append(steps, line.Command)
-		case "notes":
-			for _, id := range line.Notes {
-				if _, known := reads[id]; !known {
-					reads[id] = len(steps)
-				}
-			}
-		}
+		lines = append(lines, said)
 	}
-	return steps, reads
+	return lines
 }
 
 // appRunAction is a person's verb on a run row.

@@ -283,7 +283,13 @@ func appTaskOfView(agent string, view session.AppTaskView) appwire.Task {
 	task.Model, task.StartedBy = view.Model, view.Origin
 	task.Instructions = redact.Secrets(strings.TrimSpace(view.Brief))
 	task.CostUSD = task.SpentUSD
-	if view.Step > 0 {
+	// THE STEP COUNT IS SENT WHEN IT IS KNOWN AND OMITTED WHEN IT IS NOT, which
+	// includes a known zero: a record that counted no steps is a fact, and a task
+	// with no record of its work is an absence, and they were both arriving as
+	// the same missing field. A page that cannot tell them apart either says
+	// "0 steps" about unknown history or says nothing about a task that really
+	// has taken none.
+	if view.StepsKnown || view.Step > 0 {
 		steps := view.Step
 		task.Steps = &steps
 	}
@@ -616,15 +622,162 @@ func (b *appBackend) GetTask(id string) (appwire.TaskPage, error) {
 	})
 	page := appwire.TaskPage{Task: task, Result: task.Result, Files: task.Files, Brief: view.Brief}
 	at := b.now()
-	for i, line := range view.WorkLog {
-		if line = strings.TrimSpace(line); line != "" {
-			page.Log = append(page.Log, appwire.Entry{ID: task.ID + ".l" + strconv.Itoa(i), Agent: agent, Kind: appwire.EntryNotice, At: at, Text: redact.Secrets(line), Quiet: true})
-		}
-	}
+	page.Log = appTaskLog(agent, task.ID, view, at)
 	for i, note := range view.Notes {
-		page.Notes = append(page.Notes, appwire.TaskNote{ID: task.ID + ".n" + strconv.Itoa(i), Text: note.Text, At: at, ReadAtStep: note.ReadAtStep})
+		page.Notes = append(page.Notes, appwire.TaskNote{ID: task.ID + ".n" + strconv.Itoa(i),
+			Text: note.Text, At: at, From: appNoteFrom(note.From), ReadAtStep: note.ReadAtStep})
 	}
 	return page, nil
+}
+
+// appNoteFrom is a note's origin on the wire. The engine's own word is carried
+// through; anything it does not label stays unlabelled, because "unknown" and
+// "the person said it" are not the same claim (appwire's [appwire.TaskNote]).
+func appNoteFrom(from session.AppNoteFrom) string {
+	switch from {
+	case session.AppNoteFromPerson:
+		return appwire.NoteFromYou
+	case session.AppNoteFromTask:
+		return appwire.NoteFromTask
+	}
+	return ""
+}
+
+// appTaskLog is a task's work as the page's log: ONE TOOL ENTRY PER STEP,
+// carrying the facts of its call.
+//
+// THIS IS WHERE THE PAGE USED TO LOSE EVERY STEP IT HAD. The engine answered
+// with worded lines and this loop wrapped each of them in a quiet NOTICE, so an
+// app that filters its work log to `kind == "tool"` — which it must, because
+// that is the only kind carrying a kind, a clock and an exit code — found none,
+// and a task that really ran sixty-two tests over seven steps drew a blank log
+// under a footer that said nothing. The engine now answers with facts
+// ([session.AppTaskStep]) and they are dressed as the tool entries they are.
+//
+// A LEGACY STEP IS STILL A NOTICE, and deliberately. A record that kept a
+// command and no tool cannot support a claim about which hands were used, so
+// such a step keeps its own words on a dim line rather than being classified
+// into a kind it never declared. A page shows it; nothing pretends it is proof.
+func appTaskLog(agent, id string, view session.AppTaskView, at time.Time) []appwire.Entry {
+	var log []appwire.Entry
+	for i, step := range view.Steps {
+		if step.Legacy {
+			if line := strings.TrimSpace(step.Text); line != "" {
+				log = append(log, appwire.Entry{ID: appStepEntryID(id, step, i), Agent: agent,
+					Kind: appwire.EntryNotice, At: at, Text: redact.Secrets(line), Quiet: true})
+			}
+			continue
+		}
+		log = append(log, appTaskStepEntry(agent, id, step, i, at))
+	}
+	if len(log) > 0 {
+		return log
+	}
+	// NO TYPED STEPS IS NOT NO WORK. A task from an engine lane that has not
+	// filled Steps, or one whose only record is the worded tail, still has lines
+	// a person can read, and they are said as the lines they are.
+	for i, line := range view.WorkLog {
+		if line = strings.TrimSpace(line); line != "" {
+			log = append(log, appwire.Entry{ID: id + ".l" + strconv.Itoa(i), Agent: agent,
+				Kind: appwire.EntryNotice, At: at, Text: redact.Secrets(line), Quiet: true})
+		}
+	}
+	return log
+}
+
+// appStepEntryID is one step's id on the page, stable across reads of the same
+// record: the engine's own stable id for the step, scoped to the task so two
+// tasks of one agent cannot collide.
+func appStepEntryID(task string, step session.AppTaskStep, at int) string {
+	if id := strings.TrimSpace(step.ID); id != "" {
+		return task + ".s" + id
+	}
+	return task + ".s" + strconv.Itoa(at)
+}
+
+// appTaskStepEntry is one typed step as its tool entry.
+//
+// EVERY FIELD IS CARRIED OR LEFT OUT; none is defaulted. A duration appears only
+// where a clock was recorded, an exit code only where a command reported one, an
+// outcome only where the record settled it — so a reader can tell "it passed"
+// from "nobody wrote down how it went", which is the whole point of the change.
+func appTaskStepEntry(agent, task string, step session.AppTaskStep, at int, now time.Time) appwire.Entry {
+	entry := appwire.Entry{
+		ID:     appStepEntryID(task, step, at),
+		Agent:  agent,
+		Kind:   appwire.EntryTool,
+		At:     now,
+		Call:   step.Call,
+		Name:   step.Tool,
+		Title:  redact.Secrets(appStepTitle(step)),
+		Detail: appDetail(redact.Secrets(step.Detail)),
+		OK:     step.OK,
+	}
+	if !step.StartedAt.IsZero() {
+		entry.At = step.StartedAt
+	}
+	entry.ToolFacts = appStepFacts(step)
+	entry.ToolFacts.Task = task
+	return entry
+}
+
+// appStepTitle is the one line the row shows for a step: what it was asked to
+// do where the record kept that, and the call's own gloss otherwise.
+func appStepTitle(step session.AppTaskStep) string {
+	for _, said := range []string{step.Command, step.Target, step.Text} {
+		if said = strings.TrimSpace(said); said != "" {
+			return said
+		}
+	}
+	return step.Tool
+}
+
+// appStepFacts is a step's facts in the work log's own shape. The KIND comes
+// from the engine's family for the tool through the one door every other call
+// uses ([appToolKind]), so a task's steps and a conversation's steps are sorted
+// by exactly the same rule and cannot drift apart.
+func appStepFacts(step session.AppTaskStep) appwire.ToolFacts {
+	facts := appwire.ToolFacts{
+		Kind:      appToolKind(step.Tool, step.Service),
+		Batch:     step.Batch,
+		Connector: step.ServiceName,
+	}
+	if facts.Kind == appwire.ToolConnector && facts.Connector == "" {
+		facts.Connector = step.Service
+	}
+	if !step.StartedAt.IsZero() {
+		started := step.StartedAt
+		facts.StartedAt = &started
+	}
+	// AN END IS SAID ONLY WHERE ONE WAS RECORDED. A step whose record kept a
+	// duration but no instants has a real duration and no real end, and
+	// manufacturing one from "now" would let a page draw a wall-clock bar for
+	// work that finished days ago.
+	if !step.EndedAt.IsZero() {
+		ended := step.EndedAt
+		facts.EndedAt = &ended
+	}
+	if step.ExitCode != nil {
+		code := *step.ExitCode
+		facts.ExitCode = &code
+	}
+	if len(step.Tail) > 0 {
+		facts.Tail = append([]string(nil), step.Tail...)
+		for i := range facts.Tail {
+			facts.Tail[i] = redact.Secrets(facts.Tail[i])
+		}
+	}
+	if step.Lines != nil {
+		lines := *step.Lines
+		facts.Lines = &lines
+	}
+	if input := appToolInput(facts.Kind, step.Tool, step.Args, step.Target, ""); input != nil {
+		facts.Input = input
+	}
+	if path, adds, dels, ok := tui3.ToolFileChange(step.Tool, step.Args); ok {
+		facts.Files = []appwire.FileChange{{Path: path, Add: adds, Del: dels}}
+	}
+	return facts
 }
 
 // ActOnTask is every verb on a task, through the engine's one task door.

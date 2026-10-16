@@ -5771,11 +5771,32 @@ is two separate objects. A stale expected state or version refuses with
 ## App task notes, Change the brief, Pause, and your call
 
 A note reaches a running task through its existing steering lane. Its
-`read_at_step` stays absent until a model request carries those words. An
-opened task shows the result, changed file paths, work log, notes and brief.
-Change the brief sends new instructions to the same task; the original task
-contract remains on its record. Plan tasks use their existing note and brief
-writers; they omit a step receipt when the engine has no such fact.
+`read_at_step` stays absent until a model request carries those words. Each
+note says who left it — you or the task — from the engine's own record, and a
+note from a record that never said stays unlabelled rather than being given to
+you. An opened task shows the result, changed file paths, work log, notes and
+brief. Change the brief sends new instructions to the same task; the original
+task contract remains on its record. Plan tasks use their existing note and
+brief writers; they omit a step receipt when the engine has no such fact.
+
+## What a task's work log knows about each step
+
+The work log is one row per step, carrying that call's own facts: the tool, the
+command, when it started, how long it took, its exit code and the tail of its
+output. They are read back from whichever record the task has — the live ring
+while it runs, its journal after a restart, a handed-over run's trajectory —
+and a fact appears only where it was recorded. A step still running has no
+duration and no outcome; a step a killed session left unsettled has neither
+either; a step whose record kept no exit code is not reported as having passed.
+
+A step from an older record that kept a command and nothing else about it stays
+one plain line with its own words. It is not given a tool name, because nothing
+on that record says which tool ran.
+
+A task says how many steps it took when some record counted them, and says
+nothing at all when none did. "Took no steps" and "nobody counted" are
+different facts and are kept apart; a surface showing the second as `0 steps`
+would be claiming a count that was never made.
 
 Pause lets the current request or action finish and holds the next request or
 action. Resume releases it. Stop keeps the work already written. The per-task

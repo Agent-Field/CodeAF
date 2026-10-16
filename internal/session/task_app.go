@@ -24,8 +24,19 @@ type AppTaskView struct {
 	Files                                                  []string
 	Notes                                                  []AppTaskNote
 	WorkLog                                                []string
-	Elapsed                                                int64
-	Version                                                uint64
+	// Steps is the task's work AS FACTS, oldest first and bounded
+	// (task_app_steps.go). WorkLog stays beside it as the worded tail a model
+	// reads; a surface that groups, folds and times steps reads this, because
+	// every fact it needs was spent composing those sentences.
+	Steps []AppTaskStep
+	// StepsKnown says whether Step is a COUNT or an absence. A task whose record
+	// never counted its steps and a task that took none put the same zero in
+	// Step, and a page that read that zero as a count said "0 steps" about work
+	// it simply had no record of. UNKNOWN IS NOT ZERO, so the two are separated
+	// here rather than guessed at by whoever draws them.
+	StepsKnown bool
+	Elapsed    int64
+	Version    uint64
 	// RoutingState and Crew are the task's models in brief (taskrouting.go):
 	// the published decision, never a settings read.
 	RoutingState string
@@ -33,10 +44,48 @@ type AppTaskView struct {
 	TaskPins     map[crewroute.Seat]bool
 }
 type AppTaskNote struct {
-	Direction  uint64 `json:"direction,omitempty"`
-	Text       string
+	Direction uint64 `json:"direction,omitempty"`
+	Text      string
+	// From is WHO SAID IT, carried from the record's own label and never read
+	// back out of the words ([directionFrom], plandb's note origins).
+	//
+	// IT IS THE DIFFERENCE BETWEEN A PERSON AND A MACHINE. A page draws the
+	// person's own notes as their messages; before this field existed every note
+	// reached the app with no origin at all, so a surface defaulting to "yours"
+	// put a running task's own lines — and the words a checker handed back — in
+	// the person's mouth. The engine knows which is which at the moment each
+	// arrives, so it says so.
+	//
+	// "" is a note from a record that never labelled one, which a reader takes as
+	// unknown and must not take as the person's.
+	From       AppNoteFrom
 	ReadAtStep *int
 }
+
+// AppNoteFrom is a note's origin, in the engine's own words.
+type AppNoteFrom string
+
+const (
+	// AppNoteFromPerson is the person at a keyboard: a steer typed into a task,
+	// the words sent with a continue. Only these may revise an assignment
+	// (assignment.go's authority note).
+	AppNoteFromPerson AppNoteFrom = "person"
+	// AppNoteFromTask is the task's own line, or another agent's coordination
+	// with it — anything delivered to or by the work rather than typed by the
+	// person.
+	AppNoteFromTask AppNoteFrom = "task"
+)
+
+// appNoteFrom is the one mapping from the assignment's record of who spoke to
+// the word a page is given. Anything this build does not recognise reads as the
+// task's, which is the reading that claims nothing about a person.
+func appNoteFrom(from directionFrom) AppNoteFrom {
+	if from == directionFromPerson {
+		return AppNoteFromPerson
+	}
+	return AppNoteFromTask
+}
+
 type AppQuickTaskView struct {
 	// Grew is why the quick work asked to become a full task, while it waits
 	// for that answer; State is then "grew".
@@ -226,6 +275,7 @@ func (a *Agent) appGraphTasks(out []AppTaskView, cap float64, ids map[string]boo
 		journal := node.journal
 		graph.mu.Unlock()
 		view.WorkLog = appTaskWorkLog(view.WorkLog, journal)
+		appTaskSteps(&view, live, journal)
 		ids[view.ID] = true
 		out = append(out, view)
 	}
@@ -247,13 +297,30 @@ func (a *Agent) AppTask(id string) (AppTaskView, bool, error) {
 					row.Result = page.Result
 				}
 				if len(row.Notes) == 0 {
+					// WHO LEFT EACH NOTE IS ON THE RECORD AND WAS BEING THROWN
+					// AWAY HERE. A plan task's page carries its worker's own
+					// handoffs beside the person's questions, each already marked
+					// ([PlanTaskNote.Person]); dropping the mark left a surface
+					// with nothing to attribute by, so every default put the
+					// worker's lines — the handoff, the account of the work —
+					// into the person's own bubble as words they never typed.
 					for _, note := range page.Notes {
-						row.Notes = append(row.Notes, AppTaskNote{Text: note.Body})
+						from := AppNoteFromTask
+						if note.Person {
+							from = AppNoteFromPerson
+						}
+						row.Notes = append(row.Notes, AppTaskNote{Text: note.Body, From: from})
 					}
 				}
+				if len(row.Steps) == 0 {
+					appPlanTaskSteps(&row, page)
+				}
 				if len(row.WorkLog) == 0 {
-					for _, step := range page.Steps {
-						row.WorkLog = append(row.WorkLog, step.Command)
+					row.WorkLog = appTrajectoryLines(row.Steps)
+					if len(row.WorkLog) == 0 {
+						for _, step := range page.Steps {
+							row.WorkLog = append(row.WorkLog, step.Command)
+						}
 					}
 				}
 			}
@@ -566,13 +633,23 @@ func (n *TaskNode) appNotesLocked() []AppTaskNote {
 	known := map[uint64]bool{}
 	for i := range notes {
 		known[notes[i].Direction] = true
+		// EVERY NOTE THE APP'S OWN DOOR WROTE IS THE PERSON'S, because that door
+		// is the person's ([Agent.appTaskNote] is reached from a note they typed).
+		// It is stated here rather than left to whoever draws it, and the
+		// assignment's own label wins wherever the record kept one.
+		notes[i].From = AppNoteFromPerson
 		if said, ok := n.assignment.direction(notes[i].Direction); ok {
 			notes[i].ReadAtStep = said.readAtStep
+			notes[i].From = appNoteFrom(said.from)
 		}
 	}
+	// Only the person's own directions are added from the assignment, as they
+	// always were: another agent's coordination with running work is a delivery
+	// to the worker and not a line in the person's own thread with the task.
 	for _, said := range n.assignment.directions {
 		if said.from == directionFromPerson && !known[said.id] {
-			notes = append(notes, AppTaskNote{Direction: said.id, Text: said.words, ReadAtStep: said.readAtStep})
+			notes = append(notes, AppTaskNote{Direction: said.id, Text: said.words,
+				From: appNoteFrom(said.from), ReadAtStep: said.readAtStep})
 		}
 	}
 	return notes
@@ -637,6 +714,100 @@ func (a *Agent) appProposalViews(cap float64) []AppTaskView {
 	}
 	a.mu.Unlock()
 	return out
+}
+
+// appTaskSteps fills a graph node's work as facts, and says honestly how many
+// steps it took.
+//
+// THE LIVE RING IS PREFERRED AND THE JOURNAL IS THE FLOOR, for the same reason
+// [appTaskWorkLog] prefers it: a running node's present is in the recorder and
+// nowhere else, and a restored node has no recorder at all. They are not merged.
+// A node that has both is a node whose ring already holds this life's calls; a
+// merge would draw a restarted task's steps twice, once from each record, with
+// no field able to say which copy is which.
+//
+// THE COUNT COMES FROM WHATEVER RECORD ANSWERED. [taskLive.steps] counts ends
+// and is exact while a node runs, but a restored node's recorder has counted
+// none, so its zero is an absence and the journal's own step count is the fact.
+// A node with neither leaves StepsKnown false, and a page says nothing at all
+// rather than a reassuring zero.
+func appTaskSteps(view *AppTaskView, live taskLiveState, journal string) {
+	if len(live.Calls) > 0 || live.Steps > 0 {
+		view.Steps, view.StepsKnown = live.Calls, true
+		if live.Steps > 0 {
+			view.Step = live.Steps
+		} else {
+			view.Step = appStepsFinished(live.Calls)
+		}
+		return
+	}
+	steps := appJournalSteps(journal, appTaskStepsMax)
+	if len(steps) == 0 {
+		// A node with no record of its work says nothing about its work. Step is
+		// left exactly as its notice set it, and StepsKnown stays false unless
+		// that notice genuinely counted something.
+		view.StepsKnown = view.Step > 0
+		return
+	}
+	view.Steps, view.StepsKnown = steps, true
+	view.Step = len(steps)
+}
+
+// appPlanTaskSteps fills a plan task's work as facts.
+//
+// IT READS THE TRAJECTORY ITSELF WHERE THE ROW NAMES ONE. [PlanStep] mirrors
+// internal/run's step line but was written before the tool name and the recorded
+// exit were fields of it, so a page built from the mirror alone cannot say which
+// tool ran or how a command came out. The row carries the path of the record,
+// and the record has both.
+//
+// THE MIRROR IS THE FLOOR AND STAYS TRUTHFUL. Where there is no readable
+// trajectory the page's own steps are used, and each is marked legacy: it has a
+// command, the engine's facts about whether anything was attempted, and no claim
+// at all about which hands were used, which is exactly what that record holds.
+func appPlanTaskSteps(row *AppTaskView, page PlanTaskPage) {
+	if path := strings.TrimSpace(page.Row.TrajectoryPath); path != "" {
+		if steps, _ := appTrajectorySteps(path, appTaskStepsMax); len(steps) > 0 {
+			row.Steps, row.StepsKnown = steps, true
+			if row.Step == 0 {
+				row.Step = len(steps)
+			}
+			return
+		}
+	}
+	if len(page.Steps) == 0 {
+		return
+	}
+	for _, step := range page.Steps {
+		row.Steps = append(row.Steps, AppTaskStep{
+			ID:          AppStepTrajectory.prefix() + strconv.Itoa(step.Step),
+			Command:     appStepText(step.Command),
+			Detail:      appStepText(step.Observation),
+			Step:        step.Step,
+			Source:      AppStepTrajectory,
+			HarnessMade: step.NotRun,
+			Refused:     step.Refused,
+			Legacy:      true,
+			Text:        appStepText(step.Command),
+		})
+	}
+	row.StepsKnown = true
+	if row.Step == 0 {
+		row.Step = len(page.Steps)
+	}
+}
+
+// appStepsFinished is how many of a projection's steps the record has settled.
+// It is the figure a page may call a step count; a step still in flight has not
+// been taken yet.
+func appStepsFinished(steps []AppTaskStep) int {
+	n := 0
+	for _, step := range steps {
+		if !step.Running {
+			n++
+		}
+	}
+	return n
 }
 
 // A restored node reads its existing journal when no live work-log tail remains.
