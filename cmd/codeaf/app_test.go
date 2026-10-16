@@ -546,9 +546,9 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	// The first two events are the create's own agent.changed and the one
-	// that says its conversation opened behind the answer.
-	got := rec.events[2 : done+2]
+	// A create with no words announces nothing (appblank.go), so the first
+	// event is the send's own agent.changed.
+	got := rec.events[:done+2]
 	want := []string{
 		appwire.EventAgentChanged, appwire.EventTurnStarted, appwire.EventEntryAdded,
 		appwire.EventTurnThinking, appwire.EventTurnThinkingDone, appwire.EventTurnDelta, appwire.EventEntryAdded,
@@ -558,7 +558,7 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("events:\n got %v\nwant %v", got, want)
 	}
-	data := rec.data[2 : done+2]
+	data := rec.data[:done+2]
 	if s := data[0].(appwire.AgentChanged).Agent.State; s != appwire.StateWorking {
 		t.Fatalf("first change = %s, want working", s)
 	}

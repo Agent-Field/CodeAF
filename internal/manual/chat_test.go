@@ -4125,3 +4125,26 @@ func TestChangedInputQuestionReachesRetainedHistory(t *testing.T) {
 		t.Errorf("%q does not reach what-i-remember · %q; it reached %v", question, title, where)
 	}
 }
+
+// codeaf app connects every provider the terminal does; a person asking
+// how reaches the section that says so, and not an older line that denied it.
+func TestAppProviderQuestionsReachTheirSection(t *testing.T) {
+	const heading = "Connecting a provider from the app"
+	for _, asked := range []string{
+		"can the app connect ollama",
+		"connect a custom endpoint in the app",
+		"sign in with chatgpt in the app",
+		"app z.ai region",
+	} {
+		var reached bool
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.HasPrefix(section.Title, heading) {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach %q", asked, heading)
+		}
+	}
+}

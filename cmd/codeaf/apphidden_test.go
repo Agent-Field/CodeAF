@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +63,159 @@ func TestAnAskCarriesItsSubject(t *testing.T) {
 	if s := appAskOf("a", q).Subject; s != nil {
 		t.Fatalf("an ask about nothing has subject %+v", s)
 	}
+}
+
+// appTurnShape runs one scripted turn and gives back what it said: every entry
+// the turn added after the person's own, and the words each message streamed.
+func appTurnShape(t *testing.T, script []session.Event) ([]appwire.Entry, map[int]string) {
+	t.Helper()
+	conv := &fakeConversation{script: script}
+	backend, rec, agent := workBackend(t, conv)
+	if _, err := backend.Send(agent.ID, "draft the release notes", ""); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	var entries []appwire.Entry
+	streamed := map[int]string{}
+	for _, data := range rec.data {
+		switch d := data.(type) {
+		case appwire.EntryAdded:
+			if d.Entry.Kind != appwire.EntryUser {
+				entries = append(entries, d.Entry)
+			}
+		case appwire.TurnDelta:
+			if d.Kind == appwire.DeltaText {
+				streamed[d.Msg] += d.Text
+			}
+		}
+	}
+	return entries, streamed
+}
+
+// appSameEntries says whether the live entries name what the listing names
+// for the same record: id, kind and words, in order. A call is a turn.tool
+// live and is left out of both.
+func appSameEntries(t *testing.T, live []appwire.Entry, items []session.DisplayEntry) {
+	t.Helper()
+	var listed []appwire.Entry
+	for _, e := range appEntriesOf("a", items, time.Now(), nil) {
+		if e.Kind != appwire.EntryUser && e.Kind != appwire.EntryTool {
+			listed = append(listed, e)
+		}
+	}
+	if len(live) != len(listed) {
+		t.Fatalf("live said %d entries and the listing %d:\n live %+v\nlisted %+v", len(live), len(listed), live, listed)
+	}
+	for i := range live {
+		if live[i].ID != listed[i].ID || live[i].Kind != listed[i].Kind || live[i].Text != listed[i].Text {
+			t.Fatalf("entry %d: live %s %s %q, listed %s %s %q", i, live[i].ID, live[i].Kind, live[i].Text, listed[i].ID, listed[i].Kind, listed[i].Text)
+		}
+	}
+}
+
+// the carry-on line, as a person read it in the app.
+const appCarryOnLine = "the ask is not finished · carrying on rather than stopping here"
+
+// A REPLY SENT BACK TO WORK AND WITHDRAWN IS NOT GLUED TO THE ANSWER. The
+// turn answered, the completion check carried it on, and the model withdrew
+// with the token and nothing else: the answer stands alone, live and listed,
+// and the line saying it was carried on is not a notice in the chat.
+func TestAWithdrawnCarryOnIsNotGluedToTheAnswer(t *testing.T) {
+	if !session.IsCarryOnNotice(appCarryOnLine) {
+		t.Fatal("the carry-on line is not the session's")
+	}
+	answer := "I have assigned the sections and am standing by for drafts from the team."
+	entries, streamed := appTurnShape(t, []session.Event{
+		{Kind: session.EventTextDelta, Text: answer},
+		{Kind: session.EventAssistantDone},
+		{Kind: session.EventNotice, Text: appCarryOnLine},
+		{Kind: session.EventTextDelta, Text: "[no "},
+		{Kind: session.EventTextDelta, Text: "change]"},
+		{Kind: session.EventAssistantDone},
+		{Kind: session.EventTurnDone},
+	})
+	for msg, words := range streamed {
+		if strings.Contains(words, session.NoChangeReply) {
+			t.Fatalf("message %d streamed the withdrawal token: %q", msg, words)
+		}
+	}
+	if streamed[0] != answer || len(streamed) != 1 {
+		t.Fatalf("streamed = %v", streamed)
+	}
+	for _, e := range entries {
+		if e.Kind == appwire.EntryNotice {
+			t.Fatalf("the carry-on became a notice: %+v", e)
+		}
+	}
+	appSameEntries(t, entries, []session.DisplayEntry{
+		{Role: "user", Text: "draft the release notes"},
+		{Role: "assistant", Text: answer, Answer: true},
+		{Role: "assistant", Text: session.NoChangeReply, Answer: true},
+	})
+}
+
+// A CARRY-ON ANSWERED IN WORDS IS A SECOND MESSAGE. A reply the engine closed
+// in words alone is an answer, said at once, even when the turn is sent back
+// and goes on to call a tool; only the reply its own tool call comes straight
+// after is an update, as the listing names them ([appUpdates]). Neither nudge
+// is said as a notice, and a notice that is not one of them still is.
+func TestEveryReplyOfACarriedOnTurnIsItsOwnMessage(t *testing.T) {
+	t.Run("words", func(t *testing.T) {
+		entries, streamed := appTurnShape(t, []session.Event{
+			{Kind: session.EventTextDelta, Text: "The parser is done."},
+			{Kind: session.EventAssistantDone},
+			{Kind: session.EventNotice, Text: appCarryOnLine},
+			{Kind: session.EventTextDelta, Text: "The handlers are wired too."},
+			{Kind: session.EventAssistantDone},
+			{Kind: session.EventTurnDone},
+		})
+		if streamed[0] != "The parser is done." || streamed[1] != "The handlers are wired too." {
+			t.Fatalf("streamed = %v", streamed)
+		}
+		appSameEntries(t, entries, []session.DisplayEntry{
+			{Role: "user", Text: "draft the release notes"},
+			{Role: "assistant", Text: "The parser is done.", Answer: true},
+			{Role: "assistant", Text: "The handlers are wired too.", Answer: true},
+		})
+	})
+	t.Run("a tool after", func(t *testing.T) {
+		entries, _ := appTurnShape(t, []session.Event{
+			{Kind: session.EventTextDelta, Text: "Let me make the question."},
+			{Kind: session.EventAssistantDone},
+			{Kind: session.EventNotice, Text: "it loaded a tool and stopped before using it · asking it to go on"},
+			{Kind: session.EventNotice, Text: "Retry 1/3: removed max_tokens"},
+			{Kind: session.EventTextDelta, Text: "Asking now."},
+			{Kind: session.EventToolBegin, CallID: "c1", Tool: "read", Hint: "read go.mod"},
+			{Kind: session.EventToolEnd, CallID: "c1", Tool: "read", Hint: "12 lines"},
+			{Kind: session.EventTextDelta, Text: "Done."},
+			{Kind: session.EventAssistantDone},
+			{Kind: session.EventTurnDone},
+		})
+		var notices []string
+		var said []appwire.Entry
+		for _, e := range entries {
+			if e.Kind == appwire.EntryNotice {
+				notices = append(notices, e.Text)
+				continue
+			}
+			said = append(said, e)
+		}
+		if len(notices) != 1 || notices[0] != "Retry 1/3: removed max_tokens" {
+			t.Fatalf("notices = %q", notices)
+		}
+		if len(said) < 2 || said[0].Kind != appwire.EntryAnswer || said[1].Kind != appwire.EntryUpdate {
+			t.Fatalf("the words closed alone must be an answer and the words before the call an update: %+v", said)
+		}
+		appSameEntries(t, said, []session.DisplayEntry{
+			{Role: "user", Text: "draft the release notes"},
+			{Role: "assistant", Text: "Let me make the question.", Answer: true},
+			{Role: "assistant", Text: "Asking now."},
+			{Role: "tool", CallID: "c1", Tool: "read"},
+			{Role: "assistant", Text: "Done.", Answer: true},
+		})
+	})
 }
 
 // A TOOL'S RESULT MESSAGE IS NOT A SECOND CALL: the blank row the shaping keeps

@@ -118,8 +118,11 @@ func TestAppKeysAreHeldInMemoryAndOutrankTheProfile(t *testing.T) {
 	if p := byID["deepseek"]; !p.SignedIn || p.KeyHint != "…7c2e" || p.SignIn {
 		t.Fatalf("deepseek = %+v", p)
 	}
-	if p := byID["codex"]; p.AuthKind != "account" || !p.SignIn || p.KeyHint != "" {
-		t.Fatalf("Codex must be an account, not a pasted key: %+v", p)
+	// The ChatGPT sign-in is listed as the browser sign-in it is, an account
+	// rather than a pasted key, and with nothing signed in it says so and draws
+	// no hint from any key.
+	if p := byID["codex"]; p.Kind != appwire.ProviderBrowser || p.AuthKind != "account" || !p.SignIn || p.SignedIn || p.KeyHint != "" {
+		t.Fatalf("Codex must be a browser sign-in to an account, not a pasted key: %+v", p)
 	}
 	rec.waitFor(t, time.Second, func(event string, data any) bool {
 		changed, ok := data.(appwire.ProviderChanged)
@@ -168,6 +171,63 @@ func TestAppSetupIsKeptAcrossLaunches(t *testing.T) {
 	}
 	if settings, _ := second.Settings(); settings.DayCapUSD == nil || *settings.DayCapUSD != 35 {
 		t.Fatalf("the setup's day cap is not the app's: %+v", settings.DayCapUSD)
+	}
+}
+
+// A SETUP KEPT BY A FOUR-STEP BUILD LANDS ON ITS STEP IN THREE. Setup was four
+// steps until the welcome and the connecting step became one; a person who
+// quit halfway and then updated resumes where they were — the welcome or the
+// connecting step on the first, the defaults on the second, how to start on
+// the third — and a kept 4, which is no step now, does not cost them the whole
+// file. A step this build keeps is read back as it was kept.
+func TestAppSetupKeptByAFourStepBuildLandsOnItsStep(t *testing.T) {
+	t.Setenv(config.ProfileDirEnv, t.TempDir())
+	for kept, want := range map[string]appwire.SetupStep{
+		`1`:      {N: 1},
+		`2`:      {N: 1},
+		`3`:      {N: 2},
+		`4`:      {N: 3},
+		`"done"`: {Done: true},
+	} {
+		path := filepath.Join(t.TempDir(), appStateName)
+		old := `{"setup":{"step":` + kept + `,"provider":"openrouter","day_cap_usd":30},"day_cap_usd":30,"work_folder":"/w"}`
+		if err := os.WriteFile(path, []byte(old), appStateFileMode); err != nil {
+			t.Fatal(err)
+		}
+		backend := newFakeBackend(newAppRecorder(), nil)
+		backend.state = &appState{path: path}
+		setup, err := backend.Setup()
+		if err != nil || setup.Step != want || setup.Provider != "openrouter" || setup.DayCapUSD == nil || *setup.DayCapUSD != 30 {
+			backend.Close()
+			t.Fatalf("a four-step setup kept at %s = %+v, %v; want step %+v", kept, setup, err, want)
+		}
+		if settings, err := backend.Settings(); err != nil || settings.WorkFolder != "/w" {
+			backend.Close()
+			t.Fatalf("the rest of a four-step file was not read: %+v, %v", settings, err)
+		}
+		backend.Close()
+	}
+
+	// What this build keeps is counted in three and read back unmoved.
+	path := filepath.Join(t.TempDir(), appStateName)
+	backend := newFakeBackend(newAppRecorder(), nil)
+	defer backend.Close()
+	backend.state = &appState{path: path}
+	for _, step := range []appwire.SetupStep{{N: 1}, {N: 2}, {N: 3}, {Done: true}} {
+		if _, err := backend.SetSetup(appwire.Setup{Step: step}); err != nil {
+			t.Fatal(err)
+		}
+		again := newFakeBackend(newAppRecorder(), nil)
+		again.state = &appState{path: path}
+		setup, err := again.Setup()
+		again.Close()
+		if err != nil || setup.Step != step {
+			t.Fatalf("a setup kept at %+v read back as %+v, %v", step, setup, err)
+		}
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(raw), `"setup_steps": 3`) {
+		t.Fatalf("the kept file does not say how many steps it counts in:\n%s (%v)", raw, err)
 	}
 }
 

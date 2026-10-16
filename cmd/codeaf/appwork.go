@@ -133,7 +133,11 @@ func (b *appBackend) heldLive(agent string) (*appAgent, *appLive, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if opened {
+	// A blank agent opened here is not announced (appblank.go): a crew's
+	// start names it, or its first words say it, a moment later.
+	said := false
+	b.locked(func() { said = a.saidLocked() })
+	if opened && said {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
 	live := b.liveOf(a)

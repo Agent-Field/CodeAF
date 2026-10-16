@@ -775,6 +775,29 @@ const checkpointRemainsAsk = "[still asked] Above is what the person asked for a
 // this door does, which is carry on rather than start anything.
 const checkpointCarryOnNote = "the ask is not finished · carrying on rather than stopping here"
 
+// IsCarryOnNotice says whether a notice's words are the line the harness says
+// as it sends a stopped turn back to work: the completion check's carry-on
+// ([checkpointCarryOnNote]) or one of the two nudges ([checkpointLoadNudgeNote],
+// [checkpointAskNudgeNote]). It is the ONE reading of those three lines, for
+// [IsNoChangeReply]'s reason.
+//
+// THEY ARE SAID FOR THE MOMENT THEY ARE SAID IN. None is written into the
+// transcript, and the turn they announce goes on working, so what each tells
+// the person is only that it has not stopped yet. A surface that folds a
+// settled turn's machinery away draws them while the turn runs and folds them
+// with the rest (tui3's workfold.go); a surface with no such fold leaves them
+// out, rather than keep a standing line that a reopened conversation would not
+// have and that names nothing the person can act on (codeaf app's pump).
+// The lines that END a turn — stopping, finishing, moving to a task — are not
+// these, and every surface keeps them.
+func IsCarryOnNotice(text string) bool {
+	switch strings.TrimSpace(text) {
+	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote:
+		return true
+	}
+	return false
+}
+
 // checkpointCarryOnCap is HOW MANY TIMES ONE ASK MAY BE CARRIED ON before the
 // harness stops carrying it.
 //
@@ -865,9 +888,21 @@ const checkpointAskNudgeNote = "its question was refused and it stopped without 
 // checkpointAskNudgeLead is that continuation, carrying the refusal itself so
 // the model has the fix in front of it rather than in its history.
 func checkpointAskNudgeLead(refusal string) string {
-	return "[carry on] Your `ask` this turn was refused — " + strings.TrimSpace(refusal) + " — and the person saw no question. " +
-		"Ask again in this same turn with that fixed, or say in one line why you no longer need to."
+	return checkpointAskNudgeOpening + strings.TrimSpace(refusal) + checkpointAskNudgeClosing
 }
+
+// The two nudge continuations are written around what they name — the refusal,
+// the tools loaded — so each is spelled as the words before it and the words
+// after it. THE HALVES ARE CONSTANTS FOR THE DISPLAY'S SAKE: a reopened
+// conversation recognises the whole continuation by both halves
+// ([isContinuationContext]) and leaves it out, where a test of the "[carry on]"
+// opening alone would also hide a person's own message that began that way.
+const (
+	checkpointAskNudgeOpening  = "[carry on] Your `ask` this turn was refused — "
+	checkpointAskNudgeClosing  = " — and the person saw no question. Ask again in this same turn with that fixed, or say in one line why you no longer need to."
+	checkpointLoadNudgeOpening = "[carry on] You loaded "
+	checkpointLoadNudgeClosing = " this turn and then stopped without calling it. It is in your tool list now: call it in this same turn, or say in one line why you no longer need it."
+)
 
 // askRefusedAndNotRetried reads the transcript for the shape
 // [checkpointAskNudgeLead] answers: the newest `ask` of THIS turn came back
@@ -915,8 +950,7 @@ func checkpointLoadNudgeLead(names []string) string {
 	for _, name := range names {
 		quoted = append(quoted, "`"+name+"`")
 	}
-	return "[carry on] You loaded " + strings.Join(quoted, ", ") + " this turn and then stopped without calling it. " +
-		"It is in your tool list now: call it in this same turn, or say in one line why you no longer need it."
+	return checkpointLoadNudgeOpening + strings.Join(quoted, ", ") + checkpointLoadNudgeClosing
 }
 
 // loadedAndNeverUsed reads the transcript for the shape [Agent.checkpointReopen]

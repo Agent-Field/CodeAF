@@ -11,17 +11,20 @@ package main
 // limit, and a pause the crew's own stop with every turn the conversation
 // starts by itself stopped until the person resumes it (appwakes.go).
 //
-// A PROPOSAL is the agent's own: the app asks it, in its chat where the person
-// can read the question, for one JSON block naming the crew and the helpers it
-// would start, and the answer becomes an ask. Accepting it makes the team with
-// the agent as manager and writes each helper's start on the crew's log as the
-// manager's own line, its brief the manager's own words from the proposal;
-// the app then performs those starts exactly as it performs any manager's.
+// A PROPOSAL is the agent's own: the app asks its model, beside its chat and
+// never in it, for one JSON block naming the crew and the helpers it would
+// start, and the answer becomes an ask — the crew proposal, which is all the
+// person sees of it. Accepting it makes the team with the agent as
+// manager and writes each helper's start on the crew's log as the manager's
+// own line, its brief the manager's own words from the proposal; the app then
+// performs those starts exactly as it performs any manager's.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -415,50 +418,127 @@ func asWire(err error, wire **appwire.Error) bool {
 
 // ── proposals ───────────────────────────────────────────────────────────────
 
-// appProposalAsk is what the app asks an agent for when the person asks it to
-// propose a crew. It is said in the agent's own chat, so the person reads it.
+// appProposalAsk is what the app asks an agent's model for when the person
+// asks for a crew (crews.propose). It is the app's instruction and never the person's
+// words, so it is asked as a side ask ([appSideAsker]) and is never shown.
 const appProposalAsk = "Propose a crew for the work in this conversation: the helpers you would start and manage. " +
 	"Reply with one JSON object and nothing else, shaped " +
 	`{"name": "the crew's name", "goal": "one line", "helpers": [{"handle": "2 to 12 lowercase letters or digits", "role": "a short role name", "brief": "the helper's whole assignment"}]}. ` +
 	"Do not start anyone yet; the person decides."
 
+// appNoProposal is the quiet line a conversation carries when what came back
+// could not be read as a proposal, and appNoAnswer leads the line when nothing
+// came back at all, before the reason the ask failed.
+const (
+	appNoProposal   = "No crew proposal came back in a form the app can read"
+	appNoAnswer     = "No crew proposal came back"
+	appNoProposalID = "crewprop-none-"
+)
+
+// appSideAsker is the conversation's side ask: one question about the
+// conversation, answered by its own model outside it (internal/session's
+// sideask.go, carried across the wire by internal/remote's sideask.go).
+type appSideAsker interface {
+	SideAsk(ctx context.Context, question string) (string, error)
+}
+
 // CrewPropose asks the agent for a crew proposal; its answer arrives as an ask.
+//
+// THE QUESTION IS ASKED BESIDE THE CHAT AND NEVER IN IT. It was once sent as a
+// turn, and the person then read the app's instruction as a message of their
+// own and the model's JSON as its answer — live, on every reread and after a
+// relaunch — and the model carried the exchange into every turn after it. A
+// turn hidden after the fact has to be hidden from the stream, the listing,
+// the title, a retry and every other reader of the journal; a side ask writes
+// nothing to hide, starts no turn and leaves the model's context as it was. So
+// the only thing the person sees is the proposal's ask, or one quiet line
+// when no proposal could be read.
+//
+// One ask runs per agent at a time: a second press while the first is out is
+// answered by the first's card.
 func (b *appBackend) CrewPropose(agent string) error {
 	a, live, err := b.heldLive(agent)
 	if err != nil {
 		return err
 	}
-	b.crews()
-	if _, err := b.Send(agent, appProposalAsk, ""); err != nil {
-		return err
+	asker, ok := live.conn.Conv.(appSideAsker)
+	if !ok {
+		return appwire.Errorf(appwire.CodeEngine, "this agent cannot be asked for helpers outside its chat; update codeaf")
 	}
-	var done chan struct{}
-	b.locked(func() { done = live.pumpDone })
-	guard.Go("app/crew-propose", func() {
-		if done != nil {
-			<-done
+	run := b.crews()
+	if run == nil {
+		return appwire.Errorf(appwire.CodeClosed, "the app is closing")
+	}
+	// THE DAY CAP IS CHECKED BEFORE THE MODEL IS ASKED, as it is before a turn
+	// (startLocked): a side ask is paid for like one. At the cap the press is
+	// answered in the chat's one quiet line, which is also what tells a window
+	// waiting on the press that nothing more is coming, and the person is asked
+	// about the cap (unless that ask is already open). A LIMIT NOBODY CAN READ
+	// REFUSES THE ASK, as it refuses a turn: the press ends in the same quiet
+	// line, saying why, and the model is not asked.
+	now := b.now()
+	limit, err := b.dayCap(now)
+	spent := 0.0
+	if err == nil && limit > 0 {
+		spent, err = b.spentTodayChecked(now)
+	}
+	if err != nil {
+		b.noProposal(agent, appNoAnswer+" · "+appDetail(redact.Secrets(err.Error())))
+		return nil
+	}
+	if limit > 0 && spent >= limit {
+		b.noProposal(agent, appNoAnswer+" · Day cap reached · "+appUSD(spent)+" of "+appUSD(limit))
+		b.askDay(a, live, spent, limit, "")
+		return nil
+	}
+	first := false
+	run.locked(func() {
+		if run.proposing == nil {
+			run.proposing = map[string]bool{}
 		}
-		b.proposalAnswered(a, agent)
+		first = !run.proposing[agent]
+		run.proposing[agent] = true
+	})
+	if !first {
+		return nil
+	}
+	guard.Go("app/crew-propose", func() {
+		// The press is free again the moment the model has answered, before
+		// the card is drawn, so a press made after the card is a new ask; the
+		// deferred call is for a road that never reaches that moment.
+		answered := sync.OnceFunc(func() { run.locked(func() { delete(run.proposing, agent) }) })
+		defer answered()
+		ctx, cancel := context.WithTimeout(context.Background(), session.SideAskPatience)
+		defer cancel()
+		answer, err := asker.SideAsk(ctx, appProposalAsk)
+		answered()
+		// The conversation was in use for as long as its model was being asked,
+		// so the idle sweep counts from the answer and not from the press.
+		b.locked(func() { live.lastUse = b.now() })
+		if err != nil {
+			b.noProposal(agent, appNoAnswer+" · "+appDetail(redact.Secrets(err.Error())))
+			return
+		}
+		b.proposalAnswered(agent, answer)
 	})
 	return nil
 }
 
+// noProposal says, quietly and in the agent's own conversation, that no
+// proposal came of a press. Its id opens with appNoProposalID, which is how a
+// window knows the press it is waiting on has been answered.
+func (b *appBackend) noProposal(agent, words string) {
+	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+		ID: appNoProposalID + b.now().Format("150405"), Agent: agent, Kind: appwire.EntryNotice, At: b.now(),
+		Text: words, Quiet: true,
+	}})
+}
+
 // proposalAnswered reads the agent's answer as a proposal and asks the person.
-func (b *appBackend) proposalAnswered(a *appAgent, agent string) {
-	var transcript string
-	b.locked(func() { transcript = a.transcript })
-	answer := ""
-	for _, entry := range appEntriesOf(agent, appRecordItems(session.ReadTranscript(transcript)), b.now(), nil) {
-		if entry.Kind == appwire.EntryAnswer {
-			answer = entry.Text
-		}
-	}
+func (b *appBackend) proposalAnswered(agent, answer string) {
 	p, ok := appParseProposal(answer)
 	if !ok {
-		b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-			ID: "crewprop-none-" + b.now().Format("150405"), Agent: agent, Kind: appwire.EntryNotice, At: b.now(),
-			Text: "No crew proposal came back in a form the app can read", Quiet: true,
-		}})
+		b.noProposal(agent, appNoProposal)
 		return
 	}
 	p.Agent, p.At = agent, b.now()
@@ -475,6 +555,9 @@ func (b *appBackend) proposalAnswered(a *appAgent, agent string) {
 	}
 	ask := appProposalAskOf(p)
 	run := b.crews()
+	if run == nil {
+		return
+	}
 	run.locked(func() { run.asks[ask.ID] = ask })
 	b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
 }
@@ -548,6 +631,9 @@ func (b *appBackend) dropProposal(id, option string) {
 		return nil
 	})
 	run := b.crews()
+	if run == nil {
+		return
+	}
 	var ask appwire.Ask
 	run.locked(func() {
 		ask = run.asks[appProposalAskPrefix+id]
@@ -557,15 +643,22 @@ func (b *appBackend) dropProposal(id, option string) {
 		return
 	}
 	at := b.now()
-	words := "Kept it one agent"
-	if option == appwire.ProposalCreate {
-		words = "Made the crew"
-	}
 	b.emit.Emit(appwire.EventAskClosed, appwire.AskClosed{Agent: ask.Agent, ID: ask.ID, By: appwire.ClosedByApp, Option: option, At: at})
+	// A MADE CREW'S RECEIPT IS ITS FORMATION FACT, said once by crewReceipt
+	// under rcrew:<crew> and read back the same after a restart; a second
+	// "Made the crew" here drew the card's end twice. A kept agent's receipt
+	// says so in its own words.
+	if option == appwire.ProposalCreate {
+		return
+	}
 	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: "r" + ask.ID, Agent: ask.Agent, Kind: appwire.EntryReceipt, At: at, Text: words + " · you · " + at.Format("15:04"),
+		ID: "r" + ask.ID, Agent: ask.Agent, Kind: appwire.EntryReceipt, At: at, Text: appKeptOneAgent + " · you · " + at.Format("15:04"),
 	}})
 }
+
+// appKeptOneAgent is the receipt a proposal leaves when the person keeps the
+// agent alone.
+const appKeptOneAgent = "Kept as one agent"
 
 // createFromProposal makes the proposed crew: the agent its manager, the
 // agents it named as members, and each helper the manager's start.

@@ -65,22 +65,32 @@ var setupMethods = map[string]method{
 		return &ProvidersResult{nonNil(providers)}, nil
 	}),
 	"keys.check": shaped[KeyParams](func(e Engine, raw json.RawMessage) (*KeyCheck, error) {
-		provider, key, err := decodeKey(raw, "keys.check")
+		connector, whole := e.(ProviderConnector)
+		p, err := decodeKey(raw, "keys.check", whole)
 		if err != nil {
 			return nil, err
 		}
-		check, err := e.CheckKey(provider, key)
+		var check KeyCheck
+		if whole {
+			check, err = connector.CheckProvider(p)
+		} else {
+			check, err = e.CheckKey(p.Provider, p.Key)
+		}
 		if err != nil {
 			return nil, err
 		}
 		return &check, nil
 	}),
 	"keys.set": shaped[KeyParams](func(e Engine, raw json.RawMessage) (*Empty, error) {
-		provider, key, err := decodeKey(raw, "keys.set")
+		connector, whole := e.(ProviderConnector)
+		p, err := decodeKey(raw, "keys.set", whole)
 		if err != nil {
 			return nil, err
 		}
-		return done(e.SetKey(provider, key))
+		if whole {
+			return done(connector.SetProvider(p))
+		}
+		return done(e.SetKey(p.Provider, p.Key))
 	}),
 	"keys.remove": typed(func(e Engine, p ProviderParams) (*Empty, error) {
 		provider, err := required("provider", p.Provider)
@@ -110,6 +120,9 @@ var setupMethods = map[string]method{
 	"setup.set": typed(func(e Engine, p Setup) (*setupResult, error) {
 		if p.Step == (SetupStep{}) {
 			return nil, Errorf(CodeBadParams, "setup.set needs a step")
+		}
+		if !p.Step.Valid() {
+			return nil, Errorf(CodeBadParams, "%s", setupStepWords)
 		}
 		if p.DayCapUSD != nil && !money(*p.DayCapUSD) {
 			return nil, Errorf(CodeBadParams, "day_cap_usd must be a positive amount")
@@ -156,9 +169,17 @@ var setupMethods = map[string]method{
 
 // KeyParams is keys.check's and keys.set's params. The key is read by
 // [decodeKey], which never puts it into an error's words.
+//
+// Region and Address are the person's answers for a provider that asks them,
+// read by keys.check; Connection is what a passing keys.check answered, handed
+// back to keys.set so the provider is kept as it was proved. The key may be
+// empty for a provider that takes none ([ProviderConnector]).
 type KeyParams struct {
-	Provider string `json:"provider"`
-	Key      string `json:"key"`
+	Provider   string      `json:"provider"`
+	Key        string      `json:"key"`
+	Region     string      `json:"region,omitempty"`
+	Address    string      `json:"address,omitempty"`
+	Connection *Connection `json:"connection,omitempty"`
 }
 
 // ProviderParams is the params of a method that takes one provider.
@@ -197,24 +218,24 @@ func money(usd float64) bool {
 	return usd > 0 && !math.IsNaN(usd) && !math.IsInf(usd, 0)
 }
 
-// decodeKey reads a provider and a key, both required. The key is never put
-// into an error's words.
-func decodeKey(raw json.RawMessage, name string) (string, string, error) {
-	var p struct {
-		Provider string `json:"provider"`
-		Key      string `json:"key"`
-	}
+// decodeKey reads a provider and a key, and the answers and connection beside
+// them. The provider is required, and so is the key unless keyless says the
+// engine decides which providers take none. The key is never put into an
+// error's words.
+func decodeKey(raw json.RawMessage, name string, keyless bool) (KeyParams, error) {
+	var p KeyParams
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return "", "", Errorf(CodeBadParams, "%s needs a provider and a key, both strings", name)
+		return KeyParams{}, Errorf(CodeBadParams, "%s needs a provider and a key, both strings", name)
 	}
-	provider, key := strings.ToLower(strings.TrimSpace(p.Provider)), strings.TrimSpace(p.Key)
-	if provider == "" || key == "" {
-		return "", "", Errorf(CodeBadParams, "%s needs a provider and a key", name)
+	p.Provider, p.Key = strings.ToLower(strings.TrimSpace(p.Provider)), strings.TrimSpace(p.Key)
+	p.Region, p.Address = strings.TrimSpace(p.Region), strings.TrimSpace(p.Address)
+	if p.Provider == "" || p.Key == "" && !keyless {
+		return KeyParams{}, Errorf(CodeBadParams, "%s needs a provider and a key", name)
 	}
-	if strings.ContainsAny(key, "\r\n\x00") {
-		return "", "", Errorf(CodeBadParams, "a key is one line")
+	if strings.ContainsAny(p.Key, "\r\n\x00") {
+		return KeyParams{}, Errorf(CodeBadParams, "a key is one line")
 	}
-	return provider, key, nil
+	return p, nil
 }
 
 // decodeSettingsPatch reads settings.set's params: the fields present, each

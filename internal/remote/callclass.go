@@ -188,7 +188,11 @@ func classify(method string) callClass {
 		MethodAutomationsDelete, MethodAutomationsRunNow, MethodAutomationsStopRun,
 		MethodAutomationsClaim:
 		return classAct
-	case MethodCompact:
+	case MethodCompact,
+		// A side ask is a model call of up to two minutes that writes nothing
+		// into the conversation, so it owes a turn no order and a turn owes it
+		// none (sideask.go).
+		MethodSideAsk:
 		return classWork
 	default:
 		return classOrdered

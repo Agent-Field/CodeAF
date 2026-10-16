@@ -1427,6 +1427,18 @@ type Welcome struct {
 	// conversations this one cannot see.
 	Automations     bool   `json:"automations,omitempty"`
 	AutomationsZone string `json:"automationsZone,omitempty"`
+
+	// SideAsk says this engine ANSWERS [MethodSideAsk]: its agent can be asked
+	// one question about its conversation outside it, with nothing written
+	// into the conversation (internal/session's sideask.go).
+	//
+	// IT IS CARRIED FOR [Welcome.TeamAsk]'S REASON: a *remote.Agent always has
+	// SideAsk on it, so a surface's type assertion says nothing about the far
+	// machine. It is additive to this version, as the teams doors were: an
+	// engine from before it sends no field, and ABSENCE IS false, which is
+	// refused at this end before anything is written — never answered by
+	// sending the question as a turn instead.
+	SideAsk bool `json:"sideAsk,omitempty"`
 }
 
 // SkillShelfArgs asks for one reading of the conversation's skill shelf, on

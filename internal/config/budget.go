@@ -119,7 +119,7 @@ var errProfileMoved = errors.New("these settings changed while the change was be
 // rows it was computed from, or not at all, rather than over a write that came
 // in between.
 func writeProfileValuesExpecting(profileDir string, expect map[string]json.RawMessage, updates map[string]any) error {
-	if err := refuseAppCredentialUpdates(updates); err != nil {
+	if err := refuseAppCredentialUpdates(profileDir, updates); err != nil {
 		return err
 	}
 	if len(updates) == 0 {

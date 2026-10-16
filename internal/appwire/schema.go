@@ -62,9 +62,16 @@ type schemaGen struct {
 }
 
 var (
-	timeType = reflect.TypeFor[time.Time]()
-	rawType  = reflect.TypeFor[json.RawMessage]()
+	timeType      = reflect.TypeFor[time.Time]()
+	rawType       = reflect.TypeFor[json.RawMessage]()
+	ownSchemaType = reflect.TypeFor[ownSchema]()
 )
+
+// ownSchema is a type that writes its own JSON, so its fields are not its
+// shape and it says the shape itself (a setup step is a number or "done").
+type ownSchema interface {
+	wireSchema() map[string]any
+}
 
 // of is the schema of one type.
 func (g *schemaGen) of(t reflect.Type) map[string]any {
@@ -73,6 +80,10 @@ func (g *schemaGen) of(t reflect.Type) map[string]any {
 		return map[string]any{"type": "string", "format": "date-time"}
 	case t == rawType:
 		return map[string]any{}
+	case t.Kind() != reflect.Pointer && t.Implements(ownSchemaType):
+		// A pointer to such a type is read as nullable by the switch below,
+		// which reaches this case with the type itself.
+		return reflect.Zero(t).Interface().(ownSchema).wireSchema()
 	}
 	switch t.Kind() {
 	case reflect.Pointer:

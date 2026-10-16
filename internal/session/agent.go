@@ -5251,6 +5251,32 @@ const explainingCheckpointCarryOnLead = "[carry on] A reader of a bounded accoun
 	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
 	"explain the evidence briefly, and finish; do not invent a change to satisfy the observation.\n"
 
+// isContinuationContext says whether a user-role message is one the HARNESS
+// wrote to send a stopped turn back to work: the carry-on in each of the
+// spellings journals have held, the two nudges ([checkpointLoadNudgeLead],
+// [checkpointAskNudgeLead]) and the note after a reply was cut off at the
+// output limit ([truncationContinuationNote]).
+//
+// EVERY ONE OF THEM IS RECORDED AS AN UNMARKED USER MESSAGE, because user-role
+// is the only role the model can be told something in and none of them goes
+// through the journal's note door. The carry-on was the only one the display
+// knew, so a reopened conversation drew a nudge or the cut-off note as a line
+// the person typed — words they never said, in their own bubble, and one more
+// of their messages moving the place of every turn after it. Each is matched
+// WHOLE (both halves of a nudge, the note exactly) so a person's own words
+// that merely open with "[carry on]" stay theirs.
+func isContinuationContext(text string) bool {
+	switch {
+	case strings.HasPrefix(text, checkpointCarryOnLead),
+		strings.HasPrefix(text, explainingCheckpointCarryOnLead),
+		strings.HasPrefix(text, legacyCheckpointCarryOnLead),
+		strings.HasPrefix(text, checkpointLoadNudgeOpening) && strings.HasSuffix(text, checkpointLoadNudgeClosing),
+		strings.HasPrefix(text, checkpointAskNudgeOpening) && strings.HasSuffix(text, checkpointAskNudgeClosing):
+		return true
+	}
+	return text == truncationContinuationNote
+}
+
 // entryRows is how many rows the shaping above makes of ONE message: none at
 // all for system messages and private continuation context, and otherwise the
 // message's own row plus one for every tool call riding it. It is the rule the loop appends by, written
@@ -5271,8 +5297,7 @@ func entryRows(msg ai.Message) int {
 		// The continuation's full reserved lead identifies older journals too:
 		// they wrote it as an unmarked user message even though nobody typed it.
 		// Keep the model's record intact; only its display projection omits it.
-		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) ||
-			strings.HasPrefix(text, explainingCheckpointCarryOnLead) || strings.HasPrefix(text, legacyCheckpointCarryOnLead) {
+		if isVolatileNote(text) || isContinuationContext(text) {
 			return 0
 		}
 	}
