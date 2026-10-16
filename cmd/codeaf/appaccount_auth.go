@@ -115,6 +115,9 @@ func (b *appBackend) beginAccountSignIn(begin func(context.Context) (appAccountF
 				err = appwire.Errorf(appwire.CodeBusy, "account sign-in is being saved")
 				return
 			}
+			// A cancelled or settled flow may still be closing its listener.
+			// Cancel is idempotent; release that listener before binding another.
+			old.flow.Cancel()
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), appSignInWait)
 		flow, e := begin(ctx)

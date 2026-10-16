@@ -212,3 +212,48 @@ func TestAppAccountARecoveredPanicDoesNotKeepTheOperationLocked(t *testing.T) {
 		})
 	}
 }
+
+func TestAppAccountReplacementWaitsForThePreviousListenerToClose(t *testing.T) {
+	b, _, _ := workBackend(t, &fakeConversation{})
+	entered, release, cancelled := make(chan struct{}, 2), make(chan struct{}), make(chan error, 1)
+	auth := &appAccountAuth{attempt: "owned", state: "pending", cancel: func() {}}
+	auth.flow = &accountCancelFlow{onCancel: func() { entered <- struct{}{}; <-release }}
+	b.locked(func() { b.accountAuth = auth })
+	defer b.locked(func() { b.accountAuth = nil })
+	go func() { cancelled <- b.CancelSignIn("codex", "owned") }()
+	<-entered
+	began, restarted := make(chan struct{}, 1), make(chan error, 1)
+	go func() {
+		_, err := b.beginAccountSignIn(func(context.Context) (appAccountFlow, error) {
+			began <- struct{}{}
+			return nil, errors.New("synthetic bind failure")
+		}, nil)
+		restarted <- err
+	}()
+	// The replacement must synchronously close the old listener, rather than
+	// merely observing its already-published cancelled state.
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("replacement did not close its predecessor")
+	}
+	select {
+	case <-began:
+		close(release)
+		t.Fatal("bound a replacement before the previous listener closed")
+	default:
+	}
+	close(release)
+	if err := <-cancelled; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-restarted; err == nil {
+		t.Fatal("synthetic binding failure was lost")
+	}
+	select {
+	case <-began:
+	default:
+		t.Fatal("replacement never reached binding after listener closure")
+	}
+}
