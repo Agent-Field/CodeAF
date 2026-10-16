@@ -1168,6 +1168,11 @@ var OperatorEnvPins = []string{
 	// answers. It is plumbing: diagnostic output a preference sheet has no
 	// business persisting.
 	"CODEAF_WIRE_LOG",
+	// Opt-in developer profiling output and its bounded capture controls. These
+	// are process instrumentation, not persisted model or user preferences.
+	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
+	"CODEAF_DIAGNOSTIC_PROFILE_SECONDS",
+	"CODEAF_DIAGNOSTIC_PROFILE_HEAP",
 	// CODEAF_QUESTION_DEMO names one of the fixture questions the question page
 	// draws itself with (internal/tui3's questiondemo.go), so that a page whose
 	// real questions do not exist yet can be SEEN full rather than only through
