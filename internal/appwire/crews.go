@@ -210,6 +210,17 @@ type LogLine struct {
 	Packet  string    `json:"packet,omitempty"`
 	Reply   string    `json:"reply,omitempty"`
 	Team    string    `json:"team,omitempty"`
+	// Turn is the person's message that OPENED the turn which caused this line:
+	// the same string as Entry.message_id on that message's chat entry, and
+	// nothing else. Run is the producing run, the same string as Entry.run_id on
+	// that run's answers, and RunAgent is the app agent that ran it. They are
+	// three separate facts, each recorded by the engine at the moment of the
+	// call that wrote the line. Every one is absent on a line written before
+	// they existed and on a line no turn wrote: absent is unknown, the line is
+	// still listed, and no reader may fill it in from time, order or wording.
+	Turn     string `json:"turn,omitempty"`
+	Run      string `json:"run,omitempty"`
+	RunAgent string `json:"run_agent,omitempty"`
 }
 
 // DecisionParty is one side of a decision.

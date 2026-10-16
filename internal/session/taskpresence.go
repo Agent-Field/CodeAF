@@ -77,6 +77,7 @@ package session
 // mailbox.
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -671,10 +672,10 @@ func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string,
 // AND A TEAM MEMBER'S MANAGER IS TOLD IT IS WAITING, for the same reason home
 // is: every question that holds a turn comes through here, so this is the one
 // place a member's asking event can be raised and taken down ([Agent.teamAsking]).
-func (a *Agent) presenceAskingWhole(q Question, announce func()) func() {
+func (a *Agent) presenceAskingWhole(ctx context.Context, q Question, announce func()) func() {
 	forgetDesk := a.presenceAskingQuestion(q)
 	letGo := a.raiseQuestion(q, announce)
-	teamDown := a.teamAsking(q)
+	teamDown := a.teamAsking(ctx, q)
 	return func() {
 		forgetDesk()
 		letGo()

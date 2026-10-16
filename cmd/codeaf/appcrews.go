@@ -549,6 +549,18 @@ func appLogLine(t teamstore.Team, e teamstore.Entry) appwire.LogLine {
 		ID: e.ID, Crew: t.ID, At: e.At, Kind: e.Kind, From: e.From, To: e.To, Text: redact.Secrets(e.Text),
 		Handles: e.Handles, Answers: e.Answers, Files: e.Files, Member: e.Member, State: e.State,
 		Packet: e.Packet, Reply: e.Reply, Team: e.Team,
+		Turn: e.Turn, Run: e.Run,
+	}
+	// THE AGENT THAT RAN THE RUN is named the way every other agent in this
+	// line is, from the conversation key the engine recorded. It is not the
+	// line's Member, which can be someone else: a manager's directive concerns
+	// a member and was written by the manager's run.
+	if e.RunBy != "" {
+		if m, ok := t.Member(e.RunBy); ok {
+			line.RunAgent = appMemberAgent(m)
+		} else {
+			line.RunAgent = appAgentID(e.RunBy)
+		}
 	}
 	key := e.Member
 	if key == "" && e.From != "" {

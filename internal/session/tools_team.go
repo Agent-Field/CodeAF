@@ -474,6 +474,8 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		}
 	}
 	entry.Kind, entry.From, entry.Text = kind, teams.FromManager, text
+	prov := turnOriginFrom(ctx).provenance(role.key)
+	entry.Provenance = prov
 	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
 	if err != nil {
 		return "The message could not be written to the team's traffic: " + err.Error(), true, nil
@@ -489,7 +491,7 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		// A DIRECTIVE WAKES, and a member nobody has open is opened so it can
 		// (team_wakewatch.go). The answer says what will happen and no more:
 		// whether the wake ran is the Traffic's to say, where the person reads it.
-		a.teamRouse(a.config.teamProfile(), team, role.wakes, teamSendTargets(team, entry), id)
+		a.teamRouse(a.config.teamProfile(), team, role.wakes, teamSendTargets(team, entry), id, prov)
 		if len(shared) > 0 {
 			return fmt.Sprintf("Sent a directive to %d member(s) of %q who report to you: %s. Not sent to %s: they report to another team's manager; send them a note.",
 				len(entry.Recipients()), team.Name, who, strings.Join(shared, ", ")), false, nil
@@ -622,7 +624,7 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 	if err := decodeToolArguments(args, &parsed); err != nil {
 		return invalidArgumentsPrefix + err.Error(), true, nil
 	}
-	team, _, refusal := a.teamTarget(parsed.Team, true)
+	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
 	}
@@ -641,7 +643,8 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 	if reason == "" {
 		reason = "stopped by the manager"
 	}
-	entry := teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: member.Handle, Member: member.Key, Text: reason}
+	entry := teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: member.Handle, Member: member.Key, Text: reason,
+		Provenance: turnOriginFrom(ctx).provenance(role.key)}
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
 		return "The stop could not be written to the team's traffic: " + err.Error(), true, nil
 	}
@@ -680,7 +683,7 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 		return refusal, true, nil
 	}
 	if strings.TrimSpace(parsed.Kind) == "team" {
-		said, failed := a.teamStartSubTeam(team, role, handle, brief, parsed.Name, parsed.Members)
+		said, failed := a.teamStartSubTeam(team, role, handle, brief, parsed.Name, parsed.Members, turnOriginFrom(ctx).provenance(role.key))
 		return said, failed, nil
 	}
 	if strings.TrimSpace(parsed.Name) != "" || len(parsed.Members) > 0 {
@@ -692,7 +695,8 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	if _, taken := team.ByHandle(handle); taken {
 		return fmt.Sprintf("@%s is already a member of %q. Pick another handle, or team_send it the work.", handle, team.Name), true, nil
 	}
-	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ResolvedApprovalPosture()}
+	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ResolvedApprovalPosture(),
+		Provenance: turnOriginFrom(ctx).provenance(role.key)}
 	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
 	if err != nil {
 		return "The start could not be written to the team's traffic: " + err.Error(), true, nil
@@ -780,7 +784,8 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 	if role.handle == "" {
 		return "You have no handle in " + strconv.Quote(team.Name) + " yet, so nobody could tell who posted. It is given once this conversation has a title.", true, nil
 	}
-	entry := teams.Entry{Kind: teams.KindNote, From: role.handle, Text: text}
+	prov := turnOriginFrom(ctx).provenance(role.key)
+	entry := teams.Entry{Kind: teams.KindNote, From: role.handle, Text: text, Provenance: prov}
 	to := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(parsed.To)), "@")
 	switch to {
 	case teams.ToRoom, "", teams.ToEveryone:
@@ -835,7 +840,7 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		// A REPLY TO THE MANAGER WAKES IT, so a manager nobody has open is
 		// opened (team_wakewatch.go).
 		if manager, ok := team.Member(team.Manager); ok {
-			a.teamRouse(a.config.teamProfile(), team, role.wakes, []teams.Member{manager}, "")
+			a.teamRouse(a.config.teamProfile(), team, role.wakes, []teams.Member{manager}, "", prov)
 		}
 	}
 	return teamPostSaid(where, team.Name, own, thread), false, nil

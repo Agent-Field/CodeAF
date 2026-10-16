@@ -833,7 +833,12 @@ func SetTeamResume(open func(file, workspace string) error) {
 // says in the Traffic when one could not be. A conversation that is open
 // somewhere watches for itself and is left alone. answers is the entry that
 // asked for the wake, which a failure to wake answers, "" for none.
-func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string) {
+//
+// prov is the turn that caused the wake, taken by the caller at the call and
+// closed over by the goroutine below: the note it may write when the wake fails
+// is stamped with THAT turn, not with whichever turn this conversation is in
+// when the wake gives up. A wake nothing caused (a watch tick) passes none.
+func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string, prov teams.Provenance) {
 	if profile == "" || !wakes || len(targets) == 0 {
 		return
 	}
@@ -863,6 +868,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 				a.teamSay(profile, team.ID, teams.Entry{
 					Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: member.Key,
 					State: teams.StateIdle, Text: "could not wake " + who + ": " + reason, Answers: answers,
+					Provenance: prov,
 				})
 			}
 		}

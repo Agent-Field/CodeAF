@@ -297,7 +297,7 @@ func DecisionsPath(profileDir, teamID string) string {
 // crossing write one line: the second is handed the packet already there, and
 // no second line of Traffic is written. Any other kind is a new packet every
 // time it is raised.
-func raiseLocked(profileDir string, p Packet) (Packet, error) {
+func raiseLocked(profileDir string, p Packet, prov Provenance) (Packet, error) {
 	if !packetKinds[p.Kind] {
 		return Packet{}, fmt.Errorf("teams: %q is not a packet kind", p.Kind)
 	}
@@ -355,7 +355,7 @@ func raiseLocked(profileDir string, p Packet) (Packet, error) {
 		return Packet{}, err
 	}
 	logPacket(profileDir, f, p, involved(p, p.Origin, p.Team),
-		fmt.Sprintf("%s raised a %s: %s", p.RaisedBy, p.Kind, p.Question))
+		fmt.Sprintf("%s raised a %s: %s", p.RaisedBy, p.Kind, p.Question), prov)
 	return p, nil
 }
 
@@ -363,7 +363,7 @@ func raiseLocked(profileDir string, p Packet) (Packet, error) {
 // own words. by is the handle of the manager of the team the packet waits on,
 // or [Person], who may decide any packet. A packet already decided is
 // [ErrDecided], and nothing is written.
-func decideLocked(profileDir, id, by, decision, reason string) (Packet, error) {
+func decideLocked(profileDir, id, by, decision, reason string, prov Provenance) (Packet, error) {
 	if strings.TrimSpace(decision) == "" {
 		return Packet{}, errors.New("teams: a decision needs an answer")
 	}
@@ -403,9 +403,9 @@ func decideLocked(profileDir, id, by, decision, reason string) (Packet, error) {
 	if out.Kind == PacketQuestion {
 		said = fmt.Sprintf("answered %s: %s", raiserWord(out.RaisedBy), word)
 	}
-	logPacket(profileDir, f, out, involved(out, out.Origin, out.Team), said)
+	logPacket(profileDir, f, out, involved(out, out.Origin, out.Team), said, prov)
 	if out.Kind == PacketConflict {
-		rule(profileDir, f, out)
+		rule(profileDir, f, out, prov)
 	}
 	return out, nil
 }
@@ -436,7 +436,7 @@ func toldLocked(profileDir, id string) error {
 // Escalate sends packet id up: to an open team above the one it waits on, or
 // to [Person]. by is as for [Decide]. Down, sideways or to a closed team is
 // [ErrSideways]; a decided packet is [ErrDecided].
-func escalateLocked(profileDir, id, by, to, reason string) (Packet, error) {
+func escalateLocked(profileDir, id, by, to, reason string, prov Provenance) (Packet, error) {
 	var out Packet
 	f, err := Load(profileDir)
 	if err != nil {
@@ -478,7 +478,7 @@ func escalateLocked(profileDir, id, by, to, reason string) (Packet, error) {
 	if t, ok := f.Team(to); ok {
 		where = "◆ " + t.Name
 	}
-	logPacket(profileDir, f, out, involved(out, out.Origin, from, to), fmt.Sprintf("%s sent it up to %s: %s", e.By, where, reason))
+	logPacket(profileDir, f, out, involved(out, out.Origin, from, to), fmt.Sprintf("%s sent it up to %s: %s", e.By, where, reason), prov)
 	return out, nil
 }
 
@@ -534,7 +534,7 @@ func involved(p Packet, teams ...string) []string {
 // directive to that party. A party with no team or a team no longer in the
 // file is skipped; a log that cannot be written costs that line and never the
 // decision, which is written already.
-func rule(profileDir string, f *File, p Packet) {
+func rule(profileDir string, f *File, p Packet, prov Provenance) {
 	from, by := FromManager, "◆ @"+p.DecidedBy
 	switch p.DecidedBy {
 	case Person:
@@ -566,7 +566,7 @@ func rule(profileDir string, f *File, p Packet) {
 			to = ToRoom
 		}
 		_ = appendTrafficLocked(profileDir, party.Team, Entry{Kind: KindDirective, From: from, To: to, Member: party.Key,
-			Text: text, Packet: p.ID, State: PacketDecided})
+			Text: text, Packet: p.ID, State: PacketDecided, Provenance: prov})
 	}
 }
 
@@ -774,7 +774,7 @@ func writeDecisionCarry(dst *bytes.Buffer, p Packet) error {
 // logPacket appends a [KindPacket] line to the Traffic of each distinct team
 // in teams that is a team (not [Person], not ""). A log that cannot be written
 // costs the line and never the packet, which is written already.
-func logPacket(profileDir string, f *File, p Packet, teams []string, text string) {
+func logPacket(profileDir string, f *File, p Packet, teams []string, text string, prov Provenance) {
 	seen := map[string]bool{}
 	for _, id := range teams {
 		if id == "" || id == Person || seen[id] {
@@ -785,7 +785,7 @@ func logPacket(profileDir string, f *File, p Packet, teams []string, text string
 			continue
 		}
 		_ = appendTrafficLocked(profileDir, id, Entry{Kind: KindPacket, From: FromSystem, To: ToManager,
-			Text: text, Packet: p.ID, State: p.State})
+			Text: text, Packet: p.ID, State: p.State, Provenance: prov})
 	}
 }
 
@@ -1095,33 +1095,56 @@ func (f *folded) copy() *folded {
 }
 
 // Raise serializes decision history with membership and lifecycle changes.
+// The lines it writes carry no provenance: it is the door for a caller that is
+// not a model turn, or one that predates [Provenance]. A turn's own call uses
+// [RaiseFrom].
 func Raise(profileDir string, p Packet) (Packet, error) {
+	return RaiseFrom(profileDir, p, Provenance{})
+}
+
+// RaiseFrom is [Raise] with the turn that raised the packet recorded on the
+// Traffic lines it writes. The packet itself is unchanged.
+func RaiseFrom(profileDir string, p Packet, prov Provenance) (Packet, error) {
 	var result Packet
 	err := withLock(profileDir, lockWait, func() error {
 		var err error
-		result, err = raiseLocked(profileDir, p)
+		result, err = raiseLocked(profileDir, p, prov)
 		return err
 	})
 	return result, err
 }
 
 // Decide serializes decision history with membership and lifecycle changes.
+// Like [Raise], it writes lines that carry no provenance; see [DecideFrom].
 func Decide(profileDir, id, by, decision, reason string) (Packet, error) {
+	return DecideFrom(profileDir, id, by, decision, reason, Provenance{})
+}
+
+// DecideFrom is [Decide] with the deciding turn recorded on the lines it
+// writes, the ruling directives of a conflict included. A person's decision
+// through the interface is [Decide]: no model turn made it.
+func DecideFrom(profileDir, id, by, decision, reason string, prov Provenance) (Packet, error) {
 	var result Packet
 	err := withLock(profileDir, lockWait, func() error {
 		var err error
-		result, err = decideLocked(profileDir, id, by, decision, reason)
+		result, err = decideLocked(profileDir, id, by, decision, reason, prov)
 		return err
 	})
 	return result, err
 }
 
 // Escalate serializes decision history with membership and lifecycle changes.
+// See [EscalateFrom] for the turn-recording sibling.
 func Escalate(profileDir, id, by, to, reason string) (Packet, error) {
+	return EscalateFrom(profileDir, id, by, to, reason, Provenance{})
+}
+
+// EscalateFrom is [Escalate] with the escalating turn recorded on its line.
+func EscalateFrom(profileDir, id, by, to, reason string, prov Provenance) (Packet, error) {
 	var result Packet
 	err := withLock(profileDir, lockWait, func() error {
 		var err error
-		result, err = escalateLocked(profileDir, id, by, to, reason)
+		result, err = escalateLocked(profileDir, id, by, to, reason, prov)
 		return err
 	})
 	return result, err

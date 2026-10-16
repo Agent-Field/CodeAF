@@ -91,7 +91,7 @@ func TestTeamThreadAReplyLinksToTheManagersLastMessage(t *testing.T) {
 	if _, failed, _ := web.teamPostTool(ctx, json.RawMessage(`{"to":"manager","text":"x","thread":"soon"}`)); !failed {
 		t.Error("a thread that is not a number was taken")
 	}
-	web.teamEventOwed(teams.StateFinished, "")
+	web.teamEventOwed(turnOrigin{}, teams.StateFinished, "")
 	web.settleTeamEvents()
 	log := threadLog(t, fixture)
 	want := map[string]string{"on it": "000000000001", "fyi all": "", "about the other": "000000000002"}

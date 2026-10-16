@@ -71,6 +71,11 @@ type teamEvent struct {
 	state string
 	text  string
 	at    time.Time
+	// origin is the turn that caused the event, TAKEN WHEN IT WAS QUEUED. The
+	// writer runs later, on its own goroutine, possibly after the turn has ended
+	// and another has begun, so it reads this copy and nothing about the
+	// agent's current turn (turn_origin.go).
+	origin turnOrigin
 }
 
 // eventfulRoles reports whether roles make this conversation one whose events
@@ -85,14 +90,14 @@ func eventfulRoles(roles []teamRole) bool {
 }
 
 // teamEventOwed queues one event, and starts the writer when none is running.
-func (a *Agent) teamEventOwed(state, text string) {
+func (a *Agent) teamEventOwed(origin turnOrigin, state, text string) {
 	if !a.team.events.member.Load() || a.config.teamProfile() == "" {
 		return
 	}
 	lane := &a.team.events
 	lane.mu.Lock()
 	defer lane.mu.Unlock()
-	lane.queue = append(lane.queue, teamEvent{state: state, text: cutRunesTeam(oneLineTeam(text), teamEventText), at: time.Now()})
+	lane.queue = append(lane.queue, teamEvent{state: state, text: cutRunesTeam(oneLineTeam(text), teamEventText), at: time.Now(), origin: origin})
 	if lane.done == nil {
 		done := make(chan struct{})
 		lane.done = done
@@ -142,6 +147,9 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 			Text:    event.text,
 			State:   event.state,
 			Answers: a.teamAnswering(role.id),
+			// The run is the one that was current when the event was QUEUED;
+			// the conversation key is this conversation's name in this team.
+			Provenance: event.origin.provenance(role.key),
 		})
 		if err != nil || !role.wakes {
 			continue
@@ -150,13 +158,13 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		case teams.StateFinished, teams.StateFailed, teams.StateAsking:
 			// These wake the manager, so a manager nobody has open is opened
 			// (team_wakewatch.go).
-			a.rouseManager(profile, role)
+			a.rouseManager(profile, role, event.origin.provenance(role.key))
 		}
 	}
 }
 
 // rouseManager opens the manager of role's team if nothing holds it.
-func (a *Agent) rouseManager(profile string, role teamRole) {
+func (a *Agent) rouseManager(profile string, role teamRole, prov teams.Provenance) {
 	a.team.mu.Lock()
 	file := a.team.file
 	a.team.mu.Unlock()
@@ -168,7 +176,7 @@ func (a *Agent) rouseManager(profile string, role teamRole) {
 		return
 	}
 	if manager, ok := team.Member(team.Manager); ok {
-		a.teamRouse(profile, team, role.wakes, []teams.Member{manager}, "")
+		a.teamRouse(profile, team, role.wakes, []teams.Member{manager}, "", prov)
 	}
 }
 
@@ -194,15 +202,16 @@ func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
 		return
 	}
 	a.dropOwedResume()
+	origin := turnOriginFrom(ctx)
 	if err := hub.turnError(); err != nil {
-		a.teamEventOwed(teams.StateFailed, "failed: "+firstLineTeam(err.Error()))
+		a.teamEventOwed(origin, teams.StateFailed, "failed: "+firstLineTeam(err.Error()))
 		return
 	}
 	if ctx.Err() != nil {
-		a.teamEventOwed(teams.StateIdle, "stopped")
+		a.teamEventOwed(origin, teams.StateIdle, "stopped")
 		return
 	}
-	a.teamEventOwed(teams.StateFinished, "finished")
+	a.teamEventOwed(origin, teams.StateFinished, "finished")
 }
 
 // dropOwedResume takes back a "no longer waiting" that has not been written
@@ -226,17 +235,22 @@ func (a *Agent) dropOwedResume() {
 // on the person" means: a permission prompt, an `ask`, a proposal the turn
 // waits for. The first one up is an event and the last one down is another;
 // the ones between are the same state and write nothing.
-func (a *Agent) teamAsking(q Question) func() {
+func (a *Agent) teamAsking(ctx context.Context, q Question) func() {
 	if !q.Blocking.Turn || !a.team.events.member.Load() {
 		return func() {}
 	}
+	// THE ORIGIN IS TAKEN HERE, from the context of the call that raised the
+	// question, and both the "asking" event and the "no longer waiting" one
+	// written when it comes down carry it. The second is written by whichever
+	// goroutine answers, perhaps in a later turn; it names the turn that asked.
+	origin := turnOriginFrom(ctx)
 	lane := &a.team.events
 	lane.mu.Lock()
 	lane.asking++
 	first := lane.asking == 1
 	lane.mu.Unlock()
 	if first {
-		a.teamEventOwed(teams.StateAsking, askingWords(q))
+		a.teamEventOwed(origin, teams.StateAsking, askingWords(q))
 	}
 	var once sync.Once
 	return func() {
@@ -246,7 +260,7 @@ func (a *Agent) teamAsking(q Question) func() {
 			last := lane.asking == 0
 			lane.mu.Unlock()
 			if last {
-				a.teamEventOwed(teams.StateRunning, "no longer waiting")
+				a.teamEventOwed(origin, teams.StateRunning, "no longer waiting")
 			}
 		})
 	}

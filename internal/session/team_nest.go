@@ -146,7 +146,7 @@ func (e errNest) Error() string { return string(e) }
 // teamStartSubTeam makes the child team under team, moves in the members
 // named, and writes the start that opens its manager. It answers what to hand
 // the model and whether that is a refusal.
-func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, name string, moving []string) (string, bool) {
+func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, name string, moving []string, prov teams.Provenance) (string, bool) {
 	profile := a.config.teamProfile()
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
@@ -248,7 +248,7 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 	// here, where the membership was written. A refusal returned above and
 	// wrote nothing.
 	_ = teams.WriteMoveNotices(profile, movedIn)
-	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture()}
+	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Provenance: prov}
 	startID, err := teams.AppendTrafficID(profile, team.ID, start)
 	if err != nil {
 		return "The team " + strconv.Quote(name) + " was made, but its manager's start could not be written to the traffic: " + err.Error(), true
@@ -257,7 +257,7 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 	if len(moved) > 0 {
 		made += ". Moved in from " + strconv.Quote(team.Name) + ": " + strings.Join(moved, ", ")
 	}
-	a.teamSay(profile, childID, teams.Entry{Kind: teams.KindNote, From: teams.FromSystem, To: teams.ToRoom, Text: made})
+	a.teamSay(profile, childID, teams.Entry{Kind: teams.KindNote, From: teams.FromSystem, To: teams.ToRoom, Text: made, Provenance: prov})
 	money := "It has no cap of its own and none above it."
 	switch {
 	case capUSD > 0:
@@ -588,16 +588,17 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 	if origin == "" {
 		origin = role.id
 	}
-	raised, err := teams.Raise(profile, teams.Packet{
+	prov := turnOriginFrom(ctx).provenance(role.key)
+	raised, err := teams.RaiseFrom(profile, teams.Packet{
 		Team: decider, Origin: origin, Kind: teams.PacketConflict, RaisedBy: role.handle,
 		Parties: parties, Question: question, Options: options, Recommendation: recommendation,
-	})
+	}, prov)
 	if err != nil {
 		return "The conflict could not be raised: " + teamErrorWords(err), true, nil
 	}
 	if lca.ID != "" {
 		if m, ok := lca.Member(lca.Manager); ok {
-			a.teamRouse(profile, lca, file.Effective(lca.ID, d).Wake, []teams.Member{m}, "")
+			a.teamRouse(profile, lca, file.Effective(lca.ID, d).Wake, []teams.Member{m}, "", prov)
 		}
 	}
 	var others []string
@@ -701,7 +702,7 @@ func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (s
 	if file != nil {
 		if boss, ok := file.Team(role.boss); ok {
 			if manager, ok := boss.Member(boss.Manager); ok {
-				a.teamRouse(profile, boss, file.Effective(boss.ID, a.teamDefaults(profile)).Wake, []teams.Member{manager}, "")
+				a.teamRouse(profile, boss, file.Effective(boss.ID, a.teamDefaults(profile)).Wake, []teams.Member{manager}, "", entry.Provenance)
 			}
 		}
 	}

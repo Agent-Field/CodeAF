@@ -68,6 +68,7 @@ package session
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1740,7 +1741,8 @@ func (a *Agent) AskQuestion(q Question) (func(), error) {
 	// were already standing — which is the opposite of what a question object is
 	// for. Observed: three `ask` calls waiting and home drawing the conversation
 	// as `working`.
-	return a.presenceAskingWhole(q, nil), nil
+	// A door with no turn behind it names none (turn_origin.go).
+	return a.presenceAskingWhole(context.Background(), q, nil), nil
 }
 
 // checkQuestion is [Question.Check] plus the one bound that belongs to the SET

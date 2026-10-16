@@ -114,7 +114,7 @@ func homeOf(file *teams.File, keys []string) (teams.Report, bool) {
 // up as a packet, and false when it is the person's as it always was. A packet
 // that cannot be written falls back to the person, because a question that
 // reaches nobody is worse than one that reaches the person.
-func (a *Agent) askUp(q Question) (string, bool) {
+func (a *Agent) askUp(ctx context.Context, q Question) (string, bool) {
 	profile := a.config.teamProfile()
 	if profile == "" || q.Policy.Kind == PolicyDecide {
 		return "", false
@@ -143,7 +143,8 @@ func (a *Agent) askUp(q Question) (string, bool) {
 		}
 		packet.Team, packet.Origin, packet.RaisedBy = home.Team, member.id, member.handle
 		packet.Parties = []teams.Party{{Key: member.key, Handle: member.handle, Team: member.id, Context: strings.TrimSpace(q.Reason)}}
-		raised, err := teams.Raise(profile, packet)
+		prov := turnOriginFrom(ctx).provenance(member.key)
+		raised, err := teams.RaiseFrom(profile, packet, prov)
 		if err != nil {
 			return "", false
 		}
@@ -155,7 +156,7 @@ func (a *Agent) askUp(q Question) (string, bool) {
 				}
 				// A MANAGER NOBODY HOLDS IS OPENED to answer it, as a reply
 				// to it would open it (team_wakewatch.go).
-				a.teamRouse(profile, team, member.wakes, []teams.Member{m}, "")
+				a.teamRouse(profile, team, member.wakes, []teams.Member{m}, "", prov)
 			}
 		}
 		return fmt.Sprintf("Your question went to %s as packet %s, not to the person: in this team questions go to the manager first. "+
@@ -184,7 +185,8 @@ func (a *Agent) askUp(q Question) (string, bool) {
 			// the person as it always was.
 			return "", false
 		}
-		raised, err := teams.Raise(profile, packet)
+		prov := turnOriginFrom(ctx).provenance(manages.key)
+		raised, err := teams.RaiseFrom(profile, packet, prov)
 		if err != nil {
 			return "", false
 		}
@@ -303,7 +305,7 @@ func (a *Agent) teamDecideTool(ctx context.Context, args json.RawMessage) (strin
 			answer = option.ID
 		}
 	}
-	decided, err := teams.Decide(a.config.teamProfile(), p.ID, teams.FromManager, answer, strings.TrimSpace(parsed.Reason))
+	decided, err := teams.DecideFrom(a.config.teamProfile(), p.ID, teams.FromManager, answer, strings.TrimSpace(parsed.Reason), turnOriginFrom(ctx).provenance(team.Manager))
 	if err != nil {
 		return "The decision could not be recorded: " + teamErrorWords(err), true, nil
 	}
@@ -340,7 +342,7 @@ func (a *Agent) teamEscalateTool(ctx context.Context, args json.RawMessage) (str
 			}
 		}
 	}
-	if _, err := teams.Escalate(profile, p.ID, teams.FromManager, to, reason); err != nil {
+	if _, err := teams.EscalateFrom(profile, p.ID, teams.FromManager, to, reason, turnOriginFrom(ctx).provenance(team.Manager)); err != nil {
 		return "The packet could not be sent up: " + teamErrorWords(err), true, nil
 	}
 	return fmt.Sprintf("Sent %s up to %s. Its asker is told it went up and is handed the answer when it is decided.", p.ID, where), false, nil

@@ -210,7 +210,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	// decision packet, when its team says questions go up (team_questions.go).
 	// A conversation in no team pays a stat of the teams file here, and only
 	// when it asks.
-	if said, up := a.askUp(q); up {
+	if said, up := a.askUp(ctx, q); up {
 		return said, false, nil
 	}
 	if !a.config.Interactive && q.Policy.Kind == PolicyAsk {

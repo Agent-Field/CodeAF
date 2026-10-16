@@ -1446,7 +1446,7 @@ func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewher
 	// The card that carries the brief is the lane's own announcement, and the
 	// question goes out after it on EventQuestion's own ordering law
 	// ([Agent.raiseQuestion] keeps it, so no lane emits the raise itself).
-	forget := a.presenceAskingWhole(proposed, func() { a.announceTask(hub, question) })
+	forget := a.presenceAskingWhole(ctx, proposed, func() { a.announceTask(hub, question) })
 	wait := &taskWait{
 		agent: a, id: id, question: question, proposed: proposed,
 		settled:   make(chan taskSettled, 1),

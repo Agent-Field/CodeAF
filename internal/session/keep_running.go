@@ -445,7 +445,7 @@ func (a *Agent) askKeep(ctx context.Context, notice *KeepNotice) (string, error)
 	a.mu.Unlock()
 
 	card := *notice
-	defer a.presenceAskingWhole(KeepQuestion(card), func() {
+	defer a.presenceAskingWhole(ctx, KeepQuestion(card), func() {
 		hub.send(Event{Kind: EventKeepRunning, Tool: "bash", CallID: card.CallID, Keep: &card})
 	})()
 	select {

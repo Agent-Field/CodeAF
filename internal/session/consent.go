@@ -387,7 +387,7 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 	// three away the moment the event went out — so home, a second window and
 	// the phone had the sentence and nothing under it. The short form goes up
 	// beside it unchanged, for the builds that only ever read that.
-	defer a.presenceAskingWhole(a.consentAsk(id, call, decision), announce)()
+	defer a.presenceAskingWhole(ctx, a.consentAsk(id, call, decision), announce)()
 
 	select {
 	case answer := <-answers:

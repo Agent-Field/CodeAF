@@ -734,7 +734,7 @@ func (a *Agent) askAutomation(ctx context.Context, notice *AutomationNotice) (Au
 	notice.ID = id
 	card := *notice
 	question := AutomationQuestion(card)
-	defer a.presenceAskingWhole(question, func() {
+	defer a.presenceAskingWhole(ctx, question, func() {
 		hub.send(Event{Kind: EventAutomationProposal, Tool: "automation", Automation: &card})
 	})()
 	select {

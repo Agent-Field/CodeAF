@@ -126,9 +126,9 @@ func TestAWaitIsOneEventUpAndOneDown(t *testing.T) {
 	web := teamAgent(t, fixture, fixture.web, nil, nil)
 	web.teamBoundary()
 	permission := Question{Ask: AskPermission, Head: "needs your ok to run bash", Blocking: Blocking{Turn: true}}
-	first := web.teamAsking(permission)
-	second := web.teamAsking(permission)
-	quiet := web.teamAsking(Question{Ask: AskChoice, Head: "not blocking"})
+	first := web.teamAsking(context.Background(), permission)
+	second := web.teamAsking(context.Background(), permission)
+	quiet := web.teamAsking(context.Background(), Question{Ask: AskChoice, Head: "not blocking"})
 	quiet()
 	first()
 	first()
@@ -145,7 +145,7 @@ func TestAWaitIsOneEventUpAndOneDown(t *testing.T) {
 		t.Errorf("the end of the wait was written as %+v", events[1])
 	}
 
-	web.teamAsking(Question{Ask: AskClarification, Head: "Which colour?", Blocking: Blocking{Turn: true}})
+	web.teamAsking(context.Background(), Question{Ask: AskClarification, Head: "Which colour?", Blocking: Blocking{Turn: true}})
 	web.settleTeamEvents()
 	if events := teamEvents(t, fixture); events[len(events)-1].Text != "asks: Which colour?" {
 		t.Errorf("a question was written as %+v", events[len(events)-1])

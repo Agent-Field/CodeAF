@@ -1232,6 +1232,13 @@ type userMessage struct {
 	// It rides the message rather than the agent so that nothing about it can
 	// outlive the turn it opens.
 	answersPerson bool
+	// answersMessage is, on the same empty opening, the durable id of the ONE
+	// message that drain landed, and only when that message is the whole drain:
+	// a single line the person typed and nothing beside it. Several lines, a
+	// line beside a task's note, or a line written before message ids existed
+	// leave it empty, and the turn is then stamped with no person message — an
+	// unknown, never a guess at the latest one.
+	answersMessage string
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
 	// them. Empty in every ordinary case, and set where the session writes
@@ -1797,6 +1804,21 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	turnCtx = withRunIdentity(turnCtx)
 	hub.runID = runIdentity(turnCtx)
+	// THE MESSAGE IS GIVEN ITS IDENTITY HERE, before anything copies it. The
+	// record below takes the message by value, so an id minted inside it would
+	// be journaled and then lost to this turn; minting first makes the id the
+	// turn is stamped with and the id the line is journaled with one string
+	// (message_identity.go's call is idempotent, so the record's own is a no-op).
+	// A message that is empty, resumed or woken is not recorded and has none.
+	recording := !user.empty() && !user.resumed
+	if recording {
+		user = ensureUserIdentity(user)
+	}
+	// AND THE TURN CARRIES THE FACT OF WHO OPENED IT (turn_origin.go). A woken
+	// turn, or one a task or member report opened, has a run and no person
+	// message, which is the truth. A steer that lands later is NOT the opener
+	// and changes nothing here.
+	turnCtx = withTurnOrigin(turnCtx, turnOrigin{run: runIdentity(turnCtx), turn: openingMessage(user)})
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
 	// the context because the waits that need it are several frames down inside
@@ -1822,7 +1844,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// request somebody is waiting on from one that was already lying on the disk
 	// before this turn existed (takeover.go).
 	a.turnBegan = time.Now()
-	if !user.empty() && !user.resumed {
+	if recording {
 		a.recordUserLocked(user)
 		// AND THE SESSION STARTS NAMING ITSELF NOW, on the person's own words,
 		// beside the answer rather than behind it (title.go). The message is in
@@ -1967,7 +1989,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard) {
+			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard, drained.only) {
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -3404,6 +3426,9 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 type queueDrain struct {
 	landed      int
 	owed, heard bool
+	// only is the durable id of the person's message when it is the whole of
+	// what landed, and "" otherwise ([userMessage.answersMessage]).
+	only string
 }
 
 // drainQueueLocked drains steering and, when includeAmbient says this is a
@@ -3429,8 +3454,15 @@ func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain 
 	sourceCount := len(queued)
 	queued = coalesceSessionNotes(queued)
 	owed, heard := false, false
+	only := ""
 	for _, message := range queued {
+		// The id is read off the copy that is recorded: recording takes the
+		// message by value, so the id it mints would otherwise be lost here.
+		message = ensureUserIdentity(message)
 		a.recordUserLocked(message)
+		if len(queued) == 1 {
+			only = personMessageID(message)
+		}
 		// AND A SPLICED SENTENCE IS NOW A SENTENCE THE MODEL HAS (steer.go). It
 		// is said here rather than at the queueing because this is the drain that
 		// answers — see the caller — so the event and the record become true in
@@ -3463,7 +3495,10 @@ func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain 
 		// arms — the rest of this turn, or the turn started to answer it.
 		heard = heard || !message.authored && !message.wake
 	}
-	return queueDrain{landed: sourceCount, owed: owed, heard: heard}
+	if sourceCount != 1 || !heard {
+		only = ""
+	}
+	return queueDrain{landed: sourceCount, owed: owed, heard: heard, only: only}
 }
 
 // boundaryNoteHeld reports whether the next step is already owed external news.
@@ -4106,12 +4141,12 @@ func (a *Agent) settleWindow() time.Duration {
 // note on the queue; the turn's end has just drained one INTO the transcript, so
 // the queue is empty and the thing to answer is the last message. A third caller
 // would have to establish the same fact before calling.
-func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false) }
+func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "") }
 
 // wakeAnsweringLocked is [Agent.wakeLocked] for the turn's end, which knows
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
-func (a *Agent) wakeAnsweringLocked(answersPerson bool) bool {
+func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string) bool {
 	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
 	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
 	// different decision in [Steward.Decide], while the wall's budget ending is
@@ -4169,7 +4204,7 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool) bool {
 	if wake, settle := a.settleWakeLocked(); settle {
 		ctx = withSettleWake(ctx, wake)
 	}
-	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson}, sink, watchers...)
+	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson, answersMessage: answersMessage}, sink, watchers...)
 	return true
 }
 
