@@ -2355,6 +2355,14 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 			}
 			m++
 		case "tool":
+			// A TOOL'S RESULT MESSAGE IS NOT A SECOND CALL. The shaping keeps a
+			// row for it with no call id and no name; the call it answers is
+			// the entry above, with its output, so drawn alone it is a blank
+			// step that no live event ever named. A call is told by its id or
+			// its name, and one with either stays.
+			if item.CallID == "" && item.Tool == "" {
+				continue
+			}
 			call := item.CallID
 			if call == "" {
 				call = "#" + strconv.Itoa(i)

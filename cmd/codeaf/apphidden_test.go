@@ -63,3 +63,36 @@ func TestAnAskCarriesItsSubject(t *testing.T) {
 		t.Fatalf("an ask about nothing has subject %+v", s)
 	}
 }
+
+// A TOOL'S RESULT MESSAGE IS NOT A SECOND CALL: the blank row the shaping keeps
+// for it (no call id, no name) is not an entry, while every genuine call keeps
+// its own stable id, in history order, with no turn an old record never had.
+func TestAToolResultMessageIsNotAStep(t *testing.T) {
+	items := []session.DisplayEntry{
+		{Role: "aside", Text: "manager: start", Team: []session.TeamLine{{Team: "t", From: "manager", Text: "start"}}},
+		{Role: "tool", Tool: "bash", CallID: "call_1", Hint: "run it"},
+		{Role: "tool"},
+		{Role: "assistant", Text: "ran once", Answer: false},
+		{Role: "tool", Tool: "read", CallID: "call_2"},
+		{Role: "tool"},
+		{Role: "tool", Tool: "bash"},
+	}
+	var ids []string
+	for _, e := range appEntriesOf("a", items, time.Now(), nil) {
+		if e.Kind == appwire.EntryTool {
+			ids = append(ids, e.ID)
+			if e.Turn != 0 {
+				t.Fatalf("an old record's tool was given turn %d", e.Turn)
+			}
+		}
+	}
+	want := []string{"tcall_1", "tcall_2", "t#6"}
+	if len(ids) != len(want) {
+		t.Fatalf("tool entries = %v, want %v", ids, want)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("tool entries = %v, want %v", ids, want)
+		}
+	}
+}
