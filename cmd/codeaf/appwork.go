@@ -653,7 +653,7 @@ func (b *appBackend) GetTask(id string) (appwire.TaskPage, error) {
 			}
 		}
 	})
-	page := appwire.TaskPage{Task: task, Result: task.Result, Files: task.Files, Brief: view.Brief}
+	page := appwire.TaskPage{Task: task, Result: task.Result, Files: task.Files, Brief: view.Brief, Program: appTaskProgram(view.Program)}
 	at := b.now()
 	page.Log = appTaskLog(agent, task.ID, view, at)
 	for i, note := range view.Notes {

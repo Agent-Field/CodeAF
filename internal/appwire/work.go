@@ -93,6 +93,10 @@ type TaskPage struct {
 	Log    []Entry      `json:"log"`
 	Notes  []TaskNote   `json:"notes"`
 	Brief  string       `json:"brief"`
+	// Program is the specialist the task was handed to, present only for such
+	// a task (program.go). Absent is not "no program was run": an engine that
+	// predates the field leaves it out too.
+	Program *TaskProgram `json:"program,omitempty"`
 }
 
 // Quick is one quick task: work done where the person is, which can be undone.

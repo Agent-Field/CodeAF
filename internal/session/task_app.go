@@ -53,6 +53,9 @@ type AppTaskView struct {
 	RoutingState string
 	Crew         *crewroute.Decision
 	TaskPins     map[crewroute.Seat]bool
+	// Program is the program the task was handed to, off the page read AppTask
+	// already makes (task_app_program.go); nil for every other task.
+	Program *AppProgramView `json:",omitempty"`
 }
 type AppTaskNote struct {
 	Direction uint64 `json:"direction,omitempty"`
@@ -302,6 +305,7 @@ func (a *Agent) AppTask(id string) (AppTaskView, bool, error) {
 	for _, row := range rows {
 		if row.ID == id {
 			if page, ok := a.PlanTaskPage(id); ok {
+				row.Program = a.appProgramView(page)
 				if row.Brief == "" {
 					row.Brief = page.Description
 				}

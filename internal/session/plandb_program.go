@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -112,6 +113,21 @@ type PlanProgram struct {
 	// EarlierActions is how many actions came before the first of Actions,
 	// which the page says rather than draws.
 	EarlierActions int
+	// LastStage is the stage the newest stage line of the action log names, as
+	// the program spelled it. IT IS THE ONE TYPED ANSWER TO "WHERE IS IT", read
+	// off a record and never off the live line's words; a program reports its
+	// stages out of list order, so it is never turned into an index here. Empty
+	// when the log holds no stage line.
+	LastStage string
+	// StartedAt and EndedAt are the program record's clock for its LATEST
+	// process on this task. The record is overwritten per hand-off, so they are
+	// not a history of attempts. Zero is unknown.
+	StartedAt, EndedAt time.Time
+	// Ending is the log's final shown action when, and only when, the log's last
+	// raw line is the program's `end` line: a run begun again after an old end
+	// has no current ending. EndStatus is that line's own status.
+	Ending    *delegate.Shown
+	EndStatus string
 }
 
 // planProgramRecord is the program a task was handed to: the record the run's
@@ -262,8 +278,9 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	}
 	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort,
 		Listening: record.Listening, InboxClosed: record.InboxClosed, Listens: planProgramOf(programs, record.Name).Listens,
-		Started: !record.StartedAt.IsZero()}
+		Started: !record.StartedAt.IsZero(), StartedAt: record.StartedAt, EndedAt: record.EndedAt}
 	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
+	program.LastStage, program.Ending, program.EndStatus = planProgramPosition(logged, program.Actions)
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)
 	}
@@ -284,6 +301,29 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 		}
 	}
 	return program
+}
+
+// planProgramPosition reads the two typed facts of where a run stands off the
+// raw log: the stage its newest stage line names, and its ending when the log's
+// LAST line is the `end` line and that line is shown. Nothing is read from a
+// word, so an ending a later stage line has outlived is not reported.
+func planProgramPosition(logged []delegate.Action, shown []delegate.Shown) (string, *delegate.Shown, string) {
+	stage := ""
+	for i := len(logged) - 1; i >= 0; i-- {
+		if logged[i].Kind == delegate.ActionStage && strings.TrimSpace(logged[i].Stage) != "" {
+			stage = logged[i].Stage
+			break
+		}
+	}
+	if len(logged) == 0 || len(shown) == 0 {
+		return stage, nil, ""
+	}
+	last, tail := logged[len(logged)-1], shown[len(shown)-1]
+	if last.Kind != delegate.ActionEnd || !tail.At.Equal(last.At) {
+		return stage, nil, ""
+	}
+	ending := tail
+	return stage, &ending, last.Status
 }
 
 // planProgramOf is the program of this build's list with this name, and a
