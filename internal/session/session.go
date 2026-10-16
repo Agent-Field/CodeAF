@@ -661,6 +661,13 @@ const (
 	// IT IS PINNED AT EventAutomationUpdate + 3, after the two summary
 	// ordinals above; persisted event numbers must not move.
 	EventKeepRunning = EventAutomationUpdate + 3
+	// EventRenderUpdate reports one video or music RENDER changing: started,
+	// finished, failed, cancelled, or a charge receipt on one already ended
+	// (renderlog.go). [Event.Render] is the whole record, so a surface replaces
+	// the record with that id rather than appending. Receipts for an ended
+	// render carry the SAME id and state. Appended after every existing ordinal
+	// because hosts serialize EventKind as an integer.
+	EventRenderUpdate = EventKeepRunning + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -984,6 +991,10 @@ type Event struct {
 	// `jobs output 3` and `jobs kill 3` already take — rather than a second id
 	// minted somewhere else to keep it from colliding with a task's.
 	Job *JobNotice
+
+	// Render carries one EventRenderUpdate's payload (renderlog.go) and is nil
+	// on every other kind.
+	Render *RenderRecord
 
 	// TaskPhase carries one EventTaskPhase's payload (task_contract.go): which
 	// running node moved into which of its three lives. It is nil on every

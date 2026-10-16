@@ -63,6 +63,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
@@ -231,6 +232,10 @@ type job struct {
 	// GOROUTINE exits — never at a stop, and never because the row changed state.
 	permit     *renderGate
 	permitOnce sync.Once
+	// ledger and renderID tie a render job to its durable record
+	// ([renderLedger]); both are set once by [jobRegistry.beginRender].
+	ledger   *renderLedger
+	renderID string
 	// personStopped says the requested death this job is about to have is A
 	// PERSON'S STOP ([Agent.cancelJob]) rather than the model's `jobs kill` or a
 	// shutdown.
@@ -362,12 +367,38 @@ func (j *job) running() bool {
 // decision made once rather than a race between two goroutines.
 func (j *job) requestKill() bool {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	if j.state != jobRunning {
+		j.mu.Unlock()
 		return false
 	}
 	j.killRequested = true
+	// A render that has not committed is cancelled by this claim, and the
+	// record says so now — not when a provider that ignores the cancel returns.
+	seal := j.kind == jobKindRender && !j.committed
+	j.mu.Unlock()
+	if seal {
+		j.sealRender(renderPatch{state: RenderCancelled})
+	}
 	return true
+}
+
+// sealRender writes the render's one terminal record, if it has a record and no
+// ending yet. It reports whether this call was the ending.
+func (j *job) sealRender(patch renderPatch) bool {
+	j.mu.Lock()
+	ledger, id := j.ledger, j.renderID
+	j.mu.Unlock()
+	if ledger == nil || id == "" {
+		return false
+	}
+	return ledger.settle(id, patch, time.Now())
+}
+
+// isCommitted reports a render's commit flag.
+func (j *job) isCommitted() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.committed
 }
 
 // commitRender is a render's gate between "the provider answered" and "a file
@@ -392,14 +423,17 @@ func (j *job) commitRender() bool {
 // note must still reach the model.
 func (j *job) requestKillRender() (claimed, committed bool) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	if j.state != jobRunning {
+		j.mu.Unlock()
 		return false, false
 	}
 	if j.committed {
+		j.mu.Unlock()
 		return false, true
 	}
 	j.killRequested = true
+	j.mu.Unlock()
+	j.sealRender(renderPatch{state: RenderCancelled})
 	return true, false
 }
 
@@ -519,6 +553,10 @@ type jobRegistry struct {
 	// renderMu makes "count the running renders, then add one" one step, so two
 	// renders starting together cannot both pass the cap.
 	renderMu sync.Mutex
+	// renders is the durable render ledger, opened on first use
+	// ([jobRegistry.renderLedger]).
+	renders     *renderLedger
+	rendersOnce sync.Once
 	// gate is the process-wide render admission this registry draws on. It is
 	// [processRenders] outside tests; a test hands two registries one private
 	// gate to prove the total is shared without disturbing other tests.
@@ -892,6 +930,45 @@ func (r *jobRegistry) runningProcesses() int {
 	return running
 }
 
+// renderLedger opens this session's render ledger once. A session with no
+// folder (the legacy layout) keeps it in memory.
+func (r *jobRegistry) renderLedger() *renderLedger {
+	r.rendersOnce.Do(func() {
+		r.mu.Lock()
+		place := r.place
+		r.mu.Unlock()
+		r.renders = openRenderLedger(place.join(placeRenders), place.ID(), time.Now())
+	})
+	return r.renders
+}
+
+// closeRenders releases the ledger's file at shutdown. It opens nothing.
+func (r *jobRegistry) closeRenders() {
+	if r.renders != nil {
+		r.renders.close()
+	}
+}
+
+// beginRender records a started render and ties the job to its record. run and
+// call are the tool site's own identities (runIdentity, callIDFrom), never
+// parsed from anything.
+func (r *jobRegistry) beginRender(one *job, kind, model, run, call string, notify func(RenderRecord)) error {
+	ledger := r.renderLedger()
+	ledger.mu.Lock()
+	if ledger.notify == nil {
+		ledger.notify = notify
+	}
+	ledger.mu.Unlock()
+	id := ledger.begin(one.id, kind, model, run, call, time.Now())
+	if id == "" {
+		return errors.New("the render history could not be saved; free space or fix permissions before starting a render")
+	}
+	one.mu.Lock()
+	one.ledger, one.renderID = ledger, id
+	one.mu.Unlock()
+	return nil
+}
+
 // jobRenderCap is how many provider generations (video, music) one agent may
 // have running at once. It is a separate count from the process cap because a
 // render is a goroutine holding a response buffer, not a process.
@@ -930,10 +1007,28 @@ var errProcessRenderCap = fmt.Errorf("%d renders are already running in this pro
 // stop, a panic — returns the place.
 func (j *job) releaseRender() {
 	j.permitOnce.Do(func() {
+		j.mu.Lock()
+		ledger, id := j.ledger, j.renderID
+		j.mu.Unlock()
+		if ledger != nil && id != "" {
+			ledger.release(id)
+		}
 		if j.permit != nil {
 			j.permit.release()
 		}
 	})
+}
+
+// noteCharge hands the ledger what the provider reported charging, the moment
+// the provider call returns — whatever became of the render meanwhile. A
+// render already cancelled keeps its state and gains the receipt.
+func (j *job) noteCharge(usage *ai.Usage) {
+	j.mu.Lock()
+	ledger, id := j.ledger, j.renderID
+	j.mu.Unlock()
+	if ledger != nil && id != "" {
+		ledger.charge(id, usage, time.Now())
+	}
 }
 
 var errRenderCap = fmt.Errorf("%d renders are already running for this agent; wait for one to finish or stop one with jobs kill.", jobRenderCap)
@@ -1437,6 +1532,7 @@ func (r *jobRegistry) shutdown(grace time.Duration) {
 	// its grace are tidied too. A pass reads one folder at a time and is
 	// bounded, so the wait carries no timer of its own.
 	defer r.joinRetention()
+	defer r.closeRenders()
 
 	var claimed []*job
 	for _, candidate := range r.all() {

@@ -294,6 +294,7 @@ var watcherReads = map[string]bool{
 	MethodQuestionWatch: true,
 	MethodPlanTaskPage:  true,
 	MethodAppTasks:      true, MethodAppTask: true, MethodAppQuickTasks: true,
+	MethodRenderList: true, MethodRenderGet: true,
 	MethodDetach: true,
 	MethodPing:   true,
 }

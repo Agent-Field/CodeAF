@@ -157,6 +157,14 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			if err != nil {
 				return "Could not start the video render: " + err.Error(), true, nil
 			}
+			if err := a.jobs.beginRender(started, "video", model, runIdentity(callCtx), callIDFrom(callCtx), a.emitRenderUpdate); err != nil {
+				if started.stop != nil {
+					started.stop()
+				}
+				a.jobs.finish(started, 1, "")
+				started.releaseRender()
+				return "Could not start the video render: " + err.Error(), true, nil
+			}
 			fmt.Fprintf(started.sink, "filming on %s: %s\n", model, firstLine(prompt))
 
 			go a.renderVideo(ctx, client, started, request, parsed.Path, model, madeBy(callCtx, append(append([]string(nil), parsed.FramePaths...), parsed.ReferencePaths...)))
@@ -202,6 +210,11 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 		a.failVideo(rendering, videoFailure(model, err))
 		return
 	}
+	// WHAT THE PROVIDER SAYS IT CHARGED goes to the ledger the moment the call
+	// returns, whatever became of the render meanwhile.
+	if response != nil {
+		rendering.noteCharge(response.Usage)
+	}
 	if response == nil || len(response.Video) == 0 {
 		a.failVideo(rendering, "video generation returned no video ("+model+")")
 		return
@@ -220,6 +233,7 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 		// dropped unwritten, and the log says what is and is not known.
 		reason := "stopped before the video was saved; the provider had already finished it, so it may have been charged"
 		fmt.Fprintln(rendering.sink, reason)
+		rendering.sealRender(renderPatch{state: RenderCancelled})
 		a.jobs.finish(rendering, 1, "job "+strconv.Itoa(rendering.id)+" "+reason)
 		return
 	case renderNotSaved:
@@ -239,6 +253,7 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 		Created: time.Now(),
 	}, fact)
 
+	rendering.sealRender(renderPatch{state: RenderFinished, committed: true, path: path, usage: response.Usage})
 	landed := describeGeneratedVideo(a.config.Workspace, path, response.Video, model)
 	fmt.Fprintln(rendering.sink, landed)
 	a.jobs.finish(rendering, 0, fmt.Sprintf("job %d finished: %s", rendering.id, landed))
@@ -249,6 +264,7 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 // "failed" rather than "finished". A failure is never retried: the provider
 // call is made once, and any further attempt is the model's decision.
 func (a *Agent) failVideo(rendering *job, reason string) {
+	rendering.sealRender(renderPatch{state: RenderFailed, committed: rendering.isCommitted(), err: reason})
 	fmt.Fprintln(rendering.sink, reason)
 	a.jobs.finish(rendering, 1, fmt.Sprintf("job %d failed: %s", rendering.id, reason))
 }

@@ -155,6 +155,14 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 			if err != nil {
 				return "Could not start the compose: " + err.Error(), true, nil
 			}
+			if err := a.jobs.beginRender(started, "music", model, runIdentity(callCtx), callIDFrom(callCtx), a.emitRenderUpdate); err != nil {
+				if started.stop != nil {
+					started.stop()
+				}
+				a.jobs.finish(started, 1, "")
+				started.releaseRender()
+				return "Could not start the music render: " + err.Error(), true, nil
+			}
 			fmt.Fprintf(started.sink, "composing on %s: %s\n", model, firstLine(prompt))
 
 			go a.composeMusic(ctx, client, started, provider.MusicRequest{
@@ -183,6 +191,11 @@ func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composi
 		a.failMusic(composing, musicFailure(model, err))
 		return
 	}
+	// WHAT THE PROVIDER SAYS IT CHARGED goes to the ledger the moment the call
+	// returns, whatever became of the render meanwhile.
+	if response != nil {
+		composing.noteCharge(response.Usage)
+	}
 	if response == nil || len(response.Audio) == 0 {
 		a.failMusic(composing, "music generation returned no audio ("+model+")")
 		return
@@ -198,6 +211,7 @@ func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composi
 	case renderStopped:
 		reason := "stopped before the music was saved; the provider had already finished it, so it may have been charged"
 		fmt.Fprintln(composing.sink, reason)
+		composing.sealRender(renderPatch{state: RenderCancelled})
 		a.jobs.finish(composing, 1, "job "+strconv.Itoa(composing.id)+" "+reason)
 		return
 	case renderNotSaved:
@@ -211,6 +225,7 @@ func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composi
 		Created: time.Now(),
 	}, GeneratedMedia(path, response.Audio, model).WithUsage(response.Usage).WithMade(made))
 
+	composing.sealRender(renderPatch{state: RenderFinished, committed: true, path: path, usage: response.Usage})
 	landed := describeGeneratedMusic(a.config.Workspace, path, len(response.Audio), model)
 	fmt.Fprintln(composing.sink, landed)
 	a.jobs.finish(composing, 0, fmt.Sprintf("job %d finished: %s", composing.id, landed))
@@ -219,6 +234,7 @@ func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composi
 // failMusic ends a compose that produced nothing, [Agent.failVideo]'s twin:
 // exit code 1, the reason in the log, the same sentence as the note.
 func (a *Agent) failMusic(composing *job, reason string) {
+	composing.sealRender(renderPatch{state: RenderFailed, committed: composing.isCommitted(), err: reason})
 	fmt.Fprintln(composing.sink, reason)
 	a.jobs.finish(composing, 1, fmt.Sprintf("job %d failed: %s", composing.id, reason))
 }

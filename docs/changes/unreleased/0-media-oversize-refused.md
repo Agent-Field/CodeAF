@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a generated image, speech, music or video reply over its size limit is refused instead of saved cut short
+title: an oversize media reply is refused instead of being saved cut short
 pr: 0
 surface: [engine]
 invalidates:

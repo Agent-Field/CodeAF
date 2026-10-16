@@ -481,6 +481,10 @@ type appLive struct {
 	asksDone  chan struct{}
 	stopAsks  func()
 	tasks     map[string]appwire.Task
+	// renders is the last record sent for each render, by id: the same news
+	// arrives on the turn's stream and on the task lane, and each change is
+	// said once (apprender.go).
+	renders map[string]appwire.Render
 	// asks are the open asks in the order they were raised, and questions the
 	// engine's own question behind each, which is what an answer is built from.
 	asks      []appwire.Ask
@@ -1768,7 +1772,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if title := strings.TrimSpace(event.Text); title != "" {
 				changed(func(v *appwire.Agent) { v.Title = title })
 			}
-		case session.EventTaskUpdate, session.EventTaskProposal, session.EventTaskPhase, session.EventJobUpdate:
+		case session.EventTaskUpdate, session.EventTaskProposal, session.EventTaskPhase, session.EventJobUpdate, session.EventRenderUpdate:
 			// A task a running task call made is that call's task.
 			if task := event.Task; task != nil && (event.Kind == session.EventTaskProposal || task.State == "" || task.State == session.TaskQueued) {
 				b.callTask(a, appTaskID(id, task.ID))
@@ -1985,6 +1989,10 @@ func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
 	case session.EventJobUpdate:
 		if event.Job != nil {
 			b.processMoved(id, live, event.Job)
+		}
+	case session.EventRenderUpdate:
+		if event.Render != nil {
+			b.renderChanged(id, live, event.Render)
 		}
 	}
 }
