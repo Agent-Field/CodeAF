@@ -197,19 +197,19 @@ func refreshMedia(ctx context.Context, options Options, models []Model, prior *m
 		imageRows, videoRows []Model
 		imageErr, videoErr   error
 	)
+	// guard.Go carries the recover, so a fault in a listing's decoding reads as
+	// that listing failing. The failure is pre-set for exactly that case: a
+	// recovered goroutine returns nothing, and nothing must not read as success.
 	run := func(kind string, rows *[]Model, failure *error) {
-		defer wg.Done()
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				_ = guard.Note("catalog/media", recovered)
-				*failure = errUnreadable
-			}
-		}()
-		*rows, *failure = fetchMedia(ctx, options, kind)
+		*failure = errUnreadable
+		guard.Go("catalog/media", func() {
+			defer wg.Done()
+			*rows, *failure = fetchMedia(ctx, options, kind)
+		})
 	}
 	wg.Add(2)
-	go run(kindImage, &imageRows, &imageErr)
-	go run(kindVideo, &videoRows, &videoErr)
+	run(kindImage, &imageRows, &imageErr)
+	run(kindVideo, &videoRows, &videoErr)
 	wg.Wait()
 
 	settle := func(kind *mediaKindCache, rows []Model, err error) {
