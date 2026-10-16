@@ -380,6 +380,9 @@ type appBackend struct {
 	// starting is the request_id of the start in flight under startMu, read
 	// under mu: a claim of it with no crew yet is that start, not a lost one.
 	starting string
+	// actions is the admission of session.act (appsessionactions.go): which
+	// attempts are running, on which conversation.
+	actions appActionGate
 	// warmed closes when [appBackend.Warm] has finished, which Close waits
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}
