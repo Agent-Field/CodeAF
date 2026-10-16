@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 func TestARunStartedByTaskCarriesItsDirectiveOnTheRealRunRoad(t *testing.T) {
@@ -57,4 +60,43 @@ func TestARunStartedByTaskCarriesItsDirectiveOnTheRealRunRoad(t *testing.T) {
 		defer double.mu.Unlock()
 		return double.ran
 	})
+}
+
+func TestRoutingRerunKeepsItsRecordedSourceDuringALaterMessage(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(strconv.FormatBool(legacy), func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			double := newBeltRunDouble("finished")
+			registerBeltRunEngine(t, double)
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+				c.Workspace = newTestRepo(t)
+				c.ProfileDir = t.TempDir()
+				c.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) { return flashDecision(), nil }
+			})
+			heardAs(agent, "original task request")
+			original := agent.bornSource()
+			graph := agent.graph()
+			graph.mu.Lock()
+			source := cloneSource(original)
+			if legacy {
+				source = nil
+			}
+			graph.runs = make(map[uint64][]TaskNotice)
+			graph.runs[40] = []TaskNotice{{ID: 40, Title: "prior", Brief: "fix the nil map", State: TaskDone, Source: source}}
+			graph.mu.Unlock()
+			heardAs(agent, "unrelated later request")
+			id, err := agent.rerunWithRouting(context.Background(), TaskNotice{ID: 40, Title: "prior", Brief: "fix the nil map", State: TaskDone}, nil, TaskRoutingAction{Kind: TaskRoutingBest})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer endBeltRun(t, agent, double)
+			got := agent.appRunViewSource(t, id)
+			if legacy && got != nil {
+				t.Fatalf("legacy source invented: %+v", got)
+			}
+			if !legacy && (got == nil || got.ID != original.ID) {
+				t.Fatalf("rerun source=%+v want %+v", got, original)
+			}
+		})
+	}
 }

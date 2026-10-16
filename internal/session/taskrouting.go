@@ -1286,6 +1286,7 @@ func (a *Agent) rerunWithRouting(ctx context.Context, row TaskNotice, crew *task
 	if raise > 0 {
 		wish.taskCap = raise
 	}
+	ctx = withTaskSource(ctx, a.graph().sourceOfID(row.ID))
 	id, _, _, err := a.startTaskRun(withCrewWish(ctx, wish), p.brief, true, "")
 	if err != nil {
 		var none *crewroute.NoEligibleError
