@@ -499,7 +499,7 @@ func TestAComposedMessageSteersARunningTurnAndIsRecordedOnce(t *testing.T) {
 	lines := journalUserLines(t, journal)
 	var composed []sessionEntry
 	for _, line := range lines {
-		if line.Presentation != nil && line.Presentation.Composed != nil {
+		if line.Presentation != nil && line.Presentation.Composed != nil && len(line.Presentation.Composed.Media) > 0 {
 			composed = append(composed, line)
 		}
 	}

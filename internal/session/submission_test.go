@@ -24,6 +24,26 @@ func answering() *scriptedCompleter {
 // authored says an entry's Text is the person's own words as their door said them.
 func authored(entry DisplayEntry) bool { return entry.Person != nil && entry.Person.Authored }
 
+// An ordinary new message carries only its actual identity. It must not gain
+// invented authorship, attachments, reads, media or delivery facts.
+func ordinaryIdentity(entry DisplayEntry, queued bool) bool {
+	p := entry.Person
+	if p == nil || p.Authored || p.Queued != queued || len(p.Attachments) != 0 || len(p.Reads) != 0 || p.Composed == nil || p.Composed.MessageID == "" {
+		return false
+	}
+	copy := *p.Composed
+	copy.MessageID = ""
+	return reflect.DeepEqual(copy, ComposedMark{})
+}
+func journalIdentity(mark map[string]any) string {
+	composed, ok := mark["composed"].(map[string]any)
+	if !ok || len(composed) != 1 {
+		return ""
+	}
+	id, _ := composed["messageId"].(string)
+	return id
+}
+
 // attachmentsOf is what an entry says rode on the person's message.
 func attachmentsOf(entry DisplayEntry) []MessageAttachment {
 	if entry.Person == nil {
@@ -90,7 +110,7 @@ func assertSubmitted(t *testing.T, where string, entries []DisplayEntry) {
 	if users[1].Text != "" || !authored(users[1]) || !reflect.DeepEqual(attachmentsOf(users[1]), submittedAlone) {
 		t.Fatalf("%s: the attachments alone = %#v", where, users[1])
 	}
-	if users[2].Text != "see Attached file: other.go" || authored(users[2]) || users[2].Person != nil {
+	if users[2].Text != "see Attached file: other.go" || authored(users[2]) || !ordinaryIdentity(users[2], false) {
 		t.Fatalf("%s: the plain words = %#v", where, users[2])
 	}
 }
@@ -149,12 +169,12 @@ func TestASubmittedMessageKeepsThePersonsWordsAndAttachmentsOnItsLine(t *testing
 	}
 	assertSubmitted(t, "bytes", ReadTranscriptBytes(data).Entries)
 	marks := journalMarks(t, path)
-	if len(marks) != 3 || marks[0] == nil || marks[1] == nil || marks[2] != nil {
+	if len(marks) != 3 || marks[0] == nil || marks[1] == nil || journalIdentity(marks[2]) == "" {
 		t.Fatalf("the person's lines carry marks %v", marks)
 	}
 	for _, mark := range marks[:2] {
 		for key := range mark {
-			if key != "audience" && key != "text" && key != "attachments" {
+			if key != "audience" && key != "text" && key != "attachments" && key != "composed" {
 				t.Fatalf("a mark carries %q: %v", key, mark)
 			}
 		}
@@ -203,19 +223,14 @@ func TestASubmissionThatDoesNotFitRecordsNothing(t *testing.T) {
 	}
 	collect(t, events)
 	users := personEntries(agent.Transcript())
-	if len(users) != 1 || users[0].Text != "plain" || authored(users[0]) || users[0].Person == nil || users[0].Person.Composed == nil || users[0].Person.Composed.MessageID == "" || users[0].Person.Composed.Delivery != nil {
+	if len(users) != 1 || users[0].Text != "plain" || authored(users[0]) || !ordinaryIdentity(users[0], false) {
 		t.Fatalf("a submission with no mark read back as %#v", users)
 	}
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
 	}
-	marks := journalMarks(t, path)
-	if len(marks) != 1 || marks[0] == nil {
+	if marks := journalMarks(t, path); len(marks) != 1 || journalIdentity(marks[0]) == "" || len(marks[0]) != 2 {
 		t.Fatalf("the journal holds %v", marks)
-	}
-	composed, ok := marks[0]["composed"].(map[string]any)
-	if !ok || composed["messageId"] != users[0].Person.Composed.MessageID || composed["delivery"] != nil {
-		t.Fatalf("plain message identity/delivery changed: %v", marks)
 	}
 }
 
@@ -495,7 +510,7 @@ func TestAQueuedMessageSaysSoOnItsLineAndASentOneDoesNot(t *testing.T) {
 	check := func(where string, entries []DisplayEntry) {
 		t.Helper()
 		users := personEntries(entries)
-		if len(users) != 2 || users[0].Person != nil || users[1].Person == nil || !users[1].Person.Queued ||
+		if len(users) != 2 || !ordinaryIdentity(users[0], false) || !ordinaryIdentity(users[1], true) || users[1].Person == nil || !users[1].Person.Queued ||
 			users[1].Person.Authored || users[1].Text != "then the lint" {
 			t.Fatalf("%s: the person's messages = %#v", where, users)
 		}
@@ -505,7 +520,7 @@ func TestAQueuedMessageSaysSoOnItsLineAndASentOneDoesNot(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("at rest", ReadTranscript(path).Entries)
-	if marks := journalMarks(t, path); len(marks) != 2 || marks[0] != nil || marks[1]["queued"] != true || marks[1]["text"] != nil {
+	if marks := journalMarks(t, path); len(marks) != 2 || journalIdentity(marks[0]) == "" || len(marks[0]) != 2 || journalIdentity(marks[1]) == "" || journalIdentity(marks[0]) == journalIdentity(marks[1]) || marks[1]["queued"] != true || marks[1]["text"] != nil {
 		t.Fatalf("the person's lines carry marks %v", marks)
 	}
 	reopened, _ := newTestAgent(t, answering(), func(c *Config) { c.SessionFile = path })
