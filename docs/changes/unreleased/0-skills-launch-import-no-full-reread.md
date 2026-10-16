@@ -1,0 +1,8 @@
+---
+kind: fixed
+title: shared chat engine avoids rehashing unchanged imported skills
+pr: 0
+surface: [chat, engine]
+invalidates:
+  - "Was true: every chat launch ran the foreign-skill import over the shared shelf by sizing each skill folder with a full tree walk, then walking it again and opening and hashing every file in it, even when nothing had changed, and concurrent launches each ran their own pass. Is true now: the second and later imports in one process walk each folder's stat data once (path, size, mtime, ctime, inode, device, mode), reuse the remembered content digest while that signature is identical, and read content only for a folder whose signature changed or is too fresh (under 2s) to trust; discovery for the import skips sizing; concurrent launches on one shelf and workspace share the running pass plus one trailing pass, concurrent misses on one folder hash it once, and a complete scan plus publication runs one at a time per shelf, preventing an older disk scan from replacing a newer result. A fresh process still reads each folder once. A pass now retires only imported facts it owns (its own project's skills and the home's user-level skills), so one workspace's launch no longer supersedes another workspace's project skills on the shared shelf. Edits (including ones that restore mtime), additions and deletions still update the shelf on the next launch. Retirement preserves other workspaces’ project skills, while plugin identity remains its original folder. The cache holds at most 512 folders, has no time-based expiry, and platforms without change times read content as before."
+---

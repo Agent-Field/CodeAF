@@ -332,3 +332,23 @@ func writeSkill(t *testing.T, dir, name string) {
 		t.Fatal(err)
 	}
 }
+
+func TestDiscoverOmitSizeSkipsTheTreeWalkOnly(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".claude", "skills", "pdf")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: pdf\ndescription: d\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sized, _ := Discover(Options{HomeDir: home})
+	plain, _ := Discover(Options{HomeDir: home, OmitSize: true})
+	if len(sized) != 1 || len(plain) != 1 || sized[0].SizeBytes == 0 || plain[0].SizeBytes != 0 {
+		t.Fatalf("sized=%+v plain=%+v", sized, plain)
+	}
+	plain[0].SizeBytes = sized[0].SizeBytes
+	if plain[0] != sized[0] {
+		t.Fatalf("OmitSize changed more than the size: %+v vs %+v", plain[0], sized[0])
+	}
+}
