@@ -122,9 +122,12 @@ func (b *appBackend) CrewStart(ask appwire.CrewCreate) (appwire.CrewStartResult,
 		ClientID: ask.ClientID, Goal: words,
 	}
 	claims := b.startClaims()
-	b.locked(func() { b.starting = ask.RequestID })
-	defer b.locked(func() { b.starting = "" })
 	made, err := claims.create(claim)
+	if made {
+		// From the claim on, an intent claim of this request is this start.
+		b.locked(func() { b.starting = ask.RequestID })
+		defer b.locked(func() { b.starting = "" })
+	}
 	if err != nil || !made {
 		b.takeBack(transcript)
 		if err != nil {

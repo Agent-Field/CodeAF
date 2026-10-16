@@ -932,3 +932,27 @@ func TestStartIntentClaimWithItsCrewIsAnUnknownRepeat(t *testing.T) {
 		t.Fatalf("%+v %v minted %d", got, err, h.mintedCount()-minted)
 	}
 }
+
+// A REQUEST CLAIMED ELSEWHERE BETWEEN THE LOOKUP AND THE CLAIM is the other
+// start's: this one takes its folder back and answers from the other claim —
+// uncertain while that start has made no crew — and never makes a second.
+func TestStartLosingTheClaimToAnotherStartMakesNothing(t *testing.T) {
+	h := newStartHarness(t)
+	ask := appwire.CrewCreate{Name: "Raced", StartManager: true, ManagerStartsMembers: true, RequestID: "r-race", Goal: "g"}
+	mint := h.b.mint
+	h.b.mint = func(w string) (string, error) {
+		a := ask
+		a.Name, a.Goal = strings.TrimSpace(a.Name), strings.TrimSpace(a.Goal)
+		if made, err := h.b.startClaims().create(appStartClaim{V: appStartClaimV, RequestID: "r-race", Fingerprint: appStartFingerprint(a),
+			State: appClaimIntent, Crew: "t-other", Manager: "m", ManagerKey: "/k", Goal: true}); err != nil || !made {
+			t.Errorf("the other start's claim: %v %v", made, err)
+		}
+		return mint(w)
+	}
+	if _, err := h.b.CrewStart(ask); startCode(t, err) != appwire.CodeUncertain {
+		t.Fatalf("%v", err)
+	}
+	if len(h.file(t).Teams) != 0 || h.folders(t) != 0 || reviewGoalSends(h, "g") != 0 {
+		t.Fatalf("teams %d folders %d", len(h.file(t).Teams), h.folders(t))
+	}
+}
