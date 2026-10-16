@@ -196,7 +196,10 @@ type ActionTask struct {
 // producer and NOT on a replay of it, which carries the scope alone.
 type ActionMemory struct {
 	Receipt string `json:"receipt,omitempty"`
-	Scope   string `json:"scope"`
+	// Scope is where the line HOLDS, not only what was asked: a project line
+	// the producer kept for the person everywhere (the conversation has no
+	// project of its own) is "everywhere".
+	Scope string `json:"scope"`
 }
 
 // ActionProducerError is a producer's error in its own words, secrets taken

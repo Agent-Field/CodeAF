@@ -673,8 +673,26 @@ func (b *appBackend) actionRunWith(doors appActionDoors, ask appwire.ActionAsk) 
 			if err != nil {
 				return nil, nil, err
 			}
-			return nil, &appwire.ActionMemory{Receipt: receipt, Scope: scope}, nil
+			return nil, &appwire.ActionMemory{Receipt: receipt, Scope: appliedMemoryScope(scope, receipt)}, nil
 		}, nil
 	}
 	return nil, appwire.Errorf(appwire.CodeBadParams, "unknown action %q", ask.Action)
+}
+
+// memoryNoProjectReach is the producer's own closing words when a project line
+// fell back to the person's everywhere because the conversation has no
+// project (session.memoryReach). It is the only fact a far handle gives about
+// where the line landed, so it is matched as the receipt's END, never inside
+// the quoted line.
+const memoryNoProjectReach = "for you everywhere, since this conversation has no project of its own"
+
+// appliedMemoryScope is the scope the line actually holds in. A project
+// request that the producer widened reports everywhere, so a receipt's scope
+// never says "project" over a line every project can read. Anything else is
+// what was asked, unchanged.
+func appliedMemoryScope(asked, receipt string) string {
+	if asked == appwire.ScopeProject && strings.HasSuffix(strings.TrimSpace(receipt), memoryNoProjectReach) {
+		return appwire.ScopeEverywhere
+	}
+	return asked
 }

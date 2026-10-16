@@ -29,6 +29,12 @@ type realActionHarness struct {
 }
 
 func newRealActionHarness(t *testing.T) *realActionHarness {
+	return newRealActionHarnessSaying(t, "say done")
+}
+
+// newRealActionHarnessSaying is the harness whose conversation was opened with
+// first as its opening words; "" is a conversation nobody has said anything in.
+func newRealActionHarnessSaying(t *testing.T, first string) *realActionHarness {
 	t.Helper()
 	_, workspace := wakeEnvironment(t, resolvedTempDir(t))
 	h := &realActionHarness{t: t, cwd: workspace}
@@ -37,11 +43,13 @@ func newRealActionHarness(t *testing.T) *realActionHarness {
 	// anything in is taken away when the app quits (appblank.go), so a restart
 	// could only ever find a different one — which is how this harness once
 	// read a project's memory through a conversation with no project at all.
-	a, err := h.b.CreateAgent(appwire.CreateAsk{Workspace: workspace, Text: "say done"})
+	a, err := h.b.CreateAgent(appwire.CreateAsk{Workspace: workspace, Text: first})
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.rec.waitFor(t, 30*time.Second, appTurnDone)
+	if first != "" {
+		h.rec.waitFor(t, 30*time.Second, appTurnDone)
+	}
 	h.agent = a.ID
 	return h
 }
@@ -402,5 +410,33 @@ func TestRealFarHandleOffersNoEffortItCannotShow(t *testing.T) {
 	r, e := h.w.act(taskAsk(h.agent, "real-effort", "write a haiku about the tide into notes.txt"))
 	if e != nil || r.State != appwire.ActionDone || r.Replayed {
 		t.Fatalf("the same client_id without the effort: %+v %v", r, e)
+	}
+}
+
+// A TASK STARTED IN A CONVERSATION NOBODY HAS SPOKEN IN, THEN A CLEAN RESTART.
+// No seeded message: the conversation is created empty and only the typed
+// action touches it. The test records what the real producers do and asserts
+// the one thing that must hold either way: a repeat after the restart never
+// admits a second task.
+func TestRealTaskStartInAnEmptyConversationAcrossARestart(t *testing.T) {
+	h := newRealActionHarnessSaying(t, "")
+	r, e := h.w.act(taskAsk(h.agent, "empty-t1", "write a haiku about the tide into notes.txt"))
+	if e != nil || r.State != appwire.ActionDone || r.Task == nil {
+		t.Fatalf("a real start in an empty conversation: %+v %v", r, e)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for h.taskRows() != 1 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := h.taskRows(); got != 1 {
+		t.Fatalf("task rows %d, want 1", got)
+	}
+	h.restart()
+	after, e := h.w.act(taskAsk(h.agent, "empty-t1", "write a haiku about the tide into notes.txt"))
+	if e != nil || !after.Replayed || after.State != appwire.ActionDone || after.Task == nil || after.Task.ID != r.Task.ID {
+		t.Fatalf("after restart: %+v %v", after, e)
+	}
+	if got := h.taskRows(); got != 1 {
+		t.Fatalf("after the restart the conversation holds %d task rows, want the one that was started", got)
 	}
 }

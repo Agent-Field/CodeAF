@@ -38,6 +38,9 @@ type actionProducers struct {
 	progErr    error
 	memErr     error
 	memPostErr error
+	// memReach, when set, is the receipt's closing words in place of "for this
+	// project": what the real producer says when it widened the line.
+	memReach string
 	// hold, when set, blocks a task start until it is closed.
 	hold      chan struct{}
 	entered   chan struct{}
@@ -125,7 +128,11 @@ func (c *actionConv) Remember(text string) (string, error) {
 	if c.p.memPostErr != nil {
 		return "", c.p.memPostErr
 	}
-	return "remembered · " + text + " · for this project", nil
+	reach := "for this project"
+	if c.p.memReach != "" {
+		reach = c.p.memReach
+	}
+	return "remembered · " + text + " · " + reach, nil
 }
 
 func (c *actionConv) RememberAlways(text string, everywhere bool) (string, error) {
