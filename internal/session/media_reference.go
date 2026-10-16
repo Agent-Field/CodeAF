@@ -1,0 +1,139 @@
+package session
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+)
+
+// ErrMediaReference means a source is not an unchanged, recorded image that may
+// be carried by another message. No caller-supplied path grants access.
+var ErrMediaReference = errors.New("that recorded image is no longer available as a reference")
+
+// MediaReferenceCopy is an immutable owned snapshot. Remove discards only the
+// newly created snapshot, never the source. The caller keeps it on accepted or
+// uncertain delivery, since a durable message may now refer to it.
+type MediaReferenceCopy struct {
+	Path string
+	dir  string
+}
+
+func (c MediaReferenceCopy) Remove() error {
+	if err := os.Remove(c.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.Remove(c.dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// CopyMediaReference snapshots one authoritative source into the engine-owned
+// destination. Admission and ownership belong to the caller. It uses a 32KiB
+// streaming buffer, at most the ordinary image-message byte limit, and verifies
+// the SAME open file before/after copying. No pixel decoding or base64 occurs.
+func CopyMediaReference(ctx context.Context, row MediaRow, roots []string, version, destination string) (MediaReferenceCopy, error) {
+	file, before, live, err := openMediaReference(ctx, row, roots, version)
+	if err != nil {
+		return MediaReferenceCopy{}, err
+	}
+	defer file.Close()
+	dir, err := os.MkdirTemp(destination, ".reference-")
+	if err != nil {
+		return MediaReferenceCopy{}, err
+	}
+	copy := MediaReferenceCopy{Path: filepath.Join(dir, "image"+filepath.Ext(live.Path)), dir: dir}
+	out, err := os.OpenFile(copy.Path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		_ = os.Remove(dir)
+		return MediaReferenceCopy{}, err
+	}
+	keep := false
+	defer func() {
+		_ = out.Close()
+		if !keep {
+			_ = copy.Remove()
+		}
+	}()
+	hash := sha256.New()
+	n, err := io.CopyBuffer(io.MultiWriter(out, hash), io.LimitReader(referenceReader{ctx, file}, before.Size()+1), make([]byte, 32<<10))
+	if err != nil {
+		return MediaReferenceCopy{}, err
+	}
+	after, err := file.Stat()
+	if err != nil || n != before.Size() || referenceIdentity(after) != live.Version || ResolveMedia(row, roots).Version != live.Version {
+		return MediaReferenceCopy{}, ErrMediaReference
+	}
+	if row.Fact.SHA256 != "" && hex.EncodeToString(hash.Sum(nil)) != row.Fact.SHA256 {
+		return MediaReferenceCopy{}, ErrMediaReference
+	}
+	if err := ctx.Err(); err != nil {
+		return MediaReferenceCopy{}, err
+	}
+	if err := out.Close(); err != nil {
+		return MediaReferenceCopy{}, err
+	}
+	keep = true
+	return copy, nil
+}
+
+func openMediaReference(ctx context.Context, row MediaRow, roots []string, version string) (*os.File, os.FileInfo, MediaLive, error) {
+	if !row.Recorded || row.Kind != "image" || version == "" || row.Version() != version {
+		return nil, nil, MediaLive{}, ErrMediaReference
+	}
+	live := ResolveMedia(row, roots)
+	if live.State != MediaAvailable {
+		return nil, nil, MediaLive{}, ErrMediaReference
+	}
+	file, err := os.Open(live.Path)
+	if err != nil {
+		return nil, nil, MediaLive{}, ErrMediaReference
+	}
+	keep := false
+	defer func() {
+		if !keep {
+			_ = file.Close()
+		}
+	}()
+	before, err := file.Stat()
+	if err != nil || !before.Mode().IsRegular() || referenceIdentity(before) != live.Version {
+		return nil, nil, MediaLive{}, ErrMediaReference
+	}
+	if before.Size() <= 0 || before.Size() > maxImageBytes {
+		return nil, nil, MediaLive{}, markError("reference image is outside the %s image limit", byteLimit(maxImageBytes))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, MediaLive{}, err
+	}
+	var head [512]byte
+	nhead, readErr := file.ReadAt(head[:], 0)
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return nil, nil, MediaLive{}, ErrMediaReference
+	}
+	if !sniffedImageTypes[sniffMedia(head[:nhead])] {
+		return nil, nil, MediaLive{}, ErrMediaReference
+	}
+	keep = true
+	return file, before, live, nil
+}
+
+func referenceIdentity(info os.FileInfo) string {
+	ctime, dev, ino := fileIdentity(info)
+	return fileVersion(info.Size(), info.ModTime().UnixNano(), ctime, dev, ino)
+}
+
+type referenceReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r referenceReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
