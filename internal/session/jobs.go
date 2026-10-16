@@ -293,6 +293,11 @@ type jobInfo struct {
 	// engine for a duration four times a second (jobnotice.go says why both).
 	started time.Time
 	elapsed time.Duration
+	// ended is the moment the registry settled the job, and zero while it runs.
+	// It is copied out rather than derived from started+elapsed because a saved
+	// running row's elapsed is a snapshot, and an ending computed from it would
+	// be a time the process never ended at (app_processes.go).
+	ended time.Time
 }
 
 func (j *job) info() jobInfo {
@@ -315,7 +320,16 @@ func (j *job) info() jobInfo {
 		dir:     j.dir,
 		state:   j.state, code: j.exitCode, ticks: j.ticks,
 		started: j.started, elapsed: elapsed,
+		ended: settledAt(j.state, j.ended),
 	}
+}
+
+// settledAt is a job's ending only once it has one.
+func settledAt(state jobState, ended time.Time) time.Time {
+	if state == jobRunning {
+		return time.Time{}
+	}
+	return ended
 }
 
 // setName gives the job the short name it is called, and reports whether that

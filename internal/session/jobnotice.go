@@ -162,7 +162,32 @@ type JobNotice struct {
 	// Ticks counts a watch's completed runs of its command, and is zero for
 	// everything else.
 	Ticks int
+	// Dir is the folder the job was forked in ([job.dir]), taken once at the
+	// fork. It is empty on a record written before it was kept.
+	Dir string `json:",omitempty"`
+	// Ended is when the registry settled the job. It is zero while the job runs
+	// and on any record whose ending nobody saw; a reader must never stand
+	// Started+Elapsed in for it, because a running row's Elapsed is a snapshot.
+	Ended time.Time `json:",omitzero"`
+	// StartedBy and Task say who started the job, and ONLY the agent that
+	// started it may say so, from its own construction: [JobStartedByChat] for
+	// the conversation's own agent, [JobStartedByTask] with the node id for a
+	// task worker. Anything else — a migrated old record, an adaptive-run worker
+	// with no node id — leaves both empty. Nothing infers them from a file name,
+	// a log name or what the process printed.
+	StartedBy string `json:",omitempty"`
+	Task      uint64 `json:",omitempty"`
+	// CommandCut marks a record whose command was longer than one saved record
+	// holds and was kept cut (process_store.go). Such a command is never run
+	// again: the cut text is a different command.
+	CommandCut bool `json:",omitempty"`
 }
+
+// Who started a job, when the starting agent knows (see [JobNotice.StartedBy]).
+const (
+	JobStartedByChat = "chat"
+	JobStartedByTask = "task"
+)
 
 // Over reports whether this job has ended.
 func (n JobNotice) Over() bool { return n.State.Over() }
@@ -199,6 +224,8 @@ func noticeOf(info jobInfo) JobNotice {
 		Elapsed:         info.elapsed,
 		ExitCode:        info.code,
 		Ticks:           info.ticks,
+		Dir:             info.dir,
+		Ended:           info.ended,
 	}
 }
 

@@ -153,7 +153,7 @@ func TestAppProcessesStartStopRerunAndRecover(t *testing.T) {
 func TestAppProcessShelfMarksInterruptedRowsStopped(t *testing.T) {
 	dir := t.TempDir()
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = filepath.Join(dir, "transcript.jsonl"); c.Place = Place{Dir: dir} })
-	path := processRecordPath(agent.SessionPath())
+	path := filepath.Join(dir, "processes.json")
 	n := JobNotice{ID: 72, Command: "npm run dev", Kind: JobKindCommand, State: JobRunning, Started: time.Now()}
 	raw, _ := json.Marshal([]JobNotice{n})
 	if err := os.WriteFile(path, raw, 0600); err != nil {
@@ -195,7 +195,8 @@ func TestAppProcessCloseFencesLateRecords(t *testing.T) {
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(processRecordPath(agent.SessionPath()))
+	record := filepath.Join(dir, processStoreName, processFileName(id))
+	before, err := os.ReadFile(record)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,8 +205,11 @@ func TestAppProcessCloseFencesLateRecords(t *testing.T) {
 		t.Fatalf("close shelf: %+v %v", rows, err)
 	}
 	agent.keepProcessNotice(JobNotice{ID: 999, State: JobRunning, Kind: JobKindCommand, Command: "late callback"})
-	after, err := os.ReadFile(processRecordPath(agent.SessionPath()))
+	after, err := os.ReadFile(record)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatalf("late record wrote after Close: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, processStoreName, processFileName(999))); !os.IsNotExist(err) {
+		t.Fatalf("late record created a file after Close: %v", err)
 	}
 }
