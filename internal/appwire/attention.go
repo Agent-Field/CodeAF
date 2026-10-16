@@ -18,9 +18,11 @@ type Since struct {
 	// At is the moment of the entry the count starts after.
 	At      *time.Time `json:"at,omitempty"`
 	Entries int        `json:"entries"`
-	// Turns counts the person's messages after the entry, and one more for
-	// what the conversation did on its own before the first of them.
-	Turns int  `json:"turns"`
+	// Turns counts the turns after the entry by the record's own marks: a
+	// person's message, a line the session wrote to start one or a crew's
+	// delivery opens one, and a completed or stopped reply ends one. It is nil
+	// where the marks cannot tell turns apart, never a guess.
+	Turns *int `json:"turns,omitempty"`
 	Files *int `json:"files,omitempty"`
 	// First is the id of the first entry after it, and LastAt the moment of
 	// the newest.

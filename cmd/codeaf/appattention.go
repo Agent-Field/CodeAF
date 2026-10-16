@@ -121,7 +121,7 @@ func (b *appBackend) Since(agent, after string) (appwire.Since, error) {
 	err = appRecords.WithRecord(transcript, func(record session.Record) error {
 		items := appRecordItems(record)
 		all, from := appEntryShapes(agent, items, at, marks)
-		since = appSinceOf(all, after, func(i int) []appwire.FileChange {
+		since = appSinceOf(all, from, items, after, func(i int) []appwire.FileChange {
 			if i >= len(from) || from[i] < 0 {
 				return nil
 			}
@@ -197,8 +197,13 @@ func appSinceOf(all []appwire.Entry, from []int, items []session.DisplayEntry, a
 	since := appwire.Since{Found: true}
 	read := all[place].At
 	since.At = &read
+	if place < len(from) && from[place] >= 0 && from[place] < len(items) {
+		if turns, known := appSinceTurns(items[from[place]:]); known {
+			since.Turns = &turns
+		}
+	}
 	paths := map[string]bool{}
-	tools, turns, inTurn, over := 0, 0, false, false
+	tools, over := 0, false
 	for i := place + 1; i < len(all); i++ {
 		entry := all[i]
 		since.Entries++
@@ -207,14 +212,6 @@ func appSinceOf(all []appwire.Entry, from []int, items []session.DisplayEntry, a
 		}
 		last := entry.At
 		since.LastAt = &last
-		switch entry.Kind {
-		case appwire.EntryUser:
-			turns, inTurn = turns+1, true
-		case appwire.EntryAnswer, appwire.EntryUpdate, appwire.EntryTool:
-			if !inTurn {
-				turns, inTurn = turns+1, true
-			}
-		}
 		if entry.Kind != appwire.EntryTool || over {
 			continue
 		}
@@ -229,10 +226,64 @@ func appSinceOf(all []appwire.Entry, from []int, items []session.DisplayEntry, a
 			}
 		}
 	}
-	since.Turns = turns
 	if !over {
 		n := len(paths)
 		since.Files = &n
 	}
 	return since
+}
+
+// appSinceTurns counts the turns after the first item, the place read, and
+// says whether the record could tell them apart.
+//
+// A TURN IS TOLD BY THE RECORD'S OWN MARKS, never by words: the person's
+// message opens one; a line the session wrote to its model (a wake, a landing
+// note) or a crew's delivery opens one the conversation started itself; a
+// reply marked complete ([session.DisplayEntry.Answer], not an update) or one
+// a stop cut short ends one. Work after an end with no opener of its own is a
+// new turn too.
+//
+// WHERE THE MARKS CANNOT SAY, THE COUNT IS NOT GIVEN. An opener inside a turn
+// that never said it ended is a note steered in or a turn that ended unsaid;
+// a reply with no completion mark followed by more work is a record written
+// before the mark, or a turn that failed. Either could be one turn or two.
+func appSinceTurns(items []session.DisplayEntry) (int, bool) {
+	if len(items) == 0 {
+		return 0, true
+	}
+	turns, known := 0, true
+	inTurn := !appTurnEnds(items[0])
+	for i := 1; i < len(items); i++ {
+		item := items[i]
+		switch {
+		case item.Role == "user":
+			turns, inTurn = turns+1, true
+		case item.Role == "aside" && item.Interrupted:
+			if !inTurn {
+				turns++
+			}
+			inTurn = false
+		case item.Role == "aside" && (item.ForModel || len(item.Team) > 0):
+			if inTurn {
+				known = false
+			}
+			turns, inTurn = turns+1, true
+		case item.Role == "assistant" || (item.Role == "tool" && (item.CallID != "" || item.Tool != "")):
+			if !inTurn {
+				turns, inTurn = turns+1, true
+			}
+			if appTurnEnds(item) {
+				inTurn = false
+			} else if item.Role == "assistant" && i+1 < len(items) && items[i+1].Role != "tool" && items[i+1].Role != "user" {
+				known = false
+			}
+		}
+	}
+	return turns, known
+}
+
+// appTurnEnds reports whether one item is a turn's recorded end: a reply
+// marked complete and not an update, or an answer a stop cut short.
+func appTurnEnds(item session.DisplayEntry) bool {
+	return (item.Role == "assistant" && item.Answer && !item.Addressed) || (item.Role == "aside" && item.Interrupted)
 }

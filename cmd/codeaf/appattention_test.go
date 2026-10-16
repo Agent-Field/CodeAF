@@ -120,43 +120,95 @@ func TestAppDeferAndShowAnAsksClock(t *testing.T) {
 	}
 }
 
-// WHAT CAME AFTER A PLACE IS COUNTED FROM THE SHAPES: the person's messages
-// are turns, what the conversation did on its own first is one more, files are
-// distinct paths, and past the bound the files count is not said at all.
-func TestAppSinceCountsTurnsAndFilesAfterAPlace(t *testing.T) {
+// sinceRecord shapes items the way a page is cut, so the count is read from
+// the same entries and ids the app holds.
+func sinceRecord(items []session.DisplayEntry) ([]appwire.Entry, []int) {
 	at := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
-	all := []appwire.Entry{
-		{ID: "u0", Kind: appwire.EntryUser, At: at},
-		{ID: "a0.0", Kind: appwire.EntryAnswer, At: at.Add(time.Minute)},
-		{ID: "tc1", Kind: appwire.EntryTool, At: at.Add(2 * time.Minute)},
-		{ID: "a0.1", Kind: appwire.EntryAnswer, At: at.Add(3 * time.Minute)},
-		{ID: "u1", Kind: appwire.EntryUser, At: at.Add(4 * time.Minute)},
-		{ID: "tc2", Kind: appwire.EntryTool, At: at.Add(5 * time.Minute)},
-		{ID: "a1.0", Kind: appwire.EntryAnswer, At: at.Add(6 * time.Minute)},
+	for i := range items {
+		items[i].At = at.Add(time.Duration(i) * time.Minute)
 	}
-	files := map[int][]appwire.FileChange{2: {{Path: "a.go"}, {Path: "b.go"}}, 5: {{Path: "a.go"}}}
-	read := func(i int) []appwire.FileChange { return files[i] }
+	return appEntryShapes("agent", items, at, nil)
+}
 
-	since := appSinceOf(all, "a0.0", read)
-	if !since.Found || since.Turns != 2 || since.Entries != 5 || since.First != "tc1" || since.Files == nil || *since.Files != 2 {
+var (
+	sincePerson = func(text string) session.DisplayEntry { return session.DisplayEntry{Role: "user", Text: text} }
+	sinceDone   = func(text string) session.DisplayEntry {
+		return session.DisplayEntry{Role: "assistant", Text: text, Answer: true}
+	}
+	sinceSaid = func(text string) session.DisplayEntry { return session.DisplayEntry{Role: "assistant", Text: text} }
+	sinceCall = func(id string) session.DisplayEntry {
+		return session.DisplayEntry{Role: "tool", Tool: "bash", CallID: id, Answered: true}
+	}
+	sinceWake  = session.DisplayEntry{Role: "aside", Text: "the task landed", ForModel: true}
+	sinceTeam  = session.DisplayEntry{Role: "aside", Text: "from @api", Team: []session.TeamLine{{From: "api"}}}
+	sinceNoted = session.DisplayEntry{Role: "aside", Text: "a job exited"}
+)
+
+// TURNS ARE TOLD BY THE RECORD'S OWN MARKS. A person's message opens one; a
+// wake or a crew's delivery opens one the conversation started; a completed
+// reply ends one; work after an end is a new one. Where the marks cannot tell
+// one turn from two, the count is not given at all.
+func TestAppSinceCountsTurnsByTheRecordsOwnMarks(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		items []session.DisplayEntry
+		after string
+		turns int // -1: not known
+	}{
+		{"two of the person's turns", []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sincePerson("b"), sinceCall("c1"), sinceDone("done"), sincePerson("c"), sinceDone("done")}, "a0.0", 2},
+		{"two turns the conversation started itself", []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sinceWake, sinceCall("c1"), sinceDone("landed"), sinceTeam, sinceDone("thanks")}, "a0.0", 2},
+		{"work after a completed reply with no opener", []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sinceCall("c1"), sinceDone("one"), sinceCall("c2"), sinceDone("two")}, "a0.0", 2},
+		{"one turn's call and answer", []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sinceWake, sinceCall("c1"), sinceSaid("update"), sinceCall("c2"), sinceDone("done")}, "a0.0", 1},
+		{"a turn still running", []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sincePerson("b"), sinceCall("c1")}, "a0.0", 1},
+		{"a note the session wrote is no turn", []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sinceNoted}, "a0.0", 0},
+		{"replies with no completion mark", []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sinceCall("c1"), sinceSaid("one"), sinceSaid("two")}, "a0.0", -1},
+		{"a wake inside a turn that never ended", []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sincePerson("b"), sinceCall("c1"), sinceWake, sinceDone("done")}, "a0.0", -1},
+	} {
+		all, from := sinceRecord(c.items)
+		since := appSinceOf(all, from, c.items, c.after, func(int) []appwire.FileChange { return nil })
+		if !since.Found {
+			t.Errorf("%s: the place was not found in %+v", c.name, all)
+			continue
+		}
+		switch {
+		case c.turns < 0 && since.Turns != nil:
+			t.Errorf("%s: a count the marks cannot make was given: %d", c.name, *since.Turns)
+		case c.turns >= 0 && (since.Turns == nil || *since.Turns != c.turns):
+			t.Errorf("%s: turns = %v, want %d", c.name, since.Turns, c.turns)
+		}
+	}
+}
+
+// WHAT CAME AFTER A PLACE: entries, its first id, the moments, and distinct
+// files; past the bound the files count is not said at all.
+func TestAppSinceCountsEntriesAndFilesAfterAPlace(t *testing.T) {
+	items := []session.DisplayEntry{sincePerson("a"), sinceDone("ok"), sinceCall("c1"), sinceDone("one"), sincePerson("b"), sinceCall("c2"), sinceDone("two")}
+	all, from := sinceRecord(items)
+	files := map[string][]appwire.FileChange{"tc1": {{Path: "a.go"}, {Path: "b.go"}}, "tc2": {{Path: "a.go"}}}
+	read := func(i int) []appwire.FileChange { return files[all[i].ID] }
+
+	since := appSinceOf(all, from, items, "a0.0", read)
+	if !since.Found || since.Entries != 5 || since.First != "tc1" || since.Files == nil || *since.Files != 2 {
 		t.Fatalf("since a0.0 = %+v", since)
 	}
-	if since.At == nil || !since.At.Equal(at.Add(time.Minute)) || since.LastAt == nil || !since.LastAt.Equal(at.Add(6*time.Minute)) {
+	if since.At == nil || !since.At.Equal(all[1].At) || since.LastAt == nil || !since.LastAt.Equal(all[len(all)-1].At) {
 		t.Fatalf("the moments = %+v", since)
 	}
-	if nothing := appSinceOf(all, "a1.0", read); !nothing.Found || nothing.Turns != 0 || nothing.Entries != 0 || *nothing.Files != 0 {
+	last := all[len(all)-1].ID
+	if nothing := appSinceOf(all, from, items, last, read); !nothing.Found || nothing.Turns == nil || *nothing.Turns != 0 || nothing.Entries != 0 || *nothing.Files != 0 {
 		t.Fatalf("nothing new = %+v", nothing)
 	}
-	if gone := appSinceOf(all, "a9.9", read); gone.Found || gone.Files != nil {
+	if gone := appSinceOf(all, from, items, "a9.9", read); gone.Found || gone.Files != nil || gone.Turns != nil {
 		t.Fatalf("a place the record does not hold = %+v", gone)
 	}
 
-	long := []appwire.Entry{{ID: "u0", Kind: appwire.EntryUser}}
-	reads := 0
+	long := []session.DisplayEntry{sincePerson("a"), sinceDone("ok")}
 	for n := 0; n <= appSinceFacts; n++ {
-		long = append(long, appwire.Entry{ID: "t" + time.Duration(n).String(), Kind: appwire.EntryTool})
+		long = append(long, sinceCall("c"+strconv.Itoa(n)))
 	}
-	over := appSinceOf(long, "u0", func(int) []appwire.FileChange { reads++; return nil })
+	longAll, longFrom := sinceRecord(long)
+	reads := 0
+	over := appSinceOf(longAll, longFrom, long, "a0.0", func(int) []appwire.FileChange { reads++; return nil })
 	if over.Files != nil || reads != appSinceFacts {
 		t.Fatalf("past the bound: files %v after %d reads", over.Files, reads)
 	}
