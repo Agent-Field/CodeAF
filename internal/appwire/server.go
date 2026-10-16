@@ -146,6 +146,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withCollectionsFeature(hello, engine)
 	hello = withMessageReadsFeature(hello, engine)
 	hello = withWorkGraphFeature(hello, engine)
+	hello = withSlashCatalogFeature(hello, engine)
 	s.Emit(EventHello, hello)
 	if warmer, ok := engine.(Warmer); ok {
 		go warmer.Warm()

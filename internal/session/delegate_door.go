@@ -57,6 +57,15 @@ type DelegateReport struct {
 // answers the zero report, and the surface draws no rows.
 func (a *Agent) Delegates() DelegateReport { return a.config.delegateReport() }
 
+// DelegateRowsFor is the rows a surface draws for these programs, without a
+// conversation to ask. The app's engine serves its command catalogue from the
+// build's programs before any conversation exists, and it must fold them exactly
+// as [Agent.Delegates] does — the same defaults for where a program lands and for
+// whether a bare command runs its default brief — so the fold is this one.
+func DelegateRowsFor(programs []delegate.Delegate) []DelegateRow {
+	return Config{Delegates: programs}.delegateReport().Rows
+}
+
 func (c Config) delegateReport() DelegateReport {
 	var report DelegateReport
 	for _, program := range c.Delegates {
