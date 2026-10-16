@@ -155,7 +155,7 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 			if err != nil {
 				return "Could not start the compose: " + err.Error(), true, nil
 			}
-			if err := a.jobs.beginRender(started, "music", model, runIdentity(callCtx), callIDFrom(callCtx), a.emitRenderUpdate); err != nil {
+			if err := a.jobs.beginRender(started, "music", model, runIdentity(callCtx), callIDFrom(callCtx)); err != nil {
 				if started.stop != nil {
 					started.stop()
 				}

@@ -385,7 +385,7 @@ func TestRenderCancelAfterCommitIsTooLateAndTheRenderFinishes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent.jobs.beginRender(rendering, "video", "film/model", "", "", nil)
+	agent.jobs.beginRender(rendering, "video", "film/model", "", "")
 	id := rendering.renderID
 	writing, release := make(chan struct{}), make(chan struct{})
 	done := make(chan string, 1)

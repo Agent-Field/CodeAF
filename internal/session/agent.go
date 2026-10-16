@@ -193,6 +193,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// (jobrow.go). It is set here rather than passed to the constructor because
 	// it closes over the agent the constructor is building.
 	agent.jobs.announce = agent.announceJobRow
+	// And the RENDER lane, before the ledger can exist: a refused or started
+	// render is news from the first record, not from the first video.
+	agent.jobs.renderNotify = agent.emitRenderUpdate
 	// And the registry gets the RELEASE lane, for the same reason and by the same
 	// route: a command this agent started in the foreground and had taken over
 	// into a job is one the work is still waiting for, so the registry says when

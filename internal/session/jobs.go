@@ -571,6 +571,14 @@ type jobRegistry struct {
 	// ([jobRegistry.renderLedger]).
 	renders     *renderLedger
 	rendersOnce sync.Once
+	// renderNotify carries every render record change to the session's
+	// watchers ([Agent.emitRenderUpdate]). IT IS SET ONCE, AT CONSTRUCTION,
+	// beside announce, and copied onto the ledger inside rendersOnce before the
+	// ledger is handed to anybody, so no reader can see it change. It used to be
+	// installed by the first video or music render, which left an image refusal
+	// in a session that had not rendered yet with a saved record and no event,
+	// and wrote the field under a lock its reader did not take.
+	renderNotify func(RenderRecord)
 	// gate is the process-wide render admission this registry draws on. It is
 	// [processRenders] outside tests; a test hands two registries one private
 	// gate to prove the total is shared without disturbing other tests.
@@ -965,7 +973,9 @@ func (r *jobRegistry) renderLedger() *renderLedger {
 		r.mu.Lock()
 		place := r.place
 		r.mu.Unlock()
-		r.renders = openRenderLedger(place.join(placeRenders), place.ID(), time.Now())
+		ledger := openRenderLedger(place.join(placeRenders), place.ID(), time.Now())
+		ledger.notify = r.renderNotify
+		r.renders = ledger
 	})
 	return r.renders
 }
@@ -980,13 +990,8 @@ func (r *jobRegistry) closeRenders() {
 // beginRender records a started render and ties the job to its record. run and
 // call are the tool site's own identities (runIdentity, callIDFrom), never
 // parsed from anything.
-func (r *jobRegistry) beginRender(one *job, kind, model, run, call string, notify func(RenderRecord)) error {
+func (r *jobRegistry) beginRender(one *job, kind, model, run, call string) error {
 	ledger := r.renderLedger()
-	ledger.mu.Lock()
-	if ledger.notify == nil {
-		ledger.notify = notify
-	}
-	ledger.mu.Unlock()
 	id, err := ledger.beginChecked(one.id, kind, model, run, call, time.Now())
 	if err != nil {
 		return err

@@ -165,7 +165,7 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			if err != nil {
 				return "Could not start the video render: " + err.Error(), true, nil
 			}
-			if err := a.jobs.beginRender(started, "video", model, runIdentity(callCtx), callIDFrom(callCtx), a.emitRenderUpdate); err != nil {
+			if err := a.jobs.beginRender(started, "video", model, runIdentity(callCtx), callIDFrom(callCtx)); err != nil {
 				if started.stop != nil {
 					started.stop()
 				}

@@ -465,6 +465,8 @@ type renderLedger struct {
 	mu      sync.Mutex
 	file    *os.File
 	live    map[string]*renderLive
+	// notify is written once, before the ledger is published
+	// ([jobRegistry.renderLedger]), and only read afterwards.
 	notify  func(RenderRecord)
 	scratch bool // the file is a temporary one, removed at close
 	// restoreErr is why the restore at open could not finish; nil when it did.
