@@ -107,7 +107,7 @@ const mediaFixture = `
 	{"id":"anthropic/claude-sonnet-4.5","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
 	{"id":"vendor/first-painter","architecture":{"input_modalities":["text"],"output_modalities":["image"]}},
 	{"id":"vendor/second-painter","architecture":{"input_modalities":["text"],"output_modalities":["image"]}},
-	{"id":"krea/krea-2-medium-turbo","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}},
+	{"id":"krea/krea-2-medium-turbo","pricing":{"request":"0.04"},"architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}},
 	{"id":"vendor/first-voice","architecture":{"input_modalities":["text"],"output_modalities":["speech"]}},
 	{"id":"vendor/first-film","architecture":{"input_modalities":["text"],"output_modalities":["video"]}},
 	{"id":"vendor/ear","architecture":{"input_modalities":["audio"],"output_modalities":["text"]}},
@@ -141,7 +141,9 @@ func mediaEnvOff(t *testing.T) {
 
 // THE LADDER, top to bottom: the slot beats the pin beats the catalog beats the
 // curated name, and each rung is only taken when the catalog says the model it
-// names can actually do the job.
+// names can actually do the job. Drawing and filming SPEND money, so their
+// automatic rungs additionally need a curated name with a published price: a
+// capable row that merely came first (vendor/first-painter) is never a default.
 func TestTheMediaResolverWalksItsLadder(t *testing.T) {
 	mediaEnvOff(t)
 	profile := t.TempDir()
@@ -156,12 +158,16 @@ func TestTheMediaResolverWalksItsLadder(t *testing.T) {
 	// model that publishes the capability. This is what makes a machine that
 	// has never opened settings draw, speak and film out of the box.
 	//
-	// Note which image model wins: the documented preference order beats the
-	// catalog's own order, so krea leads two painters that were listed first.
+	// Note which image model wins: only the curated, PRICED names are defaults
+	// for a spending modality, so krea (curated, priced) beats two unpriced
+	// painters that were listed first, and the unpriced first-film is passed
+	// over. A general listing cannot price a film at all (see
+	// internal/config's mediaroute_test.go for the dedicated-listing path), so
+	// video has NO automatic default here: it is refused, never guessed.
 	for _, test := range []struct{ modality, want string }{
 		{"image", "krea/krea-2-medium-turbo"},
 		{"speech", "vendor/first-voice"},
-		{"video", "vendor/first-film"},
+		{"video", ""},
 		{"vision", "anthropic/claude-sonnet-4.5"},
 		{"transcribe", "vendor/ear"},
 		{"listen", "google/gemini-2.5-flash"},
@@ -229,14 +235,22 @@ func TestTheMediaResolverPassesOverAnIncapableRung(t *testing.T) {
 		return value, ok
 	})
 	if got := resolve("image"); got != "krea/krea-2-medium-turbo" {
-		t.Fatalf("an incapable slot and pin resolved to %q, want the catalog's answer", got)
+		t.Fatalf("an incapable slot and pin resolved to %q, want the curated priced default", got)
 	}
 
 	// A slug the catalog has never carried is incapable on the same terms:
 	// nobody can vouch for it, and this door only says yes to published facts.
+	// With no priced curated film to fall to, the answer is a refusal, not the
+	// first capable film the catalog happened to list.
 	pins[roles.PinKey(roles.RoleVideo)] = "vendor/renamed-last-year"
-	if got := resolve("video"); got != "vendor/first-film" {
+	if got := resolve("video"); got != "" {
 		t.Fatalf("a pin naming an unknown slug resolved to %q", got)
+	}
+
+	// A valid explicit pin is the operator's own spend and is kept as chosen.
+	pins[roles.PinKey(roles.RoleVideo)] = "vendor/first-film"
+	if got := resolve("video"); got != "vendor/first-film" {
+		t.Fatalf("a capable video pin resolved to %q", got)
 	}
 
 	// And the perception words refuse a model that answers in pictures rather
@@ -247,10 +261,12 @@ func TestTheMediaResolverPassesOverAnIncapableRung(t *testing.T) {
 	}
 }
 
-// A CATALOG THAT REACHED NOTHING still draws, speaks and films. Its offline
-// rows ARE the curated names, so the capability check the last rung is held to
-// passes on facts rather than on a build's memory of them.
-func TestTheMediaResolverStillAnswersOnAnOfflineCatalog(t *testing.T) {
+// A CATALOG THAT REACHED NOTHING speaks and composes but REFUSES to spend. Its
+// offline rows are the curated names, so speech and music pass the capability
+// check on facts; but drawing and filming also need a PUBLISHED PRICE before a
+// default may be chosen for someone who chose nothing, and an offline catalog
+// carries none. Absence is the honest answer: the verbs stay off the belt.
+func TestTheMediaResolverRefusesToSpendOnAnOfflineCatalog(t *testing.T) {
 	mediaEnvOff(t)
 	offline := &http.Client{Transport: mediaRoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, http.ErrServerClosed
@@ -261,14 +277,14 @@ func TestTheMediaResolverStillAnswersOnAnOfflineCatalog(t *testing.T) {
 	resolve := v3MediaModel(models, t.TempDir(), nil)
 
 	for _, test := range []struct{ modality, want string }{
-		{"image", "bytedance-seed/seedream-5-0-pro"},
+		{"image", ""},
+		{"video", ""},
 		{"speech", "fish-audio/s2.1-pro"},
 		// COMPOSING IS ITS OWN WORD and answers on a cold machine like the
 		// other three: the offline catalog publishes Lyria with a "music"
 		// output, so the curated rung is capability-checked and taken rather
 		// than passed over.
 		{"music", "google/lyria-3-clip-preview"},
-		{"video", "bytedance/seedance-2.5"},
 	} {
 		if got := resolve(test.modality); got != test.want {
 			t.Fatalf("%s on an offline catalog resolved to %q, want %q", test.modality, got, test.want)
@@ -281,6 +297,21 @@ func TestTheMediaResolverStillAnswersOnAnOfflineCatalog(t *testing.T) {
 		if got := resolve(modality); got != "" {
 			t.Fatalf("%s on an offline catalog invented %q", modality, got)
 		}
+	}
+}
+
+// A SPENDING DEFAULT NEEDS A PUBLISHED PRICE, even for a curated name. The
+// same krea row that is the default when the catalog prices it is REFUSED when
+// the catalog lists it without a price, and a capable unpriced painter is never
+// reached for instead: unknown cost is not a licence to spend.
+func TestTheMediaResolverRefusesAnUnpricedSpendingDefault(t *testing.T) {
+	mediaEnvOff(t)
+	models := mediaCatalogFor(t, `
+		{"id":"vendor/first-painter","pricing":{"request":"0.01"},"architecture":{"input_modalities":["text"],"output_modalities":["image"]}},
+		{"id":"krea/krea-2-medium-turbo","architecture":{"input_modalities":["text"],"output_modalities":["image"]}}`)
+	resolve := v3MediaModel(models, t.TempDir(), nil)
+	if got := resolve("image"); got != "" {
+		t.Fatalf("an unpriced curated image row, beside a priced non-curated one, resolved to %q", got)
 	}
 }
 

@@ -179,8 +179,33 @@ func TestAppAttachmentsSurviveAReopenedRecord(t *testing.T) {
 			described = append(described, item)
 		}
 	}
-	if len(described) != 4 || described[2].Person == nil || !described[2].Person.Authored || described[2].Text != "" || described[3].Person != nil {
+	if len(described) != 4 || described[2].Person == nil || !described[2].Person.Authored || described[2].Text != "" {
 		t.Fatalf("the record reads %+v", described)
+	}
+	// A NEW PLAIN MESSAGE IS NOT UNMARKED: every message the app sends now
+	// carries a durable id minted by the engine, so the plain words have a
+	// person mark. What they must NOT have is anything forged around it — no
+	// attachments, no pictures, no annotation, no reads, and no delivery
+	// beyond the true one: words reached the model as words, with no vision
+	// model involved.
+	plainMark := described[3].Person
+	// Authored stays false: no words were recorded apart from the line itself,
+	// so the line's own Text is the person's words, as it was before ids.
+	if plainMark == nil || plainMark.Authored || described[3].Text != plain || len(plainMark.Attachments) != 0 || len(plainMark.Reads) != 0 {
+		t.Fatalf("the plain words' record = %+v person=%+v", described[3], plainMark)
+	}
+	if plainMark.Composed == nil || plainMark.Composed.MessageID == "" || len(plainMark.Composed.Media) != 0 ||
+		plainMark.Composed.Annotation != nil ||
+		plainMark.Composed.Delivery == nil || plainMark.Composed.Delivery.Mode != session.DeliveryText || plainMark.Composed.Delivery.Model != "" {
+		t.Fatalf("the plain words' durable mark = %+v", plainMark.Composed)
+	}
+	// Each message's id is its own: none repeats across the four.
+	seen := map[string]bool{}
+	for index, item := range described {
+		if item.Person == nil || item.Person.Composed == nil || item.Person.Composed.MessageID == "" || seen[item.Person.Composed.MessageID] {
+			t.Fatalf("message %d has no distinct durable id: %+v", index, item.Person)
+		}
+		seen[item.Person.Composed.MessageID] = true
 	}
 	if got := described[2].Person.Attachments; len(got) != 1 || got[0].Bytes == nil || *got[0].Bytes != int64(len(long)) || got[0].Lines == nil || *got[0].Lines != 20 {
 		t.Fatalf("the paste's description = %+v", got)
@@ -301,5 +326,29 @@ func TestAppCrewAttachmentsAreKeptOnTheirTarget(t *testing.T) {
 		if len(users) != 1 || users[0].Text != want.text || appAttachIDs(users[0]) != want.ids || users[0].Attachments[0].URL != want.url {
 			t.Fatalf("%s reopened with %+v", want.agent, users)
 		}
+	}
+}
+
+// A RECORD WRITTEN BEFORE MESSAGES CARRIED A DURABLE ID STILL READS AS IT
+// ALWAYS DID. The fixture is a journal written by hand, independent of the
+// live backend: a plain user line with no presentation mark. It has no person
+// mark at all, and nothing is invented to give it one.
+func TestALegacyPlainMessageHasNoPersonMark(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.jsonl")
+	lines := []string{
+		`{"type":"session","version":1,"id":"legacy-1","cwd":"/tmp","model":"m","timestamp":"2026-01-01T00:00:00Z"}`,
+		`{"type":"message","role":"user","content":"an old plain message","timestamp":"2026-01-01T00:00:01Z"}`,
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var users []session.DisplayEntry
+	for _, item := range session.ReadTranscript(path).Entries {
+		if item.Role == "user" {
+			users = append(users, item)
+		}
+	}
+	if len(users) != 1 || users[0].Text != "an old plain message" || users[0].Person != nil {
+		t.Fatalf("the legacy message reads %+v", users)
 	}
 }
