@@ -676,6 +676,41 @@ something — a join of one clip, a clip nothing can be read out of, a fade long
 than the picture — no empty file is left where the result would have gone. A
 `path` you named yourself is never touched by that, whatever is already in it.
 
+## Can I stop a picture while it is being made, and was a failed or stopped image charged?
+
+Every `generate_image` request is written into this conversation's render
+history **before** it is sent, as a render of kind `image` with the run and the
+call that asked for it, beside the video and music renders. A request
+that cannot be written there is **not sent**, and the call answers
+`Could not start the image: <reason>. No request was sent.` — the conversation is
+closing, its history file cannot be written, or 64 renders across the program
+are in flight or waiting for their outcome to be saved.
+
+How the record ends:
+
+- `finished` — at least one picture was saved. The record names no file; the
+  pictures are the media this same call made.
+- `failed` — the provider refused or errored, sent nothing usable, or nothing
+  could be saved.
+- `cancelled` — it was stopped, or the turn ended while the provider was still
+  working.
+
+In the codeaf desktop app, a picture can be stopped from the render history while the
+provider is working; in the terminal, stopping the turn stops it. A render stop
+answers `cancelled` (nothing will be saved), `too_late` (the picture had
+already been accepted for saving and will land) or `already_ended`. After
+`cancelled` the call says `Image generation was stopped (<model>); nothing was saved.
+Only waiting stopped here — the provider was not told to cancel, so whether it
+charged is unknown.` Nothing is retried after a stop or a failure.
+
+**What it was charged** is the provider's own figure: `charged` with the amount,
+`not_charged` when it said zero, and `unknown` when it said nothing — never a
+guessed zero. A figure that arrives after a stop is added to the same stopped
+record. A call refused before any request (no model chosen, none advertised)
+is `failed` and `not_charged`. Several pictures from `n` are one
+request and one record, naming the model the request asked for. `codeaf image`
+on the command line keeps no such record.
+
 ## What does a picture, a voiceover, a piece of music or a video cost?
 
 Real money, and more than a message does.

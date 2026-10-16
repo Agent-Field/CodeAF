@@ -38,6 +38,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I added credit and the one model is still refused", "models-and-cost"},
 
 		{"can a python chart you made show up in your answer without me editing markdown", "making-pictures-audio-and-video"},
+		{"can I stop an image while it is still generating", "making-pictures-audio-and-video"},
+		{"was the picture that failed still charged", "making-pictures-audio-and-video"},
 		{"what can you do", "what-i-can-do"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
