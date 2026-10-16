@@ -157,7 +157,9 @@ func APIKeySourceForModel(profileDir string, sources modelsource.Set, model stri
 // (writeProfileValues), which is the property [EnsurePersistedAPIKey] tightens
 // after the fact on a file that predated any secret in it.
 func WriteAPIKey(profileDir, key string) error {
-	return writeProfileValue(profileDir, KeyAPIKey, strings.TrimSpace(key))
+	return crewCredentialWrite(profileDir, func() error {
+		return writeProfileValue(profileDir, KeyAPIKey, strings.TrimSpace(key))
+	})
 }
 
 // LooksLikeAPIKey is the shape check the first-run setup applies to a pasted

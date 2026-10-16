@@ -65,6 +65,10 @@ type CrewAccountState struct {
 	CreditKnown bool
 	CreditUSD   float64
 	ResetAt     time.Time
+	// ReadAt is when the account was read. A positive balance lifts a payment
+	// refusal only when it was read after that refusal; a reading with no
+	// time lifts nothing.
+	ReadAt time.Time
 }
 
 // CrewAccounts is the OPTIONAL adapter that primes route health for providers
@@ -112,7 +116,10 @@ func crewHealthAt(profileDir string) crewHealth {
 	if CrewRouteHistory != nil {
 		history = CrewRouteHistory(profileDir)
 	}
-	h := crewHealthOf(history, time.Now())
+	now := time.Now()
+	// A refusal of a credential no longer in force, or of credit since found,
+	// holds nothing back ([crewHeldAgainstNow]).
+	h := crewHealthOf(crewHeldAgainstNow(profileDir, history, now), now)
 	// AN OPENROUTER BALANCE KNOWN TO BE LOW ([CreditsLowAt]) is an account out
 	// of credit before any call is made: the seats reach for free routes and
 	// the crew line says so, instead of a first paid call being refused.
@@ -273,10 +280,12 @@ func forgetCrewHealth() {
 func crewHealthCached(profileDir string) crewHealth {
 	crewHealthCache.mu.Lock()
 	defer crewHealthCache.mu.Unlock()
-	if crewHealthCache.dir == profileDir && time.Since(crewHealthCache.at) < crewHealthFresh {
+	generation := SettingsGeneration()
+	if crewHealthCache.dir == profileDir && crewHealthCache.generation == generation && time.Since(crewHealthCache.at) < crewHealthFresh {
 		return crewHealthCache.health
 	}
 	crewHealthCache.dir, crewHealthCache.at, crewHealthCache.health = profileDir, time.Now(), crewHealthAt(profileDir)
+	crewHealthCache.generation = generation
 	return crewHealthCache.health
 }
 
@@ -288,6 +297,9 @@ var crewHealthCache struct {
 	dir    string
 	at     time.Time
 	health crewHealth
+	// generation is the settings generation it was read at: a key written, a
+	// key the app handed over, a credit reading, is seen by the next call.
+	generation uint64
 }
 
 // usable is the routes this health leaves, with their learned failure rates.
@@ -395,16 +407,40 @@ func (e ErrCrewUnreachable) Error() string { return e.Action }
 // LogCrewRoute writes one seat's first-call outcome on its route: answered
 // (kind empty), or failed with a route-failure kind and when the route said it
 // may be asked again.
+//
+// IT KNOWS NOTHING OF THE CREDENTIAL THE CALL WAS SENT WITH, and does not guess
+// it from the settings in force now: a key changed while the call was in
+// flight would be blamed for the old key's refusal. Its refusals are written
+// unprinted, and lifted only by a credential change recorded after them
+// ([crewCredentialsSeen]); a caller that took the [CrewDispatch] fact when it
+// sent the call writes it with [LogCrewRouteSent].
 func LogCrewRoute(profileDir, call string, d crewroute.Decision, repo, title string, seat crewroute.Seat, pick crewroute.Pick, kind string, until time.Time) {
+	LogCrewRouteSent(profileDir, call, d, repo, title, seat, pick, kind, until, CrewDispatch{})
+}
+
+// LogCrewRouteSent is [LogCrewRoute] for a call whose [CrewDispatch] fact was
+// taken when it was sent: a refusal is written against the print of the
+// credential that call carried, and holds nothing against any other.
+func LogCrewRouteSent(profileDir, call string, d crewroute.Decision, repo, title string, seat crewroute.Seat, pick crewroute.Pick, kind string, until time.Time, sent CrewDispatch) {
 	if kind != "" {
 		// A FAILURE IS SEEN BY THE VERY NEXT CALL, not a few seconds later:
 		// the cache that spares every request a read of the log is dropped.
 		forgetCrewHealth()
 	}
-	router.LogCrewRoute(ProfilePath(profileDir, ""), call, CrewRecordOf(d, repo, title), router.CrewRouteOutcome{
+	outcome := router.CrewRouteOutcome{
 		Seat: string(seat), Send: pick.Send, Provider: pick.Provider,
 		Paid: pick.Kind == crewroute.Metered, Kind: kind, Until: until,
-	})
+	}
+	if crewCredentialRefusal(kind) {
+		// THE REFUSAL IS WRITTEN AGAINST THE CREDENTIAL IT REFUSED — the print
+		// taken when the call was sent, never the credential itself. Before
+		// it is written, a change of credential since the last reading is
+		// recorded, so it is dated before this refusal and never mistaken for
+		// a reconnect after it.
+		outcome.Cred = sent.Cred
+		crewCredentialsSeen(profileDir, []string{pick.Provider}, time.Now())
+	}
+	router.LogCrewRoute(ProfilePath(profileDir, ""), call, CrewRecordOf(d, repo, title), outcome)
 }
 
 // CrewRescue is the last of a seat's ladder, after everything the router

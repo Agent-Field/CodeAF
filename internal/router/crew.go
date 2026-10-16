@@ -73,10 +73,15 @@ type CrewRecord struct {
 	// failure, the provider of the route and when it said it may be asked
 	// again. Started is seat → the id whose first call answered. Both are
 	// ROUTE outcomes — did the call work — and never the task's.
-	Failed      map[string]string `json:"failed,omitempty"`
-	FailKind    string            `json:"fail_kind,omitempty"`
-	FailRoute   string            `json:"fail_route,omitempty"`
-	FailUntil   time.Time         `json:"fail_until,omitempty"`
+	Failed    map[string]string `json:"failed,omitempty"`
+	FailKind  string            `json:"fail_kind,omitempty"`
+	FailRoute string            `json:"fail_route,omitempty"`
+	FailUntil time.Time         `json:"fail_until,omitempty"`
+	// FailCred names the credential the failed call was made with — a short
+	// one-way print, never the credential — so a refusal is held against that
+	// credential and not against the one a person connects after it. Empty on
+	// rows written before it existed.
+	FailCred    string            `json:"fail_cred,omitempty"`
 	Started     map[string]string `json:"started,omitempty"`
 	StartedPaid bool              `json:"started_paid,omitempty"`
 	// Redo is a row of a task that was itself a redo: its acceptance is the
@@ -140,6 +145,9 @@ type CrewRouteOutcome struct {
 	Paid  bool
 	Kind  string
 	Until time.Time
+	// Cred is the print of the credential a failed call was made with
+	// ([CrewRecord.FailCred]); empty on a success and on an older row.
+	Cred string
 }
 
 // LogCrewRoute appends one route outcome for a task's crew. It is not the
@@ -156,6 +164,7 @@ func LogCrewRoute(dir, call string, record CrewRecord, outcome CrewRouteOutcome)
 	} else {
 		record.Failed = map[string]string{outcome.Seat: outcome.Send}
 		record.FailKind, record.FailRoute, record.FailUntil = outcome.Kind, outcome.Provider, outcome.Until
+		record.FailCred = outcome.Cred
 	}
 	events.Append(Event{Call: call, Run: record.Repo, Class: CrewClass, Shape: record.TaskClass,
 		Model: outcome.Send, Crew: &record})
@@ -352,7 +361,7 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 			if now.Sub(row.At) < crewOutcomesFor {
 				for seat, send := range row.Crew.Failed {
 					out.Routes = append(out.Routes, CrewRouteOutcome{At: row.At, Seat: seat, Send: send,
-						Provider: row.Crew.FailRoute, Kind: row.Crew.FailKind, Until: row.Crew.FailUntil})
+						Provider: row.Crew.FailRoute, Kind: row.Crew.FailKind, Until: row.Crew.FailUntil, Cred: row.Crew.FailCred})
 				}
 				for seat, send := range row.Crew.Started {
 					out.Routes = append(out.Routes, CrewRouteOutcome{At: row.At, Seat: seat, Send: send,

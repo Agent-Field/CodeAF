@@ -864,7 +864,8 @@ the task stops on the one thing to do, which leads its line in place of `/redo s
 (a stronger crew would meet the same wall): `failed — add credit on openrouter to
 continue`, `reconnect openrouter with /connect`, or when the limit resets. What each route did is kept: a route
 that refused a model is left out for a week, one at its limit rests until its reset, an
-account out of credit is skipped until a paid call on it answers again. Free routes are
+account out of credit is skipped until a paid call on it answers again, a positive balance
+is read after the refusal, or a different key is connected. Free routes are
 off unless you turn them on; when every paid route is out of reach they are used anyway,
 and the line says `free routes in use (may log prompts)`. A rescue never takes a model
 whose name says it was tuned for one domain (finance, medicine, law) or is too small for
@@ -1328,6 +1329,31 @@ the guardian answers in ten seconds or not at all, and the two readers at the en
 answer get **20s** and **30s**. What this replaced was the ordinary
 five-to-fifteen-minute bound a completion carries, which is right for your own turn and
 absurd for eight words of title.
+
+## I reconnected or added credit and my pinned model still will not start — when a refused key or an empty account is tried again
+
+A pinned role, or the one model for every task, is never sent to a provider whose key was
+refused or whose account ran out of credit: the task is refused at the start with the one
+fix — `reconnect openrouter with /connect, or unpin the worker from glm-5.3-flash`, or
+`add credit on openrouter, or …`. What lifts that refusal is a fact, never a timer:
+
+- **A different key or sign-in.** A refusal is remembered against a short one-way print of
+  the key the refused call was sent with — never the key itself. Connecting a new key with
+  `/connect`, a new key from the desktop app, or signing in again, is a different key, and
+  the next task is admitted on it. Pasting the **same** key again changes nothing: it is
+  the key that was refused, and the refusal stands.
+- **A key changed while the call was in flight** is not blamed: the refusal belongs to the
+  key the call carried when it was sent.
+- **Credit read after the refusal.** For a payment refusal, a balance read that finds
+  credit, taken after the refusal, lifts it. A balance read before it does not, and a
+  fresh reading of none keeps it.
+
+A refusal written by an older build named no key. It is lifted when the key is seen to
+change after it. The first key this build sees is where it starts counting, so a key you
+changed **before** updating is not known to be new and the refusal still holds it: unpin
+the role, or switch Task models back to Auto, and the next call that answers on it clears
+it. Every refusal also leaves the record after fourteen days. Closing and reopening codeaf
+keeps all of this.
 
 ## Use one model for everything for one run — `--one-model`, and why a run spent money on a model I did not pick
 

@@ -53,16 +53,31 @@ func (c *AppCredentials) Set(provider, key string) {
 	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
 	trace.Secret(key)
 	redact.Register(key)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.keys[provider] = key
+	c.change(func() { c.keys[provider] = key })
 }
 
 // Remove disconnects one provider for the rest of this launch.
 func (c *AppCredentials) Remove(provider string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.keys[strings.ToLower(strings.TrimSpace(provider))] = ""
+	c.change(func() { c.keys[strings.ToLower(strings.TrimSpace(provider))] = "" })
+}
+
+// change makes one change to the keys held. A key handed over is a credential
+// change: every cached reading of the profile must see it, and, for the keys
+// in force, route health records it as it is made ([crewCredentialWrite]),
+// because it holds refusals against credentials.
+func (c *AppCredentials) change(edit func()) {
+	apply := func() error {
+		c.mu.Lock()
+		edit()
+		c.mu.Unlock()
+		return nil
+	}
+	if appCredentials.Load() == c {
+		_ = crewCredentialWrite(ProfileDir(), apply)
+	} else {
+		_ = apply()
+	}
+	bumpSettingsGeneration()
 }
 
 // Key answers one provider's key and whether the app has said anything about

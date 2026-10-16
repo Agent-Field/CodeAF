@@ -76,6 +76,12 @@ func persistedSourcesFrom(values map[string]json.RawMessage) []PersistedSource {
 // WriteSources atomically replaces the non-default service rows while keeping
 // every unrelated profile setting.
 func WriteSources(profileDir string, rows []PersistedSource) error {
+	// A row's key is a credential: what it changes is recorded as it is
+	// written ([crewCredentialWrite]).
+	return crewCredentialWrite(profileDir, func() error { return writeSources(profileDir, rows) })
+}
+
+func writeSources(profileDir string, rows []PersistedSource) error {
 	cleaned := make([]PersistedSource, 0, len(rows))
 	for _, row := range rows {
 		row.ID = strings.TrimSpace(row.ID)
@@ -283,7 +289,7 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 	if err := ctx.Err(); err != nil {
 		return modelsource.Outcome{}, err
 	}
-	if err := codexauth.Save(profileDir, tokens); err != nil {
+	if err := crewCredentialWrite(profileDir, func() error { return codexauth.Save(profileDir, tokens) }); err != nil {
 		return modelsource.Outcome{}, err
 	}
 	listed := true

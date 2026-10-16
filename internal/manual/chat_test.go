@@ -34,6 +34,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I changed or unset my API key in the shell but codeaf still uses the old one", "starting-codeaf"},
 		{"your key was not accepted for this model", "starting-codeaf"},
 		{"codeaf ignores my OPENAI_API_KEY", "starting-codeaf"},
+		{"I reconnected my key but my pinned model still will not start", "models-and-cost"},
+		{"I added credit and the one model is still refused", "models-and-cost"},
 
 		{"what can you do", "what-i-can-do"},
 		{"why does a wrapped help line stay under its key", "keys"},
