@@ -497,15 +497,10 @@ var methods = map[string]method{
 	}),
 	"crews.list": typed(func(e Engine, p struct {
 		Closed bool `json:"closed"`
-		// Archived asks for the crews put away instead (crews.archive); it
-		// wins over Closed, and a closed list leaves them out.
-		Archived bool `json:"archived"`
 	}) (*CrewsResult, error) {
 		var crews []Crew
 		var err error
-		if c, ok := e.(Crewer); ok && p.Archived {
-			crews, err = c.CrewListArchived()
-		} else if ok {
+		if c, ok := e.(Crewer); ok {
 			crews, err = c.CrewList(p.Closed)
 		} else {
 			crews, err = e.ListCrews()

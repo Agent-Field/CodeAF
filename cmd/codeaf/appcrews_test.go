@@ -243,6 +243,76 @@ func TestAppCrewArchiveIsSeparateFromCloseAndDelete(t *testing.T) {
 	}
 }
 
+// A SELECTED CLOSED CHILD IS ARCHIVED ALONE: its closed parent and sibling stay
+// in the closed list, nothing is deleted, the child's record is whole, it cannot
+// be reopened under the closed parent, and reopening the parent brings the family
+// back with the mark cleared.
+func TestAppCrewArchiveOfAClosedChildTouchesOnlyTheChild(t *testing.T) {
+	backend, _, _, parent := crewBackend(t)
+	child, sibling := teamstore.NewID(), teamstore.NewID()
+	err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		for _, id := range []string{child, sibling} {
+			f.Teams = append(f.Teams, teamstore.Team{ID: id, Name: "sub-" + id[:4], Parent: parent, Made: time.Now()})
+			if err := f.AddMember(id, teamstore.Member{Key: "/k/" + id, File: "/k/" + id, Where: "/w", Word: "w", Handle: "w" + id[:3]}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend.crews()
+	var wire *appwire.Error
+	if _, err := backend.CrewArchive(child); !errors.As(err, &wire) || wire.Code != appwire.CodeBadParams {
+		t.Fatalf("an open child was archived: %v", err)
+	}
+	if err := backend.CrewClose(parent); err != nil {
+		t.Fatal(err)
+	}
+	got, err := backend.CrewArchive(child)
+	if err != nil || got.ID != child || got.ArchivedAt == nil || len(got.Members) != 1 {
+		t.Fatalf("archived child = %+v, %v", got, err)
+	}
+	closed, _ := backend.CrewList(true)
+	ids := map[string]bool{}
+	for _, c := range closed {
+		ids[c.ID] = true
+		if c.ArchivedAt != nil {
+			t.Fatalf("a closed-list crew is archived: %+v", c)
+		}
+	}
+	if len(closed) != 2 || !ids[parent] || !ids[sibling] || ids[child] {
+		t.Fatalf("the closed list = %v", ids)
+	}
+	if archived, _ := backend.CrewListArchived(); len(archived) != 1 || archived[0].ID != child {
+		t.Fatalf("the archived list = %+v", archived)
+	}
+	if _, err := backend.CrewArchive(child); err != nil {
+		t.Fatalf("archiving twice: %v", err)
+	}
+	if again, _ := backend.CrewGet(child); again.ArchivedAt == nil || !again.ArchivedAt.Equal(*got.ArchivedAt) {
+		t.Fatalf("archiving twice moved the time: %+v", again.ArchivedAt)
+	}
+	if _, err := backend.CrewReopen(child); !errors.As(err, &wire) || wire.Code != appwire.CodeBadParams {
+		t.Fatalf("a child reopened under a closed parent: %v", err)
+	}
+	if still, _ := backend.CrewGet(child); still.ArchivedAt == nil || still.State != appwire.CrewClosed {
+		t.Fatalf("the refused reopen changed the child: %+v", still)
+	}
+	if _, err := backend.CrewReopen(parent); err != nil {
+		t.Fatal(err)
+	}
+	if back, _ := backend.CrewGet(child); back.State == appwire.CrewClosed || back.ArchivedAt != nil || len(back.Members) != 1 {
+		t.Fatalf("the child after the parent reopened = %+v", back)
+	}
+	for _, id := range []string{parent, child, sibling} {
+		if _, err := backend.CrewGet(id); err != nil {
+			t.Fatalf("crew %s was lost: %v", id, err)
+		}
+	}
+}
+
 // A PROPOSAL IS READ FROM THE AGENT'S ONE JSON BLOCK; a helper without a usable
 // handle or a brief is left out, and an answer with none is no proposal.
 func TestAppProposalIsReadFromTheAgentsAnswer(t *testing.T) {

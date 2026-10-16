@@ -668,6 +668,19 @@ var crewMethods = map[string]method{
 		}
 		return crewOf(c.CrewReopen(p.ID))
 	}),
+	// The archived crews have a method of their own, never a flag on crews.list:
+	// a host without it answers unknown_method, where a flag would be ignored and
+	// answer the open crews.
+	"crews.archived": crewCall("crews.archived", func(c Crewer, _ struct{}) (*CrewsResult, error) {
+		crews, err := c.CrewListArchived()
+		if err != nil {
+			return nil, err
+		}
+		for i := range crews {
+			crews[i].Members = nonNil(crews[i].Members)
+		}
+		return &CrewsResult{nonNil(crews)}, nil
+	}),
 	"crews.archive": crewCall("crews.archive", func(c Crewer, p crewID) (*crewResult, error) {
 		if err := needID("crews.archive", p.ID); err != nil {
 			return nil, err

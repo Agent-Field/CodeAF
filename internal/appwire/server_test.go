@@ -517,3 +517,25 @@ func TestSetEffortTakesThreeWords(t *testing.T) {
 		t.Fatalf("set_effort max = %v", got)
 	}
 }
+
+// THE ARCHIVED CREWS ARE ASKED BY A METHOD OF THEIR OWN. A host that does not
+// serve it answers unknown_method, so a client never reads the open crews as
+// archived ones; an engine with no crews refuses it rather than answering [].
+func TestArchivedCrewsAreAMethodOfTheirOwn(t *testing.T) {
+	w := startWire(t, &fakeEngine{})
+	w.next()
+	w.send(`{"id":1,"method":"crews.archived"}`)
+	got := w.next()
+	if failure, _ := got["error"].(map[string]any); failure["code"] != CodeUnknownMethod {
+		t.Fatalf("an engine without crews answered crews.archived with %v", got)
+	}
+	w.send(`{"id":2,"method":"crews.archive","params":{"id":"x"}}`)
+	if failure, _ := w.next()["error"].(map[string]any); failure["code"] != CodeUnknownMethod {
+		t.Fatalf("crews.archive on an engine without crews succeeded")
+	}
+	w.send(`{"id":3,"method":"crews.archived_old"}`)
+	failure, _ := w.next()["error"].(map[string]any)
+	if failure["code"] != CodeUnknownMethod {
+		t.Fatalf("an unserved method = %v", failure)
+	}
+}
