@@ -1638,9 +1638,10 @@ func (g *TaskGraph) runFrontier() {
 		// JIT: the brief is assembled here, with the prerequisites' reports in
 		// hand, and never at proposal time when they did not exist yet.
 		node.brief = g.briefLocked(node, orders)
-		node.setStateLocked(TaskRunning)
-		node.app.Version++
+		node.state = TaskRunning
 		node.started = time.Now()
+		node.stateAt = node.started
+		node.app.Version++
 		// The hold is lifted by the start itself, so the running update this
 		// node is about to send carries no reason to be waiting.
 		node.held = ""

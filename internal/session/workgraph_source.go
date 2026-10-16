@@ -170,7 +170,7 @@ func (s *WorkSource) Owner(ctx context.Context, owner, dir string) (*OwnerFacts,
 	// across it. A conversation that is being written to as it is read is served
 	// from what was read and not remembered.
 	var facts *OwnerFacts
-	for attempt := 0; attempt < 2; attempt++ {
+	for pass := 0; pass < 2; pass++ {
 		var err error
 		if facts, err = readOwner(ctx, owner, dir, stamp); err != nil {
 			return nil, err

@@ -217,24 +217,32 @@ func stampPtr(t time.Time) *time.Time {
 	return &u
 }
 
+// locked runs fn holding g.mu; the unlock is deferred so an absorbed panic never
+// leaves it held (internal/guard's lock law).
+func (g *appWorkGraph) locked(fn func()) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	fn()
+}
+
 // crewFile is the crews' file, parsed once per change of the file.
 func (g *appWorkGraph) crewFile(profile string) (*teamstore.File, string, error) {
 	g.init()
 	sig := session.FileStamp(teamstore.Path(profile))
-	g.mu.Lock()
-	if g.crews.file != nil && g.crews.stamp == sig {
-		file := g.crews.file
-		g.mu.Unlock()
-		return file, sig, nil
+	var held *teamstore.File
+	g.locked(func() {
+		if g.crews.file != nil && g.crews.stamp == sig {
+			held = g.crews.file
+		}
+	})
+	if held != nil {
+		return held, sig, nil
 	}
-	g.mu.Unlock()
 	file, err := teamstore.Load(profile)
 	if err != nil {
 		return nil, "", err
 	}
-	g.mu.Lock()
-	g.crews = crewMemo{stamp: sig, file: file}
-	g.mu.Unlock()
+	g.locked(func() { g.crews = crewMemo{stamp: sig, file: file} })
 	return file, sig, nil
 }
 
@@ -297,14 +305,24 @@ func (g *appWorkGraph) locate(id string) (string, bool) {
 		return "", false
 	}
 	g.init()
-	g.mu.Lock()
-	dir, known := g.dirs[id]
-	g.mu.Unlock()
+	var dir string
+	var known bool
+	g.locked(func() { dir, known = g.dirs[id] })
 	if known {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			return dir, true
 		}
 	}
+	found, ok := findConversation(id)
+	if ok {
+		g.locked(func() { g.dirs[id] = found })
+	}
+	return found, ok
+}
+
+// findConversation lists the places root once and stats the id under each
+// project.
+func findConversation(id string) (string, bool) {
 	root := session.PlacesRoot()
 	buckets, err := os.ReadDir(root)
 	if err != nil {
@@ -316,9 +334,6 @@ func (g *appWorkGraph) locate(id string) (string, bool) {
 		}
 		candidate := filepath.Join(root, bucket.Name(), id)
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			g.mu.Lock()
-			g.dirs[id] = candidate
-			g.mu.Unlock()
 			return candidate, true
 		}
 	}
