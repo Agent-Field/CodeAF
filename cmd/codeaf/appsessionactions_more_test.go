@@ -443,3 +443,18 @@ func TestAFirstFolderThatCannotBeMadeDurableStopsTheProducer(t *testing.T) {
 		t.Fatalf("the parent was synced %d times across a failure and its retry, want 2", syncs)
 	}
 }
+
+// THE WORDS THE SCOPE IS READ FROM ARE THE PRODUCER'S. memoryNoProjectReach is
+// a copy of session.memoryReach's widened spelling (the producer's receipt is
+// the only fact a far handle gives), so the copy is held to the source: if the
+// producer rewords it, this fails instead of the scope quietly going back to
+// saying project.
+func TestTheWidenedReachWordsAreTheProducers(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "session", "memory.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `return "`+memoryNoProjectReach+`"`) {
+		t.Fatalf("internal/session/memory.go no longer returns %q from memoryReach", memoryNoProjectReach)
+	}
+}

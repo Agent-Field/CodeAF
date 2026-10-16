@@ -37,7 +37,8 @@ A memory receipt's `scope` is where the line actually holds: a project line the
 producer kept for the person everywhere, because the conversation has no project, says
 `everywhere`. The first claim of a home syncs the new claims folder in its parent before
 the claim is made, and a failure there answers `engine` "did not start it" with nothing
-run; a power loss that predates that sync is the only case it does not claim to cover.
+run; it does not sync the state folder's own entry above it, and claims no more than a
+process crash.
 
 Not built here: every other action in the slash catalogue. This does not make the
 desktop's 51 commands work; it makes three of them possible.

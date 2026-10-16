@@ -415,9 +415,9 @@ func TestRealFarHandleOffersNoEffortItCannotShow(t *testing.T) {
 
 // A TASK STARTED IN A CONVERSATION NOBODY HAS SPOKEN IN, THEN A CLEAN RESTART.
 // No seeded message: the conversation is created empty and only the typed
-// action touches it. The test records what the real producers do and asserts
-// the one thing that must hold either way: a repeat after the restart never
-// admits a second task.
+// action touches it. The task start is what keeps the conversation on disk
+// (restart fails if it is reaped as blank), and a repeat after the restart
+// never admits a second task.
 func TestRealTaskStartInAnEmptyConversationAcrossARestart(t *testing.T) {
 	h := newRealActionHarnessSaying(t, "")
 	r, e := h.w.act(taskAsk(h.agent, "empty-t1", "write a haiku about the tide into notes.txt"))
