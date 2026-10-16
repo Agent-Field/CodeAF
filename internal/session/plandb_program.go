@@ -113,19 +113,31 @@ type PlanProgram struct {
 	// EarlierActions is how many actions came before the first of Actions,
 	// which the page says rather than draws.
 	EarlierActions int
-	// LastStage is the stage the newest stage line of the action log names, as
-	// the program spelled it. IT IS THE ONE TYPED ANSWER TO "WHERE IS IT", read
-	// off a record and never off the live line's words; a program reports its
-	// stages out of list order, so it is never turned into an index here. Empty
-	// when the log holds no stage line.
-	LastStage string
 	// StartedAt and EndedAt are the program record's clock for its LATEST
 	// process on this task. The record is overwritten per hand-off, so they are
 	// not a history of attempts. Zero is unknown.
 	StartedAt, EndedAt time.Time
-	// Ending is the log's final shown action when, and only when, the log's last
-	// raw line is the program's `end` line: a run begun again after an old end
-	// has no current ending. EndStatus is that line's own status.
+	// Current is what the record's own process did, read off the lines that
+	// carry the record's launch ([delegate.Action.Launch]), and nil when no line
+	// can be tied to it: a record written before launches were, or none on disk
+	// yet (a relaunch before its hello). Nil is unknown — never the last run's.
+	Current *PlanProgramLaunch
+}
+
+// PlanProgramLaunch is one launch of a program as its own lines say: the
+// actions it took, the stage it last named and its ending.
+type PlanProgramLaunch struct {
+	// Actions are the launch's newest [planProgramActions] shown actions, and
+	// EarlierActions how many of its own came before them.
+	Actions        []delegate.Shown
+	EarlierActions int
+	// LastStage is the stage the launch's newest stage line names, as the
+	// program spelled it. IT IS THE ONE TYPED ANSWER TO "WHERE IS IT", read off a
+	// record and never off the live line's words; a program reports its stages
+	// out of list order, so it is never turned into an index here.
+	LastStage string
+	// Ending is the launch's final shown action when, and only when, the
+	// launch's last line is its `end` line; EndStatus is that line's status.
 	Ending    *delegate.Shown
 	EndStatus string
 }
@@ -279,9 +291,10 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort,
 		Listening: record.Listening, InboxClosed: record.InboxClosed, Listens: planProgramOf(programs, record.Name).Listens,
 		Started: !record.StartedAt.IsZero(), StartedAt: record.StartedAt, EndedAt: record.EndedAt}
-	var endShown bool
-	program.Actions, program.EarlierActions, endShown = planProgramActionsTracked(logged, planProgramOf(programs, record.Name), copies)
-	program.LastStage, program.Ending, program.EndStatus = planProgramPosition(logged, program.Actions, endShown, record.StartedAt)
+	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
+	if lines, ok := delegate.LaunchActions(logged, record.Launch); ok {
+		program.Current = planProgramLaunchOf(lines, planProgramOf(programs, record.Name), copies)
+	}
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)
 	}
@@ -304,37 +317,30 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	return program
 }
 
-// planProgramPosition reads the two typed facts of where a run stands off the
-// raw log: the stage its newest stage line names, and its ending when the log's
-// LAST line is the `end` line and that line is the last one shown (endShown).
-// Nothing is read from a word.
+// planProgramLaunchOf reads one launch's own lines ([delegate.LaunchActions])
+// for its page: its actions through a fresh reader of the program's vocabulary
+// from the launch's first line, the stage its newest stage line names, and its
+// ending when its LAST line is the `end` line and that line is the last one
+// shown. Nothing is read from a word, and nothing from a time.
 //
-// THE LOG OUTLIVES THE PROCESS. It is only ever appended to, while a program
-// handed off again gets a new record with a new start, so a line is the current
-// run's only when it was received at or after the record's StartedAt. A record
-// with no start (written before it existed, or not yet written) cannot tie the
-// log to a process, and then neither fact is reported: unknown, not the last
-// run's.
-func planProgramPosition(logged []delegate.Action, shown []delegate.Shown, endShown bool, started time.Time) (string, *delegate.Shown, string) {
-	if started.IsZero() {
-		return "", nil, ""
-	}
-	stage := ""
-	for i := len(logged) - 1; i >= 0 && !logged[i].At.Before(started); i-- {
-		if logged[i].Kind == delegate.ActionStage && strings.TrimSpace(logged[i].Stage) != "" {
-			stage = logged[i].Stage
+// THE LOG OUTLIVES THE PROCESS, and a wall clock steps back and repeats. Which
+// lines are this process's is the launch stamped on them, so an earlier run's
+// ending — however late or early its time — is never this one's.
+func planProgramLaunchOf(lines []delegate.Action, program delegate.Delegate, copies planRunCopies) *PlanProgramLaunch {
+	current := &PlanProgramLaunch{}
+	var endShown bool
+	current.Actions, current.EarlierActions, endShown = planProgramActionsTracked(lines, program, copies)
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i].Kind == delegate.ActionStage && strings.TrimSpace(lines[i].Stage) != "" {
+			current.LastStage = lines[i].Stage
 			break
 		}
 	}
-	if len(logged) == 0 || len(shown) == 0 || !endShown {
-		return stage, nil, ""
+	if len(lines) > 0 && endShown && lines[len(lines)-1].Kind == delegate.ActionEnd {
+		ending := current.Actions[len(current.Actions)-1]
+		current.Ending, current.EndStatus = &ending, lines[len(lines)-1].Status
 	}
-	last := logged[len(logged)-1]
-	if last.Kind != delegate.ActionEnd || last.At.Before(started) {
-		return stage, nil, ""
-	}
-	ending := shown[len(shown)-1]
-	return stage, &ending, last.Status
+	return current
 }
 
 // planProgramOf is the program of this build's list with this name, and a

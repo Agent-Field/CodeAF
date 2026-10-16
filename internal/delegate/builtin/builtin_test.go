@@ -73,3 +73,16 @@ func TestEndingFactsLeaveEveryProgramsWordsAlone(t *testing.T) {
 		}
 	}
 }
+
+// A LAUNCH'S START LINE IS CODEAF'S, NOT THE PROGRAM'S: no carried program's
+// vocabulary shows it, so a page never draws a launch as an action, and a
+// reader fed a launch from its first line reads the program's own lines exactly
+// as it did before launches were stamped.
+func TestNoCarriedProgramShowsALaunchsStartLine(t *testing.T) {
+	start := delegate.StartAction(time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC), delegate.NewLaunch())
+	for _, program := range append(All(), delegate.Delegate{Name: "plain"}) {
+		if shown, ok := program.Reader()(start); ok {
+			t.Errorf("%s shows a start line as %+v", program.Name, shown)
+		}
+	}
+}

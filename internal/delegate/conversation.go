@@ -39,6 +39,12 @@ const ProgramFile = "delegate-program.json"
 type ProgramRecord struct {
 	Name   string   `json:"name"`
 	Stages []string `json:"stages,omitempty"`
+	// Launch is the identity of the process this record is about
+	// ([NewLaunch]), drawn by whoever ran it before the process was started and
+	// stamped on every line of the action log and the conversation log that
+	// process's run wrote. Empty on a record written before launches were, and
+	// then no line can be told to be this process's: a reader says unknown.
+	Launch string `json:"launch,omitempty"`
 	// CeilingUSD is the dollar ceiling the run handed the program, zero for
 	// none. It is written here because the run works it out when it starts and
 	// keeps it nowhere a page could read it afterwards, and a page that shows
@@ -122,6 +128,11 @@ const MainThread = "main"
 // flight without a second file.
 type Turn struct {
 	Seq int `json:"seq"`
+	// Launch is the launch of the program's process that made the call
+	// ([Action.Launch] says why it is the one tie between a line and a
+	// process). Seq starts again with every launch, so two launches' calls
+	// share numbers and only this tells them apart.
+	Launch string `json:"launch,omitempty"`
 	// Thread tells conversations apart when a program holds more than one at
 	// once (a summary of its own history, a helper agent): the call's cache key
 	// or its own id, MainThread when it gave none.
@@ -183,6 +194,9 @@ const (
 // capped is the turn as it is written: every text cut on a rune boundary, the
 // newest messages kept when there are too many, the tool calls bounded.
 func (t Turn) capped() Turn {
+	if !ValidLaunch(t.Launch) {
+		t.Launch = ""
+	}
 	t.Reply = cut(t.Reply, turnTextCap)
 	if len(t.Sent) > turnSaidMax {
 		t.Sent = t.Sent[len(t.Sent)-turnSaidMax:]

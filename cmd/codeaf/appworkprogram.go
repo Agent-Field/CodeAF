@@ -20,7 +20,7 @@ func appTaskProgram(view *session.AppProgramView) *appwire.TaskProgram {
 		Name: redact.Secrets(view.Name), LastStage: redact.Secrets(view.LastStage), CeilingUSD: view.CeilingUSD,
 		Calls: view.Calls, Models: view.Models, Effort: redact.Secrets(view.Effort), Listens: view.Listens,
 		Listening: view.Listening, Started: view.Started, InboxClosed: redact.Secrets(view.InboxClosed),
-		EarlierActions: view.EarlierActions, Actions: []appwire.ProgramAction{},
+		EarlierActions: view.EarlierActions, Read: view.Read,
 	}
 	if !view.StartedAt.IsZero() {
 		at := view.StartedAt

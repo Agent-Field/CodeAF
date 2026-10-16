@@ -38,7 +38,12 @@ type AppProgramView struct {
 	// Stages are the stages the program's hello named, in order, each with the
 	// person's word for it ([AppProgramStageWord] says how a wordless stage reads).
 	Stages []AppProgramStage
-	// LastStage is the stage the newest stage record of the log names.
+	// Read says how much of the current process's own lines this view was read
+	// from ([AppProgramReadComplete] and its siblings). Actions, EarlierActions,
+	// LastStage and Ending are the current process's and nothing else's, and
+	// say nothing at all unless Read is complete.
+	Read string
+	// LastStage is the stage the current process's newest stage record names.
 	LastStage          string
 	CeilingUSD         float64
 	Calls              int
@@ -52,6 +57,17 @@ type AppProgramView struct {
 	Ending             *delegate.Shown
 	EndStatus          string
 }
+
+// How much of the current process's lines a view was read from.
+const (
+	// AppProgramReadComplete: every line the process wrote was read, so its
+	// actions, their count, its last stage and its ending are exact.
+	AppProgramReadComplete = "complete"
+	// AppProgramReadUnknown: no line can be tied to the record's process — a
+	// record written before launches were, or none yet (a relaunch before its
+	// hello) — or the log could not be read. Nothing is said about its work.
+	AppProgramReadUnknown = "unknown"
+)
 
 // AppProgramStage is one stage of a program's hello and the word a person reads
 // for it; an empty Word is a stage with nothing standing before it to inherit.
@@ -81,28 +97,32 @@ func (a *Agent) appProgramView(page PlanTaskPage) *AppProgramView {
 	}
 	program := planProgramOf(a.config.Delegates, p.Name)
 	view := &AppProgramView{
-		Name: p.Name, StartedAt: p.StartedAt, EndedAt: p.EndedAt, LastStage: p.LastStage,
+		Name: p.Name, StartedAt: p.StartedAt, EndedAt: p.EndedAt, Read: AppProgramReadUnknown,
 		CeilingUSD: p.CeilingUSD, Calls: p.Calls, Models: append([]string(nil), p.Models...), Effort: p.Effort,
 		Listens: p.Listens, Listening: p.Listening, Started: p.Started, InboxClosed: p.InboxClosed,
-		EarlierActions: p.EarlierActions, EndStatus: p.EndStatus,
 	}
-	// ONLY THE NEWEST ACTIONS CROSS, WITHOUT THEIR DETAIL: the app never draws
-	// it, and over --host four hundred of them would be read to be thrown away.
-	actions := p.Actions
-	if len(actions) > AppProgramActionsMax {
-		view.EarlierActions += len(actions) - AppProgramActionsMax
-		actions = actions[len(actions)-AppProgramActionsMax:]
-	}
-	view.Actions = append([]delegate.Shown(nil), actions...)
-	for i := range view.Actions {
-		view.Actions[i].Detail = ""
-	}
-	if len(p.LastStage) > appProgramStageBytes {
-		view.LastStage = ""
-	}
-	if p.Ending != nil {
-		ending := *p.Ending
-		view.Ending = &ending
+	if current := p.Current; current != nil {
+		view.Read, view.EarlierActions, view.EndStatus = AppProgramReadComplete, current.EarlierActions, current.EndStatus
+		// ONLY THE NEWEST ACTIONS CROSS, WITHOUT THEIR DETAIL: the app never
+		// draws it, and over --host four hundred of them would be read to be
+		// thrown away.
+		actions := current.Actions
+		if len(actions) > AppProgramActionsMax {
+			view.EarlierActions += len(actions) - AppProgramActionsMax
+			actions = actions[len(actions)-AppProgramActionsMax:]
+		}
+		view.Actions = append([]delegate.Shown{}, actions...)
+		for i := range view.Actions {
+			view.Actions[i].Detail = ""
+		}
+		if len(current.LastStage) <= appProgramStageBytes {
+			view.LastStage = current.LastStage
+		}
+		if current.Ending != nil {
+			ending := *current.Ending
+			ending.Detail = ""
+			view.Ending = &ending
+		}
 	}
 	if len(p.Stages) > appProgramStagesMax {
 		return view

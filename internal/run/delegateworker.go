@@ -226,6 +226,7 @@ func (s *delegateSink) remember(action delegate.Action) {
 		return
 	}
 	if strings.TrimSpace(s.taskDir) != "" {
+		action.Launch = s.record.Launch
 		_ = delegate.AppendAction(s.taskDir, action)
 	}
 	s.live(action)
@@ -688,8 +689,15 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		workspace: w.workspace, ledger: w.setup.Ledger,
 		conversation: w.setup.Conversation, onCharge: w.setup.OnCharge,
 	}
+	// THIS LAUNCH'S IDENTITY IS DRAWN BEFORE ANYTHING OF IT IS WRITTEN: the
+	// model API stamps it on every turn, the sink on every line of the action
+	// log, the record carries it, and the process's descendants are marked
+	// with it (delegate.Launch.Marker). It is what a reader ties a line to this
+	// process by — never the time a line was received.
+	launch := delegate.NewLaunch()
 	api, err := modelapi.Open(modelapi.Config{
 		TaskDir:      taskDir,
+		Launch:       launch,
 		CompleterFor: w.completerFor(),
 		Serves:       w.setup.Serves,
 		ModelPrice:   w.setup.ModelPrice,
@@ -721,13 +729,21 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	launchCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	sink := &delegateSink{worker: w, taskID: task.ID, storeDir: storeDir, taskDir: taskDir, name: w.program.Name, stop: stop,
-		record: delegate.ProgramRecord{Name: w.program.Name, CeilingUSD: w.cost},
+		record: delegate.ProgramRecord{Name: w.program.Name, CeilingUSD: w.cost, Launch: launch},
 		ctx:    launchCtx, sent: map[string]bool{}, had: notesAlreadyHad(storeDir, task.ID)}
 	// NO RECORD BEFORE HELLO ON A NORMAL LAUNCH. A task folder outlives its
 	// process, so remove the previous run's listening state before a new child
 	// starts. If removal fails, replace it so stale refusals cannot survive.
 	if err := os.Remove(filepath.Join(taskDir, delegate.ProgramFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		_ = delegate.WriteProgram(taskDir, sink.record)
+	}
+	// THE LAUNCH'S FIRST LINE IS WRITTEN BEFORE ITS PROCESS IS STARTED, so every
+	// line this process is the cause of lands after it, and a reader looking
+	// back from the end of the log knows where this launch's lines begin
+	// (delegate.ActionStart). A disk that refuses it costs that knowledge and
+	// never the run.
+	if launch != "" && strings.TrimSpace(taskDir) != "" {
+		_ = delegate.AppendAction(taskDir, delegate.StartAction(time.Now(), launch))
 	}
 	childEnv := append(delegate.ChildEnv(api.API()), "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
 		gitidentity.InputsEnv+"="+w.setup.InputsFile)
@@ -771,6 +787,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
 		Grace:      w.setup.Grace,
 		Hold:       w.setup.Hold,
+		Marker:     launch,
 	}, sink)
 	// THE INSTANT THE PROCESS WAS GONE, and not the instant its stdout drained
 	// ([delegate.Result.ExitedAt] says why; a shell run reads it the same way).

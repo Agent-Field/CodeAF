@@ -34,11 +34,18 @@ import (
 const ActionsFile = "delegate-actions.jsonl"
 
 // The kinds of line the log holds: a stage record, a step record, and the
-// terminal record's status, message and allow-listed facts.
+// terminal record's status, message and allow-listed facts — and the start of
+// a launch, which is codeaf's and not the program's.
 const (
 	ActionStage = "stage"
 	ActionStep  = "step"
 	ActionEnd   = "end"
+	// ActionStart is the line codeaf writes BEFORE it starts a program's
+	// process, carrying the launch's identity ([NewLaunch]) and nothing else.
+	// No program's vocabulary reads it, so no page shows it; it is where a
+	// reader looking back from the end of the log knows it has reached the
+	// launch's first line.
+	ActionStart = "start"
 )
 
 // Action is one line of the log.
@@ -46,6 +53,15 @@ type Action struct {
 	// At is when codeaf received the record.
 	At   time.Time `json:"at"`
 	Kind string    `json:"kind"`
+	// Launch is the launch of the program's process the line was received
+	// from ([NewLaunch]), stamped by codeaf as it writes the line, and absent
+	// on a line written before launches were.
+	//
+	// IT IS WHAT TIES A LINE TO A PROCESS. The log outlives the process, a
+	// task's program can be launched again, and At is a wall clock that steps
+	// back and repeats; a reader asking which lines are the current process's
+	// compares this with the program record's own launch, and never a time.
+	Launch string `json:"launch,omitempty"`
 	// Stage, Status and Data are a stage's; Status is the ending's too, and so is
 	// Data, as the allow-listed facts of the terminal's ([EndFacts]) — never the
 	// terminal's data whole.
@@ -80,6 +96,12 @@ func StepAction(at time.Time, record StepRecord) Action {
 	}
 }
 
+// StartAction is the line that opens one launch's lines in the log, written
+// at at, before the launch's process is started.
+func StartAction(at time.Time, launch string) Action {
+	return Action{At: at, Kind: ActionStart, Launch: launch}
+}
+
 // EndAction is the terminal record as the log's last line: its status and its
 // sentence, and the allow-listed facts of its data ([EndFacts]). The rest of the
 // record is the result's, which the run keeps whole.
@@ -96,6 +118,9 @@ func (a Action) capped() Action {
 	a.Message = cut(a.Message, turnTextCap)
 	a.Tool, a.Step = label(a.Tool), label(a.Step)
 	a.Stage, a.Status = label(a.Stage), label(a.Status)
+	if !ValidLaunch(a.Launch) {
+		a.Launch = ""
+	}
 	if a.Kind == ActionEnd {
 		// THE ENDING'S DATA IS RE-PROJECTED THROUGH THE ALLOW-LIST HERE TOO, so a
 		// line built by hand reaches the file as the same bounded facts.
@@ -162,6 +187,25 @@ func ReadActions(dir string, n int) ([]Action, error) {
 		actions = actions[len(actions)-n:]
 	}
 	return actions, nil
+}
+
+// LaunchActions is the lines one launch wrote ([Action.Launch]), in the order
+// the log holds them, out of a log read whole, without the launch's own start
+// line; ok is false when launch is not a launch's identity, which is a reader
+// that cannot tell which lines are the process's and must say so. Lines of any
+// other launch — an earlier run's, one written late, one stamped before
+// launches were — are never this launch's, whatever their time says.
+func LaunchActions(logged []Action, launch string) ([]Action, bool) {
+	if !ValidLaunch(launch) {
+		return nil, false
+	}
+	var lines []Action
+	for _, action := range logged {
+		if action.Launch == launch && action.Kind != ActionStart {
+			lines = append(lines, action)
+		}
+	}
+	return lines, true
 }
 
 // Shown is one action as a person reads it on its program's page: the step it

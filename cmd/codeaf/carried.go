@@ -424,6 +424,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	subject := filepath.Base(record)
 	api, err := modelapi.Open(modelapi.Config{
 		TaskDir:       record,
+		Launch:        view.launch,
 		CompleterFor:  road.completerFor,
 		AuthKeySource: road.authKeySource,
 		Serves:        road.serves,
@@ -495,6 +496,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		StderrPath: filepath.Join(record, carriedStderrName),
 		Grace:      grace,
 		Hold:       folder.Hold(),
+		Marker:     view.launch,
 	}, view)
 	// THE INSTANT THE PROCESS WAS GONE, not the instant its stdout drained, for
 	// both the last line and the record's end: a helper the program left holding
@@ -797,6 +799,10 @@ type carriedView struct {
 	// the record folder each time it learns something: its start, its hello,
 	// its end.
 	program delegate.ProgramRecord
+	// launch is this run's launch identity (delegate.NewLaunch), drawn with
+	// the view and never changed: the record, every kept line, every turn and
+	// the process's descendants carry it.
+	launch string
 	// folder is the folder the run was readied in, and leftFolder is how the
 	// run left it (internal/session's ProgramFolderEnd.Sentence); nil and
 	// empty for a program that edits no files.
@@ -805,7 +811,7 @@ type carriedView struct {
 }
 
 func newCarriedView(out io.Writer, inv *delegate.Invocation, record string) *carriedView {
-	view := &carriedView{out: out, inv: inv, record: record}
+	view := &carriedView{out: out, inv: inv, record: record, launch: delegate.NewLaunch()}
 	if inv.JSON {
 		view.records = delegate.NewEmitter(out)
 	}
@@ -922,7 +928,13 @@ func (v *carriedView) Hello(h delegate.Hello) {
 func (v *carriedView) opened(at time.Time) {
 	v.remember(func(record *delegate.ProgramRecord) {
 		record.Name, record.CeilingUSD, record.StartedAt = v.inv.Program.Name, v.inv.Ceilings.CostUSD, at
+		record.Launch = v.launch
 	})
+	// THE LAUNCH'S FIRST LINE, before its process is started
+	// (delegate.ActionStart).
+	if v.launch != "" {
+		v.kept(delegate.StartAction(at, v.launch))
+	}
 }
 
 // heard writes the models the program says it runs on onto its record, when a
@@ -966,6 +978,7 @@ func (v *carriedView) kept(action delegate.Action) {
 	if strings.TrimSpace(v.record) == "" {
 		return
 	}
+	action.Launch = v.launch
 	_ = delegate.AppendAction(v.record, action)
 }
 

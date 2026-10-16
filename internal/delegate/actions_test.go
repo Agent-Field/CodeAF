@@ -92,3 +92,46 @@ func TestAProgramWithNoVocabularyIsReadPlainly(t *testing.T) {
 		t.Fatal("an action with no words was shown")
 	}
 }
+
+// A LINE CARRIES A LAUNCH ONLY IN THE ONE SHAPE A LAUNCH IS DRAWN IN, and a
+// reader of one launch's lines keeps that launch's and nothing else — not an
+// earlier launch's, not a line stamped before launches were — and cannot be
+// asked about a launch that is not one.
+func TestALaunchsLinesAreTheOnesItStamped(t *testing.T) {
+	dir := t.TempDir()
+	at := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	mine, other := NewLaunch(), NewLaunch()
+	if !ValidLaunch(mine) || mine == other {
+		t.Fatalf("launches %q %q", mine, other)
+	}
+	forged := StageAction(at, StageRecord{Stage: "x"})
+	forged.Launch = "not-a-launch"
+	lines := []Action{
+		StageAction(at, StageRecord{Stage: "unstamped"}),
+		StartAction(at, mine),
+		{At: at, Kind: ActionStage, Stage: "mine", Launch: mine},
+		{At: at, Kind: ActionEnd, Message: "the other's", Launch: other},
+		forged,
+	}
+	for _, line := range lines {
+		if err := AppendAction(dir, line); err != nil {
+			t.Fatal(err)
+		}
+	}
+	logged, err := ReadActions(dir, 0)
+	if err != nil || len(logged) != 5 || logged[4].Launch != "" {
+		t.Fatalf("logged %+v, err %v", logged, err)
+	}
+	got, ok := LaunchActions(logged, mine)
+	if !ok || len(got) != 1 || got[0].Stage != "mine" {
+		t.Fatalf("mine = %+v %v", got, ok)
+	}
+	if got, ok := LaunchActions(logged, ""); ok || got != nil {
+		t.Fatalf("an absent launch answered %+v", got)
+	}
+	for _, bad := range []string{"", "ABCDEF0123456789abcdef0123456789", mine + "0", mine[:31]} {
+		if ValidLaunch(bad) {
+			t.Errorf("%q passed as a launch", bad)
+		}
+	}
+}

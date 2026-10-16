@@ -39,10 +39,19 @@ type TaskProgram struct {
 	Listening   bool   `json:"listening"`
 	Started     bool   `json:"started"`
 	InboxClosed string `json:"inbox_closed,omitempty"`
-	// Actions are the newest actions the program took, oldest first.
-	Actions        []ProgramAction `json:"actions"`
+	// Read says what Actions, EarlierActions, LastStage and Ending were read
+	// from: "complete" is every line the record's own process wrote, and
+	// "unknown" is no line that could be tied to that process (a run recorded
+	// before launches were, a relaunch before its hello, a log that could not be
+	// read). Under "unknown" all four are absent and say nothing — not "no
+	// actions", not "no ending".
+	Read string `json:"read"`
+	// Actions are the newest actions the record's own process took, oldest
+	// first; an earlier run's are never among them. Absent under a complete read
+	// is a process that has shown no action yet.
+	Actions        []ProgramAction `json:"actions,omitempty"`
 	EarlierActions int             `json:"earlier_actions,omitempty"`
-	// Ending is the program's ending when its log's last line is the ending.
+	// Ending is the process's ending when its own last line is the ending.
 	Ending *ProgramEnding `json:"ending,omitempty"`
 }
 

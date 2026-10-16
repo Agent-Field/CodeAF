@@ -56,6 +56,41 @@ type Launch struct {
 	// (session.ProgramFolder.Hold), which the program's process is handed as
 	// well ([HoldEnv]); nil hands it nothing.
 	Hold *os.File
+	// Marker is this launch's own identity ([NewLaunch]): the mark its
+	// descendants carry for the sweep below, and the id its caller stamps on
+	// the program record and on every line it keeps for the launch. Empty, or
+	// anything that is not one [NewLaunch] draws, has one drawn here.
+	//
+	// THE CALLER DRAWS IT BEFORE THE PROCESS IS STARTED, because the record of
+	// which lines are this process's has to be written before the process can
+	// say anything, and a time cannot tie a line to a process.
+	Marker string
+}
+
+// NewLaunch draws one launch's identity: sixteen random bytes as lowercase
+// hex, the same mark [Run] gives a launch's descendants. Empty when the
+// system's randomness failed, which leaves the launch with no identity a
+// reader can tie its lines to — unknown, never another launch's.
+func NewLaunch() string {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(raw)
+}
+
+// ValidLaunch answers whether id has the one shape [NewLaunch] draws. A line
+// or record carrying anything else carries no launch at all.
+func ValidLaunch(id string) bool {
+	if len(id) != 32 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if c := id[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // HoldEnv names, in a program's environment, the descriptor its host's hold on
@@ -121,11 +156,12 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	cmd := exec.Command(launch.Bin, launch.Args...)
 	// The marker is a last-resort Linux sweep after SIGKILL stops the engine
 	// before its own subreaper can clean up its descendants.
-	markerBytes := make([]byte, 16)
-	if _, err := rand.Read(markerBytes); err != nil {
-		return Result{ExitCode: -1}, fmt.Errorf("mark %s's descendants: %w", launch.Name, err)
+	marker := launch.Marker
+	if !ValidLaunch(marker) {
+		if marker = NewLaunch(); marker == "" {
+			return Result{ExitCode: -1}, fmt.Errorf("mark %s's descendants: no randomness", launch.Name)
+		}
 	}
-	marker := hex.EncodeToString(markerBytes)
 	baseEnv := launch.Env
 	if baseEnv == nil {
 		baseEnv = os.Environ()
