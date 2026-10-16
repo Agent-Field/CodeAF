@@ -221,7 +221,11 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 			if errors.Is(err, errNoChanges) {
 				return delegate.Ending{Status: delegate.StatusPass, Message: "it had nothing to audit: " + err.Error(),
 					Deliverable: "Security audit of " + scope.Describe() + ": " + err.Error() + ", so there was nothing to audit.",
-					Extra:       map[string]any{"status": "pass"}}
+					// nothing_to_audit is TRUE-ONLY and written here alone, so a
+					// surface can tell this pass from an audit that ran without
+					// reading the sentence; no count is written, because none
+					// was measured.
+					Extra: map[string]any{"status": "pass", "nothing_to_audit": true}}
 			}
 			return delegate.Ending{Status: delegate.StatusFail, Message: "it could not start: " + err.Error()}
 		}

@@ -87,6 +87,11 @@ type EndFacts struct {
 	AnalysisIncomplete string `json:"analysis_incomplete,omitempty"`
 	// HuntCoverage is an audit's account of the hunts that did not finish.
 	HuntCoverage *HuntCoverage `json:"hunt_coverage,omitempty"`
+	// NothingToAudit says an audit of the changes found no change to audit, so
+	// its pass is not the pass of an audit that ran. It is a TRUE-ONLY fact: the
+	// program writes it in that one ending and nowhere else, a false is never
+	// kept, and an older ending without it is not read from its sentence.
+	NothingToAudit *bool `json:"nothing_to_audit,omitempty"`
 }
 
 // HuntCoverage is how many hunts an audit attempted and which failed, as the
@@ -131,7 +136,7 @@ func (f EndFacts) Empty() bool {
 		f.SubmissionReason == "" && f.InnerStatus == "" && f.VerificationFailing == nil && f.VerificationCommands == nil &&
 		f.Findings == nil && f.Blocking == nil && f.Confirmed == nil && f.Likely == nil &&
 		f.Inconclusive == nil && f.RuledOut == nil && f.Partial == nil &&
-		f.AnalysisIncomplete == "" && f.HuntCoverage == nil
+		f.AnalysisIncomplete == "" && f.HuntCoverage == nil && f.NothingToAudit == nil
 }
 
 // endFactsOf is the allow-listed copy of a terminal's data, nil when nothing on
@@ -157,6 +162,7 @@ func endFactsOf(data map[string]json.RawMessage) *EndFacts {
 	if raw, present := data["hunt_coverage"]; present {
 		facts.HuntCoverage = endCoverage(raw)
 	}
+	facts.NothingToAudit = endTrue(data["nothing_to_audit"])
 	if facts.Empty() {
 		return nil
 	}
@@ -374,6 +380,15 @@ func endObject(raw json.RawMessage, names ...string) (map[string]json.RawMessage
 
 func isNull(raw json.RawMessage) bool {
 	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+}
+
+// endTrue is a true-only fact: true is kept, and false, null or any other shape
+// is absent, because the program that owns it never says false.
+func endTrue(raw json.RawMessage) *bool {
+	if said := endBool(raw); said != nil && *said {
+		return said
+	}
+	return nil
 }
 
 // endDecodable says a key's value is present, small enough to read at all, and
