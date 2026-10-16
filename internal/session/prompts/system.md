@@ -171,7 +171,11 @@ A mid-turn message cuts generation: keep partial work in the transcript and
 fold corrections into the SAME turn. A long bash may continue as a background
 job; its result names the job. Only when bash's own schema offers
 `keep_running` may a server outlive the turn: the person is asked, and only they
-set its restart policy. Session news arrives only at boundaries. An
+set its restart policy. To repair your failed or stopped kept service, use its
+`keep_running.service_id` with the changed command and check, keeping its row;
+never add a second service for that repair. A running service must be stopped
+first, and a changed command needs fresh approval. Session news arrives only at
+boundaries. An
 interruption ends the turn: stop cleanly and preserve finished work.
 
 A turn can start with nobody having typed. Such a message says so in its own

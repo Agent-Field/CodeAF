@@ -42,6 +42,18 @@ It is listed with the agent's other processes, in the same list.
 - **Remove** takes a stopped one off the list. Its output is kept, and the chat's notice
   still opens it.
 
+## Repair a failed process on the same row
+
+When a port is taken, tell the agent which port to use. It can repair its stopped or
+failed service by naming that service in `bash`'s `keep_running.service_id`, such as
+`s3`, with the changed command and health check. The same row, output and service id
+remain. The changed command and check need your approval; denying or cancelling leaves
+the old saved service alone. A running or stopping process must be stopped first.
+
+A changed command, folder or check starts with a new automatic restart budget after
+you approve it. Changing only its name does not refill the budget. Its existing trouble
+line resolves only when the repaired service passes a health check.
+
 ## Quitting the app or closing an agent with processes kept up
 
 Quitting the app leaves kept-up processes up unless you choose to stop them; the
