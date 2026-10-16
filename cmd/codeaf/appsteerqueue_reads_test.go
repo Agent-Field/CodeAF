@@ -144,7 +144,9 @@ func TestAppQueuedMessageKeepsItsMarkAndShowsThePersonsWords(t *testing.T) {
 	if want := []string{"first", "then the README", links}; !reflect.DeepEqual(texts, want) {
 		t.Fatalf("the engine was sent %q", texts)
 	}
-	if want := appQueuedSubmission(appMarkedSubmission(t, links, "", appCutRead())); len(submissions) != 2 || submissions[0].Text != "then the README" || !submissions[0].Queued || !reflect.DeepEqual(submissions[1], want) {
+	want := appQueuedSubmission(appMarkedSubmission(t, links, "", appCutRead()))
+	want.ClientID = "q-2"
+	if len(submissions) != 2 || submissions[0].Text != "then the README" || !submissions[0].Queued || !reflect.DeepEqual(submissions[1], want) {
 		t.Fatalf("the marked door was handed %+v", submissions)
 	}
 	if _, err := backend.EditQueuedMessage(agent.ID, second, appwire.AgentMessage{Text: "too late", Said: &none, Reads: []appwire.MessageRead{appCutRead()}}); wireCode(err) != appwire.CodeSent {
@@ -189,12 +191,16 @@ func TestAppQueuedEditRacingTheSendIsEitherSentOrRefused(t *testing.T) {
 		switch {
 		case editErr == nil:
 			landed++
-			if want := appQueuedSubmission(appMarkedSubmission(t, "new body", "new", appCutRead())); len(submissions) != 1 || !reflect.DeepEqual(submissions[0], want) || live.Text != "new" {
+			want := appQueuedSubmission(appMarkedSubmission(t, "new body", "new", appCutRead()))
+			want.ClientID = "q"
+			if len(submissions) != 1 || !reflect.DeepEqual(submissions[0], want) || live.Text != "new" {
 				t.Fatalf("run %d: the edit landed and %+v was sent, %+v went live", i, submissions, live)
 			}
 		case wireCode(editErr) == appwire.CodeSent:
 			refused++
-			if want := appQueuedSubmission(appMarkedSubmission(t, "old body", "old", appSpecsRead())); len(submissions) != 1 || !reflect.DeepEqual(submissions[0], want) || live.Text != "old" {
+			want := appQueuedSubmission(appMarkedSubmission(t, "old body", "old", appSpecsRead()))
+			want.ClientID = "q"
+			if len(submissions) != 1 || !reflect.DeepEqual(submissions[0], want) || live.Text != "old" {
 				t.Fatalf("run %d: the edit was refused and %+v was sent, %+v went live", i, submissions, live)
 			}
 		default:

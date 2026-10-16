@@ -450,7 +450,10 @@ type appAgent struct {
 }
 
 // appTurnMark is what this process knows of one of the person's messages: the
-// turn it opened and the client's own id for it, which no record keeps.
+// turn it opened and the client's own id for it. A conversation whose engine
+// keeps the id on the message's line ([session.Submission.ClientID]) is read
+// from there first; this id is the fallback for a line with none, and for a
+// host that cannot keep one.
 //
 // IT IS NOT WHERE A MESSAGE'S WORDS OR ATTACHMENTS COME FROM. Those are on the
 // message's own line in the record, written with it ([appSubmission]), so a
@@ -1511,6 +1514,17 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 			}
 		}
 	}
+	// THE CLIENT'S ID IS KEPT ON THE ACCEPTED LINE where the conversation's host
+	// says it keeps one, so it survives this process; elsewhere it stays the
+	// process-local fact it always was (a.marks) and no host is asked to drop it.
+	keptID := appKeptClientID(live.conn.Conv, clientID)
+	// An id the record would not keep as given is the app's to correct, and is
+	// refused here as bad_params before any turn is claimed or record written.
+	if keptID != "" {
+		if err := (session.Submission{ClientID: keptID}).Check(); err != nil {
+			return 0, appEngineError(err)
+		}
+	}
 	// A conversation joined on a window's host can have heard from the person
 	// in that window too, so its count is read again before it is used.
 	if !live.conn.Assembled && live.conn.Transcript != "" {
@@ -1564,7 +1578,9 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	var composedMark *session.ComposedMark
 	if composer != nil {
 		var receipt session.SubmissionReceipt
-		receipt, events, err = composer.SubmitComposed(context.Background(), appSubmission(text, shown))
+		message := appSubmission(text, shown)
+		message.ClientID = keptID
+		receipt, events, err = composer.SubmitComposed(context.Background(), message)
 		if err == nil {
 			composedMark = &session.ComposedMark{MessageID: receipt.MessageID, Media: receipt.Media, Delivery: &session.MessageDelivery{Mode: receipt.Delivery, Model: receipt.SeenBy}}
 			if shown != nil && shown.composed != nil {
@@ -1572,8 +1588,13 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 				composedMark.Annotation = shown.composed.annotation
 			}
 		}
-	} else if shown != nil {
-		events, err = live.conn.Conv.SubmitMessage(context.Background(), appSubmission(text, shown))
+	} else if shown != nil || keptID != "" {
+		// An id with no mark beside it is still a SubmitMessage: Text is the
+		// words as Submit takes them and Said stays nil, so the line reads as
+		// the plain message it is.
+		message := appSubmission(text, shown)
+		message.ClientID = keptID
+		events, err = live.conn.Conv.SubmitMessage(context.Background(), message)
 	} else {
 		events, err = live.conn.Conv.Submit(context.Background(), text)
 	}
@@ -2623,6 +2644,13 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 			if entry.Kind == appwire.EntryUser {
 				entry.ClientID = mark.clientID
 			}
+		}
+		// THE RECORD'S ID WINS: it was written with the message and outlives the
+		// process whose map the fallback above is. A line with none keeps the
+		// process-local one, and a legacy line with neither has none — an id is
+		// never matched up by turn, time or words.
+		if entry.Kind == appwire.EntryUser && item.Person != nil && item.Person.ClientID != "" {
+			entry.ClientID = item.Person.ClientID
 		}
 		entries = append(entries, entry)
 		from = append(from, i)

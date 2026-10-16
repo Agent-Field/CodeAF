@@ -1040,6 +1040,20 @@ func appSubmission(text string, shown *appSending) session.Submission {
 	return submission
 }
 
+// appKeptClientID is the id to hand the engine with a message: clientID when
+// the conversation's host keeps one on the message's line, and empty when it
+// has none to keep or its host cannot say it does ([remote.Agent] says so in its
+// welcome; a conversation held in this process always can).
+func appKeptClientID(conv appConversation, clientID string) string {
+	if clientID == "" || !appKeepsQueuedMarks(conv) {
+		return ""
+	}
+	if door, ok := conv.(interface{ MessageClientIDsKnown() bool }); ok && !door.MessageClientIDsKnown() {
+		return ""
+	}
+	return clientID
+}
+
 func appKeepsQueued(conv any) bool {
 	door, ok := conv.(interface{ QueuedMarksKnown() bool })
 	return !ok || door.QueuedMarksKnown()

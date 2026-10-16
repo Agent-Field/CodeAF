@@ -430,7 +430,10 @@ func TestAppAQueuedMessageIsMarkedQueuedAndASentOneIsNot(t *testing.T) {
 	conv.mu.Lock()
 	handed := append([]session.Submission(nil), conv.submissions...)
 	conv.mu.Unlock()
-	if len(handed) != 1 || !handed[0].Queued || handed[0].Said != nil || handed[0].Text != "then the lint" {
+	// Both reach the door as SubmitMessage envelopes carrying the app's id, with
+	// the words as typed and Said nil: an id alone makes nothing "authored".
+	if len(handed) != 2 || handed[0].Queued || handed[0].Said != nil || handed[0].Text != "run the tests" || handed[0].ClientID != "c-1" ||
+		!handed[1].Queued || handed[1].Said != nil || handed[1].Text != "then the lint" || handed[1].ClientID != "c-2" {
 		t.Fatalf("the door was handed %+v", handed)
 	}
 
