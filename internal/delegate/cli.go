@@ -262,8 +262,15 @@ func RunChild(ctx context.Context, inv *Invocation, stdout io.Writer) string {
 	defer cancel()
 	keepHold()
 	finished := make(chan struct{})
-	defer close(finished)
-	go watchHost(ctx, cancel, finished)
+	watchDone := make(chan struct{})
+	go watchHost(ctx, cancel, finished, watchDone)
+	defer func() {
+		// The watcher belongs to this invocation, including its grace callback.
+		// Nothing may still inspect or end the child after RunChild returns.
+		close(finished)
+		cancel()
+		<-watchDone
+	}()
 	api, _ := ModelAPIFromEnv()
 	emitter := NewEmitter(stdout)
 	host := &childHost{inv: inv, emitter: emitter, api: api, ending: StatusFail}
@@ -329,7 +336,8 @@ var (
 // a last test run — is ended outright, because nobody is left to do it and the
 // folder it is working in is free for the next run. One that finished within
 // the grace (finished closed) is left to leave on its own.
-func watchHost(ctx context.Context, cancel context.CancelFunc, finished <-chan struct{}) {
+func watchHost(ctx context.Context, cancel context.CancelFunc, finished <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
 	host := hostPID()
 	tick := time.NewTicker(hostWatch)
 	defer tick.Stop()
