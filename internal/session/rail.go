@@ -62,17 +62,25 @@ func (a *Agent) railBlockLocked() error {
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
 	}
-	if !a.config.InTask && !a.config.Errand {
-		if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
-			spentToday := spentTodayOnLedger()
-			if a.crewDayHeld != nil {
-				spentToday = max(spentToday, a.crewDayHeld.Total())
-			}
-			if spentToday >= daily {
-				return spendRailReached{said: fmt.Sprintf(
-					"daily limit reached · %s spent of %s · /budget day changes it",
-					railMoney(spentToday), railMoney(daily))}
-			}
+	// THE DAILY CEILING BINDS EVERY TURN-STARTING PATH, not interactive chat
+	// alone. It is the machine-wide limit over a day (internal/config), read off
+	// the shared ledger, so a task node's runner (InTask) and the home errand
+	// (Errand) are held to it exactly as a chat turn is: a conversation that has
+	// spent the day's allowance must start no new work, however the work was
+	// asked for. Checking it here rather than only in the crew guard is what
+	// closes the two roads that had no guard behind them - a task under
+	// `--one-model`, which has no crew, and an InTask turn, which skipped this
+	// block. It is a CEILING READ and never a tally, so a path already guarded by
+	// the crew's own day cap is refused in two places, never charged twice (#1546).
+	if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
+		spentToday := spentTodayOnLedger()
+		if a.crewDayHeld != nil {
+			spentToday = max(spentToday, a.crewDayHeld.Total())
+		}
+		if spentToday >= daily {
+			return spendRailReached{said: fmt.Sprintf(
+				"daily limit reached · %s spent of %s · /budget day changes it",
+				railMoney(spentToday), railMoney(daily))}
 		}
 	}
 	rail := a.spendRailUSD()

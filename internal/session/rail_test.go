@@ -190,6 +190,62 @@ func TestSpendRailRefusesTurnWhenDailyBudgetExceeded(t *testing.T) {
 	}
 }
 
+// TestTheDailyCeilingBindsTaskAndErrandTurnsToo guards #1546: the daily budget
+// is a machine-wide ceiling, and before this fix [Agent.railBlockLocked] skipped
+// it for an InTask runner (a task node, including one under `--one-model`, which
+// has no crew guard behind it) and for the home Errand. Each of those is now
+// held to the day's allowance exactly as a chat turn is: a conversation past the
+// ceiling starts no new turn, however the work was asked for.
+func TestTheDailyCeilingBindsTaskAndErrandTurnsToo(t *testing.T) {
+	for _, posture := range []struct {
+		what   string
+		config func(*Config)
+	}{
+		{"a task node runner", func(cfg *Config) { cfg.InTask = true }},
+		{"a task node under one-model", func(cfg *Config) { cfg.InTask = true; cfg.OneModel = true }},
+		{"the home errand", func(cfg *Config) { cfg.Errand = true }},
+	} {
+		t.Run(posture.what, func(t *testing.T) {
+			profileDir := t.TempDir()
+			if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
+				t.Fatalf("write daily budget: %v", err)
+			}
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+				cfg.ProfileDir = profileDir
+				posture.config(cfg)
+			})
+			// The day's spend is over the ceiling, read the way the rail reads it.
+			agent.crewDayHeld = NewSpendDay(1.50)
+
+			err := agent.railBlockLocked()
+			if err == nil {
+				t.Fatalf("%s past the daily ceiling was allowed to start a turn", posture.what)
+			}
+			if !errors.Is(err, ErrSpendRail) {
+				t.Fatalf("the refusal must carry the sentinel: %v", err)
+			}
+			if !strings.Contains(err.Error(), "daily limit reached") {
+				t.Fatalf("error = %v, want it to say the daily limit was reached", err)
+			}
+		})
+	}
+
+	// And under the ceiling, each posture still starts: the fix refuses only the
+	// turn the day's allowance cannot pay for.
+	profileDir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
+		t.Fatalf("write daily budget: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ProfileDir = profileDir
+		cfg.InTask = true
+	})
+	agent.crewDayHeld = NewSpendDay(0.50)
+	if err := agent.railBlockLocked(); err != nil {
+		t.Fatalf("a task turn under the daily ceiling was refused: %v", err)
+	}
+}
+
 // Raising the day's allowance does not remove a conversation's separate cap.
 // The named conversation setting must release the same live agent on retry.
 func TestBudgetScopeAndLiveConversationRecovery(t *testing.T) {
