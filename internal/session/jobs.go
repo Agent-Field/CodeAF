@@ -959,9 +959,9 @@ func (r *jobRegistry) beginRender(one *job, kind, model, run, call string, notif
 		ledger.notify = notify
 	}
 	ledger.mu.Unlock()
-	id := ledger.begin(one.id, kind, model, run, call, time.Now())
-	if id == "" {
-		return errors.New("the render history could not be saved; free space or fix permissions before starting a render")
+	id, err := ledger.beginChecked(one.id, kind, model, run, call, time.Now())
+	if err != nil {
+		return err
 	}
 	one.mu.Lock()
 	one.ledger, one.renderID = ledger, id

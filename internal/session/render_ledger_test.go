@@ -55,10 +55,15 @@ func TestRenderChargeIsKnownOnlyWhenTheProviderSaidSo(t *testing.T) {
 }
 
 // openForTest opens a ledger on a fresh file with a fixed clock.
+func openTestRenderLedger(t *testing.T, path, session string, now time.Time) *renderLedger {
+	t.Helper()
+	return openRenderLedgerUsing(newRenderStore(path), session, now, newRenderRetention(renderHistoryOwners))
+}
+
 func openForTest(t *testing.T) (*renderLedger, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "renders.jsonl")
-	return openRenderLedger(path, "sess", time.Unix(1_700_000_000, 0)), path
+	return openTestRenderLedger(t, path, "sess", time.Unix(1_700_000_000, 0)), path
 }
 
 var epoch = time.Unix(1_700_000_000, 0)
@@ -80,7 +85,7 @@ func TestRenderLedgerSealsOnceAndSurvivesReopen(t *testing.T) {
 	if rows := ledgerRows(t, path); len(rows) != 2 {
 		t.Fatalf("%d rows, want start + one end", len(rows))
 	}
-	reopened := openRenderLedger(path, "sess", epoch.Add(time.Hour))
+	reopened := openTestRenderLedger(t, path, "sess", epoch.Add(time.Hour))
 	got, err := reopened.get(id)
 	if err != nil || got.State != RenderCancelled || got.Upstream != "unknown" || got.Committed || got.Path != "" ||
 		got.Charge != RenderChargeUnknown || got.DurationMS == nil || *got.DurationMS != 1000 ||
@@ -144,13 +149,13 @@ func TestRenderLedgerMarksALeftRunningRenderInterruptedOnce(t *testing.T) {
 	first, path := openForTest(t)
 	id := first.begin(1, "music", "m", "", "", epoch)
 	first.close()
-	second := openRenderLedger(path, "sess", epoch.Add(time.Minute))
+	second := openTestRenderLedger(t, path, "sess", epoch.Add(time.Minute))
 	got, _ := second.get(id)
 	if got.State != RenderInterrupted || got.Charge != RenderChargeUnknown || got.Committed {
 		t.Fatalf("record = %+v, want interrupted with unknown charge", got)
 	}
 	second.close()
-	openRenderLedger(path, "sess", epoch.Add(2*time.Minute)).close()
+	openTestRenderLedger(t, path, "sess", epoch.Add(2*time.Minute)).close()
 	if rows := ledgerRows(t, path); len(rows) != 2 {
 		t.Fatalf("%d rows after two reopens, want 2", len(rows))
 	}
@@ -159,7 +164,7 @@ func TestRenderLedgerMarksALeftRunningRenderInterruptedOnce(t *testing.T) {
 // Read without owning the session, an unfinished render is unknown, never running.
 func TestReadRendersShowsAnUnfinishedRenderAsUnknown(t *testing.T) {
 	dir := t.TempDir()
-	ledger := openRenderLedger(filepath.Join(dir, placeRenders), "s", epoch)
+	ledger := openTestRenderLedger(t, filepath.Join(dir, placeRenders), "s", epoch)
 	id := ledger.begin(1, "video", "m", "", "", epoch)
 	ledger.close()
 	page, err := ReadRenders(dir, 0, "")
@@ -225,7 +230,7 @@ func TestRenderHistoryIsCompleteAcrossReopenAndPaging(t *testing.T) {
 	}
 	ledger.close()
 
-	reopened := openRenderLedger(path, "sess", epoch.Add(24*time.Hour))
+	reopened := openTestRenderLedger(t, path, "sess", epoch.Add(24*time.Hour))
 	defer reopened.close()
 	for _, probe := range []int{0, 1, 199, 200, 449} { // the oldest are far outside any 200-record window
 		got, err := reopened.get(ids[probe])
@@ -675,7 +680,7 @@ func TestRenderRestoreThatCannotFinishMarksNothingAndRetriesOnTheNextOpen(t *tes
 		t.Fatalf("a failed restore wrote %d rows, want none added", len(rows)-1)
 	}
 
-	healthy := openRenderLedger(path, "sess", epoch.Add(2*time.Minute))
+	healthy := openTestRenderLedger(t, path, "sess", epoch.Add(2*time.Minute))
 	defer healthy.close()
 	if healthy.restoreErr != nil {
 		t.Fatal(healthy.restoreErr)
@@ -683,7 +688,7 @@ func TestRenderRestoreThatCannotFinishMarksNothingAndRetriesOnTheNextOpen(t *tes
 	if got, _ := healthy.get(id); got.State != RenderInterrupted {
 		t.Fatalf("after a clean open = %+v, want interrupted", got)
 	}
-	openRenderLedger(path, "sess", epoch.Add(3*time.Minute)).close()
+	openTestRenderLedger(t, path, "sess", epoch.Add(3*time.Minute)).close()
 	if rows := ledgerRows(t, path); len(rows) != 2 {
 		t.Fatalf("%d rows, want start + one interrupted", len(rows))
 	}
@@ -691,7 +696,7 @@ func TestRenderRestoreThatCannotFinishMarksNothingAndRetriesOnTheNextOpen(t *tes
 
 func TestRenderCannotStartWithoutItsJournal(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing", "renders.jsonl")
-	ledger := openRenderLedger(path, "s", time.Now())
+	ledger := openTestRenderLedger(t, path, "s", time.Now())
 	defer ledger.close()
 	if id := ledger.begin(1, "video", "chosen", "run", "call", time.Now()); id != "" {
 		t.Fatalf("unrecorded start admitted: %s", id)
@@ -707,7 +712,7 @@ func TestFailedRenderReceiptStaysOwnedUntilItCanBeSaved(t *testing.T) {
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	ledger := openRenderLedger(filepath.Join(dir, "renders.jsonl"), "s", time.Now())
+	ledger := openTestRenderLedger(t, filepath.Join(dir, "renders.jsonl"), "s", time.Now())
 	defer ledger.close()
 	id := ledger.begin(1, "video", "chosen", "run", "call", time.Now())
 	if id == "" {
@@ -732,8 +737,8 @@ func TestFailedRenderReceiptStaysOwnedUntilItCanBeSaved(t *testing.T) {
 	if next := ledger.begin(2, "video", "chosen", "run2", "call2", time.Now()); next != "" {
 		t.Fatal("new paid start admitted with unflushed receipt")
 	}
-	if len(ledger.live) != 1 {
-		t.Fatalf("failed starts grew retained records: %d", len(ledger.live))
+	if len(ledger.live) != 0 || len(ledger.owner.pending(ledger.store.path)) != 1 {
+		t.Fatal("the released receipt was not transferred to its bounded process owner")
 	}
 	if err := os.Rename(dir+"-offline", dir); err != nil {
 		t.Fatal(err)
@@ -747,5 +752,168 @@ func TestFailedRenderReceiptStaysOwnedUntilItCanBeSaved(t *testing.T) {
 	}
 	if _, held := ledger.live[id]; held {
 		t.Fatal("saved released receipt stayed pinned")
+	}
+}
+
+func TestRenderReceiptTransfersAcrossClosedOwnersAndRecoversOnce(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "session")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "renders.jsonl")
+	owner := newRenderRetention(2)
+	first := openRenderLedgerUsing(newRenderStore(path), "same-session", epoch, owner)
+	id := first.begin(1, "video", "chosen", "run", "call", epoch)
+	if id == "" {
+		t.Fatal("start refused")
+	}
+	_ = first.file.Close()
+	first.file = nil
+	if err := os.Rename(dir, dir+"-offline"); err != nil {
+		t.Fatal(err)
+	}
+	cost := 0.29
+	first.settle(id, renderPatch{state: RenderFailed, usage: &ai.Usage{Cost: &cost}}, epoch.Add(time.Second))
+	first.release(id)
+	first.close()
+	first = nil // The old session object no longer owns the receipt.
+	second := openRenderLedgerUsing(newRenderStore(path), "same-session", epoch.Add(time.Hour), owner)
+	got, err := second.get(id)
+	if err != nil || got.State != RenderFailed || got.CostUSD == nil || *got.CostUSD != cost || got.Persistence != "unavailable" {
+		t.Fatalf("closed owner lost actual receipt: %#v %v", got, err)
+	}
+	if next := second.begin(2, "video", "chosen", "run2", "call2", epoch); next != "" {
+		t.Fatal("unwritable reopen admitted a paid call")
+	}
+	second.close()
+	if err := os.Rename(dir+"-offline", dir); err != nil {
+		t.Fatal(err)
+	}
+	third := openRenderLedgerUsing(newRenderStore(path), "same-session", epoch.Add(2*time.Hour), owner)
+	defer third.close()
+	got, err = third.get(id)
+	if err != nil || got.State != RenderFailed || got.CostUSD == nil || *got.CostUSD != cost || got.Persistence != "" {
+		t.Fatalf("recovery changed actual receipt: %#v %v", got, err)
+	}
+	rows := ledgerRows(t, path)
+	ends := 0
+	for _, row := range rows {
+		if row.Ev == renderEvEnd {
+			ends++
+		}
+	}
+	if ends != 1 || len(owner.pending(path)) != 0 {
+		t.Fatalf("recovery duplicated/forgot ending: %d %#v", ends, rows)
+	}
+}
+
+func TestRenderProcessOwnerRefusesAcrossAgentsWithoutEvictingReceipts(t *testing.T) {
+	owner := newRenderRetention(2)
+	parent := t.TempDir()
+	newLedger := func(name string) *renderLedger {
+		dir := filepath.Join(parent, name)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return openRenderLedgerUsing(newRenderStore(filepath.Join(dir, "renders.jsonl")), name, epoch, owner)
+	}
+	a, b, c := newLedger("a"), newLedger("b"), newLedger("c")
+	defer a.close()
+	defer b.close()
+	defer c.close()
+	idA := a.begin(1, "music", "chosen", "run", "call", epoch)
+	idB := b.begin(1, "video", "chosen", "run", "call", epoch)
+	if idA == "" || idB == "" {
+		t.Fatal("initial slots refused")
+	}
+	if id := c.begin(1, "video", "chosen", "run", "call", epoch); id != "" {
+		t.Fatal("process owner exceeded cross-agent bound")
+	}
+	_ = a.file.Close()
+	a.file = nil
+	dir := filepath.Dir(a.store.path)
+	if err := os.Rename(dir, dir+"-offline"); err != nil {
+		t.Fatal(err)
+	}
+	a.settle(idA, renderPatch{state: RenderFailed}, epoch)
+	a.release(idA)
+	a.close()
+	if id := c.begin(2, "video", "chosen", "run", "call", epoch); id != "" {
+		t.Fatal("unflushed receipt was evicted for another agent")
+	}
+	if err := os.Rename(dir+"-offline", dir); err != nil {
+		t.Fatal(err)
+	}
+	reopened := openRenderLedgerUsing(newRenderStore(a.store.path), "a", epoch, owner)
+	defer reopened.close()
+	idC := c.begin(3, "video", "chosen", "run", "call", epoch)
+	if idC == "" {
+		t.Fatal("saved receipt did not release process slot")
+	}
+	b.release(idB)
+	c.release(idC)
+}
+
+func TestSavingAnOlderRenderSnapshotCannotLoseItsNewCharge(t *testing.T) {
+	owner := newRenderRetention(1)
+	if !owner.reserve("p", "r") {
+		t.Fatal("reserve")
+	}
+	owner.retain("p", RenderRecord{ID: "r", State: RenderCancelled, Charge: RenderChargeUnknown}, renderEvEnd)
+	old := owner.pending("p")[0]
+	cost := 0.31
+	owner.retain("p", RenderRecord{ID: "r", State: RenderCancelled, Charge: RenderCharged, CostUSD: &cost}, renderEvCharge)
+	if owner.saved(old.key, old.revision, old.event) {
+		t.Fatal("stale persistence retired newer charge")
+	}
+	next := owner.pending("p")
+	if len(next) != 1 || next[0].record.CostUSD == nil || *next[0].record.CostUSD != cost || next[0].event != renderEvCharge {
+		t.Fatalf("new charge lost or second ending requested: %#v", next)
+	}
+	owner.release("p", "r")
+	if owner.reserve("other", "new") {
+		t.Fatal("unflushed charge slot evicted")
+	}
+	if !owner.saved(next[0].key, next[0].revision, next[0].event) || !owner.reserve("other", "new") {
+		t.Fatal("persisted charge did not free reservation")
+	}
+}
+
+func TestLateRenderChargeAfterOwnerCloseReachesItsReplacement(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "renders.jsonl")
+	owner := newRenderRetention(2)
+	first := openRenderLedgerUsing(newRenderStore(path), "session", epoch, owner)
+	id := first.begin(1, "video", "chosen", "run", "call", epoch)
+	if id == "" {
+		t.Fatal("start refused")
+	}
+	first.settle(id, renderPatch{state: RenderCancelled}, epoch.Add(time.Second))
+	first.close()
+	second := openRenderLedgerUsing(newRenderStore(path), "session", epoch.Add(time.Hour), owner)
+	defer second.close()
+	cost := 0.43
+	first.charge(id, &ai.Usage{Cost: &cost}, epoch.Add(2*time.Hour))
+	first.release(id)
+	got, err := second.get(id)
+	if err != nil || got.State != RenderCancelled || got.CostUSD == nil || *got.CostUSD != cost {
+		t.Fatalf("replacement lost late charge: %#v %v", got, err)
+	}
+	*got.CostUSD = 999 // A reader's copy must not edit the process owner's money.
+	page, err := second.list(50, "")
+	if err != nil || len(page.Renders) != 1 || page.Renders[0].CostUSD == nil || *page.Renders[0].CostUSD != cost {
+		t.Fatalf("late receipt recovery: %#v %v", page, err)
+	}
+	ends, receipts := 0, 0
+	for _, row := range ledgerRows(t, path) {
+		if row.Ev == renderEvEnd {
+			ends++
+		}
+		if row.Ev == renderEvCharge {
+			receipts++
+		}
+	}
+	if ends != 1 || receipts != 1 {
+		t.Fatalf("late receipt duplicated ending: %d endings %d receipts", ends, receipts)
 	}
 }

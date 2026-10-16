@@ -450,14 +450,13 @@ type RenderPage struct {
 // until that goroutine returns, because a provider that ignored a cancel may
 // still report what it charged.
 type renderLive struct {
-	rec      RenderRecord
-	usage    *ai.Usage // a charge reported before the ending, carried into it
-	dirty    bool
-	released bool
+	rec   RenderRecord
+	usage *ai.Usage // a charge reported before the ending, carried into it
 }
 
 type renderLedger struct {
 	store   renderStore
+	owner   *renderRetention
 	session string
 	mu      sync.Mutex
 	file    *os.File
@@ -485,8 +484,12 @@ func openRenderLedger(path, session string, now time.Time) *renderLedger {
 
 // openRenderLedgerOn is [openRenderLedger] over a store with its own bounds.
 func openRenderLedgerOn(store renderStore, session string, now time.Time) *renderLedger {
+	return openRenderLedgerUsing(store, session, now, processRenderHistory)
+}
+
+func openRenderLedgerUsing(store renderStore, session string, now time.Time, owner *renderRetention) *renderLedger {
 	path := store.path
-	ledger := &renderLedger{store: store, session: session, live: map[string]*renderLive{}}
+	ledger := &renderLedger{store: store, owner: owner, session: strings.Clone(session), live: map[string]*renderLive{}}
 	if path == "" {
 		// A session with no folder (the legacy layout) has no durable home for
 		// its history, so it gets a private temporary file that lives as long as
@@ -497,6 +500,11 @@ func openRenderLedgerOn(store renderStore, session string, now time.Time) *rende
 			ledger.scratch = true
 			_ = temp.Close()
 		}
+		return ledger
+	}
+	// Recover actual receipts from a former owner before interpreting its start
+	// records. A failed retry leaves the process-owned facts intact.
+	if _, err := ledger.flushPendingLocked(); err != nil {
 		return ledger
 	}
 	// The left-running renders are marked interrupted only when the whole file
@@ -565,25 +573,28 @@ func (l *renderLedger) flushPendingLocked() ([]RenderRecord, error) {
 	if l.restoreErr != nil {
 		return nil, l.restoreErr
 	}
-	for id, entry := range l.live {
-		if !entry.dirty {
-			continue
-		}
-		rec := entry.rec
+	for _, pending := range l.owner.pending(l.store.path) {
+		rec := pending.record
 		rec.Persistence = ""
-		if err := l.append(renderEvCharge, rec); err != nil {
+		if err := l.append(pending.event, rec); err != nil {
 			return saved, err
 		}
-		entry.rec, entry.dirty = rec, false
-		saved = append(saved, rec)
-		if entry.released {
-			delete(l.live, id)
+		if !l.owner.saved(pending.key, pending.revision, pending.event) {
+			continue
 		}
+		if entry := l.live[rec.ID]; entry != nil {
+			entry.rec = rec
+		}
+		saved = append(saved, rec)
+	}
+	if l.owner.hasPending(l.store.path) {
+		return saved, ErrRenderBusy
 	}
 	return saved, nil
 }
 
 func (l *renderLedger) emit(rec RenderRecord) {
+	rec = cloneRenderRecord(rec)
 	if l.notify != nil {
 		l.notify(rec)
 	}
@@ -591,6 +602,11 @@ func (l *renderLedger) emit(rec RenderRecord) {
 
 // begin records a render's start and returns its stable id.
 func (l *renderLedger) begin(job int, kind, model, run, call string, now time.Time) string {
+	id, _ := l.beginChecked(job, kind, model, run, call, now)
+	return id
+}
+
+func (l *renderLedger) beginChecked(job int, kind, model, run, call string, now time.Time) (string, error) {
 	l.mu.Lock()
 	var notices []RenderRecord
 	defer func() {
@@ -600,26 +616,30 @@ func (l *renderLedger) begin(job int, kind, model, run, call string, now time.Ti
 		}
 	}()
 	if l.closed {
-		return ""
+		return "", errors.New("the render session has closed")
 	}
 	saved, err := l.flushPendingLocked()
 	notices = append(notices, saved...)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("pending render facts must be saved before another render starts: %w", err)
 	}
 	rec := RenderRecord{
 		ID: newRenderID(), Job: job, Session: l.session, Kind: kind, State: RenderRunning,
-		Model: model, Started: now, Run: run, Call: call, Charge: RenderChargeUnknown,
+		Model: strings.Clone(model), Started: now, Run: strings.Clone(run), Call: strings.Clone(call), Charge: RenderChargeUnknown,
 	}
-	if rec.ID == "" {
-		return ""
+	if rec.ID == "" || len(model) > 1024 || len(run) > 1024 || len(call) > 1024 || len(l.session) > 1024 {
+		return "", errors.New("the render identity is unavailable or exceeds the metadata limit")
+	}
+	if !l.owner.reserve(l.store.path, rec.ID) {
+		return "", errors.New("the process has no room to retain another render outcome; restore storage for unsaved renders and retry")
 	}
 	if err := l.append(renderEvStart, rec); err != nil {
-		return ""
+		l.owner.release(l.store.path, rec.ID)
+		return "", fmt.Errorf("the render start could not be saved: %w", err)
 	}
 	l.live[rec.ID] = &renderLive{rec: rec}
 	notices = append(notices, rec)
-	return rec.ID
+	return rec.ID, nil
 }
 
 func (l *renderLedger) applyEnd(rec *RenderRecord, patch renderPatch, now time.Time) {
@@ -660,7 +680,8 @@ func (l *renderLedger) settle(id string, patch renderPatch, now time.Time) bool 
 	l.applyEnd(&entry.rec, patch, now)
 	entry.rec.Persistence = ""
 	if err := l.append(renderEvEnd, entry.rec); err != nil {
-		entry.rec.Persistence, entry.dirty = "unavailable", true
+		entry.rec.Persistence = "unavailable"
+		l.owner.retain(l.store.path, entry.rec, renderEvEnd)
 	}
 	rec := entry.rec
 	l.mu.Unlock()
@@ -694,7 +715,8 @@ func (l *renderLedger) charge(id string, usage *ai.Usage, now time.Time) {
 	entry.rec.Charge, entry.rec.CostUSD = renderCharge(usage)
 	entry.rec.Persistence = ""
 	if err := l.append(renderEvCharge, entry.rec); err != nil {
-		entry.rec.Persistence, entry.dirty = "unavailable", true
+		entry.rec.Persistence = "unavailable"
+		l.owner.retain(l.store.path, entry.rec, renderEvCharge)
 	}
 	rec := entry.rec
 	l.mu.Unlock()
@@ -704,35 +726,36 @@ func (l *renderLedger) charge(id string, usage *ai.Usage, now time.Time) {
 // release says the render's goroutine has returned: nothing more can arrive.
 func (l *renderLedger) release(id string) {
 	l.mu.Lock()
-	if entry := l.live[id]; entry != nil && entry.dirty {
-		entry.released = true
-	} else {
-		delete(l.live, id)
-	}
+	delete(l.live, id)
+	l.owner.release(l.store.path, id)
 	l.mu.Unlock()
 }
 
 func (l *renderLedger) get(id string) (RenderRecord, error) {
 	l.mu.Lock()
 	if entry := l.live[id]; entry != nil {
-		rec := entry.rec
+		rec := cloneRenderRecord(entry.rec)
 		l.mu.Unlock()
 		return rec, nil
 	}
 	l.mu.Unlock()
+	if rec, ok := l.owner.get(l.store.path, id); ok {
+		return rec, nil
+	}
 	rec, err := l.store.get(id)
 	return l.settleUnresolved(rec), err
 }
 
 func (l *renderLedger) list(limit int, cursor string) (RenderPage, error) {
 	l.mu.Lock()
-	for _, entry := range l.live {
-		if entry.dirty {
-			l.mu.Unlock()
-			return RenderPage{}, ErrRenderBusy
-		}
-	}
+	saved, flushErr := l.flushPendingLocked()
 	l.mu.Unlock()
+	for _, rec := range saved {
+		l.emit(rec)
+	}
+	if flushErr != nil {
+		return RenderPage{}, ErrRenderBusy
+	}
 	page, err := l.store.list(limit, cursor)
 	if err != nil {
 		return page, err
@@ -740,7 +763,7 @@ func (l *renderLedger) list(limit int, cursor string) (RenderPage, error) {
 	l.mu.Lock()
 	for index, rec := range page.Renders {
 		if entry := l.live[rec.ID]; entry != nil {
-			page.Renders[index] = entry.rec
+			page.Renders[index] = cloneRenderRecord(entry.rec)
 		}
 	}
 	l.mu.Unlock()
@@ -790,6 +813,9 @@ func ReadRenders(sessionDir string, limit int, cursor string) (RenderPage, error
 	if path == "" {
 		return RenderPage{Renders: []RenderRecord{}}, nil
 	}
+	if processRenderHistory.hasPending(path) {
+		return RenderPage{}, ErrRenderBusy
+	}
 	page, err := newRenderStore(path).list(limit, cursor)
 	for index := range page.Renders {
 		if page.Renders[index].State == RenderRunning {
@@ -805,6 +831,9 @@ func ReadRender(sessionDir, id string) (RenderRecord, error) {
 	path := Place{Dir: sessionDir}.join(placeRenders)
 	if path == "" {
 		return RenderRecord{}, ErrRenderNotFound
+	}
+	if rec, ok := processRenderHistory.get(path, id); ok {
+		return rec, nil
 	}
 	rec, err := newRenderStore(path).get(id)
 	if rec.State == RenderRunning {
