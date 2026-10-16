@@ -891,13 +891,13 @@ func TestAppCrewSaysSinceWhenNoMemberHasRun(t *testing.T) {
 func TestCrewHistoryTasksCarryTheirOwner(t *testing.T) {
 	kept := &appCrewExtra{History: []string{"7", "9"}, HistoryOwner: "agent-a"}
 	got := crewHistoryTasks(kept, "agent-b")
-	want := []appwire.CrewHistoryTask{{Task: "7", Owner: "agent-a"}, {Task: "9", Owner: "agent-a"}}
+	want := []appwire.CrewHistoryTask{{Task: "agent-a:7", Owner: "agent-a"}, {Task: "agent-a:9", Owner: "agent-a"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("owner kept at creation must win over the founder: %v", got)
 	}
 	// A layer from before the owner was kept: the founder, the manager it was made under.
 	legacy := &appCrewExtra{History: []string{"7"}}
-	if got := crewHistoryTasks(legacy, "agent-b"); len(got) != 1 || got[0].Owner != "agent-b" || got[0].Task != "7" {
+	if got := crewHistoryTasks(legacy, "agent-b"); len(got) != 1 || got[0].Owner != "agent-b" || got[0].Task != "agent-b:7" {
 		t.Fatalf("legacy falls back to the founder: %v", got)
 	}
 	// Neither: nothing is guessed. No ids: nothing to say.
@@ -911,5 +911,19 @@ func TestCrewHistoryTasksCarryTheirOwner(t *testing.T) {
 	raw, _ := json.Marshal(kept)
 	if !strings.Contains(string(raw), `"history":["7","9"]`) {
 		t.Fatalf("legacy history lost: %s", raw)
+	}
+}
+
+func TestCrewLegacyCanonicalHistoryNeedsNoFounder(t *testing.T) {
+	extra := &appCrewExtra{History: []string{"original:1", "original:3", "original:2"}}
+	want := []appwire.CrewHistoryTask{{Task: "original:1", Owner: "original"}, {Task: "original:3", Owner: "original"}, {Task: "original:2", Owner: "original"}}
+	if got := crewHistoryTasks(extra, ""); !reflect.DeepEqual(got, want) {
+		t.Fatalf("lost canonical original owner: %#v", got)
+	}
+	if got := crewHistoryTasks(extra, "replacement"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("replacement founder cannot rewrite embedded ownership: %#v", got)
+	}
+	if got := crewHistoryTasks(&appCrewExtra{History: []string{"3 tasks from before"}}, ""); len(got) != 0 {
+		t.Fatalf("descriptive legacy text is not a task reference: %#v", got)
 	}
 }

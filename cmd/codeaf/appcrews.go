@@ -1300,20 +1300,26 @@ func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time
 	})
 }
 
-// crewHistoryTasks pairs the kept task ids with the agent that held them. A
-// layer from before the owner was kept falls back to the team's founder, the
-// manager it was made under; with neither, nothing is said rather than guessed.
+// crewHistoryTasks uses the owner kept at creation, or the immutable owner
+// embedded in a canonical legacy task ID. A changed/current manager is never a
+// fallback. Very old local-only numbers require the team's original founder.
 func crewHistoryTasks(extra *appCrewExtra, founder string) []appwire.CrewHistoryTask {
-	owner := extra.HistoryOwner
-	if owner == "" {
-		owner = founder
+	fallback := extra.HistoryOwner
+	if fallback == "" {
+		fallback = founder
 	}
-	if owner == "" || len(extra.History) == 0 {
-		return nil
-	}
-	out := make([]appwire.CrewHistoryTask, 0, len(extra.History))
+	var out []appwire.CrewHistoryTask
 	for _, id := range extra.History {
-		out = append(out, appwire.CrewHistoryTask{Task: id, Owner: owner})
+		owner := fallback
+		if original, local, ok := appSplitID(id); ok {
+			if n, err := strconv.ParseUint(local, 10, 64); err == nil && n > 0 {
+				owner = original
+			}
+		}
+		if owner == "" {
+			continue
+		}
+		out = append(out, appwire.CrewHistoryTask{Task: appIndexTaskID(owner, id), Owner: owner})
 	}
 	return out
 }
