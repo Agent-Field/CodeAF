@@ -57,6 +57,9 @@ const probeCeiling = 10 * time.Second
 // path that will not carry — but it carries no duration, because what a refusal
 // times is the refusal.
 func (c *Client) probeLane(ctx context.Context, model, lane string) (time.Duration, error) {
+	if err := refuseObserved(ctx, SurfaceProbe); err != nil {
+		return 0, err
+	}
 	model, lane = strings.TrimSpace(model), strings.TrimSpace(lane)
 	if model == "" || lane == "" {
 		return 0, errors.New("probe: a model and a lane are both required")
@@ -240,6 +243,11 @@ func (c *Client) ProbeLanes(ctx context.Context, model string) {
 	// has said it will not carry one has nothing to buy. The frontier below is
 	// the other floor: a base with no lanes names none, and none are probed.
 	if c == nil || !c.carriesPreferences() || c.connectionWaiting() {
+		return
+	}
+	// A probe is a paid send that never passes the attempt hook, so under an
+	// observer it is not bought at all (attemptobserver.go).
+	if refuseObserved(ctx, SurfaceProbe) != nil {
 		return
 	}
 	// SIMPLE ROUTING BUYS NO MEASUREMENTS. A probe exists to teach the belief

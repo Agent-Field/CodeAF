@@ -473,6 +473,10 @@ func (c *MediaClient) do(ctx context.Context, path string, body []byte, model st
 // belongs to nobody, and internal/tui3's PostPhaseNews drops it — which is how
 // a picture whose connection had gone drew nothing at all while it waited.
 func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, body []byte, authenticated bool, model string) (*http.Response, error) {
+	// Every media adapter shares this door, including music and transcription.
+	if err := refuseObserved(ctx, SurfaceMedia); err != nil {
+		return nil, err
+	}
 	ctx = beginMediaCall(ctx, model)
 	var recovery connectionRetry
 	defer recovery.release()

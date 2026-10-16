@@ -260,6 +260,19 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
 	tellTakeover(ctx)
+	// OBSERVED SENDS ARE COUNTED PER Do, SO THE DOOR MUST BE ONE THIS FOUNDATION
+	// CAN COUNT (attemptobserver.go). Unobserved, this is one context lookup.
+	observer := actualObserverFrom(ctx)
+	if observer != nil {
+		if err := c.RequireActualAttemptCoverage(); err != nil {
+			return nil, err
+		}
+		// The attempt's identity is the trace's per-send ID; a send without a
+		// trace (the document parser) has none to name.
+		if knobs.trace == nil {
+			return nil, &UnsupportedAttemptSurfaceError{SurfaceDocument, "this send carries no attempt identity"}
+		}
+	}
 	if gate := c.config.RouteGate; gate != nil {
 		if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
 			return nil, err
@@ -273,6 +286,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// came back as a timeout.
 	ceiling, _ := c.ceilingFor(request, knobs)
 	httpClient := c.clientFor(c.modelFor(request), stream, ceiling)
+	if observer != nil {
+		// A followed redirect is a second paid send that no single Do can see, so
+		// an observed send hands the 3xx back instead (it is then an ordinary error).
+		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	// The address is part of the bound billing door. It changes only for the
 	// one separately authorised plan overflow below; every ordinary retry and
 	// endpoint move stays on the address the service was connected to.
@@ -638,6 +656,18 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			cancelAttempt()
 			return nil, err
 		}
+		// THE ONE PLACE A SEND IS ADMITTED: after the request is built and the
+		// limiter has let it through, and before anything is written to the log
+		// or the watchdog, so a refusal leaves no trace of a send that never was.
+		var handle *attemptHandle
+		if observer != nil {
+			var err error
+			if handle, err = c.admitAttempt(ctx, observer, request, knobs, usingOverflow); err != nil {
+				sharedLimiter.release(false, 0)
+				cancelAttempt()
+				return nil, err
+			}
+		}
 		// AND THIS ATTEMPT GETS ITS OWN CONTROLLER. Every send of every request is
 		// watched, and it is watched from the moment its own bytes leave — see
 		// EVERY ATTEMPT IS WATCHED in armwatch.go for the 363-second attempt whose
@@ -655,6 +685,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			attempt: attempts, began: attemptBegan, phase: calllog.PhaseStart,
 		})
 		response, err := httpClient.Do(httpRequest)
+		if handle != nil {
+			handle.afterDo(ctx, err, response != nil && err == nil)
+		}
 		if err == nil && response != nil && response.StatusCode == http.StatusPaymentRequired {
 			// Every call shape passes this transport door, including reflexes,
 			// titles, tasks, and the affordable retry itself.
@@ -745,6 +778,18 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			continue
 		}
 		connectionPasses = 0
+		if observer != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
+			// A refused redirect must never reach the content-type learner: an
+			// HTML redirect is not evidence that this client cannot stream.
+			err := &UnsupportedAttemptSurfaceError{SurfaceCompletion, "an observed completion cannot follow an HTTP redirect"}
+			_ = response.Body.Close()
+			sharedLimiter.release(false, 0)
+			cancelAttempt()
+			handle.unknown()
+			c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+				attempt: attempts, began: attemptBegan, status: response.StatusCode, err: err})
+			return nil, err
+		}
 		potentialRateLimit := response.StatusCode == http.StatusTooManyRequests
 		// Error bodies can stall too. They are read below before a retry, so
 		// they need the same idle bound as successful streaming bodies.
@@ -809,6 +854,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		response.Body.Close()
 		cancelAttempt()
+		// A refusal that is walked past carries no usage block, and "refused" is
+		// not "free": the send's price is unknown, never zero.
+		handle.unknown()
 		lastErr = apiError(response.StatusCode, peek)
 		// AND THE COMEBACK IS READ OUT OF THE BODY WHEN NO HEADER CARRIED IT. The
 		// census found `retry_after` recorded on not one row in ten days, while

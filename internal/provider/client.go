@@ -125,6 +125,12 @@ type Config struct {
 	// HTTPClient is optional. Connected services may use it to adapt their wire
 	// protocol, and tests use the same seam to keep requests deterministic.
 	HTTPClient *http.Client
+	// SingleSendTransport is the caller's declaration that HTTPClient's
+	// transport sends exactly once per Do — no internal retry, replay or
+	// redirect following of its own. Without it a custom HTTPClient is refused
+	// when an actual-attempt observer is installed (attemptobserver.go), because
+	// one counted Do could then be several paid sends.
+	SingleSendTransport bool
 }
 
 // Client is codeaf's model adapter. It satisfies the harness's LoopClient and
@@ -361,6 +367,10 @@ func (c *Client) ExecuteToolCallLoop(
 	// carries a `provider` object (prefcarry.go).
 	if c.shippedRouterHint() || c.config.Direct || c.config.KeyOptional {
 		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
+	}
+	// The SDK client owns its own transport and never passes the attempt hook.
+	if err := refuseObserved(ctx, SurfaceToolLoop); err != nil {
+		return nil, nil, err
 	}
 	base := c.sdkClient()
 	if base == nil {
@@ -1615,7 +1625,10 @@ func (c *Client) completeWithMessagesStreaming(
 	// with nothing under it, because an exit nobody had thought of returned past
 	// all of them. The law is kept here instead of by every path remembering it
 	// (calllog.go's [callTrace.open]). It does nothing on an ordinary call.
-	defer func() { c.closeOpenAttempt(ctx, knobs.trace, endedBy(ctx)) }()
+	defer func() {
+		c.closeOpenAttempt(ctx, knobs.trace, endedBy(ctx))
+		knobs.trace.finishAttempt()
+	}()
 	// The lane watch this stream reports to, nil on every call that is not an
 	// arm of a race (hedge.go). Every use of it below is a nil-safe method
 	// call, so an unwatched stream pays one nil check per delta.
@@ -2407,7 +2420,10 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 		// reason: this path returns on four errors and writes no row on any of
 		// them (calllog.go's [callTrace.open]).
 		rawKnobs := knobsFrom(ctx)
-		defer func() { c.closeOpenAttempt(ctx, rawKnobs.trace, endedBy(ctx)) }()
+		defer func() {
+			c.closeOpenAttempt(ctx, rawKnobs.trace, endedBy(ctx))
+			rawKnobs.trace.finishAttempt()
+		}()
 		httpResponse, err := c.sendShaped(ctx, request, rawKnobs, true)
 		if err != nil {
 			errs <- err

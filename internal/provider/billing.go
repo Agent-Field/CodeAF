@@ -214,9 +214,23 @@ func reconcileFrom(ctx context.Context) ReconcileSink {
 // because a row naming the model somebody asked for is a row that cannot be
 // summed per model after an escalation.
 func (c *Client) bill(ctx context.Context, model string, response *ai.Response, traces ...*callTrace) {
+	// THE ATTEMPT'S OWN TOKEN HEARS THE PRICE FIRST AND INDEPENDENTLY of every
+	// sink below (attemptobserver.go): Billed.Empty cannot tell a stated zero
+	// from a missing figure, so the typed fact is read straight off the usage
+	// block. An answer with no usage block is unknown, never zero.
+	handle := attemptOf(traces...)
 	if response == nil || response.Usage == nil {
+		handle.unknown()
 		return
 	}
+	handle.financial(costFrom(response.Usage.Cost))
+	c.bankBilledUsage(ctx, model, response, traces...)
+}
+
+// bankBilledUsage preserves the existing usage consumers independently of the
+// observed attempt's final price. An interrupted stream may have interim usage;
+// its observed token still needs its own final receipt.
+func (c *Client) bankBilledUsage(ctx context.Context, model string, response *ai.Response, traces ...*callTrace) {
 	// THE CALLER'S SLOT HEARS THE ROAD BEFORE ANY SINK IS ASKED FOR, because a
 	// session banks the answer itself and arms no sink: the fact has to reach
 	// it beside the answer or not at all.

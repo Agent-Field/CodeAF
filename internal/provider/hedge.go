@@ -1398,6 +1398,12 @@ func (r *hedgeRace) walk(from int, cause error) {
 	if dead != "" {
 		r.report.ended(refusal.news(dead))
 	}
+	// A REFUSED ADMISSION IS NOT THIS MACHINE'S FAULT. The caller's own authority
+	// said no to that send, so claiming the next lane would buy exactly the send
+	// it declined (attemptobserver.go).
+	if admissionRefusedFrom(cause) {
+		return
+	}
 	alt, _ := r.claimServing()
 	if alt == "" {
 		return

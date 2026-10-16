@@ -195,6 +195,16 @@ type Evidence struct {
 	// a report: another endpoint, request shape, or model cannot change it.
 	TerminalTransport bool
 
+	// AdmissionRefused says the caller's own local authority declined to let
+	// this send go out (a spending-cap observer, or a surface that cannot be
+	// observed while observation is required). This local boundary says nothing
+	// about the provider, machine, shape or model, so no other endpoint, shape
+	// or model may be bought past it. An admitted send, including this one in
+	// the redirect case, may already have reached the provider; its financial
+	// outcome is independent. It is
+	// generic on purpose: it names no policy and is not a credential failure.
+	AdmissionRefused bool
+
 	// Upstream is the provider the router NAMED as the one that refused, empty
 	// when the router refused on its own account. The emptiness is the fact: a
 	// 4xx that named nobody is our own bytes being read and rejected, and every
@@ -621,7 +631,7 @@ func classOf(e Evidence) Class {
 	if e.Overflow {
 		return Shape
 	}
-	if e.TerminalTransport || e.Empty || e.Malformed || e.Timeout || e.Idle || e.Cut || e.Degenerate || e.Wire {
+	if e.TerminalTransport || e.AdmissionRefused || e.Empty || e.Malformed || e.Timeout || e.Idle || e.Cut || e.Degenerate || e.Wire {
 		return Transport
 	}
 	// A WITHDRAWN MODEL IS THE WIRE WITH ONE MOVE, and it is asked before the

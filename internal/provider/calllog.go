@@ -130,6 +130,11 @@ type callTrace struct {
 	// served it (billingfact.go). attemptBilled says it was set at all.
 	attemptBilling BillingFact
 	attemptBilled  bool
+	// attempt is the observer's handle on the send this trace is currently on
+	// (attemptobserver.go), replaced per send and nil when nobody observes. It is
+	// what lets a bill or a queued receipt report to the exact send that was
+	// answered, never to whatever send is current when the money arrives.
+	attempt *attemptHandle
 	// open is the attempt that has a start row on the wire and nothing under it
 	// yet, and nil whenever the log is square.
 	//

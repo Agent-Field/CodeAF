@@ -508,6 +508,12 @@ func Evidence(err error) taxonomy.Evidence {
 	if err == nil {
 		return evidence
 	}
+	// A REFUSED ADMISSION IS READ BEFORE ANY PROSE. The cause an observer wraps
+	// is its own sentence and may sound like a timeout or an overflow; none of
+	// that is evidence about the provider, so nothing else is read from it.
+	if admissionRefusedFrom(err) {
+		return taxonomy.Evidence{AdmissionRefused: true}
+	}
 	refusal, ok := RefusalFrom(err)
 	if !ok {
 		evidence.Status, _ = StatusOf(err)
