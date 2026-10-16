@@ -1392,6 +1392,9 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 	if view, found, err := live.conn.Conv.AppTask(local); err == nil && found {
 		before = len(view.Notes)
 	}
+	// The same key the engine will keep, so the receipt, the event and the page
+	// never disagree about it.
+	clientID = session.AppNoteClientID(clientID)
 	var entry appwire.Entry
 	b.locked(func() {
 		live.noteN++
@@ -1400,7 +1403,7 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 	})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: entry})
 	handed := false
-	if err := b.ActOnTask(id, "note", "", text); err != nil {
+	if err := b.actOnTask(id, "note", "", text, clientID); err != nil {
 		// A TASK HANDED OVER FROM INSIDE THE WORK runs as a crew of its own and
 		// is not on the engine's task list, so its note goes through the door the
 		// task's own room speaks through. Nothing there says at which step the
@@ -1411,7 +1414,7 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 		handed = true
 	}
 	entry.State = appwire.NoteWaiting
-	live.box.Event(appwire.EventNoteChanged, appwire.NoteChanged{Task: id, ID: entry.ID, State: appwire.NoteWaiting})
+	live.box.Event(appwire.EventNoteChanged, appwire.NoteChanged{Task: id, ID: entry.ID, State: appwire.NoteWaiting, ClientID: clientID})
 	if handed {
 		return entry, nil
 	}
@@ -1478,7 +1481,7 @@ func (b *appBackend) watchNotes(live *appLive, id, local string) {
 		for _, note := range pending {
 			if note.index < len(view.Notes) && view.Notes[note.index].ReadAtStep != nil {
 				step := *view.Notes[note.index].ReadAtStep
-				read = append(read, appwire.NoteChanged{Task: id, ID: note.entry.ID, State: appwire.NoteRead, ReadAtStep: &step})
+				read = append(read, appwire.NoteChanged{Task: id, ID: note.entry.ID, State: appwire.NoteRead, ReadAtStep: &step, ClientID: note.entry.ClientID})
 				continue
 			}
 			left = append(left, note)

@@ -673,7 +673,7 @@ func (b *appBackend) GetTask(id string) (appwire.TaskPage, error) {
 	page.Log = appTaskLog(agent, task.ID, view, at)
 	for i, note := range view.Notes {
 		page.Notes = append(page.Notes, appwire.TaskNote{ID: task.ID + ".n" + strconv.Itoa(i),
-			Text: note.Text, At: at, From: appNoteFrom(note.From), ReadAtStep: note.ReadAtStep})
+			Text: note.Text, At: at, From: appNoteFrom(note.From), ReadAtStep: note.ReadAtStep, ClientID: note.ClientID})
 	}
 	return page, nil
 }
@@ -830,6 +830,12 @@ func appStepFacts(step session.AppTaskStep) appwire.ToolFacts {
 
 // ActOnTask is every verb on a task, through the engine's one task door.
 func (b *appBackend) ActOnTask(id, action, verdict, text string) error {
+	return b.actOnTask(id, action, verdict, text, "")
+}
+
+// actOnTask is ActOnTask with a note's opaque client id, which only the graph
+// task's note road keeps (session.AppTaskIntent.ClientID).
+func (b *appBackend) actOnTask(id, action, verdict, text, clientID string) error {
 	agent, local, ok := appSplitID(id)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
@@ -838,7 +844,7 @@ func (b *appBackend) ActOnTask(id, action, verdict, text string) error {
 	if err != nil {
 		return err
 	}
-	intent := session.AppTaskIntent{ID: local, Action: action, Text: strings.TrimSpace(text), Verb: verdict}
+	intent := session.AppTaskIntent{ID: local, Action: action, Text: strings.TrimSpace(text), Verb: verdict, ClientID: clientID}
 	switch action {
 	case "decide":
 		// TELL IT… WITH WORDS AND NO VERDICT IS A NOTE; not_right carries them.

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
@@ -74,6 +76,30 @@ type AppTaskNote struct {
 	// unknown and must not take as the person's.
 	From       AppNoteFrom
 	ReadAtStep *int
+	// ClientID is the sender's own opaque key for this note, kept so a surface can
+	// tell its sent note from the one it reads back. It is OPAQUE: the engine never
+	// reads meaning into it and never matches by text. Absent is unknown: a record
+	// from before this field, a plan-store note, a task's own line and a note that
+	// arrived by another road carry none, and nothing stamps one by position.
+	ClientID string `json:"client_id,omitempty"`
+}
+
+// AppNoteClientIDMax bounds a note's client id in bytes.
+const AppNoteClientIDMax = 128
+
+// AppNoteClientID is clientID if it can be kept as a note's key, else "". An
+// oversized or malformed key is dropped whole, never truncated, because a
+// truncated key could collide with another.
+func AppNoteClientID(clientID string) string {
+	if len(clientID) > AppNoteClientIDMax || !utf8.ValidString(clientID) {
+		return ""
+	}
+	for _, r := range clientID {
+		if unicode.IsControl(r) {
+			return ""
+		}
+	}
+	return clientID
 }
 
 // AppNoteFrom is a note's origin, in the engine's own words.
@@ -123,6 +149,9 @@ type AppTaskIntent struct {
 	ID, Action, Text, Model, Verb string
 	State                         *string
 	Version                       *uint64
+	// ClientID is a note's opaque correlation key ([AppTaskNote.ClientID]); it is
+	// read only by the "note" and "brief" actions on a graph task.
+	ClientID string `json:",omitempty"`
 }
 
 // The metadata records a person's holds and note receipts beside the work itself.
@@ -541,7 +570,7 @@ func (a *Agent) appTaskNote(node *TaskNode, intent AppTaskIntent) error {
 	}
 	err = node.graph.writeAppControl(func() (func(), error) {
 		old := cloneAppTaskRecord(node.app)
-		node.app.Notes = append(node.app.Notes, AppTaskNote{Text: intent.Text, Direction: receipt.Direction})
+		node.app.Notes = append(node.app.Notes, AppTaskNote{Text: intent.Text, Direction: receipt.Direction, ClientID: AppNoteClientID(intent.ClientID)})
 		if intent.Action == "brief" {
 			node.app.Brief = intent.Text
 		}

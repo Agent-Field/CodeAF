@@ -52,7 +52,7 @@ func TestAppTaskWireCarriesHashesReceiptsAndRefusals(t *testing.T) {
 	if got, err := client.Agent().AppQuickTasks(); err != nil || !reflect.DeepEqual(got, []session.AppQuickTaskView{quick}) {
 		t.Fatalf("quick %+v %v", got, err)
 	}
-	intent := session.AppTaskIntent{ID: "7", Action: "decide", Verb: "tell", Text: "words", State: &state, Version: &version}
+	intent := session.AppTaskIntent{ID: "7", Action: "decide", Verb: "tell", Text: "words", State: &state, Version: &version, ClientID: "c-9"}
 	if err := client.Agent().AppTaskAction(intent); err != nil {
 		t.Fatal(err)
 	}

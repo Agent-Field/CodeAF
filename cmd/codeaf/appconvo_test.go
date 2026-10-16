@@ -282,6 +282,15 @@ func TestAppTaskNoteIsReadAtAStep(t *testing.T) {
 	if read.ID != entry.ID || read.ReadAtStep == nil || *read.ReadAtStep != 5 {
 		t.Fatalf("the read receipt = %+v", read)
 	}
+	if read.ClientID != "n-1" || entry.ClientID != "n-1" {
+		t.Fatalf("the key was lost: receipt %+v, read %+v", entry, read)
+	}
+	conv.mu.Lock()
+	intent := conv.intents[len(conv.intents)-1]
+	conv.mu.Unlock()
+	if intent.Action != "note" || intent.ClientID != "n-1" {
+		t.Fatalf("the engine was asked %+v", intent)
+	}
 	if err := backend.RetryTask(agent.ID + ":4"); err != nil {
 		t.Fatal(err)
 	}
@@ -450,5 +459,31 @@ func TestAppAQueuedMessageIsMarkedQueuedAndASentOneIsNot(t *testing.T) {
 	}
 	if !reflect.DeepEqual(marks, []bool{false, true, false}) {
 		t.Fatalf("history reads queued marks %v", marks)
+	}
+}
+
+// A task page names a note's client id only where the engine's record kept one:
+// equal words with distinct keys stay distinct, and a note with none stays absent.
+func TestAppTaskPageCarriesTheNotesClientID(t *testing.T) {
+	conv := &fakeConversation{appTasks: []session.AppTaskView{{ID: "4", Title: "Update fixtures", State: "running", Notes: []session.AppTaskNote{
+		{Text: "same", ClientID: "c-1"}, {Text: "same", ClientID: "c-2"}, {Text: "same"},
+	}}}}
+	backend, _, agent := workBackend(t, conv)
+	page, err := backend.GetTask(agent.ID + ":4")
+	if err != nil || len(page.Notes) != 3 {
+		t.Fatalf("page %+v %v", page.Notes, err)
+	}
+	got := []string{page.Notes[0].ClientID, page.Notes[1].ClientID, page.Notes[2].ClientID}
+	if strings.Join(got, "|") != "c-1|c-2|" {
+		t.Fatalf("client ids = %q", got)
+	}
+	if _, err := backend.NoteTask(agent.ID+":4", "late", strings.Repeat("x", session.AppNoteClientIDMax+1)); err != nil {
+		t.Fatal(err)
+	}
+	conv.mu.Lock()
+	intent := conv.intents[len(conv.intents)-1]
+	conv.mu.Unlock()
+	if intent.ClientID != "" {
+		t.Fatalf("an oversized key reached the engine: %+v", intent)
 	}
 }

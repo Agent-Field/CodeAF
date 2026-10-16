@@ -477,3 +477,73 @@ func TestAppProposalModelChangesOnlyTheSelectedProposal(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// A note's client id rides the real note action into the persisted record, and
+// comes back from a restart through the JSON the store keeps. Equal words with
+// distinct ids stay distinct, a note sent without one carries none, and the
+// read receipt still follows the assignment's own direction.
+func TestAppTaskNoteKeepsItsClientIDAcrossARestart(t *testing.T) {
+	agent, node, _ := appNodeFixture(t, false)
+	for _, intent := range []AppTaskIntent{
+		{ID: "1", Action: "note", Text: "same words", ClientID: "c-1"},
+		{ID: "1", Action: "note", Text: "same words", ClientID: "c-2"},
+		{ID: "1", Action: "note", Text: "same words"},
+		{ID: "1", Action: "note", Text: "too long", ClientID: strings.Repeat("x", AppNoteClientIDMax+1)},
+	} {
+		if err := agent.AppTaskAction(intent); err != nil {
+			t.Fatal(err)
+		}
+	}
+	row, found, err := agent.AppTask("1")
+	if err != nil || !found || len(row.Notes) != 4 {
+		t.Fatalf("page %+v %v", row.Notes, err)
+	}
+	want := []string{"c-1", "c-2", "", ""}
+	for i, id := range want {
+		if row.Notes[i].ClientID != id {
+			t.Fatalf("note %d client id %q, want %q (%+v)", i, row.Notes[i].ClientID, id, row.Notes)
+		}
+	}
+	direction := row.Notes[1].Direction
+	agent.config.tasker = node.graph
+	agent.config.taskID = node.id
+	agent.markDirectionsCarried([]uint64{direction})
+	node.graph.mu.Lock()
+	record := node.recordLocked()
+	node.graph.mu.Unlock()
+	raw, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back taskRecord
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	restored := restoreNode(node.graph, back)
+	restored.graph.mu.Lock()
+	notes := restored.appNotesLocked()
+	restored.graph.mu.Unlock()
+	if len(notes) != 4 {
+		t.Fatal(notes)
+	}
+	for i, id := range want {
+		if notes[i].ClientID != id {
+			t.Fatalf("restored note %d client id %q, want %q", i, notes[i].ClientID, id)
+		}
+	}
+	if notes[1].ReadAtStep == nil || notes[0].ReadAtStep != nil {
+		t.Fatalf("read receipt follows the wrong direction: %+v", notes)
+	}
+}
+
+// A record written before client ids existed reads back with none, never one
+// made up from its position.
+func TestAppTaskLegacyNotesCarryNoClientID(t *testing.T) {
+	var record appTaskRecord
+	if err := json.Unmarshal([]byte(`{"notes":[{"Text":"old","direction":3}]}`), &record); err != nil {
+		t.Fatal(err)
+	}
+	if len(record.Notes) != 1 || record.Notes[0].ClientID != "" {
+		t.Fatalf("%+v", record.Notes)
+	}
+}

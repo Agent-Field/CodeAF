@@ -381,6 +381,9 @@ type (
 		ID         string `json:"id"`
 		State      string `json:"state"`
 		ReadAtStep *int   `json:"read_at_step,omitempty"`
+		// ClientID is the sender's key for the note, when it gave one; ID is a
+		// process-local entry id and is not stable across a restart.
+		ClientID string `json:"client_id,omitempty"`
 	}
 )
 

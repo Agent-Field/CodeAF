@@ -78,6 +78,10 @@ type TaskNote struct {
 	// draws the note without attributing it.
 	From       string `json:"from,omitempty" enum:"you,task"`
 	ReadAtStep *int   `json:"read_at_step,omitempty"`
+	// ClientID is the opaque key the sender gave this note in tasks.note, echoed
+	// from the engine's stored record. ABSENT IS UNKNOWN: a note without one is
+	// not "someone else's", and no surface may match it by its words or position.
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // Who a task note is from.
