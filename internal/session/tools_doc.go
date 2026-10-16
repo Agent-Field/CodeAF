@@ -292,6 +292,7 @@ func (a *Agent) documentTool() bare.Tool {
 // command line's doc door: the tool adds the belt's truncation law and its
 // memo, and nothing else. One road, two doors, no drift.
 func (a *Agent) readDocument(ctx context.Context, path, question string, offset, limit *int) (string, bool, error) {
+	working := a.Model() // WHO WAS WORKING when the read began; see captureWorking.
 	answer, err := ReadDocument(ctx, DocumentRead{
 		Path:      path,
 		Question:  question,
@@ -314,6 +315,11 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 			return fmt.Sprintf("read_document reads PDFs, images (png, jpeg, webp, gif) and office documents (docx, xlsx, pptx); %s is none of those", shownPath(path)), true, nil
 		}
 		return err.Error(), true, nil
+	}
+	// Only a PDF read afresh is evidence: an office file or a photographed page
+	// has no page count or text layer to state, and a memo hit looked at nothing.
+	if answer.Kind == "pdf" && !answer.Recalled {
+		a.recordDocumentEvidence(ctx, working, resolveInWorkspace(path, a.config.Workspace), answer)
 	}
 	return documentNote(answer.Rung, question, answer.Rung != docEngineNative && answer.Rung != "local") +
 		piReadLaw(a.resultCaps(), answer.Text, offset, limit), false, nil
@@ -378,6 +384,24 @@ var (
 type DocumentAnswer struct {
 	Rung string
 	Text string
+
+	// The rest is what the road itself knew, for a caller that records it; every
+	// field is zero when nothing reported it. Kind is the road's word for the
+	// file ("pdf", "office", "image") and MediaType its content type. Model is
+	// the model that read it, set only when a MODEL did (the native rung): a
+	// parser rung is an engine, not a model. Pages and TextLayer are the local
+	// extractor's own report — a billed parse returns no page boundaries, so a
+	// document that needed one has no page count unless the local rung had
+	// already counted it. Digest is the hash of the exact bytes a billed rung
+	// was given. Recalled says the text came from the paging memo, so nothing
+	// was read anew.
+	Kind, MediaType string
+	Model           string
+	Pages           int
+	TextLayer       *bool
+	Digest          string
+	Recalled        bool
+	observed        MediaFact
 }
 
 // DocumentRead is everything one billed document read needs, named so a caller
@@ -453,16 +477,37 @@ func ReadDocument(ctx context.Context, read DocumentRead) (DocumentAnswer, error
 	// comes here — a PDF that turns out to HAVE a text layer must not be sent to
 	// a parser that bills per page for text the binary can extract itself. Same
 	// law as the plain-text guard above, one file type along.
+	kind := docKindName(entry.kind)
+	known := DocumentAnswer{Kind: kind, MediaType: entry.mediaType}
+	known.observed.stampFile(absolute)
 	if entry.kind == documentPDF && setting == docEngineAuto {
 		var text string
 		var localErr error
+		var pages int
 		if read.PagesFrom > 0 {
 			text, localErr = pdfx.ExtractPages(absolute, read.PagesFrom, read.PagesTo)
 		} else {
-			text, localErr = pdfx.Extract(absolute)
+			text, pages, localErr = pdfx.ExtractCounted(absolute)
 		}
 		if localErr == nil && !documentThin(text) {
-			return DocumentAnswer{Rung: "local", Text: strings.TrimSpace(text)}, nil
+			// A page range names pages without counting the document, so only the
+			// whole-document extraction states a count.
+			local := known
+			local.Rung, local.Text, local.Pages = "local", strings.TrimSpace(text), pages
+			layer := true
+			local.TextLayer = &layer
+			return local, nil
+		}
+		// What the local extractor learned stays with the billed answer: a
+		// scanned file is a known "no text layer" with a known count, and a file
+		// that parsed to thin text has a count but no verdict on its layer.
+		var scanned *pdfx.NoTextLayerError
+		switch {
+		case errors.As(localErr, &scanned):
+			layer := false
+			known.Pages, known.TextLayer = scanned.Pages, &layer
+		case localErr == nil:
+			known.Pages = pages
 		}
 		// A page range the local rung cannot answer is a refusal, not a fall
 		// through: a billed parse returns no page boundaries, so the honest
@@ -473,7 +518,7 @@ func ReadDocument(ctx context.Context, read DocumentRead) (DocumentAnswer, error
 		}
 	}
 
-	data, err := os.ReadFile(absolute)
+	data, observed, err := readObservedMedia(absolute, documentMaxBytes)
 	if err != nil {
 		return DocumentAnswer{}, fmt.Errorf("could not read %s", shown)
 	}
@@ -482,11 +527,14 @@ func ReadDocument(ctx context.Context, read DocumentRead) (DocumentAnswer, error
 		return DocumentAnswer{}, fmt.Errorf("%s is over the %dMB document limit", shown, documentMaxBytes>>20)
 	}
 
+	known.observed = observed
 	digest := sha256.Sum256(data)
 	key := hex.EncodeToString(digest[:]) + "|" + setting + "|" + read.Question
 	if read.Recall != nil {
 		if rung, text, ok := read.Recall(key); ok {
-			return DocumentAnswer{Rung: rung, Text: text}, nil
+			recalled := known
+			recalled.Rung, recalled.Text, recalled.Recalled = rung, text, true
+			return recalled, nil
 		}
 	}
 
@@ -548,7 +596,12 @@ func ReadDocument(ctx context.Context, read DocumentRead) (DocumentAnswer, error
 		if read.Keep != nil {
 			read.Keep(key, string(rung), text)
 		}
-		return DocumentAnswer{Rung: string(rung), Text: text}, nil
+		answer := known
+		answer.Rung, answer.Text, answer.Digest = string(rung), text, hex.EncodeToString(digest[:])
+		if rung == provider.DocumentParseNative {
+			answer.Model = model
+		}
+		return answer, nil
 	}
 
 	// Every rung named, in the order they were tried, because "which one broke"

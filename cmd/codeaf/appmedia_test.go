@@ -205,3 +205,49 @@ func TestAppMediaPagesStayUnderTheReplyBound(t *testing.T) {
 		}
 	}
 }
+
+// A document the agent read is a source of kind document: media.get returns the
+// full words verbatim, the parser's page count and a known-false text layer,
+// and a document whose parser reported nothing carries neither field.
+func TestAppMediaGetReturnsDocumentEvidenceFacts(t *testing.T) {
+	backend, _, agent := workBackend(t, &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}})
+	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
+	old := appMediaIndex
+	appMediaIndex = func() string { return index }
+	t.Cleanup(func() { appMediaIndex = old })
+	sessionID, _, err := backend.mediaScope(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdf := filepath.Join(agent.Workspace, "contract.pdf")
+	if err := os.WriteFile(pdf, []byte("%PDF-1.4 stand-in"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	words := strings.Repeat("The parties agree to the terms set out below. ", 40)
+	layer := false
+	scan := session.RecordMedia(index, session.Artifact{Path: pdf, Session: sessionID, Title: "contract.pdf", Kind: "document", Created: time.Now()},
+		session.MediaFact{Origin: session.MediaEvidence, MIME: "application/pdf", Verb: session.EvidenceRead, Saw: words,
+			SeenBy: "vendor/reader", Working: "chat/model", PageCount: 14, TextLayer: &layer})
+	billed := session.RecordMedia(index, session.Artifact{Path: pdf, Session: sessionID, Title: "contract.pdf", Kind: "document", Created: time.Now()},
+		session.MediaFact{Origin: session.MediaEvidence, MIME: "application/pdf", Verb: session.EvidenceRead, Saw: "billed words"})
+	// Another deliverable that merely has the kind "document" is not a source.
+	session.RecordArtifact(index, session.Artifact{Path: pdf, Session: sessionID, Title: "export", Kind: "document", Created: time.Now()})
+
+	page, err := backend.ListMedia(agent.ID, "", 50)
+	if err != nil || len(page.Sources) != 2 {
+		t.Fatalf("list = %+v %v", page, err)
+	}
+	got, err := backend.GetMedia(agent.ID, scan)
+	if err != nil || got.Kind != "document" || got.Origin != "evidence" || got.Verb != "read" || got.Saw != words ||
+		got.SeenBy != "vendor/reader" || got.WorkingModel != "chat/model" || got.PageCount == nil || *got.PageCount != 14 ||
+		got.TextLayer == nil || *got.TextLayer || got.State != appwire.MediaAvailable || got.Charge != "unknown" {
+		t.Fatalf("get = %+v %v", got, err)
+	}
+	thin, err := backend.GetMedia(agent.ID, billed)
+	if err != nil || thin.PageCount != nil || thin.TextLayer != nil || thin.Saw != "billed words" {
+		t.Fatalf("unreported facts reached the wire: %+v %v", thin, err)
+	}
+	if raw, _ := json.Marshal(thin); strings.Contains(string(raw), "page_count") || strings.Contains(string(raw), "text_layer") {
+		t.Fatalf("serialized %s", raw)
+	}
+}

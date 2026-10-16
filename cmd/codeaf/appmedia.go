@@ -133,6 +133,14 @@ func appMediaSource(row session.MediaRow, live session.MediaLive, probe bool) ap
 		n := fact.Requested
 		out.RequestedCount = &n
 	}
+	if fact.PageCount > 0 {
+		n := fact.PageCount
+		out.PageCount = &n
+	}
+	if fact.TextLayer != nil {
+		layer := *fact.TextLayer
+		out.TextLayer = &layer
+	}
 	if fact.DurationMS > 0 {
 		ms := fact.DurationMS
 		out.DurationMS = &ms

@@ -120,3 +120,30 @@ type bigEngine struct {
 
 func (b *bigEngine) ListMedia(string, string, int) (MediaPage, error) { return b.page, nil }
 func (b *bigEngine) GetMedia(string, string) (MediaSource, error)     { return b.one, nil }
+
+// A document source carries its parser facts as optional fields: an older
+// client's source (no page count, no text layer) still decodes, an unknown fact
+// is absent, and a KNOWN false text layer is present and is not mistaken for
+// absence.
+func TestMediaSourceDocumentFactsAreOptionalAndFalseSurvives(t *testing.T) {
+	old := `{"id":"src_x","kind":"image","origin":"generated","path":"/w/a.png","state":"available","recorded":true,"created":"2026-10-16T00:00:00Z","charge":"unknown"}`
+	var decoded MediaSource
+	if err := json.Unmarshal([]byte(old), &decoded); err != nil || decoded.PageCount != nil || decoded.TextLayer != nil {
+		t.Fatalf("an old source decoded as %+v (%v)", decoded, err)
+	}
+	if raw, _ := json.Marshal(decoded); strings.Contains(string(raw), "page_count") || strings.Contains(string(raw), "text_layer") {
+		t.Fatalf("unknown document facts were serialized: %s", raw)
+	}
+	pages, layer := 14, false
+	doc := MediaSource{ID: "src_d", Kind: "document", Origin: "evidence", Verb: "read", PageCount: &pages, TextLayer: &layer, Charge: "unknown"}
+	raw, _ := json.Marshal(doc)
+	for _, want := range []string{`"kind":"document"`, `"page_count":14`, `"text_layer":false`, `"verb":"read"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("%s missing from %s", want, raw)
+		}
+	}
+	var back MediaSource
+	if err := json.Unmarshal(raw, &back); err != nil || back.PageCount == nil || *back.PageCount != 14 || back.TextLayer == nil || *back.TextLayer {
+		t.Fatalf("round trip = %+v (%v)", back, err)
+	}
+}

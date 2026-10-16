@@ -75,6 +75,10 @@ func MediaIndexScans() uint64 { return mediaIndexScans.Load() }
 
 func cloneMediaRow(row MediaRow) MediaRow {
 	row.Fact.References = append([]string(nil), row.Fact.References...)
+	if row.Fact.TextLayer != nil {
+		layer := *row.Fact.TextLayer
+		row.Fact.TextLayer = &layer
+	}
 	if row.Fact.CostUSD != nil {
 		cost := *row.Fact.CostUSD
 		row.Fact.CostUSD = &cost

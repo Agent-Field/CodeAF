@@ -48,6 +48,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -287,23 +288,15 @@ const (
 // multi-gigabyte file into memory to discover it was too big.
 //
 // A non-empty second return is the whole answer, worded like tools_doc.go's.
-func readSenseFile(absolute, shown, kindWord string, ceiling int) ([]byte, string) {
-	info, err := os.Stat(absolute)
+func readSenseFile(absolute, shown, kindWord string, ceiling int) ([]byte, MediaFact, string) {
+	data, observed, err := readObservedMedia(absolute, int64(ceiling))
+	if errors.Is(err, errObservedMediaLarge) {
+		return nil, MediaFact{}, fmt.Sprintf("%s is over the %dMB %s limit", shown, ceiling>>20, kindWord)
+	}
 	if err != nil {
-		return nil, fmt.Sprintf("could not read %s", shown)
+		return nil, MediaFact{}, fmt.Sprintf("could not read %s", shown)
 	}
-	if info.Size() > int64(ceiling) {
-		return nil, fmt.Sprintf("%s is over the %dMB %s limit", shown, ceiling>>20, kindWord)
-	}
-	data, err := os.ReadFile(absolute)
-	if err != nil {
-		return nil, fmt.Sprintf("could not read %s", shown)
-	}
-	// Checked again: the file could have grown between the stat and the read.
-	if len(data) > ceiling {
-		return nil, fmt.Sprintf("%s is over the %dMB %s limit", shown, ceiling>>20, kindWord)
-	}
-	return data, ""
+	return data, observed, ""
 }
 
 // ── the memo ────────────────────────────────────────────────────────────────
@@ -447,11 +440,12 @@ func senseNote(label, model string) string { return "[" + label + ": " + model +
 // imageSense is the undirected look: one shot on the looking model, one fixed
 // prompt, the answer paged by pi's law.
 func (a *Agent) imageSense(ctx context.Context, memo *senseMemo, shown, absolute string, entry senseType, offset, limit *int) (string, bool, error) {
+	working := a.Model() // WHO WAS WORKING when the look began; see captureWorking.
 	seer := a.senseModel(roleSenseVision)
 	if seer == "" {
 		return fmt.Sprintf("%s is an image, and this session has no model that can look at one — set the looking model in settings, or attach the picture to a message.", shown), true, nil
 	}
-	data, refusal := readSenseFile(absolute, shown, "image", maxImageBytes)
+	data, observed, refusal := readSenseFile(absolute, shown, "image", maxImageBytes)
 	if refusal != "" {
 		return refusal, true, nil
 	}
@@ -467,7 +461,7 @@ func (a *Agent) imageSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	reading := senseReading{note: senseNote("vision", seer), text: answer}
 	memo.put(key, reading)
-	a.recordEvidence(ctx, absolute, entry.mediaType, "image", data, EvidenceLookedAt, answer, seer, false)
+	a.recordEvidence(ctx, working, absolute, entry.mediaType, "image", data, EvidenceLookedAt, answer, seer, false, observed)
 	return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 }
 
@@ -496,6 +490,7 @@ func (a *Agent) imageSense(ctx context.Context, memo *senseMemo, shown, absolute
 // a refusal invented by a threshold is worse than a short truth
 // ([documentMinimumRunes] says this at length).
 func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute string, entry senseType, offset, limit *int) (string, bool, error) {
+	working := a.Model() // WHO WAS WORKING when the look began; see captureWorking.
 	scribe := a.senseModel(roleSenseTranscribe)
 	listener := a.senseModel(roleSenseListen)
 	if a.config.Media == nil && scribe != "" {
@@ -512,7 +507,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 	if scribe == "" && listener == "" {
 		return fmt.Sprintf("%s is audio, and this session has no model that can listen to one — set the listening model in settings.", shown), true, nil
 	}
-	data, refusal := readSenseFile(absolute, shown, "audio", senseAudioMaxBytes)
+	data, observed, refusal := readSenseFile(absolute, shown, "audio", senseAudioMaxBytes)
 	if refusal != "" {
 		return refusal, true, nil
 	}
@@ -556,7 +551,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 			default:
 				reading := senseReading{note: senseNote("transcript", scribe), text: text}
 				memo.put(key, reading)
-				a.recordEvidence(ctx, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, text, scribe, true)
+				a.recordEvidence(ctx, working, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, text, scribe, true, observed)
 				return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 			}
 		}
@@ -570,7 +565,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 		if err == nil {
 			reading := senseReading{note: senseNote("audio", listener), text: answer}
 			memo.put(key, reading)
-			a.recordEvidence(ctx, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, answer, listener, false)
+			a.recordEvidence(ctx, working, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, answer, listener, false, observed)
 			return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 		}
 		failures = append(failures, listener+": "+oneLineReason(err.Error()))
@@ -578,7 +573,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 
 	if thin.text != "" {
 		memo.put(key, thin)
-		a.recordEvidence(ctx, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, thin.text, scribe, true)
+		a.recordEvidence(ctx, working, absolute, entry.mediaType, "audio", data, EvidenceListenedTo, thin.text, scribe, true, observed)
 		return thin.note + piReadLaw(a.resultCaps(), thin.text, offset, limit), false, nil
 	}
 	// Every rung named, in the order they were tried, because "which one broke"
@@ -651,11 +646,12 @@ func audioNoise(text string) bool {
 // cheaper than a model that can watch exists to fall back to, exactly as
 // read_document has one rung for an image ([documentRungs]).
 func (a *Agent) videoSense(ctx context.Context, memo *senseMemo, shown, absolute string, entry senseType, offset, limit *int) (string, bool, error) {
+	working := a.Model() // WHO WAS WORKING when the look began; see captureWorking.
 	watcher := a.senseModel(roleSenseWatch)
 	if watcher == "" {
 		return fmt.Sprintf("%s is video, and this session has no model that can watch one — set the watching model in settings.", shown), true, nil
 	}
-	data, refusal := readSenseFile(absolute, shown, "video", senseVideoMaxBytes)
+	data, observed, refusal := readSenseFile(absolute, shown, "video", senseVideoMaxBytes)
 	if refusal != "" {
 		return refusal, true, nil
 	}
@@ -671,7 +667,7 @@ func (a *Agent) videoSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	reading := senseReading{note: senseNote("video", watcher), text: answer}
 	memo.put(key, reading)
-	a.recordEvidence(ctx, absolute, entry.mediaType, "video", data, EvidenceWatched, answer, watcher, false)
+	a.recordEvidence(ctx, working, absolute, entry.mediaType, "video", data, EvidenceWatched, answer, watcher, false, observed)
 	return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 }
 

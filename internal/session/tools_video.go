@@ -242,10 +242,9 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 	}
 	// The fact keeps what the render was given (frames first, then style
 	// references, exactly as named) and the length the file's own boxes state.
+	// GeneratedMedia reads the length and the frame size off the bytes in hand;
+	// nothing is taken from the request's own duration or resolution.
 	fact := GeneratedMedia(path, response.Video, model).WithUsage(response.Usage).WithMade(made)
-	if length, _, ok := mp4Facts(response.Video); ok {
-		fact = fact.WithDuration(length)
-	}
 	a.recordMedia(Artifact{
 		Path:    path,
 		Title:   mediaTitle(request.Prompt, path),

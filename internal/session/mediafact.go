@@ -58,8 +58,7 @@ const (
 	MediaAttachment = "attachment"
 	// MediaGenerated is a file a tool of the harness made.
 	MediaGenerated = "generated"
-	// MediaEvidence is a file the agent looked at. Reserved: nothing records
-	// it yet, and nothing is allowed to pretend it does.
+	// MediaEvidence is a file the agent looked at, listened to, watched or read.
 	MediaEvidence = "evidence"
 )
 
@@ -68,7 +67,15 @@ const (
 	EvidenceLookedAt   = "looked_at"
 	EvidenceListenedTo = "listened_to"
 	EvidenceWatched    = "watched"
+	// EvidenceRead is a document the agent read (read_document). It is the only
+	// verb on a "document" kind source.
+	EvidenceRead = "read"
 )
+
+// mediaDocument is the kind of a document the agent read. It exists ONLY as
+// evidence: a row of this kind with no structured fact, or one that is not
+// evidence, is some other deliverable and is not a media source.
+const mediaDocument = "document"
 
 // Whether the provider billed for a generation.
 const (
@@ -167,6 +174,13 @@ type MediaFact struct {
 	SeenBy      string `json:"seen_by,omitempty"`
 	Working     string `json:"working_model,omitempty"`
 	Transcribed bool   `json:"transcribed,omitempty"`
+	// PageCount and TextLayer are what the PARSER reported about a document it
+	// read, and are absent when it reported nothing: a parse that bills per page
+	// and returns no boundaries has no page count, and "no text layer" is only
+	// known when the local extractor found a scanned file. TextLayer is a pointer
+	// so a known false stays distinct from an unknown.
+	PageCount int   `json:"page_count,omitempty"`
+	TextLayer *bool `json:"text_layer,omitempty"`
 	// Charge and CostUSD are the provider's reported usage, see
 	// [ChargeFromUsage].
 	Charge  string   `json:"charge,omitempty"`
@@ -307,8 +321,31 @@ func GeneratedMedia(path string, data []byte, model string) MediaFact {
 			fact.Width, fact.Height = w, h
 		}
 	}
+	fact.measureContainer(data)
 	fact.stampFile(path)
 	return fact
+}
+
+// measureContainer reads the length of a WAV and the length and frame size of
+// an mp4 from bytes in hand, and leaves anything it cannot state as unknown.
+// It goes by the container's own signature and not by the sniffed content type:
+// http.DetectContentType does not know the "isom" brand real renders carry.
+// Nothing here looks at a request: a duration the caller ASKED for is not one
+// the file has.
+func (f *MediaFact) measureContainer(data []byte) {
+	switch {
+	case len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE":
+		if length, ok := wavLength(data); ok {
+			f.DurationMS = length.Milliseconds()
+		}
+	case len(data) >= 12 && string(data[4:8]) == "ftyp":
+		if length, _, ok := mp4Facts(data); ok {
+			f.DurationMS = length.Milliseconds()
+		}
+		if w, h, ok := mp4FrameSize(data); ok {
+			f.Width, f.Height = w, h
+		}
+	}
 }
 
 // DerivedMedia is the fact for a file a local tool made (ffmpeg): the bytes are
@@ -527,6 +564,12 @@ func mediaRowOf(row Artifact) (MediaRow, bool) {
 	switch row.Kind {
 	case "image", "audio", "video":
 		out.Kind = row.Kind
+	case mediaDocument:
+		// Other deliverables are called documents too; only the engine's own
+		// evidence row is a media source.
+		if out.Recorded && out.Fact.Origin == MediaEvidence {
+			out.Kind = mediaDocument
+		}
 	default:
 		out.Kind = mediaKindOf(out.Fact.MIME)
 	}

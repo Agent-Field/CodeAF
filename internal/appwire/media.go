@@ -103,7 +103,7 @@ const (
 // unchanged whatever the file is now: a missing file keeps the size it had.
 type MediaSource struct {
 	ID     string `json:"id"`
-	Kind   string `json:"kind" enum:"image,audio,video"`
+	Kind   string `json:"kind" enum:"image,audio,video,document"`
 	Origin string `json:"origin" enum:"attachment,generated,evidence"`
 	// Path is the recorded canonical path, for display and for the app's
 	// native side to open ONLY when State is available.
@@ -147,7 +147,7 @@ type MediaSource struct {
 	References []string `json:"references,omitempty"`
 	Said       string   `json:"said,omitempty"`
 	// Evidence only (origin evidence — a file the agent looked at): Verb is
-	// looked_at · listened_to · watched; Saw is the looking model's words
+	// looked_at · listened_to · watched · read; Saw is the looking model's words
 	// verbatim (SawOmitted when too long to keep whole); SeenBy is the model
 	// that looked and WorkingModel the one the session was running, which an
 	// app says only when they differ; Transcribed says the words are a speech
@@ -159,6 +159,14 @@ type MediaSource struct {
 	SeenBy       string `json:"seen_by,omitempty"`
 	WorkingModel string `json:"working_model,omitempty"`
 	Transcribed  bool   `json:"transcribed,omitempty"`
+	// PageCount and TextLayer are on a "document" source (a PDF the agent read)
+	// and only where the parser reported them: a billed parse that returns no
+	// page boundaries leaves PageCount absent, and TextLayer false means the
+	// extractor found a scanned file, not that nothing is known. A document is
+	// evidence only (Origin evidence, Verb read) and is never an attachment or
+	// generated.
+	PageCount *int  `json:"page_count,omitempty"`
+	TextLayer *bool `json:"text_layer,omitempty"`
 	// Charge is charged, not_charged or unknown, from the provider's reported
 	// usage; CostUSD is present only when charged.
 	Charge  string   `json:"charge" enum:"charged,not_charged,unknown"`
