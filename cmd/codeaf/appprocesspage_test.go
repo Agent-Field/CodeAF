@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -164,45 +166,123 @@ func isCode(err error, code string) bool {
 	return ok && wire.Code == code
 }
 
-// A HELD CONVERSATION WHOSE ENGINE CANNOT PAGE is paged here from its list,
-// within the same bounds, and a stale cursor says so.
-func TestProcessPageOfAnOlderHeldEngineIsPagedFromItsList(t *testing.T) {
-	conv := &fakeConversation{}
+// A HELD CONVERSATION WHOSE ENGINE CANNOT PAGE IS REFUSED, NEVER PAGED FROM
+// ITS WHOLE LIST: processes.page and processes.log answer unknown_method and
+// the old engine's list is not read at all; processes.list still lists it.
+func TestProcessPageOfAnEngineThatCannotPageIsRefusedWithoutItsList(t *testing.T) {
+	conv := &fakeConversation{jobs: []session.JobNotice{{ID: 1, Kind: session.JobKindCommand, State: session.JobDone, Started: time.Now()}}}
 	backend, _, agent := workBackend(t, conv)
-	a, _ := backend.find(agent.ID)
-	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
-	var was string
-	backend.locked(func() { was, a.transcript = a.transcript, transcript })
-	t.Cleanup(func() { backend.locked(func() { a.transcript = was }) })
-	logs := filepath.Join(filepath.Dir(transcript), "logs", "jobs")
-	_ = os.MkdirAll(logs, 0o700)
-	var jobs []session.JobNotice
-	for i := 1; i <= 9; i++ {
-		spool := filepath.Join(logs, strconv.Itoa(i)+".log")
-		_ = os.WriteFile(spool, []byte(strings.Repeat("x\n", 10)), 0o600)
-		jobs = append(jobs, session.JobNotice{ID: i, Kind: session.JobKindCommand, Command: "c", State: session.JobDone, Started: time.Now(), LogPath: spool})
-	}
-	conv.mu.Lock()
-	conv.jobs = jobs
-	conv.mu.Unlock()
 	ctx := context.Background()
-	four := 4
-	page, err := backend.PageProcesses(ctx, appwire.ProcessPageAsk{Agent: agent.ID, Limit: &four})
-	if err != nil || len(page.Processes) != 4 || page.Processes[0].ID != appProcessID(agent.ID, jobs[8]) || page.Next == "" {
-		t.Fatalf("list page: %+v %v", page, err)
+	if _, err := backend.PageProcesses(ctx, appwire.ProcessPageAsk{Agent: agent.ID}); !isCode(err, appwire.CodeUnknownMethod) {
+		t.Fatalf("page of an engine that cannot page: %v", err)
+	}
+	if _, err := backend.ReadProcessLog(ctx, appwire.ProcessLogAsk{ID: appProcessID(agent.ID, conv.jobs[0])}); !isCode(err, appwire.CodeUnknownMethod) {
+		t.Fatalf("log of an engine that cannot page: %v", err)
 	}
 	conv.mu.Lock()
-	conv.jobs = append(conv.jobs, session.JobNotice{ID: 10, Kind: session.JobKindCommand, State: session.JobRunning, Started: time.Now()})
+	calls := conv.jobListCalls
 	conv.mu.Unlock()
-	if _, err := backend.PageProcesses(ctx, appwire.ProcessPageAsk{Agent: agent.ID, Cursor: page.Next}); !isCode(err, appwire.CodeStaleCursor) {
-		t.Fatalf("stale list cursor: %v", err)
+	if calls != 0 {
+		t.Fatalf("a bounded door read the whole list %d times", calls)
 	}
-	out, err := backend.ReadProcessLog(ctx, appwire.ProcessLogAsk{ID: appProcessID(agent.ID, jobs[8])})
-	if err != nil || out.Text != strings.Repeat("x\n", 10) {
-		t.Fatalf("log through the list: %+v %v", out, err)
+	if list, err := backend.ListProcesses(agent.ID); err != nil || len(list) != 1 {
+		t.Fatalf("the legacy list changed: %+v %v", list, err)
 	}
 	if _, err := backend.PageProcesses(ctx, appwire.ProcessPageAsk{Agent: agent.ID, Crew: "c1"}); !isCode(err, appwire.CodeBadParams) {
 		t.Fatalf("crew scope: %v", err)
+	}
+}
+
+// blockingPager is an owner engine that pages only when its caller's
+// deadline allows: it waits for the context.
+type blockingPager struct {
+	*fakeConversation
+	asked chan struct{}
+}
+
+func (b blockingPager) ProcessPage(ctx context.Context, _ session.ProcessPageAsk) (session.ProcessPage, error) {
+	close(b.asked)
+	<-ctx.Done()
+	return session.ProcessPage{}, ctx.Err()
+}
+
+// THE OWNER IS ASKED WITHIN THE PAGE'S DEADLINE: a cancelled or expired page
+// stops at its context and never falls back to the whole list.
+func TestProcessPageStopsAtItsContextWithAnOwnerThatDoesNotAnswer(t *testing.T) {
+	conv := &fakeConversation{}
+	pager := blockingPager{fakeConversation: conv, asked: make(chan struct{})}
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: pager, Workspace: ask.Workspace, Transcript: appFakeTranscript, Release: func() {}}, nil
+	})
+	t.Cleanup(func() { backend.Close() })
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err = backend.PageProcesses(ctx, appwire.ProcessPageAsk{Agent: agent.ID})
+	if err == nil || time.Since(start) > 2*time.Second {
+		t.Fatalf("an unanswering owner held the page: %v after %v", err, time.Since(start))
+	}
+	conv.mu.Lock()
+	calls := conv.jobListCalls
+	conv.mu.Unlock()
+	if calls != 0 {
+		t.Fatal("an unanswering owner sent the page to the whole list")
+	}
+}
+
+// THE ROW BOUND IS ON THE ENCODED BYTES: text that JSON writes six bytes per
+// character is cut until the row really is under its bound, and says cut.
+func TestProcessPageRowBoundHoldsUnderJSONEscaping(t *testing.T) {
+	nasty := strings.Repeat("<>&\x01\x1f\"\\", 400<<10)
+	p := appwire.Process{ID: "a:p1", Agent: "a", State: appwire.ProcessEnded,
+		Title: nasty, Command: nasty, LastLine: nasty, Reason: nasty, Dir: nasty, LogPath: nasty, URL: nasty,
+		Service: &appwire.Service{Name: nasty, Dir: nasty, OpenURL: nasty, Reason: nasty, Episode: nasty, EpisodeReason: nasty, StoppedBy: nasty,
+			StartedBy: appwire.ServiceOrigin{Label: nasty, CallID: nasty},
+			Health:    appwire.ServiceHealth{Kind: "cmd", Cmd: nasty, URL: nasty, Words: nasty},
+			Check:     &appwire.ServiceCheck{Detail: nasty}},
+	}
+	bounded, n, ok := appBoundRow(p)
+	raw, _ := json.Marshal(bounded)
+	if !ok || !bounded.Cut || len(raw) != n || len(raw) > appProcessRowMax {
+		t.Fatalf("escaped row: ok=%v cut=%v bytes=%d claimed=%d bound=%d", ok, bounded.Cut, len(raw), n, appProcessRowMax)
+	}
+	// And a page of such rows still walks to its end, every page under 4 MiB.
+	svc := &fakeServices{ids: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}, command: nasty}
+	eng := &fakeEngine{rows: engineRows(1, 2), rev: "e1"}
+	sameIDs(t, "escaped rows", walkComposed(t, svc, eng, 100, appwire.ProcessPageReplyMax), wantComposed(svc, eng))
+}
+
+// A PAGED SERVICE OPENS NO FILE: its log path may be a FIFO or a link to
+// anything, and the page neither blocks on it nor carries a byte of it.
+func TestProcessPageServiceRowReadsNoTail(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "marker")
+	_ = os.WriteFile(marker, []byte("SECRET-MARKER\n"), 0o600)
+	link := filepath.Join(dir, "link.log")
+	_ = os.Symlink(marker, link)
+	fifo := filepath.Join(dir, "fifo.log")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{link, fifo} {
+		done := make(chan appwire.Process, 1)
+		go func() {
+			done <- appServiceProcessBase(service.Row{ID: "s1", Owner: "a", Name: "web", LogPath: path}, false)
+		}()
+		select {
+		case p := <-done:
+			raw, _ := json.Marshal(p)
+			if p.LastLine != "" || strings.Contains(string(raw), "SECRET-MARKER") {
+				t.Fatalf("%s: a paged service read its tail: %s", path, raw)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s: a paged service opened its log", path)
+		}
 	}
 }
 
@@ -397,40 +477,4 @@ func TestProcessPageServiceMembershipChangeIsStaleOnlyWhileInServices(t *testing
 	if _, err := appComposeProcessPage(context.Background(), "garbage", 5, appwire.ProcessPageReplyMax, svc.page, eng.page, rowOfTest); err == nil {
 		t.Fatal("a garbage cursor was accepted")
 	}
-}
-
-// AN OLD ENGINE'S LIST HAS NO LIVE PHASE: a byte cut on a running row from it
-// continues with a cursor that list can parse, and the walk is whole.
-func TestProcessPageCutOnAnOldEnginesListStaysParseable(t *testing.T) {
-	var jobs []session.JobNotice
-	for id := 1; id <= 12; id++ {
-		state := session.JobDone
-		if id%3 == 0 {
-			state = session.JobRunning
-		}
-		jobs = append(jobs, session.JobNotice{ID: id, Kind: session.JobKindCommand, Command: strings.Repeat("z", 60<<10), State: state, Started: time.Unix(int64(id), 0)})
-	}
-	engine := func(_ context.Context, ask session.ProcessPageAsk) (session.ProcessPage, error) {
-		return appPageList(jobs, ask)
-	}
-	var got []string
-	cursor := ""
-	for pages := 0; pages < 100; pages++ {
-		out, err := appComposeProcessPage(context.Background(), cursor, 100, appProcessPageEnvelope+130<<10, (&fakeServices{}).page, engine, rowOfTest)
-		if err != nil {
-			t.Fatalf("page %d: %v", pages, err)
-		}
-		for _, p := range out.Processes {
-			got = append(got, p.ID)
-		}
-		if out.Next == "" {
-			break
-		}
-		cursor = out.Next
-	}
-	var want []string
-	for id := 12; id >= 1; id-- {
-		want = append(want, appProcessID("a", jobs[id-1]))
-	}
-	sameIDs(t, "old engine list", got, want)
 }

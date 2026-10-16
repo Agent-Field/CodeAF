@@ -14,8 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -91,7 +89,10 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 		rows, more, revision := svc.sup.Page(ask.Agent, after, n)
 		out := make([]appwire.Process, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, appServiceProcess(row, false))
+			// NO TAIL IS READ FOR A PAGED SERVICE: its last line is absent
+			// (unknown) rather than read from a path through a reader that
+			// follows links; processes.output still reads it.
+			out = append(out, appServiceProcessBase(row, false))
 		}
 		return out, more, revision
 	}
@@ -156,15 +157,40 @@ func decodeAppPageCursor(cursor string) (appPageCursor, error) {
 	return appPageCursor{}, errAppCursor
 }
 
-// appBoundRow keeps one row under [appProcessRowMax].
-func appBoundRow(p appwire.Process) (appwire.Process, int) {
+// appBoundRow keeps one row's ENCODED size under [appProcessRowMax], or says it
+// cannot.
+//
+// THE BOUND IS ON THE BYTES THAT LEAVE, NOT ON THE TEXT GOING IN. JSON writes
+// `<`, `>`, `&` and control characters as six bytes each, so a field of 4 KiB
+// of shell punctuation is 24 KiB on the wire, and a row cut by raw length
+// could still be far over its bound. So the row's free text is cut to a
+// smaller cap on each pass — 4 KiB, 1 KiB, 256, 64, 16, nothing — and
+// encoded again, until it fits. What is never cut is bounded by the code
+// that makes it: the ids (the agent is at most 128 bytes on the request), the
+// enumerations, the times and the numbers. A row that still did not fit with
+// every free text emptied would be one this page cannot represent, and it is
+// refused rather than sent over its bound.
+func appBoundRow(p appwire.Process) (appwire.Process, int, bool) {
 	raw, _ := json.Marshal(p)
 	if len(raw) <= appProcessRowMax {
-		return p, len(raw)
+		return p, len(raw), true
 	}
+	for _, limit := range []int{appProcessFieldMax, 1 << 10, 256, 64, 16, 0} {
+		p = appCutRowText(p, limit)
+		raw, _ = json.Marshal(p)
+		if len(raw) <= appProcessRowMax {
+			return p, len(raw), true
+		}
+	}
+	return p, len(raw), false
+}
+
+// appCutRowText cuts every free-text field of a row to at most limit bytes,
+// at a character boundary, and marks the row cut.
+func appCutRowText(p appwire.Process, limit int) appwire.Process {
 	cut := func(s *string) {
-		if len(*s) > appProcessFieldMax {
-			*s = strings.ToValidUTF8((*s)[:appProcessFieldMax], "")
+		if len(*s) > limit {
+			*s = strings.ToValidUTF8((*s)[:limit], "")
 		}
 	}
 	for _, f := range []*string{&p.Title, &p.Command, &p.LastLine, &p.Reason, &p.Dir, &p.LogPath, &p.URL} {
@@ -172,7 +198,7 @@ func appBoundRow(p appwire.Process) (appwire.Process, int) {
 	}
 	if p.Service != nil {
 		svc := *p.Service
-		for _, f := range []*string{&svc.Name, &svc.Dir, &svc.OpenURL, &svc.Reason, &svc.EpisodeReason, &svc.StartedBy.Label, &svc.Health.Cmd, &svc.Health.URL, &svc.Health.Words} {
+		for _, f := range []*string{&svc.Name, &svc.Dir, &svc.OpenURL, &svc.Reason, &svc.Episode, &svc.EpisodeReason, &svc.StoppedBy, &svc.StartedBy.Label, &svc.StartedBy.CallID, &svc.Health.Cmd, &svc.Health.URL, &svc.Health.Words} {
 			cut(f)
 		}
 		if svc.Check != nil {
@@ -183,8 +209,7 @@ func appBoundRow(p appwire.Process) (appwire.Process, int) {
 		p.Service = &svc
 	}
 	p.Cut = true
-	raw, _ = json.Marshal(p)
-	return p, len(raw)
+	return p
 }
 
 // appComposeProcessPage is one page across the three phases, under limit rows
@@ -201,8 +226,13 @@ func appComposeProcessPage(ctx context.Context, cursor string, limit, budget int
 	}
 	out := &appwire.ProcessPageResult{Processes: []appwire.Process{}}
 	used := appProcessPageEnvelope
+	var unrepresentable error
 	admit := func(p appwire.Process) bool {
-		p, n := appBoundRow(p)
+		p, n, ok := appBoundRow(p)
+		if !ok {
+			unrepresentable = appwire.Errorf(appwire.CodeTooLarge, "process %s cannot be carried in one page row", p.ID)
+			return false
+		}
 		if len(out.Processes) == limit || used+n+1 > budget {
 			return false
 		}
@@ -218,6 +248,9 @@ func appComposeProcessPage(ctx context.Context, cursor string, limit, budget int
 		last := cur.after
 		for _, p := range rows {
 			if !admit(p) {
+				if unrepresentable != nil {
+					return nil, unrepresentable
+				}
 				out.Next = appPageCursor{services: true, revision: revision, after: last}.encode()
 				return out, nil
 			}
@@ -242,6 +275,9 @@ func appComposeProcessPage(ctx context.Context, cursor string, limit, budget int
 	out.Incomplete, out.Revision = page.Incomplete, page.Revision
 	for _, row := range page.Rows {
 		if !admit(rowOf(row)) {
+			if unrepresentable != nil {
+				return nil, unrepresentable
+			}
 			out.Next = appPageCursor{engine: appEngineCursorAt(page.Revision, row)}.encode()
 			return out, nil
 		}
@@ -255,76 +291,33 @@ func appComposeProcessPage(ctx context.Context, cursor string, limit, budget int
 // appEngineCursorAt is the engine cursor that begins with row, in its phase:
 // a live row continues the live rows, any other the saved history below it.
 func appEngineCursorAt(revision string, row session.ProcessPageRow) string {
-	if row.Live && !strings.HasPrefix(revision, appListRevision) {
+	if row.Live {
 		return session.ProcessCursorLive(revision, row.ID)
 	}
 	return session.ProcessCursorBefore(revision, row.ID)
 }
 
-// appListRevision prefixes the revision of a page cut from an old engine's
-// whole list, whose cursor knows only numbers.
-const appListRevision = "list"
-
-// heldProcessPage asks the owning engine. An engine too old to page answers
-// its whole list, which is paged here so the answer keeps the page's bounds.
+// heldProcessPage asks the owning engine, and ONLY it. An engine that cannot
+// page its history is refused as unknown_method: the alternative — fetching
+// its whole legacy list to page here — is a read no bound or deadline covers,
+// which is exactly what this method exists not to do. processes.list still
+// lists such an engine's processes, as it always did, for a surface that
+// chooses it.
 func (b *appBackend) heldProcessPage(ctx context.Context, live *appLive, ask session.ProcessPageAsk) (session.ProcessPage, error) {
-	if pager, ok := live.conn.Conv.(appProcessPager); ok {
-		page, err := pager.ProcessPage(ctx, ask)
-		if !errors.Is(err, remote.ErrProcessPageUnserved) {
-			return page, err
-		}
+	pager, ok := live.conn.Conv.(appProcessPager)
+	if !ok {
+		return session.ProcessPage{}, appProcessUnpaged()
 	}
-	rows, err := live.conn.Conv.JobNotices()
-	if err != nil {
-		return session.ProcessPage{}, err
+	page, err := pager.ProcessPage(ctx, ask)
+	if errors.Is(err, remote.ErrProcessPageUnserved) {
+		return session.ProcessPage{}, appProcessUnpaged()
 	}
-	return appPageList(rows, ask)
+	return page, err
 }
 
-// appPageList pages a whole list from an engine that cannot page. Its cursor
-// names the list it was cut from by the newest number in it.
-func appPageList(rows []session.JobNotice, ask session.ProcessPageAsk) (session.ProcessPage, error) {
-	kept := rows[:0:0]
-	for _, row := range rows {
-		if row.Kind != session.JobKindTask {
-			kept = append(kept, row)
-		}
-	}
-	sort.Slice(kept, func(i, j int) bool { return kept[i].ID > kept[j].ID })
-	revision := appListRevision
-	if len(kept) > 0 {
-		revision = appListRevision + strconv.Itoa(kept[0].ID)
-	}
-	before := 0
-	if ask.Cursor != "" {
-		raw, err := base64.RawURLEncoding.DecodeString(ask.Cursor)
-		parts := strings.Split(string(raw), ":")
-		if err != nil || len(parts) != 3 || parts[0] != "p1" {
-			return session.ProcessPage{}, errors.New("that cursor is not one a page gave")
-		}
-		if parts[1] != revision {
-			return session.ProcessPage{}, session.ErrProcessStale
-		}
-		if before, err = strconv.Atoi(parts[2]); err != nil {
-			return session.ProcessPage{}, errors.New("that cursor is not one a page gave")
-		}
-	}
-	page := session.ProcessPage{Revision: revision}
-	for _, row := range kept {
-		if before > 0 && row.ID >= before {
-			continue
-		}
-		if len(page.Rows) == ask.Limit {
-			page.Next = session.ProcessCursorBefore(revision, row.ID)
-			break
-		}
-		// AN OLD ENGINE'S LIST HAS NO LIVE PHASE. Its running rows keep their
-		// state, and are not marked live: this list's cursor knows only
-		// numbers, and a live mark would make a cut continue in a phase it
-		// cannot parse.
-		page.Rows = append(page.Rows, session.ProcessPageRow{JobNotice: row})
-	}
-	return page, nil
+// appProcessUnpaged is the refusal for an engine that cannot page.
+func appProcessUnpaged() error {
+	return appwire.Errorf(appwire.CodeUnknownMethod, "this conversation's engine cannot page its processes; processes.list still lists them")
 }
 
 // appProcessPageRow is one history row in the wire's words.
@@ -419,7 +412,7 @@ func (b *appBackend) ReadProcessLog(ctx context.Context, ask appwire.ProcessLogA
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	record, convDir, err := b.processRecord(ctx, ask.ID)
+	record, convDir, err := b.processRecord(ctx, ask.ID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +435,7 @@ func (b *appBackend) ReadProcessLog(ctx context.Context, ask appwire.ProcessLogA
 // its conversation or, when none here does, its store, and the conversation's
 // folder its log must be under. The start stamp in the id must match, so an id
 // never reaches another run of the same number.
-func (b *appBackend) processRecord(ctx context.Context, id string) (session.JobNotice, string, error) {
+func (b *appBackend) processRecord(ctx context.Context, id string, legacyList bool) (session.JobNotice, string, error) {
 	agent, job, stamp, ok := appProcessJob(id)
 	if !ok {
 		return session.JobNotice{}, "", appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
@@ -465,6 +458,12 @@ func (b *appBackend) processRecord(ctx context.Context, id string) (session.JobN
 			record, found, err = recorder.ProcessRecord(ctx, job)
 		}
 		if !can || errors.Is(err, remote.ErrProcessPageUnserved) {
+			// ONLY THE LEGACY VERBS may find a process in an old engine's
+			// whole list (stop, rerun, output, follow did so before this
+			// wave). processes.log is a bounded method and refuses instead.
+			if !legacyList {
+				return session.JobNotice{}, "", appProcessUnpaged()
+			}
 			_, row, rerr := b.processRowFromList(id)
 			if rerr != nil {
 				return session.JobNotice{}, "", rerr

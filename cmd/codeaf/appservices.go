@@ -212,9 +212,17 @@ func appServiceError(err error) error {
 
 // appServiceProcess is one service's row as a process on the wire.
 func appServiceProcess(row service.Row, removed bool) appwire.Process {
+	process := appServiceProcessBase(row, removed)
+	process.LastLine = redact.Secrets(appLastLine(row.LogPath))
+	return process
+}
+
+// appServiceProcessBase is a service as a process WITHOUT its last line: it
+// opens no file. processes.page uses it; the legacy doors add the line.
+func appServiceProcessBase(row service.Row, removed bool) appwire.Process {
 	process := appwire.Process{
 		ID: row.Owner + ":" + row.ID, Agent: row.Owner, Title: redact.Secrets(row.Name), Command: redact.Secrets(row.Command),
-		Reason: redact.Secrets(row.Reason), LastLine: redact.Secrets(appLastLine(row.LogPath)),
+		Reason:  redact.Secrets(row.Reason),
 		EndedAt: row.EndedAt, ExitCode: row.ExitCode,
 	}
 	if row.StartedAt != nil {

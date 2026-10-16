@@ -112,7 +112,7 @@ func (b *appBackend) processRow(id string) (string, session.JobNotice, error) {
 	agent, _, _, _ := appProcessJob(id)
 	ctx, cancel := context.WithTimeout(context.Background(), appwire.ProcessReadTimeout)
 	defer cancel()
-	record, _, err := b.processRecord(ctx, id)
+	record, _, err := b.processRecord(ctx, id, true)
 	if err != nil {
 		return "", session.JobNotice{}, err
 	}

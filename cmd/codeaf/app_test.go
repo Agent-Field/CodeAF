@@ -136,26 +136,29 @@ func TestAppCommandAnswersHelloPingCrewsAndUnknownMethod(t *testing.T) {
 
 // fakeConversation plays a scripted turn and counts what is asked of it.
 type fakeConversation struct {
-	mu          sync.Mutex
-	routing     session.TaskRoutingView
-	routingErr  error
-	routingActs []session.TaskRoutingAction
-	script      []session.Event
-	hold        chan struct{}
-	submits     int
-	interrupted int
-	needs       bool
-	tasks       chan session.Event
-	questions   chan session.Event
-	endLane     func()
-	answers     []session.Answer
-	model       string
-	effort      string
-	rail        float64
-	remembered  []session.ConsentScope
-	texts       []string
-	submissions []session.Submission
-	cost        float64
+	mu sync.Mutex
+	// jobListCalls counts whole-list reads, so a bounded door can be proved
+	// never to make one.
+	jobListCalls int
+	routing      session.TaskRoutingView
+	routingErr   error
+	routingActs  []session.TaskRoutingAction
+	script       []session.Event
+	hold         chan struct{}
+	submits      int
+	interrupted  int
+	needs        bool
+	tasks        chan session.Event
+	questions    chan session.Event
+	endLane      func()
+	answers      []session.Answer
+	model        string
+	effort       string
+	rail         float64
+	remembered   []session.ConsentScope
+	texts        []string
+	submissions  []session.Submission
+	cost         float64
 	// The task, quick task and process doors' scripted answers, and what was
 	// asked of them.
 	appTasks    []session.AppTaskView
@@ -360,6 +363,7 @@ func (f *fakeConversation) MoveTurnToTask() error {
 func (f *fakeConversation) JobNotices() ([]session.JobNotice, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.jobListCalls++
 	return append([]session.JobNotice(nil), f.jobs...), nil
 }
 func (f *fakeConversation) RerunProcess(id int) (session.JobNotice, error) {
