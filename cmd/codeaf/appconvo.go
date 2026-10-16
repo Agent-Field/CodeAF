@@ -901,6 +901,9 @@ func (b *appBackend) StatFiles(agent string, paths []string) ([]appwire.FileStat
 // A file is read no further than its stat: the model is sent its path, and
 // reads it with its own tools.
 func (b *appBackend) prepareAttach(workspace string, changed map[string]appwire.FileChange, attachment appwire.Attachment, text string, present bool) (appAttach, error) {
+	// WHAT AN ATTACHMENT WAS MEASURED AS OR KEPT FROM IS THE ENGINE'S TO SAY: a
+	// staged ordinary attachment never carries media facts a caller wrote.
+	attachment.Media = nil
 	kept := appAttach{view: attachment}
 	switch attachment.Kind {
 	case appwire.AttachFile:
@@ -993,6 +996,13 @@ func appDescribed(attach appAttach) session.MessageAttachment {
 	described := session.MessageAttachment{
 		ID: attach.view.ID, Kind: attach.view.Kind, Name: attach.view.Title, Path: attach.view.Path, URL: attach.view.URL,
 	}
+	// The source is the engine's own record of a snapshot it made, never anything
+	// the request or an ordinary attachment said.
+	if ref := attach.reference; ref != nil && ref.ranged {
+		source := ref.source
+		source.AtMS, source.FromMS, source.ToMS = nil, copyMS(source.FromMS), copyMS(source.ToMS)
+		described.Source = &source
+	}
 	if attach.view.Kind == appwire.AttachPaste {
 		bytes := int64(len(attach.content))
 		described.Bytes = &bytes
@@ -1013,6 +1023,9 @@ func appAttachmentsOf(person *session.PersonMark) []appwire.Attachment {
 	views := make([]appwire.Attachment, 0, len(person.Attachments))
 	for _, d := range person.Attachments {
 		view := appwire.Attachment{ID: d.ID, Kind: d.Kind, Path: d.Path, URL: d.URL, Title: d.Name}
+		if d.Source != nil {
+			view.Media = &appwire.AttachmentMedia{Source: appWireReference(d.Source)}
+		}
 		if d.Lines != nil {
 			lines := *d.Lines
 			view.Lines = &lines

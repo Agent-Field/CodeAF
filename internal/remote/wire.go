@@ -1073,6 +1073,11 @@ type Welcome struct {
 	// engine, which would drop the field unread: a call carrying one is refused
 	// before it is sent rather than run without the correlation it asked for.
 	MessageClientIDs bool `json:"messageClientIds,omitempty"`
+	// AttachmentSources says this engine keeps [session.MessageAttachment.Source],
+	// the recorded audio or video span a file attachment was kept for. Absence is
+	// an older engine, which would drop it unread: a call carrying one is refused
+	// before it is sent.
+	AttachmentSources bool `json:"attachmentSources,omitempty"`
 	// SessionInstance identifies this live conversation owner, not its durable
 	// transcript. A replaced engine can reopen the same file with stream IDs
 	// starting over, so a returning surface must forget the previous owner IDs.

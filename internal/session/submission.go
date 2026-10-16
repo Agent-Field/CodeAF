@@ -54,6 +54,11 @@ type MessageAttachment struct {
 	Bytes *int64 `json:"bytes,omitempty"`
 	// Lines is how many lines it held, nil where the door did not count them.
 	Lines *int `json:"lines,omitempty"`
+	// Source says which span of which recorded audio or video this file is a
+	// snapshot of ([SnapshotMediaRange]). Only a "file" carries one, and only a
+	// door that made the snapshot may say so: it names the source, the version the
+	// engine verified, and the range. Nil on every ordinary attachment.
+	Source *MediaReference `json:"source,omitempty"`
 }
 
 // Submission is a person's message with what the door knows about it beyond
@@ -273,6 +278,16 @@ func (m Submission) mark() (*messagePresentation, error) {
 			lines := *given.Lines
 			kept.Lines = &lines
 		}
+		if given.Source != nil {
+			if kept.Kind != "file" {
+				return nil, fmt.Errorf("%w: attachment %d is a %s, and only a file has a recorded source", ErrMessageMark, index+1, kept.Kind)
+			}
+			if err := checkRangeSource(given.Source); err != nil {
+				return nil, fmt.Errorf("%w: attachment %d's source %v", ErrMessageMark, index+1, err)
+			}
+			kept.Source = cloneSource(given.Source)
+			kept.Source.SourceID, kept.Source.Path, kept.Source.Version = strings.Clone(given.Source.SourceID), strings.Clone(given.Source.Path), strings.Clone(given.Source.Version)
+		}
 		mark.Attachments = append(mark.Attachments, kept)
 	}
 	mark.Reads = reads
@@ -441,6 +456,7 @@ func cloneAttachments(attachments []MessageAttachment) []MessageAttachment {
 			lines := *count
 			out[index].Lines = &lines
 		}
+		out[index].Source = cloneSource(out[index].Source)
 	}
 	return out
 }

@@ -67,11 +67,19 @@ func CopyMediaReference(ctx context.Context, row MediaRow, roots []string, versi
 		return MediaReferenceCopy{}, err
 	}
 	defer file.Close()
+	return streamOwnedCopy(ctx, row, roots, file, before, live, destination, filepath.Base(live.Path))
+}
+
+// streamOwnedCopy copies the open, already-checked source file into a new private
+// directory under destination, named name, and verifies afterwards that the SAME
+// descriptor and the path still show the version that was authorized and that
+// the bytes still match a recorded hash. On any failure nothing is left behind.
+func streamOwnedCopy(ctx context.Context, row MediaRow, roots []string, file *os.File, before os.FileInfo, live MediaLive, destination, name string) (MediaReferenceCopy, error) {
 	dir, err := os.MkdirTemp(destination, ".reference-")
 	if err != nil {
 		return MediaReferenceCopy{}, err
 	}
-	copy := MediaReferenceCopy{Path: filepath.Join(dir, filepath.Base(live.Path)), dir: dir, name: filepath.Base(live.Path)}
+	copy := MediaReferenceCopy{Path: filepath.Join(dir, name), dir: dir, name: name}
 	out, err := os.OpenFile(copy.Path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		_ = os.Remove(dir)
@@ -130,12 +138,23 @@ func openMediaReference(ctx context.Context, row MediaRow, roots []string, versi
 // open. Nonblocking open prevents a replacement FIFO from holding staging
 // admission forever; the descriptor stat below still requires the exact file.
 func openLiveMediaReference(ctx context.Context, live MediaLive) (*os.File, os.FileInfo, MediaLive, error) {
+	file, before, err := openLiveMedia(ctx, live, maxImageBytes, func(head []byte) bool { return sniffedImageTypes[sniffMedia(head)] }, func() error {
+		return markError("reference image is outside the %s image limit", byteLimit(maxImageBytes))
+	})
+	return file, before, live, err
+}
+
+// openLiveMedia opens a validated live source without blocking and returns the
+// descriptor with its stat, which is the identity every later check compares.
+// The size is bounded from that descriptor before a byte is read; tooBig is the
+// refusal for a file outside 1 to limit bytes, and accept sees the first bytes.
+func openLiveMedia(ctx context.Context, live MediaLive, limit int64, accept func(head []byte) bool, tooBig func() error) (*os.File, os.FileInfo, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, MediaLive{}, err
+		return nil, nil, err
 	}
 	file, err := openRecordFile(live.Path)
 	if err != nil {
-		return nil, nil, MediaLive{}, ErrMediaReference
+		return nil, nil, ErrMediaReference
 	}
 	keep := false
 	defer func() {
@@ -145,24 +164,24 @@ func openLiveMediaReference(ctx context.Context, live MediaLive) (*os.File, os.F
 	}()
 	before, err := file.Stat()
 	if err != nil || !before.Mode().IsRegular() || referenceIdentity(before) != live.Version {
-		return nil, nil, MediaLive{}, ErrMediaReference
+		return nil, nil, ErrMediaReference
 	}
-	if before.Size() <= 0 || before.Size() > maxImageBytes {
-		return nil, nil, MediaLive{}, markError("reference image is outside the %s image limit", byteLimit(maxImageBytes))
+	if before.Size() <= 0 || before.Size() > limit {
+		return nil, nil, tooBig()
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, nil, MediaLive{}, err
+		return nil, nil, err
 	}
 	var head [512]byte
 	nhead, readErr := file.ReadAt(head[:], 0)
 	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return nil, nil, MediaLive{}, ErrMediaReference
+		return nil, nil, ErrMediaReference
 	}
-	if !sniffedImageTypes[sniffMedia(head[:nhead])] {
-		return nil, nil, MediaLive{}, ErrMediaReference
+	if !accept(head[:nhead]) {
+		return nil, nil, ErrMediaReference
 	}
 	keep = true
-	return file, before, live, nil
+	return file, before, nil
 }
 
 func referenceLive(row MediaRow, roots []string, version string) (MediaLive, error) {

@@ -78,6 +78,9 @@ func appComposedOf(workspace string, kept []appAttach, given *appwire.MessageSub
 		if !ok {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "picture %q is not one of the message's attachments", media.ID)
 		}
+		if attach.reference != nil && attach.reference.ranged {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "%s is a recorded audio or video range, and only a picture can be sent as a picture", media.ID)
+		}
 		if attach.view.Kind != appwire.AttachFile {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "%s is not a file, and only a file can be sent as a picture", media.ID)
 		}
@@ -116,11 +119,16 @@ func appWireReference(ref *session.MediaReference) *appwire.MediaReference {
 		return nil
 	}
 	out := appwire.MediaReference{SourceID: ref.SourceID, Path: ref.Path, Version: ref.Version}
-	if ref.AtMS != nil {
-		at := *ref.AtMS
-		out.AtMS = &at
-	}
+	out.AtMS, out.FromMS, out.ToMS = copyMS(ref.AtMS), copyMS(ref.FromMS), copyMS(ref.ToMS)
 	return &out
+}
+
+func copyMS(ms *int64) *int64 {
+	if ms == nil {
+		return nil
+	}
+	value := *ms
+	return &value
 }
 
 func appSessionPoint(p *appwire.Point) *session.Point {

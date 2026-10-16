@@ -560,6 +560,7 @@ func attachmentSizes(attachment MessageAttachment) int64 {
 	if attachment.Lines != nil {
 		cost += int64(unsafe.Sizeof(*attachment.Lines))
 	}
+	cost += sourceSizes(attachment.Source)
 	return cost
 }
 

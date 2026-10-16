@@ -19,6 +19,10 @@ const appReferenceWorkers = 2
 type appReference struct {
 	copy   session.MediaReferenceCopy
 	source session.MediaReference
+	// ranged says the snapshot is a recorded audio or video kept for a span
+	// (media.attach_range). It is an ordinary FILE attachment with typed source
+	// metadata, and is never a picture: no image path may see it.
+	ranged bool
 	// Once delivery was attempted, a lost reply may still mean accepted. Removal
 	// forgets the staging ID but conservatively retains the message's image file.
 	attempted bool
@@ -34,7 +38,7 @@ func (r *appReference) submission(id string) session.SubmissionMedia {
 // is admitted before I/O: two active copies and 64 unsent/in-flight snapshots
 // for the process, at most ten per conversation. No background worker is spawned.
 func (b *appBackend) AttachMedia(agent, source, version string) (appwire.Attachment, error) {
-	return b.attachReference(agent, source, nil, func(ctx context.Context, row session.MediaRow, roots []string, destination string) (session.MediaReferenceCopy, error) {
+	return b.attachReference(agent, source, appSpan{}, func(ctx context.Context, row session.MediaRow, roots []string, destination string) (session.MediaReferenceCopy, error) {
 		return session.CopyMediaReference(ctx, row, roots, version, destination)
 	})
 }
@@ -47,7 +51,7 @@ func (b *appBackend) AttachMedia(agent, source, version string) (appwire.Attachm
 // exists and the video's recorded version must still be live.
 func (b *appBackend) AttachMediaFrame(agent, source, version string, atMS int64, pngBase64 string) (appwire.Attachment, error) {
 	at := atMS
-	return b.attachReference(agent, source, &at, func(ctx context.Context, row session.MediaRow, roots []string, destination string) (session.MediaReferenceCopy, error) {
+	return b.attachReference(agent, source, appSpan{at: &at}, func(ctx context.Context, row session.MediaRow, roots []string, destination string) (session.MediaReferenceCopy, error) {
 		if len(pngBase64) > base64.StdEncoding.EncodedLen(session.MaxFrameBytes) {
 			return session.MediaReferenceCopy{}, session.ErrMediaFrame
 		}
@@ -59,7 +63,23 @@ func (b *appBackend) AttachMediaFrame(agent, source, version string, atMS int64,
 	})
 }
 
-func (b *appBackend) attachReference(agent, source string, atMS *int64, snapshot func(context.Context, session.MediaRow, []string, string) (session.MediaReferenceCopy, error)) (appwire.Attachment, error) {
+// AttachMediaRange keeps an exact copy of a recorded audio or video as an
+// engine-owned FILE attachment whose source names the recording, its verified
+// version and the span. The span is provenance only: nothing is clipped,
+// rendered or decoded, and the attachment is never a picture. Admission is
+// attachReference's; no raw path is accepted and no model is called.
+func (b *appBackend) AttachMediaRange(agent, source, version string, fromMS, toMS int64) (appwire.Attachment, error) {
+	from, to := fromMS, toMS
+	return b.attachReference(agent, source, appSpan{from: &from, to: &to}, func(ctx context.Context, row session.MediaRow, roots []string, destination string) (session.MediaReferenceCopy, error) {
+		return session.SnapshotMediaRange(ctx, row, roots, version, from, to, destination)
+	})
+}
+
+// appSpan is the part of a recorded source a snapshot is about: a moment for a
+// frame, a range for audio or video, nothing for a whole picture.
+type appSpan struct{ at, from, to *int64 }
+
+func (b *appBackend) attachReference(agent, source string, span appSpan, snapshot func(context.Context, session.MediaRow, []string, string) (session.MediaReferenceCopy, error)) (appwire.Attachment, error) {
 	a, err := b.find(agent)
 	if err != nil {
 		return appwire.Attachment{}, err
@@ -96,7 +116,7 @@ func (b *appBackend) attachReference(agent, source string, atMS *int64, snapshot
 	if err != nil {
 		return appwire.Attachment{}, appwire.Errorf(appwire.CodeBadParams, "could not attach recorded media: %v", err)
 	}
-	ref := &appReference{copy: snap, source: session.MediaReference{SourceID: row.Fact.ID, Path: row.Fact.Canonical, Version: row.Version(), AtMS: atMS}}
+	ref := &appReference{copy: snap, ranged: span.from != nil, source: session.MediaReference{SourceID: row.Fact.ID, Path: row.Fact.Canonical, Version: row.Version(), AtMS: span.at, FromMS: span.from, ToMS: span.to}}
 	var view appwire.Attachment
 	closing := false
 	b.locked(func() {
@@ -106,7 +126,7 @@ func (b *appBackend) attachReference(agent, source string, atMS *int64, snapshot
 		}
 		a.attachN++
 		title := filepath.Base(row.Fact.Canonical)
-		if atMS != nil {
+		if span.at != nil || span.from != nil {
 			title = filepath.Base(snap.Path)
 		}
 		view = appwire.Attachment{ID: "at" + strconv.Itoa(a.attachN), Kind: appwire.AttachFile, Path: snap.Path, Title: title, Media: &appwire.AttachmentMedia{SHA256: snap.SHA256, Source: appWireReference(&ref.source)}}
@@ -170,7 +190,8 @@ func appReferenceImages(kept []appAttach, media []session.SubmissionMedia) []ses
 		positions[image.ID] = i
 	}
 	for _, attach := range kept {
-		if attach.reference == nil {
+		// A recorded audio or video range is a file, never a picture.
+		if attach.reference == nil || attach.reference.ranged {
 			continue
 		}
 		image := attach.reference.submission(attach.view.ID)

@@ -92,6 +92,40 @@ type MediaReference struct {
 	Path     string `json:"path,omitempty"`
 	Version  string `json:"version,omitempty"`
 	AtMS     *int64 `json:"atMs,omitempty"`
+	// FromMS and ToMS are the span of a recorded audio or video a file attachment
+	// was kept for ([SnapshotMediaRange]). They are both present or both absent,
+	// 0 <= FromMS < ToMS, and never beside AtMS. A picture's source has neither.
+	FromMS *int64 `json:"fromMs,omitempty"`
+	ToMS   *int64 `json:"toMs,omitempty"`
+}
+
+// cloneSource is a source with every pointer its own.
+func cloneSource(source *MediaReference) *MediaReference {
+	if source == nil {
+		return nil
+	}
+	copied := *source
+	for _, field := range []**int64{&copied.AtMS, &copied.FromMS, &copied.ToMS} {
+		if *field != nil {
+			value := **field
+			*field = &value
+		}
+	}
+	return &copied
+}
+
+// sourceSizes is what a source costs a record that holds it.
+func sourceSizes(source *MediaReference) int64 {
+	if source == nil {
+		return 0
+	}
+	cost := int64(unsafe.Sizeof(*source)) + int64(len(source.SourceID)+len(source.Path)+len(source.Version))
+	for _, field := range []*int64{source.AtMS, source.FromMS, source.ToMS} {
+		if field != nil {
+			cost += int64(unsafe.Sizeof(*field))
+		}
+	}
+	return cost
 }
 
 // SubmissionMedia is one picture riding on a message. ID is the door's own name
@@ -261,6 +295,28 @@ func checkReference(ref *MediaReference) error {
 	if ref.AtMS != nil && *ref.AtMS < 0 {
 		return errors.New("has a negative moment")
 	}
+	if ref.FromMS != nil || ref.ToMS != nil {
+		return errors.New("names a time range, and only a recorded audio or video attachment has one")
+	}
+	return nil
+}
+
+// checkRangeSource is the source of a file attachment kept from a span of a
+// recorded audio or video: the id and verified version it was kept from, and
+// the span, with nothing a picture's source says.
+func checkRangeSource(ref *MediaReference) error {
+	if err := checkReference(&MediaReference{SourceID: ref.SourceID, Path: ref.Path, Version: ref.Version, AtMS: ref.AtMS}); err != nil {
+		return err
+	}
+	if ref.SourceID == "" || ref.Version == "" {
+		return errors.New("names no recorded source and version")
+	}
+	if ref.AtMS != nil {
+		return errors.New("names a moment as well as a range")
+	}
+	if ref.FromMS == nil || ref.ToMS == nil || *ref.FromMS < 0 || *ref.ToMS <= *ref.FromMS || *ref.ToMS > MaxMediaRangeMS {
+		return fmt.Errorf("does not name a range of 0 <= from < to <= %d ms", MaxMediaRangeMS)
+	}
 	return nil
 }
 
@@ -380,14 +436,7 @@ func cloneMedia(media []MessageMedia) []MessageMedia {
 	}
 	out := append([]MessageMedia(nil), media...)
 	for index := range out {
-		if source := out[index].Source; source != nil {
-			copied := *source
-			if source.AtMS != nil {
-				at := *source.AtMS
-				copied.AtMS = &at
-			}
-			out[index].Source = &copied
-		}
+		out[index].Source = cloneSource(out[index].Source)
 	}
 	return out
 }
@@ -417,12 +466,7 @@ func composedSizes(mark *ComposedMark) int64 {
 	cost += int64(cap(mark.Media)) * int64(unsafe.Sizeof(MessageMedia{}))
 	for _, media := range mark.Media {
 		cost += int64(len(media.ID) + len(media.Path) + len(media.MIME) + len(media.SHA256) + len(media.Role))
-		if source := media.Source; source != nil {
-			cost += int64(unsafe.Sizeof(*source)) + int64(len(source.SourceID)+len(source.Path)+len(source.Version))
-			if source.AtMS != nil {
-				cost += int64(unsafe.Sizeof(*source.AtMS))
-			}
-		}
+		cost += sourceSizes(media.Source)
 	}
 	if note := mark.Annotation; note != nil {
 		cost += int64(unsafe.Sizeof(*note)) + int64(len(note.Original)+len(note.Marked)+len(note.MarksPath))
@@ -516,14 +560,7 @@ func readComposedImages(ctx context.Context, media []SubmissionMedia, roles map[
 		if config, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil && config.Width > 0 && config.Height > 0 {
 			fact.Width, fact.Height = config.Width, config.Height
 		}
-		if item.Source != nil {
-			source := *item.Source
-			if item.Source.AtMS != nil {
-				at := *item.Source.AtMS
-				source.AtMS = &at
-			}
-			fact.Source = &source
-		}
+		fact.Source = cloneSource(item.Source)
 		images = append(images, Image{Path: path, MIME: mediaType, Bytes: data})
 		kept = append(kept, fact)
 	}

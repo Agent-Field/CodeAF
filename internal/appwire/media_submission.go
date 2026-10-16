@@ -45,6 +45,11 @@ type MediaReference struct {
 	// Version is the source's canonical recorded version, as the engine verified it.
 	Version string `json:"version,omitempty"`
 	AtMS    *int64 `json:"at_ms,omitempty"`
+	// FromMS and ToMS are the span of a recorded audio or video a file attachment
+	// was kept for (media.attach_range): both or neither, 0 <= from < to, never
+	// beside at_ms. A picture's source has neither.
+	FromMS *int64 `json:"from_ms,omitempty"`
+	ToMS   *int64 `json:"to_ms,omitempty"`
 }
 
 // SubmissionMedia names one staged attachment to be sent as a picture.
@@ -179,6 +184,21 @@ func checkMediaReference(ref *MediaReference) error {
 	}
 	if ref.AtMS != nil && *ref.AtMS < 0 {
 		return Errorf(CodeBadParams, "a picture's source names a negative moment")
+	}
+	if ref.FromMS != nil || ref.ToMS != nil {
+		return Errorf(CodeBadParams, "a picture's source names no time range")
+	}
+	return nil
+}
+
+// MaxMediaRangeMS is a year of milliseconds; internal/session pins its own equal.
+const MaxMediaRangeMS int64 = 366 * 24 * 3600 * 1000
+
+// CheckMediaRange is the shape of a media range: both ends given as integers,
+// 0 <= from < to, inside a year. Whether the source is that long is the engine's.
+func CheckMediaRange(from, to int64) error {
+	if from < 0 || to <= from || to > MaxMediaRangeMS {
+		return Errorf(CodeBadParams, "a range is 0 <= from_ms < to_ms <= %d", MaxMediaRangeMS)
 	}
 	return nil
 }
