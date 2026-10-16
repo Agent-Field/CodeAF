@@ -322,3 +322,32 @@ func TestReportTaskIDsWithoutRootKeepRecordedSessionIdentity(t *testing.T) {
 		t.Fatalf("cost changed: %v", result.Totals.USD)
 	}
 }
+
+func TestReportRecordedAgentFilterIncludesChatAndOwnedTaskCharges(t *testing.T) {
+	chat, task, other := reportLine(15, 12, "m/a", .01), reportLine(15, 13, "m/a", .02), reportLine(15, 14, "m/a", .04)
+	chat.Session = "owner-a"
+	task.Session, task.Root, task.Task = "worker-session", "owner-a", "7"
+	other.Session = "owner-b"
+	path := writeLedger(t, []UsageLine{chat, task, other}, nil, "")
+	query := reportQuery(t, "2026-10-15", "2026-10-15")
+	query.Agent = "owner-a"
+	report, err := QueryUsageReport(path, query, reportZone, UsageReportBudget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := QueryUsageLedger(path, query, "", 100, DefaultUsageLedgerBudget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Totals.USD != .03 || report.Totals.USD != page.Totals.USD || report.Totals.Records != 2 {
+		t.Fatalf("agent filter lost chat/task money: report=%+v ledger=%+v", report.Totals, page.Totals)
+	}
+	for _, cell := range report.Cells {
+		if cell.Agent != "owner-a" {
+			t.Fatalf("invented recorded owner: %+v", cell)
+		}
+	}
+	if query.fingerprint() == (UsageQuery{From: query.From, To: query.To}).fingerprint() {
+		t.Fatal("owner filter does not fence cursors")
+	}
+}

@@ -79,6 +79,7 @@ type SpendLedgerFilter struct {
 	Automation string `json:"automation,omitempty"`
 	Run        string `json:"run,omitempty"`
 	Workspace  string `json:"workspace,omitempty"`
+	Agent      string `json:"agent,omitempty"`
 }
 
 // SpendLedgerParams is spend.ledger's params: the filter, a page size
@@ -222,7 +223,7 @@ func decodeStrict(name string, raw json.RawMessage, v any) error {
 // The days are checked as calendar days here; the engine reads them in its own
 // zone.
 func checkSpendLedgerFilter(f SpendLedgerFilter) (SpendLedgerFilter, error) {
-	for _, field := range []*string{&f.From, &f.To, &f.Model, &f.Kind, &f.Subject, &f.Session, &f.Root, &f.Task, &f.Automation, &f.Run, &f.Workspace} {
+	for _, field := range []*string{&f.From, &f.To, &f.Model, &f.Kind, &f.Subject, &f.Session, &f.Root, &f.Task, &f.Automation, &f.Run, &f.Workspace, &f.Agent} {
 		*field = strings.TrimSpace(*field)
 		if strings.ContainsAny(*field, "\x00\r\n") {
 			return f, Errorf(CodeBadParams, "a filter is one line")

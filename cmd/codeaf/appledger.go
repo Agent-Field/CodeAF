@@ -69,7 +69,7 @@ func appLedgerQuery(f appwire.SpendLedgerFilter) (session.UsageQuery, error) {
 	}
 	return session.UsageQuery{
 		From: from, To: to, Model: f.Model, Kind: kind, Subject: f.Subject,
-		Session: f.Session, Root: f.Root, Task: f.Task, Automation: f.Automation, Run: f.Run, Workspace: f.Workspace,
+		Session: f.Session, Root: f.Root, Task: f.Task, Automation: f.Automation, Run: f.Run, Workspace: f.Workspace, Agent: f.Agent,
 	}, nil
 }
 

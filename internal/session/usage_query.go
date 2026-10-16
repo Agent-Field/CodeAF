@@ -116,6 +116,8 @@ type UsageQuery struct {
 	Kind, Subject string
 	// The rest match one ledger field each.
 	Session, Root, Task, Automation, Run, Workspace string
+	// Agent matches the recorded root conversation, or Session when Root is absent.
+	Agent string
 }
 
 // UsageLedgerBudget bounds what one answer may hold beside its page.
@@ -252,7 +254,7 @@ func UsageDayRange(from, to string, loc *time.Location) (time.Time, time.Time, e
 
 // normalized trims every filter and checks the query can be asked.
 func (q UsageQuery) normalized() (UsageQuery, error) {
-	for _, field := range []*string{&q.Model, &q.Kind, &q.Subject, &q.Session, &q.Root, &q.Task, &q.Automation, &q.Run, &q.Workspace} {
+	for _, field := range []*string{&q.Model, &q.Kind, &q.Subject, &q.Session, &q.Root, &q.Task, &q.Automation, &q.Run, &q.Workspace, &q.Agent} {
 		*field = strings.TrimSpace(*field)
 	}
 	switch q.Kind {
@@ -279,6 +281,12 @@ func (q UsageQuery) fingerprint() string {
 		h.Write([]byte(part))
 		h.Write([]byte{0})
 	}
+	if q.Agent != "" {
+		h.Write([]byte("agent"))
+		h.Write([]byte{0})
+		h.Write([]byte(q.Agent))
+		h.Write([]byte{0})
+	}
 	return strconv.FormatUint(h.Sum64(), 36)
 }
 
@@ -302,6 +310,15 @@ func usageSubject(line UsageLine) (kind, id string) {
 	return "", ""
 }
 
+// UsageOwner is the recorded conversation responsible for a call. It never
+// consults current crew membership or assigns an absent historical identity.
+func UsageOwner(line UsageLine) string {
+	if root := strings.TrimSpace(line.Root); root != "" {
+		return root
+	}
+	return strings.TrimSpace(line.Session)
+}
+
 // matches is the one filter every reader of a query applies.
 func (q UsageQuery) matches(line UsageLine) bool {
 	if !q.From.IsZero() && line.At.Before(q.From) {
@@ -314,6 +331,9 @@ func (q UsageQuery) matches(line UsageLine) bool {
 	if !exact(q.Model, line.Model) || !exact(q.Session, line.Session) || !exact(q.Root, line.Root) ||
 		!exact(q.Task, line.Task) || !exact(q.Automation, line.Automation) || !exact(q.Run, line.Run) ||
 		!exact(q.Workspace, line.Workspace) {
+		return false
+	}
+	if q.Agent != "" && q.Agent != UsageOwner(line) {
 		return false
 	}
 	if q.Kind != "" {

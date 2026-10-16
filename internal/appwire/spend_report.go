@@ -23,7 +23,7 @@ package appwire
 // it is missing: records this process failed to write since it started, ledger
 // lines that did not parse or were too long to hold, and lines placed by
 // their instant because they carried no valid day. None of them is range
-// specific except the last three, and an answer with every gap at zero is not
+// specific except days_derived, and an answer with every gap at zero is not
 // proof that none exist — a record lost by an earlier run of the program left
 // no mark.
 //
@@ -64,6 +64,7 @@ type SpendReportCell struct {
 	Subject         string   `json:"subject,omitempty"`
 	Root            string   `json:"root,omitempty"`
 	Session         string   `json:"session,omitempty"`
+	Agent           string   `json:"agent,omitempty"`
 	Records         int      `json:"records"`
 	Calls           int      `json:"calls"`
 	TokensIn        int64    `json:"tokens_in"`
@@ -192,7 +193,7 @@ func checkSpendReportReply(result SpendReportResult) error {
 		return remaining >= 0
 	}
 	for _, cell := range result.Cells {
-		for _, s := range []string{cell.Day, cell.Model, cell.Kind, cell.Subject, cell.Root, cell.Session} {
+		for _, s := range []string{cell.Day, cell.Model, cell.Kind, cell.Subject, cell.Root, cell.Session, cell.Agent} {
 			if !take(s) {
 				return tooLarge
 			}

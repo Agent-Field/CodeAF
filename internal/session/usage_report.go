@@ -100,6 +100,7 @@ type UsageReportCell struct {
 	Kind, Subject, Root string
 	// Session disambiguates task rows whose older writer did not record Root.
 	Session string
+	Agent   string
 	// Records is ledger lines; Calls is provider requests, counted apart from
 	// the lines because an older line may cover many.
 	Records, Calls int
@@ -129,7 +130,7 @@ type UsageReport struct {
 	Stats UsageScanStats
 }
 
-type usageReportKey struct{ day, model, kind, subject, root, session string }
+type usageReportKey struct{ day, model, kind, subject, root, session, agent string }
 
 // checkReportRange refuses a query that is not a bounded range.
 func (q UsageQuery) checkReportRange() error {
@@ -207,17 +208,17 @@ func QueryUsageReport(path string, q UsageQuery, loc *time.Location, budget Usag
 				session = strings.TrimSpace(line.Session)
 			}
 		}
-		key := usageReportKey{day: day, model: strings.TrimSpace(line.Model), kind: kind, subject: subject, root: root, session: session}
+		key := usageReportKey{day: day, model: strings.TrimSpace(line.Model), kind: kind, subject: subject, root: root, session: session, agent: UsageOwner(line)}
 		cell := cells[key]
 		if cell == nil {
-			cost := int64(usageReportCellBytes + len(key.day) + len(key.model) + len(key.kind) + len(key.subject) + len(key.root) + len(key.session))
+			cost := int64(usageReportCellBytes + len(key.day) + len(key.model) + len(key.kind) + len(key.subject) + len(key.root) + len(key.session) + len(key.agent))
 			if len(cells) >= budget.MaxCells || weight+cost > budget.MaxBytes {
 				return fmt.Errorf("%w (more than %d groups or %d estimated bytes)", ErrUsageReportTooLarge, budget.MaxCells, budget.MaxBytes)
 			}
 			// Only now are the strings copied, so a line's large id is never
 			// retained by a map it was refused from.
-			key = usageReportKey{strings.Clone(key.day), strings.Clone(key.model), key.kind, strings.Clone(key.subject), strings.Clone(key.root), strings.Clone(key.session)}
-			cell = &UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session}
+			key = usageReportKey{strings.Clone(key.day), strings.Clone(key.model), key.kind, strings.Clone(key.subject), strings.Clone(key.root), strings.Clone(key.session), strings.Clone(key.agent)}
+			cell = &UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session, Agent: key.agent}
 			cells[key] = cell
 			weight += cost
 		}
@@ -251,7 +252,7 @@ func QueryUsageReport(path string, q UsageQuery, loc *time.Location, budget Usag
 	}
 	slices.SortFunc(report.Cells, func(a, b UsageReportCell) int {
 		return cmp.Or(strings.Compare(a.Day, b.Day), strings.Compare(a.Model, b.Model), strings.Compare(a.Kind, b.Kind),
-			strings.Compare(a.Subject, b.Subject), strings.Compare(a.Root, b.Root), strings.Compare(a.Session, b.Session))
+			strings.Compare(a.Subject, b.Subject), strings.Compare(a.Root, b.Root), strings.Compare(a.Session, b.Session), strings.Compare(a.Agent, b.Agent))
 	})
 	slices.Sort(report.Models)
 	return report, nil
