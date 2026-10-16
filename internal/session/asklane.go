@@ -237,7 +237,10 @@ func (a *Agent) stopAskClocksLocked() { a.asked.stopClocksLocked() }
 func (a *Agent) askClockRanOut(id uint64) {
 	a.mu.Lock()
 	open := a.asked.atLocked(id)
-	if open == nil || open.settled != nil || open.held || a.closed {
+	if open == nil || open.settled != nil || open.held || open.deferred || a.closed {
+		// A DEFERRED CLOCK IS NOT RUNNING: a timer that fired as the surface
+		// deferred it lost that race (askclock.go).
+		//
 		// NOTHING THIS CLOCK COULD SAY WOULD REACH ANYBODY once the session has
 		// closed, and a decision nobody read is worse than no decision: the next
 		// run of this conversation reads the record as something the person
@@ -288,11 +291,12 @@ func (a *Agent) HoldQuestion(kind QuestionKind, token string) {
 func (a *Agent) holdAsk(id uint64) {
 	a.mu.Lock()
 	open := a.asked.atLocked(id)
-	if open == nil || open.settled != nil || open.held || open.q.Deadline.IsZero() {
+	if open == nil || open.settled != nil || open.held || (open.q.Deadline.IsZero() && !open.deferred) {
 		a.mu.Unlock()
 		return
 	}
 	open.held = true
+	open.deferred = false
 	if open.clock != nil {
 		open.clock.Stop()
 	}

@@ -2386,6 +2386,35 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		door.HoldQuestion(args.Kind, args.Token)
 		return nil, nil
+	case MethodQuestionClock:
+		args, err := arg[QuestionClockArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// A MISSING DOOR REFUSES here, where Hold's costs nothing: a surface
+		// told this clock was deferred would hold a question whose suggestion
+		// is still being counted down unseen.
+		door, ok := agent.(interface {
+			DeferQuestionClock(session.QuestionKind, string) bool
+			StartQuestionClock(session.QuestionKind, string) bool
+			OpenQuestions() []session.Question
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot defer a question's clock")
+		}
+		changed := false
+		if args.Start {
+			changed = door.StartQuestionClock(args.Kind, args.Token)
+		} else {
+			changed = door.DeferQuestionClock(args.Kind, args.Token)
+		}
+		reply := QuestionClockReply{Changed: changed}
+		for _, q := range door.OpenQuestions() {
+			if q.Kind == args.Kind && q.Token() == args.Token {
+				reply.Deadline = q.Deadline
+			}
+		}
+		return json.Marshal(reply)
 
 	case MethodAutonomy:
 		// THE READ SIDE OF THE ROW BELOW. It is asserted rather than called on

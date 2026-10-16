@@ -477,6 +477,25 @@ func appAskFacts(agent string, ask *appwire.Ask, q session.Question) {
 		ask.ClockUntil = &until
 	}
 	ask.SayWhy = q.Kind == session.QuestionConsent
+	ask.Blocking = appAskBlocking(q)
+}
+
+// appAskBlocking is what the engine knows waits on a question, for the two
+// lanes that derive it rather than default it: a permission blocks its call,
+// and the model's own question says whether its turn parks and which work
+// waits ([session.Question.Blocking], set by the ask tool from whether the
+// call really parks). Every other lane leaves Blocking at its zero value
+// without having said nothing waits, so it is nil: unknown.
+func appAskBlocking(q session.Question) *bool {
+	switch q.Kind {
+	case session.QuestionConsent:
+		blocks := true
+		return &blocks
+	case session.QuestionAsk:
+		blocks := q.Blocking.Blocks()
+		return &blocks
+	}
+	return nil
 }
 
 // batchLocked is the calls asked about together with q, open and answered,

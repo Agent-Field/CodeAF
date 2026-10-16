@@ -170,7 +170,7 @@ func classify(method string) callClass {
 		MethodAutomationsList, MethodAutomationsRuns, MethodAutomationsChanges,
 		MethodAutomationsCursor, MethodAutomationsActive, MethodAutomationsWindows:
 		return classGetter
-	case MethodAppTaskRoutingAct, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppRename, MethodProcessRerun, MethodRenderCancel, MethodQuestionResolve, MethodQuestionHold,
+	case MethodAppTaskRoutingAct, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppRename, MethodProcessRerun, MethodRenderCancel, MethodQuestionResolve, MethodQuestionHold, MethodQuestionClock,
 		MethodConsent, MethodConsentRemember,
 		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,

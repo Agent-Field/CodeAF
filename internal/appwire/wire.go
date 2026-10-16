@@ -236,8 +236,17 @@ type Ask struct {
 	ClockUntil *time.Time  `json:"clock_until,omitempty"`
 	Batch      []BatchItem `json:"batch,omitempty"`
 	HoldingUp  []string    `json:"holding_up,omitempty"`
-	SayWhy     bool        `json:"say_why,omitempty"`
-	Later      bool        `json:"later,omitempty"`
+	// Blocking is whether the engine KNOWS something waits on this ask: true
+	// for a permission (its call is blocked) and for the model's own question
+	// that parks its turn or names work waiting on it; false only for the
+	// model's own question whose turn carries on and that names no work, the
+	// one kind whose answer arrives later as a message. Nil is unknown, which
+	// is every other kind and every older engine, and a surface reads unknown
+	// as waiting. An empty HoldingUp never says false: a parked reply waits
+	// on no task.
+	Blocking *bool `json:"blocking,omitempty"`
+	SayWhy   bool  `json:"say_why,omitempty"`
+	Later    bool  `json:"later,omitempty"`
 	// Path is the crews a crew's decision climbed through to the person,
 	// "Backend → Release → you".
 	Path []string `json:"path,omitempty"`

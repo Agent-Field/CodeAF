@@ -550,6 +550,18 @@ const (
 	// says the question again with its deadline gone, so every window stops
 	// counting from the same frame rather than from its own guess.
 	MethodQuestionHold = "Question.Hold" // QuestionHoldArgs → nothing
+	// MethodQuestionClock is a surface saying it has NOT shown a question yet,
+	// or that it now has: the first stops the question's clock until the
+	// second starts it for the policy's whole length from then
+	// (internal/session's askclock.go). It is not a hold — it is undone, and
+	// the engine undoes it itself after its own bound.
+	//
+	// IT ANSWERS, unlike [MethodQuestionHold], because the surface asking it
+	// is about to draw the countdown and must draw the engine's deadline and
+	// not its own guess. An engine without it says no such method, and a
+	// surface that is told so shows the question at once rather than holding
+	// it on a clock it cannot stop.
+	MethodQuestionClock = "Question.Clock" // QuestionClockArgs → QuestionClockReply
 	// MethodQuestionWatch is the surface saying it draws questions, and it buys
 	// exactly what [MethodTaskWatch] and [MethodDesignWatch] buy: "question"
 	// frames from here on, including everything already open replayed the
@@ -1953,6 +1965,23 @@ type QuestionArgs struct {
 type QuestionHoldArgs struct {
 	Kind  session.QuestionKind `json:"kind"`
 	Token string               `json:"token"`
+}
+
+// QuestionClockArgs names one question the way [QuestionHoldArgs] does, and
+// says which way its clock goes: Start false defers it, Start true starts it.
+type QuestionClockArgs struct {
+	Kind  session.QuestionKind `json:"kind"`
+	Token string               `json:"token"`
+	Start bool                 `json:"start,omitempty"`
+}
+
+// QuestionClockReply is what the clock did: Changed is false for a question
+// the call could not move (answered, held by a person, never clocked, or
+// already that way), and Deadline is the clock's end after the call, zero
+// while it is deferred or has none.
+type QuestionClockReply struct {
+	Changed  bool      `json:"changed"`
+	Deadline time.Time `json:"deadline,omitempty"`
 }
 
 type HarnessArgs struct {

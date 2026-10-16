@@ -104,6 +104,10 @@ type askOpen struct {
 	// answer it. There is no way back: a clock that resumed would fire exactly
 	// when somebody looked away mid-decision.
 	held bool
+	// deferred says a surface has not shown the question yet and its clock waits
+	// for it to be (askclock.go). Unlike held it is undone: by the surface
+	// showing it, or by the bound running out.
+	deferred bool
 	// settled is the answer that ended it, and nil while it is still open. It is
 	// kept because a settled reversible decision can still be CHANGED, and the
 	// correction says what it was changed from.
