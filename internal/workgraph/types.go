@@ -35,8 +35,10 @@
 package workgraph
 
 import (
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Contract is the version of this vocabulary. It moves only when a field
@@ -100,22 +102,82 @@ type GraphScope struct {
 // so the pair — never the number alone — names a task.
 type TaskRef struct {
 	// Owner is the owning conversation's id (its folder's name, stable across
-	// launches). Task is that conversation's own number for the task, decimal.
+	// launches). Task is that conversation's own id for the task: a canonical
+	// decimal number for a task or run row the conversation minted, or the plan
+	// store's own "t-<id>" token for a plan row (see [ValidPlanToken]).
 	Owner string `json:"owner"`
 	Task  string `json:"task"`
 }
 
 // ID is the task's id on every wire that names a task: "<owner>:<task>". It is
-// collision-safe across owners because Task is decimal and has no colon.
+// collision-safe across owners because neither part may hold a colon.
 func (r TaskRef) ID() string { return r.Owner + ":" + r.Task }
 
-// Valid reports whether the reference names something: an owner and a decimal
-// number without leading zeros or a sign.
-func (r TaskRef) Valid() bool {
-	if r.Owner == "" || r.Task == "" || r.Task == "0" || r.Task[0] == '0' {
+// The bounds a reference's parts live within. They are the engine's own limits
+// on an identity, enforced before any path is built from it.
+const (
+	// MaxOwnerBytes bounds an owner id. A conversation's folder name is a uuid or
+	// a short slug today; 128 bytes leaves room without letting an id become a
+	// payload.
+	MaxOwnerBytes = 128
+	// MaxPlanTokenBytes bounds a plan-store task token ("t-" and the store's id).
+	MaxPlanTokenBytes = 64
+)
+
+// ValidOwner reports whether s is a safe owner id: ONE path component, bounded,
+// printable, with no separator, colon, NUL or control character, and neither "."
+// nor ".." nor a dotfile. It is the same law the app backend applies before it
+// joins a conversation id to a folder (a bare name, never a path), so a
+// valid-looking reference can never walk out of the places root.
+func ValidOwner(s string) bool {
+	if s == "" || len(s) > MaxOwnerBytes || s[0] == '.' || !utf8.ValidString(s) {
 		return false
 	}
-	return strings.Trim(r.Task, "0123456789") == ""
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f || r == '/' || r == '\\' || r == ':' || r == utf8.RuneError {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidNumber reports whether s is a canonical positive uint64: ASCII digits,
+// no sign, no leading zero, at most 20 digits and no larger than 2^64-1.
+func ValidNumber(s string) bool {
+	if s == "" || len(s) > 20 || s[0] == '0' {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	_, err := strconv.ParseUint(s, 10, 64)
+	return err == nil
+}
+
+// ValidPlanToken reports whether s is a plan-store task id as the engine spells
+// it ("t-" followed by the store's own id of letters, digits, dot, dash and
+// underscore). Plan rows are real tasks the app lists (AppTasks) whose identity
+// is the store's, not a number the conversation minted; they keep it.
+func ValidPlanToken(s string) bool {
+	if len(s) < 3 || len(s) > MaxPlanTokenBytes || s[0] != 't' || s[1] != '-' {
+		return false
+	}
+	for i := 2; i < len(s); i++ {
+		c := s[i]
+		ok := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.'
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// Valid reports whether the reference names something safe to look up: a valid
+// owner and a task that is either a canonical number or a plan token.
+func (r TaskRef) Valid() bool {
+	return ValidOwner(r.Owner) && (ValidNumber(r.Task) || ValidPlanToken(r.Task))
 }
 
 // ParseID is the reference an id names, and false for a string that is not
@@ -205,8 +267,13 @@ type GraphResult struct {
 	// it back as IfRevision; the events that say something moved are the ones
 	// the wire already has (task.changed, member.changed, crew events), so no
 	// caller polls.
-	Revision  string `json:"revision"`
-	Unchanged bool   `json:"unchanged,omitempty"`
+	Revision string `json:"revision"`
+	// AsOf is when the engine last read the sources this answer is built from —
+	// the build time of the cached snapshot, NOT the time of this request, and not
+	// part of the revision. A banner may say "as of 14:32"; it must not claim the
+	// content is newer than that.
+	AsOf      *time.Time `json:"as_of,omitempty"`
+	Unchanged bool       `json:"unchanged,omitempty"`
 
 	Scope    GraphScope  `json:"scope"`
 	About    ScopeFacts  `json:"about"`
@@ -310,6 +377,8 @@ type ClockCoverage struct {
 }
 
 // The engine's task state words, as persisted.
+const KindQuick = "quick"
+
 const (
 	StateQueued      = "queued"
 	StateRunning     = "running"
@@ -349,9 +418,13 @@ type GraphNode struct {
 	ID  string  `json:"id"`
 	Ref TaskRef `json:"ref"`
 	Seq uint64  `json:"seq"`
-	// Kind is the engine's kind word: "task" for ordinary work, "quick",
-	// "run" for a handed-over task's row, and the producer's own words for the
-	// rest (job, harness, subharness).
+	// Kind is the engine's kind word: "task" for ordinary work, "quick" (a
+	// one-shot lookup the app does not list as a task: kept only so a link to it
+	// resolves, and not counted in the metrics), "run" for a handed-over task's
+	// row, "plan" for a row of a run's own plan store (a real sub-task the app
+	// lists, identified by the store's "t-<id>"), "index" for a task the project's
+	// index remembers that the conversation's checkpoint no longer holds, and the
+	// producer's own words for the rest (harness, subharness).
 	Kind  string `json:"kind"`
 	Title string `json:"title"`
 	// State is one of the engine state words (queued, running, done, failed,
