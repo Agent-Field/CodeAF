@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/run"
@@ -68,11 +70,13 @@ func TestADelegatedRunsLedgerRowsNameTheConversationAndTheTask(t *testing.T) {
 }
 
 // owingFunnel answers every call at once without a usage block and owes its
-// receipt, which it delivers after a delay — the provider's own order, owed
-// before the fetch and answered after the sink has the money.
+// receipt, which it delivers once the program is gone — the provider's own
+// order, owed before the fetch and answered after the sink has the money.
+// exited blocks until the program's process has exited; a delay would only
+// guess at that, and a slow box would deliver the price to a live program.
 type owingFunnel struct {
-	late time.Duration
-	cost float64
+	exited func()
+	cost   float64
 }
 
 func (f *owingFunnel) completerFor(string) session.Completer { return f }
@@ -86,7 +90,7 @@ func (f *owingFunnel) CompleteWithMessages(ctx context.Context, _ []ai.Message, 
 	sink := provider.ReconcileSinkFrom(ctx)
 	go func() {
 		defer done()
-		time.Sleep(f.late)
+		f.exited()
 		sink(provider.Reconciled{Billed: provider.Billed{Model: request.Model, PromptTokens: 52139, CompletionTokens: 4895, Cost: f.cost}, Found: true})
 	}()
 	return &ai.Response{Model: request.Model, Choices: []ai.Choice{{
@@ -104,7 +108,18 @@ func (f *owingFunnel) CompleteWithMessages(ctx context.Context, _ []ai.Message, 
 func TestDelegateWorkerBanksTheReceiptThatArrivesAfterTheProgramExited(t *testing.T) {
 	store := runOpenStore(t)
 	program, setup, _, ledger := realChild(t, 0, "1")
-	owing := &owingFunnel{late: 400 * time.Millisecond, cost: 0.058188488}
+	// The run's program record gains its end time only after the process has
+	// exited, and the worker writes it after the live step is cleared.
+	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())
+	var missed atomic.Bool
+	owing := &owingFunnel{cost: 0.058188488, exited: func() {
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Millisecond) {
+			if record, ok := delegate.ReadProgramWithin(taskDir, delegate.ProgramRecordCap); ok && !record.EndedAt.IsZero() {
+				return
+			}
+		}
+		missed.Store(true)
+	}}
 	setup.CompleterFor = owing.completerFor
 	var mu sync.Mutex
 	var folded float64
@@ -122,6 +137,9 @@ func TestDelegateWorkerBanksTheReceiptThatArrivesAfterTheProgramExited(t *testin
 	if err != nil {
 		stderr, _ := os.ReadFile(filepath.Join(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID()), "delegate-stderr.log"))
 		t.Fatalf("run: %v\n%s", err, stderr)
+	}
+	if missed.Load() {
+		t.Fatal("the program record never gained its end time: the receipt was delivered by timeout")
 	}
 	if report.USD != 0.058188488 {
 		t.Fatalf("report usd = %v, want the late receipt's $0.058188488", report.USD)

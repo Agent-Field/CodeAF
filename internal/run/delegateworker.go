@@ -705,11 +705,6 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		Ceiling:      w.cost,
 		Bank:         meter.bank,
 		Unbilled:     meter.unbilled,
-		// THE LIVE STEP GOES WITH THE PROCESS, EVEN WHILE ITS LAST PRICE IS
-		// OWED. The API's close waits for a cut call's receipt after the program
-		// has exited, and a row reading "implement · running" through that wait
-		// would claim a present that is over.
-		Settling: func(int) { _ = w.store.ClearLive(task.ID) },
 		// NOBODY IS READING THE PROGRAM'S CALLS AS THEY ARRIVE: it is a task's
 		// worker, and the person is in their conversation or away from it.
 		Role:          lanes.RoleLeafUnattended,
@@ -792,6 +787,11 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	// THE INSTANT THE PROCESS WAS GONE, and not the instant its stdout drained
 	// ([delegate.Result.ExitedAt] says why; a shell run reads it the same way).
 	ended = result.ExitedAt(started, time.Now())
+	// THE LIVE STEP GOES THE INSTANT THE PROCESS DOES, before the record, the
+	// forwarding or the API's wait for receipts: a price that lands anywhere in
+	// that stretch is booked against a program that is gone, and the row must
+	// not still read "implement · running" when it is.
+	_ = w.store.ClearLive(task.ID)
 	// THE RECORD IS WRITTEN AGAIN NOW, WHOLE, AND WHETHER OR NOT A HELLO CAME. A
 	// program that died before it said hello is still a program this run
 	// started, and its page and its row need its times as much as a finished
@@ -818,10 +818,6 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	// seconds later, and it has to reach the task's spend rows, the run's total
 	// read just below and the conversation's books while all three are open.
 	_ = api.Close()
-	// THE LIVE STEP GOES WITH THE PROCESS, whatever the ending: a row that still
-	// read "implement · running" after the program was gone would be a claim
-	// about a present that is over.
-	_ = w.store.ClearLive(task.ID)
 
 	report := Report{Steps: sink.steps, USD: api.Spent(), TokensIn: int(meter.tokensIn.Load()), TokensOut: int(meter.tokensOut.Load())}
 	if sink.lastErr != nil {
