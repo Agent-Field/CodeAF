@@ -299,3 +299,26 @@ func benchmarkReport(b *testing.B, n int) {
 // The scan is linear in the ledger; these two sizes show the slope, not a bound.
 func BenchmarkQueryUsageReport10kRows(b *testing.B)  { benchmarkReport(b, 10_000) }
 func BenchmarkQueryUsageReport100kRows(b *testing.B) { benchmarkReport(b, 100_000) }
+
+func TestReportTaskIDsWithoutRootKeepRecordedSessionIdentity(t *testing.T) {
+	a, b := reportLine(15, 12, "m/a", .01), reportLine(15, 13, "m/a", .02)
+	a.Task, b.Task = "7", "7"
+	a.Session, b.Session = "conversation-a", "conversation-b"
+	path := writeLedger(t, []UsageLine{a, b}, nil, "")
+	result, err := QueryUsageReport(path, reportQuery(t, "2026-10-15", "2026-10-15"), reportZone, UsageReportBudget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Cells) != 2 {
+		t.Fatalf("different recorded sessions merged: %+v", result.Cells)
+	}
+	if result.Cells[0].Session != a.Session || result.Cells[1].Session != b.Session {
+		t.Fatalf("missing deterministic session identity: %+v", result.Cells)
+	}
+	if result.Cells[0].Root != "" || result.Cells[1].Root != "" {
+		t.Fatal("invented an absent historical root")
+	}
+	if result.Totals.USD != .03 {
+		t.Fatalf("cost changed: %v", result.Totals.USD)
+	}
+}

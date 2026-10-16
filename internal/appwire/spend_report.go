@@ -63,6 +63,7 @@ type SpendReportCell struct {
 	Kind            string   `json:"kind,omitempty" enum:"agent,task,automation"`
 	Subject         string   `json:"subject,omitempty"`
 	Root            string   `json:"root,omitempty"`
+	Session         string   `json:"session,omitempty"`
 	Records         int      `json:"records"`
 	Calls           int      `json:"calls"`
 	TokensIn        int64    `json:"tokens_in"`
@@ -191,7 +192,7 @@ func checkSpendReportReply(result SpendReportResult) error {
 		return remaining >= 0
 	}
 	for _, cell := range result.Cells {
-		for _, s := range []string{cell.Day, cell.Model, cell.Kind, cell.Subject, cell.Root} {
+		for _, s := range []string{cell.Day, cell.Model, cell.Kind, cell.Subject, cell.Root, cell.Session} {
 			if !take(s) {
 				return tooLarge
 			}

@@ -57,7 +57,7 @@ func appReportResult(f appwire.SpendLedgerFilter, report session.UsageReport, dr
 	cells := make([]appwire.SpendReportCell, 0, len(report.Cells))
 	for _, c := range report.Cells {
 		cells = append(cells, appwire.SpendReportCell{
-			Day: c.Day, Model: c.Model, Kind: appLedgerKind(c.Kind), Subject: c.Subject, Root: c.Root,
+			Day: c.Day, Model: c.Model, Kind: appLedgerKind(c.Kind), Subject: c.Subject, Root: c.Root, Session: c.Session,
 			Records: c.Records, Calls: c.Calls, TokensIn: c.Input, TokensOut: c.Output,
 			CostUSD: figure(c.USD, c.Priced()), UnpricedRecords: c.Unpriced, UnbilledRecords: c.Unbilled,
 		})
