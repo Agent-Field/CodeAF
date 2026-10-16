@@ -35,8 +35,9 @@ import (
 	"errors"
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
+
+	"github.com/Agent-Field/codeaf/internal/skills"
 )
 
 // ReadBudget is the most one read of a log may cost: bytes read off the disk,
@@ -94,7 +95,7 @@ func ReadLaunchActions(ctx context.Context, dir, launch string, read ActionReade
 	if !ValidLaunch(launch) || limit <= 0 {
 		return LaunchPage{Cut: ReadCutUnreadable}
 	}
-	file, err := os.Open(filepath.Join(dir, ActionsFile))
+	file, err := skills.OpenRegular(filepath.Join(dir, ActionsFile))
 	if errors.Is(err, fs.ErrNotExist) {
 		return LaunchPage{Complete: true, First: max(before, 0)}
 	}
@@ -181,7 +182,7 @@ func CountLaunchCalls(ctx context.Context, dir, launch string, budget ReadBudget
 	if !ValidLaunch(launch) {
 		return 0, false
 	}
-	file, err := os.Open(filepath.Join(dir, ConversationFile))
+	file, err := skills.OpenRegular(filepath.Join(dir, ConversationFile))
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0, true
 	}

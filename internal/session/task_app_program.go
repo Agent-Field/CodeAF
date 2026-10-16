@@ -168,8 +168,11 @@ func (a *Agent) AppProgramActions(id, before string) (AppProgramActionsPage, boo
 // launch other than want, when want is named, reads as unknown: a page of
 // actions is only ever the launch its cursor was cut from.
 func (a *Agent) appProgramRead(ctx context.Context, source planProgramSource, before int, want string) *AppProgramView {
-	record, known := planProgramRecord(source.dir, source.id, source.carried)
 	taskDir := plandb.TaskDir(source.dir, source.id)
+	record, known := delegate.ReadProgramWithin(taskDir, 1<<20)
+	if !known && strings.TrimSpace(source.carried) != "" {
+		record, known = delegate.ProgramRecord{Name: strings.TrimSpace(source.carried)}, true
+	}
 	if !known && !planProgramLogged(taskDir) {
 		return nil
 	}
