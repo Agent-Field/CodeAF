@@ -560,3 +560,54 @@ func diffRepoAt(t *testing.T, dir string) {
 	gitT(t, dir, "add", "a.txt")
 	gitT(t, dir, "commit", "-q", "-m", "first")
 }
+
+func wantNoContent(t *testing.T, d appwire.FileDiff) {
+	t.Helper()
+	if d.State != appwire.DiffUnavailable || d.Text != "" || d.Lines != 0 || d.Add != nil || d.Del != nil || d.Binary || d.Truncated || d.Change != "" {
+		t.Fatalf("an unavailable diff carried content: %+v", d)
+	}
+}
+
+// corruptIndex makes every later git of the checkout fail, deterministically.
+func corruptIndex(t *testing.T, repo string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(repo, ".git", "index"), []byte("not an index"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A FAILED CONFIRMING READ LEAVES NO UNVERIFIED HUNKS OR COUNTS: the hunks were
+// produced, then the status read that must confirm them failed, and the answer
+// is unavailable with the reason and the row facts but nothing computed.
+func TestCheckoutDiffConfirmingReadFailureCarriesNoContent(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\n")
+	produced := false
+	appDiffBetween = func() { produced = true; corruptIndex(t, repo) }
+	t.Cleanup(func() { appDiffBetween = func() {} })
+	got, err := cdiffT(t, repo, "a.txt", "")
+	if err != nil || !produced {
+		t.Fatalf("%v produced=%v", err, produced)
+	}
+	wantNoContent(t, got.Diff)
+	if got.Diff.Reason != appwire.DiffReasonGitFailed || got.Diff.Path != "a.txt" || got.Diff.Repo != appCanonical(repo) || got.Entry.Path != "a.txt" {
+		t.Fatalf("reason or row facts lost: %+v", got.Diff)
+	}
+}
+
+// A GIT FAILURE DURING THE HUNKS, AFTER THE COUNTS, CLEARS THEM THE SAME WAY.
+func TestCheckoutDiffHunkFailureAfterCountsCarriesNoContent(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\n")
+	reached := false
+	appDiffMid = func() { reached = true; corruptIndex(t, repo) }
+	t.Cleanup(func() { appDiffMid = func() {} })
+	got, err := cdiffT(t, repo, "a.txt", "")
+	if err != nil || !reached {
+		t.Fatalf("%v reached=%v", err, reached)
+	}
+	wantNoContent(t, got.Diff)
+	if got.Diff.Reason != appwire.DiffReasonGitFailed || got.Diff.Path != "a.txt" {
+		t.Fatalf("%+v", got.Diff)
+	}
+}

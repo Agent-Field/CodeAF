@@ -157,10 +157,18 @@ func appCheckoutDiffRow(row *appCheckoutRow) (out appwire.FileDiff) {
 	top := snap.top
 	out = appwire.FileDiff{Path: entry.Path, Resolved: filepath.Join(top, filepath.FromSlash(entry.Path)),
 		Repo: top, Outside: row.workspacePath() == ""}
+	// AN UNAVAILABLE DIFF CARRIES NO CONTENT OR COUNT FACT, however far the
+	// comparison got: hunks, counts and the change class computed before a later
+	// read failed were never confirmed, and showing them would be the unverified
+	// diff this answer exists to refuse. The row facts (path, repo, old path,
+	// base, commit) stay.
+	scrub := func(d appwire.FileDiff) appwire.FileDiff {
+		d.Text, d.Lines, d.Truncated, d.Binary, d.Add, d.Del, d.Change = "", 0, false, false, nil, nil, ""
+		return d
+	}
 	unavailable := func(reason, detail string) appwire.FileDiff {
 		out.State, out.Reason, out.Detail = appwire.DiffUnavailable, reason, detail
-		out.Text, out.Lines, out.Truncated, out.Binary, out.Add, out.Del = "", 0, false, false, nil, nil
-		return out
+		return scrub(out)
 	}
 	if entry.Submodule || (entry.Kind != appwire.CheckoutChanged && entry.Kind != appwire.CheckoutRenamed && entry.Kind != appwire.CheckoutUntracked) {
 		kind := entry.Kind
@@ -170,7 +178,7 @@ func appCheckoutDiffRow(row *appCheckoutRow) (out appwire.FileDiff) {
 		return unavailable(appwire.DiffReasonUnsupportedRow, kind)
 	}
 	g := snap.g
-	fail := func(f *appGitFail) appwire.FileDiff { return f.answer(out) }
+	fail := func(f *appGitFail) appwire.FileDiff { return scrub(f.answer(out)) }
 
 	// A file a configured filter governs is never diffed: its bytes are not what
 	// the repository stores, and the filter is never run.
@@ -278,6 +286,7 @@ func appCheckoutDiffRow(row *appCheckoutRow) (out appwire.FileDiff) {
 			out.Binary = true
 		} else {
 			out.Add, out.Del = &add, &del
+			appDiffMid()
 			hunks, overflow, f := g.capped(top, appwire.FileDiffMax+16<<10, appwire.FileDiffLines+256,
 				append(append(append([]string{}, args...), "-p", "--unified=3", base, "--"), paths...)...)
 			if f != nil {
@@ -309,6 +318,9 @@ func appCheckoutDiffRow(row *appCheckoutRow) (out appwire.FileDiff) {
 	}
 	return out
 }
+
+// appDiffMid is a test's hook between the counts and the hunks.
+var appDiffMid = func() {}
 
 // appDiffBetween is a test's hook for the moment between the comparison and the
 // status read that confirms it.
