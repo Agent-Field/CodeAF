@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"os"
@@ -686,4 +687,75 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 	t.Cleanup(func() { fresh.Close() })
 	fresh.profileDir = backend.profileDir
 	check(fresh, "after restart")
+}
+
+// A CREW SAYS SINCE WHEN NO MEMBER HAS RUN, on the fake clock: idle or waiting
+// on the person, it is the latest instant a member stopped, a member at rest at
+// the end of its last turn and a member whose open turn a question holds when
+// that question was put. It is absent while a member runs or may run, and
+// while any member's instant is unknown.
+func TestAppCrewSaysSinceWhenNoMemberHasRun(t *testing.T) {
+	hold := make(chan struct{})
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}, hold: hold}
+	backend, rec, agent, id := crewBackendOn(t, conv)
+	var mu sync.Mutex
+	t0 := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	clock := t0
+	backend.now = func() time.Time { mu.Lock(); defer mu.Unlock(); return clock }
+	set := func(at time.Time) { mu.Lock(); clock = at; mu.Unlock() }
+	check := func(state string, want time.Time) appwire.Crew {
+		t.Helper()
+		c, err := backend.CrewGet(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.State != state || (want.IsZero() != (c.IdleSince == nil)) || (c.IdleSince != nil && !c.IdleSince.Equal(want)) {
+			t.Fatalf("the crew = %q, idle since %v; want %q, %v", c.State, c.IdleSince, state, want)
+		}
+		return c
+	}
+
+	// The disk-only member's instant is not known: nothing is said.
+	check(appwire.CrewIdle, time.Time{})
+	rested := t0.Add(-time.Hour)
+	backend.locked(func() { backend.agentLocked("b0b0b0b0").view.UpdatedAt = rested })
+	c := check(appwire.CrewIdle, rested)
+	if raw, _ := json.Marshal(c); !strings.Contains(string(raw), `"idle_since":"2030-01-02T02:04:05Z"`) {
+		t.Fatalf("the wire = %s", raw)
+	}
+
+	if _, err := backend.Send(agent.ID, "go", ""); err != nil {
+		t.Fatal(err)
+	}
+	check(appwire.CrewWorking, time.Time{})
+	// A question that does not hold the turn: the member may still be running.
+	free := session.Question{ID: 1, Kind: session.QuestionAsk, Head: "which one?", Asked: t0.Add(time.Minute)}
+	conv.raise(session.Event{Kind: session.EventQuestion, Question: &free})
+	rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
+	check(appwire.CrewNeedsYou, time.Time{})
+	// Questions that hold the turn: it stopped when the first was put.
+	for n, at := range []time.Duration{3 * time.Minute, 2 * time.Minute} {
+		q := session.Question{ID: uint64(n + 2), Kind: session.QuestionConsent, Head: "bash", Blocking: session.Blocking{Turn: true}, Asked: t0.Add(at)}
+		conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
+	}
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		o, ok := data.(appwire.AskOpened)
+		return ok && o.Ask.ID == "consent:3"
+	})
+	check(appwire.CrewNeedsYou, t0.Add(2*time.Minute))
+
+	// The turn ends with its questions open: the member stopped at its end.
+	ended := t0.Add(10 * time.Minute)
+	set(ended)
+	close(hold)
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		a, ok := data.(appwire.AgentChanged)
+		return ok && a.Agent.ID == agent.ID && a.Agent.UpdatedAt.Equal(ended)
+	})
+	set(ended.Add(time.Hour))
+	check(appwire.CrewNeedsYou, ended)
+	// The other member stopped later: the crew is idle since the last stop.
+	later := ended.Add(5 * time.Minute)
+	backend.locked(func() { backend.agents["b0b0b0b0"].view.UpdatedAt = later })
+	check(appwire.CrewNeedsYou, later)
 }

@@ -105,7 +105,11 @@ type CrewItem struct {
 	At    time.Time `json:"at"`
 }
 
-// Crew is one team.
+// Crew is one team. IdleSince is the instant since which no member has run,
+// on an idle or needs_you crew: the latest instant any member stopped (the end
+// of its last turn, or when the question holding its open turn was put). It
+// is absent while any member runs, on a closed crew, and when any member's
+// instant is unknown.
 type Crew struct {
 	ID            string        `json:"id"`
 	Name          string        `json:"name"`
@@ -117,6 +121,7 @@ type Crew struct {
 	Tint          string        `json:"tint"`
 	MadeAt        *time.Time    `json:"made_at,omitempty"`
 	State         string        `json:"state"`
+	IdleSince     *time.Time    `json:"idle_since,omitempty"`
 	ClosedAt      *time.Time    `json:"closed_at,omitempty"`
 	ClosedWith    string        `json:"closed_with,omitempty"`
 	Report        string        `json:"report,omitempty"`

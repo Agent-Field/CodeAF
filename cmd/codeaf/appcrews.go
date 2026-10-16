@@ -371,7 +371,59 @@ func (b *appBackend) crewView(read appCrewRead, t teamstore.Team) appwire.Crew {
 		view.Items = append(view.Items, extra.Items...)
 	}
 	view.State = b.crewState(read, t, view)
+	if view.State == appwire.CrewIdle || view.State == appwire.CrewNeedsYou {
+		view.IdleSince = b.crewIdleSince(view.Members)
+	}
 	return view
+}
+
+// crewIdleSince is the instant since which no member of a crew has run: the
+// latest instant any member stopped. A member at rest stopped when its
+// conversation last changed (the end of its last turn); a member whose turn is
+// open but stopped on a question that holds the turn stopped when the first
+// such question still open was put. Nil when any member may still be running
+// or any member's instant is unknown.
+func (b *appBackend) crewIdleSince(members []appwire.CrewMember) *time.Time {
+	var last time.Time
+	known := len(members) > 0
+	b.locked(func() {
+		for _, m := range members {
+			stopped := b.stoppedLocked(b.agents[m.Agent])
+			if stopped.IsZero() {
+				known = false
+				return
+			}
+			if stopped.After(last) {
+				last = stopped
+			}
+		}
+	})
+	if !known {
+		return nil
+	}
+	return &last
+}
+
+// stoppedLocked is when an agent last stopped running, and the zero time when
+// it runs, may run, or is not known. Callers hold b.mu.
+func (b *appBackend) stoppedLocked(a *appAgent) time.Time {
+	if a == nil || a.view.State == appwire.StateWorking {
+		return time.Time{}
+	}
+	live := a.live
+	if live == nil || !live.running {
+		return a.view.UpdatedAt
+	}
+	// A TURN IS OPEN. It has stopped only on a question that holds the turn,
+	// and it stopped when the first of those still open was put; anything
+	// else may be running.
+	var first time.Time
+	for _, q := range live.questions {
+		if q.Blocking.Turn && !q.Asked.IsZero() && (first.IsZero() || q.Asked.Before(first)) {
+			first = q.Asked
+		}
+	}
+	return first
 }
 
 // subCrewBrief is the words a sub-crew's manager was started with: the
