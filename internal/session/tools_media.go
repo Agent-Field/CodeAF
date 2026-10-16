@@ -10,7 +10,10 @@ package session
 //     one call. A nil Media is no hand; a resolver that answers "" for the
 //     modality is a hand with nothing to ask for. Either way the tool is left
 //     OFF rather than added and made to refuse (tools_search.go states the law
-//     at length).
+//     at length). The explicit MediaAdmission seam is the exception for a
+//     connected image/video capability: its actual invocation explains a
+//     missing safe route in a durable, unpaid refusal. A missing client is
+//     always absent.
 //
 //   - WHAT DOES A REFERENCE PATH MEAN? A picture the model points at is read off
 //     the disk and encoded as a data URL, exactly as internal/exec/media.go's
@@ -51,7 +54,9 @@ const (
 // The bool is the belt's answer. It is false when the surface wired no media
 // client, when it wired no resolver, and when the resolver says this machine has
 // no model for this modality — three different absences that mean exactly one
-// thing to the model, which is that it does not have the verb.
+// thing to the model, which is that it does not have the verb. A surface that
+// explicitly wires MediaAdmission may instead keep a connected image/video
+// capability explainable; that seam must admit an actual route before payment.
 //
 // STUB(media/knob): both fields arrive FILLED from the door — the media client
 // built from the person's key, and the resolver with its four capability-checked
@@ -60,11 +65,14 @@ const (
 // and nothing here may re-derive one.
 func (a *Agent) mediaHand(modality string) (MediaGenerator, string, bool) {
 	client := a.config.Media
-	if client == nil || a.config.MediaModel == nil {
+	if client == nil {
 		return nil, "", false
 	}
-	model := strings.TrimSpace(a.config.MediaModel(modality))
-	if model == "" {
+	model := ""
+	if a.config.MediaModel != nil {
+		model = strings.TrimSpace(a.config.MediaModel(modality))
+	}
+	if model == "" && (a.config.MediaAdmission == nil || (modality != modalityImage && modality != modalityVideo)) {
 		return nil, "", false
 	}
 	return client, model, true

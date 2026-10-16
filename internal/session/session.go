@@ -1873,7 +1873,8 @@ type Config struct {
 	// which is why this is a closure and not a table.
 	//
 	// The absence law is per-verb: a nil Media keeps every generation tool off
-	// the belt; a nil MediaModel (or one answering "") keeps that MODALITY's
+	// the belt; without the optional MediaAdmission seam, a nil MediaModel
+	// (or one answering "") keeps that MODALITY's
 	// tools off ([Agent.mediaHand]). They REPLACED a pre-revision pair of this
 	// config's own — an image client and an image slug, with a pin ladder the
 	// tool walked itself — and nothing of that pair survives: one client and one
@@ -1881,6 +1882,9 @@ type Config struct {
 	// speak for reasons nobody can find.
 	Media      MediaGenerator
 	MediaModel func(modality string) string
+	// MediaAdmission optionally keeps connected generation capabilities explainable
+	// when no safe default exists. It is evaluated for the actual invocation.
+	MediaAdmission func(modality, word string) MediaAdmission
 
 	// MediaPick is the just-in-time half of the pair above: where MediaModel
 	// answers "the default for this modality", MediaPick answers "the model

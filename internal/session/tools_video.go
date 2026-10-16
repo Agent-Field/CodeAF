@@ -116,10 +116,18 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			if prompt == "" {
 				return "Invalid arguments: prompt is required", true, nil
 			}
+			resolvedDefault := defaultModel
+			if a.config.MediaAdmission != nil {
+				admission := a.config.MediaAdmission(modalityVideo, parsed.Model)
+				if admission.Model == "" {
+					return a.refuseMediaAdmission(callCtx, modalityVideo, admission)
+				}
+				resolvedDefault, parsed.Model = admission.Model, ""
+			}
 			// The call's own choice, resolved before the job starts, so a word
 			// that matches nothing costs neither money nor a job row
 			// (tools_image.go states the shape).
-			model, refusal := a.mediaPick(modalityVideo, parsed.Model, defaultModel)
+			model, refusal := a.mediaPick(modalityVideo, parsed.Model, resolvedDefault)
 			if refusal != "" {
 				return "Invalid arguments: " + refusal, true, nil
 			}

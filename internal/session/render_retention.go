@@ -124,6 +124,7 @@ func (r *renderRetention) hasPending(path string) bool {
 }
 
 func cloneRenderRecord(record RenderRecord) RenderRecord {
+	record.Options = append([]string(nil), record.Options...)
 	if record.Ended != nil {
 		value := *record.Ended
 		record.Ended = &value

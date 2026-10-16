@@ -141,9 +141,18 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
+			resolvedDefault := defaultModel
+			if strings.TrimSpace(parsed.Prompt) != "" && a.config.MediaAdmission != nil {
+				admission := a.config.MediaAdmission(modalityImage, parsed.Model)
+				if admission.Model == "" {
+					return a.refuseMediaAdmission(ctx, modalityImage, admission)
+				}
+				resolvedDefault = admission.Model
+				parsed.Model = "" // The invocation's exact choice was already resolved.
+			}
 			text, failed := GenerateImage(ctx, ImageGen{
 				Client:       client,
-				DefaultModel: defaultModel,
+				DefaultModel: resolvedDefault,
 				Pick:         a.config.MediaPick,
 				Workspace:    a.config.Workspace,
 				Directory:    ImagesDir(a.config.Place, a.config.Workspace),

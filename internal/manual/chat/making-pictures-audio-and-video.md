@@ -5,13 +5,12 @@ spoken audio file from text, a piece of music from a brief, a short video from a
 prompt. Each one is a tool on the list, each one costs money, and each one saves
 a file and tells you where it went.
 
-**These tools are only there when a model behind them is.** codeaf resolves one
-model per kind of media — drawing, speaking, composing, filming — from your
-settings, and a kind with no model available simply has no tool, rather than a
-tool that refuses. So `generate_image`, `speak`, `generate_music` and
-`generate_video` may each be present or absent independently, and asking for one
-that is absent gets you an honest "I do not have that here" rather than a failed
-attempt.
+**A missing service has no tool.** codeaf resolves a model per media kind
+from your settings. A connected drawing or filming service may keep its tool
+while a safe default still needs your choice: an actual attempt then explains
+which model setting is needed and makes no provider request. It does not pick
+an arbitrary model or retry. Speaking and composing retain their existing
+model requirement; each media kind can be present or absent independently.
 
 **All four work in tasks, in adaptive runs and inside saved harnesses**, not only
 in this conversation — see "Can a task or a harness make media?" below.

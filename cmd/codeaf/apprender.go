@@ -28,7 +28,7 @@ func appRenderOf(r session.RenderRecord) appwire.Render {
 		ID: r.ID, Job: r.Job, Session: r.Session, Kind: r.Kind, State: string(r.State), Model: r.Model,
 		Started: r.Started, Ended: r.Ended, DurationMS: r.DurationMS, Run: r.Run, Call: r.Call,
 		Committed: r.Committed, Path: r.Path, Charge: string(r.Charge), CostUSD: r.CostUSD,
-		Upstream: r.Upstream, Error: r.Error, Persistence: r.Persistence,
+		Upstream: r.Upstream, Error: r.Error, Persistence: r.Persistence, Refusal: r.Refusal, Options: append([]string(nil), r.Options...),
 	}
 }
 

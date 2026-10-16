@@ -7846,9 +7846,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// The media belt travels for the search pair's reason: a node briefed to
 		// draw a diagram needs the hand that draws it, and the resolver is what
 		// says which model does (media_contract.go).
-		Media:      parent.Media,
-		MediaModel: parent.MediaModel,
-		MediaPick:  parent.MediaPick,
+		Media:          parent.Media,
+		MediaModel:     parent.MediaModel,
+		MediaAdmission: parent.MediaAdmission,
+		MediaPick:      parent.MediaPick,
 		// A node reads documents on the rung the person chose, like the
 		// conversation does (tools_doc.go): the same worker, working somewhere
 		// quieter, must not silently drop to a different engine — or to a paid

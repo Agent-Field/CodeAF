@@ -66,9 +66,11 @@ type HarnessBeltSeams struct {
 	// Media and MediaModel are [Config]'s own pair, with [Config]'s own meaning:
 	// the client that carries a generation request, and the resolver that says
 	// which model serves a modality. Either one absent takes every generation
-	// verb off, exactly as it does on the conversation's belt.
-	Media      MediaGenerator
-	MediaModel func(modality string) string
+	// verb off, exactly as it does on the conversation's belt. MediaAdmission
+	// carries the same optional connected-capability refusal seam.
+	Media          MediaGenerator
+	MediaModel     func(modality string) string
+	MediaAdmission func(modality, word string) MediaAdmission
 
 	// MediaPick is [Config.MediaPick]: the just-in-time model choice on the
 	// four making verbs. Nil keeps the `model` argument off their schemas,
@@ -144,6 +146,7 @@ func HarnessBelt(workspace string, seams HarnessBeltSeams) []bare.Tool {
 			Workspace:      workspace,
 			Media:          seams.Media,
 			MediaModel:     seams.MediaModel,
+			MediaAdmission: seams.MediaAdmission,
 			MediaPick:      seams.MediaPick,
 			Place:          seams.Place,
 			ArtifactsIndex: seams.ArtifactsIndex,
@@ -184,6 +187,7 @@ func (a *Agent) harnessSeams() HarnessBeltSeams {
 	return HarnessBeltSeams{
 		Media:          a.config.Media,
 		MediaModel:     a.config.MediaModel,
+		MediaAdmission: a.config.MediaAdmission,
 		MediaPick:      a.config.MediaPick,
 		Seer:           a.routedCompleter(),
 		Place:          a.config.Place,

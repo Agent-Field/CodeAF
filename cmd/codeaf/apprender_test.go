@@ -155,3 +155,15 @@ func mustFind(t *testing.T, backend *appBackend, id string) *appAgent {
 	}
 	return a
 }
+
+func TestAppRenderKeepsStructuredAdmissionReasonAndCopiesOptions(t *testing.T) {
+	record := session.RenderRecord{ID: "rnd_refused", Kind: "image", State: session.RenderFailed, Refusal: "model_required", Options: []string{"actual/painter"}, Charge: session.RenderNotCharged}
+	got := appRenderOf(record)
+	if got.Refusal != "model_required" || got.Charge != "not_charged" || got.Model != "" || len(got.Options) != 1 {
+		t.Fatalf("lost refusal facts: %+v", got)
+	}
+	got.Options[0] = "changed"
+	if record.Options[0] != "actual/painter" {
+		t.Fatal("wire reader changed owned admission options")
+	}
+}

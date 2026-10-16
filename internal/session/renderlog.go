@@ -78,8 +78,10 @@ type RenderRecord struct {
 	CostUSD    *float64     `json:"cost_usd,omitempty"`
 	// Upstream is "unknown" on a cancelled render: only local waiting stopped,
 	// and nothing here tells the provider to cancel.
-	Upstream string `json:"upstream,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Upstream string   `json:"upstream,omitempty"`
+	Error    string   `json:"error,omitempty"`
+	Refusal  string   `json:"refusal,omitempty"`
+	Options  []string `json:"options,omitempty"`
 	// Persistence is unavailable when the latest fact is retained in memory because its journal write failed.
 	Persistence string `json:"persistence,omitempty"`
 }
@@ -91,6 +93,8 @@ type renderPatch struct {
 	path      string
 	usage     *ai.Usage
 	err       string
+	refusal   string
+	options   []string
 }
 
 const (
@@ -658,6 +662,16 @@ func (l *renderLedger) applyEnd(rec *RenderRecord, patch renderPatch, now time.T
 	}
 	if patch.state == RenderCancelled {
 		rec.Upstream = "unknown"
+	}
+	rec.Refusal = ""
+	if len(patch.refusal) <= 128 {
+		rec.Refusal = strings.Clone(patch.refusal)
+	}
+	rec.Options = nil
+	for _, option := range patch.options[:min(len(patch.options), 8)] {
+		if option != "" && len(option) <= 1024 {
+			rec.Options = append(rec.Options, strings.Clone(option))
+		}
 	}
 	rec.Error = strings.Join(strings.Fields(patch.err), " ")
 	if runes := []rune(rec.Error); len(runes) > renderErrorRunes {

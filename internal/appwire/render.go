@@ -40,6 +40,8 @@ type Render struct {
 	CostUSD     *float64   `json:"cost_usd,omitempty"`
 	Upstream    string     `json:"upstream,omitempty"`
 	Error       string     `json:"error,omitempty"`
+	Refusal     string     `json:"refusal,omitempty"`
+	Options     []string   `json:"options,omitempty"`
 }
 
 // RenderPage is one window of renders, newest first.

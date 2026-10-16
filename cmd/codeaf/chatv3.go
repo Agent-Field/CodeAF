@@ -1235,6 +1235,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 		cfg.Media = v3MediaClient(mediaSettings)
 		cfg.MediaModel = v3MediaModel(activeModels, settings.ProfileDir, cfg.RolesSource)
 		cfg.MediaPick = v3MediaPick(activeModels)
+		cfg.MediaAdmission = v3MediaAdmission(activeModels, settings.ProfileDir, cfg.RolesSource)
 	}
 
 	// AND THE RUN DOOR IS BUILT FROM THE SAME PAIR. A saved harness may name a
@@ -1248,7 +1249,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	// the same row in `/files`. Left out, the run's belt fell to the legacy dot
 	// directory and recorded nothing, which made a harness's work invisible.
 	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, session.HarnessBeltSeams{
-		Media: cfg.Media, MediaModel: cfg.MediaModel, MediaPick: cfg.MediaPick,
+		Media: cfg.Media, MediaModel: cfg.MediaModel, MediaPick: cfg.MediaPick, MediaAdmission: cfg.MediaAdmission,
 		Place: cfg.Place, ArtifactsIndex: cfg.ArtifactsIndex,
 	})
 	// AND THE SAME DOOR PUTS THAT STORE ON THE LIST. A program saved as a page is
