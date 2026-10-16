@@ -362,9 +362,14 @@ type appBackend struct {
 
 	mu               sync.Mutex
 	referenceWorkers int
-	referenceN       int // in-flight and staged reference snapshots, under mu
-	agents           map[string]*appAgent
-	closing          bool
+	// reportReads are the report reads in flight and reportCtx the context they
+	// all run under, cancelled by Close (appprogramreport.go); both under mu.
+	reportReads  int
+	reportCtx    context.Context
+	reportCancel context.CancelFunc
+	referenceN   int // in-flight and staged reference snapshots, under mu
+	agents       map[string]*appAgent
+	closing      bool
 
 	sweepStop chan struct{}
 	sweepDone chan struct{}
@@ -3372,6 +3377,9 @@ func (b *appBackend) Close() error {
 			return
 		}
 		b.closing = true
+		if b.reportCancel != nil {
+			b.reportCancel()
+		}
 		if b.accountAuth != nil {
 			b.accountAuth.cancel()
 			b.accountAuth.flow.Cancel()
