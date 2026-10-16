@@ -84,6 +84,7 @@ type ProcessLogResult struct {
 	Next            int64  `json:"next"`
 	Size            int64  `json:"size"`
 	EOF             bool   `json:"eof"`
+	Partial         bool   `json:"partial,omitempty"`
 	MoreBefore      bool   `json:"more_before,omitempty"`
 	OutputTruncated bool   `json:"output_truncated,omitempty"`
 	LogGone         bool   `json:"log_gone,omitempty"`

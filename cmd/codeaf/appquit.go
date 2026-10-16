@@ -59,15 +59,12 @@ func (b *appBackend) markQuit(agents []*appAgent) {
 		if running || len(tasks) > 0 {
 			resume = append(resume, id)
 		}
-		rows, err := live.conn.Conv.JobNotices()
+		rows, err := b.runningJobs(live)
 		if err != nil {
 			continue
 		}
 		for _, row := range rows {
 			process := appProcessOf(id, row)
-			if process.State != appwire.ProcessRunning {
-				continue
-			}
 			ended := now
 			process.State, process.EndedAt, process.Reason = appwire.ProcessStopped, &ended, appQuitStoppedWord
 			stopped = append(stopped, process)

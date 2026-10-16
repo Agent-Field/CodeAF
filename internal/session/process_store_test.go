@@ -19,7 +19,7 @@ import (
 func seedStore(t *testing.T, dir string, ids ...int) {
 	t.Helper()
 	s := processStore{dir: dir}
-	root, head, err := s.open()
+	root, head, err := s.open(time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestProcessUpdateWritesOneRecordNotTheHistory(t *testing.T) {
 		_ = os.Chtimes(filepath.Join(dir, processStoreName, processFileName(id)), old, old)
 	}
 	s := processStore{dir: dir}
-	root, head, err := s.open()
+	root, head, err := s.open(time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestProcessSettledRecordIsNeverOverwrittenByLateRunningNotice(t *testing.T)
 	dir := t.TempDir()
 	started := time.Now()
 	s := processStore{dir: dir}
-	root, head, _ := s.open()
+	root, head, _ := s.open(time.Second)
 	defer root.Close()
 	_, _ = s.put(root, &head, JobNotice{ID: 3, Kind: JobKindCommand, State: JobFailed, ExitCode: 2, Started: started, StartedBy: JobStartedByChat}, true)
 	_, _ = s.put(root, &head, JobNotice{ID: 3, Kind: JobKindCommand, State: JobRunning, Started: started, Name: "late name"}, true)
@@ -130,7 +130,7 @@ func TestProcessSettledRecordIsNeverOverwrittenByLateRunningNotice(t *testing.T)
 func TestProcessSavedRunningIsUnknownNeverStoppedOnThePage(t *testing.T) {
 	dir := t.TempDir()
 	s := processStore{dir: dir}
-	root, head, _ := s.open()
+	root, head, _ := s.open(time.Second)
 	_, _ = s.put(root, &head, JobNotice{ID: 9, Kind: JobKindCommand, Command: "npm run dev", State: JobRunning, Started: time.Now(), Elapsed: time.Minute}, true)
 	root.Close()
 	page, err := ReadProcessPage(context.Background(), filepath.Join(dir, "t.jsonl"), ProcessPageAsk{})
@@ -277,8 +277,8 @@ func TestProcessLegacyElementOverTheCapIsCountedLost(t *testing.T) {
 		c.Place = Place{Dir: dir}
 	})
 	page, err := agent.ProcessPage(context.Background(), ProcessPageAsk{})
-	if err != nil || !page.Incomplete || len(page.Rows) == 0 || page.Rows[len(page.Rows)-1].ID != 1 {
-		t.Fatalf("oversize legacy: %+v %v", page, err)
+	if err != nil || !page.Incomplete || len(page.Rows) != 2 || page.Rows[0].ID != 3 || page.Rows[1].ID != 1 {
+		t.Fatalf("oversize legacy element took its neighbours with it: %+v %v", page, err)
 	}
 }
 
@@ -353,67 +353,417 @@ func TestProcessTaskWorkerJobIsInTheConversationHistoryWithItsTask(t *testing.T)
 
 // ── the log ────────────────────────────────────────────────────────────────
 
+// managedLog writes a job's log where codeaf writes it and answers the record
+// that names it.
+func managedLog(t *testing.T, dir string, id int, body string) JobNotice {
+	t.Helper()
+	jobs := filepath.Join(dir, placeLogs, droppingJobs)
+	if err := os.MkdirAll(jobs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(jobs, strconv.Itoa(id)+".log")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return JobNotice{ID: id, LogPath: path}
+}
+
 func TestProcessLogReadsTailAndForwardByOffsetAtLineEnds(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "1.log")
 	var b strings.Builder
 	for i := 0; i < 2000; i++ {
 		b.WriteString("line " + strconv.Itoa(i) + "\n")
 	}
 	b.WriteString("partial")
-	_ = os.WriteFile(path, []byte(b.String()), 0o600)
-	tail, err := ReadProcessLog(path, ProcessLogAsk{Limit: 100}, nil)
-	if err != nil || !strings.HasPrefix(tail.Text, "line ") || !strings.HasSuffix(tail.Text, "line 1999\n") || !tail.EOF || !tail.MoreBefore {
-		t.Fatalf("tail: %+v %v", tail, err)
+	n := managedLog(t, dir, 1, b.String())
+	tail, err := ReadProcessLog(dir, n, ProcessLogAsk{Limit: 100}, nil)
+	if err != nil || !strings.HasPrefix(tail.Text, "line ") || !strings.HasSuffix(tail.Text, "line 1999\n") || tail.EOF || !tail.Partial || !tail.MoreBefore || tail.Next != tail.Size-7 {
+		t.Fatalf("tail of a running log: %+v %v", tail, err)
 	}
 	zero := int64(0)
-	head, err := ReadProcessLog(path, ProcessLogAsk{Offset: &zero, Limit: 20}, strings.ToUpper)
-	if err != nil || head.Text != "LINE 0\nLINE 1\n" || head.Next != 14 || head.EOF || head.MoreBefore {
+	head, err := ReadProcessLog(dir, n, ProcessLogAsk{Offset: &zero, Limit: 20}, strings.ToUpper)
+	if err != nil || head.Text != "LINE 0\nLINE 1\n" || head.Next != 14 || head.EOF || head.Partial || head.MoreBefore {
 		t.Fatalf("head: %+v %v", head, err)
 	}
 	next := head.Next
-	again, err := ReadProcessLog(path, ProcessLogAsk{Offset: &next, Limit: 7, Revision: head.Revision}, nil)
+	again, err := ReadProcessLog(dir, n, ProcessLogAsk{Offset: &next, Limit: 7, Revision: head.Revision}, nil)
 	if err != nil || again.Text != "line 2\n" {
 		t.Fatalf("forward: %+v %v", again, err)
 	}
 	past := int64(1 << 30)
-	if _, err := ReadProcessLog(path, ProcessLogAsk{Offset: &past}, nil); !errors.Is(err, ErrProcessLogStale) {
+	if _, err := ReadProcessLog(dir, n, ProcessLogAsk{Offset: &past}, nil); !errors.Is(err, ErrProcessLogStale) {
 		t.Fatalf("offset past the end: %v", err)
 	}
-	if _, err := ReadProcessLog(path, ProcessLogAsk{Offset: &zero, Revision: "other"}, nil); !errors.Is(err, ErrProcessLogStale) {
+	if _, err := ReadProcessLog(dir, n, ProcessLogAsk{Offset: &zero, Revision: "other"}, nil); !errors.Is(err, ErrProcessLogStale) {
 		t.Fatalf("revision mismatch: %v", err)
 	}
-	if _, err := ReadProcessLog(path, ProcessLogAsk{Limit: ProcessLogMaxBytes + 1}, nil); err == nil {
+	if _, err := ReadProcessLog(dir, n, ProcessLogAsk{Limit: ProcessLogMaxBytes + 1}, nil); err == nil {
 		t.Fatal("limit over the maximum accepted")
+	}
+}
+
+// AN ENDED PROCESS'S LAST LINE IS SHOWN WITHOUT ITS NEWLINE, and a log that is
+// nothing but one unterminated line is not empty.
+func TestProcessLogShowsAnEndedProcesssUnterminatedLastLine(t *testing.T) {
+	dir := t.TempDir()
+	n := managedLog(t, dir, 2, "ready\nPassword:")
+	got, err := ReadProcessLog(dir, n, ProcessLogAsk{Final: true}, nil)
+	if err != nil || got.Text != "ready\nPassword:" || !got.EOF || got.Partial || got.Next != got.Size {
+		t.Fatalf("ended tail: %+v %v", got, err)
+	}
+	only := managedLog(t, dir, 3, "x")
+	zero := int64(0)
+	got, err = ReadProcessLog(dir, only, ProcessLogAsk{Offset: &zero, Final: true}, nil)
+	if err != nil || got.Text != "x" || !got.EOF {
+		t.Fatalf("printf x: %+v %v", got, err)
+	}
+	got, err = ReadProcessLog(dir, only, ProcessLogAsk{Offset: &zero}, nil)
+	if err != nil || got.Text != "" || got.EOF || !got.Partial || got.Next != 0 {
+		t.Fatalf("running unterminated line: %+v %v", got, err)
 	}
 }
 
 func TestProcessLogSplitsOnlyALineLongerThanTheWindowAtARune(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "1.log")
-	_ = os.WriteFile(path, []byte(strings.Repeat("é", 100)+"\n"), 0o600)
+	n := managedLog(t, dir, 1, strings.Repeat("é", 100)+"\n")
 	zero := int64(0)
-	got, err := ReadProcessLog(path, ProcessLogAsk{Offset: &zero, Limit: 11}, nil)
+	got, err := ReadProcessLog(dir, n, ProcessLogAsk{Offset: &zero, Limit: 11}, nil)
 	if err != nil || got.Text != strings.Repeat("é", 5) || got.Next != 10 {
 		t.Fatalf("split: %+v %v", got, err)
 	}
 }
 
-func TestProcessLogRefusesLinksAndSpecialFilesAndSaysGone(t *testing.T) {
+// A LONG LINE OF INVALID BYTES STILL MOVES: the reader never trims a window
+// to nothing and leaves the caller polling the same offset forever.
+func TestProcessLogInvalidBytesInALongLineAlwaysAdvance(t *testing.T) {
 	dir := t.TempDir()
-	link := filepath.Join(dir, "link.log")
-	_ = os.Symlink("/etc/passwd", link)
-	if _, err := ReadProcessLog(link, ProcessLogAsk{}, nil); err == nil {
-		t.Fatal("followed a link")
-	}
-	fifo := filepath.Join(dir, "fifo.log")
-	if err := syscall.Mkfifo(fifo, 0o600); err == nil {
-		if _, err := ReadProcessLog(fifo, ProcessLogAsk{}, nil); err == nil {
-			t.Fatal("read a FIFO")
+	n := managedLog(t, dir, 1, strings.Repeat("\xff", 64)+"\n")
+	offset := int64(0)
+	for reads := 0; ; reads++ {
+		got, err := ReadProcessLog(dir, n, ProcessLogAsk{Offset: &offset, Limit: 10}, nil)
+		if err != nil || got.Next <= offset && !got.EOF {
+			t.Fatalf("read %d stuck at %d: %+v %v", reads, offset, got, err)
+		}
+		if got.EOF {
+			break
+		}
+		offset = got.Next
+		if reads > 20 {
+			t.Fatal("never reached the end")
 		}
 	}
-	gone, err := ReadProcessLog(filepath.Join(dir, "expired.log"), ProcessLogAsk{}, nil)
-	if err != nil || !gone.Gone || gone.Text != "" {
+	tiny := managedLog(t, dir, 2, "é\n")
+	zero := int64(0)
+	got, err := ReadProcessLog(dir, tiny, ProcessLogAsk{Offset: &zero, Limit: 1}, nil)
+	if err != nil || got.Next != 1 {
+		t.Fatalf("a window smaller than a character: %+v %v", got, err)
+	}
+}
+
+// ONLY THE LOG CODEAF WROTE FOR THAT JOB IS OPENED: a record naming another
+// file, a link at any folder below the conversation, a link or FIFO at the log
+// itself are all refused; a missing one is gone.
+func TestProcessLogOpensOnlyTheManagedLogOfThatJob(t *testing.T) {
+	dir := t.TempDir()
+	n := managedLog(t, dir, 4, "ok\n")
+	for _, path := range []string{"/etc/passwd", filepath.Join(dir, placeLogs, droppingJobs, "5.log"), filepath.Join(dir, "x", "..", placeLogs, droppingJobs, "../jobs/../../4.log")} {
+		if _, err := ReadProcessLog(dir, JobNotice{ID: 4, LogPath: path}, ProcessLogAsk{}, nil); !ErrProcessLogUnmanaged(err) {
+			t.Fatalf("record naming %s: %v", path, err)
+		}
+	}
+	if got, err := ReadProcessLog(dir, n, ProcessLogAsk{}, nil); err != nil || got.Text != "ok\n" {
+		t.Fatalf("managed: %+v %v", got, err)
+	}
+	// A logs folder swapped for a link to elsewhere is not followed.
+	other := t.TempDir()
+	managedLog(t, other, 4, "secret\n")
+	moved := t.TempDir()
+	if err := os.Rename(filepath.Join(dir, placeLogs), filepath.Join(moved, placeLogs)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(other, placeLogs), filepath.Join(dir, placeLogs)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReadProcessLog(dir, n, ProcessLogAsk{}, nil); err == nil {
+		t.Fatalf("followed a linked logs folder: %+v", got)
+	}
+	_ = os.Remove(filepath.Join(dir, placeLogs))
+	_ = os.Rename(filepath.Join(moved, placeLogs), filepath.Join(dir, placeLogs))
+	_ = os.Remove(n.LogPath)
+	if err := os.Symlink("/etc/passwd", n.LogPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadProcessLog(dir, n, ProcessLogAsk{}, nil); err == nil {
+		t.Fatal("followed a link at the log")
+	}
+	_ = os.Remove(n.LogPath)
+	if err := syscall.Mkfifo(n.LogPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := ReadProcessLog(dir, n, ProcessLogAsk{}, nil); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("read a FIFO")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("blocked on a FIFO")
+	}
+	_ = os.Remove(n.LogPath)
+	if gone, err := ReadProcessLog(dir, n, ProcessLogAsk{}, nil); err != nil || !gone.Gone {
 		t.Fatalf("gone: %+v %v", gone, err)
+	}
+	if gone, err := ReadProcessLog(dir, JobNotice{ID: 9}, ProcessLogAsk{}, nil); err != nil || !gone.Gone {
+		t.Fatalf("no log named: %+v %v", gone, err)
+	}
+}
+
+// ── the review's blockers ──────────────────────────────────────────────────
+
+// A RECORD SWAPPED FOR A FIFO NEVER HOLDS A READER (or the record lock).
+func TestProcessRecordSwappedForAFIFOIsSkippedWithoutBlocking(t *testing.T) {
+	dir := t.TempDir()
+	seedStore(t, dir, 1, 2, 3)
+	record := filepath.Join(dir, processStoreName, processFileName(2))
+	_ = os.Remove(record)
+	if err := syscall.Mkfifo(record, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan ProcessPage, 1)
+	go func() {
+		page, _ := ReadProcessPage(context.Background(), filepath.Join(dir, "t.jsonl"), ProcessPageAsk{})
+		done <- page
+	}()
+	select {
+	case page := <-done:
+		if !page.Incomplete || len(page.Rows) != 2 {
+			t.Fatalf("fifo record: %+v", page)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a FIFO record blocked the page")
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = filepath.Join(dir, "transcript.jsonl"); c.Place = Place{Dir: dir} })
+	wrote := make(chan struct{})
+	go func() {
+		agent.keepProcessNotice(JobNotice{ID: 2, Kind: JobKindCommand, State: JobDone, Started: time.Now()})
+		close(wrote)
+	}()
+	select {
+	case <-wrote:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a FIFO record blocked the writer")
+	}
+	if n, found, err := ReadProcessRecord(agent.SessionPath(), 2); err != nil || !found || n.State != JobDone {
+		t.Fatalf("the write did not replace the FIFO: %+v %v %v", n, found, err)
+	}
+}
+
+// THE WHOLE LIST NEVER PRESENTS PART OF A HISTORY AS ALL OF IT, and never
+// spins: too long, or damaged, it says so.
+func TestProcessLegacyListRefusesAHistoryItCannotCarryWhole(t *testing.T) {
+	dir := t.TempDir()
+	var ids []int
+	for i := 1; i <= processLegacyListMax+5; i++ {
+		ids = append(ids, i)
+	}
+	seedStore(t, dir, ids...)
+	file := filepath.Join(dir, "t.jsonl")
+	if _, err := ReadProcessNotices(file); !errors.Is(err, ErrProcessListPartial) {
+		t.Fatalf("a list over the cap: %v", err)
+	}
+	small := t.TempDir()
+	seedStore(t, small, 1, 2, processProbeBudget*3)
+	rows, err := ReadProcessNotices(filepath.Join(small, "t.jsonl"))
+	if err != nil || len(rows) != 3 {
+		t.Fatalf("holes walked: %d %v", len(rows), err)
+	}
+	_ = os.WriteFile(filepath.Join(small, processStoreName, processFileName(2)), []byte("{"), 0o600)
+	if _, err := ReadProcessNotices(filepath.Join(small, "t.jsonl")); !errors.Is(err, ErrProcessListPartial) {
+		t.Fatalf("a damaged history listed as whole: %v", err)
+	}
+}
+
+// A FOLD CUT BY ITS BUDGET RESUMES FROM THE BYTE IT STOPPED AT; AN OVERSIZE
+// ELEMENT IS SKIPPED, NOT FATAL; A CORRUPT TAIL IS SAID, NOT FORGOTTEN.
+func TestProcessLegacyScanResumesSkipsAndSaysCorrupt(t *testing.T) {
+	dir := t.TempDir()
+	var rows []JobNotice
+	for i := 1; i <= 40; i++ {
+		rows = append(rows, JobNotice{ID: i, Kind: JobKindCommand, Command: "c " + strconv.Itoa(i), State: JobDone})
+	}
+	rows[10].Command = strings.Repeat("[\"x]", processRecordCap)
+	raw, _ := json.MarshalIndent(rows, "", " ")
+	path := filepath.Join(dir, "processes.json")
+	_ = os.WriteFile(path, raw, 0o600)
+	seen := map[int]bool{}
+	from, passes, lost := int64(0), 0, 0
+	for {
+		scan, err := scanLegacy(path, from, 300, time.Time{}, func(n JobNotice) error { seen[n.ID] = true; return nil })
+		passes++
+		lost += scan.lost
+		if scan.done {
+			if err != nil || scan.corrupt {
+				t.Fatalf("end: %+v %v", scan, err)
+			}
+			break
+		}
+		if !errors.Is(err, errLegacyBudget) || scan.next <= from {
+			t.Fatalf("pass %d did not move: %+v %v", passes, scan, err)
+		}
+		from = scan.next
+	}
+	if len(seen) != 39 || seen[11] || lost != 1 || passes < 5 {
+		t.Fatalf("resumed fold: kept=%d oversize kept=%v lost=%d passes=%d", len(seen), seen[11], lost, passes)
+	}
+	cut := raw[:len(raw)/2]
+	_ = os.WriteFile(path, cut, 0o600)
+	scan, err := scanLegacy(path, 0, 1<<30, time.Time{}, func(JobNotice) error { return nil })
+	if err != nil || !scan.corrupt || scan.done {
+		t.Fatalf("cut array: %+v %v", scan, err)
+	}
+}
+
+// THE OWNER'S FOLD CARRIES ON ACROSS WRITES until it reaches the end; a page
+// before then says incomplete, and the head records where it stopped.
+func TestProcessOwnerFoldResumesAcrossOpens(t *testing.T) {
+	dir := t.TempDir()
+	var rows []JobNotice
+	for i := 1; i <= 300; i++ {
+		rows = append(rows, JobNotice{ID: i, Kind: JobKindCommand, Command: "c", State: JobDone})
+	}
+	raw, _ := json.Marshal(rows)
+	_ = os.WriteFile(filepath.Join(dir, "processes.json"), raw, 0o600)
+	s := processStore{dir: dir}
+	root, head, err := s.open(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.Close()
+	mark, _ := head.markFor("processes.json")
+	if mark.Done || !s.legacyPending(head) {
+		t.Fatalf("a fold with no time claimed the end: %+v", mark)
+	}
+	for i := 0; i < 50 && s.legacyPending(head); i++ {
+		root, head, err = s.open(time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root.Close()
+	}
+	page, err := ReadProcessPage(context.Background(), filepath.Join(dir, "t.jsonl"), ProcessPageAsk{Limit: 1})
+	if err != nil || page.Incomplete || page.Rows[0].ID != 300 || head.High != 300 {
+		t.Fatalf("folded: %+v high=%d %v", page, head.High, err)
+	}
+}
+
+// AN UNREADABLE HEAD IS REBUILT FROM THE RECORDS, with a new epoch, so the
+// store keeps recording and old cursors are stale.
+func TestProcessUnreadableHeadIsRebuiltNotFatal(t *testing.T) {
+	dir := t.TempDir()
+	seedStore(t, dir, 1, 2, 7)
+	page, _ := ReadProcessPage(context.Background(), filepath.Join(dir, "t.jsonl"), ProcessPageAsk{Limit: 1})
+	_ = os.WriteFile(filepath.Join(dir, processStoreName, processHeadName), []byte("garbage"), 0o600)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = filepath.Join(dir, "transcript.jsonl"); c.Place = Place{Dir: dir} })
+	agent.keepProcessNotice(JobNotice{ID: 8, Kind: JobKindCommand, State: JobDone, Started: time.Now()})
+	all, _ := walkPages(t, func(cursor string) (ProcessPage, error) {
+		return ReadProcessPage(context.Background(), agent.SessionPath(), ProcessPageAsk{Cursor: cursor})
+	})
+	if len(all) != 4 || all[0].ID != 8 || all[1].ID != 7 {
+		t.Fatalf("rebuilt: %+v", all)
+	}
+	if _, err := ReadProcessPage(context.Background(), agent.SessionPath(), ProcessPageAsk{Cursor: page.Next}); !errors.Is(err, ErrProcessStale) {
+		t.Fatalf("an old cursor survived the rebuild: %v", err)
+	}
+}
+
+// LIVE ROWS ARE PAGED: more live jobs than a page carry over with their own
+// continuation before the saved history begins.
+func TestProcessLiveRowsArePagedBeforeTheHistory(t *testing.T) {
+	dir := t.TempDir()
+	seedStore(t, dir, 1, 2, 3)
+	var live []ProcessPageRow
+	for id := 30; id > 20; id-- {
+		live = append(live, ProcessPageRow{JobNotice: JobNotice{ID: id, State: JobRunning}, Live: true})
+	}
+	s := processStore{dir: dir}
+	var got []int
+	cursor := ""
+	for pages := 0; pages < 10; pages++ {
+		page, err := s.page(context.Background(), ProcessPageAsk{Cursor: cursor}, 4, nil, live, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Rows) > 4 {
+			t.Fatalf("page over its limit: %d", len(page.Rows))
+		}
+		for _, r := range page.Rows {
+			got = append(got, r.ID)
+		}
+		if page.Next == "" {
+			break
+		}
+		cursor = page.Next
+	}
+	want := []int{30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 3, 2, 1}
+	if len(got) != len(want) {
+		t.Fatalf("live then history: %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("live then history: %v", got)
+		}
+	}
+}
+
+// AN OWNER'S PAGE WAITS FOR THE RECORD LOCK ONLY WITHIN ITS SHARE OF THE
+// DEADLINE, then reads what is on disk without creating or folding anything.
+func TestProcessOwnerPageDoesNotQueueBehindAHeldRecordLock(t *testing.T) {
+	dir := t.TempDir()
+	seedStore(t, dir, 1, 2)
+	raw, _ := json.Marshal([]JobNotice{{ID: 9, Kind: JobKindCommand, State: JobDone}})
+	_ = os.WriteFile(filepath.Join(dir, "processes.json"), raw, 0o600)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = filepath.Join(dir, "transcript.jsonl"); c.Place = Place{Dir: dir} })
+	processRecordMu.Lock()
+	defer processRecordMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	start := time.Now()
+	page, err := agent.ProcessPage(ctx, ProcessPageAsk{})
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("the page queued behind the lock for %v", took)
+	}
+	if err != nil || len(page.Rows) != 2 || !page.Incomplete {
+		t.Fatalf("read-only page under a held lock: %+v %v", page, err)
+	}
+}
+
+// A RECORD READ GOES THROUGH THE ROOT ALREADY OPENED: a store folder swapped
+// for a link afterwards does not redirect it.
+func TestProcessRecordReadsStayInTheOpenedStore(t *testing.T) {
+	dir := t.TempDir()
+	seedStore(t, dir, 1)
+	root, err := processStore{dir: dir}.openRoot(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	other := t.TempDir()
+	s := processStore{dir: other}
+	r2, head, _ := s.open(time.Second)
+	_, _ = s.put(r2, &head, JobNotice{ID: 1, Kind: JobKindCommand, Command: "elsewhere", State: JobDone}, false)
+	r2.Close()
+	if err := os.Rename(filepath.Join(dir, processStoreName), filepath.Join(dir, "moved")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(other, processStoreName), filepath.Join(dir, processStoreName)); err != nil {
+		t.Fatal(err)
+	}
+	n, found, err := readRecord(root, 1)
+	if err != nil || !found || n.Command == "elsewhere" {
+		t.Fatalf("a swapped store redirected the read: %+v %v %v", n, found, err)
+	}
+	if _, err := (processStore{dir: dir}).openRoot(false); err == nil {
+		t.Fatal("a store that is a link was opened")
 	}
 }

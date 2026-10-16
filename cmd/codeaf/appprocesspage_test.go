@@ -57,16 +57,20 @@ func TestProcessPageOfANotHeldConversationIsTruthfulAndPaged(t *testing.T) {
 	backend, _, agent := workBackend(t, &fakeConversation{})
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "transcript.jsonl")
-	log := filepath.Join(dir, "2.log")
+	jobs := filepath.Join(dir, "logs", "jobs")
+	_ = os.MkdirAll(jobs, 0o700)
+	log := filepath.Join(jobs, "2.log")
 	_ = os.WriteFile(log, []byte("compiling\nlistening on localhost:3000\n"), 0o600)
+	ended := filepath.Join(jobs, "3.log")
+	_ = os.WriteFile(ended, []byte("built\nPassword:"), 0o600)
 	started := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 	var rows []session.JobNotice
 	for i := 3; i <= 60; i++ {
-		rows = append(rows, session.JobNotice{ID: i, Kind: session.JobKindCommand, Command: "make " + strconv.Itoa(i), State: session.JobDone, Started: started.Add(time.Duration(i) * time.Minute), Ended: started.Add(time.Duration(i)*time.Minute + time.Second)})
+		rows = append(rows, session.JobNotice{ID: i, Kind: session.JobKindCommand, Command: "make " + strconv.Itoa(i), State: session.JobDone, Started: started.Add(time.Duration(i) * time.Minute), Ended: started.Add(time.Duration(i)*time.Minute + time.Second), LogPath: filepath.Join(jobs, strconv.Itoa(i)+".log")})
 	}
 	rows = append(rows,
 		session.JobNotice{ID: 2, Kind: session.JobKindCommand, Command: "npm run dev", State: session.JobRunning, Started: started, Elapsed: time.Hour, LogPath: log, Dir: "/work/site", StartedBy: session.JobStartedByTask, Task: 4},
-		session.JobNotice{ID: 1, Kind: session.JobKindCommand, Command: "go test", State: session.JobFailed, ExitCode: 1, Started: started, Ended: started.Add(time.Minute), StartedBy: session.JobStartedByChat, LogPath: filepath.Join(dir, "1.log")},
+		session.JobNotice{ID: 1, Kind: session.JobKindCommand, Command: "go test", State: session.JobFailed, ExitCode: 1, Started: started, Ended: started.Add(time.Minute), StartedBy: session.JobStartedByChat, LogPath: filepath.Join(jobs, "1.log")},
 	)
 	seedRecords(t, dir, rows...)
 	letGo(t, backend, agent.ID, transcript)
@@ -105,6 +109,15 @@ func TestProcessPageOfANotHeldConversationIsTruthfulAndPaged(t *testing.T) {
 	if err != nil || part.Text != "compiling\n" || part.Next != 10 || part.EOF {
 		t.Fatalf("log window: %+v %v", part, err)
 	}
+	three := appProcessID(agent.ID, rows[0])
+	last, err := backend.ReadProcessLog(ctx, appwire.ProcessLogAsk{ID: three})
+	if err != nil || last.Text != "built\nPassword:" || !last.EOF || last.Partial {
+		t.Fatalf("an ended process's last unterminated line: %+v %v", last, err)
+	}
+	running2, err := backend.ReadProcessLog(ctx, appwire.ProcessLogAsk{ID: running.ID, Offset: &zero, LimitBytes: &ten})
+	if err != nil || running2.Partial {
+		t.Fatalf("running window: %+v %v", running2, err)
+	}
 	gone, err := backend.ReadProcessLog(ctx, appwire.ProcessLogAsk{ID: failed.ID})
 	if err != nil || !gone.LogGone {
 		t.Fatalf("gone log: %+v %v", gone, err)
@@ -118,6 +131,30 @@ func TestProcessPageOfANotHeldConversationIsTruthfulAndPaged(t *testing.T) {
 	if out, err := backend.ReadProcessLog(ctx, appwire.ProcessLogAsk{ID: running.ID}); err == nil {
 		t.Fatalf("followed a link the record names: %+v", out)
 	}
+	// A record naming a file outside its conversation's logs folder is refused.
+	seedRecords(t, dir, append(rows, session.JobNotice{ID: 61, Kind: session.JobKindCommand, State: session.JobDone, Started: started, LogPath: "/etc/passwd"})...)
+	if out, err := backend.ReadProcessLog(ctx, appwire.ProcessLogAsk{ID: appProcessID(agent.ID, session.JobNotice{ID: 61, Started: started})}); !isCode(err, appwire.CodeEngine) {
+		t.Fatalf("an unmanaged log path was read: %+v %v", out, err)
+	}
+}
+
+// THE WHOLE LIST SAYS TOO LARGE RATHER THAN ANSWERING PART OF A LONG HISTORY.
+func TestProcessListOfALongHistoryIsTooLargeNotCut(t *testing.T) {
+	backend, _, agent := workBackend(t, &fakeConversation{})
+	dir := t.TempDir()
+	var rows []session.JobNotice
+	for i := 1; i <= 1005; i++ {
+		rows = append(rows, session.JobNotice{ID: i, Kind: session.JobKindCommand, State: session.JobDone, Started: time.Now()})
+	}
+	seedRecords(t, dir, rows...)
+	letGo(t, backend, agent.ID, filepath.Join(dir, "transcript.jsonl"))
+	if list, err := backend.ListProcesses(agent.ID); !isCode(err, appwire.CodeTooLarge) {
+		t.Fatalf("a cut list: %d %v", len(list), err)
+	}
+	page, err := backend.PageProcesses(context.Background(), appwire.ProcessPageAsk{Agent: agent.ID})
+	if err != nil || len(page.Processes) != appwire.ProcessPageLimitDefault || page.Next == "" {
+		t.Fatalf("the page still reads it: %d %v", len(page.Processes), err)
+	}
 }
 
 func isCode(err error, code string) bool {
@@ -128,14 +165,24 @@ func isCode(err error, code string) bool {
 // A HELD CONVERSATION WHOSE ENGINE CANNOT PAGE is paged here from its list,
 // within the same bounds, and a stale cursor says so.
 func TestProcessPageOfAnOlderHeldEngineIsPagedFromItsList(t *testing.T) {
-	spool := filepath.Join(t.TempDir(), "9.log")
-	_ = os.WriteFile(spool, []byte(strings.Repeat("x\n", 10)), 0o600)
+	conv := &fakeConversation{}
+	backend, _, agent := workBackend(t, conv)
+	a, _ := backend.find(agent.ID)
+	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
+	var was string
+	backend.locked(func() { was, a.transcript = a.transcript, transcript })
+	t.Cleanup(func() { backend.locked(func() { a.transcript = was }) })
+	logs := filepath.Join(filepath.Dir(transcript), "logs", "jobs")
+	_ = os.MkdirAll(logs, 0o700)
 	var jobs []session.JobNotice
 	for i := 1; i <= 9; i++ {
+		spool := filepath.Join(logs, strconv.Itoa(i)+".log")
+		_ = os.WriteFile(spool, []byte(strings.Repeat("x\n", 10)), 0o600)
 		jobs = append(jobs, session.JobNotice{ID: i, Kind: session.JobKindCommand, Command: "c", State: session.JobDone, Started: time.Now(), LogPath: spool})
 	}
-	conv := &fakeConversation{jobs: jobs}
-	backend, _, agent := workBackend(t, conv)
+	conv.mu.Lock()
+	conv.jobs = jobs
+	conv.mu.Unlock()
 	ctx := context.Background()
 	four := 4
 	page, err := backend.PageProcesses(ctx, appwire.ProcessPageAsk{Agent: agent.ID, Limit: &four})

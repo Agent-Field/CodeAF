@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,8 +71,12 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 	if ask.Cursor == "" {
 		out.Processes = append(out.Processes, b.serviceProcesses(ask.Agent)...)
 	}
+	convDir := ""
+	if transcript != "" {
+		convDir = filepath.Dir(transcript)
+	}
 	for _, row := range page.Rows {
-		out.Processes = append(out.Processes, appProcessPageRow(ask.Agent, row))
+		out.Processes = append(out.Processes, appProcessPageRow(ask.Agent, convDir, row))
 	}
 	out.Processes = b.quitStoppedOver(ask.Agent, out.Processes)
 	appFitProcessPage(out, page)
@@ -139,12 +144,12 @@ func appPageList(rows []session.JobNotice, ask session.ProcessPageAsk) (session.
 }
 
 // appProcessPageRow is one history row in the wire's words.
-func appProcessPageRow(agent string, row session.ProcessPageRow) appwire.Process {
+func appProcessPageRow(agent, convDir string, row session.ProcessPageRow) appwire.Process {
 	n := row.JobNotice
 	process := appProcessBase(agent, n)
 	// THE LAST LINE IS READ WITHIN A BOUND AND WITHOUT FOLLOWING A LINK; the
 	// list's own tail reader opens whatever the path names.
-	tail, err := session.ReadProcessLog(n.LogPath, session.ProcessLogAsk{Limit: appProcessLastLineBytes}, nil)
+	tail, err := session.ReadProcessLog(convDir, n, session.ProcessLogAsk{Limit: appProcessLastLineBytes, Final: n.Over() && row.Unknown == ""}, nil)
 	switch {
 	case err == nil && tail.Gone:
 		process.LogGone = true
@@ -239,7 +244,10 @@ func appProcessPageError(err error) error {
 	return appEngineError(err)
 }
 
-// ReadProcessLog answers one window of a process's output.
+// ReadProcessLog answers one window of a process's output, from the file its
+// conversation's managed logs folder holds for that exact job. An ended
+// process's last unterminated line is its last line; a running one's is left
+// until it is finished.
 func (b *appBackend) ReadProcessLog(ctx context.Context, ask appwire.ProcessLogAsk) (*appwire.ProcessLogResult, error) {
 	limit, err := appwire.CheckProcessLogAsk(ask)
 	if err != nil {
@@ -251,37 +259,44 @@ func (b *appBackend) ReadProcessLog(ctx context.Context, ask appwire.ProcessLogA
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	record, err := b.processRecord(ask.ID)
+	record, convDir, err := b.processRecord(ask.ID)
 	if err != nil {
 		return nil, err
 	}
-	read, err := session.ReadProcessLog(record.LogPath, session.ProcessLogAsk{Offset: ask.Offset, Limit: limit, Revision: ask.Revision}, redact.Secrets)
+	read, err := session.ReadProcessLog(convDir, record, session.ProcessLogAsk{Offset: ask.Offset, Limit: limit, Revision: ask.Revision, Final: record.Over()}, redact.Secrets)
 	switch {
 	case errors.Is(err, session.ErrProcessLogStale):
 		return nil, appwire.Errorf(appwire.CodeStaleCursor, "the output changed under that offset; read it again from the end")
+	case session.ErrProcessLogUnmanaged(err):
+		return nil, appwire.Errorf(appwire.CodeEngine, "this process's output is not in its conversation's logs folder")
 	case err != nil:
 		return nil, appwire.Errorf(appwire.CodeEngine, "the output could not be read")
 	}
 	return &appwire.ProcessLogResult{
-		Text: read.Text, Offset: read.Offset, Next: read.Next, Size: read.Size, EOF: read.EOF,
+		Text: read.Text, Offset: read.Offset, Next: read.Next, Size: read.Size, EOF: read.EOF, Partial: read.Partial,
 		MoreBefore: read.MoreBefore, OutputTruncated: record.OutputTruncated, LogGone: read.Gone, Revision: read.Revision,
 	}, nil
 }
 
 // processRecord is the record a process id names, from the engine holding
-// its conversation or, when none here does, its store. The start stamp in the
-// id must match, so an id never reaches another run of the same number.
-func (b *appBackend) processRecord(id string) (session.JobNotice, error) {
+// its conversation or, when none here does, its store, and the conversation's
+// folder its log must be under. The start stamp in the id must match, so an id
+// never reaches another run of the same number.
+func (b *appBackend) processRecord(id string) (session.JobNotice, string, error) {
 	agent, job, stamp, ok := appProcessJob(id)
 	if !ok {
-		return session.JobNotice{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
+		return session.JobNotice{}, "", appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
 	}
 	a, err := b.find(agent)
 	if err != nil {
-		return session.JobNotice{}, err
+		return session.JobNotice{}, "", err
 	}
 	var transcript string
 	b.locked(func() { transcript = a.transcript })
+	convDir := ""
+	if transcript != "" {
+		convDir = filepath.Dir(transcript)
+	}
 	var record session.JobNotice
 	found := false
 	if live := b.liveOf(a); live != nil {
@@ -290,9 +305,9 @@ func (b *appBackend) processRecord(id string) (session.JobNotice, error) {
 			record, found, err = recorder.ProcessRecord(job)
 		}
 		if !can || errors.Is(err, remote.ErrProcessPageUnserved) {
-			_, row, rerr := b.processRow(id)
+			_, row, rerr := b.processRowFromList(id)
 			if rerr != nil {
-				return session.JobNotice{}, rerr
+				return session.JobNotice{}, "", rerr
 			}
 			record, found, err = row, true, nil
 		}
@@ -300,10 +315,62 @@ func (b *appBackend) processRecord(id string) (session.JobNotice, error) {
 		record, found, err = session.ReadProcessRecord(transcript, job)
 	}
 	if err != nil {
-		return session.JobNotice{}, appEngineError(err)
+		return session.JobNotice{}, "", appEngineError(err)
 	}
 	if !found || (stamp != "" && appProcessStamp(record) != stamp) {
-		return session.JobNotice{}, appwire.Errorf(appwire.CodeNotFound, "there is no process %s", id)
+		return session.JobNotice{}, "", appwire.Errorf(appwire.CodeNotFound, "there is no process %s", id)
 	}
-	return record, nil
+	return record, convDir, nil
+}
+
+// appRunningPages bounds how many pages a sleep or a quit reads to find the
+// running processes.
+const appRunningPages = 20
+
+// runningJobs is the processes the held conversation's own engine runs now,
+// for a sleep or a quit to stop. It reads the page's live rows, which lead the
+// first pages, and stops at the first saved row — never the whole history.
+// An engine too old to page answers from its list.
+func (b *appBackend) runningJobs(live *appLive) ([]session.JobNotice, error) {
+	if pager, ok := live.conn.Conv.(appProcessPager); ok {
+		var out []session.JobNotice
+		ask := session.ProcessPageAsk{Limit: session.ProcessPageMax}
+		for pages := 0; pages < appRunningPages; pages++ {
+			ctx, cancel := context.WithTimeout(context.Background(), appwire.ProcessReadTimeout)
+			page, err := pager.ProcessPage(ctx, ask)
+			cancel()
+			if errors.Is(err, remote.ErrProcessPageUnserved) {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range page.Rows {
+				if !row.Live {
+					return out, nil
+				}
+				if row.State == session.JobRunning && row.Kind != session.JobKindTask {
+					out = append(out, row.JobNotice)
+				}
+			}
+			if page.Next == "" {
+				return out, nil
+			}
+			ask.Cursor = page.Next
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	}
+	rows, err := live.conn.Conv.JobNotices()
+	if err != nil {
+		return nil, err
+	}
+	var out []session.JobNotice
+	for _, row := range rows {
+		if row.State == session.JobRunning && row.Kind != session.JobKindTask {
+			out = append(out, row)
+		}
+	}
+	return out, nil
 }

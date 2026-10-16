@@ -105,8 +105,20 @@ func appProcessJob(id string) (string, int, string, bool) {
 }
 
 // processRow is the job a process id names, and none when the conversation's
-// job of that number is a different process, started at another time.
+// job of that number is a different process, started at another time. It
+// reads that one record (appprocesspage.go), never the whole list.
 func (b *appBackend) processRow(id string) (string, session.JobNotice, error) {
+	agent, _, _, _ := appProcessJob(id)
+	record, _, err := b.processRecord(id)
+	if err != nil {
+		return "", session.JobNotice{}, err
+	}
+	return agent, record, nil
+}
+
+// processRowFromList finds a process in its conversation's whole list, for an
+// engine too old to answer one record.
+func (b *appBackend) processRowFromList(id string) (string, session.JobNotice, error) {
 	agent, job, stamp, ok := appProcessJob(id)
 	if !ok {
 		return "", session.JobNotice{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
@@ -1168,15 +1180,25 @@ func (b *appBackend) processRows(agent string) ([]session.JobNotice, *appLive, e
 	if live != nil {
 		rows, err := live.conn.Conv.JobNotices()
 		if err != nil {
-			return nil, nil, appEngineError(err)
+			return nil, nil, appListError(err)
 		}
 		return rows, live, nil
 	}
 	rows, err := session.ReadProcessNotices(transcript)
 	if err != nil {
-		return nil, nil, appEngineError(err)
+		return nil, nil, appListError(err)
 	}
 	return rows, nil, nil
+}
+
+// appListError says a history the whole list cannot carry as too_large,
+// pointing at the method that can, and anything else as the engine's error.
+// The list never answers part of a history as though it were all of it.
+func appListError(err error) error {
+	if errors.Is(err, session.ErrProcessListPartial) || strings.Contains(err.Error(), session.ErrProcessListPartial.Error()) {
+		return appwire.Errorf(appwire.CodeTooLarge, "this conversation's process history does not fit processes.list; read it with processes.page")
+	}
+	return appEngineError(err)
 }
 
 // ListProcesses answers an agent's processes, running and ended.
@@ -1523,12 +1545,9 @@ func (b *appBackend) Sleep() error {
 		}
 		var id string
 		b.locked(func() { id = a.view.ID })
-		rows, err := live.conn.Conv.JobNotices()
+		rows, err := b.runningJobs(live)
 		if err == nil {
 			for _, row := range rows {
-				if row.State != session.JobRunning || row.Kind == session.JobKindTask {
-					continue
-				}
 				if _, err := live.conn.Conv.Cancel("job:" + strconv.Itoa(row.ID)); err == nil {
 					slept := appSlept{id: appProcessID(id, row), label: row.Label()}
 					b.locked(func() { live.slept = append(live.slept, slept) })

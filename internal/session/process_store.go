@@ -39,6 +39,7 @@ package session
 // folds it again.
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -67,9 +68,6 @@ const (
 	// because a cut command run again would be a different command.
 	processRecordCap = 64 << 10
 	processHeadCap   = 64 << 10
-	// processLegacyCap bounds how much of one legacy array the owner streams.
-	// A larger array is folded up to the cap and the rest counted as lost.
-	processLegacyCap = 256 << 20
 	// processLegacyReadCap bounds what a reader that may not write reads of a
 	// legacy array that has not been folded in yet.
 	processLegacyReadCap = 16 << 20
@@ -118,10 +116,27 @@ type processHead struct {
 }
 
 // legacyMark is one legacy array as it was when it was folded in.
+//
+// A FOLD IS RESUMABLE. Offset is the byte where the next element starts, so a
+// fold cut by its time or byte budget carries on from there on the owner's next
+// write or page instead of starting again or giving up; Done is set only when
+// the closing bracket was reached. Corrupt says the array stops being JSON at
+// Offset: nothing after that point can be read by anyone, the store counts it
+// lost, and every page says incomplete — the tail is unreadable, not forgotten.
+// A file whose size or modification time moved is folded again from byte 0;
+// folding is idempotent per record.
 type legacyMark struct {
-	File  string `json:"file"`
-	Size  int64  `json:"size"`
-	MTime int64  `json:"mtime"`
+	File    string `json:"file"`
+	Size    int64  `json:"size"`
+	MTime   int64  `json:"mtime"`
+	Offset  int64  `json:"offset,omitempty"`
+	Done    bool   `json:"done,omitempty"`
+	Corrupt bool   `json:"corrupt,omitempty"`
+}
+
+// sameFile says a mark describes the file as it stands.
+func (m legacyMark) sameFile(now legacyMark) bool {
+	return m.File == now.File && m.Size == now.Size && m.MTime == now.MTime
 }
 
 // processLegacyFiles are the legacy arrays a conversation folder may hold, by
@@ -129,8 +144,12 @@ type legacyMark struct {
 // it wrote because its SessionFile was a task journal. They are named, never
 // searched for.
 func processLegacyFiles(dir string) []string {
-	return []string{filepath.Join(dir, "processes.json"), filepath.Join(dir, placeNodeJournals, "processes.json")}
+	return []string{filepath.Join(dir, processLegacyNames[0]), filepath.Join(dir, processLegacyNames[1])}
 }
+
+// processLegacyNames are the legacy arrays' fixed names inside the folder,
+// which is what a fold's mark is keyed by.
+var processLegacyNames = [2]string{"processes.json", placeNodeJournals + "/processes.json"}
 
 // processStore is one conversation's history, rooted at the conversation's
 // folder.
@@ -140,24 +159,34 @@ func (s processStore) root() string { return filepath.Join(s.dir, processStoreNa
 
 func processFileName(id int) string { return strconv.Itoa(id) + ".json" }
 
-// readSmall reads one regular file under the store of at most limit bytes. A
-// link, a special file or a larger file is refused rather than followed or
+// readSmall reads one regular file under the store of at most limit bytes,
+// THROUGH THE ROOT ALREADY OPENED, so a store folder swapped for a link after
+// it was opened cannot redirect the read. The name is opened without following
+// a link and non-blocking ([rootReadFlags]), so a FIFO swapped in for a record
+// never holds the caller (or the record lock it may hold); the opened file
+// must be the regular file inspected, and a larger file is refused rather than
 // read to the end.
 func readSmall(root *os.Root, name string, limit int64) ([]byte, error) {
-	info, err := root.Lstat(name)
+	seen, err := root.Lstat(name)
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Size() > limit {
-		return nil, errProcessRecordBad
+	if !seen.Mode().IsRegular() {
+		return nil, errNotRegular
 	}
-	file, err := root.OpenFile(name, os.O_RDONLY, 0)
+	file, err := root.OpenFile(name, os.O_RDONLY|rootReadFlags, 0)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		return nil, errNotRegular
 	}
 	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || !os.SameFile(seen, info) {
+		return nil, errNotRegular
+	}
+	if info.Size() > limit {
 		return nil, errProcessRecordBad
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, limit+1))
@@ -218,7 +247,19 @@ func (s processStore) openRoot(create bool) (*os.Root, error) {
 	if !info.IsDir() {
 		return nil, errProcessRecordBad
 	}
-	return os.OpenRoot(path)
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	// THE ROOT MUST BE THE FOLDER INSPECTED. A store swapped for a link between
+	// the inspection and the open would otherwise confine every later read and
+	// write to wherever the link pointed.
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		root.Close()
+		return nil, errProcessRecordBad
+	}
+	return root, nil
 }
 
 func readHead(root *os.Root) (processHead, bool, error) {
@@ -291,9 +332,16 @@ func sameJob(a, b JobNotice) bool {
 // running one of the same run: notices can arrive out of order across the
 // namer's goroutine, and an ending is final.
 func (s processStore) put(root *os.Root, head *processHead, n JobNotice, durable bool) (bool, error) {
+	return s.putDeferred(root, head, n, durable, false)
+}
+
+// putDeferred is put that leaves the head to the caller when deferHead is set:
+// a fold writes its head once per batch, with the resume offset beside the
+// high-water number, so a crash re-folds the batch rather than hiding it.
+func (s processStore) putDeferred(root *os.Root, head *processHead, n JobNotice, durable, deferHead bool) (bool, error) {
 	old, found, err := readRecord(root, n.ID)
 	switch {
-	case err != nil && !errors.Is(err, errProcessRecordBad):
+	case err != nil && !badRecord(err):
 		return false, err
 	case found && sameJob(old, n) && old.Over() && !n.Over():
 		return false, nil
@@ -312,6 +360,9 @@ func (s processStore) put(root *os.Root, head *processHead, n JobNotice, durable
 	raw, err := encodeRecord(n)
 	if err != nil {
 		head.Lost++
+		if deferHead {
+			return true, nil
+		}
 		return true, writeHead(root, *head)
 	}
 	headChanged := false
@@ -321,7 +372,7 @@ func (s processStore) put(root *os.Root, head *processHead, n JobNotice, durable
 	if found && !sameJob(old, n) {
 		headChanged = true
 	}
-	if headChanged {
+	if headChanged && !deferHead {
 		if err := writeHead(root, *head); err != nil {
 			return false, err
 		}
@@ -331,12 +382,15 @@ func (s processStore) put(root *os.Root, head *processHead, n JobNotice, durable
 
 // legacyMarkOf is a legacy file's mark as it stands now, and false when there
 // is no regular file there.
-func legacyMarkOf(path string) (legacyMark, bool) {
+func legacyMarkOf(path, name string) (legacyMark, bool) {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return legacyMark{}, false
 	}
-	return legacyMark{File: filepath.Base(filepath.Dir(path)) + "/" + filepath.Base(path), Size: info.Size(), MTime: info.ModTime().UnixNano()}, true
+	// The mark is keyed by the array's fixed name inside the conversation
+	// folder, never by the folder's own name, so a renamed folder is not
+	// folded again.
+	return legacyMark{File: name, Size: info.Size(), MTime: info.ModTime().UnixNano()}, true
 }
 
 func (h processHead) markFor(file string) (legacyMark, bool) {
@@ -349,140 +403,304 @@ func (h processHead) markFor(file string) (legacyMark, bool) {
 }
 
 // legacyPending says whether some legacy array is present and not folded in
-// as it now stands.
+// to its end as it now stands.
 func (s processStore) legacyPending(head processHead) bool {
-	for _, path := range processLegacyFiles(s.dir) {
-		now, ok := legacyMarkOf(path)
+	for k, path := range processLegacyFiles(s.dir) {
+		now, ok := legacyMarkOf(path, processLegacyNames[k])
 		if !ok {
 			continue
 		}
-		if was, folded := head.markFor(now.File); !folded || was != now {
+		if was, folded := head.markFor(now.File); !folded || !was.sameFile(now) || !was.Done {
 			return true
 		}
 	}
 	return false
 }
 
-// errLegacyElement ends a legacy stream whose one element outgrew its window.
-var errLegacyElement = errors.New("legacy process element is too large")
-
-// windowReader refuses to hand a decoder more than max bytes between resets,
-// so one enormous element cannot make the decoder buffer it whole.
-type windowReader struct {
-	r      io.Reader
-	n, max int64
+// legacyCorrupt says a folded array stopped being readable part way.
+func (h processHead) legacyCorrupt() bool {
+	for _, m := range h.Migrated {
+		if m.Corrupt {
+			return true
+		}
+	}
+	return false
 }
 
-func (w *windowReader) Read(p []byte) (int, error) {
-	if w.n >= w.max {
-		return 0, errLegacyElement
-	}
-	if int64(len(p)) > w.max-w.n {
-		p = p[:w.max-w.n]
-	}
-	n, err := w.r.Read(p)
-	w.n += int64(n)
-	return n, err
+// badRecord is a record file that is there and cannot be read as one: damaged,
+// oversize, a link or a special file. A write replaces it; a read skips it and
+// says the page is incomplete.
+func badRecord(err error) bool {
+	return errors.Is(err, errProcessRecordBad) || errors.Is(err, errNotRegular)
 }
 
-// streamLegacy reads a legacy array element by element, at most total bytes,
-// and hands each readable element to fn. It answers how many elements it saw
-// and could not keep, and whether the stream ended before the array did.
-func streamLegacy(path string, total int64, fn func(JobNotice) error) (lost int, cut bool, err error) {
+// legacyScan is how far one pass over a legacy array got.
+type legacyScan struct {
+	// next is the byte where the next element starts.
+	next int64
+	// done: the closing bracket was reached. corrupt: the bytes at next are not
+	// JSON this reader can carry on past.
+	done, corrupt bool
+	// lost counts elements seen and not kept (over the record cap, not a
+	// process record).
+	lost int
+}
+
+// errLegacyBudget ends a pass that used its bytes or its time.
+var errLegacyBudget = errors.New("legacy fold budget used")
+
+// scanLegacy reads a legacy array from byte from, element by element, handing
+// each readable record to fn, until the array ends, the bytes or the deadline
+// run out, or the array stops being JSON.
+//
+// IT IS A BYTE SCANNER AND NOT A DECODER, for two reasons the decoder could not
+// meet. An element larger than a record is SKIPPED in constant memory — its
+// bytes are counted and not kept — so one enormous command cannot either be
+// buffered whole or end the pass and take every later element with it. And
+// the scanner knows the exact byte every element starts at, which is what lets
+// a pass cut by its budget resume there.
+func scanLegacy(path string, from, budget int64, deadline time.Time, fn func(JobNotice) error) (legacyScan, error) {
+	scan := legacyScan{next: from}
 	file, err := openRegularNoFollow(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return 0, false, nil
+		scan.done = true
+		return scan, nil
 	}
 	if err != nil {
-		return 0, true, nil
+		scan.corrupt = true
+		return scan, nil
 	}
 	defer file.Close()
-	window := &windowReader{r: io.LimitReader(file, total), max: 2*processRecordCap + 64<<10}
-	dec := json.NewDecoder(window)
-	if tok, err := dec.Token(); err != nil || tok != json.Delim('[') {
-		return 0, true, nil
+	if _, err := file.Seek(from, io.SeekStart); err != nil {
+		scan.corrupt = true
+		return scan, nil
 	}
-	for dec.More() {
-		window.n = 0
-		var raw json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
-			return lost + 1, true, nil
+	r := &legacyReader{r: bufio.NewReaderSize(file, 64<<10), at: from}
+	if from == 0 {
+		if c, ok := r.skipSpace(); !ok || c != '[' {
+			scan.corrupt = true
+			return scan, nil
+		}
+		r.take()
+	}
+	used := int64(0)
+	for {
+		c, ok := r.skipSpace()
+		if ok && c == ',' {
+			r.take()
+			c, ok = r.skipSpace()
+		}
+		if !ok {
+			// The array ended without its bracket: what is there was read, and
+			// the file is cut short.
+			scan.next, scan.corrupt = r.at, true
+			return scan, nil
+		}
+		if c == ']' {
+			scan.next, scan.done = r.at+1, true
+			return scan, nil
+		}
+		scan.next = r.at
+		if used >= budget || (!deadline.IsZero() && time.Now().After(deadline)) {
+			return scan, errLegacyBudget
+		}
+		start := r.at
+		raw, whole, err := r.value(processRecordCap)
+		used += r.at - start
+		if err != nil {
+			scan.next, scan.corrupt = start, true
+			return scan, nil
 		}
 		var n JobNotice
-		if len(raw) > processRecordCap || json.Unmarshal(raw, &n) != nil || n.ID <= 0 || n.Kind == JobKindTask {
-			if n.Kind != JobKindTask {
-				lost++
-			}
+		if !whole || json.Unmarshal(raw, &n) != nil || n.ID <= 0 {
+			scan.lost++
+			continue
+		}
+		if n.Kind == JobKindTask {
+			// A task node's registry entry is the task itself, never a process.
 			continue
 		}
 		if err := fn(n); err != nil {
-			return lost, false, err
+			scan.next = start
+			return scan, err
 		}
 	}
-	return lost, false, nil
 }
 
-// migrate folds every legacy array that is not folded in as it now stands.
-// Only the conversation's owner calls it. A legacy row never overwrites a
-// record of the same run unless the record is still running and the legacy
-// row has settled; owner fields are never taken from a legacy row, because no
-// legacy row was written by anyone who said who started it.
-func (s processStore) migrate(root *os.Root, head *processHead) error {
-	for _, path := range processLegacyFiles(s.dir) {
-		now, ok := legacyMarkOf(path)
+// legacyReader walks JSON bytes counting its position.
+type legacyReader struct {
+	r  *bufio.Reader
+	at int64
+}
+
+func (l *legacyReader) skipSpace() (byte, bool) {
+	for {
+		c, err := l.r.ReadByte()
+		if err != nil {
+			return 0, false
+		}
+		if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+			_ = l.r.UnreadByte()
+			return c, true
+		}
+		l.at++
+	}
+}
+
+func (l *legacyReader) take() {
+	if _, err := l.r.ReadByte(); err == nil {
+		l.at++
+	}
+}
+
+// value reads one JSON value, keeping at most keep bytes of it; whole says it
+// was kept entire. Strings and nesting are tracked so a bracket inside a
+// command is not mistaken for the end.
+func (l *legacyReader) value(keep int) ([]byte, bool, error) {
+	var out []byte
+	whole := true
+	put := func(c byte) {
+		l.at++
+		if !whole {
+			return
+		}
+		if len(out) >= keep {
+			whole, out = false, nil
+			return
+		}
+		out = append(out, c)
+	}
+	depth, inString, escaped := 0, false, false
+	first := true
+	for {
+		c, err := l.r.ReadByte()
+		if err != nil {
+			return nil, false, io.ErrUnexpectedEOF
+		}
+		if !inString && depth == 0 && !first && (c == ',' || c == ']' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+			_ = l.r.UnreadByte()
+			return out, whole, nil
+		}
+		first = false
+		put(c)
+		switch {
+		case inString && escaped:
+			escaped = false
+		case inString && c == '\\':
+			escaped = true
+		case inString && c == '"':
+			inString = false
+			if depth == 0 {
+				return out, whole, nil
+			}
+		case inString:
+		case c == '"':
+			inString = true
+		case c == '{' || c == '[':
+			depth++
+		case c == '}' || c == ']':
+			depth--
+			if depth < 0 {
+				return nil, false, errProcessRecordBad
+			}
+			if depth == 0 {
+				return out, whole, nil
+			}
+		}
+	}
+}
+
+// The owner's fold budgets: a job's own write folds a little, a page folds
+// more, and neither ever holds the record lock longer than its share.
+const (
+	processFoldWriteTime = 50 * time.Millisecond
+	processFoldPageTime  = 400 * time.Millisecond
+	processFoldBytes     = 16 << 20
+	// processPageLockWait bounds how long a page waits for the record lock.
+	processPageLockWait = 250 * time.Millisecond
+)
+
+// migrate folds legacy arrays forward from where the last pass stopped, within
+// the time it is given and [processFoldBytes]. A legacy row never overwrites a
+// record of the same run unless the record is still running and the legacy row
+// has settled; a legacy row of the same number and another run is counted lost
+// (the store keeps one run per number). Owner fields are never taken from a
+// legacy row, because no legacy row was written by anyone who said who started
+// it. The head — offset and high-water number together — is written once per
+// file per pass.
+func (s processStore) migrate(root *os.Root, head *processHead, budget time.Duration) error {
+	deadline := time.Now().Add(budget)
+	for k, path := range processLegacyFiles(s.dir) {
+		now, ok := legacyMarkOf(path, processLegacyNames[k])
 		if !ok {
 			continue
 		}
-		if was, folded := head.markFor(now.File); folded && was == now {
+		mark, folded := head.markFor(now.File)
+		if !folded || !mark.sameFile(now) {
+			mark = now
+		}
+		if mark.Done {
 			continue
 		}
-		lost, cut, err := streamLegacy(path, processLegacyCap, func(n JobNotice) error {
+		scan, err := scanLegacy(path, mark.Offset, processFoldBytes, deadline, func(n JobNotice) error {
 			n.StartedBy, n.Task = "", 0
 			old, found, err := readRecord(root, n.ID)
-			if err != nil && !errors.Is(err, errProcessRecordBad) {
+			if err != nil && !badRecord(err) {
 				return err
 			}
 			if found {
-				if !sameJob(old, n) || old.Over() || !n.Over() {
+				if !sameJob(old, n) {
+					head.Lost++
+					return nil
+				}
+				if old.Over() || !n.Over() {
 					return nil
 				}
 				n.StartedBy, n.Task, n.Dir = old.StartedBy, old.Task, old.Dir
 			}
-			_, err = s.put(root, head, n, false)
+			_, err = s.putDeferred(root, head, n, false, true)
 			return err
 		})
-		if err != nil {
+		cut := errors.Is(err, errLegacyBudget)
+		if err != nil && !cut {
 			return err
 		}
-		head.Lost += lost
-		if cut {
+		head.Lost += scan.lost
+		if scan.corrupt && !mark.Corrupt {
 			head.Lost++
 		}
+		mark.Offset, mark.Done, mark.Corrupt = scan.next, scan.done || scan.corrupt, scan.corrupt
 		kept := head.Migrated[:0]
 		for _, m := range head.Migrated {
-			if m.File != now.File {
+			if m.File != mark.File {
 				kept = append(kept, m)
 			}
 		}
-		head.Migrated = append(kept, now)
+		head.Migrated = append(kept, mark)
 		if err := writeHead(root, *head); err != nil {
 			return err
+		}
+		if cut {
+			return nil
 		}
 	}
 	return nil
 }
 
-// open is the owner's door: the store, created when missing, with every
-// legacy array folded in.
-func (s processStore) open() (*os.Root, processHead, error) {
+// open is the owner's door: the store, created when missing, its head rebuilt
+// when it cannot be read, and legacy arrays folded forward within foldTime.
+func (s processStore) open(foldTime time.Duration) (*os.Root, processHead, error) {
 	root, err := s.openRoot(true)
 	if err != nil {
 		return nil, processHead{}, err
 	}
 	head, found, err := readHead(root)
 	if err != nil {
-		root.Close()
-		return nil, processHead{}, err
+		if head, err = s.rebuildHead(root); err != nil {
+			root.Close()
+			return nil, processHead{}, err
+		}
+		found = true
 	}
 	if !found {
 		head = processHead{Epoch: randomToken(8)}
@@ -492,12 +710,52 @@ func (s processStore) open() (*os.Root, processHead, error) {
 		}
 	}
 	if s.legacyPending(head) {
-		if err := s.migrate(root, &head); err != nil {
+		if err := s.migrate(root, &head, foldTime); err != nil {
 			root.Close()
 			return nil, processHead{}, err
 		}
 	}
 	return root, head, nil
+}
+
+// processRebuildEntries bounds the folder listing a head rebuild reads.
+const processRebuildEntries = 1 << 20
+
+// rebuildHead replaces an unreadable head. The records are the truth and the
+// head only indexes them, so the high-water number is found again from the
+// store's own folder (never anywhere else), in bounded batches. The epoch is
+// new — every old cursor is stale, which is true — and every legacy array is
+// folded again from byte 0, which is idempotent. A store with more entries
+// than the bound counts the rest lost rather than claiming to have seen them.
+func (s processStore) rebuildHead(root *os.Root) (processHead, error) {
+	head := processHead{Epoch: randomToken(8)}
+	_ = root.Rename(processHeadName, processHeadName+".unreadable-"+randomToken(4))
+	dir, err := root.Open(".")
+	if err != nil {
+		return processHead{}, err
+	}
+	defer dir.Close()
+	seen := 0
+	for seen < processRebuildEntries {
+		entries, err := dir.ReadDir(1024)
+		for _, e := range entries {
+			seen++
+			name := e.Name()
+			if !strings.HasSuffix(name, ".json") || strings.HasPrefix(name, ".") {
+				continue
+			}
+			if id, err := strconv.Atoi(strings.TrimSuffix(name, ".json")); err == nil && id > head.High {
+				head.High = id
+			}
+		}
+		if err != nil {
+			break
+		}
+		if seen >= processRebuildEntries {
+			head.Lost++
+		}
+	}
+	return head, writeHead(root, head)
 }
 
 // ── reading a page ─────────────────────────────────────────────────────────
@@ -541,24 +799,47 @@ func CheckProcessPageAsk(ask ProcessPageAsk) (int, error) {
 	return limit, nil
 }
 
-func encodeProcessCursor(epoch string, before int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte("p1:" + epoch + ":" + strconv.Itoa(before)))
+// A cursor names the history it was cut from (the store's epoch, or the
+// legacy arrays' marks) and where to carry on: inside the live rows below a
+// number ("L<n>"), at the top of the saved history ("T"), or in the saved
+// history below a number ("<n>").
+type processCursor struct {
+	epoch  string
+	live   bool
+	top    bool
+	before int
 }
 
-func decodeProcessCursor(cursor string) (string, int, error) {
+func encodeProcessCursor(epoch string, before int) string {
+	return encodeProcessPosition(epoch, strconv.Itoa(before))
+}
+
+func encodeProcessPosition(epoch, pos string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte("p1:" + epoch + ":" + pos))
+}
+
+func decodeProcessCursor(cursor string) (processCursor, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return "", 0, errProcessCursor
+		return processCursor{}, errProcessCursor
 	}
 	parts := strings.Split(string(raw), ":")
 	if len(parts) != 3 || parts[0] != "p1" || parts[1] == "" {
-		return "", 0, errProcessCursor
+		return processCursor{}, errProcessCursor
 	}
-	before, err := strconv.Atoi(parts[2])
-	if err != nil || before < 1 {
-		return "", 0, errProcessCursor
+	c := processCursor{epoch: parts[1]}
+	pos := parts[2]
+	switch {
+	case pos == "T":
+		c.top = true
+		return c, nil
+	case strings.HasPrefix(pos, "L"):
+		c.live, pos = true, pos[1:]
 	}
-	return parts[1], before, nil
+	if c.before, err = strconv.Atoi(pos); err != nil || c.before < 1 {
+		return processCursor{}, errProcessCursor
+	}
+	return c, nil
 }
 
 // pageBudget tracks one reply's encoded size.
@@ -585,7 +866,7 @@ func newPageBudget() *pageBudget {
 // conversation runs it; nil means nothing holding the conversation was asked.
 // skip leaves out numbers already answered as live on this page.
 func (s processStore) readPage(ctx context.Context, root *os.Root, head processHead, before, limit int, budget *pageBudget, vouch func(int) (JobNotice, bool), skip map[int]bool) ProcessPage {
-	page := ProcessPage{Revision: head.Epoch, Incomplete: head.Lost > 0 || s.legacyPending(head)}
+	page := ProcessPage{Revision: head.Epoch, Incomplete: head.Lost > 0 || head.legacyCorrupt() || s.legacyPending(head)}
 	start := head.High
 	if before > 0 && before-1 < start {
 		start = before - 1
@@ -631,7 +912,7 @@ func pageRow(n JobNotice, vouch func(int) (JobNotice, bool)) ProcessPageRow {
 		if live.Dir == "" {
 			live.Dir = n.Dir
 		}
-		return ProcessPageRow{JobNotice: live, Live: true}
+		return ProcessPageRow{JobNotice: live, Live: live.State == JobRunning}
 	}
 	return ProcessPageRow{JobNotice: n, Unknown: ProcessUnknownOwnerLost}
 }
@@ -640,8 +921,8 @@ func pageRow(n JobNotice, vouch func(int) (JobNotice, bool)) ProcessPageRow {
 // cursor into it goes stale the moment either file changes.
 func (s processStore) legacyEpoch() string {
 	var parts []string
-	for _, path := range processLegacyFiles(s.dir) {
-		if m, ok := legacyMarkOf(path); ok {
+	for k, path := range processLegacyFiles(s.dir) {
+		if m, ok := legacyMarkOf(path, processLegacyNames[k]); ok {
 			parts = append(parts, strconv.FormatInt(m.Size, 36)+"."+strconv.FormatInt(m.MTime, 36))
 		}
 	}
@@ -649,13 +930,15 @@ func (s processStore) legacyEpoch() string {
 }
 
 // readLegacyRows is every readable row of the unfolded legacy arrays, read
-// within [processLegacyReadCap] each, newest first, and whether any could not
-// be read. It writes nothing.
-func (s processStore) readLegacyRows() ([]JobNotice, bool) {
+// within [processLegacyReadCap] bytes each and the context's deadline, newest
+// first, and whether any could not be read or was not reached. It writes
+// nothing.
+func (s processStore) readLegacyRows(ctx context.Context) ([]JobNotice, bool) {
 	byID := map[int]JobNotice{}
 	incomplete := false
+	deadline, _ := ctx.Deadline()
 	for _, path := range processLegacyFiles(s.dir) {
-		lost, cut, _ := streamLegacy(path, processLegacyReadCap, func(n JobNotice) error {
+		scan, err := scanLegacy(path, 0, processLegacyReadCap, deadline, func(n JobNotice) error {
 			n.StartedBy, n.Task = "", 0
 			if old, ok := byID[n.ID]; ok && (old.Over() || !n.Over()) {
 				return nil
@@ -663,7 +946,7 @@ func (s processStore) readLegacyRows() ([]JobNotice, bool) {
 			byID[n.ID] = n
 			return nil
 		})
-		if lost > 0 || cut {
+		if err != nil || scan.lost > 0 || scan.corrupt || !scan.done {
 			incomplete = true
 		}
 	}
@@ -678,7 +961,7 @@ func (s processStore) readLegacyRows() ([]JobNotice, bool) {
 // ReadProcessPage is a page of a conversation's history for a reader that
 // does not hold the conversation. It never creates, folds or repairs anything:
 // a store that does not exist yet is answered from the legacy arrays read
-// within their cap, and a saved running record is unknown.
+// within their bounds, and a saved running record is unknown.
 func ReadProcessPage(ctx context.Context, file string, ask ProcessPageAsk) (ProcessPage, error) {
 	limit, err := CheckProcessPageAsk(ask)
 	if err != nil {
@@ -691,36 +974,49 @@ func ReadProcessPage(ctx context.Context, file string, ask ProcessPageAsk) (Proc
 	return s.page(ctx, ask, limit, nil, nil, false)
 }
 
-// page is the shared walk. live rows (already admitted by the caller) fill
-// skip; vouch is nil for a reader that holds nothing.
+// page is the shared walk.
+//
+// THE LIVE ROWS COME FIRST AND ARE PAGED LIKE ANYTHING ELSE. live is every job
+// the engine holding the conversation runs now, newest first; it is bounded by
+// how many jobs can run, which across a conversation's task workers can still
+// be more than a page, so live rows count against the limit and the reply's
+// bytes and carry their own continuation ("L<n>") before the saved history
+// begins ("T"). vouch is nil for a reader that holds nothing.
+//
+// THE RECORD LOCK IS HELD ONLY TO OPEN. An owner takes it to create the store,
+// rebuild an unreadable head and fold legacy arrays within the page's fold
+// time; the walk itself reads files that are only ever replaced whole, and
+// runs without it, so no page holds up another conversation's job writes.
 func (s processStore) page(ctx context.Context, ask ProcessPageAsk, limit int, vouch func(int) (JobNotice, bool), live []ProcessPageRow, owner bool) (ProcessPage, error) {
-	var epoch string
-	before := 0
+	var cur processCursor
 	if ask.Cursor != "" {
 		var err error
-		if epoch, before, err = decodeProcessCursor(ask.Cursor); err != nil {
+		if cur, err = decodeProcessCursor(ask.Cursor); err != nil {
 			return ProcessPage{}, err
-		}
-	}
-	budget := newPageBudget()
-	skip := map[int]bool{}
-	var first []ProcessPageRow
-	if ask.Cursor == "" {
-		for _, row := range live {
-			if budget.admit(row) {
-				first = append(first, row)
-				skip[row.ID] = true
-			}
 		}
 	}
 	var root *os.Root
 	var head processHead
 	var found bool
 	var err error
+	// AN OWNER WAITS FOR THE RECORD LOCK ONLY WITHIN ITS SHARE OF THE PAGE'S
+	// DEADLINE. A writer holding it longer than that leaves this page reading
+	// what is already on disk, as a reader that holds nothing would: nothing is
+	// created or folded, and an unfolded legacy array still makes the page
+	// incomplete. The walk never waits on the lock at all.
 	if owner {
-		root, head, err = s.open()
-		found = err == nil
-	} else {
+		wait, cancel := context.WithTimeout(ctx, processPageLockWait)
+		err = processRecordMu.LockCtx(wait)
+		cancel()
+		if err == nil {
+			root, head, err = s.open(processFoldPageTime)
+			processRecordMu.Unlock()
+			found = err == nil
+		} else {
+			owner = false
+		}
+	}
+	if !owner {
 		root, err = s.openRoot(false)
 		if err == nil {
 			head, found, err = readHead(root)
@@ -732,47 +1028,76 @@ func (s processStore) page(ctx context.Context, ask ProcessPageAsk, limit int, v
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return ProcessPage{}, err
 	}
+	epoch := head.Epoch
+	var legacy []JobNotice
+	legacyIncomplete := false
 	if !found {
-		return s.legacyPage(ctx, epoch, before, limit, budget, vouch, skip, first)
+		epoch = s.legacyEpoch()
 	}
-	if epoch != "" && epoch != head.Epoch {
+	if cur.epoch != "" && cur.epoch != epoch {
 		return ProcessPage{}, ErrProcessStale
 	}
-	page := s.readPage(ctx, root, head, before, limit, budget, vouch, skip)
-	page.Rows = append(first, page.Rows...)
-	return page, nil
+	budget := newPageBudget()
+	page := ProcessPage{Revision: epoch}
+	skip := map[int]bool{}
+	if ask.Cursor == "" || cur.live {
+		for _, row := range live {
+			if cur.live && row.ID >= cur.before {
+				continue
+			}
+			if len(page.Rows) == limit || !budget.admit(row) {
+				page.Next = encodeProcessPosition(epoch, "L"+strconv.Itoa(row.ID+1))
+				page.Incomplete = found && (head.Lost > 0 || head.legacyCorrupt() || s.legacyPending(head))
+				return page, nil
+			}
+			page.Rows = append(page.Rows, row)
+			skip[row.ID] = true
+		}
+		cur = processCursor{epoch: epoch, top: true}
+	}
+	remaining := limit - len(page.Rows)
+	before := 0
+	if !cur.top {
+		before = cur.before
+	}
+	if !found {
+		legacy, legacyIncomplete = s.readLegacyRows(ctx)
+		rest := legacyPageRows(ctx, epoch, legacy, before, remaining, budget, vouch, skip)
+		rest.Rows = append(page.Rows, rest.Rows...)
+		rest.Incomplete = rest.Incomplete || legacyIncomplete
+		rest.Revision = epoch
+		return rest, nil
+	}
+	if remaining == 0 {
+		page.Next = encodeProcessPosition(epoch, "T")
+		page.Incomplete = head.Lost > 0 || head.legacyCorrupt() || s.legacyPending(head)
+		return page, nil
+	}
+	rest := s.readPage(ctx, root, head, before, remaining, budget, vouch, skip)
+	rest.Rows = append(page.Rows, rest.Rows...)
+	return rest, nil
 }
 
-// legacyPage pages the unfolded legacy arrays for a reader with no store.
-func (s processStore) legacyPage(ctx context.Context, epoch string, before, limit int, budget *pageBudget, vouch func(int) (JobNotice, bool), skip map[int]bool, first []ProcessPageRow) (ProcessPage, error) {
-	now := s.legacyEpoch()
-	if epoch != "" && epoch != now {
-		return ProcessPage{}, ErrProcessStale
-	}
-	rows, incomplete := s.readLegacyRows()
-	page := ProcessPage{Rows: first, Incomplete: incomplete, Revision: now}
-	count := 0
+// legacyPageRows pages unfolded legacy rows already read.
+func legacyPageRows(ctx context.Context, epoch string, rows []JobNotice, before, limit int, budget *pageBudget, vouch func(int) (JobNotice, bool), skip map[int]bool) ProcessPage {
+	var page ProcessPage
 	for _, n := range rows {
 		if (before > 0 && n.ID >= before) || skip[n.ID] {
 			continue
 		}
-		if ctx.Err() != nil {
-			page.Next = encodeProcessCursor(now, n.ID+1)
-			return page, nil
-		}
 		row := pageRow(n, vouch)
-		if count == limit || !budget.admit(row) {
-			page.Next = encodeProcessCursor(now, n.ID+1)
-			return page, nil
+		if ctx.Err() != nil || len(page.Rows) == limit || !budget.admit(row) {
+			page.Next = encodeProcessCursor(epoch, n.ID+1)
+			return page
 		}
 		page.Rows = append(page.Rows, row)
-		count++
 	}
-	return page, nil
+	return page
 }
 
 // readProcessRecord is one record by its number, from the store when there is
-// one and from the unfolded legacy arrays when there is not.
+// one and from the unfolded legacy arrays, within their bounds, when there is
+// not.
 func (s processStore) readProcessRecord(id int) (JobNotice, bool, error) {
 	root, err := s.openRoot(false)
 	if err == nil {
@@ -781,7 +1106,9 @@ func (s processStore) readProcessRecord(id int) (JobNotice, bool, error) {
 			return readRecord(root, id)
 		}
 	}
-	rows, _ := s.readLegacyRows()
+	ctx, cancel := context.WithTimeout(context.Background(), processFoldPageTime)
+	defer cancel()
+	rows, _ := s.readLegacyRows(ctx)
 	for _, n := range rows {
 		if n.ID == id {
 			return n, true, nil

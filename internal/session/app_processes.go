@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -18,7 +18,28 @@ const AppProcessOutputRetention = 7 * 24 * time.Hour
 
 // A conversation has one engine writer. This lock orders its asynchronous
 // naming and exit updates so a late name cannot overwrite a settled process.
-var processRecordMu sync.Mutex
+//
+// IT IS A ONE-SLOT CHANNEL AND NOT A MUTEX so a reader can wait for it within
+// its own deadline ([recordLock.LockCtx]) and give up honestly, instead of
+// queueing behind writers for as long as they take. Every holder is bounded:
+// a write folds legacy arrays for at most [processFoldWriteTime], and every
+// file it reads is opened non-blocking.
+var processRecordMu = make(recordLock, 1)
+
+type recordLock chan struct{}
+
+func (l recordLock) Lock()   { l <- struct{}{} }
+func (l recordLock) Unlock() { <-l }
+
+// LockCtx takes the lock or answers the context's error when it ends first.
+func (l recordLock) LockCtx(ctx context.Context) error {
+	select {
+	case l <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 // processConvDir is the folder whose history this agent's jobs are written
 // into. A conversation writes beside its own transcript, as the shelf always
@@ -75,7 +96,7 @@ func (a *Agent) keepProcessNotice(n JobNotice) {
 	if a.closedForRecords() {
 		return
 	}
-	root, head, err := processStore{dir: dir}.open()
+	root, head, err := processStore{dir: dir}.open(processFoldWriteTime)
 	if err != nil {
 		return
 	}
@@ -86,61 +107,92 @@ func (a *Agent) keepProcessNotice(n JobNotice) {
 	liveProcessSet(dir, n.ID, a, !n.Over())
 }
 
+// ErrProcessListPartial is the legacy whole list refusing to answer a
+// history it cannot carry whole: longer than [processLegacyListMax], holding
+// records that cannot be read, or not walked to its end within the list's
+// deadline. The old shape has no way to say "part of it", so it says nothing
+// rather than presenting a part as the whole; processes.page carries the
+// rest, with its cursor and its incomplete flag.
+var ErrProcessListPartial = errors.New("the process history does not fit the whole list; read it with processes.page")
+
+// processLegacyListTime bounds one whole-list read.
+const processLegacyListTime = 2 * time.Second
+
 // ReadProcessNotices is the legacy whole-list read for a reader that does not
-// hold the conversation: the newest [processLegacyListMax] records, with a
-// saved running record shown stopped as this list always showed it. It writes
-// nothing. processes.page is the paged, truthful read.
+// hold the conversation, with a saved running record shown stopped as this
+// list always showed it, or [ErrProcessListPartial]. It writes nothing.
 func ReadProcessNotices(file string) ([]JobNotice, error) {
 	if file == "" {
 		return []JobNotice{}, nil
 	}
-	rows, err := legacyListOf(processStore{dir: filepath.Dir(file)}, nil, false)
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
+	return legacyListOf(processStore{dir: filepath.Dir(file)}, nil, nil, false)
 }
 
-// legacyListOf pages the history into the legacy list's shape.
-func legacyListOf(s processStore, live map[int]JobNotice, owner bool) ([]JobNotice, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// legacyListOf walks the whole history into the legacy list's shape, or
+// answers [ErrProcessListPartial]. It stops on the deadline and on a page that
+// moved nowhere, so it can never spin.
+func legacyListOf(s processStore, running []ProcessPageRow, vouch func(int) (JobNotice, bool), owner bool) ([]JobNotice, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), processLegacyListTime)
 	defer cancel()
-	var liveRows []ProcessPageRow
-	for _, n := range live {
-		liveRows = append(liveRows, ProcessPageRow{JobNotice: n, Live: true})
-	}
-	sort.Slice(liveRows, func(i, j int) bool { return liveRows[i].ID > liveRows[j].ID })
-	var vouch func(int) (JobNotice, bool)
-	if owner {
-		vouch = func(id int) (JobNotice, bool) { n, ok := live[id]; return n, ok }
-	}
 	out := []JobNotice{}
 	ask := ProcessPageAsk{Limit: ProcessPageMax}
-	for len(out) < processLegacyListMax+len(live) {
-		page, err := s.page(ctx, ask, ProcessPageMax, vouch, liveRows, owner)
+	for {
+		page, err := s.page(ctx, ask, ProcessPageMax, vouch, running, owner)
 		if err != nil {
 			return nil, err
+		}
+		if page.Incomplete {
+			return nil, ErrProcessListPartial
 		}
 		for _, row := range page.Rows {
 			n := row.JobNotice
 			if row.Unknown != "" {
 				// THE LEGACY LIST HAS NO WORD FOR UNKNOWN. It keeps the state it
 				// always showed, and no longer pairs it with an invented ending.
-				n.State = JobStopped
+				n.State, n.Ended = JobStopped, time.Time{}
 			}
 			out = append(out, n)
 		}
-		if page.Next == "" {
-			break
+		switch {
+		case len(out) > processLegacyListMax+len(running):
+			return nil, ErrProcessListPartial
+		case page.Next == "":
+			return out, nil
+		case ctx.Err() != nil, len(page.Rows) == 0 && page.Next == ask.Cursor:
+			return nil, ErrProcessListPartial
 		}
 		ask.Cursor = page.Next
-		liveRows = nil
 	}
-	return out, nil
+}
+
+// liveRowsOf is the running jobs among notices, newest first, as live rows.
+func liveRowsOf(live map[int]JobNotice) []ProcessPageRow {
+	rows := make([]ProcessPageRow, 0, len(live))
+	for _, n := range live {
+		if n.State == JobRunning {
+			rows = append(rows, ProcessPageRow{JobNotice: n, Live: true})
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID > rows[j].ID })
+	return rows
+}
+
+// conversationLive is every job this engine holds for the conversation — its
+// own and its task workers' — settled ones included, for vouching.
+func (a *Agent) conversationLive(dir string) map[int]JobNotice {
+	live := a.ownLiveJobNotices()
+	if dir != "" {
+		for id, n := range liveProcessesOf(dir) {
+			if _, held := live[id]; !held {
+				live[id] = n
+			}
+		}
+	}
+	return live
 }
 
 // JobNotices joins the saved history with the live registry, as the legacy
-// whole list: the newest [processLegacyListMax] records and every live job.
+// whole list, or answers [ErrProcessListPartial].
 func (a *Agent) JobNotices() ([]JobNotice, error) {
 	dir := a.processConvDir()
 	live := a.ownLiveJobNotices()
@@ -152,12 +204,15 @@ func (a *Agent) JobNotices() ([]JobNotice, error) {
 		sort.Slice(rows, func(i, j int) bool { return rows[i].ID > rows[j].ID })
 		return rows, nil
 	}
-	processRecordMu.Lock()
-	defer processRecordMu.Unlock()
-	return legacyListOf(processStore{dir: dir}, live, !a.closedForRecords())
+	owner := !a.closedForRecords()
+	var vouch func(int) (JobNotice, bool)
+	if owner {
+		vouch = func(id int) (JobNotice, bool) { n, ok := live[id]; return n, ok }
+	}
+	return legacyListOf(processStore{dir: dir}, liveRowsOf(live), vouch, owner)
 }
 
-// ownLiveJobNotices is this agent's own live jobs with its owner words on.
+// ownLiveJobNotices is this agent's own registry's jobs with its owner words on.
 func (a *Agent) ownLiveJobNotices() map[int]JobNotice {
 	live := a.liveJobNotices()
 	by, task := a.processOwner()
@@ -178,32 +233,44 @@ func (a *Agent) ProcessPage(ctx context.Context, ask ProcessPageAsk) (ProcessPag
 		return ProcessPage{}, err
 	}
 	dir := a.processConvDir()
-	live := a.ownLiveJobNotices()
-	if dir != "" {
-		for id, n := range liveProcessesOf(dir) {
-			if _, held := live[id]; !held {
-				live[id] = n
-			}
-		}
-	}
-	rows := make([]ProcessPageRow, 0, len(live))
-	for _, n := range live {
-		rows = append(rows, ProcessPageRow{JobNotice: n, Live: true})
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].ID > rows[j].ID })
+	live := a.conversationLive(dir)
+	rows := liveRowsOf(live)
 	if dir == "" {
-		if ask.Cursor != "" {
-			return ProcessPage{}, ErrProcessStale
-		}
-		return ProcessPage{Rows: rows}, nil
+		return livePageOnly(ask, limit, rows)
 	}
-	processRecordMu.Lock()
-	defer processRecordMu.Unlock()
-	owner := !a.closedForRecords()
 	return processStore{dir: dir}.page(ctx, ask, limit, func(id int) (JobNotice, bool) {
 		n, ok := live[id]
 		return n, ok
-	}, rows, owner)
+	}, rows, !a.closedForRecords())
+}
+
+// livePageOnly pages the live rows of an agent with no history to keep.
+func livePageOnly(ask ProcessPageAsk, limit int, rows []ProcessPageRow) (ProcessPage, error) {
+	const epoch = "live"
+	before := 0
+	if ask.Cursor != "" {
+		cur, err := decodeProcessCursor(ask.Cursor)
+		if err != nil {
+			return ProcessPage{}, err
+		}
+		if cur.epoch != epoch || !cur.live {
+			return ProcessPage{}, ErrProcessStale
+		}
+		before = cur.before
+	}
+	page := ProcessPage{Revision: epoch}
+	budget := newPageBudget()
+	for _, row := range rows {
+		if before > 0 && row.ID >= before {
+			continue
+		}
+		if len(page.Rows) == limit || !budget.admit(row) {
+			page.Next = encodeProcessPosition(epoch, "L"+strconv.Itoa(row.ID+1))
+			break
+		}
+		page.Rows = append(page.Rows, row)
+	}
+	return page, nil
 }
 
 // ProcessRecord is one job of this conversation by number: the live job when
