@@ -241,6 +241,8 @@ func TestWorkGraphUnchangedPagingAndRefusals(t *testing.T) {
 func TestAScopeOverTheSnapshotBudgetIsServedColdAndNeverKept(t *testing.T) {
 	_, w, crew := graphFixture(t)
 	scope := `{"kind":"crew","id":"` + crew + `"}`
+	// Initialize the lazy singleton before replacing its cache for this test.
+	workGraphs.init()
 	prior := workGraphs.cache
 	t.Cleanup(func() { workGraphs.cache = prior })
 	workGraphs.cache = workgraph.NewCache(workgraph.CacheLimits{Bytes: 512, Entries: 8, Pending: 4, BuildBytes: 1 << 20})
@@ -263,6 +265,8 @@ func TestAScopeOverTheSnapshotBudgetIsServedColdAndNeverKept(t *testing.T) {
 // would have started one build too many.
 func TestWorkGraphSaysBusyWhenTooManyDistinctBuildsAreQueued(t *testing.T) {
 	_, w, crew := graphFixture(t)
+	// Initialize the lazy singleton before replacing its cache for this test.
+	workGraphs.init()
 	prior := workGraphs.cache
 	t.Cleanup(func() { workGraphs.cache = prior })
 	workGraphs.cache = workgraph.NewCache(workgraph.CacheLimits{Bytes: 1 << 20, Entries: 8, Pending: 1, BuildBytes: 1 << 20})
