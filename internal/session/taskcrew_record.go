@@ -50,12 +50,25 @@ type TaskCrewRecord struct {
 	// role spend was a real zero, is unknown.
 	RoleFacts   int                     `json:",omitempty"`
 	SeatStarted map[crewroute.Seat]bool `json:",omitempty"`
+	// FailedSent is, for a send in Failed, when it failed, the provider it was
+	// routed to and the print of the credential it was sent with — what lets
+	// a refusal its credential has since answered go when the task is carried
+	// on. One entry per failed send, never a credential; absent on older
+	// rows, whose auth and payment refusals then stay held.
+	FailedSent map[string]crewFailureSent `json:",omitempty"`
 }
 
 type crewFailureRecord struct {
 	Kind    provider.RouteFailure
 	Until   time.Time
 	Message string
+}
+
+// crewFailureSent is a failed send's dispatch facts ([crewFailure]).
+type crewFailureSent struct {
+	At       time.Time `json:",omitzero"`
+	Provider string    `json:",omitempty"`
+	Cred     string    `json:",omitempty"`
 }
 type crewGuardRecord struct {
 	Cap, TaskCap                         float64
@@ -92,18 +105,12 @@ func (c *taskCrew) record() *TaskCrewRecord {
 	defer c.mu.Unlock()
 	r := &TaskCrewRecord{Version: 1, Routed: true, Call: c.call, Title: c.title, Brief: c.brief, Repo: c.repo,
 		Decision: c.decision, Original: c.original, Ladders: c.ladders, Rescue: c.rescue, Started: c.started, Bad: c.bad, Broke: c.broke, Gone: c.gone,
-		Swaps: c.swaps, FreeTried: c.freeTried, HelperUSD: c.helperUSD, DayAtStart: c.dayAtStart, InFlight: c.inFlight, Failed: map[string]crewFailureRecord{},
+		Swaps: c.swaps, FreeTried: c.freeTried, HelperUSD: c.helperUSD, DayAtStart: c.dayAtStart, InFlight: c.inFlight,
 		Changes: c.changes, ChangeCount: c.changeCount, TaskPins: c.taskPins, Pending: c.pending, Restored: c.restored, RestoreCount: c.restoreCount, SeatSends: c.seatSends, SeatStarted: c.seatStarted}
 	if c.roleFacts {
 		r.RoleFacts = 1
 	}
-	for send, f := range c.failed {
-		msg := ""
-		if f.err != nil {
-			msg = f.err.Error()
-		}
-		r.Failed[send] = crewFailureRecord{f.kind, f.until, msg}
-	}
+	r.Failed, r.FailedSent = c.failureRecordsLocked()
 	if g := c.guard; g != nil {
 		g.mu.Lock()
 		r.Guard = &crewGuardRecord{Cap: g.Cap, TaskCap: g.TaskCap, CapAction: g.CapAction, TaskAction: g.TaskAction, CeilingAction: g.CeilingAction,
@@ -145,6 +152,29 @@ func (c *taskCrew) record() *TaskCrewRecord {
 	return &frozen
 }
 
+// failureRecordsLocked is the crew's failures as its checkpoint keeps them:
+// how each send failed, and, apart, what is known of the call that failed —
+// absent for a failure that knows nothing of it. The caller holds c.mu.
+func (c *taskCrew) failureRecordsLocked() (map[string]crewFailureRecord, map[string]crewFailureSent) {
+	failed := map[string]crewFailureRecord{}
+	var sent map[string]crewFailureSent
+	for send, f := range c.failed {
+		msg := ""
+		if f.err != nil {
+			msg = f.err.Error()
+		}
+		failed[send] = crewFailureRecord{f.kind, f.until, msg}
+		if f.at.IsZero() && f.provider == "" && f.sent.Cred == "" {
+			continue
+		}
+		if sent == nil {
+			sent = map[string]crewFailureSent{}
+		}
+		sent[send] = crewFailureSent{At: f.at, Provider: f.provider, Cred: f.sent.Cred}
+	}
+	return failed, sent
+}
+
 // restoreTaskCrew never asks the router again: a restarted run has already
 // accepted its seats, fallback history and spend ceilings.
 func (a *Agent) restoreTaskCrew(row uint64, r *TaskCrewRecord) (*taskCrew, error) {
@@ -184,7 +214,9 @@ func (a *Agent) restoreTaskCrew(row uint64, r *TaskCrewRecord) (*taskCrew, error
 	c.restoreCount = r.RestoreCount
 	c.noteRestored(a.taskClockNow(), r.Restored)
 	for send, f := range r.Failed {
-		c.failed[send] = crewFailure{kind: f.Kind, until: f.Until, err: errors.New(f.Message)}
+		sent := r.FailedSent[send]
+		c.failed[send] = crewFailure{kind: f.Kind, until: f.Until, err: errors.New(f.Message),
+			at: sent.At, provider: sent.Provider, sent: config.CrewDispatch{Cred: sent.Cred}}
 	}
 	c.decision.Ladder = r.Ladders
 	s := r.Guard

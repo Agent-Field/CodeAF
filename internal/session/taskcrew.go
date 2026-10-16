@@ -446,6 +446,10 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 	seat := crewSeatOf(ctx)
 	for {
 		current := crew.sendForSeat(seat, key)
+		// A REFUSAL ITS CREDENTIAL HAS SINCE ANSWERED is let go here, at the
+		// call that would ask it again, and nowhere else: this is the explicit
+		// ask, and nothing is sent because a refusal was lifted.
+		c.agent.liftAnsweredRefusals(c.run, current)
 		if failed, ok := crew.failedHere(current); ok {
 			// A SEND THAT FAILED ON THIS TASK IS NOT ASKED AGAIN, by this seat
 			// or any other: a pool that answered 429 with an hour's
@@ -470,7 +474,18 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 		callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
 			crew.guard.after(ctx, current, response, 0)
 		})
+		// THIS CALL'S OWN DISPATCH FACT, told by the door as it hands this
+		// request to its adapter ([withDispatchObserver]). A retry is a new
+		// call and is told its own.
+		var sent sentConnection
+		told := false
+		callCtx = withDispatchObserver(callCtx, func(fact sentConnection) {
+			if !told {
+				sent, told = fact, true
+			}
+		})
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
+		failedAt := time.Now()
 		crew.guard.after(ctx, current, response, held)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current, seat)
@@ -488,7 +503,7 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			continue
 		}
 		retried = false
-		crew.noteFailed(current, crewFailure{kind: kind, until: until, err: err})
+		crew.noteFailed(current, crew.failureSent(current, crewFailure{kind: kind, until: until, err: err, at: failedAt}, sent))
 		if action, moved := c.agent.moveCrewSeat(c.run, key, current, kind, until); !moved {
 			if action == "" {
 				return response, err
@@ -518,6 +533,283 @@ type crewFailure struct {
 	kind  provider.RouteFailure
 	until time.Time
 	err   error
+	// at is when the failure came back, and provider the provider the send
+	// was routed to. sent is the print of the credential the failed call was
+	// SENT with, as the client door told it before the request left
+	// ([withDispatchObserver]); empty when the door could not say. A failure
+	// restored from an older checkpoint has none of the three, and an auth or
+	// payment refusal without them is never lifted by this task.
+	at       time.Time
+	provider string
+	sent     config.CrewDispatch
+}
+
+// failureSent is failure with what is known about the call that failed: the
+// provider send is routed to and, when the door's fact is about that same
+// provider, the credential print it was sent with. A fact about another
+// provider's account — a seat the pool moved onto another service — names
+// nothing about this provider's credential, and is left unprinted.
+func (c *taskCrew) failureSent(send string, failure crewFailure, fact sentConnection) crewFailure {
+	c.mu.Lock()
+	failure.provider = c.providerOfLocked(send)
+	c.mu.Unlock()
+	if failure.provider == "" {
+		failure.provider = fact.provider
+	}
+	if fact.provider != "" && fact.provider == failure.provider {
+		failure.sent = fact.sent
+	}
+	return failure
+}
+
+// providerOfLocked is the provider send is routed to on this crew: a seat's
+// pick, a rung of its ladder or rescue, or the provider a change recorded it
+// moving from. Lowercased, as the router names providers; "" when this crew
+// never named one for it. The caller holds c.mu.
+func (c *taskCrew) providerOfLocked(send string) string {
+	named := func(pick crewroute.Pick) bool { return pick.Send == send && pick.Provider != "" }
+	for _, pick := range c.decision.Crew {
+		if named(pick) {
+			return strings.ToLower(pick.Provider)
+		}
+	}
+	for _, rungs := range []map[crewroute.Seat][]crewroute.Pick{c.ladders, c.rescue} {
+		for _, seat := range crewroute.Seats {
+			for _, rung := range rungs[seat] {
+				if named(rung) {
+					return strings.ToLower(rung.Provider)
+				}
+			}
+		}
+	}
+	for i := len(c.changes) - 1; i >= 0; i-- {
+		switch change := c.changes[i]; {
+		case change.FromSend == send && change.FromProvider != "":
+			return strings.ToLower(change.FromProvider)
+		case change.ToSend == send && change.ToProvider != "":
+			return strings.ToLower(change.ToProvider)
+		}
+	}
+	return ""
+}
+
+// crewCredentialRefusal is a failure that belongs to the credential it was
+// made with: a refused key, or an account out of credit.
+func crewCredentialRefusal(kind provider.RouteFailure) bool {
+	return kind == provider.RouteAuth || kind == provider.RoutePayment
+}
+
+// ── A REFUSAL ITS CREDENTIAL HAS ANSWERED ──────────────────────────────────
+//
+// A send refused for its key or its credit was held for the rest of the task:
+// failed, bad, and its provider gone or broke — and a pinned role, or the one
+// model, never moves, so reconnecting or adding credit could not reach a task
+// already running or carried on. Route health had learned to lift such a
+// refusal on a fact (internal/config's crewcred.go); this task's own record of
+// it did not, and held the pin regardless.
+//
+// NOW THE SAME FACTS LIFT IT HERE, judged at the call that would ask the send
+// again and never on a timer or in the background:
+//
+//   - route health no longer holds the refusal against the profile
+//     ([config.CrewRefusalApplies] — a different known credential than the
+//     one it was sent with, a credential change after an unprinted one, or
+//     credit read after a payment refusal), AND
+//   - the very connection the next call would be handed — the pool's own,
+//     which can lag the profile ([Agent.nextSentConnection]) — carries the
+//     credential in force, with a credential that is there; and for a
+//     refused key, it is not the key that was refused.
+//
+// ONLY THE REFUSALS THOSE FACTS ANSWER ARE LET GO: a rate limit, a route gone,
+// a cap, another provider's refusal, and a refusal on the same provider the
+// facts do not answer (an older checkpoint's, with no time and no print) all
+// stand, and while one stands its provider stays gone or broke. The pick is
+// not changed, nothing is moved onto Auto or a rescue, the history, the call
+// counts and the spend are kept exactly as they were, and no success is
+// written: the next call either answers on the repaired credential, or fails
+// and is held again on its own fact.
+
+// liftAnsweredRefusals lets go of the auth and payment refusals on send's
+// provider that its credential has since answered, when send's own is one of
+// them. The facts are read with crew.mu released — they are files — and the
+// failures are let go only if they are still the ones read.
+func (a *Agent) liftAnsweredRefusals(run *beltRun, send string) {
+	crew := run.crew
+	on, asked := crew.credentialRefusalsOn(send)
+	if len(asked) == 0 {
+		return
+	}
+	answered, why := a.answeredRefusals(on, send, asked)
+	if why == "" {
+		return
+	}
+	crew.mu.Lock()
+	before := crew.decision.Stopped
+	crew.liftLocked(on, answered)
+	decision := crew.decision
+	crew.mu.Unlock()
+	if decision.Stopped != before {
+		a.republishCrew(run, decision, send+" may be asked again · "+why)
+	}
+}
+
+// credentialRefusalsOn is, when send's own failure is an auth or payment
+// refusal on a provider it names, that provider and every such refusal on it
+// this task holds — send's included — copied out from under c.mu. A refusal
+// that names no provider, an older checkpoint's, is answered by nothing here.
+func (c *taskCrew) credentialRefusalsOn(send string) (string, map[string]crewFailure) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	failure, ok := c.failed[send]
+	if !ok || c.started[send] || !crewCredentialRefusal(failure.kind) || failure.provider == "" {
+		return "", nil
+	}
+	asked := map[string]crewFailure{}
+	for other, f := range c.failed {
+		if f.provider == failure.provider && !c.started[other] && crewCredentialRefusal(f.kind) {
+			asked[other] = f
+		}
+	}
+	return failure.provider, asked
+}
+
+// answeredRefusals judges each refusal in asked on its own facts, and answers
+// the ones that no longer hold with the fact that answered send's — "" when
+// send's own still holds.
+func (a *Agent) answeredRefusals(on, send string, asked map[string]crewFailure) (map[string]crewFailure, string) {
+	var inForce config.CrewDispatch
+	if on != "codex" {
+		inForce = config.CrewDispatchFor(a.config.ProfileDir, on)
+	}
+	answered := map[string]crewFailure{}
+	why := ""
+	for other, f := range asked {
+		because := a.refusalAnswered(other, on, f, inForce)
+		if because == "" {
+			continue
+		}
+		answered[other] = f
+		if other == send {
+			why = because
+		}
+	}
+	return answered, why
+}
+
+// refusalAnswered is the fact that answers one auth or payment refusal of send
+// on provider on, for the call that would be made next — "" while it holds.
+func (a *Agent) refusalAnswered(send, on string, failure crewFailure, inForce config.CrewDispatch) string {
+	if config.CrewRefusalApplies(a.config.ProfileDir, router.CrewRouteOutcome{
+		At: failure.at, Send: send, Provider: on, Kind: string(failure.kind), Cred: failure.sent.Cred,
+	}) {
+		return ""
+	}
+	next := a.nextSentConnection(send)
+	if next.provider != on {
+		return ""
+	}
+	if next.sent.Cred == "" {
+		// AN UNPRINTED NEXT CONNECTION is a sign-in whose transport carries
+		// the tokens of the moment ([sentConnectionOf]), which the profile's
+		// own facts describe; on any other provider it is a connection with
+		// no credential at all, and a disconnected key repairs nothing.
+		if on != "codex" {
+			return ""
+		}
+		return on + " was signed in again after it refused"
+	}
+	if next.sent != inForce {
+		// The pool would send a credential the profile no longer holds: the
+		// facts that lifted the refusal are about another credential.
+		return ""
+	}
+	switch {
+	case failure.sent.Cred == "":
+		return "the credential on " + on + " changed after it refused"
+	case next.sent != failure.sent:
+		return "a different credential is connected on " + on
+	case failure.kind == provider.RoutePayment:
+		return "credit on " + on + " was read after it refused"
+	}
+	return ""
+}
+
+// liftLocked lets go of the answered refusals that are still as they were
+// read, and keeps on gone or broke while any other refusal of that kind on it
+// stands. A stop the refused credential set is said again from what is left,
+// and dropped when nothing is; any other stop — a spend line met — is
+// untouched. The caller holds c.mu.
+func (c *taskCrew) liftLocked(on string, answered map[string]crewFailure) {
+	credentialStop := c.stoppedOnCredentialLocked()
+	if !c.dropAnsweredLocked(answered) {
+		return
+	}
+	gone, broke := c.stillRefusedLocked(on)
+	if !gone {
+		forgetProvider(c.gone, on)
+	}
+	if !broke {
+		forgetProvider(c.broke, on)
+	}
+	if credentialStop {
+		c.decision.Stopped = ""
+		if len(c.broke) > 0 || len(c.gone) > 0 {
+			c.decision.Stopped = c.actionLocked("", "", time.Time{})
+		}
+	}
+}
+
+// stoppedOnCredentialLocked is whether the crew's stop is the one its refused
+// keys and empty accounts say ([taskCrew.actionLocked]). The caller holds c.mu.
+func (c *taskCrew) stoppedOnCredentialLocked() bool {
+	if c.decision.Stopped == "" || (len(c.broke) == 0 && len(c.gone) == 0) {
+		return false
+	}
+	return c.decision.Stopped == c.actionLocked("", "", time.Time{})
+}
+
+// dropAnsweredLocked forgets each answered refusal that is still the failure
+// that was judged — a newer failure of the send is its own fact — and answers
+// whether any went. The caller holds c.mu.
+func (c *taskCrew) dropAnsweredLocked(answered map[string]crewFailure) bool {
+	dropped := false
+	for send, was := range answered {
+		now, ok := c.failed[send]
+		if !ok || now.kind != was.kind || !now.at.Equal(was.at) || now.sent != was.sent || now.provider != was.provider {
+			continue
+		}
+		delete(c.failed, send)
+		delete(c.bad, send)
+		dropped = true
+	}
+	return dropped
+}
+
+// stillRefusedLocked is whether a key refusal, and an out-of-credit refusal,
+// still stand on provider on — counting a refusal whose provider this crew
+// cannot name, which may be on. The caller holds c.mu.
+func (c *taskCrew) stillRefusedLocked(on string) (gone, broke bool) {
+	for send, f := range c.failed {
+		p := f.provider
+		if p == "" {
+			p = c.providerOfLocked(send)
+		}
+		if p != "" && p != on {
+			continue
+		}
+		gone = gone || f.kind == provider.RouteAuth
+		broke = broke || f.kind == provider.RoutePayment
+	}
+	return gone, broke
+}
+
+// forgetProvider drops on from a set of providers, as they were written.
+func forgetProvider(set map[string]bool, on string) {
+	for provided := range set {
+		if strings.EqualFold(provided, on) {
+			delete(set, provided)
+		}
+	}
 }
 
 // noteFailed remembers how send failed on this task.
@@ -1015,7 +1307,11 @@ func (a *Agent) crewFailedLocked(crew *taskCrew, current string, kind provider.R
 			if again {
 				continue
 			}
-			config.LogCrewRoute(a.config.ProfileDir, crew.call, crew.decision, crew.repo, crew.title, seat, pick, string(kind), until)
+			// THE REFUSAL IS WRITTEN AGAINST THE CREDENTIAL THE CALL WAS SENT
+			// WITH ([crewFailure.sent], noted before this), never the one in
+			// force now — a key connected while the call was in flight is
+			// not blamed for it.
+			config.LogCrewRouteSent(a.config.ProfileDir, crew.call, crew.decision, crew.repo, crew.title, seat, pick, string(kind), until, crew.failed[current].sent)
 		}
 	}
 	if crew.bad == nil {

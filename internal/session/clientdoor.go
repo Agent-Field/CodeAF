@@ -119,23 +119,46 @@ func (p *modelClientPool) setSeat(model string) {
 // connection, so holding the lock prevents two simultaneous children from
 // minting two adapters and, more importantly, two competing lane-prober seams.
 func (p *modelClientPool) clientFor(model string) (Completer, string, string, modelAccount, error) {
+	client, wire, called, want, _, err := p.clientWithService(model)
+	return client, wire, called, want, err
+}
+
+// clientWithService is [modelClientPool.clientFor] with the connection the
+// account was read from. The account is the pool's key, bearer included, so
+// the adapter answered here — cached or new — carries exactly that
+// connection's credential: it is the one fact about a request's credential
+// that does not have to be guessed from the settings afterwards.
+func (p *modelClientPool) clientWithService(model string) (Completer, string, string, modelAccount, modelsource.Connected, error) {
 	if p == nil {
-		return nil, "", "", modelAccount{}, errNoCompleter
+		return nil, "", "", modelAccount{}, modelsource.Connected{}, errNoCompleter
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	model = p.seatedModel(model)
 	configured := p.config.clientConfig(model, providerTimeout)
-	want := accountFor(p.config, model)
+	service := p.config.serviceFor(model)
+	want := accountForService(service)
 	if client := p.clients[want]; client != nil {
-		return client, configured.Model, model, want, nil
+		return client, configured.Model, model, want, service, nil
 	}
 	client, err := newProviderClient(p.config, model)
 	if err != nil {
-		return nil, "", model, modelAccount{}, err
+		return nil, "", model, modelAccount{}, modelsource.Connected{}, err
 	}
 	p.clients[want] = client
-	return client, configured.Model, model, want, nil
+	return client, configured.Model, model, want, service, nil
+}
+
+// serviceNext is the connection the pool's next call on model would be made
+// through, read from the same snapshot and seat [modelClientPool.clientFor]
+// reads, and constructing nothing.
+func (p *modelClientPool) serviceNext(model string) modelsource.Connected {
+	if p == nil {
+		return modelsource.Connected{}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.config.serviceFor(p.seatedModel(model))
 }
 
 // setSources moves the pool to a freshly resolved profile and forgets every
@@ -459,30 +482,126 @@ func (a *Agent) rebindClientLocked(model string) {
 // override changes only the slug in the request; choosing the client here first
 // is what changes the address and bearer with it.
 func (a *Agent) completerFor(model string) (Completer, string, string, error) {
+	client, wire, called, _, err := a.completerWithService(model)
+	return client, wire, called, err
+}
+
+// completerWithService is [Agent.completerFor] with the connection the chosen
+// adapter's account was resolved from, in the same locked step that chose it.
+// An unmanaged session (the scripted-completer seam) has no account, and
+// answers the zero connection: nothing is known about its credential.
+func (a *Agent) completerWithService(model string) (Completer, string, string, modelsource.Connected, error) {
 	if a == nil {
-		return nil, "", "", errNoCompleter
+		return nil, "", "", modelsource.Connected{}, errNoCompleter
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.client == nil {
-		return nil, "", "", errNoCompleter
+		return nil, "", "", modelsource.Connected{}, errNoCompleter
 	}
 	if !a.managedClient {
 		configured := a.config.clientConfig(model, providerTimeout)
-		return a.client, configured.Model, model, nil
+		return a.client, configured.Model, model, modelsource.Connected{}, nil
 	}
-	inner, wire, called, want, err := a.clientPool.clientFor(model)
+	inner, wire, called, want, service, err := a.clientPool.clientWithService(model)
 	if err != nil {
-		return nil, "", called, err
+		return nil, "", called, modelsource.Connected{}, err
 	}
 	if want == a.clientAccount {
-		return a.client, wire, called, nil
+		return a.client, wire, called, service, nil
 	}
 	if wrapper, ok := a.client.(sessionCompleter); ok {
 		wrapper.inner = inner
-		return wrapper, wire, called, nil
+		return wrapper, wire, called, service, nil
 	}
-	return inner, wire, called, nil
+	return inner, wire, called, service, nil
+}
+
+// ── THE CREDENTIAL A REQUEST WAS SENT WITH ──────────────────────────────────
+//
+// A refusal of a key belongs to the key that was refused, and the only place
+// that knows which key a request carries is this door, at the moment it hands
+// the request to the adapter: the pool's account is its key, bearer included
+// ([modelClientPool.clientWithService]). Reading the settings at that moment
+// instead could name a key the pool has not built a client for yet, and
+// reading them when the refusal comes back names whatever was connected while
+// the request was in flight — the defect that blamed a new key for an old
+// key's 401 (config.CrewDispatch says the rest).
+
+// sentConnection is one request's dispatch fact: the provider its account is
+// on and the one-way print of the credential its adapter carries. An empty
+// print is UNPRINTED — this door cannot say which credential will travel —
+// and a caller treats it as naming none, never as naming "no key".
+type sentConnection struct {
+	provider string
+	sent     account.CrewDispatch
+}
+
+// sentConnectionOf is the dispatch fact of a request made through service.
+//
+// A SIGN-IN IS NEVER PRINTED HERE. Codex's transport loads and refreshes its
+// tokens per request ([codexauth.Client]), so the tokens on disk at this
+// moment are not provably the ones the request will carry; the refusal stays
+// unprinted, and only a recorded sign-in after it can lift it. A request that
+// names a bearer of its own ([ai.Request.APIKeyOverride]) is not carrying the
+// account's credential either.
+func sentConnectionOf(profileDir string, service modelsource.Connected, options []ai.Option) sentConnection {
+	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+	if id == "" {
+		return sentConnection{}
+	}
+	out := sentConnection{provider: id}
+	if id == "codex" {
+		return out
+	}
+	var request ai.Request
+	for _, option := range options {
+		if option(&request) != nil {
+			return out
+		}
+	}
+	if strings.TrimSpace(request.APIKeyOverride) != "" {
+		return out
+	}
+	out.sent = account.CrewDispatchOf(profileDir, service)
+	return out
+}
+
+// nextSentConnection is the dispatch fact the next request on model would be
+// made with: the pool's own account for it, which is the adapter the next call
+// would be handed — not the profile's settings, which can have moved ahead of
+// a pool that was never told. An unmanaged session knows nothing.
+func (a *Agent) nextSentConnection(model string) sentConnection {
+	if a == nil {
+		return sentConnection{}
+	}
+	a.mu.Lock()
+	managed, pool, profileDir := a.managedClient, a.clientPool, a.config.ProfileDir
+	a.mu.Unlock()
+	if !managed || pool == nil {
+		return sentConnection{}
+	}
+	return sentConnectionOf(profileDir, pool.serviceNext(model), nil)
+}
+
+// dispatchObserverKey carries the one callback a crew seat's call is told its
+// dispatch fact through ([withDispatchObserver]).
+type dispatchObserverKey struct{}
+
+// withDispatchObserver asks the door to tell observe the dispatch fact of the
+// request made under ctx, on the calling goroutine, after the adapter is
+// chosen and before the request is handed to it. It is a seat's own narrow
+// seam: nothing but the fact crosses it, never the adapter or its key.
+func withDispatchObserver(ctx context.Context, observe func(sentConnection)) context.Context {
+	if observe == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, dispatchObserverKey{}, observe)
+}
+
+func dispatchObserverOf(ctx context.Context) func(sentConnection) {
+	observe, _ := ctx.Value(dispatchObserverKey{}).(func(sentConnection))
+	return observe
 }
 
 // ── EVERY REQUEST SAYS WHAT IT IS FOR ───────────────────────────────────────
@@ -626,9 +745,14 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 			ctx = provider.WithoutPatientRateLimits(ctx)
 		}
 	}
-	client, wire, called, err := a.completerFor(model)
+	client, wire, called, service, err := a.completerWithService(model)
 	if err != nil {
 		return nil, called, err
+	}
+	// THE DISPATCH FACT IS TAKEN FROM THE ACCOUNT THAT CHOSE THIS ADAPTER, in
+	// the step that chose it — never from the settings, and never after.
+	if observe := dispatchObserverOf(ctx); observe != nil {
+		observe(sentConnectionOf(a.config.ProfileDir, service, options))
 	}
 	// THE PURPOSE BECOMES THE TAG, on the one line every request in this package
 	// passes over — through [withPurpose], which is the only function in

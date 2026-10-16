@@ -1351,6 +1351,9 @@ fix — `reconnect openrouter with /connect, or unpin the worker from glm-5.3-fl
 - **Credit read after the refusal.** For a payment refusal, a balance read that finds
   credit, begun after the refusal, lifts it. A read begun before it does not, even if it
   answered after, and a fresh reading of none keeps it.
+- **A task already running, or carried on,** recovers the same way: its next call on the
+  pinned model is sent on the new key or the topped-up account, on the same model. Nothing
+  is sent just because the key changed, and other failures on the task still stand.
 
 A refusal written by an older build named no key. It is lifted when the key is seen to
 change after it. The first key this build sees is where it starts counting, so a key you
