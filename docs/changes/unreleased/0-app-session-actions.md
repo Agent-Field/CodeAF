@@ -41,7 +41,8 @@ read out of the sentence. Every claim first syncs the claims folder's entry in
 `<home>/app` and that folder's entry in `<home>` (not only the claim that made the
 folder: another process's new folder can be seen before it synced it); a failed sync
 answers `engine` "did not start it" with nothing run. `<home>`'s own entry is not synced
-here, so a claim survives a process crash, and a power loss once `<home>` is on disk.
+here, so a claim survives a process crash, and a power loss once `<home>` is on disk
+(on Windows, where a folder sync does nothing, a process crash only).
 
 Not built here: every other action in the slash catalogue. This does not make the
 desktop's 51 commands work; it makes three of them possible.

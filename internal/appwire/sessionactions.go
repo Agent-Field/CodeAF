@@ -193,7 +193,8 @@ type ActionTask struct {
 // ActionMemory is the producer's receipt for a kept line. It carries no id:
 // the producer answers a sentence, and none is invented by a second read. The
 // sentence quotes the person's words, so it is on the answer that ran the
-// producer and NOT on a replay of it, which carries the scope alone.
+// producer and NOT on a replay of it, which carries the scope alone, and for a
+// project line nothing at all.
 type ActionMemory struct {
 	Receipt string `json:"receipt,omitempty"`
 	// Scope is where the line holds, and is present ONLY when the method the

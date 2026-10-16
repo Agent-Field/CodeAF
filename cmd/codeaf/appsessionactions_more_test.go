@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -422,12 +423,16 @@ func TestAFolderAnotherProcessHasNotSyncedHoldsTheProducerUntilTheSync(t *testin
 		t.Fatal(err) // the other process's Mkdir, its sync never reached
 	}
 	entered, release := make(chan string, 4), make(chan struct{})
+	// The request is let go and waited for before the test ends, whichever
+	// way it ends, so it never touches the test after it has returned.
+	var running sync.WaitGroup
 	t.Cleanup(func() {
 		select {
 		case <-release:
 		default:
 			close(release)
 		}
+		running.Wait()
 	})
 	h.b.createAction = func(c appActionClaims, claim appActionClaim) (bool, error) {
 		c.syncFolder = func(folder string) error {
@@ -437,21 +442,24 @@ func TestAFolderAnotherProcessHasNotSyncedHoldsTheProducerUntilTheSync(t *testin
 		}
 		return c.create(claim)
 	}
-	done := make(chan appwire.ActionReceipt, 1)
+	type answer struct {
+		r appwire.ActionReceipt
+		e *appwire.Error
+	}
+	done := make(chan answer, 1)
+	running.Add(1)
 	go func() {
+		defer running.Done()
 		r, e := h.w.act(taskAsk(agent, "seen-1", "go"))
-		if e != nil {
-			t.Errorf("the claim after the sync: %v", e)
-		}
-		done <- r
+		done <- answer{r, e}
 	}()
 	select {
 	case got := <-entered:
 		if got != filepath.Dir(dir) {
 			t.Fatalf("the first sync was of %s, want the state folder %s", got, filepath.Dir(dir))
 		}
-	case r := <-done:
-		t.Fatalf("the claim was made without syncing the folder it found: %+v", r)
+	case a := <-done:
+		t.Fatalf("the claim was made without syncing the folder it found: %+v %v", a.r, a.e)
 	}
 	if tasks, _, _ := h.p.counts(); tasks != 0 {
 		t.Fatalf("the producer ran %d times before the folder was synced", tasks)
@@ -460,8 +468,8 @@ func TestAFolderAnotherProcessHasNotSyncedHoldsTheProducerUntilTheSync(t *testin
 		t.Fatalf("a claim was written before the folder was synced: %v %v", entries, err)
 	}
 	close(release)
-	if r := <-done; r.State != appwire.ActionDone {
-		t.Fatalf("%+v", r)
+	if a := <-done; a.e != nil || a.r.State != appwire.ActionDone {
+		t.Fatalf("the claim after the sync: %+v %v", a.r, a.e)
 	}
 	if tasks, _, _ := h.p.counts(); tasks != 1 {
 		t.Fatalf("the producer ran %d times", tasks)
