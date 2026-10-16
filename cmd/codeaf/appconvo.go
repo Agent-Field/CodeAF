@@ -426,13 +426,15 @@ func (b *appBackend) sendQueued(a *appAgent, live *appLive) {
 	}
 	b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
 	shown := next.shown
-	if shown == nil {
+	if shown == nil && appKeepsQueuedMarks(live.conn.Conv) {
 		shown = &appSending{text: next.text}
-	} else {
+	} else if shown != nil {
 		copy := *shown
 		shown = &copy
 	}
-	shown.queued = true
+	if shown != nil {
+		shown.queued = true
+	}
 	if _, err := b.send(agent, next.text, next.clientID, shown); err != nil {
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 			ID: "qx" + next.id, Agent: agent, Kind: appwire.EntryError, At: b.now(), Text: "the queued message was not sent: " + err.Error(),

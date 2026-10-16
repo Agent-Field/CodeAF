@@ -1453,7 +1453,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if shown != nil && shown.queued {
 		again := *shown
 		again.queued = false
-		if shown = &again; len(again.described) == 0 {
+		if shown = &again; len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
 			shown = nil
 		}
 	}
