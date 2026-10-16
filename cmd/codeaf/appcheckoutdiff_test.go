@@ -431,8 +431,12 @@ func TestCheckoutDiffDeletedFromTheRowNotTheDisk(t *testing.T) {
 	gitT(t, repo, "rm", "-q", "--cached", "a.txt")
 	write(t, filepath.Join(repo, ".gitignore"), "a.txt\n")
 	got, err := cdiffT(t, repo, "a.txt", "")
-	if err != nil || got.Entry.Index != "deleted" || got.Diff.Change != "deleted" || got.Diff.Del == nil || *got.Diff.Del != 3 {
+	if err != nil || got.Entry.Index != "deleted" || got.Diff.Change != "deleted" || got.Diff.Del == nil || *got.Diff.Del != 3 || got.Open != "" {
 		t.Fatalf("%v %+v", err, got)
+	}
+	loc, err := appCheckoutLocate(context.Background(), repo, appwire.CheckoutPathQuery{Agent: "a", Path: "a.txt"})
+	if err != nil || loc.Open != "" {
+		t.Fatalf("deleted row offered its remaining ignored file: %+v %v", loc, err)
 	}
 }
 

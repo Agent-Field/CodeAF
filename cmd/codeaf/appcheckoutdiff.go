@@ -83,7 +83,7 @@ func (r *appCheckoutRow) workspacePath() string {
 // open is the absolute path to offer for Open and Reveal, "" when it cannot be
 // proved reachable now. It is a fact, never a grant.
 func (r *appCheckoutRow) open() string {
-	if !utf8.ValidString(r.entry.Path) || !appReachable(r.snap.top, r.entry.Path) {
+	if r.entry.Index == "deleted" || r.entry.Worktree == "deleted" || !utf8.ValidString(r.entry.Path) || !appReachable(r.snap.top, r.entry.Path) {
 		return ""
 	}
 	return filepath.Join(r.snap.top, filepath.FromSlash(r.entry.Path))
