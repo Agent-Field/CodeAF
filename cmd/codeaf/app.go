@@ -1495,6 +1495,11 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	if shown != nil && !appKeepsQueuedMarks(live.conn.Conv) {
 		return 0, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a message's said, reads or attachments; update its engine before sending")
 	}
+	// A local capability refusal must stay a definite refusal: no request was
+	// dispatched, so referenceRefused may release an unsent snapshot.
+	if !appKeepsAttachmentSources(live.conn.Conv, shown) {
+		return 0, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a recording's source and time range")
+	}
 	// PICTURES ARE NEVER SENT AS WORDS ALONE: a conversation whose engine has not
 	// said it takes them refuses the message before the turn, and the chips stay.
 	var composer appComposer

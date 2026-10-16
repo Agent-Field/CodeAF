@@ -1067,6 +1067,24 @@ func appKeptClientID(conv appConversation, clientID string) string {
 	return clientID
 }
 
+// An in-process conversation keeps these fields. A remote door must have
+// advertised them before a message carrying a recorded source is dispatched.
+func appKeepsAttachmentSources(conv any, shown *appSending) bool {
+	if shown == nil {
+		return true
+	}
+	door, known := conv.(interface{ AttachmentSourcesKnown() bool })
+	if !known || door.AttachmentSourcesKnown() {
+		return true
+	}
+	for _, attachment := range shown.described {
+		if attachment.Source != nil {
+			return false
+		}
+	}
+	return true
+}
+
 func appKeepsQueued(conv any) bool {
 	door, ok := conv.(interface{ QueuedMarksKnown() bool })
 	return !ok || door.QueuedMarksKnown()

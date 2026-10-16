@@ -364,3 +364,64 @@ func TestAppAttachmentsOfReplaysTheTypedRange(t *testing.T) {
 		t.Fatal("the replay shares the record's range")
 	}
 }
+
+// The actual dispatch boundary refuses an older host before a range can be
+// submitted. The staging lifecycle must know this was not an uncertain send.
+type oldRangeConversation struct{ *fakeConversation }
+
+func (*oldRangeConversation) AttachmentSourcesKnown() bool { return false }
+
+func TestAppMediaRangeOldHostRefusalLeavesSnapshotRemovable(t *testing.T) {
+	for _, how := range []string{"remove", "close"} {
+		t.Run(how, func(t *testing.T) {
+			b, agent, source, version, _, _ := rangeBackend(t)
+			chip, err := b.AttachMediaRange(agent.ID, source, version, 0, 1000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var conv *fakeConversation
+			b.locked(func() {
+				a := b.agents[agent.ID]
+				conv = a.live.conn.Conv.(*fakeConversation)
+				a.live.conn.Conv = &oldRangeConversation{conv}
+			})
+			if _, err := b.SendWith(agent.ID, "0:00–0:01 in standup.wav: check this", "range-old", []string{chip.ID}); wireCode(err) != appwire.CodeUnknownMethod {
+				t.Fatalf("old host refusal = %v", err)
+			}
+			conv.mu.Lock()
+			submits := conv.submits
+			conv.mu.Unlock()
+			if submits != 0 {
+				t.Fatal("an old host was sent the range")
+			}
+			if how == "remove" {
+				if err := b.RemoveAttachment(agent.ID, chip.ID); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := b.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(chip.Path); !os.IsNotExist(err) {
+				t.Fatal("a definitely-unsent snapshot was retained")
+			}
+			rangeLeaks(t, b, agent.ID)
+			if how == "remove" {
+				if _, err := b.SendWith(agent.ID, "ordinary message", "plain-old", nil); err != nil {
+					t.Fatalf("the old host lost ordinary text support: %v", err)
+				}
+				conv.mu.Lock()
+				submits = conv.submits
+				conv.mu.Unlock()
+				if submits != 1 {
+					t.Fatalf("ordinary text submissions = %d", submits)
+				}
+			}
+		})
+	}
+}
+
+func TestTheWireAndSessionAgreeOnTheLongestMediaRange(t *testing.T) {
+	if appwire.MaxMediaRangeMS != session.MaxMediaRangeMS {
+		t.Fatalf("wire range cap %d differs from session %d", appwire.MaxMediaRangeMS, session.MaxMediaRangeMS)
+	}
+}
