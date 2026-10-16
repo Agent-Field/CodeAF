@@ -2719,6 +2719,7 @@ func (a *Agent) recordLocked(message ai.Message) {
 // must not write. Everything the model and the tools produce is text and goes
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
+	user = ensureUserIdentity(user)
 	// AND WHOEVER SENT IT IS OWED AN ANSWER ONLY IF THE RECORD REALLY HOLDS IT.
 	// `durable` is set by each road below: the journal write answers whether the
 	// line reached the file, and a write that failed may not settle a delivery —

@@ -286,3 +286,18 @@ func TestAppComposedTextWithoutAttachmentsHasAReceipt(t *testing.T) {
 		t.Fatalf("not one plain composed message: %#v", sent)
 	}
 }
+
+func TestOrdinaryAppSendUsesTheRealReceiptOnACapableHost(t *testing.T) {
+	conv := &composingConversation{fakeConversation: &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}, known: true}
+	backend, rec, agent, _, _ := composingBackend(t, conv)
+	if _, err := backend.Send(agent.ID, "ordinary words", "plain-1"); err != nil {
+		t.Fatal(err)
+	}
+	user := entryWith(rec, t, func(e appwire.Entry) bool { return e.Kind == appwire.EntryUser })
+	if user.MessageID != "msg_0123456789abcdef01234567" || user.Text != "ordinary words" {
+		t.Fatalf("ordinary send invented or lost receipt: %+v", user)
+	}
+	if got := conv.sent(); len(got) != 1 || got[0].Text != "ordinary words" || len(got[0].Media) != 0 {
+		t.Fatalf("ordinary text was changed: %+v", got)
+	}
+}

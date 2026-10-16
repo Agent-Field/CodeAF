@@ -1494,6 +1494,14 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 			return 0, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot take pictures with a message; update its engine before sending")
 		}
 	}
+	// The receipt road also accepts ordinary text. A capable current host gives
+	// that actual user message an identity without upgrading an older host's
+	// plain-text promise or guessing a message id from its words.
+	if composer == nil {
+		if capable, ok := live.conn.Conv.(appComposer); ok && capable.ComposedKnown() {
+			composer = capable
+		}
+	}
 	// A conversation joined on a window's host can have heard from the person
 	// in that window too, so its count is read again before it is used.
 	if !live.conn.Assembled && live.conn.Transcript != "" {
@@ -1549,8 +1557,11 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 		var receipt session.SubmissionReceipt
 		receipt, events, err = composer.SubmitComposed(context.Background(), appSubmission(text, shown))
 		if err == nil {
-			shown.composed.receipt = &receipt
-			composedMark = &session.ComposedMark{MessageID: receipt.MessageID, Media: receipt.Media, Annotation: shown.composed.annotation, Delivery: &session.MessageDelivery{Mode: receipt.Delivery, Model: receipt.SeenBy}}
+			composedMark = &session.ComposedMark{MessageID: receipt.MessageID, Media: receipt.Media, Delivery: &session.MessageDelivery{Mode: receipt.Delivery, Model: receipt.SeenBy}}
+			if shown != nil && shown.composed != nil {
+				shown.composed.receipt = &receipt
+				composedMark.Annotation = shown.composed.annotation
+			}
 		}
 	} else if shown != nil {
 		events, err = live.conn.Conv.SubmitMessage(context.Background(), appSubmission(text, shown))

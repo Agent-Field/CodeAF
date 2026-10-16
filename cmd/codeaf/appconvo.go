@@ -1025,6 +1025,9 @@ func appAttachmentsOf(person *session.PersonMark) []appwire.Attachment {
 // the model is sent, and the person's own words, attachments and reads beside
 // them.
 func appSubmission(text string, shown *appSending) session.Submission {
+	if shown == nil {
+		return session.Submission{Text: text}
+	}
 	said := shown.text
 	submission := session.Submission{Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads, Queued: shown.queued}
 	if shown.composed != nil {
