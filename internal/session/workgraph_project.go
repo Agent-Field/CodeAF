@@ -196,6 +196,9 @@ func nodeWaits(owner string, r taskRecord) []workgraph.Wait {
 	for _, w := range waitRefs(r.WaitsExternal) {
 		waits = append(waits, workgraph.Wait{On: workgraph.TaskRef{Owner: w.Session, Task: strconv.FormatUint(w.ID, 10)}, Via: workgraph.ViaExternal})
 	}
+	// A WAIT NAMES A SAFE REFERENCE OR IT IS NOT KEPT: an id read off a file is
+	// never carried further than the law that checks it.
+	waits = validWaits(waits)
 	return waits
 }
 
@@ -286,5 +289,16 @@ func planFact(owner string, t *plandb.Task, group *workgraph.GroupRef, spend map
 		}
 		waits = append(waits, workgraph.Wait{On: workgraph.TaskRef{Owner: owner, Task: wgPlanToken(dep.TaskID)}, Via: workgraph.ViaRecord})
 	}
-	return workgraph.Fact{Node: n, Waits: waits}
+	return workgraph.Fact{Node: n, Waits: validWaits(waits)}
+}
+
+// validWaits keeps the waits whose target is a safe reference.
+func validWaits(in []workgraph.Wait) []workgraph.Wait {
+	out := in[:0]
+	for _, w := range in {
+		if w.On.Valid() {
+			out = append(out, w)
+		}
+	}
+	return out
 }

@@ -151,9 +151,14 @@ func (b *appBackend) agentPlan(plan *graphPlan, id string) error {
 		return err
 	}
 	var view appwire.Agent
-	var transcript string
-	b.locked(func() { view, transcript = a.view, a.transcript })
-	plan.owners = []graphOwner{{id: id, dir: filepath.Dir(transcript)}}
+	b.locked(func() { view = a.view })
+	// THE FOLDER IS FOUND BY ID UNDER THE PLACES ROOT and never taken from a path
+	// the agent's record carries: a record can name anywhere.
+	if dir, ok := workGraphs.locate(id); ok {
+		plan.owners = []graphOwner{{id: id, dir: dir}}
+	} else {
+		plan.missing = append(plan.missing, workgraph.OwnerIssue{Owner: id, Reason: session.WorkIssueMissing})
+	}
 	if plan.scope.Kind == workgraph.ScopeAgent {
 		plan.about = workgraph.ScopeFacts{Title: view.Title}
 		if view.ClosedAt != nil || view.State == "closed" || view.State == "archived" {
@@ -309,7 +314,7 @@ func (g *appWorkGraph) locate(id string) (string, bool) {
 	var known bool
 	g.locked(func() { dir, known = g.dirs[id] })
 	if known {
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if info, err := os.Lstat(dir); err == nil && info.IsDir() {
 			return dir, true
 		}
 	}
@@ -333,7 +338,7 @@ func findConversation(id string) (string, bool) {
 			continue
 		}
 		candidate := filepath.Join(root, bucket.Name(), id)
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+		if info, err := os.Lstat(candidate); err == nil && info.IsDir() {
 			return candidate, true
 		}
 	}
@@ -354,6 +359,8 @@ type graphLoaded struct {
 	unread   []workgraph.OwnerIssue
 	external []externalOwner
 	indexes  []string
+	// truncated says conversations were left unread at the scope bound.
+	truncated bool
 }
 
 // externalOwner is a conversation read only to say the state of a target.
@@ -369,8 +376,17 @@ func (g *appWorkGraph) load(ctx context.Context, plan graphPlan) (*graphLoaded, 
 	out := &graphLoaded{unread: append([]workgraph.OwnerIssue(nil), plan.missing...)}
 	inScope := map[string]bool{}
 	indexes := map[string]bool{}
+	total := 0
 	for _, o := range plan.owners {
 		inScope[o.id] = true
+		// A SCOPE IS BUILT FROM AT MOST workgraph.MaxScopeNodes TASKS, and the
+		// conversations past that are not even read: they are named unread
+		// (too_large) and the answer is truncated, never silently short.
+		if total >= workgraph.MaxScopeNodes {
+			out.truncated = true
+			out.unread = append(out.unread, workgraph.OwnerIssue{Owner: o.id, Reason: session.WorkIssueTooLarge})
+			continue
+		}
 		facts, err := g.source.Owner(ctx, o.id, o.dir)
 		switch {
 		case err == session.ErrWorkOwnerMissing:
@@ -382,6 +398,7 @@ func (g *appWorkGraph) load(ctx context.Context, plan graphPlan) (*graphLoaded, 
 			out.unread = append(out.unread, workgraph.OwnerIssue{Owner: o.id, Reason: facts.Issue})
 		}
 		out.owners = append(out.owners, facts)
+		total += len(facts.Facts)
 		indexes[session.TaskIndexPath(session.Place{Dir: o.dir}.Transcript())] = true
 	}
 	for path := range indexes {
@@ -458,6 +475,7 @@ func (l *graphLoaded) input(ctx context.Context, g *appWorkGraph, plan graphPlan
 	in := workgraph.Input{
 		Scope: plan.scope, About: plan.about, Root: plan.root, Crews: plan.crews, Members: plan.members,
 		Revision: revision, AsOf: time.Now(), Owners: len(l.owners) + len(l.unread), Excluded: session.WorkExcluded,
+		Truncated: l.truncated,
 	}
 	if len(l.unread) > graphMaxUnread {
 		in.Unread = l.unread[:graphMaxUnread]

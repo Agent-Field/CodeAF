@@ -356,7 +356,7 @@ type Coverage struct {
 // OwnerIssue is one conversation the scope could not read.
 type OwnerIssue struct {
 	Owner  string `json:"owner"`
-	Reason string `json:"reason" enum:"missing,unreadable,too_large"`
+	Reason string `json:"reason" enum:"missing,unreadable,too_large,partial"`
 }
 
 // LinkCoverage counts nodes by whether their waits-on links were recorded.

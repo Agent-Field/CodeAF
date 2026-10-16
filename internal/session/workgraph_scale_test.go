@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,7 +36,13 @@ func scaleFolders(tb testing.TB, owners, each int) []string {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			tb.Fatal(err)
 		}
-		writeCheckpoint(tb.(*testing.T), Place{Dir: dir}.Tasks(), doc)
+		encoded, err := json.Marshal(doc)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		if err := os.WriteFile(Place{Dir: dir}.Tasks(), encoded, 0o600); err != nil {
+			tb.Fatal(err)
+		}
 		dirs = append(dirs, dir)
 	}
 	return dirs
@@ -48,7 +55,10 @@ func TestTheSourceReadsTwoHundredThousandTasksOnceAndThenOnlyStats(t *testing.T)
 		t.Skip("writes and reads 200 000 tasks")
 	}
 	dirs := scaleFolders(t, 200, 1000)
-	source := NewWorkSource()
+	// The budget is raised past the default so the whole scope is remembered;
+	// with the default, the least recently used conversations are dropped and
+	// read again (workgraph_bounds_test.go).
+	source := NewWorkSourceLimits(WorkLimits{CacheBytes: 1 << 30, CacheOwners: 1000})
 	ctx := context.Background()
 	runtime.GC()
 	var before, after runtime.MemStats

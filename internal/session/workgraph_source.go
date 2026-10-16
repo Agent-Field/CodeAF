@@ -27,12 +27,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -44,23 +44,87 @@ const (
 	WorkIssueMissing    = "missing"
 	WorkIssueUnreadable = "unreadable"
 	WorkIssueTooLarge   = "too_large"
+	// WorkIssuePartial: part of the conversation is here and part was left out at
+	// a bound; the facts that are here are true and the count is not the whole.
+	WorkIssuePartial = "partial"
 )
 
-// workFileMax is the largest checkpoint the source will parse. Past it the
-// conversation is reported too_large rather than read whole.
-const workFileMax = 256 << 20
+// WorkLimits are the bounds the source reads and remembers within. The zero
+// value of a field takes its default; they are fields for the tests and for a
+// process that wants other bounds, not settings a person sees.
+type WorkLimits struct {
+	// CacheBytes and CacheOwners bound the conversations remembered: an estimate
+	// of their bytes and their count. A projection over half of CacheBytes is
+	// served and not retained.
+	CacheBytes  int64
+	CacheOwners int
+	// IndexBytes and IndexFiles bound the remembered check indexes the same way.
+	IndexBytes int64
+	IndexFiles int
+	// FileMax is the largest checkpoint, and PlanMax the most bytes of plan store
+	// (database and its journal) read for one conversation. Past either the
+	// source does not read the file at all and says too_large.
+	FileMax int64
+	PlanMax int64
+	// IndexMax is the most bytes of a check index read: its NEWEST bytes.
+	IndexMax int64
+	// Facts is the most facts one conversation yields; Waits the most stored
+	// waits one task yields. Past either the rest is left out and the
+	// conversation says partial.
+	Facts int
+	Waits int
+}
+
+// The defaults. A task's projection is ~1 KiB, so these hold ~190 000 tasks.
+const (
+	defaultCacheBytes  = 192 << 20
+	defaultCacheOwners = 4096
+	defaultIndexBytes  = 32 << 20
+	defaultIndexFiles  = 64
+	defaultFileMax     = 48 << 20
+	defaultPlanMax     = 64 << 20
+	defaultIndexMax    = 32 << 20
+	defaultFacts       = 100_000
+	defaultWaits       = 1024
+)
+
+func (l WorkLimits) withDefaults() WorkLimits {
+	set := func(v *int64, d int64) {
+		if *v <= 0 {
+			*v = d
+		}
+	}
+	setN := func(v *int, d int) {
+		if *v <= 0 {
+			*v = d
+		}
+	}
+	set(&l.CacheBytes, defaultCacheBytes)
+	setN(&l.CacheOwners, defaultCacheOwners)
+	set(&l.IndexBytes, defaultIndexBytes)
+	setN(&l.IndexFiles, defaultIndexFiles)
+	set(&l.FileMax, defaultFileMax)
+	set(&l.PlanMax, defaultPlanMax)
+	set(&l.IndexMax, defaultIndexMax)
+	setN(&l.Facts, defaultFacts)
+	setN(&l.Waits, defaultWaits)
+	return l
+}
 
 // ErrWorkOwnerMissing is the answer for a conversation folder that is not there.
 var ErrWorkOwnerMissing = errors.New("the conversation's folder is not there")
 
 // OwnerFacts is one conversation's tasks as generic facts, immutable once
-// built. Issue is non-empty when part of the conversation could not be read; the
-// facts that could be are still here.
+// built, so any number of readers may hold it at once. Issue is non-empty when
+// part of the conversation could not be read; the facts that could be are still
+// here.
 type OwnerFacts struct {
 	Owner string
 	Stamp string
 	Facts []workgraph.Fact
 	Issue string
+	// Bytes is the estimate the cache budgets this projection at.
+	Bytes int64
 	// Externals are the other conversations this one's tasks wait on, sorted: the
 	// sources a target's state is read from, so a caller can name them in its
 	// revision.
@@ -78,16 +142,15 @@ func (o *OwnerFacts) Find(task string) (*workgraph.Fact, bool) {
 	return &o.Facts[i], true
 }
 
-type ownerEntry struct {
-	stamp string
-	facts *OwnerFacts
-}
-
 // CheckIndex is the recorded check runs of a project's landed work, keyed by
-// the conversation and task that earned them.
+// the conversation and task that earned them. Partial says the index file was
+// larger than the bound and only its newest bytes were read: a task with no
+// entry then has NO RECORDED CHECKS KNOWN, not none.
 type CheckIndex struct {
-	Stamp string
-	by    map[string]*workgraph.TaskChecks
+	Stamp   string
+	Partial bool
+	Bytes   int64
+	by      map[string]*workgraph.TaskChecks
 }
 
 // Of is the recorded checks of one task, or nil when the index has none.
@@ -98,28 +161,58 @@ func (c *CheckIndex) Of(owner, task string) *workgraph.TaskChecks {
 	return c.by[owner+":"+task]
 }
 
-type indexEntry struct {
-	stamp string
-	index *CheckIndex
-}
-
-// WorkSource reads and caches conversations' task facts. The zero value is not
-// usable; use [NewWorkSource].
+// WorkSource reads and caches conversations' task facts within [WorkLimits].
+// The zero value is not usable; use [NewWorkSource].
 type WorkSource struct {
-	mu     sync.Mutex
-	owners map[string]*ownerEntry
-	index  map[string]*indexEntry
+	limits WorkLimits
+	owners *byteLRU
+	index  *byteLRU
 	parses atomic.Int64
 }
 
-// NewWorkSource is an empty source.
-func NewWorkSource() *WorkSource {
-	return &WorkSource{owners: map[string]*ownerEntry{}, index: map[string]*indexEntry{}}
+// NewWorkSource is an empty source with the default bounds.
+func NewWorkSource() *WorkSource { return NewWorkSourceLimits(WorkLimits{}) }
+
+// NewWorkSourceLimits is an empty source with the given bounds.
+func NewWorkSourceLimits(l WorkLimits) *WorkSource {
+	l = l.withDefaults()
+	return &WorkSource{limits: l, owners: newByteLRU(l.CacheBytes, l.CacheOwners), index: newByteLRU(l.IndexBytes, l.IndexFiles)}
 }
 
 // Parses is how many conversation projections have been built from disk, for
-// tests and diagnostics: an unchanged conversation never adds to it.
+// tests and diagnostics: an unchanged, still-remembered conversation never adds
+// to it.
 func (s *WorkSource) Parses() int64 { return s.parses.Load() }
+
+// Held is what the source remembers right now: conversations and their
+// estimated bytes, and check indexes and theirs.
+func (s *WorkSource) Held() (owners int, ownerBytes int64, indexes int, indexBytes int64) {
+	owners, ownerBytes = s.owners.held()
+	indexes, indexBytes = s.index.held()
+	return owners, ownerBytes, indexes, indexBytes
+}
+
+// Evictions is how many conversations were dropped for the budget, and how many
+// were served without being retained for being over it.
+func (s *WorkSource) Evictions() (evicted, unretained int64) {
+	return s.owners.evicted.Load(), s.owners.unretained.Load()
+}
+
+// Coalesced is how many reads joined one already running.
+func (s *WorkSource) Coalesced() int64 { return s.owners.coalesced.Load() + s.index.coalesced.Load() }
+
+// plainFile reports whether path is a regular file that is not a link: the
+// source never follows a link out of a conversation's folder.
+func plainFile(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// plainDir is the same for the folder itself.
+func plainDir(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.IsDir()
+}
 
 // workSources are the files a conversation's tasks come from, in a fixed order.
 func workSources(dir string) []string {
@@ -131,9 +224,9 @@ func workSources(dir string) []string {
 }
 
 // Stamp names the sources of the conversation in dir as they are right now: stat
-// calls only. The empty string is a folder that is not there.
+// calls only. The empty string is a folder that is not there, or is a link.
 func (s *WorkSource) Stamp(dir string) string {
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+	if !plainDir(dir) {
 		return ""
 	}
 	var b strings.Builder
@@ -145,9 +238,9 @@ func (s *WorkSource) Stamp(dir string) string {
 }
 
 // Owner is the facts of the conversation owner, whose folder is dir. The same
-// stamp answers from memory; a changed one is read once, by whoever asks first,
-// and the others get that answer. A cancelled ctx stops the read between its
-// files and caches nothing.
+// stamp answers from memory; a changed one is read once, by whoever asks first
+// (the others wait for that read), outside every lock. A cancelled ctx stops
+// the wait, and the read itself when nobody is waiting.
 func (s *WorkSource) Owner(ctx context.Context, owner, dir string) (*OwnerFacts, error) {
 	if !workgraph.ValidOwner(owner) {
 		return nil, ErrWorkOwnerMissing
@@ -156,74 +249,119 @@ func (s *WorkSource) Owner(ctx context.Context, owner, dir string) (*OwnerFacts,
 	if stamp == "" {
 		return nil, ErrWorkOwnerMissing
 	}
-	s.mu.Lock()
-	if e := s.owners[dir]; e != nil && e.stamp == stamp && e.facts.Owner == owner {
-		facts := e.facts
-		s.mu.Unlock()
-		return facts, nil
+	if v, ok := s.owners.get(dir, stamp); ok && v.(*OwnerFacts).Owner == owner {
+		return v.(*OwnerFacts), nil
 	}
-	s.mu.Unlock()
-	// A READ MUST NOT BE CACHED UNDER A STAMP THE READ ITSELF MOVED. Opening a
-	// WAL database to look at it can create its side files, so the stamp taken
-	// before the read is not the one the files settle at; the read is made again
-	// under the new one, and a result is kept only when the files held still
-	// across it. A conversation that is being written to as it is read is served
-	// from what was read and not remembered.
+	v, err := s.owners.do(ctx, dir+"\x00"+owner+"\x00"+stamp, func(rctx context.Context) (any, error) {
+		return s.readStable(rctx, owner, dir, stamp)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*OwnerFacts), nil
+}
+
+// readStable reads a conversation and keeps it only if its files held still.
+//
+// A READ MUST NOT BE CACHED UNDER A STAMP THE READ ITSELF MOVED. Opening a WAL
+// database to look at it can create its side files, so the stamp taken before
+// the read is not the one the files settle at; the read is made again under the
+// new one, and a result is kept only when the files held still across it. A
+// conversation that is being written to as it is read is served from what was
+// read and not remembered.
+func (s *WorkSource) readStable(ctx context.Context, owner, dir, stamp string) (*OwnerFacts, error) {
 	var facts *OwnerFacts
 	for pass := 0; pass < 2; pass++ {
 		var err error
-		if facts, err = readOwner(ctx, owner, dir, stamp); err != nil {
+		if facts, err = s.readOwner(ctx, owner, dir, stamp); err != nil {
 			return nil, err
 		}
 		s.parses.Add(1)
-		if after := s.Stamp(dir); after == stamp {
-			s.mu.Lock()
-			s.owners[dir] = &ownerEntry{stamp: stamp, facts: facts}
-			s.mu.Unlock()
-			break
-		} else {
-			stamp = after
+		after := s.Stamp(dir)
+		if after == stamp {
+			s.owners.put(dir, stamp, facts, facts.Bytes)
+			return facts, nil
 		}
+		stamp = after
 	}
 	return facts, nil
 }
 
 // Forget drops what is held for the conversation in dir.
-func (s *WorkSource) Forget(dir string) {
-	s.mu.Lock()
-	delete(s.owners, dir)
-	s.mu.Unlock()
-}
+func (s *WorkSource) Forget(dir string) { s.owners.forget(dir) }
+
+// loopCheck is how many items a loop handles between looks at its context.
+const loopCheck = 1024
 
 // readOwner builds one conversation's projection from its files.
-func readOwner(ctx context.Context, owner, dir, stamp string) (*OwnerFacts, error) {
+func (s *WorkSource) readOwner(ctx context.Context, owner, dir, stamp string) (*OwnerFacts, error) {
 	out := &OwnerFacts{Owner: owner, Stamp: stamp}
-	doc, issue := readTaskDocument(dir)
+	doc, issue := s.readTaskDocument(dir)
 	out.Issue = issue
-	titles := wgRunTitles(doc.Runs)
-	for _, r := range doc.Nodes {
-		out.Facts = append(out.Facts, nodeFact(owner, r))
+	if err := s.projectDocument(ctx, out, doc); err != nil {
+		return nil, err
 	}
-	for _, r := range doc.Runs {
-		out.Facts = append(out.Facts, runFact(owner, r, titles))
-	}
+	plan := s.readPlanFacts(ctx, owner, dir)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if plan := readPlanFacts(ctx, owner, dir); plan.issue != "" {
+	if plan.issue != "" {
 		out.Issue = firstIssue(out.Issue, plan.issue)
 	} else {
-		out.Facts = append(out.Facts, plan.facts...)
+		out.add(s.limits, plan.facts)
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	return out, s.seal(ctx, out)
+}
+
+// projectDocument projects the checkpoint's nodes and run rows, up to the
+// per-conversation bound.
+func (s *WorkSource) projectDocument(ctx context.Context, out *OwnerFacts, doc taskDocument) error {
+	titles := wgRunTitles(doc.Runs)
+	for i, r := range doc.Nodes {
+		if i%loopCheck == 0 && ctx.Err() != nil {
+			return ctx.Err()
+		}
+		out.add(s.limits, []workgraph.Fact{nodeFact(out.Owner, r)})
 	}
+	for i, r := range doc.Runs {
+		if i%loopCheck == 0 && ctx.Err() != nil {
+			return ctx.Err()
+		}
+		out.add(s.limits, []workgraph.Fact{runFact(out.Owner, r, titles)})
+	}
+	return nil
+}
+
+// add appends facts within the bounds, bounding each fact's waits too. What does
+// not fit is left out and the conversation says partial: nothing is cut silently.
+func (o *OwnerFacts) add(l WorkLimits, facts []workgraph.Fact) {
+	for _, f := range facts {
+		if len(o.Facts) >= l.Facts {
+			o.Issue = firstIssue(o.Issue, WorkIssuePartial)
+			return
+		}
+		if len(f.Waits) > l.Waits {
+			f.Waits = f.Waits[:l.Waits]
+			o.Issue = firstIssue(o.Issue, WorkIssuePartial)
+		}
+		o.Facts = append(o.Facts, f)
+	}
+}
+
+// seal indexes the facts, names the conversations they wait on and prices the
+// projection for the cache.
+func (s *WorkSource) seal(ctx context.Context, out *OwnerFacts) error {
 	out.byID = make(map[string]int32, len(out.Facts))
 	others := map[string]bool{}
 	for i := range out.Facts {
-		out.byID[out.Facts[i].Node.Ref.Task] = int32(i)
-		for _, w := range out.Facts[i].Waits {
-			if w.On.Owner != owner {
+		if i%loopCheck == 0 && ctx.Err() != nil {
+			return ctx.Err()
+		}
+		f := &out.Facts[i]
+		out.byID[f.Node.Ref.Task] = int32(i)
+		out.Bytes += factBytes(f)
+		for _, w := range f.Waits {
+			if w.On.Owner != out.Owner {
 				others[w.On.Owner] = true
 			}
 		}
@@ -232,7 +370,28 @@ func readOwner(ctx context.Context, owner, dir, stamp string) (*OwnerFacts, erro
 		out.Externals = append(out.Externals, other)
 	}
 	sort.Strings(out.Externals)
-	return out, nil
+	out.Bytes += int64(len(out.byID)) * 48
+	return nil
+}
+
+// factBytes is an estimate of what one fact holds: its fixed part, its strings
+// and what it points at. It is an estimate for a budget, not a measurement.
+func factBytes(f *workgraph.Fact) int64 {
+	n := &f.Node
+	b := int64(768) + int64(len(n.ID)+len(n.Ref.Owner)+len(n.Ref.Task)+len(n.Kind)+len(n.Title)+len(n.Parent)+len(n.Model)+len(n.Ending))
+	if n.Instructions != nil {
+		b += 48 + int64(len(n.Instructions.Text)+len(n.Instructions.Source))
+	}
+	if n.Group != nil {
+		b += 48 + int64(len(n.Group.ID)+len(n.Group.Title))
+	}
+	for _, p := range n.Files.Paths {
+		b += 16 + int64(len(p))
+	}
+	for _, w := range f.Waits {
+		b += 64 + int64(len(w.On.Owner)+len(w.On.Task))
+	}
+	return b
 }
 
 // FileStamp names a file's present state (size, modification instant, inode), "-"
@@ -249,19 +408,21 @@ func firstIssue(a, b string) string {
 // readTaskDocument is the conversation's tasks.json exactly as the engine
 // itself would load it (validated, with the person's deletions applied). A
 // folder with no checkpoint has no tasks and no issue; a checkpoint that will not
-// parse is an issue and no tasks, the way the engine drops it whole.
-func readTaskDocument(dir string) (taskDocument, string) {
+// parse is an issue and no tasks, the way the engine drops it whole. A link, or
+// a file over the bound, is never opened: it is unreadable, or too_large, from
+// its stat alone.
+func (s *WorkSource) readTaskDocument(dir string) (taskDocument, string) {
 	file := Place{Dir: dir}.Tasks()
-	info, err := os.Stat(file)
+	info, err := os.Lstat(file)
 	switch {
 	case os.IsNotExist(err):
 		return taskDocument{}, ""
-	case err != nil:
+	case err != nil, !info.Mode().IsRegular():
 		return taskDocument{}, WorkIssueUnreadable
-	case info.Size() > workFileMax:
+	case info.Size() > s.limits.FileMax:
 		return taskDocument{}, WorkIssueTooLarge
 	}
-	content, err := os.ReadFile(file)
+	content, err := readBounded(file, s.limits.FileMax)
 	if err != nil {
 		return taskDocument{}, WorkIssueUnreadable
 	}
@@ -269,7 +430,29 @@ func readTaskDocument(dir string) (taskDocument, string) {
 	if err != nil {
 		return taskDocument{}, WorkIssueUnreadable
 	}
+	deleted := filepath.Join(dir, taskDeletedFile)
+	if _, err := os.Lstat(deleted); err == nil && !plainFile(deleted) {
+		return taskDocument{}, WorkIssueUnreadable
+	}
 	return filterDeletedDocument(doc, taskDeletions(filepath.Join(dir, placeTranscript))), ""
+}
+
+// readBounded reads a file and never more than limit bytes of it: a file that
+// grew between the stat and the read is refused, not read whole.
+func readBounded(path string, limit int64) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(content)) > limit {
+		return nil, errors.New("the file grew past its bound")
+	}
+	return content, nil
 }
 
 // planRead is what the conversation's plan stores gave.
@@ -280,18 +463,30 @@ type planRead struct {
 
 // readPlanFacts reads every plan store of the conversation, ended runs first,
 // each through a read-only connection and only the rows this conversation's
-// own tag names. A store that will not open is an issue, and the conversation
-// then says so rather than showing a plan with a hole in it.
-func readPlanFacts(ctx context.Context, owner, dir string) planRead {
+// own tag names. A store that is a link, is over the byte bound together with
+// its journal, or will not open is an issue, and the conversation then says so
+// rather than showing a plan with a hole in it.
+func (s *WorkSource) readPlanFacts(ctx context.Context, owner, dir string) planRead {
 	db := filepath.Join(dir, planStoreFilename)
 	var out planRead
-	paths := append(planArchivePaths(db), db)
-	for _, path := range paths {
+	var bytes int64
+	for _, path := range append(planArchivePaths(db), db) {
 		if ctx.Err() != nil {
 			return out
 		}
-		if _, err := os.Stat(path); err != nil {
+		info, err := os.Lstat(path)
+		if err != nil {
 			continue
+		}
+		bytes += info.Size()
+		if wal, err := os.Lstat(path + "-wal"); err == nil {
+			bytes += wal.Size()
+		}
+		switch {
+		case !info.Mode().IsRegular():
+			return planRead{issue: WorkIssueUnreadable}
+		case bytes > s.limits.PlanMax:
+			return planRead{issue: WorkIssueTooLarge}
 		}
 		facts, err := planStoreFacts(owner, path)
 		if err != nil {
@@ -324,58 +519,87 @@ func planStoreFacts(owner, path string) ([]workgraph.Fact, error) {
 	return out, nil
 }
 
-// Checks is the project's check index at path, parsed once per change. A missing
-// index is an empty one.
+// Checks is the project's check index at path, parsed once per change and
+// remembered within the budget. A missing index is an empty one; a link is not
+// followed.
 func (s *WorkSource) Checks(ctx context.Context, path string) (*CheckIndex, error) {
 	stamp := wgStamp(path)
-	s.mu.Lock()
-	if e := s.index[path]; e != nil && e.stamp == stamp {
-		index := e.index
-		s.mu.Unlock()
-		return index, nil
+	if v, ok := s.index.get(path, stamp); ok {
+		return v.(*CheckIndex), nil
 	}
-	s.mu.Unlock()
-	index, err := readCheckIndex(ctx, path, stamp)
+	v, err := s.index.do(ctx, path+"\x00"+stamp, func(rctx context.Context) (any, error) {
+		index, err := readCheckIndex(rctx, path, stamp, s.limits.IndexMax)
+		if err != nil {
+			return nil, err
+		}
+		s.index.put(path, stamp, index, index.Bytes)
+		return index, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	s.mu.Lock()
-	s.index[path] = &indexEntry{stamp: stamp, index: index}
-	s.mu.Unlock()
-	return index, nil
+	return v.(*CheckIndex), nil
 }
 
-// readCheckIndex streams the index and keeps only the rows whose verdict rested
-// on running the declared checks, so its memory is the checks and not the file.
-func readCheckIndex(ctx context.Context, path, stamp string) (*CheckIndex, error) {
+// readCheckIndex streams the NEWEST `limit` bytes of the index and keeps only
+// the rows whose verdict rested on running the declared checks, so its memory
+// is the checks and not the file. Older bytes are not read and the index says
+// partial.
+func readCheckIndex(ctx context.Context, path, stamp string, limit int64) (*CheckIndex, error) {
 	out := &CheckIndex{Stamp: stamp, by: map[string]*workgraph.TaskChecks{}}
-	file, err := os.Open(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return out, nil
 		}
 		return nil, err
 	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("the index is not a plain file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
 	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 4<<10), 256<<10)
-	for n := 0; scanner.Scan(); n++ {
-		if n%1024 == 0 && ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		var row struct {
-			ID           string               `json:"id"`
-			SessionID    string               `json:"sessionId"`
-			VerdictBasis *plandb.VerdictBasis `json:"verdictBasis"`
-		}
-		if json.Unmarshal(scanner.Bytes(), &row) != nil || row.SessionID == "" {
-			continue
-		}
-		if checks := wgChecks(row.VerdictBasis); checks != nil {
-			out.by[row.SessionID+":"+row.ID] = checks
+	skipFirst := false
+	if info.Size() > limit {
+		out.Partial, skipFirst = true, true
+		if _, err := file.Seek(info.Size()-limit, io.SeekStart); err != nil {
+			return nil, err
 		}
 	}
+	scanner := bufio.NewScanner(io.LimitReader(file, limit))
+	scanner.Buffer(make([]byte, 0, 4<<10), 256<<10)
+	for n := 0; scanner.Scan(); n++ {
+		if n%loopCheck == 0 && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if skipFirst {
+			// the first line of a tail read is a fragment
+			skipFirst = false
+			continue
+		}
+		wgIndexRow(out, scanner.Bytes())
+	}
 	return out, nil
+}
+
+// wgIndexRow records one index line's check runs, if its verdict rested on any.
+func wgIndexRow(out *CheckIndex, line []byte) {
+	var row struct {
+		ID           string               `json:"id"`
+		SessionID    string               `json:"sessionId"`
+		VerdictBasis *plandb.VerdictBasis `json:"verdictBasis"`
+	}
+	if json.Unmarshal(line, &row) != nil || row.SessionID == "" || !workgraph.ValidOwner(row.SessionID) {
+		return
+	}
+	if checks := wgChecks(row.VerdictBasis); checks != nil {
+		key := row.SessionID + ":" + row.ID
+		out.by[key] = checks
+		out.Bytes += int64(len(key)) + 96
+	}
 }
 
 // ExternalReader is the [ExternalTasks] reader a process supplies to its
