@@ -43,6 +43,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
@@ -244,7 +246,7 @@ func (a *Agent) snapshotShellOutputs(declared []string) ([]shellBefore, string) 
 			return nil, "outputs holds an empty path"
 		case len(raw) > shellOutputPathMax:
 			return nil, fmt.Sprintf("an outputs path is over %d bytes", shellOutputPathMax)
-		case strings.ContainsFunc(raw, func(r rune) bool { return r < 0x20 || r == 0x7f }):
+		case !utf8.ValidString(raw) || strings.ContainsFunc(raw, func(r rune) bool { return unicode.IsControl(r) || r == 0x202e }):
 			return nil, "an outputs path holds a control character"
 		}
 		path := a.shellOutputPath(raw)
