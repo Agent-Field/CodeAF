@@ -31,12 +31,12 @@ func (a *Agent) anchorWorkspaceTools() []bare.Tool {
 		Name:        "workspace",
 		Description: anchorWorkspaceDescription,
 		Schema:      anchorWorkspaceSchema,
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Path string `json:"path"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			path, err := a.AnchorWorkspace(parsed.Path)
 			if err != nil {

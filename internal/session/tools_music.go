@@ -137,18 +137,18 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 		Execute: func(callCtx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateMusicArguments
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			prompt := strings.TrimSpace(parsed.Prompt)
 			if prompt == "" {
-				return "Invalid arguments: prompt is required", true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: prompt is required"), true, nil
 			}
 			// The call's own choice, resolved before the job starts, so a word
 			// that matches nothing costs neither money nor a job row
 			// (tools_image.go states the shape).
 			model, refusal := a.mediaPick(modalityMusic, parsed.Model, defaultModel)
 			if refusal != "" {
-				return "Invalid arguments: " + refusal, true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: "+refusal), true, nil
 			}
 
 			started, ctx, err := a.jobs.startRender(musicLabel, prompt)

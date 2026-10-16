@@ -3374,7 +3374,7 @@ func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool
 			Command string `json:"command"`
 		}
 		if err := decodeToolArguments(args, &fields); err != nil {
-			return "Invalid arguments: " + err.Error(), true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 		}
 		command := fields.Command
 		if voice == auditShell {
@@ -3386,7 +3386,7 @@ func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool
 				fields.Command = command
 				rewritten, err := json.Marshal(fields)
 				if err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 				args = rewritten
 			}

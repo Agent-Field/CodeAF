@@ -417,11 +417,11 @@ func (a *Agent) stoppedOnProcessRule() TaskEnding {
 func (a *Agent) withholdSubmission(hub *eventHub, calls []ai.ToolCall, hold ruleHold) {
 	demand := hold.rule.demand()
 	for _, call := range calls {
-		a.record(ai.Message{
+		a.recordToolResult(ai.Message{
 			Role:       "tool",
 			ToolCallID: call.ID,
 			Content:    []ai.ContentPart{{Type: "text", Text: demand}},
-		})
+		}, toolResult{text: demand, isError: true, harness: true})
 		hub.send(Event{
 			Kind:        EventToolFailed,
 			Tool:        call.Function.Name,

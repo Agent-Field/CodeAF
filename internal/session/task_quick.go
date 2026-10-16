@@ -442,14 +442,14 @@ func (a *Agent) quickTools() []bare.Tool {
 // error, the way every other door on this belt answers: a line the model forgot
 // to write is a call it can make again, and an error would end the turn over a
 // missing field.
-func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) startQuickTask(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed quickArguments
 	// THROUGH THE ONE DECODER, like every other tool on this belt (toolargs.go):
 	// a model that sent a string where a list belongs gets a sentence naming the
 	// field and the repair rather than encoding/json's own words, and a law test
 	// holds every door to it.
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	id, spec, refusal := a.admitQuick(parsed.askOf())
 	if refusal.said != "" {
@@ -777,7 +777,7 @@ func (a *Agent) itemsTool() bare.Tool {
 // tickQuickItems is the `items` call: it does nothing itself and hands the
 // change to the node's own door, which is the only thing that may touch a list
 // under the graph's lock.
-func (a *Agent) tickQuickItems(_ context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) tickQuickItems(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	door := a.config.quickItems
 	if door == nil {
 		// Unreachable through the belt — the tool is absent without a door — and
@@ -787,7 +787,7 @@ func (a *Agent) tickQuickItems(_ context.Context, args json.RawMessage) (string,
 	}
 	var parsed quickItemsArguments
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	return door(parsed.Done, parsed.Add), false, nil
 }

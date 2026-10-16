@@ -1818,3 +1818,50 @@ func TestAppSaysNestedTasksLive(t *testing.T) {
 		t.Fatalf("tasks.list = %+v, %v", tasks, err)
 	}
 }
+
+// ONLY A NOTICE THE ENGINE TYPED AT ITS PRODUCER CARRIES FACTS. An ordinary
+// notice that happens to say the same words stays unclassified and visible.
+func TestAppNoticeEntriesCarryOnlyTheEnginesTypedKinds(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{
+		{Kind: session.EventNotice, Text: "skills carried: review, deploy", NoticeKind: session.NoticeKindSkills, Skills: []string{"review", "deploy"}},
+		{Kind: session.EventNotice, Text: "noticed and remembered · likes short answers", NoticeKind: session.NoticeKindMemory, Unrecorded: true},
+		{Kind: session.EventNotice, Text: "skills carried: look-alike"},
+		{Kind: session.EventNotice, Text: "memory is full", Unrecorded: true},
+		{Kind: session.EventTurnDone},
+	}}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Send(agent.ID, "go", ""); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+	byText := map[string]appwire.Entry{}
+	rec.mu.Lock()
+	for _, data := range rec.data {
+		if added, ok := data.(appwire.EntryAdded); ok && added.Entry.Kind == appwire.EntryNotice {
+			byText[added.Entry.Text] = added.Entry
+		}
+	}
+	rec.mu.Unlock()
+	skills := byText["skills carried: review, deploy"]
+	if skills.NoticeKind != "skills" || len(skills.Skills) != 2 || skills.Skills[1] != "deploy" || skills.Unrecorded || !skills.Quiet {
+		t.Fatalf("skills notice = %+v", skills)
+	}
+	memory := byText["noticed and remembered · likes short answers"]
+	if memory.NoticeKind != "memory" || !memory.Unrecorded || len(memory.Skills) != 0 {
+		t.Fatalf("memory notice = %+v", memory)
+	}
+	for _, plain := range []string{"skills carried: look-alike", "memory is full"} {
+		got, ok := byText[plain]
+		if !ok || got.NoticeKind != "" || got.Skills != nil || got.Unrecorded != (plain == "memory is full") || !got.Quiet {
+			t.Fatalf("ordinary notice %q = %+v (present %v)", plain, got, ok)
+		}
+	}
+}

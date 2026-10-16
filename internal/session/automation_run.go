@@ -106,11 +106,11 @@ func (a *Agent) automationReportTools() []bare.Tool {
 				Summary string `json:"summary"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			status := strings.ToLower(strings.TrimSpace(parsed.Status))
 			if status != "done" && status != "incomplete" {
-				return "Invalid arguments: status is done or incomplete", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: status is done or incomplete"), true, nil
 			}
 			run.report(status, strings.TrimSpace(parsed.Summary))
 			return "recorded. End your turn now, with no further calls.", false, nil

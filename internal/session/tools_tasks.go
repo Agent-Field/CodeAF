@@ -230,32 +230,32 @@ func (a *Agent) tasksTool() bare.Tool {
 			// on" takes no arguments — so only malformed bytes are an error.
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			scope, known := taskScopeWord(parsed.Scope)
 			if !known {
-				return fmt.Sprintf("Invalid arguments: scope takes %q or %q.", taskScopeProject, taskScopeEverywhere), true, nil
+				return rejectToolArguments(ctx, fmt.Sprintf("Invalid arguments: scope takes %q or %q.", taskScopeProject, taskScopeEverywhere)), true, nil
 			}
 			token := taskToken(parsed.ID)
 			if token == "" {
 				if strings.TrimSpace(parsed.Say) != "" {
-					return "Invalid arguments: say needs an id — it goes to one running task, not to a search", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: say needs an id — it goes to one running task, not to a search"), true, nil
 				}
 				if parsed.Continue {
-					return "Invalid arguments: continue needs an id — it re-arms one settled task, not a search", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: continue needs an id — it re-arms one settled task, not a search"), true, nil
 				}
 				if strings.TrimSpace(parsed.Resolve) != "" {
-					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search"), true, nil
 				}
 				if parsed.Forward {
-					return "Invalid arguments: forward needs an id — the person's words go to one running task, not to a search", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: forward needs an id — the person's words go to one running task, not to a search"), true, nil
 				}
 				if parsed.Stop {
-					return "Invalid arguments: stop needs an id — it ends one running task, not a search", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: stop needs an id — it ends one running task, not a search"), true, nil
 				}
 				if strings.TrimSpace(parsed.Note) != "" {
-					return "Invalid arguments: note needs an id — it is written onto one row of the run, not onto a search", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: note needs an id — it is written onto one row of the run, not onto a search"), true, nil
 				}
 				// THE RUN'S TASKS LEAD AND THE SHIPPED LISTING FOLLOWS. A conversation
 				// that has handed work to a run still has the tasks of earlier

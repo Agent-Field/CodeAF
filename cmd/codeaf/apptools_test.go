@@ -34,7 +34,7 @@ func TestAppToolRowsCarryTheWorkLogFacts(t *testing.T) {
 		{Kind: session.EventToolBegin, CallID: "c2", Tool: "grep", Args: `{"pattern":"MaxAttempts","path":"api/"}`, Batch: "c1"},
 		{Kind: session.EventToolOutput, CallID: "c1", Tool: "bash", Text: "ok acme/api/billing\n--- FAIL: TestRetry\nFAIL acme/api/webhooks\n"},
 		{Kind: session.EventToolFinished, CallID: "c1", Tool: "bash", Took: 1200 * time.Millisecond},
-		{Kind: session.EventToolFailed, CallID: "c1", Tool: "bash", Hint: "FAIL acme/api/webhooks", Exit: &exit},
+		{Kind: session.EventToolFailed, CallID: "c1", Tool: "bash", Hint: "FAIL acme/api/webhooks", Exit: &exit, ToolInvoked: true},
 		{Kind: session.EventToolEnd, CallID: "c2", Tool: "grep", Output: "api/retry.go:12: MaxAttempts = 5"},
 		{Kind: session.EventToolBegin, CallID: "c3", Tool: "edit", Args: `{"path":"api/deliver.go","edits":[{"oldText":"a\nb\n","newText":"a\nc\nd\n"}]}`},
 		{Kind: session.EventToolEnd, CallID: "c3", Tool: "edit"},
@@ -117,5 +117,67 @@ func TestAppToolKindsReadTheEnginesFamilies(t *testing.T) {
 	}
 	if code := appExitOf("boom\n\nCommand exited with code 2"); code == nil || *code != 2 {
 		t.Fatalf("the exit code = %v", code)
+	}
+}
+
+// A CALL TURNED AWAY BEFORE IT RAN SAYS SO ON ITS END ROW AND ON ITS HISTORY
+// ROW, AND A CALL THAT RAN DOES NOT, WHATEVER ITS OUTPUT SAYS. The group the
+// call began in survives the end, and the engine's observation times are not
+// turned into durations.
+func TestAppToolRowsCarryTheRejectedBeforeRunFact(t *testing.T) {
+	exit := 3
+	conv := &fakeConversation{script: []session.Event{
+		{Kind: session.EventToolBegin, CallID: "r1", Tool: "bash", Args: `{"command":`, Batch: "b9"},
+		{Kind: session.EventToolBegin, CallID: "r2", Tool: "bash", Args: `{"command":"exit 3"}`, Batch: "b9"},
+		{Kind: session.EventToolFailed, CallID: "r1", Tool: "bash", Hint: "Invalid arguments", Output: "Invalid arguments: the arguments are not valid JSON — send one JSON object", RejectedBeforeRun: true},
+		{Kind: session.EventToolFailed, CallID: "r2", Tool: "bash", Hint: "Invalid arguments: ran", Output: "Invalid arguments: ran\nCommand exited with code 3", Exit: &exit, ToolInvoked: true},
+		{Kind: session.EventToolBegin, CallID: "denied", Tool: "bash", Batch: "b9"},
+		{Kind: session.EventToolFailed, CallID: "denied", Tool: "bash", HarnessMade: true, Refused: true},
+		{Kind: session.EventTurnDone},
+	}}
+	backend, rec, agent := workBackend(t, conv)
+	if _, err := backend.Send(agent.ID, "go", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	rejected := toolRow(rec, t, func(row appwire.TurnTool) bool { return row.Call == "r1" && row.Phase == appwire.PhaseEnd })
+	if !rejected.RejectedBeforeRun || rejected.Batch != "b9" || rejected.OK == nil || *rejected.OK {
+		t.Fatalf("the rejected call's end row = %+v", rejected)
+	}
+	ran := toolRow(rec, t, func(row appwire.TurnTool) bool { return row.Call == "r2" && row.Phase == appwire.PhaseEnd })
+	if !ran.Invoked || ran.RejectedBeforeRun || ran.Batch != "b9" || ran.ExitCode == nil || *ran.ExitCode != 3 {
+		t.Fatalf("the executed call's end row = %+v", ran)
+	}
+
+	denied := toolRow(rec, t, func(row appwire.TurnTool) bool { return row.Call == "denied" && row.Phase == appwire.PhaseEnd })
+	if !denied.Refused || !denied.HarnessMade || denied.RejectedBeforeRun {
+		t.Fatalf("door row: %+v", denied)
+	}
+	a, _ := backend.find(agent.ID)
+	for _, id := range []string{"denied", "uncached-denied"} {
+		facts := backend.appEntryFacts(a, session.DisplayEntry{Tool: "bash", CallID: id, ToolResult: session.ToolResultHarnessMade | session.ToolResultRefused})
+		if !facts.Refused || !facts.HarnessMade || facts.RejectedBeforeRun {
+			t.Fatalf("door history: %+v", facts)
+		}
+	}
+	// The cached branch: this process saw r1 and r2, and the record agrees.
+	if facts := backend.appEntryFacts(a, session.DisplayEntry{Tool: "bash", CallID: "r1", Answered: true, Output: "actually ran"}); facts.RejectedBeforeRun {
+		t.Fatal("cached later rejection leaked onto another same-ID occurrence")
+	}
+	if facts := backend.appEntryFacts(a, session.DisplayEntry{Tool: "bash", CallID: "r1", ToolResult: session.ToolResultRejectedBeforeRun}); !facts.RejectedBeforeRun || facts.Batch != "b9" {
+		t.Fatalf("cached rejected history facts = %+v", facts)
+	}
+	if facts := backend.appEntryFacts(a, session.DisplayEntry{Tool: "bash", CallID: "r2", Output: "Invalid arguments: ran"}); facts.RejectedBeforeRun {
+		t.Fatalf("cached executed history facts = %+v", facts)
+	}
+	// The uncached branch: a reopened conversation has only its record, and
+	// invents neither a time nor a rejection from the words.
+	reopened := backend.appEntryFacts(a, session.DisplayEntry{Tool: "bash", CallID: "old1", ToolResult: session.ToolResultRejectedBeforeRun, Output: "Invalid arguments: x"})
+	if !reopened.RejectedBeforeRun || reopened.StartedAt != nil || reopened.EndedAt != nil {
+		t.Fatalf("reopened rejected history facts = %+v", reopened)
+	}
+	legacy := backend.appEntryFacts(a, session.DisplayEntry{Tool: "bash", CallID: "old2", Output: "Invalid arguments: legacy"})
+	if legacy.Invoked || legacy.Refused || legacy.HarnessMade || legacy.RejectedBeforeRun || legacy.StartedAt != nil || legacy.EndedAt != nil {
+		t.Fatalf("a legacy row was classified from its words: %+v", legacy)
 	}
 }

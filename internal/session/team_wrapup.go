@@ -321,11 +321,11 @@ func (a *Agent) teamCloseReportTool(ctx context.Context, args json.RawMessage) (
 		Team  string   `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	done := strings.TrimSpace(parsed.Done)
 	if done == "" {
-		return invalidArgumentsPrefix + "done is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"done is empty"), true, nil
 	}
 	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {

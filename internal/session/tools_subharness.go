@@ -144,13 +144,13 @@ func (a *Agent) proposeSubharnessTool() bare.Tool {
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			name := strings.TrimSpace(parsed.Name)
 			reason := strings.TrimSpace(parsed.Reason)
 			if name == "" || reason == "" {
-				return "Invalid arguments: propose_subharness needs both the program's exact name and one line saying why it matched — the reason is what the person reads before deciding.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: propose_subharness needs both the program's exact name and one line saying why it matched — the reason is what the person reads before deciding."), true, nil
 			}
 			card, err := a.SubharnessIntake(name)
 			if err != nil {

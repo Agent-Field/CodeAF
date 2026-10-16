@@ -79,17 +79,17 @@ func (a *Agent) speakTool(client MediaGenerator, defaultModel string) bare.Tool 
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed speakArguments
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			text := strings.TrimSpace(parsed.Text)
 			if text == "" {
-				return "Invalid arguments: text is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: text is required"), true, nil
 			}
 			// The call's own choice, resolved before anything is paid for
 			// (tools_image.go states the shape).
 			model, refusal := a.mediaPick(modalitySpeech, parsed.Model, defaultModel)
 			if refusal != "" {
-				return "Invalid arguments: " + refusal, true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 			}
 
 			// Every failure is a TOOL ERROR and never a Go error, exactly as

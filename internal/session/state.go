@@ -736,7 +736,7 @@ func (a *Agent) stateTools() []bare.Tool {
 			Name:        "track",
 			Description: trackDescription,
 			Schema:      json.RawMessage(trackSchemaJSON),
-			Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+			Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 				var parsed struct {
 					Text     string `json:"text"`
 					Kind     string `json:"kind"`
@@ -744,7 +744,7 @@ func (a *Agent) stateTools() []bare.Tool {
 					Status   string `json:"status"`
 				}
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 				kind := stateKind(strings.ToLower(strings.TrimSpace(parsed.Kind)))
 				status := stateStatus(strings.ToLower(strings.TrimSpace(parsed.Status)))
@@ -758,7 +758,7 @@ func (a *Agent) stateTools() []bare.Tool {
 				}
 				record, err := a.state().track(parsed.Text, kind, status, parsed.Evidence)
 				if err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return stateFailureText(ctx, record, "Invalid arguments: "+err.Error()), true, nil
 				}
 				return fmt.Sprintf("Tracked %s (%s, %s):\n%s", record.ID, record.Kind, record.Status, stateRow(record)), false, nil
 			},
@@ -767,18 +767,18 @@ func (a *Agent) stateTools() []bare.Tool {
 			Name:        "commit",
 			Description: commitDescription,
 			Schema:      json.RawMessage(commitSchemaJSON),
-			Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+			Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 				var parsed struct {
 					ID string `json:"id"`
 				}
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 				record, changed, err := a.state().commit(parsed.ID)
 				if err != nil {
 					// An unknown id is a mistake the model can fix with one call,
 					// so it is told which call.
-					return "Invalid arguments: " + err.Error() + "; call recall to see the current ids.", true, nil
+					return stateFailureText(ctx, record, "Invalid arguments: "+err.Error()+"; call recall to see the current ids."), true, nil
 				}
 				if !changed {
 					return fmt.Sprintf("%s was already %s; nothing changed.", record.ID, record.Status), false, nil
@@ -801,4 +801,13 @@ func (a *Agent) stateTools() []bare.Tool {
 			},
 		},
 	}
+}
+
+// A nonempty returned record proves the store reached mutation/persistence;
+// its save error is not an argument refusal, regardless of legacy error words.
+func stateFailureText(ctx context.Context, record stateRecord, text string) string {
+	if record.ID == "" {
+		return rejectToolArguments(ctx, text)
+	}
+	return text
 }

@@ -70,7 +70,7 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 				return inner.Execute(ctx, args)
 			}
 			if strings.TrimSpace(parsed.Path) == "" {
-				return "Invalid arguments: path is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: path is required"), true, nil
 			}
 			// The current bytes are read here and the combined result is
 			// handed to the inner tool, so the write itself keeps pi's whole

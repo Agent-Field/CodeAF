@@ -743,7 +743,12 @@ type Event struct {
 	// out of sight keeps such a line and draws it when the person brings the
 	// conversation back (tui3's keeper.go). Every other notice is either in the
 	// transcript already or said for the moment it is said in.
-	Unrecorded    bool `json:"Unrecorded,omitempty"`
+	Unrecorded bool `json:"Unrecorded,omitempty"`
+	// NoticeKind names which of the engine's own typed notices an EventNotice
+	// is: [NoticeKindSkills] or [NoticeKindMemory], set only at the producers
+	// ([turnSkillsNotice], [Agent.sayMemory]). Empty on every other notice, which
+	// stays ordinary; a surface never derives it from Text.
+	NoticeKind    string `json:"NoticeKind,omitempty"`
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
 	// Skills is the ordered list of skill names this turn carried, on the
@@ -857,6 +862,10 @@ type Event struct {
 	// output for any purpose other than showing it to a person.
 	Output string
 
+	// ToolInvoked is true only after actual handler dispatch. It does not prove
+	// a subprocess or network request occurred; argument validation can still reject.
+	ToolInvoked bool
+
 	// HarnessMade says this step's failure was written by the HARNESS and not by
 	// the world the model reached for: a hand that was withdrawn (withdrawn.go),
 	// a door that refused the call (consent.go and the rest of the pre-action
@@ -886,6 +895,16 @@ type Event struct {
 	// fact is kept here, where the attempted action is known, so no reader has to
 	// tell the two apart by the words of the answer.
 	Refused bool
+
+	// RejectedBeforeRun says the tool refused this call's arguments before it did
+	// any of its work: malformed JSON, a missing required argument, a value out
+	// of range. It is set on EventToolFailed and nowhere else, and only by the
+	// typed marker a handler's known argument-validation return sets
+	// ([rejectToolArguments]) — never by reading the result's words, so a command
+	// that prints "Invalid arguments", or a server that answers with it, is a
+	// call that RAN. It is true-only and omitted otherwise, so an older peer and
+	// every ordinary failure serialise as before.
+	RejectedBeforeRun bool `json:"RejectedBeforeRun,omitempty"`
 
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind but

@@ -1423,11 +1423,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// order they finished: the pairing with tool_call_id is by id, but the
 		// transcript a later step reads is a narrative.
 		for index, call := range calls {
-			a.record(ai.Message{
+			a.recordToolResult(ai.Message{
 				Role:       "tool",
 				ToolCallID: call.ID,
 				Content:    []ai.ContentPart{{Type: "text", Text: results[index].text}},
-			})
+			}, results[index])
 		}
 
 		// `post-feedback` (hooks.go): the step boundary, where the turn's ledger
@@ -3082,6 +3082,14 @@ type toolResult struct {
 	// failure sends somebody debugging the tool instead of the gate
 	// (internal/trace's ToolEvent).
 	refusedBy string
+	// rejected says the tool refused this call's ARGUMENTS before it did any of
+	// its work, by the typed marker a handler's known validation return sets
+	// (toolrejection.go) or by dispatch's own bash precheck. It is never read
+	// back from text, so an executed command or request whose output says
+	// "Invalid arguments" is not one. It rides out on [Event.RejectedBeforeRun]
+	// and into the call's journal record.
+	rejected bool
+	invoked  bool
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -3531,6 +3539,10 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				// answer with a veto's author on it ([episode.preAction]); a
 				// correction about the reply's form has none.
 				Refused: results[index].harness && results[index].refusedBy != "",
+				// AND WHETHER THE TOOL TURNED THE ARGUMENTS AWAY BEFORE IT RAN, as a
+				// typed fact from the handler's own validation return.
+				RejectedBeforeRun: results[index].rejected,
+				ToolInvoked:       results[index].invoked,
 			})
 			continue
 		}
@@ -3538,12 +3550,13 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		// and the person already read what the call was going to do. Output is
 		// there for a person who asks to see it anyway.
 		a.sendBeltStep(ctx, hub, Event{
-			Kind:   EventToolEnd,
-			Tool:   call.Function.Name,
-			Args:   rendered[index],
-			Output: capOutput(results[index].text),
-			CallID: call.ID,
-			Exit:   resultExit(results[index].text),
+			Kind:        EventToolEnd,
+			ToolInvoked: results[index].invoked,
+			Tool:        call.Function.Name,
+			Args:        rendered[index],
+			Output:      capOutput(results[index].text),
+			CallID:      call.ID,
+			Exit:        resultExit(results[index].text),
 		})
 	}
 	return results
@@ -3621,7 +3634,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 			continue
 		}
 		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
-			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true})
+			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true, rejected: true})
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {
@@ -3654,7 +3667,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		if hub != nil && (a.config.LiveToolOutput || a.liveOutputWanted.Load() > 0) {
 			callCtx = bare.WithBashOutput(callCtx, &shellOutput{hub: hub, id: call.ID, tool: call.Function.Name, bytes: liveToolOutputBytes, lines: liveToolOutputLines})
 		}
-		text, isError, err := a.executeTaskTool(callCtx, tool, running, args)
+		// THE CALL-LOCAL MARK a handler's argument refusal sets (toolrejection.go):
+		// planted here so it lives and dies with this one call.
+		callCtx, rejection := withToolRejection(callCtx)
+		observedTool, invocation := observeToolInvocation(tool)
+		text, isError, err := a.executeTaskTool(callCtx, observedTool, running, args)
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
 		// yet — it goes out with the batch, in call order, because that is the
 		// order the transcript is written in — but the fact that this call is
@@ -3680,7 +3697,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
 			// result, the same shape a thrown error takes on the wire.
-			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true})
+			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, invoked: invocation.Load()})
 		}
 		// AND THE LAST THING THAT HAPPENS TO A RESULT IS THE ERROR→FIX SIDECAR
 		// (fixrecall.go). A failure this machine has seen before leaves with one
@@ -3694,7 +3711,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// observer of results would otherwise belong: runTurn writes each result
 		// into the transcript BEFORE that seam runs, so a line added there would
 		// be a line no model was ever sent.
-		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError})
+		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun()})
 		// The held-range ledger records on the FINISHED text — exactly the bytes
 		// the transcript will carry — and only on a result that ran (heldreads.go).
 		a.heldNote(call.Function.Name, args, result.text, isError)
@@ -3759,8 +3776,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
 	result.text = redact.Secrets(result.text)
 	body := result.text
+	rejected, invoked := result.rejected, result.invoked
 	result = a.withJobState(ep, ep.noteToolOutcome(call, result))
 	result.text = footersInsideTheCap(body, result.text)
+	result.rejected, result.invoked = rejected, invoked
+
 	return result
 }
 

@@ -325,7 +325,7 @@ func readTool(cwd string, caps Caps) Tool {
 				Limit  *int   `json:"limit"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			absPath := resolveToCwd(p.Path, cwd)
 			data, err := os.ReadFile(absPath)
@@ -432,7 +432,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 				Timeout *float64 `json:"timeout"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			// Validate timeout.
@@ -442,11 +442,11 @@ func newBashTool(cwd string, caps Caps) Tool {
 				timeoutSet = true
 				tv := *p.Timeout
 				if !isFinite(tv) || tv <= 0 {
-					return "Invalid timeout: must be a finite number of seconds", true, nil
+					return RejectArguments(ctx, "Invalid timeout: must be a finite number of seconds"), true, nil
 				}
 				ms := int(tv * 1000)
 				if ms > maxTimeoutMs {
-					return fmt.Sprintf("Invalid timeout: maximum is %s seconds", trimFloat(float64(maxTimeoutMs)/1000)), true, nil
+					return RejectArguments(ctx, fmt.Sprintf("Invalid timeout: maximum is %s seconds", trimFloat(float64(maxTimeoutMs)/1000))), true, nil
 				}
 				timeoutMs = ms
 			}
@@ -786,10 +786,11 @@ func newEditTool(cwd string) Tool {
 			// edits arrays and legacy oldText/newText.
 			edits, path, err := prepareEditArguments(args)
 			if err != nil {
+				MarkArgumentRejection(ctx)
 				return err.Error(), true, nil
 			}
 			if len(edits) == 0 {
-				return "Edit tool input is invalid. edits must contain at least one replacement.", true, nil
+				return RejectArguments(ctx, "Edit tool input is invalid. edits must contain at least one replacement."), true, nil
 			}
 
 			absPath := resolveToCwd(path, cwd)
@@ -927,7 +928,7 @@ func newWriteTool(cwd string) Tool {
 				Content string `json:"content"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			absPath := resolveToCwd(p.Path, cwd)

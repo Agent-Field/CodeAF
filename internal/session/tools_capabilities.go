@@ -276,7 +276,7 @@ func (a *Agent) loadCapabilityTool(shelf map[string][]bare.Tool, order []string)
 				Group string `json:"group"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			text, failed := a.loadCapability(parsed.Group)
 			return text, failed, nil

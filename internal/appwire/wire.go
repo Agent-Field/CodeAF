@@ -372,6 +372,14 @@ type Entry struct {
 	Quiet     bool   `json:"quiet,omitempty"`
 	ErrorKind string `json:"error_kind,omitempty"`
 	Status    int    `json:"status,omitempty"`
+	// NoticeKind, Skills and Unrecorded are typed facts the engine attached to a
+	// notice at its producer: "skills" (the skills a turn carried, named in
+	// Skills) or "memory" (a memory line, Unrecorded because no transcript
+	// record redraws it). They are absent on every other notice, which is an
+	// ordinary one; a consumer never derives them from Text.
+	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory"`
+	Skills     []string `json:"skills,omitempty"`
+	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a
 	// note was read at; a note's direction; a footer's kind and figures; the
 	// files and links a message of the person's carried (convo.go).

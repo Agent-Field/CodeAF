@@ -86,13 +86,13 @@ func (a *Agent) assignmentTools() []bare.Tool {
 // Every refusal is an ordinary tool result rather than a Go error, the way every
 // other tool on this belt answers: a worker that cited the wrong id has a call
 // it can make again, and ending the turn over it would cost the work.
-func (a *Agent) reviseAssignment(_ context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) reviseAssignment(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed reviseArguments
 	// One grammar of refusal for every tool on this belt (toolargs.go): a model
 	// that mistypes an argument reads the same sentence here it reads everywhere
 	// else, rather than encoding/json's own words.
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return err.Error(), true, nil
+		return rejectToolArguments(ctx, err.Error()), true, nil
 	}
 	node := a.config.tasker.node(a.config.taskID)
 	if node == nil {
@@ -106,7 +106,7 @@ func (a *Agent) reviseAssignment(_ context.Context, args json.RawMessage) (strin
 	// under contract here either, and the model is told which one and why.
 	checks, problem := declaredCheckList(parsed.Checks)
 	if problem != "" {
-		return problem, true, nil
+		return rejectToolArguments(ctx, problem), true, nil
 	}
 	version, err := node.reviseAssignment(parsed.Direction, parsed.AtRevision, assignmentEdit{
 		work:        parsed.Work,

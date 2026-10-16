@@ -97,11 +97,11 @@ func (a *Agent) viewImageTool(known string) bare.Tool {
 				Question string `json:"question"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			path := strings.TrimSpace(parsed.Path)
 			if path == "" {
-				return "Invalid arguments: path is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: path is required"), true, nil
 			}
 			return a.viewImage(ctx, path, strings.TrimSpace(parsed.Question), known)
 		},

@@ -145,7 +145,7 @@ func (a *Agent) automationDispatch(ctx context.Context, args json.RawMessage) (s
 	var parsed automationArguments
 	if len(args) > 0 {
 		if err := decodeToolArguments(args, &parsed); err != nil {
-			return "Invalid arguments: " + err.Error(), true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 		}
 	}
 	store := a.config.automationStore()
@@ -164,17 +164,17 @@ func (a *Agent) automationDispatch(ctx context.Context, args json.RawMessage) (s
 		if op == "resume" {
 			status = automation.StatusActive
 		}
-		return a.automationSetStatus(store, parsed.ID, status)
+		return a.automationSetStatus(ctx, store, parsed.ID, status)
 	case "delete":
-		return a.automationDelete(store, parsed.ID)
+		return a.automationDelete(ctx, store, parsed.ID)
 	case "run":
-		return a.automationRunNow(store, parsed.ID)
+		return a.automationRunNow(ctx, store, parsed.ID)
 	case "history":
-		return automationHistory(store, parsed.ID, time.Now())
+		return automationHistory(ctx, store, parsed.ID, time.Now())
 	case "":
-		return "Invalid arguments: op is required — " + automationOps, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: op is required — "+automationOps), true, nil
 	default:
-		return "Invalid arguments: no op called " + strconv.Quote(parsed.Op) + " — " + automationOps, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: no op called "+strconv.Quote(parsed.Op)+" — "+automationOps), true, nil
 	}
 }
 
@@ -186,14 +186,14 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 	now := time.Now()
 	item, problem := a.automationFrom(parsed, now)
 	if problem != "" {
-		return problem, true, nil
+		return rejectToolArguments(ctx, problem), true, nil
 	}
 	if err := item.Validate(); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	next, err := item.Schedule.First(now)
 	if err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	notice := AutomationNotice{
 		Automation: item,
@@ -462,7 +462,7 @@ func automationNoAnswer(err error, can, nothing string) (string, bool) {
 func (a *Agent) automationChange(ctx context.Context, store *automation.Store, parsed automationArguments) (string, bool, error) {
 	id := strings.TrimSpace(parsed.ID)
 	if id == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	stored, err := store.Get(id)
 	if err != nil {
@@ -471,16 +471,16 @@ func (a *Agent) automationChange(ctx context.Context, store *automation.Store, p
 	now := time.Now()
 	item, rescheduled, problem := a.automationChanged(stored, parsed, now)
 	if problem != "" {
-		return problem, true, nil
+		return rejectToolArguments(ctx, problem), true, nil
 	}
 	if err := item.Validate(); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	// THE CARD'S NEXT RUN IS THE ONE THE SAVE WILL GIVE IT, by the one rule
 	// both doors keep ([automation.NextAfterChange]).
 	next, err := automation.NextAfterChange(stored, item, now)
 	if err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	whenWords := automation.Describe(item.Schedule, now)
 	if rescheduled {
@@ -800,9 +800,9 @@ func automationRow(store *automation.Store, item automation.Automation, now time
 	return strings.Join(parts, " · ")
 }
 
-func (a *Agent) automationSetStatus(store *automation.Store, id string, status automation.Status) (string, bool, error) {
+func (a *Agent) automationSetStatus(ctx context.Context, store *automation.Store, id string, status automation.Status) (string, bool, error) {
 	if strings.TrimSpace(id) == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	item, err := store.SetStatus(strings.TrimSpace(id), status)
 	if err != nil {
@@ -816,10 +816,10 @@ func (a *Agent) automationSetStatus(store *automation.Store, id string, status a
 	return word + " " + item.ID + ": " + item.Title, false, nil
 }
 
-func (a *Agent) automationDelete(store *automation.Store, id string) (string, bool, error) {
+func (a *Agent) automationDelete(ctx context.Context, store *automation.Store, id string) (string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	item, err := store.Get(id)
 	if err != nil {
@@ -832,10 +832,10 @@ func (a *Agent) automationDelete(store *automation.Store, id string) (string, bo
 	return "deleted " + id + ": " + item.Title, false, nil
 }
 
-func (a *Agent) automationRunNow(store *automation.Store, id string) (string, bool, error) {
+func (a *Agent) automationRunNow(ctx context.Context, store *automation.Store, id string) (string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	item, err := store.Get(id)
 	if err != nil {
@@ -848,10 +848,10 @@ func (a *Agent) automationRunNow(store *automation.Store, id string) (string, bo
 	return "asked " + id + " to run now: it starts within seconds while codeaf is open, and its result arrives in this conversation", false, nil
 }
 
-func automationHistory(store *automation.Store, id string, now time.Time) (string, bool, error) {
+func automationHistory(ctx context.Context, store *automation.Store, id string, now time.Time) (string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	if _, err := store.Get(id); err != nil {
 		return automationNotFound(err), true, nil

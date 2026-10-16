@@ -211,7 +211,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 				return inner.Execute(a.promotable(ctx), withTimeoutLaw(args))
 			}
 			if strings.TrimSpace(parsed.Command) == "" {
-				return "Invalid arguments: command is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: command is required"), true, nil
 			}
 			started, err := a.jobs.start(a.planCommand(parsed.Command))
 			if err != nil {
@@ -318,14 +318,14 @@ func (a *Agent) jobsTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			parsed, err := parseJobsArguments(args)
 			if err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			switch parsed.Action {
 			case "list":
 				return a.jobs.list() + a.keptRunningList(), false, nil
 			case "output":
 				if parsed.ID == nil {
-					return "Invalid arguments: id is required for output", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: id is required for output"), true, nil
 				}
 				lines := jobsDefaultTail
 				if parsed.Tail != nil {
@@ -341,7 +341,7 @@ func (a *Agent) jobsTool() bare.Tool {
 				return text, isError, nil
 			case "kill":
 				if parsed.ID == nil {
-					return "Invalid arguments: id is required for kill", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: id is required for kill"), true, nil
 				}
 				// THE CALL'S OWN CONTEXT RIDES INTO THE GRACES, so a kill
 				// caught inside a turn somebody stopped does not spend four
@@ -350,7 +350,7 @@ func (a *Agent) jobsTool() bare.Tool {
 				text, isError := a.jobs.kill(ctx, *parsed.ID)
 				return text, isError, nil
 			case "":
-				return "Invalid arguments: action is required (list, output, or kill)", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: action is required (list, output, or kill)"), true, nil
 			default:
 				return fmt.Sprintf("Unknown action: %s. Use list, output, or kill.", parsed.Action), true, nil
 			}

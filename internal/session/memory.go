@@ -974,13 +974,13 @@ func (a *Agent) memoryTools() []bare.Tool {
 		Name:        "remember",
 		Description: rememberDescription,
 		Schema:      json.RawMessage(rememberSchemaJSON),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Text  string `json:"text"`
 				Scope string `json:"scope"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if !a.memory.typed.Load() {
 				return memoryNotTypedWords, true, nil
@@ -1002,12 +1002,12 @@ func (a *Agent) memoryTools() []bare.Tool {
 		Name:        "forget",
 		Description: forgetDescription,
 		Schema:      json.RawMessage(forgetSchemaJSON),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Text string `json:"text"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if strings.TrimSpace(parsed.Text) == "" {
 				return "Name the line to forget by its words.", true, nil
@@ -1041,7 +1041,7 @@ func (a *Agent) sayMemory(text string) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	event := Event{Kind: EventNotice, Text: text, Unrecorded: true}
+	event := Event{Kind: EventNotice, Text: text, Unrecorded: true, NoticeKind: NoticeKindMemory}
 	if a.hub.send(event) {
 		return
 	}

@@ -399,6 +399,9 @@ func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event ses
 		}
 		c.summary, c.detail, c.ok = summary, detail, &ok
 		c.facts.Handoff = appHandoff(event.Tool, event.Args, event.Output)
+		c.facts.Invoked = event.ToolInvoked
+		c.facts.RejectedBeforeRun = event.RejectedBeforeRun
+		c.facts.HarnessMade, c.facts.Refused = event.HarnessMade, event.Refused
 		if c.facts.EndedAt == nil {
 			at := b.now()
 			c.facts.EndedAt = &at
@@ -586,12 +589,19 @@ func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwi
 		}
 	})
 	if known {
+		// Call IDs may repeat: only the actual history occurrence owns this fact.
+		facts.Invoked = item.ToolResult.Invoked()
+		facts.RejectedBeforeRun = item.ToolResult.RejectedBeforeRun()
+		facts.HarnessMade, facts.Refused = item.ToolResult.HarnessMade(), item.ToolResult.Refused()
 		if facts.Handoff == nil {
 			facts.Handoff = appHandoff(item.Tool, item.Args, item.Output)
 		}
 		return facts
 	}
 	facts.Handoff = appHandoff(item.Tool, item.Args, item.Output)
+	facts.Invoked = item.ToolResult.Invoked()
+	facts.RejectedBeforeRun = item.ToolResult.RejectedBeforeRun()
+	facts.HarnessMade, facts.Refused = item.ToolResult.HarnessMade(), item.ToolResult.Refused()
 	var workspace string
 	b.locked(func() { workspace = a.view.Workspace })
 	facts.Kind = appToolKind(item.Tool, "")

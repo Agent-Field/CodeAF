@@ -34,12 +34,22 @@ type ToolFacts struct {
 	Batch    string `json:"batch,omitempty"`
 	ExitCode *int   `json:"exit_code,omitempty"`
 	// RetriedOf is the earlier call of this turn that ran the same command.
-	RetriedOf string       `json:"retried_of,omitempty"`
-	Files     []FileChange `json:"files,omitempty"`
-	Connector string       `json:"connector,omitempty"`
-	Task      string       `json:"task,omitempty"`
-	Ask       string       `json:"ask,omitempty"`
-	Input     *ToolInput   `json:"input,omitempty"`
+	RetriedOf string `json:"retried_of,omitempty"`
+	// RejectedBeforeRun is true only when the tool turned the call's arguments
+	// away before doing any of its work, by the engine's own typed marker. It is
+	// never read from the call's output, and a call that ran and failed
+	// (nonzero exit, HTTP error, timeout) omits it.
+	RejectedBeforeRun bool `json:"rejected_before_run,omitempty"`
+	// Invoked is actual handler dispatch, not proof of a subprocess/network effect.
+	Invoked bool `json:"invoked,omitempty"`
+	// HarnessMade and Refused distinguish engine/permission refusals from execution failures.
+	HarnessMade bool         `json:"harness_made,omitempty"`
+	Refused     bool         `json:"refused,omitempty"`
+	Files       []FileChange `json:"files,omitempty"`
+	Connector   string       `json:"connector,omitempty"`
+	Task        string       `json:"task,omitempty"`
+	Ask         string       `json:"ask,omitempty"`
+	Input       *ToolInput   `json:"input,omitempty"`
 	// Tail is the last lines of the call's output: three while it runs, up
 	// to twelve once it has ended. Lines is how many it wrote in all.
 	Tail  []string `json:"tail,omitempty"`

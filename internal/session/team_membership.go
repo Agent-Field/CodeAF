@@ -19,7 +19,7 @@ const teamRemoveSchema = `{"type":"object","properties":{"handle":{"type":"strin
 func (a *Agent) teamAddTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var p struct{ Conversation, Query, Team string }
 	if err := decodeToolArguments(args, &p); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	t, role, refusal := a.teamTarget(p.Team, true)
 	if refusal != "" {
@@ -82,7 +82,7 @@ func (a *Agent) teamAddTool(ctx context.Context, args json.RawMessage) (string, 
 func (a *Agent) teamRemoveTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var p struct{ Handle, Team string }
 	if err := decodeToolArguments(args, &p); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	t, role, refusal := a.teamTarget(p.Team, true)
 	if refusal != "" {

@@ -4835,6 +4835,10 @@ type DisplayEntry struct {
 	// page speaks about them differently.
 	Answered bool
 
+	// ToolResult packs occurrence-owned producer facts into existing alignment.
+	// Zero is unknown, including legacy and ambiguous provider IDs.
+	ToolResult ToolResultFlags
+
 	Text string
 	Tool string // set when the entry is one call in a batch
 	Hint string // the call's gloss, as the tool cluster rendered it
@@ -5087,7 +5091,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 	if len(indexes) > 0 {
 		presentation = indexes[0]
 	}
-	results := toolResults(messages)
+	results := toolResultsWithFacts(messages, presentation)
 	// Sized by [entryRows], which is the rule this loop appends by, so a
 	// transcript full of tool batches is not grown a power of two at a time.
 	entries := make([]DisplayEntry, 0, countEntries(messages))
@@ -5180,9 +5184,24 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			ForModel: forModel,
 			At:       journal.written(msg),
 		})
+		var rejectionCounts map[string]int
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]
 			result, answered := results[call]
+			// Duplicate IDs inside one provider batch cannot identify a result.
+			// Keep the new classification unknown instead of lending one call
+			// another call's rejection. Ordinary batches pay no map allocation.
+			if (result.rejected || result.harness || result.refused || result.invoked) && len(msg.ToolCalls) > 1 {
+				if rejectionCounts == nil {
+					rejectionCounts = make(map[string]int, len(msg.ToolCalls))
+					for _, sibling := range msg.ToolCalls {
+						rejectionCounts[sibling.ID]++
+					}
+				}
+				if rejectionCounts[call.ID] != 1 {
+					result.rejected, result.harness, result.refused, result.invoked = false, false, false, false
+				}
+			}
 			// The step's own title, off the journal's `caption` line, keyed by
 			// the anchor the narration was recorded against. Every call that is
 			// not a batch anchor answers empty and carries nothing.
@@ -5201,13 +5220,15 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				// the row it replaces are the same row, or replay is a second
 				// rendering of one conversation.
 				Args:     argsText(*call),
-				Output:   displayToolOutput(call.ID, result),
+				Output:   displayToolOutput(call.ID, result.text),
 				Answered: answered,
 				// And the call's own duration, off the journal's `took` line —
 				// the same figure EventToolFinished carried while the window was
 				// open. Zero when the file never recorded one.
 				Took: journal.took(call.ID),
-				At:   journal.written(msg),
+
+				ToolResult: result.flags(),
+				At:         journal.written(msg),
 			})
 		}
 	}

@@ -152,7 +152,7 @@ func (a *Agent) editVideoTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed editVideoArguments
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			switch strings.TrimSpace(parsed.Action) {
 			case editVideoMeasure:
@@ -164,7 +164,7 @@ func (a *Agent) editVideoTool() bare.Tool {
 			case editVideoScore:
 				return a.scoreVideo(ctx, parsed)
 			case "":
-				return fmt.Sprintf("Invalid arguments: action is required (%s)", editVideoActions()), true, nil
+				return rejectToolArguments(ctx, fmt.Sprintf("Invalid arguments: action is required (%s)", editVideoActions())), true, nil
 			default:
 				return fmt.Sprintf("Unknown action: %s. Use %s.", parsed.Action, editVideoActions()), true, nil
 			}
@@ -191,7 +191,7 @@ func editVideoActions() string {
 func (a *Agent) measureVideo(ctx context.Context, parsed editVideoArguments) (string, bool, error) {
 	full, refusal := a.videoSource(parsed.Video, "video")
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	facts, err := video.Probe(ctx, full)
 	if err != nil {
@@ -210,16 +210,16 @@ func (a *Agent) measureVideo(ctx context.Context, parsed editVideoArguments) (st
 func (a *Agent) frameVideo(ctx context.Context, parsed editVideoArguments) (string, bool, error) {
 	full, refusal := a.videoSource(parsed.Video, "video")
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	at, said, refusal := frameMoment(parsed.At)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	destination, refusal, err := a.videoDestination(parsed.Path, said, framePicture,
 		ImagesDir(a.config.Place, a.config.Workspace), frameFormats)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	if err != nil {
 		return "Could not work out where to save the frame: " + err.Error(), true, nil
@@ -268,13 +268,13 @@ func frameMoment(at string) (time.Duration, string, string) {
 // named in the refusal — the same law generate_video's frames follow.
 func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (string, bool, error) {
 	if len(parsed.Clips) == 0 {
-		return "Invalid arguments: join needs clips — the video files to lay end to end, in order", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: join needs clips — the video files to lay end to end, in order"), true, nil
 	}
 	clips := make([]string, 0, len(parsed.Clips))
 	for _, named := range parsed.Clips {
 		full, refusal := a.videoSource(named, "clip")
 		if refusal != "" {
-			return "Invalid arguments: " + refusal, true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 		}
 		clips = append(clips, full)
 	}
@@ -282,7 +282,7 @@ func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (strin
 	destination, refusal, err := a.videoDestination(parsed.Path, said, videoExtension,
 		VideoDir(a.config.Place, a.config.Workspace), nil)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	if err != nil {
 		return "Could not work out where to save the cut: " + err.Error(), true, nil
@@ -303,13 +303,16 @@ func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (strin
 // mixing under existing sound or filling a silence — and the library should not
 // be guessing at intent.
 func (a *Agent) scoreVideo(ctx context.Context, parsed editVideoArguments) (string, bool, error) {
+	if parsed.Level != nil && *parsed.Level <= 0 {
+		return rejectToolArguments(ctx, "Invalid arguments: level is how loud the music is and must be above zero; use replace to drop the video's own sound"), true, nil
+	}
 	clip, refusal := a.videoSource(parsed.Video, "video")
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	audio, refusal := a.videoSource(parsed.Audio, "audio")
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	picture, err := video.Probe(ctx, clip)
 	if err != nil {
@@ -324,16 +327,13 @@ func (a *Agent) scoreVideo(ctx context.Context, parsed editVideoArguments) (stri
 		scoring.Level = scoreUnderLevel
 	}
 	if parsed.Level != nil {
-		if *parsed.Level <= 0 {
-			return "Invalid arguments: level is how loud the music is and must be above zero; use replace to drop the video's own sound", true, nil
-		}
 		scoring.Level = *parsed.Level
 	}
 	const said = "scored cut"
 	destination, refusal, err := a.videoDestination(parsed.Path, said, videoExtension,
 		VideoDir(a.config.Place, a.config.Workspace), nil)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	if err != nil {
 		return "Could not work out where to save the scored video: " + err.Error(), true, nil

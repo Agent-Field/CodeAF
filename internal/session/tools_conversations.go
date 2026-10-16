@@ -147,19 +147,19 @@ func (a *Agent) searchConversationsTool(ctx context.Context, args json.RawMessag
 	}
 	if len(args) > 0 {
 		if err := decodeToolArguments(args, &parsed); err != nil {
-			return "Invalid arguments: " + err.Error(), true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 		}
 		// Ignoring an invented message_id would turn a requested read into a
 		// browse. Enforce this schema so a wrong call can be corrected.
 		var fields map[string]json.RawMessage
 		if err := decodeToolArguments(args, &fields); err != nil {
-			return invalidArgumentsPrefix + err.Error(), true, nil
+			return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 		}
 		for key := range fields {
 			switch key {
 			case "query", "session_id", "ref", "limit":
 			default:
-				return fmt.Sprintf("Invalid arguments: unknown field %q; to read a message, copy its source ref", key), true, nil
+				return rejectToolArguments(ctx, fmt.Sprintf("Invalid arguments: unknown field %q; to read a message, copy its source ref", key)), true, nil
 			}
 		}
 	}
@@ -167,16 +167,16 @@ func (a *Agent) searchConversationsTool(ctx context.Context, args json.RawMessag
 	messageID := int64(0)
 	if strings.TrimSpace(parsed.Reference) != "" {
 		if query != "" || strings.TrimSpace(parsed.SessionID) != "" {
-			return "Invalid arguments: supply ref alone when reading a message", true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: supply ref alone when reading a message"), true, nil
 		}
 		target, err := parseConversationReference(strings.TrimSpace(parsed.Reference))
 		if err != nil {
-			return "Invalid arguments: " + err.Error(), true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 		}
 		parsed.SessionID, messageID = target.SessionID, target.MessageID
 	}
 	if query == "" && strings.TrimSpace(parsed.SessionID) == "" {
-		return "Invalid arguments: query is required unless session_id is supplied", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: query is required unless session_id is supplied"), true, nil
 	}
 	limit := parsed.Limit
 	if limit <= 0 {

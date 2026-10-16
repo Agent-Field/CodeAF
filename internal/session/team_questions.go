@@ -284,11 +284,11 @@ func (a *Agent) teamDecideTool(ctx context.Context, args json.RawMessage) (strin
 		Team   string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	answer := strings.TrimSpace(parsed.Answer)
 	if answer == "" {
-		return invalidArgumentsPrefix + "answer is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"answer is empty"), true, nil
 	}
 	p, team, refusal := a.managedPacket(parsed.Packet, parsed.Team)
 	if refusal != "" {
@@ -321,11 +321,11 @@ func (a *Agent) teamEscalateTool(ctx context.Context, args json.RawMessage) (str
 		Team   string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	reason := strings.TrimSpace(parsed.Reason)
 	if reason == "" {
-		return invalidArgumentsPrefix + "reason is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"reason is empty"), true, nil
 	}
 	p, team, refusal := a.managedPacket(parsed.Packet, parsed.Team)
 	if refusal != "" {

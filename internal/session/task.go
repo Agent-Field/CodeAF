@@ -714,14 +714,14 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 		if taskHasPlacementContract(spec) {
 			problem = proposalProblems(problem, a.resolveTaskGround(spec))
 		}
-		return bare.Settled(problem, true)
+		return bare.Settled(rejectToolArguments(ctx, problem), true)
 	}
 	// THE DOOR REFUSALS, before a card or a slot. A proposal that left out the
 	// program the person named, a trivial ask and a depends_on that can never
 	// resolve are all "do not start this"; they live in one helper so this
 	// road does not grow another ending (complexity_test.go's ratchet on this
 	// function).
-	if refusal := a.refuseProposedTask(spec); refusal != nil {
+	if refusal := a.refuseProposedTask(ctx, spec); refusal != nil {
 		return refusal
 	}
 	// A PROGRAM'S RUN THAT ENDED DONE IS A DEPENDENCY MET, and the graph knows

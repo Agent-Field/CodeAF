@@ -787,6 +787,9 @@ func TestANoticedLineIsSaidOnTheStandingLane(t *testing.T) {
 				if !event.Unrecorded {
 					t.Fatal("a memory notice was not marked unrecorded")
 				}
+				if event.NoticeKind != NoticeKindMemory {
+					t.Fatalf("a memory notice carries kind %q", event.NoticeKind)
+				}
 				return
 			}
 		case <-deadline:

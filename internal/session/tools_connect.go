@@ -112,7 +112,7 @@ func (a *Agent) servicesTool() bare.Tool {
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			return renderServices(a.connect.Services(), parsed.Filter, a.connectedFor), false, nil
@@ -238,11 +238,11 @@ func (a *Agent) useServiceTool() bare.Tool {
 				Tools   string `json:"tools"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			id := strings.TrimSpace(parsed.Service)
 			if id == "" {
-				return "Invalid arguments: service is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: service is required"), true, nil
 			}
 			return a.useService(ctx, id, parsed.Tools)
 		},
@@ -552,10 +552,10 @@ func (a *Agent) serviceRequestTool(service connectStatus) bare.Tool {
 				Body   string `json:"body"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if strings.TrimSpace(parsed.Path) == "" {
-				return "Invalid arguments: path is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: path is required"), true, nil
 			}
 			if failed := a.serviceStanding(ctx, id, name); failed != "" {
 				return failed, true, nil
@@ -580,11 +580,11 @@ func (a *Agent) gmailSearchTool() bare.Tool {
 				Max   *int   `json:"max"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			query := strings.TrimSpace(parsed.Query)
 			if query == "" {
-				return "Invalid arguments: query is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: query is required"), true, nil
 			}
 			limit := gmailSearchDefaultMax
 			if parsed.Max != nil && *parsed.Max > 0 {
@@ -613,11 +613,11 @@ func (a *Agent) gmailReadTool() bare.Tool {
 				ID string `json:"id"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			id := strings.TrimSpace(parsed.ID)
 			if id == "" {
-				return "Invalid arguments: id is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: id is required"), true, nil
 			}
 			client, failed := a.serviceClient(ctx, "google", "Google")
 			if failed != "" {
@@ -643,11 +643,11 @@ func (a *Agent) slackSearchTool() bare.Tool {
 				Max   *int   `json:"max"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			query := strings.TrimSpace(parsed.Query)
 			if query == "" {
-				return "Invalid arguments: query is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: query is required"), true, nil
 			}
 			limit := slackSearchDefaultMax
 			if parsed.Max != nil && *parsed.Max > 0 {
@@ -677,14 +677,14 @@ func (a *Agent) slackReadThreadTool() bare.Tool {
 				TS      string `json:"ts"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			channel, ts := strings.TrimSpace(parsed.Channel), strings.TrimSpace(parsed.TS)
 			if channel == "" {
-				return "Invalid arguments: channel is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: channel is required"), true, nil
 			}
 			if ts == "" {
-				return "Invalid arguments: ts is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: ts is required"), true, nil
 			}
 			client, failed := a.serviceClient(ctx, "slack", "Slack")
 			if failed != "" {
@@ -710,7 +710,7 @@ func (a *Agent) slackListChannelsTool() bare.Tool {
 				Max    *int   `json:"max"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			limit := slackChannelDefaultMax
 			if parsed.Max != nil && *parsed.Max > 0 {
@@ -754,13 +754,13 @@ func (a *Agent) gmailSendTool() bare.Tool {
 				Body    string `json:"body"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if strings.TrimSpace(parsed.To) == "" {
-				return "Invalid arguments: to is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: to is required"), true, nil
 			}
 			if strings.TrimSpace(parsed.Subject) == "" && strings.TrimSpace(parsed.Body) == "" {
-				return "Invalid arguments: a message needs a subject or a body", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: a message needs a subject or a body"), true, nil
 			}
 			client, failed := a.serviceClient(ctx, "google", "Google")
 			if failed != "" {
@@ -787,13 +787,13 @@ func (a *Agent) slackSendTool() bare.Tool {
 				ThreadTS string `json:"thread_ts"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if strings.TrimSpace(parsed.Channel) == "" {
-				return "Invalid arguments: channel is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: channel is required"), true, nil
 			}
 			if strings.TrimSpace(parsed.Text) == "" {
-				return "Invalid arguments: text is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: text is required"), true, nil
 			}
 			client, failed := a.serviceClient(ctx, "slack", "Slack")
 			if failed != "" {
@@ -823,13 +823,13 @@ func (a *Agent) calendarCreateTool() bare.Tool {
 				Description string `json:"description"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if strings.TrimSpace(parsed.Title) == "" {
-				return "Invalid arguments: title is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: title is required"), true, nil
 			}
 			if strings.TrimSpace(parsed.Start) == "" {
-				return "Invalid arguments: start is required, as 2026-08-18T09:00:00Z or YYYY-MM-DD", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: start is required, as 2026-08-18T09:00:00Z or YYYY-MM-DD"), true, nil
 			}
 			client, failed := a.serviceClient(ctx, "google", "Google")
 			if failed != "" {
@@ -856,11 +856,11 @@ func (a *Agent) calendarListTool() bare.Tool {
 				To   string `json:"to"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			from, to := strings.TrimSpace(parsed.From), strings.TrimSpace(parsed.To)
 			if from == "" || to == "" {
-				return "Invalid arguments: from and to are both required, as YYYY-MM-DD", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: from and to are both required, as YYYY-MM-DD"), true, nil
 			}
 			client, failed := a.serviceClient(ctx, "google", "Google")
 			if failed != "" {

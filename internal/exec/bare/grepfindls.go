@@ -127,7 +127,7 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 				Limit      *int    `json:"limit"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			searchDir := "."
@@ -396,6 +396,7 @@ func grepByWalkingBounded(ctx context.Context, pattern, searchPath, glob string,
 	}
 	compiled, err := regexp.Compile(expression)
 	if err != nil {
+		MarkArgumentRejection(ctx) // pattern validation, before walking any file
 		return nil, false, false, fmt.Errorf("Invalid pattern: %s", err)
 	}
 	searchPath = grepCanonical(searchPath)
@@ -655,7 +656,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 				Limit   *int    `json:"limit"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			fdPath, err := exec.LookPath("fd")
@@ -788,7 +789,7 @@ func newLsTool(cwd string, caps Caps) Tool {
 				Limit *int    `json:"limit"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			dirPath := "."

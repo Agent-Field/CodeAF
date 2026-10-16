@@ -139,7 +139,7 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed GenerateImageArgs
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			resolvedDefault := defaultModel
 			if strings.TrimSpace(parsed.Prompt) != "" && a.config.MediaAdmission != nil {
@@ -213,13 +213,13 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	// three with no argument check at all.
 	prompt := strings.TrimSpace(parsed.Prompt)
 	if prompt == "" {
-		return "Invalid arguments: prompt is required", true
+		return rejectToolArguments(ctx, "Invalid arguments: prompt is required"), true
 	}
 	// THE COUNT IS CHECKED BEFORE ANYTHING IS PAID FOR, like the prompt: a request
 	// for eleven pictures is a typo the caller can fix, not a charge.
 	requested, refusal := imageCount(parsed.N)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true
 	}
 	// The call's own choice, resolved before anything is paid for, so a word
 	// that matches nothing costs nothing. From here down `model` is the model
@@ -227,7 +227,7 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	// strings, the accounting, the result line.
 	model, refusal := mediaPickWith(gen.Pick, modalityImage, parsed.Model, gen.DefaultModel)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true
 	}
 	// The references are read BEFORE the request is sent, so a picture that
 	// cannot be read costs nothing: a refusal here is a typo the model can
@@ -235,7 +235,7 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	// own inputs helps nobody.
 	references, refusal := mediaReferencesFrom(gen.Workspace, parsed.ReferencePaths)
 	if refusal != "" {
-		return "Invalid arguments: reference " + refusal, true
+		return rejectToolArguments(ctx, "Invalid arguments: reference "+refusal), true
 	}
 
 	response, err := gen.Client.GenerateImage(ctx, provider.ImageRequest{

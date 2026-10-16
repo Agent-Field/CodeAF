@@ -882,7 +882,7 @@ func (a *Agent) weighDivision(ctx context.Context, args json.RawMessage, asker d
 	}
 	if problem != "" {
 		line.Decision = divisionRefusedMalformed
-		division.said, division.malformed = problem, true
+		division.said, division.malformed = rejectToolArguments(ctx, problem), true
 		return division
 	}
 	line.Requested = len(parsed.Parts)

@@ -146,11 +146,11 @@ func (e errNest) Error() string { return string(e) }
 // teamStartSubTeam makes the child team under team, moves in the members
 // named, and writes the start that opens its manager. It answers what to hand
 // the model and whether that is a refusal.
-func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, name string, moving []string, prov teams.Provenance) (string, bool) {
+func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role teamRole, handle, brief, name string, moving []string, prov teams.Provenance) (string, bool) {
 	profile := a.config.teamProfile()
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
-		return invalidArgumentsPrefix + "a team needs its name", true
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"a team needs its name"), true
 	}
 	if reason := a.teamCapHold(profile, []teamRole{role}); reason != "" {
 		return "No sub-team starts: " + reason + ".", true
@@ -470,23 +470,23 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 		Team      string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	question := strings.TrimSpace(parsed.Question)
 	if question == "" {
-		return invalidArgumentsPrefix + "question is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"question is empty"), true, nil
 	}
 	if len(parsed.Parties) == 0 {
-		return invalidArgumentsPrefix + "name the other party or parties", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"name the other party or parties"), true, nil
 	}
 	if len(parsed.Options) < 2 {
-		return invalidArgumentsPrefix + "a conflict needs at least two options, each with what happens", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"a conflict needs at least two options, each with what happens"), true, nil
 	}
 	var options []teams.Option
 	for i, o := range parsed.Options {
 		label, consequence := strings.TrimSpace(o.Label), strings.TrimSpace(o.Consequence)
 		if label == "" || consequence == "" {
-			return invalidArgumentsPrefix + "every option needs a label and what happens if it is chosen", true, nil
+			return rejectToolArguments(ctx, invalidArgumentsPrefix+"every option needs a label and what happens if it is chosen"), true, nil
 		}
 		options = append(options, teams.Option{ID: strconv.Itoa(i + 1), Label: label, Consequence: consequence})
 	}
@@ -502,7 +502,7 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 			}
 		}
 		if recommendation == nil {
-			return invalidArgumentsPrefix + "recommend names none of the options", true, nil
+			return rejectToolArguments(ctx, invalidArgumentsPrefix+"recommend names none of the options"), true, nil
 		}
 	}
 	profile := a.config.teamProfile()

@@ -256,7 +256,7 @@ func (a *Agent) teamStatusTool(ctx context.Context, args json.RawMessage) (strin
 		Team string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	team, _, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
@@ -323,7 +323,7 @@ func (a *Agent) teamReadTool(ctx context.Context, args json.RawMessage) (string,
 		Team     string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	team, _, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
@@ -435,11 +435,11 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		Team string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	text := strings.TrimSpace(parsed.Text)
 	if text == "" {
-		return invalidArgumentsPrefix + "text is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"text is empty"), true, nil
 	}
 	kind := teams.KindNote
 	switch strings.TrimSpace(parsed.Kind) {
@@ -447,7 +447,7 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 	case teams.KindDirective:
 		kind = teams.KindDirective
 	default:
-		return invalidArgumentsPrefix + "kind is note or directive", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"kind is note or directive"), true, nil
 	}
 	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
@@ -622,7 +622,7 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 		Team   string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
@@ -663,31 +663,31 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 		Team    string   `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	switch strings.TrimSpace(parsed.Kind) {
 	case "", "member", "team":
 	default:
-		return invalidArgumentsPrefix + "kind is member or team", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"kind is member or team"), true, nil
 	}
 	brief := strings.TrimSpace(parsed.Brief)
 	if brief == "" {
-		return invalidArgumentsPrefix + "brief is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"brief is empty"), true, nil
 	}
 	handle := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(parsed.Handle)), "@")
 	if err := teams.ValidHandle(handle); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
 	}
 	if strings.TrimSpace(parsed.Kind) == "team" {
-		said, failed := a.teamStartSubTeam(team, role, handle, brief, parsed.Name, parsed.Members, turnOriginFrom(ctx).provenance(role.key))
+		said, failed := a.teamStartSubTeam(ctx, team, role, handle, brief, parsed.Name, parsed.Members, turnOriginFrom(ctx).provenance(role.key))
 		return said, failed, nil
 	}
 	if strings.TrimSpace(parsed.Name) != "" || len(parsed.Members) > 0 {
-		return invalidArgumentsPrefix + "name and members are for kind team", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"name and members are for kind team"), true, nil
 	}
 	if reason := a.teamCapHold(a.config.teamProfile(), []teamRole{role}); reason != "" {
 		return "No new member starts: " + reason + ".", true, nil
@@ -763,17 +763,17 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		Team   string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	text := strings.TrimSpace(parsed.Text)
 	if text == "" {
-		return invalidArgumentsPrefix + "text is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"text is empty"), true, nil
 	}
 	thread := ""
 	if strings.TrimSpace(parsed.Thread) != "" {
 		id, ok := teams.ThreadID(parsed.Thread)
 		if !ok {
-			return invalidArgumentsPrefix + "thread is a message's number, like #42", true, nil
+			return rejectToolArguments(ctx, invalidArgumentsPrefix+"thread is a message's number, like #42"), true, nil
 		}
 		thread = id
 	}

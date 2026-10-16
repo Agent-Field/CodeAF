@@ -70,7 +70,7 @@ func (a *Agent) manualTool() bare.Tool {
 				Section string `json:"section"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			name, heading := strings.TrimSpace(parsed.Page), strings.TrimSpace(parsed.Section)
 

@@ -110,11 +110,11 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 		Execute: func(callCtx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateVideoArguments
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			prompt := strings.TrimSpace(parsed.Prompt)
 			if prompt == "" {
-				return "Invalid arguments: prompt is required", true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: prompt is required"), true, nil
 			}
 			resolvedDefault := defaultModel
 			if a.config.MediaAdmission != nil {
@@ -129,13 +129,13 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			// (tools_image.go states the shape).
 			model, refusal := a.mediaPick(modalityVideo, parsed.Model, resolvedDefault)
 			if refusal != "" {
-				return "Invalid arguments: " + refusal, true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: "+refusal), true, nil
 			}
 			if parsed.Duration < 0 {
-				return "Invalid arguments: duration is a number of seconds and cannot be negative", true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: duration is a number of seconds and cannot be negative"), true, nil
 			}
 			if len(parsed.FramePaths) > videoFrameLimit {
-				return fmt.Sprintf("Invalid arguments: frame_paths takes at most %d — the opening frame and the closing one; pictures that set the look go in reference_paths", videoFrameLimit), true, nil
+				return rejectToolArguments(callCtx, fmt.Sprintf("Invalid arguments: frame_paths takes at most %d — the opening frame and the closing one; pictures that set the look go in reference_paths", videoFrameLimit)), true, nil
 			}
 			// EVERY picture is read here, in the call, and not in the job. A
 			// path with a typo in it must cost nothing: discovering it inside
@@ -143,14 +143,14 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			// never started, which is the worst of both shapes.
 			frames, refusal := a.videoFrames(parsed.FramePaths)
 			if refusal != "" {
-				return "Invalid arguments: frame " + refusal, true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: frame "+refusal), true, nil
 			}
 			// A style reference is the envelope WITHOUT a frame type, which is
 			// how the wire tells a look from a keyframe — so it is exactly what
 			// the shared builder makes, with nothing added.
 			styles, refusal := a.mediaReferences(parsed.ReferencePaths)
 			if refusal != "" {
-				return "Invalid arguments: reference " + refusal, true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: reference "+refusal), true, nil
 			}
 
 			request := provider.VideoRequest{

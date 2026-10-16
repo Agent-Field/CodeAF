@@ -1854,7 +1854,16 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			// carried, a request reshaped to land — drawn by the terminal as
 			// one muted row and never as a message, and quiet says the same.
 			if words := strings.TrimSpace(event.Text); words != "" {
-				entry(appwire.Entry{ID: appLiveNoticeID(n, notices), Kind: appwire.EntryNotice, Text: redact.Secrets(words), Quiet: true})
+				notice := appwire.Entry{ID: appLiveNoticeID(n, notices), Kind: appwire.EntryNotice, Text: redact.Secrets(words), Quiet: true}
+				// ONLY WHAT THE PRODUCER TYPED travels as a fact; a notice
+				// with no kind stays ordinary and its words are never read.
+				switch event.NoticeKind {
+				case session.NoticeKindSkills, session.NoticeKindMemory:
+					notice.NoticeKind = event.NoticeKind
+				}
+				notice.Skills = append([]string(nil), event.Skills...)
+				notice.Unrecorded = event.Unrecorded
+				entry(notice)
 				notices++
 			}
 		case session.EventError:

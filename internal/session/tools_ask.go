@@ -150,7 +150,7 @@ func (a *Agent) askTool() bare.Tool {
 func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bool, error) {
 	var in askArguments
 	if err := decodeToolArguments(raw, &in); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	// A PICK WITH NO KEY IS NO PICK. A model that writes `pick: {key: ""}` with
 	// "their taste decides it" beside it has declined to recommend, which the

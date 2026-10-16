@@ -275,7 +275,7 @@ func (a *Agent) watchTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			spec, problem := parseWatchArguments(args)
 			if problem != "" {
-				return problem, true, nil
+				return rejectToolArguments(ctx, problem), true, nil
 			}
 			started, err := a.jobs.startWatch(spec)
 			if err != nil {
