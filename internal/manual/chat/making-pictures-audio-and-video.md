@@ -21,7 +21,7 @@ in this conversation — see "Can a task or a harness make media?" below.
 Yes, with `generate_image`, when a drawing model is available.
 
 Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`,
-`model`.
+`model`, `n`.
 
 The picture is written to a file, and the result codeaf reads is one line naming
 it — **the whole path, absolute, from the root** — like:
@@ -49,6 +49,26 @@ and folder; an existing file there is overwritten, exactly as `write` would.
 
 `aspect_ratio` (for example `16:9`) and `size` (for example `1024x1024`) are
 passed to the image model untouched. Leave them out for its own default.
+
+## Can you make several versions, variants or a contact sheet of one picture?
+
+Yes: give `generate_image` an `n` from 1 to 10 (default 1). It asks the drawing
+model for that many pictures in **one** request and saves each as its own file —
+with `path: "sheet.png"` they are `sheet-1.png`, `sheet-2.png` and so on, and an
+existing file with one of those names is never overwritten (the next free name is
+used). The result says how many were asked for, how many the model sent and how
+many were saved, lists one path per line in the order the model sent them, and
+does not rank them — you choose.
+
+Limits: more than 10 is refused before anything is spent. If the drawing model
+cannot return several pictures in one request it says so and the call fails;
+codeaf does not quietly make several single requests instead, and it never
+retries a paid request. If the model sends fewer than you asked for, only those
+are saved and the count is stated. If one picture will not decode or write, the
+others stay saved and the failure is named. The cost is for the whole request;
+codeaf does not split it per picture. A reply whose pictures together are over
+64MB (or any one over 32MB) is refused after being paid for, with a suggestion to
+ask for fewer or a smaller size.
 
 ## Do I only get a file path, or can I see the image you made?
 

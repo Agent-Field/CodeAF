@@ -79,6 +79,10 @@ func cloneMediaRow(row MediaRow) MediaRow {
 		layer := *row.Fact.TextLayer
 		row.Fact.TextLayer = &layer
 	}
+	if row.Fact.CallCostUSD != nil {
+		cost := *row.Fact.CallCostUSD
+		row.Fact.CallCostUSD = &cost
+	}
 	if row.Fact.CostUSD != nil {
 		cost := *row.Fact.CostUSD
 		row.Fact.CostUSD = &cost

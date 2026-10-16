@@ -154,6 +154,15 @@ type MediaFact struct {
 	// request's own N), where the request has one. Files with the same Tool id
 	// were asked for together; nothing is inferred beyond that.
 	Requested int `json:"requested_count,omitempty"`
+	// Batch, VariantIndex and Returned describe ONE provider request that asked
+	// for several pictures (generate_image's n > 1); see [MediaFact.WithBatch].
+	// Files with the same Batch came from the same request. VariantIndex is the
+	// 1-based position in the provider's reply (a gap means that output was not
+	// saved) and Returned is how many pictures the provider's reply held. None of
+	// the three says anything about quality: variants are never ranked.
+	Batch        string `json:"batch,omitempty"`
+	VariantIndex int    `json:"variant_index,omitempty"`
+	Returned     int    `json:"returned_count,omitempty"`
 	// Run, Message and Tool are immutable ids of the turn that made it, where
 	// the tool site knew them.
 	Run     string `json:"run,omitempty"`
@@ -185,6 +194,12 @@ type MediaFact struct {
 	// [ChargeFromUsage].
 	Charge  string   `json:"charge,omitempty"`
 	CostUSD *float64 `json:"cost_usd,omitempty"`
+	// CostScope is "call" when the charge covers the whole provider request and
+	// not this file alone; CallCostUSD is then that request's TOTAL, repeated on
+	// every file of the Batch, and CostUSD is left unset because no provider
+	// reports a per-picture price. Sum CallCostUSD once per Batch, never per file.
+	CostScope   string   `json:"cost_scope,omitempty"`
+	CallCostUSD *float64 `json:"call_cost_usd,omitempty"`
 }
 
 // NewMediaID mints the id of a new source: random, unique per record, written
@@ -383,6 +398,28 @@ func (f *MediaFact) stampFile(path string) {
 // WithUsage sets the charge from the provider's reported usage.
 func (f MediaFact) WithUsage(usage *ai.Usage) MediaFact {
 	f.Charge, f.CostUSD = ChargeFromUsage(usage)
+	return f
+}
+
+// MediaCostScopeCall is the [MediaFact.CostScope] of a charge that covers a
+// whole provider request.
+const MediaCostScopeCall = "call"
+
+// WithBatch marks a file as one output of a single multi-picture provider
+// request: the batch id minted once for that request, the file's 1-based
+// position in the reply, and how many pictures the reply held.
+func (f MediaFact) WithBatch(batch string, variant, returned int) MediaFact {
+	f.Batch, f.VariantIndex, f.Returned = batch, variant, returned
+	return f
+}
+
+// WithCallUsage records the provider's usage as the cost of the WHOLE request:
+// the total is kept as CallCostUSD and never as this file's CostUSD, because
+// dividing it, or repeating it as each file's price, would invent a figure.
+func (f MediaFact) WithCallUsage(usage *ai.Usage) MediaFact {
+	var total *float64
+	f.Charge, total = ChargeFromUsage(usage)
+	f.CostScope, f.CallCostUSD, f.CostUSD = MediaCostScopeCall, total, nil
 	return f
 }
 

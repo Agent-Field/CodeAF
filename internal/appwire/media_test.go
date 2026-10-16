@@ -147,3 +147,22 @@ func TestMediaSourceDocumentFactsAreOptionalAndFalseSurvives(t *testing.T) {
 		t.Fatalf("round trip = %+v (%v)", back, err)
 	}
 }
+
+func TestMediaVariantCallCostIsNotAFileCharge(t *testing.T) {
+	cost := 0.17
+	source := MediaSource{ID: "s", Batch: "bat_actual", VariantIndex: 2, ReturnedCount: 3, Charge: "charged", CostScope: "call", CallCostUSD: &cost}
+	raw, err := json.Marshal(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err = json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["batch"] != "bat_actual" || got["variant_index"] != float64(2) || got["returned_count"] != float64(3) || got["cost_scope"] != "call" || got["call_cost_usd"] != cost {
+		t.Fatalf("lost actual call facts: %s", raw)
+	}
+	if _, invented := got["cost_usd"]; invented {
+		t.Fatalf("invented per-file money: %s", raw)
+	}
+}

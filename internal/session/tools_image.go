@@ -3,8 +3,8 @@ package session
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	stdimage "image"
 	// The decoders are imported for their side effect alone: they register
@@ -15,7 +15,6 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -70,14 +69,15 @@ const imageDirectory = ".codeaf/images"
 // itself a valid reference can edit, restyle, combine, and iterate on its own
 // last render until the thing is right. That is the whole difference between one
 // picture and a working loop, and it costs three clauses to say.
-const generateImageDescription = "Generate an image from a text prompt and save it. Returns the path it was written to and the picture's dimensions — never the image itself, which stays on disk: this conversation carries the path, and the file is what you and the user both refer to afterwards. Give reference_paths to work from pictures instead of from words alone — one reference edits or restyles it, several combine them — and remember that the path this tool just returned is itself a valid reference, so you can pass your own last render back in and iterate on it until the diagram, the character or the layout is right. A first render is a draft: look at the file before you build on it or hand it over, judge it against what was asked, and iterate when it fell short. Give a path to choose the name and the folder; leave it out and the image is saved under a timestamped name derived from the prompt, and the result says where it went."
+const generateImageDescription = "Generate an image from a text prompt and save it. Returns the path it was written to and the picture's dimensions — never the image itself, which stays on disk: this conversation carries the path, and the file is what you and the user both refer to afterwards. Give reference_paths to work from pictures instead of from words alone — one reference edits or restyles it, several combine them — and remember that the path this tool just returned is itself a valid reference, so you can pass your own last render back in and iterate on it until the diagram, the character or the layout is right. Set n (1 to 10) to get that many variants of one prompt from a single request; you choose among them yourself. A first render is a draft: look at the file before you build on it or hand it over, judge it against what was asked, and iterate when it fell short. Give a path to choose the name and the folder; leave it out and the image is saved under a timestamped name derived from the prompt, and the result says where it went."
 
 const generateImageSchemaJSON = `{"type":"object","properties":{` +
 	`"prompt":{"type":"string","description":"What to draw, as a full description: subject, composition, style, lighting. The whole prompt reaches the image model, so detail is worth writing — every dimension the prompt leaves open, the model fills with its statistical average, and that average is what generic AI imagery looks like. Decide the medium, the light, the palette and the mood yourself and write them down; specificity is the difference between the picture you meant and a generic one. A prompt assembled from the genre's usual clichés lands on that same average by choice — escape a genre by naming a real medium (a print process, a photographic setup, a drafting tradition), not by recoloring it. And specify positively: image models barely read negation, so describe the surface, material and light that ARE there until the default has no room. With reference_paths it is the instruction — what to change about the pictures you gave."},` +
 	`"reference_paths":{"type":"array","items":{"type":"string"},"description":"Pictures to work from, as paths in the workspace (png, jpeg, webp or gif, each up to 10MB). One is an edit or a restyle of it; several are combined. A path this tool returned earlier is a valid reference, which is how you iterate on your own output."},` +
 	`"aspect_ratio":{"type":"string","description":"Shape of the frame, as the image model spells it (for example 16:9 or 1:1). Passed through untouched; leave it out for the model's own default."},` +
 	`"size":{"type":"string","description":"Exact pixel size as WIDTHxHEIGHT (for example 1024x1024). Passed through untouched; leave it out for the model's own default."},` +
-	`"path":{"type":"string","description":"Where to save it, relative to the workspace. Leave it out for a timestamped name derived from the prompt, saved where this session keeps its pictures. An existing file at this path is overwritten, as with the write tool."}` +
+	`"n":{"type":"integer","minimum":1,"maximum":10,"default":1,"description":"How many pictures ONE request should return, for a contact sheet of variants of the same prompt. Default 1. Each is saved as its own file and the cost is that of the whole request. If the model cannot return several, the call fails and nothing is retried."},` +
+	`"path":{"type":"string","description":"Where to save it, relative to the workspace. Leave it out for a timestamped name derived from the prompt, saved where this session keeps its pictures. An existing file at this path is overwritten, as with the write tool; with n above 1 the files are numbered from it (name-1.png, name-2.png) and no existing file is overwritten."}` +
 	`},"required":["prompt"],"additionalProperties":false}`
 
 // imageTools is the picture-making half of the belt, and it is CONDITIONAL by
@@ -106,6 +106,9 @@ type GenerateImageArgs struct {
 	Size           string   `json:"size"`
 	Path           string   `json:"path"`
 	Model          string   `json:"model"`
+	// N is how many pictures ONE request asks for, 1 to [ImageVariantsMax]; zero
+	// means one.
+	N int `json:"n"`
 }
 
 // ImageGen is everything one generation needs from the surface it runs in:
@@ -203,6 +206,12 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	if prompt == "" {
 		return "Invalid arguments: prompt is required", true
 	}
+	// THE COUNT IS CHECKED BEFORE ANYTHING IS PAID FOR, like the prompt: a request
+	// for eleven pictures is a typo the caller can fix, not a charge.
+	requested, refusal := imageCount(parsed.N)
+	if refusal != "" {
+		return "Invalid arguments: " + refusal, true
+	}
 	// The call's own choice, resolved before anything is paid for, so a word
 	// that matches nothing costs nothing. From here down `model` is the model
 	// that actually draws, wherever it is named — the request, the failure
@@ -220,51 +229,116 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		return "Invalid arguments: reference " + refusal, true
 	}
 
-	// One picture per call is what the tool asks for; the count recorded with
-	// the file is this very number, not a guess about variants.
-	const requested = 1
 	response, err := gen.Client.GenerateImage(ctx, provider.ImageRequest{
 		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
 		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
 		Size:            strings.TrimSpace(parsed.Size),
 		InputReferences: references,
 	})
-	if err != nil {
-		return "Image generation failed (" + model + "): " + err.Error(), true
-	}
-	if response == nil || len(response.Data) == 0 {
-		return "Image generation returned no image (" + model + ")", true
-	}
-	data, decodeErr := base64.StdEncoding.DecodeString(response.Data[0].Base64)
-	if decodeErr != nil || len(data) == 0 {
-		return "Image generation returned an unreadable image (" + model + ")", true
-	}
-	// The picture is paid for whether or not it is any good, so the accounting
-	// lands before the write can fail (see [imageGen.Account]).
-	if gen.Account != nil {
+	// A provider may return a usage receipt alongside an error. Account the
+	// actual receipt once, before any failure or unusable-output branch.
+	if response != nil && gen.Account != nil {
 		gen.Account(model, response.Usage)
 	}
-
-	path, err := imageDestinationFrom(gen.Workspace, parsed.Path, parsed.Prompt, data,
-		response.Data[0].MediaType, gen.Directory)
 	if err != nil {
-		return "Could not save the generated image: " + err.Error(), true
+		text := "Image generation failed (" + model + "): " + err.Error()
+		if requested > 1 {
+			// A provider that cannot give n pictures says so; the answer is the
+			// caller's to act on, and asking again as several calls would spend
+			// money nobody approved.
+			text += fmt.Sprintf(" — asked for %d images in one request; nothing was retried", requested)
+		}
+		return text, true
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "Could not save the generated image: " + err.Error(), true
+	if response == nil {
+		return "Image generation returned no image (" + model + ")", true
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return "Could not save the generated image: " + err.Error(), true
+	// THE BILL IS PAID ONCE PER PROVIDER RESPONSE, BEFORE ANYTHING CAN REFUSE IT.
+	// A reply that charged and then carried no picture, a picture that will not
+	// decode or one too large to keep is still a charge, and the figure the
+	// provider reported is the only one there is to record (see
+	// [ImageGen.Account]). It is never once per picture.
+	if len(response.Data) == 0 {
+		return "Image generation returned no image (" + model + ")", true
 	}
-	if gen.RecordMedia != nil {
+	// Only the pictures that were asked for are kept: a provider that returns
+	// more than n is not obeyed, and the one-picture call keeps its old reading
+	// of the first.
+	items := response.Data
+	if len(items) > requested {
+		items = items[:requested]
+	}
+	if why := imageReplyRefusal(items); why != "" {
+		return fmt.Sprintf("Image generation returned more than can be kept (%s): %s, so none were saved. "+
+			"No request was retried; any provider-reported charge was recorded. Ask for fewer images or a smaller size.", model, why), true
+	}
+
+	numbered := requested > 1
+	batch := newBatchID()
+	var saved []string
+	var failures []string
+	for i, item := range items {
+		path, data, saveErr := saveImageVariant(gen, parsed, numbered, i+1, item)
+		// The encoded copy is dropped as soon as it is decoded, so a large reply
+		// does not stay in memory beside the pictures already written.
+		response.Data[i].Base64 = ""
+		if saveErr != nil {
+			if !numbered {
+				if errors.Is(saveErr, errUnreadableImage) {
+					return "Image generation returned an unreadable image (" + model + ")", true
+				}
+				return "Could not save the generated image: " + saveErr.Error(), true
+			}
+			if errors.Is(saveErr, errUnreadableImage) {
+				failures = append(failures, fmt.Sprintf("Image %d was not saved: the provider's image was unreadable.", i+1))
+			} else {
+				failures = append(failures, fmt.Sprintf("Image %d was not saved: %s", i+1, saveErr.Error()))
+			}
+			continue
+		}
 		// The facts are the ones the road itself holds: the bytes it wrote, the
 		// usage the provider reported, and the reference paths exactly as given.
-		gen.RecordMedia(path, parsed.Prompt, GeneratedMedia(path, data, model).
-			WithUsage(response.Usage).WithReferences(parsed.ReferencePaths).WithRequested(requested))
-	} else if gen.Record != nil {
-		gen.Record(path, parsed.Prompt)
+		fact := GeneratedMedia(path, data, model).WithReferences(parsed.ReferencePaths).WithRequested(requested)
+		if numbered {
+			// One request, one total: the charge is the call's, never a picture's.
+			fact = fact.WithBatch(batch, i+1, len(response.Data)).WithCallUsage(response.Usage)
+		} else {
+			fact = fact.WithUsage(response.Usage)
+		}
+		if gen.RecordMedia != nil {
+			gen.RecordMedia(path, parsed.Prompt, fact)
+		} else if gen.Record != nil {
+			gen.Record(path, parsed.Prompt)
+		}
+		saved = append(saved, describeGeneratedImage(path, data, model))
 	}
-	return describeGeneratedImage(path, data, model), false
+	if !numbered {
+		return saved[0], false
+	}
+	return describeImageBatch(model, requested, len(response.Data), saved, failures)
+}
+
+// describeImageBatch is the result of a request for several pictures: how many
+// were asked for, how many the provider sent, how many are on disk, then one
+// line per file and one per failure. It claims no more than happened, and it
+// does not rank — the order is the provider's.
+func describeImageBatch(model string, requested, returned int, saved, failures []string) (string, bool) {
+	var out strings.Builder
+	fmt.Fprintf(&out, "Saved %d of %d requested images on %s from one request", len(saved), requested, model)
+	if returned != requested {
+		fmt.Fprintf(&out, " (the provider returned %d)", returned)
+	}
+	out.WriteString(", in the provider's order and not ranked:")
+	for _, line := range saved {
+		out.WriteString("\n" + line)
+	}
+	for _, line := range failures {
+		out.WriteString("\n" + line)
+	}
+	if returned > requested {
+		fmt.Fprintf(&out, "\nThe provider returned %d images; only the %d asked for were kept.", returned, requested)
+	}
+	return out.String(), len(saved) == 0
 }
 
 func imageDestinationFrom(workspace, asked, prompt string, data []byte, declared, directory string) (string, error) {

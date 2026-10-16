@@ -171,6 +171,12 @@ type MediaSource struct {
 	// usage; CostUSD is present only when charged.
 	Charge  string   `json:"charge" enum:"charged,not_charged,unknown"`
 	CostUSD *float64 `json:"cost_usd,omitempty"`
+	// Variant fields describe one actual provider request; call cost is never per file.
+	Batch         string   `json:"batch,omitempty"`
+	VariantIndex  int      `json:"variant_index,omitempty"`
+	ReturnedCount int      `json:"returned_count,omitempty"`
+	CostScope     string   `json:"cost_scope,omitempty"`
+	CallCostUSD   *float64 `json:"call_cost_usd,omitempty"`
 }
 
 // MediaPage is media.list's answer. Next resumes the listing below this page;

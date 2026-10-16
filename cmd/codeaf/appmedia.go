@@ -109,6 +109,7 @@ func appMediaSource(row session.MediaRow, live session.MediaLive, probe bool) ap
 		MIME: fact.MIME, Created: row.Artifact.Created.UTC().Format(time.RFC3339Nano),
 		Title: row.Artifact.Title, Model: fact.Model, RequestedModel: fact.Model, Run: fact.Run, Message: fact.Message, Tool: fact.Tool,
 		References: fact.References, Said: fact.Said,
+		Batch: fact.Batch, VariantIndex: fact.VariantIndex, ReturnedCount: fact.Returned, CostScope: fact.CostScope,
 		Verb: fact.Verb, Saw: fact.Saw, SawOmitted: fact.SawOmitted, SeenBy: fact.SeenBy, WorkingModel: fact.Working, Transcribed: fact.Transcribed, Charge: fact.Charge,
 	}
 	if out.Charge == "" {
@@ -116,6 +117,7 @@ func appMediaSource(row session.MediaRow, live session.MediaLive, probe bool) ap
 	}
 	if out.Charge == session.MediaCharged {
 		out.CostUSD = fact.CostUSD
+		out.CallCostUSD = fact.CallCostUSD
 	}
 	if row.Recorded && fact.Bytes > 0 {
 		bytes := fact.Bytes

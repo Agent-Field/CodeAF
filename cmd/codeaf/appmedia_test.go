@@ -251,3 +251,12 @@ func TestAppMediaGetReturnsDocumentEvidenceFacts(t *testing.T) {
 		t.Fatalf("serialized %s", raw)
 	}
 }
+
+func TestAppMediaProjectsOneBatchChargeWithoutDividingIt(t *testing.T) {
+	cost := 0.17
+	row := session.MediaRow{Kind: "image", Recorded: true, Fact: session.MediaFact{ID: "s", Batch: "bat_actual", VariantIndex: 2, Returned: 3, Requested: 4, Charge: session.MediaCharged, CostScope: session.MediaCostScopeCall, CallCostUSD: &cost}}
+	got := appMediaSource(row, session.MediaLive{}, false)
+	if got.Batch != "bat_actual" || got.VariantIndex != 2 || got.ReturnedCount != 3 || got.RequestedCount == nil || *got.RequestedCount != 4 || got.CallCostUSD == nil || *got.CallCostUSD != cost || got.CostUSD != nil {
+		t.Fatalf("wrong batch projection: %+v", got)
+	}
+}
