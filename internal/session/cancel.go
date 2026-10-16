@@ -133,6 +133,12 @@ func (a *Agent) cancelTask(id uint64, why string) (string, error) {
 	// A RUN'S ROWS WEAR TASK NUMBERS AND ARE NOT IN THE GRAPH, so the run is
 	// asked first (stoprun.go). A number that is not a run's goes on to the
 	// graph exactly as it always did.
+	// A TASK WAITING ON A MODEL HAS NOTHING RUNNING TO CUT: the stop ends it as
+	// not started, the way the app's Stop on the same row does (taskrouting.go).
+	// It is asked first because its queued row is a run's row in shape only.
+	if a.DropParkedTask(id) {
+		return fmt.Sprintf("task %d stopped · it had not started", id), nil
+	}
 	if line, owned, err := a.stopBeltRow(id, why); owned {
 		return line, err
 	}

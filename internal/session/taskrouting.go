@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -266,6 +267,7 @@ func (a *Agent) TaskRouting(id string, changes int) (TaskRoutingView, error) {
 	if changes > taskCrewChangesKept {
 		changes = taskCrewChangesKept
 	}
+	a.loadParked(n)
 	if block, ok := a.taskRouting.parkedBlock(n); ok {
 		return TaskRoutingView{Task: id, State: TaskRoutingBlocked, Mode: block.Mode, Blocked: &block, Requested: a.taskRouting.requested(n)}, nil
 	}
@@ -523,6 +525,7 @@ func (a *Agent) TaskRoutingAct(ctx context.Context, id string, act TaskRoutingAc
 	}
 	var applied []crewroute.Seat
 	var rerun uint64
+	a.loadParked(n)
 	switch {
 	case a.taskRouting.isParked(n):
 		err = a.actOnParked(ctx, n, act)
@@ -1030,13 +1033,82 @@ type taskRoutingBook struct {
 	parked map[uint64]*parkedHandoff
 }
 
-// parkedHandoff is an approved hand-off that waits on a model.
+// parkedHandoff is an approved hand-off that waits on a model. One parked in
+// this process holds its proposal; one that came back from the checkpoint
+// holds only its record, which is everything starting it needs.
 type parkedHandoff struct {
 	ctx       context.Context
 	p         *stagedProposal
 	spec      taskSpec
 	elsewhere string
 	block     TaskRoutingBlock
+	title     string
+	record    *taskParkRecord
+}
+
+// taskParkRecord is A HAND-OFF WAITING ON A MODEL as the checkpoint keeps it,
+// on its run row ([runRecord.Park]): why the role could not be seated — the
+// router's own typed refusal, at most [crewroute.MaxRejections] of it — and
+// what starting the same work again needs. Model names and provider ids
+// only; no key, token or credential is ever in it.
+//
+// THE PERSON'S CHOICE RIDES WITH IT. A pin chosen for this task while it
+// waited is the choice its retry routes on, after a restart as before one;
+// nothing here is read from settings, so a saved pin stays the pin it was.
+type taskParkRecord struct {
+	Seat     crewroute.Seat        `json:"seat"`
+	Mode     crewroute.Mode        `json:"mode,omitempty"`
+	Rejected []crewroute.Rejection `json:"rejected,omitempty"`
+	Omitted  int                   `json:"omitted,omitempty"`
+	Action   string                `json:"action,omitempty"`
+	Message  string                `json:"message"`
+	At       time.Time             `json:"at,omitzero"`
+
+	Brief     string           `json:"brief"`
+	DependsOn []uint64         `json:"dependsOn,omitempty"`
+	Dir       string           `json:"dir"`
+	StandMode TaskMode         `json:"standMode,omitempty"`
+	Asked     []string         `json:"asked,omitempty"`
+	Effort    crewroute.Effort `json:"effort,omitempty"`
+	Worker    string           `json:"worker,omitempty"`
+	Elsewhere string           `json:"elsewhere,omitempty"`
+
+	Sends      map[crewroute.Seat]string `json:"sends,omitempty"`
+	WishEffort crewroute.Effort          `json:"wishEffort,omitempty"`
+	TaskCap    float64                   `json:"taskCap,omitempty"`
+	AutoSeats  map[crewroute.Seat]bool   `json:"autoSeats,omitempty"`
+}
+
+// wish is the person's choice for the task the record kept.
+func (r *taskParkRecord) wish() crewWish {
+	return crewWish{sends: maps.Clone(r.Sends), effort: r.WishEffort, taskCap: r.TaskCap, autoSeats: maps.Clone(r.AutoSeats)}
+}
+
+// bounded is the record cut to what one row keeps.
+func (r *taskParkRecord) bounded() *taskParkRecord {
+	if r == nil {
+		return nil
+	}
+	out := *r
+	if n := len(out.Rejected); n > crewroute.MaxRejections {
+		out.Omitted += n - crewroute.MaxRejections
+		out.Rejected = out.Rejected[:crewroute.MaxRejections]
+	}
+	out.Rejected = slices.Clone(out.Rejected)
+	out.DependsOn, out.Asked = slices.Clone(out.DependsOn), slices.Clone(out.Asked)
+	out.Sends, out.AutoSeats = maps.Clone(out.Sends), maps.Clone(out.AutoSeats)
+	return &out
+}
+
+func (r *taskParkRecord) block() TaskRoutingBlock {
+	return TaskRoutingBlock{Seat: r.Seat, Mode: r.Mode, Rejected: slices.Clone(r.Rejected), Omitted: r.Omitted, Action: r.Action, Message: r.Message, At: r.At}
+}
+
+// withBlock is the record with a new refusal and the wish as it stands now.
+func (r taskParkRecord) withBlock(b TaskRoutingBlock, w crewWish) *taskParkRecord {
+	r.Seat, r.Mode, r.Rejected, r.Omitted, r.Action, r.Message, r.At = b.Seat, b.Mode, b.Rejected, b.Omitted, b.Action, b.Message, b.At
+	r.Sends, r.WishEffort, r.TaskCap, r.AutoSeats = w.sends, w.effort, w.taskCap, w.autoSeats
+	return r.bounded()
 }
 
 func (b *taskRoutingBook) change(id uint64, edit func(*crewWish)) {
@@ -1091,6 +1163,57 @@ func (b *taskRoutingBook) parkedBlock(id uint64) (TaskRoutingBlock, bool) {
 	return TaskRoutingBlock{}, false
 }
 
+func (b *taskRoutingBook) park(id uint64, p *parkedHandoff) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.parked == nil {
+		b.parked = map[uint64]*parkedHandoff{}
+	}
+	b.parked[id] = p
+}
+
+// loadParked puts a task that came back from the checkpoint waiting on a
+// model into the book, with the choice it waited with, the first time it is
+// asked about. A task the book already holds, or one whose row is not
+// waiting, is left as it is: nothing here routes, starts or calls a model.
+func (a *Agent) loadParked(n uint64) {
+	if n == 0 || a.taskRouting.isParked(n) {
+		return
+	}
+	g := a.graph()
+	if g == nil {
+		return
+	}
+	for _, row := range g.runRows(n) {
+		if row.ID == n && row.park != nil && row.State == TaskQueued {
+			rec := row.park.bounded()
+			a.taskRouting.adopt(n, &parkedHandoff{block: rec.block(), title: row.Title, elsewhere: rec.Elsewhere, record: rec}, rec.wish())
+			return
+		}
+	}
+}
+
+// adopt takes a restored waiting task into the book unless it already holds
+// one, with the choice it waited with unless a newer one was made.
+func (b *taskRoutingBook) adopt(id uint64, p *parkedHandoff, w crewWish) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.parked[id] != nil {
+		return
+	}
+	if b.parked == nil {
+		b.parked = map[uint64]*parkedHandoff{}
+	}
+	b.parked[id] = p
+	if _, chosen := b.wishes[id]; chosen || (len(w.sends) == 0 && w.effort == "" && w.taskCap == 0 && len(w.autoSeats) == 0) {
+		return
+	}
+	if b.wishes == nil {
+		b.wishes = map[uint64]crewWish{}
+	}
+	b.wishes[id] = w
+}
+
 func (b *taskRoutingBook) take(id uint64) *parkedHandoff {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -1140,13 +1263,11 @@ func (a *Agent) parkUnroutedHandoff(ctx context.Context, p *stagedProposal, spec
 		return "", false
 	}
 	block := blockOf(none, a.taskClockNow())
-	a.taskRouting.mu.Lock()
-	if a.taskRouting.parked == nil {
-		a.taskRouting.parked = map[uint64]*parkedHandoff{}
-	}
-	a.taskRouting.parked[p.id] = &parkedHandoff{ctx: context.WithoutCancel(ctx), p: p, spec: spec, elsewhere: elsewhere, block: block}
-	a.taskRouting.mu.Unlock()
-	a.publishRunRow(g, TaskNotice{ID: p.id, Title: spec.title, Brief: spec.brief, State: TaskQueued, Waiting: TaskWaitingNoModel, Report: block.Message})
+	w, _ := a.taskRouting.wish(p.id)
+	record := taskParkRecord{Brief: proposalBrief(spec, nil), DependsOn: spec.dependsOn, Dir: p.stand.dir, StandMode: p.stand.mode,
+		Asked: programAsked(spec), Effort: spec.crewEffort, Worker: namedModel(spec), Elsewhere: elsewhere}.withBlock(block, w)
+	a.taskRouting.park(p.id, &parkedHandoff{ctx: context.WithoutCancel(ctx), p: p, spec: spec, elsewhere: elsewhere, block: block, title: spec.title, record: record})
+	a.publishRunRow(g, TaskNotice{ID: p.id, Title: spec.title, Brief: spec.brief, State: TaskQueued, Waiting: TaskWaitingNoModel, Report: block.Message, park: record})
 	return fmt.Sprintf("task %d is waiting: %s. It has asked the person and starts when a model is allowed for the %s role; nothing is running for it.", p.id, block.Message, none.Seat), true
 }
 
@@ -1166,9 +1287,13 @@ func (a *Agent) actOnParked(ctx context.Context, n uint64, act TaskRoutingAction
 // RetryParkedTask starts a waiting task from where it stood. Still no model
 // keeps it waiting, with the new reason.
 func (a *Agent) RetryParkedTask(n uint64) error {
+	a.loadParked(n)
 	parked := a.taskRouting.take(n)
 	if parked == nil {
 		return refuse(TaskRoutingNotFound, "that task is not waiting on a model")
+	}
+	if parked.p == nil {
+		return a.retryRestoredPark(n, parked)
 	}
 	spec := parked.spec
 	ctx := withCrewWish(parked.ctx, a.proposalCrewWish(n, crewWish{effort: spec.crewEffort, worker: namedModel(spec)}))
@@ -1185,14 +1310,47 @@ func (a *Agent) RetryParkedTask(n uint64) error {
 	return nil
 }
 
+// retryRestoredPark starts a task that came back from the checkpoint waiting
+// on a model, through the same start door and the same router as any other
+// hand-off. Still no model keeps it waiting with the router's new reason; a
+// start that fails for any other reason settles it as not started.
+func (a *Agent) retryRestoredPark(n uint64, parked *parkedHandoff) error {
+	rec := parked.record
+	a.mu.Lock()
+	question := questionAtTaskHandoff(a.owedAsks)
+	a.mu.Unlock()
+	ctx := withCrewWish(context.Background(), a.proposalCrewWish(n, crewWish{effort: rec.Effort, worker: rec.Worker}))
+	_, err := a.startOrJoinTaskRunVia(ctx, n, parked.title, rec.Brief, rec.DependsOn, taskStand{dir: rec.Dir, mode: rec.StandMode}, question, nil, rec.Asked...)
+	var none *crewroute.NoEligibleError
+	switch {
+	case err == nil:
+		a.taskRouting.forget(n)
+		return nil
+	case errors.As(err, &none):
+		block := blockOf(none, a.taskClockNow())
+		w, _ := a.taskRouting.wish(n)
+		next := rec.withBlock(block, w)
+		a.taskRouting.park(n, &parkedHandoff{block: block, title: parked.title, elsewhere: parked.elsewhere, record: next})
+		if g := a.graph(); g != nil {
+			a.publishRunRow(g, TaskNotice{ID: n, Title: parked.title, State: TaskQueued, Waiting: TaskWaitingNoModel, Report: block.Message, park: next})
+		}
+		return &TaskRoutingRefusal{Code: TaskRoutingNoEligible, Message: block.Message, Seat: block.Seat, Blocked: &block}
+	default:
+		a.taskRouting.forget(n)
+		a.settleUnstartedHandoff(n, parked.title, err)
+		return refuse(TaskRoutingUnavailable, "%s", runDidNotStart(n, err))
+	}
+}
+
 // DropParkedTask ends a waiting task as not started.
 func (a *Agent) DropParkedTask(n uint64) bool {
+	a.loadParked(n)
 	parked := a.taskRouting.take(n)
 	if parked == nil {
 		return false
 	}
 	a.taskRouting.forget(n)
-	a.settleUnstartedHandoff(n, parked.spec.title, errors.New(parked.block.Message))
+	a.settleUnstartedHandoff(n, parked.title, errors.New(parked.block.Message))
 	return true
 }
 
@@ -1323,6 +1481,7 @@ func (a *Agent) TaskRoutingOptions(id string) (TaskRoutingOptions, error) {
 		return TaskRoutingOptions{}, refuse(TaskRoutingNotFound, "no such task")
 	}
 	out := TaskRoutingOptions{Task: id, Scope: TaskRoutingNone}
+	a.loadParked(n)
 	switch {
 	case a.taskRouting.isParked(n):
 		out.Scope, out.Pick, out.Retry = TaskRoutingWaiting, true, true

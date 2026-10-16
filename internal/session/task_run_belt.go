@@ -1686,6 +1686,9 @@ func carryRunRow(g *TaskGraph, notice TaskNotice) TaskNotice {
 				continue
 			}
 			notice = carryRunIdentity(notice, kept)
+			if notice.park == nil && notice.State == TaskQueued && notice.Waiting == TaskWaitingNoModel {
+				notice.park = kept.park
+			}
 			break
 		}
 	}

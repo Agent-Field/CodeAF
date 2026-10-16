@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -94,6 +95,36 @@ func TestTheTaskRowCarriesItsModelsChip(t *testing.T) {
 	}
 	if chip := appNoticeModels(&session.TaskNotice{Waiting: session.TaskWaitingNoModel}, false); chip.State != "blocked" {
 		t.Fatalf("blocked %+v", chip)
+	}
+}
+
+// A task waiting on a model reaches the wire as that wait: the role, the
+// router's reasons, and the pin chosen for the task. The bytes are model names
+// and provider ids; a credential is not a field here.
+func TestAWaitingRefusalReachesTheWireAsTheRoleAndItsReasons(t *testing.T) {
+	got := appRoutingOf("agent:9", session.TaskRoutingView{
+		State: session.TaskRoutingBlocked, Mode: crewroute.ModeAuto,
+		Blocked: &session.TaskRoutingBlock{
+			Seat: crewroute.Checker, Mode: crewroute.ModeAuto, Omitted: 6, Action: "reconnect anthropic",
+			Rejected: []crewroute.Rejection{{Model: "claude-sonnet", Provider: "anthropic", Reason: crewroute.RejectProviderUnavailable}},
+		},
+		Requested: map[crewroute.Seat]string{crewroute.Planner: "ds-flash@deepseek"},
+	})
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, secret := range []string{"api_key", "apiKey", "token", "sk-"} {
+		if strings.Contains(text, secret) {
+			t.Fatalf("the wire carried %q: %s", secret, text)
+		}
+	}
+	if got.State != "blocked" || got.Blocked == nil || got.Blocked.Role != "checker" || got.Blocked.Omitted != 6 ||
+		len(got.Blocked.Rejected) != 1 || got.Blocked.Rejected[0].Reason != "provider_unavailable" ||
+		got.Blocked.Rejected[0].Model.ID != "claude-sonnet" || got.Blocked.Rejected[0].Model.Provider != "anthropic" ||
+		got.Requested == nil || got.Requested.Planner == nil || got.Requested.Planner.ID != "ds-flash@deepseek" {
+		t.Fatalf("wire %+v", got)
 	}
 }
 

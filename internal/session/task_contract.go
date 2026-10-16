@@ -711,6 +711,11 @@ type TaskNotice struct {
 	// starting and a hold ending are both news that arrives without the state
 	// moving, so an update carrying only this is still one a surface folds in.
 	Waiting string
+	// park is what a hand-off WAITING ON A MODEL needs to start again, on the
+	// row and nowhere else (taskrouting.go's [taskParkRecord]): the row is
+	// what the checkpoint keeps, so a waiting task comes back waiting after a
+	// restart rather than interrupted. Unexported: no surface reads it.
+	park *taskParkRecord
 	// Paused says this row is HELD AT A GATE only a person can open: an adaptive
 	// run that has spent its tank and stopped launching, waiting to be topped up,
 	// finished or stopped ([EventOrchestratePause], [Agent.ResolveOrchestrate]).

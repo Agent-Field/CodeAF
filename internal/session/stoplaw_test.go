@@ -40,6 +40,8 @@ var stoppableRowPublishers = map[string]struct{ kind, proof string }{
 	"sayForming":            {CancelRun, "TestCancelStopsAnAdaptiveRun"},
 	"pauseRun":              {CancelRun, "TestCancelStopsAnAdaptiveRun"},
 	"rename":                {CancelRun, "TestCancelStopsAnAdaptiveRun"},
+	"parkUnroutedHandoff":   {CancelTask, "TestAStopReachesATaskWaitingOnAModel"},
+	"retryRestoredPark":     {CancelTask, "TestAStopReachesATaskWaitingOnAModel"},
 }
 
 // stoppableStates are the states a stop means something in, by the names this

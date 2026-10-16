@@ -767,6 +767,11 @@ type runRecord struct {
 	// loud rather than repairing.
 	Copy       *TaskCopyRecord   `json:"copy,omitempty"`
 	PendingRun *PendingRunRecord `json:"pendingRun,omitempty"`
+	// Park is A HAND-OFF WAITING ON A MODEL (taskrouting.go): why no role
+	// could be seated and what starting it again needs. A queued row that
+	// carries it comes back waiting, its Ask standing, rather than interrupted;
+	// absent on every other row and on every record written before it existed.
+	Park *taskParkRecord `json:"park,omitempty"`
 
 	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS
 	// ([TaskNotice.PlanTask]), carried across a restart for the same reason the
@@ -1141,6 +1146,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		EndedAt:    notice.EndedAt,
 		Copy:       notice.Copy,
 		PendingRun: notice.PendingRun,
+		Park:       notice.park.bounded(),
 		Ending:     notice.Ending,
 		Branch:     notice.Branch,
 		Merge:      notice.Merge,
@@ -1198,6 +1204,14 @@ func runRowNotice(record runRecord) TaskNotice {
 	if record.CrewState != nil && record.CrewState.Routed {
 		decision := record.CrewState.Decision
 		notice.Crew = &decision
+	}
+	// A TASK WAITING ON A MODEL WAS NEVER RUNNING, so nothing about it stopped
+	// when the process did: it comes back waiting, with the same reason and
+	// the same Ask, and starts only when a person says so ([Agent.RetryParkedTask]).
+	if record.Park != nil && record.State == TaskQueued {
+		notice.park = record.Park.bounded()
+		notice.Waiting, notice.Report = TaskWaitingNoModel, record.Park.Message
+		return notice
 	}
 	if !notice.State.settled() {
 		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live

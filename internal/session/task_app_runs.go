@@ -101,7 +101,7 @@ func (a *Agent) appRunView(row TaskNotice, cap float64) AppTaskView {
 	}
 	a.appRunDetail(&view, appRunRowKey(row))
 	switch {
-	case a.taskRouting.isParked(row.ID):
+	case row.park != nil || a.taskRouting.isParked(row.ID):
 		view.RoutingState = TaskRoutingBlocked
 	case row.Crew != nil:
 		view.RoutingState, view.Crew = TaskRoutingRouted, row.Crew

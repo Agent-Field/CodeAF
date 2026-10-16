@@ -894,7 +894,11 @@ on the model you are talking to, nor on a model you did not allow. The same is t
 **pinned** to a model you allow whose provider is not connected, is turned off, refused its
 key or is out of credit: the task asks you to reconnect, add credit or unpin the seat, and
 never moves the seat to another model or provider. (A pin you no longer allow is the one
-exception: that seat is picked as if unpinned, and says so.)
+exception: that seat is picked as if unpinned, and says so.) Closing the conversation
+does not start the task and does not drop it. Opened again, it is still waiting on
+that same role, with the same reasons and the same pin, and it starts only when you
+retry it; stop ends it as not started. Nothing is sent to a model while it waits, and
+a pin whose provider is still out of reach stays that pin.
 
 **A direct provider's route is weighed at that provider's own price.** A model a direct
 connection serves is a route the crew may pick only when that provider's own model list
