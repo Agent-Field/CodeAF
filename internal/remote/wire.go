@@ -1449,13 +1449,14 @@ type InterruptArgs struct {
 
 type SubmitArgs struct {
 	Text string `json:"text"`
-	// Said and Attachments are what a door that knows more than the words said
-	// about a person's message (internal/session's [session.Submission]), on
-	// Submit alone. Both are absent from every other call, and an engine built
-	// before them reads the words and nothing else — the message still runs, it
-	// is only kept without its mark.
+	// Said, Attachments and Reads are what a door that knows more than the
+	// words said about a person's message (internal/session's
+	// [session.Submission]), on Submit alone. All are absent from every other
+	// call, and an engine built before them reads the words and nothing else —
+	// the message still runs, it is only kept without its mark.
 	Said        *string                     `json:"said,omitempty"`
 	Attachments []session.MessageAttachment `json:"attachments,omitempty"`
+	Reads       []session.MessageRead       `json:"reads,omitempty"`
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the

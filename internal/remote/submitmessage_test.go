@@ -47,6 +47,21 @@ func TestSubmitCarriesTheMessagesMarkToTheAgentsDoor(t *testing.T) {
 		t.Fatalf("the agent was sent %q", marked.sent)
 	}
 
+	// Reads alone are a mark: they reach the door whole, every count intact.
+	reads := []session.MessageRead{{
+		Source: session.MessageReference{Kind: "collection", ID: "c1", Name: "Specs"},
+		Count:  200, Missing: 1, Unavailable: 2, Unread: 3, More: true,
+		Warnings: []string{"two could not be asked"},
+		Items:    []session.MessageReference{{Kind: "file", ID: "r1", Name: "a.md", Owner: "fs", Path: "docs/a.md", URL: "https://x/a"}},
+	}}
+	s.pending = nil
+	if _, err := s.invoke(Frame{Kind: "call", ID: 3, Method: MethodSubmit, Payload: mustJSON(SubmitArgs{Text: "read these", Reads: reads})}); err != nil {
+		t.Fatal(err)
+	}
+	if len(marked.submissions) != 2 || marked.submissions[1].Said != nil || !reflect.DeepEqual(marked.submissions[1].Reads, reads) {
+		t.Fatalf("the marked door was handed %+v", marked.submissions)
+	}
+
 	plain := &fakeAgent{model: "m"}
 	s = &server{out: io.Discard, session: NewSession(&Engine{Agent: plain}, false)}
 	if _, err := s.invoke(Frame{Kind: "call", ID: 1, Method: MethodSubmit, Payload: mustJSON(SubmitArgs{Text: "Attached file: notes.md", Said: &said, Attachments: attachments})}); err != nil {

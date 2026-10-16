@@ -2557,8 +2557,8 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		door, marked := agent.(interface {
 			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
 		})
-		if marked && (args.Said != nil || len(args.Attachments) > 0) {
-			events, err = door.SubmitMessage(context.Background(), session.Submission{Text: args.Text, Said: args.Said, Attachments: args.Attachments})
+		if marked && (args.Said != nil || len(args.Attachments) > 0 || len(args.Reads) > 0) {
+			events, err = door.SubmitMessage(context.Background(), session.Submission{Text: args.Text, Said: args.Said, Attachments: args.Attachments, Reads: args.Reads})
 		} else {
 			events, err = agent.Submit(context.Background(), args.Text)
 		}
