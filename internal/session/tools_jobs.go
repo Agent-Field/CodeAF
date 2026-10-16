@@ -44,7 +44,7 @@ import (
 // quick task — reports itself into this conversation; never sleep, tail or poll
 // for it`, registered as `handoff.reports-itself`), so this tool states only
 // what is its own.
-const backgroundSentence = " Run long-lived commands (servers, watchers, long builds) with background:true and ask the jobs tool about them; a job leaves its log and an exit code and nothing else."
+const backgroundSentence = " Run servers, watchers and long builds with background:true; ask the jobs tool about them."
 
 // timeoutSentence states the v3 foreground law pi leaves unstated: a call the
 // model did not bound is bounded by the harness, because one hung command
@@ -66,7 +66,7 @@ func timeoutSentence(backgroundAfter int) string {
 			strconv.Itoa(BashCeilingSeconds) + "s, and is never turned into a job before then. One that outlives even that is NOT killed — it becomes a background job, and the call answers with the output so far and 'still running as job N; log at <path>'. Background calls never time out."
 	}
 	return " bash WAITS for the command: a foreground call runs for up to " + strconv.Itoa(backgroundAfter) +
-		" seconds and is then kept running as a background job while you get its output so far and the job id. Its own timeout can move that handoff sooner and is capped at " +
+		" seconds, then is kept running as a background job (you get output so far and its job id). A timeout can move it sooner, capped at " +
 		strconv.Itoa(BashCeilingSeconds) + " seconds. Background calls never time out."
 }
 
@@ -173,7 +173,7 @@ func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 // foreground call WAITS and hands back the output, a background one FORKS and
 // hands back an id. What happens when the job ends is the page's law for
 // everything handed off, and is not a third copy of it here.
-const backgroundProperty = `{"type":"boolean","description":"Spawn the command instead of waiting for it: the call returns a job id at once (default: false — the call waits and returns the output)"}`
+const backgroundProperty = `{"type":"boolean","description":"Spawn the command and return a job id at once (default: false: wait and return the output)"}`
 
 // backgroundBash wraps bare's bash: the same tool, with one optional argument.
 //
@@ -213,6 +213,9 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			if strings.TrimSpace(parsed.Command) == "" {
 				return rejectToolArguments(ctx, "Invalid arguments: command is required"), true, nil
 			}
+			if _, _, bad := shellOutputsArgs(args); bad != nil && a.mayPublishShellOutputs() {
+				return rejectToolArguments(ctx, "Invalid arguments: "+bad.Error()), true, nil
+			}
 			started, err := a.jobs.start(a.planCommand(parsed.Command))
 			if err != nil {
 				return "Could not start the background job: " + err.Error(), true, nil
@@ -223,7 +226,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			text := fmt.Sprintf("job %d started; log at %s", started.id, started.logPath)
 			// A JOB ENDS LATER, and what it writes is not this call's to
 			// promise (shell_outputs.go): declared outputs claim nothing here.
-			if _, declared := shellOutputsArgs(args); declared {
+			if _, declared, _ := shellOutputsArgs(args); declared && a.mayPublishShellOutputs() {
 				text += "\nOutputs not registered: a background job ends after this call."
 			}
 			return text, false, nil

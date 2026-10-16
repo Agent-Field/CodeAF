@@ -930,6 +930,20 @@ func (r *jobRegistry) runningProcesses() int {
 	return running
 }
 
+// runningAny counts jobs of every kind still running: anything that could be
+// writing into the folder while a foreground command runs.
+func (r *jobRegistry) runningAny() int {
+	running := 0
+	for _, one := range r.all() {
+		select {
+		case <-one.done:
+		default:
+			running++
+		}
+	}
+	return running
+}
+
 // renderLedger opens this session's render ledger once. A session with no
 // folder (the legacy layout) keeps it in memory.
 func (r *jobRegistry) renderLedger() *renderLedger {

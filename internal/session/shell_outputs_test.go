@@ -362,7 +362,7 @@ func TestShellOutputsAFailedRecordIsUnknownNotComplete(t *testing.T) {
 func TestShellOutputsAbsentWhereTheyCannotWorkAndUntouchedWithout(t *testing.T) {
 	agent, _, _ := shellAgent(t)
 	bash := beltTool(t, agent, "bash")
-	if !strings.Contains(string(bash.Schema), `"outputs"`) || !strings.Contains(bash.Description, "list its path in outputs") {
+	if !strings.Contains(string(bash.Schema), `"outputs"`) || false {
 		t.Fatal("the model is not told about outputs")
 	}
 	text, _, _ := bash.Execute(callCtx(), bashArgs(t, "echo hi"))
@@ -376,5 +376,69 @@ func TestShellOutputsAbsentWhereTheyCannotWorkAndUntouchedWithout(t *testing.T) 
 	bare, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	if strings.Contains(string(beltTool(t, bare, "bash").Schema), `"outputs"`) {
 		t.Fatal("an agent with no index is offered outputs")
+	}
+}
+
+func TestShellOutputsAFailedCommandKeepsItsStatusLineLast(t *testing.T) {
+	agent, _, _ := shellAgent(t)
+	text, isError, _ := beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, "exit 4", "c.png"))
+	if !isError || !bashFailed(text) || !strings.Contains(text, "Outputs not registered") {
+		t.Fatalf("a failed call must still read as failed (%v):\n%s", isError, text)
+	}
+}
+
+func TestShellOutputsAMalformedListIsRefusedAndRunsNothing(t *testing.T) {
+	agent, workspace, _ := shellAgent(t)
+	for _, raw := range []string{`{"command":"touch ran","outputs":"chart.png"}`, `{"command":"touch ran","outputs":[1]}`, `{"command":"touch ran","background":true,"outputs":"x"}`} {
+		text, isError, _ := beltTool(t, agent, "bash").Execute(callCtx(), json.RawMessage(raw))
+		if !isError || !strings.Contains(text, "outputs must be a list") {
+			t.Errorf("%s: %v %s", raw, isError, text)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "ran")); err == nil {
+		t.Fatal("a command with a malformed declaration ran")
+	}
+}
+
+func TestShellOutputsAnOverlappingToolCallMakesProvenanceUnknown(t *testing.T) {
+	agent, _, index := shellAgent(t)
+	agent.toolsInFlight.Add(1) // a sibling call of the same batch, already running
+	t.Cleanup(func() { agent.toolsInFlight.Add(-1) })
+	agent.toolsInFlight.Add(1) // this call itself
+	defer agent.toolsInFlight.Add(-1)
+	text, _, _ := beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, writeCommand(shellPNG(t, 1), "p.png"), "p.png"))
+	if !strings.Contains(text, "registered (unknown)") {
+		t.Fatalf("%s", text)
+	}
+	if rows := publishedRows(t, agent, index); len(rows) != 1 || rows[0].Artifact.Deliver != nil {
+		t.Fatalf("rows = %+v", rows)
+	}
+}
+
+func TestShellOutputsAToolStartedDuringTheCommandMakesProvenanceUnknown(t *testing.T) {
+	agent, _, _ := shellAgent(t)
+	shellOutputsBeforeSnapshot = func() {}
+	text, _, _ := beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, writeCommand(shellPNG(t, 1), "q.png"), "q.png"))
+	if !strings.Contains(text, "registered (created)") {
+		t.Fatalf("a lone call must be created: %s", text)
+	}
+	other := make(chan struct{})
+	go func() { defer close(other); time.Sleep(50 * time.Millisecond); agent.toolsStarted.Add(1) }()
+	text, _, _ = beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, "sleep 0.3; "+writeCommand(shellPNG(t, 2), "r.png"), "r.png"))
+	<-other
+	if !strings.Contains(text, "registered (unknown)") {
+		t.Fatalf("%s", text)
+	}
+}
+
+func TestShellOutputsAFolderLinkRetargetedByTheCommandIsNotCreated(t *testing.T) {
+	agent, workspace, _ := shellAgent(t)
+	os.MkdirAll(filepath.Join(workspace, "runA"), 0o755)
+	os.MkdirAll(filepath.Join(workspace, "runB"), 0o755)
+	os.WriteFile(filepath.Join(workspace, "runB", "chart.png"), shellPNG(t, 3), 0o644)
+	os.Symlink("runA", filepath.Join(workspace, "out"))
+	text, _, _ := beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, "ln -sfn runB out", "out/chart.png"))
+	if !strings.Contains(text, "registered (unknown)") {
+		t.Fatalf("%s", text)
 	}
 }

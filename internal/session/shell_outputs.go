@@ -91,27 +91,37 @@ type shellBefore struct {
 	path     string
 	state    shellState
 	info     os.FileInfo
+	// parent is the folder as resolved BEFORE the command, "" when it did not
+	// exist yet. A folder that points somewhere else afterwards makes the file
+	// there something this snapshot said nothing about.
+	parent string
 }
 
 // shellOutputsArgs reads the one argument this file owns. A call that does not
 // decode, or names none, is not this file's business and is handed on intact.
-func shellOutputsArgs(args json.RawMessage) (outputs []string, declared bool) {
-	var parsed struct {
-		Command string   `json:"command"`
-		Outputs []string `json:"outputs"`
+// A call whose arguments do not decode at all is bare's to refuse; one whose
+// `outputs` is present but is not a list of strings is refused here, so the
+// model is never left believing it declared a file.
+func shellOutputsArgs(args json.RawMessage) (outputs []string, declared bool, err error) {
+	var fields map[string]json.RawMessage
+	if decodeToolArguments(args, &fields) != nil {
+		return nil, false, nil
 	}
-	if err := decodeToolArguments(args, &parsed); err != nil || len(parsed.Outputs) == 0 {
-		return nil, false
+	raw, present := fields["outputs"]
+	if !present || string(raw) == "null" {
+		return nil, false, nil
 	}
-	return parsed.Outputs, true
+	if err := json.Unmarshal(raw, &outputs); err != nil {
+		return nil, false, errors.New("outputs must be a list of path strings")
+	}
+	return outputs, len(outputs) > 0, nil
 }
 
 // shellOutputsProperty is the property added to bash's schema.
-var shellOutputsProperty = fmt.Sprintf(`{"type":"array","maxItems":%d,"items":{"type":"string"},"description":"Paths of pictures this command makes for your answer, declared BEFORE it runs (at most %d, under the working folder). Registered only when the command ends in this call."}`, shellOutputsMax, shellOutputsMax)
+var shellOutputsProperty = `{"type":"array","items":{"type":"string"},"description":"Picture paths it makes, declared before it runs; recorded only if it ends in this call"}`
 
-// shellOutputsSentence is the model's whole guidance, written once.
-var shellOutputsSentence = fmt.Sprintf(" To show a picture this command makes (a chart, a plot, a rendering) in your answer, list its path in outputs (at most %d, png, jpeg, gif or webp under the working folder). It is recorded only if the command finishes in this call: not with background:true and not when the call is handed to a job. A file that was already there is shown as it was found, not as made now.", shellOutputsMax)
-
+// There is NO description sentence: the property's own description is the whole
+// guidance, because everything bash says rides every request of every turn.
 // mayPublishShellOutputs says whether this agent can record a published file at
 // all. A capability that cannot work is absent, not broken. THE BELT IS COMPOSED
 // BEFORE THE JOURNAL EXISTS, so the session's id cannot be part of this test; a
@@ -151,10 +161,12 @@ func (a *Agent) publishingBash(inner bare.Tool) bare.Tool {
 		return inner
 	}
 	wrapped := inner
-	wrapped.Description = inner.Description + shellOutputsSentence
 	wrapped.Schema = schemaWithShellOutputs(inner.Schema)
 	wrapped.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-		outputs, declared := shellOutputsArgs(args)
+		outputs, declared, bad := shellOutputsArgs(args)
+		if bad != nil {
+			return rejectToolArguments(ctx, "Invalid arguments: "+bad.Error()), true, nil
+		}
 		if !declared {
 			return inner.Execute(ctx, args)
 		}
@@ -166,7 +178,8 @@ func (a *Agent) publishingBash(inner bare.Tool) bare.Tool {
 		if refusal != "" {
 			return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 		}
-		busy := a.otherProcessesRunning()
+		busy := a.otherProcessesRunning() || a.toolsInFlight.Load() > 1
+		startedAtSnapshot := a.toolsStarted.Load()
 		exited := false
 		observed := bare.WithBashExit(ctx, func(code int) { exited = code == 0 })
 		text, isError, err := inner.Execute(observed, args)
@@ -174,19 +187,27 @@ func (a *Agent) publishingBash(inner bare.Tool) bare.Tool {
 			return text, isError, err
 		}
 		if !exited || ctx.Err() != nil {
-			return text + "\n\nOutputs not registered: the command did not finish with exit status 0 in this call (it failed, timed out, was interrupted, or was handed to a job).", isError, nil
+			note := "Outputs not registered: the command did not finish with exit status 0 in this call (it failed, was refused, timed out, was interrupted, or was handed to a job)."
+			if isError {
+				// bash's own status line must stay the LAST line of a failed
+				// result: the record of why a step failed reads it there
+				// (why.go's bashFailed).
+				return note + "\n\n" + text, isError, nil
+			}
+			return text + "\n\n" + note, isError, nil
 		}
-		busy = busy || a.otherProcessesRunning()
+		busy = busy || a.otherProcessesRunning() || a.toolsStarted.Load() != startedAtSnapshot
 		return text + "\n\n" + a.publishShellOutputs(ctx, befores, busy), isError, nil
 	}
 	return wrapped
 }
 
-// otherProcessesRunning says some background process of this session was
-// running: it could have written a declared path, so absence-before is no
-// longer proof that THIS command made it.
+// otherProcessesRunning says some job of this session (any kind) was running:
+// it could have written a declared path, so absence-before is no longer proof
+// that THIS command made it. A tool call that overlapped this one is checked
+// separately, from the agent's tool counters.
 func (a *Agent) otherProcessesRunning() bool {
-	return a.jobs != nil && a.jobs.runningProcesses() > 0
+	return a.jobs != nil && a.jobs.runningAny() > 0
 }
 
 // shellOutputPath is the absolute, cleaned spelling of a declared path.
@@ -225,6 +246,9 @@ func (a *Agent) snapshotShellOutputs(declared []string) ([]shellBefore, string) 
 		}
 		seen[path] = true
 		before := shellBefore{declared: raw, path: path}
+		if resolved, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+			before.parent = resolved
+		}
 		info, err := os.Lstat(path)
 		switch {
 		case err == nil && info.Mode().IsRegular():
@@ -280,6 +304,10 @@ func (a *Agent) publishShellOutputs(ctx context.Context, befores []shellBefore, 
 	for _, result := range results {
 		if result.note != "" {
 			lines = append(lines, fmt.Sprintf("Output %s not registered: %s.", result.declared, result.note))
+			continue
+		}
+		if deadline.Err() != nil {
+			lines = append(lines, fmt.Sprintf("Output %s: whether it was recorded is unknown.", result.declared))
 			continue
 		}
 		if !a.recordShellOutput(result, made) {
@@ -371,14 +399,17 @@ func (a *Agent) inspectShellOutput(ctx context.Context, before shellBefore, budg
 	if w, h, ok := imageSize(head); ok {
 		fact.Width, fact.Height = w, h
 	}
-	fact.Change = classifyShellOutput(before, opened, busy)
+	fact.Change = classifyShellOutput(before, parent, opened, busy)
 	out.fact, out.kind, out.title = fact, "image", filepath.Base(canonical)
 	return out
 }
 
 // classifyShellOutput is the only claim made about production. It compares the
 // identity the file had before the command with the one it has now.
-func classifyShellOutput(before shellBefore, after os.FileInfo, busy bool) string {
+func classifyShellOutput(before shellBefore, parent string, after os.FileInfo, busy bool) string {
+	if before.parent != "" && before.parent != parent {
+		return ShellUnknown
+	}
 	switch before.state {
 	case shellAbsent:
 		if busy {

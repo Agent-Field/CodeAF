@@ -2494,6 +2494,11 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// toolsInFlight and toolsStarted count this agent's tool calls
+	// ([Agent.executeTool]). A shell output is only vouched for as made by its
+	// own command when no other tool call overlapped it (shell_outputs.go).
+	toolsInFlight atomic.Int64
+	toolsStarted  atomic.Uint64
 	// liveOutputWanted counts the windows that joined this conversation asking
 	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
 	// beside the window that opened it with [Config.LiveToolOutput].

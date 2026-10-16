@@ -3615,6 +3615,9 @@ func resultExit(text string) *int {
 // written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	started := time.Now()
+	a.toolsStarted.Add(1)
+	a.toolsInFlight.Add(1)
+	defer a.toolsInFlight.Add(-1)
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on

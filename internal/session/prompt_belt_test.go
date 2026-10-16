@@ -77,6 +77,9 @@ func buildShippedConversation(t *testing.T, config *Config) {
 	}
 	config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) { return "", nil }
 	config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
+	// The chat door always has an artifacts index (chatv3.go), and bash's
+	// `outputs` argument rides only where one exists.
+	config.ArtifactsIndex = filepath.Join(t.TempDir(), "artifacts.jsonl")
 	// AND THE TWO SEAMS THAT ARE THE REST OF THE UNIVERSE. The big machines
 	// and `automation` are conditional on somebody being there to answer a
 	// card and on there being a store to arm one in (tools.go), and a universe

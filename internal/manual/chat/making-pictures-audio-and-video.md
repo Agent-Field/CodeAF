@@ -626,8 +626,10 @@ under the same one condition, exactly as the making verbs do.
 
 Yes, for a picture. When I run a command that makes a chart, a plot or a rendering
 for you, I list its path in `bash`'s `outputs` argument **before** it runs, and
-codeaf looks at that path before and after the command and keeps the picture as
-a source of that very answer — you do not have to edit any markdown.
+codeaf looks at that path before and after the command and records the picture
+as a source of that very call, so the app can show it with the answer without
+you editing any markdown. The terminal does not draw it inline; a picture
+recorded as `created` is listed under `/files`.
 
 What it will and will not do:
 
@@ -641,7 +643,9 @@ What it will and will not do:
 - **Made, or only shown.** A path that was absent before and is a file after is
   recorded as `created`; one that was already there is shown as it was found
   (`unchanged`, or `modified` when it changed) and is never recorded as made now.
-  If another background process was running, it is `unknown`. A picture only
+  If another job or another tool call overlapped the command, it is `unknown`.
+  A command that leaves a child process still writing after it exits can be
+  recorded before that child finishes. A picture only
   looked at with `view_image` stays something I looked at.
 - A file that changes while it is being read, or a record that cannot be written,
   is reported as not registered or unknown, never as done. A file being there
