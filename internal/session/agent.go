@@ -5194,7 +5194,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			// Duplicate IDs inside one provider batch cannot identify a result.
 			// Keep the new classification unknown instead of lending one call
 			// another call's rejection. Ordinary batches pay no map allocation.
-			if (result.rejected || result.harness || result.refused || result.invoked) && len(msg.ToolCalls) > 1 {
+			if (result.rejected || result.harness || result.refused || result.invoked || result.attempt) && len(msg.ToolCalls) > 1 {
 				if rejectionCounts == nil {
 					rejectionCounts = make(map[string]int, len(msg.ToolCalls))
 					for _, sibling := range msg.ToolCalls {
@@ -5202,7 +5202,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 					}
 				}
 				if rejectionCounts[call.ID] != 1 {
-					result.rejected, result.harness, result.refused, result.invoked = false, false, false, false
+					result.rejected, result.harness, result.refused, result.invoked, result.attempt = false, false, false, false, false
 				}
 			}
 			// The step's own title, off the journal's `caption` line, keyed by

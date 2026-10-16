@@ -52,7 +52,7 @@ const (
 // presentation append/replay/compaction keeps this mark with the actual bytes;
 // no additional history index or call-ID keyed state is introduced.
 func (a *Agent) recordToolResult(message ai.Message, result toolResult) {
-	if !result.rejected && !result.harness && !result.invoked {
+	if !result.rejected && !result.harness && !result.invoked && !result.attempt {
 		a.record(message)
 		return
 	}
@@ -62,7 +62,7 @@ func (a *Agent) recordToolResult(message ai.Message, result toolResult) {
 		a.presentation = &presentationIndex{}
 	}
 	message.Content = append([]ai.ContentPart(nil), message.Content...)
-	a.presentation.remember(message, &messagePresentation{Audience: "tool", ToolInvoked: result.invoked, RejectedBeforeRun: result.rejected, HarnessMade: result.harness, Refused: result.harness && result.refusedBy != ""})
+	a.presentation.remember(message, &messagePresentation{Audience: "tool", ToolInvoked: result.invoked, RejectedBeforeRun: result.rejected, HarnessMade: result.harness, Refused: result.harness && result.refusedBy != "", MediaAttempt: result.attempt})
 	a.recordLocked(message)
 }
 
@@ -72,6 +72,7 @@ type toolResultFacts struct {
 	harness  bool
 	refused  bool
 	invoked  bool
+	attempt  bool
 }
 
 func toolResultsWithFacts(messages []ai.Message, presentation *presentationIndex) map[*ai.ToolCall]toolResultFacts {
@@ -83,7 +84,7 @@ func toolResultsWithFacts(messages []ai.Message, presentation *presentationIndex
 		rejected := message.Role == "tool" && mark != nil && mark.Audience == "tool" && mark.RejectedBeforeRun
 		facts := toolResultFacts{text: messageContentText(message), rejected: rejected}
 		if message.Role == "tool" && mark != nil && mark.Audience == "tool" {
-			facts.harness, facts.refused, facts.invoked = mark.HarnessMade, mark.Refused, mark.ToolInvoked
+			facts.harness, facts.refused, facts.invoked, facts.attempt = mark.HarnessMade, mark.Refused, mark.ToolInvoked, mark.MediaAttempt
 		}
 		results[call] = facts
 	}
@@ -112,12 +113,16 @@ const (
 	ToolResultRejectedBeforeRun
 	ToolResultHarnessMade
 	ToolResultRefused
+	// ToolResultMediaAttempt: this occurrence made at least one render record
+	// carrying its own run and call id (media_attempt.go).
+	ToolResultMediaAttempt
 )
 
 func (f ToolResultFlags) Invoked() bool           { return f&ToolResultInvoked != 0 }
 func (f ToolResultFlags) RejectedBeforeRun() bool { return f&ToolResultRejectedBeforeRun != 0 }
 func (f ToolResultFlags) HarnessMade() bool       { return f&ToolResultHarnessMade != 0 }
 func (f ToolResultFlags) Refused() bool           { return f&ToolResultRefused != 0 }
+func (f ToolResultFlags) MediaAttempt() bool      { return f&ToolResultMediaAttempt != 0 }
 func (f toolResultFacts) flags() ToolResultFlags {
 	var flags ToolResultFlags
 	if f.invoked {
@@ -131,6 +136,9 @@ func (f toolResultFacts) flags() ToolResultFlags {
 	}
 	if f.refused {
 		flags |= ToolResultRefused
+	}
+	if f.attempt {
+		flags |= ToolResultMediaAttempt
 	}
 	return flags
 }

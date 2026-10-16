@@ -181,3 +181,39 @@ func TestAppToolRowsCarryTheRejectedBeforeRunFact(t *testing.T) {
 		t.Fatalf("a legacy row was classified from its words: %+v", legacy)
 	}
 }
+
+// A MEDIA CALL THAT MADE A RENDER RECORD SAYS SO, AS THE ENGINE'S OWN FACT: on
+// its end row, and on its history row from the occurrence's flags alone — a
+// cached same-ID call never lends it, and a tool name never implies it.
+func TestAppToolRowsCarryTheMediaAttemptFact(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{
+		{Kind: session.EventToolBegin, CallID: "m1", Tool: "generate_image", Args: `{"prompt":"a"}`},
+		{Kind: session.EventToolEnd, CallID: "m1", Tool: "generate_image", Output: "pic.png", ToolInvoked: true, MediaAttempt: true},
+		{Kind: session.EventToolBegin, CallID: "m2", Tool: "generate_image", Args: `{"prompt":""}`},
+		{Kind: session.EventToolFailed, CallID: "m2", Tool: "generate_image", Output: "Invalid arguments: prompt is required", ToolInvoked: true, RejectedBeforeRun: true},
+		{Kind: session.EventTurnDone},
+	}}
+	backend, rec, agent := workBackend(t, conv)
+	if _, err := backend.Send(agent.ID, "go", ""); err != nil {
+		t.Fatal(err)
+	}
+	if made := toolRow(rec, t, func(row appwire.TurnTool) bool { return row.Call == "m1" && row.Phase == appwire.PhaseEnd }); !made.MediaAttempt {
+		t.Fatalf("the attempt's end row = %+v", made)
+	}
+	if turned := toolRow(rec, t, func(row appwire.TurnTool) bool { return row.Call == "m2" && row.Phase == appwire.PhaseEnd }); turned.MediaAttempt {
+		t.Fatalf("a rejected call claimed a record: %+v", turned)
+	}
+	a, _ := backend.find(agent.ID)
+	if facts := backend.appEntryFacts(a, session.DisplayEntry{Tool: "generate_image", CallID: "m1", ToolResult: session.ToolResultInvoked}); facts.MediaAttempt {
+		t.Fatal("a cached same-ID call lent its record to another occurrence")
+	}
+	if facts := backend.appEntryFacts(a, session.DisplayEntry{Tool: "generate_image", CallID: "m1", ToolResult: session.ToolResultInvoked | session.ToolResultMediaAttempt}); !facts.MediaAttempt {
+		t.Fatalf("cached history facts = %+v", facts)
+	}
+	if facts := backend.appEntryFacts(a, session.DisplayEntry{Tool: "generate_image", CallID: "old", Output: "x.png"}); facts.MediaAttempt {
+		t.Fatal("a legacy entry was classified by its tool name")
+	}
+	if facts := backend.appEntryFacts(a, session.DisplayEntry{Tool: "generate_image", CallID: "old", ToolResult: session.ToolResultMediaAttempt}); !facts.MediaAttempt {
+		t.Fatalf("reopened history facts = %+v", facts)
+	}
+}

@@ -3090,6 +3090,10 @@ type toolResult struct {
 	// and into the call's journal record.
 	rejected bool
 	invoked  bool
+	// attempt says THIS call made a render record (media_attempt.go): set by
+	// the handler only after the record exists, never read from text or from
+	// the tool's name. It rides out on [Event.MediaAttempt].
+	attempt bool
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -3543,6 +3547,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				// typed fact from the handler's own validation return.
 				RejectedBeforeRun: results[index].rejected,
 				ToolInvoked:       results[index].invoked,
+				MediaAttempt:      results[index].attempt,
 			})
 			continue
 		}
@@ -3550,13 +3555,14 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		// and the person already read what the call was going to do. Output is
 		// there for a person who asks to see it anyway.
 		a.sendBeltStep(ctx, hub, Event{
-			Kind:        EventToolEnd,
-			ToolInvoked: results[index].invoked,
-			Tool:        call.Function.Name,
-			Args:        rendered[index],
-			Output:      capOutput(results[index].text),
-			CallID:      call.ID,
-			Exit:        resultExit(results[index].text),
+			Kind:         EventToolEnd,
+			ToolInvoked:  results[index].invoked,
+			MediaAttempt: results[index].attempt,
+			Tool:         call.Function.Name,
+			Args:         rendered[index],
+			Output:       capOutput(results[index].text),
+			CallID:       call.ID,
+			Exit:         resultExit(results[index].text),
 		})
 	}
 	return results
@@ -3673,6 +3679,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// THE CALL-LOCAL MARK a handler's argument refusal sets (toolrejection.go):
 		// planted here so it lives and dies with this one call.
 		callCtx, rejection := withToolRejection(callCtx)
+		callCtx, attempt := withMediaAttempt(callCtx)
 		observedTool, invocation := observeToolInvocation(tool)
 		text, isError, err := a.executeTaskTool(callCtx, observedTool, running, args)
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
@@ -3700,7 +3707,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
 			// result, the same shape a thrown error takes on the wire.
-			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, invoked: invocation.Load()})
+			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, invoked: invocation.Load(), attempt: attempt.Load()})
 		}
 		// AND THE LAST THING THAT HAPPENS TO A RESULT IS THE ERROR→FIX SIDECAR
 		// (fixrecall.go). A failure this machine has seen before leaves with one
@@ -3714,7 +3721,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// observer of results would otherwise belong: runTurn writes each result
 		// into the transcript BEFORE that seam runs, so a line added there would
 		// be a line no model was ever sent.
-		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun()})
+		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun(), attempt: attempt.Load()})
 		// The held-range ledger records on the FINISHED text — exactly the bytes
 		// the transcript will carry — and only on a result that ran (heldreads.go).
 		a.heldNote(call.Function.Name, args, result.text, isError)
@@ -3779,10 +3786,10 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
 	result.text = redact.Secrets(result.text)
 	body := result.text
-	rejected, invoked := result.rejected, result.invoked
+	rejected, invoked, attempt := result.rejected, result.invoked, result.attempt
 	result = a.withJobState(ep, ep.noteToolOutcome(call, result))
 	result.text = footersInsideTheCap(body, result.text)
-	result.rejected, result.invoked = rejected, invoked
+	result.rejected, result.invoked, result.attempt = rejected, invoked, attempt
 
 	return result
 }

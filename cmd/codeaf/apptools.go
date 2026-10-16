@@ -401,6 +401,7 @@ func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event ses
 		c.facts.Handoff = appHandoff(event.Tool, event.Args, event.Output)
 		c.facts.Invoked = event.ToolInvoked
 		c.facts.RejectedBeforeRun = event.RejectedBeforeRun
+		c.facts.MediaAttempt = event.MediaAttempt
 		c.facts.HarnessMade, c.facts.Refused = event.HarnessMade, event.Refused
 		if c.facts.EndedAt == nil {
 			at := b.now()
@@ -593,6 +594,7 @@ func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwi
 		facts.Invoked = item.ToolResult.Invoked()
 		facts.RejectedBeforeRun = item.ToolResult.RejectedBeforeRun()
 		facts.HarnessMade, facts.Refused = item.ToolResult.HarnessMade(), item.ToolResult.Refused()
+		facts.MediaAttempt = item.ToolResult.MediaAttempt()
 		if facts.Handoff == nil {
 			facts.Handoff = appHandoff(item.Tool, item.Args, item.Output)
 		}
@@ -602,6 +604,7 @@ func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwi
 	facts.Invoked = item.ToolResult.Invoked()
 	facts.RejectedBeforeRun = item.ToolResult.RejectedBeforeRun()
 	facts.HarnessMade, facts.Refused = item.ToolResult.HarnessMade(), item.ToolResult.Refused()
+	facts.MediaAttempt = item.ToolResult.MediaAttempt()
 	var workspace string
 	b.locked(func() { workspace = a.view.Workspace })
 	facts.Kind = appToolKind(item.Tool, "")

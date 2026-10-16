@@ -43,13 +43,17 @@ type ToolFacts struct {
 	// Invoked is actual handler dispatch, not proof of a subprocess/network effect.
 	Invoked bool `json:"invoked,omitempty"`
 	// HarnessMade and Refused distinguish engine/permission refusals from execution failures.
-	HarnessMade bool         `json:"harness_made,omitempty"`
-	Refused     bool         `json:"refused,omitempty"`
-	Files       []FileChange `json:"files,omitempty"`
-	Connector   string       `json:"connector,omitempty"`
-	Task        string       `json:"task,omitempty"`
-	Ask         string       `json:"ask,omitempty"`
-	Input       *ToolInput   `json:"input,omitempty"`
+	HarnessMade bool `json:"harness_made,omitempty"`
+	Refused     bool `json:"refused,omitempty"`
+	// MediaAttempt is true only when this exact call made at least one render
+	// record with its own run and call id; render.list finds it by that pair.
+	// Absent is unknown, never "no record".
+	MediaAttempt bool         `json:"media_attempt,omitempty"`
+	Files        []FileChange `json:"files,omitempty"`
+	Connector    string       `json:"connector,omitempty"`
+	Task         string       `json:"task,omitempty"`
+	Ask          string       `json:"ask,omitempty"`
+	Input        *ToolInput   `json:"input,omitempty"`
 	// Tail is the last lines of the call's output: three while it runs, up
 	// to twelve once it has ended. Lines is how many it wrote in all.
 	Tail  []string `json:"tail,omitempty"`

@@ -31,12 +31,14 @@ type messagePresentation struct {
 	Text        *string `json:"text,omitempty"`
 	Interrupted bool    `json:"interrupted,omitempty"`
 	// RejectedBeforeRun belongs to this exact tool-result occurrence, never a provider ID.
-	RejectedBeforeRun bool                `json:"rejected_before_run,omitempty"`
-	ToolInvoked       bool                `json:"invoked,omitempty"`
-	HarnessMade       bool                `json:"harness_made,omitempty"`
-	Refused           bool                `json:"refused,omitempty"`
-	Attachments       []MessageAttachment `json:"attachments,omitempty"`
-	Reads             []MessageRead       `json:"reads,omitempty"`
+	RejectedBeforeRun bool `json:"rejected_before_run,omitempty"`
+	ToolInvoked       bool `json:"invoked,omitempty"`
+	HarnessMade       bool `json:"harness_made,omitempty"`
+	Refused           bool `json:"refused,omitempty"`
+	// MediaAttempt: this result's call made a render record (media_attempt.go).
+	MediaAttempt bool                `json:"media_attempt,omitempty"`
+	Attachments  []MessageAttachment `json:"attachments,omitempty"`
+	Reads        []MessageRead       `json:"reads,omitempty"`
 	// Composed is what a composed submission added to a person's line: its
 	// durable id, its pictures as measured, its annotation and how the pictures
 	// reached a model ([Agent.SubmitComposed]).

@@ -906,6 +906,14 @@ type Event struct {
 	// every ordinary failure serialise as before.
 	RejectedBeforeRun bool `json:"RejectedBeforeRun,omitempty"`
 
+	// MediaAttempt says this call made at least one render record carrying its
+	// own run and call id (an image attempt, a refused media call, a video or
+	// music render begun). It is set on EventToolEnd and EventToolFailed, only
+	// by the code that wrote the record (media_attempt.go), never from the
+	// tool's name or its words. True-only and omitted otherwise: absent is
+	// unknown, as on every older peer and every older journal line.
+	MediaAttempt bool `json:"MediaAttempt,omitempty"`
+
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind but
 	// EventHarnessOffer, whose own id goes back through

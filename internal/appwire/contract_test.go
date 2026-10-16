@@ -148,7 +148,7 @@ func TestTheSchemaIsGeneratedForTheWholeWire(t *testing.T) {
 	if len(doc.Methods) != len(Methods()) || len(doc.Events) != len(Events()) {
 		t.Fatalf("schema has %d methods and %d events, want %d and %d", len(doc.Methods), len(doc.Events), len(Methods()), len(Events()))
 	}
-	for _, field := range []string{"invoked", "rejected_before_run", "harness_made", "refused"} {
+	for _, field := range []string{"invoked", "rejected_before_run", "harness_made", "refused", "media_attempt"} {
 		for _, name := range []string{"TurnTool", "Entry"} {
 			if got := doc.Defs[name].Properties[field]["type"]; got != "boolean" {
 				t.Fatalf("%s.%s schema type=%v", name, field, got)
