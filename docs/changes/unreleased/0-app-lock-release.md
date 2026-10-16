@@ -1,3 +1,12 @@
+---
+kind: fixed
+title: Account and staged-media locks release on every exit
+pr: 0
+surface: [engine]
+invalidates:
+  - "Account cancellation could retain a state lock after a recovered fault or overlap the previous browser listener with its replacement. Deferred unlocks and synchronous listener closure now release the lock and keep one listener before replacement."
+---
+
 # App account and staged-media locks release on every exit
 
 The account sign-in state machine and staged-media shutdown used success-path
