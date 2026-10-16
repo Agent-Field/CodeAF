@@ -93,7 +93,14 @@ func writeSources(profileDir string, rows []PersistedSource) error {
 			row.PlanPaused = ""
 		}
 		if !modelsource.IsCustomID(row.ID) {
-			row.Address = ""
+			// A vendored row keeps an address only where the service is the
+			// person's to place ([modelsource.Source.AddressOwned]); every other
+			// vendored row derives its address from its region and door.
+			if addressOwned(row.ID) {
+				row.Address = strings.TrimRight(strings.TrimSpace(row.Address), "/")
+			} else {
+				row.Address = ""
+			}
 			row.KeyOptional = false
 		} else {
 			row.Address = strings.TrimSpace(row.Address)
@@ -109,6 +116,58 @@ func writeSources(profileDir string, rows []PersistedSource) error {
 		cleaned = append(cleaned, row)
 	}
 	return writeProfileValue(profileDir, keyModelSources, cleaned)
+}
+
+// addressOwned reports whether a vendored row's service is one whose address
+// the person gives ([modelsource.Source.AddressOwned]), read off the vendored
+// table so the fact is spelled once, beside the service it describes.
+func addressOwned(id string) bool {
+	for _, source := range modelsource.Vendored() {
+		if strings.EqualFold(source.ID, strings.TrimSpace(id)) {
+			return source.AddressOwned
+		}
+	}
+	return false
+}
+
+// KeepAppSource keeps one service row for codeaf app, which proved it
+// with [ProveService] and keeps the key itself: the row replaces the one it
+// names, and every other row stays as it was. It is the app's half of what
+// [ConnectService] persists.
+//
+// THE APP WRITES NO KEY AND TAKES NONE AWAY. Whatever key the row is handed is
+// dropped; whatever key or key variable the profile already held for that id
+// stays, because it is the terminal's, written on a profile both may share, and
+// the app's own key outranks it in the app's process anyway.
+func KeepAppSource(profileDir string, row PersistedSource) error {
+	row.Key, row.KeyEnv = "", ""
+	for _, existing := range PersistedSources(profileDir) {
+		if strings.EqualFold(strings.TrimSpace(existing.ID), strings.TrimSpace(row.ID)) {
+			row.Key, row.KeyEnv = existing.Key, existing.KeyEnv
+			break
+		}
+	}
+	if strings.TrimSpace(row.ID) == "" {
+		return errors.New("a service row needs an id")
+	}
+	if strings.TrimSpace(row.Written) == "" {
+		row.Written = strings.TrimSpace(row.ID)
+	}
+	if row.Order == 0 {
+		// A row already in the profile keeps its place; a new one goes last.
+		last, held := 0, false
+		for _, existing := range PersistedSources(profileDir) {
+			if strings.EqualFold(strings.TrimSpace(existing.ID), strings.TrimSpace(row.ID)) {
+				row.Order, held = existing.Order, true
+				break
+			}
+			last = max(last, existing.Order)
+		}
+		if !held {
+			row.Order = last + 1
+		}
+	}
+	return persistConnectedSource(profileDir, row)
 }
 
 // SourceKeyAt is APIKeyAt's generalisation. The default service keeps its
@@ -247,6 +306,9 @@ func resolvedSourceAddress(row PersistedSource, source modelsource.Source) strin
 	if modelsource.IsCustomID(source.ID) {
 		return strings.TrimRight(strings.TrimSpace(row.Address), "/")
 	}
+	if address := strings.TrimRight(strings.TrimSpace(row.Address), "/"); source.AddressOwned && address != "" {
+		return address
+	}
 	if door := resolvedSourceDoor(row, source); door.ID != "" {
 		return resolvedDoorAddress(row, source, door)
 	}
@@ -282,6 +344,11 @@ func CodexRememberedModels(service modelsource.Connected, profileDir string) []c
 
 // ConnectCodex keeps a completed browser sign-in, persists its service row and
 // seeds the picker from the account's own visible model list.
+//
+// IT IS THE ONE SIGN-IN WHOSE CREDENTIALS LIVE IN THE PROFILE, in codeaf app's
+// process too. Its tokens rotate on every refresh, so a copy handed in at launch
+// would be stale within the hour; the token file stays owner-only, exactly as the
+// terminal keeps it.
 func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Tokens) (modelsource.Outcome, error) {
 	if err := ctx.Err(); err != nil {
 		return modelsource.Outcome{}, err
@@ -387,10 +454,31 @@ func resolvedPlanPaused(row PersistedSource) string {
 
 // ConnectService proves a key and says what it reaches, and writes nothing on
 // any answer but yes. Ten seconds; a person is watching this one.
+//
+// IT IS [ProveService] AND ONE WRITE. The proving half is shared with codeaf
+// app, which keeps no key in the profile and so may not take this door at all: it proves with the same requests in the same order, and
+// keeps the row it was answered with through [KeepAppSource].
 func ConnectService(ctx context.Context, profileDir string, row PersistedSource, src modelsource.Source, authors []string) (modelsource.Outcome, error) {
 	if AppMode() {
 		return modelsource.Outcome{}, ErrAppKeys
 	}
+	row, src = PrepareServiceRow(profileDir, row, src, authors)
+	key := SourceKeyAt(profileDir, row, src)
+	outcome, kept, keep := ProveService(ctx, row, src, key)
+	if !keep {
+		return outcome, nil
+	}
+	if err := persistSourceUnlessCancelled(ctx, profileDir, kept); err != nil {
+		return modelsource.Outcome{}, err
+	}
+	return outcome, nil
+}
+
+// PrepareServiceRow settles the two things about a row that are decided before
+// any request: its id and Written name, taking the suggested spelling when the
+// person's would collide with another connection's, and — for a custom
+// connection — whether this instance was checked as answering with no key.
+func PrepareServiceRow(profileDir string, row PersistedSource, src modelsource.Source, authors []string) (PersistedSource, modelsource.Source) {
 	if strings.TrimSpace(row.ID) == "" {
 		row.ID = src.ID
 	}
@@ -415,7 +503,19 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 	if modelsource.IsCustomID(row.ID) && modelsource.IsCustomID(src.ID) {
 		src.KeyOptional = row.KeyOptional
 	}
-	key := SourceKeyAt(profileDir, row, src)
+	return row, src
+}
+
+// ProveService is the requests that prove a key reaches a service, and
+// nothing else: it reads no profile and writes nothing. It answers what was
+// learned, the row that learning amounts to (the billing door the key proved,
+// whether the service listed its models), and whether that row is a connection
+// to keep — true for a yes, and for an account that authenticated but cannot
+// pay, which is still the person's account.
+//
+// The key is handed in rather than looked up, because codeaf app proves a
+// key it has not handed over yet and the key readers would find the old one.
+func ProveService(ctx context.Context, row PersistedSource, src modelsource.Source, key string) (modelsource.Outcome, PersistedSource, bool) {
 	if key != "" {
 		// THE SECRET ARRIVES BEFORE THE RESULT. A service may echo a submitted
 		// key in either a refusal or a success body, and the connection result is
@@ -424,80 +524,62 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 		trace.Secret(key)
 	}
 	if key == "" && !src.KeyOptional {
-		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, row, false
 	}
 	if src.KeyShape != nil && !src.KeyShape(key) {
-		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, row, false
 	}
 	if len(src.Doors) > 1 {
-		return connectServiceDoors(ctx, profileDir, row, src, key)
+		return proveServiceDoors(ctx, row, src, key)
 	}
 	address := resolvedSourceAddress(row, src)
 	listing := src.Probe
 	if listing.Method == "" && listing.Address == "" {
-		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
-			return modelsource.Outcome{}, err
-		}
-		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, row, true
 	}
 	status, body, answered := runServiceProbe(ctx, address, key, listing)
 	if !answered {
-		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
 	}
 	if acceptsStatus(listing.Accepts, status) {
 		outcome, ok := listedOutcome(body)
 		if !ok {
-			return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+			return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
 		}
 		listed := true
 		row.Listed = &listed
-		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
-			return modelsource.Outcome{}, err
-		}
-		return outcome, nil
+		return outcome, row, true
 	}
 	if paymentrefusal.Matches(status, body) {
-		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
-			return modelsource.Outcome{}, err
-		}
-		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: withoutExactSecret(vendorWords(body), key)}, row, true
 	}
 	if !listingIsAbsent(status) {
-		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key), Status: status}, row, false
 	}
 
 	listed := false
 	row.Listed = &listed
 	fallback := src.FallbackProbe()
 	if fallback.Method == "" && fallback.Address == "" {
-		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
-			return modelsource.Outcome{}, err
-		}
-		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, row, true
 	}
 	status, body, answered = runServiceProbe(ctx, address, key, fallback)
 	if !answered {
-		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
 	}
 	if paymentrefusal.Matches(status, body) {
-		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
-			return modelsource.Outcome{}, err
-		}
-		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: withoutExactSecret(vendorWords(body), key)}, row, true
 	}
 	if !acceptsStatus(fallback.Accepts, status) {
-		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key), Status: status}, row, false
 	}
-	if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
-		return modelsource.Outcome{}, err
-	}
-	return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
+	return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, row, true
 }
 
-func connectServiceDoors(ctx context.Context, profileDir string, row PersistedSource, src modelsource.Source, key string) (modelsource.Outcome, error) {
+func proveServiceDoors(ctx context.Context, row PersistedSource, src modelsource.Source, key string) (modelsource.Outcome, PersistedSource, bool) {
 	probe := src.DoorProbe()
 	if probe.Method == "" || probe.Address == "" {
-		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
 	}
 	lastWords := ""
 	unanswered := false
@@ -517,21 +599,21 @@ func connectServiceDoors(ctx context.Context, profileDir string, row PersistedSo
 			// A spent window proves this door: the key authenticated and the plan
 			// exists. Walking onward would make a paid probe and persist a metered
 			// binding even though the person's setting still says wait.
-			return connectAtDoor(ctx, profileDir, row, src, key, door, true, paymentrefusal.ResetAt(body))
+			return proveAtDoor(ctx, row, src, key, door, true, paymentrefusal.ResetAt(body))
 		}
 		if !acceptsStatus(probe.Accepts, status) {
-			return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+			return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key), Status: status}, row, false
 		}
 
-		return connectAtDoor(ctx, profileDir, row, src, key, door, false, "")
+		return proveAtDoor(ctx, row, src, key, door, false, "")
 	}
 	if lastWords != "" && !unanswered {
-		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: lastWords}, nil
+		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: lastWords}, row, false
 	}
-	return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+	return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
 }
 
-func connectAtDoor(ctx context.Context, profileDir string, row PersistedSource, src modelsource.Source, key string, door modelsource.Door, paused bool, reset string) (modelsource.Outcome, error) {
+func proveAtDoor(ctx context.Context, row PersistedSource, src modelsource.Source, key string, door modelsource.Door, paused bool, reset string) (modelsource.Outcome, PersistedSource, bool) {
 	address := resolvedDoorAddress(row, src, door)
 	row.Door = door.ID
 	outcome := modelsource.Outcome{
@@ -568,10 +650,7 @@ func connectAtDoor(ctx context.Context, profileDir string, row PersistedSource, 
 			row.Listed = &value
 		}
 	}
-	if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
-		return modelsource.Outcome{}, err
-	}
-	return outcome, nil
+	return outcome, row, true
 }
 
 func runServiceProbe(ctx context.Context, address, key string, probe modelsource.Probe) (int, []byte, bool) {

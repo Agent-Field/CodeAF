@@ -1,7 +1,10 @@
 package appwire
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
+	"io"
 	"testing"
 )
 
@@ -86,7 +89,7 @@ func TestSetupMethodsRefuseBadParams(t *testing.T) {
 	for i, line := range []string{
 		`{"id":1,"method":"keys.check","params":{"provider":"openrouter"}}`,
 		`{"id":2,"method":"keys.set","params":{"provider":"openrouter","key":"a\nb"}}`,
-		`{"id":3,"method":"setup.set","params":{"step":5}}`,
+		`{"id":3,"method":"setup.set","params":{"step":4}}`,
 		`{"id":4,"method":"setup.set","params":{}}`,
 		`{"id":5,"method":"settings.set","params":{"colour":"blue"}}`,
 		`{"id":6,"method":"settings.set","params":{"day_cap_usd":-1}}`,
@@ -109,8 +112,103 @@ func TestSetupStepIsANumberOrDone(t *testing.T) {
 			t.Fatal(err)
 		}
 		var back SetupStep
-		if err := json.Unmarshal(raw, &back); err != nil || back != step {
+		if err := json.Unmarshal(raw, &back); err != nil || back != step || !back.Valid() {
 			t.Fatalf("%s read back as %+v (%v)", raw, back, err)
 		}
+	}
+	// A step a four-step build kept is read, so the file it is in is not
+	// refused, but it is not a step a setup can be at now.
+	var kept SetupStep
+	if err := json.Unmarshal([]byte(`4`), &kept); err != nil || kept != (SetupStep{N: 4}) || kept.Valid() {
+		t.Fatalf("a kept 4 = %+v (%v), valid %v", kept, err, kept.Valid())
+	}
+	for _, bad := range []string{`0`, `-1`, `"halfway"`, `1.5`} {
+		if err := json.Unmarshal([]byte(bad), &kept); err == nil {
+			t.Fatalf("%s was read as a step", bad)
+		}
+	}
+}
+
+// SETUP IS THREE STEPS, and the schema says so: a number from one to three, or
+// "done" — never the Go struct the step is held in.
+func TestTheSchemaSaysSetupIsThreeSteps(t *testing.T) {
+	out, err := SchemaJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Defs map[string]struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, def := range []string{"Setup", "in.Setup"} {
+		var step struct {
+			AnyOf []struct {
+				Type    string `json:"type"`
+				Maximum int    `json:"maximum"`
+				Const   string `json:"const"`
+			} `json:"anyOf"`
+		}
+		raw := doc.Defs[def].Properties["step"]
+		if err := json.Unmarshal(raw, &step); err != nil || len(step.AnyOf) != 2 ||
+			step.AnyOf[0].Type != "integer" || step.AnyOf[0].Maximum != 3 || step.AnyOf[1].Const != "done" {
+			t.Fatalf("%s.step in the schema = %s", def, raw)
+		}
+	}
+}
+
+// connectorEngine is an engine that connects every kind of provider, and
+// remembers what each keys.check and keys.set handed it.
+type connectorEngine struct {
+	*fakeEngine
+	got chan KeyParams
+}
+
+func (c *connectorEngine) CheckProvider(p KeyParams) (KeyCheck, error) {
+	c.got <- p
+	listed := false
+	return KeyCheck{OK: true, Connection: &Connection{Address: p.Address, Region: p.Region, Listed: &listed}}, nil
+}
+
+func (c *connectorEngine) SetProvider(p KeyParams) error {
+	c.got <- p
+	return nil
+}
+
+// AN ENGINE THAT CONNECTS EVERY PROVIDER IS HANDED THE WHOLE REQUEST: the
+// region and the address keys.check reads, the connection keys.set keeps, and
+// an empty key for it to judge. One that does not is asked for a key as before.
+func TestKeysCarryTheConnectionToAnEngineThatConnectsEveryProvider(t *testing.T) {
+	engine := &connectorEngine{fakeEngine: &fakeEngine{}, got: make(chan KeyParams, 4)}
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	go func() {
+		_ = NewServer(outW).Serve(context.Background(), inR, Hello{Version: "test", PID: 42, Home: "/h"}, engine)
+		outW.Close()
+	}()
+	t.Cleanup(func() { inW.Close() })
+	w := &wire{t: t, in: inW, lines: bufio.NewScanner(outR), engine: engine.fakeEngine}
+	w.next()
+	w.send(`{"id":1,"method":"keys.check","params":{"provider":"Ollama","key":"","address":" http://box.local:11434/v1 ","region":"intl"}}`)
+	check := w.next()
+	if check["error"] != nil || check["result"].(map[string]any)["connection"].(map[string]any)["address"] != "http://box.local:11434/v1" {
+		t.Fatalf("check = %v", check)
+	}
+	if p := <-engine.got; p.Provider != "ollama" || p.Key != "" || p.Address != "http://box.local:11434/v1" || p.Region != "intl" {
+		t.Fatalf("keys.check handed %+v", p)
+	}
+	w.send(`{"id":2,"method":"keys.set","params":{"provider":"z-ai","key":"zai-dummy","connection":{"region":"cn","door":"coding-plan","listed":true}}}`)
+	if set := w.next(); set["error"] != nil {
+		t.Fatalf("set = %v", set)
+	}
+	if p := <-engine.got; p.Key != "zai-dummy" || p.Connection == nil || p.Connection.Region != "cn" || p.Connection.Door != "coding-plan" || p.Connection.Listed == nil || !*p.Connection.Listed {
+		t.Fatalf("keys.set handed %+v", p)
+	}
+	w.send(`{"id":3,"method":"keys.set","params":{"provider":"custom","key":"a\nb"}}`)
+	if got := w.next(); got["error"] == nil {
+		t.Fatal("a key of two lines was handed over")
 	}
 }

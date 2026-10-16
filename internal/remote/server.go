@@ -1352,6 +1352,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// survive every swap (wire_automations.go).
 		Automations:     sess.engine.Automations.on(),
 		AutomationsZone: sess.engine.Automations.zone(),
+		// The side ask is the agent's, so it is asked of it (sideask.go).
+		SideAsk: sideAskKnown(sess.agent),
 	}
 }
 
@@ -3353,6 +3355,10 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return payload, err
 	}
 	if payload, handled, err := teamAskCall(agent, call); handled {
+		return payload, err
+	}
+	// And the side ask, additive in the same way (sideask.go).
+	if payload, handled, err := sideAskCall(agent, call); handled {
 		return payload, err
 	}
 	// And the automations doors, which answer about this MACHINE's store and

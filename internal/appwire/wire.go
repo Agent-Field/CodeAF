@@ -14,6 +14,7 @@ package appwire
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -120,6 +121,11 @@ type Hello struct {
 
 // Agent is one conversation as the app sees it. ID is the conversation's
 // session id, which is its folder's name on disk and stable across launches.
+//
+// AN UNKNOWN TIME IS LEFT OUT, NEVER WRITTEN AS THE ZERO TIME. Go's zero time
+// reaches a reader as 0001-01-01T00:00:00Z, which a reader draws as a date in
+// the first century; the emptiness law says
+// an unknown draws nothing, so UpdatedAt and LastActiveAt carry omitzero.
 type Agent struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
@@ -129,18 +135,19 @@ type Agent struct {
 	// and empty when the conversation runs on the model's own default.
 	Effort    string    `json:"effort,omitempty"`
 	State     string    `json:"state" enum:"idle,working,needs_you,stopped,closed,archived"`
-	UpdatedAt time.Time `json:"updated_at"`
+	UpdatedAt time.Time `json:"updated_at,omitzero"`
 	// Crews are the crews this agent is a member of, open ones only.
 	Crews []string `json:"crews,omitempty"`
 	// Line is its live one-liner: the step it is on while it works, or the
 	// question it is waiting on.
 	Line string `json:"line,omitempty"`
 	// ClosedAt is when it was moved to Closed and ArchivedAt when it was put
-	// away; LastActiveAt is when the person last spoke in it, and SpentUSD
+	// away; LastActiveAt is when the person last spoke in it, absent for one
+	// they never spoke in (a crew member a manager started), and SpentUSD
 	// what it has spent in all.
 	ClosedAt     *time.Time `json:"closed_at,omitempty"`
 	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
-	LastActiveAt time.Time  `json:"last_active_at"`
+	LastActiveAt time.Time  `json:"last_active_at,omitzero"`
 	SpentUSD     float64    `json:"spent_usd,omitempty"`
 	// Context is what the conversation weighs against its window
 	// (compaction.go); absent when nothing holds the conversation.
@@ -543,25 +550,82 @@ type Figure struct {
 // Provider is one service a key or a sign-in connects. KeyHint is the last
 // four characters of the key in use, and SignIn says the provider can be
 // connected by a browser sign-in instead of a pasted key.
+//
+// The rest says what connecting it asks for, which is what the terminal's own
+// connect flow asks for that provider and nothing more.
 type Provider struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	SignedIn bool   `json:"signed_in"`
+	KeyHint  string `json:"key_hint,omitempty"`
+	SignIn   bool   `json:"sign_in,omitempty"`
+	// Kind is the shape of connecting it: a pasted key (key, which a reader
+	// that predates this field assumes of every provider), a browser sign-in
+	// and nothing else (browser), or where the service runs, with a key only if
+	// it wants one (address).
+	Kind string `json:"kind,omitempty" enum:"key,browser,address"`
+	// KeyOptional says the key may be left blank: the service answers with none.
+	KeyOptional bool `json:"key_optional,omitempty"`
+	// Address is an address provider's address: the one in use when it is
+	// connected, otherwise the one its field starts with (empty for a custom
+	// endpoint, which has no usual place).
+	Address string `json:"address,omitempty"`
+	// Regions are a provider's separate hosts, each a separate account with its
+	// own keys, of which one is chosen before the key is checked; Region is the
+	// one in use.
+	Regions []ProviderRegion `json:"regions,omitempty"`
+	Region  string           `json:"region,omitempty"`
+	// Plan is how a connected key is billed, in the provider's own word for it
+	// ("coding plan", "pay-as-you-go"), for a provider that has more than one.
+	Plan string `json:"plan,omitempty"`
+	// AuthKind is account for a provider connected by signing in to an
+	// account rather than by a key; SignInAttempt, SignInState and SignInError
+	// are its sign-in in progress or just ended, if any
+	// (providers.sign_in_start).
+	AuthKind      string `json:"auth_kind,omitempty" enum:"account"`
 	SignInAttempt string `json:"sign_in_attempt,omitempty"`
-	AuthKind      string `json:"auth_kind,omitempty"`
-	SignInState   string `json:"sign_in_state,omitempty"`
+	SignInState   string `json:"sign_in_state,omitempty" enum:"pending,saving,signed_in,failed,cancelled"`
 	SignInError   string `json:"sign_in_error,omitempty"`
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	SignedIn      bool   `json:"signed_in"`
-	KeyHint       string `json:"key_hint,omitempty"`
-	SignIn        bool   `json:"sign_in,omitempty"`
+}
+
+// The three shapes of connecting a provider ([Provider.Kind]).
+const (
+	ProviderKey     = "key"
+	ProviderBrowser = "browser"
+	ProviderAddress = "address"
+)
+
+// ProviderRegion is one of a provider's separate hosts.
+type ProviderRegion struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // KeyCheck is keys.check's answer. Status is the provider's own status code
-// for a rejection, or the word timeout when the provider never answered.
+// for a rejection, the word timeout when the provider never answered in time,
+// unreachable when it could not be reached at all, or shape when codeaf
+// refused the key before asking (Message then says what shape it wants).
 type KeyCheck struct {
 	OK      bool    `json:"ok"`
 	Models  []Model `json:"models,omitempty"`
 	Status  any     `json:"status,omitempty"`
 	Message string  `json:"message,omitempty"`
+	// Connection is what a passing check proved beyond the key, handed back to
+	// keys.set as it came so the provider is kept as it was proved. Absent for
+	// OpenRouter, whose key is the whole of its connection.
+	Connection *Connection `json:"connection,omitempty"`
+}
+
+// Connection is a provider's connection without its key. Nothing in it is a
+// secret, and codeaf keeps it in its own profile: the region asked for, the
+// billing road the key opened (Door, with Plan its word), whether the provider
+// answered with its list of models, and the address an address provider is at.
+type Connection struct {
+	Region  string `json:"region,omitempty"`
+	Door    string `json:"door,omitempty"`
+	Plan    string `json:"plan,omitempty"`
+	Listed  *bool  `json:"listed,omitempty"`
+	Address string `json:"address,omitempty"`
 }
 
 // Setup is how far the person has come through first-run setup, kept by
@@ -574,17 +638,28 @@ type Setup struct {
 	Start        string    `json:"start,omitempty"`
 }
 
-// SetupStep is a setup step: 1 to 4 on the wire as a number, or "done".
+// SetupStep is a setup step: 1 to [SetupSteps] on the wire as a number, or
+// "done".
 type SetupStep struct {
 	N    int
 	Done bool
 }
 
 // The number of setup steps, and the one place a setup may say it starts.
+//
+// SETUP IS THREE STEPS: connecting providers (behind the welcome), the
+// defaults, and how to start. It was four until the welcome and the connecting
+// step became one, and a setup kept by a build from before then counts its
+// step in four; codeaf reads such a step into three where it keeps it
+// (cmd/codeaf/appstate.go), so the wire only ever carries the three.
 const (
-	SetupSteps  = 4
+	SetupSteps  = 3
 	SetupAgents = "agents"
 )
+
+// setupStepWords is what a step that is not one says, on the wire and in the
+// schema alike.
+var setupStepWords = fmt.Sprintf("step is 1 to %d or \"done\"", SetupSteps)
 
 func (s SetupStep) MarshalJSON() ([]byte, error) {
 	if s.Done {
@@ -593,21 +668,44 @@ func (s SetupStep) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.N)
 }
 
+// UnmarshalJSON reads any step from one up, and "done". IT DOES NOT REFUSE A
+// STEP PAST THE LAST, because the same type is read back from the file codeaf
+// keeps, and a step a four-step build kept there must be read to be moved
+// into three, never refused along with the whole file; setup.set refuses a
+// step past [SetupSteps] itself ([SetupStep.Valid]).
 func (s *SetupStep) UnmarshalJSON(raw []byte) error {
 	var word string
 	if json.Unmarshal(raw, &word) == nil {
 		if word != "done" {
-			return fmt.Errorf("step is 1 to %d or \"done\"", SetupSteps)
+			return errors.New(setupStepWords)
 		}
 		*s = SetupStep{Done: true}
 		return nil
 	}
 	var n int
-	if err := json.Unmarshal(raw, &n); err != nil || n < 1 || n > SetupSteps {
-		return fmt.Errorf("step is 1 to %d or \"done\"", SetupSteps)
+	if err := json.Unmarshal(raw, &n); err != nil || n < 1 {
+		return errors.New(setupStepWords)
 	}
 	*s = SetupStep{N: n}
 	return nil
+}
+
+// Valid says the step is one a setup can be at now: "done", or 1 to
+// [SetupSteps].
+func (s SetupStep) Valid() bool {
+	return s.Done || s.N >= 1 && s.N <= SetupSteps
+}
+
+// wireSchema is the step as it travels, a number or the word, because its
+// JSON is not its fields.
+func (SetupStep) wireSchema() map[string]any {
+	return map[string]any{
+		"anyOf": []any{
+			map[string]any{"type": "integer", "minimum": 1, "maximum": SetupSteps},
+			map[string]any{"const": "done"},
+		},
+		"description": setupStepWords,
+	}
 }
 
 // CapRaise is caps.raise's params: which cap, to what, and whether the raise
@@ -783,6 +881,16 @@ type Engine interface {
 	// Close releases every conversation the engine holds. It is called once,
 	// when the process is leaving, and returns when they are all let go.
 	Close() error
+}
+
+// ProviderConnector is an engine that connects every kind of provider the
+// terminal connects: a key on one of a provider's regions, an address with or
+// without a key. keys.check and keys.set hand it the whole request, an empty
+// key included, and it says which providers take none; an engine that is not
+// one is asked the two-field questions above and both need a key.
+type ProviderConnector interface {
+	CheckProvider(params KeyParams) (KeyCheck, error)
+	SetProvider(params KeyParams) error
 }
 
 // CreateAsk is agents.create's params. An empty workspace is the person's home

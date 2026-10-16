@@ -114,3 +114,51 @@ func TestFilesDiffRoute(t *testing.T) {
 		t.Fatalf("an engine without diffing answered %v", err)
 	}
 }
+
+// completerEngine is an Engine that completes paths, recording what it was
+// asked and answering with no entries at all.
+type completerEngine struct {
+	fakeEngine
+	agent, path string
+	limit       int
+}
+
+func (c *completerEngine) CompletePath(agent, path string, limit int) (PathCompletion, error) {
+	c.agent, c.path, c.limit = agent, path, limit
+	return PathCompletion{Dir: "/x"}, nil
+}
+
+// FILES.COMPLETE reaches an engine that completes paths with or without an
+// agent, defaults and clamps the limit, answers entries as a list even when
+// there are none, refuses a negative limit or a path over two lines, and is
+// unknown to an engine that does not complete.
+func TestFilesCompleteRoute(t *testing.T) {
+	m, ok := methods["files.complete"]
+	if !ok {
+		t.Fatal("files.complete is not registered")
+	}
+	eng := &completerEngine{}
+	got, err := m.call(eng, json.RawMessage(`{"path":"~/code/"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eng.agent != "" || eng.path != "~/code/" || eng.limit != PathCompleteLimit {
+		t.Fatalf("no agent, no limit: the engine was asked %+v", eng)
+	}
+	raw, _ := json.Marshal(got)
+	if string(raw) != `{"dir":"/x","entries":[]}` {
+		t.Fatalf("an empty answer is %s", raw)
+	}
+	if _, err := m.call(eng, json.RawMessage(`{"agent":"a1","path":"./in","limit":99999}`)); err != nil || eng.agent != "a1" || eng.limit != PathCompleteMax {
+		t.Fatalf("a big limit: %v, %+v", err, eng)
+	}
+	var wire *Error
+	for _, bad := range []string{`{"path":"x","limit":-1}`, `{"path":"a\nb"}`} {
+		if _, err := m.call(eng, json.RawMessage(bad)); !errors.As(err, &wire) || wire.Code != CodeBadParams {
+			t.Fatalf("%s answered %v", bad, err)
+		}
+	}
+	if _, err := m.call(&fakeEngine{}, json.RawMessage(`{"path":"x"}`)); !errors.As(err, &wire) || wire.Code != CodeUnknownMethod {
+		t.Fatalf("an engine without completion answered %v", err)
+	}
+}
