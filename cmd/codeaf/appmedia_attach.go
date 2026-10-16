@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -38,14 +39,23 @@ func (b *appBackend) AttachMedia(agent, source, version string) (appwire.Attachm
 	})
 }
 
-// AttachMediaFrame keeps one frame of an exact recorded video, supplied as PNG
-// bytes, as an engine-owned image whose provenance names the clip and the moment.
-// The same admission as AttachMedia applies; the bytes are validated before any
-// file exists and the video's recorded version must still be live.
-func (b *appBackend) AttachMediaFrame(agent, source, version string, atMS int64, png []byte) (appwire.Attachment, error) {
+// AttachMediaFrame keeps one frame of an exact recorded video, supplied as base64
+// PNG, as an engine-owned image whose provenance names the clip, its recorded
+// version and the moment. The encoded text is decoded ONLY inside the admitted
+// snapshot, so a refused or busy request never allocates the decoded bytes. The
+// same admission as AttachMedia applies; the bytes are validated before any file
+// exists and the video's recorded version must still be live.
+func (b *appBackend) AttachMediaFrame(agent, source, version string, atMS int64, pngBase64 string) (appwire.Attachment, error) {
 	at := atMS
 	return b.attachReference(agent, source, &at, func(ctx context.Context, row session.MediaRow, roots []string, destination string) (session.MediaReferenceCopy, error) {
-		return session.SnapshotMediaFrame(ctx, row, roots, version, at, png, destination)
+		if len(pngBase64) > base64.StdEncoding.EncodedLen(session.MaxFrameBytes) {
+			return session.MediaReferenceCopy{}, session.ErrMediaFrame
+		}
+		data, err := base64.StdEncoding.Strict().DecodeString(pngBase64)
+		if err != nil {
+			return session.MediaReferenceCopy{}, session.ErrMediaFrame
+		}
+		return session.SnapshotMediaFrame(ctx, row, roots, version, at, data, destination)
 	})
 }
 
@@ -86,7 +96,7 @@ func (b *appBackend) attachReference(agent, source string, atMS *int64, snapshot
 	if err != nil {
 		return appwire.Attachment{}, appwire.Errorf(appwire.CodeBadParams, "could not attach recorded media: %v", err)
 	}
-	ref := &appReference{copy: snap, source: session.MediaReference{SourceID: row.Fact.ID, Path: row.Fact.Canonical, AtMS: atMS}}
+	ref := &appReference{copy: snap, source: session.MediaReference{SourceID: row.Fact.ID, Path: row.Fact.Canonical, Version: row.Version(), AtMS: atMS}}
 	var view appwire.Attachment
 	closing := false
 	b.locked(func() {

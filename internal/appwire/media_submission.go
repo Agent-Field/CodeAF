@@ -42,7 +42,9 @@ const (
 type MediaReference struct {
 	SourceID string `json:"source_id,omitempty"`
 	Path     string `json:"path,omitempty"`
-	AtMS     *int64 `json:"at_ms,omitempty"`
+	// Version is the source's canonical recorded version, as the engine verified it.
+	Version string `json:"version,omitempty"`
+	AtMS    *int64 `json:"at_ms,omitempty"`
 }
 
 // SubmissionMedia names one staged attachment to be sent as a picture.
@@ -171,6 +173,9 @@ func checkMediaReference(ref *MediaReference) error {
 	}
 	if len(ref.SourceID) > maxSubmissionPath || len(ref.Path) > maxSubmissionPath || !utf8.ValidString(ref.SourceID+ref.Path) {
 		return Errorf(CodeBadParams, "a picture's source is not text of at most %d bytes", maxSubmissionPath)
+	}
+	if len(ref.Version) > maxSubmissionPath || !utf8.ValidString(ref.Version) {
+		return Errorf(CodeBadParams, "a picture's source version is not text of at most %d bytes", maxSubmissionPath)
 	}
 	if ref.AtMS != nil && *ref.AtMS < 0 {
 		return Errorf(CodeBadParams, "a picture's source names a negative moment")

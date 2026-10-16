@@ -77,7 +77,7 @@ func CopyMediaReference(ctx context.Context, row MediaRow, roots []string, versi
 		_ = os.Remove(dir)
 		return MediaReferenceCopy{}, err
 	}
-	copy.owned, err = out.Stat()
+	copy.owned, err = statCreated(out)
 	if err != nil {
 		_ = out.Close()
 		_ = os.Remove(copy.Path)
@@ -113,6 +113,10 @@ func CopyMediaReference(ctx context.Context, row MediaRow, roots []string, versi
 	keep = true
 	return copy, nil
 }
+
+// statCreated reads the creation record of a file this package just made. It is a
+// variable so a test can make the one call that Remove depends on fail.
+var statCreated = func(f *os.File) (os.FileInfo, error) { return f.Stat() }
 
 func openMediaReference(ctx context.Context, row MediaRow, roots []string, version string) (*os.File, os.FileInfo, MediaLive, error) {
 	live, err := referenceLive(row, roots, version)

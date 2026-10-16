@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/png"
 	"os"
@@ -58,12 +59,13 @@ func TestMediaFrameLimitsAgree(t *testing.T) {
 func TestAppMediaAttachFrameCarriesClipMomentAndKeepsTheClip(t *testing.T) {
 	b, agent, source, version, clip := frameBackend(t)
 	data := framePictureBytes(t)
-	chip, err := b.AttachMediaFrame(agent.ID, source, version, 3200, data)
+	encoded := base64.StdEncoding.EncodeToString(data)
+	chip, err := b.AttachMediaFrame(agent.ID, source, version, 3200, encoded)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ref := chip.Media.Source
-	if ref.SourceID != source || ref.AtMS == nil || *ref.AtMS != 3200 || ref.Path != clip || chip.Title != "hero.frame-3200.png" {
+	if ref.SourceID != source || ref.Version != version || ref.AtMS == nil || *ref.AtMS != 3200 || ref.Path != clip || chip.Title != "hero.frame-3200.png" {
 		t.Fatalf("provenance: %+v %+v", chip, ref)
 	}
 	saved, err := os.ReadFile(chip.Path)
@@ -74,7 +76,7 @@ func TestAppMediaAttachFrameCarriesClipMomentAndKeepsTheClip(t *testing.T) {
 	var attach appAttach
 	b.locked(func() { attach = a.attach[chip.ID] })
 	composed, err := appComposedOf(agent.Workspace, []appAttach{attach}, nil)
-	if err != nil || composed == nil || len(composed.media) != 1 || composed.media[0].Source.AtMS == nil || *composed.media[0].Source.AtMS != 3200 || composed.media[0].ExpectedSHA256 == "" {
+	if err != nil || composed == nil || len(composed.media) != 1 || composed.media[0].Source.Version != version || composed.media[0].Source.AtMS == nil || *composed.media[0].Source.AtMS != 3200 || composed.media[0].ExpectedSHA256 == "" {
 		t.Fatalf("a plain send lost the frame's provenance: %+v %v", composed, err)
 	}
 	if err := b.RemoveAttachment(agent.ID, chip.ID); err != nil {
@@ -96,13 +98,14 @@ func TestAppMediaAttachFrameCarriesClipMomentAndKeepsTheClip(t *testing.T) {
 func TestAppMediaAttachFrameRefusesForeignChangedAndBadBytes(t *testing.T) {
 	b, agent, source, version, clip := frameBackend(t)
 	data := framePictureBytes(t)
-	if _, err := b.AttachMediaFrame(agent.ID, source, "sha256:stale", 1, data); err == nil {
+	encoded := base64.StdEncoding.EncodeToString(data)
+	if _, err := b.AttachMediaFrame(agent.ID, source, "sha256:stale", 1, encoded); err == nil {
 		t.Fatal("a stale version attached")
 	}
-	if _, err := b.AttachMediaFrame(agent.ID, "not-a-source", version, 1, data); wireCode(err) != appwire.CodeNotFound {
+	if _, err := b.AttachMediaFrame(agent.ID, "not-a-source", version, 1, encoded); wireCode(err) != appwire.CodeNotFound {
 		t.Fatalf("not found: %v", err)
 	}
-	if _, err := b.AttachMediaFrame(agent.ID, source, version, 1, []byte("not a png")); wireCode(err) != appwire.CodeBadParams {
+	if _, err := b.AttachMediaFrame(agent.ID, source, version, 1, base64.StdEncoding.EncodeToString([]byte("not a png"))); wireCode(err) != appwire.CodeBadParams {
 		t.Fatalf("bad bytes: %v", err)
 	}
 	// An image source is not a clip: its frame is refused, not stored.
@@ -116,13 +119,13 @@ func TestAppMediaAttachFrameRefusesForeignChangedAndBadBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.AttachMediaFrame(agent.ID, still, got.Version, 1, data); err == nil {
+	if _, err := b.AttachMediaFrame(agent.ID, still, got.Version, 1, encoded); err == nil {
 		t.Fatal("a still image accepted as a clip")
 	}
 	if err := os.WriteFile(clip, []byte("the clip was replaced by something longer"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.AttachMediaFrame(agent.ID, source, version, 1, data); err == nil {
+	if _, err := b.AttachMediaFrame(agent.ID, source, version, 1, encoded); err == nil {
 		t.Fatal("a changed clip attached")
 	}
 	a := b.agent(agent.ID)
@@ -145,7 +148,7 @@ func TestAppMediaAttachFrameRefusesForeignChangedAndBadBytes(t *testing.T) {
 		if err := os.WriteFile(clip, append([]byte{0, 0, 0, 0x18}, []byte("ftypisom\x00\x00\x02\x00isomiso2")...), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := b.AttachMediaFrame(agent.ID, source, version, 1, data); wireCode(err) != appwire.CodeBusy {
+		if _, err := b.AttachMediaFrame(agent.ID, source, version, 1, encoded); wireCode(err) != appwire.CodeBusy {
 			t.Fatalf("%s not bounded: %v", kind, err)
 		}
 		b.locked(func() { b.agents[agent.ID].referenceN = 0; b.referenceN = 0; b.referenceWorkers = 0 })
@@ -155,7 +158,8 @@ func TestAppMediaAttachFrameRefusesForeignChangedAndBadBytes(t *testing.T) {
 func TestAppMediaAttachFrameUncertainDeliveryKeepsTheFrameAndCloseDropsUnsent(t *testing.T) {
 	b, agent, source, version, _ := frameBackend(t)
 	data := framePictureBytes(t)
-	uncertain, err := b.AttachMediaFrame(agent.ID, source, version, 100, data)
+	encoded := base64.StdEncoding.EncodeToString(data)
+	uncertain, err := b.AttachMediaFrame(agent.ID, source, version, 100, encoded)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +171,7 @@ func TestAppMediaAttachFrameUncertainDeliveryKeepsTheFrameAndCloseDropsUnsent(t 
 	if _, err := os.Stat(uncertain.Path); err != nil {
 		t.Fatal("an unknown delivery lost its frame")
 	}
-	unsent, err := b.AttachMediaFrame(agent.ID, source, version, 200, data)
+	unsent, err := b.AttachMediaFrame(agent.ID, source, version, 200, encoded)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,5 +183,63 @@ func TestAppMediaAttachFrameUncertainDeliveryKeepsTheFrameAndCloseDropsUnsent(t 
 	}
 	if _, err := os.Stat(uncertain.Path); err != nil {
 		t.Fatal("close removed an unknown-delivery frame")
+	}
+}
+
+func TestAppMediaAttachFrameBusyRefusesBeforeDecoding(t *testing.T) {
+	b, agent, source, version, _ := frameBackend(t)
+	b.locked(func() { b.referenceN = appReferenceMax })
+	// Text that could never decode: a busy engine must answer busy, which proves the
+	// decode was not tried first.
+	if _, err := b.AttachMediaFrame(agent.ID, source, version, 1, "!!! not base64 !!!"); wireCode(err) != appwire.CodeBusy {
+		t.Fatalf("decoded before admission: %v", err)
+	}
+	b.locked(func() { b.referenceN = 0 })
+	if _, err := b.AttachMediaFrame(agent.ID, source, version, 1, "!!! not base64 !!!"); wireCode(err) != appwire.CodeBadParams {
+		t.Fatalf("admitted work must refuse undecodable text: %v", err)
+	}
+	b.locked(func() {
+		if b.referenceN != 0 || b.referenceWorkers != 0 {
+			t.Fatal("admission leaked")
+		}
+	})
+}
+
+func TestAppMediaAttachFrameSendRecordsVersionAndMomentOnTheMessage(t *testing.T) {
+	b, agent, source, version, clip := frameBackend(t)
+	conversation := &referenceConversation{fakeConversation: &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}}
+	b.locked(func() {
+		if a := b.agents[agent.ID]; a.live != nil {
+			a.live.conn.Conv = conversation
+		}
+	})
+	b.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: conversation, Workspace: agent.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	chip, err := b.AttachMediaFrame(agent.ID, source, version, 3200, base64.StdEncoding.EncodeToString(framePictureBytes(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.SendWith(agent.ID, "on this frame", "frame-client", []string{chip.ID}); err != nil {
+		t.Fatal(err)
+	}
+	media := conversation.message.Media
+	if len(media) != 1 || media[0].Source == nil || media[0].Source.SourceID != source || media[0].Source.Version != version || media[0].Source.AtMS == nil || *media[0].Source.AtMS != 3200 || media[0].Source.Path != clip || media[0].ExpectedSHA256 == "" {
+		t.Fatalf("the sent message lost the clip, version or moment: %+v", media)
+	}
+	if _, err := os.Stat(chip.Path); err != nil {
+		t.Fatal("an accepted frame was deleted")
+	}
+}
+
+// A surface may repeat a staged frame in submission.media, but the clip, version
+// and moment always come from the engine's own record, never from the request.
+func TestAppReferenceImagesIgnoreASurfaceSuppliedSource(t *testing.T) {
+	at := int64(3200)
+	forged := int64(1)
+	ref := &appReference{source: session.MediaReference{SourceID: "src_real", Path: "/clip.mp4", Version: "sha256:real", AtMS: &at}}
+	got := appReferenceImages([]appAttach{{view: appwire.Attachment{ID: "at1"}, reference: ref}}, []session.SubmissionMedia{{ID: "at1", Source: &session.MediaReference{SourceID: "src_forged", Version: "sha256:forged", AtMS: &forged}}})
+	if len(got) != 1 || got[0].Source.SourceID != "src_real" || got[0].Source.Version != "sha256:real" || *got[0].Source.AtMS != 3200 {
+		t.Fatalf("a request's source was believed: %+v", got)
 	}
 }

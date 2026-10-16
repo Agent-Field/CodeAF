@@ -19,7 +19,10 @@ const MediaFrameMaxBytes = 3_000_000
 // and attachments.remove abandons. No path is accepted: a surface can supply a
 // picture but can never make the engine read a file.
 type MediaFrameAttacher interface {
-	AttachMediaFrame(agent, source, version string, atMS int64, png []byte) (Attachment, error)
+	// The PNG arrives still base64-encoded and already bounded in length: the engine
+	// decodes it only after it has admitted the work, so a full engine costs no
+	// decoded allocation.
+	AttachMediaFrame(agent, source, version string, atMS int64, pngBase64 string) (Attachment, error)
 }
 
 func init() {
@@ -41,11 +44,7 @@ func init() {
 		if p.PNG == "" || len(p.PNG) > base64.StdEncoding.EncodedLen(MediaFrameMaxBytes) {
 			return nil, Errorf(CodeBadParams, "a frame is 1 to %d bytes", MediaFrameMaxBytes)
 		}
-		png, err := base64.StdEncoding.Strict().DecodeString(p.PNG)
-		if err != nil {
-			return nil, Errorf(CodeBadParams, "the frame is not base64")
-		}
-		attachment, err := r.AttachMediaFrame(p.Agent, p.Source, p.Version, p.AtMS, png)
+		attachment, err := r.AttachMediaFrame(p.Agent, p.Source, p.Version, p.AtMS, p.PNG)
 		if err != nil {
 			return nil, err
 		}

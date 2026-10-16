@@ -22,7 +22,7 @@ import (
 const (
 	MaxFrameBytes  = 3_000_000
 	MaxFrameSide   = 4096
-	MaxFramePixels = 8 << 20
+	MaxFramePixels = 8_000_000
 	// MaxFrameAtMS is a year of milliseconds: a moment far outside it is a bug.
 	MaxFrameAtMS int64 = 366 * 24 * 3600 * 1000
 )
@@ -44,7 +44,9 @@ func CheckFramePNG(data []byte) (width, height int, err error) {
 		return 0, 0, ErrMediaFrame
 	}
 	pos := len(pngSignature)
-	idat, ended := false, false
+	idat, ended, palette := false, false, false
+	var colourType byte
+	previous := ""
 	for first := true; pos < len(data); first = false {
 		if ended || len(data)-pos < 12 {
 			return 0, 0, ErrMediaFrame
@@ -67,9 +69,28 @@ func CheckFramePNG(data []byte) (width, height int, err error) {
 			if w == 0 || h == 0 || w > MaxFrameSide || h > MaxFrameSide || uint64(w)*uint64(h) > MaxFramePixels {
 				return 0, 0, fmt.Errorf("%w: %dx%d is outside %d a side and %d pixels", ErrMediaFrame, w, h, MaxFrameSide, MaxFramePixels)
 			}
-			width, height = int(w), int(h)
+			depth, colour := body[8], body[9]
+			legal := false
+			switch colour {
+			case 0:
+				legal = depth == 1 || depth == 2 || depth == 4 || depth == 8 || depth == 16
+			case 3:
+				legal = depth == 1 || depth == 2 || depth == 4 || depth == 8
+			case 2, 4, 6:
+				legal = depth == 8 || depth == 16
+			}
+			if !legal || body[10] != 0 || body[11] != 0 || body[12] > 1 {
+				return 0, 0, fmt.Errorf("%w: the header is not a legal PNG header", ErrMediaFrame)
+			}
+			width, height, colourType = int(w), int(h), colour
+		case "PLTE":
+			if first || idat || length == 0 || length%3 != 0 || length > 768 {
+				return 0, 0, ErrMediaFrame
+			}
+			palette = true
 		case "IDAT":
-			if first {
+			// The pixel stream is one run of IDAT chunks, never interrupted.
+			if first || (idat && previous != "IDAT") || (colourType == 3 && !palette) {
 				return 0, 0, ErrMediaFrame
 			}
 			idat = true
@@ -83,6 +104,7 @@ func CheckFramePNG(data []byte) (width, height int, err error) {
 				return 0, 0, ErrMediaFrame
 			}
 		}
+		previous = string(kind)
 		pos += 12 + length
 	}
 	if !ended || width == 0 {
@@ -101,6 +123,9 @@ func CheckFramePNG(data []byte) (width, height int, err error) {
 func SnapshotMediaFrame(ctx context.Context, row MediaRow, roots []string, version string, atMS int64, data []byte, destination string) (MediaReferenceCopy, error) {
 	if atMS < 0 || atMS > MaxFrameAtMS {
 		return MediaReferenceCopy{}, fmt.Errorf("%w: the moment is outside the clip", ErrMediaFrame)
+	}
+	if row.Fact.DurationMS > 0 && atMS > row.Fact.DurationMS {
+		return MediaReferenceCopy{}, fmt.Errorf("%w: the moment is past the end of the clip", ErrMediaFrame)
 	}
 	if _, _, err := CheckFramePNG(data); err != nil {
 		return MediaReferenceCopy{}, err
@@ -132,7 +157,13 @@ func SnapshotMediaFrame(ctx context.Context, row MediaRow, roots []string, versi
 			_ = copy.Remove()
 		}
 	}()
-	if copy.owned, err = out.Stat(); err != nil {
+	// Remove needs the creation record, which a failed Stat cannot give; this file
+	// and directory were just made by this call, so name them directly.
+	if copy.owned, err = statCreated(out); err != nil {
+		_ = out.Close()
+		_ = os.Remove(copy.Path)
+		_ = os.Remove(dir)
+		keep = true // nothing is left for the deferred cleanup
 		return MediaReferenceCopy{}, err
 	}
 	if _, err := out.Write(data); err != nil {

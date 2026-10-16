@@ -100,7 +100,7 @@ func appSessionReference(ref *appwire.MediaReference) *session.MediaReference {
 	if ref == nil {
 		return nil
 	}
-	out := session.MediaReference{SourceID: ref.SourceID, Path: ref.Path}
+	out := session.MediaReference{SourceID: ref.SourceID, Path: ref.Path, Version: ref.Version}
 	if ref.AtMS != nil {
 		at := *ref.AtMS
 		out.AtMS = &at
@@ -112,7 +112,7 @@ func appWireReference(ref *session.MediaReference) *appwire.MediaReference {
 	if ref == nil {
 		return nil
 	}
-	out := appwire.MediaReference{SourceID: ref.SourceID, Path: ref.Path}
+	out := appwire.MediaReference{SourceID: ref.SourceID, Path: ref.Path, Version: ref.Version}
 	if ref.AtMS != nil {
 		at := *ref.AtMS
 		out.AtMS = &at

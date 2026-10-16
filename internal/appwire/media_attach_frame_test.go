@@ -11,14 +11,24 @@ type mediaFrameEngine struct {
 	fakeEngine
 	agent, source, version string
 	at                     int64
-	png                    []byte
+	png                    string
 	calls                  int
 }
 
-func (e *mediaFrameEngine) AttachMediaFrame(agent, source, version string, at int64, png []byte) (Attachment, error) {
+func (e *mediaFrameEngine) AttachMediaFrame(agent, source, version string, at int64, png string) (Attachment, error) {
 	e.calls++
 	e.agent, e.source, e.version, e.at, e.png = agent, source, version, at, png
 	return Attachment{ID: "owned"}, nil
+}
+
+// The route bounds the encoded length and hands it on still encoded: the engine
+// decodes only after it has admitted the work.
+func TestMediaAttachFrameRouteDoesNotDecodeBeforeAdmission(t *testing.T) {
+	e := &mediaFrameEngine{}
+	text := "not base64 !!"
+	if _, err := methods["media.attach_frame"].call(e, json.RawMessage(`{"agent":"a","source":"s","version":"v","at_ms":1,"png":"`+text+`"}`)); err != nil || e.png != text {
+		t.Fatalf("the route decoded or refused before the engine could admit: %v %q", err, e.png)
+	}
 }
 
 func TestMediaAttachFrameRouteTakesBytesNeverAPath(t *testing.T) {
@@ -26,7 +36,7 @@ func TestMediaAttachFrameRouteTakesBytesNeverAPath(t *testing.T) {
 	route := methods["media.attach_frame"]
 	body := base64.StdEncoding.EncodeToString([]byte("png bytes"))
 	out, err := route.call(e, json.RawMessage(`{"agent":"a","source":"src_x","version":"sha256:v","at_ms":3200,"png":"`+body+`"}`))
-	if err != nil || e.agent != "a" || e.source != "src_x" || e.version != "sha256:v" || e.at != 3200 || string(e.png) != "png bytes" {
+	if err != nil || e.agent != "a" || e.source != "src_x" || e.version != "sha256:v" || e.at != 3200 || e.png != body {
 		t.Fatalf("route lost identity: %v", err)
 	}
 	raw, _ := json.Marshal(out)
@@ -43,7 +53,6 @@ func TestMediaAttachFrameRouteTakesBytesNeverAPath(t *testing.T) {
 		`{"agent":"a","source":"s","version":"v","at_ms":1}`,
 		`{"agent":"a","source":"s","version":"v","at_ms":-1,"png":"` + body + `"}`,
 		`{"agent":"a","source":"s","version":" ","at_ms":1,"png":"` + body + `"}`,
-		`{"agent":"a","source":"s","version":"v","at_ms":1,"png":"not base64!"}`,
 		`{"agent":"a","source":"s","version":"v","at_ms":1,"png":"` + over + `"}`,
 	}
 	before := e.calls

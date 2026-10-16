@@ -42,6 +42,24 @@ func headerOnly(w, h uint32) []byte {
 	return append(out, pngChunk("IEND", nil)...)
 }
 
+// withHeader rewrites IHDR's format fields and fixes its CRC, so only legality is wrong.
+func withHeader(good []byte, depth, colour, compress, filter, interlace byte) []byte {
+	b := append([]byte(nil), good...)
+	body := b[16:29]
+	body[8], body[9], body[10], body[11], body[12] = depth, colour, compress, filter, interlace
+	binary.BigEndian.PutUint32(b[29:], crc32.ChecksumIEEE(b[12:29]))
+	return b
+}
+
+// splitIDAT interrupts the pixel stream with another chunk.
+func splitIDAT() []byte {
+	good := headerOnly(2, 2)
+	out := append([]byte(nil), good[:len(good)-12]...)
+	out = append(out, pngChunk("tEXt", []byte("k\x00v"))...)
+	out = append(out, pngChunk("IDAT", []byte{1})...)
+	return append(out, pngChunk("IEND", nil)...)
+}
+
 func TestCheckFramePNGBoundsAndCorruption(t *testing.T) {
 	good := framePNG(t, 3, 2)
 	if w, h, err := CheckFramePNG(good); err != nil || w != 3 || h != 2 {
@@ -64,6 +82,15 @@ func TestCheckFramePNGBoundsAndCorruption(t *testing.T) {
 		"pixels":     headerOnly(4096, 2049),
 		"zero":       headerOnly(0, 4),
 		"no data":    append(append(append([]byte(nil), pngSignature...), good[8:8+25]...), pngChunk("IEND", nil)...),
+		"depth":      withHeader(good, 3, 0, 0, 0, 0),
+		"colour":     withHeader(good, 8, 5, 0, 0, 0),
+		"rgb depth":  withHeader(good, 4, 2, 0, 0, 0),
+		"palette 16": withHeader(good, 16, 3, 0, 0, 0),
+		"compress":   withHeader(good, 8, 6, 1, 0, 0),
+		"filter":     withHeader(good, 8, 6, 0, 1, 0),
+		"interlace":  withHeader(good, 8, 6, 0, 0, 2),
+		"no plte":    withHeader(good, 8, 3, 0, 0, 0),
+		"split idat": splitIDAT(),
 		"iend first": append(append([]byte(nil), pngSignature...), pngChunk("IEND", nil)...),
 	}
 	for name, data := range cases {
@@ -156,6 +183,44 @@ func TestSnapshotMediaFrameRefusesWithoutLeavingAFile(t *testing.T) {
 				t.Fatal("refused snapshot leaked")
 			}
 		})
+	}
+}
+
+func TestSnapshotMediaFrameRefusesAMomentPastTheClip(t *testing.T) {
+	row, root, dest := frameFixture(t)
+	row.Fact.DurationMS = 2000
+	if _, err := SnapshotMediaFrame(context.Background(), row, []string{root}, row.Version(), 5000, framePNG(t, 2, 2), dest); !errors.Is(err, ErrMediaFrame) {
+		t.Fatalf("a moment past a 2 s clip was kept: %v", err)
+	}
+	if entries, _ := os.ReadDir(dest); len(entries) != 0 {
+		t.Fatal("a refused moment left a file")
+	}
+	got, err := SnapshotMediaFrame(context.Background(), row, []string{root}, row.Version(), 2000, framePNG(t, 2, 2), dest)
+	if err != nil {
+		t.Fatalf("the clip's own last moment is allowed: %v", err)
+	}
+	_ = got.Remove()
+}
+
+// A failed Stat leaves no creation record for Remove to use, so the call must
+// name and remove the file and folder it just made.
+func TestSnapshotsRemoveTheirFileWhenTheCreationRecordCannotBeRead(t *testing.T) {
+	old := statCreated
+	t.Cleanup(func() { statCreated = old })
+	statCreated = func(*os.File) (os.FileInfo, error) { return nil, errors.New("stat refused") }
+	row, root, dest := frameFixture(t)
+	if _, err := SnapshotMediaFrame(context.Background(), row, []string{root}, row.Version(), 1, framePNG(t, 2, 2), dest); err == nil {
+		t.Fatal("a failed stat was ignored")
+	}
+	if entries, _ := os.ReadDir(dest); len(entries) != 0 {
+		t.Fatal("frame snapshot leaked after a failed stat")
+	}
+	image, iroot, idest, _ := referenceFixture(t)
+	if _, err := CopyMediaReference(context.Background(), image, []string{iroot}, image.Version(), idest); err == nil {
+		t.Fatal("a failed stat was ignored")
+	}
+	if entries, _ := os.ReadDir(idest); len(entries) != 0 {
+		t.Fatal("reference copy leaked after a failed stat")
 	}
 }
 

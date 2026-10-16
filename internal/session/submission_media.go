@@ -83,9 +83,13 @@ const (
 // MediaReference says where a picture came from, as the door knew it: the id the
 // engine's own index gave the source, its path, and the moment in a clip a frame
 // was taken at. Every field is optional; an empty one is "the door did not say".
+// Version is the source's canonical recorded version the engine verified when it
+// kept the picture; it travels with the message so the record can say WHICH
+// version of the source a picture came from, not only which source.
 type MediaReference struct {
 	SourceID string `json:"sourceId,omitempty"`
 	Path     string `json:"path,omitempty"`
+	Version  string `json:"version,omitempty"`
 	AtMS     *int64 `json:"atMs,omitempty"`
 }
 
@@ -250,6 +254,9 @@ func checkReference(ref *MediaReference) error {
 	if err := checkPath(ref.Path); err != nil {
 		return err
 	}
+	if len(ref.Version) > maxAttachmentField || !utf8.ValidString(ref.Version) || strings.ContainsRune(ref.Version, 0) {
+		return fmt.Errorf("has a version that is not text of at most %d bytes", maxAttachmentField)
+	}
 	if ref.AtMS != nil && *ref.AtMS < 0 {
 		return errors.New("has a negative moment")
 	}
@@ -409,7 +416,7 @@ func composedSizes(mark *ComposedMark) int64 {
 	for _, media := range mark.Media {
 		cost += int64(len(media.ID)+len(media.Path)+len(media.MIME)+len(media.SHA256)+len(media.Role)) + 64
 		if media.Source != nil {
-			cost += int64(len(media.Source.SourceID)+len(media.Source.Path)) + 16
+			cost += int64(len(media.Source.SourceID)+len(media.Source.Path)+len(media.Source.Version)) + 16
 		}
 	}
 	if note := mark.Annotation; note != nil {
