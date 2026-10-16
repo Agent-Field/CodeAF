@@ -119,7 +119,17 @@ func openMediaReference(ctx context.Context, row MediaRow, roots []string, versi
 	if err != nil {
 		return nil, nil, MediaLive{}, err
 	}
-	file, err := os.Open(live.Path)
+	return openLiveMediaReference(ctx, live)
+}
+
+// The path was validated before this call, but a writer may replace it before
+// open. Nonblocking open prevents a replacement FIFO from holding staging
+// admission forever; the descriptor stat below still requires the exact file.
+func openLiveMediaReference(ctx context.Context, live MediaLive) (*os.File, os.FileInfo, MediaLive, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, MediaLive{}, err
+	}
+	file, err := openRecordFile(live.Path)
 	if err != nil {
 		return nil, nil, MediaLive{}, ErrMediaReference
 	}
