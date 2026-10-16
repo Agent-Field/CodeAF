@@ -320,6 +320,25 @@ type GraphText struct {
 	Source string `json:"source"`
 	Text   string `json:"text"`
 	Cut    bool   `json:"cut,omitempty"`
+	// Anchor is where the person's original words are, when the record points at
+	// them: the conversation and the line of its journal. Absent when the record
+	// carries no pointer — no anchor is ever made up.
+	Anchor *TextAnchor `json:"anchor,omitempty"`
+}
+
+// TextAnchor points at a line of a conversation's journal.
+type TextAnchor struct {
+	Agent string `json:"agent"`
+	Line  int    `json:"line"`
+}
+
+// RouteSeat is one role of the crew a task was accepted to run on, as the record
+// stored it at admission: the role, the model seated there, and whether a
+// person pinned it.
+type RouteSeat struct {
+	Role   string `json:"role"`
+	Model  string `json:"model"`
+	Pinned bool   `json:"pinned,omitempty"`
 }
 
 // GraphTotals are the scope's true sizes, whatever the page holds.
@@ -450,13 +469,16 @@ type GraphNode struct {
 	// outside a crew scope and for an owner in no crew of it.
 	Crew *CrewPlace `json:"crew,omitempty"`
 
-	Clock        Clock       `json:"clock"`
-	Instructions *GraphText  `json:"instructions,omitempty"`
-	Model        string      `json:"model,omitempty"`
-	Landing      *Landing    `json:"landing,omitempty"`
-	Files        FileSet     `json:"files"`
-	Spend        *TaskSpend  `json:"spend,omitempty"`
-	Checks       *TaskChecks `json:"checks,omitempty"`
+	Clock        Clock      `json:"clock"`
+	Instructions *GraphText `json:"instructions,omitempty"`
+	Model        string     `json:"model,omitempty"`
+	// Route is the crew the record accepted for the task, role by role. Absent
+	// where the record keeps none (only a handed-over run's row persists one).
+	Route   []RouteSeat `json:"route,omitempty"`
+	Landing *Landing    `json:"landing,omitempty"`
+	Files   FileSet     `json:"files"`
+	Spend   *TaskSpend  `json:"spend,omitempty"`
+	Checks  *TaskChecks `json:"checks,omitempty"`
 
 	// Links says whether this task's waits-on links were recorded ("recorded")
 	// or the record never carried them ("unrecorded"). WaitsOnTotal is the true

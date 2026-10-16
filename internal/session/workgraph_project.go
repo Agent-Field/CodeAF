@@ -20,6 +20,7 @@ package session
 
 import (
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -149,9 +150,43 @@ func wgInstructions(r taskRecord) *workgraph.GraphText {
 		return t
 	}
 	if t := wgText("admitted_brief", r.Brief, workgraph.MaxTextRunes); t != nil {
+		t.Anchor = wgAnchor(r.OriginJournal, r.OriginLine)
 		return t
 	}
-	return wgText("request", r.Request, workgraph.MaxTextRunes)
+	t := wgText("request", r.Request, workgraph.MaxTextRunes)
+	if t != nil {
+		t.Anchor = wgAnchor(r.OriginJournal, r.OriginLine)
+	}
+	return t
+}
+
+// wgAnchor is the pointer a record keeps to the person's original words: the
+// conversation whose journal it names and the line. A pointer with no line, or
+// to a journal that is not some conversation's own, is not an anchor.
+func wgAnchor(journal string, line int) *workgraph.TextAnchor {
+	if line <= 0 || filepath.Base(journal) != placeTranscript {
+		return nil
+	}
+	agent := filepath.Base(filepath.Dir(journal))
+	if !workgraph.ValidOwner(agent) {
+		return nil
+	}
+	return &workgraph.TextAnchor{Agent: agent, Line: line}
+}
+
+// wgRoute is the crew a run row was accepted onto, role by role.
+func wgRoute(rec *TaskCrewRecord) []workgraph.RouteSeat {
+	if rec == nil || !rec.Routed {
+		return nil
+	}
+	var out []workgraph.RouteSeat
+	for _, pick := range rec.Decision.Crew {
+		if pick.Model == "" {
+			continue
+		}
+		out = append(out, workgraph.RouteSeat{Role: string(pick.Seat), Model: wgTitle(pick.Model), Pinned: pick.Pinned || rec.TaskPins[pick.Seat]})
+	}
+	return out
 }
 
 // kindOf is the engine's kind word for a record.
@@ -227,8 +262,7 @@ func runFact(owner string, r runRecord, titles map[uint64]string) workgraph.Fact
 		Ending: string(r.Ending), Model: wgTitle(r.Model),
 		Clock:   workgraph.Clock{StartedAt: workgraph.Stamp(r.StartedAt), EndedAt: workgraph.Stamp(r.EndedAt)},
 		Landing: wgLanding(r.Merge, r.EndedAt), Files: wgFiles(r.Changed, nil),
-		Spend: wgSpend(r.CostUSD, 0), Links: "unrecorded",
-		Instructions: nil,
+		Spend: wgSpend(r.CostUSD, 0), Links: "unrecorded", Route: wgRoute(r.CrewState),
 	}
 	if r.State == TaskInterrupted {
 		n.State = string(TaskRunning)

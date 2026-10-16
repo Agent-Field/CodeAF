@@ -459,8 +459,13 @@ func cloneNode(n *GraphNode) *GraphNode {
 	c.Clock = Clock{AdmittedAt: copyTime(n.Clock.AdmittedAt), StartedAt: copyTime(n.Clock.StartedAt), StateAt: copyTime(n.Clock.StateAt), EndedAt: copyTime(n.Clock.EndedAt)}
 	if n.Instructions != nil {
 		t := *n.Instructions
+		if n.Instructions.Anchor != nil {
+			a := *n.Instructions.Anchor
+			t.Anchor = &a
+		}
 		c.Instructions = &t
 	}
+	c.Route = append([]RouteSeat(nil), n.Route...)
 	if n.Landing != nil {
 		l := *n.Landing
 		l.At = copyTime(n.Landing.At)

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
@@ -299,5 +300,33 @@ func TestRelativePathsOnly(t *testing.T) {
 		if _, ok := wgRelPath(raw); ok {
 			t.Errorf("%q was accepted", raw)
 		}
+	}
+}
+
+// The anchor to the person's words and the accepted route are what the record
+// carries and nothing more: no pointer, no anchor; no crew, no route.
+func TestTheProjectionCarriesTheRecordedAnchorAndRouteOnly(t *testing.T) {
+	journal := filepath.Join("/x", "places", sourceOwner, placeTranscript)
+	with := nodeFact(sourceOwner, taskRecord{ID: 1, Title: "t", Brief: "do it", State: TaskQueued, OriginJournal: journal, OriginLine: 7})
+	if a := with.Node.Instructions.Anchor; a == nil || a.Agent != sourceOwner || a.Line != 7 {
+		t.Fatalf("anchor = %+v", with.Node.Instructions)
+	}
+	for name, rec := range map[string]taskRecord{
+		"no line":          {ID: 2, Title: "t", Brief: "b", OriginJournal: journal},
+		"not a transcript": {ID: 3, Title: "t", Brief: "b", OriginJournal: "/x/notes.txt", OriginLine: 4},
+		"unsafe agent":     {ID: 4, Title: "t", Brief: "b", OriginJournal: "/x/../" + placeTranscript, OriginLine: 4},
+	} {
+		if a := nodeFact(sourceOwner, rec).Node.Instructions.Anchor; a != nil {
+			t.Errorf("%s: anchor = %+v", name, a)
+		}
+	}
+	crew := &TaskCrewRecord{Routed: true, TaskPins: map[crewroute.Seat]bool{crewroute.Checker: true}}
+	crew.Decision.Crew = []crewroute.Pick{{Seat: crewroute.Worker, Model: "a/worker"}, {Seat: crewroute.Checker, Model: "a/checker"}}
+	run := runFact(sourceOwner, runRecord{ID: 5, Title: "r", State: TaskDone, CrewState: crew}, nil)
+	if len(run.Node.Route) != 2 || run.Node.Route[0].Model != "a/worker" || run.Node.Route[0].Pinned || !run.Node.Route[1].Pinned {
+		t.Fatalf("route = %+v", run.Node.Route)
+	}
+	if got := runFact(sourceOwner, runRecord{ID: 6, Title: "r", State: TaskDone}, nil); got.Node.Route != nil {
+		t.Fatalf("a row with no crew has a route: %+v", got.Node.Route)
 	}
 }
