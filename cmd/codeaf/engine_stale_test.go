@@ -143,9 +143,16 @@ func (h *standInHost) answer(conn net.Conn) {
 		h.retired = true
 		h.mu.Unlock()
 	}
+	// A vanish fixture has already left before its answer reaches the caller.
+	// The accepted connection survives closing the listener, so its final reply
+	// still arrives; a follow-up stand-down cannot race ahead of the disappearance.
+	vanished := h.opts.vanishAfter > 0 && count >= h.opts.vanishAfter
+	if vanished {
+		h.close()
+	}
 	answer, _ := json.Marshal(remote.Frame{Kind: "whoami", Payload: mustStandInJSON(self)})
 	_, _ = conn.Write(append(answer, '\n'))
-	if self.Retiring || (h.opts.vanishAfter > 0 && count >= h.opts.vanishAfter) {
+	if self.Retiring && !vanished {
 		h.close()
 	}
 }
