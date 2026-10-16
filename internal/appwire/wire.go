@@ -321,6 +321,11 @@ type Entry struct {
 	// ClientID echoes the id the app sent with the person's message, on that
 	// message's user entry.
 	ClientID string `json:"client_id,omitempty"`
+	// Queued is true on a user entry the engine sent from the person's queue
+	// (agents.queue) when the turn it waited behind ended, as the record keeps
+	// it on the message's own line. Absent is "not known to be queued": a
+	// message sent at once, or a line written before the mark existed.
+	Queued bool `json:"queued,omitempty"`
 	// Msg is an answer's place among the assistant messages of its turn,
 	// counted from zero; the turn.delta lines of that message carry the same.
 	Msg *int `json:"msg,omitempty"`

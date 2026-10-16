@@ -67,6 +67,7 @@ type Submission struct {
 	Said *string
 	// Attachments are what rode on the message, in the order it carried them.
 	Attachments []MessageAttachment
+	Queued      bool
 	// Reads are the reads of references the door performed to write Text, in
 	// the order it performed them, as it found them at that moment.
 	Reads []MessageRead
@@ -198,7 +199,7 @@ func (a *Agent) SubmitMessage(ctx context.Context, message Submission) (<-chan E
 // it says nothing beyond the words. The copy is the record's own: nothing the
 // caller does to its slices afterwards reaches a line or a reading.
 func (m Submission) mark() (*messagePresentation, error) {
-	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 {
+	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued {
 		return nil, nil
 	}
 	reads, err := keptReads(m.Reads)
@@ -212,7 +213,7 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if len(m.Attachments) > MaxMessageAttachments {
 		return nil, fmt.Errorf("%w: %d attachments, and one message names at most %d", ErrMessageMark, len(m.Attachments), MaxMessageAttachments)
 	}
-	mark := &messagePresentation{Audience: audiencePerson}
+	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued}
 	// Text stays nil when the door did not say the person's words apart: the
 	// line's own content is theirs, and a copy of it here would be the same
 	// words written twice on one line.

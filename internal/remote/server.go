@@ -1197,6 +1197,16 @@ func steerRepeatKnown(agent any) bool {
 	return ok && door.SteerRepeatKnown()
 }
 
+// queuedMarksKnown is whether the agent this engine has open keeps a message's
+// mark at all: this build's Submit hands a queued mark to that door and to
+// nothing else.
+func queuedMarksKnown(agent any) bool {
+	_, ok := agent.(interface {
+		SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+	})
+	return ok
+}
+
 func memoryCommandsKnown(agent any) bool {
 	door, ok := agent.(MemoryCommands)
 	return ok && door.Remembers()
@@ -1288,6 +1298,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),
+		QueuedMarks:                queuedMarksKnown(sess.agent),
 		// Whether this engine can hold a folder at all, asked of the agent it has
 		// open — for [Welcome.Folders]'s stated reason: the surface's own type
 		// assertion cannot see across the wire.

@@ -1449,6 +1449,14 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if text == "" {
 		return 0, appwire.Errorf(appwire.CodeNotFound, "this agent has no failed turn to run again")
 	}
+	// A retry is the person's own send, never the queue's.
+	if shown != nil && shown.queued {
+		again := *shown
+		again.queued = false
+		if shown = &again; len(again.described) == 0 {
+			shown = nil
+		}
+	}
 	return b.send(id, text, "", shown)
 }
 
@@ -1569,6 +1577,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	userEntry := appwire.Entry{
 		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments, Reads: reads,
 	}
+	userEntry.Queued = shown != nil && shown.queued && appKeepsQueued(live.conn.Conv)
 	appComposedFields(&userEntry, composedMark)
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: userEntry})
 	long := b.watchLong(id, live, turn, b.now())
@@ -2502,6 +2511,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 			// rode on them, as the record keeps them on the message's line; a
 			// line without that mark is its words, and has no attachments.
 			entry.ID, entry.Kind, entry.Text, entry.Attachments = appUserEntryID(n), appwire.EntryUser, item.Text, appAttachmentsOf(item.Person)
+			entry.Queued = item.Person != nil && item.Person.Queued
 			entry.Reads = appPersonReads(item.Person)
 			if item.Person != nil {
 				appComposedFields(&entry, item.Person.Composed)

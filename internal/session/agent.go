@@ -4917,6 +4917,7 @@ type PersonMark struct {
 	// id, its pictures as the engine measured them, its annotation and how the
 	// pictures reached a model. Nil on every message no such door sent.
 	Composed *ComposedMark
+	Queued   bool
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -5061,7 +5062,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			// on it and the reads its words were written from. A line with no
 			// such mark is shown as it always was.
 			if mark := presentation.of(msg).person(); mark != nil {
-				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed)}
+				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued}
 				if mark.Text != nil {
 					displayText, person.Authored = *mark.Text, true
 				}

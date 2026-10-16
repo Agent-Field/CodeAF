@@ -465,3 +465,44 @@ func TestAPersonsMarkCostsAnEntryNothing(t *testing.T) {
 		t.Fatalf("DisplayEntry is %d bytes; it was 288 before the person's mark", size)
 	}
 }
+
+// A MESSAGE THE DOOR DELIVERED FROM THE PERSON'S QUEUE SAYS SO ON ITS OWN LINE,
+// and nothing else does: the same words sent at once carry no mark at all. The
+// live reading, the record at rest and the reopened conversation agree, and
+// the model reads the words alone.
+func TestAQueuedMessageSaysSoOnItsLineAndASentOneDoesNot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := answering()
+	agent, _ := newTestAgent(t, completer, func(c *Config) { c.SessionFile = path })
+	for _, message := range []Submission{{Text: "run the tests"}, {Text: "then the lint", Queued: true}} {
+		events, err := agent.SubmitMessage(context.Background(), message)
+		if err != nil {
+			t.Fatal(err)
+		}
+		collect(t, events)
+	}
+	completer.mu.Lock()
+	last := completer.seen[len(completer.seen)-1]
+	completer.mu.Unlock()
+	if got := messageContentText(last[len(last)-1]); got != "then the lint" {
+		t.Fatalf("the model read %q", got)
+	}
+	check := func(where string, entries []DisplayEntry) {
+		t.Helper()
+		users := personEntries(entries)
+		if len(users) != 2 || users[0].Person != nil || users[1].Person == nil || !users[1].Person.Queued ||
+			users[1].Person.Authored || users[1].Text != "then the lint" {
+			t.Fatalf("%s: the person's messages = %#v", where, users)
+		}
+	}
+	check("live", agent.Transcript())
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	check("at rest", ReadTranscript(path).Entries)
+	if marks := journalMarks(t, path); len(marks) != 2 || marks[0] != nil || marks[1]["queued"] != true || marks[1]["text"] != nil {
+		t.Fatalf("the person's lines carry marks %v", marks)
+	}
+	reopened, _ := newTestAgent(t, answering(), func(c *Config) { c.SessionFile = path })
+	check("reopened", reopened.Transcript())
+}

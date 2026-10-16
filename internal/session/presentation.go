@@ -35,6 +35,7 @@ type messagePresentation struct {
 	// durable id, its pictures as measured, its annotation and how the pictures
 	// reached a model ([Agent.SubmitComposed]).
 	Composed    *ComposedMark `json:"composed,omitempty"`
+	Queued      bool          `json:"queued,omitempty"`
 	SkillsBlock string        `json:"-"`
 }
 

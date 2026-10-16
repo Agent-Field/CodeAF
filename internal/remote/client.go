@@ -1739,12 +1739,19 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 // SubmitMessage is Submit with what the door knows about the message beyond its
 // words ([session.Agent.SubmitMessage]): it travels on the same call, so the
 // engine records the words and the mark on one line or neither.
+//
+// A queued mark goes only to an engine that said it keeps one
+// ([Welcome.QueuedMarks]); to any other the words go without it, so the record
+// reads "not known to be queued" rather than carrying a fact it dropped.
 func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error) {
+	message.Queued = message.Queued && a.QueuedMarksKnown()
 	if argsOf(message).composed() {
 		_, events, err := a.SubmitComposed(ctx, message)
 		return events, err
 	}
-	if argsOf(message).marked() && !a.MessageMarksKnown() {
+	mark := argsOf(message)
+	mark.Queued = false
+	if mark.marked() && !a.MessageMarksKnown() {
 		return nil, errors.New("engine: this engine cannot keep a message's description; update it before sending")
 	}
 	return a.open(ctx, MethodSubmit, argsOf(message))
@@ -1834,6 +1841,9 @@ func (a *Agent) welcomeSays(fact func(Welcome) bool) bool {
 	defer a.c.mu.Unlock()
 	return fact(a.c.welcome)
 }
+
+// QueuedMarksKnown is whether the engine keeps a queued mark ([Welcome.QueuedMarks]).
+func (a *Agent) QueuedMarksKnown() bool { return a.c.Welcome().QueuedMarks }
 
 // SubmitBash explicitly runs the person's command; ordinary Submit never
 // interprets message content as executable shell syntax.

@@ -1208,6 +1208,12 @@ type Welcome struct {
 	// asking twice, which is the degradation that costs a keystroke rather than
 	// the one that corrects a worker twice.
 	SteerRepeat bool `json:"steerRepeat,omitempty"`
+	// QueuedMarks says this engine keeps a Submit's queued mark
+	// ([SubmitArgs.Queued]) on the message's line. ABSENCE IS AN ENGINE THAT
+	// WOULD DROP IT: the surface then sends the words without the mark and
+	// says nothing about where the message came from, rather than showing a
+	// fact the record will not hold.
+	QueuedMarks bool `json:"queuedMarks,omitempty"`
 
 	// SteerOwner says this engine CHECKS THE CONVERSATION A SEND WAS WRITTEN FOR
 	// ([TaskSteerArgs.Session]) against the one it actually has open, and refuses
@@ -1491,13 +1497,14 @@ type SubmitArgs struct {
 	// ComposedMessages first.
 	Media      []session.SubmissionMedia `json:"media,omitempty"`
 	Annotation *session.Annotation       `json:"annotation,omitempty"`
+	Queued     bool                      `json:"queued,omitempty"`
 }
 
 // marked is whether the call carries a mark beside its words. Submit, Steer
 // and FollowUp each take one; a marked call is kept with its mark or refused
 // whole, and never run as its words alone.
 func (a SubmitArgs) marked() bool {
-	return a.Said != nil || len(a.Attachments) > 0 || len(a.Reads) > 0 || a.composed()
+	return a.Queued || a.Said != nil || len(a.Attachments) > 0 || len(a.Reads) > 0 || a.composed()
 }
 
 // composed is whether the call carries pictures or an annotation, which only a
@@ -1506,12 +1513,12 @@ func (a SubmitArgs) composed() bool { return len(a.Media) > 0 || a.Annotation !=
 
 // submission is the call as the agent's own door for a mark takes it.
 func (a SubmitArgs) submission() session.Submission {
-	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation}
+	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued}
 }
 
 // argsOf is a submission as the wire carries it.
 func argsOf(message session.Submission) SubmitArgs {
-	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation}
+	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued}
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the

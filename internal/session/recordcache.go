@@ -583,7 +583,7 @@ func cloneEntries(entries []DisplayEntry) []DisplayEntry {
 		entry.ReplyTags = slices.Clone(entry.ReplyTags)
 		entry.Team = slices.Clone(entry.Team)
 		if entry.Person != nil {
-			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments), Reads: cloneReads(entry.Person.Reads), Composed: cloneComposed(entry.Person.Composed)}
+			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments), Reads: cloneReads(entry.Person.Reads), Composed: cloneComposed(entry.Person.Composed), Queued: entry.Person.Queued}
 			entry.Person = &person
 		}
 		if entry.Steer != nil {

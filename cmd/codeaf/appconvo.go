@@ -425,7 +425,15 @@ func (b *appBackend) sendQueued(a *appAgent, live *appLive) {
 		return
 	}
 	b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
-	if _, err := b.send(agent, next.text, next.clientID, next.shown); err != nil {
+	shown := next.shown
+	if shown == nil {
+		shown = &appSending{text: next.text}
+	} else {
+		copy := *shown
+		shown = &copy
+	}
+	shown.queued = true
+	if _, err := b.send(agent, next.text, next.clientID, shown); err != nil {
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 			ID: "qx" + next.id, Agent: agent, Kind: appwire.EntryError, At: b.now(), Text: "the queued message was not sent: " + err.Error(),
 		}})
@@ -1016,11 +1024,19 @@ func appAttachmentsOf(person *session.PersonMark) []appwire.Attachment {
 // them.
 func appSubmission(text string, shown *appSending) session.Submission {
 	said := shown.text
-	submission := session.Submission{Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads}
+	submission := session.Submission{Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads, Queued: shown.queued}
 	if shown.composed != nil {
 		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
 	}
+	if shown.queued && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
+		submission.Said = nil
+	}
 	return submission
+}
+
+func appKeepsQueued(conv any) bool {
+	door, ok := conv.(interface{ QueuedMarksKnown() bool })
+	return !ok || door.QueuedMarksKnown()
 }
 
 // appKeptReads is a message's reads as the record will keep them, or the
@@ -1252,6 +1268,7 @@ type appSending struct {
 	// composed is the message's pictures and annotation, and what the engine
 	// answered once it kept it (appsubmission.go); nil on a message of words.
 	composed *appComposed
+	queued   bool
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────

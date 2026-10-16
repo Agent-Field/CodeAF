@@ -403,3 +403,49 @@ func TestAppAskHoldingUpIsTheTaskGraph(t *testing.T) {
 		t.Errorf("an ask from no task holds up %v", got)
 	}
 }
+
+// A MESSAGE THE QUEUE SENT SAYS SO, AND NOTHING ELSE DOES. The person's own
+// send carries no mark; the queued one is handed to the conversation's door
+// with the mark and its words alone, its entry says queued live, and the
+// record's mark is what a reopened history reads.
+func TestAppAQueuedMessageIsMarkedQueuedAndASentOneIsNot(t *testing.T) {
+	hold := make(chan struct{})
+	conv := &fakeConversation{hold: hold}
+	backend, rec, agent := workBackend(t, conv)
+	if _, err := backend.Send(agent.ID, "run the tests", "c-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Queue(agent.ID, "then the lint", "c-2"); err != nil {
+		t.Fatal(err)
+	}
+	conv.mu.Lock()
+	conv.hold = nil
+	conv.mu.Unlock()
+	close(hold)
+	sent := entryWith(rec, t, func(e appwire.Entry) bool { return e.Kind == appwire.EntryUser && e.Text == "run the tests" })
+	queued := entryWith(rec, t, func(e appwire.Entry) bool { return e.Kind == appwire.EntryUser && e.Text == "then the lint" })
+	if sent.Queued || !queued.Queued || queued.ClientID != "c-2" || len(queued.Attachments) != 0 {
+		t.Fatalf("the sent entry = %+v, the queued one = %+v", sent, queued)
+	}
+	conv.mu.Lock()
+	handed := append([]session.Submission(nil), conv.submissions...)
+	conv.mu.Unlock()
+	if len(handed) != 1 || !handed[0].Queued || handed[0].Said != nil || handed[0].Text != "then the lint" {
+		t.Fatalf("the door was handed %+v", handed)
+	}
+
+	entries := appEntriesOf("a", []session.DisplayEntry{
+		{Role: "user", Text: "run the tests"},
+		{Role: "user", Text: "then the lint", Person: &session.PersonMark{Queued: true}},
+		{Role: "user", Text: "and tag it", Person: &session.PersonMark{Authored: true}},
+	}, time.Now(), nil)
+	var marks []bool
+	for _, e := range entries {
+		if e.Kind == appwire.EntryUser {
+			marks = append(marks, e.Queued)
+		}
+	}
+	if !reflect.DeepEqual(marks, []bool{false, true, false}) {
+		t.Fatalf("history reads queued marks %v", marks)
+	}
+}
