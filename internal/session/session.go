@@ -668,6 +668,8 @@ const (
 	// render carry the SAME id and state. Appended after every existing ordinal
 	// because hosts serialize EventKind as an integer.
 	EventRenderUpdate = EventKeepRunning + 1
+	// EventMediaUpdate follows a successful immutable source-index append.
+	EventMediaUpdate = EventRenderUpdate + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -995,6 +997,7 @@ type Event struct {
 	// Render carries one EventRenderUpdate's payload (renderlog.go) and is nil
 	// on every other kind.
 	Render *RenderRecord
+	Media  *MediaChange
 
 	// TaskPhase carries one EventTaskPhase's payload (task_contract.go): which
 	// running node moved into which of its three lives. It is nil on every

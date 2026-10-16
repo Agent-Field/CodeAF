@@ -516,24 +516,24 @@ func RecordMedia(index string, artifact Artifact, fact MediaFact) string {
 // video. A file that is not media, or cannot be read, records nothing (an
 // attachment is not a deliverable, and a row nobody could open is noise). Only
 // the head of the file is read.
-func RecordAttachment(index, sessionID, path string) {
+func RecordAttachment(index, sessionID, path string) string {
 	if sessionID == "" {
-		return
+		return ""
 	}
 	canonical := canonicalFile(path)
 	info, err := os.Stat(canonical)
 	if err != nil || !info.Mode().IsRegular() {
-		return
+		return ""
 	}
 	file, err := os.Open(canonical)
 	if err != nil {
-		return
+		return ""
 	}
 	head, _ := io.ReadAll(io.LimitReader(file, mediaProbeBytes))
 	_ = file.Close()
 	mime := sniffMedia(head)
 	if mime == "" {
-		return
+		return ""
 	}
 	fact := MediaFact{Origin: MediaAttachment, MIME: mime}
 	if mediaKindOf(mime) == "image" {
@@ -542,7 +542,7 @@ func RecordAttachment(index, sessionID, path string) {
 		}
 	}
 	fact.stampFile(canonical)
-	RecordMedia(index, Artifact{
+	return RecordMedia(index, Artifact{
 		Path:    canonical,
 		Session: sessionID,
 		Title:   filepath.Base(canonical),
@@ -555,7 +555,9 @@ func RecordAttachment(index, sessionID, path string) {
 // agent's own.
 func (a *Agent) recordMedia(artifact Artifact, fact MediaFact) {
 	artifact.Session = a.journalID()
-	RecordMedia(a.config.ArtifactsIndex, artifact, fact)
+	if id := RecordMedia(a.config.ArtifactsIndex, artifact, fact); id != "" {
+		a.emitMediaChange(id, fact)
+	}
 }
 
 // fileVersion is the identity form of a version: size, modification time,

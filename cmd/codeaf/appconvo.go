@@ -1661,7 +1661,14 @@ func (b *appBackend) recordAttachedMedia(a *appAgent, kept []appAttach) {
 	id := filepath.Base(filepath.Dir(a.transcript))
 	for _, attach := range kept {
 		if attach.view.Kind == appwire.AttachFile {
-			session.RecordAttachment(appMediaIndex(), id, appAttachFull(workspace, attach.view.Path))
+			if source := session.RecordAttachment(appMediaIndex(), id, appAttachFull(workspace, attach.view.Path)); source != "" {
+				var live *appLive
+				var agent string
+				b.locked(func() { live = a.live; agent = a.view.ID })
+				if live != nil {
+					b.mediaChanged(agent, live, session.MediaChange{ID: source})
+				}
+			}
 		}
 	}
 }

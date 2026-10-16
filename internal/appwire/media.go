@@ -22,6 +22,17 @@ import (
 // as "this host cannot say", not as "no media".
 
 // MediaPageDefault and MediaPageMax bound one media.list page.
+const EventMediaChanged = "media.changed"
+
+// MediaChanged invalidates sources after a successful index append. The source
+// descriptor must still be read through the authorized media APIs.
+type MediaSourceChanged struct {
+	Agent  string `json:"agent"`
+	Source string `json:"source"`
+	Run    string `json:"run,omitempty"`
+	Call   string `json:"call,omitempty"`
+}
+
 const (
 	MediaPageDefault = 50
 	MediaPageMax     = 100
@@ -207,6 +218,7 @@ type MediaReader interface {
 }
 
 func init() {
+	eventShapes[EventMediaChanged] = reflect.TypeFor[MediaSourceChanged]()
 	methods["media.list"] = typed(func(e Engine, p struct {
 		Agent  string `json:"agent"`
 		Cursor string `json:"cursor"`
