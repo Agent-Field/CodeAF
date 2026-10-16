@@ -174,7 +174,7 @@ type DeliverableText struct {
 
 // ConflictDetail is the typed account of a conflict.
 type ConflictDetail struct {
-	Reason string `json:"reason" enum:"exists,changed,already_kept"`
+	Reason string `json:"reason" enum:"exists,changed,already_kept,stale_revision"`
 	Path   string `json:"path,omitempty"`
 }
 

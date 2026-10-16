@@ -29,3 +29,11 @@ because `git diff` rewrites the index's stat cache even with optional locks off.
 All git reads of a call share one 6 MiB budget. Agreement between the two status
 reads is checked by status text plus the index's and each counted path's stat
 stamp, which is not a content hash.
+
+`checkout.diff` and `checkout.locate` take a status row's root-relative path
+(`workspace=repo/sub`, row `root.txt` means `repo/root.txt`), find that row in one
+status read, and diff or locate it; the old route, joining the path to the
+workspace for `files.diff`, named a different file. Untracked reads go through an
+`os.Root` with no-follow, non-blocking opens. The reply's `open` is a fact the
+native host re-derives with `checkout.locate`, not a grant. Copied, conflicted and
+submodule rows are `unsupported_row` in this milestone.

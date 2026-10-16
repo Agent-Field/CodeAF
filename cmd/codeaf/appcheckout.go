@@ -61,16 +61,34 @@ func (b *appBackend) CheckoutStatus(q appwire.CheckoutQuery) (appwire.CheckoutSt
 	return appCheckout(ctx, appCanonical(workspace), q)
 }
 
-// appCheckout reads dir's status and cuts the page the query asks for.
-func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appwire.CheckoutStatus, error) {
-	empty := appwire.CheckoutStatus{Entries: []appwire.CheckoutEntry{}}
+// appSnapshot is one whole read of a checkout's status: where it is, the
+// filter blanks every later git of the call carries, the parsed header and rows,
+// and the revision that names exactly this text. checkout.status cuts a page
+// from it; checkout.diff and checkout.locate find one row in it. The byte pool
+// and the clock are the call's, so everything read after it spends from them.
+type appSnapshot struct {
+	g        *appMeter
+	dir, top string
+	gitDir   string
+	blank    []string
+	named    map[string]bool
+	out      appwire.CheckoutStatus
+	entries  []appwire.CheckoutEntry
+	text     string
+	overflow bool
+	read     func() (string, bool, *appGitFail)
+}
+
+// appCheckoutSnapshot reads dir's status once. A folder that is not a checkout
+// answers a nil snapshot and no error.
+func appCheckoutSnapshot(ctx context.Context, dir string) (*appSnapshot, error) {
 	g := &appMeter{g: appGit{ctx: ctx}, left: appCheckoutTotalMax}
 	roots, fail := g.out(dir, 8<<10, "rev-parse", "--absolute-git-dir", "--show-toplevel")
 	if fail != nil {
 		if fail.notRepo() {
-			return empty, nil
+			return nil, nil
 		}
-		return empty, appCheckoutFailure(fail)
+		return nil, appCheckoutFailure(fail)
 	}
 	gitDir, top, _ := strings.Cut(strings.TrimSuffix(roots, "\n"), "\n")
 
@@ -79,7 +97,7 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 	blank, named := []string{}, map[string]bool{}
 	if text, fail := g.out(dir, 64<<10, "config", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process|required)$`); fail != nil {
 		if fail.exit != 1 { // 1 is git's "no such key", the ordinary case
-			return empty, appCheckoutFailure(fail)
+			return nil, appCheckoutFailure(fail)
 		}
 	} else {
 		for _, key := range strings.Split(text, "\n") {
@@ -87,7 +105,7 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 				// A name git's -c would split at its "=" cannot be blanked, and a
 				// filter left standing is a program that could run: refuse.
 				if strings.Contains(key, "=") {
-					return empty, appwire.Errorf(appwire.CodeEngine, "a configured filter name cannot be set aside safely")
+					return nil, appwire.Errorf(appwire.CodeEngine, "a configured filter name cannot be set aside safely")
 				}
 				// EVERY DRIVER GETS ALL FOUR SETTINGS, whichever one the key named.
 				// A driver marked required (git-lfs sets it) makes git fail the whole
@@ -103,7 +121,7 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 		}
 	}
 
-	args := append(blank, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--ignore-submodules=dirty")
+	args := append(append([]string{}, blank...), "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--ignore-submodules=dirty")
 	readStatus := func() (string, bool, *appGitFail) {
 		text, overflow, fail := g.capped(dir, appCheckoutOutMax, 0, args...)
 		if fail == nil && overflow {
@@ -121,9 +139,9 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 	text, overflow, fail := readStatus()
 	if fail != nil {
 		if fail.notRepo() {
-			return empty, nil
+			return nil, nil
 		}
-		return empty, appCheckoutFailure(fail)
+		return nil, appCheckoutFailure(fail)
 	}
 	out, entries := appParseStatus(text)
 	out.Repo, out.Operation = true, appOperation(gitDir)
@@ -135,6 +153,22 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 		counts := appCountStatus(entries)
 		out.Counts = &counts
 	}
+	return &appSnapshot{g: g, dir: dir, top: top, gitDir: gitDir, blank: blank, named: named,
+		out: out, entries: entries, text: text, overflow: overflow, read: readStatus}, nil
+}
+
+// appCheckout reads dir's status and cuts the page the query asks for.
+func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appwire.CheckoutStatus, error) {
+	empty := appwire.CheckoutStatus{Entries: []appwire.CheckoutEntry{}}
+	snap, err := appCheckoutSnapshot(ctx, dir)
+	if err != nil {
+		return empty, err
+	}
+	if snap == nil {
+		return empty, nil
+	}
+	g, top, gitDir, blank, named := snap.g, snap.top, snap.gitDir, snap.blank, snap.named
+	out, entries, text, overflow, readStatus := snap.out, snap.entries, snap.text, snap.overflow, snap.read
 
 	start := 0
 	if q.Cursor != "" {
