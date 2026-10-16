@@ -229,8 +229,20 @@ func (b *appBackend) Rename(id, title string) (appwire.Agent, error) {
 	if err := door.RenameByPerson(title); err != nil {
 		return appwire.Agent{}, appEngineError(err)
 	}
-	b.locked(func() { a.view.Title = title })
-	return b.sayAgent(a), nil
+	var view appwire.Agent
+	b.locked(func() {
+		a.view.Title = title
+		view = a.view
+		if view.LastActiveAt.IsZero() {
+			view.LastActiveAt = view.UpdatedAt
+		}
+		// Manual names use the same ordered queue as generated names.
+		// Enqueue while holding the snapshot lock so neither can overtake.
+		if a.live == live && !live.closed {
+			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		}
+	})
+	return view, nil
 }
 
 // IdleAgents is every open agent nobody has touched for days (the setting's

@@ -2101,6 +2101,12 @@ func (s *server) dispatch(call Frame) {
 	// gap from reading as an empty room.
 	s.noteAct()
 	payload, err := s.invoke(call)
+	if err == nil && call.Method == MethodAppRename {
+		// Acknowledgement is a read-after-write boundary: the local title
+		// replica must see owner facts before RenameByPerson returns, even
+		// without a standing title event. Existing revisions reject old facts.
+		s.session.announce()
+	}
 	result := Frame{Kind: "result", ID: call.ID, Payload: payload}
 	if err != nil {
 		result.Payload, result.Error = nil, err.Error()

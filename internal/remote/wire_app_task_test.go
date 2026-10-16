@@ -99,3 +99,30 @@ func TestAppTaskEngineDispatchAndDriverClassification(t *testing.T) {
 		t.Fatal("missing engine door became an empty list")
 	}
 }
+
+// Rename acknowledgement must carry current owner facts even if no standing
+// title notification is available. Reading Title after the RPC is a local read.
+type renameAckAgent struct {
+	*fakeAgent
+	*appTasksFake
+}
+
+func (a *renameAckAgent) RenameByPerson(title string) error {
+	a.name(title)
+	return nil
+}
+func TestRenameAcknowledgementMakesCurrentTitleVisible(t *testing.T) {
+	far := &renameAckAgent{fakeAgent: &fakeAgent{}, appTasksFake: &appTasksFake{}}
+	far.name("Generated name")
+	loop := laneLoop(t, far)
+	if err := loop.Client.Agent().RenameByPerson("Manual name"); err != nil {
+		t.Fatal(err)
+	}
+	if got := loop.Client.Agent().Title(); got != "Manual name" {
+		t.Fatalf("acknowledged rename still reads %q", got)
+	}
+	loop.Client.factsFrame(mustClientJSON(FactsPush{Rev: 1, Facts: session.Facts{Title: "Generated name"}}))
+	if got := loop.Client.Agent().Title(); got != "Manual name" {
+		t.Fatalf("old facts restored %q", got)
+	}
+}

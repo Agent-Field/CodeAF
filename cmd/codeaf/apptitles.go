@@ -11,29 +11,33 @@ import (
 // A name belongs to the conversation, not the turn: a short answer often ends
 // before its optional naming request. Hold the existing standing lane for the
 // same lifetime as the held connection, and leave it before closing the outbox.
-func (b *appBackend) watchTitles(a *appAgent, live *appLive) {
+// prepareTitles initializes cleanup before live is published. Its reader starts
+// only after publication, so replayed names see the held connection.
+func (b *appBackend) prepareTitles(a *appAgent, live *appLive) func() {
 	door, ok := live.conn.Conv.(interface {
 		WatchTitle() (<-chan session.Event, func())
 	})
 	if !ok {
-		return
+		return func() {}
 	}
 	lane, stop := door.WatchTitle()
 	if lane == nil {
 		if stop != nil {
 			stop()
 		}
-		return
+		return func() {}
 	}
 	live.stopTitles, live.titlesDone = stop, make(chan struct{})
-	guard.Go("app/titles", func() {
-		defer close(live.titlesDone)
-		for event := range lane {
-			if event.Kind == session.EventTitleChanged {
-				b.titleChanged(a, live, event.Text)
+	return func() {
+		guard.Go("app/titles", func() {
+			defer close(live.titlesDone)
+			for event := range lane {
+				if event.Kind == session.EventTitleChanged {
+					b.titleChanged(a, live, event.Text)
+				}
 			}
-		}
-	})
+		})
+	}
 }
 
 func (b *appBackend) titleChanged(a *appAgent, live *appLive, title string) {
@@ -41,8 +45,6 @@ func (b *appBackend) titleChanged(a *appAgent, live *appLive, title string) {
 	if title == "" {
 		return
 	}
-	var view appwire.Agent
-	changed := false
 	b.locked(func() {
 		if a.live != live || live.closed {
 			return
@@ -56,10 +58,8 @@ func (b *appBackend) titleChanged(a *appAgent, live *appLive, title string) {
 			return
 		}
 		a.view.Title = title
-		view = a.view
-		changed = true
+		// Snapshot and enqueue share the mutation lock: a later manual name
+		// must never be overtaken by this generated snapshot.
+		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: a.view})
 	})
-	if changed {
-		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
-	}
 }

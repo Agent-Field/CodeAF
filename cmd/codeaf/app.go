@@ -1037,6 +1037,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		processes: map[string]appwire.Process{}, logs: map[string]string{},
 		said: map[string]string{}, calls: map[string]string{}, pilots: map[string]func(){},
 	}
+	startTitles := b.prepareTitles(a, live)
 	title, model := conn.Conv.Title(), conn.Conv.Model()
 	effort := conn.Conv.ReasoningFor(model)
 	var counted bool
@@ -1072,6 +1073,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		a.live = live
 		view = a.view
 	})
+	startTitles()
 	lane, stop := conn.Conv.WatchTaskUpdates()
 	live.stopTasks = stop
 	id := view.ID
@@ -1083,6 +1085,8 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	})
 	questions, stopQuestions := conn.Conv.WatchQuestions()
 	live.stopAsks = stopQuestions
+	live.stopWakes = b.watchWakes(a, live)
+	live.stopPasses = b.watchPasses(a, live)
 	guard.Go("app/asks", func() {
 		defer close(live.asksDone)
 		for event := range questions {
@@ -1094,9 +1098,6 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		// behind it going (internal/remote's bury finishes every lane).
 		b.died(a, live)
 	})
-	b.watchTitles(a, live)
-	live.stopWakes = b.watchWakes(a, live)
-	live.stopPasses = b.watchPasses(a, live)
 	return view
 }
 
