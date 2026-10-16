@@ -222,9 +222,9 @@ func wgSource(s *TaskSource) *workgraph.TaskSource {
 	if !s.valid() {
 		return nil
 	}
-	text, cut := boundSourceText(s.Text)
+	text, cut := workgraph.CutBytes(redact.Secrets(s.Text), MaxTaskSourceBytes)
 	return &workgraph.TaskSource{
-		ID: s.ID, Kind: s.Kind, Text: redact.Secrets(text), Cut: cut || s.Cut,
+		ID: s.ID, Kind: s.Kind, Text: text, Cut: cut || s.Cut,
 		At: workgraph.Stamp(s.At),
 	}
 }

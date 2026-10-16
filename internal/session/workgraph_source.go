@@ -183,8 +183,8 @@ type OwnerFacts struct {
 	// hidden and sources are the document's dismissed set and each node's recorded
 	// source by number, held only while one conversation is projected so a plan row
 	// can be given its run's block; both are dropped before the projection is kept.
-	hidden  map[string]bool
-	sources map[string]*TaskSource
+	hidden map[string]bool
+	links  map[string]*TaskSource
 }
 
 // Find is the fact for a task token ("12" or "t-ab"), if the conversation has it.
@@ -399,14 +399,14 @@ func (s *WorkSource) readOwner(ctx context.Context, owner, dir, stamp string) (*
 		}
 		for i := range plan.facts {
 			node := &plan.facts[i].Node
-			node.Dismissed = out.hidden[node.Ref.Task]
+			node.Dismissed = out.hidden[node.Ref.Task] && node.State == string(TaskFailed) && !node.Stopped
 			node.Source = wgSource(planRowSource(node.Ref.Task,
 				func(id string) string { return parents[id] },
-				func(number string) *TaskSource { return out.sources[number] }))
+				func(token string) (*TaskSource, bool) { source, ok := out.links[token]; return source, ok }))
 		}
 		out.add(s.limits, plan.facts)
 	}
-	out.hidden, out.sources = nil, nil
+	out.hidden, out.links = nil, nil
 	return out, s.seal(ctx, out)
 }
 
@@ -427,14 +427,16 @@ func (s *WorkSource) projectDocument(ctx context.Context, out *OwnerFacts, doc t
 		hidden[id] = true
 	}
 	out.hidden = hidden
-	out.sources = make(map[string]*TaskSource)
+	out.links = make(map[string]*TaskSource)
 	for i, r := range doc.Nodes {
 		if i%loopCheck == 0 && ctx.Err() != nil {
 			return ctx.Err()
 		}
 		fact := nodeFact(out.Owner, r)
-		fact.Node.Dismissed = hidden[strconv.FormatUint(r.ID, 10)]
-		out.sources[strconv.FormatUint(r.ID, 10)] = r.Source
+		fact.Node.Dismissed = hidden[strconv.FormatUint(r.ID, 10)] && r.State == TaskFailed && !r.App.Declined && r.Ending != TaskEndingStopped
+		if r.PlanID != "" {
+			out.links[planStoreID(planTaskID(r.PlanID))] = r.Source
+		}
 		out.add(s.limits, []workgraph.Fact{fact})
 	}
 	for i, r := range doc.Runs {
@@ -442,9 +444,9 @@ func (s *WorkSource) projectDocument(ctx context.Context, out *OwnerFacts, doc t
 			return ctx.Err()
 		}
 		fact := runFact(out.Owner, r, titles)
-		fact.Node.Dismissed = hidden[strconv.FormatUint(r.ID, 10)]
-		if _, known := out.sources[strconv.FormatUint(r.ID, 10)]; !known {
-			out.sources[strconv.FormatUint(r.ID, 10)] = r.Source
+		fact.Node.Dismissed = hidden[strconv.FormatUint(r.ID, 10)] && r.State == TaskFailed && !r.Stopped && r.Ending != TaskEndingStopped
+		if r.PlanTask != "" {
+			out.links[planStoreID(planTaskID(r.PlanTask))] = r.Source
 		}
 		out.add(s.limits, []workgraph.Fact{fact})
 	}

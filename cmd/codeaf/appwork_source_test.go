@@ -24,9 +24,9 @@ func TestAppTaskCarriesTheSourceTheEngineRecordedAndNothingElse(t *testing.T) {
 	if strings.Contains(task.Source.Text, "sk-ant") || task.Source.At == nil || !task.Source.At.Equal(at) {
 		t.Fatalf("source = %+v, want the words scrubbed and the time kept", task.Source)
 	}
-	long := &session.TaskSource{ID: "s#d1", Kind: session.TaskSourceDirective, Text: strings.Repeat("x", session.MaxTaskSourceBytes*2)}
-	if got := appSourceOf(long); got == nil || len(got.Text) > session.MaxTaskSourceBytes || !got.Cut || got.At != nil {
-		t.Fatalf("a long source went out as %+v", got)
+	long := &session.TaskSource{ID: "s#d1", Kind: session.TaskSourceDirective, Text: strings.Repeat("é", session.MaxTaskSourceBytes)}
+	if got := appSourceOf(long); got == nil || len(got.Text) > session.MaxTaskSourceBytes || !got.Cut || got.At != nil || strings.ContainsRune(got.Text, '\uFFFD') {
+		t.Fatalf("a long source went out as %d bytes: %+v", len(got.Text), got)
 	}
 
 	// Nothing recorded, nothing said; a record that does not name a known kind is not a source.

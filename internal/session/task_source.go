@@ -235,14 +235,40 @@ func (a *Agent) sourcedRunRow(g *TaskGraph, row TaskNotice) TaskNotice {
 // joined task the block of the run it joined. A row with a non-numeric id (a part
 // a worker filed) belongs to the block of its nearest ancestor that has one. An
 // ancestor chain that never reaches a number has no known source.
-func planRowSource(id string, parentOf func(string) string, known func(number string) *TaskSource) *TaskSource {
+func planRowSource(id string, parentOf func(string) string, linked func(token string) (*TaskSource, bool)) *TaskSource {
 	for depth := 0; id != "" && depth < 64; depth++ {
-		if _, err := strconv.ParseUint(planTaskID(id), 10, 64); err == nil {
-			return known(planTaskID(id))
+		if source, ok := linked(planStoreID(planTaskID(id))); ok {
+			return source
 		}
 		id = parentOf(id)
 	}
 	return nil
+}
+
+// planLinks is every plan token a record of THIS conversation says it owns, with
+// that record's source (nil for a legacy record, which is a final answer). A node
+// owns the plan row its PlanID names and a run row owns the one its PlanTask
+// names; both were written by the code that made the pair, so the join is the
+// record's own and not a coincidence of numbers. A part a worker filed under a
+// number that happens to equal a node's has no such link and is never joined to it.
+func (g *TaskGraph) planLinks() map[string]*TaskSource {
+	links := map[string]*TaskSource{}
+	if g == nil {
+		return links
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, node := range g.nodes {
+		if node != nil && node.spec.planID != "" {
+			links[planStoreID(planTaskID(node.spec.planID))] = cloneSource(node.spec.source)
+		}
+	}
+	for _, row := range g.runRowsLocked() {
+		if row.PlanTask != "" {
+			links[planStoreID(planTaskID(row.PlanTask))] = cloneSource(row.Source)
+		}
+	}
+	return links
 }
 
 // inheritedSource is the source a spec admitted without one is born with.

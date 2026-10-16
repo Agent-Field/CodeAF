@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -143,6 +144,11 @@ func (g *TaskGraph) reopenAttempt(node *TaskNode, words string, failedOnly bool)
 		node.revise = nil
 	}
 	node.setStateLocked(TaskQueued)
+	// A RETRIED TASK IS NOT A HIDDEN FAILURE ANY MORE. The dismissal is cleared in the
+	// same locked step that admits the attempt, so it is never cleared by a retry that
+	// was refused above, and a task that is working again is never left hidden
+	// (task_dismiss.go). The checkpoint below writes the cleared set with the state.
+	delete(g.dismissed, strconv.FormatUint(node.id, 10))
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""

@@ -1648,7 +1648,7 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	notice = carryRunRow(g, notice)
 	notice = a.sourcedRunRow(g, notice)
-	notice.Dismissed = g.isDismissed(strconv.FormatUint(notice.ID, 10))
+	notice.Dismissed = notice.State == TaskFailed && !notice.Stopped && notice.Ending != TaskEndingStopped && g.isDismissed(strconv.FormatUint(notice.ID, 10))
 	// A ROW A PERSON HOLDS STAYS HELD through every republish the run makes,
 	// until it is released or it settles.
 	if _, held := a.appHeldRuns.Load(notice.ID); held {

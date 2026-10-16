@@ -240,7 +240,7 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 		if state == "incomplete" {
 			state = "failed"
 		}
-		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
+		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: state == "failed" && a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
 	}
 	out = append(out, a.appProposalViews(cap)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -271,7 +271,7 @@ func (a *Agent) appGraphTasks(out []AppTaskView, cap float64, ids map[string]boo
 		if node.app.Brief != "" {
 			view.Brief = node.app.Brief
 		}
-		view.Source, view.Dismissed, view.FinishedAt = cloneSource(node.spec.source), graph.dismissed[view.ID], node.ended
+		view.Source, view.Dismissed, view.FinishedAt = cloneSource(node.spec.source), graph.dismissed[view.ID] && view.State == "failed" && node.endingLocked() != TaskEndingStopped, node.ended
 		if node.parent != 0 {
 			view.Parent = strconv.FormatUint(node.parent, 10)
 		}

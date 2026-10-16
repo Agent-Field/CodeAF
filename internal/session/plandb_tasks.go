@@ -19,7 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -292,6 +291,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	copies := a.planDisplayRunCopy()
 	carried := a.planCarriedPrograms()
 	clocks := a.planRunClocks()
+	links := a.tasker().planLinks()
 	for _, store := range stores {
 		dir := filepath.Dir(store.Path())
 		// AN ENDED RUN'S STORE IS NAMED FOR ITS PLACE IN THE LINE (`plan.db.1`,
@@ -311,18 +311,10 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		for _, task := range tasks {
 			parents[task.ID] = task.ParentID
 		}
-		memo := map[string]*TaskSource{}
-		known := func(number string) *TaskSource {
-			if source, ok := memo[number]; ok {
-				return source
-			}
-			n, _ := strconv.ParseUint(number, 10, 64)
-			memo[number] = a.tasker().sourceOfID(n)
-			return memo[number]
-		}
+		linked := func(token string) (*TaskSource, bool) { source, ok := links[token]; return source, ok }
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
-			row.Source = cloneSource(planRowSource(task.ID, func(id string) string { return parents[id] }, known))
+			row.Source = cloneSource(planRowSource(task.ID, func(id string) string { return parents[id] }, linked))
 			planCarriedRow(&row, carried[task.ID])
 			clocks.apply(&row, dir, task, root)
 			a.markPlanInterrupted(&row)

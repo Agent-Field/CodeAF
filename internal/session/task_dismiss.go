@@ -50,12 +50,18 @@ func (g *TaskGraph) isDismissed(id string) bool {
 
 // setDismissed changes one task's visibility and writes the checkpoint under the
 // same hold ([TaskGraph.writeAppControl]); on a failed write the set is put
-// back and the error returned.
-func (g *TaskGraph) setDismissed(id string, hidden bool) error {
+// back and the error returned. With guard set, the graph's own refusal
+// ([TaskGraph.dismissibleLocked]) is asked under that same hold.
+func (g *TaskGraph) setDismissed(id string, hidden, guard bool) error {
 	return g.writeAppControl(func() (func(), error) {
 		was, had := g.dismissed[id]
 		if was == hidden {
 			return nil, nil
+		}
+		if guard {
+			if err := g.dismissibleLocked(id); err != nil {
+				return nil, err
+			}
 		}
 		if g.dismissed == nil {
 			g.dismissed = map[string]bool{}
@@ -85,12 +91,16 @@ func appSettled(state string) bool {
 }
 
 // appDismissible refuses what must not be hidden, in words a person can act on.
-// rows is every task the app lists, so a dependent is found by the same read the
-// app draws.
+// ONLY A PLAIN FAILURE IS HIDDEN. A task the person stopped or declined keeps its
+// own state and its own place on the page, and one that is waiting on an answer, a
+// model or a hold is unresolved however it came to be failed. rows is every task
+// the app lists, so a dependent is found by the same read the app draws.
 func appDismissible(row AppTaskView, rows []AppTaskView) error {
-	switch row.State {
-	case "failed", "stopped", "declined":
-	case "done":
+	switch {
+	case row.State == "failed" && !row.Held && row.RoutingState != TaskRoutingBlocked:
+	case row.State == "failed":
+		return fmt.Errorf("task %s is not a settled failure: it is on hold or waiting on a model", row.ID)
+	case row.State == "done":
 		return fmt.Errorf("task %s is not a settled failure: it finished", row.ID)
 	default:
 		return fmt.Errorf("task %s is not a settled failure: it is %s", row.ID, row.State)
@@ -111,6 +121,70 @@ func appDismissible(row AppTaskView, rows []AppTaskView) error {
 	return nil
 }
 
+// dismissibleLocked is the same refusal asked of the graph's own records, with
+// the graph's lock held. IT IS WHAT MAKES THE CHECK AND THE CHANGE ONE STEP for
+// every road the graph holds — nodes and run rows: a retry, a resume or a new
+// dependent is admitted under this lock, so none can land between this answer
+// and the write that follows it. A plan row lives in its own store and is
+// answered by [Agent.appDismissAction]'s read after the write instead.
+func (g *TaskGraph) dismissibleLocked(id string) error {
+	n, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return nil
+	}
+	if node := g.nodes[n]; node != nil {
+		// A STOP IS KNOWN BY THE ENDING AS WELL AS THE FLAG: a restored node has only the
+		// ending, and its stop is still the person's, kept as it is.
+		if node.endingLocked() == TaskEndingStopped {
+			return fmt.Errorf("task %s is stopped: a stop is kept as it was", id)
+		}
+		if node.spec.quick != nil || node.state != TaskFailed || node.stopped || node.app.Declined || node.app.Paused || g.deleted[n] {
+			return fmt.Errorf("task %s is not a settled failure: it is %s", id, appNodeState(node))
+		}
+	} else if row, ok := g.runRowLocked(n); ok {
+		if row.Ending == TaskEndingStopped {
+			return fmt.Errorf("task %s is stopped: a stop is kept as it was", id)
+		}
+		if row.State != TaskFailed || row.Stopped || row.Paused || row.park != nil {
+			return fmt.Errorf("task %s is not a settled failure: it is %s", id, appRunRowState(row))
+		}
+	} else {
+		return nil
+	}
+	for _, other := range g.nodes {
+		if other == nil || other.id == n || other.state.settled() {
+			continue
+		}
+		if other.parent == n {
+			return fmt.Errorf("task %s still has %d under it, which is %s", id, other.id, appNodeState(other))
+		}
+		for _, waited := range other.dependsOn {
+			if waited == n {
+				return fmt.Errorf("task %s is not settled work to hide: %d still waits on it", id, other.id)
+			}
+		}
+	}
+	for _, row := range g.runRowsLocked() {
+		if row.ID == n || row.State.settled() {
+			continue
+		}
+		if row.Parent == n && row.Run != "" {
+			return fmt.Errorf("task %s still has %d under it, which is %s", id, row.ID, appRunRowState(row))
+		}
+		for _, waited := range row.DependsOn {
+			if waited == n {
+				return fmt.Errorf("task %s is not settled work to hide: %d still waits on it", id, row.ID)
+			}
+		}
+	}
+	return nil
+}
+
+// dismissInterleave is a test seam: it runs between a plan row's dismissal and
+// the read that verifies it, which is the one window a plan store's own writers
+// can use. It is nil outside the test that stands in that window.
+var dismissInterleave func()
+
 // appDismissAction is tasks.dismiss and tasks.restore for every road. Dismissing
 // what is already dismissed, and restoring what is not, succeed and change
 // nothing, so a replayed request is not an error.
@@ -119,6 +193,12 @@ func (a *Agent) appDismissAction(intent AppTaskIntent) error {
 	if err != nil {
 		return err
 	}
+	return a.appDismissWith(intent, rows)
+}
+
+// appDismissWith is [Agent.appDismissAction] over rows already read, so a test can
+// hand it a read that has gone stale.
+func (a *Agent) appDismissWith(intent AppTaskIntent, rows []AppTaskView) error {
 	var row AppTaskView
 	found := false
 	for _, candidate := range rows {
@@ -146,11 +226,50 @@ func (a *Agent) appDismissAction(intent AppTaskIntent) error {
 	if graph == nil {
 		return errors.New("no such task")
 	}
-	if err := graph.setDismissed(row.ID, hide); err != nil {
-		return fmt.Errorf("could not save that: %w", err)
+	if err := graph.setDismissed(row.ID, hide, hide); err != nil {
+		return err
+	}
+	if hide && !a.holdsRecord(graph, row.ID) {
+		// A PLAN ROW: its dependents are filed in its own store, outside the graph's
+		// lock, so the read that decided is read again now that the change is on the
+		// record, and a dependent that arrived in between puts it back.
+		if dismissInterleave != nil {
+			dismissInterleave()
+		}
+		fresh, err := a.AppTasks()
+		if err == nil {
+			for _, candidate := range fresh {
+				if candidate.ID == row.ID {
+					err = appDismissible(candidate, fresh)
+					break
+				}
+			}
+		}
+		if err != nil {
+			if undo := graph.setDismissed(row.ID, false, false); undo != nil {
+				return fmt.Errorf("could not undo a dismissal that no longer holds: %w", undo)
+			}
+			return err
+		}
 	}
 	a.announceDismissal(graph, row.ID, hide)
 	return nil
+}
+
+// holdsRecord says the graph itself holds this task — a node or a run row — so
+// [TaskGraph.dismissibleLocked] has already answered for it under the lock.
+func (a *Agent) holdsRecord(g *TaskGraph, id string) bool {
+	n, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.nodes[n] != nil {
+		return true
+	}
+	_, ok := g.runRowLocked(n)
+	return ok
 }
 
 // announceDismissal says the change on the road the task is on: a node through

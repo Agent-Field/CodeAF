@@ -1628,7 +1628,7 @@ func (f *orchestrateFamily) publish(notice TaskNotice) {
 			notice.Source = f.agent.bornSource()
 		}
 	}
-	notice.Dismissed = f.agent.graph().isDismissed(strconv.FormatUint(notice.ID, 10))
+	notice.Dismissed = notice.State == TaskFailed && !notice.Stopped && notice.Ending != TaskEndingStopped && f.agent.graph().isDismissed(strconv.FormatUint(notice.ID, 10))
 	if _, drawn := f.rows[notice.ID]; !drawn {
 		f.shown = append(f.shown, notice.ID)
 	}

@@ -257,8 +257,9 @@ func appSourceOf(source *session.TaskSource) *appwire.TaskSource {
 	if source == nil || source.ID == "" || (source.Kind != appwire.SourceMessage && source.Kind != appwire.SourceDirective) {
 		return nil
 	}
-	text, cut := workgraph.Cut(source.Text, session.MaxTaskSourceBytes)
-	out := &appwire.TaskSource{ID: source.ID, Kind: source.Kind, Text: redact.Secrets(text), Cut: cut || source.Cut}
+	// SCRUBBED BEFORE IT IS CUT, so a secret the cut would split is still a secret.
+	text, cut := workgraph.CutBytes(redact.Secrets(source.Text), session.MaxTaskSourceBytes)
+	out := &appwire.TaskSource{ID: source.ID, Kind: source.Kind, Text: text, Cut: cut || source.Cut}
 	if !source.At.IsZero() {
 		at := source.At
 		out.At = &at

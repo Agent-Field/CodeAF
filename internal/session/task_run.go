@@ -3801,7 +3801,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Thinking:  thinking,
 		ID:        n.id,
 		Source:    cloneSource(n.spec.source),
-		Dismissed: n.graph.dismissed[strconv.FormatUint(n.id, 10)],
+		Dismissed: n.graph.dismissed[strconv.FormatUint(n.id, 10)] && n.state == TaskFailed && !n.stopped && n.endingLocked() != TaskEndingStopped && !n.app.Declined,
 		Title:     n.spec.title,
 		// Reopened task pages need the contract even when no proposal card survives.
 		Brief:      n.spec.brief,
@@ -4907,7 +4907,7 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 	// WHETHER THE PERSON HID IT is the graph's fact, said on the one door every
 	// move goes through, so no road that builds a notice by hand can un-hide a task
 	// by forgetting to say so (task_dismiss.go).
-	notice.Dismissed = a.tasker().isDismissed(strconv.FormatUint(notice.ID, 10))
+	notice.Dismissed = notice.State == TaskFailed && !notice.Stopped && notice.Ending != TaskEndingStopped && a.tasker().isDismissed(strconv.FormatUint(notice.ID, 10))
 	event := Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice}
 	a.mu.Lock()
 	hub := a.hub

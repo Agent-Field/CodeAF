@@ -9,6 +9,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -279,16 +280,30 @@ func TestTwoConversationsNeverShareASourceIdentity(t *testing.T) {
 	_ = time.Now
 }
 
-// A PLAN ROW BELONGS TO THE BLOCK ITS OWN NUMBER NAMES — an exact-id join to the
-// node or run row of that number — and a row a worker filed belongs to its
-// nearest numbered ancestor. A legacy numbered row is final: it is not handed the
-// block of the run it was joined to.
-func TestPlanRowsTakeTheirSourceByExactIdAndNeverFromAJoinedRunsRoot(t *testing.T) {
+// A PLAN ROW BELONGS TO THE BLOCK OF THE RECORD THAT OWNS IT — the run row whose
+// PlanTask names it, or the node whose PlanID does — and never to a record that merely
+// has the same number. A part a worker filed under a number that equals an unrelated
+// node's is not joined to that node; it belongs to its nearest owned ancestor. A legacy
+// owner (no source) is a final answer: it is not handed its run root's block.
+func TestPlanRowsTakeTheirSourceFromTheRecordThatOwnsThemNeverFromANumberCollision(t *testing.T) {
 	folder := filepath.Join(t.TempDir(), sourceOwner)
 	place := Place{Dir: folder}
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.SessionFile, config.Place = place.Transcript(), place
 	})
+	graph := agent.graph()
+	graph.mu.Lock()
+	graph.run = func(*TaskNode) {}
+	graph.mu.Unlock()
+	for graph.reserve() < 12 { // the checkpoint's counter must cover the ids it names
+	}
+	unrelated := &TaskSource{ID: "s#other", Kind: TaskSourceMessage, Text: "an unrelated message"}
+	stranger := graph.reserve() // a node whose number a worker's part will reuse
+	graph.admit(stranger, taskSpec{title: "unrelated node", brief: "b", acceptance: "a", source: unrelated})
+	strangerID := strconv.FormatUint(stranger, 10)
+	owned := graph.reserve() // a node that really owns plan row "ownedpart"
+	graph.admit(owned, taskSpec{title: "owner node", brief: "b", acceptance: "a", planID: "ownedpart", source: &TaskSource{ID: "s#3", Kind: TaskSourceMessage, Text: "three"}})
+
 	path := filepath.Join(folder, planStoreFilename)
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		t.Fatal(err)
@@ -300,32 +315,33 @@ func TestPlanRowsTakeTheirSourceByExactIdAndNeverFromAJoinedRunsRoot(t *testing.
 	if _, err := store.AddMany([]plandb.TaskSpec{
 		{ID: "11", Title: "joined from message two", ParentID: "9"},
 		{ID: "partx", Title: "a part a worker filed", ParentID: "11"},
+		{ID: strconv.FormatUint(stranger, 10), Title: "a worker reused an unrelated node's number", ParentID: "11"},
 		{ID: "12", Title: "joined, recorded before sources existed", ParentID: "9"},
 		{ID: "direct", Title: "filed straight under the run", ParentID: "9"},
+		{ID: "ownedpart", Title: "owned by a node", ParentID: "9"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	store.Close()
 	armPlanStore(t, agent, path, sourceOwner)
-	graph := agent.graph()
-	for graph.reserve() < 12 { // the checkpoint's counter must cover the ids it names
-	}
 	one, two := &TaskSource{ID: "s#1", Kind: TaskSourceMessage, Text: "one"}, &TaskSource{ID: "s#2", Kind: TaskSourceMessage, Text: "two"}
-	graph.keepRunRows(9, []TaskNotice{{ID: 9, Title: "run", State: TaskRunning, Source: one}})
-	graph.keepRunRows(11, []TaskNotice{{ID: 11, Title: "joined", State: TaskRunning, Source: two}})
-	graph.keepRunRows(12, []TaskNotice{{ID: 12, Title: "legacy joined", State: TaskRunning}})
+	graph.keepRunRows(9, []TaskNotice{{ID: 9, Title: "run", State: TaskRunning, Source: one, PlanTask: "t-9"}})
+	graph.keepRunRows(11, []TaskNotice{{ID: 11, Title: "joined", State: TaskRunning, Source: two, PlanTask: "t-11"}})
+	graph.keepRunRows(12, []TaskNotice{{ID: 12, Title: "legacy joined", State: TaskRunning, PlanTask: "t-12"}})
 
-	want := map[string]string{"t-9": "s#1", "t-11": "s#2", "t-partx": "s#2", "t-12": "", "t-direct": "s#1"}
+	want := map[string]string{
+		"t-9": "s#1", "t-11": "s#2", "t-partx": "s#2",
+		"t-" + strangerID: "s#2", // its parent's block, NOT the node that shares its number
+		"t-12":            "",    // an owner recorded before sources: final, not the root's
+		"t-direct":        "s#1", "t-ownedpart": "s#3",
+	}
 	got := map[string]string{}
 	for _, row := range agent.PlanTasks() {
+		got[row.ID] = ""
 		if row.Source != nil {
 			got[row.ID] = row.Source.ID
-		} else {
-			got[row.ID] = ""
 		}
 	}
-	// THE WORK GRAPH, READ OFF THE DISK BY A SOURCE THAT NEVER TOUCHED THE AGENT,
-	// says the same of the same rows.
 	owner, err := NewWorkSource().Owner(context.Background(), sourceOwner, folder)
 	if err != nil {
 		t.Fatal(err)
@@ -427,5 +443,24 @@ func TestAnAdaptiveRunAndItsWorkersShareTheMessageThatStartedIt(t *testing.T) {
 	}
 	if document.Runs[0].Source.ID != document.Runs[1].Source.ID {
 		t.Fatalf("a run's rows are two blocks: %+v / %+v", document.Runs[0].Source, document.Runs[1].Source)
+	}
+}
+
+// THE WORDS ARE SCRUBBED BEFORE THEY ARE CUT AND CUT ON A BYTE BOUND THAT KEEPS THE TEXT
+// VALID: a secret straddling the limit is not left half-spelled, and a multi-byte rune is
+// never split, on either wire.
+func TestProjectedSourceWordsAreScrubbedThenCutOnAValidByteBound(t *testing.T) {
+	secret := "sk-ant-api03-" + strings.Repeat("x", 60)
+	body := strings.Repeat("a ", (MaxTaskSourceBytes-20)/2) + " " + secret + strings.Repeat("é", 100)
+	got := wgSource(&TaskSource{ID: "s#1", Kind: TaskSourceMessage, Text: body})
+	if got == nil || len(got.Text) > MaxTaskSourceBytes || strings.Contains(got.Text, "sk-ant") || strings.ContainsRune(got.Text, '\uFFFD') {
+		t.Fatalf("projected %d bytes, scrubbed=%v", len(got.Text), !strings.Contains(got.Text, "sk-ant"))
+	}
+	if !got.Cut {
+		t.Fatal("a cut source does not say so")
+	}
+	multi := wgSource(&TaskSource{ID: "s#2", Kind: TaskSourceMessage, Text: strings.Repeat("é", MaxTaskSourceBytes)})
+	if len(multi.Text) > MaxTaskSourceBytes || !strings.HasPrefix(strings.Repeat("é", MaxTaskSourceBytes), multi.Text) {
+		t.Fatalf("a multi-byte source was cut to %d bytes", len(multi.Text))
 	}
 }

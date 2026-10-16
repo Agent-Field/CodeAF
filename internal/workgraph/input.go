@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // What a producer hands [Build]: the tasks it knows, the links it stored, the
@@ -142,6 +143,21 @@ func Cut(s string, limit int) (string, bool) {
 	}
 	kept := strings.ToValidUTF8(s[:end], "\uFFFD")
 	return strings.Clone(kept), cut
+}
+
+// CutBytes shortens s to at most limit BYTES on a rune boundary and says whether
+// it did. Bytes that are not valid UTF-8 are replaced by U+FFFD before the cut, so
+// what is returned is valid text and the bound is on what is returned.
+func CutBytes(s string, limit int) (string, bool) {
+	s = strings.ToValidUTF8(s, "\uFFFD")
+	if len(s) <= limit {
+		return strings.Clone(s), false
+	}
+	end := limit
+	for end > 0 && !utf8.RuneStart(s[end]) {
+		end--
+	}
+	return strings.Clone(s[:end]), true
 }
 
 // stamp is a recorded instant, or nil for the zero time.
