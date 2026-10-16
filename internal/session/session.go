@@ -3552,6 +3552,10 @@ type Agent struct {
 	// crews is every task's crew this conversation routed, by row: what its
 	// log row settles with and what `/redo stronger` escalates (taskcrew.go).
 	crews crewBook
+	// taskRouting is this conversation's per-task model choices made before a
+	// task started, and the tasks waiting because a role had no model
+	// (taskrouting.go).
+	taskRouting taskRoutingBook
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active

@@ -178,6 +178,9 @@ type SpendGuard struct {
 	mu         sync.Mutex
 	modelSpent map[string]float64
 	seatSpent  map[crewroute.Seat]*SpendTask
+	// bookMu is held across one call's task and role booking, and by a
+	// checkpoint reading them, so the two always agree.
+	bookMu sync.Mutex
 }
 
 // SpendTask is what one task has spent and holds in flight, across every
@@ -186,6 +189,52 @@ type SpendTask struct {
 	mu    sync.Mutex
 	spent float64
 	held  float64
+	// calls is every answered call booked here, and unknown those whose cost
+	// nobody could say — no price for the route and no cost from the provider.
+	// A known nothing (a free pool, a plan, a provider's own cost of 0) is a
+	// call with a price; an unknown one is NOT counted as $0 spent.
+	calls, unknown int
+}
+
+// Counts is how many answered calls were booked and how many of them had no
+// known cost.
+func (t *SpendTask) Counts() (calls, unknown int) {
+	if t == nil {
+		return 0, 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.calls, t.unknown
+}
+
+// book releases a hold and books one admitted call in one step: its cost
+// and whether that cost is known, so a reader never sees the dollars of a
+// call without its certainty or the other way round.
+func (t *SpendTask) book(held, usd float64, known bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.held -= held
+	if t.held < 0 {
+		t.held = 0
+	}
+	if usd > 0 {
+		t.spent += usd
+	}
+	t.calls++
+	if !known {
+		t.unknown++
+	}
+}
+
+// snapshot is what was spent and how many calls, and how many of unknown
+// cost, read together.
+func (t *SpendTask) snapshot() (spent float64, calls, unknown int) {
+	if t == nil {
+		return 0, 0, 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.spent, t.calls, t.unknown
 }
 
 // Total is what the task has spent.
@@ -361,29 +410,49 @@ func (g *SpendGuard) after(ctx context.Context, model string, response *ai.Respo
 		return
 	}
 	task := g.tally()
-	if response == nil || response.Usage == nil {
-		g.Day.settle(model, held, 0)
-		task.settle(held, 0)
-		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 {
-			g.seatTally(seat).settle(held, 0)
-		}
-		return
+	// A SEAT'S SPEND IS BOOKED WHETHER OR NOT IT HAS A CEILING: the ceiling
+	// decides what a call may hold beforehand, never whether what it cost is
+	// counted against the role that made it.
+	seat := crewSeatOf(ctx)
+	seatHeld := 0.0
+	if g.SeatCeilings[seat] > 0 {
+		seatHeld = held
 	}
-	usd := 0.0
-	if response.Usage.Cost != nil {
-		usd = *response.Usage.Cost
-	} else if g.Price != nil {
-		if prompt, completion, cacheRead, ok := g.Price(model); ok {
-			cached := float64(response.Usage.CacheReadTokens())
-			usd = (float64(response.Usage.PromptTokens)-cached)*prompt + cached*cacheRead +
-				float64(response.Usage.CompletionTokens)*completion
-		}
+	// WHAT A CALL COST IS KNOWN ONLY WHEN SOMEBODY SAID IT: the provider's own
+	// cost (0 included), or this route's published price with the usage it
+	// reported. A route priced at nothing is known free with or without usage.
+	// An answer with no usage on a priced or unpriced route, and a call that
+	// failed, cost something nobody said; it is counted as unknown, never $0.
+	usd, known := 0.0, false
+	prompt, completion, cacheRead, priced := 0.0, 0.0, 0.0, false
+	if g.Price != nil {
+		prompt, completion, cacheRead, priced = g.Price(model)
+	}
+	free := priced && prompt <= 0 && completion <= 0 && cacheRead <= 0
+	switch {
+	case response != nil && response.Usage != nil && response.Usage.Cost != nil:
+		usd, known = *response.Usage.Cost, true
+	case response != nil && response.Usage != nil && priced:
+		cached := float64(response.Usage.CacheReadTokens())
+		usd = (float64(response.Usage.PromptTokens)-cached)*prompt + cached*cacheRead +
+			float64(response.Usage.CompletionTokens)*completion
+		known = true
+	case free:
+		known = true
 	}
 	g.Day.settle(model, held, usd)
-	task.settle(held, usd)
-	if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 {
-		g.seatTally(seat).settle(held, usd)
+	// The seat's tally is fetched before bookMu: a checkpoint takes g.mu and
+	// then bookMu, so this side never takes them the other way round.
+	var role *SpendTask
+	if seat != "" {
+		role = g.seatTally(seat)
 	}
+	g.bookMu.Lock()
+	task.book(held, usd, known)
+	if role != nil {
+		role.book(seatHeld, usd, known)
+	}
+	g.bookMu.Unlock()
 	if usd <= 0 {
 		return
 	}

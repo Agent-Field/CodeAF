@@ -245,6 +245,7 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 	if state == appwire.TaskRunning {
 		task.Line = appTaskLine(notice, phase)
 	}
+	task.Models = appNoticeModels(notice, task.Proposed)
 	return task, true
 }
 
@@ -278,6 +279,7 @@ func appTaskOfView(agent string, view session.AppTaskView) appwire.Task {
 		task.State = appwire.TaskFailed
 	}
 	task.Paused = view.State == "paused" || view.Held
+	task.Models = appModelsChip(view.RoutingState, view.Crew, view.TaskPins, view.Model)
 	task.Model, task.StartedBy = view.Model, view.Origin
 	task.Instructions = redact.Secrets(strings.TrimSpace(view.Brief))
 	task.CostUSD = task.SpentUSD
@@ -315,6 +317,9 @@ func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNo
 		// in the tree and its run are kept from what was said before.
 		if task.Title == "" {
 			task.Title = before.Title
+		}
+		if task.Models == nil {
+			task.Models = before.Models
 		}
 		if task.Parent == "" {
 			task.Parent = before.Parent

@@ -52,13 +52,18 @@ type crewWish struct {
 	// worker is a model the hand-off named for this task, which seats the
 	// worker as a one-task pin ([Agent.routeTaskCrew]).
 	worker string
+	// sends are one-task pins a person chose per role for this task — a rerun
+	// from Pick models — laid over the worker named above (taskrouting.go).
+	sends map[crewroute.Seat]string
+	// taskCap is a task cap a person explicitly raised for this one task.
+	taskCap float64
 }
 
 type crewWishKey struct{}
 
 // withCrewWish hands a start door the crew wish; an empty wish is no value.
 func withCrewWish(ctx context.Context, wish crewWish) context.Context {
-	if wish.effort == "" && wish.stronger == nil && wish.again == nil && wish.worker == "" {
+	if wish.effort == "" && wish.stronger == nil && wish.again == nil && wish.worker == "" && len(wish.sends) == 0 && wish.taskCap == 0 {
 		return ctx
 	}
 	return context.WithValue(ctx, crewWishKey{}, wish)
@@ -121,6 +126,21 @@ type taskCrew struct {
 	// this task's line through the day's own figure.
 	day        *SpendDay
 	dayAtStart float64
+
+	// changes are this task's model changes, oldest first and bounded
+	// ([taskCrewChangesKept]); changeCount counts every one ever written.
+	changes     []TaskCrewChange
+	changeCount int
+	// taskPins are the roles a person pinned for this task alone; pending
+	// are roles whose person-made change has not answered a call yet.
+	taskPins map[crewroute.Seat]bool
+	pending  map[crewroute.Seat]bool
+	// restored is every time this crew came back from its checkpoint.
+	restored []time.Time
+	// seatSends are roles a person moved on this task, by role rather than by
+	// the send id the engine asks for, so two roles that share a model can
+	// part ([Agent.TaskRoutingAct]).
+	seatSends map[crewroute.Seat]string
 }
 
 // current is the crew as it stands, fallbacks taken.
@@ -196,6 +216,14 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	if worker := a.namedTaskWorker(wish.worker); worker != "" {
 		ask.Sends = map[crewroute.Seat]string{crewroute.Worker: worker}
 	}
+	for seat, send := range wish.sends {
+		if send = strings.TrimSpace(send); send != "" {
+			if ask.Sends == nil {
+				ask.Sends = map[crewroute.Seat]string{}
+			}
+			ask.Sends[seat] = send
+		}
+	}
 	decision, err := route(ask)
 	if errors.Is(err, config.ErrCrewAtCap) {
 		spent, capUSD := config.CrewHistory(a.config.ProfileDir).SpentUSD, config.CrewCapAt(a.config.ProfileDir)
@@ -214,10 +242,23 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 		crew.original[pick.Seat] = pick.Send
 	}
 	crew.rescue = map[crewroute.Seat][]crewroute.Pick{}
-	for _, seat := range crewroute.Seats {
-		crew.rescue[seat] = config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
+	// ONE MODEL FOR EVERY ROLE IS THE PERSON'S CHOICE, and no role moves off
+	// it on its own: no rescue rung is kept for a decision admitted in it.
+	if decision.Mode != crewroute.ModeOne {
+		for _, seat := range crewroute.Seats {
+			crew.rescue[seat] = config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
+		}
+	}
+	for seat := range wish.sends {
+		if crew.taskPins == nil {
+			crew.taskPins = map[crewroute.Seat]bool{}
+		}
+		crew.taskPins[seat] = true
 	}
 	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true)
+	if wish.taskCap > crew.guard.TaskCap && crew.guard.TaskCap > 0 {
+		crew.guard.TaskCap = wish.taskCap
+	}
 	crew.guard.Day = a.crewDay()
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
@@ -391,8 +432,9 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, messages []ai.Message, options []ai.Option) (*ai.Response, error) {
 	crew := c.run.crew
 	retried := false
+	seat := crewSeatOf(ctx)
 	for {
-		current := crew.sendFor(key)
+		current := crew.sendForSeat(seat, key)
 		if failed, ok := crew.failedHere(current); ok {
 			// A SEND THAT FAILED ON THIS TASK IS NOT ASKED AGAIN, by this seat
 			// or any other: a pool that answered 429 with an hour's
@@ -764,6 +806,18 @@ func (c *taskCrew) sendFor(key string) string {
 	return key
 }
 
+// sendForSeat is [taskCrew.sendFor] for a call a role made: where a person
+// moved that role, else where its send id has moved.
+func (c *taskCrew) sendForSeat(seat crewroute.Seat, key string) string {
+	c.mu.Lock()
+	to := c.seatSends[seat]
+	c.mu.Unlock()
+	if to != "" && seat != "" && c.original[seat] == key {
+		return to
+	}
+	return c.sendFor(key)
+}
+
 // hasStarted is whether a send id has answered a call on this task.
 func (c *taskCrew) hasStarted(send string) bool {
 	c.mu.Lock()
@@ -792,6 +846,11 @@ func (a *Agent) crewAnswered(run *beltRun, send string) {
 	}
 	crew.started[send] = true
 	decision := crew.decision
+	for _, seat := range crewroute.Seats {
+		if decision.Seat(seat).Send == send {
+			delete(crew.pending, seat)
+		}
+	}
 	crew.mu.Unlock()
 	for _, seat := range crewroute.Seats {
 		if pick := decision.Seat(seat); pick.Send == send {
@@ -808,9 +867,20 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 	crew.mu.Lock()
 	provided := a.crewFailedLocked(crew, current, kind, until)
 	decision, next := crew.decision, crewroute.Pick{}
+	shared := false
 	for _, seat := range crewroute.Seats {
 		pick := decision.Seat(seat)
-		if pick.Send != current || pick.Pinned || crew.original[seat] != key {
+		if pick.Send != current || crew.original[seat] != key {
+			continue
+		}
+		if pick.Pinned || decision.Mode == crewroute.ModeOne {
+			// A PINNED ROLE — a saved pin, a pin for this task, one model for
+			// every role — HOLDS ITS EXACT MODEL when its route fails. Only a
+			// person moves it; the history says it failed, when and why.
+			if !crew.heldLocked(seat, pick.Send, string(kind)) {
+				crew.noteChangeLocked(TaskCrewChange{At: time.Now(), Seat: seat, From: pick.Model, FromProvider: pick.Provider, FromSend: pick.Send,
+					By: TaskCrewByEngine, Kind: TaskCrewChangeHeld, Why: string(kind)})
+			}
 			continue
 		}
 		rescue := config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
@@ -822,6 +892,13 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 			continue
 		}
 		decision = withFreeNotice(decision.WithRung(seat, rung, crewWhy(kind, provided)), rung)
+		crew.noteChangeLocked(TaskCrewChange{Seat: seat, From: pick.Model, FromProvider: pick.Provider, FromSend: pick.Send, To: rung.Model, ToProvider: rung.Provider, ToSend: rung.Send,
+			By: TaskCrewByEngine, Kind: TaskCrewChangeFallback, Why: string(kind)})
+		if crew.seatSends[seat] != "" {
+			crew.seatSends[seat] = rung.Send
+		} else {
+			shared = true
+		}
 		if next.Send == "" {
 			next = rung
 		}
@@ -845,7 +922,10 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 	if crew.swaps == nil {
 		crew.swaps = map[string]string{}
 	}
-	crew.swaps[key], crew.decision = next.Send, decision
+	if shared {
+		crew.swaps[key] = next.Send
+	}
+	crew.decision = decision
 	crew.mu.Unlock()
 	a.republishCrew(run, decision, fmt.Sprintf("%s could not start (%s) · moved to %s", current, crewWhy(kind, provided), next.Send))
 	return "", true

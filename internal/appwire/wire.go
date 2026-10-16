@@ -180,6 +180,9 @@ type Task struct {
 	Children     *int       `json:"children,omitempty"`
 	ChildrenDone *int       `json:"children_done,omitempty"`
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`
+	// Models is the task's models in brief (V80); tasks.routing.get has the
+	// rest. Absent from an engine that does not route tasks.
+	Models *TaskModelsChip `json:"models,omitempty"`
 }
 
 // The two kinds of ask, and who closed one.

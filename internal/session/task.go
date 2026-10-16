@@ -917,7 +917,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// and why ([runDidNotStart]), and reads as a failure. Only a run road that
 	// is not there at all (no engine linked, no place for a store) leaves this
 	// door for the older one ([Agent.commitProposalToRun]).
-	ctx = withCrewWish(ctx, crewWish{effort: spec.crewEffort, worker: namedModel(spec)})
+	ctx = withCrewWish(ctx, a.proposalCrewWish(p.id, crewWish{effort: spec.crewEffort, worker: namedModel(spec)}))
 	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
 		return answer, refused, nil
 	}
@@ -993,6 +993,12 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	}
 	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
+	// A ROLE WITH NOTHING ALLOWED TO RUN ON IS A QUESTION, NOT A FAILURE: the
+	// task waits, asks, and starts from here once a model is allowed
+	// (taskrouting.go). Nothing ran and nothing was moved onto another model.
+	if receipt, parked := a.parkUnroutedHandoff(ctx, p, spec, elsewhere, via, err); parked {
+		return receipt, false, true
+	}
 	// AN APPROVED HAND-OFF THAT DID NOT START IS SETTLED WHERE IT IS SEEN. The
 	// card's last word was the approval ([taskWait.decided]), which every
 	// surface reads as work waiting to begin; the refusal below reaches only the

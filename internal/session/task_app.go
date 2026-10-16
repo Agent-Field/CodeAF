@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 // AppTaskView is an engine read, independent of the app's JSON contract.
@@ -25,6 +26,11 @@ type AppTaskView struct {
 	WorkLog                                                []string
 	Elapsed                                                int64
 	Version                                                uint64
+	// RoutingState and Crew are the task's models in brief (taskrouting.go):
+	// the published decision, never a settings read.
+	RoutingState string
+	Crew         *crewroute.Decision
+	TaskPins     map[crewroute.Seat]bool
 }
 type AppTaskNote struct {
 	Direction  uint64 `json:"direction,omitempty"`
@@ -204,7 +210,7 @@ func (a *Agent) appGraphTasks(out []AppTaskView, cap float64, ids map[string]boo
 		notice := node.notice()
 		_, live, _ := a.taskLiveRead(node.id, taskLiveMaxTail)
 		graph.mu.Lock()
-		view := AppTaskView{ID: strconv.FormatUint(node.id, 10), Title: notice.Title, Brief: notice.Brief, State: appNodeState(node), Model: notice.Model, Cap: cap, Spent: notice.CostUSD, Step: live.Steps, Result: notice.Report, Files: append([]string{}, notice.Changed...), Notes: node.appNotesLocked(), WorkLog: live.Lines, Elapsed: int64(notice.Elapsed.Seconds()), Version: node.app.Version + 1, Origin: "proposed"}
+		view := AppTaskView{RoutingState: TaskRoutingSingle, ID: strconv.FormatUint(node.id, 10), Title: notice.Title, Brief: notice.Brief, State: appNodeState(node), Model: notice.Model, Cap: cap, Spent: notice.CostUSD, Step: live.Steps, Result: notice.Report, Files: append([]string{}, notice.Changed...), Notes: node.appNotesLocked(), WorkLog: live.Lines, Elapsed: int64(notice.Elapsed.Seconds()), Version: node.app.Version + 1, Origin: "proposed"}
 		if node.app.Brief != "" {
 			view.Brief = node.app.Brief
 		}
@@ -623,7 +629,7 @@ func (a *Agent) appProposalViews(cap float64) []AppTaskView {
 		if question.held {
 			state = "held"
 		}
-		view := AppTaskView{ID: strconv.FormatUint(id, 10), Title: notice.Title, Brief: notice.Brief, State: state, Model: notice.Model, Deadline: notice.Deadline, Held: question.held, Cap: cap, Origin: "proposed", Version: question.appVersion + 1}
+		view := AppTaskView{RoutingState: TaskRoutingPicking, ID: strconv.FormatUint(id, 10), Title: notice.Title, Brief: notice.Brief, State: state, Model: notice.Model, Deadline: notice.Deadline, Held: question.held, Cap: cap, Origin: "proposed", Version: question.appVersion + 1}
 		for _, depends := range notice.DependsOn {
 			view.Waits = append(view.Waits, strconv.FormatUint(depends, 10))
 		}

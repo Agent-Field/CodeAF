@@ -98,6 +98,17 @@ func (a *Agent) appRunView(row TaskNotice, cap float64) AppTaskView {
 		view.Waits = append(view.Waits, strconv.FormatUint(id, 10))
 	}
 	a.appRunDetail(&view, appRunRowKey(row))
+	switch {
+	case a.taskRouting.isParked(row.ID):
+		view.RoutingState = TaskRoutingBlocked
+	case row.Crew != nil:
+		view.RoutingState, view.Crew = TaskRoutingRouted, row.Crew
+		if row.CrewState != nil {
+			view.TaskPins = row.CrewState.TaskPins
+		}
+	default:
+		view.RoutingState = TaskRoutingSingle
+	}
 	return view
 }
 
@@ -182,6 +193,9 @@ func (a *Agent) appRunAction(row TaskNotice, intent AppTaskIntent) error {
 		_, err := a.SteerTask(row.ID, intent.Text)
 		return err
 	case "stop":
+		if a.DropParkedTask(row.ID) {
+			return nil
+		}
 		_, err := a.cancelTask(row.ID, "")
 		return err
 	case "pause", "resume":

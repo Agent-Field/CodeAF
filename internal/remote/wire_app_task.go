@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 
@@ -23,7 +24,30 @@ const (
 	// MethodAppRename gives the conversation the name a person typed
 	// ([session.Agent.RenameByPerson]).
 	MethodAppRename = "App.Rename"
+	// MethodAppTaskRouting reads one task's models and MethodAppTaskRoutingAct
+	// changes them ([session.Agent.TaskRouting], [session.Agent.TaskRoutingAct]).
+	MethodAppTaskRouting    = "App.TaskRouting"
+	MethodAppTaskRoutingAct = "App.TaskRoutingAct"
 )
+
+// appRoutingDoor is the conversation whose tasks' models can be read and moved.
+type appRoutingDoor interface {
+	TaskRouting(id string, changes int) (session.TaskRoutingView, error)
+	TaskRoutingAct(ctx context.Context, id string, act session.TaskRoutingAction) (session.TaskRoutingResult, error)
+}
+
+// AppTaskRoutingArgs is one task's routing read or change.
+type AppTaskRoutingArgs struct {
+	ID      string                     `json:"id"`
+	Changes int                        `json:"changes,omitempty"`
+	Act     *session.TaskRoutingAction `json:"act,omitempty"`
+}
+
+// appRoutingActResult carries a typed refusal across the socket intact.
+type appRoutingActResult struct {
+	Result  session.TaskRoutingResult
+	Refusal *session.TaskRoutingRefusal `json:",omitempty"`
+}
 
 // appRenameDoor is the conversation a person can rename.
 type appRenameDoor interface{ RenameByPerson(title string) error }
@@ -56,6 +80,30 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 		return nil, errors.New("engine: app tasks are unavailable")
 	}
 	switch call.Method {
+	case MethodAppTaskRouting, MethodAppTaskRoutingAct:
+		routing, ok := agent.(appRoutingDoor)
+		if !ok {
+			return nil, errors.New("engine: task models are unavailable")
+		}
+		args, err := arg[AppTaskRoutingArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		if call.Method == MethodAppTaskRouting {
+			view, err := routing.TaskRouting(args.ID, args.Changes)
+			if err != nil {
+				return appRoutingFailure(err)
+			}
+			return json.Marshal(appRoutingActResult{Result: session.TaskRoutingResult{View: view}})
+		}
+		if args.Act == nil {
+			return nil, errors.New("engine: a task models change needs an action")
+		}
+		result, err := routing.TaskRoutingAct(context.Background(), args.ID, *args.Act)
+		if err != nil {
+			return appRoutingFailure(err)
+		}
+		return json.Marshal(appRoutingActResult{Result: result})
 	case MethodAppRename:
 		rename, ok := agent.(appRenameDoor)
 		if !ok {
@@ -175,4 +223,39 @@ func (a *Agent) ResumeAfterQuit() (bool, error) {
 func (a *Agent) RenameByPerson(title string) error {
 	_, err := a.c.call(nil, MethodAppRename, AppRenameArgs{Title: title})
 	return err
+}
+
+// appRoutingFailure answers a typed refusal as a value, any other error as one.
+func appRoutingFailure(err error) (json.RawMessage, error) {
+	var refusal *session.TaskRoutingRefusal
+	if errors.As(err, &refusal) {
+		return json.Marshal(appRoutingActResult{Refusal: refusal})
+	}
+	return nil, err
+}
+
+func (a *Agent) routingCall(method string, args AppTaskRoutingArgs) (session.TaskRoutingResult, error) {
+	raw, err := a.c.call(nil, method, args)
+	if err != nil {
+		return session.TaskRoutingResult{}, err
+	}
+	var result appRoutingActResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return session.TaskRoutingResult{}, err
+	}
+	if result.Refusal != nil {
+		return session.TaskRoutingResult{}, result.Refusal
+	}
+	return result.Result, nil
+}
+
+// TaskRouting reads one task's models.
+func (a *Agent) TaskRouting(id string, changes int) (session.TaskRoutingView, error) {
+	result, err := a.routingCall(MethodAppTaskRouting, AppTaskRoutingArgs{ID: id, Changes: changes})
+	return result.View, err
+}
+
+// TaskRoutingAct is a person's change to one task's models.
+func (a *Agent) TaskRoutingAct(_ context.Context, id string, act session.TaskRoutingAction) (session.TaskRoutingResult, error) {
+	return a.routingCall(MethodAppTaskRoutingAct, AppTaskRoutingArgs{ID: id, Act: &act})
 }

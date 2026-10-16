@@ -196,6 +196,8 @@ type appConversation interface {
 	AppTasks() ([]session.AppTaskView, error)
 	AppTask(id string) (session.AppTaskView, bool, error)
 	AppTaskAction(intent session.AppTaskIntent) error
+	TaskRouting(id string, changes int) (session.TaskRoutingView, error)
+	TaskRoutingAct(ctx context.Context, id string, act session.TaskRoutingAction) (session.TaskRoutingResult, error)
 	AppQuickTasks() ([]session.AppQuickTaskView, error)
 	AppQuickTaskAction(intent session.AppTaskIntent) ([]string, []string, error)
 	MoveTurnToTask() error

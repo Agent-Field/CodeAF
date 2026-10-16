@@ -22,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -135,6 +136,9 @@ func TestAppCommandAnswersHelloPingCrewsAndUnknownMethod(t *testing.T) {
 // fakeConversation plays a scripted turn and counts what is asked of it.
 type fakeConversation struct {
 	mu          sync.Mutex
+	routing     session.TaskRoutingView
+	routingErr  error
+	routingActs []session.TaskRoutingAction
 	script      []session.Event
 	hold        chan struct{}
 	submits     int
@@ -277,6 +281,22 @@ func (f *fakeConversation) AppTaskAction(intent session.AppTaskIntent) error {
 	defer f.mu.Unlock()
 	f.intents = append(f.intents, intent)
 	return nil
+}
+func (f *fakeConversation) TaskRouting(id string, changes int) (session.TaskRoutingView, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	view := f.routing
+	view.Task = id
+	return view, nil
+}
+func (f *fakeConversation) TaskRoutingAct(_ context.Context, id string, act session.TaskRoutingAction) (session.TaskRoutingResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.routingActs = append(f.routingActs, act)
+	if f.routingErr != nil {
+		return session.TaskRoutingResult{}, f.routingErr
+	}
+	return session.TaskRoutingResult{View: f.routing, Applied: []crewroute.Seat{crewroute.Worker}}, nil
 }
 func (f *fakeConversation) AppQuickTasks() ([]session.AppQuickTaskView, error) {
 	f.mu.Lock()
