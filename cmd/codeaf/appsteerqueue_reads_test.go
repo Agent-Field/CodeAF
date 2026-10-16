@@ -358,3 +358,25 @@ func TestAppOlderHostIsRefusedEveryMarkedMessageBeforeAnything(t *testing.T) {
 }
 
 func appQueuedSubmission(s session.Submission) session.Submission { s.Queued = true; return s }
+
+func TestAppRetryQueuedMessagePreservesReferenceMarks(t *testing.T) {
+	conv := &fakeConversation{}
+	backend, _, agent := markBackend(t, conv)
+	reads, err := appKeptReads([]appwire.MessageRead{appSpecsRead()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := backend.agent(agent.ID)
+	backend.locked(func() {
+		a.failed = "expanded body"
+		a.failedShown = &appSending{text: "mine", reads: reads, queued: true}
+	})
+	if _, err := backend.Retry(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	submissions, _ := appSubmissionsOf(conv)
+	want := appMarkedSubmission(t, "expanded body", "mine", appSpecsRead())
+	if len(submissions) != 1 || !reflect.DeepEqual(submissions[0], want) {
+		t.Fatalf("retry lost its reference mark or retained its queued flag: %+v", submissions)
+	}
+}
