@@ -50,7 +50,11 @@ func TestRunChildReturnsOnlyAfterItsHostWatchStops(t *testing.T) {
 		t.Fatal("host watch did not start")
 	}
 	finishBody()
-	<-bodyEnded
+	select {
+	case <-bodyEnded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("program body did not finish")
+	}
 	select {
 	case <-done:
 		t.Fatal("child returned while its host watch was still blocked")
