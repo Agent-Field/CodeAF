@@ -783,8 +783,21 @@ type MediaScan struct {
 }
 
 // mediaNeedle is the byte pattern every row of a session contains, so a line of
-// another conversation is dropped without being parsed.
-func mediaNeedle(sessionID string) []byte { return []byte(`"session":"` + sessionID + `"`) }
+// another conversation is dropped without being parsed. The id is spelled as
+// the row's writer spells it (json.Marshal, which escapes a quote, a
+// backslash, a control character, &, <, > and U+2028/U+2029): searched for raw,
+// an id holding any of those never met its own rows. Every caller still
+// decodes a hit and compares the session exactly.
+func mediaNeedle(sessionID string) []byte {
+	return []byte(`"session":"` + mediaSessionValue(sessionID) + `"`)
+}
+
+// mediaSessionValue is a session id exactly as a written row holds it between
+// the quotes of its "session" value.
+func mediaSessionValue(sessionID string) string {
+	raw, _ := json.Marshal(sessionID)
+	return string(raw[1 : len(raw)-1])
+}
 
 // openIndex opens the index and reports its identity and size.
 func openIndex(index string) (*os.File, mediaCursorBody, error) {

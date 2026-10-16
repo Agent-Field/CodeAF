@@ -10,21 +10,42 @@ const deliverNeedleMax = 8
 
 var sessionKey = []byte(`"session":"`)
 
-// lineNamesSession reports whether any "session" value in line is in owners. It
-// is a prefilter with the meaning of the per-owner byte search it replaces: a
-// quote inside a JSON string is escaped, so the key cannot appear inside text.
-func lineNamesSession(line []byte, owners map[string]bool) bool {
+// sessionValues is an owner set spelled as written rows hold it
+// ([mediaSessionValue]), which is what [lineNamesSession] compares against.
+func sessionValues(owners map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(owners))
+	for owner := range owners {
+		out[mediaSessionValue(owner)] = true
+	}
+	return out
+}
+
+// lineNamesSession reports whether any "session" value in line, spelled as
+// written, is in values ([sessionValues]). It is a prefilter with the meaning of
+// the per-owner [mediaNeedle] search it replaces: a quote inside a JSON string
+// is escaped, so the key cannot appear inside text, and a value ends at the
+// first quote no backslash escapes, so an escaped id is read whole. The caller
+// still decodes a hit and compares the session exactly.
+func lineNamesSession(line []byte, values map[string]bool) bool {
 	for rest := line; ; {
 		at := bytes.Index(rest, sessionKey)
 		if at < 0 {
 			return false
 		}
 		rest = rest[at+len(sessionKey):]
-		end := bytes.IndexByte(rest, '"')
+		end := -1
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == '\\' {
+				i++
+			} else if rest[i] == '"' {
+				end = i
+				break
+			}
+		}
 		if end < 0 {
 			return false
 		}
-		if owners[string(rest[:end])] {
+		if values[string(rest[:end])] {
 			return true
 		}
 		rest = rest[end:]
