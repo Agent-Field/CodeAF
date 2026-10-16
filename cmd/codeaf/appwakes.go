@@ -156,7 +156,7 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 	tails := b.tickTools(a, id, live)
 	defer long.Stop()
 	defer tails()
-	b.pump(a, id, live, turn, n, elsewhere.said, events)
+	b.pump(a, id, live, turn, n, elsewhere.said, nil, events)
 	b.sendQueued(a, live)
 }
 

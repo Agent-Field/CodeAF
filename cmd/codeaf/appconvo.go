@@ -174,7 +174,7 @@ func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string
 	tails := b.tickTools(a, id, live)
 	defer long.Stop()
 	defer tails()
-	b.pump(a, id, live, turn, n, text, events)
+	b.pump(a, id, live, turn, n, text, nil, events)
 	b.sendQueued(a, live)
 }
 
@@ -806,10 +806,54 @@ func appAttachShown(text string, kept []appAttach) *appSending {
 		return nil
 	}
 	views := make([]appwire.Attachment, 0, len(kept))
+	described := make([]session.MessageAttachment, 0, len(kept))
 	for _, attach := range kept {
 		views = append(views, attach.view)
+		described = append(described, appDescribed(attach))
 	}
-	return &appSending{text: text, attachments: views}
+	return &appSending{text: text, attachments: views, described: described}
+}
+
+// appDescribed is one attachment as the record keeps it: what it is, what it
+// is called and where it is, and its size where this side measured one — a
+// paste, whose words the model is sent whole. Never its contents, and never
+// a fact that changes after the send, such as whether a file has changed.
+func appDescribed(attach appAttach) session.MessageAttachment {
+	described := session.MessageAttachment{
+		ID: attach.view.ID, Kind: attach.view.Kind, Name: attach.view.Title, Path: attach.view.Path, URL: attach.view.URL,
+	}
+	if attach.view.Kind == appwire.AttachPaste {
+		described.Bytes = int64(len(attach.content))
+		if attach.view.Lines != nil {
+			described.Lines = *attach.view.Lines
+		}
+	}
+	return described
+}
+
+// appAttachmentsOf is a recorded message's attachments as an entry shows them,
+// nil for a message the record keeps none for.
+func appAttachmentsOf(described []session.MessageAttachment) []appwire.Attachment {
+	if len(described) == 0 {
+		return nil
+	}
+	views := make([]appwire.Attachment, 0, len(described))
+	for _, d := range described {
+		view := appwire.Attachment{ID: d.ID, Kind: d.Kind, Path: d.Path, URL: d.URL, Title: d.Name}
+		if d.Lines > 0 {
+			lines := d.Lines
+			view.Lines = &lines
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+// appSubmission is the message the engine is asked to run and keep: the words
+// the model is sent, and the person's own words and attachments beside them.
+func appSubmission(text string, shown *appSending) session.Submission {
+	said := shown.text
+	return session.Submission{Text: text, Said: &said, Attachments: shown.described}
 }
 
 // appAttachChars is the characters of paste a message carries, checked
@@ -937,6 +981,9 @@ func (b *appBackend) sendWith(agent, text, clientID string, ids []string) (uint6
 type appSending struct {
 	text        string
 	attachments []appwire.Attachment
+	// described is the same attachments as the record keeps them
+	// ([appDescribed]), in the same order.
+	described []session.MessageAttachment
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────

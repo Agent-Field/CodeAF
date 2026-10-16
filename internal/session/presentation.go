@@ -19,11 +19,30 @@ import (
 // every word. It is memory only: new journal writes keep the typed words, so
 // those restored messages need no mark. An older compacted journal can still
 // carry the saved block without a mark.
+//
+// On a PERSON'S line (Audience [audiencePerson]) Text is their own words where
+// the door that sent the message said them apart from what the model reads,
+// and Attachments are what rode on it ([Agent.SubmitMessage]). Neither changes
+// the content; both are absent from every line no such door wrote.
 type messagePresentation struct {
-	Audience    string  `json:"audience"`
-	Text        *string `json:"text,omitempty"`
-	Interrupted bool    `json:"interrupted,omitempty"`
-	SkillsBlock string  `json:"-"`
+	Audience    string              `json:"audience"`
+	Text        *string             `json:"text,omitempty"`
+	Interrupted bool                `json:"interrupted,omitempty"`
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+	SkillsBlock string              `json:"-"`
+}
+
+// person is the part of a mark a person's message carries into the record: the
+// mark without the memory-only skills provenance, or nil when there is nothing
+// of the person's to keep. It is what a line is written with and what a
+// re-journaled copy of the line is marked with again.
+func (m *messagePresentation) person() *messagePresentation {
+	if m == nil || m.Audience != audiencePerson {
+		return nil
+	}
+	kept := *m
+	kept.SkillsBlock = ""
+	return &kept
 }
 
 // Message identity follows its immutable content allocation, as reasoning repair

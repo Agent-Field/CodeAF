@@ -1736,6 +1736,13 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text})
 }
 
+// SubmitMessage is Submit with what the door knows about the message beyond its
+// words ([session.Agent.SubmitMessage]): it travels on the same call, so the
+// engine records the words and the mark on one line or neither.
+func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error) {
+	return a.open(ctx, MethodSubmit, SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments})
+}
+
 // SubmitBash explicitly runs the person's command; ordinary Submit never
 // interprets message content as executable shell syntax.
 func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan session.Event, error) {

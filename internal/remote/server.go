@@ -2550,7 +2550,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := agent.Submit(context.Background(), args.Text)
+		// A MESSAGE WITH A MARK IS RECORDED WITH IT, by the agent's own door for
+		// one. An agent without that door runs the words alone, which is what
+		// every message was before the mark existed.
+		var events <-chan session.Event
+		door, marked := agent.(interface {
+			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+		})
+		if marked && (args.Said != nil || len(args.Attachments) > 0) {
+			events, err = door.SubmitMessage(context.Background(), session.Submission{Text: args.Text, Said: args.Said, Attachments: args.Attachments})
+		} else {
+			events, err = agent.Submit(context.Background(), args.Text)
+		}
 		return s.stream(MethodSubmit, args.Text, events, err)
 
 	case MethodQuestionReplace:

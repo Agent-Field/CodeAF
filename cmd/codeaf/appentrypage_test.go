@@ -95,7 +95,7 @@ func TestAPageReadsOnlyItsOwnCallsFacts(t *testing.T) {
 		"compacted": appPageRecord(2500, true),
 		"short":     short,
 	}
-	marks := map[int]appTurnMark{2499: {turn: 7, clientID: "k1", text: "sent here"}}
+	marks := map[int]appTurnMark{2499: {turn: 7, clientID: "k1"}}
 	for name, record := range records {
 		t.Run(name, func(t *testing.T) {
 			var whole []appwire.Entry

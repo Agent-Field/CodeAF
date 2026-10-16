@@ -153,6 +153,7 @@ type fakeConversation struct {
 	rail        float64
 	remembered  []session.ConsentScope
 	texts       []string
+	submissions []session.Submission
 	cost        float64
 	// The task, quick task and process doors' scripted answers, and what was
 	// asked of them.
@@ -229,6 +230,15 @@ func (f *fakeConversation) Submit(ctx context.Context, text string) (<-chan sess
 		}
 	}()
 	return events, nil
+}
+
+// SubmitMessage is Submit with what the door said about the message kept
+// beside the words, so a test can read what the engine was handed.
+func (f *fakeConversation) SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error) {
+	f.mu.Lock()
+	f.submissions = append(f.submissions, message)
+	f.mu.Unlock()
+	return f.Submit(ctx, message.Text)
 }
 func (f *fakeConversation) Interrupt() { f.mu.Lock(); f.interrupted++; f.mu.Unlock() }
 func (f *fakeConversation) Model() string {

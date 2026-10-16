@@ -2781,11 +2781,14 @@ func (s *sessionFile) appendSteer(message ai.Message, mark SteerMark) bool {
 	rememberSteer(s.steers, message, mark)
 	s.mu.Unlock()
 	return s.writeLine(sessionEntry{
-		Type:      "message",
-		Role:      message.Role,
-		Content:   messageContentText(message),
-		Steer:     &journalSteer{At: steerStamp(mark.At), Consumed: mark.Consumed, Landing: mark.Landing},
-		Timestamp: stamp(),
+		// A correction the person sent with attachments keeps them on its own
+		// line, as every other message of theirs does ([Agent.SubmitMessage]).
+		Presentation: s.presentation.of(message).person(),
+		Type:         "message",
+		Role:         message.Role,
+		Content:      messageContentText(message),
+		Steer:        &journalSteer{At: steerStamp(mark.At), Consumed: mark.Consumed, Landing: mark.Landing},
+		Timestamp:    stamp(),
 	})
 }
 
@@ -3040,6 +3043,12 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		}
 		if message.Role == "user" && presentation != nil && presentation.SkillsBlock != "" {
 			message = textMessage("user", s.presentation.personWords(message))
+			// The copy without the block is a new message, and what the person
+			// said about it goes with it, or the next resume reads their line
+			// back without its attachments.
+			if kept := presentation.person(); kept != nil {
+				s.presentation.remember(message, kept)
+			}
 		}
 		// AND SO IS A SPLICED ONE, for the same reason: a steer re-written without
 		// its mark would come back from the next resume as a question of its own,

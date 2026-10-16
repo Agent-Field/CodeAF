@@ -170,6 +170,9 @@ func runApp(args []string) error {
 // [remote.Agent] is one; a test's fake is another.
 type appConversation interface {
 	Submit(ctx context.Context, text string) (<-chan session.Event, error)
+	// SubmitMessage is Submit with the person's own words and the attachments
+	// that rode on them, kept on the message's line in the record.
+	SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error)
 	Interrupt()
 	Model() string
 	Title() string
@@ -439,14 +442,15 @@ type appAgent struct {
 	walk    *appWalk
 }
 
-// appTurnMark is what this process knows of one of the person's messages.
+// appTurnMark is what this process knows of one of the person's messages: the
+// turn it opened and the client's own id for it, which no record keeps.
+//
+// IT IS NOT WHERE A MESSAGE'S WORDS OR ATTACHMENTS COME FROM. Those are on the
+// message's own line in the record, written with it ([appSubmission]), so a
+// listing reads them the same before a restart and after one.
 type appTurnMark struct {
 	turn     uint64
 	clientID string
-	// text and attachments are the person's own words and the files and
-	// links that rode with them, where the engine was sent both as words.
-	text        string
-	attachments []appwire.Attachment
 }
 
 // appBoot is agents.create's ask, kept for the background open.
@@ -1496,17 +1500,24 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 		if a.marks == nil {
 			a.marks = map[int]appTurnMark{}
 		}
-		mark := appTurnMark{turn: turn, clientID: clientID}
+		a.marks[n] = appTurnMark{turn: turn, clientID: clientID}
 		if shown != nil {
-			mark.text, mark.attachments = shown.text, shown.attachments
 			entryText, attachments = shown.text, shown.attachments
 		}
-		a.marks[n] = mark
 	})
 	if refused != nil {
 		return 0, refused
 	}
-	events, err := live.conn.Conv.Submit(context.Background(), text)
+	// THE MESSAGE AND WHAT IT CARRIED ARE ACCEPTED TOGETHER: one call, one line
+	// in the record. A refused call writes neither, and a message with nothing
+	// riding on it is the plain Submit it always was.
+	var events <-chan session.Event
+	var err error
+	if shown != nil {
+		events, err = live.conn.Conv.SubmitMessage(context.Background(), appSubmission(text, shown))
+	} else {
+		events, err = live.conn.Conv.Submit(context.Background(), text)
+	}
 	if err != nil {
 		b.locked(func() { live.running = false })
 		return 0, appEngineError(err)
@@ -1533,7 +1544,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	guard.Go("app/turn", func() {
 		defer long.Stop()
 		defer tails()
-		b.pump(a, id, live, turn, n, text, events)
+		b.pump(a, id, live, turn, n, text, shown, events)
 		b.sendQueued(a, live)
 	})
 	return turn, nil
@@ -1542,7 +1553,9 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 // pump maps one turn's session events onto the wire. It never waits on the
 // writer: everything goes into the agent's outbox. n is the turn's place among
 // the person's messages, which every entry id of the turn is counted from.
-func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n int, text string, events <-chan session.Event) {
+// shown, when set, is what the person's entry showed, which a failed turn's
+// retry shows again.
+func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n int, text string, shown *appSending, events <-chan session.Event) {
 	defer close(live.pumpDone)
 	ok, failure := true, ""
 	kind, status := "", 0
@@ -1746,10 +1759,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		}
 		a.failed, a.failedKind, a.failedShown = "", "", nil
 		if !ok {
-			a.failed, a.failedKind = text, kind
-			if mark := a.marks[n]; len(mark.attachments) > 0 {
-				a.failedShown = &appSending{text: mark.text, attachments: mark.attachments}
-			}
+			a.failed, a.failedKind, a.failedShown = text, kind, shown
 		}
 	})
 	switch {
@@ -2451,7 +2461,10 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 			c++
 		case "user":
 			n, m, k = n+1, 0, 0
-			entry.ID, entry.Kind, entry.Text = appUserEntryID(n), appwire.EntryUser, item.Text
+			// The words are the person's own and the attachments the ones that
+			// rode on them, as the record keeps them on the message's line; a
+			// line without that mark is its words, and has no attachments.
+			entry.ID, entry.Kind, entry.Text, entry.Attachments = appUserEntryID(n), appwire.EntryUser, item.Text, appAttachmentsOf(item.Attachments)
 		case "assistant", "aside":
 			if strings.TrimSpace(item.Text) == "" {
 				continue
@@ -2518,11 +2531,6 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 			entry.Turn = mark.turn
 			if entry.Kind == appwire.EntryUser {
 				entry.ClientID = mark.clientID
-				// A message of attachments alone has no words of its own,
-				// and still shows as what the person sent.
-				if mark.text != "" || len(mark.attachments) > 0 {
-					entry.Text, entry.Attachments = mark.text, mark.attachments
-				}
 			}
 		}
 		entries = append(entries, entry)

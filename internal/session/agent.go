@@ -961,6 +961,14 @@ func (a *Agent) SetContextWindow(tokens int) {
 // surface holding both channels sees each event on each, which is what a
 // per-message caller wants and what a whole-session reader must de-duplicate.
 func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
+	return a.submitText(ctx, text, nil)
+}
+
+// submitText is Submit's body with the PERSON'S MARK beside the words: what a
+// door that knows more than the words said about the message
+// ([Agent.SubmitMessage]), nil for every other door. The mark rides the message
+// to the moment it is recorded and changes nothing the model is sent.
+func (a *Agent) submitText(ctx context.Context, text string, person *messagePresentation) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -980,12 +988,14 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	if digest := a.planDigest(); digest != "" {
 		user := planDigested(digest, text)
 		user.said = said
+		user.person = person
 		return a.submitUser(ctx, user)
 	}
 	user := userText(text)
 	if text != said {
 		user.said = said
 	}
+	user.person = person
 	return a.submitUser(ctx, user)
 }
 
@@ -1183,7 +1193,13 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // references and journals exactly as it always did.
 type userMessage struct {
 	// bash is set only by the person's SubmitBash door; model output cannot enter it.
-	bash    string
+	bash string
+	// person is what the door that sent this message said about it beyond its
+	// words — the person's own sentence and the attachments that rode on it
+	// ([Agent.SubmitMessage]) — and nil on every other message. It is recorded
+	// on the message's own line by [Agent.recordUserLocked] and read by nothing
+	// the model is sent.
+	person  *messagePresentation
 	message ai.Message
 	refs    []journalPart
 	// replyTags names finished tasks whose reports this message carries. It is
@@ -2697,6 +2713,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	// nothing outlives them, because a replay is a reading of the conversation
 	// and that paragraph was never part of one.
 	kept := user.journaled()
+	a.rememberPersonLocked(user, kept)
 	// The store's copy is taken before the journal's early return: a session
 	// with no file still has a conversation worth keeping, and the person's own
 	// words are the last thing that should depend on which layout they opened in.
@@ -2735,6 +2752,32 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	// is the only honest witness to that. A session with no folder stamps
 	// nothing (placemeta.go).
 	a.stampUserLocked(messageContentText(kept))
+}
+
+// rememberPersonLocked marks the person's message with what its door said about
+// it, on the copy the model reads and on the copy the record keeps — two copies
+// whenever the session wrote beside the words ([userMessage.journaled]). The
+// journal writes the mark off the record's copy, on the same line as the words,
+// and a reading of the live transcript finds it on the model's copy.
+//
+// A skills block the session already marked on the model's copy keeps its
+// provenance: the two marks are one mark on one message.
+func (a *Agent) rememberPersonLocked(user userMessage, kept ai.Message) {
+	mark := user.person
+	if mark == nil || len(user.message.Content) == 0 {
+		return
+	}
+	if a.presentation == nil {
+		a.presentation = &presentationIndex{}
+	}
+	live := *mark
+	if prior := a.presentation.of(user.message); prior != nil {
+		live.SkillsBlock = prior.SkillsBlock
+	}
+	a.presentation.remember(user.message, &live)
+	if len(kept.Content) > 0 && &kept.Content[0] != &user.message.Content[0] {
+		a.presentation.remember(kept, mark.person())
+	}
 }
 
 func (a *Agent) record(message ai.Message) {
@@ -4747,6 +4790,18 @@ type DisplayEntry struct {
 	// the paths are the JOURNAL's record, and a conversation that lives only in
 	// memory never wrote one.
 	ImageRefs []string
+
+	// Authored says Text is the PERSON'S OWN WORDS as the door that sent the
+	// message recorded them apart from what the model read
+	// ([Agent.SubmitMessage]) — empty Text included, which is a message of
+	// attachments alone. False on every other entry, whose Text is the line's
+	// own words exactly as they always were.
+	Authored bool
+	// Attachments are what that door said rode on the person's message, in the
+	// order it carried them, each a copy of the record's own descriptor. Nil on
+	// every message no such door sent, however many paths its words mention:
+	// nothing here is ever read out of the words.
+	Attachments []MessageAttachment
 	// ReplyTags label the assistant entry that answers finished task notes. They
 	// are nil on every ordinary reply.
 	ReplyTags []TaskReplyTag
@@ -4926,8 +4981,20 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		}
 		displayText := messageContentText(msg)
 		// personWords removes only this message's recorded skills injection.
+		var authored bool
+		var attachments []MessageAttachment
 		if role == "user" {
 			displayText = presentation.personWords(msg)
+			// AND WHAT THE PERSON SENT IS SHOWN AS THEY SENT IT, where the door
+			// that sent it said so on the line itself: their own words in place
+			// of the paragraph the model was handed, and the attachments that
+			// rode on it. A line with no such mark is shown as it always was.
+			if mark := presentation.of(msg).person(); mark != nil {
+				if mark.Text != nil {
+					displayText, authored = *mark.Text, true
+				}
+				attachments = cloneAttachments(mark.Attachments)
+			}
 		}
 		interrupted, explicitlyHuman := false, false
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
@@ -4960,6 +5027,8 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			Interrupted: interrupted,
 			Text:        displayText,
 			ImageRefs:   journal.imageRefs(msg),
+			Authored:    authored,
+			Attachments: attachments,
 			ReplyTags:   tags,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
