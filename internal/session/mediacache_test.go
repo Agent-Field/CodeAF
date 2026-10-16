@@ -267,3 +267,29 @@ func BenchmarkFindMedia100kIndex(b *testing.B) {
 }
 
 func mediaRowJSON(row Artifact) ([]byte, error) { return json.Marshal(row) }
+
+func TestMediaCacheDoesNotLendOutTheBatchReceipt(t *testing.T) {
+	resetMediaCache()
+	dir := t.TempDir()
+	index := filepath.Join(dir, "artifacts.jsonl")
+	path := mediaFile(t, dir, "p.png")
+	cost := 0.17
+	fact := GeneratedMedia(path, []byte("picture"), "painter").WithRequested(4).WithBatch("bat_actual", 2, 3)
+	fact.Charge = MediaCharged
+	fact.CostScope = MediaCostScopeCall
+	fact.CallCostUSD = &cost
+	RecordMedia(index, Artifact{Path: path, Session: "s1", Title: "actual variant", Kind: "image", Created: time.Now()}, fact)
+	ids := listAll(t, index, "s1")
+	if len(ids) != 1 {
+		t.Fatalf("ids%v", ids)
+	}
+	first, err := FindMedia(index, "s1", ids[0], time.Time{})
+	if err != nil || first.Fact.CallCostUSD == nil {
+		t.Fatalf("receipt unavailable: %+v %v", first, err)
+	}
+	*first.Fact.CallCostUSD = 999
+	again, err := FindMedia(index, "s1", ids[0], time.Time{})
+	if err != nil || again.Fact.CallCostUSD == nil || *again.Fact.CallCostUSD != cost || again.Fact.CostUSD != nil {
+		t.Fatalf("caller changed another view's receipt: %+v %v", again, err)
+	}
+}
