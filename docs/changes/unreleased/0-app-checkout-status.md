@@ -11,9 +11,13 @@ invalidates:
 Read-only git through the runner files.diff uses: no optional locks, no
 fsmonitor, submodules by recorded commit only, one 3 s deadline for the call, at
 most two reads at once (a third is `busy`). Every configured filter driver is
-set empty before git compares a file, because `git status` otherwise runs a
+set empty, and `required` set false so a git-lfs style driver cannot fail the status, before git compares a file, because `git status` otherwise runs a
 repository's clean filter on a file whose stat data changed; a scratch-repo test
 proves a marker-writing filter does not fire and fails when the override is
 removed. A status longer than 4 MiB is `incomplete`, with no counts and no
 cursor past the part read. A cursor is tied to the exact status it was issued
 for and is refused, never re-aimed, once that changes.
+Untracked files are listed individually (`--untracked-files=all`) rather than as
+their directory, within the same byte budget. A status cut by that budget keeps
+only whole records: a rename whose original path was cut is dropped, not sent
+as a rename from nothing.

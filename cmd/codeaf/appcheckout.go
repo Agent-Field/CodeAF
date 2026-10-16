@@ -71,8 +71,8 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 
 	// The driver names are read from the person's configuration and only named
 	// back to git as empty commands; nothing configured is run.
-	blank := []string{}
-	if text, fail := g.out(dir, 64<<10, "config", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process)$`); fail != nil {
+	blank, named := []string{}, map[string]bool{}
+	if text, fail := g.out(dir, 64<<10, "config", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process|required)$`); fail != nil {
 		if fail.exit != 1 { // 1 is git's "no such key", the ordinary case
 			return empty, appCheckoutFailure(fail)
 		}
@@ -84,12 +84,21 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 				if strings.Contains(key, "=") {
 					return empty, appwire.Errorf(appwire.CodeEngine, "a configured filter name cannot be set aside safely")
 				}
-				blank = append(blank, "-c", key+"=")
+				// EVERY DRIVER GETS ALL FOUR SETTINGS, whichever one the key named.
+				// A driver marked required (git-lfs sets it) makes git fail the whole
+				// status when its emptied command does nothing, so required goes
+				// false beside the blanks.
+				driver := key[:strings.LastIndexByte(key, '.')]
+				if !named[driver] {
+					named[driver] = true
+					blank = append(blank, "-c", driver+".clean=", "-c", driver+".smudge=",
+						"-c", driver+".process=", "-c", driver+".required=false")
+				}
 			}
 		}
 	}
 
-	args := append(blank, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal", "--ignore-submodules=dirty")
+	args := append(blank, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--ignore-submodules=dirty")
 	text, overflow, fail := g.capped(dir, appCheckoutOutMax, 0, args...)
 	if fail != nil {
 		if fail.notRepo() {
@@ -98,9 +107,11 @@ func appCheckout(ctx context.Context, dir string, q appwire.CheckoutQuery) (appw
 		return empty, appCheckoutFailure(fail)
 	}
 	if overflow {
-		// What was kept ends mid-record; only whole records are read.
+		// What was kept ends mid-record; only whole records are read. The final
+		// terminator goes too, so the parser never sees an empty record where a
+		// rename's original path was cut away and calls it a rename from nothing.
 		if cut := strings.LastIndexByte(text, 0); cut >= 0 {
-			text = text[:cut+1]
+			text = text[:cut]
 		} else {
 			text = ""
 		}

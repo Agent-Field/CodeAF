@@ -277,3 +277,95 @@ func TestAppParseStatus(t *testing.T) {
 		t.Fatalf("rest: %+v", entries[2:])
 	}
 }
+
+// A FILTER MARKED required (git-lfs does this) MUST NOT FAIL THE STATUS: the
+// emptied command does nothing, which git would call a failure of a required
+// filter, so required is set false beside it. The edit keeps the file's size so
+// git has to hash it.
+func TestCheckoutStatusRequiredFilterDoesNotFail(t *testing.T) {
+	repo := diffRepo(t)
+	marker := filepath.Join(t.TempDir(), "ran")
+	write(t, filepath.Join(repo, ".gitattributes"), "*.dat filter=lfsish\n")
+	write(t, filepath.Join(repo, "a.dat"), "a\n")
+	gitT(t, repo, "add", ".gitattributes", "a.dat")
+	gitT(t, repo, "commit", "-q", "-m", "filtered")
+	gitT(t, repo, "config", "filter.lfsish.clean", "touch '"+marker+"'; cat")
+	gitT(t, repo, "config", "filter.lfsish.required", "true")
+	write(t, filepath.Join(repo, "a.dat"), "b\n")
+	time.Sleep(1100 * time.Millisecond)
+	if err := os.Chtimes(filepath.Join(repo, "a.dat"), time.Now(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil {
+		t.Fatalf("a required filter failed the status: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the repository's clean filter ran")
+	}
+	if len(got.Entries) != 1 || got.Entries[0].Path != "a.dat" || got.Entries[0].Worktree != "modified" {
+		t.Fatalf("entries %+v", got.Entries)
+	}
+}
+
+// A STATUS CUT WHERE A RENAME'S ORIGINAL PATH WOULD BEGIN claims no rename.
+func TestAppCheckoutCutRenameClaimsNothing(t *testing.T) {
+	whole := "2 R. N... 100644 100644 100644 h h R100 to.txt\x00from.txt\x00"
+	cut := "? first.txt\x002 R. N... 100644 100644 100644 h h R100 to.txt\x00"
+	_, entries := appParseStatus(whole)
+	if len(entries) != 1 || entries[0].OldPath != "from.txt" {
+		t.Fatalf("whole rename: %+v", entries)
+	}
+	// What appCheckout hands the parser after an overflow: the last terminator is gone.
+	_, entries = appParseStatus(cut[:len(cut)-1])
+	if len(entries) != 1 || entries[0].Path != "first.txt" {
+		t.Fatalf("a rename without its original path was read: %+v", entries)
+	}
+}
+
+// THROUGH THE REAL CUT: a rename whose original path lies past the byte budget
+// is not reported as a rename with no old_path.
+func TestCheckoutStatusOverflowNeverHalfARename(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "old-name.txt"), "keep this line\nand this one\nplus a third line\n")
+	gitT(t, repo, "add", "old-name.txt")
+	gitT(t, repo, "commit", "-q", "-m", "second")
+	gitT(t, repo, "mv", "old-name.txt", "new-name.txt")
+	full, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil || len(full.Entries) != 1 || full.Entries[0].OldPath != "old-name.txt" {
+		t.Fatalf("whole status: %+v %v", full.Entries, err)
+	}
+	was := appCheckoutOutMax
+	defer func() { appCheckoutOutMax = was }()
+	// Every budget from nothing up to the whole text: a rename is complete or absent.
+	for max := 1; max < 400; max++ {
+		appCheckoutOutMax = max
+		got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range got.Entries {
+			if e.Kind == appwire.CheckoutRenamed && e.OldPath == "" {
+				t.Fatalf("budget %d reported a rename from nothing: %+v", max, e)
+			}
+		}
+	}
+}
+
+// UNTRACKED FILES ARE LISTED ONE BY ONE, never summarised as their directory.
+func TestCheckoutStatusListsUntrackedFilesInDirectories(t *testing.T) {
+	repo := diffRepo(t)
+	write(t, filepath.Join(repo, "dir", "one.txt"), "1\n")
+	write(t, filepath.Join(repo, "dir", "deep", "two.txt"), "2\n")
+	got, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, e := range got.Entries {
+		paths = append(paths, e.Path)
+	}
+	if len(paths) != 2 || paths[0] != "dir/deep/two.txt" || paths[1] != "dir/one.txt" || got.Counts.Untracked != 2 {
+		t.Fatalf("paths %v counts %+v", paths, got.Counts)
+	}
+}
