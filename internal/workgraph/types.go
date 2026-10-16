@@ -381,6 +381,11 @@ type Coverage struct {
 	// Excluded names the kinds of work the scope's producer does not put in this
 	// graph, so their absence is a statement and not a silence.
 	Excluded []string `json:"excluded,omitempty"`
+	// Unavailable names the facts a node could carry that this producer's
+	// sources cannot give: not zero and not none, but not kept anywhere this
+	// producer reads. A surface says nothing about them (no step count, no open
+	// ask) instead of drawing an absence as a figure.
+	Unavailable []string `json:"unavailable,omitempty"`
 }
 
 // OwnerIssue is one conversation the scope could not read.
@@ -472,6 +477,12 @@ type GraphNode struct {
 	Stopped     bool   `json:"stopped,omitempty"`
 	Declined    bool   `json:"declined,omitempty"`
 	Ending      string `json:"ending,omitempty"`
+	// ElapsedMS is how long the work ran, as the record froze it when the task
+	// ended; absent while it runs and wherever the record kept none. Attempt is
+	// which life of the work the row describes (1 and up once it was re-armed);
+	// absent for work that has only run once.
+	ElapsedMS *int64 `json:"elapsed_ms,omitempty"`
+	Attempt   int    `json:"attempt,omitempty"`
 	// Parent is the task that handed this one out (its wire id), empty at the
 	// top of a family. ParentState says whether that parent is among the nodes:
 	// "root" (none), "node", or "missing" (the record names a parent its owner

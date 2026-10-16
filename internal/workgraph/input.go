@@ -79,6 +79,8 @@ type Input struct {
 	Unread    []OwnerIssue
 	Truncated bool
 	Excluded  []string
+	// Unavailable is [Coverage.Unavailable].
+	Unavailable []string
 }
 
 // orderKey is where a task sits in creation order.

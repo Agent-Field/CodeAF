@@ -76,6 +76,8 @@ type WorkLimits struct {
 	Flights      int
 	IndexFlights int
 	RawBytes     int64
+	// OwnerBytes is the most estimated bytes of facts one conversation yields.
+	OwnerBytes int64
 	// Facts is the most facts one conversation yields; Waits the most stored
 	// waits one task yields. Past either the rest is left out and the
 	// conversation says partial.
@@ -84,36 +86,47 @@ type WorkLimits struct {
 }
 
 // THE AGGREGATE BUDGET. Everything the work graph holds on to or has in flight
-// sums to at most 128 MiB, so that it is a number a laptop can be promised:
+// is bounded, in bytes, and the bounds add up to 128 MiB so that it is a number
+// a laptop can be promised:
 //
-//	conversations remembered   32 MiB   (this file)
-//	check indexes remembered    8 MiB   (this file)
-//	raw reads decoding at once 32 MiB   (this file, weighed at decode inflation)
-//	snapshots remembered       56 MiB   (cmd/codeaf, workgraph.Cache)
+//	RETAINED
+//	  conversations remembered      16 MiB   (this file)
+//	  check indexes remembered       4 MiB   (this file)
+//	  snapshots remembered          16 MiB   (cmd/codeaf, workgraph.Cache)
+//	IN FLIGHT, each admitted by a gate that REFUSES what does not fit it
+//	  files being read and decoded  28 MiB   (this file, at decode inflation)
+//	  snapshots being built         64 MiB   (cmd/codeaf, at workgraph.BuildWeight)
 //
-// A scope too big for the snapshot share (at ~1.4 KiB a task, about 40 000
-// tasks) is served in full and not remembered: each ask pays the cold cost
-// honestly. A task's projection is ~1 KiB, so a conversation is bounded at
-// 20 000 facts and its checkpoint at 16 MiB.
+// There is no "runs alone" exemption anywhere: a request whose files, facts or
+// build would not fit a gate is refused with workgraph.TooLarge BEFORE the
+// memory is spent. About ten thousand ordinary tasks fit (a 10 000-task build
+// allocates ~42 MiB and is weighed at ~58 MiB); a scope much past that, or ten
+// thousand tasks that each carry the longest text a node may, is asked to be
+// narrowed. A snapshot too big to KEEP (over its 16 MiB share) is still built
+// within the gate and served whole, and not remembered.
 const (
 	// WorkSnapshotBytes is the share the app's snapshot cache is built with,
-	// written here so the whole budget is added up in one place.
-	WorkSnapshotBytes   = 56 << 20
-	defaultCacheBytes   = 32 << 20
+	// written here so the whole budget is added up in one place. WorkBuildBytes
+	// is the build gate.
+	WorkSnapshotBytes   = 16 << 20
+	WorkBuildBytes      = 64 << 20
+	defaultCacheBytes   = 16 << 20
 	defaultCacheOwners  = 4096
-	defaultIndexBytes   = 8 << 20
+	defaultIndexBytes   = 4 << 20
 	defaultIndexFiles   = 64
-	defaultFileMax      = 16 << 20
-	defaultPlanMax      = 16 << 20
-	defaultIndexMax     = 8 << 20
+	defaultFileMax      = 7 << 20
+	defaultPlanMax      = 7 << 20
+	defaultIndexMax     = 4 << 20
 	defaultFacts        = 20_000
+	defaultOwnerBytes   = 8 << 20
 	defaultWaits        = 1024
 	defaultFlights      = 8
 	defaultIndexFlights = 4
-	defaultRawBytes     = 32 << 20
+	defaultRawBytes     = 28 << 20
 	// rawInflation is how many times its file's bytes a decode holds at peak:
-	// the raw bytes, the decoded structs and the projected facts.
-	rawInflation = 3
+	// the raw bytes and the decoded structs; the projected facts are bounded by
+	// their own quota.
+	rawInflation = 2
 )
 
 func (l WorkLimits) withDefaults() WorkLimits {
@@ -135,6 +148,7 @@ func (l WorkLimits) withDefaults() WorkLimits {
 	set(&l.PlanMax, defaultPlanMax)
 	set(&l.IndexMax, defaultIndexMax)
 	set(&l.RawBytes, defaultRawBytes)
+	set(&l.OwnerBytes, defaultOwnerBytes)
 	setN(&l.Flights, defaultFlights)
 	setN(&l.IndexFlights, defaultIndexFlights)
 	setN(&l.Facts, defaultFacts)
@@ -154,8 +168,11 @@ type OwnerFacts struct {
 	Stamp string
 	Facts []workgraph.Fact
 	Issue string
-	// Bytes is the estimate the cache budgets this projection at.
-	Bytes int64
+	// Bytes is the estimate the cache budgets this projection at, and Weight what
+	// building its facts into a snapshot allocates at peak ([workgraph.BuildWeight]).
+	// Both are accumulated as the facts are added, against a quota.
+	Bytes  int64
+	Weight int64
 	// Externals are the other conversations this one's tasks wait on, sorted: the
 	// sources a target's state is read from, so a caller can name them in its
 	// revision.
@@ -402,6 +419,16 @@ func (o *OwnerFacts) add(l WorkLimits, facts []workgraph.Fact) {
 			f.Waits = f.Waits[:l.Waits]
 			o.Issue = firstIssue(o.Issue, WorkIssuePartial)
 		}
+		// A BYTE QUOTA, NOT ONLY A COUNT: a thousand facts of the longest text are
+		// more than ten thousand short ones. The fact that would pass the quota is
+		// left out and the conversation says partial; what is kept is never cut.
+		size := workgraph.FactBytes(&f)
+		if o.Bytes+size > l.OwnerBytes {
+			o.Issue = firstIssue(o.Issue, WorkIssuePartial)
+			return
+		}
+		o.Bytes += size
+		o.Weight += workgraph.BuildWeight(&f)
 		o.Facts = append(o.Facts, f)
 	}
 }
@@ -417,7 +444,6 @@ func (s *WorkSource) seal(ctx context.Context, out *OwnerFacts) error {
 		}
 		f := &out.Facts[i]
 		out.byID[f.Node.Ref.Task] = int32(i)
-		out.Bytes += factBytes(f)
 		for _, w := range f.Waits {
 			if w.On.Owner != out.Owner {
 				others[w.On.Owner] = true
@@ -430,26 +456,6 @@ func (s *WorkSource) seal(ctx context.Context, out *OwnerFacts) error {
 	sort.Strings(out.Externals)
 	out.Bytes += int64(len(out.byID)) * 48
 	return nil
-}
-
-// factBytes is an estimate of what one fact holds: its fixed part, its strings
-// and what it points at. It is an estimate for a budget, not a measurement.
-func factBytes(f *workgraph.Fact) int64 {
-	n := &f.Node
-	b := int64(768) + int64(len(n.ID)+len(n.Ref.Owner)+len(n.Ref.Task)+len(n.Kind)+len(n.Title)+len(n.Parent)+len(n.Model)+len(n.Ending))
-	if n.Instructions != nil {
-		b += 48 + int64(len(n.Instructions.Text)+len(n.Instructions.Source))
-	}
-	if n.Group != nil {
-		b += 48 + int64(len(n.Group.ID)+len(n.Group.Title))
-	}
-	for _, p := range n.Files.Paths {
-		b += 16 + int64(len(p))
-	}
-	for _, w := range f.Waits {
-		b += 64 + int64(len(w.On.Owner)+len(w.On.Task))
-	}
-	return b
 }
 
 // FileStamp names a file's present state (size, modification instant, inode), "-"

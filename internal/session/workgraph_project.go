@@ -31,6 +31,22 @@ import (
 	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
 
+// WorkUnavailable names the facts the persisted record cannot give. A task's
+// STEPS live in the running node's event ring (memory, gone with the process)
+// and in its journal (a per-event trace this source never parses: reading it
+// per request is the cost the graph exists to avoid), and the person's open
+// ASKS live in memory too, where [Blocking.Tasks] names the work by title and
+// not by reference. None is in tasks.json, so none is a fact of this graph.
+var WorkUnavailable = []string{"steps", "asks"}
+
+// wgElapsed is the frozen age a record kept for work that has ended.
+func wgElapsed(ms int64, state TaskState) *int64 {
+	if ms <= 0 || (state != TaskDone && state != TaskFailed) {
+		return nil
+	}
+	return &ms
+}
+
 // WorkExcluded names the kinds of work the persisted graph does not hold, so
 // their absence is a statement and not a silence.
 var WorkExcluded = []string{"proposals"}
@@ -226,6 +242,7 @@ func nodeFact(owner string, r taskRecord) workgraph.Fact {
 		Instructions: wgInstructions(r), Model: wgTitle(r.Model),
 		Landing: wgLanding(r.Merge, r.EndedAt), Files: wgFiles(r.Changed, r.Wrote),
 		Spend: wgSpend(r.CostUSD, wgTokens(r)), Links: "recorded",
+		ElapsedMS: wgElapsed(r.ElapsedMS, r.State), Attempt: r.Attempt,
 	}
 	if r.Parent != 0 {
 		n.Parent = wgID(owner, r.Parent)
@@ -273,6 +290,7 @@ func runFact(owner string, r runRecord, titles map[uint64]string) workgraph.Fact
 		Clock:   workgraph.Clock{StartedAt: workgraph.Stamp(r.StartedAt), EndedAt: workgraph.Stamp(r.EndedAt)},
 		Landing: wgLanding(r.Merge, r.EndedAt), Files: wgFiles(r.Changed, nil),
 		Spend: wgSpend(r.CostUSD, 0), Links: "unrecorded", Route: wgRoute(r.CrewState),
+		ElapsedMS: wgElapsed(r.ElapsedMS, r.State),
 	}
 	if r.State == TaskInterrupted {
 		n.State = string(TaskRunning)

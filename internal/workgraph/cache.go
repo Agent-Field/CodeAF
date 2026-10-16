@@ -34,8 +34,9 @@ type CacheLimits struct {
 	// by builds, never by requests.
 	Pending int
 	// BuildBytes bounds the weight of the builds RUNNING at once. A build
-	// brings its own weight (an estimate of the memory its input costs); one
-	// heavier than this runs alone rather than never.
+	// brings its own weight (an estimate of the memory it allocates, see
+	// [BuildWeight]); one heavier than this is refused with [TooLarge] before it
+	// starts, never run alone.
 	BuildBytes int64
 }
 
@@ -61,6 +62,7 @@ type Cache struct {
 	hits     atomic.Int64
 	busy     atomic.Int64
 	unstored atomic.Int64
+	tooLarge atomic.Int64
 }
 
 type entry struct {
@@ -97,6 +99,9 @@ func (c *Cache) Stats() (builds, hits int64) { return c.builds.Load(), c.hits.Lo
 // were served without being kept.
 func (c *Cache) Refusals() (busy, unstored int64) { return c.busy.Load(), c.unstored.Load() }
 
+// TooLarge is how many asks were refused because their build could never fit.
+func (c *Cache) TooLarge() int64 { return c.tooLarge.Load() }
+
 // Builder makes the [Input] for one scope. It runs without any cache lock and
 // must honour ctx.
 type Builder func(ctx context.Context) (Input, error)
@@ -108,7 +113,8 @@ func (c *Cache) Get(ctx context.Context, scope GraphScope, revision string, buil
 
 // GetWeighted is the snapshot for scope at revision: the cached one, the one
 // another caller is building right now, or a fresh one built by build, which is
-// admitted to run when weight bytes of build capacity are free. A caller whose
+// admitted to run when weight bytes of build capacity are free, or refused with
+// [TooLarge] when the weight can never fit. A caller whose
 // own ctx ends stops waiting; the build is abandoned only when nobody waits. A
 // caller that would start a build beyond the pending limit gets [ErrBusy].
 func (c *Cache) GetWeighted(ctx context.Context, scope GraphScope, revision string, weight int64, build Builder) (*Snapshot, error) {
@@ -123,6 +129,12 @@ func (c *Cache) GetWeighted(ctx context.Context, scope GraphScope, revision stri
 	}
 	f, ok := c.flights[key]
 	if !ok {
+		if weight > c.limits.BuildBytes {
+			// Refused before a flight, a goroutine or a byte of the build exists.
+			c.mu.Unlock()
+			c.tooLarge.Add(1)
+			return nil, NewTooLarge("build", weight, c.limits.BuildBytes)
+		}
 		if len(c.flights) >= c.limits.Pending {
 			c.mu.Unlock()
 			c.busy.Add(1)

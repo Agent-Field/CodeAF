@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -51,7 +52,7 @@ type graphWire struct {
 func (w *graphWire) call(params string) (result json.RawMessage, wireErr map[string]any) {
 	w.t.Helper()
 	w.id++
-	line := `{"id":` + string(rune('0'+w.id)) + `,"method":"work.graph","params":` + params + "}\n"
+	line := `{"id":` + strconv.Itoa(w.id) + `,"method":"work.graph","params":` + params + "}\n"
 	if _, err := io.WriteString(w.in, line); err != nil {
 		w.t.Fatal(err)
 	}
@@ -193,6 +194,14 @@ func TestWorkGraphOnTheRealBackendThroughTheWire(t *testing.T) {
 	}
 }
 
+func TestWorkGraphNamesTheFactsItsSourcesCannotGive(t *testing.T) {
+	_, w, crew := graphFixture(t)
+	got := w.graph(`{"scope":{"kind":"crew","id":"` + crew + `"}}`)
+	if len(got.Coverage.Unavailable) != 2 || got.Coverage.Unavailable[0] != "steps" || got.Coverage.Unavailable[1] != "asks" {
+		t.Fatalf("coverage = %+v", got.Coverage)
+	}
+}
+
 func TestWorkGraphUnchangedPagingAndRefusals(t *testing.T) {
 	_, w, crew := graphFixture(t)
 	scope := `{"kind":"crew","id":"` + crew + `"}`
@@ -260,7 +269,11 @@ func TestWorkGraphSaysBusyWhenTooManyDistinctBuildsAreQueued(t *testing.T) {
 	hold := make(chan struct{})
 	started := make(chan struct{})
 	go workGraphs.cache.Get(context.Background(), workgraph.GraphScope{Kind: workgraph.ScopeCrew, ID: "other"}, "r",
-		func(ctx context.Context) (workgraph.Input, error) { close(started); <-hold; return workgraph.Input{}, ctx.Err() })
+		func(ctx context.Context) (workgraph.Input, error) {
+			close(started)
+			<-hold
+			return workgraph.Input{}, ctx.Err()
+		})
 	<-started
 	defer close(hold)
 	if _, bad := w.call(`{"scope":{"kind":"crew","id":"` + crew + `"}}`); bad == nil || bad["code"] != appwire.CodeBusy {

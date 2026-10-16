@@ -264,14 +264,6 @@ func TestAQueuedBuildNobodyWaitsForLeavesTheGate(t *testing.T) {
 	}
 }
 
-// A build heavier than the whole gate runs alone instead of never.
-func TestABuildHeavierThanTheGateRunsAlone(t *testing.T) {
-	c := NewCache(CacheLimits{Bytes: 1 << 30, Entries: 8, Pending: 4, BuildBytes: 10})
-	if _, err := c.GetWeighted(context.Background(), scopeN(1), "r", 1<<40, smallInput(3)); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func BenchmarkCacheHit(b *testing.B) {
 	c := NewCache(CacheLimits{Bytes: 1 << 30, Entries: 8, Pending: 4, BuildBytes: 1 << 20})
 	if _, err := c.Get(context.Background(), scopeN(1), "r", smallInput(1000)); err != nil {

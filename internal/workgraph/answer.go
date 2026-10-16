@@ -131,6 +131,7 @@ func (s *Snapshot) base(view string) *GraphResult {
 	cov := s.coverage
 	cov.Unread = append([]OwnerIssue(nil), s.coverage.Unread...)
 	cov.Excluded = append([]string(nil), s.coverage.Excluded...)
+	cov.Unavailable = append([]string(nil), s.coverage.Unavailable...)
 	return &GraphResult{
 		Contract: Contract, View: view, Revision: s.revision, AsOf: copyTime(s.asOf), Scope: s.scope,
 		About: about, Totals: totals, Coverage: cov, Diagnostics: cloneDiagnostics(s.diag),

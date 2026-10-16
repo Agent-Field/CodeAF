@@ -48,16 +48,20 @@ const (
 	// bigger than that is served and not kept. graphPending is how many
 	// DISTINCT builds may be queued or running (a request for a build already
 	// pending joins it for free), and graphBuildBytes the weight of builds
-	// running at once, a build weighing graphBuildWeight bytes a fact.
+	// running at once (each build weighed by workgraph.BuildWeight).
 	graphCacheEntries = 8
 	graphPending      = 8
-	graphBuildBytes   = 64 << 20
-	graphBuildWeight  = 4608
+	graphBuildBytes   = session.WorkBuildBytes
 	// graphRequestBytes is the working set of requests loading at once, weighed
-	// by their files' sizes, and graphRequestWaiters how many may wait for room;
-	// the next is told busy.
-	graphRequestBytes   = 64 << 20
+	// by their files' sizes at decode inflation, and graphRequestWaiters how many
+	// may wait for room; the next is told busy. A request whose files alone are
+	// heavier than this is refused as too large before any is read.
+	graphRequestBytes   = 28 << 20
 	graphRequestWaiters = 16
+	// graphScopeFactBytes is the most estimated bytes of facts one request
+	// accumulates across its conversations. It is counted AS THEY ARE READ, so a
+	// scope that will not fit stops reading at the conversation that crossed it.
+	graphScopeFactBytes = 12 << 20
 	// graphMaxUnread is how many unreadable conversations an answer names.
 	graphMaxUnread = 16
 )
@@ -123,7 +127,11 @@ func (b *appBackend) WorkGraph(ctx context.Context, req workgraph.GraphRequest) 
 	if err != nil {
 		return nil, err
 	}
-	held, err := g.requests.Acquire(ctx, g.requestWeight(plan))
+	need := g.requestWeight(plan)
+	if need > graphRequestBytes {
+		return nil, narrower(plan, workgraph.NewTooLarge("files", need, graphRequestBytes))
+	}
+	held, err := g.requests.Acquire(ctx, need)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +140,22 @@ func (b *appBackend) WorkGraph(ctx context.Context, req workgraph.GraphRequest) 
 	if errors.Is(err, session.ErrWorkBusy) {
 		return nil, workgraph.ErrBusy
 	}
+	var tooLarge *workgraph.TooLarge
+	if errors.As(err, &tooLarge) {
+		return nil, narrower(plan, tooLarge)
+	}
 	return res, err
+}
+
+// narrower says which smaller scope is worth asking for instead.
+func narrower(plan graphPlan, e *workgraph.TooLarge) error {
+	switch plan.scope.Kind {
+	case workgraph.ScopeCrew:
+		e.Scope = string(workgraph.ScopeAgent)
+	case workgraph.ScopeAgent:
+		e.Scope = string(workgraph.ScopeTask)
+	}
+	return e
 }
 
 // requestWeight is what a plan's files hold at peak once read.
@@ -153,22 +176,13 @@ func (g *appWorkGraph) answer(ctx context.Context, req workgraph.GraphRequest, p
 	if req.IfRevision != "" && req.IfRevision == revision {
 		return unchangedGraph(req, revision), nil
 	}
-	snap, err := g.cache.GetWeighted(ctx, req.Scope, revision, int64(loaded.factCount())*graphBuildWeight, func(ctx context.Context) (workgraph.Input, error) {
+	snap, err := g.cache.GetWeighted(ctx, req.Scope, revision, loaded.weight, func(ctx context.Context) (workgraph.Input, error) {
 		return loaded.input(ctx, g, plan, revision)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return snap.Answer(ctx, req)
-}
-
-// factCount is how many facts the build will be given.
-func (l *graphLoaded) factCount() int {
-	n := 0
-	for _, o := range l.owners {
-		n += len(o.Facts)
-	}
-	return min(n, workgraph.MaxScopeNodes)
 }
 
 func unchangedGraph(req workgraph.GraphRequest, revision string) *workgraph.GraphResult {
@@ -408,8 +422,23 @@ type graphLoaded struct {
 	unread   []workgraph.OwnerIssue
 	external []externalOwner
 	indexes  []string
-	// truncated says conversations were left unread at the scope bound.
-	truncated bool
+	// bytes and weight are what the owners read so far hold and what building
+	// them would allocate, charged by [graphLoaded.charge].
+	bytes, weight int64
+}
+
+// charge adds one conversation to the request's working set, or refuses with
+// [workgraph.TooLarge] when the set would pass its quota or the build gate.
+func (l *graphLoaded) charge(facts *session.OwnerFacts) error {
+	l.bytes += facts.Bytes
+	l.weight += facts.Weight
+	switch {
+	case l.bytes > graphScopeFactBytes:
+		return workgraph.NewTooLarge("facts", l.bytes, graphScopeFactBytes)
+	case l.weight > graphBuildBytes:
+		return workgraph.NewTooLarge("build", l.weight, graphBuildBytes)
+	}
+	return nil
 }
 
 // externalOwner is a conversation read only to say the state of a target.
@@ -425,17 +454,8 @@ func (g *appWorkGraph) load(ctx context.Context, plan graphPlan) (*graphLoaded, 
 	out := &graphLoaded{unread: append([]workgraph.OwnerIssue(nil), plan.missing...)}
 	inScope := map[string]bool{}
 	indexes := map[string]bool{}
-	total := 0
 	for _, o := range plan.owners {
 		inScope[o.id] = true
-		// A SCOPE IS BUILT FROM AT MOST workgraph.MaxScopeNodes TASKS, and the
-		// conversations past that are not even read: they are named unread
-		// (too_large) and the answer is truncated, never silently short.
-		if total >= workgraph.MaxScopeNodes {
-			out.truncated = true
-			out.unread = append(out.unread, workgraph.OwnerIssue{Owner: o.id, Reason: session.WorkIssueTooLarge})
-			continue
-		}
 		facts, err := g.source.Owner(ctx, o.id, o.dir)
 		switch {
 		case err == session.ErrWorkOwnerMissing:
@@ -446,8 +466,13 @@ func (g *appWorkGraph) load(ctx context.Context, plan graphPlan) (*graphLoaded, 
 		case facts.Issue != "":
 			out.unread = append(out.unread, workgraph.OwnerIssue{Owner: o.id, Reason: facts.Issue})
 		}
+		// THE QUOTA IS CHARGED AS EACH CONVERSATION ARRIVES. A scope that cannot
+		// fit stops reading at the conversation that crossed the line, so the
+		// refusal costs what was read so far and not the whole scope.
+		if err := out.charge(facts); err != nil {
+			return nil, err
+		}
 		out.owners = append(out.owners, facts)
-		total += len(facts.Facts)
 		indexes[session.TaskIndexPath(session.Place{Dir: o.dir}.Transcript())] = true
 	}
 	for path := range indexes {
@@ -523,8 +548,7 @@ func (l *graphLoaded) revision(plan graphPlan) string {
 func (l *graphLoaded) input(ctx context.Context, g *appWorkGraph, plan graphPlan, revision string) (workgraph.Input, error) {
 	in := workgraph.Input{
 		Scope: plan.scope, About: plan.about, Root: plan.root, Crews: plan.crews, Members: plan.members,
-		Revision: revision, AsOf: time.Now(), Owners: len(l.owners) + len(l.unread), Excluded: session.WorkExcluded,
-		Truncated: l.truncated,
+		Revision: revision, AsOf: time.Now(), Owners: len(l.owners) + len(l.unread), Excluded: session.WorkExcluded, Unavailable: session.WorkUnavailable,
 	}
 	if len(l.unread) > graphMaxUnread {
 		in.Unread = l.unread[:graphMaxUnread]
@@ -543,15 +567,9 @@ func (l *graphLoaded) input(ctx context.Context, g *appWorkGraph, plan graphPlan
 	for _, o := range l.owners {
 		total += len(o.Facts)
 	}
-	in.Facts = make([]workgraph.Fact, 0, min(total, workgraph.MaxScopeNodes))
+	in.Facts = make([]workgraph.Fact, 0, total)
 	for _, o := range l.owners {
-		for _, f := range o.Facts {
-			if len(in.Facts) == workgraph.MaxScopeNodes {
-				in.Truncated = true
-				break
-			}
-			in.Facts = append(in.Facts, f)
-		}
+		in.Facts = append(in.Facts, o.Facts...)
 	}
 	l.overlayChecks(&in, plan, checks)
 	in.Resolve = l.resolver()

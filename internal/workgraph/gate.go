@@ -9,8 +9,11 @@ import (
 // Gate is a weighted, first-in-first-out admission: capacity units of running
 // weight (bytes, in both its users), waiters parked on a channel each and no
 // goroutine of the gate's own. A weight above capacity is clamped to it, so a
-// heavy job runs alone rather than never. Acquire honours its context, and a
-// waiter that leaves hands back anything it was granted as it left.
+// Acquire honours its context, and a waiter that leaves hands back anything it
+// was granted as it left. A weight ABOVE capacity is refused with [TooLarge]:
+// there is no exemption for the heaviest job, because the capacity is the
+// promise about memory and a job that does not fit it is the one the promise is
+// about.
 type Gate struct {
 	mu         sync.Mutex
 	capacity   int64
@@ -39,7 +42,10 @@ func (g *Gate) Limit(waiters int) *Gate {
 // Acquire waits for weight units of capacity and returns what it took, which
 // the caller hands back to [Gate.Release].
 func (g *Gate) Acquire(ctx context.Context, weight int64) (int64, error) {
-	weight = min(max(weight, 1), g.capacity)
+	weight = max(weight, 1)
+	if weight > g.capacity {
+		return 0, NewTooLarge("working set", weight, g.capacity)
+	}
 	g.mu.Lock()
 	if g.queue.Len() == 0 && g.used+weight <= g.capacity {
 		g.used += weight

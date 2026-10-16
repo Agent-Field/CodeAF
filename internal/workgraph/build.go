@@ -409,11 +409,12 @@ func (b *builder) finish() error {
 func (b *builder) coverage() Coverage {
 	s := b.snap
 	c := Coverage{
-		Complete:  len(b.in.Unread) == 0 && !b.in.Truncated,
-		Truncated: b.in.Truncated,
-		Owners:    b.in.Owners,
-		Unread:    append([]OwnerIssue(nil), b.in.Unread...),
-		Excluded:  append([]string(nil), b.in.Excluded...),
+		Complete:    len(b.in.Unread) == 0 && !b.in.Truncated,
+		Truncated:   b.in.Truncated,
+		Owners:      b.in.Owners,
+		Unread:      append([]OwnerIssue(nil), b.in.Unread...),
+		Excluded:    append([]string(nil), b.in.Excluded...),
+		Unavailable: append([]string(nil), b.in.Unavailable...),
 	}
 	if len(c.Unread) > 16 {
 		c.Unread = c.Unread[:16]
@@ -467,6 +468,10 @@ func cloneNode(n *GraphNode) *GraphNode {
 			t.Anchor = &a
 		}
 		c.Instructions = &t
+	}
+	if n.ElapsedMS != nil {
+		ms := *n.ElapsedMS
+		c.ElapsedMS = &ms
 	}
 	c.Route = append([]RouteSeat(nil), n.Route...)
 	for i := range c.Route {

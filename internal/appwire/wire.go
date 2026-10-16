@@ -36,6 +36,10 @@ const (
 	// CodeCycle refuses a collections.add that would make a collection hold
 	// itself, at any depth.
 	CodeCycle = "cycle"
+	// CodeTooLarge refuses a read whose working set would not fit the engine's
+	// memory budget. It is additive: an app that does not know the word treats
+	// it as any failure, and one that does reads Error.Detail.
+	CodeTooLarge = "too_large"
 )
 
 // The states an agent can be in, as the app draws them.
@@ -85,6 +89,9 @@ type Error struct {
 	Message string `json:"message"`
 	// Changed names the files a conflict is about ([CodeConflict]).
 	Changed []string `json:"changed,omitempty"`
+	// Detail is the typed account of a refusal that has one: a [CodeTooLarge]
+	// carries what did not fit, by how much and which smaller scope to ask for.
+	Detail any `json:"detail,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }

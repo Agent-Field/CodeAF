@@ -91,6 +91,9 @@ func nodeBytes(n *GraphNode) int64 {
 	if n.Spend != nil {
 		b += int64(unsafe.Sizeof(*n.Spend)) + strBytes(n.Spend.Basis)
 	}
+	if n.ElapsedMS != nil {
+		b += 8
+	}
 	if n.Checks != nil {
 		b += int64(unsafe.Sizeof(*n.Checks))
 	}
@@ -148,3 +151,55 @@ func (s *Snapshot) estimateBytes() int64 {
 
 // Bytes is the conservative size of the snapshot the cache budgets it at.
 func (s *Snapshot) Bytes() int64 { return s.bytes }
+
+// FactBytes is the conservative size of one fact as its producer holds it: the
+// node as [nodeBytes] counts it plus its waits. A producer budgets what it
+// accumulates with this, so the figure it bounds is the one the builder is later
+// charged for.
+func FactBytes(f *Fact) int64 {
+	b := nodeBytes(&f.Node)
+	for _, w := range f.Waits {
+		b += int64(unsafe.Sizeof(w)) + strBytes(w.On.Owner) + strBytes(w.On.Task) + strBytes(w.Via)
+	}
+	return b * fudge / 100
+}
+
+// WHAT BUILDING COSTS. A build allocates several times what its input holds:
+// it copies every node, builds every edge (a dense graph's edges dominate), and
+// indexes both ways. The multipliers below are not guesses made in the abstract:
+// TestBuildWeightIsNeverBelowWhatBuildAllocates measures a normal, a dense and a
+// long-text ten-thousand-task input against them, and fails if the weight falls
+// under the bytes really allocated.
+const (
+	// buildFixedFactor multiplies the structural bytes of a fact (its struct
+	// and pointers); strings are shared and cost one.
+	buildFixedFactor = 6
+	// buildEdgeBytes is what one stored wait costs to build into the graph.
+	buildEdgeBytes = 1400
+)
+
+// BuildWeight is the conservative peak allocation of building this fact into a
+// snapshot, in bytes.
+func BuildWeight(f *Fact) int64 {
+	str := factStrings(f)
+	fixed := FactBytes(f) - str
+	return fixed*buildFixedFactor + str + int64(len(f.Waits))*buildEdgeBytes
+}
+
+// factStrings is the bytes of the strings a fact holds, counted as FactBytes
+// counts them, so the structural remainder can be told from them.
+func factStrings(f *Fact) int64 {
+	n := &f.Node
+	b := strBytes(n.ID) + strBytes(n.Ref.Owner) + strBytes(n.Ref.Task) + strBytes(n.Kind) + strBytes(n.Title) +
+		strBytes(n.State) + strBytes(n.StateDetail) + strBytes(n.Ending) + strBytes(n.Parent) + strBytes(n.ParentState) + strBytes(n.Model) + strBytes(n.Links)
+	if n.Instructions != nil {
+		b += strBytes(n.Instructions.Source) + strBytes(n.Instructions.Text)
+	}
+	for _, p := range n.Files.Paths {
+		b += strBytes(p)
+	}
+	for _, w := range f.Waits {
+		b += strBytes(w.On.Owner) + strBytes(w.On.Task) + strBytes(w.Via)
+	}
+	return b
+}

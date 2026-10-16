@@ -345,3 +345,24 @@ func TestTheProjectionCarriesTheRecordedAnchorAndRouteOnly(t *testing.T) {
 		t.Fatalf("a row with no crew has a route: %+v", got.Node.Route)
 	}
 }
+
+// Elapsed and attempt are what the record froze and counted, and only for work
+// that ended; steps and asks are said to be unavailable, never drawn as zero.
+func TestTheProjectionCarriesElapsedAndAttemptOnlyWhereTheRecordKeptThem(t *testing.T) {
+	done := nodeFact(sourceOwner, taskRecord{ID: 1, Title: "t", Brief: "b", State: TaskDone, ElapsedMS: 4200, Attempt: 2}).Node
+	if done.ElapsedMS == nil || *done.ElapsedMS != 4200 || done.Attempt != 2 {
+		t.Fatalf("done node = elapsed %v attempt %d", done.ElapsedMS, done.Attempt)
+	}
+	for name, r := range map[string]taskRecord{
+		"running":          {ID: 2, Title: "t", Brief: "b", State: TaskRunning, ElapsedMS: 900},
+		"no elapsed":       {ID: 3, Title: "t", Brief: "b", State: TaskDone},
+		"queued attempt 0": {ID: 4, Title: "t", Brief: "b", State: TaskQueued},
+	} {
+		if n := nodeFact(sourceOwner, r).Node; n.ElapsedMS != nil || n.Attempt != 0 {
+			t.Errorf("%s: elapsed %v attempt %d", name, n.ElapsedMS, n.Attempt)
+		}
+	}
+	if len(WorkUnavailable) != 2 || WorkUnavailable[0] != "steps" || WorkUnavailable[1] != "asks" {
+		t.Fatalf("unavailable = %v", WorkUnavailable)
+	}
+}

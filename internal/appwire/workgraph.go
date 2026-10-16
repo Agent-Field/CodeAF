@@ -44,6 +44,10 @@ func workGraphError(err error) error {
 		return Errorf(CodeBadParams, "%s", trimPrefix(err.Error(), "workgraph: bad request: "))
 	case errors.Is(err, workgraph.ErrNotFound):
 		return Errorf(CodeNotFound, "%s", trimPrefix(err.Error(), "workgraph: not found: "))
+	case errors.Is(err, workgraph.ErrTooLarge):
+		var tl *workgraph.TooLarge
+		errors.As(err, &tl)
+		return &Error{Code: CodeTooLarge, Message: tl.Error(), Detail: tl}
 	case errors.Is(err, workgraph.ErrBusy):
 		return Errorf(CodeBusy, "work.graph is busy with other scopes; try again")
 	case errors.Is(err, context.DeadlineExceeded):

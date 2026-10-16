@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
 
 func wgOwners(t *testing.T, n, each int) []string { t.Helper(); return scaleFolders(t, n, each) }
@@ -135,7 +137,7 @@ func TestFactAndWaitBoundsAreReportedPartialNotSilent(t *testing.T) {
 // Many readers asking for one changed conversation share one read, and what
 // they get is one immutable value they may all read at once.
 func TestConcurrentReadsOfOneConversationAreCoalescedAndSafe(t *testing.T) {
-	dirs := wgOwners(t, 1, 20000)
+	dirs := wgOwners(t, 1, 6000)
 	source := NewWorkSource()
 	var wg sync.WaitGroup
 	start := make(chan struct{})
@@ -155,7 +157,7 @@ func TestConcurrentReadsOfOneConversationAreCoalescedAndSafe(t *testing.T) {
 			for j := range got.Facts {
 				total += len(got.Facts[j].Node.Title)
 			}
-			if f, ok := got.Find("20000"); !ok || total == 0 || f.Node.Ref.Task != "20000" {
+			if f, ok := got.Find("6000"); !ok || total == 0 || f.Node.Ref.Task != "6000" {
 				t.Error("a shared value read wrongly")
 			}
 		}()
@@ -178,7 +180,7 @@ func TestConcurrentReadsOfOneConversationAreCoalescedAndSafe(t *testing.T) {
 // A caller that gives up stops waiting at once, and when nobody waits the read
 // is cancelled; the next caller reads normally.
 func TestAWaiterThatLeavesCancelsTheReadAndTheNextCallerSucceeds(t *testing.T) {
-	dirs := wgOwners(t, 1, 30000)
+	dirs := wgOwners(t, 1, 6000)
 	source := NewWorkSource()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -193,7 +195,7 @@ func TestAWaiterThatLeavesCancelsTheReadAndTheNextCallerSucceeds(t *testing.T) {
 		t.Fatal("a cancelled caller kept waiting")
 	}
 	got, err := source.Owner(context.Background(), wgOwnerOf(dirs[0]), dirs[0])
-	if err != nil || len(got.Facts) != defaultFacts || got.Issue != WorkIssuePartial {
+	if err != nil || len(got.Facts) != 6000 || got.Issue != "" {
 		t.Fatalf("next caller: %d facts, %v", len(got.Facts), err)
 	}
 }
@@ -367,18 +369,20 @@ func TestRawDecodesAreWeighedAndTheGateNeverOverfills(t *testing.T) {
 	if source.Parses() < 12 {
 		t.Fatalf("parses %d", source.Parses())
 	}
-	// A gate smaller than any one decode still reads, alone.
-	tiny := NewWorkSourceLimits(WorkLimits{RawBytes: 1})
-	if got, err := tiny.Owner(context.Background(), wgOwnerOf(dirs[0]), dirs[0]); err != nil || len(got.Facts) != 200 {
-		t.Fatalf("a heavy read alone: %v", err)
+	// NO EXEMPTION: a gate smaller than one decode refuses it, typed, and reads nothing.
+	tiny := NewWorkSourceLimits(WorkLimits{RawBytes: one - 1})
+	before := tiny.Parses()
+	if _, err := tiny.Owner(context.Background(), wgOwnerOf(dirs[0]), dirs[0]); !errors.Is(err, workgraph.ErrTooLarge) || tiny.Parses() != before {
+		t.Fatalf("a decode heavier than the gate: err %v, parses %d -> %d", err, before, tiny.Parses())
 	}
 }
 
 // A caller waiting for room at the gate stops at its own deadline.
 func TestAReadWaitingForRawRoomStopsWithItsCaller(t *testing.T) {
 	dirs := wgOwners(t, 2, 50)
-	source := NewWorkSourceLimits(WorkLimits{RawBytes: 1})
-	held, err := source.raw.Acquire(context.Background(), 1)
+	room := NewWorkSource().rawWeight(dirs[0])
+	source := NewWorkSourceLimits(WorkLimits{RawBytes: room})
+	held, err := source.raw.Acquire(context.Background(), room)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,12 +397,35 @@ func TestAReadWaitingForRawRoomStopsWithItsCaller(t *testing.T) {
 	}
 }
 
-// The aggregate budget is a number somebody can add up: the source's three
-// shares plus the snapshot cache's must not pass 128 MiB.
+// The aggregate budget is a number somebody can add up: what is retained plus
+// what may be in flight, with no exemption in any of them, is at most 128 MiB.
 func TestTheAggregateBudgetIsAtMostOneHundredTwentyEightMiB(t *testing.T) {
 	l := WorkLimits{}.withDefaults()
-	sum := l.CacheBytes + l.IndexBytes + l.RawBytes + WorkSnapshotBytes
-	if sum > 128<<20 {
-		t.Fatalf("source %d + index %d + raw %d + snapshots %d = %d MiB", l.CacheBytes>>20, l.IndexBytes>>20, l.RawBytes>>20, WorkSnapshotBytes>>20, sum>>20)
+	retained := l.CacheBytes + l.IndexBytes + WorkSnapshotBytes
+	inflight := l.RawBytes + WorkBuildBytes
+	if sum := retained + inflight; sum > 128<<20 {
+		t.Fatalf("retained %d MiB + in flight %d MiB = %d MiB", retained>>20, inflight>>20, sum>>20)
+	}
+	// A conversation that is read and kept fits its own cache share twice over,
+	// and the largest file read weighs no more than the gate that admits it.
+	if l.OwnerBytes*2 > l.CacheBytes || (l.FileMax+l.PlanMax)*rawInflation > l.RawBytes {
+		t.Fatalf("owner quota %d, file %d + plan %d against cache %d and gate %d", l.OwnerBytes, l.FileMax, l.PlanMax, l.CacheBytes, l.RawBytes)
+	}
+}
+
+// A conversation past its byte quota is cut at the quota, says partial, and
+// keeps everything before the cut whole.
+func TestAConversationPastItsByteQuotaIsPartialAndNotCut(t *testing.T) {
+	dirs := wgOwners(t, 1, 400)
+	source := NewWorkSourceLimits(WorkLimits{OwnerBytes: 100 << 10})
+	got, err := source.Owner(context.Background(), wgOwnerOf(dirs[0]), dirs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Issue != WorkIssuePartial || len(got.Facts) == 0 || len(got.Facts) >= 400 || got.Bytes > 100<<10+int64(len(got.Facts))*48 {
+		t.Fatalf("%d facts, %d bytes, issue %q", len(got.Facts), got.Bytes, got.Issue)
+	}
+	if got.Weight <= got.Bytes {
+		t.Fatalf("weight %d is under bytes %d", got.Weight, got.Bytes)
 	}
 }
