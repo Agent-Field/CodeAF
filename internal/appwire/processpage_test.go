@@ -3,18 +3,22 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 )
 
 type processEngine struct {
 	sendEngine
+	mu    sync.Mutex
 	page  ProcessPageAsk
 	log   ProcessLogAsk
 	block chan struct{}
 }
 
 func (p *processEngine) PageProcesses(_ context.Context, ask ProcessPageAsk) (*ProcessPageResult, error) {
+	p.mu.Lock()
 	p.page = ask
+	p.mu.Unlock()
 	if p.block != nil {
 		<-p.block
 	}
@@ -22,7 +26,9 @@ func (p *processEngine) PageProcesses(_ context.Context, ask ProcessPageAsk) (*P
 }
 
 func (p *processEngine) ReadProcessLog(_ context.Context, ask ProcessLogAsk) (*ProcessLogResult, error) {
+	p.mu.Lock()
 	p.log = ask
+	p.mu.Unlock()
 	return &ProcessLogResult{Text: "x\n", Next: 2, Size: 2, EOF: true}, nil
 }
 
