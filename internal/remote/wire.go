@@ -1068,6 +1068,11 @@ type Welcome struct {
 	ComposedMessages bool `json:"composedMessages,omitempty"`
 	// MessageReceipts also acknowledges ordinary text with an engine-minted ID.
 	MessageReceipts bool `json:"messageReceipts,omitempty"`
+	// MessageClientIDs says this engine keeps a submission's ClientID on the
+	// person's own line ([session.Submission.ClientID]). Absence is an older
+	// engine, which would drop the field unread: a call carrying one is refused
+	// before it is sent rather than run without the correlation it asked for.
+	MessageClientIDs bool `json:"messageClientIds,omitempty"`
 	// SessionInstance identifies this live conversation owner, not its durable
 	// transcript. A replaced engine can reopen the same file with stream IDs
 	// starting over, so a returning surface must forget the previous owner IDs.
@@ -1502,13 +1507,16 @@ type SubmitArgs struct {
 	Media      []session.SubmissionMedia `json:"media,omitempty"`
 	Annotation *session.Annotation       `json:"annotation,omitempty"`
 	Queued     bool                      `json:"queued,omitempty"`
+	// ClientID is the door's opaque name for the message
+	// ([session.Submission.ClientID]); correlation only, never idempotency.
+	ClientID string `json:"clientId,omitempty"`
 }
 
 // marked is whether the call carries a mark beside its words. Submit, Steer
 // and FollowUp each take one; a marked call is kept with its mark or refused
 // whole, and never run as its words alone.
 func (a SubmitArgs) marked() bool {
-	return a.Queued || a.Said != nil || len(a.Attachments) > 0 || len(a.Reads) > 0 || a.composed()
+	return a.Queued || a.ClientID != "" || a.Said != nil || len(a.Attachments) > 0 || len(a.Reads) > 0 || a.composed()
 }
 
 // composed is whether the call carries pictures or an annotation, which only a
@@ -1517,12 +1525,12 @@ func (a SubmitArgs) composed() bool { return len(a.Media) > 0 || a.Annotation !=
 
 // submission is the call as the agent's own door for a mark takes it.
 func (a SubmitArgs) submission() session.Submission {
-	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued}
+	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued, ClientID: a.ClientID}
 }
 
 // argsOf is a submission as the wire carries it.
 func argsOf(message session.Submission) SubmitArgs {
-	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued}
+	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued, ClientID: message.ClientID}
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the

@@ -1277,6 +1277,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		MessageMarks:               messageMarksKnown(sess.agent),
 		ComposedMessages:           composedKnown(sess.agent),
 		MessageReceipts:            composedKnown(sess.agent),
+		MessageClientIDs:           messageMarksKnown(sess.agent),
 		SteerMarks:                 steerMarksKnown(sess.agent),
 		FollowUpMarks:              followUpMarksKnown(sess.agent),
 		Version:                    Version,
