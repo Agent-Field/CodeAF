@@ -629,7 +629,14 @@ type TaskNode struct {
 	// seed a card codeaf is holding, and an engine that died mid-turn quietly
 	// dropping the hand-back it owed.
 	decider TaskAskOwner
-	started time.Time
+	// waitsExt are the tasks of other conversations this node waits on
+	// ([Agent.WaitOnTask]), admittedAt the instant it entered the graph and
+	// stateAt the instant it entered its present state; the checkpoint keeps all
+	// three (taskRecord.WaitsExternal, AdmittedAt, StateAt).
+	waitsExt   []TaskRef
+	admittedAt time.Time
+	stateAt    time.Time
+	started    time.Time
 	// ended is the instant this node last landed. It is stamped at the live
 	// transition and kept on the checkpoint, so a rebuilt row reads the record's
 	// fact instead of dating old work with the clock that happened to read it.
@@ -1082,6 +1089,13 @@ type TaskGraph struct {
 	// a slot frees, which is what a queue in a graph is for.
 	limit int
 
+	// ext is what this graph knows of the tasks its nodes wait on in OTHER
+	// conversations, and extCtx cancels the reads that learn it at quit
+	// (task_external.go). All of it is guarded by mu.
+	ext       externalState
+	extCtx    context.Context
+	extCancel context.CancelFunc
+
 	// governor is the machine's own answer to "may one more node start"
 	// (task_pressure.go), and nil is no governor: every scripted graph in the
 	// tests, and a session whose person zeroed both rows.
@@ -1378,16 +1392,18 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// (turnhandoff.go).
 	admitter := g.admittingAgent(spec)
 	node := &TaskNode{
-		graph:     g,
-		id:        id,
-		dependsOn: spec.dependsOn,
-		parent:    spec.parent,
-		depth:     spec.depth,
-		owner:     spec.owner,
-		done:      make(chan struct{}),
-		spec:      spec,
-		kind:      spec.kind(),
-		state:     TaskQueued,
+		graph:      g,
+		id:         id,
+		dependsOn:  spec.dependsOn,
+		admittedAt: time.Now(),
+		stateAt:    time.Now(),
+		parent:     spec.parent,
+		depth:      spec.depth,
+		owner:      spec.owner,
+		done:       make(chan struct{}),
+		spec:       spec,
+		kind:       spec.kind(),
+		state:      TaskQueued,
 		// WHOSE REQUEST HANDED THIS OUT, stamped at the one door every task in
 		// this package comes through so no road has to remember to do it
 		// (turnhandoff.go).
@@ -1596,7 +1612,7 @@ func (g *TaskGraph) runFrontier() {
 		}
 		ready, blocked := g.readinessLocked(node)
 		if blocked != "" {
-			node.state = TaskFailed
+			node.setStateLocked(TaskFailed)
 			node.ended = time.Now()
 			node.landLocked(blocked)
 			node.held = ""
@@ -1622,7 +1638,7 @@ func (g *TaskGraph) runFrontier() {
 		// JIT: the brief is assembled here, with the prerequisites' reports in
 		// hand, and never at proposal time when they did not exist yet.
 		node.brief = g.briefLocked(node, orders)
-		node.state = TaskRunning
+		node.setStateLocked(TaskRunning)
 		node.app.Version++
 		node.started = time.Now()
 		// The hold is lifted by the start itself, so the running update this
@@ -1657,6 +1673,9 @@ func (g *TaskGraph) runFrontier() {
 	if machineHeld {
 		g.armPoll()
 	}
+	// AND A WAIT ON ANOTHER CONVERSATION'S TASK IS LOOKED AT once, outside every
+	// lock, only while one is pending (task_external.go).
+	g.armExternal()
 
 	// The pass's transitions reach the disk BEFORE the runs they authorize start:
 	// a node that is running in this process must never be a node the checkpoint
@@ -1841,6 +1860,9 @@ func (g *TaskGraph) stopAll(grace time.Duration) {
 	}
 	g.mu.Lock()
 	g.quitting = true
+	if g.extCancel != nil {
+		g.extCancel()
+	}
 	var cuts []context.CancelFunc
 	for _, id := range g.order {
 		node := g.nodes[id]
@@ -1926,7 +1948,13 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 			ready = false
 		}
 	}
-	return ready, ""
+	if len(node.waitsExt) == 0 {
+		return ready, ""
+	}
+	// A WAIT ON ANOTHER CONVERSATION IS READ FROM THE OBSERVATION and never from
+	// the reader: this lock is the one every control takes (task_external.go).
+	outside, blocked := g.externalVerdict(node)
+	return ready && outside, blocked
 }
 
 // briefLocked assembles what one node is handed: its own brief, then what the
@@ -2118,7 +2146,7 @@ func shareReports(reports []string, pot int) []string {
 // state transition and the slot being handed back.
 func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.mu.Lock()
-	node.state = state
+	node.setStateLocked(state)
 	node.app.Version++
 	node.ended = time.Now()
 	if !node.started.IsZero() {
@@ -2180,7 +2208,7 @@ func (g *TaskGraph) handBackSlotLocked(node *TaskNode) {
 // dependents move on the new state.
 func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Lock()
-	node.state = state
+	node.setStateLocked(state)
 	node.app.Version++
 	node.ended = time.Now()
 	// AND THE SETTLE'S OWN CLAIM IS HANDED BACK IN THE SAME WRITE — the claim

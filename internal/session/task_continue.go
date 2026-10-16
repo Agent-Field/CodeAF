@@ -142,7 +142,7 @@ func (g *TaskGraph) reopenAttempt(node *TaskNode, words string, failedOnly bool)
 		node.offer = nil
 		node.revise = nil
 	}
-	node.state = TaskQueued
+	node.setStateLocked(TaskQueued)
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""
@@ -444,7 +444,7 @@ func (g *TaskGraph) runAgainFromItsBranch(node *TaskNode) bool {
 		node.offer = nil
 		node.revise = nil
 	}
-	node.state = TaskQueued
+	node.setStateLocked(TaskQueued)
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""

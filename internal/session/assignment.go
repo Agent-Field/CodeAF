@@ -1164,7 +1164,7 @@ func (g *TaskGraph) runAgainForDirections(node *TaskNode) bool {
 	node.finding = composeDirectedFinding(node.deliveredLocked(), waiting)
 	node.publishing = false
 	node.continuing = true
-	node.state = TaskQueued
+	node.setStateLocked(TaskQueued)
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""

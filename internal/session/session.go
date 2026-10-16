@@ -2121,6 +2121,12 @@ type Config struct {
 	// conversation, and for every scripted graph in the tests.
 	TaskLanes *TaskLanes
 
+	// ExternalTasks reads one task of ANOTHER conversation, for the waits
+	// [Agent.WaitOnTask] records (task_external.go). It may do IO; the engine
+	// never calls it under a lock. Left nil the capability is absent: no
+	// cross-conversation wait can be recorded, and none is ever enforced.
+	ExternalTasks ExternalTasks
+
 	// InTask marks this agent as ONE TASK NODE'S RUNNER (task_run.go) rather
 	// than the conversation. It changes exactly two things, and both are
 	// consequences of the same fact — there is nobody to talk to:

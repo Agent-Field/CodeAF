@@ -194,6 +194,19 @@ type taskRecord struct {
 	// as it always did: no plan task, no plan lines, nothing dispatched.
 	PlanID    string   `json:"plan_id,omitempty"`
 	DependsOn []uint64 `json:"depends_on,omitempty"`
+	// WaitsExternal are the tasks of OTHER conversations this node waits on
+	// ([Agent.WaitOnTask]): stored, and enforced by the same frontier that
+	// enforces DependsOn (task_external.go). Absent on every node that waits on
+	// nothing outside its conversation and on every checkpoint written before
+	// the link existed, which reads as "no such link recorded" and nothing more.
+	WaitsExternal []taskWaitRecord `json:"waits_external,omitempty"`
+	// AdmittedAt is the instant the node entered the graph, and StateAt the
+	// instant it entered the state it is in. BOTH ARE THE EVENT'S OWN CLOCK,
+	// stamped where the transition happens and never where a reader looks: a
+	// record written before they existed carries neither, and a reader must say
+	// the instant is not recorded rather than date old work with today.
+	AdmittedAt time.Time `json:"admittedAt,omitzero"`
+	StateAt    time.Time `json:"stateAt,omitzero"`
 
 	// Ground is the repository or folder the work IS ABOUT and Mode is how the
 	// node stands on it ([TaskMode]). Where says which directory the worker typed
@@ -1309,6 +1322,9 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Acceptance:     n.spec.acceptance,
 		PlanID:         n.spec.planID,
 		DependsOn:      dependsOn,
+		WaitsExternal:  waitRecords(n.waitsExt),
+		AdmittedAt:     n.admittedAt,
+		StateAt:        n.stateAt,
 		Parent:         n.parent,
 		Depth:          n.depth,
 		State:          n.state,
@@ -2158,11 +2174,14 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		app:        cloneAppTaskRecord(record.App),
 		nextModel:  record.NextModel,
 		nextEffort: record.NextEffort, graph: graph,
-		id:        record.ID,
-		dependsOn: record.DependsOn,
-		parent:    record.Parent,
-		depth:     record.Depth,
-		done:      make(chan struct{}),
+		id:         record.ID,
+		dependsOn:  record.DependsOn,
+		waitsExt:   waitRefs(record.WaitsExternal),
+		admittedAt: record.AdmittedAt,
+		stateAt:    record.StateAt,
+		parent:     record.Parent,
+		depth:      record.Depth,
+		done:       make(chan struct{}),
 		spec: taskSpec{
 			parent:      record.Parent,
 			depth:       record.Depth,
@@ -2367,6 +2386,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		record.State = TaskFailed
 		record.Report = harnessInterruptedReport
 		record.EndedAt = interruptedAt(record)
+		record.StateAt = record.EndedAt
 		return record, ""
 	}
 
@@ -2376,6 +2396,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		record.State = TaskFailed
 		record.Report = subharnessInterruptedReport
 		record.EndedAt = interruptedAt(record)
+		record.StateAt = record.EndedAt
 		return record, ""
 	}
 
@@ -2387,12 +2408,16 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		record.State = TaskFailed
 		record.Changed = mergePaths(record.Changed, record.Wrote)
 		record.EndedAt = interruptedAt(record)
+		record.StateAt = record.EndedAt
 		return record, ""
 	}
 
 	// A process exit pauses ordinary work; it does not make a finding about it.
 	// Put the node back on the frontier so the next session resumes it once.
 	record.State = TaskQueued
+	// WHEN IT WENT BACK TO QUEUED IS NOT KNOWN — the process that could have said
+	// so is gone — so the instant is left unrecorded rather than guessed.
+	record.StateAt = time.Time{}
 	// AND THE CUT ATTEMPT'S REASON DOES NOT RIDE INTO THE NEXT ONE. A node
 	// machinery cut where it stood carries [TaskEndingInterrupted] on its record
 	// (task_run.go's paused road), and [TaskNode.end] writes only the FIRST cause —
