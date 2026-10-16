@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -115,6 +116,7 @@ func TestProgramOnTheWireIsBoundedRedactedAndHonestlyPartial(t *testing.T) {
 	view.Stages = []session.AppProgramStage{{Name: secret, Word: secret}}
 	view.Ending = &delegate.Shown{Text: "done", Reason: secret, Ending: &delegate.EndFacts{Claim: secret, Reports: []string{secret}}}
 	view.Actions[0].Reason, view.Actions[0].Model = secret, secret
+	view.Models = []string{"m/one", secret}
 	wire = appTaskProgram(view)
 	raw, _ := json.Marshal(wire)
 	if strings.Contains(string(raw), "sk-abcdefghijklmnopqrstuvwxyz123456") {
@@ -303,5 +305,63 @@ func TestTasksProgramActionsPagesOverTheRealServer(t *testing.T) {
 	}
 	if _, failed := ask(4, agent.ID+":4", ""); failed == nil || failed["code"] != appwire.CodeBadParams {
 		t.Fatalf("no cursor answered %v", failed)
+	}
+}
+
+// filled sets every field reachable from v to something that is not its zero:
+// a pointer to a filled value, a one-element slice, a word, a number, true.
+func filled(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Pointer:
+		v.Set(reflect.New(v.Type().Elem()))
+		filled(v.Elem())
+	case reflect.Struct:
+		for i := range v.NumField() {
+			filled(v.Field(i))
+		}
+	case reflect.Slice:
+		v.Set(reflect.MakeSlice(v.Type(), 1, 1))
+		filled(v.Index(0))
+	case reflect.String:
+		v.SetString("said")
+	case reflect.Int:
+		v.SetInt(3)
+	case reflect.Bool:
+		v.SetBool(true)
+	}
+}
+
+// EVERY FACT AN ENDING KEEPS REACHES THE WIRE, under the key it is kept by: an
+// EndFacts with every field said maps to wire facts that say exactly the same,
+// nested accounts included. A field added to delegate.EndFacts without its wire
+// twin and its copy fails here, which is how nothing_to_audit was dropped.
+func TestEveryEndingFactReachesTheWire(t *testing.T) {
+	var facts delegate.EndFacts
+	filled(reflect.ValueOf(&facts).Elem())
+	var got map[string]any
+	// Once with the audit's account whole, once with it unknown.
+	for _, unknown := range []bool{false, true} {
+		facts.HuntCoverage.Unknown = unknown
+		kept, err := json.Marshal(facts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sent, err := json.Marshal(appEndingFacts(&facts))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var want map[string]any
+		if json.Unmarshal(kept, &want) != nil || json.Unmarshal(sent, &got) != nil {
+			t.Fatalf("kept %s sent %s", kept, sent)
+		}
+		if !reflect.DeepEqual(want, got) {
+			t.Fatalf("the ending kept\n%s\nand the wire said\n%s", kept, sent)
+		}
+	}
+	if reflect.TypeFor[delegate.EndFacts]().NumField() != reflect.TypeFor[appwire.EndingFacts]().NumField() {
+		t.Fatal("the wire's facts and the ending's have different fields")
+	}
+	if got["nothing_to_audit"] != true {
+		t.Fatalf("nothing_to_audit did not cross: %v", got)
 	}
 }

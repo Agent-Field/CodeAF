@@ -182,6 +182,10 @@ type EndingFacts struct {
 	Partial              *bool         `json:"partial,omitempty"`
 	AnalysisIncomplete   string        `json:"analysis_incomplete,omitempty"`
 	HuntCoverage         *HuntCoverage `json:"hunt_coverage,omitempty"`
+	// NothingToAudit is true-only: an audit of the changes found no change to
+	// audit, so its pass is not the pass of an audit that ran. Absent is not
+	// "there was something to audit".
+	NothingToAudit *bool `json:"nothing_to_audit,omitempty"`
 }
 
 // HuntCoverage is an audit's account of the hunts it attempted and the ones

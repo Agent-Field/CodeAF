@@ -27,13 +27,16 @@ func appTaskProgram(view *session.AppProgramView) *appwire.TaskProgram {
 	}
 	out := &appwire.TaskProgram{
 		Name: redact.Secrets(view.Name), LastStage: redact.Secrets(view.LastStage), CeilingUSD: view.CeilingUSD,
-		Models: view.Models, Effort: redact.Secrets(view.Effort), Listens: view.Listens,
+		Effort: redact.Secrets(view.Effort), Listens: view.Listens,
 		Listening: view.Listening, Started: view.Started, InboxClosed: redact.Secrets(view.InboxClosed),
 		Read: view.Read, ReadCut: view.ReadCut,
 	}
 	if view.Calls != nil {
 		calls := *view.Calls
 		out.Calls = &calls
+	}
+	for _, model := range view.Models {
+		out.Models = append(out.Models, redact.Secrets(model))
 	}
 	if !view.StartedAt.IsZero() {
 		at := view.StartedAt
@@ -130,13 +133,17 @@ func appEndingFacts(facts *delegate.EndFacts) *appwire.EndingFacts {
 		VerificationFailing: facts.VerificationFailing, VerificationCommands: facts.VerificationCommands,
 		Findings: facts.Findings, Blocking: facts.Blocking, Confirmed: facts.Confirmed, Likely: facts.Likely,
 		Inconclusive: facts.Inconclusive, RuledOut: facts.RuledOut, Partial: facts.Partial,
-		AnalysisIncomplete: redact.Secrets(facts.AnalysisIncomplete),
+		AnalysisIncomplete: redact.Secrets(facts.AnalysisIncomplete), NothingToAudit: facts.NothingToAudit,
 	}
 	for _, name := range facts.Reports {
 		out.Reports = append(out.Reports, redact.Secrets(name))
 	}
-	if coverage := facts.HuntCoverage; coverage != nil {
-		hunt := &appwire.HuntCoverage{Attempted: coverage.Attempted, Unknown: coverage.Unknown}
+	// AN UNKNOWN ACCOUNT IS UNKNOWN ALONE, as the ending keeps it
+	// (delegate.HuntCoverage): no attempted count and no failures beside it.
+	if coverage := facts.HuntCoverage; coverage != nil && coverage.Unknown {
+		out.HuntCoverage = &appwire.HuntCoverage{Unknown: true}
+	} else if coverage != nil {
+		hunt := &appwire.HuntCoverage{Attempted: coverage.Attempted}
 		for _, failure := range coverage.Failures {
 			hunt.Failures = append(hunt.Failures, appwire.HuntFailure{Strategy: redact.Secrets(failure.Strategy), Reason: redact.Secrets(failure.Reason)})
 		}
