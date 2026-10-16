@@ -147,6 +147,9 @@ type Agent struct {
 
 // Task is one node of an agent's task graph.
 type Task struct {
+	// Retryable is supported by this task road. The actual request still validates admission.
+	Retryable bool `json:"retryable"`
+
 	ID    string `json:"id"`
 	Agent string `json:"agent"`
 	// Parent is the task that asked for this one, and empty for a task the

@@ -3801,6 +3801,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Thinking:  thinking,
 		ID:        n.id,
 		Source:    cloneSource(n.spec.source),
+		Retryable: n.spec.quick == nil,
 		Dismissed: n.graph.dismissed[strconv.FormatUint(n.id, 10)] && n.state == TaskFailed && !n.stopped && n.endingLocked() != TaskEndingStopped && !n.app.Declined,
 		Title:     n.spec.title,
 		// Reopened task pages need the contract even when no proposal card survives.
@@ -4904,6 +4905,8 @@ func (a *Agent) readsTheDecisionLocked(node *TaskNode) bool {
 // A surface reading both sees an in-turn update on both, exactly as a surface
 // holding two Submit channels sees each event on each (see [Agent.Submit]).
 func (a *Agent) emitTaskUpdate(notice TaskNotice) {
+	notice.Retryable = a.tasker().retrySupported(notice.ID)
+
 	// WHETHER THE PERSON HID IT is the graph's fact, said on the one door every
 	// move goes through, so no road that builds a notice by hand can un-hide a task
 	// by forgetting to say so (task_dismiss.go).

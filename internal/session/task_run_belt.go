@@ -1646,6 +1646,7 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // halfway through would send the place back to guessing by title exactly when
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
+	notice.Retryable = false // This row uses appRunAction, which has no retry road.
 	notice = carryRunRow(g, notice)
 	notice = a.sourcedRunRow(g, notice)
 	notice.Dismissed = notice.State == TaskFailed && !notice.Stopped && notice.Ending != TaskEndingStopped && g.isDismissed(strconv.FormatUint(notice.ID, 10))

@@ -92,3 +92,27 @@ func TestAppDismissRefusalsAreBadParams(t *testing.T) {
 		}
 	}
 }
+
+func TestAppTaskRetrySupportIsAnExplicitProducerFact(t *testing.T) {
+	for _, supported := range []bool{false, true} {
+		task, ok := appTaskOf("a", &session.TaskNotice{ID: 1, Title: "same title", State: session.TaskFailed, Retryable: supported}, false, "", time.Now())
+		if !ok || task.Retryable != supported {
+			t.Fatalf("notice support = %v", task.Retryable)
+		}
+		view := appTaskOfView("a", session.AppTaskView{ID: "1", Title: "same title", State: "failed", Retryable: supported})
+		if view.Retryable != supported {
+			t.Fatalf("read support = %v", view.Retryable)
+		}
+		body, err := json.Marshal(task)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wire map[string]any
+		if err := json.Unmarshal(body, &wire); err != nil {
+			t.Fatal(err)
+		}
+		if value, exists := wire["retryable"]; !exists || value != supported {
+			t.Fatalf("support must be explicit, including false: %s", body)
+		}
+	}
+}

@@ -1592,6 +1592,7 @@ type orchestrateFamily struct {
 // [TaskGraph.document] and [Agent.replayTaskRoster] free to walk those rows under
 // the graph's own lock and closes no cycle.
 func (f *orchestrateFamily) publish(notice TaskNotice) {
+	notice.Retryable = false // Adaptive run rows have no retry road.
 	if f == nil || f.agent == nil {
 		return
 	}

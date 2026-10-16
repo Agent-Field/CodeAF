@@ -451,6 +451,9 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// Retryable says this producer supports a fresh attempt; admission is checked when requested.
+	Retryable bool
+
 	// Thinking is the effective setup, including a saved continuation choice.
 	Thinking string
 	// ID is the proposal's token: a surface hands it back to

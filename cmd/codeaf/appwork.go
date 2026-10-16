@@ -201,7 +201,8 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 		return appwire.Task{}, false
 	}
 	task := appwire.Task{
-		ID: appTaskID(agent, notice.ID), Agent: agent, Title: notice.Title, State: state, Group: notice.Run, UpdatedAt: now,
+		Retryable: notice.Retryable,
+		ID:        appTaskID(agent, notice.ID), Agent: agent, Title: notice.Title, State: state, Group: notice.Run, UpdatedAt: now,
 		Irreversible: notice.Irreversible, YourCall: state == appwire.TaskUnverified,
 		Result: redact.Secrets(strings.TrimSpace(notice.Result)), Files: appFiles(notice.Changed), SpentUSD: appFigure(notice.CostUSD),
 	}
@@ -274,7 +275,7 @@ func appTaskOfView(agent string, view session.AppTaskView) appwire.Task {
 	if n != 0 {
 		id = appTaskID(agent, n)
 	}
-	task := appwire.Task{ID: id, Agent: agent, Title: view.Title, Result: redact.Secrets(view.Result), Files: appFiles(view.Files), BudgetUSD: appFigure(view.Cap), SpentUSD: appFigure(view.Spent)}
+	task := appwire.Task{Retryable: view.Retryable, ID: id, Agent: agent, Title: view.Title, Result: redact.Secrets(view.Result), Files: appFiles(view.Files), BudgetUSD: appFigure(view.Cap), SpentUSD: appFigure(view.Spent)}
 	if p, err := strconv.ParseUint(view.Parent, 10, 64); err == nil && p != 0 {
 		task.Parent = appTaskID(agent, p)
 	}

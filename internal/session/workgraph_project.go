@@ -257,7 +257,7 @@ func nodeFact(owner string, r taskRecord) workgraph.Fact {
 		Landing: wgLanding(r.Merge, r.EndedAt), Files: wgFiles(r.Changed, r.Wrote),
 		Spend: wgSpend(r.CostUSD, wgTokens(r)), Links: "recorded",
 		ElapsedMS: wgElapsed(r.ElapsedMS, r.State), Attempt: r.Attempt,
-		Source: wgSource(r.Source),
+		Source: wgSource(r.Source), Retryable: r.Kind != TaskKindQuick && r.Quick == nil,
 	}
 	if r.Parent != 0 {
 		n.Parent = wgID(owner, r.Parent)

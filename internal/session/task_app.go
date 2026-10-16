@@ -15,6 +15,9 @@ import (
 // AppTaskView is an engine read, independent of the app's JSON contract.
 // Numeric graph ids and plan ids keep their existing bytes behind the HTTP codec.
 type AppTaskView struct {
+	// Retryable is a producer capability, not permission to bypass retry admission.
+	Retryable bool
+
 	ID, Parent, Title, Brief, State, Model, Origin, Result string
 	Waits                                                  []string
 	Deadline                                               time.Time
@@ -267,7 +270,7 @@ func (a *Agent) appGraphTasks(out []AppTaskView, cap float64, ids map[string]boo
 		notice := node.notice()
 		_, live, _ := a.taskLiveRead(node.id, taskLiveMaxTail)
 		graph.mu.Lock()
-		view := AppTaskView{RoutingState: TaskRoutingSingle, ID: strconv.FormatUint(node.id, 10), Title: notice.Title, Brief: notice.Brief, State: appNodeState(node), Model: notice.Model, Cap: cap, Spent: notice.CostUSD, Step: live.Steps, Result: notice.Report, Files: append([]string{}, notice.Changed...), Notes: node.appNotesLocked(), WorkLog: live.Lines, Elapsed: int64(notice.Elapsed.Seconds()), Version: node.app.Version + 1, Origin: "proposed"}
+		view := AppTaskView{Retryable: true, RoutingState: TaskRoutingSingle, ID: strconv.FormatUint(node.id, 10), Title: notice.Title, Brief: notice.Brief, State: appNodeState(node), Model: notice.Model, Cap: cap, Spent: notice.CostUSD, Step: live.Steps, Result: notice.Report, Files: append([]string{}, notice.Changed...), Notes: node.appNotesLocked(), WorkLog: live.Lines, Elapsed: int64(notice.Elapsed.Seconds()), Version: node.app.Version + 1, Origin: "proposed"}
 		if node.app.Brief != "" {
 			view.Brief = node.app.Brief
 		}

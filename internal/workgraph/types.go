@@ -534,6 +534,8 @@ type GraphNode struct {
 	// Both are facts of the record: a task with no Source has none recorded.
 	Source    *TaskSource `json:"source,omitempty"`
 	Dismissed bool        `json:"dismissed,omitempty"`
+	// Retryable is the recorded producer road's support, never inferred from its title or id.
+	Retryable bool `json:"retryable"`
 
 	Clock        Clock      `json:"clock"`
 	Instructions *GraphText `json:"instructions,omitempty"`
