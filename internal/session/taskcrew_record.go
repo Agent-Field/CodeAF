@@ -36,12 +36,20 @@ type TaskCrewRecord struct {
 	// all. TaskPins and Pending are the roles a person pinned for this task
 	// and those whose change has not answered yet. Restored is every time the
 	// crew came back from this checkpoint. All are absent on older rows.
-	Changes     []TaskCrewChange          `json:",omitempty"`
-	ChangeCount int                       `json:",omitempty"`
-	TaskPins    map[crewroute.Seat]bool   `json:",omitempty"`
-	Pending     map[crewroute.Seat]bool   `json:",omitempty"`
-	Restored    []time.Time               `json:",omitempty"`
-	SeatSends   map[crewroute.Seat]string `json:",omitempty"`
+	Changes     []TaskCrewChange        `json:",omitempty"`
+	ChangeCount int                     `json:",omitempty"`
+	TaskPins    map[crewroute.Seat]bool `json:",omitempty"`
+	Pending     map[crewroute.Seat]bool `json:",omitempty"`
+	Restored    []time.Time             `json:",omitempty"`
+	// RestoreCount counts every restart; Restored keeps the newest 16.
+	RestoreCount int                       `json:",omitempty"`
+	SeatSends    map[crewroute.Seat]string `json:",omitempty"`
+	// RoleFacts is 1 on a crew whose per-role facts — SeatStarted and the
+	// role tallies with their call counts — were kept since its admission.
+	// Absent (0) is an older checkpoint: which role ran, and whether a zero
+	// role spend was a real zero, is unknown.
+	RoleFacts   int                     `json:",omitempty"`
+	SeatStarted map[crewroute.Seat]bool `json:",omitempty"`
 }
 
 type crewFailureRecord struct {
@@ -85,7 +93,10 @@ func (c *taskCrew) record() *TaskCrewRecord {
 	r := &TaskCrewRecord{Version: 1, Routed: true, Call: c.call, Title: c.title, Brief: c.brief, Repo: c.repo,
 		Decision: c.decision, Original: c.original, Ladders: c.ladders, Rescue: c.rescue, Started: c.started, Bad: c.bad, Broke: c.broke, Gone: c.gone,
 		Swaps: c.swaps, FreeTried: c.freeTried, HelperUSD: c.helperUSD, DayAtStart: c.dayAtStart, InFlight: c.inFlight, Failed: map[string]crewFailureRecord{},
-		Changes: c.changes, ChangeCount: c.changeCount, TaskPins: c.taskPins, Pending: c.pending, Restored: c.restored, SeatSends: c.seatSends}
+		Changes: c.changes, ChangeCount: c.changeCount, TaskPins: c.taskPins, Pending: c.pending, Restored: c.restored, RestoreCount: c.restoreCount, SeatSends: c.seatSends, SeatStarted: c.seatStarted}
+	if c.roleFacts {
+		r.RoleFacts = 1
+	}
 	for send, f := range c.failed {
 		msg := ""
 		if f.err != nil {
@@ -166,9 +177,11 @@ func (a *Agent) restoreTaskCrew(row uint64, r *TaskCrewRecord) (*taskCrew, error
 	r = &saved
 	c := &taskCrew{call: r.Call, title: r.Title, brief: r.Brief, repo: r.Repo, decision: r.Decision, original: r.Original, ladders: r.Ladders, rescue: r.Rescue,
 		started: r.Started, bad: r.Bad, broke: r.Broke, gone: r.Gone, swaps: r.Swaps, freeTried: r.FreeTried, helperUSD: r.HelperUSD, dayAtStart: r.DayAtStart, failed: map[string]crewFailure{},
-		changes: r.Changes, changeCount: r.ChangeCount, taskPins: r.TaskPins, pending: r.Pending, seatSends: r.SeatSends}
+		changes: r.Changes, changeCount: r.ChangeCount, taskPins: r.TaskPins, pending: r.Pending, seatSends: r.SeatSends,
+		seatStarted: r.SeatStarted, roleFacts: r.RoleFacts >= 1}
 	// THE RESTART IS A FACT OF THE TASK, said once in its history and kept:
 	// the picks below are the ones it was admitted with, not a new decision.
+	c.restoreCount = r.RestoreCount
 	c.noteRestored(a.taskClockNow(), r.Restored)
 	for send, f := range r.Failed {
 		c.failed[send] = crewFailure{kind: f.Kind, until: f.Until, err: errors.New(f.Message)}

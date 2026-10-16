@@ -298,6 +298,10 @@ func (f *fakeConversation) TaskRoutingAct(_ context.Context, id string, act sess
 	}
 	return session.TaskRoutingResult{View: f.routing, Applied: []crewroute.Seat{crewroute.Worker}}, nil
 }
+func (f *fakeConversation) TaskRoutingOptions(id string) (session.TaskRoutingOptions, error) {
+	return session.TaskRoutingOptions{Task: id, Scope: session.TaskRoutingNextStep, Pick: true,
+		Stronger: &session.TaskRoutingPreview{Moves: []session.TaskRoutingMove{{Seat: crewroute.Worker, From: "glm-flash", To: "sonnet", ToPrice: &crewroute.RoutePrice{Prompt: 3e-6, Completion: 15e-6}}}}}, nil
+}
 func (f *fakeConversation) AppQuickTasks() ([]session.AppQuickTaskView, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

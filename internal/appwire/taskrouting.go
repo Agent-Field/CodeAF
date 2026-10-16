@@ -47,6 +47,7 @@ const (
 type TaskRouter interface {
 	TaskRouting(id string, changes int) (TaskRouting, error)
 	ActOnTaskRouting(p TaskRoutingActParams) (TaskRoutingActResult, error)
+	TaskRoutingOptions(id string) (TaskRoutingOptionsView, error)
 }
 
 // TaskRouting is one task's models as the engine recorded them.
@@ -82,7 +83,12 @@ type TaskRouting struct {
 	StoppedAction string              `json:"stopped_action,omitempty"`
 	Changes       []TaskRoutingChange `json:"changes"`
 	ChangeCount   int                 `json:"change_count"`
-	Blocked       *TaskRoutingWait    `json:"blocked,omitempty"`
+	// RestoreCount is every restart; Restored keeps the newest of them.
+	RestoreCount int `json:"restore_count"`
+	// RoleFacts is false on a task from before per-role facts were kept:
+	// its role use is unknown and its spend may include unpriced calls.
+	RoleFacts bool             `json:"role_facts"`
+	Blocked   *TaskRoutingWait `json:"blocked,omitempty"`
 	// Requested is a not-started or waiting task's own per-role choice.
 	Requested *TaskRoutingPicks `json:"requested,omitempty"`
 }
@@ -97,24 +103,31 @@ type TaskRoutingRole struct {
 	Source string `json:"source" enum:"auto,pinned,task_pin,one_model"`
 	// Status is whether the role has answered: pending is a person's change
 	// not yet answered at the next step.
-	Status       string   `json:"status" enum:"used,pending,not_run_yet,not_used"`
-	Quality      float64  `json:"quality"`
-	EstimateUSD  *float64 `json:"estimate_usd"`
-	SpentUSD     float64  `json:"spent_usd"`
+	// unknown is a role of an older task that kept no per-role facts.
+	Status      string   `json:"status" enum:"used,pending,not_run_yet,not_used,unknown"`
+	Quality     float64  `json:"quality"`
+	EstimateUSD *float64 `json:"estimate_usd"`
+	// Price is the provider's own tariff the role was admitted at; null is
+	// unknown (an older decision, or a route that published none).
+	Price *TaskModelPrice `json:"price"`
+	// SpentUSD is null when the role's spend was never recorded.
+	SpentUSD     *float64 `json:"spent_usd"`
 	Calls        int      `json:"calls"`
 	UnknownCalls int      `json:"unknown_calls"`
-	// Alternatives are the models the router lined up behind this role, in
-	// order; Rejected are routes that failed on this task.
+	// Alternatives are the router's fallback rungs for the role, in order —
+	// where it goes when its route fails, not a stronger pick; Rejected are
+	// routes that failed on this task.
 	Alternatives []TaskRoutingOption    `json:"alternatives"`
 	Rejected     []TaskRoutingRejection `json:"rejected"`
 }
 
 // TaskRoutingOption is one model lined up behind a role.
 type TaskRoutingOption struct {
-	Model       ModelRef `json:"model"`
-	Billing     string   `json:"billing,omitempty" enum:"metered,plan,local,free"`
-	Quality     float64  `json:"quality"`
-	EstimateUSD *float64 `json:"estimate_usd"`
+	Model       ModelRef        `json:"model"`
+	Billing     string          `json:"billing,omitempty" enum:"metered,plan,local,free"`
+	Quality     float64         `json:"quality"`
+	EstimateUSD *float64        `json:"estimate_usd"`
+	Price       *TaskModelPrice `json:"price"`
 }
 
 // TaskRoutingRejection is one route that failed a role on this task; Reason
@@ -366,4 +379,63 @@ func decodeTaskRoutingAct(raw json.RawMessage) (TaskRoutingActParams, error) {
 		return p, Errorf(CodeBadParams, "action is stronger_worker, best, pick, auto, same or retry")
 	}
 	return p, nil
+}
+
+// TaskRoutingMove is one role a change would move.
+type TaskRoutingMove struct {
+	Role          string          `json:"role" enum:"worker,planner,checker"`
+	From          ModelRef        `json:"from"`
+	To            ModelRef        `json:"to"`
+	ToPrice       *TaskModelPrice `json:"to_price"`
+	ToEstimateUSD *float64        `json:"to_estimate_usd"`
+}
+
+// TaskRoutingPreview is what one change would do, worked out by the engine
+// and moving nothing; Refused is the refusal the change would meet.
+type TaskRoutingPreview struct {
+	Moves       []TaskRoutingMove   `json:"moves"`
+	EstimateUSD *float64            `json:"estimate_usd"`
+	CapUSD      *float64            `json:"cap_usd"`
+	OverCap     bool                `json:"over_cap"`
+	Refused     *TaskRoutingRefused `json:"refused,omitempty"`
+}
+
+// TaskRoutingOptionsView is tasks.routing.options's answer: what Change
+// models… (or Rerun with…) offers this task, each with the engine's preview.
+type TaskRoutingOptionsView struct {
+	TaskID   string              `json:"task_id"`
+	Scope    string              `json:"scope" enum:"next_step,rerun,before_start,waiting,none"`
+	Stronger *TaskRoutingPreview `json:"stronger,omitempty"`
+	Best     *TaskRoutingPreview `json:"best,omitempty"`
+	Pick     bool                `json:"pick"`
+	Auto     bool                `json:"auto"`
+	Retry    bool                `json:"retry"`
+}
+
+// TaskRoutingOptionsResult wraps the answer.
+type TaskRoutingOptionsResult struct {
+	Options TaskRoutingOptionsView `json:"options"`
+}
+
+func init() {
+	methods["tasks.routing.options"] = typed(func(e Engine, p IDParams) (*TaskRoutingOptionsResult, error) {
+		r, err := taskRouter(e, "tasks.routing.options")
+		if err != nil {
+			return nil, err
+		}
+		id, err := required("id", p.ID)
+		if err != nil {
+			return nil, err
+		}
+		got, err := r.TaskRoutingOptions(id)
+		if err != nil {
+			return nil, err
+		}
+		for _, pv := range []*TaskRoutingPreview{got.Stronger, got.Best} {
+			if pv != nil {
+				pv.Moves = nonNil(pv.Moves)
+			}
+		}
+		return &TaskRoutingOptionsResult{got}, nil
+	})
 }

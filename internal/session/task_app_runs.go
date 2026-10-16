@@ -71,14 +71,16 @@ func (a *Agent) appRunRows() []TaskNotice {
 	return graph.runRowsLocked()
 }
 
-// appRunRow is one run row by its number.
+// appRunRow is one run row by its number, found where it is kept: nothing
+// else is copied to find it.
 func (a *Agent) appRunRow(id uint64) (TaskNotice, bool) {
-	for _, row := range a.appRunRows() {
-		if row.ID == id {
-			return row, true
-		}
+	graph := a.tasker()
+	if graph == nil {
+		return TaskNotice{}, false
 	}
-	return TaskNotice{}, false
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	return graph.runRowLocked(id)
 }
 
 // appRunView is one run row as the app's task.

@@ -148,6 +148,7 @@ func appRoutingOf(id string, v session.TaskRoutingView) appwire.TaskRouting {
 		TaskID: id, State: v.State, Mode: string(v.Mode), Running: v.Running, Settled: v.Settled,
 		Restored: v.Restored, EstimateUSD: v.EstimateUSD, SpentUSD: v.SpentUSD, Calls: v.Calls, UnknownCalls: v.UnknownCalls,
 		HelperUSD: v.HelperUSD, Class: v.Class, StoppedAction: v.Stopped, ChangeCount: v.ChangeCount,
+		RestoreCount: v.RestoreCount, RoleFacts: v.RoleFacts,
 	}
 	if v.Effort == string(crewroute.EffortBest) || v.Effort == string(crewroute.EffortCheap) {
 		out.Effort = v.Effort
@@ -161,9 +162,13 @@ func appRoutingOf(id string, v session.TaskRoutingView) appwire.TaskRouting {
 	}
 	for _, r := range v.Roles {
 		role := appwire.TaskRoutingRole{Role: string(r.Seat), Model: appRef(r.Model, r.Provider), Billing: string(r.Kind), Source: r.Source, Status: r.Status,
-			Quality: r.Quality, EstimateUSD: r.EstimateUSD, SpentUSD: r.SpentUSD, Calls: r.Calls, UnknownCalls: r.UnknownCalls}
+			Quality: r.Quality, EstimateUSD: r.EstimateUSD, Price: appTariff(r.Price), Calls: r.Calls, UnknownCalls: r.UnknownCalls}
+		if r.SpentKnown {
+			spent := r.SpentUSD
+			role.SpentUSD = &spent
+		}
 		for _, alt := range r.Alternatives {
-			role.Alternatives = append(role.Alternatives, appwire.TaskRoutingOption{Model: appRef(alt.Model, alt.Provider), Billing: string(alt.Kind), Quality: alt.Quality, EstimateUSD: alt.EstimateUSD})
+			role.Alternatives = append(role.Alternatives, appwire.TaskRoutingOption{Model: appRef(alt.Model, alt.Provider), Billing: string(alt.Kind), Quality: alt.Quality, EstimateUSD: alt.EstimateUSD, Price: appTariff(alt.Price)})
 		}
 		for _, rej := range r.Rejected {
 			out := appwire.TaskRoutingRejection{Model: appRef(rej.Model, rej.Provider), Reason: rej.Reason}
@@ -267,4 +272,51 @@ func appNoticeModels(notice *session.TaskNotice, proposed bool) *appwire.TaskMod
 		return appModelsChip(session.TaskRoutingRouted, notice.Crew, pins, "")
 	}
 	return nil
+}
+
+// appTariff is a route's per-token tariff as dollars per million tokens; nil
+// stays unknown.
+func appTariff(p *crewroute.RoutePrice) *appwire.TaskModelPrice {
+	if p == nil {
+		return nil
+	}
+	return &appwire.TaskModelPrice{InPerM: p.Prompt * 1e6, OutPerM: p.Completion * 1e6}
+}
+
+// TaskRoutingOptions answers what Change models… offers one task, each change
+// previewed by the engine.
+func (b *appBackend) TaskRoutingOptions(id string) (appwire.TaskRoutingOptionsView, error) {
+	agent, local, ok := appSplitID(id)
+	if !ok {
+		return appwire.TaskRoutingOptionsView{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
+	}
+	_, live, err := b.heldLive(agent)
+	if err != nil {
+		return appwire.TaskRoutingOptionsView{}, err
+	}
+	got, err := live.conn.Conv.TaskRoutingOptions(local)
+	if err != nil {
+		return appwire.TaskRoutingOptionsView{}, appRoutingError(err)
+	}
+	return appwire.TaskRoutingOptionsView{TaskID: id, Scope: got.Scope, Stronger: appPreview(got.Stronger), Best: appPreview(got.Best),
+		Pick: got.Pick, Auto: got.Auto, Retry: got.Retry}, nil
+}
+
+func appPreview(p *session.TaskRoutingPreview) *appwire.TaskRoutingPreview {
+	if p == nil {
+		return nil
+	}
+	out := &appwire.TaskRoutingPreview{EstimateUSD: p.EstimateUSD, OverCap: p.OverCap, Moves: []appwire.TaskRoutingMove{}}
+	if p.CapUSD > 0 {
+		capUSD := p.CapUSD
+		out.CapUSD = &capUSD
+	}
+	if p.Refusal != nil {
+		out.Refused = appRefusedOf(p.Refusal)
+	}
+	for _, m := range p.Moves {
+		out.Moves = append(out.Moves, appwire.TaskRoutingMove{Role: string(m.Seat), From: appRef(m.From, m.FromProvider), To: appRef(m.To, m.ToProvider),
+			ToPrice: appTariff(m.ToPrice), ToEstimateUSD: m.ToEstimateUSD})
+	}
+	return out
 }

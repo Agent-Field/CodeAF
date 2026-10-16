@@ -133,7 +133,7 @@ func originals(d crewroute.Decision) map[crewroute.Seat]string {
 
 func liveCrew(capUSD float64) *taskCrew {
 	d := liveDecision()
-	return &taskCrew{title: "Update fixtures", brief: "update every fixture", decision: d, original: originals(d),
+	return &taskCrew{roleFacts: true, title: "Update fixtures", brief: "update every fixture", decision: d, original: originals(d),
 		ladders: map[crewroute.Seat][]crewroute.Pick{crewroute.Worker: {{Seat: crewroute.Worker, Model: "glm-5.3", Send: "glm-5.3", Provider: "openrouter", Kind: crewroute.Metered, EstUSD: 0.4}}},
 		guard:   &SpendGuard{TaskCap: capUSD}}
 }
@@ -182,7 +182,7 @@ func TestStrongerWorkerMovesOnlyTheWorkerAtItsNextCall(t *testing.T) {
 		t.Fatalf("estimate %v", view.EstimateUSD)
 	}
 	// The worker's first answer clears pending.
-	a.crewAnswered(&beltRun{row: 1, crew: crew}, "sonnet")
+	a.crewAnswered(&beltRun{row: 1, crew: crew}, "sonnet", crewroute.Worker)
 	if view := taskRoutingOf("1", crew.record(), false, 20); view.Roles[0].Status != TaskRoleUsed {
 		t.Fatalf("worker after answer %+v", view.Roles[0])
 	}

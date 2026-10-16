@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"strconv"
 	"strings"
@@ -109,6 +110,10 @@ func (c *taskCrew) noteRestored(at time.Time, prior []time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.restored = append(append([]time.Time(nil), prior...), at)
+	if c.restoreCount < len(prior) {
+		c.restoreCount = len(prior) // an older row counted only what it kept
+	}
+	c.restoreCount++
 	if over := len(c.restored) - taskCrewRestoresKept; over > 0 {
 		c.restored = c.restored[over:]
 	}
@@ -144,6 +149,8 @@ const (
 	TaskRolePending   = "pending"
 	TaskRoleNotRunYet = "not_run_yet"
 	TaskRoleNotUsed   = "not_used"
+	// TaskRoleUnknown is a role of an older task that kept no per-role facts.
+	TaskRoleUnknown = "unknown"
 )
 
 // TaskRoutingView is one task's models as recorded.
@@ -175,7 +182,14 @@ type TaskRoutingView struct {
 	// Changes are the newest changes, oldest first; ChangeCount is every one.
 	Changes     []TaskCrewChange
 	ChangeCount int
-	Blocked     *TaskRoutingBlock
+	// RestoreCount is every restart; Restored keeps the newest of them.
+	RestoreCount int
+	// RoleFacts is whether per-role facts — which role ran, and each role's
+	// spend with its call counts — were kept since admission. A task from an
+	// older build has none: its role use is unknown and a zero role spend is
+	// not a proven zero, and its SpentUSD may include calls of unknown cost.
+	RoleFacts bool
+	Blocked   *TaskRoutingBlock
 	// Requested is a not-started task's per-role choice; Effort "best" there
 	// is a not-started task asked for the best crew.
 	Requested map[crewroute.Seat]string
@@ -183,18 +197,26 @@ type TaskRoutingView struct {
 
 // TaskRoutingRole is one role of a routed task.
 type TaskRoutingRole struct {
-	Seat                crewroute.Seat
-	Model, Provider     string
-	Send                string
-	Kind                crewroute.RouteKind
-	Source              string
-	Status              string
-	Quality             float64
-	EstimateUSD         *float64
+	Seat            crewroute.Seat
+	Model, Provider string
+	Send            string
+	Kind            crewroute.RouteKind
+	Source          string
+	Status          string
+	Quality         float64
+	EstimateUSD     *float64
+	// Price is the provider's own tariff the role was admitted at, per token;
+	// nil is unknown (an older decision, or a route that published none).
+	Price *crewroute.RoutePrice
+	// SpentKnown is false when the role's spend was never recorded (an older
+	// task with nothing on the role): SpentUSD is then not a proven zero.
 	SpentUSD            float64
+	SpentKnown          bool
 	Calls, UnknownCalls int
-	Alternatives        []TaskRoutingOption
-	Rejected            []TaskRoutingRejection
+	// Alternatives are the router's fallback rungs for the role — where it
+	// goes if its route fails — not a stronger pick.
+	Alternatives []TaskRoutingOption
+	Rejected     []TaskRoutingRejection
 }
 
 // TaskRoutingOption is one model the router lined up behind a role.
@@ -203,6 +225,7 @@ type TaskRoutingOption struct {
 	Kind            crewroute.RouteKind
 	Quality         float64
 	EstimateUSD     *float64
+	Price           *crewroute.RoutePrice
 }
 
 // TaskRoutingRejection is one route that failed this task's role.
@@ -256,9 +279,7 @@ func (a *Agent) TaskRouting(id string, changes int) (TaskRoutingView, error) {
 	if row, ok := a.appRunRow(n); ok {
 		var record *TaskCrewRecord
 		if crew := a.crews.get(n); crew != nil {
-			crew.persistMu.Lock()
-			record = crew.record()
-			crew.persistMu.Unlock()
+			record = crew.routingRecord(changes)
 		} else if row.CrewState != nil {
 			record = row.CrewState
 		} else if row.Crew != nil {
@@ -303,10 +324,12 @@ func taskRoutingOf(id string, r *TaskCrewRecord, settled bool, changes int) Task
 		view.Calls, view.UnknownCalls = g.TaskCalls, g.TaskUnknown
 	}
 	view.SpentUSD += r.HelperUSD
+	facts := r.RoleFacts >= 1
+	view.RoleFacts, view.RestoreCount = facts, r.RestoreCount
 	known, total := true, 0.0
 	for _, seat := range crewroute.Seats {
 		pick := d.Seat(seat)
-		role := TaskRoutingRole{Seat: seat, Model: pick.Model, Provider: pick.Provider, Send: pick.Send, Kind: pick.Kind, Quality: pick.Quality, EstimateUSD: pickEstimate(pick)}
+		role := TaskRoutingRole{Seat: seat, Model: pick.Model, Provider: pick.Provider, Send: pick.Send, Kind: pick.Kind, Quality: pick.Quality, EstimateUSD: pickEstimate(pick), Price: clonePrice(pick.Price)}
 		switch {
 		case mode == crewroute.ModeOne:
 			role.Source = TaskRoleOneModel
@@ -326,12 +349,18 @@ func taskRoutingOf(id string, r *TaskCrewRecord, settled bool, changes int) Task
 			role.SpentUSD = g.SeatSpent[seat]
 			role.Calls, role.UnknownCalls = g.SeatCalls[seat], g.SeatUnknown[seat]
 		}
-		used := role.Calls > 0 || role.SpentUSD > 0 || (pick.Send != "" && r.Started[pick.Send])
+		// A ROLE RAN WHEN ITS OWN CALL ANSWERED — never because another role
+		// on the same model did. Without per-role facts (an older task) a role
+		// with nothing recorded is unknown, not unused and not free.
+		used := r.SeatStarted[seat] || role.Calls > 0 || role.SpentUSD > 0
+		role.SpentKnown = facts || role.SpentUSD > 0
 		switch {
 		case r.Pending[seat]:
 			role.Status = TaskRolePending
 		case used:
 			role.Status = TaskRoleUsed
+		case !facts:
+			role.Status = TaskRoleUnknown
 		case settled:
 			role.Status = TaskRoleNotUsed
 		default:
@@ -344,7 +373,7 @@ func taskRoutingOf(id string, r *TaskCrewRecord, settled bool, changes int) Task
 			if rung.Send == pick.Send {
 				continue
 			}
-			role.Alternatives = append(role.Alternatives, TaskRoutingOption{Model: rung.Model, Provider: rung.Provider, Kind: rung.Kind, Quality: rung.Quality, EstimateUSD: pickEstimate(rung)})
+			role.Alternatives = append(role.Alternatives, TaskRoutingOption{Model: rung.Model, Provider: rung.Provider, Kind: rung.Kind, Quality: rung.Quality, EstimateUSD: pickEstimate(rung), Price: clonePrice(rung.Price)})
 		}
 		sends := map[string]bool{r.Original[seat]: true}
 		for _, change := range r.Changes {
@@ -544,9 +573,10 @@ func (a *Agent) actOnProposal(n uint64, act TaskRoutingAction) error {
 	a.taskRouting.change(n, func(w *crewWish) {
 		switch act.Kind {
 		case TaskRoutingAuto:
-			w.sends, w.effort = nil, ""
+			w.sends, w.effort, w.autoSeats = nil, "", nil
 		case TaskRoutingBest:
 			w.sends, w.effort = nil, crewroute.EffortBest
+			w.autoSeats = map[crewroute.Seat]bool{crewroute.Worker: true, crewroute.Planner: true, crewroute.Checker: true}
 		case TaskRoutingPick:
 			if w.sends == nil {
 				w.sends = map[crewroute.Seat]string{}
@@ -591,17 +621,37 @@ func blockOf(none *crewroute.NoEligibleError, at time.Time) TaskRoutingBlock {
 		Omitted: none.Omitted, Action: none.Action, Message: none.Error(), At: at}
 }
 
-// actOnLiveCrew moves a running task's roles at their next call.
-func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) ([]crewroute.Seat, error) {
+// routingPlan is what one change would do to a running crew, worked out by
+// the same policy whether it is then applied or only shown.
+type routingPlan struct {
+	cur, next crewroute.Decision
+	// routed is the router's answer, whose ladders the moved roles take.
+	routed   crewroute.Decision
+	changed  []crewroute.Seat
+	estimate float64
+	known    bool
+	capUSD   float64
+	count    int
+}
+
+// overCap is whether the plan's estimate is over the task cap.
+func (p routingPlan) overCap() bool { return p.known && p.capUSD > 0 && p.estimate > p.capUSD+1e-9 }
+
+// planLiveChange asks the router for a running task's change without moving
+// anything: Best and Stronger name their roles for Auto this once
+// (AutoSeats), so a saved pin or one-model mode does not hold them; an explicit
+// pick wins; Back to Auto names nothing and gets the saved policy back.
+func (a *Agent) planLiveChange(crew *taskCrew, act TaskRoutingAction) (routingPlan, error) {
 	route := a.config.RouteCrew
 	if route == nil {
-		return nil, refuse(TaskRoutingUnavailable, "this conversation has no model router")
+		return routingPlan{}, refuse(TaskRoutingUnavailable, "this conversation has no model router")
 	}
 	if act.Kind == TaskRoutingSame || act.Kind == TaskRoutingRetry {
-		return nil, refuse(TaskRoutingBadAction, "%s is for a rerun or a waiting task", act.Kind)
+		return routingPlan{}, refuse(TaskRoutingBadAction, "%s is for a rerun or a waiting task", act.Kind)
 	}
 	crew.mu.Lock()
 	cur, count := crew.decision, crew.changeCount
+	cur.Crew = append([]crewroute.Pick(nil), cur.Crew...)
 	pinned := map[crewroute.Seat]bool{}
 	for seat := range crew.taskPins {
 		pinned[seat] = true
@@ -611,7 +661,7 @@ func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) (
 	}
 	crew.mu.Unlock()
 	if act.ChangeCount != nil && *act.ChangeCount != count {
-		return nil, refuse(TaskRoutingStale, "this task's models changed · open it again")
+		return routingPlan{}, refuse(TaskRoutingStale, "this task's models changed · open it again")
 	}
 	ask := config.CrewAsk{Task: crewTaskText(crew.title, crew.brief), Repo: crew.repo, ChatModel: a.Model(), Sends: map[crewroute.Seat]string{}}
 	keep := func(seats ...crewroute.Seat) {
@@ -626,9 +676,11 @@ func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) (
 	case TaskRoutingStronger:
 		keep(crewroute.Planner, crewroute.Checker)
 		ask.Stronger = &cur
+		ask.AutoSeats = map[crewroute.Seat]bool{crewroute.Worker: true}
 		targets = []crewroute.Seat{crewroute.Worker}
 	case TaskRoutingBest:
 		ask.Effort = crewroute.EffortBest
+		ask.AutoSeats = map[crewroute.Seat]bool{crewroute.Worker: true, crewroute.Planner: true, crewroute.Checker: true}
 		targets = crewroute.Seats
 	case TaskRoutingPick:
 		for _, seat := range crewroute.Seats {
@@ -652,7 +704,7 @@ func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) (
 			}
 		}
 		if len(targets) == 0 {
-			return nil, refuse(TaskRoutingUnchanged, "no role of this task was chosen for it · it is already on Auto")
+			return routingPlan{}, refuse(TaskRoutingUnchanged, "no role of this task was chosen for it · it is already on Auto")
 		}
 	}
 	if len(ask.Sends) == 0 {
@@ -660,11 +712,10 @@ func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) (
 	}
 	decision, err := route(ask)
 	if err != nil {
-		return nil, routeRefusal(err)
+		return routingPlan{}, routeRefusal(err)
 	}
-	next := cur
-	next.Crew = append([]crewroute.Pick(nil), cur.Crew...)
-	var changed []crewroute.Seat
+	plan := routingPlan{cur: cur, routed: decision, count: count, next: cur}
+	plan.next.Crew = append([]crewroute.Pick(nil), cur.Crew...)
 	for _, seat := range targets {
 		pick := decision.Seat(seat)
 		if pick.Send == "" {
@@ -673,7 +724,7 @@ func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) (
 		if act.Kind == TaskRoutingPick {
 			if want := strings.TrimSpace(act.Picks[seat]); want != "" {
 				if pick.Send != want && pick.Model != want {
-					return nil, &TaskRoutingRefusal{Code: TaskRoutingNotAllowed, Seat: seat,
+					return routingPlan{}, &TaskRoutingRefusal{Code: TaskRoutingNotAllowed, Seat: seat,
 						Message: fmt.Sprintf("%s cannot take the %s role here · %s", want, seat, warningFor(decision, seat))}
 				}
 				pick.Pinned = true
@@ -686,34 +737,43 @@ func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) (
 			}
 		}
 		if _, failed := crew.failedHere(pick.Send); failed {
-			return nil, &TaskRoutingRefusal{Code: TaskRoutingRouteFailed, Seat: seat,
+			return routingPlan{}, &TaskRoutingRefusal{Code: TaskRoutingRouteFailed, Seat: seat,
 				Message: fmt.Sprintf("%s already failed to start on this task", pick.Model)}
 		}
-		for i := range next.Crew {
-			if next.Crew[i].Seat == seat {
-				next.Crew[i] = pick
+		for i := range plan.next.Crew {
+			if plan.next.Crew[i].Seat == seat {
+				plan.next.Crew[i] = pick
 			}
 		}
-		changed = append(changed, seat)
+		plan.changed = append(plan.changed, seat)
 	}
-	if len(changed) == 0 {
+	if len(plan.changed) == 0 {
 		if act.Kind == TaskRoutingStronger {
-			return nil, refuse(TaskRoutingStrongest, "this is already the strongest worker the allowed models make")
+			return routingPlan{}, refuse(TaskRoutingStrongest, "this is already the strongest worker the allowed models make")
 		}
-		return nil, refuse(TaskRoutingUnchanged, "the models this asks for are the ones the task runs on")
+		return routingPlan{}, refuse(TaskRoutingUnchanged, "the models this asks for are the ones the task runs on")
 	}
-	estimate, known := crewEstimate(next)
-	capUSD := 0.0
+	plan.estimate, plan.known = crewEstimate(plan.next)
 	if crew.guard != nil {
 		crew.guard.mu.Lock()
-		capUSD = crew.guard.TaskCap
+		plan.capUSD = crew.guard.TaskCap
 		crew.guard.mu.Unlock()
 	}
+	return plan, nil
+}
+
+// actOnLiveCrew moves a running task's roles at their next call.
+func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) ([]crewroute.Seat, error) {
+	plan, err := a.planLiveChange(crew, act)
+	if err != nil {
+		return nil, err
+	}
+	cur, next, decision, changed, count, estimate, known := plan.cur, plan.next, plan.routed, plan.changed, plan.count, plan.estimate, plan.known
 	raise := 0.0
-	if known && capUSD > 0 && estimate > capUSD+1e-9 {
+	if plan.overCap() {
 		if act.RaiseCapUSD+1e-9 < estimate {
-			return nil, &TaskRoutingRefusal{Code: TaskRoutingOverCap, RequiredUSD: estimate, CapUSD: capUSD,
-				Message: fmt.Sprintf("this needs more than the %s task cap · it needs %s", crewroute.Money(capUSD), crewroute.Money(estimate))}
+			return nil, &TaskRoutingRefusal{Code: TaskRoutingOverCap, RequiredUSD: estimate, CapUSD: plan.capUSD,
+				Message: fmt.Sprintf("this needs more than the %s task cap · it needs %s", crewroute.Money(plan.capUSD), crewroute.Money(estimate))}
 		}
 		raise = act.RaiseCapUSD
 	}
@@ -837,84 +897,110 @@ func (a *Agent) republishCrewRow(row uint64, decision crewroute.Decision, note s
 
 // rerunWithRouting starts a finished task again with the person's choice. The
 // finished task's record is never changed.
-func (a *Agent) rerunWithRouting(ctx context.Context, row TaskNotice, crew *taskCrew, act TaskRoutingAction) (uint64, error) {
-	var prior *crewroute.Decision
-	brief, title := "", row.Title
+// rerunPlan is a finished task's rerun worked out without starting it: its
+// wish, its brief, and the router's answer for it.
+type rerunPlan struct {
+	wish         crewWish
+	title, brief string
+	prior        *crewroute.Decision
+	routed       crewroute.Decision
+	estimate     float64
+	known        bool
+	capUSD       float64
+}
+
+func (a *Agent) planRerun(row TaskNotice, crew *taskCrew, act TaskRoutingAction) (rerunPlan, error) {
+	p := rerunPlan{title: row.Title}
 	switch {
 	case crew != nil:
 		d := crew.current()
-		prior, brief, title = &d, crew.brief, crew.title
+		p.prior, p.brief, p.title = &d, crew.brief, crew.title
 	case row.CrewState != nil && row.CrewState.Routed:
 		d := row.CrewState.Decision
-		prior, brief, title = &d, row.CrewState.Brief, row.CrewState.Title
+		p.prior, p.brief, p.title = &d, row.CrewState.Brief, row.CrewState.Title
 	}
-	if brief == "" {
-		brief = row.Brief
+	if p.brief == "" {
+		p.brief = row.Brief
 	}
-	if strings.TrimSpace(brief) == "" {
-		return 0, refuse(TaskRoutingNotRouted, "this task's brief was not kept · it cannot be rerun from here")
+	if strings.TrimSpace(p.brief) == "" {
+		return p, refuse(TaskRoutingNotRouted, "this task's brief was not kept · it cannot be rerun from here")
 	}
-	a.beltMu.Lock()
-	live := a.beltRun != nil
-	a.beltMu.Unlock()
-	if live {
-		return 0, refuse(TaskRoutingBusy, "other work is still running · rerun this task when it has finished")
-	}
-	wish := crewWish{}
 	sendsOf := func(seats ...crewroute.Seat) map[crewroute.Seat]string {
 		out := map[crewroute.Seat]string{}
 		for _, seat := range seats {
-			if prior != nil && prior.Seat(seat).Send != "" {
-				out[seat] = prior.Seat(seat).Send
+			if p.prior != nil && p.prior.Seat(seat).Send != "" {
+				out[seat] = p.prior.Seat(seat).Send
 			}
 		}
 		return out
 	}
 	switch act.Kind {
 	case TaskRoutingSame:
-		if prior == nil {
-			return 0, refuse(TaskRoutingNotRouted, "this task has no recorded roles to run again")
+		if p.prior == nil {
+			return p, refuse(TaskRoutingNotRouted, "this task has no recorded roles to run again")
 		}
-		wish.sends = sendsOf(crewroute.Seats...)
+		p.wish.sends = sendsOf(crewroute.Seats...)
 	case TaskRoutingStronger:
-		if prior == nil {
-			return 0, refuse(TaskRoutingNotRouted, "this task has no recorded worker to be stronger than")
+		if p.prior == nil {
+			return p, refuse(TaskRoutingNotRouted, "this task has no recorded worker to be stronger than")
 		}
-		wish.sends, wish.stronger = sendsOf(crewroute.Planner, crewroute.Checker), prior
+		p.wish.sends, p.wish.stronger = sendsOf(crewroute.Planner, crewroute.Checker), p.prior
+		p.wish.autoSeats = map[crewroute.Seat]bool{crewroute.Worker: true}
 	case TaskRoutingBest:
-		wish.effort = crewroute.EffortBest
+		p.wish.effort = crewroute.EffortBest
+		p.wish.autoSeats = map[crewroute.Seat]bool{crewroute.Worker: true, crewroute.Planner: true, crewroute.Checker: true}
 	case TaskRoutingPick:
-		wish.sends = map[crewroute.Seat]string{}
+		p.wish.sends = map[crewroute.Seat]string{}
 		for seat, model := range act.Picks {
 			if model = strings.TrimSpace(model); model != "" {
-				wish.sends[seat] = model
+				p.wish.sends[seat] = model
 			}
 		}
 	case TaskRoutingRetry:
-		return 0, refuse(TaskRoutingBadAction, "retry is for a waiting task")
+		return p, refuse(TaskRoutingBadAction, "retry is for a waiting task")
 	}
-	if route := a.config.RouteCrew; route != nil {
-		// THE RERUN'S ESTIMATE IS READ BEFORE ANYTHING STARTS, so a choice
-		// over the task cap is refused with the cap it needs.
-		ask := config.CrewAsk{Task: crewTaskText(title, brief), Effort: wish.effort, Stronger: wish.stronger, Sends: wish.sends,
-			Repo: canonicalPath(a.config.Workspace), ChatModel: a.Model()}
-		if len(ask.Sends) == 0 {
-			ask.Sends = nil
-		}
-		decision, err := route(ask)
-		if err != nil {
-			return 0, routeRefusal(err)
-		}
-		capUSD, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
-		if estimate, known := crewEstimate(decision); known && capUSD > 0 && estimate > capUSD+1e-9 {
-			if act.RaiseCapUSD+1e-9 < estimate {
-				return 0, &TaskRoutingRefusal{Code: TaskRoutingOverCap, RequiredUSD: estimate, CapUSD: capUSD,
-					Message: fmt.Sprintf("this needs more than the %s task cap · it needs %s", crewroute.Money(capUSD), crewroute.Money(estimate))}
-			}
-			wish.taskCap = act.RaiseCapUSD
-		}
+	route := a.config.RouteCrew
+	if route == nil {
+		return p, refuse(TaskRoutingUnavailable, "this conversation has no model router")
 	}
-	id, _, _, err := a.startTaskRun(withCrewWish(ctx, wish), brief, true, "")
+	ask := config.CrewAsk{Task: crewTaskText(p.title, p.brief), Effort: p.wish.effort, Stronger: p.wish.stronger, Sends: p.wish.sends,
+		AutoSeats: p.wish.autoSeats, Repo: canonicalPath(a.config.Workspace), ChatModel: a.Model()}
+	if len(ask.Sends) == 0 {
+		ask.Sends = nil
+	}
+	decision, err := route(ask)
+	if err != nil {
+		return p, routeRefusal(err)
+	}
+	p.routed = decision
+	p.estimate, p.known = crewEstimate(decision)
+	p.capUSD, _ = config.CrewTaskSpendCap(a.config.ProfileDir)
+	return p, nil
+}
+
+// rerunWithRouting starts a finished task again with the person's choice. The
+// finished task's record is never changed; a choice over the task cap is
+// refused before anything starts, with the cap it needs.
+func (a *Agent) rerunWithRouting(ctx context.Context, row TaskNotice, crew *taskCrew, act TaskRoutingAction) (uint64, error) {
+	a.beltMu.Lock()
+	live := a.beltRun != nil
+	a.beltMu.Unlock()
+	if live {
+		return 0, refuse(TaskRoutingBusy, "other work is still running · rerun this task when it has finished")
+	}
+	p, err := a.planRerun(row, crew, act)
+	if err != nil {
+		return 0, err
+	}
+	wish := p.wish
+	if p.known && p.capUSD > 0 && p.estimate > p.capUSD+1e-9 {
+		if act.RaiseCapUSD+1e-9 < p.estimate {
+			return 0, &TaskRoutingRefusal{Code: TaskRoutingOverCap, RequiredUSD: p.estimate, CapUSD: p.capUSD,
+				Message: fmt.Sprintf("this needs more than the %s task cap · it needs %s", crewroute.Money(p.capUSD), crewroute.Money(p.estimate))}
+		}
+		wish.taskCap = act.RaiseCapUSD
+	}
+	id, _, _, err := a.startTaskRun(withCrewWish(ctx, wish), p.brief, true, "")
 	if err != nil {
 		var none *crewroute.NoEligibleError
 		if errors.As(err, &none) || errors.Is(err, config.ErrCrewAtCap) || errors.Is(err, crewroute.ErrStrongest) {
@@ -1026,6 +1112,9 @@ func (a *Agent) proposalCrewWish(id uint64, base crewWish) crewWish {
 	if w.taskCap > 0 {
 		base.taskCap = w.taskCap
 	}
+	if len(w.autoSeats) > 0 {
+		base.autoSeats = w.autoSeats
+	}
 	return base
 }
 
@@ -1099,4 +1188,228 @@ func (a *Agent) DropParkedTask(n uint64) bool {
 	a.taskRouting.forget(n)
 	a.settleUnstartedHandoff(n, parked.spec.title, errors.New(parked.block.Message))
 	return true
+}
+
+func clonePrice(p *crewroute.RoutePrice) *crewroute.RoutePrice {
+	if p == nil {
+		return nil
+	}
+	out := *p
+	return &out
+}
+
+// routingRecord is the bounded part of a live crew one read draws: three
+// picks, each role's first fallback rungs, the failures on its sends, the
+// newest changes and the spend snapshot — never the whole checkpoint, and
+// never under the checkpoint's lock.
+func (c *taskCrew) routingRecord(changes int) *TaskCrewRecord {
+	c.mu.Lock()
+	d := c.decision
+	r := &TaskCrewRecord{Version: 1, Routed: true, HelperUSD: c.helperUSD, ChangeCount: c.changeCount, RestoreCount: c.restoreCount,
+		Decision: crewroute.Decision{Class: d.Class, Why: d.Why, Effort: d.Effort, Mode: d.Mode, Note: d.Note, Stopped: d.Stopped,
+			Considered: d.Considered, EstUSD: d.EstUSD, CostFactor: d.CostFactor,
+			Crew: append([]crewroute.Pick(nil), d.Crew...), Warnings: append([]crewroute.SeatWarning(nil), d.Warnings...)},
+		Original: maps.Clone(c.original), TaskPins: maps.Clone(c.taskPins), Pending: maps.Clone(c.pending),
+		SeatStarted: maps.Clone(c.seatStarted), Restored: append([]time.Time(nil), c.restored...),
+		Ladders: map[crewroute.Seat][]crewroute.Pick{}, Failed: map[string]crewFailureRecord{}}
+	if c.roleFacts {
+		r.RoleFacts = 1
+	}
+	from := len(c.changes) - changes
+	if from < 0 {
+		from = 0
+	}
+	r.Changes = append([]TaskCrewChange(nil), c.changes[from:]...)
+	sends := map[string]bool{}
+	for seat, send := range c.original {
+		sends[send] = true
+		rungs := c.ladders[seat]
+		if len(rungs) > taskRoutingAlternatives+1 {
+			rungs = rungs[:taskRoutingAlternatives+1]
+		}
+		r.Ladders[seat] = append([]crewroute.Pick(nil), rungs...)
+	}
+	for _, change := range r.Changes {
+		sends[change.FromSend], sends[change.ToSend] = true, true
+	}
+	for send := range sends {
+		if f, ok := c.failed[send]; ok {
+			msg := ""
+			if f.err != nil {
+				msg = f.err.Error()
+			}
+			r.Failed[send] = crewFailureRecord{f.kind, f.until, msg}
+		}
+	}
+	g := c.guard
+	c.mu.Unlock()
+	if g != nil {
+		g.mu.Lock()
+		r.Guard = &crewGuardRecord{TaskCap: g.TaskCap, SeatSpent: map[crewroute.Seat]float64{}}
+		task, seats := g.Task, maps.Clone(g.seatSpent)
+		g.mu.Unlock()
+		// One booking's task and role figures, read together.
+		g.bookMu.Lock()
+		r.Guard.TaskSpent, r.Guard.TaskCalls, r.Guard.TaskUnknown = task.snapshot()
+		for seat, tally := range seats {
+			spent, calls, unknown := tally.snapshot()
+			r.Guard.SeatSpent[seat] = spent
+			if r.Guard.SeatCalls == nil {
+				r.Guard.SeatCalls, r.Guard.SeatUnknown = map[crewroute.Seat]int{}, map[crewroute.Seat]int{}
+			}
+			r.Guard.SeatCalls[seat], r.Guard.SeatUnknown[seat] = calls, unknown
+		}
+		g.bookMu.Unlock()
+	}
+	return r
+}
+
+// ── what Change models… offers, worked out by the engine ────────────────────
+
+// TaskRoutingMove is one role a change would move.
+type TaskRoutingMove struct {
+	Seat               crewroute.Seat
+	From, FromProvider string
+	To, ToProvider     string
+	ToPrice            *crewroute.RoutePrice
+	ToEstimateUSD      *float64
+}
+
+// TaskRoutingPreview is what one change would do: the roles it moves, the
+// estimate after it and the cap that estimate meets — or the refusal the
+// change would meet. It moves nothing.
+type TaskRoutingPreview struct {
+	Moves       []TaskRoutingMove
+	EstimateUSD *float64
+	CapUSD      float64
+	OverCap     bool
+	Refusal     *TaskRoutingRefusal
+}
+
+// TaskRoutingOptions is what Change models… (or Rerun with…) offers a task.
+type TaskRoutingOptions struct {
+	Task string
+	// Scope is when a change applies: next_step on a running task, rerun on a
+	// finished one, before_start on one not started, waiting on one parked;
+	// none on a task with no roles to change.
+	Scope             string
+	Stronger, Best    *TaskRoutingPreview
+	Pick, Auto, Retry bool
+}
+
+// The scopes of a change.
+const (
+	TaskRoutingNextStep    = "next_step"
+	TaskRoutingRerunScope  = "rerun"
+	TaskRoutingBeforeStart = "before_start"
+	TaskRoutingWaiting     = "waiting"
+	TaskRoutingNone        = "none"
+)
+
+// TaskRoutingOptions works out what each change would do for one task by the
+// same policy [Agent.TaskRoutingAct] applies — the router asked once per
+// offered change, nothing moved, no model called. A change the engine cannot
+// work out ahead (a not-started task's Best) carries no preview.
+func (a *Agent) TaskRoutingOptions(id string) (TaskRoutingOptions, error) {
+	n, err := strconv.ParseUint(strings.TrimSpace(id), 10, 64)
+	if err != nil || n == 0 {
+		return TaskRoutingOptions{}, refuse(TaskRoutingNotFound, "no such task")
+	}
+	out := TaskRoutingOptions{Task: id, Scope: TaskRoutingNone}
+	switch {
+	case a.taskRouting.isParked(n):
+		out.Scope, out.Pick, out.Retry = TaskRoutingWaiting, true, true
+		return out, nil
+	case a.isProposed(n):
+		w, _ := a.taskRouting.wish(n)
+		out.Scope, out.Pick, out.Auto = TaskRoutingBeforeStart, true, len(w.sends) > 0 || w.effort != ""
+		out.Best = &TaskRoutingPreview{}
+		return out, nil
+	}
+	row, ok := a.appRunRow(n)
+	if !ok {
+		if a.taskNode(n) != nil {
+			return out, nil
+		}
+		return TaskRoutingOptions{}, refuse(TaskRoutingNotFound, "no such task")
+	}
+	crew := a.crews.get(n)
+	if row.State.settled() {
+		if (crew == nil && (row.CrewState == nil || !row.CrewState.Routed)) || a.config.RouteCrew == nil {
+			return out, nil
+		}
+		out.Scope, out.Pick = TaskRoutingRerunScope, true
+		out.Stronger = a.rerunPreview(row, crew, TaskRoutingStronger)
+		out.Best = a.rerunPreview(row, crew, TaskRoutingBest)
+		return out, nil
+	}
+	if crew == nil {
+		return out, nil
+	}
+	out.Scope, out.Pick = TaskRoutingNextStep, true
+	crew.mu.Lock()
+	out.Auto = len(crew.taskPins) > 0 || len(crew.seatSends) > 0
+	crew.mu.Unlock()
+	out.Stronger = a.livePreview(crew, TaskRoutingStronger)
+	out.Best = a.livePreview(crew, TaskRoutingBest)
+	return out, nil
+}
+
+func previewRefusal(err error) *TaskRoutingPreview {
+	var refusal *TaskRoutingRefusal
+	if !errors.As(err, &refusal) {
+		refusal = &TaskRoutingRefusal{Code: TaskRoutingUnavailable, Message: err.Error()}
+	}
+	return &TaskRoutingPreview{Refusal: refusal}
+}
+
+func movesOf(from, to crewroute.Decision, seats []crewroute.Seat) []TaskRoutingMove {
+	var out []TaskRoutingMove
+	for _, seat := range seats {
+		was, now := from.Seat(seat), to.Seat(seat)
+		if now.Send == "" || (was.Send == now.Send && was.Pinned == now.Pinned) {
+			continue
+		}
+		out = append(out, TaskRoutingMove{Seat: seat, From: was.Model, FromProvider: was.Provider, To: now.Model, ToProvider: now.Provider,
+			ToPrice: clonePrice(now.Price), ToEstimateUSD: pickEstimate(now)})
+	}
+	return out
+}
+
+func (a *Agent) livePreview(crew *taskCrew, kind string) *TaskRoutingPreview {
+	plan, err := a.planLiveChange(crew, TaskRoutingAction{Kind: kind})
+	if err != nil {
+		return previewRefusal(err)
+	}
+	out := &TaskRoutingPreview{Moves: movesOf(plan.cur, plan.next, plan.changed), CapUSD: plan.capUSD, OverCap: plan.overCap()}
+	if plan.known {
+		estimate := plan.estimate
+		out.EstimateUSD = &estimate
+	}
+	return out
+}
+
+func (a *Agent) rerunPreview(row TaskNotice, crew *taskCrew, kind string) *TaskRoutingPreview {
+	plan, err := a.planRerun(row, crew, TaskRoutingAction{Kind: kind})
+	if err != nil {
+		return previewRefusal(err)
+	}
+	seats := crewroute.Seats
+	if kind == TaskRoutingStronger {
+		seats = []crewroute.Seat{crewroute.Worker}
+	}
+	from := crewroute.Decision{}
+	if plan.prior != nil {
+		from = *plan.prior
+	}
+	out := &TaskRoutingPreview{Moves: movesOf(from, plan.routed, seats), CapUSD: plan.capUSD,
+		OverCap: plan.known && plan.capUSD > 0 && plan.estimate > plan.capUSD+1e-9}
+	if plan.known {
+		estimate := plan.estimate
+		out.EstimateUSD = &estimate
+	}
+	if kind == TaskRoutingStronger && len(out.Moves) == 0 {
+		return &TaskRoutingPreview{Refusal: &TaskRoutingRefusal{Code: TaskRoutingStrongest, Message: "this is already the strongest worker the allowed models make"}}
+	}
+	return out
 }

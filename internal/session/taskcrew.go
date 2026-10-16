@@ -57,13 +57,16 @@ type crewWish struct {
 	sends map[crewroute.Seat]string
 	// taskCap is a task cap a person explicitly raised for this one task.
 	taskCap float64
+	// autoSeats are roles a person asked Auto for, this task only, over a
+	// saved pin or one-model mode (Best, a stronger worker).
+	autoSeats map[crewroute.Seat]bool
 }
 
 type crewWishKey struct{}
 
 // withCrewWish hands a start door the crew wish; an empty wish is no value.
 func withCrewWish(ctx context.Context, wish crewWish) context.Context {
-	if wish.effort == "" && wish.stronger == nil && wish.again == nil && wish.worker == "" && len(wish.sends) == 0 && wish.taskCap == 0 {
+	if wish.effort == "" && wish.stronger == nil && wish.again == nil && wish.worker == "" && len(wish.sends) == 0 && wish.taskCap == 0 && len(wish.autoSeats) == 0 {
 		return ctx
 	}
 	return context.WithValue(ctx, crewWishKey{}, wish)
@@ -136,7 +139,14 @@ type taskCrew struct {
 	taskPins map[crewroute.Seat]bool
 	pending  map[crewroute.Seat]bool
 	// restored is every time this crew came back from its checkpoint.
-	restored []time.Time
+	restored     []time.Time
+	restoreCount int
+	// seatStarted are the roles that have had a call answered on this task,
+	// marked by the role that made it. roleFacts is a crew whose per-role
+	// facts (these, and the role tallies) were kept from its admission; a crew
+	// restored from an older checkpoint has none, and its role use is unknown.
+	seatStarted map[crewroute.Seat]bool
+	roleFacts   bool
 	// seatSends are roles a person moved on this task, by role rather than by
 	// the send id the engine asks for, so two roles that share a model can
 	// part ([Agent.TaskRoutingAct]).
@@ -205,7 +215,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	repo := canonicalPath(a.config.Workspace)
 	ask := config.CrewAsk{
 		Task:   crewroute.Task{Text: strings.TrimSpace(title + "\n\n" + brief)},
-		Effort: wish.effort, Stronger: wish.stronger, Again: wish.again, Repo: repo,
+		Effort: wish.effort, Stronger: wish.stronger, Again: wish.again, Repo: repo, AutoSeats: wish.autoSeats,
 		ChatModel: a.Model(),
 	}
 	// A MODEL NAMED FOR THE TASK SEATS ITS WORKER, as a one-task pin: the one
@@ -234,7 +244,8 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 		return nil, err
 	}
 	crew := &taskCrew{
-		call: router.CrewCallID(a.journalID() + ":" + strconv.FormatUint(row, 10)), decision: decision,
+		roleFacts: true,
+		call:      router.CrewCallID(a.journalID() + ":" + strconv.FormatUint(row, 10)), decision: decision,
 		title: title, brief: brief, repo: repo,
 		original: map[crewroute.Seat]string{}, ladders: decision.Ladder,
 	}
@@ -459,7 +470,7 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
 		crew.guard.after(ctx, current, response, held)
 		if err == nil {
-			c.agent.crewAnswered(c.run, current)
+			c.agent.crewAnswered(c.run, current, seat)
 			return response, nil
 		}
 		if ctx.Err() != nil || crew.hasStarted(current) {
@@ -832,26 +843,32 @@ func (c *taskCrew) anyStarted() bool {
 	return len(c.started) > 0
 }
 
-// crewAnswered notes that a send id answered its first call on this task, and
-// writes the route's success to the router's log once.
-func (a *Agent) crewAnswered(run *beltRun, send string) {
+// crewAnswered notes that a role's call answered on send: the role has run —
+// that role only, never every role on the same model — and the first answer
+// on send writes the route's success to the router's log once. An empty seat
+// is a call no role was marked for, which marks no role.
+func (a *Agent) crewAnswered(run *beltRun, send string, seat crewroute.Seat) {
 	crew := run.crew
 	crew.mu.Lock()
-	if crew.started[send] {
-		crew.mu.Unlock()
+	if seat != "" {
+		if crew.seatStarted == nil {
+			crew.seatStarted = map[crewroute.Seat]bool{}
+		}
+		crew.seatStarted[seat] = true
+		delete(crew.pending, seat)
+	}
+	first := !crew.started[send]
+	if first {
+		if crew.started == nil {
+			crew.started = map[string]bool{}
+		}
+		crew.started[send] = true
+	}
+	decision := crew.decision
+	crew.mu.Unlock()
+	if !first {
 		return
 	}
-	if crew.started == nil {
-		crew.started = map[string]bool{}
-	}
-	crew.started[send] = true
-	decision := crew.decision
-	for _, seat := range crewroute.Seats {
-		if decision.Seat(seat).Send == send {
-			delete(crew.pending, seat)
-		}
-	}
-	crew.mu.Unlock()
 	for _, seat := range crewroute.Seats {
 		if pick := decision.Seat(seat); pick.Send == send {
 			config.LogCrewRoute(a.config.ProfileDir, crew.call, decision, crew.repo, crew.title, seat, pick, "", time.Time{})

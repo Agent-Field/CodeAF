@@ -2109,7 +2109,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodProcessList, MethodProcessRerun:
 		return serveAppProcesses(agent, call)
 	case MethodAppTasks, MethodAppTask, MethodAppTaskAction, MethodAppQuickTasks, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppRename,
-		MethodAppTaskRouting, MethodAppTaskRoutingAct:
+		MethodAppTaskRouting, MethodAppTaskRoutingAct, MethodAppTaskRoutingOptions:
 		return dispatchAppTask(agent, call)
 	case MethodTaskRetry:
 		args, err := arg[TaskSetupArgs](call)

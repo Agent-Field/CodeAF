@@ -17,7 +17,8 @@ func TestTaskRoutingReachesTheEngineAndRefusalsAreAnswers(t *testing.T) {
 	conv := &fakeConversation{routing: session.TaskRoutingView{
 		State: session.TaskRoutingRouted, Mode: crewroute.ModeAuto, Running: true, EstimateUSD: &est, SpentUSD: 0.07, Calls: 3, UnknownCalls: 1, ChangeCount: 1,
 		Roles: []session.TaskRoutingRole{
-			{Seat: crewroute.Worker, Model: "z-ai/glm-5.3", Provider: "OpenRouter", Kind: crewroute.Metered, Source: session.TaskRoleAuto, Status: session.TaskRoleUsed, SpentUSD: 0.06, Calls: 2},
+			{Seat: crewroute.Worker, Model: "z-ai/glm-5.3", Provider: "OpenRouter", Kind: crewroute.Metered, Source: session.TaskRoleAuto, Status: session.TaskRoleUsed, SpentUSD: 0.06, SpentKnown: true, Calls: 2,
+				Price: &crewroute.RoutePrice{Prompt: 4e-7, Completion: 1.6e-6}},
 			{Seat: crewroute.Planner, Model: "ds-flash", Provider: "openrouter", Source: session.TaskRoleAuto, Status: session.TaskRoleUsed},
 			{Seat: crewroute.Checker, Model: "ds-flash", Provider: "openrouter", Source: session.TaskRolePinned, Status: session.TaskRoleNotRunYet},
 		},
@@ -36,7 +37,14 @@ func TestTaskRoutingReachesTheEngineAndRefusalsAreAnswers(t *testing.T) {
 		t.Fatalf("change %+v", got.Changes[0])
 	}
 	raw, _ := json.Marshal(got)
-	for _, key := range []string{`"estimate_usd":0.12`, `"unknown_calls":1`, `"task_cap_usd":null`} {
+	if got.Roles[0].Price == nil || got.Roles[0].Price.InPerM < 0.399 || got.Roles[0].Price.InPerM > 0.401 || *got.Roles[0].SpentUSD != 0.06 || got.Roles[1].SpentUSD != nil {
+		t.Fatalf("role price/spend %+v %+v", got.Roles[0], got.Roles[1])
+	}
+	opts, err := backend.TaskRoutingOptions(id)
+	if err != nil || opts.Scope != "next_step" || opts.Stronger.Moves[0].To.ID != "sonnet" || opts.Stronger.Moves[0].ToPrice.InPerM != 3 {
+		t.Fatalf("options %+v %v", opts, err)
+	}
+	for _, key := range []string{`"estimate_usd":0.12`, `"unknown_calls":1`, `"task_cap_usd":null`, `"spent_usd":null`} {
 		if !json.Valid(raw) || !contains(string(raw), key) {
 			t.Fatalf("wire lacks %s: %s", key, raw)
 		}

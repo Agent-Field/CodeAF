@@ -28,12 +28,15 @@ const (
 	// changes them ([session.Agent.TaskRouting], [session.Agent.TaskRoutingAct]).
 	MethodAppTaskRouting    = "App.TaskRouting"
 	MethodAppTaskRoutingAct = "App.TaskRoutingAct"
+	// MethodAppTaskRoutingOptions previews what each change would do.
+	MethodAppTaskRoutingOptions = "App.TaskRoutingOptions"
 )
 
 // appRoutingDoor is the conversation whose tasks' models can be read and moved.
 type appRoutingDoor interface {
 	TaskRouting(id string, changes int) (session.TaskRoutingView, error)
 	TaskRoutingAct(ctx context.Context, id string, act session.TaskRoutingAction) (session.TaskRoutingResult, error)
+	TaskRoutingOptions(id string) (session.TaskRoutingOptions, error)
 }
 
 // AppTaskRoutingArgs is one task's routing read or change.
@@ -45,6 +48,7 @@ type AppTaskRoutingArgs struct {
 
 // appRoutingActResult carries a typed refusal across the socket intact.
 type appRoutingActResult struct {
+	Options *session.TaskRoutingOptions `json:",omitempty"`
 	Result  session.TaskRoutingResult
 	Refusal *session.TaskRoutingRefusal `json:",omitempty"`
 }
@@ -80,7 +84,7 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 		return nil, errors.New("engine: app tasks are unavailable")
 	}
 	switch call.Method {
-	case MethodAppTaskRouting, MethodAppTaskRoutingAct:
+	case MethodAppTaskRouting, MethodAppTaskRoutingAct, MethodAppTaskRoutingOptions:
 		routing, ok := agent.(appRoutingDoor)
 		if !ok {
 			return nil, errors.New("engine: task models are unavailable")
@@ -88,6 +92,13 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 		args, err := arg[AppTaskRoutingArgs](call)
 		if err != nil {
 			return nil, err
+		}
+		if call.Method == MethodAppTaskRoutingOptions {
+			options, err := routing.TaskRoutingOptions(args.ID)
+			if err != nil {
+				return appRoutingFailure(err)
+			}
+			return json.Marshal(appRoutingActResult{Options: &options})
 		}
 		if call.Method == MethodAppTaskRouting {
 			view, err := routing.TaskRouting(args.ID, args.Changes)
@@ -258,4 +269,23 @@ func (a *Agent) TaskRouting(id string, changes int) (session.TaskRoutingView, er
 // TaskRoutingAct is a person's change to one task's models.
 func (a *Agent) TaskRoutingAct(_ context.Context, id string, act session.TaskRoutingAction) (session.TaskRoutingResult, error) {
 	return a.routingCall(MethodAppTaskRoutingAct, AppTaskRoutingArgs{ID: id, Act: &act})
+}
+
+// TaskRoutingOptions previews what each change would do to one task.
+func (a *Agent) TaskRoutingOptions(id string) (session.TaskRoutingOptions, error) {
+	raw, err := a.c.call(nil, MethodAppTaskRoutingOptions, AppTaskRoutingArgs{ID: id})
+	if err != nil {
+		return session.TaskRoutingOptions{}, err
+	}
+	var result appRoutingActResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return session.TaskRoutingOptions{}, err
+	}
+	if result.Refusal != nil {
+		return session.TaskRoutingOptions{}, result.Refusal
+	}
+	if result.Options == nil {
+		return session.TaskRoutingOptions{}, errors.New("engine: no task models options came back")
+	}
+	return *result.Options, nil
 }

@@ -1241,6 +1241,23 @@ func (g *TaskGraph) runRowsLocked() []TaskNotice {
 	return out
 }
 
+// runRowLocked is one row of a run by its number, with the same visibility
+// as [TaskGraph.runRowsLocked]: a deleted row, or one under a deleted parent,
+// is not found.
+func (g *TaskGraph) runRowLocked(id uint64) (TaskNotice, bool) {
+	for _, root := range g.runRuns {
+		for i := range g.runs[root] {
+			if row := &g.runs[root][i]; row.ID == id {
+				if g.deleted[row.ID] || g.deleted[row.Parent] {
+					return TaskNotice{}, false
+				}
+				return *row, true
+			}
+		}
+	}
+	return TaskNotice{}, false
+}
+
 func newTaskGraph() *TaskGraph {
 	// A GRAPH IS ALONE IN ITS PROCESS UNTIL IT IS TOLD OTHERWISE. The caller
 	// that knows several conversations share one machine says so by putting its
