@@ -1464,6 +1464,12 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	if refused != nil {
 		return 0, refused
 	}
+	// A HOST THAT CANNOT KEEP THE MESSAGE'S MARK IS NOT SENT THE MESSAGE: the
+	// refusal is the app's to read before the turn starts, and the person's
+	// draft and chips stay as they were.
+	if shown != nil && !appKeepsQueuedMarks(live.conn.Conv) {
+		return 0, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a message's said, reads or attachments; update its engine before sending")
+	}
 	// A conversation joined on a window's host can have heard from the person
 	// in that window too, so its count is read again before it is used.
 	if !live.conn.Assembled && live.conn.Transcript != "" {

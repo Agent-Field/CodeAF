@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -56,9 +57,13 @@ const (
 // appTrimmedLine is the line that stands where earlier output was dropped.
 const appTrimmedLine = "… earlier output trimmed to the last 512 KB"
 
-// appQueued is one message of the person's waiting for the turn to end.
+// appQueued is one message of the person's waiting for the turn to end. text
+// is the words the model will be sent; shown, when set, is the person's own
+// words and the reads text was written from, which the queue and the entry
+// show instead of it. shown is this message's own copy, never shared.
 type appQueued struct {
 	id, text, clientID string
+	shown              *appSending
 }
 
 // appAttach is one attachment the composer added, with what it carries.
@@ -82,6 +87,70 @@ type appNotePending struct {
 // steer the turn ends before reading falls through, and becomes the next
 // message, as the engine does it.
 func (b *appBackend) Steer(agent, text, clientID string) error {
+	return b.steer(agent, text, clientID, nil)
+}
+
+// SteerMessage is [appBackend.Steer] with the person's own words and the reads
+// text was written from, kept on the correction's line in the record and on
+// the turn's message if it falls through.
+func (b *appBackend) SteerMessage(agent string, message appwire.AgentMessage) error {
+	shown, err := appMarkOf(message, "a correction")
+	if err != nil {
+		return err
+	}
+	return b.steer(agent, message.Text, message.ClientID, shown)
+}
+
+var (
+	_ appwire.MessageSender  = (*appBackend)(nil)
+	_ appwire.MessageSteerer = (*appBackend)(nil)
+	_ appwire.MessageQueuer  = (*appBackend)(nil)
+	_ appSteerer             = (*remote.Agent)(nil)
+	_ appMarkProbe           = (*remote.Agent)(nil)
+)
+
+// appSteerer is a conversation's door for a correction that carries the
+// person's mark. A [remote.Agent] is one; whether its host keeps the mark is
+// [appMarkProbe]'s to say.
+type appSteerer interface {
+	SteerMessage(message session.Submission) (<-chan session.Event, error)
+}
+
+// appMarkProbe is a conversation that can say, before anything is asked of
+// it, whether its host keeps a marked message, a marked correction and a
+// marked follow-up. A conversation that cannot say is held in this process
+// and has the door it was built with.
+type appMarkProbe interface {
+	MessageMarksKnown() bool
+	SteerMarksKnown() bool
+}
+
+// appMarkOf is a correction's or a queued message's mark, checked whole and
+// kept as the record will keep it: the person's own words and the reads.
+// Attachments are refused: neither road carries one.
+func appMarkOf(message appwire.AgentMessage, what string) (*appSending, error) {
+	if len(message.Attachments) > 0 {
+		return nil, appwire.Errorf(appwire.CodeBadParams, "%s does not carry attachments; send them as a message", what)
+	}
+	reads, err := appKeptReads(message.Reads)
+	if err != nil {
+		return nil, err
+	}
+	said := message.Text
+	if message.Said != nil {
+		said = *message.Said
+	}
+	return &appSending{text: said, reads: reads}, nil
+}
+
+// appKeepsQueuedMarks is whether conv's host keeps a queued message's mark
+// when the queue sends it, which goes by SubmitMessage.
+func appKeepsQueuedMarks(conv appConversation) bool {
+	probe, ok := conv.(appMarkProbe)
+	return !ok || probe.MessageMarksKnown()
+}
+
+func (b *appBackend) steer(agent, text, clientID string, shown *appSending) error {
 	a, err := b.find(agent)
 	if err != nil {
 		return err
@@ -94,23 +163,40 @@ func (b *appBackend) Steer(agent, text, clientID string) error {
 	if !running {
 		return appwire.Errorf(appwire.CodeBusy, "nothing is running to steer; send it as a message")
 	}
-	events, err := live.conn.Conv.Steer(text)
+	// A CORRECTION'S MARK IS KEPT OR THE CORRECTION IS NOT MADE: a host that
+	// cannot keep it is refused before the turn hears a word, and the person's
+	// draft stays theirs.
+	var events <-chan session.Event
+	if shown != nil {
+		steerer, ok := live.conn.Conv.(appSteerer)
+		if probe, known := live.conn.Conv.(appMarkProbe); !ok || (known && !probe.SteerMarksKnown()) {
+			return appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a correction's said or reads; send it as a message")
+		}
+		events, err = steerer.SteerMessage(appSubmission(text, shown))
+	} else {
+		events, err = live.conn.Conv.Steer(text)
+	}
 	if err != nil {
 		return appEngineError(err)
+	}
+	entryText, reads := text, []appwire.MessageRead(nil)
+	if shown != nil {
+		entryText, reads = shown.text, appReadsOf(shown.reads)
 	}
 	var entry appwire.Entry
 	b.locked(func() {
 		live.steers++
-		entry = appwire.Entry{ID: "st" + strconv.FormatUint(live.turn, 10) + "." + strconv.Itoa(live.steers), Agent: agent, Turn: live.turn, Kind: appwire.EntrySteer, At: b.now(), Text: text, ClientID: clientID, State: appwire.SteerPending}
+		entry = appwire.Entry{ID: "st" + strconv.FormatUint(live.turn, 10) + "." + strconv.Itoa(live.steers), Agent: agent, Turn: live.turn, Kind: appwire.EntrySteer, At: b.now(), Text: entryText, ClientID: clientID, State: appwire.SteerPending, Reads: reads}
 	})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: entry})
-	guard.Go("app/steer", func() { b.followSteer(a, live, entry, events) })
+	guard.Go("app/steer", func() { b.followSteer(a, live, entry, text, shown, events) })
 	return nil
 }
 
 // followSteer reads one steer's own stream: consumed at a step, or fallen
-// through, after which the same stream is the turn its words start.
-func (b *appBackend) followSteer(a *appAgent, live *appLive, entry appwire.Entry, events <-chan session.Event) {
+// through, after which the same stream is the turn its words start. text is
+// the words the model was sent and shown the person's mark, if any.
+func (b *appBackend) followSteer(a *appAgent, live *appLive, entry appwire.Entry, text string, shown *appSending, events <-chan session.Event) {
 	for event := range events {
 		switch event.Kind {
 		case session.EventSteerConsumed:
@@ -124,15 +210,16 @@ func (b *appBackend) followSteer(a *appAgent, live *appLive, entry appwire.Entry
 			entry.State, entry.At = appwire.SteerFellThrough, b.now()
 			b.locked(func() { live.adopting++ })
 			live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: entry})
-			b.adoptTurn(a, live, entry.Text, entry.ClientID, events)
+			b.adoptTurn(a, live, text, entry.ClientID, shown, events)
 			return
 		}
 	}
 }
 
 // adoptTurn makes the rest of a fallen-through steer's stream the agent's
-// next turn, once the turn it missed has said its last.
-func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string, events <-chan session.Event) {
+// next turn, once the turn it missed has said its last. Its user entry shows
+// the person's mark, as the record's line for it does.
+func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string, shown *appSending, events <-chan session.Event) {
 	var done chan struct{}
 	b.locked(func() { done = live.pumpDone })
 	if done != nil {
@@ -165,16 +252,20 @@ func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string
 		}
 		return
 	}
+	entryText, reads := text, []appwire.MessageRead(nil)
+	if shown != nil {
+		entryText, reads = shown.text, appReadsOf(shown.reads)
+	}
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: clientID,
+		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Reads: reads,
 	}})
 	long := b.watchLong(id, live, turn, b.now())
 	b.newTurnCalls(a)
 	tails := b.tickTools(a, id, live)
 	defer long.Stop()
 	defer tails()
-	b.pump(a, id, live, turn, n, text, nil, events)
+	b.pump(a, id, live, turn, n, text, shown, events)
 	b.sendQueued(a, live)
 }
 
@@ -183,6 +274,21 @@ func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string
 // Queue keeps a message for when the running turn ends, or sends it now when
 // nothing is running.
 func (b *appBackend) Queue(agent, text, clientID string) ([]appwire.Queued, error) {
+	return b.queue(agent, text, clientID, nil)
+}
+
+// QueueMessage is [appBackend.Queue] with the person's own words and the reads
+// text was written from. The queue keeps all three and shows the person's
+// words; the message, once sent, is an ordinary one carrying them.
+func (b *appBackend) QueueMessage(agent string, message appwire.AgentMessage) ([]appwire.Queued, error) {
+	shown, err := appMarkOf(message, "a queued message")
+	if err != nil {
+		return nil, err
+	}
+	return b.queue(agent, message.Text, message.ClientID, shown)
+}
+
+func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]appwire.Queued, error) {
 	a, err := b.find(agent)
 	if err != nil {
 		return nil, err
@@ -193,25 +299,37 @@ func (b *appBackend) Queue(agent, text, clientID string) ([]appwire.Queued, erro
 		b.locked(func() { busy = live.running || live.adopting > 0 })
 	}
 	if !busy {
-		if _, err := b.Send(agent, text, clientID); err != nil {
+		if _, err := b.send(agent, text, clientID, shown); err != nil {
 			return nil, err
 		}
 		return b.queued(a), nil
 	}
+	// A QUEUED MARK IS ONE THE HOST WILL KEEP, or nothing is queued: the
+	// refusal comes now, with the draft still the person's, and never as a
+	// message that failed when the turn ended.
+	if shown != nil && !appKeepsQueuedMarks(live.conn.Conv) {
+		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads; send it when the turn ends")
+	}
 	var queued []appwire.Queued
 	b.locked(func() {
 		a.queueN++
-		a.queue = append(a.queue, appQueued{id: "q" + strconv.Itoa(a.queueN), text: text, clientID: clientID})
+		a.queue = append(a.queue, appQueued{id: "q" + strconv.Itoa(a.queueN), text: text, clientID: clientID, shown: shown})
 		queued = appQueuedOf(a.queue)
 	})
 	b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
 	return queued, nil
 }
 
+// appQueuedOf is the queue as the app sees it: the person's own words, never
+// the words the model will be sent, and a copy of each message's reads.
 func appQueuedOf(queue []appQueued) []appwire.Queued {
 	out := make([]appwire.Queued, 0, len(queue))
 	for _, q := range queue {
-		out = append(out, appwire.Queued{ID: q.id, Text: q.text})
+		view := appwire.Queued{ID: q.id, Text: q.text}
+		if q.shown != nil {
+			view.Text, view.Reads = q.shown.text, appReadsOf(q.shown.reads)
+		}
+		out = append(out, view)
 	}
 	return out
 }
@@ -248,9 +366,30 @@ func (b *appBackend) changeQueue(agent, id string, change func(a *appAgent, at i
 	return queued, nil
 }
 
-// EditQueued changes a queued message's words.
+// EditQueued changes a queued message's words. A PLAIN EDIT REPLACES THE WHOLE
+// MESSAGE: the said and reads it carried are dropped with the old words, so
+// nothing is shown or kept beside words that were not written from it.
 func (b *appBackend) EditQueued(agent, id, text string) ([]appwire.Queued, error) {
-	return b.changeQueue(agent, id, func(a *appAgent, at int) { a.queue[at].text = text })
+	return b.changeQueue(agent, id, func(a *appAgent, at int) { a.queue[at].text, a.queue[at].shown = text, nil })
+}
+
+// EditQueuedMessage replaces a queued message with another carrying its own
+// said and reads. The whole replacement is checked before the queue is
+// touched, so a refusal leaves every queued message as it was; a message
+// already sent answers sent and nothing is queued.
+func (b *appBackend) EditQueuedMessage(agent, id string, message appwire.AgentMessage) ([]appwire.Queued, error) {
+	shown, err := appMarkOf(message, "a queued message")
+	if err != nil {
+		return nil, err
+	}
+	a, err := b.find(agent)
+	if err != nil {
+		return nil, err
+	}
+	if live := b.liveOf(a); live != nil && !appKeepsQueuedMarks(live.conn.Conv) {
+		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads")
+	}
+	return b.changeQueue(agent, id, func(a *appAgent, at int) { a.queue[at].text, a.queue[at].shown = message.Text, shown })
 }
 
 // RemoveQueued takes a queued message out.
@@ -286,7 +425,7 @@ func (b *appBackend) sendQueued(a *appAgent, live *appLive) {
 		return
 	}
 	b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
-	if _, err := b.Send(agent, next.text, next.clientID); err != nil {
+	if _, err := b.send(agent, next.text, next.clientID, next.shown); err != nil {
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 			ID: "qx" + next.id, Agent: agent, Kind: appwire.EntryError, At: b.now(), Text: "the queued message was not sent: " + err.Error(),
 		}})
