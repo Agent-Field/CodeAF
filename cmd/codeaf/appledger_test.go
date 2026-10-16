@@ -477,3 +477,16 @@ func TestAppSpendLedgerRefusesFiguresItCannotAdd(t *testing.T) {
 	}
 	keptIntact(t, dir, dest, "kept\n")
 }
+
+func TestAppSpendLedgerLargeNamesDoNotEscapeTheirDisplayBudget(t *testing.T) {
+	huge := strings.Repeat(" ", appLedgerTitleMax) + "actual title"
+	n := &appLedgerNamer{conversation: func(string) string { return huge }, task: func(string, string) string { return huge }, automation: func(string) string { return huge }, automations: map[string]string{}}
+	for _, kind := range []string{session.SubjectConversation, session.SubjectTask, session.SubjectAutomation} {
+		if got := n.of(session.UsageEntry{Kind: kind, Subject: "kept-id", Root: "root"}); got != "" {
+			t.Fatalf("oversized %s title retained", kind)
+		}
+	}
+	if got := appLedgerTitle("  Real title  "); got != "Real title" {
+		t.Fatalf("valid title changed: %q", got)
+	}
+}

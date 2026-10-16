@@ -207,6 +207,18 @@ func appLedgerTotals(t session.UsageLedgerTotals) appwire.SpendLedgerTotals {
 // kept, so a range of very many automations costs reads, never memory.
 const appLedgerNameCache = 256
 
+// Titles are optional display metadata, not billing evidence. Omit an oversized
+// title rather than copying it into every page/CSV row; the actual subject id
+// remains. Clone small names so whitespace trim cannot retain a huge backing string.
+const appLedgerTitleMax = 4096
+
+func appLedgerTitle(title string) string {
+	if len(title) > appLedgerTitleMax {
+		return ""
+	}
+	return strings.Clone(strings.TrimSpace(title))
+}
+
 // appLedgerNamer names one answer's rows from what the app already holds.
 type appLedgerNamer struct {
 	// conversation and task answer a held agent's title and a held task's,
@@ -227,7 +239,7 @@ func (b *appBackend) ledgerNamer() *appLedgerNamer {
 					title = a.view.Title
 				}
 			})
-			return strings.TrimSpace(title)
+			return title
 		},
 		task: func(conversation, id string) (title string) {
 			n, err := strconv.ParseUint(id, 10, 64)
@@ -239,7 +251,7 @@ func (b *appBackend) ledgerNamer() *appLedgerNamer {
 					title = a.live.tasks[appTaskID(conversation, n)].Title
 				}
 			})
-			return strings.TrimSpace(title)
+			return title
 		},
 		automation:  func(string) string { return "" },
 		automations: map[string]string{},
@@ -254,7 +266,7 @@ func (b *appBackend) ledgerNamer() *appLedgerNamer {
 			if err != nil {
 				return ""
 			}
-			return strings.TrimSpace(a.Title)
+			return a.Title
 		}
 	}
 	return n
@@ -267,12 +279,12 @@ func (n *appLedgerNamer) of(entry session.UsageEntry) string {
 	}
 	switch entry.Kind {
 	case session.SubjectConversation:
-		return n.conversation(entry.Subject)
+		return appLedgerTitle(n.conversation(entry.Subject))
 	case session.SubjectAutomation:
 		if title, known := n.automations[entry.Subject]; known {
 			return title
 		}
-		title := n.automation(entry.Subject)
+		title := appLedgerTitle(n.automation(entry.Subject))
 		if len(n.automations) < appLedgerNameCache {
 			n.automations[entry.Subject] = title
 		}
@@ -281,7 +293,7 @@ func (n *appLedgerNamer) of(entry session.UsageEntry) string {
 		if entry.Root == "" {
 			return ""
 		}
-		return n.task(entry.Root, entry.Subject)
+		return appLedgerTitle(n.task(entry.Root, entry.Subject))
 	}
 	return ""
 }
