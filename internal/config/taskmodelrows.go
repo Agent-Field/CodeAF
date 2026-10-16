@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
-	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
@@ -97,6 +97,10 @@ type TaskModelRole struct {
 
 // TaskModelsState is the whole configuration, read at one moment.
 type TaskModelsState struct {
+	// ObservedAt is when the read that produced this state BEGAN, so a slower
+	// read that started earlier can never carry a later time than a read, or
+	// a write, that started after it.
+	ObservedAt time.Time
 	Revision   string
 	Mode       crewroute.Mode
 	One        *CrewPin
@@ -107,6 +111,23 @@ type TaskModelsState struct {
 
 // ErrTaskModelsRead is a read that could not finish inside its context.
 var ErrTaskModelsRead = errors.New("task models read timed out")
+
+// ErrTaskModelsMoving is a read the profile kept changing under: every try saw
+// a different revision at its end than at its start. No part of any try is
+// answered.
+var ErrTaskModelsMoving = errors.New("task models kept changing while they were read · read them again")
+
+// taskModelsReadTries is how many times a read starts again when the rows
+// moved under it.
+const taskModelsReadTries = 3
+
+// taskModelsClock stamps an observation; taskModelsMidRead runs between the
+// revision read at the start of a try and the one at its end. Both exist for a
+// test to put a write exactly there; production leaves the hook nil.
+var (
+	taskModelsClock   = time.Now
+	taskModelsMidRead func()
+)
 
 // taskModelRowCheck is how many rows are built between two looks at the
 // context.
@@ -120,12 +141,16 @@ func TaskModelRowsAt(ctx context.Context, profileDir string) ([]TaskModelRow, er
 
 // taskModelRows builds the rows; a nil context is never cut.
 func taskModelRows(ctx context.Context, profileDir string) ([]TaskModelRow, error) {
+	return taskModelRowsWith(ctx, profileDir, crewHealthAt(profileDir))
+}
+
+// taskModelRowsWith is [taskModelRows] under one health reading already made.
+func taskModelRowsWith(ctx context.Context, profileDir string, health crewHealth) ([]TaskModelRow, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	providers := CrewProvidersAt(profileDir)
 	rule := CrewAllowedAt(profileDir)
-	health := crewHealthAt(profileDir)
 	facts := crewRouteFacts{free: CrewFreeRoutesAt(profileDir), health: health}
 	off := CrewProvidersOffAt(profileDir)
 	eligible := map[string]bool{}
@@ -135,7 +160,6 @@ func taskModelRows(ctx context.Context, profileDir string) ([]TaskModelRow, erro
 		}
 	}
 	models := taskCatalogModels()
-	listed := taskProviderListings(profileDir, providers)
 	var out []TaskModelRow
 	built := 0
 	for _, p := range providers {
@@ -161,7 +185,8 @@ func taskModelRows(ctx context.Context, profileDir string) ([]TaskModelRow, erro
 				// embedding model, not one too small to hold a role's context.
 				continue
 			}
-			row.Price = taskRowPrice(p, r, entry, listed[p.ID])
+			var priced bool
+			row.Price, priced = taskRowPrice(p, r, entry)
 			row.Allowed = rule.AdmitsOn(m, p.ID)
 			_, resting := health.blocked[r.Send]
 			providerDown := !p.On || health.disconnected[p.ID] || (r.Kind == crewroute.Metered && health.unaffordable[p.ID])
@@ -170,7 +195,7 @@ func taskModelRows(ctx context.Context, profileDir string) ([]TaskModelRow, erro
 			switch {
 			case !row.Allowed:
 				row.Reason = crewroute.RejectNotAllowed
-			case !entry.priced:
+			case !priced:
 				row.Reason = crewroute.RejectNoPrice
 			case providerDown:
 				row.Reason = crewroute.RejectProviderUnavailable
@@ -230,57 +255,36 @@ func taskCatalogModels() []taskCatalogModel {
 	return out
 }
 
-// taskProviderListings is each direct provider's own cached listing, keyed by
-// the id that provider lists. NOTHING IS FETCHED: a listing nobody cached is
-// no listing, and its rows have no price.
-func taskProviderListings(profileDir string, providers []CrewProvider) map[string]map[string]catalog.Model {
-	set := ResolveSources(profileDir, APIKeyAt(profileDir), DefaultBaseURL)
-	out := map[string]map[string]catalog.Model{}
-	for _, p := range providers {
-		if p.ID == modelsource.DefaultID || p.Kind != crewroute.Metered {
-			continue
+// taskRowPrice is a row's price as ITS OWN provider published it, nil when
+// it published none, and whether the route has a price Auto may weigh. The
+// default service's price is its catalog's; a direct metered route's is its
+// own listing's ([CrewProvider.ownPrice]) — a published zero is a price of
+// zero, an absence is no price; a plan, a local model or a free pool bills no
+// tokens and needs none.
+func taskRowPrice(p CrewProvider, r crewroute.Route, entry taskCatalogModel) (*ModelPrice, bool) {
+	if fact, needs := p.ownPrice(r); needs {
+		if !fact.Known {
+			return nil, false
 		}
-		service, ok := set.ByID(p.ID)
-		if !ok {
-			continue
-		}
-		rows := catalog.Recall(CatalogOptionsFor(service, profileDir)).ModelsNow()
-		if len(rows) == 0 {
-			continue
-		}
-		byID := make(map[string]catalog.Model, len(rows))
-		for _, row := range rows {
-			byID[strings.ToLower(row.ID)] = row
-		}
-		out[p.ID] = byID
+		return &ModelPrice{InPerM: fact.Prompt * 1e6, OutPerM: fact.Completion * 1e6}, true
 	}
-	return out
-}
-
-// taskRowPrice is a row's price as its provider published it, nil otherwise.
-func taskRowPrice(p CrewProvider, r crewroute.Route, entry taskCatalogModel, listing map[string]catalog.Model) *ModelPrice {
 	if r.Kind != crewroute.Metered {
-		return nil
+		return nil, entry.priced
 	}
-	if p.ID == modelsource.DefaultID {
-		if !entry.priced {
-			return nil
-		}
-		return &ModelPrice{InPerM: entry.in * 1e6, OutPerM: entry.out * 1e6}
+	if !entry.priced {
+		return nil, false
 	}
-	own, ok := listing[strings.ToLower(strings.TrimPrefix(r.Send, p.Written+"/"))]
-	// A listing row that says nothing about price — or only zeros, which is
-	// what a listing seeded from model ids alone holds — is no price.
-	if !ok || own.PriceUnknown || (own.PromptPrice <= 0 && own.CompletionPrice <= 0) {
-		return nil
-	}
-	return &ModelPrice{InPerM: own.PromptPrice * 1e6, OutPerM: own.CompletionPrice * 1e6}
+	return &ModelPrice{InPerM: entry.in * 1e6, OutPerM: entry.out * 1e6}, true
 }
 
 // TaskModelProvidersAt is every provider a person could use for tasks: each
 // connected one, then each one this build can connect that has no key yet.
 func TaskModelProvidersAt(profileDir string, rows []TaskModelRow) []TaskModelProvider {
-	health := crewHealthAt(profileDir)
+	return taskModelProviders(profileDir, rows, crewHealthAt(profileDir))
+}
+
+// taskModelProviders is [TaskModelProvidersAt] under one health reading.
+func taskModelProviders(profileDir string, rows []TaskModelRow, health crewHealth) []TaskModelProvider {
 	connected := CrewProvidersAt(profileDir)
 	var out []TaskModelProvider
 	seen := map[string]bool{}
@@ -320,11 +324,16 @@ func TaskModelProvidersAt(profileDir string, rows []TaskModelRow) []TaskModelPro
 }
 
 // taskModelsKeys are every row the task models are read from — the pins, the
-// routes, the rule, the providers turned off, the free routes, the caps, the
-// mode and the retired rows a write migrates — so a revision moves when any
-// of them does.
+// routes, the rule, the providers turned off, the free routes, the mode, the
+// one model and the retired rows a write migrates — so a revision moves when
+// any of them does. THE CAPS ARE NOT AMONG THEM: they are the Spending
+// settings' rows, and a budget change is not a change to the task models.
 func taskModelsKeys() []string {
-	keys := append(crewStateKeys(), KeyTaskModelsMode, KeyTaskModelsOne, legacyKeyCrew, legacyKeyCrewPick, legacyKeyCrewSource)
+	keys := []string{KeyCrewAllowed, KeyCrewProvidersOff, KeyCrewFreeRoutes, KeyTaskModelsMode, KeyTaskModelsOne,
+		legacyKeyCrew, legacyKeyCrewPick, legacyKeyCrewSource}
+	for _, seat := range crewroute.Seats {
+		keys = append(keys, tierKeyFor(CrewSeatTier(seat)), crewRouteKey(seat))
+	}
 	sort.Strings(keys)
 	return keys
 }
@@ -363,10 +372,40 @@ func TaskModelsRevisionAt(profileDir string) string {
 	return taskModelsRevision(taskModelsSnapshot(profileDir))
 }
 
-// TaskModelsAt is the whole configuration with its rows, read inside ctx.
+// TaskModelsAt is the whole configuration with its rows, read inside ctx, as
+// ONE CONSISTENT OBSERVATION: the rows' revision is read when a try starts and
+// again when it ends, and a try the profile moved under is thrown away whole
+// and started again — never answered half old, half new. Route health is read
+// once per try, so every row, header and warning of one answer agree.
 func TaskModelsAt(ctx context.Context, profileDir string) (TaskModelsState, []TaskModelRow, error) {
-	revision := TaskModelsRevisionAt(profileDir)
-	rows, err := taskModelRows(ctx, profileDir)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for try := 0; try < taskModelsReadTries; try++ {
+		if ctx.Err() != nil {
+			return TaskModelsState{}, nil, ErrTaskModelsRead
+		}
+		observed := taskModelsClock()
+		revision := TaskModelsRevisionAt(profileDir)
+		state, rows, err := taskModelsOnce(ctx, profileDir, revision)
+		if err != nil {
+			return TaskModelsState{}, nil, err
+		}
+		if taskModelsMidRead != nil {
+			taskModelsMidRead()
+		}
+		if TaskModelsRevisionAt(profileDir) == revision {
+			state.ObservedAt = observed
+			return state, rows, nil
+		}
+	}
+	return TaskModelsState{}, nil, ErrTaskModelsMoving
+}
+
+// taskModelsOnce is one try of [TaskModelsAt].
+func taskModelsOnce(ctx context.Context, profileDir, revision string) (TaskModelsState, []TaskModelRow, error) {
+	health := crewHealthAt(profileDir)
+	rows, err := taskModelRowsWith(ctx, profileDir, health)
 	if err != nil {
 		return TaskModelsState{}, nil, err
 	}
@@ -375,7 +414,7 @@ func TaskModelsAt(ctx context.Context, profileDir string) (TaskModelsState, []Ta
 	rule := CrewAllowedAt(profileDir)
 	if one, ok := TaskOneModelAt(profileDir); ok {
 		state.One = &one
-		state.OneWarning = taskPinWarning(profileDir, providers, rows, one, nil)
+		state.OneWarning = taskPinWarning(providers, rows, one, nil, health)
 	}
 	saved := CrewPinsAt(profileDir)
 	for _, seat := range crewroute.Seats {
@@ -389,26 +428,26 @@ func TaskModelsAt(ctx context.Context, profileDir string) (TaskModelsState, []Ta
 		}
 		if pin, ok := saved[seat]; ok {
 			role.Pin = &pin
-			role.Warning = taskPinWarning(profileDir, providers, rows, pin, &rule)
+			role.Warning = taskPinWarning(providers, rows, pin, &rule, health)
 		}
 		if role.Eligible == 0 && role.Pin == nil {
 			role.Warning = TaskWarnNoEligible
 		}
 		state.Roles[seat] = role
 	}
-	state.Providers = TaskModelProvidersAt(profileDir, rows)
+	state.Providers = taskModelProviders(profileDir, rows, health)
 	return state, rows, nil
 }
 
 // taskPinWarning is what is wrong with a saved pin, or nothing. A rule is
 // asked for a role's pin and not for the one model, which the allowed models
 // do not govern.
-func taskPinWarning(profileDir string, providers []CrewProvider, rows []TaskModelRow, pin CrewPin, rule *crewroute.Allowed) string {
+func taskPinWarning(providers []CrewProvider, rows []TaskModelRow, pin CrewPin, rule *crewroute.Allowed, health crewHealth) string {
 	route := resolveCrewPin(pin, providers)
 	if rule != nil && !crewPinAdmitted(*rule, pin.Model, route.Provider) {
 		return string(crewroute.PinNotAllowed)
 	}
-	if _, ok := crewPinReachable(profileDir, providers, route); !ok {
+	if _, ok := crewPinReachable(providers, route, health); !ok {
 		return string(crewroute.PinProviderUnavailable)
 	}
 	if len(rows) > 0 {
@@ -506,7 +545,8 @@ func ApplyTaskModels(ctx context.Context, profileDir string, change TaskModelsCh
 
 // taskModelsValues is a change as the rows it writes, every part checked.
 func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsChange) (map[string]any, error) {
-	rows, err := taskModelRows(ctx, profileDir)
+	health := crewHealthAt(profileDir)
+	rows, err := taskModelRowsWith(ctx, profileDir, health)
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +571,7 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 			return nil, err
 		}
 		route := resolveCrewPin(pin, providers)
-		if _, ok := crewPinReachable(profileDir, providers, route); !ok {
+		if _, ok := crewPinReachable(providers, route, health); !ok {
 			return nil, refuse("%s is not reachable on %s · connect it or turn it on first", pin.Model, taskProviderName(providers, route.Provider))
 		}
 		one, haveOne = pin, true
@@ -543,7 +583,7 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 			if !haveOne {
 				return nil, refuse("one model for every task needs the model · send one_model")
 			}
-			if _, ok := crewPinReachable(profileDir, providers, resolveCrewPin(one, providers)); !ok {
+			if _, ok := crewPinReachable(providers, resolveCrewPin(one, providers), health); !ok {
 				return nil, refuse("%s is not reachable right now · choose another one model", one.Model)
 			}
 			values[KeyTaskModelsMode] = string(crewroute.ModeOne)

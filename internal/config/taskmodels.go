@@ -70,8 +70,13 @@ func routeOneModel(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 	}
 	providers := CrewProvidersAt(profileDir)
 	route := resolveCrewPin(one, providers)
-	if why, ok := crewPinReachable(profileDir, providers, route); !ok {
-		refusal := &crewroute.NoEligibleError{Seat: crewroute.Worker, Mode: crewroute.ModeOne}
+	// THE ONE MODEL IS NOT PUT ON TRIAL. Auto may send a task's first call to
+	// an account it last saw refuse, because another model is there if it
+	// refuses again; one-model mode has no other model, so a route known to be
+	// signed out, out of credit or resting refuses the task with the one fix.
+	health := crewHealthAt(profileDir)
+	if why, ok := crewPinReachable(providers, route, health); !ok {
+		refusal := &crewroute.NoEligibleError{Seat: crewroute.Worker, Mode: crewroute.ModeOne, Action: health.actionFor(route, "choose another one model")}
 		refusal.Reject(route.Model, route.Provider, why)
 		return crewroute.Decision{}, refusal
 	}
@@ -118,24 +123,60 @@ func routeOneModel(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 	return d, nil
 }
 
-// crewPinReachable is whether a resolved pin's route goes through a provider
-// that is connected and on, and why not.
-func crewPinReachable(profileDir string, providers []CrewProvider, route crewroute.Pin) (crewroute.RejectReason, bool) {
+// crewPinReachable is whether a resolved pin's route is one route health
+// expects to answer — a provider connected and on, whose key was not refused,
+// whose account is not out of credit for a paid route, on a send that is not
+// resting — and why not.
+func crewPinReachable(providers []CrewProvider, route crewroute.Pin, health crewHealth) (crewroute.RejectReason, bool) {
 	p, ok := crewProviderByID(providers, route.Provider)
-	if !ok || !p.On {
+	switch {
+	case !ok || !p.On || health.disconnected[p.ID] || (route.Kind == crewroute.Metered && health.unaffordable[p.ID]):
 		return crewroute.RejectProviderUnavailable, false
+	}
+	if _, resting := health.blocked[route.Send]; resting {
+		return crewroute.RejectRouteUnavailable, false
 	}
 	return "", true
 }
 
-// crewSavedPins is the profile's pins resolved for routing: each pin the
-// allowed models admit on its route, and a warning for every other — a pin
-// outside them is not used and the role is routed; a pin whose provider is not
-// connected or is off is still used, and said.
-func crewSavedPins(profileDir string, providers []CrewProvider) (map[crewroute.Seat]crewroute.Pin, []crewroute.SeatWarning) {
+// actionFor is the one thing a person can do about one route health holds
+// back, followed by the other way out (or), or the other way alone when health
+// has nothing to say about the route — a provider not connected, or off.
+func (h crewHealth) actionFor(route crewroute.Pin, or string) string {
+	switch {
+	case h.disconnected[route.Provider]:
+		return "reconnect " + route.Provider + " with /connect, or " + or
+	case route.Kind == crewroute.Metered && h.unaffordable[route.Provider]:
+		return "add credit on " + route.Provider + ", or " + or
+	}
+	if until, resting := h.blocked[route.Send]; resting {
+		return crewroute.ShortModel(route.Model) + " on " + route.Provider + " is resting until " + until.Local().Format("15:04") + " · try then, or " + or
+	}
+	provider := route.Provider
+	if provider == "" {
+		provider = "its provider"
+	}
+	return "connect or turn on " + provider + ", or " + or
+}
+
+// crewSavedPins is the profile's pins resolved for routing, under two laws:
+//
+//   - A PIN THE ALLOWED MODELS LEAVE OUT IS SET ASIDE: the role is routed by
+//     Auto for this task and the decision carries a pin_not_allowed warning.
+//     That is the one exception, because the person said both things — this
+//     model, and not this model — and the later word is theirs.
+//   - AN ALLOWED PIN IS NEVER SUBSTITUTED. A pin whose route is known not to
+//     answer — its provider gone, off, signed out, out of credit, or the send
+//     resting — is the role's refusal ([crewroute.NoEligibleError]), with the
+//     one fix, and never a quiet move to another model or another provider.
+//
+// The refusals are per seat, so a seat this task's own pins fill is not
+// refused for a saved pin it does not use.
+func crewSavedPins(profileDir string, providers []CrewProvider, health crewHealth) (map[crewroute.Seat]crewroute.Pin, []crewroute.SeatWarning, map[crewroute.Seat]*crewroute.NoEligibleError) {
 	rule := CrewAllowedAt(profileDir)
 	pins := map[crewroute.Seat]crewroute.Pin{}
 	var warnings []crewroute.SeatWarning
+	refused := map[crewroute.Seat]*crewroute.NoEligibleError{}
 	saved := CrewPinsAt(profileDir)
 	for _, seat := range crewroute.Seats {
 		pin, ok := saved[seat]
@@ -147,12 +188,16 @@ func crewSavedPins(profileDir string, providers []CrewProvider) (map[crewroute.S
 			warnings = append(warnings, crewroute.SeatWarning{Seat: seat, Kind: crewroute.PinNotAllowed, Model: pin.Model, Provider: pin.Provider})
 			continue
 		}
-		if _, ok := crewPinReachable(profileDir, providers, route); !ok {
-			warnings = append(warnings, crewroute.SeatWarning{Seat: seat, Kind: crewroute.PinProviderUnavailable, Model: pin.Model, Provider: route.Provider})
+		if why, ok := crewPinReachable(providers, route, health); !ok {
+			refusal := &crewroute.NoEligibleError{Seat: seat, Mode: crewroute.ModeAuto,
+				Action: health.actionFor(route, "unpin the "+string(seat)+" from "+crewroute.ShortModel(pin.Model))}
+			refusal.Reject(route.Model, route.Provider, why)
+			refused[seat] = refusal
+			continue
 		}
 		pins[seat] = route
 	}
-	return pins, warnings
+	return pins, warnings, refused
 }
 
 // withoutWarningsFor drops the warnings about seats a task's own pins filled.
@@ -174,9 +219,11 @@ func crewNoEligible(profileDir string, seat crewroute.Seat, cause error) *crewro
 	var unreachable ErrCrewUnreachable
 	if errors.As(cause, &unreachable) {
 		refusal.Cause = unreachable
-		if !strings.HasPrefix(unreachable.Action, "no allowed model") {
-			refusal.Action = unreachable.Action
-		}
+		refusal.Action = unreachable.Action
+	}
+	if refusal.Action == "" || strings.HasPrefix(refusal.Action, "no allowed model") {
+		// The ordinary case says the role and the one door that fixes it.
+		refusal.Action = "no allowed model can do the " + string(seat) + " role · widen " + CrewCommand + " models or pin one with " + CrewCommand
 	}
 	rows, err := taskModelRows(nil, profileDir)
 	if err != nil {

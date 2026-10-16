@@ -429,3 +429,115 @@ func TestTheCrewPanelSaysASetAsidePin(t *testing.T) {
 		t.Errorf("gaps %+v", gaps)
 	}
 }
+
+// A ONE MODEL KNOWN NOT TO ANSWER IS REFUSED WHEN IT IS CHOSEN, not accepted
+// and then refused at every task.
+func TestChoosingAKnownExpiredOneModelIsRefused(t *testing.T) {
+	dir := crewProfile(t)
+	previous := CrewRouteHistory
+	t.Cleanup(func() { CrewRouteHistory = previous })
+	CrewRouteHistory = func(string) []router.CrewRouteOutcome {
+		return []router.CrewRouteOutcome{{At: time.Now().Add(-time.Minute), Send: "z-ai/glm-5.3-flash", Provider: "openrouter", Kind: "auth"}}
+	}
+	before := rawRows(t, dir)
+	err := ApplyTaskModels(context.Background(), dir, TaskModelsChange{Mode: modePtr(crewroute.ModeOne), One: &CrewPin{Model: "z-ai/glm-5.3-flash", Provider: "openrouter"}})
+	var refusal TaskModelsRefusal
+	if !errors.As(err, &refusal) {
+		t.Fatalf("an expired one model: %v, want a refusal", err)
+	}
+	for key, raw := range rawRows(t, dir) {
+		if before[key] != raw {
+			t.Errorf("%s moved on a refused choice", key)
+		}
+	}
+}
+
+// A DIRECT ROUTE WITH ITS OWN PUBLISHED PRICE IS AUTO'S TO WEIGH, AT THAT
+// PRICE; the row shows that price and nobody else's.
+func TestAKnownOwnPriceMakesADirectRouteEligibleAtThatPrice(t *testing.T) {
+	dir := taskModelsWithAiand(t)
+	seedOwnPrices(t, dir, "aiand", map[string][3]float64{"zai-org/glm-5.3-flash": {2e-7, 8e-7, 0}})
+	_, rows, err := TaskModelsAt(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, _ := taskRowFor(rows, "z-ai/glm-5.3-flash", "aiand")
+	if row.Price == nil || row.Price.InPerM < 0.199 || row.Price.InPerM > 0.201 || !row.AutoEligible || row.Reason != "" {
+		t.Errorf("row %+v price %+v, want ai&'s own 0.20 and Auto-eligible", row, row.Price)
+	}
+	other, _ := taskRowFor(rows, "deepseek/deepseek-v4-flash", "aiand")
+	if other.AutoEligible || other.Reason != crewroute.RejectNoPrice {
+		t.Errorf("a model ai& published no price for: %+v", other)
+	}
+	for _, c := range CrewCandidatesAt(dir) {
+		for _, r := range c.Routes {
+			if r.Provider == "aiand" && (r.Price == nil || crewroute.Lineage(c.Model.ID) != "z-ai/glm-5.3-flash") {
+				t.Errorf("an ai& route without its own price is a candidate: %s %+v", c.Model.ID, r)
+			}
+		}
+	}
+}
+
+// A READ THE PROFILE MOVES UNDER IS STARTED AGAIN, AND ANSWERS WHOLE: the
+// answer's revision and its contents agree, and its observation began after
+// the write it reflects.
+func TestAReadDuringAWriteNeverAnswersHalfOld(t *testing.T) {
+	dir := crewProfile(t)
+	clock := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	previousClock, previousHook := taskModelsClock, taskModelsMidRead
+	t.Cleanup(func() { taskModelsClock, taskModelsMidRead = previousClock, previousHook })
+	taskModelsClock = func() time.Time { clock = clock.Add(time.Nanosecond); return clock }
+	wrote := false
+	taskModelsMidRead = func() {
+		if wrote {
+			return
+		}
+		wrote = true
+		if err := SetCrewPin(dir, crewroute.Checker, "deepseek/deepseek-v4-flash"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, _, err := TaskModelsAt(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Revision != TaskModelsRevisionAt(dir) {
+		t.Error("the answer's revision is not the profile's")
+	}
+	if pin := state.Roles[crewroute.Checker].Pin; pin == nil || pin.Model != "deepseek/deepseek-v4-flash" {
+		t.Errorf("the answer carries the old checker: %+v", pin)
+	}
+	if !state.ObservedAt.Equal(time.Date(2026, 10, 15, 12, 0, 0, 2, time.UTC)) {
+		t.Errorf("observed at %v, want the start of the try that saw the write", state.ObservedAt)
+	}
+	// A profile that never holds still is refused, never answered from a try.
+	n := 0
+	taskModelsMidRead = func() {
+		n++
+		_ = SetCrewAllowed(dir, []string{"all", "open"}[n%2])
+	}
+	if _, _, err := TaskModelsAt(context.Background(), dir); !errors.Is(err, ErrTaskModelsMoving) {
+		t.Errorf("a read the profile never stops moving: %v", err)
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	taskModelsMidRead = nil
+	if _, _, err := TaskModelsAt(cancelled, dir); !errors.Is(err, ErrTaskModelsRead) {
+		t.Errorf("a cancelled read: %v", err)
+	}
+}
+
+// A BUDGET IS NOT A TASK-MODELS CHANGE: the caps are Spending's rows.
+func TestACapChangeDoesNotMoveTheRevision(t *testing.T) {
+	dir := crewProfile(t)
+	before := TaskModelsRevisionAt(dir)
+	if err := SetCrewTaskCap(dir, "3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewCap(dir, "20"); err != nil {
+		t.Fatal(err)
+	}
+	if TaskModelsRevisionAt(dir) != before {
+		t.Error("a cap moved the task models' revision")
+	}
+}

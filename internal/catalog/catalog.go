@@ -232,6 +232,11 @@ type cache struct {
 	Models    []Model   `json:"models"`
 	Source    string    `json:"source,omitempty"`
 	Base      string    `json:"base,omitempty"`
+	// Priced is set on a cache written from the service's own listing, whose
+	// rows say what they cost or that they did not say ([Model.PriceUnknown]).
+	// A cache seeded from model ids alone ([Remember]), and one written before
+	// this mark existed, knows NO price: its zeros are absences, never free.
+	Priced bool `json:"priced,omitempty"`
 }
 
 // FetchTimeout bounds one listing request on the default HTTP client. A caller
@@ -524,7 +529,7 @@ func load(ctx context.Context, options Options) (*rows, error) {
 	if err == nil {
 		fetchedAt := now().UTC()
 		if path != "" {
-			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Source: source, Base: base})
+			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Source: source, Base: base, Priced: true})
 		}
 		return newRowsAt(models, fetchedAt), nil
 	}
@@ -1538,6 +1543,22 @@ func readCache(path, source, base string) (cache, bool) {
 	if err != nil {
 		return cache{}, false
 	}
+	return decodeCache(raw, source, base)
+}
+
+// decodeCacheAny reads a cache file's rows whatever compartment it names.
+func decodeCacheAny(raw []byte) (cache, bool) {
+	var cached cache
+	if json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() {
+		return cache{}, false
+	}
+	cached.Models = cleanModels(cached.Models)
+	return cached, true
+}
+
+// decodeCache reads one cache file's bytes as the compartment of one service
+// and base, refusing a cache that belongs to another.
+func decodeCache(raw []byte, source, base string) (cache, bool) {
 	var cached cache
 	if json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() {
 		return cache{}, false

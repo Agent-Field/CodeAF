@@ -236,6 +236,7 @@ func TestADirectConnectionIsASecondRouteToTheSameModel(t *testing.T) {
 	if err := writeProfileValue(dir, keyModelSources, []PersistedSource{{ID: "deepseek", Written: "deepseek", Key: "sk-deepseek-0123456789", Order: 1}}); err != nil {
 		t.Fatal(err)
 	}
+	seedOwnPrices(t, dir, "deepseek", map[string][3]float64{"deepseek-v4-flash": {8.246e-8, 1.6492e-7, 1.6492e-8}})
 	var history []router.CrewRouteOutcome
 	withRouteHistory(t, &history)
 	var routes []crewroute.Route

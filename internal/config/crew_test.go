@@ -459,6 +459,13 @@ func TestADirectRouterConnectionServesItsCatalogVendorsUnderItsOwnIds(t *testing
 			IntelligenceIndex: 45, CodingIndex: 68, AgenticIndex: 44, ArenaElo: 1300,
 			ContextLength: 262144, Parameters: []string{"tools"}},
 	)
+	// ai&'s own listing publishes its own prices (unit data): a direct route
+	// is weighed at them, and is no route at all without them.
+	seedOwnPrices(t, dir, "aiand", map[string][3]float64{
+		"deepseek-ai/deepseek-v4-flash": {8.246e-8, 1.6492e-7, 1.6492e-8}, "zai-org/glm-5.3-flash": {1.5e-7, 5e-7, 5e-8},
+		"moonshotai/kimi-k3": {3e-6, 1.5e-5, 3e-7}, "qwen/qwen3.8-flash": {2e-7, 6e-7, 0},
+		"openai/gpt-oss-120b": {1e-7, 4e-7, 0}, "google/gemma-4-31b-it": {2e-7, 5e-7, 0},
+	})
 	routes := map[string]string{}
 	families := map[string]bool{}
 	for _, c := range CrewCandidatesAt(dir) {
@@ -527,6 +534,10 @@ func TestOneMultiFamilyKeyCarriesSeatsOnDifferentLabs(t *testing.T) {
 	widenCrewCatalog(t, catalog.Model{ID: "qwen/qwen3.8-flash", OpenWeights: true, PromptPrice: 2e-7, CompletionPrice: 6e-7,
 		IntelligenceIndex: 40.1, CodingIndex: 70.2, AgenticIndex: 49, ArenaElo: 1330,
 		ContextLength: 1310720, Parameters: []string{"tools"}})
+	seedOwnPrices(t, dir, "aiand", map[string][3]float64{
+		"deepseek-ai/deepseek-v4-flash": {8.246e-8, 1.6492e-7, 1.6492e-8}, "zai-org/glm-5.3-flash": {1.5e-7, 5e-7, 5e-8},
+		"moonshotai/kimi-k3": {3e-6, 1.5e-5, 3e-7}, "qwen/qwen3.8-flash": {2e-7, 6e-7, 0},
+	})
 	decision, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: openTask}})
 	if err != nil {
 		t.Fatal(err)

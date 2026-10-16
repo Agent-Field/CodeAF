@@ -734,10 +734,16 @@ open model but DeepSeek's, and `≤1/5 +moonshotai/kimi-k3` is the price rule wi
 exception let in. `/crew models +kimi-k3` or `/crew models -deepseek` changes the rule in
 force by one word. A `-x` naming a **provider** — `-openrouter` — takes that provider's
 routes away rather than any model; to switch a provider off for the crew, use the panel's
-**providers** row, which keeps the choice when the rule changes.
+**providers** row, which keeps the choice when the rule changes. A word with `@provider` —
+`-glm-5.3-flash@openrouter` — speaks about **one model on one provider**: GLM 5.3 Flash stays
+allowed through every other provider that serves it. That is how a tick in the app's
+per-provider list of allowed models is kept, so `/crew` reads exactly what the app wrote.
 
-A rule that would leave a pinned seat outside it is refused until you unpin the seat, and
-a rule that does not parse is refused with the reason — a typo that silently allowed
+A rule that leaves a pinned seat outside it is **written, and the pin is kept**: until you
+allow the model again or unpin the seat, tasks pick that seat as if it were not pinned, and
+the panel's `gap` line says `checker pinned to kimi-k3, which the models you allow leave out
+· routed until you allow it or unpin it`. Pinning a seat to a model outside the rule is still
+refused. A rule that does not parse is refused with the reason — a typo that silently allowed
 everything would be a setting somebody thinks is protecting them. When the allowed models
 leave a kind of work without a strong enough checker, the panel says so on a `gap` line.
 
@@ -850,8 +856,9 @@ crew.
 **A seat whose model cannot start moves, inside the task.** When a seat's first call is
 refused, the seat goes down its ladder: the same model on its next route, then the next
 model for the seat at a similar cost, then the model the last good crew here used, then the
-model you are talking to — never a rung on an account that has just said it is out of
-credit or refused its key. The line says so first — `running on fallback crew · worker
+model you are talking to — each of those last two only when your allowed models admit it on
+that route, and never a rung on an account that has just said it is out of credit or refused
+its key. The line says so first — `running on fallback crew · worker
 glm-5.3-flash → deepseek-v4-flash (credit unavailable on openrouter)` — and with nothing left
 the task stops on the one thing to do, which leads its line in place of `/redo stronger`
 (a stronger crew would meet the same wall): `failed — add credit on openrouter to
@@ -875,6 +882,23 @@ dearer one. A task that ran on an account out of credit and failed ends on the c
 not on `/redo stronger`. A free pool can be pinned by name —
 `/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's
 list pins that pool, not the paid route beside it.
+
+### When no allowed model can take a seat, or a pinned seat cannot be reached
+
+**The task does not start, and nothing is swapped in.** When no model you allow can do a
+seat — every one is left out, unpriced, on a provider that is off, signed out or out of
+credit, or resting — the task is refused naming the seat and the one fix, such as `no allowed
+model can do the checker role · widen /crew models or pin one with /crew`. It is never started
+on the model you are talking to, nor on a model you did not allow. The same is true of a seat
+**pinned** to a model you allow whose provider is not connected, is turned off, refused its
+key or is out of credit: the task asks you to reconnect, add credit or unpin the seat, and
+never moves the seat to another model or provider. (A pin you no longer allow is the one
+exception: that seat is picked as if unpinned, and says so.)
+
+**A direct provider's route is weighed at that provider's own price.** A model a direct
+connection serves is a route the crew may pick only when that provider's own model list
+published a price for it; a price OpenRouter publishes says nothing about another provider's
+bill. Without one the route is not picked by the crew — a pin still runs it.
 
 ### Route health
 
@@ -4258,3 +4282,28 @@ the earlier call and its result are carried as readable conversation text. The
 model can discuss that result, but it cannot make a new tool call itself.
 Switching back to a tool-capable model restores the original tool-call history
 on its request.
+
+## Task models in the app — Auto or one model for every task, pinned roles, allowed models by provider
+
+The app's **Settings → Models → Task models** page is the same crew `/crew` shows, in other
+words: the **worker**, **planner** and **checker** are the three seats, a role set to a model
+is a pin, and the allowed models are the same rule.
+
+- **Auto** (the default) picks each role per task from the models you allow, inside the
+  per-task and daily caps. A pinned role always runs its pin.
+- **One model for every task** runs the worker, planner and checker all on the one model
+  you choose, on the provider you choose, and picks nothing. Your pins and allowed models
+  are kept, unchanged, for when you switch back. A one model that cannot be reached when a
+  task starts stops the task with the fix; it is never replaced by another model. This is a
+  saved setting read when each task starts — not the `--one-model` launch flag, which makes
+  every call ride the model you are talking to for that one session.
+- **Changes reach tasks that start afterwards.** A running task keeps the models it started
+  with.
+- **Allowed models are listed by provider**, each with that provider's own price per million
+  tokens in and out, or no price when it published none — such a model can still be ticked
+  and pinned, and Auto does not pick it. A provider without a key is listed with no models;
+  one whose key was refused or whose credit ran out keeps its models and their ticks.
+- **The caps** on that page are the same per-task and per-day caps as Settings → Spending.
+- Unticking a pinned model keeps the pin; the role says it is pinned to a model that is not
+  allowed, and is picked by Auto until you allow it again or unpin it.
+

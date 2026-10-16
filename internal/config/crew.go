@@ -710,6 +710,19 @@ type CrewProvider struct {
 	// collides lists the catalog vendors whose ids this connection's Written
 	// prefix would capture, so the default route spells them `openrouter/…`.
 	collides map[string]bool
+	// own is a direct metered connection's OWN price facts, from its own
+	// cached listing ([catalog.OwnPrices]), keyed by the id it lists. The
+	// default service's own prices are the catalog's and are not kept here.
+	own map[string]catalog.PriceFact
+}
+
+// ownPrice is what this connection's own listing published for a send, and
+// whether it is a direct metered route that needs one at all.
+func (p CrewProvider) ownPrice(r crewroute.Route) (fact catalog.PriceFact, needs bool) {
+	if p.ID == modelsource.DefaultID || r.Kind != crewroute.Metered {
+		return catalog.PriceFact{}, false
+	}
+	return p.own[strings.ToLower(strings.TrimPrefix(r.Send, p.Written+"/"))], true
 }
 
 // crewVendors maps a direct connection to the CATALOG vendor prefixes it
@@ -810,6 +823,9 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 		}
 		if !strings.EqualFold(source.ID, modelsource.DefaultID) && !modelsource.IsCustomID(source.ID) && !strings.EqualFold(source.ID, "ollama") {
 			p.vendors = append([]string{strings.ToLower(source.Written)}, crewVendors[strings.ToLower(source.ID)]...)
+		}
+		if p.Kind == crewroute.Metered && !strings.EqualFold(source.ID, modelsource.DefaultID) {
+			p.own = catalog.OwnPrices(CatalogOptionsFor(service, profileDir))
 		}
 		out = append(out, p)
 	}
@@ -983,6 +999,20 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 			r, ok := p.route(m.ID, m, true)
 			if !ok {
 				continue
+			}
+			// A DIRECT ROUTE IS WEIGHED AT ITS OWN PROVIDER'S PRICE, and one
+			// whose provider published none is no route the router may pick:
+			// the catalog's price is another provider's, and says nothing about
+			// this one's bill. A pin still names it ([resolveCrewPin]).
+			if fact, needs := p.ownPrice(r); needs {
+				if !fact.Known {
+					continue
+				}
+				r.Price = &crewroute.RoutePrice{Prompt: fact.Prompt, Completion: fact.Completion, CacheRead: fact.CacheRead}
+			} else if r.Kind == crewroute.Metered && p.ID == modelsource.DefaultID && (m.PromptPrice > 0 || m.CompletionPrice > 0) {
+				// Freeze the default service's own published catalog tariff too;
+				// historical decisions must never reread today's model prices.
+				r.Price = &crewroute.RoutePrice{Prompt: m.PromptPrice, Completion: m.CompletionPrice, CacheRead: m.CacheReadPrice}
 			}
 			switch {
 			case r.Kind != crewroute.Metered:
@@ -1192,6 +1222,10 @@ type CrewAsk struct {
 	// Pins are ONE-TASK pins, laid over the profile's: `--pin` and the seat
 	// flags. They never persist.
 	Pins map[crewroute.Seat]CrewPin
+	// AutoSeats explicitly ignores saved role pins (and one-model policy) for
+	// these roles for this admission only. Explicit Pins and Sends still win.
+	// Absent/false keeps saved policy unchanged.
+	AutoSeats map[crewroute.Seat]bool
 	// Sends are seats a door has already filled with an id to send as it
 	// stands — a flag, a variable — which the router treats as pins.
 	Sends map[crewroute.Seat]string
@@ -1378,13 +1412,49 @@ func OffsetKey(repo string, class crewroute.Class) string {
 // [ErrCrewAtCap]; a seat nothing allowed can sit is a [*crewroute.NoEligibleError],
 // and is never seated on a model the allowed models leave out.
 func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
-	if TaskModelsModeAt(profileDir) == crewroute.ModeOne {
+	oneMode := TaskModelsModeAt(profileDir) == crewroute.ModeOne
+	autoOverride := false
+	for _, seat := range crewroute.Seats {
+		autoOverride = autoOverride || ask.AutoSeats[seat]
+	}
+	if oneMode && !autoOverride {
 		return routeOneModel(profileDir, ask)
 	}
 	reading := crewroute.Classify(ask.Task)
 	providers := CrewProvidersAt(profileDir)
-	pins, warnings := crewSavedPins(profileDir, providers)
+	health := crewHealthAt(profileDir)
+	pins, warnings, refused := crewSavedPins(profileDir, providers, health)
 	filled := map[crewroute.Seat]bool{}
+	if oneMode {
+		// An explicit per-task opt-out routes only its named roles. The
+		// untouched roles keep the saved one model, even outside Auto's set.
+		pins = map[crewroute.Seat]crewroute.Pin{}
+		warnings = nil
+		refused = map[crewroute.Seat]*crewroute.NoEligibleError{}
+		one, haveOne := TaskOneModelAt(profileDir)
+		for _, seat := range crewroute.Seats {
+			if ask.AutoSeats[seat] {
+				continue
+			}
+			route := resolveCrewPin(one, providers)
+			if why, reachable := crewPinReachable(providers, route, health); !haveOne || !reachable {
+				if !haveOne {
+					why = crewroute.RejectProviderUnavailable
+				}
+				refusal := &crewroute.NoEligibleError{Seat: seat, Mode: crewroute.ModeOne}
+				refusal.Reject(route.Model, route.Provider, why)
+				refused[seat] = refusal
+			}
+			pins[seat] = route
+		}
+	}
+	for _, seat := range crewroute.Seats {
+		if ask.AutoSeats[seat] {
+			delete(pins, seat)
+			delete(refused, seat)
+			filled[seat] = true
+		}
+	}
 	for seat, pin := range ask.Pins {
 		pins[seat], filled[seat] = resolveCrewPin(pin, providers), true
 	}
@@ -1394,12 +1464,16 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 		}
 	}
 	warnings = withoutWarningsFor(warnings, filled)
+	for _, seat := range crewroute.Seats {
+		if refusal, ok := refused[seat]; ok && !filled[seat] {
+			return crewroute.Decision{}, refusal
+		}
+	}
 	day := CrewDay{}
 	if CrewHistory != nil {
 		day = CrewHistory(profileDir)
 	}
 	pace, atCap := crewroute.Pace(day.SpentUSD, CrewCapAt(profileDir))
-	health := crewHealthAt(profileDir)
 	// AN ACCOUNT OUT OF CREDIT, OR A KEY REFUSED, IS PROBED BY THE NEXT TASK:
 	// its paid routes are routed as usual, so the task's first seat call is
 	// the probe. A 200 clears the account on the spot; another refusal moves
