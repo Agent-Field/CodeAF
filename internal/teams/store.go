@@ -126,11 +126,17 @@ func read(profileDir string) (f *File, legacy, stale bool, err error) {
 		}
 		return nil, false, false, fmt.Errorf("teams: %s is unreadable: %w", name, err)
 	}
-	teams := d.Teams
-	if legacy || (d.Version < Version && len(teams) == 0) {
-		teams = d.Legacy
-	}
+	teams := d.list(legacy)
 	return &File{Version: Version, Teams: teams, localIdentities: true}, legacy, !legacy && d.Version < Version, nil
+}
+
+// list is the teams a decoded file holds: the first build's list when the file
+// is that build's or predates the current format without any teams of its own.
+func (d disk) list(legacy bool) []Team {
+	if legacy || (d.Version < Version && len(d.Teams) == 0) {
+		return d.Legacy
+	}
+	return d.Teams
 }
 
 // Save writes teams as the whole file, under the lock. It puts the list in
