@@ -39,6 +39,10 @@ const (
 	ProcessEnded   = "ended"
 	ProcessFailed  = "failed"
 	ProcessStopped = "stopped"
+	// ProcessUnknown is answered ONLY by processes.page (processpage.go): a
+	// record saved as running that no live owner vouches for. It carries no
+	// exit code and no ending, and UnknownReason says why it is unknown.
+	ProcessUnknown = "unknown"
 )
 
 // The verdicts of a task waiting for the person's call.
@@ -142,6 +146,25 @@ type Process struct {
 	// (`http://localhost:3000`): recorded once from its actual output, valid
 	// port, never guessed from the command. Absent when it printed none.
 	URL string `json:"url,omitempty"`
+	// The history facts below are answered by processes.page and absent
+	// elsewhere unless stated. Dir is the folder the process was started in;
+	// LogPath is for showing and copying ONLY and is never accepted back
+	// (processes.log takes the id); LogGone says the record outlived its
+	// output; OutputTruncated says older output was discarded by the cap.
+	Dir             string          `json:"dir,omitempty"`
+	LogPath         string          `json:"log_path,omitempty"`
+	LogGone         bool            `json:"log_gone,omitempty"`
+	OutputTruncated bool            `json:"output_truncated,omitempty"`
+	StartedBy       *ProcessStarter `json:"started_by,omitempty"`
+	UnknownReason   string          `json:"unknown_reason,omitempty"`
+}
+
+// ProcessStarter is who started a process, present only when the agent that
+// started it said so: Kind "chat" for the conversation itself, "task" with the
+// task's id for a task worker.
+type ProcessStarter struct {
+	Kind string `json:"kind"`
+	Task string `json:"task,omitempty"`
 }
 
 // The data of this wave's events.

@@ -2182,7 +2182,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}
 
 	switch call.Method {
-	case MethodProcessList, MethodProcessRerun:
+	case MethodProcessList, MethodProcessRerun, MethodProcessPage, MethodProcessRecord:
 		return serveAppProcesses(agent, call)
 	case MethodRenderList, MethodRenderGet, MethodRenderCancel:
 		return dispatchRender(agent, call)

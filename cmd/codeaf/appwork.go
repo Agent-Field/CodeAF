@@ -1060,9 +1060,17 @@ type appFollow struct {
 
 // appProcessOf is one job notice on the wire.
 func appProcessOf(agent string, job session.JobNotice) appwire.Process {
+	process := appProcessBase(agent, job)
+	process.LastLine = redact.Secrets(appLastLine(job.LogPath))
+	return process
+}
+
+// appProcessBase is a process in the wire's words without its last line,
+// which each door reads its own way (appprocesspage.go reads it bounded).
+func appProcessBase(agent string, job session.JobNotice) appwire.Process {
 	process := appwire.Process{
 		ID: appProcessID(agent, job), Agent: agent, Title: redact.Secrets(job.Label()), Command: redact.Secrets(job.Command),
-		StartedAt: job.Started, LastLine: redact.Secrets(appLastLine(job.LogPath)),
+		StartedAt: job.Started,
 	}
 	// Only a loopback origin leaves the engine as a process URL; a record from
 	// before the strict reader may hold a looser spelling, which is normalized

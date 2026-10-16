@@ -1,8 +1,11 @@
 package remote
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -11,6 +14,63 @@ import (
 // commands. They introduce no client-supplied command execution route.
 const MethodProcessList = "Process.List"
 const MethodProcessRerun = "Process.Rerun"
+
+// Process.Page and Process.Record answer one bounded page of the history and
+// one record by number, from the engine that holds the conversation, so a
+// window never reads another engine's conversation off the disk while that
+// engine is running it.
+const MethodProcessPage = "Process.Page"
+const MethodProcessRecord = "Process.Record"
+
+// processPageDeadline bounds the engine's walk when the caller's deadline
+// does not travel with the call.
+const processPageDeadline = 2 * time.Second
+
+type ProcessPageArgs struct {
+	Limit  int    `json:"limit"`
+	Cursor string `json:"cursor,omitempty"`
+}
+
+type ProcessRecordArgs struct {
+	ID int `json:"id"`
+}
+
+type processRecordReply struct {
+	Found  bool              `json:"found"`
+	Record session.JobNotice `json:"record"`
+}
+
+// ErrProcessPageUnserved is an engine too old to page its history.
+var ErrProcessPageUnserved = errors.New("this engine cannot page processes")
+
+func (a *Agent) ProcessPage(ctx context.Context, ask session.ProcessPageAsk) (session.ProcessPage, error) {
+	raw, err := a.c.call(nil, MethodProcessPage, ProcessPageArgs{Limit: ask.Limit, Cursor: ask.Cursor})
+	if err != nil {
+		if strings.Contains(err.Error(), "no such process action") {
+			return session.ProcessPage{}, ErrProcessPageUnserved
+		}
+		if strings.Contains(err.Error(), session.ErrProcessStale.Error()) {
+			return session.ProcessPage{}, session.ErrProcessStale
+		}
+		return session.ProcessPage{}, err
+	}
+	var page session.ProcessPage
+	err = json.Unmarshal(raw, &page)
+	return page, err
+}
+
+func (a *Agent) ProcessRecord(id int) (session.JobNotice, bool, error) {
+	raw, err := a.c.call(nil, MethodProcessRecord, ProcessRecordArgs{ID: id})
+	if err != nil {
+		if strings.Contains(err.Error(), "no such process action") {
+			return session.JobNotice{}, false, ErrProcessPageUnserved
+		}
+		return session.JobNotice{}, false, err
+	}
+	var reply processRecordReply
+	err = json.Unmarshal(raw, &reply)
+	return reply.Record, reply.Found, err
+}
 
 type ProcessRerunArgs struct {
 	ID int `json:"id"`
@@ -64,6 +124,40 @@ func serveAppProcesses(agent WrappedAgent, call Frame) ([]byte, error) {
 			return nil, err
 		}
 		return json.Marshal(row)
+	case MethodProcessPage:
+		args, err := arg[ProcessPageArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			ProcessPage(context.Context, session.ProcessPageAsk) (session.ProcessPage, error)
+		})
+		if !ok {
+			return nil, errors.New("no such process action")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), processPageDeadline)
+		defer cancel()
+		page, err := door.ProcessPage(ctx, session.ProcessPageAsk{Limit: args.Limit, Cursor: args.Cursor})
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(page)
+	case MethodProcessRecord:
+		args, err := arg[ProcessRecordArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			ProcessRecord(int) (session.JobNotice, bool, error)
+		})
+		if !ok {
+			return nil, errors.New("no such process action")
+		}
+		record, found, err := door.ProcessRecord(args.ID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(processRecordReply{Found: found, Record: record})
 	}
 	return nil, errors.New("no such process action")
 }

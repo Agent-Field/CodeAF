@@ -163,7 +163,7 @@ func classify(method string) callClass {
 		MethodTeamsName, MethodTeamsPropose,
 		// The desktop app's task and process readings are drawn while a reply
 		// streams, so they are never queued behind it.
-		MethodProcessList, MethodRenderList, MethodRenderGet,
+		MethodProcessList, MethodProcessPage, MethodProcessRecord, MethodRenderList, MethodRenderGet,
 		// The automations readings are the watcher's beat (wire_automations.go):
 		// a store read every two seconds that a turn in flight must never hold
 		// up, or a run's line would arrive when the reply did.

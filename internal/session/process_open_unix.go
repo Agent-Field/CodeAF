@@ -32,4 +32,3 @@ func openRegularNoFollow(path string) (*os.File, error) {
 	}
 	return file, nil
 }
-

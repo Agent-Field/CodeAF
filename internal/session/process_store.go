@@ -870,3 +870,13 @@ func liveProcessesOfAgent(dir string, a *Agent) []int {
 	}
 	return ids
 }
+
+// ProcessCursorBefore is the cursor a page would give to continue below id in
+// the history named by revision. A door that has to cut a page shorter than
+// the walk did (its own reply budget) continues from the first row it cut.
+func ProcessCursorBefore(revision string, id int) string {
+	if revision == "" || id < 1 {
+		return ""
+	}
+	return encodeProcessCursor(revision, id+1)
+}
