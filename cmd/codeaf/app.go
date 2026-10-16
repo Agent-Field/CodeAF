@@ -365,6 +365,9 @@ type appBackend struct {
 	keys       *config.AppCredentials
 	keyClient  *http.Client
 	keyAddress func(provider string) string
+	// balances is providers.balance's memory and lifetime (appproviderbalance.go),
+	// made by the first ask.
+	balances *appBalances
 	// signIn is the browser sign-in waiting for the person, if any.
 	signIn *openrouterauth.Flow
 	// state is the app's own file: setup, its settings, budgets and raises.
@@ -2907,12 +2910,13 @@ func (b *appBackend) Close() error {
 	var crews *appCrewRun
 	var agents []*appAgent
 	var warmed chan struct{}
+	var balances *appBalances
 	b.locked(func() {
 		if already = b.closing; already {
 			return
 		}
 		b.closing = true
-		crews, warmed = b.crewRun, b.warmed
+		crews, warmed, balances = b.crewRun, b.warmed, b.balances
 		if b.signIn != nil {
 			b.signIn.Cancel()
 			b.signIn = nil
@@ -2927,6 +2931,9 @@ func (b *appBackend) Close() error {
 	})
 	if already {
 		return nil
+	}
+	if balances != nil {
+		balances.stop()
 	}
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).

@@ -5,6 +5,7 @@ package credits
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -31,11 +32,98 @@ type Reading struct{ Known, Low, Expired bool }
 // answered by the turn's own auth failure.
 const expiredWord = "expired"
 
+// Detail is what the service reported, as numbers. A figure the service did
+// not send is nil, never zero; a figure that is negative is the account's real
+// state and is kept as sent.
+type Detail struct {
+	// Expired is the service refusing the key as expired; no figure comes with it.
+	Expired bool
+	// AccountRemaining is total_credits minus total_usage, only when the service
+	// reported both.
+	AccountRemaining *float64
+	// KeyLimitRemaining is the key's own spending cap left, only when the key
+	// has one and the service said how much of it remains.
+	KeyLimitRemaining *float64
+}
+
+// Known reports whether the service said anything about the balance: a figure
+// or an expired key.
+func (d Detail) Known() bool {
+	return d.Expired || d.AccountRemaining != nil || d.KeyLimitRemaining != nil
+}
+
+// Remaining is the effective balance: the lesser of the account's and the key's
+// when both are reported, whichever is reported when only one is, and false
+// when neither is.
+func (d Detail) Remaining() (float64, bool) {
+	switch {
+	case d.AccountRemaining != nil && d.KeyLimitRemaining != nil:
+		return math.Min(*d.AccountRemaining, *d.KeyLimitRemaining), true
+	case d.AccountRemaining != nil:
+		return *d.AccountRemaining, true
+	case d.KeyLimitRemaining != nil:
+		return *d.KeyLimitRemaining, true
+	}
+	return 0, false
+}
+
+// StatusError is a service answer that was neither a reading nor a refusal the
+// reader understands. Its words are the ones Read has always used.
+type StatusError struct {
+	Status int
+	// Kind is what the answer means for a balance, decided where it was read.
+	Kind Kind
+	what string
+}
+
+func (e *StatusError) Error() string { return fmt.Sprintf("%s answered %d", e.what, e.Status) }
+
+// newStatusError names what a status means to a balance read, once, here where
+// the status is read: a refused key, a service that is failing or limiting, or
+// an answer this reader does not know.
+func newStatusError(code int, what string) *StatusError {
+	kind := KindUnexpected
+	switch {
+	case code == http.StatusUnauthorized:
+		kind = KindKeyRejected
+	case code == http.StatusRequestTimeout, code == http.StatusTooManyRequests, code >= 500:
+		kind = KindProvider
+	}
+	return &StatusError{Status: code, Kind: kind, what: what}
+}
+
+// Errors a reader names so a caller can tell a bad answer from a missing one
+// without parsing words.
+var (
+	ErrTooLarge = errors.New("credit response too large")
+	ErrInvalid  = errors.New("invalid credit balance")
+	errDecode   = errors.New("credit response could not be decoded")
+)
+
 // Read asks for the account balance and the key's own cap. An absent number is
 // unknown; a failed request is an error and must not change a previous reading.
 // A 401 that says the key has expired is not a failed request: it is a reading,
 // and the one fact the account can still tell us.
 func Read(ctx context.Context, client *http.Client, baseURL, key string) (Reading, error) {
+	d, err := ReadDetail(ctx, client, baseURL, key)
+	if err != nil {
+		return Reading{}, err
+	}
+	if d.Expired {
+		return Reading{Known: true, Expired: true}, nil
+	}
+	remaining, ok := d.Remaining()
+	if !ok {
+		return Reading{}, nil
+	}
+	return Reading{Known: true, Low: remaining <= LowCreditsUSD}, nil
+}
+
+// ReadDetail is Read's one implementation, answering the amounts instead of the
+// verdict: at most the key's own row and the account's credits, each read with
+// a 64 KiB cap, under one ten-second deadline. A reported figure that is not
+// finite makes the whole answer invalid rather than a guess.
+func ReadDetail(ctx context.Context, client *http.Client, baseURL, key string) (Detail, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if client == nil {
@@ -59,24 +147,24 @@ func Read(ctx context.Context, client *http.Client, baseURL, key string) (Readin
 			return nil, 0, err
 		}
 		if len(body) > 64<<10 {
-			return nil, 0, fmt.Errorf("credit response too large")
+			return nil, 0, ErrTooLarge
 		}
 		return body, resp.StatusCode, nil
 	}
 	keyBody, keyStatus, err := get("/key")
 	if err != nil {
-		return Reading{}, err
+		return Detail{}, err
 	}
 	if keyStatus == http.StatusNotFound {
 		keyBody, keyStatus, err = get("/auth/key")
 		if err != nil {
-			return Reading{}, err
+			return Detail{}, err
 		}
 	}
 	if keyExpired(keyStatus, keyBody) {
-		return Reading{Known: true, Expired: true}, nil
+		return Detail{Expired: true}, nil
 	}
-	var capValue *float64
+	var detail Detail
 	switch keyStatus {
 	case http.StatusOK:
 		var row struct {
@@ -85,21 +173,20 @@ func Read(ctx context.Context, client *http.Client, baseURL, key string) (Readin
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(keyBody, &row); err != nil {
-			return Reading{}, fmt.Errorf("decode key credits: %w", err)
+			return Detail{}, fmt.Errorf("decode key credits: %w", errors.Join(errDecode, err))
 		}
-		capValue = row.Data.Remaining
+		detail.KeyLimitRemaining = row.Data.Remaining
 	case http.StatusForbidden, http.StatusNotFound:
 	default:
-		return Reading{}, fmt.Errorf("key credits answered %d", keyStatus)
+		return Detail{}, newStatusError(keyStatus, "key credits")
 	}
 	creditsBody, creditsStatus, err := get("/credits")
 	if err != nil {
-		return Reading{}, err
+		return Detail{}, err
 	}
 	if keyExpired(creditsStatus, creditsBody) {
-		return Reading{Known: true, Expired: true}, nil
+		return Detail{Expired: true}, nil
 	}
-	var account *float64
 	switch creditsStatus {
 	case http.StatusOK:
 		var row struct {
@@ -109,30 +196,22 @@ func Read(ctx context.Context, client *http.Client, baseURL, key string) (Readin
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(creditsBody, &row); err != nil {
-			return Reading{}, fmt.Errorf("decode account credits: %w", err)
+			return Detail{}, fmt.Errorf("decode account credits: %w", errors.Join(errDecode, err))
 		}
 		if row.Data.Total != nil && row.Data.Usage != nil {
 			remaining := *row.Data.Total - *row.Data.Usage
-			account = &remaining
+			detail.AccountRemaining = &remaining
 		}
 	case http.StatusForbidden, http.StatusNotFound:
 	default:
-		return Reading{}, fmt.Errorf("account credits answered %d", creditsStatus)
+		return Detail{}, newStatusError(creditsStatus, "account credits")
 	}
-	if account == nil && capValue == nil {
-		return Reading{}, nil
+	for _, f := range []*float64{detail.AccountRemaining, detail.KeyLimitRemaining} {
+		if f != nil && (math.IsNaN(*f) || math.IsInf(*f, 0)) {
+			return Detail{}, ErrInvalid
+		}
 	}
-	remaining := math.Inf(1)
-	if account != nil {
-		remaining = *account
-	}
-	if capValue != nil {
-		remaining = math.Min(remaining, *capValue)
-	}
-	if math.IsNaN(remaining) || math.IsInf(remaining, 0) {
-		return Reading{}, fmt.Errorf("invalid credit balance")
-	}
-	return Reading{Known: true, Low: remaining <= LowCreditsUSD}, nil
+	return detail, nil
 }
 
 // keyExpired reports whether an answer is the service refusing the key as
