@@ -35,6 +35,7 @@ package session
 // cannot land commits nobody confirmed.
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -375,28 +376,24 @@ func landRepository(ctx context.Context, workspace string, plan *TaskBranchLandP
 	return nil
 }
 
-// landRoot is [repositoryRoot] under the request's clock. repositoryRoot takes
-// no context, so it is waited on rather than stopped: a git that hangs there
-// is left to end on its own, and the land is busy.
+// landRoot is [repositoryRoot] asked through [landLine]: under the request's
+// clock, one process group killed whole when it runs out, and with no GIT_DIR
+// or GIT_WORK_TREE of this process's own to name some other repository than
+// the conversation's folder. Nothing outlives the call.
 func landRoot(ctx context.Context, workspace string) (string, error) {
-	type answer struct {
-		root string
-		ok   bool
-	}
-	got := make(chan answer, 1)
-	go func() {
-		root, ok := repositoryRoot(workspace)
-		got <- answer{root, ok}
-	}()
-	select {
-	case <-ctx.Done():
+	var asked error
+	root, ok := repositoryRoot(workspace, func(dir string, args ...string) (string, error) {
+		out, err := landLine(ctx, dir, args...)
+		asked = err
+		return out, err
+	})
+	switch {
+	case errors.Is(asked, ErrLandBusy):
 		return "", ErrLandBusy
-	case a := <-got:
-		if !a.ok {
-			return "", refuseLand(LandOutside, "this conversation's folder is not a checkout of its own")
-		}
-		return a.root, nil
+	case !ok:
+		return "", refuseLand(LandOutside, "this conversation's folder is not a checkout of its own")
 	}
+	return root, nil
 }
 
 // landState refuses configuration and states a land will not merge under.
@@ -495,10 +492,7 @@ func landWork(ctx context.Context, plan *TaskBranchLandPlan) error {
 	if plan.Tree, err = landPreflight(ctx, plan.Root, plan.Head, plan.BranchHead); err != nil {
 		return err
 	}
-	files, added, removed, capped, err := countBranchDiff(ctx, plan.Root, plan.Base, plan.BranchHead)
-	if err == nil {
-		plan.Files, plan.Added, plan.Removed, plan.CountsCapped, plan.CountsKnown = files, added, removed, capped, true
-	}
+	landCounts(ctx, plan)
 	plan.Hooks, err = landHookFacts(ctx, plan.Root)
 	return err
 }
@@ -859,6 +853,20 @@ func landPreflight(ctx context.Context, root, head, branchHead string) (string, 
 		return "", refuseLand(LandConflict, "this branch conflicts with your checkout; nothing was merged", paths...)
 	}
 	return "", fmt.Errorf("%w: git merge-tree exited %d", ErrTaskBranchGit, code)
+}
+
+// landCounts is the branch's numstat from its base, read through the land's
+// own reader so it is of this repository and no other. Counts git could not
+// give, or gave more of than is read, are left unknown, never zero.
+func landCounts(ctx context.Context, plan *TaskBranchLandPlan) {
+	out, code, err := landRead(ctx, plan.Root, taskBranchNumstatBytesMax, "diff", "--no-ext-diff", "--no-textconv", "--numstat", "-z", "--no-renames", plan.Base, plan.BranchHead, "--")
+	if err != nil || code != 0 {
+		return
+	}
+	tally, err := tallyNumstat(bufio.NewReader(bytes.NewReader(out)))
+	if err == nil {
+		plan.Files, plan.Added, plan.Removed, plan.CountsCapped, plan.CountsKnown = tally.files, tally.added, tally.removed, tally.capped, true
+	}
 }
 
 // landHookFacts binds every hook a merge can run by its bytes, found where

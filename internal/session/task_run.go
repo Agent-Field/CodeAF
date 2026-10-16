@@ -9474,8 +9474,18 @@ func beltTreeWork(dir string) []string {
 // Git may report a resolved path even when its caller arrived through a
 // symlink; canonicalizing here makes every later path and repository lock use
 // that same spelling.
-func repositoryRoot(dir string) (string, bool) {
-	out, err := git(dir, "rev-parse", "--show-toplevel")
+//
+// ask is who puts the question to git, and it is [git] unless a caller hands
+// in its own: a person's land asks through its bounded reader, with no GIT_*
+// variable of this process's own reaching git, a deadline and a process group
+// killed whole. The question and the refusal that stops the walk stay here,
+// whoever asks.
+func repositoryRoot(dir string, ask ...rootAsker) (string, bool) {
+	run := git
+	if len(ask) > 0 && ask[0] != nil {
+		run = ask[0]
+	}
+	out, err := run(dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", false
 	}
@@ -9488,6 +9498,10 @@ func repositoryRoot(dir string) (string, bool) {
 	}
 	return canonicalPath(root), true
 }
+
+// rootAsker runs one git command in a directory and answers what it printed,
+// the way [git] does.
+type rootAsker func(dir string, args ...string) (string, error)
 
 // climbsOutOfScratch is THE LAW: A GROUND NEVER CLIMBS OUT OF A SCRATCH
 // DIRECTORY ITS PATH LIVES IN.

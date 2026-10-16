@@ -501,3 +501,44 @@ func TestARefusalAfterAHookRanIsNeverNothingChanged(t *testing.T) {
 	}
 	untouched(t, repo, head)
 }
+
+// GIT_DIR and GIT_WORK_TREE of this process's own, naming another valid
+// repository, never move a land: it plans and lands in the conversation's
+// folder and nowhere else.
+func TestInheritedGitVariablesNeverNameAnotherRepository(t *testing.T) {
+	repo, place := landRepo(t)
+	other, _, _ := sideRepo(t)
+	ctx := landCtx(t)
+	otherHead, err := landCommit(ctx, other, "HEAD")
+	if err != nil || otherHead == "" {
+		t.Fatalf("other head %q %v", otherHead, err)
+	}
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	t.Setenv("GIT_WORK_TREE", other)
+	// The control: a git that inherits them answers the other repository.
+	probe := exec.Command("git", "rev-parse", "--show-toplevel")
+	probe.Dir = repo
+	if out, err := probe.Output(); err != nil || canonicalPath(strings.TrimSpace(string(out))) != canonicalPath(other) {
+		t.Fatalf("the inherited variables do not name the other repository, so this proves nothing: %q %v", out, err)
+	}
+	plan, err := PlanTaskBranchLand(ctx, place, repo, landBranch)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan.Root != canonicalPath(repo) || plan.GitDir != canonicalPath(filepath.Join(repo, ".git")) {
+		t.Fatalf("planned against %s (%s), not %s", plan.Root, plan.GitDir, repo)
+	}
+	landed, err := LandTaskBranch(ctx, place, repo, plan)
+	if err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	if now, _ := landCommit(ctx, repo, "HEAD"); now != landed.HeadAfter || now == plan.Head {
+		t.Fatalf("the conversation's repository is at %s, landed %+v", now, landed)
+	}
+	if now, _ := landCommit(ctx, other, "HEAD"); now != otherHead {
+		t.Fatalf("the other repository moved: %s -> %s", otherHead, now)
+	}
+	if paths, err := landStatus(ctx, other); err != nil || len(paths) != 0 {
+		t.Fatalf("the other repository was written: %v %v", paths, err)
+	}
+}
