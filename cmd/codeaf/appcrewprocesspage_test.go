@@ -393,9 +393,11 @@ func TestCrewPageUnderADeadlineAdvancesNothing(t *testing.T) {
 	if _, err := f.backend.PageCrewProcesses(ctx, appwire.ProcessPageAsk{Crew: "t", Limit: &limit, Cursor: p1.Next}); err == nil {
 		t.Fatal("a cancelled page answered")
 	}
-	// The walk was ended by the failed page; a fresh walk is the way back.
-	if _, err := f.ask("t", 5, p1.Next); !isCode(err, appwire.CodeStaleCursor) {
-		t.Fatalf("after a failed page: %v", err)
+	// A page that could not be read in time ENDS NOTHING: the same cursor works
+	// again, from where it was.
+	again, err := f.ask("t", 5, p1.Next)
+	if err != nil || len(again.Processes) != 5 || again.Processes[0].ID != "a:p25" {
+		t.Fatalf("retry after a failed page: %v %v", again, err)
 	}
 	// A walk pinned by a page in flight refuses a second page.
 	p1, _ = f.ask("t", 5, "")
@@ -450,7 +452,7 @@ func TestCrewRegistryCapsAndAccounting(t *testing.T) {
 	w2.busy, w3.busy = false, false
 	// Sixteen walks at most.
 	reg = newCrewRegistry()
-	reg.now = func() time.Time { clock = clock.Add(time.Second); return clock }
+	reg.now = func() time.Time { clock = clock.Add(time.Millisecond); return clock }
 	for i := 0; i < crewWalksMax+4; i++ {
 		w := walk("crew:"+strconv.Itoa(i), 0)
 		if err := reg.admit(w); err != nil {
@@ -466,7 +468,7 @@ func TestCrewRegistryCapsAndAccounting(t *testing.T) {
 		t.Fatalf("oversize walk: %v", err)
 	}
 	reg = newCrewRegistry()
-	reg.now = func() time.Time { clock = clock.Add(time.Second); return clock }
+	reg.now = func() time.Time { clock = clock.Add(time.Millisecond); return clock }
 	var held []*crewWalk
 	for i := 0; i < 8; i++ {
 		w := walk("crew:"+strconv.Itoa(i), crewWalkBytesMax-1<<10)
@@ -494,7 +496,7 @@ func TestCrewRegistryCapsAndAccounting(t *testing.T) {
 	if err := reg.admit(w); err != nil {
 		t.Fatal(err)
 	}
-	reg.rotate(w, true)
+	reg.rotate(w, crewToken())
 	w.last = make([]byte, crewWalkBytesMax)
 	if err := reg.settle(w, false); err != nil || w.last != nil {
 		t.Fatalf("settle kept %d bytes of reply: %v", len(w.last), err)
@@ -818,5 +820,222 @@ func TestCrewOwnerWhoseEngineCannotPageIsPartial(t *testing.T) {
 	if err != nil || len(first.Processes) != 3 || len(first.Owners.Partial) != 1 ||
 		first.Owners.Partial[0].Agent != "a" || first.Owners.Partial[0].Reason != appwire.ProcessOwnerUnreadable || !first.Incomplete {
 		t.Fatalf("%+v %v", first, err)
+	}
+}
+
+// A STEP THAT CANNOT ADVANCE IN TIME IS busy AND CHANGES NOTHING: the cursor is
+// kept with its progress, a retry reads exactly the next rows, and the walk is
+// not pinned for ever by the failed page.
+func TestCrewBusyPageKeepsTheWalkForARetry(t *testing.T) {
+	f := newCrewFixture(t)
+	f.rows = map[string]int{"a": 12}
+	f.save(f.team("t", "", "a"))
+	clock := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	reg := f.backend.crewWalks()
+	reg.now = func() time.Time { return clock }
+	p1, err := f.ask("t", 5, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := f.backend.crewHistory.visit
+	ctx, cancel := context.WithCancel(context.Background())
+	f.backend.crewHistory.visit = func(c context.Context, b *appBackend, o crewOwner, n int) (*appwire.ProcessPageResult, error) {
+		cancel() // the page's own request goes away during the first visit
+		return inner(c, b, o, n)
+	}
+	five := 5
+	if _, err := f.backend.PageCrewProcesses(ctx, appwire.ProcessPageAsk{Crew: "t", Limit: &five, Cursor: p1.Next}); !isCode(err, appwire.CodeBusy) {
+		t.Fatalf("a page with no progress: %v", err)
+	}
+	f.backend.crewHistory.visit = inner
+	reg.mu.Lock()
+	pinned := reg.walks[p1.Next].busy
+	reg.mu.Unlock()
+	if pinned {
+		t.Fatal("the failed page left the walk pinned")
+	}
+	clock = clock.Add(crewIdleTTL - time.Second)
+	p2, err := f.ask("t", 5, p1.Next)
+	if err != nil || p2.Processes[0].ID != "a:p7" || len(p2.Processes) != 5 {
+		t.Fatalf("the retry skipped or repeated rows: %+v %v", p2, err)
+	}
+	// A roster read that fails in time also keeps the walk.
+	dead, stop := context.WithCancel(context.Background())
+	stop()
+	if _, err := f.backend.PageCrewProcesses(dead, appwire.ProcessPageAsk{Crew: "t", Limit: &five, Cursor: p2.Next}); err == nil {
+		t.Fatal("a cancelled roster read answered")
+	}
+	p3, err := f.ask("t", 5, p2.Next)
+	if err != nil || p3.Processes[0].ID != "a:p2" {
+		t.Fatalf("after a failed roster read: %+v %v", p3, err)
+	}
+}
+
+// THE WHOLE ENCODED REPLY IS BOUNDED, NAMES AND ESCAPING INCLUDED, AND A NAME
+// IS NEVER CUT INTO A DIFFERENT ONE: what does not fit whole is counted.
+func TestCrewReplyBoundCountsTheEncodedNames(t *testing.T) {
+	if crewReplyReserve+crewPartialBytesMax > appProcessPageEnvelope {
+		t.Fatal("the reply's own fields and names do not fit the envelope the rows leave")
+	}
+	f := newCrewFixture(t)
+	big := strings.Repeat("x", 245<<10)
+	f.backend.crewHistory.visit = func(ctx context.Context, _ *appBackend, o crewOwner, n int) (*appwire.ProcessPageResult, error) {
+		res := &appwire.ProcessPageResult{Processes: []appwire.Process{}}
+		for i := 0; i < n; i++ {
+			res.Processes = append(res.Processes, appwire.Process{ID: o.id + ":" + strconv.Itoa(i), Agent: o.id, Command: big})
+		}
+		res.Next = o.cursor + "x"
+		return res, nil
+	}
+	team := f.team("t", "", "a", "b", "c", "d", "e")
+	keys := map[string]bool{}
+	for i := 0; i < 45; i++ {
+		key := strings.Repeat("<", 200) + strconv.Itoa(i)
+		keys[key] = true
+		team.Members = append(team.Members, teamstore.Member{Key: key})
+	}
+	tooLong := strings.Repeat("k", crewKeyMax+1)
+	team.Members = append(team.Members, teamstore.Member{Key: tooLong})
+	f.save(team)
+	res, err := f.ask("t", 100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(res)
+	if len(raw) > appwire.ProcessPageReplyMax || len(res.Processes) < 5 {
+		t.Fatalf("%d rows, %d bytes", len(res.Processes), len(raw))
+	}
+	named := 0
+	for _, p := range res.Owners.Partial {
+		if p.Agent != "" || !keys[p.Key] || p.Reason != appwire.ProcessOwnerMissing {
+			t.Fatalf("a name that is not a stored key whole: %q", p.Key)
+		}
+		named += len(p.Key)
+	}
+	if len(res.Owners.Partial)+res.Owners.More != 46 || res.Owners.More == 0 || res.Owners.Unread != 46 {
+		t.Fatalf("named %d, more %d, unread %d", len(res.Owners.Partial), res.Owners.More, res.Owners.Unread)
+	}
+	// What was counted and not named is not named by a later page either: it
+	// was told once.
+	next, err := f.ask("t", 100, res.Next)
+	if err != nil || len(next.Owners.Partial) != 0 || next.Owners.More != 0 {
+		t.Fatalf("second page named again: %+v %v", next.Owners, err)
+	}
+	// The stored replay is bounded the same way.
+	reg := f.backend.crewWalks()
+	reg.mu.Lock()
+	w := reg.walks[next.Next]
+	over := len(w.last) > appwire.ProcessPageReplyMax
+	reg.mu.Unlock()
+	if over {
+		t.Fatal("a stored reply is over the reply bound")
+	}
+}
+
+// ── held conversations ──────────────────────────────────────────────────────
+
+type crewEnginePager struct{ *fakeConversation }
+
+func (crewEnginePager) ProcessPage(_ context.Context, ask session.ProcessPageAsk) (session.ProcessPage, error) {
+	return session.ProcessPage{Rows: []session.ProcessPageRow{{JobNotice: session.JobNotice{ID: 1, Kind: session.JobKindCommand, Command: "from the engine", State: session.JobRunning}, Live: true}}}, nil
+}
+
+// hold makes the backend hold a live conversation for id whose transcript is at path.
+func (f *crewFixture) hold(id, path string) {
+	f.t.Helper()
+	f.backend.locked(func() {
+		a := f.backend.agentLocked(id)
+		a.transcript = path
+		a.live = &appLive{conn: &appConn{Conv: crewEnginePager{&fakeConversation{}}, Release: func() {}}}
+	})
+}
+
+func commands(res *appwire.ProcessPageResult) string {
+	var out []string
+	for _, p := range res.Processes {
+		out = append(out, p.Command)
+	}
+	return strings.Join(out, ",")
+}
+
+// A HELD CONVERSATION IS USED ONLY AS THE EXACT ONE THE ROSTER RECORDS. A
+// foreign path, a key and a different path that share its id never reach its
+// engine and never merge into it; the exact held path is asked through its
+// engine; a held one at another path is read as saved.
+func TestCrewHeldOwnerNeedsTheExactVerifiedRecordedFile(t *testing.T) {
+	f := newCrewFixture(t)
+	f.backend.crewHistory.visit = nil
+	exactDir := f.seedOwner("held1", "p", job(1, "saved"))
+	exact := filepath.Join(exactDir, "transcript.jsonl")
+	f.hold("held1", exact)
+	// Held at another path than the roster records: not this member.
+	f.seedOwner("held2", "p", job(1, "saved2"))
+	f.hold("held2", filepath.Join(t.TempDir(), "held2", "transcript.jsonl"))
+	// A foreign same-id member and a key-only member for the held id.
+	foreign := filepath.Join(t.TempDir(), "x", "held1", "transcript.jsonl")
+	team := f.team("t", "", "held1", "held2")
+	team.Members = append(team.Members,
+		teamstore.Member{Key: foreign, File: foreign},
+		teamstore.Member{Key: exact},
+	)
+	f.save(team)
+	first, err := f.ask("t", 50, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := commands(first)
+	if !strings.Contains(got, "from the engine") || !strings.Contains(got, "saved2") || strings.Count(got, "from the engine") != 1 {
+		t.Fatalf("rows %q", got)
+	}
+	if first.Owners.Total != 4 || first.Owners.Unread != 2 || len(first.Owners.Partial) != 2 {
+		t.Fatalf("%+v", first.Owners)
+	}
+	for _, p := range first.Owners.Partial {
+		if p.Agent != "" || p.Reason != appwire.ProcessOwnerMissing {
+			t.Fatalf("an unverified member was named as an owner: %+v", p)
+		}
+	}
+	// A verified path that is no longer a conversation is missing even if held.
+	if err := os.Remove(exact); err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.ask("t", 50, "")
+	if err != nil || strings.Contains(commands(second), "from the engine") {
+		t.Fatalf("a held conversation whose stored file is gone was asked: %q %v", commands(second), err)
+	}
+}
+
+// A REMOTE ENGINE'S STALE CURSOR IS stale, NOT unreadable.
+func TestCrewReasonClassifiesAWireStaleCursor(t *testing.T) {
+	if got := crewReason(appwire.Errorf(appwire.CodeStaleCursor, "x")); got != appwire.ProcessOwnerStale {
+		t.Fatal(got)
+	}
+	if got := crewReason(appProcessUnpaged()); got != appwire.ProcessOwnerUnreadable {
+		t.Fatal(got)
+	}
+}
+
+// A PIN IS BOUNDED: a walk pinned by a page that never came back is free again
+// after crewPinMax, and an idle one still expires on its own timer.
+func TestCrewPinAndIdleTimersAreBounded(t *testing.T) {
+	reg := newCrewRegistry()
+	clock := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	reg.now = func() time.Time { return clock }
+	w := &crewWalk{scope: "all", cur: crewToken()}
+	if err := reg.admit(w); err != nil {
+		t.Fatal(err)
+	}
+	reg.walks[w.cur] = w
+	if _, err := reg.take(w.cur, "all"); !isCode(err, appwire.CodeBusy) {
+		t.Fatalf("pinned: %v", err)
+	}
+	clock = clock.Add(crewPinMax + time.Second)
+	if got, err := reg.take(w.cur, "all"); err != nil || got.walk != w {
+		t.Fatalf("a stale pin held the walk: %v", err)
+	}
+	reg.release(w)
+	clock = clock.Add(crewIdleTTL + time.Second)
+	if _, err := reg.take(w.cur, "all"); !isCode(err, appwire.CodeStaleCursor) {
+		t.Fatalf("idle: %v", err)
 	}
 }

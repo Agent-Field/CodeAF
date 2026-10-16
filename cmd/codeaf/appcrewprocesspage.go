@@ -33,6 +33,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -51,7 +52,23 @@ const (
 	// crewOwnerCall is the longest one owner is given within the page's deadline.
 	crewOwnerCall = 250 * time.Millisecond
 	// crewCursorMax bounds an owner's own cursor held by a walk.
-	crewCursorMax = 2 * appwire.ProcessCursorMax
+	crewCursorMax = appwire.ProcessCursorMax
+	// crewKeyMax bounds a stored member key held for naming an unnamed owner;
+	// a longer one is never cut into a different identity, the owner is only
+	// counted in more.
+	crewKeyMax = 256
+	// crewNameMax bounds a conversation id named in a reply.
+	crewNameMax = 128
+	// crewPartialBytesMax bounds the ENCODED bytes of the owners.partial names
+	// of one page, JSON escaping included; names past it are counted in more.
+	crewPartialBytesMax = 32 << 10
+	// crewReplyReserve is what a reply keeps for its scalars: revision, roster,
+	// counts and next. Together with the partial names it must fit in
+	// appProcessPageEnvelope, which a test pins.
+	crewReplyReserve = 8 << 10
+	// crewPinMax is how long a walk may stay pinned by one page; the dispatcher
+	// gives a page 2 s, so a pin older than this belonged to a page that is gone.
+	crewPinMax = 10 * time.Second
 
 	crewWalkBytesMax  = 8 << 20
 	crewRegistryBytes = 64 << 20
@@ -74,12 +91,14 @@ const (
 // crewOwner is one conversation of the roster and where its walk stands.
 type crewOwner struct {
 	// id is the conversation's id, the folder its transcript is in; "" for a
-	// member no conversation could be named for, which is partial from the
-	// start. key is the member's stored key, for naming it.
+	// member that did not verify, which is partial (missing) from the start and
+	// never stands in for any conversation. key is that member's stored key,
+	// kept only when it can be named whole.
 	id, key string
-	// bucket is the project folder the stored transcript path names, set only
-	// when that path is exactly <places>/<bucket>/<id>/transcript.jsonl.
-	bucket string
+	// bucket and file are the project folder and the exact stored path of a
+	// named owner: the stored transcript path is exactly
+	// <places>/<bucket>/<id>/transcript.jsonl.
+	bucket, file string
 	// cursor is the owner's own opaque page cursor, empty before its first
 	// visit.
 	cursor string
@@ -107,6 +126,7 @@ type crewWalk struct {
 	last []byte
 
 	busy      bool
+	pinnedAt  time.Time
 	born      time.Time
 	touched   time.Time
 	accounted int
@@ -185,6 +205,9 @@ func (r *crewRegistry) removeLocked(w *crewWalk) {
 func (r *crewRegistry) expireLocked() {
 	now := r.now()
 	for _, w := range append([]*crewWalk(nil), r.live...) {
+		if w.busy && now.Sub(w.pinnedAt) > crewPinMax {
+			w.busy = false
+		}
 		if !w.busy && (now.Sub(w.touched) > crewIdleTTL || now.Sub(w.born) > crewAgeMax) {
 			r.removeLocked(w)
 		}
@@ -242,7 +265,7 @@ func (r *crewRegistry) admit(w *crewWalk) error {
 		}
 	}
 	now := r.now()
-	w.born, w.touched, w.busy, w.accounted = now, now, true, size
+	w.born, w.touched, w.pinnedAt, w.busy, w.accounted = now, now, now, true, size
 	r.live = append(r.live, w)
 	r.bytes += size
 	return nil
@@ -280,6 +303,7 @@ func (r *crewRegistry) take(token, scope string) (crewReplay, error) {
 		return crewReplay{reply: w.last}, nil
 	}
 	w.busy, w.touched = true, r.now()
+	w.pinnedAt = w.touched
 	return crewReplay{walk: w}, nil
 }
 
@@ -295,7 +319,7 @@ func (r *crewRegistry) settle(w *crewWalk, end bool) error {
 		r.removeLocked(w)
 		return nil
 	}
-	if w.bytes() > r.limits.walk {
+	if len(w.last) > appwire.ProcessPageReplyMax || w.bytes() > r.limits.walk {
 		w.last = nil
 	}
 	size := w.bytes()
@@ -318,9 +342,19 @@ func (r *crewRegistry) settle(w *crewWalk, end bool) error {
 	return nil
 }
 
-// rotate gives the walk a new current token (none when the walk is over), the
-// old one becoming the previous, which replays the reply stored with it.
-func (r *crewRegistry) rotate(w *crewWalk, more bool) {
+// release unpins a walk a page did not advance, keeping it and its cursor for
+// a retry within its idle time.
+func (r *crewRegistry) release(w *crewWalk) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w.busy = false
+	w.touched = r.now()
+}
+
+// rotate gives the walk next as its new current token ("" when the walk is
+// over), the old one becoming the previous, which replays the reply stored
+// with it.
+func (r *crewRegistry) rotate(w *crewWalk, next string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.walks, w.prev)
@@ -328,10 +362,9 @@ func (r *crewRegistry) rotate(w *crewWalk, more bool) {
 	if w.prev != "" {
 		r.walks[w.prev] = w
 	}
-	w.cur = ""
-	if more {
-		w.cur = crewToken()
-		r.walks[w.cur] = w
+	w.cur = next
+	if next != "" {
+		r.walks[next] = w
 	}
 }
 
@@ -380,6 +413,11 @@ func crewPlaceOf(file string, roots []string) (bucket, id string, ok bool) {
 // crewPlain is a single plain path component that is not hidden.
 func crewPlain(name string) bool {
 	return name != "" && !strings.HasPrefix(name, ".") && !strings.ContainsAny(name, `/\`+"\x00") && filepath.Base(name) == name
+}
+
+// crewName is a conversation id fit to be named in a reply whole.
+func crewName(id string) bool {
+	return crewPlain(id) && len(id) <= crewNameMax && utf8.ValidString(id)
 }
 
 // crewPlacesRoots are the spellings of the places root a stored path may use:
@@ -455,15 +493,16 @@ func crewRosterOf(ctx context.Context, teams []teamstore.Team, sel crewSelection
 			if err := tick(); err != nil {
 				return nil, err
 			}
-			id := appMemberAgent(m)
-			bucket, placeID, placed := crewPlaceOf(m.File, roots)
-			if m.File != "" && placed {
-				id = placeID
-			}
-			named := crewPlain(id)
-			key := id
-			if !named {
-				key = "\x00" + t.ID + "\x00" + m.Key + "\x00" + m.File
+			// ONLY A STORED PATH THAT IS EXACTLY <places>/<bucket>/<id>/
+			// transcript.jsonl NAMES AN OWNER. Anything else — another machine's
+			// path, a key with no file — is an unnamed owner that could not be
+			// read; its basename or key is never looked up, so it can neither
+			// stand in for a conversation held here nor merge with one.
+			bucket, id, placed := crewPlaceOf(m.File, roots)
+			named := placed && crewName(id)
+			key := "\x00" + t.ID + "\x00" + m.Key + "\x00" + m.File
+			if named {
+				key = bucket + "\x00" + id
 			}
 			if held[key] {
 				continue
@@ -477,19 +516,22 @@ func crewRosterOf(ctx context.Context, teams []teamstore.Team, sel crewSelection
 				if len(owners) >= appTeamsOwnersMax {
 					return nil, appwire.Errorf(appwire.CodeTooLarge, "the crew holds more conversations than can be listed as one history")
 				}
-				o = &crewOwner{key: m.Key}
+				o = &crewOwner{}
 				if named {
-					o.id = id
+					o.id, o.bucket, o.file = id, bucket, m.File
 				} else {
 					o.state, o.reason = crewOwnerPartial, appwire.ProcessOwnerMissing
-					if o.key == "" {
-						o.key = m.File
+					stored := m.Key
+					if stored == "" {
+						stored = m.File
+					}
+					if len(stored) <= crewKeyMax && utf8.ValidString(stored) {
+						o.key = stored
 					}
 				}
 				owners[key] = o
-			}
-			if named && placed && (o.bucket == "" || bucket < o.bucket) {
-				o.bucket = bucket
+			} else if named && m.File < o.file {
+				o.file = m.File
 			}
 			record("m", t.ID, key)
 		}
@@ -507,6 +549,9 @@ func crewRosterOf(ctx context.Context, teams []teamstore.Team, sel crewSelection
 		}
 		if a.id != b.id {
 			return a.id < b.id
+		}
+		if a.bucket != b.bucket {
+			return a.bucket < b.bucket
 		}
 		return a.key < b.key
 	})
@@ -586,36 +631,61 @@ func (b *appBackend) PageCrewProcesses(ctx context.Context, ask appwire.ProcessP
 		}
 		walk = taken.walk
 		// A CHANGED MEMBERSHIP ENDS THE WALK; a rename, a recolour or spend does
-		// not, because the revision is of the recorded tree and members only.
+		// not, because the revision is of the recorded tree and the verified
+		// (team, conversation) pairs only. A roster that merely could not be read
+		// in time ends nothing: the cursor stays for a retry.
 		roster, err := b.crewRoster(ctx, sel)
-		if err == nil && roster.revision != walk.revision {
-			err = crewStale()
-		}
-		if err != nil {
+		switch {
+		case err == nil && roster.revision != walk.revision:
 			_ = reg.settle(walk, true)
+			return nil, crewStale()
+		case err != nil:
+			reg.release(walk)
 			return nil, err
 		}
 	}
-	res, err := b.crewStep(ctx, walk, limit)
-	if err != nil {
-		_ = reg.settle(walk, true)
+	return b.crewCommit(ctx, reg, walk, limit)
+}
+
+// crewCommit runs the page and commits it, or changes nothing: the owners'
+// state is cloned before the step and put back if the page cannot be encoded
+// within its bound, so a failed page never skips what it read.
+func (b *appBackend) crewCommit(ctx context.Context, reg *crewRegistry, walk *crewWalk, limit int) (*appwire.ProcessPageResult, error) {
+	snap := *walk
+	snap.owners = append([]crewOwner(nil), walk.owners...)
+	fail := func(err error) (*appwire.ProcessPageResult, error) {
+		*walk = snap
+		reg.release(walk)
 		return nil, err
 	}
+	res, reported, err := b.crewStep(ctx, walk, limit)
+	if err != nil {
+		return fail(err)
+	}
 	more := walk.active()
+	next := ""
+	if more {
+		next = crewToken()
+	}
+	res.Next = next
+	raw, err := json.Marshal(res)
+	if err != nil {
+		return fail(appwire.Errorf(appwire.CodeEngine, "the crew history could not be encoded"))
+	}
+	if len(raw) > appwire.ProcessPageReplyMax {
+		return fail(appwire.Errorf(appwire.CodeTooLarge, "a page of the crew history is larger than a reply may be"))
+	}
+	for _, i := range reported {
+		walk.owners[i].told = true
+	}
 	if !more {
 		walk.finished, walk.owners = true, nil
 	}
-	reg.rotate(walk, more)
-	res.Next = walk.cur
+	reg.rotate(walk, next)
 	if !more && walk.prev == "" {
 		// A walk that began and ended in one page has no token to replay.
 		_ = reg.settle(walk, true)
 		return res, nil
-	}
-	raw, err := json.Marshal(res)
-	if err != nil {
-		_ = reg.settle(walk, true)
-		return nil, appwire.Errorf(appwire.CodeEngine, "the crew history could not be encoded")
 	}
 	reg.mu.Lock()
 	walk.last = raw
@@ -628,31 +698,40 @@ func (b *appBackend) PageCrewProcesses(ctx context.Context, ask appwire.ProcessP
 
 // crewStep runs one page of visits against the walk. A visit is atomic: its
 // rows join the reply whole and its owner's state moves, or neither happens,
-// so a reply never splits an owner's page and never skips a row.
-func (b *appBackend) crewStep(ctx context.Context, w *crewWalk, limit int) (*appwire.ProcessPageResult, error) {
+// so a reply never splits an owner's page and never skips a row. It answers the
+// owners to mark as told once the page is committed; the caller restores the
+// walk when it is not.
+func (b *appBackend) crewStep(ctx context.Context, w *crewWalk, limit int) (*appwire.ProcessPageResult, []int, error) {
 	out := &appwire.ProcessPageResult{Processes: []appwire.Process{}, Revision: w.revision, Roster: appwire.ProcessRosterRecorded}
 	used := appProcessPageEnvelope
 	var named []appwire.ProcessOwnerPartial
-	more := 0
-	mark := func(o *crewOwner) {
+	var reported []int
+	partialBytes, more := 0, 0
+	// mark names an owner that became partial, within the page's partial bytes.
+	// A name that does not fit whole, or that cannot be named whole, is counted
+	// in more: identity is never cut into a different one.
+	mark := func(i int) {
+		o := &w.owners[i]
 		if o.told || o.state != crewOwnerPartial {
 			return
 		}
-		o.told = true
-		if len(named) == appwire.ProcessPartialMax {
-			more++
-			return
-		}
+		reported = append(reported, i)
 		p := appwire.ProcessOwnerPartial{Reason: o.reason}
 		if o.id != "" {
 			p.Agent = o.id
 		} else {
 			p.Key = o.key
 		}
+		raw, _ := json.Marshal(p)
+		if (p.Agent == "" && p.Key == "") || len(named) == appwire.ProcessPartialMax || partialBytes+len(raw)+1 > crewPartialBytesMax {
+			more++
+			return
+		}
+		partialBytes += len(raw) + 1
 		named = append(named, p)
 	}
 	for i := range w.owners {
-		mark(&w.owners[i])
+		mark(i)
 	}
 	visits := 0
 	for visits < crewVisitsMax && ctx.Err() == nil && w.active() {
@@ -670,7 +749,8 @@ func (b *appBackend) crewStep(ctx context.Context, w *crewWalk, limit int) (*app
 			w.at++
 		}
 		w.at %= len(w.owners)
-		o := &w.owners[w.at]
+		at := w.at
+		o := &w.owners[at]
 		res, err := b.crewVisit(ctx, *o, n)
 		if ctx.Err() != nil {
 			// The page's own time or request is gone: this visit does not count.
@@ -682,7 +762,7 @@ func (b *appBackend) crewStep(ctx context.Context, w *crewWalk, limit int) (*app
 			o.state, o.reason = crewOwnerPartial, crewReason(err)
 			w.unread++
 			w.done++
-			mark(o)
+			mark(at)
 			continue
 		}
 		for _, p := range res.Processes {
@@ -701,17 +781,17 @@ func (b *appBackend) crewStep(ctx context.Context, w *crewWalk, limit int) (*app
 			o.state, o.reason = crewOwnerPartial, appwire.ProcessOwnerUnreadable
 			w.unread++
 			w.done++
-			mark(o)
+			mark(at)
 		default:
 			o.cursor = res.Next
 		}
 	}
 	if visits == 0 && w.active() {
-		return nil, crewBusy("the crew history could not advance in time")
+		return nil, nil, crewBusy("the crew history could not advance in time")
 	}
 	out.Incomplete = w.incomplete || w.unread > 0
 	out.Owners = &appwire.ProcessOwners{Total: w.total, Done: w.done, Unread: w.unread, Partial: named, More: more}
-	return out, nil
+	return out, reported, nil
 }
 
 // crewReason is why an owner could not be read.
@@ -719,12 +799,17 @@ func crewReason(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return appwire.ProcessOwnerTimeout
-	case errors.Is(err, session.ErrProcessStale):
+	case errors.Is(err, session.ErrProcessStale), isWireCode(err, appwire.CodeStaleCursor):
 		return appwire.ProcessOwnerStale
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, session.ErrWithinRoot), errors.Is(err, errCrewOwnerMissing):
 		return appwire.ProcessOwnerMissing
 	}
 	return appwire.ProcessOwnerUnreadable
+}
+
+func isWireCode(err error, code string) bool {
+	var wire *appwire.Error
+	return errors.As(err, &wire) && wire.Code == code
 }
 
 var errCrewOwnerMissing = errors.New("that conversation is not held and its stored location cannot be read")
@@ -748,22 +833,32 @@ func (b *appBackend) crewVisit(ctx context.Context, o crewOwner, n int) (*appwir
 // transcript location, through a descriptor pinned below the places root.
 // Nothing is opened, woken, created or cached, and no directory is listed.
 func (b *appBackend) crewOwnerPage(ctx context.Context, o crewOwner, n int) (*appwire.ProcessPageResult, error) {
+	if o.bucket == "" || o.id == "" {
+		return nil, errCrewOwnerMissing
+	}
+	places := session.PlacesRoot()
+	// THE STORED LOCATION IS VERIFIED THROUGH A PINNED DESCRIPTOR BEFORE
+	// ANYTHING ABOUT IT IS USED, a held conversation's cache included.
+	conv, err := session.OpenConversationWithin(places, o.bucket, o.id)
+	if err != nil {
+		return nil, err
+	}
+	conv.Close()
+	// A HELD CONVERSATION IS USABLE ONLY AS THE EXACT ONE THE ROSTER RECORDS:
+	// its live engine's own transcript path is the stored file, byte for byte.
+	// A same-named conversation at another path is not this member, and is not
+	// asked; this member is then read as saved, which says unknown, not running.
 	var live *appLive
 	convDir := ""
 	b.locked(func() {
-		if a := b.agents[o.id]; a != nil && a.live != nil {
+		if a := b.agents[o.id]; a != nil && a.live != nil && a.transcript != "" && a.transcript == o.file {
 			live = a.live
-			if a.transcript != "" {
-				convDir = filepath.Dir(a.transcript)
-			}
+			convDir = filepath.Dir(a.transcript)
 		}
 	})
 	src := appProcessOwner{agent: o.id, live: live, convDir: convDir}
 	if live == nil {
-		if o.bucket == "" {
-			return nil, errCrewOwnerMissing
-		}
-		places, bucket, id := session.PlacesRoot(), o.bucket, o.id
+		bucket, id := o.bucket, o.id
 		src.read = func(ctx context.Context, ask session.ProcessPageAsk) (session.ProcessPage, error) {
 			return session.ReadProcessPageWithinRoot(ctx, places, bucket, id, ask)
 		}
