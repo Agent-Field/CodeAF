@@ -462,7 +462,7 @@ func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
 	}
 	held := automationSpentToday
 	t.Cleanup(func() { automationSpentToday = held })
-	automationSpentToday = func() float64 { return 1.25 }
+	automationSpentToday = func() (float64, error) { return 1.25, nil }
 
 	runner := NewAutomationRunner(func(workspace string) (Config, error) {
 		return Config{Workspace: workspace, Model: "test/model", System: "SYSTEM", ProfileDir: profile}, nil
@@ -481,7 +481,7 @@ func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
 	}
 
 	// AND UNDER IT, THE RUN GOES AHEAD.
-	automationSpentToday = func() float64 { return 0.25 }
+	automationSpentToday = func() (float64, error) { return 0.25, nil }
 	opened := false
 	runner.child = func(cfg Config) (*Agent, error) {
 		opened = true

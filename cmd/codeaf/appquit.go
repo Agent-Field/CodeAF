@@ -99,6 +99,10 @@ func (b *appBackend) markQuit(agents []*appAgent) {
 // resumeAfterQuit carries on every reply the last quit stopped, once. Each is
 // opened, told it carries on, and does so as a turn of its own.
 func (b *appBackend) resumeAfterQuit() {
+	// Preserve the pending resume list if its actual budget cannot be established.
+	if err := b.settleDayLimit(); err != nil {
+		return
+	}
 	var resume, replies, tasks []string
 	_ = b.state.write(func(f *appStateFile) error {
 		resume, replies, tasks = f.ResumeAfterQuit, f.QuitReplies, f.QuitTasks

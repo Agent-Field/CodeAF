@@ -4270,6 +4270,28 @@ in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately.
 
+## Is the desktop day cap the same limit as /budget?
+
+Yes. Settings → Spending, Welcome, `/budget day` and task helpers share the
+profile's saved daily limit. An older desktop cap is adopted once, retaining
+the tighter positive saved limit. After that, an old desktop value cannot undo
+an explicit change. A temporary raise changes the effective limit until the
+next local midnight; Settings keeps showing the base limit. A configured
+`CODEAF_DAILY_BUDGET` override still wins and the desktop refuses an ineffective
+write rather than claiming it changed the limit.
+
+A changed daily limit reaches the next guarded task or helper call, including
+restored task crews. A limit or spending ledger that cannot be opened or read stops
+potentially paid admission instead of being read as zero. Legacy malformed rows
+are still skipped and reported as coverage gaps; their dates are not guessed.
+These totals do not prove a complete bill. Repair the named
+record or explicitly set a valid limit, then retry. Per-task and per-role limits
+remain separate. This is not yet a universal per-request cap: the main chat
+turn can finish after crossing it, and native media has no shared dispatch
+reservation. A monthly cap is not available yet. Provider charges already in
+flight can exceed a limit. If startup could not establish the limit, repair it
+and reopen the app before standing orders can start.
+
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
 **Both limits apply; neither overrides the other.** New chat turns stop when

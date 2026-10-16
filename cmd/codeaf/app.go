@@ -152,7 +152,10 @@ func runApp(args []string) error {
 	orders, closeOrders := appOrdersStore()
 	backend.orderStore = orders
 	defer closeOrders()
-	defer keepAutomationsWindow("app")()
+	// Do not start a paid-capable clock before the legacy cap is adopted.
+	if err := backend.settleDayLimit(); err == nil {
+		defer keepAutomationsWindow("app")()
+	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
@@ -375,6 +378,8 @@ type appBackend struct {
 	accountAuth *appAccountAuth
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
+	// dayAuth is the daily limit's one-time hand-over from this file's old cap.
+	dayAuth appDayAuthority
 	// today replaces the usage ledger's figure for today in a test.
 	today func(time.Time) float64
 	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
@@ -982,6 +987,9 @@ func (b *appBackend) ensure(a *appAgent) (appwire.Agent, bool, error) {
 
 // ensureLocked is [appBackend.ensure] for a caller already holding a.gate.
 func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
+	if err := b.settleDayLimit(); err != nil {
+		return appwire.Agent{}, false, appEngineError(err)
+	}
 	var view appwire.Agent
 	var transcript, workspace string
 	var boot *appBoot
@@ -1551,8 +1559,17 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	// THE DAY CAP IS CHECKED BEFORE THE ENGINE HEARS OF THE TURN: a refused
 	// turn sends nothing and costs nothing, and its words wait for a raise.
 	now := b.now()
-	if limit := b.dayCap(now); limit > 0 {
-		if spent := b.spentToday(now); spent >= limit {
+	// A LIMIT NOBODY CAN READ REFUSES THE TURN: not the default, not none.
+	limit, limitErr := b.dayCap(now)
+	if limitErr != nil {
+		return 0, appEngineError(limitErr)
+	}
+	if limit > 0 {
+		spent, err := b.spentTodayChecked(now)
+		if err != nil {
+			return 0, appEngineError(err)
+		}
+		if spent >= limit {
 			turn := b.dayRefused(a, live, text, spent, limit)
 			b.locked(func() { a.failedShown = shown })
 			return turn, nil
@@ -2779,6 +2796,9 @@ func (b *appBackend) Warm() {
 
 // process is the engine's shared process half, opened once.
 func (b *appBackend) process() (*v3Process, error) {
+	if err := b.settleDayLimit(); err != nil {
+		return nil, err
+	}
 	proc, err := openEngineProcess()
 	if err == nil {
 		b.assembled.Store(true)
@@ -2881,7 +2901,15 @@ func appFigure(usd float64) *float64 {
 // SpendToday reads this machine's usage ledger for today.
 func (b *appBackend) SpendToday() (appwire.Spend, error) {
 	now := b.now()
-	return appwire.Spend{TodayUSD: b.spentToday(now), DayCapUSD: appFigure(b.dayCap(now))}, nil
+	limit, err := b.dayCap(now)
+	if err != nil {
+		return appwire.Spend{}, appEngineError(err)
+	}
+	spent, err := b.spentTodayChecked(now)
+	if err != nil {
+		return appwire.Spend{}, appEngineError(err)
+	}
+	return appwire.Spend{TodayUSD: spent, DayCapUSD: appFigure(limit)}, nil
 }
 
 // appSpendSettle is how long after a turn ends its spending is read again: the

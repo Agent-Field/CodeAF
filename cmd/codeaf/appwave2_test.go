@@ -374,9 +374,8 @@ func TestAppDayCapRefusesAndARaiseRunsTheTurnAgain(t *testing.T) {
 	if settings, _ := backend.Settings(); *settings.DayCapUSD != 40 {
 		t.Fatalf("a raise for today moved the setting to %v", *settings.DayCapUSD)
 	}
-	var tomorrow float64
-	_ = backend.state.read(func(f *appStateFile) { tomorrow = f.dayCapAt(appMidnight(time.Now()).Add(time.Minute)) })
-	if tomorrow != 40 {
+	tomorrow, err := config.DailyBudgetUSDAtTime(config.ProfileDir(), appMidnight(time.Now()).Add(time.Minute))
+	if err != nil || tomorrow != 40 {
 		t.Fatalf("tomorrow's cap = %v", tomorrow)
 	}
 }

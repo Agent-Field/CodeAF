@@ -1296,9 +1296,10 @@ func TestAppAlwaysWritesABashRule(t *testing.T) {
 }
 
 // settings.get reads the profile's rows for what the terminal shares, and the
-// app's own file for the rest, with its defaults: a $20.00 day cap that is the
-// app's and not the terminal's daily limit, a twelve-second proposal clock,
-// seven idle days, and the home folder to work in.
+// app's own file for the rest, with its defaults: a twelve-second proposal
+// clock, seven idle days, and the home folder to work in. The day cap is the
+// profile's one daily limit: a tighter persisted $12 survives the app's old
+// $20.00 default.
 func TestAppSettingsAndSpendReadTheProfile(t *testing.T) {
 	profile := t.TempDir()
 	t.Setenv(config.ProfileDirEnv, profile)
@@ -1314,7 +1315,7 @@ func TestAppSettingsAndSpendReadTheProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	homeDir, _ := os.UserHomeDir()
-	if settings.DefaultModel != "qwen/qwen3-coder" || settings.AsksBefore != "deny" || settings.BudgetUSD != nil || settings.DayCapUSD == nil || *settings.DayCapUSD != appDayCapDefault {
+	if settings.DefaultModel != "qwen/qwen3-coder" || settings.AsksBefore != "deny" || settings.BudgetUSD != nil || settings.DayCapUSD == nil || *settings.DayCapUSD != 12 {
 		t.Fatalf("settings = %+v (day cap %v)", settings, settings.DayCapUSD)
 	}
 	if settings.ProposedTaskClockS != 12 || settings.IdleCloseDays != 7 || settings.WorkFolder != homeDir || settings.TaskCapUSD == nil || *settings.TaskCapUSD != config.CrewTaskCapDefault {
@@ -1324,7 +1325,7 @@ func TestAppSettingsAndSpendReadTheProfile(t *testing.T) {
 		t.Fatalf("the terminal's daily limit moved to %v", daily)
 	}
 	spend, err := backend.SpendToday()
-	if err != nil || spend.TodayUSD != 0 || spend.DayCapUSD == nil || *spend.DayCapUSD != appDayCapDefault {
+	if err != nil || spend.TodayUSD != 0 || spend.DayCapUSD == nil || *spend.DayCapUSD != 12 {
 		t.Fatalf("spend = %+v, %v", spend, err)
 	}
 }

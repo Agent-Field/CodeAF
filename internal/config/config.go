@@ -337,6 +337,8 @@ func LoadKeyless() (Config, error) { return load(false) }
 // first run write that are not settings-registry rows. They are consumed even
 // though NewSettings(...).Rows() does not list them.
 var nonSettingProfileFields = []string{
+	dailyAuthorityKey,
+	dailyTodayKey,
 	KeySetupSeen,
 	// The talk lane's borrow row sits beside its lane row and is read by
 	// [LaneBorrowAt], but it is set from the lane page and not from a settings

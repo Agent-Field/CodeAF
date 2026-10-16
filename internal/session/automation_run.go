@@ -714,17 +714,24 @@ func (r *automationRunner) setUpWork(item automation.Automation, run automation.
 // automationSpentToday is what the machine has spent today, read off the usage
 // ledger. It is a variable so a test can stand in a figure without writing to a
 // ledger every other test in the package reads.
-var automationSpentToday = spentTodayOnLedger
+var automationSpentToday = spentTodayOnLedgerChecked
 
 // automationDailyLimitReached answers the line a run of work stops on when the
 // person's daily spending limit is reached, the same reading a conversation's
-// turn makes. No limit, or one that cannot be read, is no refusal.
+// turn makes. No limit is no refusal; one that cannot be read is.
 func automationDailyLimitReached(profileDir string) (string, bool) {
 	daily, err := config.DailyBudgetUSDAt(profileDir)
-	if err != nil || daily <= 0 {
+	if err != nil {
+		// A LIMIT NOBODY CAN READ IS NOT NO LIMIT: the run waits.
+		return "the daily spending limit could not be read · /budget day sets it", true
+	}
+	if daily <= 0 {
 		return "", false
 	}
-	spent := automationSpentToday()
+	spent, err := automationSpentToday()
+	if err != nil {
+		return spendAccountingUnread, true
+	}
 	if spent < daily {
 		return "", false
 	}

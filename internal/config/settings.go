@@ -2043,7 +2043,7 @@ func (s *Settings) build() []Setting {
 				"waits for midnight or for you to raise it here. " +
 				"Say none for no limit. A change lands at the next rail check.",
 			read:    func() string { return moneyValue(resolvedDollars(DailyBudgetUSDAt(dir))) },
-			write:   func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
+			write:   func(raw string) error { return writeDailyBudget(dir, raw) },
 			receipt: s.spentTodayReceipt,
 		},
 		Setting{

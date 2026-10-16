@@ -940,15 +940,21 @@ func (e errRouteResting) Error() string {
 // the per-task limit — which withDaily does not touch — and the checker's
 // ceiling.
 func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
-	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
+	capUSD, action := config.CrewSpendCap(profileDir, false)
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	guard := &SpendGuard{
 		Price: config.CrewCallPriceAt(profileDir), Cap: capUSD, CapAction: action,
 		SeatCeilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
-	if capUSD > 0 {
-		guard.Day = newLedgerSpendDay(spentTodayOnLedger, time.Now)
+	// THE DAILY LIMIT IS READ AT EVERY CALL, not frozen here: a limit raised,
+	// lowered or switched on after this crew was admitted is the one that
+	// holds, so the day exists whether or not a limit does today.
+	if withDaily {
+		guard.DayLimit = config.CrewDailyLimit(profileDir)
+	}
+	if capUSD > 0 || withDaily {
+		guard.Day = newCheckedLedgerSpendDay(spentTodayOnLedgerChecked, time.Now)
 	}
 	return guard
 }
@@ -958,7 +964,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 // call after — seats and helpers alike — so a helper's call counts against
 // the cap a seat's next call is priced under, and the other way round.
 func (a *Agent) crewDay() *SpendDay {
-	a.crewDayOnce.Do(func() { a.crewDayHeld = newLedgerSpendDay(spentTodayOnLedger, time.Now) })
+	a.crewDayOnce.Do(func() { a.crewDayHeld = newCheckedLedgerSpendDay(spentTodayOnLedgerChecked, time.Now) })
 	return a.crewDayHeld
 }
 
@@ -972,12 +978,13 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 		return nil
 	}
 	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
-	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, true); capUSD > 0 {
+	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
+	guard.DayLimit = config.CrewDailyLimit(a.config.ProfileDir)
 	if crew != nil && crew.guard != nil {
 		guard.TaskCap, guard.TaskAction, guard.Task = crew.guard.TaskCap, crew.guard.TaskAction, crew.guard.tally()
-		guard.Cap, guard.CapAction = crew.guard.Cap, crew.guard.CapAction
+		guard.Cap, guard.CapAction, guard.DayLimit = crew.guard.Cap, crew.guard.CapAction, crew.guard.DayLimit
 	}
 	return guard
 }
@@ -1066,17 +1073,6 @@ func CrewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 func TaskSpendGuard(profileDir string) *SpendGuard {
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	return &SpendGuard{Price: config.CrewCallPriceAt(profileDir), TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
-}
-
-// spentTodayOnLedger is today's spend as the usage ledger has it; nothing
-// when the ledger cannot be read.
-func spentTodayOnLedger() float64 {
-	now := time.Now()
-	lines, err := ReadUsage(UsageLedgerPath(), now.Add(-48*time.Hour))
-	if err != nil {
-		return 0
-	}
-	return SpendToday(lines, now)
 }
 
 // stopCrew records a guard's stop on the crew — the line leads with it — and

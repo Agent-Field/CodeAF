@@ -78,23 +78,13 @@ func (b *appBackend) agentBudget(id string, now time.Time) (usd float64, set boo
 	return config.SpendRailUSDAt(config.ProfileDir()), false
 }
 
-// dayCap is the day cap in force at now, and zero for none.
-func (b *appBackend) dayCap(now time.Time) float64 {
-	usd := 0.0
-	_ = b.state.read(func(f *appStateFile) { usd = f.dayCapAt(now) })
-	return usd
-}
-
-// spentToday is today's spending on this machine, from the usage ledger.
-func (b *appBackend) spentToday(now time.Time) float64 {
+// spentTodayChecked is admission's reader; display callbacks never turn a
+// failed ledger read into permission to send.
+func (b *appBackend) spentTodayChecked(now time.Time) (float64, error) {
 	if b.today != nil {
-		return b.today(now)
+		return b.today(now), nil
 	}
-	lines, err := session.ReadUsage(session.UsageLedgerPath(), now.Add(-48*time.Hour))
-	if err != nil {
-		return 0
-	}
-	return session.SpendToday(lines, now)
+	return session.DailySpendUSD(session.UsageLedgerPath(), now)
 }
 
 // bindBudget gives an open conversation the app's budget for it, when the app
@@ -256,7 +246,8 @@ func (b *appBackend) moneyAfter(a *appAgent, live *appLive, today float64) {
 	if !held {
 		return
 	}
-	if limit := b.dayCap(now); limit > 0 && today >= limit {
+	// An unreadable limit asks nothing here: the next turn is refused on it.
+	if limit, err := b.dayCap(now); err == nil && limit > 0 && today >= limit {
 		b.askDay(a, live, today, limit, "")
 	}
 	budget, _ := b.agentBudget(id, now)
@@ -339,7 +330,11 @@ func (b *appBackend) answerMoney(a *appAgent, askID, option, text string) (bool,
 			if !ok {
 				// Nothing typed raises the cap by itself again: twice the
 				// cap, for the rest of today.
-				usd = 2 * b.dayCap(now)
+				limit, err := b.dayCap(now)
+				if err != nil {
+					return true, appEngineError(err)
+				}
+				usd = 2 * limit
 				if usd <= 0 {
 					usd = 2 * appDayCapDefault
 				}
@@ -405,21 +400,17 @@ func (b *appBackend) RaiseCap(raise appwire.CapRaise) error {
 		b.retryRefused(a)
 		return nil
 	case appwire.CapDay:
-		err := b.state.write(func(f *appStateFile) error {
-			if raise.For == appwire.RaiseToday {
-				if f.Raises == nil {
-					f.Raises = map[string]appRaise{}
-				}
-				f.Raises[appMidnightRaiseScope] = appRaise{USD: raise.ToUSD, Until: appMidnight(now)}
-				return nil
-			}
-			usd := raise.ToUSD
-			f.DayCapUSD = &usd
-			delete(f.Raises, appMidnightRaiseScope)
-			return nil
-		})
+		// ONE AUTHORITY, ONE WRITE: the profile's limit, or its raise for
+		// today, and nothing is acknowledged that the environment or a
+		// failed write kept from taking effect.
+		var err error
+		if raise.For == appwire.RaiseToday {
+			err = b.raiseDayToday(raise.ToUSD, now)
+		} else {
+			err = b.setDayBase(raise.ToUSD)
+		}
 		if err != nil {
-			return appEngineError(err)
+			return err
 		}
 		receipt := "Day cap raised to " + appUSD(raise.ToUSD)
 		if raise.For == appwire.RaiseToday {

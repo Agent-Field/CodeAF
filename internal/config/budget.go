@@ -15,42 +15,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/filememo"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// DailyBudgetUSDAt resolves env → persisted config → built-in default. The env
-// remains the explicit headless override; /budget default writes the middle
-// layer used by both chat and one-shot runs.
-func DailyBudgetUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(env.Get("CODEAF_DAILY_BUDGET")); raw != "" {
-		return parseDailyBudget(raw, "CODEAF_DAILY_BUDGET")
-	}
-	values, err := readProfileConfig(profileDir)
-	if err != nil {
-		return 0, err
-	}
-	encoded, ok := values[KeyDailyBudget]
-	if !ok {
-		return DefaultDailyBudgetUSD, nil
-	}
-	var value float64
-	if err := json.Unmarshal(encoded, &value); err != nil {
-		return 0, fmt.Errorf("read budget config: %s: %w", KeyDailyBudget, err)
-	}
-	return validateDailyBudget(value, KeyDailyBudget)
-}
-
-// WriteDailyBudgetUSD atomically persists the default rail while preserving any
-// unrelated future keys in the JSON object.
-func WriteDailyBudgetUSD(profileDir string, amount float64) error {
-	amount, err := validateDailyBudget(amount, KeyDailyBudget)
-	if err != nil {
-		return err
-	}
-	return writeProfileValue(profileDir, KeyDailyBudget, amount)
-}
+// DailyBudgetUSDAt, DailyBudgetBaseUSDAt and WriteDailyBudgetUSD live in
+// dailylimit.go, which owns the daily limit's persisted authority.
 
 // profileConfigMemo is the profile's config.json, PARSED AT MOST ONCE PER
 // CHANGE.
@@ -79,6 +49,9 @@ var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 		values := make(map[string]json.RawMessage)
 		if err := json.Unmarshal(data, &values); err != nil {
 			return nil, fmt.Errorf("read config: %w", err)
+		}
+		if values == nil {
+			return nil, fmt.Errorf("read config: expected a JSON object")
 		}
 		return values, nil
 	})

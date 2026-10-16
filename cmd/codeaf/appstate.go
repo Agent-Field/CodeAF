@@ -6,12 +6,12 @@ package main
 // — the default model, a conversation's budget, what asks before it runs, the
 // task cap, the default effort — is the profile's own row, written through the
 // profile's own writers, so the app and the terminal never disagree about it.
-// A setting only the app has — the day cap the app's own setup chose, the
+// A setting only the app has — the
 // folder a new agent works in, the proposed-task clock, how long an idle agent
 // stays open — and how far first-run setup has come are this file's: one small
 // JSON file in codeaf's home, read the first time it is asked for and written
-// whole on every change. The terminal's own daily limit and its default are
-// untouched by anything here.
+// whole on every change. The daily limit is NOT one of them: it is the
+// profile's own row, shared with the terminal (appdaylimit.go).
 
 import (
 	"encoding/json"
@@ -51,8 +51,10 @@ type appRaise struct {
 // appStateFile is the app's file. A nil figure is one nobody set, which reads
 // as its default; a day cap of zero is one the person turned off.
 type appStateFile struct {
-	Setup              *appwire.Setup      `json:"setup,omitempty"`
-	WorkFolder         string              `json:"work_folder,omitempty"`
+	Setup      *appwire.Setup `json:"setup,omitempty"`
+	WorkFolder string         `json:"work_folder,omitempty"`
+	// DayCapUSD is LEGACY and read-only: the daily limit is the profile's
+	// (appdaylimit.go), and this is read once, to hand it over.
 	DayCapUSD          *float64            `json:"day_cap_usd,omitempty"`
 	ProposedTaskClockS *int                `json:"proposed_task_clock_s,omitempty"`
 	IdleCloseDays      *int                `json:"idle_close_days,omitempty"`
@@ -205,29 +207,12 @@ func (f appStateFile) clone() appStateFile {
 	return out
 }
 
-// dayCap is the app's day cap without any raise, and zero for none.
-func (f *appStateFile) dayCap() float64 {
-	if f.DayCapUSD == nil {
-		return appDayCapDefault
-	}
-	return *f.DayCapUSD
-}
-
 // raised is a cap with its raise for today laid over it, if one is current.
 func (f *appStateFile) raised(scope string, base float64, now time.Time) float64 {
 	if raise, ok := f.Raises[scope]; ok && now.Before(raise.Until) && raise.USD > base {
 		return raise.USD
 	}
 	return base
-}
-
-// dayCapAt is the day cap in force at now, and zero for none.
-func (f *appStateFile) dayCapAt(now time.Time) float64 {
-	base := f.dayCap()
-	if base <= 0 {
-		return 0
-	}
-	return f.raised(appMidnightRaiseScope, base, now)
 }
 
 func (f *appStateFile) clock() int {
@@ -265,18 +250,23 @@ func (f *appStateFile) workFolder() string {
 // Setup answers how far first-run setup has come; a setup never started is at
 // step one, offering the app's day cap.
 func (b *appBackend) Setup() (appwire.Setup, error) {
+	// The day cap offered is the profile's limit, whatever the saved step says.
+	base, err := b.dayBase()
+	if err != nil {
+		return appwire.Setup{}, appEngineError(err)
+	}
 	var setup appwire.Setup
-	err := b.state.read(func(f *appStateFile) {
+	err = b.state.read(func(f *appStateFile) {
 		if f.Setup != nil {
 			setup = *f.Setup
 			return
 		}
-		usd := f.dayCap()
-		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}, DayCapUSD: appFigure(usd)}
+		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}}
 	})
 	if err != nil {
 		return appwire.Setup{}, appEngineError(err)
 	}
+	setup.DayCapUSD = appFigure(base)
 	return setup, nil
 }
 
@@ -291,17 +281,25 @@ func (b *appBackend) SetSetup(setup appwire.Setup) (appwire.Setup, error) {
 			return appwire.Setup{}, appEngineError(err)
 		}
 	}
+	// A day cap the environment would keep overriding is refused before the
+	// setup is kept, so nothing is reported as chosen that is not in force.
+	if setup.DayCapUSD != nil {
+		if err := dayLimitFree(); err != nil {
+			return appwire.Setup{}, err
+		}
+	}
 	err := b.state.write(func(f *appStateFile) error {
 		kept := setup
 		f.Setup = &kept
-		if setup.DayCapUSD != nil {
-			usd := *setup.DayCapUSD
-			f.DayCapUSD = &usd
-		}
 		return nil
 	})
 	if err != nil {
 		return appwire.Setup{}, appEngineError(err)
+	}
+	if setup.DayCapUSD != nil {
+		if err := b.setDayBase(*setup.DayCapUSD); err != nil {
+			return appwire.Setup{}, err
+		}
 	}
 	if setup.DefaultModel != "" || setup.DayCapUSD != nil {
 		b.settingsMoved()
@@ -317,11 +315,17 @@ func (b *appBackend) Settings() (appwire.Settings, error) {
 	if err := b.state.read(func(f *appStateFile) { file = f.clone() }); err != nil {
 		return appwire.Settings{}, appEngineError(err)
 	}
+	// SETTINGS SAYS THE BASE LIMIT; Spend says the one in force with any
+	// raise for today laid over it.
+	base, err := b.dayBase()
+	if err != nil {
+		return appwire.Settings{}, appEngineError(err)
+	}
 	settings := appwire.Settings{
 		DefaultModel:       appDefaultModel(),
 		AsksBefore:         config.ToolApprovalModeAt(profile),
 		BudgetUSD:          appFigure(config.SpendRailUSDAt(profile)),
-		DayCapUSD:          appFigure(file.dayCap()),
+		DayCapUSD:          appFigure(base),
 		WorkFolder:         file.workFolder(),
 		TaskCapUSD:         appFigure(config.CrewTaskCapAt(profile)),
 		ProposedTaskClockS: file.clock(),
@@ -338,6 +342,13 @@ func (b *appBackend) Settings() (appwire.Settings, error) {
 // and says settings.changed once with what they all read now.
 func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings, error) {
 	profile := config.ProfileDir()
+	if patch.DayCapUSD != nil {
+		// Before any other field lands: a limit the environment pins is
+		// refused whole, not half-applied.
+		if err := dayLimitFree(); err != nil {
+			return appwire.Settings{}, err
+		}
+	}
 	apply := func(key, raw string) error {
 		row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(key)
 		if !ok {
@@ -395,18 +406,8 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 			return appwire.Settings{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 		}
 	}
-	if patch.DayCapUSD != nil || patch.WorkFolder != nil || patch.ProposedTaskClockS != nil || patch.IdleCloseDays != nil {
+	if patch.WorkFolder != nil || patch.ProposedTaskClockS != nil || patch.IdleCloseDays != nil {
 		err := b.state.write(func(f *appStateFile) error {
-			if patch.DayCapUSD != nil {
-				usd := 0.0
-				if patch.DayCapUSD.USD != nil {
-					usd = *patch.DayCapUSD.USD
-				}
-				f.DayCapUSD = &usd
-				// A new day cap replaces any raise for today: the figure the
-				// person just chose is the one in force.
-				delete(f.Raises, appMidnightRaiseScope)
-			}
 			if patch.WorkFolder != nil {
 				f.WorkFolder = *patch.WorkFolder
 			}
@@ -422,6 +423,17 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 		})
 		if err != nil {
 			return appwire.Settings{}, appEngineError(err)
+		}
+	}
+	if patch.DayCapUSD != nil {
+		// ONE WRITE, ONE AUTHORITY: the profile's limit, which also ends any
+		// raise for today, so the figure just chosen is the one in force.
+		usd := 0.0
+		if patch.DayCapUSD.USD != nil {
+			usd = *patch.DayCapUSD.USD
+		}
+		if err := b.setDayBase(usd); err != nil {
+			return appwire.Settings{}, err
 		}
 	}
 	settings, err := b.Settings()

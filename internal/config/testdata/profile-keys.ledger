@@ -121,3 +121,6 @@ update.auto
 vision_model
 work.workers
 working_set_tokens
+
+daily_budget_authority
+daily_budget_today

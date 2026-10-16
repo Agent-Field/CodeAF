@@ -223,7 +223,12 @@ func (a *Agent) restoreTaskCrew(row uint64, r *TaskCrewRecord) (*taskCrew, error
 	day := a.crewDay()
 	restoreCrewDay(day, s)
 	c.day = day
-	c.guard = &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: day, Cap: s.Cap, TaskCap: s.TaskCap, CapAction: s.CapAction, TaskAction: s.TaskAction,
+	// A RESTORED CREW HOLDS THE LIMITS AS THEY STAND NOW: the saved Cap folded
+	// the daily limit in as it was at admission, and a raise since would never
+	// reach it. The crew's own cap is read afresh and the daily limit at each call.
+	crewCap, crewCapAction := config.CrewSpendCap(a.config.ProfileDir, false)
+	c.guard = &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: day, Cap: crewCap, TaskCap: s.TaskCap, CapAction: crewCapAction, TaskAction: s.TaskAction,
+		DayLimit:      config.CrewDailyLimit(a.config.ProfileDir),
 		CeilingAction: s.CeilingAction, SeatCeilings: s.SeatCeilings, modelSpent: s.ModelSpent, Task: &SpendTask{spent: s.TaskSpent, calls: s.TaskCalls, unknown: s.TaskUnknown}, seatSpent: map[crewroute.Seat]*SpendTask{}}
 	for seat, spent := range s.SeatSpent {
 		c.guard.seatSpent[seat] = &SpendTask{spent: spent, calls: s.SeatCalls[seat], unknown: s.SeatUnknown[seat]}

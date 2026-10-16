@@ -70,8 +70,18 @@ func (a *Agent) railBlockLocked() error {
 		return err
 	}
 	if !a.config.InTask && !a.config.Errand {
-		if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
-			spentToday := spentTodayOnLedger()
+		// A DAILY LIMIT NOBODY CAN READ STOPS THE TURN: it is neither the
+		// default nor no limit, and a turn that might spend is not started
+		// on a guess.
+		daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir)
+		if err != nil {
+			return spendUnverified{said: "daily limit could not be read · /budget day sets it"}
+		}
+		if daily > 0 {
+			spentToday, err := spentTodayOnLedgerChecked()
+			if err != nil {
+				return spendUnverified{said: spendAccountingUnread}
+			}
 			if a.crewDayHeld != nil {
 				spentToday = max(spentToday, a.crewDayHeld.Total())
 			}
@@ -159,3 +169,11 @@ func (a *Agent) railCap(asked float64) float64 {
 	}
 	return asked
 }
+
+// ErrSpendUnverified names unavailable accounting, distinct from a reached cap.
+var ErrSpendUnverified = errors.New("spending could not be verified")
+
+type spendUnverified struct{ said string }
+
+func (e spendUnverified) Error() string { return e.said }
+func (e spendUnverified) Unwrap() error { return ErrSpendUnverified }
