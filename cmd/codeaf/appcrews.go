@@ -324,6 +324,10 @@ func (b *appBackend) crewView(read appCrewRead, t teamstore.Team) appwire.Crew {
 		closed := t.ClosedAt
 		view.ClosedAt = &closed
 	}
+	if t.Archived() {
+		archived := t.ArchivedAt
+		view.ArchivedAt = &archived
+	}
 	if t.Wrap != nil {
 		view.Wrap = &appwire.CrewWrap{Started: t.Wrap.Started, BoundS: int(t.Wrap.Bound.Seconds())}
 	}
@@ -1071,7 +1075,7 @@ func (b *appBackend) answerCrewAsk(agent, id, option, text, why string) (bool, e
 
 // ── the methods ─────────────────────────────────────────────────────────────
 
-// CrewList is every open crew, or every closed one.
+// CrewList is every open crew, or every closed one that is not archived.
 func (b *appBackend) CrewList(closed bool) ([]appwire.Crew, error) {
 	b.crews()
 	read, err := b.crewRead()
@@ -1080,8 +1084,28 @@ func (b *appBackend) CrewList(closed bool) ([]appwire.Crew, error) {
 	}
 	teams := read.file.Open()
 	if closed {
-		teams = read.file.ClosedTeams()
+		teams = nil
+		for _, t := range read.file.ClosedTeams() {
+			if !t.Archived() {
+				teams = append(teams, t)
+			}
+		}
 	}
+	out := make([]appwire.Crew, 0, len(teams))
+	for _, t := range teams {
+		out = append(out, b.crewView(read, t))
+	}
+	return out, nil
+}
+
+// CrewListArchived is every crew put away, the newest first.
+func (b *appBackend) CrewListArchived() ([]appwire.Crew, error) {
+	b.crews()
+	read, err := b.crewRead()
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	teams := read.file.ArchivedTeams()
 	out := make([]appwire.Crew, 0, len(teams))
 	for _, t := range teams {
 		out = append(out, b.crewView(read, t))
@@ -1906,6 +1930,32 @@ func (b *appBackend) CrewReopen(id string) (appwire.Crew, error) {
 		return appwire.Crew{}, err
 	}
 	_ = teamstore.AppendTraffic(b.crewProfile(), id, teamstore.Entry{Kind: teamstore.KindReopen, From: teamstore.FromYou, To: teamstore.ToRoom, Text: "reopened"})
+	return b.CrewGet(id)
+}
+
+// CrewArchive puts a closed crew away. It marks that crew only: the crews under
+// it are not archived, and nothing is closed, stopped or deleted. An open crew
+// is refused; closing is its own act.
+func (b *appBackend) CrewArchive(id string) (appwire.Crew, error) {
+	t, _, err := b.crewTeam(id)
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	if t.Root {
+		return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "All crews does not archive")
+	}
+	err = b.crewEdit(func(f *teamstore.File) error {
+		if err := f.Archive(id, b.now()); err != nil {
+			if errors.Is(err, teamstore.ErrNotClosed) {
+				return appwire.Errorf(appwire.CodeBadParams, "close %s before archiving it", t.Name)
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return appwire.Crew{}, err
+	}
 	return b.CrewGet(id)
 }
 

@@ -111,18 +111,21 @@ type CrewItem struct {
 // is absent while any member runs, on a closed crew, and when any member's
 // instant is unknown.
 type Crew struct {
-	ID            string        `json:"id"`
-	Name          string        `json:"name"`
-	Parent        string        `json:"parent,omitempty"`
-	Root          bool          `json:"root,omitempty"`
-	Manager       string        `json:"manager,omitempty"`
-	Hue           float64       `json:"hue"`
-	Tier          int           `json:"tier"`
-	Tint          string        `json:"tint"`
-	MadeAt        *time.Time    `json:"made_at,omitempty"`
-	State         string        `json:"state"`
-	IdleSince     *time.Time    `json:"idle_since,omitempty"`
-	ClosedAt      *time.Time    `json:"closed_at,omitempty"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Parent    string     `json:"parent,omitempty"`
+	Root      bool       `json:"root,omitempty"`
+	Manager   string     `json:"manager,omitempty"`
+	Hue       float64    `json:"hue"`
+	Tier      int        `json:"tier"`
+	Tint      string     `json:"tint"`
+	MadeAt    *time.Time `json:"made_at,omitempty"`
+	State     string     `json:"state"`
+	IdleSince *time.Time `json:"idle_since,omitempty"`
+	ClosedAt  *time.Time `json:"closed_at,omitempty"`
+	// ArchivedAt is when a closed crew was put away; absent otherwise. The
+	// crew's state stays closed: archived is closed and listed only when asked.
+	ArchivedAt    *time.Time    `json:"archived_at,omitempty"`
 	ClosedWith    string        `json:"closed_with,omitempty"`
 	Report        string        `json:"report,omitempty"`
 	Wrap          *CrewWrap     `json:"wrap,omitempty"`
@@ -399,6 +402,10 @@ type Crewer interface {
 	CrewWrapUp(id, text string) error
 	CrewClose(id string) error
 	CrewReopen(id string) (Crew, error)
+	// CrewArchive puts a closed crew away (its own mark; no crew under it is
+	// archived). CrewListArchived is the crews put away, newest first.
+	CrewArchive(id string) (Crew, error)
+	CrewListArchived() ([]Crew, error)
 	CrewDelete(id string) ([]string, error)
 	CrewDefaults() (CrewDefaults, error)
 	CrewSetDefault(key, value string) (CrewDefaults, error)
@@ -660,6 +667,12 @@ var crewMethods = map[string]method{
 			return nil, err
 		}
 		return crewOf(c.CrewReopen(p.ID))
+	}),
+	"crews.archive": crewCall("crews.archive", func(c Crewer, p crewID) (*crewResult, error) {
+		if err := needID("crews.archive", p.ID); err != nil {
+			return nil, err
+		}
+		return crewOf(c.CrewArchive(p.ID))
 	}),
 	"crews.delete": crewCall("crews.delete", func(c Crewer, p crewID) (*IDsResult, error) {
 		if err := needID("crews.delete", p.ID); err != nil {

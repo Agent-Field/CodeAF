@@ -95,6 +95,11 @@ type Team struct {
 	ClosedAt   time.Time
 	ClosedWith string
 	Report     string
+	// ArchivedAt is when a closed team was put away ([File.Archive]); zero for
+	// a team that is not archived. Archiving is a mark on a closed team: its
+	// roster, Traffic and packets stay exactly as they were, and [File.Reopen]
+	// clears it.
+	ArchivedAt time.Time
 	// Root marks the one team that holds every other (root.go): the `All
 	// teams` row, made when the person gives it a manager.
 	Root bool
@@ -134,7 +139,7 @@ type File struct {
 var knownFields = map[string]bool{
 	"id": true, "name": true, "parent": true, "members": true, "manager": true,
 	"hue": true, "tier": true, "hue_cleared": true, "made": true,
-	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
+	"state": true, "closed_at": true, "closed_with": true, "archived_at": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
 	"wrap": true, "former_members": true, "former_manager": true, "starts": true, "founder": true,
 }
@@ -159,6 +164,7 @@ type wireTeam struct {
 	State      string     `json:"state,omitempty"`
 	ClosedAt   *time.Time `json:"closed_at,omitempty"`
 	ClosedWith string     `json:"closed_with,omitempty"`
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
 	Report     string     `json:"report,omitempty"`
 	Root       bool       `json:"root,omitempty"`
 	// Wrap is written only while a wrap-up is in progress, so a team with
@@ -185,6 +191,9 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap, Starts: w.Starts}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
+	}
+	if w.ArchivedAt != nil {
+		t.ArchivedAt = *w.ArchivedAt
 	}
 	if w.Hue != nil {
 		t.Hue, t.hued = *w.Hue, true
@@ -220,6 +229,10 @@ func (t Team) MarshalJSON() ([]byte, error) {
 	if !t.ClosedAt.IsZero() {
 		at := t.ClosedAt
 		w.ClosedAt = &at
+	}
+	if !t.ArchivedAt.IsZero() {
+		at := t.ArchivedAt
+		w.ArchivedAt = &at
 	}
 	if t.Hued() {
 		hue, tier := t.Hue, t.Tier

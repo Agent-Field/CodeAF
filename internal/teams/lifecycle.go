@@ -26,12 +26,19 @@ var ErrClosed = errors.New("teams: this team has been disbanded; its history is 
 // ErrOpen is [Delete] asked to delete a team that is not closed.
 var ErrOpen = errors.New("teams: only a closed team can be deleted; close it first")
 
+// ErrNotClosed is [File.Archive] asked to archive a team that is not closed.
+// Archiving puts a closed team away; it never closes one.
+var ErrNotClosed = errors.New("teams: only a closed team can be archived; close it first")
+
 // ErrParentClosed is [File.Reopen] asked to reopen a team whose parent is
 // closed.
 var ErrParentClosed = errors.New("teams: its parent team is closed; reopen that first")
 
 // Closed reports whether the team is closed.
 func (t Team) Closed() bool { return t.State == TeamClosed }
+
+// Archived reports whether the team is closed and put away.
+func (t Team) Archived() bool { return t.Closed() && !t.ArchivedAt.IsZero() }
 
 // Descendants is every team under id, at any depth, parents before children.
 func (f *File) Descendants(id string) []Team {
@@ -118,7 +125,7 @@ func (f *File) Reopen(id string) error {
 	}
 	reopen := func(j int) {
 		t := &f.Teams[j]
-		t.State, t.ClosedAt, t.ClosedWith = "", time.Time{}, ""
+		t.State, t.ClosedAt, t.ClosedWith, t.ArchivedAt = "", time.Time{}, "", time.Time{}
 	}
 	for _, d := range f.Descendants(id) {
 		if d.Closed() && d.ClosedWith == id {
@@ -127,6 +134,50 @@ func (f *File) Reopen(id string) error {
 	}
 	reopen(i)
 	return nil
+}
+
+// Archive puts the closed team id away: it leaves the closed list and is read
+// only when archived teams are asked for. It marks that one team. The teams
+// under it, closed with it or not, are not touched, and nothing is closed,
+// stopped or deleted: the roster, Traffic and packets stay as they were and
+// [File.Reopen] brings the team back. A team that is open, or the root, is
+// refused; one already archived keeps its first time.
+func (f *File) Archive(id string, at time.Time) error {
+	i, err := f.at(id)
+	if err != nil {
+		return err
+	}
+	t := &f.Teams[i]
+	if t.Root {
+		return ErrRoot
+	}
+	if !t.Closed() {
+		return ErrNotClosed
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	if t.ArchivedAt.IsZero() {
+		t.ArchivedAt = at
+	}
+	return nil
+}
+
+// ArchivedTeams is the closed teams that were put away, most recently
+// archived first.
+func (f *File) ArchivedTeams() []Team {
+	var out []Team
+	for _, t := range f.Teams {
+		if t.Archived() {
+			out = append(out, t)
+		}
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j].ArchivedAt.After(out[j-1].ArchivedAt); j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
 }
 
 // Open is the teams that are open, in stored order.
@@ -140,8 +191,8 @@ func (f *File) Open() []Team {
 	return out
 }
 
-// ClosedTeams is the teams that are closed, most recently closed first, for
-// the folded `Closed · N` section.
+// ClosedTeams is the teams that are closed, archived ones included, most
+// recently closed first, for the folded `Closed · N` section.
 func (f *File) ClosedTeams() []Team {
 	var out []Team
 	for _, t := range f.Teams {

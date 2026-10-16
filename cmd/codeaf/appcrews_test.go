@@ -185,6 +185,64 @@ func TestAppCrewLogLinesAndCloseReopen(t *testing.T) {
 	}
 }
 
+// ARCHIVING A CREW IS THE ENGINE'S OWN ACT, separate from close and delete: an
+// open crew is refused, a closed one is marked, leaves the closed list, shows in
+// the archived list and in get with archived_at, keeps its members, survives a
+// fresh backend on the same store, and reopens as it was.
+func TestAppCrewArchiveIsSeparateFromCloseAndDelete(t *testing.T) {
+	backend, rec, _, id := crewBackend(t)
+	backend.crews()
+	var wire *appwire.Error
+	if _, err := backend.CrewArchive(id); !errors.As(err, &wire) || wire.Code != appwire.CodeBadParams {
+		t.Fatalf("an open crew was archived: %v", err)
+	}
+	if open, _ := backend.CrewList(false); len(open) != 1 || open[0].ArchivedAt != nil {
+		t.Fatalf("a refused archive changed the crew: %+v", open)
+	}
+	if _, err := backend.CrewArchive("nope"); !errors.As(err, &wire) || wire.Code != appwire.CodeNotFound {
+		t.Fatalf("an unknown crew: %v", err)
+	}
+	if err := backend.CrewClose(id); err != nil {
+		t.Fatal(err)
+	}
+	crew, err := backend.CrewArchive(id)
+	if err != nil || crew.State != appwire.CrewClosed || crew.ArchivedAt == nil || len(crew.Members) != 2 {
+		t.Fatalf("archived = %+v, %v", crew, err)
+	}
+	if closed, _ := backend.CrewList(true); len(closed) != 0 {
+		t.Fatalf("an archived crew is still in the closed list: %+v", closed)
+	}
+	archived, err := backend.CrewListArchived()
+	if err != nil || len(archived) != 1 || archived[0].ID != id || archived[0].ClosedAt == nil {
+		t.Fatalf("the archived crews = %+v, %v", archived, err)
+	}
+	if got, err := backend.CrewGet(id); err != nil || got.ArchivedAt == nil {
+		t.Fatalf("get = %+v, %v", got, err)
+	}
+	var run *appCrewRun
+	backend.locked(func() { run = backend.crewRun })
+	backend.crewTick(run, false)
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.CrewChanged)
+		return ok && c.Crew.ID == id && c.Crew.ArchivedAt != nil
+	})
+	// The store itself, read fresh, holds the archive.
+	f, err := teamstore.Load(backend.profileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if team, _ := f.Team(id); !team.Archived() || len(team.Members) != 2 {
+		t.Fatalf("the store after reload = %+v", team)
+	}
+	back, err := backend.CrewReopen(id)
+	if err != nil || back.State == appwire.CrewClosed || back.ArchivedAt != nil || len(back.Members) != 2 {
+		t.Fatalf("reopened = %+v, %v", back, err)
+	}
+	if list, _ := backend.CrewListArchived(); len(list) != 0 {
+		t.Fatalf("a reopened crew is still archived: %+v", list)
+	}
+}
+
 // A PROPOSAL IS READ FROM THE AGENT'S ONE JSON BLOCK; a helper without a usable
 // handle or a brief is left out, and an answer with none is no proposal.
 func TestAppProposalIsReadFromTheAgentsAnswer(t *testing.T) {
