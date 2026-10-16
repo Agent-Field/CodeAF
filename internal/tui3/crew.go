@@ -477,6 +477,10 @@ func (a *app) crewHint() string { return a.crewSegment() }
 const (
 	crewOneModelSegment = "one model"
 	crewOneModelWord    = "one model · every call rides the model you are talking to"
+	// crewTaskOneWord and crewTaskOneTail say the profile's one-model row: a
+	// row the app's Task models page writes, read at every task's start.
+	crewTaskOneWord = "one model for every task: "
+	crewTaskOneTail = " · the seats and allowed models below wait for Auto"
 )
 
 // refreshSettings rebuilds an open settings panel from the registry. A command

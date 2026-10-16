@@ -58,6 +58,8 @@ models.crew.task_cap
 models.fallbacks
 models.pool.public_key
 models.roles
+models.tasks.mode
+models.tasks.one
 models.tiers.high
 models.tiers.low
 models.tiers.mastermind

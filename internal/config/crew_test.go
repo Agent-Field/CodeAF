@@ -154,7 +154,7 @@ func TestTheLadderFlagThenEnvThenPinThenRouter(t *testing.T) {
 	}
 }
 
-func TestPinsRoundTripAndRefuseWhatTheRuleLeavesOut(t *testing.T) {
+func TestPinsRoundTripAndAreKeptOutsideTheRule(t *testing.T) {
 	dir := crewProfile(t)
 	if err := SetCrewPin(dir, crewroute.Worker, "z-ai/glm-5.3-flash@openrouter"); err != nil {
 		t.Fatal(err)
@@ -181,9 +181,20 @@ func TestPinsRoundTripAndRefuseWhatTheRuleLeavesOut(t *testing.T) {
 	if err := SetCrewPin(dir, crewroute.Planner, "moonshotai/kimi-k3@fireworks"); err == nil || !strings.Contains(err.Error(), "not a connected provider") {
 		t.Errorf("a pin on an unconnected provider: %v", err)
 	}
-	// A rule that would strand a pin is refused and names the pin.
-	if err := SetCrewAllowed(dir, "≤0.1/0.2"); err == nil || !strings.Contains(err.Error(), "pinned to z-ai/glm-5.3-flash") {
-		t.Errorf("a rule that strands the worker pin: %v", err)
+	// A RULE THAT LEAVES A PIN OUTSIDE IS WRITTEN AND THE PIN IS KEPT (V79): the
+	// role reads as set aside, and a task routes it until the person allows the
+	// model again or unpins it.
+	if err := SetCrewAllowed(dir, "≤0.1/0.2"); err != nil {
+		t.Fatalf("a rule that leaves the worker pin outside: %v", err)
+	}
+	if pin, ok := CrewPinAt(dir, crewroute.Worker); !ok || pin.Model != "z-ai/glm-5.3-flash" {
+		t.Fatalf("the pin was not kept: %+v %v", pin, ok)
+	}
+	if !CrewPinBlockedAt(dir, crewroute.Worker) {
+		t.Error("a pin outside the rule does not read as set aside")
+	}
+	if err := SetCrewAllowed(dir, "open"); err != nil {
+		t.Fatal(err)
 	}
 	if err := SetCrewPin(dir, crewroute.Worker, "auto"); err != nil {
 		t.Fatal(err)

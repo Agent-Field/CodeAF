@@ -370,6 +370,10 @@ var nonSettingProfileFields = []string{
 	KeyCrewRouteWorker,
 	KeyCrewRoutePlanner,
 	KeyCrewRouteChecker,
+	// Task models' mode and its one model (taskmodels.go), written from the
+	// app's Task models page and read at every task's admission.
+	KeyTaskModelsMode,
+	KeyTaskModelsOne,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once

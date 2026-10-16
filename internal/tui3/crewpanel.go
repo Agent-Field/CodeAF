@@ -2083,6 +2083,11 @@ func (a *app) crewWarnings() []string {
 	var out []string
 	if a.oneModel {
 		out = append(out, crewOneModelWord)
+	} else if config.TaskModelsModeAt(a.profileDir) == crewroute.ModeOne {
+		// THE ONE-MODEL ROW IS SAID HERE TOO: every task runs it, and the seats
+		// and allowed models below wait, unchanged, for Auto.
+		one, _ := config.TaskOneModelAt(a.profileDir)
+		out = append(out, crewTaskOneWord+crewroute.ShortModel(one.Model)+crewTaskOneTail)
 	}
 	if len(p.providers) == 0 {
 		out = append(out, crewNoProviderWord)

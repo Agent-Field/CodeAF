@@ -414,6 +414,7 @@ func LogCrewRoute(profileDir, call string, d crewroute.Decision, repo, title str
 // ([crewroute.Decision.Ladder]).
 func CrewRescue(profileDir string, class crewroute.Class, seat crewroute.Seat, chatModel string) []crewroute.Pick {
 	health := crewHealthAt(profileDir)
+	rule := CrewAllowedAt(profileDir)
 	var out []crewroute.Pick
 	seen := map[string]bool{}
 	add := func(send string) {
@@ -433,6 +434,12 @@ func CrewRescue(profileDir string, class crewroute.Class, seat crewroute.Seat, c
 			return
 		}
 		if model, known := crewCatalogModel(send); known && !crewroute.Seatable(seat, crewroute.Candidate{Model: model, Routes: []crewroute.Route{{Send: pin.Send}}}) {
+			return
+		}
+		// NO RESCUE OUTSIDE THE ALLOWED MODELS: the last crew that worked and
+		// the person's own model are rescues only where the rule admits them
+		// on the route they would run.
+		if !crewPinAdmitted(rule, send, pin.Provider) {
 			return
 		}
 		out = append(out, crewroute.Pick{Seat: seat, Model: pin.Model, Provider: pin.Provider, Send: pin.Send, Kind: pin.Kind})
@@ -499,9 +506,16 @@ var CrewLastGood = func(profileDir string) *router.CrewRecord {
 }
 
 // crewRescued is a decision the router could not form for want of a seat,
-// formed with that seat on its rescue: the last good crew's model, then the
-// person's own. Nothing to rescue it with is the one action.
-func crewRescued(profileDir string, req crewroute.Request, health crewHealth, chatModel string, cause error) (crewroute.Decision, error) {
+// formed with that seat on its rescue: the last good crew's model, then a free
+// pool of an allowed model — ONLY EVER A MODEL THE ALLOWED MODELS ADMIT.
+//
+// THE PERSON'S OWN CHAT MODEL IS NOT A RESCUE AT ADMISSION. A role with nothing
+// allowed to run on is a question for the person ("allow a model, or pin
+// one"), answered with a typed refusal naming the role and why each model was
+// turned away ([crewroute.NoEligibleError]) — not a task quietly started on a
+// model they never allowed for it. (Inside a running task the seat's ladder may
+// still reach the chat model when the rule admits it: [CrewRescue].)
+func crewRescued(profileDir string, req crewroute.Request, health crewHealth, cause error) (crewroute.Decision, error) {
 	var missing crewroute.NoCandidateError
 	if !errors.As(cause, &missing) {
 		return crewroute.Decision{}, cause
@@ -512,9 +526,9 @@ func crewRescued(profileDir string, req crewroute.Request, health crewHealth, ch
 	}
 	var rescued []string
 	for tries := 0; tries < len(crewroute.Seats); tries++ {
-		rescue := CrewRescue(profileDir, req.Class, missing.Seat, chatModel)
+		rescue := CrewRescue(profileDir, req.Class, missing.Seat, "")
 		if len(rescue) == 0 {
-			return crewroute.Decision{}, ErrCrewUnreachable{Action: health.crewAction()}
+			return crewroute.Decision{}, crewNoEligible(profileDir, missing.Seat, ErrCrewUnreachable{Action: health.crewAction()})
 		}
 		r := rescue[0]
 		pins[missing.Seat] = crewroute.Pin{Model: r.Model, Provider: r.Provider, Send: r.Send, Kind: r.Kind}
@@ -535,5 +549,5 @@ func crewRescued(profileDir string, req crewroute.Request, health crewHealth, ch
 			return crewroute.Decision{}, err
 		}
 	}
-	return crewroute.Decision{}, ErrCrewUnreachable{Action: health.crewAction()}
+	return crewroute.Decision{}, crewNoEligible(profileDir, missing.Seat, ErrCrewUnreachable{Action: health.crewAction()})
 }

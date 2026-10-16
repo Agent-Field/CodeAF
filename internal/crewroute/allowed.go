@@ -26,6 +26,12 @@ import (
 // let in. A `+x` or `-x` naming a PROVIDER — `-openrouter` — takes that
 // provider's routes away rather than models, so a model it serves stays
 // allowed on any other route that reaches it.
+//
+// A `+x@p` or `-x@p` speaks about ONE MODEL ON ONE PROVIDER — `-glm-5.3@openrouter`
+// leaves GLM 5.3 allowed on every other route that reaches it. It is how a
+// per-provider checklist row is ticked and unticked, and it reads the same in
+// `/crew models` as anywhere else. A build from before it reads the word as a
+// model nobody has and so ignores it.
 
 // Base is the first word of a rule: what is allowed before any `+x` or `-x`.
 type Base string
@@ -174,7 +180,62 @@ func (a Allowed) With(add bool, word string) Allowed {
 }
 
 // AdmitsModel says whether the rule allows a model, before routes are asked.
+// A word about one model on one provider ([Allowed.AdmitsOn]) is not read here.
 func (a Allowed) AdmitsModel(m Model) bool {
+	admitted := a.baseAdmits(m)
+	for _, mod := range a.Mods {
+		if _, _, qualified := splitQualified(mod.Word); !qualified && matchesModel(mod.Word, m.ID) {
+			admitted = mod.Add
+		}
+	}
+	return admitted
+}
+
+// AdmitsOn says whether the rule allows a model ON ONE PROVIDER'S ROUTE. The
+// words are read left to right and the last word that speaks about this model
+// on this provider wins: a model word, a provider word, or a word about the
+// two together (`-glm-5.3@openrouter`).
+func (a Allowed) AdmitsOn(m Model, provider string) bool {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	model, route := a.baseAdmits(m), true
+	var routed *bool
+	for _, mod := range a.Mods {
+		add := mod.Add
+		if word, on, qualified := splitQualified(mod.Word); qualified {
+			if on == provider && matchesModel(word, m.ID) {
+				routed = &add
+			}
+			continue
+		}
+		if matchesModel(mod.Word, m.ID) {
+			model, routed = add, nil
+		}
+		if mod.Word == provider {
+			route, routed = add, nil
+		}
+	}
+	if routed != nil {
+		return *routed
+	}
+	return model && route
+}
+
+// QualifiedWord is the rule word for one model on one provider.
+func QualifiedWord(id, provider string) string {
+	return strings.ToLower(strings.TrimSpace(id)) + "@" + strings.ToLower(strings.TrimSpace(provider))
+}
+
+// splitQualified reads a `model@provider` word.
+func splitQualified(word string) (model, provider string, ok bool) {
+	at := strings.LastIndex(word, "@")
+	if at <= 0 || at == len(word)-1 {
+		return "", "", false
+	}
+	return word[:at], word[at+1:], true
+}
+
+// baseAdmits is the rule's first word alone.
+func (a Allowed) baseAdmits(m Model) bool {
 	admitted := false
 	switch a.Base {
 	case BaseAll, "":
@@ -190,11 +251,6 @@ func (a Allowed) AdmitsModel(m Model) bool {
 				admitted = true
 				break
 			}
-		}
-	}
-	for _, mod := range a.Mods {
-		if matchesModel(mod.Word, m.ID) {
-			admitted = mod.Add
 		}
 	}
 	return admitted
@@ -223,7 +279,7 @@ func (a Allowed) NamesModel(id string) bool {
 		}
 	}
 	for _, mod := range a.Mods {
-		if mod.Add && matchesModel(mod.Word, id) {
+		if _, _, qualified := splitQualified(mod.Word); !qualified && mod.Add && matchesModel(mod.Word, id) {
 			return true
 		}
 	}
@@ -305,7 +361,7 @@ func (a Allowed) Without(word string) Allowed {
 func (a Allowed) Toggled(m Model, admit bool) (Allowed, bool) {
 	word := strings.ToLower(strings.TrimSpace(m.ID))
 	if a.Base == BaseList {
-		out := a.Without(word)
+		out := a.Without(word).withoutRoutesOf(m.ID)
 		var members []string
 		for _, member := range a.Members {
 			if !matchesModel(member, m.ID) {
@@ -326,11 +382,39 @@ func (a Allowed) Toggled(m Model, admit bool) (Allowed, bool) {
 		}
 		return out, true
 	}
-	out := a.Without(word)
+	out := a.Without(word).withoutRoutesOf(m.ID)
 	if out.AdmitsModel(m) != admit {
 		out = out.With(admit, word)
 	}
 	return out, true
+}
+
+// withoutRoutesOf is the rule with every word about this model on one
+// provider taken off: a tick for the model everywhere speaks for every route.
+func (a Allowed) withoutRoutesOf(id string) Allowed {
+	out := a
+	out.Mods = nil
+	for _, mod := range a.Mods {
+		if word, _, qualified := splitQualified(mod.Word); qualified && matchesModel(word, id) {
+			continue
+		}
+		out.Mods = append(out.Mods, mod)
+	}
+	return out
+}
+
+// RowToggled is the rule with ONE MODEL ON ONE PROVIDER allowed or not, in the
+// shortest spelling: the word about that row is taken off when the rest of the
+// rule already says what is wanted, and written when it does not. It is what a
+// tick in a per-provider checklist writes, and it never touches the same model
+// on another provider.
+func (a Allowed) RowToggled(m Model, provider string, admit bool) Allowed {
+	word := QualifiedWord(m.ID, provider)
+	out := a.Without(word)
+	if out.AdmitsOn(m, provider) != admit {
+		out = out.With(admit, word)
+	}
+	return out
 }
 
 // RouteToggled is the rule with one provider's routes given back or taken

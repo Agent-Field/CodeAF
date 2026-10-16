@@ -1,7 +1,9 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -129,6 +131,21 @@ var removeProfileKey = profileKeyRemoval{}
 type profileKeyRemoval struct{}
 
 func writeProfileValues(profileDir string, updates map[string]any) error {
+	return writeProfileValuesExpecting(profileDir, nil, updates)
+}
+
+// errProfileMoved is a write refused because a row it was decided on changed
+// between the read and the write ([writeProfileValuesExpecting]).
+var errProfileMoved = errors.New("these settings changed while the change was being made")
+
+// writeProfileValuesExpecting is [writeProfileValues] that first checks, UNDER
+// THE SAME LOCK AS THE WRITE, that every row in expect still holds exactly the
+// bytes it was read with (a nil value: still absent), and refuses with
+// [errProfileMoved] otherwise. It is how a change computed from several rows —
+// a rule edited a tick at a time, a pin judged against that rule — lands on the
+// rows it was computed from, or not at all, rather than over a write that came
+// in between.
+func writeProfileValuesExpecting(profileDir string, expect map[string]json.RawMessage, updates map[string]any) error {
 	if err := refuseAppCredentialUpdates(updates); err != nil {
 		return err
 	}
@@ -174,6 +191,12 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	held, err := readProfileConfig(profileDir)
 	if err != nil {
 		return fmt.Errorf("write config: preserve existing file: %w", err)
+	}
+	for name, want := range expect {
+		got, present := held[name]
+		if present != (want != nil) || (present && !bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(want))) {
+			return errProfileMoved
+		}
 	}
 	// THE WRITER OWNS ITS OWN MAP. [readProfileConfig] hands back the map its
 	// memo is holding, and adding a row to that map in place would rewrite what
