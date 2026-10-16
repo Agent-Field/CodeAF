@@ -474,16 +474,11 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 		callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
 			crew.guard.after(ctx, current, response, 0)
 		})
-		// THIS CALL'S OWN DISPATCH FACT, told by the door as it hands this
-		// request to its adapter ([withDispatchObserver]). A retry is a new
-		// call and is told its own.
-		var sent sentConnection
-		told := false
-		callCtx = withDispatchObserver(callCtx, func(fact sentConnection) {
-			if !told {
-				sent, told = fact, true
-			}
-		})
+		// THIS CALL'S OWN DISPATCH FACT, told from the header each attempt was
+		// written with ([withDispatchObserver]): the LAST told is the attempt
+		// that failed, whichever key an earlier attempt carried.
+		sent := new(lastSent)
+		callCtx = withDispatchObserver(callCtx, sent.tell)
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
 		failedAt := time.Now()
 		crew.guard.after(ctx, current, response, held)
@@ -503,7 +498,7 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			continue
 		}
 		retried = false
-		crew.noteFailed(current, crew.failureSent(current, crewFailure{kind: kind, until: until, err: err, at: failedAt}, sent))
+		crew.noteFailed(current, crew.failureSent(current, crewFailure{kind: kind, until: until, err: err, at: failedAt}, sent.read()))
 		if action, moved := c.agent.moveCrewSeat(c.run, key, current, kind, until); !moved {
 			if action == "" {
 				return response, err
@@ -511,6 +506,26 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			return response, crewStopped{action: action, cause: err}
 		}
 	}
+}
+
+// lastSent is the dispatch fact of the newest request one seat call wrote. A
+// streamed request is written on the stream's own goroutine, so it is read
+// under its own lock.
+type lastSent struct {
+	mu   sync.Mutex
+	fact sentConnection
+}
+
+func (l *lastSent) tell(fact sentConnection) {
+	l.mu.Lock()
+	l.fact = fact
+	l.mu.Unlock()
+}
+
+func (l *lastSent) read() sentConnection {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.fact
 }
 
 // seatKey is the send id a seat call names — the seat as routed — or the
@@ -535,8 +550,8 @@ type crewFailure struct {
 	err   error
 	// at is when the failure came back, and provider the provider the send
 	// was routed to. sent is the print of the credential the failed call was
-	// SENT with, as the client door told it before the request left
-	// ([withDispatchObserver]); empty when the door could not say. A failure
+	// SENT with, as the adapter printed it from the header of the last attempt
+	// it wrote ([withDispatchObserver]); empty when nothing could say. A failure
 	// restored from an older checkpoint has none of the three, and an auth or
 	// payment refusal without them is never lifted by this task.
 	at       time.Time

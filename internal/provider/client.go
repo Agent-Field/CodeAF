@@ -2446,7 +2446,8 @@ func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	apiKey, err := c.apiKeyNow()
-	if override := strings.TrimSpace(request.APIKeyOverride); override != "" {
+	override := strings.TrimSpace(request.APIKeyOverride)
+	if override != "" {
 		apiKey, err = override, nil
 	}
 	if err != nil {
@@ -2457,6 +2458,7 @@ func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body
 	if apiKey != "" {
 		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
 	}
+	c.noteRequestCredential(ctx, apiKey, override != "")
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -28,6 +29,7 @@ import (
 const (
 	credKeyA   = "sk-or-v1-crewcred-key-a-0123456789"
 	credKeyB   = "sk-or-v1-crewcred-key-b-9876543210"
+	credKeyC   = "sk-or-v1-crewcred-key-c-5555555555"
 	credPinned = "z-ai/glm-5.3-flash"
 )
 
@@ -248,6 +250,123 @@ func TestAKeyRotatedInFlightIsNotBlamedAndTheSamePinAnswersOnIt(t *testing.T) {
 	}
 	if len(run.crew.changes) != changes || run.crew.changeCount != changeCount {
 		t.Fatalf("the repair rewrote the history: %d/%d changes, want %d/%d", len(run.crew.changes), run.crew.changeCount, changes, changeCount)
+	}
+}
+
+// pausedAdapter is the conversation's own provider adapter, held once at the
+// moment it is handed a request: after the door chose it and the account it
+// was chosen for, before it snapshots a bearer for the header. Everything
+// else — its key, its header, what it reports — is the adapter's own.
+type pausedAdapter struct {
+	*provider.Client
+	once            sync.Once
+	reached, resume chan struct{}
+}
+
+func (p *pausedAdapter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	p.once.Do(func() {
+		close(p.reached)
+		<-p.resume
+	})
+	return p.Client.CompleteWithMessages(ctx, messages, options...)
+}
+
+// pauseTheAdapter puts a pause in front of the adapter the pinned send is
+// answered by, wherever the agent keeps it.
+func pauseTheAdapter(t *testing.T, agent *Agent) *pausedAdapter {
+	t.Helper()
+	pool := agent.clientPool
+	client, _, _, want, _, err := pool.clientWithService(credPinned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner, ok := unwrapCompleter(client).(*provider.Client)
+	if !ok {
+		t.Fatalf("the pinned send is answered by %T, not a provider adapter", client)
+	}
+	paused := &pausedAdapter{Client: inner, reached: make(chan struct{}), resume: make(chan struct{})}
+	pool.mu.Lock()
+	pool.clients[want] = paused
+	pool.mu.Unlock()
+	agent.mu.Lock()
+	if wrapper, ok := agent.client.(sessionCompleter); ok && agent.clientAccount == want {
+		wrapper.inner = paused
+		agent.client = wrapper
+	}
+	agent.mu.Unlock()
+	return paused
+}
+
+// A KEY HANDED TO THE LIVE ADAPTER AFTER THE DOOR CHOSE IT IS THE KEY THE
+// REFUSAL IS STAMPED WITH, because that is the key the header carried. The
+// door resolves the pinned send to the adapter on key A; before the adapter
+// writes the request, key B is handed to it — the request leaves on B and B
+// is refused. The stamp is the print of the bearer the stub actually
+// received, which is B's: the account the adapter was chosen for would have
+// said A, and the next call, on B again, would have been asked forever. Held
+// on B, the retry asks nothing; once C is connected, the same pin is asked
+// on C and answers.
+func TestARefusalIsStampedWithTheBearerItsHeaderCarried(t *testing.T) {
+	stub := newBearerStub(t, map[string]int{credKeyA: http.StatusOK, credKeyB: http.StatusUnauthorized, credKeyC: http.StatusOK})
+	agent, dir := bearerStubAgent(t, stub)
+	run := pinnedRun(t, agent)
+	paused := pauseTheAdapter(t, agent)
+
+	ended := make(chan error, 1)
+	go func() { ended <- askPinned(t, agent, run) }()
+	select {
+	case <-paused.reached:
+	case err := <-ended:
+		t.Fatalf("the call ended before it reached its adapter: %v", err)
+	}
+	if err := agent.SetAPIKey(credKeyB); err != nil {
+		t.Fatal(err)
+	}
+	close(paused.resume)
+	wantStopped(t, <-ended, "reconnect openrouter with /connect")
+
+	got := stub.requests()
+	if len(got) != 1 || got[0].model != credPinned {
+		t.Fatalf("the stub was asked %d requests, want the one pinned call", len(got))
+	}
+	header := credPrint(stub, dir, got[0].bearer)
+	printA, printB := credPrint(stub, dir, credKeyA), credPrint(stub, dir, credKeyB)
+	if header != printB {
+		t.Fatalf("the header carried print %q, want B's %q: the fixture did not rotate the live adapter", header, printB)
+	}
+	failure, ok := failedOf(run, credPinned)
+	if !ok || failure.kind != provider.RouteAuth || failure.provider != "openrouter" || failure.sent.Cred != header {
+		t.Fatalf("the refusal was stamped %q (A is %q), want the header's print %q", failure.sent.Cred, printA, header)
+	}
+	raw, err := os.ReadFile(config.ProfilePath(dir, "router-events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if log := string(raw); !strings.Contains(log, `"fail_cred":"`+header+`"`) || strings.Contains(log, printA) ||
+		strings.Contains(log, credKeyA) || strings.Contains(log, credKeyB) {
+		t.Fatal("the router log does not blame the header's print alone, or carries a key")
+	}
+
+	if err := config.WriteAPIKey(dir, credKeyB); err != nil {
+		t.Fatal(err)
+	}
+	wantStopped(t, askPinned(t, agent, run), "reconnect openrouter with /connect")
+	if n := len(stub.requests()); n != 1 {
+		t.Fatalf("the refused key was asked again: %d requests", n)
+	}
+
+	if err := config.WriteAPIKey(dir, credKeyC); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.SetAPIKey(credKeyC); err != nil {
+		t.Fatal(err)
+	}
+	if err := askPinned(t, agent, run); err != nil {
+		t.Fatalf("the explicit retry on C: %v", err)
+	}
+	got = stub.requests()
+	if len(got) != 2 || got[1].model != credPinned || credPrint(stub, dir, got[1].bearer) != credPrint(stub, dir, credKeyC) {
+		t.Fatalf("the stub was asked %d requests; want the same pin, on C, second", len(got))
 	}
 }
 

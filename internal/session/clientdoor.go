@@ -124,10 +124,11 @@ func (p *modelClientPool) clientFor(model string) (Completer, string, string, mo
 }
 
 // clientWithService is [modelClientPool.clientFor] with the connection the
-// account was read from. The account is the pool's key, bearer included, so
-// the adapter answered here — cached or new — carries exactly that
-// connection's credential: it is the one fact about a request's credential
-// that does not have to be guessed from the settings afterwards.
+// account was read from. The account names the key the adapter was chosen
+// for, but a key handed to the live adapter afterwards
+// ([modelClientPool.setDefaultKey]) is the one its next header carries, so it
+// says which provider a request is on and never which credential it carried
+// ([observeSentCredential]).
 func (p *modelClientPool) clientWithService(model string) (Completer, string, string, modelAccount, modelsource.Connected, error) {
 	if p == nil {
 		return nil, "", "", modelAccount{}, modelsource.Connected{}, errNoCompleter
@@ -519,51 +520,77 @@ func (a *Agent) completerWithService(model string) (Completer, string, string, m
 
 // ── THE CREDENTIAL A REQUEST WAS SENT WITH ──────────────────────────────────
 //
-// A refusal of a key belongs to the key that was refused, and the only place
-// that knows which key a request carries is this door, at the moment it hands
-// the request to the adapter: the pool's account is its key, bearer included
-// ([modelClientPool.clientWithService]). Reading the settings at that moment
-// instead could name a key the pool has not built a client for yet, and
-// reading them when the refusal comes back names whatever was connected while
-// the request was in flight — the defect that blamed a new key for an old
-// key's 401 (config.CrewDispatch says the rest).
+// A refusal of a key belongs to the key that was refused, and the only value
+// that says which key a request carried is the bearer its adapter wrote into
+// the request's header. The pool's account names the key the adapter was
+// chosen for, but a key handed to that live adapter afterwards
+// ([modelClientPool.setDefaultKey]) travels in the header instead; reading the
+// settings names whatever was connected while the request was in flight. Both
+// blamed a new key for an old key's 401 and held the new key back for the rest
+// of the task. So the stamp is taken by the adapter, from the bearer it
+// snapshotted for each attempt's header ([provider.Client.ObserveRequestCredential]),
+// and this door only tells the adapter which domain to print it in and hands
+// the print on (config.CrewDispatch says the rest).
 
 // sentConnection is one request's dispatch fact: the provider its account is
-// on and the one-way print of the credential its adapter carries. An empty
-// print is UNPRINTED — this door cannot say which credential will travel —
-// and a caller treats it as naming none, never as naming "no key".
+// on and the one-way print of the credential it carried. An empty print is
+// UNPRINTED — nothing can say which credential travelled — and a caller treats
+// it as naming none, never as naming "no key".
 type sentConnection struct {
 	provider string
 	sent     account.CrewDispatch
 }
 
-// sentConnectionOf is the dispatch fact of a request made through service.
+// observeSentCredential is ctx with observe told the dispatch fact of every
+// request client writes for this call, each attempt's own and in order, so
+// the last one told is the last one sent. Only an adapter that can report
+// its own header is asked; any other leaves the call unprinted.
 //
-// A SIGN-IN IS NEVER PRINTED HERE. Codex's transport loads and refreshes its
-// tokens per request ([codexauth.Client]), so the tokens on disk at this
-// moment are not provably the ones the request will carry; the refusal stays
-// unprinted, and only a recorded sign-in after it can lift it. A request that
-// names a bearer of its own ([ai.Request.APIKeyOverride]) is not carrying the
-// account's credential either.
-func sentConnectionOf(profileDir string, service modelsource.Connected, options []ai.Option) sentConnection {
+// A SIGN-IN IS NEVER PRINTED. Codex's transport replaces the header with
+// tokens it loads and refreshes per request ([codexauth.Client]), so neither
+// the bearer this adapter wrote nor the tokens on disk are provably the ones
+// that travelled; the refusal stays unprinted, and only a recorded sign-in
+// after it can lift it. A request that names a bearer of its own
+// ([ai.Request.APIKeyOverride]) did not carry the account's credential, and
+// is unprinted too rather than named against the account.
+//
+// AND A CALL NESTED INSIDE THIS ONE IS NOT THIS CALL. The observer is taken
+// off the context handed on, and the adapter reports only its own requests.
+func observeSentCredential(ctx context.Context, client Completer, service modelsource.Connected, observe func(sentConnection)) context.Context {
+	ctx = context.WithValue(ctx, dispatchObserverKey{}, (func(sentConnection))(nil))
+	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+	adapter, ok := unwrapCompleter(client).(interface {
+		ObserveRequestCredential(context.Context, string, func(provider.RequestCredential)) context.Context
+	})
+	if id == "" || !ok {
+		return ctx
+	}
+	domain := account.CrewCredentialDomain(id)
+	if id == "codex" {
+		domain = ""
+	}
+	return adapter.ObserveRequestCredential(ctx, domain, func(seen provider.RequestCredential) {
+		fact := sentConnection{provider: id}
+		if !seen.Override {
+			fact.sent = account.CrewDispatch{Cred: seen.Digest}
+		}
+		observe(fact)
+	})
+}
+
+// sentConnectionOf is the dispatch fact a request through service WOULD carry:
+// the print of the account's own key, in the domain the adapter prints its
+// header in. It predicts the next call; it never stamps a sent one. A sign-in
+// is unprinted here for the same reason it is at the header.
+func sentConnectionOf(profileDir string, service modelsource.Connected) sentConnection {
 	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
 	if id == "" {
 		return sentConnection{}
 	}
 	out := sentConnection{provider: id}
-	if id == "codex" {
-		return out
+	if id != "codex" {
+		out.sent = account.CrewDispatchOf(profileDir, service)
 	}
-	var request ai.Request
-	for _, option := range options {
-		if option(&request) != nil {
-			return out
-		}
-	}
-	if strings.TrimSpace(request.APIKeyOverride) != "" {
-		return out
-	}
-	out.sent = account.CrewDispatchOf(profileDir, service)
 	return out
 }
 
@@ -581,17 +608,17 @@ func (a *Agent) nextSentConnection(model string) sentConnection {
 	if !managed || pool == nil {
 		return sentConnection{}
 	}
-	return sentConnectionOf(profileDir, pool.serviceNext(model), nil)
+	return sentConnectionOf(profileDir, pool.serviceNext(model))
 }
 
 // dispatchObserverKey carries the one callback a crew seat's call is told its
 // dispatch fact through ([withDispatchObserver]).
 type dispatchObserverKey struct{}
 
-// withDispatchObserver asks the door to tell observe the dispatch fact of the
-// request made under ctx, on the calling goroutine, after the adapter is
-// chosen and before the request is handed to it. It is a seat's own narrow
-// seam: nothing but the fact crosses it, never the adapter or its key.
+// withDispatchObserver asks the door to tell observe the dispatch fact of each
+// request the adapter it chooses writes for the call made under ctx, from the
+// header itself ([observeSentCredential]). It is a seat's own narrow seam:
+// nothing but the fact crosses it, never the adapter or its key.
 func withDispatchObserver(ctx context.Context, observe func(sentConnection)) context.Context {
 	if observe == nil {
 		return ctx
@@ -749,10 +776,10 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	if err != nil {
 		return nil, called, err
 	}
-	// THE DISPATCH FACT IS TAKEN FROM THE ACCOUNT THAT CHOSE THIS ADAPTER, in
-	// the step that chose it — never from the settings, and never after.
+	// THE DISPATCH FACT IS TAKEN FROM THE HEADER THIS ADAPTER WRITES, never
+	// from the account that chose it, the settings, or the answer.
 	if observe := dispatchObserverOf(ctx); observe != nil {
-		observe(sentConnectionOf(a.config.ProfileDir, service, options))
+		ctx = observeSentCredential(ctx, client, service, observe)
 	}
 	// THE PURPOSE BECOMES THE TAG, on the one line every request in this package
 	// passes over — through [withPurpose], which is the only function in

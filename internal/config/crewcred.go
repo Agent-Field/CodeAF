@@ -1,8 +1,6 @@
 package config
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/router"
 )
 
@@ -66,11 +65,15 @@ func crewCredentialPrint(profileDir string, service modelsource.Connected) strin
 		}
 		secret = tokens.AccountID + "\x00" + tokens.RefreshToken
 	}
-	if secret == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte("crew-credential\x00" + id + "\x00" + secret))
-	return hex.EncodeToString(sum[:8])
+	return provider.CredentialDigest(CrewCredentialDomain(id), secret)
+}
+
+// CrewCredentialDomain is the domain a provider's crew credential is printed
+// under. An adapter that digests the bearer it actually wrote into a request
+// with it ([provider.Client.ObserveRequestCredential]) reports the same print
+// [CrewDispatchOf] takes from a connection carrying that key.
+func CrewCredentialDomain(id string) string {
+	return "crew-credential\x00" + strings.ToLower(strings.TrimSpace(id))
 }
 
 // CrewDispatch is the fact a crew call is sent under: the print of the
