@@ -502,6 +502,11 @@ type appLive struct {
 	renders     map[string]appwire.Render
 	mediaRecent []string
 	mediaSeen   map[string]bool
+	// artifactRecent and artifactSeen are mediaRecent's twin for deliverable
+	// creations: a bounded window that drops the same append arriving on the
+	// turn stream and the standing lane, never a cache of all history.
+	artifactRecent []string
+	artifactSeen   map[string]bool
 	// asks are the open asks in the order they were raised, and questions the
 	// engine's own question behind each, which is what an answer is built from.
 	asks      []appwire.Ask
@@ -1866,7 +1871,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if live.titlesDone == nil {
 				b.titleChanged(a, live, event.Text)
 			}
-		case session.EventTaskUpdate, session.EventTaskProposal, session.EventTaskPhase, session.EventJobUpdate, session.EventRenderUpdate, session.EventMediaUpdate:
+		case session.EventTaskUpdate, session.EventTaskProposal, session.EventTaskPhase, session.EventJobUpdate, session.EventRenderUpdate, session.EventMediaUpdate, session.EventArtifactUpdate:
 			// A task a running task call made is that call's task.
 			if task := event.Task; task != nil && (event.Kind == session.EventTaskProposal || task.State == "" || task.State == session.TaskQueued) {
 				b.callTask(a, appTaskID(id, task.ID))
@@ -2091,6 +2096,10 @@ func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
 	case session.EventMediaUpdate:
 		if event.Media != nil {
 			b.mediaChanged(id, live, *event.Media)
+		}
+	case session.EventArtifactUpdate:
+		if event.Artifact != nil {
+			b.artifactCreated(id, live, *event.Artifact)
 		}
 	}
 }

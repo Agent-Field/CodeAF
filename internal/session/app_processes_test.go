@@ -32,7 +32,7 @@ func TestAppProcessOutputCapKeepsNewestLinesAndWriterLease(t *testing.T) {
 	_, _ = sink.Write([]byte("first server localhost:4321\n"))
 	_, _ = sink.Write([]byte("other server localhost:5000\n"))
 	_, _ = sink.Write([]byte("the last line\n"))
-	if sink.processURL() != "localhost:4321" {
+	if sink.processURL() != "http://localhost:4321" {
 		t.Fatalf("first URL: %q", sink.processURL())
 	}
 	info, _ := file.Stat()

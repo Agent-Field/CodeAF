@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
 )
 
 // trimAppWindowLocked drops oldest complete lines in a bounded batch. Keeping
@@ -93,7 +94,35 @@ func errorsOrShort(err error) error {
 	return io.ErrShortWrite
 }
 
-var localProcessURL = regexp.MustCompile(`(?:https?://)?(?:localhost|127\.0\.0\.1):[0-9]{1,5}(?:/[^\s\x00-\x20]*)?`)
+// localProcessURL finds a candidate loopback server address in output. It only
+// finds; [LoopbackOrigin] decides, and the boundaries around the match are
+// checked in [firstLoopbackURL].
+var localProcessURL = regexp.MustCompile(`(?:https?://)?(?:localhost|127\.0\.0\.1):[0-9]+`)
+
+// firstLoopbackURL is the first VALID loopback address in buf, normalized to its
+// origin, or "". A match must start at a boundary (so `xlocalhost:3000`,
+// `evil.com/localhost:3000` and `user@localhost:3000` are not addresses), must
+// not run into more word characters, and must name a real port. A candidate
+// that fails any of that is skipped, not fatal: a later one may be real.
+// skipAtZero ignores a match at offset 0, whose left context is not in buf.
+func firstLoopbackURL(buf []byte, skipAtZero bool) string {
+	for _, at := range localProcessURL.FindAllIndex(buf, -1) {
+		start, end := at[0], at[1]
+		if start == 0 && skipAtZero {
+			continue
+		}
+		if start > 0 && strings.IndexByte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/@:", buf[start-1]) >= 0 {
+			continue
+		}
+		if end < len(buf) && strings.IndexByte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", buf[end]) >= 0 {
+			continue
+		}
+		if origin, ok := LoopbackOrigin(string(buf[start:end])); ok {
+			return origin
+		}
+	}
+	return ""
+}
 
 // Capture the first address before compaction can discard it. A tiny overlap
 // with the old ring covers an address split across stdout writes.
@@ -101,21 +130,29 @@ func (s *jobSink) captureProcessURLLocked(data []byte) {
 	if s.url != "" {
 		return
 	}
+	// The window is the last 128 bytes of the ring and the first 128 of the new
+	// data, plus ONE byte of context before the window when the ring has more
+	// behind it: the byte that decides whether a match at the window's edge
+	// begins at a boundary. A match at offset 0 of a window that starts inside
+	// the ring has no known left neighbour and is skipped; the one before it
+	// was already judged when it was written.
 	start := len(s.ring) - 128
+	contextual := start > 0
 	if start < 0 {
 		start = 0
+	}
+	if contextual {
+		start--
 	}
 	end := len(data)
 	if end > 128 {
 		end = 128
 	}
 	overlap := append(append([]byte{}, s.ring[start:]...), data[:end]...)
-	if match := localProcessURL.Find(overlap); match != nil {
-		s.url = string(match)
+	if url := firstLoopbackURL(overlap, contextual); url != "" {
+		s.url = url
 		return
 	}
-	if match := localProcessURL.Find(data); match != nil {
-		s.url = string(match)
-	}
+	s.url = firstLoopbackURL(data, len(s.ring) > 0)
 }
 func (s *jobSink) processURL() string { s.mu.Lock(); defer s.mu.Unlock(); return s.url }

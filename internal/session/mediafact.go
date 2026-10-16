@@ -437,18 +437,21 @@ type mediaMade struct {
 	Inputs    []string
 	Messages  mediaInputMessages
 	Run, Tool string
+	// Asked is the authored message the call was made under ([askedMessageID]);
+	// empty when the call carries no such causality.
+	Asked string
 }
 
 // madeBy reads the call's identity off its context: the run is the turn's
 // immutable execution id, the tool is the provider's id for this very call.
 // Either may be absent (a test, a door with no turn) and is then left unset.
 func madeBy(ctx context.Context, inputs []string) mediaMade {
-	return mediaMade{Inputs: inputs, Messages: mediaInputsFrom(ctx), Run: runIdentity(ctx), Tool: callIDFrom(ctx)}
+	return mediaMade{Inputs: inputs, Messages: mediaInputsFrom(ctx), Run: runIdentity(ctx), Tool: callIDFrom(ctx), Asked: askedMessageID(ctx)}
 }
 
 // WithMade stamps the call's inputs and identity onto a fact.
 func (f MediaFact) WithMade(made mediaMade) MediaFact {
-	f.Run, f.Tool = made.Run, made.Tool
+	f.Run, f.Tool, f.Message = made.Run, made.Tool, made.Asked
 	f.InputMessages = append([]string(nil), made.Messages.IDs...)
 	f.InputMessagesOmitted = made.Messages.Omitted
 	return f.WithReferences(made.Inputs)
@@ -502,6 +505,14 @@ func (f MediaFact) WithSize(width, height int) MediaFact {
 // under a freshly minted source id, which it returns ("" when nothing was
 // written). The id is minted here so no tool site can forget it.
 func RecordMedia(index string, artifact Artifact, fact MediaFact) string {
+	id, _ := recordMediaRow(index, artifact, fact)
+	return id
+}
+
+// recordMediaRow is [RecordMedia] that also answers the row as WRITTEN, which
+// can differ from the one offered: an over-size deliverable fact is dropped
+// ([RecordArtifact]), and an event may name only a deliverable that is there.
+func recordMediaRow(index string, artifact Artifact, fact MediaFact) (string, Artifact) {
 	if fact.Canonical == "" {
 		fact.Canonical = canonicalFile(artifact.Path)
 	}
@@ -510,10 +521,11 @@ func RecordMedia(index string, artifact Artifact, fact MediaFact) string {
 	}
 	fact.ID = NewMediaID()
 	artifact.Media = &fact
-	if !RecordArtifact(index, artifact) {
-		return ""
+	written, ok := recordArtifactRow(index, artifact)
+	if !ok {
+		return "", Artifact{}
 	}
-	return fact.ID
+	return fact.ID, written
 }
 
 // RecordAttachment records a file the person attached to a message in the
@@ -563,8 +575,12 @@ func RecordAttachment(index, sessionID, path string) string {
 // agent's own.
 func (a *Agent) recordMedia(artifact Artifact, fact MediaFact) {
 	artifact.Session = a.journalID()
-	if id := RecordMedia(a.config.ArtifactsIndex, artifact, fact); id != "" {
+	if fact.Origin == "" || fact.Origin == MediaGenerated {
+		artifact.Deliver = a.generatedDeliverable(artifact.Path, fact)
+	}
+	if id, written := recordMediaRow(a.config.ArtifactsIndex, artifact, fact); id != "" {
 		a.emitMediaChange(id, fact)
+		a.emitArtifactChange(written)
 	}
 }
 
@@ -607,6 +623,11 @@ func (r MediaRow) Version() string {
 // one (an export, a document, a row with no media kind).
 func mediaRowOf(row Artifact) (MediaRow, bool) {
 	out := MediaRow{Artifact: row}
+	if row.Deliver != nil && row.Deliver.Update {
+		// An appended update restates a deliverable; the media source it
+		// restates is the base row, and listing both would be two sources.
+		return MediaRow{}, false
+	}
 	if row.Media != nil {
 		out.Fact = *row.Media
 		out.Recorded = true
@@ -969,6 +990,9 @@ type MediaLive struct {
 	// Path is the resolved path to open, set only when the state allows
 	// opening (available or changed).
 	Path string
+	// Copy says Path is a kept copy because the original is gone
+	// ([ResolveDeliverable]).
+	Copy bool
 }
 
 // ResolveMedia checks one source against the disk and the engine's scope law.

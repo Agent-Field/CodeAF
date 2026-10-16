@@ -134,6 +134,10 @@ type Process struct {
 	// Service is set on a kept-running process (services.go); an ordinary
 	// process has none.
 	Service *Service `json:"service,omitempty"`
+	// URL is the first loopback address the process printed, as an origin
+	// (`http://localhost:3000`): recorded once from its actual output, valid
+	// port, never guessed from the command. Absent when it printed none.
+	URL string `json:"url,omitempty"`
 }
 
 // The data of this wave's events.

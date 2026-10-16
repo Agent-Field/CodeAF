@@ -2973,3 +2973,12 @@ cancellation gives Busy instead of false absence. Backward scans retain the same
 bounded chunk/partial-line memory as media.get; no permanent path cache, directory
 walk or new worker is created. `media_resolve_test.go` pins late-history, ownership,
 shared capacity, canceled waiter/holder separation and truthful refusal laws.
+### Deliverable Keep admission
+
+Keep retains at most 64 total holders and waiters process-wide, including callers
+waiting for the same source. Its exact index path retains at most 4096 bytes; session and deliverable
+identifiers retain at most 128 bytes each. Saturation answers Busy without starting another waiter or
+copy; context-canceled waiters release only their reservation. A holder retains
+its reservation until copying, recording and any rollback have actually settled.
+The per-key gate is removed when its last reservation ends; no historical keys
+are retained. `deliverable_keep_gate_test.go` pins these bounds and cancellation.

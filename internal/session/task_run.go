@@ -583,7 +583,11 @@ type TaskNode struct {
 	receipts []toolReceipt
 	branch   string
 	worktree string
-	merge    string
+	// deliverSink is where this node's worker records the deliverables it
+	// creates ([deliverableSink]), and what its landing settles. Guarded by the
+	// graph's lock.
+	deliverSink *deliverableSink
+	merge       string
 	// clashing names the files that stopped this node's branch fastening onto the
 	// person's, read out of the index while the refused merge still held them and
 	// written here by the landing road ([landHome]). It is what a your-call row
@@ -2969,6 +2973,7 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 	n.branch = branch
 	n.merge = merge
 	n.graph.mu.Unlock()
+	n.settleDeliverables(merge)
 	// THE VERDICT IS A TRANSITION TOO. The state change follows immediately, but
 	// what a person needs after a kill is the merge outcome and the branch name,
 	// and those are written here.
@@ -7644,7 +7649,9 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	if root == "" {
 		root = a.sessionID()
 	}
+	sink := a.deliverSinkLocked(dir, node)
 	a.mu.Unlock()
+	node.setDeliverSink(sink)
 
 	// Written on the node the moment it is minted: the name carries a timestamp,
 	// so this is the only moment anybody can learn it, and [Agent.TaskJournal] is
@@ -7711,6 +7718,9 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// repository or a worktree of it. landing.go states the law and the
 		// measured failure; this line is the whole of the fix for a task node.
 		droppings: family,
+		// AND WHERE ITS NEW FILES ARE RECORDED: the conversation that owns the
+		// graph, proved by construction here and nowhere else (deliverable_task.go).
+		deliverSink: sink,
 		// AND WHETHER THIS DIRECTORY IS A PROJECT, which is the family's question
 		// and not the worker's: a worker carries no Place (session.go), so the
 		// answer is settled here, once, while the family's is in hand.

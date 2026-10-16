@@ -1060,6 +1060,12 @@ func appProcessOf(agent string, job session.JobNotice) appwire.Process {
 		ID: appProcessID(agent, job), Agent: agent, Title: redact.Secrets(job.Label()), Command: redact.Secrets(job.Command),
 		StartedAt: job.Started, LastLine: redact.Secrets(appLastLine(job.LogPath)),
 	}
+	// Only a loopback origin leaves the engine as a process URL; a record from
+	// before the strict reader may hold a looser spelling, which is normalized
+	// or dropped here.
+	if origin, ok := session.LoopbackOrigin(job.URL); ok {
+		process.URL = origin
+	}
 	switch job.State {
 	case session.JobRunning:
 		process.State = appwire.ProcessRunning

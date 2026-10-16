@@ -943,8 +943,15 @@ func newWriteTool(cwd string) Tool {
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
 				}
-				if err := os.WriteFile(absPath, []byte(p.Content), 0644); err != nil {
+				written, err := writeFileObserved(absPath, []byte(p.Content))
+				if err != nil {
 					return err.Error(), true, nil
+				}
+				// The observer runs INSIDE the mutation queue, right after the
+				// bytes landed and before any later abort is noticed: what it is
+				// told is a fact of this write and nothing else.
+				if observe := writeObserverFrom(ctx); observe != nil {
+					observe(written)
 				}
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
@@ -955,6 +962,71 @@ func newWriteTool(cwd string) Tool {
 			})
 		},
 	}
+}
+
+// WriteEvent is what one successful write tool call did to the disk, observed
+// inside the file's mutation queue by the writer itself.
+//
+// Created is true ONLY when this call made the file: the path was absent when
+// the queue was entered and the write created it exclusively, so no other
+// writer through this queue and no earlier creation can be mistaken for it. An
+// existing file (an overwrite) is Created false. Content is the exact bytes
+// written and must not be retained or changed; Info is the written file as its
+// own descriptor reported it, so it describes the inode that holds Content.
+type WriteEvent struct {
+	Path    string
+	Created bool
+	Content []byte
+	Info    os.FileInfo
+}
+
+type writeObserverKey struct{}
+
+// WithWriteObserver returns a context whose write tool calls report each
+// successful write to observe, inside the file mutation queue. It is generic:
+// the tool neither knows nor cares what the observer is for.
+func WithWriteObserver(ctx context.Context, observe func(WriteEvent)) context.Context {
+	return context.WithValue(ctx, writeObserverKey{}, observe)
+}
+
+func writeObserverFrom(ctx context.Context) func(WriteEvent) {
+	observe, _ := ctx.Value(writeObserverKey{}).(func(WriteEvent))
+	return observe
+}
+
+// writeFileObserved writes content to path as os.WriteFile does (mode 0644,
+// truncating an existing file), except that an absent path is created with
+// O_EXCL so the answer to "did this call create it" is the filesystem's, not a
+// look taken beforehand. It must be called inside the file's mutation queue.
+func writeFileObserved(path string, content []byte) (WriteEvent, error) {
+	created := false
+	var file *os.File
+	var err error
+	if _, statErr := os.Lstat(path); os.IsNotExist(statErr) {
+		file, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		created = err == nil
+		if err != nil && !os.IsExist(err) {
+			return WriteEvent{}, err
+		}
+	}
+	if file == nil {
+		file, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return WriteEvent{}, err
+		}
+	}
+	if _, err = file.Write(content); err != nil {
+		_ = file.Close()
+		return WriteEvent{}, err
+	}
+	info, statErr := file.Stat()
+	if err = file.Close(); err != nil {
+		return WriteEvent{}, err
+	}
+	if statErr != nil {
+		info = nil
+	}
+	return WriteEvent{Path: path, Created: created, Content: content, Info: info}, nil
 }
 
 // utf16Length returns the number of UTF-16 code units in a string, matching

@@ -42,6 +42,11 @@ const (
 	// memory budget. It is additive: an app that does not know the word treats
 	// it as any failure, and one that does reads Error.Detail.
 	CodeTooLarge = "too_large"
+	// CodeUncertain answers a mutation whose effect the engine itself cannot
+	// confirm: it may have happened. A caller MUST NOT retry it blind, which
+	// could do it twice; it looks at the state again first. It is the same word
+	// the app already uses for a call that was written and never answered.
+	CodeUncertain = "uncertain"
 )
 
 // The states an agent can be in, as the app draws them.

@@ -37,10 +37,16 @@ func TestMediaInputsOnGeneratedSourceMatchTheActualProviderRequest(t *testing.T)
 	media := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2)), mediaType: "image/png"}
 	var agent *Agent
 	var expected []string
+	var asked string
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("first answer"), nil },
 		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
 			expected = agent.preparedMediaInputs(messages).IDs
+			// The message the person is answering now: the SECOND submit, whose
+			// TaskSource.ID the media row must carry as its asking message.
+			if source := agent.messageSource(); source != nil {
+				asked = source.ID
+			}
 			return toolResponse("generation-call", "generate_image", `{"prompt":"a circle"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
@@ -64,7 +70,8 @@ func TestMediaInputsOnGeneratedSourceMatchTheActualProviderRequest(t *testing.T)
 	}
 	collect(t, events)
 	rows := ReadArtifacts(index)
-	if len(expected) != 2 || len(rows) != 1 || rows[0].Media == nil || !reflect.DeepEqual(rows[0].Media.InputMessages, expected) || rows[0].Media.Tool != "generation-call" || rows[0].Media.Run == "" || rows[0].Media.Message != "" {
+	if len(expected) != 2 || len(rows) != 1 || rows[0].Media == nil || !reflect.DeepEqual(rows[0].Media.InputMessages, expected) || rows[0].Media.Tool != "generation-call" || rows[0].Media.Run == "" ||
+		asked == "" || rows[0].Media.Message != asked || rows[0].Media.Message == rows[0].Media.Run {
 		t.Fatalf("source did not preserve actual request: expected=%v rows=%+v", expected, rows)
 	}
 	rows[0].Media.InputMessages[0] = "changed returned copy"

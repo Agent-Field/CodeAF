@@ -50,6 +50,10 @@ type Artifact struct {
 	// Media is the structured fact of a media file (mediafact.go). Optional
 	// and additive: a row without it is a legacy row and keeps listing.
 	Media *MediaFact `json:"media,omitempty"`
+	// Deliver is the typed deliverable fact (deliverable.go). Optional and
+	// additive, like Media: a row without it is a legacy row, whose turn, task,
+	// inputs and state are UNKNOWN and are never inferred.
+	Deliver *DeliverableFact `json:"deliver,omitempty"`
 }
 
 // artifactsMu serializes this process's appends; two processes are serialized
@@ -63,31 +67,51 @@ var artifactsMu sync.Mutex
 // written. It answers whether the row was written, for the caller that must not
 // hand out an id for a row that is not there.
 func RecordArtifact(path string, artifact Artifact) bool {
+	_, ok := recordArtifactRow(path, artifact)
+	return ok
+}
+
+// recordArtifactRow is [RecordArtifact] that answers the row as it was written.
+func recordArtifactRow(path string, artifact Artifact) (Artifact, bool) {
 	if strings.TrimSpace(path) == "" {
-		return false
+		return Artifact{}, false
 	}
 	if strings.TrimSpace(artifact.Path) == "" || strings.TrimSpace(artifact.Title) == "" {
-		return false
+		return Artifact{}, false
 	}
 	line, err := json.Marshal(artifact)
 	if err != nil {
-		return false
+		return Artifact{}, false
+	}
+	if artifact.Deliver != nil && (!deliverRowFits(line) || !ValidDeliverableID(artifact.Deliver.ID)) {
+		// A deliverable row past the bound, or under an id the readers refuse,
+		// is one they must never have to skip. An update cannot be shortened
+		// without changing what it says, so it is refused; a creation is
+		// written as the plain row it would have been, whose provenance is then
+		// honestly unknown.
+		if artifact.Deliver.Update {
+			return Artifact{}, false
+		}
+		artifact.Deliver = nil
+		if line, err = json.Marshal(artifact); err != nil {
+			return Artifact{}, false
+		}
 	}
 	artifactsMu.Lock()
 	defer artifactsMu.Unlock()
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return false
+			return Artifact{}, false
 		}
 	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return false
+		return Artifact{}, false
 	}
 	defer file.Close()
 	// ONE write, so O_APPEND's atomic offset covers the whole row.
 	_, err = file.Write(append(line, '\n'))
-	return err == nil
+	return artifact, err == nil
 }
 
 // ReadArtifacts reads the rows at path, NEWEST FIRST, and tolerates

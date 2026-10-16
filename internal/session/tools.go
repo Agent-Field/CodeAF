@@ -172,7 +172,7 @@ func (a *Agent) belt() []bare.Tool {
 			// for, and a belt that cannot append is a belt whose only answer
 			// to "the output limit cut your file in half" is to pay for the
 			// whole file again.
-			tools[index] = a.appendableWrite(tool)
+			tools[index] = a.deliverableWrite(a.appendableWrite(tool))
 		}
 	}
 	// AND THE THREE HANDS THAT CAN BE AIMED AT A FOLDER THIS CONVERSATION ONLY

@@ -670,6 +670,11 @@ const (
 	EventRenderUpdate = EventKeepRunning + 1
 	// EventMediaUpdate follows a successful immutable source-index append.
 	EventMediaUpdate = EventRenderUpdate + 1
+	// EventArtifactUpdate follows a successful append of a CREATION row to the
+	// deliverables index (artifacts.go). It is generic: the row's id, kind and
+	// producing run and call, never the file or a path. Appended after every
+	// existing ordinal because hosts serialize EventKind as an integer.
+	EventArtifactUpdate = EventMediaUpdate + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -999,6 +1004,9 @@ type Event struct {
 	// on every other kind.
 	Render *RenderRecord
 	Media  *MediaChange
+	// Artifact carries one EventArtifactUpdate's payload and is nil on every
+	// other kind.
+	Artifact *ArtifactChange
 
 	// TaskPhase carries one EventTaskPhase's payload (task_contract.go): which
 	// running node moved into which of its three lives. It is nil on every
@@ -2311,6 +2319,10 @@ type Config struct {
 	// It is private for roomThread's reason: no surface sets it, the constructor
 	// that builds the worker does.
 	droppings Place
+	// deliverSink says where the new files of a TASK WORKER are recorded and as
+	// whose. It is set only by the conversation that owns the task graph, when it
+	// builds the worker ([Agent.deliverSinkLocked]); a worker never sets its own.
+	deliverSink *deliverableSink
 	// ownSpace marks a worker standing in THE CONVERSATION'S OWN SPACE rather
 	// than in a project: an owned conversation's work/ repository, or a worktree
 	// cut from it (task_run.go's standingInOwnSpace). One line of the prompt
