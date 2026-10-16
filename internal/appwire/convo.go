@@ -202,6 +202,9 @@ func withMessageReadsFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(MediaRangeAttacher); ok {
 		hello = withFeature(hello, FeatureMediaAttachRange)
 	}
+	if _, ok := e.(MediaReferenceResolver); ok {
+		hello = withFeature(hello, FeatureMediaResolve)
+	}
 	return hello
 }
 

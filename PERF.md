@@ -2961,3 +2961,15 @@ ordering guarantee, not a merge of caches written by separate processes.
 
 Restart fixtures drain their owned scheduled writes before discarding process
 memory. No timeout, response limit or request/retry budget changes.
+
+### Recorded media reference lookup
+
+`media.resolve` searches an existing owner's recorded canonical path, without
+registering or discovering a file. Index/path keys are at most 4096 bytes and
+owner IDs 128 bytes; expected versions are at most 256 bytes. Searches share the
+existing two global media lookup slots and bounded 512-record/4 MiB cache; duplicate
+lookups share the actual scan. An 8-second maximum/default deadline or caller
+cancellation gives Busy instead of false absence. Backward scans retain the same
+bounded chunk/partial-line memory as media.get; no permanent path cache, directory
+walk or new worker is created. `media_resolve_test.go` pins late-history, ownership,
+shared capacity, canceled waiter/holder separation and truthful refusal laws.
