@@ -2464,7 +2464,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 			// The words are the person's own and the attachments the ones that
 			// rode on them, as the record keeps them on the message's line; a
 			// line without that mark is its words, and has no attachments.
-			entry.ID, entry.Kind, entry.Text, entry.Attachments = appUserEntryID(n), appwire.EntryUser, item.Text, appAttachmentsOf(item.Attachments)
+			entry.ID, entry.Kind, entry.Text, entry.Attachments = appUserEntryID(n), appwire.EntryUser, item.Text, appAttachmentsOf(item.Person)
 		case "assistant", "aside":
 			if strings.TrimSpace(item.Text) == "" {
 				continue

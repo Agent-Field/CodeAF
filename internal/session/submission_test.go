@@ -21,6 +21,17 @@ func answering() *scriptedCompleter {
 	return &scriptedCompleter{steps: []step{answer, answer, answer, answer, answer, answer}}
 }
 
+// authored says an entry's Text is the person's own words as their door said them.
+func authored(entry DisplayEntry) bool { return entry.Person != nil && entry.Person.Authored }
+
+// attachmentsOf is what an entry says rode on the person's message.
+func attachmentsOf(entry DisplayEntry) []MessageAttachment {
+	if entry.Person == nil {
+		return nil
+	}
+	return entry.Person.Attachments
+}
+
 // personEntries is a reading's entries of the person's own.
 func personEntries(entries []DisplayEntry) []DisplayEntry {
 	var users []DisplayEntry
@@ -73,13 +84,13 @@ func assertSubmitted(t *testing.T, where string, entries []DisplayEntry) {
 	if len(users) != 3 {
 		t.Fatalf("%s: %d messages of the person's: %#v", where, len(users), users)
 	}
-	if users[0].Text != "why does this fail?" || !users[0].Authored || !reflect.DeepEqual(users[0].Attachments, submittedFiles) {
+	if users[0].Text != "why does this fail?" || !authored(users[0]) || !reflect.DeepEqual(attachmentsOf(users[0]), submittedFiles) {
 		t.Fatalf("%s: the message with words = %#v", where, users[0])
 	}
-	if users[1].Text != "" || !users[1].Authored || !reflect.DeepEqual(users[1].Attachments, submittedAlone) {
+	if users[1].Text != "" || !authored(users[1]) || !reflect.DeepEqual(attachmentsOf(users[1]), submittedAlone) {
 		t.Fatalf("%s: the attachments alone = %#v", where, users[1])
 	}
-	if users[2].Text != "see Attached file: other.go" || users[2].Authored || users[2].Attachments != nil {
+	if users[2].Text != "see Attached file: other.go" || authored(users[2]) || users[2].Person != nil {
 		t.Fatalf("%s: the plain words = %#v", where, users[2])
 	}
 }
@@ -125,7 +136,7 @@ func TestASubmittedMessageKeepsThePersonsWordsAndAttachmentsOnItsLine(t *testing
 	live := agent.Transcript()
 	assertSubmitted(t, "live", live)
 	// A reading's attachments are its own: changing them changes no later one.
-	personEntries(live)[0].Attachments[0].Name = "scribbled"
+	personEntries(live)[0].Person.Attachments[0].Name = "scribbled"
 	assertSubmitted(t, "read again", agent.Transcript())
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
@@ -192,7 +203,7 @@ func TestASubmissionThatDoesNotFitRecordsNothing(t *testing.T) {
 	}
 	collect(t, events)
 	users := personEntries(agent.Transcript())
-	if len(users) != 1 || users[0].Text != "plain" || users[0].Authored || users[0].Attachments != nil {
+	if len(users) != 1 || users[0].Text != "plain" || authored(users[0]) || users[0].Person != nil {
 		t.Fatalf("a submission with no mark read back as %#v", users)
 	}
 	if err := agent.Close(); err != nil {
@@ -209,7 +220,7 @@ func TestALegacyLineWithPathsHasNoAttachments(t *testing.T) {
 	text := "Attached file: notes.md\n\nLink: https://example.com\n\nPasted text:\n```\nx\n```"
 	data, _ := json.Marshal(sessionEntry{Type: "message", Role: "user", Content: text})
 	record := ReadTranscriptBytes(append(data, '\n'))
-	if len(record.Entries) != 1 || record.Entries[0].Text != text || record.Entries[0].Authored || record.Entries[0].Attachments != nil {
+	if len(record.Entries) != 1 || record.Entries[0].Text != text || record.Entries[0].Person != nil {
 		t.Fatalf("the legacy line reads %#v", record.Entries)
 	}
 }
@@ -250,7 +261,7 @@ func TestAMarkSurvivesSteeringAndCompaction(t *testing.T) {
 			t.Fatalf("%s: %#v", where, users)
 		}
 		for i, want := range []struct{ text, path string }{{"look", "a.go"}, {"check", "b.go"}, {"also", "c.go"}} {
-			if users[i].Text != want.text || !users[i].Authored || len(users[i].Attachments) != 1 || users[i].Attachments[0].Path != want.path {
+			if users[i].Text != want.text || !authored(users[i]) || len(attachmentsOf(users[i])) != 1 || attachmentsOf(users[i])[0].Path != want.path {
 				t.Fatalf("%s: message %d = %#v", where, i, users[i])
 			}
 		}
@@ -367,7 +378,7 @@ func TestMarksAreLetGoWithTheMessagesTheyDescribe(t *testing.T) {
 	told := append(append([]DisplayEntry(nil), record.Earlier...), record.Entries[record.Floor:]...)
 	seen := map[string]int{}
 	for _, entry := range personEntries(told) {
-		if !entry.Authored || len(entry.Attachments) != 1 || entry.Attachments[0].ID != entry.Text || entry.Attachments[0].Bytes == nil || *entry.Attachments[0].Bytes != int64(len(paste)) {
+		if !authored(entry) || len(attachmentsOf(entry)) != 1 || attachmentsOf(entry)[0].ID != entry.Text || attachmentsOf(entry)[0].Bytes == nil || *attachmentsOf(entry)[0].Bytes != int64(len(paste)) {
 			t.Fatalf("a message read back as %#v", entry)
 		}
 		seen[entry.Text]++
@@ -432,11 +443,25 @@ func TestAMeasuredZeroSizeIsKeptApartFromAnUnknownOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	users := personEntries(ReadTranscript(path).Entries)
-	if len(users) != 1 || len(users[0].Attachments) != 2 {
+	if len(users) != 1 || len(attachmentsOf(users[0])) != 2 {
 		t.Fatalf("read back %#v", users)
 	}
-	empty, big := users[0].Attachments[0], users[0].Attachments[1]
+	empty, big := attachmentsOf(users[0])[0], attachmentsOf(users[0])[1]
 	if empty.Bytes == nil || *empty.Bytes != 0 || empty.Lines == nil || *empty.Lines != 0 || big.Bytes != nil || big.Lines != nil {
 		t.Fatalf("the sizes read back as %#v and %#v", empty, big)
+	}
+}
+
+// AN ENTRY DOES NOT GROW FOR A MARK MOST ENTRIES NEVER CARRY. A record holds
+// one entry per journal line and the record cache's reserve is a few times the
+// file, so eight bytes more on every entry is a journal of short lines that
+// stops being kept. The mark is one pointer, paid for by the padding the bools
+// beside it used to waste.
+func TestAPersonsMarkCostsAnEntryNothing(t *testing.T) {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		t.Skip("the figure is a 64-bit layout")
+	}
+	if size := unsafe.Sizeof(DisplayEntry{}); size > 288 {
+		t.Fatalf("DisplayEntry is %d bytes; it was 288 before the person's mark", size)
 	}
 }

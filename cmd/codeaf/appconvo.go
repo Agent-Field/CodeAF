@@ -837,12 +837,12 @@ func appDescribed(attach appAttach) session.MessageAttachment {
 
 // appAttachmentsOf is a recorded message's attachments as an entry shows them,
 // nil for a message the record keeps none for.
-func appAttachmentsOf(described []session.MessageAttachment) []appwire.Attachment {
-	if len(described) == 0 {
+func appAttachmentsOf(person *session.PersonMark) []appwire.Attachment {
+	if person == nil || len(person.Attachments) == 0 {
 		return nil
 	}
-	views := make([]appwire.Attachment, 0, len(described))
-	for _, d := range described {
+	views := make([]appwire.Attachment, 0, len(person.Attachments))
+	for _, d := range person.Attachments {
 		view := appwire.Attachment{ID: d.ID, Kind: d.Kind, Path: d.Path, URL: d.URL, Title: d.Name}
 		if d.Lines != nil {
 			lines := *d.Lines

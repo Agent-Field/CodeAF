@@ -4723,9 +4723,20 @@ type DisplayEntry struct {
 	// completion. Interrupted updates remain readable without claiming success.
 	Addressed   bool
 	Interrupted bool
-	Text        string
-	Tool        string // set when the entry is one call in a batch
-	Hint        string // the call's gloss, as the tool cluster rendered it
+	// ForModel marks an "aside" the SESSION wrote to its model — a wake, a
+	// task's landing note, the carry-on after a quit, a checkpoint's question —
+	// as opposed to the model's own operational words. The person never typed
+	// it and it was never addressed to them: it is the model's instruction, and
+	// a surface that shows a conversation to a person leaves it out (a team's
+	// delivery, which carries [DisplayEntry.Team], is drawn as its card).
+	//
+	// It sits beside the other marks rather than at the foot of the entry
+	// because a record holds one entry per line and a bool alone between two
+	// words of alignment costs eight bytes on every one of them.
+	ForModel bool
+	Text     string
+	Tool     string // set when the entry is one call in a batch
+	Hint     string // the call's gloss, as the tool cluster rendered it
 
 	// CallID is the provider's own identity for a tool entry's call, exactly as
 	// the record holds it, and "" for every entry that is not a call.
@@ -4817,17 +4828,12 @@ type DisplayEntry struct {
 	// memory never wrote one.
 	ImageRefs []string
 
-	// Authored says Text is the PERSON'S OWN WORDS as the door that sent the
-	// message recorded them apart from what the model read
-	// ([Agent.SubmitMessage]) — empty Text included, which is a message of
-	// attachments alone. False on every other entry, whose Text is the line's
-	// own words exactly as they always were.
-	Authored bool
-	// Attachments are what that door said rode on the person's message, in the
-	// order it carried them, each a copy of the record's own descriptor. Nil on
-	// every message no such door sent, however many paths its words mention:
-	// nothing here is ever read out of the words.
-	Attachments []MessageAttachment
+	// Person is what the door that sent a person's message said about it
+	// beyond its words ([Agent.SubmitMessage]), and nil on every entry no such
+	// door sent — however many paths its words mention: nothing here is ever
+	// read out of the words. It is one pointer because nearly every entry has
+	// none, and a record holds an entry for every line.
+	Person *PersonMark
 	// ReplyTags label the assistant entry that answers finished task notes. They
 	// are nil on every ordinary reply.
 	ReplyTags []TaskReplyTag
@@ -4861,17 +4867,23 @@ type DisplayEntry struct {
 	// who sent it rather than as the aside's first line. Nil on every other
 	// entry; the aside's Text still holds the whole delivery as the model read it.
 	Team []TeamLine
-	// ForModel marks an "aside" the SESSION wrote to its model — a wake, a
-	// task's landing note, the carry-on after a quit, a checkpoint's question —
-	// as opposed to the model's own operational words. The person never typed
-	// it and it was never addressed to them: it is the model's instruction, and
-	// a surface that shows a conversation to a person leaves it out (a team's
-	// delivery, which carries [DisplayEntry.Team], is drawn as its card).
-	ForModel bool
 	// At is when the message this entry came from was written to the journal,
 	// and the zero time when the record never said (entrytime.go). A tool entry
 	// carries its call's message's instant.
 	At time.Time
+}
+
+// PersonMark is what a person's message carried beyond the words a reading
+// shows, as the door that sent it recorded it on the message's own line.
+type PersonMark struct {
+	// Authored says the entry's Text is the person's own words as that door
+	// recorded them apart from what the model read — empty Text included,
+	// which is a message of attachments alone. False when the door named no
+	// words apart, and the Text is the line's own words.
+	Authored bool
+	// Attachments are what rode on the message, in the order it carried them,
+	// each a copy of the record's own descriptor.
+	Attachments []MessageAttachment
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -5007,8 +5019,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		}
 		displayText := messageContentText(msg)
 		// personWords removes only this message's recorded skills injection.
-		var authored bool
-		var attachments []MessageAttachment
+		var person *PersonMark
 		if role == "user" {
 			displayText = presentation.personWords(msg)
 			// AND WHAT THE PERSON SENT IS SHOWN AS THEY SENT IT, where the door
@@ -5016,10 +5027,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			// of the paragraph the model was handed, and the attachments that
 			// rode on it. A line with no such mark is shown as it always was.
 			if mark := presentation.of(msg).person(); mark != nil {
+				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments)}
 				if mark.Text != nil {
-					displayText, authored = *mark.Text, true
+					displayText, person.Authored = *mark.Text, true
 				}
-				attachments = cloneAttachments(mark.Attachments)
 			}
 		}
 		interrupted, explicitlyHuman := false, false
@@ -5053,8 +5064,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			Interrupted: interrupted,
 			Text:        displayText,
 			ImageRefs:   journal.imageRefs(msg),
-			Authored:    authored,
-			Attachments: attachments,
+			Person:      person,
 			ReplyTags:   tags,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the

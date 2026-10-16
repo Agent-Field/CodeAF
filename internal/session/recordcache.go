@@ -459,6 +459,13 @@ func recordVectors(record Record) int64 {
 			cost += int64(len(entry.ImageRefs))*int64(unsafe.Sizeof("")) +
 				int64(len(entry.ReplyTags))*int64(unsafe.Sizeof(TaskReplyTag{})) +
 				int64(len(entry.Team))*int64(unsafe.Sizeof(TeamLine{}))
+			if entry.Person != nil {
+				cost += int64(unsafe.Sizeof(PersonMark{})) +
+					int64(len(entry.Person.Attachments))*int64(unsafe.Sizeof(MessageAttachment{}))
+				for _, attachment := range entry.Person.Attachments {
+					cost += attachmentSizes(attachment)
+				}
+			}
 			if entry.Steer != nil {
 				cost += int64(unsafe.Sizeof(SteerMark{}))
 			}
@@ -508,6 +515,25 @@ func entriesCost(entries []DisplayEntry) int64 {
 		for _, line := range entry.Team {
 			cost += int64(len(line.Team) + len(line.From) + len(line.To) + len(line.Kind) + len(line.Text) + len(line.Thread))
 		}
+		if entry.Person != nil {
+			cost += int64(unsafe.Sizeof(PersonMark{})) + int64(cap(entry.Person.Attachments))*int64(unsafe.Sizeof(MessageAttachment{}))
+			for _, attachment := range entry.Person.Attachments {
+				cost += int64(len(attachment.ID)+len(attachment.Kind)+len(attachment.Name)+len(attachment.Path)+len(attachment.URL)) +
+					attachmentSizes(attachment)
+			}
+		}
+	}
+	return cost
+}
+
+// attachmentSizes is what one descriptor's measured sizes hold beside it.
+func attachmentSizes(attachment MessageAttachment) int64 {
+	var cost int64
+	if attachment.Bytes != nil {
+		cost += int64(unsafe.Sizeof(*attachment.Bytes))
+	}
+	if attachment.Lines != nil {
+		cost += int64(unsafe.Sizeof(*attachment.Lines))
 	}
 	return cost
 }
@@ -532,6 +558,10 @@ func cloneEntries(entries []DisplayEntry) []DisplayEntry {
 		entry.ImageRefs = slices.Clone(entry.ImageRefs)
 		entry.ReplyTags = slices.Clone(entry.ReplyTags)
 		entry.Team = slices.Clone(entry.Team)
+		if entry.Person != nil {
+			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments)}
+			entry.Person = &person
+		}
 		if entry.Steer != nil {
 			steer := *entry.Steer
 			entry.Steer = &steer
