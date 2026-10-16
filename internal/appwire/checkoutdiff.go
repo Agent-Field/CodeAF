@@ -13,10 +13,22 @@ import "strings"
 // and only then touch the file. A path that is not a row is not_found.
 //
 // THE REVISION IS OPTIONAL ON THE WIRE AND MANDATORY FOR A CLIENT THAT DISPLAYS
-// A ROW: send the revision the row was shown under and a checkout that has since
-// moved is refused (conflict, stale_revision) instead of showing different
-// content than the list. Omitted means an explicit fresh lookup, and the reply
-// says which revision was used.
+// A ROW: send the revision the row was shown under and a checkout whose STATUS
+// has since moved is refused (conflict, stale_revision). WHAT THE REVISION
+// COVERS IS THE STATUS TEXT, that is the set of rows, their kinds and the HEAD
+// and index object ids, and NOT the content of a work-tree file that was already
+// modified: such a file edited again keeps the same revision, so the diff can
+// show newer content than the list's counts did. Nothing here promises immutable
+// content. Within one diff, freshness is only that the status text and the stat
+// stamps (mode, size, modification time) of the index and the path did not change
+// between the reads. Omitted means an explicit fresh lookup, and the reply says
+// which revision was used.
+//
+// ONE PATH MUST NAME ONE ROW. A path can appear twice in a status (`git rm
+// --cached f` leaves a staged deletion AND an untracked `f`); a request carries
+// only the path, so it cannot say which, and picking one would show a deletion
+// for a click on the untracked file. Any duplicate is refused as ambiguous_row,
+// with no diff and no open fact. An additive row selector is the way out.
 //
 // A RESPONSE HERE IS FACTS, NOT A GRANT. `open` is an absolute path the engine
 // proved reachable through real directories inside `repo` at that moment. A
@@ -66,8 +78,13 @@ const (
 	DiffReasonUnreadable     = "unreadable"      // the file could not be opened safely
 )
 
-// ConflictStaleRevision is the conflict detail for a revision that has moved.
-const ConflictStaleRevision = "stale_revision"
+// The conflict details checkout.diff and checkout.locate add.
+const (
+	// ConflictStaleRevision: the status has moved since the row was displayed.
+	ConflictStaleRevision = "stale_revision"
+	// ConflictAmbiguousRow: more than one status row has that path.
+	ConflictAmbiguousRow = "ambiguous_row"
+)
 
 // CheckoutDiffer is the optional engine half of checkout.diff and checkout.locate.
 type CheckoutDiffer interface {

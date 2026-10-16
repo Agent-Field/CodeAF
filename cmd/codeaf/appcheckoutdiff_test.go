@@ -205,8 +205,8 @@ func TestCheckoutDiffUnsupportedRows(t *testing.T) {
 }
 
 // NOTHING IN THE REPOSITORY IS WRITTEN OR RUN: the index keeps its bytes and
-// mtime, and a required clean filter never fires (for a file it governs the diff
-// is unavailable, for a file it does not, the diff is real).
+// mtime, and neither a required clean filter nor a configured textconv fires. A file
+// a filter governs stops at the attribute check and never reaches diff-index.
 func TestCheckoutDiffWritesNothingAndRunsNoFilter(t *testing.T) {
 	repo := diffRepo(t)
 	marker := filepath.Join(t.TempDir(), "ran")
@@ -228,7 +228,13 @@ func TestCheckoutDiffWritesNothingAndRunsNoFilter(t *testing.T) {
 	write(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\n")
 	gitT(t, repo, "config", "filter.lfsish.clean", "touch '"+marker+"'; cat")
 	gitT(t, repo, "config", "filter.lfsish.required", "true")
-	gitT(t, repo, "config", "diff.external", "touch '"+marker+"'; false")
+	// A textconv driver is configured and attributed. HONEST LIMIT OF THIS CHECK:
+	// diff-index is plumbing and does not run textconv or an external diff unless
+	// asked, so removing --no-textconv does not make this fail; the flag is
+	// belt-and-braces and the marker only proves nothing ran.
+	write(t, filepath.Join(repo, ".gitattributes"), "*.dat filter=lfsish\n*.txt diff=spy\n")
+	gitT(t, repo, "add", ".gitattributes")
+	gitT(t, repo, "config", "diff.spy.textconv", "touch '"+marker+"'; cat")
 	index := filepath.Join(repo, ".git", "index")
 	before, _ := os.ReadFile(index)
 	was, _ := os.Stat(index)
@@ -325,8 +331,8 @@ func TestCheckoutLocateFacts(t *testing.T) {
 	}
 }
 
-// A CUT STATUS: a path inside the part read is answered, one outside it is
-// too_large and not "not found".
+// A CUT STATUS CONFIRMS NO PATH: it is too_large, never "not found" and never a
+// first match.
 func TestCheckoutDiffCutStatus(t *testing.T) {
 	repo := diffRepo(t)
 	for _, name := range []string{"aaa-first.txt", "zzz-last.txt"} {
@@ -338,8 +344,10 @@ func TestCheckoutDiffCutStatus(t *testing.T) {
 	was := appCheckoutOutMax
 	appCheckoutOutMax = 700
 	defer func() { appCheckoutOutMax = was }()
-	if got, err := cdiffT(t, repo, "aaa-first.txt", ""); err != nil || got.Diff.State != appwire.DiffUntracked {
-		t.Fatalf("inside the part read: %v %+v", err, got.Diff)
+	// Even a path inside the part read is refused: a second row for it could lie
+	// past the cut, and an unprovable uniqueness is not confirmed.
+	if _, err := cdiffT(t, repo, "aaa-first.txt", ""); wireCode(err) != appwire.CodeTooLarge {
+		t.Fatalf("inside the part read answered %v", err)
 	}
 	if _, err := cdiffT(t, repo, "zzz-last.txt", ""); wireCode(err) != appwire.CodeTooLarge {
 		t.Fatalf("outside the part read answered %v", err)
@@ -379,4 +387,176 @@ func TestCheckoutDiffSharesTheBytePool(t *testing.T) {
 		}
 	}
 	t.Fatal("no budget made the confirming status read overflow the shared pool")
+}
+
+// A PATH THAT NAMES TWO ROWS NAMES NONE: `git rm --cached` leaves a staged
+// deletion and an untracked file under one path. Detected by counting rows,
+// for diff and locate both, with no diff and no open fact.
+func TestCheckoutDiffAmbiguousPathIsRefused(t *testing.T) {
+	repo := diffRepo(t)
+	gitT(t, repo, "rm", "-q", "--cached", "a.txt")
+	status, err := checkoutT(t, repo, appwire.CheckoutQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := 0
+	for _, e := range status.Entries {
+		if e.Path == "a.txt" {
+			rows++
+		}
+	}
+	if rows != 2 {
+		t.Fatalf("fixture: want two rows for a.txt, got %d in %+v", rows, status.Entries)
+	}
+	_, err = cdiffT(t, repo, "a.txt", status.Revision)
+	var wire *appwire.Error
+	if wireCode(err) != appwire.CodeConflict {
+		t.Fatalf("diff answered %v", err)
+	}
+	wire = err.(*appwire.Error)
+	if d, ok := wire.Detail.(appwire.ConflictDetail); !ok || d.Reason != appwire.ConflictAmbiguousRow || d.Path != "a.txt" {
+		t.Fatalf("detail %+v", wire.Detail)
+	}
+	loc, err := clocT(t, repo, "a.txt", "")
+	if wireCode(err) != appwire.CodeConflict || loc.Open != "" || loc.Revision != "" {
+		t.Fatalf("locate answered %v %+v", err, loc)
+	}
+}
+
+// A ROW SAYS DELETED WHEN ITS INDEX SIDE DOES, whatever is on disk: an ignored
+// file whose index entry was removed has no second (untracked) row, is still
+// there, and is a deletion with the whole file removed, not "modified".
+func TestCheckoutDiffDeletedFromTheRowNotTheDisk(t *testing.T) {
+	repo := diffRepo(t)
+	gitT(t, repo, "rm", "-q", "--cached", "a.txt")
+	write(t, filepath.Join(repo, ".gitignore"), "a.txt\n")
+	got, err := cdiffT(t, repo, "a.txt", "")
+	if err != nil || got.Entry.Index != "deleted" || got.Diff.Change != "deleted" || got.Diff.Del == nil || *got.Diff.Del != 3 {
+		t.Fatalf("%v %+v", err, got)
+	}
+}
+
+// THE UNTRACKED READ SPENDS THE CALL'S POOL: over a sweep of tiny budgets a file
+// is either whole and exact or said to be too large for the budget, never a
+// partial text; and with room it is whole.
+func TestCheckoutDiffUntrackedReadIsChargedToThePool(t *testing.T) {
+	repo := diffRepo(t)
+	body := strings.Repeat("line of text\n", 40) // 520 bytes
+	write(t, filepath.Join(repo, "u.txt"), body)
+	was := appCheckoutTotalMax
+	defer func() { appCheckoutTotalMax = was }()
+	appCheckoutTotalMax = 1 << 20
+	whole, err := cdiffT(t, repo, "u.txt", "")
+	if err != nil || whole.Diff.Add == nil || *whole.Diff.Add != 40 {
+		t.Fatalf("roomy: %v %+v", err, whole.Diff)
+	}
+	sawBudget := false
+	for budget := 100; budget < 1200; budget += 7 {
+		appCheckoutTotalMax = budget
+		got, err := cdiffT(t, repo, "u.txt", "")
+		if err != nil {
+			continue // the status itself did not fit
+		}
+		switch {
+		case got.Diff.Reason == appwire.DiffReasonTooLarge:
+			sawBudget = sawBudget || strings.Contains(got.Diff.Detail, "byte budget")
+			if got.Diff.Text != "" || got.Diff.Add != nil {
+				t.Fatalf("budget %d: a partial text was returned: %+v", budget, got.Diff)
+			}
+		case got.Diff.Add != nil:
+			if *got.Diff.Add != 40 || got.Diff.Truncated {
+				t.Fatalf("budget %d: a false whole: %+v", budget, got.Diff)
+			}
+		}
+	}
+	if !sawBudget {
+		t.Fatal("no budget made the untracked read hit the shared pool")
+	}
+}
+
+// THE SAFE OPEN'S SEAMS: a leaf swapped for a link or a pipe between its stat
+// and its open is refused without a read or a hang, and a file that grows past
+// the limit while being read is never returned.
+func TestAppReadContainedSeams(t *testing.T) {
+	repo := diffRepo(t)
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	write(t, secret, "TOP-SECRET\n")
+	file := filepath.Join(repo, "f.txt")
+	defer func() { appOpenSeam, appReadSeam = func() {}, func(*os.File) {} }()
+
+	write(t, file, "plain\n")
+	appOpenSeam = func() {
+		_ = os.Remove(file)
+		if err := os.Symlink(secret, file); err != nil {
+			t.Skip("no symlinks")
+		}
+	}
+	if data, reason := appReadContained(repo, "f.txt", 1<<10); data != nil || reason != "unreadable" {
+		t.Fatalf("a link swapped in was read: %q %q", data, reason)
+	}
+
+	write(t, filepath.Join(repo, "g.txt"), "plain\n")
+	appOpenSeam = func() {
+		_ = os.Remove(filepath.Join(repo, "g.txt"))
+		if err := syscall.Mkfifo(filepath.Join(repo, "g.txt"), 0o644); err != nil {
+			t.Skip("no fifos")
+		}
+	}
+	done := make(chan string, 1)
+	go func() { _, reason := appReadContained(repo, "g.txt", 1<<10); done <- reason }()
+	select {
+	case reason := <-done:
+		if reason != "unreadable" {
+			t.Fatalf("a pipe swapped in answered %q", reason)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a pipe swapped in held the read")
+	}
+
+	appOpenSeam = func() {}
+	write(t, filepath.Join(repo, "h.txt"), "12345678\n")
+	appReadSeam = func(f *os.File) {
+		w, err := os.OpenFile(filepath.Join(repo, "h.txt"), os.O_WRONLY|os.O_APPEND, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = w.Write(bytes.Repeat([]byte("more\n"), 100))
+		_ = w.Close()
+	}
+	if data, reason := appReadContained(repo, "h.txt", 64); data != nil || reason != "too_large" {
+		t.Fatalf("a file grown past the limit was returned: %d bytes, %q", len(data), reason)
+	}
+}
+
+// ADMISSION IS SHARED AND NEVER QUEUED: with both slots held, all three
+// checkout methods answer busy at once.
+func TestCheckoutMethodsAreBusyWhenBothSlotsAreHeld(t *testing.T) {
+	backend, _, agent := workBackend(t, &fakeConversation{script: nil})
+	diffRepoAt(t, agent.Workspace)
+	for i := 0; i < cap(appStatusSlots); i++ {
+		appStatusSlots <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < cap(appStatusSlots); i++ {
+			<-appStatusSlots
+		}
+	}()
+	if _, err := backend.CheckoutStatus(appwire.CheckoutQuery{Agent: agent.ID, Limit: 10}); wireCode(err) != appwire.CodeBusy {
+		t.Fatalf("status answered %v", err)
+	}
+	if _, err := backend.CheckoutDiff(appwire.CheckoutPathQuery{Agent: agent.ID, Path: "a.txt"}); wireCode(err) != appwire.CodeBusy {
+		t.Fatalf("diff answered %v", err)
+	}
+	if _, err := backend.CheckoutLocate(appwire.CheckoutPathQuery{Agent: agent.ID, Path: "a.txt"}); wireCode(err) != appwire.CodeBusy {
+		t.Fatalf("locate answered %v", err)
+	}
+}
+
+// diffRepoAt makes dir the repository diffRepo makes.
+func diffRepoAt(t *testing.T, dir string) {
+	t.Helper()
+	gitT(t, dir, "init", "-q", "-b", "main")
+	write(t, filepath.Join(dir, "a.txt"), "one\ntwo\nthree\n")
+	gitT(t, dir, "add", "a.txt")
+	gitT(t, dir, "commit", "-q", "-m", "first")
 }

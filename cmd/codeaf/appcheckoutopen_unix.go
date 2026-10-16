@@ -21,6 +21,13 @@ import (
 // opened O_NOFOLLOW and O_NONBLOCK, so a pipe swapped in cannot hold the read,
 // and the opened descriptor must be the very file the leaf stat described.
 
+// appOpenSeam and appReadSeam are tests' hooks: between the leaf's stat and its
+// open, and between the open and the read.
+var (
+	appOpenSeam = func() {}
+	appReadSeam = func(*os.File) {}
+)
+
 // appWalkContained is the leaf's Lstat when every parent of rel is a real
 // directory inside root and the leaf exists; ok is false otherwise.
 func appWalkContained(root *os.Root, rel string) (os.FileInfo, bool) {
@@ -66,6 +73,7 @@ func appReadContained(top, rel string, limit int64) (data []byte, reason string)
 	if leaf.Size() > limit {
 		return nil, "too_large"
 	}
+	appOpenSeam()
 	file, err := root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, "unreadable"
@@ -75,6 +83,7 @@ func appReadContained(top, rel string, limit int64) (data []byte, reason string)
 	if err != nil || !before.Mode().IsRegular() || !os.SameFile(leaf, before) {
 		return nil, "unreadable"
 	}
+	appReadSeam(file)
 	data, err = io.ReadAll(io.LimitReader(file, limit+1))
 	if err != nil {
 		return nil, "unreadable"

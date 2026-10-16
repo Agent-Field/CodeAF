@@ -43,15 +43,32 @@ func appCheckoutRowFor(ctx context.Context, workspace string, q appwire.Checkout
 			Detail:  appwire.ConflictDetail{Reason: appwire.ConflictStaleRevision},
 		}
 	}
+	// A PATH THAT NAMES MORE THAN ONE ROW NAMES NONE. The rows are counted, never
+	// the first taken: `git rm --cached f` leaves a staged deletion and an
+	// untracked `f` under one path, and a click on the untracked file must not be
+	// answered with the deletion.
+	var found []appwire.CheckoutEntry
 	for _, entry := range snap.entries {
 		if !entry.PathUnreadable && entry.Path == q.Path {
-			return &appCheckoutRow{snap: snap, entry: entry, workspace: workspace}, nil
+			found = append(found, entry)
 		}
 	}
 	if snap.overflow {
+		// A status cut by its bound cannot show that no second row for the path
+		// lies past the cut (untracked rows come last), so no path is confirmed.
 		return nil, appwire.Errorf(appwire.CodeTooLarge, "the status is longer than the engine reads, so that path cannot be confirmed")
 	}
-	return nil, appwire.Errorf(appwire.CodeNotFound, "that path is not a changed path in the current status")
+	switch len(found) {
+	case 0:
+		return nil, appwire.Errorf(appwire.CodeNotFound, "that path is not a changed path in the current status")
+	case 1:
+		return &appCheckoutRow{snap: snap, entry: found[0], workspace: workspace}, nil
+	}
+	return nil, &appwire.Error{
+		Code:    appwire.CodeConflict,
+		Message: "more than one row of the status has that path, so none is chosen for you",
+		Detail:  appwire.ConflictDetail{Reason: appwire.ConflictAmbiguousRow, Path: q.Path},
+	}
 }
 
 // workspacePath is the row's path relative to the workspace folder, "" outside it.
@@ -178,11 +195,20 @@ func appCheckoutDiffRow(row *appCheckoutRow) (out appwire.FileDiff) {
 	}
 
 	if entry.Kind == appwire.CheckoutUntracked {
-		data, reason := appReadContained(top, entry.Path, appwire.FileReadMax)
+		// THE READ DRAWS ON THE CALL'S POOL: at most what is left of it, and the
+		// bytes actually read are charged, so the call's total stays the one
+		// bound. A file that does not fit what is left is too_large, said to be
+		// the budget, never a partial text called whole.
+		limit := min(int64(appwire.FileReadMax), int64(g.left))
+		data, reason := appReadContained(top, entry.Path, limit)
+		g.left -= len(data)
 		switch reason {
 		case "too_large":
 			out.State, out.Base = appwire.DiffUntracked, appwire.DiffBaseNone
 			out.Reason = appwire.DiffReasonTooLarge
+			if limit < appwire.FileReadMax {
+				out.Detail = "the byte budget of this call is spent"
+			}
 			return out
 		case "":
 		default:
@@ -241,7 +267,9 @@ func appCheckoutDiffRow(row *appCheckoutRow) (out appwire.FileDiff) {
 			out.Change = "renamed"
 		case inBase == "":
 			out.Change = "added"
-		case !appReachable(top, entry.Path) && (entry.Worktree == "deleted" || entry.Index == "deleted"):
+		case entry.Worktree == "deleted" || entry.Index == "deleted":
+			// The ROW says deleted, whatever is on disk now: an ignored file whose
+			// index entry was removed is still there and still a deletion.
 			out.Change = "deleted"
 		default:
 			out.Change = "modified"

@@ -37,3 +37,10 @@ workspace for `files.diff`, named a different file. Untracked reads go through a
 `os.Root` with no-follow, non-blocking opens. The reply's `open` is a fact the
 native host re-derives with `checkout.locate`, not a grant. Copied, conflicted and
 submodule rows are `unsupported_row` in this milestone.
+
+The revision on `checkout.diff` and `checkout.locate` names the status text, not
+the content of an already-modified file, and promises no immutable content. A
+path naming more than one row (`git rm --cached` leaves two) is a `conflict` /
+`ambiguous_row` for both methods, a status cut at its bound confirms no path,
+a row is `deleted` when its own index or work-tree side says so, and an
+untracked read is charged to the call's 6 MiB pool.
