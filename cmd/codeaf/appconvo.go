@@ -1263,6 +1263,9 @@ func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (ui
 type appSending struct {
 	text        string
 	attachments []appwire.Attachment
+	// mediaNoted travels with the same accepted message through in-process retries.
+	// Protected by b.mu; a new send has its own shown snapshot.
+	mediaNoted bool
 	// described is the same attachments as the record keeps them
 	// ([appDescribed]), in the same order.
 	described []session.MessageAttachment

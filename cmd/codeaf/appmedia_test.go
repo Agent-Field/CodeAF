@@ -295,3 +295,34 @@ func TestAppFirstMessageNotesAttachedMediaAsSources(t *testing.T) {
 		t.Fatalf("reopened sources = %+v %v", page, err)
 	}
 }
+
+func TestAppAcceptedAttachmentRetryDoesNotDuplicateSource(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}
+	backend, rec, agent := workBackend(t, conv)
+	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
+	old := appMediaIndex
+	appMediaIndex = func() string { return index }
+	t.Cleanup(func() { appMediaIndex = old })
+	picture := filepath.Join(agent.Workspace, "retry.png")
+	writePNG(t, picture, 4, 3)
+	attach, err := backend.AddAttachment(agent.ID, appwire.Attachment{Kind: appwire.AttachFile, Path: picture}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, shown, err := backend.sendMessage(agent.ID, appwire.AgentMessage{Text: "look", Attachments: []string{attach.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appTurnDoneFor(t, rec, turn)
+	a := backend.agent(agent.ID)
+	backend.locked(func() { a.failed = "look"; a.failedShown = shown })
+	turn, err = backend.Retry(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appTurnDoneFor(t, rec, turn)
+	page, err := backend.ListMedia(agent.ID, "", 10)
+	if err != nil || len(page.Sources) != 1 {
+		t.Fatalf("retried sources = %+v %v", page, err)
+	}
+}

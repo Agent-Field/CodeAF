@@ -1453,7 +1453,8 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	}
 	// A retry is the person's own send, never the queue's.
 	if shown != nil && shown.queued {
-		again := *shown
+		var again appSending
+		b.locked(func() { again = *shown })
 		again.queued = false
 		if shown = &again; len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
 			shown = nil
@@ -1597,7 +1598,14 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: userEntry})
 	// First messages, ordinary sends and retries share this acceptance point.
 	// Staged or refused attachments never become media sources.
-	b.recordAttachedMedia(a, attachments)
+	if shown != nil && len(attachments) > 0 {
+		var noted bool
+		b.locked(func() { noted = shown.mediaNoted })
+		if !noted {
+			b.recordAttachedMedia(a, attachments)
+			b.locked(func() { shown.mediaNoted = true })
+		}
+	}
 	long := b.watchLong(id, live, turn, b.now())
 	b.newTurnCalls(a)
 	tails := b.tickTools(a, id, live)
