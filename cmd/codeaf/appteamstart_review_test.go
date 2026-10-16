@@ -236,8 +236,7 @@ func TestReviewR5RootStartCountsADeletedManagerAsPresent(t *testing.T) {
 	}
 	second, err := h.b.RootStart(appwire.RootStartAsk{})
 	if err != nil {
-		t.Logf("second start: %v", err)
-		return
+		t.Fatalf("replace the tombstoned root manager: %v", err)
 	}
 	if !second.ManagerCreated && second.Manager == first.Manager {
 		t.Fatalf("DEFECT R5: root.start answered the permanently deleted manager %s as existing", second.Manager)

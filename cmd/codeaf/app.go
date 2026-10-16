@@ -1688,7 +1688,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 			return 0, appEngineError(err)
 		}
 		if spent >= limit {
-			turn := b.dayRefused(a, live, text, spent, limit)
+			turn := b.dayRefused(a, live, text, clientID, spent, limit)
 			b.locked(func() { a.failedShown = shown })
 			return turn, nil
 		}

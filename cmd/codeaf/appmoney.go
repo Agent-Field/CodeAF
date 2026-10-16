@@ -99,13 +99,13 @@ func (b *appBackend) bindBudget(id string, conv appConversation) error {
 // dayRefused is a turn the day cap would not let start: it is answered like a
 // turn that failed before it began, its words kept for a retry, and the agent
 // asks about the cap.
-func (b *appBackend) dayRefused(a *appAgent, live *appLive, text string, spent, limit float64) uint64 {
+func (b *appBackend) dayRefused(a *appAgent, live *appLive, text, clientID string, spent, limit float64) uint64 {
 	turn := b.turns.Add(1)
 	words := "Day cap reached · " + appUSD(spent) + " of " + appUSD(limit)
 	var id string
 	b.locked(func() {
 		id = a.view.ID
-		a.failed, a.failedKind, a.failedClient = text, appwire.ErrorBudget, ""
+		a.failed, a.failedKind, a.failedClient = text, appwire.ErrorBudget, clientID
 	})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: false, Error: words, ErrorKind: appwire.ErrorBudget})
