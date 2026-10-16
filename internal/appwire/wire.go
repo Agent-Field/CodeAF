@@ -336,9 +336,27 @@ type Entry struct {
 	Op *EntryOp `json:"op,omitempty"`
 	// Compaction is a summary entry's pass, as facts (compaction.go).
 	Compaction *Compaction `json:"compaction,omitempty"`
+	// Team is, on a notice that is a crew's delivery, its lines as facts: who
+	// sent each, to whom, its kind and its log entry. The notice's Text is the
+	// same lines worded.
+	Team []TeamLine `json:"team,omitempty"`
 	// A tool entry carries the facts of its call (worklog.go); a note entry
 	// names its task there too.
 	ToolFacts
+}
+
+// TeamLine is one line of a crew's delivery to a member. From is "manager",
+// "you", "system" or a member's handle; To is "", "room", "everyone",
+// "manager" or a handle; Kind is note, directive or start (the brief the
+// member was started with); Post is the line's log entry, "" when the
+// delivery did not number it.
+type TeamLine struct {
+	CrewName string `json:"crew_name,omitempty"`
+	From     string `json:"from"`
+	To       string `json:"to,omitempty"`
+	Kind     string `json:"kind"`
+	Text     string `json:"text"`
+	Post     string `json:"post,omitempty"`
 }
 
 // EntryOp is an operation the person or an agent did that the conversation

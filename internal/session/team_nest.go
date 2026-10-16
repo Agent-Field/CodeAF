@@ -702,5 +702,5 @@ func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (s
 			}
 		}
 	}
-	return fmt.Sprintf("Posted to the manager of %q, which %q answers to while it has no manager of its own. It arrives at the start of its next step.", role.bossName, team.Name), false, nil
+	return teamPostUpSaid(role.bossName, team.Name), false, nil
 }

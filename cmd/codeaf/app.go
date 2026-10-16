@@ -2432,20 +2432,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 	entries := make([]appwire.Entry, 0, len(items))
 	from := make([]int, 0, len(items))
 	n, m, k, c := -1, 0, 0, 0
-	// A MESSAGE FOLLOWED BY A TOOL CALL BEFORE THE PERSON SPOKE AGAIN WAS AN
-	// UPDATE, as the live pump named it.
-	update := make([]bool, len(items))
-	called := false
-	for i := len(items) - 1; i >= 0; i-- {
-		switch items[i].Role {
-		case "user":
-			called = false
-		case "tool":
-			called = true
-		case "assistant":
-			update[i] = called
-		}
-	}
+	update := appUpdates(items)
 	for i, item := range items {
 		// Each entry carries the instant its own line was written; the
 		// conversation's latest moment stands in only where the record never
@@ -2493,7 +2480,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 				// that rode in the same message; the crew's lines are what the
 				// person reads.
 				if len(item.Team) > 0 {
-					entry.Text = appTeamDelivery(item.Team)
+					entry.Text, entry.Team = appTeamDelivery(item.Team), appTeamLines(item.Team)
 				}
 				k++
 				break
@@ -2542,6 +2529,22 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		from = append(from, i)
 	}
 	return entries, from
+}
+
+// appUpdates marks each assistant message that was an UPDATE, as the live pump
+// named it: a message whose own tool calls ran after it (the pump says the
+// reply before a tool begins as an update, and the turn's last reply as its
+// answer). The shaping writes a message's calls straight after it, so the
+// mark is the very next item being a call. A later turn's calls never reach
+// back: a turn a team delivery or a wake opened has no person's line in
+// between, and its work once turned the previous turn's answer into an update.
+func appUpdates(items []session.DisplayEntry) []bool {
+	update := make([]bool, len(items))
+	for i := 0; i+1 < len(items); i++ {
+		next := items[i+1]
+		update[i] = items[i].Role == "assistant" && next.Role == "tool" && (next.CallID != "" || next.Tool != "")
+	}
+	return update
 }
 
 // SetModel moves the agent to another model, opening its conversation first if
@@ -3029,6 +3032,44 @@ func appEngineError(err error) error {
 		return wire
 	}
 	return &appwire.Error{Code: appwire.CodeEngine, Message: redact.Secrets(plainWords(err.Error()))}
+}
+
+// appTeamLines is a team delivery's lines as facts, words redacted as the
+// notice's own text is.
+func appTeamLines(lines []session.TeamLine) []appwire.TeamLine {
+	out := make([]appwire.TeamLine, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, appwire.TeamLine{CrewName: line.Team, From: line.From, To: line.To, Kind: line.Kind, Text: redact.Secrets(strings.TrimSpace(line.Text)), Post: line.Thread})
+	}
+	return out
+}
+
+// appHandoff is what a finished team_post call delivered, read from its own
+// answer (session.ReadTeamPost); nil for any other call, one with no answer,
+// and one whose words named no recipient.
+func appHandoff(tool, args, answer string) *appwire.Handoff {
+	if tool != "team_post" || strings.TrimSpace(answer) == "" {
+		return nil
+	}
+	if post, ok := session.ReadTeamPost(answer); ok {
+		h := &appwire.Handoff{CrewName: post.Team, To: post.To, Post: post.Post, Answers: post.Answers, Delivered: true, Up: post.Up}
+		if post.Up {
+			h.FromCrew = post.From
+		}
+		return h
+	}
+	var asked struct{ To string }
+	if json.Unmarshal([]byte(args), &asked) != nil {
+		return nil
+	}
+	to := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(asked.To)), "@")
+	switch to {
+	case "":
+		return nil
+	case "everyone":
+		to = "room"
+	}
+	return &appwire.Handoff{To: to, Delivered: false, Reason: redact.Secrets(strings.TrimSpace(answer))}
 }
 
 // appTeamDelivery is a team delivery's lines as the person reads them: who

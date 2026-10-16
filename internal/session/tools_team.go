@@ -838,13 +838,5 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 			a.teamRouse(a.config.teamProfile(), team, role.wakes, []teams.Member{manager}, "")
 		}
 	}
-	answered := ""
-	if thread != "" {
-		answered = ", answering " + teams.ThreadNumber(thread)
-	}
-	as := ""
-	if own != "" {
-		as = " as " + teams.ThreadNumber(own)
-	}
-	return "Posted to " + where + " in " + strconv.Quote(team.Name) + as + answered + ". It arrives at the start of their next step.", false, nil
+	return teamPostSaid(where, team.Name, own, thread), false, nil
 }

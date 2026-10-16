@@ -44,6 +44,29 @@ type ToolFacts struct {
 	// to twelve once it has ended. Lines is how many it wrote in all.
 	Tail  []string `json:"tail,omitempty"`
 	Lines *int     `json:"lines,omitempty"`
+	// Handoff is what a team_post call delivered, read from the call's own
+	// answer, and absent on every other call and one still running.
+	Handoff *Handoff `json:"handoff,omitempty"`
+}
+
+// Handoff is one team_post as facts: the crew log it was written to, who it
+// was for, and the log entry it became. Delivered false is a post the engine
+// refused or could not write; Reason is then the engine's own words.
+type Handoff struct {
+	// CrewName is the name of the crew whose log holds the line.
+	CrewName string `json:"crew_name,omitempty"`
+	// To is "manager", "room" or a member's handle (no @).
+	To string `json:"to,omitempty"`
+	// Post is the log entry the line was written as and Answers the entry it
+	// answers (LogLine ids); "" when the answer named none.
+	Post      string `json:"post,omitempty"`
+	Answers   string `json:"answers,omitempty"`
+	Delivered bool   `json:"delivered"`
+	Reason    string `json:"reason,omitempty"`
+	// Up is a post to the manager of the crew above (the member's crew has
+	// no manager of its own); FromCrew is the member's crew then.
+	Up       bool   `json:"up,omitempty"`
+	FromCrew string `json:"from_crew,omitempty"`
 }
 
 // ToolInput is what a call was asked to do: the command, query or path, and

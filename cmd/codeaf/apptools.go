@@ -393,6 +393,7 @@ func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event ses
 			c.title = title
 		}
 		c.summary, c.detail, c.ok = summary, detail, &ok
+		c.facts.Handoff = appHandoff(event.Tool, event.Args, event.Output)
 		if c.facts.EndedAt == nil {
 			at := b.now()
 			c.facts.EndedAt = &at
@@ -580,8 +581,12 @@ func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwi
 		}
 	})
 	if known {
+		if facts.Handoff == nil {
+			facts.Handoff = appHandoff(item.Tool, item.Args, item.Output)
+		}
 		return facts
 	}
+	facts.Handoff = appHandoff(item.Tool, item.Args, item.Output)
 	var workspace string
 	b.locked(func() { workspace = a.view.Workspace })
 	facts.Kind = appToolKind(item.Tool, "")
