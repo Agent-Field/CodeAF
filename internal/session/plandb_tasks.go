@@ -339,10 +339,27 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 // task this chat did not spawn, whether it is another conversation's or no
 // task at all: the page is the chat's own reading of its own plan.
 func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
+	page, _, ok := a.planTaskPageFor(id, true)
+	return page, ok
+}
+
+// planProgramSource is where one task's program is read from: its store's
+// folder, its id there, the program the live run carries for it, and the run's
+// copy its words are read without.
+type planProgramSource struct {
+	dir, id, carried string
+	copies           planRunCopies
+}
+
+// planTaskPageFor is [Agent.PlanTaskPage], and where its program is read from.
+// withProgram false leaves the page's Program unread, for a caller that reads
+// the program its own, bounded way ([Agent.appProgramRead]) and must not pay
+// for the whole of its logs first.
+func (a *Agent) planTaskPageFor(id string, withProgram bool) (PlanTaskPage, planProgramSource, bool) {
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	if len(stores) == 0 {
-		return PlanTaskPage{}, false
+		return PlanTaskPage{}, planProgramSource{}, false
 	}
 	var store *plandb.Store
 	var task *plandb.Task
@@ -353,7 +370,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		}
 	}
 	if task == nil {
-		return PlanTaskPage{}, false
+		return PlanTaskPage{}, planProgramSource{}, false
 	}
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
@@ -414,6 +431,11 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	if usage, ok := planUsageByTask(store.Path())[task.ID]; ok {
 		pageRow.Model, pageRow.Tokens = usage.model, usage.tokens
 	}
+	source := planProgramSource{dir: dir, id: task.ID, carried: carried[task.ID], copies: copies.or(pageRow.Folder)}
+	var program *PlanProgram
+	if withProgram {
+		program = planProgramPage(dir, task.ID, carried[task.ID], copies.or(pageRow.Folder), a.config.Delegates)
+	}
 	return PlanTaskPage{
 		Row:         pageRow,
 		Description: task.Description,
@@ -429,8 +451,8 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Live:     pageRow.Live,
 		Children: children,
 		WaitRows: waitRows,
-		Program:  planProgramPage(dir, task.ID, carried[task.ID], copies.or(pageRow.Folder), a.config.Delegates),
-	}, true
+		Program:  program,
+	}, source, true
 }
 
 // markPlanMachineHold copies only this row's refused start. An archived store

@@ -30,7 +30,27 @@ const (
 	MethodAppTaskRoutingAct = "App.TaskRoutingAct"
 	// MethodAppTaskRoutingOptions previews what each change would do.
 	MethodAppTaskRoutingOptions = "App.TaskRoutingOptions"
+	// MethodAppProgramActions reads an older page of a program's actions
+	// ([session.Agent.AppProgramActions]). An engine that predates it answers
+	// it as an unknown method.
+	MethodAppProgramActions = "App.ProgramActions"
 )
+
+// appProgramDoor is the conversation whose programs' older actions can be paged.
+type appProgramDoor interface {
+	AppProgramActions(id, before string) (session.AppProgramActionsPage, bool, error)
+}
+
+// AppProgramActionsArgs is one page asked for: the task and the cursor.
+type AppProgramActionsArgs struct {
+	ID     string `json:"id"`
+	Before string `json:"before"`
+}
+
+type appProgramActionsResult struct {
+	Page  session.AppProgramActionsPage
+	Found bool
+}
 
 // appRoutingDoor is the conversation whose tasks' models can be read and moved.
 type appRoutingDoor interface {
@@ -84,6 +104,20 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 		return nil, errors.New("engine: app tasks are unavailable")
 	}
 	switch call.Method {
+	case MethodAppProgramActions:
+		pager, ok := agent.(appProgramDoor)
+		if !ok {
+			return nil, errors.New("engine: a program's earlier actions are unavailable")
+		}
+		args, err := arg[AppProgramActionsArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		page, found, err := pager.AppProgramActions(args.ID, args.Before)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(appProgramActionsResult{page, found})
 	case MethodAppTaskRouting, MethodAppTaskRoutingAct, MethodAppTaskRoutingOptions:
 		routing, ok := agent.(appRoutingDoor)
 		if !ok {
@@ -188,6 +222,18 @@ func (a *Agent) AppTask(id string) (session.AppTaskView, bool, error) {
 	var result appTaskPageResult
 	err = json.Unmarshal(raw, &result)
 	return result.Task, result.Found, err
+}
+
+// AppProgramActions reads an older page of a program's actions on the far
+// engine.
+func (a *Agent) AppProgramActions(id, before string) (session.AppProgramActionsPage, bool, error) {
+	raw, err := a.c.call(nil, MethodAppProgramActions, AppProgramActionsArgs{ID: id, Before: before})
+	if err != nil {
+		return session.AppProgramActionsPage{}, false, err
+	}
+	var result appProgramActionsResult
+	err = json.Unmarshal(raw, &result)
+	return result.Page, result.Found, err
 }
 func (a *Agent) AppTaskAction(intent session.AppTaskIntent) error {
 	_, err := a.c.call(nil, MethodAppTaskAction, intent)

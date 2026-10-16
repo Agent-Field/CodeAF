@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -113,33 +112,6 @@ type PlanProgram struct {
 	// EarlierActions is how many actions came before the first of Actions,
 	// which the page says rather than draws.
 	EarlierActions int
-	// StartedAt and EndedAt are the program record's clock for its LATEST
-	// process on this task. The record is overwritten per hand-off, so they are
-	// not a history of attempts. Zero is unknown.
-	StartedAt, EndedAt time.Time
-	// Current is what the record's own process did, read off the lines that
-	// carry the record's launch ([delegate.Action.Launch]), and nil when no line
-	// can be tied to it: a record written before launches were, or none on disk
-	// yet (a relaunch before its hello). Nil is unknown — never the last run's.
-	Current *PlanProgramLaunch
-}
-
-// PlanProgramLaunch is one launch of a program as its own lines say: the
-// actions it took, the stage it last named and its ending.
-type PlanProgramLaunch struct {
-	// Actions are the launch's newest [planProgramActions] shown actions, and
-	// EarlierActions how many of its own came before them.
-	Actions        []delegate.Shown
-	EarlierActions int
-	// LastStage is the stage the launch's newest stage line names, as the
-	// program spelled it. IT IS THE ONE TYPED ANSWER TO "WHERE IS IT", read off a
-	// record and never off the live line's words; a program reports its stages
-	// out of list order, so it is never turned into an index here.
-	LastStage string
-	// Ending is the launch's final shown action when, and only when, the
-	// launch's last line is its `end` line; EndStatus is that line's status.
-	Ending    *delegate.Shown
-	EndStatus string
 }
 
 // planProgramRecord is the program a task was handed to: the record the run's
@@ -290,11 +262,8 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	}
 	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort,
 		Listening: record.Listening, InboxClosed: record.InboxClosed, Listens: planProgramOf(programs, record.Name).Listens,
-		Started: !record.StartedAt.IsZero(), StartedAt: record.StartedAt, EndedAt: record.EndedAt}
+		Started: !record.StartedAt.IsZero()}
 	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
-	if lines, ok := delegate.LaunchActions(logged, record.Launch); ok {
-		program.Current = planProgramLaunchOf(lines, planProgramOf(programs, record.Name), copies)
-	}
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)
 	}
@@ -317,32 +286,6 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	return program
 }
 
-// planProgramLaunchOf reads one launch's own lines ([delegate.LaunchActions])
-// for its page: its actions through a fresh reader of the program's vocabulary
-// from the launch's first line, the stage its newest stage line names, and its
-// ending when its LAST line is the `end` line and that line is the last one
-// shown. Nothing is read from a word, and nothing from a time.
-//
-// THE LOG OUTLIVES THE PROCESS, and a wall clock steps back and repeats. Which
-// lines are this process's is the launch stamped on them, so an earlier run's
-// ending — however late or early its time — is never this one's.
-func planProgramLaunchOf(lines []delegate.Action, program delegate.Delegate, copies planRunCopies) *PlanProgramLaunch {
-	current := &PlanProgramLaunch{}
-	var endShown bool
-	current.Actions, current.EarlierActions, endShown = planProgramActionsTracked(lines, program, copies)
-	for i := len(lines) - 1; i >= 0; i-- {
-		if lines[i].Kind == delegate.ActionStage && strings.TrimSpace(lines[i].Stage) != "" {
-			current.LastStage = lines[i].Stage
-			break
-		}
-	}
-	if len(lines) > 0 && endShown && lines[len(lines)-1].Kind == delegate.ActionEnd {
-		ending := current.Actions[len(current.Actions)-1]
-		current.Ending, current.EndStatus = &ending, lines[len(lines)-1].Status
-	}
-	return current
-}
-
 // planProgramOf is the program of this build's list with this name, and a
 // program of that name with no vocabulary of its own — read plainly — when the
 // list does not carry it: a run of a program this build no longer carries is
@@ -357,47 +300,51 @@ func planProgramOf(programs []delegate.Delegate, name string) delegate.Delegate 
 }
 
 // planProgramActionsFor is a program's action log as its page carries it: every
-// line read, from the first, by one reader of the program's own vocabulary —
-// which may need the lines before to read the one in front of it — with the
-// run's copy taken out of what it names; the newest [planProgramActions] of
-// what it shows, every text cut to its head; and how many shown actions came
-// before those.
+// line read, from the first, by one reader of the program's own vocabulary
+// ([planProgramShownReader]) — which may need the lines before to read the one
+// in front of it — the newest [planProgramActions] of what it shows, and how
+// many shown actions came before those.
 func planProgramActionsFor(logged []delegate.Action, program delegate.Delegate, copies planRunCopies) ([]delegate.Shown, int) {
-	shown, earlier, _ := planProgramActionsTracked(logged, program, copies)
-	return shown, earlier
-}
-
-// planProgramActionsTracked is [planProgramActionsFor] that also says whether
-// the log's final line is the last action shown, which is how an ending is
-// known to be the line the reader showed and not an earlier one.
-func planProgramActionsTracked(logged []delegate.Action, program delegate.Delegate, copies planRunCopies) ([]delegate.Shown, int, bool) {
-	read := program.Reader()
+	read := planProgramShownReader(program, copies)
 	var shown []delegate.Shown
-	finalShown := false
-	for i, action := range logged {
-		action.Command = copies.strip(action.Command)
-		action.Observation = copies.strip(action.Observation)
-		action.Message = copies.strip(action.Message)
-		line, ok := read(action)
-		if !ok {
-			continue
+	for _, action := range logged {
+		if line, ok := read(action); ok {
+			shown = append(shown, line)
 		}
-		line.Text = planTextHead(copies.strip(line.Text))
-		line.Outcome = planTextHead(line.Outcome)
-		line.Reason = planTextHead(line.Reason)
-		line.Ending = planEndingForPage(line.Ending, copies)
-		if line.Text == "" {
-			continue
-		}
-		shown = append(shown, line)
-		finalShown = i == len(logged)-1
 	}
 	earlier := 0
 	if len(shown) > planProgramActions {
 		earlier = len(shown) - planProgramActions
 		shown = shown[earlier:]
 	}
-	return shown, earlier, finalShown
+	return shown, earlier
+}
+
+// planProgramShownReader is a fresh reader of a program's action log as every
+// page carries it: the run's copy taken out of what a line names before the
+// program's own vocabulary reads it ([delegate.Delegate.Reader]), every text of
+// what it shows cut to its head, and an action left with no words left out. It
+// is THE ONE reading of a line for a page, whether the page reads the whole
+// log or one launch of it within a budget ([delegate.ReadLaunchActions]).
+func planProgramShownReader(program delegate.Delegate, copies planRunCopies) delegate.ActionReader {
+	read := program.Reader()
+	return func(action delegate.Action) (delegate.Shown, bool) {
+		action.Command = copies.strip(action.Command)
+		action.Observation = copies.strip(action.Observation)
+		action.Message = copies.strip(action.Message)
+		line, ok := read(action)
+		if !ok {
+			return delegate.Shown{}, false
+		}
+		line.Text = planTextHead(copies.strip(line.Text))
+		line.Outcome = planTextHead(line.Outcome)
+		line.Reason = planTextHead(line.Reason)
+		line.Ending = planEndingForPage(line.Ending, copies)
+		if line.Text == "" {
+			return delegate.Shown{}, false
+		}
+		return line, true
+	}
 }
 
 // planEndingForPage is an ending's facts as the page carries them: the run's own

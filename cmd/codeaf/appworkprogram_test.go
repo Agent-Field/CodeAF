@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,7 +40,9 @@ func programViewFromLog(t *testing.T, program delegate.Delegate, stages []string
 		t.Fatal(err)
 	}
 	read := program.Reader()
-	view := &session.AppProgramView{Name: program.Name, Listens: program.Listens, CeilingUSD: 5, Calls: 3, Models: []string{"m/one"}}
+	calls := 3
+	view := &session.AppProgramView{Name: program.Name, Listens: program.Listens, CeilingUSD: 5, Calls: &calls, Models: []string{"m/one"},
+		Read: session.AppProgramReadComplete}
 	standing := ""
 	for _, stage := range stages {
 		standing = session.AppProgramStageWord(program, stage, standing)
@@ -119,6 +123,38 @@ func TestProgramOnTheWireIsBoundedRedactedAndHonestlyPartial(t *testing.T) {
 	if wire.StartedAt != nil || appTaskProgram(nil) != nil {
 		t.Fatalf("an unstarted run claims a clock: %+v", wire)
 	}
+	// ONLY A COMPLETE READ COUNTS OR POINTS BACK. A partial read carries what it
+	// read and nothing about how much more there is; an engine that sent no read
+	// state — one from before it — has its process's work dropped, not passed on
+	// as the current run's.
+	view.Before = "cursor"
+	if wire := appTaskProgram(view); wire.Before != "cursor" || wire.Read != appwire.ProgramReadComplete || wire.Calls == nil || *wire.Calls != 3 {
+		t.Fatalf("complete: %+v", wire)
+	}
+	view.Read, view.ReadCut = session.AppProgramReadPartial, delegate.ReadCutBudget
+	if wire := appTaskProgram(view); wire.Before != "" || wire.EarlierActions != 0 || len(wire.Actions) != appwire.ProgramActionsMax || wire.ReadCut != appwire.ProgramCutBudget {
+		t.Fatalf("partial: before %q earlier %d actions %d cut %q", wire.Before, wire.EarlierActions, len(wire.Actions), wire.ReadCut)
+	}
+	view.Read = ""
+	old := appTaskProgram(view)
+	if old.Read != appwire.ProgramReadUnknown || old.Actions != nil || old.Calls != nil || old.LastStage != "" || old.Ending != nil || old.EarlierActions != 0 || old.Name != "senior-dev" {
+		t.Fatalf("an older engine's program = %+v", old)
+	}
+}
+
+// THE ENGINE'S CUT WORDS ARE THE WIRE'S: a partial read's reason crosses as the
+// word the protocol names.
+func TestProgramReadWordsAreTheWires(t *testing.T) {
+	for engine, wire := range map[string]string{
+		session.AppProgramReadComplete: appwire.ProgramReadComplete, session.AppProgramReadPartial: appwire.ProgramReadPartial,
+		session.AppProgramReadUnknown: appwire.ProgramReadUnknown, delegate.ReadCutBudget: appwire.ProgramCutBudget,
+		delegate.ReadCutDamaged: appwire.ProgramCutDamaged, delegate.ReadCutUnreadable: appwire.ProgramCutUnreadable,
+		delegate.ReadCutDeadline: appwire.ProgramCutDeadline,
+	} {
+		if engine != wire {
+			t.Errorf("engine %q, wire %q", engine, wire)
+		}
+	}
 }
 
 // THROUGH THE REAL SERVER: tasks.get answers the program with its typed ending,
@@ -179,7 +215,93 @@ func TestTasksGetCarriesTheProgramOverTheRealServer(t *testing.T) {
 	if _, leaked := facts["transcript"]; leaked || len(program["stages"].([]any)) != len(praf.Stages) {
 		t.Fatalf("facts = %v", facts)
 	}
+	if program["read"] != appwire.ProgramReadComplete || program["calls"] != float64(3) {
+		t.Fatalf("read %v calls %v", program["read"], program["calls"])
+	}
 	if plain := get(2, agent.ID+":5"); plain["program"] != nil {
 		t.Fatalf("an ordinary task carries a program: %v", plain["program"])
+	}
+}
+
+// pagingConversation is a conversation that pages its programs' actions.
+type pagingConversation struct {
+	*fakeConversation
+	pages map[string]session.AppProgramActionsPage
+}
+
+func (p *pagingConversation) AppProgramActions(id, before string) (session.AppProgramActionsPage, bool, error) {
+	page, ok := p.pages[id+"@"+before]
+	return page, ok, nil
+}
+
+// THROUGH THE REAL SERVER: tasks.program_actions answers an older page with its
+// own read state and the cursor before it, a cursor of an earlier run is a
+// conflict, and a task with no program is not found.
+func TestTasksProgramActionsPagesOverTheRealServer(t *testing.T) {
+	secret := "sk-abcdefghijklmnopqrstuvwxyz123456"
+	conv := &pagingConversation{fakeConversation: &fakeConversation{}, pages: map[string]session.AppProgramActionsPage{
+		"4@c.60": {Read: session.AppProgramReadComplete, Actions: []delegate.Shown{{Text: "read a.go " + secret}}, EarlierActions: 59, Before: "c.59"},
+		"4@gone": {Gone: true},
+	}}
+	var mu sync.Mutex
+	var opens, releases int
+	backend := newFakeBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+		conn, err := fakeOpener(conv.fakeConversation, &opens, &releases, &mu)(ask)
+		if conn != nil {
+			conn.Conv = conv
+		}
+		return conn, err
+	})
+	t.Cleanup(func() { backend.Close() })
+	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	server := appwire.NewServer(outW)
+	go func() {
+		_ = server.Serve(context.Background(), inR, appwire.Hello{Version: "test"}, backend)
+		outW.Close()
+	}()
+	t.Cleanup(func() { inW.Close() })
+	scanner := bufio.NewScanner(outR)
+	scanner.Buffer(make([]byte, 4<<20), 4<<20)
+	if !scanner.Scan() {
+		t.Fatal("no hello")
+	}
+	ask := func(n int, id, before string) (map[string]any, map[string]any) {
+		t.Helper()
+		if _, err := io.WriteString(inW, `{"id":`+string(rune('0'+n))+`,"method":"tasks.program_actions","params":{"id":"`+id+`","before":"`+before+`"}}`+"\n"); err != nil {
+			t.Fatal(err)
+		}
+		if !scanner.Scan() {
+			t.Fatal("the wire ended")
+		}
+		var out struct {
+			Result map[string]any `json:"result"`
+			Error  map[string]any `json:"error"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Result, out.Error
+	}
+	page, failed := ask(1, agent.ID+":4", "c.60")
+	if failed != nil || page["read"] != appwire.ProgramReadComplete || page["before"] != "c.59" || page["earlier_actions"] != float64(59) {
+		t.Fatalf("page = %v (%v)", page, failed)
+	}
+	if raw, _ := json.Marshal(page); strings.Contains(string(raw), secret) {
+		t.Fatalf("a secret crossed: %s", raw)
+	}
+	if _, failed := ask(2, agent.ID+":4", "gone"); failed == nil || failed["code"] != appwire.CodeConflict {
+		t.Fatalf("an earlier run's cursor answered %v", failed)
+	}
+	if _, failed := ask(3, agent.ID+":5", "c.1"); failed == nil || failed["code"] != appwire.CodeNotFound {
+		t.Fatalf("a task with no program answered %v", failed)
+	}
+	if _, failed := ask(4, agent.ID+":4", ""); failed == nil || failed["code"] != appwire.CodeBadParams {
+		t.Fatalf("no cursor answered %v", failed)
 	}
 }

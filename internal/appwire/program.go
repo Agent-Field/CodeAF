@@ -1,6 +1,9 @@
 package appwire
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // A SPECIALIST'S TASK, AS ITS PAGE READS IT. [TaskPage.Program] is present only
 // for a task a program (senior-dev, sec, review) was handed, and carries what
@@ -29,30 +32,101 @@ type TaskProgram struct {
 	Stages    []ProgramStage `json:"stages,omitempty"`
 	LastStage string         `json:"last_stage,omitempty"`
 	// CeilingUSD is present only when the run was handed one.
-	CeilingUSD float64  `json:"ceiling_usd,omitempty"`
-	Calls      int      `json:"calls,omitempty"`
-	Models     []string `json:"models,omitempty"`
-	Effort     string   `json:"effort,omitempty"`
+	CeilingUSD float64 `json:"ceiling_usd,omitempty"`
+	// Calls is how many of the record's process's calls reached a model,
+	// PRESENT ONLY WHEN KNOWN: every one of its calls was read. A present 0 is a
+	// process that made none; absent is unknown, never zero.
+	Calls  *int     `json:"calls,omitempty"`
+	Models []string `json:"models,omitempty"`
+	Effort string   `json:"effort,omitempty"`
 	// Listens is what the program's declaration says; Listening and InboxClosed
 	// are its record's. Copied, never inferred.
 	Listens     bool   `json:"listens"`
 	Listening   bool   `json:"listening"`
 	Started     bool   `json:"started"`
 	InboxClosed string `json:"inbox_closed,omitempty"`
-	// Read says what Actions, EarlierActions, LastStage and Ending were read
-	// from: "complete" is every line the record's own process wrote, and
-	// "unknown" is no line that could be tied to that process (a run recorded
-	// before launches were, a relaunch before its hello, a log that could not be
-	// read). Under "unknown" all four are absent and say nothing — not "no
-	// actions", not "no ending".
-	Read string `json:"read"`
+	// Read says what the actions and everything about where the process stands
+	// were read from (one of the ProgramRead words), and ReadCut why a read is
+	// partial (one of the ProgramCut words).
+	Read    string `json:"read"`
+	ReadCut string `json:"read_cut,omitempty"`
 	// Actions are the newest actions the record's own process took, oldest
 	// first; an earlier run's are never among them. Absent under a complete read
-	// is a process that has shown no action yet.
-	Actions        []ProgramAction `json:"actions,omitempty"`
-	EarlierActions int             `json:"earlier_actions,omitempty"`
+	// is a process that has shown no action yet; absent otherwise says nothing.
+	Actions []ProgramAction `json:"actions,omitempty"`
+	// EarlierActions is how many of the process's own actions came before the
+	// first carried, and Before the cursor that reads them (tasks.program_actions);
+	// both only under a complete read, Before only when there are some.
+	EarlierActions int    `json:"earlier_actions,omitempty"`
+	Before         string `json:"before,omitempty"`
 	// Ending is the process's ending when its own last line is the ending.
 	Ending *ProgramEnding `json:"ending,omitempty"`
+}
+
+// What a program's actions were read from (TaskProgram.Read).
+const (
+	// ProgramReadComplete: every line the record's process wrote; the actions,
+	// earlier_actions, last_stage and ending are exact.
+	ProgramReadComplete = "complete"
+	// ProgramReadPartial: not all of them (read_cut says why). The actions
+	// carried are some of the process's; there is no count, no last stage and
+	// no ending, and no claim that there are none.
+	ProgramReadPartial = "partial"
+	// ProgramReadUnknown: no line can be tied to the record's process (a run
+	// recorded before launches were, a relaunch before its hello). Nothing about
+	// its work is carried.
+	ProgramReadUnknown = "unknown"
+)
+
+// Why a program's read is partial (TaskProgram.ReadCut).
+const (
+	ProgramCutBudget     = "budget"
+	ProgramCutDamaged    = "damaged"
+	ProgramCutUnreadable = "unreadable"
+	ProgramCutDeadline   = "deadline"
+)
+
+// ProgramActionsParams asks for the page of a program's actions before a
+// cursor a read handed out.
+type ProgramActionsParams struct {
+	ID     string `json:"id"`
+	Before string `json:"before"`
+}
+
+// ProgramActionsResult is one older page of a program's actions: its own read
+// state, the actions oldest first, and the cursor of the page before it.
+type ProgramActionsResult struct {
+	Read           string          `json:"read"`
+	ReadCut        string          `json:"read_cut,omitempty"`
+	Actions        []ProgramAction `json:"actions,omitempty"`
+	EarlierActions int             `json:"earlier_actions,omitempty"`
+	Before         string          `json:"before,omitempty"`
+}
+
+// ProgramPager is the optional half of a Worker that pages a program's older
+// actions: tasks.program_actions. An engine without it refuses the method as
+// unknown.
+type ProgramPager interface {
+	// ProgramActions answers the page before the cursor before of the task's
+	// program. A cursor of a launch that is no longer the task's is a conflict.
+	ProgramActions(id, before string) (ProgramActionsResult, error)
+}
+
+func init() {
+	methods["tasks.program_actions"] = typed(func(e Engine, p ProgramActionsParams) (*ProgramActionsResult, error) {
+		pager, ok := e.(ProgramPager)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve tasks.program_actions")
+		}
+		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Before) == "" {
+			return nil, Errorf(CodeBadParams, "tasks.program_actions needs an id and a before")
+		}
+		page, err := pager.ProgramActions(p.ID, p.Before)
+		if err != nil {
+			return nil, err
+		}
+		return &page, nil
+	})
 }
 
 // ProgramStage is one stage of the program's hello and the word a person reads

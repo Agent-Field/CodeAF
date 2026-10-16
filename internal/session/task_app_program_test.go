@@ -1,9 +1,12 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +50,17 @@ func programAppFixture(t *testing.T, tail ...delegate.Action) (*Agent, string) {
 	record.StartedAt = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 	record.Launch = fixtureLaunch
 	appendLines(t, folder, delegate.StartAction(record.StartedAt, fixtureLaunch))
+	// The launch's own calls: one answered (written as it starts and as it
+	// ends), one refused. The fixture's earlier, unstamped calls are not its.
+	for _, turn := range []delegate.Turn{
+		{Seq: 1, Launch: fixtureLaunch, Started: record.StartedAt},
+		{Seq: 1, Launch: fixtureLaunch, Started: record.StartedAt, Ended: record.StartedAt.Add(time.Second)},
+		{Seq: 2, Launch: fixtureLaunch, Started: record.StartedAt, Refused: "the run's dollar ceiling is reached"},
+	} {
+		if err := delegate.AppendTurn(folder, turn); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := delegate.WriteProgram(folder, record); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +99,7 @@ func TestAppTaskCarriesTheProgramTheStageWordsAndTheLastStage(t *testing.T) {
 	agent, _ := programAppFixture(t)
 	view := appTaskOf(t, agent)
 	p := view.Program
-	if p.Name != "senior-dev" || p.CeilingUSD != 5 || p.Calls != 2 || p.Effort != "high" || !p.Listens || p.LastStage != "intake" {
+	if p.Name != "senior-dev" || p.CeilingUSD != 5 || p.Calls == nil || *p.Calls != 1 || p.Effort != "high" || !p.Listens || p.LastStage != "intake" {
 		t.Fatalf("program = %+v", p)
 	}
 	// A wordless stage keeps the word standing before it, as the live step does.
@@ -248,27 +262,190 @@ func assertUnknownProgram(t *testing.T, p *AppProgramView) {
 	}
 }
 
-// AN ENDING THE READER DROPPED IS NOT THE LAST SHOWN ACTION'S.
+// AN ENDING THE READER DROPPED IS NOT THE LAST SHOWN ACTION'S: an `end` line
+// with no words is not shown, and the step before it is not its ending.
 func TestAnUnshownEndingIsNotReportedAsTheLastAction(t *testing.T) {
-	at := time.Date(2026, 10, 16, 9, 1, 0, 0, time.UTC)
-	logged := []delegate.Action{
-		{At: at, Kind: delegate.ActionStep, Step: "explore", Command: "read a.go"},
-		{At: at, Kind: delegate.ActionEnd, Status: delegate.StatusPass},
-	}
-	current := planProgramLaunchOf(logged, planProgramOf(nil, "x"), planRunCopies{})
-	if len(current.Actions) != 1 || current.Ending != nil {
-		t.Fatalf("the step before an unshown ending was reported as the ending: %+v", current)
+	agent, _ := programAppFixture(t, delegate.EndAction(time.Date(2026, 10, 16, 9, 30, 0, 0, time.UTC), delegate.Terminal{Status: delegate.StatusPass}))
+	if p := appTaskOf(t, agent).Program; p.Read != AppProgramReadComplete || len(p.Actions) != 2 || p.Ending != nil || p.EndStatus != "" {
+		t.Fatalf("the step before an unshown ending was reported as the ending: %+v", p)
 	}
 }
 
-func TestTheAppReadKeepsTheNewestActionsWithoutDetailAndDropsOverlongStages(t *testing.T) {
-	agent := &Agent{}
-	page := PlanTaskPage{Program: &PlanProgram{Name: "x", Stages: []string{"a", string(make([]byte, 200))}, Current: &PlanProgramLaunch{EarlierActions: 3}}}
-	for i := 0; i < AppProgramActionsMax+10; i++ {
-		page.Program.Current.Actions = append(page.Program.Current.Actions, delegate.Shown{Text: "t", Detail: "big"})
+func TestTheAppReadDropsAHelloItCannotCarryWhole(t *testing.T) {
+	program := delegate.Delegate{Name: "x"}
+	if stages := appProgramStages(program, []string{"a", strings.Repeat("b", 200)}); stages != nil {
+		t.Fatalf("an overlong stage kept %+v", stages)
 	}
-	view := agent.appProgramView(page)
-	if len(view.Actions) != AppProgramActionsMax || view.EarlierActions != 13 || view.Actions[0].Detail != "" || len(view.Stages) != 0 {
-		t.Fatalf("view = %d actions, %d earlier, %d stages", len(view.Actions), view.EarlierActions, len(view.Stages))
+	if stages := appProgramStages(program, make([]string, appProgramStagesMax+1)); stages != nil {
+		t.Fatalf("an overlong hello kept %d stages", len(stages))
+	}
+}
+
+// stampedSteps appends n of the fixture launch's steps.
+func stampedSteps(t *testing.T, folder string, n int) {
+	t.Helper()
+	at := time.Date(2026, 10, 16, 9, 5, 0, 0, time.UTC)
+	for i := range n {
+		appendLines(t, folder, stamped(fixtureLaunch, delegate.StepAction(at, delegate.StepRecord{Tool: "read", Step: "explore",
+			Command: "read f" + strconv.Itoa(i) + ".go", Observation: "the file's whole text"})))
+	}
+}
+
+// EVERY ACTION OF THE PROCESS IS REACHABLE FROM THE APP: the task read carries
+// the newest page and the cursor of the one before, and paging back reaches the
+// first action, each exactly once, in order, without its detail. A cursor of a
+// launch the task has since moved past is refused as gone, never answered with
+// the new launch's actions.
+func TestEveryActionOfTheProcessIsReachableByPaging(t *testing.T) {
+	agent, dir := programAppFixture(t)
+	folder := plandb.TaskDir(dir, "alpha")
+	stampedSteps(t, folder, 150)
+	view := appTaskOf(t, agent)
+	p := view.Program
+	if p.Read != AppProgramReadComplete || len(p.Actions) != AppProgramActionsMax || p.EarlierActions != 152-AppProgramActionsMax || p.Before == "" {
+		t.Fatalf("read %q, %d actions, %d earlier, before %q", p.Read, len(p.Actions), p.EarlierActions, p.Before)
+	}
+	all := append([]delegate.Shown(nil), p.Actions...)
+	before := p.Before
+	for before != "" {
+		page, found, err := agent.AppProgramActions(view.ID, before)
+		if err != nil || !found || page.Gone || page.Read != AppProgramReadComplete || len(page.Actions) == 0 {
+			t.Fatalf("page before %q: %+v %v %v", before, page, found, err)
+		}
+		all = append(page.Actions, all...)
+		before = page.Before
+	}
+	if len(all) != 152 || all[0].Text != "intake · captured" || !strings.Contains(all[2].Text, "f0.go") || !strings.Contains(all[151].Text, "f149.go") {
+		t.Fatalf("paged %d actions: first %+v last %+v", len(all), all[0], all[len(all)-1])
+	}
+	for _, action := range all {
+		if action.Detail != "" {
+			t.Fatalf("an action crossed with its detail: %+v", action)
+		}
+	}
+	record, _ := delegate.ReadProgram(folder)
+	record.Launch = earlierLaunch
+	if err := delegate.WriteProgram(folder, record); err != nil {
+		t.Fatal(err)
+	}
+	if page, found, err := agent.AppProgramActions(view.ID, p.Before); err != nil || !found || !page.Gone || page.Actions != nil {
+		t.Fatalf("a cursor of another launch: %+v %v %v", page, found, err)
+	}
+	if _, _, err := agent.AppProgramActions(view.ID, "not a cursor"); err == nil {
+		t.Fatal("a malformed cursor was answered")
+	}
+}
+
+// WHAT THE APP COULD NOT READ IT DOES NOT CALL EMPTY, ZERO OR COMPLETE: a
+// damaged line among the process's, a process longer than the read's budget, a
+// conversation log longer than the count's, a read cut by its deadline.
+func TestTheAppSaysWhatItCouldNotRead(t *testing.T) {
+	end := delegate.EndAction(time.Date(2026, 10, 16, 9, 30, 0, 0, time.UTC), delegate.Terminal{Status: delegate.StatusPass, Message: "handed in"})
+	partial := func(t *testing.T, p *AppProgramView, cut string) {
+		t.Helper()
+		if p.Read != AppProgramReadPartial || p.ReadCut != cut || p.EarlierActions != 0 || p.Before != "" || p.LastStage != "" || p.Ending != nil || p.EndStatus != "" {
+			t.Fatalf("a partly read process says %+v", p)
+		}
+	}
+	t.Run("a damaged line", func(t *testing.T) {
+		agent, dir := programAppFixture(t)
+		file, err := os.OpenFile(filepath.Join(plandb.TaskDir(dir, "alpha"), delegate.ActionsFile), os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = file.WriteString(`{"kind":"end","launch":"` + fixtureLaunch + `",` + "\n")
+		_ = file.Close()
+		appendLines(t, plandb.TaskDir(dir, "alpha"), stamped(fixtureLaunch, end))
+		p := appTaskOf(t, agent).Program
+		partial(t, p, delegate.ReadCutDamaged)
+		if len(p.Actions) != 3 || p.Calls == nil {
+			t.Fatalf("what was read is still carried: %d actions, calls %v", len(p.Actions), p.Calls)
+		}
+	})
+	t.Run("a process longer than the budget", func(t *testing.T) {
+		agent, dir := programAppFixture(t, end)
+		stampedSteps(t, plandb.TaskDir(dir, "alpha"), 40)
+		was := appProgramActionsBudget
+		appProgramActionsBudget = delegate.ReadBudget{Bytes: 2 << 10, Lines: 1000}
+		defer func() { appProgramActionsBudget = was }()
+		p := appTaskOf(t, agent).Program
+		partial(t, p, delegate.ReadCutBudget)
+		if p.Actions != nil {
+			t.Fatalf("a process over the budget carried %d actions", len(p.Actions))
+		}
+	})
+	t.Run("a conversation longer than the count's budget", func(t *testing.T) {
+		agent, _ := programAppFixture(t)
+		was := appProgramCallsBudget
+		appProgramCallsBudget = delegate.ReadBudget{Bytes: 64, Lines: 1000}
+		defer func() { appProgramCallsBudget = was }()
+		if p := appTaskOf(t, agent).Program; p.Read != AppProgramReadComplete || p.Calls != nil {
+			t.Fatalf("calls = %v read %q", p.Calls, p.Read)
+		}
+	})
+	t.Run("a read whose deadline passed", func(t *testing.T) {
+		agent, _ := programAppFixture(t, end)
+		_, source, ok := agent.planTaskPageFor("t-alpha", false)
+		if !ok {
+			t.Fatal("no page")
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		p := agent.appProgramRead(ctx, source, -1, "")
+		partial(t, p, delegate.ReadCutDeadline)
+		if p.Calls != nil {
+			t.Fatalf("a cancelled count was known: %v", *p.Calls)
+		}
+	})
+}
+
+// THE APP'S READ OF A PROGRAM COSTS ITS PROCESS, NOT ITS TASK'S HISTORY: a task
+// whose earlier runs left sixty-four megabytes of actions is read through the
+// real AppTask door without reading them.
+func TestTheAppReadOfAProgramDoesNotReadItsWholeHistory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("writes a 64 MiB log")
+	}
+	agent, dir := programPageFixture(t)
+	folder := plandb.TaskDir(dir, "alpha")
+	file, err := os.OpenFile(filepath.Join(folder, delegate.ActionsFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := []byte(`{"at":"2026-10-16T08:00:00Z","kind":"step","launch":"` + earlierLaunch + `","command":"` + strings.Repeat("o", 3000) + `"}` + "\n")
+	chunk := []byte(strings.Repeat(string(line), 256))
+	for written := 0; written < 64<<20; written += len(chunk) {
+		if _, err := file.Write(chunk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = file.Close()
+	record, _ := delegate.ReadProgram(folder)
+	record.Launch, record.StartedAt = fixtureLaunch, time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	if err := delegate.WriteProgram(folder, record); err != nil {
+		t.Fatal(err)
+	}
+	appendLines(t, folder, delegate.StartAction(record.StartedAt, fixtureLaunch))
+	stampedSteps(t, folder, 10)
+	rows, err := agent.AppTasks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	for _, row := range rows {
+		if row.Title == "Alpha" {
+			id = row.ID
+		}
+	}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	view, found, err := agent.AppTask(id)
+	runtime.ReadMemStats(&after)
+	if err != nil || !found || view.Program == nil || view.Program.Read != AppProgramReadComplete || len(view.Program.Actions) != 10 {
+		t.Fatalf("view = %+v %v %v", view.Program, found, err)
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 24<<20 {
+		t.Fatalf("one app read of a program over a 64 MiB history allocated %d MiB", allocated>>20)
 	}
 }

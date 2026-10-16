@@ -304,8 +304,12 @@ func (a *Agent) AppTask(id string) (AppTaskView, bool, error) {
 	}
 	for _, row := range rows {
 		if row.ID == id {
-			if page, ok := a.PlanTaskPage(id); ok {
-				row.Program = a.appProgramView(page)
+			// THE PROGRAM IS READ WITHIN ITS OWN BUDGET, never through the page's
+			// whole-log read (task_app_program.go).
+			if page, source, ok := a.planTaskPageFor(id, false); ok {
+				ctx, cancel := context.WithTimeout(context.Background(), appProgramReadTime)
+				row.Program = a.appProgramRead(ctx, source, -1, "")
+				cancel()
 				if row.Brief == "" {
 					row.Brief = page.Description
 				}

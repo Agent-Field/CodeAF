@@ -2187,7 +2187,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodRenderList, MethodRenderGet, MethodRenderCancel:
 		return dispatchRender(agent, call)
 	case MethodAppTasks, MethodAppTask, MethodAppTaskAction, MethodAppQuickTasks, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppRename,
-		MethodAppTaskRouting, MethodAppTaskRoutingAct, MethodAppTaskRoutingOptions:
+		MethodAppTaskRouting, MethodAppTaskRoutingAct, MethodAppTaskRoutingOptions, MethodAppProgramActions:
 		return dispatchAppTask(agent, call)
 	case MethodTaskRetry:
 		args, err := arg[TaskSetupArgs](call)

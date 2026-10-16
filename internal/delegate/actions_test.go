@@ -93,41 +93,27 @@ func TestAProgramWithNoVocabularyIsReadPlainly(t *testing.T) {
 	}
 }
 
-// A LINE CARRIES A LAUNCH ONLY IN THE ONE SHAPE A LAUNCH IS DRAWN IN, and a
-// reader of one launch's lines keeps that launch's and nothing else — not an
-// earlier launch's, not a line stamped before launches were — and cannot be
-// asked about a launch that is not one.
-func TestALaunchsLinesAreTheOnesItStamped(t *testing.T) {
+// A LINE CARRIES A LAUNCH ONLY IN THE ONE SHAPE A LAUNCH IS DRAWN IN: a
+// malformed one is dropped as the line is written, and two launches never
+// share an identity.
+func TestALineCarriesALaunchOnlyInTheShapeOneIsDrawnIn(t *testing.T) {
 	dir := t.TempDir()
-	at := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 	mine, other := NewLaunch(), NewLaunch()
 	if !ValidLaunch(mine) || mine == other {
 		t.Fatalf("launches %q %q", mine, other)
 	}
-	forged := StageAction(at, StageRecord{Stage: "x"})
+	forged := StageAction(time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC), StageRecord{Stage: "x"})
 	forged.Launch = "not-a-launch"
-	lines := []Action{
-		StageAction(at, StageRecord{Stage: "unstamped"}),
-		StartAction(at, mine),
-		{At: at, Kind: ActionStage, Stage: "mine", Launch: mine},
-		{At: at, Kind: ActionEnd, Message: "the other's", Launch: other},
-		forged,
+	if err := AppendAction(dir, forged); err != nil {
+		t.Fatal(err)
 	}
-	for _, line := range lines {
-		if err := AppendAction(dir, line); err != nil {
-			t.Fatal(err)
-		}
+	if err := AppendTurn(dir, Turn{Seq: 1, Launch: "NOT-HEX"}); err != nil {
+		t.Fatal(err)
 	}
 	logged, err := ReadActions(dir, 0)
-	if err != nil || len(logged) != 5 || logged[4].Launch != "" {
-		t.Fatalf("logged %+v, err %v", logged, err)
-	}
-	got, ok := LaunchActions(logged, mine)
-	if !ok || len(got) != 1 || got[0].Stage != "mine" {
-		t.Fatalf("mine = %+v %v", got, ok)
-	}
-	if got, ok := LaunchActions(logged, ""); ok || got != nil {
-		t.Fatalf("an absent launch answered %+v", got)
+	turns, turnErr := ReadTurns(dir, 0)
+	if err != nil || turnErr != nil || len(logged) != 1 || logged[0].Launch != "" || len(turns) != 1 || turns[0].Launch != "" {
+		t.Fatalf("logged %+v turns %+v (%v %v)", logged, turns, err, turnErr)
 	}
 	for _, bad := range []string{"", "ABCDEF0123456789abcdef0123456789", mine + "0", mine[:31]} {
 		if ValidLaunch(bad) {

@@ -189,25 +189,6 @@ func ReadActions(dir string, n int) ([]Action, error) {
 	return actions, nil
 }
 
-// LaunchActions is the lines one launch wrote ([Action.Launch]), in the order
-// the log holds them, out of a log read whole, without the launch's own start
-// line; ok is false when launch is not a launch's identity, which is a reader
-// that cannot tell which lines are the process's and must say so. Lines of any
-// other launch — an earlier run's, one written late, one stamped before
-// launches were — are never this launch's, whatever their time says.
-func LaunchActions(logged []Action, launch string) ([]Action, bool) {
-	if !ValidLaunch(launch) {
-		return nil, false
-	}
-	var lines []Action
-	for _, action := range logged {
-		if action.Launch == launch && action.Kind != ActionStart {
-			lines = append(lines, action)
-		}
-	}
-	return lines, true
-}
-
 // Shown is one action as a person reads it on its program's page: the step it
 // belongs under, the words, and how it came out. A program's own vocabulary
 // makes it ([Delegate.Present]); a program with none is read plainly
