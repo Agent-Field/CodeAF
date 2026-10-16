@@ -38,6 +38,9 @@ type appCrewExtra struct {
 	// HistoryOwner is the agent that held History's tasks when the crew was made.
 	HistoryOwner string             `json:"history_owner,omitempty"`
 	Items        []appwire.CrewItem `json:"items,omitempty"`
+	// Start is the request that made this crew with its own manager
+	// (appteamstart.go): what a repeated request is answered from.
+	Start *appStartRecord `json:"start,omitempty"`
 }
 
 // appMemberExtra is what the layer keeps for one member of one crew.

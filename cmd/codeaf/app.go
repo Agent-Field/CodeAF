@@ -362,6 +362,12 @@ type appBackend struct {
 	// mint makes a new conversation's folder and answers its transcript path:
 	// the one piece of agents.create that happens before the answer.
 	mint func(workspace string) (string, error)
+	// unmint takes back a folder mint made when what it was made for was
+	// refused (appteamstart.go); nil is [appUnmint].
+	unmint func(transcript string)
+	// startMu is the one team start in flight (appteamstart.go): a second
+	// concurrent start is refused busy, never queued.
+	startMu sync.Mutex
 	// warmed closes when [appBackend.Warm] has finished, which Close waits
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}
@@ -822,6 +828,21 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 // agent is named by them. A conversation that cannot be opened says so as a
 // failed turn and a stopped agent.
 func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
+	view, launch, err := b.createAgentHeld(ask, "")
+	if err != nil {
+		return appwire.Agent{}, err
+	}
+	launch()
+	return view, nil
+}
+
+// createAgentHeld is [appBackend.CreateAgent] up to, and not including, the
+// background open and first turn: it answers the agent and a launch that
+// starts them. A caller that must make something else true BEFORE the first
+// message can reach the model (a team the manager belongs to) holds the launch
+// until it is, and never calls it when that fails. minted, when set, is the
+// conversation folder's transcript the caller already made with b.mint.
+func (b *appBackend) createAgentHeld(ask appwire.CreateAsk, minted string) (appwire.Agent, func(), error) {
 	// No workspace is the work folder the person chose, or their home folder.
 	workspace := ask.Workspace
 	if strings.TrimSpace(workspace) == "" {
@@ -829,10 +850,10 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	}
 	resolved, err := engineWorkspace(workspace)
 	if err != nil {
-		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
+		return appwire.Agent{}, nil, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	}
 	if b.isClosing() {
-		return appwire.Agent{}, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
+		return appwire.Agent{}, nil, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
 	text := strings.TrimSpace(ask.Text)
 	// EVERY ATTACHMENT IS READ BEFORE ANYTHING IS MADE: one that is malformed,
@@ -840,7 +861,7 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	// refusal leaves no folder, no agent and no event behind it. It is a stat
 	// per file, outside every lock.
 	if err := appwire.CheckAttachSources(ask.Attachments); err != nil {
-		return appwire.Agent{}, err
+		return appwire.Agent{}, nil, err
 	}
 	kept := make([]appAttach, 0, len(ask.Attachments))
 	for _, source := range ask.Attachments {
@@ -848,16 +869,19 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 			Kind: source.Kind, Path: strings.TrimSpace(source.Path), URL: strings.TrimSpace(source.URL),
 		}, source.Text, true)
 		if err != nil {
-			return appwire.Agent{}, err
+			return appwire.Agent{}, nil, err
 		}
 		kept = append(kept, attach)
 	}
 	if err := appAttachChars(kept); err != nil {
-		return appwire.Agent{}, err
+		return appwire.Agent{}, nil, err
 	}
-	transcript, err := b.mint(resolved)
-	if err != nil {
-		return appwire.Agent{}, appEngineError(err)
+	transcript := minted
+	if transcript == "" {
+		var err error
+		if transcript, err = b.mint(resolved); err != nil {
+			return appwire.Agent{}, nil, appEngineError(err)
+		}
 	}
 	model := strings.TrimSpace(ask.Model)
 	a := b.agent(appAgentID(transcript))
@@ -873,7 +897,7 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 			return nil
 		})
 		if err != nil {
-			return appwire.Agent{}, appEngineError(err)
+			return appwire.Agent{}, nil, appEngineError(err)
 		}
 	}
 	var view appwire.Agent
@@ -885,7 +909,17 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 			a.attachN++
 			kept[i].view.ID = "at" + strconv.Itoa(a.attachN)
 		}
-		first.words, first.shown = appAttachWords(text, kept), appAttachShown(text, kept)
+		first.words = appAttachWords(text, kept)
+		// THE PERSON'S OWN WORDS are what the entry and the record show when
+		// they gave them; the model is sent first.words either way.
+		said := text
+		if ask.Said != nil {
+			said = strings.TrimSpace(*ask.Said)
+		}
+		first.shown = appAttachShown(said, kept)
+		if first.shown == nil && ask.Said != nil && first.words != "" {
+			first.shown = &appSending{text: said}
+		}
 		a.transcript = transcript
 		// THE NAME THE TAB DRAWS UNTIL THE ENGINE'S ARRIVES is the one the engine
 		// itself writes at acceptance: the person's words, or the names of the
@@ -912,8 +946,7 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	})
 	view = b.stampAgentBudget(a)
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
-	guard.Go("app/create", func() { b.bootAgent(a, first) })
-	return view, nil
+	return view, func() { guard.Go("app/create", func() { b.bootAgent(a, first) }) }, nil
 }
 
 // bootAgent opens a created agent's conversation and starts its first turn.

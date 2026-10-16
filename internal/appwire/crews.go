@@ -360,6 +360,17 @@ type CrewCreate struct {
 	Proposal  string        `json:"proposal"`
 	Edits     *Proposal     `json:"edits"`
 	CapUSDDay *float64      `json:"cap_usd_day"`
+
+	// The fields below are crews.start's: they ride on crews.create only with
+	// StartManager, and any of them without it is bad_params (crewstart.go).
+	StartManager         bool           `json:"start_manager,omitempty"`
+	ManagerStartsMembers bool           `json:"manager_starts_members,omitempty"`
+	RequestID            string         `json:"request_id,omitempty"`
+	Said                 *string        `json:"said,omitempty"`
+	ClientID             string         `json:"client_id,omitempty"`
+	Attachments          []AttachSource `json:"attachments,omitempty"`
+	Workspace            string         `json:"workspace,omitempty"`
+	Model                string         `json:"model,omitempty"`
 }
 
 // CrewUpdate is crews.update's params; a nil field is left alone.
@@ -480,7 +491,8 @@ func needID(name, id string) error {
 }
 
 type crewResult struct {
-	Crew Crew `json:"crew"`
+	Crew  Crew         `json:"crew"`
+	Start *CrewStarted `json:"start,omitempty"`
 }
 
 func crewOf(c Crew, err error) (*crewResult, error) {
@@ -488,7 +500,7 @@ func crewOf(c Crew, err error) (*crewResult, error) {
 		return nil, err
 	}
 	c.Members = nonNil(c.Members)
-	return &crewResult{c}, nil
+	return &crewResult{Crew: c}, nil
 }
 
 // LogAnchorAsk names one crew log line from a conversation's own record: the
@@ -574,7 +586,13 @@ var crewMethods = map[string]method{
 		return crewOf(c.CrewGet(p.ID))
 	}),
 	"crews.create": crewCall("crews.create", func(c Crewer, p CrewCreate) (*crewResult, error) {
+		if p.StartManager || p.startFieldsSet() {
+			return startCrew(c, p)
+		}
 		return crewOf(c.CrewCreate(p))
+	}),
+	"crews.root.start": crewCall("crews.root.start", func(c Crewer, p RootStartAsk) (*RootStartResult, error) {
+		return startRoot(c, p)
 	}),
 	"crews.update": crewCall("crews.update", func(c Crewer, p CrewUpdate) (*crewResult, error) {
 		if err := needID("crews.update", p.ID); err != nil {

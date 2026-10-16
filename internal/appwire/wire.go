@@ -810,6 +810,9 @@ type CreateAsk struct {
 	Text        string         `json:"text"`
 	ClientID    string         `json:"client_id"`
 	Attachments []AttachSource `json:"attachments,omitempty"`
+	// Said is the person's own words for the first message: what its entry and
+	// the record show in place of Text, as agents.send's said does. Absent is Text.
+	Said *string `json:"said,omitempty"`
 }
 
 // Warmer is an engine with something slow it can start on before anything is

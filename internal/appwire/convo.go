@@ -205,6 +205,11 @@ func withMessageReadsFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(MediaReferenceResolver); ok {
 		hello = withFeature(hello, FeatureMediaResolve)
 	}
+	if _, ok := e.(CrewStarter); ok {
+		if _, ok := e.(RootStarter); ok {
+			hello = withFeature(hello, FeatureCrewStart)
+		}
+	}
 	return hello
 }
 
