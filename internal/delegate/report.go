@@ -131,9 +131,10 @@ func IssueReportReceipt(name string, body []byte) ReportReceipt {
 }
 
 // valid answers whether the receipt has the shape one can: a bare name, a
-// count within [ReportMax], and 64 lowercase hex digits.
+// non-negative byte count, and 64 lowercase hex digits. The read limit does
+// not erase an issued report: an oversize report stays known but cannot be served.
 func (r ReportReceipt) valid() bool {
-	if !ValidReportName(r.Name) || r.Bytes < 0 || r.Bytes > ReportMax || len(r.SHA256) != sha256.Size*2 {
+	if !ValidReportName(r.Name) || r.Bytes < 0 || len(r.SHA256) != sha256.Size*2 {
 		return false
 	}
 	for i := 0; i < len(r.SHA256); i++ {
@@ -245,6 +246,9 @@ func ReadIssuedReport(ctx context.Context, dir, launch, name string, declares fu
 	receipt, ok := record.Receipt(name)
 	if !ok {
 		return IssuedReport{}, ErrReportNotIssued
+	}
+	if receipt.Bytes > ReportMax {
+		return IssuedReport{}, ErrReportTooLarge
 	}
 	data, err := folder.readReport(ctx, name, receipt.Bytes)
 	if err != nil {

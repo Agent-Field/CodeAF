@@ -156,13 +156,13 @@ func TestReadIssuedReportBoundIsExact(t *testing.T) {
 	if got, err := readIssued(dir, reportLaunchA, "review-report.json"); !errors.Is(err, ErrReportTooLarge) || got.Data != nil {
 		t.Fatalf("one over: %d bytes, %v", len(got.Data), err)
 	}
-	// A receipt that claims more than the bound is no receipt.
+	// An issued report over the read bound stays known, but its bytes are refused.
 	record, _ := ReadProgram(dir)
 	record.ReportReceipts[0].Bytes = ReportMax + 1
 	if err := WriteProgram(dir, record); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readIssued(dir, reportLaunchA, "review-report.json"); !errors.Is(err, ErrReportNotIssued) {
+	if _, err := readIssued(dir, reportLaunchA, "review-report.json"); !errors.Is(err, ErrReportTooLarge) {
 		t.Fatalf("receipt over the bound: %v", err)
 	}
 }
@@ -406,5 +406,36 @@ func TestIssuedReceiptsKeepsOnlyWellFormedDeclaredReceipts(t *testing.T) {
 	}
 	if got := program.IssuedReceipts(line(many)); got != nil {
 		t.Fatalf("too many: %v", got)
+	}
+}
+
+func TestOversizeIssuedReportRemainsKnownAndRefusesItsBytes(t *testing.T) {
+	body := bytes.Repeat([]byte("x"), ReportMax+1)
+	receipt := IssueReportReceipt("review-report.json", body)
+	raw, err := json.Marshal([]ReportReceipt{receipt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	program := Delegate{Reports: []string{"review-report.json"}}
+	kept := program.IssuedReceipts(&Terminal{Status: StatusPass, Data: map[string]json.RawMessage{ReportReceiptsKey: raw}})
+	if len(kept) != 1 || kept[0] != receipt {
+		t.Fatalf("genuine large report lost its receipt: %+v", kept)
+	}
+	dir := t.TempDir()
+	writeReportFile(t, dir, receipt.Name, body)
+	record := ProgramRecord{Name: "review", Launch: reportLaunchA, StartedAt: reportStarted, EndedAt: reportStarted.Add(time.Minute), ReportReceipts: kept}
+	if err := WriteProgram(dir, record); err != nil {
+		t.Fatal(err)
+	}
+	reopened, ok := ReadProgram(dir)
+	if !ok {
+		t.Fatal("record not read")
+	}
+	if _, ok := reopened.Receipt(receipt.Name); !ok {
+		t.Fatal("replay forgot genuine oversize report")
+	}
+	got, err := readIssued(dir, reportLaunchA, receipt.Name)
+	if !errors.Is(err, ErrReportTooLarge) || got.Data != nil {
+		t.Fatalf("oversize must be known but unread: bytes=%d err=%v", len(got.Data), err)
 	}
 }
