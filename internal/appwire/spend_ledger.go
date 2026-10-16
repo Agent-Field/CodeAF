@@ -100,11 +100,10 @@ type SpendLedgerExportParams struct {
 // SpendLedgerRow is one row at its grain. time is the first call's instant and
 // end the last's, both with the engine's local offset.
 type SpendLedgerRow struct {
-	Grain string    `json:"grain" enum:"run,call"`
-	Key   string    `json:"key"`
-	Run   string    `json:"run,omitempty"`
-	Time  time.Time `json:"time"
- "unicode/utf8"`
+	Grain      string    `json:"grain" enum:"run,call"`
+	Key        string    `json:"key"`
+	Run        string    `json:"run,omitempty"`
+	Time       time.Time `json:"time"`
 	End        time.Time `json:"end"`
 	Kind       string    `json:"kind,omitempty" enum:"agent,task,automation"`
 	Subject    string    `json:"subject,omitempty"`
