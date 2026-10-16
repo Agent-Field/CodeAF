@@ -1740,6 +1740,14 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 // words ([session.Agent.SubmitMessage]): it travels on the same call, so the
 // engine records the words and the mark on one line or neither.
 func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error) {
+	if message.Said != nil || len(message.Attachments) > 0 || len(message.Reads) > 0 {
+		a.c.mu.Lock()
+		known := a.c.welcome.MessageMarks
+		a.c.mu.Unlock()
+		if !known {
+			return nil, errors.New("engine: this engine cannot keep a message's description; update it before sending")
+		}
+	}
 	return a.open(ctx, MethodSubmit, SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads})
 }
 

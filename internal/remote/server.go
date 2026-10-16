@@ -1202,6 +1202,13 @@ func memoryCommandsKnown(agent any) bool {
 	return ok && door.Remembers()
 }
 
+func messageMarksKnown(agent any) bool {
+	_, ok := agent.(interface {
+		SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+	})
+	return ok
+}
+
 func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
@@ -1214,6 +1221,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		note += newer
 	}
 	return Welcome{
+		MessageMarks:               messageMarksKnown(sess.agent),
 		Version:                    Version,
 		Workspace:                  sess.engine.Workspace,
 		SessionFile:                sess.engine.SessionFile,
@@ -2550,14 +2558,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MESSAGE WITH A MARK IS RECORDED WITH IT, by the agent's own door for
-		// one. An agent without that door runs the words alone, which is what
-		// every message was before the mark existed.
+		// A MESSAGE WITH A MARK IS RECORDED WITH IT OR REFUSED WHOLE. Running
+		// only its words would silently lose what the person attached or read.
 		var events <-chan session.Event
 		door, marked := agent.(interface {
 			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
 		})
-		if marked && (args.Said != nil || len(args.Attachments) > 0 || len(args.Reads) > 0) {
+		hasMark := args.Said != nil || len(args.Attachments) > 0 || len(args.Reads) > 0
+		if hasMark && !marked {
+			return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
+		}
+		if hasMark {
 			events, err = door.SubmitMessage(context.Background(), session.Submission{Text: args.Text, Said: args.Said, Attachments: args.Attachments, Reads: args.Reads})
 		} else {
 			events, err = agent.Submit(context.Background(), args.Text)

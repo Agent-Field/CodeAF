@@ -1040,6 +1040,10 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// MessageMarks says this engine records a submission's authored words,
+	// attachments and reference-read facts together. Absence is an older
+	// engine: a marked submission must be refused before any words are sent.
+	MessageMarks bool `json:"messageMarks,omitempty"`
 	// SessionInstance identifies this live conversation owner, not its durable
 	// transcript. A replaced engine can reopen the same file with stream IDs
 	// starting over, so a returning surface must forget the previous owner IDs.

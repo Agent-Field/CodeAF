@@ -25,7 +25,7 @@ func (m *markedAgent) SubmitMessage(ctx context.Context, message session.Submiss
 // A MESSAGE'S MARK CROSSES THE WIRE ON THE SAME CALL AS ITS WORDS. Submit with
 // the person's words and attachments reaches the agent's own door for them,
 // whole; Submit without them is the plain Submit it always was; and an agent
-// with no such door — an engine from before the mark — runs the words alone.
+// with no such door refuses the whole marked message.
 func TestSubmitCarriesTheMessagesMarkToTheAgentsDoor(t *testing.T) {
 	said := ""
 	pasteBytes, pasteLines := int64(12), 2
@@ -64,10 +64,25 @@ func TestSubmitCarriesTheMessagesMarkToTheAgentsDoor(t *testing.T) {
 
 	plain := &fakeAgent{model: "m"}
 	s = &server{out: io.Discard, session: NewSession(&Engine{Agent: plain}, false)}
-	if _, err := s.invoke(Frame{Kind: "call", ID: 1, Method: MethodSubmit, Payload: mustJSON(SubmitArgs{Text: "Attached file: notes.md", Said: &said, Attachments: attachments})}); err != nil {
-		t.Fatal(err)
+	if _, err := s.invoke(Frame{Kind: "call", ID: 1, Method: MethodSubmit, Payload: mustJSON(SubmitArgs{Text: "Attached file: notes.md", Said: &said, Attachments: attachments})}); err == nil {
+		t.Fatal("an engine without the marked door accepted a marked message")
 	}
-	if !reflect.DeepEqual(plain.sent, []string{"Attached file: notes.md"}) {
+	if len(plain.sent) != 0 {
 		t.Fatalf("an agent with no door for the mark was sent %q", plain.sent)
+	}
+}
+
+func TestAnOlderHostIsRefusedBeforeAMarkedMessageCrossesTheWire(t *testing.T) {
+	client := &Client{welcome: Welcome{Version: Version}}
+	agent := &Agent{c: client}
+	reads := []session.MessageRead{{Source: session.MessageReference{Kind: "collection", ID: "c1"}, Count: 1}}
+	if _, err := agent.SubmitMessage(t.Context(), session.Submission{Text: "read these", Reads: reads}); err == nil {
+		t.Fatal("an older host was sent a marked message")
+	}
+	if client.made.Load() != 0 {
+		t.Fatal("a refused message crossed the wire")
+	}
+	if !messageMarksKnown(&markedAgent{fakeAgent: &fakeAgent{}}) || messageMarksKnown(&fakeAgent{}) {
+		t.Fatal("the welcome does not distinguish engines that keep a mark")
 	}
 }
