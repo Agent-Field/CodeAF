@@ -30,6 +30,27 @@ func finishingStep() step {
 	return func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil }
 }
 
+func TestTeamClosingReportCarriesItsOpeningMessageAndRun(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	report := func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse("close-report", teamCloseReportToolName, `{"done":"The requested work is complete"}`), nil
+	}
+	manager := teamAgent(t, fixture, fixture.manager, &scriptedCompleter{steps: []step{report, finishingStep()}}, nil)
+	manager.teamBoundary()
+	collect(t, mustSubmit(t, manager, "Report what is ready"))
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ids, runs := journalPersonIDs(t, fixture.manager), journalRunIDs(t, fixture.manager)
+	packets := trafficOf(t, fixture, teams.KindPacket)
+	if len(ids) != 1 || len(runs) != 1 || len(packets) != 1 {
+		t.Fatalf("message ids %v runs %v packets %+v", ids, runs, packets)
+	}
+	if p := packets[0]; p.Turn != ids[0] || p.Run != runs[0] || p.RunBy != convKeyOf(t, fixture.manager) {
+		t.Fatalf("closing packet provenance %+v does not match message %s and run %s", p.Provenance, ids[0], runs[0])
+	}
+}
+
 // journalPersonIDs is the durable id on each person line of the journal at
 // path, oldest first, read the way a restarted process reads it.
 func journalPersonIDs(t *testing.T, path string) []string {

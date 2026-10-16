@@ -327,7 +327,7 @@ func (a *Agent) teamCloseReportTool(ctx context.Context, args json.RawMessage) (
 	if done == "" {
 		return invalidArgumentsPrefix + "done is empty", true, nil
 	}
-	team, _, refusal := a.teamTarget(parsed.Team, true)
+	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
 	}
@@ -346,9 +346,9 @@ func (a *Agent) teamCloseReportTool(ctx context.Context, args json.RawMessage) (
 	// team, and a report drawn with no spend line is the emptiness law's
 	// unknown, where a refused report would leave the wrap-up to run out.
 	spent, _ := a.teamPoolSpend(profile, team.ID, teamToday())
-	raised, err := teams.Raise(profile, closingPacket(team.Name, team.ID, teams.ClosingReport{
+	raised, err := teams.RaiseFrom(profile, closingPacket(team.Name, team.ID, teams.ClosingReport{
 		Done: done, Left: strings.TrimSpace(parsed.Left), Files: files, SpendUSD: roundCents(spent),
-	}))
+	}), turnOriginFrom(ctx).provenance(role.key))
 	if err != nil {
 		return "The report could not be sent: " + err.Error(), true, nil
 	}
