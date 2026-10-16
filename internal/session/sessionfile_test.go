@@ -20,11 +20,14 @@ func TestSessionFileRoundTrip(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "nested", "session.jsonl")
 
+	var callRuns []string
 	writer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			callRuns = append(callRuns, runIdentity(ctx))
 			return toolResponse("call-1", "ls", `{"path":"."}`), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			callRuns = append(callRuns, runIdentity(ctx))
 			return textResponse("nothing in there yet"), nil
 		},
 	}}
@@ -154,7 +157,29 @@ func TestSessionFileRoundTrip(t *testing.T) {
 			paces++
 		}
 	}
-	if got, want := len(lines)-titles-used-called-tooks-paces, 1+len(want)-1; got != want {
+	// Verify the durable identity joins both foreground calls before counting
+	// that record as metadata rather than as a conversation message.
+	runs := 0
+	for _, line := range lines {
+		var row struct{ Type, ID, Timestamp string }
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			t.Fatal(err)
+		}
+		if row.Type != "usage_run" {
+			continue
+		}
+		runs++
+		if row.ID == "" || len(callRuns) != 2 || callRuns[0] != row.ID || callRuns[1] != row.ID {
+			t.Fatalf("durable run %q does not identify both calls: %v", row.ID, callRuns)
+		}
+		if _, err := time.Parse(time.RFC3339Nano, row.Timestamp); err != nil {
+			t.Fatalf("run timestamp: %v", err)
+		}
+	}
+	if runs != 1 {
+		t.Fatalf("journal has %d execution identity records, want exactly one", runs)
+	}
+	if got, want := len(lines)-titles-used-called-tooks-paces-runs, 1+len(want)-1; got != want {
 		t.Fatalf("journal has %d message lines, want %d (header + every message but system)", got, want)
 	}
 }
