@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,19 +27,23 @@ import (
 // TEAMS-UNION-CONTRACT.md is the account.
 
 const (
-	// appTeamsFileMax is the most of teams.json one request reads.
-	appTeamsFileMax = 2 << 20
 	// appTeamsOwnersMax and appTeamsPairsMax bound the union a request holds.
 	// Past either the union is refused; a cut roster would be a wrong one.
 	appTeamsOwnersMax = 4096
 	appTeamsPairsMax  = 16384
+	// appTeamsPollEvery is how many steps of reading the stored list pass
+	// between looks at the request's context. Every loop over the list is
+	// linear, so a cancelled request stops within this many steps wherever it
+	// is, never after the whole list has been read.
+	appTeamsPollEvery = 1024
 )
 
 // appTeamsUnion is one request's reading of the membership.
 type appTeamsUnion struct {
 	// Revision names exactly this membership: change who is in which team, a
-	// team's parent, or whether it is open, and it changes; rename or recolour
-	// a team, or make the root, and it does not.
+	// team's parent, whether it is open, or whether the file has a real root
+	// (its own roster is a group), and it changes; rename or recolour a team
+	// and it does not.
 	Revision string
 	// Tops are the canonical top-level team ids.
 	Tops map[string]bool
@@ -52,25 +57,88 @@ func appTeamsInconsistent(format string, args ...any) error {
 	return appwire.Errorf(appwire.CodeEngine, "teams.json is inconsistent: "+format, args...)
 }
 
-// teamsUnion reads and validates the membership, within ctx.
+func appTeamsBusy() error {
+	return appwire.Errorf(appwire.CodeBusy, "the teams could not be read in time; try again")
+}
+
+// teamsUnion reads and validates the membership, within ctx. The byte limit is
+// the shared reader's own, so the two cannot disagree about how large a teams
+// file may be.
 func (b *appBackend) teamsUnion(ctx context.Context) (*appTeamsUnion, error) {
-	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile(), appTeamsFileMax)
+	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile(), teamstore.SnapshotMaxBytes)
 	switch {
 	case errors.Is(err, teamstore.ErrSnapshotTooLarge):
 		return nil, appwire.Errorf(appwire.CodeTooLarge, "the teams file is too large to read as one union")
 	case ctx.Err() != nil:
-		return nil, appwire.Errorf(appwire.CodeBusy, "the teams could not be read in time; try again")
+		return nil, appTeamsBusy()
 	case err != nil:
 		return nil, appEngineError(err)
 	}
 	return buildTeamsUnion(ctx, file.Teams)
 }
 
+// appTeamsCycles marks every team that sits on a parent cycle, in one walk of
+// the list that visits each team once: a walk climbs from a team through its
+// parents, marking the teams it is passing, until it reaches a team already
+// settled, a team with no parent, or a parent that is not there (refused
+// separately, in file order); reaching a team it is passing closes a cycle,
+// and every team from there on the walk is on it. Asking teamstore.ParentLoops
+// of each team instead climbs the whole chain from every team, through a linear
+// lookup per step, which is cubic in a deep chain. tick is the shared look at
+// the request's context.
+func appTeamsCycles(teams []teamstore.Team, byID map[string]int, tick func() error) ([]bool, error) {
+	const settled = -1
+	// mark is settled, 0 for a team not yet reached, or one more than its
+	// position on the walk now passing it.
+	mark := make([]int, len(teams))
+	onCycle := make([]bool, len(teams))
+	var walk []int
+	for start := range teams {
+		walk = walk[:0]
+		for at := start; ; {
+			if err := tick(); err != nil {
+				return nil, err
+			}
+			if mark[at] == settled {
+				break
+			}
+			if mark[at] > 0 {
+				for _, i := range walk[mark[at]-1:] {
+					onCycle[i] = true
+				}
+				break
+			}
+			walk = append(walk, at)
+			mark[at] = len(walk)
+			parent := byID[teams[at].Parent]
+			if teams[at].Parent == "" || parent == 0 {
+				break
+			}
+			at = parent - 1
+		}
+		for _, i := range walk {
+			mark[i] = settled
+		}
+	}
+	return onCycle, nil
+}
+
 // buildTeamsUnion is the union of a stored list; it changes nothing in it.
+// Every loop is linear in the list and looks at ctx as it goes.
 func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnion, error) {
+	steps := 0
+	tick := func() error {
+		if steps++; steps%appTeamsPollEvery == 0 && ctx.Err() != nil {
+			return appTeamsBusy()
+		}
+		return nil
+	}
 	byID := make(map[string]int, len(teams))
 	rootID := ""
 	for i, t := range teams {
+		if err := tick(); err != nil {
+			return nil, err
+		}
 		switch {
 		case t.ID == "":
 			return nil, appTeamsInconsistent("a team has no id")
@@ -85,12 +153,19 @@ func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnio
 			rootID = t.ID
 		}
 	}
+	onCycle, err := appTeamsCycles(teams, byID, tick)
+	if err != nil {
+		return nil, err
+	}
 	children := map[string][]int{}
 	for i, t := range teams {
+		if err := tick(); err != nil {
+			return nil, err
+		}
 		if t.Parent != "" && byID[t.Parent] == 0 {
 			return nil, appTeamsInconsistent("team %s sits under %s, which is not there", t.ID, t.Parent)
 		}
-		if t.Parent == t.ID || teamstore.ParentLoops(teams, t.ID, t.Parent) {
+		if t.Parent == t.ID || onCycle[i] {
 			return nil, appTeamsInconsistent("team %s is under itself", t.ID)
 		}
 		if t.Root && t.Parent != "" {
@@ -103,6 +178,20 @@ func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnio
 	}
 	if rootID != "" && teams[byID[rootID]-1].Closed() {
 		return nil, appTeamsInconsistent("the root team is closed")
+	}
+	// The store never keeps an open team under a closed one: closing a team
+	// closes everything beneath it, a reopen under a closed parent is refused,
+	// and so is a move there. Such a file is inconsistent, and reading it as
+	// though the open team were absent would drop its people from the union
+	// without a word. Archived implies closed, so it needs no rule of its own.
+	// With this, and no cycle, every open team is reached from an open top.
+	for _, t := range teams {
+		if err := tick(); err != nil {
+			return nil, err
+		}
+		if !t.Closed() && t.Parent != "" && teams[byID[t.Parent]-1].Closed() {
+			return nil, appTeamsInconsistent("open team %s sits under closed team %s", t.ID, t.Parent)
+		}
 	}
 	// The canonical top: the real root's children, else the parentless teams.
 	topParent := rootID
@@ -119,7 +208,21 @@ func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnio
 		out.Tops[teams[i].ID] = true
 		frontier = append(frontier, stop{i, teams[i].ID})
 	}
+	// lines are the revision's records. Each field is written as its byte
+	// length, a colon and its bytes, so a record reads back one way only: an
+	// id may hold a NUL, a newline or bytes that are not UTF-8, and none of
+	// them can make two different memberships spell the same list.
 	var lines []string
+	record := func(kind string, fields ...string) {
+		var line strings.Builder
+		line.WriteString(kind)
+		for _, f := range fields {
+			line.WriteString(strconv.Itoa(len(f)))
+			line.WriteByte(':')
+			line.WriteString(f)
+		}
+		lines = append(lines, line.String())
+	}
 	pairs := 0
 	// hold records one team's distinct owners against group (a top, or "" for
 	// the root), within the union's bounds.
@@ -127,6 +230,9 @@ func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnio
 		held := map[string]bool{}
 		manager := t.Manager == ""
 		for _, m := range t.Members {
+			if err := tick(); err != nil {
+				return err
+			}
 			owner := appMemberAgent(m)
 			if (m.Key == "" && m.File == "") || owner == "" || owner == "." || owner == "/" {
 				return appTeamsInconsistent("team %s holds a member with no conversation", t.ID)
@@ -145,7 +251,7 @@ func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnio
 				return appwire.Errorf(appwire.CodeTooLarge, "the teams hold more conversations than can be listed as one union")
 			}
 			out.Owners[owner] = append(out.Owners[owner], appwire.DeliverableTeam{Team: t.ID, Top: top, Root: root})
-			lines = append(lines, "m\x00"+owner+"\x00"+t.ID+"\x00"+top)
+			record("m", owner, t.ID, top)
 		}
 		if !manager {
 			return appTeamsInconsistent("team %s names a manager who is not one of its members", t.ID)
@@ -153,14 +259,14 @@ func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnio
 		return nil
 	}
 	if rootID != "" {
-		lines = append(lines, "r\x00"+rootID)
+		record("r", rootID)
 		if err := hold(teams[byID[rootID]-1], "", true); err != nil {
 			return nil, err
 		}
 	}
 	for len(frontier) > 0 {
 		if err := ctx.Err(); err != nil {
-			return nil, appwire.Errorf(appwire.CodeBusy, "the teams could not be read in time; try again")
+			return nil, appTeamsBusy()
 		}
 		at := frontier[0]
 		frontier = frontier[1:]
@@ -169,7 +275,7 @@ func buildTeamsUnion(ctx context.Context, teams []teamstore.Team) (*appTeamsUnio
 		if parent == rootID {
 			parent = ""
 		}
-		lines = append(lines, "t\x00"+t.ID+"\x00"+parent)
+		record("t", t.ID, parent)
 		if err := hold(t, at.top, false); err != nil {
 			return nil, err
 		}

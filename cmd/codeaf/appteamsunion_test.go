@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -277,5 +278,148 @@ func TestTeamsScopePagesEveryOwnerAndWritesNothing(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(teamstore.Path(profile)); string(after) != string(raw) {
 		t.Error("the teams file was changed")
+	}
+}
+
+// pollCtx is a context that reports itself cancelled from its cancelAt-th look
+// on, and counts every look after that one, so a test can see exactly where a
+// build noticed cancellation and that it did no more work past it.
+type pollCtx struct {
+	context.Context
+	cancelAt, polls, after int
+}
+
+func (c *pollCtx) Err() error {
+	c.polls++
+	if c.cancelAt > 0 && c.polls >= c.cancelAt {
+		if c.polls > c.cancelAt {
+			c.after++
+		}
+		return context.Canceled
+	}
+	return nil
+}
+
+// reverseChain is depth teams, each listed before its parent, so a team's
+// ancestors all come after it in the file: the order that made validation
+// cubic. Team 0 is the deepest; the last is the top. Every 25th team holds one
+// member, which keeps a deep chain inside the owner and pair bounds.
+func reverseChain(depth int) []teamstore.Team {
+	teams := make([]teamstore.Team, depth)
+	for i := range teams {
+		parent := ""
+		if i+1 < depth {
+			parent = "c" + strconv.Itoa(i+1)
+		}
+		teams[i] = unionTeam("c"+strconv.Itoa(i), parent, "")
+		if i%25 == 0 {
+			teams[i] = unionTeam("c"+strconv.Itoa(i), parent, "", "k"+strconv.Itoa(i))
+		}
+	}
+	return teams
+}
+
+// A deep chain with no cancellation is read whole: every team is reached
+// from the one top, and every member is held against it. Validated by asking
+// each team's ancestry, 20000 teams took hours.
+func TestUnionDeepReverseChainIsReachable(t *testing.T) {
+	const depth = 20000
+	u := unionOf(t, reverseChain(depth)...)
+	top := "c" + strconv.Itoa(depth-1)
+	if len(u.Tops) != 1 || !u.Tops[top] || len(u.Owners) != depth/25 {
+		t.Fatalf("tops %d owners %d", len(u.Tops), len(u.Owners))
+	}
+	if rels := u.Owners["k0"]; len(rels) != 1 || rels[0] != (appwire.DeliverableTeam{Team: "c0", Top: top}) {
+		t.Fatalf("deepest member %v", rels)
+	}
+}
+
+// Cancellation that arrives while a deep chain is being validated ends the
+// build there, as busy, with no further look at the context. The chain ends in
+// a team under a missing parent, which only a validation that runs to the end
+// finds: the build that ignored ctx until validation was done answered that
+// instead of busy, after all of the work. The cancellation point is half of
+// the looks a full validation takes, measured, not a timing guess.
+func TestUnionDeepChainStopsWhenCancelled(t *testing.T) {
+	teams := append(reverseChain(50000), unionTeam("stray", "gone", "", "ks"))
+	var wire *appwire.Error
+	full := &pollCtx{Context: context.Background()}
+	if _, err := buildTeamsUnion(full, teams); !errors.As(err, &wire) || wire.Code != appwire.CodeEngine {
+		t.Fatalf("uncancelled: %v", err)
+	}
+	if full.polls < 8 {
+		t.Fatalf("validation looked at its context %d times over %d teams", full.polls, len(teams))
+	}
+	cut := &pollCtx{Context: context.Background(), cancelAt: full.polls / 2}
+	if _, err := buildTeamsUnion(cut, teams); !errors.As(err, &wire) || wire.Code != appwire.CodeBusy {
+		t.Fatalf("cancelled mid-validation: %v", err)
+	}
+	if cut.polls != cut.cancelAt || cut.after != 0 {
+		t.Fatalf("kept working after cancellation: %d looks, cancelled at %d", cut.polls, cut.cancelAt)
+	}
+}
+
+// The store never keeps an open team under a closed or archived one, so such
+// a file is refused, not read as though the open team's people were absent.
+// A closed team under a closed one is the store's own shape and is accepted.
+func TestUnionOpenTeamUnderClosedAncestorIsInconsistent(t *testing.T) {
+	mid := unionTeam("mid", "a", "", "km")
+	mid.State = teamstore.TeamClosed
+	archived := mid
+	archived.ArchivedAt = time.Now()
+	for name, parent := range map[string]teamstore.Team{"closed": mid, "archived": archived} {
+		_, err := buildTeamsUnion(context.Background(), []teamstore.Team{
+			unionTeam("a", "", "ka", "ka"), parent, unionTeam("leaf", "mid", "", "kl"),
+		})
+		var wire *appwire.Error
+		if !errors.As(err, &wire) || wire.Code != appwire.CodeEngine || !strings.Contains(err.Error(), "open team leaf sits under closed team mid") {
+			t.Errorf("%s parent: %v", name, err)
+		}
+	}
+	leaf := unionTeam("leaf", "mid", "", "kl")
+	leaf.State = teamstore.TeamClosed
+	u := unionOf(t, unionTeam("a", "", "ka", "ka"), mid, leaf)
+	if len(u.Owners) != 1 || u.Owners["ka"] == nil {
+		t.Fatalf("closed subtree: %v", u.Owners)
+	}
+}
+
+// Every cycle is refused, naming the first team on it in file order (as the
+// per-team check did), even when a walk into it starts from a team outside.
+func TestUnionCycleAndMissingParentAreRefused(t *testing.T) {
+	cases := []struct {
+		name  string
+		teams []teamstore.Team
+		says  string
+	}{
+		{"self", []teamstore.Team{unionTeam("a", "a", "", "x")}, "team a is under itself"},
+		{"tail into a later cycle", []teamstore.Team{
+			unionTeam("tail", "p", "", "x"), unionTeam("q1", "q2", "", "y"), unionTeam("q2", "q1", "", "z"),
+			unionTeam("p", "pp", "", "w"), unionTeam("pp", "p", "", "v"),
+		}, "team q1 is under itself"},
+		{"long cycle", append(reverseChain(3000)[:2999], unionTeam("c2999", "c0", "", "k")), "team c0 is under itself"},
+		{"missing parent deep in a chain", append(reverseChain(3000), unionTeam("x", "c1500x", "", "kx")), "team x sits under c1500x, which is not there"},
+	}
+	for _, c := range cases {
+		_, err := buildTeamsUnion(context.Background(), c.teams)
+		if err == nil || !strings.Contains(err.Error(), c.says) {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+}
+
+// The revision's records cannot run into each other: two tops "p" and "q"
+// and one top whose id spells their old NUL-and-newline join used to hash
+// alike.
+func TestUnionRevisionRecordsAreUnambiguous(t *testing.T) {
+	two := unionOf(t, teamstore.Team{ID: "p"}, teamstore.Team{ID: "q"})
+	one := unionOf(t, teamstore.Team{ID: "p\x00\nt\x00q"})
+	if two.Revision == one.Revision {
+		t.Fatal("two memberships share a revision")
+	}
+	owners := unionOf(t, unionTeam("a", "", "", "x\x00y"))
+	other := unionOf(t, unionTeam("a", "", "", "x"), teamstore.Team{ID: "y"})
+	if owners.Revision == other.Revision {
+		t.Fatal("an owner with a NUL collided")
 	}
 }
