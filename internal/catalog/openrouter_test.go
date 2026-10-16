@@ -210,7 +210,13 @@ func TestTheCacheIsDailyDatedAndRefreshableByHand(t *testing.T) {
 		t.Fatal(err)
 	}
 	counting := func() *http.Client {
-		return catalogClient(t, http.StatusOK, string(raw), func(*http.Request) { fetches.Add(1) })
+		// Only the general listing is counted: the default base also reads the two
+		// dedicated media listings, which have their own tests.
+		return catalogClient(t, http.StatusOK, string(raw), func(r *http.Request) {
+			if r.URL.Path == "/api/v1/models" {
+				fetches.Add(1)
+			}
+		})
 	}
 	day := time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC)
 	now := day

@@ -77,7 +77,12 @@ func TestWarmedWaitsForACachedCatalogWithinTheBound(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lazy := LoadLazy(context.Background(), Options{Dir: dir})
+	// The cache is the default service's and carries no dedicated listings, so
+	// an unguarded warm would go to the real network to top them up (and write
+	// the cache after the test's directory is gone). This test is about the
+	// general warm only.
+	lazy := LoadLazy(context.Background(), Options{Dir: dir, NoDedicatedMedia: true})
+	defer lazy.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if !lazy.Warmed(ctx) {

@@ -1,0 +1,309 @@
+{
+ "data": [
+  {
+   "id": "krea/k3-edit",
+   "name": "Krea: K3 Edit",
+   "description": "Krea K3 Edit is an image-to-image editing model from Krea. I",
+   "created": 1792103728,
+   "architecture": {
+    "input_modalities": [
+     "text",
+     "image"
+    ],
+    "output_modalities": [
+     "image"
+    ]
+   },
+   "supported_parameters": {
+    "resolution": {
+     "type": "enum",
+     "values": [
+      "1K",
+      "2K"
+     ]
+    },
+    "aspect_ratio": {
+     "type": "enum",
+     "values": [
+      "1:1",
+      "4:3",
+      "3:2",
+      "16:9",
+      "4:5",
+      "2:3",
+      "9:16"
+     ]
+    },
+    "input_references": {
+     "type": "range",
+     "min": 1,
+     "max": 4
+    },
+    "seed": {
+     "type": "boolean"
+    }
+   },
+   "supports_streaming": false,
+   "endpoints": "/api/v1/images/models/krea/k3-edit/endpoints"
+  },
+  {
+   "id": "recraft/recraft-v4.1-flash",
+   "name": "Recraft: Recraft V4.1 Flash",
+   "description": "Recraft V4.1 Flash is a text-to-image model from Recraft, th",
+   "created": 1790177946,
+   "architecture": {
+    "input_modalities": [
+     "text"
+    ],
+    "output_modalities": [
+     "image"
+    ]
+   },
+   "supported_parameters": {
+    "aspect_ratio": {
+     "type": "enum",
+     "values": [
+      "1:1",
+      "4:3",
+      "3:4",
+      "16:9",
+      "9:16",
+      "auto"
+     ]
+    },
+    "n": {
+     "type": "range",
+     "min": 1,
+     "max": 6
+    }
+   },
+   "supports_streaming": false,
+   "endpoints": "/api/v1/images/models/recraft/recraft-v4.1-flash/endpoints"
+  },
+  {
+   "id": "bytedance-seed/seedream-5-0-lite",
+   "name": "ByteDance Seed: Seedream 5.0 Lite",
+   "description": "Seedream 5.0 Lite is an image generation model from ByteDanc",
+   "created": 1786650094,
+   "architecture": {
+    "input_modalities": [
+     "text",
+     "image"
+    ],
+    "output_modalities": [
+     "image"
+    ]
+   },
+   "supported_parameters": {
+    "resolution": {
+     "type": "enum",
+     "values": [
+      "2K",
+      "4K"
+     ]
+    },
+    "aspect_ratio": {
+     "type": "enum",
+     "values": [
+      "1:1",
+      "1:2",
+      "2:1",
+      "2:3",
+      "3:2",
+      "3:4",
+      "4:3",
+      "4:5",
+      "5:4",
+      "9:16",
+      "16:9",
+      "9:19.5",
+      "19.5:9",
+      "9:20",
+      "20:9",
+      "9:21",
+      "21:9",
+      "auto"
+     ]
+    },
+    "n": {
+     "type": "range",
+     "min": 1,
+     "max": 4
+    },
+    "input_references": {
+     "type": "range",
+     "min": 0,
+     "max": 14
+    },
+    "seed": {
+     "type": "boolean"
+    }
+   },
+   "supports_streaming": false,
+   "endpoints": "/api/v1/images/models/bytedance-seed/seedream-5-0-lite/endpoints"
+  },
+  {
+   "id": "black-forest-labs/flux.2-klein-4b",
+   "name": "Black Forest Labs: FLUX.2 Klein 4B",
+   "description": "FLUX.2 [klein] 4B is the fastest and most cost-effective mod",
+   "created": 1768429228,
+   "architecture": {
+    "input_modalities": [
+     "text",
+     "image"
+    ],
+    "output_modalities": [
+     "image"
+    ]
+   },
+   "supported_parameters": {
+    "aspect_ratio": {
+     "type": "enum",
+     "values": [
+      "1:1",
+      "4:3",
+      "3:4",
+      "3:2",
+      "2:3",
+      "16:9",
+      "9:16",
+      "21:9",
+      "auto"
+     ]
+    },
+    "output_format": {
+     "type": "enum",
+     "values": [
+      "png",
+      "jpeg"
+     ]
+    },
+    "n": {
+     "type": "range",
+     "min": 1,
+     "max": 1
+    },
+    "input_references": {
+     "type": "range",
+     "min": 0,
+     "max": 4
+    },
+    "seed": {
+     "type": "boolean"
+    }
+   },
+   "supports_streaming": false,
+   "endpoints": "/api/v1/images/models/black-forest-labs/flux.2-klein-4b/endpoints"
+  },
+  {
+   "id": "google/gemini-3-pro-image",
+   "name": "Google: Nano Banana Pro (Gemini 3 Pro Image)",
+   "description": "Nano Banana Pro is Google\u2019s most advanced image-generation a",
+   "created": 1781754054,
+   "architecture": {
+    "input_modalities": [
+     "image",
+     "text"
+    ],
+    "output_modalities": [
+     "image",
+     "text"
+    ]
+   },
+   "supported_parameters": {
+    "resolution": {
+     "type": "enum",
+     "values": [
+      "1K",
+      "2K",
+      "4K"
+     ]
+    },
+    "aspect_ratio": {
+     "type": "enum",
+     "values": [
+      "1:1",
+      "2:3",
+      "3:2",
+      "3:4",
+      "4:3",
+      "4:5",
+      "5:4",
+      "9:16",
+      "16:9",
+      "21:9"
+     ]
+    },
+    "n": {
+     "type": "range",
+     "min": 1,
+     "max": 1
+    },
+    "input_references": {
+     "type": "range",
+     "min": 0,
+     "max": 14
+    }
+   },
+   "supports_streaming": false,
+   "endpoints": "/api/v1/images/models/google/gemini-3-pro-image/endpoints"
+  },
+  {
+   "id": "qwen/qwen-image-3",
+   "name": "Qwen: Qwen Image 3",
+   "description": "Qwen Image 3 is a unified image generation and editing model",
+   "created": 1785894548,
+   "architecture": {
+    "input_modalities": [
+     "text",
+     "image"
+    ],
+    "output_modalities": [
+     "image"
+    ]
+   },
+   "supported_parameters": {
+    "resolution": {
+     "type": "enum",
+     "values": [
+      "1K",
+      "2K"
+     ]
+    },
+    "aspect_ratio": {
+     "type": "enum",
+     "values": [
+      "1:1",
+      "1:2",
+      "1:4",
+      "2:1",
+      "2:3",
+      "3:2",
+      "3:4",
+      "4:1",
+      "4:3",
+      "4:5",
+      "5:4",
+      "9:16",
+      "16:9"
+     ]
+    },
+    "n": {
+     "type": "range",
+     "min": 1,
+     "max": 6
+    },
+    "input_references": {
+     "type": "range",
+     "min": 0,
+     "max": 4
+    },
+    "seed": {
+     "type": "boolean"
+    }
+   },
+   "supports_streaming": false,
+   "endpoints": "/api/v1/images/models/qwen/qwen-image-3/endpoints"
+  }
+ ]
+}
