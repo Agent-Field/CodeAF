@@ -1441,7 +1441,10 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 				if !haveOne {
 					why = crewroute.RejectProviderUnavailable
 				}
-				refusal := &crewroute.NoEligibleError{Seat: seat, Mode: crewroute.ModeOne}
+				refusal := &crewroute.NoEligibleError{Seat: seat, Mode: crewroute.ModeOne, Action: health.actionFor(route, "choose another one model")}
+				if !haveOne {
+					refusal.Action = "choose the one model for every task, or switch Task models back to Auto"
+				}
 				refusal.Reject(route.Model, route.Provider, why)
 				refused[seat] = refusal
 			}
