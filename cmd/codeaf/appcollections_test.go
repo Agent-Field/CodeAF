@@ -7,15 +7,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // collectionsBackend is a work backend whose collections store is a path in
 // a fresh folder, not yet made.
 func collectionsBackend(t *testing.T) (*appBackend, *appRecorder, appwire.Agent, string) {
 	t.Helper()
-	backend, rec, agent := workBackend(t, &fakeConversation{})
+	// The agent is spoken in first: a collection resolves a conversation by
+	// the list, and a blank one is never listed (appblank.go).
+	backend, rec, agent := workBackend(t, &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}})
+	if _, err := backend.Send(agent.ID, "plan the launch", ""); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
 	backend.collectionsPath = filepath.Join(t.TempDir(), "v3", "collections.db")
 	return backend, rec, agent, backend.collectionsPath
 }

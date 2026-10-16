@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // renamed is the name the fake was last given by a person.
@@ -60,9 +61,14 @@ func TestAppRenameGivesTheConversationThePersonsName(t *testing.T) {
 }
 
 // THE LIST TAKES A STATE AND A QUERY: open by default, and a query matches
-// the title or the folder.
+// the title or the folder. The agent is spoken in first, because a blank one
+// is never listed (appblank.go).
 func TestAppAgentsListFiltersByState(t *testing.T) {
-	backend, _, agent := workBackend(t, &fakeConversation{})
+	backend, rec, agent := workBackend(t, &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}})
+	if _, err := backend.Send(agent.ID, "hello", ""); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
 	open, err := backend.ListAgentsIn("", "", "")
 	if err != nil || len(open) != 1 || open[0].ID != agent.ID {
 		t.Fatalf("open = %+v, %v", open, err)

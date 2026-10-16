@@ -53,7 +53,7 @@ state again first. An app that does not know the word treats it as a failure.
 ## Types
 
 ```
-Agent  { id, title, workspace, model?, state, updated_at, crews?, line? }
+Agent  { id, title, workspace, model?, state, updated_at?, crews?, line? }
        id: stable string (the conversation's session file id/path key)
        state: "idle" | "working" | "needs_you" | "stopped" | "closed"
        "working" whenever a turn runs, on every agent.changed and every list, whichever window
@@ -61,7 +61,9 @@ Agent  { id, title, workspace, model?, state, updated_at, crews?, line? }
        crews: the open crews it is a member of, on every agent.changed (said again when it joins or leaves one)
        line: its live one-liner: the step it is on while working, or the question it waits on
        "stopped": its conversation engine failed; the next send reopens it
-       updated_at: RFC 3339
+       updated_at: RFC 3339; absent when nobody knows it, never the zero time 0001-01-01T00:00:00Z
+       title: never empty on a listed agent; a crew member whose own row has no name goes by its
+       crew's word for it (Member `title`), which for one a manager started is its brief's first words
 Task   { id, agent, title, state, updated_at, parent?, group?, group_title?, line? }
        parent: the task that spawned it (nesting); group: the id of the handed-over run
        (the engine's one grouping: a run and the workers under it; absent for a lone task);
@@ -101,7 +103,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `ping` | – | `{}` |
 | `shutdown` | – | `{}` then exit |
 | `agents.labels` | `{ids: string[]}` (at most 32) | `{labels:[{id,title}], incomplete?}`; optional metadata-only lookup, no transcript reads. Missing names stay unknown; incomplete means a scan bound was reached. |
-| `agents.list` | `{workspace?}` | `{agents: Agent[]}` (recent conversations, newest first) |
+| `agents.list` | `{workspace?}` | `{agents: Agent[]}` (recent conversations, newest first); a blank conversation, one nobody has said anything in, is never listed (see "Blank conversations") |
 | `agents.create` | `{workspace?, model?, budget_usd?, text?}` | `{agent: Agent}`; with `text` the first turn starts at once (`turn.started` follows) and `title` is the opening name — the words of `text`, or the names of the files attached when there are none, cut to 40 characters with "…" — until the engine's own name arrives as `agent.changed`: one request to the model configured for titles, asked once from those words and file names only, which replaces it unless the person renamed the agent first. No workspace: the user's home folder. |
 | `agents.entries` | `{id, before?, limit?}` | `{entries: Entry[], more: bool}` (oldest first; works for agents not held) |
 | `agents.set_model` | `{id, model}` | `{agent: Agent}` |
@@ -113,7 +115,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `asks.list` | `{agent}` | `{asks: Ask[]}` (open asks only) |
 | `asks.answer` | `{agent, id, option?, text?}` | `{}`; `not_found` if already answered elsewhere |
 | `tasks.list` | `{agent}` | `{tasks: Task[]}` |
-| `models.list` | – | `{models: Model[]}` (what the configured keys can use) |
+| `models.list` | – | `{models: Model[]}` (what the configured keys can use; `[]` with no provider connected) |
 | `settings.get` | – | `{settings: Settings}` |
 | `spend.today` | – | `{spend: Spend}` |
 | `crews.list` | – | `{crews: Crew[]}` |
@@ -161,6 +163,7 @@ result or an event, `?` marks a field that may be absent.
 | `agents.create` | `{attachments, budget_usd, client_id, model, text, workspace}` | `{agent}` |
 | `agents.entries` | `{before, id, limit}` | `{entries, more}` |
 | `agents.idle` | `{days}` | `{ids}` |
+| `agents.labels` | `{ids}` | `{incomplete?, labels}` |
 | `agents.list` | `{query, state, workspace}` | `{agents}` |
 | `agents.move_to_closed` | `{ids}` | `{}` |
 | `agents.move_to_task` | `{id, turn}` | `{moving?, task?}` |
@@ -206,6 +209,7 @@ result or an event, `?` marks a field that may be absent.
 | `crews.unlink` | `{id, item}` | `{}` |
 | `crews.update` | `{clear, ends_at, goal, hue, id, name, settings, tint}` | `{crew}` |
 | `crews.wrap_up` | `{id, text}` | `{}` |
+| `files.complete` | `{agent, limit, path}` | `{dir, entries, more?, state?}` |
 | `files.diff` | `{agent, base, path}` | `{diff}` |
 | `files.find` | `{agent, limit, query}` | `{groups}` |
 | `files.read` | `{agent, limit, offset, path}` | `{file}` |
@@ -216,9 +220,9 @@ result or an event, `?` marks a field that may be absent.
 | `inbox.list` | `{list, query}` | `{counts, items}` |
 | `inbox.open` | `{id}` | `{agent, task?}` |
 | `inbox.undo` | `{id}` | `{}` |
-| `keys.check` | `{key, provider}` | `{message?, models?, ok, status?}` |
+| `keys.check` | `{address, connection, key, provider, region}` | `{connection?, message?, models?, ok, status?}` |
 | `keys.remove` | `{provider}` | `{}` |
-| `keys.set` | `{key, provider}` | `{}` |
+| `keys.set` | `{address, connection, key, provider, region}` | `{}` |
 | `media.get` | `{agent, source}` | `{source}` |
 | `media.resolve` | `{agent, path, expect_version?}` | `{source}` |
 | `media.attach` | `{agent, source, version}` | `{attachment}` |
@@ -270,6 +274,8 @@ result or an event, `?` marks a field that may be absent.
 | `processes.unfollow` | `{id}` | `{}` |
 | `providers.list` | `{}` | `{providers}` |
 | `providers.sign_in` | `{provider}` | `{url}` |
+| `providers.sign_in_cancel` | `{attempt, provider}` | `{}` |
+| `providers.sign_in_start` | `{provider}` | `{attempt, url}` |
 | `queue.edit` | `{agent, attachments, id, reads, said, text, to}` | `{queued}` |
 | `queue.move` | `{agent, id, text, to}` | `{queued}` |
 | `queue.remove` | `{agent, id, text, to}` | `{queued}` |
@@ -394,10 +400,26 @@ result or an event, `?` marks a field that may be absent.
   (state `working` when `text` was given) before the conversation engine has
   finished loading; loading continues in the background and failures arrive as
   `turn.done {ok:false}` + `agent.changed`.
+- Blank conversations. `agents.create` with no `text` and no `attachments` makes a
+  blank conversation: its folder exists at once (its id is the folder's name, and a
+  crew adds a member by it), but nobody has said anything in it. A blank agent is
+  answered to its caller and to no one else: no `agent.changed` announces it
+  (unless an open crew holds it as a member, so the crew can show its chat),
+  `agents.list` (every `state`) and `search.all` never list it, and at quit codeaf
+  removes each blank conversation it made unless a crew names it or another window
+  holds it. The first `agents.send` (or a manager's start, which names a member by
+  its brief) is what lists it. A member a manager started is not blank: its brief is
+  its first message.
 - Every assistant message inside a turn has an index `msg` (0, 1, 2 …).
   `turn.delta` carries `msg`; the `entry.added` answer for that message carries
   `turn` and `msg`. The app keys answers by `(agent, turn, msg)`: deltas append,
   the entry replaces. An answer is never shown twice.
+- A turn the engine sends back to work (the completion check's carry-on, a
+  nudge, team news at a step boundary) can reply more than once with no tool
+  call between. Each reply is its own `msg`, as it is in `agents.entries`: the
+  replies are `update` entries when the turn goes on to call a tool and
+  `answer` entries when it ends first, and their `entry.added` arrive when that
+  is known (the next tool call or the turn's end).
 - Entry ids are stable: the id sent live in `entry.added` equals the id returned
   later by `agents.entries` for the same item.
 - `turn.tool` and tool entries carry `title`: the same one-line label the TUI
@@ -408,7 +430,9 @@ result or an event, `?` marks a field that may be absent.
   notices as one muted line, not a card.
 - `models.list` returns every model the user can pick in the TUI's model
   picker for their configured providers, plus the current default, each with
-  `{id, name, provider, default?: bool}`; never empty when a turn can run.
+  `{id, name, provider, default?: bool}`; never empty when a turn can run, and
+  empty (`{models: []}`, not an error) when no provider is connected, by the
+  same rule `providers.list` answers `signed_in` with.
 - `agents.set_effort {id, effort: "low"|"medium"|"high"}` and Agent gains
   `effort?`.
 
@@ -417,29 +441,96 @@ result or an event, `?` marks a field that may be absent.
 Types:
 ```
 Provider { id, name, signed_in: bool, key_hint?: "…a91f", sign_in?: bool,
-           auth_kind?: "account", sign_in_attempt?: string, sign_in_state?: "pending"|"saving"|"signed_in"|"failed"|"cancelled", sign_in_error? }
+           kind?: "key"|"browser"|"address", key_optional?: bool, address?,
+           regions?: [{id, name}], region?, plan?,
+           auth_kind?: "account", sign_in_attempt?: string,
+           sign_in_state?: "pending"|"saving"|"signed_in"|"failed"|"cancelled", sign_in_error? }
+KeyCheck { ok, models?: Model[], status?, message?, connection?: Connection }
+Connection { region?, door?, plan?, listed?: bool, address? }
 Settings { default_model, budget_usd, asks_before, day_cap_usd, work_folder,
            task_cap_usd, proposed_task_clock_s, idle_close_days, effort? }
-Setup    { step: 1|2|3|4|"done", provider?, default_model?, day_cap_usd?, start?: "agents" }
+Setup    { step: 1|2|3|"done", provider?, default_model?, day_cap_usd?, start?: "agents" }
 ```
+Setup is three steps: 1 connecting providers (any number of them, or none), 2
+the defaults, 3 how to start. `provider` is the provider the
+person last chose, which need not be connected; the providers that are connected
+are the ones `providers.list` marks `signed_in`. Until 2026-10-15 setup was four
+steps (welcome, connect, defaults, how to start). A setup kept by a build from
+then is answered in three, so a person who quit halfway resumes where they were:
+a kept 1 or 2 is answered 1, 3 is 2, 4 is 3, and `"done"` is done. `setup.set`
+refuses a step past 3 (`bad_params`, `step is 1 to 3 or "done"`).
 Keys never touch disk in codeaf: the app keeps them in the macOS Keychain and
 hands them to codeaf at every launch with `keys.set`; codeaf holds them in memory.
-Account authentication (`auth_kind:"account"`) uses the same engine-owned owner-only
-rotating token store and Codex browser flow as the CLI/TUI. Account tokens never
-appear in this protocol or the app keychain bridge. Account providers refuse
-`keys.check`, `keys.set`, and `keys.remove`; cancellation is not sign-out.
-One active account flow is shared, with a ten-minute deadline and no polling.
+The app sends `keys.set` before its first `models.list` or `agents.create`. A call
+that reaches codeaf before any key fails with the missing-key engine error, whose
+message is `no model provider is connected` (a turn that could not start for it
+ends `ok:false` with that `error`; `models.list` answers `[]` instead), and
+that failure is not kept: the next call after `keys.set` opens with the key.
+
+Providers (additive). `providers.list` is every provider the terminal's
+first-run screen offers, in its order — OpenRouter, Ollama, Codex (the ChatGPT
+sign-in), DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, ai&, a custom
+OpenAI-compatible endpoint — then any further custom endpoint the profile holds,
+by the name it was connected as. `kind` says what connecting it asks for, and a
+reader that predates it may assume `"key"`:
+
+- `"key"`: a pasted key. `sign_in: true` (OpenRouter) offers a browser sign-in
+  beside it. `regions` (Z.ai, Moonshot, Qwen: `intl` International, `cn` China)
+  are separate accounts; one is chosen and sent as `region` before the key is
+  checked. Once connected, `region` is the one in use and `plan` how the key is
+  billed in the provider's word ("coding plan", "pay-as-you-go").
+- `"browser"` (Codex, the ChatGPT account): a browser sign-in and nothing else;
+  `keys.check` and `keys.set` refuse it. It is also `auth_kind: "account"`, and
+  the two say one thing: `kind` for a reader of the connect shapes, `auth_kind`
+  with `sign_in_attempt`, `sign_in_state` and `sign_in_error` for a reader of
+  account sign-ins. See Account sign-in below.
+- `"address"` (Ollama, custom): `address` is the one in use, or the one the field
+  starts with (`http://localhost:11434/v1` for Ollama, empty for a custom
+  endpoint). `key_optional: true`: the key may be empty, and then the provider is
+  connected with none. A connected custom endpoint's `name` is the name it was
+  connected as (its host: `127.0.0.1` reads `127-0-0-1`). `keys.remove`
+  disconnects it from the profile.
+
+Every provider but OpenRouter is checked by the terminal's own requests in the
+terminal's own order: the model listing; the one-token call where the provider
+lists none; for a provider with two billing roads, a one-token call on each,
+plan first, until one answers. Each request has 10 s; the whole check at most
+30 s. A passing check answers `connection`, which `keys.set` takes back as it
+came; it holds nothing secret (`door` is the billing road the key opened, `plan`
+its word, `listed` whether the provider answered with its models) and codeaf
+keeps it in its profile, never the key. A launch's `keys.set {provider, key}`
+carries no connection and keeps what is there. Models a check answers are spelled
+as `models.list` spells them (`deepseek/deepseek-v4-pro`, provider `deepseek`); a
+provider that lists none answers the one model the terminal moves a conversation
+onto (`moonshot/kimi-k2.7-code`), and `models.list` offers that same model for it.
+
+Account sign-in (`auth_kind: "account"`, Codex). The account's rotating tokens
+stay in codeaf's profile, owner-only, in the same store and through the same
+browser flow as the terminal — the one credential the app does not hand over — and its
+row in the profile carries no key. They never appear in this protocol or the
+app's key bridge, and its `provider.changed` carries no `key`. There is one
+sign-in at a time, with a ten-minute deadline and no polling:
+`providers.sign_in_start` starts it, or joins the one already waiting, and
+answers its `attempt`; `providers.sign_in` starts or joins it the same way and
+answers only the `url`. While it lasts, and after it ends, `providers.list` and
+`provider.changed` carry its `sign_in_state` (`pending`, then `saving` once the
+browser has answered, then `signed_in`, `failed` with `sign_in_error`, or
+`cancelled`). `providers.sign_in_cancel` cancels a pending one and is not a
+sign-out. `keys.remove` signs the account out, exactly as the terminal's
+disconnect does, taking its tokens and its row away: a sign-in still pending is
+cancelled first, one being saved answers `busy`, and the last sign-in's state is
+forgotten.
 
 | method | params | result |
 |---|---|---|
 | `providers.list` | – | `{providers: Provider[]}` |
-| `keys.check` | `{provider, key}` | `{ok, models?: Model[], status?, message?}` exactly one provider request; 10 s timeout → `{ok:false, status:"timeout", message:"No answer · couldn't reach <host> in 10s"}`; a rejection carries the provider's status code and own words |
-| `keys.set` | `{provider, key}` | `{}` (memory only; models.list / turns use it) |
-| `keys.remove` | `{provider}` | `{}` |
-| `providers.sign_in` | `{provider}` | `{url}` browser sign-in where the engine supports it; completion arrives as `provider.changed` |
+| `keys.check` | `{provider, key, region?, address?}` | `{ok, models?: Model[], status?, message?, connection?}`; OpenRouter: exactly one provider request; 10 s timeout → `{ok:false, status:"timeout", message:"No answer · couldn't reach <host> in 10s"}`; a rejection carries the provider's status code and own words. Others: see Providers above; `status` is the provider's code, `"unreachable"` (`message: "No answer · couldn't reach <host>"`), `"shape"` (codeaf refused the key's shape before asking; `message` says the shape), or `"payment"` (every billing road refused for money); a pass may carry `message` when the account cannot pay or its plan's window is spent. `key` may be empty for a `key_optional` provider. Keeps nothing |
+| `keys.set` | `{provider, key, connection?}` | `{}`; the key in memory only (models.list / turns use it); `connection` (from keys.check) kept in codeaf's profile; `key` may be empty for a `key_optional` provider, which is then connected with none; the provider's models are fetched in the background and reach `models.list`, which waits up to 3 s for that fetch. Before any provider is connected the engine's process cannot open: `models.list` answers `{models: []}` and a turn ends `ok:false` with `error: "no model provider is connected"`; the first connection opens it in the same launch |
+| `keys.remove` | `{provider}` | `{}`; a key is let go for this launch; an address is disconnected from the profile; the Codex account is signed out (a pending sign-in cancelled first; `busy` while one is being saved) |
+| `providers.sign_in` | `{provider}` | `{url}` browser sign-in for OpenRouter and Codex; completion arrives as `provider.changed` (with `key` for OpenRouter only); a Codex sign-in that finishes and cannot be kept ends `sign_in_state: "failed"` with `sign_in_error` |
 | `providers.sign_in_start` | `{provider}` | `{url, attempt}` starts/joins the one account sign-in, returning its non-secret operation identity |
 | `providers.sign_in_cancel` | `{provider, attempt}` | `{}` cancels a pending account sign-in; `busy` during its authorized save boundary; does not sign out an existing account; stale attempts have no effect |
-| `setup.get` / `setup.set` | – / `Setup` | `{setup: Setup}` (persisted by codeaf so quitting mid-setup resumes at the same step) |
+| `setup.get` / `setup.set` | – / `Setup` | `{setup: Setup}` (persisted by codeaf so quitting mid-setup resumes at the same step; a step a four-step build kept is answered in three, see Setup above) |
 | `settings.set` | partial `Settings` | `{settings}`; emits `settings.changed` |
 | `caps.raise` | `{scope: "agent"\|"day", id?, to_usd, for: "today"\|"good"}` | `{}` |
 
@@ -449,7 +540,7 @@ Budget asks: when an agent nears/hits its budget or the day cap, an `Ask` with
 (free text). Day cap options: `raise_today`, `wait`. Copy per U1/U2 edge cases
 ("It's close to its $5.00 budget", "Day cap reached · $40.00 of $40.00").
 
-Events: `settings.changed {settings}`, `provider.changed {provider, key?}` (key: sent once after a browser sign-in so the app can store it in the Keychain), `spend.changed`.
+Events: `settings.changed {settings}`, `provider.changed {provider, key?}` (key: sent once after an OpenRouter browser sign-in so the app can keep it; never for Codex), `spend.changed`.
 
 ## Wave 3: tasks, quick tasks, processes, running long, sleep
 
@@ -514,8 +605,13 @@ answered; irreversible tasks have no clock. Quick tasks: > 30 files or any shell
 things (a test run included) → `grew`; a read-only command (search, listing, `git status`) stays quick.
 App agents are always offered quick tasks (launch `quickTasks`), beside full tasks that are runs.
 Never in entries: the lines the engine writes to its model (wakes, landing notes, the carry-on after a
-quit, a checkpoint's question) and a reply that is only the withdrawal token `[no change]`; a quit-resumed
-reply is marked by the footer `resumed_after_quit` ("Resumed after quit").
+quit, a checkpoint's question, the `[carry on]` continuations and the note after a reply was cut off at the
+output limit, none of which counts as the person's message on a reread) and a reply that is only the
+withdrawal token `[no change]`, live or reread; a quit-resumed reply is marked by the footer
+`resumed_after_quit` ("Resumed after quit"). Nor is the line saying a turn was sent back to work
+(`the ask is not finished · carrying on rather than stopping here` and the two nudges, "… · asking it to go
+on"): the turn going on is what the app already shows. The lines that end a turn ("stopping here · …",
+"carried on … times · …") stay quiet notices.
 
 ## Work log detail (V63 · An agent at work, 20+ tool calls)
 
@@ -629,6 +725,7 @@ Files and links in the composer (V69 @ reference, chips):
 |---|---|---|
 | `files.find` | `{agent, query, limit?}` | `{groups: [{label: "Changed in this chat"\|<repo>, files: [{path, add?, del?, dir?}]}]}` |
 | `files.stat` | `{agent, paths}` | `{files: [{path, state, add?, del?, size?, binary?}]}` |
+| `files.complete` | `{agent?, path, limit?}` | `{dir, entries: [{name, path, dir?}], more?, state?}` read-only path completion for the @ reference when what follows `@` is a path. The directory `path` names is listed — `path` itself when it ends in `/`, its parent otherwise; `~`, `.` and `..` alone are the folders they name — from exactly where it says: absolute, `~/` (home), or relative to the agent's workspace (home with no `agent`). The name after the last `/` narrows it, case-blind: names that begin with it, then names that hold it; folders first, then files, each by name. Dot names and `.git`, `node_modules`, `vendor` are left out unless that name starts with `.`. `entries[].path` is `path` up to its last `/`, then `name`, then `/` for a folder — what the composer writes after `@`, spelled as typed. `dir` is the folder listed, absolute. `limit` defaults to 50 and is clamped to 200; `more` says matches were left off. `state` is absent when the folder was listed, else missing (nothing there, or not a folder) · unreadable; neither is an empty folder. One readdir per call, the terminal folder browser's (at most 5,000 names of each kind); no file is opened, nothing is written. A negative limit or a path with a newline is `bad_params`; an unknown agent `not_found`; an engine without it `unknown_method` (use `files.find`) |
 | `files.read` | `{agent, path, offset?, limit?}` | `{file: {path, resolved?, kind, outside?, symlink?, size?, modified?, add?, del?, lines?, offset, text, next?}}` read-only preview. `kind` text · binary · too_large · directory · missing · unreadable. Text only for UTF-8 without NUL up to 1 MiB; a page is at most 64 KiB (limit clamped), cut after a line or at a character, `next` where the following one starts; limit 0 answers facts only. `resolved` is canonical (links followed); `outside` is judged on it. Nothing over 1 MiB, no folder and no non-regular file is ever read. A bad offset is `bad_params`; an unknown agent `not_found` |
 | `files.diff` | `{agent, path, base?}` | `{diff: {path, resolved?, outside?, state, folder?, repo?, base?, commit?, requested?, requested_unavailable?, in_history?, change?, old_path?, add?, del?, binary?, text, lines, truncated?, reason?, detail?}}` read-only. The working tree (staged and unstaged) against `base`, a commit or ref name (no option, range, path or revision expression; else `bad_params`), or HEAD when absent. `base` in the answer is head · requested · none; `commit` is the full hash compared with. A `base` that names no commit falls back to HEAD with `requested_unavailable: unknown_commit`; one that does is compared and `in_history` says whether it is an ancestor of HEAD. `state` changed · unchanged · untracked (whole file as added, base none) · ignored · not_git (`folder`, no counts) · no_commits · missing · unavailable (`reason` timeout · no_git · filter · unsafe · too_large · git_failed · changed_during_read). `change` modified · added · deleted · renamed (`old_path`, staged renames). `text` is hunks from the first `@@`, no file headers, at most 256 KiB and 2,000 lines, `truncated` when cut; `add`/`del` count the whole diff and are absent for binary. Read-only git with optional locks off, no external diff, textconv or fsmonitor; a file with a `filter` attribute is unavailable, never filtered. One 3 s deadline for every git of one diff; output counted as it arrives, the process killed past the bound. If the source changes during comparison, `changed_during_read` carries no hunks or counts. At most 2 diffs at once; one more is `busy` |
 | `media.list` | `{agent, cursor?, limit?}` | `{sources: [MediaSource], next?, incomplete?}` OPTIONAL capability (unknown_method = this host cannot say, not "no media"). The conversation's media files newest first: files tools made (`origin` generated), files the person attached (`attachment`). `limit` default 50, max 100. The whole history is read backward in bounded chunks (at most 16 MiB per call, one page kept in memory); `next` is an opaque resume cursor (index identity + byte offset), absent only when the whole history was read; `incomplete` says a page is short because the call spent its read budget, not because history ended — keep following `next`. A cursor into a replaced or shortened index is `bad_params`: list again. A reply is at most 4 MiB as JSON, escaping counted: the engine ends a page BEFORE the record that would pass it (the cursor resumes at that record, nothing dropped); a record whose strings/arrays pass their bounds (256 KiB a string, 256 an array) or that alone cannot fit is an `engine` error, never cut |
@@ -757,6 +854,11 @@ Events: `inbox.added {item}`, `inbox.resolved {id, by: "app"|"elsewhere"|"stoppe
 `inbox.counts {waiting, later, done_today}` (drives the rail badge and the macOS Dock badge).
 Answering anywhere (dock, task, crew, Inbox) resolves it everywhere within 1 s.
 
+`where` names an agent of an open crew by the crew it works in and its handle there:
+`crew` is that crew's id and `path` starts `[crew name, handle]` ("Trudeau Watch / verifier"),
+then the task's title when the ask is a task's. The crew it works in is one it is an ordinary
+member of before one it manages, and the root team last. Any other agent is named by its title.
+
 ## Wave 5: Crews (U3, X2, V01, V02, V15, V15b, V15c, V16–V20, V64)
 
 A crew IS a codeaf team (`internal/teams`). The data is the engine's own: the same
@@ -833,8 +935,29 @@ state: open|escalated|decided, decided_by?, decision?, reason?, trail: [{from, t
 at}], raised, at}`. A packet waiting on you is also an Ask (`kind: "question"`, `subkind:
 "crew_decision"`, `path` = the crew names from `Origin` up the `trail` to you, "Backend → Release
 → you", `decision_kind` = the packet's `kind`: `question`, `conflict`, `cap`, `judgement` or
-`closing`; no other ask carries `decision_kind`), so it reaches the dock and the Inbox. A member's permission prompt never becomes a
-packet: it stays the member's own ask, as in the terminal.
+`closing`; no other ask carries `decision_kind`), so it reaches the dock and the Inbox. A
+member's permission prompt never becomes a packet: it stays the member's own ask, as in the
+terminal, and climbs to the person by itself:
+`ask.opened` on the member (`asks.list {agent: member}` lists it), an Inbox item whose `where`
+names the crew and the member's handle, the member's `state` `asking` with the question as its
+`line`, and the crew's `state` `needs_you`. A member woken while its ask waits still reads
+`asking`. The app answers it with `asks.answer {agent: member, id}` (or `inbox.answer`), which
+closes it everywhere and leaves one receipt, in the member's conversation.
+
+That needs the app to hold the member's conversation, and every member of an open crew is held.
+A member the app cannot open (another codeaf window holds it and cannot be reached) is never
+silent: on the crew's next look after the failure the app writes one line to stderr naming the
+member and the reason, emits `log {level: "warn", message: "@verifier in Trudeau Watch could not
+be opened: <reason>"}`, and puts one quiet `entry.added` notice in the manager's chat ("@verifier
+could not be opened here, so its questions cannot reach you: <reason>. codeaf keeps trying, and
+tries again when you open Trudeau Watch."). While it lasts the member reads `state: "failed"` with
+`line: "can't open here: <reason>"`. It is tried again on a wait that starts at one crew poll
+and doubles up to a minute, at once on `crews.log` for its crew, and when the person opens it;
+once held it is itself again, with one `log {level: "info"}` and one notice ("@verifier is open
+here again; its questions reach you now."). Nothing is said again while it keeps failing. A
+member whose conversation is not on this machine is retried the same way and never said. Nor is one that failed only for want of a key: every launch looks at the crews before the
+window has handed the keys over, so that refusal is the launch, not the member; it is not said,
+the row is not marked, and the member is tried again on the next poll.
 
 **Report** is `Packet.report` of a `closing` packet: `{done, left?, files?, spend_usd?,
 incomplete?}` with options `close`, `close-now`, `keep-going`.
@@ -892,14 +1015,16 @@ field below is marked **app** on the wire's Crew/Member; everything else is **te
 | Member `was? {role?, crew?, at}` | app | written when a member's role changes or it moves crews |
 | `crews.message` to a member, "@manager sees it" | app + Traffic | the words go into the member's conversation; the app also appends one Traffic `you` line (`kind: "you", from: "you", to: <handle>`) so the manager reads "you told @web: …" in its team digest at its next step; it does not wake the manager |
 | `members.start {crew, handle, brief, role?, model?}` | app | a new conversation in the crew's folder whose first message is the brief, as the person's own words; added to the crew under the handle |
-| `crews.propose {agent}` and the Bring in helpers card (`Proposal`) | app | the app asks the agent, in its own chat, for a crew proposal as one JSON block `{name, helpers: [{handle, role, brief, model?}]}`; the answer becomes an Ask (`subkind: "crew_proposal"`) with options `create`, `edit`, `keep` ("Keep it one agent"), carrying the whole proposal as `ask.proposal: Proposal {id, agent, name, hue?, helpers: [{handle, role, brief, model?}], existing?, cap_usd_day?, goal?, ends_at?, at}`. The proposal is kept in `<home>/app/crews.json` until it is answered, so after a restart its ask is opened again (`ask.opened`) and listed by `asks.list` |
+| `crews.propose {agent}` and the Bring in helpers card (`Proposal`) | app | the app asks the agent's own model for a crew proposal as one JSON block `{name, helpers: [{handle, role, brief, model?}]}` **beside its chat, never in it**: a side ask (the engine's `Conversation.SideAsk`) that reads the conversation as text, runs no turn and writes nothing into the conversation, so no `turn.*` event, no `entry.added` and no `agents.entries` row ever carries the question or the JSON, and the model's later turns never see either. The answer becomes an Ask (`subkind: "crew_proposal"`) with options `create`, `edit`, `keep` ("Keep it one agent"), carrying the whole proposal as `ask.proposal: Proposal {id, agent, name, hue?, helpers: [{handle, role, brief, model?}], existing?, cap_usd_day?, goal?, ends_at?, at}`. The proposal is kept in `<home>/app/crews.json` until it is answered, so after a restart its ask is opened again (`ask.opened`) and listed by `asks.list`. `crews.propose` answers `{}` at once; one ask runs per agent at a time (a second press while it is out is answered by the first's card); a press that brings no card adds exactly one quiet notice whose id opens `crewprop-none-` — "No crew proposal came back in a form the app can read" for an answer that is not a proposal, "No crew proposal came back · <reason>" for an ask that failed, and "No crew proposal came back · Day cap reached · $X of $Y" at the day cap, where the day cap's ask also opens — so a window waiting on the press is told it is over either way. Answering `keep` leaves the receipt "Kept as one agent · you · HH:MM"; `create` leaves only the crew's formation receipt (`op: crew.formed`, id `rcrew:<crew>`) |
 | `Proposal {id, agent, name, hue, helpers: [{handle, role, brief, model?}], existing?: [agent], cap_usd_day?, goal?, ends_at?}` → `crews.create {from: "proposal", proposal, edits?}` | app → teams | create = a team with the agent as manager; each helper is a manager's start (`start` line from `manager`, its brief the manager's own words from the proposal) which the app performs; `existing` agents are added |
 | Crew `plan?` | not kept | needs engine work: the manager keeps no plan text the app can read |
 
 ## Wave 7: closing, archiving, finding (V21, V22, J03, J04, X4)
 
-Agent adds `closed_at?`, `archived_at?`, `last_active_at` (when the person last spoke in it),
-`spent_usd` (all it has spent). `state` adds `"archived"`.
+Agent adds `closed_at?`, `archived_at?`, `last_active_at?` (when the person last spoke in it;
+absent when that is not known, always for a conversation they never spoke in such as a member
+a manager started, and never the zero time: sort by `updated_at` then), `spent_usd` (all it has
+spent). `state` adds `"archived"`.
 | method | params | result |
 |---|---|---|
 | `agents.list` (adds) | `{workspace?, state?: "open"\|"closed"\|"archived"\|"all", query?}` | open only by default; `query` matches title or folder |

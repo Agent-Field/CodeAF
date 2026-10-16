@@ -1346,25 +1346,55 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 // be a second set of governance rows and a second handle on the same store.
 // For the pipe engine this changes nothing at all: one conversation calls it
 // once, exactly as before.
+//
+// A FAILED OPEN IS FINAL FOR EVERY DOOR BUT THE APP. A pipe or a host reads its
+// key from the environment and the profile before it serves anything, so the
+// open that failed for the want of one would fail the same way again. The app
+// is handed its keys over the wire AFTER it has started ([appBackend.SetKey]),
+// so the open that ran before the key arrived is not the answer for the rest of
+// the process: [openAppEngineProcess] tries it again. A success is never
+// replaced, and mu makes every opener wait for the one in flight, so two
+// callers can never build two process halves.
 var engineProcess struct {
-	once sync.Once
-	proc *v3Process
-	err  error
+	mu    sync.Mutex
+	tried bool
+	proc  *v3Process
+	err   error
 }
 
-func openEngineProcess() (*v3Process, error) {
-	engineProcess.once.Do(func() {
+func openEngineProcess() (*v3Process, error) { return openEngineProcessRetrying(false) }
+
+// openAppEngineProcess is [openEngineProcess] for the app, where a process half
+// that failed to open is opened again by the next caller rather than handed
+// back as the same error for as long as the window stays open.
+func openAppEngineProcess() (*v3Process, error) { return openEngineProcessRetrying(true) }
+
+func openEngineProcessRetrying(retryFailed bool) (*v3Process, error) {
+	engineProcess.mu.Lock()
+	defer engineProcess.mu.Unlock()
+	if !engineProcess.tried || (retryFailed && engineProcess.proc == nil) {
 		engineProcess.proc, engineProcess.err = openV3Process("engine")
-	})
+		engineProcess.tried = true
+	}
 	return engineProcess.proc, engineProcess.err
+}
+
+// openedEngineProcess is the process half when it is already open, and nil
+// when it is not; it never opens one. A key that moves while nothing is open
+// has nothing to update, because the open that comes later reads the keys as
+// they stand then.
+func openedEngineProcess() *v3Process {
+	engineProcess.mu.Lock()
+	defer engineProcess.mu.Unlock()
+	return engineProcess.proc
 }
 
 // closeEngineProcess closes the once-per-process resources after the serving
 // road has returned. In particular, closeAll cancels and joins model discovery
 // before the engine process can exit or its profile can be reused.
 func closeEngineProcess() {
-	if engineProcess.proc != nil {
-		engineProcess.proc.closeAll()
+	if proc := openedEngineProcess(); proc != nil {
+		proc.closeAll()
 	}
 }
 

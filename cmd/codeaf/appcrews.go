@@ -102,6 +102,13 @@ type appCrewRun struct {
 	asks    map[string]appwire.Ask
 	held    map[string][]string
 	opening map[string]bool
+	// proposing is every agent whose model is being asked for a crew
+	// proposal right now (appcrewmembers.go's CrewPropose); nil until the
+	// first press.
+	proposing map[string]bool
+	// unheld is every member the crew could not hold, and when it tries again
+	// (appcrewhold.go).
+	unheld map[string]*appUnheld
 }
 
 func (c *appCrewRun) locked(fn func()) {
@@ -287,6 +294,11 @@ func (b *appBackend) crewTick(run *appCrewRun, first bool) {
 	}
 	b.crewPackets(run, read, first)
 	b.holdMembers(run, held)
+	// What a hold that failed or came back has to say is said on a later
+	// look than the first, which runs before the app's hello is on the wire.
+	if !first {
+		b.sayHolds(run)
+	}
 }
 
 // appMembershipMoved is every agent whose open crews differ between two looks.
@@ -503,6 +515,11 @@ func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.
 		}
 	}
 	view.State, view.Model, view.Title, view.Line = b.memberLive(agent, view.Title)
+	// A MEMBER THE CREW COULD NOT OPEN SAYS SO ON ITS ROW, with the reason,
+	// rather than reading idle while its questions reach nobody.
+	if line, unheld := b.unheldLine(agent); unheld {
+		view.State, view.Line = teamstore.StateFailed, line
+	}
 	if usd, set := b.agentBudget(agent, b.now()); set {
 		view.CapUSD = &usd
 	}
@@ -716,13 +733,16 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	// A STARTED MEMBER IS NAMED BY ITS BRIEF, the way a conversation a person
 	// opens is named by its first message: the brief is its first message. The
 	// conversation names its own record the same way when its turn reads the
-	// brief; this is the name the list shows from the first moment.
-	if name := session.FirstMessageName(e.Text); name != "" {
-		b.locked(func() {
-			if strings.TrimSpace(a.view.Title) == "" {
-				a.view.Title = name
-			}
-		})
+	// brief; this is the name the list shows from the first moment. And it is
+	// not blank (appblank.go): its brief is on the crew's log for it to read.
+	name := session.FirstMessageName(e.Text)
+	b.locked(func() {
+		a.briefed = true
+		if name != "" && strings.TrimSpace(a.view.Title) == "" {
+			a.view.Title = name
+		}
+	})
+	if name != "" {
 		b.sayAgent(a)
 	}
 	posture := strings.TrimSpace(e.Approval)
@@ -834,15 +854,19 @@ func (b *appBackend) agentMember(agent string) (teamstore.Member, error) {
 }
 
 // holdMembers keeps every member of an open crew held, opening one that is
-// not, one at a time.
+// not, one at a time. A member that cannot be opened is said, once, and tried
+// again later (appcrewhold.go): a member nobody holds is a member whose
+// questions reach nobody.
 func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
+	now := b.now()
 	for agent := range held {
 		if b.isHeld(agent) {
+			b.holdRecovered(run, agent)
 			continue
 		}
 		start := false
 		run.locked(func() {
-			if !run.opening[agent] {
+			if !run.opening[agent] && run.holdDueLocked(agent, now) {
 				run.opening[agent], start = true, true
 			}
 		})
@@ -853,12 +877,21 @@ func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 			defer run.locked(func() { delete(run.opening, agent) })
 			a, err := b.find(agent)
 			if err != nil {
+				// A conversation that is not on this machine raises nothing
+				// here to lose: it waits like one that failed, and is not said.
+				b.holdFailed(run, agent, err, true)
 				return
 			}
+			view, opened, err := b.ensure(a)
+			if err != nil {
+				b.holdFailed(run, agent, err, false)
+				return
+			}
+			b.holdRecovered(run, agent)
 			// ONE agent.changed FOR AN AGENT THIS OPENED, as heldLive says it:
 			// a list the app read while the agent was closed is otherwise
 			// never told. A conversation already held opens nothing.
-			if view, opened, err := b.ensure(a); err == nil && opened {
+			if opened {
 				b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 			}
 		})
@@ -1549,6 +1582,42 @@ func (b *appBackend) crewMemberOf(t teamstore.Team, agent string) (teamstore.Mem
 	return teamstore.Member{}, false
 }
 
+// appCrewSeat is the one open crew an agent works in, and its membership
+// there: a crew it is an ordinary member of before one it manages, because a
+// sub-crew's manager is a member of the crew above and answers to that crew's
+// manager. The root team comes last, since it holds every top-level manager
+// and is nobody's working crew.
+func appCrewSeat(f *teamstore.File, agent string) (teamstore.Team, teamstore.Member, bool) {
+	var managed, root *teamstore.Team
+	var managedAs, rootAs teamstore.Member
+	for _, t := range f.Open() {
+		for _, m := range t.Members {
+			if appMemberAgent(m) != agent {
+				continue
+			}
+			switch {
+			case t.Root:
+				if root == nil {
+					root, rootAs = &t, m
+				}
+			case t.Manager == m.Key:
+				if managed == nil {
+					managed, managedAs = &t, m
+				}
+			default:
+				return t, m, true
+			}
+		}
+	}
+	if managed != nil {
+		return *managed, managedAs, true
+	}
+	if root != nil {
+		return *root, rootAs, true
+	}
+	return teamstore.Team{}, teamstore.Member{}, false
+}
+
 // CrewMessage puts the person's words into a conversation of the crew: the
 // manager's, or a member's, which the manager is also told of on the crew's
 // log (app layer).
@@ -1649,6 +1718,9 @@ func (b *appBackend) CrewLog(id, after string, limit int) ([]appwire.LogLine, st
 	if err != nil {
 		return nil, "", err
 	}
+	// The crew is being looked at: a member it could not open is tried again
+	// now rather than at the end of its wait.
+	b.retryHolds(t.ID)
 	if limit <= 0 || limit > appCrewLogPage {
 		limit = appCrewLogPage
 	}

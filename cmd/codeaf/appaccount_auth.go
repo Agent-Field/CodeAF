@@ -87,8 +87,15 @@ func (b *appBackend) accountAuthView(view *appwire.Provider) {
 	view.SignInState, view.SignInError, view.SignInAttempt = auth.state, auth.message, auth.attempt
 }
 
+// accountSignIn is the ChatGPT sign-in, through the same loopback flow the
+// terminal's `codeaf connect codex` opens ([connectCodexFlow], or the test's
+// [appBackend.codexBegin]) and the same keeping ([config.ConnectCodex]).
 func (b *appBackend) accountSignIn() (string, error) {
-	return b.beginAccountSignIn(func(ctx context.Context) (appAccountFlow, error) { return codexauth.Begin(ctx, codexauth.Options{}) }, func(ctx context.Context, tokens codexauth.Tokens) error {
+	begin := b.codexBegin
+	if begin == nil {
+		begin = connectCodexFlow
+	}
+	return b.beginAccountSignIn(func(ctx context.Context) (appAccountFlow, error) { return begin(ctx) }, func(ctx context.Context, tokens codexauth.Tokens) error {
 		_, err := config.ConnectCodex(ctx, config.ProfileDir(), tokens)
 		return err
 	})
@@ -136,7 +143,7 @@ func (b *appBackend) beginAccountSignIn(begin func(context.Context) (appAccountF
 			if state == "" {
 				return
 			}
-			b.providerChanged("codex", "")
+			b.providerIDChanged("codex", "")
 			if state != "saving" {
 				return
 			}
@@ -144,14 +151,16 @@ func (b *appBackend) beginAccountSignIn(begin func(context.Context) (appAccountF
 			auth.finishSave(e)
 			if e == nil {
 				b.keysMoved("codex")
+				// The account's models reach models.list as a pasted key's do.
+				b.warmProviderModels()
 			}
-			b.providerChanged("codex", "")
+			b.providerIDChanged("codex", "")
 		})
 	})
 	if err != nil {
 		return "", err
 	}
-	b.providerChanged("codex", "")
+	b.providerIDChanged("codex", "")
 	return auth.flow.URL(), nil
 }
 
@@ -175,7 +184,35 @@ func (b *appBackend) CancelSignIn(provider, attempt string) error {
 	// auth.mu: it can wake Wait or re-enter a read of the operation's state.
 	auth.cancel()
 	auth.flow.Cancel()
-	b.providerChanged(provider, "")
+	b.providerIDChanged(provider, "")
+	return nil
+}
+
+// endAccountSignIn settles the ChatGPT sign-in before the account is signed
+// out: one still waiting for the browser is cancelled, as providers.sign_in_cancel
+// cancels it, one being saved answers busy, because the tokens it is writing
+// would outlive the sign-out, and the last one's state is forgotten, so the
+// row says signed out and nothing older.
+func (b *appBackend) endAccountSignIn() error {
+	var auth *appAccountAuth
+	b.locked(func() { auth = b.accountAuth })
+	if auth == nil {
+		return nil
+	}
+	cancelled, err := auth.cancelAttempt(auth.attempt)
+	if err != nil {
+		return err
+	}
+	if cancelled {
+		auth.cancel()
+	}
+	// Cancel is idempotent, and a settled flow may still hold its listener.
+	auth.flow.Cancel()
+	b.locked(func() {
+		if b.accountAuth == auth {
+			b.accountAuth = nil
+		}
+	})
 	return nil
 }
 

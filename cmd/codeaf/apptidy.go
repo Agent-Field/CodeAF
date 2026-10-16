@@ -48,13 +48,13 @@ func (b *appBackend) tidyMarks(view *appwire.Agent, archived bool) {
 	if archived && !held {
 		view.State = appwire.StateArchived
 		if view.ArchivedAt == nil {
-			at := view.UpdatedAt
-			view.ArchivedAt = &at
+			view.ArchivedAt = appKnownTime(view.UpdatedAt)
 		}
 	}
-	if view.LastActiveAt.IsZero() {
-		view.LastActiveAt = view.UpdatedAt
-	}
+	// LastActiveAt IS NOT FILLED FROM UpdatedAt. It is when the person last
+	// spoke, and a conversation they never spoke in, a member a manager
+	// started, has none; a window that wants a time to sort by falls back to
+	// updated_at itself, and the wire leaves an unknown out (appblank.go).
 }
 
 // ListAgentsIn is agents.list with its state and query.
@@ -290,8 +290,7 @@ func (b *appBackend) SearchAll(query string, perGroup int) ([]appwire.HitGroup, 
 	for _, a := range agents {
 		titles[a.ID] = a.Title
 		if len(agentHits.Hits) < perGroup && strings.Contains(strings.ToLower(a.Title), needle) {
-			at := a.UpdatedAt
-			agentHits.Hits = append(agentHits.Hits, appwire.Hit{Kind: appwire.HitAgent, ID: a.ID, Agent: a.ID, Title: a.Title, At: &at})
+			agentHits.Hits = append(agentHits.Hits, appwire.Hit{Kind: appwire.HitAgent, ID: a.ID, Agent: a.ID, Title: a.Title, At: appKnownTime(a.UpdatedAt)})
 		}
 	}
 	crewHits := appwire.HitGroup{Kind: appwire.HitCrew}
@@ -307,16 +306,25 @@ func (b *appBackend) SearchAll(query string, perGroup int) ([]appwire.HitGroup, 
 	if b.searchWords != nil {
 		if hits, err := b.searchWords(query, perGroup); err == nil {
 			for _, h := range hits {
-				at := h.Time
 				title := h.Title
 				if title == "" {
 					title = titles[h.SessionID]
 				}
-				messageHits.Hits = append(messageHits.Hits, appwire.Hit{Kind: appwire.HitMessage, ID: h.SessionID + "#" + strconv.FormatInt(h.Seq, 10), Agent: h.SessionID, Title: title, Excerpt: h.Body, At: &at})
+				messageHits.Hits = append(messageHits.Hits, appwire.Hit{Kind: appwire.HitMessage, ID: h.SessionID + "#" + strconv.FormatInt(h.Seq, 10), Agent: h.SessionID, Title: title, Excerpt: h.Body, At: appKnownTime(h.Time)})
 			}
 		}
 	}
 	return []appwire.HitGroup{agentHits, crewHits, taskHits, messageHits}, nil
+}
+
+// appKnownTime is a time to put on the wire, and nil for the zero time, which
+// is a time nobody knows: the emptiness law leaves it out rather than sending
+// a date in the first century.
+func appKnownTime(at time.Time) *time.Time {
+	if at.IsZero() {
+		return nil
+	}
+	return &at
 }
 
 // searchTasks reads each project's task index once.

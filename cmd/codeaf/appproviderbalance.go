@@ -61,7 +61,7 @@ func (b *appBackend) balanceState() *appBalances {
 func (b *appBackend) ProviderBalance(ask appwire.ProviderBalanceAsk) (appwire.ProviderBalance, error) {
 	id := ask.Provider
 	name := ""
-	if p, ok := appProviderNamed(id); ok {
+	if p, ok := b.appProviderNamed(id); ok {
 		name = p.name
 	}
 	if id != modelsource.DefaultID {
