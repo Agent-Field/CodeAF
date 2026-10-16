@@ -197,7 +197,12 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			// first, and it is started as a service or not at all
 			// (keep_running.go).
 			if err := decodeToolArguments(args, &parsed); err == nil && parsed.KeepRunning != nil {
-				return a.keepRunning(ctx, parsed.Command, *parsed.KeepRunning)
+				text, isError, err := a.keepRunning(ctx, parsed.Command, *parsed.KeepRunning)
+				// A service outlives the call: nothing it writes is this call's.
+				if _, declared, _ := shellOutputsArgs(args); declared && a.mayPublishShellOutputs() {
+					text = shellOutputsNote(text, isError, "Outputs not registered: a kept-running command ends after this call.")
+				}
+				return text, isError, err
 			}
 			// A call whose arguments do not parse belongs to bare: it owns the
 			// wording of every other bash error, and a second parser reporting

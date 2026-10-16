@@ -125,8 +125,14 @@ open('plot.png','wb').write(b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBB
 	if err != nil || isError || !strings.Contains(text, "registered (created)") {
 		t.Fatalf("%v %v %s", err, isError, text)
 	}
-	if rows := publishedRows(t, agent, index); len(rows) != 1 || rows[0].Fact.Width != 1 {
+	rows := publishedRows(t, agent, index)
+	if len(rows) != 1 || rows[0].Fact.Width != 1 {
 		t.Fatalf("rows = %+v", rows)
+	}
+	// The same source after a restart: only the index is read.
+	found, err := FindMedia(index, agent.journalID(), rows[0].Fact.ID, time.Time{})
+	if err != nil || found.Fact.Origin != MediaPublished || found.Fact.Change != ShellCreated || found.Fact.Run == "" || found.Fact.Tool != "call_shell_1" {
+		t.Fatalf("%v %+v", err, found.Fact)
 	}
 }
 
@@ -464,5 +470,28 @@ func TestShellOutputsARefusedCallKeepsItsInvalidArgumentsOpening(t *testing.T) {
 	}
 	if got := shellOutputsNote("out\n\nCommand exited with code 2", true, "note"); !bashFailed(got) {
 		t.Fatal(got)
+	}
+}
+
+func TestShellOutputsAHardLinkToAnExistingFileIsNotCreated(t *testing.T) {
+	agent, workspace, index := shellAgent(t)
+	os.WriteFile(filepath.Join(workspace, "photo.png"), shellPNG(t, 5), 0o644)
+	text, _, _ := beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, "ln photo.png chart.png", "chart.png"))
+	if !strings.Contains(text, "registered (unknown)") {
+		t.Fatalf("%s", text)
+	}
+	if rows := publishedRows(t, agent, index); len(rows) != 1 || rows[0].Artifact.Deliver != nil {
+		t.Fatalf("rows = %+v", rows)
+	}
+}
+
+func TestShellOutputsAControlCharacterInAPathIsRefused(t *testing.T) {
+	agent, workspace, _ := shellAgent(t)
+	text, isError, _ := beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, "touch ran", "a\n.png"))
+	if !isError || !strings.Contains(text, "control character") {
+		t.Fatalf("%v %s", isError, text)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "ran")); err == nil {
+		t.Fatal("ran")
 	}
 }

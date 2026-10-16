@@ -176,12 +176,14 @@ func (a *Agent) publishingBash(inner bare.Tool) bare.Tool {
 			text, isError, err := inner.Execute(ctx, args)
 			return shellOutputsNote(text, isError, "Outputs not registered: this conversation has no record to keep them in."), isError, err
 		}
+		// THE COUNTERS ARE READ BEFORE THE SNAPSHOT: a sibling that finishes
+		// between the two reads must still have been counted.
+		startedAtSnapshot := a.toolsStarted.Load()
+		busy := a.toolsInFlight.Load() > 1 || a.otherProcessesRunning()
 		befores, refusal := a.snapshotShellOutputs(outputs)
 		if refusal != "" {
 			return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 		}
-		busy := a.otherProcessesRunning() || a.toolsInFlight.Load() > 1
-		startedAtSnapshot := a.toolsStarted.Load()
 		exited := false
 		observed := bare.WithBashExit(ctx, func(code int) { exited = code == 0 })
 		text, isError, err := inner.Execute(observed, args)
@@ -242,8 +244,8 @@ func (a *Agent) snapshotShellOutputs(declared []string) ([]shellBefore, string) 
 			return nil, "outputs holds an empty path"
 		case len(raw) > shellOutputPathMax:
 			return nil, fmt.Sprintf("an outputs path is over %d bytes", shellOutputPathMax)
-		case strings.ContainsRune(raw, 0):
-			return nil, "an outputs path holds a NUL byte"
+		case strings.ContainsFunc(raw, func(r rune) bool { return r < 0x20 || r == 0x7f }):
+			return nil, "an outputs path holds a control character"
 		}
 		path := a.shellOutputPath(raw)
 		if base := filepath.Base(filepath.Clean(raw)); base == "." || base == string(filepath.Separator) || base == ".." {
@@ -422,7 +424,7 @@ func (a *Agent) inspectShellOutput(ctx context.Context, before shellBefore, budg
 	if w, h, ok := imageSize(head); ok {
 		fact.Width, fact.Height = w, h
 	}
-	fact.Change = classifyShellOutput(before, parent, opened, busy)
+	fact.Change = classifyShellOutput(before, parent, opened, busy || linkCount(opened) > 1)
 	out.fact, out.kind, out.title = fact, "image", filepath.Base(canonical)
 	return out
 }
