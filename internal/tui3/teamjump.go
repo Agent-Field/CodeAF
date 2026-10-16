@@ -304,6 +304,13 @@ func sentElsewhere(e *entry, shown team) bool {
 // A shared conversation can post to one team and receive another team's
 // message with the same number. The receipt's team name disambiguates it.
 func postedElsewhere(e *entry, shown team) bool {
+	// A post up says the team above by name and id and its line's number there.
+	if post, ok := session.ReadTeamPost(e.detail.Output); ok && post.Up {
+		if post.TeamID != "" {
+			return post.TeamID != shown.ID
+		}
+		return post.Team != shown.Name && post.Team != shown.ID
+	}
 	_, rest, named := strings.Cut(e.detail.Output, " in ")
 	if !named {
 		return false

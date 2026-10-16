@@ -12,7 +12,8 @@ func TestTeamPostAnswerReadsBackAsItsFacts(t *testing.T) {
 		{teamPostSaid("the manager", "Verification", "000000000003", "000000000002"), TeamPost{Team: "Verification", To: "manager", Post: "000000000003", Answers: "000000000002"}},
 		{teamPostSaid("the room", `Re "lease", in`, "000000000010", ""), TeamPost{Team: `Re "lease", in`, To: "room", Post: "000000000010"}},
 		{teamPostSaid("@backend", "Release", "", ""), TeamPost{Team: "Release", To: "backend"}},
-		{teamPostUpSaid("Release", "Docs"), TeamPost{Team: "Release", To: "manager", Up: true, From: "Docs"}},
+		{teamPostUpSaid("Release", "3fa9c1d2e4b0", "000000000042", "000000000040", "Docs, east"), TeamPost{Team: "Release", TeamID: "3fa9c1d2e4b0", To: "manager", Up: true, From: "Docs, east", Post: "000000000042", Answers: "000000000040"}},
+		{teamPostUpSaid(`Re "lease"`, "3fa9c1d2e4b0", "000000000042", "", "Docs"), TeamPost{Team: `Re "lease"`, TeamID: "3fa9c1d2e4b0", To: "manager", Up: true, From: "Docs", Post: "000000000042"}},
 	}
 	for _, c := range cases {
 		got, ok := ReadTeamPost(c.said)
@@ -31,6 +32,9 @@ func TestTeamPostAnswerReadsBackAsItsFacts(t *testing.T) {
 		"The post could not be written to the team's traffic: disk full",
 		"Posted to the manager in \"Verification\" as #3, answering #2. Something else.",
 		"Posted to somebody in \"Verification\". It arrives at the start of their next step.",
+		"Posted to the manager of \"Release\" (team ) as #4, which \"Docs\" answers to while it has no manager of its own. It arrives at the start of its next step.",
+		"Posted to the manager of \"Release\" (team 3fa9c1d2e4b0) as #x, which \"Docs\" answers to while it has no manager of its own. It arrives at the start of its next step.",
+		"Posted to the manager of \"Release\" (team 3fa9c1d2e4b0) as #4, which \"Docs\" answers to while it has no manager of its own.",
 	} {
 		if post, ok := ReadTeamPost(refused); ok {
 			t.Fatalf("%q read as a post %+v", refused, post)
@@ -42,6 +46,15 @@ func TestTeamPostAnswerReadsBackAsItsFacts(t *testing.T) {
 func TestTeamPostRecordedSentenceReads(t *testing.T) {
 	post, ok := ReadTeamPost("Posted to the manager in \"Verification\" as #3, answering #2. It arrives at the start of their next step.")
 	if !ok || post.To != "manager" || post.Team != "Verification" || trimID(post.Post) != "3" || trimID(post.Answers) != "2" {
+		t.Fatalf("read %+v %v", post, ok)
+	}
+}
+
+// AN OLDER BUILD'S POST UP named no line and no team id: it still reads as a
+// delivered post up, with nothing to open, never a number taken from elsewhere.
+func TestAnOlderPostUpReadsWithNoLine(t *testing.T) {
+	post, ok := ReadTeamPost("Posted to the manager of \"Release\", which \"Docs\" answers to while it has no manager of its own. It arrives at the start of its next step.")
+	if !ok || post != (TeamPost{Team: "Release", To: "manager", Up: true, From: "Docs"}) {
 		t.Fatalf("read %+v %v", post, ok)
 	}
 }

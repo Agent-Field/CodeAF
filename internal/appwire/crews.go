@@ -470,7 +470,11 @@ type LogAnchorAsk struct {
 	Agent    string `json:"agent"`
 	Post     string `json:"post"`
 	CrewName string `json:"crew_name,omitempty"`
-	Around   int    `json:"around,omitempty"`
+	// Crew is the crew id the record names (a post up to the crew above):
+	// then that crew's log is read, if the agent is in it or in a crew under
+	// it, and CrewName is not matched (a rename keeps the line).
+	Crew   string `json:"crew,omitempty"`
+	Around int    `json:"around,omitempty"`
 }
 
 // LogAnchorAroundMax bounds a log anchor's neighbours on each side.

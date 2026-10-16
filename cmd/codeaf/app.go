@@ -3073,7 +3073,7 @@ func appHandoff(tool, args, answer string) *appwire.Handoff {
 		return nil
 	}
 	if post, ok := session.ReadTeamPost(answer); ok {
-		h := &appwire.Handoff{CrewName: post.Team, To: post.To, Post: post.Post, Answers: post.Answers, Delivered: true, Up: post.Up}
+		h := &appwire.Handoff{CrewName: post.Team, Crew: post.TeamID, To: post.To, Post: post.Post, Answers: post.Answers, Delivered: true, Up: post.Up}
 		if post.Up {
 			h.FromCrew = post.From
 		}

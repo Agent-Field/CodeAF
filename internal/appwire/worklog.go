@@ -53,12 +53,15 @@ type ToolFacts struct {
 // was for, and the log entry it became. Delivered false is a post the engine
 // refused or could not write; Reason is then the engine's own words.
 type Handoff struct {
-	// CrewName is the name of the crew whose log holds the line.
+	// CrewName is the name of the crew whose log holds the line, and Crew its
+	// id when the engine's answer named it (a post up to the crew above).
 	CrewName string `json:"crew_name,omitempty"`
+	Crew     string `json:"crew,omitempty"`
 	// To is "manager", "room" or a member's handle (no @).
 	To string `json:"to,omitempty"`
 	// Post is the log entry the line was written as and Answers the entry it
-	// answers (LogLine ids); "" when the answer named none.
+	// answers (LogLine ids); "" when the answer named none (an older build's
+	// post up): such a line has nothing to open.
 	Post      string `json:"post,omitempty"`
 	Answers   string `json:"answers,omitempty"`
 	Delivered bool   `json:"delivered"`

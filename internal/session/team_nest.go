@@ -691,7 +691,10 @@ func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (s
 	profile := a.config.teamProfile()
 	entry.Member = role.key
 	entry.Text = fmt.Sprintf("(from %q, a team under yours with no manager of its own) %s", team.Name, entry.Text)
-	if err := teams.AppendTraffic(profile, role.boss, entry); err != nil {
+	// THE LINE'S OWN NUMBER AND ITS TEAM'S ID ARE IN THE ANSWER, as for a post
+	// in the member's own team: the one record that can take somebody to it.
+	own, err := teams.AppendTrafficID(profile, role.boss, entry)
+	if err != nil {
 		return "The post could not be written to the traffic of " + strconv.Quote(role.bossName) + ": " + err.Error(), true, nil
 	}
 	file, _, _, _ := a.teamSnapshot(profile)
@@ -702,5 +705,5 @@ func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (s
 			}
 		}
 	}
-	return teamPostUpSaid(role.bossName, team.Name), false, nil
+	return teamPostUpSaid(role.bossName, role.boss, own, entry.Answers, team.Name), false, nil
 }

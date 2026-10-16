@@ -404,3 +404,22 @@ func TestTrafficJumpNeverLandsOnAnotherTeamsSameNumber(t *testing.T) {
 		t.Fatalf("this team's send landed on entry %d, want its own team_send at 1", got)
 	}
 }
+
+// A POST UP IS THE TEAM ABOVE'S LINE: its ` as #N` is that team's number, so a
+// jump scoped to the member's own team never lands on it, and one scoped to
+// the team above does.
+func TestAPostUpIsScopedToTheTeamAbove(t *testing.T) {
+	up := &entry{kind: entryTool, tool: "team_post", detail: toolDetail{Output: `Posted to the manager of "harbor" (team 3fa9c1d2e4b0) as #2, which "dock" answers to while it has no manager of its own. It arrives at the start of its next step.`}}
+	harbor, dock := team{ID: "3fa9c1d2e4b0", Name: "harbor"}, team{ID: "0d0c0d0c0d0c", Name: "dock"}
+	if !postedElsewhere(up, dock) || postedElsewhere(up, harbor) {
+		t.Fatalf("a post up's scope: elsewhere from dock %v, from harbor %v", postedElsewhere(up, dock), postedElsewhere(up, harbor))
+	}
+	// A team above renamed since: the id still places it.
+	if postedElsewhere(up, team{ID: "3fa9c1d2e4b0", Name: "port"}) {
+		t.Fatal("a renamed team above lost its post up")
+	}
+	in := &entry{kind: entryTool, tool: "team_post", detail: toolDetail{Output: `Posted to the manager in "dock" as #2. It arrives at the start of their next step.`}}
+	if postedElsewhere(in, dock) || !postedElsewhere(in, harbor) {
+		t.Fatal("a post in the member's own team changed scope")
+	}
+}

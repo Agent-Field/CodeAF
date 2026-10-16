@@ -1,9 +1,14 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -249,4 +254,120 @@ func hasLine(lines []appwire.LogLine, id string) bool {
 		}
 	}
 	return false
+}
+
+// A POST UP OPENS ITS OWN LINE IN THE CREW ABOVE. A member of a sub-crew with
+// no manager posts to the manager of the crew above; the engine's answer names
+// that crew by id and the line it became, so the journal read back (as after a
+// restart) opens that very line, never its twin with the same words. The crew
+// above is read only for a member of a crew under it, and only its own line
+// there; an older answer with no line opens nothing; an unrelated crew, a
+// crew gone, a member gone and a room line up there are refused; the name path
+// is not widened; a closed crew above still opens as history.
+func TestAppCrewLogAtOpensAPostUpByItsCrewAndID(t *testing.T) {
+	backend, harbor, web := startedWeb(t, &fakeConversation{}, "Own the web client.")
+	const lonerKey = "/state/v3/places/proj/c0c0c0c0/transcript.jsonl"
+	const loner = "c0c0c0c0"
+	dock, elsewhere := teamstore.NewID(), teamstore.NewID()
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: dock, Name: "dock", Made: time.Now()}, teamstore.Team{ID: elsewhere, Name: "harbor", Made: time.Now()})
+		if err := f.SetParent(dock, harbor); err != nil {
+			return err
+		}
+		for _, id := range []string{dock, elsewhere} {
+			if err := f.AddMember(id, teamstore.Member{Key: lonerKey + id, File: lonerKey, Where: "/w", Word: "loner", Handle: "loner"}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	up := func(team, text string) string {
+		id, err := teamstore.AppendTrafficID(backend.profileDir, team, teamstore.Entry{Kind: teamstore.KindNote, From: "loner", To: teamstore.ToManager, Member: lonerKey + dock, Text: `(from "dock", a team under yours with no manager of its own) ` + text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	first := up(harbor, "LEAF-READY")
+	room, err := teamstore.AppendTrafficID(backend.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: "web", To: teamstore.ToRoom, Text: "harbor's own room"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := up(harbor, "LEAF-READY")
+	theirs := up(elsewhere, "LEAF-READY")
+
+	journal := func(answer string) *appwire.Handoff {
+		content, _ := json.Marshal(answer)
+		record := `{"type":"session","version":1,"id":"n1","cwd":"/w"}
+{"type":"message","role":"user","content":"Report up.","timestamp":"2026-10-15T23:06:41Z"}
+{"type":"message","role":"assistant","content":"","toolCalls":[{"id":"c1","function":{"name":"team_post","arguments":"{\"to\":\"manager\",\"text\":\"LEAF-READY\"}"}}],"timestamp":"2026-10-15T23:06:42Z"}
+{"type":"message","role":"tool","toolCallId":"c1","content":` + string(content) + `,"timestamp":"2026-10-15T23:06:42Z"}
+`
+		for _, item := range session.ReadTranscriptBytes([]byte(record)).Entries {
+			if item.Tool == "team_post" {
+				return appHandoff(item.Tool, item.Args, item.Output)
+			}
+		}
+		return nil
+	}
+	said := func(post string) string {
+		return fmt.Sprintf(`Posted to the manager of "harbor" (team %s) as %s, which "dock" answers to while it has no manager of its own. It arrives at the start of its next step.`, harbor, teamstore.ThreadNumber(post))
+	}
+	for _, want := range []string{first, second} {
+		h := journal(said(want))
+		if h == nil || !h.Delivered || !h.Up || h.Crew != harbor || h.CrewName != "harbor" || h.FromCrew != "dock" || h.Post != want {
+			t.Fatalf("handoff read back = %+v", h)
+		}
+		a, err := backend.CrewLogAt(appwire.LogAnchorAsk{Agent: loner, Post: h.Post, CrewName: h.CrewName, Crew: h.Crew, Around: 1})
+		if err != nil || a.Crew != harbor || a.Closed || a.Lines[1].ID != want || !strings.HasSuffix(a.Lines[1].Text, "LEAF-READY") {
+			t.Fatalf("anchor %s = %+v %v", want, a, err)
+		}
+	}
+	old := journal(`Posted to the manager of "harbor", which "dock" answers to while it has no manager of its own. It arrives at the start of its next step.`)
+	if old == nil || !old.Delivered || !old.Up || old.Post != "" || old.Crew != "" {
+		t.Fatalf("an older post up = %+v", old)
+	}
+	for name, ask := range map[string]appwire.LogAnchorAsk{
+		"a crew of the same name it is not under": {Agent: loner, Post: theirs, Crew: harbor},
+		"harbor's room line, not its own":         {Agent: loner, Post: room, Crew: harbor},
+		"a crew gone":                             {Agent: loner, Post: first, Crew: teamstore.NewID()},
+		"an agent in neither":                     {Agent: "ffffffff", Post: first, Crew: harbor},
+		"the name path is not widened":            {Agent: loner, Post: first, CrewName: "harbor"},
+	} {
+		if a, err := backend.CrewLogAt(ask); wireCode(err) != appwire.CodeNotFound {
+			t.Fatalf("%s = %+v %v", name, a, err)
+		}
+	}
+	// A member of harbor itself still reads harbor's lines to and from it.
+	if a, err := backend.CrewLogAt(appwire.LogAnchorAsk{Agent: web, Post: room, Crew: harbor}); err != nil || !hasLine(a.Lines, room) {
+		t.Fatalf("harbor's own member = %+v %v", a, err)
+	}
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		for i := range f.Teams {
+			if f.Teams[i].ID == harbor {
+				f.Teams[i].State = teamstore.TeamClosed
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := backend.CrewLogAt(appwire.LogAnchorAsk{Agent: loner, Post: second, Crew: harbor}); err != nil || !a.Closed || !hasLine(a.Lines, second) {
+		t.Fatalf("a closed crew above = %+v %v", a, err)
+	}
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		for i := range f.Teams {
+			if f.Teams[i].ID == dock {
+				f.Teams[i].Members = nil
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.CrewLogAt(appwire.LogAnchorAsk{Agent: loner, Post: second, Crew: harbor}); wireCode(err) != appwire.CodeNotFound {
+		t.Fatalf("a member gone from the crew below = %v", err)
+	}
 }

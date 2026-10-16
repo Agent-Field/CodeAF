@@ -1639,6 +1639,9 @@ func (b *appBackend) CrewLogAt(ask appwire.LogAnchorAsk) (appwire.LogAnchor, err
 	if err != nil {
 		return appwire.LogAnchor{}, appEngineError(err)
 	}
+	if ask.Crew != "" {
+		return b.crewLogAtCrew(profile, f, ask.Crew, ask.Agent, post, around)
+	}
 	var (
 		found   []appwire.LogAnchor
 		inCrews int
@@ -1680,6 +1683,47 @@ func (b *appBackend) CrewLogAt(ask appwire.LogAnchorAsk) (appwire.LogAnchor, err
 		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "this agent is no longer in a crew named %q", ask.CrewName)
 	}
 	return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "line %s is no longer in the crew's log", teamstore.ThreadNumber(post))
+}
+
+// crewLogAtCrew is CrewLogAt for a line whose record named its crew by id (a
+// post up to the crew above). The agent must be in that crew, where the line
+// may be any written by or to it ([teamstore.Involves]), or in a crew under it,
+// where it must be the agent's own: the line names that membership
+// (Member), so the room's lines up there stay that crew's.
+func (b *appBackend) crewLogAtCrew(profile string, f *teamstore.File, crew, agent, post string, around int) (appwire.LogAnchor, error) {
+	t, ok := f.Team(crew)
+	if !ok {
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "the crew line %s was written to is gone", teamstore.ThreadNumber(post))
+	}
+	direct, in := b.crewMemberOf(t, agent)
+	var below []teamstore.Member
+	for _, d := range f.Descendants(t.ID) {
+		if m, ok := b.crewMemberOf(d, agent); ok && m.Key != "" {
+			below = append(below, m)
+		}
+	}
+	if !in && len(below) == 0 {
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "this agent is not in %q or a crew under it", t.Name)
+	}
+	entries, ok, err := teamstore.ReadAround(profile, t.ID, post, around)
+	if err != nil {
+		return appwire.LogAnchor{}, appEngineError(err)
+	}
+	mine := false
+	lines := make([]appwire.LogLine, 0, len(entries))
+	for _, e := range entries {
+		if e.ID == post {
+			mine = in && teamstore.Involves(e, direct)
+			for _, m := range below {
+				mine = mine || e.Member == m.Key
+			}
+		}
+		lines = append(lines, appLogLine(t, e))
+	}
+	if !ok || !mine {
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "line %s is no longer in the crew's log", teamstore.ThreadNumber(post))
+	}
+	return appwire.LogAnchor{Crew: t.ID, Closed: t.Closed(), Lines: lines}, nil
 }
 
 // CrewDecisions is the decisions waiting (or all of them) for one crew, or

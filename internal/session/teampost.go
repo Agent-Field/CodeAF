@@ -10,7 +10,6 @@ package session
 // two writers that compose it, which are the only code that knows the shape.
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -23,9 +22,12 @@ type TeamPost struct {
 	Team string
 	// To is "manager", "room" or a teammate's handle (no @).
 	To string
+	// TeamID is the id of the team whose log holds the line, for a post up
+	// (the one answer that names it); "" for every other answer.
+	TeamID string
 	// Post is the traffic entry the line was written as and Answers the one it
-	// answers, both entry ids; "" when the answer named none (a post up to a
-	// parent team's manager is not numbered).
+	// answers, both entry ids; "" when the answer named none (an older build's
+	// post up to a parent team's manager was not numbered).
 	Post    string
 	Answers string
 	// Up is a post from a team with no manager of its own to the manager of
@@ -37,7 +39,8 @@ type TeamPost struct {
 const (
 	teamPostLead   = "Posted to "
 	teamPostArrive = ". It arrives at the start of their next step."
-	teamPostUpFmt  = "Posted to the manager of %q, which %q answers to while it has no manager of its own. It arrives at the start of its next step."
+	teamPostUpLead = "Posted to the manager of "
+	teamPostUpTail = " answers to while it has no manager of its own. It arrives at the start of its next step."
 )
 
 // teamPostSaid is a delivered post's answer: where is "the room", "the
@@ -54,20 +57,81 @@ func teamPostSaid(where, team, own, answers string) string {
 }
 
 // teamPostUpSaid is a post's answer when it went up to the manager of the
-// team above.
-func teamPostUpSaid(boss, team string) string {
-	return fmt.Sprintf(teamPostUpFmt, boss, team)
+// team above: that team by name and id, the entry the line was written as in
+// its log and the one it answers (ids or ""), and the team it came from. An
+// older build said only the two names.
+func teamPostUpSaid(boss, bossID, own, answers, team string) string {
+	said := teamPostUpLead + strconv.Quote(boss)
+	if bossID != "" {
+		said += " (team " + bossID + ")"
+	}
+	if own != "" {
+		said += " as " + teams.ThreadNumber(own)
+	}
+	if answers != "" {
+		said += ", answering " + teams.ThreadNumber(answers)
+	}
+	return said + ", which " + strconv.Quote(team) + teamPostUpTail
+}
+
+// readTeamPostUp is ReadTeamPost for a post up; false for any other answer.
+func readTeamPostUp(answer string) (TeamPost, bool) {
+	rest, ok := strings.CutPrefix(answer, teamPostUpLead)
+	if !ok {
+		return TeamPost{}, false
+	}
+	boss, err := strconv.QuotedPrefix(rest)
+	if err != nil {
+		return TeamPost{}, false
+	}
+	post := TeamPost{To: teams.ToManager, Up: true}
+	post.Team, _ = strconv.Unquote(boss)
+	rest = rest[len(boss):]
+	if after, ok := strings.CutPrefix(rest, " (team "); ok {
+		id, tail, ok := strings.Cut(after, ")")
+		if !ok || id == "" {
+			return TeamPost{}, false
+		}
+		post.TeamID, rest = id, tail
+	}
+	if after, ok := strings.CutPrefix(rest, " as "); ok {
+		number, tail, _ := strings.Cut(after, ",")
+		id, ok := teams.ThreadID(number)
+		if !ok {
+			return TeamPost{}, false
+		}
+		post.Post, rest = id, ","+tail
+	}
+	if after, ok := strings.CutPrefix(rest, ", answering "); ok {
+		number, tail, _ := strings.Cut(after, ",")
+		id, ok := teams.ThreadID(number)
+		if !ok {
+			return TeamPost{}, false
+		}
+		post.Answers, rest = id, ","+tail
+	}
+	from, ok := strings.CutPrefix(rest, ", which ")
+	if !ok {
+		return TeamPost{}, false
+	}
+	quoted, err := strconv.QuotedPrefix(from)
+	if err != nil {
+		return TeamPost{}, false
+	}
+	post.From, _ = strconv.Unquote(quoted)
+	// The sentence is read back only when writing the facts says it again.
+	if teamPostUpSaid(post.Team, post.TeamID, post.Post, post.Answers, post.From) != answer {
+		return TeamPost{}, false
+	}
+	return post, true
 }
 
 // ReadTeamPost is the post a team_post answer records, and false for any
 // other answer (a refusal, a failed write, an answer from an older build).
 func ReadTeamPost(answer string) (TeamPost, bool) {
 	answer = strings.TrimSpace(answer)
-	var boss, from string
-	if n, err := fmt.Sscanf(answer, "Posted to the manager of %q, which %q answers", &boss, &from); err == nil && n == 2 {
-		if teamPostUpSaid(boss, from) == answer {
-			return TeamPost{Team: boss, To: teams.ToManager, Up: true, From: from}, true
-		}
+	if post, ok := readTeamPostUp(answer); ok {
+		return post, true
 	}
 	rest, ok := strings.CutPrefix(answer, teamPostLead)
 	if !ok {
