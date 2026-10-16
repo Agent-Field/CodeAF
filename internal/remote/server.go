@@ -1276,6 +1276,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 	return Welcome{
 		MessageMarks:               messageMarksKnown(sess.agent),
 		ComposedMessages:           composedKnown(sess.agent),
+		MessageReceipts:            composedKnown(sess.agent),
 		SteerMarks:                 steerMarksKnown(sess.agent),
 		FollowUpMarks:              followUpMarksKnown(sess.agent),
 		Version:                    Version,
@@ -2653,7 +2654,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
 		})
 		hasMark := args.marked()
-		if args.composed() {
+		if args.composed() || args.WantReceipt {
 			// PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT, and the
 			// receipt rides the answer that names the stream.
 			composer, ok := agent.(composedDoor)

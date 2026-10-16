@@ -1766,7 +1766,12 @@ func (a *Agent) SubmitComposed(ctx context.Context, message session.Submission) 
 	if !a.ComposedKnown() {
 		return session.SubmissionReceipt{}, nil, errors.New("engine: this engine cannot take pictures with a message; update it before sending")
 	}
-	payload, err := a.c.call(ctx, MethodSubmit, argsOf(message))
+	args := argsOf(message)
+	if !args.composed() && !a.MessageReceiptsKnown() {
+		return session.SubmissionReceipt{}, nil, errors.New("engine: this host cannot acknowledge an ordinary message identity; update it before requesting a receipt")
+	}
+	args.WantReceipt = true
+	payload, err := a.c.call(ctx, MethodSubmit, args)
 	if err != nil {
 		return session.SubmissionReceipt{}, nil, err
 	}
@@ -2757,4 +2762,10 @@ func (c *Client) DeleteConversation(file string, choices map[string]string, affe
 func (c *Client) DeleteTask(file, id string) error {
 	_, err := c.call(nil, MethodPlacesTaskDelete, TaskDeleteArgs{File: file, ID: id})
 	return err
+}
+
+// MessageReceiptsKnown distinguishes hosts that can acknowledge plain text
+// from earlier composed-image-only hosts. A client checks before sending.
+func (a *Agent) MessageReceiptsKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageReceipts })
 }

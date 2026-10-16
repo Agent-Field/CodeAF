@@ -90,3 +90,42 @@ func TestAnOlderHostIsRefusedBeforeAComposedMessageCrossesTheWire(t *testing.T) 
 }
 
 var _ composedDoor = (*session.Agent)(nil)
+
+func TestPlainReceiptRequiresExplicitRequestAndIsReturnedOnTheHostWire(t *testing.T) {
+	agent := &composedAgent{fakeAgent: &fakeAgent{model: "m"}}
+	server := &server{out: io.Discard, session: NewSession(&Engine{Agent: agent}, false)}
+	raw, err := server.invoke(Frame{Kind: "call", ID: 1, Method: MethodSubmit, Payload: mustJSON(SubmitArgs{Text: "ordinary", WantReceipt: true})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got StreamRef
+	if err = json.Unmarshal(raw, &got); err != nil || got.Receipt == nil || got.Receipt.MessageID == "" || len(agent.submissions) != 1 {
+		t.Fatalf("receipt was lost after submission: %s %v", raw, err)
+	}
+	if agent.submissions[0].Text != "ordinary" || len(agent.submissions[0].Media) != 0 {
+		t.Fatalf("plain text changed: %+v", agent.submissions)
+	}
+}
+func TestPlainSubmitWithoutReceiptKeepsTheExistingHostRoad(t *testing.T) {
+	agent := &composedAgent{fakeAgent: &fakeAgent{model: "m"}}
+	server := &server{out: io.Discard, session: NewSession(&Engine{Agent: agent}, false)}
+	raw, err := server.invoke(Frame{Kind: "call", ID: 1, Method: MethodSubmit, Payload: mustJSON(SubmitArgs{Text: "ordinary"})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got StreamRef
+	if err = json.Unmarshal(raw, &got); err != nil || got.Receipt != nil || len(agent.submissions) != 0 {
+		t.Fatalf("plain road changed: %s %v", raw, err)
+	}
+}
+
+func TestOldImageOnlyHostRefusesPlainReceiptBeforeSendingAnything(t *testing.T) {
+	client := &Client{welcome: Welcome{ComposedMessages: true}}
+	agent := &Agent{c: client}
+	if _, _, err := agent.SubmitComposed(t.Context(), session.Submission{Text: "ordinary"}); err == nil {
+		t.Fatal("ordinary receipt crossed an unadvertised capability")
+	}
+	if client.made.Load() != 0 {
+		t.Fatal("refused plain receipt crossed the wire")
+	}
+}

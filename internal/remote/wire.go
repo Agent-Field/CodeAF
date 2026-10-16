@@ -1066,6 +1066,8 @@ type Welcome struct {
 	// an annotation and answers its receipt. Absence is an older engine: such a
 	// Submit is refused before anything is sent.
 	ComposedMessages bool `json:"composedMessages,omitempty"`
+	// MessageReceipts also acknowledges ordinary text with an engine-minted ID.
+	MessageReceipts bool `json:"messageReceipts,omitempty"`
 	// SessionInstance identifies this live conversation owner, not its durable
 	// transcript. A replaced engine can reopen the same file with stream IDs
 	// starting over, so a returning surface must forget the previous owner IDs.
@@ -1480,7 +1482,9 @@ type InterruptArgs struct {
 }
 
 type SubmitArgs struct {
-	Text string `json:"text"`
+	// WantReceipt is used only when the welcome advertised MessageReceipts.
+	WantReceipt bool   `json:"wantReceipt,omitempty"`
+	Text        string `json:"text"`
 	// Said, Attachments and Reads are what a door that knows more than the
 	// words said about a person's message (internal/session's
 	// [session.Submission]), on Submit alone. All are absent from every other

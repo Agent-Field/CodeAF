@@ -21,7 +21,8 @@ type composingConversation struct {
 	composed []session.Submission
 }
 
-func (c *composingConversation) ComposedKnown() bool { return c.known }
+func (c *composingConversation) ComposedKnown() bool        { return c.known }
+func (c *composingConversation) MessageReceiptsKnown() bool { return c.known }
 
 func (c *composingConversation) SubmitComposed(ctx context.Context, message session.Submission) (session.SubmissionReceipt, <-chan session.Event, error) {
 	c.mu.Lock()
@@ -299,5 +300,30 @@ func TestOrdinaryAppSendUsesTheRealReceiptOnACapableHost(t *testing.T) {
 	}
 	if got := conv.sent(); len(got) != 1 || got[0].Text != "ordinary words" || len(got[0].Media) != 0 {
 		t.Fatalf("ordinary text was changed: %+v", got)
+	}
+}
+
+// An old composed host accepts picture messages but did not promise receipts
+// for ordinary text. A plain send must retain its old exactly-once road.
+type imageOnlyReceiptHost struct{ *fakeConversation }
+
+func (c *imageOnlyReceiptHost) ComposedKnown() bool { return true }
+func (c *imageOnlyReceiptHost) SubmitComposed(context.Context, session.Submission) (session.SubmissionReceipt, <-chan session.Event, error) {
+	panic("ordinary text crossed an unadvertised receipt road")
+}
+func TestOrdinaryAppSendKeepsTheOldHostPlainRoad(t *testing.T) {
+	conv := &imageOnlyReceiptHost{fakeConversation: &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}}}
+	backend, rec, agent, _, _ := composingBackend(t, conv)
+	if _, err := backend.Send(agent.ID, "ordinary words", "old-1"); err != nil {
+		t.Fatal(err)
+	}
+	entry := entryWith(rec, t, func(e appwire.Entry) bool { return e.Kind == appwire.EntryUser })
+	if entry.MessageID != "" || entry.Text != "ordinary words" {
+		t.Fatalf("old host identity was invented: %+v", entry)
+	}
+	conv.mu.Lock()
+	defer conv.mu.Unlock()
+	if len(conv.texts) != 1 || conv.texts[0] != "ordinary words" {
+		t.Fatalf("plain message lost or repeated: %+v", conv.texts)
 	}
 }

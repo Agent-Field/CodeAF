@@ -1500,8 +1500,10 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	// that actual user message an identity without upgrading an older host's
 	// plain-text promise or guessing a message id from its words.
 	if composer == nil {
-		if capable, ok := live.conn.Conv.(appComposer); ok && capable.ComposedKnown() {
-			composer = capable
+		if receipts, advertised := live.conn.Conv.(interface{ MessageReceiptsKnown() bool }); advertised && receipts.MessageReceiptsKnown() {
+			if capable, ok := live.conn.Conv.(appComposer); ok && capable.ComposedKnown() {
+				composer = capable
+			}
 		}
 	}
 	// A conversation joined on a window's host can have heard from the person
