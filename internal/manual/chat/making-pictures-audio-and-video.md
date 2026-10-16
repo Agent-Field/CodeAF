@@ -628,8 +628,9 @@ Yes, for a picture. When I run a command that makes a chart, a plot or a renderi
 for you, I list its path in `bash`'s `outputs` argument **before** it runs, and
 codeaf looks at that path before and after the command and records the picture
 as a source of that very call, so the app can show it with the answer without
-you editing any markdown. The terminal does not draw it inline; a picture
-recorded as `created` is listed under `/files`.
+you editing any markdown. The terminal does not draw it inline; `/files` lists
+every recorded picture, including ones shown as found, and does not say which
+were made now.
 
 What it will and will not do:
 

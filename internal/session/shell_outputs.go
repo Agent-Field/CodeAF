@@ -91,9 +91,11 @@ type shellBefore struct {
 	path     string
 	state    shellState
 	info     os.FileInfo
-	// parent is the folder as resolved BEFORE the command, "" when it did not
-	// exist yet. A folder that points somewhere else afterwards makes the file
-	// there something this snapshot said nothing about.
+	// parent is where the folder resolves to BEFORE the command: the deepest
+	// part that existed, resolved, plus the part that did not, spelled plainly.
+	// A folder that resolves anywhere else afterwards (a link made by the
+	// command included) makes the file there something this snapshot said
+	// nothing about.
 	parent string
 }
 
@@ -172,7 +174,7 @@ func (a *Agent) publishingBash(inner bare.Tool) bare.Tool {
 		}
 		if a.journalID() == "" {
 			text, isError, err := inner.Execute(ctx, args)
-			return text + "\n\nOutputs not registered: this conversation has no record to keep them in.", isError, err
+			return shellOutputsNote(text, isError, "Outputs not registered: this conversation has no record to keep them in."), isError, err
 		}
 		befores, refusal := a.snapshotShellOutputs(outputs)
 		if refusal != "" {
@@ -188,18 +190,24 @@ func (a *Agent) publishingBash(inner bare.Tool) bare.Tool {
 		}
 		if !exited || ctx.Err() != nil {
 			note := "Outputs not registered: the command did not finish with exit status 0 in this call (it failed, was refused, timed out, was interrupted, or was handed to a job)."
-			if isError {
-				// bash's own status line must stay the LAST line of a failed
-				// result: the record of why a step failed reads it there
-				// (why.go's bashFailed).
-				return note + "\n\n" + text, isError, nil
-			}
-			return text + "\n\n" + note, isError, nil
+			return shellOutputsNote(text, isError, note), isError, nil
 		}
 		busy = busy || a.otherProcessesRunning() || a.toolsStarted.Load() != startedAtSnapshot
 		return text + "\n\n" + a.publishShellOutputs(ctx, befores, busy), isError, nil
 	}
 	return wrapped
+}
+
+// shellOutputsNote puts a note on a result. On a failed result the note goes
+// FIRST, because bash's own status line must stay the LAST line (the record of
+// why a step failed reads it there, why.go's bashFailed) - except when bare
+// refused the arguments, whose "Invalid arguments:" opening the repair guard
+// reads (toolargs.go) and which must stay the opening.
+func shellOutputsNote(text string, isError bool, note string) string {
+	if isError && !strings.HasPrefix(text, "Invalid arguments:") {
+		return note + "\n\n" + text
+	}
+	return text + "\n\n" + note
 }
 
 // otherProcessesRunning says some job of this session (any kind) was running:
@@ -246,9 +254,7 @@ func (a *Agent) snapshotShellOutputs(declared []string) ([]shellBefore, string) 
 		}
 		seen[path] = true
 		before := shellBefore{declared: raw, path: path}
-		if resolved, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
-			before.parent = resolved
-		}
+		before.parent = expectedParent(filepath.Dir(path))
 		info, err := os.Lstat(path)
 		switch {
 		case err == nil && info.Mode().IsRegular():
@@ -263,6 +269,23 @@ func (a *Agent) snapshotShellOutputs(declared []string) ([]shellBefore, string) 
 		out = append(out, before)
 	}
 	return out, ""
+}
+
+// expectedParent is where dir resolves to now, or would resolve to if the part
+// of it that does not exist yet is made as plain folders.
+func expectedParent(dir string) string {
+	rest := ""
+	for {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(resolved, rest)
+		}
+		up := filepath.Dir(dir)
+		if up == dir {
+			return filepath.Join(dir, rest)
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = up
+	}
 }
 
 func isNotDir(err error) bool {
@@ -307,7 +330,7 @@ func (a *Agent) publishShellOutputs(ctx context.Context, befores []shellBefore, 
 			continue
 		}
 		if deadline.Err() != nil {
-			lines = append(lines, fmt.Sprintf("Output %s: whether it was recorded is unknown.", result.declared))
+			lines = append(lines, fmt.Sprintf("Output %s not registered: the inspection ran out of time.", result.declared))
 			continue
 		}
 		if !a.recordShellOutput(result, made) {
@@ -407,7 +430,7 @@ func (a *Agent) inspectShellOutput(ctx context.Context, before shellBefore, budg
 // classifyShellOutput is the only claim made about production. It compares the
 // identity the file had before the command with the one it has now.
 func classifyShellOutput(before shellBefore, parent string, after os.FileInfo, busy bool) string {
-	if before.parent != "" && before.parent != parent {
+	if before.parent != parent {
 		return ShellUnknown
 	}
 	switch before.state {

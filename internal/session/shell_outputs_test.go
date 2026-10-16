@@ -362,7 +362,7 @@ func TestShellOutputsAFailedRecordIsUnknownNotComplete(t *testing.T) {
 func TestShellOutputsAbsentWhereTheyCannotWorkAndUntouchedWithout(t *testing.T) {
 	agent, _, _ := shellAgent(t)
 	bash := beltTool(t, agent, "bash")
-	if !strings.Contains(string(bash.Schema), `"outputs"`) || false {
+	if !strings.Contains(string(bash.Schema), `"outputs"`) {
 		t.Fatal("the model is not told about outputs")
 	}
 	text, _, _ := bash.Execute(callCtx(), bashArgs(t, "echo hi"))
@@ -440,5 +440,29 @@ func TestShellOutputsAFolderLinkRetargetedByTheCommandIsNotCreated(t *testing.T)
 	text, _, _ := beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, "ln -sfn runB out", "out/chart.png"))
 	if !strings.Contains(text, "registered (unknown)") {
 		t.Fatalf("%s", text)
+	}
+}
+
+func TestShellOutputsAFolderLinkMadeByTheCommandIsNotCreated(t *testing.T) {
+	agent, workspace, _ := shellAgent(t)
+	os.MkdirAll(filepath.Join(workspace, "runB"), 0o755)
+	os.WriteFile(filepath.Join(workspace, "runB", "chart.png"), shellPNG(t, 3), 0o644)
+	text, _, _ := beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, "ln -s runB out", "out/chart.png"))
+	if !strings.Contains(text, "registered (unknown)") {
+		t.Fatalf("%s", text)
+	}
+	// A plain mkdir -p stays created.
+	text, _, _ = beltTool(t, agent, "bash").Execute(callCtx(), bashArgs(t, "mkdir -p fresh/sub && "+writeCommand(shellPNG(t, 4), "fresh/sub/c.png"), "fresh/sub/c.png"))
+	if !strings.Contains(text, "registered (created)") {
+		t.Fatalf("%s", text)
+	}
+}
+
+func TestShellOutputsARefusedCallKeepsItsInvalidArgumentsOpening(t *testing.T) {
+	if got := shellOutputsNote("Invalid arguments: x", true, "note"); !strings.HasPrefix(got, "Invalid arguments:") {
+		t.Fatal(got)
+	}
+	if got := shellOutputsNote("out\n\nCommand exited with code 2", true, "note"); !bashFailed(got) {
+		t.Fatal(got)
 	}
 }
