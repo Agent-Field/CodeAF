@@ -1,0 +1,90 @@
+package factory
+
+import "strings"
+
+// Match is the floor's filter: the words a person types into the rail's `/`
+// box, read as a test an item passes or fails. Every word must hold. A word
+// that is one of the floor's own words is a question about the item rather
+// than a substring; anything else is a plain substring of the title, the repo,
+// the area, the triage type and the author, without regard to case.
+//
+// The words are:
+//
+//	risky      the risk is high, or the size is L
+//	cheap      the estimate is at most 2.5
+//	strangers  the author is a stranger
+//	spend      the area or the title mentions spend, billing, ledger or cap
+//	ui         the area is tui, pages or render
+//	prs        the item is a pull request
+//	bugs       the triage type is bug
+//	thin       the readiness is under 55
+//	mine       the person or author is the viewer's GitHub handle
+//
+// THE MATCHER LIVES HERE, beside the vocabulary, because a filter is a fact
+// about the floor's vocabulary, not about one seam behind it. The empty query
+// matches everything. The optional viewer is the linked GitHub handle; an
+// absent or unknown viewer matches no item under mine.
+func Match(q string, viewers ...string) func(Item) bool {
+	viewer := ""
+	if len(viewers) > 0 {
+		viewer = NormalizeHandle(viewers[0])
+	}
+	terms := strings.Fields(strings.ToLower(q))
+	if len(terms) == 0 {
+		return func(Item) bool { return true }
+	}
+	return func(it Item) bool {
+		for _, t := range terms {
+			if !matchTerm(it, t, viewer) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+// ThinReadiness is the readiness under which an item is thin and wants
+// questions before it is worth running.
+const ThinReadiness = 55
+
+// CheapEst is the largest estimate the word cheap still covers.
+const CheapEst = 2.5
+
+func matchTerm(it Item, t, viewer string) bool {
+	area := strings.ToLower(it.Triage.Area)
+	title := strings.ToLower(it.Title)
+	switch t {
+	case "is:dismissed":
+		return IsDismissed(it, viewer)
+	case "risky":
+		return len(it.Triage.Risk) > 0 || it.Triage.Size == "L"
+	case "cheap":
+		return it.Triage.Est > 0 && it.Triage.Est <= CheapEst
+	case "strangers":
+		return it.Tier == TierStranger
+	case "spend":
+		for _, w := range []string{"spend", "billing", "ledger", "cap"} {
+			if strings.Contains(area, w) || strings.Contains(title, w) {
+				return true
+			}
+		}
+		return false
+	case "ui":
+		switch area {
+		case "tui", "pages", "render":
+			return true
+		}
+		return false
+	case "prs":
+		return it.Kind == KindPR
+	case "bugs":
+		return it.Triage.Type == "bug"
+	case "thin":
+		return it.Triage.Readiness < ThinReadiness
+	case "mine":
+		return viewer != "" && (it.Person() == viewer || NormalizeHandle(it.Author) == viewer)
+	}
+	hay := title + " " + strings.ToLower(JobRef(it)) + " " + strings.ToLower(it.Repo) + " " + area + " " +
+		strings.ToLower(it.Triage.Type) + " " + strings.ToLower(it.Author)
+	return strings.Contains(hay, t)
+}

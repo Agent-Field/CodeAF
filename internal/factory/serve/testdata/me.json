@@ -1,0 +1,24 @@
+{
+  "factory": {
+    "name": "agentfield",
+    "address": "http://factory",
+    "version": "test"
+  },
+  "codeaf_version": "test",
+  "contract": 2,
+  "handle": "priya",
+  "name": "Priya Nair",
+  "avatar_url": "https://avatars.githubusercontent.com/u/42",
+  "scopes": [
+    "read:user",
+    "read:org"
+  ],
+  "session_id": "session_fixture",
+  "machines": [],
+  "takes_unassigned": {},
+  "access": "token",
+  "served_by": "factory",
+  "mode": "team",
+  "operator": false,
+  "runners": []
+}

@@ -1021,6 +1021,11 @@ var ModelPoolChoices = []string{"on", "read", "off"}
 // planner internals. They are listed read-only in the sheet's environment
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
+	// The factory page's developer switch. CODEAF_FACTORY_FIXTURE puts a still,
+	// made-up floor on the page in place of the person's own. It is for the
+	// people who build the page; a row offering to hide your real floor behind a
+	// fixture is not a preference, so plumbing.
+	"CODEAF_FACTORY_FIXTURE",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.

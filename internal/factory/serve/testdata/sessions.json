@@ -1,0 +1,10 @@
+{
+  "factory": {"name": "agentfield", "address": "http://factory", "version": "test"},
+  "sessions": [{
+    "id": "session_fixture",
+    "device": "this device",
+    "created": "2026-10-11T12:00:05Z",
+    "last_seen": "2026-10-11T12:00:05Z",
+    "current": true
+  }]
+}

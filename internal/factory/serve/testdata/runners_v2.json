@@ -1,0 +1,25 @@
+{
+  "factory": {
+    "name": "factory",
+    "address": "https://factory.test",
+    "version": "test"
+  },
+  "runners": [
+    {
+      "id": "mbp",
+      "name": "mbp",
+      "owner": "sam",
+      "kind": "mac",
+      "slots": 2,
+      "state": "idle",
+      "checkouts": [
+        {
+          "repo": "acme/api",
+          "path": "/code/api"
+        }
+      ],
+      "jobs": [],
+      "last_seen": "2026-10-11T12:00:00Z"
+    }
+  ]
+}

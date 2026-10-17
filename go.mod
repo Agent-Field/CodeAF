@@ -16,6 +16,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
 	github.com/flynn/noise v1.1.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/uuid v1.6.0
 	github.com/gtank/ristretto255 v0.1.2
 	github.com/int128/listener v1.3.0

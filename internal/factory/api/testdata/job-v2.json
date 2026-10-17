@@ -1,0 +1,24 @@
+{
+  "id": "api#1498",
+  "document_id": 42,
+  "repo": "acme/api",
+  "number": 1498,
+  "kind": "issue",
+  "title": "Replace the auth token parser",
+  "state": "needs_you",
+  "reason": "approval_start",
+  "assigned_to": "sam",
+  "priority": {"value": "high", "set_by": "sam"},
+  "size": "M",
+  "budget": 3,
+  "dismissed": false,
+  "approval": {
+    "kind": "start",
+    "state": "waiting",
+    "matched": "touches auth/** · auth/token.go",
+    "at": "0001-01-01T00:00:00Z",
+    "undo_until": "0001-01-01T00:00:00Z"
+  },
+  "steps": [],
+  "pr": null
+}
