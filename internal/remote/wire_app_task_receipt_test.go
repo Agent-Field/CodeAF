@@ -134,13 +134,63 @@ func TestTheEngineTypesTheOutcomeOnlyForACallThatAskedForIt(t *testing.T) {
 		t.Fatalf("the receipt door was asked %+v", fake.asked)
 	}
 
-	// An engine without the door answers the flagged call the old way, and its
-	// welcome does not claim the receipt.
+	// An engine without the door REFUSES the flagged call, and its welcome does
+	// not claim the receipt. The plain door is not called (see
+	// TestAReceiptCallWithoutTheDoorIsRefusedBeforeTheEffect).
 	plain := &appTasksFake{}
-	if payload, err := dispatchAppTask(plain, Frame{Method: MethodAppTaskAction, Payload: asked}); err != nil || payload != nil {
+	if payload, err := dispatchAppTask(plain, Frame{Method: MethodAppTaskAction, Payload: asked}); !errors.Is(err, errAppTaskNoReceiptDoor) || payload != nil {
 		t.Fatalf("an engine without the door = %s %v", payload, err)
 	}
 	if appTaskReceiptKnown(plain) || !appTaskReceiptKnown(fake) {
 		t.Fatal("the welcome's claim does not follow the door")
+	}
+}
+
+// panickingReceiptFake panics inside the receipt door AFTER it has counted the
+// call, the way a failure after the direction was written would.
+type panickingReceiptFake struct {
+	appTasksFake
+	calls int
+}
+
+func (f *panickingReceiptFake) AppTaskActionReceipt(session.AppTaskIntent) session.AppTaskReceipt {
+	f.calls++
+	panic("the announcement failed after the direction was written")
+}
+
+type panickingReceiptAgent struct {
+	*fakeAgent
+	*panickingReceiptFake
+}
+
+// A PANIC INSIDE THE ENGINE'S DOOR IS NOT PRE-DISPATCH. The note may already be
+// written down or handed over, so the client, whose welcome says its errors are
+// refusals, must be told UNKNOWN by a typed answer, once.
+func TestAPanicAfterTheNoteIsUnknownNeverRefused(t *testing.T) {
+	far := &panickingReceiptAgent{fakeAgent: &fakeAgent{}, panickingReceiptFake: &panickingReceiptFake{}}
+	loop := laneLoop(t, far)
+	if !loop.Client.Welcome().AppTaskReceipt {
+		t.Fatal("the engine does not claim the typed receipt, so this test proves nothing")
+	}
+	got := loop.Client.Agent().AppTaskActionReceipt(session.AppTaskIntent{ID: "7", Action: "note", Text: "w", ClientID: "c-1"})
+	if got.Outcome != session.AppTaskUnknown || got.ClientID != "c-1" || got.Reason != appTaskReceiptWentWrongWord {
+		t.Fatalf("a panic after the note = %+v, want unknown", got)
+	}
+	if far.calls != 1 {
+		t.Fatalf("the receipt door was entered %d times; nothing may be sent again", far.calls)
+	}
+}
+
+// AN AGENT WITH NO RECEIPT DOOR IS NEVER ASKED THE PLAIN WAY for a call that
+// asked for a receipt: the plain door's error is flattened text that may follow
+// the effect, and the client reads an error under the welcome as a refusal.
+func TestAReceiptCallWithoutTheDoorIsRefusedBeforeTheEffect(t *testing.T) {
+	plain := &appTasksFake{}
+	asked, _ := json.Marshal(appTaskActionArgs{AppTaskIntent: session.AppTaskIntent{ID: "7", Action: "note", Text: "w", ClientID: "c-1"}, Receipt: true})
+	if _, err := dispatchAppTask(plain, Frame{Method: MethodAppTaskAction, Payload: asked}); !errors.Is(err, errAppTaskNoReceiptDoor) {
+		t.Fatalf("err = %v, want the typed refusal", err)
+	}
+	if plain.intent.ID != "" || plain.intent.Action != "" {
+		t.Fatalf("the plain door was called: %+v", plain.intent)
 	}
 }

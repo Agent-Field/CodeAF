@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -275,12 +276,48 @@ func appTaskActionAnswer(agent any, door appTaskDoor, call Frame, intent session
 	if err != nil {
 		return nil, err
 	}
-	receipts, ok := agent.(appTaskReceiptDoor)
-	if !args.Receipt || !ok {
+	if !args.Receipt {
 		return nil, door.AppTaskAction(intent)
 	}
-	receipt := receipts.AppTaskActionReceipt(intent)
+	receipts, ok := agent.(appTaskReceiptDoor)
+	if !ok {
+		// THE CALL ASKED FOR A TYPED OUTCOME AND THIS AGENT CANNOT GIVE ONE, so
+		// the plain door is never called: its error is a flattened text that may
+		// follow the effect, and under the welcome flag the client reads an error
+		// as a refusal. A refusal raised here is raised before any effect.
+		return nil, errAppTaskNoReceiptDoor
+	}
+	receipt := appTaskReceiptGuarded(receipts, intent)
 	return json.Marshal(appTaskActionResult{Receipt: &receipt})
+}
+
+// errAppTaskNoReceiptDoor refuses, before the engine's door is touched, a call
+// that asked for a typed outcome the serving agent has no way to give.
+var errAppTaskNoReceiptDoor = errors.New("this engine cannot answer that note with a typed outcome, so it was not sent")
+
+// appTaskReceiptWentWrongWord is the reason for a note whose engine door
+// panicked: the panic could be anywhere in the door, after the words were
+// written down or handed over, so what became of them is not known.
+const appTaskReceiptWentWrongWord = "the engine failed while taking that note, so it is not known whether it arrived"
+
+// appTaskReceiptGuarded calls the receipt door and turns a panic inside it into
+// a typed UNKNOWN. THE PANIC IS NOT PRE-DISPATCH: the door may already have
+// written the direction or handed it to a worker, and the generic recover in
+// [server.invoke] would answer an error, which a client under the welcome flag
+// reads as a refusal and hands back to the person to send twice. The stack
+// still goes to the log.
+func appTaskReceiptGuarded(door appTaskReceiptDoor, intent session.AppTaskIntent) (receipt session.AppTaskReceipt) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = guard.Note("remote/engine "+MethodAppTaskAction, recovered)
+			receipt = session.AppTaskReceipt{
+				Outcome:  session.AppTaskUnknown,
+				Reason:   appTaskReceiptWentWrongWord,
+				ClientID: session.AppNoteClientID(intent.ClientID),
+			}
+		}
+	}()
+	return door.AppTaskActionReceipt(intent)
 }
 
 // appTaskReceiptKnown asks this engine whether it types a note's outcome. An
