@@ -617,7 +617,7 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 func (a *Agent) SteerMessage(message Submission) (<-chan Event, error) {
 	// A correction that falls through becomes the message that opens a turn,
 	// so a creation context on it is proven like any other.
-	message.Creation = a.provenCreation(message.Creation)
+	message.proven = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
 		return nil, err

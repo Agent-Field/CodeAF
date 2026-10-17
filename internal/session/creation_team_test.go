@@ -412,40 +412,110 @@ func TestCreationTeamSplicedMessageWithAnotherContextMakesTheTurnUnknown(t *test
 	}
 }
 
-// A TAKEOVER RESUME PROVES THE JOURNALED CONTEXT AGAIN: an engine whose teams
-// file does not hold the crew resumes the turn, and records unknown.
-func TestCreationTeamResumeOnAnotherProfileIsUnknown(t *testing.T) {
-	store := automationStoreFor(t)
-	profile, journal := creationProfile(t)
-	streaming := make(chan struct{})
-	first := automationAgent(t, &scriptedCompleter{steps: []step{thinkingStep(streaming)}}, store, func(c *Config) {
-		c.ProfileDir, c.SessionFile = profile, journal
-	})
-	events, err := first.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: inCrew()})
+// A TAKEOVER RESUME REUSES THE ACCEPTED STAMP AND NEVER PROVES IT AGAIN: the
+// crew's member is removed, its manager changes and it closes after the
+// message was accepted, and the window that takes the turn over reads no teams
+// file at all — in the same profile, and in a profile with no teams — and
+// still records the crew the message was accepted for.
+func TestCreationTeamResumeKeepsTheAcceptedCrewAfterRemoval(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		elsewhere bool
+	}{{"same profile, member removed and crew closed", false}, {"a profile with no teams", true}} {
+		store := automationStoreFor(t)
+		profile, journal := creationProfile(t)
+		streaming := make(chan struct{})
+		first := automationAgent(t, &scriptedCompleter{steps: []step{thinkingStep(streaming)}}, store, func(c *Config) {
+			c.ProfileDir, c.SessionFile = profile, journal
+		})
+		events, err := first.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: inCrew()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-streaming:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s: the first turn never streamed", tc.name)
+		}
+		first.InterruptFor(StopByTakeover)
+		collect(t, events)
+		if err := first.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := teams.Update(profile, func(f *teams.File) error {
+			if err := f.SetManager(creationTeamID, "m2"); err != nil {
+				return err
+			}
+			if err := f.RemoveMember(creationTeamID, journal); err != nil {
+				return err
+			}
+			return f.Disband(creationTeamID, time.Now(), "")
+		}); err != nil {
+			t.Fatal(err)
+		}
+		resumeProfile := profile
+		if tc.elsewhere {
+			resumeProfile = t.TempDir()
+		}
+		second := automationAgent(t, &scriptedCompleter{steps: []step{createCall(), finalText("done")}}, store, func(c *Config) {
+			c.ProfileDir, c.SessionFile = resumeProfile, journal
+		})
+		resumed, ok := second.ResumeStoppedTurn(context.Background())
+		if !ok {
+			t.Fatalf("%s: the taken-over turn was not asked again", tc.name)
+		}
+		saveCreated(t, second, resumed)
+		if got := onlyAutomation(t, store).Origin.Team; got == nil || got.ID != creationTeamID {
+			t.Fatalf("%s: the resumed turn recorded %+v, want the accepted crew %s", tc.name, got, creationTeamID)
+		}
+	}
+}
+
+// A JOURNALED STAMP IS REUSED ONLY IN ITS SHAPE: a damaged one resumes unknown,
+// none resumes unknown, an explicit none stays none, and a team id is copied.
+func TestCreationTeamMalformedStampResumesUnknown(t *testing.T) {
+	if got := acceptedCreation(nil); got != nil {
+		t.Fatalf("no stamp resumed as %+v", got)
+	}
+	for _, bad := range []string{"not a team", " " + creationTeamID, creationTeamID + "/..", string(make([]byte, 65))} {
+		if got := acceptedCreation(&CreationContext{Team: bad}); got != nil {
+			t.Fatalf("a damaged stamp %q resumed as %+v", bad, got)
+		}
+	}
+	if got := acceptedCreation(&CreationContext{}); got == nil || got.Team != "" {
+		t.Fatalf("an explicit none resumed as %+v", got)
+	}
+	stamp := inCrew()
+	got := acceptedCreation(stamp)
+	if got == nil || got.Team != creationTeamID || got == stamp {
+		t.Fatalf("a crew stamp resumed as %+v (shared %v)", got, got == stamp)
+	}
+}
+
+// THE RECORD KEEPS ONLY WHAT A DOOR PROVED: a submission whose Creation was
+// never put through a door makes no mark from it, so nothing reaching mark()
+// directly can get a team journaled.
+func TestCreationTeamRawCreationIsNeverJournaledWithoutProof(t *testing.T) {
+	mark, err := Submission{Text: createWords, Creation: inCrew()}.mark()
 	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-streaming:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the first turn never streamed")
+	if mark != nil {
+		t.Fatalf("an unproven context made a mark: %+v", mark)
 	}
-	first.InterruptFor(StopByTakeover)
-	collect(t, events)
-	if err := first.Close(); err != nil {
+	clientMark, err := Submission{Text: createWords, ClientID: "c1", Creation: inCrew()}.mark()
+	if err != nil {
 		t.Fatal(err)
 	}
-	elsewhere := t.TempDir()
-	second := automationAgent(t, &scriptedCompleter{steps: []step{createCall(), finalText("done")}}, store, func(c *Config) {
-		c.ProfileDir, c.SessionFile = elsewhere, journal
-	})
-	resumed, ok := second.ResumeStoppedTurn(context.Background())
-	if !ok {
-		t.Fatal("the taken-over turn was not asked again")
+	if clientMark == nil || clientMark.Creation != nil {
+		t.Fatalf("an unproven context reached the mark: %+v", clientMark)
 	}
-	saveCreated(t, second, resumed)
-	if got := onlyAutomation(t, store).Origin.Team; got != nil {
-		t.Fatalf("a resume on a profile without the crew recorded %+v, want unknown", got)
+	proven, err := Submission{Text: createWords, proven: inCrew()}.mark()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proven == nil || proven.Creation == nil || proven.Creation.Team != creationTeamID {
+		t.Fatalf("a proven context did not reach the mark: %+v", proven)
 	}
 }
 

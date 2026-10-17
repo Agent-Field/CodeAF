@@ -23,7 +23,12 @@ const (
 	OrdersMadeLimitDefault = 50
 	OrdersMadeLimitMax     = 100
 	OrdersMadeCursorMax    = 128
-	OrdersMadeReadTimeout  = 2 * time.Second
+	// OrdersMadeBytesMax is the most bytes one page's orders encode to, each
+	// measured as this wire encodes it (HTML escaping on). A page ends before
+	// the order that would pass it; an order that cannot fit alone is
+	// too_large, and no document larger than this is read out of the store.
+	OrdersMadeBytesMax    = 256 << 10
+	OrdersMadeReadTimeout = 2 * time.Second
 	// OrdersMadeReadsInFlight is how many of these reads run at once.
 	OrdersMadeReadsInFlight = 4
 )
@@ -38,15 +43,27 @@ type OrdersMadeAsk struct {
 
 // OrdersMadeResult is one page. Orders are in id order and carry no last_run
 // and no asking: those are orders.list's. A page reads at most a fixed window
-// of the store, so it may hold fewer orders than its limit — even none — and
-// still have a Next. Next is absent ONLY when the store's end was reached.
+// of the store (500 rows, 2 MiB of stored bytes sized before any is read) and
+// answers at most [OrdersMadeBytesMax] of encoded orders, so it may hold fewer
+// orders than its limit — even none — and still have a Next. Next is absent
+// ONLY when the store's end was reached with every row covered.
+//
+// NEXT IS AN OPAQUE CURSOR BOUND TO THE STORE'S WALK REVISION, which moves
+// when an order is created or deleted, or its id or recorded creation team
+// changes — by this build or an older one sharing the file — and at no other
+// write (a run, a status, a wake time, an edit that keeps the team). A cursor
+// from another revision is refused as [CodeStaleCursor]: the surface starts
+// again from the first page, so a walk can never end complete while missing an
+// order created behind it or counting one deleted. A row too large to carry is
+// [CodeTooLarge], naming it, and the cursor never moves past it.
 //
 // UNKNOWN IS HOW MANY ORDERS IN THE STRETCH OF THE STORE THIS PAGE COVERED
 // CANNOT BE PLACED IN ANY CREW OR IN NONE: saved before creation teams were
 // recorded, made in a turn whose door stated nothing (an older app, the
 // terminal, words the app wrote itself), or unreadable. It comes from the same
 // read as the orders. Pages cover disjoint stretches, so a surface sums it over
-// the walk; the sum is the store's only once Next is absent. It is a real zero
+// the walk; the sum is the store's only once Next is absent, and holds for the
+// one revision the whole walk was read at. It is a real zero
 // when zero, and a surface must show it beside the rows and never read "none
 // made here" from a page or a partial walk while any of it is above zero.
 type OrdersMadeResult struct {

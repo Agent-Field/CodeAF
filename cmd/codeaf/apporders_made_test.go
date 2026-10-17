@@ -199,3 +199,119 @@ func TestAppOrdersMadeInOverTheRegisteredWire(t *testing.T) {
 	}
 	t.Fatalf("no reply: %v", scanner.Err())
 }
+
+// madeInCrewStore is a crew backend reading a fresh store of its own.
+func madeInCrewStore(t *testing.T) (*appBackend, *automation.Store, string) {
+	t.Helper()
+	backend, _, _, crew := crewBackendOn(t, &fakeConversation{})
+	store, err := automation.Open(filepath.Join(t.TempDir(), "automations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	backend.orderStore = func() *automation.Store { return store }
+	return backend, store, crew
+}
+
+// madeOrderDoing is an order made in team whose brief is do.
+func madeOrderDoing(t *testing.T, store *automation.Store, team, do string) automation.Automation {
+	t.Helper()
+	a, err := store.Create(automation.Automation{
+		Title: "big", Schedule: automation.Schedule{Every: "1h", Zone: "UTC"},
+		Action: automation.Action{Do: do}, Workspace: t.TempDir(),
+		Origin: automation.Origin{SessionID: "s", Transcript: "/t/big", Team: &automation.OriginTeam{Known: true, ID: team}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+// THE PAGE IS CUT AT THE BYTES ITS ORDERS ENCODE TO, measured as the wire
+// encodes them: a "<" is six bytes there, so three orders whose briefs are a
+// few kilobytes of words each but far more once escaped do not fit one page,
+// and the walk still answers each of them exactly once.
+func TestOrdersMadeInCutsAtTheEncodedBytes(t *testing.T) {
+	backend, store, crew := madeInCrewStore(t)
+	brief := strings.Repeat("<", 15000)
+	for range 3 {
+		madeOrderDoing(t, store, crew, brief)
+	}
+	seen, cursor, pages := map[string]bool{}, "", 0
+	for {
+		res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew, Cursor: cursor})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages++
+		encoded, _ := json.Marshal(res.Orders)
+		if len(encoded) > appwire.OrdersMadeBytesMax+2 {
+			t.Fatalf("a page's orders encode to %d bytes, over %d", len(encoded), appwire.OrdersMadeBytesMax)
+		}
+		for _, o := range res.Orders {
+			if seen[o.ID] {
+				t.Fatalf("%s came twice", o.ID)
+			}
+			seen[o.ID] = true
+		}
+		if res.Next == "" {
+			break
+		}
+		cursor = res.Next
+		if pages > 5 {
+			t.Fatal("the walk never ended")
+		}
+	}
+	if len(seen) != 3 || pages < 2 {
+		t.Fatalf("saw %d orders over %d pages; want 3 over more than one", len(seen), pages)
+	}
+}
+
+// AN ORDER TOO LARGE TO CARRY IS REFUSED BY NAME, every time, and the walk never
+// moves past it: no page skips it and none reports the end.
+func TestOrdersMadeInTooLargeOrderRefuses(t *testing.T) {
+	backend, store, crew := madeInCrewStore(t)
+	big := madeOrderDoing(t, store, crew, strings.Repeat("<", 50000))
+	for range 2 {
+		res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew})
+		if wireCode(err) != appwire.CodeTooLarge || !strings.Contains(err.Error(), big.ID) {
+			t.Fatalf("a page starting at an order too large to carry = %+v, %v", res, err)
+		}
+	}
+}
+
+// A WALK ACROSS A CREATE IS STALE: the page after it is refused, never answered
+// as though the walk had seen one store.
+func TestOrdersMadeInStaleCursorIsStale(t *testing.T) {
+	backend, store, crew := madeInCrewStore(t)
+	for _, title := range []string{"a", "b"} {
+		madeOrder(t, store, title, "", &automation.OriginTeam{Known: true, ID: crew})
+	}
+	first, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew, Limit: 1})
+	if err != nil || first.Next == "" || len(first.Next) > appwire.OrdersMadeCursorMax {
+		t.Fatalf("first page = %+v, %v", first, err)
+	}
+	madeOrder(t, store, "c", "", nil)
+	if res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew, Limit: 1, Cursor: first.Next}); wireCode(err) != appwire.CodeStaleCursor {
+		t.Fatalf("the page after a create = %+v, %v; want %s", res, err, appwire.CodeStaleCursor)
+	}
+	if res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew, Cursor: "m1.0.eA"}); wireCode(err) != appwire.CodeStaleCursor && wireCode(err) != appwire.CodeBadParams {
+		t.Fatalf("a forged cursor = %+v, %v", res, err)
+	}
+	if res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew, Cursor: "not-a-cursor"}); wireCode(err) != appwire.CodeBadParams {
+		t.Fatalf("a cursor no page gave = %+v, %v", res, err)
+	}
+}
+
+// ONE SOURCE OF TRUTH: the wire's bounds are the store's.
+func TestOrdersMadeBoundsMatchTheStore(t *testing.T) {
+	if appwire.OrdersMadeLimitMax != automation.MadeInTeamMax {
+		t.Fatalf("wire limit %d, store limit %d", appwire.OrdersMadeLimitMax, automation.MadeInTeamMax)
+	}
+	if appwire.OrdersMadeCursorMax != automation.MadeInCursorMax {
+		t.Fatalf("wire cursor %d, store cursor %d", appwire.OrdersMadeCursorMax, automation.MadeInCursorMax)
+	}
+	if appwire.OrdersMadeBytesMax > automation.MadeInScanBytesMax {
+		t.Fatalf("the response budget %d is over the scan budget %d", appwire.OrdersMadeBytesMax, automation.MadeInScanBytesMax)
+	}
+}
