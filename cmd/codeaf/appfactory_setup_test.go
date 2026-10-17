@@ -232,7 +232,7 @@ func TestLocalFactorySetupWalksGitHubReposIssuesAndCheckoutsStartingNothing(t *t
 	if key, _ := config.AppCredentialSource().Key("github"); key != setupSecret {
 		t.Fatal("GitHub custody moved: the app's credential store does not hold the token")
 	}
-	if !repoOf(v, "acme/old").Archived || repoOf(v, "acme/api").Clone != "missing" || repoOf(v, "acme/api").Pipeline != "defaults" {
+	if !repoOf(v, "acme/old").Archived || repoOf(v, "acme/api").Clone != "missing" || repoOf(v, "acme/api").Pipeline != "" {
 		t.Fatalf("repos: %+v", v.Repos)
 	}
 	if sug := repoOf(v, "acme/api").SuggestedFolder; sug != "~/code/acme-api" {
@@ -246,6 +246,10 @@ func TestLocalFactorySetupWalksGitHubReposIssuesAndCheckoutsStartingNothing(t *t
 
 	// 3. The factory's own worker reads the issues into Backlog.
 	v = s.until("checkouts", func(v appwire.FactorySetupView) bool { return v.State == "checkouts" })
+	// Discovery left the source unknown; the selected repo's read learned it.
+	if r := repoOf(v, "acme/api"); r.Pipeline != "defaults" || repoOf(v, "acme/web").Pipeline != "defaults" || repoOf(v, "acme/old").Pipeline != "" {
+		t.Fatalf("pipeline sources after the read: %+v", v.Repos)
+	}
 	if r := repoOf(v, "acme/api"); r.Read != "done" || r.ReadCount != 2 || !r.Selected {
 		t.Fatalf("api read: %+v", r)
 	}

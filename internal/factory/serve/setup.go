@@ -134,6 +134,14 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 	out.View.GitHub.Handle = factory.NormalizeHandle(user.Login)
 	out.View.GitHub.Name = user.Name
 	out.View.GitHub.AvatarURL = user.AvatarURL
+	// A source already learned for a repository survives rediscovery. It is
+	// carried over, never re-fetched: discovery makes no per-repository call.
+	known := map[string]*string{}
+	for _, r := range out.View.Repos {
+		if r.Pipeline != nil {
+			known[r.ID] = r.Pipeline
+		}
+	}
 	out.View.Repos = []api.SetupRepo{}
 	watched, err := h.config.Store.Repos()
 	if err != nil {
@@ -165,14 +173,11 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 				repo.Checkout = &dir
 				repo.Clone = "found"
 			}
-			source := "defaults"
-			if h.config.Pipeline != nil {
-				f, e := h.config.Pipeline(ctx, row.FullName, dirs[strings.ToLower(row.FullName)])
-				if e == nil && f.Source == "file" {
-					source = "file"
-				}
-			}
-			repo.Pipeline = &source
+			// THE PIPELINE SOURCE IS UNKNOWN until the repository is selected and
+			// read: a large account has hundreds of visible repositories, and one
+			// pipeline load each cannot finish inside the request. Unknown is nil,
+			// never "defaults".
+			repo.Pipeline = known[row.FullName]
 			out.View.Repos = append(out.View.Repos, repo)
 		}
 		if len(rows) < 100 {
@@ -482,6 +487,9 @@ func (h *Handler) runSetup(ctx context.Context, out setupState) {
 				return
 			}
 			stepCtx, cancel := context.WithTimeout(ctx, setupWait)
+			if source := h.setupPipelineSource(stepCtx, repo); source != nil {
+				repo.Pipeline = source
+			}
 			resume, err := h.ingestSetupRepo(stepCtx, repo, out.Pages[repo.ID], func(page int) error { out.Pages[repo.ID] = page + 1; return h.setupProgress(out) })
 			cancel()
 			if ctx.Err() != nil {
@@ -540,6 +548,33 @@ func (h *Handler) runSetup(ctx context.Context, out setupState) {
 	}
 	_ = h.setupProgress(out)
 }
+
+// setupPipelineSource reads the one selected repository's pipeline through the
+// host's own loader and names where it came from. A repository with no recipe
+// file is truly "defaults"; a failed read stays unknown (nil) rather than
+// guessing. Nothing here starts a job.
+func (h *Handler) setupPipelineSource(ctx context.Context, repo *api.SetupRepo) *string {
+	if h.config.Pipeline == nil {
+		return nil
+	}
+	dir := ""
+	if repo.Checkout != nil {
+		dir = *repo.Checkout
+	} else if h.config.Store != nil {
+		dir = h.config.Store.CheckoutDir(repo.ID)
+	}
+	f, err := h.config.Pipeline(ctx, repo.ID, dir)
+	source := "defaults"
+	switch {
+	case err == nil && f.Source == "file":
+		source = "file"
+	case (err == nil && f.Source == "defaults") || errors.Is(err, os.ErrNotExist):
+	default:
+		return nil
+	}
+	return &source
+}
+
 func (h *Handler) cloneSetupRepo(ctx context.Context, repo, path string) error {
 	if _, err := os.Stat(path); err == nil {
 		return h.keepSetupCheckout(ctx, repo, path)

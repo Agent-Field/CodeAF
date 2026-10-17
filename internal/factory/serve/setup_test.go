@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
@@ -470,5 +472,67 @@ func TestFactorySetupBackContinuesTheVerifiedConnectionWithoutAnotherToken(t *te
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "discover"}, 200, &out)
 	if out.State != "repos" || !out.GitHub.Connected || out.GitHub.GH == nil || out.GitHub.GH.Login != "cli-other" || out.GitHub.Handle != "owner" || out.GitHub.Name != "Verified Owner" || out.GitHub.AvatarURL != "https://avatars.githubusercontent.com/u/77" || len(out.Repos) == 0 {
 		t.Fatalf("Continue did not reuse verified identity: %+v", out)
+	}
+}
+
+// Discovery must not read a pipeline per visible repository: a large account
+// cannot finish that inside the request. The source stays unknown (nil) until
+// the repository is selected, and the background read then names it truthfully.
+func TestFactorySetupDiscoveryMakesNoPerRepoPipelineCallAndSelectionLearnsTheSource(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	var mu sync.Mutex
+	var calls []string
+	f.h.config.Pipeline = func(_ context.Context, repo, _ string) (pipeline.File, error) {
+		mu.Lock()
+		calls = append(calls, repo)
+		mu.Unlock()
+		p := pipeline.Defaults()
+		p.Source = pipeline.SourceFile
+		return p, nil
+	}
+	seen := func() []string { mu.Lock(); defer mu.Unlock(); return append([]string(nil), calls...) }
+	var setup api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &setup)
+	if len(setup.Repos) != 2 {
+		t.Fatalf("discovery: %+v", setup)
+	}
+	for _, r := range setup.Repos {
+		if r.Pipeline != nil {
+			t.Fatalf("%s: source %q claimed before it was read", r.ID, *r.Pipeline)
+		}
+	}
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "discover"}, 200, &setup)
+	if got := seen(); len(got) != 0 {
+		t.Fatalf("discovery made pipeline calls: %v", got)
+	}
+	f.request(t, "POST", "/v1/factory-setup", "operator-secret", api.FactorySetupRequest{ID: "local", Verb: "select_repos", RepoIDs: []string{"acme/api"}}, 200, &setup)
+	waitSetup(t, f.h)
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &setup)
+	if got := seen(); len(got) != 1 || got[0] != "acme/api" {
+		t.Fatalf("pipeline calls after selecting one repo: %v", got)
+	}
+	for _, r := range setup.Repos {
+		switch {
+		case r.ID == "acme/api" && (r.Pipeline == nil || *r.Pipeline != "file"):
+			t.Fatalf("selected repo source: %v", r.Pipeline)
+		case r.ID != "acme/api" && r.Pipeline != nil:
+			t.Fatalf("%s: unselected repo claims source %q", r.ID, *r.Pipeline)
+		}
+	}
+}
+
+func TestSetupPipelineSourceDoesNotCallAnotherRecipeDefaults(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	for _, source := range []string{pipeline.SourceMarkdown, "future", ""} {
+		t.Run(source, func(t *testing.T) {
+			f.h.config.Pipeline = func(context.Context, string, string) (pipeline.File, error) {
+				return pipeline.File{Source: source}, nil
+			}
+			if got := f.h.setupPipelineSource(t.Context(), &api.SetupRepo{ID: "acme/api"}); got != nil {
+				t.Fatalf("source %q was incorrectly labelled %q", source, *got)
+			}
+		})
 	}
 }
