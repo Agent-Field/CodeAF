@@ -336,18 +336,14 @@ func appTaskReceiptKnown(agent any) bool {
 // have been carried out over there. An engine that predates the receipt says
 // nothing typed about a success, and flattened failures that came after the
 // effect into the same text as refusals, so both of its answers are unknown
-// too. Only an engine whose welcome says it types the outcome has its errors
-// read as refusals: every error it can still send is raised before the
-// engine's door (a watcher, a driver, a frame it could not read).
+// too. An untyped error remains unknown even when the current welcome says
+// receipts are supported: it is not an occurrence-bound outcome for this call.
 //
 // NOTHING IS SENT AGAIN, by any door, whatever comes back.
 func (a *Agent) AppTaskActionReceipt(intent session.AppTaskIntent) session.AppTaskReceipt {
 	key := session.AppNoteClientID(intent.ClientID)
-	payload, answered, err := a.c.callAnswered(nil, MethodAppTaskAction, appTaskActionArgs{AppTaskIntent: intent, Receipt: true}, callDeadline)
+	payload, _, err := a.c.callAnswered(nil, MethodAppTaskAction, appTaskActionArgs{AppTaskIntent: intent, Receipt: true}, callDeadline)
 	if err != nil {
-		if answered && a.c.Welcome().AppTaskReceipt {
-			return session.AppTaskReceipt{Outcome: session.AppTaskRefused, Reason: err.Error(), ClientID: key}
-		}
 		return session.AppTaskReceipt{Outcome: session.AppTaskUnknown, Reason: err.Error(), ClientID: key}
 	}
 	var result appTaskActionResult
