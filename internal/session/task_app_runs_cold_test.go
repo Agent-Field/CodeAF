@@ -10,10 +10,14 @@ func TestARunRowShowsItsColdProgramFactsAfterReopenAndNothingForALegacyRow(t *te
 	journal, checkpoint := journalIn(t)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.SessionFile = journal })
 	graph := agent.graph()
-	one, two, three := graph.reserve(), graph.reserve(), graph.reserve()
+	one, two, three, four := graph.reserve(), graph.reserve(), graph.reserve(), graph.reserve()
 	agent.publishRunRow(graph, TaskNotice{ID: one, Title: "senior-dev", State: TaskFailed, Program: "senior-dev", Branch: "task/fix", Stopped: true, Ending: TaskEndingStopped})
 	agent.publishRunRow(graph, TaskNotice{ID: two, Title: "review", State: TaskFailed, Program: "review", Ending: TaskEndingProgram})
 	agent.publishRunRow(graph, TaskNotice{ID: three, Title: "senior-dev: old", State: TaskFailed})
+
+	// A KILLED JOB sets the stopped flag with no typed ending: the flag alone reads
+	// "stopped", and says nothing about who stopped it.
+	agent.publishRunRow(graph, TaskNotice{ID: four, Title: "job", Kind: TaskKindJob, State: TaskFailed, Stopped: true})
 
 	check := func(a *Agent) {
 		t.Helper()
@@ -29,6 +33,9 @@ func TestARunRowShowsItsColdProgramFactsAfterReopenAndNothingForALegacyRow(t *te
 		}
 		if v := facts(two); v.RunProgram != "review" || v.Ending != "program" || v.Branch != "" || v.State != "failed" {
 			t.Fatalf("typed row = %+v", v)
+		}
+		if v := facts(four); v.Ending != "stopped" || v.RunProgram != "" || v.Branch != "" || v.State != "stopped" {
+			t.Fatalf("flag-only row = %+v", v)
 		}
 		if v := facts(three); v.RunProgram != "" || v.Ending != "" || v.Branch != "" || v.State != "failed" {
 			t.Fatalf("legacy row = %+v", v)
