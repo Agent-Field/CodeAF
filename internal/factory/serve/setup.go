@@ -110,7 +110,26 @@ func (h *Handler) setupJSON(ctx context.Context, path, token string, out any) (*
 	return resp, err
 }
 
+// commonOwner names the owner every discovered repository shares, or "" when
+// there are none or they differ. THE LABEL IS A FACT ABOUT THE ROWS, never a claim of
+// organization membership: owners compare case-insensitively and the first spelling is kept.
+func commonOwner(repos []api.SetupRepo) string {
+	label := ""
+	for _, r := range repos {
+		owner, _, _ := strings.Cut(r.ID, "/")
+		switch {
+		case label == "":
+			label = owner
+		case !strings.EqualFold(label, owner):
+			return ""
+		}
+	}
+	return label
+}
+
 func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
+	// An unsuccessful rediscovery cannot retain a previous footer owner.
+	out.View.GitHub.Organization = ""
 	if h.seam.GHLogin != nil && h.mode() == api.FactorySolo {
 		login, err := h.seam.GHLogin(ctx)
 		if err == nil && login != "" {
@@ -188,9 +207,7 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 		}
 	}
 	out.View.GitHub.VisibleRepos = len(out.View.Repos)
-	if len(out.View.Repos) > 0 {
-		out.View.GitHub.Organization, _, _ = strings.Cut(out.View.Repos[0].ID, "/")
-	}
+	out.View.GitHub.Organization = commonOwner(out.View.Repos)
 	out.View.GitHub.Error = nil
 	if h.mode() == api.FactoryTeam && out.View.State == "github" {
 		out.View.State = "repos"

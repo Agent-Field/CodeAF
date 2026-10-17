@@ -536,3 +536,75 @@ func TestSetupPipelineSourceDoesNotCallAnotherRecipeDefaults(t *testing.T) {
 		})
 	}
 }
+
+// reposAnswer swaps the /user/repos body the fixture's GitHub returns, leaving
+// every other path to the original transport.
+func reposAnswer(f *peopleV2Fixture, body *string) {
+	original := f.h.config.GitHubHTTPClient.Transport
+	f.h.config.GitHubHTTPClient.Transport = githubTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/user/repos" {
+			return original.RoundTrip(r)
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(*body))}, nil
+	})
+}
+
+// The footer's owner label is a fact about the discovered rows: shown only when
+// every valid row shares one owner, and never left over from an earlier read.
+func TestFactorySetupOwnerLabelIsTruthfulAcrossDiscoveries(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	answer := `[{"full_name":"Acme/api"},{"full_name":"acme/web"},{"not a repo":true},{"full_name":"no-slash"}]`
+	reposAnswer(f, &answer)
+	var out api.FactorySetup
+	step := func(verb string) {
+		t.Helper()
+		req := api.FactorySetupRequest{Verb: verb}
+		if verb == "connect" {
+			req.Source, req.Token = "token", "setup-secret"
+		}
+		f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", req, 200, &out)
+	}
+	step("connect")
+	if out.GitHub.VisibleRepos != 2 || out.GitHub.Organization != "Acme" {
+		t.Fatalf("one owner (case differs): visible %d label %q", out.GitHub.VisibleRepos, out.GitHub.Organization)
+	}
+	if out.GitHub.Handle != "owner" {
+		t.Fatalf("verified profile changed: %q", out.GitHub.Handle)
+	}
+	answer = `[{"full_name":"acme/api"},{"full_name":"owner/dotfiles"},{"full_name":"other/x"}]`
+	step("discover")
+	if out.GitHub.VisibleRepos != 3 || out.GitHub.Organization != "" {
+		t.Fatalf("mixed owners: visible %d label %q", out.GitHub.VisibleRepos, out.GitHub.Organization)
+	}
+	answer = `[{"full_name":"acme/api"}]`
+	step("discover")
+	if out.GitHub.Organization != "acme" {
+		t.Fatalf("one repo: label %q", out.GitHub.Organization)
+	}
+	answer = `[]`
+	step("discover")
+	if out.GitHub.VisibleRepos != 0 || out.GitHub.Organization != "" || !out.GitHub.Connected || out.GitHub.Handle != "owner" {
+		t.Fatalf("zero repos kept a stale label or lost the profile: %+v", out.GitHub)
+	}
+}
+
+func TestFactorySetupFailedRediscoveryClearsThePreviousFooterOwner(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	if out.GitHub.Organization != "acme" {
+		t.Fatalf("initial owner = %q", out.GitHub.Organization)
+	}
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "back"}, 200, &out)
+	f.h.config.GitHubHTTPClient = &http.Client{Transport: githubTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	})}
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
+	if out.GitHub.Organization != "" || out.GitHub.Error == nil {
+		t.Fatalf("failed rediscovery retained owner %q or omitted its error", out.GitHub.Organization)
+	}
+}
