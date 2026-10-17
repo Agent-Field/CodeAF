@@ -9,9 +9,39 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
-// presentJob runs after solo permissions and presence have narrowed the job.
-// A button appears only when its engine door can handle the current facts.
+// presentJob is the job as a READER sees it: the worker's view below with the
+// runner-local conversation paths withheld. Every queue, job and mutation
+// reply goes through here; only the worker pull skips the withholding.
 func (h *Handler) presentJob(r *http.Request, j *api.Job) {
+	h.presentWorkerJob(r, j)
+	withholdChats(j)
+}
+
+// withholdChats drops each step's conversation id. A chat stage's id is the
+// session FILE PATH on the machine that ran it (stageConversation.ID), so it
+// names a runner's home directory to whoever reads the job, and a path on one
+// machine means nothing on another. ONLY THE WORKER holding the lease needs it,
+// to resume the same conversation after a pause, and it receives the job from
+// pulled, which does not call this. The slice is cloned so nothing is written
+// through into a shared backing array.
+func withholdChats(j *api.Job) {
+	for i := range j.Steps {
+		if j.Steps[i].Chat == "" {
+			continue
+		}
+		steps := make([]api.Step, len(j.Steps))
+		copy(steps, j.Steps)
+		for k := i; k < len(steps); k++ {
+			steps[k].Chat = ""
+		}
+		j.Steps = steps
+		return
+	}
+}
+
+// presentWorkerJob runs after solo permissions and presence have narrowed the
+// job. A button appears only when its engine door can handle the current facts.
+func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	api.PresentJob(j)
 	h.redactMachines(r, j)
 	active := j.State == api.StateRunning || j.State == api.StateQueued || j.State == api.StateNeedsYou
