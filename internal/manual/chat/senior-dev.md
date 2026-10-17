@@ -257,6 +257,22 @@ this before it stopped reading (…)` with the words. In the first moments of a 
 has begun, the refusal is `senior-dev has not started reading messages yet`; say it again
 shortly.
 
+## A message senior-dev did not read — too large to read, or the check could not finish
+
+When a run ends, its page names every message senior-dev was sent and never said it read:
+`senior-dev did not read this before it stopped reading (…)`, with the words, however many
+messages came before it.
+
+**A message too large to read is never skipped or passed over.** The messages before it are
+delivered as usual. The ones after it wait behind it until the oversized one is fixed or
+removed, and the page says `… the rest of the task's notes could not be checked (a message
+there is too large to read: …)`. Nothing after it is claimed as read or as unread.
+
+**When the check itself cannot finish**, because the plan was busy or it ran out of time, the
+page says so instead of claiming the program read everything: `senior-dev may not have read
+every message before it stopped reading (…): its notes could not all be checked (…)`. When it
+found some before it stopped, it quotes those and counts the rest as `at least`.
+
 ## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
 
 **It cannot ask you anything.** Nobody is at its keyboard, so the `question` tool is
