@@ -35,11 +35,17 @@ type PipelineEditSource struct {
 	// included, so a reader can tell "not archived" from "not said". An archived
 	// repository can still answer can_push true and the pull request route refuses
 	// it, so can_push alone is not "may open one".
-	Archived bool     `json:"archived"`
-	State    string   `json:"state" enum:"file,missing,invalid,too_large"`
-	Editable bool     `json:"editable"`
-	Text     string   `json:"text,omitempty"`
-	Problems []string `json:"problems,omitempty"`
+	Archived bool `json:"archived"`
+	// RuntimeFields is written in EVERY 200 state, false included: it is this
+	// factory's own statement that its parser reads a step's kind, when, effort
+	// and fanout and its runner obeys them. A factory that predates the words
+	// cannot write it, so a reader treats absence as "does not say", never as
+	// "probably fine".
+	RuntimeFields bool     `json:"runtime_fields"`
+	State         string   `json:"state" enum:"file,missing,invalid,too_large"`
+	Editable      bool     `json:"editable"`
+	Text          string   `json:"text,omitempty"`
+	Problems      []string `json:"problems,omitempty"`
 
 	// DefaultBudget is the file's. BudgetInFile is false when the file does not
 	// state one and the number is the shipped default.
@@ -67,6 +73,12 @@ type PipelineEditStep struct {
 	Prompt string `json:"prompt,omitempty"`
 	Until  string `json:"until,omitempty"`
 	Max    int    `json:"max,omitempty"`
+	// Kind is check, gate or post; empty is a chat. When, Effort and Fanout are
+	// the runtime words the file wrote on the step, empty when it wrote none.
+	Kind   string `json:"kind,omitempty"`
+	When   string `json:"when,omitempty"`
+	Effort string `json:"effort,omitempty"`
+	Fanout string `json:"fanout,omitempty"`
 	Locked bool   `json:"locked"`
 	InFile bool   `json:"in_file"`
 }
@@ -104,6 +116,6 @@ func (s *PipelineEditSource) SetParsed(src pipeline.Source) {
 	}
 	for _, st := range src.Steps {
 		s.Steps = append(s.Steps, PipelineEditStep{Name: st.Name, Gate: st.Gate, Prompt: st.Prompt, Until: st.Until,
-			Max: st.Max, Locked: st.Locked, InFile: st.InFile})
+			Max: st.Max, Kind: st.Kind, When: st.When, Effort: st.Effort, Fanout: st.Fanout, Locked: st.Locked, InFile: st.InFile})
 	}
 }
