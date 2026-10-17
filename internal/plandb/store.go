@@ -1362,6 +1362,11 @@ func (s *Store) addNote(taskID, agent, body, from, clientID string) (Note, error
 
 // Notes answers one task's notes, newest last, with a bound so a task that
 // accumulated a transcript's worth cannot become one.
+//
+// IT IS NOT A WAY TO DELIVER NOTES. It answers the OLDEST page (50 by default,
+// 200 at most) of a hydrated snapshot and a failed refresh answers stale memory
+// without saying so, so a caller that has already read those never sees the
+// next note. Anything that must reach every note uses [Store.NotesPage].
 func (s *Store) Notes(taskID string, limit int) []Note {
 	s.mu.Lock()
 	defer s.mu.Unlock()
