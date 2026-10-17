@@ -91,7 +91,10 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if err := factory.MergeThread(it, report.Thread, report.Delivered); err != nil {
 		return err
 	}
-	return reportPR(it, report.PR)
+	if err := reportPR(it, report.PR); err != nil {
+		return err
+	}
+	return applyMerge(it, report.Merge, now)
 }
 
 // reportRoom records the item team the worker's factory stage opened, which

@@ -164,6 +164,11 @@ func JobState(it Item) string {
 	if it.PublishError != "" || it.Failure != nil || (it.PublishStatus != nil && it.PublishStatus.State == "failed") {
 		return "needs_you"
 	}
+	// A MERGE THAT FAILED IS YOURS TO LOOK AT: the gate or the forge said no,
+	// and nothing tries again on its own.
+	if m := it.Merging; m != nil && m.State == MergeFailed && (it.PullRequest == nil || it.PullRequest.State == PROpen) {
+		return "needs_you"
+	}
 	if it.State == StateShipped {
 		if pr := it.PullRequest; pr != nil {
 			if pr.State == PRMerged || pr.State == PRClosed {
@@ -218,6 +223,9 @@ func JobReason(it Item) string {
 		if it.PublishError != "" || (it.PublishStatus != nil && it.PublishStatus.State == "failed") {
 			return "publish_failed"
 		}
+		if m := it.Merging; m != nil && m.State == MergeFailed {
+			return "merge_failed"
+		}
 		if it.Failure != nil {
 			if it.Failure.Code == CodeMachineLost {
 				return "runner_offline"
@@ -253,6 +261,9 @@ func JobReason(it Item) string {
 	if JobState(it) == "running" {
 		if it.Publishing {
 			return "publishing"
+		}
+		if m := it.Merging; m != nil && (m.State == MergeQueued || m.State == MergeMerging) {
+			return "merging"
 		}
 		if it.PullRequest != nil {
 			return "github"

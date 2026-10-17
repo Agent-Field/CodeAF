@@ -487,6 +487,25 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "unknown final job state")
 		return
 	}
+	merged, err := h.workers.desk.CarriedMerge(r.PathValue("lease"), requestWorker(r).ID)
+	if h.workerError(w, err) {
+		return
+	}
+	if merged {
+		// A MERGE'S DONE IS NOT A PUBLISH. The job's pull request is already
+		// out; its report said what the merge did, and the job stays done or
+		// waits on the person whose merge failed.
+		h.applyWorker(w, r, true, func(it *factory.Item) error {
+			it.State = factory.StateShipped
+			if m := it.Merging; m != nil && (m.State == factory.MergeQueued || m.State == factory.MergeMerging) {
+				cp := *m
+				cp.State, cp.Why = factory.MergeFailed, "the runner finished without saying what the merge did"
+				it.Merging = &cp
+			}
+			return nil
+		})
+		return
+	}
 	h.applyWorker(w, r, true, func(it *factory.Item) error {
 		now := h.workers.now()
 		if state != factory.StateShipped {

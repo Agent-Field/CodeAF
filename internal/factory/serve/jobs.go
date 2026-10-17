@@ -338,6 +338,10 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 			cur.Approval = nil
 			return nil
 		}
+		if m := cur.Merging; m != nil && m.State == factory.MergeAsked && now.Before(m.UndoUntil) && m.By == who {
+			cur.Merging = nil
+			return nil
+		}
 		if u := cur.StopUndo; u != nil && now.Before(u.Until) && u.By == who && cur.State == factory.StateNew {
 			cur.Stream = u.Stream
 			cur.Failure = u.Failure
@@ -404,7 +408,19 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	a.Commit = it.HeadCommit
 	a.Edited = body.Edited
 	a.Words = body.Words
-	if h.failed(w, h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Approval = a; return nil })) {
+	var pinned *factory.MergePolicy
+	if a.Kind == "proof" {
+		pinned = h.pinnedMerge(r, it)
+	}
+	if h.failed(w, h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		cur.Approval = a
+		if a.Kind == "proof" {
+			// APPROVING THE PROOF PUBLISHES, and the pull request it opens may
+			// merge on its own only if the pipeline said so at this moment.
+			cur.MergePolicy = pinned
+		}
+		return nil
+	})) {
 		return
 	}
 	h.scheduleJobTimer()
@@ -424,6 +440,7 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if len(approvalsOnly) == 0 || !approvalsOnly[0] {
 		h.pruneDropped()
 	}
+	h.settleMerges(len(approvalsOnly) == 0 || !approvalsOnly[0])
 	pending, err := h.config.Store.List()
 	if err != nil {
 		return
@@ -494,6 +511,9 @@ func (h *Handler) scheduleJobTimer() {
 		}
 		if a := it.Approval; a != nil && a.State == "approving" && (next.IsZero() || a.UndoUntil.Before(next)) {
 			next = a.UndoUntil
+		}
+		if m := it.Merging; m != nil && m.State == factory.MergeAsked && (next.IsZero() || m.UndoUntil.Before(next)) {
+			next = m.UndoUntil
 		}
 	}
 	h.jobsMu.Lock()

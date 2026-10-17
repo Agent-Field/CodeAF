@@ -161,6 +161,15 @@ type Pipeline struct {
 	Origin       string      `json:"origin,omitempty"` // main, working tree, defaults
 	Start        *StartBlock `json:"start,omitempty"`
 	Size         *SizeBlock  `json:"size,omitempty"`
+	// Merge is the file's `merge:` settings; absent is auto-merge off and the
+	// repository's own choice of method.
+	Merge *MergeBlock `json:"merge,omitempty"`
+}
+
+// MergeBlock is a pipeline's merge settings on the wire.
+type MergeBlock struct {
+	Auto   bool   `json:"auto,omitempty"`
+	Method string `json:"method,omitempty"`
 }
 
 // StartBlock is the file's start: what may begin without a person.
@@ -311,7 +320,9 @@ type Job struct {
 	CommentURL string              `json:"comment,omitempty"`
 	HeadCommit string              `json:"head_commit,omitempty"`
 	Publishing *factory.Publishing `json:"publishing,omitempty"`
-	Desk       *JobDesk            `json:"desk,omitempty"`
+	// Merge is the job's merging; absent until it has opened a pull request.
+	Merge *JobMerge `json:"merge,omitempty"`
+	Desk  *JobDesk  `json:"desk,omitempty"`
 	// Can is computed for the caller. It is not stored on the job.
 	Can Can `json:"can"`
 }
@@ -405,6 +416,8 @@ type Can struct {
 	// serves the route. A factory from before the route never sends it, which
 	// reads as false: no plan revision is offered.
 	RejectPlan bool `json:"reject_plan"`
+	// Merge is the merge gate passing for the caller now: Merge would go.
+	Merge bool `json:"merge"`
 }
 
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.
@@ -582,6 +595,36 @@ type PR struct {
 	Reviews         []PRReview `json:"reviews,omitempty"`
 	RequiredReviews int        `json:"required_reviews,omitempty"`
 	Checks          *PRChecks  `json:"checks,omitempty"`
+	// HeadSHA, Mergeable ("yes", "no", "" unknown), ChecksRead and ReviewsRead
+	// are the facts the merge gate reads; see factory.MergeGate.
+	HeadSHA     string `json:"head_sha,omitempty"`
+	Mergeable   string `json:"mergeable,omitempty"`
+	ChecksRead  bool   `json:"checks_read,omitempty"`
+	ReviewsRead bool   `json:"reviews_read,omitempty"`
+}
+
+// JobMerge is a job's merging: the pipeline's settings pinned when its proof
+// was approved (auto, method), the merge on its way or the last one that
+// failed (run), and, when nothing is on its way, blocked: why Merge would be
+// refused now, "" when it would go through.
+type JobMerge struct {
+	Auto    bool         `json:"auto,omitempty"`
+	Method  string       `json:"method,omitempty"`
+	Run     *JobMergeRun `json:"run,omitempty"`
+	Blocked string       `json:"blocked,omitempty"`
+}
+
+// JobMergeRun is [factory.MergeRun] on the wire.
+type JobMergeRun struct {
+	State     string     `json:"state"`
+	By        string     `json:"by,omitempty"`
+	Auto      bool       `json:"auto,omitempty"`
+	Rule      string     `json:"rule,omitempty"`
+	Why       string     `json:"why,omitempty"`
+	Commit    string     `json:"commit,omitempty"`
+	Method    string     `json:"method,omitempty"`
+	At        *time.Time `json:"at,omitempty"`
+	UndoUntil *time.Time `json:"undo_until,omitempty"`
 }
 
 // PRReview is one review on a pull request the factory opened.

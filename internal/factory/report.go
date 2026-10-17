@@ -31,6 +31,8 @@ type RunReport struct {
 	// recorded on its mirror (Stream.Room). The server keeps the first one it
 	// is given and refuses a different one; "" is no change.
 	Room string
+	// Merge is what the runner's merge did, nil when it carried none out.
+	Merge *MergeReport
 }
 
 // PipelineChange is the job's stages and the run's phase list as the worker's

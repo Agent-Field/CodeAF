@@ -71,6 +71,16 @@ type WorkerReport struct {
 	Talk       string       `json:"talk,omitempty"`  // desk: the manager conversation the worker made
 	Notes      []string     `json:"notes,omitempty"` // desk: sentences the run added to the job's notes
 	Room       string       `json:"room,omitempty"`  // desk: the item team's id (Stream.Room), write-once
+	// Merge is what the runner's merge did: merging, merged or failed.
+	Merge *WorkerMerge `json:"merge,omitempty"`
+}
+
+// WorkerMerge is [factory.MergeReport] on the wire.
+type WorkerMerge struct {
+	State string `json:"state"`
+	SHA   string `json:"sha,omitempty"`
+	Why   string `json:"why,omitempty"`
+	PR    *PR    `json:"pr,omitempty"`
 }
 
 // StepReport carries the last round's full result without exposing Go names.
@@ -132,6 +142,9 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.QuestionKind = q.Kind
 	}
 	out.PR = toPR(r.PR)
+	if m := r.Merge; m != nil {
+		out.Merge = &factory.MergeReport{State: m.State, SHA: m.SHA, Why: m.Why, PR: toPR(m.PR)}
+	}
 	return out
 }
 
@@ -161,6 +174,9 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 		out.Question = &Question{FromStep: q.Stage, Text: q.Question, Options: q.Options, Pick: q.Pick, Why: q.Why, Kind: r.QuestionKind}
 	}
 	out.PR = fromPR(r.PR)
+	if m := r.Merge; m != nil {
+		out.Merge = &WorkerMerge{State: m.State, SHA: m.SHA, Why: m.Why, PR: fromPR(m.PR)}
+	}
 	return out
 }
 
