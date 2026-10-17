@@ -127,9 +127,29 @@ func commonOwner(repos []api.SetupRepo) string {
 	return label
 }
 
-func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
-	// An unsuccessful rediscovery cannot retain a previous footer owner.
+func clearSetupConnection(out *setupState) {
+	out.View.GitHub.Connected = false
+	out.View.GitHub.Handle, out.View.GitHub.Name, out.View.GitHub.AvatarURL = "", "", ""
 	out.View.GitHub.Organization = ""
+	out.View.GitHub.VisibleRepos = 0
+}
+
+// A saved setup remembers progress, not proof that its credential is still held.
+func (h *Handler) reconnectSetupIfNeeded(ctx context.Context, out *setupState) {
+	token, err := h.setupToken(ctx)
+	if err == nil && token != "" {
+		return
+	}
+	clearSetupConnection(out)
+	switch out.View.State {
+	case "repos", "reading", "checkouts", "done":
+		out.View.State = "github"
+	}
+}
+
+func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
+	clearSetupConnection(out)
+	out.View.GitHub.GH = nil
 	if h.seam.GHLogin != nil && h.mode() == api.FactorySolo {
 		login, err := h.seam.GHLogin(ctx)
 		if err == nil && login != "" {
@@ -245,6 +265,7 @@ func (h *Handler) factorySetup(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), setupWait)
 	defer cancel()
 	if r.Method == "GET" {
+		h.reconnectSetupIfNeeded(ctx, &out)
 		if out.View.State == "github" {
 			if err = h.discoverSetup(ctx, &out); err != nil {
 				words := redact.Secrets(err.Error())

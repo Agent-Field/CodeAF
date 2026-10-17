@@ -608,3 +608,45 @@ func TestFactorySetupFailedRediscoveryClearsThePreviousFooterOwner(t *testing.T)
 		t.Fatalf("failed rediscovery retained owner %q or omitted its error", out.GitHub.Organization)
 	}
 }
+
+func TestFactorySetupLostCredentialRequiresReconnectWithoutDiscardingProgress(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "select_repos", RepoIDs: []string{"acme/api"}}, 200, &out)
+	waitSetup(t, f.h)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "skip", RepoID: "acme/api"}, 200, &out)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "done"}, 200, &out)
+	if out.State != "done" || !out.GitHub.Connected {
+		t.Fatalf("setup did not complete: %+v", out)
+	}
+	if err := config.WriteGitHubToken(f.h.config.ProfileDir, ""); err != nil {
+		t.Fatal(err)
+	}
+	transport := f.h.config.GitHubHTTPClient.Transport
+	f.h.config.GitHubHTTPClient.Transport = githubTransport(func(*http.Request) (*http.Response, error) {
+		t.Fatal("a lost credential must not trigger a GitHub request")
+		return nil, nil
+	})
+	out = api.FactorySetup{} // each wire reply is decoded into a fresh value
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
+	if out.State != "github" || out.GitHub.Connected || out.GitHub.Handle != "" || out.GitHub.Name != "" || out.GitHub.AvatarURL != "" {
+		t.Fatalf("saved connection was mistaken for a held credential: %+v", out.GitHub)
+	}
+	found := false
+	for _, repo := range out.Repos {
+		if repo.ID == "acme/api" {
+			found = repo.Selected && repo.Read == "done" && repo.Clone == "skipped"
+		}
+	}
+	if !found {
+		t.Fatal("reconnection discarded selected repository progress")
+	}
+	f.h.config.GitHubHTTPClient.Transport = transport
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	if !out.GitHub.Connected || out.GitHub.Handle != "owner" || out.State != "repos" {
+		t.Fatalf("explicit reconnect failed: %+v", out)
+	}
+}
