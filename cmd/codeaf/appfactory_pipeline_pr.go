@@ -102,6 +102,11 @@ func (b *appBackend) FactoryPipelinePR(ctx context.Context, p appwire.FactoryPip
 	if !h.callerIs(p.Factory, who.token) {
 		return appwire.FactoryPipelinePRDone{}, appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
 	}
+	// TEXT THAT SPELLS A RUNTIME KEY goes only to a commit the factory attested,
+	// and only after the file is read again (appfactory_pipeline_runtime.go).
+	if err := b.checkPipelineRuntimeText(ctx, who, p); err != nil {
+		return appwire.FactoryPipelinePRDone{}, err
+	}
 	owner, name, _ := strings.Cut(p.Repo, "/")
 	path := appFactoryRepoRoute + url.PathEscape(owner) + "/" + url.PathEscape(name) + appFactoryPipelinePRSuffix
 	client := *h.client
