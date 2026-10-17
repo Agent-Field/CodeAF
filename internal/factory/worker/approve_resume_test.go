@@ -138,3 +138,130 @@ func TestTheStoredMisfiledShapeLandsWithoutRerunningThePlan(t *testing.T) {
 		t.Fatalf("only write should run after legacy repair; saw %d checks: %+v", n, landed.Stream.Log)
 	}
 }
+
+// coldNo copies a held, asking job onto a factory whose worker has never held
+// it, so the no reaches the door with no lease.
+func coldNo(t *testing.T, held factory.Item, words string) (rig, int) {
+	t.Helper()
+	g2 := newRig(t)
+	cp := held
+	cp.ID = 0
+	created, err := g2.st.Create(cp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g2.doors.Answer(created.ID, false, words); err != nil {
+		t.Fatal(err)
+	}
+	return g2, created.ID
+}
+
+// waitAsked waits for the job to ask at the gate for the nth time (n plan
+// checks having run) and answers with the item as stored.
+func waitAsked(t *testing.T, g rig, id int, plans int) factory.Item {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		it, err := g.st.Get(id)
+		if err == nil && it.State == factory.StateNeedsYou && logHas(it, "check: true") == plans {
+			return it
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("never asked after %d plan runs: %+v", plans, it)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// T5: a no with no lease runs the plan again with the words, then asks again,
+// and passes nothing on the person's behalf.
+func TestAColdNoSendsBackToThePlanWithTheWordsAndAsksAgain(t *testing.T) {
+	g := newRig(t)
+	id := g.add(t, planGateWrite()...)
+	if err := g.floor.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	held := g.waitFor(t, id, factory.StateNeedsYou)
+
+	g2, id2 := coldNo(t, held, "use the other file")
+	again := waitAsked(t, g2, id2, 2)
+	if p := phase(again, "plan"); p.Round != 2 || p.State != factory.PhaseDone {
+		t.Fatalf("plan not run again in round 2: %+v", p)
+	}
+	if g := phase(again, factory.ApproveName); g.State != factory.PhaseWaiting {
+		t.Fatalf("gate %+v", g)
+	}
+	if w := phase(again, "write"); w.State != factory.PhasePending {
+		t.Fatalf("write started behind a no: %+v", w)
+	}
+	if again.QKind != factory.QKindApprove || len(again.Notes) != 1 || again.Notes[0] != "use the other file" {
+		t.Fatalf("qkind %q notes %q", again.QKind, again.Notes)
+	}
+	if logHas(again, "sent back to plan: use the other file") != 1 {
+		t.Fatalf("log %+v", again.Stream.Log)
+	}
+	if a := factory.JobApproval(again); a != nil && a.State != "waiting" {
+		t.Fatalf("a consent covers the new ask: %+v", a)
+	}
+	// Only a person's yes passes the changed plan.
+	if err := g2.doors.Answer(id2, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	landed := g2.waitFor(t, id2, factory.StateLanded)
+	if n := logHas(landed, "check: true"); n != 3 {
+		t.Fatalf("want plan twice and write once, saw %d", n)
+	}
+}
+
+// T6: a warm no does the same, so the cold door is the runner's own behaviour.
+func TestAWarmNoSendsBackToThePlanWithTheWordsAndAsksAgain(t *testing.T) {
+	g := newRig(t)
+	id := g.add(t, planGateWrite()...)
+	if err := g.floor.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitFor(t, id, factory.StateNeedsYou)
+	if err := g.doors.Answer(id, false, "use the other file"); err != nil {
+		t.Fatal(err)
+	}
+	again := waitAsked(t, g, id, 2)
+	if p := phase(again, "plan"); p.Round != 2 {
+		t.Fatalf("plan %+v", p)
+	}
+	if phase(again, factory.ApproveName).State != factory.PhaseWaiting || phase(again, "write").State != factory.PhasePending {
+		t.Fatalf("phases %+v", again.Stream.Phases)
+	}
+	if logHas(again, "sent back to plan: use the other file") != 1 {
+		t.Fatalf("log %+v", again.Stream.Log)
+	}
+}
+
+// T7: the stored misfiled shape sends back the same way.
+func TestTheStoredMisfiledShapeNoSendsBackToThePlan(t *testing.T) {
+	g := newRig(t)
+	now := time.Now()
+	q := factory.ApproveQuestion("plan")
+	it, err := g.st.Create(factory.Item{
+		Repo: "api", Title: "legacy", Tier: factory.TierOwner, State: factory.StateNeedsYou, Stages: planGateWrite(),
+		Question: q, QKind: factory.QKindApprove,
+		Asking: &factory.Asked{Stage: "plan", Question: q, At: now, With: factory.AskedYou},
+		Stream: &factory.Stream{Cur: 0, Started: now, Phases: []factory.Phase{
+			{Name: "plan", Kind: factory.StageCheck, State: factory.PhaseWaiting, Round: 1, Result: &factory.StageResult{Done: true}},
+			{Name: factory.ApproveName, Kind: factory.StageGate, State: factory.PhasePending},
+			{Name: "write", Kind: factory.StageCheck, State: factory.PhasePending},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.doors.Answer(it.ID, false, "narrower"); err != nil {
+		t.Fatal(err)
+	}
+	again := waitAsked(t, g, it.ID, 1)
+	if p := phase(again, "plan"); p.Round != 2 || len(again.Notes) != 1 || again.Notes[0] != "narrower" {
+		t.Fatalf("plan %+v notes %q", p, again.Notes)
+	}
+	if phase(again, "write").State != factory.PhasePending {
+		t.Fatalf("write ran behind a no: %+v", again.Stream.Phases)
+	}
+}

@@ -351,12 +351,15 @@ func stand(it *factory.Item, signals []api.WorkerSignal) func(*run.Runner, int) 
 	return (*run.Runner).Launch
 }
 
+// begun is whether the run has started. A step with a round has run, even when
+// a send-back from an approve step stood every step pending again: launching
+// that job fresh would run the steps before it a second time.
 func begun(s *factory.Stream) bool {
 	if s == nil {
 		return false
 	}
 	for _, ph := range s.Phases {
-		if ph.State != factory.PhasePending {
+		if ph.State != factory.PhasePending || ph.Round > 0 {
 			return true
 		}
 	}

@@ -157,14 +157,7 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if held == nil {
-			if it.QKind == factory.QKindApprove {
-				if err := run.AnswerHeld(it, yes, now); err != nil {
-					return false, err
-				}
-				it.State = factory.StateQueued
-				return false, nil
-			}
-			return false, run.KeepAnswer(it, yes, words, now)
+			return false, run.AnswerUnheld(it, yes, words, now)
 		}
 		if err := run.AnswerHeld(it, yes, now); err != nil {
 			return false, err
