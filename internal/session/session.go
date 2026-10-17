@@ -3363,6 +3363,10 @@ type Agent struct {
 	// remembers (steer.go's [Agent.rideModel]).
 	riding   string
 	steering []userMessage
+	// turnCreation is the creation stamp the running turn hung, nil when it
+	// hung none; a person's message spliced into the turn may mark it mixed
+	// ([Agent.mixCreationLocked]). Guarded by mu.
+	turnCreation *creationTeamStamp
 	// steerGrace is the one armed second look at a correction that arrived
 	// while a foreground bash was still too young to adopt (steer_grace.go).
 	// There is at most one, it is replaced rather than added to, and every exit

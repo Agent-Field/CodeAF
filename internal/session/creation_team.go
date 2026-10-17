@@ -2,6 +2,9 @@ package session
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -15,12 +18,42 @@ type creationTeamKey struct{}
 // creationTeamStamp is the stamp. Its presence on a context IS the fact that
 // the turn's opening message carried a creation context; ID empty then says
 // that message was an ordinary one, sent to no team.
-type creationTeamStamp struct{ id string }
+//
+// mixed is set when a person's message with a DIFFERENT context — or none — is
+// spliced into the running turn ([Agent.mixCreationLocked]). From then on the
+// turn answers more than one message and cannot say which one an automation
+// was made for, so it is unknown: never the opener's crew, never a false none.
+type creationTeamStamp struct {
+	id    string
+	mixed atomic.Bool
+}
 
 // withCreationTeam hangs the stamp for a message whose door stated a context.
 // ID "" is an explicit NONE.
 func withCreationTeam(ctx context.Context, teamID string) context.Context {
-	return context.WithValue(ctx, creationTeamKey{}, creationTeamStamp{id: teamID})
+	ctx, _ = withCreationStamp(ctx, teamID)
+	return ctx
+}
+
+// withCreationStamp is withCreationTeam answering the stamp it hung, so the
+// turn that hangs it can mark it mixed later.
+func withCreationStamp(ctx context.Context, teamID string) (context.Context, *creationTeamStamp) {
+	stamp := &creationTeamStamp{id: teamID}
+	return context.WithValue(ctx, creationTeamKey{}, stamp), stamp
+}
+
+// mixCreationLocked records that a person's message is being spliced into the
+// running turn. A message stating the turn's own context changes nothing; any
+// other — another team, an explicit none into a crew turn, or one stating
+// nothing — makes the turn's creation team unknown. The caller holds a.mu.
+func (a *Agent) mixCreationLocked(user userMessage) {
+	stamp := a.turnCreation
+	if stamp == nil {
+		return
+	}
+	if creation := user.creationContext(); creation == nil || creation.Team != stamp.id {
+		stamp.mixed.Store(true)
+	}
 }
 
 // creationTeamFrom is the stamped team id and whether a stamp exists at all.
@@ -31,8 +64,11 @@ func withCreationTeam(ctx context.Context, teamID string) context.Context {
 // automation made in it must stay unknown rather than be upgraded to "made in
 // no team".
 func creationTeamFrom(ctx context.Context) (id string, known bool) {
-	s, ok := ctx.Value(creationTeamKey{}).(creationTeamStamp)
-	return s.id, ok
+	s, ok := ctx.Value(creationTeamKey{}).(*creationTeamStamp)
+	if !ok || s.mixed.Load() {
+		return "", false
+	}
+	return s.id, true
 }
 
 // creationContext is the context the turn this message opens carries: the one
@@ -78,9 +114,7 @@ func (a *Agent) provenCreation(creation *CreationContext) *CreationContext {
 	if profile == "" {
 		return nil
 	}
-	a.team.mu.Lock()
-	keys := append([]string(nil), a.teamKeysLocked()...)
-	a.team.mu.Unlock()
+	keys := creationKeys(a.config.transcriptPath())
 	file, err := teams.Load(profile)
 	if err != nil {
 		return nil
@@ -95,6 +129,27 @@ func (a *Agent) provenCreation(creation *CreationContext) *CreationContext {
 		}
 	}
 	return nil
+}
+
+// creationKeys is every spelling the teams file may know this conversation's
+// journal by: the path cleaned, the path with every link resolved, and — for a
+// journal that does not exist yet, as a crew start's manager's on its very
+// first message — its folder resolved and its own name, the spelling the app's
+// start writes. It takes no lock, so a door holding a.mu may ask it.
+func creationKeys(path string) []string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	clean := filepath.Clean(path)
+	keys := []string{clean}
+	if real, err := filepath.EvalSymlinks(clean); err == nil {
+		keys = append(keys, filepath.Clean(real))
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(clean)); err == nil {
+		keys = append(keys, filepath.Join(filepath.Clean(dir), filepath.Base(clean)))
+	}
+	return keys
 }
 
 // creationTeamIDOK matches the teams directory-name law (letters, digits, _

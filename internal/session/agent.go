@@ -1051,6 +1051,9 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		// between an assistant's tool_calls and their results is a shape every
 		// provider rejects. The loop appends it at the next step boundary,
 		// where it is journaled like any other user message.
+		// A message with another creation context answered in this turn makes
+		// the turn's creation team unknown (creation_team.go).
+		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
 		// Subscribing under a.mu — not after releasing it — is what makes the
 		// returned channel live rather than a coin flip: the turn's goroutine
@@ -1845,8 +1848,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// AND THE TURN CARRIES THE CREATION CONTEXT the accepting door stated on
 	// its opening message (creation_team.go), only when it stated one: any other
 	// turn leaves the team unknown. Never rewritten from who manages a team now.
+	a.turnCreation = nil
 	if creation := user.creationContext(); creation != nil {
-		turnCtx = withCreationTeam(turnCtx, creation.Team)
+		turnCtx, a.turnCreation = withCreationStamp(turnCtx, creation.Team)
 	}
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on

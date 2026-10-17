@@ -648,6 +648,7 @@ func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan E
 	}
 	queued := steerMessage(steer)
 	queued.person = person
+	a.mixCreationLocked(queued)
 	a.steering = append(a.steering, queued)
 	hub := a.hub
 	// A QUESTION THE PERSON TALKED PAST IS LET GO OF BEFORE ANYTHING ELSE IS

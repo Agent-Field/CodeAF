@@ -956,3 +956,20 @@ func TestStartLosingTheClaimToAnotherStartMakesNothing(t *testing.T) {
 		t.Fatalf("teams %d folders %d", len(h.file(t).Teams), h.folders(t))
 	}
 }
+
+// THE GOAL A CREW START HANDS ITS MANAGER STATES THAT CREW'S EXACT ID.
+func TestStartCrewGoalStatesTheNewCrew(t *testing.T) {
+	h := newStartHarness(t)
+	got, err := h.b.CrewStart(appwire.CrewCreate{Name: "Docs", StartManager: true, ManagerStartsMembers: true, RequestID: "r-goal", Goal: "rebuild the docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.rec.waitFor(t, 5*time.Second, appTurnDone)
+	conv := h.conv(got.Start.Manager)
+	conv.mu.Lock()
+	submissions := append([]session.Submission(nil), conv.submissions...)
+	conv.mu.Unlock()
+	if len(submissions) != 1 || submissions[0].Creation == nil || submissions[0].Creation.Team != got.Crew.ID {
+		t.Fatalf("the goal was handed as %+v, want the crew %s", submissions, got.Crew.ID)
+	}
+}
