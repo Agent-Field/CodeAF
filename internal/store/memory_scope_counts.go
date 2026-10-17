@@ -33,13 +33,8 @@ func (s *Store) MemoryCountsFor(ctx context.Context, owners []string) (MemorySco
 	if ctx == nil || len(owners) == 0 || len(owners) > 3 {
 		return MemoryScopeCounts{}, fmt.Errorf("memory counts: %w: expected 1–3 owners and a context", ErrInvalid)
 	}
-	seen := map[string]bool{}
-	for _, owner := range owners {
-		project := strings.HasPrefix(owner, "project:") && len(owner) > len("project:")
-		if len(owner) > 256 || !utf8.ValidString(owner) || strings.TrimSpace(owner) != owner || strings.IndexFunc(owner, unicode.IsControl) >= 0 || (owner != OwnerUser && owner != OwnerMachine && !project) || owner == OwnerLegacyProject || seen[owner] {
-			return MemoryScopeCounts{}, fmt.Errorf("memory counts: %w: invalid owner set", ErrInvalid)
-		}
-		seen[owner] = true
+	if err := validMemoryCountOwners(owners); err != nil {
+		return MemoryScopeCounts{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -51,21 +46,50 @@ func (s *Store) MemoryCountsFor(ctx context.Context, owners []string) (MemorySco
 		return MemoryScopeCounts{}, err
 	}
 	defer tx.Rollback()
+	out, watermark, err := s.countActiveMemories(ctx, tx, owners)
+	if err != nil {
+		return MemoryScopeCounts{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return MemoryScopeCounts{}, err
+	}
+	return memoryCountsRevision(out, watermark)
+}
+
+// validMemoryCountOwners refuses an owner set that is not distinct, well-formed
+// person/machine/project owners.
+func validMemoryCountOwners(owners []string) error {
+	seen := map[string]bool{}
+	for _, owner := range owners {
+		project := strings.HasPrefix(owner, "project:") && len(owner) > len("project:")
+		if len(owner) > 256 || !utf8.ValidString(owner) || strings.TrimSpace(owner) != owner || strings.IndexFunc(owner, unicode.IsControl) >= 0 || (owner != OwnerUser && owner != OwnerMachine && !project) || owner == OwnerLegacyProject || seen[owner] {
+			return fmt.Errorf("memory counts: %w: invalid owner set", ErrInvalid)
+		}
+		seen[owner] = true
+	}
+	return nil
+}
+
+// countActiveMemories counts each owner's active rows inside tx and answers the
+// event watermark the snapshot was read at.
+func (s *Store) countActiveMemories(ctx context.Context, tx *sql.Tx, owners []string) (MemoryScopeCounts, int64, error) {
 	var watermark int64
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM events`).Scan(&watermark); err != nil {
-		return MemoryScopeCounts{}, err
+		return MemoryScopeCounts{}, 0, err
 	}
 	out := MemoryScopeCounts{Scopes: make([]MemoryScopeCount, 0, len(owners))}
 	for _, owner := range owners {
 		var count int64
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM memories WHERE owner = ? AND status = ?`, owner, MemoryActive).Scan(&count); err != nil {
-			return MemoryScopeCounts{}, err
+			return MemoryScopeCounts{}, 0, err
 		}
 		out.Scopes = append(out.Scopes, MemoryScopeCount{Owner: owner, Count: count})
 	}
-	if err := ctx.Err(); err != nil {
-		return MemoryScopeCounts{}, err
-	}
+	return out, watermark, nil
+}
+
+// memoryCountsRevision stamps the counts with a hash of the watermark and scopes.
+func memoryCountsRevision(out MemoryScopeCounts, watermark int64) (MemoryScopeCounts, error) {
 	identity, err := json.Marshal(struct {
 		Watermark int64
 		Scopes    []MemoryScopeCount

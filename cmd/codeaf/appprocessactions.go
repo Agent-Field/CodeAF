@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/service"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -307,7 +308,7 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 	)
 	if live != nil {
 		wg.Add(1)
-		go func() {
+		guard.Go("stop-all-jobs", func() {
 			defer wg.Done()
 			actor, can := live.conn.Conv.(appProcessActor)
 			if !can {
@@ -315,13 +316,13 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 				return
 			}
 			jobs, jobsErr = actor.StopConversationProcesses(ctx)
-		}()
+		})
 	}
 	wg.Add(1)
-	go func() {
+	guard.Go("stop-all-services", func() {
 		defer wg.Done()
 		services = b.stopOwnedServices(ctx, agent)
-	}()
+	})
 	wg.Wait()
 
 	switch {

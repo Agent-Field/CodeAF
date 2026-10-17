@@ -343,6 +343,20 @@ func (r *crewRegistry) release(w *crewWalk) {
 	w.touched = r.now()
 }
 
+// unreachable reports whether no token can reach the walk any more.
+func (r *crewRegistry) unreachable(w *crewWalk) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return w.cur == "" && w.prev == ""
+}
+
+// storeLast keeps raw as the reply the previous token replays.
+func (r *crewRegistry) storeLast(w *crewWalk, raw []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w.last = raw
+}
+
 // rotate gives the walk next as its new current token ("" when the walk is
 // over), the old one becoming the previous, which replays the reply stored
 // with it.
@@ -666,10 +680,7 @@ func (b *appBackend) crewCommit(ctx context.Context, reg *crewRegistry, walk *cr
 		}
 		walk.owners, walk.at, walk.done, walk.unread, walk.incomplete, walk.finished =
 			snap.owners, snap.at, snap.done, snap.unread, snap.incomplete, snap.finished
-		reg.mu.Lock()
-		unreachable := walk.cur == "" && walk.prev == ""
-		reg.mu.Unlock()
-		if unreachable || (err != nil && isWireCode(err, appwire.CodeTooLarge)) {
+		if reg.unreachable(walk) || (err != nil && isWireCode(err, appwire.CodeTooLarge)) {
 			_ = reg.settle(walk, true)
 			return
 		}
@@ -705,9 +716,7 @@ func (b *appBackend) crewCommit(ctx context.Context, reg *crewRegistry, walk *cr
 		_ = reg.settle(walk, true)
 		return out, nil
 	}
-	reg.mu.Lock()
-	walk.last = raw
-	reg.mu.Unlock()
+	reg.storeLast(walk, raw)
 	if err := reg.settle(walk, false); err != nil {
 		return nil, err
 	}
