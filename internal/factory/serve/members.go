@@ -31,13 +31,15 @@ func (h *Handler) memberList() []api.Member {
 		return by[handle]
 	}
 	for _, tok := range h.tokenRows() {
-		if tok.Profile == nil || tok.Profile.Handle == "" {
-			continue
-		}
-		m := take(tok.Profile.Handle)
-		m.profile = *tok.Profile
-		if !tok.Joined.IsZero() && (m.joined.IsZero() || tok.Joined.Before(m.joined)) {
-			m.joined = tok.Joined
+		for _, joiner := range tok.Members() {
+			if joiner.Profile.Handle == "" {
+				continue
+			}
+			m := take(joiner.Profile.Handle)
+			m.profile = joiner.Profile
+			if !joiner.Joined.IsZero() && (m.joined.IsZero() || joiner.Joined.Before(m.joined)) {
+				m.joined = joiner.Joined
+			}
 		}
 	}
 	// Copy under each lock separately. Holding the viewer lock and then the

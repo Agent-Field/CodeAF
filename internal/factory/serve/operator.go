@@ -33,7 +33,7 @@ func (h *Handler) NewOperatorLink(ctx context.Context, recovery bool) (api.Acces
 	if err != nil || tok.ID == "" {
 		return api.AccessLink{}, err
 	}
-	out := linkWire(tok)
+	out := linkWire(tok, h.now())
 	out.URL = accessLinkURL(h.factory.Address, tok)
 	return out, nil
 }

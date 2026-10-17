@@ -2,10 +2,12 @@ package serve
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -107,17 +109,34 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 	if tok.InvitedBy != "" {
 		out.Factory.Operator = tok.InvitedBy
 	}
+	now := h.now()
+	if tok.Human() {
+		out.MaxUses, out.Used, out.Remaining = tok.Limit(), tok.Used(), tok.Remaining()
+		if out.MaxUses > 1 {
+			out.Detail = fmt.Sprintf("Link for up to %d people · %d left", out.MaxUses, out.Remaining)
+		}
+	}
 	if !tok.Expires.IsZero() {
 		out.Detail += " · expires " + tok.Expires.Format("2 Jan")
+		expires := tok.Expires
+		out.ExpiresAt = &expires
 	}
-	if tok.Revoked {
+	// The card is the first of these that applies: revoked, expired, used up,
+	// then open. "Can't reach the factory" is decided by the app before it
+	// asks; already in and no repo visible follow from the caller below.
+	switch {
+	case tok.Revoked:
 		out.State = "revoked"
-	} else if !tok.Expires.IsZero() && !h.now().Before(tok.Expires) {
+	case !tok.Expires.IsZero() && !now.Before(tok.Expires):
 		out.State = "expired"
-	} else if !tok.Joined.IsZero() {
+	case tok.Human() && tok.Remaining() == 0, !tok.Human() && !tok.Joined.IsZero():
 		out.State = "used_up"
-	} else {
+	default:
 		out.State = "ready"
+	}
+	if tok.Human() && out.State != "ready" {
+		ended := tok.EndedAt(now)
+		out.EndedAt = &ended
 	}
 	caller := ""
 	if cookie, e := r.Cookie("factory_join"); e == nil {
@@ -156,7 +175,9 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if session, ok := h.credential(r); ok && session.profile != nil && (out.State == "ready" || (out.State == "used_up" && tok.Profile != nil && tok.Profile.Handle == session.profile.Handle)) {
+	// Someone who is already in is told so and nothing changes: the link stays
+	// unused, so it still works for the next person.
+	if session, ok := h.credential(r); ok && session.profile != nil && out.State == "ready" {
 		out.State = "already_joined"
 		h.accessRepos(&out, r)
 		h.write(w, 200, out)
@@ -213,6 +234,8 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 		pending = true
 	} else if r.Method == "GET" && pending {
 		auth.URL.Path = "/v1/auth/device/poll"
+		receipt := &joinReceipt{}
+		auth = auth.WithContext(context.WithValue(auth.Context(), joinReceiptKey{}, receipt))
 		reply := captureDevice(h.pollDevice, auth, api.DevicePoll{DeviceCode: flow.Device.DeviceCode})
 		if reply.status == 200 {
 			var signed api.SignedIn
@@ -231,7 +254,11 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 			}
 			out.State = "joined"
 			out.AccessToken = flow.Session
-			h.accessRepos(&out, joined)
+			if receipt.repos != nil {
+				out.Factory.Repos = receipt.repos
+			} else {
+				h.accessRepos(&out, joined)
+			}
 			h.write(w, 200, out)
 			return
 		}
@@ -239,6 +266,23 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 			delete(h.accessFlows, key)
 			out.State = "no_access"
 			out.Message = "GitHub did not complete sign-in. Try again."
+			if reply.status == http.StatusForbidden {
+				// The sign-in worked but the link refused them; no use was spent.
+				var refused struct {
+					Error string `json:"error"`
+				}
+				_ = json.Unmarshal(reply.body.Bytes(), &refused)
+				switch refused.Error {
+				case linkRevokedWords:
+					out.State = "revoked"
+				case linkExpiredWords:
+					out.State = "expired"
+				case linkUsedUpWords:
+					out.State = "used_up"
+				case linkNoRepoWords:
+					out.Message = linkNoRepoWords
+				}
+			}
 			h.write(w, 200, out)
 			return
 		}

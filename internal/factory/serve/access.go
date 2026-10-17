@@ -91,7 +91,11 @@ func (h *Handler) credential(r *http.Request) (accessSession, bool) {
 			session := accessSession{tokenID: id, id: id}
 			for _, row := range h.tokenRows() {
 				if row.ID == id {
-					session.profile = row.Profile
+					// A shared link secret names no one: it may start a GitHub
+					// sign-in, and what that sign-in makes is the person's session.
+					if !row.Counted() {
+						session.profile = row.Profile
+					}
 					break
 				}
 			}
@@ -146,7 +150,9 @@ func (h *Handler) liveSessionHash(r *http.Request, key string) (accessSession, b
 	if session.profile == nil && session.tokenID != "" {
 		for _, row := range h.tokenRows() {
 			if row.ID == session.tokenID {
-				session.profile = row.Profile
+				if !row.Counted() {
+					session.profile = row.Profile
+				}
 				break
 			}
 		}
@@ -266,7 +272,18 @@ func (h *Handler) sessionUsable(session accessSession) bool {
 	}
 	now := h.now()
 	for _, row := range h.tokenRows() {
-		if row.ID == session.tokenID && !row.Revoked && ((row.Operator && !row.Joined.IsZero()) || row.Expires.IsZero() || now.Before(row.Expires)) {
+		if row.ID != session.tokenID {
+			continue
+		}
+		// A link with its own use limit invites people; it does not hold their
+		// sessions. Revoke or expiry stops new joins, and a person leaves
+		// through the session's own expiry or the operator removing them.
+		// Only while the row still counts the person: a use given back removes
+		// them, and a session of theirs left behind must not outlive it.
+		if row.Counted() {
+			return session.profile == nil || row.Has(session.profile.Handle)
+		}
+		if !row.Revoked && ((row.Operator && !row.Joined.IsZero()) || row.Expires.IsZero() || now.Before(row.Expires)) {
 			return true
 		}
 	}

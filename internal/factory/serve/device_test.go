@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ func (f githubTransport) RoundTrip(r *http.Request) (*http.Response, error) { re
 // fakeGitHub checks the real request shape at fixed GitHub URLs. A still clock
 // lets tests exercise polling rules and expiry without waiting on the laptop.
 type fakeGitHub struct {
+	mu             sync.Mutex
 	t              *testing.T
 	login          string
 	exchange       string
@@ -40,11 +42,15 @@ type fakeGitHub struct {
 	refreshes      int
 	refreshedToken string
 	repoStatus     int
+	// repoSeq answers the next repository checks in order, then repoStatus.
+	repoSeq []int
 }
 
 func (g *fakeGitHub) client() *http.Client {
 	return &http.Client{Transport: githubTransport(func(r *http.Request) (*http.Response, error) {
 		g.t.Helper()
+		g.mu.Lock()
+		defer g.mu.Unlock()
 		body, status := "", http.StatusOK
 		if r.Header.Get("Accept") != "application/json" {
 			g.t.Fatal("GitHub request needs JSON")
@@ -97,6 +103,9 @@ func (g *fakeGitHub) client() *http.Client {
 				body = `{}`
 				if g.repoStatus != 0 {
 					status = g.repoStatus
+				}
+				if len(g.repoSeq) > 0 {
+					status, g.repoSeq = g.repoSeq[0], g.repoSeq[1:]
 				}
 				break
 			}

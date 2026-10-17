@@ -129,6 +129,7 @@ type Handler struct {
 	auth           *deviceFlows
 	viewer         *viewerState
 	consentMu      sync.Mutex
+	joinMu         sync.Mutex
 	replays        replayCache
 	machinesMu     sync.Mutex
 	machines       map[string]machineRow

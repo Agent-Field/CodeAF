@@ -151,7 +151,13 @@ func repoKeys(s factory.Snapshot) []string {
 // false for the owner: loopback without a GitHub profile, and the host token.
 // A signed-in profile with no token still filters, and sees nothing.
 func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, bool) {
-	session, ok := h.credential(r)
+	var session accessSession
+	var ok bool
+	if trial, isTrial := r.Context().Value(trialSessionKey{}).(*accessSession); isTrial {
+		session, ok = *trial, true
+	} else {
+		session, ok = h.credential(r)
+	}
 	if !ok {
 		// An ended sign-in never falls back to the owner's unfiltered view,
 		// including when a long-lived event stream outlasts its credential.

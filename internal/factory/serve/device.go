@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -196,11 +197,26 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	session := accessSession{id: "session_" + id, expires: now.Add(accessSessionTTL), created: now, lastSeen: now,
 		profile: &profile, tokenID: flow.tokenID, device: deviceLabel(r)}
 	session.setGitHub(exchange, now)
+	consumed, joinLocked := false, false
+	defer func() {
+		if joinLocked {
+			h.joinMu.Unlock()
+		}
+	}()
 	if flow.tokenID != "" {
 		for _, row := range h.tokenRows() {
 			if row.ID == flow.tokenID && row.InvitedLogin != "" && row.InvitedLogin != profile.Handle {
 				h.fail(w, http.StatusForbidden, "this access link is for @"+row.InvitedLogin)
 				return
+			}
+			// The link is judged again now that GitHub says who this is: it may
+			// have been revoked, expired or filled while they were signing in.
+			// Someone already counted is not turned away for being late.
+			if row.ID == flow.tokenID && row.Human() && !row.Has(profile.Handle) {
+				if words := linkRefusal(row.Reason(now)); words != "" {
+					h.fail(w, http.StatusForbidden, words)
+					return
+				}
 			}
 		}
 		// A join link must not be consumed by a person whose GitHub sees no watched repository.
@@ -232,12 +248,46 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if !allowed {
-				h.fail(w, 403, "Your GitHub cannot see this factory's repositories.")
+				h.fail(w, 403, linkNoRepoWords)
 				return
 			}
 		}
-		if err := h.bindDeviceProfile(r, flow.tokenID, profile, now); h.failed(w, err) {
+		// One sign-in at a time per factory is between taking a use and
+		// keeping or returning it, so a rollback can see every other session
+		// of the same person and never uncounts one that succeeded.
+		h.joinMu.Lock()
+		joinLocked = true
+		var err error
+		consumed, err = h.bindDeviceProfile(r, flow.tokenID, profile, now)
+		if words := joinRefusal(err); words != "" {
+			h.fail(w, http.StatusForbidden, words)
 			return
+		}
+		if h.failed(w, err) {
+			return
+		}
+	}
+	// The link's sign-in is judged by what this very session would see, while
+	// the use is still ours to return. The session is NOT in the store yet, so
+	// no save by anyone else can write it down before the verdict: the check
+	// reads it from the request context. The verdict is the one the card
+	// shows; it is never asked a second time later.
+	if joinLocked && h.humanLink(flow.tokenID) {
+		check := r.WithContext(context.WithValue(r.Context(), trialSessionKey{}, &session))
+		check.Header = r.Header.Clone()
+		check.Header.Del("Cookie")
+		check.Header.Del("Authorization")
+		seen := api.FactoryAccess{State: "joined"}
+		h.accessRepos(&seen, check)
+		if seen.State == "no_access" {
+			if consumed {
+				h.giveBackUse(flow.tokenID, profile.Handle)
+			}
+			h.fail(w, http.StatusForbidden, linkNoRepoWords)
+			return
+		}
+		if receipt, ok := r.Context().Value(joinReceiptKey{}).(*joinReceipt); ok {
+			receipt.repos = seen.Factory.Repos
 		}
 	}
 	h.sessions.mu.Lock()
@@ -252,7 +302,12 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 		delete(h.sessions.ids, sessionHash(credential))
 	}
 	h.sessions.mu.Unlock()
-	if h.failed(w, err) {
+	if err != nil {
+		// No session was made, so the use this sign-in took goes back.
+		if consumed {
+			h.giveBackUse(flow.tokenID, profile.Handle)
+		}
+		h.failed(w, err)
 		return
 	}
 	h.viewer.see(profile, now, now, exchange.AccessToken)
@@ -279,8 +334,10 @@ func (h *Handler) deviceWaiting(w http.ResponseWriter, state string, interval in
 }
 
 // bindDeviceProfile records an operator claim only after GitHub proves the link's bound login.
-func (h *Handler) bindDeviceProfile(r *http.Request, id string, profile api.Profile, now time.Time) error {
-	return tokens.Bind(h.config.TokensPath, id, profile, now, func() error {
+// The first result is whether a use of a human link was spent; a person who
+// was already in, a plain token and an operator claim spend none.
+func (h *Handler) bindDeviceProfile(r *http.Request, id string, profile api.Profile, now time.Time) (bool, error) {
+	joined, err := tokens.Join(h.config.TokensPath, id, profile, now, func() error {
 		if h.config.Record == nil {
 			return nil
 		}
@@ -291,6 +348,76 @@ func (h *Handler) bindDeviceProfile(r *http.Request, id string, profile api.Prof
 		})
 		return err
 	})
+	return joined.Consumed, err
+}
+
+type joinReceiptKey struct{}
+
+// trialSessionKey carries a sign-in that is not stored yet, so its repository
+// check can run with its own GitHub credential without the session ever
+// reaching the store (and so the disk) before the check passes.
+type trialSessionKey struct{}
+
+// joinReceipt carries the repositories pollDevice already judged to the
+// access card that called it, so the card does not look a second time.
+type joinReceipt struct{ repos []string }
+
+func (h *Handler) humanLink(id string) bool {
+	for _, row := range h.tokenRows() {
+		if row.ID == id {
+			return row.Human()
+		}
+	}
+	return false
+}
+
+// giveBackUse returns the use a failed sign-in took. Another live session of
+// the same person on the same link means they are still in, so nothing goes
+// back. Call with joinMu held.
+func (h *Handler) giveBackUse(tokenID, handle string) {
+	h.sessions.mu.Lock()
+	for _, s := range h.sessions.ids {
+		if s.tokenID == tokenID && s.profile != nil && s.profile.Handle == handle && h.sessionUsable(s) {
+			h.sessions.mu.Unlock()
+			return
+		}
+	}
+	h.sessions.mu.Unlock()
+	_ = tokens.Unjoin(h.config.TokensPath, tokenID, handle)
+}
+
+// The sentences a refused join carries. link_state reads the 403 body for
+// them, so these are the one spelling.
+const (
+	linkRevokedWords = "This link was revoked."
+	linkExpiredWords = "This link has expired."
+	linkUsedUpWords  = "This link has no uses left."
+	linkNoRepoWords  = "Your GitHub cannot see this factory's repositories."
+)
+
+func linkRefusal(reason string) string {
+	switch reason {
+	case "revoked":
+		return linkRevokedWords
+	case "expired":
+		return linkExpiredWords
+	case "used_up":
+		return linkUsedUpWords
+	}
+	return ""
+}
+
+// joinRefusal maps a typed refusal from tokens.Join to its sentence, or "".
+func joinRefusal(err error) string {
+	switch {
+	case errors.Is(err, tokens.ErrRevoked):
+		return linkRevokedWords
+	case errors.Is(err, tokens.ErrExpired):
+		return linkExpiredWords
+	case errors.Is(err, tokens.ErrUsedUp):
+		return linkUsedUpWords
+	}
+	return ""
 }
 
 // cancelDevice consumes only this caller's pending code; an in-flight poll holds the same lock.

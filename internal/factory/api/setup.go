@@ -61,6 +61,14 @@ type FactoryAccess struct {
 	Help        string        `json:"help,omitempty"`
 	SignInURL   string        `json:"sign_in_url,omitempty"`
 	UserCode    string        `json:"user_code,omitempty"`
+	// MaxUses, Used and Remaining count the link's people; ExpiresAt is when
+	// it stops admitting them, and EndedAt when a revoked, expired or used-up
+	// link did. All stay empty for a link the factory did not recognise.
+	MaxUses   int        `json:"max_uses,omitempty"`
+	Used      int        `json:"used,omitempty"`
+	Remaining int        `json:"remaining,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	EndedAt   *time.Time `json:"ended_at,omitempty"`
 }
 type AccessFactory struct {
 	ID       string   `json:"id"`

@@ -2,10 +2,12 @@ package serve
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -14,8 +16,27 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
-func linkWire(tok tokens.Token) api.AccessLink {
-	return api.AccessLink{Operator: tok.Operator, ID: tok.ID, CreatedAt: tok.Created, ExpiresAt: tok.Expires, CreatedBy: tok.InvitedBy, Login: tok.InvitedLogin, Name: tok.InvitedName, Revoked: tok.Revoked}
+// endedLinkListed is how long an ended human link stays in the operator's list.
+const endedLinkListed = 30 * 24 * time.Hour
+
+// linkWire is the list row. It carries counts and public handles, never the
+// secret: that is shown once, by createAccessLink.
+func linkWire(tok tokens.Token, now time.Time) api.AccessLink {
+	out := api.AccessLink{Operator: tok.Operator, ID: tok.ID, CreatedAt: tok.Created, ExpiresAt: tok.Expires, CreatedBy: tok.InvitedBy, Login: tok.InvitedLogin, Name: tok.InvitedName, Revoked: tok.Revoked}
+	if !tok.Human() {
+		return out
+	}
+	out.MaxUses, out.Used, out.Remaining = tok.Limit(), tok.Used(), tok.Remaining()
+	out.Status = "open"
+	if reason := tok.Reason(now); reason != "" {
+		out.Status = reason
+		ended := tok.EndedAt(now)
+		out.EndedAt = &ended
+	}
+	for _, j := range tok.Members() {
+		out.UsedBy = append(out.UsedBy, j.Profile.Handle)
+	}
+	return out
 }
 
 func (h *Handler) accessLinks(w http.ResponseWriter, r *http.Request) {
@@ -27,8 +48,13 @@ func (h *Handler) accessLinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := api.AccessLinks{Factory: h.factory, Links: []api.AccessLink{}}
+	now := h.now()
 	for _, tok := range rows {
-		out.Links = append(out.Links, linkWire(tok))
+		// Ended links stay listed, greyed, for thirty days.
+		if tok.Human() && tok.Reason(now) != "" && now.Sub(tok.EndedAt(now)) > endedLinkListed {
+			continue
+		}
+		out.Links = append(out.Links, linkWire(tok, now))
 	}
 	h.write(w, http.StatusOK, out)
 }
@@ -46,17 +72,36 @@ func (h *Handler) createAccessLink(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "login must be a GitHub handle")
 		return
 	}
-	if !body.ExpiresAt.IsZero() && !h.now().Before(body.ExpiresAt) {
+	now := h.now()
+	if !body.ExpiresAt.IsZero() && !now.Before(body.ExpiresAt) {
 		h.fail(w, http.StatusUnprocessableEntity, "expiry must be in the future")
+		return
+	}
+	if body.ExpiresAt.After(now.Add(tokens.HumanLinkTTL)) {
+		h.fail(w, http.StatusUnprocessableEntity, "an access link lasts at most 7 days")
+		return
+	}
+	if body.ExpiresAt.IsZero() {
+		body.ExpiresAt = now.Add(tokens.HumanLinkTTL)
+	}
+	if body.MaxUses == 0 {
+		body.MaxUses = 1
+	}
+	if body.MaxUses < 1 || body.MaxUses > tokens.MaxLinkPeople {
+		h.fail(w, http.StatusUnprocessableEntity, fmt.Sprintf("a link admits one person or up to 2 to %d people", tokens.MaxLinkPeople))
+		return
+	}
+	if body.Login != "" && body.MaxUses > 1 {
+		h.fail(w, http.StatusUnprocessableEntity, "a link for one GitHub login admits one person")
 		return
 	}
 	tok, err := tokens.Mint()
 	if h.failed(w, err) {
 		return
 	}
-	tok.Created, tok.Expires, tok.InvitedBy = h.now(), body.ExpiresAt, h.operatorLogin(r)
+	tok.Created, tok.Expires, tok.InvitedBy = now, body.ExpiresAt, h.operatorLogin(r)
 	tok.InvitedLogin, tok.InvitedName = body.Login, body.Name
-	tok.AccessLink = true
+	tok.AccessLink, tok.MaxUses = true, body.MaxUses
 	if h.failed(w, os.MkdirAll(filepath.Dir(h.config.TokensPath), 0700)) {
 		return
 	}
@@ -66,7 +111,7 @@ func (h *Handler) createAccessLink(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, h.operatorEvent(r, record.LinkCreated, "link:"+tok.ID, "Sign in with GitHub through an access link")) {
 		return
 	}
-	out := linkWire(tok)
+	out := linkWire(tok, now)
 	// The fragment is consumed by the app; it is never sent as a URL query to the server.
 	out.URL = accessLinkURL(h.factory.Address, tok)
 	h.write(w, http.StatusCreated, struct {
@@ -79,11 +124,20 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOperator(w, r) || !h.requireVerb(w, h.config.TokensPath != "") {
 		return
 	}
-	rows, err := tokens.Load(h.config.TokensPath)
-	if h.failed(w, err) {
-		return
-	}
-	err = h.mutateLink(func() error { return tokens.Remove(h.config.TokensPath, r.PathValue("id")) })
+	id := r.PathValue("id")
+	var revoked tokens.Token
+	err := h.mutateLink(func() error {
+		rows, err := tokens.Load(h.config.TokensPath)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if row.ID == id {
+				revoked = row
+			}
+		}
+		return tokens.RemoveAt(h.config.TokensPath, id, h.now())
+	})
 	if errors.Is(err, tokens.ErrNotFound) {
 		h.fail(w, http.StatusNotFound, "access link not found")
 		return
@@ -91,10 +145,13 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	// Sessions created through the link stop working immediately, including their runners.
-	for _, tok := range rows {
-		if tok.ID == r.PathValue("id") && tok.Profile != nil {
-			if h.failed(w, h.revokePerson(r, tok.Profile.Handle)) {
+	// A link with its own use limit stops admitting people and leaves those
+	// who joined in; ending a person is the separate operator action in People.
+	// An older link keeps its rule: sessions made through it stop immediately,
+	// including their runners.
+	if !revoked.Counted() {
+		for _, member := range revoked.Members() {
+			if h.failed(w, h.revokePerson(r, member.Profile.Handle)) {
 				return
 			}
 		}

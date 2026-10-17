@@ -12,7 +12,11 @@
       "created_by": "owner",
       "login": "priya",
       "name": "Priya Nair",
-      "revoked": false
+      "revoked": false,
+      "max_uses": 1,
+      "used": 0,
+      "remaining": 1,
+      "status": "open"
     }
   ]
 }
