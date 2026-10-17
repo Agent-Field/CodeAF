@@ -27,6 +27,10 @@ type RunReport struct {
 	// Thread carries spoken lines; Delivered acknowledges pending reply IDs.
 	Thread    []Message
 	Delivered []string
+	// Room is the item team's id the worker's factory-owned stage wrapper
+	// recorded on its mirror (Stream.Room). The server keeps the first one it
+	// is given and refuses a different one; "" is no change.
+	Room string
 }
 
 // PipelineChange is the job's stages and the run's phase list as the worker's

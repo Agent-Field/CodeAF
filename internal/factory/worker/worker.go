@@ -406,6 +406,31 @@ func (j *job) flush(ctx context.Context) bool {
 	if len(report.Delivered) > 0 {
 		ok = true
 	}
+	// THE ROOM TRAVELS ALONE, FIRST. An engine that predates the field refuses
+	// the whole body (it rejects unknown fields), and so does one that already
+	// holds a different team; sent beside the step, log and cost, that refusal
+	// would be read as "wrong, do not resend" and the baseline would advance
+	// over work the factory never received. Alone, the refusal costs only the
+	// room, and the report that follows is the one it always was.
+	if room := report.Room; room != "" {
+		report.Room = ""
+		if reflect.DeepEqual(report, factory.RunReport{}) {
+			ok = false
+		}
+		err := j.w.Report(ctx, j.lease, api.FromRunReport(factory.RunReport{Room: room}))
+		if gone(err) {
+			return false
+		}
+		if err != nil && transient(err) {
+			// Nothing was acknowledged: the baseline stays, and the next tick
+			// offers the room and everything beside it again.
+			return true
+		}
+		if !ok {
+			j.sent = cur
+			return true
+		}
+	}
 	if !ok {
 		return true
 	}
