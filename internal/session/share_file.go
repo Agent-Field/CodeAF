@@ -26,11 +26,8 @@ type sharedFile struct {
 }
 
 func inspectSharedFile(ctx context.Context, roots []string, path string, remaining *int64) (sharedFile, error) {
-	if ctx.Err() != nil {
-		return sharedFile{}, ctx.Err()
-	}
-	if remaining == nil || *remaining < 0 || len(roots) > 8 || len(path) > shareOpPathMax || !utf8.ValidString(path) || strings.ContainsFunc(path, shareOpForbiddenRune) || !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return sharedFile{}, ErrShareOpInvalid
+	if err := validSharedInspection(ctx, roots, path, remaining); err != nil {
+		return sharedFile{}, err
 	}
 	file, err := openSharedSource(roots, path)
 	if err != nil {
@@ -56,15 +53,36 @@ func inspectSharedFile(ctx context.Context, roots []string, path string, remaini
 	if err := verifySharedSource(ctx, roots, path, file, before, read); err != nil {
 		return sharedFile{}, err
 	}
-	mime := http.DetectContentType(head.bytes)
-	fact := DeliverableFile{Canonical: path, Bytes: read, ModNS: before.ModTime().UnixNano(), SHA256: hex.EncodeToString(hash.Sum(nil)), MIME: mime}
+	return sharedFileFacts(path, before, read, hex.EncodeToString(hash.Sum(nil)), head.bytes), nil
+}
+
+// validSharedInspection is every refusal made before a file is opened: a live
+// context, an honest budget, at most eight roots, and one exact absolute path.
+func validSharedInspection(ctx context.Context, roots []string, path string, remaining *int64) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if remaining == nil || *remaining < 0 || len(roots) > 8 || len(path) > shareOpPathMax {
+		return ErrShareOpInvalid
+	}
+	if !utf8.ValidString(path) || strings.ContainsFunc(path, shareOpForbiddenRune) || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return ErrShareOpInvalid
+	}
+	return nil
+}
+
+// sharedFileFacts is what the bytes just read say, and nothing more: the
+// header decides the type, an unrecognised header stays a generic file.
+func sharedFileFacts(path string, before os.FileInfo, read int64, sum string, head []byte) sharedFile {
+	mime := http.DetectContentType(head)
+	fact := DeliverableFile{Canonical: path, Bytes: read, ModNS: before.ModTime().UnixNano(), SHA256: sum, MIME: mime}
 	fact.CtimeNS, fact.Dev, fact.Ino = fileIdentity(before)
 	media := MediaFact{Origin: MediaPublished, Canonical: path, MIME: mime, Bytes: read, ModNS: fact.ModNS, CtimeNS: fact.CtimeNS, Dev: fact.Dev, Ino: fact.Ino, SHA256: fact.SHA256, Change: ShellUnknown}
-	if w, h, ok := imageSize(head.bytes); ok {
+	if w, h, ok := imageSize(head); ok {
 		media.Width, media.Height = w, h
 	}
-	media.measureContainer(head.bytes)
-	return sharedFile{Path: path, Kind: sharedFileKind(mime), File: fact, Media: media}, nil
+	media.measureContainer(head)
+	return sharedFile{Path: path, Kind: sharedFileKind(mime), File: fact, Media: media}
 }
 
 func openSharedSource(roots []string, path string) (*os.File, error) {
