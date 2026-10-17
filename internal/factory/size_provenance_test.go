@@ -21,6 +21,7 @@ func TestShownSizeProvenance(t *testing.T) {
 		{"a legacy size with no provenance, triaged", Item{Triage: Triage{Size: "S", TriagedAt: sizeReadAt}}, "", ""},
 		{"a legacy size on an old pull request", Item{Kind: KindPR, Origin: OriginForge, Triage: Triage{Size: "M"}}, "", ""},
 		{"a chat guess", Item{Origin: OriginChat, Triage: Triage{Size: "S", SizeFrom: SizeFromChat, TriagedAt: sizeReadAt}}, "", ""},
+		{"an issue cannot claim a measured PR diff", Item{Kind: KindIssue, Triage: Triage{Size: "L", SizeFrom: SizeFromDiff}}, "", ""},
 		{"a measured diff", Item{Kind: KindPR, Triage: Triage{Size: "M", SizeFrom: SizeFromDiff}}, "M", ShownDiff},
 		{"a read outside the vocabulary", Item{Triage: Triage{Size: "XL", SizeFrom: SizeFromRead, TriagedAt: sizeReadAt}}, "", ""},
 		{"a made-up word", Item{Triage: Triage{Size: "huge", SizeFrom: SizeFromRead, TriagedAt: sizeReadAt}}, "", ""},
