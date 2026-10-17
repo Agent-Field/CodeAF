@@ -509,3 +509,14 @@ func TestReleaseClearsOnlyThePersonsTake(t *testing.T) {
 		t.Fatalf("after release: %+v %v", read, err)
 	}
 }
+
+func TestPriorityMarksDoNotReorderExecution(t *testing.T) {
+	f := setup(t)
+	first := f.add(t, factory.Item{Assignee: "sam", Priority: &factory.JobPriority{Value: "low", SetBy: "sam"}})
+	f.now = f.now.Add(time.Second)
+	f.add(t, factory.Item{Assignee: "sam", Priority: &factory.JobPriority{Value: "urgent", SetBy: "sam"}, Labels: []string{"priority:urgent"}})
+	held, err := f.desk.Pull(worker("laptop", "sam"))
+	if err != nil || held.Job != first.ID {
+		t.Fatalf("priority is a view mark, oldest job must run first: got %+v, %v; want %d", held, err, first.ID)
+	}
+}

@@ -217,9 +217,8 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if items[i].Marked != items[j].Marked {
 				return items[i].Marked
 			}
-			if a, b := factory.PriorityRank(items[i]), factory.PriorityRank(items[j]); a != b {
-				return a < b
-			}
+			// Priority is a view mark. Execution remains oldest first unless a
+			// person explicitly moved queued work to the top (Marked above).
 			if items[i].Created.Equal(items[j].Created) {
 				return items[i].ID < items[j].ID
 			}
