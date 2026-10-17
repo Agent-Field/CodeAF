@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -556,11 +555,12 @@ func TestAppFactoryJobActionOnAClosedFactoryIsUnreachable(t *testing.T) {
 	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {})
 	b, conn := attachStub(t, testFactoryHub(t), stub, "tok")
 	stub.srv.Close()
-	// A closed listener is a refused dial.
-	var op *net.OpError
+	// Force a fresh dial: an idle connection closed during shutdown can instead
+	// return EOF, which is correctly uncertain after a write might have left.
+	b.factoryHub().client.CloseIdleConnections()
 	_, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobActionParams{Factory: conn.ID, Job: 1, Expect: &api.Expect{Version: ptr(1)}})
 	if got := wireCodeOf(t, err); got != appwire.CodeUnreachable {
-		t.Fatalf("code %q (%v) %v", got, err, op)
+		t.Fatalf("code %q (%v)", got, err)
 	}
 	if _, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobActionParams{Factory: "factory_nope", Job: 1, Expect: &api.Expect{Version: ptr(1)}}); wireCodeOf(t, err) != appwire.CodeNotFound {
 		t.Fatalf("an unknown factory: %v", err)
