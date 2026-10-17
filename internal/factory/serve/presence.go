@@ -297,3 +297,15 @@ func (h *Handler) setTakes(w http.ResponseWriter, r *http.Request) {
 	}
 	h.finish(w, nil)
 }
+
+// machineViewer is whose machines this request may see: the caller's own
+// handle, or the operator's login for the factory's own floor token, which
+// carries no profile. It is normalized, and empty when the caller is nobody
+// (then no machine is anyone's to show).
+func (h *Handler) machineViewer(r *http.Request) string {
+	handle, _ := h.callerHandle(r)
+	if handle == "" && h.isOperator(r) {
+		handle = h.operatorLogin(r)
+	}
+	return factory.NormalizeHandle(handle)
+}

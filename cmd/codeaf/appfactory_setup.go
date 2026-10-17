@@ -20,27 +20,61 @@ package main
 // made for this launch and held in memory, and publishes the address through
 // the same discovery record, so a terminal started later joins it.
 //
-// SETUP STARTS NOTHING. The host is quiet ([appFactoryHost.quiet]): no
-// triage, which calls a model, and no GitHub poll. The runner election is
-// never entered, so no job can run. Issues are read into Backlog by the
-// factory's own setup worker, and a job starts only through factory.job_start.
+// SETUP, START AND A COLD RESUME START NOTHING. Until the explicit run below
+// the host is quiet ([appFactoryHost.quiet]): no triage, which calls a model,
+// no GitHub poll, no intake and no runner: no job starts by itself, and none
+// runs. Setup reads issues into Backlog; a person may queue one, which waits
+// for the runner. Only the explicit run below ends the quiet.
 //
 // ONLY AN EXPLICIT RUN STARTS A RUNNER. factory.local_run is the one door that
 // starts this engine's worker loop ([appFactoryHost.workers]) on the factory it
 // serves: the loop the terminal's windows and the app's team connections
-// already use, behind the same worker lock (one runner per home), taking the
-// jobs a person started with factory.job_start. It is not started at launch, by
-// factory.local_start, or by setup, and it is refused when another codeaf
-// serves the factory (that codeaf's own runner takes its jobs). Its model and
-// its key are the engine's own: the app's keys in memory ([config.AppCredentials])
-// and the profile's model settings, the same road the worker has always read.
+// already use, behind the same worker lock (one runner per home). It is not
+// started at launch, by factory.local_start, or by setup, and it is refused
+// when another codeaf serves the factory (that codeaf's own runner takes its
+// jobs). Its model and its key are the engine's own: the app's keys in memory
+// ([config.AppCredentials]) and the profile's model settings, the same road
+// the worker has always read.
 //
-// QUITTING ENDS IT. [appBackend.closeLocalFactory] runs with the engine's
-// Close: the runner is told to stop and waited for a bounded while
-// ([appLocalStopWait]), then the listener, the service, serve.json, the
-// discovery socket and serve.lock all go, and the registry row this engine made
-// is forgotten, so the next launch elects again. A job the runner held goes back
-// to the queue when its lease expires, as it does when any worker is killed.
+// THE RUN IS ALSO THE CONSENT TO THE REPOSITORY'S START RULES. After Run has
+// checked whose GitHub this is, it turns on [appFactoryHost.readLoops] for the
+// factory THIS engine serves, once per host: the GitHub poll, so issues filed
+// after setup reach Backlog, and triage, the cheap model read of each new
+// item. After every poll and every triage tick the intake then applies the
+// repository's own start rules (its factory.yaml): a New item whose labels,
+// size and cost fall inside them is launched with no further call to
+// factory.job_start, and this host's runner takes it and spends. An item
+// outside them waits, or asks first. So Run starts no job by itself, but from
+// then on a job may start without a person; before Run none can, and
+// factory.job_start still starts any job by hand. The model never authorizes:
+// triage only reads and proposes, the rules alone decide, and triage asks the
+// saved model strictly (a saved one-model policy it cannot meet is a refusal,
+// never another model). A second run starts nothing again; quitting stops both
+// loops with the host; a host made later in the same process starts its own. An
+// engine that joined another codeaf's service never reads for it.
+//
+// QUITTING ENDS THE SERVICE, NOT THE CHOICE. [appBackend.closeLocalFactory] runs
+// with the engine's Close: the runner is told to stop and waited for a bounded
+// while ([appLocalStopWait]), then the listener, the service, serve.json, the
+// discovery socket and serve.lock all go, and the held bearer with them. A job
+// the runner held goes back to the queue when its lease expires, as it does
+// when any worker is killed. The registry row stays, joined service or served:
+// it is the logical record of this machine's factory under the one stable id
+// [appLocalID], and it holds no credential. Only [appFactoryRow.Resume], set
+// when this engine served the factory on a person's explicit start, makes the
+// next launch serve it again; a row that joined another codeaf's service, or
+// that an earlier release left, stays listed and unreachable until a start.
+// Detaching is the one removal.
+//
+// OPENING THE APP RESUMES IT, QUIETLY, ONLY THEN. [appBackend.resumeLocal] runs
+// before factory.list, factory.local_status or a read of that connection is
+// answered. It serves the same floor again on a new port, under the same id,
+// with a new bearer, and starts no runner, job, triage, model call or GitHub
+// request (not even the reading above, until an explicit run, so no start rule
+// fires either). A profile with no Resume row stays unstarted; detaching the
+// row ends the choice; and another codeaf that holds the election is never joined or
+// duplicated by a resume. A profile whose release predates the row's Resume
+// mark keeps nothing to resume from, and starts again with factory.local_start.
 //
 // WHAT IS PRIVATE STAYS HERE. The bearer, the factory folder, the profile and
 // the app's home are never answered. A folder the person chose is refused if
@@ -66,6 +100,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
+	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -112,6 +148,9 @@ type appLocalFactory struct {
 	rules      func(ctx context.Context, repo, dir string) (pipeline.File, error)
 	seamHook   func(factory.Seam) factory.Seam
 	parent     func() session.Config
+	// pollSource replaces the poll's GitHub source (appFactoryHost.pollSource).
+	pollSource func(ctx context.Context) *factorygithub.Source
+	newIntake  func(*store.Store) *intake.Intake
 }
 
 // ── start and status ───────────────────────────────────────────────────────
@@ -123,17 +162,58 @@ func (b *appBackend) FactoryLocalStart(ctx context.Context, _ string) (appwire.F
 	if l.closed {
 		return appwire.FactoryLocalStatus{}, appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
-	if !l.running {
-		if err := b.startLocalLocked(ctx); err != nil {
+	if !l.running || l.host == nil {
+		if l.running {
+			// An explicit start rechecks the other authority and its current key.
+			b.factoryHub().releaseLocal(l.id)
+			l.running = false
+		}
+		if err := b.startLocalLocked(ctx, false); err != nil {
 			return appwire.FactoryLocalStatus{}, err
 		}
+	} else if err := b.joinLocalLocked(factoryTarget{l.host.address, l.host.token}, appwire.LocalAuthorityApp); err != nil {
+		// Reconnecting also restores authentication after an explicit detach.
+		return appwire.FactoryLocalStatus{}, err
 	}
 	return b.localStatusLocked(), nil
 }
 
-// FactoryLocalRun turns this engine's runner on for the factory it serves, and
-// only here. It is idempotent and starts no job: a Backlog job still waits for
-// factory.job_start.
+// resumeLocal brings back the factory a person chose to serve on this machine,
+// and only that. It is called before the list or a read of the local
+// connection is answered, so the row and the held bearer name this launch's
+// service rather than the last one's.
+//
+// THE CHOICE IS THE SAVED ROW. A profile that never ran factory.local_start has
+// none, and nothing here starts for it; a row detached by the person is gone, so
+// it cannot come back. Resuming serves the same floor quietly (no runner, no
+// triage, no GitHub poll, no model) under the same connection id, on whatever
+// port is free. It never joins another codeaf's service: if one holds the
+// election, the row stays as saved and unreachable until the person starts
+// again, deliberately.
+func (b *appBackend) resumeLocal(ctx context.Context) {
+	l := &b.local
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed || l.running {
+		return
+	}
+	rows, err := b.factoryHub().snapshot()
+	if err != nil {
+		return
+	}
+	for _, row := range rows {
+		if row.ID == appLocalID && row.Local && row.Resume {
+			_ = b.startLocalLocked(ctx, true)
+			return
+		}
+	}
+}
+
+// FactoryLocalRun turns this engine's runner and reading on for the factory it
+// serves, and only here. It is idempotent and launches no job itself, but it
+// is the consent to the repository's existing start rules: once it has
+// returned, an item those rules allow is launched by the intake without a
+// factory.job_start, and an item they do not allow still waits for one.
 func (b *appBackend) FactoryLocalRun(ctx context.Context, _ string) (appwire.FactoryLocalStatus, error) {
 	id, err := b.localRunnable()
 	if err != nil {
@@ -182,12 +262,16 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 		host := l.host
 		done := make(chan struct{})
 		l.runner, l.runnerDone = true, done
+		// THE HOST SERVES THIS FACTORY (checked above), so its poll, triage and
+		// start-rule intake may start; the host starts them once.
+		host.readLoops()
 		guard.Go("app/factory local runner", func() { defer close(done); host.workers() })
 	}
 	return b.localStatusLocked(), nil
 }
 
-func (b *appBackend) FactoryLocalStatus(_ context.Context, _ string) (appwire.FactoryLocalStatus, error) {
+func (b *appBackend) FactoryLocalStatus(ctx context.Context, _ string) (appwire.FactoryLocalStatus, error) {
+	b.resumeLocal(ctx)
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -207,9 +291,15 @@ func (b *appBackend) localStatusLocked() appwire.FactoryLocalStatus {
 // and the app's home when it has none. It is never the ambient environment's.
 func (b *appBackend) localProfile() string { return factoryProfile(b.profileDir) }
 
-func (b *appBackend) startLocalLocked(ctx context.Context) error {
+// startLocalLocked serves or joins the machine's factory. resume is a start the
+// person did not just ask for: it serves our own factory or nothing, and never
+// joins another codeaf's.
+func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 	l := &b.local
 	if target, ok := liveFactoryDiscovery(); ok {
+		if resume {
+			return appwire.Errorf(appwire.CodeConflict, "another codeaf serves this machine's factory")
+		}
 		return b.joinLocalLocked(target, appwire.LocalAuthorityOther)
 	}
 	floor, err := store.Open(v3FactoryRoot())
@@ -233,7 +323,7 @@ func (b *appBackend) startLocalLocked(ctx context.Context) error {
 	done := make(chan struct{})
 	close(done)
 	address := "http://" + listener.Addr().String()
-	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: home.Dir(), profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent,
+	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: home.Dir(), profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent, pollSource: l.pollSource, newIntake: l.newIntake,
 		// A runner, once asked for, serves THIS factory with this launch's own bearer.
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
@@ -248,6 +338,9 @@ func (b *appBackend) startLocalLocked(ctx context.Context) error {
 		// authority, and this engine's listener has nothing to serve.
 		listener.Close()
 		host.close()
+		if resume {
+			return appwire.Errorf(appwire.CodeConflict, "another codeaf serves this machine's factory")
+		}
 		target, err := waitForFactoryDiscovery(factoryLockWait)
 		if err != nil {
 			return appwire.Errorf(appwire.CodeUnreachable, "another codeaf holds this machine's factory but does not answer")
@@ -275,8 +368,17 @@ func (b *appBackend) joinLocalLocked(target factoryTarget, authority string) err
 		return appwire.Errorf(appwire.CodeEngine, "the factory on this machine has no usable address")
 	}
 	h := b.factoryHub()
-	id := appFactoryID(origin)
-	if err := h.showLocal(id, origin); err != nil {
+	// THE ID IS THE MACHINE'S, NOT THE ADDRESS'S: the port is new at every
+	// launch, and the tabs a person left open name this id.
+	id := appLocalID
+	if authority != appwire.LocalAuthorityApp {
+		if knownID, known, _, err := h.admitAttach(origin); err != nil {
+			return err
+		} else if known {
+			id = knownID
+		}
+	}
+	if err := h.showLocal(id, origin, authority == appwire.LocalAuthorityApp); err != nil {
 		return err
 	}
 	h.hold(id, target.token, 0)
@@ -284,16 +386,27 @@ func (b *appBackend) joinLocalLocked(target factoryTarget, authority string) err
 	return nil
 }
 
-// showLocal puts the local factory's row in the list and forgets the stale
-// rows an earlier launch of this engine left. A STALE ROW IS ONE POSITIVELY
-// MARKED [appFactoryRow.Local] AND NOT THIS FACTORY'S: a row a person attached
-// by address, whatever its mode, is never touched, and neither is its session.
-// A row already saved under this id is kept as it is, marked or not.
-func (h *appFactoryHub) showLocal(id, origin string) error {
+// showLocal puts the local factory's row in the list at this launch's address,
+// and forgets the stale rows an earlier release left. A STALE ROW IS ONE
+// POSITIVELY MARKED [appFactoryRow.Local] AND NOT THIS FACTORY'S: a row a person
+// attached by address, whatever its mode, is never touched, and neither is its
+// session. owned records the person's choice to have this engine serve the
+// factory again at the next launch ([appFactoryRow.Resume]); joining another
+// codeaf's service neither sets nor clears it.
+func (h *appFactoryHub) showLocal(id, origin string, owned bool) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if err := h.load(); err != nil {
 		return err
+	}
+	for _, row := range h.rows {
+		if row.URL != origin || row.Local {
+			continue
+		}
+		if !owned && row.ID == id {
+			return nil // explicit use of this authority keeps the manual connection unchanged
+		}
+		return appwire.Errorf(appwire.CodeConflict, "this address is already attached; disconnect that saved connection before starting the local factory")
 	}
 	kept := h.rows[:0:0]
 	known := false
@@ -302,39 +415,32 @@ func (h *appFactoryHub) showLocal(id, origin string) error {
 			delete(h.sessions, row.ID)
 			continue
 		}
-		known = known || row.ID == id
+		if row.ID == id {
+			known = true
+			row.URL, row.Local, row.Resume = origin, true, row.Resume || owned
+		}
 		kept = append(kept, row)
 	}
 	if !known {
-		kept = append(kept, appFactoryRow{ID: id, URL: origin, Name: appLocalName, Mode: "solo", Local: true})
+		kept = append(kept, appFactoryRow{ID: id, URL: origin, Name: appLocalName, Mode: "solo", Local: true, Resume: owned})
 	}
 	h.rows = kept
 	return h.save()
 }
 
-// forgetLocal takes this engine's own row for id out of the list and its
-// session out of memory. A row a person attached under the same address stays.
-func (h *appFactoryHub) forgetLocal(id string) {
+// releaseLocal lets go of the bearer held for the local connection when its
+// service ends. THE ROW STAYS, WHATEVER ITS RESUME: it is the logical record of
+// the machine's factory under its one id and holds no credential, Resume alone
+// decides whether the next launch serves it again, and detaching it
+// ([appBackend.FactoryDetach]) is the one thing that removes it.
+func (h *appFactoryHub) releaseLocal(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.load() != nil {
-		return
-	}
-	kept := h.rows[:0:0]
-	for _, row := range h.rows {
-		if row.ID != id || !row.Local {
-			kept = append(kept, row)
-		}
-	}
-	if len(kept) != len(h.rows) {
-		h.rows = kept
-		delete(h.sessions, id)
-		_ = h.save()
-	}
+	delete(h.sessions, id)
 }
 
 // closeLocalFactory ends what start began. It is idempotent and runs before
-// the registry is closed, so the row it made can still be forgotten.
+// the registry is closed, so the bearer it held is let go with the service.
 func (b *appBackend) closeLocalFactory() {
 	server, host, id, running, runnerDone := b.takeLocal()
 	if host != nil {
@@ -355,7 +461,7 @@ func (b *appBackend) closeLocalFactory() {
 		host.close()
 	}
 	if running && b.factories != nil {
-		b.factories.forgetLocal(id)
+		b.factories.releaseLocal(id)
 	}
 }
 
@@ -386,17 +492,21 @@ func (b *appBackend) localAttachment() appwire.FactoryLocalAttachment {
 	if err != nil {
 		return appwire.FactoryLocalAttachment{State: appwire.AttachmentUnsafe}
 	}
-	id := appFactoryID(origin)
-	out := appwire.FactoryLocalAttachment{State: appwire.AttachmentAvailable, Factory: id, URL: origin, Name: a.Name}
+	out := appwire.FactoryLocalAttachment{State: appwire.AttachmentAvailable, URL: origin, Name: a.Name}
 	h := b.factoryHub()
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	// The id is the saved row's when this address is already listed (the local
+	// factory's fixed id included), so adopting it again makes no second row.
 	if h.load() == nil {
+		out.Factory = h.idForLocked(origin)
 		for _, row := range h.rows {
-			if row.ID == id {
+			if row.ID == out.Factory {
 				out.State = appwire.AttachmentAdopted
 			}
 		}
+	} else {
+		out.Factory = appFactoryID(origin)
 	}
 	return out
 }
@@ -488,7 +598,7 @@ func (b *appBackend) FactorySetupAct(ctx context.Context, _ string, act appwire.
 		return appwire.FactorySetupView{}, appwire.Errorf(appwire.CodeBadParams, "that is not a setup step")
 	}
 	h := b.factoryHub()
-	row, token, err := h.target(id)
+	row, token, err := h.credentialed(ctx, id)
 	if err != nil {
 		return appwire.FactorySetupView{}, err
 	}

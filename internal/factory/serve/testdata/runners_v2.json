@@ -8,7 +8,7 @@
     {
       "id": "mbp",
       "name": "mbp",
-      "owner": "sam",
+      "owner": "owner",
       "kind": "mac",
       "slots": 2,
       "state": "idle",
@@ -21,5 +21,10 @@
       "jobs": [],
       "last_seen": "2026-10-11T12:00:00Z"
     }
-  ]
+  ],
+  "slots_policy": {
+    "min": 1,
+    "max": 8,
+    "requires_live": true
+  }
 }

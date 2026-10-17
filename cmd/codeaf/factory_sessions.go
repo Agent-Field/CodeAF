@@ -64,5 +64,5 @@ func (m *memoryFactorySessions) Sessions() map[string]string {
 // through rather than substitute the host's token for it.
 func factoryWorkerPath(path string) bool {
 	return path == "/v1/workers/pull" || strings.HasPrefix(path, "/v1/workers/leases/") ||
-		path == "/v1/runners/pull" || path == "/v1/runners/presence" || strings.HasPrefix(path, "/v1/runners/leases/")
+		path == "/v1/runners/pull" || path == "/v1/runners/presence" || path == "/v1/runner/self" || strings.HasPrefix(path, "/v1/runners/leases/")
 }

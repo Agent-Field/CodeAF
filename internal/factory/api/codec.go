@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -128,6 +129,7 @@ func FromItem(it factory.Item) Job {
 		draft := it.Draft
 		j.Draft = &draft
 	}
+	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	if j.State == "" {
 		j.State = string(it.State)
@@ -254,6 +256,19 @@ func jobAsk(it factory.Item) *JobAsk {
 	return &JobAsk{Text: it.Body, Issue: &AskIssue{Number: it.Num, URL: it.URL, Title: it.Title}}
 }
 
+// readSize is the size to show when no label sets one. A label wins and leaves
+// this absent, so job.size and job.read_size are never both present.
+func readSize(it factory.Item) *JobReadSize {
+	if factory.JobSize(it) != "" {
+		return nil
+	}
+	letter, from := factory.ShownSize(it)
+	if letter == "" || (from != factory.ShownRead && from != factory.ShownDiff) {
+		return nil
+	}
+	return &JobReadSize{Value: letter, From: from}
+}
+
 // ToItem is one job as an item.
 func ToItem(j Job) factory.Item {
 	d := j.Desk
@@ -271,7 +286,8 @@ func ToItem(j Job) factory.Item {
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
 		Assignee: d.Assignee, Starter: d.Starter, Taker: d.Taker,
-		Tier: factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), Synced: d.Synced, Changed: d.ChangedAt,
+		SourceAssignees: slices.Clone(d.Assignees),
+		Tier:            factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), Synced: d.Synced, Changed: d.ChangedAt,
 		Triage: toTriage(d.Triage), Cap: d.Cap,
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
 		PlannedFiles: append([]string(nil), j.PlannedFiles...),
@@ -540,7 +556,8 @@ func fromDesk(it factory.Item) *JobDesk {
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
-		Tier: string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
+		Assignees: slices.Clone(it.SourceAssignees),
+		Tier:      string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
 		Triage: fromTriage(it.Triage), Cap: it.Cap, Policy: mapList(it.Policy, fromClaim),
 		Marked: it.Marked, Labels: it.Labels, Checks: it.Checks, Diff: it.Diff,
 		Adapted: it.Adapted, Notes: it.Notes, Talk: it.Talk, Thread: it.Thread, Heard: it.Heard,
@@ -556,12 +573,12 @@ func fromDesk(it factory.Item) *JobDesk {
 }
 
 func fromTriage(t factory.Triage) Triage {
-	return Triage{Type: t.Type, Size: t.Size, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 
 func toTriage(t Triage) factory.Triage {
-	return factory.Triage{Type: t.Type, Size: t.Size, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 

@@ -115,6 +115,11 @@ func liveGH(t *testing.T, args ...string) []byte {
 	return out
 }
 
+func firstOwner(repos []appwire.FactorySetupRepo) string {
+	owner, _, _ := strings.Cut(repos[0].ID, "/")
+	return owner
+}
+
 func TestLiveLocalSetupPublishedFactoryAgainstRealRepo(t *testing.T) {
 	if os.Getenv(liveSetupOptIn) != "1" {
 		t.Skipf("opt-in live lane: set %s=1 and %s=<owner/name> (reads that repository through the signed-in gh)", liveSetupOptIn, liveSetupRepoEnv)
@@ -214,6 +219,23 @@ func TestLiveLocalSetupPublishedFactoryAgainstRealRepo(t *testing.T) {
 		t.Fatalf("gh login %q is not %q", v.GitHub.GHLogin, me.Login)
 	}
 	visible := len(v.Repos)
+	// The footer's owner fact must match the real rows: a label only when every
+	// row has one owner. Only the owner count is logged, never a name.
+	owners := map[string]bool{}
+	for _, r := range v.Repos {
+		owner, _, _ := strings.Cut(r.ID, "/")
+		owners[strings.ToLower(owner)] = true
+	}
+	ownerLabelShown := v.GitHub.Organization != ""
+	if v.GitHub.VisibleRepos != visible {
+		t.Fatalf("footer counts %d repos, discovery returned %d", v.GitHub.VisibleRepos, visible)
+	}
+	switch {
+	case len(owners) == 1 && !strings.EqualFold(v.GitHub.Organization, firstOwner(v.Repos)):
+		t.Fatal("every repository has one owner but the footer does not name it")
+	case len(owners) != 1 && v.GitHub.Organization != "":
+		t.Fatalf("footer names an owner although discovery spans %d owners", len(owners))
+	}
 	if r := repoOf(v, liveSetupRepo); r.ID == "" || r.Archived {
 		t.Fatalf("BLOCKED: %s is not a visible, unarchived repository for this account (visible %d)", liveSetupRepo, visible)
 	}
@@ -356,11 +378,11 @@ func TestLiveLocalSetupPublishedFactoryAgainstRealRepo(t *testing.T) {
 	}
 
 	// Safe counts only: no login, name, avatar or path.
-	t.Logf("live setup: visible_repos=%d selected=%d open_issues=%d backlog_jobs=%d queue_version_after_read=%q queue_version_end=%q github_reads=%d github_writes_refused=%d model_calls=%d runners_registered=%d runner_started=%v clone=found watched=%d",
-		visible, selected, len(open), len(q.Jobs), revisionAfterRead, q.Factory.Version, reads, len(refused), calls, len(runners.Runners), w.backend.local.runner, len(repos.Watched))
+	t.Logf("live setup: visible_repos=%d selected=%d open_issues=%d backlog_jobs=%d queue_version_after_read=%q queue_version_end=%q github_reads=%d github_writes_refused=%d model_calls=%d runners_registered=%d runner_started=%v clone=found watched=%d distinct_owners=%d owner_label_shown=%v",
+		visible, selected, len(open), len(q.Jobs), revisionAfterRead, q.Factory.Version, reads, len(refused), calls, len(runners.Runners), w.backend.local.runner, len(repos.Watched), len(owners), ownerLabelShown)
 
 	// Cleanup is the test's own: the engine closes (stopping the loopback
-	// service and forgetting its row) before the temporary folders go.
+	// service, keeping its row) before the temporary folders go.
 	w.backend.Close()
 	if _, err := os.Stat(filepath.Join(v3FactoryRoot(), "serve.json")); err == nil {
 		t.Fatal("serve.json survived the engine closing")

@@ -81,3 +81,38 @@ func TestApplyPipelineKeepsThePersonsGate(t *testing.T) {
 		t.Fatalf("a pipeline without the approve step = %v", err)
 	}
 }
+
+// THE ROOM IS THE FACTORY'S OWN AND WRITE-ONCE: a worker's mirror records it,
+// Diff carries it once, the server keeps the first one, and a later report
+// that says nothing (or a pause, a resume, a landing) never clears it.
+func TestARoomTheRunnerRecordedIsReportedOnceAndKept(t *testing.T) {
+	prev := diffJob()
+	cur := diffJob()
+	cur.Stream.Room = "team-12"
+	r, ok := Diff(prev, cur)
+	if !ok || r.Room != "team-12" {
+		t.Fatalf("the room was not reported: %+v", r)
+	}
+	if again, _ := Diff(cur, cur); again.Room != "" {
+		t.Fatalf("an unchanged room was reported again: %q", again.Room)
+	}
+	server := diffJob()
+	if err := ApplyReport(&server, r, time.Now()); err != nil || server.Stream.Room != "team-12" {
+		t.Fatalf("room %q, err %v", server.Stream.Room, err)
+	}
+	if err := ApplyReport(&server, factory.RunReport{Cost: 0.1}, time.Now()); err != nil || server.Stream.Room != "team-12" {
+		t.Fatalf("a report without a room cleared it: %q, %v", server.Stream.Room, err)
+	}
+	if err := ApplyReport(&server, factory.RunReport{Room: "team-12"}, time.Now()); err != nil {
+		t.Fatalf("the same room twice is refused: %v", err)
+	}
+	for _, forged := range []string{"team-99", "../teams", "a b", strings.Repeat("x", 65)} {
+		if err := ApplyReport(&server, factory.RunReport{Room: forged}, time.Now()); err == nil || server.Stream.Room != "team-12" {
+			t.Fatalf("room %q accepted: err %v, now %q", forged, err, server.Stream.Room)
+		}
+	}
+	fresh := diffJob()
+	if err := ApplyReport(&fresh, factory.RunReport{Room: "../teams"}, time.Now()); err == nil || fresh.Stream.Room != "" {
+		t.Fatalf("a malformed room was recorded: %q, %v", fresh.Stream.Room, err)
+	}
+}

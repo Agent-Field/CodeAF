@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
@@ -134,10 +135,18 @@ func TestOldGateKnobReadsAsAnApproveStep(t *testing.T) {
 	if again := mustParse(t, factory.Format(r)); !reflect.DeepEqual(again.Stages, r.Stages) {
 		t.Fatalf("drifted: %+v", again.Stages)
 	}
-	large := factory.Item{Triage: factory.Triage{Size: "L", Readiness: 90}, Stages: r.Stages}
-	small := factory.Item{Triage: factory.Triage{Size: "S", Readiness: 90}, Stages: r.Stages}
+	read := time.Unix(100, 0)
+	large := factory.Item{Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: read, Readiness: 90}, Stages: r.Stages}
+	small := factory.Item{Triage: factory.Triage{Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: read, Readiness: 90}, Stages: r.Stages}
 	if !factory.HasApprove(large) || factory.HasApprove(small) {
 		t.Fatal("the approve step's when was not read")
+	}
+	// A bare L (a legacy document, a body-length guess) is no size, and a
+	// chat model's L is not the read: neither adds the step.
+	legacy := factory.Item{Triage: factory.Triage{Size: "L", Readiness: 90}, Stages: r.Stages}
+	chat := factory.Item{Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromChat, Readiness: 90}, Stages: r.Stages}
+	if factory.HasApprove(legacy) || factory.HasApprove(chat) {
+		t.Fatal("an L with no read behind it added the approve step")
 	}
 	// `gate ship` is an approve after its stage; `gate none` is nothing.
 	r = mustParse(t, "## pr\n1. read · chat · the diff\n2. proof · chat · the sheet · gate ship\n3. tail · chat · after · gate none\n")

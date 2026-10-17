@@ -64,7 +64,9 @@ func ValidPriority(value string) bool {
 	return slices.Contains([]string{"urgent", "high", "medium", "low"}, value)
 }
 
-// PriorityFor never consults AI ranking: explicit choice wins over issue labels.
+// PriorityFor never consults AI ranking: a person's persisted mark wins over
+// priority:* and p0..p3 issue labels. A "bug" label is a type, not a priority,
+// so it yields no mark: priority is only ever something a person chose.
 func PriorityFor(it Item) *JobPriority {
 	if it.Priority != nil {
 		p := *it.Priority
@@ -82,21 +84,71 @@ func PriorityFor(it Item) *JobPriority {
 			return &JobPriority{Value: p.value}
 		}
 	}
-	if labels["bug"] {
-		return &JobPriority{Value: "medium"}
-	}
 	return nil
 }
 
-// JobSize comes only from the issue's explicit size label.
+// JobSize comes only from the issue's explicit size labels: "size:m" or
+// "size/m", any case. The largest wins when several are present, so a second
+// label can never make a job look smaller than one a person already put on it.
+// XS..XL are all accepted; this is the ONE resolver every start decision and
+// the wire share. A model's estimate or the body's length is never read here.
 func JobSize(it Item) string {
+	best, got := 0, ""
 	for _, label := range it.Labels {
-		prefix, size, ok := strings.Cut(strings.ToLower(strings.TrimSpace(label)), ":")
-		if ok && prefix == "size" && slices.Contains([]string{"xs", "s", "m", "l", "xl"}, size) {
-			return strings.ToUpper(size)
+		label = strings.ToLower(strings.TrimSpace(label))
+		rest, ok := strings.CutPrefix(label, "size:")
+		if !ok {
+			rest, ok = strings.CutPrefix(label, "size/")
+		}
+		if !ok {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		if rank := slices.Index(jobSizes, rest) + 1; rank > best {
+			best, got = rank, strings.ToUpper(rest)
 		}
 	}
-	return ""
+	return got
+}
+
+var jobSizes = []string{"xs", "s", "m", "l", "xl"}
+
+// The words ShownSize reports for where a size came from.
+const (
+	ShownLabel = "label"
+	ShownRead  = "read"
+	ShownDiff  = "diff"
+)
+
+// ShownSize is the ONE resolver every DISPLAY or FILTER of an item's size
+// reads (`size:`, `risky`, `when: large`, the shaping turn, the chat floor),
+// and it answers (letter, source). A size label a person set wins; else a
+// forge's measured diff (SizeFrom "diff"); else a completed read's size
+// (SizeFrom "read" with the item triaged). Anything else, a legacy document
+// with no provenance, a chat guess, a body's length, is UNKNOWN and comes back
+// as ("", "") so the surface draws nothing (the emptiness law).
+//
+// IT NEVER STARTS ANYTHING. [JobSize] stays the only size a start decision,
+// the dry run or the wire's job.size reads; no read can grant a start.
+func ShownSize(it Item) (letter, from string) {
+	if s := JobSize(it); s != "" {
+		return s, ShownLabel
+	}
+	s := strings.ToUpper(strings.TrimSpace(it.Triage.Size))
+	if s != "S" && s != "M" && s != "L" {
+		return "", ""
+	}
+	switch it.Triage.SizeFrom {
+	case SizeFromDiff:
+		if it.Kind == KindPR {
+			return s, ShownDiff
+		}
+	case SizeFromRead:
+		if !it.Triage.TriagedAt.IsZero() {
+			return s, ShownRead
+		}
+	}
+	return "", ""
 }
 
 func IsDismissed(it Item, person string) bool {
@@ -221,7 +273,10 @@ func JobApproval(it Item) *Approval {
 	case "approval_proof":
 		kind = "proof"
 	}
-	if it.Approval != nil && (kind == "" || it.Approval.Kind == kind) {
+	// A plan approval that settled before the question now asked is the old
+	// consent for an old question; the new ask needs its own approval.
+	settledBefore := kind == "plan" && it.Approval != nil && it.Approval.Kind == "plan" && it.Approval.State == "approved" && it.Asking != nil && it.Asking.At.After(it.Approval.At)
+	if it.Approval != nil && !settledBefore && (kind == "" || it.Approval.Kind == kind) {
 		a := *it.Approval
 		return &a
 	}

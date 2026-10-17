@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 func waitSetup(t *testing.T, h *Handler) {
@@ -63,7 +65,7 @@ func setupGitHub(t *testing.T, f *peopleV2Fixture, fail *bool) {
 			if *fail {
 				status, body = 503, `{}`
 			} else {
-				body = `[{"number":1,"title":"First","body":"body","html_url":"https://github.com/acme/api/issues/1","assignee":{"login":"sam"},"labels":[{"name":"ready"}]},{"number":2,"title":"Second"},{"number":3,"title":"Pull","pull_request":{"url":"pr"}}]`
+				body = `[{"number":1,"title":"First","body":"body","html_url":"https://github.com/acme/api/issues/1","assignee":{"login":"sam"},"assignees":[{"login":"sam"},{"login":"Ann"}],"labels":[{"name":"ready"}]},{"number":2,"title":"Second","assignees":[{"login":"Bob"}]},{"number":4,"title":"Old","assignee":{"login":"zed"}},{"number":5,"title":"Nobody","assignees":[]},{"number":6,"title":"Blank","assignees":[{"login":""},{"login":"Bob"}]},{"number":3,"title":"Pull","pull_request":{"url":"pr"}}]`
 			}
 		default:
 			t.Errorf("unexpected GitHub path %s", r.URL.Path)
@@ -100,23 +102,37 @@ func TestFactorySetupIngestRetryCheckoutAndRestart(t *testing.T) {
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "retry_read", RepoID: "acme/api"}, 200, nil)
 	waitSetup(t, f.h)
 	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &setup)
-	if setup.State != "checkouts" || setup.Repos[0].ReadCount != 2 || setup.Repos[0].OpenIssues != 2 {
+	if setup.State != "checkouts" || setup.Repos[0].ReadCount != 5 || setup.Repos[0].OpenIssues != 5 {
 		t.Fatalf("ingestion: %+v", setup)
 	}
 	items, err := f.st.List()
-	if err != nil || len(items) != 2 || !items[0].SetupHeld || items[0].State != factory.StateNew {
+	if err != nil || len(items) != 5 || !items[0].SetupHeld || items[0].State != factory.StateNew {
 		t.Fatalf("jobs: %+v %v", items, err)
 	}
 	for _, item := range items {
-		if item.Num == 1 && item.Assignee != "sam" {
-			t.Fatal("assignee lost")
+		// The set is read whole as a fact; the deprecated singular field is
+		// not read and no execution owner is picked from it.
+		if item.Num == 1 && (!reflect.DeepEqual(item.SourceAssignees, []string{"ann", "sam"}) || item.Assignee != "") {
+			t.Fatalf("assignees: %+v", item)
+		}
+		if item.Num == 2 && (!reflect.DeepEqual(item.SourceAssignees, []string{"bob"}) || item.Assignee != "bob") {
+			t.Fatalf("a sole assignee is not the owner: %+v", item)
+		}
+		if item.Num == 4 && (item.SourceAssignees != nil || item.Assignee != "") {
+			t.Fatalf("an old singular-only row fabricated a fact or owner: %+v", item)
+		}
+		if item.Num == 5 && (item.SourceAssignees == nil || len(item.SourceAssignees) != 0 || item.Assignee != "") {
+			t.Fatalf("known none was lost: %+v", item)
+		}
+		if item.Num == 6 && (item.SourceAssignees != nil || item.Assignee != "") {
+			t.Fatalf("a login-less entry became a fact or an owner: %#v %q", item.SourceAssignees, item.Assignee)
 		}
 	}
 	// A repeat read uses the same merge identity and cannot create another copy of either issue.
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "back"}, 200, nil)
 	waitSetup(t, f.h)
 	items, _ = f.st.List()
-	if len(items) != 2 {
+	if len(items) != 5 {
 		t.Fatal("duplicate imports")
 	}
 	dir := t.TempDir()
@@ -534,5 +550,136 @@ func TestSetupPipelineSourceDoesNotCallAnotherRecipeDefaults(t *testing.T) {
 				t.Fatalf("source %q was incorrectly labelled %q", source, *got)
 			}
 		})
+	}
+}
+
+// reposAnswer swaps the /user/repos body the fixture's GitHub returns, leaving
+// every other path to the original transport.
+func reposAnswer(f *peopleV2Fixture, body *string) {
+	original := f.h.config.GitHubHTTPClient.Transport
+	f.h.config.GitHubHTTPClient.Transport = githubTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/user/repos" {
+			return original.RoundTrip(r)
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(*body))}, nil
+	})
+}
+
+// The footer's owner label is a fact about the discovered rows: shown only when
+// every valid row shares one owner, and never left over from an earlier read.
+func TestFactorySetupOwnerLabelIsTruthfulAcrossDiscoveries(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	answer := `[{"full_name":"Acme/api"},{"full_name":"acme/web"},{"not a repo":true},{"full_name":"no-slash"}]`
+	reposAnswer(f, &answer)
+	var out api.FactorySetup
+	step := func(verb string) {
+		t.Helper()
+		req := api.FactorySetupRequest{Verb: verb}
+		if verb == "connect" {
+			req.Source, req.Token = "token", "setup-secret"
+		}
+		f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", req, 200, &out)
+	}
+	step("connect")
+	if out.GitHub.VisibleRepos != 2 || out.GitHub.Organization != "Acme" {
+		t.Fatalf("one owner (case differs): visible %d label %q", out.GitHub.VisibleRepos, out.GitHub.Organization)
+	}
+	if out.GitHub.Handle != "owner" {
+		t.Fatalf("verified profile changed: %q", out.GitHub.Handle)
+	}
+	answer = `[{"full_name":"acme/api"},{"full_name":"owner/dotfiles"},{"full_name":"other/x"}]`
+	step("discover")
+	if out.GitHub.VisibleRepos != 3 || out.GitHub.Organization != "" {
+		t.Fatalf("mixed owners: visible %d label %q", out.GitHub.VisibleRepos, out.GitHub.Organization)
+	}
+	answer = `[{"full_name":"acme/api"}]`
+	step("discover")
+	if out.GitHub.Organization != "acme" {
+		t.Fatalf("one repo: label %q", out.GitHub.Organization)
+	}
+	answer = `[]`
+	step("discover")
+	if out.GitHub.VisibleRepos != 0 || out.GitHub.Organization != "" || !out.GitHub.Connected || out.GitHub.Handle != "owner" {
+		t.Fatalf("zero repos kept a stale label or lost the profile: %+v", out.GitHub)
+	}
+}
+
+func TestFactorySetupFailedRediscoveryClearsThePreviousFooterOwner(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	if out.GitHub.Organization != "acme" {
+		t.Fatalf("initial owner = %q", out.GitHub.Organization)
+	}
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "back"}, 200, &out)
+	f.h.config.GitHubHTTPClient = &http.Client{Transport: githubTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	})}
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
+	if out.GitHub.Organization != "" || out.GitHub.Error == nil {
+		t.Fatalf("failed rediscovery retained owner %q or omitted its error", out.GitHub.Organization)
+	}
+}
+
+func TestFactorySetupLostCredentialRequiresReconnectWithoutDiscardingProgress(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "select_repos", RepoIDs: []string{"acme/api"}}, 200, &out)
+	waitSetup(t, f.h)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "skip", RepoID: "acme/api"}, 200, &out)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "done"}, 200, &out)
+	if out.State != "done" || !out.GitHub.Connected {
+		t.Fatalf("setup did not complete: %+v", out)
+	}
+	if err := config.WriteGitHubToken(f.h.config.ProfileDir, ""); err != nil {
+		t.Fatal(err)
+	}
+	transport := f.h.config.GitHubHTTPClient.Transport
+	f.h.config.GitHubHTTPClient.Transport = githubTransport(func(*http.Request) (*http.Response, error) {
+		t.Fatal("a lost credential must not trigger a GitHub request")
+		return nil, nil
+	})
+	out = api.FactorySetup{} // each wire reply is decoded into a fresh value
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
+	if out.State != "github" || out.GitHub.Connected || out.GitHub.Handle != "" || out.GitHub.Name != "" || out.GitHub.AvatarURL != "" {
+		t.Fatalf("saved connection was mistaken for a held credential: %+v", out.GitHub)
+	}
+	found := false
+	for _, repo := range out.Repos {
+		if repo.ID == "acme/api" {
+			found = repo.Selected && repo.Read == "done" && repo.Clone == "skipped"
+		}
+	}
+	if !found {
+		t.Fatal("reconnection discarded selected repository progress")
+	}
+	f.h.config.GitHubHTTPClient.Transport = transport
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	if !out.GitHub.Connected || out.GitHub.Handle != "owner" || out.State != "repos" {
+		t.Fatalf("explicit reconnect failed: %+v", out)
+	}
+}
+
+// Discovery names gh through the one shared resolver, so the path it reports is
+// the one connect and the token read would run.
+func TestFactorySetupDiscoverNamesGHThroughTheSharedResolver(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	f.h.seam.GHLogin = func(context.Context) (string, error) { return "cli-other", nil }
+	keep := forge.LookPath
+	forge.LookPath = func(name string) (string, error) { return "/fake/brew/" + name, nil }
+	t.Cleanup(func() { forge.LookPath = keep })
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "discover"}, 200, &out)
+	if out.GitHub.GH == nil || out.GitHub.GH.Path != "/fake/brew/gh" || out.GitHub.GH.Login != "cli-other" {
+		t.Fatalf("setup did not use the shared resolver: %+v", out.GitHub.GH)
 	}
 }

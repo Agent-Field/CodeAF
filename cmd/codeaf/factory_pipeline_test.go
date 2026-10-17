@@ -53,7 +53,7 @@ func TestFactoryRecipeAtAndRunnerReadYAMLFirst(t *testing.T) {
 
 func TestFactoryConvertPrintsYAMLAndWarnsAboutLostKnobs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "factory.md")
-	if err := os.WriteFile(path, []byte("## issue\n1. plan · chat · read the files · fanout per-file\n2. approve · gate\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("## issue\n1. plan · chat · read the files · fanout 3\n2. approve · gate\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	var out, warnings bytes.Buffer

@@ -294,6 +294,7 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 		return stepRead{broken: true}, probs
 	}
 	var step Step
+	badWhen := 0
 	for _, p := range pairs {
 		switch p.name {
 		case "prompt":
@@ -320,11 +321,53 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 			}
 			step.Max = m
 			step.wroteMax = true
+		case "kind":
+			// AN UNREADABLE KIND IS NEVER A CHAT: a misspelt gate would let a
+			// model run where a person was meant to sit. The step holds.
+			s, ok := scalar(p.val)
+			k, good := kindWord(s)
+			if !ok || !good {
+				why := "kind is chat, check, gate or post; until it is one, the run holds at this step for a person"
+				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: why})
+				step.hold = why
+				continue
+			}
+			step.Kind = k
+		case "when":
+			n := len(probs)
+			step.When = enumWord(p, factory.WhenWords, "when is one of "+strings.Join(factory.WhenWords, ", "), &probs)
+			if len(probs) > n {
+				badWhen = p.line
+			}
+		case "effort":
+			step.Effort = enumWord(p, factory.EffortWords, "effort is cheap or strong; leave it out for the default", &probs)
+		case "fanout":
+			step.Fanout = enumWord(p, StepFanouts, "fanout is one, per-file, per-finding or per-claim", &probs)
 		default:
-			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, an until and a max"})
+			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until and a max"})
 		}
 	}
+	// An unreadable condition costs a chat or a check money when it falls back
+	// to always. A post acts on the forge, so it holds rather than act on
+	// every item its author meant to spare.
+	if badWhen > 0 && step.Kind == string(factory.StagePost) && step.hold == "" {
+		why := "a post with a condition the runner cannot read holds here for a person"
+		probs = append(probs, Problem{Line: badWhen, Where: "when", Why: why})
+		step.hold = why
+	}
 	return stepRead{step: step}, probs
+}
+
+// enumWord reads one runtime word. A word outside the vocabulary is a problem
+// and reads as the default, so a typo never becomes a stage setting.
+func enumWord(p pair, words []string, why string, probs *[]Problem) string {
+	if s, ok := scalar(p.val); ok {
+		if w, good := stepWord(s, words); good {
+			return w
+		}
+	}
+	*probs = append(*probs, Problem{Line: p.line, Where: p.name, Why: why})
+	return ""
 }
 
 func (d draft) file(defaults bool) File {
@@ -389,6 +432,20 @@ func (d draft) file(defaults bool) File {
 				base.Max = step.Max
 				base.wroteMax = true
 			}
+			base.Kind, base.When, base.Effort, base.Fanout, base.hold = step.Kind, step.When, step.Effort, step.Fanout, step.hold
+			if base.Kind != "" {
+				// A shipped prompt and stop sentence are words for a model. A
+				// check would run the prompt in a shell and a post would read it
+				// as a verb, so a step of another kind keeps only its own words.
+				if !step.wrotePrompt {
+					base.Prompt = ""
+				}
+				if !step.wroteUntil {
+					base.Until = ""
+				}
+				f.Steps[name] = base
+				continue
+			}
 			if step.wrotePrompt && strings.TrimSpace(step.Prompt) == "" && !factory.ApproveWord(name) {
 				f.Problems = append(f.Problems, Problem{Where: "steps." + name, Why: "a step needs a prompt"})
 				if b, ok := builtinTable[name]; ok {
@@ -427,6 +484,9 @@ func (f *File) resolve() {
 			f.Steps[name] = builtin
 			continue
 		}
+		if got.Kind != "" {
+			continue // a shipped prompt is a model's; see draft.file
+		}
 		if strings.TrimSpace(got.Prompt) == "" {
 			got.Prompt = builtin.Prompt
 		}
@@ -444,6 +504,28 @@ func (f *File) clean(requireStep bool) {
 			step.Prompt = ""
 			step.wrotePrompt = false
 			f.Steps[name] = step
+		}
+		// A person step is only ever a gate: it is not written to the file, so a
+		// runtime word kept on it would be dropped without a word.
+		if factory.ApproveWord(name) {
+			step := f.Steps[name]
+			if step.When != "" || step.Effort != "" || step.Fanout != "" || (step.Kind != "" && step.Kind != string(factory.StageGate)) {
+				f.Problems = append(f.Problems, Problem{Where: "steps." + name, Why: "approve is a person; it has no kind, condition, effort or fanout"})
+				step.Kind, step.When, step.Effort, step.Fanout = "", "", "", ""
+				f.Steps[name] = step
+			}
+			continue
+		}
+		// A hold found where the step was read is named there already. A
+		// personal step (requireStep false) only tightens the repository's, so
+		// a prompt it leaves out is no opinion, not a missing command.
+		if step.hold == "" && requireStep {
+			if why := step.holdWhy(); why != "" {
+				f.Problems = append(f.Problems, Problem{Where: "steps." + name, Why: why})
+			}
+		}
+		if _, free := mechanicalUntil(step.Until); free && step.Kind == string(factory.StageGate) {
+			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".until", Why: "a gate is a person and stops when they answer; until is not read"})
 		}
 	}
 	for kind, names := range f.Pipeline {
@@ -485,9 +567,14 @@ func (f *File) cleanNames(kind factory.Kind, names []string, requireStep bool) [
 		}
 		if requireStep && !factory.ApproveWord(name) {
 			step, ok := f.Steps[name]
-			if !ok || strings.TrimSpace(step.Prompt) == "" {
+			// A person needs no prompt, and a step that holds must stay where it
+			// is: dropping either would let the steps after it run unwatched.
+			if !ok || strings.TrimSpace(step.Prompt) == "" && !step.isGate() {
 				f.Problems = append(f.Problems, Problem{Where: where, Why: name + " is not a step; write it under steps"})
 				continue
+			}
+			if _, err := factory.StageWord(strings.ReplaceAll(name, "-", "")); err != nil && step.isGate() {
+				f.Problems = append(f.Problems, Problem{Where: where, Why: name + " is not a name the runner can run; it holds there as an approve step"})
 			}
 		}
 		seen[name] = true

@@ -83,11 +83,11 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 		h.fail(w, http.StatusUnprocessableEntity, "take requires a GitHub login")
 		return
 	}
-	if err := h.workers.desk.Assign(it.ID, me); h.takeFailed(w, it, err) {
+	if err := h.workers.desk.Assign(it.ID, me); h.takeFailed(w, r, it, err) {
 		return
 	}
 	if h.config.Record != nil {
-		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Took, Job: it.ID, Handle: me, Cost: jobCost(it), Detail: h.machineFor(me)}); h.failed(w, err) {
+		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Took, Job: it.ID, Handle: me, Cost: jobCost(it)}); h.failed(w, err) {
 			return
 		}
 	}
@@ -144,12 +144,12 @@ func (h *Handler) release(w http.ResponseWriter, r *http.Request, it factory.Ite
 
 // takeFailed maps the person rule and a live worker hold onto 409. The
 // sentence is what the page shows; the lease package prefix stays off it.
-func (h *Handler) takeFailed(w http.ResponseWriter, it factory.Item, err error) bool {
+func (h *Handler) takeFailed(w http.ResponseWriter, r *http.Request, it factory.Item, err error) bool {
 	if err == nil {
 		return false
 	}
 	if errors.Is(err, lease.ErrPerson) || errors.Is(err, lease.ErrLeased) {
-		h.taken(w, it)
+		h.taken(w, r, it)
 		return true
 	}
 	if errors.Is(err, store.ErrNotFound) {
@@ -183,14 +183,14 @@ func (h *Handler) releaseFailed(w http.ResponseWriter, it factory.Item, err erro
 	}
 }
 
-func (h *Handler) taken(w http.ResponseWriter, it factory.Item) {
+func (h *Handler) taken(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	state := h.withVersion(api.FromItem(it)).State
 	who := it.Person()
 	if who == "" {
 		h.refuse(w, http.StatusConflict, "job is already taken", "conflict", "", nil, state)
 		return
 	}
-	h.takenConflict(w, it, "already taken by @"+who, "conflict", state)
+	h.takenConflict(w, r, it, "already taken by @"+who, "conflict", state)
 }
 
 func (h *Handler) idVerb(door func(int) error) jobAction {
@@ -781,7 +781,10 @@ func (h *Handler) setRepos(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "watched must be an array of repository names")
 		return
 	}
-	if err := h.seam.SetRepos(*body.Watched); h.failed(w, err) {
+	h.reposMu.Lock()
+	err := h.seam.SetRepos(*body.Watched)
+	h.reposMu.Unlock()
+	if h.failed(w, err) {
 		return
 	}
 	h.finish(w, h.operatorEvent(r, record.ReposChanged, "factory", strings.Join(*body.Watched, ", ")))

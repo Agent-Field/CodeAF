@@ -392,7 +392,8 @@ func TestLocalFactoryElectsOneAuthorityAndQuitCleansUp(t *testing.T) {
 	b.mustFail("factory.local_start", map[string]any{"caller": "b"}, appwire.CodeClosed)
 
 	// Quitting the authority takes down the listener, the discovery record
-	// and the lock, and forgets its row.
+	// and the lock. The row stays: the person started it, and it is the record
+	// that opening the app serves it again.
 	host := a.backend.local.host
 	a.backend.closeLocalFactory()
 	if _, ok := liveFactoryDiscovery(); ok {
@@ -407,11 +408,9 @@ func TestLocalFactoryElectsOneAuthorityAndQuitCleansUp(t *testing.T) {
 	if release, ok := host.floor.TryWorker(); ok {
 		release()
 	}
-	hubA.mu.Lock()
-	rows := len(hubA.rows)
-	hubA.mu.Unlock()
-	if rows != 0 {
-		t.Fatalf("the list kept %d rows", rows)
+	kept, _ := hubA.snapshot()
+	if len(kept) != 1 || kept[0].ID != appLocalID || !kept[0].Resume {
+		t.Fatalf("the list kept %d rows: %+v", len(kept), kept)
 	}
 	data, _ := os.ReadFile(hubA.path())
 	if strings.Contains(string(data), host.token) {

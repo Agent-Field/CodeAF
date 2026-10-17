@@ -45,12 +45,75 @@ type Options struct {
 	// Reply submits words to the manager on this machine. A failed delivery
 	// stays pending; the next heartbeat offers it again.
 	Reply func(context.Context, factory.Item, string) error
-	// Slots is how many jobs run at once; each slot is its own worker.
+	// Slots is how many jobs run at once until the owner's saved capacity is
+	// known; each slot is its own worker. It is clamped to 1..api.MaxRunnerSlots.
 	Slots int
+	// Desired reads the capacity the owner saved, with a credential this
+	// worker already holds. ok false means unknown (not attached yet, an older
+	// factory, the factory unreachable) and the capacity stays as it is. Nil
+	// keeps Slots fixed for the life of the worker.
+	Desired func(ctx context.Context) (slots int, ok bool)
+	// CapacityTick paces the Desired reads; tests inject it. Nil means a
+	// ticker every CapacityEvery.
+	CapacityTick <-chan time.Time
+	// CapacityEvery is that ticker's period; zero is [CapacityEveryDefault].
+	CapacityEvery time.Duration
 	// ReportEvery and BeatEvery pace the reports and the heartbeats (the
 	// heartbeat is also how a person's verbs arrive); zero is 500ms and
 	// [lease.HeartbeatEvery]. Sixty seconds of silence is offline.
 	ReportEvery, BeatEvery time.Duration
+
+	cap *capacity
+}
+
+// CapacityEveryDefault is how often the owner's saved capacity is re-read.
+// A lowering or a raise is therefore followed within this long, and the read
+// is one small request per period, however many slots are running.
+const CapacityEveryDefault = 5 * time.Second
+
+// capacity is how many slots may run now, shared by the supervisor and the
+// slot loops. Lowering never touches a running job: a slot above the limit
+// retires only between jobs, after its last pull returns.
+type capacity struct {
+	mu      sync.Mutex
+	limit   int
+	running map[int]bool
+	wake    chan struct{}
+}
+
+func clampSlots(n int) int {
+	if n <= 0 {
+		n = api.DefaultRunnerSlots
+	}
+	return min(n, api.MaxRunnerSlots)
+}
+
+// set moves the limit and wakes the supervisor to start slots a raise freed.
+func (c *capacity) set(n int) {
+	n = max(1, min(n, api.MaxRunnerSlots))
+	c.mu.Lock()
+	changed := c.limit != n
+	c.limit = n
+	c.mu.Unlock()
+	if changed {
+		select {
+		case c.wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// retire stops slot when it is above the limit. The check and the mark are
+// one step, so a raise that lands meanwhile keeps the slot instead of
+// stranding it until the next tick.
+func (c *capacity) retire(slot int) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if slot < c.limit {
+		return false
+	}
+	delete(c.running, slot)
+	return true
 }
 
 // Run works until ctx ends.
@@ -61,20 +124,48 @@ func Run(ctx context.Context, opts Options) {
 	if opts.BeatEvery <= 0 {
 		opts.BeatEvery = lease.HeartbeatEvery
 	}
-	if opts.Slots <= 0 {
-		opts.Slots = api.DefaultRunnerSlots
+	opts.Slots = clampSlots(opts.Slots)
+	opts.Attach.Slots = opts.Slots
+	// Only a worker that reads the saved number may say it follows changes.
+	opts.Attach.LiveCapacity = opts.Desired != nil
+	opts.cap = &capacity{limit: opts.Slots, running: map[int]bool{}, wake: make(chan struct{}, 1)}
+	tick := opts.CapacityTick
+	if opts.Desired != nil && tick == nil {
+		every := opts.CapacityEvery
+		if every <= 0 {
+			every = CapacityEveryDefault
+		}
+		t := time.NewTicker(every)
+		defer t.Stop()
+		tick = t.C
 	}
-	slots := opts.Slots
-	opts.Attach.Slots = slots
-	done := make(chan struct{}, slots)
-	for i := 0; i < slots; i++ {
-		go func(slot int) {
-			defer func() { done <- struct{}{} }()
-			opts.slot(ctx, slot)
-		}(i)
-	}
-	for i := 0; i < slots; i++ {
-		<-done
+	var slots sync.WaitGroup
+	defer slots.Wait()
+	for {
+		// Start every slot below the limit that is not running. Slots are
+		// started lazily so an idle surplus slot never attaches a credential.
+		opts.cap.mu.Lock()
+		for i := 0; i < opts.cap.limit; i++ {
+			if opts.cap.running[i] {
+				continue
+			}
+			opts.cap.running[i] = true
+			slots.Add(1)
+			go func(slot int) {
+				defer slots.Done()
+				opts.slot(ctx, slot)
+			}(i)
+		}
+		opts.cap.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return
+		case <-opts.cap.wake:
+		case <-tick:
+			if n, ok := opts.Desired(ctx); ok && n > 0 {
+				opts.cap.set(n)
+			}
+		}
 	}
 }
 
@@ -82,15 +173,25 @@ func Run(ctx context.Context, opts Options) {
 func (o Options) slot(ctx context.Context, slot int) {
 	wait := time.Duration(0)
 	for pause(ctx, wait) {
+		if o.cap.retire(slot) {
+			return
+		}
 		w := o.Dial(slot)
 		if w == nil {
 			wait = backoff(wait)
 			continue
 		}
 		if w.Credential() == "" {
-			if _, err := w.Attach(ctx, o.Attach); err != nil {
+			attached, err := w.Attach(ctx, o.Attach)
+			if err != nil {
 				wait = backoff(wait)
 				continue
+			}
+			// THE OWNER'S SAVED NUMBER WINS over this process's own default
+			// or environment pin, so a restart resumes at what was chosen.
+			// Only an elastic worker listens; an older factory says nothing.
+			if o.Desired != nil && attached.Slots > 0 {
+				o.cap.set(attached.Slots)
 			}
 			if o.Keep != nil {
 				o.Keep(slot, w)
@@ -113,6 +214,11 @@ func (o Options) slot(ctx context.Context, slot int) {
 		default:
 			wait = 0
 			o.work(ctx, w, pulled)
+		}
+		// A surplus slot leaves between jobs, never during one, and does not
+		// sit out its backoff first.
+		if o.cap.retire(slot) {
+			return
 		}
 	}
 }
@@ -245,12 +351,15 @@ func stand(it *factory.Item, signals []api.WorkerSignal) func(*run.Runner, int) 
 	return (*run.Runner).Launch
 }
 
+// begun is whether the run has started. A step with a round has run, even when
+// a send-back from an approve step stood every step pending again: launching
+// that job fresh would run the steps before it a second time.
 func begun(s *factory.Stream) bool {
 	if s == nil {
 		return false
 	}
 	for _, ph := range s.Phases {
-		if ph.State != factory.PhasePending {
+		if ph.State != factory.PhasePending || ph.Round > 0 {
 			return true
 		}
 	}
@@ -296,6 +405,31 @@ func (j *job) flush(ctx context.Context) bool {
 	j.mu.Unlock()
 	if len(report.Delivered) > 0 {
 		ok = true
+	}
+	// THE ROOM TRAVELS ALONE, FIRST. An engine that predates the field refuses
+	// the whole body (it rejects unknown fields), and so does one that already
+	// holds a different team; sent beside the step, log and cost, that refusal
+	// would be read as "wrong, do not resend" and the baseline would advance
+	// over work the factory never received. Alone, the refusal costs only the
+	// room, and the report that follows is the one it always was.
+	if room := report.Room; room != "" {
+		report.Room = ""
+		if reflect.DeepEqual(report, factory.RunReport{}) {
+			ok = false
+		}
+		err := j.w.Report(ctx, j.lease, api.FromRunReport(factory.RunReport{Room: room}))
+		if gone(err) {
+			return false
+		}
+		if err != nil && transient(err) {
+			// Nothing was acknowledged: the baseline stays, and the next tick
+			// offers the room and everything beside it again.
+			return true
+		}
+		if !ok {
+			j.sent = cur
+			return true
+		}
 	}
 	if !ok {
 		return true

@@ -52,6 +52,9 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		it.PublishStatus = p
 	}
 	ensureStream(it, now)
+	if err := reportRoom(it, report.Room); err != nil {
+		return err
+	}
 	if report.Publish != "" {
 		if report.Publish != "pr" && report.Publish != "comment" {
 			return fmt.Errorf("publish must be pr or comment")
@@ -89,6 +92,38 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		return err
 	}
 	return reportPR(it, report.PR)
+}
+
+// reportRoom records the item team the worker's factory stage opened, which
+// only the worker's machine can know: its Stream.Room lives on the mirror, and
+// without this the server's copy of the job never learns its team. THE ROOM IS
+// WRITE-ONCE: a job that already has one keeps it, a different one is refused
+// whole, and one that is not shaped like a team id is never recorded, so a
+// worker cannot move a job into another team.
+// ValidRoom validates the opaque logical crew id carried between a worker and its factory.
+// It is an id, never a filesystem path. This does not establish local crew ownership.
+func ValidRoom(room string) bool {
+	return room != "" && len(room) <= 64 && strings.IndexFunc(room, func(r rune) bool {
+		return !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r == '-' || r == '_')
+	}) < 0
+}
+
+func reportRoom(it *factory.Item, room string) error {
+	room = strings.TrimSpace(room)
+	if room == "" {
+		return nil
+	}
+	if !ValidRoom(room) {
+		return fmt.Errorf("room is not a team id")
+	}
+	if have := strings.TrimSpace(it.Stream.Room); have != "" {
+		if have != room {
+			return fmt.Errorf("job already has a team")
+		}
+		return nil
+	}
+	it.Stream.Room = room
+	return nil
 }
 
 // applyPipeline takes the shape of the worker's reshaped steps. The recipe
@@ -137,6 +172,18 @@ func mergeClaims(it *factory.Item, claims []factory.Claim) {
 	}
 }
 
+// dropSettledPlanApproval frees the item's decision slot when a new approve
+// question arrives after a plan approval already settled: THE OLD CONSENT NEVER
+// CARRIES TO A NEW QUESTION, so the new ask needs a new approval with its own
+// five-second window. Only a settled plan approval goes; one still inside its
+// window ("approving") belongs to undo and settle, and any other kind is not
+// this question's. The factory record keeps the earlier consent.
+func dropSettledPlanApproval(it *factory.Item) {
+	if a := it.Approval; a != nil && a.Kind == "plan" && a.State == "approved" {
+		it.Approval = nil
+	}
+}
+
 func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now time.Time) error {
 	if question == nil {
 		return nil
@@ -155,6 +202,9 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 		setPhaseState(&it.Stream.Phases[i], factory.PhaseWaiting, now)
 	}
 	it.Asking = &q
+	if kind == factory.QKindApprove {
+		dropSettledPlanApproval(it)
+	}
 	it.State = factory.StateNeedsYou
 	it.Question, it.QKind = q.Question, kind
 	if it.QKind == "" {

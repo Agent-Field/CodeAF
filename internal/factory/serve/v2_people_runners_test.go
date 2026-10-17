@@ -77,12 +77,12 @@ func (f *peopleV2Fixture) add(t *testing.T, handle string) factory.Item {
 
 func TestV2RunnerCapacitySleepAndSixtySecondOffline(t *testing.T) {
 	f := peopleV2Setup(t, api.FactoryTeam)
-	first, second := f.add(t, "sam"), f.add(t, "sam")
+	first, second := f.add(t, "owner"), f.add(t, "owner")
 	f.add(t, "")
 	f.add(t, "raj")
 	var workers [3]api.RunnerAttached
 	for i := range workers {
-		f.request(t, "POST", "/v1/runners/attach", "operator-secret", api.RunnerAttach{Runner: "mbp", Name: "mbp", Owner: "sam", Kind: api.RunnerMac, Checkouts: []api.Checkout{{Repo: "acme/api", Path: "/code/api"}}, TakesUnassigned: map[string]bool{"*": true}}, 201, &workers[i])
+		f.request(t, "POST", "/v1/runners/attach", "operator-secret", api.RunnerAttach{Runner: "mbp", Name: "mbp", Owner: "owner", Kind: api.RunnerMac, Checkouts: []api.Checkout{{Repo: "acme/api", Path: "/code/api"}}, TakesUnassigned: map[string]bool{"*": true}}, 201, &workers[i])
 	}
 	var list api.Runners
 	raw := f.request(t, "GET", "/v1/runners", "operator-secret", nil, 200, &list)
@@ -124,7 +124,7 @@ func TestV2RunnerCapacitySleepAndSixtySecondOffline(t *testing.T) {
 	}
 	reopened := New(f.seam, f.cfg)
 	defer reopened.Close()
-	if w := identityRequest(reopened, "GET", "/v1/runners", "", "operator-secret", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"owner":"sam"`) {
+	if w := identityRequest(reopened, "GET", "/v1/runners", "", "operator-secret", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"owner":"owner"`) {
 		t.Fatalf("restart: %d %s", w.Code, w.Body)
 	}
 }

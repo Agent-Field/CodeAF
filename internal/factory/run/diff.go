@@ -57,6 +57,9 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	if cur.CommentURL != prev.CommentURL {
 		r.CommentURL = cur.CommentURL
 	}
+	if room := strings.TrimSpace(cs.Room); room != "" && room != strings.TrimSpace(ps.Room) {
+		r.Room = room
+	}
 	if strings.TrimSpace(cur.Talk) != strings.TrimSpace(prev.Talk) {
 		r.Talk = cur.Talk
 	}

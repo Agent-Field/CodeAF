@@ -268,8 +268,19 @@ func factoryItem(notice FactoryNotice, now time.Time) factory.Item {
 		Created: now,
 		Changed: now,
 		State:   factory.StateNew,
-		Triage:  factory.Triage{Type: triageType, Size: notice.Size, Est: notice.Estimate},
+		Triage:  chatTriage(triageType, notice),
 	}
+}
+
+// chatTriage is the card's triage. The size is the CHAT MODEL'S GUESS, so it
+// is stamped SizeFromChat: it is not the read, nothing shows it, and the read
+// replaces it when it lands.
+func chatTriage(triageType string, notice FactoryNotice) factory.Triage {
+	t := factory.Triage{Type: triageType, Size: notice.Size, Est: notice.Estimate}
+	if t.Size != "" {
+		t.SizeFrom = factory.SizeFromChat
+	}
+	return t
 }
 
 // askFactory raises one card and waits for the person, for as long as the

@@ -73,11 +73,14 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		link, verb = body.Link, body.Verb
-		if verb != "sign_in" && verb != "cancel" {
-			h.fail(w, 422, "choose sign_in or cancel")
+		if verb != "sign_in" && verb != "cancel" && verb != "check" {
+			h.fail(w, 422, "choose sign_in, cancel or check")
 			return
 		}
 	}
+	// A CHECK READS AND POLLS, NEVER STARTS: GET (legacy, secret in the URL) and
+	// POST check are the same read, so neither can mint a cookie, start OAuth or reset a flow.
+	check := r.Method == http.MethodGet || verb == "check"
 	secret, err := accessSecret(link, h.factory.Address)
 	if err != nil {
 		h.fail(w, 422, err.Error())
@@ -237,7 +240,7 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 		flow.Expires = h.now().Add(time.Duration(flow.Device.ExpiresIn) * time.Second)
 		h.accessFlows[key] = flow
 		pending = true
-	} else if r.Method == "GET" && pending {
+	} else if check && pending {
 		auth.URL.Path = "/v1/auth/device/poll"
 		receipt := &joinReceipt{}
 		auth = auth.WithContext(context.WithValue(auth.Context(), joinReceiptKey{}, receipt))

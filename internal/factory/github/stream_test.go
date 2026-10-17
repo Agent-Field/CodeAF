@@ -357,3 +357,45 @@ func TestProgressCountsTheItemsSoFar(t *testing.T) {
 		t.Fatalf("the floor's facts did not carry the items so far: %+v", info)
 	}
 }
+
+// A BODY EDIT TAKES OFF WHAT THE MODEL JUDGED OF THE OLD TEXT: the start
+// evidence is cleared so intake sees an unjudged item until the re-read, the
+// size the read wrote goes with it (and none is guessed from the body), and
+// what the source's labels say (size, priority) is untouched.
+func TestMergeBodyEditClearsStaleModelStartFacts(t *testing.T) {
+	st := openStore(t)
+	issue := factory.Item{Product: "acme", Repo: "api", Num: 5, Kind: factory.KindIssue, Title: "t", Body: "short",
+		Labels: []string{"priority:high", "size:m"}, Origin: factory.OriginForge, Triage: factory.Triage{Type: "bug"}}
+	if err := Merge(st, Name, []factory.Item{issue}); err != nil {
+		t.Fatal(err)
+	}
+	items, _ := st.List()
+	if err := st.Update(items[0].ID, func(it *factory.Item) error {
+		it.Triage.Read, it.Triage.Priority, it.Triage.TriagedAt = "old read", 2, time.Now()
+		it.Triage.Size, it.Triage.SizeFrom = "S", factory.SizeFromRead
+		it.Triage.StartJudged = true
+		it.Triage.StartMatched = []string{"docs"}
+		it.Triage.StartPaths = []string{"old/path.go"}
+		it.Triage.StartRules = []string{"rule"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	edited := issue
+	edited.Body = strings.Repeat("x", 500)
+	if err := Merge(st, Name, []factory.Item{edited}); err != nil {
+		t.Fatal(err)
+	}
+	items, _ = st.List()
+	got := items[0]
+	tr := got.Triage
+	if tr.StartJudged || tr.StartMatched != nil || tr.StartPaths != nil || tr.StartRules != nil || !tr.TriagedAt.IsZero() || tr.Read != "" {
+		t.Fatalf("stale model facts survived a body edit: %+v", tr)
+	}
+	if tr.Size != "" || tr.SizeFrom != "" {
+		t.Fatalf("the read's size survived a body edit: %q from %q", tr.Size, tr.SizeFrom)
+	}
+	if p := factory.PriorityFor(got); p == nil || p.Value != "high" || factory.JobSize(got) != "M" {
+		t.Fatalf("source labels changed: priority %v size %q", p, factory.JobSize(got))
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
@@ -50,9 +51,21 @@ var engineFactoryStore struct {
 	store *store.Store
 }
 
+// factoryBackgroundHere says this process may start the factory's own
+// background work (the worker loop, the GitHub poll, triage, and a service of
+// its own) just because a window opened the floor. THE NATIVE APP NEVER DOES:
+// it serves its factory only when a person asks (factory.local_start, or the
+// quiet resume of that choice) and starts a runner only on an explicit
+// factory.local_run (appfactory_setup.go). [config.AppMode] is the app
+// process's own marker, installed before anything else in runApp.
+func factoryBackgroundHere() bool { return !config.AppMode() }
+
 func engineFactory(profileDir string) *store.Store {
 	engineFactoryStore.once.Do(func() {
 		engineFactoryStore.store = v3Factory()
+		if !factoryBackgroundHere() {
+			return
+		}
 		// The engine polls the floor it opened for a person's window, and so
 		// does that window: a window never counts on the engine, which may be
 		// an older build with no poll. The two take turns through the floor's

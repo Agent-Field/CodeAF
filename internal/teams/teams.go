@@ -59,6 +59,13 @@ type Member struct {
 	// membership whose brief never changed and on every one written before
 	// they were kept: nobody's edit is ever inferred.
 	Briefs []BriefRevision `json:"briefs,omitempty"`
+	// FactoryStage says this membership is a factory stage's conversation
+	// (stamped when the stage joins its item's team), and FactoryBrief is the
+	// opening brief the factory ACTUALLY gave it ([ConversationSpec.Brief]).
+	// Both are job-owned: a person's or manager's brief edits never reach them.
+	// Empty on every membership written before they were kept.
+	FactoryStage bool   `json:"factory_stage,omitempty"`
+	FactoryBrief string `json:"factory_brief,omitempty"`
 	// Unknown membership fields survive whole-file updates from this build.
 	extra map[string]json.RawMessage
 }
@@ -115,6 +122,12 @@ type Team struct {
 	// Starts are the manager's start lines a window has claimed ([File.ClaimStart]),
 	// newest last, so two windows holding one manager start one member.
 	Starts []string
+	// FactoryManaged says the factory's own code made or used this team: the
+	// one `factory` team or an item's team under it. It is stamped ONLY by
+	// those doors and NEVER inferred from the name, so an ordinary crew a
+	// person called `factory` stays unmarked. False is also what a file from
+	// before the field was kept reads as.
+	FactoryManaged bool
 
 	// hued says the team has a colour: the file gave it one or [Team.SetHue]
 	// did. A hue of 0 is a real hue, so absence is kept apart from the value.
@@ -142,6 +155,7 @@ var knownFields = map[string]bool{
 	"state": true, "closed_at": true, "closed_with": true, "archived_at": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
 	"wrap": true, "former_members": true, "former_manager": true, "starts": true, "founder": true,
+	"factory_managed": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -172,6 +186,8 @@ type wireTeam struct {
 	Wrap *Wrap `json:"wrap,omitempty"`
 	// Starts is written only once a start line was claimed.
 	Starts []string `json:"starts,omitempty"`
+	// FactoryManaged is written only for a team the factory stamped.
+	FactoryManaged bool `json:"factory_managed,omitempty"`
 	// The overrides are written flat beside the fields above, each only when
 	// set, so a team with none is written exactly as before.
 	Settings
@@ -188,7 +204,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Founder: w.Founder, Manager: w.Manager, Made: w.Made,
-		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap, Starts: w.Starts}
+		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap, Starts: w.Starts, FactoryManaged: w.FactoryManaged}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
 	}
@@ -220,7 +236,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
 	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Founder: t.Founder, Manager: t.Manager, Made: t.Made,
-		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap, Starts: t.Starts}
+		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap, Starts: t.Starts, FactoryManaged: t.FactoryManaged}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.
 	if t.State != "" && t.State != TeamOpen {

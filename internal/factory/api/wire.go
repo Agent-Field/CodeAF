@@ -227,6 +227,15 @@ const (
 	StepSkipped = "skipped"
 )
 
+// JobReadSize is a size a person did not label: the completed read's guess
+// (From "read") or a pull request's measured lines (From "diff"). It is
+// present only when the job has no size label, and it is display only: a start
+// decision never reads it, so an old client that ignores it stays correct.
+type JobReadSize struct {
+	Value string `json:"value" jsonschema:"enum=S,enum=M,enum=L"`
+	From  string `json:"from" jsonschema:"enum=read,enum=diff"`
+}
+
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
 	SetupHeld         bool                 `json:"setup_held,omitempty"`
@@ -238,18 +247,21 @@ type Job struct {
 	JobID             string               `json:"id"`
 	Ref               string               `json:"ref"`
 	Priority          *factory.JobPriority `json:"priority,omitempty"`
-	Size              string               `json:"size,omitempty"`
-	Budget            float64              `json:"budget,omitempty"`
-	Reason            string               `json:"reason,omitempty"`
-	DoneHow           string               `json:"done_how,omitempty"`
-	DoneAt            time.Time            `json:"done_at"`
-	Dismissed         bool                 `json:"dismissed"`
-	DismissedBy       []string             `json:"dismissed_by,omitempty"`
-	WaitingFor        string               `json:"waiting_for,omitempty"`
-	Overlap           []string             `json:"overlap,omitempty"`
-	Approval          *factory.Approval    `json:"approval,omitempty"`
-	BranchDeleteAt    time.Time            `json:"branch_delete_at"`
-	BranchDeletedAt   time.Time            `json:"branch_deleted_at"`
+	// Size is the size LABEL alone, the only size a start reads. ReadSize is
+	// what a surface may SHOW when there is no label; it never starts a job.
+	Size            string            `json:"size,omitempty"`
+	ReadSize        *JobReadSize      `json:"read_size,omitempty"`
+	Budget          float64           `json:"budget,omitempty"`
+	Reason          string            `json:"reason,omitempty"`
+	DoneHow         string            `json:"done_how,omitempty"`
+	DoneAt          time.Time         `json:"done_at"`
+	Dismissed       bool              `json:"dismissed"`
+	DismissedBy     []string          `json:"dismissed_by,omitempty"`
+	WaitingFor      string            `json:"waiting_for,omitempty"`
+	Overlap         []string          `json:"overlap,omitempty"`
+	Approval        *factory.Approval `json:"approval,omitempty"`
+	BranchDeleteAt  time.Time         `json:"branch_delete_at"`
+	BranchDeletedAt time.Time         `json:"branch_deleted_at"`
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
@@ -287,9 +299,10 @@ type Job struct {
 	PublishError  string         `json:"publish_error,omitempty"`
 	Cost          float64        `json:"cost"`
 	CreatedAt     time.Time      `json:"created_at"`
-	// HeldBy is the machine working this job now. It is set from the live
-	// lease, including when that machine belongs to someone else: the roster
-	// on /v1/me does not list another person's machines.
+	// HeldBy is the hold on this job now. The machine and heartbeat in it are
+	// set only for the caller's own machine: ALL PEER MACHINE INFORMATION IS
+	// FORBIDDEN, the operator included, so another person's hold keeps who
+	// and since when and nothing about the machine.
 	HeldBy     *HeldBy             `json:"held_by,omitempty"`
 	PR         *PR                 `json:"pr"` // Null when the worker published a comment.
 	Publish    string              `json:"publish,omitempty"`
@@ -426,9 +439,12 @@ type JobDesk struct {
 	Author          string    `json:"author,omitempty"`
 	// The routing facts stay separate so a round trip cannot turn a local
 	// Take into a forge assignment or forget who started the work.
-	Assignee  string    `json:"assignee,omitempty"`
-	Starter   string    `json:"starter,omitempty"`
-	Taker     string    `json:"taker,omitempty"`
+	Assignee string `json:"assignee,omitempty"`
+	Starter  string `json:"starter,omitempty"`
+	Taker    string `json:"taker,omitempty"`
+	// Assignees is the forge's assignee set, a fact apart from the routing
+	// facts above: absent means unknown, [] means the forge said nobody.
+	Assignees []string  `json:"assignees,omitzero"`
 	Tier      string    `json:"tier,omitempty"`
 	Origin    string    `json:"origin,omitempty"`
 	Synced    bool      `json:"synced,omitempty"`
@@ -573,6 +589,7 @@ type PRChecks struct {
 type Triage struct {
 	Type         string    `json:"type,omitempty"`
 	Size         string    `json:"size,omitempty"`
+	SizeFrom     string    `json:"size_from,omitempty"`
 	Area         string    `json:"area,omitempty"`
 	Readiness    int       `json:"readiness,omitempty"`
 	Est          float64   `json:"est,omitempty"`

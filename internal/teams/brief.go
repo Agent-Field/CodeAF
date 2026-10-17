@@ -55,6 +55,8 @@ var (
 	ErrBriefStale = errors.New("the brief was changed since it was read; read it again")
 	// ErrBriefTooLong is a brief longer than [BriefTextMax].
 	ErrBriefTooLong = fmt.Errorf("a brief can be at most %d characters", BriefTextMax)
+	// ErrBriefFactoryStage is a brief owned by a factory job, checked under the write lock.
+	ErrBriefFactoryStage = errors.New("a factory stage brief belongs to its job")
 	// ErrBriefNoMember is a change for a conversation that is not a named member.
 	ErrBriefNoMember = errors.New("that conversation is not a named member of the team")
 )
@@ -108,6 +110,9 @@ func ReviseBrief(profileDir, team, key string, c BriefChange) (BriefRevision, er
 		m, ok := t.Member(key)
 		if !ok || m.Handle == "" {
 			return ErrBriefNoMember
+		}
+		if m.FactoryStage {
+			return ErrBriefFactoryStage
 		}
 		cur, changed := m.CurrentBrief()
 		if c.Base != nil && *c.Base != cur.Entry {

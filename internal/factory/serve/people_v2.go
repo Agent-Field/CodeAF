@@ -222,14 +222,19 @@ func (h *Handler) revokePerson(r *http.Request, handle string) error {
 }
 
 // soloJob removes the team assignment field from a solo response.
-func (h *Handler) soloJob(job *api.Job) {
+func (h *Handler) soloJob(job *api.Job, caller string) {
 	it := api.ToItem(*job)
-	it.Assignee, it.Taker, it.Starter = "", "", ""
-	job.Can = api.CanFor(it, "", h.clock())
+	it.Assignee, it.Taker, it.Starter, it.SourceAssignees = "", "", "", nil
+	job.Can = api.CanFor(it, caller, h.clock())
+	// Solo has one caller and no assignment field; its signed-in person still
+	// decides every waiting approval. Team approval keeps its owner checks.
+	if a := factory.JobApproval(it); a != nil && a.State == "waiting" {
+		job.Can.Approve = factory.NormalizeHandle(caller) != ""
+	}
 	job.AssignedTo = ""
 	job.Assignee, job.WaitingFor = "", ""
 	job.Can.AssignToMe = false
 	if job.Desk != nil {
-		job.Desk.Assignee, job.Desk.Starter, job.Desk.Taker = "", "", ""
+		job.Desk.Assignee, job.Desk.Starter, job.Desk.Taker, job.Desk.Assignees = "", "", "", nil
 	}
 }

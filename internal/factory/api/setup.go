@@ -87,7 +87,10 @@ type AccessFactory struct {
 }
 type FactoryAccessRequest struct {
 	Link string `json:"link"`
-	Verb string `json:"verb" jsonschema:"enum=sign_in,enum=cancel"`
+	// check only reads or polls; it never starts a sign-in. A factory advertises
+	// support with access_check_post:true in GET /v1/about; older ones take only
+	// sign_in and cancel and answer a check as GET with the link in the query.
+	Verb string `json:"verb" jsonschema:"enum=sign_in,enum=cancel,enum=check"`
 }
 
 // FactoryDay counts visible jobs once per calendar day; unknown waiting time is null.

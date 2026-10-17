@@ -48,6 +48,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -81,6 +82,7 @@ const appCrewPoll = 2 * time.Second
 const appReleaseWait = 5 * time.Second
 
 func runApp(args []string) error {
+	localGUI := consumeAppLocalGUI()
 	flags := commandFlags("app")
 	homeFlag := flags.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf")
 	turnLong := flags.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long")
@@ -122,6 +124,7 @@ func runApp(args []string) error {
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	backend.useClipboard(clipboard.NewSystem(localGUI))
 	if *turnLong > 0 {
 		backend.turnLong = *turnLong
 	}
@@ -252,6 +255,9 @@ type appConn struct {
 	// Assembled says this process built the conversation itself, so the shared
 	// engine half must be closed when the app leaves.
 	Assembled bool
+	// Lent says this is a factory stage the factory owns, lent as a view
+	// (app_lend.go): its model, posture and budget are not the app's to set.
+	Lent bool
 }
 
 type appOpener func(appOpenAsk) (*appConn, error)
@@ -271,6 +277,12 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
 		// conversation another window opened can carry (engine.go's JoinedWith).
 		hello := remote.Hello{Workspace: ask.Workspace, Session: ask.Transcript, Join: true, Launch: launch}
+		// A CONVERSATION THIS PROCESS ALREADY HOLDS IS LENT, NEVER REOPENED:
+		// the factory worker's running stage is the app's own, not another
+		// window's (app_lend.go). Only a factory stage is lent.
+		if agent, ok := liveStageFor(ask.Transcript); ok {
+			return appLendLive(agent, ask, hello)
+		}
 		if socket, err := enginehost.DialStartingHost(ask.Workspace); err == nil {
 			client, err := remote.Dial(socket, "", hello)
 			if err == nil {
@@ -310,6 +322,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// task's clock is the app's, as is a suggested choice's.
 		Launch: launch,
 	}
+	// The agent this boot built, kept so the app can tell when somebody else
+	// closes it (below). Boot runs once, before Loopback returns.
+	var booted atomic.Pointer[closedAgent]
 	loop, err := remote.Loopback(hello, remote.Options{
 		Boot: func(h remote.Hello) (*remote.Engine, error) {
 			// THE APP'S OWN OPENER FIRST, so a process half that failed for the
@@ -319,13 +334,37 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 			if _, err := openAppEngineProcess(); err != nil {
 				return nil, err
 			}
-			return assembleEngine(h, workspace, transcript, workspace)
+			eng, err := assembleEngine(h, workspace, transcript, workspace)
+			if err == nil {
+				if c, ok := eng.Agent.(closedAgent); ok {
+					booted.Store(&c)
+				}
+			}
+			return eng, err
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	return appConnOf(loop.Client, func() { _ = loop.Close() }, true), nil
+	// AN AGENT THE APP OWNS CAN BE CLOSED UNDERNEATH IT. A paused factory stage
+	// is booted here as the app's own conversation by a crew tick; when the
+	// stage resumes, the stage maker takes the journal by closing this agent
+	// (stageTakeJournal), which a remote.Session is never told. Without a watch
+	// the view is a zombie that stays held and the resumed stage's card reaches
+	// nobody. The app owns this agent, so its own release closes it as before;
+	// the watch only learns that somebody else did.
+	stop := make(chan struct{})
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			close(stop)
+			_ = loop.Close()
+		})
+	}
+	if c := booted.Load(); c != nil {
+		watchAgentClosed(*c, stop, release)
+	}
+	return appConnOf(loop.Client, release, true), nil
 }
 
 func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
@@ -335,6 +374,9 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// factoryRooms runs this connection's one-time stamp of teams the factory made before the
+	// stamp was kept (factoryStampStoredRooms).
+	factoryRooms sync.Once
 	// crewHistory holds the crew process-history walks (appcrewprocesspage.go).
 	crewHistory crewHistory
 	// searchWords reads every conversation's words for search.all; nil keeps
@@ -352,6 +394,9 @@ type appBackend struct {
 	// first factory.* call.
 	factories   *appFactoryHub
 	factoryOnce sync.Once
+	// clipboard is where a made invitation is copied (appfactory_links.go). Nil
+	// is UNAVAILABLE, the production default; only useClipboard sets it.
+	clipboard clipboard.Copier
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
@@ -1228,7 +1273,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 			return appwire.Agent{}, false, appEngineError(err)
 		}
 	}
-	if err := b.bindBudget(view.ID, conn.Conv); err != nil {
+	if err := b.bindBudgetConn(view.ID, conn); err != nil {
 		conn.Release()
 		return appwire.Agent{}, false, appEngineError(err)
 	}
@@ -1819,7 +1864,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 		}
 	}
 	// The agent's budget is bound again, so a raise for today ends at midnight.
-	if err := b.bindBudget(id, live.conn.Conv); err != nil {
+	if err := b.bindBudgetConn(id, live.conn); err != nil {
 		return 0, appEngineError(err)
 	}
 	var turn uint64
@@ -3006,6 +3051,9 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 	}
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	if err := b.lentFence(a, "model"); err != nil {
+		return appwire.Agent{}, err
+	}
 	if _, _, err := b.ensureLocked(a); err != nil {
 		return appwire.Agent{}, err
 	}
@@ -3014,6 +3062,9 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 		live = a.live
 		live.lastUse = b.now()
 	})
+	if live.conn.Lent {
+		return appwire.Agent{}, errLentStage("model")
+	}
 	live.conn.Conv.SetModel(model)
 	if now := live.conn.Conv.Model(); now != "" {
 		model = now
