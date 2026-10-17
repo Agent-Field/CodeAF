@@ -1680,7 +1680,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 		var again appSending
 		b.locked(func() { again = *shown })
 		again.queued = false
-		if shown = &again; len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
+		if shown = &again; again.creationTeam == "" && len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
 			shown = nil
 		}
 	}

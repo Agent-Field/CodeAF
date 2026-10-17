@@ -71,3 +71,34 @@ func TestAppCrewMessageQueuedKeepsItsStamp(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// ONLY A STAMPED, OTHERWISE PLAIN SENDING IS EXEMPT FROM THE OLDER-HOST REFUSAL,
+// queued or not; an ordinary one with the same words is not.
+func TestAppStampOnlySendingIsTheOnlyExemptionFromTheMarkRefusal(t *testing.T) {
+	ordinary := &appSending{text: "x"}
+	if ordinary.marksNothing("x") {
+		t.Fatal("an ordinary sending was exempted from the older-host refusal")
+	}
+	stamped := &appSending{text: "x", creationTeam: "aaaaaaaaaaaa", queued: true}
+	if !stamped.marksNothing("x") {
+		t.Fatal("a stamped queue flush would be refused by an older host")
+	}
+	stamped.reads = []session.MessageRead{{}}
+	if stamped.marksNothing("x") {
+		t.Fatal("a stamped sending carrying reads was exempted")
+	}
+}
+
+// EDITING A QUEUED CREW MESSAGE KEEPS THE CREW IT WAS ACCEPTED FOR.
+func TestAppEditingAQueuedCrewMessageKeepsItsStamp(t *testing.T) {
+	old := &appSending{text: "before", creationTeam: "aaaaaaaaaaaa"}
+	if got := appStampKept(old, nil, "after"); got == nil || got.creationTeam != "aaaaaaaaaaaa" || got.text != "after" {
+		t.Fatalf("plain edit kept %+v", got)
+	}
+	if got := appStampKept(old, &appSending{text: "mine"}, "after"); got == nil || got.creationTeam != "aaaaaaaaaaaa" || got.text != "mine" {
+		t.Fatalf("marked edit kept %+v", got)
+	}
+	if got := appStampKept(&appSending{text: "o"}, nil, "after"); got != nil {
+		t.Fatalf("an unstamped edit gained %+v", got)
+	}
+}
