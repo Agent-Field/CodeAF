@@ -407,7 +407,7 @@ func TestAProgramsPageCarriesTheEndingsFactsFromItsLog(t *testing.T) {
 			"reports":  json.RawMessage(`["/tmp/copy/review-report.md","/tmp/copy/review-report.json"]`),
 			"findings": json.RawMessage(`7`), "blocking": json.RawMessage(`2`),
 			"hunt_coverage": json.RawMessage(`{"attempted":2,"failures":[{"strategy":"a","reason":"failed in /tmp/copy/x.go"}]}`),
-			"claim": json.RawMessage(`"wrote /tmp/copy/review-report.md"`), "transcript": json.RawMessage(`"not on the list"`)}})
+			"claim":         json.RawMessage(`"wrote /tmp/copy/review-report.md"`), "transcript": json.RawMessage(`"not on the list"`)}})
 	if err := delegate.AppendAction(dir, ending); err != nil {
 		t.Fatal(err)
 	}
