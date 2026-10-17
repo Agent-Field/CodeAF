@@ -75,7 +75,7 @@ var ErrDuplicateNoteID error = duplicateNoteID{}
 
 type duplicateNoteID struct{}
 
-func (duplicateNoteID) Error() string { return "note cursor names more than one note" }
+func (duplicateNoteID) Error() string        { return "note cursor names more than one note" }
 func (duplicateNoteID) Is(target error) bool { return target == ErrNoteCursor }
 
 // ErrNoteBusy is what a page answers when the store's lock is not free to take
