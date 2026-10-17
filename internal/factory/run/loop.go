@@ -1247,9 +1247,7 @@ func makesSheet(st factory.Stage) bool {
 	case factory.StageCheck, factory.StagePost:
 		return true
 	}
-	name := strings.ToLower(strings.TrimSpace(st.Name))
-	return name == "proof" || strings.HasPrefix(name, "prove") ||
-		strings.TrimSpace(st.Until) == factory.UntilProven
+	return factory.IsProofStage(st)
 }
 
 // noEvidence is the evidence a claim that gave none is shown with.

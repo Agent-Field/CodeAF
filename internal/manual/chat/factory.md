@@ -51,6 +51,16 @@ Banking a recipe never writes into a folder held by a running program. A separat
 
 The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask) and `factory_answer` (reply to a question a step asked; send it to you when it turns on taste, scope, risk, money or access). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
 
+## change one job's steps — landed, proof has started, add after proof, switch on a step
+
+An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.
+
+Once a job has landed, a nonempty step edit is refused with `the job has landed, so the steps can no longer be edited`, whether or not it had a proof step. Landed jobs do not offer step editing.
+
+Proof is the step named proof, a send-back's prove step, or any step that runs until proven, whatever it is called; checks and posts are not proof. Before landing, once any proof has started, a nonempty step edit is refused with `proof has started, so the steps can no longer be edited`. A refused step edit leaves the job, its proof and its recorded changes as they were. An empty edit changes nothing.
+
+Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
+
 ## how big is a job — size of a job, the size: filter, why there is no size, risky
 
 A job's size comes from the first of these that exists, and nothing else is a size:
