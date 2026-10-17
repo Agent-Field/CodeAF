@@ -227,6 +227,15 @@ const (
 	StepSkipped = "skipped"
 )
 
+// JobReadSize is a size a person did not label: the completed read's guess
+// (From "read") or a pull request's measured lines (From "diff"). It is
+// present only when the job has no size label, and it is display only: a start
+// decision never reads it, so an old client that ignores it stays correct.
+type JobReadSize struct {
+	Value string `json:"value"`
+	From  string `json:"from"`
+}
+
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
 	SetupHeld         bool                 `json:"setup_held,omitempty"`
@@ -238,18 +247,21 @@ type Job struct {
 	JobID             string               `json:"id"`
 	Ref               string               `json:"ref"`
 	Priority          *factory.JobPriority `json:"priority,omitempty"`
-	Size              string               `json:"size,omitempty"`
-	Budget            float64              `json:"budget,omitempty"`
-	Reason            string               `json:"reason,omitempty"`
-	DoneHow           string               `json:"done_how,omitempty"`
-	DoneAt            time.Time            `json:"done_at"`
-	Dismissed         bool                 `json:"dismissed"`
-	DismissedBy       []string             `json:"dismissed_by,omitempty"`
-	WaitingFor        string               `json:"waiting_for,omitempty"`
-	Overlap           []string             `json:"overlap,omitempty"`
-	Approval          *factory.Approval    `json:"approval,omitempty"`
-	BranchDeleteAt    time.Time            `json:"branch_delete_at"`
-	BranchDeletedAt   time.Time            `json:"branch_deleted_at"`
+	// Size is the size LABEL alone, the only size a start reads. ReadSize is
+	// what a surface may SHOW when there is no label; it never starts a job.
+	Size            string            `json:"size,omitempty"`
+	ReadSize        *JobReadSize      `json:"read_size,omitempty"`
+	Budget          float64           `json:"budget,omitempty"`
+	Reason          string            `json:"reason,omitempty"`
+	DoneHow         string            `json:"done_how,omitempty"`
+	DoneAt          time.Time         `json:"done_at"`
+	Dismissed       bool              `json:"dismissed"`
+	DismissedBy     []string          `json:"dismissed_by,omitempty"`
+	WaitingFor      string            `json:"waiting_for,omitempty"`
+	Overlap         []string          `json:"overlap,omitempty"`
+	Approval        *factory.Approval `json:"approval,omitempty"`
+	BranchDeleteAt  time.Time         `json:"branch_delete_at"`
+	BranchDeletedAt time.Time         `json:"branch_deleted_at"`
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`

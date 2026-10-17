@@ -129,6 +129,7 @@ func FromItem(it factory.Item) Job {
 		draft := it.Draft
 		j.Draft = &draft
 	}
+	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	if j.State == "" {
 		j.State = string(it.State)
@@ -253,6 +254,19 @@ func jobAsk(it factory.Item) *JobAsk {
 		return nil
 	}
 	return &JobAsk{Text: it.Body, Issue: &AskIssue{Number: it.Num, URL: it.URL, Title: it.Title}}
+}
+
+// readSize is the size to show when no label sets one. A label wins and leaves
+// this absent, so job.size and job.read_size are never both present.
+func readSize(it factory.Item) *JobReadSize {
+	if factory.JobSize(it) != "" {
+		return nil
+	}
+	letter, from := factory.ShownSize(it)
+	if letter == "" || (from != factory.ShownRead && from != factory.ShownDiff) {
+		return nil
+	}
+	return &JobReadSize{Value: letter, From: from}
 }
 
 // ToItem is one job as an item.
