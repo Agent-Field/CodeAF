@@ -395,7 +395,7 @@ func (s *delegateSink) newForwarding(pages notePager) *inboxForwarding {
 // or a hand edit clears it ([taskInbox.next]). The position moves only past
 // notes the inbox took or refused for their words.
 func (s *delegateSink) forwardOnce(f *inboxForwarding) {
-	skip := func(note plandb.Note) bool {
+	skip := func(note plandb.NoteEnvelope) bool {
 		if f.rejected[note.ID] || strings.TrimSpace(note.Agent) == s.name {
 			return true
 		}
@@ -446,7 +446,7 @@ func (s *delegateSink) endForwarding() {
 var inboxPoll = time.Second
 
 // messageFrom is who a note is from, as a program is told it.
-func messageFrom(note plandb.Note) string {
+func messageFrom(note plandb.NoteEnvelope) string {
 	switch {
 	case note.From == plandb.NoteFromPerson:
 		return delegate.FromPerson
@@ -504,7 +504,7 @@ func (s *delegateSink) reportUnheardFrom(pages notePager) {
 	var unheard []string
 	var cut error
 	total, kept := 0, 0
-	unspoken := func(note plandb.Note) bool {
+	unspoken := func(note plandb.NoteEnvelope) bool {
 		spoken := note.From == plandb.NoteFromPerson || strings.TrimSpace(note.Agent) == plandb.NoteAgentChat
 		return !spoken || had[note.ID]
 	}

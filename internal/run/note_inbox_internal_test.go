@@ -11,6 +11,7 @@ package run
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -80,17 +82,17 @@ type countingPager struct {
 	store *plandb.Store
 	busy  int
 	calls int
-	asks  []plandb.NotePageAsk
+	asks  []plandb.NoteEnvelopeAsk
 }
 
-func (p *countingPager) NotesPage(ctx context.Context, ask plandb.NotePageAsk) (plandb.NotePage, error) {
+func (p *countingPager) NoteEnvelopesPage(ctx context.Context, ask plandb.NoteEnvelopeAsk) (plandb.NoteEnvelopePage, error) {
 	p.calls++
 	p.asks = append(p.asks, ask)
 	if p.busy > 0 {
 		p.busy--
-		return plandb.NotePage{}, plandb.ErrNoteBusy
+		return plandb.NoteEnvelopePage{}, plandb.ErrNoteBusy
 	}
-	return p.store.NotesPage(ctx, ask)
+	return p.store.NoteEnvelopesPage(ctx, ask)
 }
 
 // takes is a steer that always lands and keeps what it was handed.
@@ -110,39 +112,49 @@ func takes(words *[]string) func(string) error {
 func TestBashNotesReachNote51And201AfterTheHadOnes(t *testing.T) {
 	for _, hadCount := range []int{50, 200} {
 		store := openNoteStore(t)
-		dir := filepath.Dir(store.Path())
 		ids := seedNotes(t, store, 250, plandb.NoteFromPerson, "", "direction-%03d")
-		if err := appendTrajectory(dir, store.RootID(), Step{Kind: trajectoryNotesKind, Notes: ids[:hadCount]}); err != nil {
-			t.Fatal(err)
+		bashIsHandedEveryNoteAfterTheHadOnes(t, store, ids, hadCount)
+	}
+}
+
+// bashIsHandedEveryNoteAfterTheHadOnes is the body of the fifty-first and
+// two-hundred-first proofs, so the same assertions run on a plan of any name:
+// the first hadCount ids are written on the task's record as had, a worker
+// started on that record is handed every other note exactly once and in order,
+// and a worker started again on the record it wrote is handed none.
+func bashIsHandedEveryNoteAfterTheHadOnes(t *testing.T, store *plandb.Store, ids []string, hadCount int) {
+	t.Helper()
+	dir := filepath.Dir(store.Path())
+	if err := appendTrajectory(dir, store.RootID(), Step{Kind: trajectoryNotesKind, Notes: ids[:hadCount]}); err != nil {
+		t.Fatal(err)
+	}
+	notes := newBashNotes(store, store.RootID(), notesAlreadyHad(dir, store.RootID()))
+	var words, got []string
+	for boundary := 0; boundary < 100 && len(got) < len(ids)-hadCount; boundary++ {
+		had := notes.boundary(context.Background(), "echo working", true, takes(&words))
+		if len(had) > notesPerDelivery {
+			t.Fatalf("%d had: one boundary handed over %d notes, more than %d", hadCount, len(had), notesPerDelivery)
 		}
-		notes := newBashNotes(store, store.RootID(), notesAlreadyHad(dir, store.RootID()))
-		var words, got []string
-		for boundary := 0; boundary < 100 && len(got) < len(ids)-hadCount; boundary++ {
-			had := notes.boundary(context.Background(), "echo working", true, takes(&words))
-			if len(had) > notesPerDelivery {
-				t.Fatalf("%d had: one boundary handed over %d notes, more than %d", hadCount, len(had), notesPerDelivery)
+		got = append(got, had...)
+		if len(had) > 0 {
+			if err := appendTrajectory(dir, store.RootID(), Step{Kind: trajectoryNotesKind, Notes: had}); err != nil {
+				t.Fatal(err)
 			}
-			got = append(got, had...)
-			if len(had) > 0 {
-				if err := appendTrajectory(dir, store.RootID(), Step{Kind: trajectoryNotesKind, Notes: had}); err != nil {
-					t.Fatal(err)
-				}
-			}
 		}
-		if len(words) == 0 || !strings.Contains(words[0], fmt.Sprintf("direction-%03d", hadCount)) {
-			t.Fatalf("%d had: the first steer did not carry note %d: %q", hadCount, hadCount+1, words)
-		}
-		if strings.Join(got, ",") != strings.Join(ids[hadCount:], ",") {
-			t.Fatalf("%d had: handed over %d notes, want the %d after the had ones, once and in order", hadCount, len(got), len(ids)-hadCount)
-		}
-		again := newBashNotes(store, store.RootID(), notesAlreadyHad(dir, store.RootID()))
-		var repeated []string
-		for boundary := 0; boundary < 3; boundary++ {
-			again.boundary(context.Background(), "echo working", true, takes(&repeated))
-		}
-		if len(repeated) != 0 {
-			t.Fatalf("%d had: a worker started again on the record was handed notes a second time: %q", hadCount, repeated)
-		}
+	}
+	if len(words) == 0 || !strings.Contains(words[0], fmt.Sprintf("direction-%03d", hadCount)) {
+		t.Fatalf("%d had: the first steer did not carry note %d: %q", hadCount, hadCount+1, words)
+	}
+	if strings.Join(got, ",") != strings.Join(ids[hadCount:], ",") {
+		t.Fatalf("%d had: handed over %d notes, want the %d after the had ones, once and in order", hadCount, len(got), len(ids)-hadCount)
+	}
+	again := newBashNotes(store, store.RootID(), notesAlreadyHad(dir, store.RootID()))
+	var repeated []string
+	for boundary := 0; boundary < 3; boundary++ {
+		again.boundary(context.Background(), "echo working", true, takes(&repeated))
+	}
+	if len(repeated) != 0 {
+		t.Fatalf("%d had: a worker started again on the record was handed notes a second time: %q", hadCount, repeated)
 	}
 }
 
@@ -312,28 +324,33 @@ func listeningSink(t *testing.T, store *plandb.Store) *delegateSink {
 	return sink
 }
 
-// reports answers the unread reports the sink left, walking every note.
+// reports answers the unread reports the sink left, in the order they were
+// written. It reads the table directly, because the pages refuse the very
+// notes some of these tests leave behind and the report is what is under test.
 func reports(t *testing.T, store *plandb.Store) []string {
 	t.Helper()
+	db, err := sql.Open("sqlite", store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT body FROM notes WHERE agent = 'fake' ORDER BY seq`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
 	var out []string
-	ask := plandb.NotePageAsk{TaskID: store.RootID(), Limit: plandb.NotePageMax}
-	for i := 0; i < 100; i++ {
-		page, err := store.NotesPage(context.Background(), ask)
-		if err != nil {
+	for rows.Next() {
+		var body string
+		if err := rows.Scan(&body); err != nil {
 			t.Fatal(err)
 		}
-		for _, note := range page.Notes {
-			if note.Agent == "fake" {
-				out = append(out, note.Body)
-			}
-		}
-		if !page.More {
-			return out
-		}
-		ask.After = page.Cursor
+		out = append(out, body)
 	}
-	t.Fatal("the walk did not end")
-	return nil
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 // A note too large to read is not published, and the notes after it wait:
@@ -427,8 +444,8 @@ func TestDelegateLateAckMarksOnlyWhatWasSent(t *testing.T) {
 // exactly the page's ceiling, 4096 bytes, is the longest the writer admits;
 // it is handed to a bash worker at a boundary and published to a listening
 // program, not held as though it were too large to read. One byte more is
-// refused by the writer. Other metadata, including a long plan name, can still
-// hold the readers; this test covers the author field only.
+// refused by the writer. A long plan name holds nothing, which the long-plan
+// tests below cover; this test covers the author field only.
 func TestANoteWithTheLongestAuthorTheWriterAdmitsIsDelivered(t *testing.T) {
 	store := openNoteStore(t)
 	longest := strings.Repeat("a", plandb.NotePageMetaMax)
@@ -460,5 +477,190 @@ func TestANoteWithTheLongestAuthorTheWriterAdmitsIsDelivered(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), mine.ID) || !strings.Contains(string(raw), later.ID) {
 		t.Fatalf("the inbox held %d bytes without both notes", len(raw))
+	}
+}
+
+// openLongNamedStore is a plan whose name and conversation tag are both over
+// the page's ceiling, the way a long first task title makes one, and proves
+// the full page refuses it: the control that makes every test below about the
+// envelope and not about a plan that was never a problem.
+func openLongNamedStore(t *testing.T) *plandb.Store {
+	t.Helper()
+	long := strings.Repeat("p", plandb.NotePageMetaMax+1)
+	store, err := plandb.Open(filepath.Join(t.TempDir(), "plan.json"), long, "root", "The run", "drive", long)
+	if err != nil {
+		t.Fatalf("open the long-named store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+// tagLikeTheWriter gives every seeded note the plan's own tags, which is what
+// the writer does to a note it adds, and checks the full page now refuses the
+// first of them for its project.
+func tagLikeTheWriter(t *testing.T, store *plandb.Store) {
+	t.Helper()
+	long := strings.Repeat("p", plandb.NotePageMetaMax+1)
+	rawNoteExec(t, store, `UPDATE notes SET project = ?, chat = ?`, long, long)
+	_, err := store.NotesPage(context.Background(), plandb.NotePageAsk{TaskID: store.RootID(), Limit: 1})
+	var refused *plandb.NoteTooLargeError
+	if !errors.As(err, &refused) || refused.Field != "project" {
+		t.Fatalf("the full page on a long-named plan answered %v; want a refusal of the project", err)
+	}
+}
+
+// The control above is the failure this lane removes: with every note tagged
+// by a plan name over the ceiling, a bash worker is still handed the
+// fifty-first and the two-hundred-first note, and past two examining windows.
+func TestBashNotesReachNote51And201OnAPlanNamedOverTheCeiling(t *testing.T) {
+	for _, hadCount := range []int{50, 200, notesExaminedPerDecision, 1100} {
+		store := openLongNamedStore(t)
+		ids := seedNotes(t, store, 1200, plandb.NoteFromPerson, "", "direction-%03d")
+		tagLikeTheWriter(t, store)
+		bashIsHandedEveryNoteAfterTheHadOnes(t, store, ids, hadCount)
+	}
+}
+
+// publishedIDs is the ids a listening program's inbox file holds, in order,
+// read back the way the program reads them.
+func publishedIDs(t *testing.T, path string) []delegate.Message {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []delegate.Message
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if line == "" {
+			continue
+		}
+		var message delegate.Message
+		if err := json.Unmarshal([]byte(line), &message); err != nil {
+			t.Fatalf("inbox line %q: %v", line, err)
+		}
+		out = append(out, message)
+	}
+	return out
+}
+
+// The forwarder publishes the fifty-first and the two-hundred-first note of a
+// long-named plan, each once, in order, from the store's own ids.
+func TestDelegateForwarderReachesNote51And201OnAPlanNamedOverTheCeiling(t *testing.T) {
+	for _, hadCount := range []int{50, 200} {
+		store := openLongNamedStore(t)
+		ids := seedNotes(t, store, 250, plandb.NoteFromPerson, "", "direction-%03d")
+		tagLikeTheWriter(t, store)
+		sink := listeningSink(t, store)
+		for _, id := range ids[:hadCount] {
+			sink.had[id] = true
+		}
+		f := sink.newForwarding(store)
+		for tick := 0; tick < 100 && len(publishedIDs(t, sink.inboxPath)) < len(ids)-hadCount; tick++ {
+			sink.forwardOnce(f)
+		}
+		var got []string
+		for _, message := range publishedIDs(t, sink.inboxPath) {
+			got = append(got, message.ID)
+			if message.From != delegate.FromPerson {
+				t.Fatalf("%d had: message %s is from %q, want the person", hadCount, message.ID, message.From)
+			}
+		}
+		if strings.Join(got, ",") != strings.Join(ids[hadCount:], ",") {
+			t.Fatalf("%d had: published %d messages, want the %d after the had ones, once and in order", hadCount, len(got), len(ids)-hadCount)
+		}
+	}
+}
+
+// A note's own id, the one an acknowledgement is matched by, and the sender's
+// key, which only the sender's surface reads, are two names. A keyed note on a
+// long-named plan keeps its key on the stored note and reaches the program
+// under the store's id, without the key: the inbox message carries no client
+// key, and none is made up for it.
+func TestAKeyedNoteOnALongNamedPlanIsPublishedUnderItsNoteIDNotItsKey(t *testing.T) {
+	store := openLongNamedStore(t)
+	const key = "surface-key-0001"
+	const words = "ship it behind the flag"
+	note, err := store.AddPersonNoteKeyed(store.RootID(), words, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if note.ID == key {
+		t.Fatalf("the store's id for the note is the sender's key %q", key)
+	}
+	if _, err := store.NotesPage(context.Background(), plandb.NotePageAsk{TaskID: store.RootID(), Limit: 1}); !errors.Is(err, plandb.ErrNoteTooLarge) {
+		t.Fatalf("the full page on the writer's own note answered %v; want the long plan to refuse it", err)
+	}
+	page, err := store.NoteEnvelopesPage(context.Background(), plandb.NoteEnvelopeAsk{TaskID: store.RootID(), Limit: 1})
+	if err != nil || len(page.Notes) != 1 || page.Notes[0].ID != note.ID || page.Notes[0].ClientID != key {
+		t.Fatalf("envelope page %+v err %v; want the note under id %s with key %q", page, err, note.ID, key)
+	}
+
+	sink := listeningSink(t, store)
+	sink.forwardOnce(sink.newForwarding(store))
+	got := publishedIDs(t, sink.inboxPath)
+	if len(got) != 1 || got[0].ID != note.ID || got[0].From != delegate.FromPerson || got[0].Text != words {
+		t.Fatalf("published %+v; want id %s from the person saying %q", got, note.ID, words)
+	}
+	if raw, _ := os.ReadFile(sink.inboxPath); strings.Contains(string(raw), key) {
+		t.Fatalf("the inbox carries the sender's key: %s", raw)
+	}
+	sink.Heard([]string{note.ID})
+	if !sink.had[note.ID] || sink.had[key] {
+		t.Fatalf("the acknowledgement marked %v; want the note id only", sink.had)
+	}
+}
+
+// A note whose words are over their ceiling is a corrupt row for both readers:
+// the fifty-one before it are delivered, and then nothing moves — not the
+// mark, not what was read, sent or heard, not the inbox file — however many
+// more decisions are made, and nothing after it is delivered in its place.
+func TestARelevantCorruptRowHoldsBothReadersAndMovesNothing(t *testing.T) {
+	store := openNoteStore(t)
+	ids := seedNotes(t, store, 201, plandb.NoteFromPerson, "", "direction-%03d")
+	rawNoteExec(t, store, `UPDATE notes SET body = ? WHERE id = ?`, strings.Repeat("x", plandb.NotePageBodyMax+1), ids[51])
+
+	notes := newBashNotes(store, store.RootID(), map[string]bool{})
+	var words, handed []string
+	for boundary := 0; boundary < 30; boundary++ {
+		handed = append(handed, notes.boundary(context.Background(), "echo working", true, takes(&words))...)
+	}
+	if strings.Join(handed, ",") != strings.Join(ids[:51], ",") || notes.inbox.after != ids[50] {
+		t.Fatalf("the bash worker was handed %d notes with the mark on %q; want the 51 before the corrupt one and the mark on %q", len(handed), notes.inbox.after, ids[50])
+	}
+	readBefore, stepsBefore := len(notes.read), len(words)
+	for boundary := 0; boundary < 3; boundary++ {
+		if had := notes.boundary(context.Background(), "echo working", true, takes(&words)); len(had) != 0 {
+			t.Fatalf("a boundary past the corrupt row handed over %v", had)
+		}
+	}
+	if len(notes.read) != readBefore || len(words) != stepsBefore || notes.inbox.after != ids[50] || notes.read[ids[51]] || notes.read[ids[52]] {
+		t.Fatalf("the corrupt row moved the bash worker: read %d->%d, steers %d->%d, mark %q", readBefore, len(notes.read), stepsBefore, len(words), notes.inbox.after)
+	}
+
+	sink := listeningSink(t, store)
+	f := sink.newForwarding(store)
+	for tick := 0; tick < 30; tick++ {
+		sink.forwardOnce(f)
+	}
+	published := publishedIDs(t, sink.inboxPath)
+	if len(published) != 51 || published[50].ID != ids[50] || f.inbox.after != ids[50] || len(sink.sent) != 51 || len(sink.had) != 0 || len(f.rejected) != 0 {
+		t.Fatalf("published %d, mark %q, sent %d, had %d, rejected %d; want 51 published and the mark on %q", len(published), f.inbox.after, len(sink.sent), len(sink.had), len(f.rejected), ids[50])
+	}
+	before, err := os.ReadFile(sink.inboxPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for tick := 0; tick < 3; tick++ {
+		sink.forwardOnce(f)
+	}
+	after, err := os.ReadFile(sink.inboxPath)
+	if err != nil || string(before) != string(after) || f.inbox.after != ids[50] || len(sink.sent) != 51 || len(sink.had) != 0 {
+		t.Fatalf("the corrupt row moved the forwarder: inbox %d->%d bytes, mark %q, sent %d, err %v", len(before), len(after), f.inbox.after, len(sink.sent), err)
+	}
+
+	sink.reportUnheardFrom(store)
+	got := reports(t, store)
+	if len(got) != 1 || !strings.Contains(got[0], "could not be checked (a message there is too large to read") || strings.Contains(got[0], "direction-052") {
+		t.Fatalf("reports = %q; want one that says the check stopped at a message too large to read", got)
 	}
 }

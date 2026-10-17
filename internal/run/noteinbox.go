@@ -5,8 +5,11 @@ package run
 // those, so a task whose first fifty had all been handed over never handed over
 // the fifty-first, and a listening program never heard the two-hundred-first.
 // The store now pages a task's notes by an opaque note id ([plandb.Store.
-// NotesPage]); this file is the worker's side of that: where it has read up to,
-// and the rules for moving that position.
+// NoteEnvelopesPage]); this file is the worker's side of that: where it has read
+// up to, and the rules for moving that position. THE READ IS THE ENVELOPE ONLY
+// — identity, author, direction, words and the sender's key. A worker reads one
+// task's notes by task id, so the project and chat a note was tagged with, and
+// its time, are never read and can never hold the inbox.
 
 import (
 	"context"
@@ -22,11 +25,11 @@ import (
 // decision carries on from there and nothing is passed over.
 const notesExaminedPerDecision = 500
 
-// notePager is the store's paged read of a task's notes. [plandb.Store] is
+// notePager is the store's paged read of a task's note envelopes. [plandb.Store] is
 // one; a test hands in one that answers busy, which is the only way a test in
 // this package can meet a lock the store keeps to itself.
 type notePager interface {
-	NotesPage(ctx context.Context, ask plandb.NotePageAsk) (plandb.NotePage, error)
+	NoteEnvelopesPage(ctx context.Context, ask plandb.NoteEnvelopeAsk) (plandb.NoteEnvelopePage, error)
 }
 
 // taskInbox is one reader's position in one task's notes.
@@ -47,7 +50,7 @@ type taskInbox struct {
 
 // inboxBatch is one decision's notes and where it would leave the mark.
 type inboxBatch struct {
-	notes []plandb.Note
+	notes []plandb.NoteEnvelope
 	// through is the last note the page examined, handed over or skipped: when
 	// every note in notes is settled, every note up to through is.
 	through string
@@ -77,19 +80,19 @@ func newTaskInbox(pages notePager, taskID string) *taskInbox {
 // usual, and then every decision answers its refusal, so the notes after it
 // wait behind it. NOTHING IN THE PRODUCT EDITS OR DELETES ONE NOTE, so the hold
 // lasts until the task is gone or the store is changed by hand. The writer
-// refuses an over-long author, client key or body per note, but NOT a plan
-// whose project or chat is over the ceiling (a long first task title or a
-// `plandb init` name), so a legitimate plan can still hold every note: an OPEN
-// gap, awaiting the parent's policy. That is the honest price of never
-// consuming a note nobody could read. The bash worker has no report to say it
-// is held; the delegate's end-of-run report does.
+// refuses an over-long author, client key or body per note, and the envelope
+// does not read the plan's project or chat, so a long plan name (a long first
+// task title, or a `plandb init` name) holds nothing; only a store written
+// outside codeaf's writers can reach a refusal. That is the honest price of
+// never consuming a note nobody could read. The bash worker has no report to
+// say it is held; the delegate's end-of-run report does.
 //
 // One error moves the mark, because moving it is what is true: a cursor the
 // store no longer knows (and that is not a duplicate) puts it back at the
 // first note. The reader's own record of what it has had still passes every
 // settled note by, so nothing is handed over twice.
-func (b *taskInbox) next(ctx context.Context, limit int, skip func(plandb.Note) bool) (inboxBatch, error) {
-	page, err := b.pages.NotesPage(ctx, plandb.NotePageAsk{
+func (b *taskInbox) next(ctx context.Context, limit int, skip func(plandb.NoteEnvelope) bool) (inboxBatch, error) {
+	page, err := b.pages.NoteEnvelopesPage(ctx, plandb.NoteEnvelopeAsk{
 		TaskID: b.taskID, After: b.after, Limit: limit, Skip: skip, ScanMax: notesExaminedPerDecision,
 	})
 	if err != nil {
