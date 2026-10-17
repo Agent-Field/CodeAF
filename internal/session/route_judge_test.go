@@ -1903,6 +1903,7 @@ func TestBothBriefsAskForOneObjectAndOnlyOneOfThemMentionsAnAnswer(t *testing.T)
 }
 
 func TestRouteJudgesRequireDirectNonQuestionWorkOrders(t *testing.T) {
+	contract := strings.Join(strings.Fields(routeVerdictContract), " ")
 	for _, want := range []string{
 		"direct instruction to do work",
 		"in a non-question",
@@ -1910,7 +1911,7 @@ func TestRouteJudgesRequireDirectNonQuestionWorkOrders(t *testing.T) {
 		"Product direction, suggestions, goals and plans are false",
 		"authorization before effort",
 	} {
-		if !strings.Contains(routeVerdictContract, want) {
+		if !strings.Contains(contract, strings.Join(strings.Fields(want), " ")) {
 			t.Errorf("the shared route contract does not require %q", want)
 		}
 	}
