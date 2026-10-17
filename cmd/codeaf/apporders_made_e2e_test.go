@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,7 @@ import (
 const crewOrderMarker = "crew-origin-fixture: every morning, check the build"
 
 // crewAutomationModel is an OpenAI-shaped endpoint, local and keyless, that
-// answers a turn whose newest person's words carry crewOrderMarker by calling
+// answers a request carrying crewOrderMarker in any message by calling
 // the automation tool once, the turn after the tool's answer with words, and
 // every other request with "done". It is the model half of the fixture and
 // nothing in the product is told it exists beyond the base URL every
@@ -27,7 +28,10 @@ const crewOrderMarker = "crew-origin-fixture: every morning, check the build"
 type crewAutomationModel struct {
 	server *httptest.Server
 	mu     sync.Mutex
-	asked  int
+	// seen counts every completion request; offered those that carried the
+	// automation tool; marked those whose messages carried the marker; asked the
+	// proposals made. A red run prints all four, so it names the link that broke.
+	seen, offered, marked, asked int
 }
 
 func newCrewAutomationModel(t *testing.T) *crewAutomationModel {
@@ -38,11 +42,74 @@ func newCrewAutomationModel(t *testing.T) *crewAutomationModel {
 	return model
 }
 
+// counts is what the model has seen, for a failure message.
+func (m *crewAutomationModel) counts() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return fmt.Sprintf("requests %d, offering automation %d, carrying the marker %d, proposals %d", m.seen, m.offered, m.marked, m.asked)
+}
+
 // proposals is how many automation proposals the model has made.
 func (m *crewAutomationModel) proposals() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.asked
+}
+
+// crewModelRequest is the part of a completion request the model decides on.
+type crewModelRequest struct {
+	Messages []struct {
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	} `json:"messages"`
+	Tools []struct {
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	} `json:"tools"`
+	Stream bool `json:"stream"`
+}
+
+// decide is what the model answers a request with: a proposal when the
+// automation tool is offered, the marker is in ANY message of the request (the
+// engine may add user-role context after the person's words, so the newest
+// user message is not where to look) and no tool answer has come back yet;
+// "saved" after the tool's answer; "done" otherwise.
+func (m *crewAutomationModel) decide(req crewModelRequest) (delta, finish string) {
+	offered, marked, answered := false, false, false
+	for _, tool := range req.Tools {
+		offered = offered || tool.Function.Name == "automation"
+	}
+	for _, message := range req.Messages {
+		switch strings.ToLower(message.Role) {
+		case "user":
+			marked = marked || strings.Contains(string(message.Content), "crew-origin-fixture")
+		case "tool":
+			answered = true
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.seen++
+	if offered {
+		m.offered++
+	}
+	if marked {
+		m.marked++
+	}
+	switch {
+	case offered && marked && !answered:
+		m.asked++
+		args, _ := json.Marshal(map[string]any{
+			"op": "propose", "title": "morning build check", "words": crewOrderMarker,
+			"when": map[string]string{"in": "10m"}, "say": "check the build",
+		})
+		quoted, _ := json.Marshal(string(args))
+		return `{"tool_calls":[{"index":0,"id":"call_crew_order","type":"function","function":{"name":"automation","arguments":` + string(quoted) + `}}]}`, "tool_calls"
+	case marked && answered:
+		return `{"content":"saved"}`, "stop"
+	}
+	return `{"content":"done"}`, "stop"
 }
 
 func (m *crewAutomationModel) serve(w http.ResponseWriter, r *http.Request) {
@@ -51,59 +118,35 @@ func (m *crewAutomationModel) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, _ := io.ReadAll(r.Body)
-	var body struct {
-		Messages []struct {
-			Role    string          `json:"role"`
-			Content json.RawMessage `json:"content"`
-		} `json:"messages"`
-		Tools []struct {
-			Function struct {
-				Name string `json:"name"`
-			} `json:"function"`
-		} `json:"tools"`
-		Stream bool `json:"stream"`
-	}
-	if err := json.Unmarshal(raw, &body); err != nil {
+	var req crewModelRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	offered := false
-	for _, tool := range body.Tools {
-		offered = offered || tool.Function.Name == "automation"
-	}
-	// The newest person's line decides; a tool's answer after it means the
-	// proposal was already made in this turn.
-	marked, answered := false, false
-	for _, message := range body.Messages {
-		switch strings.ToLower(message.Role) {
-		case "user":
-			marked, answered = strings.Contains(string(message.Content), "crew-origin-fixture"), false
-		case "tool":
-			answered = true
-		}
-	}
-	delta, finish := `{"role":"assistant","content":"done"}`, "stop"
-	switch {
-	case offered && marked && !answered:
-		m.mu.Lock()
-		m.asked++
-		m.mu.Unlock()
-		args, _ := json.Marshal(map[string]any{
-			"op": "propose", "title": "morning build check", "words": crewOrderMarker,
-			"when": map[string]string{"in": "10m"}, "say": "check the build",
-		})
-		quoted, _ := json.Marshal(string(args))
-		delta = `{"role":"assistant","tool_calls":[{"index":0,"id":"call_crew_order","type":"function","function":{"name":"automation","arguments":` + string(quoted) + `}}]}`
-		finish = "tool_calls"
-	case marked && answered:
-		delta = `{"role":"assistant","content":"saved"}`
-	}
-	if body.Stream {
+	delta, finish := m.decide(req)
+	if req.Stream {
+		// The shape internal/e2e's scripted automation model streams, which the
+		// real engine is proven against: the delta without a finish reason, then
+		// an empty delta that carries it.
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, `data: {"id":"crew-origin","choices":[{"index":0,"delta":`+delta+`,"finish_reason":"`+finish+`"}]}`+"\n\ndata: [DONE]\n\n")
+		chunk := func(delta, finish string) {
+			reason := "null"
+			if finish != "" {
+				reason = `"` + finish + `"`
+			}
+			_, _ = io.WriteString(w, `data: {"id":"crew-origin","choices":[{"index":0,"delta":`+delta+`,"finish_reason":`+reason+`}]}`+"\n\n")
+		}
+		chunk(delta, "")
+		chunk(`{}`, finish)
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 		return
 	}
-	message := strings.Replace(delta, `"tool_calls":[{"index":0,`, `"tool_calls":[{`, 1)
+	var message string
+	if finish == "tool_calls" {
+		message = strings.Replace(delta, `{"tool_calls":[{"index":0,`, `{"role":"assistant","tool_calls":[{`, 1)
+	} else {
+		message = strings.Replace(delta, `{"content"`, `{"role":"assistant","content"`, 1)
+	}
 	_, _ = io.WriteString(w, `{"choices":[{"index":0,"message":`+message+`,"finish_reason":"`+finish+`"}]}`)
 }
 
@@ -221,7 +264,7 @@ func TestCrewMessageOrderIsReadBackAsMadeInTheCrew(t *testing.T) {
 			break
 		}
 		if len(orders) > 1 || time.Now().After(deadline) {
-			t.Fatalf("orders made in the crew = %+v (model asked %d times)", orders, model.proposals())
+			t.Fatalf("orders made in the crew = %+v (%s)", orders, model.counts())
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -247,5 +290,39 @@ func TestCrewMessageOrderIsReadBackAsMadeInTheCrew(t *testing.T) {
 	}
 	if after, err := store.Get(made.ID); err != nil || after.Origin.Team == nil || after.Origin.Team.ID != crew {
 		t.Fatalf("after the ratify the stored creation team = %+v, %v", after.Origin.Team, err)
+	}
+}
+
+// THE MODEL FINDS THE MARKER WHEREVER THE ENGINE PUT IT. A request whose NEWEST
+// user message carries no marker (the engine appended context after the
+// person's words) but whose earlier one does, with the automation tool offered
+// and no tool answer yet, is answered with the proposal; after the tool's
+// answer, with "saved"; with the tool absent, with "done". This is the cause of
+// the first red run of the end-to-end fixture, tested without an engine.
+func TestCrewAutomationModelFindsTheMarkerBeyondTheNewestUserMessage(t *testing.T) {
+	model := &crewAutomationModel{}
+	call := func(body string) (string, string) {
+		var req crewModelRequest
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Fatal(err)
+		}
+		return model.decide(req)
+	}
+	tools := `"tools":[{"function":{"name":"automation"}}]`
+	asking := `{"messages":[{"role":"user","content":"` + crewOrderMarker + `"},{"role":"user","content":"context the engine added"}],` + tools + `}`
+	if delta, finish := call(asking); finish != "tool_calls" || !strings.Contains(delta, `"name":"automation"`) {
+		t.Fatalf("a marker in an earlier user message: %s %s", delta, finish)
+	}
+	answered := `{"messages":[{"role":"user","content":"` + crewOrderMarker + `"},{"role":"assistant","content":""},{"role":"tool","content":"ok"}],` + tools + `}`
+	if delta, finish := call(answered); finish != "stop" || !strings.Contains(delta, "saved") {
+		t.Fatalf("after the tool's answer: %s %s", delta, finish)
+	}
+	bare := `{"messages":[{"role":"user","content":"` + crewOrderMarker + `"}]}`
+	if delta, finish := call(bare); finish != "stop" || !strings.Contains(delta, "done") {
+		t.Fatalf("with the tool absent: %s %s", delta, finish)
+	}
+	other := `{"messages":[{"role":"user","content":"say done"}],` + tools + `}`
+	if delta, finish := call(other); finish != "stop" || !strings.Contains(delta, "done") || model.proposals() != 1 {
+		t.Fatalf("a request without the marker: %s %s, %d proposals", delta, finish, model.proposals())
 	}
 }
