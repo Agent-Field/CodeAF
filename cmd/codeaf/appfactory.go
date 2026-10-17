@@ -134,7 +134,10 @@ type appFactoryHub struct {
 	signIns  map[string]*appFactorySignIn
 	links    map[string]*appFactoryLink
 	seen     map[string]time.Time
-	closed   bool
+	// adminBusy marks a connection whose sign-out or revoke-all is in flight
+	// (appfactory_admin.go), so one press is one request.
+	adminBusy map[string]bool
+	closed    bool
 }
 
 // newAppFactoryHub is a registry whose HTTP client takes no ambient proxy,
@@ -582,7 +585,7 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) appwire.Fac
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
-		Local: true, Runner: true, Writes: false,
+		Local: true, Runner: true, Writes: false, Admin: true,
 		MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }

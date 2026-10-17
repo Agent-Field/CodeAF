@@ -89,7 +89,10 @@ type FactoryCapabilities struct {
 	Runner bool `json:"runner"`
 	// Writes: jobs can be started, stopped, approved or edited through the
 	// wire. False here; every factory.* method only reads or signs in.
-	Writes         bool `json:"writes"`
+	Writes bool `json:"writes"`
+	// Admin: factory.sign_out and factory.revoke_sessions are served (feature
+	// factory.admin). True only for an engine that implements [FactoryAdmin].
+	Admin          bool `json:"admin"`
 	MaxConnections int  `json:"max_connections"`
 	MaxFlows       int  `json:"max_flows"`
 }
