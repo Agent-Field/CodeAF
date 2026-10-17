@@ -1791,7 +1791,7 @@ straight away, whatever the file still says. Each node's transcript stays on dis
 `~/.codeaf/v3/runs/<session>/<run>/<node>.jsonl` whatever happened, so whatever the workers
 did get done is still readable.
 
-## Where did my run's rows go — the run disappeared from the task column when I switched away or reopened the conversation
+## Where did my run's rows go — the run and its rows disappeared from the task column when I switched away or reopened the conversation
 
 **The rows come back. Both ways.**
 

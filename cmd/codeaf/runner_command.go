@@ -16,7 +16,7 @@ import (
 )
 
 // runnerUse is the one sentence every refusal of `runner` ends in.
-const runnerUse = "use codeaf runner join <link|url> [--name name] [--token session] [--url factory] [--attach-only]"
+const runnerUse = "use codeaf runner join <link|url> [--name name] [--token session] [--url factory] [--model model] [--one-model] [--attach-only]"
 
 // runRunner joins this computer to a factory and, unless --attach-only, runs
 // that factory's jobs here until it is stopped.
@@ -46,11 +46,24 @@ func runRunner(args []string) error {
 	token := flags.String("token", "", "the session this person already holds on that factory")
 	address := flags.String("url", "", "the factory's address, when <link> is only the link's secret")
 	attachOnly := flags.Bool("attach-only", false, "write the attachment and return; run no jobs in this process")
+	model := flags.String("model", "", "model slug for this runner")
+	oneModel := flags.Bool("one-model", false, "every runner text call uses the named model without fallback")
 	if err := parseCommandFlags(flags, reorder(flags, args[1:])); err != nil {
 		return err
 	}
 	if flags.NArg() != 1 {
 		return wrongCall(runnerUse)
+	}
+	modelName := strings.TrimSpace(*model)
+	if *oneModel && modelName == "" {
+		settings, err := config.LoadKeyless()
+		if err != nil {
+			return err
+		}
+		modelName = v3TalkModel("", settings)
+	}
+	if modelName != "" || *oneModel {
+		setFactoryModelPin(modelName, *oneModel)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -130,7 +143,7 @@ var runFactoryRunner = func(ctx context.Context, attached factoryAttachment, out
 	workspace, _ := os.Getwd()
 	sessions := factorySessions(newFactorySessions())
 	sessions.SetFactorySession(attached.URL, attached.Token)
-	host := &appFactoryHost{ctx: ctx, floor: st, workspace: workspace, profile: config.ProfileDir(), credentials: sessions}
+	host := &appFactoryHost{ctx: ctx, floor: st, workspace: workspace, profile: config.ProfileDir(), credentials: sessions, parent: factoryWorkerParent}
 	var me api.Me
 	if appFactoryRequest(ctx, factoryTarget{attached.URL, attached.Token}, "GET", "/v1/me", nil, &me) == nil && me.Handle != "" {
 		fmt.Fprintf(out, "running %s's jobs for %s on this machine; stop with ctrl-c\n", "@"+strings.TrimPrefix(me.Handle, "@"), attached.URL)

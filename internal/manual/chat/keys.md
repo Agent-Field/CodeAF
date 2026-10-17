@@ -1236,6 +1236,8 @@ meanings.
 
 ## The thinking chip above the message box — `alt+e`, `/effort`, and how to make this one chat think harder
 
+To make this one chat think harder, choose a higher effort with `alt+e` or `/effort`.
+
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
 The effort follows a colon with no space: `model:effort`. The model stays bold and
