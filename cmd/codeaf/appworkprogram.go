@@ -22,7 +22,7 @@ func appTaskProgram(view *session.AppProgramView) *appwire.TaskProgram {
 	if view.Read != session.AppProgramReadComplete && view.Read != session.AppProgramReadPartial {
 		cut := *view
 		cut.Read, cut.ReadCut, cut.Calls, cut.Actions, cut.EarlierActions, cut.Before = session.AppProgramReadUnknown, "", nil, nil, 0, ""
-		cut.LastStage, cut.Ending, cut.EndStatus = "", nil, ""
+		cut.LastStage, cut.Ending, cut.EndStatus, cut.Launch, cut.ReportFiles = "", nil, "", "", nil
 		view = &cut
 	}
 	out := &appwire.TaskProgram{
@@ -30,6 +30,16 @@ func appTaskProgram(view *session.AppProgramView) *appwire.TaskProgram {
 		Effort: redact.Secrets(view.Effort), Listens: view.Listens,
 		Listening: view.Listening, Started: view.Started, InboxClosed: redact.Secrets(view.InboxClosed),
 		Read: view.Read, ReadCut: view.ReadCut,
+	}
+	// A LAUNCH AND ISSUED NAMES ARE ONLY WHAT THEIR OWN SHAPE ALLOWS: a far
+	// engine's text is not handed to a reader that will ask with it unchecked.
+	if delegate.ValidLaunch(view.Launch) {
+		out.Launch = view.Launch
+		for _, name := range view.ReportFiles {
+			if delegate.ValidReportName(name) {
+				out.ReportFiles = append(out.ReportFiles, name)
+			}
+		}
 	}
 	if view.Calls != nil {
 		calls := *view.Calls

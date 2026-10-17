@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/secaf/output"
 	"github.com/Agent-Field/codeaf/internal/secaf/schemas"
 )
@@ -47,13 +48,16 @@ var complianceBrand = output.ComplianceBrand{
 }
 
 // reportFiles writes the full report into folder and answers the paths it
-// wrote, in a fixed order. A folder of "" writes nothing.
-func reportFiles(folder string, result schemas.SecurityAuditResult, compliance bool, run runFacts) ([]string, error) {
+// wrote, in a fixed order, and the receipt of each declared report among them
+// (delegate.IssueReportReceipt): issued from the very bytes handed to the
+// write, and only once that write has succeeded: reportJSON is the one name
+// the program declares (Program.Reports). A folder of "" writes nothing.
+func reportFiles(folder string, result schemas.SecurityAuditResult, compliance bool, run runFacts) ([]string, []delegate.ReportReceipt, error) {
 	if strings.TrimSpace(folder) == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err := os.MkdirAll(folder, 0o700); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// THE FILES SAY WHAT THIS RUN MEASURED. sec-af's own result carries a
 	// cost and an agent count it never filled — $0.00 and the calls between
@@ -80,17 +84,21 @@ func reportFiles(folder string, result schemas.SecurityAuditResult, compliance b
 		}{reportCompliance, []byte(output.GenerateComplianceReportAs(result, time.Now().UTC(), complianceBrand))})
 	}
 	var written []string
+	var receipts []delegate.ReportReceipt
 	for _, file := range files {
 		if len(strings.TrimSpace(string(file.body))) == 0 {
 			continue
 		}
 		path := filepath.Join(folder, file.name)
 		if err := os.WriteFile(path, file.body, 0o600); err != nil {
-			return written, err
+			return written, receipts, err
 		}
 		written = append(written, path)
+		if file.name == reportJSON {
+			receipts = append(receipts, delegate.IssueReportReceipt(file.name, file.body))
+		}
 	}
-	return written, nil
+	return written, receipts, nil
 }
 
 // findingWord is how a finding came out, in a person's words.

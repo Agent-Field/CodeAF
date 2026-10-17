@@ -798,6 +798,13 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	// one's do. A child of ANOTHER BUILD is the one exception: it was never this
 	// run's program, and it is not written down as one.
 	if sink.mismatch == "" {
+		// THE RECEIPTS ARE THIS LAUNCH'S OWN, KEPT IN THE WRITE THAT ENDS IT: the
+		// terminal line this process wrote on its own stdout is the one word for
+		// which reports it wrote and exactly what they hold
+		// (delegate.ReportReceipt). A process that wrote no terminal line, or issued no receipt on it,
+		// leaves a record with no receipt, and a report an earlier launch left
+		// in the folder is never this launch's.
+		sink.record.ReportReceipts = w.program.IssuedReceipts(result.Reading.Terminal)
 		sink.record.EndedAt = ended
 		// AN EXITED PROGRAM READS NO MORE WORDS, even when a crash or a cut
 		// left it no chance to close its inbox itself.

@@ -75,6 +75,13 @@ type AppProgramView struct {
 	Listens, Listening bool
 	Started            bool
 	InboxClosed        string
+	// Launch is the record's valid launch id, and ReportFiles the declared
+	// report names ([delegate.Delegate.Reports]) that launch's program issued a
+	// receipt for ([delegate.ProgramRecord.ReportReceipts]): what a report read
+	// ([Agent.AppProgramReport]) is asked with. Both are copies; neither is a
+	// grant, which the read decides again.
+	Launch      string
+	ReportFiles []string
 	// Actions are the newest of the process's actions, oldest first, without
 	// their detail; EarlierActions how many of its own came before them, and
 	// Before the cursor of the page before ([Agent.AppProgramActions]), empty
@@ -182,7 +189,7 @@ func (a *Agent) appProgramRead(ctx context.Context, source planProgramSource, be
 		Name: record.Name, StartedAt: record.StartedAt, EndedAt: record.EndedAt, Read: AppProgramReadUnknown,
 		CeilingUSD: record.CeilingUSD, Models: append([]string(nil), record.Models...), Effort: record.Effort,
 		Listens: program.Listens, Listening: record.Listening, Started: !record.StartedAt.IsZero(), InboxClosed: record.InboxClosed,
-		Stages: appProgramStages(program, record.Stages),
+		Stages: appProgramStages(program, record.Stages), Launch: appProgramLaunch(record), ReportFiles: appProgramReportFiles(program, record),
 	}
 	if !delegate.ValidLaunch(record.Launch) || (want != "" && want != record.Launch) {
 		return view

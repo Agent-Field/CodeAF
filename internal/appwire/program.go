@@ -31,6 +31,15 @@ type TaskProgram struct {
 	// groups consecutive equal words; the count is the program's own.
 	Stages    []ProgramStage `json:"stages,omitempty"`
 	LastStage string         `json:"last_stage,omitempty"`
+	// Launch is the record's launch id: the identity of the process this task's
+	// program is on, absent when none can be named. ReportFiles are the bare
+	// names of the report files the program declares AND THAT LAUNCH ISSUED A
+	// RECEIPT FOR when it wrote them; a declared name the launch did not write
+	// (a failed rerun, a record from before receipts) is absent. Both are the
+	// question tasks.program_report is asked with ({id, launch, name}); neither
+	// is a grant, and a name from EndingFacts.Reports is not one of them.
+	Launch      string   `json:"launch,omitempty"`
+	ReportFiles []string `json:"report_files,omitempty"`
 	// CeilingUSD is present only when the run was handed one.
 	CeilingUSD float64 `json:"ceiling_usd,omitempty"`
 	// Calls is how many of the record's process's calls reached a model,
