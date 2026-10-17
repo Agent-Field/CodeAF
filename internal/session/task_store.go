@@ -689,6 +689,11 @@ type directionRecord struct {
 	// absent on a line said into the node's own room and on every checkpoint
 	// written before forwarding existed.
 	Source *sourceRecord `json:"source,omitempty"`
+	// ClientID is the authored note's opaque key, written in the same write that
+	// first put the words on the disk ([TaskGraph.admitWritten]). Absent on every
+	// line nobody keyed and on every checkpoint written before keys existed,
+	// which a reader takes as unknown.
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // sourceRecord is [personSourceID] on disk. THE SCOPE IS WRITTEN WITH THE

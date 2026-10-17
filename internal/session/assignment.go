@@ -156,6 +156,10 @@ type taskDirection struct {
 	// on this record however they arrived: both are decided in
 	// [taskAssignment.hear], where the receipt is minted.
 	source personSourceID
+	// clientID is the authored note's opaque correlation key, written in the same
+	// admission as the words and never changed after. It is not part of
+	// [taskDirection.source]: nothing is recognised as a repeat by it.
+	clientID string
 }
 
 // taskAssignment is the node's effective instruction and the record it came
@@ -307,12 +311,13 @@ func (a *taskAssignment) hear(words string, from directionFrom, at time.Time, so
 	}
 	a.next++
 	a.directions = append(a.directions, taskDirection{
-		id:     a.next,
-		words:  words,
-		at:     at,
-		from:   from,
-		state:  directionPending,
-		source: source.id,
+		id:       a.next,
+		words:    words,
+		at:       at,
+		from:     from,
+		state:    directionPending,
+		source:   source.id,
+		clientID: source.clientID,
 	})
 	return a.next, true, directionHeardNow
 }
@@ -913,6 +918,7 @@ func recordedAssignment(a taskAssignment) *assignmentRecord {
 			ReadAtStep: said.readAtStep,
 			Version:    said.version,
 			Source:     recordedSource(said.source),
+			ClientID:   said.clientID,
 		})
 	}
 	return record
@@ -952,6 +958,9 @@ func restoredAssignment(record *assignmentRecord) taskAssignment {
 			readAtStep: said.ReadAtStep,
 			version:    said.Version,
 			source:     restoredSource(said.Source),
+			// A key this build would not have accepted is restored as none, which
+			// is unknown, rather than handed to a surface to match against.
+			clientID: AppNoteClientID(said.ClientID),
 		})
 		// A record written by a build with a different idea of the counter still
 		// leaves this one able to mint ids nothing else holds.

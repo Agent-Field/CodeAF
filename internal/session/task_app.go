@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -151,7 +152,8 @@ type AppTaskIntent struct {
 	State                         *string
 	Version                       *uint64
 	// ClientID is a note's opaque correlation key ([AppTaskNote.ClientID]); it is
-	// read only by the "note" and "brief" actions on a graph task.
+	// read only by the "note" and "brief" actions on a graph task and by "note"
+	// on a running quick task, and is written with the direction itself.
 	ClientID string `json:",omitempty"`
 }
 
@@ -396,10 +398,8 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 		return a.appDismissAction(intent)
 	}
 	id, numeric := strconv.ParseUint(intent.ID, 10, 64)
-	if numeric == nil {
-		if handled, err := a.appProposalAction(id, intent); handled {
-			return err
-		}
+	if handled, err := a.appBeforeTheList(id, numeric, intent); handled {
+		return err
 	}
 	if intent.Action == AppActionProposalModel {
 		// Past its proposal a task's model is RetargetTask's promise, not this card's.
@@ -425,6 +425,28 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 		return a.appPlanAction(intent)
 	}
 	return a.appGraphAction(node, intent, row)
+}
+
+// appBeforeTheList answers the numeric roads that are not on the page list: a
+// proposal waiting for its answer, and a note to a quick task.
+//
+// A QUICK TASK IS NOT ON THE PAGE LIST BUT IS A NODE THAT CAN BE TOLD
+// SOMETHING, so a note to one takes the node's door before the list is asked.
+// Every other action on a quick id falls through to the list's own refusal.
+func (a *Agent) appBeforeTheList(id uint64, numeric error, intent AppTaskIntent) (bool, error) {
+	if numeric != nil {
+		return false, nil
+	}
+	if handled, err := a.appProposalAction(id, intent); handled {
+		return true, err
+	}
+	if intent.Action != "note" {
+		return false, nil
+	}
+	if node := a.taskNode(id); node != nil && node.spec.quick != nil {
+		return true, a.appQuickNote(node, intent)
+	}
+	return false, nil
 }
 
 // A proposal's clock and model are edited under the same lock as its answer.
@@ -565,24 +587,52 @@ func (a *Agent) appTaskNote(node *TaskNode, intent AppTaskIntent) error {
 	if strings.TrimSpace(intent.Text) == "" {
 		return errors.New("words required")
 	}
-	receipt, err := a.SteerTask(node.id, intent.Text)
-	if err != nil {
+	// THE KEY IS WRITTEN WITH THE WORDS, IN THE ONE ADMISSION THAT PUTS THEM ON
+	// THE DISK ([admitDirection]), and nowhere after. A second write here used to
+	// carry it, which meant a delivered note could come back as an error and a
+	// restart between the two could keep the words without their key.
+	if _, err := a.sayToTask(node.id, intent.Text, fromPerson, spokenSource{clientID: AppNoteClientID(intent.ClientID)}); err != nil {
 		return err
 	}
-	err = node.graph.writeAppControl(func() (func(), error) {
+	if intent.Action != "brief" {
+		node.graph.announce(node)
+		return nil
+	}
+	// A brief is a note AND the page's own brief. The note is delivered already,
+	// so a failure to keep the brief is not a refusal of the words.
+	err := node.graph.writeAppControl(func() (func(), error) {
 		old := cloneAppTaskRecord(node.app)
-		node.app.Notes = append(node.app.Notes, AppTaskNote{Text: intent.Text, Direction: receipt.Direction, ClientID: AppNoteClientID(intent.ClientID)})
-		if intent.Action == "brief" {
-			node.app.Brief = intent.Text
-		}
+		node.app.Brief = intent.Text
 		node.app.Version++
 		return func() { node.app = old }, nil
 	})
-	if err == nil {
-		node.graph.announce(node)
+	node.graph.announce(node)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrBriefNotKept, err)
 	}
-	return err
+	return nil
 }
+
+// ErrBriefNotKept says a brief's words WERE delivered to the task as a note and
+// the page's brief could not be written down. IT IS NOT A REFUSAL: sending the
+// words again would deliver them twice, and nothing about the send is unknown.
+var ErrBriefNotKept = errors.New("the words reached the task, but its brief could not be kept")
+
+// appQuickNote is a note to a running quick task, through the node's own door
+// with its key ([Agent.appTaskNote]). A quick task that has settled is refused
+// there in the engine's own words, and nothing here can start one.
+func (a *Agent) appQuickNote(node *TaskNode, intent AppTaskIntent) error {
+	rows, _ := a.AppQuickTasks()
+	for _, row := range rows {
+		if row.ID == intent.ID {
+			if err := appExpect(intent, row.State, row.Version); err != nil {
+				return err
+			}
+		}
+	}
+	return a.appTaskNote(node, intent)
+}
+
 func (a *Agent) appTaskDecide(id uint64, intent AppTaskIntent, state string) error {
 	if state != "your_call" {
 		return errors.New("that task is not waiting for your call")
@@ -683,6 +733,11 @@ func (a *Agent) AppQuickTaskAction(intent AppTaskIntent) ([]string, []string, er
 }
 
 // Note receipts come from the steering record that was carried into a request.
+//
+// A NOTE'S KEY IS THE ONE ITS DIRECTION WAS WRITTEN WITH. The app's own sidecar
+// is read only for a direction that carries none, which is a note written by a
+// build that kept the key there; nothing is ever stamped by position, text or
+// time, so a note with no key on either record is unknown.
 func (n *TaskNode) appNotesLocked() []AppTaskNote {
 	notes := cloneAppTaskRecord(n.app).Notes
 	known := map[uint64]bool{}
@@ -696,6 +751,9 @@ func (n *TaskNode) appNotesLocked() []AppTaskNote {
 		if said, ok := n.assignment.direction(notes[i].Direction); ok {
 			notes[i].ReadAtStep = said.readAtStep
 			notes[i].From = appNoteFrom(said.from)
+			if said.clientID != "" {
+				notes[i].ClientID = said.clientID
+			}
 		}
 	}
 	// Only the person's own directions are added from the assignment, as they
@@ -704,7 +762,7 @@ func (n *TaskNode) appNotesLocked() []AppTaskNote {
 	for _, said := range n.assignment.directions {
 		if said.from == directionFromPerson && !known[said.id] {
 			notes = append(notes, AppTaskNote{Direction: said.id, Text: said.words,
-				From: appNoteFrom(said.from), ReadAtStep: said.readAtStep})
+				From: appNoteFrom(said.from), ReadAtStep: said.readAtStep, ClientID: said.clientID})
 		}
 	}
 	return notes

@@ -399,7 +399,7 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 	// disk. It is the node's own and is never held while the graph's is
 	// ([TaskNode.admit] states the ordering); an unnamed send takes it not at all
 	// and behaves exactly as it always did.
-	if source.id.live() {
+	if source.written() {
 		node.admit.Lock()
 		defer node.admit.Unlock()
 	}
@@ -580,6 +580,10 @@ func heldForTask(node *TaskNode, text string, origin messageOrigin, source spoke
 // recognised on a second ask, so there is nothing a durable write would protect
 // and it takes the road it always took.
 //
+// AN AUTHORED NOTE'S KEY TAKES THE SAME ROAD ([spokenSource.written]). It is not
+// an identity and is never recognised again, but a surface reads it back off the
+// page, so a note a worker has read must be on the disk with its key.
+//
 // A WRITE THAT FAILED ADMITTED NOTHING. The direction comes back off the record
 // inside the same hold, so no reader and no later checkpoint ever sees it, and
 // the person is told plainly that nothing was sent.
@@ -589,7 +593,7 @@ func admitDirection(node *TaskNode, text string, from directionFrom, source spok
 	if node == nil {
 		return directionHeard{}, nil
 	}
-	if !source.id.live() || node.graph == nil {
+	if !source.written() || node.graph == nil {
 		return node.heardDirection(text, from, source), nil
 	}
 	// The two closures run with the graph's lock held, which is what makes the
@@ -611,7 +615,7 @@ func dropDirection(node *TaskNode, heard directionHeard, source spokenSource) er
 	if node == nil {
 		return nil
 	}
-	if !source.id.live() || !heard.fresh() || node.graph == nil {
+	if !source.written() || !heard.fresh() || node.graph == nil {
 		node.forgetDirection(heard.id)
 		return nil
 	}
