@@ -139,3 +139,65 @@ func TestAPlanTaskNoteKeepsItsIDAndClientIDOnThePage(t *testing.T) {
 		seen[note.ID] = true
 	}
 }
+
+// A CLIENT ID IS OPAQUE AND BYTE-BOUNDED AT THE PRODUCER: both real stores
+// keep the exact boundary and store malformed keys as unknown, not truncated.
+func TestAPersonNoteKeepsOnlyValidClientIDsAcrossBothStores(t *testing.T) {
+	cases := []struct{ name, key, want string }{
+		{"exact byte limit", strings.Repeat("k", AppNoteClientIDMax), strings.Repeat("k", AppNoteClientIDMax)},
+		{"past byte limit", strings.Repeat("k", AppNoteClientIDMax+1), ""},
+		{"control character", "bad\x00key", ""},
+		{"invalid UTF8", "bad\xffkey", ""},
+	}
+	t.Run("run", func(t *testing.T) {
+		t.Setenv("CODEAF_TASK_BELT", "bash")
+		registerBeltRunEngine(t, newBatchRunDouble())
+		dir := t.TempDir()
+		agent := batchAgent(t, dir)
+		stand := taskStand{dir: agent.config.Workspace, mode: TaskModeWorktree}
+		if err := agent.startKnownTaskRun(context.Background(), 61, "the run", "brief", nil, stand, ""); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range cases {
+			if err := agent.AppTaskAction(AppTaskIntent{ID: "61", Action: "note", Text: "same words", ClientID: tc.key}); err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+		}
+		store := beltRunStoreAt(t, dir)
+		defer store.Close()
+		got := store.Notes("61", 0)
+		if len(got) != len(cases) {
+			t.Fatalf("notes=%d, want %d", len(got), len(cases))
+		}
+		for i, tc := range cases {
+			if got[i].ClientID != tc.want {
+				t.Errorf("%s: stored key=%q, want %q", tc.name, got[i].ClientID, tc.want)
+			}
+		}
+	})
+	t.Run("plan", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), planStoreFilename)
+		seedPlanStore(t, path, "ask-chat", plandb.TaskSpec{ID: "child", Title: "Write handler", Description: "replace the lookup"})
+		agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, nil)
+		armPlanStore(t, agent, path, "ask-chat")
+		for _, tc := range cases {
+			if err := agent.PlanNoteKeyed("child", "same words", tc.key); err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+		}
+		store, err := plandb.Open(path, "", planRootID, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		got := store.Notes("child", 0)
+		if len(got) != len(cases) {
+			t.Fatalf("notes=%d, want %d", len(got), len(cases))
+		}
+		for i, tc := range cases {
+			if got[i].ClientID != tc.want {
+				t.Errorf("%s: stored key=%q, want %q", tc.name, got[i].ClientID, tc.want)
+			}
+		}
+	})
+}
