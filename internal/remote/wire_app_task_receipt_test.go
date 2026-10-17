@@ -71,13 +71,13 @@ func TestAnOldEnginesAnswersAreUnknownNeverRefusedOrDelivered(t *testing.T) {
 	}
 }
 
-// A NEW ENGINE'S ERROR ON THE RECEIPT CALL IS A REFUSAL: everything it can still
-// send there is raised before its door.
-func TestANewEnginesErrorOnTheReceiptCallIsARefusal(t *testing.T) {
+// An untyped error carries no occurrence-bound outcome, regardless of the
+// current welcome. Capability changes must never turn unknown into refused.
+func TestANewEnginesUntypedErrorOnTheReceiptCallStaysUnknown(t *testing.T) {
 	client, e := newEngineStating(t, func(w *Welcome) { w.AppTaskReceipt = true })
 	e.fails[MethodAppTaskAction] = "a watcher cannot do that"
 	got := client.Agent().AppTaskActionReceipt(session.AppTaskIntent{ID: "7", Action: "note", Text: "w", ClientID: "c-1"})
-	if got.Outcome != session.AppTaskRefused || got.Reason != "a watcher cannot do that" || got.ClientID != "c-1" {
+	if got.Outcome != session.AppTaskUnknown || got.Reason != "a watcher cannot do that" || got.ClientID != "c-1" {
 		t.Fatalf("receipt = %+v", got)
 	}
 }
