@@ -1720,7 +1720,7 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	// A HOST THAT CANNOT KEEP THE MESSAGE'S MARK IS NOT SENT THE MESSAGE: the
 	// refusal is the app's to read before the turn starts, and the person's
 	// draft and chips stay as they were.
-	if shown != nil && !appKeepsQueuedMarks(live.conn.Conv) {
+	if shown != nil && !shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
 		return 0, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a message's said, reads or attachments; update its engine before sending")
 	}
 	// A local capability refusal must stay a definite refusal: no request was

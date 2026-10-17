@@ -646,7 +646,7 @@ func (a *Agent) SubmitComposed(ctx context.Context, message Submission) (Submiss
 		if err != nil {
 			return SubmissionReceipt{}, nil, err
 		}
-		events, err := a.submitText(ctx, message.Text, mark)
+		events, err := a.submitText(ctx, message.Text, mark, strings.TrimSpace(message.CreationTeam))
 		if err != nil {
 			return SubmissionReceipt{}, nil, err
 		}
@@ -688,6 +688,7 @@ func (a *Agent) SubmitComposed(ctx context.Context, message Submission) (Submiss
 	if words != said {
 		user.said = said
 	}
+	user.creationTeam, user.creationKnown = strings.TrimSpace(message.CreationTeam), true
 
 	if sees {
 		mark, err := message.composedMark(&ComposedMark{MessageID: id, Media: facts, Delivery: &MessageDelivery{Mode: DeliveryImage, Model: model}})

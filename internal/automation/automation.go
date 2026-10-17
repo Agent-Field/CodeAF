@@ -195,11 +195,30 @@ func (l Limits) Effective() Limits {
 	return l
 }
 
+// OriginTeam is creation-team provenance for one automation.
+//
+// On [Origin.Team]:
+//   - nil — legacy UNKNOWN (saved before this field existed); never backfilled
+//   - non-nil with Known false — forbidden on write; readers treat as UNKNOWN
+//   - Known true and ID empty — explicit NONE (ordinary conversation turn)
+//   - Known true and ID set — the exact team id stamped from an accepted
+//     crew-message turn and validated at creation
+//
+// THIS IS NOT [Automation.Crew]. Crew is belonging; Origin.Team is where the
+// automation was made. A create path never writes Crew from this fact.
+type OriginTeam struct {
+	Known bool   `json:"known"`
+	ID    string `json:"id,omitempty"`
+}
+
 // Origin is the conversation an automation was made in: where its one line
 // goes when a run ends, and the door "why did this happen?" opens.
 type Origin struct {
 	SessionID  string `json:"sessionId,omitempty"`
 	Transcript string `json:"transcript,omitempty"`
+	// Team is creation-team provenance. See [OriginTeam]. Change and reopen
+	// keep whatever was stored; they never retarget from current membership.
+	Team *OriginTeam `json:"team,omitempty"`
 }
 
 // Kind is what this automation is.

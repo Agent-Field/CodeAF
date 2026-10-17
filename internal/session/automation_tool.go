@@ -22,6 +22,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // automationPastGrace is how far behind the clock a named moment may be and
@@ -184,7 +185,7 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 	// ONE READING OF THE CLOCK FOR THE WHOLE CALL, so `when.in`, the refusal of a
 	// passed moment and the card's next-run line all measure the same instant.
 	now := time.Now()
-	item, problem := a.automationFrom(parsed, now)
+	item, problem := a.automationFrom(ctx, parsed, now)
 	if problem != "" {
 		return rejectToolArguments(ctx, problem), true, nil
 	}
@@ -318,14 +319,18 @@ func automationRunNowHandoff(item automation.Automation) string {
 
 // automationFrom builds the automation the card will show, or says what is
 // wrong with the arguments in words the model can act on.
-func (a *Agent) automationFrom(parsed automationArguments, now time.Time) (automation.Automation, string) {
+func (a *Agent) automationFrom(ctx context.Context, parsed automationArguments, now time.Time) (automation.Automation, string) {
+	origin, problem := a.automationOrigin(ctx)
+	if problem != "" {
+		return automation.Automation{}, problem
+	}
 	item := automation.Automation{
 		Title:     strings.TrimSpace(parsed.Title),
 		Words:     strings.TrimSpace(parsed.Words),
 		Workspace: a.automationWorkspace(),
 		Worktree:  parsed.Worktree != nil && *parsed.Worktree,
 		Action:    automation.Action{Say: strings.TrimSpace(parsed.Say), Do: strings.TrimSpace(parsed.Do)},
-		Origin:    a.automationOrigin(),
+		Origin:    origin,
 	}
 	if item.Title == "" {
 		item.Title = clip(firstNonEmptyString(item.Words, item.Action.Say, item.Action.Do), 60)
@@ -589,11 +594,65 @@ func (a *Agent) automationChanged(stored automation.Automation, parsed automatio
 
 // automationOrigin is the conversation an automation is made in: where its
 // one line goes when a run ends, and the door "why did this happen?" opens.
-func (a *Agent) automationOrigin() automation.Origin {
+// Creation-team provenance is the turn's stamped fact: a validated id, explicit
+// NONE for a newly accepted ordinary message, and UNKNOWN (Team nil) for a turn
+// that carries no stamp. It never guesses from membership.
+func (a *Agent) automationOrigin(ctx context.Context) (automation.Origin, string) {
 	a.mu.Lock()
 	id := a.sessionID()
 	a.mu.Unlock()
-	return automation.Origin{SessionID: id, Transcript: strings.TrimSpace(a.config.SessionFile)}
+	origin := automation.Origin{
+		SessionID:  id,
+		Transcript: strings.TrimSpace(a.config.SessionFile),
+	}
+	teamID, known := creationTeamFrom(ctx)
+	if !known {
+		return origin, ""
+	}
+	origin.Team = &automation.OriginTeam{Known: true}
+	if teamID == "" {
+		return origin, ""
+	}
+	if err := a.validateCreationTeam(teamID); err != nil {
+		return automation.Origin{}, "Invalid arguments: " + err.Error()
+	}
+	origin.Team.ID = teamID
+	return origin, ""
+}
+
+// validateCreationTeam refuses a stamped id that is not a live team in this
+// conversation's profile. Shape and existence are checked at create only.
+func (a *Agent) validateCreationTeam(teamID string) error {
+	if !creationTeamIDOK(teamID) {
+		return errors.New("creation team is not a team id")
+	}
+	profile := a.config.teamProfile()
+	if profile == "" {
+		return errors.New("creation team cannot be checked here")
+	}
+	file, err := teams.Load(profile)
+	if err != nil {
+		return errors.New("creation team could not be checked")
+	}
+	team, ok := file.Team(teamID)
+	if !ok || team.Closed() {
+		return errors.New("creation team is not an open team")
+	}
+	return nil
+}
+
+// creationTeamIDOK matches the teams directory-name law (letters, digits, _
+// and -, at most 64 bytes) without exporting teams' private checker.
+func creationTeamIDOK(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // automationMoment reads a stamp: RFC 3339, or a local wall time.
