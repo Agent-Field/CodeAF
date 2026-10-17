@@ -101,9 +101,33 @@ func (d fileRecipeDoor) BankStage(_ context.Context, repo string, kind factory.K
 	return bankStageAt(dir, kind, line)
 }
 
+// unheld refuses a write into a folder a program's run holds. EVERY WRITE THE
+// RECIPE DOOR MAKES ASKS IT OF THE FOLDER IT IS ABOUT TO WRITE IN, never of the
+// checkout it started from: the change for the team is cut in a worktree of the
+// default branch, which no run holds, while a checkout with no git history, no
+// commit or a git that errors is written in place, and that folder may be held.
+// A human's yes is not an exception to the hold (session.WriteHeldRefusal).
+func unheld(dir string) error {
+	if refusal := session.WriteHeldRefusal(filepath.Join(dir, pipeline.RepoFile)); refusal != "" {
+		return errors.New(refusal)
+	}
+	return nil
+}
+
+// bankRuleAt is [pipeline.Files.BankRule] in dir, once dir is known to be free.
+func bankRuleAt(dir, sentence string) error {
+	if err := unheld(dir); err != nil {
+		return err
+	}
+	return (pipeline.Files{}).BankRule(dir, sentence)
+}
+
 // bankStageAt is BankStage's write, in whichever checkout it is handed: the
 // repository's own, or the worktree a change for the team is made in.
 func bankStageAt(dir string, kind factory.Kind, line string) error {
+	if err := unheld(dir); err != nil {
+		return err
+	}
 	parsed, problems := factory.Parse("## " + string(kind) + "\n1. " + line)
 	if len(problems) > 0 {
 		return errors.New(problems[0].Why)
@@ -136,10 +160,10 @@ func (d fileRecipeDoor) BankNote(ctx context.Context, n session.RecipeNotice) (s
 	switch {
 	case n.Policy != "":
 		return factory.BankRecipeChange(ctx, dir, n.Policy, n.Why, "- "+n.Policy,
-			func(d string) error { return (pipeline.Files{}).BankRule(d, n.Policy) })
+			func(d string) error { return bankRuleAt(d, n.Policy) })
 	case n.Habit != "":
 		return factory.BankRecipeChange(ctx, dir, n.Habit, n.Why, "- "+n.Habit,
-			func(d string) error { return (pipeline.Files{}).BankRule(d, n.Habit) })
+			func(d string) error { return bankRuleAt(d, n.Habit) })
 	}
 	kind := factory.Kind(n.Kind)
 	return factory.BankRecipeChange(ctx, dir, n.Line, n.Why, n.Line,
@@ -152,7 +176,7 @@ func (d fileRecipeDoor) BankPolicy(_ context.Context, repo, sentence string) err
 	if err != nil {
 		return err
 	}
-	return (pipeline.Files{}).BankRule(dir, sentence)
+	return bankRuleAt(dir, sentence)
 }
 
 // BankHabit adds one sentence under YAML rules.
@@ -161,7 +185,7 @@ func (d fileRecipeDoor) BankHabit(_ context.Context, repo, sentence string) erro
 	if err != nil {
 		return err
 	}
-	return (pipeline.Files{}).BankRule(dir, sentence)
+	return bankRuleAt(dir, sentence)
 }
 
 // factorySeam is the factory page's seam for this launch.
