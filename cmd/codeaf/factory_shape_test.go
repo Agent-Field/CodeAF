@@ -311,7 +311,8 @@ func TestShapeCheapReadsTheShownSize(t *testing.T) {
 		cheap bool
 	}{
 		{"a read L", factory.Item{Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: when}}, false},
-		{"a diff L", factory.Item{Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromDiff}}, false},
+		{"a diff L", factory.Item{Kind: factory.KindPR, Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromDiff}}, false},
+		{"an issue claiming a PR diff", factory.Item{Kind: factory.KindIssue, Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromDiff}}, true},
 		{"a label L over a read S", factory.Item{Labels: []string{"size:l"}, Triage: factory.Triage{Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: when}}, false},
 		{"a label S over a read L", factory.Item{Labels: []string{"size:s"}, Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: when}}, true},
 		{"a legacy L", factory.Item{Triage: factory.Triage{Size: "L", TriagedAt: when}}, true},
