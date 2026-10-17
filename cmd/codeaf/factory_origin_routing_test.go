@@ -26,7 +26,7 @@ func TestHeadlessOldStoreNewItemThenOldItemTalkStaysOneParentSameRoom(t *testing
 	st, web, profile := talkLab(t)
 	routingTeams(t, profile, []teams.Team{
 		{ID: "p", Name: factoryTeamName},
-		{ID: "room", Name: "#1 · old job", Parent: "p"},
+		{ID: "room", Name: "#1 · old job", Parent: "p", FactoryManaged: true},
 	})
 	old, err := st.Create(factory.Item{Repo: "web", Kind: factory.KindIssue, Title: "old job", State: factory.StateNew})
 	if err != nil {
@@ -136,7 +136,7 @@ func TestDismissClosesTheRecordedRoomNotAnOrdinaryCrewHoldingTheTalk(t *testing.
 
 func TestForemanFirstReconcilesTheLegacyParent(t *testing.T) {
 	st, web, profile := talkLab(t)
-	routingTeams(t, profile, []teams.Team{{ID: "p", Name: factoryTeamName}, {ID: "room", Name: "old", Parent: "p"}})
+	routingTeams(t, profile, []teams.Team{{ID: "p", Name: factoryTeamName}, {ID: "room", Name: "old", Parent: "p", FactoryManaged: true}})
 	it, err := st.Create(factory.Item{Repo: "web", Kind: factory.KindIssue, Title: "old", State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)

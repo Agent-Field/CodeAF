@@ -154,7 +154,7 @@ func TestStoredRoomsStampOnlyTheTeamsAnItemRecords(t *testing.T) {
 	if err := teamstore.Update(profile, func(f *teamstore.File) error {
 		f.Teams = []teamstore.Team{
 			{ID: "p", Name: factoryTeamName},
-			{ID: "room", Name: "#3 · old", Parent: "p"},
+			{ID: "room", Name: "#3 · old", Parent: "p", Manager: "/tmp/legacy-talk.jsonl", Members: []teamstore.Member{{File: "/tmp/legacy-talk.jsonl", Key: "/tmp/legacy-talk.jsonl"}, {File: "/tmp/legacy-stage.jsonl", Key: "/tmp/legacy-stage.jsonl"}}},
 			{ID: "named", Name: factoryTeamName, Root: true},
 			{ID: "other", Name: "#4 · other"},
 		}
@@ -170,7 +170,11 @@ func TestStoredRoomsStampOnlyTheTeamsAnItemRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Update(it.ID, func(it *factory.Item) error { it.Stream = &factory.Stream{Room: "room"}; return nil }); err != nil {
+	if err := st.Update(it.ID, func(it *factory.Item) error {
+		it.Talk = "/tmp/legacy-talk.jsonl"
+		it.Stream = &factory.Stream{Room: "room", Phases: []factory.Phase{{Chat: "/tmp/legacy-stage.jsonl"}}}
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	factoryStampStoredRooms(profile, root)
@@ -277,6 +281,7 @@ func TestStoredPhaseChatStampsOnlyTheRecordedStageMembers(t *testing.T) {
 	stage, unknown, kept := file("stage.jsonl"), file("unknown.jsonl"), file("kept.jsonl")
 	if err := teamstore.Update(profile, func(f *teamstore.File) error {
 		room := &f.Teams[0]
+		room.FactoryManaged = true // Crew ownership is known; only the legacy stage-member flags are missing.
 		for i := range room.Members {
 			if room.Members[i].Handle == web {
 				// The plain collider: same name, a path the record never names.

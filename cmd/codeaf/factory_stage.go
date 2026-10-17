@@ -428,7 +428,18 @@ func factoryChatStage(st *store.Store, profileDir string, inner factoryrun.Execu
 		}
 		if job.Item.Stream != nil {
 			if room := strings.TrimSpace(job.Item.Stream.Room); room != "" {
-				_ = factoryStampRoom(profileDir, room)
+				local, err := factoryEnsureRoom(profileDir, job.Item, room)
+				if err != nil {
+					return factory.StageResult{}, err
+				}
+				if local == "" {
+					// Keep the logical id on the mirror; only this round's local view is teamless.
+					s := *job.Item.Stream
+					s.Room = ""
+					job.Item.Stream = &s
+				} else {
+					_ = factoryStampRoom(profileDir, local)
+				}
 			}
 		}
 		return inner.Run(ctx, job)
@@ -517,12 +528,16 @@ func factoryStampStore(profileDir string, st *store.Store) {
 	}
 	var rooms []string
 	chats := map[string][]string{}
+	local, err := teams.Snapshot(profileDir)
+	if err != nil {
+		return
+	}
 	for _, it := range items {
 		if it.Stream == nil {
 			continue
 		}
 		room := strings.TrimSpace(it.Stream.Room)
-		if room == "" {
+		if room == "" || !factoryRoomOwned(local, it, room) {
 			continue
 		}
 		rooms = append(rooms, room)
@@ -531,6 +546,13 @@ func factoryStampStore(profileDir string, st *store.Store) {
 				chats[room] = append(chats[room], chat)
 			}
 		}
+	}
+	// A job run before Stream.Room was persisted gets its room back only on
+	// exact stage-membership proof (factory_legacy_rooms.go).
+	recovered, recoveredChats := factoryRecoverLegacyRooms(profileDir, st, items)
+	rooms = append(rooms, recovered...)
+	for room, paths := range recoveredChats {
+		chats[room] = append(chats[room], paths...)
 	}
 	if len(rooms) > 0 {
 		_ = factoryStampRooms(profileDir, rooms)
