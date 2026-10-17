@@ -972,16 +972,17 @@ func (a *Agent) SetContextWindow(tokens int) {
 // surface holding both channels sees each event on each, which is what a
 // per-message caller wants and what a whole-session reader must de-duplicate.
 func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
-	return a.submitText(ctx, text, nil, "")
+	return a.submitText(ctx, text, nil)
 }
 
 // submitText is Submit's body with the PERSON'S MARK beside the words: what a
 // door that knows more than the words said about the message
 // ([Agent.SubmitMessage]), nil for every other door. The mark rides the message
 // to the moment it is recorded and changes nothing the model is sent.
-// creationTeam is the exact team id a crew-message door stamped, or empty for
-// an ordinary message; this is a newly accepted person message either way.
-func (a *Agent) submitText(ctx context.Context, text string, person *messagePresentation, creationTeam string) (<-chan Event, error) {
+//
+// A plain Submit carries no mark and so no creation context: an automation made
+// in its turn records its team as UNKNOWN, never as "no team".
+func (a *Agent) submitText(ctx context.Context, text string, person *messagePresentation) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -1002,7 +1003,6 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 		user := planDigested(digest, text)
 		user.said = said
 		user.person = person
-		user.creationTeam, user.creationKnown = creationTeam, true
 		return a.submitUser(ctx, user)
 	}
 	user := userText(text)
@@ -1010,7 +1010,6 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 		user.said = said
 	}
 	user.person = person
-	user.creationTeam, user.creationKnown = creationTeam, true
 	return a.submitUser(ctx, user)
 }
 
@@ -1217,13 +1216,11 @@ type userMessage struct {
 	person  *messagePresentation
 	message ai.Message
 	refs    []journalPart
-	// creationTeam is the exact team id a crew-message door stamped on this
-	// accepted turn ([Submission.CreationTeam]), or empty for an ordinary one.
-	// creationKnown is set only by a newly accepted person message; every other
-	// userMessage leaves it false and its turn's team stays UNKNOWN. Hung on the
-	// turn's context at start; never inferred from membership.
-	creationTeam  string
-	creationKnown bool
+	// creation is the creation context of a message that is not newly
+	// accepted but asked again from its recorded line ([Agent.ResumeStoppedTurn]),
+	// read back from that line's mark. A newly accepted message carries its
+	// context on person instead ([userMessage.creationContext]).
+	creation *CreationContext
 	// replyTags names finished tasks whose reports this message carries. It is
 	// empty on every person's message and every other authored note.
 	replyTags []TaskReplyTag
@@ -1845,11 +1842,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// message, which is the truth. A steer that lands later is NOT the opener
 	// and changes nothing here.
 	turnCtx = withTurnOrigin(turnCtx, turnOrigin{run: runIdentity(turnCtx), turn: openingMessage(user)})
-	// AND THE TURN CARRIES THE CREATION-TEAM STAMP the door put on the
-	// accepted message (creation_team.go), only when there was one: any other
+	// AND THE TURN CARRIES THE CREATION CONTEXT the accepting door stated on
+	// its opening message (creation_team.go), only when it stated one: any other
 	// turn leaves the team unknown. Never rewritten from who manages a team now.
-	if user.creationKnown {
-		turnCtx = withCreationTeam(turnCtx, user.creationTeam)
+	if creation := user.creationContext(); creation != nil {
+		turnCtx = withCreationTeam(turnCtx, creation.Team)
 	}
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
@@ -2108,6 +2105,9 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 func (a *Agent) FollowUpMessage(message Submission) (<-chan Event, error) {
 	mark, err := message.mark()
 	if err != nil {
+		return nil, err
+	}
+	if err := a.acceptCreation(message.Creation); err != nil {
 		return nil, err
 	}
 	return a.followUpMarked(message.Text, mark)

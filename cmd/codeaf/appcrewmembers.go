@@ -191,7 +191,9 @@ func (b *appBackend) memberStart(t teamstore.Team, ask appwire.MemberAsk) (strin
 			return "", err
 		}
 	}
-	if _, err := b.send(agent.ID, brief, "", &appSending{text: brief, creationTeam: t.ID}); err != nil {
+	// The brief is the person's message to the crew's new member, accepted for
+	// this crew: it states the crew's exact id, as a crew message does.
+	if _, err := b.send(agent.ID, brief, "", appStated(brief, appInTeam(t.ID))); err != nil {
 		return "", err
 	}
 	return agent.ID, nil
@@ -329,7 +331,9 @@ func (b *appBackend) tellRole(agent, crew string, role appwire.Role) error {
 	if t, _, err := b.crewTeam(crew); err == nil {
 		name = t.Name
 	}
-	_, err := b.Queue(agent, "Your role in "+name+" is "+role.Name+".\n\n"+role.Instructions, "")
+	// The role's instructions are words the app wrote, not the person's
+	// message: they state no creation context, and stay unknown.
+	_, err := b.queue(agent, "Your role in "+name+" is "+role.Name+".\n\n"+role.Instructions, "", nil)
 	return err
 }
 

@@ -52,8 +52,13 @@ type messagePresentation struct {
 	// ClientID is the door's own opaque name for this person's message, kept
 	// exactly as accepted ([Submission.ClientID]). It is correlation and
 	// nothing else: no request, route or replay reads it.
-	ClientID    string `json:"client_id,omitempty"`
-	SkillsBlock string `json:"-"`
+	ClientID string `json:"client_id,omitempty"`
+	// Creation is the creation provenance the accepting door stated
+	// ([Submission.Creation]), kept on the person's own line so a turn asked
+	// again from that line ([Agent.ResumeStoppedTurn]) keeps it. Nil is unknown.
+	// It is the record's alone: no display entry carries it.
+	Creation    *CreationContext `json:"creation,omitempty"`
+	SkillsBlock string           `json:"-"`
 }
 
 // person is the part of a mark a person's message carries into the record: the

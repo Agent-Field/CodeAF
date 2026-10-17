@@ -37,14 +37,18 @@ type OrdersMadeAsk struct {
 }
 
 // OrdersMadeResult is one page. Orders are in id order and carry no last_run
-// and no asking: those are orders.list's. Next is absent ONLY when the crew's
-// rows ended.
+// and no asking: those are orders.list's. A page reads at most a fixed window
+// of the store, so it may hold fewer orders than its limit — even none — and
+// still have a Next. Next is absent ONLY when the store's end was reached.
 //
-// UNKNOWN IS HOW MANY ORDERS THE STORE CANNOT PLACE IN ANY CREW OR IN NONE: saved
-// before creation teams were recorded, made outside an accepted message, or
-// unreadable. It counts the whole store, not this crew, and is real zero when
-// zero: a surface must show it beside the rows, never read "none made here"
-// from an empty page while it is above zero.
+// UNKNOWN IS HOW MANY ORDERS IN THE STRETCH OF THE STORE THIS PAGE COVERED
+// CANNOT BE PLACED IN ANY CREW OR IN NONE: saved before creation teams were
+// recorded, made in a turn whose door stated nothing (an older app, the
+// terminal, words the app wrote itself), or unreadable. It comes from the same
+// read as the orders. Pages cover disjoint stretches, so a surface sums it over
+// the walk; the sum is the store's only once Next is absent. It is a real zero
+// when zero, and a surface must show it beside the rows and never read "none
+// made here" from a page or a partial walk while any of it is above zero.
 type OrdersMadeResult struct {
 	Orders  []Order `json:"orders"`
 	Next    string  `json:"next,omitempty"`

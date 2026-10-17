@@ -619,6 +619,11 @@ func (a *Agent) SteerMessage(message Submission) (<-chan Event, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A correction that falls through becomes the message that opens a turn,
+	// so a creation context on it is checked like any other.
+	if err := a.acceptCreation(message.Creation); err != nil {
+		return nil, err
+	}
 	return a.steerMarked(message.Text, mark)
 }
 

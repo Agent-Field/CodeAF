@@ -1631,9 +1631,12 @@ func (b *appBackend) liveOf(a *appAgent) *appLive {
 	return a.live
 }
 
-// Send starts one turn, opening the conversation first if it is not held.
+// Send starts one turn, opening the conversation first if it is not held. It
+// is the person's own send, so it states an explicit none: an automation made
+// in its turn was made in no crew. Words the app writes itself go through
+// [appBackend.send] with nothing stated, and stay unknown.
 func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
-	return b.send(id, text, clientID, nil)
+	return b.send(id, text, clientID, appStated(text, appNoTeam()))
 }
 
 // send is [appBackend.Send] with what the person's entry shows, when that is
@@ -1697,11 +1700,11 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 
 // appRetryShown is a failed queued message made the person's own send again:
 // no longer queued, and nothing at all when what is left is only its words. A
-// creation-team stamp is a mark that keeps it: a retried crew message is still
-// the message that crew accepted.
+// creation context keeps it: a retried crew message is still the message that
+// crew accepted, and a retried ordinary one is still the person's.
 func appRetryShown(again appSending, text string) *appSending {
 	again.queued = false
-	if again.creationTeam == "" && len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
+	if again.creation == nil && len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
 		return nil
 	}
 	return &again
@@ -1726,10 +1729,16 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	if refused != nil {
 		return 0, refused
 	}
+	// A HOST THAT CANNOT KEEP MARKS IS SENT THE WORDS of a message whose only
+	// extra is its creation context, exactly as it always was: it would drop the
+	// context anyway, and the team is unknown there, which is true.
+	if shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
+		shown = nil
+	}
 	// A HOST THAT CANNOT KEEP THE MESSAGE'S MARK IS NOT SENT THE MESSAGE: the
 	// refusal is the app's to read before the turn starts, and the person's
 	// draft and chips stay as they were.
-	if shown != nil && !shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
+	if shown != nil && !appKeepsQueuedMarks(live.conn.Conv) {
 		return 0, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a message's said, reads or attachments; update its engine before sending")
 	}
 	// A local capability refusal must stay a definite refusal: no request was

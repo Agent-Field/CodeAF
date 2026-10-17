@@ -1,56 +1,122 @@
 package main
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
-func creationStamps(conv *fakeConversation) []string {
+// creationWords is what each submission the fake was handed stated: "unknown"
+// for no context, "none" for an explicit none, else the team id.
+func creationWords(conv *fakeConversation) []string {
 	conv.mu.Lock()
 	defer conv.mu.Unlock()
 	var out []string
 	for _, s := range conv.submissions {
-		out = append(out, s.CreationTeam)
+		out = append(out, creationWord(s.Creation))
 	}
 	return out
 }
 
-// A CREW MESSAGE STAMPS ITS CREW'S EXACT ID ON THE TURN IT OPENS, AND AN ORDINARY
-// SEND STAMPS NOTHING (the engine records that as explicit none).
-func TestAppCrewMessageStampsTheCrewAndOrdinarySendDoesNot(t *testing.T) {
+func creationWord(c *session.CreationContext) string {
+	switch {
+	case c == nil:
+		return "unknown"
+	case c.Team == "":
+		return "none"
+	}
+	return c.Team
+}
+
+// waitCreations waits until the fake has been handed n submissions.
+func waitCreations(t *testing.T, conv *fakeConversation, n int) []string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if got := creationWords(conv); len(got) >= n {
+			return got
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the engine was handed %q, want %d submissions", creationWords(conv), n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// sendWhenFree retries an ordinary send until the agent's last turn ended.
+func sendWhenFree(t *testing.T, send func() error) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		err := send()
+		if err == nil {
+			return
+		}
+		if wireCode(err) != appwire.CodeBusy || time.Now().After(deadline) {
+			t.Fatalf("the send answered %v", err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A CREW MESSAGE STATES ITS CREW'S EXACT ID, AND EVERY ONE OF THE PERSON'S OWN
+// SENDS STATES AN EXPLICIT NONE — never nothing, which would be unknown.
+func TestAppCrewMessageStatesTheCrewAndPersonSendsStateNone(t *testing.T) {
 	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
 	backend, _, manager, crew := crewBackendOn(t, conv)
 	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "make a weekly report"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := creationStamps(conv); len(got) != 1 || got[0] != crew {
-		t.Fatalf("crew message stamps = %q, want [%s]", got, crew)
+	sendWhenFree(t, func() error { _, err := backend.Send(manager.ID, "an ordinary word", ""); return err })
+	said := "my words"
+	sendWhenFree(t, func() error {
+		_, err := backend.SendMessage(manager.ID, appwire.AgentMessage{Text: "expanded words", Said: &said})
+		return err
+	})
+	sendWhenFree(t, func() error { _, err := backend.Queue(manager.ID, "queued while idle", ""); return err })
+	got := waitCreations(t, conv, 4)
+	if strings.Join(got, ",") != crew+",none,none,none" {
+		t.Fatalf("the engine was handed %q, want the crew then three explicit nones", got)
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := backend.Send(manager.ID, "an ordinary word", ""); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the manager never became free for an ordinary send")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if got := creationStamps(conv); len(got) != 1 {
-		t.Fatalf("an ordinary send went through SubmitMessage with stamps %q", got)
+	// The person's own words are still theirs: an ordinary send with nothing
+	// but its context is not "authored", and a Said one is.
+	conv.mu.Lock()
+	plain, authored := conv.submissions[1], conv.submissions[2]
+	conv.mu.Unlock()
+	if plain.Said != nil || plain.Text != "an ordinary word" || authored.Said == nil || *authored.Said != said {
+		t.Fatalf("plain %+v, authored %+v", plain, authored)
 	}
 }
 
-// A CREW MESSAGE THAT WAITS IN A BUSY MEMBER'S QUEUE KEEPS ITS STAMP FOR THE FLUSH.
-func TestAppCrewMessageQueuedKeepsItsStamp(t *testing.T) {
+// WORDS THE APP WRITES ITSELF STATE NOTHING: their turn's team is unknown.
+func TestAppWordsTheAppWritesStateNoContext(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
+	backend, _, agent := workBackend(t, conv)
+	if _, err := backend.queue(agent.ID, "Your role in harbor is web.\n\nShip it.", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	conv.mu.Lock()
+	submissions, texts := len(conv.submissions), len(conv.texts)
+	conv.mu.Unlock()
+	if submissions != 0 || texts != 1 {
+		t.Fatalf("app-written words reached the engine as %d submissions and %d texts", submissions, texts)
+	}
+}
+
+// A CREW MESSAGE THAT WAITS IN A BUSY MEMBER'S QUEUE KEEPS ITS CREW FOR THE
+// FLUSH, AND THROUGH AN EDIT OF ITS WORDS WHILE IT WAITS.
+func TestAppCrewMessageQueuedAndEditedKeepsItsCrew(t *testing.T) {
 	hold := make(chan struct{})
 	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "on it"}}, hold: hold}
-	backend, _, _, crew := crewBackendOn(t, conv)
+	backend, _, manager, crew := crewBackendOn(t, conv)
 	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "first"}); err != nil {
 		t.Fatal(err)
 	}
@@ -58,50 +124,120 @@ func TestAppCrewMessageQueuedKeepsItsStamp(t *testing.T) {
 	if err != nil || waiting.Turn != 0 {
 		t.Fatalf("the second message = %+v, %v; want it queued", waiting, err)
 	}
+	queued := backend.queued(backend.agent(manager.ID))
+	if len(queued) != 1 {
+		t.Fatalf("queue = %+v", queued)
+	}
+	if _, err := backend.EditQueued(manager.ID, queued[0].ID, "second, corrected"); err != nil {
+		t.Fatal(err)
+	}
+	conv.mu.Lock()
+	conv.hold = nil
+	conv.mu.Unlock()
 	close(hold)
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if got := creationStamps(conv); len(got) == 2 {
-			if got[0] != crew || got[1] != crew {
-				t.Fatalf("stamps = %q, want both %s", got, crew)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the queued message never flushed; stamps %q", creationStamps(conv))
-		}
-		time.Sleep(10 * time.Millisecond)
+	if got := waitCreations(t, conv, 2); got[0] != crew || got[1] != crew {
+		t.Fatalf("the engine was handed %q, want both %s", got, crew)
+	}
+	conv.mu.Lock()
+	flushed := conv.submissions[1]
+	conv.mu.Unlock()
+	if flushed.Text != "second, corrected" || !flushed.Queued {
+		t.Fatalf("the flushed message = %+v", flushed)
 	}
 }
 
-// ONLY A STAMPED, OTHERWISE PLAIN SENDING IS EXEMPT FROM THE OLDER-HOST REFUSAL,
-// queued or not; an ordinary one with the same words is not.
-func TestAppStampOnlySendingIsTheOnlyExemptionFromTheMarkRefusal(t *testing.T) {
+// A CREW MESSAGE WHOSE TURN FAILED IS RETRIED IN THE SAME CREW, through the
+// real retry door.
+func TestAppRetriedCrewMessageKeepsItsCrew(t *testing.T) {
+	refused := &provider.APIError{Status: 429, Message: "upstream is rate limited"}
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventError, Err: refused}}}
+	backend, rec, manager, crew := crewBackendOn(t, conv)
+	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "make a weekly report"}); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		c, ok := data.(appwire.AgentChanged)
+		return ok && c.Agent.ID == manager.ID && c.Agent.State == appwire.StateIdle
+	})
+	conv.mu.Lock()
+	conv.script = []session.Event{{Kind: session.EventTurnDone}}
+	conv.mu.Unlock()
+	if _, err := backend.Retry(manager.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := waitCreations(t, conv, 2); got[0] != crew || got[1] != crew {
+		t.Fatalf("the engine was handed %q, want the crew twice", got)
+	}
+}
+
+// A NEW MEMBER'S FIRST BRIEF STATES THE CREW IT WAS STARTED IN.
+func TestAppNewMemberBriefStatesTheCrew(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
+	var opened atomic.Int32
+	files := t.TempDir()
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+		transcript := filepath.Join(files, fmt.Sprintf("member%d.jsonl", opened.Add(1)))
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: transcript, Release: func() {}}, nil
+	})
+	t.Cleanup(func() { backend.Close() })
+	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
+	backend.profileDir = t.TempDir()
+	where := t.TempDir()
+	crew := teamstore.NewID()
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: crew, Name: "harbor", Made: time.Now()})
+		lead := filepath.Join(files, "lead.jsonl")
+		if err := f.AddMember(crew, teamstore.Member{Key: lead, File: lead, Where: where, Word: "lead", Handle: "lead"}); err != nil {
+			return err
+		}
+		return f.SetManager(crew, lead)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Member("start", appwire.MemberAsk{Crew: crew, Handle: "web", Brief: "build the landing page"}); err != nil {
+		t.Fatal(err)
+	}
+	got := waitCreations(t, conv, 1)
+	if got[len(got)-1] != crew {
+		t.Fatalf("the brief stated %q, want %s", got, crew)
+	}
+}
+
+// ONLY A SENDING WHOSE ONE EXTRA IS ITS CONTEXT IS SENT AS WORDS TO A HOST THAT
+// KEEPS NO MARKS; one carrying anything else is still refused there.
+func TestAppContextOnlySendingIsTheOnlyOneSentAsWords(t *testing.T) {
 	ordinary := &appSending{text: "x"}
 	if ordinary.marksNothing("x") {
-		t.Fatal("an ordinary sending was exempted from the older-host refusal")
+		t.Fatal("a sending that states nothing counted as context-only")
 	}
-	stamped := &appSending{text: "x", creationTeam: "aaaaaaaaaaaa", queued: true}
-	if !stamped.marksNothing("x") {
-		t.Fatal("a stamped queue flush would be refused by an older host")
-	}
-	stamped.reads = []session.MessageRead{{}}
-	if stamped.marksNothing("x") {
-		t.Fatal("a stamped sending carrying reads was exempted")
+	for _, creation := range []*session.CreationContext{appInTeam("aaaaaaaaaaaa"), appNoTeam()} {
+		stated := &appSending{text: "x", creation: creation, queued: true}
+		if !stated.marksNothing("x") {
+			t.Fatalf("a %s sending would be refused by an older host", creationWord(creation))
+		}
+		stated.reads = []session.MessageRead{{}}
+		if stated.marksNothing("x") {
+			t.Fatal("a sending carrying reads counted as context-only")
+		}
 	}
 }
 
-// EDITING A QUEUED CREW MESSAGE KEEPS THE CREW IT WAS ACCEPTED FOR.
-func TestAppEditingAQueuedCrewMessageKeepsItsStamp(t *testing.T) {
-	old := &appSending{text: "before", creationTeam: "aaaaaaaaaaaa"}
-	if got := appStampKept(old, nil, "after"); got == nil || got.creationTeam != "aaaaaaaaaaaa" || got.text != "after" {
-		t.Fatalf("plain edit kept %+v", got)
-	}
-	if got := appStampKept(old, &appSending{text: "mine"}, "after"); got == nil || got.creationTeam != "aaaaaaaaaaaa" || got.text != "mine" {
-		t.Fatalf("marked edit kept %+v", got)
+// AN EDIT KEEPS THE CONTEXT OF THE MESSAGE IT REPLACES, crew or none, and adds
+// none to one that stated nothing.
+func TestAppEditingAQueuedMessageKeepsItsContext(t *testing.T) {
+	for _, creation := range []*session.CreationContext{appInTeam("aaaaaaaaaaaa"), appNoTeam()} {
+		old := &appSending{text: "before", creation: creation}
+		if got := appStampKept(old, nil, "after"); got == nil || got.creation != creation || got.text != "after" {
+			t.Fatalf("plain edit kept %+v", got)
+		}
+		if got := appStampKept(old, &appSending{text: "mine"}, "after"); got == nil || got.creation != creation || got.text != "mine" {
+			t.Fatalf("marked edit kept %+v", got)
+		}
 	}
 	if got := appStampKept(&appSending{text: "o"}, nil, "after"); got != nil {
-		t.Fatalf("an unstamped edit gained %+v", got)
+		t.Fatalf("an edit of a message that stated nothing gained %+v", got)
 	}
 }
 
@@ -124,10 +260,11 @@ func olderHostCrew(t *testing.T, inner *fakeConversation) (*appBackend, appwire.
 	return backend, agent, id
 }
 
-// A CREW MESSAGE TO AN OLDER HOST IS NOT REFUSED FOR ITS STAMP: it is handed
-// over with it, waits in the queue with it, keeps it through an edit, and goes
-// when the turn ends — while a message carrying marks is still refused whole.
-func TestAppCrewMessageOnAnOlderHostKeepsItsStampThroughQueueAndEdit(t *testing.T) {
+// A CREW MESSAGE TO A HOST THAT KEEPS NO MARKS IS SENT AS ITS WORDS, exactly as
+// before: the host would drop the context, so the team is unknown there. It is
+// queued and edited the same way and flushed as words, while a message that
+// carries marks is still refused whole.
+func TestAppCrewMessageOnAnOlderHostIsSentAsWords(t *testing.T) {
 	hold := make(chan struct{})
 	inner := &fakeConversation{hold: hold}
 	backend, agent, crew := olderHostCrew(t, inner)
@@ -138,14 +275,8 @@ func TestAppCrewMessageOnAnOlderHostKeepsItsStampThroughQueueAndEdit(t *testing.
 	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "marked", Said: &said}); wireCode(err) != appwire.CodeUnknownMethod {
 		t.Fatalf("a marked crew message to an older host answered %v, want unknown_method", err)
 	}
-	if got := creationStamps(inner); len(got) != 0 {
-		t.Fatalf("a refused message reached the engine: %q", got)
-	}
 	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "first"}); err != nil {
 		t.Fatalf("a plain crew message was refused by an older host: %v", err)
-	}
-	if got := creationStamps(inner); len(got) != 1 || got[0] != crew {
-		t.Fatalf("the plain message was handed stamps %q", got)
 	}
 	waiting, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "second"})
 	if err != nil || waiting.Turn != 0 {
@@ -158,43 +289,43 @@ func TestAppCrewMessageOnAnOlderHostKeepsItsStampThroughQueueAndEdit(t *testing.
 	if _, err := backend.EditQueued(agent.ID, queued[0].ID, "second, corrected"); err != nil {
 		t.Fatal(err)
 	}
+	inner.mu.Lock()
+	inner.hold = nil
+	inner.mu.Unlock()
 	close(hold)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		got := creationStamps(inner)
-		if len(got) == 2 {
-			if got[1] != crew {
-				t.Fatalf("the edited, flushed message was stamped %q, want %s", got[1], crew)
-			}
+		_, texts := appSubmissionsOf(inner)
+		if len(texts) == 2 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("the queued message never flushed; stamps %q", got)
+			t.Fatalf("the queued message never flushed; the engine heard %q", texts)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, texts := appSubmissionsOf(inner); len(texts) != 2 || texts[1] != "second, corrected" {
-		t.Fatalf("the engine heard %q", texts)
+	if submissions, texts := appSubmissionsOf(inner); len(submissions) != 0 || texts[0] != "first" || texts[1] != "second, corrected" {
+		t.Fatalf("the older host was handed %+v and heard %q", submissions, texts)
 	}
 }
 
-// A RETRIED QUEUED CREW MESSAGE KEEPS ITS STAMP; AN UNSTAMPED ONE IS PLAIN WORDS.
-func TestAppRetryOfAQueuedCrewMessageKeepsItsStamp(t *testing.T) {
-	stamped := appSending{text: "x", queued: true, creationTeam: "aaaaaaaaaaaa"}
-	got := appRetryShown(stamped, "x")
-	if got == nil || got.queued || got.creationTeam != "aaaaaaaaaaaa" {
-		t.Fatalf("retry of a stamped message = %+v", got)
+// A RETRIED QUEUED MESSAGE KEEPS ITS CONTEXT; ONE THAT STATED NOTHING IS WORDS.
+func TestAppRetryOfAQueuedMessageKeepsItsContext(t *testing.T) {
+	crew := appInTeam("aaaaaaaaaaaa")
+	got := appRetryShown(appSending{text: "x", queued: true, creation: crew}, "x")
+	if got == nil || got.queued || got.creation != crew {
+		t.Fatalf("retry of a crew message = %+v", got)
 	}
 	if plain := appRetryShown(appSending{text: "x", queued: true}, "x"); plain != nil {
-		t.Fatalf("retry of an unstamped queued message = %+v, want plain words", plain)
+		t.Fatalf("retry of a queued message that stated nothing = %+v, want plain words", plain)
 	}
 	if marked := appRetryShown(appSending{text: "x", queued: true, reads: []session.MessageRead{{}}}, "x"); marked == nil || marked.queued {
 		t.Fatalf("retry of a marked message = %+v", marked)
 	}
 }
 
-// A CREW MESSAGE CARRYING ATTACHMENTS STAMPS ITS CREW TOO.
-func TestAppAttachedCrewMessageStampsTheCrew(t *testing.T) {
+// A CREW MESSAGE CARRYING ATTACHMENTS STATES ITS CREW TOO.
+func TestAppAttachedCrewMessageStatesTheCrew(t *testing.T) {
 	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
 	backend, _, manager, crew := crewBackendOn(t, conv)
 	at, err := backend.AddAttachment(manager.ID, appwire.Attachment{Kind: appwire.AttachPaste}, strings.Repeat("panic: nil map\n", 20))
@@ -204,7 +335,7 @@ func TestAppAttachedCrewMessageStampsTheCrew(t *testing.T) {
 	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "look at this", Attachments: []string{at.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := creationStamps(conv); len(got) != 1 || got[0] != crew {
-		t.Fatalf("attached crew message stamps = %q, want [%s]", got, crew)
+	if got := creationWords(conv); len(got) != 1 || got[0] != crew {
+		t.Fatalf("attached crew message stated %q, want [%s]", got, crew)
 	}
 }

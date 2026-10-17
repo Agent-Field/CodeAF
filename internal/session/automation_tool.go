@@ -22,7 +22,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
-	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // automationPastGrace is how far behind the clock a named moment may be and
@@ -594,9 +593,15 @@ func (a *Agent) automationChanged(stored automation.Automation, parsed automatio
 
 // automationOrigin is the conversation an automation is made in: where its
 // one line goes when a run ends, and the door "why did this happen?" opens.
-// Creation-team provenance is the turn's stamped fact: a validated id, explicit
-// NONE for a newly accepted ordinary message, and UNKNOWN (Team nil) for a turn
-// that carries no stamp. It never guesses from membership.
+// Creation-team provenance is the turn's stated context: the exact id its door
+// was accepted for, explicit NONE, or UNKNOWN (Team nil) for a turn whose door
+// stated nothing. It never guesses from membership.
+//
+// THE ID WAS CHECKED WHEN THE MESSAGE WAS ACCEPTED ([Agent.acceptCreation]) and
+// is not checked against the teams file again here: a crew that closed, lost
+// its manager or changed hands since keeps what was made in it. Only the shape
+// is checked once more, so a context that never passed acceptance cannot write
+// a malformed id.
 func (a *Agent) automationOrigin(ctx context.Context) (automation.Origin, string) {
 	a.mu.Lock()
 	id := a.sessionID()
@@ -609,50 +614,11 @@ func (a *Agent) automationOrigin(ctx context.Context) (automation.Origin, string
 	if !known {
 		return origin, ""
 	}
-	origin.Team = &automation.OriginTeam{Known: true}
-	if teamID == "" {
-		return origin, ""
+	if teamID != "" && !creationTeamIDOK(teamID) {
+		return automation.Origin{}, "Invalid arguments: creation team is not a team id"
 	}
-	if err := a.validateCreationTeam(teamID); err != nil {
-		return automation.Origin{}, "Invalid arguments: " + err.Error()
-	}
-	origin.Team.ID = teamID
+	origin.Team = &automation.OriginTeam{Known: true, ID: teamID}
 	return origin, ""
-}
-
-// validateCreationTeam refuses a stamped id that is not a live team in this
-// conversation's profile. Shape and existence are checked at create only.
-func (a *Agent) validateCreationTeam(teamID string) error {
-	if !creationTeamIDOK(teamID) {
-		return errors.New("creation team is not a team id")
-	}
-	profile := a.config.teamProfile()
-	if profile == "" {
-		return errors.New("creation team cannot be checked here")
-	}
-	file, err := teams.Load(profile)
-	if err != nil {
-		return errors.New("creation team could not be checked")
-	}
-	team, ok := file.Team(teamID)
-	if !ok || team.Closed() {
-		return errors.New("creation team is not an open team")
-	}
-	return nil
-}
-
-// creationTeamIDOK matches the teams directory-name law (letters, digits, _
-// and -, at most 64 bytes) without exporting teams' private checker.
-func creationTeamIDOK(id string) bool {
-	if id == "" || len(id) > 64 {
-		return false
-	}
-	for _, r := range id {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
-			return false
-		}
-	}
-	return true
 }
 
 // automationMoment reads a stamp: RFC 3339, or a local wall time.

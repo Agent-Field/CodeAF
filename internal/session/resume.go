@@ -139,7 +139,15 @@ func (a *Agent) ResumeStoppedTurn(ctx context.Context) (<-chan Event, bool) {
 		a.mu.Unlock()
 		return nil, false
 	}
-	events := a.startTurnLocked(ctx, userMessage{message: last, resumed: true}, nil)
+	// AND IT IS ASKED IN THE SAME CREW IT WAS SENT IN: the creation context its
+	// door stated is on the line's own mark, read back with the journal, so an
+	// automation made in the resumed turn records what the first one would
+	// have. A line with no such mark resumes unknown.
+	resumed := userMessage{message: last, resumed: true}
+	if mark := a.presentation.of(last); mark != nil {
+		resumed.creation = mark.Creation.clone()
+	}
+	events := a.startTurnLocked(ctx, resumed, nil)
 	a.mu.Unlock()
 	return events, true
 }

@@ -3,10 +3,12 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -14,21 +16,36 @@ import (
 const creationTeamID = "aaaaaaaaaaaa"
 
 // creationAgent is a conversation that can create automations and read the
-// teams in a profile it owns. The profile holds one open team.
+// teams in a profile it owns. The profile holds one open team, and that team
+// holds this conversation (its journal is its key) beside two others.
 func creationAgent(t *testing.T, store *automation.Store, calls ...step) (*Agent, string) {
 	t.Helper()
-	profile := t.TempDir()
-	members := []teams.Member{{Key: "m1", File: "m1", Handle: "one"}, {Key: "m2", File: "m2", Handle: "two"}}
-	if err := teams.Save(profile, []teams.Team{{ID: creationTeamID, Name: "crew", Members: members}}); err != nil {
-		t.Fatal(err)
-	}
+	profile, journal := creationProfile(t)
 	completer := &scriptedCompleter{steps: append(calls, finalText("done"))}
 	agent := automationAgent(t, completer, store, func(c *Config) {
 		c.ProfileDir = profile
-		c.SessionFile = filepath.Join(t.TempDir(), "conversation.jsonl")
+		c.SessionFile = journal
 	})
 	return agent, profile
 }
+
+// creationProfile is a profile whose one team holds a fresh journal's
+// conversation, and that journal's path.
+func creationProfile(t *testing.T) (string, string) {
+	t.Helper()
+	profile := t.TempDir()
+	journal := filepath.Join(t.TempDir(), "conversation.jsonl")
+	members := []teams.Member{{Key: journal, File: journal, Handle: "self"}, {Key: "m1", File: "m1", Handle: "one"}, {Key: "m2", File: "m2", Handle: "two"}}
+	if err := teams.Save(profile, []teams.Team{{ID: creationTeamID, Name: "crew", Members: members}}); err != nil {
+		t.Fatal(err)
+	}
+	return profile, journal
+}
+
+// inCrew is a creation context naming the test's team.
+func inCrew() *CreationContext { return &CreationContext{Team: creationTeamID} }
+
+const createWords = "every Monday at 9, draft the weekly update"
 
 func createCall() step {
 	return automationCall("a1", map[string]any{
@@ -61,7 +78,7 @@ func TestCreationTeamAcceptedCrewTurnRecordsExactTeamAfterReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	agent, _ := creationAgent(t, store, createCall())
-	events, err := agent.SubmitMessage(context.Background(), Submission{Text: "every Monday at 9, draft the weekly update", CreationTeam: creationTeamID})
+	events, err := agent.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: inCrew()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,15 +100,34 @@ func TestCreationTeamAcceptedCrewTurnRecordsExactTeamAfterReopen(t *testing.T) {
 	}
 }
 
-// AN ORDINARY ACCEPTED MESSAGE IS EXPLICIT NONE, AND BEING A MANAGER NOW DOES
-// NOT MAKE IT ANYTHING ELSE.
-func TestCreationTeamOrdinaryTurnIsKnownNoneEvenForACurrentManager(t *testing.T) {
+// A PLAIN SUBMIT STATES NOTHING, SO ITS AUTOMATION IS UNKNOWN — NOT NONE —
+// EVEN FROM A CONVERSATION THAT MANAGES A TEAM RIGHT NOW. An older client, the
+// terminal surface and every door that never heard of the field land here.
+func TestCreationTeamPlainSubmitIsUnknownEvenForACurrentManager(t *testing.T) {
 	store := automationStoreFor(t)
 	agent, profile := creationAgent(t, store, createCall())
-	if err := teams.Update(profile, func(f *teams.File) error { return f.SetManager(creationTeamID, "m1") }); err != nil {
+	if err := teams.Update(profile, func(f *teams.File) error { return f.SetManager(creationTeamID, agent.config.SessionFile) }); err != nil {
 		t.Fatal(err)
 	}
-	events, err := agent.Submit(context.Background(), "every Monday at 9, draft the weekly update")
+	events, err := agent.Submit(context.Background(), createWords)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveCreated(t, agent, events)
+	if got := onlyAutomation(t, store).Origin.Team; got != nil {
+		t.Fatalf("origin team = %+v, want unknown (nil)", got)
+	}
+}
+
+// AN EXPLICIT NONE IS NONE, AND MANAGING A TEAM NOW DOES NOT MAKE IT THAT TEAM.
+// A submission whose only extra is ClientID still states nothing.
+func TestCreationTeamExplicitNoneIsNoneAndAbsenceIsNot(t *testing.T) {
+	store := automationStoreFor(t)
+	agent, profile := creationAgent(t, store, createCall())
+	if err := teams.Update(profile, func(f *teams.File) error { return f.SetManager(creationTeamID, agent.config.SessionFile) }); err != nil {
+		t.Fatal(err)
+	}
+	events, err := agent.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: &CreationContext{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,9 +135,20 @@ func TestCreationTeamOrdinaryTurnIsKnownNoneEvenForACurrentManager(t *testing.T)
 	if got := onlyAutomation(t, store).Origin.Team; got == nil || !got.Known || got.ID != "" {
 		t.Fatalf("origin team = %+v, want known none", got)
 	}
+
+	other := automationStoreFor(t)
+	absent, _ := creationAgent(t, other, createCall())
+	events, err = absent.SubmitMessage(context.Background(), Submission{Text: createWords, ClientID: "c-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveCreated(t, absent, events)
+	if got := onlyAutomation(t, other).Origin.Team; got != nil {
+		t.Fatalf("a submission with no creation context recorded %+v, want unknown", got)
+	}
 }
 
-// A CONTEXT NO ACCEPTED MESSAGE STAMPED STAYS UNKNOWN, NEVER NONE.
+// A CONTEXT NO DOOR STAMPED STAYS UNKNOWN, NEVER NONE.
 func TestCreationTeamUnstampedContextStaysUnknown(t *testing.T) {
 	agent, _ := creationAgent(t, automationStoreFor(t))
 	origin, problem := agent.automationOrigin(context.Background())
@@ -129,40 +176,106 @@ func TestCreationTeamLegacyRowReadsUnknown(t *testing.T) {
 	}
 }
 
-// A STAMP THAT NAMES NO OPEN TEAM REFUSES THE CREATE AND SAVES NOTHING.
-func TestCreationTeamInvalidStampRefusesCreate(t *testing.T) {
-	for _, stamp := range []string{"bbbbbbbbbbbb", "../escape", "a b"} {
+// A FORGED OR UNRELATED TEAM IS REFUSED WHEN THE MESSAGE IS ACCEPTED: nothing
+// is recorded, no turn runs, and nothing is saved. That covers a team that does
+// not exist, a team this conversation is not in, a malformed id, an id padded
+// with spaces (never trimmed to fit), and a conversation that keeps no teams.
+func TestCreationTeamForgedOrUnrelatedScopeIsRefusedAtAcceptance(t *testing.T) {
+	for _, team := range []string{"bbbbbbbbbbbb", "otherteam01", "../escape", "a b", " " + creationTeamID} {
 		store := automationStoreFor(t)
-		agent, _ := creationAgent(t, store, createCall())
-		events, err := agent.SubmitMessage(context.Background(), Submission{Text: "every Monday at 9, draft the weekly update", CreationTeam: stamp})
-		if err != nil {
+		agent, profile := creationAgent(t, store, createCall())
+		if err := teams.Update(profile, func(f *teams.File) error {
+			f.Teams = append(f.Teams, teams.Team{ID: "otherteam01", Name: "other", Members: []teams.Member{{Key: "m9", File: "m9", Handle: "nine"}}})
+			return nil
+		}); err != nil {
 			t.Fatal(err)
 		}
-		saveCreated(t, agent, events)
-		if all, _ := store.List(); len(all) != 0 {
-			t.Fatalf("stamp %q still saved %+v", stamp, all)
+		if _, err := agent.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: &CreationContext{Team: team}}); !errors.Is(err, ErrMessageMark) {
+			t.Fatalf("team %q was accepted: %v", team, err)
 		}
+		if _, _, err := agent.SubmitComposed(context.Background(), Submission{Text: createWords, Creation: &CreationContext{Team: team}}); err == nil {
+			t.Fatalf("team %q was accepted by the composed door", team)
+		}
+		if _, err := agent.FollowUpMessage(Submission{Text: createWords, Creation: &CreationContext{Team: team}}); err == nil {
+			t.Fatalf("team %q was accepted as a follow-up", team)
+		}
+		agent.mu.Lock()
+		n := len(agent.messages)
+		agent.mu.Unlock()
+		if n != 0 {
+			t.Fatalf("a refused message left %d messages behind", n)
+		}
+		if all, _ := store.List(); len(all) != 0 {
+			t.Fatalf("team %q still saved %+v", team, all)
+		}
+	}
+	store := automationStoreFor(t)
+	teamless := automationAgent(t, &scriptedCompleter{steps: []step{finalText("done")}}, store, nil)
+	if _, err := teamless.SubmitMessage(context.Background(), Submission{Text: "hi", Creation: inCrew()}); !errors.Is(err, ErrMessageMark) {
+		t.Fatalf("a conversation with no teams took a crew message: %v", err)
 	}
 }
 
-// A MANAGER OR MEMBERSHIP CHANGE NEVER RETARGETS A SAVED ROW, AND A CHANGE KEEPS IT.
-func TestCreationTeamLaterChangesNeverRetarget(t *testing.T) {
+// A CLOSED CREW IS NOT A REASON TO REFUSE: the door decides who may be sent a
+// message, and provenance records what it accepted. The automation made in a
+// closed crew's turn saves, with that crew's id.
+func TestCreationTeamClosedCrewIsAcceptedAndRecorded(t *testing.T) {
 	store := automationStoreFor(t)
 	agent, profile := creationAgent(t, store, createCall())
-	events, err := agent.SubmitMessage(context.Background(), Submission{Text: "every Monday at 9, draft the weekly update", CreationTeam: creationTeamID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	saveCreated(t, agent, events)
-	made := onlyAutomation(t, store)
-	if err := teams.Update(profile, func(f *teams.File) error { return f.SetManager(creationTeamID, "m2") }); err != nil {
-		t.Fatal(err)
-	}
 	if err := teams.Update(profile, func(f *teams.File) error { return f.Disband(creationTeamID, time.Now(), "") }); err != nil {
 		t.Fatal(err)
 	}
-	// The change goes through the tool, from a plain (ordinary) turn, and the
-	// stored creation team must survive both that and the disbanded team.
+	events, err := agent.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: inCrew()})
+	if err != nil {
+		t.Fatalf("a closed crew's message was refused: %v", err)
+	}
+	saveCreated(t, agent, events)
+	if got := onlyAutomation(t, store).Origin.Team; got == nil || got.ID != creationTeamID {
+		t.Fatalf("origin team = %+v, want %s", got, creationTeamID)
+	}
+}
+
+// THE ID IS CAPTURED AT ACCEPTANCE: a manager change, the conversation leaving
+// the team and the team closing between the message and the save do not stop
+// or move it, and a later change through the tool keeps it.
+func TestCreationTeamCapturedThenChangedNeverRetargets(t *testing.T) {
+	store := automationStoreFor(t)
+	changed := make(chan struct{})
+	afterTheMove := func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return createCall()(ctx, messages)
+	}
+	agent, profile := creationAgent(t, store, afterTheMove)
+	events, err := agent.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: inCrew()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The team changes hands, loses this conversation and closes after the
+	// message was accepted and before the automation is proposed: what was
+	// accepted stays what is recorded.
+	if err := teams.Update(profile, func(f *teams.File) error {
+		if err := f.SetManager(creationTeamID, "m2"); err != nil {
+			return err
+		}
+		if err := f.RemoveMember(creationTeamID, agent.config.SessionFile); err != nil {
+			return err
+		}
+		return f.Disband(creationTeamID, time.Now(), "")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	close(changed)
+	saveCreated(t, agent, events)
+	made := onlyAutomation(t, store)
+	if made.Origin.Team == nil || made.Origin.Team.ID != creationTeamID {
+		t.Fatalf("origin team after the team moved = %+v", made.Origin.Team)
+	}
+	// The change goes through the tool, from a plain turn, and the stored
+	// creation team must survive it.
 	changer := automationAgent(t, &scriptedCompleter{steps: []step{
 		automationCall("c1", map[string]any{"op": "change", "id": made.ID, "title": "renamed"}),
 		finalText("renamed"),
@@ -172,10 +285,74 @@ func TestCreationTeamLaterChangesNeverRetarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	saveCreated(t, changer, changeEvents)
-	if got := onlyAutomation(t, store); got.Title != "renamed" {
-		t.Fatalf("the change did not apply: %+v", got)
+	if got := onlyAutomation(t, store); got.Title != "renamed" || got.Origin.Team == nil || got.Origin.Team.ID != creationTeamID {
+		t.Fatalf("after the change: title %q, origin team %+v", got.Title, got.Origin.Team)
 	}
+}
+
+// A CREW TURN TAKEN OVER BEFORE IT ANSWERED IS ASKED AGAIN IN THE SAME CREW: the
+// window that takes it reads the context back from the person's journaled line,
+// so the automation the resumed turn makes records the crew, not unknown.
+func TestCreationTeamSurvivesATakeoverResume(t *testing.T) {
+	store := automationStoreFor(t)
+	profile, journal := creationProfile(t)
+	streaming := make(chan struct{})
+	first := automationAgent(t, &scriptedCompleter{steps: []step{thinkingStep(streaming)}}, store, func(c *Config) {
+		c.ProfileDir, c.SessionFile = profile, journal
+	})
+	events, err := first.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: inCrew()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-streaming:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first turn never streamed")
+	}
+	first.InterruptFor(StopByTakeover)
+	collect(t, events)
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	second := automationAgent(t, &scriptedCompleter{steps: []step{createCall(), finalText("done")}}, store, func(c *Config) {
+		c.ProfileDir, c.SessionFile = profile, journal
+	})
+	resumed, ok := second.ResumeStoppedTurn(context.Background())
+	if !ok {
+		t.Fatal("the taken-over crew turn was not asked again")
+	}
+	saveCreated(t, second, resumed)
 	if got := onlyAutomation(t, store).Origin.Team; got == nil || got.ID != creationTeamID {
-		t.Fatalf("stored origin team = %+v", got)
+		t.Fatalf("the resumed turn recorded %+v, want %s", got, creationTeamID)
+	}
+}
+
+// A QUEUED FOLLOW-UP KEEPS ITS CONTEXT UNTIL ITS OWN TURN OPENS.
+func TestCreationTeamFollowUpKeepsItsContext(t *testing.T) {
+	store := automationStoreFor(t)
+	release := make(chan struct{})
+	busy := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return textResponse("first done"), nil
+	}
+	agent, _ := creationAgent(t, store, busy, createCall())
+	first, err := agent.Submit(context.Background(), "hold on")
+	if err != nil {
+		t.Fatal(err)
+	}
+	queued, err := agent.FollowUpMessage(Submission{Text: createWords, Creation: inCrew()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	collect(t, first)
+	saveCreated(t, agent, queued)
+	if got := onlyAutomation(t, store).Origin.Team; got == nil || got.ID != creationTeamID {
+		t.Fatalf("the follow-up's automation recorded %+v, want %s", got, creationTeamID)
 	}
 }
