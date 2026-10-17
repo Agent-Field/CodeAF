@@ -43,16 +43,18 @@ const (
 	shareOpPathsMax   = 8
 	shareOpPathMax    = 4096
 	shareOpSlotCap    = 4
-	shareOpReceiptMax = 128 << 10
+	shareOpReceiptMax = 256 << 10
 	shareOpTimeout    = 10 * time.Second
 	shareOpLockName   = "lock"
 	shareOpReceipt    = "receipt"
 	shareOpDirName    = "share-ops"
 )
 
-// Share operation settlement words. Pending is durable before any index append.
+// Share operation settlement words. Pending is durable before any inspection;
+// planned is the FULL immutable plan, durable before any index append.
 const (
 	ShareOpPending  = "pending"
+	ShareOpPlanned  = "planned"
 	ShareOpAccepted = "accepted"
 	ShareOpRefused  = "refused"
 	ShareOpUnknown  = "unknown"
@@ -90,9 +92,14 @@ type ShareProvenance struct {
 
 // SharePlannedRow is one immutable planned deliverable id for a normalised
 // path. Ids are minted when the pending receipt is written, before any append.
+//
+// Row is the EXACT index row that id is appended as, written once by Plan
+// from the inspected bytes and never rewritten. A pending receipt has none,
+// which is how a replay knows no append can have happened yet.
 type SharePlannedRow struct {
-	ID   string `json:"id"`
-	Path string `json:"path"`
+	ID   string    `json:"id"`
+	Path string    `json:"path"`
+	Row  *Artifact `json:"row,omitempty"`
 }
 
 // ShareReceipt is the durable operation record scoped to one session and
@@ -304,37 +311,48 @@ func pendingShareReceipt(session, operationID string, normalised []string, diges
 }
 
 // Settle writes the final status and recorded ids under the held lock, then
-// releases the claim. A replay of an already-settled receipt leaves it intact.
+// releases the claim. Accepted and refused are terminal: settling a receipt
+// that is already either leaves it intact.
+//
+// THE TRANSITIONS ARE THE LAW, not a convention of the caller. Refused is only
+// reachable from pending, where no plan exists and so no append can have
+// happened. Accepted and unknown need the plan, because only a planned id can
+// have been appended. A refusal written over a plan would let a retry report
+// "never shared" for a row that may already be on the index.
 func (c *ShareClaim) Settle(status string, recordedIDs []string) error {
 	if c == nil || c.lock == nil {
 		return ErrShareOpInvalid
 	}
-	switch status {
-	case ShareOpAccepted, ShareOpRefused, ShareOpUnknown, ShareOpPending:
-	default:
-		return fmt.Errorf("%w: unknown share status %q", ErrShareOpInvalid, status)
-	}
-	receipt := c.Receipt
-	if c.Outcome == ShareClaimReplay && (receipt.Status == ShareOpAccepted || receipt.Status == ShareOpRefused) {
-		c.Release()
+	defer c.Release()
+	from := c.Receipt.Status
+	if from == ShareOpAccepted || from == ShareOpRefused {
 		return nil
 	}
+	if !shareSettles(from, status) {
+		return fmt.Errorf("%w: a %s receipt cannot settle %q", ErrShareOpInvalid, from, status)
+	}
 	if time.Now().After(c.deadline) {
-		c.Release()
 		return ErrShareOpBusy
 	}
+	receipt := c.Receipt
 	receipt.Status = status
-	if recordedIDs != nil {
-		receipt.RecordedIDs = append([]string(nil), recordedIDs...)
-	}
+	receipt.RecordedIDs = append([]string(nil), recordedIDs...)
 	receipt.WrittenAt = time.Now().UTC()
 	if err := writeShareReceipt(c.dir, receipt); err != nil {
-		c.Release()
 		return err
 	}
 	c.Receipt = receipt
-	c.Release()
 	return nil
+}
+
+func shareSettles(from, to string) bool {
+	switch to {
+	case ShareOpRefused:
+		return from == ShareOpPending
+	case ShareOpAccepted, ShareOpUnknown:
+		return from == ShareOpPlanned || from == ShareOpUnknown
+	}
+	return false
 }
 
 // Release drops the cross-process lock and the process slot. Safe to call more

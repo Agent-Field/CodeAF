@@ -89,6 +89,7 @@ func TestShareReceiptUnknownCanReconcileWithoutNewIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := c.Receipt.Planned[0].ID
+	planShareForTest(t, c)
 	if err := c.Settle(ShareOpUnknown, nil); err != nil {
 		t.Fatal(err)
 	}

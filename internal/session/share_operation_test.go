@@ -94,6 +94,7 @@ func TestShareOperationChangedPayloadConflictsWithoutRewrite(t *testing.T) {
 		t.Fatalf("first admit: %v", err)
 	}
 	plannedID := first.Receipt.Planned[0].ID
+	planShareForTest(t, first)
 	if err := first.Settle(ShareOpAccepted, []string{plannedID}); err != nil {
 		t.Fatalf("settle: %v", err)
 	}
@@ -212,6 +213,7 @@ func TestShareOperationSettleAcceptedPreservesPlannedIDs(t *testing.T) {
 		t.Fatalf("admit: %v", err)
 	}
 	ids := []string{claim.Receipt.Planned[0].ID, claim.Receipt.Planned[1].ID}
+	planShareForTest(t, claim)
 	if err := claim.Settle(ShareOpAccepted, ids); err != nil {
 		t.Fatalf("settle: %v", err)
 	}
