@@ -31,6 +31,7 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		Number: p.Number, URL: p.URL, Draft: p.Draft,
 		Conflict: p.Mergeable != nil && !*p.Mergeable,
 		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
+		HeadSHA: p.HeadSHA, Mergeable: mergeableWord(p.Mergeable),
 	}
 	if p.HeadSHA != "" {
 		state, runs, err := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
@@ -39,6 +40,7 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		}
 		out.CI = ChecksWords(state)
 		out.Checks = summarizeChecks(runs)
+		out.ChecksRead = true
 	}
 	if extra, ok := s.api.(followExtra); ok {
 		reviews, err := extra.Reviews(ctx, owner, repo, number)
@@ -51,8 +53,22 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 			return factory.PullRequest{}, err
 		}
 		out.ReviewDecision = reviewDecision(out.Reviews, out.Required)
+		out.ReviewsRead = true
 	}
 	return out, nil
+}
+
+// mergeableWord is GitHub's three-valued mergeable as the merge gate reads
+// it: nil is "not worked out yet", which the gate refuses on.
+func mergeableWord(m *bool) string {
+	switch {
+	case m == nil:
+		return ""
+	case *m:
+		return factory.MergeableYes
+	default:
+		return factory.MergeableNo
+	}
 }
 
 func pullFollowState(p forge.Pull) string {

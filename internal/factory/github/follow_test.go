@@ -174,4 +174,16 @@ func TestFollowPRReadsTheForge(t *testing.T) {
 		len(got.Reviews) != 1 || got.Reviews[0].By != "mei" || got.Reviews[0].State != "approved" {
 		t.Fatalf("followed %+v", got)
 	}
+	// The merge gate's facts: the head it would merge, and that checks and
+	// reviews were read. GitHub left mergeable out, which is "not yet known".
+	if got.HeadSHA != "abc" || !got.ChecksRead || !got.ReviewsRead || got.Mergeable != "" {
+		t.Fatalf("gate facts %+v", got)
+	}
+}
+
+func TestMergeableWordKeepsUnknownApartFromNo(t *testing.T) {
+	yes, no := true, false
+	if mergeableWord(nil) != "" || mergeableWord(&yes) != factory.MergeableYes || mergeableWord(&no) != factory.MergeableNo {
+		t.Fatal("mergeable words")
+	}
 }
