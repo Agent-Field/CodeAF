@@ -46,6 +46,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -433,16 +434,24 @@ func linkRefusal(r linkReply, whatNotFound string) error {
 
 // cleanLinkText is text from the factory made safe to show: no control or
 // format characters, one line, at most max characters.
+var invitationInMetadata = regexp.MustCompile(`(?i)codeaf://factory/join[^[:space:]]*`)
+
 func cleanLinkText(s string, max int) string {
 	if !utf8.ValidString(s) {
 		s = strings.ToValidUTF8(s, "")
 	}
+	// Strip controls before redaction, and redact before truncation. Otherwise
+	// formatting can split a registered secret, or the limit can expose its prefix.
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
+	s = invitationInMetadata.ReplaceAllString(redact.Secrets(s), "[invitation]")
 	var b strings.Builder
 	n := 0
 	for _, r := range s {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
-			continue
-		}
 		if n == max {
 			break
 		}
@@ -577,9 +586,8 @@ type linkCreateBody struct {
 
 // madeLink is a confirmed invitation read from the answer to a create.
 type madeLink struct {
-	entry  appwire.FactoryLink
-	url    string
-	secret string
+	entry appwire.FactoryLink
+	url   string
 }
 
 // readMade reads the 201 body. false means the invitation was made but cannot
@@ -608,7 +616,13 @@ func readMade(r linkReply) (madeLink, bool) {
 	if err != nil || !validLinkSecret(parsed.secret) {
 		return madeLink{}, false
 	}
-	return madeLink{entry: linkEntry(l), url: l.URL, secret: parsed.secret}, true
+	// Register before building any public metadata: even an echoed label cannot
+	// carry this response's new secret into the app wire.
+	for _, secret := range []string{l.URL, parsed.secret} {
+		redact.Register(secret)
+		trace.Secret(secret)
+	}
+	return madeLink{entry: linkEntry(l), url: l.URL}, true
 }
 
 // validLinkSecret is true for what tokens.Mint makes: 32 random bytes as 64
@@ -749,12 +763,7 @@ func (b *appBackend) FactoryLinkCreate(ctx context.Context, p appwire.FactoryLin
 		return ambiguous()
 	}
 
-	// FROM HERE THE SECRET IS IN THIS PROCESS. Tell the redactors first, before
-	// anything can build an error or a log line.
-	for _, s := range []string{made.url, made.secret} {
-		redact.Register(s)
-		trace.Secret(s)
-	}
+	// readMade registered the secret before constructing the public entry.
 	// It must be the invitation that was asked for. A link with other limits is
 	// real but is not what the person chose, so it is neither copied nor held.
 	if !madeMatches(made.entry, body, now, until) {

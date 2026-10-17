@@ -37,3 +37,7 @@ event recording fails with a 4xx. Only a marked pre-mutation refusal proves
 nothing changed; an unexpected success status such as Accepted does not prove
 completion. Session credentials stay held on uncertain outcomes. Team reads
 without a held credential cannot regain host authority through loopback.
+
+Public invitation labels are normalized and redacted before truncation, so a
+known secret or an echoed join URL cannot reappear as metadata. New secrets
+are registered before their public row is built.
