@@ -810,16 +810,25 @@ func (b *appBackend) MemberBrief(crew, agent string) (appwire.MemberBrief, error
 
 func (b *appBackend) memberBrief(t teamstore.Team, m teamstore.Member) (appwire.MemberBrief, error) {
 	var out appwire.MemberBrief
-	e, ok, err := teamstore.StartFor(b.crewProfile(), t, m)
-	if err != nil {
-		return appwire.MemberBrief{}, appEngineError(err)
-	}
-	if ok {
-		at := e.At
-		if boss, ok := t.Member(e.FromKey); ok {
-			out.From = boss.Handle
+	// A FACTORY STAGE'S BRIEF IS THE ONE THE FACTORY RECORDED when it started
+	// the stage: no manager started it, so no sender is named. A stage recovered
+	// from an old build may still carry edits a person made BEFORE it was
+	// flagged, and the stage read them, so they are shown below like any other.
+	if m.FactoryStage {
+		out.FactoryStage = true
+		out.Text = redact.Secrets(strings.TrimSpace(m.FactoryBrief))
+	} else {
+		e, ok, err := teamstore.StartFor(b.crewProfile(), t, m)
+		if err != nil {
+			return appwire.MemberBrief{}, appEngineError(err)
 		}
-		out.Text, out.At = redact.Secrets(strings.TrimSpace(e.Text)), &at
+		if ok {
+			at := e.At
+			if boss, ok := t.Member(e.FromKey); ok {
+				out.From = boss.Handle
+			}
+			out.Text, out.At = redact.Secrets(strings.TrimSpace(e.Text)), &at
+		}
 	}
 	for _, r := range m.BriefRevisions() {
 		out.Revisions = append(out.Revisions, appwire.BriefRevision{
@@ -863,6 +872,10 @@ func (b *appBackend) MemberBriefSet(crew, agent, text string, base *string) (app
 	if err != nil {
 		return appwire.MemberBrief{}, err
 	}
+	// REFUSED BEFORE ANYTHING ELSE, closed team or not: the job owns the brief.
+	if m, ok := b.crewMemberOf(t, agent); ok && m.FactoryStage {
+		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeBadParams, "%s is a factory stage; its brief belongs to the job and cannot be changed here", m.Handle)
+	}
 	if t.Closed() {
 		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeClosed, "%s is closed; its briefs are read-only", t.Name)
 	}
@@ -887,7 +900,7 @@ func (b *appBackend) MemberBriefSet(crew, agent, text string, base *string) (app
 	change := teamstore.BriefChange{By: teamstore.FromYou, Text: redact.Secrets(text), Before: before, Base: base, At: b.now()}
 	if _, err := teamstore.ReviseBrief(b.crewProfile(), t.ID, m.Key, change); err != nil {
 		switch {
-		case errors.Is(err, teamstore.ErrBriefUnchanged), errors.Is(err, teamstore.ErrBriefTooLong):
+		case errors.Is(err, teamstore.ErrBriefUnchanged), errors.Is(err, teamstore.ErrBriefTooLong), errors.Is(err, teamstore.ErrBriefFactoryStage):
 			return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 		case errors.Is(err, teamstore.ErrBriefStale):
 			return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeConflict, "%s's brief was changed since you opened it; read it again", m.Handle)

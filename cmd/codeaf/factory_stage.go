@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -132,7 +134,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// it as another window's) to Close or to a failed start (app_lend.go).
 	rememberStageAgent(agent)
 	if team := strings.TrimSpace(spec.Team); team != "" && !resumed {
-		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name); err != nil {
+		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name, spec.Brief); err != nil {
 			forgetStageAgent(agent)
 			_ = agent.Close()
 			return nil, err
@@ -233,8 +235,13 @@ func (g stageApprovalGate) Build(posture string) (*approval.Policy, bool, error)
 func (g stageApprovalGate) Standing() string { return g.posture }
 
 // stageJoinTeam adds the conversation to the item's team, by the name the
-// executor gave it (`#12 · review`).
-func stageJoinTeam(profileDir, team, transcript, where, name string) error {
+// executor gave it (`#12 · review`). The membership is stamped FactoryStage and
+// carries brief, the [factoryrun.ConversationSpec.Brief] the stage was really
+// started on, so the app reads it back instead of guessing from the transcript.
+// IT IS THE OPENING BRIEF AND ONLY THAT: a resumed stage is never joined again
+// (Open skips this), because what a resume is given is a carry-on note
+// ([session.CarryOn]) and not the brief the stage began on.
+func stageJoinTeam(profileDir, team, transcript, where, name, brief string) error {
 	key := transcript
 	if real, err := filepath.EvalSymlinks(transcript); err == nil {
 		key = real
@@ -242,7 +249,7 @@ func stageJoinTeam(profileDir, team, transcript, where, name string) error {
 	key = filepath.Clean(key)
 	now := time.Now()
 	return teams.Update(profileDir, func(f *teams.File) error {
-		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, JoinedAt: now})
+		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, JoinedAt: now, FactoryStage: true, FactoryBrief: redact.Secrets(brief)})
 	})
 }
 
@@ -405,6 +412,7 @@ func (c *stageConversation) closeOnce() bool {
 // new one, written onto the item before the round starts.
 func factoryChatStage(st *store.Store, profileDir string, inner factoryrun.Executor) factoryrun.Executor {
 	return factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+		factoryReconcileOnce(profileDir, st)
 		if job.Item.Stream != nil && strings.TrimSpace(job.Item.Stream.Room) == "" {
 			if team, err := factoryItemTeam(profileDir, job.Item); err == nil && team != "" {
 				_ = st.Annotate(job.Item.ID, func(it *factory.Item) error {
@@ -418,7 +426,171 @@ func factoryChatStage(st *store.Store, profileDir string, inner factoryrun.Execu
 				job.Item.Stream = &s
 			}
 		}
+		if job.Item.Stream != nil {
+			if room := strings.TrimSpace(job.Item.Stream.Room); room != "" {
+				local, err := factoryEnsureRoom(profileDir, job.Item, room)
+				if err != nil {
+					return factory.StageResult{}, err
+				}
+				if local == "" {
+					// Keep the logical id on the mirror; only this round's local view is teamless.
+					s := *job.Item.Stream
+					s.Room = ""
+					job.Item.Stream = &s
+				} else {
+					_ = factoryStampRoom(profileDir, local)
+				}
+			}
+		}
 		return inner.Run(ctx, job)
+	})
+}
+
+// factoryStampRoom is the legacy recovery for a team made before the stamp was
+// kept: an item's Stream.Room is the factory's own record of its team, so that
+// team (and its parent, when that parent is the `factory` team) is marked. It
+// reads the item's reference and never the team's name or path, and a Room
+// that is not in the file stamps nothing.
+func factoryStampRoom(profileDir, room string) error {
+	return factoryStampRooms(profileDir, []string{room})
+}
+
+// factoryStampRooms is [factoryStampRoom] for several rooms in one write.
+func factoryStampRooms(profileDir string, rooms []string) error {
+	return teams.Update(profileDir, func(f *teams.File) error {
+		for i := range f.Teams {
+			if !slices.Contains(rooms, f.Teams[i].ID) {
+				continue
+			}
+			f.Teams[i].FactoryManaged = true
+			parent := f.Teams[i].Parent
+			for j := range f.Teams {
+				if f.Teams[j].ID == parent && f.Teams[j].Name == factoryTeamName {
+					f.Teams[j].FactoryManaged = true
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// factoryStampStoredRooms reconciles teams the factory made before the stamp
+// was kept: every item already in the local factory store at root that records
+// a Stream.Room stamps that team (factoryStampRoom). It reads only a store that
+// is already there, makes nothing, calls no model or network, and an item with
+// no recorded Room stamps nothing. A factory on another machine is not in this
+// store; its teams are stamped by the engine that runs it.
+func factoryStampStoredRooms(profileDir, root string) {
+	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+		return
+	}
+	st, err := store.Open(root)
+	if err != nil {
+		return
+	}
+	factoryStampStore(profileDir, st)
+}
+
+// factoryReconciled remembers the (profile, store) pairs whose legacy rooms
+// this process has already stamped.
+var factoryReconciled sync.Map
+
+// factoryReconcileOnce runs [factoryStampStore] once per profile and store in
+// this process, BEFORE any factory door makes or joins a team. An old teams
+// file has an unstamped `factory` parent and item teams the stamp never
+// reached; without this a headless engine would find no stamped parent, make a
+// second one, and split a job across two crews. It makes nothing, calls no
+// model or network, and does not touch a store it was not given.
+func factoryReconcileOnce(profileDir string, st *store.Store) {
+	if st == nil {
+		return
+	}
+	type key struct{ profile, root string }
+	canonical := func(p string) string {
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			p = real
+		}
+		return filepath.Clean(p)
+	}
+	// Concurrent doors must WAIT for reconciliation, including separate handles of the same store.
+	once, _ := factoryReconciled.LoadOrStore(key{canonical(teams.Path(profileDir)), canonical(st.Root())}, &sync.Once{})
+	once.(*sync.Once).Do(func() { factoryStampStore(profileDir, st) })
+}
+
+// factoryStampStore is the body of [factoryStampStoredRooms] over an open store.
+func factoryStampStore(profileDir string, st *store.Store) {
+	items, err := st.List()
+	if err != nil {
+		return
+	}
+	var rooms []string
+	chats := map[string][]string{}
+	local, err := teams.Snapshot(profileDir)
+	if err != nil {
+		return
+	}
+	for _, it := range items {
+		if it.Stream == nil {
+			continue
+		}
+		room := strings.TrimSpace(it.Stream.Room)
+		if room == "" || !factoryRoomOwned(local, it, room) {
+			continue
+		}
+		rooms = append(rooms, room)
+		for _, ph := range it.Stream.Phases {
+			if chat := strings.TrimSpace(ph.Chat); chat != "" {
+				chats[room] = append(chats[room], chat)
+			}
+		}
+	}
+	// A job run before Stream.Room was persisted gets its room back only on
+	// exact stage-membership proof (factory_legacy_rooms.go).
+	recovered, recoveredChats := factoryRecoverLegacyRooms(profileDir, st, items)
+	rooms = append(rooms, recovered...)
+	for room, paths := range recoveredChats {
+		chats[room] = append(chats[room], paths...)
+	}
+	if len(rooms) > 0 {
+		_ = factoryStampRooms(profileDir, rooms)
+		_ = factoryStampRoomStages(profileDir, chats)
+	}
+}
+
+// factoryStampRoomStages marks as factory stages the members the factory's own
+// record names: chats maps a room (team id) to the Phase.Chat values of its
+// item, and Phase.Chat is the stage conversation's transcript path, the very
+// path stageJoinTeam stored as the member's File (and, resolved, its Key).
+// ONLY AN EXACT PATH IN THAT ROOM STAMPS: never a handle, a word or a same-name
+// member, and a member of another team holding the same path is untouched.
+// FactoryBrief is left as it is, because what the stage was first told is not
+// in the record and is never read back out of the transcript; a membership that
+// already carries a brief keeps it.
+func factoryStampRoomStages(profileDir string, chats map[string][]string) error {
+	return teams.Update(profileDir, func(f *teams.File) error {
+		for i := range f.Teams {
+			paths := chats[f.Teams[i].ID]
+			if len(paths) == 0 {
+				continue
+			}
+			want := map[string]bool{}
+			for _, p := range paths {
+				want[filepath.Clean(p)] = true
+				if real, err := filepath.EvalSymlinks(p); err == nil {
+					want[real] = true
+				}
+			}
+			for j := range f.Teams[i].Members {
+				m := &f.Teams[i].Members[j]
+				if m.File != "" && m.Key != "" && want[filepath.Clean(m.File)] && want[filepath.Clean(m.Key)] {
+					m.FactoryStage = true
+				}
+			}
+		}
+		return nil
 	})
 }
 

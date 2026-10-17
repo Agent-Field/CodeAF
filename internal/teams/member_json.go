@@ -18,6 +18,7 @@ type wireMember struct {
 var knownMemberFields = map[string]bool{
 	"key": true, "file": true, "where": true, "word": true, "handle": true,
 	"home": true, "independent": true, "joined_at": true, "started": true, "handle_by": true, "start_entry": true, "briefs": true,
+	"factory_stage": true, "factory_brief": true,
 }
 
 func (m *Member) UnmarshalJSON(raw []byte) error {

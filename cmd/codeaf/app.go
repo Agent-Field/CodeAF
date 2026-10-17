@@ -370,6 +370,9 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// factoryRooms runs this connection's one-time stamp of teams the factory made before the
+	// stamp was kept (factoryStampStoredRooms).
+	factoryRooms sync.Once
 	// crewHistory holds the crew process-history walks (appcrewprocesspage.go).
 	crewHistory crewHistory
 	// searchWords reads every conversation's words for search.all; nil keeps
