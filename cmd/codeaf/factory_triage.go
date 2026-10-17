@@ -120,7 +120,10 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 		if err != nil {
 			return "", err
 		}
-		model := factoryTriageModel(settings)
+		model, err := factoryTriageModel(settings)
+		if err != nil {
+			return "", err
+		}
 		if model == "" {
 			return "", errors.New("no model for the small-work seat")
 		}
@@ -146,14 +149,23 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 // factoryTriageModel is the small-work seat's model for this profile, or the
 // conversation's when that row was cleared. The launch's one-model pin wins
 // before any profile row, including when the server has no conversation.
-func factoryTriageModel(settings config.Config) string {
+//
+// A profile whose Task models are ONE MODEL reads the small-work seat from the
+// same policy the manager and stages do (factory_taskmodels.go): the same
+// route, and a refusal when it cannot be met — never the low tier's model.
+func factoryTriageModel(settings config.Config) (string, error) {
 	if parent := factoryWorkerParent(); parent.OneModel {
-		return strings.TrimSpace(parent.Model)
+		return strings.TrimSpace(parent.Model), nil
+	}
+	if send, one, err := factoryTaskOneModel(settings.ProfileDir, settings.Sources); err != nil {
+		return "", err
+	} else if one {
+		return send, nil
 	}
 	if m := strings.TrimSpace(config.TierSeatAt(settings.ProfileDir, config.ModelTierLow).Model); m != "" {
-		return m
+		return m, nil
 	}
-	return strings.TrimSpace(settings.Model)
+	return strings.TrimSpace(settings.Model), nil
 }
 
 // recordFactoryTriageUsage puts one read's cost on this machine's spend

@@ -294,29 +294,14 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	}
 	mirror.SetOutputPolicy(appFactoryOutputPolicy(h.profile))
 	defer os.RemoveAll(mirror.Root())
-	current := h.parent
-	if current == nil {
-		settings, err := config.LoadKeyless()
-		if err != nil {
-			return
-		}
-		base, err := applyV3Governance(session.Config{Workspace: h.workspace, Model: settings.Model, Sources: settings.Sources}, h.profile, false, false)
-		if err != nil {
-			return
-		}
-		current = func() session.Config {
-			settings, err := config.LoadKeyless()
-			if err != nil {
-				return base
-			}
-			fresh, err := applyV3Governance(session.Config{Workspace: h.workspace, Model: settings.Model, Sources: settings.Sources}, h.profile, false, false)
-			if err != nil {
-				return base
-			}
-			return fresh
-		}
+	source, raw, ok := h.parentSource()
+	if !ok {
+		return
 	}
+	current := source.Config
 	turns := factoryShapeTurnsFrom(h.floor, h.workspace, h.profile, current)
+	turns.refusal = source.Refusal
+	turns.liveOK = factoryLiveOK(raw, h.profile)
 	setFactoryProcess(func() {
 		if factoryProcess.workerShapes == nil {
 			factoryProcess.workerShapes = map[string]func(context.Context, int) (string, error){}
@@ -324,7 +309,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 		factoryProcess.workerShapes[mirror.Root()] = factoryShapeDoor(mirror, h.workspace, h.profile, turns)
 	})
 	defer setFactoryProcess(func() { delete(factoryProcess.workerShapes, mirror.Root()) })
-	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, factoryStageMakerFrom(h.floor, h.workspace, h.profile, current), turns)
+	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, factoryStageMakerFrom(h.floor, h.workspace, h.profile, current).withRefusal(source.Refusal), turns)
 	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI
@@ -365,6 +350,45 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})
+}
+
+// parentSource is the parent every conversation of this host opens from: the
+// injected launch config, or the worker's own governed one, settled on the saved
+// Task models policy either way. It is false when the worker cannot build one.
+func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Config, bool) {
+	raw := h.parent
+	if raw == nil {
+		settings, err := config.LoadKeyless()
+		if err != nil {
+			return nil, nil, false
+		}
+		// The worker's own ordinary governed config; the saved Task models policy
+		// is settled on it below, exactly as it is on an injected parent.
+		base, err := applyV3Governance(session.Config{Workspace: h.workspace, Model: settings.Model, Sources: settings.Sources}, h.profile, false, false)
+		if err != nil {
+			return nil, nil, false
+		}
+		raw = func() session.Config {
+			settings, err := config.LoadKeyless()
+			if err != nil {
+				// THE SAVED POLICY IS STILL READ: its rows do not depend on this load, so
+				// a profile switched to one model refuses or runs the one model here
+				// rather than the stale Auto crew. RESIDUAL: a config.json that is
+				// itself unreadable answers Auto, so the intent cannot be proven and the
+				// auto base stays; refusing every load error would change Auto.
+				return base
+			}
+			fresh, err := applyV3Governance(session.Config{Workspace: h.workspace, Model: settings.Model, Sources: settings.Sources}, h.profile, false, false)
+			if err != nil {
+				return base
+			}
+			return fresh
+		}
+	}
+	// THE SAVED TASK MODELS POLICY IS THE FACTORY JOB'S (factory_taskmodels.go),
+	// whichever parent this host was given.
+	source := &factoryParentSource{raw: raw, profile: h.profile}
+	return source, raw, true
 }
 
 // Power uses the elected runner's saved registration, so a second process

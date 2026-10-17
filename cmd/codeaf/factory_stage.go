@@ -48,6 +48,7 @@ import (
 type stageMaker struct {
 	parent     session.Config
 	current    func() session.Config
+	refusal    func() error
 	workspace  string
 	profileDir string
 }
@@ -63,9 +64,22 @@ func factoryStageMakerFrom(_ *store.Store, workspace, profileDir string, current
 	return stageMaker{current: current, workspace: workspace, profileDir: profileDir}
 }
 
+// withRefusal gives the maker the reason its parent was last refused.
+func (m stageMaker) withRefusal(why func() error) stageMaker {
+	m.refusal = why
+	return m
+}
+
 // Open makes the conversation, joins it to the item's team, and starts its
 // first turn on the brief.
 func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) (factoryrun.Conversation, error) {
+	// A PARENT THE SAVED ONE-MODEL POLICY REFUSED OPENS NOTHING: no session
+	// folder is minted and the person reads the reason, not "model is required".
+	if m.current != nil {
+		if err := refusalOf(m.current(), m.refusal); err != nil {
+			return nil, err
+		}
+	}
 	where := strings.TrimSpace(spec.Dir)
 	if where == "" {
 		where = strings.TrimSpace(m.workspace)
@@ -144,6 +158,9 @@ func (m stageMaker) stageConfig(spec factoryrun.ConversationSpec, bucket, where 
 	parent := m.parent
 	if m.current != nil {
 		parent = m.current()
+	}
+	if err := refusalOf(parent, m.refusal); err != nil {
+		return parent, err
 	}
 	if resume := strings.TrimSpace(spec.Resume); resume != "" {
 		if _, err := os.Stat(resume); err != nil {
