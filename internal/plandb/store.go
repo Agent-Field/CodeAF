@@ -1317,7 +1317,8 @@ func (s *Store) AddPersonNote(taskID, body string) (Note, error) {
 // stored with its key, and never a note whose key is still to be written. The
 // store keeps the key verbatim and never reads meaning into it, matches by it
 // or refuses a repeat of it — two notes with one key are two notes. The caller
-// bounds what a key may be.
+// bounds what a key may be (the app caps it at 256); the store refuses one over
+// [NotePageMetaMax].
 func (s *Store) AddPersonNoteKeyed(taskID, body, clientID string) (Note, error) {
 	return s.addNote(taskID, "", body, NoteFromPerson, clientID)
 }
@@ -1325,13 +1326,15 @@ func (s *Store) AddPersonNoteKeyed(taskID, body, clientID string) (Note, error) 
 // addNote is the one road both note writers take: validate, mint an id, and
 // stamp the change on the task the note hangs on.
 func (s *Store) addNote(taskID, agent, body, from, clientID string) (Note, error) {
-	// THE WRITER KEEPS TO WHAT A PAGE WILL READ. [Store.NotesPage] refuses a
-	// note whose agent or client key is longer than its meta ceiling and holds
-	// every later note of the task behind it, and nothing in the product removes
-	// or edits one note. So a note longer than that is REFUSED here, before any
-	// transaction, never truncated: a cut name or key would be a different
-	// name or key. The agent is measured as it will be stored, trimmed. The body
-	// has its own check below, which already equals the page's.
+	// PER-NOTE PARITY WITH THE PAGE, AND NO MORE THAN THAT. [Store.NotesPage]
+	// refuses a note whose agent or client key is over its meta ceiling and the
+	// readers hold every later note behind it; nothing in the product removes
+	// or edits one note. So those two are REFUSED here, before any transaction,
+	// never truncated (a cut name or key is a different one). The agent is
+	// measured as stored, trimmed; the body check below already equals the
+	// page's. THIS DOES NOT BOUND project OR chat, which a note copies from its
+	// task and which [Open] takes unbounded: a plan named over the ceiling still
+	// makes every note on it unreadable by a page. That is an open gap.
 	if len(strings.TrimSpace(agent)) > NotePageMetaMax {
 		return Note{}, fmt.Errorf("note author exceeds %d bytes", NotePageMetaMax)
 	}

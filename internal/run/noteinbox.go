@@ -76,9 +76,11 @@ func newTaskInbox(pages notePager, taskID string) *taskInbox {
 // truncates or skips it, and neither does this: the notes before it arrive as
 // usual, and then every decision answers its refusal, so the notes after it
 // wait behind it. NOTHING IN THE PRODUCT EDITS OR DELETES ONE NOTE, so the hold
-// lasts until the task is gone or the store is changed by hand; the writer
-// ([plandb.Store.AddNote]) refuses every note a page would refuse, so only a
-// damaged or foreign row reaches it. That is the honest price of never
+// lasts until the task is gone or the store is changed by hand. The writer
+// refuses an over-long author, client key or body per note, but NOT a plan
+// whose project or chat is over the ceiling (a long first task title or a
+// `plandb init` name), so a legitimate plan can still hold every note: an OPEN
+// gap, awaiting the parent's policy. That is the honest price of never
 // consuming a note nobody could read. The bash worker has no report to say it
 // is held; the delegate's end-of-run report does.
 //
