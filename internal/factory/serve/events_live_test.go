@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -86,6 +87,30 @@ func TestEventReplayUsesLastIDAndViewerFilter(t *testing.T) {
 	}
 }
 
+// The stream writes from its serving goroutine while the test samples it.
+// ResponseRecorder's bytes.Buffer is not safe for that concurrent access.
+type lockedStreamRecorder struct {
+	*httptest.ResponseRecorder
+	mu sync.Mutex
+}
+
+func (w *lockedStreamRecorder) Write(b []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ResponseRecorder.Write(b)
+}
+func (w *lockedStreamRecorder) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
+func (w *lockedStreamRecorder) Flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.ResponseRecorder.Flush()
+}
+func (w *lockedStreamRecorder) bodyText() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.Body.String()
+}
+
 func TestKeepaliveEvery20SecondsWithoutChangeOrID(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := New(factory.Seam{}, Config{})
@@ -93,24 +118,24 @@ func TestKeepaliveEvery20SecondsWithoutChangeOrID(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		req := httptest.NewRequest(http.MethodGet, "/v1/events", nil).WithContext(ctx)
 		req.RemoteAddr = "127.0.0.1:9"
-		w := httptest.NewRecorder()
+		w := &lockedStreamRecorder{ResponseRecorder: httptest.NewRecorder()}
 		done := make(chan struct{})
 		go func() { h.ServeHTTP(w, req); close(done) }()
 		synctest.Wait()
 		time.Sleep(20*time.Second - time.Nanosecond)
 		synctest.Wait()
-		if w.Body.Len() != 0 {
+		if len(w.bodyText()) != 0 {
 			t.Fatal("early keepalive")
 		}
 		time.Sleep(time.Nanosecond)
 		synctest.Wait()
-		if w.Body.String() != ": keepalive\n\n" {
-			t.Fatalf("keepalive: %s", w.Body)
+		if w.bodyText() != ": keepalive\n\n" {
+			t.Fatalf("keepalive: %s", w.bodyText())
 		}
 		time.Sleep(20 * time.Second)
 		synctest.Wait()
-		if w.Body.String() != ": keepalive\n\n: keepalive\n\n" {
-			t.Fatalf("second keepalive: %s", w.Body)
+		if w.bodyText() != ": keepalive\n\n: keepalive\n\n" {
+			t.Fatalf("second keepalive: %s", w.bodyText())
 		}
 		cancel()
 		<-done
