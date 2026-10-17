@@ -87,16 +87,31 @@ func PriorityFor(it Item) *JobPriority {
 	return nil
 }
 
-// JobSize comes only from the issue's explicit size label.
+// JobSize comes only from the issue's explicit size labels: "size:m" or
+// "size/m", any case. The largest wins when several are present, so a second
+// label can never make a job look smaller than one a person already put on it.
+// XS..XL are all accepted; this is the ONE resolver every start decision and
+// the wire share. A model's estimate or the body's length is never read here.
 func JobSize(it Item) string {
+	best, got := 0, ""
 	for _, label := range it.Labels {
-		prefix, size, ok := strings.Cut(strings.ToLower(strings.TrimSpace(label)), ":")
-		if ok && prefix == "size" && slices.Contains([]string{"xs", "s", "m", "l", "xl"}, size) {
-			return strings.ToUpper(size)
+		label = strings.ToLower(strings.TrimSpace(label))
+		rest, ok := strings.CutPrefix(label, "size:")
+		if !ok {
+			rest, ok = strings.CutPrefix(label, "size/")
+		}
+		if !ok {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		if rank := slices.Index(jobSizes, rest) + 1; rank > best {
+			best, got = rank, strings.ToUpper(rest)
 		}
 	}
-	return ""
+	return got
 }
+
+var jobSizes = []string{"xs", "s", "m", "l", "xl"}
 
 func IsDismissed(it Item, person string) bool {
 	person = NormalizeHandle(person)
