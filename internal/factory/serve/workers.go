@@ -388,7 +388,9 @@ func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Leas
 	}
 	job := h.withVersion(api.FromItem(it))
 	job.Can = api.CanFor(it, requestWorker(r).Handle)
-	h.presentJob(r, &job)
+	// The lease holder's own copy keeps each step's chat: it is how a resumed
+	// chat stage finds its conversation again.
+	h.presentWorkerJob(r, &job)
 	h.write(w, http.StatusOK, api.WorkerPull{Factory: h.factory, Lease: workerLease(held), Job: job, Signals: wireSignals(signals)})
 }
 
