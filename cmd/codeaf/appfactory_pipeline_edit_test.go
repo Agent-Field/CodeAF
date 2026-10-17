@@ -139,14 +139,14 @@ func dol(v float64) *float64 { return &v }
 func TestPipelineEditIsAnnouncedAndDistinct(t *testing.T) {
 	stub := newEditStub(t, api.Me{Mode: api.FactoryTeam})
 	r := newEditWire(t, stub, false, api.FactoryTeam, prToken)
-	for _, want := range []string{appwire.FeatureFactoryPipelineEdit, appwire.FeatureFactoryPipelinePR} {
+	for _, want := range []string{appwire.FeatureFactoryPipelineEdit, appwire.FeatureFactoryPipelineEditRuntime, appwire.FeatureFactoryPipelinePR} {
 		if !strings.Contains(r.hello, want) {
 			t.Fatalf("hello does not announce %s: %s", want, r.hello)
 		}
 	}
 	var caps appwire.FactoryCapabilities
 	r.must("factory.capabilities", struct{}{}, &caps)
-	if !caps.PipelineEdit || !caps.PipelinePR || caps.Writes {
+	if !caps.PipelineEdit || !caps.PipelineEditRuntime || !caps.PipelinePR || caps.Writes {
 		t.Fatalf("%+v", caps)
 	}
 }

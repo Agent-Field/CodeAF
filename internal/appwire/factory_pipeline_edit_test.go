@@ -61,13 +61,23 @@ func TestFactoryPipelineEditAbsentWithoutTheInterface(t *testing.T) {
 			t.Errorf("%T announced %v", e, got.Features)
 		}
 	}
+	// A fake or forwarding editor with the right methods but no guard marker
+	// announces the edit feature and never the runtime one.
+	if got := withFactoryPipelineEditFeature(Hello{}, &unguardedEditEngine{}); len(got.Features) != 1 || got.Features[0] != "factory.pipeline_edit" {
+		t.Fatalf("an unguarded editor announced %v", got.Features)
+	}
 	got := withFactoryPipelineEditFeature(Hello{}, &pipelineEditEngine{})
-	if len(got.Features) != 1 || got.Features[0] != "factory.pipeline_edit" {
+	if len(got.Features) != 2 || got.Features[0] != "factory.pipeline_edit" || got.Features[1] != "factory.pipeline_edit_runtime" {
 		t.Fatalf("an editing engine announced %v", got.Features)
 	}
 	e := &pipelineEditEngine{}
 	if h := withFactoryPipelinePRFeature(withFactoryReposManageFeature(withFactoryLinksFeature(withFactoryAdminFeature(Hello{}, e), e), e), e); len(h.Features) != 0 {
 		t.Fatalf("editing implied another feature: %v", h.Features)
+	}
+	for _, other := range []string{FeatureFactoryAdmin, FeatureFactoryLinks, FeatureFactoryReposManage, FeatureFactoryPipelinePR, FeatureFactoryPipelineEdit} {
+		if FeatureFactoryPipelineEditRuntime == other {
+			t.Fatal("the runtime feature is not distinct")
+		}
 	}
 	for _, other := range []string{FeatureFactoryAdmin, FeatureFactoryLinks, FeatureFactoryReposManage, FeatureFactoryPipelinePR} {
 		if FeatureFactoryPipelineEdit == other {
@@ -248,9 +258,9 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 		reflect.TypeFor[FactoryPipelineSourceParams](): {"factory", "repo"},
 		reflect.TypeFor[FactoryPipelineSource](): {"factory", "repo", "path", "default_branch", "base_sha", "can_push", "archived", "runtime_fields", "state", "editable", "text", "problems",
 			"default_budget", "budget_in_file", "pipelines", "steps", "fixed"},
-		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "prompt", "until", "max", "value"},
+		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "prompt", "until", "max", "when", "effort", "fanout", "value"},
 		reflect.TypeFor[FactoryPipelinePreviewParams](): {"factory", "repo", "base_sha", "base_text", "edits"},
-		reflect.TypeFor[FactoryPipelineStepValues]():    {"prompt", "until", "max"},
+		reflect.TypeFor[FactoryPipelineStepValues]():    {"prompt", "until", "max", "when", "effort", "fanout"},
 		reflect.TypeFor[FactoryPipelineStepChange]():    {"name", "fields", "before", "after"},
 		reflect.TypeFor[FactoryPipelineBudgetChange]():  {"before", "after"},
 		reflect.TypeFor[FactoryPipelinePreview]():       {"factory", "repo", "base_sha", "path", "text", "changed", "format_rewritten", "comments_dropped", "steps", "budget"},
@@ -269,6 +279,9 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 	}
 	defs := Schema()["$defs"].(map[string]any)
 	caps := defs["FactoryCapabilities"].(map[string]any)["properties"].(map[string]any)
+	if caps["pipeline_edit_runtime"] == nil {
+		t.Fatal("capabilities do not carry pipeline_edit_runtime")
+	}
 	if caps["pipeline_edit"] == nil {
 		t.Fatal("capabilities do not carry pipeline_edit")
 	}
@@ -304,4 +317,77 @@ func TestFactoryPipelineSourceAlwaysSaysRuntimeFields(t *testing.T) {
 			t.Fatalf("%s", raw)
 		}
 	}
+}
+
+func TestRuntimeEditFieldsDecodeAndKindIsUnknown(t *testing.T) {
+	e := &pipelineEditEngine{}
+	ok := editGoodPreview(`[{"op":"set_step","name":"plan","when":"thin","effort":"","fanout":"per-file"}]`)
+	if _, err := methods["factory.pipeline_preview"].call(e, json.RawMessage(ok)); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.previews) != 1 || e.previews[0].Edits[0].When == nil || *e.previews[0].Edits[0].When != "thin" ||
+		e.previews[0].Edits[0].Effort == nil || *e.previews[0].Edits[0].Effort != "" || *e.previews[0].Edits[0].Fanout != "per-file" {
+		t.Fatalf("%+v", e.previews)
+	}
+	for _, bad := range []string{`[{"op":"set_step","name":"plan","kind":"chat"}]`, `[{"op":"set_step","name":"plan","kind":""}]`} {
+		if _, err := methods["factory.pipeline_preview"].call(e, json.RawMessage(editGoodPreview(bad))); wireCode(t, err) != CodeBadParams {
+			t.Errorf("%s: %v", bad, err)
+		}
+	}
+}
+
+func TestCheckPipelinePreviewBoundsTheRuntimeWords(t *testing.T) {
+	str := func(s string) *string { return &s }
+	v := 3.0
+	base := FactoryPipelinePreviewParams{Factory: "f", Repo: "a/b", BaseSHA: editSHA, BaseText: "pipeline: {}\n"}
+	for name, c := range map[string]struct {
+		e       FactoryPipelineEdit
+		wantErr string
+	}{
+		"bad when":      {FactoryPipelineEdit{Op: "set_step", Name: "plan", When: str("sometimes")}, "edit 0"},
+		"bad effort":    {FactoryPipelineEdit{Op: "set_step", Name: "plan", Effort: str("max")}, "edit 0"},
+		"bad fanout":    {FactoryPipelineEdit{Op: "set_step", Name: "plan", Fanout: str("many")}, "edit 0"},
+		"clear effort":  {FactoryPipelineEdit{Op: "set_step", Name: "plan", Effort: str("")}, ""},
+		"clear fanout":  {FactoryPipelineEdit{Op: "set_step", Name: "plan", Fanout: str("")}, ""},
+		"budget fanout": {FactoryPipelineEdit{Op: "set_budget", Value: &v, Fanout: str("one")}, "edit 0"},
+	} {
+		p := base
+		p.Edits = []FactoryPipelineEdit{c.e}
+		_, err := CheckPipelinePreview(p)
+		if (c.wantErr == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), c.wantErr)) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestPipelineEditOpsNeverSetKind(t *testing.T) {
+	s := func(v string) *string { return &v }
+	for _, w := range []*string{nil, s("thin")} {
+		for _, f := range []*string{nil, s("")} {
+			ops := PipelineEditOps([]FactoryPipelineEdit{{Op: "set_step", Name: "plan", When: w, Effort: f, Fanout: w}})
+			if ops[0].Kind != nil || ops[0].When != w || ops[0].Effort != f || ops[0].Fanout != w {
+				t.Fatalf("%+v", ops[0])
+			}
+		}
+	}
+}
+
+func TestStepValuesOmitEmptyRuntimeWords(t *testing.T) {
+	raw, _ := json.Marshal(FactoryPipelineStepValues{Prompt: "p", Until: "u", Max: 2})
+	if string(raw) != `{"prompt":"p","until":"u","max":2}` {
+		t.Fatal(string(raw))
+	}
+	raw, _ = json.Marshal(FactoryPipelineStepValues{Prompt: "p", When: "thin", Fanout: "one"})
+	if !strings.Contains(string(raw), `"when":"thin"`) || !strings.Contains(string(raw), `"fanout":"one"`) || strings.Contains(string(raw), "effort") {
+		t.Fatal(string(raw))
+	}
+}
+
+// PipelineRuntimeGuarded makes the test engine a guarded editor, like appBackend.
+func (e *pipelineEditEngine) PipelineRuntimeGuarded() {}
+
+// unguardedEditEngine has every method of an editor and no guard marker.
+type unguardedEditEngine struct {
+	factoryEngine
+	FactoryPipelineEditor
 }
