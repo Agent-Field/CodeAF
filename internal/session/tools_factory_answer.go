@@ -80,7 +80,7 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			answer := strings.Join(strings.Fields(parsed.Answer), " ")

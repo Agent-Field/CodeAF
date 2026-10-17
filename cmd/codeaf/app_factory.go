@@ -48,6 +48,15 @@ type appFactoryHost struct {
 	handler                            *serve.Handler
 	release                            func()
 	closeDiscovery                     func()
+	// quiet serves the factory's HTTP API and nothing else: no triage (which
+	// calls a model) and no GitHub poll. The first-run setup host is quiet so
+	// that setting up starts no job and spends nothing (appfactory_setup.go).
+	quiet bool
+	// githubHTTP and rules replace the factory's GitHub transport and its
+	// pipeline-file reader; tests only, so none reaches the real forge.
+	githubHTTP *http.Client
+	rules      func(ctx context.Context, repo, dir string) (pipeline.File, error)
+	seamHook   func(factory.Seam) factory.Seam
 }
 
 func newAppFactoryHost(ctx context.Context, root, address, token string, credentials factorySessions) (*appFactoryHost, error) {
@@ -107,8 +116,14 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		return nil, err
 	}
 	seam := factorySeam(h.floor, h.workspace, h.profile)
-	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: "This machine", Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+	if h.seamHook != nil {
+		seam = h.seamHook(seam)
+	}
+	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: "This machine", Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
+			if h.rules != nil {
+				return h.rules(ctx, repo, dir)
+			}
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},
 		ChangeAssignee: factorygithub.JobWrites{Token: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }}.Assign,
@@ -128,6 +143,9 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	}
 	h.handler, h.release = handler, release
 	h.closeDiscovery = closeDiscovery
+	if h.quiet {
+		return handler, nil
+	}
 	startFactoryTriage(h.ctx, h.floor)
 	guard.Go("app/factory poll", func() {
 		token := func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, h.profile); return t }

@@ -78,9 +78,13 @@ type FactoryCapabilities struct {
 	AccessLinks bool `json:"access_links"`
 	// SignIn: a person can sign in to GitHub on an attached factory.
 	SignIn bool `json:"sign_in"`
-	// Local: this engine can serve a factory of its own. False here.
+	// Local: this engine can serve a factory of its own, on request, and walk
+	// its first-run setup (factory_setup.go). True only for an engine that
+	// implements [FactoryLocal].
 	Local bool `json:"local"`
-	// Runner: this engine runs a factory's jobs. False here.
+	// Runner: this engine can run the jobs of the factory it serves, but only
+	// when a person asks (factory.local_run); it never starts one at launch or
+	// from setup. True only for an engine that implements [FactoryLocal].
 	Runner bool `json:"runner"`
 	// Writes: jobs can be started, stopped, approved or edited through the
 	// wire. False here; every factory.* method only reads or signs in.

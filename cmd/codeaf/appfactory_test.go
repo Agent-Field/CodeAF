@@ -36,6 +36,7 @@ type factoryWire struct {
 	lines   []string
 	answers chan json.RawMessage
 	next    int
+	hello   string
 }
 
 func newFactoryWire(t *testing.T, hub *appFactoryHub) *factoryWire {
@@ -65,6 +66,7 @@ func newFactoryWire(t *testing.T, hub *appFactoryHub) *factoryWire {
 	}()
 	t.Cleanup(func() { inW.Close() })
 	hello := <-w.answers
+	w.hello = string(hello)
 	if !strings.Contains(string(hello), appwire.FeatureFactory) {
 		t.Fatalf("hello does not announce %s: %s", appwire.FeatureFactory, hello)
 	}
@@ -267,7 +269,7 @@ func TestAppFactoryRoundTripAgainstTheRealServer(t *testing.T) {
 
 	var caps appwire.FactoryCapabilities
 	w.must("factory.capabilities", struct{}{}, &caps)
-	if !caps.Remote || !caps.Registry || caps.Local || caps.Runner || caps.Writes || caps.MaxFlows != 256 {
+	if !caps.Remote || !caps.Registry || !caps.Local || !caps.Runner || caps.Writes || caps.MaxFlows != 256 {
 		t.Fatalf("capabilities overclaim: %+v", caps)
 	}
 

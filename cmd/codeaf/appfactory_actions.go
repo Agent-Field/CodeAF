@@ -119,9 +119,7 @@ func (h *appFactoryHub) write(ctx context.Context, id, path string, body any) (a
 	var out appFactoryAnswer
 	// A yes whose body cannot be read is still a yes: the action happened.
 	_ = json.Unmarshal(data, &out)
-	h.mu.Lock()
-	h.seen[id] = h.now()
-	h.mu.Unlock()
+	h.touch(id)
 	return out, nil
 }
 

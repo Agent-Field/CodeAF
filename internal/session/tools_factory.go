@@ -191,7 +191,7 @@ func (a *Agent) factoryAddTool() bare.Tool {
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			notice := FactoryNotice{
@@ -205,13 +205,13 @@ func (a *Agent) factoryAddTool() bare.Tool {
 				notice.Estimate = parsed.Estimate
 			}
 			if notice.Title == "" || notice.Body == "" || notice.Repo == "" {
-				return "Invalid arguments: factory_add needs a title, a body saying what and why, and the repo it belongs to.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: factory_add needs a title, a body saying what and why, and the repo it belongs to."), true, nil
 			}
 			if !oneOf(notice.Kind, factoryKinds) {
-				return "Invalid arguments: kind is one of " + strings.Join(factoryKinds, ", ") + ".", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: kind is one of "+strings.Join(factoryKinds, ", ")+"."), true, nil
 			}
 			if notice.Size != "" && !oneOf(notice.Size, factorySizes) {
-				return "Invalid arguments: size is one of " + strings.Join(factorySizes, ", ") + ", or left out.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: size is one of "+strings.Join(factorySizes, ", ")+", or left out."), true, nil
 			}
 			answer, err := a.askFactory(ctx, &notice)
 			if err != nil {

@@ -125,7 +125,7 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			ask := strings.ToLower(strings.TrimSpace(parsed.Ask))
@@ -135,10 +135,10 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 			switch ask {
 			case "", floorAskWaiting, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem:
 			default:
-				return "Invalid arguments: ask is one of waiting, risky, cheapest, oldest, all or item.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: ask is one of waiting, risky, cheapest, oldest, all or item."), true, nil
 			}
 			if ask == floorAskItem && parsed.Item <= 0 {
-				return "Invalid arguments: ask item needs item, the number in the item's ref.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: ask item needs item, the number in the item's ref."), true, nil
 			}
 			return a.floorRun(ctx, ask, parsed.Item, parsed.Mark, parsed.Unmark)
 		},

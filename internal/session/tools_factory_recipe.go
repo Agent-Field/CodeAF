@@ -229,7 +229,7 @@ func (a *Agent) factoryRecipeTool() bare.Tool {
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			notice := RecipeNotice{
@@ -247,18 +247,18 @@ func (a *Agent) factoryRecipeTool() bare.Tool {
 				}
 			}
 			if notice.Repo == "" {
-				return "Invalid arguments: factory_recipe needs the repo it belongs to.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: factory_recipe needs the repo it belongs to."), true, nil
 			}
 			if given != 1 {
-				return "Invalid arguments: factory_recipe takes exactly one of stage, policy or habit.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: factory_recipe takes exactly one of stage, policy or habit."), true, nil
 			}
 			if stage != "" {
 				if !oneOf(notice.Kind, recipeKinds) {
-					return "Invalid arguments: a stage needs kind, one of " + strings.Join(recipeKinds, ", ") + ".", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: a stage needs kind, one of "+strings.Join(recipeKinds, ", ")+"."), true, nil
 				}
 				line, err := recipeStageLine(factory.Kind(notice.Kind), stage)
 				if err != nil {
-					return "Invalid arguments: the recipe cannot read that stage line: " + err.Error() + ".", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: the recipe cannot read that stage line: "+err.Error()+"."), true, nil
 				}
 				notice.Line = line
 				// THE RECIPE IS READ BEFORE THE CARD, so the card says the stages

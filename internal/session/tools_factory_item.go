@@ -504,7 +504,7 @@ func (a *Agent) factoryItemTool() bare.Tool {
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			notice := ItemNotice{
@@ -518,22 +518,22 @@ func (a *Agent) factoryItemTool() bare.Tool {
 				Why:    strings.Join(strings.Fields(parsed.Why), " "),
 			}
 			if notice.Item <= 0 {
-				return "Invalid arguments: factory_item needs the factory id of the item this conversation is about.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: factory_item needs the factory id of the item this conversation is about."), true, nil
 			}
 			if notice.Effort != "" && !oneOf(notice.Effort, itemEfforts) {
-				return "Invalid arguments: effort is one of " + strings.Join(itemEfforts, ", ") + ", or left out.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: effort is one of "+strings.Join(itemEfforts, ", ")+", or left out."), true, nil
 			}
 			if notice.Cap < 0 {
-				return "Invalid arguments: cap is a number of dollars above nothing, or left out.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: cap is a number of dollars above nothing, or left out."), true, nil
 			}
 			for _, add := range notice.Add {
 				if factory.ParseStage(add).Ask == "" {
-					return "Invalid arguments: a stage to add needs to say what it does: " + add + ".", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: a stage to add needs to say what it does: "+add+"."), true, nil
 				}
 			}
 			change := itemChange(notice)
 			if change.Empty() {
-				return "Invalid arguments: factory_item needs something to change: add, skip, on, cap, effort or note.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: factory_item needs something to change: add, skip, on, cap, effort or note."), true, nil
 			}
 			door := a.config.FactoryItem
 			// THE CHANGE IS PREVIEWED BEFORE ANY CARD, so the card shows the item

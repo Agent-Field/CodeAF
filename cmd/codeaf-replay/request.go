@@ -266,6 +266,10 @@ var callSiteRoles = map[string]lane.Role{
 	// it reached the log with NO TAG AT ALL until #996 — which made the dearest
 	// side-call on the ceiling road invisible to every reading of this file.
 	"handoff-draft": lane.RoleAuxiliary,
+	// cmd/codeaf/factory_triage.go: the factory's read of one new issue, on the
+	// low seat. Nobody is waiting on it and nobody reads its stream, so it is
+	// the same patient background errand as the draft above.
+	"factory triage": lane.RoleAuxiliary,
 	// internal/session/subharness_env.go: one AI step of a saved program, which
 	// runs on the program's own model rather than on any role's. Nobody is
 	// reading its stream and nobody is waiting on its first word.

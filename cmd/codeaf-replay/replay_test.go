@@ -252,6 +252,12 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 	// cmd/codeaf/chat.go's errandContext passes the errand's own name straight
 	// through; its call sites are walked for the literals they hand it.
 	"task": func(yield func(tag, where string)) {},
+	// cmd/codeaf/factory_triage.go tags its one small-work read with the
+	// constant that names it on the spend ledger; that is the whole of what the
+	// constant can be.
+	"factoryTriageName": func(yield func(tag, where string)) {
+		yield("factory triage", "cmd/codeaf/factory_triage.go, the factory's small-work read")
+	},
 	// internal/session/clientdoor.go is the ONE place that package writes a tag
 	// now, and what it writes is whatever purpose its caller handed it. It
 	// enumerates nothing on its own: the words come from the door's own call

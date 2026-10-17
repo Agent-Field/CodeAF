@@ -348,6 +348,9 @@ type appBackend struct {
 	// first factory.* call.
 	factories   *appFactoryHub
 	factoryOnce sync.Once
+	// local is the factory this engine serves or joined for its own person,
+	// only once a window asks (appfactory_setup.go).
+	local appLocalFactory
 	// stoppingAll is the agents a processes.stop_all is in flight for; a
 	// second for the same agent is answered busy (appprocessactions.go).
 	stoppingAll map[string]bool
@@ -3407,6 +3410,7 @@ func (b *appBackend) Close() error {
 	if balances != nil {
 		balances.stop()
 	}
+	b.closeLocalFactory()
 	b.closeFactories()
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).

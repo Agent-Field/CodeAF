@@ -43,6 +43,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/trace"
@@ -72,6 +73,11 @@ type appFactoryRow struct {
 	URL  string `json:"url"`
 	Name string `json:"name,omitempty"`
 	Mode string `json:"mode,omitempty"`
+	// Local marks the one row this engine made for the factory of its own
+	// machine (appfactory_setup.go). It is the ONLY row that engine may forget
+	// when it quits or replaces: a row a person attached by address, solo or
+	// not, never carries it, and attaching an address clears it.
+	Local bool `json:"local,omitempty"`
 }
 
 type appFactoryFile struct {
@@ -156,13 +162,70 @@ func (b *appBackend) closeFactories() {
 }
 
 func (h *appFactoryHub) close() {
+	h.forgetAll()
+	h.client.CloseIdleConnections()
+}
+
+// forgetAll is close's critical section, scoped so a panic in it cannot leave
+// the registry locked.
+func (h *appFactoryHub) forgetAll() {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.closed = true
 	h.sessions = map[string]appFactorySession{}
 	h.signIns = map[string]*appFactorySignIn{}
 	h.links = map[string]*appFactoryLink{}
-	h.mu.Unlock()
-	h.client.CloseIdleConnections()
+}
+
+// The small critical sections below each take the registry's lock for one
+// step and release it from a defer, so a panic that something absorbs cannot
+// become a deadlock.
+
+// touch records that id answered just now.
+func (h *appFactoryHub) touch(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.seen[id] = h.now()
+}
+
+// tokenFor is the bearer held for id, or "".
+func (h *appFactoryHub) tokenFor(id string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.tokenLocked(id)
+}
+
+// forgetSignIn ends one device sign-in.
+func (h *appFactoryHub) forgetSignIn(flow string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.signIns, flow)
+}
+
+// unclaim frees a sign-in a poll claimed, if it is still the one in place.
+func (h *appFactoryHub) unclaim(flow string, f *appFactorySignIn) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if cur := h.signIns[flow]; cur == f {
+		f.busy = false
+	}
+}
+
+// releaseLink frees an access-link flow an exchange claimed.
+func (h *appFactoryHub) releaseLink(key string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if l := h.links[key]; l != nil {
+		l.busy = false
+	}
+}
+
+// snapshot is the saved rows, loaded if they are not yet.
+func (h *appFactoryHub) snapshot() ([]appFactoryRow, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	err := h.load()
+	return append([]appFactoryRow(nil), h.rows...), err
 }
 
 // ── addresses and the saved list ───────────────────────────────────────────
@@ -214,7 +277,7 @@ func (h *appFactoryHub) load() error {
 		if err != nil {
 			continue
 		}
-		h.rows = append(h.rows, appFactoryRow{ID: appFactoryID(origin), URL: origin, Name: row.Name, Mode: row.Mode})
+		h.rows = append(h.rows, appFactoryRow{ID: appFactoryID(origin), URL: origin, Name: row.Name, Mode: row.Mode, Local: row.Local})
 	}
 	h.loaded = true
 	return nil
@@ -289,10 +352,10 @@ func (h *appFactoryHub) hold(id, token string, lives time.Duration) {
 		s.expires = h.now().Add(lives)
 	}
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	if !h.closed {
 		h.sessions[id] = s
 	}
-	h.mu.Unlock()
 }
 
 // ── one request ────────────────────────────────────────────────────────────
@@ -403,9 +466,7 @@ func (h *appFactoryHub) read(ctx context.Context, id, path string, limit int64, 
 	if json.Unmarshal(r.body, out) != nil {
 		return appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
 	}
-	h.mu.Lock()
-	h.seen[id] = h.now()
-	h.mu.Unlock()
+	h.touch(id)
 	return nil
 }
 
@@ -418,9 +479,7 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) appwire.Fac
 	}
 	ctx, cancel := context.WithTimeout(ctx, appFactoryProbe)
 	defer cancel()
-	h.mu.Lock()
-	token := h.tokenLocked(row.ID)
-	h.mu.Unlock()
+	token := h.tokenFor(row.ID)
 	r, err := h.send(ctx, row.URL, token, http.MethodGet, "/v1/me", nil, appFactorySmall, nil)
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -461,17 +520,14 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) appwire.Fac
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
-		Local: false, Runner: false, Writes: false,
+		Local: true, Runner: true, Writes: false,
 		MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 
 func (b *appBackend) FactoryList(ctx context.Context) (appwire.FactoryList, error) {
 	h := b.factoryHub()
-	h.mu.Lock()
-	err := h.load()
-	rows := append([]appFactoryRow(nil), h.rows...)
-	h.mu.Unlock()
+	rows, err := h.snapshot()
 	if err != nil {
 		return appwire.FactoryList{}, err
 	}
@@ -481,11 +537,11 @@ func (b *appBackend) FactoryList(ctx context.Context) (appwire.FactoryList, erro
 	for i := range rows {
 		wg.Add(1)
 		slots <- struct{}{}
-		go func(i int) {
+		guard.Go("app/factory view", func() {
 			defer wg.Done()
 			defer func() { <-slots }()
 			out[i] = h.view(ctx, rows[i])
-		}(i)
+		})
 	}
 	wg.Wait()
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -499,14 +555,7 @@ func (b *appBackend) FactoryAttach(ctx context.Context, raw, token string) (appw
 		return appwire.FactoryConnection{}, err
 	}
 	id := appFactoryID(origin)
-	h.mu.Lock()
-	err = h.load()
-	known := false
-	for _, row := range h.rows {
-		known = known || row.ID == id
-	}
-	full := len(h.rows) >= appwire.MaxFactoryConnections && !known
-	h.mu.Unlock()
+	known, full, err := h.admitAttach(id)
 	if err != nil {
 		return appwire.FactoryConnection{}, err
 	}
@@ -535,22 +584,43 @@ func (b *appBackend) FactoryAttach(ctx context.Context, raw, token string) (appw
 		h.hold(id, token, 0)
 	}
 	row := appFactoryRow{ID: id, URL: origin, Name: name}
+	if err := h.saveAttached(row, known); err != nil {
+		return appwire.FactoryConnection{}, err
+	}
+	return h.view(ctx, row), nil
+}
+
+// admitAttach says whether id is already saved and whether the list is full.
+func (h *appFactoryHub) admitAttach(id string) (known, full bool, err error) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
+	err = h.load()
+	for _, row := range h.rows {
+		known = known || row.ID == id
+	}
+	return known, len(h.rows) >= appwire.MaxFactoryConnections && !known, err
+}
+
+// saveAttached saves row, or names an unnamed row already saved under its id.
+func (h *appFactoryHub) saveAttached(row appFactoryRow, known bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if known {
 		for i := range h.rows {
-			if h.rows[i].ID == id && h.rows[i].Name == "" {
-				h.rows[i].Name = name
+			if h.rows[i].ID != row.ID {
+				continue
 			}
+			if h.rows[i].Name == "" {
+				h.rows[i].Name = row.Name
+			}
+			// A person naming this address keeps it: it is no longer only the
+			// local factory's own row to forget.
+			h.rows[i].Local = false
 		}
 	} else {
 		h.rows = append(h.rows, row)
 	}
-	err = h.save()
-	h.mu.Unlock()
-	if err != nil {
-		return appwire.FactoryConnection{}, err
-	}
-	return h.view(ctx, row), nil
+	return h.save()
 }
 
 func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
@@ -742,48 +812,11 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 		return appwire.FactoryAccess{}, err
 	}
 	id := appFactoryID(origin)
-	h.mu.Lock()
-	if h.closed {
-		h.mu.Unlock()
-		return appwire.FactoryAccess{}, appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
-	}
-	if err = h.load(); err != nil {
-		h.mu.Unlock()
+	cookie, token, err := h.admitAccess(id, key, verb)
+	if err != nil {
 		return appwire.FactoryAccess{}, err
 	}
-	h.prune()
-	flow := h.links[key]
-	if verb == "sign_in" {
-		known := false
-		for _, row := range h.rows {
-			known = known || row.ID == id
-		}
-		switch {
-		case flow == nil && len(h.links)+len(h.signIns) >= appwire.MaxFactoryFlows:
-			h.mu.Unlock()
-			return appwire.FactoryAccess{}, appwire.Errorf(appwire.CodeBusy, "too many pending factory links")
-		case !known && len(h.rows) >= appwire.MaxFactoryConnections:
-			h.mu.Unlock()
-			return appwire.FactoryAccess{}, appwire.Errorf(appwire.CodeBusy, "this app is attached to as many factories as it can be (%d)", appwire.MaxFactoryConnections)
-		}
-	}
-	if flow != nil && flow.busy {
-		h.mu.Unlock()
-		return appwire.FactoryAccess{}, appwire.Errorf(appwire.CodeBusy, "this link is already being checked")
-	}
-	var cookie *http.Cookie
-	if flow != nil {
-		flow.busy, cookie = true, flow.cookie
-	}
-	token := h.tokenLocked(id)
-	h.mu.Unlock()
-	release := func() {
-		h.mu.Lock()
-		if l := h.links[key]; l != nil {
-			l.busy = false
-		}
-		h.mu.Unlock()
-	}
+	release := func() { h.releaseLink(key) }
 
 	var in any
 	method, path := http.MethodGet, "/v1/factory-access?link="+url.QueryEscape(link)
@@ -857,6 +890,43 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 		Help: out.Help, SignInURL: out.SignInURL, UserCode: out.UserCode}, nil
 }
 
+// admitAccess is the admission of one access-link exchange: it refuses a
+// closing registry, a full one and a link already being checked, and otherwise
+// claims the link and answers the cookie the factory gave it and the bearer
+// held for id.
+func (h *appFactoryHub) admitAccess(id, key, verb string) (*http.Cookie, string, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		return nil, "", appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
+	}
+	if err := h.load(); err != nil {
+		return nil, "", err
+	}
+	h.prune()
+	flow := h.links[key]
+	if verb == "sign_in" {
+		known := false
+		for _, row := range h.rows {
+			known = known || row.ID == id
+		}
+		switch {
+		case flow == nil && len(h.links)+len(h.signIns) >= appwire.MaxFactoryFlows:
+			return nil, "", appwire.Errorf(appwire.CodeBusy, "too many pending factory links")
+		case !known && len(h.rows) >= appwire.MaxFactoryConnections:
+			return nil, "", appwire.Errorf(appwire.CodeBusy, "this app is attached to as many factories as it can be (%d)", appwire.MaxFactoryConnections)
+		}
+	}
+	if flow != nil && flow.busy {
+		return nil, "", appwire.Errorf(appwire.CodeBusy, "this link is already being checked")
+	}
+	var cookie *http.Cookie
+	if flow != nil {
+		flow.busy, cookie = true, flow.cookie
+	}
+	return cookie, h.tokenLocked(id), nil
+}
+
 // attachLocked saves a connection if it is not saved already.
 func (h *appFactoryHub) attachLocked(id, origin, name string) error {
 	for _, row := range h.rows {
@@ -892,16 +962,7 @@ func (b *appBackend) FactorySignInStart(ctx context.Context, caller, id string) 
 	if err != nil {
 		return appwire.FactorySignIn{}, err
 	}
-	h.mu.Lock()
-	h.prune()
-	mine := 0
-	for _, f := range h.signIns {
-		if f.caller == caller {
-			mine++
-		}
-	}
-	over := len(h.links)+len(h.signIns) >= appwire.MaxFactoryFlows
-	h.mu.Unlock()
+	mine, over := h.crowd(caller)
 	if over || mine >= appFactoryPerCaller {
 		return appwire.FactorySignIn{}, appwire.Errorf(appwire.CodeBusy, "too many sign-ins are waiting; finish or cancel one")
 	}
@@ -941,6 +1002,20 @@ func (b *appBackend) FactorySignInStart(ctx context.Context, caller, id string) 
 	return appwire.FactorySignIn{Flow: flow, Factory: id, UserCode: dev.UserCode, VerificationURI: dev.VerificationURI, Interval: dev.Interval, ExpiresIn: dev.ExpiresIn}, nil
 }
 
+// crowd is how many sign-ins caller has pending and whether the registry holds
+// as many flows as it may.
+func (h *appFactoryHub) crowd(caller string) (mine int, over bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.prune()
+	for _, f := range h.signIns {
+		if f.caller == caller {
+			mine++
+		}
+	}
+	return mine, len(h.links)+len(h.signIns) >= appwire.MaxFactoryFlows
+}
+
 // own is the flow a caller started, marked busy for one exchange. Another
 // caller's flow and a flow that does not exist answer the same.
 func (h *appFactoryHub) own(caller, flow string, claim bool) (*appFactorySignIn, error) {
@@ -959,42 +1034,53 @@ func (h *appFactoryHub) own(caller, flow string, claim bool) (*appFactorySignIn,
 	return f, nil
 }
 
+// pollTurn decides whether a poll may ask the factory yet. It answers early
+// when the flow has expired or it is too soon to ask GitHub again, and
+// otherwise books the next ask and answers what to send.
+func (h *appFactoryHub) pollTurn(flow string, f *appFactorySignIn) (early *appwire.FactorySignInState, code, factoryID, bearer string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := h.now()
+	switch {
+	case !now.Before(f.expires):
+		delete(h.signIns, flow)
+		return &appwire.FactorySignInState{State: appwire.SignInExpired}, "", "", ""
+	case now.Before(f.next):
+		f.busy = false
+		// TOO SOON TO ASK GITHUB AGAIN: answer without a request.
+		return &appwire.FactorySignInState{State: appwire.SignInPending, Interval: f.interval}, "", "", ""
+	}
+	f.next = now.Add(time.Duration(f.interval) * time.Second)
+	return nil, f.code, f.factory, f.bearer
+}
+
+// slowDown records the interval the factory asked for and frees the flow.
+func (h *appFactoryHub) slowDown(f *appFactorySignIn, asked int) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if asked > f.interval {
+		f.interval = asked
+		f.next = h.now().Add(time.Duration(f.interval) * time.Second)
+	}
+	f.busy = false
+	return f.interval
+}
+
 func (b *appBackend) FactorySignInPoll(ctx context.Context, caller, flow string) (appwire.FactorySignInState, error) {
 	h := b.factoryHub()
 	f, err := h.own(caller, flow, true)
 	if err != nil {
 		return appwire.FactorySignInState{}, err
 	}
-	h.mu.Lock()
-	now := h.now()
-	switch {
-	case !now.Before(f.expires):
-		delete(h.signIns, flow)
-		h.mu.Unlock()
-		return appwire.FactorySignInState{State: appwire.SignInExpired}, nil
-	case now.Before(f.next):
-		f.busy = false
-		interval := f.interval
-		h.mu.Unlock()
-		// TOO SOON TO ASK GITHUB AGAIN: answer without a request.
-		return appwire.FactorySignInState{State: appwire.SignInPending, Interval: interval}, nil
+	early, code, factoryID, bearer := h.pollTurn(flow, f)
+	if early != nil {
+		return *early, nil
 	}
-	f.next = now.Add(time.Duration(f.interval) * time.Second)
-	code, factoryID, bearer := f.code, f.factory, f.bearer
-	h.mu.Unlock()
-	unclaim := func() {
-		h.mu.Lock()
-		if cur := h.signIns[flow]; cur == f {
-			f.busy = false
-		}
-		h.mu.Unlock()
-	}
+	unclaim := func() { h.unclaim(flow, f) }
 
 	row, _, err := h.target(factoryID)
 	if err != nil {
-		h.mu.Lock()
-		delete(h.signIns, flow)
-		h.mu.Unlock()
+		h.forgetSignIn(flow)
 		return appwire.FactorySignInState{}, err
 	}
 	r, err := h.send(ctx, row.URL, bearer, http.MethodPost, "/v1/auth/device/poll", api.DevicePoll{DeviceCode: code}, appFactorySmall, nil)
@@ -1009,36 +1095,23 @@ func (b *appBackend) FactorySignInPoll(ctx context.Context, caller, flow string)
 	_ = json.Unmarshal(r.body, &body)
 	switch r.status {
 	case http.StatusAccepted:
-		h.mu.Lock()
-		if body.Interval > f.interval {
-			f.interval = body.Interval
-			f.next = h.now().Add(time.Duration(f.interval) * time.Second)
-		}
-		interval := f.interval
-		f.busy = false
-		h.mu.Unlock()
+		interval := h.slowDown(f, body.Interval)
 		return appwire.FactorySignInState{State: appwire.SignInPending, Interval: interval}, nil
 	case http.StatusOK:
 		var signed api.SignedIn
 		if json.Unmarshal(r.body, &signed) != nil || signed.AccessToken == "" {
-			h.mu.Lock()
-			delete(h.signIns, flow)
-			h.mu.Unlock()
+			h.forgetSignIn(flow)
 			return appwire.FactorySignInState{}, appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
 		}
 		h.hold(factoryID, signed.AccessToken, time.Duration(signed.ExpiresIn)*time.Second)
-		h.mu.Lock()
-		delete(h.signIns, flow)
-		h.mu.Unlock()
+		h.forgetSignIn(flow)
 		me := signed.Me
 		me.SessionID = ""
 		return appwire.FactorySignInState{State: appwire.SignInSignedIn, Me: &me}, nil
 	case http.StatusGone, http.StatusForbidden:
 		// expired_token, access_denied, a handle off the team, a link for
 		// someone else: each ends the flow, and the factory's sentence says why.
-		h.mu.Lock()
-		delete(h.signIns, flow)
-		h.mu.Unlock()
+		h.forgetSignIn(flow)
 		if r.status == http.StatusGone {
 			return appwire.FactorySignInState{State: appwire.SignInExpired}, nil
 		}
@@ -1048,9 +1121,7 @@ func (b *appBackend) FactorySignInPoll(ctx context.Context, caller, flow string)
 		}
 		return appwire.FactorySignInState{State: appwire.SignInDenied, Message: msg}, nil
 	}
-	h.mu.Lock()
-	delete(h.signIns, flow)
-	h.mu.Unlock()
+	h.forgetSignIn(flow)
 	return appwire.FactorySignInState{}, appFactoryFailure(r)
 }
 
@@ -1060,9 +1131,7 @@ func (b *appBackend) FactorySignInCancel(ctx context.Context, caller, flow strin
 	if err != nil {
 		return err
 	}
-	h.mu.Lock()
-	delete(h.signIns, flow)
-	h.mu.Unlock()
+	h.forgetSignIn(flow)
 	// Telling the factory lets it free the code; if it cannot be told, the
 	// code expires on its own.
 	if row, _, e := h.target(f.factory); e == nil {

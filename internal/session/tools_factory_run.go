@@ -218,15 +218,15 @@ func (a *Agent) factoryRunTool() bare.Tool {
 			var parsed runArgs
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			edit, err := runEditOf(parsed)
 			if err != nil {
-				return "Invalid arguments: " + err.Error() + ".", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()+"."), true, nil
 			}
 			if edit.Empty() {
-				return "Invalid arguments: factory_run needs something to change: set, add, on or skip.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: factory_run needs something to change: set, add, on or skip."), true, nil
 			}
 			_, lines, err := a.runDoorForTurn().EditRun(ctx, a.config.SessionFile, edit)
 			if err != nil {
