@@ -6,6 +6,7 @@ import (
 )
 
 // MadeInTeamMax is the most rows one [Store.MadeInTeam] page returns.
+// It is the wire's limit too: internal/appwire's OrdersMadeLimitMax must equal it.
 const MadeInTeamMax = 100
 
 // madeInTeam is the SQL for "this row's creation team is exactly ?". It reads

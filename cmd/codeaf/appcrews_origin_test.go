@@ -132,16 +132,20 @@ func TestAppCrewMessageOnAnOlderHostKeepsItsStampThroughQueueAndEdit(t *testing.
 	inner := &fakeConversation{hold: hold}
 	backend, agent, crew := olderHostCrew(t, inner)
 
+	// While the agent is idle a message with a mark is refused whole by the
+	// older host's gate (not by busy), and nothing is sent.
+	said := "mine"
+	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "marked", Said: &said}); wireCode(err) != appwire.CodeUnknownMethod {
+		t.Fatalf("a marked crew message to an older host answered %v, want unknown_method", err)
+	}
+	if got := creationStamps(inner); len(got) != 0 {
+		t.Fatalf("a refused message reached the engine: %q", got)
+	}
 	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "first"}); err != nil {
 		t.Fatalf("a plain crew message was refused by an older host: %v", err)
 	}
 	if got := creationStamps(inner); len(got) != 1 || got[0] != crew {
 		t.Fatalf("the plain message was handed stamps %q", got)
-	}
-	// A message with a mark is refused whole, nothing sent or queued.
-	said := "mine"
-	if _, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "marked", Said: &said}); wireCode(err) == "" {
-		t.Fatal("a marked crew message to an older host was taken")
 	}
 	waiting, err := backend.CrewMessage(appwire.CrewMessage{Crew: crew, Text: "second"})
 	if err != nil || waiting.Turn != 0 {
