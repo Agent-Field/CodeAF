@@ -119,9 +119,18 @@ type ShareReceipt struct {
 
 // ShareClaim is one admitted (or replayed) hold on an operation. The process
 // slot and the cross-process lock stay held until Release or Settle finishes.
+//
+// RECEIPT IS A VIEW, NEVER AN AUTHORITY. It is a fresh decode of the bytes on
+// disk, handed out so a caller can read it; nothing the claim does next reads
+// it back. Plan, Settle and [ShareClaim.PlannedRows] all start from durable —
+// the exact bytes last read from or written to the receipt file, private to
+// the claim — so a caller that edits Receipt, or any row it passed to Plan,
+// cannot change what is settled or appended.
 type ShareClaim struct {
 	Outcome string
 	Receipt ShareReceipt
+
+	durable []byte
 
 	dir         string
 	lock        *os.File
@@ -264,7 +273,7 @@ func makeShareOpDir(dir, root string) error {
 // answer reads the durable receipt under the held lock and decides: replay
 // the ORIGINAL, refuse a different payload, or write the pending manifest.
 func (c *ShareClaim) answer(session, operationID string, normalised []string, digest string, prov ShareProvenance) (*ShareClaim, error) {
-	existing, err := readShareReceipt(c.dir)
+	existing, raw, err := readShareReceiptRaw(c.dir)
 	if err == nil && (existing.Session != session || existing.OperationID != operationID) {
 		err = ErrShareOpInvalid
 	}
@@ -276,19 +285,43 @@ func (c *ShareClaim) answer(session, operationID string, normalised []string, di
 	case err == nil:
 		// Replay the ORIGINAL receipt and provenance; do not rewrite Created
 		// and do not attribute the operation to the latest caller.
-		c.Receipt, c.Outcome = existing, ShareClaimReplay
-		return c, nil
+		c.Outcome = ShareClaimReplay
+		return c, c.adopt(raw)
 	case !errors.Is(err, ErrShareOpMissing):
 		c.Release()
 		return &ShareClaim{Outcome: ShareClaimBusy}, err
 	}
-	receipt := pendingShareReceipt(session, operationID, normalised, digest, prov)
-	if err := writeShareReceipt(c.dir, receipt); err != nil {
+	raw, err = writeShareReceipt(c.dir, pendingShareReceipt(session, operationID, normalised, digest, prov))
+	if err == nil {
+		err = c.adopt(raw)
+	}
+	if err != nil {
 		c.Release()
 		return &ShareClaim{Outcome: ShareClaimBusy}, err
 	}
-	c.Receipt, c.Outcome = receipt, ShareClaimAdmitted
+	c.Outcome = ShareClaimAdmitted
 	return c, nil
+}
+
+// adopt makes raw — bytes just read from or written to the receipt file — the
+// claim's only authority, and Receipt a fresh decode of them that shares no
+// pointer or slice with anything the claim keeps.
+func (c *ShareClaim) adopt(raw []byte) error {
+	view, err := decodeShareReceipt(raw)
+	if err != nil {
+		return err
+	}
+	c.durable = append([]byte(nil), raw...)
+	c.Receipt = view
+	return nil
+}
+
+// frozen is a fresh decode of the durable bytes, owned by its caller alone.
+func (c *ShareClaim) frozen() (ShareReceipt, error) {
+	if c == nil || len(c.durable) == 0 {
+		return ShareReceipt{}, ErrShareOpInvalid
+	}
+	return decodeShareReceipt(c.durable)
 }
 
 // pendingShareReceipt mints the immutable planned ids before any effect.
@@ -324,7 +357,11 @@ func (c *ShareClaim) Settle(status string, recordedIDs []string) error {
 		return ErrShareOpInvalid
 	}
 	defer c.Release()
-	from := c.Receipt.Status
+	receipt, err := c.frozen()
+	if err != nil {
+		return err
+	}
+	from := receipt.Status
 	if from == ShareOpAccepted || from == ShareOpRefused {
 		return nil
 	}
@@ -334,15 +371,14 @@ func (c *ShareClaim) Settle(status string, recordedIDs []string) error {
 	if time.Now().After(c.deadline) {
 		return ErrShareOpBusy
 	}
-	receipt := c.Receipt
 	receipt.Status = status
 	receipt.RecordedIDs = append([]string(nil), recordedIDs...)
 	receipt.WrittenAt = time.Now().UTC()
-	if err := writeShareReceipt(c.dir, receipt); err != nil {
+	raw, err := writeShareReceipt(c.dir, receipt)
+	if err != nil {
 		return err
 	}
-	c.Receipt = receipt
-	return nil
+	return c.adopt(raw)
 }
 
 func shareSettles(from, to string) bool {
@@ -407,25 +443,42 @@ func shareOpDir(root, session, operationID string) string {
 }
 
 func readShareReceipt(dir string) (ShareReceipt, error) {
+	receipt, _, err := readShareReceiptRaw(dir)
+	return receipt, err
+}
+
+// readShareReceiptRaw answers the receipt and the exact bytes it was decoded
+// from, bounded and validated before either is trusted.
+func readShareReceiptRaw(dir string) (ShareReceipt, []byte, error) {
 	file, err := openRegularNoFollow(filepath.Join(dir, shareOpReceipt))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return ShareReceipt{}, ErrShareOpMissing
+			return ShareReceipt{}, nil, ErrShareOpMissing
 		}
-		return ShareReceipt{}, err
+		return ShareReceipt{}, nil, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return ShareReceipt{}, err
+		return ShareReceipt{}, nil, err
 	}
 	if info.Size() > shareOpReceiptMax {
-		return ShareReceipt{}, ErrShareOpInvalid
+		return ShareReceipt{}, nil, ErrShareOpInvalid
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, shareOpReceiptMax+1))
 	if err != nil {
-		return ShareReceipt{}, err
+		return ShareReceipt{}, nil, err
 	}
+	receipt, err := decodeShareReceipt(raw)
+	if err != nil {
+		return ShareReceipt{}, nil, err
+	}
+	return receipt, raw, nil
+}
+
+// decodeShareReceipt is the one reading of receipt bytes: bounded, decoded
+// into fresh memory, validated.
+func decodeShareReceipt(raw []byte) (ShareReceipt, error) {
 	if len(raw) > shareOpReceiptMax {
 		return ShareReceipt{}, ErrShareOpInvalid
 	}
@@ -439,19 +492,28 @@ func readShareReceipt(dir string) (ShareReceipt, error) {
 	return receipt, nil
 }
 
-// writeShareReceipt atomically replaces the receipt under dir. The lock file in
-// the same directory is never this write's target.
-func writeShareReceipt(dir string, receipt ShareReceipt) error {
-	if err := validateShareReceipt(receipt); err != nil {
-		return err
-	}
+// writeShareReceipt atomically replaces the receipt under dir and answers the
+// exact bytes written. The lock file in the same directory is never this
+// write's target.
+//
+// WHAT IS VALIDATED IS WHAT IS WRITTEN: the receipt is marshalled first and
+// those bytes are decoded and validated, so no value that only exists in the
+// caller's memory can pass the check and differ on disk.
+func writeShareReceipt(dir string, receipt ShareReceipt) ([]byte, error) {
 	raw, err := json.Marshal(receipt)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if len(raw) > shareOpReceiptMax {
-		return ErrShareOpInvalid
+	if _, err := decodeShareReceipt(raw); err != nil {
+		return nil, err
 	}
+	if err := replaceShareReceipt(dir, raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func replaceShareReceipt(dir string, raw []byte) error {
 	tmp, err := os.CreateTemp(dir, ".receipt-*")
 	if err != nil {
 		return err

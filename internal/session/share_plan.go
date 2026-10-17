@@ -22,27 +22,70 @@ import (
 // Plan persists rows as the immutable plan of a pending claim, in planned
 // order, while the lock is held. It never releases the claim: a failure leaves
 // the caller to settle refused (nothing was appended) or simply release.
+//
+// THE ROWS ARE FROZEN ON THE WAY IN. Each is marshalled and decoded into fresh
+// memory before it is validated, so no pointer or slice the caller still holds
+// — Deliver, Media, File, Source, From, References — reaches the plan. What
+// the plan starts from is the claim's durable bytes, never Receipt.
 func (c *ShareClaim) Plan(rows []Artifact) error {
-	if c == nil || c.lock == nil || c.Receipt.Status != ShareOpPending || len(rows) != len(c.Receipt.Planned) {
+	if c == nil || c.lock == nil {
+		return ErrShareOpInvalid
+	}
+	receipt, err := c.frozen()
+	if err != nil {
+		return err
+	}
+	if receipt.Status != ShareOpPending || len(rows) != len(receipt.Planned) {
 		return ErrShareOpInvalid
 	}
 	if time.Now().After(c.deadline) {
 		return ErrShareOpBusy
 	}
-	receipt := c.Receipt
-	receipt.Planned = make([]SharePlannedRow, len(c.Receipt.Planned))
-	for i, planned := range c.Receipt.Planned {
-		row := rows[i]
-		planned.Row = &row
-		receipt.Planned[i] = planned
+	for i := range receipt.Planned {
+		frozen, err := freezeShareRow(rows[i])
+		if err != nil {
+			return err
+		}
+		receipt.Planned[i].Row = frozen
 	}
 	receipt.Status = ShareOpPlanned
 	receipt.WrittenAt = time.Now().UTC()
-	if err := writeShareReceipt(c.dir, receipt); err != nil {
+	raw, err := writeShareReceipt(c.dir, receipt)
+	if err != nil {
 		return err
 	}
-	c.Receipt = receipt
-	return nil
+	return c.adopt(raw)
+}
+
+// PlannedRows is the plan as the ONLY thing an append may write: a fresh decode
+// of the durable receipt, every row its own memory, in planned order. A
+// receipt without a written plan has nothing to append.
+func (c *ShareClaim) PlannedRows() ([]Artifact, error) {
+	receipt, err := c.frozen()
+	if err != nil {
+		return nil, err
+	}
+	if !receipt.PlanWritten() {
+		return nil, ErrShareOpInvalid
+	}
+	rows := make([]Artifact, len(receipt.Planned))
+	for i, planned := range receipt.Planned {
+		rows[i] = *planned.Row
+	}
+	return rows, nil
+}
+
+// freezeShareRow is row in memory nobody else holds.
+func freezeShareRow(row Artifact) (*Artifact, error) {
+	raw, err := json.Marshal(row)
+	if err != nil {
+		return nil, ErrShareOpInvalid
+	}
+	var frozen Artifact
+	if err := json.Unmarshal(raw, &frozen); err != nil {
+		return nil, ErrShareOpInvalid
+	}
+	return &frozen, nil
 }
 
 // PlanWritten says the receipt carries its full plan, so its rows are the ONLY
@@ -61,7 +104,7 @@ func validateSharePlan(r ShareReceipt) error {
 			continue
 		}
 		rows++
-		if err := validateSharePlannedRow(r.Session, planned); err != nil {
+		if err := validateSharePlannedRow(r, planned); err != nil {
 			return err
 		}
 	}
@@ -78,14 +121,15 @@ func validateSharePlan(r ShareReceipt) error {
 
 // validateSharePlannedRow refuses a planned row that is not exactly what this
 // engine writes for a shared file: its own id, this session, the shared origin
-// with nothing claimed about authorship or state, and a row that fits.
-func validateSharePlannedRow(session string, planned SharePlannedRow) error {
+// with nothing claimed about authorship or state, attributed to the ORIGINAL
+// receipt's run, message and call, and a row that fits.
+func validateSharePlannedRow(r ShareReceipt, planned SharePlannedRow) error {
 	row := planned.Row
 	fact := row.Deliver
-	if fact == nil || fact.ID != planned.ID || row.Session != session || strings.TrimSpace(row.Title) == "" {
+	if fact == nil || fact.ID != planned.ID || row.Session != r.Session || strings.TrimSpace(row.Title) == "" {
 		return ErrShareOpInvalid
 	}
-	if !shareFactOnlyShares(fact) {
+	if !shareFactOnlyShares(fact) || !shareRowAttributedTo(row, r.Provenance) {
 		return ErrShareOpInvalid
 	}
 	if err := validateSharePlannedFiles(row); err != nil {
@@ -96,6 +140,18 @@ func validateSharePlannedRow(session string, planned SharePlannedRow) error {
 		return ErrShareOpInvalid
 	}
 	return nil
+}
+
+// shareRowAttributedTo says the row names exactly the run, message and call
+// the operation was first handed over under — in its deliverable fact and in
+// its media fact alike — so a plan can never attribute to a later caller.
+func shareRowAttributedTo(row *Artifact, prov ShareProvenance) bool {
+	fact := row.Deliver
+	if fact.Run != prov.Run || fact.Turn != prov.Turn || fact.Call != prov.Call {
+		return false
+	}
+	media := row.Media
+	return media == nil || media.Run == prov.Run && media.Message == prov.Turn && media.Tool == prov.Call
 }
 
 // shareFactOnlyShares says the fact claims sharing and nothing else: no
