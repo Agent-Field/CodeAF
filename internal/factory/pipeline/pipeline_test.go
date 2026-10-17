@@ -537,7 +537,7 @@ func TestMarkdownBecomesAPipeline(t *testing.T) {
 		t.Fatalf("review = %+v", f.Steps["review"])
 	}
 	why := problems(f)
-	for _, needle := range []string{"off in the markdown", "fanout", "a check becomes a prompt", "no condition"} {
+	for _, needle := range []string{"off in the markdown", "no condition"} {
 		if !strings.Contains(why, needle) {
 			t.Fatalf("missing %q in %s", needle, why)
 		}
@@ -546,7 +546,7 @@ func TestMarkdownBecomesAPipeline(t *testing.T) {
 		t.Fatalf("rules = %v", f.Rules)
 	}
 	r := f.Recipe()
-	if r.Stages[1].Kind != factory.StageGate || r.Stages[3].Kind != factory.StageChat || r.Stages[3].Until != factory.UntilGreen {
+	if r.Stages[1].Kind != factory.StageGate || r.Stages[3].Kind != factory.StageCheck || r.Stages[2].Fanout != "per-file" || r.Stages[3].Until != factory.UntilGreen {
 		t.Fatalf("recipe = %+v", r.Stages)
 	}
 }

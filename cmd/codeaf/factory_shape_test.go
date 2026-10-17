@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
@@ -116,7 +117,7 @@ func TestOneShapingTurnCollectsTheManagersEdit(t *testing.T) {
 	if it.Stages[4].Ask != "read it as a stranger would" {
 		t.Fatal("the shaping turn wrote the item")
 	}
-	it.Triage.Size = "L"
+	it.Triage.Size, it.Triage.SizeFrom, it.Triage.TriagedAt = "L", factory.SizeFromRead, time.Unix(100, 0)
 	if _, _, err := s.Shape(context.Background(), it, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -296,5 +297,30 @@ func TestAConversationAnotherProcessHoldsIsNamed(t *testing.T) {
 	_, _, err := s.Shape(context.Background(), factory.Item{ID: 1, Talk: "/x/t.jsonl"}, nil)
 	if !errors.Is(err, factoryrun.ErrManagerAway) || opens != 1 {
 		t.Fatalf("err %v after %d opens", err, opens)
+	}
+}
+
+// The shaping turn thinks cheap unless the SHOWN size is large: a label, a
+// measured diff or a completed read. A bare L (a legacy document) or a chat
+// model's guess is no size.
+func TestShapeCheapReadsTheShownSize(t *testing.T) {
+	when := time.Unix(100, 0)
+	for _, tc := range []struct {
+		name  string
+		it    factory.Item
+		cheap bool
+	}{
+		{"a read L", factory.Item{Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: when}}, false},
+		{"a diff L", factory.Item{Kind: factory.KindPR, Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromDiff}}, false},
+		{"an issue claiming a PR diff", factory.Item{Kind: factory.KindIssue, Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromDiff}}, true},
+		{"a label L over a read S", factory.Item{Labels: []string{"size:l"}, Triage: factory.Triage{Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: when}}, false},
+		{"a label S over a read L", factory.Item{Labels: []string{"size:s"}, Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: when}}, true},
+		{"a legacy L", factory.Item{Triage: factory.Triage{Size: "L", TriagedAt: when}}, true},
+		{"a chat L", factory.Item{Triage: factory.Triage{Size: "L", SizeFrom: factory.SizeFromChat}}, true},
+		{"nothing", factory.Item{}, true},
+	} {
+		if got := shapeCheap(tc.it); got != tc.cheap {
+			t.Errorf("%s: shapeCheap = %v, want %v", tc.name, got, tc.cheap)
+		}
 	}
 }

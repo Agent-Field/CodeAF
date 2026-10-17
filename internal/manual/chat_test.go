@@ -4150,3 +4150,48 @@ func TestAppProviderQuestionsReachTheirSection(t *testing.T) {
 		}
 	}
 }
+
+// A person asking why an issue shows no size must reach the factory's size
+// section, and not the context-window or debug-record pages that also say
+// "size". The section is the one place that says a size has three sources
+// and that an issue's length is not one of them.
+func TestFactoryNoSizeQuestionsReachTheHowBigIsAJobSection(t *testing.T) {
+	const heading = "how big is a job"
+	for _, asked := range []string{
+		"why does my issue have no size",
+		"how big is a job",
+		"factory size: filter shows no size for my issue",
+		"why does the factory say no size label",
+	} {
+		sections := Chat().Search(asked, DefaultResults)
+		var reached bool
+		for _, section := range sections {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach the factory section %q", asked, heading)
+			continue
+		}
+		if first := sections[0]; first.Page != "factory" || !strings.HasPrefix(first.Title, heading) {
+			t.Errorf("%q reaches %q but %s · %q ranks above it", asked, heading, first.Page, first.Title)
+		}
+	}
+}
+
+func TestFactoryRecipeHeldWriteQuestionReachesFactory(t *testing.T) {
+	for _, asked := range []string{"factory_recipe bank it refused held folder", "factory recipe cannot write while a program holds the folder"} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, "from chat to the factory") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the factory recipe write instructions", asked)
+		}
+	}
+}

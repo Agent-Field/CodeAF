@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -238,52 +235,6 @@ func TestJobScreensStatePresentationOnQueueAndJobReads(t *testing.T) {
 				t.Fatal(w.Body.String())
 			}
 		})
-	}
-}
-
-func TestJobScreensPipelinePRPreservesCheckout(t *testing.T) {
-	dir := t.TempDir()
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v %s", args, err, out)
-		}
-	}
-	git("init", "-b", "main")
-	git("config", "user.name", "test")
-	git("config", "user.email", "test@example.com")
-	if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("base"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	git("add", "tracked")
-	git("commit", "-m", "base")
-	if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("dirty"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	f := newV2Jobs(t)
-	f.seam.RecipeAt = func(string) (factory.Recipe, []factory.Problem, string, error) {
-		return factory.DefaultRecipe(), nil, dir, nil
-	}
-	reopenJobs(t, f)
-	body, _ := json.Marshal(api.PipelinePRRequest{Text: "pipeline:\n  issue: [write, proof]\n", Title: "Change steps"})
-	w := verbRequest(f.h, "POST", "/v1/repos/acme/api/pipeline/open-pr", string(body))
-	checkJSON(t, w, 200)
-	if !strings.Contains(w.Body.String(), "no remote to push to") {
-		t.Fatal(w.Body.String())
-	}
-	dirty, _ := os.ReadFile(filepath.Join(dir, "tracked"))
-	if string(dirty) != "dirty" {
-		t.Fatal("checkout changed")
-	}
-	if _, err := os.Stat(filepath.Join(dir, factory.PipelineFile)); !os.IsNotExist(err) {
-		t.Fatal("pipeline written into checkout", err)
-	}
-	cmd := exec.Command("git", "show", "factory/recipe-change:"+factory.PipelineFile)
-	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "pipeline:") {
-		t.Fatalf("review branch: %s %v", out, err)
 	}
 }
 

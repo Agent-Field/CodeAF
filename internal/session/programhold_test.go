@@ -204,6 +204,14 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 	// These verbs read, write codeaf's state outside the held folder, or start
 	// work whose own admission guard refuses a held folder. Bash is the one
 	// unguarded file writer because a shell command has no knowable path set.
+	//
+	// The two factory verbs write nothing until a person answers their card.
+	// `factory_add`'s yes writes a row in codeaf's own store. `factory_recipe`'s
+	// yes banks its line in a worktree of the repository's default branch, cut
+	// for that change (factory.BankRecipeChange), never in the checkout itself;
+	// a checkout with no git history, or a git that errors, is written in place,
+	// and the recipe door refuses that write when the folder is held
+	// (WriteHeldRefusal, cmd/codeaf/factory.go) — a person's yes is no exception.
 	notFolderWrites := map[string]bool{
 		"bash": true, "read": true, "ls": true, "find": true, "grep": true,
 		"manual": true, "ask": true, "jobs": true, "watch": true,
@@ -215,6 +223,7 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 		"services": true, "use_service": true,
 		"settings": true, "change_setting": true,
 		"automation": true, "automation_report": true,
+		"factory_add": true, "factory_recipe": true,
 		"items": true, "revise_assignment": true, "divide_work": true,
 		"build_harness": true, "list_harnesses": true, "list_subharnesses": true,
 		"propose_subharness": true, "revise_design": true,
@@ -363,4 +372,36 @@ func TestATaskThatWasRunningLandsBesideAHeldFolder(t *testing.T) {
 			t.Fatalf("the /land once the run ended = %+v, %v", landing, err)
 		}
 	})
+}
+
+// WriteHeldRefusal is the question the chat's file tools ask, for a road that
+// is not one of them: a held folder and everything under it is refused naming
+// the run, an unrelated folder and a folder beside it are not, and it is let
+// through once the run has ended.
+func TestWriteHeldRefusalIsTheHoldAtTheActualTarget(t *testing.T) {
+	work := t.TempDir()
+	held := filepath.Join(work, "held")
+	beside := filepath.Join(work, "beside")
+	for _, dir := range []string{filepath.Join(held, "sub"), beside} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := holdFolder(t, held, "Fix the parser")
+	want := programHoldWriteRefusal(filepath.Join(held, "sub"), holdOf(held, "Fix the parser"))
+	if got := WriteHeldRefusal(filepath.Join(held, "sub")); got != want {
+		t.Fatalf("under the held folder = %q, want %q", got, want)
+	}
+	if got := WriteHeldRefusal(held); got == "" {
+		t.Fatal("the held folder itself was let through")
+	}
+	for _, dir := range []string{beside, t.TempDir(), ""} {
+		if got := WriteHeldRefusal(dir); got != "" {
+			t.Fatalf("%q was refused: %q", dir, got)
+		}
+	}
+	run.Finish("")
+	if got := WriteHeldRefusal(held); got != "" {
+		t.Fatalf("refused after the run ended: %q", got)
+	}
 }

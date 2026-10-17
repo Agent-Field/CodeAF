@@ -49,8 +49,14 @@ func TestAppFactoryProxyKeepsIssuedRunnerCredentials(t *testing.T) {
 	if err := appFactoryRequest(context.Background(), factoryTarget{proxy.URL, "ignored-by-the-proxy"}, "GET", "/v1/runners", nil, &runners); err != nil {
 		t.Fatal(err)
 	}
-	if len(runners.Runners) != 1 || runners.Runners[0].State != api.RunnerAsleep {
-		t.Fatal(runners)
+	// The proxy's person has no attested handle in this fixture and cannot
+	// list another person's machine. The worker's credential can read itself.
+	if len(runners.Runners) != 0 {
+		t.Fatal("unidentified caller saw a machine", runners)
+	}
+	self, err := worker.Self(context.Background())
+	if err != nil || self.Slots != 1 {
+		t.Fatalf("proxy did not preserve the worker credential: %+v, %v", self, err)
 	}
 }
 

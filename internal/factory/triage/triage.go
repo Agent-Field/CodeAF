@@ -178,10 +178,15 @@ func Parse(reply string) (factory.Triage, error) {
 	return t, nil
 }
 
-// Apply lays a read over an item, filling ONLY WHAT IS EMPTY. The type and
-// size the poll took from a label or a diff, and anything a person set, were
-// there first and stay; the model's word is the fallback, never the
-// override.
+// Apply lays a read over an item, filling ONLY WHAT IS EMPTY. The type the
+// poll took from a label, and anything a person set, was there first and
+// stays; the model's word is the fallback, never the override.
+//
+// THE SIZE IS THE ONE EXCEPTION, and only to replace a value that was never a
+// read: a size with no provenance (a document from before it was recorded) or
+// a chat guess gives way to a valid S, M or L from this read, which is then
+// stamped SizeFromRead. A forge's measured diff stays, and so does a size a
+// read already wrote. A missing or invalid size is not invented.
 func Apply(it *factory.Item, t factory.Triage) {
 	got := &it.Triage
 	got.StartJudged, got.StartMatched, got.StartPaths = t.StartJudged, t.StartMatched, t.StartPaths
@@ -192,8 +197,8 @@ func Apply(it *factory.Item, t factory.Triage) {
 	if got.Type == "" {
 		got.Type = t.Type
 	}
-	if got.Size == "" {
-		got.Size = t.Size
+	if got.SizeFrom != factory.SizeFromDiff && got.SizeFrom != factory.SizeFromRead && t.Size != "" {
+		got.Size, got.SizeFrom = t.Size, factory.SizeFromRead
 	}
 	if got.Est == 0 {
 		got.Est = t.Est

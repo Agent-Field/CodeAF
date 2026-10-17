@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -43,6 +44,28 @@ func Working(dir string) (File, error) {
 	return Defaults(), nil
 }
 
+// writable is [Working] for a writer. A markdown recipe with a step that holds
+// is refused before anything is converted: the stages a caller sends back read
+// that step as a plain gate, and banking them would make the hold permanent
+// under a definition nobody wrote.
+func writable(dir string) (File, error) {
+	f, err := Working(dir)
+	if err != nil {
+		return f, err
+	}
+	names := make([]string, 0, len(f.Steps))
+	for name := range f.Steps {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if why := f.Steps[name].holdWhy(); why != "" && !factory.ApproveWord(name) {
+			return f, fmt.Errorf("%s: %s", name, why)
+		}
+	}
+	return f, nil
+}
+
 // Write atomically replaces only the YAML file, using the shared encoder.
 func Write(dir string, f File) error {
 	data, err := Encode(f)
@@ -77,7 +100,7 @@ func (Files) WriteDefault(dir string) error {
 	if _, err := os.Stat(filepath.Join(dir, RepoFile)); !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("has a recipe already · %s", RepoFile)
 	}
-	f, err := Working(dir)
+	f, err := writable(dir)
 	if err != nil {
 		return err
 	}
@@ -87,7 +110,7 @@ func (Files) WriteDefault(dir string) error {
 // Save changes the recipe fields and keeps start, size and unchanged step
 // definitions from YAML. A free until sentence must not become a second prompt.
 func (Files) Save(dir string, r factory.Recipe) error {
-	f, err := Working(dir)
+	f, err := writable(dir)
 	if err != nil {
 		return err
 	}
@@ -112,7 +135,7 @@ func (Files) BankStages(dir string, kind factory.Kind, stages []factory.Stage) e
 	if kind == "" {
 		kind = factory.KindIssue
 	}
-	f, err := Working(dir)
+	f, err := writable(dir)
 	if err != nil {
 		return err
 	}
@@ -122,14 +145,33 @@ func (Files) BankStages(dir string, kind factory.Kind, stages []factory.Stage) e
 	return Write(dir, f)
 }
 
+// replaceStages converts stages into f's steps for one kind. A WORD THE FILE
+// CANNOT HOLD THAT CHANGES WHAT RUNS IS AN ERROR, never a quiet default: an
+// unknown kind written as a chat would run a model where the runner was told
+// something else. f is the
+// caller's copy, and the caller writes nothing once this fails.
 func replaceStages(f *File, kind factory.Kind, stages []factory.Stage) error {
 	previous := f.Recipe().For(kind)
 	oldNames := append([]string(nil), f.Pipeline[kind]...)
 	var names []string
 	for _, stage := range stages {
-		name, step, keep, _ := convertStage(stage)
+		if !stage.On {
+			continue // an off stage is not in a YAML pipeline; that is its spelling
+		}
+		// Two losses are let through, as they always were. A fanout or effort
+		// outside the file's words is the default, which changes what one run
+		// spends and never what runs. An approve step's ask or condition is
+		// dropped, and the YAML approve always holds, so the run only ever
+		// stops more often.
+		name, step, keep, probs, _ := convertStage(stage)
+		if len(probs) > 0 && !factory.ApproveWord(name) {
+			return fmt.Errorf("%s: %s", probs[0].Where, probs[0].Why)
+		}
+		if why := step.holdWhy(); why != "" {
+			return fmt.Errorf("%s: %s", name, why)
+		}
 		if !keep {
-			continue
+			return fmt.Errorf("%s cannot be written to %s", name, RepoFile)
 		}
 		// Keep the YAML name and any prompt or stop sentence the edit did not change.
 		for i, old := range previous {
@@ -149,8 +191,10 @@ func replaceStages(f *File, kind factory.Kind, stages []factory.Stage) error {
 				break
 			}
 		}
-		if !factory.ApproveWord(name) && strings.TrimSpace(step.Prompt) == "" {
-			if builtin, ok := f.Steps[name]; ok {
+		// Only a chat borrows the definition already under its name; a gate
+		// needs no prompt, and a check or post without one refused above.
+		if !factory.ApproveWord(name) && step.Kind == "" && strings.TrimSpace(step.Prompt) == "" {
+			if builtin, ok := f.Steps[name]; ok && builtin.Kind == "" {
 				step = builtin
 			} else {
 				return fmt.Errorf("%s needs a prompt", name)
@@ -182,7 +226,7 @@ func (Files) BankRule(dir, sentence string) error {
 	if sentence == "" {
 		return errors.New("say the rule")
 	}
-	f, err := Working(dir)
+	f, err := writable(dir)
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -303,4 +304,93 @@ func TestV2ClosedPRRunAgainAndMergedRefusal(t *testing.T) {
 	}
 	merged := f.create(t, factory.Item{State: factory.StateShipped, Assignee: "sam", PullRequest: &factory.PullRequest{State: factory.PRMerged}})
 	f.post(t, merged, "run_again", "", 409)
+}
+
+func TestSoloUnassignedPlanApprovalKeepsUndoAndNoAssignment(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	f.cfg.Mode = api.FactorySolo
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Question: "plan ready?", QKind: factory.QKindApprove})
+	j := f.read(t, it)
+	w := verbRequest(f.h, "GET", "/v1/queue", "")
+	checkJSON(t, w, 200)
+	var q api.Queue
+	if err := json.Unmarshal(w.Body.Bytes(), &q); err != nil || q.Mode != api.FactorySolo || len(q.Jobs) != 1 || !q.Jobs[0].Can.Approve || q.Jobs[0].AssignedTo != "" {
+		t.Fatalf("solo queue approval: %+v %v", q, err)
+	}
+	if !j.Can.Approve || j.AssignedTo != "" {
+		t.Fatalf("solo plan cannot be approved privately: %+v", j.Can)
+	}
+	f.post(t, it, "approve", "{}", 200)
+	j = f.read(t, it)
+	if !j.Can.Undo || j.Can.Approve || j.Approval.State != "approving" {
+		t.Fatalf("missing Undo: %+v %+v", j.Can, j.Approval)
+	}
+	f.post(t, it, "undo", "", 200)
+	if !f.read(t, it).Can.Approve {
+		t.Fatal("Undo did not restore approval")
+	}
+	f.post(t, it, "approve", "{}", 200)
+	f.clock.Add(int64(factory.ApprovalUndo))
+	if j = f.read(t, it); j.Approval == nil || j.Approval.State != "approved" {
+		t.Fatalf("approval did not settle: %+v", j.Approval)
+	}
+	stored, err := f.st.Get(it.ID)
+	if err != nil || stored.Person() != "" {
+		t.Fatalf("solo approval invented an owner: %+v %v", stored, err)
+	}
+}
+
+func TestTeamUnassignedPlanCannotBeApproved(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Question: "plan ready?", QKind: factory.QKindApprove})
+	if f.read(t, it).Can.Approve {
+		t.Fatal("team unassigned job gained approval")
+	}
+	f.post(t, it, "approve", "{}", 422)
+	stored, _ := f.st.Get(it.ID)
+	if stored.Approval != nil {
+		t.Fatal("refused approval left a decision")
+	}
+}
+
+func TestSoloCallerKeepsPersonalDismissAndStopUndo(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	f.cfg.Mode = api.FactorySolo
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, factory.Item{State: factory.StateNew})
+	if !f.read(t, it).Can.Dismiss {
+		t.Fatal("signed-in solo caller cannot dismiss")
+	}
+	f.post(t, it, "dismiss", "", 200)
+	if !f.read(t, it).Dismissed {
+		t.Fatal("personal dismissal was lost")
+	}
+	active := f.create(t, factory.Item{State: factory.StateQueued})
+	f.post(t, active, "stop", "", 200)
+	if !f.read(t, active).Can.Undo {
+		t.Fatal("solo caller cannot undo their stop")
+	}
+	f.post(t, active, "undo", "", 200)
+	if f.read(t, active).State != api.StateQueued {
+		t.Fatal("stop Undo failed")
+	}
+}
+
+func TestSoloApprovalRequiresGitHubIdentityWithoutInventingAnAssignee(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	f.cfg.Mode = api.FactorySolo
+	f.person = ""
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Question: "plan ready?", QKind: factory.QKindApprove})
+	if f.read(t, it).Can.Approve {
+		t.Fatal("unknown caller gained approval")
+	}
+	w := f.post(t, it, "approve", "{}", 422)
+	if !strings.Contains(w.Body.String(), "Sign in to GitHub") {
+		t.Fatalf("not actionable: %s", w.Body.String())
+	}
 }

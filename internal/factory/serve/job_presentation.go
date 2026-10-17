@@ -2,15 +2,48 @@ package serve
 
 import (
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
-// presentJob runs after solo permissions and presence have narrowed the job.
-// A button appears only when its engine door can handle the current facts.
+// presentJob is the job as a READER sees it: the worker's view below with the
+// runner-local conversation paths withheld. Every queue, job and mutation
+// reply goes through here; only the worker pull skips the withholding.
 func (h *Handler) presentJob(r *http.Request, j *api.Job) {
+	h.presentWorkerJob(r, j)
+	withholdChats(j)
+}
+
+// withholdChats drops each step's conversation id. A chat stage's id is the
+// session FILE PATH on the machine that ran it (stageConversation.ID), so it
+// names a runner's home directory to whoever reads the job, and a path on one
+// machine means nothing on another. ONLY THE WORKER holding the lease needs it,
+// to resume the same conversation after a pause, and it receives the job from
+// pulled, which does not call this. The slice is cloned so nothing is written
+// through into a shared backing array.
+func withholdChats(j *api.Job) {
+	for i := range j.Steps {
+		if j.Steps[i].Chat == "" {
+			continue
+		}
+		steps := make([]api.Step, len(j.Steps))
+		copy(steps, j.Steps)
+		for k := i; k < len(steps); k++ {
+			steps[k].Chat = ""
+		}
+		j.Steps = steps
+		return
+	}
+}
+
+// presentWorkerJob runs after solo permissions and presence have narrowed the
+// job. A button appears only when its engine door can handle the current facts.
+func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	api.PresentJob(j)
+	h.redactMachines(r, j)
 	active := j.State == api.StateRunning || j.State == api.StateQueued || j.State == api.StateNeedsYou
 	owner := j.Can.Stop || j.Can.Run || j.Can.RunAgain || j.Can.CancelJob
 	if h.mode() == api.FactorySolo {
@@ -39,4 +72,103 @@ func (h *Handler) presentJob(r *http.Request, j *api.Job) {
 		hasToken = h.config.GitHubToken(r.Context()) != ""
 	}
 	j.Controls.Sync = owner && ((local && hasToken && h.config.Store != nil) || (!local && h.seam.Refresh != nil))
+}
+
+// redactMachines removes every machine name and heartbeat that is not the
+// caller's own from a job (FS0/FS15 privacy: another person's machine appears
+// nowhere, the operator's view included). Who holds the job, and since when,
+// stays; only the machine is withheld. A solo factory has one person, so all
+// of it is theirs.
+func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
+	if h.mode() == api.FactorySolo {
+		return
+	}
+	caller := h.machineViewer(r)
+	mine := func(handle string) bool { return caller != "" && factory.NormalizeHandle(handle) == caller }
+	// A live hold names its machine from the lease and the worker's own handle:
+	// that is wire provenance. The job's assignee proves nothing about a stored
+	// machine id (a reassigned job keeps the first worker's id), so every
+	// historical name below is shown only on proof, and withheld otherwise.
+	live := ""
+	if j.HeldBy != nil {
+		if mine(j.HeldBy.Handle) {
+			live = j.HeldBy.Machine
+		} else {
+			held := *j.HeldBy
+			held.Machine, held.HeartbeatAt = "", time.Time{}
+			j.HeldBy = &held
+		}
+	}
+	proven := func(machine string) bool {
+		return machine != "" && (machine == live || h.callersOnlyMachine(caller, machine))
+	}
+	if !proven(j.Runner) {
+		j.Runner = ""
+	}
+	if j.Failure != nil && (!proven(j.Failure.Machine) || !proven(j.Failure.Runner)) {
+		f := *j.Failure
+		if !proven(f.Runner) {
+			f.Runner = ""
+		}
+		if !proven(f.Machine) {
+			f.Machine = ""
+		}
+		j.Failure = &f
+	}
+	// Each step carries its own copy of the failure (StampFailure writes both),
+	// and it names the same machine; it is withheld by the same proof. The
+	// slice is cloned so nothing is written through into a shared backing array.
+	if len(j.Steps) > 0 {
+		steps := make([]api.Step, len(j.Steps))
+		copy(steps, j.Steps)
+		for i := range steps {
+			if f := steps[i].Failure; f != nil && (!proven(f.Machine) || !proven(f.Runner)) {
+				c := *f
+				if !proven(c.Runner) {
+					c.Runner = ""
+				}
+				if !proven(c.Machine) {
+					c.Machine = ""
+				}
+				steps[i].Failure = &c
+			}
+		}
+		j.Steps = steps
+	}
+	if j.Desk != nil && j.Desk.WorktreeMachine != "" && !proven(j.Desk.WorktreeMachine) {
+		d := *j.Desk
+		d.WorktreeMachine = ""
+		j.Desk = &d
+	}
+	if p := j.Publishing; p != nil && p.Code == "machine_offline" && (j.Desk == nil || j.Desk.WorktreeMachine == "") {
+		c := *p
+		c.Detail = "Publishing waits for its machine"
+		j.Publishing = &c
+	}
+}
+
+// callersOnlyMachine is true when the caller has a registered machine with
+// this id and nobody else does. A bare id says nothing about whose it was, so
+// an id two people both registered (every laptop called "mbp") is never named.
+func (h *Handler) callersOnlyMachine(caller, machine string) bool {
+	if caller == "" || h.workers == nil {
+		return false
+	}
+	mineSeen := false
+	h.workers.mu.RLock()
+	defer h.workers.mu.RUnlock()
+	for _, row := range h.workers.credentials {
+		name := strings.TrimSpace(row.Worker.Machine)
+		if name == "" {
+			name = row.Name
+		}
+		if name != machine {
+			continue
+		}
+		if factory.NormalizeHandle(row.Worker.Handle) != caller {
+			return false
+		}
+		mineSeen = true
+	}
+	return mineSeen
 }

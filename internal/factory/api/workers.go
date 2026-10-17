@@ -6,13 +6,27 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// LiveCapacityHeader carries the live-capacity attestation on attach. A factory
+// that predates it decodes the body strictly and would refuse an unknown JSON
+// field with 422, but it never looks at headers, so the attestation travels
+// here and an older factory simply does not hear it.
+const LiveCapacityHeader = "X-Codeaf-Live-Capacity"
+
+// LiveCapacityHeaderValue is the only value that attests; anything else is silence.
+const LiveCapacityHeaderValue = "1"
+
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
 type WorkerAttach struct {
-	Runner          string          `json:"runner,omitempty"`
-	Owner           string          `json:"owner,omitempty"`
-	Kind            string          `json:"kind,omitempty"`
-	Slots           int             `json:"slots,omitempty"`
+	Runner string `json:"runner,omitempty"`
+	Owner  string `json:"owner,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+	Slots  int    `json:"slots,omitempty"`
+	// LiveCapacity attests that this worker re-reads its saved capacity and
+	// changes its running slots to match. WorkerClient.Attach never writes it
+	// into the body (see LiveCapacityHeader); the server still reads it from
+	// the body for direct callers. Older workers never attest.
+	LiveCapacity    bool            `json:"live_capacity,omitempty"`
 	Checkouts       []Checkout      `json:"checkouts,omitempty"`
 	Machine         string          `json:"machine,omitempty"`
 	Name            string          `json:"name"`
@@ -29,6 +43,9 @@ type WorkerAttached struct {
 	WorkerID   string  `json:"worker_id"`
 	RunnerID   string  `json:"runner_id"`
 	Credential string  `json:"credential"`
+	// Slots is the capacity the owner saved for this runner, which wins over
+	// what the worker asked for. Older servers omit it.
+	Slots int `json:"slots,omitempty"`
 }
 
 // WorkerReport carries incremental results. Cost is newly incurred dollars,
@@ -53,6 +70,7 @@ type WorkerReport struct {
 	CommentURL string       `json:"comment,omitempty"`
 	Talk       string       `json:"talk,omitempty"`  // desk: the manager conversation the worker made
 	Notes      []string     `json:"notes,omitempty"` // desk: sentences the run added to the job's notes
+	Room       string       `json:"room,omitempty"`  // desk: the item team's id (Stream.Room), write-once
 }
 
 // StepReport carries the last round's full result without exposing Go names.
@@ -88,7 +106,7 @@ type WorkerDone struct {
 
 // ToWorkerReport is the single vocabulary boundary for worker writes.
 func ToWorkerReport(r WorkerReport) factory.RunReport {
-	out := factory.RunReport{HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL}
+	out := factory.RunReport{HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room}
 	if r.Pipeline != nil {
 		stages, stream := unsteps(Job{Steps: r.Pipeline, Desk: &JobDesk{Run: &Run{}}})
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
@@ -121,7 +139,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 // wrote, in the wire's words. [ToWorkerReport] reads it back.
 func FromRunReport(r factory.RunReport) WorkerReport {
 	out := WorkerReport{HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
-		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL}
+		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room}
 	if p := r.Pipeline; p != nil {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
 	}

@@ -67,9 +67,18 @@ func NoteChanges(before Item, after *Item, at time.Time) {
 // the sentence, the estimate, the risk, the duplicate, the priority, its
 // reason and the stamp. EVERY FIELD THE MODEL WROTE GOES, not only the stamp,
 // because the read fills only what is empty (triage.Apply) and would
-// otherwise keep yesterday's estimate under today's sentence. The type and the
-// size stay: they came from the source's labels and lines first.
+// otherwise keep yesterday's estimate under today's sentence. The start
+// evidence goes too (StartJudged, StartMatched, StartPaths, StartRules): it is
+// the model's judgement of the OLD text, so an unjudged item must read as "not
+// judged" until the new read lands. The type stays: it came from the source's
+// labels first. THE SIZE GOES WHEN THE READ WROTE IT (SizeFrom "read"): it is
+// the model's judgement of the OLD text. A measured diff or a chat guess stays;
+// the source re-measures the first (github.Merge) and the read replaces the
+// second.
 func ClearRead(t *Triage) {
+	if t.SizeFrom == SizeFromRead {
+		t.Size, t.SizeFrom = "", ""
+	}
 	t.Read = ""
 	t.Est = 0
 	t.Risk = nil
@@ -78,6 +87,10 @@ func ClearRead(t *Triage) {
 	t.Priority = 0
 	t.Reason = ""
 	t.Questions = nil
+	t.StartJudged = false
+	t.StartMatched = nil
+	t.StartPaths = nil
+	t.StartRules = nil
 	t.TriagedAt = time.Time{}
 }
 

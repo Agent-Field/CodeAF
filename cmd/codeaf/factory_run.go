@@ -104,9 +104,18 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 	// manager and stage conversations must not keep the first window's crew.
 	setFactoryProcess(func() { factoryProcess.parent = parent })
 	factoryProcess.once.Do(func() {
-		turns := factoryShapeTurnsFrom(st, workspace, profileDir, factoryWorkerParent)
+		source := &factoryParentSource{raw: factoryWorkerParent, profile: profileDir}
+		turns := factoryShapeTurnsFrom(st, workspace, profileDir, source.Config)
+		turns.refusal = source.Refusal
+		turns.liveOK = factoryLiveOK(factoryWorkerParent, profileDir)
 		setFactoryProcess(func() { factoryProcess.shape = factoryShapeDoor(st, workspace, profileDir, turns) })
-		if strings.TrimSpace(env.Get(factoryNoWorkerEnv)) == "1" {
+		// IN THE APP PROCESS NO LOOP STARTS HERE, AND NO DEFAULT TARGET MAY SERVE.
+		// This worker's target is resolveFactory, which serves a factory of its
+		// own when none is live: in the app that wrote a token-less serve.json
+		// with this very pid before the app's own cold resume ran, and the
+		// resume then refused its own process's service. The explicit
+		// factory.local_run starts the app's loop (appFactoryHost.workers).
+		if strings.TrimSpace(env.Get(factoryNoWorkerEnv)) == "1" || !factoryBackgroundHere() {
 			return
 		}
 		ctx, cancel := context.WithCancel(context.Background())
@@ -220,7 +229,11 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 			// A GATE IS A PERSON, and the loop answers it before it would look
 			// for an executor, so there is none to give.
 		},
-		Benches:    factoryBenches(),
+		// THE LEASE CAP IS THE GOVERNOR, not this number. The mirror runner only
+		// runs jobs a lease handed it, and the factory refuses leases beyond the
+		// owner's saved slots, so a raise after attach must find benches free.
+		// A fixed factoryBenches() here was the old two-job bottleneck.
+		Benches:    api.MaxRunnerSlots,
 		Rail:       money.Rail,
 		SpentToday: money.SpentToday,
 		RepoDir:    dirs,
@@ -272,11 +285,13 @@ func factoryWorkdirs(items, floor *store.Store) *factoryrun.Workdirs {
 	return w
 }
 
-// factoryBenches is how many items run at once: [factoryBenchesEnv] when it
-// is a whole number above nothing, else [factoryBenchesDefault].
+// factoryBenches is how many items this worker asks to run at once before the
+// owner's saved number is known: [factoryBenchesEnv] when it is a whole number
+// above nothing, else [factoryBenchesDefault], never above api.MaxRunnerSlots.
+// Once the factory has a saved value, that wins and this is only the first ask.
 func factoryBenches() int {
 	if n, err := strconv.Atoi(strings.TrimSpace(env.Get(factoryBenchesEnv))); err == nil && n > 0 {
-		return n
+		return min(n, api.MaxRunnerSlots)
 	}
 	return factoryBenchesDefault
 }

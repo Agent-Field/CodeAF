@@ -81,7 +81,7 @@ func jobPath(job int, rest string) string {
 
 // write sends body to path once and reads the factory's answer.
 func (h *appFactoryHub) write(ctx context.Context, id, path string, body any) (appFactoryAnswer, error) {
-	row, token, err := h.target(id)
+	row, token, err := h.credentialed(ctx, id)
 	if err != nil {
 		return appFactoryAnswer{}, err
 	}

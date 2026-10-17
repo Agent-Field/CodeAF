@@ -198,7 +198,7 @@ func TestReadMapsEveryField(t *testing.T) {
 	if is.Kind != factory.KindIssue || is.Repo != "api" || is.Product != "acme" || is.Title != "fix the ledger double count" ||
 		is.Author != "bob" || is.Origin != factory.OriginForge || !is.Synced || is.State != factory.StateNew ||
 		is.Tier != factory.TierStranger || len(is.Labels) != 1 || is.Labels[0] != "bug" ||
-		!is.Created.Equal(f.t0) || !is.Changed.Equal(f.t0.Add(time.Hour)) || is.Triage.Size != "L" || is.Triage.Type != "bug" {
+		!is.Created.Equal(f.t0) || !is.Changed.Equal(f.t0.Add(time.Hour)) || is.Triage.Size != "" || is.Triage.SizeFrom != "" || is.Triage.Type != "bug" {
 		t.Fatalf("the issue is mapped wrong: %+v", is)
 	}
 	if n := len([]rune(is.Body)); n != bodyLimit {
@@ -206,7 +206,7 @@ func TestReadMapsEveryField(t *testing.T) {
 	}
 	pr := got[9]
 	if pr.Kind != factory.KindPR || pr.Tier != factory.TierOwner || pr.Checks != "ci running" || pr.Diff != "+30 −25" ||
-		pr.Triage.Size != "M" || pr.Author != "santosh" || pr.Labels[0] != "ui" {
+		pr.Triage.Size != "M" || pr.Triage.SizeFrom != factory.SizeFromDiff || pr.Author != "santosh" || pr.Labels[0] != "ui" {
 		t.Fatalf("the pull request is mapped wrong: %+v", pr)
 	}
 	var marks map[string]time.Time
@@ -361,8 +361,12 @@ func TestPollCreatesThenUpdatesWithoutClobbering(t *testing.T) {
 	if got.Body != "short now" {
 		t.Fatalf("the forge's new body did not land: %q", got.Body)
 	}
-	if got.Cap != 7 || got.Stages[0].On || got.Triage.Readiness != 80 || got.Triage.Size != "L" {
+	if got.Cap != 7 || got.Stages[0].On || got.Triage.Readiness != 80 {
 		t.Fatalf("the poll undid a person's edit: %+v", got)
+	}
+	// A body's length is never a size, before or after an edit.
+	if got.Triage.Size != "" || got.Triage.SizeFrom != "" {
+		t.Fatalf("a body edit produced a size: %q from %q", got.Triage.Size, got.Triage.SizeFrom)
 	}
 	if got.State != factory.StateNew {
 		t.Fatalf("a dismissed item that changed did not come back: %s", got.State)

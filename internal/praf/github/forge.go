@@ -64,6 +64,11 @@ type Issue struct {
 	// Comments is how many comments the issue has, as the list says it; the
 	// comments themselves are [client.IssueComments]'s.
 	Comments int
+	// Assignees is the logins GitHub lists in the response's assignees array,
+	// in its order. nil means the response did not carry the array (unknown);
+	// non-nil and empty means GitHub said nobody is assigned. The deprecated
+	// singular assignee field is never read: it is only the first of these.
+	Assignees []string
 }
 
 // Pull is one open pull request. Additions, Deletions and Files are filled by
@@ -93,6 +98,8 @@ type Pull struct {
 	// Comments is how many issue comments the pull request has; like the line
 	// counts, only [client.Pull] fills it, because the list leaves it out.
 	Comments int
+	// Assignees reads as [Issue.Assignees] does: nil unknown, empty none.
+	Assignees []string
 	// State is GitHub's word, open or closed. Merged, MergedBy and MergedAt
 	// say a closed pull request was merged; the list of open pull requests
 	// leaves them unset.
@@ -157,6 +164,9 @@ type issueJSON struct {
 	HTMLURL     string      `json:"html_url"`
 	PullRequest *struct{}   `json:"pull_request"`
 	Comments    int         `json:"comments"`
+	// Assignees is a pointer so an absent (or null) array stays distinct from
+	// an empty one.
+	Assignees *[]userJSON `json:"assignees"`
 }
 
 type pullJSON struct {
@@ -177,15 +187,29 @@ type pullJSON struct {
 	Base struct {
 		Ref string `json:"ref"`
 	} `json:"base"`
-	Additions    int        `json:"additions"`
-	Deletions    int        `json:"deletions"`
-	ChangedFiles int        `json:"changed_files"`
-	Comments     int        `json:"comments"`
-	State        string     `json:"state"`
-	Mergeable    *bool      `json:"mergeable"`
-	Merged       bool       `json:"merged"`
-	MergedAt     *time.Time `json:"merged_at"`
-	MergedBy     *userJSON  `json:"merged_by"`
+	Additions    int         `json:"additions"`
+	Deletions    int         `json:"deletions"`
+	ChangedFiles int         `json:"changed_files"`
+	Comments     int         `json:"comments"`
+	Assignees    *[]userJSON `json:"assignees"`
+	State        string      `json:"state"`
+	Mergeable    *bool       `json:"mergeable"`
+	Merged       bool        `json:"merged"`
+	MergedAt     *time.Time  `json:"merged_at"`
+	MergedBy     *userJSON   `json:"merged_by"`
+}
+
+// assigneeLogins is the logins of an assignees array: nil when the response
+// did not carry one, non-nil (possibly empty) when it did.
+func assigneeLogins(in *[]userJSON) []string {
+	if in == nil {
+		return nil
+	}
+	out := make([]string, 0, len(*in))
+	for _, u := range *in {
+		out = append(out, u.Login)
+	}
+	return out
 }
 
 func labelNames(in []labelJSON) []string {
@@ -222,7 +246,7 @@ func (p pullJSON) pull() Pull {
 		Labels: labelNames(p.Labels), Created: p.CreatedAt, Updated: p.UpdatedAt,
 		URL: p.HTMLURL, HeadSHA: p.Head.SHA, Draft: p.Draft,
 		Additions: p.Additions, Deletions: p.Deletions, Files: p.ChangedFiles,
-		Comments: p.Comments, State: p.State, Merged: p.Merged, Mergeable: p.Mergeable,
+		Comments: p.Comments, Assignees: assigneeLogins(p.Assignees), State: p.State, Merged: p.Merged, Mergeable: p.Mergeable,
 	}
 	if p.MergedBy != nil {
 		out.MergedBy = p.MergedBy.Login
@@ -370,6 +394,7 @@ func (c *client) ListIssues(ctx context.Context, owner, repo string, since time.
 				Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 				Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
 				URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,
+				Assignees: assigneeLogins(r.Assignees),
 			})
 		}
 		if len(rows) < 100 {

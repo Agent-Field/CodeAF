@@ -22,6 +22,7 @@ package factory
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 )
@@ -160,8 +161,13 @@ func (r Recipe) For(k Kind) []Stage {
 // facts a person reads. Intake uses size, cost and the explicitly judged
 // ask-first sentences only when the repository opts into automatic starts.
 type Triage struct {
-	Type      string // bug · feat · chore · question · review
-	Size      string // S · M · L
+	Type string // bug · feat · chore · question · review
+	Size string // S · M · L
+	// SizeFrom says where Size came from: [SizeFromRead], [SizeFromDiff],
+	// [SizeFromChat], or "" when nobody recorded it. A document written before
+	// this field existed decodes to "" and its size is UNKNOWN, not a guess to
+	// be trusted: [ShownSize] draws nothing for it.
+	SizeFrom  string `json:",omitempty"`
 	Area      string
 	Readiness int // 0..100; under 55 the item is thin and wants questions
 	Est       float64
@@ -190,6 +196,14 @@ type Triage struct {
 	StartPaths   []string `json:",omitempty"`
 	StartRules   []string `json:",omitempty"`
 }
+
+// Where a [Triage.Size] came from. Only the first two are ever shown; a chat
+// model's guess is kept so the read can replace it, and is drawn as nothing.
+const (
+	SizeFromRead = "read" // the model's completed read of the item
+	SizeFromDiff = "diff" // a forge's measured changed-line count
+	SizeFromChat = "chat" // the chat model's guess when it added the item
+)
 
 // UnmarshalJSON reads a triage document, including one written before Risk
 // was a list.
@@ -419,6 +433,13 @@ type Item struct {
 	Assignee string `json:",omitempty"`
 	Starter  string `json:",omitempty"`
 	Taker    string `json:",omitempty"`
+	// SourceAssignees is the set of logins the forge listed as assignees at
+	// the last read: a FACT about the forge, never the execution owner. nil
+	// means never read (or the forge did not say); non-nil and empty means the
+	// forge said nobody is assigned, and that survives a round trip through
+	// the store. Sorted, lowercase, without duplicates ([NormalizeSourceAssignees]).
+	// Nothing derives Person() from it: two assignees are not one owner.
+	SourceAssignees []string `json:",omitzero"`
 	// OldGate is the item's `ask me at` from before approve steps, read
 	// into its stages when the item is ([Item.UnmarshalJSON]) and never
 	// written: "" on every item in memory.
@@ -535,6 +556,49 @@ func (it Item) Person() string {
 // without treating display prefixes or case as a different person.
 func NormalizeHandle(handle string) string {
 	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(handle), "@"))
+}
+
+// NormalizeSourceAssignees makes a forge's assignee list comparable: handles
+// normalized, duplicates dropped, sorted; a blank entry makes the whole list
+// unknown. nil stays nil (unknown) and a non-nil list stays non-nil even when
+// empty (known none); the input is never modified.
+func NormalizeSourceAssignees(logins []string) []string {
+	if logins == nil {
+		return nil
+	}
+	out := make([]string, 0, len(logins))
+	for _, l := range logins {
+		// A LOGIN-LESS ENTRY MAKES THE WHOLE LIST UNKNOWN: dropping it would
+		// turn a response this reader does not understand into a proven
+		// none, or a partial list into a sole owner.
+		if l = NormalizeHandle(l); l == "" {
+			return nil
+		}
+		if !slices.Contains(out, l) {
+			out = append(out, l)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// SoleSourceAssignee is the one login a forge's assignee list names, and ""
+// for none, for several and for unknown. Several assignees are not one owner,
+// so no member is ever picked on their behalf.
+func SoleSourceAssignee(logins []string) string {
+	if n := NormalizeSourceAssignees(logins); len(n) == 1 {
+		return n[0]
+	}
+	return ""
+}
+
+// SameSourceAssignees compares two lists as presence plus set: unknown equals
+// only unknown, and known-empty differs from unknown.
+func SameSourceAssignees(a, b []string) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return slices.Equal(NormalizeSourceAssignees(a), NormalizeSourceAssignees(b))
 }
 
 // Comment is one thing said on an item, by its author's login.

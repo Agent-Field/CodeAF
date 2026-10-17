@@ -57,6 +57,23 @@ func (d *factoryWorkerDial) dial(slot int) *client.WorkerClient {
 	return client.Open(t.url, t.token).Worker(credential)
 }
 
+// desiredSlots reads the capacity the owner saved with slot 0's own worker
+// credential, never a person's token. Slot 0 always runs, so it is the one
+// credential a live worker is sure to hold. Anything short of a clear answer
+// (not attached yet, an older factory, no factory) is "unknown" so the worker
+// keeps the capacity it has.
+func (d *factoryWorkerDial) desiredSlots(ctx context.Context) (int, bool) {
+	w := d.dial(0)
+	if w == nil || w.Credential() == "" {
+		return 0, false
+	}
+	self, err := w.Self(ctx)
+	if err != nil || self.Slots < 1 {
+		return 0, false
+	}
+	return min(self.Slots, api.MaxRunnerSlots), true
+}
+
 // creds is the credentials cached for base, one per slot.
 func (d *factoryWorkerDial) creds(base string) []string {
 	d.mu.Lock()

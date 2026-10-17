@@ -423,3 +423,34 @@ func TestAShapeSignalReachesTheHoldingWorker(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// TestAFactoryStageRoomReachesTheFactoryThroughTheWorkersReports: the room the
+// factory's stage wrapper records on the worker's mirror (factoryChatStage
+// does it with Annotate) crosses the lease to the factory's own copy of the
+// job, and stays on it when the job ships. Before the report carried it, the
+// engine's item had an empty Stream.Room whatever the worker had recorded.
+func TestAFactoryStageRoomReachesTheFactoryThroughTheWorkersReports(t *testing.T) {
+	const room = "0a1b2c3d4e5f"
+	g := newRigWith(t, nil, func(o *run.Options) {
+		mirror, inner := o.Store, o.Exec[factory.StageCheck]
+		o.Exec[factory.StageCheck] = run.ExecutorFunc(func(ctx context.Context, job run.Job) (factory.StageResult, error) {
+			if err := mirror.Annotate(job.Item.ID, func(it *factory.Item) error {
+				if it.Stream != nil {
+					it.Stream.Room = room
+				}
+				return nil
+			}); err != nil {
+				return factory.StageResult{}, err
+			}
+			return inner.Run(ctx, job)
+		})
+	})
+	id := g.add(t, check("true"))
+	if err := g.floor.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitFor(t, id, factory.StateShipped)
+	if it.Stream == nil || it.Stream.Room != room {
+		t.Fatalf("the factory's copy lost the stage room after the report: %+v", it.Stream)
+	}
+}

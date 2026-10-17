@@ -22,6 +22,7 @@ import (
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
@@ -110,11 +111,50 @@ func (h *Handler) setupJSON(ctx context.Context, path, token string, out any) (*
 	return resp, err
 }
 
+// commonOwner names the owner every discovered repository shares, or "" when
+// there are none or they differ. THE LABEL IS A FACT ABOUT THE ROWS, never a claim of
+// organization membership: owners compare case-insensitively and the first spelling is kept.
+func commonOwner(repos []api.SetupRepo) string {
+	label := ""
+	for _, r := range repos {
+		owner, _, _ := strings.Cut(r.ID, "/")
+		switch {
+		case label == "":
+			label = owner
+		case !strings.EqualFold(label, owner):
+			return ""
+		}
+	}
+	return label
+}
+
+func clearSetupConnection(out *setupState) {
+	out.View.GitHub.Connected = false
+	out.View.GitHub.Handle, out.View.GitHub.Name, out.View.GitHub.AvatarURL = "", "", ""
+	out.View.GitHub.Organization = ""
+	out.View.GitHub.VisibleRepos = 0
+}
+
+// A saved setup remembers progress, not proof that its credential is still held.
+func (h *Handler) reconnectSetupIfNeeded(ctx context.Context, out *setupState) {
+	token, err := h.setupToken(ctx)
+	if err == nil && token != "" {
+		return
+	}
+	clearSetupConnection(out)
+	switch out.View.State {
+	case "repos", "reading", "checkouts", "done":
+		out.View.State = "github"
+	}
+}
+
 func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
+	clearSetupConnection(out)
+	out.View.GitHub.GH = nil
 	if h.seam.GHLogin != nil && h.mode() == api.FactorySolo {
 		login, err := h.seam.GHLogin(ctx)
 		if err == nil && login != "" {
-			path, _ := exec.LookPath("gh")
+			path, _ := forge.LookPath("gh")
 			out.View.GitHub.GH = &api.SetupGH{Login: login, Path: path}
 		}
 	}
@@ -188,9 +228,7 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 		}
 	}
 	out.View.GitHub.VisibleRepos = len(out.View.Repos)
-	if len(out.View.Repos) > 0 {
-		out.View.GitHub.Organization, _, _ = strings.Cut(out.View.Repos[0].ID, "/")
-	}
+	out.View.GitHub.Organization = commonOwner(out.View.Repos)
 	out.View.GitHub.Error = nil
 	if h.mode() == api.FactoryTeam && out.View.State == "github" {
 		out.View.State = "repos"
@@ -228,6 +266,7 @@ func (h *Handler) factorySetup(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), setupWait)
 	defer cancel()
 	if r.Method == "GET" {
+		h.reconnectSetupIfNeeded(ctx, &out)
 		if out.View.State == "github" {
 			if err = h.discoverSetup(ctx, &out); err != nil {
 				words := redact.Secrets(err.Error())
@@ -302,7 +341,7 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 		}
 		if credentials := config.AppCredentialSource(); credentials != nil {
 			if body.Source == "gh" {
-				path, err := exec.LookPath("gh")
+				path, err := forge.LookPath("gh")
 				if err != nil {
 					return errors.New("gh is not available")
 				}
@@ -535,7 +574,10 @@ func (h *Handler) runSetup(ctx context.Context, out setupState) {
 				selected = append(selected, repo.ID)
 			}
 		}
-		if err := h.config.Store.SetRepos(selected); err != nil {
+		h.reposMu.Lock()
+		err := h.config.Store.SetRepos(selected)
+		h.reposMu.Unlock()
+		if err != nil {
 			words := redact.Secrets(err.Error())
 			out.View.GitHub.Error = &words
 			_ = h.setupProgress(out)
@@ -623,9 +665,12 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 			User    struct {
 				Login string `json:"login"`
 			} `json:"user"`
-			Assignee *struct {
+			// The assignees array, never the deprecated singular assignee,
+			// which is only its first entry. A pointer keeps an absent array
+			// (unknown) apart from an empty one (nobody).
+			Assignees *[]struct {
 				Login string `json:"login"`
-			} `json:"assignee"`
+			} `json:"assignees"`
 			Labels []struct {
 				Name string `json:"name"`
 			} `json:"labels"`
@@ -655,8 +700,12 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 				labels = append(labels, label.Name)
 			}
 			item := factory.Item{Repo: repo.ID, Num: row.Number, Title: row.Title, Body: row.Body, URL: row.URL, Created: row.Created, Kind: factory.KindIssue, Origin: factory.OriginForge, Author: row.User.Login, Labels: labels, SetupHeld: true}
-			if row.Assignee != nil {
-				item.Assignee = factory.NormalizeHandle(row.Assignee.Login)
+			if row.Assignees != nil {
+				item.SourceAssignees = []string{}
+				for _, a := range *row.Assignees {
+					item.SourceAssignees = append(item.SourceAssignees, a.Login)
+				}
+				item.Assignee = factory.SoleSourceAssignee(item.SourceAssignees)
 			}
 			items = append(items, item)
 			count++

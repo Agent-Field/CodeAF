@@ -32,7 +32,8 @@ func whenFits(cond string, it Item) bool {
 	case "thin":
 		return it.Triage.Readiness < thinBelow
 	case "large":
-		return strings.EqualFold(it.Triage.Size, "L")
+		shown, _ := ShownSize(it)
+		return shown == "L"
 	case "touches auth":
 		return areaIn(it.Triage.Area, "auth", "billing", "crypto")
 	case "has ui":

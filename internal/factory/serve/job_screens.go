@@ -13,7 +13,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
-	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -83,11 +82,20 @@ func (h *Handler) readStepEdits(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.stepEditsReply(w, it, nil)
+	h.stepEditsReply(w, r, it, nil)
 }
 
-func (h *Handler) stepEditsReply(w http.ResponseWriter, it factory.Item, lines []string) {
-	j := h.withVersion(api.FromItem(it))
+// stepEditsReply answers with the job's steps after the same presence and
+// machine redaction the job body gets: a step's failure names a machine, and
+// FS0/FS15 allow only the caller's own.
+func (h *Handler) stepEditsReply(w http.ResponseWriter, r *http.Request, it factory.Item, lines []string) {
+	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
+		return
+	}
+	h.redactMachines(r, &jobs[0])
+	withholdChats(&jobs[0])
+	j := jobs[0]
 	if lines == nil {
 		lines = []string{}
 	}
@@ -153,49 +161,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.stepEditsReply(w, updated, lines)
-}
-
-// pipelinePR writes only inside the recipe change's temporary worktree.
-func (h *Handler) pipelinePR(w http.ResponseWriter, r *http.Request) {
-	owner, repo, ok := h.splitRepo(w, r)
-	if !ok || !h.requireOperator(w, r) || !h.requireVerb(w, h.seam.RecipeAt != nil) {
-		return
-	}
-	var body api.PipelinePRRequest
-	if !h.decode(w, r, &body, false) {
-		return
-	}
-	if strings.TrimSpace(body.Text) == "" {
-		h.fail(w, 422, "pipeline text is required")
-		return
-	}
-	file, err := pipeline.Parse(body.Text)
-	if err != nil {
-		h.fail(w, 422, err.Error())
-		return
-	}
-	if len(file.Problems) > 0 {
-		h.fail(w, 422, file.Problems[0].Error())
-		return
-	}
-	_, _, dir, err := h.seam.RecipeAt(owner + "/" + repo)
-	if h.failed(w, err) {
-		return
-	}
-	if dir == "" {
-		h.fail(w, 409, "checkout required to open a pipeline pull request")
-		return
-	}
-	title := strings.TrimSpace(body.Title)
-	if title == "" {
-		title = "Update factory pipeline"
-	}
-	note, err := factory.BankRecipeChange(r.Context(), dir, title, "Steps edited in codeaf.", "Updated factory pipeline.", func(dir string) error { return pipeline.Write(dir, file) })
-	if h.failed(w, err) {
-		return
-	}
-	h.write(w, 200, api.PipelinePRResponse{Factory: h.factory, Note: note})
+	h.stepEditsReply(w, r, updated, lines)
 }
 
 func (h *Handler) readJobHandOff(w http.ResponseWriter, r *http.Request) {

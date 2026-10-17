@@ -89,9 +89,40 @@ type FactoryCapabilities struct {
 	Runner bool `json:"runner"`
 	// Writes: jobs can be started, stopped, approved or edited through the
 	// wire. False here; every factory.* method only reads or signs in.
-	Writes         bool `json:"writes"`
-	MaxConnections int  `json:"max_connections"`
-	MaxFlows       int  `json:"max_flows"`
+	Writes bool `json:"writes"`
+	// Admin: factory.sign_out and factory.revoke_sessions are served (feature
+	// factory.admin). True only for an engine that implements [FactoryAdmin].
+	Admin bool `json:"admin"`
+	// Links: factory.links, link_create, link_copy and link_revoke are served
+	// (feature factory.links). True only for an engine that implements
+	// [FactoryLinkAdmin].
+	Links bool `json:"links"`
+	// CopyLink: this engine can put a freshly made invitation on THIS
+	// machine's clipboard right now. False unless a trusted local launch
+	// supplied a working clipboard; no invitation is made without it.
+	CopyLink bool `json:"copy_link"`
+	// ReposManage: factory.repo_set is served (feature factory.repos_manage).
+	// True only for an engine that implements [FactoryRepoAdmin]; whether THIS
+	// caller may use it is the operator's answer, read from factory.me.
+	ReposManage bool `json:"repos_manage"`
+	// RunnerManage: factory.runner_slots is served (feature
+	// factory.runner_manage). True only for an engine that implements
+	// [FactoryRunnerAdmin]; whether THIS factory and THIS computer can take the
+	// change is read from factory.runners (slots_policy, live_capacity).
+	RunnerManage bool `json:"runner_manage"`
+	// PipelinePR: factory.pipeline_pr is served (feature factory.pipeline_pr).
+	// True only for an engine that implements [FactoryPipelineOpener]; whether
+	// THIS caller holds a sign-in and GitHub access is answered by the call.
+	PipelinePR bool `json:"pipeline_pr"`
+	// PipelineEdit: factory.pipeline_source and factory.pipeline_preview are
+	// served (feature factory.pipeline_edit). True only for an engine that
+	// implements [FactoryPipelineEditor]. Neither writes anything.
+	PipelineEdit bool `json:"pipeline_edit"`
+	// PipelineEditRuntime: this engine previews when, effort and fanout edits,
+	// and only for a file the factory attested in the same sign-in. Never kind.
+	PipelineEditRuntime bool `json:"pipeline_edit_runtime"`
+	MaxConnections      int  `json:"max_connections"`
+	MaxFlows            int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,
@@ -235,6 +266,51 @@ type FactorySignInState struct {
 	Me       *api.Me `json:"me,omitempty"`
 }
 
+// FactoryMe is the public view of factory.me: who this caller is, and nothing
+// the factory keeps about the machine behind it. It is NOT api.Me, which also
+// carries runners, machines, checkouts and the session's id.
+//
+// GitHubSignedIn is true ONLY when the factory attested a verified profile for the
+// caller. A script or host access key can hold a handle and even operator
+// rights without a person having signed in through GitHub, so the handle and
+// the operator flag never stand in for it.
+type FactoryMe struct {
+	Factory       api.Factory `json:"factory"`
+	CodeafVersion string      `json:"codeaf_version"`
+	Contract      int         `json:"contract"`
+	api.Profile
+	Mode           string `json:"mode"`
+	Operator       bool   `json:"operator"`
+	Access         string `json:"access"`
+	GitHubSignedIn bool   `json:"github_signed_in"`
+	CanSignOut     bool   `json:"can_sign_out"`
+	// GitHubSignInAvailable and InviteAvailable are what the serving factory
+	// says it is configured for (GitHub device sign-in; making and redeeming an
+	// invitation). They gate an affordance; they are not a permission, and an
+	// older factory that says nothing reads as false.
+	GitHubSignInAvailable bool `json:"github_sign_in_available"`
+	InviteAvailable       bool `json:"invite_available"`
+}
+
+// NewFactoryMe narrows the factory's HTTP identity to the public view. Sign-in
+// is the factory's explicit github_signed_in attestation; a session id, handle,
+// name or operator flag never implies it, and an older server's omission is false.
+func NewFactoryMe(me api.Me) FactoryMe {
+	out := FactoryMe{
+		Factory: me.Factory, CodeafVersion: me.CodeafVersion, Contract: me.Contract,
+		Profile: me.Profile, Mode: me.Mode, Operator: me.Operator, Access: me.Access,
+		GitHubSignedIn: me.GitHubSignedIn,
+		CanSignOut:     me.GitHubSignedIn && FactorySessionCanEnd(me.SessionID),
+
+		GitHubSignInAvailable: me.GitHubSignInAvailable,
+		InviteAvailable:       me.GitHubSignInAvailable && me.InviteAvailable,
+	}
+	if out.Scopes == nil {
+		out.Scopes = []string{}
+	}
+	return out
+}
+
 // Factory is the engine's half of the factory wire. An [Engine] that is not
 // one refuses factory.* as unknown_method, and does not announce
 // [FeatureFactory]. Implementations answer wire errors ([Error]) for codes the
@@ -244,7 +320,7 @@ type Factory interface {
 	FactoryList(ctx context.Context) (FactoryList, error)
 	FactoryAttach(ctx context.Context, url, token string) (FactoryConnection, error)
 	FactoryDetach(ctx context.Context, id string) error
-	FactoryMe(ctx context.Context, id string) (api.Me, error)
+	FactoryMe(ctx context.Context, id string) (FactoryMe, error)
 	FactoryQueue(ctx context.Context, id string) (api.Queue, error)
 	FactoryJob(ctx context.Context, id string, job int) (api.Job, error)
 	FactoryRepos(ctx context.Context, id string) (FactoryRepos, error)
@@ -414,7 +490,7 @@ var factoryMethods = map[string]method{
 		defer cancel()
 		return done(f.FactoryDetach(ctx, id))
 	}),
-	"factory.me": factoryRead("factory.me", func(f Factory, ctx context.Context, id string) (api.Me, error) {
+	"factory.me": factoryRead("factory.me", func(f Factory, ctx context.Context, id string) (FactoryMe, error) {
 		return f.FactoryMe(ctx, id)
 	}),
 	"factory.queue": factoryRead("factory.queue", func(f Factory, ctx context.Context, id string) (api.Queue, error) {

@@ -62,15 +62,20 @@ func Fixture(now time.Time) Snapshot {
 		return ApproveForGate(out, GateNone)
 	}
 
+	// SIZES ARE STAMPED WITH WHERE THEY CAME FROM. Items 1-3, 5, 6 and 8 carry
+	// a completed read, the pull request its measured diff and item 7 a chat
+	// guess; items 9 and 10 keep a bare size and no provenance, the shape of a
+	// document written before it was recorded, so the fixture shows an unknown
+	// size beside a read one ([ShownSize]).
 	items := []Item{
 		{ID: 1, Repo: codeaf.Name, Num: 1538, URL: "https://github.com/agentfield/codeaf/issues/1538", Kind: KindIssue, Title: "budget caps per task", Author: "santosh", Tier: TierOwner, Origin: OriginForge, Created: h(9), Changed: h(7), State: StateNeedsYou, Stream: waiting, Question: ApproveQuestion("plan"), QKind: QKindApprove, Cap: 8, Stages: stages(codeaf),
-			Triage:   Triage{Type: "feat", Size: "L", Area: "spend", Readiness: 88, Est: 9, Risk: []string{"touches money"}, Read: "touches three packages; wants a plan first", Priority: 1, Reason: "money at risk"},
+			Triage:   Triage{Type: "feat", Size: "L", SizeFrom: SizeFromRead, TriagedAt: h(8), Area: "spend", Readiness: 88, Est: 9, Risk: []string{"touches money"}, Read: "touches three packages; wants a plan first", Priority: 1, Reason: "money at risk"},
 			Comments: []Comment{{Author: "abir", Body: "a cap per task, or per item? the ledger only knows tasks today.", At: h(8)}}},
 		{ID: 2, Repo: codeaf.Name, Num: 1551, URL: "https://github.com/agentfield/codeaf/issues/1551", Kind: KindIssue, Title: "filters lost on compact", Author: "priya", Tier: TierCollab, Origin: OriginForge, Created: h(5), Changed: m(4), State: StateRunning, Stream: running, Cap: 5, Stages: stages(codeaf),
 			Change: &Change{Branch: "factory/1551-filters-lost-on-compact", Files: []ChangedFile{{Path: "internal/tui3/tree.go", Added: 8, Removed: 3, Status: "modified"}, {Path: "internal/tui3/tree_test.go", Added: 20, Status: "added"}}, Stat: &ChangeStat{Files: 2, Added: 28, Removed: 3}, Tests: []StepTests{{Step: "test", TestCounts: TestCounts{Passed: 12}}}},
-			Triage: Triage{Type: "bug", Size: "M", Area: "tui", Readiness: 72, Est: 3, Read: "the filter is read before the tree exists; ordering, not state", Priority: 2}},
+			Triage: Triage{Type: "bug", Size: "M", SizeFrom: SizeFromRead, TriagedAt: h(5), Area: "tui", Readiness: 72, Est: 3, Read: "the filter is read before the tree exists; ordering, not state", Priority: 2}},
 		{ID: 3, Repo: codeaf.Name, Num: 1660, URL: "https://github.com/agentfield/codeaf/issues/1660", Kind: KindIssue, Title: "standing order ignores a paste with newlines", Author: "abir", Tier: TierCollab, Origin: OriginForge, Created: h(4), Changed: m(30), State: StateQueued, Cap: 5, Stages: stages(codeaf),
-			Triage: Triage{Type: "bug", Size: "S", Area: "standing", Readiness: 80, Est: 2, Read: "probably the paste path; a repro should take ten minutes", Priority: 3}},
+			Triage: Triage{Type: "bug", Size: "S", SizeFrom: SizeFromRead, TriagedAt: h(4), Area: "standing", Readiness: 80, Est: 2, Read: "probably the paste path; a repro should take ten minutes", Priority: 3}},
 		{ID: 4, Repo: codeaf.Name, Num: 1662, URL: "https://github.com/agentfield/codeaf/pull/1662", Kind: KindPR, Title: "fix(media): tree rails on narrow widths", Author: "priya", Tier: TierCollab, Origin: OriginForge, Created: h(1), Changed: h(1), State: StateNew, Cap: 3, Stages: stages(platform), Checks: "ci ✓", Diff: "+218 −44 · 6 files",
 			Draft:     true,
 			Body:      "## Claims\n\n- rails follow the tree on narrow widths\n- no behaviour change on wide\n- no perf impact\n\nThe fix is in `media.go`: the rail width is read from `treeCols` after the resize, not before.",
@@ -78,22 +83,22 @@ func Fixture(now time.Time) Snapshot {
 			CheckRuns: []CheckRun{{Name: "build", State: "success"}, {Name: "touched packages", State: "success"}, {Name: "laws", State: "pending"}},
 			Comments:  []Comment{{Author: "abir", Body: "Does this hold at **80** columns too? The `rail.go` change looks like it only covers 100.", At: h(1)}, {Author: "priya", Body: "Yes: the test walks 60, 80 and 100.", At: m(40)}},
 			Activity:  []Event{{At: h(1), What: "opened by priya"}, {At: m(50), What: "labelled factory"}, {At: m(40), What: "review requested from abir"}, {At: m(30), What: "read"}},
-			Triage:    Triage{Type: "review", Size: "M", Area: "tui", Readiness: 90, Est: 2, Read: "claims are testable; three checks cover them", Priority: 2}},
+			Triage:    Triage{Type: "review", Size: "M", SizeFrom: SizeFromDiff, TriagedAt: m(30), Area: "tui", Readiness: 90, Est: 2, Read: "claims are testable; three checks cover them", Priority: 2}},
 		{ID: 5, Repo: whisper.Name, Num: 0, Kind: KindCI, Title: "main is red · sync · TestCompactKeepsFilters", Author: "ci", Tier: TierOwner, Origin: OriginForge, Created: h(6), Changed: h(6), State: StateNew, Cap: 3,
 			Body:   "The last three runs on main failed in the same test. Started after the merge at 02:14.",
-			Triage: Triage{Type: "ci", Size: "S", Area: "sync", Readiness: 95, Est: 1.5, Read: "same test, three runs in a row; a regression, not a flake", Priority: 1, Reason: "main is red"}},
+			Triage: Triage{Type: "ci", Size: "S", SizeFrom: SizeFromRead, TriagedAt: h(6), Area: "sync", Readiness: 95, Est: 1.5, Read: "same test, three runs in a row; a regression, not a flake", Priority: 1, Reason: "main is red"}},
 		{ID: 6, Repo: whisper.Name, Num: 31, URL: "https://github.com/santoshkumar/whisper/issues/31", Kind: KindIssue, Title: "messages drops replies after a slow network", Author: "olu", Tier: TierStranger, Origin: OriginForge, Created: h(4), Changed: h(4), State: StateNew, Cap: 5,
 			Body:     "Seen twice on a train. No repro yet.",
 			Comments: []Comment{{Author: "olu", Body: "Third time today, on the *same* train. Replies sent while the tunnel drops never show up.", At: h(3)}, {Author: "santosh", Body: "Which build? `codeaf --version` prints it.", At: h(2)}, {Author: "olu", Body: "0.9.4, from the script install.", At: m(90)}},
 			Activity: []Event{{At: h(4), What: "opened by olu"}, {At: h(2), What: "commented by santosh"}},
-			Triage:   Triage{Type: "bug", Size: "M", Area: "messages", Readiness: 40, Est: 4, Read: "underspecified; two questions for the author first", Questions: []string{"which network, and how slow?", "does it happen on a fresh install too?"}, Priority: 4}},
+			Triage:   Triage{Type: "bug", Size: "M", SizeFrom: SizeFromRead, TriagedAt: h(4), Area: "messages", Readiness: 40, Est: 4, Read: "underspecified; two questions for the author first", Questions: []string{"which network, and how slow?", "does it happen on a fresh install too?"}, Priority: 4}},
 		{ID: 7, Repo: platform.Name, Num: 702, Kind: KindIssue, Title: "split from chat: spend ledger store, the write half", Author: "santosh", Tier: TierOwner, Origin: OriginChat, Created: h(2), Changed: h(2), State: StateNew, Cap: 8, Stages: stages(codeaf),
 			Ask:    &JobAsk{Text: "split from chat: spend ledger store, the write half", By: "santosh", At: h(2), Source: AskTUI},
-			Triage: Triage{Type: "feat", Size: "M", Area: "billing", Readiness: 90, Est: 6, Read: "your own chat wrote the brief; sized from it"}},
+			Triage: Triage{Type: "feat", Size: "M", SizeFrom: SizeFromChat, Area: "billing", Readiness: 90, Est: 6, Read: "your own chat wrote the brief; sized from it"}},
 		{ID: 8, Repo: codeaf.Name, Num: 1540, Kind: KindIssue, Title: "meter crashes at midnight rollover", Author: "santosh", Tier: TierOwner, Origin: OriginTerminal, Synced: false, Created: m(12), Changed: m(12), State: StateNew, Cap: 5, Stages: stages(codeaf),
 			Body:   "Written in the terminal. Not on GitHub yet.",
 			Ask:    &JobAsk{Text: "Written in the terminal. Not on GitHub yet.", By: "santosh", At: m(12), Source: AskTUI},
-			Triage: Triage{Type: "bug", Size: "S", Area: "tui", Readiness: 75, Est: 2, Read: "your own words; no triage needed beyond sizing", Priority: 3}},
+			Triage: Triage{Type: "bug", Size: "S", SizeFrom: SizeFromRead, TriagedAt: m(12), Area: "tui", Readiness: 75, Est: 2, Read: "your own words; no triage needed beyond sizing", Priority: 3}},
 		{ID: 9, Repo: codeaf.Name, Num: 1661, URL: "https://github.com/agentfield/codeaf/issues/1661", Kind: KindIssue, Title: "probes fire once, then retire", Author: "santosh", Tier: TierOwner, Origin: OriginForge, Created: h(3), Changed: h(1), State: StateLanded, Stream: landed, Cap: 5, Stages: stages(codeaf), Diff: "+218 −44",
 			Proof: []Claim{
 				{Text: "fires on first true, never again", OK: true, Evidence: "test · 0.3s", Medium: "test"},

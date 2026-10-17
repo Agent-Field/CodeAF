@@ -4858,6 +4858,15 @@ type DisplayEntry struct {
 	// because a record holds one entry per line and a bool alone between two
 	// words of alignment costs eight bytes on every one of them.
 	ForModel bool
+	// FactoryProgress marks an assistant entry the record's own presentation mark
+	// calls [FactoryProgressKind]: a progress line the factory runner wrote into
+	// an item's conversation. It is the producer's word, never a reading of the
+	// text.
+	//
+	// It is a bool beside ForModel rather than the mark's kind string because
+	// that kind has exactly one value here and a string costs sixteen bytes on
+	// every entry of every record; the bool rides alignment padding for none.
+	FactoryProgress bool
 	// Answered is whether the record already holds the RESULT of this call.
 	//
 	// IT IS DERIVED FROM AN ABSENCE, and the absence is load-bearing: the
@@ -4996,12 +5005,6 @@ type DisplayEntry struct {
 	// entry; the aside's Text still holds the whole delivery as the model read it.
 	Team []TeamLine
 
-	// Kind is what the record says an assistant message IS, from the line's own
-	// presentation mark ([messagePresentation.Kind]): `factory-progress` on
-	// the progress lines the factory runner writes into an item's
-	// conversation, and "" on everything else. It is the producer's word,
-	// never a reading of the text.
-	Kind string
 	// At is when the message this entry came from was written to the journal,
 	// and the zero time when the record never said (entrytime.go). A tool entry
 	// carries its call's message's instant.
@@ -5182,11 +5185,11 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				}
 			}
 		}
-		interrupted, explicitlyHuman, kind := false, false, ""
+		interrupted, explicitlyHuman, progress := false, false, false
 		run := ""
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			run = mark.RunID
-			kind = mark.Kind
+			progress = mark.Kind == FactoryProgressKind
 			interrupted = mark.Interrupted
 			explicitlyHuman = mark.Audience == "human"
 			if mark.Audience == "operational" {
@@ -5223,11 +5226,11 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the
 			// model has to read it as (steer.go).
-			Steer:    journal.steerMark(msg),
-			Team:     team,
-			ForModel: forModel,
-			At:       journal.written(msg),
-			Kind:     kind,
+			Steer:           journal.steerMark(msg),
+			Team:            team,
+			ForModel:        forModel,
+			At:              journal.written(msg),
+			FactoryProgress: progress,
 		})
 		var rejectionCounts map[string]int
 		for callIndex := range msg.ToolCalls {

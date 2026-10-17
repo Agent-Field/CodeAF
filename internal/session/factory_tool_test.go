@@ -366,3 +366,22 @@ func TestFactoryCardIsReplayedToALateTaskLaneUntilItSettles(t *testing.T) {
 		t.Fatalf("a settled card is still replayed as standing: %+v", standing)
 	}
 }
+
+// A card the chat model adds carries its size guess as a CHAT guess: it is not
+// the read, it shows as nothing, and the read replaces it when it lands.
+func TestFactoryAddTagsItsSizeAsAChatGuess(t *testing.T) {
+	it := factoryItem(FactoryNotice{Repo: "acme/api", Kind: "bug", Title: "t", Size: "S", Estimate: 0.4}, time.Now())
+	if it.Triage.Size != "S" || it.Triage.SizeFrom != factory.SizeFromChat {
+		t.Fatalf("triage %+v", it.Triage)
+	}
+	if size, from := factory.ShownSize(it); size != "" || from != "" {
+		t.Fatalf("a chat guess is shown: %q from %q", size, from)
+	}
+	pr := factoryItem(FactoryNotice{Repo: "acme/api", Kind: "pr", Title: "t", Size: "L"}, time.Now())
+	if size, _ := factory.ShownSize(pr); size != "" {
+		t.Fatalf("a chat pull request shows %q", size)
+	}
+	if bare := factoryItem(FactoryNotice{Repo: "acme/api", Kind: "bug", Title: "t"}, time.Now()); bare.Triage.Size != "" || bare.Triage.SizeFrom != "" {
+		t.Fatalf("an unsized card gained provenance: %+v", bare.Triage)
+	}
+}

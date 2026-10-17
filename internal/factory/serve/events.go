@@ -3,6 +3,7 @@ package serve
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"net/http"
 	"strconv"
@@ -112,14 +113,14 @@ func (h *Handler) sendLive(w http.ResponseWriter, r *http.Request, events []live
 		}
 	}
 	for _, e := range events[start:] {
-		visible := h.viewerWantsLive(r, e)
+		out, visible := h.liveForViewer(r, e)
 		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
 			return false
 		}
 		if !visible {
 			continue
 		}
-		if _, err := fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Kind, e.Data); err != nil {
+		if _, err := fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", out.ID, out.Kind, out.Data); err != nil {
 			return false
 		}
 	}
@@ -127,19 +128,36 @@ func (h *Handler) sendLive(w http.ResponseWriter, r *http.Request, events []live
 }
 
 func (h *Handler) viewerWantsLive(r *http.Request, e live.Event) bool {
-	if e.Kind == "activity" {
-		if _, filter := h.repoAccess(r, nil); !filter {
-			return true
-		}
+	_, ok := h.liveForViewer(r, e)
+	return ok
+}
+
+// liveForViewer decides whether this caller sees a live event and returns the
+// bytes to send. Machine and runner events are the caller's own or nobody's:
+// ALL PEER MACHINE INFORMATION IS FORBIDDEN, so the job number never makes one
+// visible. An activity payload is the audit record, which can name a machine,
+// so it is redacted for the viewer before it is re-marshaled; one that does not
+// parse is dropped rather than sent as it was stored. The id and kind are kept
+// so replay cursors do not move.
+func (h *Handler) liveForViewer(r *http.Request, e live.Event) (live.Event, bool) {
+	switch e.Kind {
+	case "machine", "runner":
+		viewer := h.machineViewer(r)
+		return e, viewer != "" && factory.NormalizeHandle(e.Handle) == viewer
+	case "activity":
 		var event record.Event
 		if json.Unmarshal(e.Data, &event) != nil {
-			return false
+			return e, false
 		}
-		return len(h.filterAudit(r, []record.Event{event})) == 1
+		if _, filter := h.repoAccess(r, nil); filter && len(h.filterAudit(r, []record.Event{event})) != 1 {
+			return e, false
+		}
+		data, err := json.Marshal(h.recordForViewer(r, event))
+		if err != nil {
+			return e, false
+		}
+		e.Data = data
+		return e, true
 	}
-	if (e.Kind == "machine" || e.Kind == "runner") && e.Job == 0 {
-		handle, err := h.callerHandle(r)
-		return err == nil && handle == e.Handle
-	}
-	return h.viewerWantsTick(r, strconv.Itoa(e.Job))
+	return e, h.viewerWantsTick(r, strconv.Itoa(e.Job))
 }

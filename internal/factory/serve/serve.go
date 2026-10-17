@@ -13,7 +13,6 @@ import (
 	"net/netip"
 	"net/url"
 	"path"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -114,6 +113,11 @@ type Handler struct {
 	accessMu    sync.Mutex
 	accessFlows map[string]accessLinkFlow
 
+	// reposMu serializes every change to the watched list: the single-repo switch
+	// reads, edits and saves it, so any other writer must queue behind it. It is
+	// never held over the event append or any network call.
+	reposMu sync.Mutex
+
 	jobsMu     sync.Mutex
 	jobsTimer  *time.Timer
 	jobsClosed bool
@@ -168,6 +172,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/events", h.events)
 	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
+	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/github", h.github)
 	h.route("/v1/github/grant", map[string]http.HandlerFunc{http.MethodPut: h.grantGitHub})
@@ -257,6 +262,9 @@ func (h *Handler) Close() {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = authRequest(h.withClient(r))
 	w.Header().Set("Cache-Control", "no-store")
+	if markPreMutation(r) {
+		w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
+	}
 	// A caller who reached the factory over HTTPS is told to keep doing so.
 	// Over plain HTTP the header means nothing and is not sent.
 	if secureRequest(r) {
@@ -365,13 +373,13 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := r.URL.Query().Get("q")
-	match := factory.Match(query, handle)
+	match := factory.MatchAt(query, h.clock(), handle)
 	items := make([]factory.Item, 0, len(s.Items))
 	for _, it := range s.Items {
 		if !match(it) {
 			continue
 		}
-		if !slices.Contains(strings.Fields(strings.ToLower(query)), "is:dismissed") && factory.IsDismissed(it, handle) {
+		if !factory.HasWord(query, "is:dismissed") && factory.IsDismissed(it, handle) {
 			continue
 		}
 		items = append(items, it)
@@ -385,7 +393,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	q.Mode = h.mode()
 	if q.Mode == api.FactorySolo {
 		for i := range q.Jobs {
-			h.soloJob(&q.Jobs[i])
+			h.soloJob(&q.Jobs[i], handle)
 		}
 	}
 	q.Reason = reason
@@ -443,7 +451,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	jobs[0].Can = api.CanFor(it, handle, h.clock())
 	api.ForViewer(&jobs[0], it, handle)
 	if h.mode() == api.FactorySolo {
-		h.soloJob(&jobs[0])
+		h.soloJob(&jobs[0], handle)
 	}
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
@@ -641,6 +649,13 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := h.meBody(profile, session.id)
+	// Only a credential that carries a GitHub-verified profile is a sign-in; a
+	// script token, access-link secret or legacy dashboard session is not.
+	body.GitHubSignedIn = session.profile != nil && session.profile.Handle != ""
+	// What this factory is configured to do, said by the factory itself so a
+	// client never probes a real GitHub device flow to find out.
+	body.GitHubSignInAvailable = h.config.GitHubClientID != ""
+	body.InviteAvailable = body.GitHubSignInAvailable && h.config.TokensPath != ""
 	body.Machines = machines
 	body.Mode, body.Operator = h.mode(), h.isOperator(r)
 	if body.Mode == api.FactoryTeam && h.operatorLogin(r) == "" {
@@ -667,8 +682,11 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		Access        string      `json:"access"`
 		PollingEvery  string      `json:"polling_every,omitempty"`
 		ServedBy      string      `json:"served_by"`
+		// AccessCheckPost is optional and public: POST /v1/factory-access takes
+		// verb "check", so a client need not put a link's secret in a URL.
+		AccessCheckPost bool `json:"access_check_post"`
 	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
-		h.accessMode(), h.pollingEvery(), h.servedBy()})
+		h.accessMode(), h.pollingEvery(), h.servedBy(), true})
 }
 
 func (h *Handler) accessMode() string {

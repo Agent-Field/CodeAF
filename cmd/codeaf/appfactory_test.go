@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,7 +43,7 @@ type factoryWire struct {
 func newFactoryWire(t *testing.T, hub *appFactoryHub) *factoryWire {
 	t.Helper()
 	backend := newFakeBackend(newAppRecorder(), nil)
-	backend.factoryOnce.Do(func() { backend.factories = hub })
+	backend.factoryOnce.Do(func() { backend.factories = hub; hub.resume = backend.resumeLocal })
 	t.Cleanup(func() { backend.Close() })
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
@@ -293,9 +294,9 @@ func TestAppFactoryRoundTripAgainstTheRealServer(t *testing.T) {
 		t.Fatalf("list = %+v", list)
 	}
 
-	var me api.Me
+	var me appwire.FactoryMe
 	w.must("factory.me", map[string]any{"factory": conn.ID}, &me)
-	if me.Contract != api.Contract || me.SessionID != "" {
+	if me.Contract != api.Contract || me.Scopes == nil {
 		t.Fatalf("me = %+v", me)
 	}
 	var queue api.Queue
@@ -834,5 +835,58 @@ func TestAppFactoryActivityCarriesOnlyProfilesInTheReturnedWindow(t *testing.T) 
 	wire.must("factory.activity", map[string]any{"factory": conn.ID, "limit": 10}, &out)
 	if out.Truncated || len(out.People) != 2 {
 		t.Fatalf("full event window profiles: %+v", out)
+	}
+}
+
+// A HOST KEY HAS NO GITHUB SESSION, A VERIFIED SESSION DOES, AND NEITHER REPLY
+// CARRIES THE SESSION ID OR THE MACHINE LIST.
+func TestAppFactoryMeSignedInFollowsTheSessionNotTheHandle(t *testing.T) {
+	for _, tc := range []struct {
+		name, session string
+		attested      bool
+		want          bool
+	}{{"key", "", false, false}, {"session id without attestation", "session-secret-42", false, false}, {"verified session", "session-secret-42", true, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var reads atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/v1/about":
+					_ = json.NewEncoder(w).Encode(api.Me{Contract: api.Contract, Factory: api.Factory{Name: "acme"}, Mode: api.FactoryTeam})
+				case "/v1/me":
+					reads.Add(1)
+					_ = json.NewEncoder(w).Encode(api.Me{
+						Contract: api.Contract, Factory: api.Factory{Name: "acme"}, Mode: api.FactoryTeam,
+						Profile: api.Profile{Handle: "alice"}, Operator: true, SessionID: tc.session, GitHubSignedIn: tc.attested,
+						Machines: []api.Machine{{}}, ServedBy: "runner-host-9",
+					})
+				default:
+					t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			wire := newFactoryWire(t, testFactoryHub(t))
+			var conn appwire.FactoryConnection
+			wire.must("factory.attach", map[string]any{"url": server.URL, "token": testHostToken}, &conn)
+			before := reads.Load()
+			var raw json.RawMessage
+			wire.must("factory.me", map[string]any{"factory": conn.ID}, &raw)
+			if reads.Load()-before != 1 {
+				t.Fatalf("factory.me read %d times", reads.Load()-before)
+			}
+			var me appwire.FactoryMe
+			if err := json.Unmarshal(raw, &me); err != nil {
+				t.Fatal(err)
+			}
+			if me.GitHubSignedIn != tc.want || me.Handle != "alice" || !me.Operator {
+				t.Fatalf("me = %+v", me)
+			}
+			for _, leak := range []string{"session", "machines", "runners", "served_by", "runner-host"} {
+				if strings.Contains(string(raw), leak) {
+					t.Fatalf("reply leaks %q: %s", leak, raw)
+				}
+			}
+		})
 	}
 }

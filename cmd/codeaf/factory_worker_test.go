@@ -375,3 +375,41 @@ func TestFactoryWorkerLeasesTheJobItsForgePersonTook(t *testing.T) {
 		})
 	}
 }
+
+// TestDesiredSlotsReadsWithTheWorkersOwnCredential: the capacity read goes out
+// with slot 0's saved worker credential and never the person's token, and
+// anything short of a clear answer is "unknown" so the worker keeps its number.
+func TestDesiredSlotsReadsWithTheWorkersOwnCredential(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, slots := 200, 5
+	var auth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		w.WriteHeader(status)
+		if status == 200 {
+			_ = json.NewEncoder(w).Encode(api.RunnerSelf{Slots: slots})
+		}
+	}))
+	defer server.Close()
+	dial := newFactoryWorkerDial(st, func() (factoryTarget, error) { return factoryTarget{url: server.URL, token: "person-token"}, nil })
+	if n, ok := dial.desiredSlots(context.Background()); ok || n != 0 || auth != "" {
+		t.Fatalf("before attach: %d %v, asked with %q", n, ok, auth)
+	}
+	dial.keep(0, client.Open(server.URL, "").Worker("worker-credential"))
+	if n, ok := dial.desiredSlots(context.Background()); !ok || n != 5 || auth != "Bearer worker-credential" {
+		t.Fatalf("saved credential: %d %v, asked with %q", n, ok, auth)
+	}
+	slots = 99
+	if n, _ := dial.desiredSlots(context.Background()); n != api.MaxRunnerSlots {
+		t.Fatalf("an over-ceiling answer gave %d", n)
+	}
+	for _, code := range []int{401, 404, 500} {
+		status = code
+		if n, ok := dial.desiredSlots(context.Background()); ok || n != 0 {
+			t.Fatalf("status %d must be unknown, got %d %v", code, n, ok)
+		}
+	}
+}

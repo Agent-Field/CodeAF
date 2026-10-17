@@ -217,9 +217,8 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if items[i].Marked != items[j].Marked {
 				return items[i].Marked
 			}
-			if a, b := factory.PriorityRank(items[i]), factory.PriorityRank(items[j]); a != b {
-				return a < b
-			}
+			// Priority is a view mark. Execution remains oldest first unless a
+			// person explicitly moved queued work to the top (Marked above).
 			if items[i].Created.Equal(items[j].Created) {
 				return items[i].ID < items[j].ID
 			}
@@ -331,6 +330,12 @@ func eligible(it factory.Item, worker Worker) bool {
 	}
 	if owner := it.Person(); owner != "" {
 		return owner == worker.Handle
+	}
+	// THE FORGE NAMED SOMEONE, so this is not unassigned work: several
+	// assignees leave no single owner, and consent to unassigned work is not
+	// consent to theirs. Only an explicit Assign or start gives it a person.
+	if len(it.SourceAssignees) > 0 {
+		return false
 	}
 	return !worker.Team && (worker.TakesUnassigned[it.Repo] || worker.TakesUnassigned[EveryRepo])
 }

@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
@@ -86,6 +88,12 @@ type shapeTurns struct {
 	// open opens the item's manager conversation for one turn, with door as
 	// its `factory_run`, at the cheap thinking when cheap.
 	open func(ctx context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error)
+	// refusal is why the parent the next manager opens from was refused by the
+	// saved Task models policy, nil when it was not or when no policy is kept.
+	refusal func() error
+	// liveOK says whether the window's conversation, on model, may carry a
+	// shaping turn. Nil allows every live conversation (Auto's road).
+	liveOK func(model string) bool
 }
 
 // factoryShapeTurns is this process's shaping turns, opened from parent, the
@@ -97,12 +105,38 @@ func factoryShapeTurns(st *store.Store, workspace, profileDir string, parent ses
 // factoryShapeTurnsFrom reads the launch when a manager opens, because the
 // worker survives the window whose launch first built its shaping door.
 func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, current func() session.Config) *shapeTurns {
-	return &shapeTurns{
-		dirs: factoryRepoDirs(st, workspace),
-		live: liveManagerTurnFor,
-		open: func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
-			return openManagerTurn(current(), workspace, profileDir, it, door, cheap)
-		},
+	turns := &shapeTurns{dirs: factoryRepoDirs(st, workspace)}
+	// UNDER A SAVED ONE MODEL THE WINDOW'S CONVERSATION IS NOT THE FACTORY'S: it
+	// runs on whatever model the person is talking to, so liveOK refuses it and
+	// the turn opens a governed factory session instead.
+	turns.live = func(transcript string, door session.RunDoor) (managerTurn, bool) {
+		agent, ok := session.LiveAgentFor(transcript)
+		if !ok || (turns.liveOK != nil && !turns.liveOK(agent.Model())) {
+			return nil, false
+		}
+		return liveManagerTurn{agent: agent, door: door}, true
+	}
+	turns.open = func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
+		parent := current()
+		if err := refusalOf(parent, turns.refusal); err != nil {
+			return nil, err
+		}
+		return openManagerTurn(parent, workspace, profileDir, it, door, cheap)
+	}
+	return turns
+}
+
+// factoryLiveOK is the window-conversation gate for a worker whose launch is
+// raw. Auto keeps the live road. Under a saved one model it is closed, because
+// the window is on its own model; under an explicit --one-model launch it is
+// open only for a conversation proven to be on that very pin.
+func factoryLiveOK(raw func() session.Config, profileDir string) func(model string) bool {
+	return func(model string) bool {
+		launch := raw()
+		if launch.OneModel {
+			return strings.TrimSpace(model) == strings.TrimSpace(launch.Model)
+		}
+		return config.TaskModelsModeAt(profileDir) != crewroute.ModeOne
 	}
 }
 
@@ -148,9 +182,10 @@ func (s *shapeTurns) Shape(ctx context.Context, it factory.Item, said []string) 
 }
 
 // shapeCheap says whether the shaping turn thinks cheap: always, unless the
-// item's read says it is large.
+// item's shown size (a label, a measured diff or a completed read) is large.
 func shapeCheap(it factory.Item) bool {
-	return !strings.EqualFold(strings.TrimSpace(it.Triage.Size), "L")
+	shown, _ := factory.ShownSize(it)
+	return shown != "L"
 }
 
 // run is one turn: the ask in, the turn drained, and the edit collected.
@@ -369,6 +404,9 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 	transcript := strings.TrimSpace(it.Talk)
 	if transcript == "" {
 		return nil, errors.New("the item has no manager conversation")
+	}
+	if factoryPolicyRefused(parent) {
+		return nil, errFactoryPolicyRefused
 	}
 	cfg, err := v3Reopen(parent, transcript, workspace)
 	if err != nil {
