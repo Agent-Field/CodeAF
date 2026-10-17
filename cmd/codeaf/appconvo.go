@@ -1506,7 +1506,13 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 // reason. ONLY A REFUSAL IS ASKED AGAIN: nothing was done, so the second ask is
 // the first note, never a second one.
 func (b *appBackend) noteOnTask(live *appLive, id, local, text, clientID string) session.AppTaskReceipt {
-	intent := session.AppTaskIntent{ID: local, Action: "note", Text: strings.TrimSpace(text), ClientID: clientID}
+	return b.receiptOnTask(live, id, session.AppTaskIntent{ID: local, Action: "note", Text: strings.TrimSpace(text), ClientID: clientID})
+}
+
+// receiptOnTask is [appBackend.noteOnTask] for any word action the engine
+// types (a note or a brief): the typed answer, asked again only while it is a
+// refusal that the task is not on the list yet.
+func (b *appBackend) receiptOnTask(live *appLive, id string, intent session.AppTaskIntent) session.AppTaskReceipt {
 	known := false
 	b.locked(func() { _, known = live.tasks[id] })
 	deadline := b.now().Add(appTaskSettleWait)

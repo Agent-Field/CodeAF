@@ -40,7 +40,8 @@ type AppTaskReceipt struct {
 	BriefNotKept bool `json:"brief_not_kept,omitempty"`
 	// ClientID is the key that went to the producer ([AppNoteClientID] of the
 	// intent's): the one the page and the read events carry. Empty means none
-	// was sent, and the note's read stays unknown.
+	// was sent, and the note's read stays unknown. A brief's key is echoed only;
+	// a plan task's amendment stores none, so no surface may watch for it.
 	ClientID string `json:"client_id,omitempty"`
 }
 
