@@ -932,6 +932,10 @@ type appCreatePrep struct {
 	resolved string
 	text     string
 	kept     []appAttach
+	// creation is what the first message states ([appSending.creation]):
+	// an explicit none from [appBackend.prepareCreate], a crew's id when a
+	// crew start sets it, nil for a bare open with no words.
+	creation *session.CreationContext
 }
 
 // prepareCreate is everything agents.create can refuse, checked with nothing
@@ -969,7 +973,7 @@ func (b *appBackend) prepareCreate(ask appwire.CreateAsk) (appCreatePrep, error)
 	if err := appAttachChars(kept); err != nil {
 		return appCreatePrep{}, err
 	}
-	return appCreatePrep{ask: ask, resolved: resolved, text: strings.TrimSpace(ask.Text), kept: kept}, nil
+	return appCreatePrep{ask: ask, resolved: resolved, text: strings.TrimSpace(ask.Text), kept: kept, creation: appNoTeam()}, nil
 }
 
 // createAgentHeld is [appBackend.CreateAgent] after its preparation and up to,
@@ -1026,6 +1030,15 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		first.shown = appAttachShown(said, kept)
 		if first.shown == nil && ask.Said != nil && first.words != "" {
 			first.shown = &appSending{text: said}
+		}
+		// The first words are the person's own message, so they state the
+		// creation context the door knows: an explicit none for agents.create,
+		// the crew's id for the goal crews.start hands its new manager.
+		if first.words != "" && prep.creation != nil {
+			if first.shown == nil {
+				first.shown = &appSending{text: said, bare: true}
+			}
+			first.shown.creation = prep.creation
 		}
 		a.transcript = transcript
 		// THE NAME THE TAB DRAWS UNTIL THE ENGINE'S ARRIVES is the one the engine

@@ -144,8 +144,14 @@ func TestAppQueuedMessageKeepsItsMarkAndShowsThePersonsWords(t *testing.T) {
 	if want := []string{"first", "then the README", links}; !reflect.DeepEqual(texts, want) {
 		t.Fatalf("the engine was sent %q", texts)
 	}
+	// Every one of these is the person's own, so each states an explicit none
+	// (the first send included), and an edit keeps it.
+	if len(submissions) != 3 || submissions[0].Text != "first" || submissions[0].Creation == nil || submissions[0].Creation.Team != "" {
+		t.Fatalf("the person's first send was handed as %+v", submissions)
+	}
+	submissions = submissions[1:]
 	want := appQueuedSubmission(appMarkedSubmission(t, links, "", appCutRead()))
-	want.ClientID = "q-2"
+	want.ClientID, want.Creation = "q-2", &session.CreationContext{}
 	if len(submissions) != 2 || submissions[0].Text != "then the README" || !submissions[0].Queued || !reflect.DeepEqual(submissions[1], want) {
 		t.Fatalf("the marked door was handed %+v", submissions)
 	}
@@ -188,18 +194,24 @@ func TestAppQueuedEditRacingTheSendIsEitherSentOrRefused(t *testing.T) {
 		wg.Wait()
 		live := appLiveUser(t, rec, "q")
 		submissions, texts := appSubmissionsOf(conv)
+		// The person's first send states its explicit none too; the race is
+		// about the queued message after it.
+		if len(submissions) == 0 || submissions[0].Text != "first" {
+			t.Fatalf("run %d: the first send was handed as %+v", i, submissions)
+		}
+		submissions = submissions[1:]
 		switch {
 		case editErr == nil:
 			landed++
 			want := appQueuedSubmission(appMarkedSubmission(t, "new body", "new", appCutRead()))
-			want.ClientID = "q"
+			want.ClientID, want.Creation = "q", &session.CreationContext{}
 			if len(submissions) != 1 || !reflect.DeepEqual(submissions[0], want) || live.Text != "new" {
 				t.Fatalf("run %d: the edit landed and %+v was sent, %+v went live", i, submissions, live)
 			}
 		case wireCode(editErr) == appwire.CodeSent:
 			refused++
 			want := appQueuedSubmission(appMarkedSubmission(t, "old body", "old", appSpecsRead()))
-			want.ClientID = "q"
+			want.ClientID, want.Creation = "q", &session.CreationContext{}
 			if len(submissions) != 1 || !reflect.DeepEqual(submissions[0], want) || live.Text != "old" {
 				t.Fatalf("run %d: the edit was refused and %+v was sent, %+v went live", i, submissions, live)
 			}

@@ -595,9 +595,9 @@ func (a *Agent) automationChanged(stored automation.Automation, parsed automatio
 // one line goes when a run ends, and the door "why did this happen?" opens.
 // Creation-team provenance is the turn's stated context: the exact id its door
 // was accepted for, explicit NONE, or UNKNOWN (Team nil) for a turn whose door
-// stated nothing. It never guesses from membership.
+// stated nothing this engine could prove. It never guesses from membership.
 //
-// THE ID WAS CHECKED WHEN THE MESSAGE WAS ACCEPTED ([Agent.acceptCreation]) and
+// THE ID WAS CHECKED WHEN THE MESSAGE WAS ACCEPTED ([Agent.provenCreation]) and
 // is not checked against the teams file again here: a crew that closed, lost
 // its manager or changed hands since keeps what was made in it. Only the shape
 // is checked once more, so a context that never passed acceptance cannot write
