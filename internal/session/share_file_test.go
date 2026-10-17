@@ -8,7 +8,6 @@ import (
 	"errors"
 	"image"
 	"image/png"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -108,8 +107,13 @@ func TestSharedFileKindsComeFromBytesNotNames(t *testing.T) {
 		{"/a/fake.png", []byte("not a picture"), "file"},
 		{"/a/report.pdf", []byte("%PDF-1.7\n%%EOF\n"), "file"},
 		{"/a/binary.md", []byte{0, 1, 2, 3, 0xff}, "file"},
+		// The "isom" brand the generic sniffer does not know: a frame size
+		// makes it video, sound alone makes it audio, from the boxes only.
+		{"/a/clip.bin", mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 3000)), mp4Track("vide", 1280, 720, false)), "video"},
+		{"/a/voice.bin", mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 3000)), mp4TestTrack("soun")), "audio"},
+		{"/a/empty.mp4", mp4TestFile(), "file"},
 	} {
-		if got := sharedFileKind(row.path, http.DetectContentType(row.head), row.head); got != row.want {
+		if got := sharedFileKind(row.path, shareSniff(row.head)); got != row.want {
 			t.Fatalf("%s => %s, want %s", row.path, got, row.want)
 		}
 	}

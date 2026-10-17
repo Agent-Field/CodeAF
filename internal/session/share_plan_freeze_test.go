@@ -43,6 +43,9 @@ func mutateSharePlanRowForTest(row *Artifact) {
 	row.Deliver.ID, row.Deliver.Run, row.Deliver.Turn, row.Deliver.Call = NewDeliverableID(), "run-later", "s#9", "call-later"
 	row.Deliver.Version, row.Deliver.Authored, row.Deliver.State = "sha256:"+strings.Repeat("cd", 32), true, DeliverKept
 	row.Deliver.File.SHA256, row.Deliver.File.Bytes, row.Deliver.File.Canonical = strings.Repeat("ef", 32), 999, "/elsewhere/x.png"
+	if row.Deliver.Source == nil {
+		row.Deliver.Source = &DeliverableFile{}
+	}
 	row.Deliver.Source.Canonical, row.Deliver.Source.SHA256 = "/evil/source", "00"
 	row.Media.ID, row.Media.Run, row.Media.Tool, row.Media.Message = NewMediaID(), "run-later", "call-later", "s#9"
 	row.Media.Width, row.Media.Bytes = 9999, 9999

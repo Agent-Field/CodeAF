@@ -159,10 +159,7 @@ func sharedFileFacts(path string, before os.FileInfo, read int64, sum string, he
 	// ONE type for the file and its media fact: the media sniffer's where it
 	// recognised the header (it knows containers the generic sniffer does not),
 	// else the generic sniffer's, so the kind and both records always agree.
-	mime := sniffMedia(head)
-	if mime == "" {
-		mime = http.DetectContentType(head)
-	}
+	mime := shareSniff(head)
 	fact := DeliverableFile{Canonical: path, Bytes: read, ModNS: before.ModTime().UnixNano(), SHA256: sum, MIME: mime}
 	fact.CtimeNS, fact.Dev, fact.Ino = fileIdentity(before)
 	media := MediaFact{Origin: MediaShared, Canonical: path, MIME: mime, Bytes: read, ModNS: fact.ModNS, CtimeNS: fact.CtimeNS, Dev: fact.Dev, Ino: fact.Ino, SHA256: fact.SHA256}
@@ -170,7 +167,7 @@ func sharedFileFacts(path string, before os.FileInfo, read int64, sum string, he
 		media.Width, media.Height = w, h
 	}
 	media.measureContainer(head)
-	return sharedFile{Path: path, Kind: sharedFileKind(path, mime, head), File: fact, Media: media}
+	return sharedFile{Path: path, Kind: sharedFileKind(path, mime), File: fact, Media: media}
 }
 
 func openSharedSource(roots []string, path string) (*os.File, error) {
@@ -213,11 +210,31 @@ func verifySharedSource(ctx context.Context, roots []string, path string, file *
 	return nil
 }
 
-// sharedFileKind is the kind the HEADER says. Media is confirmed by the same
-// sniffer every media row uses; text that is named as Markdown or Mermaid is
+// shareSniff is the type the head of a shared file says. Media is the media
+// sniffer's; an ISO container the generic sniffer does not know (the "isom"
+// brand real renders carry) is video when its header has a frame size and audio
+// when it has only sound, read by the same box reader media rows use; anything
+// else is the generic sniffer's word, octet-stream included.
+func shareSniff(head []byte) string {
+	if mime := sniffMedia(head); mime != "" {
+		return mime
+	}
+	if len(head) >= 12 && string(head[4:8]) == "ftyp" {
+		if _, _, ok := mp4FrameSize(head); ok {
+			return "video/mp4"
+		}
+		if _, sound, ok := mp4Facts(head); ok && sound {
+			return "audio/mp4"
+		}
+	}
+	return http.DetectContentType(head)
+}
+
+// sharedFileKind is the kind the HEADER says, through the type [shareSniff]
+// read from it: media is media; text that is named as Markdown or Mermaid is
 // that; everything else is a generic file whose type stays its MIME.
-func sharedFileKind(path, mime string, head []byte) string {
-	if kind := mediaKindOf(sniffMedia(head)); kind != "" {
+func sharedFileKind(path, mime string) string {
+	if kind := mediaKindOf(mime); kind != "" {
 		return kind
 	}
 	switch kind := deliverableKindExt(path); {
