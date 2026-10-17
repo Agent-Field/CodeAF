@@ -139,15 +139,19 @@ func (a *Agent) ResumeStoppedTurn(ctx context.Context) (<-chan Event, bool) {
 		a.mu.Unlock()
 		return nil, false
 	}
-	// AND IT IS ASKED IN THE SAME CREW IT WAS SENT IN: the creation context its
-	// door stated is on the line's own mark, read back with the journal, and
-	// proven again by THIS engine exactly as a new message is
-	// ([Agent.provenCreation]): a line written by another profile, or a mark
-	// damaged on disk, resumes unknown rather than as a crew this engine cannot
-	// vouch for. A line with no such mark resumes unknown. It never upgrades.
+	// AND IT IS ASKED IN THE SAME CREW IT WAS SENT IN. The creation context on
+	// the line's own mark is the STAMP THE ENGINE WROTE WHEN IT ACCEPTED THE
+	// MESSAGE ([Submission.proven]), and it is reused exactly as written: it is
+	// NOT proven again against the teams file as it stands today, because what
+	// was true at acceptance stays true after the member is removed, the
+	// manager changes or the crew closes, and a re-proof would quietly turn a
+	// genuine crew turn unknown. Nothing is read from disk here, so nothing is
+	// read under a.mu. Only the shape is checked: a stamp damaged on disk
+	// resumes unknown, a line with no stamp resumes unknown, and resume never
+	// grants one.
 	resumed := userMessage{message: last, resumed: true}
 	if mark := a.presentation.of(last); mark != nil {
-		resumed.creation = a.provenCreation(mark.Creation)
+		resumed.creation = acceptedCreation(mark.Creation)
 	}
 	events := a.startTurnLocked(ctx, resumed, nil)
 	a.mu.Unlock()

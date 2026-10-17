@@ -131,6 +131,16 @@ func (a *Agent) provenCreation(creation *CreationContext) *CreationContext {
 	return nil
 }
 
+// acceptedCreation is a journaled acceptance stamp as a resumed turn may reuse
+// it: a copy when its shape is a creation context, nil (unknown) when it is
+// not. It reads no teams file; the stamp was proven when it was written.
+func acceptedCreation(stamp *CreationContext) *CreationContext {
+	if stamp == nil || (stamp.Team != "" && !creationTeamIDOK(stamp.Team)) {
+		return nil
+	}
+	return stamp.clone()
+}
+
 // creationKeys is every spelling the teams file may know this conversation's
 // journal by: the path cleaned, the path with every link resolved, and — for a
 // journal that does not exist yet, as a crew start's manager's on its very

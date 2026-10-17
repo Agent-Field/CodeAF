@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/automation"
 )
 
 // PageOrdersMadeIn answers orders.made_in: one bounded page of the orders whose
@@ -16,6 +19,15 @@ import (
 // manages it, or its workspace is consulted, and [appwire.Order.Crew] (where an
 // order belongs) is echoed as stored and never matched. Rows carry no last_run
 // and no asking: the store is read once per page, never a query per row.
+//
+// THE ANSWER IS BOUNDED IN THE BYTES IT ENCODES TO, not estimated from what is
+// stored: each order is encoded exactly as the wire will encode it — with HTML
+// escaping on, so a "<" counts the six bytes it becomes — and the page ends
+// BEFORE the order that would take it past [appwire.OrdersMadeBytesMax]. The
+// store is asked never to copy out a document larger than that budget at all.
+// The page then continues from the last row it covered and counts unknown only
+// up to there; an order that cannot fit even alone is refused by name, and the
+// walk never moves past it.
 func (b *appBackend) PageOrdersMadeIn(ctx context.Context, ask appwire.OrdersMadeAsk) (*appwire.OrdersMadeResult, error) {
 	limit, err := appwire.CheckOrdersMadeAsk(ask)
 	if err != nil {
@@ -28,14 +40,76 @@ func (b *appBackend) PageOrdersMadeIn(ctx context.Context, ask appwire.OrdersMad
 	if err != nil {
 		return nil, err
 	}
-	page, err := store.MadeInTeam(ctx, ask.Crew, ask.Cursor, limit)
+	page, err := store.MadeInTeam(ctx, ask.Crew, ask.Cursor, limit, appwire.OrdersMadeBytesMax)
 	if err != nil {
-		return nil, err
+		return nil, ordersMadeError(err)
 	}
 	now := b.now()
-	res := &appwire.OrdersMadeResult{Orders: make([]appwire.Order, 0, len(page.Rows)), Unknown: page.Unknown, Next: page.Next}
-	for _, a := range page.Rows {
-		res.Orders = append(res.Orders, orderView(nil, a, now))
+	res := &appwire.OrdersMadeResult{Orders: []appwire.Order{}}
+	used, last, stop := 0, "", page.Stop
+	for _, entry := range page.Entries {
+		// AN ENTRY IS COVERED ONLY WHEN A CURSOR CAN CONTINUE AFTER IT, so an id
+		// too long for one ends the page before it rather than being passed over.
+		if _, err := page.CursorAt(entry.ID); err != nil {
+			stop = entry.ID
+			break
+		}
+		if entry.Row != nil {
+			order := orderView(nil, *entry.Row, now)
+			encoded, err := json.Marshal(order)
+			if err != nil {
+				return nil, appwire.Errorf(appwire.CodeEngine, "the crew's orders could not be read")
+			}
+			// One byte more for the comma between this order and the last.
+			if used+len(encoded)+1 > appwire.OrdersMadeBytesMax {
+				stop = entry.ID
+				break
+			}
+			used += len(encoded) + 1
+			res.Orders = append(res.Orders, order)
+		}
+		if entry.Unknown {
+			res.Unknown++
+		}
+		last = entry.ID
+	}
+	if last == "" && stop != "" {
+		return nil, appwire.Errorf(appwire.CodeTooLarge, "order %s is too large to read here", stop)
+	}
+	// NEXT IS ABSENT ONLY AT THE STORE'S END WITH EVERY ENTRY COVERED: a page
+	// this method cut short is never the end, whatever follows it.
+	if !page.End || stop != "" || last != lastEntry(page) {
+		if last == "" {
+			// The store answers no page that is neither the end nor covers a row;
+			// one that did would hand out a cursor going nowhere.
+			return nil, appwire.Errorf(appwire.CodeEngine, "the crew's orders could not be read")
+		}
+		if res.Next, err = page.CursorAt(last); err != nil {
+			return nil, appwire.Errorf(appwire.CodeEngine, "the crew's orders could not be read")
+		}
 	}
 	return res, nil
+}
+
+// lastEntry is the id of a page's last entry, "" for none.
+func lastEntry(page automation.MadeInPage) string {
+	if len(page.Entries) == 0 {
+		return ""
+	}
+	return page.Entries[len(page.Entries)-1].ID
+}
+
+// ordersMadeError is the wire's word for a store refusal: a walk that must
+// start again, an order too large to carry, a cursor no page gave; any other
+// error is the engine's, and the method says it plainly.
+func ordersMadeError(err error) error {
+	switch {
+	case errors.Is(err, automation.ErrMadeInStale):
+		return appwire.Errorf(appwire.CodeStaleCursor, "the orders changed while they were being read; start again from the first page")
+	case errors.Is(err, automation.ErrMadeInTooLarge):
+		return appwire.Errorf(appwire.CodeTooLarge, "%s", err.Error())
+	case errors.Is(err, automation.ErrMadeInCursor):
+		return appwire.Errorf(appwire.CodeBadParams, "orders.made_in cursor is not one this method gave")
+	}
+	return err
 }

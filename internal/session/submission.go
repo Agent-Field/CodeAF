@@ -96,8 +96,15 @@ type Submission struct {
 	// Creation is what the door that accepted the message says about where it
 	// was sent ([CreationContext]). NIL IS UNKNOWN, never "no team": a door that
 	// does not know, or predates the field, leaves it nil. The model is sent
-	// nothing of it; the record keeps it on the person's line.
+	// nothing of it. IT IS A CLAIM: the record keeps only what this engine
+	// proved of it when the message was accepted (proven, below).
 	Creation *CreationContext
+	// proven is Creation as THIS engine accepted it ([Agent.provenCreation]),
+	// set by the doors that take a new message and by nothing else. IT IS THE
+	// ONLY CONTEXT THE RECORD EVER KEEPS: [Submission.mark] writes this and
+	// never Creation, so a caller that reaches mark without passing a door —
+	// a renderer, a test, a future path — cannot get an unproven team journaled.
+	proven *CreationContext
 }
 
 // CreationContext is the creation provenance a door states for one accepted
@@ -234,7 +241,7 @@ func (a *Agent) SubmitMessage(ctx context.Context, message Submission) (<-chan E
 		_, events, err := a.SubmitComposed(ctx, message)
 		return events, err
 	}
-	message.Creation = a.provenCreation(message.Creation)
+	message.proven = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
 		return nil, err
@@ -249,13 +256,13 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if err := checkClientID(m.ClientID); err != nil {
 		return nil, err
 	}
-	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" && m.Creation == nil {
+	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" && m.proven == nil {
 		return nil, nil
 	}
-	// A creation context is never a reason to refuse a message: the doors put
-	// it through [Agent.provenCreation] first, and a shape that still is not a
-	// team id is kept as unknown rather than written.
-	creation := m.Creation.clone()
+	// A creation context is never a reason to refuse a message: only the one
+	// the door proved is written, and a shape that still is not a team id is
+	// kept as unknown rather than written.
+	creation := m.proven.clone()
 	if creation != nil && creation.Team != "" && !creationTeamIDOK(creation.Team) {
 		creation = nil
 	}
