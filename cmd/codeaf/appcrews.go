@@ -201,7 +201,7 @@ type appCrewRead struct {
 
 func (b *appBackend) crewRead() (appCrewRead, error) {
 	profile := b.crewProfile()
-	// ONCE PER PROCESS, BEFORE THE FIRST READ: a team the factory made before
+	// ONCE FOR THIS BACKEND CONNECTION, BEFORE THE FIRST READ: a team the factory made before
 	// the stamp was kept is marked from its item's recorded Room, never a name.
 	b.factoryRooms.Do(func() { factoryStampStoredRooms(profile, v3FactoryRoot()) })
 	file, err := teamstore.Load(profile)

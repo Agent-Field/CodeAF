@@ -412,6 +412,7 @@ func (c *stageConversation) closeOnce() bool {
 // new one, written onto the item before the round starts.
 func factoryChatStage(st *store.Store, profileDir string, inner factoryrun.Executor) factoryrun.Executor {
 	return factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+		factoryReconcileOnce(profileDir, st)
 		if job.Item.Stream != nil && strings.TrimSpace(job.Item.Stream.Room) == "" {
 			if team, err := factoryItemTeam(profileDir, job.Item); err == nil && team != "" {
 				_ = st.Annotate(job.Item.ID, func(it *factory.Item) error {
@@ -476,6 +477,40 @@ func factoryStampStoredRooms(profileDir, root string) {
 	if err != nil {
 		return
 	}
+	factoryStampStore(profileDir, st)
+}
+
+// factoryReconciled remembers the (profile, store) pairs whose legacy rooms
+// this process has already stamped.
+var factoryReconciled sync.Map
+
+// factoryReconcileOnce runs [factoryStampStore] once per profile and store in
+// this process, BEFORE any factory door makes or joins a team. An old teams
+// file has an unstamped `factory` parent and item teams the stamp never
+// reached; without this a headless engine would find no stamped parent, make a
+// second one, and split a job across two crews. It makes nothing, calls no
+// model or network, and does not touch a store it was not given.
+func factoryReconcileOnce(profileDir string, st *store.Store) {
+	if st == nil {
+		return
+	}
+	type key struct{ profile, root string }
+	canonical := func(p string) string {
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			p = real
+		}
+		return filepath.Clean(p)
+	}
+	// Concurrent doors must WAIT for reconciliation, including separate handles of the same store.
+	once, _ := factoryReconciled.LoadOrStore(key{canonical(teams.Path(profileDir)), canonical(st.Root())}, &sync.Once{})
+	once.(*sync.Once).Do(func() { factoryStampStore(profileDir, st) })
+}
+
+// factoryStampStore is the body of [factoryStampStoredRooms] over an open store.
+func factoryStampStore(profileDir string, st *store.Store) {
 	items, err := st.List()
 	if err != nil {
 		return

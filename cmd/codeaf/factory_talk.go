@@ -94,6 +94,7 @@ const talkItemDoor = "factory_item changes the budget (its field is cap), the th
 func talkMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
+		factoryReconcileOnce(profileDir, st)
 		where := strings.TrimSpace(dirs(it.Repo))
 		if where == "" {
 			where = strings.TrimSpace(workspace)
@@ -134,6 +135,7 @@ func managerMaker(st *store.Store, workspace, profileDir string) func(context.Co
 		if chat == "" {
 			return mint(ctx, it)
 		}
+		factoryReconcileOnce(profileDir, st)
 		where := strings.TrimSpace(dirs(it.Repo))
 		if where == "" {
 			where = strings.TrimSpace(workspace)
@@ -197,7 +199,10 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 	key = filepath.Clean(key)
 	now := time.Now()
 	return teams.Update(profileDir, func(f *teams.File) error {
-		id := itemTeamIn(f, name, now)
+		id := recordedRoomIn(f, it)
+		if id == "" {
+			id = itemTeamIn(f, name, now)
+		}
 		if err := f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: talkHandle(it), JoinedAt: now}); err != nil {
 			return err
 		}
@@ -209,6 +214,42 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 		}
 		return nil
 	})
+}
+
+// recordedRoomIn is the item's own recorded team: its Stream.Room when that
+// team is in f and open, and "" otherwise. THE RECORD OUTRANKS THE NAME: a talk
+// that found its team by name would split a job whose stages already sit in the
+// recorded room. The root and a `factory` parent are never an item's room.
+func recordedRoomIn(f *teams.File, it factory.Item) string {
+	if it.Stream == nil || strings.TrimSpace(it.Stream.Room) == "" {
+		return ""
+	}
+	room := strings.TrimSpace(it.Stream.Room)
+	for i, t := range f.Teams {
+		if t.ID == room && !t.Closed() && !t.Root && !factoryIsParent(f, t.ID) {
+			f.Teams[i].FactoryManaged = true
+			return t.ID
+		}
+	}
+	return ""
+}
+
+// factoryIsParent recognises a stamped top-level factory parent, including an
+// empty one, or the parent of a recorded factory team. Neither is an item room.
+func factoryIsParent(f *teams.File, id string) bool {
+	// A stamped parent can still be empty: lack of a child must never make it closable.
+	if t, ok := f.Team(id); ok && t.FactoryManaged && t.Name == factoryTeamName {
+		root, hasRoot := f.Root()
+		if t.Parent == "" || (hasRoot && t.Parent == root.ID) {
+			return true
+		}
+	}
+	for _, c := range f.Teams {
+		if c.Parent == id && c.FactoryManaged {
+			return true
+		}
+	}
+	return false
 }
 
 // itemTeamIn is the item's team in f, named name under the one `factory`
@@ -512,6 +553,10 @@ func talkPutAway(seam factory.Seam, st *store.Store, profileDir string) factory.
 		if err != nil || strings.TrimSpace(it.Talk) == "" {
 			return nil
 		}
+		room := ""
+		if it.Stream != nil {
+			room = strings.TrimSpace(it.Stream.Room)
+		}
 		_ = session.SetArchived(filepath.Dir(it.Talk), true)
 		key := it.Talk
 		if real, err := filepath.EvalSymlinks(key); err == nil {
@@ -519,8 +564,27 @@ func talkPutAway(seam factory.Seam, st *store.Store, profileDir string) factory.
 		}
 		key = filepath.Clean(key)
 		_ = teams.Update(profileDir, func(f *teams.File) error {
+			// ONLY WHAT THE FACTORY RECORDED IS CLOSED: the item's own
+			// Stream.Room, else a factory-made item team holding the talk.
+			// An ordinary crew that holds the same conversation, the root and
+			// the `factory` parent are the person's, and stay open.
+			closable := func(t teams.Team) bool {
+				return !t.Closed() && !t.Root && !factoryIsParent(f, t.ID)
+			}
 			for _, t := range f.Teams {
-				if t.Holds(key) && !t.Closed() && t.Name != factoryTeamName {
+				if room != "" && t.ID == room && closable(t) {
+					return f.Close(t.ID, time.Now(), "")
+				}
+			}
+			if room != "" {
+				for _, t := range f.Teams {
+					if t.ID == room {
+						return nil
+					}
+				}
+			}
+			for _, t := range f.Teams {
+				if t.Holds(key) && t.FactoryManaged && t.Parent != "" && closable(t) {
 					return f.Close(t.ID, time.Now(), "")
 				}
 			}
