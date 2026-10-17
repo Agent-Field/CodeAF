@@ -70,7 +70,7 @@ Task   { id, agent, title, state, updated_at, parent?, group?, group_title?, lin
        group_title: that run's own name, the label to draw over the group;
        line: the one live status line the TUI shows for it
        state: "queued" | "running" | "done" | "failed" | "unverified"
-Crew   { id, name, manager?, members: [{agent, handle?}] }
+Crew   { id, name, manager?, members: [{agent, handle?}], factory_managed? }
 Entry  { id, agent, turn?, kind, at, ... }   one transcript item, in order
        kind "user"     { text }
        kind "answer"   { text, thinking? }
@@ -294,7 +294,7 @@ result or an event, `?` marks a field that may be absent.
 | `quick.promote` | `{id}` | `{task}` |
 | `quick.undo` | `{id}` | `{}` |
 | `roles.list` | `{}` | `{roles}` |
-| `members.brief` | `{crew, agent}` | `{brief: {text?, from?, at?, revisions?}}` — the member's brief: its start line, or the newest change since; `revisions: [{text, before?, by, at, post?}]` oldest first (≤16), absent when it never changed (no edit date is inferred for older records) |
+| `members.brief` | `{crew, agent}` | `{brief: {text?, from?, at?, revisions?, factory_stage?}}` — the member's brief: its start line, or the newest change since; `revisions: [{text, before?, by, at, post?}]` oldest first (≤16), absent when it never changed (no edit date is inferred for older records) |
 | `members.brief.set` | `{crew, agent, text, base?}` | `{brief}` — changes the member's brief in place, as the person: a `brief` line to the member in the crew log (`post`), read at its next step; it wakes nobody, restarts nothing, posts nothing in its conversation, and leaves its role alone (the brief replaces the start line; a role is told on its own and stays in force). `base` is the `post` of the revision the person edited (`""` for a brief never changed): a brief changed since is `conflict` and nothing is written. `bad_params` for unchanged words, over 12000 characters, or the crew's manager; `closed` for a closed crew; `not_found` for a member that left |
 | `roles.update` | `{id, instructions, model, name}` | `{role}` |
 | `render.cancel` | `{agent, id}` | `{outcome, render}` |
@@ -950,6 +950,10 @@ Answering anywhere (dock, task, crew, Inbox) resolves it everywhere within 1 s.
 `crew` is that crew's id and `path` starts `[crew name, handle]` ("Trudeau Watch / verifier"),
 then the task's title when the ask is a task's. The crew it works in is one it is an ordinary
 member of before one it manages, and the root team last. Any other agent is named by its title.
+
+Factory-owned crews carry additive `factory_managed: true` when the factory has recorded their origin. A crew's name alone establishes no origin. Older engines omit the flag.
+
+A factory-stage membership carries additive `factory_stage: true` in `members.brief`. When recorded, `text` is its actual opening brief, with secrets redacted; a resume's carry-on note does not replace it. No manager, edit date, revision, or role precedence is inferred. The brief belongs to the job: `members.brief.set` refuses with `bad_params` before writing, including after the crew closes. An empty stage brief remains read-only. Ordinary member briefs retain their existing behavior.
 
 ## Wave 5: Crews (U3, X2, V01, V02, V15, V15b, V15c, V16–V20, V64)
 

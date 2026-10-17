@@ -111,18 +111,22 @@ type CrewItem struct {
 // is absent while any member runs, on a closed crew, and when any member's
 // instant is unknown.
 type Crew struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	Parent    string     `json:"parent,omitempty"`
-	Root      bool       `json:"root,omitempty"`
-	Manager   string     `json:"manager,omitempty"`
-	Hue       float64    `json:"hue"`
-	Tier      int        `json:"tier"`
-	Tint      string     `json:"tint"`
-	MadeAt    *time.Time `json:"made_at,omitempty"`
-	State     string     `json:"state"`
-	IdleSince *time.Time `json:"idle_since,omitempty"`
-	ClosedAt  *time.Time `json:"closed_at,omitempty"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Parent string `json:"parent,omitempty"`
+	Root   bool   `json:"root,omitempty"`
+	// FactoryManaged is true only for a team the factory itself made or used
+	// (the `factory` team and each item's team); absent otherwise, and on every
+	// team stored before it was kept. It is never a guess from the name.
+	FactoryManaged bool       `json:"factory_managed,omitempty"`
+	Manager        string     `json:"manager,omitempty"`
+	Hue            float64    `json:"hue"`
+	Tier           int        `json:"tier"`
+	Tint           string     `json:"tint"`
+	MadeAt         *time.Time `json:"made_at,omitempty"`
+	State          string     `json:"state"`
+	IdleSince      *time.Time `json:"idle_since,omitempty"`
+	ClosedAt       *time.Time `json:"closed_at,omitempty"`
 	// ArchivedAt is when a closed crew was put away; absent otherwise. The
 	// crew's state stays closed: archived is closed and listed only when asked.
 	ArchivedAt    *time.Time    `json:"archived_at,omitempty"`
@@ -543,6 +547,11 @@ type MemberBrief struct {
 	From      string          `json:"from,omitempty"`
 	At        *time.Time      `json:"at,omitempty"`
 	Revisions []BriefRevision `json:"revisions,omitempty"`
+	// FactoryStage marks the brief of a factory stage's conversation: Text is
+	// the brief the factory actually started it on, with no From and no
+	// Revisions, and members.brief.set refuses it (the job owns it). Absent for
+	// every other member and for stages recorded before it was kept.
+	FactoryStage bool `json:"factory_stage,omitempty"`
 }
 
 // BriefRevision is one change to a member's brief: who made it ("you" or a
