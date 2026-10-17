@@ -57,14 +57,72 @@ type StepEdits struct {
 	Lines   []string `json:"lines"`
 }
 
+// PipelinePRRequest asks the factory to open a pull request that changes only
+// .codeaf/factory.yaml, as the signed-in caller, over GitHub's REST API.
+// Reviewers and updating an existing pull request are NOT supported yet: a
+// request naming them is refused as unknown JSON fields rather than ignored.
 type PipelinePRRequest struct {
 	Text  string `json:"text"`
 	Title string `json:"title,omitempty"`
+	// Body is the pull request description; empty gets a short default.
+	Body string `json:"body,omitempty"`
+	// Branch is the relative name of the NEW branch to create. An empty name
+	// gets a codeaf/pipeline- suggestion. It is never silently renamed, and
+	// an existing branch or the repository's default branch is refused.
+	Branch string `json:"branch,omitempty"`
+	// ExpectedBaseSHA is the 40-hex COMMIT the draft started from. When it is
+	// not the default branch's tip right now, nothing is written.
+	ExpectedBaseSHA string `json:"expected_base_sha,omitempty"`
 }
 
+// PipelinePR outcomes. Only "opened" carries a pull request; "unchanged"
+// means the default branch already holds these bytes and nothing was written.
+const (
+	PipelinePROpened    = "opened"
+	PipelinePRUnchanged = "unchanged"
+	PipelinePRRefused   = "refused"
+	PipelinePRNotOpened = "not_opened"
+	PipelinePRUnknown   = "unknown"
+)
+
+// PipelinePRResult is the pull request GitHub confirmed: a positive number
+// and the canonical https://github.com/<owner>/<repo>/pull/<number> URL.
+type PipelinePRResult struct {
+	Number  int    `json:"number"`
+	URL     string `json:"url"`
+	Branch  string `json:"branch"`
+	Base    string `json:"base"`
+	BaseSHA string `json:"base_sha"`
+	HeadSHA string `json:"head_sha,omitempty"`
+}
+
+// PipelinePRResponse is a success: outcome "opened" (PR set) or "unchanged".
+// Note is display text only.
 type PipelinePRResponse struct {
-	Factory Factory `json:"factory"`
-	Note    string  `json:"note"`
+	Factory Factory           `json:"factory"`
+	Outcome string            `json:"outcome"`
+	PR      *PipelinePRResult `json:"pr,omitempty"`
+	BaseSHA string            `json:"base_sha,omitempty"`
+	Note    string            `json:"note"`
+}
+
+// PipelinePRFailure is the flow's non-2xx body. Shared authentication,
+// visibility and JSON validation may instead return the ordinary API error.
+// Outcome is refused (GitHub or the
+// factory said no before any write), not_opened (a definitive failure) or
+// unknown (a write whose effect cannot be known; check GitHub, do not retry
+// blindly). BranchLeft is true when this call created, or may have created,
+// Branch on GitHub. The factory never deletes a remote branch.
+type PipelinePRFailure struct {
+	Factory      Factory `json:"factory"`
+	Error        string  `json:"error"`
+	Reason       string  `json:"reason,omitempty"`
+	Outcome      string  `json:"outcome"`
+	Stage        string  `json:"stage"`
+	GitHubStatus int     `json:"github_status,omitempty"`
+	Branch       string  `json:"branch,omitempty"`
+	BranchLeft   bool    `json:"branch_left"`
+	RequestID    string  `json:"request_id"`
 }
 
 type Issue struct {
