@@ -159,6 +159,9 @@ type OutputPage struct {
 	NextLine   int      `json:"next_line"`
 	TotalLines int      `json:"total_lines"`
 	Truncated  bool     `json:"truncated,omitempty"`
+	// Partial: the page ended at a line or byte cap with more stream after
+	// next_line. Nothing was lost; it is not truncated.
+	Partial bool `json:"partial,omitempty"`
 }
 
 // StopAllResult is services.stop_all's answer.

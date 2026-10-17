@@ -36,6 +36,10 @@ type OutputPage struct {
 	// Truncated says earlier output is no longer kept: it was cut back while
 	// codeaf ran, or the log is larger than the window read.
 	Truncated bool `json:"truncated,omitempty"`
+	// Partial says the page stopped before the end of the stream because the
+	// line cap or the byte cap was reached, so a line at NextLine exists and was
+	// not returned. It is NOT Truncated: nothing was lost, read on from NextLine.
+	Partial bool `json:"partial,omitempty"`
 }
 
 // OutputPath is where one of owner's services — kept, or removed with its
@@ -68,7 +72,15 @@ func (s *Supervisor) Output(owner, id string, from, max int) (OutputPage, error)
 	bytes := 0
 	err = scanOutput(path, &page.Truncated, func(n int, line string) {
 		page.TotalLines = n + 1
-		if n < from || len(page.Lines) >= max || bytes+len(line) > maxOutputBytes {
+		// THE PAGE IS A CONTIGUOUS PREFIX from `from`. Once a line has not been
+		// returned, no later line may be: a client resumes at NextLine, so a
+		// skipped line followed by an accepted one would be a gap it must refuse.
+		// The scan goes on only to count TotalLines.
+		if n < from || page.Partial {
+			return
+		}
+		if len(page.Lines) >= max || bytes+len(line) > maxOutputBytes {
+			page.Partial = true
 			return
 		}
 		page.Lines = append(page.Lines, line)

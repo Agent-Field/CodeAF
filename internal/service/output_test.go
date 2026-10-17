@@ -174,3 +174,70 @@ func BenchmarkServiceTail100kLines(b *testing.B) {
 		}
 	}
 }
+
+// TestOutputPageIsAContiguousPrefixAcrossTheByteCap: a byte-capped page must
+// stop at the first line it cannot return, never accept a later short line.
+func TestOutputPageIsAContiguousPrefixAcrossTheByteCap(t *testing.T) {
+	h := newHarness(t)
+	row := h.keep("web", PolicyNever)
+	var b strings.Builder
+	long := strings.Repeat("x", maxOutputLine-1)
+	for i := 0; i < 70; i++ {
+		b.WriteString(long + "\n")
+	}
+	for i := 0; i < 5; i++ {
+		b.WriteString("s" + strconv.Itoa(i) + "\n")
+	}
+	if err := os.WriteFile(row.LogPath, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	page, err := h.s.Output("agent-a", row.ID, 0, 100)
+	if err != nil || !page.Partial || page.Truncated || page.TotalLines != 75 || page.FirstLine != 0 ||
+		page.NextLine != len(page.Lines) || page.NextLine >= 70 {
+		t.Fatalf("byte-capped page: first=%d next=%d n=%d total=%d partial=%v trunc=%v %v",
+			page.FirstLine, page.NextLine, len(page.Lines), page.TotalLines, page.Partial, page.Truncated, err)
+	}
+	for _, line := range page.Lines {
+		if line != long {
+			t.Fatalf("a later short line crossed the gap: %q", line)
+		}
+	}
+	// Resuming at NextLine continues with no gap, and the last page is whole.
+	got := len(page.Lines)
+	for page.Partial {
+		page, err = h.s.Output("agent-a", row.ID, page.NextLine, 100)
+		if err != nil || page.FirstLine != got {
+			t.Fatalf("resume: %+v %v", page, err)
+		}
+		got += len(page.Lines)
+	}
+	if got != 75 || page.Lines[len(page.Lines)-1] != "s4" {
+		t.Fatalf("resumed to %d lines, last page %v", got, page.Lines)
+	}
+}
+
+// TestOutputPartialMarksOnlyAPageCutShortOfTheEnd: small limits, EOF, a start
+// past the end and a clamped start each state exactly what they returned.
+func TestOutputPartialMarksOnlyAPageCutShortOfTheEnd(t *testing.T) {
+	h := newHarness(t)
+	row := h.keep("web", PolicyNever)
+	if err := os.WriteFile(row.LogPath, []byte("a\nb\nc\nä€\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := h.s.Output("agent-a", row.ID, 0, 2)
+	if !p.Partial || p.NextLine != 2 || strings.Join(p.Lines, "|") != "a|b" {
+		t.Fatalf("small limit: %+v", p)
+	}
+	p, _ = h.s.Output("agent-a", row.ID, 2, 2)
+	if p.Partial || p.NextLine != 4 || strings.Join(p.Lines, "|") != "c|ä€" {
+		t.Fatalf("up to EOF: %+v", p)
+	}
+	p, _ = h.s.Output("agent-a", row.ID, 9, 2)
+	if p.Partial || len(p.Lines) != 0 || p.FirstLine != 9 || p.NextLine != 9 || p.TotalLines != 4 {
+		t.Fatalf("past the end: %+v", p)
+	}
+	p, _ = h.s.Output("agent-a", row.ID, 0, 1_000_000)
+	if p.Partial || len(p.Lines) != 4 {
+		t.Fatalf("clamped limit: %+v", p)
+	}
+}

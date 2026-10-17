@@ -708,7 +708,7 @@ func appServicePage(page service.OutputPage) appwire.OutputPage {
 	for i, line := range page.Lines {
 		lines[i] = redact.Secrets(line)
 	}
-	return appwire.OutputPage{Lines: lines, FirstLine: page.FirstLine, NextLine: page.NextLine, TotalLines: page.TotalLines, Truncated: page.Truncated}
+	return appwire.OutputPage{Lines: lines, FirstLine: page.FirstLine, NextLine: page.NextLine, TotalLines: page.TotalLines, Truncated: page.Truncated, Partial: page.Partial}
 }
 
 // ── the processes.* doors, for a service ────────────────────────────────────
