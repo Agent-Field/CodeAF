@@ -266,9 +266,10 @@ When a run ends, its page names every message senior-dev was sent and never said
 delivered as usual. The ones after it wait behind it, and the page says `… the rest of the
 task's notes could not be checked (a message there is too large to read: …)`. **codeaf has no
 way to edit or delete a single note**, so nothing in it clears the hold: it lasts until the
-task is removed or the store is changed by hand. A note written through codeaf cannot cause
-it, because `plandb task note` refuses an author or client key over 4096 bytes and a body
-over 32768; only a damaged or foreign row can.
+task is removed or the store is changed by hand. codeaf refuses a single note whose author
+or client key is over 4096 bytes or whose body is over 32768 (the app caps a client key at
+256). **That does not cover a plan whose name is over 4096 bytes**, such as a very long first
+task title: every note on that plan can be held, and today nothing prevents or warns of it.
 
 **The step-by-step workers hold the same way, and say nothing.** A worker that is not a
 listening program is handed a task's new notes between its steps; behind a note too large to
