@@ -15,7 +15,7 @@ import (
 //
 // The words are:
 //
-//	risky      the risk is high, or the size is L
+//	risky      the read named a risk, or the shown size is L ([ShownSize])
 //	cheap      the estimate is at most 2.5
 //	strangers  the author is a stranger
 //	spend      the area or the title mentions spend, billing, ledger or cap
@@ -38,7 +38,8 @@ import (
 //	age:>1d        older than the span since Created; also >1w, <72h (h, d, w)
 //	repo:x         the repo is x, full (`acme/api`) or short (`api`); repeat to OR
 //	author:@h      the author is h
-//	type:x         the triage type is x; size:x the triage size is x
+//	type:x         the triage type is x; size:x the shown size ([ShownSize]) is x;
+//	               an item with no label, diff or completed read matches none
 //	#12 api#12     the item's number, optionally on that repo
 //
 // A value may be quoted after its colon (`label:"good first issue"`). A
@@ -371,7 +372,8 @@ func matchOne(it Item, t term, viewer string, now time.Time) bool {
 	case tmType:
 		return strings.ToLower(it.Triage.Type) == t.val
 	case tmSize:
-		return strings.ToLower(it.Triage.Size) == t.val
+		shown, _ := ShownSize(it)
+		return strings.ToLower(shown) == t.val
 	case tmRef:
 		n := it.Num
 		if n == 0 {
@@ -396,7 +398,8 @@ func matchTerm(it Item, t, viewer string) bool {
 	case "is:dismissed":
 		return IsDismissed(it, viewer)
 	case "risky":
-		return len(it.Triage.Risk) > 0 || it.Triage.Size == "L"
+		shown, _ := ShownSize(it)
+		return len(it.Triage.Risk) > 0 || shown == "L"
 	case "cheap":
 		return it.Triage.Est > 0 && it.Triage.Est <= CheapEst
 	case "strangers":

@@ -113,6 +113,42 @@ func JobSize(it Item) string {
 
 var jobSizes = []string{"xs", "s", "m", "l", "xl"}
 
+// The words ShownSize reports for where a size came from.
+const (
+	ShownLabel = "label"
+	ShownRead  = "read"
+	ShownDiff  = "diff"
+)
+
+// ShownSize is the ONE resolver every DISPLAY or FILTER of an item's size
+// reads (`size:`, `risky`, `when: large`, the shaping turn, the chat floor),
+// and it answers (letter, source). A size label a person set wins; else a
+// forge's measured diff (SizeFrom "diff"); else a completed read's size
+// (SizeFrom "read" with the item triaged). Anything else, a legacy document
+// with no provenance, a chat guess, a body's length, is UNKNOWN and comes back
+// as ("", "") so the surface draws nothing (the emptiness law).
+//
+// IT NEVER STARTS ANYTHING. [JobSize] stays the only size a start decision,
+// the dry run or the wire's job.size reads; no read can grant a start.
+func ShownSize(it Item) (letter, from string) {
+	if s := JobSize(it); s != "" {
+		return s, ShownLabel
+	}
+	s := strings.ToUpper(strings.TrimSpace(it.Triage.Size))
+	if s != "S" && s != "M" && s != "L" {
+		return "", ""
+	}
+	switch it.Triage.SizeFrom {
+	case SizeFromDiff:
+		return s, ShownDiff
+	case SizeFromRead:
+		if !it.Triage.TriagedAt.IsZero() {
+			return s, ShownRead
+		}
+	}
+	return "", ""
+}
+
 func IsDismissed(it Item, person string) bool {
 	person = NormalizeHandle(person)
 	return person != "" && slices.Contains(it.DismissedBy, person)

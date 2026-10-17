@@ -559,12 +559,12 @@ func fromDesk(it factory.Item) *JobDesk {
 }
 
 func fromTriage(t factory.Triage) Triage {
-	return Triage{Type: t.Type, Size: t.Size, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 
 func toTriage(t Triage) factory.Triage {
-	return factory.Triage{Type: t.Type, Size: t.Size, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 

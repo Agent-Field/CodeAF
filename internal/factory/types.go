@@ -161,8 +161,13 @@ func (r Recipe) For(k Kind) []Stage {
 // facts a person reads. Intake uses size, cost and the explicitly judged
 // ask-first sentences only when the repository opts into automatic starts.
 type Triage struct {
-	Type      string // bug · feat · chore · question · review
-	Size      string // S · M · L
+	Type string // bug · feat · chore · question · review
+	Size string // S · M · L
+	// SizeFrom says where Size came from: [SizeFromRead], [SizeFromDiff],
+	// [SizeFromChat], or "" when nobody recorded it. A document written before
+	// this field existed decodes to "" and its size is UNKNOWN, not a guess to
+	// be trusted: [ShownSize] draws nothing for it.
+	SizeFrom  string `json:",omitempty"`
 	Area      string
 	Readiness int // 0..100; under 55 the item is thin and wants questions
 	Est       float64
@@ -191,6 +196,14 @@ type Triage struct {
 	StartPaths   []string `json:",omitempty"`
 	StartRules   []string `json:",omitempty"`
 }
+
+// Where a [Triage.Size] came from. Only the first two are ever shown; a chat
+// model's guess is kept so the read can replace it, and is drawn as nothing.
+const (
+	SizeFromRead = "read" // the model's completed read of the item
+	SizeFromDiff = "diff" // a forge's measured changed-line count
+	SizeFromChat = "chat" // the chat model's guess when it added the item
+)
 
 // UnmarshalJSON reads a triage document, including one written before Risk
 // was a list.

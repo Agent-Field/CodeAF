@@ -247,11 +247,14 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 					if in.Triage.Type != "" {
 						it.Triage.Type = in.Triage.Type
 					}
-					if in.Kind != factory.KindPR && in.Triage.Size != "" {
-						it.Triage.Size = in.Triage.Size
-					}
 				case labels && in.Triage.Type != "":
 					it.Triage.Type = in.Triage.Type
+				}
+				// A PULL REQUEST'S SIZE IS THE FORGE'S MEASUREMENT, restamped
+				// whenever this read carried one. A read that did not (the line
+				// counts are not in yet) leaves the old size alone.
+				if in.Kind == factory.KindPR && in.Triage.SizeFrom == factory.SizeFromDiff {
+					it.Triage.Size, it.Triage.SizeFrom = in.Triage.Size, factory.SizeFromDiff
 				}
 				if words || labels {
 					it.Note(at, factory.EventChanged)
@@ -334,6 +337,10 @@ func forgeChanged(old, in factory.Item) bool {
 		return true
 	}
 	if !sameLabels(old.Labels, in.Labels) {
+		return true
+	}
+	if in.Kind == factory.KindPR && in.Triage.SizeFrom == factory.SizeFromDiff &&
+		(old.Triage.SizeFrom != factory.SizeFromDiff || old.Triage.Size != in.Triage.Size) {
 		return true
 	}
 	if in.URL != "" && old.URL != in.URL {
