@@ -82,11 +82,19 @@ func (h *Handler) readStepEdits(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.stepEditsReply(w, it, nil)
+	h.stepEditsReply(w, r, it, nil)
 }
 
-func (h *Handler) stepEditsReply(w http.ResponseWriter, it factory.Item, lines []string) {
-	j := h.withVersion(api.FromItem(it))
+// stepEditsReply answers with the job's steps after the same presence and
+// machine redaction the job body gets: a step's failure names a machine, and
+// FS0/FS15 allow only the caller's own.
+func (h *Handler) stepEditsReply(w http.ResponseWriter, r *http.Request, it factory.Item, lines []string) {
+	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
+		return
+	}
+	h.redactMachines(r, &jobs[0])
+	j := jobs[0]
 	if lines == nil {
 		lines = []string{}
 	}
@@ -152,7 +160,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.stepEditsReply(w, updated, lines)
+	h.stepEditsReply(w, r, updated, lines)
 }
 
 func (h *Handler) readJobHandOff(w http.ResponseWriter, r *http.Request) {

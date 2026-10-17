@@ -131,7 +131,7 @@ func TestConflictNamesWhoWhenAndWhere(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &taken); err != nil {
 		t.Fatal(err)
 	}
-	if taken.Error != "already taken by @mei" || taken.Taker != "@mei" || taken.Machine != "priya-mbp" || !taken.At.Equal(when) {
+	if taken.Error != "already taken by @mei" || taken.Taker != "@mei" || taken.Machine != "" || !taken.At.Equal(when) {
 		t.Fatalf("take conflict = %+v", taken)
 	}
 

@@ -51,7 +51,7 @@ func TestMachinesAreTheViewersAndHeldByNamesTheRest(t *testing.T) {
 
 	var one struct{ api.Job }
 	f.request(t, "GET", "/v1/jobs/"+strconv.Itoa(job.ID), "", nil, 200, &one)
-	if one.HeldBy == nil || one.HeldBy.Machine != "priya-desk" || one.HeldBy.Handle != "priya" || one.HeldBy.Since.IsZero() || !one.HeldBy.HeartbeatAt.Equal(one.HeldBy.Since) {
+	if one.HeldBy == nil || one.HeldBy.Machine != "" || !one.HeldBy.HeartbeatAt.IsZero() || one.HeldBy.Handle != "priya" || one.HeldBy.Since.IsZero() {
 		t.Fatalf("held_by: %+v", one.HeldBy)
 	}
 	since := one.HeldBy.Since
@@ -65,7 +65,7 @@ func TestMachinesAreTheViewersAndHeldByNamesTheRest(t *testing.T) {
 	f.clock.Add(int64(lease.HeartbeatEvery))
 	f.request(t, "POST", "/v1/workers/leases/"+pulled.Lease.ID+"/heartbeat", other.Credential, nil, 200, nil)
 	f.request(t, "GET", "/v1/jobs/"+strconv.Itoa(job.ID), "", nil, 200, &one)
-	if one.HeldBy == nil || !one.HeldBy.Since.Equal(since) || !one.HeldBy.HeartbeatAt.After(since) {
+	if one.HeldBy == nil || !one.HeldBy.Since.Equal(since) || !one.HeldBy.HeartbeatAt.IsZero() {
 		t.Fatalf("renewal: %+v", one.HeldBy)
 	}
 }

@@ -287,9 +287,10 @@ type Job struct {
 	PublishError  string         `json:"publish_error,omitempty"`
 	Cost          float64        `json:"cost"`
 	CreatedAt     time.Time      `json:"created_at"`
-	// HeldBy is the machine working this job now. It is set from the live
-	// lease, including when that machine belongs to someone else: the roster
-	// on /v1/me does not list another person's machines.
+	// HeldBy is the hold on this job now. The machine and heartbeat in it are
+	// set only for the caller's own machine: ALL PEER MACHINE INFORMATION IS
+	// FORBIDDEN, the operator included, so another person's hold keeps who
+	// and since when and nothing about the machine.
 	HeldBy     *HeldBy             `json:"held_by,omitempty"`
 	PR         *PR                 `json:"pr"` // Null when the worker published a comment.
 	Publish    string              `json:"publish,omitempty"`

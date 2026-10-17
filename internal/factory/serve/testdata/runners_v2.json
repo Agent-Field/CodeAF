@@ -8,7 +8,7 @@
     {
       "id": "mbp",
       "name": "mbp",
-      "owner": "sam",
+      "owner": "owner",
       "kind": "mac",
       "slots": 2,
       "state": "idle",

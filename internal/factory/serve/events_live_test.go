@@ -29,8 +29,8 @@ func TestEventReplayUsesLastIDAndViewerFilter(t *testing.T) {
 		event live.Event
 		want  bool
 	}{
-		{live.Event{Kind: "machine", Job: 2, Handle: "priya"}, false},
-		{live.Event{Kind: "machine", Job: 1, Handle: "raj"}, true},
+		{live.Event{Kind: "machine", Job: 2, Handle: "priya"}, true},
+		{live.Event{Kind: "machine", Job: 1, Handle: "raj"}, false},
 		{live.Event{Kind: "machine", Handle: "priya"}, true},
 		{live.Event{Kind: "machine", Handle: "raj"}, false},
 	} {

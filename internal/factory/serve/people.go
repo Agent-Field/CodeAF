@@ -214,9 +214,13 @@ func (h *Handler) person(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "person not found")
 		return
 	}
-	machines, err := h.viewerMachines(handle)
-	if h.failed(w, err) {
-		return
+	// Machines are the caller's own and nobody else's, the operator included.
+	// Another person's card keeps its job counts and status, never a machine.
+	var machines []api.Machine
+	if h.machineViewer(r) == handle {
+		if machines, err = h.viewerMachines(handle); h.failed(w, err) {
+			return
+		}
 	}
 	for _, machine := range machines {
 		// A partial view reveals only machines with a visible hold; an idle

@@ -144,7 +144,7 @@ func (h *Handler) assignToMe(w http.ResponseWriter, r *http.Request, it factory.
 		return
 	}
 	if it.Person() != "" {
-		h.taken(w, it)
+		h.taken(w, r, it)
 		return
 	}
 	h.assignJob(w, r, it, who)

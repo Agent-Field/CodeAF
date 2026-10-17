@@ -82,7 +82,7 @@ func (h *Handler) moved(w http.ResponseWriter, r *http.Request, it factory.Item,
 	case verb == "take" && it.Person() != "":
 		sentence = "already taken by @" + it.Person()
 		by = "@" + it.Person()
-		h.takenConflict(w, it, sentence, "stale", job.State)
+		h.takenConflict(w, r, it, sentence, "stale", job.State)
 		return
 	case job.State == api.StateDone || it.Publishing || it.State == factory.StateShipped:
 		var eventID, commit string
@@ -182,20 +182,26 @@ func (h *Handler) notJobPerson(w http.ResponseWriter, it factory.Item, who strin
 }
 
 // takenConflict names who holds the job, when, and the machine when one is known.
-func (h *Handler) takenConflict(w http.ResponseWriter, it factory.Item, sentence, reason, state string) {
+func (h *Handler) takenConflict(w http.ResponseWriter, r *http.Request, it factory.Item, sentence, reason, state string) {
 	who := it.Person()
 	by := ""
 	if who != "" {
 		by = "@" + who
 	}
 	var at *time.Time
-	machine := it.WorktreeMachine
+	// The machine is named only to the person it belongs to (FS0/FS15 privacy).
+	caller := h.machineViewer(r)
+	solo := h.mode() == api.FactorySolo
+	machine := ""
+	if solo || h.callersOnlyMachine(caller, it.WorktreeMachine) {
+		machine = it.WorktreeMachine
+	}
 	if held, ok := h.holdOf(it.ID); ok {
 		if !held.Since.IsZero() {
 			stamp := held.Since.UTC()
 			at = &stamp
 		}
-		if held.Machine != "" {
+		if held.Machine != "" && (solo || (caller != "" && caller == factory.NormalizeHandle(held.Handle))) {
 			machine = held.Machine
 		}
 	}

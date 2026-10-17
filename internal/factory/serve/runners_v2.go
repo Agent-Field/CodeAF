@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
@@ -34,8 +35,16 @@ func (h *Handler) v2Routes() {
 	h.route("/v1/repos/{owner}/{repo}", map[string]http.HandlerFunc{http.MethodPut: h.repoPower})
 }
 
-// runnerList applies repository visibility before exposing another person's job ids or checkouts.
+// runnerList is the CALLER's own machines and nobody else's. A teammate's
+// machine, checkout, slot count or heartbeat is never serialized to anyone,
+// the operator included (FS0/FS15 privacy), so the owner filter runs before a
+// row is built rather than being trimmed from the result. Repository
+// visibility still bounds the job ids and checkouts of the caller's own rows.
 func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error) {
+	caller := h.machineViewer(r)
+	if caller == "" || (owner != "" && factory.NormalizeHandle(owner) != caller) {
+		return []api.Runner{}, nil
+	}
 	held, err := h.leases()
 	if err != nil {
 		return nil, err
@@ -53,7 +62,7 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 	h.workers.mu.RUnlock()
 	by := map[string]*api.Runner{}
 	for _, row := range rows {
-		if owner != "" && row.Worker.Handle != owner {
+		if factory.NormalizeHandle(row.Worker.Handle) != caller {
 			continue
 		}
 		key := row.Worker.Handle + "\x00" + row.Worker.Machine
@@ -98,13 +107,8 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 			got.State = api.RunnerBusy
 		}
 	}
-	caller, _ := h.callerHandle(r)
-	_, partial := h.repoAccess(r, nil)
 	out := []api.Runner{}
 	for _, got := range by {
-		if partial && got.Owner != caller && len(got.Jobs) == 0 {
-			continue
-		}
 		sort.Ints(got.Jobs)
 		out = append(out, *got)
 	}

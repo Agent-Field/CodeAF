@@ -1,8 +1,10 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 )
 
 // capacityRig is a team factory with two signed-in owners.
@@ -49,14 +52,18 @@ func (c capacityRig) attach(t *testing.T, token, owner, machine string, slots in
 
 func (c capacityRig) runner(t *testing.T, id string) api.Runner {
 	t.Helper()
-	var list api.Runners
-	c.request(t, "GET", "/v1/runners", "operator-secret", nil, 200, &list)
-	for _, r := range list.Runners {
-		if r.ID == id {
-			return r
+	// A roster is the caller's own machines, the operator's included, so the
+	// machine is looked for under each signed-in owner and then the operator.
+	for _, token := range []string{c.priya, c.raj, "operator-secret"} {
+		var list api.Runners
+		c.request(t, "GET", "/v1/runners", token, nil, 200, &list)
+		for _, r := range list.Runners {
+			if r.ID == id {
+				return r
+			}
 		}
 	}
-	t.Fatalf("runner %q is not listed: %+v", id, list)
+	t.Fatalf("runner %q is not listed under any owner", id)
 	return api.Runner{}
 }
 
@@ -230,8 +237,15 @@ func TestALegacySavedCapacityAboveTheCeilingIsGrantedTheCeilingEverywhere(t *tes
 	if w := identityRequest(reopened, "GET", "/v1/runner/self", "", first.Credential, nil); w.Code != 200 || !strings.Contains(w.Body.String(), want) {
 		t.Fatalf("self after restart: %d %s, want %s", w.Code, w.Body, want)
 	}
-	if w := identityRequest(reopened, "GET", "/v1/runners", "", "operator-secret", nil); w.Code != 200 || !strings.Contains(w.Body.String(), want) || strings.Contains(w.Body.String(), `"slots":20`) {
-		t.Fatalf("roster after restart: %d %s", w.Code, w.Body)
+	// The reopened handler has no person sessions, so the roster is read as
+	// the owner by the same context the worker door gives a request.
+	asPriya := httptest.NewRequest("GET", "/v1/runners", nil).WithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: "priya"}))
+	rows, err := reopened.runnerList(asPriya, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body, _ := json.Marshal(rows); len(rows) != 1 || !strings.Contains(string(body), want) || strings.Contains(string(body), `"slots":20`) {
+		t.Fatalf("roster after restart: %s", body)
 	}
 	if w := identityRequest(reopened, "POST", "/v1/runners/leases/"+held.Lease.ID+"/heartbeat", "{}", first.Credential, nil); w.Code != 200 {
 		t.Fatalf("a lease held across the migration was lost: %d %s", w.Code, w.Body)
@@ -252,7 +266,7 @@ func TestOnlyAWorkerThatSaysItFollowsCapacityIsListedAsLive(t *testing.T) {
 	if c.runner(t, "old-box").LiveCapacity || !c.runner(t, "new-box").LiveCapacity {
 		t.Fatal("live_capacity must be true only for the worker that attested it")
 	}
-	if w := identityRequest(c.h, "GET", "/v1/runners", "", "operator-secret", nil); strings.Count(w.Body.String(), "live_capacity") != 1 {
+	if w := identityRequest(c.h, "GET", "/v1/runners", "", c.priya, nil); strings.Count(w.Body.String(), "live_capacity") != 1 {
 		t.Fatalf("an unattested runner must not carry the field: %s", w.Body)
 	}
 }

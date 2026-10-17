@@ -43,6 +43,13 @@ func TestFixtureReadsOverHTTP(t *testing.T) {
 	if err := json.Unmarshal(data, &expected); err != nil {
 		t.Fatal(err)
 	}
+	// The fixture's failure names the machine "ci"; no job here belongs to
+	// the caller, and a machine that is not the caller's is never named.
+	for i := range expected.Jobs {
+		if f := expected.Jobs[i].Failure; f != nil {
+			f.Runner, f.Machine = "", ""
+		}
+	}
 	if !reflect.DeepEqual(q, expected) || len(q.Jobs) != 10 {
 		t.Fatalf("queue did not carry the fixture: got %+v", q)
 	}
