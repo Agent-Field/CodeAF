@@ -382,7 +382,7 @@ func TestLiveLocalSetupPublishedFactoryAgainstRealRepo(t *testing.T) {
 		visible, selected, len(open), len(q.Jobs), revisionAfterRead, q.Factory.Version, reads, len(refused), calls, len(runners.Runners), w.backend.local.runner, len(repos.Watched), len(owners), ownerLabelShown)
 
 	// Cleanup is the test's own: the engine closes (stopping the loopback
-	// service and forgetting its row) before the temporary folders go.
+	// service, keeping its row) before the temporary folders go.
 	w.backend.Close()
 	if _, err := os.Stat(filepath.Join(v3FactoryRoot(), "serve.json")); err == nil {
 		t.Fatal("serve.json survived the engine closing")

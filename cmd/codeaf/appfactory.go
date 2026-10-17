@@ -79,6 +79,13 @@ type appFactoryRow struct {
 	// when it quits or replaces: a row a person attached by address, solo or
 	// not, never carries it, and attaching an address clears it.
 	Local bool `json:"local,omitempty"`
+	// Resume is a person's standing choice, made by an explicit
+	// factory.local_start that this engine itself served: serve this machine's
+	// factory again, quietly, when the app next opens. It is set only on the
+	// Local row, holds no credential, and is cleared by detaching the row. A
+	// row from a release that predates it carries none, so nothing resumes by
+	// inference.
+	Resume bool `json:"resume,omitempty"`
 }
 
 type appFactoryFile struct {
@@ -115,6 +122,11 @@ type appFactoryHub struct {
 	client *http.Client
 	now    func() time.Time
 
+	// resume, when set, brings the local factory back before a read of its
+	// connection is answered (appfactory_setup.go). It takes the local factory's
+	// lock, so it is never called with mu held.
+	resume func(context.Context)
+
 	mu       sync.Mutex
 	loaded   bool
 	rows     []appFactoryRow
@@ -150,7 +162,10 @@ func newAppFactoryHub() *appFactoryHub {
 // factoryHub is the backend's one registry, made when the first factory call
 // arrives so an app that never opens a factory pays nothing.
 func (b *appBackend) factoryHub() *appFactoryHub {
-	b.factoryOnce.Do(func() { b.factories = newAppFactoryHub() })
+	b.factoryOnce.Do(func() {
+		b.factories = newAppFactoryHub()
+		b.factories.resume = b.resumeLocal
+	})
 	return b.factories
 }
 
@@ -237,6 +252,25 @@ func appFactoryID(origin string) string {
 	return "factory_" + hex.EncodeToString(sum[:8])
 }
 
+// idForLocked is the id the saved list already gives origin, or the one its
+// address makes. ONE ROW PER CONNECTED FACTORY: the local row has a fixed id, so
+// an address that is the live local service must resolve to it rather than to a
+// second, hashed id. Callers hold h.mu and have loaded.
+func (h *appFactoryHub) idForLocked(origin string) string {
+	for _, row := range h.rows {
+		if row.URL == origin {
+			return row.ID
+		}
+	}
+	return appFactoryID(origin)
+}
+
+// appLocalID names the one connection that is this machine's own factory. It
+// is not derived from the address: the service listens on a port made at each
+// launch, and a saved tab holds this id across launches. It cannot collide with
+// appFactoryID, whose suffix is hexadecimal.
+const appLocalID = "factory_local"
+
 // appFactoryOrigin is raw as an origin, or why it is not one. Plain http is
 // for this machine only: a token must not cross a network in the clear.
 func appFactoryOrigin(raw string) (string, error) {
@@ -273,13 +307,37 @@ func (h *appFactoryHub) load() error {
 	if json.Unmarshal(data, &saved) != nil {
 		return appwire.Errorf(appwire.CodeEngine, "the saved factory connections are not readable")
 	}
+	haveLocal := false
 	for _, row := range saved.Factories {
 		origin, err := appFactoryOrigin(row.URL)
 		if err != nil {
 			continue
 		}
-		h.rows = append(h.rows, appFactoryRow{ID: appFactoryID(origin), URL: origin, Name: row.Name, Mode: row.Mode, Local: row.Local})
+		id := appFactoryID(origin)
+		if row.Local {
+			// ONE LOCAL ROW, UNDER ITS OWN ID. A row an earlier release marked
+			// Local carried an id hashed from a port; it is this row now.
+			if haveLocal {
+				continue
+			}
+			haveLocal, id = true, appLocalID
+		}
+		h.rows = append(h.rows, appFactoryRow{ID: id, URL: origin, Name: row.Name, Mode: row.Mode, Local: row.Local, Resume: row.Local && row.Resume})
 	}
+	// A conflicting saved local marker must never discard an address the
+	// person attached. Keep the manual row; only our own local metadata may
+	// be dropped. An ambiguous hosting choice needs another explicit start.
+	kept := h.rows[:0:0]
+	for _, row := range h.rows {
+		dup := false
+		for _, other := range h.rows {
+			dup = dup || (row.Local && !other.Local && other.URL == row.URL)
+		}
+		if !dup {
+			kept = append(kept, row)
+		}
+	}
+	h.rows = kept
 	h.loaded = true
 	return nil
 }
@@ -317,6 +375,9 @@ func (h *appFactoryHub) save() error {
 
 // target is the connection an id names and the token to speak to it with.
 func (h *appFactoryHub) target(id string) (appFactoryRow, string, error) {
+	if id == appLocalID && h.resume != nil {
+		h.resume(context.Background())
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
@@ -528,6 +589,9 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 
 func (b *appBackend) FactoryList(ctx context.Context) (appwire.FactoryList, error) {
 	h := b.factoryHub()
+	// THE LOCAL FACTORY IS BACK BEFORE IT IS LISTED, so its row carries this
+	// launch's address and the list probes the service that is actually there.
+	b.resumeLocal(ctx)
 	rows, err := h.snapshot()
 	if err != nil {
 		return appwire.FactoryList{}, err
@@ -555,13 +619,19 @@ func (b *appBackend) FactoryAttach(ctx context.Context, raw, token string) (appw
 	if err != nil {
 		return appwire.FactoryConnection{}, err
 	}
-	id := appFactoryID(origin)
-	known, full, err := h.admitAttach(id)
+	id, known, full, err := h.admitAttach(origin)
 	if err != nil {
 		return appwire.FactoryConnection{}, err
 	}
 	if full {
 		return appwire.FactoryConnection{}, appwire.Errorf(appwire.CodeBusy, "this app is attached to as many factories as it can be (%d)", appwire.MaxFactoryConnections)
+	}
+	// THE ADDRESS OF THE SERVICE THIS ENGINE IS SERVING IS ALREADY PROVEN, and
+	// its own bearer is held: there is nothing to prove, save or swap, and the
+	// local service does not answer /v1/about without that bearer. The one row
+	// is answered as it stands.
+	if known && h.holdsLocal(id) {
+		return h.view(ctx, h.savedRow(appFactoryRow{ID: id, URL: origin})), nil
 	}
 	// ABOUT ANSWERS WITHOUT A SIGN-IN, so a factory is proven to be one before
 	// anything is saved or any token is sent to it.
@@ -588,18 +658,44 @@ func (b *appBackend) FactoryAttach(ctx context.Context, raw, token string) (appw
 	if err := h.saveAttached(row, known); err != nil {
 		return appwire.FactoryConnection{}, err
 	}
-	return h.view(ctx, row), nil
+	return h.view(ctx, h.savedRow(row)), nil
 }
 
-// admitAttach says whether id is already saved and whether the list is full.
-func (h *appFactoryHub) admitAttach(id string) (known, full bool, err error) {
+// savedRow is the saved row under row's id, or row if it is no longer saved.
+func (h *appFactoryHub) savedRow(row appFactoryRow) appFactoryRow {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, saved := range h.rows {
+		if saved.ID == row.ID {
+			return saved
+		}
+	}
+	return row
+}
+
+// holdsLocal says whether id is the local row with a bearer held for it.
+func (h *appFactoryHub) holdsLocal(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, row := range h.rows {
+		if row.ID == id && row.Local {
+			return h.tokenLocked(id) != ""
+		}
+	}
+	return false
+}
+
+// admitAttach is the id origin is saved under (an existing row's, if one has
+// this address), whether it is already saved and whether the list is full.
+func (h *appFactoryHub) admitAttach(origin string) (id string, known, full bool, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	err = h.load()
+	id = h.idForLocked(origin)
 	for _, row := range h.rows {
 		known = known || row.ID == id
 	}
-	return known, len(h.rows) >= appwire.MaxFactoryConnections && !known, err
+	return id, known, len(h.rows) >= appwire.MaxFactoryConnections && !known, err
 }
 
 // saveAttached saves row, or names an unnamed row already saved under its id.
@@ -614,9 +710,9 @@ func (h *appFactoryHub) saveAttached(row appFactoryRow, known bool) error {
 			if h.rows[i].Name == "" {
 				h.rows[i].Name = row.Name
 			}
-			// A person naming this address keeps it: it is no longer only the
-			// local factory's own row to forget.
-			h.rows[i].Local = false
+			// The row keeps whatever it is: naming an address already saved
+			// neither revokes the local factory's Resume choice nor makes
+			// a second connection.
 		}
 	} else {
 		h.rows = append(h.rows, row)
@@ -830,8 +926,7 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 	if err != nil {
 		return appwire.FactoryAccess{}, err
 	}
-	id := appFactoryID(origin)
-	cookie, token, err := h.admitAccess(id, key, verb)
+	id, cookie, token, err := h.admitAccess(origin, key, verb)
 	if err != nil {
 		return appwire.FactoryAccess{}, err
 	}
@@ -890,6 +985,8 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 	if joined && granted != "" {
 		redact.Register(granted)
 		trace.Secret(granted)
+		// An explicit completed sign-in changes the caller, including when a
+		// local authority was previously reached through its operator bearer.
 		h.sessions[id] = appFactorySession{token: granted}
 	}
 	if joined {
@@ -913,15 +1010,16 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 // closing registry, a full one and a link already being checked, and otherwise
 // claims the link and answers the cookie the factory gave it and the bearer
 // held for id.
-func (h *appFactoryHub) admitAccess(id, key, verb string) (*http.Cookie, string, error) {
+func (h *appFactoryHub) admitAccess(origin, key, verb string) (id string, cookie *http.Cookie, token string, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
-		return nil, "", appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
+		return "", nil, "", appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
 	if err := h.load(); err != nil {
-		return nil, "", err
+		return "", nil, "", err
 	}
+	id = h.idForLocked(origin)
 	h.prune()
 	flow := h.links[key]
 	if verb == "sign_in" {
@@ -931,19 +1029,18 @@ func (h *appFactoryHub) admitAccess(id, key, verb string) (*http.Cookie, string,
 		}
 		switch {
 		case flow == nil && len(h.links)+len(h.signIns) >= appwire.MaxFactoryFlows:
-			return nil, "", appwire.Errorf(appwire.CodeBusy, "too many pending factory links")
+			return "", nil, "", appwire.Errorf(appwire.CodeBusy, "too many pending factory links")
 		case !known && len(h.rows) >= appwire.MaxFactoryConnections:
-			return nil, "", appwire.Errorf(appwire.CodeBusy, "this app is attached to as many factories as it can be (%d)", appwire.MaxFactoryConnections)
+			return "", nil, "", appwire.Errorf(appwire.CodeBusy, "this app is attached to as many factories as it can be (%d)", appwire.MaxFactoryConnections)
 		}
 	}
 	if flow != nil && flow.busy {
-		return nil, "", appwire.Errorf(appwire.CodeBusy, "this link is already being checked")
+		return "", nil, "", appwire.Errorf(appwire.CodeBusy, "this link is already being checked")
 	}
-	var cookie *http.Cookie
 	if flow != nil {
 		flow.busy, cookie = true, flow.cookie
 	}
-	return cookie, h.tokenLocked(id), nil
+	return id, cookie, h.tokenLocked(id), nil
 }
 
 // attachLocked saves a connection if it is not saved already.

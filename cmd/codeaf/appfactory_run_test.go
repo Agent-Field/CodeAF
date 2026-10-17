@@ -80,8 +80,13 @@ func TestLocalFactoryForgetsOnlyItsOwnMarkedRows(t *testing.T) {
 			t.Errorf("quit changed the row a person attached: %+v -> %+v", kept, got[kept.ID])
 		}
 	}
-	if _, ok := got[st.Factory]; ok || len(got) != 3 {
+	// The row this engine made for a service the person started stays, as the
+	// record of that choice, without the bearer it held.
+	if own, ok := got[st.Factory]; !ok || len(got) != 4 || !own.Local || !own.Resume {
 		t.Errorf("quit left %d rows, own among them: %v", len(got), ok)
+	}
+	if hub.tokenFor(st.Factory) != "" {
+		t.Error("quit kept the bearer of the local service")
 	}
 	hub.mu.Lock()
 	solo = hub.tokenLocked(remoteSolo.ID)
@@ -91,23 +96,79 @@ func TestLocalFactoryForgetsOnlyItsOwnMarkedRows(t *testing.T) {
 	}
 }
 
-// AN ADDRESS A PERSON NAMES IS THEIRS EVEN WHEN IT IS THE LOCAL FACTORY'S:
-// saving it as attached clears the mark, and quitting then leaves the row.
-func TestAttachingTheLocalAddressKeepsItPastQuit(t *testing.T) {
+// ONE ROW PER CONNECTED FACTORY. Attaching the address the app itself is
+// serving, through the real door, is the local connection and nothing new: the
+// id, the Resume choice, the engine's bearer and every remote row are as they
+// were, and the quit keeps the row.
+func TestAttachingTheLocalAddressIsTheLocalConnectionNotASecondOne(t *testing.T) {
 	useLocalHome(t)
 	hub := testFactoryHub(t)
 	w := newFactoryWire(t, hub)
 	offlineLocal(w.backend, &setupGitHub{}, t)
+	remote := appFactoryRow{ID: appFactoryID("https://team.example"), URL: "https://team.example", Name: "Team", Mode: "team"}
+	attached(t, hub, remote)
 	var st appwire.FactoryLocalStatus
 	w.must("factory.local_start", map[string]any{"caller": "w1"}, &st)
-	if err := hub.saveAttached(appFactoryRow{ID: st.Factory, URL: st.URL}, true); err != nil {
+	if st.Factory != appLocalID {
+		t.Fatalf("local id %q", st.Factory)
+	}
+	engineToken := hub.tokenFor(appLocalID)
+	if engineToken == "" {
+		t.Fatal("no bearer held for the local connection")
+	}
+	before, _ := hub.snapshot()
+
+	var conn appwire.FactoryConnection
+	w.must("factory.attach", map[string]any{"url": st.URL, "token": "someone-elses-token"}, &conn)
+	if conn.ID != appLocalID {
+		t.Fatalf("attach made connection %q, want %q", conn.ID, appLocalID)
+	}
+	after, _ := hub.snapshot()
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("attach changed the list:\n%+v\n%+v", before, after)
+	}
+	if hub.tokenFor(appLocalID) != engineToken {
+		t.Fatal("attach replaced the engine's own bearer")
+	}
+
+	// The access-link and adoption doors resolve the address the same way.
+	hub.mu.Lock()
+	id := hub.idForLocked(st.URL)
+	hub.mu.Unlock()
+	if id != appLocalID {
+		t.Fatalf("an address resolved to %q", id)
+	}
+
+	w.backend.closeLocalFactory()
+	rows, _ := hub.snapshot()
+	var own int
+	for _, r := range rows {
+		if r.ID == appLocalID && r.Local && r.Resume {
+			own++
+		}
+	}
+	if len(rows) != 2 || own != 1 || !reflect.DeepEqual(rows, after) {
+		t.Fatalf("rows after quit: %+v", rows)
+	}
+	if hub.tokenFor(appLocalID) != "" {
+		t.Fatal("the bearer outlived the service")
+	}
+}
+
+// A person's explicit address is never a way to revoke hosting they chose, nor
+// to adopt a service they did not start: a row that joined another codeaf, or
+// that an earlier release left, stays Local and unmarked, so it resumes nothing.
+func TestAttachingDoesNotMakeAnUnmarkedLocalRowResumeOrVanishOnQuit(t *testing.T) {
+	hub := testFactoryHub(t)
+	hub.mu.Lock()
+	hub.rows, hub.loaded = []appFactoryRow{{ID: appLocalID, URL: "http://127.0.0.1:7", Name: appLocalName, Mode: "solo", Local: true}}, true
+	hub.mu.Unlock()
+	if err := hub.saveAttached(appFactoryRow{ID: appLocalID, URL: "http://127.0.0.1:7", Name: "x"}, true); err != nil {
 		t.Fatal(err)
 	}
-	w.backend.closeLocalFactory()
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-	if len(hub.rows) != 1 || hub.rows[0].ID != st.Factory || hub.rows[0].Local {
-		t.Fatalf("rows after quit: %+v", hub.rows)
+	rows, _ := hub.snapshot()
+	if len(rows) != 1 || !rows[0].Local || rows[0].Resume || rows[0].Name != appLocalName {
+		t.Fatalf("rows: %+v", rows)
 	}
 }
 
