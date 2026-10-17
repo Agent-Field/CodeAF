@@ -529,3 +529,28 @@ func TestShareRefusedFromATaskBranchLeavesNoCopy(t *testing.T) {
 		t.Fatal("a refused share appended")
 	}
 }
+
+// TestShareNeverTouchesAGenuineCreatedRow: a file the conversation wrote is
+// already a made deliverable. Sharing it adds a row of its own, shared, and the
+// made row is not rewritten, downgraded or claimed by the share.
+func TestShareNeverTouchesAGenuineCreatedRow(t *testing.T) {
+	w := newShareWorld(t)
+	writeNewFile(t, w.agent, "plan.md", "# plan\n")
+	before := listDeliverables(t, w.index, DeliverableQuery{Sessions: map[string]bool{w.session: true}}, 10)
+	if len(before) != 1 || before[0].Fact.Origin != DeliverOriginAgent || !before[0].Fact.Authored {
+		t.Fatalf("the written file is not a made row: %+v", before)
+	}
+	made := sharePlanJSON(t, before[0].Fact)
+	result, _ := w.share(t, w.shareCall(t, "call-share"), "op-made", "plan.md")
+	if result.Status != ShareOpAccepted || result.RecordedIDs[0] == before[0].ID {
+		t.Fatalf("share = %+v", result)
+	}
+	again, err := FindDeliverable(w.index, w.session, before[0].ID, shareSoon())
+	if err != nil || sharePlanJSON(t, again.Fact) != made {
+		t.Fatalf("the made row changed: %+v %v", again.Fact, err)
+	}
+	shared, err := FindDeliverable(w.index, w.session, result.RecordedIDs[0], shareSoon())
+	if err != nil || shared.Fact.Origin != DeliverOriginSharedByAgent || shared.Fact.Authored {
+		t.Fatalf("the share is not a shared row of its own: %+v %v", shared.Fact, err)
+	}
+}
