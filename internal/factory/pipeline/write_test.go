@@ -138,7 +138,7 @@ func TestFirstWriterUsesYAMLBuiltinsOrConvertsMarkdown(t *testing.T) {
 }
 
 func TestWritersRefuseUnreadableYAMLWithoutReplacingIt(t *testing.T) {
-	for _, invalid := range []string{"steps: [", "unknown: keep me", "steps:\n  extra:\n    prompt: keep me\n    effort: strong\n"} {
+	for _, invalid := range []string{"steps: [", "unknown: keep me", "steps:\n  extra:\n    prompt: keep me\n    colour: red\n"} {
 		t.Run(invalid, func(t *testing.T) {
 			dir := t.TempDir()
 			writeFile(t, dir, pipeline.RepoFile, invalid)
@@ -153,7 +153,7 @@ func TestWritersRefuseUnreadableYAMLWithoutReplacingIt(t *testing.T) {
 	}
 }
 
-func TestStepBankWritesOnlyPromptUntilAndMax(t *testing.T) {
+func TestStepBankKeepsTheStagesRuntimeWords(t *testing.T) {
 	dir := t.TempDir()
 	stages := []factory.Stage{{Name: "security", Kind: factory.StageChat, On: true, Ask: "look for secrets", When: "touches auth", Until: factory.UntilClean, Max: 2, Fixed: true}}
 	if err := (pipeline.Files{}).BankStages(dir, factory.KindIssue, stages); err != nil {
@@ -164,14 +164,12 @@ func TestStepBankWritesOnlyPromptUntilAndMax(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := f.Steps["security"]
-	if !strings.Contains(s.Prompt, "touches auth") || s.Until != "clean" || s.Max != 2 || !f.Recipe().Stages[0].Fixed {
+	if s.Prompt != "look for secrets" || s.When != "touches auth" || s.Until != "clean" || s.Max != 2 || !f.Recipe().Stages[0].Fixed {
 		t.Fatalf("step: %+v", s)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, pipeline.RepoFile))
-	for _, retired := range []string{"kind:", "when:", "fanout:", "effort:", "## issue"} {
-		if strings.Contains(string(data), retired) {
-			t.Fatalf("retired grammar %s", retired)
-		}
+	if !strings.Contains(string(data), "when: touches auth") || strings.Contains(string(data), "## issue") {
+		t.Fatalf("file: %s", data)
 	}
 }
 

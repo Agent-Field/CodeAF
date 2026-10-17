@@ -17,7 +17,7 @@ import (
 // An editor never writes YAML. It names an edit, and this file turns the file
 // that was really read plus that edit into the exact bytes the pull request
 // route will commit. The only edits are the two the file format can hold today:
-// a step's prompt, until and max, and the default budget. Everything else in
+// a step's prompt, kind, when, effort, fanout, until and max, and the default budget. Everything else in
 // the file (start, size, fixed, rules, the pipelines and their order, every
 // other step) rides through the same parser and the same encoder the route
 // uses, so what is previewed is what is committed.
@@ -70,25 +70,35 @@ func refuseEdit(code string, op int, format string, args ...any) *EditError {
 }
 
 // EditOp is one edit. Pointers tell a field that was not sent from one that was
-// sent empty. set_step names a step and at least one of prompt, until and max;
-// set_budget names only Value.
+// sent empty. set_step names a step and at least one of prompt, kind, when,
+// effort, fanout, until and max; an empty kind, when, effort or fanout is the
+// default, written as the key left out. Kind may only be chat (or empty), and
+// only a chat step is edited at all ([lockedStep]); set_budget names only Value.
 type EditOp struct {
 	Op     string
 	Name   string
 	Prompt *string
+	Kind   *string
+	When   *string
+	Effort *string
+	Fanout *string
 	Until  *string
 	Max    *int
 	Value  *float64
 }
 
 // StepView is one step as the file reads. Gate is a step that is a person
-// (approve) and so has no prompt. Locked steps cannot be edited: a gate, and any
-// name the file lists under fixed. InFile is false for a step the file does not
+// (approve) and so has no prompt. Locked steps cannot be edited: approve, any
+// step whose kind is check, gate or post, and any name the file lists under fixed. InFile is false for a step the file does not
 // define itself, whose wording is a shipped default.
 type StepView struct {
 	Name   string
 	Gate   bool
 	Prompt string
+	Kind   string
+	When   string
+	Effort string
+	Fanout string
 	Until  string
 	Max    int
 	Locked bool
@@ -114,7 +124,7 @@ type Source struct {
 }
 
 // StepChange is one step an edit really changed. Fields names what changed, in
-// the order prompt, until, max.
+// the order prompt, kind, when, effort, fanout, until, max.
 type StepChange struct {
 	Name   string
 	Fields []string
@@ -236,8 +246,13 @@ func runtimeDrops(f File) []string {
 	return out
 }
 
+// lockedStep says whether a step is refused to every edit. A check, gate or
+// post step is locked too: its prompt is a shell command, a person or a verb,
+// and a preview that names only "prompt" cannot show a person that. They stay
+// readable and are written back as they were; until a preview carries the
+// kind, they are changed in the file itself.
 func lockedStep(f File, name string) bool {
-	return factory.ApproveWord(name) || listed(f.Fixed, name)
+	return factory.ApproveWord(name) || listed(f.Fixed, name) || f.Steps[name].Kind != ""
 }
 
 func stepView(f File, name string) StepView {
@@ -245,8 +260,9 @@ func stepView(f File, name string) StepView {
 		return StepView{Name: name, Gate: true, Locked: true, InFile: true}
 	}
 	s := f.Steps[name]
-	return StepView{Name: name, Prompt: s.Prompt, Until: s.Until, Max: s.Max,
-		Locked: lockedStep(f, name), InFile: s.wrotePrompt || s.wroteUntil || s.wroteMax}
+	return StepView{Name: name, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout,
+		Until: s.Until, Max: s.Max, Locked: lockedStep(f, name),
+		InFile: s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
 }
 
 func describe(f File) Source {
@@ -353,12 +369,27 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 		if !inPipeline[op.Name] {
 			return Edited{}, refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
 		}
+		if k := f.Steps[op.Name].Kind; k != "" && !factory.ApproveWord(op.Name) {
+			return Edited{}, refuseEdit(EditLocked, i, "%s is a %s step and is changed only in the file itself", op.Name, k)
+		}
 		if lockedStep(f, op.Name) {
 			return Edited{}, refuseEdit(EditLocked, i, "%s is locked and cannot be edited", op.Name)
 		}
 		s := out.Steps[op.Name]
 		if op.Prompt != nil {
 			s.Prompt, s.wrotePrompt = *op.Prompt, true
+		}
+		if op.Kind != nil {
+			s.Kind = *op.Kind
+		}
+		if op.When != nil {
+			s.When = *op.When
+		}
+		if op.Effort != nil {
+			s.Effort = *op.Effort
+		}
+		if op.Fanout != nil {
+			s.Fanout = *op.Fanout
 		}
 		if op.Until != nil {
 			s.Until, s.wroteUntil = *op.Until, *op.Until != ""
@@ -393,6 +424,18 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 		if a.Prompt != b.Prompt {
 			fields = append(fields, "prompt")
 		}
+		if a.Kind != b.Kind {
+			fields = append(fields, "kind")
+		}
+		if a.When != b.When {
+			fields = append(fields, "when")
+		}
+		if a.Effort != b.Effort {
+			fields = append(fields, "effort")
+		}
+		if a.Fanout != b.Fanout {
+			fields = append(fields, "fanout")
+		}
 		if a.Until != b.Until {
 			fields = append(fields, "until")
 		}
@@ -417,7 +460,7 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 	switch op.Op {
 	case OpSetBudget:
-		if op.Name != "" || op.Prompt != nil || op.Until != nil || op.Max != nil {
+		if op.Name != "" || op.Prompt != nil || op.Until != nil || op.Max != nil || op.Kind != nil || op.When != nil || op.Effort != nil || op.Fanout != nil {
 			return op, refuseEdit(EditBadOp, i, "set_budget takes only a value")
 		}
 		if op.Value == nil {
@@ -431,8 +474,8 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 		if op.Value != nil {
 			return op, refuseEdit(EditBadOp, i, "set_step does not take a value")
 		}
-		if op.Prompt == nil && op.Until == nil && op.Max == nil {
-			return op, refuseEdit(EditBadOp, i, "set_step needs a prompt, an until or a max")
+		if op.Prompt == nil && op.Until == nil && op.Max == nil && op.Kind == nil && op.When == nil && op.Effort == nil && op.Fanout == nil {
+			return op, refuseEdit(EditBadOp, i, "set_step needs a prompt, kind, when, effort, fanout, until or max")
 		}
 		if op.Name == "" || op.Name != stepToken(op.Name) || !validStepName(op.Name) {
 			return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
@@ -443,6 +486,37 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 				return op, refuseEdit(EditBadValue, i, "%s", why)
 			}
 			op.Prompt = &p
+		}
+		if op.Kind != nil {
+			// A KIND IS ONLY EVER SET TO CHAT HERE. A chat made a check would
+			// run its prompt in a shell, made a post would act on the forge, and
+			// made a gate would stop the run; none of that shows in a preview yet.
+			k, ok := kindWord(*op.Kind)
+			if !ok {
+				return op, refuseEdit(EditBadValue, i, "kind is chat, check, gate or post")
+			}
+			if k != "" {
+				return op, refuseEdit(EditBadValue, i, "a step becomes a %s only in the file itself; here a step's kind is chat", k)
+			}
+			op.Kind = &k
+		}
+		for _, w := range []struct {
+			got   **string
+			words []string
+			what  string
+		}{
+			{&op.When, factory.WhenWords, "when is one of " + strings.Join(factory.WhenWords, ", ")},
+			{&op.Effort, factory.EffortWords, "effort is cheap or strong, or empty for the default"},
+			{&op.Fanout, StepFanouts, "fanout is one, per-file, per-finding or per-claim"},
+		} {
+			if *w.got == nil {
+				continue
+			}
+			word, ok := stepWord(**w.got, w.words)
+			if !ok {
+				return op, refuseEdit(EditBadValue, i, "%s", w.what)
+			}
+			*w.got = &word
 		}
 		if op.Until != nil {
 			u, why := cleanUntil(*op.Until)
@@ -480,7 +554,8 @@ func notRoundTrip(text []byte, want File) string {
 			continue
 		}
 		got := back.Steps[name]
-		if got.Prompt != s.Prompt || got.Until != s.Until || got.Max != s.Max {
+		if got.Prompt != s.Prompt || got.Kind != s.Kind || got.When != s.When || got.Effort != s.Effort ||
+			got.Fanout != s.Fanout || got.Until != s.Until || got.Max != s.Max {
 			return fmt.Sprintf("the file format cannot hold that change to %s", name)
 		}
 	}
