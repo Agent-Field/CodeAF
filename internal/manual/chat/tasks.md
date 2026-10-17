@@ -624,10 +624,17 @@ what you asked and the first two lines of the reply, and decides one thing: shou
 been work? The same judge also starts reading your message **the moment you send it**,
 alongside the reply rather than in front of it, which is its own section below.
 
+**A task starts only on a direct work order, not because the subject sounds important.**
+Every question is answered in the conversation, including "can we get screenshots headless?"
+Suggestions, product direction, goals and plans are discussion unless you directly instruct
+codeaf to act on them. "Please build the headless screenshot flow" is an instruction; "we
+should have headless screenshots" is not.
+
 **A yes is asked twice.** The cheap model only screens — it reads every substantial message
 and every wordy turn, which is why it is cheap — and it cannot start anything on its own. Before a task exists, the same
 question is put once more to your **planner** model, in the same words, with none of the
-first answer in front of it. Only if both say yes does the work start, and then one dim line
+first answer in front of it. Both must recognize a direct, non-question instruction, and
+both must agree the work belongs on a task. Only then does the work start, and one dim line
 goes into the transcript:
 
 ```
@@ -680,6 +687,9 @@ which works at once when it is the only running task, and needs `alt+t` to walk 
 first when there are others — or `Stop` on the pointer. Nothing about it is special from the
 moment it exists.
 
+If a stopped task's result wakes the conversation, answering that result does not start the
+same request again. A new instruction you type is a fresh request and can be judged normally.
+
 **There is no setting that turns this off.** No `/settings` row switches it, and nothing you
 type disarms it for the session. What bounds it is the list above, and the stop.
 
@@ -710,11 +720,11 @@ four jobs, and reading the request cannot tell them apart. The answer doing the 
 this moment now only decides **how soon the answer is told what it has run up**, and the
 answer decides for itself from there.
 
-**What the judge is looking for is a request whose fastest correct answer is not a
-conversation:** several independent deliverables in one message, a sweep over many files or
-many sources, or an answer you would otherwise sit and watch a spinner for. A question, a
-discussion, one obvious edit and a few tool calls are all answered here, however large the
-subject sounds.
+**The judge needs both authorization and work worth handing off.** The fastest correct answer
+must not be a conversation: several independent deliverables in one message, a sweep over many
+files or sources, or an answer you would otherwise sit and watch a spinner for. A question,
+discussion, suggestion or product direction is answered here, however large the subject
+sounds. An explicit instruction to do a small edit or a few tool calls stays here too.
 
 **Everything that bounds the auto-start above bounds this too** — one start every three
 turns across both moments, six words, two models agreeing, silence when either cannot

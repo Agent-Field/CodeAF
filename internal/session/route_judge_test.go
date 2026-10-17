@@ -1902,6 +1902,52 @@ func TestBothBriefsAskForOneObjectAndOnlyOneOfThemMentionsAnAnswer(t *testing.T)
 	}
 }
 
+func TestRouteJudgesRequireDirectNonQuestionWorkOrders(t *testing.T) {
+	for _, want := range []string{
+		"direct instruction to do work",
+		"in a non-question",
+		"Every question is false",
+		"Product direction, suggestions, goals and plans are false",
+		"authorization before effort",
+	} {
+		if !strings.Contains(routeVerdictContract, want) {
+			t.Errorf("the shared route contract does not require %q", want)
+		}
+	}
+	if !strings.Contains(routeAheadBrief, routeVerdictContract) || !strings.Contains(routeJudgeBrief, routeVerdictContract) {
+		t.Fatal("one route judge can start work without the authorization rule")
+	}
+}
+
+func TestAStoppedTaskResultCannotAutoStartItsRequestAgain(t *testing.T) {
+	completer := &routeCompleter{answer: "I can report what happened.", verdict: routeYes}
+	agent, _, _ := routeAgent(t, completer)
+	graph := agent.graph()
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "the requested audit", request: routeAsk, brief: "audit", acceptance: "done"})
+	node := graph.node(id)
+	node.markStopped()
+	agent.principal = NewSteward(routeAsk, Budget{Wall: time.Hour}, nil)
+	agent.mu.Lock()
+	agent.turnResults = []uint64{id}
+	agent.mu.Unlock()
+
+	ruling := agent.readRouteJudge(context.Background(), userMessage{wake: true}, false, completer.answer)
+	if ruling.start {
+		t.Fatal("a stopped task result started the same request again")
+	}
+	if completer.asked() != 0 || completer.confirms() != 0 {
+		t.Fatalf("the route judge spent %d screen calls and %d confirms on a stopped result", completer.asked(), completer.confirms())
+	}
+
+	// The same words in a new human turn are a fresh instruction.
+	ruling = agent.readRouteJudge(context.Background(), userText(routeAsk), false, completer.answer)
+	if !ruling.start {
+		t.Fatal("a new human instruction was suppressed by an earlier stopped result")
+	}
+	ruling.release()
+}
+
 // ── the order of the two readers at a turn's end ────────────────────────────
 
 // A JUDGE THAT HAS ALREADY ANSWERED HAS STILL STARTED NOTHING.
