@@ -192,11 +192,14 @@ func TestAPlanTaskNoteThroughTheAppDoorKeepsItsKeyOnThePage(t *testing.T) {
 
 // A COMMIT THAT FAILS MAY FOLLOW THE EFFECT, so the app is told UNKNOWN and the
 // words are never sent again. The refusals before the commit stay refusals.
+// SQLite itself refuses the COMMIT here ([commitGate]); the production store is
+// untouched and commits with its own tx.Commit.
 func TestAKeyedRunRowNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	registerBeltRunEngine(t, newBatchRunDouble())
 	dir := t.TempDir()
 	agent := batchAgent(t, dir)
+	gate := gateCommitsOf(t, agent.graph().planPath(), "k-commit")
 	stand := taskStand{dir: agent.config.Workspace, mode: TaskModeWorktree}
 	if err := agent.startKnownTaskRun(context.Background(), 62, "the run", "brief", nil, stand, ""); err != nil {
 		t.Fatalf("start the run: %v", err)
@@ -204,29 +207,45 @@ func TestAKeyedRunRowNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 	agent.beltMu.Lock()
 	live := agent.beltRun.store
 	agent.beltMu.Unlock()
-	live.FailCommitsForTest(errors.New("disk I/O error"))
+
+	// A refusal BEFORE the commit is still a refusal, and never reaches one.
+	missing := agent.AppTaskActionReceipt(AppTaskIntent{ID: "63", Action: "note", Text: "same words", ClientID: "k-commit"})
+	if missing.Outcome != AppTaskRefused || gate.refused.Load() != 0 {
+		t.Fatalf("a note to a task that is not there = %+v (commits refused %d), want refused before any commit", missing, gate.refused.Load())
+	}
 
 	receipt := agent.AppTaskActionReceipt(AppTaskIntent{ID: "62", Action: "note", Text: "same words", ClientID: "k-commit"})
 	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "k-commit" || receipt.Reason == "" {
 		t.Fatalf("a run row note whose commit failed = %+v, want unknown", receipt)
 	}
-	// A refusal BEFORE the commit is still a refusal: a task the store lacks.
-	missing := agent.AppTaskActionReceipt(AppTaskIntent{ID: "63", Action: "note", Text: "same words", ClientID: "k-none"})
-	if missing.Outcome != AppTaskRefused {
-		t.Fatalf("a note to a task that is not there = %+v, want refused", missing)
+	if got := gate.refused.Load(); got != 1 {
+		t.Fatalf("SQLite refused %d commits, want exactly the note's one", got)
 	}
-	// The effect was rolled back here; a real failed sync would leave it. Either
-	// way the answer was typed from the sentinel, and the next real commit works.
-	live.FailCommitsForTest(nil)
+	// The refused COMMIT rolled back: nothing of the note is on the disk. The
+	// answer stays unknown anyway, because a real failed sync can leave it there.
+	if keys := personNoteKeys(live.Notes("62", 0)); keys != "" {
+		t.Fatalf("a note whose commit was refused is on the disk: %q", keys)
+	}
+
+	// Disarmed, the same store's next commit works, and the unknown note was not
+	// sent again behind the person's back.
+	gate.disarm()
 	again := agent.AppTaskActionReceipt(AppTaskIntent{ID: "62", Action: "note", Text: "same words", ClientID: "k-after"})
 	if again.Outcome != AppTaskDelivered {
 		t.Fatalf("the store after a failed commit = %+v", again)
+	}
+	if keys := personNoteKeys(live.Notes("62", 0)); keys != "k-after" {
+		t.Fatalf("person notes after the healthy commit = %q, want only k-after", keys)
+	}
+	if got := gate.refused.Load(); got != 1 {
+		t.Fatalf("SQLite refused %d commits after the gate was disarmed", got)
 	}
 }
 
 func TestAPlanTaskNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, planStoreFilename)
+	gate := gateCommitsOf(t, path, "p-commit")
 	seedPlanStore(t, path, "ask-chat", plandb.TaskSpec{ID: "child", Title: "Write handler", Description: "replace the lookup"})
 	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, nil)
 	armPlanStore(t, agent, path, "ask-chat")
@@ -240,20 +259,55 @@ func TestAPlanTaskNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 			id = row.ID
 		}
 	}
-	plan := agent.graph().planForPages()
-	plan.mu.Lock()
-	plan.afterOpen = func(s *plandb.Store) { s.FailCommitsForTest(errors.New("disk I/O error")) }
-	plan.mu.Unlock()
+
+	// The same door refuses a task that is not there, before any commit.
+	gone := agent.AppTaskActionReceipt(AppTaskIntent{ID: "999", Action: "note", Text: "same words", ClientID: "p-commit"})
+	if gone.Outcome != AppTaskRefused || gate.refused.Load() != 0 {
+		t.Fatalf("a plan note to nothing = %+v (commits refused %d), want refused before any commit", gone, gate.refused.Load())
+	}
 
 	receipt := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "note", Text: "same words", ClientID: "p-commit"})
-	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "p-commit" {
+	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "p-commit" || receipt.Reason == "" {
 		t.Fatalf("a plan note whose commit failed = %+v, want unknown", receipt)
 	}
-	// The same door refuses a task that is not there, before any commit.
-	gone := agent.AppTaskActionReceipt(AppTaskIntent{ID: "999", Action: "note", Text: "same words", ClientID: "p-gone"})
-	if gone.Outcome != AppTaskRefused {
-		t.Fatalf("a plan note to nothing = %+v, want refused", gone)
+	if got := gate.refused.Load(); got != 1 {
+		t.Fatalf("SQLite refused %d commits, want exactly the note's one", got)
 	}
+	if keys := planPersonNoteKeys(t, path); keys != "" {
+		t.Fatalf("a plan note whose commit was refused is on the disk: %q", keys)
+	}
+
+	gate.disarm()
+	again := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "note", Text: "same words", ClientID: "p-after"})
+	if again.Outcome != AppTaskDelivered {
+		t.Fatalf("the plan store after a failed commit = %+v", again)
+	}
+	if keys := planPersonNoteKeys(t, path); keys != "p-after" {
+		t.Fatalf("plan person notes after the healthy commit = %q, want only p-after", keys)
+	}
+}
+
+// personNoteKeys is every person note's client id, in order, joined by "|".
+func personNoteKeys(notes []plandb.Note) string {
+	var keys []string
+	for _, note := range notes {
+		if note.From == plandb.NoteFromPerson {
+			keys = append(keys, note.ClientID)
+		}
+	}
+	return strings.Join(keys, "|")
+}
+
+// planPersonNoteKeys reads the plan task's person notes from the disk through a
+// handle of its own.
+func planPersonNoteKeys(t *testing.T, path string) string {
+	t.Helper()
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("reopen the plan store: %v", err)
+	}
+	defer store.Close()
+	return personNoteKeys(store.Notes("child", 0))
 }
 
 // Only the commit wears the sentinel: the store's own refusals keep their words.

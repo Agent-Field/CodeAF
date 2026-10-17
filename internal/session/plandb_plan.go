@@ -43,10 +43,6 @@ type planState struct {
 	// every row the seed makes so the plan can be read back as this chat's
 	// (PlanTasks). It is settled with the path at the seed and never moves.
 	chat string
-	// afterOpen, when set, sees every store [planState.open] hands out. It is
-	// nil outside tests, which use it to fail a commit on the handle a steering
-	// write is about to use.
-	afterOpen func(*plandb.Store)
 	// root is the run a worker's plan belongs to, set only on a run worker's
 	// own plan ([NewBeltWorker]) from the run's open handle. It is what the
 	// worker's `plandb` checks the store at path against ([plandb.RunEnv]), so
@@ -369,9 +365,6 @@ func (p *planState) open() *plandb.Store {
 	store, err := plandb.Open(p.path, "", "", "", "")
 	if err != nil {
 		return nil
-	}
-	if p.afterOpen != nil {
-		p.afterOpen(store)
 	}
 	return store
 }
