@@ -151,6 +151,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	}
 	switch {
 	case app == applicationID && version == schemaVersion:
+		if err := ensureOriginRevision(ctx, tx); err != nil {
+			return err
+		}
 		return tx.Commit()
 	case app != 0 || version != 0:
 		return fmt.Errorf("automations: %s is not an automations database this build can read (application %d, version %d)", filepath.Join(s.root, DatabaseName), app, version)
@@ -203,6 +206,9 @@ CREATE INDEX runs_by_seq ON runs(seq);
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)); err != nil {
 		return fmt.Errorf("automations: %w", err)
+	}
+	if err := ensureOriginRevision(ctx, tx); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -345,6 +351,10 @@ func (s *Store) Update(a Automation) (Automation, error) {
 		// keeps the trust it had, and only a verdict or the person's own
 		// trust setting moves it.
 		a.Trust, a.Approved, a.Granted = current.Trust, current.Approved, current.Granted
+		// WHERE AN AUTOMATION WAS MADE IS A FACT OF ITS MAKING, never an edit's:
+		// the creation team recorded at create is kept whatever the caller
+		// passes, so no change can retarget, upgrade or erase it.
+		a.Origin.Team = current.Origin.Team
 		if lookChanged(current.Look, a.Look) {
 			a.Seen, a.Memo = "", ""
 		}
@@ -969,6 +979,11 @@ func scanAutomation(row scanner) (Automation, error) {
 	if err := row.Scan(&doc, &status, &next, &seen, &memo, &revision); err != nil {
 		return Automation{}, err
 	}
+	return decodeAutomation(doc, status, next, seen, memo, revision)
+}
+
+// decodeAutomation is one stored row's columns made an automation.
+func decodeAutomation(doc, status string, next int64, seen, memo string, revision int64) (Automation, error) {
 	var a Automation
 	if err := json.Unmarshal([]byte(doc), &a); err != nil {
 		return Automation{}, fmt.Errorf("automations: a damaged row: %w", err)

@@ -1641,6 +1641,12 @@ func appCrewSeat(f *teamstore.File, agent string) (teamstore.Team, teamstore.Mem
 // CrewMessage puts the person's words into a conversation of the crew: the
 // manager's, or a member's, which the manager is also told of on the crew's
 // log (app layer).
+//
+// THE ACCEPTED TURN STATES THIS CREW'S EXACT ID as its creation context, on
+// the plain, attached and queued paths alike. Automations created in that turn
+// record Origin.Team from it, never from who manages the crew now. The engine
+// checks at acceptance that the crew holds the recipient; a closed crew is
+// sent to exactly as before.
 func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error) {
 	t, _, err := b.crewTeam(ask.Crew)
 	if err != nil {
@@ -1661,14 +1667,17 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 	if len(ask.Attachments) > 0 || ask.Said != nil || len(ask.Reads) > 0 {
 		return b.crewMessageWith(t, member, target, ask)
 	}
-	turn, err := b.Send(target, ask.Text, ask.ClientID)
+	shown := appStated(ask.Text, appInTeam(t.ID))
+	turn, err := b.send(target, ask.Text, ask.ClientID, shown)
 	var wire *appwire.Error
 	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
 		// A MEMBER IN THE MIDDLE OF A TURN IS NOT REFUSED THE PERSON'S WORDS:
 		// they wait in its queue and go in when the turn in hand ends, the way
 		// a message typed to a working agent does. Turn 0 says it is waiting.
+		// The queue keeps the same creation context so a flush still records
+		// the crew this message was accepted for.
 		turn, err = 0, nil
-		if _, qerr := b.Queue(target, ask.Text, ask.ClientID); qerr != nil {
+		if _, qerr := b.queue(target, ask.Text, ask.ClientID, shown); qerr != nil {
 			err = qerr
 		}
 	}
@@ -1686,7 +1695,7 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 // instead, and every chip stays staged for the person to send again when the
 // turn ends.
 func (b *appBackend) crewMessageWith(t teamstore.Team, member teamstore.Member, target string, ask appwire.CrewMessage) (appwire.Entry, error) {
-	turn, shown, err := b.sendMessage(target, appwire.AgentMessage{Text: ask.Text, Said: ask.Said, ClientID: ask.ClientID, Attachments: ask.Attachments, Reads: ask.Reads})
+	turn, shown, err := b.sendMessageFor(target, appwire.AgentMessage{Text: ask.Text, Said: ask.Said, ClientID: ask.ClientID, Attachments: ask.Attachments, Reads: ask.Reads}, appInTeam(t.ID))
 	var wire *appwire.Error
 	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
 		if len(ask.Attachments) > 0 {

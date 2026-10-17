@@ -615,6 +615,9 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 // carries it, on the message it becomes when it falls through. A mark that does
 // not fit refuses the correction whole, before anything is queued.
 func (a *Agent) SteerMessage(message Submission) (<-chan Event, error) {
+	// A correction that falls through becomes the message that opens a turn,
+	// so a creation context on it is proven like any other.
+	message.proven = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
 		return nil, err
@@ -645,6 +648,7 @@ func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan E
 	}
 	queued := steerMessage(steer)
 	queued.person = person
+	a.mixCreationLocked(queued)
 	a.steering = append(a.steering, queued)
 	hub := a.hub
 	// A QUESTION THE PERSON TALKED PAST IS LET GO OF BEFORE ANYTHING ELSE IS

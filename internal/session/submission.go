@@ -93,6 +93,39 @@ type Submission struct {
 	// makes the message a composed one ([Agent.SubmitComposed]).
 	Media      []SubmissionMedia
 	Annotation *Annotation
+	// Creation is what the door that accepted the message says about where it
+	// was sent ([CreationContext]). NIL IS UNKNOWN, never "no team": a door that
+	// does not know, or predates the field, leaves it nil. The model is sent
+	// nothing of it. IT IS A CLAIM: the record keeps only what this engine
+	// proved of it when the message was accepted (proven, below).
+	Creation *CreationContext
+	// proven is Creation as THIS engine accepted it ([Agent.provenCreation]),
+	// set by the doors that take a new message and by nothing else. IT IS THE
+	// ONLY CONTEXT THE RECORD EVER KEEPS: [Submission.mark] writes this and
+	// never Creation, so a caller that reaches mark without passing a door —
+	// a renderer, a test, a future path — cannot get an unproven team journaled.
+	proven *CreationContext
+}
+
+// CreationContext is the creation provenance a door states for one accepted
+// person message, recorded on [automation.Origin.Team] for every automation
+// made in the turn that message opens.
+//
+// Team "" is an explicit NONE: a typed caller said the message was an
+// ordinary one, sent to no team. A Team id is the exact team the message was
+// accepted for; the engine checks at acceptance that the team exists and holds
+// this conversation, and keeps the id afterwards whatever happens to the team.
+// It is never inferred from a manager, membership or workspace.
+type CreationContext struct {
+	Team string `json:"team,omitempty"`
+}
+
+// clone is a copy that shares nothing with c, and nil for nil.
+func (c *CreationContext) clone() *CreationContext {
+	if c == nil {
+		return nil
+	}
+	return &CreationContext{Team: strings.Clone(c.Team)}
 }
 
 // ── what the door read to write the message ─────────────────────────────────
@@ -208,6 +241,7 @@ func (a *Agent) SubmitMessage(ctx context.Context, message Submission) (<-chan E
 		_, events, err := a.SubmitComposed(ctx, message)
 		return events, err
 	}
+	message.proven = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
 		return nil, err
@@ -222,8 +256,15 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if err := checkClientID(m.ClientID); err != nil {
 		return nil, err
 	}
-	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" {
+	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" && m.proven == nil {
 		return nil, nil
+	}
+	// A creation context is never a reason to refuse a message: only the one
+	// the door proved is written, and a shape that still is not a team id is
+	// kept as unknown rather than written.
+	creation := m.proven.clone()
+	if creation != nil && creation.Team != "" && !creationTeamIDOK(creation.Team) {
+		creation = nil
 	}
 	reads, err := keptReads(m.Reads)
 	if err != nil {
@@ -236,7 +277,7 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if len(m.Attachments) > MaxMessageAttachments {
 		return nil, fmt.Errorf("%w: %d attachments, and one message names at most %d", ErrMessageMark, len(m.Attachments), MaxMessageAttachments)
 	}
-	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued, ClientID: strings.Clone(m.ClientID)}
+	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued, ClientID: strings.Clone(m.ClientID), Creation: creation}
 	// Text stays nil when the door did not say the person's words apart: the
 	// line's own content is theirs, and a copy of it here would be the same
 	// words written twice on one line.

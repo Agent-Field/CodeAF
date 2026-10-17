@@ -1830,6 +1830,11 @@ func (a *Agent) FollowUpMessage(message session.Submission) (<-chan session.Even
 		return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
 	}
 	if !argsOf(message).marked() {
+		// A creation context alone goes to an engine that keeps marks, and is
+		// left behind by one that does not: the team is then unknown there.
+		if message.Creation != nil && a.FollowUpMarksKnown() {
+			return a.followUp(argsOf(message))
+		}
 		return a.FollowUp(message.Text)
 	}
 	if !a.FollowUpMarksKnown() {

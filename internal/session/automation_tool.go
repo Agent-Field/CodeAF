@@ -184,7 +184,7 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 	// ONE READING OF THE CLOCK FOR THE WHOLE CALL, so `when.in`, the refusal of a
 	// passed moment and the card's next-run line all measure the same instant.
 	now := time.Now()
-	item, problem := a.automationFrom(parsed, now)
+	item, problem := a.automationFrom(ctx, parsed, now)
 	if problem != "" {
 		return rejectToolArguments(ctx, problem), true, nil
 	}
@@ -318,14 +318,18 @@ func automationRunNowHandoff(item automation.Automation) string {
 
 // automationFrom builds the automation the card will show, or says what is
 // wrong with the arguments in words the model can act on.
-func (a *Agent) automationFrom(parsed automationArguments, now time.Time) (automation.Automation, string) {
+func (a *Agent) automationFrom(ctx context.Context, parsed automationArguments, now time.Time) (automation.Automation, string) {
+	origin, problem := a.automationOrigin(ctx)
+	if problem != "" {
+		return automation.Automation{}, problem
+	}
 	item := automation.Automation{
 		Title:     strings.TrimSpace(parsed.Title),
 		Words:     strings.TrimSpace(parsed.Words),
 		Workspace: a.automationWorkspace(),
 		Worktree:  parsed.Worktree != nil && *parsed.Worktree,
 		Action:    automation.Action{Say: strings.TrimSpace(parsed.Say), Do: strings.TrimSpace(parsed.Do)},
-		Origin:    a.automationOrigin(),
+		Origin:    origin,
 	}
 	if item.Title == "" {
 		item.Title = clip(firstNonEmptyString(item.Words, item.Action.Say, item.Action.Do), 60)
@@ -589,11 +593,32 @@ func (a *Agent) automationChanged(stored automation.Automation, parsed automatio
 
 // automationOrigin is the conversation an automation is made in: where its
 // one line goes when a run ends, and the door "why did this happen?" opens.
-func (a *Agent) automationOrigin() automation.Origin {
+// Creation-team provenance is the turn's stated context: the exact id its door
+// was accepted for, explicit NONE, or UNKNOWN (Team nil) for a turn whose door
+// stated nothing this engine could prove. It never guesses from membership.
+//
+// THE ID WAS CHECKED WHEN THE MESSAGE WAS ACCEPTED ([Agent.provenCreation]) and
+// is not checked against the teams file again here: a crew that closed, lost
+// its manager or changed hands since keeps what was made in it. Only the shape
+// is checked once more: a malformed id (one that never passed acceptance) is
+// recorded unknown, and never refuses the automation.
+func (a *Agent) automationOrigin(ctx context.Context) (automation.Origin, string) {
 	a.mu.Lock()
 	id := a.sessionID()
 	a.mu.Unlock()
-	return automation.Origin{SessionID: id, Transcript: strings.TrimSpace(a.config.SessionFile)}
+	origin := automation.Origin{
+		SessionID:  id,
+		Transcript: strings.TrimSpace(a.config.SessionFile),
+	}
+	teamID, known := creationTeamFrom(ctx)
+	if !known {
+		return origin, ""
+	}
+	if teamID != "" && !creationTeamIDOK(teamID) {
+		return origin, ""
+	}
+	origin.Team = &automation.OriginTeam{Known: true, ID: teamID}
+	return origin, ""
 }
 
 // automationMoment reads a stamp: RFC 3339, or a local wall time.

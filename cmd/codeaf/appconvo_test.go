@@ -540,8 +540,7 @@ func TestAnUnkeyedTaskNoteCannotBorrowAnotherNotesReadStep(t *testing.T) {
 	step := 4
 	notes := []session.AppTaskNote{{Text: "same words", ClientID: "someone-else", ReadAtStep: &step}, {Text: "same words", ReadAtStep: &step}}
 	for _, at := range []int{0, 1, 2} {
-		pending := appNotePending{entry: appwire.Entry{Text: "same words"}, index: at}
-		if got := appPendingNoteAt(notes, pending); got != -1 {
+		if got := appKeyedNoteAt(notes, ""); got != -1 {
 			t.Fatalf("unkeyed note borrowed row %d at old position %d", got, at)
 		}
 	}

@@ -204,6 +204,10 @@ type appConversation interface {
 	AppTasks() ([]session.AppTaskView, error)
 	AppTask(id string) (session.AppTaskView, bool, error)
 	AppTaskAction(intent session.AppTaskIntent) error
+	// AppTaskActionReceipt is a note's or a brief's typed outcome
+	// (internal/session's task_app_receipt.go): delivered, held, refused, or
+	// unknown — never a sentence to classify.
+	AppTaskActionReceipt(intent session.AppTaskIntent) session.AppTaskReceipt
 	TaskRouting(id string, changes int) (session.TaskRoutingView, error)
 	TaskRoutingAct(ctx context.Context, id string, act session.TaskRoutingAction) (session.TaskRoutingResult, error)
 	TaskRoutingOptions(id string) (session.TaskRoutingOptions, error)
@@ -977,6 +981,10 @@ type appCreatePrep struct {
 	resolved string
 	text     string
 	kept     []appAttach
+	// creation is what the first message states ([appSending.creation]):
+	// an explicit none from [appBackend.prepareCreate], a crew's id when a
+	// crew start sets it, nil for a bare open with no words.
+	creation *session.CreationContext
 }
 
 // prepareCreate is everything agents.create can refuse, checked with nothing
@@ -1014,7 +1022,7 @@ func (b *appBackend) prepareCreate(ask appwire.CreateAsk) (appCreatePrep, error)
 	if err := appAttachChars(kept); err != nil {
 		return appCreatePrep{}, err
 	}
-	return appCreatePrep{ask: ask, resolved: resolved, text: strings.TrimSpace(ask.Text), kept: kept}, nil
+	return appCreatePrep{ask: ask, resolved: resolved, text: strings.TrimSpace(ask.Text), kept: kept, creation: appNoTeam()}, nil
 }
 
 // createAgentHeld is [appBackend.CreateAgent] after its preparation and up to,
@@ -1071,6 +1079,15 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		first.shown = appAttachShown(said, kept)
 		if first.shown == nil && ask.Said != nil && first.words != "" {
 			first.shown = &appSending{text: said}
+		}
+		// The first words are the person's own message, so they state the
+		// creation context the door knows: an explicit none for agents.create,
+		// the crew's id for the goal crews.start hands its new manager.
+		if first.words != "" && prep.creation != nil {
+			if first.shown == nil {
+				first.shown = &appSending{text: said, bare: true}
+			}
+			first.shown.creation = prep.creation
 		}
 		a.transcript = transcript
 		// THE NAME THE TAB DRAWS UNTIL THE ENGINE'S ARRIVES is the one the engine
@@ -1676,9 +1693,12 @@ func (b *appBackend) liveOf(a *appAgent) *appLive {
 	return a.live
 }
 
-// Send starts one turn, opening the conversation first if it is not held.
+// Send starts one turn, opening the conversation first if it is not held. It
+// is the person's own send, so it states an explicit none: an automation made
+// in its turn was made in no crew. Words the app writes itself go through
+// [appBackend.send] with nothing stated, and stay unknown.
 func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
-	return b.send(id, text, clientID, nil)
+	return b.send(id, text, clientID, appStated(text, appNoTeam()))
 }
 
 // send is [appBackend.Send] with what the person's entry shows, when that is
@@ -1724,10 +1744,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if shown != nil && shown.queued {
 		var again appSending
 		b.locked(func() { again = *shown })
-		again.queued = false
-		if shown = &again; len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
-			shown = nil
-		}
+		shown = appRetryShown(again, text)
 	}
 	turn, err := b.send(id, text, clientID, shown)
 	if appSendUnsure(err) {
@@ -1741,6 +1758,18 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 		return 0, appwire.Errorf(appwire.CodeUncertain, "%s", appUnsureWords)
 	}
 	return turn, err
+}
+
+// appRetryShown is a failed queued message made the person's own send again:
+// no longer queued, and nothing at all when what is left is only its words. A
+// creation context keeps it: a retried crew message is still the message that
+// crew accepted, and a retried ordinary one is still the person's.
+func appRetryShown(again appSending, text string) *appSending {
+	again.queued = false
+	if again.creation == nil && len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
+		return nil
+	}
+	return &again
 }
 
 // startLocked starts one turn on a held conversation. The caller holds a.gate.
@@ -1761,6 +1790,12 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	})
 	if refused != nil {
 		return 0, refused
+	}
+	// A HOST THAT CANNOT KEEP MARKS IS SENT THE WORDS of a message whose only
+	// extra is its creation context, exactly as it always was: it would drop the
+	// context anyway, and the team is unknown there, which is true.
+	if shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
+		shown = nil
 	}
 	// A HOST THAT CANNOT KEEP THE MESSAGE'S MARK IS NOT SENT THE MESSAGE: the
 	// refusal is the app's to read before the turn starts, and the person's

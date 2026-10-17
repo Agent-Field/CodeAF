@@ -59,6 +59,10 @@ const (
 const (
 	DeliverOriginAgent      = "agent"
 	DeliverOriginSavedByYou = "saved_by_you"
+	// DeliverOriginSharedByAgent is a file the agent explicitly handed over with
+	// share_deliverable. It says who SHARED the file, never who made it: such a
+	// row is never Authored and its state stays unknown (share_publish.go).
+	DeliverOriginSharedByAgent = "shared_by_agent"
 )
 
 // A deliverable's recorded state. Absent is unknown, and stays unknown.
@@ -123,13 +127,20 @@ type DeliverableFact struct {
 	Profile string   `json:"profile,omitempty"`
 	Origin  string   `json:"origin,omitempty"`
 	// Authored says a writer seam saw the file CREATED. An edit never sets it.
-	Authored bool             `json:"authored,omitempty"`
-	Branch   string           `json:"branch,omitempty"`
-	Rel      string           `json:"rel,omitempty"`
-	Version  string           `json:"version,omitempty"`
-	File     *DeliverableFile `json:"file,omitempty"`
-	Kept     *DeliverableKept `json:"kept,omitempty"`
-	Removed  bool             `json:"removed,omitempty"`
+	Authored bool `json:"authored,omitempty"`
+	// Call is the provider tool call the row was recorded under, where the
+	// recording seam knew it. It is an attribution, never an idempotency key.
+	Call    string           `json:"call,omitempty"`
+	Branch  string           `json:"branch,omitempty"`
+	Rel     string           `json:"rel,omitempty"`
+	Version string           `json:"version,omitempty"`
+	File    *DeliverableFile `json:"file,omitempty"`
+	Kept    *DeliverableKept `json:"kept,omitempty"`
+	Removed bool             `json:"removed,omitempty"`
+	// Source is the original file a stable engine-owned copy was taken from,
+	// as its own descriptor reported it while every byte was read. It is set
+	// only on a copy, and it is NOT a claim that the original was created.
+	Source *DeliverableFile `json:"source,omitempty"`
 }
 
 // NewDeliverableID mints a deliverable id: random, written once with the row.

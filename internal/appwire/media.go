@@ -113,9 +113,13 @@ const (
 // Everything but State, LiveVersion and LiveBytes is the RECORD and is returned
 // unchanged whatever the file is now: a missing file keeps the size it had.
 type MediaSource struct {
-	ID     string `json:"id"`
-	Kind   string `json:"kind" enum:"image,audio,video,document"`
-	Origin string `json:"origin" enum:"attachment,generated,evidence,published"`
+	ID   string `json:"id"`
+	Kind string `json:"kind" enum:"image,audio,video,document"`
+	// Origin shared is a file the agent DELIBERATELY handed over with
+	// share_deliverable: never generated, never a declared shell output, never
+	// evidence, and never Made. It carries only what the file's own header said
+	// and the call it was shared under; its charge is always unknown.
+	Origin string `json:"origin" enum:"attachment,generated,evidence,published,shared"`
 	// Path is the recorded canonical path, for display and for the app's
 	// native side to open ONLY when State is available.
 	Path  string `json:"path"`
@@ -166,6 +170,10 @@ type MediaSource struct {
 	// implies a charge.
 	Declared string `json:"declared,omitempty"`
 	Change   string `json:"change,omitempty" enum:"created,unchanged,modified,unknown"`
+	// Original is set only on a shared source whose bytes were copied into the
+	// conversation's own folder (a task's file): the file it was read from. It
+	// is for display; Path is what may be opened, under State, never Original.
+	Original string `json:"original,omitempty"`
 	// Evidence only (origin evidence — a file the agent looked at): Verb is
 	// looked_at · listened_to · watched · read; Saw is the looking model's words
 	// verbatim (SawOmitted when too long to keep whole); SeenBy is the model

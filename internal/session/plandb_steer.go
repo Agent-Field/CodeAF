@@ -104,7 +104,7 @@ func (a *Agent) PlanNoteKeyed(id, text, clientID string) error {
 			return err
 		}
 		_, err := store.AddPersonNoteKeyed(task.ID, text, AppNoteClientID(clientID))
-		return err
+		return commitUncertainAsUnanswered(err)
 	})
 }
 

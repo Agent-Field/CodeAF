@@ -979,6 +979,9 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 // door that knows more than the words said about the message
 // ([Agent.SubmitMessage]), nil for every other door. The mark rides the message
 // to the moment it is recorded and changes nothing the model is sent.
+//
+// A plain Submit carries no mark and so no creation context: an automation made
+// in its turn records its team as UNKNOWN, never as "no team".
 func (a *Agent) submitText(ctx context.Context, text string, person *messagePresentation) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -1048,6 +1051,9 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		// between an assistant's tool_calls and their results is a shape every
 		// provider rejects. The loop appends it at the next step boundary,
 		// where it is journaled like any other user message.
+		// A message with another creation context answered in this turn makes
+		// the turn's creation team unknown (creation_team.go).
+		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
 		// Subscribing under a.mu — not after releasing it — is what makes the
 		// returned channel live rather than a coin flip: the turn's goroutine
@@ -1213,6 +1219,11 @@ type userMessage struct {
 	person  *messagePresentation
 	message ai.Message
 	refs    []journalPart
+	// creation is the creation context of a message that is not newly
+	// accepted but asked again from its recorded line ([Agent.ResumeStoppedTurn]),
+	// read back from that line's mark. A newly accepted message carries its
+	// context on person instead ([userMessage.creationContext]).
+	creation *CreationContext
 	// replyTags names finished tasks whose reports this message carries. It is
 	// empty on every person's message and every other authored note.
 	replyTags []TaskReplyTag
@@ -1704,7 +1715,7 @@ const (
 	steerAgainWord = "already on the task's record from the same message — nothing was sent a second time"
 	// RunNotePickupWord is WHEN a note on a run's task is read, and it is ONE
 	// SENTENCE IN TWO PLACES: the receipt a note typed at a run's own row
-	// answers in the chat (stoprun.go's [Agent.sayToRunRow]), and the line the
+	// answers in the chat (stoprun.go's [Agent.sayToRunRowFrom]), and the line the
 	// task room writes under the note once the store has it (internal/tui3's
 	// taskPlanPickupWord takes it from here). A run's task has no worker to
 	// splice a line into; a worker is a separate loop, so the words wait in the
@@ -1834,6 +1845,13 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// message, which is the truth. A steer that lands later is NOT the opener
 	// and changes nothing here.
 	turnCtx = withTurnOrigin(turnCtx, turnOrigin{run: runIdentity(turnCtx), turn: openingMessage(user)})
+	// AND THE TURN CARRIES THE CREATION CONTEXT the accepting door stated on
+	// its opening message (creation_team.go), only when it stated one: any other
+	// turn leaves the team unknown. Never rewritten from who manages a team now.
+	a.turnCreation = nil
+	if creation := user.creationContext(); creation != nil {
+		turnCtx, a.turnCreation = withCreationStamp(turnCtx, creation.Team)
+	}
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
 	// the context because the waits that need it are several frames down inside
@@ -2089,6 +2107,7 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 // message's own line. A mark that does not fit refuses the message whole,
 // before anything is queued.
 func (a *Agent) FollowUpMessage(message Submission) (<-chan Event, error) {
+	message.proven = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
 		return nil, err

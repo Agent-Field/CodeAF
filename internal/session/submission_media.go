@@ -630,6 +630,7 @@ func (a *Agent) SubmitComposed(ctx context.Context, message Submission) (Submiss
 	if err := ctx.Err(); err != nil {
 		return SubmissionReceipt{}, nil, err
 	}
+	message.proven = a.provenCreation(message.Creation)
 	if err := message.Check(); err != nil {
 		return SubmissionReceipt{}, nil, err
 	}

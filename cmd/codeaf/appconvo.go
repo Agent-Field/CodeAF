@@ -78,8 +78,6 @@ type appAttach struct {
 // appNotePending is a note to a task not yet read.
 type appNotePending struct {
 	entry appwire.Entry
-	text  string
-	index int
 }
 
 // ── steering ────────────────────────────────────────────────────────────────
@@ -275,7 +273,7 @@ func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string
 // Queue keeps a message for when the running turn ends, or sends it now when
 // nothing is running.
 func (b *appBackend) Queue(agent, text, clientID string) ([]appwire.Queued, error) {
-	return b.queue(agent, text, clientID, nil)
+	return b.queue(agent, text, clientID, appStated(text, appNoTeam()))
 }
 
 // QueueMessage is [appBackend.Queue] with the person's own words and the reads
@@ -285,6 +283,11 @@ func (b *appBackend) QueueMessage(agent string, message appwire.AgentMessage) ([
 	shown, err := appMarkOf(message, "a queued message")
 	if err != nil {
 		return nil, err
+	}
+	if shown == nil {
+		shown = appStated(message.Text, appNoTeam())
+	} else {
+		shown.creation = appNoTeam()
 	}
 	return b.queue(agent, message.Text, message.ClientID, shown)
 }
@@ -308,7 +311,7 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	// A QUEUED MARK IS ONE THE HOST WILL KEEP, or nothing is queued: the
 	// refusal comes now, with the draft still the person's, and never as a
 	// message that failed when the turn ended.
-	if shown != nil && !appKeepsQueuedMarks(live.conn.Conv) {
+	if shown != nil && !shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads; send it when the turn ends")
 	}
 	var queued []appwire.Queued
@@ -371,7 +374,9 @@ func (b *appBackend) changeQueue(agent, id string, change func(a *appAgent, at i
 // MESSAGE: the said and reads it carried are dropped with the old words, so
 // nothing is shown or kept beside words that were not written from it.
 func (b *appBackend) EditQueued(agent, id, text string) ([]appwire.Queued, error) {
-	return b.changeQueue(agent, id, func(a *appAgent, at int) { a.queue[at].text, a.queue[at].shown = text, nil })
+	return b.changeQueue(agent, id, func(a *appAgent, at int) {
+		a.queue[at].text, a.queue[at].shown = text, appStampKept(a.queue[at].shown, nil, text)
+	})
 }
 
 // EditQueuedMessage replaces a queued message with another carrying its own
@@ -390,7 +395,25 @@ func (b *appBackend) EditQueuedMessage(agent, id string, message appwire.AgentMe
 	if live := b.liveOf(a); live != nil && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads")
 	}
-	return b.changeQueue(agent, id, func(a *appAgent, at int) { a.queue[at].text, a.queue[at].shown = message.Text, shown })
+	return b.changeQueue(agent, id, func(a *appAgent, at int) {
+		a.queue[at].text, a.queue[at].shown = message.Text, appStampKept(a.queue[at].shown, shown, message.Text)
+	})
+}
+
+// appStampKept carries the creation context of the queued message an edit
+// replaces onto its replacement, so a typo fixed while a crew message waits
+// does not turn it into an ordinary one, nor an ordinary one into unknown. An
+// old message that stated nothing leaves the replacement exactly as it was.
+func appStampKept(old, replacement *appSending, text string) *appSending {
+	if old == nil || old.creation == nil {
+		return replacement
+	}
+	kept := appSending{text: text, bare: true}
+	if replacement != nil {
+		kept = *replacement
+	}
+	kept.creation = old.creation
+	return &kept
 }
 
 // RemoveQueued takes a queued message out.
@@ -1052,11 +1075,14 @@ func appSubmission(text string, shown *appSending) session.Submission {
 		return session.Submission{Text: text}
 	}
 	said := shown.text
-	submission := session.Submission{Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads, Queued: shown.queued}
+	submission := session.Submission{
+		Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads,
+		Queued: shown.queued, Creation: shown.creation,
+	}
 	if shown.composed != nil {
 		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
 	}
-	if shown.queued && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
+	if (shown.queued || shown.bare) && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
 		submission.Said = nil
 	}
 	return submission
@@ -1258,7 +1284,17 @@ func (b *appBackend) SendMessage(agent string, message appwire.AgentMessage) (ui
 // a new id nothing here touches. The agent's gate is held from the read to the
 // drop, so two sends cannot both carry one chip into two turns, and each turn
 // carries exactly the snapshot it read.
+//
+// IT IS THE PERSON'S OWN SEND, so it states an explicit none: an automation
+// made in its turn was made in no crew. A crew's door states its crew instead
+// ([appBackend.sendMessageFor]).
 func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (uint64, *appSending, error) {
+	return b.sendMessageFor(agent, message, appNoTeam())
+}
+
+// sendMessageFor is [appBackend.sendMessage] stating creation, the context the
+// accepting door knows, on the submission it builds. It is never inferred.
+func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, creation *session.CreationContext) (uint64, *appSending, error) {
 	ids := message.Attachments
 	if err := appwire.CheckAttachIDs(ids); err != nil {
 		return 0, nil, err
@@ -1316,6 +1352,12 @@ func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (ui
 		}
 		shown.composed = composed
 	}
+	if creation != nil {
+		if shown == nil {
+			shown = &appSending{text: said, bare: true}
+		}
+		shown.creation = creation
+	}
 	attempted := b.referenceAttempt(kept)
 	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
 	if err != nil {
@@ -1352,6 +1394,38 @@ type appSending struct {
 	// answered once it kept it (appsubmission.go); nil on a message of words.
 	composed *appComposed
 	queued   bool
+	// creation is the creation context the accepting door stated: the crew's
+	// exact id for a crew message or a new member's brief, an explicit none for
+	// the person's own send, and nil (unknown) for words the app wrote itself.
+	// Forwarded on [session.Submission]; kept through the queue, an edit and a
+	// retry; never inferred from membership. Shared, never written after it is
+	// set.
+	creation *session.CreationContext
+	// bare says the sending exists only to carry creation: the door gave no
+	// words of the person's apart from text, so Said stays nil and the line
+	// reads as the plain message it is. A sending the door built for Said,
+	// reads or attachments is never bare, even when its words equal text.
+	bare bool
+}
+
+// appNoTeam is the explicit none the person's own send states.
+func appNoTeam() *session.CreationContext { return &session.CreationContext{} }
+
+// appInTeam is the exact crew a crew's door states.
+func appInTeam(id string) *session.CreationContext { return &session.CreationContext{Team: id} }
+
+// appStated is a sending whose only extra beyond its words is a creation
+// context.
+func appStated(text string, creation *session.CreationContext) *appSending {
+	return &appSending{text: text, creation: creation, bare: true}
+}
+
+// marksNothing is whether the only thing this sending carries beyond its words
+// is its creation context. A host that cannot keep a message's marks is not
+// refused such a message: it is sent the words, and the team is unknown there,
+// which is true.
+func (s *appSending) marksNothing(text string) bool {
+	return s != nil && s.creation != nil && s.bare && s.text == text && len(s.described) == 0 && len(s.reads) == 0 && s.composed == nil && len(s.attachments) == 0
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────
@@ -1377,8 +1451,16 @@ func (b *appBackend) RetryTask(id string) error {
 	return nil
 }
 
-// NoteTask sends a note to a task and answers its entry; the note is marked
-// read when the task's next step carries it.
+// NoteTask sends a note to a task and answers its entry; a KEYED note is marked
+// read when the task's page shows its client id read at a step.
+//
+// WHAT HAPPENED TO THE NOTE IS THE ENGINE'S TYPED ANSWER, never a reading of its
+// error ([session.AppTaskReceipt]). Delivered or held waits for its read. A
+// refusal goes back with its code, and only a refusal that the task is not on
+// the engine's list may try the handed-over door, because nothing was done. An
+// unknown outcome is answered `uncertain` with the note's entry and is NEVER
+// sent again by any door: a note has no retry identity, so a second send is a
+// second note.
 func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) {
 	agent, local, ok := appSplitID(id)
 	if !ok {
@@ -1387,10 +1469,6 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 	_, live, err := b.heldLive(agent)
 	if err != nil {
 		return appwire.Entry{}, err
-	}
-	before := 0
-	if view, found, err := live.conn.Conv.AppTask(local); err == nil && found {
-		before = len(view.Notes)
 	}
 	// The same key the engine will keep, so the receipt, the event and the page
 	// never disagree about it.
@@ -1402,21 +1480,61 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 		entry.ToolFacts.Task = id
 	})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: entry})
-	handed := false
-	if err := b.actOnTask(id, "note", "", text, clientID); err != nil {
-		// A TASK HANDED OVER FROM INSIDE THE WORK runs as a crew of its own and
-		// is not on the engine's task list, so its note goes through the door the
-		// task's own room speaks through. Nothing there says at which step the
-		// note was read, so it stays waiting.
-		if err := b.steerHandedTask(live, local, text, err); err != nil {
-			return appwire.Entry{}, err
+	receipt := b.noteOnTask(live, id, local, text, clientID)
+	switch receipt.Outcome {
+	case session.AppTaskUnknown:
+		b.watchKeyedNote(live, id, local, entry)
+		return appwire.Entry{}, appNoteUncertain(entry, receipt.Reason)
+	case session.AppTaskRefused:
+		// A TASK HANDED OVER FROM INSIDE THE WORK runs as a crew of its own and an
+		// engine that predates the note's own branch does not list it, so its note
+		// goes through the door the task's own room speaks through. That door
+		// keeps no key, so the note's read stays unknown and it is not watched.
+		if err := b.steerHandedTask(live, local, text, appTaskError(errors.New(receipt.Reason))); err != nil {
+			return appwire.Entry{}, appNoteWithEntry(err, entry)
 		}
-		handed = true
+	default:
+		b.watchKeyedNote(live, id, local, entry)
 	}
 	entry.State = appwire.NoteWaiting
 	live.box.Event(appwire.EventNoteChanged, appwire.NoteChanged{Task: id, ID: entry.ID, State: appwire.NoteWaiting, ClientID: clientID})
-	if handed {
-		return entry, nil
+	return entry, nil
+}
+
+// noteOnTask asks the engine for a note's typed outcome, waiting a few seconds
+// for a task the app has already seen start, for [appBackend.actOnTask]'s
+// reason. ONLY A REFUSAL IS ASKED AGAIN: nothing was done, so the second ask is
+// the first note, never a second one.
+func (b *appBackend) noteOnTask(live *appLive, id, local, text, clientID string) session.AppTaskReceipt {
+	return b.receiptOnTask(live, id, session.AppTaskIntent{ID: local, Action: "note", Text: strings.TrimSpace(text), ClientID: clientID})
+}
+
+// receiptOnTask is [appBackend.noteOnTask] for any word action the engine
+// types (a note or a brief): the typed answer, asked again only while it is a
+// refusal that the task is not on the list yet.
+func (b *appBackend) receiptOnTask(live *appLive, id string, intent session.AppTaskIntent) session.AppTaskReceipt {
+	known := false
+	b.locked(func() { _, known = live.tasks[id] })
+	deadline := b.now().Add(appTaskSettleWait)
+	for {
+		receipt := live.conn.Conv.AppTaskActionReceipt(intent)
+		if receipt.Outcome != session.AppTaskRefused || !known || !strings.Contains(receipt.Reason, "no such task") || b.now().After(deadline) {
+			return receipt
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+// watchKeyedNote puts a sent note on its task's read watch, and only a KEYED
+// note on a task with a page: the page's client id is the one fact a read can
+// be joined on, and a note without one is never matched by its position or its
+// words. A task with no page (a quick task) has nothing to watch.
+func (b *appBackend) watchKeyedNote(live *appLive, id, local string, entry appwire.Entry) {
+	if entry.ClientID == "" {
+		return
+	}
+	if _, found, err := live.conn.Conv.AppTask(local); err != nil || !found {
+		return
 	}
 	start := false
 	b.locked(func() {
@@ -1424,12 +1542,31 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 			live.notes = map[string][]appNotePending{}
 		}
 		start = len(live.notes[id]) == 0
-		live.notes[id] = append(live.notes[id], appNotePending{entry: entry, text: text, index: before})
+		live.notes[id] = append(live.notes[id], appNotePending{entry: entry})
 	})
 	if start {
 		guard.Go("app/note-read", func() { b.watchNotes(live, id, local) })
 	}
-	return entry, nil
+}
+
+// appNoteUncertain is the answer for a note whose fate the engine could not
+// type. Its Detail is the note's entry, so the app keeps it under the same
+// client id and looks at the page before doing anything with the words.
+func appNoteUncertain(entry appwire.Entry, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		reason = "it is not known whether that note reached the task"
+	}
+	return &appwire.Error{Code: appwire.CodeUncertain, Message: redact.Secrets(plainWords(reason)), Detail: entry}
+}
+
+// appNoteWithEntry gives an uncertain answer the note's entry as its Detail;
+// every other answer is returned as it is.
+func appNoteWithEntry(err error, entry appwire.Entry) error {
+	var wire *appwire.Error
+	if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain && wire.Detail == nil {
+		return &appwire.Error{Code: wire.Code, Message: wire.Message, Changed: wire.Changed, Detail: entry}
+	}
+	return err
 }
 
 // appTaskSteerer is the door a task's own room sends words through.
@@ -1479,7 +1616,7 @@ func (b *appBackend) watchNotes(live *appLive, id, local string) {
 		var read []appwire.NoteChanged
 		var left []appNotePending
 		for _, note := range pending {
-			if at := appPendingNoteAt(view.Notes, note); at >= 0 && view.Notes[at].ReadAtStep != nil {
+			if at := appKeyedNoteAt(view.Notes, note.entry.ClientID); at >= 0 && view.Notes[at].ReadAtStep != nil {
 				step := *view.Notes[at].ReadAtStep
 				read = append(read, appwire.NoteChanged{Task: id, ID: note.entry.ID, State: appwire.NoteRead, ReadAtStep: &step, ClientID: note.entry.ClientID})
 				continue
@@ -1497,18 +1634,18 @@ func (b *appBackend) watchNotes(live *appLive, id, local string) {
 	}
 }
 
-// appPendingNoteAt is where a sent note sits on the page, or -1 while unknown.
-// A note with a client id is found by that key and only when exactly one note
-// has it: the page also lists the person's steers that were not sent through the
-// app, so a position counted before the send can name a different note. A note
-// with no key remains unknown; position is not evidence of which note was read.
-func appPendingNoteAt(notes []session.AppTaskNote, note appNotePending) int {
-	if note.entry.ClientID == "" {
+// appKeyedNoteAt is where a sent note sits on the page, or -1 while unknown. It
+// is found by its client id and only when exactly one note has it: the page
+// also lists the person's steers that were not sent through the app, so no
+// position counted before the send can name it. A note with no key is never
+// found here; its read stays unknown.
+func appKeyedNoteAt(notes []session.AppTaskNote, clientID string) int {
+	if clientID == "" {
 		return -1
 	}
 	at := -1
 	for i, n := range notes {
-		if n.ClientID != note.entry.ClientID {
+		if n.ClientID != clientID {
 			continue
 		}
 		if at >= 0 {

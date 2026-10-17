@@ -1231,6 +1231,14 @@ type Welcome struct {
 	// says nothing about where the message came from, rather than showing a
 	// fact the record will not hold.
 	QueuedMarks bool `json:"queuedMarks,omitempty"`
+	// AppTaskReceipt advertises typed outcomes on [MethodAppTaskAction] when
+	// its receipt flag is set. It does not attribute any particular error:
+	// every untyped error remains unknown regardless of this flag. Only an
+	// explicit typed refused receipt establishes refusal. A panic inside the
+	// door is a typed unknown ([appTaskReceiptGuarded]).
+	// An older engine may flatten a failure after delivery into error text;
+	// that text must never invite sending the same words again.
+	AppTaskReceipt bool `json:"appTaskReceipt,omitempty"`
 
 	// SteerOwner says this engine CHECKS THE CONVERSATION A SEND WAS WRITTEN FOR
 	// ([TaskSteerArgs.Session]) against the one it actually has open, and refuses
@@ -1532,6 +1540,12 @@ type SubmitArgs struct {
 	// ClientID is the door's opaque name for the message
 	// ([session.Submission.ClientID]); correlation only, never idempotency.
 	ClientID string `json:"clientId,omitempty"`
+	// Creation is the creation context the door stated for this accepted
+	// message ([session.Submission.Creation]): absent is UNKNOWN, {} an explicit
+	// none, {"team":id} the exact team. An engine built before it ignores the
+	// field and records no team, which is unknown and so true; it is therefore
+	// NOT a mark ([SubmitArgs.marked]) an engine must keep or refuse.
+	Creation *session.CreationContext `json:"creation,omitempty"`
 }
 
 // marked is whether the call carries a mark beside its words. Submit, Steer
@@ -1547,12 +1561,21 @@ func (a SubmitArgs) composed() bool { return len(a.Media) > 0 || a.Annotation !=
 
 // submission is the call as the agent's own door for a mark takes it.
 func (a SubmitArgs) submission() session.Submission {
-	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued, ClientID: a.ClientID}
+	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued, ClientID: a.ClientID, Creation: creationCopy(a.Creation)}
 }
 
 // argsOf is a submission as the wire carries it.
 func argsOf(message session.Submission) SubmitArgs {
-	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued, ClientID: message.ClientID}
+	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued, ClientID: message.ClientID, Creation: creationCopy(message.Creation)}
+}
+
+// creationCopy is a creation context that shares nothing with c, nil for nil:
+// absence stays absence across the wire and back.
+func creationCopy(c *session.CreationContext) *session.CreationContext {
+	if c == nil {
+		return nil
+	}
+	return &session.CreationContext{Team: c.Team}
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the

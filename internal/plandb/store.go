@@ -2264,11 +2264,23 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return err
+		// A COMMIT THAT FAILS IS NOT A WRITE THAT DID NOT HAPPEN. The log frames
+		// may already be durable when the sync after them fails, and the next
+		// open replays them, so the change can be on the disk under an error.
+		// Everything before this line fails before any effect and keeps its own
+		// error; this one wears [ErrCommitUncertain] and the original cause.
+		return fmt.Errorf("%w: %w", ErrCommitUncertain, err)
 	}
 	s.data = next
 	return nil
 }
+
+// ErrCommitUncertain wraps the error of a transaction's COMMIT. The change may
+// or may not be in the database: a caller that must not do the work twice treats
+// it as "unknown", never as "refused". Errors raised before the commit (the
+// lock, the load, the change itself, the save) do not wear it; they are raised
+// before any effect.
+var ErrCommitUncertain = errors.New("the plan store could not confirm that the change was committed")
 
 // errIfClosed is the refusal every method makes on a store Close has already
 // released, and nil while the store is open. The caller holds the store's

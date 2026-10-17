@@ -2,8 +2,10 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -84,5 +86,46 @@ func TestAnOlderHostIsRefusedBeforeAMarkedMessageCrossesTheWire(t *testing.T) {
 	}
 	if !messageMarksKnown(&markedAgent{fakeAgent: &fakeAgent{}}) || messageMarksKnown(&fakeAgent{}) {
 		t.Fatal("the welcome does not distinguish engines that keep a mark")
+	}
+}
+
+// THE CREATION CONTEXT CROSSES THE WIRE AS PRESENCE: a team id, an explicit
+// none ({}) and absence are three different things on the wire and at the
+// door, and absence is never turned into none.
+func TestTheCreationContextCrossesTheWireOnSubmitAsPresence(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		given *session.CreationContext
+		wire  string
+	}{
+		{"team", &session.CreationContext{Team: "aaaaaaaaaaaa"}, `"creation":{"team":"aaaaaaaaaaaa"}`},
+		{"none", &session.CreationContext{}, `"creation":{}`},
+		{"absent", nil, ""},
+	} {
+		raw := mustJSON(argsOf(session.Submission{Text: "hi", Creation: tc.given}))
+		if tc.wire == "" && strings.Contains(string(raw), "creation") || tc.wire != "" && !strings.Contains(string(raw), tc.wire) {
+			t.Fatalf("%s: the wire said %s", tc.name, raw)
+		}
+		marked := &markedAgent{fakeAgent: &fakeAgent{model: "m"}}
+		s := &server{out: io.Discard, session: NewSession(&Engine{Agent: marked}, false)}
+		if _, err := s.invoke(Frame{Kind: "call", ID: 1, Method: MethodSubmit, Payload: raw}); err != nil {
+			t.Fatal(err)
+		}
+		if tc.given == nil {
+			// Words alone reach the plain door, and nothing states a context.
+			if len(marked.submissions) != 0 {
+				t.Fatalf("absent: the mark door was handed %+v", marked.submissions)
+			}
+			continue
+		}
+		got := marked.submissions
+		if len(got) != 1 || got[0].Creation == nil || got[0].Creation.Team != tc.given.Team || got[0].Creation == tc.given {
+			t.Fatalf("%s: the door was handed %+v", tc.name, got)
+		}
+	}
+	// An older engine's JSON — no field — decodes as absent.
+	var old SubmitArgs
+	if err := json.Unmarshal([]byte(`{"text":"hi"}`), &old); err != nil || old.Creation != nil || old.submission().Creation != nil {
+		t.Fatalf("an older client's call decoded with a context: %+v %v", old, err)
 	}
 }

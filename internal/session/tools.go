@@ -263,6 +263,10 @@ func (a *Agent) belt() []bare.Tool {
 	// watching who can answer the card — because a model told it can run a saved
 	// program plans around that ability for the rest of the conversation.
 	tools = append(tools, a.subharnessTools()...)
+	// share_deliverable hands the person a file as a result (share_tool.go). It
+	// rides wherever a shared row has somewhere real to land — a conversation's
+	// index, or the sink a worker was built with — and is absent elsewhere.
+	tools = append(tools, a.shareTools()...)
 	tools = append(tools, a.memoryTools()...)
 	// An owned conversation has no project until the person names one. The
 	// anchoring hand exists only in that state; after it succeeds the rebuilt
