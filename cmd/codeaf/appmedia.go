@@ -116,6 +116,11 @@ func appMediaSource(row session.MediaRow, live session.MediaLive, probe bool) ap
 	if out.Charge == "" {
 		out.Charge = session.MediaChargeUnknown
 	}
+	if fact.Origin == session.MediaShared {
+		if deliver := row.Artifact.Deliver; deliver != nil && deliver.Source != nil {
+			out.Original = deliver.Source.Canonical
+		}
+	}
 	if out.Charge == session.MediaCharged {
 		out.CostUSD = fact.CostUSD
 		out.CallCostUSD = fact.CallCostUSD
