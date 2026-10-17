@@ -109,7 +109,13 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 		turns.refusal = source.Refusal
 		turns.liveOK = factoryLiveOK(factoryWorkerParent, profileDir)
 		setFactoryProcess(func() { factoryProcess.shape = factoryShapeDoor(st, workspace, profileDir, turns) })
-		if strings.TrimSpace(env.Get(factoryNoWorkerEnv)) == "1" {
+		// IN THE APP PROCESS NO LOOP STARTS HERE, AND NO DEFAULT TARGET MAY SERVE.
+		// This worker's target is resolveFactory, which serves a factory of its
+		// own when none is live: in the app that wrote a token-less serve.json
+		// with this very pid before the app's own cold resume ran, and the
+		// resume then refused its own process's service. The explicit
+		// factory.local_run starts the app's loop (appFactoryHost.workers).
+		if strings.TrimSpace(env.Get(factoryNoWorkerEnv)) == "1" || !factoryBackgroundHere() {
 			return
 		}
 		ctx, cancel := context.WithCancel(context.Background())
