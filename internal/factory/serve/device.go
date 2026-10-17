@@ -314,6 +314,8 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	h.setSessionCookie(w, r, credential, session)
 	me := h.meBody(profile, session.id)
 	me.Operator = profile.Handle == h.operatorLogin(r)
+	// This session was just minted from GitHub's own exchange for this profile.
+	me.GitHubSignedIn = true
 	h.write(w, http.StatusOK, api.SignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",
 		ExpiresIn: int(accessSessionTTL.Seconds()), Me: me})
 }

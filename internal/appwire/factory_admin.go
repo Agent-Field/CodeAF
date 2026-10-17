@@ -127,3 +127,19 @@ func init() {
 // factoryAdminMethods is the table of factory.sign_out and
 // factory.revoke_sessions, for the tests that walk it.
 var factoryAdminMethods = map[string]method{}
+
+// FactorySessionCanEnd validates the factory's own revocable session identifier.
+// It describes an action capability, never whether GitHub verified this caller.
+// The identifier stays inside the engine; public views carry only the boolean.
+func FactorySessionCanEnd(id string) bool {
+	const prefix = "session_"
+	if !strings.HasPrefix(id, prefix) || len(id) <= len(prefix) || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
+}

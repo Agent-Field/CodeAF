@@ -242,7 +242,7 @@ type FactorySignInState struct {
 // the factory keeps about the machine behind it. It is NOT api.Me, which also
 // carries runners, machines, checkouts and the session's id.
 //
-// GitHubSignedIn is true ONLY when the factory reported a session for the
+// GitHubSignedIn is true ONLY when the factory attested a verified profile for the
 // caller. A script or host access key can hold a handle and even operator
 // rights without a person having signed in through GitHub, so the handle and
 // the operator flag never stand in for it.
@@ -255,15 +255,18 @@ type FactoryMe struct {
 	Operator       bool   `json:"operator"`
 	Access         string `json:"access"`
 	GitHubSignedIn bool   `json:"github_signed_in"`
+	CanSignOut     bool   `json:"can_sign_out"`
 }
 
-// NewFactoryMe narrows the factory's HTTP identity to the public view. It reads
-// the session id before dropping it, and always yields scopes as an array.
+// NewFactoryMe narrows the factory's HTTP identity to the public view. Sign-in
+// is the factory's explicit github_signed_in attestation; a session id, handle,
+// name or operator flag never implies it, and an older server's omission is false.
 func NewFactoryMe(me api.Me) FactoryMe {
 	out := FactoryMe{
 		Factory: me.Factory, CodeafVersion: me.CodeafVersion, Contract: me.Contract,
 		Profile: me.Profile, Mode: me.Mode, Operator: me.Operator, Access: me.Access,
-		GitHubSignedIn: me.SessionID != "",
+		GitHubSignedIn: me.GitHubSignedIn,
+		CanSignOut:     me.GitHubSignedIn && FactorySessionCanEnd(me.SessionID),
 	}
 	if out.Scopes == nil {
 		out.Scopes = []string{}

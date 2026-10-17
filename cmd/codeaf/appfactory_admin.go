@@ -42,7 +42,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -53,9 +52,6 @@ var _ appwire.FactoryAdmin = (*appBackend)(nil)
 const (
 	appFactoryRevokeRoute   = "/v1/access/revoke-sessions"
 	appFactorySessionsRoute = "/v1/me/sessions/"
-	// appFactorySessionPrefix starts the id of a person's sign-in. A key or an
-	// access-link row has an id too, and deleting it as a session is wrong.
-	appFactorySessionPrefix = "session_"
 )
 
 // adminWho is the held credential, as the factory describes it.
@@ -68,16 +64,10 @@ type adminWho struct {
 // ownSession is the id of the sign-in the held credential is, or "" when it
 // is a key. It stays inside this file.
 func (w adminWho) ownSession() string {
-	id := w.me.SessionID
-	if !strings.HasPrefix(id, appFactorySessionPrefix) || len(id) > 128 {
-		return ""
+	if appwire.FactorySessionCanEnd(w.me.SessionID) {
+		return w.me.SessionID
 	}
-	for _, r := range id {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
-			return ""
-		}
-	}
-	return id
+	return ""
 }
 
 // rowOf is the saved row id names, without waking the local factory.

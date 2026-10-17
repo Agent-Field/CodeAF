@@ -198,6 +198,16 @@ func TestDeviceSignInBindsCallerCookieBearerAndAudit(t *testing.T) {
 		t.Fatalf("unsigned token = %+v", before)
 	}
 	oldCookie := accessRequest(h, "POST", "/access", row.Token, nil, true).Result().Cookies()[0]
+	// A script token and a legacy dashboard session carry an id but no verified
+	// GitHub profile, so the factory must not attest a sign-in for either.
+	legacy := readIdentity(t, h, "", oldCookie)
+	if before.GitHubSignedIn || before.SessionID == "" || legacy.GitHubSignedIn || legacy.SessionID == "" || !strings.HasPrefix(legacy.SessionID, "session_") {
+		t.Fatalf("credential ids read as GitHub sign-in: token=%+v dashboard=%+v", before, legacy)
+	}
+	rawBefore := identityRequest(h, "GET", "/v1/me", "", row.Token, nil).Body.String()
+	if !strings.Contains(rawBefore, `"github_signed_in":false`) {
+		t.Fatalf("unsigned reply must say so on the wire: %s", rawBefore)
+	}
 	device := startIdentity(t, h, row.Token, nil)
 	*now = now.Add(5 * time.Second)
 	w := pollIdentity(h, device, row.Token, nil)
@@ -211,8 +221,13 @@ func TestDeviceSignInBindsCallerCookieBearerAndAudit(t *testing.T) {
 	}
 	want := api.Profile{Handle: "priya", Name: "Priya Nair", AvatarURL: "https://avatars.githubusercontent.com/u/42", Scopes: []string{"read:user", "read:org"}}
 	for _, me := range []api.Me{signed.Me, readIdentity(t, h, signed.AccessToken, nil), readIdentity(t, h, "", cookies[0]), readIdentity(t, h, row.Token, nil), readIdentity(t, h, "", oldCookie)} {
-		if !reflect.DeepEqual(me.Profile, want) || me.Contract != 2 || me.Machines == nil || me.TakesUnassigned == nil || me.SessionID == "" {
+		if !reflect.DeepEqual(me.Profile, want) || me.Contract != 2 || me.Machines == nil || me.TakesUnassigned == nil || me.SessionID == "" || !me.GitHubSignedIn {
 			t.Fatalf("caller = %+v", me)
+		}
+	}
+	for _, secret := range []string{"github-access-secret", signed.AccessToken} {
+		if raw := identityRequest(h, "GET", "/v1/me", "", signed.AccessToken, nil).Body.String(); strings.Contains(raw, "github-access-secret") || (secret == signed.AccessToken && strings.Contains(raw, secret)) {
+			t.Fatalf("me leaks %q: %s", secret, raw)
 		}
 	}
 	for _, action := range []struct{ path, body string }{

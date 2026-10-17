@@ -27,10 +27,15 @@ type Me struct {
 	CodeafVersion string  `json:"codeaf_version"`
 	Contract      int     `json:"contract"`
 	Profile
-	Mode            string          `json:"mode"`
-	Operator        bool            `json:"operator"`
-	Runners         []Runner        `json:"runners"`
-	SessionID       string          `json:"session_id"`
+	Mode      string   `json:"mode"`
+	Operator  bool     `json:"operator"`
+	Runners   []Runner `json:"runners"`
+	SessionID string   `json:"session_id"`
+	// GitHubSignedIn is asserted only by the serving factory, and only when the
+	// authenticated credential carries a GitHub-verified profile. A session_ or
+	// tok_ id alone proves nothing; an older server omits the field, so absent
+	// means false and no other field may promote it.
+	GitHubSignedIn  bool            `json:"github_signed_in"`
 	Machines        []Machine       `json:"machines"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned"`
 	Access          string          `json:"access"`

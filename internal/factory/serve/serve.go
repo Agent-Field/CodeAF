@@ -641,6 +641,9 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := h.meBody(profile, session.id)
+	// Only a credential that carries a GitHub-verified profile is a sign-in; a
+	// script token, access-link secret or legacy dashboard session is not.
+	body.GitHubSignedIn = session.profile != nil && session.profile.Handle != ""
 	body.Machines = machines
 	body.Mode, body.Operator = h.mode(), h.isOperator(r)
 	if body.Mode == api.FactoryTeam && h.operatorLogin(r) == "" {

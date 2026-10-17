@@ -325,7 +325,12 @@ func TestFactoryMeSignedInComesOnlyFromTheSession(t *testing.T) {
 	if key.GitHubSignedIn || key.Handle != "ops-key" || !key.Operator {
 		t.Fatalf("an access key read as signed in: %+v", key)
 	}
-	person := NewFactoryMe(api.Me{Profile: api.Profile{Handle: "alice", Scopes: []string{"read:user"}}, SessionID: "session-secret-1"})
+	person := NewFactoryMe(api.Me{Profile: api.Profile{Handle: "alice", Scopes: []string{"read:user"}}, SessionID: "session-secret-1", GitHubSignedIn: true})
+	// An older server omits the field: the same body decodes to false.
+	var old api.Me
+	if err := json.Unmarshal([]byte(`{"handle":"alice","name":"Alice","avatar_url":"u","operator":true,"session_id":"session_x"}`), &old); err != nil || NewFactoryMe(old).GitHubSignedIn {
+		t.Fatalf("an omitted attestation was promoted: %+v %v", old, err)
+	}
 	if !person.GitHubSignedIn || len(person.Scopes) != 1 {
 		t.Fatalf("a verified session read as not signed in: %+v", person)
 	}
@@ -337,8 +342,8 @@ func TestFactoryMeReplyHasNoPrivateFields(t *testing.T) {
 	me := api.Me{
 		Factory: api.Factory{Name: "acme"}, Contract: api.Contract, Mode: api.FactoryTeam,
 		Profile:   api.Profile{Handle: "alice"},
-		SessionID: "session-secret-1",
-		Runners:   []api.Runner{{}}, Machines: []api.Machine{{}},
+		SessionID: "session-secret-1", GitHubSignedIn: true,
+		Runners: []api.Runner{{}}, Machines: []api.Machine{{}},
 		TakesUnassigned: map[string]bool{"checkout-/home/alice/src": true},
 		PollingEvery:    "30s", ServedBy: "runner-host-9",
 	}
@@ -350,13 +355,13 @@ func TestFactoryMeReplyHasNoPrivateFields(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"factory", "codeaf_version", "contract", "handle", "name", "avatar_url", "scopes", "mode", "operator", "access", "github_signed_in"} {
+	for _, key := range []string{"factory", "codeaf_version", "contract", "handle", "name", "avatar_url", "scopes", "mode", "operator", "access", "github_signed_in", "can_sign_out"} {
 		if _, ok := got[key]; !ok {
 			t.Errorf("reply lacks %q: %s", key, raw)
 		}
 	}
-	if len(got) != 11 {
-		t.Errorf("reply has %d keys, want 11: %s", len(got), raw)
+	if len(got) != 12 {
+		t.Errorf("reply has %d keys, want 12: %s", len(got), raw)
 	}
 	if string(got["scopes"]) != "[]" {
 		t.Errorf("scopes = %s, want []", got["scopes"])

@@ -843,8 +843,9 @@ func TestAppFactoryActivityCarriesOnlyProfilesInTheReturnedWindow(t *testing.T) 
 func TestAppFactoryMeSignedInFollowsTheSessionNotTheHandle(t *testing.T) {
 	for _, tc := range []struct {
 		name, session string
+		attested      bool
 		want          bool
-	}{{"key", "", false}, {"session", "session-secret-42", true}} {
+	}{{"key", "", false, false}, {"session id without attestation", "session-secret-42", false, false}, {"verified session", "session-secret-42", true, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			var reads atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -856,7 +857,7 @@ func TestAppFactoryMeSignedInFollowsTheSessionNotTheHandle(t *testing.T) {
 					reads.Add(1)
 					_ = json.NewEncoder(w).Encode(api.Me{
 						Contract: api.Contract, Factory: api.Factory{Name: "acme"}, Mode: api.FactoryTeam,
-						Profile: api.Profile{Handle: "alice"}, Operator: true, SessionID: tc.session,
+						Profile: api.Profile{Handle: "alice"}, Operator: true, SessionID: tc.session, GitHubSignedIn: tc.attested,
 						Machines: []api.Machine{{}}, ServedBy: "runner-host-9",
 					})
 				default:
