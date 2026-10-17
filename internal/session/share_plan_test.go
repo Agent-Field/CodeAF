@@ -11,13 +11,15 @@ import (
 )
 
 // sharePlanRowForTest is the exact row shape Plan accepts for one planned id.
-func sharePlanRowForTest(session string, planned SharePlannedRow) Artifact {
+// It carries the receipt's own provenance, as every planned row must.
+func sharePlanRowForTest(r ShareReceipt, planned SharePlannedRow) Artifact {
+	session, prov := r.Session, r.Provenance
 	path := filepath.Join("/shared", filepath.Base(planned.Path))
 	sum := strings.Repeat("ab", 32)
 	return Artifact{
 		Path: path, Session: session, Title: filepath.Base(path), Kind: "file", Created: time.Now().UTC(),
 		Deliver: &DeliverableFact{
-			ID: planned.ID, At: time.Now().UTC(), Origin: DeliverOriginSharedByAgent, Call: "call-1",
+			ID: planned.ID, At: time.Now().UTC(), Origin: DeliverOriginSharedByAgent, Run: prov.Run, Turn: prov.Turn, Call: prov.Call,
 			File: &DeliverableFile{Canonical: path, Bytes: 3, SHA256: sum}, Version: "sha256:" + sum,
 		},
 	}
@@ -27,7 +29,7 @@ func planShareForTest(t *testing.T, claim *ShareClaim) {
 	t.Helper()
 	rows := make([]Artifact, len(claim.Receipt.Planned))
 	for i, planned := range claim.Receipt.Planned {
-		rows[i] = sharePlanRowForTest(claim.Receipt.Session, planned)
+		rows[i] = sharePlanRowForTest(claim.Receipt, planned)
 	}
 	if err := claim.Plan(rows); err != nil {
 		t.Fatalf("plan: %v", err)
@@ -60,7 +62,7 @@ func TestSharePlanIsDurableAndImmutableOnReplay(t *testing.T) {
 		}
 	}
 	// A plan is written once: a replay cannot replace it with a second look.
-	if err := replay.Plan([]Artifact{sharePlanRowForTest("s", want[0]), sharePlanRowForTest("s", want[1])}); !errors.Is(err, ErrShareOpInvalid) {
+	if err := replay.Plan([]Artifact{sharePlanRowForTest(replay.Receipt, want[0]), sharePlanRowForTest(replay.Receipt, want[1])}); !errors.Is(err, ErrShareOpInvalid) {
 		t.Fatalf("re-plan err=%v, want invalid", err)
 	}
 }
@@ -102,23 +104,25 @@ func TestShareSettleTransitionsKeepAPlanFromBeingCalledNeverShared(t *testing.T)
 	if again.Receipt.Status != ShareOpRefused {
 		t.Fatalf("refusal is terminal, got %q", again.Receipt.Status)
 	}
-	if err := again.Plan([]Artifact{sharePlanRowForTest("s", again.Receipt.Planned[0])}); !errors.Is(err, ErrShareOpInvalid) {
+	if err := again.Plan([]Artifact{sharePlanRowForTest(again.Receipt, again.Receipt.Planned[0])}); !errors.Is(err, ErrShareOpInvalid) {
 		t.Fatalf("plan after refusal err=%v", err)
 	}
 }
 
 func TestShareReceiptRefusesAPlanThatClaimsMoreThanSharing(t *testing.T) {
 	mutations := map[string]func(r *ShareReceipt){
-		"authored":       func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Authored = true },
-		"agent origin":   func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Origin = DeliverOriginAgent },
-		"kept state":     func(r *ShareReceipt) { r.Planned[0].Row.Deliver.State = DeliverKept },
-		"update":         func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Update = true },
-		"other id":       func(r *ShareReceipt) { r.Planned[0].Row.Deliver.ID = NewDeliverableID() },
-		"other session":  func(r *ShareReceipt) { r.Planned[0].Row.Session = "other" },
-		"version":        func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Version = "sha256:" + strings.Repeat("cd", 32) },
-		"relative":       func(r *ShareReceipt) { r.Planned[0].Row.Path = "shared/a.md" },
-		"branch":         func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Branch = "task/1" },
-		"source hash":    func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Source = &DeliverableFile{Canonical: "/x/a.md", SHA256: "00"} },
+		"authored":      func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Authored = true },
+		"agent origin":  func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Origin = DeliverOriginAgent },
+		"kept state":    func(r *ShareReceipt) { r.Planned[0].Row.Deliver.State = DeliverKept },
+		"update":        func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Update = true },
+		"other id":      func(r *ShareReceipt) { r.Planned[0].Row.Deliver.ID = NewDeliverableID() },
+		"other session": func(r *ShareReceipt) { r.Planned[0].Row.Session = "other" },
+		"version":       func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Version = "sha256:" + strings.Repeat("cd", 32) },
+		"relative":      func(r *ShareReceipt) { r.Planned[0].Row.Path = "shared/a.md" },
+		"branch":        func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Branch = "task/1" },
+		"source hash": func(r *ShareReceipt) {
+			r.Planned[0].Row.Deliver.Source = &DeliverableFile{Canonical: "/x/a.md", SHA256: "00"}
+		},
 		"media origin":   func(r *ShareReceipt) { r.Planned[0].Row.Media = &MediaFact{ID: NewMediaID(), Origin: MediaGenerated} },
 		"partial":        func(r *ShareReceipt) { r.Planned[1].Row = nil },
 		"pending rows":   func(r *ShareReceipt) { r.Status = ShareOpPending },
