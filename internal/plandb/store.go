@@ -1325,6 +1325,19 @@ func (s *Store) AddPersonNoteKeyed(taskID, body, clientID string) (Note, error) 
 // addNote is the one road both note writers take: validate, mint an id, and
 // stamp the change on the task the note hangs on.
 func (s *Store) addNote(taskID, agent, body, from, clientID string) (Note, error) {
+	// THE WRITER KEEPS TO WHAT A PAGE WILL READ. [Store.NotesPage] refuses a
+	// note whose agent or client key is longer than its meta ceiling and holds
+	// every later note of the task behind it, and nothing in the product removes
+	// or edits one note. So a note longer than that is REFUSED here, before any
+	// transaction, never truncated: a cut name or key would be a different
+	// name or key. The agent is measured as it will be stored, trimmed. The body
+	// has its own check below, which already equals the page's.
+	if len(strings.TrimSpace(agent)) > NotePageMetaMax {
+		return Note{}, fmt.Errorf("note author exceeds %d bytes", NotePageMetaMax)
+	}
+	if len(clientID) > NotePageMetaMax {
+		return Note{}, fmt.Errorf("note client key exceeds %d bytes", NotePageMetaMax)
+	}
 	// One transaction, like every writer: the database's write lock, a fresh
 	// load, the change, the commit. See AddMany for why.
 	s.mu.Lock()

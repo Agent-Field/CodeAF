@@ -74,9 +74,13 @@ func newTaskInbox(pages notePager, taskID string) *taskInbox {
 //
 // A NOTE TOO LARGE TO READ HOLDS THE MARK WHERE IT IS. The store never
 // truncates or skips it, and neither does this: the notes before it arrive as
-// usual, and then every decision answers its refusal until a person corrects
-// or removes it, so the notes after it wait behind it. That is the honest
-// price of never consuming a note nobody could read.
+// usual, and then every decision answers its refusal, so the notes after it
+// wait behind it. NOTHING IN THE PRODUCT EDITS OR DELETES ONE NOTE, so the hold
+// lasts until the task is gone or the store is changed by hand; the writer
+// ([plandb.Store.AddNote]) refuses every note a page would refuse, so only a
+// damaged or foreign row reaches it. That is the honest price of never
+// consuming a note nobody could read. The bash worker has no report to say it
+// is held; the delegate's end-of-run report does.
 //
 // One error moves the mark, because moving it is what is true: a cursor the
 // store no longer knows (and that is not a duplicate) puts it back at the

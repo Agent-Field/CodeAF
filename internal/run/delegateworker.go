@@ -390,9 +390,10 @@ func (s *delegateSink) newForwarding(pages notePager) *inboxForwarding {
 //
 // A BUSY OR FAILED READ, OR A NOTE TOO LARGE TO READ, PUBLISHES NOTHING AND
 // MOVES NOTHING: the next tick asks again from the same place, and a note too
-// large to read holds the notes after it until it is corrected ([taskInbox.
-// next]). The position moves only past notes the inbox took or refused for
-// their words.
+// large to read holds the notes after it for as long as it is in the store —
+// nothing in the product edits or deletes one note, so only the task's removal
+// or a hand edit clears it ([taskInbox.next]). The position moves only past
+// notes the inbox took or refused for their words.
 func (s *delegateSink) forwardOnce(f *inboxForwarding) {
 	skip := func(note plandb.Note) bool {
 		if f.rejected[note.ID] || strings.TrimSpace(note.Agent) == s.name {
