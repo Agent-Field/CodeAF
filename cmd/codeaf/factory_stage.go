@@ -126,8 +126,14 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if err != nil {
 		return nil, err
 	}
+	// THE APP MAY LEND THIS AGENT, AND ONLY WHILE IT IS A RUNNING STAGE: it is
+	// known from the moment its journal is open (a crew tick landing between the
+	// open and a later register would find a live, unregistered agent and read
+	// it as another window's) to Close or to a failed start (app_lend.go).
+	rememberStageAgent(agent)
 	if team := strings.TrimSpace(spec.Team); team != "" && !resumed {
 		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name); err != nil {
+			forgetStageAgent(agent)
 			_ = agent.Close()
 			return nil, err
 		}
@@ -144,6 +150,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	events, err := agent.Submit(context.WithoutCancel(ctx), brief)
 	if err != nil {
+		forgetStageAgent(agent)
 		_ = agent.Close()
 		return nil, err
 	}
@@ -376,6 +383,7 @@ func (c *stageConversation) Close() {
 		return
 	}
 	c.stopWakes()
+	forgetStageAgent(c.agent)
 	c.agent.Interrupt()
 	_ = c.agent.Close()
 }
