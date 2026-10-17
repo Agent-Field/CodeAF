@@ -6,6 +6,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
@@ -42,7 +43,7 @@ func (h *Handler) dryrun(w http.ResponseWriter, r *http.Request) {
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.DryRun
-	}{h.factory, wireDry(file.Dry(backlog(snap.Items, owner, repo)))})
+	}{h.factory, wireDry(file.DryItems(backlog(snap.Items, owner, repo), func(it factory.Item) []string { return intake.Job(it).Paths }))})
 }
 
 // pipelineFile is the checkout's pipeline, or the defaults when this machine
@@ -60,13 +61,13 @@ func pipelineFile(dir string) (pipeline.File, error) {
 // running work has already left the backlog, so a dry run does not offer it.
 // A GitHub item stores the short name in Repo and the owner in Product;
 // a floor item stores owner/name in Repo. Both match.
-func backlog(items []factory.Item, owner, name string) []pipeline.Job {
-	var jobs []pipeline.Job
+func backlog(items []factory.Item, owner, name string) []factory.Item {
+	var jobs []factory.Item
 	for _, it := range items {
 		if it.State != factory.StateNew || !sameRepo(it, owner, name) {
 			continue
 		}
-		jobs = append(jobs, pipeline.JobFromItem(it))
+		jobs = append(jobs, it)
 	}
 	return jobs
 }
