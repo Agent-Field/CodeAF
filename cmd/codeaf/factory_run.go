@@ -220,7 +220,11 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 			// A GATE IS A PERSON, and the loop answers it before it would look
 			// for an executor, so there is none to give.
 		},
-		Benches:    factoryBenches(),
+		// THE LEASE CAP IS THE GOVERNOR, not this number. The mirror runner only
+		// runs jobs a lease handed it, and the factory refuses leases beyond the
+		// owner's saved slots, so a raise after attach must find benches free.
+		// A fixed factoryBenches() here was the old two-job bottleneck.
+		Benches:    api.MaxRunnerSlots,
 		Rail:       money.Rail,
 		SpentToday: money.SpentToday,
 		RepoDir:    dirs,
@@ -272,11 +276,13 @@ func factoryWorkdirs(items, floor *store.Store) *factoryrun.Workdirs {
 	return w
 }
 
-// factoryBenches is how many items run at once: [factoryBenchesEnv] when it
-// is a whole number above nothing, else [factoryBenchesDefault].
+// factoryBenches is how many items this worker asks to run at once before the
+// owner's saved number is known: [factoryBenchesEnv] when it is a whole number
+// above nothing, else [factoryBenchesDefault], never above api.MaxRunnerSlots.
+// Once the factory has a saved value, that wins and this is only the first ask.
 func factoryBenches() int {
 	if n, err := strconv.Atoi(strings.TrimSpace(env.Get(factoryBenchesEnv))); err == nil && n > 0 {
-		return n
+		return min(n, api.MaxRunnerSlots)
 	}
 	return factoryBenchesDefault
 }

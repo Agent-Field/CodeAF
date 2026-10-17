@@ -6,13 +6,27 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// LiveCapacityHeader carries the live-capacity attestation on attach. A factory
+// that predates it decodes the body strictly and would refuse an unknown JSON
+// field with 422, but it never looks at headers, so the attestation travels
+// here and an older factory simply does not hear it.
+const LiveCapacityHeader = "X-Codeaf-Live-Capacity"
+
+// LiveCapacityHeaderValue is the only value that attests; anything else is silence.
+const LiveCapacityHeaderValue = "1"
+
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
 type WorkerAttach struct {
-	Runner          string          `json:"runner,omitempty"`
-	Owner           string          `json:"owner,omitempty"`
-	Kind            string          `json:"kind,omitempty"`
-	Slots           int             `json:"slots,omitempty"`
+	Runner string `json:"runner,omitempty"`
+	Owner  string `json:"owner,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+	Slots  int    `json:"slots,omitempty"`
+	// LiveCapacity attests that this worker re-reads its saved capacity and
+	// changes its running slots to match. WorkerClient.Attach never writes it
+	// into the body (see LiveCapacityHeader); the server still reads it from
+	// the body for direct callers. Older workers never attest.
+	LiveCapacity    bool            `json:"live_capacity,omitempty"`
 	Checkouts       []Checkout      `json:"checkouts,omitempty"`
 	Machine         string          `json:"machine,omitempty"`
 	Name            string          `json:"name"`
@@ -29,6 +43,9 @@ type WorkerAttached struct {
 	WorkerID   string  `json:"worker_id"`
 	RunnerID   string  `json:"runner_id"`
 	Credential string  `json:"credential"`
+	// Slots is the capacity the owner saved for this runner, which wins over
+	// what the worker asked for. Older servers omit it.
+	Slots int `json:"slots,omitempty"`
 }
 
 // WorkerReport carries incremental results. Cost is newly incurred dollars,

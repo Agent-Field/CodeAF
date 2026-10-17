@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ func (h *Handler) v2Routes() {
 	h.route("/v1/runners/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/runners/pull", h.pullWorker)
 	h.route("/v1/runners/presence", map[string]http.HandlerFunc{http.MethodPost: h.runnerPresence})
+	h.read("/v1/runner/self", h.runnerSelf)
 	h.route("/v1/runners/{runner}", map[string]http.HandlerFunc{http.MethodPut: h.runnerSettings})
 	h.route("/v1/runners/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/runners/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
@@ -51,7 +53,7 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 		key := row.Worker.Handle + "\x00" + row.Worker.Machine
 		got := by[key]
 		if got == nil || row.Last.After(got.LastSeen) {
-			got = &api.Runner{ID: row.Worker.Machine, Name: row.Name, Owner: row.Worker.Handle, Kind: row.Kind, Slots: row.Slots, State: api.RunnerIdle, Checkouts: []api.Checkout{}, Jobs: []int{}, LastSeen: row.Last}
+			got = &api.Runner{ID: row.Worker.Machine, Name: row.Name, Owner: row.Worker.Handle, Kind: row.Kind, Slots: row.Slots, LiveCapacity: row.LiveCapacity, State: api.RunnerIdle, Checkouts: []api.Checkout{}, Jobs: []int{}, LastSeen: row.Last}
 			if got.Kind == "" {
 				got.Kind = api.RunnerCI
 			}
@@ -148,8 +150,8 @@ func (h *Handler) runnerSettings(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
-	if body.Slots < 1 {
-		h.fail(w, http.StatusUnprocessableEntity, "slots must be positive")
+	if body.Slots < 1 || body.Slots > api.MaxRunnerSlots {
+		h.fail(w, http.StatusUnprocessableEntity, fmt.Sprintf("slots must be from 1 to %d", api.MaxRunnerSlots))
 		return
 	}
 	handle, err := h.callerHandle(r)
@@ -163,7 +165,12 @@ func (h *Handler) runnerSettings(w http.ResponseWriter, r *http.Request) {
 			found = true
 			row.Slots = body.Slots
 			row.Worker.Slots = body.Slots
-			row.Checkouts = body.Checkouts
+			// ABSENT CHECKOUTS ARE UNCHANGED: a capacity change must never
+			// erase the repositories this runner has. Only a list that was
+			// sent, even an empty one, replaces them.
+			if body.Checkouts != nil {
+				row.Checkouts = body.Checkouts
+			}
 			h.workers.credentials[key] = row
 		}
 	}
@@ -182,6 +189,18 @@ func (h *Handler) runnerSettings(w http.ResponseWriter, r *http.Request) {
 		_, err = h.config.Record.Append(r.Context(), record.Event{Kind: record.RunnerChanged, Handle: handle, Object: "runner:" + r.PathValue("runner"), Detail: "capacity changed"})
 	}
 	h.finish(w, err)
+}
+
+// runnerSelf answers (its path is /v1/runner/self, singular, so no machine
+// named "self" can ever collide with PUT /v1/runners/{runner}) a runner's own credential with the capacity its owner
+// saved. The worker polls it to follow a raise or a lowering without a
+// restart. Person tokens never reach it (workerPath), and the body names
+// nothing but this machine's own number.
+func (h *Handler) runnerSelf(w http.ResponseWriter, r *http.Request) {
+	if !h.workerReady(w) {
+		return
+	}
+	h.write(w, http.StatusOK, api.RunnerSelf{Slots: requestWorker(r).Slots})
 }
 
 // saveRegistry persists only credential hashes and public runner facts under the service lock.
@@ -234,7 +253,23 @@ func (s *workerService) loadRegistry() error {
 		}
 		var hash [32]byte
 		copy(hash[:], raw)
+		// A row saved before the ceiling existed may hold more than it. It is
+		// granted the ceiling from here on, so the roster, /v1/runner/self and
+		// the worker agree. Held leases are untouched: the desk only counts
+		// them against the cap, so nothing running is cancelled.
+		row.Slots = grantedRunnerSlots(row.Slots)
+		row.Worker.Slots = row.Slots
 		s.credentials[hash] = row
 	}
 	return nil
+}
+
+// The saved runner setting is the one cap. Old rows with no setting use the
+// same default the roster showed, and a legacy execution copy cannot override
+// that setting or turn a missing value into unlimited leases.
+func grantedRunnerSlots(saved int) int {
+	if saved <= 0 {
+		return api.DefaultRunnerSlots
+	}
+	return min(saved, api.MaxRunnerSlots)
 }

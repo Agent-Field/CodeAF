@@ -38,15 +38,18 @@ type workerService struct {
 // that proved this process is still there: an attach, a pull in progress,
 // or a lease heartbeat.
 type registeredWorker struct {
-	Kind      string
-	Slots     int
-	Checkouts []api.Checkout
-	Asleep    bool
-	Name      string
-	OS        string
-	Version   string
-	Last      time.Time
-	Worker    lease.Worker
+	Kind  string
+	Slots int
+	// LiveCapacity is what the worker said about itself at attach; false for
+	// any worker that predates the field.
+	LiveCapacity bool
+	Checkouts    []api.Checkout
+	Asleep       bool
+	Name         string
+	OS           string
+	Version      string
+	Last         time.Time
+	Worker       lease.Worker
 }
 
 type workerKey struct{}
@@ -81,7 +84,7 @@ func (h *Handler) workerRoutes() {
 
 func workerPath(path string) bool {
 	return (strings.HasPrefix(path, "/v1/workers/") && path != "/v1/workers/attach") ||
-		(strings.HasPrefix(path, "/v1/runners/leases/")) || path == "/v1/runners/pull" || path == "/v1/runners/presence"
+		(strings.HasPrefix(path, "/v1/runners/leases/")) || path == "/v1/runners/pull" || path == "/v1/runners/presence" || path == "/v1/runner/self"
 }
 
 func bearer(r *http.Request) string {
@@ -165,6 +168,11 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
+	// Current workers attest in a header so a factory that predates the field
+	// never sees an unknown JSON key; the body field stays for direct callers.
+	if r.Header.Get(api.LiveCapacityHeader) == api.LiveCapacityHeaderValue {
+		body.LiveCapacity = true
+	}
 	if body.Runner != "" {
 		body.Machine = body.Runner
 	}
@@ -180,6 +188,9 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	if body.Slots == 0 {
 		body.Slots = api.DefaultRunnerSlots
 	}
+	// A worker pinned above the ceiling by an old environment variable is
+	// clamped, not refused: it must still attach and run what it can.
+	body.Slots = min(body.Slots, api.MaxRunnerSlots)
 	if body.Slots < 1 || (body.Kind != api.RunnerCI && body.Kind != api.RunnerMac && body.Kind != api.RunnerThisMac) {
 		h.fail(w, http.StatusUnprocessableEntity, "runner requires kind this_mac, mac or ci and positive slots")
 		return
@@ -237,8 +248,10 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		if row.Worker.Handle == worker.Handle && row.Worker.Machine == worker.Machine {
 			newRunner = false
 			asleep = row.Asleep
-			body.Slots = row.Slots
-			worker.Slots = row.Slots
+			// The saved number wins, read through the ceiling: a legacy row
+			// above it is granted the ceiling, never more.
+			body.Slots = grantedRunnerSlots(row.Slots)
+			worker.Slots = body.Slots
 			if body.Checkouts == nil {
 				body.Checkouts = row.Checkouts
 			}
@@ -247,7 +260,7 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{
 		Name: body.Name, OS: strings.TrimSpace(body.OS), Version: strings.TrimSpace(body.CodeafVersion),
-		Last: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, Checkouts: body.Checkouts, Asleep: asleep,
+		Last: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts, Asleep: asleep,
 	}
 	err = h.workers.saveRegistry()
 	h.workers.mu.Unlock()
@@ -260,7 +273,7 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.write(w, http.StatusCreated, api.WorkerAttached{Factory: h.factory, WorkerID: worker.ID, RunnerID: body.Machine, Credential: credential})
+	h.write(w, http.StatusCreated, api.WorkerAttached{Factory: h.factory, WorkerID: worker.ID, RunnerID: body.Machine, Credential: credential, Slots: body.Slots})
 }
 
 // machineFor is the attached worker's machine for this handle, or "" when
@@ -307,18 +320,31 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		h.workers.heard(worker.ID, h.workers.now())
 		h.machineEvents()
 		h.workers.mu.RLock()
+		// Authorization captured the worker before this handler (and possibly
+		// before a long-poll wait). A saved lowering governs every new lease,
+		// including a request already waiting with the old capacity. Keep the
+		// read lock through reservation so an owner write cannot pass between
+		// reading the cap and handing another job out. No network work is held.
+		current, known := h.workers.credentials[sha256.Sum256([]byte(bearer(r)))]
+		if !known || current.Worker.ID != worker.ID {
+			h.workers.mu.RUnlock()
+			h.fail(w, http.StatusUnauthorized, "a bearer worker credential is required")
+			return
+		}
+		worker.Slots = current.Worker.Slots
 		asleep := false
 		for _, row := range h.workers.credentials {
 			if row.Worker.Machine == worker.Machine && row.Worker.Handle == worker.Handle && row.Asleep {
 				asleep = true
 			}
 		}
-		h.workers.mu.RUnlock()
 		if asleep {
+			h.workers.mu.RUnlock()
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		held, err := h.workers.desk.Pull(worker)
+		h.workers.mu.RUnlock()
 		if err == nil {
 			h.pulled(w, r, held)
 			return
