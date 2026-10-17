@@ -953,7 +953,7 @@ member of before one it manages, and the root team last. Any other agent is name
 
 Factory-owned crews carry additive `factory_managed: true` when the factory has recorded their origin. A crew's name alone establishes no origin. Older engines omit the flag.
 
-A factory-stage membership carries additive `factory_stage: true` in `members.brief`. When recorded, `text` is its actual opening brief, with secrets redacted; a resume's carry-on note does not replace it. No manager, edit date, revision, or role precedence is inferred. The brief belongs to the job: `members.brief.set` refuses with `bad_params` before writing, including after the crew closes. An empty stage brief remains read-only. Ordinary member briefs retain their existing behavior.
+A factory-stage membership carries additive `factory_stage: true` in `members.brief`. When recorded, `text` is its actual opening brief, with secrets redacted; a resume's carry-on note does not replace it. No manager, edit date, revision, or role precedence is inferred. Real brief edits retained from before stage ownership was tracked remain visible with their recorded history. The brief belongs to the job: `members.brief.set` refuses with `bad_params` before writing, including after the crew closes. An empty stage brief remains read-only. Ordinary member briefs retain their existing behavior.
 
 ## Wave 5: Crews (U3, X2, V01, V02, V15, V15b, V15c, V16–V20, V64)
 
