@@ -195,7 +195,7 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 			return nil, err
 		}
 		if call.Method == MethodAppTaskAction {
-			return nil, door.AppTaskAction(intent)
+			return appTaskActionAnswer(agent, door, call, intent)
 		}
 		undone, changed, err := door.AppQuickTaskAction(intent)
 		if err != nil {
@@ -238,6 +238,100 @@ func (a *Agent) AppProgramActions(id, before string) (session.AppProgramActionsP
 func (a *Agent) AppTaskAction(intent session.AppTaskIntent) error {
 	_, err := a.c.call(nil, MethodAppTaskAction, intent)
 	return err
+}
+
+// appTaskReceiptDoor is an engine that types a note's outcome
+// ([session.Agent.AppTaskActionReceipt]). The handler asserts it to answer a
+// call that asked for the receipt, and the welcome asserts it to tell the
+// surface that it may read this engine's refusals as refusals
+// ([Welcome.AppTaskReceipt]).
+type appTaskReceiptDoor interface {
+	AppTaskActionReceipt(session.AppTaskIntent) session.AppTaskReceipt
+}
+
+// appTaskActionArgs is [MethodAppTaskAction]'s frame with the one additive
+// flag. The intent's own fields stay at the top level, so an engine that
+// predates the flag reads the same intent and ignores it.
+type appTaskActionArgs struct {
+	session.AppTaskIntent
+	// Receipt asks for the note's typed outcome as the answer's payload
+	// ([appTaskActionResult]) instead of a bare error.
+	Receipt bool `json:"receipt,omitempty"`
+}
+
+// appTaskActionResult carries the typed outcome across the socket intact.
+type appTaskActionResult struct {
+	Receipt *session.AppTaskReceipt `json:"receipt,omitempty"`
+}
+
+// appTaskActionAnswer is the engine's half of [MethodAppTaskAction].
+//
+// ONLY A CALL THAT ASKED FOR THE RECEIPT IS ANSWERED WITH ONE. A client that
+// predates it reads a nil error as success and never reads the payload, so an
+// unknown outcome carried as a payload to it would be a note it believed
+// delivered. Without the flag every outcome is the error it always was.
+func appTaskActionAnswer(agent any, door appTaskDoor, call Frame, intent session.AppTaskIntent) (json.RawMessage, error) {
+	args, err := arg[appTaskActionArgs](call)
+	if err != nil {
+		return nil, err
+	}
+	receipts, ok := agent.(appTaskReceiptDoor)
+	if !args.Receipt || !ok {
+		return nil, door.AppTaskAction(intent)
+	}
+	receipt := receipts.AppTaskActionReceipt(intent)
+	return json.Marshal(appTaskActionResult{Receipt: &receipt})
+}
+
+// appTaskReceiptKnown asks this engine whether it types a note's outcome. An
+// engine without the door answers no, which is the reading a surface must take
+// from silence ([Welcome.AppTaskReceipt]).
+func appTaskReceiptKnown(agent any) bool {
+	_, ok := agent.(appTaskReceiptDoor)
+	return ok
+}
+
+// AppTaskActionReceipt is [Agent.AppTaskAction] for a note or a brief, with
+// the outcome typed across the socket ([session.Agent.AppTaskActionReceipt]).
+//
+// WHAT THIS END CANNOT KNOW IS UNKNOWN, NEVER REFUSED. A call nobody answered
+// — a deadline, a reply that never came, a write onto a pipe that went — may
+// have been carried out over there. An engine that predates the receipt says
+// nothing typed about a success, and flattened failures that came after the
+// effect into the same text as refusals, so both of its answers are unknown
+// too. Only an engine whose welcome says it types the outcome has its errors
+// read as refusals: every error it can still send is raised before the
+// engine's door (a watcher, a driver, a frame it could not read).
+//
+// NOTHING IS SENT AGAIN, by any door, whatever comes back.
+func (a *Agent) AppTaskActionReceipt(intent session.AppTaskIntent) session.AppTaskReceipt {
+	key := session.AppNoteClientID(intent.ClientID)
+	payload, answered, err := a.c.callAnswered(nil, MethodAppTaskAction, appTaskActionArgs{AppTaskIntent: intent, Receipt: true}, callDeadline)
+	if err != nil {
+		if answered && a.c.Welcome().AppTaskReceipt {
+			return session.AppTaskReceipt{Outcome: session.AppTaskRefused, Reason: err.Error(), ClientID: key}
+		}
+		return session.AppTaskReceipt{Outcome: session.AppTaskUnknown, Reason: err.Error(), ClientID: key}
+	}
+	var result appTaskActionResult
+	if json.Unmarshal(payload, &result) != nil || result.Receipt == nil || !appTaskOutcomeKnown(result.Receipt.Outcome) {
+		return session.AppTaskReceipt{Outcome: session.AppTaskUnknown, Reason: appTaskReceiptMissingWord, ClientID: key}
+	}
+	return *result.Receipt
+}
+
+// appTaskReceiptMissingWord is an answer that carried no typed outcome: an
+// engine too old to say, or a word this build does not know.
+const appTaskReceiptMissingWord = "the engine did not say what became of that note"
+
+// appTaskOutcomeKnown is whether this build knows the outcome's word. One it
+// does not know is read as unknown rather than guessed at.
+func appTaskOutcomeKnown(outcome session.AppTaskOutcome) bool {
+	switch outcome {
+	case session.AppTaskDelivered, session.AppTaskHeld, session.AppTaskRefused, session.AppTaskUnknown:
+		return true
+	}
+	return false
 }
 func (a *Agent) AppQuickTasks() ([]session.AppQuickTaskView, error) {
 	raw, err := a.c.call(nil, MethodAppQuickTasks, nil)

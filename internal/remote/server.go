@@ -1302,6 +1302,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),
 		QueuedMarks:                queuedMarksKnown(sess.agent),
+		AppTaskReceipt:             appTaskReceiptKnown(sess.agent),
 		// Whether this engine can hold a folder at all, asked of the agent it has
 		// open — for [Welcome.Folders]'s stated reason: the surface's own type
 		// assertion cannot see across the wire.
