@@ -47,12 +47,10 @@ func TestNoteWriterRefusesWhatAPageWouldRefuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for name, handle := range map[string]*Store{"same handle": store, "reopened": nil} {
-		if handle == nil {
-			store.Close()
-			handle = planReopen(t, path)
-			defer handle.Close()
-		}
+	// The same handle first, then a reopen: in this order, because the reopen
+	// closes the handle the first check reads.
+	check := func(name string, handle *Store) {
+		t.Helper()
 		got := handle.Notes("a", 0)
 		if len(got) != 3 || got[0].ID != first.ID || got[1].ID != keyed.ID || got[2].ID != next.ID {
 			t.Fatalf("%s: notes = %#v, want only the three accepted ones", name, got)
@@ -61,10 +59,19 @@ func TestNoteWriterRefusesWhatAPageWouldRefuse(t *testing.T) {
 			t.Fatalf("%s: the ceiling values were cut: agent %d bytes, key %d bytes", name, len(got[0].Agent), len(got[1].ClientID))
 		}
 	}
+	check("same handle", store)
+	store.Close()
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	check("reopened", reopened)
 }
 
-// A refusal spends nothing: the next note's id follows the last accepted one
-// with no gap, which a transaction begun and rolled back would not guarantee.
+// A refusal spends no note id: the next note's id follows the last accepted
+// one with no gap. The mint is `next.NextID++` on a copy of the state that is
+// saved only when the change succeeds, so a refusal inside the transaction
+// would spend nothing either; THIS TEST PINS THE OBSERVABLE (no gap), NOT WHERE
+// THE CHECK SITS. Ids come from one counter shared with context rows, and
+// nothing else mints between the two notes here.
 func TestNoteWriterRefusalSpendsNoNoteID(t *testing.T) {
 	store := planOpen(t, "")
 	defer store.Close()
