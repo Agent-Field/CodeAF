@@ -4,7 +4,7 @@ import "testing"
 
 // A RUN ROW'S PROGRAM, ENDING AND BRANCH REACH THE APP'S TASK FROM THE ROW ALONE,
 // survive a reopen with the checkpoint, and are unknown for a row that never
-// recorded them. A person's stop is the one ending the row's Stopped flag says,
+// recorded them. The row's stopped flag reads "stopped", whoever set it,
 // and an older failure with no typed ending is not reclassified.
 func TestARunRowShowsItsColdProgramFactsAfterReopenAndNothingForALegacyRow(t *testing.T) {
 	journal, checkpoint := journalIn(t)
@@ -15,9 +15,9 @@ func TestARunRowShowsItsColdProgramFactsAfterReopenAndNothingForALegacyRow(t *te
 	agent.publishRunRow(graph, TaskNotice{ID: two, Title: "review", State: TaskFailed, Program: "review", Ending: TaskEndingProgram})
 	agent.publishRunRow(graph, TaskNotice{ID: three, Title: "senior-dev: old", State: TaskFailed})
 
-	// A KILLED JOB sets the stopped flag with no typed ending: the flag alone reads
-	// "stopped", and says nothing about who stopped it.
-	agent.publishRunRow(graph, TaskNotice{ID: four, Title: "job", Kind: TaskKindJob, State: TaskFailed, Stopped: true})
+	// A KILLED JOB is kept, not published, as in announceJobRow. The flag alone
+	// reads "stopped" and says nothing about who stopped it.
+	graph.keepRunRows(four, []TaskNotice{{ID: four, Title: "job", Kind: TaskKindJob, State: TaskFailed, Stopped: true}})
 
 	check := func(a *Agent) {
 		t.Helper()
