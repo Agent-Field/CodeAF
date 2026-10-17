@@ -1,0 +1,280 @@
+package main
+
+// ── codeaf app: READING AND PREVIEWING AN EDIT OF A PIPELINE FILE ───────────
+//
+// The engine's half of appwire.FactoryPipelineEditor. Neither method writes
+// anything, to GitHub, to the factory or to disk.
+//
+// SOURCE makes ONE GET to ONE fixed route of the factory,
+// /v1/repos/{owner}/{repo}/pipeline/edit-source, spelled here as a constant: the
+// path and verb are never taken from the app, and the owner and name are
+// validated by appwire and escaped here. The factory reads the default branch's
+// file with the CALLER's GitHub credential and pins the commit. This engine
+// supplies no GitHub token and reads no host checkout, `gh` or personal file.
+//
+// Whoever holds a credential for the connection now may read, asked again
+// through GET /v1/me on every call. A connection with no held credential is
+// refused before a request leaves (signed_out, or unreachable for the local
+// row). After the wait the credential is checked again: if it was replaced or
+// dropped, nothing the factory said is used.
+//
+// THE ANSWER IS NOT TAKEN ON TRUST. This engine parses the file text itself with
+// the same parser the pull request route uses, and an answer whose state,
+// editability or parsed steps disagree with that parse is refused: an edit is
+// built on what the engine can read, not on what a factory claims it read. The
+// factory's problems and prose are never passed on; the engine words its own.
+//
+// PREVIEW is pure. It asks only that the caller still holds the connection (the
+// same GET /v1/me) and then applies the structured edits to the base text the
+// caller was given by SOURCE. There is no route to call, so there is nothing to
+// send, and the base a caller brings is never trusted beyond what the parser
+// reads of it.
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+)
+
+var _ appwire.FactoryPipelineEditor = (*appBackend)(nil)
+
+const (
+	appFactoryPipelineSourceSuffix = "/pipeline/edit-source"
+	// appFactoryPipelineSourceTimeout covers the route's own three GitHub reads
+	// (its limit is sixty seconds); the registry's shorter client timeout would
+	// turn a slow answer into a failure.
+	appFactoryPipelineSourceTimeout = 70 * time.Second
+	// appFactoryPipelineSourceLimit is the most an answer may be. The worst valid
+	// file is 256 KiB of '<', '>' or '&', which encoding/json writes as six bytes
+	// each (\u003c): 1.5 MiB in text, and a parsed step repeating the same prompt
+	// is another 1.5 MiB, about 3 MiB with the small fields around them. 4 MiB
+	// holds that with a margin and still refuses a real runaway.
+	appFactoryPipelineSourceLimit = 4 << 20
+)
+
+func (b *appBackend) FactoryPipelineSource(ctx context.Context, p appwire.FactoryPipelineSourceParams) (appwire.FactoryPipelineSource, error) {
+	h := b.factoryHub()
+	who, err := b.heldWho(ctx, p.Factory)
+	if err != nil {
+		return appwire.FactoryPipelineSource{}, err
+	}
+	// The wait for who is over; the read is made only for the caller who asked.
+	if !h.callerIs(p.Factory, who.token) {
+		return appwire.FactoryPipelineSource{}, appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
+	}
+	owner, name, _ := strings.Cut(p.Repo, "/")
+	path := appFactoryRepoRoute + url.PathEscape(owner) + "/" + url.PathEscape(name) + appFactoryPipelineSourceSuffix
+	client := *h.client
+	client.Timeout = appFactoryPipelineSourceTimeout
+	r, err := h.linkDoWith(ctx, &client, who, http.MethodGet, path, nil, appFactoryPipelineSourceLimit)
+	switch {
+	case err == errLinkNotSent:
+		return appwire.FactoryPipelineSource{}, appwire.Errorf(appwire.CodeUnreachable, "the factory is not answering")
+	case err != nil:
+		return appwire.FactoryPipelineSource{}, appwire.Errorf(appwire.CodeUnreachable, "the factory did not answer the read; nothing was written")
+	}
+	// Whatever the factory said describes the caller it was asked as. If that is
+	// no longer the connection's, none of it is used, not even a refusal.
+	if err := h.staleCredential(p.Factory, who.token); err != nil {
+		return appwire.FactoryPipelineSource{}, err
+	}
+	out, err := classifyPipelineSource(r, p)
+	if err != nil {
+		return appwire.FactoryPipelineSource{}, err
+	}
+	h.touch(p.Factory)
+	return out, nil
+}
+
+var errPipelineSourceUnreadable = appwire.Errorf(appwire.CodeEngine, "the factory sent a pipeline file this app cannot use; nothing was written")
+
+// classifyPipelineSource believes a reply only in its documented shape.
+func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) (appwire.FactoryPipelineSource, error) {
+	if r.bodyBad {
+		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+	}
+	if r.status != http.StatusOK {
+		return appwire.FactoryPipelineSource{}, pipelineSourceFailure(r)
+	}
+	var got api.PipelineEditSource
+	if json.Unmarshal(r.body, &got) != nil {
+		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+	}
+	// archived must be SAID. An absent or non-boolean field would decode as false,
+	// and unknown is never assumed to be "not archived".
+	var seen map[string]json.RawMessage
+	if json.Unmarshal(r.body, &seen) != nil || (string(seen["archived"]) != "true" && string(seen["archived"]) != "false") {
+		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+	}
+	if got.Repo != p.Repo || got.Path != factory.PipelineFile || !appwire.ValidPipelinePRCommit(got.BaseSHA) || !plainBranchName(got.DefaultBranch) {
+		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+	}
+	out := appwire.FactoryPipelineSource{Factory: p.Factory, Repo: p.Repo, Path: got.Path, DefaultBranch: got.DefaultBranch,
+		BaseSHA: got.BaseSHA, CanPush: got.CanPush, Archived: got.Archived, State: got.State}
+
+	// What a state may carry. A field of another state is a contradiction.
+	parsed := func(s api.PipelineEditSource) []byte {
+		s.Factory, s.Repo, s.Path, s.DefaultBranch, s.BaseSHA, s.CanPush, s.Archived, s.State, s.Editable, s.Text, s.Problems = api.Factory{}, "", "", "", "", false, false, "", false, "", nil
+		raw, _ := json.Marshal(s)
+		return raw
+	}
+	var bare api.PipelineEditSource
+	switch got.State {
+	case api.PipelineEditMissing, api.PipelineEditTooLarge:
+		if got.Editable || got.Text != "" || len(got.Problems) > 0 || !bytes.Equal(parsed(got), parsed(bare)) {
+			return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+		}
+	case api.PipelineEditInvalid, api.PipelineEditFile:
+		if len(got.Text) > pipeline.EditTextMax || !utf8.ValidString(got.Text) {
+			return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+		}
+		// THE ENGINE READS THE FILE ITSELF. A factory that calls a file editable
+		// when this parser would refuse it, or the other way round, or that parsed
+		// it into something else, is not believed.
+		src, problems, editable := pipeline.Inspect(got.Text)
+		if editable != (got.State == api.PipelineEditFile) || got.Editable != editable {
+			return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+		}
+		out.Text = got.Text
+		if !editable {
+			if !bytes.Equal(parsed(got), parsed(bare)) || len(got.Problems) == 0 {
+				return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+			}
+			out.Problems = cleanPipelineProblems(problems)
+			break
+		}
+		var local api.PipelineEditSource
+		local.SetParsed(src)
+		if len(got.Problems) > 0 || !bytes.Equal(parsed(got), parsed(local)) {
+			return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+		}
+		out.Editable = true
+		out.DefaultBudget, out.BudgetInFile = local.DefaultBudget, local.BudgetInFile
+		out.Pipelines, out.Steps, out.Fixed = local.Pipelines, local.Steps, local.Fixed
+	default:
+		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+	}
+	return out, nil
+}
+
+// cleanPipelineProblems words the engine's own reading of a file that does not
+// read cleanly: one line each, bounded.
+func cleanPipelineProblems(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s = cleanLinkText(s, 300); s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		out = []string{factory.PipelineFile + ": the file does not read"}
+	}
+	return out
+}
+
+func knownPipelineSourceStage(stage string) bool {
+	switch stage {
+	case api.PipelineEditStageCredential, api.PipelineEditStageRequest, api.PipelineEditStageRepository,
+		api.PipelineEditStageBase, api.PipelineEditStageFile:
+		return true
+	}
+	return false
+}
+
+// pipelineSourceFailure is the wire error for a read the factory refused. The
+// words are fixed here: the factory's own may echo a path or a token. A reply
+// that is not the route's typed failure (a proxy, the shared gate) goes through
+// the same fixed-words mapper the other factory doors use.
+func pipelineSourceFailure(r linkReply) error {
+	var f api.PipelineEditSourceFailure
+	typed := json.Unmarshal(r.body, &f) == nil && pipelinePRRequestID.MatchString(f.RequestID) && knownPipelineSourceStage(f.Stage) &&
+		(f.GitHubStatus == 0 || (f.GitHubStatus >= 100 && f.GitHubStatus <= 599)) && r.status >= 400 && r.status < 600
+	if !typed {
+		return linkRefusal(r, "that repository is not one this factory can see")
+	}
+	switch {
+	case r.status == http.StatusUnauthorized || f.Stage == api.PipelineEditStageCredential:
+		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access for this sign-in is missing or expired; reconnect GitHub.")
+	case f.Stage == api.PipelineEditStageRequest:
+		return appwire.Errorf(appwire.CodeBadParams, "the factory would not take that request as it is.")
+	case r.status == http.StatusNotFound:
+		return appwire.Errorf(appwire.CodeNotFound, "your GitHub access cannot see that repository or its default branch.")
+	case r.status == http.StatusForbidden:
+		return appwire.Errorf(appwire.CodeForbidden, "your GitHub access cannot read that file.")
+	}
+	return appwire.Errorf(appwire.CodeEngine, "GitHub did not answer the read; nothing was written, so you can try again.")
+}
+
+func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.FactoryPipelinePreviewParams) (appwire.FactoryPipelinePreview, error) {
+	h := b.factoryHub()
+	who, err := b.heldWho(ctx, p.Factory)
+	if err != nil {
+		return appwire.FactoryPipelinePreview{}, err
+	}
+	if !h.callerIs(p.Factory, who.token) {
+		return appwire.FactoryPipelinePreview{}, appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
+	}
+	ed, err := pipeline.ApplyEdits(p.BaseText, appwire.PipelineEditOps(p.Edits))
+	// The caller is the connection's to the end: a preview made for one who has
+	// since gone is not shown to the next.
+	if stale := h.staleCredential(p.Factory, who.token); stale != nil {
+		return appwire.FactoryPipelinePreview{}, stale
+	}
+	if err != nil {
+		var bad *pipeline.EditError
+		if !errors.As(err, &bad) {
+			return appwire.FactoryPipelinePreview{}, appwire.Errorf(appwire.CodeEngine, "the edit could not be previewed")
+		}
+		return appwire.FactoryPipelinePreview{}, pipelineEditRefusal(p, bad)
+	}
+	h.touch(p.Factory)
+	out := appwire.FactoryPipelinePreview{Factory: p.Factory, Repo: p.Repo, BaseSHA: p.BaseSHA, Path: factory.PipelineFile,
+		Text: ed.Text, Changed: ed.Changed, FormatRewritten: ed.FormatRewritten, CommentsDropped: ed.CommentsDropped,
+		Steps: []appwire.FactoryPipelineStepChange{}}
+	for _, c := range ed.Steps {
+		out.Steps = append(out.Steps, appwire.FactoryPipelineStepChange{Name: c.Name, Fields: c.Fields,
+			Before: appwire.FactoryPipelineStepValues{Prompt: c.Before.Prompt, Until: c.Before.Until, Max: c.Before.Max},
+			After:  appwire.FactoryPipelineStepValues{Prompt: c.After.Prompt, Until: c.After.Until, Max: c.After.Max}})
+	}
+	if ed.Budget != nil {
+		out.Budget = &appwire.FactoryPipelineBudgetChange{Before: ed.Budget.Before, After: ed.Budget.After}
+	}
+	return out, nil
+}
+
+// pipelineEditRefusal is the wire error for an edit the file cannot take. The
+// words are fixed from the code; the text of the edit or the file is not echoed.
+func pipelineEditRefusal(p appwire.FactoryPipelinePreviewParams, bad *pipeline.EditError) error {
+	words := map[string]string{
+		pipeline.EditBaseInvalid:      "That file does not read cleanly, so it cannot be edited here.",
+		pipeline.EditBadOp:            "That edit is not one this editor makes.",
+		pipeline.EditLocked:           "That step is locked and cannot be edited.",
+		pipeline.EditUnknownStep:      "That is not a step in this pipeline.",
+		pipeline.EditBadValue:         "That value is out of bounds.",
+		pipeline.EditTooLarge:         "The edited file would be too large for a pull request.",
+		pipeline.EditNotRepresentable: "The pipeline file cannot hold that edit as asked.",
+	}[bad.Code]
+	if words == "" {
+		bad = &pipeline.EditError{Code: pipeline.EditBadOp, Op: -1}
+		words = "That edit is not one this editor makes."
+	}
+	detail := appwire.FactoryPipelineEditRefusal{Factory: p.Factory, Repo: p.Repo, Code: bad.Code}
+	if bad.Op >= 0 {
+		op := bad.Op
+		detail.Op = &op
+	}
+	err := appwire.Errorf(appwire.CodeBadParams, "%s", words+" Nothing was written.")
+	err.Detail = detail
+	return err
+}
