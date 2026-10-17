@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
@@ -176,6 +177,9 @@ type FactoryActivity struct {
 	Factory   api.Factory    `json:"factory"`
 	Events    []record.Event `json:"events"`
 	Truncated bool           `json:"truncated"`
+	// People is the signed-in GitHub name and photo of the handles named in
+	// Events; a handle with no verified profile is absent.
+	People map[string]factory.PersonSummary `json:"people,omitempty"`
 }
 
 // FactoryAccess is what checking an access link says. It is api.FactoryAccess

@@ -12,6 +12,10 @@ type FactorySetup struct {
 	Repos  []SetupRepo `json:"repos"`
 }
 type SetupGitHub struct {
+	// The connected credential's verified GitHub profile, distinct from the optional gh CLI account.
+	Handle       string   `json:"handle,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	AvatarURL    string   `json:"avatar_url,omitempty"`
 	GH           *SetupGH `json:"gh"`
 	Organization string   `json:"organization"`
 	VisibleRepos int      `json:"visible_repos"`
@@ -71,11 +75,15 @@ type FactoryAccess struct {
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
 }
 type AccessFactory struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Host     string   `json:"host"`
-	Operator string   `json:"operator"`
-	Repos    []string `json:"repos"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Operator string `json:"operator"`
+	// OperatorName and OperatorAvatarURL are that handle's GitHub profile as
+	// recorded when they signed in; absent when no sign-in has recorded one.
+	OperatorName      string   `json:"operator_name,omitempty"`
+	OperatorAvatarURL string   `json:"operator_avatar_url,omitempty"`
+	Repos             []string `json:"repos"`
 }
 type FactoryAccessRequest struct {
 	Link string `json:"link"`

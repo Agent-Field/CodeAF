@@ -800,3 +800,39 @@ func TestAppFactoryCapabilityIsAbsentFromEnginesThatAreNotOne(t *testing.T) {
 		t.Fatal("the app backend must serve the factory wire")
 	}
 }
+
+func TestAppFactoryActivityCarriesOnlyProfilesInTheReturnedWindow(t *testing.T) {
+	profiles := map[string]factory.PersonSummary{
+		"alice":       {Name: "Alice Example", AvatarURL: "https://avatars.githubusercontent.com/u/11"},
+		"bob":         {Name: "Bob Example", AvatarURL: "https://avatars.githubusercontent.com/u/22"},
+		"unmentioned": {Name: "Not in these events", AvatarURL: "https://avatars.githubusercontent.com/u/33"},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/about", "/v1/me":
+			_ = json.NewEncoder(w).Encode(api.Me{Contract: api.Contract, Factory: api.Factory{Name: "acme"}, Mode: api.FactoryTeam})
+		case "/v1/activity":
+			_ = json.NewEncoder(w).Encode(struct {
+				Factory api.Factory                      `json:"factory"`
+				Events  []record.Event                   `json:"events"`
+				People  map[string]factory.PersonSummary `json:"people"`
+			}{api.Factory{Name: "acme"}, []record.Event{{ID: "old", Handle: "bob"}, {ID: "new", Handle: "alice"}}, profiles})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	wire := newFactoryWire(t, testFactoryHub(t))
+	var conn appwire.FactoryConnection
+	wire.must("factory.attach", map[string]any{"url": server.URL, "token": testHostToken}, &conn)
+	var out appwire.FactoryActivity
+	wire.must("factory.activity", map[string]any{"factory": conn.ID, "limit": 1}, &out)
+	if !out.Truncated || len(out.Events) != 1 || out.Events[0].Handle != "alice" || len(out.People) != 1 || out.People["alice"] != profiles["alice"] {
+		t.Fatalf("limited activity lost or over-shared profile facts: %+v", out)
+	}
+	wire.must("factory.activity", map[string]any{"factory": conn.ID, "limit": 10}, &out)
+	if out.Truncated || len(out.People) != 2 {
+		t.Fatalf("full event window profiles: %+v", out)
+	}
+}

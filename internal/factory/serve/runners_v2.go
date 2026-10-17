@@ -114,7 +114,11 @@ func (h *Handler) runnersDirectory(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) || h.authFailed(w, r) {
 		return
 	}
-	h.write(w, http.StatusOK, api.Runners{Factory: h.factory, Runners: rows})
+	owners := make([]string, 0, len(rows))
+	for _, row := range rows {
+		owners = append(owners, row.Owner)
+	}
+	h.write(w, http.StatusOK, api.Runners{Factory: h.factory, Runners: rows, People: h.signedInPeople(owners)})
 }
 
 func (h *Handler) runnerPresence(w http.ResponseWriter, r *http.Request) {

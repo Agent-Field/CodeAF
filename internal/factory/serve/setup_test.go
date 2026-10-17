@@ -438,3 +438,37 @@ func TestFactoryAccessSignInCookiesAreNotReplayedAcrossOpeners(t *testing.T) {
 		t.Fatal("an independent opener inherited the first sign-in cookie")
 	}
 }
+
+func TestFactorySetupBackContinuesTheVerifiedConnectionWithoutAnotherToken(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	f.h.seam.GHLogin = func(context.Context) (string, error) { return "cli-other", nil }
+	original := f.h.config.GitHubHTTPClient.Transport
+	f.h.config.GitHubHTTPClient.Transport = githubTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/user" {
+			return original.RoundTrip(r)
+		}
+		if r.Header.Get("Authorization") != "Bearer setup-secret" {
+			t.Fatal("wrong connection credential")
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"login":"owner","name":"Verified Owner","avatar_url":"https://avatars.githubusercontent.com/u/77"}`))}, nil
+	})
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	if out.State != "repos" || !out.GitHub.Connected {
+		t.Fatalf("initial connection: %+v", out)
+	}
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "back"}, 200, &out)
+	if out.State != "github" || !out.GitHub.Connected {
+		t.Fatalf("Back lost the verified connection: %+v", out)
+	}
+	f.h.seam.ConnectGitHub = func(context.Context, string) error {
+		t.Fatal("Continue must not reconnect or require a token")
+		return nil
+	}
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "discover"}, 200, &out)
+	if out.State != "repos" || !out.GitHub.Connected || out.GitHub.GH == nil || out.GitHub.GH.Login != "cli-other" || out.GitHub.Handle != "owner" || out.GitHub.Name != "Verified Owner" || out.GitHub.AvatarURL != "https://avatars.githubusercontent.com/u/77" || len(out.Repos) == 0 {
+		t.Fatalf("Continue did not reuse verified identity: %+v", out)
+	}
+}

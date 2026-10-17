@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
@@ -108,6 +109,10 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	if tok.InvitedBy != "" {
 		out.Factory.Operator = tok.InvitedBy
+	}
+	// Only a link that matched earns the host's face; the secret is the proof.
+	if known, ok := h.signedInPeople([]string{out.Factory.Operator})[factory.NormalizeHandle(out.Factory.Operator)]; ok {
+		out.Factory.OperatorName, out.Factory.OperatorAvatarURL = known.Name, known.AvatarURL
 	}
 	now := h.now()
 	if tok.Human() {

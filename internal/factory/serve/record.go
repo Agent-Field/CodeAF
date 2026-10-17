@@ -61,10 +61,15 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 		h.sendAuditCSV(w, data.Bytes())
 		return
 	}
+	actors := make([]string, 0, len(events))
+	for _, e := range events {
+		actors = append(actors, e.Handle)
+	}
 	h.write(w, http.StatusOK, struct {
-		Factory api.Factory    `json:"factory"`
-		Events  []record.Event `json:"events"`
-	}{h.factory, events})
+		Factory api.Factory                      `json:"factory"`
+		Events  []record.Event                   `json:"events"`
+		People  map[string]factory.PersonSummary `json:"people,omitempty"`
+	}{h.factory, events, h.signedInPeople(actors)})
 }
 
 // writeAuditCSV matches record.CSV's columns so a filtered export is the

@@ -1,6 +1,10 @@
 package api
 
-import "time"
+import (
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
 
 // These are the S1/S2 factory and runner words, shared by reads and writes.
 const (
@@ -43,6 +47,9 @@ type Runner struct {
 type Runners struct {
 	Factory Factory  `json:"factory"`
 	Runners []Runner `json:"runners"`
+	// People holds the signed-in GitHub name and photo of each owner listed in
+	// Runners. A handle with no verified profile is absent, never blank.
+	People map[string]factory.PersonSummary `json:"people,omitempty"`
 }
 
 // RunnerPresence is sent before macOS sleep and after wake by the native app.

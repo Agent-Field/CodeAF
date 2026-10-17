@@ -596,7 +596,7 @@ func (b *appBackend) shownFolder(path string) string {
 // there is.
 func (b *appBackend) setupView(in api.FactorySetup) appwire.FactorySetupView {
 	out := appwire.FactorySetupView{State: in.State, Repos: make([]appwire.FactorySetupRepo, 0, len(in.Repos))}
-	out.GitHub = appwire.FactorySetupGitHub{Connected: in.GitHub.Connected, Organization: in.GitHub.Organization, VisibleRepos: in.GitHub.VisibleRepos}
+	out.GitHub = appwire.FactorySetupGitHub{Handle: in.GitHub.Handle, Name: in.GitHub.Name, AvatarURL: in.GitHub.AvatarURL, Connected: in.GitHub.Connected, Organization: in.GitHub.Organization, VisibleRepos: in.GitHub.VisibleRepos}
 	if in.GitHub.GH != nil {
 		out.GitHub.GHLogin = in.GitHub.GH.Login
 	}

@@ -41,6 +41,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -733,8 +734,9 @@ func (b *appBackend) FactoryActivity(ctx context.Context, id string, since time.
 		path += "?since=" + url.QueryEscape(since.UTC().Format(time.RFC3339Nano))
 	}
 	var body struct {
-		Factory api.Factory    `json:"factory"`
-		Events  []record.Event `json:"events"`
+		Factory api.Factory                      `json:"factory"`
+		Events  []record.Event                   `json:"events"`
+		People  map[string]factory.PersonSummary `json:"people"`
 	}
 	if err := b.factoryHub().read(ctx, id, path, appFactoryBody, &body); err != nil {
 		return appwire.FactoryActivity{}, err
@@ -743,7 +745,24 @@ func (b *appBackend) FactoryActivity(ctx context.Context, id string, since time.
 	if len(out.Events) > limit {
 		out.Events, out.Truncated = out.Events[len(out.Events)-limit:], true
 	}
+	out.People = activityPeopleFor(out.Events, body.People)
 	return out, nil
+}
+
+// activityPeopleFor carries only the verified profiles mentioned by the returned event window.
+// A response trimmed to limit must not retain profiles found only in its discarded events.
+func activityPeopleFor(events []record.Event, profiles map[string]factory.PersonSummary) map[string]factory.PersonSummary {
+	out := map[string]factory.PersonSummary{}
+	for _, event := range events {
+		handle := factory.NormalizeHandle(event.Handle)
+		if handle == "" && event.Actor.Kind == "person" {
+			handle = factory.NormalizeHandle(event.Actor.Name)
+		}
+		if profile, ok := profiles[handle]; ok {
+			out[handle] = profile
+		}
+	}
+	return out
 }
 
 // FactorySetup is the factory's own first-run progress ("local" is the id the

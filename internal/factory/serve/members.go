@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -197,4 +198,32 @@ func ownsSession(caller, session accessSession) bool {
 		return session.profile != nil && session.profile.Handle == caller.profile.Handle
 	}
 	return caller.id != "" && caller.id == session.id
+}
+
+// signedInPeople names the handles given, from the GitHub profiles people
+// carried in when they signed in. It makes no GitHub call and invents no
+// photo: a handle nobody has signed in as is left out so the app draws its
+// initial, and a profile with neither name nor photo adds nothing.
+func (h *Handler) signedInPeople(handles []string) map[string]factory.PersonSummary {
+	want := map[string]bool{}
+	for _, handle := range handles {
+		if handle = factory.NormalizeHandle(handle); handle != "" {
+			want[handle] = true
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	var out map[string]factory.PersonSummary
+	for _, member := range h.memberList() {
+		handle := factory.NormalizeHandle(member.Handle)
+		if !want[handle] || (member.Name == "" && member.AvatarURL == "") {
+			continue
+		}
+		if out == nil {
+			out = map[string]factory.PersonSummary{}
+		}
+		out[handle] = factory.PersonSummary{Name: member.Name, AvatarURL: member.AvatarURL}
+	}
+	return out
 }

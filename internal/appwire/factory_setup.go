@@ -122,6 +122,9 @@ type FactoryLocalStatus struct {
 // `gh` login when `gh` is signed in on this machine, which is what the
 // "use gh" choice would connect; it is never a token.
 type FactorySetupGitHub struct {
+	Handle       string `json:"handle,omitempty"`
+	Name         string `json:"name,omitempty"`
+	AvatarURL    string `json:"avatar_url,omitempty"`
 	Connected    bool   `json:"connected"`
 	GHLogin      string `json:"gh_login,omitempty"`
 	Organization string `json:"organization,omitempty"`

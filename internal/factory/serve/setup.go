@@ -123,12 +123,17 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 		return err
 	}
 	var user struct {
-		Login string `json:"login"`
+		Login     string `json:"login"`
+		Name      string `json:"name"`
+		AvatarURL string `json:"avatar_url"`
 	}
 	if _, err = h.setupJSON(ctx, "/user", token, &user); err != nil {
 		return err
 	}
 	out.View.GitHub.Connected = true
+	out.View.GitHub.Handle = factory.NormalizeHandle(user.Login)
+	out.View.GitHub.Name = user.Name
+	out.View.GitHub.AvatarURL = user.AvatarURL
 	out.View.Repos = []api.SetupRepo{}
 	watched, err := h.config.Store.Repos()
 	if err != nil {
@@ -263,7 +268,15 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 		if out.View.State != "github" && out.View.State != "repos" {
 			return errors.New("finish the current setup step first")
 		}
-		return h.discoverSetup(ctx, out)
+		if err := h.discoverSetup(ctx, out); err != nil {
+			return err
+		}
+		// Continuing an already verified connection uses the held credential;
+		// returning from Repos must never require another pasted token.
+		if out.View.GitHub.Connected {
+			out.View.State = "repos"
+		}
+		return nil
 	case "connect", "scope":
 		if h.mode() == api.FactoryTeam {
 			return errors.New("Give the factory read-only GitHub access.")
