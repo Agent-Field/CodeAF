@@ -296,7 +296,7 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		JobsDeadlineMS: int(session.ProcessStopAllWait / time.Millisecond),
 	}
 	if deadline, ok := ctx.Deadline(); ok {
-		res.ServicesDeadlineMS = int(time.Until(deadline) / time.Millisecond)
+		res.ServicesDeadlineMS = max(0, int(time.Until(deadline)/time.Millisecond))
 	}
 	var (
 		wg       sync.WaitGroup

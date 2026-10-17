@@ -347,3 +347,28 @@ func TestProcessLogTargetIsTheManagedFileOpenedAndIdentified(t *testing.T) {
 		t.Fatal("a FIFO in the log's place blocked the target")
 	}
 }
+
+// A CANCELLED STAMPED REQUEST NEVER STARTS A NEW COMMAND. A response can arrive
+// after its caller stopped waiting; retaining the recipe is not permission to
+// launch it after that request's admission expired.
+func TestCancelledStampedRerunStartsNoChild(t *testing.T) {
+	dir := t.TempDir()
+	agent := conversationAgent(t, dir)
+	started := time.Now()
+	agent.keepProcessNotice(JobNotice{ID: 930, Kind: JobKindCommand, Command: "printf cancelled-rerun", State: JobDone,
+		Started: started, Ended: started, Dir: agent.config.Workspace})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	row, err := agent.RerunProcessAt(ctx, 930, started.UnixMilli())
+	if !errors.Is(err, context.Canceled) {
+		if err == nil {
+			if _, jobs, child := agent.jobHolder(row.ID); child != nil {
+				_, _ = jobs.kill(context.Background(), child.id)
+			}
+		}
+		t.Fatalf("cancelled request started a child or returned the wrong refusal: row=%+v err=%v", row, err)
+	}
+	if got := len(agent.jobs.all()); got != 0 {
+		t.Fatalf("cancelled request registered %d children", got)
+	}
+}

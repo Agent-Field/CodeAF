@@ -1130,6 +1130,15 @@ func (r *jobRegistry) start(command string) (*job, error) {
 
 // startIn is [jobRegistry.start] held to one folder ([jobRegistry.newJobIn]).
 func (r *jobRegistry) startIn(command, want string) (*job, error) {
+	return r.startInUnder(context.Background(), command, want)
+}
+
+// startInUnder admits a stamped request only while its caller still waits.
+// Once started, the background job keeps its existing independent lifetime.
+func (r *jobRegistry) startInUnder(ctx context.Context, command, want string) (*job, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if r.runningProcesses() >= jobProcessCap {
 		return nil, errJobProcessCap
 	}
@@ -1161,6 +1170,12 @@ func (r *jobRegistry) startIn(command, want string) (*job, error) {
 	process.Stdout = started.sink
 	process.Stderr = started.sink
 
+	// Recheck after the bounded registry/log setup, immediately before the
+	// effect. No cancelled request is replayed later by a detached worker.
+	if err := ctx.Err(); err != nil {
+		started.sink.close()
+		return nil, err
+	}
 	if err := process.Start(); err != nil {
 		started.sink.close()
 		return nil, fmt.Errorf("could not start the command: %w", err)

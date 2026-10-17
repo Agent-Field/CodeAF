@@ -116,6 +116,8 @@ const (
 type ProcessActArgs struct {
 	ID        int   `json:"id"`
 	StartedMS int64 `json:"started_ms"`
+	// Caller deadline survives a queued frame; an expired mutator is never admitted.
+	DeadlineUnixNano int64 `json:"deadline_unix_nano,omitempty"`
 }
 
 // processActReply carries a refusal as a FACT rather than an error, so its
@@ -142,7 +144,16 @@ type processActor interface {
 	StopConversationProcesses(ctx context.Context) (session.ProcessStopReceipt, error)
 }
 
-func (a *Agent) processAct(ctx context.Context, method string, args any) (processActReply, error) {
+func (a *Agent) processAct(ctx context.Context, method string, args ProcessActArgs) (processActReply, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return processActReply{}, err
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		args.DeadlineUnixNano = deadline.UnixNano()
+	}
 	raw, err := a.c.call(ctx, method, args)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such method") || strings.Contains(err.Error(), "no such process action") {
@@ -188,7 +199,7 @@ func (a *Agent) StopProcessAt(ctx context.Context, id int, startedMS int64) (ses
 }
 
 func (a *Agent) StopConversationProcesses(ctx context.Context) (session.ProcessStopReceipt, error) {
-	reply, err := a.processAct(ctx, MethodProcessStopAll, nil)
+	reply, err := a.processAct(ctx, MethodProcessStopAll, ProcessActArgs{})
 	if err != nil || reply.Receipt == nil {
 		return session.ProcessStopReceipt{}, orMissing(err)
 	}
@@ -213,18 +224,28 @@ func serveProcessAct(agent WrappedAgent, call Frame) ([]byte, error) {
 	if !ok {
 		return nil, errors.New("no such process action")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), processActDeadline)
+	args, aerr := arg[ProcessActArgs](call)
+	if aerr != nil {
+		return nil, aerr
+	}
+	deadline := time.Now().Add(processActDeadline)
+	if args.DeadlineUnixNano != 0 {
+		caller := time.Unix(0, args.DeadlineUnixNano)
+		if caller.Before(deadline) {
+			deadline = caller
+		}
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var reply processActReply
 	var err error
 	if call.Method == MethodProcessStopAll {
 		receipt, serr := door.StopConversationProcesses(ctx)
 		reply.Receipt, err = &receipt, serr
 	} else {
-		args, aerr := arg[ProcessActArgs](call)
-		if aerr != nil {
-			return nil, aerr
-		}
 		switch call.Method {
 		case MethodProcessActions:
 			facts, serr := door.ProcessActions(ctx, args.ID, args.StartedMS)

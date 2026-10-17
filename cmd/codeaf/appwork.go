@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	"github.com/Agent-Field/codeaf/internal/workgraph"
@@ -1380,16 +1381,12 @@ func (b *appBackend) StopProcess(id string) error {
 	if err != nil {
 		return err
 	}
-	// THE STAMPED DOOR FIRST: the engine finds the run again by number AND
-	// start and says what the stop proved. Only an engine too old to have it
-	// is stopped by number, after this app checked the start itself.
+	// An older engine cannot prove the run's identity or whether a committed
+	// render refused its stop. Never turn that unknown into a successful Cancel.
 	if served, err := b.stampedStop(live, id, job); served {
 		return err
 	}
-	if _, err := live.conn.Conv.Cancel("job:" + strconv.Itoa(job)); err != nil {
-		return appEngineError(err)
-	}
-	return nil
+	return appProcessActError(remote.ErrProcessActionsUnserved)
 }
 
 // RerunProcess runs an ended process's command again, as a new process.

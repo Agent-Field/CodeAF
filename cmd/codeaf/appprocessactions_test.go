@@ -353,3 +353,18 @@ func TestServiceActionsLogTargetAndOwnerScopedStopAll(t *testing.T) {
 		t.Fatalf("stopped service: %+v %v", got, err)
 	}
 }
+
+func TestOldEngineStopDoesNotFallBackToAnUnverifiableCancel(t *testing.T) {
+	job := session.JobNotice{ID: 7, Kind: session.JobKindRender, State: session.JobRunning, Started: time.Now()}
+	old := &fakeConversation{jobs: []session.JobNotice{job}}
+	backend, _, agent := workBackend(t, old)
+	err := backend.StopProcess(appProcessID(agent.ID, job))
+	if !isCode(err, appwire.CodeUnknownMethod) {
+		t.Fatalf("old engine stop pretended to prove a stop: %v", err)
+	}
+	old.mu.Lock()
+	defer old.mu.Unlock()
+	if len(old.cancels) != 0 {
+		t.Fatalf("unverifiable old Cancel was called: %q", old.cancels)
+	}
+}

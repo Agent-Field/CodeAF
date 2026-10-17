@@ -222,7 +222,10 @@ func (a *Agent) rerunBlocked(h processHold, running bool) string {
 
 // ProcessActions is what this engine will do with job id, whose start is
 // startedMS ([sameStart]), now. It reads; it changes nothing.
-func (a *Agent) ProcessActions(_ context.Context, id int, startedMS int64) (ProcessActions, error) {
+func (a *Agent) ProcessActions(ctx context.Context, id int, startedMS int64) (ProcessActions, error) {
+	if err := ctx.Err(); err != nil {
+		return ProcessActions{}, err
+	}
 	h, found, err := a.processHoldOf(id)
 	if err != nil {
 		return ProcessActions{}, err
@@ -230,7 +233,11 @@ func (a *Agent) ProcessActions(_ context.Context, id int, startedMS int64) (Proc
 	if !found || !sameStart(h.n, startedMS) {
 		return ProcessActions{}, ErrNoSuchProcess
 	}
-	return a.actionsOf(h), nil
+	facts := a.actionsOf(h)
+	if err := ctx.Err(); err != nil {
+		return ProcessActions{}, err
+	}
+	return facts, nil
 }
 
 // RerunProcess takes the retained command from this engine's record, never a
@@ -248,7 +255,10 @@ func (a *Agent) RerunProcess(id int) (JobNotice, error) {
 }
 
 // RerunProcessAt is [Agent.RerunProcess] for the run a stamped id names.
-func (a *Agent) RerunProcessAt(_ context.Context, id int, startedMS int64) (JobNotice, error) {
+func (a *Agent) RerunProcessAt(ctx context.Context, id int, startedMS int64) (JobNotice, error) {
+	if err := ctx.Err(); err != nil {
+		return JobNotice{}, err
+	}
 	h, found, err := a.processHoldOf(id)
 	if err != nil {
 		return JobNotice{}, err
@@ -256,10 +266,17 @@ func (a *Agent) RerunProcessAt(_ context.Context, id int, startedMS int64) (JobN
 	if !found || !sameStart(h.n, startedMS) {
 		return JobNotice{}, ErrNoSuchProcess
 	}
-	return a.rerun(h)
+	return a.rerunUnder(ctx, h)
 }
 
 func (a *Agent) rerun(h processHold) (JobNotice, error) {
+	return a.rerunUnder(context.Background(), h)
+}
+
+func (a *Agent) rerunUnder(ctx context.Context, h processHold) (JobNotice, error) {
+	if err := ctx.Err(); err != nil {
+		return JobNotice{}, err
+	}
 	facts := a.actionsOf(h)
 	if !facts.Rerun.Available {
 		return JobNotice{}, &ProcessActionRefused{Verb: "rerun", Reason: facts.Rerun.Reason}
@@ -267,7 +284,7 @@ func (a *Agent) rerun(h processHold) (JobNotice, error) {
 	a.mu.Lock()
 	jobs := a.jobs
 	a.mu.Unlock()
-	started, err := jobs.startIn(h.n.Command, h.n.Dir)
+	started, err := jobs.startInUnder(ctx, h.n.Command, h.n.Dir)
 	if err != nil {
 		return JobNotice{}, err
 	}
@@ -312,7 +329,8 @@ func (a *Agent) StopProcessAt(ctx context.Context, id int, startedMS int64) (Pro
 
 // ProcessStopReceipt is what one stop-all of a conversation's jobs did.
 type ProcessStopReceipt struct {
-	// Eligible is the running jobs the snapshot found and signalled.
+	// Eligible is the running jobs the bounded snapshot attempted to stop;
+	// a committed render stays in NotStopped when its kill is refused.
 	Eligible     int `json:"eligible"`
 	Stopped      int `json:"stopped"`
 	AlreadyEnded int `json:"already_ended"`

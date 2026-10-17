@@ -253,8 +253,8 @@ func TestAppProcessesOutputFollowStopAndSleep(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := backend.StopProcess(id); err != nil {
-		t.Fatal(err)
+	if err := backend.StopProcess(id); !isCode(err, appwire.CodeUnknownMethod) {
+		t.Fatalf("stop on an engine without the stamped door = %v", err)
 	}
 	// AN ENGINE WITHOUT THE STAMPED DOOR IS NEVER ASKED TO RUN ANYTHING AGAIN
 	// (appprocessactions.go): it cannot check the run's ending or folder.
@@ -272,7 +272,7 @@ func TestAppProcessesOutputFollowStopAndSleep(t *testing.T) {
 	conv.mu.Lock()
 	cancels := append([]string(nil), conv.cancels...)
 	conv.mu.Unlock()
-	if len(cancels) != 2 || cancels[0] != "job:3" || cancels[1] != "job:3" {
+	if len(cancels) != 1 || cancels[0] != "job:3" {
 		t.Fatalf("stops = %q", cancels)
 	}
 	if err := backend.Wake(); err != nil {

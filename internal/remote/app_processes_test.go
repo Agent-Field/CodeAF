@@ -257,3 +257,74 @@ func TestProcessActWireOnAnEngineWithoutTheDoors(t *testing.T) {
 		t.Fatalf("absent doors: %v", err)
 	}
 }
+
+func TestProcessActAlreadyCancelledWritesNothing(t *testing.T) {
+	sess := newsSession(t, &processActFake{fakeAgent: &fakeAgent{}})
+	pipe, engine := Pipe()
+	go func() {
+		_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return sess, nil }})
+		_ = engine.Close()
+	}()
+	client, err := Dial(pipe, "app", Hello{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	before := client.made.Load()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = client.Agent().RerunProcessAt(ctx, 7, 99)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled rerun: %v", err)
+	}
+	if got := client.made.Load(); got != before {
+		t.Fatalf("cancelled rerun wrote %d calls", got-before)
+	}
+}
+
+func TestProcessActExpiredForwardedDeadlineCallsNoDoor(t *testing.T) {
+	for _, method := range []string{MethodProcessRerunAt, MethodProcessStopAll} {
+		f := &processActFake{fakeAgent: &fakeAgent{}}
+		payload, _ := json.Marshal(map[string]any{"id": 7, "started_ms": 99, "deadline_unix_nano": time.Now().Add(-time.Second).UnixNano()})
+		_, err := serveProcessAct(f, Frame{Method: method, Payload: payload})
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("%s expired deadline still reached a door: err=%v asked=%+v", method, err, f.asked)
+		}
+		if f.asked.ID != 0 {
+			t.Fatalf("expired request reached a door: %+v", f.asked)
+		}
+	}
+}
+
+type deadlineProcessActFake struct {
+	*processActFake
+	deadline time.Time
+}
+
+func (f *deadlineProcessActFake) StopConversationProcesses(ctx context.Context) (session.ProcessStopReceipt, error) {
+	f.deadline, _ = ctx.Deadline()
+	return session.ProcessStopReceipt{}, nil
+}
+func TestProcessActWirePreservesCallersEarlierDeadline(t *testing.T) {
+	f := &deadlineProcessActFake{processActFake: &processActFake{fakeAgent: &fakeAgent{}}}
+	sess := newsSession(t, f)
+	pipe, engine := Pipe()
+	go func() {
+		_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return sess, nil }})
+		_ = engine.Close()
+	}()
+	client, err := Dial(pipe, "app", Hello{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	deadline := time.Now().Add(time.Second)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	if _, err := client.Agent().StopConversationProcesses(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !f.deadline.Equal(deadline) {
+		t.Fatalf("engine reset caller deadline: got=%s want=%s", f.deadline, deadline)
+	}
+}
