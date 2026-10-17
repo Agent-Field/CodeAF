@@ -119,6 +119,7 @@ func withForeman(seam factory.Seam, st *store.Store, workspace, profileDir strin
 // read, asked once at the making for the recipes' policy lines.
 func foremanMaker(st *store.Store, workspace, profileDir string, load func() (factory.Snapshot, error)) func(context.Context) (string, error) {
 	return func(context.Context) (string, error) {
+		factoryReconcileOnce(profileDir, st)
 		if chat, err := st.Foreman(); err == nil && chat != "" {
 			if _, serr := os.Stat(chat); serr == nil {
 				return chat, nil
