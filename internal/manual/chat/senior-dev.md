@@ -260,18 +260,23 @@ shortly.
 ## A message senior-dev did not read — too large to read, or the check could not finish
 
 When a run ends, its page names every message senior-dev was sent and never said it read:
-`senior-dev did not read this before it stopped reading (…)`, with the words, however many
-messages came before it.
+`senior-dev did not read this before it stopped reading (…)`, with the words.
 
 **A message too large to read is never skipped or passed over.** The messages before it are
-delivered as usual. The ones after it wait behind it until the oversized one is fixed or
-removed, and the page says `… the rest of the task's notes could not be checked (a message
-there is too large to read: …)`. Nothing after it is claimed as read or as unread.
+delivered as usual. The ones after it wait behind it, and the page says `… the rest of the
+task's notes could not be checked (a message there is too large to read: …)`. **codeaf has no
+way to edit or delete a single note**, so nothing in it clears the hold: it lasts until the
+task is removed or the store is changed by hand. A note written through codeaf cannot cause
+it, because `plandb task note` refuses an author or client key over 4096 bytes and a body
+over 32768; only a damaged or foreign row can.
+
+**The step-by-step workers hold the same way, and say nothing.** A worker that is not a
+listening program is handed a task's new notes between its steps; behind a note too large to
+read it receives none, and no page or message says that it stopped.
 
 **When the check itself cannot finish**, because the plan was busy or it ran out of time, the
-page says so instead of claiming the program read everything: `senior-dev may not have read
-every message before it stopped reading (…): its notes could not all be checked (…)`. When it
-found some before it stopped, it quotes those and counts the rest as `at least`.
+page says `senior-dev may not have read every message before it stopped reading (…): its
+notes could not all be checked (…)`, quoting what it found and counting the rest as `at least`.
 
 ## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
 

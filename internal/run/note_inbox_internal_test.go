@@ -422,3 +422,42 @@ func TestDelegateLateAckMarksOnlyWhatWasSent(t *testing.T) {
 		t.Fatal("a receipt for a sent message was not marked heard on the record")
 	}
 }
+
+// A note the writer accepts is a note the readers deliver. An author of
+// exactly the page's ceiling, 4096 bytes, is the longest the writer admits;
+// it is handed to a bash worker at a boundary and published to a listening
+// program, not held as though it were too large to read. One byte more is
+// refused by the writer, so no note can hold the readers.
+func TestANoteWithTheLongestAuthorTheWriterAdmitsIsDelivered(t *testing.T) {
+	store := openNoteStore(t)
+	longest := strings.Repeat("a", plandb.NotePageMetaMax)
+	if _, err := store.AddNote(store.RootID(), longest+"x", "one byte too many"); err == nil {
+		t.Fatal("the writer admitted an author one byte over the page's ceiling")
+	}
+	mine, err := store.AddNote(store.RootID(), longest, "from the longest author")
+	if err != nil {
+		t.Fatalf("the writer refused an author of exactly %d bytes: %v", plandb.NotePageMetaMax, err)
+	}
+	later, err := store.AddPersonNote(store.RootID(), "a person's direction after it")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	notes := newBashNotes(store, store.RootID(), map[string]bool{})
+	var words []string
+	had := notes.boundary(context.Background(), "echo working", true, takes(&words))
+	if strings.Join(had, ",") != mine.ID+","+later.ID || len(words) != 1 ||
+		!strings.Contains(words[0], "from the longest author") || !strings.Contains(words[0], "a person's direction after it") {
+		t.Fatalf("a bash boundary handed over %v %q; want both notes in order", had, words)
+	}
+
+	sink := listeningSink(t, store)
+	sink.forwardOnce(sink.newForwarding(store))
+	raw, err := os.ReadFile(sink.inboxPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), mine.ID) || !strings.Contains(string(raw), later.ID) {
+		t.Fatalf("the inbox held %d bytes without both notes", len(raw))
+	}
+}
