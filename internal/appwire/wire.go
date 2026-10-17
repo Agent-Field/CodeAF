@@ -52,6 +52,14 @@ const (
 	// could do it twice; it looks at the state again first. It is the same word
 	// the app already uses for a call that was written and never answered.
 	CodeUncertain = "uncertain"
+	// CodeForbidden and CodeStale refuse a write on an attached factory's job
+	// (factory.job_*), both with a FactoryRefusal as Detail. Forbidden: the
+	// factory says this person may not (only the assignee approves). Stale:
+	// the job changed since the person read it. Neither is retried by anyone
+	// but the person, who reads the job again first. A refusal that is neither
+	// (already approved, already taken) is CodeConflict.
+	CodeForbidden = "forbidden"
+	CodeStale     = "stale"
 )
 
 // The states an agent can be in, as the app draws them.
