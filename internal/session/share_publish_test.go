@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -421,5 +422,110 @@ func TestShareAppendRefusesRatherThanDropsAndEndsAPartialTail(t *testing.T) {
 	}
 	if present, known := shareRowPresent(w.index, w.session, row, shareSoon()); !present || !known {
 		t.Fatal("the row appended after a partial tail is not found")
+	}
+}
+
+// shareWorker is a task worker built the way the owning conversation builds
+// one, standing in its own worktree, with the share verb off its own belt.
+func shareWorker(t *testing.T, w *taskWorld) *Agent {
+	t.Helper()
+	worker, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = w.worktree
+		c.InTask = true
+		c.deliverSink = w.sink
+	})
+	return worker
+}
+
+func workerShare(t *testing.T, worker *Agent, call, op string, paths ...string) ShareResult {
+	t.Helper()
+	args, _ := json.Marshal(map[string]any{"operation_id": op, "paths": paths})
+	ctx := withCallID(withRunIdentity(context.Background()), call)
+	out, _, err := beltTool(t, worker, "share_deliverable").Execute(ctx, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result ShareResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("not a receipt: %q", out)
+	}
+	return result
+}
+
+// TestShareFromATaskBranchSnapshotsIntoTheOwningConversation: a worker's file
+// lives only in a tree that is not the conversation's to keep, so it is copied
+// — in the same pass that hashes it — into the conversation's own artifacts
+// folder, recorded there as the conversation's with the node's id and asking
+// message, the original named and untouched, and still available after the
+// worktree is gone.
+func TestShareFromATaskBranchSnapshotsIntoTheOwningConversation(t *testing.T) {
+	w := newTaskWorld(t, "task/share")
+	worker := shareWorker(t, w)
+	pdf := []byte("%PDF-1.7\n%%EOF\n")
+	picture := pngOfSize(t, 6, 2)
+	os.WriteFile(filepath.Join(w.worktree, "report.pdf"), pdf, 0o600)
+	os.WriteFile(filepath.Join(w.worktree, "chart.png"), picture, 0o600)
+	result := workerShare(t, worker, "call-worker", "op-task", "report.pdf", "chart.png")
+	if result.Status != ShareOpAccepted {
+		t.Fatalf("worker share = %+v", result)
+	}
+	artifacts := canonicalFile(w.owner.config.Place.Artifacts())
+	for _, file := range result.Files {
+		row, err := FindDeliverable(w.index, w.sessionID, file.ID, shareSoon())
+		if err != nil {
+			t.Fatal(err)
+		}
+		fact := row.Fact
+		if row.Artifact.Session != w.sessionID || fact.Task != strconv.FormatUint(w.node.id, 10) || fact.Turn != "scope#3" || fact.Call != "call-worker" {
+			t.Fatalf("worker row is not the conversation's under the node: %+v", fact)
+		}
+		original := filepath.Join(w.worktree, filepath.Base(file.Path))
+		if fact.Source == nil || fact.Source.Canonical != original || file.Original != original {
+			t.Fatalf("the original is not named: %+v", fact.Source)
+		}
+		if filepath.Dir(filepath.Dir(row.Artifact.Path)) != filepath.Join(artifacts, shareSharedFolder) || filepath.Base(filepath.Dir(row.Artifact.Path)) != file.ID {
+			t.Fatalf("the copy is at %s, not in the owner's artifacts folder under its id", row.Artifact.Path)
+		}
+		if fact.Authored || fact.State != "" || fact.Branch != "" {
+			t.Fatalf("a copied share claims more than sharing: %+v", fact)
+		}
+	}
+	if got, _ := os.ReadFile(filepath.Join(w.worktree, "report.pdf")); !bytes.Equal(got, pdf) {
+		t.Fatal("the original was changed")
+	}
+	if err := os.RemoveAll(w.worktree); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range result.Files {
+		row, _ := FindDeliverable(w.index, w.sessionID, file.ID, shareSoon())
+		if live := ResolveDeliverable(row, w.owner.deliverableRoots()); live.State != MediaAvailable {
+			t.Fatalf("%s is %s once the worktree is gone", file.Path, live.State)
+		}
+		if file.Media != "" {
+			source, err := FindMedia(w.index, w.sessionID, file.Media, shareSoon())
+			if err != nil || source.Fact.Origin != MediaShared || ResolveMedia(source, w.owner.deliverableRoots()).State != MediaAvailable {
+				t.Fatalf("the shared picture is not an available media source: %+v %v", source.Fact, err)
+			}
+		}
+	}
+}
+
+// TestShareRefusedFromATaskBranchLeavesNoCopy: a refusal before the plan
+// removes every copy it took, because no row can name one.
+func TestShareRefusedFromATaskBranchLeavesNoCopy(t *testing.T) {
+	w := newTaskWorld(t, "task/refuse")
+	worker := shareWorker(t, w)
+	os.WriteFile(filepath.Join(w.worktree, "a.md"), []byte("# a\n"), 0o600)
+	result := workerShare(t, worker, "call-1", "op-refuse", "a.md", "missing.md")
+	if result.Status != ShareOpRefused {
+		t.Fatalf("result = %+v", result)
+	}
+	shared := filepath.Join(w.owner.config.Place.Artifacts(), shareSharedFolder)
+	entries, _ := os.ReadDir(shared)
+	if len(entries) != 0 {
+		t.Fatalf("a refused share left %d copies", len(entries))
+	}
+	if indexLines(t, w.index) != 0 {
+		t.Fatal("a refused share appended")
 	}
 }
