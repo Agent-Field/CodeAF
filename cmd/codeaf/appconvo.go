@@ -275,7 +275,7 @@ func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string
 // Queue keeps a message for when the running turn ends, or sends it now when
 // nothing is running.
 func (b *appBackend) Queue(agent, text, clientID string) ([]appwire.Queued, error) {
-	return b.queue(agent, text, clientID, nil)
+	return b.queue(agent, text, clientID, appStated(text, appNoTeam()))
 }
 
 // QueueMessage is [appBackend.Queue] with the person's own words and the reads
@@ -285,6 +285,11 @@ func (b *appBackend) QueueMessage(agent string, message appwire.AgentMessage) ([
 	shown, err := appMarkOf(message, "a queued message")
 	if err != nil {
 		return nil, err
+	}
+	if shown == nil {
+		shown = appStated(message.Text, appNoTeam())
+	} else {
+		shown.creation = appNoTeam()
 	}
 	return b.queue(agent, message.Text, message.ClientID, shown)
 }
@@ -397,19 +402,19 @@ func (b *appBackend) EditQueuedMessage(agent, id string, message appwire.AgentMe
 	})
 }
 
-// appStampKept carries the creation-team stamp of the queued message an edit
+// appStampKept carries the creation context of the queued message an edit
 // replaces onto its replacement, so a typo fixed while a crew message waits
-// does not turn it into an ordinary one. An unstamped old message leaves the
-// replacement exactly as it was.
+// does not turn it into an ordinary one, nor an ordinary one into unknown. An
+// old message that stated nothing leaves the replacement exactly as it was.
 func appStampKept(old, replacement *appSending, text string) *appSending {
-	if old == nil || old.creationTeam == "" {
+	if old == nil || old.creation == nil {
 		return replacement
 	}
 	kept := appSending{text: text}
 	if replacement != nil {
 		kept = *replacement
 	}
-	kept.creationTeam = old.creationTeam
+	kept.creation = old.creation
 	return &kept
 }
 
@@ -1074,12 +1079,12 @@ func appSubmission(text string, shown *appSending) session.Submission {
 	said := shown.text
 	submission := session.Submission{
 		Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads,
-		Queued: shown.queued, CreationTeam: strings.TrimSpace(shown.creationTeam),
+		Queued: shown.queued, Creation: shown.creation,
 	}
 	if shown.composed != nil {
 		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
 	}
-	if (shown.queued || shown.creationTeam != "") && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
+	if (shown.queued || shown.creation != nil) && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
 		submission.Said = nil
 	}
 	return submission
@@ -1266,12 +1271,6 @@ func (b *appBackend) SendMessage(agent string, message appwire.AgentMessage) (ui
 	return turn, err
 }
 
-// sendMessageForTeam is [appBackend.sendMessage] with the exact team id a
-// CrewMessage acceptance stamps on the turn. Ordinary sends leave it empty.
-func (b *appBackend) sendMessageForTeam(agent string, message appwire.AgentMessage, creationTeam string) (uint64, *appSending, error) {
-	return b.sendMessageFor(agent, message, creationTeam)
-}
-
 // sendMessage is [appBackend.SendMessage], answering what the person's entry
 // shows, nil when that is the words sent.
 //
@@ -1287,13 +1286,17 @@ func (b *appBackend) sendMessageForTeam(agent string, message appwire.AgentMessa
 // a new id nothing here touches. The agent's gate is held from the read to the
 // drop, so two sends cannot both carry one chip into two turns, and each turn
 // carries exactly the snapshot it read.
+//
+// IT IS THE PERSON'S OWN SEND, so it states an explicit none: an automation
+// made in its turn was made in no crew. A crew's door states its crew instead
+// ([appBackend.sendMessageFor]).
 func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (uint64, *appSending, error) {
-	return b.sendMessageFor(agent, message, "")
+	return b.sendMessageFor(agent, message, appNoTeam())
 }
 
-// sendMessageFor is [appBackend.sendMessage] carrying creationTeam, the exact
-// id CrewMessage stamped, on the submission it builds. It is never inferred.
-func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, creationTeam string) (uint64, *appSending, error) {
+// sendMessageFor is [appBackend.sendMessage] stating creation, the context the
+// accepting door knows, on the submission it builds. It is never inferred.
+func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, creation *session.CreationContext) (uint64, *appSending, error) {
 	ids := message.Attachments
 	if err := appwire.CheckAttachIDs(ids); err != nil {
 		return 0, nil, err
@@ -1351,11 +1354,11 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 		}
 		shown.composed = composed
 	}
-	if creationTeam != "" {
+	if creation != nil {
 		if shown == nil {
 			shown = &appSending{text: said, reads: reads}
 		}
-		shown.creationTeam = creationTeam
+		shown.creation = creation
 	}
 	attempted := b.referenceAttempt(kept)
 	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
@@ -1393,18 +1396,33 @@ type appSending struct {
 	// answered once it kept it (appsubmission.go); nil on a message of words.
 	composed *appComposed
 	queued   bool
-	// creationTeam is the exact team id CrewMessage stamped on this accepted
-	// turn. Empty for ordinary sends. Forwarded on [session.Submission]; never
-	// inferred from membership when reopening or flushing the queue.
-	creationTeam string
+	// creation is the creation context the accepting door stated: the crew's
+	// exact id for a crew message or a new member's brief, an explicit none for
+	// the person's own send, and nil (unknown) for words the app wrote itself.
+	// Forwarded on [session.Submission]; kept through the queue, an edit and a
+	// retry; never inferred from membership. Shared, never written after it is
+	// set.
+	creation *session.CreationContext
+}
+
+// appNoTeam is the explicit none the person's own send states.
+func appNoTeam() *session.CreationContext { return &session.CreationContext{} }
+
+// appInTeam is the exact crew a crew's door states.
+func appInTeam(id string) *session.CreationContext { return &session.CreationContext{Team: id} }
+
+// appStated is a sending whose only extra beyond its words is a creation
+// context.
+func appStated(text string, creation *session.CreationContext) *appSending {
+	return &appSending{text: text, creation: creation}
 }
 
 // marksNothing is whether the only thing this sending carries beyond its words
-// is the creation-team stamp. A host that cannot keep a message's marks can
-// still be sent such a message: it drops the stamp and records the team as
-// unknown, which is true.
+// is its creation context. A host that cannot keep a message's marks is not
+// refused such a message: it is sent the words, and the team is unknown there,
+// which is true.
 func (s *appSending) marksNothing(text string) bool {
-	return s != nil && s.creationTeam != "" && s.text == text && len(s.described) == 0 && len(s.reads) == 0 && s.composed == nil && len(s.attachments) == 0
+	return s != nil && s.creation != nil && s.text == text && len(s.described) == 0 && len(s.reads) == 0 && s.composed == nil && len(s.attachments) == 0
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────

@@ -1532,11 +1532,12 @@ type SubmitArgs struct {
 	// ClientID is the door's opaque name for the message
 	// ([session.Submission.ClientID]); correlation only, never idempotency.
 	ClientID string `json:"clientId,omitempty"`
-	// CreationTeam is the exact team id the door stamped on this accepted
-	// message ([session.Submission.CreationTeam]); absent for an ordinary one.
-	// An engine built before it ignores the field and records no team, which
-	// is unknown, so it is NOT a mark ([SubmitArgs.marked]) an engine must keep.
-	CreationTeam string `json:"creationTeam,omitempty"`
+	// Creation is the creation context the door stated for this accepted
+	// message ([session.Submission.Creation]): absent is UNKNOWN, {} an explicit
+	// none, {"team":id} the exact team. An engine built before it ignores the
+	// field and records no team, which is unknown and so true; it is therefore
+	// NOT a mark ([SubmitArgs.marked]) an engine must keep or refuse.
+	Creation *session.CreationContext `json:"creation,omitempty"`
 }
 
 // marked is whether the call carries a mark beside its words. Submit, Steer
@@ -1552,12 +1553,21 @@ func (a SubmitArgs) composed() bool { return len(a.Media) > 0 || a.Annotation !=
 
 // submission is the call as the agent's own door for a mark takes it.
 func (a SubmitArgs) submission() session.Submission {
-	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued, ClientID: a.ClientID, CreationTeam: a.CreationTeam}
+	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued, ClientID: a.ClientID, Creation: creationCopy(a.Creation)}
 }
 
 // argsOf is a submission as the wire carries it.
 func argsOf(message session.Submission) SubmitArgs {
-	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued, ClientID: message.ClientID, CreationTeam: message.CreationTeam}
+	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued, ClientID: message.ClientID, Creation: creationCopy(message.Creation)}
+}
+
+// creationCopy is a creation context that shares nothing with c, nil for nil:
+// absence stays absence across the wire and back.
+func creationCopy(c *session.CreationContext) *session.CreationContext {
+	if c == nil {
+		return nil
+	}
+	return &session.CreationContext{Team: c.Team}
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the

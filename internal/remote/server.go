@@ -2684,10 +2684,10 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if hasMark && !marked {
 			return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
 		}
-		// A creation-team stamp alone is no mark a door must keep, but a door that
+		// A creation context alone is no mark a door must keep, but a door that
 		// can take it is handed it; one that cannot runs the words, and the team
 		// stays unknown there.
-		if hasMark || (marked && args.CreationTeam != "") {
+		if hasMark || (marked && args.Creation != nil) {
 			events, err = door.SubmitMessage(context.Background(), args.submission())
 		} else {
 			events, err = agent.Submit(context.Background(), args.Text)
@@ -2719,13 +2719,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if args.composed() {
 			return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
 		}
-		if args.marked() {
-			door, ok := followUpMarksDoor(agent)
-			if !ok {
-				return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
-			}
+		door, ok := followUpMarksDoor(agent)
+		switch {
+		case args.marked() && !ok:
+			return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
+		case args.marked() || (ok && args.Creation != nil):
+			// A creation context rides to a door that keeps it; a door that
+			// cannot queues the words and the team stays unknown.
 			events, err = door(args.submission())
-		} else {
+		default:
 			events, err = agent.FollowUp(args.Text)
 		}
 		return s.stream(MethodFollowUp, args.Text, events, err)
