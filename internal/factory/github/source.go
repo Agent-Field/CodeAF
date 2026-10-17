@@ -920,6 +920,8 @@ func (s *Source) Write(ctx context.Context, a factory.Action) (factory.Receipt, 
 		posted, err = s.api.Close(ctx, owner, name, a.Item.Num)
 	case "pr", "open-pr":
 		posted, err = s.openPull(ctx, owner, name, a)
+	case "merge":
+		posted, err = s.mergePull(ctx, owner, name, a)
 	default:
 		return factory.Receipt{}, fmt.Errorf("github cannot %q: %w", a.Verb, factory.ErrReadOnly)
 	}
