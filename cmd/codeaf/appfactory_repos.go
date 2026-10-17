@@ -45,10 +45,10 @@ var _ appwire.FactoryRepoAdmin = (*appBackend)(nil)
 
 const appFactoryRepoRoute = "/v1/repos/"
 
-// repoWho resolves the connection and asks the factory who the credential held
+// heldWho resolves the connection and asks the factory who the credential held
 // right now is. Unlike whoHolds it accepts the machine's own factory, and it
 // never proceeds without a held credential.
-func (b *appBackend) repoWho(ctx context.Context, id string) (adminWho, error) {
+func (b *appBackend) heldWho(ctx context.Context, id string) (adminWho, error) {
 	h := b.factoryHub()
 	row, token, err := h.target(id)
 	if err != nil {
@@ -76,13 +76,22 @@ func (b *appBackend) repoWho(ctx context.Context, id string) (adminWho, error) {
 	if json.Unmarshal(r.body, &me) != nil {
 		return adminWho{}, appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
 	}
+	return adminWho{row: row, token: token, me: me}, nil
+}
+
+// repoWho is heldWho for the operator alone.
+func (b *appBackend) repoWho(ctx context.Context, id string) (adminWho, error) {
+	who, err := b.heldWho(ctx, id)
+	if err != nil {
+		return adminWho{}, err
+	}
 	// THE FACTORY ANSWERS A NON-OPERATOR'S WRITE WITH 403 OR 401, which can read
 	// as "signed out", so the refusal is made here, in words, before anything
 	// is sent.
-	if !me.Operator {
+	if !who.me.Operator {
 		return adminWho{}, appwire.Errorf(appwire.CodeForbidden, "only the operator can change which repositories the factory watches")
 	}
-	return adminWho{row: row, token: token, me: me}, nil
+	return who, nil
 }
 
 func (b *appBackend) FactoryRepoSet(ctx context.Context, p appwire.FactoryRepoSetParams) (appwire.FactoryRepoSetDone, error) {

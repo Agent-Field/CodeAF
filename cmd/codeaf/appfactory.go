@@ -146,6 +146,9 @@ type appFactoryHub struct {
 	// adminBusy marks a connection whose sign-out or revoke-all is in flight
 	// (appfactory_admin.go), so one press is one request.
 	adminBusy map[string]bool
+	// pipelineBusy marks a repository on a connection whose pull request is
+	// being opened (appfactory_pipeline_pr.go), so one press is one request.
+	pipelineBusy map[string]bool
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
 	linkSt *linkState
@@ -708,7 +711,7 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
-		Links: true, CopyLink: b.copier().Available(), ReposManage: true,
+		Links: true, CopyLink: b.copier().Available(), ReposManage: true, PipelinePR: true,
 		MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }

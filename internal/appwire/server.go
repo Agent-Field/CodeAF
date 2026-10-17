@@ -158,6 +158,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryAdminFeature(hello, engine)
 	hello = withFactoryLinksFeature(hello, engine)
 	hello = withFactoryReposManageFeature(hello, engine)
+	hello = withFactoryPipelinePRFeature(hello, engine)
 	s.Emit(EventHello, hello)
 	if warmer, ok := engine.(Warmer); ok {
 		go warmer.Warm()

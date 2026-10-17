@@ -104,7 +104,11 @@ type FactoryCapabilities struct {
 	// ReposManage: factory.repo_set is served (feature factory.repos_manage).
 	// True only for an engine that implements [FactoryRepoAdmin]; whether THIS
 	// caller may use it is the operator's answer, read from factory.me.
-	ReposManage    bool `json:"repos_manage"`
+	ReposManage bool `json:"repos_manage"`
+	// PipelinePR: factory.pipeline_pr is served (feature factory.pipeline_pr).
+	// True only for an engine that implements [FactoryPipelineOpener]; whether
+	// THIS caller holds a sign-in and GitHub access is answered by the call.
+	PipelinePR     bool `json:"pipeline_pr"`
 	MaxConnections int  `json:"max_connections"`
 	MaxFlows       int  `json:"max_flows"`
 }

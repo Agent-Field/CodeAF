@@ -353,6 +353,12 @@ type linkReply struct {
 // never opened), errLinkNoReply when it may have arrived. No Go error text is
 // kept: it names the address.
 func (h *appFactoryHub) linkDo(ctx context.Context, w adminWho, method, path string, in any, limit int64) (linkReply, error) {
+	return h.linkDoWith(ctx, h.client, w, method, path, in, limit)
+}
+
+// linkDoWith is linkDo over a given client, for the one route whose own flow is
+// allowed to take longer than appFactoryTimeout.
+func (h *appFactoryHub) linkDoWith(ctx context.Context, client *http.Client, w adminWho, method, path string, in any, limit int64) (linkReply, error) {
 	var body io.Reader
 	if in != nil {
 		raw, err := json.Marshal(in)
@@ -371,7 +377,7 @@ func (h *appFactoryHub) linkDo(ctx context.Context, w adminWho, method, path str
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Authorization", "Bearer "+w.token)
-	resp, err := h.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		var op *net.OpError
 		if errors.As(err, &op) && op.Op == "dial" {
