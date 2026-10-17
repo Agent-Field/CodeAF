@@ -63,7 +63,7 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	mutable := j.State != api.StateDone && j.Publishing == nil
 	j.Controls.StopStep = owner && active && stoppable && mutable && h.workers != nil && h.workers.desk != nil
 	j.Controls.RerunStep = owner && step && rerunnable && mutable && h.workers != nil && h.workers.desk != nil
-	j.Controls.EditSteps = owner && mutable && h.seam.Edit != nil
+	j.Controls.EditSteps = owner && mutable && !j.Ready && h.seam.Edit != nil
 	j.Controls.ChangeAssignee = j.Can.ChangeAssignee && h.config.Store != nil
 	local := j.Desk != nil && j.Desk.Origin != string(factory.OriginForge)
 	session, _ := h.credential(r)
