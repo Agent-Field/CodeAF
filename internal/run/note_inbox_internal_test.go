@@ -423,11 +423,12 @@ func TestDelegateLateAckMarksOnlyWhatWasSent(t *testing.T) {
 	}
 }
 
-// A note the writer accepts is a note the readers deliver. An author of
+// The writer's author ceiling fits the readers' author ceiling. An author of
 // exactly the page's ceiling, 4096 bytes, is the longest the writer admits;
 // it is handed to a bash worker at a boundary and published to a listening
 // program, not held as though it were too large to read. One byte more is
-// refused by the writer, so no note can hold the readers.
+// refused by the writer. Other metadata, including a long plan name, can still
+// hold the readers; this test covers the author field only.
 func TestANoteWithTheLongestAuthorTheWriterAdmitsIsDelivered(t *testing.T) {
 	store := openNoteStore(t)
 	longest := strings.Repeat("a", plandb.NotePageMetaMax)
