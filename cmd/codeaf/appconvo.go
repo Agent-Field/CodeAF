@@ -371,7 +371,9 @@ func (b *appBackend) changeQueue(agent, id string, change func(a *appAgent, at i
 // MESSAGE: the said and reads it carried are dropped with the old words, so
 // nothing is shown or kept beside words that were not written from it.
 func (b *appBackend) EditQueued(agent, id, text string) ([]appwire.Queued, error) {
-	return b.changeQueue(agent, id, func(a *appAgent, at int) { a.queue[at].text, a.queue[at].shown = text, nil })
+	return b.changeQueue(agent, id, func(a *appAgent, at int) {
+		a.queue[at].text, a.queue[at].shown = text, appStampKept(a.queue[at].shown, nil, text)
+	})
 }
 
 // EditQueuedMessage replaces a queued message with another carrying its own
@@ -390,7 +392,25 @@ func (b *appBackend) EditQueuedMessage(agent, id string, message appwire.AgentMe
 	if live := b.liveOf(a); live != nil && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads")
 	}
-	return b.changeQueue(agent, id, func(a *appAgent, at int) { a.queue[at].text, a.queue[at].shown = message.Text, shown })
+	return b.changeQueue(agent, id, func(a *appAgent, at int) {
+		a.queue[at].text, a.queue[at].shown = message.Text, appStampKept(a.queue[at].shown, shown, message.Text)
+	})
+}
+
+// appStampKept carries the creation-team stamp of the queued message an edit
+// replaces onto its replacement, so a typo fixed while a crew message waits
+// does not turn it into an ordinary one. An unstamped old message leaves the
+// replacement exactly as it was.
+func appStampKept(old, replacement *appSending, text string) *appSending {
+	if old == nil || old.creationTeam == "" {
+		return replacement
+	}
+	kept := appSending{text: text}
+	if replacement != nil {
+		kept = *replacement
+	}
+	kept.creationTeam = old.creationTeam
+	return &kept
 }
 
 // RemoveQueued takes a queued message out.
@@ -1384,7 +1404,7 @@ type appSending struct {
 // still be sent such a message: it drops the stamp and records the team as
 // unknown, which is true.
 func (s *appSending) marksNothing(text string) bool {
-	return s != nil && s.text == text && !s.queued && len(s.described) == 0 && len(s.reads) == 0 && s.composed == nil && len(s.attachments) == 0
+	return s != nil && s.creationTeam != "" && s.text == text && len(s.described) == 0 && len(s.reads) == 0 && s.composed == nil && len(s.attachments) == 0
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────

@@ -191,7 +191,7 @@ func (b *appBackend) memberStart(t teamstore.Team, ask appwire.MemberAsk) (strin
 			return "", err
 		}
 	}
-	if _, err := b.Send(agent.ID, brief, ""); err != nil {
+	if _, err := b.send(agent.ID, brief, "", &appSending{text: brief, creationTeam: t.ID}); err != nil {
 		return "", err
 	}
 	return agent.ID, nil
