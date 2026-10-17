@@ -27,6 +27,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -937,8 +938,9 @@ const appTaskSettleWait = 3 * time.Second
 func appTaskError(err error) error {
 	// AN OUTCOME NOBODY CAN NAME IS NOT A REFUSAL. The engine's own sentinels
 	// say the words may have arrived, or did arrive with the page's brief left
-	// unwritten; either way sending them again would deliver them twice.
-	if errors.Is(err, session.ErrSendUnanswered) || errors.Is(err, session.ErrBriefNotKept) {
+	// unwritten; either way sending them again would deliver them twice. A plan
+	// store's failed commit is the same: the change may be on the disk.
+	if errors.Is(err, session.ErrSendUnanswered) || errors.Is(err, session.ErrBriefNotKept) || errors.Is(err, plandb.ErrCommitUncertain) {
 		return appwire.Errorf(appwire.CodeUncertain, "%s", plainWords(err.Error()))
 	}
 	words := err.Error()

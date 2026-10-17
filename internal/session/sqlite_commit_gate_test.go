@@ -17,8 +17,9 @@ import (
 )
 
 // commitGate makes SQLite ITSELF refuse the COMMIT of the one transaction that
-// inserts a note carrying key, on the write connections of the plan store at
-// one path. Nothing in the production store knows it exists: the plan store
+// writes the armed words into one table — a note carrying key ([gateCommitsOf]),
+// or a task row a text column of which starts with them ([gateTaskCommitsOf]) —
+// on the write connections of the plan store at one path. Nothing in the production store knows it exists: the plan store
 // commits with a bare tx.Commit, and the refusal is SQLite's own commit hook
 // answering nonzero, which turns that COMMIT into a ROLLBACK and returns
 // SQLITE_CONSTRAINT_COMMITHOOK from tx.Commit — the one step after the write that
@@ -34,8 +35,12 @@ type commitGate struct {
 	// dsn is the write handle's DSN prefix for the one store path this gate
 	// serves. A connection whose DSN does not start with it is never hooked.
 	dsn string
-	// key is the client id whose note insert marks the open transaction.
-	key string
+	// table is the one table whose row write can mark the open transaction.
+	table string
+	// key is the words a written text column must equal, or start with when
+	// prefix is set, to mark it: a note's client id, a brief's own words.
+	key    string
+	prefix bool
 	// armed is false once the test disarms; a marked insert needs it set.
 	armed atomic.Bool
 	// marked is set by the pre-update hook on the armed insert and spent by the
@@ -56,15 +61,33 @@ var commitGates = struct {
 	byID map[uintptr]*commitGate
 }{byID: map[uintptr]*commitGate{}}
 
-var commitGateHookOnce sync.Once
+// THE CONNECTION HOOK IS REGISTERED BEFORE ANY TEST RUNS. The driver appends
+// it to a slice every Open reads without a lock, so registering it in the middle
+// of a test would race whatever connection another test, or a store an earlier
+// one left behind, was opening at that moment.
+func init() { sqlite.RegisterConnectionHook(hookCommitGate) }
 
-// gateCommitsOf scopes a gate to the plan store at path and arms it for key. It
-// must run BEFORE the store at path is first opened: a connection is hooked when
-// it opens, and the store keeps its one write connection for its whole life.
+// gateCommitsOf scopes a gate to the plan store at path and arms it for the
+// note whose client id is key. It must run BEFORE the store at path is first
+// opened: a connection is hooked when it opens, and the store keeps its one
+// write connection for its whole life.
 func gateCommitsOf(t *testing.T, path, key string) *commitGate {
 	t.Helper()
-	commitGateHookOnce.Do(func() { sqlite.RegisterConnectionHook(hookCommitGate) })
-	gate := &commitGate{dsn: "file:" + filepath.ToSlash(path) + "?", key: key}
+	return armCommitGate(t, &commitGate{dsn: commitGateDSN(path), table: "notes", key: key})
+}
+
+// gateTaskCommitsOf is [gateCommitsOf] for a task row: it arms on the write of
+// a task whose text column starts with words, which is what a brief's
+// amendment (prepended to the description) writes.
+func gateTaskCommitsOf(t *testing.T, path, words string) *commitGate {
+	t.Helper()
+	return armCommitGate(t, &commitGate{dsn: commitGateDSN(path), table: "tasks", key: words, prefix: true})
+}
+
+func commitGateDSN(path string) string { return "file:" + filepath.ToSlash(path) + "?" }
+
+func armCommitGate(t *testing.T, gate *commitGate) *commitGate {
+	t.Helper()
 	gate.armed.Store(true)
 	commitGates.Lock()
 	commitGates.next++
@@ -120,12 +143,12 @@ func hookCommitGate(conn sqlite.ExecQuerierContext, dsn string) error {
 // pointer its C callbacks are called through (cFuncPointer in modernc.org/sqlite).
 func cFunc[T any](f T) uintptr { return *(*uintptr)(unsafe.Pointer(&struct{ f T }{f})) }
 
-// gatePreUpdate marks the transaction when it inserts a note row any of whose
-// columns is the armed key. It reads the row through the pre-update API and
-// runs no SQL.
+// gatePreUpdate marks the transaction when it writes a row of the gate's table
+// any of whose text columns matches the armed words. It reads the new row
+// through the pre-update API and runs no SQL.
 func gatePreUpdate(tls *libc.TLS, id, db uintptr, op int32, _, table uintptr, _, _ int64) {
 	gate := commitGateByID(id)
-	if gate == nil || !gate.armed.Load() || op != sqlite3.SQLITE_INSERT || libc.GoString(table) != "notes" {
+	if gate == nil || !gate.armed.Load() || (op != sqlite3.SQLITE_INSERT && op != sqlite3.SQLITE_UPDATE) || libc.GoString(table) != gate.table {
 		return
 	}
 	slot := tls.Alloc(int(unsafe.Sizeof(uintptr(0))))
@@ -138,11 +161,18 @@ func gatePreUpdate(tls *libc.TLS, id, db uintptr, op int32, _, table uintptr, _,
 		// it through unsafe.Add is how a uintptr address becomes a pointer
 		// without the conversion vet rightly refuses for Go memory.
 		value := *(*uintptr)(unsafe.Add(unsafe.Pointer(nil), slot))
-		if sqlite3.Xsqlite3_value_type(tls, value) == sqlite3.SQLITE_TEXT && libc.GoString(sqlite3.Xsqlite3_value_text(tls, value)) == gate.key {
+		if sqlite3.Xsqlite3_value_type(tls, value) == sqlite3.SQLITE_TEXT && gate.matches(libc.GoString(sqlite3.Xsqlite3_value_text(tls, value))) {
 			gate.marked.Store(true)
 			return
 		}
 	}
+}
+
+func (g *commitGate) matches(text string) bool {
+	if g.prefix {
+		return strings.HasPrefix(text, g.key)
+	}
+	return text == g.key
 }
 
 // gateCommit answers nonzero for a marked transaction, which is SQLite's own
