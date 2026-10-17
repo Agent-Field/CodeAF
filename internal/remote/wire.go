@@ -1231,6 +1231,14 @@ type Welcome struct {
 	// says nothing about where the message came from, rather than showing a
 	// fact the record will not hold.
 	QueuedMarks bool `json:"queuedMarks,omitempty"`
+	// AppTaskReceipt says this engine answers [MethodAppTaskAction] asked with
+	// its receipt flag by a TYPED note outcome, so an error it still sends on
+	// that call was raised before the engine's door and is a refusal.
+	//
+	// ABSENCE IS false, AND false MAKES EVERY ANSWER UNKNOWN. An engine that
+	// predates it flattened a failure after delivery into the same text as a
+	// refusal, and a surface that handed those words back would send them twice.
+	AppTaskReceipt bool `json:"appTaskReceipt,omitempty"`
 
 	// SteerOwner says this engine CHECKS THE CONVERSATION A SEND WAS WRITTEN FOR
 	// ([TaskSteerArgs.Session]) against the one it actually has open, and refuses
