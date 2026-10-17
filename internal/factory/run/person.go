@@ -104,6 +104,74 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time) error {
 	return nil
 }
 
+// AnswerUnheld is a person's answer to a question on a job no worker holds. An
+// approve question's no is the SEND BACK the warm runner makes (back in
+// loop.go): the step before the gate runs again in a new round, the gate waits
+// again after it, and the words are kept on the item's notes so that round's
+// brief carries them. A yes never passes more than the one gate it answers, and
+// nothing here starts a run: the job is queued for a worker to pull. Every
+// other question is kept for the step's next round, as KeepAnswer does.
+func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if it.QKind != factory.QKindApprove {
+		return KeepAnswer(it, yes, words, now)
+	}
+	if yes {
+		if err := AnswerHeld(it, true, now); err != nil {
+			return err
+		}
+		it.State = factory.StateQueued
+		return nil
+	}
+	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" {
+		return fmt.Errorf("%s is not waiting on you", it.Ref())
+	}
+	gate, prev := approveBackTarget(it.Stream)
+	if gate < 0 {
+		// A shape this does not know: the ordinary no, which asks again.
+		if err := AnswerHeld(it, false, now); err != nil {
+			return err
+		}
+		it.State = factory.StateQueued
+		return nil
+	}
+	if prev < 0 {
+		// Take down the question before stopping, as the warm runner does.
+		if err := AnswerHeld(it, false, now); err != nil {
+			return err
+		}
+		stopStored(it, now)
+		return nil
+	}
+	words = strings.TrimSpace(words)
+	it.Question, it.QKind = "", ""
+	it.Asking = nil
+	if words != "" {
+		it.Notes = append(it.Notes, words)
+	}
+	rewindToStep(it, gate, prev, words, now)
+	it.State = factory.StateQueued
+	return nil
+}
+
+// approveBackTarget finds the approve step a no answers and the finished step
+// before it. The step waiting is the gate itself; the shape older workers
+// stored, the finished step waiting with the gate pending right after it, is
+// read the same way, on the same terms repairMisfiledGate asks. A gate of -1 is
+// a shape not recognised; a prev of -1 is no step to send back to.
+func approveBackTarget(s *factory.Stream) (gate, prev int) {
+	if s == nil || s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
+		return -1, -1
+	}
+	ph := s.Phases[s.Cur]
+	if ph.Kind == factory.StageGate {
+		return s.Cur, previousWork(s.Phases, s.Cur)
+	}
+	if ph.Result != nil && ph.Result.Done && s.Cur+1 < len(s.Phases) && s.Phases[s.Cur+1].Kind == factory.StageGate && s.Phases[s.Cur+1].State == factory.PhasePending {
+		return s.Cur + 1, s.Cur
+	}
+	return -1, -1
+}
+
 // repairMisfiledGate mends the one stored shape older workers wrote: the
 // approve question filed against the finished step BEFORE the gate, which left
 // that step waiting and the gate pending. It is deliberately narrow, because it
