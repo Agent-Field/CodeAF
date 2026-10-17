@@ -81,17 +81,30 @@ func jobPath(job int, rest string) string {
 
 // write sends body to path once and reads the factory's answer.
 func (h *appFactoryHub) write(ctx context.Context, id, path string, body any) (appFactoryAnswer, error) {
-	row, token, err := h.credentialed(ctx, id)
+	data, err := h.post(ctx, id, path, body)
 	if err != nil {
 		return appFactoryAnswer{}, err
 	}
+	var out appFactoryAnswer
+	// A yes whose body cannot be read is still a yes: the action happened.
+	_ = json.Unmarshal(data, &out)
+	return out, nil
+}
+
+// post is the one send behind every job write: it returns the body of a
+// factory's yes, and a refusal or an unconfirmed outcome as the wire error.
+func (h *appFactoryHub) post(ctx context.Context, id, path string, body any) ([]byte, error) {
+	row, token, err := h.credentialed(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	raw, err := json.Marshal(body)
 	if err != nil {
-		return appFactoryAnswer{}, appwire.Errorf(appwire.CodeBadParams, "that is not a request a factory can take")
+		return nil, appwire.Errorf(appwire.CodeBadParams, "that is not a request a factory can take")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, row.URL+path, bytes.NewReader(raw))
 	if err != nil {
-		return appFactoryAnswer{}, appwire.Errorf(appwire.CodeBadParams, "that is not a request a factory can take")
+		return nil, appwire.Errorf(appwire.CodeBadParams, "that is not a request a factory can take")
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
@@ -101,26 +114,23 @@ func (h *appFactoryHub) write(ctx context.Context, id, path string, body any) (a
 	}
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return appFactoryAnswer{}, appFactoryWriteError(err)
+		return nil, appFactoryWriteError(err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, appFactorySmall+1))
 	if err != nil {
-		return appFactoryAnswer{}, appwire.Errorf(appwire.CodeUncertain, "the factory stopped answering; the action may have happened, so read the job before trying again")
+		return nil, appwire.Errorf(appwire.CodeUncertain, "the factory stopped answering; the action may have happened, so read the job before trying again")
 	}
 	reply := appFactoryReply{status: resp.StatusCode, header: resp.Header, body: data}
 	if int64(len(data)) > appFactorySmall {
 		// An answer this size is not the factory's: whether it acted is unknown.
-		return appFactoryAnswer{}, appwire.Errorf(appwire.CodeUncertain, "the factory's answer is too large to read; read the job before trying again")
+		return nil, appwire.Errorf(appwire.CodeUncertain, "the factory's answer is too large to read; read the job before trying again")
 	}
 	if reply.status < 200 || reply.status >= 300 {
-		return appFactoryAnswer{}, appFactoryActionFailure(reply)
+		return nil, appFactoryActionFailure(reply)
 	}
-	var out appFactoryAnswer
-	// A yes whose body cannot be read is still a yes: the action happened.
-	_ = json.Unmarshal(data, &out)
 	h.touch(id)
-	return out, nil
+	return data, nil
 }
 
 // appFactoryWriteError tells a request that never left from one that may have.
