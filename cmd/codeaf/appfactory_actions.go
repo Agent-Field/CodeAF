@@ -59,6 +59,7 @@ const (
 	factoryVerbUndo          = "undo"
 	factoryVerbRequestChange = "request_changes"
 	factoryVerbRetryPublish  = "retry_publish"
+	factoryVerbMerge         = "merge"
 )
 
 // appFactoryAnswer is the part of a factory's yes this layer reads. The
@@ -304,6 +305,16 @@ func (b *appBackend) FactoryJobRequestChanges(ctx context.Context, p appwire.Fac
 
 func (b *appBackend) FactoryJobRetryPublish(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRetryPublish, p.Job, factoryVerbRetryPublish, guardBody{p.Expect})
+}
+
+// FactoryJobMerge presses Merge. The factory's merge gate decides and its
+// refusal comes back whole; a merge it takes waits with Undo, then rides the
+// job's lease to the runner that carries it out.
+func (b *appBackend) FactoryJobMerge(ctx context.Context, p appwire.FactoryJobMergeParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActMerge, p.Job, factoryVerbMerge, struct {
+		Commit string      `json:"commit,omitempty"`
+		Expect *api.Expect `json:"expect,omitempty"`
+	}{p.Commit, p.Expect})
 }
 
 func (b *appBackend) FactoryJobStepStop(ctx context.Context, p appwire.FactoryJobStepParams) (appwire.FactoryJobActed, error) {
