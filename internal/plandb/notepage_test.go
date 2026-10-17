@@ -739,8 +739,9 @@ func TestNotesPageFieldCeilingsAreExactAndRefusalsStayBounded(t *testing.T) {
 	}
 }
 
-// A cursor or a task id longer than any id can be is refused before the
-// database is touched, and the error does not echo it.
+// A cursor or a task id longer than a page will look up is refused before the
+// database is touched, and the error does not echo it. The task id is too
+// large, not absent.
 func TestNotesPageRefusesOverlongCursorAndTaskWithoutEchoingThem(t *testing.T) {
 	store := planOpen(t, "")
 	defer store.Close()
@@ -749,7 +750,7 @@ func TestNotesPageRefusesOverlongCursorAndTaskWithoutEchoingThem(t *testing.T) {
 	if _, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: "a", After: long, Limit: 5}); !errors.Is(err, ErrNoteCursor) || len(err.Error()) > 200 {
 		t.Fatalf("overlong cursor: err = %v", err)
 	}
-	if _, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: long, Limit: 5}); !errors.Is(err, ErrTaskNotFound) || len(err.Error()) > 200 {
+	if _, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: long, Limit: 5}); !errors.Is(err, ErrNoteTaskIDTooLarge) || errors.Is(err, ErrTaskNotFound) || len(err.Error()) > 200 {
 		t.Fatalf("overlong task: err = %v", err)
 	}
 }
@@ -958,5 +959,54 @@ func TestNotePageRowMaxIsTheSumOfTheColumnCeilings(t *testing.T) {
 	}
 	if sum != NotePageRowMax {
 		t.Fatalf("NotePageRowMax = %d, the column ceilings sum to %d", NotePageRowMax, sum)
+	}
+}
+
+// A task id validID would admit, padded to any length, is refused by the hard
+// cap before validID and before the database. The store is CLOSED, so an
+// answer of ErrClosed would mean the id reached the read; the cap answers
+// first, distinctly, without echoing the id.
+func TestNotesPagePaddedTaskIDIsTooLargeBeforeTheStoreIsAsked(t *testing.T) {
+	store := planOpen(t, "")
+	store.Close()
+	padded := "t-x" + strings.Repeat(" ", 1<<20)
+	if !validID(padded) {
+		t.Fatal("the fixture must be an id validID admits")
+	}
+	_, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: padded, Limit: 5})
+	if !errors.Is(err, ErrNoteTaskIDTooLarge) || errors.Is(err, ErrClosed) || errors.Is(err, ErrTaskNotFound) || len(err.Error()) > 200 {
+		t.Fatalf("a padded 1 MiB task id on a closed store: err = %v, want ErrNoteTaskIDTooLarge first", err)
+	}
+}
+
+// A live root padded to exactly the cap is read; one byte past it the same
+// kind of live root is refused as too large, never answered not-found, and
+// nothing is trimmed to make it fit.
+func TestNotesPageTaskIDCapIsExactForALiveRoot(t *testing.T) {
+	for _, size := range []int{NotePageTaskIDMax, NotePageTaskIDMax + 1} {
+		root := "t-root" + strings.Repeat(" ", size-len("t-root"))
+		if len(root) != size || !validID(root) {
+			t.Fatalf("the fixture root of %d bytes must be legal", size)
+		}
+		store, err := Open(filepath.Join(t.TempDir(), "plan.db"), "plan-test", root, "The run", "drive the plan")
+		if err != nil {
+			t.Fatal(err)
+		}
+		note, err := store.AddNote(root, "w", "on the root")
+		if err != nil {
+			store.Close()
+			t.Fatal(err)
+		}
+		page, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: root, Limit: 5})
+		store.Close()
+		if size <= NotePageTaskIDMax {
+			if err != nil || len(page.Notes) != 1 || page.Notes[0].ID != note.ID || page.Notes[0].TaskID != root {
+				t.Fatalf("a live root of %d bytes: page %#v err %v, want its note", size, page, err)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrNoteTaskIDTooLarge) || errors.Is(err, ErrTaskNotFound) || len(page.Notes) != 0 || len(err.Error()) > 200 {
+			t.Fatalf("a live root of %d bytes: page %#v err %v, want ErrNoteTaskIDTooLarge", size, page, err)
+		}
 	}
 }

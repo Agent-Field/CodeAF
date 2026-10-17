@@ -21,10 +21,19 @@ const (
 	NotePageBodyMax = 32 << 10
 	// NotePageMetaMax is the largest agent, project, chat or client key a page
 	// will read. NotePageFixedMax is the largest note id, timestamp or sender:
-	// all of them are short by construction. It is also the length up to which
-	// a task id or cursor is taken to the database without a second look.
+	// all of them are short by construction. It is also the longest cursor a
+	// page will look up, and the length up to which a task id is taken to the
+	// database without asking validID first.
 	NotePageMetaMax  = 4 << 10
 	NotePageFixedMax = 64
+	// NotePageTaskIDMax is the longest task id a page will take to the
+	// database at all, checked BEFORE validID and before any SQL: binding a
+	// string copies all of it into SQLite's own heap, and validID trims spaces
+	// before it measures, so without this a padded id of any length would be
+	// copied. A canonical id is at most 64 bytes and a root keeps its "t-"
+	// (66), so this leaves room for a root stored with padding. A longer id is
+	// ErrNoteTaskIDTooLarge, not ErrTaskNotFound: such a root can exist.
+	NotePageTaskIDMax = 256
 	// NotePageRowMax is the largest row a page can admit, the sum of the
 	// ceilings of the eight columns in noteCols: the body, four meta fields
 	// (agent, project, chat, client key) and three fixed ones (id, timestamp,
@@ -69,13 +78,23 @@ type duplicateNoteID struct{}
 func (duplicateNoteID) Error() string { return "note cursor names more than one note" }
 func (duplicateNoteID) Is(target error) bool { return target == ErrNoteCursor }
 
-// ErrNoteBusy is what a page answers when the store's lock is held by anything
-// else in this process at the moment of asking: a writer, another reader, or
-// Close. IT IS NOT AN EMPTY PAGE AND IT DOES NOT WAIT: no page comes back, so
+// ErrNoteBusy is what a page answers when the store's lock is not free to take
+// at the moment of asking: held by anything else in this process (a writer,
+// another reader, Close), or, while the mutex is in starvation mode, being
+// handed from its holder straight to a queued waiter, when it is briefly
+// unlocked but promised to that waiter. Both are real contention; an
+// uncontended lock never answers this. IT IS NOT AN EMPTY PAGE AND IT DOES NOT WAIT: no page comes back, so
 // the caller's cursor has not moved, and the caller asks again from the same
 // After on its own schedule. A blocking wait here would sit behind a writer's
 // whole load and save of the store, which no context can interrupt.
 var ErrNoteBusy = errors.New("plan store is in use; ask for the note page again")
+
+// ErrNoteTaskIDTooLarge is what a page answers for a task id longer than
+// NotePageTaskIDMax, before validID and before the database is asked. IT IS NOT
+// A CLAIM THAT THE TASK IS ABSENT: a root id is stored as given, so a padded
+// root that long may be live; this says only that a page will not look it up.
+// The id is neither echoed nor kept, and nothing is trimmed to make it fit.
+var ErrNoteTaskIDTooLarge = errors.New("task id is longer than a note page will look up")
 
 // ErrTaskNotFound is what a page of a task the database does not hold answers.
 // It is read from the same snapshot as the notes, so a task deleted a moment
@@ -110,7 +129,8 @@ func (e *NoteTooLargeError) Is(target error) bool { return target == ErrNoteTooL
 // NotePageAsk is one bounded read of one task's notes, oldest first.
 type NotePageAsk struct {
 	// TaskID names the task exactly as the store keeps it, the way Notes
-	// matches it: no "t-" is stripped and nothing is trimmed.
+	// matches it: no "t-" is stripped and nothing is trimmed. Longer than
+	// NotePageTaskIDMax is ErrNoteTaskIDTooLarge, whether or not it exists.
 	TaskID string
 	// After is the exclusive cursor: the id of a note of this task, as a
 	// previous page returned it in Cursor. "" reads from the first note. THE
@@ -134,9 +154,9 @@ type NotePageAsk struct {
 	// memory, so it may call the store. A skipped note still moves Cursor. It
 	// runs at most ScanMax times per call, and it may run on the one row after
 	// a full page: false offers that row again next call, true moves the cursor
-	// past it, which is right because a skipped row is never delivered. ITS OWN COST IS THE CALLER'S: the
-	// page bounds how often it runs, not how long it takes, and the caller's
-	// context is checked after it.
+	// past it, which is right because a skipped row is never delivered. ITS
+	// OWN COST IS THE CALLER'S: the page bounds how often it runs, not how
+	// long it takes, and the caller's context is checked after it.
 	Skip func(Note) bool
 	// ScanMax is the most rows this call may examine when Skip is set, 0 for
 	// NotePageScanMax and otherwise 1..NotePageScanMax. Without a Skip no
@@ -198,12 +218,15 @@ type noteRow struct {
 
 // noteSelect is the select list: for every column its stored length in bytes
 // and then its value ONLY IF that length is within the column's ceiling. THE
-// LENGTH IS MEASURED IN THE QUERY, BEFORE ANYTHING IS LOADED OR COPIED: a value
-// over its ceiling comes back as NULL, so the Go side never allocates it.
-// octet_length counts bytes, not characters, and on a bare column SQLite
-// (3.43 and later; the pinned driver bundles 3.45.1) takes it from the record
-// header without reading the value's overflow pages, so an oversized body is
-// not read by the engine either. The CASE reads the value only when it fits.
+// LENGTH IS MEASURED IN THE QUERY, BEFORE THE VALUE IS COPIED: a value over its
+// ceiling comes back as NULL, so the Go side never allocates it. octet_length
+// counts bytes, not characters, and on a bare column SQLite (3.43 and later;
+// the pinned driver bundles 3.45.1 on every release target) takes it from the
+// record header without reading the value's overflow pages, and the CASE reads
+// the value only when it fits, so THE SELECT LIST never loads an oversized
+// value. That is the select list only: the WHERE comparisons on id and task_id
+// load those two columns in full for every row they scan (see NotesPage). A
+// driver pin without octet_length fails the query loudly, never silently.
 // A store written before client_id has no such column; a read-only reader never
 // migrates, so it is selected as the empty key, as loadNotes does.
 func noteSelect(keyed bool) string {
@@ -232,12 +255,14 @@ func noteSelect(keyed bool) string {
 //
 // WHAT IS BOUNDED, and what is not. Bounded: the rows returned, the rows and
 // bytes buffered, the bytes copied out of any one field (a field over its
-// ceiling is measured from its record header and never loaded or copied), the
+// ceiling is never copied out, and the select list measures it from its record
+// header without loading it), the task id and cursor bound into the query, the
 // size of every error, and the cursor's length. NOT bounded: the rest of the
 // work SQLite does inside the read. `notes` has no index, so resolving a
-// cursor and walking one task's rows scan the table. That work is limited only
-// by what the driver does with the caller's context; this is not a bounded-CPU
-// walk. A (task_id, seq) index would shorten it and is separate engineering:
+// cursor (WHERE id = ?) and walking one task's rows (WHERE task_id = ?) scan
+// the table, and those comparisons load the id and task_id of every row they
+// scan in full, oversized ones included. That work is limited only by what the
+// driver does with the caller's context; this is not a bounded-CPU walk. A (task_id, seq) index would shorten it and is separate engineering:
 // it is a schema write, not made here.
 //
 // THE LOCK IS NEVER WAITED FOR. The store's mutex is held only while the
@@ -257,11 +282,16 @@ func noteSelect(keyed bool) string {
 // come back first, with More true and the cursor before it; the call that
 // starts at it fails. Every failure returns an error and no page.
 func (s *Store) NotesPage(ctx context.Context, ask NotePageAsk) (NotePage, error) {
-	// An id the length of any id goes to the database as it is. A longer one
-	// goes only if validID admits it, because the root id is stored as given
-	// and validID trims a "t-" and spaces before it measures: such a root is
-	// live and must not be answered not-found. Every stored task id passed
-	// validID when it was written, so nothing else can be found.
+	// The hard cap comes first, before validID reads the id and before any
+	// bind copies it. Within the cap, an id the length of any id goes to the
+	// database as it is; a longer one goes only if validID admits it, because
+	// the root id is stored as given and validID trims a "t-" and spaces
+	// before it measures, so such a root is live and must not be answered
+	// not-found. Every stored task id passed validID when it was written, so
+	// a long id it refuses cannot be found.
+	if len(ask.TaskID) > NotePageTaskIDMax {
+		return NotePage{}, ErrNoteTaskIDTooLarge
+	}
 	if ask.TaskID == "" || (len(ask.TaskID) > NotePageFixedMax && !validID(ask.TaskID)) {
 		return NotePage{}, ErrTaskNotFound
 	}
