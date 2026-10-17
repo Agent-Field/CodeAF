@@ -1,0 +1,109 @@
+name: Homebrew packages
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/homebrew.yml"
+      - "README.md"
+      - "homebrew/Formula/**"
+      - "homebrew/Casks/**"
+      - "scripts/homebrew_release.py"
+      - "scripts/homebrew_test_support.py"
+      - "scripts/check_homebrew_formula.py"
+      - "scripts/test_homebrew_formula.py"
+      - "scripts/check_homebrew_cask.py"
+      - "scripts/test_homebrew_cask.py"
+      - "scripts/test_homebrew_release.py"
+  push:
+    branches:
+      - dev
+    paths:
+      - ".github/workflows/homebrew.yml"
+      - "README.md"
+      - "homebrew/Formula/**"
+      - "homebrew/Casks/**"
+      - "scripts/homebrew_release.py"
+      - "scripts/homebrew_test_support.py"
+      - "scripts/check_homebrew_formula.py"
+      - "scripts/test_homebrew_formula.py"
+      - "scripts/check_homebrew_cask.py"
+      - "scripts/test_homebrew_cask.py"
+      - "scripts/test_homebrew_release.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test Homebrew validators
+        run: |
+          python -m unittest \
+            scripts.test_homebrew_formula \
+            scripts.test_homebrew_cask \
+            scripts.test_homebrew_release
+      - name: Validate Formula against the official release
+        run: python scripts/check_homebrew_formula.py
+      - name: Validate Cask against the official release
+        run: python scripts/check_homebrew_cask.py
+      - name: Check patch whitespace
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git diff --check "${BASE_SHA}...HEAD"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            git diff --check "${BEFORE}..HEAD"
+          else
+            git diff --check HEAD^ HEAD
+          fi
+
+  local-tap:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - macos-14-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit and install from a temporary local tap
+        run: |
+          set -euo pipefail
+          brew tap-new --no-git codeaf-ci/local
+          tap_dir="$(brew --repository)/Library/Taps/codeaf-ci/homebrew-local"
+          mkdir -p "$tap_dir/Formula" "$tap_dir/Casks"
+          cp homebrew/Formula/codeaf.rb "$tap_dir/Formula/codeaf.rb"
+          cp homebrew/Casks/codeaf.rb "$tap_dir/Casks/codeaf.rb"
+
+          brew audit --formula --strict codeaf-ci/local/codeaf
+          brew install --formula codeaf-ci/local/codeaf
+          brew test --formula codeaf-ci/local/codeaf
+          brew uninstall --formula codeaf-ci/local/codeaf
+
+          brew audit --cask --strict codeaf-ci/local/codeaf
+          brew install --cask codeaf-ci/local/codeaf
+          brew test --cask codeaf-ci/local/codeaf
+          brew uninstall --cask codeaf-ci/local/codeaf
+          brew untap codeaf-ci/local
