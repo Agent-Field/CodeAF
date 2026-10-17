@@ -96,6 +96,12 @@ const (
 	shareRetrySettle = "the receipt could not be settled in time; retry with the same operation_id"
 )
 
+// The refusals whose words must say exactly which limit was met, and no other.
+const (
+	shareReasonProvenance  = "this call's run, message or call id is longer than a share receipt records, so it cannot be shared under its own identity"
+	shareReasonPlanInvalid = "the files could not be recorded as valid shared rows (a row would be too long, or a file's facts disagree); nothing was recorded"
+)
+
 // publishShare runs one operation to its settlement.
 func publishShare(ctx context.Context, target shareTarget, operationID string, paths []string) ShareResult {
 	result := ShareResult{OperationID: operationID}
@@ -103,8 +109,13 @@ func publishShare(ctx context.Context, target shareTarget, operationID string, p
 	if err == nil {
 		err = ValidateShareOperationID(operationID)
 	}
-	if err == nil {
-		err = validateShareProvenance(target.prov)
+	if err == nil && validateShareProvenance(target.prov) != nil {
+		// THE CALL'S OWN IDENTITY IS KEPT OR THE SHARE IS NOT MADE. A run,
+		// message or call id past what a receipt holds is never dropped to
+		// make the row fit: a shared row with its call silently missing would
+		// be attributed to nobody, and the receipt could not replay it truly.
+		result.Status, result.Reason = shareResultInvalid, shareReasonProvenance
+		return result
 	}
 	if err != nil || target.index == "" || target.session == "" {
 		result.Status, result.Reason = shareResultInvalid, shareReason(err, "the arguments are not a share this conversation can record")
@@ -120,8 +131,12 @@ func publishShare(ctx context.Context, target shareTarget, operationID string, p
 	return target.settle(ctx, claim, result)
 }
 
-// shareRefusedClaim reports an admission that took nothing.
+// shareRefusedClaim reports an admission that took nothing, and makes sure of
+// it: a claim admission handed back together with its error is released here,
+// exactly once ([ShareClaim.Release] is idempotent), so no refusal can keep a
+// process slot or the operation's lock.
 func shareRefusedClaim(result ShareResult, claim *ShareClaim, err error) ShareResult {
+	claim.Release()
 	switch {
 	case errors.Is(err, ErrShareOpConflict):
 		result.Status, result.Reason = shareResultConflict, "this operation_id was already used for different paths; choose a new operation_id for a new share"
@@ -147,7 +162,10 @@ func (t shareTarget) settle(ctx context.Context, claim *ShareClaim, result Share
 	}
 	fresh := false
 	switch receipt.Status {
-	case ShareOpAccepted, ShareOpRefused:
+	case ShareOpAccepted:
+		t.announce(claim)
+		return shareResultOf(result, receipt)
+	case ShareOpRefused:
 		return shareResultOf(result, receipt)
 	case ShareOpPending:
 		if reason, ok := t.plan(ctx, claim, receipt); !ok {
@@ -157,7 +175,7 @@ func (t shareTarget) settle(ctx context.Context, claim *ShareClaim, result Share
 	}
 	rows, err := claim.PlannedRows()
 	if err != nil {
-		return shareDescribed(result, claim, shareRetryCheck)
+		return shareUndecided(result, claim, shareRetryCheck)
 	}
 	recorded, reason := t.record(ctx, receipt.Session, rows, fresh)
 	status := ShareOpUnknown
@@ -172,6 +190,36 @@ func (t shareTarget) settle(ctx context.Context, claim *ShareClaim, result Share
 		return result
 	}
 	return shareDescribed(result, claim, reason)
+}
+
+// shareUndecided is a held receipt this call could not take any further. Its
+// durable status may be planned, which is a step of the receipt and NOT an
+// answer a caller is ever given: it is said as unknown — some rows may be
+// recorded, retry with the same operation_id — with the receipt's own files.
+func shareUndecided(result ShareResult, claim *ShareClaim, reason string) ShareResult {
+	result = shareDescribed(result, claim, reason)
+	result.Status = ShareOpUnknown
+	return result
+}
+
+// announce tells the watchers again of every row an ACCEPTED receipt owns. The
+// receipt is accepted only once every row was found on the index by its exact
+// id, so its private plan IS what the index holds; nothing is searched or
+// appended, and the facts said are the plan's own — the original run, call,
+// version and ids. A crash between an append and its announcement would
+// otherwise leave watchers never told. Announcements are at least once:
+// a watcher keys them by id.
+func (t shareTarget) announce(claim *ShareClaim) {
+	if t.emit == nil {
+		return
+	}
+	rows, err := claim.PlannedRows()
+	if err != nil {
+		return
+	}
+	for _, row := range rows {
+		t.emit(row)
+	}
 }
 
 // shareDescribed is the result as the claim's durable receipt now states it.
@@ -205,7 +253,7 @@ func (t shareTarget) plan(ctx context.Context, claim *ShareClaim, receipt ShareR
 	if err := claim.Plan(rows); err != nil {
 		if errors.Is(err, ErrShareOpInvalid) {
 			t.refuse(claim, receipt)
-			return "a file's record would be larger than one deliverable row may be", false
+			return shareReasonPlanInvalid, false
 		}
 		return shareRetryPlan, false
 	}
@@ -319,7 +367,11 @@ func (t shareTarget) record(ctx context.Context, session string, rows []Artifact
 				return recorded, shareRetryCheck
 			}
 			if present {
+				// Found by its exact id: the row is the plan's and is on the
+				// index, but whoever appended it may have died before telling
+				// anyone. It is announced from the plan, never appended again.
 				recorded = append(recorded, row.Deliver.ID)
+				t.announceRow(row)
 				continue
 			}
 		}
@@ -330,11 +382,15 @@ func (t shareTarget) record(ctx context.Context, session string, rows []Artifact
 			return recorded, shareRetryCheck
 		}
 		recorded = append(recorded, row.Deliver.ID)
-		if t.emit != nil {
-			t.emit(row)
-		}
+		t.announceRow(row)
 	}
 	return recorded, ""
+}
+
+func (t shareTarget) announceRow(row Artifact) {
+	if t.emit != nil {
+		t.emit(row)
+	}
 }
 
 // shareRowPresent asks the index for one planned row exactly, by its
@@ -449,8 +505,12 @@ func shareInspectReason(ctx context.Context, err error) string {
 		return "there is no file there"
 	case errors.Is(err, errNotRegular):
 		return "it is not a regular file, or it is reached through a link"
+	case errors.Is(err, errShareFileLarge):
+		return "it is larger than the " + byteLimit(int(shareFileBytes)) + " one file may be"
+	case errors.Is(err, errShareBudgetSpent):
+		return "the files together are larger than the " + byteLimit(int(shareFileBytes)) + " one share may read"
 	case errors.Is(err, ErrShareOpInvalid):
-		return "it is larger than the " + byteLimit(int(shareFileBytes)) + " a share may read"
+		return "it cannot be read as a shared file from here"
 	}
 	return "it changed or could not be read while it was being shared"
 }

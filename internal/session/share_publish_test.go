@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -552,5 +554,153 @@ func TestShareNeverTouchesAGenuineCreatedRow(t *testing.T) {
 	shared, err := FindDeliverable(w.index, w.session, result.RecordedIDs[0], shareSoon())
 	if err != nil || shared.Fact.Origin != DeliverOriginSharedByAgent || shared.Fact.Authored {
 		t.Fatalf("the share is not a shared row of its own: %+v %v", shared.Fact, err)
+	}
+}
+
+// shareEvents attaches a recording hub to the agent: every deliverable and
+// media announcement, in order, as the app adapter would receive them.
+type shareEvent struct {
+	kind, id, run, call string
+}
+
+func shareEvents(agent *Agent) *[]shareEvent {
+	var seen []shareEvent
+	hub := newEventHub()
+	hub.observe = func(event Event) {
+		switch {
+		case event.Kind == EventArtifactUpdate && event.Artifact != nil:
+			seen = append(seen, shareEvent{"deliverable", event.Artifact.ID, event.Artifact.Run, event.Artifact.Call})
+		case event.Kind == EventMediaUpdate && event.Media != nil:
+			seen = append(seen, shareEvent{"media", event.Media.ID, event.Media.Run, event.Media.Call})
+		}
+	}
+	agent.mu.Lock()
+	agent.hub = hub
+	agent.mu.Unlock()
+	return &seen
+}
+
+// TestShareRetryAnnouncesWhatACrashLeftUnannounced: the row reached the index
+// and the process died before telling anyone. The retry finds it by exact id,
+// appends nothing, and announces it from the PLAN — the original ids, run and
+// call. An accepted replay announces it again (at least once), still from the
+// plan, still one line on the index, never a new id.
+func TestShareRetryAnnouncesWhatACrashLeftUnannounced(t *testing.T) {
+	w := newShareWorld(t)
+	w.file(t, "chart.png", pngOfSize(t, 4, 4))
+	target, planned := w.planCrashed(t, "op-announce", "chart.png")
+	row := *planned.Planned[0].Row
+	if err := appendShareRow(target.index, row); err != nil { // appended, then the crash
+		t.Fatal(err)
+	}
+	seen := shareEvents(w.agent)
+	want := []shareEvent{
+		{"media", row.Media.ID, row.Media.Run, "call-crashed"},
+		{"deliverable", row.Deliver.ID, row.Deliver.Run, "call-crashed"},
+	}
+	retry, _ := w.share(t, w.shareCall(t, "call-retry"), "op-announce", "chart.png")
+	if retry.Status != ShareOpAccepted || indexLines(t, w.index) != 1 {
+		t.Fatalf("retry = %+v, %d lines", retry, indexLines(t, w.index))
+	}
+	if !reflect.DeepEqual(*seen, want) {
+		t.Fatalf("the reconcile announced %+v, want %+v", *seen, want)
+	}
+	again, _ := w.share(t, w.shareCall(t, "call-later"), "op-announce", "chart.png")
+	if again.Status != ShareOpAccepted || !again.Replayed || indexLines(t, w.index) != 1 {
+		t.Fatalf("accepted replay = %+v, %d lines", again, indexLines(t, w.index))
+	}
+	if !reflect.DeepEqual(*seen, append(append([]shareEvent{}, want...), want...)) {
+		t.Fatalf("the accepted replay announced %+v", *seen)
+	}
+	if again.Files[0].Media != row.Media.ID || again.RecordedIDs[0] != row.Deliver.ID || again.Files[0].Version != row.Deliver.Version {
+		t.Fatalf("the replay answered new ids or a new version: %+v", again)
+	}
+	got, err := FindMedia(w.index, w.session, row.Media.ID, shareSoon())
+	if err != nil || got.Fact.Origin != MediaShared || got.Fact.Charge != "" || got.Fact.Tool != "call-crashed" {
+		t.Fatalf("the source changed under a replay: %+v %v", got.Fact, err)
+	}
+}
+
+// TestShareAnUndecidedReceiptIsUnknownNeverPlanned: a held receipt whose plan
+// could not be read back this call is durably planned, and planned is a step
+// of the receipt, not a status a caller is ever told. The plain description
+// says planned — which is exactly the leak — and the undecided answer is
+// unknown with the receipt's own files.
+func TestShareAnUndecidedReceiptIsUnknownNeverPlanned(t *testing.T) {
+	w := newShareWorld(t)
+	w.file(t, "a.md", []byte("# a\n"))
+	target, planned := w.planCrashed(t, "op-undecided", "a.md")
+	claim, err := AdmitShareOperation(filepath.Dir(target.index), target.session, "op-undecided", []string{planned.Planned[0].Path}, target.prov, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer claim.Release()
+	if leaked := shareDescribed(ShareResult{}, claim, ""); leaked.Status != ShareOpPlanned {
+		t.Fatalf("the precondition moved: a planned receipt describes as %q", leaked.Status)
+	}
+	got := shareUndecided(ShareResult{OperationID: "op-undecided"}, claim, shareRetryCheck)
+	if got.Status != ShareOpUnknown || got.Reason != shareRetryCheck || len(got.Files) != 1 || got.Files[0].ID != planned.Planned[0].ID {
+		t.Fatalf("undecided = %+v", got)
+	}
+}
+
+// TestShareRefusedAdmissionReleasesWhatItHeld: an admission that answers an
+// error with a held claim gives back its slot and its lock, exactly once.
+func TestShareRefusedAdmissionReleasesWhatItHeld(t *testing.T) {
+	root := t.TempDir()
+	dir := shareOpDir(root, "s", "op-held")
+	before := len(shareOpSlots)
+	claim, err := holdShareOperation(dir, root, time.Now().Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shareOpSlots) != before+1 {
+		t.Fatal("the hold took no slot")
+	}
+	shareRefusedClaim(ShareResult{}, claim, ErrShareOpInvalid)
+	claim.Release() // a second release is a no-op, never a second slot given back
+	if len(shareOpSlots) != before {
+		t.Fatalf("slots %d after the refusal, want %d", len(shareOpSlots), before)
+	}
+	again, err := holdShareOperation(dir, root, time.Now().Add(time.Second))
+	if err != nil {
+		t.Fatalf("the refused claim kept its lock: %v", err)
+	}
+	again.Release()
+}
+
+// TestShareRefusalsSayWhichLimitWasMet: a file over the per-file cap, files
+// that together spend the budget, and any other invalidity are three different
+// sentences, and none claims a limit that was not the one met.
+func TestShareRefusalsSayWhichLimitWasMet(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "a.bin")
+	os.WriteFile(path, []byte("abc"), 0o600)
+	budget := int64(2)
+	if _, err := inspectSharedFile(context.Background(), []string{root}, path, &budget); !errors.Is(err, errShareBudgetSpent) || !errors.Is(err, ErrShareOpInvalid) {
+		t.Fatalf("a spent budget answered %v", err)
+	}
+	ctx := context.Background()
+	large, spent, other := shareInspectReason(ctx, errShareFileLarge), shareInspectReason(ctx, errShareBudgetSpent), shareInspectReason(ctx, ErrShareOpInvalid)
+	if !strings.Contains(large, "one file") || !strings.Contains(spent, "together") || strings.Contains(other, "larger") || large == spent {
+		t.Fatalf("reasons: %q / %q / %q", large, spent, other)
+	}
+	if strings.Contains(shareReasonPlanInvalid, "larger than one deliverable row") {
+		t.Fatal("a plan refusal still claims one cause for every invalidity")
+	}
+}
+
+// TestShareRefusesRatherThanDropsALongCallIdentity: a call id longer than a
+// receipt records is not dropped to make the share fit; the share is refused
+// with the reason, before any receipt or row exists.
+func TestShareRefusesRatherThanDropsALongCallIdentity(t *testing.T) {
+	w := newShareWorld(t)
+	w.file(t, "a.md", []byte("# a\n"))
+	got, bad := w.share(t, w.shareCall(t, strings.Repeat("c", shareOpIDMax+1)), "op-long", "a.md")
+	if !bad || got.Status != shareResultInvalid || got.Reason != shareReasonProvenance || indexLines(t, w.index) != 0 {
+		t.Fatalf("long call id = %+v", got)
+	}
+	if _, err := LoadShareReceipt(filepath.Dir(w.index), w.session, "op-long"); !errors.Is(err, ErrShareOpMissing) {
+		t.Fatalf("a refused identity left a receipt: %v", err)
 	}
 }

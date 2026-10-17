@@ -2047,8 +2047,12 @@ media and not Markdown/Mermaid text is `kind: "file"` with its sniffed `mime`
 (a PDF is `file`, `application/pdf`, and is not a media source). A worker's
 file is copied into the conversation's own artifacts folder: `path`/`open` are
 the copy and `original` names the file it was read from (display only).
-`deliverable.changed` `created` follows each shared row once it is durably on
-the index and found again by its exact id.
+`deliverable.changed` `created` (and `media.changed` for a picture, sound or
+video) follows each shared row once it is durably on the index and found again
+by its exact id — and again on a retry or replay of the same `operation_id`,
+from the receipt's own plan with the original ids, so a crash between the
+append and the announcement is not silent. Shared announcements are at least
+once: dedupe on `id`.
 
 `deliverables.get`, `.keep` and `.snapshot` answer the bare `Deliverable`; params
 are flat (`dir`, not a nested destination). `version`/`expect_version` pin the
