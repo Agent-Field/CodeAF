@@ -250,7 +250,7 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 	return "stopped " + stopBecause(taskStopName(id, notice.Title), why) + " — nothing was driving it any more", true, nil
 }
 
-// sayToRunRow is a message to a row a run owns, and it reports whether the
+// sayToRunRowFrom is a message to a row a run owns, and it reports whether the
 // number is a run's at all: false sends the caller on to the answer that there
 // is no such task.
 //
@@ -260,11 +260,7 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 // words as a note on their task's page, which is where a run's worker reads
 // what it is told between its steps (the page's own box writes the same note,
 // [Agent.PlanNote]). A row nothing drives says so, and says it can be stopped.
-func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (SteerReceipt, bool, error) {
-	return a.sayToRunRowFrom(id, text, origin, spokenSource{})
-}
-
-// sayToRunRowFrom is [Agent.sayToRunRow] for a send that carries its source.
+//
 // Only the source's opaque client id is used here: it is committed with the note
 // in the store's one transaction ([plandb.Store.AddPersonNoteKeyed]), so the
 // note's key and the note exist together or not at all. The conversation's own

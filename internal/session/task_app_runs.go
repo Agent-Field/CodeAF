@@ -48,7 +48,7 @@ func appRunRowState(row TaskNotice) string {
 
 // appRunRowKey is the store's id for a run row's task: the plan task it was
 // published for, or its own number, which is the key a run's rows are filed
-// under ([Agent.sayToRunRow]).
+// under ([Agent.sayToRunRowFrom]).
 func appRunRowKey(row TaskNotice) string {
 	if key := strings.TrimSpace(row.PlanTask); key != "" {
 		return planTaskID(key)
@@ -179,41 +179,40 @@ func appTrajectoryLines(steps []AppTaskStep) []string {
 }
 
 // appRunAction is a person's verb on a run row.
-func (a *Agent) appRunAction(row TaskNotice, intent AppTaskIntent) error {
+func (a *Agent) appRunAction(row TaskNotice, intent AppTaskIntent) (SteerReceipt, error) {
 	switch intent.Action {
 	case "note", "brief":
 		if strings.TrimSpace(intent.Text) == "" {
-			return errors.New("words required")
+			return SteerReceipt{}, errors.New("words required")
 		}
 		// THE NOTE'S KEY RIDES WITH IT. A row a run owns is not a node, so its
 		// words go straight to the run's store, where the key is committed in the
 		// same transaction as the note; anything else is the node door's.
 		source := spokenSource{clientID: AppNoteClientID(intent.ClientID)}
 		if a.taskNode(row.ID) == nil {
-			if _, owned, err := a.sayToRunRowFrom(row.ID, strings.TrimSpace(intent.Text), fromPerson, source); owned {
-				return err
+			if said, owned, err := a.sayToRunRowFrom(row.ID, strings.TrimSpace(intent.Text), fromPerson, source); owned {
+				return said, err
 			}
 		}
-		_, err := a.sayToTask(row.ID, intent.Text, fromPerson, source)
-		return err
+		return a.sayToTask(row.ID, intent.Text, fromPerson, source)
 	case "stop":
 		if a.DropParkedTask(row.ID) {
-			return nil
+			return SteerReceipt{}, nil
 		}
 		_, err := a.cancelTask(row.ID, "")
-		return err
+		return SteerReceipt{}, err
 	case "pause", "resume":
-		return a.appHoldRun(row, intent.Action == "pause")
+		return SteerReceipt{}, a.appHoldRun(row, intent.Action == "pause")
 	case "continue":
 		// A run the app's quit left with nothing driving it is picked up where
 		// its store stands ([Agent.ContinueRun]); one already going is fine.
 		if row.State != TaskInterrupted {
-			return nil
+			return SteerReceipt{}, nil
 		}
 		_, err := a.ContinueRun(context.Background(), row.ID)
-		return err
+		return SteerReceipt{}, err
 	}
-	return errors.New("that action is unavailable for a handed-over task")
+	return SteerReceipt{}, errors.New("that action is unavailable for a handed-over task")
 }
 
 // appHoldRun sets or releases a person's hold on a run row's task in the live

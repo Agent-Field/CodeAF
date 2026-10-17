@@ -364,9 +364,10 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 	if node == nil {
 		// A RUN'S ROWS WEAR TASK NUMBERS AND ARE NOT NODES, so the run is asked
 		// before the answer that there is no such task (stoprun.go's
-		// [Agent.sayToRunRow]). A row the rail draws running must never be
-		// answered as though it did not exist.
-		if receipt, owned, err := a.sayToRunRow(id, text, origin); owned {
+		// [Agent.sayToRunRowFrom]). A row the rail draws running must never be
+		// answered as though it did not exist. The source rides along, so a
+		// person's key is committed in the note's own store transaction.
+		if receipt, owned, err := a.sayToRunRowFrom(id, text, origin, source); owned {
 			return receipt, err
 		}
 		return SteerReceipt{}, fmt.Errorf("no task %d in this session", id)
