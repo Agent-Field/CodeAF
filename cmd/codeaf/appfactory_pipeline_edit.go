@@ -69,6 +69,24 @@ func (b *appBackend) FactoryPipelineSource(ctx context.Context, p appwire.Factor
 	if err != nil {
 		return appwire.FactoryPipelineSource{}, err
 	}
+	out, err := b.readPipelineSource(ctx, who, p)
+	if err != nil {
+		return appwire.FactoryPipelineSource{}, err
+	}
+	// THE FACTORY'S CLAIM IS REMEMBERED, per caller, repository, commit and exact
+	// text, and only for a file this engine accepted whole. The preview and the
+	// pull request look it up; the app's own booleans are never consulted.
+	if out.RuntimeFields && out.State == appwire.PipelineSourceFile && out.Editable {
+		h.recordRuntime(p.Factory, who.row.URL, who.token, p.Repo, out.BaseSHA, out.Text)
+	}
+	h.touch(p.Factory)
+	return out, nil
+}
+
+// readPipelineSource is the one GET of the edit-source route, as the caller who
+// is already known, with the reply classified and nothing remembered.
+func (b *appBackend) readPipelineSource(ctx context.Context, who adminWho, p appwire.FactoryPipelineSourceParams) (appwire.FactoryPipelineSource, error) {
+	h := b.factoryHub()
 	// The wait for who is over; the read is made only for the caller who asked.
 	if !h.callerIs(p.Factory, who.token) {
 		return appwire.FactoryPipelineSource{}, appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
@@ -89,12 +107,7 @@ func (b *appBackend) FactoryPipelineSource(ctx context.Context, p appwire.Factor
 	if err := h.staleCredential(p.Factory, who.token); err != nil {
 		return appwire.FactoryPipelineSource{}, err
 	}
-	out, err := classifyPipelineSource(r, p)
-	if err != nil {
-		return appwire.FactoryPipelineSource{}, err
-	}
-	h.touch(p.Factory)
-	return out, nil
+	return classifyPipelineSource(r, p)
 }
 
 // errPipelineSourceRuntimeUnattested is said when the file spells kind, when,
@@ -247,6 +260,14 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 	if !h.callerIs(p.Factory, who.token) {
 		return appwire.FactoryPipelinePreview{}, appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
 	}
+	// A BASE THAT SPELLS A RUNTIME KEY IS EDITED ONLY WHEN THE FACTORY ATTESTED
+	// THESE EXACT BYTES at this commit to this caller. The base comes from the
+	// app, which may be stale or hand-built; the engine's parser reading the
+	// words proves nothing about the runner that will read the merged file.
+	baseAttested := h.runtimeAttestedText(p.Factory, who.row.URL, who.token, p.Repo, p.BaseSHA, p.BaseText)
+	if !baseAttested && pipeline.RuntimeKeysIn(p.BaseText) {
+		return appwire.FactoryPipelinePreview{}, pipelineRuntimeRefusal(p)
+	}
 	ed, err := pipeline.ApplyEdits(p.BaseText, appwire.PipelineEditOps(p.Edits))
 	// The caller is the connection's to the end: a preview made for one who has
 	// since gone is not shown to the next.
@@ -259,6 +280,12 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 			return appwire.FactoryPipelinePreview{}, appwire.Errorf(appwire.CodeEngine, "the edit could not be previewed")
 		}
 		return appwire.FactoryPipelinePreview{}, pipelineEditRefusal(p, bad)
+	}
+	// The same bar for the RESULT: an edit that writes a runtime key into a
+	// legacy file (none does yet) is not previewed for a factory that did not say
+	// it runs them.
+	if !baseAttested && ed.Changed && pipeline.RuntimeKeysIn(ed.Text) {
+		return appwire.FactoryPipelinePreview{}, pipelineRuntimeRefusal(p)
 	}
 	h.touch(p.Factory)
 	out := appwire.FactoryPipelinePreview{Factory: p.Factory, Repo: p.Repo, BaseSHA: p.BaseSHA, Path: factory.PipelineFile,

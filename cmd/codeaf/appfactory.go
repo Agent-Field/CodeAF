@@ -149,6 +149,9 @@ type appFactoryHub struct {
 	// pipelineBusy marks a repository on a connection whose pull request is
 	// being opened (appfactory_pipeline_pr.go), so one press is one request.
 	pipelineBusy map[string]bool
+	// runtimeOK is what the engine remembers of a factory's own say-so that it
+	// runs kind, when, effort and fanout (appfactory_pipeline_runtime.go).
+	runtimeOK map[string]appFactoryRuntimeRecord
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
 	linkSt *linkState
@@ -209,6 +212,7 @@ func (h *appFactoryHub) forgetAll() {
 	h.sessions = map[string]appFactorySession{}
 	h.signIns = map[string]*appFactorySignIn{}
 	h.links = map[string]*appFactoryLink{}
+	h.runtimeOK = nil
 	h.dropAllHeldLocked()
 }
 
