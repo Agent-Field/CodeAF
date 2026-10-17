@@ -15,12 +15,12 @@ import (
 
 // MemoryScopeCount is an active-row count, not the number that rode a model turn.
 type MemoryScopeCount struct {
-	Owner string
-	Count int64
+	Owner string `json:"owner"`
+	Count int64  `json:"count"`
 }
 type MemoryScopeCounts struct {
-	Scopes   []MemoryScopeCount
-	Revision string
+	Scopes   []MemoryScopeCount `json:"scopes"`
+	Revision string             `json:"revision"`
 }
 
 // MemoryCountsFor reads one consistent snapshot without loading any memory text.

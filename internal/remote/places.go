@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -42,6 +43,25 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 	sess.mu.Unlock()
 
 	switch call.Method {
+	case MethodMemoryApplies:
+		select {
+		case memoryAppliesReads <- struct{}{}:
+			defer func() { <-memoryAppliesReads }()
+		default:
+			return nil, true, errors.New("memory readings are busy")
+		}
+		door, ok := sess.current().(applicableMemory)
+		if !ok {
+			return nil, true, errors.New(engineOffWord + "no such memory door")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		snapshot, err := door.ApplicableMemory(ctx)
+		if err != nil {
+			return nil, true, err
+		}
+		payload, err := json.Marshal(snapshot)
+		return payload, true, err
 	case MethodPlacesTaskDelete:
 		args, err := arg[TaskDeleteArgs](call)
 		if err != nil {

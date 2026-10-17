@@ -151,6 +151,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withCrewsOverviewFeature(hello, engine)
 	hello = withProcessFeatures(hello, engine)
 	hello = withProcessActionFeature(hello, engine)
+	hello = withMemoryAppliesFeature(hello, engine)
 	s.Emit(EventHello, hello)
 	if warmer, ok := engine.(Warmer); ok {
 		go warmer.Warm()
