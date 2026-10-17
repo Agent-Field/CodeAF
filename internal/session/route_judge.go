@@ -309,6 +309,11 @@ or
 
   {"work": true, "wide": true, "goal": "...", "acceptance": "...", "checks": ["..."], "why": "..."}
 
+  work   true only when the person gave a direct instruction to do work, in a
+         non-question. Every question is false, including "can we..." and
+         "could you...". Product direction, suggestions, goals and plans are
+         false unless the person directly instructs you to act on them. Judge
+         authorization before effort: a useful or lengthy job is not permission.
   wide   true when the work is BROAD — many files, many sources, several
          independent parts — so the one worker that starts on it is allowed to
          hand the parts out once it has opened the material. Leave it out for
@@ -418,6 +423,11 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 		}
 		asked = steward.Ask()
 	}
+	// A stopped task's result wakes a turn so the session can report what
+	// happened. That reply is not a fresh instruction to start the same work.
+	if user.wake && a.stoppedTaskResultFor(asked) {
+		return judgeRuling{}
+	}
 	// THE FLOOR IS THE ASK, and it is cheaper than a model call. A commit,
 	// an undo, a one-line edit or a single read is answered here; paying a
 	// judge to be told it is work is how F26's commit became a task.
@@ -467,6 +477,29 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 
 	started = true
 	return judgeRuling{start: true, verdict: verdict, turn: turn, ahead: ahead}
+}
+
+// stoppedTaskResultFor reports whether this turn is answering the result of a
+// stopped task that was started from the same request. A new message from the
+// person is a new instruction and remains eligible for the ordinary judge.
+func (a *Agent) stoppedTaskResultFor(asked string) bool {
+	a.mu.Lock()
+	results := append([]uint64(nil), a.turnResults...)
+	a.mu.Unlock()
+	if len(results) == 0 {
+		return false
+	}
+	graph := a.tasker()
+	if graph == nil {
+		return false
+	}
+	for _, id := range results {
+		node := graph.node(id)
+		if node != nil && node.wasStopped() && strings.TrimSpace(node.request()) == strings.TrimSpace(asked) {
+			return true
+		}
+	}
+	return false
 }
 
 // applyRouteJudge is the other half of [Agent.readRouteJudge]: the decision,
