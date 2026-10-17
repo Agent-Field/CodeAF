@@ -26,6 +26,9 @@ import (
 
 const actionHead = "0123456789abcdef0123456789abcdef01234567"
 
+// Credential fixtures must not redact ordinary words in later package tests.
+const actionTestCredential = "factory-actions-fixture-bearer-credential"
+
 // actionFactory is the real /v1 server over a real store. Nothing here can
 // start a model or write to GitHub: Launch only queues, and the seam has no
 // door that opens an issue or a pull request.
@@ -510,7 +513,7 @@ func TestAppFactoryJobActionsAreSentOnceAndSayWhenTheyAreUncertain(t *testing.T)
 		}
 	})
 	redact.Register("secret-in-error")
-	b, conn := attachStub(t, testFactoryHub(t), stub, "tok")
+	b, conn := attachStub(t, testFactoryHub(t), stub, actionTestCredential)
 	one := appwire.FactoryJobActionParams{Factory: conn.ID, Job: 3, Expect: &api.Expect{Version: ptr(2)}}
 	ctx := context.Background()
 	check := func(what, mode_ string, code int, want string) {
@@ -553,7 +556,7 @@ func TestAppFactoryJobActionsAreSentOnceAndSayWhenTheyAreUncertain(t *testing.T)
 // A FACTORY THAT IS NOT THERE IS "unreachable", NOT "uncertain": nothing was sent.
 func TestAppFactoryJobActionOnAClosedFactoryIsUnreachable(t *testing.T) {
 	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {})
-	b, conn := attachStub(t, testFactoryHub(t), stub, "tok")
+	b, conn := attachStub(t, testFactoryHub(t), stub, actionTestCredential)
 	stub.srv.Close()
 	// Force a fresh dial: an idle connection closed during shutdown can instead
 	// return EOF, which is correctly uncertain after a write might have left.
@@ -585,7 +588,7 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 		}
 		w.Write([]byte(`{"factory":{"name":"Stub"},"id":9}`))
 	})
-	b, conn := attachStub(t, testFactoryHub(t), stub, "tok")
+	b, conn := attachStub(t, testFactoryHub(t), stub, actionTestCredential)
 	ctx := context.Background()
 	v := &api.Expect{Version: ptr(7)}
 	f := conn.ID
@@ -610,15 +613,15 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	}
 	mu.Unlock()
 	want := []string{
-		`POST /v1/jobs/4/start_now {"expect":{"version":7}} Bearer tok`,
-		`POST /v1/jobs/4/drop {"expect":{"version":7},"words":"dup"} Bearer tok`,
-		`POST /v1/jobs/4/change_assignee {"assignee":"bob","expect":{"version":7}} Bearer tok`,
-		`POST /v1/jobs/4/priority {"expect":{"version":7},"priority":"low"} Bearer tok`,
-		`POST /v1/jobs/4/raise_budget {"budget":20,"expect":{"version":7}} Bearer tok`,
-		`POST /v1/jobs/4/approve {"commit":"abc1234","edited":true,"expect":{"version":7},"words":"ok"} Bearer tok`,
-		`POST /v1/jobs/4/request_changes {"expect":{"version":7},"words":"redo"} Bearer tok`,
-		`POST /v1/jobs/4/steps/re%20view/rerun {"expect":{"version":7}} Bearer tok`,
-		`POST /v1/jobs {"repo":"o/r","source":"app","text":"B","title":"T"} Bearer tok`,
+		`POST /v1/jobs/4/start_now {"expect":{"version":7}} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/drop {"expect":{"version":7},"words":"dup"} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/change_assignee {"assignee":"bob","expect":{"version":7}} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/priority {"expect":{"version":7},"priority":"low"} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/raise_budget {"budget":20,"expect":{"version":7}} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/approve {"commit":"abc1234","edited":true,"expect":{"version":7},"words":"ok"} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/request_changes {"expect":{"version":7},"words":"redo"} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/steps/re%20view/rerun {"expect":{"version":7}} Bearer ` + actionTestCredential,
+		`POST /v1/jobs {"repo":"o/r","source":"app","text":"B","title":"T"} Bearer ` + actionTestCredential,
 	}
 	if strings.Join(posts, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("requests:\n%s\nwant:\n%s", strings.Join(posts, "\n"), strings.Join(want, "\n"))
