@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/triage"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -24,8 +25,8 @@ const factoryTriageName = "factory triage"
 
 // factoryTriageEvery is the worker's tick: one item read every two seconds
 // while items are waiting, and IdleTicks times that while none are
-// (internal/factory/triage).
-const factoryTriageEvery = 2 * time.Second
+// (internal/factory/triage). It is a variable so a test can shorten it.
+var factoryTriageEvery = 2 * time.Second
 
 // factoryTriage is the one triage worker this process runs, started at most
 // once.
@@ -49,20 +50,30 @@ func startFactoryTriage(ctx context.Context, st *store.Store) {
 		return
 	}
 	factoryTriage.Do(func() {
-		guard.Go("factory/triage", func() {
-			call, release := waitForFactoryTriage(ctx, st, config.Load, factoryWatchEvery)
-			if call == nil {
-				return
-			}
-			defer release()
-			// NOTHING IS LOGGED TO THE SCREEN, for the poll's reason: the
-			// surface owns it in a window and stdout is the protocol in an
-			// engine. An item that could not be read simply has no read.
-			intake := factoryIntake(st)
-			triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{
-				AskFirst: intake.AskFirst, AfterTick: intake.Once,
-			})
-		})
+		guard.Go("factory/triage", func() { runFactoryTriage(ctx, st, factoryIntake) })
+	})
+}
+
+// runFactoryTriage is the body of one triage worker, returning when ctx ends
+// or no key ever resolves. It is the one loop the terminal's process-wide
+// start ([startFactoryTriage]) and the app's per-host start
+// ([appFactoryHost.readLoops]) both run, so the two cannot drift apart; it
+// carries NO once of its own, and who may call it, and how often, is the
+// caller's law. newIntake builds the floor's intake ([factoryIntake] unless a
+// host brings its own), which asks each read what the repository's start
+// rules make of it.
+func runFactoryTriage(ctx context.Context, st *store.Store, newIntake func(*store.Store) *intake.Intake) {
+	call, release := waitForFactoryTriage(ctx, st, config.Load, factoryWatchEvery)
+	if call == nil {
+		return
+	}
+	defer release()
+	// NOTHING IS LOGGED TO THE SCREEN, for the poll's reason: the
+	// surface owns it in a window and stdout is the protocol in an
+	// engine. An item that could not be read simply has no read.
+	in := newIntake(st)
+	triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{
+		AskFirst: in.AskFirst, AfterTick: in.Once,
 	})
 }
 
