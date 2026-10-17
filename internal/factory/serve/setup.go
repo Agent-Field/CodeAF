@@ -22,6 +22,7 @@ import (
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
@@ -153,7 +154,7 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 	if h.seam.GHLogin != nil && h.mode() == api.FactorySolo {
 		login, err := h.seam.GHLogin(ctx)
 		if err == nil && login != "" {
-			path, _ := exec.LookPath("gh")
+			path, _ := forge.LookPath("gh")
 			out.View.GitHub.GH = &api.SetupGH{Login: login, Path: path}
 		}
 	}
@@ -340,7 +341,7 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 		}
 		if credentials := config.AppCredentialSource(); credentials != nil {
 			if body.Source == "gh" {
-				path, err := exec.LookPath("gh")
+				path, err := forge.LookPath("gh")
 				if err != nil {
 					return errors.New("gh is not available")
 				}
