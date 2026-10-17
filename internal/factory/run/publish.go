@@ -75,6 +75,9 @@ func PublishItem(it *factory.Item, edited bool, now time.Time) error {
 	// A retry of a publish that failed starts clean. The approval already
 	// recorded is the one this queue carries.
 	it.PublishError = ""
+	// A new publish is a new head: a merge that failed on the old one says
+	// nothing about it.
+	it.Merging = nil
 	it.State = factory.StateQueued
 	it.MarkPublishing("queued", "", "", now)
 	loopSay(it, now, "said", "approved · publishing")

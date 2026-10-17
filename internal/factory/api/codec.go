@@ -132,6 +132,7 @@ func FromItem(it factory.Item) Job {
 	}
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
+	j.Merge = jobMerge(it)
 	if j.State == "" {
 		j.State = string(it.State)
 	}
@@ -241,6 +242,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		Approve: approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: a.Answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		RejectPlan: a.Answer && planSendsBack(it),
+		Merge:      owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
 	}
 }
 
@@ -248,6 +250,62 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 func planSendsBack(it factory.Item) bool {
 	_, ok := factory.PlanSendsBack(it)
 	return ok
+}
+
+// jobMerge is the job's merging on the wire, absent until the job has a pull
+// request of its own or a pinned policy to show.
+func jobMerge(it factory.Item) *JobMerge {
+	if it.Kind == factory.KindPR || (it.PullRequest == nil && it.MergePolicy == nil && it.Merging == nil) {
+		return nil
+	}
+	out := &JobMerge{}
+	if p := it.MergePolicy; p != nil {
+		out.Auto, out.Method = p.Auto, p.Method
+	}
+	if m := it.Merging; m != nil {
+		run := &JobMergeRun{State: m.State, By: m.By, Auto: m.Auto, Rule: m.Rule, Why: m.Why, Commit: m.Commit, Method: m.Method}
+		if !m.At.IsZero() {
+			at := m.At
+			run.At = &at
+		}
+		if !m.UndoUntil.IsZero() {
+			until := m.UndoUntil
+			run.UndoUntil = &until
+		}
+		out.Run = run
+	}
+	if m := it.Merging; m == nil || m.State == factory.MergeFailed {
+		// Blocked is the gate's answer for a person: the same rule the Merge
+		// verb applies, so a disabled button and a refused verb agree.
+		if v := factory.MergeGate(it, factory.MergeAsk{By: "you"}); !v.OK {
+			out.Blocked = v.Why
+		}
+	}
+	return out
+}
+
+// unmerge reads a job's merging back: the pinned policy and the merge on
+// its way, which a worker needs to carry the merge out.
+func unmerge(m *JobMerge) (*factory.MergePolicy, *factory.MergeRun) {
+	if m == nil {
+		return nil, nil
+	}
+	var policy *factory.MergePolicy
+	if m.Auto || m.Method != "" {
+		policy = &factory.MergePolicy{Auto: m.Auto, Method: m.Method}
+	}
+	r := m.Run
+	if r == nil {
+		return policy, nil
+	}
+	run := &factory.MergeRun{State: r.State, By: r.By, Auto: r.Auto, Rule: r.Rule, Why: r.Why, Commit: r.Commit, Method: r.Method}
+	if r.At != nil {
+		run.At = *r.At
+	}
+	if r.UndoUntil != nil {
+		run.UndoUntil = *r.UndoUntil
+	}
+	return policy, run
 }
 
 // jobAsk prefers the stored ask. A GitHub issue with no stored ask is derived
@@ -308,6 +366,7 @@ func ToItem(j Job) factory.Item {
 		Activity: mapList(d.Activity, toActivity),
 	}
 	it.PullRequest = toPR(j.PR)
+	it.MergePolicy, it.Merging = unmerge(j.Merge)
 	if j.Draft != nil {
 		it.Draft = *j.Draft
 	}
@@ -414,6 +473,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
 			return PRReview{By: r.By, State: r.State, At: r.At}
 		}),
+		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
 	if !pr.MergedAt.IsZero() {
 		at := pr.MergedAt
@@ -436,6 +496,7 @@ func toPR(pr *PR) *factory.PullRequest {
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
 			return factory.PRReview{By: r.By, State: r.State, At: r.At}
 		}),
+		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
 	if pr.MergedAt != nil {
 		out.MergedAt = *pr.MergedAt
@@ -493,6 +554,9 @@ func FromRecipe(r factory.Recipe) Pipeline {
 			p.Adapt[string(k)] = string(m)
 		}
 	}
+	if r.Merge != (factory.MergePolicy{}) {
+		p.Merge = &MergeBlock{Auto: r.Merge.Auto, Method: r.Merge.Method}
+	}
 	return p
 }
 
@@ -512,6 +576,9 @@ func toRecipe(p Pipeline) factory.Recipe {
 		for k, m := range p.Adapt {
 			r.Adapt[factory.Kind(k)] = factory.AdaptMode(m)
 		}
+	}
+	if m := p.Merge; m != nil {
+		r.Merge = factory.MergePolicy{Auto: m.Auto, Method: m.Method}
 	}
 	return r
 }

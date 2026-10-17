@@ -340,6 +340,12 @@ func stand(it *factory.Item, signals []api.WorkerSignal) func(*run.Runner, int) 
 			it.State = factory.StateLanded
 			trailer := s.Words
 			return func(r *run.Runner, id int) error { return r.Publish(id, trailer) }
+		case lease.SignalMerge:
+			// A MERGE THE FACTORY'S GATE PASSED: this machine reads the pull
+			// request again, runs the same gate and merges only that commit.
+			it.State = factory.StateShipped
+			commit := s.Words
+			return func(r *run.Runner, id int) error { return r.Merge(id, commit) }
 		}
 	}
 	if begun(it.Stream) {

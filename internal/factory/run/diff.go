@@ -66,6 +66,7 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	if len(cur.Notes) > len(prev.Notes) && reflect.DeepEqual(cur.Notes[:len(prev.Notes)], prev.Notes) {
 		r.Notes = append([]string(nil), cur.Notes[len(prev.Notes):]...)
 	}
+	r.Merge = mergeMoved(prev, cur)
 	r.Log = without(r.Log, echoes(prev, r))
 	return r, !reflect.DeepEqual(r, factory.RunReport{})
 }

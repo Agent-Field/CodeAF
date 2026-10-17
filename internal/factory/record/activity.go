@@ -39,6 +39,12 @@ func enrich(e *Event) {
 			e.Verb = "merged"
 		case PRClosed:
 			e.Verb = "closed"
+		case MergeAsked:
+			e.Verb = "pressed merge"
+		case MergeQueued:
+			e.Verb = "sent merge"
+		case MergeRefused:
+			e.Verb = "refused merge"
 		case StepFailed:
 			e.Verb = "failed"
 		case "priority_changed":

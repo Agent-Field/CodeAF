@@ -49,3 +49,25 @@ func (s *Source) mergePull(ctx context.Context, owner, name string, a factory.Ac
 	}
 	return forge.Posted{URL: pr.URL, ID: merged.SHA, Number: pr.Number}, nil
 }
+
+// Follow reads the item's pull request again, fresh, for the merge gate.
+func (s *Source) Follow(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+	if it.PullRequest == nil || it.PullRequest.Number <= 0 {
+		return factory.PullRequest{}, errors.New("this job has opened no pull request")
+	}
+	owner, name, ok := pullRepo(it)
+	if !ok {
+		return factory.PullRequest{}, fmt.Errorf("cannot tell which repository %s is on", it.Ref())
+	}
+	fresh, err := s.FollowPR(ctx, owner, name, it.PullRequest.Number)
+	if err != nil {
+		return factory.PullRequest{}, err
+	}
+	if fresh.Number <= 0 {
+		fresh.Number = it.PullRequest.Number
+	}
+	if fresh.URL == "" {
+		fresh.URL = it.PullRequest.URL
+	}
+	return fresh, nil
+}

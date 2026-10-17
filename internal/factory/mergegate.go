@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -95,6 +96,13 @@ type MergeVerdict struct {
 
 func refuseMerge(why string) MergeVerdict { return MergeVerdict{Why: why} }
 
+// Follower is a source that can read one of its items' pull requests again,
+// fresh. The runner carrying a merge out reads the forge through it right
+// before the gate's second check, so that check never runs on a stale read.
+type Follower interface {
+	Follow(ctx context.Context, it Item) (PullRequest, error)
+}
+
 // MergeGate decides whether the job's pull request may be merged now. It reads
 // only the job; the caller is responsible for the facts being fresh enough
 // for the moment it asks.
@@ -185,6 +193,21 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 		return MergeVerdict{OK: true, Commit: head, Rule: "auto-merge is on in this job's pipeline"}
 	}
 	return MergeVerdict{OK: true, Commit: head, Rule: "merged by @" + NormalizeHandle(ask.By)}
+}
+
+// MergeMerged is a runner's report that the forge merged the pull request.
+// It is never stored as a job's state: the factory clears the merge when it
+// reads the report, and the pull request reads merged.
+const MergeMerged = "merged"
+
+// MergeReport is what the runner carrying a merge out says it did: merging
+// (it has begun), merged (SHA is the merge commit) or failed (Why says what
+// refused it). PR is the pull request as the runner last read it.
+type MergeReport struct {
+	State string
+	SHA   string
+	Why   string
+	PR    *PullRequest
 }
 
 // Mergeable words a pull request carries. "" is not yet known.

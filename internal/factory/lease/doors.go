@@ -3,6 +3,7 @@ package lease
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -288,6 +289,35 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 		return false, err
 	}
 	return run.HabitDue(d.desk.store, repo), nil
+}
+
+// Merge sends a merge the factory's gate passed to the runner that carries
+// it out: m, queued, goes on the job, and its exact commit rides beside the
+// lease as a merge signal, to the job's holder when a worker still holds it
+// (its done keeps the signal and queues the job again), else on the job
+// queued for the next pull. That worker reads the pull request again, runs
+// the same gate, and merges only that commit.
+func (d *Doors) Merge(id int, m factory.MergeRun) error {
+	if m.Commit == "" {
+		return errors.New("a merge names the exact commit to merge")
+	}
+	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if it.State != factory.StateShipped {
+			return false, fmt.Errorf("%s has not opened its pull request", it.Ref())
+		}
+		m.State = factory.MergeQueued
+		m.UndoUntil = time.Time{}
+		if m.At.IsZero() {
+			m.At = now
+		}
+		cp := m
+		it.Merging = &cp
+		if held == nil {
+			it.State = factory.StateQueued
+		}
+		signal(doc, id, Signal{Verb: SignalMerge, Words: m.Commit})
+		return true, nil
+	})
 }
 
 // trailer is the job's recorded approval as its trailer line, read from the

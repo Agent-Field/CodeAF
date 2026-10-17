@@ -52,6 +52,13 @@ const (
 	// opened. The handle, when GitHub named one, is who merged it.
 	PRMerged = "pr_merged"
 	PRClosed = "pr_closed"
+	// MergeAsked is a person pressing Merge, inside its Undo window;
+	// MergeQueued a merge the gate passed and sent to the runner (Detail
+	// names the rule: the person, or the pipeline's auto-merge); and
+	// MergeRefused a merge the gate or the forge refused, with the words.
+	MergeAsked   = "merge_asked"
+	MergeQueued  = "merge_queued"
+	MergeRefused = "merge_refused"
 	// StepFailed is a step that errored. It is not a person's decision. The
 	// detail is code, step and next, so the audit can show what happened.
 	StepFailed      = "step_failed"
@@ -176,7 +183,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BranchDeleted, Undone, Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted:
+	case StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BranchDeleted, Undone, Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}
@@ -186,7 +193,7 @@ func validate(e Event) error {
 		return errors.New("factory record: actor must be person, agent or factory")
 	}
 	switch e.Verb {
-	case "edited steps", "reran step", "put away hand-off", "started", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "unassigned", "requested changes", "merged", "closed", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "deleted branch", "undone", "claimed factory", "granted GitHub read access":
+	case "edited steps", "reran step", "put away hand-off", "started", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "unassigned", "requested changes", "merged", "closed", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "deleted branch", "undone", "claimed factory", "granted GitHub read access":
 	default:
 		return errors.New("factory record: unknown Activity verb")
 	}

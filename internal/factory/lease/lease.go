@@ -60,7 +60,9 @@ type Lease struct {
 	Asleep     bool `json:"asleep,omitempty"`
 	// Publish keeps a collected approval recoverable if the publisher vanishes.
 	Publish string `json:"publish,omitempty"`
-	Handle  string `json:"handle"`
+	// Merge is the commit of a collected merge, kept the same way.
+	Merge  string `json:"merge,omitempty"`
+	Handle string `json:"handle"`
 	// Since is when this hold began. HeartbeatAt is the last renewal. Both
 	// stay on the lease so a restart can still say who is working and when
 	// they were last heard, without a second presence file.
