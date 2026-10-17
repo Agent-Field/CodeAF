@@ -147,6 +147,9 @@ type Recipe struct {
 	// Adapt is how much the plan stage may change an item's stages, per kind.
 	// A kind it does not name is [AdaptFree]; read it through [Recipe.AdaptFor].
 	Adapt map[Kind]AdaptMode
+	// Merge is the pipeline's `merge:` settings; the zero value is auto-merge
+	// off and the forge's own choice of method.
+	Merge MergePolicy
 }
 
 // For is the stage list a kind runs.
@@ -373,6 +376,15 @@ type PullRequest struct {
 	Reviews        []PRReview
 	Required       int
 	Checks         PRChecks
+	// HeadSHA is the commit the pull request's branch points at, Mergeable
+	// whether the forge says it can merge ([MergeableYes], [MergeableNo], or
+	// "" while it has not worked that out), and ChecksRead and ReviewsRead
+	// whether the last follow read those at all. [MergeGate] refuses on any
+	// of them unknown: a fact nobody read is never a yes.
+	HeadSHA     string `json:",omitempty"`
+	Mergeable   string `json:",omitempty"`
+	ChecksRead  bool   `json:",omitempty"`
+	ReviewsRead bool   `json:",omitempty"`
 }
 
 // Item is one row on the floor.
@@ -391,6 +403,13 @@ type Item struct {
 	BranchDeletedAt time.Time    `json:",omitempty"`
 	Approval        *Approval    `json:",omitempty"`
 	StopUndo        *StopUndo    `json:",omitempty"`
+	// MergePolicy is the pipeline's merge settings as they stood when the
+	// proof was approved: approving publishes, and the approval says whether
+	// the pull request it opens may merge on its own. nil is auto-merge off.
+	MergePolicy *MergePolicy `json:",omitempty"`
+	// Merging is a merge on its way, from Merge (or the pipeline's
+	// auto-merge) until the runner reports what the forge did.
+	Merging *MergeRun `json:",omitempty"`
 
 	// Owners is derived from default-branch CODEOWNERS for the wire and fixture.
 	Owners  []string `json:",omitempty"`

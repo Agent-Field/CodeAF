@@ -71,6 +71,9 @@ type File struct {
 	Steps         map[string]Step
 	Fixed         []string
 	Rules         []string
+	// Merge is the `merge:` key. AUTO-MERGE IS OFF unless a file turns it on;
+	// a personal file may only turn it off ([Merge]).
+	Merge factory.MergePolicy
 	// Source is defaults, file or markdown. From is where it was read
 	// (factory.FromMainBranch and its siblings), empty until [Load].
 	Source string
@@ -227,6 +230,8 @@ type presence struct {
 	pipeline      map[factory.Kind]bool
 	fixed         bool
 	rules         bool
+	mergeAuto     bool
+	mergeMethod   bool
 }
 
 // Defaults is the file a repository with nothing of its own runs.
@@ -324,6 +329,7 @@ func (f File) Recipe() factory.Recipe {
 		Adapt:  copyAdapt(f.markdownAdapt),
 		Policy: append([]string(nil), f.Rules...),
 		ByKind: map[factory.Kind][]factory.Stage{},
+		Merge:  f.Merge,
 	}
 	for _, problem := range f.Problems {
 		r.Problems = append(r.Problems, problem.Error())
