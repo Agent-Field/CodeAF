@@ -89,6 +89,58 @@ func ProcessLogLocation(convDir string, n JobNotice) (anchor string, rel []strin
 	return convDir, rel, nil
 }
 
+// ProcessLogFile is a managed log as it was opened just now: its path, size
+// and revision ([logRevision], the same identity a log read answers), or that
+// the record names none, or that the file it names is not there.
+//
+// THE PATH IS A FACT, NOT A GRANT. It says which file was verified; a reader
+// that opens it later must open it again its own way and compare the revision,
+// because the file can be replaced the instant this one is closed.
+type ProcessLogFile struct {
+	Path     string
+	Size     int64
+	Revision string
+	NoLog    bool
+	Gone     bool
+}
+
+// ProcessLogTarget is a record's managed log ([ProcessLogLocation]), opened
+// the way [ReadProcessLog] opens it and closed again.
+func ProcessLogTarget(convDir string, n JobNotice) (ProcessLogFile, error) {
+	anchor, rel, err := ProcessLogLocation(convDir, n)
+	if err != nil {
+		return ProcessLogFile{}, err
+	}
+	if anchor == "" {
+		return ProcessLogFile{NoLog: true}, nil
+	}
+	return ManagedLogFile(anchor, rel...)
+}
+
+// ManagedLogFile opens anchor/rel… with nothing below the trusted anchor
+// followed through a link, a special file refused without blocking, and the
+// opened file's identity checked against what was inspected; then it reads
+// its size and revision and closes it. A file that is not there is Gone.
+func ManagedLogFile(anchor string, rel ...string) (ProcessLogFile, error) {
+	file, err := openRegularIn(anchor, rel...)
+	if errors.Is(err, fs.ErrNotExist) {
+		return ProcessLogFile{Gone: true}, nil
+	}
+	if err != nil {
+		return ProcessLogFile{}, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return ProcessLogFile{}, err
+	}
+	return ProcessLogFile{
+		Path:     filepath.Join(append([]string{anchor}, rel...)...),
+		Size:     info.Size(),
+		Revision: logRevision(info),
+	}, nil
+}
+
 // ErrProcessLogUnmanaged reports whether err is a refused log location.
 func ErrProcessLogUnmanaged(err error) bool { return errors.Is(err, errProcessLogUnmanaged) }
 

@@ -1,11 +1,15 @@
+//go:build !windows
+
 package session
 
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -292,5 +296,54 @@ func TestACommittedRenderIsNeverReportedStopped(t *testing.T) {
 	}
 	if notesContain(agent, "job 980 was stopped") {
 		t.Fatal("the model was told a committed render was stopped")
+	}
+}
+
+// THE LOG TARGET IS THE MANAGED FILE, OPENED AND IDENTIFIED: a record naming
+// another path is refused, a link or a FIFO in its place is refused without
+// blocking, a missing file is gone, and the revision is the log read's own.
+func TestProcessLogTargetIsTheManagedFileOpenedAndIdentified(t *testing.T) {
+	dir := t.TempDir()
+	n := managedLog(t, dir, 5, "hello\n")
+	got, err := ProcessLogTarget(dir, n)
+	if err != nil || got.Path != n.LogPath || got.Size != 6 || got.Revision == "" || got.Gone || got.NoLog {
+		t.Fatalf("target: %+v %v", got, err)
+	}
+	read, err := ReadProcessLog(dir, n, ProcessLogAsk{}, nil)
+	if err != nil || read.Revision != got.Revision {
+		t.Fatalf("revision differs from the log read's: %q %q %v", read.Revision, got.Revision, err)
+	}
+	if _, err := ProcessLogTarget(dir, JobNotice{ID: 5, LogPath: filepath.Join(t.TempDir(), "5.log")}); !ErrProcessLogUnmanaged(err) {
+		t.Fatalf("a record naming another path: %v", err)
+	}
+	if got, err := ProcessLogTarget(dir, JobNotice{ID: 6}); err != nil || !got.NoLog {
+		t.Fatalf("no log: %+v %v", got, err)
+	}
+	missing := JobNotice{ID: 7, LogPath: filepath.Join(dir, placeLogs, droppingJobs, "7.log")}
+	if got, err := ProcessLogTarget(dir, missing); err != nil || !got.Gone || got.Path != "" {
+		t.Fatalf("missing: %+v %v", got, err)
+	}
+	outside := filepath.Join(t.TempDir(), "secret")
+	_ = os.WriteFile(outside, []byte("secret"), 0o600)
+	linked := JobNotice{ID: 8, LogPath: filepath.Join(dir, placeLogs, droppingJobs, "8.log")}
+	if err := os.Symlink(outside, linked.LogPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ProcessLogTarget(dir, linked); err == nil {
+		t.Fatal("a link in the log's place was followed")
+	}
+	fifo := JobNotice{ID: 9, LogPath: filepath.Join(dir, placeLogs, droppingJobs, "9.log")}
+	if err := syscall.Mkfifo(fifo.LogPath, 0o600); err != nil {
+		t.Skip("no FIFOs here")
+	}
+	done := make(chan error, 1)
+	go func() { _, err := ProcessLogTarget(dir, fifo); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a FIFO was accepted as a log")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a FIFO in the log's place blocked the target")
 	}
 }
