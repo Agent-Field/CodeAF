@@ -60,6 +60,10 @@ type Store struct {
 	// committed plan — another process's write included — and run beside a
 	// writer holding the write lock rather than behind it.
 	rdb *sql.DB
+	// commit is how transact ends a transaction; nil is tx.Commit. It is a seam
+	// only so a test can make the one step that may fail AFTER the write
+	// happened fail ([Store.FailCommitsForTest]).
+	commit func(*sql.Tx) error
 }
 
 // Open loads the plan at path, or creates one when the database does not exist.
@@ -2263,11 +2267,42 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 	if err := saveState(tx, next); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
-		return err
+	commit := s.commit
+	if commit == nil {
+		commit = (*sql.Tx).Commit
+	}
+	if err := commit(tx); err != nil {
+		// A COMMIT THAT FAILS IS NOT A WRITE THAT DID NOT HAPPEN. The log frames
+		// may already be durable when the sync after them fails, and the next
+		// open replays them, so the change can be on the disk under an error.
+		// Everything before this line fails before any effect and keeps its own
+		// error; this one wears [ErrCommitUncertain] and the original cause.
+		return fmt.Errorf("%w: %w", ErrCommitUncertain, err)
 	}
 	s.data = next
 	return nil
+}
+
+// ErrCommitUncertain wraps the error of a transaction's COMMIT. The change may
+// or may not be in the database: a caller that must not do the work twice treats
+// it as "unknown", never as "refused". Errors raised before the commit (the
+// lock, the load, the change itself, the save) do not wear it; they are raised
+// before any effect.
+var ErrCommitUncertain = errors.New("the plan store could not confirm that the change was committed")
+
+// FailCommitsForTest makes every later commit on this store fail with err after
+// the change was written into the transaction, the way a failed sync does. A nil
+// err restores the real commit. The transaction is rolled back, so the store
+// itself holds nothing; the tests that need "the effect landed anyway" reopen
+// nothing and assert only the typed answer.
+func (s *Store) FailCommitsForTest(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err == nil {
+		s.commit = nil
+		return
+	}
+	s.commit = func(*sql.Tx) error { return err }
 }
 
 // errIfClosed is the refusal every method makes on a store Close has already

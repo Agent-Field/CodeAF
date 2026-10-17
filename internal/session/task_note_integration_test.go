@@ -189,3 +189,81 @@ func TestAPlanTaskNoteThroughTheAppDoorKeepsItsKeyOnThePage(t *testing.T) {
 		t.Fatalf("page keys = %q", keys)
 	}
 }
+
+// A COMMIT THAT FAILS MAY FOLLOW THE EFFECT, so the app is told UNKNOWN and the
+// words are never sent again. The refusals before the commit stay refusals.
+func TestAKeyedRunRowNoteWhoseCommitFailsIsUnknown(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	registerBeltRunEngine(t, newBatchRunDouble())
+	dir := t.TempDir()
+	agent := batchAgent(t, dir)
+	stand := taskStand{dir: agent.config.Workspace, mode: TaskModeWorktree}
+	if err := agent.startKnownTaskRun(context.Background(), 62, "the run", "brief", nil, stand, ""); err != nil {
+		t.Fatalf("start the run: %v", err)
+	}
+	agent.beltMu.Lock()
+	live := agent.beltRun.store
+	agent.beltMu.Unlock()
+	live.FailCommitsForTest(errors.New("disk I/O error"))
+
+	receipt := agent.AppTaskActionReceipt(AppTaskIntent{ID: "62", Action: "note", Text: "same words", ClientID: "k-commit"})
+	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "k-commit" || receipt.Reason == "" {
+		t.Fatalf("a run row note whose commit failed = %+v, want unknown", receipt)
+	}
+	// A refusal BEFORE the commit is still a refusal: a task the store lacks.
+	missing := agent.AppTaskActionReceipt(AppTaskIntent{ID: "63", Action: "note", Text: "same words", ClientID: "k-none"})
+	if missing.Outcome != AppTaskRefused {
+		t.Fatalf("a note to a task that is not there = %+v, want refused", missing)
+	}
+	// The effect was rolled back here; a real failed sync would leave it. Either
+	// way the answer was typed from the sentinel, and the next real commit works.
+	live.FailCommitsForTest(nil)
+	again := agent.AppTaskActionReceipt(AppTaskIntent{ID: "62", Action: "note", Text: "same words", ClientID: "k-after"})
+	if again.Outcome != AppTaskDelivered {
+		t.Fatalf("the store after a failed commit = %+v", again)
+	}
+}
+
+func TestAPlanTaskNoteWhoseCommitFailsIsUnknown(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "ask-chat", plandb.TaskSpec{ID: "child", Title: "Write handler", Description: "replace the lookup"})
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, nil)
+	armPlanStore(t, agent, path, "ask-chat")
+	rows, err := agent.AppTasks()
+	if err != nil || len(rows) == 0 {
+		t.Fatalf("AppTasks = %v, %v", rows, err)
+	}
+	id := ""
+	for _, row := range rows {
+		if row.Title == "Write handler" {
+			id = row.ID
+		}
+	}
+	plan := agent.graph().planForPages()
+	plan.mu.Lock()
+	plan.afterOpen = func(s *plandb.Store) { s.FailCommitsForTest(errors.New("disk I/O error")) }
+	plan.mu.Unlock()
+
+	receipt := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "note", Text: "same words", ClientID: "p-commit"})
+	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "p-commit" {
+		t.Fatalf("a plan note whose commit failed = %+v, want unknown", receipt)
+	}
+	// The same door refuses a task that is not there, before any commit.
+	gone := agent.AppTaskActionReceipt(AppTaskIntent{ID: "999", Action: "note", Text: "same words", ClientID: "p-gone"})
+	if gone.Outcome != AppTaskRefused {
+		t.Fatalf("a plan note to nothing = %+v, want refused", gone)
+	}
+}
+
+// Only the commit wears the sentinel: the store's own refusals keep their words.
+func TestOnlyACommitFailureIsUncertain(t *testing.T) {
+	refused := errors.New("task \"x\" not found")
+	if commitUncertainAsUnanswered(refused) != refused {
+		t.Fatal("a pre-commit refusal was rewritten")
+	}
+	err := commitUncertainAsUnanswered(fmt.Errorf("%w: %w", plandb.ErrCommitUncertain, errors.New("fsync")))
+	if !errors.Is(err, ErrSendUnanswered) {
+		t.Fatalf("a commit failure = %v, want ErrSendUnanswered", err)
+	}
+}

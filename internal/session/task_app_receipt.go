@@ -1,6 +1,11 @@
 package session
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
+)
 
 // AppTaskOutcome is what became of a person's words sent to a task, as the road
 // that took them reported it. It is read off the producer's own values — the
@@ -79,4 +84,17 @@ func appTaskReceiptOf(said SteerReceipt, err error, key string) AppTaskReceipt {
 		return AppTaskReceipt{Outcome: AppTaskUnknown, Reason: err.Error(), ClientID: key}
 	}
 	return AppTaskReceipt{Outcome: AppTaskRefused, Reason: err.Error(), ClientID: key}
+}
+
+// commitUncertainAsUnanswered keeps a plan-store commit that failed from being
+// read as a refusal. The sync after the write can fail with the note already
+// durable, so the answer is the one a send nobody answered gets
+// ([ErrSendUnanswered]): kept under its key and never sent again blind. Every
+// other error passes through untouched, so the store's pre-commit refusals stay
+// refusals, and nothing here reads a sentence.
+func commitUncertainAsUnanswered(err error) error {
+	if errors.Is(err, plandb.ErrCommitUncertain) {
+		return fmt.Errorf("%w: %w", ErrSendUnanswered, err)
+	}
+	return err
 }

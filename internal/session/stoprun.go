@@ -290,7 +290,7 @@ func (a *Agent) sayToRunRowFrom(id uint64, text string, origin messageOrigin, so
 			_, err = run.store.AddNote(key, plandb.NoteAgentChat, text)
 		}
 		if err != nil {
-			return SteerReceipt{}, true, err
+			return SteerReceipt{}, true, commitUncertainAsUnanswered(err)
 		}
 		return SteerReceipt{Landing: RunNotePickupWord}, true, nil
 	}

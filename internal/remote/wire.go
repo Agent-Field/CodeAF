@@ -1233,7 +1233,8 @@ type Welcome struct {
 	QueuedMarks bool `json:"queuedMarks,omitempty"`
 	// AppTaskReceipt says this engine answers [MethodAppTaskAction] asked with
 	// its receipt flag by a TYPED note outcome, so an error it still sends on
-	// that call was raised before the engine's door and is a refusal.
+	// that call was raised before the engine's door and is a refusal. A panic inside the
+	// door is answered as a typed unknown, never as an error ([appTaskReceiptGuarded]).
 	//
 	// ABSENCE IS false, AND false MAKES EVERY ANSWER UNKNOWN. An engine that
 	// predates it flattened a failure after delivery into the same text as a
