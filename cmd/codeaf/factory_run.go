@@ -104,7 +104,10 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 	// manager and stage conversations must not keep the first window's crew.
 	setFactoryProcess(func() { factoryProcess.parent = parent })
 	factoryProcess.once.Do(func() {
-		turns := factoryShapeTurnsFrom(st, workspace, profileDir, factoryWorkerParent)
+		source := &factoryParentSource{raw: factoryWorkerParent, profile: profileDir}
+		turns := factoryShapeTurnsFrom(st, workspace, profileDir, source.Config)
+		turns.refusal = source.Refusal
+		turns.liveOK = factoryLiveOK(factoryWorkerParent, profileDir)
 		setFactoryProcess(func() { factoryProcess.shape = factoryShapeDoor(st, workspace, profileDir, turns) })
 		if strings.TrimSpace(env.Get(factoryNoWorkerEnv)) == "1" {
 			return
