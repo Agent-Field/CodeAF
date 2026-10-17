@@ -243,9 +243,8 @@ func (a *Agent) AppTaskAction(intent session.AppTaskIntent) error {
 
 // appTaskReceiptDoor is an engine that types a note's outcome
 // ([session.Agent.AppTaskActionReceipt]). The handler asserts it to answer a
-// call that asked for the receipt, and the welcome asserts it to tell the
-// surface that it may read this engine's refusals as refusals
-// ([Welcome.AppTaskReceipt]).
+// call that asked for the receipt. The welcome advertises the typed answer
+// ([Welcome.AppTaskReceipt]); it never attributes an untyped error.
 type appTaskReceiptDoor interface {
 	AppTaskActionReceipt(session.AppTaskIntent) session.AppTaskReceipt
 }
@@ -283,8 +282,8 @@ func appTaskActionAnswer(agent any, door appTaskDoor, call Frame, intent session
 	if !ok {
 		// THE CALL ASKED FOR A TYPED OUTCOME AND THIS AGENT CANNOT GIVE ONE, so
 		// the plain door is never called: its error is a flattened text that may
-		// follow the effect, and under the welcome flag the client reads an error
-		// as a refusal. A refusal raised here is raised before any effect.
+		// follow the effect. This refusal is before any effect, but the client
+		// conservatively reads its untyped error as unknown and never resends.
 		return nil, errAppTaskNoReceiptDoor
 	}
 	receipt := appTaskReceiptGuarded(receipts, intent)
@@ -303,9 +302,9 @@ const appTaskReceiptWentWrongWord = "the engine failed while taking that note, s
 // appTaskReceiptGuarded calls the receipt door and turns a panic inside it into
 // a typed UNKNOWN. THE PANIC IS NOT PRE-DISPATCH: the door may already have
 // written the direction or handed it to a worker, and the generic recover in
-// [server.invoke] would answer an error, which a client under the welcome flag
-// reads as a refusal and hands back to the person to send twice. The stack
-// still goes to the log.
+// [server.invoke] would lose the typed outcome and its client key in an
+// untyped error. Both stay unknown, but this receipt preserves their identity.
+// The stack still goes to the log.
 func appTaskReceiptGuarded(door appTaskReceiptDoor, intent session.AppTaskIntent) (receipt session.AppTaskReceipt) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
