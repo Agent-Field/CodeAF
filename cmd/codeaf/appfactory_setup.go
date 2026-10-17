@@ -20,20 +20,38 @@ package main
 // made for this launch and held in memory, and publishes the address through
 // the same discovery record, so a terminal started later joins it.
 //
-// SETUP STARTS NOTHING. The host is quiet ([appFactoryHost.quiet]): no
-// triage, which calls a model, and no GitHub poll. The runner election is
-// never entered, so no job can run. Issues are read into Backlog by the
-// factory's own setup worker, and a job starts only through factory.job_start.
+// SETUP, START AND A COLD RESUME START NOTHING. Until the explicit run below
+// the host is quiet ([appFactoryHost.quiet]): no triage, which calls a model,
+// no GitHub poll, no intake and no runner: no job starts by itself, and none
+// runs. Setup reads issues into Backlog; a person may queue one, which waits
+// for the runner. Only the explicit run below ends the quiet.
 //
 // ONLY AN EXPLICIT RUN STARTS A RUNNER. factory.local_run is the one door that
 // starts this engine's worker loop ([appFactoryHost.workers]) on the factory it
 // serves: the loop the terminal's windows and the app's team connections
-// already use, behind the same worker lock (one runner per home), taking the
-// jobs a person started with factory.job_start. It is not started at launch, by
-// factory.local_start, or by setup, and it is refused when another codeaf
-// serves the factory (that codeaf's own runner takes its jobs). Its model and
-// its key are the engine's own: the app's keys in memory ([config.AppCredentials])
-// and the profile's model settings, the same road the worker has always read.
+// already use, behind the same worker lock (one runner per home). It is not
+// started at launch, by factory.local_start, or by setup, and it is refused
+// when another codeaf serves the factory (that codeaf's own runner takes its
+// jobs). Its model and its key are the engine's own: the app's keys in memory
+// ([config.AppCredentials]) and the profile's model settings, the same road
+// the worker has always read.
+//
+// THE RUN IS ALSO THE CONSENT TO THE REPOSITORY'S START RULES. After Run has
+// checked whose GitHub this is, it turns on [appFactoryHost.readLoops] for the
+// factory THIS engine serves, once per host: the GitHub poll, so issues filed
+// after setup reach Backlog, and triage, the cheap model read of each new
+// item. After every poll and every triage tick the intake then applies the
+// repository's own start rules (its factory.yaml): a New item whose labels,
+// size and cost fall inside them is launched with no further call to
+// factory.job_start, and this host's runner takes it and spends. An item
+// outside them waits, or asks first. So Run starts no job by itself, but from
+// then on a job may start without a person; before Run none can, and
+// factory.job_start still starts any job by hand. The model never authorizes:
+// triage only reads and proposes, the rules alone decide, and triage asks the
+// saved model strictly (a saved one-model policy it cannot meet is a refusal,
+// never another model). A second run starts nothing again; quitting stops both
+// loops with the host; a host made later in the same process starts its own. An
+// engine that joined another codeaf's service never reads for it.
 //
 // QUITTING ENDS THE SERVICE, NOT THE CHOICE. [appBackend.closeLocalFactory] runs
 // with the engine's Close: the runner is told to stop and waited for a bounded
@@ -52,8 +70,9 @@ package main
 // before factory.list, factory.local_status or a read of that connection is
 // answered. It serves the same floor again on a new port, under the same id,
 // with a new bearer, and starts no runner, job, triage, model call or GitHub
-// request. A profile with no Resume row stays unstarted; detaching the row ends
-// the choice; and another codeaf that holds the election is never joined or
+// request (not even the reading above, until an explicit run, so no start rule
+// fires either). A profile with no Resume row stays unstarted; detaching the
+// row ends the choice; and another codeaf that holds the election is never joined or
 // duplicated by a resume. A profile whose release predates the row's Resume
 // mark keeps nothing to resume from, and starts again with factory.local_start.
 //
@@ -81,6 +100,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
+	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -127,6 +148,9 @@ type appLocalFactory struct {
 	rules      func(ctx context.Context, repo, dir string) (pipeline.File, error)
 	seamHook   func(factory.Seam) factory.Seam
 	parent     func() session.Config
+	// pollSource replaces the poll's GitHub source (appFactoryHost.pollSource).
+	pollSource func(ctx context.Context) *factorygithub.Source
+	newIntake  func(*store.Store) *intake.Intake
 }
 
 // ── start and status ───────────────────────────────────────────────────────
@@ -185,9 +209,11 @@ func (b *appBackend) resumeLocal(ctx context.Context) {
 	}
 }
 
-// FactoryLocalRun turns this engine's runner on for the factory it serves, and
-// only here. It is idempotent and starts no job: a Backlog job still waits for
-// factory.job_start.
+// FactoryLocalRun turns this engine's runner and reading on for the factory it
+// serves, and only here. It is idempotent and launches no job itself, but it
+// is the consent to the repository's existing start rules: once it has
+// returned, an item those rules allow is launched by the intake without a
+// factory.job_start, and an item they do not allow still waits for one.
 func (b *appBackend) FactoryLocalRun(ctx context.Context, _ string) (appwire.FactoryLocalStatus, error) {
 	id, err := b.localRunnable()
 	if err != nil {
@@ -236,6 +262,9 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 		host := l.host
 		done := make(chan struct{})
 		l.runner, l.runnerDone = true, done
+		// THE HOST SERVES THIS FACTORY (checked above), so its poll, triage and
+		// start-rule intake may start; the host starts them once.
+		host.readLoops()
 		guard.Go("app/factory local runner", func() { defer close(done); host.workers() })
 	}
 	return b.localStatusLocked(), nil
@@ -294,7 +323,7 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 	done := make(chan struct{})
 	close(done)
 	address := "http://" + listener.Addr().String()
-	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: home.Dir(), profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent,
+	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: home.Dir(), profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent, pollSource: l.pollSource, newIntake: l.newIntake,
 		// A runner, once asked for, serves THIS factory with this launch's own bearer.
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
