@@ -171,10 +171,15 @@ func (row PlanTaskRow) StateWord() string {
 // which [PlanTaskNote.Person] marks so a surface can draw the two voices
 // apart.
 type PlanTaskNote struct {
+	// ID is the note's own immutable store id, the key a step's read is joined on.
+	ID     string
 	Author string
 	Person bool
 	Body   string
 	At     time.Time
+	// ClientID is the sender's opaque key as the store kept it ([plandb.Note]).
+	// Empty is unknown, never "no key was sent".
+	ClientID string
 }
 
 // PlanTaskPage is everything a person reads when they open one task: its row,
@@ -914,10 +919,12 @@ func planTaskNotes(store *plandb.Store, taskID string) []PlanTaskNote {
 	out := make([]PlanTaskNote, 0, len(notes))
 	for _, note := range notes {
 		out = append(out, PlanTaskNote{
-			Author: note.Agent,
-			Person: note.From == plandb.NoteFromPerson,
-			Body:   note.Body,
-			At:     note.At,
+			ID:       note.ID,
+			ClientID: note.ClientID,
+			Author:   note.Agent,
+			Person:   note.From == plandb.NoteFromPerson,
+			Body:     note.Body,
+			At:       note.At,
 		})
 	}
 	return out

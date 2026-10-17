@@ -1301,7 +1301,7 @@ const NoteAgentChat = "chat"
 // recorded so a reader can tell an owner's handoff from a bystander's
 // observation.
 func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
-	return s.addNote(taskID, agent, body, NoteFromWorker)
+	return s.addNote(taskID, agent, body, NoteFromWorker, "")
 }
 
 // AddPersonNote leaves a note in the person's own voice. It is AddNote with
@@ -1309,12 +1309,22 @@ func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
 // a `person:` prefix, and it is the same store row, because a note's home is
 // the task either way.
 func (s *Store) AddPersonNote(taskID, body string) (Note, error) {
-	return s.addNote(taskID, "", body, NoteFromPerson)
+	return s.addNote(taskID, "", body, NoteFromPerson, "")
+}
+
+// AddPersonNoteKeyed is [Store.AddPersonNote] with the sender's own opaque name
+// for the note, committed in the SAME transaction as the note: refused, or
+// stored with its key, and never a note whose key is still to be written. The
+// store keeps the key verbatim and never reads meaning into it, matches by it
+// or refuses a repeat of it — two notes with one key are two notes. The caller
+// bounds what a key may be.
+func (s *Store) AddPersonNoteKeyed(taskID, body, clientID string) (Note, error) {
+	return s.addNote(taskID, "", body, NoteFromPerson, clientID)
 }
 
 // addNote is the one road both note writers take: validate, mint an id, and
 // stamp the change on the task the note hangs on.
-func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
+func (s *Store) addNote(taskID, agent, body, from, clientID string) (Note, error) {
 	// One transaction, like every writer: the database's write lock, a fresh
 	// load, the change, the commit. See AddMany for why.
 	s.mu.Lock()
@@ -1334,7 +1344,7 @@ func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
 		next.NextID++
 		note = Note{
 			ID: fmt.Sprintf("n-%08x", next.NextID), TaskID: taskID,
-			Agent: strings.TrimSpace(agent), Body: text, At: now, From: from,
+			Agent: strings.TrimSpace(agent), Body: text, At: now, From: from, ClientID: clientID,
 			Project: next.Tasks[taskID].Project, Chat: next.Tasks[taskID].Chat,
 		}
 		next.Notes = append(next.Notes, note)

@@ -196,6 +196,12 @@ type Note struct {
 	Project string    `json:"project,omitempty"`
 	Chat    string    `json:"chat,omitempty"`
 	At      time.Time `json:"at"`
+	// ClientID is the sender's own opaque name for this note, written in the
+	// SAME transaction as the note so a surface can recognise its message after
+	// a restart without matching by position, text or time. It is immutable and
+	// never consulted by the store. Empty is UNKNOWN: a note from before the
+	// column, a worker's note and a person's unkeyed note all read back empty.
+	ClientID string `json:"client_id,omitempty"`
 }
 
 type ContextEntry struct {

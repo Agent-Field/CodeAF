@@ -92,11 +92,18 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 // the note carries the person as its author the way the store spells that
 // (AddPersonNote), so a surface draws the two voices apart.
 func (a *Agent) PlanNote(id, text string) error {
+	return a.PlanNoteKeyed(id, text, "")
+}
+
+// PlanNoteKeyed is [Agent.PlanNote] with the sender's own opaque name for the
+// note, stored in the note's one transaction. The key is bounded like every
+// note key ([AppNoteClientID]); one the app could not keep is dropped.
+func (a *Agent) PlanNoteKeyed(id, text, clientID string) error {
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
 		if err := a.programHearsNothing(store, task.ID); err != nil {
 			return err
 		}
-		_, err := store.AddPersonNote(task.ID, text)
+		_, err := store.AddPersonNoteKeyed(task.ID, text, AppNoteClientID(clientID))
 		return err
 	})
 }

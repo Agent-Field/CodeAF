@@ -143,7 +143,7 @@ func (a *Agent) appRunDetail(view *AppTaskView, key string) {
 			if note.From != plandb.NoteFromPerson {
 				continue
 			}
-			seen := AppTaskNote{Text: note.Body, From: AppNoteFromPerson}
+			seen := AppTaskNote{Text: note.Body, From: AppNoteFromPerson, ClientID: AppNoteClientID(note.ClientID)}
 			if step, ok := reads[note.ID]; ok {
 				seen.ReadAtStep = &step
 			}
@@ -185,7 +185,16 @@ func (a *Agent) appRunAction(row TaskNotice, intent AppTaskIntent) error {
 		if strings.TrimSpace(intent.Text) == "" {
 			return errors.New("words required")
 		}
-		_, err := a.SteerTask(row.ID, intent.Text)
+		// THE NOTE'S KEY RIDES WITH IT. A row a run owns is not a node, so its
+		// words go straight to the run's store, where the key is committed in the
+		// same transaction as the note; anything else is the node door's.
+		source := spokenSource{clientID: AppNoteClientID(intent.ClientID)}
+		if a.taskNode(row.ID) == nil {
+			if _, owned, err := a.sayToRunRowFrom(row.ID, strings.TrimSpace(intent.Text), fromPerson, source); owned {
+				return err
+			}
+		}
+		_, err := a.sayToTask(row.ID, intent.Text, fromPerson, source)
 		return err
 	case "stop":
 		if a.DropParkedTask(row.ID) {

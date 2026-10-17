@@ -261,6 +261,16 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 // what it is told between its steps (the page's own box writes the same note,
 // [Agent.PlanNote]). A row nothing drives says so, and says it can be stopped.
 func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (SteerReceipt, bool, error) {
+	return a.sayToRunRowFrom(id, text, origin, spokenSource{})
+}
+
+// sayToRunRowFrom is [Agent.sayToRunRow] for a send that carries its source.
+// Only the source's opaque client id is used here: it is committed with the note
+// in the store's one transaction ([plandb.Store.AddPersonNoteKeyed]), so the
+// note's key and the note exist together or not at all. The conversation's own
+// notes carry no key, and a key the app could not keep ([AppNoteClientID]) is
+// dropped rather than stored half-trusted.
+func (a *Agent) sayToRunRowFrom(id uint64, text string, origin messageOrigin, source spokenSource) (SteerReceipt, bool, error) {
 	a.beltMu.Lock()
 	run := a.beltRun
 	owned := run != nil && (run.row == id || slices.Contains(run.joined, id))
@@ -279,7 +289,7 @@ func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (Steer
 		}
 		var err error
 		if origin == fromPerson {
-			_, err = run.store.AddPersonNote(key, text)
+			_, err = run.store.AddPersonNoteKeyed(key, text, AppNoteClientID(source.clientID))
 		} else {
 			_, err = run.store.AddNote(key, plandb.NoteAgentChat, text)
 		}
