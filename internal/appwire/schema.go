@@ -161,6 +161,18 @@ func (g *schemaGen) fields(t reflect.Type, props map[string]any, need *[]string)
 		schema := g.of(f.Type)
 		if words := f.Tag.Get("enum"); words != "" {
 			schema = withEnum(schema, strings.Split(words, ","))
+		} else {
+			// Factory API structs retain their HTTP schema tags when reused by
+			// the app wire. Carry those states into this schema as well.
+			var values []string
+			for _, option := range strings.Split(f.Tag.Get("jsonschema"), ",") {
+				if value, ok := strings.CutPrefix(option, "enum="); ok {
+					values = append(values, value)
+				}
+			}
+			if len(values) > 0 {
+				schema = withEnum(schema, values)
+			}
 		}
 		omit := strings.Contains(","+opts+",", ",omitempty,") || strings.Contains(","+opts+",", ",omitzero,")
 		// A slice or map that is nil, and is not left out, is written as null.

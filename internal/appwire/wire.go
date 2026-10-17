@@ -36,6 +36,10 @@ const (
 	CodeBusy          = "busy"
 	CodeEngine        = "engine"
 	CodeClosed        = "closed"
+	// Factory connection and GitHub grant failures have explicit recovery paths.
+	CodeUnreachable   = "unreachable"
+	CodeSignedOut     = "signed_out"
+	CodeGitHubExpired = "github_expired"
 	// CodeCycle refuses a collections.add that would make a collection hold
 	// itself, at any depth.
 	CodeCycle = "cycle"
