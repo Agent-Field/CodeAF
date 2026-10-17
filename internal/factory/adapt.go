@@ -384,7 +384,7 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		switch {
 		case fixed(i):
 			errs = append(errs, FixedRefusal(st.Name))
-		case st.Name == "proof":
+		case IsProofStage(st):
 			refuse("%s may not skip proof", who)
 		case policyNames(recipe.Policy, st.Name):
 			refuse("%s may not skip %s; the policy names it", who, st.Name)
@@ -473,7 +473,7 @@ func proofStarted(it Item, stages []Stage) bool {
 	return false
 }
 
-// ProofFrozenRefusal is the sentence every road says to an edit of the stages
+// ProofFrozenRefusal is the sentence Edit says to an edit of the stages
 // once proof has started.
 const ProofFrozenRefusal = "proof has started, so the steps can no longer be edited"
 

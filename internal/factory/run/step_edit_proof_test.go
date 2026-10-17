@@ -315,3 +315,19 @@ func TestLandedEditsWithoutStartedProofAreRefusedUnchanged(t *testing.T) {
 		})
 	}
 }
+
+func TestSemanticProofCannotBeSkippedBeforeItStarts(t *testing.T) {
+	for _, st := range []factory.Stage{{Name: "evidence", Kind: factory.StageChat, Until: factory.UntilProven, On: true}, {Name: "prove_again", Kind: factory.StageChat, On: true}, {Name: "Proof", Kind: factory.StageChat, On: true}} {
+		t.Run(st.Name, func(t *testing.T) {
+			it := factory.Item{State: factory.StateNew, Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, On: true}, st}}
+			before := it
+			_, err := EditStepsItem(&it, factory.RunEdit{By: factory.ByYou, Skip: []string{st.Name}}, factory.DefaultRecipe())
+			if err == nil {
+				t.Fatal("semantic proof skip accepted")
+			}
+			if !reflect.DeepEqual(before, it) {
+				t.Fatal("refused proof skip changed item")
+			}
+		})
+	}
+}
