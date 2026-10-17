@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -78,7 +78,7 @@ func Open(path string) (*Store, error) {
 			return nil, collectionsOpenFailure(absolute, err)
 		}
 	}
-	u := url.URL{Scheme: "file", Path: absolute}
+	u := sqliteuri.File(absolute)
 	q := u.Query()
 	// The private file was created above. SQLite must not create another file
 	// with its default permissions if the path is a dangling link or disappears.
