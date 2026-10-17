@@ -4218,3 +4218,27 @@ func TestFactoryItemCardAnswerQuestionsReachTheAnswerSection(t *testing.T) {
 		}
 	}
 }
+
+// A person asking how to merge, or why a factory job will not merge, must
+// reach the section that names Merge, its one check and auto-merge; the
+// pages about merging a task's branch also say "merge".
+func TestFactoryMergeQuestionsReachTheMergeSection(t *testing.T) {
+	const heading = "merge a job's pull request"
+	for _, asked := range []string{
+		"how do I merge the factory job's pull request",
+		"why won't the factory merge my pull request",
+		"factory auto-merge",
+		"can the factory merge automatically when checks pass",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the factory section %q", asked, heading)
+		}
+	}
+}

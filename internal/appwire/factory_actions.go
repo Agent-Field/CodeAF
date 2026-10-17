@@ -82,6 +82,7 @@ const (
 	JobActCreate         = "create"
 	JobActStepStop       = "step_stop"
 	JobActStepRerun      = "step_rerun"
+	JobActMerge          = "merge"
 )
 
 // FactoryJobActionParams names the job and the read it was acted on from. It
@@ -123,6 +124,18 @@ type FactoryJobBudgetParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
 	Budget  float64     `json:"budget"`
+	Expect  *api.Expect `json:"expect"`
+}
+
+// FactoryJobMergeParams presses Merge on ONE job. Commit is the pull
+// request's head the person saw (api.Job.PR.HeadSHA): the factory refuses a
+// merge of any other head. The factory's merge gate decides; its refusal comes
+// back whole, in the gate's words. A merge waits five seconds with Undo
+// (factory.job_undo) before it is sent.
+type FactoryJobMergeParams struct {
+	Factory string      `json:"factory"`
+	Job     int         `json:"job"`
+	Commit  string      `json:"commit,omitempty"`
 	Expect  *api.Expect `json:"expect"`
 }
 
@@ -249,6 +262,7 @@ type FactoryActor interface {
 	FactoryJobCreate(ctx context.Context, p FactoryJobCreateParams) (FactoryJobActed, error)
 	FactoryJobStepStop(ctx context.Context, p FactoryJobStepParams) (FactoryJobActed, error)
 	FactoryJobStepRerun(ctx context.Context, p FactoryJobStepParams) (FactoryJobActed, error)
+	FactoryJobMerge(ctx context.Context, p FactoryJobMergeParams) (FactoryJobActed, error)
 }
 
 func withFactoryActorFeature(hello Hello, e Engine) Hello {
@@ -393,6 +407,17 @@ func prepApprove(p *FactoryJobApproveParams) error {
 	return err
 }
 
+func prepMerge(p *FactoryJobMergeParams) error {
+	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+		return err
+	}
+	p.Commit = strings.ToLower(strings.TrimSpace(p.Commit))
+	if p.Commit != "" && !factoryCommit.MatchString(p.Commit) {
+		return Errorf(CodeBadParams, "commit must be the pull request's head commit id the person saw")
+	}
+	return nil
+}
+
 func prepChanges(p *FactoryJobChangesParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
@@ -470,6 +495,7 @@ func init() {
 		"factory.job_create":          factoryAction("factory.job_create", prepCreate, FactoryActor.FactoryJobCreate),
 		"factory.job_step_stop":       factoryAction("factory.job_step_stop", prepStep, FactoryActor.FactoryJobStepStop),
 		"factory.job_step_rerun":      factoryAction("factory.job_step_rerun", prepStep, FactoryActor.FactoryJobStepRerun),
+		"factory.job_merge":           factoryAction("factory.job_merge", prepMerge, FactoryActor.FactoryJobMerge),
 	} {
 		methods[name] = m
 		factoryActionMethods[name] = m

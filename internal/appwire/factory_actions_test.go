@@ -62,6 +62,9 @@ func (a *actorEngine) FactoryJobRequestChanges(_ context.Context, p FactoryJobCh
 func (a *actorEngine) FactoryJobRetryPublish(_ context.Context, p FactoryJobActionParams) (FactoryJobActed, error) {
 	return a.did("retry_publish", p)
 }
+func (a *actorEngine) FactoryJobMerge(_ context.Context, p FactoryJobMergeParams) (FactoryJobActed, error) {
+	return a.did("merge", p)
+}
 func (a *actorEngine) FactoryJobCreate(_ context.Context, p FactoryJobCreateParams) (FactoryJobActed, error) {
 	return a.did("create", p)
 }
@@ -92,6 +95,7 @@ var factoryActionGood = map[string]string{
 	"factory.job_create":          `{"factory":"f","repo":"o/r","title":"Fix it"}`,
 	"factory.job_step_stop":       `{"factory":"f","job":1,"step":"build",` + guard + `}`,
 	"factory.job_step_rerun":      `{"factory":"f","job":1,"step":"build",` + guard + `}`,
+	"factory.job_merge":           `{"factory":"f","job":1,"commit":"abc1234",` + guard + `}`,
 }
 
 func TestEveryFactoryActionHasAValidRequestHere(t *testing.T) {
