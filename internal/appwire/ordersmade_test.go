@@ -3,17 +3,21 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 )
 
 type madeEngine struct {
 	sendEngine
+	mu    sync.Mutex
 	ask   OrdersMadeAsk
 	block chan struct{}
 }
 
 func (m *madeEngine) PageOrdersMadeIn(_ context.Context, ask OrdersMadeAsk) (*OrdersMadeResult, error) {
+	m.mu.Lock()
 	m.ask = ask
+	m.mu.Unlock()
 	if m.block != nil {
 		<-m.block
 	}

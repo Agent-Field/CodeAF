@@ -47,7 +47,7 @@ func TestAppOrdersMadeInReadsTheRecordedTeamOnly(t *testing.T) {
 	madeOrder(t, store, "ordinary", crew, &automation.OriginTeam{Known: true})
 	madeOrder(t, store, "elsewhere", "", &automation.OriginTeam{Known: true, ID: "otherteam1"})
 
-	// The manager moves; membership changes. Nothing about the rows changes.
+	// The manager moves. Nothing about the rows changes.
 	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
 		return f.SetManager(crew, "/state/v3/places/proj/b0b0b0b0/transcript.jsonl")
 	}); err != nil {
