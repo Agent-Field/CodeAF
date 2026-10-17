@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // seededTalk is an item's conversation as the Talk door leaves it: a journal
@@ -101,5 +103,58 @@ func TestAProgressLineForADeletedConversationIsGone(t *testing.T) {
 	}
 	if err := AppendProgress(filepath.Join(t.TempDir(), "nowhere.jsonl"), "plan started"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a missing conversation answered %v", err)
+	}
+}
+
+// appendMarked writes an assistant message with the given presentation mark
+// (nil for none) the way AppendProgress does, so the test reads back what the
+// journal really holds.
+func appendMarked(t *testing.T, path, text string, mark *messagePresentation) {
+	t.Helper()
+	journal, _, err := openSessionFile(journalKey(path), "", "", sessionIDOfFolder(journalKey(path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	message := textMessage("assistant", text)
+	if mark != nil {
+		journal.presentation.remember(message, mark)
+	}
+	journal.appendReasonedMessage(message, provider.MessageReasoning{})
+}
+
+func TestOnlyTheRunnersKindMarksAnEntryAsFactoryProgress(t *testing.T) {
+	path := seededTalk(t)
+	if err := AppendProgress(path, "plan done · 2m"); err != nil {
+		t.Fatal(err)
+	}
+	appendMarked(t, path, "An ordinary answer.", nil)
+	appendMarked(t, path, "A line of some future kind.", &messagePresentation{Audience: "human", Kind: "factory-progress-v2"})
+
+	// THE MARK SURVIVES A REREAD: each replay of the journal shapes the same.
+	for pass := 1; pass <= 2; pass++ {
+		replayed, err := replaySessionFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]bool{}
+		for _, e := range shapeEntries(replayed.messages, &sessionFile{presentation: replayed.presentation}) {
+			if e.Role == "assistant" {
+				got[e.Text] = e.FactoryProgress
+			}
+		}
+		want := map[string]bool{
+			"plan done · 2m":              true,
+			"An ordinary answer.":         false,
+			"A line of some future kind.": false,
+		}
+		if len(got) != len(want) {
+			t.Fatalf("pass %d: assistant entries %v", pass, got)
+		}
+		for text, mark := range want {
+			if seen, ok := got[text]; !ok || seen != mark {
+				t.Fatalf("pass %d: %q FactoryProgress = %v (present %v), want %v", pass, text, seen, ok, mark)
+			}
+		}
 	}
 }
