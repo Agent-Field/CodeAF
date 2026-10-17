@@ -40,20 +40,9 @@ import (
 // function would deadlock the note this stop owes the model. Copy the
 // registry, release, then kill.
 func (a *Agent) cancelJob(id uint64) (string, error) {
-	a.mu.Lock()
-	jobs := a.jobs
-	a.mu.Unlock()
-	if jobs == nil {
-		return "", fmt.Errorf("there is no job %d in this session", id)
-	}
-	number := int(id)
-	target := jobs.find(number)
+	owner, jobs, target := a.jobHolder(int(id))
 	if target == nil {
 		return "", fmt.Errorf("there is no job %d in this session", id)
-	}
-	name := jobStopName(number, target)
-	if !target.running() {
-		return name + " has already finished; there is nothing to stop", nil
 	}
 	// A PERSON'S STOP IS NOT ON A TURN'S CLOCK, so this kill is given a plain
 	// background context rather than a cancellable one. [jobRegistry.kill]
@@ -62,8 +51,72 @@ func (a *Agent) cancelJob(id uint64) (string, error) {
 	// are two seconds each and end on their own, so passing a context that is
 	// never cancelled leaves this path behaving exactly as it did. What it must
 	// not do is inherit a turn's context: a person who asks for a job to stop
-	// is owed the kill even if the turn they asked from is already over.
-	//
+	// is owed the kill even if the turn they asked from is already over. A
+	// caller with its own deadline — the app's stamped stop and stop-all —
+	// uses [Agent.stopJob] and passes it.
+	line, _ := owner.stopJob(context.Background(), jobs, target)
+	return line, nil
+}
+
+// jobHolder is the agent and registry that hold job id for this agent's
+// person: its own registry first, and then — for the conversation's own agent
+// only — the task worker that marked the job live in the conversation's folder
+// ([liveProcesses]). THE OWNER IS THE ENGINE'S OWN POINTER, never a guess from
+// a PID, a log name or a record: a job no registry here holds is not found.
+func (a *Agent) jobHolder(id int) (*Agent, *jobRegistry, *job) {
+	a.mu.Lock()
+	jobs := a.jobs
+	a.mu.Unlock()
+	if jobs != nil {
+		if target := jobs.find(id); target != nil {
+			return a, jobs, target
+		}
+	}
+	if by, _ := a.processOwner(); by != JobStartedByChat {
+		return nil, nil, nil
+	}
+	dir := a.processConvDir()
+	if dir == "" {
+		return nil, nil, nil
+	}
+	owner := liveProcessOwner(dir, id)
+	if owner == nil || owner == a || owner.processConvDir() != dir {
+		return nil, nil, nil
+	}
+	owner.mu.Lock()
+	theirs := owner.jobs
+	owner.mu.Unlock()
+	if theirs == nil {
+		return nil, nil, nil
+	}
+	if target := theirs.find(id); target != nil {
+		return owner, theirs, target
+	}
+	return nil, nil, nil
+}
+
+// jobStopOutcome is what one person's stop proved.
+type jobStopOutcome int
+
+const (
+	// jobStopEnded is a job that had already ended: nothing was signalled.
+	jobStopEnded jobStopOutcome = iota
+	// jobStopStopped is a job this stop signalled and saw end.
+	jobStopStopped
+	// jobStopUnproven is a job signalled whose end was not seen before ctx or
+	// the graces ran out. It is still this engine's to stop again.
+	jobStopUnproven
+)
+
+// stopJob is one person's stop of target, a job in this agent's registry
+// jobs, under ctx: the graces end when ctx does, and the signals are sent
+// either way. It answers the line to show and what it proved.
+func (a *Agent) stopJob(ctx context.Context, jobs *jobRegistry, target *job) (string, jobStopOutcome) {
+	number := target.id
+	name := jobStopName(number, target)
+	if !target.running() {
+		return name + " has already finished; there is nothing to stop", jobStopEnded
+	}
 	// A PERSON'S STOP OWNS THE ENDING IT ASKED FOR, and the mark goes on BEFORE
 	// the kill. [job.requestKill] is what makes the death requested, so a settle
 	// that sees the requested death also sees this — and the reaper, which
@@ -72,7 +125,7 @@ func (a *Agent) cancelJob(id uint64) (string, error) {
 	// inside the kill below, while the line this stop owes the model was still
 	// unwritten, and a worker parked on the command woke to an empty queue.
 	target.markPersonStopped()
-	_, failed := jobs.kill(context.Background(), number)
+	_, failed := jobs.kill(ctx, number)
 	if failed {
 		// The job ended between the running check and the kill: same news as
 		// a second press on work that has already landed.
@@ -89,7 +142,7 @@ func (a *Agent) cancelJob(id uint64) (string, error) {
 		if target.settledKilled() && target.payOwed() {
 			a.releaseParkedOnJob()
 		}
-		return name + " has already finished; there is nothing to stop", nil
+		return name + " has already finished; there is nothing to stop", jobStopEnded
 	}
 	// AND THE DEBT IS CLEARED BEFORE THE NOTE, for [jobRegistry.settleExit]'s
 	// reason exactly: the release rides with the append ([userMessage.ending]),
@@ -109,7 +162,12 @@ func (a *Agent) cancelJob(id uint64) (string, error) {
 	// there is no ending to read out of the log that the person did not just ask
 	// for the end of.
 	a.enqueueJobNote(fmt.Sprintf("job %d was stopped", number))
-	return "stopped " + name + " — its log is kept", nil
+	select {
+	case <-target.done:
+		return "stopped " + name + " — its log is kept", jobStopStopped
+	default:
+		return name + " was told to stop and had not ended when the wait ran out", jobStopUnproven
+	}
 }
 
 // jobStopName is how a stop line names one job: what it is called where it has

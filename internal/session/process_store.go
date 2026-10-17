@@ -1229,6 +1229,30 @@ func liveProcessesOf(dir string) map[int]JobNotice {
 	return out
 }
 
+// liveProcessOwner is the agent that marked job id live in dir, or nil.
+func liveProcessOwner(dir string, id int) *Agent {
+	liveProcesses.Lock()
+	defer liveProcesses.Unlock()
+	return liveProcesses.byDir[dir][id]
+}
+
+// liveProcessOwnersOf is up to limit of the jobs marked live in dir, by
+// number, and how many were marked in all. It copies no more than limit, so
+// a stop's enumeration is bounded by its own cap and not by the map.
+func liveProcessOwnersOf(dir string, limit int) (map[int]*Agent, int) {
+	liveProcesses.Lock()
+	defer liveProcesses.Unlock()
+	set := liveProcesses.byDir[dir]
+	out := make(map[int]*Agent, min(len(set), limit))
+	for id, a := range set {
+		if len(out) == limit {
+			break
+		}
+		out[id] = a
+	}
+	return out, len(set)
+}
+
 // liveProcessesOfAgent is the numbers one agent has marked live.
 func liveProcessesOfAgent(dir string, a *Agent) []int {
 	liveProcesses.Lock()

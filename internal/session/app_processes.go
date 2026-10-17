@@ -289,34 +289,6 @@ func (a *Agent) ProcessRecord(id int) (JobNotice, bool, error) {
 	return processStore{dir: dir}.readProcessRecord(id)
 }
 
-// RerunProcess takes the retained command from this engine's record, never a
-// client-supplied shell string. Only ended shell commands, kept whole, can be
-// run again.
-func (a *Agent) RerunProcess(id int) (JobNotice, error) {
-	n, found, err := a.ProcessRecord(id)
-	if err != nil {
-		return JobNotice{}, err
-	}
-	if !found {
-		return JobNotice{}, errors.New("no such process")
-	}
-	if n.State == JobRunning {
-		if _, live := a.ownLiveJobNotices()[id]; !live {
-			if _, live := liveProcessesOf(a.processConvDir())[id]; !live {
-				n.State = JobStopped
-			}
-		}
-	}
-	if !n.Over() || n.Kind != JobKindCommand || strings.TrimSpace(n.Command) == "" || n.CommandCut {
-		return JobNotice{}, errors.New("only ended commands can be run again")
-	}
-	started, err := a.jobs.start(n.Command)
-	if err != nil {
-		return JobNotice{}, err
-	}
-	return noticeOf(started.info()), nil
-}
-
 // SweepProcessOutput expires only completed managed logs. Writer flocks keep
 // active output safe, and the shelf and durable id history are never swept.
 func SweepProcessOutput(file string, now time.Time) error {

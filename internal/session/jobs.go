@@ -711,6 +711,18 @@ var errSessionClosed = errors.New("this session has closed; nothing new starts i
 // so that the overwhelmingly common case — a session already closed when the
 // call is made — costs nothing and creates no directory.
 func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
+	return r.newJobIn(command, kind, "")
+}
+
+// errWorkspaceMoved is a run again refused because the registry's workspace
+// is no longer the folder the command was recorded in.
+var errWorkspaceMoved = errors.New("this conversation's folder changed; the command was not run again")
+
+// newJobIn is [jobRegistry.newJob] for a job that must run in want, when want
+// is not empty. THE FOLDER IS CHECKED UNDER THE SAME HOLD THAT READS IT, so a
+// workspace anchored elsewhere between a run again's check and its fork can
+// never send the recorded command into a folder it was not recorded in.
+func (r *jobRegistry) newJobIn(command string, kind jobKind, want string) (*job, error) {
 	// NOTHING STARTS IN A SESSION THAT HAS LEFT. The refusal is here, ahead of
 	// the directory, because the first thing this function does is CREATE one:
 	// a job claimed during a quit put the jobs folder back the moment after it
@@ -721,6 +733,9 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	r.mu.Unlock()
 	if closed {
 		return nil, errSessionClosed
+	}
+	if want != "" && filepath.Clean(workspace) != filepath.Clean(want) {
+		return nil, errWorkspaceMoved
 	}
 
 	// The selected workspace/session may itself be a legitimate directory
@@ -1102,10 +1117,15 @@ func (r *jobRegistry) runningRenders() int {
 }
 
 func (r *jobRegistry) start(command string) (*job, error) {
+	return r.startIn(command, "")
+}
+
+// startIn is [jobRegistry.start] held to one folder ([jobRegistry.newJobIn]).
+func (r *jobRegistry) startIn(command, want string) (*job, error) {
 	if r.runningProcesses() >= jobProcessCap {
 		return nil, errJobProcessCap
 	}
-	started, err := r.newJob(command, jobKindBash)
+	started, err := r.newJobIn(command, jobKindBash, want)
 	if err != nil {
 		return nil, err
 	}
@@ -1489,6 +1509,28 @@ func (r *jobRegistry) all() []*job {
 	snapshot := make([]*job, len(r.jobs))
 	copy(snapshot, r.jobs)
 	return snapshot
+}
+
+// runningNewest is the running jobs among the newest scan this registry
+// holds, newest first, and whether older jobs were left unexamined. A job's
+// end is read off its done channel, so no job's lock is taken under r.mu.
+func (r *jobRegistry) runningNewest(scan int) ([]*job, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*job
+	examined := 0
+	for i := len(r.jobs) - 1; i >= 0; i-- {
+		if examined == scan {
+			return out, true
+		}
+		examined++
+		select {
+		case <-r.jobs[i].done:
+		default:
+			out = append(out, r.jobs[i])
+		}
+	}
+	return out, false
 }
 
 func (r *jobRegistry) find(id int) *job {
