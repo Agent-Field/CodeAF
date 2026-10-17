@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
 func TestAppFactoryAdminDoesNotEchoPrivateSessionFromRefusal(t *testing.T) {
@@ -27,11 +29,20 @@ func TestAppFactoryAdminDoesNotEchoPrivateSessionFromRefusal(t *testing.T) {
 }
 
 func TestAppFactoryAdminIdentityRefusalDoesNotForwardPrivateProse(t *testing.T) {
-	b, _, conn := adminStub(t, `!404 {"error":"private session_sessionPrivacyFixture_c2a0b7ef"}`, func(w http.ResponseWriter, r *http.Request) {
+	b, stub, conn := adminStub(t, `!404 {"error":"private session_sessionPrivacyFixture_c2a0b7ef"}`, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("identity refusal must not send a write")
 		w.WriteHeader(500)
 	})
+	stub.mu.Lock()
+	stub.requests = nil
+	stub.mu.Unlock()
 	_, err := admin(b, "sign_out", conn.ID)
+	if wireCodeOf(t, err) != appwire.CodeNotFound {
+		t.Fatal("identity refusal was not a real HTTP404")
+	}
+	if stub.seen() != "GET /v1/me" {
+		t.Fatal("identity refusal sent something besides its one read")
+	}
 	if err == nil || strings.Contains(err.Error(), "sessionPrivacyFixture") {
 		t.Fatal("identity refusal forwarded private error prose")
 	}

@@ -257,6 +257,9 @@ func (h *Handler) Close() {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = authRequest(h.withClient(r))
 	w.Header().Set("Cache-Control", "no-store")
+	if markPreMutation(r) {
+		w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
+	}
 	// A caller who reached the factory over HTTPS is told to keep doing so.
 	// Over plain HTTP the header means nothing and is not sent.
 	if secureRequest(r) {
@@ -644,6 +647,10 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	// Only a credential that carries a GitHub-verified profile is a sign-in; a
 	// script token, access-link secret or legacy dashboard session is not.
 	body.GitHubSignedIn = session.profile != nil && session.profile.Handle != ""
+	// What this factory is configured to do, said by the factory itself so a
+	// client never probes a real GitHub device flow to find out.
+	body.GitHubSignInAvailable = h.config.GitHubClientID != ""
+	body.InviteAvailable = body.GitHubSignInAvailable && h.config.TokensPath != ""
 	body.Machines = machines
 	body.Mode, body.Operator = h.mode(), h.isOperator(r)
 	if body.Mode == api.FactoryTeam && h.operatorLogin(r) == "" {

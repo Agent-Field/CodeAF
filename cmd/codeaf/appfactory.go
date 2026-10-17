@@ -137,7 +137,10 @@ type appFactoryHub struct {
 	// adminBusy marks a connection whose sign-out or revoke-all is in flight
 	// (appfactory_admin.go), so one press is one request.
 	adminBusy map[string]bool
-	closed    bool
+	// linkSt is the invitations the engine holds and the lists it owes
+	// (appfactory_links.go), made by the first use.
+	linkSt *linkState
+	closed bool
 }
 
 // newAppFactoryHub is a registry whose HTTP client takes no ambient proxy,
@@ -194,6 +197,7 @@ func (h *appFactoryHub) forgetAll() {
 	h.sessions = map[string]appFactorySession{}
 	h.signIns = map[string]*appFactorySignIn{}
 	h.links = map[string]*appFactoryLink{}
+	h.dropAllHeldLocked()
 }
 
 // The small critical sections below each take the registry's lock for one
@@ -420,6 +424,12 @@ func (h *appFactoryHub) hold(id, token string, lives time.Duration) {
 	defer h.mu.Unlock()
 	if !h.closed {
 		h.sessions[id] = s
+		// A different caller does not inherit an invitation held for the last.
+		if h.linkSt != nil {
+			if l := h.linkSt.held[id]; l != nil && l.digest != bearerDigest(token) {
+				h.dropHeldLocked(id)
+			}
+		}
 	}
 }
 
@@ -515,14 +525,91 @@ func appFactoryFailure(r appFactoryReply) error {
 	return appwire.Errorf(appwire.CodeEngine, "%s", words)
 }
 
+// credentialed is target for a request that carries a person's authority. A
+// connection with no held credential is answered only when the factory says,
+// right now, that it is solo.
+//
+// A TEAM FACTORY NEVER HANDS ITS HOST'S AUTHORITY TO A CALLER WITH NO BEARER.
+// A loopback team service resolves a request with no bearer as its own
+// operator, so sending one would hand this app the host's role after sign-out,
+// after a restart, or on a bare address. No credential held (never signed in,
+// signed out, expired, or lost with the process) therefore means signed_out
+// before anything private is sent, unless a fresh probe finds the factory solo.
+// A saved mode is never trusted for that, because an address can change hands.
+func (h *appFactoryHub) credentialed(ctx context.Context, id string) (appFactoryRow, string, error) {
+	row, token, err := h.target(id)
+	if err != nil || token != "" {
+		return row, token, err
+	}
+	switch {
+	case row.Local || row.ID == appLocalID:
+		// A marker on disk is not authority over whoever now owns that port.
+		// Quiet resume installs the live owned service key before reaching here.
+		return row, "", appwire.Errorf(appwire.CodeUnreachable, "the local factory is not running for this app; start it again")
+	case row.Mode != "" && row.Mode != api.FactorySolo:
+		// Learned while a credential was held: refuse without sending a thing.
+	case h.probeMode(ctx, row) == api.FactorySolo:
+		return row, "", nil
+	}
+	return row, "", appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
+}
+
+// learnModeLocked keeps the mode a factory reported to a held credential, so a
+// restart that has lost that credential still knows to ask for one. Mode is the
+// only fact kept; a reply with no credential behind it is never learned from.
+func (h *appFactoryHub) learnModeLocked(id, mode string) {
+	for i := range h.rows {
+		if h.rows[i].ID == id && h.rows[i].Mode != mode && !h.closed {
+			h.rows[i].Mode = mode
+			_ = h.save()
+		}
+	}
+}
+
+// probeMode asks a factory with no bearer which mode it runs in and keeps
+// nothing else of the answer: on a loopback team service that answer is the
+// host's own identity, which no caller may be shown.
+func (h *appFactoryHub) probeMode(ctx context.Context, row appFactoryRow) string {
+	ctx, cancel := context.WithTimeout(ctx, appFactoryProbe)
+	defer cancel()
+	r, err := h.send(ctx, row.URL, "", http.MethodGet, "/v1/me", nil, appFactorySmall, nil)
+	if err != nil || r.status < 200 || r.status >= 300 {
+		return ""
+	}
+	var me struct {
+		Mode string `json:"mode"`
+	}
+	if json.Unmarshal(r.body, &me) != nil {
+		return ""
+	}
+	return me.Mode
+}
+
+// staleCredential is the refusal for a reply that came back after the
+// credential it was asked with was removed or replaced. The reply described the
+// old caller, so none of it is used for the new context.
+func (h *appFactoryHub) staleCredential(id, asked string) error {
+	now := h.tokenFor(id)
+	if now == asked {
+		return nil
+	}
+	if now == "" {
+		return appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
+	}
+	return appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
+}
+
 // read is a GET decoded into out.
 func (h *appFactoryHub) read(ctx context.Context, id, path string, limit int64, out any) error {
-	row, token, err := h.target(id)
+	row, token, err := h.credentialed(ctx, id)
 	if err != nil {
 		return err
 	}
 	r, err := h.send(ctx, row.URL, token, http.MethodGet, path, nil, limit, nil)
 	if err != nil {
+		return err
+	}
+	if err := h.staleCredential(id, token); err != nil {
 		return err
 	}
 	if r.status < 200 || r.status >= 300 {
@@ -545,12 +632,29 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) appwire.Fac
 	ctx, cancel := context.WithTimeout(ctx, appFactoryProbe)
 	defer cancel()
 	token := h.tokenFor(row.ID)
+	if token == "" {
+		if row.Local || row.ID == appLocalID {
+			return out
+		}
+		if row.Mode != "" && row.Mode != api.FactorySolo {
+			out.State = appwire.FactorySignedOut
+			return out
+		}
+	}
 	r, err := h.send(ctx, row.URL, token, http.MethodGet, "/v1/me", nil, appFactorySmall, nil)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if err != nil {
 		if t, ok := h.seen[row.ID]; ok {
 			out.LastSeen = &t
+		}
+		return out
+	}
+	// A reply for a credential that has since changed describes the old caller:
+	// nothing of it is promoted into the new context.
+	if now := h.tokenLocked(row.ID); now != token {
+		if now == "" {
+			out.State = appwire.FactorySignedOut
 		}
 		return out
 	}
@@ -565,12 +669,21 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) appwire.Fac
 		if json.Unmarshal(r.body, &me) != nil {
 			return out
 		}
-		out.State, out.Operator = appwire.FactoryOK, me.Operator
 		if me.Factory.Name != "" {
 			out.Name = me.Factory.Name
 		}
 		if me.Mode != "" {
 			out.Mode = me.Mode
+		}
+		// NO CREDENTIAL, NO CLAIM: without a held bearer only a factory that
+		// says it is solo is OK; a team answer here is its host, not a caller.
+		if token == "" && me.Mode != api.FactorySolo {
+			out.State = appwire.FactorySignedOut
+			return out
+		}
+		out.State, out.Operator = appwire.FactoryOK, me.Operator
+		if token != "" && me.Mode != "" {
+			h.learnModeLocked(row.ID, me.Mode)
 		}
 		now := h.now()
 		h.seen[row.ID] = now
@@ -586,6 +699,7 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
+		Links: true, CopyLink: b.copier().Available(),
 		MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
@@ -742,6 +856,7 @@ func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
 	h.rows = kept
 	delete(h.sessions, id)
 	delete(h.seen, id)
+	h.dropHeldLocked(id)
 	for key, flow := range h.signIns {
 		if flow.factory == id {
 			delete(h.signIns, key)

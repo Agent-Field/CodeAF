@@ -16,7 +16,8 @@
       "max_uses": 1,
       "used": 0,
       "remaining": 1,
-      "status": "open"
+      "status": "open",
+      "counted": true
     }
   ]
 }

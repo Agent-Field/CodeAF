@@ -569,7 +569,7 @@ func (b *appBackend) FactorySetupAct(ctx context.Context, _ string, act appwire.
 		return appwire.FactorySetupView{}, appwire.Errorf(appwire.CodeBadParams, "that is not a setup step")
 	}
 	h := b.factoryHub()
-	row, token, err := h.target(id)
+	row, token, err := h.credentialed(ctx, id)
 	if err != nil {
 		return appwire.FactorySetupView{}, err
 	}

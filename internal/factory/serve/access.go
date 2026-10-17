@@ -405,6 +405,7 @@ func (h *Handler) revokeSessions(w http.ResponseWriter, r *http.Request) {
 			handles[handle] = true
 		}
 	}
+	clearPhase(w)
 	clear(h.sessions.ids)
 	err := h.saveSessions()
 	h.sessions.mu.Unlock()

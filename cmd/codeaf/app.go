@@ -48,6 +48,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -81,6 +82,7 @@ const appCrewPoll = 2 * time.Second
 const appReleaseWait = 5 * time.Second
 
 func runApp(args []string) error {
+	localGUI := consumeAppLocalGUI()
 	flags := commandFlags("app")
 	homeFlag := flags.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf")
 	turnLong := flags.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long")
@@ -122,6 +124,7 @@ func runApp(args []string) error {
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	backend.useClipboard(clipboard.NewSystem(localGUI))
 	if *turnLong > 0 {
 		backend.turnLong = *turnLong
 	}
@@ -348,6 +351,9 @@ type appBackend struct {
 	// first factory.* call.
 	factories   *appFactoryHub
 	factoryOnce sync.Once
+	// clipboard is where a made invitation is copied (appfactory_links.go). Nil
+	// is UNAVAILABLE, the production default; only useClipboard sets it.
+	clipboard clipboard.Copier
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory

@@ -92,7 +92,15 @@ type FactoryCapabilities struct {
 	Writes bool `json:"writes"`
 	// Admin: factory.sign_out and factory.revoke_sessions are served (feature
 	// factory.admin). True only for an engine that implements [FactoryAdmin].
-	Admin          bool `json:"admin"`
+	Admin bool `json:"admin"`
+	// Links: factory.links, link_create, link_copy and link_revoke are served
+	// (feature factory.links). True only for an engine that implements
+	// [FactoryLinkAdmin].
+	Links bool `json:"links"`
+	// CopyLink: this engine can put a freshly made invitation on THIS
+	// machine's clipboard right now. False unless a trusted local launch
+	// supplied a working clipboard; no invitation is made without it.
+	CopyLink       bool `json:"copy_link"`
 	MaxConnections int  `json:"max_connections"`
 	MaxFlows       int  `json:"max_flows"`
 }
@@ -256,6 +264,12 @@ type FactoryMe struct {
 	Access         string `json:"access"`
 	GitHubSignedIn bool   `json:"github_signed_in"`
 	CanSignOut     bool   `json:"can_sign_out"`
+	// GitHubSignInAvailable and InviteAvailable are what the serving factory
+	// says it is configured for (GitHub device sign-in; making and redeeming an
+	// invitation). They gate an affordance; they are not a permission, and an
+	// older factory that says nothing reads as false.
+	GitHubSignInAvailable bool `json:"github_sign_in_available"`
+	InviteAvailable       bool `json:"invite_available"`
 }
 
 // NewFactoryMe narrows the factory's HTTP identity to the public view. Sign-in
@@ -267,6 +281,9 @@ func NewFactoryMe(me api.Me) FactoryMe {
 		Profile: me.Profile, Mode: me.Mode, Operator: me.Operator, Access: me.Access,
 		GitHubSignedIn: me.GitHubSignedIn,
 		CanSignOut:     me.GitHubSignedIn && FactorySessionCanEnd(me.SessionID),
+
+		GitHubSignInAvailable: me.GitHubSignInAvailable,
+		InviteAvailable:       me.GitHubSignInAvailable && me.InviteAvailable,
 	}
 	if out.Scopes == nil {
 		out.Scopes = []string{}

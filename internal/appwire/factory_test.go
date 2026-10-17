@@ -355,13 +355,13 @@ func TestFactoryMeReplyHasNoPrivateFields(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"factory", "codeaf_version", "contract", "handle", "name", "avatar_url", "scopes", "mode", "operator", "access", "github_signed_in", "can_sign_out"} {
+	for _, key := range []string{"factory", "codeaf_version", "contract", "handle", "name", "avatar_url", "scopes", "mode", "operator", "access", "github_signed_in", "can_sign_out", "github_sign_in_available", "invite_available"} {
 		if _, ok := got[key]; !ok {
 			t.Errorf("reply lacks %q: %s", key, raw)
 		}
 	}
-	if len(got) != 12 {
-		t.Errorf("reply has %d keys, want 12: %s", len(got), raw)
+	if len(got) != 14 {
+		t.Errorf("reply has %d keys, want 14: %s", len(got), raw)
 	}
 	if string(got["scopes"]) != "[]" {
 		t.Errorf("scopes = %s, want []", got["scopes"])

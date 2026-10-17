@@ -27,6 +27,8 @@ func linkWire(tok tokens.Token, now time.Time) api.AccessLink {
 		return out
 	}
 	out.MaxUses, out.Used, out.Remaining = tok.Limit(), tok.Used(), tok.Remaining()
+	counted := tok.Counted()
+	out.Counted = &counted
 	out.Status = "open"
 	if reason := tok.Reason(now); reason != "" {
 		out.Status = reason
@@ -102,6 +104,7 @@ func (h *Handler) createAccessLink(w http.ResponseWriter, r *http.Request) {
 	tok.Created, tok.Expires, tok.InvitedBy = now, body.ExpiresAt, h.operatorLogin(r)
 	tok.InvitedLogin, tok.InvitedName = body.Login, body.Name
 	tok.AccessLink, tok.MaxUses = true, body.MaxUses
+	clearPhase(w)
 	if h.failed(w, os.MkdirAll(filepath.Dir(h.config.TokensPath), 0700)) {
 		return
 	}
@@ -126,6 +129,7 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	var revoked tokens.Token
+	clearPhase(w)
 	err := h.mutateLink(func() error {
 		rows, err := tokens.Load(h.config.TokensPath)
 		if err != nil {
@@ -139,6 +143,9 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 		return tokens.RemoveAt(h.config.TokensPath, id, h.now())
 	})
 	if errors.Is(err, tokens.ErrNotFound) {
+		// RemoveAt returns ErrNotFound before it changes a row (an unknown id, or
+		// one already revoked), so this refusal is again a proven no-write.
+		w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
 		h.fail(w, http.StatusNotFound, "access link not found")
 		return
 	}

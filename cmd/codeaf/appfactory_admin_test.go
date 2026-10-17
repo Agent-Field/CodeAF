@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -25,15 +26,27 @@ import (
 
 // ── a real team factory whose operator is alice, and a log of what it was sent ─
 
+// adminFactoryAddress is the public address the factory believes it has, which
+// an invitation embeds. It is not where the test dials.
+const adminFactoryAddress = "http://factory.example"
+
 type adminFactory struct {
 	URL    string
 	clock  *factoryClock
 	github *fakeGitHub
 	mu     sync.Mutex
 	log    []string // "METHOD path" of every request except /v1/about
+	// gate, when set, holds a request at the door until it returns, so a test
+	// can change the caller's credential while a read is in flight.
+	gate func(path string)
 }
 
-func startAdminFactory(t *testing.T) *adminFactory {
+func startAdminFactory(t *testing.T) *adminFactory { return startAdminFactoryAt(t, true) }
+
+// startAdminFactoryAt is the same team factory. forwarded makes every request a
+// stranger's; false leaves the real loopback peer, whose no-bearer request the
+// factory answers as its host.
+func startAdminFactoryAt(t *testing.T, forwarded bool) *adminFactory {
 	t.Helper()
 	f := &adminFactory{clock: &factoryClock{at: time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)}, github: newFakeGitHub()}
 	st, err := store.Open(t.TempDir())
@@ -51,7 +64,7 @@ func startAdminFactory(t *testing.T) *adminFactory {
 	}
 	seam := factory.Seam{Load: func() (factory.Snapshot, error) { return factory.Snapshot{}, nil }}
 	h := serve.New(seam, serve.Config{
-		Version: "test", Name: "Acme factory", ServedBy: "factory", AccessToken: testHostToken, Mode: api.FactoryTeam,
+		Version: "test", Name: "Acme factory", ServedBy: "factory", Address: adminFactoryAddress, AccessToken: testHostToken, Mode: api.FactoryTeam,
 		GitHubClientID: "client", GitHubHTTPClient: f.github.client(), Now: f.clock.now, Store: st, Record: rec, Root: st.Root(),
 		TokensPath: filepath.Join(dir, "tokens.json"),
 	})
@@ -61,8 +74,13 @@ func startAdminFactory(t *testing.T) *adminFactory {
 			f.log = append(f.log, r.Method+" "+r.URL.Path)
 			f.mu.Unlock()
 		}
+		if f.gate != nil {
+			f.gate(r.URL.Path)
+		}
 		// A forwarded request is not a loopback one: no ambient owner fallback.
-		r.Header.Set("X-Forwarded-For", "203.0.113.9")
+		if forwarded {
+			r.Header.Set("X-Forwarded-For", "203.0.113.9")
+		}
 		h.ServeHTTP(w, r)
 	}))
 	t.Cleanup(func() { srv.Close(); h.Close() })
@@ -355,7 +373,12 @@ func adminStub(t *testing.T, me string, other http.HandlerFunc) (*appBackend, *s
 			w.Header().Set("Content-Type", "application/json")
 			if strings.HasPrefix(me, "!") { // "!401 body"
 				code, body, _ := strings.Cut(me[1:], " ")
-				status := map[string]int{"401": 401, "500": 500}[code]
+				status, err := strconv.Atoi(code)
+				if err != nil || status < 100 || status > 599 {
+					t.Errorf("invalid scripted HTTP status %q", code)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
 				w.WriteHeader(status)
 				_, _ = w.Write([]byte(body))
 				return
@@ -412,6 +435,14 @@ func TestAppFactorySignOutOutcomesScripted(t *testing.T) {
 	reply := func(status int, body string) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status); _, _ = w.Write([]byte(body)) }
 	}
+	// refusal is a refusal the factory marked as made before its first change.
+	refusal := func(status int, body string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
+		}
+	}
 	cases := []struct {
 		name     string
 		me       string
@@ -424,13 +455,17 @@ func TestAppFactorySignOutOutcomesScripted(t *testing.T) {
 		{"already signed out at the factory", "!401 {\"error\":\"sign in\"}", reply(500, ``), appwire.CodeSignedOut, true, "GET /v1/me"},
 		{"github expired", "!401 {\"error\":\"x\",\"reason\":\"github_expired\"}", reply(500, ``), appwire.CodeGitHubExpired, true, "GET /v1/me"},
 		{"identity unreadable", "!500 {}", reply(500, ``), appwire.CodeEngine, true, "GET /v1/me"},
-		{"session already gone is not claimed as done", meBody(session, false), reply(404, `{"error":"session not found"}`), appwire.CodeNotFound, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
-		{"forbidden", meBody(session, false), reply(403, `{"error":"no"}`), appwire.CodeForbidden, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
+		{"session already gone is not claimed as done", meBody(session, false), refusal(404, `{"error":"session not found"}`), appwire.CodeNotFound, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
+		{"forbidden", meBody(session, false), refusal(403, `{"error":"no"}`), appwire.CodeForbidden, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
+		// A refusal without the marker may follow the change (it is deleted, then the save or the event fails).
+		{"404 without the marker is uncertain", meBody(session, false), reply(404, `{"error":"session not found"}`), appwire.CodeUncertain, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
+		{"403 without the marker is uncertain", meBody(session, false), reply(403, `{"error":"no"}`), appwire.CodeUncertain, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
+		{"409 without the marker is uncertain", meBody(session, false), reply(409, ``), appwire.CodeUncertain, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
 		{"factory failure is uncertain", meBody(session, false), reply(500, `{"error":"boom"}`), appwire.CodeUncertain, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
 		{"bad gateway is uncertain", meBody(session, false), reply(502, ``), appwire.CodeUncertain, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
 		{"redirect is not followed", meBody(session, false), func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "http://127.0.0.1:1/elsewhere", http.StatusTemporaryRedirect)
-		}, appwire.CodeUnreachable, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
+		}, appwire.CodeUncertain, true, "GET /v1/me|DELETE /v1/me/sessions/" + session},
 		{"connection cut after the request left is uncertain", meBody(session, false), func(w http.ResponseWriter, r *http.Request) {
 			conn, _, err := w.(http.Hijacker).Hijack()
 			if err == nil {
@@ -531,6 +566,13 @@ func TestAppFactoryRevokeSessionsOutcomesScripted(t *testing.T) {
 	reply := func(status int, body string) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status); _, _ = w.Write([]byte(body)) }
 	}
+	refusal := func(status int, body string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
+		}
+	}
 	cases := []struct {
 		name     string
 		me       string
@@ -543,9 +585,13 @@ func TestAppFactoryRevokeSessionsOutcomesScripted(t *testing.T) {
 		{"operator session", meBody(session, true), reply(200, `{"revoked":true}`), "", false, true, "GET /v1/me|POST /v1/access/revoke-sessions"},
 		{"operator key", meBody("", true), reply(200, `{"revoked":true}`), "", true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
 		{"not the operator, nothing sent", meBody(session, false), reply(200, ``), appwire.CodeForbidden, true, false, "GET /v1/me"},
-		{"signed out in between", meBody(session, true), reply(401, `{"error":"a bearer access token is required"}`), appwire.CodeSignedOut, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
-		{"forbidden", meBody(session, true), reply(403, `{"error":"no"}`), appwire.CodeForbidden, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
-		{"an older factory", meBody(session, true), reply(404, `404 page not found`), appwire.CodeNotFound, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
+		{"signed out in between", meBody(session, true), refusal(401, `{"error":"a bearer access token is required"}`), appwire.CodeSignedOut, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
+		{"forbidden", meBody(session, true), refusal(403, `{"error":"no"}`), appwire.CodeForbidden, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
+		{"an older factory", meBody(session, true), refusal(404, `404 page not found`), appwire.CodeNotFound, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
+		// Without the marker a refusal may follow the change; it is never claimed as "nothing happened".
+		{"403 without the marker is uncertain", meBody(session, true), reply(403, `{"error":"no"}`), appwire.CodeUncertain, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
+		{"404 without the marker is uncertain", meBody(session, true), reply(404, `404 page not found`), appwire.CodeUncertain, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
+		{"409 without the marker is uncertain", meBody(session, true), reply(409, ``), appwire.CodeUncertain, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
 		{"failed part-way is uncertain and keeps the credential", meBody(session, true), reply(500, `{"error":"boom"}`), appwire.CodeUncertain, true, false, "GET /v1/me|POST /v1/access/revoke-sessions"},
 		{"identity unreadable", "!401 {}", reply(200, ``), appwire.CodeSignedOut, true, false, "GET /v1/me"},
 	}

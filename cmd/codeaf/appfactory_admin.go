@@ -114,6 +114,7 @@ func (h *appFactoryHub) dropSession(id, token string) {
 	defer h.mu.Unlock()
 	if s, ok := h.sessions[id]; ok && s.token == token {
 		delete(h.sessions, id)
+		h.dropHeldLocked(id)
 	}
 }
 
@@ -200,16 +201,27 @@ func adminReadFailure(r appFactoryReply) error {
 	return appFactoryFailure(r)
 }
 
-// adminFailure is the wire error for a refusal of an admin write. A 5xx is not
-// a refusal: the factory may have acted before it failed.
+// adminFailure is the wire error for a refusal of an admin write. ONLY A REPLY
+// THAT CARRIES api.PhaseHeader is a refusal: the factory changes its sessions
+// and then records the event, and a failure of that second step comes back as a
+// 403, 404 or 5xx. Any other failure may follow the change, so it claims neither
+// outcome.
 func adminFailure(r appFactoryReply, what string) error {
 	switch {
-	case r.status >= 500:
+	case r.header.Get(api.PhaseHeader) != api.PhasePreMutation || r.status < 400 || (r.status >= 500 && r.status != http.StatusNotImplemented):
 		return appwire.Errorf(appwire.CodeUncertain, "the factory failed while %s; it may have happened, so check whether you are still signed in before trying again", what)
 	case r.status == http.StatusForbidden:
 		return appwire.Errorf(appwire.CodeForbidden, "the factory does not let you do that")
+	case r.status == http.StatusNotImplemented:
+		return appwire.Errorf(appwire.CodeConflict, "this factory does not provide that action")
 	}
 	return adminReadFailure(r)
+}
+
+// The documented synchronous routes complete with 200 or 204. Accepted,
+// partial and other unexpected success statuses do not prove the action ended.
+func completedAdminStatus(status int) bool {
+	return status == http.StatusOK || status == http.StatusNoContent
 }
 
 func (b *appBackend) FactorySignOut(ctx context.Context, p appwire.FactoryAdminParams) (appwire.FactoryAdminDone, error) {
@@ -231,7 +243,7 @@ func (b *appBackend) FactorySignOut(ctx context.Context, p appwire.FactoryAdminP
 	if err != nil {
 		return appwire.FactoryAdminDone{}, err
 	}
-	if r.status < 200 || r.status >= 300 {
+	if !completedAdminStatus(r.status) {
 		return appwire.FactoryAdminDone{}, adminFailure(r, "signing out")
 	}
 	h.dropSession(p.Factory, who.token)
@@ -259,7 +271,7 @@ func (b *appBackend) FactoryRevokeSessions(ctx context.Context, p appwire.Factor
 	if err != nil {
 		return appwire.FactoryAdminDone{}, err
 	}
-	if r.status < 200 || r.status >= 300 {
+	if !completedAdminStatus(r.status) {
 		return appwire.FactoryAdminDone{}, adminFailure(r, "revoking sessions")
 	}
 	// The caller's own sign-in died with the rest. A key does not: it is the
@@ -269,6 +281,8 @@ func (b *appBackend) FactoryRevokeSessions(ctx context.Context, p appwire.Factor
 		h.dropSession(p.Factory, who.token)
 		out.SignedOut = true
 	}
+	// Whoever held a made invitation for a retry no longer has the standing to.
+	h.dropHeld(p.Factory)
 	h.touch(p.Factory)
 	return out, nil
 }

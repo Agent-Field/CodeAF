@@ -153,6 +153,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	if found.profile != nil {
 		handle = found.profile.Handle
 	}
+	clearPhase(w)
 	delete(h.sessions.ids, key)
 	h.releaseToken(handle)
 	err := h.saveSessions()

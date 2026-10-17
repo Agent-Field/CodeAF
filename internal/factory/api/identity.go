@@ -35,12 +35,20 @@ type Me struct {
 	// authenticated credential carries a GitHub-verified profile. A session_ or
 	// tok_ id alone proves nothing; an older server omits the field, so absent
 	// means false and no other field may promote it.
-	GitHubSignedIn  bool            `json:"github_signed_in"`
-	Machines        []Machine       `json:"machines"`
-	TakesUnassigned map[string]bool `json:"takes_unassigned"`
-	Access          string          `json:"access"`
-	PollingEvery    string          `json:"polling_every,omitempty"`
-	ServedBy        string          `json:"served_by"`
+	GitHubSignedIn bool `json:"github_signed_in"`
+	// GitHubSignInAvailable and InviteAvailable are the serving factory's own
+	// statement of what it is configured to do, never a guess from a role, an
+	// id or a mode. The first: GitHub device sign-in is configured (a client
+	// id is set). The second: an invitation can be made AND redeemed, which
+	// takes that client and a tokens file to keep the invitation in. An older
+	// factory omits both, and absent means false.
+	GitHubSignInAvailable bool            `json:"github_sign_in_available,omitempty"`
+	InviteAvailable       bool            `json:"invite_available,omitempty"`
+	Machines              []Machine       `json:"machines"`
+	TakesUnassigned       map[string]bool `json:"takes_unassigned"`
+	Access                string          `json:"access"`
+	PollingEvery          string          `json:"polling_every,omitempty"`
+	ServedBy              string          `json:"served_by"`
 }
 
 // Device describes the code to enter on GitHub and the opaque code to poll here.
