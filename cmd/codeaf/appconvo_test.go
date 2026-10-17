@@ -516,7 +516,11 @@ func TestAppTaskNoteReadFollowsItsClientIDNotItsPosition(t *testing.T) {
 	}
 	rec.mu.Unlock()
 	conv.mu.Lock()
-	conv.appTasks[0].Notes[1].ReadAtStep = &read
+	// The fake returns snapshots by value. Replace the slice so an in-flight
+	// page still owns its old notes instead of racing this publication.
+	nextNotes := append([]session.AppTaskNote(nil), conv.appTasks[0].Notes...)
+	nextNotes[1].ReadAtStep = &read
+	conv.appTasks[0].Notes = nextNotes
 	conv.mu.Unlock()
 	i := rec.waitFor(t, 6*time.Second, func(event string, data any) bool {
 		c, ok := data.(appwire.NoteChanged)
@@ -527,5 +531,18 @@ func TestAppTaskNoteReadFollowsItsClientIDNotItsPosition(t *testing.T) {
 	rec.mu.Unlock()
 	if got.ID != entry.ID || got.ClientID != "c-7" || got.ReadAtStep == nil || *got.ReadAtStep != 5 {
 		t.Fatalf("read = %+v", got)
+	}
+}
+
+// A legacy send has no identity on the page. A note read at the position
+// counted before that send may belong to another writer, even with equal words.
+func TestAnUnkeyedTaskNoteCannotBorrowAnotherNotesReadStep(t *testing.T) {
+	step := 4
+	notes := []session.AppTaskNote{{Text: "same words", ClientID: "someone-else", ReadAtStep: &step}, {Text: "same words", ReadAtStep: &step}}
+	for _, at := range []int{0, 1, 2} {
+		pending := appNotePending{entry: appwire.Entry{Text: "same words"}, index: at}
+		if got := appPendingNoteAt(notes, pending); got != -1 {
+			t.Fatalf("unkeyed note borrowed row %d at old position %d", got, at)
+		}
 	}
 }

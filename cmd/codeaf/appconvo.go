@@ -1501,12 +1501,9 @@ func (b *appBackend) watchNotes(live *appLive, id, local string) {
 // A note with a client id is found by that key and only when exactly one note
 // has it: the page also lists the person's steers that were not sent through the
 // app, so a position counted before the send can name a different note. A note
-// with no key keeps the position it was sent at.
+// with no key remains unknown; position is not evidence of which note was read.
 func appPendingNoteAt(notes []session.AppTaskNote, note appNotePending) int {
 	if note.entry.ClientID == "" {
-		if note.index < len(notes) {
-			return note.index
-		}
 		return -1
 	}
 	at := -1
