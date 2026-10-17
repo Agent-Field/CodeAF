@@ -46,6 +46,23 @@ func appRunRowState(row TaskNotice) string {
 	}
 }
 
+// appRunFacts is what a run row itself persisted about its program, its ending
+// and its branch, and "" for whatever it did not.
+//
+// NOTHING HERE IS READ FROM A LOG, A TITLE OR THE NEAREST LAUNCH. A row written
+// before a field existed has none of it, and that stays unknown. THE ENDING IS
+// THE ROW'S OWN: "stopped" only when the row says a person ended it, otherwise
+// the typed word it recorded, so an older failure with no typed ending is not
+// reclassified as a stop. The branch is context for the work, and it is no
+// authority to push, post, fix or land it.
+func appRunFacts(row TaskNotice) (program, ending, branch string) {
+	ending = string(row.Ending)
+	if row.Stopped {
+		ending = string(TaskEndingStopped)
+	}
+	return strings.TrimSpace(row.Program), ending, strings.TrimSpace(row.Branch)
+}
+
 // appRunRowKey is the store's id for a run row's task: the plan task it was
 // published for, or its own number, which is the key a run's rows are filed
 // under ([Agent.sayToRunRowFrom]).
@@ -91,6 +108,7 @@ func (a *Agent) appRunView(row TaskNotice, cap float64) AppTaskView {
 		Elapsed: int64(row.Elapsed.Seconds()), Deadline: row.Deadline, Held: row.Paused, Version: 1, Origin: "asked",
 	}
 	view.Source, view.FinishedAt = cloneSource(row.Source), row.EndedAt
+	view.RunProgram, view.Ending, view.Branch = appRunFacts(row)
 	view.Dismissed = view.State == "failed" && row.Ending != TaskEndingStopped && a.tasker().isDismissed(view.ID)
 	if row.Parent != 0 {
 		view.Parent = strconv.FormatUint(row.Parent, 10)

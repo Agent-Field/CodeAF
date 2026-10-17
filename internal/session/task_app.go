@@ -59,6 +59,12 @@ type AppTaskView struct {
 	// Program is the program the task was handed to, off the page read AppTask
 	// already makes (task_app_program.go); nil for every other task.
 	Program *AppProgramView `json:",omitempty"`
+	// RunProgram, Ending and Branch are what a handed-over task's ROW persisted,
+	// copied and never derived: the program's name, the typed word for why it
+	// ended ("stopped" when a person ended it), and the branch its work was kept
+	// on. "" is unknown for each. They need no log read, so a list carries them
+	// as cheaply as a page does (task_app_runs.go, [appRunFacts]).
+	RunProgram, Ending, Branch string
 }
 type AppTaskNote struct {
 	Direction uint64 `json:"direction,omitempty"`
