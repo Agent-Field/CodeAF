@@ -176,98 +176,122 @@ func NormalizeSharePayload(paths []string) (normalised []string, digest string, 
 // (session, operation_id) under root, writes a pending receipt when none exists,
 // and answers a claim whose Outcome is admitted, replay, conflict, busy, or
 // invalid. On admitted/replay the lock stays held until Release or Settle.
+//
+// It reads as its three phases: the arguments are checked before anything is
+// held, the hold is taken without waiting, and only then is the durable receipt
+// read and answered.
 func AdmitShareOperation(root, session, operationID string, paths []string, prov ShareProvenance, deadline time.Time) (*ShareClaim, error) {
-	if strings.TrimSpace(root) == "" || ValidateShareOperationID(session) != nil {
-		return &ShareClaim{Outcome: ShareClaimInvalid}, ErrShareOpInvalid
-	}
-	if err := ValidateShareOperationID(operationID); err != nil {
-		return &ShareClaim{Outcome: ShareClaimInvalid}, err
-	}
-	deadline = boundedShareDeadline(deadline)
-	normalised, digest, err := NormalizeSharePayload(paths)
+	normalised, digest, err := validShareAdmission(root, session, operationID, paths)
 	if err != nil {
 		return &ShareClaim{Outcome: ShareClaimInvalid}, err
 	}
+	claim, err := holdShareOperation(shareOpDir(root, session, operationID), root, boundedShareDeadline(deadline))
+	if err != nil {
+		return &ShareClaim{Outcome: ShareClaimBusy}, err
+	}
+	return claim.answer(session, operationID, normalised, digest, prov)
+}
+
+// validShareAdmission is every refusal that needs nothing held: the store,
+// both keys and the payload.
+func validShareAdmission(root, session, operationID string, paths []string) ([]string, string, error) {
+	if strings.TrimSpace(root) == "" || ValidateShareOperationID(session) != nil {
+		return nil, "", ErrShareOpInvalid
+	}
+	if err := ValidateShareOperationID(operationID); err != nil {
+		return nil, "", err
+	}
+	return NormalizeSharePayload(paths)
+}
+
+// holdShareOperation takes one process slot and the operation's stable lock,
+// never waiting for either. Every failure gives back whatever it had taken, so
+// a refused admission holds nothing.
+func holdShareOperation(dir, root string, deadline time.Time) (*ShareClaim, error) {
 	if time.Now().After(deadline) {
-		return &ShareClaim{Outcome: ShareClaimBusy}, ErrShareOpBusy
+		return nil, ErrShareOpBusy
 	}
 	select {
 	case shareOpSlots <- struct{}{}:
 	default:
-		return &ShareClaim{Outcome: ShareClaimBusy}, ErrShareOpBusy
+		return nil, ErrShareOpBusy
 	}
-	slotHeld := true
-	releaseSlot := func() {
-		if slotHeld {
-			<-shareOpSlots
-			slotHeld = false
-		}
-	}
-
-	dir := shareOpDir(root, session, operationID)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		releaseSlot()
-		return &ShareClaim{Outcome: ShareClaimBusy}, err
-	}
-	if err := syncShareOpDir(filepath.Dir(dir)); err != nil {
-		releaseSlot()
-		return &ShareClaim{Outcome: ShareClaimBusy}, err
-	}
-	if err := syncShareOpDir(root); err != nil {
-		releaseSlot()
-		return &ShareClaim{Outcome: ShareClaimBusy}, err
+	claim := &ShareClaim{dir: dir, deadline: deadline, releaseSlot: func() { <-shareOpSlots }}
+	if err := makeShareOpDir(dir, root); err != nil {
+		claim.Release()
+		return nil, err
 	}
 	lock, err := openShareLock(filepath.Join(dir, shareOpLockName))
 	if err != nil {
-		releaseSlot()
-		return &ShareClaim{Outcome: ShareClaimBusy}, err
+		claim.Release()
+		return nil, err
 	}
 	if err := filelock.Lock(lock, true, true); err != nil {
 		_ = lock.Close()
-		releaseSlot()
+		claim.Release()
 		if filelock.IsBusy(err) {
-			return &ShareClaim{Outcome: ShareClaimBusy}, ErrShareOpBusy
+			return nil, ErrShareOpBusy
 		}
-		return &ShareClaim{Outcome: ShareClaimBusy}, err
+		return nil, err
 	}
+	claim.lock = lock
 	if time.Now().After(deadline) {
-		_ = filelock.Unlock(lock)
-		_ = lock.Close()
-		releaseSlot()
-		return &ShareClaim{Outcome: ShareClaimBusy}, ErrShareOpBusy
+		claim.Release()
+		return nil, ErrShareOpBusy
 	}
+	return claim, nil
+}
 
-	existing, readErr := readShareReceipt(dir)
-	if readErr == nil && (existing.Session != session || existing.OperationID != operationID) {
-		readErr = ErrShareOpInvalid
+// makeShareOpDir creates the operation's folder and syncs every parent entry
+// it may have added, so a first claim survives a crash as a whole.
+func makeShareOpDir(dir, root string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := syncShareOpDir(filepath.Dir(dir)); err != nil {
+		return err
+	}
+	return syncShareOpDir(root)
+}
+
+// answer reads the durable receipt under the held lock and decides: replay
+// the ORIGINAL, refuse a different payload, or write the pending manifest.
+func (c *ShareClaim) answer(session, operationID string, normalised []string, digest string, prov ShareProvenance) (*ShareClaim, error) {
+	existing, err := readShareReceipt(c.dir)
+	if err == nil && (existing.Session != session || existing.OperationID != operationID) {
+		err = ErrShareOpInvalid
 	}
 	switch {
-	case readErr == nil:
-		claim := &ShareClaim{dir: dir, lock: lock, releaseSlot: releaseSlot, Receipt: existing, deadline: deadline}
-		if existing.PayloadDigest != digest {
-			claim.Outcome = ShareClaimConflict
-			claim.Release()
-			return claim, ErrShareOpConflict
-		}
+	case err == nil && existing.PayloadDigest != digest:
+		c.Receipt, c.Outcome = existing, ShareClaimConflict
+		c.Release()
+		return c, ErrShareOpConflict
+	case err == nil:
 		// Replay the ORIGINAL receipt and provenance; do not rewrite Created
 		// and do not attribute the operation to the latest caller.
-		claim.Outcome = ShareClaimReplay
-		return claim, nil
-	case errors.Is(readErr, ErrShareOpMissing):
-		// Write the pending manifest below.
-	default:
-		_ = filelock.Unlock(lock)
-		_ = lock.Close()
-		releaseSlot()
-		return &ShareClaim{Outcome: ShareClaimBusy}, readErr
+		c.Receipt, c.Outcome = existing, ShareClaimReplay
+		return c, nil
+	case !errors.Is(err, ErrShareOpMissing):
+		c.Release()
+		return &ShareClaim{Outcome: ShareClaimBusy}, err
 	}
+	receipt := pendingShareReceipt(session, operationID, normalised, digest, prov)
+	if err := writeShareReceipt(c.dir, receipt); err != nil {
+		c.Release()
+		return &ShareClaim{Outcome: ShareClaimBusy}, err
+	}
+	c.Receipt, c.Outcome = receipt, ShareClaimAdmitted
+	return c, nil
+}
 
+// pendingShareReceipt mints the immutable planned ids before any effect.
+func pendingShareReceipt(session, operationID string, normalised []string, digest string, prov ShareProvenance) ShareReceipt {
 	planned := make([]SharePlannedRow, len(normalised))
 	for i, path := range normalised {
 		planned[i] = SharePlannedRow{ID: NewDeliverableID(), Path: path}
 	}
 	prov.Session = session
-	receipt := ShareReceipt{
+	return ShareReceipt{
 		Version:       shareOpVersion,
 		OperationID:   operationID,
 		Session:       session,
@@ -277,20 +301,6 @@ func AdmitShareOperation(root, session, operationID string, paths []string, prov
 		Provenance:    prov,
 		WrittenAt:     time.Now().UTC(),
 	}
-	if err := writeShareReceipt(dir, receipt); err != nil {
-		_ = filelock.Unlock(lock)
-		_ = lock.Close()
-		releaseSlot()
-		return &ShareClaim{Outcome: ShareClaimBusy}, err
-	}
-	return &ShareClaim{
-		Outcome:     ShareClaimAdmitted,
-		Receipt:     receipt,
-		dir:         dir,
-		lock:        lock,
-		releaseSlot: releaseSlot,
-		deadline:    deadline,
-	}, nil
 }
 
 // Settle writes the final status and recorded ids under the held lock, then
