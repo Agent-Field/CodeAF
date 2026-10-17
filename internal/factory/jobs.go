@@ -140,7 +140,9 @@ func ShownSize(it Item) (letter, from string) {
 	}
 	switch it.Triage.SizeFrom {
 	case SizeFromDiff:
-		return s, ShownDiff
+		if it.Kind == KindPR {
+			return s, ShownDiff
+		}
 	case SizeFromRead:
 		if !it.Triage.TriagedAt.IsZero() {
 			return s, ShownRead
