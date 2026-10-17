@@ -283,6 +283,11 @@ func (b *appBackend) memberRole(crew, agent, role, instructions, model string) e
 	if role == "" {
 		return appwire.Errorf(appwire.CodeBadParams, "name the role")
 	}
+	if a, err := b.find(agent); err == nil {
+		if err := b.lentFence(a, "model and instructions"); err != nil {
+			return err
+		}
+	}
 	var given appwire.Role
 	err := b.crewLayer().write(func(f *appCrewLayerFile) error {
 		var found *appwire.Role
@@ -361,6 +366,24 @@ func (b *appBackend) RoleUpdate(id string, name, instructions, model *string) (a
 	var role appwire.Role
 	var copies []appwire.RoleCopy
 	told, moved := false, false
+	// A ROLE THAT A LENT STAGE CARRIES CANNOT CHANGE: its model and instructions
+	// would be pushed onto the stage, so the edit is refused before it is saved.
+	var carriers []string
+	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
+		for key, m := range f.Members {
+			if m != nil && m.Role == id {
+				_, agent, _ := strings.Cut(key, "/")
+				carriers = append(carriers, agent)
+			}
+		}
+	})
+	for _, agent := range carriers {
+		if a, err := b.find(agent); err == nil {
+			if err := b.lentFence(a, "model and instructions"); err != nil {
+				return appwire.Role{}, err
+			}
+		}
+	}
 	err := b.crewLayer().write(func(f *appCrewLayerFile) error {
 		r := f.Roles[id]
 		if r == nil {
