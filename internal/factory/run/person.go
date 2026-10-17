@@ -81,12 +81,16 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time) error {
 	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
+	qkind := it.QKind
 	it.State = factory.StateRunning
 	it.Question, it.QKind = "", ""
 	it.Asking = nil
 	s := it.Stream
 	if s == nil || s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
 		return nil
+	}
+	if yes && qkind == factory.QKindApprove {
+		repairMisfiledGate(s)
 	}
 	ph := &s.Phases[s.Cur]
 	switch {
@@ -98,6 +102,27 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time) error {
 		setPhaseState(ph, factory.PhasePending, now)
 	}
 	return nil
+}
+
+// repairMisfiledGate mends the one stored shape older workers wrote: the
+// approve question filed against the finished step BEFORE the gate, which left
+// that step waiting and the gate pending. It is deliberately narrow, because it
+// runs only after a person's yes and must never pass a gate the person did not
+// answer: the waiting step must be a non-gate step holding a finished result,
+// and the step right after it must be a pending gate. Anything else is left
+// exactly as it was and takes the ordinary path.
+func repairMisfiledGate(s *factory.Stream) {
+	ph := &s.Phases[s.Cur]
+	if ph.Kind == factory.StageGate || ph.Result == nil || !ph.Result.Done || s.Cur+1 >= len(s.Phases) {
+		return
+	}
+	gate := s.Phases[s.Cur+1]
+	if gate.Kind != factory.StageGate || gate.State != factory.PhasePending {
+		return
+	}
+	// State only: the step's finish time is kept, and its result and rounds stay.
+	ph.State = factory.PhaseDone
+	s.Cur++
 }
 
 // KeepAnswer is an answer to a job no worker holds any more: it is kept for

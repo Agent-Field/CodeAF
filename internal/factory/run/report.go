@@ -137,6 +137,18 @@ func mergeClaims(it *factory.Item, claims []factory.Claim) {
 	}
 }
 
+// dropSettledPlanApproval frees the item's decision slot when a new approve
+// question arrives after a plan approval already settled: THE OLD CONSENT NEVER
+// CARRIES TO A NEW QUESTION, so the new ask needs a new approval with its own
+// five-second window. Only a settled plan approval goes; one still inside its
+// window ("approving") belongs to undo and settle, and any other kind is not
+// this question's. The factory record keeps the earlier consent.
+func dropSettledPlanApproval(it *factory.Item) {
+	if a := it.Approval; a != nil && a.Kind == "plan" && a.State == "approved" {
+		it.Approval = nil
+	}
+}
+
 func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now time.Time) error {
 	if question == nil {
 		return nil
@@ -155,6 +167,9 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 		setPhaseState(&it.Stream.Phases[i], factory.PhaseWaiting, now)
 	}
 	it.Asking = &q
+	if kind == factory.QKindApprove {
+		dropSettledPlanApproval(it)
+	}
 	it.State = factory.StateNeedsYou
 	it.Question, it.QKind = q.Question, kind
 	if it.QKind == "" {
