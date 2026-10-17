@@ -242,8 +242,8 @@ type factoryParentSource struct {
 func (f *factoryParentSource) Config() session.Config {
 	cfg, err := factoryApplyTaskPolicy(f.raw(), f.profile)
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.last = err
-	f.mu.Unlock()
 	return cfg
 }
 
