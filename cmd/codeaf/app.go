@@ -344,6 +344,10 @@ type appBackend struct {
 	orderStore appOrderStore
 	// stopPhases puts the engine's phase news back the way it was.
 	stopPhases func()
+	// factories is the attached-factory registry (appfactory.go), made by the
+	// first factory.* call.
+	factories   *appFactoryHub
+	factoryOnce sync.Once
 	// stoppingAll is the agents a processes.stop_all is in flight for; a
 	// second for the same agent is answered busy (appprocessactions.go).
 	stoppingAll map[string]bool
@@ -3403,6 +3407,7 @@ func (b *appBackend) Close() error {
 	if balances != nil {
 		balances.stop()
 	}
+	b.closeFactories()
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).
 	b.markQuit(agents)
