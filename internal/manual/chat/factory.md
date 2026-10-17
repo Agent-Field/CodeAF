@@ -51,6 +51,20 @@ Banking a recipe never writes into a folder held by a running program. A separat
 
 The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask) and `factory_answer` (reply to a question a step asked; send it to you when it turns on taste, scope, risk, money or access). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
 
+## how big is a job — size of a job, the size: filter, why there is no size, risky
+
+A job's size comes from the first of these that exists, and nothing else is a size:
+
+1. **A size label** on the item (`size:S`, `size/s`, XS to XL). It wins.
+2. **A pull request's measured changed lines** (S for 50 or fewer, M for 400 or fewer, L beyond), shown as `size M (diff)`.
+3. **The completed read**, shown as `read says M`.
+
+The length of an issue's body is not a size, and neither is the guess on a chat card. An item with none of the three shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
+
+Only a size label decides whether a job starts on its own. A size from a diff or a read never starts, holds or orders a job; with no label the factory asks instead, saying "no size label".
+
+Limits: items read before this change show no size until their text changes or someone labels them. A pull request that has not changed since stays blank until the forge reports a change, and one with zero changed lines has no size. Older items are not reread just to fill this gap; editing the title or body allows one fresh read through the normal worker. There is no "read again" action yet.
+
 ## which model runs factory jobs — Task models and one model
 
 Factory reads, manager turns and step conversations follow Task models. With one model selected, every text role uses that exact model on its selected connection. A missing, unreachable or mismatched choice refuses the turn; it does not choose a fallback. The daily crew cap also refuses new factory admission when reached. A job's own spending ceiling remains separate.

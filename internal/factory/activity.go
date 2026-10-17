@@ -70,10 +70,15 @@ func NoteChanges(before Item, after *Item, at time.Time) {
 // otherwise keep yesterday's estimate under today's sentence. The start
 // evidence goes too (StartJudged, StartMatched, StartPaths, StartRules): it is
 // the model's judgement of the OLD text, so an unjudged item must read as "not
-// judged" until the new read lands. The type and the size stay: they came from
-// the source's labels and lines first. A caller whose text changed re-derives
-// the size itself (github.Merge), because only the source knows how.
+// judged" until the new read lands. The type stays: it came from the source's
+// labels first. THE SIZE GOES WHEN THE READ WROTE IT (SizeFrom "read"): it is
+// the model's judgement of the OLD text. A measured diff or a chat guess stays;
+// the source re-measures the first (github.Merge) and the read replaces the
+// second.
 func ClearRead(t *Triage) {
+	if t.SizeFrom == SizeFromRead {
+		t.Size, t.SizeFrom = "", ""
+	}
 	t.Read = ""
 	t.Est = 0
 	t.Risk = nil

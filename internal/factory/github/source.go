@@ -604,7 +604,7 @@ func (s *Source) issueItem(ctx context.Context, owner, name string, is forge.Iss
 		State:           factory.StateNew,
 		Labels:          is.Labels,
 		URL:             is.URL,
-		Triage:          factory.Triage{Type: issueType(is), Size: issueSize(is.Body)},
+		Triage:          factory.Triage{Type: issueType(is)},
 		SourceAssignees: sourceAssignees(is.Assignees),
 		// A NEW item only: the sole assignee is its owner, several are nobody's.
 		Assignee: factory.SoleSourceAssignee(sourceAssignees(is.Assignees)),
@@ -649,7 +649,7 @@ func (s *Source) pullItem(ctx context.Context, owner, name string, p forge.Pull,
 		URL:    p.URL,
 		Checks: ChecksWords(state),
 		Diff:   DiffWords(p.Additions, p.Deletions),
-		Triage: factory.Triage{Type: "review", Size: pullSize(p.Additions + p.Deletions)},
+		Triage: pullTriage(p),
 		Draft:  p.Draft, Base: p.Base, Head: pullHead(owner, name, p), HeadSHA: p.HeadSHA,
 		SourceAssignees: sourceAssignees(p.Assignees),
 		Assignee:        factory.SoleSourceAssignee(sourceAssignees(p.Assignees)),
@@ -861,18 +861,17 @@ func pullSize(lines int) string {
 	return "L"
 }
 
-// issueSize is the same three letters read off how much the author wrote: S
-// up to four hundred characters, M up to two thousand, L beyond. It is a
-// cheap guess, and the floor treats it as one.
-func issueSize(body string) string {
-	n := utf8.RuneCountInString(strings.TrimSpace(body))
-	switch {
-	case n <= 400:
-		return "S"
-	case n <= 2000:
-		return "M"
+// pullTriage is a pull request's arrival triage. Its size is stamped
+// SizeFromDiff ONLY WHEN THE FORGE MEASURED IT: the list leaves the line
+// counts out, so an undetailed pull request carries zeros that measure
+// nothing and gets no size at all. An issue is never given a size here; its
+// body's length was once taken for one and is not a size.
+func pullTriage(p forge.Pull) factory.Triage {
+	t := factory.Triage{Type: "review"}
+	if lines := p.Additions + p.Deletions; lines > 0 {
+		t.Size, t.SizeFrom = pullSize(lines), factory.SizeFromDiff
 	}
-	return "L"
+	return t
 }
 
 // clip keeps the first n characters, never splitting one.

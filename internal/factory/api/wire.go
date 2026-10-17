@@ -577,6 +577,7 @@ type PRChecks struct {
 type Triage struct {
 	Type         string    `json:"type,omitempty"`
 	Size         string    `json:"size,omitempty"`
+	SizeFrom     string    `json:"size_from,omitempty"`
 	Area         string    `json:"area,omitempty"`
 	Readiness    int       `json:"readiness,omitempty"`
 	Est          float64   `json:"est,omitempty"`

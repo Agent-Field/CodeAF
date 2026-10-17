@@ -77,9 +77,9 @@ func TestParseRefusesGarbageAndDropsWordsOutsideTheVocabulary(t *testing.T) {
 }
 
 func TestApplyFillsOnlyWhatIsEmpty(t *testing.T) {
-	it := factory.Item{Triage: factory.Triage{Type: "feat", Size: "L", Risk: []string{"has ui"}, Priority: 4}}
+	it := factory.Item{Triage: factory.Triage{Type: "feat", Size: "L", SizeFrom: factory.SizeFromRead, Risk: []string{"has ui"}, Priority: 4}}
 	Apply(&it, factory.Triage{Read: "r", Type: "bug", Size: "S", Est: 2, Risk: []string{"migration"}, Dup: "#3", Priority: 1, Reason: "why"})
-	want := factory.Triage{Read: "r", Type: "feat", Size: "L", Est: 2, Risk: []string{"has ui"}, Dup: "#3", Priority: 4, Reason: "why"}
+	want := factory.Triage{Read: "r", Type: "feat", Size: "L", SizeFrom: factory.SizeFromRead, Est: 2, Risk: []string{"has ui"}, Dup: "#3", Priority: 4, Reason: "why"}
 	if !reflect.DeepEqual(it.Triage, want) {
 		t.Fatalf("Apply = %+v\nwant  %+v", it.Triage, want)
 	}
