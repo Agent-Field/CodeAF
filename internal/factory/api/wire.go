@@ -232,8 +232,8 @@ const (
 // present only when the job has no size label, and it is display only: a start
 // decision never reads it, so an old client that ignores it stays correct.
 type JobReadSize struct {
-	Value string `json:"value"`
-	From  string `json:"from"`
+	Value string `json:"value" jsonschema:"enum=S,enum=M,enum=L"`
+	From  string `json:"from" jsonschema:"enum=read,enum=diff"`
 }
 
 // Job is one unit of work on the floor (code: [factory.Item]).
