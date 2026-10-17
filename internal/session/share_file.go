@@ -110,6 +110,12 @@ func copySharedFile(ctx context.Context, roots []string, path, dir string, remai
 	if err := os.Link(tmp.Name(), final); err != nil {
 		return sharedFile{}, sharedFile{}, err
 	}
+	// THE TEMPORARY NAME GOES BEFORE THE IDENTITY IS READ. Unlinking it changes
+	// the copy's change time, so an identity taken first would be one the copy
+	// no longer has, and every later check would call the copy changed.
+	if err := os.Remove(tmp.Name()); err != nil {
+		return sharedFile{}, sharedFile{}, err
+	}
 	info, err := ownedCopyInfo(dir, final, read.bytes)
 	if err != nil {
 		return sharedFile{}, sharedFile{}, err
