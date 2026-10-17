@@ -41,7 +41,7 @@ func validateShareRows(r ShareReceipt) error {
 		return ErrShareOpInvalid
 	}
 	for i := range paths {
-		if normalized[i] != paths[i] {
+		if normalized[i] != paths[i] || !shareAbsolute(paths[i]) {
 			return ErrShareOpInvalid
 		}
 	}

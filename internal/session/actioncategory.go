@@ -255,7 +255,9 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		// a packet sent up, and a closing report to the person.
 		"team_send", "team_post", "team_escalate", "team_close_report", "team_raise",
 		// An automation's run telling the person how it went.
-		"automation_report":
+		"automation_report",
+		// A file handed to the person as a result.
+		"share_deliverable":
 		return ActionCommunicate
 
 	// Work handed out, or this mind copied to run beside itself.

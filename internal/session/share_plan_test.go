@@ -10,17 +10,18 @@ import (
 	"time"
 )
 
-// sharePlanRowForTest is the exact row shape Plan accepts for one planned id.
+// sharePlanRowForTest is the exact row shape Plan accepts for one planned id:
+// the planned file itself, recorded in place, as a generic file.
 // It carries the receipt's own provenance, as every planned row must.
 func sharePlanRowForTest(r ShareReceipt, planned SharePlannedRow) Artifact {
 	session, prov := r.Session, r.Provenance
-	path := filepath.Join("/shared", filepath.Base(planned.Path))
+	path := planned.Path
 	sum := strings.Repeat("ab", 32)
 	return Artifact{
-		Path: path, Session: session, Title: filepath.Base(path), Kind: "file", Created: time.Now().UTC(),
+		Path: path, Session: session, Title: filepath.Base(path), Kind: shareKindFile, Created: time.Now().UTC(),
 		Deliver: &DeliverableFact{
 			ID: planned.ID, At: time.Now().UTC(), Origin: DeliverOriginSharedByAgent, Run: prov.Run, Turn: prov.Turn, Call: prov.Call,
-			File: &DeliverableFile{Canonical: path, Bytes: 3, SHA256: sum}, Version: "sha256:" + sum,
+			File: &DeliverableFile{Canonical: path, Bytes: 3, SHA256: sum, MIME: "text/plain; charset=utf-8"}, Version: "sha256:" + sum,
 		},
 	}
 }
@@ -38,7 +39,7 @@ func planShareForTest(t *testing.T, claim *ShareClaim) {
 
 func TestSharePlanIsDurableAndImmutableOnReplay(t *testing.T) {
 	root := t.TempDir()
-	claim, err := AdmitShareOperation(root, "s", "op", []string{"a.md", "b.png"}, ShareProvenance{Call: "first"}, time.Time{})
+	claim, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.md", "/w/b.png"}, ShareProvenance{Call: "first"}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestSharePlanIsDurableAndImmutableOnReplay(t *testing.T) {
 	want := claim.Receipt.Planned
 	claim.Release() // the crash: planned, nothing settled
 
-	replay, err := AdmitShareOperation(root, "s", "op", []string{"a.md", "b.png"}, ShareProvenance{Call: "later"}, time.Time{})
+	replay, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.md", "/w/b.png"}, ShareProvenance{Call: "later"}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +70,14 @@ func TestSharePlanIsDurableAndImmutableOnReplay(t *testing.T) {
 
 func TestShareSettleTransitionsKeepAPlanFromBeingCalledNeverShared(t *testing.T) {
 	root := t.TempDir()
-	claim, err := AdmitShareOperation(root, "s", "op", []string{"a.md"}, ShareProvenance{}, time.Time{})
+	claim, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.md"}, ShareProvenance{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := claim.Settle(ShareOpAccepted, nil); !errors.Is(err, ErrShareOpInvalid) {
 		t.Fatalf("accepted with no plan err=%v", err)
 	}
-	claim, err = AdmitShareOperation(root, "s", "op", []string{"a.md"}, ShareProvenance{}, time.Time{})
+	claim, err = AdmitShareOperation(root, "s", "op", []string{"/w/a.md"}, ShareProvenance{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,14 +90,14 @@ func TestShareSettleTransitionsKeepAPlanFromBeingCalledNeverShared(t *testing.T)
 		t.Fatalf("status=%q err=%v, want the plan kept", r.Status, err)
 	}
 
-	fresh, err := AdmitShareOperation(root, "s", "op2", []string{"a.md"}, ShareProvenance{}, time.Time{})
+	fresh, err := AdmitShareOperation(root, "s", "op2", []string{"/w/a.md"}, ShareProvenance{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := fresh.Settle(ShareOpRefused, nil); err != nil {
 		t.Fatalf("refused before a plan: %v", err)
 	}
-	again, err := AdmitShareOperation(root, "s", "op2", []string{"a.md"}, ShareProvenance{}, time.Time{})
+	again, err := AdmitShareOperation(root, "s", "op2", []string{"/w/a.md"}, ShareProvenance{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,6 +125,19 @@ func TestShareReceiptRefusesAPlanThatClaimsMoreThanSharing(t *testing.T) {
 			r.Planned[0].Row.Deliver.Source = &DeliverableFile{Canonical: "/x/a.md", SHA256: "00"}
 		},
 		"media origin":   func(r *ShareReceipt) { r.Planned[0].Row.Media = &MediaFact{ID: NewMediaID(), Origin: MediaGenerated} },
+		"from":           func(r *ShareReceipt) { r.Planned[0].Row.Deliver.From = []string{"input"} },
+		"profile":        func(r *ShareReceipt) { r.Planned[0].Row.Deliver.Profile = "writer" },
+		"no mime":        func(r *ShareReceipt) { r.Planned[0].Row.Deliver.File.MIME = "" },
+		"other kind":     func(r *ShareReceipt) { r.Planned[0].Row.Kind = "export" },
+		"image no media": func(r *ShareReceipt) { r.Planned[0].Row.Kind = "image" },
+		"not planned path": func(r *ShareReceipt) {
+			row := r.Planned[1].Row
+			row.Path, row.Title, row.Deliver.File.Canonical = "/w/b2.md", "b2.md", "/w/b2.md"
+		},
+		"other folder": func(r *ShareReceipt) {
+			row := r.Planned[0].Row
+			row.Path, row.Deliver.File.Canonical = "/elsewhere/a.md", "/elsewhere/a.md"
+		},
 		"partial":        func(r *ShareReceipt) { r.Planned[1].Row = nil },
 		"pending rows":   func(r *ShareReceipt) { r.Status = ShareOpPending },
 		"planned record": func(r *ShareReceipt) { r.RecordedIDs = []string{r.Planned[0].ID} },
@@ -132,7 +146,7 @@ func TestShareReceiptRefusesAPlanThatClaimsMoreThanSharing(t *testing.T) {
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
-			claim, err := AdmitShareOperation(root, "s", "op", []string{"a.md", "b.md"}, ShareProvenance{}, time.Time{})
+			claim, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.md", "/w/b.md"}, ShareProvenance{}, time.Time{})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -60,6 +60,13 @@ const (
 	MediaGenerated = "generated"
 	// MediaEvidence is a file the agent looked at, listened to, watched or read.
 	MediaEvidence = "evidence"
+	// MediaShared is a file the agent DELIBERATELY handed over with
+	// share_deliverable (share_publish.go). It says who handed the file over and
+	// nothing about who made it: it is never generated, never a declared shell
+	// output whose change was observed, and never evidence. Its record carries
+	// only what the file's own bytes and header said, and the dispatch it was
+	// shared under.
+	MediaShared = "shared"
 )
 
 // What the agent did with a file it looked at.

@@ -14,6 +14,11 @@ import (
 )
 
 const shareFileBytes = int64(64 << 20)
+
+// shareKindFile is the kind of a shared file that is neither media nor named
+// Markdown or Mermaid text: a PDF, an archive, a spreadsheet, anything. Its type
+// is its sniffed MIME, and it is never a media source.
+const shareKindFile = "file"
 const shareFileChunk = 64 << 10
 
 // sharedFile is an inspection, not a claim that this tool created the file.
@@ -26,34 +31,111 @@ type sharedFile struct {
 }
 
 func inspectSharedFile(ctx context.Context, roots []string, path string, remaining *int64) (sharedFile, error) {
-	if err := validSharedInspection(ctx, roots, path, remaining); err != nil {
+	read, err := readSharedSource(ctx, roots, path, remaining, nil)
+	if err != nil {
 		return sharedFile{}, err
+	}
+	return sharedFileFacts(path, read.info, read.bytes, read.sum, read.head), nil
+}
+
+// sharedRead is one complete, verified pass over a source file.
+type sharedRead struct {
+	info  os.FileInfo
+	bytes int64
+	sum   string
+	head  []byte
+}
+
+// readSharedSource streams path once through 64 KiB buffers into its hash, the
+// bounded header and, when copy is not nil, an owned copy — so a copy holds
+// exactly the bytes the hash describes. The file is checked again afterwards
+// by descriptor and by path; a change during the read is a refusal.
+func readSharedSource(ctx context.Context, roots []string, path string, remaining *int64, copy io.Writer) (sharedRead, error) {
+	if err := validSharedInspection(ctx, roots, path, remaining); err != nil {
+		return sharedRead{}, err
 	}
 	file, err := openSharedSource(roots, path)
 	if err != nil {
-		return sharedFile{}, err
+		return sharedRead{}, err
 	}
 	defer file.Close()
 	before, err := file.Stat()
 	if err != nil {
-		return sharedFile{}, err
+		return sharedRead{}, err
 	}
 	if before.Size() < 0 || before.Size() > shareFileBytes || before.Size() > *remaining {
-		return sharedFile{}, ErrShareOpInvalid
+		return sharedRead{}, ErrShareOpInvalid
 	}
 	// Failed attempts consume their advertised bytes too; changing files cannot
 	// multiply a call's read budget by repeatedly failing final verification.
 	*remaining -= before.Size()
 	hash := sha256.New()
 	head := &shareFileHead{}
-	read, err := io.CopyBuffer(io.MultiWriter(hash, head), referenceReader{ctx: ctx, reader: io.LimitReader(file, before.Size())}, make([]byte, shareFileChunk))
+	sinks := []io.Writer{hash, head}
+	if copy != nil {
+		sinks = append(sinks, copy)
+	}
+	read, err := io.CopyBuffer(io.MultiWriter(sinks...), referenceReader{ctx: ctx, reader: io.LimitReader(file, before.Size())}, make([]byte, shareFileChunk))
 	if err != nil {
-		return sharedFile{}, err
+		return sharedRead{}, err
 	}
 	if err := verifySharedSource(ctx, roots, path, file, before, read); err != nil {
-		return sharedFile{}, err
+		return sharedRead{}, err
 	}
-	return sharedFileFacts(path, before, read, hex.EncodeToString(hash.Sum(nil)), head.bytes), nil
+	return sharedRead{info: before, bytes: read, sum: hex.EncodeToString(hash.Sum(nil)), head: head.bytes}, nil
+}
+
+// copySharedFile takes a stable engine-owned copy of path into dir, which must
+// not exist yet, in the same single pass that hashes it. It answers the copy's
+// facts and the original's separately; the original is only ever read.
+//
+// THE COPY IS LINKED INTO PLACE, never renamed over anything: a name already
+// there is a refusal, so a copy can never replace a file somebody else owns.
+func copySharedFile(ctx context.Context, roots []string, path, dir string, remaining *int64) (copied, source sharedFile, err error) {
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		return sharedFile{}, sharedFile{}, err
+	}
+	tmp, err := os.CreateTemp(dir, ".share-*")
+	if err != nil {
+		return sharedFile{}, sharedFile{}, err
+	}
+	defer os.Remove(tmp.Name())
+	read, err := readSharedSource(ctx, roots, path, remaining, tmp)
+	syncErr := tmp.Sync()
+	closeErr := tmp.Close()
+	if err := errors.Join(err, syncErr, closeErr); err != nil {
+		return sharedFile{}, sharedFile{}, err
+	}
+	final := filepath.Join(dir, filepath.Base(path))
+	if err := os.Link(tmp.Name(), final); err != nil {
+		return sharedFile{}, sharedFile{}, err
+	}
+	info, err := ownedCopyInfo(dir, final, read.bytes)
+	if err != nil {
+		return sharedFile{}, sharedFile{}, err
+	}
+	return sharedFileFacts(final, info, read.bytes, read.sum, read.head), sharedFileFacts(path, read.info, read.bytes, read.sum, read.head), nil
+}
+
+// ownedCopyInfo makes the copy's name durable and answers the copy's identity
+// as its own descriptor reports it.
+func ownedCopyInfo(dir, final string, bytes int64) (os.FileInfo, error) {
+	if err := syncShareOpDir(dir); err != nil {
+		return nil, err
+	}
+	file, err := openRegularNoFollow(final)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() != bytes {
+		return nil, errors.New("the owned copy is not the size that was read")
+	}
+	return info, nil
 }
 
 // validSharedInspection is every refusal made before a file is opened: a live
@@ -74,15 +156,21 @@ func validSharedInspection(ctx context.Context, roots []string, path string, rem
 // sharedFileFacts is what the bytes just read say, and nothing more: the
 // header decides the type, an unrecognised header stays a generic file.
 func sharedFileFacts(path string, before os.FileInfo, read int64, sum string, head []byte) sharedFile {
-	mime := http.DetectContentType(head)
+	// ONE type for the file and its media fact: the media sniffer's where it
+	// recognised the header (it knows containers the generic sniffer does not),
+	// else the generic sniffer's, so the kind and both records always agree.
+	mime := sniffMedia(head)
+	if mime == "" {
+		mime = http.DetectContentType(head)
+	}
 	fact := DeliverableFile{Canonical: path, Bytes: read, ModNS: before.ModTime().UnixNano(), SHA256: sum, MIME: mime}
 	fact.CtimeNS, fact.Dev, fact.Ino = fileIdentity(before)
-	media := MediaFact{Origin: MediaPublished, Canonical: path, MIME: mime, Bytes: read, ModNS: fact.ModNS, CtimeNS: fact.CtimeNS, Dev: fact.Dev, Ino: fact.Ino, SHA256: fact.SHA256, Change: ShellUnknown}
+	media := MediaFact{Origin: MediaShared, Canonical: path, MIME: mime, Bytes: read, ModNS: fact.ModNS, CtimeNS: fact.CtimeNS, Dev: fact.Dev, Ino: fact.Ino, SHA256: fact.SHA256}
 	if w, h, ok := imageSize(head); ok {
 		media.Width, media.Height = w, h
 	}
 	media.measureContainer(head)
-	return sharedFile{Path: path, Kind: sharedFileKind(mime), File: fact, Media: media}
+	return sharedFile{Path: path, Kind: sharedFileKind(path, mime, head), File: fact, Media: media}
 }
 
 func openSharedSource(roots []string, path string) (*os.File, error) {
@@ -125,19 +213,18 @@ func verifySharedSource(ctx context.Context, roots []string, path string, file *
 	return nil
 }
 
-func sharedFileKind(mime string) string {
-	switch {
-	case strings.HasPrefix(mime, "image/"):
-		return "image"
-	case strings.HasPrefix(mime, "audio/"):
-		return "audio"
-	case strings.HasPrefix(mime, "video/"):
-		return "video"
-	case mime == "application/pdf":
-		return "document"
-	default:
-		return "file"
+// sharedFileKind is the kind the HEADER says. Media is confirmed by the same
+// sniffer every media row uses; text that is named as Markdown or Mermaid is
+// that; everything else is a generic file whose type stays its MIME.
+func sharedFileKind(path, mime string, head []byte) string {
+	if kind := mediaKindOf(sniffMedia(head)); kind != "" {
+		return kind
 	}
+	switch kind := deliverableKindExt(path); {
+	case (kind == DeliverableMarkdown || kind == DeliverableMermaid) && strings.HasPrefix(mime, "text/plain"):
+		return kind
+	}
+	return shareKindFile
 }
 
 type shareFileHead struct{ bytes []byte }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"image"
 	"image/png"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,7 +30,9 @@ func TestSharedFileInspectionKeepsGenericBytesAndUnknownProduction(t *testing.T)
 	if got.Kind != "file" || got.File.SHA256 != hex.EncodeToString(sum[:]) || got.File.Bytes != int64(len(data)) || budget != shareFileBytes-int64(len(data)) {
 		t.Fatalf("facts=%+v budget=%d", got, budget)
 	}
-	if got.Media.Origin != MediaPublished || got.Media.Change != ShellUnknown || got.Media.Model != "" {
+	// A generic file is not media: no kind, so a planned row carries no media
+	// fact; and what the fact WOULD say claims sharing and nothing about making.
+	if got.Media.Origin != MediaShared || got.Media.Change != "" || got.Media.Model != "" || mediaKindOf(got.Media.MIME) != "" {
 		t.Fatalf("invented production %+v", got.Media)
 	}
 	after, err := os.ReadFile(path)
@@ -90,9 +93,24 @@ func TestSharedFileInspectionRefusesSizeBeforeReadingAndHonorsCancellation(t *te
 }
 
 func TestSharedFileKindsComeFromBytesNotNames(t *testing.T) {
-	for _, row := range []struct{ mime, want string }{{"image/png", "image"}, {"audio/wav", "audio"}, {"video/mp4", "video"}, {"application/pdf", "document"}, {"text/plain; charset=utf-8", "file"}} {
-		if got := sharedFileKind(row.mime); got != row.want {
-			t.Fatalf("%s => %s", row.mime, got)
+	var picture bytes.Buffer
+	if err := png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct {
+		path string
+		head []byte
+		want string
+	}{
+		{"/a/picture.txt", picture.Bytes(), "image"},
+		{"/a/notes.md", []byte("# Notes\n"), DeliverableMarkdown},
+		{"/a/flow.mmd", []byte("graph TD; a-->b\n"), DeliverableMermaid},
+		{"/a/fake.png", []byte("not a picture"), "file"},
+		{"/a/report.pdf", []byte("%PDF-1.7\n%%EOF\n"), "file"},
+		{"/a/binary.md", []byte{0, 1, 2, 3, 0xff}, "file"},
+	} {
+		if got := sharedFileKind(row.path, http.DetectContentType(row.head), row.head); got != row.want {
+			t.Fatalf("%s => %s, want %s", row.path, got, row.want)
 		}
 	}
 }
@@ -107,7 +125,7 @@ func TestSharedFileInspectionReadsActualPictureAndDocumentHeaders(t *testing.T) 
 		name string
 		data []byte
 		kind string
-	}{{"misleading.txt", picture.Bytes(), "image"}, {"misleading.png", []byte("%PDF-1.7\n%%EOF\n"), "document"}} {
+	}{{"misleading.txt", picture.Bytes(), "image"}, {"misleading.png", []byte("%PDF-1.7\n%%EOF\n"), "file"}} {
 		path := filepath.Join(root, row.name)
 		if err := os.WriteFile(path, row.data, 0600); err != nil {
 			t.Fatal(err)
