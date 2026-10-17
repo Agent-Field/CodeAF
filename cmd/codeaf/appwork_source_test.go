@@ -3,11 +3,13 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -90,6 +92,16 @@ func TestAppDismissRefusalsAreBadParams(t *testing.T) {
 		if !errors.As(err, &wireErr) || wireErr.Code != appwire.CodeBadParams {
 			t.Errorf("%q became %v", words, err)
 		}
+	}
+}
+
+// A PLAN STORE'S FAILED COMMIT IS UNCERTAIN on the plain door too, whatever
+// road raised it and whatever its words say.
+func TestAPlanStoreCommitFailureIsUncertainOnThePlainDoor(t *testing.T) {
+	err := appTaskError(fmt.Errorf("amend: %w: %w", plandb.ErrCommitUncertain, errors.New("no such task, disk I/O error")))
+	var wireErr *appwire.Error
+	if !errors.As(err, &wireErr) || wireErr.Code != appwire.CodeUncertain {
+		t.Fatalf("a failed commit became %v", err)
 	}
 }
 

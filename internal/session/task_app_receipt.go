@@ -70,6 +70,12 @@ func (a *Agent) AppTaskActionReceipt(intent AppTaskIntent) AppTaskReceipt {
 
 // appTaskReceiptOf types one note's answer. It reads the receipt and the
 // sentinels only.
+//
+// A PLAN-STORE COMMIT THAT FAILED IS UNKNOWN ON EVERY ROAD, not only the ones
+// that already map it ([commitUncertainAsUnanswered]): a plan task's brief, its
+// note, and any word action added later all end in the same transaction, and the
+// change can be on the disk under that error. Typing it here is what keeps a road
+// that forgot the mapping from answering "refused" and inviting a second send.
 func appTaskReceiptOf(said SteerReceipt, err error, key string) AppTaskReceipt {
 	kept := AppTaskDelivered
 	if said.Held {
@@ -80,7 +86,7 @@ func appTaskReceiptOf(said SteerReceipt, err error, key string) AppTaskReceipt {
 		return AppTaskReceipt{Outcome: kept, ClientID: key}
 	case errors.Is(err, ErrBriefNotKept):
 		return AppTaskReceipt{Outcome: kept, BriefNotKept: true, Reason: err.Error(), ClientID: key}
-	case errors.Is(err, ErrSendUnanswered):
+	case errors.Is(err, ErrSendUnanswered), errors.Is(err, plandb.ErrCommitUncertain):
 		return AppTaskReceipt{Outcome: AppTaskUnknown, Reason: err.Error(), ClientID: key}
 	}
 	return AppTaskReceipt{Outcome: AppTaskRefused, Reason: err.Error(), ClientID: key}

@@ -287,6 +287,83 @@ func TestAPlanTaskNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 	}
 }
 
+// A PLAN TASK'S BRIEF ENDS IN THE SAME TRANSACTION, so a commit SQLite refuses
+// is UNKNOWN there too: the amendment can be on the disk under that error, and a
+// person told "refused" who sends again would find it prepended twice.
+func TestAPlanTaskBriefWhoseCommitFailsIsUnknown(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	const armed = "brief-commit: keep the old lookup as a fallback"
+	gate := gateTaskCommitsOf(t, path, armed)
+	seedPlanStore(t, path, "ask-chat", plandb.TaskSpec{ID: "child", Title: "Write handler", Description: "replace the lookup"})
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, nil)
+	armPlanStore(t, agent, path, "ask-chat")
+	rows, err := agent.AppTasks()
+	if err != nil || len(rows) == 0 {
+		t.Fatalf("AppTasks = %v, %v", rows, err)
+	}
+	id := ""
+	for _, row := range rows {
+		if row.Title == "Write handler" {
+			id = row.ID
+		}
+	}
+
+	gone := agent.AppTaskActionReceipt(AppTaskIntent{ID: "999", Action: "brief", Text: armed, ClientID: "b-gone"})
+	if gone.Outcome != AppTaskRefused || gate.refused.Load() != 0 {
+		t.Fatalf("a plan brief to nothing = %+v (commits refused %d), want refused before any commit", gone, gate.refused.Load())
+	}
+
+	receipt := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "brief", Text: armed, ClientID: "b-commit"})
+	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "b-commit" || receipt.Reason == "" || receipt.BriefNotKept {
+		t.Fatalf("a plan brief whose commit failed = %+v, want unknown", receipt)
+	}
+	if got := gate.refused.Load(); got != 1 {
+		t.Fatalf("SQLite refused %d commits, want exactly the brief's one", got)
+	}
+	if got := planTaskDescription(t, path); got != "replace the lookup" {
+		t.Fatalf("the description after the refused commit = %q, want it unchanged", got)
+	}
+
+	gate.disarm()
+	again := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "brief", Text: "brief-after: log each fallback", ClientID: "b-after"})
+	if again.Outcome != AppTaskDelivered || again.ClientID != "b-after" {
+		t.Fatalf("the plan store after a failed commit = %+v", again)
+	}
+	// The healthy brief landed once, and the unknown one was never sent again.
+	if got := planTaskDescription(t, path); got != "brief-after: log each fallback\n\nreplace the lookup" {
+		t.Fatalf("the description after the healthy commit = %q", got)
+	}
+}
+
+// A failed plan-store commit is unknown whatever road raised it, without the
+// road's own mapping; a pre-commit refusal is still a refusal.
+func TestAFailedPlanCommitIsUnknownOnEveryReceiptRoad(t *testing.T) {
+	uncertain := fmt.Errorf("amend: %w: %w", plandb.ErrCommitUncertain, errors.New("disk I/O error"))
+	if got := appTaskReceiptOf(SteerReceipt{}, uncertain, "k"); got.Outcome != AppTaskUnknown || got.ClientID != "k" {
+		t.Fatalf("a failed commit = %+v, want unknown", got)
+	}
+	if got := appTaskReceiptOf(SteerReceipt{}, errors.New(`task "x" not found`), "k"); got.Outcome != AppTaskRefused {
+		t.Fatalf("a pre-commit refusal = %+v, want refused", got)
+	}
+}
+
+// planTaskDescription reads the plan task's description from the disk through
+// a handle of its own.
+func planTaskDescription(t *testing.T, path string) string {
+	t.Helper()
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("reopen the plan store: %v", err)
+	}
+	defer store.Close()
+	task := store.Task("child")
+	if task == nil {
+		t.Fatal("the plan task is gone")
+	}
+	return task.Description
+}
+
 // personNoteKeys is every person note's client id, in order, joined by "|".
 func personNoteKeys(notes []plandb.Note) string {
 	var keys []string
