@@ -64,7 +64,9 @@ func ValidPriority(value string) bool {
 	return slices.Contains([]string{"urgent", "high", "medium", "low"}, value)
 }
 
-// PriorityFor never consults AI ranking: explicit choice wins over issue labels.
+// PriorityFor never consults AI ranking: a person's persisted mark wins over
+// priority:* and p0..p3 issue labels. A "bug" label is a type, not a priority,
+// so it yields no mark: priority is only ever something a person chose.
 func PriorityFor(it Item) *JobPriority {
 	if it.Priority != nil {
 		p := *it.Priority
@@ -81,9 +83,6 @@ func PriorityFor(it Item) *JobPriority {
 		if labels[p.label] || labels[p.short] {
 			return &JobPriority{Value: p.value}
 		}
-	}
-	if labels["bug"] {
-		return &JobPriority{Value: "medium"}
 	}
 	return nil
 }

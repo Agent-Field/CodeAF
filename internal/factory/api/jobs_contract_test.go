@@ -45,3 +45,18 @@ func TestV2JobFixtureNamesPersonBudgetAndMatchedStartApproval(t *testing.T) {
 		t.Fatalf("v2 fixture %+v", job)
 	}
 }
+
+func TestJobProjectionInventsNoPriorityFromABugLabel(t *testing.T) {
+	bug := FromItem(factory.Item{ID: 1, Repo: "acme/api", Num: 1, Labels: []string{"bug"}, Triage: factory.Triage{Type: "bug", Priority: 1}})
+	if bug.Priority != nil {
+		t.Fatalf("bug label invented %+v", bug.Priority)
+	}
+	labelled := FromItem(factory.Item{ID: 2, Repo: "acme/api", Num: 2, Labels: []string{"bug", "p1"}})
+	if labelled.Priority == nil || labelled.Priority.Value != "high" {
+		t.Fatalf("explicit label %+v", labelled.Priority)
+	}
+	marked := FromItem(factory.Item{ID: 3, Repo: "acme/api", Num: 3, Labels: []string{"bug", "priority:urgent"}, Priority: &factory.JobPriority{Value: "low", SetBy: "sam"}})
+	if marked.Priority == nil || marked.Priority.Value != "low" || marked.Priority.SetBy != "sam" {
+		t.Fatalf("human mark %+v", marked.Priority)
+	}
+}
