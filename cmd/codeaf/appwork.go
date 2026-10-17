@@ -935,6 +935,12 @@ const appTaskSettleWait = 3 * time.Second
 
 // appTaskError sorts an engine refusal about a task into the app's codes.
 func appTaskError(err error) error {
+	// AN OUTCOME NOBODY CAN NAME IS NOT A REFUSAL. The engine's own sentinels
+	// say the words may have arrived, or did arrive with the page's brief left
+	// unwritten; either way sending them again would deliver them twice.
+	if errors.Is(err, session.ErrSendUnanswered) || errors.Is(err, session.ErrBriefNotKept) {
+		return appwire.Errorf(appwire.CodeUncertain, "%s", plainWords(err.Error()))
+	}
 	words := err.Error()
 	switch {
 	case strings.Contains(words, "no such task"), strings.Contains(words, "no such quick task"):

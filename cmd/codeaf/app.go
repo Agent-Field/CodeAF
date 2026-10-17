@@ -201,6 +201,10 @@ type appConversation interface {
 	AppTasks() ([]session.AppTaskView, error)
 	AppTask(id string) (session.AppTaskView, bool, error)
 	AppTaskAction(intent session.AppTaskIntent) error
+	// AppTaskActionReceipt is a note's or a brief's typed outcome
+	// (internal/session's task_app_receipt.go): delivered, held, refused, or
+	// unknown — never a sentence to classify.
+	AppTaskActionReceipt(intent session.AppTaskIntent) session.AppTaskReceipt
 	TaskRouting(id string, changes int) (session.TaskRoutingView, error)
 	TaskRoutingAct(ctx context.Context, id string, act session.TaskRoutingAction) (session.TaskRoutingResult, error)
 	TaskRoutingOptions(id string) (session.TaskRoutingOptions, error)
