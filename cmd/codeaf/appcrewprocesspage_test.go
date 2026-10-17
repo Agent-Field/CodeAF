@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -1015,9 +1017,10 @@ func TestCrewReasonClassifiesAWireStaleCursor(t *testing.T) {
 	}
 }
 
-// A PIN IS BOUNDED: a walk pinned by a page that never came back is free again
-// after crewPinMax, and an idle one still expires on its own timer.
-func TestCrewPinAndIdleTimersAreBounded(t *testing.T) {
+// A PINNED WALK IS NEVER TAKEN BACK BY TIME OR EVICTION: a page still reading is
+// the walk's only writer, so no second page can pin it and no timer can delete
+// it under that page; an idle walk still expires on its own timer.
+func TestCrewPinnedWalkIsNeverExpiredOrEvictedAndIdleOneIs(t *testing.T) {
 	reg := newCrewRegistry()
 	clock := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 	reg.now = func() time.Time { return clock }
@@ -1026,16 +1029,157 @@ func TestCrewPinAndIdleTimersAreBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg.walks[w.cur] = w
+	clock = clock.Add(crewAgeMax + time.Hour)
 	if _, err := reg.take(w.cur, "all"); !isCode(err, appwire.CodeBusy) {
-		t.Fatalf("pinned: %v", err)
+		t.Fatalf("a long-pinned walk was taken or deleted: %v", err)
 	}
-	clock = clock.Add(crewPinMax + time.Second)
-	if got, err := reg.take(w.cur, "all"); err != nil || got.walk != w {
-		t.Fatalf("a stale pin held the walk: %v", err)
+	for i := 0; i < crewWalksMax+2; i++ {
+		other := &crewWalk{scope: "crew:" + strconv.Itoa(i)}
+		if err := reg.admit(other); err == nil {
+			reg.release(other)
+		}
+	}
+	reg.mu.Lock()
+	still := reg.walks[w.cur] == w && w.accounted > 0
+	reg.mu.Unlock()
+	if !still {
+		t.Fatal("a pinned walk was evicted")
 	}
 	reg.release(w)
 	clock = clock.Add(crewIdleTTL + time.Second)
 	if _, err := reg.take(w.cur, "all"); !isCode(err, appwire.CodeStaleCursor) {
 		t.Fatalf("idle: %v", err)
 	}
+}
+
+// failingPage runs one page whose request goes away during its first visit, so
+// the page ends busy having advanced nothing.
+func (f *crewFixture) failingPage(crew, cursor string) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inner := f.backend.crewHistory.visit
+	f.backend.crewHistory.visit = func(c context.Context, b *appBackend, o crewOwner, n int) (*appwire.ProcessPageResult, error) {
+		cancel()
+		return inner(c, b, o, n)
+	}
+	defer func() { f.backend.crewHistory.visit = inner }()
+	limit := 5
+	_, err := f.backend.PageCrewProcesses(ctx, appwire.ProcessPageAsk{Crew: crew, Limit: &limit, Cursor: cursor})
+	return err
+}
+
+// A FAILED PAGE PUTS BACK ONLY ITS OWN PROGRESS. Run under -race: while pages
+// fail on one walk, other requests walk the registry under its lock; a restore
+// that rewrote the registry's own fields on the walk would be a data race.
+func TestCrewFailedPagesRestoreOnlyProgressUnderConcurrency(t *testing.T) {
+	f := newCrewFixture(t)
+	f.rows = map[string]int{"a": 400}
+	f.save(f.team("t", "", "a"))
+	p1, err := f.ask("t", 5, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := f.backend.crewWalks()
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = reg.take("c1.AAAAAAAAAAAAAAAAAAAAAA", "all") // walks every walk under the lock
+				reg.mu.Lock()
+				_ = reg.scopeCountLocked("crew:t")
+				reg.mu.Unlock()
+			}
+		}
+	}()
+	for i := 0; i < 40; i++ {
+		if err := f.failingPage("t", p1.Next); !isCode(err, appwire.CodeBusy) {
+			t.Fatalf("round %d: %v", i, err)
+		}
+	}
+	close(stop)
+	<-done
+	p2, err := f.ask("t", 5, p1.Next)
+	if err != nil || p2.Processes[0].ID != "a:p395" {
+		t.Fatalf("progress after the failures: %+v %v", p2, err)
+	}
+}
+
+// A FIRST PAGE THAT FAILS LEAVES NOTHING: no walk nobody can reach, no scope
+// slot taken, and a live walk of the same crew survives.
+func TestCrewFailedFirstPageLeavesNoWalkAndEvictsNobody(t *testing.T) {
+	f := newCrewFixture(t)
+	f.rows = map[string]int{"a": 40}
+	f.save(f.team("t", "", "a"))
+	live, err := f.ask("t", 5, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := f.backend.crewWalks()
+	for i := 0; i < 3; i++ {
+		if err := f.failingPage("t", ""); !isCode(err, appwire.CodeBusy) {
+			t.Fatalf("first page %d: %v", i, err)
+		}
+	}
+	reg.mu.Lock()
+	n, busy := len(reg.live), 0
+	for _, w := range reg.live {
+		if w.busy {
+			busy++
+		}
+	}
+	scoped := reg.scopeCountLocked("crew:t")
+	reg.mu.Unlock()
+	if n != 1 || scoped != 1 || busy != 0 {
+		t.Fatalf("%d walks, %d in the crew's scope, %d pinned", n, scoped, busy)
+	}
+	next, err := f.ask("t", 5, live.Next)
+	if err != nil || next.Processes[0].ID != "a:p35" {
+		t.Fatalf("the live walk's cursor: %+v %v", next, err)
+	}
+}
+
+// EVERY BYTE A WALK HOLDS IS COUNTED: each string field of an owner and of the
+// walk adds exactly its length, found by reflection so a new field cannot be
+// forgotten.
+func TestCrewWalkBytesCountEveryStoredField(t *testing.T) {
+	empty := &crewWalk{owners: []crewOwner{{}}}
+	base := empty.bytes()
+	owner := reflect.TypeOf(crewOwner{})
+	for i := 0; i < owner.NumField(); i++ {
+		if owner.Field(i).Type.Kind() != reflect.String {
+			continue
+		}
+		w := &crewWalk{owners: []crewOwner{{}}}
+		settable(reflect.ValueOf(&w.owners[0]).Elem().Field(i)).SetString(strings.Repeat("x", 100+i))
+		if got := w.bytes() - base; got != 100+i {
+			t.Errorf("crewOwner.%s counts %d of %d bytes", owner.Field(i).Name, got, 100+i)
+		}
+	}
+	walk := reflect.TypeOf(crewWalk{})
+	for i := 0; i < walk.NumField(); i++ {
+		kind := walk.Field(i).Type
+		if kind.Kind() != reflect.String && kind != reflect.TypeOf([]byte(nil)) {
+			continue
+		}
+		w := &crewWalk{owners: []crewOwner{{}}}
+		field := settable(reflect.ValueOf(w).Elem().Field(i))
+		if kind.Kind() == reflect.String {
+			field.SetString(strings.Repeat("y", 50))
+		} else {
+			field.SetBytes(make([]byte, 50))
+		}
+		if got := w.bytes() - base; got != 50 {
+			t.Errorf("crewWalk.%s counts %d of 50 bytes", walk.Field(i).Name, got)
+		}
+	}
+}
+
+// settable makes an unexported field writable, for the accounting test only.
+func settable(v reflect.Value) reflect.Value {
+	return reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem()
 }

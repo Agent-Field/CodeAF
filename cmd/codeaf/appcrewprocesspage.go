@@ -66,9 +66,6 @@ const (
 	// counts and next. Together with the partial names it must fit in
 	// appProcessPageEnvelope, which a test pins.
 	crewReplyReserve = 8 << 10
-	// crewPinMax is how long a walk may stay pinned by one page; the dispatcher
-	// gives a page 2 s, so a pin older than this belonged to a page that is gone.
-	crewPinMax = 10 * time.Second
 
 	crewWalkBytesMax  = 8 << 20
 	crewRegistryBytes = 64 << 20
@@ -126,7 +123,6 @@ type crewWalk struct {
 	last []byte
 
 	busy      bool
-	pinnedAt  time.Time
 	born      time.Time
 	touched   time.Time
 	accounted int
@@ -139,7 +135,7 @@ func (w *crewWalk) bytes() int {
 	n := int(unsafe.Sizeof(*w)) + len(w.scope) + len(w.revision) + len(w.cur) + len(w.prev) + len(w.last)
 	for i := range w.owners {
 		o := &w.owners[i]
-		n += int(unsafe.Sizeof(*o)) + len(o.id) + len(o.key) + len(o.bucket) + len(o.cursor) + len(o.reason)
+		n += int(unsafe.Sizeof(*o)) + len(o.id) + len(o.key) + len(o.bucket) + len(o.file) + len(o.cursor) + len(o.reason)
 	}
 	return n
 }
@@ -205,9 +201,6 @@ func (r *crewRegistry) removeLocked(w *crewWalk) {
 func (r *crewRegistry) expireLocked() {
 	now := r.now()
 	for _, w := range append([]*crewWalk(nil), r.live...) {
-		if w.busy && now.Sub(w.pinnedAt) > crewPinMax {
-			w.busy = false
-		}
 		if !w.busy && (now.Sub(w.touched) > crewIdleTTL || now.Sub(w.born) > crewAgeMax) {
 			r.removeLocked(w)
 		}
@@ -265,7 +258,7 @@ func (r *crewRegistry) admit(w *crewWalk) error {
 		}
 	}
 	now := r.now()
-	w.born, w.touched, w.pinnedAt, w.busy, w.accounted = now, now, now, true, size
+	w.born, w.touched, w.busy, w.accounted = now, now, true, size
 	r.live = append(r.live, w)
 	r.bytes += size
 	return nil
@@ -303,7 +296,6 @@ func (r *crewRegistry) take(token, scope string) (crewReplay, error) {
 		return crewReplay{reply: w.last}, nil
 	}
 	w.busy, w.touched = true, r.now()
-	w.pinnedAt = w.touched
 	return crewReplay{walk: w}, nil
 }
 
@@ -647,34 +639,60 @@ func (b *appBackend) PageCrewProcesses(ctx context.Context, ask appwire.ProcessP
 	return b.crewCommit(ctx, reg, walk, limit)
 }
 
-// crewCommit runs the page and commits it, or changes nothing: the owners'
-// state is cloned before the step and put back if the page cannot be encoded
-// within its bound, so a failed page never skips what it read.
-func (b *appBackend) crewCommit(ctx context.Context, reg *crewRegistry, walk *crewWalk, limit int) (*appwire.ProcessPageResult, error) {
-	snap := *walk
-	snap.owners = append([]crewOwner(nil), walk.owners...)
-	fail := func(err error) (*appwire.ProcessPageResult, error) {
-		*walk = snap
-		reg.release(walk)
-		return nil, err
+// crewCommit runs the page and commits it, or changes nothing: the walk's
+// progress is saved before the step and put back if the page cannot be
+// committed, so a failed page never skips what it read.
+func (b *appBackend) crewCommit(ctx context.Context, reg *crewRegistry, walk *crewWalk, limit int) (res *appwire.ProcessPageResult, err error) {
+	// ONLY PROGRESS IS SAVED AND PUT BACK. The registry reads and writes the
+	// walk's other fields (pin, times, tokens, stored reply, accounted size)
+	// under its lock from other requests, so a restore of the whole walk would
+	// race with them; the progress fields are the page's alone while it holds
+	// the pin.
+	type progress struct {
+		owners               []crewOwner
+		at, done, unread     int
+		incomplete, finished bool
 	}
-	res, reported, err := b.crewStep(ctx, walk, limit)
+	snap := progress{append([]crewOwner(nil), walk.owners...), walk.at, walk.done, walk.unread, walk.incomplete, walk.finished}
+	committed := false
+	// EVERY WAY OUT OF A PAGE THAT DID NOT COMMIT, a panic included, puts the
+	// progress back and lets go of the pin: a walk a token can reach stays for a
+	// retry; one no token can reach (a first page) is removed, as is one no retry
+	// can help (a page too large for a reply). A pin is never released by time —
+	// a page still reading is the only writer — so it ends only when the page does.
+	defer func() {
+		if committed {
+			return
+		}
+		walk.owners, walk.at, walk.done, walk.unread, walk.incomplete, walk.finished =
+			snap.owners, snap.at, snap.done, snap.unread, snap.incomplete, snap.finished
+		reg.mu.Lock()
+		unreachable := walk.cur == "" && walk.prev == ""
+		reg.mu.Unlock()
+		if unreachable || (err != nil && isWireCode(err, appwire.CodeTooLarge)) {
+			_ = reg.settle(walk, true)
+			return
+		}
+		reg.release(walk)
+	}()
+	out, reported, err := b.crewStep(ctx, walk, limit)
 	if err != nil {
-		return fail(err)
+		return nil, err
 	}
 	more := walk.active()
 	next := ""
 	if more {
 		next = crewToken()
 	}
-	res.Next = next
-	raw, err := json.Marshal(res)
+	out.Next = next
+	raw, err := json.Marshal(out)
 	if err != nil {
-		return fail(appwire.Errorf(appwire.CodeEngine, "the crew history could not be encoded"))
+		return nil, appwire.Errorf(appwire.CodeEngine, "the crew history could not be encoded")
 	}
 	if len(raw) > appwire.ProcessPageReplyMax {
-		return fail(appwire.Errorf(appwire.CodeTooLarge, "a page of the crew history is larger than a reply may be"))
+		return nil, appwire.Errorf(appwire.CodeTooLarge, "a page of the crew history is larger than a reply may be")
 	}
+	committed = true
 	for _, i := range reported {
 		walk.owners[i].told = true
 	}
@@ -685,7 +703,7 @@ func (b *appBackend) crewCommit(ctx context.Context, reg *crewRegistry, walk *cr
 	if !more && walk.prev == "" {
 		// A walk that began and ended in one page has no token to replay.
 		_ = reg.settle(walk, true)
-		return res, nil
+		return out, nil
 	}
 	reg.mu.Lock()
 	walk.last = raw
@@ -693,7 +711,7 @@ func (b *appBackend) crewCommit(ctx context.Context, reg *crewRegistry, walk *cr
 	if err := reg.settle(walk, false); err != nil {
 		return nil, err
 	}
-	return res, nil
+	return out, nil
 }
 
 // crewStep runs one page of visits against the walk. A visit is atomic: its
