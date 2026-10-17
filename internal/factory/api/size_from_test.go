@@ -55,3 +55,79 @@ func TestJobSizeOnTheWireIsTheLabelAlone(t *testing.T) {
 		t.Fatalf("job.size = %q, want the label", got)
 	}
 }
+
+// job.read_size is the shown size when no label sets one, and only then. Each
+// row names the Item and the exact wire bytes a client reads.
+func TestJobReadSizeIsPresentOnlyWithoutALabel(t *testing.T) {
+	tri := func(size, from string, at time.Time) factory.Triage {
+		return factory.Triage{Size: size, SizeFrom: from, TriagedAt: at}
+	}
+	read, none := time.Unix(5, 0).UTC(), time.Time{}
+	rows := []struct {
+		name     string
+		it       factory.Item
+		wantSize string // job.size
+		want     string // job.read_size as JSON, "" when absent
+	}{
+		{"read", factory.Item{Triage: tri("M", factory.SizeFromRead, read)}, "", `{"value":"M","from":"read"}`},
+		{"diff", factory.Item{Kind: factory.KindPR, Origin: factory.OriginForge, Triage: tri("L", factory.SizeFromDiff, none)}, "", `{"value":"L","from":"diff"}`},
+		{"label wins over a read", factory.Item{Labels: []string{"size:s"}, Triage: tri("L", factory.SizeFromRead, read)}, "S", ""},
+		{"label alone", factory.Item{Labels: []string{"size/m"}}, "M", ""},
+		{"legacy guess", factory.Item{Triage: tri("S", "", read)}, "", ""},
+		{"chat guess", factory.Item{Triage: tri("S", factory.SizeFromChat, read)}, "", ""},
+		{"read not completed", factory.Item{Triage: tri("S", factory.SizeFromRead, none)}, "", ""},
+		{"read outside S M L", factory.Item{Triage: tri("XL", factory.SizeFromRead, read)}, "", ""},
+		{"nothing", factory.Item{}, "", ""},
+	}
+	for _, r := range rows {
+		raw, err := json.Marshal(FromItem(r.it))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatal(err)
+		}
+		got := ""
+		if v, ok := m["read_size"]; ok {
+			got = string(v)
+		}
+		if got != r.want {
+			t.Errorf("%s: read_size = %q, want %q", r.name, got, r.want)
+		}
+		if size := FromItem(r.it).Size; size != r.wantSize {
+			t.Errorf("%s: size = %q, want %q", r.name, size, r.wantSize)
+		}
+		if _, both := m["size"]; both && got != "" {
+			t.Errorf("%s: size and read_size are both on the wire: %s", r.name, raw)
+		}
+	}
+}
+
+// The shown size survives Job -> JSON -> Job -> Item, so a worker or peer that
+// rebuilds the item shows what the engine showed; a payload from before the
+// field decodes to no read_size and the item keeps its own answer.
+func TestReadSizeRoundTripsToTheSameShownSize(t *testing.T) {
+	it := factory.Item{Triage: factory.Triage{Size: "M", SizeFrom: factory.SizeFromRead, TriagedAt: time.Unix(5, 0).UTC()}}
+	raw, err := json.Marshal(FromItem(it))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var j Job
+	if err := json.Unmarshal(raw, &j); err != nil {
+		t.Fatal(err)
+	}
+	if j.ReadSize == nil || j.ReadSize.Value != "M" || j.ReadSize.From != factory.ShownRead {
+		t.Fatalf("decoded read_size = %+v", j.ReadSize)
+	}
+	if size, from := factory.ShownSize(ToItem(j)); size != "M" || from != factory.ShownRead {
+		t.Fatalf("rebuilt item shows %q from %q", size, from)
+	}
+	var old Job
+	if err := json.Unmarshal([]byte(`{"id":"a#1","size":"S"}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.ReadSize != nil {
+		t.Fatalf("an old payload gained a read_size: %+v", old.ReadSize)
+	}
+}
