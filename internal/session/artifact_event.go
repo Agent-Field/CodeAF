@@ -34,6 +34,9 @@ func (a *Agent) emitArtifactChange(written Artifact) {
 	if written.Media != nil && len(written.Media.Tool) <= 1024 {
 		change.Call = written.Media.Tool
 	}
+	if change.Call == "" && len(written.Deliver.Call) <= 1024 {
+		change.Call = written.Deliver.Call
+	}
 	event := Event{Kind: EventArtifactUpdate, Artifact: &change}
 	a.mu.Lock()
 	hub := a.hub

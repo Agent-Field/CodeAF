@@ -16,7 +16,7 @@ func validateShareReceipt(r ShareReceipt) error {
 		return ErrShareOpInvalid
 	}
 	switch r.Status {
-	case ShareOpPending, ShareOpAccepted, ShareOpRefused, ShareOpUnknown:
+	case ShareOpPending, ShareOpPlanned, ShareOpAccepted, ShareOpRefused, ShareOpUnknown:
 	default:
 		return ErrShareOpInvalid
 	}
@@ -48,6 +48,9 @@ func validateShareRows(r ShareReceipt) error {
 	if err := validateShareProvenance(r.Provenance); err != nil {
 		return err
 	}
+	if err := validateSharePlan(r); err != nil {
+		return err
+	}
 	return validateShareRecorded(r, ids)
 }
 
@@ -71,8 +74,17 @@ func validateShareRecorded(r ShareReceipt, ids map[string]bool) error {
 		}
 		seen[id] = true
 	}
-	if r.Status == ShareOpAccepted && len(r.RecordedIDs) != len(r.Planned) {
-		return ErrShareOpInvalid
+	switch r.Status {
+	case ShareOpAccepted:
+		if len(r.RecordedIDs) != len(r.Planned) {
+			return ErrShareOpInvalid
+		}
+	case ShareOpPending, ShareOpPlanned, ShareOpRefused:
+		// Nothing can be recorded before a plan, a plan is written before any
+		// append, and a refusal is only ever settled when nothing was appended.
+		if len(r.RecordedIDs) != 0 {
+			return ErrShareOpInvalid
+		}
 	}
 	return nil
 }
