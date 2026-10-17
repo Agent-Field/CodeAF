@@ -129,8 +129,15 @@ func bashIsHandedEveryNoteAfterTheHadOnes(t *testing.T, store *plandb.Store, ids
 		t.Fatal(err)
 	}
 	notes := newBashNotes(store, store.RootID(), notesAlreadyHad(dir, store.RootID()))
+	// The most boundaries the walk can need, derived and not guessed: a
+	// delivery hands over at most notesPerDelivery notes, so the notes after the
+	// had ones take at most ceil(rest/notesPerDelivery) boundaries; passing the
+	// had ones costs at most one more per notesExaminedPerDecision examined,
+	// and one spare shows the walk ended. A worker that needs more is stuck.
+	rest := len(ids) - hadCount
+	most := (rest+notesPerDelivery-1)/notesPerDelivery + (hadCount+notesExaminedPerDecision-1)/notesExaminedPerDecision + 1
 	var words, got []string
-	for boundary := 0; boundary < 100 && len(got) < len(ids)-hadCount; boundary++ {
+	for boundary := 0; boundary < most && len(got) < rest; boundary++ {
 		had := notes.boundary(context.Background(), "echo working", true, takes(&words))
 		if len(had) > notesPerDelivery {
 			t.Fatalf("%d had: one boundary handed over %d notes, more than %d", hadCount, len(had), notesPerDelivery)
@@ -511,19 +518,48 @@ func tagLikeTheWriter(t *testing.T, store *plandb.Store) {
 
 // The control above is the failure this lane removes: with every note tagged
 // by a plan name over the ceiling, a bash worker is still handed the
-// fifty-first and the two-hundred-first note, and past two examining windows.
+// fifty-first and the two-hundred-first note.
 func TestBashNotesReachNote51And201OnAPlanNamedOverTheCeiling(t *testing.T) {
-	for _, hadCount := range []int{50, 200, notesExaminedPerDecision, 1100} {
+	for _, hadCount := range []int{50, 200} {
 		store := openLongNamedStore(t)
-		ids := seedNotes(t, store, 1200, plandb.NoteFromPerson, "", "direction-%03d")
+		ids := seedNotes(t, store, 250, plandb.NoteFromPerson, "", "direction-%03d")
 		tagLikeTheWriter(t, store)
 		bashIsHandedEveryNoteAfterTheHadOnes(t, store, ids, hadCount)
 	}
 }
 
-// publishedIDs is the ids a listening program's inbox file holds, in order,
-// read back the way the program reads them.
-func publishedIDs(t *testing.T, path string) []delegate.Message {
+// Passing the had notes spans more than two examining windows: 1100 had notes
+// are three decisions of the walk (500, 500 and 100) before the first of the
+// last hundred is handed over. It is the only case that needs 1200 tagged
+// rows, so it is the only one that pays for them.
+func TestBashNotesReachTheNoteAfterThreeExaminingWindowsOnAPlanNamedOverTheCeiling(t *testing.T) {
+	store := openLongNamedStore(t)
+	ids := seedNotes(t, store, 1200, plandb.NoteFromPerson, "", "direction-%03d")
+	tagLikeTheWriter(t, store)
+	bashIsHandedEveryNoteAfterTheHadOnes(t, store, ids, 1100)
+}
+
+// The unread report on a long-named plan names note 201 like any other and
+// reads as complete: the walk reaches the last note, so it says nothing of a
+// check that could not finish.
+func TestDelegateUnreadReportNamesNote201OnAPlanNamedOverTheCeiling(t *testing.T) {
+	store := openLongNamedStore(t)
+	ids := seedNotes(t, store, 250, plandb.NoteFromPerson, "", "direction-%03d")
+	tagLikeTheWriter(t, store)
+	sink := listeningSink(t, store)
+	for _, id := range ids[:200] {
+		sink.had[id] = true
+	}
+	sink.reportUnheardFrom(store)
+	got := reports(t, store)
+	if len(got) != 1 || !strings.Contains(got[0], "direction-200") || strings.Contains(got[0], "direction-199") || strings.Contains(got[0], "could not") {
+		t.Fatalf("reports = %q; want one complete report quoting note 201", got)
+	}
+}
+
+// publishedMessages is the messages a listening program's inbox file holds, in
+// order, read back the way the program reads them.
+func publishedMessages(t *testing.T, path string) []delegate.Message {
 	t.Helper()
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -555,11 +591,11 @@ func TestDelegateForwarderReachesNote51And201OnAPlanNamedOverTheCeiling(t *testi
 			sink.had[id] = true
 		}
 		f := sink.newForwarding(store)
-		for tick := 0; tick < 100 && len(publishedIDs(t, sink.inboxPath)) < len(ids)-hadCount; tick++ {
+		for tick := 0; tick < 100 && len(publishedMessages(t, sink.inboxPath)) < len(ids)-hadCount; tick++ {
 			sink.forwardOnce(f)
 		}
 		var got []string
-		for _, message := range publishedIDs(t, sink.inboxPath) {
+		for _, message := range publishedMessages(t, sink.inboxPath) {
 			got = append(got, message.ID)
 			if message.From != delegate.FromPerson {
 				t.Fatalf("%d had: message %s is from %q, want the person", hadCount, message.ID, message.From)
@@ -597,7 +633,7 @@ func TestAKeyedNoteOnALongNamedPlanIsPublishedUnderItsNoteIDNotItsKey(t *testing
 
 	sink := listeningSink(t, store)
 	sink.forwardOnce(sink.newForwarding(store))
-	got := publishedIDs(t, sink.inboxPath)
+	got := publishedMessages(t, sink.inboxPath)
 	if len(got) != 1 || got[0].ID != note.ID || got[0].From != delegate.FromPerson || got[0].Text != words {
 		t.Fatalf("published %+v; want id %s from the person saying %q", got, note.ID, words)
 	}
@@ -642,7 +678,7 @@ func TestARelevantCorruptRowHoldsBothReadersAndMovesNothing(t *testing.T) {
 	for tick := 0; tick < 30; tick++ {
 		sink.forwardOnce(f)
 	}
-	published := publishedIDs(t, sink.inboxPath)
+	published := publishedMessages(t, sink.inboxPath)
 	if len(published) != 51 || published[50].ID != ids[50] || f.inbox.after != ids[50] || len(sink.sent) != 51 || len(sink.had) != 0 || len(f.rejected) != 0 {
 		t.Fatalf("published %d, mark %q, sent %d, had %d, rejected %d; want 51 published and the mark on %q", len(published), f.inbox.after, len(sink.sent), len(sink.had), len(f.rejected), ids[50])
 	}

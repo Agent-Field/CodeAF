@@ -82,8 +82,9 @@ func newTaskInbox(pages notePager, taskID string) *taskInbox {
 // lasts until the task is gone or the store is changed by hand. The writer
 // refuses an over-long author, client key or body per note, and the envelope
 // does not read the plan's project or chat, so a long plan name (a long first
-// task title, or a `plandb init` name) holds nothing; only a store written
-// outside codeaf's writers can reach a refusal. That is the honest price of
+// task title, or a `plandb init` name) holds nothing; only a note written
+// before the writer's bounds, or by something outside codeaf's writers, can
+// reach a refusal. That is the honest price of
 // never consuming a note nobody could read. The bash worker has no report to
 // say it is held; the delegate's end-of-run report does.
 //
