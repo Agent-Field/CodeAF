@@ -323,6 +323,17 @@ func run() error {
 		// MACHINE'S, which is why it is a command here rather than something a
 		// surface can do down the wire (chatv3_at.go).
 		return runDevices(os.Args[2:])
+	case "factory":
+		// The factory host and its verbs (factory_command.go).
+		return runFactory(os.Args[2:])
+	case "runner":
+		// This machine as a factory's runner (runner_command.go).
+		return runRunner(os.Args[2:])
+	case "attach":
+		// Which factory this machine's windows talk to (factory_attach.go).
+		return runAttach(os.Args[2:])
+	case "detach":
+		return runDetach(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":
@@ -576,6 +587,9 @@ Housekeeping — changes state on disk or on the network
       list the devices paired with this machine
   codeaf devices revoke <name> [--all]
       stop one device opening a conversation here, --all every device of it
+  codeaf factory [serve|name|steps|convert|token|revoke|revoke-sessions]
+  codeaf attach <url> | codeaf detach | codeaf runner join <link>
+      a team factory: host it (` + factoryDefaultListen + `), use it, or run its jobs here
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]

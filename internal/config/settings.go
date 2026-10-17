@@ -1026,6 +1026,11 @@ var OperatorEnvPins = []string{
 	// people who build the page; a row offering to hide your real floor behind a
 	// fixture is not a preference, so plumbing.
 	"CODEAF_FACTORY_FIXTURE",
+	// Factory worker routing and stage posture are launch plumbing, not
+	// editable profile preferences.
+	"CODEAF_FACTORY_BENCHES",
+	"CODEAF_FACTORY_POSTURE",
+	"CODEAF_FACTORY_NO_WORKER",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.

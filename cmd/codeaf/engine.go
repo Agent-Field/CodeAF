@@ -55,6 +55,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	factorystore "github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -860,6 +861,8 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 	// empty and this close is a no-op there. It is one owner door, not two.)
 	session.CloseUsage()
 	closeEngineProcess()
+	// AND THE FACTORY THIS HOST WORKED FOR AND SERVED (factory_run.go).
+	stopFactoryHere()
 	if errors.Is(err, enginehost.ErrHostRunning) {
 		// The slot is held by this build (or a newer one, or one that arrived
 		// in the instant since the question above): the machine is in the
@@ -983,6 +986,37 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// The app's one supervisor of kept-running processes, when this process
 	// is the app's (appservices.go); every other engine has none.
 	cfg.Services = appServiceDoor.Load()
+	// AND THE FACTORY FLOOR, ONLY FOR A WINDOW ON THIS MACHINE WITH A FACTORY
+	// SET UP ON IT. `factory_add` holds its call open for a person's yes and
+	// writes into this machine's floor, and the person's own page reads that
+	// same folder; both halves are true only for the local dial, which is the
+	// one caller that fills the launch shape and marks it interactive
+	// ([engineFactoryHere]). A window over --host or --at sends no shape and a
+	// --once probe sends one that is not interactive, and both leave the door
+	// nil, so the verb is absent rather than writing to a floor nobody there
+	// can see. A machine that has never set a factory up ([factoryConfigured])
+	// is the same case: A CAPABILITY THAT CANNOT WORK IS ABSENT, so its belt,
+	// its prompt and its processes are exactly what they were before the
+	// factory existed. Conversations this engine opens later for the same
+	// window inherit the doors from cfg ([remote.Engine.Fresh] and Open below
+	// both start from it).
+	var floorStore *factorystore.Store
+	if engineFactoryHere(hello) && factoryConfigured() {
+		// The first floor read must inherit this hello's pin before opening
+		// the store starts triage, just as the window publishes its launch.
+		setFactoryProcess(func() { factoryProcess.parent = cfg })
+		floorStore = engineFactory(proc.ProfileDir)
+		cfg.Factory = factoryDoor(floorStore)
+		cfg.Recipe = recipeDoor(floorStore, workspace)
+		cfg.FactoryItem = itemDoor(floorStore, workspace)
+		// And `factory_run`'s, the manager's pen, on the same law.
+		cfg.FactoryRun = runDoor(floorStore, workspace)
+		// AND THE FLOOR'S WORKER LOOP, which on the ordinary launch is this
+		// process's: it outlives the window, so a job keeps running when the
+		// terminal closes (factory_run.go). Every stage conversation is opened
+		// from this hello's config.
+		startFactoryWorker(floorStore, workspace, proc.ProfileDir, cfg)
+	}
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
 	// through the very pair [remote.Engine.Fresh] below is written from
@@ -1005,6 +1039,9 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			return nil, err
 		}
 	}
+	// `factory_floor`, now that the hello has settled which conversation this
+	// is: on the foreman's belt and no other (factory_foreman.go).
+	cfg.Floor = foremanFloorDoor(floorStore, workspace, cfg.SessionFile)
 
 	// THE THREE ROAD-DEPENDENT CAPABILITIES ARE DECIDED IN ONE PLACE, and this
 	// door no longer keeps its own answer to any of them (chatv3_lanes.go). Each
@@ -1157,6 +1194,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			if err != nil {
 				return nil, "", err
 			}
+			fresh.Floor = foremanFloorDoor(floorStore, workspace, fresh.SessionFile)
 			// THROUGH THE SAME BUILDER THE BOOT CONVERSATION WAS OPENED WITH, so
 			// a conversation started by /new over a connection is not a lesser
 			// one than the conversation it replaced: the adaptive runner is
@@ -1183,6 +1221,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			if err != nil {
 				return nil, false, err
 			}
+			earlier.Floor = foremanFloorDoor(floorStore, workspace, earlier.SessionFile)
 			// Whether the file was found is asked BEFORE it is opened, because
 			// opening it creates it: a path nobody has written yet is a new
 			// conversation, and the surface says so on its first line.

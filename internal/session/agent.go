@@ -447,6 +447,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// AND A CONVERSATION A TEAM'S MANAGER STARTED TAKES ITS FIRST TURN ON ITS
 	// OWN, once the interface has made it a member (team_wake.go).
 	agent.watchTeamStart()
+	// AND A FACTORY RUNNER'S LINE REACHES IT THROUGH IT, between turns, rather
+	// than failing on the journal's lock (talk_progress.go).
+	if agent.file != nil {
+		rememberLiveJournal(config.SessionFile, agent)
+	}
 	return agent, nil
 }
 
@@ -1274,6 +1279,13 @@ type userMessage struct {
 	// harness's own line in the harness's own lane (sessionfile.go's
 	// [sessionEntry.Note]).
 	authored bool
+
+	// noSkills marks a note the factory's runner wrote for an item's manager
+	// ([runnerNote]): it carries no skills block, because the block is chosen
+	// from the message's words and the runner's words (`Shape the run for this
+	// item now.`) are no request a skill serves; on the owner's run of
+	// 2026-10-09 every such turn arrived with a list of unrelated skills.
+	noSkills bool
 
 	// skills is the ordered shelf names this message's block carried
 	// (skillturn.go), set by [Agent.attachTurnSkillsLocked] and read by
@@ -2444,6 +2456,7 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
 func (a *Agent) Close() error {
+	forgetLiveJournal(a)
 	// A pass a surface asked for outside any turn ends with the conversation.
 	a.mu.Lock()
 	cutPass := a.cutManualPassLocked()
@@ -4963,6 +4976,13 @@ type DisplayEntry struct {
 	// who sent it rather than as the aside's first line. Nil on every other
 	// entry; the aside's Text still holds the whole delivery as the model read it.
 	Team []TeamLine
+
+	// Kind is what the record says an assistant message IS, from the line's own
+	// presentation mark ([messagePresentation.Kind]): `factory-progress` on
+	// the progress lines the factory runner writes into an item's
+	// conversation, and "" on everything else. It is the producer's word,
+	// never a reading of the text.
+	Kind string
 	// At is when the message this entry came from was written to the journal,
 	// and the zero time when the record never said (entrytime.go). A tool entry
 	// carries its call's message's instant.
@@ -5143,10 +5163,11 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				}
 			}
 		}
-		interrupted, explicitlyHuman := false, false
+		interrupted, explicitlyHuman, kind := false, false, ""
 		run := ""
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			run = mark.RunID
+			kind = mark.Kind
 			interrupted = mark.Interrupted
 			explicitlyHuman = mark.Audience == "human"
 			if mark.Audience == "operational" {
@@ -5187,6 +5208,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			Team:     team,
 			ForModel: forModel,
 			At:       journal.written(msg),
+			Kind:     kind,
 		})
 		var rejectionCounts map[string]int
 		for callIndex := range msg.ToolCalls {

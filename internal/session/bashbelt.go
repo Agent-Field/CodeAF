@@ -85,6 +85,8 @@ func (a *Agent) bashBelt() []bare.Tool {
 	tools = append(tools, a.assignmentTools()...)
 	tools = append(tools, a.automationTools()...)
 	tools = append(tools, a.automationReportTools()...)
+	tools = append(tools, a.factoryTools()...)
+	tools = append(tools, a.floorTools()...)
 	tools = append(tools, a.harnessTools()...)
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)

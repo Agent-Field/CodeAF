@@ -675,6 +675,48 @@ const (
 	// producing run and call, never the file or a path. Appended after every
 	// existing ordinal because hosts serialize EventKind as an integer.
 	EventArtifactUpdate = EventMediaUpdate + 1
+	// The factory kinds are appended after every existing ordinal because hosts
+	// serialize EventKind as an integer: one added in the middle renumbers
+	// every kind under it.
+	//
+	// EventFactoryProposal is the card `factory_add` raises: the chat wants to
+	// put one piece of work on the factory floor (tools_factory.go). Factory
+	// carries the card, and its ID is the token a surface hands back to
+	// [Agent.ResolveFactory]. The same kind comes again, once, when the card is
+	// settled, with Decided or Withdrawn set, so a surface can draw the outcome
+	// where the question stood.
+	//
+	// IT RIDES THE TASK LANE ([Agent.WatchTaskUpdates]) and the question rides
+	// the questions lane beside it. There is NO CLOCK THAT ADDS: silence puts
+	// nothing on the floor, and a surface that ignores this kind adds nothing,
+	// which is the correct behaviour rather than a degradation.
+	EventFactoryProposal = EventArtifactUpdate + 1
+	// EventFactoryAdded says one item has just been written to the factory
+	// floor from a chat. Factory.Item is the floor's own id for it, so the
+	// surface re-reads the floor rather than drawing a row from the card.
+	EventFactoryAdded = EventFactoryProposal + 1
+	// EventRecipeProposal is the card `factory_recipe` raises: the chat wants to
+	// add one line to a repository's recipe, its policy or its habits
+	// (tools_factory_recipe.go). Recipe carries the card, and its ID is the
+	// token a surface hands back to [Agent.ResolveRecipe]. It comes again, once,
+	// when the card is settled, with Decided or Withdrawn set, exactly as
+	// EventFactoryProposal does, and on the same task lane.
+	EventRecipeProposal = EventFactoryAdded + 1
+	// EventRecipeBanked says the line is in the repository's
+	// `.codeaf/factory.yaml` now, so a surface reading the recipe reads it again.
+	EventRecipeBanked = EventRecipeProposal + 1
+	// EventItemProposal is the card `factory_item` raises: the chat wants to
+	// change the ONE floor item its conversation is about — its stages, gate,
+	// cap or effort — or leave its stages a note (tools_factory_item.go).
+	// FactoryItem carries the card, and its ID is the token a surface hands back
+	// to [Agent.ResolveItem]. It comes again, once, when the card is settled,
+	// with Decided or Withdrawn set, exactly as EventRecipeProposal does, and on
+	// the same task lane.
+	EventItemProposal = EventRecipeBanked + 1
+	// EventItemChanged says the item is changed on the floor now. FactoryItem's
+	// Now is the item as the floor holds it after the change, so a surface with
+	// no floor of its own (a window over --host) still draws the live card.
+	EventItemChanged = EventItemProposal + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -1055,6 +1097,22 @@ type Event struct {
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
 	// it is the token a surface hands back to [Agent.ResolveSubharness].
 	Subharness *SubharnessCard
+
+	// Factory carries one EventFactoryProposal's card or one EventFactoryAdded's
+	// news (factory_contract.go). It is nil on every other kind, and it rides
+	// behind a json tag of its own so a peer built before it simply does not
+	// see it.
+	Factory *FactoryNotice `json:"Factory,omitempty"`
+
+	// Recipe carries one EventRecipeProposal's card or one EventRecipeBanked's
+	// news (factory_contract.go), behind a json tag of its own for the reason
+	// Factory's is.
+	Recipe *RecipeNotice `json:"Recipe,omitempty"`
+
+	// FactoryItem carries one EventItemProposal's card or one
+	// EventItemChanged's news (factory_contract.go), behind a json tag of its
+	// own for the reason Factory's is.
+	FactoryItem *ItemNotice `json:"FactoryItem,omitempty"`
 
 	// Retry carries one [EventRetrying]'s payload in parts (retrynews.go): which
 	// model was being asked, how far into its patience the step is, why the
@@ -2314,6 +2372,43 @@ type Config struct {
 	// reason too: no surface sets it, the executor wires it from the node
 	// (task_run.go's newTaskAgentOn).
 	quickItems func(done int, add []string) string
+
+	// Factory is the door onto the factory floor (factory_contract.go). NIL IS
+	// NO DOOR: `factory_add` is off the belt and the page says nothing about
+	// it, because a capability with nothing behind it is absent, not broken.
+	Factory FactoryDoor
+
+	// Recipe is the door onto a repository's recipe file (factory_contract.go).
+	// NIL IS NO DOOR: `factory_recipe` is off the belt. It is set exactly where
+	// Factory is, by a window on this machine, and never on --once, a task node,
+	// --host or --at.
+	Recipe RecipeDoor
+
+	// FactoryItem is the door onto one floor item (factory_contract.go). NIL IS
+	// NO DOOR: `factory_item` is off the belt. It is set exactly where Factory
+	// is, and never on --once, a task node, --host or --at.
+	FactoryItem ItemDoor
+
+	// FactoryRun is the manager's door onto its item's run
+	// (tools_factory_run.go). NIL IS NO DOOR: `factory_run` is off the belt.
+	// It is set where FactoryItem is, and on the one turn the runner gives an
+	// item's manager to shape its run.
+	FactoryRun RunDoor
+
+	// Stage is the door a factory stage's own conversation reports through
+	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
+	// the belt. Only the factory's runner sets it, on a stage round it opened.
+	Stage StageDoor
+
+	// Floor is the foreman's door onto the whole floor (tools_floor.go): the
+	// floor's read and its marks. NIL IS NO DOOR: `factory_floor` is off the
+	// belt. It is set only on the foreman's own conversation (cmd/codeaf's
+	// foremanFloorDoor), on a launch that has a Factory door.
+	Floor FloorDoor
+
+	// factoryWindow overrides how long one factory card holds its tool call
+	// open, for tests that watch the window end. Zero is [factoryCardWindow].
+	factoryWindow time.Duration
 	// taskControl binds file receipts and step holds to the node that owns them.
 	taskControl *TaskNode
 	// The saved per-task cap applies across this node's worker and repair rounds.
@@ -3140,7 +3235,10 @@ type Agent struct {
 	// team is this conversation's account of its teams: its key, its roles and
 	// its Traffic cursors (team.go). It has its own lock and is never read
 	// under mu.
-	team  teamSeat
+	team teamSeat
+	// lead is whether this conversation manages a factory item (team.go's
+	// [Agent.factoryLead]), asked of its run door and kept once known.
+	lead  factoryLeadSeat
 	usage Usage
 	// answered is the session's money once per model that ANSWERED it, every
 	// call banked under the name the response itself gave (competence.go's
@@ -3524,6 +3622,25 @@ type Agent struct {
 	// to — would otherwise wait forever on a card that is already up.
 	subharnessSeq    uint64
 	subharnessOffers map[uint64]*subharnessOffer
+
+	// factoryOffers is the factory cards chat has raised and nobody has
+	// answered yet, keyed by the proposal id the EventFactoryProposal carried,
+	// and factorySeq is what names them (tools_factory.go). Each entry keeps
+	// its own card for the reason subharnessOffers does: a surface that
+	// subscribes while the question stands must still be able to draw it.
+	factorySeq    uint64
+	factoryOffers map[string]*factoryOffer
+
+	// recipeOffers and recipeSeq are the same book for `factory_recipe`'s
+	// cards (tools_factory_recipe.go), kept apart because the two cards are
+	// answered by different resolvers and write to different places.
+	recipeSeq    uint64
+	recipeOffers map[string]*recipeOffer
+
+	// itemOffers and itemSeq are the same book for `factory_item`'s cards
+	// (tools_factory_item.go), kept apart for the recipe book's reason.
+	itemSeq    uint64
+	itemOffers map[string]*itemOffer
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just

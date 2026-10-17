@@ -2118,6 +2118,28 @@ func v3BuiltinApprovals() map[string]any {
 		// A conflict raised to the manager above the parties: a packet and a
 		// line of Traffic, and nothing spent or started.
 		"team_raise": "allow",
+		// A factory stage's report and its proposal of stages (internal/session's
+		// tools_stage.go): each hands words to the runner waiting in code, and
+		// neither changes, posts or starts anything. They are on a stage's belt
+		// alone, and a stage has nobody at its keyboard to ask, so without this
+		// line the headless floor refused every report and no stage could end.
+		"stage_result": "allow", "plan_edit": "allow",
+		// The manager's reply to a step's question (tools_factory_answer.go):
+		// words handed to the runner waiting in code, on a turn nobody is at
+		// the keyboard of.
+		"factory_answer": "allow",
+		// THE MANAGER'S PEN ON ITS OWN ITEM'S STEPS (tools_factory_run.go): it
+		// changes the stages of the one item the conversation manages, within
+		// the bounds factory.Edit holds in code, and posts, starts and spends
+		// nothing. Its shaping turns are headless, so without this line every
+		// edit met `needs approval but no resolver is attached: default` and the
+		// recipe stood by accident.
+		"factory_run": "allow",
+		// THE MANAGER'S START (tools_factory_start.go): the run button on the
+		// item's page, pressed from the manager's chat when the person asks; it
+		// launches, resumes or continues the one item the conversation manages,
+		// within the floor's own rules.
+		"factory_start": "allow",
 	}
 }
 

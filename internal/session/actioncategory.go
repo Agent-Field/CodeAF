@@ -222,17 +222,19 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		"gmail_read", "slack_read_thread", "slack_list_channels",
 		"calendar_list", "workspace_snapshots",
 		// A manager looking at its team: the states, and a member's page.
-		"team_status", "team_read":
+		"team_status", "team_read",
+		// The foreman reading the factory floor (a mark is a proposal, not a change).
+		"factory_floor":
 		return ActionRead
 
 	// Changing something that exists.
 	case "edit", "edit_video", "change_setting", "revise_assignment",
-		"revise_design", "forget", "workspace":
+		"revise_design", "forget", "workspace", "factory_run", "factory_answer", "factory_start":
 		return ActionEdit
 
 	// Writing content or generating an artifact.
 	case "write", "generate_image", "generate_music", "generate_video",
-		"remember", "propose_subharness", "build_harness", "calendar_create":
+		"remember", "propose_subharness", "factory_add", "factory_recipe", "factory_item", "build_harness", "calendar_create":
 		return ActionCreate
 
 	// Executing and waiting on what it prints.
@@ -267,6 +269,10 @@ func ActionCategoryForTool(tool string) ActionCategory {
 	// task ticking its own list (task_quick.go): nothing about the work moves,
 	// and what changes is the row saying where it has got to.
 	case "track", "items", "commit", "recall":
+		return ActionPlan
+
+	// A factory stage reporting its round and proposing stages (tools_stage.go).
+	case "stage_result", "plan_edit":
 		return ActionPlan
 
 	// Standing by for something outside this turn.

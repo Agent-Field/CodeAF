@@ -4979,6 +4979,9 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 		return stream.out, func() {}
 	}
 	a.taskWatchers = append(a.taskWatchers, stream)
+	factoryCards := a.standingFactoryCardsLocked()
+	factoryCards = append(factoryCards, a.standingRecipeCardsLocked()...)
+	factoryCards = append(factoryCards, a.standingItemCardsLocked()...)
 	a.mu.Unlock()
 	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
 	// a surface that has no rows yet — a conversation resumed from its
@@ -4989,6 +4992,13 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	// that watched all along re-hears what it already drew, and drawing a row
 	// twice is drawing it once (tui3's taskUpdate keys rows by id).
 	a.replayTaskRoster(stream)
+	// AND A FACTORY CARD STILL STANDING, for the same reason: it went out on
+	// this lane once, and a window that arrived after that holds the question
+	// with no card above it (tools_factory.go). A window that already drew it
+	// hears the same id again, which is one card (tui3's factoryProposal).
+	for _, event := range factoryCards {
+		stream.send(event)
+	}
 	var once sync.Once
 	return stream.out, func() {
 		once.Do(func() {

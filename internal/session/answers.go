@@ -126,6 +126,18 @@ const (
 	QuestionFuel QuestionKind = "fuel"
 	// QuestionAsk is the model's own question, raised through the ask tool.
 	QuestionAsk QuestionKind = "ask"
+	// QuestionFactory is a card the chat raised to put one piece of work on the
+	// factory floor (tools_factory.go, [Agent.ResolveFactory]). Its token is a
+	// string, the proposal's own id, so an answer names it by Ref.
+	QuestionFactory QuestionKind = "factory"
+	// QuestionRecipe is a card the chat raised to add one line to a
+	// repository's recipe, policy or habits (tools_factory_recipe.go,
+	// [Agent.ResolveRecipe]). Its token is the proposal's own id, by Ref.
+	QuestionRecipe QuestionKind = "recipe"
+	// QuestionItem is a card the chat raised to change one floor item's
+	// stages, gate, cap or effort, or leave it a note (tools_factory_item.go,
+	// [Agent.ResolveItem]). Its token is the proposal's own id, by Ref.
+	QuestionItem QuestionKind = "item"
 )
 
 // AnswerOption is one answer a question will take: the key that gives it and
@@ -236,6 +248,29 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: AutomationSaveKey, Label: "Save"},
 			{Key: AutomationRunNowKey, Label: "Save and run it now"},
 			{Key: AutomationNoKey, Label: "Don't save", Safe: true},
+		}
+	case QuestionFactory:
+		// THE YES WRITES ONE ROW AND STARTS NOTHING, and the no changes nothing
+		// at all, so it is the safe one. Words are the third answer and have no
+		// key: they arrive through the card's box as a change (question.go's
+		// [Agent.applyToLane]).
+		return []AnswerOption{
+			{Key: FactoryAddKey, Label: FactoryAddLabel},
+			{Key: FactoryNotNowKey, Label: FactoryNotNowLabel, Safe: true},
+		}
+	case QuestionRecipe:
+		// THE YES WRITES ONE LINE INTO THE REPOSITORY'S RECIPE, and the no
+		// writes nothing, so it is the safe one. Words arrive through the box.
+		return []AnswerOption{
+			{Key: RecipeBankKey, Label: RecipeBankLabel},
+			{Key: RecipeNotNowKey, Label: RecipeNotNowLabel, Safe: true},
+		}
+	case QuestionItem:
+		// THE YES CHANGES THE ITEM, within the recipe's bounds, and
+		// the no changes nothing, so it is the safe one.
+		return []AnswerOption{
+			{Key: ItemYesKey, Label: ItemYesLabel},
+			{Key: ItemKeepKey, Label: ItemKeepLabel, Safe: true},
 		}
 	case QuestionConnect:
 		return []AnswerOption{
@@ -420,6 +455,12 @@ type AnswerAction struct {
 	Scope ConsentScope
 	// Task is the proposal lane's answer, for [Agent.ResolveTask].
 	Task TaskAnswer
+	// Factory is the factory card's answer, for [Agent.ResolveFactory].
+	Factory FactoryAnswer
+	// Recipe is the recipe card's answer, for [Agent.ResolveRecipe].
+	Recipe RecipeAnswer
+	// Item is the item card's answer, for [Agent.ResolveItem].
+	Item ItemAnswer
 }
 
 // AnswerFromKey is the whole mapping, and it is the one place it is written.
@@ -461,6 +502,31 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 			action.Task = TaskAnswer{Approved: true}
 		case "2":
 			action.Task = TaskAnswer{Approved: false}
+		}
+	case QuestionFactory:
+		switch key {
+		case FactoryAddKey:
+			action.Factory = FactoryAnswer{Approved: true}
+		case FactoryNotNowKey:
+			// Written out for the standing arm's reason: the zero value is
+			// already the no, and a reader counting answers must find both.
+			action.Factory = FactoryAnswer{}
+		}
+	case QuestionRecipe:
+		switch key {
+		case RecipeBankKey:
+			action.Recipe = RecipeAnswer{Approved: true}
+		case RecipeNotNowKey:
+			// Written out for the factory arm's reason.
+			action.Recipe = RecipeAnswer{}
+		}
+	case QuestionItem:
+		switch key {
+		case ItemYesKey:
+			action.Item = ItemAnswer{Approved: true}
+		case ItemKeepKey:
+			// Written out for the factory arm's reason.
+			action.Item = ItemAnswer{}
 		}
 	}
 	return action, true

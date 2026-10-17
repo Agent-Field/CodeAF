@@ -30,6 +30,11 @@ type messagePresentation struct {
 	Audience    string  `json:"audience"`
 	Text        *string `json:"text,omitempty"`
 	Interrupted bool    `json:"interrupted,omitempty"`
+	// Kind names what wrote the message when it was not the model's own turn:
+	// [FactoryProgressKind] is a factory runner's line in an item's manager
+	// conversation (talk_progress.go), which a surface may draw as the run's
+	// timeline rather than as something the model said. "" is the model.
+	Kind string `json:"kind,omitempty"`
 	// RejectedBeforeRun belongs to this exact tool-result occurrence, never a provider ID.
 	RejectedBeforeRun bool `json:"rejected_before_run,omitempty"`
 	ToolInvoked       bool `json:"invoked,omitempty"`

@@ -54,7 +54,7 @@ func accessSecret(link, address string) (string, error) {
 	if u.Scheme != "codeaf" || u.Host != "factory" || u.Path != "/join" || strings.TrimRight(origin, "/") != strings.TrimRight(address, "/") {
 		return "", errors.New("this access link belongs to another factory")
 	}
-	fragment, err := url.ParseQuery(u.Fragment)
+	fragment, err := url.ParseQuery(u.EscapedFragment())
 	if err != nil || fragment.Get("token") == "" {
 		return "", errors.New("the access link has no token")
 	}
