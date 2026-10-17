@@ -184,7 +184,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// the store and still unread until a turn takes them, so a refused splice
 	// leaves it to the next boundary rather than to this carry.
 	var owed []string
-	// readNotes is the ids of this task's notes THIS WORKER has already been
+	// notes holds the ids of this task's notes THIS WORKER has already been
 	// handed. THE MARK IS THE WORKER'S ALONE and lives only for the life of the
 	// loop: a person opening the task's page reads the same notes without
 	// consuming them, because there is one reader of this map and it is here.
@@ -196,7 +196,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// is a new worker on the same task, and the record says what the task has
 	// already been told ([notesAlreadyHad]); starting from nothing handed a woken
 	// parent its older notes a second time.
-	readNotes := notesAlreadyHad(storeDir, task.ID)
+	//
+	// THE NOTES ARE READ A PAGE AT A TIME FROM WHERE THIS WORKER HAS READ UP TO
+	// ([bashNotes]), never as the task's oldest fifty: a task whose first fifty
+	// had all been handed over never handed over the fifty-first.
+	notes := newBashNotes(w.store, task.ID, notesAlreadyHad(storeDir, task.ID))
 	for {
 		events, err := agent.Submit(runCtx, brief)
 		if err != nil {
@@ -374,14 +378,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 				//
 				// AND A WORKER IS NEVER HANDED ITS OWN WORDS. A note this step
 				// wrote on this task is the worker's own and it already knows it
-				// ([ownNotes]), so it is marked had before anything is handed over.
-				had := ownNotes(w.store, task.ID, stepCommand(event), readNotes)
-				if ending.kind == endingNone && !stalled {
-					had = append(had, deliverNotes(w.store, task.ID, readNotes, func(words string) error {
-						_, err := agent.Steer(words)
-						return err
-					})...)
-				}
+				// ([isOwnNote]), so it is marked had before anything is handed over.
+				had := notes.boundary(runCtx, stepCommand(event), ending.kind == endingNone && !stalled, func(words string) error {
+					_, err := agent.Steer(words)
+					return err
+				})
 				if len(had) > 0 {
 					// THE MARK IS WRITTEN DOWN, so the next worker of this task
 					// starts with it. A line that would not write costs only a
@@ -643,58 +644,88 @@ func sameStepSpoken() string {
 // make a worker stop reading them.
 const notesPerDelivery = 5
 
-// unreadNotes answers the notes on a task this worker has not been handed yet,
-// oldest first, bounded by [notesPerDelivery]. read is the worker's OWN mark
-// and the only one there is: the screen draws the same notes without consuming
-// them, so a note the person opened is never a note the worker missed.
-func unreadNotes(store *plandb.Store, taskID string, read map[string]bool) []plandb.Note {
-	var fresh []plandb.Note
-	for _, note := range store.Notes(taskID, 0) {
-		if read[note.ID] {
-			continue
-		}
-		fresh = append(fresh, note)
-		if len(fresh) >= notesPerDelivery {
-			break
-		}
-	}
-	return fresh
+// bashNotes is one bash worker's note channel: where it has read up to in its
+// task's notes ([taskInbox]) and the ids it has had.
+type bashNotes struct {
+	inbox *taskInbox
+	// read is the ids of this task's notes THIS TASK'S WORKERS have had: the
+	// record's own marks when the worker started ([notesAlreadyHad]) and every
+	// note this worker was handed or wrote itself since. THE MARK IS THE
+	// WORKER'S ALONE: the screen draws the same notes without consuming them,
+	// so a note the person opened is never a note the worker missed.
+	read map[string]bool
 }
 
-// deliverNotes hands a task's unread notes to its working turn and MARKS READ
-// ONLY WHAT THE TURN TOOK. It is one function rather than five lines at the
-// boundary because the branch that matters is the one that is hard to reach: a
-// splice that refuses, which happens when the worker's own turn ends in the gap
-// between the step that brought the note and the steer that would have landed
-// it. Reached through a steer of its own, that branch can be asserted directly
-// instead of waiting for the race to come round.
+func newBashNotes(pages notePager, taskID string, read map[string]bool) *bashNotes {
+	return &bashNotes{inbox: newTaskInbox(pages, taskID), read: read}
+}
+
+// boundary is one step boundary's whole note decision, and it answers the ids
+// it marked had, for the caller to write down where the next worker of the
+// same task will read them ([notesAlreadyHad]).
 //
-// It answers the ids it marked, so the caller can write the mark down where the
-// next worker of the same task will read it ([notesAlreadyHad]).
-func deliverNotes(store *plandb.Store, taskID string, read map[string]bool, steer func(string) error) []string {
-	fresh := unreadNotes(store, taskID, read)
-	if len(fresh) == 0 {
-		return nil
+// It reads ONE page after the worker's mark ([taskInbox.next]): at most
+// [notesPerDelivery] notes it has not had, after passing at most
+// [notesExaminedPerDecision] by. A note THIS STEP'S COMMAND WROTE is marked had
+// as the read passes it and is never handed back ([isOwnNote]). When deliver
+// is true the batch is handed to the working turn through steer, and MARKED
+// READ ONLY WHEN THE TURN TOOK IT.
+//
+// IT IS ONE FUNCTION RATHER THAN LINES AT THE BOUNDARY because the branches
+// that matter are the ones that are hard to reach: a splice that refuses,
+// which happens when the worker's own turn ends in the gap between the step
+// that brought the note and the steer that would have landed it; a store that
+// is busy; a note too large to read; a turn that is ending. Reached through a
+// steer and a pager of their own, each can be asserted directly instead of
+// waiting for the race.
+func (n *bashNotes) boundary(ctx context.Context, command string, deliver bool, steer func(string) error) []string {
+	var had []string
+	skip := func(note plandb.Note) bool {
+		if n.read[note.ID] {
+			return true
+		}
+		if isOwnNote(note, command) {
+			n.read[note.ID] = true
+			had = append(had, note.ID)
+			return true
+		}
+		return false
 	}
-	if steer(planNoteSpoken(fresh)) != nil {
-		// NOTHING IS MARKED. The words reached nobody, so the notes are still
-		// unread — the next boundary offers them again, and the one after, until
-		// a turn takes them. Marked here they would have been delivered to
-		// nobody and never offered again.
-		return nil
+	batch, err := n.inbox.next(ctx, notesPerDelivery, skip)
+	if err != nil {
+		// NOTHING IS HANDED OVER AND NOTHING ELSE IS MARKED: a busy or failed
+		// read, or a note too large to read, is not an empty inbox. The own
+		// notes a read passed before a cancellation stopped it are this step's
+		// own words all the same, so their marks stand.
+		return had
 	}
-	marked := make([]string, 0, len(fresh))
-	for _, note := range fresh {
-		read[note.ID] = true
-		marked = append(marked, note.ID)
+	if len(batch.notes) == 0 {
+		n.inbox.settle(batch)
+		return had
 	}
-	return marked
+	// A TURN THAT IS ENDING IS NOT HANDED NOTES, and they are not marked:
+	// nobody would read them, so they are still unread for the next worker.
+	if !deliver {
+		return had
+	}
+	if steer(planNoteSpoken(batch.notes)) != nil {
+		// NOTHING IS MARKED AND THE MARK DOES NOT MOVE. The words reached
+		// nobody, so the notes are still unread — the next boundary offers
+		// them again, and the one after, until a turn takes them. Marked here
+		// they would have been delivered to nobody and never offered again.
+		return had
+	}
+	for _, note := range batch.notes {
+		n.read[note.ID] = true
+		had = append(had, note.ID)
+	}
+	n.inbox.settle(batch)
+	return had
 }
 
-// ownNotes marks as had every unread note on the task that this step's own
-// command wrote, and answers their ids. A note is the worker's own when it is in
-// a worker's voice and its words are in the command the worker just ran: the
-// worker typed them, so there is nothing in them it has not already read.
+// isOwnNote reports whether a note is the worker's own: in a worker's voice,
+// with words THIS STEP'S command carries verbatim. The worker typed them, so
+// there is nothing in them it has not already read.
 //
 // IT IS READ OFF THE WORDS AND NOT OFF THE AUTHOR'S NAME, because the name does
 // not say it: a worker's `plandb task note` carries whatever agent name it
@@ -702,20 +733,18 @@ func deliverNotes(store *plandb.Store, taskID string, read map[string]bool, stee
 // whose words the command does not carry verbatim — quoting the shell rewrote —
 // is handed over as it always was, which repeats the worker's own sentence
 // rather than losing anybody else's.
-func ownNotes(store *plandb.Store, taskID, command string, read map[string]bool) []string {
-	if strings.TrimSpace(command) == "" {
-		return nil
+//
+// ONLY THIS STEP'S COMMAND, NEVER AN EARLIER ONE. A note the read first reaches
+// a step later is handed over and the worker hears its own sentence again;
+// matching it against the commands before would make a colleague's later note
+// that repeats words the worker once typed read as the worker's own, and hide
+// it. A repeat costs a sentence; a hidden note is a lost one.
+func isOwnNote(note plandb.Note, command string) bool {
+	body := strings.TrimSpace(note.Body)
+	if strings.TrimSpace(command) == "" || note.From == plandb.NoteFromPerson || body == "" {
+		return false
 	}
-	var marked []string
-	for _, note := range store.Notes(taskID, 0) {
-		body := strings.TrimSpace(note.Body)
-		if read[note.ID] || note.From == plandb.NoteFromPerson || body == "" || !strings.Contains(command, body) {
-			continue
-		}
-		read[note.ID] = true
-		marked = append(marked, note.ID)
-	}
-	return marked
+	return strings.Contains(command, body)
 }
 
 // planNoteSpoken is how a plan note reads when it reaches a working worker: the

@@ -341,47 +341,25 @@ func (s *delegateSink) Step(record delegate.StepRecord) {
 // ([delegateSink.Heard]), written to the trajectory the way a bash worker
 // writes the notes it was handed, so a later worker of the same task does not
 // hand them over again. Notes the task already had before this run are skipped.
+//
+// EACH TICK READS ONE PAGE FROM WHERE THE LOOP HAS PUBLISHED UP TO
+// ([taskInbox]), never the task's oldest two hundred: a task whose first two
+// hundred had all been sent never sent the two-hundred-first. That position is
+// a PUBLICATION position and never a receipt: it moves past a note once the
+// inbox took it (or refused its words), and the note is had only when the
+// program says it heard it.
 func (s *delegateSink) forward() {
 	tick := time.NewTicker(inboxPoll)
 	defer tick.Stop()
-	rejected := map[string]bool{}
+	f := s.newForwarding(s.worker.store)
 	for {
 		s.inboxMu.Lock()
 		closed := s.closedWhy != ""
-		skip := make(map[string]bool, len(s.sent)+len(s.had))
-		for id := range s.sent {
-			skip[id] = true
-		}
-		for id := range s.had {
-			skip[id] = true
-		}
-		for id := range rejected {
-			skip[id] = true
-		}
 		s.inboxMu.Unlock()
 		if closed {
 			return
 		}
-		for _, note := range delegateUnreadNotes(s.worker.store, s.taskID, s.name, skip) {
-			// REGISTER THE SEND BEFORE PUBLISHING THE LINE. A child can save
-			// and receipt it before AppendInbox returns, and that receipt must
-			// already have a sent mark to pair with.
-			s.inboxMu.Lock()
-			s.sent[note.ID] = true
-			s.inboxMu.Unlock()
-			if err := delegate.AppendInbox(s.inboxPath, delegate.Message{ID: note.ID, From: messageFrom(note), Text: note.Body}); err != nil {
-				s.inboxMu.Lock()
-				delete(s.sent, note.ID)
-				s.inboxMu.Unlock()
-				// Bad words stay unread for the report, but cannot block later
-				// direction; an I/O failure waits for the next tick instead.
-				if errors.Is(err, delegate.ErrInboxMessage) {
-					rejected[note.ID] = true
-					continue
-				}
-				break
-			}
-		}
+		s.forwardOnce(f)
 		select {
 		case <-s.ctx.Done():
 			return
@@ -390,24 +368,67 @@ func (s *delegateSink) forward() {
 	}
 }
 
-// delegateNotesMost is the store's largest supported enumeration, because its
-// default oldest-fifty window hides later notes even after the first were read.
-const delegateNotesMost = 200
+// inboxForwarding is the forwarding loop's own state: where it has published up
+// to, and the notes whose words the inbox refused.
+type inboxForwarding struct {
+	inbox    *taskInbox
+	rejected map[string]bool
+}
 
-// delegateUnreadNotes excludes the program's own words before the batch bound,
-// so its reports cannot occupy every delivery and starve later direction.
-func delegateUnreadNotes(store *plandb.Store, taskID, name string, skip map[string]bool) []plandb.Note {
-	var fresh []plandb.Note
-	for _, note := range store.Notes(taskID, delegateNotesMost) {
-		if skip[note.ID] || strings.TrimSpace(note.Agent) == name {
-			continue
+func (s *delegateSink) newForwarding(pages notePager) *inboxForwarding {
+	return &inboxForwarding{inbox: newTaskInbox(pages, s.taskID), rejected: map[string]bool{}}
+}
+
+// forwardOnce is one tick's decision: ONE page of the task's notes after the
+// loop's position, each published to the inbox in order.
+//
+// The program's own words, the notes already sent or heard, and the ones
+// whose words the inbox refused are passed by BEFORE the batch bound, so the
+// program's reports cannot occupy every delivery and starve later direction.
+// The marks are read under their lock one note at a time, rather than copied
+// whole every tick.
+//
+// A BUSY OR FAILED READ, OR A NOTE TOO LARGE TO READ, PUBLISHES NOTHING AND
+// MOVES NOTHING: the next tick asks again from the same place, and a note too
+// large to read holds the notes after it until it is corrected ([taskInbox.
+// next]). The position moves only past notes the inbox took or refused for
+// their words.
+func (s *delegateSink) forwardOnce(f *inboxForwarding) {
+	skip := func(note plandb.Note) bool {
+		if f.rejected[note.ID] || strings.TrimSpace(note.Agent) == s.name {
+			return true
 		}
-		fresh = append(fresh, note)
-		if len(fresh) >= notesPerDelivery {
-			break
+		s.inboxMu.Lock()
+		done := s.sent[note.ID] || s.had[note.ID]
+		s.inboxMu.Unlock()
+		return done
+	}
+	batch, err := f.inbox.next(s.ctx, notesPerDelivery, skip)
+	if err != nil {
+		return
+	}
+	for _, note := range batch.notes {
+		// REGISTER THE SEND BEFORE PUBLISHING THE LINE. A child can save and
+		// receipt it before AppendInbox returns, and that receipt must already
+		// have a sent mark to pair with.
+		s.inboxMu.Lock()
+		s.sent[note.ID] = true
+		s.inboxMu.Unlock()
+		if err := delegate.AppendInbox(s.inboxPath, delegate.Message{ID: note.ID, From: messageFrom(note), Text: note.Body}); err != nil {
+			s.inboxMu.Lock()
+			delete(s.sent, note.ID)
+			s.inboxMu.Unlock()
+			// Words the inbox cannot carry stay unread for the report, but
+			// cannot block later direction; an I/O failure waits for the next
+			// tick instead, and the position does not move.
+			if errors.Is(err, delegate.ErrInboxMessage) {
+				f.rejected[note.ID] = true
+				continue
+			}
+			return
 		}
 	}
-	return fresh
+	f.inbox.settle(batch)
 }
 
 // endForwarding stops the forwarding loop and waits for it to return.
@@ -444,6 +465,26 @@ func messageFrom(note plandb.Note) string {
 // Without this the page would show the message and nothing after it, which
 // reads as though it were taken.
 func (s *delegateSink) reportUnheard() {
+	s.reportUnheardFrom(s.worker.store)
+}
+
+// reportUnheardFrom is [delegateSink.reportUnheard] reading through the pager
+// it is handed, so a test can make the read meet a busy store.
+//
+// IT WALKS THE TASK'S NOTES A PAGE AT A TIME, not the oldest two hundred, so a
+// message after the two-hundredth that was never heard is named like any
+// other. THE WALK IS ONE SYNCHRONOUS CALL UNDER ONE DEADLINE
+// ([unheardCheckMost]) and at most [unheardPagesMost] pages; nothing outlives
+// it and nothing retries. Its context is the run's without the run's own
+// cancellation, because a program a cut stopped is exactly the one whose
+// unread messages need naming — the deadline is what bounds it.
+//
+// A WALK THAT DID NOT REACH THE TASK'S LAST NOTE SAYS SO. The page bound, the
+// deadline, a busy store, a note too large to read or any other failure ends
+// it, and the report then names what it found and says the rest could not be
+// checked, once. It never reads as a complete account and never counts
+// messages it did not see.
+func (s *delegateSink) reportUnheardFrom(pages notePager) {
 	if !s.record.Listening {
 		return
 	}
@@ -454,34 +495,88 @@ func (s *delegateSink) reportUnheard() {
 	}
 	why := s.closedWhy
 	s.inboxMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(s.ctx), unheardCheckMost)
+	defer cancel()
+	// unheard keeps only the quotes the report has room for, and total counts
+	// every unheard message found, so a long walk holds a report's worth of
+	// words and a number, never every message it passed.
 	var unheard []string
-	for _, note := range s.worker.store.Notes(s.taskID, delegateNotesMost) {
+	var cut error
+	total, kept := 0, 0
+	unspoken := func(note plandb.Note) bool {
 		spoken := note.From == plandb.NoteFromPerson || strings.TrimSpace(note.Agent) == plandb.NoteAgentChat
-		if spoken && !had[note.ID] {
-			unheard = append(unheard, "“"+unheardExcerpt(strings.TrimSpace(note.Body))+"”")
-		}
+		return !spoken || had[note.ID]
 	}
-	if len(unheard) == 0 {
-		return
+	walk := newTaskInbox(pages, s.taskID)
+	for read := 0; ; read++ {
+		if read == unheardPagesMost {
+			cut = errUnheardWalkBound
+			break
+		}
+		batch, err := walk.next(ctx, plandb.NotePageMax, unspoken)
+		if err != nil {
+			cut = err
+			break
+		}
+		for _, note := range batch.notes {
+			quote := "“" + unheardExcerpt(strings.TrimSpace(note.Body)) + "”"
+			total++
+			if kept+1+len(quote) <= unheardReportMost {
+				unheard = append(unheard, quote)
+				kept += 1 + len(quote)
+			}
+		}
+		walk.settle(batch)
+		if batch.end {
+			break
+		}
 	}
 	if why == "" {
 		why = "it ended"
 	}
-	body := fmt.Sprintf("%s did not read %s before it stopped reading (%s):",
-		unheardExcerpt(s.name), map[bool]string{true: "this", false: "these"}[len(unheard) == 1], unheardExcerpt(why))
-	for i, quote := range unheard {
-		more := fmt.Sprintf(" … %d more messages were not read.", len(unheard)-i)
-		if len(unheard)-i == 1 {
-			more = " … 1 more message was not read."
+	if total == 0 {
+		if cut == nil {
+			return
 		}
-		if len(body)+1+len(quote)+len(more) > unheardReportMost {
-			body += more
+		s.leaveUnheardReport(fmt.Sprintf("%s may not have read every message before it stopped reading (%s): its notes could not all be checked (%s).",
+			unheardExcerpt(s.name), unheardExcerpt(why), unheardCutReason(cut)))
+		return
+	}
+	body := fmt.Sprintf("%s did not read %s before it stopped reading (%s):",
+		unheardExcerpt(s.name), map[bool]string{true: "this", false: "these"}[total == 1 && cut == nil], unheardExcerpt(why))
+	var rest string
+	if cut != nil {
+		rest = fmt.Sprintf(" … the rest of the task's notes could not be checked (%s).", unheardCutReason(cut))
+	}
+	// more is the count of found messages the report had no room to quote;
+	// after a cut it is a floor, and it says so.
+	more := func(n int) string {
+		floor := ""
+		if cut != nil {
+			floor = "at least "
+		}
+		if n == 1 && cut == nil {
+			return " … 1 more message was not read."
+		}
+		return fmt.Sprintf(" … %s%d more messages were not read.", floor, n)
+	}
+	said := 0
+	for _, quote := range unheard {
+		if len(body)+1+len(quote)+len(more(total-said))+len(rest) > unheardReportMost {
 			break
 		}
 		body += " " + quote
+		said++
 	}
-	// The report is the worker's own, so no later worker of the task is
-	// handed it as a message.
+	if said < total {
+		body += more(total - said)
+	}
+	s.leaveUnheardReport(body + rest)
+}
+
+// leaveUnheardReport writes the unread report on the task. The report is the
+// worker's own, so no later worker of the task is handed it as a message.
+func (s *delegateSink) leaveUnheardReport(body string) {
 	if note, err := s.worker.store.AddNote(s.taskID, s.name, body); err == nil {
 		_ = appendTrajectory(s.storeDir, s.taskID, Step{Kind: trajectoryNotesKind, Notes: []string{note.ID}})
 	}
@@ -493,6 +588,32 @@ const (
 	unheardExcerptMost = 300
 	unheardReportMost  = 30 << 10
 )
+
+// unheardPagesMost is how many pages the unread report's walk may read, and
+// unheardCheckMost the one deadline the whole walk runs under. A page examines
+// at most [notesExaminedPerDecision] notes; a walk either bound stops says it
+// stopped ([delegateSink.reportUnheardFrom]).
+const (
+	unheardPagesMost = 20
+	unheardCheckMost = 2 * time.Second
+)
+
+// errUnheardWalkBound is how a walk the bound cut short is named in the report.
+var errUnheardWalkBound = errors.New("the task has more notes than one check reads")
+
+// unheardCutReason is why the unread report's walk stopped, in the words a
+// person reads on the task's page; anything unnamed is its own bounded text.
+func unheardCutReason(err error) string {
+	switch {
+	case errors.Is(err, plandb.ErrNoteBusy):
+		return "the plan was busy"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "the check ran out of time"
+	case errors.Is(err, plandb.ErrNoteTooLarge):
+		return "a message there is too large to read: " + unheardExcerpt(err.Error())
+	}
+	return unheardExcerpt(err.Error())
+}
 
 // unheardExcerpt cuts on a rune boundary so a saved quote keeps readable words.
 func unheardExcerpt(text string) string {
