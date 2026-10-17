@@ -22,6 +22,7 @@ import (
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 func waitSetup(t *testing.T, h *Handler) {
@@ -663,5 +664,22 @@ func TestFactorySetupLostCredentialRequiresReconnectWithoutDiscardingProgress(t 
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
 	if !out.GitHub.Connected || out.GitHub.Handle != "owner" || out.State != "repos" {
 		t.Fatalf("explicit reconnect failed: %+v", out)
+	}
+}
+
+// Discovery names gh through the one shared resolver, so the path it reports is
+// the one connect and the token read would run.
+func TestFactorySetupDiscoverNamesGHThroughTheSharedResolver(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	f.h.seam.GHLogin = func(context.Context) (string, error) { return "cli-other", nil }
+	keep := forge.LookPath
+	forge.LookPath = func(name string) (string, error) { return "/fake/brew/" + name, nil }
+	t.Cleanup(func() { forge.LookPath = keep })
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "discover"}, 200, &out)
+	if out.GitHub.GH == nil || out.GitHub.GH.Path != "/fake/brew/gh" || out.GitHub.GH.Login != "cli-other" {
+		t.Fatalf("setup did not use the shared resolver: %+v", out.GitHub.GH)
 	}
 }
