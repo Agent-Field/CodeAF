@@ -170,6 +170,7 @@ func TestNoteEnvelopesPageAnswersLikeNotesPage(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "plan.db")
 	store := planOpen(t, path)
 	defer store.Close()
+	planAdd(t, store, planSpec("a", "Alpha"), planSpec("b", "Beta"))
 	ids := seedInterleaved(t, store, 12)
 	other, err := store.AddNote("b", "w", "elsewhere")
 	if err != nil {
