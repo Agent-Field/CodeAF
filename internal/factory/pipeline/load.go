@@ -403,9 +403,22 @@ func tightenStep(out *File, repo File, name string, step Step, probs []Problem) 
 	if step.wrotePrompt && strings.TrimSpace(step.Prompt) != strings.TrimSpace(cur.Prompt) {
 		probs = append(probs, Problem{Where: "steps." + name, Why: "a personal file cannot change the prompt"})
 	}
+	for _, w := range []struct{ field, got, cur string }{
+		{"kind", step.Kind, cur.Kind}, {"when", step.When, cur.When},
+		{"effort", step.Effort, cur.Effort}, {"fanout", step.Fanout, cur.Fanout},
+	} {
+		// "" is no opinion; any other word has to be the repo's own.
+		if w.got != "" && w.got != w.cur {
+			probs = append(probs, Problem{Where: "steps." + name + "." + w.field, Why: "a personal file cannot change the " + w.field})
+		}
+	}
 	if step.wroteUntil {
 		next, ok := untilTighten(cur.Until, step.Until)
-		if !ok {
+		if _, free := mechanicalUntil(next); ok && free && cur.Kind != "" {
+			// Only a chat reads a stop sentence; a check or post given one
+			// would hold, which is the repository's step changed from home.
+			probs = append(probs, Problem{Where: "steps." + name + ".until", Why: "a personal file cannot give a " + cur.Kind + " a stop sentence"})
+		} else if !ok {
 			probs = append(probs, Problem{Where: "steps." + name + ".until", Why: "a personal file cannot change this until"})
 		} else {
 			cur.Until = next
