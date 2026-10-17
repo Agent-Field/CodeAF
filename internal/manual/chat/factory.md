@@ -61,6 +61,12 @@ Proof is the step named proof, a send-back's prove step, or any step that runs u
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
 
+## rerun a step — run a job again from a step, does a rerun lose the proof sheet
+
+A job's page can rerun a step that has run, or stop the step running now. A rerun sends that step and every step after it back to run; the steps before it keep their results, and the money already spent stays counted. The log says `Rerun from <step>`. A step that has not run cannot be rerun (`step has not run yet`), and a finished or publishing job cannot change steps (`finished or publishing jobs cannot change steps`).
+
+What happens to the proof sheet depends on where the rerun starts. Before any proof has run, or when the rewound steps include a proof that has run — the step named proof, a prove step, or a step that runs until proven under any name, including a step from an older run — the proof and policy sheets clear, and proof writes them anew. If the rerun starts after proof, proof stays done and does not run again, so its sheet stays: the approve card, the pull request and landing still read the rows proof made. Rerunning only an approve step keeps the whole sheet as it was. When the rerun also sends back a check, post, policy or other working step, the sheet is rebuilt from each step's last result: rows those steps wrote are taken off and written again by the rerun, and a row a done step wrote that a rewound step overwrote goes back to what the done step recorded, pass or fail. A step keeps only its last round, and a worker's report can add a row no step result carries, so if the sheet holds a row the rebuild cannot account for, the rerun is refused and nothing about the job changes: `the proof sheet has rows the steps before <step> cannot account for; rerun from <proof> to prove it again`. A rerun after proof never runs proof again by itself; to get a new sheet, rerun from the proof step.
+
 ## how big is a job — size of a job, the size: filter, why there is no size, risky
 
 A job's size comes from the first of these that exists, and nothing else is a size:

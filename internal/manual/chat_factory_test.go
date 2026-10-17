@@ -48,6 +48,12 @@ func TestTheFactoryQuestionsReachTheirSections(t *testing.T) {
 			says:     []string{"`factory_add`", "writes nothing until you say yes", "none of them starts a job"},
 		},
 		{
+			question: "if I rerun the approve step of a factory job do I lose the proof sheet, or does proof run again",
+			page:     "factory",
+			title:    "rerun a step",
+			says:     []string{"proof stays done and does not run again, so its sheet stays", "the proof and policy sheets clear", "the rerun is refused and nothing about the job changes", "rerun from the proof step"},
+		},
+		{
 			question: "what does a factory stage conversation get, stage_result and plan_edit",
 			page:     "factory-stage-conversations",
 			title:    "a stage is a conversation",

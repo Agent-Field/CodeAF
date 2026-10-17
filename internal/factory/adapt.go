@@ -458,16 +458,27 @@ func proofStarted(it Item, stages []Stage) bool {
 		return false
 	}
 	for _, ph := range it.Stream.Phases {
-		if (ph.State == "" || ph.State == PhasePending) && ph.Round == 0 {
-			continue
-		}
-		if IsProofStage(Stage{Name: ph.Name}) {
+		if ProofPhaseRan(ph, stages) {
 			return true
 		}
-		for _, st := range stages {
-			if strings.EqualFold(strings.TrimSpace(st.Name), strings.TrimSpace(ph.Name)) && IsProofStage(st) {
-				return true
-			}
+	}
+	return false
+}
+
+// ProofPhaseRan says whether a phase is a proof that has begun: it has left
+// pending or counted a round, and its own name reads as proof or it names a
+// configured stage that is proof. The edit freeze and a rerun's sheet both ask
+// this, so a historical phase and a renamed until-proven stage count alike.
+func ProofPhaseRan(ph Phase, stages []Stage) bool {
+	if (ph.State == "" || ph.State == PhasePending) && ph.Round == 0 {
+		return false
+	}
+	if IsProofStage(Stage{Name: ph.Name}) {
+		return true
+	}
+	for _, st := range stages {
+		if strings.EqualFold(strings.TrimSpace(st.Name), strings.TrimSpace(ph.Name)) && IsProofStage(st) {
+			return true
 		}
 	}
 	return false
