@@ -13,7 +13,6 @@ import (
 	"net/netip"
 	"net/url"
 	"path"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -374,13 +373,13 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := r.URL.Query().Get("q")
-	match := factory.Match(query, handle)
+	match := factory.MatchAt(query, h.clock(), handle)
 	items := make([]factory.Item, 0, len(s.Items))
 	for _, it := range s.Items {
 		if !match(it) {
 			continue
 		}
-		if !slices.Contains(strings.Fields(strings.ToLower(query)), "is:dismissed") && factory.IsDismissed(it, handle) {
+		if !factory.HasWord(query, "is:dismissed") && factory.IsDismissed(it, handle) {
 			continue
 		}
 		items = append(items, it)
