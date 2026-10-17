@@ -43,13 +43,18 @@ type registeredWorker struct {
 	// LiveCapacity is what the worker said about itself at attach; false for
 	// any worker that predates the field.
 	LiveCapacity bool
-	Checkouts    []api.Checkout
-	Asleep       bool
-	Name         string
-	OS           string
-	Version      string
-	Last         time.Time
-	Worker       lease.Worker
+	// Attached is when this credential was issued. Unlike Last it is never
+	// moved by presence or heartbeat, so it alone says which attach is the
+	// newest for a machine (see newestAttestationLocked). Zero on a row saved
+	// before the field existed.
+	Attached  time.Time
+	Checkouts []api.Checkout
+	Asleep    bool
+	Name      string
+	OS        string
+	Version   string
+	Last      time.Time
+	Worker    lease.Worker
 }
 
 type workerKey struct{}
@@ -260,7 +265,7 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{
 		Name: body.Name, OS: strings.TrimSpace(body.OS), Version: strings.TrimSpace(body.CodeafVersion),
-		Last: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts, Asleep: asleep,
+		Last: h.workers.now(), Attached: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts, Asleep: asleep,
 	}
 	err = h.workers.saveRegistry()
 	h.workers.mu.Unlock()

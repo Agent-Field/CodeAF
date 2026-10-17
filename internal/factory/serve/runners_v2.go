@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -41,8 +42,13 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 	}
 	h.workers.mu.RLock()
 	rows := []registeredWorker{}
+	live := map[string]bool{}
 	for _, row := range h.workers.credentials {
 		rows = append(rows, row)
+		key := row.Worker.Handle + "\x00" + row.Worker.Machine
+		if _, done := live[key]; !done {
+			_, live[key] = h.workers.newestAttestationLocked(row.Worker.Handle, row.Worker.Machine)
+		}
 	}
 	h.workers.mu.RUnlock()
 	by := map[string]*api.Runner{}
@@ -53,7 +59,7 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 		key := row.Worker.Handle + "\x00" + row.Worker.Machine
 		got := by[key]
 		if got == nil || row.Last.After(got.LastSeen) {
-			got = &api.Runner{ID: row.Worker.Machine, Name: row.Name, Owner: row.Worker.Handle, Kind: row.Kind, Slots: row.Slots, LiveCapacity: row.LiveCapacity, State: api.RunnerIdle, Checkouts: []api.Checkout{}, Jobs: []int{}, LastSeen: row.Last}
+			got = &api.Runner{ID: row.Worker.Machine, Name: row.Name, Owner: row.Worker.Handle, Kind: row.Kind, Slots: row.Slots, LiveCapacity: live[key], State: api.RunnerIdle, Checkouts: []api.Checkout{}, Jobs: []int{}, LastSeen: row.Last}
 			if got.Kind == "" {
 				got.Kind = api.RunnerCI
 			}
@@ -120,7 +126,7 @@ func (h *Handler) runnersDirectory(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		owners = append(owners, row.Owner)
 	}
-	h.write(w, http.StatusOK, api.Runners{Factory: h.factory, Runners: rows, People: h.signedInPeople(owners)})
+	h.write(w, http.StatusOK, api.Runners{Factory: h.factory, Runners: rows, People: h.signedInPeople(owners), SlotsPolicy: api.CurrentRunnerSlotsPolicy()})
 }
 
 func (h *Handler) runnerPresence(w http.ResponseWriter, r *http.Request) {
@@ -158,23 +164,34 @@ func (h *Handler) runnerSettings(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	// Every refusal below, up to clearPhase, carries api.PhaseHeader (phase.go
+	// marks the route): nothing has been changed. The marker is cleared
+	// immediately before the first change, so a failure of the save or of the
+	// event after it reads as uncertain to a client.
 	h.workers.mu.Lock()
-	found := false
-	for key, row := range h.workers.credentials {
-		if row.Worker.Machine == r.PathValue("runner") && row.Worker.Handle == handle {
-			found = true
-			row.Slots = body.Slots
-			row.Worker.Slots = body.Slots
-			// ABSENT CHECKOUTS ARE UNCHANGED: a capacity change must never
-			// erase the repositories this runner has. Only a list that was
-			// sent, even an empty one, replaces them.
-			if body.Checkouts != nil {
-				row.Checkouts = body.Checkouts
-			}
-			h.workers.credentials[key] = row
-		}
+	found, live := h.workers.newestAttestationLocked(handle, r.PathValue("runner"))
+	if found && body.RequireLiveCapacity && !live {
+		// Judged under the lock that writes: a worker that restarted onto an
+		// older binary between the caller's read and now is seen here.
+		h.workers.mu.Unlock()
+		h.fail(w, http.StatusConflict, "that runner's worker cannot follow a capacity change; update it first")
+		return
 	}
 	if found {
+		clearPhase(w)
+		for key, row := range h.workers.credentials {
+			if row.Worker.Machine == r.PathValue("runner") && row.Worker.Handle == handle {
+				row.Slots = body.Slots
+				row.Worker.Slots = body.Slots
+				// ABSENT CHECKOUTS ARE UNCHANGED: a capacity change must never
+				// erase the repositories this runner has. Only a list that was
+				// sent, even an empty one, replaces them.
+				if body.Checkouts != nil {
+					row.Checkouts = body.Checkouts
+				}
+				h.workers.credentials[key] = row
+			}
+		}
 		err = h.workers.saveRegistry()
 	}
 	h.workers.mu.Unlock()
@@ -262,6 +279,27 @@ func (s *workerService) loadRegistry() error {
 		s.credentials[hash] = row
 	}
 	return nil
+}
+
+// newestAttestationLocked reads whether a machine is owned by handle and
+// whether its NEWEST attach said it follows capacity changes while running.
+// The newest is by Attached; rows that tie (all saved before the field existed,
+// or issued in the same instant) must ALL attest, so an ambiguity can only
+// withhold a write and never allow one. The caller holds workers.mu.
+func (s *workerService) newestAttestationLocked(handle, machine string) (found, live bool) {
+	var newest time.Time
+	for _, row := range s.credentials {
+		if row.Worker.Machine != machine || row.Worker.Handle != handle {
+			continue
+		}
+		switch {
+		case !found || row.Attached.After(newest):
+			found, live, newest = true, row.LiveCapacity, row.Attached
+		case row.Attached.Equal(newest):
+			live = live && row.LiveCapacity
+		}
+	}
+	return found, live
 }
 
 // The saved runner setting is the one cap. Old rows with no setting use the

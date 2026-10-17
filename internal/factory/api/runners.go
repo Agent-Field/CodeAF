@@ -74,6 +74,28 @@ type Runners struct {
 	// People holds the signed-in GitHub name and photo of each owner listed in
 	// Runners. A handle with no verified profile is absent, never blank.
 	People map[string]factory.PersonSummary `json:"people,omitempty"`
+	// SlotsPolicy is sent ONLY by a factory whose runner write enforces
+	// RunnerSettings.RequireLiveCapacity atomically. A directory without it is
+	// an older factory: a client must treat "change this runner's slots" as
+	// unsupported before it sends anything, because that factory would not
+	// refuse a write to a worker that cannot follow it, and would answer 422 to
+	// the new request field.
+	SlotsPolicy *RunnerSlotsPolicy `json:"slots_policy,omitempty"`
+}
+
+// RunnerSlotsPolicy is the range an owner may set and the one condition on
+// setting it, read from the server so no client copies the number.
+type RunnerSlotsPolicy struct {
+	Min int `json:"min"`
+	Max int `json:"max"`
+	// RequiresLive is always true: a runner whose newest worker did not attest
+	// live_capacity cannot follow a change, so the factory refuses the write.
+	RequiresLive bool `json:"requires_live"`
+}
+
+// CurrentRunnerSlotsPolicy is the policy this build of the factory enforces.
+func CurrentRunnerSlotsPolicy() *RunnerSlotsPolicy {
+	return &RunnerSlotsPolicy{Min: 1, Max: MaxRunnerSlots, RequiresLive: true}
 }
 
 // RunnerPresence is sent before macOS sleep and after wake by the native app.
@@ -84,9 +106,15 @@ type RunnerPresence struct {
 // RunnerSettings changes this owner's runner capacity and local checkout facts.
 // Slots is required and runs 1..MaxRunnerSlots. Checkouts absent (null or not
 // sent) leaves the saved list alone; an empty list clears it.
+//
+// RequireLiveCapacity true makes the factory write the new capacity only when
+// the owner's newest worker for that runner attested live_capacity, judged
+// under the same lock as the write; otherwise it refuses with 409 and changes
+// nothing. A client without the field keeps the earlier behaviour exactly.
 type RunnerSettings struct {
-	Slots     int        `json:"slots"`
-	Checkouts []Checkout `json:"checkouts"`
+	Slots               int        `json:"slots"`
+	Checkouts           []Checkout `json:"checkouts"`
+	RequireLiveCapacity bool       `json:"require_live_capacity,omitempty"`
 }
 
 // RunnerSelf is what a runner's own credential may read about itself: the

@@ -105,6 +105,11 @@ type FactoryCapabilities struct {
 	// True only for an engine that implements [FactoryRepoAdmin]; whether THIS
 	// caller may use it is the operator's answer, read from factory.me.
 	ReposManage bool `json:"repos_manage"`
+	// RunnerManage: factory.runner_slots is served (feature
+	// factory.runner_manage). True only for an engine that implements
+	// [FactoryRunnerAdmin]; whether THIS factory and THIS computer can take the
+	// change is read from factory.runners (slots_policy, live_capacity).
+	RunnerManage bool `json:"runner_manage"`
 	// PipelinePR: factory.pipeline_pr is served (feature factory.pipeline_pr).
 	// True only for an engine that implements [FactoryPipelineOpener]; whether
 	// THIS caller holds a sign-in and GitHub access is answered by the call.

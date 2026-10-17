@@ -17,6 +17,10 @@ func markPreMutation(r *http.Request) bool {
 	case http.MethodPost:
 		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions"
 	case http.MethodPut:
+		// One runner's settings: exactly /v1/runners/{runner}.
+		if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/runners/"); ok {
+			return rest != "" && !strings.Contains(rest, "/")
+		}
 		// One repository's power switch: exactly /v1/repos/{owner}/{repo}. The
 		// whole-list door (PUT /v1/repos) and anything deeper are not marked.
 		rest, ok := strings.CutPrefix(r.URL.Path, "/v1/repos/")
