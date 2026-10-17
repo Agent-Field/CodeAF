@@ -231,6 +231,18 @@ type Task struct {
 	// (tasks.dismiss, undone by tasks.restore). The task is otherwise unchanged
 	// and is still listed; a surface leaves it out of its default counts.
 	Dismissed bool `json:"dismissed,omitempty"`
+	// Program, Ending and Branch are the facts a handed-over task's own row
+	// persisted, so a COLD list row can name them without a page read. Program is
+	// the program's name; Ending is the typed word for why the task ended
+	// ("stopped" when a person ended it) and rides beside State, which still says
+	// "failed" for it; Branch is the branch the work was kept on. ABSENT IS
+	// UNKNOWN for all three: a row from before they were recorded has none, and
+	// an app must not read one from the title, the nearest launch or a branch
+	// name. Branch is context and never the authority for a push, a post, a fix
+	// or a land.
+	Program string `json:"program,omitempty"`
+	Ending  string `json:"ending,omitempty"`
+	Branch  string `json:"branch,omitempty"`
 }
 
 // TaskSource is [workgraph.TaskSource]: one spelling on both wires.
