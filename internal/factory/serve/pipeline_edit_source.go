@@ -86,7 +86,9 @@ func (h *Handler) pipelineEditSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := api.PipelineEditSource{Factory: h.factory, Repo: owner + "/" + repo, Path: factory.PipelineFile,
-		DefaultBranch: def, BaseSHA: base, CanPush: meta.Permissions.Push, Archived: meta.Archived}
+		DefaultBranch: def, BaseSHA: base, CanPush: meta.Permissions.Push, Archived: meta.Archived,
+		// This binary's parser and runner both obey kind, when, effort and fanout.
+		RuntimeFields: true}
 	var file struct {
 		Type     string `json:"type"`
 		Encoding string `json:"encoding"`

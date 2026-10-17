@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
 // pipelineEditEngine is a factory engine that is also a FactoryPipelineEditor
@@ -243,7 +246,7 @@ func TestFactoryPipelineEditPassesTheEnginesErrorAndAsksOnce(t *testing.T) {
 func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing.T) {
 	for ty, want := range map[reflect.Type][]string{
 		reflect.TypeFor[FactoryPipelineSourceParams](): {"factory", "repo"},
-		reflect.TypeFor[FactoryPipelineSource](): {"factory", "repo", "path", "default_branch", "base_sha", "can_push", "archived", "state", "editable", "text", "problems",
+		reflect.TypeFor[FactoryPipelineSource](): {"factory", "repo", "path", "default_branch", "base_sha", "can_push", "archived", "runtime_fields", "state", "editable", "text", "problems",
 			"default_budget", "budget_in_file", "pipelines", "steps", "fixed"},
 		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "prompt", "until", "max", "value"},
 		reflect.TypeFor[FactoryPipelinePreviewParams](): {"factory", "repo", "base_sha", "base_text", "edits"},
@@ -284,5 +287,21 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 func TestFactoryPipelineEditBoundsAreTheRoutesOwn(t *testing.T) {
 	if PipelinePreviewTextMax != PipelinePRTextMax {
 		t.Fatalf("the preview takes %d bytes of base and the pull request route %d", PipelinePreviewTextMax, PipelinePRTextMax)
+	}
+}
+
+// runtime_fields is on the source whatever it says, false included, and the
+// steps a source carries have no runtime key to write unless they hold a word.
+func TestFactoryPipelineSourceAlwaysSaysRuntimeFields(t *testing.T) {
+	for _, v := range []bool{true, false} {
+		raw, err := json.Marshal(FactoryPipelineSource{RuntimeFields: v, Steps: []api.PipelineEditStep{{Name: "a"}, {Name: "b", Kind: "check", When: "thin", Effort: "cheap", Fanout: "per-file"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := `"runtime_fields":` + fmt.Sprint(v)
+		if !strings.Contains(string(raw), want) || !strings.Contains(string(raw), `{"name":"a","locked":false,"in_file":false}`) ||
+			!strings.Contains(string(raw), `"kind":"check","when":"thin","effort":"cheap","fanout":"per-file"`) {
+			t.Fatalf("%s", raw)
+		}
 	}
 }

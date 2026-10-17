@@ -76,13 +76,17 @@ type FactoryPipelineSourceParams struct {
 // Text is the raw file for the states file and invalid. Editable is true only
 // for state file, and only then is the rest, the parse of Text, present.
 type FactoryPipelineSource struct {
-	Factory       string   `json:"factory"`
-	Repo          string   `json:"repo"`
-	Path          string   `json:"path"`
-	DefaultBranch string   `json:"default_branch"`
-	BaseSHA       string   `json:"base_sha"`
-	CanPush       bool     `json:"can_push"`
-	Archived      bool     `json:"archived"` // always present; an archived repository refuses a pull request whatever can_push says
+	Factory       string `json:"factory"`
+	Repo          string `json:"repo"`
+	Path          string `json:"path"`
+	DefaultBranch string `json:"default_branch"`
+	BaseSHA       string `json:"base_sha"`
+	CanPush       bool   `json:"can_push"`
+	Archived      bool   `json:"archived"` // always present; an archived repository refuses a pull request whatever can_push says
+	// RuntimeFields is true only when the factory itself said so in this read:
+	// its parser reads a step's kind, when, effort and fanout and its runner
+	// obeys them. Always present. The steps carry those words only then.
+	RuntimeFields bool     `json:"runtime_fields"`
 	State         string   `json:"state" enum:"file,missing,invalid,too_large"`
 	Editable      bool     `json:"editable"`
 	Text          string   `json:"text,omitempty"`

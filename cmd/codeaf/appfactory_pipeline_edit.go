@@ -97,6 +97,11 @@ func (b *appBackend) FactoryPipelineSource(ctx context.Context, p appwire.Factor
 	return out, nil
 }
 
+// errPipelineSourceRuntimeUnattested is said when the file spells kind, when,
+// effort or fanout and the factory did not say it runs them: a factory that
+// predates those words would run the step as a plain chat that always runs.
+var errPipelineSourceRuntimeUnattested = appwire.Errorf(appwire.CodeEngine, "this factory has not confirmed support for these pipeline settings. Update the factory, then read the file again. Nothing was written.")
+
 var errPipelineSourceUnreadable = appwire.Errorf(appwire.CodeEngine, "the factory sent a pipeline file this app cannot use; nothing was written")
 
 // classifyPipelineSource believes a reply only in its documented shape.
@@ -117,15 +122,26 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 	if json.Unmarshal(r.body, &seen) != nil || (string(seen["archived"]) != "true" && string(seen["archived"]) != "false") {
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
+	// runtime_fields is the REMOTE's own claim, read from this reply and from
+	// nowhere else; it is absent from a factory that predates the words. Only the
+	// literal true or false is a claim, anything else is not believed.
+	runtimeClaim := false
+	switch rf, said := seen["runtime_fields"]; {
+	case !said:
+	case string(rf) == "true":
+		runtimeClaim = true
+	case string(rf) != "false":
+		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+	}
 	if got.Repo != p.Repo || got.Path != factory.PipelineFile || !appwire.ValidPipelinePRCommit(got.BaseSHA) || !plainBranchName(got.DefaultBranch) {
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
 	out := appwire.FactoryPipelineSource{Factory: p.Factory, Repo: p.Repo, Path: got.Path, DefaultBranch: got.DefaultBranch,
-		BaseSHA: got.BaseSHA, CanPush: got.CanPush, Archived: got.Archived, State: got.State}
+		BaseSHA: got.BaseSHA, CanPush: got.CanPush, Archived: got.Archived, RuntimeFields: runtimeClaim, State: got.State}
 
 	// What a state may carry. A field of another state is a contradiction.
 	parsed := func(s api.PipelineEditSource) []byte {
-		s.Factory, s.Repo, s.Path, s.DefaultBranch, s.BaseSHA, s.CanPush, s.Archived, s.State, s.Editable, s.Text, s.Problems = api.Factory{}, "", "", "", "", false, false, "", false, "", nil
+		s.Factory, s.Repo, s.Path, s.DefaultBranch, s.BaseSHA, s.CanPush, s.Archived, s.RuntimeFields, s.State, s.Editable, s.Text, s.Problems = api.Factory{}, "", "", "", "", false, false, false, "", false, "", nil
 		raw, _ := json.Marshal(s)
 		return raw
 	}
@@ -138,6 +154,12 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 	case api.PipelineEditInvalid, api.PipelineEditFile:
 		if len(got.Text) > pipeline.EditTextMax || !utf8.ValidString(got.Text) {
 			return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+		}
+		// A FILE THAT SPELLS A RUNTIME KEY NEEDS THE FACTORY'S OWN SAY-SO, and this
+		// is decided before the engine's own reading: the engine's parser knowing
+		// the words proves nothing about the runner that will read the merged file.
+		if !runtimeClaim && pipeline.RuntimeKeysIn(got.Text) {
+			return appwire.FactoryPipelineSource{}, errPipelineSourceRuntimeUnattested
 		}
 		// THE ENGINE READS THE FILE ITSELF. A factory that calls a file editable
 		// when this parser would refuse it, or the other way round, or that parsed
