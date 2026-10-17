@@ -73,6 +73,13 @@ type ProgramRecord struct {
 	// conversation read both before offering, or refusing, to send it words.
 	Listening   bool   `json:"listening,omitempty"`
 	InboxClosed string `json:"inbox_closed,omitempty"`
+	// ReportReceipts are the receipts THIS LAUNCH's program issued on its own
+	// terminal line for the reports it wrote ([Delegate.IssuedReceipts]), kept
+	// by its worker in the write that sets EndedAt. They are the only authority
+	// a report is served on (report.go): a launch whose program wrote no
+	// report, or a record from before receipts, has none, and nothing is
+	// inferred for it.
+	ReportReceipts []ReportReceipt `json:"report_receipts,omitempty"`
 }
 
 // Heard keeps the models a stage record names ([StageRecord.Models]) and

@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/praf/schemas"
 )
 
@@ -88,19 +89,23 @@ type runFacts struct {
 }
 
 // writeReport writes the full report into folder and answers the paths it
-// wrote. A folder of "" writes nothing.
-func writeReport(folder string, saved Saved, run runFacts) ([]string, error) {
+// wrote and the receipt of each declared report among them
+// (delegate.IssueReportReceipt): issued from the very bytes handed to the
+// write, and only once that write has succeeded: reportJSON is the one name
+// the program declares (Program.Reports). A folder of "" writes nothing.
+func writeReport(folder string, saved Saved, run runFacts) ([]string, []delegate.ReportReceipt, error) {
 	if strings.TrimSpace(folder) == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err := os.MkdirAll(folder, 0o700); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	data, err := json.MarshalIndent(saved, "", "  ")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var written []string
+	var receipts []delegate.ReportReceipt
 	for _, file := range []struct {
 		name string
 		body []byte
@@ -110,11 +115,14 @@ func writeReport(folder string, saved Saved, run runFacts) ([]string, error) {
 	} {
 		path := filepath.Join(folder, file.name)
 		if err := os.WriteFile(path, file.body, 0o600); err != nil {
-			return written, err
+			return written, receipts, err
 		}
 		written = append(written, path)
+		if file.name == reportJSON {
+			receipts = append(receipts, delegate.IssueReportReceipt(file.name, file.body))
+		}
 	}
-	return written, nil
+	return written, receipts, nil
 }
 
 // account is a finished review as the conversation reads it.
