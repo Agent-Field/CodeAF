@@ -389,7 +389,11 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	if h.failed(w, err) {
 		return
 	}
-	if who == "" || it.Person() == "" {
+	if who == "" && h.mode() == api.FactorySolo {
+		h.fail(w, 422, "Sign in to GitHub before approving this job")
+		return
+	}
+	if who == "" || (h.mode() != api.FactorySolo && it.Person() == "") {
 		h.fail(w, 422, "approval requires an assignee")
 		return
 	}
