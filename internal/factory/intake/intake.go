@@ -159,12 +159,14 @@ func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
 // before a plan exists. Plans and triage's inferred paths use the same matcher.
 var pathWords = regexp.MustCompile(`[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.*?-]*)+`)
 
-// Job translates persisted facts into the evaluator's inputs. A truncated PR
+// Job translates persisted facts into the evaluator's inputs. THE SIZE IS THE
+// LABEL ALONE ([factory.JobSize]): a read's or a diff's size is for display
+// and never reaches a start decision. A truncated PR
 // file list is not a line measurement, so it asks rather than guessing small.
 func Job(it factory.Item) pipeline.Job {
 	j := pipeline.Job{
 		ID: it.ID, Kind: it.Kind, Tier: it.Tier, Labels: it.Labels,
-		Size: it.Triage.Size, Cost: it.Triage.Est, CostKnown: it.Triage.Est > 0,
+		Size: factory.JobSize(it), Cost: it.Triage.Est, CostKnown: it.Triage.Est > 0,
 		Cap: it.Cap, Judged: it.Triage.StartJudged, Matched: it.Triage.StartMatched,
 		Paths: append([]string(nil), it.Triage.StartPaths...),
 	}

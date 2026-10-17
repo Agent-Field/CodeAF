@@ -342,8 +342,18 @@ func FloorRow(it factory.Item, now time.Time) string {
 	}
 	add(string(it.Kind))
 	add(it.Repo)
-	if s := it.Triage.Size; s != "" {
-		add("size " + s)
+	// THE SOURCE IS SAID: a label is "size S", a completed read is "read says
+	// S" and a pull request's measured lines "size S (diff)". An item with no
+	// label, diff or read says nothing (ShownSize).
+	if s, from := factory.ShownSize(it); s != "" {
+		switch from {
+		case factory.ShownRead:
+			add("read says " + s)
+		case factory.ShownDiff:
+			add("size " + s + " (diff)")
+		default:
+			add("size " + s)
+		}
 	}
 	if it.Triage.Est > 0 {
 		add("est " + floorDollars(it.Triage.Est))

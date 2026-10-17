@@ -12,7 +12,7 @@ func tokenItem() Item {
 		Repo: "acme/api", Num: 12, Title: "Fix the webhook retry", Author: "@Dana",
 		Assignee: "Erin", State: StateRunning, Created: tokenNow.Add(-30 * time.Hour),
 		Labels: []string{"Bug", "area:billing", "good first issue"},
-		Triage: Triage{Type: "bug", Size: "M", Area: "Webhooks"},
+		Triage: Triage{Type: "bug", Size: "M", SizeFrom: SizeFromRead, TriagedAt: tokenNow.Add(-time.Hour), Area: "Webhooks"},
 		Stream: &Stream{Cur: 1, Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "Code", State: PhaseRunning}, {Name: "test", State: PhasePending}}},
 	}
 }

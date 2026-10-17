@@ -182,9 +182,10 @@ func (s *shapeTurns) Shape(ctx context.Context, it factory.Item, said []string) 
 }
 
 // shapeCheap says whether the shaping turn thinks cheap: always, unless the
-// item's read says it is large.
+// item's shown size (a label, a measured diff or a completed read) is large.
 func shapeCheap(it factory.Item) bool {
-	return !strings.EqualFold(strings.TrimSpace(it.Triage.Size), "L")
+	shown, _ := factory.ShownSize(it)
+	return shown != "L"
 }
 
 // run is one turn: the ask in, the turn drained, and the edit collected.

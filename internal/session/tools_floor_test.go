@@ -62,13 +62,13 @@ func floorLab() *fakeFloorDoor {
 	return &fakeFloorDoor{snap: factory.Snapshot{Now: now, Items: []factory.Item{
 		{ID: 1, Num: 1, Repo: "acme/api", Kind: factory.KindIssue, Title: "ledger counts twice", State: factory.StateNew, Created: now.Add(-9 * day),
 			Body: strings.Repeat("x", 3000), Author: "alice",
-			Triage: factory.Triage{Type: "bug", Size: "S", Est: 0.4, Priority: 1, Reason: "money is wrong", Risk: []string{"touches money"}, Read: "A double count in the ledger."}},
+			Triage: factory.Triage{Type: "bug", Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: now, Est: 0.4, Priority: 1, Reason: "money is wrong", Risk: []string{"touches money"}, Read: "A double count in the ledger."}},
 		{ID: 2, Num: 4, Repo: "acme/api", Kind: factory.KindIssue, Title: "typo on the login page", State: factory.StateNew, Created: now.Add(-2 * day),
-			Triage: factory.Triage{Type: "bug", Size: "S", Est: 0.1}},
+			Triage: factory.Triage{Type: "bug", Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: now, Est: 0.1}},
 		{ID: 3, Num: 6, Repo: "acme/api", Kind: factory.KindIssue, Title: "meter rounds wrong", State: factory.StateNew, Created: now.Add(-5 * day),
-			Triage: factory.Triage{Type: "bug", Size: "M", Est: 1.2}},
+			Triage: factory.Triage{Type: "bug", Size: "M", SizeFrom: factory.SizeFromRead, TriagedAt: now, Est: 1.2}},
 		{ID: 4, Num: 7, Repo: "acme/api", Kind: factory.KindIssue, Title: "new auth flow", State: factory.StateNew, Created: now.Add(-1 * day),
-			Triage: factory.Triage{Type: "feat", Size: "L", Est: 6}},
+			Triage: factory.Triage{Type: "feat", Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: now, Est: 6}},
 		{ID: 5, Num: 3, Repo: "acme/api", Kind: factory.KindPR, Title: "bump the parser", State: factory.StateNeedsYou, Question: "ship it with one red check?", Created: now.Add(-3 * time.Hour)},
 		{ID: 6, Num: 9, Repo: "acme/api", Kind: factory.KindIssue, Title: "cache warmup", State: factory.StateRunning, Created: now.Add(-40 * time.Minute)},
 		{ID: 7, Num: 2, Repo: "acme/api", Kind: factory.KindIssue, Title: "hidden thing", State: factory.StateDismissed},
@@ -206,11 +206,43 @@ func TestFactoryFloorMarksThroughTheDoor(t *testing.T) {
 		t.Errorf("the door was asked %q, want the three new items by their floor ids", got)
 	}
 	table, _ := floorCall(t, door, `{"ask":"all"}`)
-	if !strings.Contains(table, "3 selected") || !strings.Contains(table, "#4 typo on the login page · issue · acme/api · size S · est $0.10 · new, selected") {
+	if !strings.Contains(table, "3 selected") || !strings.Contains(table, "#4 typo on the login page · issue · acme/api · read says S · est $0.10 · new, selected") {
 		t.Errorf("the next read does not show the marks:\n%s", table)
 	}
 	text, _ = floorCall(t, door, `{"unmark":[4],"ask":"all"}`)
 	if !strings.HasPrefix(text, "unselected #4") || !strings.Contains(text, "2 selected") {
 		t.Errorf("unmark answered:\n%s", text)
+	}
+}
+
+// THE FLOOR SAYS WHERE A SIZE CAME FROM, and says nothing when there is none:
+// a label is "size S", a completed read "read says S", a pull request's
+// measured lines "size S (diff)"; a legacy size and a chat guess are blank.
+func TestFloorRowNamesTheSourceOfASize(t *testing.T) {
+	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
+	read := factory.Triage{Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: now}
+	for _, tc := range []struct {
+		name string
+		it   factory.Item
+		want string
+	}{
+		{"a label", factory.Item{Labels: []string{"size:m"}, Triage: read}, "size M"},
+		{"a read", factory.Item{Triage: read}, "read says S"},
+		{"a diff", factory.Item{Kind: factory.KindPR, Triage: factory.Triage{Size: "M", SizeFrom: factory.SizeFromDiff}}, "size M (diff)"},
+	} {
+		tc.it.ID, tc.it.Num, tc.it.Title = 1, 1, "t"
+		if row := FloorRow(tc.it, now); !strings.Contains(row, tc.want) {
+			t.Errorf("%s: %q lacks %q", tc.name, row, tc.want)
+		}
+	}
+	for name, tr := range map[string]factory.Triage{
+		"a legacy size": {Size: "S", TriagedAt: now},
+		"a chat guess":  {Size: "S", SizeFrom: factory.SizeFromChat, TriagedAt: now},
+		"an unfinished": {Size: "S", SizeFrom: factory.SizeFromRead},
+	} {
+		it := factory.Item{ID: 1, Num: 1, Title: "t", Triage: tr}
+		if row := FloorRow(it, now); strings.Contains(row, "size") || strings.Contains(row, "says") {
+			t.Errorf("%s: %q says a size", name, row)
+		}
 	}
 }
