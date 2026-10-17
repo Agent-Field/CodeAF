@@ -410,7 +410,7 @@ func appStampKept(old, replacement *appSending, text string) *appSending {
 	if old == nil || old.creation == nil {
 		return replacement
 	}
-	kept := appSending{text: text}
+	kept := appSending{text: text, bare: true}
 	if replacement != nil {
 		kept = *replacement
 	}
@@ -1084,7 +1084,7 @@ func appSubmission(text string, shown *appSending) session.Submission {
 	if shown.composed != nil {
 		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
 	}
-	if (shown.queued || shown.creation != nil) && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
+	if (shown.queued || shown.bare) && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
 		submission.Said = nil
 	}
 	return submission
@@ -1356,7 +1356,7 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 	}
 	if creation != nil {
 		if shown == nil {
-			shown = &appSending{text: said, reads: reads}
+			shown = &appSending{text: said, bare: true}
 		}
 		shown.creation = creation
 	}
@@ -1403,6 +1403,11 @@ type appSending struct {
 	// retry; never inferred from membership. Shared, never written after it is
 	// set.
 	creation *session.CreationContext
+	// bare says the sending exists only to carry creation: the door gave no
+	// words of the person's apart from text, so Said stays nil and the line
+	// reads as the plain message it is. A sending the door built for Said,
+	// reads or attachments is never bare, even when its words equal text.
+	bare bool
 }
 
 // appNoTeam is the explicit none the person's own send states.
@@ -1414,7 +1419,7 @@ func appInTeam(id string) *session.CreationContext { return &session.CreationCon
 // appStated is a sending whose only extra beyond its words is a creation
 // context.
 func appStated(text string, creation *session.CreationContext) *appSending {
-	return &appSending{text: text, creation: creation}
+	return &appSending{text: text, creation: creation, bare: true}
 }
 
 // marksNothing is whether the only thing this sending carries beyond its words
@@ -1422,7 +1427,7 @@ func appStated(text string, creation *session.CreationContext) *appSending {
 // refused such a message: it is sent the words, and the team is unknown there,
 // which is true.
 func (s *appSending) marksNothing(text string) bool {
-	return s != nil && s.creation != nil && s.text == text && len(s.described) == 0 && len(s.reads) == 0 && s.composed == nil && len(s.attachments) == 0
+	return s != nil && s.creation != nil && s.bare && s.text == text && len(s.described) == 0 && len(s.reads) == 0 && s.composed == nil && len(s.attachments) == 0
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────

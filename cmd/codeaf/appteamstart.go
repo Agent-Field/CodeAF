@@ -168,6 +168,10 @@ func (b *appBackend) CrewStart(ask appwire.CrewCreate) (appwire.CrewStartResult,
 			return b.startNotSent(claims, claim, prep, transcript, "the start could not be recorded: "+plainWords(err.Error()))
 		}
 	}
+	// The goal is the person's message to the crew being started: it states
+	// that crew's exact id, and the engine proves it against the manager's
+	// membership when the message is accepted.
+	prep.creation = appInTeam(claim.Crew)
 	agent, launch, err := b.createAgentHeld(prep, transcript)
 	if err != nil {
 		// The claim may say committed here, and a repeat then says unknown;

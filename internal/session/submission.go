@@ -234,11 +234,9 @@ func (a *Agent) SubmitMessage(ctx context.Context, message Submission) (<-chan E
 		_, events, err := a.SubmitComposed(ctx, message)
 		return events, err
 	}
+	message.Creation = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
-		return nil, err
-	}
-	if err := a.acceptCreation(message.Creation); err != nil {
 		return nil, err
 	}
 	return a.submitText(ctx, message.Text, mark)
@@ -254,8 +252,12 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" && m.Creation == nil {
 		return nil, nil
 	}
-	if m.Creation != nil && m.Creation.Team != "" && !creationTeamIDOK(m.Creation.Team) {
-		return nil, fmt.Errorf("%w: the message's team is not a team id", ErrMessageMark)
+	// A creation context is never a reason to refuse a message: the doors put
+	// it through [Agent.provenCreation] first, and a shape that still is not a
+	// team id is kept as unknown rather than written.
+	creation := m.Creation.clone()
+	if creation != nil && creation.Team != "" && !creationTeamIDOK(creation.Team) {
+		creation = nil
 	}
 	reads, err := keptReads(m.Reads)
 	if err != nil {
@@ -268,7 +270,7 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if len(m.Attachments) > MaxMessageAttachments {
 		return nil, fmt.Errorf("%w: %d attachments, and one message names at most %d", ErrMessageMark, len(m.Attachments), MaxMessageAttachments)
 	}
-	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued, ClientID: strings.Clone(m.ClientID), Creation: m.Creation.clone()}
+	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued, ClientID: strings.Clone(m.ClientID), Creation: creation}
 	// Text stays nil when the door did not say the person's words apart: the
 	// line's own content is theirs, and a copy of it here would be the same
 	// words written twice on one line.

@@ -1,10 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -96,18 +94,37 @@ func TestAppCrewMessageStatesTheCrewAndPersonSendsStateNone(t *testing.T) {
 	}
 }
 
-// WORDS THE APP WRITES ITSELF STATE NOTHING: their turn's team is unknown.
-func TestAppWordsTheAppWritesStateNoContext(t *testing.T) {
+// WORDS THE APP WRITES ITSELF STATE NOTHING: a role's instructions, told to a
+// member by the real door that tells them, reach the engine as plain words and
+// their turn's team is unknown.
+func TestAppRoleInstructionsStateNoContext(t *testing.T) {
 	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
-	backend, _, agent := workBackend(t, conv)
-	if _, err := backend.queue(agent.ID, "Your role in harbor is web.\n\nShip it.", "", nil); err != nil {
+	backend, _, manager, crew := crewBackendOn(t, conv)
+	if err := backend.tellRole(manager.ID, crew, appwire.Role{Name: "web", Instructions: "Ship it."}); err != nil {
 		t.Fatal(err)
 	}
 	conv.mu.Lock()
-	submissions, texts := len(conv.submissions), len(conv.texts)
+	submissions, texts := len(conv.submissions), append([]string(nil), conv.texts...)
 	conv.mu.Unlock()
-	if submissions != 0 || texts != 1 {
-		t.Fatalf("app-written words reached the engine as %d submissions and %d texts", submissions, texts)
+	if submissions != 0 || len(texts) != 1 || !strings.Contains(texts[0], "Ship it.") {
+		t.Fatalf("role instructions reached the engine as %d submissions and %q", submissions, texts)
+	}
+}
+
+// A MESSAGE WHOSE SAID EQUALS ITS TEXT IS STILL AUTHORED: the context rides
+// beside the person's words and never takes their Said away.
+func TestAppSaidEqualToTextStaysAuthoredWithAContext(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
+	backend, _, agent := workBackend(t, conv)
+	same := "exactly these words"
+	if _, err := backend.SendMessage(agent.ID, appwire.AgentMessage{Text: same, Said: &same}); err != nil {
+		t.Fatal(err)
+	}
+	conv.mu.Lock()
+	got := append([]session.Submission(nil), conv.submissions...)
+	conv.mu.Unlock()
+	if len(got) != 1 || got[0].Said == nil || *got[0].Said != same || creationWord(got[0].Creation) != "none" {
+		t.Fatalf("the engine was handed %+v", got)
 	}
 }
 
@@ -174,12 +191,12 @@ func TestAppRetriedCrewMessageKeepsItsCrew(t *testing.T) {
 // A NEW MEMBER'S FIRST BRIEF STATES THE CREW IT WAS STARTED IN.
 func TestAppNewMemberBriefStatesTheCrew(t *testing.T) {
 	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
-	var opened atomic.Int32
 	files := t.TempDir()
 	rec := newAppRecorder()
+	// Each conversation is the transcript the backend minted for it, so the
+	// member the crew records is the agent the brief is sent to.
 	backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
-		transcript := filepath.Join(files, fmt.Sprintf("member%d.jsonl", opened.Add(1)))
-		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: transcript, Release: func() {}}, nil
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 	})
 	t.Cleanup(func() { backend.Close() })
 	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
@@ -212,8 +229,11 @@ func TestAppContextOnlySendingIsTheOnlyOneSentAsWords(t *testing.T) {
 	if ordinary.marksNothing("x") {
 		t.Fatal("a sending that states nothing counted as context-only")
 	}
+	if authored := (&appSending{text: "x", creation: appNoTeam()}); authored.marksNothing("x") {
+		t.Fatal("a sending built for the person's Said counted as context-only")
+	}
 	for _, creation := range []*session.CreationContext{appInTeam("aaaaaaaaaaaa"), appNoTeam()} {
-		stated := &appSending{text: "x", creation: creation, queued: true}
+		stated := &appSending{text: "x", creation: creation, queued: true, bare: true}
 		if !stated.marksNothing("x") {
 			t.Fatalf("a %s sending would be refused by an older host", creationWord(creation))
 		}

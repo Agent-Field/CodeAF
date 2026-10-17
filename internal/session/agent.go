@@ -2103,11 +2103,9 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 // message's own line. A mark that does not fit refuses the message whole,
 // before anything is queued.
 func (a *Agent) FollowUpMessage(message Submission) (<-chan Event, error) {
+	message.Creation = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
-		return nil, err
-	}
-	if err := a.acceptCreation(message.Creation); err != nil {
 		return nil, err
 	}
 	return a.followUpMarked(message.Text, mark)

@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -49,47 +48,53 @@ func (u userMessage) creationContext() *CreationContext {
 	return nil
 }
 
-// acceptCreation checks a stated creation context at the moment the message is
-// accepted, and refuses the message whole when it names a team this
-// conversation was not sent for.
+// provenCreation is the creation context a message is accepted with: the one
+// its door stated when this engine can prove it, and UNKNOWN (nil) when it
+// cannot.
 //
-// THE CHECK IS OF THE CLAIM, NOT A SOURCE FOR IT. nil and an explicit NONE pass
-// without a lookup. A team id must be a team in this engine's own teams file
-// and that team must hold this conversation, in either spelling of its key: a
-// forged id, a team this conversation is not in, or a conversation that keeps
-// no teams (a task, a session with no transcript) is refused as a mark that
-// does not fit, before anything is recorded. A CLOSED OR ARCHIVED TEAM IS
-// ACCEPTED: whether a closed crew may be messaged is the door's decision, and
-// provenance never forbids what the door allowed. Once accepted the id is kept
-// whatever later happens to the team.
-func (a *Agent) acceptCreation(creation *CreationContext) error {
-	if creation == nil || creation.Team == "" {
+// PROVENANCE IS NOT PERMISSION. Whether the message may be sent at all is the
+// door's decision and is never changed here: a context this engine cannot
+// prove is dropped to unknown and the message goes through exactly as it did
+// before contexts existed. nil stays nil and an explicit NONE stays NONE without
+// a lookup. A team id is kept only when it is a team id, the team is in this
+// engine's own teams file, and that team holds this conversation in either
+// spelling of its key. A forged id, a team this conversation is not in, a
+// team in another machine's profile, an unreadable file or a conversation that
+// keeps no teams (a task, a session with no transcript) all become unknown —
+// never NONE, never a team guessed from who manages what now. A CLOSED OR
+// ARCHIVED TEAM IS KEPT: the door accepted the message, and once kept the id
+// is never checked or moved again.
+func (a *Agent) provenCreation(creation *CreationContext) *CreationContext {
+	if creation == nil {
 		return nil
 	}
+	if creation.Team == "" {
+		return &CreationContext{}
+	}
 	if !creationTeamIDOK(creation.Team) {
-		return fmt.Errorf("%w: the message's team is not a team id", ErrMessageMark)
+		return nil
 	}
 	profile := a.config.teamProfile()
 	if profile == "" {
-		return fmt.Errorf("%w: this conversation keeps no teams, so it cannot take a message sent to one", ErrMessageMark)
+		return nil
 	}
 	a.team.mu.Lock()
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
 	file, err := teams.Load(profile)
 	if err != nil {
-		return fmt.Errorf("%w: the message's team could not be checked", ErrMessageMark)
+		return nil
 	}
 	team, ok := file.Team(creation.Team)
 	if !ok {
-		return fmt.Errorf("%w: the message's team does not exist", ErrMessageMark)
+		return nil
 	}
 	for _, key := range keys {
 		if team.Holds(key) {
-			return nil
+			return creation.clone()
 		}
 	}
-	return fmt.Errorf("%w: the message's team does not hold this conversation", ErrMessageMark)
+	return nil
 }
 
 // creationTeamIDOK matches the teams directory-name law (letters, digits, _

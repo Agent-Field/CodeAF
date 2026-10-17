@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -176,11 +175,13 @@ func TestCreationTeamLegacyRowReadsUnknown(t *testing.T) {
 	}
 }
 
-// A FORGED OR UNRELATED TEAM IS REFUSED WHEN THE MESSAGE IS ACCEPTED: nothing
-// is recorded, no turn runs, and nothing is saved. That covers a team that does
-// not exist, a team this conversation is not in, a malformed id, an id padded
-// with spaces (never trimmed to fit), and a conversation that keeps no teams.
-func TestCreationTeamForgedOrUnrelatedScopeIsRefusedAtAcceptance(t *testing.T) {
+// A TEAM THIS ENGINE CANNOT PROVE NEVER STOPS THE MESSAGE AND NEVER BECOMES
+// PROVENANCE: the message is accepted and answered exactly as before, and the
+// automation made in its turn is UNKNOWN — not the claimed team and not none.
+// That covers a team that does not exist here, a team this conversation is not
+// in, a malformed id, an id padded with spaces (never trimmed to fit), and a
+// conversation that keeps no teams.
+func TestCreationTeamUnprovenTeamIsAcceptedAsUnknown(t *testing.T) {
 	for _, team := range []string{"bbbbbbbbbbbb", "otherteam01", "../escape", "a b", " " + creationTeamID} {
 		store := automationStoreFor(t)
 		agent, profile := creationAgent(t, store, createCall())
@@ -190,34 +191,39 @@ func TestCreationTeamForgedOrUnrelatedScopeIsRefusedAtAcceptance(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := agent.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: &CreationContext{Team: team}}); !errors.Is(err, ErrMessageMark) {
-			t.Fatalf("team %q was accepted: %v", team, err)
+		if got := agent.provenCreation(&CreationContext{Team: team}); got != nil {
+			t.Fatalf("team %q was proven as %+v", team, got)
 		}
-		if _, _, err := agent.SubmitComposed(context.Background(), Submission{Text: createWords, Creation: &CreationContext{Team: team}}); err == nil {
-			t.Fatalf("team %q was accepted by the composed door", team)
+		events, err := agent.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: &CreationContext{Team: team}})
+		if err != nil {
+			t.Fatalf("team %q refused the message: %v", team, err)
 		}
-		if _, err := agent.FollowUpMessage(Submission{Text: createWords, Creation: &CreationContext{Team: team}}); err == nil {
-			t.Fatalf("team %q was accepted as a follow-up", team)
-		}
-		agent.mu.Lock()
-		n := len(agent.messages)
-		agent.mu.Unlock()
-		if n != 0 {
-			t.Fatalf("a refused message left %d messages behind", n)
-		}
-		if all, _ := store.List(); len(all) != 0 {
-			t.Fatalf("team %q still saved %+v", team, all)
+		saveCreated(t, agent, events)
+		if got := onlyAutomation(t, store).Origin.Team; got != nil {
+			t.Fatalf("team %q recorded %+v, want unknown", team, got)
 		}
 	}
 	store := automationStoreFor(t)
-	teamless := automationAgent(t, &scriptedCompleter{steps: []step{finalText("done")}}, store, nil)
-	if _, err := teamless.SubmitMessage(context.Background(), Submission{Text: "hi", Creation: inCrew()}); !errors.Is(err, ErrMessageMark) {
-		t.Fatalf("a conversation with no teams took a crew message: %v", err)
+	teamless := automationAgent(t, &scriptedCompleter{steps: []step{createCall(), finalText("done")}}, store, nil)
+	events, err := teamless.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: inCrew()})
+	if err != nil {
+		t.Fatalf("a conversation with no teams refused a crew message: %v", err)
+	}
+	saveCreated(t, teamless, events)
+	if got := onlyAutomation(t, store).Origin.Team; got != nil {
+		t.Fatalf("a conversation with no teams recorded %+v, want unknown", got)
+	}
+	// Absence stays absence and an explicit none stays none, with no lookup.
+	if teamless.provenCreation(nil) != nil {
+		t.Fatal("absence was proven as something")
+	}
+	if got := teamless.provenCreation(&CreationContext{}); got == nil || got.Team != "" {
+		t.Fatalf("an explicit none was proven as %+v", got)
 	}
 }
 
-// A CLOSED CREW IS NOT A REASON TO REFUSE: the door decides who may be sent a
-// message, and provenance records what it accepted. The automation made in a
+// A CLOSED CREW IS NOT A REASON TO DROP THE CREW: the door decides who may be
+// sent a message, and provenance records what it accepted. The automation made in a
 // closed crew's turn saves, with that crew's id.
 func TestCreationTeamClosedCrewIsAcceptedAndRecorded(t *testing.T) {
 	store := automationStoreFor(t)
