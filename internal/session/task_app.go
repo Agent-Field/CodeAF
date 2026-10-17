@@ -61,7 +61,8 @@ type AppTaskView struct {
 	Program *AppProgramView `json:",omitempty"`
 	// RunProgram, Ending and Branch are what a handed-over task's ROW persisted,
 	// copied and never derived: the program's name, the typed word for why it
-	// ended ("stopped" when a person ended it), and the branch its work was kept
+	// ended ("stopped" when the row's stopped flag is set, which does not say who
+	// stopped it), and the branch its work was kept
 	// on. "" is unknown for each. They need no log read, so a list carries them
 	// as cheaply as a page does (task_app_runs.go, [appRunFacts]).
 	RunProgram, Ending, Branch string

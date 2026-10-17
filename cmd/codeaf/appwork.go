@@ -270,7 +270,9 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 	}
 	task.Models = appNoticeModels(notice, task.Proposed)
 	task.Source, task.Dismissed = appSourceOf(notice.Source), notice.Dismissed
-	// THE ROW'S OWN FACTS, as session.appRunFacts reads them for a cold list: a person's stop is "stopped", otherwise the typed ending, and nothing is derived.
+	// THE ROW'S OWN FACTS, as session.appRunFacts reads them for a cold list:
+	// a row with its stopped flag set is "stopped" (the flag does not say who
+	// stopped it), otherwise the typed ending, and nothing is derived.
 	task.Program, task.Ending, task.Branch = strings.TrimSpace(notice.Program), string(notice.Ending), strings.TrimSpace(notice.Branch)
 	if notice.Stopped {
 		task.Ending = string(session.TaskEndingStopped)

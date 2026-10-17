@@ -51,9 +51,10 @@ func appRunRowState(row TaskNotice) string {
 //
 // NOTHING HERE IS READ FROM A LOG, A TITLE OR THE NEAREST LAUNCH. A row written
 // before a field existed has none of it, and that stays unknown. THE ENDING IS
-// THE ROW'S OWN: "stopped" only when the row says a person ended it, otherwise
+// THE ROW'S OWN: "stopped" only when the row's stopped flag is set, otherwise
 // the typed word it recorded, so an older failure with no typed ending is not
-// reclassified as a stop. The branch is context for the work, and it is no
+// reclassified as a stop. THE FLAG DOES NOT SAY WHO STOPPED IT: a person's
+// stop, a killed job, a session closing and work the plan called off all set it. The branch is context for the work, and it is no
 // authority to push, post, fix or land it.
 func appRunFacts(row TaskNotice) (program, ending, branch string) {
 	ending = string(row.Ending)
