@@ -857,6 +857,8 @@ func (b *appBackend) actOnTask(id, action, verdict, text, clientID string) error
 		// A held card is a held clock: the same engine hold, whether the person
 		// pressed hold or started typing in the card.
 		intent.Action = "hold"
+	case "brief":
+		return b.briefOnTask(live, id, intent)
 	}
 	// A TASK THE APP HAS ALREADY SEEN START can be a moment ahead of the
 	// engine's own task list; the action is asked again for a few seconds
@@ -877,6 +879,34 @@ func (b *appBackend) actOnTask(id, action, verdict, text, clientID string) error
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
+}
+
+// briefOnTask sends a brief through the engine's TYPED door and answers from
+// its receipt, never from an error's words.
+//
+// EVERY APP CONVERSATION IS A REMOTE ONE, and the plain door's error crosses the
+// socket as bare text: a brief whose words were delivered but whose page brief
+// was not kept, a plan task's amendment whose commit may be on the disk, and a
+// call whose reply never came all used to read as an ordinary engine error,
+// which invited the person to send the brief again and have it land twice. The
+// receipt crosses typed. Unknown and a brief that was not kept are `uncertain`;
+// a refusal keeps its own code, and only a refusal that the task is not listed
+// yet is asked again ([appBackend.receiptOnTask]), because nothing was done.
+// Nothing else is sent again, and the plain door is never the fallback: an
+// engine that cannot type the outcome is answered `uncertain` too.
+func (b *appBackend) briefOnTask(live *appLive, id string, intent session.AppTaskIntent) error {
+	receipt := b.receiptOnTask(live, id, intent)
+	switch {
+	case receipt.Outcome == session.AppTaskRefused:
+		return appTaskError(errors.New(receipt.Reason))
+	case receipt.Outcome == session.AppTaskUnknown, receipt.BriefNotKept:
+		reason := receipt.Reason
+		if strings.TrimSpace(reason) == "" {
+			reason = "it is not known whether that brief reached the task"
+		}
+		return appwire.Errorf(appwire.CodeUncertain, "%s", redact.Secrets(plainWords(reason)))
+	}
+	return nil
 }
 
 // sayDismissal says task.changed for a task the person just hid or brought
@@ -939,7 +969,10 @@ func appTaskError(err error) error {
 	// AN OUTCOME NOBODY CAN NAME IS NOT A REFUSAL. The engine's own sentinels
 	// say the words may have arrived, or did arrive with the page's brief left
 	// unwritten; either way sending them again would deliver them twice. A plan
-	// store's failed commit is the same: the change may be on the disk.
+	// store's failed commit is the same: the change may be on the disk. THESE
+	// ARE READ ONLY IN PROCESS: across the remote socket every app conversation
+	// uses, the plain door's error is bare text, which is why a brief is answered
+	// from its typed receipt instead ([appBackend.briefOnTask]).
 	if errors.Is(err, session.ErrSendUnanswered) || errors.Is(err, session.ErrBriefNotKept) || errors.Is(err, plandb.ErrCommitUncertain) {
 		return appwire.Errorf(appwire.CodeUncertain, "%s", plainWords(err.Error()))
 	}

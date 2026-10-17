@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/plandb/plandbtest"
 )
 
 // Delivered, held and refused are each the node's own answer, and the key that
@@ -192,14 +193,14 @@ func TestAPlanTaskNoteThroughTheAppDoorKeepsItsKeyOnThePage(t *testing.T) {
 
 // A COMMIT THAT FAILS MAY FOLLOW THE EFFECT, so the app is told UNKNOWN and the
 // words are never sent again. The refusals before the commit stay refusals.
-// SQLite itself refuses the COMMIT here ([commitGate]); the production store is
+// SQLite itself refuses the COMMIT here ([plandbtest.Gate]); the production store is
 // untouched and commits with its own tx.Commit.
 func TestAKeyedRunRowNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	registerBeltRunEngine(t, newBatchRunDouble())
 	dir := t.TempDir()
 	agent := batchAgent(t, dir)
-	gate := gateCommitsOf(t, agent.graph().planPath(), "k-commit")
+	gate := plandbtest.GateNote(t, agent.graph().planPath(), "k-commit")
 	stand := taskStand{dir: agent.config.Workspace, mode: TaskModeWorktree}
 	if err := agent.startKnownTaskRun(context.Background(), 62, "the run", "brief", nil, stand, ""); err != nil {
 		t.Fatalf("start the run: %v", err)
@@ -210,15 +211,15 @@ func TestAKeyedRunRowNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 
 	// A refusal BEFORE the commit is still a refusal, and never reaches one.
 	missing := agent.AppTaskActionReceipt(AppTaskIntent{ID: "63", Action: "note", Text: "same words", ClientID: "k-commit"})
-	if missing.Outcome != AppTaskRefused || gate.refused.Load() != 0 {
-		t.Fatalf("a note to a task that is not there = %+v (commits refused %d), want refused before any commit", missing, gate.refused.Load())
+	if missing.Outcome != AppTaskRefused || gate.Refused() != 0 {
+		t.Fatalf("a note to a task that is not there = %+v (commits refused %d), want refused before any commit", missing, gate.Refused())
 	}
 
 	receipt := agent.AppTaskActionReceipt(AppTaskIntent{ID: "62", Action: "note", Text: "same words", ClientID: "k-commit"})
 	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "k-commit" || receipt.Reason == "" {
 		t.Fatalf("a run row note whose commit failed = %+v, want unknown", receipt)
 	}
-	if got := gate.refused.Load(); got != 1 {
+	if got := gate.Refused(); got != 1 {
 		t.Fatalf("SQLite refused %d commits, want exactly the note's one", got)
 	}
 	// The refused COMMIT rolled back: nothing of the note is on the disk. The
@@ -229,7 +230,7 @@ func TestAKeyedRunRowNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 
 	// Disarmed, the same store's next commit works, and the unknown note was not
 	// sent again behind the person's back.
-	gate.disarm()
+	gate.Disarm()
 	again := agent.AppTaskActionReceipt(AppTaskIntent{ID: "62", Action: "note", Text: "same words", ClientID: "k-after"})
 	if again.Outcome != AppTaskDelivered {
 		t.Fatalf("the store after a failed commit = %+v", again)
@@ -237,7 +238,7 @@ func TestAKeyedRunRowNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 	if keys := personNoteKeys(live.Notes("62", 0)); keys != "k-after" {
 		t.Fatalf("person notes after the healthy commit = %q, want only k-after", keys)
 	}
-	if got := gate.refused.Load(); got != 1 {
+	if got := gate.Refused(); got != 1 {
 		t.Fatalf("SQLite refused %d commits after the gate was disarmed", got)
 	}
 }
@@ -245,7 +246,7 @@ func TestAKeyedRunRowNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 func TestAPlanTaskNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, planStoreFilename)
-	gate := gateCommitsOf(t, path, "p-commit")
+	gate := plandbtest.GateNote(t, path, "p-commit")
 	seedPlanStore(t, path, "ask-chat", plandb.TaskSpec{ID: "child", Title: "Write handler", Description: "replace the lookup"})
 	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, nil)
 	armPlanStore(t, agent, path, "ask-chat")
@@ -262,22 +263,22 @@ func TestAPlanTaskNoteWhoseCommitFailsIsUnknown(t *testing.T) {
 
 	// The same door refuses a task that is not there, before any commit.
 	gone := agent.AppTaskActionReceipt(AppTaskIntent{ID: "999", Action: "note", Text: "same words", ClientID: "p-commit"})
-	if gone.Outcome != AppTaskRefused || gate.refused.Load() != 0 {
-		t.Fatalf("a plan note to nothing = %+v (commits refused %d), want refused before any commit", gone, gate.refused.Load())
+	if gone.Outcome != AppTaskRefused || gate.Refused() != 0 {
+		t.Fatalf("a plan note to nothing = %+v (commits refused %d), want refused before any commit", gone, gate.Refused())
 	}
 
 	receipt := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "note", Text: "same words", ClientID: "p-commit"})
 	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "p-commit" || receipt.Reason == "" {
 		t.Fatalf("a plan note whose commit failed = %+v, want unknown", receipt)
 	}
-	if got := gate.refused.Load(); got != 1 {
+	if got := gate.Refused(); got != 1 {
 		t.Fatalf("SQLite refused %d commits, want exactly the note's one", got)
 	}
 	if keys := planPersonNoteKeys(t, path); keys != "" {
 		t.Fatalf("a plan note whose commit was refused is on the disk: %q", keys)
 	}
 
-	gate.disarm()
+	gate.Disarm()
 	again := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "note", Text: "same words", ClientID: "p-after"})
 	if again.Outcome != AppTaskDelivered {
 		t.Fatalf("the plan store after a failed commit = %+v", again)
@@ -294,7 +295,7 @@ func TestAPlanTaskBriefWhoseCommitFailsIsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, planStoreFilename)
 	const armed = "brief-commit: keep the old lookup as a fallback"
-	gate := gateTaskCommitsOf(t, path, armed)
+	gate := plandbtest.GateTask(t, path, armed)
 	seedPlanStore(t, path, "ask-chat", plandb.TaskSpec{ID: "child", Title: "Write handler", Description: "replace the lookup"})
 	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, nil)
 	armPlanStore(t, agent, path, "ask-chat")
@@ -310,22 +311,22 @@ func TestAPlanTaskBriefWhoseCommitFailsIsUnknown(t *testing.T) {
 	}
 
 	gone := agent.AppTaskActionReceipt(AppTaskIntent{ID: "999", Action: "brief", Text: armed, ClientID: "b-gone"})
-	if gone.Outcome != AppTaskRefused || gate.refused.Load() != 0 {
-		t.Fatalf("a plan brief to nothing = %+v (commits refused %d), want refused before any commit", gone, gate.refused.Load())
+	if gone.Outcome != AppTaskRefused || gate.Refused() != 0 {
+		t.Fatalf("a plan brief to nothing = %+v (commits refused %d), want refused before any commit", gone, gate.Refused())
 	}
 
 	receipt := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "brief", Text: armed, ClientID: "b-commit"})
 	if receipt.Outcome != AppTaskUnknown || receipt.ClientID != "b-commit" || receipt.Reason == "" || receipt.BriefNotKept {
 		t.Fatalf("a plan brief whose commit failed = %+v, want unknown", receipt)
 	}
-	if got := gate.refused.Load(); got != 1 {
+	if got := gate.Refused(); got != 1 {
 		t.Fatalf("SQLite refused %d commits, want exactly the brief's one", got)
 	}
 	if got := planTaskDescription(t, path); got != "replace the lookup" {
 		t.Fatalf("the description after the refused commit = %q, want it unchanged", got)
 	}
 
-	gate.disarm()
+	gate.Disarm()
 	again := agent.AppTaskActionReceipt(AppTaskIntent{ID: id, Action: "brief", Text: "brief-after: log each fallback", ClientID: "b-after"})
 	if again.Outcome != AppTaskDelivered || again.ClientID != "b-after" {
 		t.Fatalf("the plan store after a failed commit = %+v", again)
