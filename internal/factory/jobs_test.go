@@ -37,7 +37,7 @@ func TestPriorityAndSizeAreLabelDefaultsWithPersonOverride(t *testing.T) {
 		labels []string
 		want   string
 	}{
-		{[]string{"P0"}, "urgent"}, {[]string{"priority:high"}, "high"}, {[]string{"bug"}, "medium"},
+		{[]string{"P0"}, "urgent"}, {[]string{"priority:high"}, "high"}, {[]string{"bug"}, ""}, {[]string{"priority:medium"}, "medium"}, {[]string{"p2"}, "medium"}, {[]string{"p3"}, "low"},
 		{[]string{"bug", "priority:low"}, "low"}, {[]string{"P3", "P1"}, "high"}, {[]string{"other"}, ""},
 	} {
 		it := Item{Labels: tc.labels, Triage: Triage{Priority: 1, Size: "L"}}
@@ -60,6 +60,14 @@ func TestPriorityAndSizeAreLabelDefaultsWithPersonOverride(t *testing.T) {
 	it := Item{Labels: []string{"P0"}, Priority: &JobPriority{Value: "low", SetBy: "sam"}}
 	if p := PriorityFor(it); p.Value != "low" || p.SetBy != "sam" {
 		t.Fatalf("override %+v", p)
+	}
+	// A bug label alone never invents a mark, and a persisted human mark survives it.
+	if p := PriorityFor(Item{Labels: []string{"bug"}, Triage: Triage{Type: "bug", Priority: 1}}); p != nil {
+		t.Fatalf("bug label invented %+v", p)
+	}
+	it = Item{Labels: []string{"bug"}, Priority: &JobPriority{Value: "medium", SetBy: "sam"}}
+	if p := PriorityFor(it); p == nil || p.Value != "medium" || p.SetBy != "sam" {
+		t.Fatalf("persisted mark lost %+v", p)
 	}
 	if ref := JobRef(Item{Repo: "acme/api", Num: 1498}); ref != "api#1498" {
 		t.Fatal(ref)
