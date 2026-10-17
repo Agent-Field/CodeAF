@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -298,14 +299,14 @@ func TestNotesPageReadsCursorAndRowsInOneSnapshot(t *testing.T) {
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM tasks WHERE id = 'a'`).Scan(&live); err != nil {
 		t.Fatal(err)
 	}
-	floor, err := resolveNoteCursor(ctx, tx, "a", want[2])
-	if err != nil {
-		t.Fatal(err)
+	floor, after, err := resolveNoteCursor(ctx, tx, "a", want[2])
+	if err != nil || !after {
+		t.Fatalf("cursor: after %v err %v", after, err)
 	}
 	if _, err := writer.DeleteSubtree("b"); err != nil {
 		t.Fatal(err)
 	}
-	rows, _, refused, err := queryNoteRows(ctx, tx, "a", floor, 3, NotePageScanBytesMax)
+	rows, _, refused, err := queryNoteRows(ctx, tx, "a", floor, after, 3, NotePageScanBytesMax)
 	tx.Rollback()
 	if err != nil || refused != nil {
 		t.Fatalf("rows after the commit: err %v refused %v", err, refused)
@@ -323,7 +324,7 @@ func TestNotesPageReadsCursorAndRowsInOneSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer later.Rollback()
-	stale, _, _, err := queryNoteRows(ctx, later, "a", floor, 3, NotePageScanBytesMax)
+	stale, _, _, err := queryNoteRows(ctx, later, "a", floor, after, 3, NotePageScanBytesMax)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,7 +674,9 @@ func TestNotesPageRefusesAnOversizedLegacyNoteAndNeverMovesPastIt(t *testing.T) 
 
 // The refused body is not copied out by the driver: one such read allocates a
 // small fraction of the body. It measures Go allocation, which is where the
-// driver's copy lands; what SQLite does inside the engine is not counted.
+// driver's copy lands. That SQLite does not load it either rests on
+// octet_length reading the record header (see noteSelect); the engine's own
+// allocator is outside the Go heap and is not counted here.
 func TestNotesPageDoesNotAllocateAnOversizedBody(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "plan.db")
 	store := planOpen(t, path)
@@ -712,6 +715,7 @@ func TestNotesPageFieldCeilingsAreExactAndRefusalsStayBounded(t *testing.T) {
 		{"project", 100 << 10, "project"},
 		{"chat", 100 << 10, "chat"},
 		{"at", NotePageFixedMax + 1, "at"},
+		{`"from"`, NotePageFixedMax + 1, "from"},
 	} {
 		rawExec(t, path, `UPDATE notes SET `+c.column+` = ? WHERE id = ?`, strings.Repeat("z", c.size), ids[1])
 		_, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: "a", After: ids[0], Limit: 5})
@@ -800,5 +804,159 @@ func TestNotesPageReadsTheDatabaseAndLeavesTheHandlesMemoryAlone(t *testing.T) {
 	}
 	if len(reader.data.Notes) != 0 {
 		t.Fatal("NotesPage hydrated the handle's memory")
+	}
+}
+
+// A store whose lock is held answers ErrNoteBusy AT ONCE: no page, the cursor
+// where the caller left it, and no wait for the holder, a live deadline
+// included. A cancelled context still answers its own error first. Once the
+// lock is free the same ask reads the note. The ceiling below only turns a
+// call that blocks into a failure instead of a hang; the passing path never
+// waits on it.
+func TestNotesPageOnALockedStoreIsBusyAtOnce(t *testing.T) {
+	store := planOpen(t, "")
+	defer store.Close()
+	ids := seedThree(t, store)
+	ask := NotePageAsk{TaskID: "a", After: ids[0], Limit: 5}
+	deadline, stop := context.WithTimeout(context.Background(), time.Hour)
+	defer stop()
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	type answer struct {
+		page NotePage
+		err  error
+	}
+	store.mu.Lock()
+	done := make(chan [3]answer, 1)
+	go func() {
+		var got [3]answer
+		for i, ctx := range []context.Context{context.Background(), deadline, cancelled} {
+			got[i].page, got[i].err = store.NotesPage(ctx, ask)
+		}
+		done <- got
+	}()
+	var got [3]answer
+	select {
+	case got = <-done:
+	case <-time.After(30 * time.Second):
+		// Released first, or the deferred Close would wait on it forever.
+		store.mu.Unlock()
+		t.Fatal("NotesPage waited for the held lock instead of answering busy")
+	}
+	store.mu.Unlock()
+	for i, name := range []string{"background", "deadline"} {
+		if !errors.Is(got[i].err, ErrNoteBusy) || got[i].page.Cursor != "" || got[i].page.More || len(got[i].page.Notes) != 0 {
+			t.Fatalf("%s context on a held lock: page %#v err %v, want ErrNoteBusy and no page", name, got[i].page, got[i].err)
+		}
+	}
+	if !errors.Is(got[2].err, context.Canceled) || errors.Is(got[2].err, ErrNoteBusy) {
+		t.Fatalf("cancelled context on a held lock: err %v, want context.Canceled", got[2].err)
+	}
+
+	page, err := store.NotesPage(context.Background(), ask)
+	if err != nil || len(page.Notes) != 2 || page.Notes[0].ID != ids[1] || page.Cursor != ids[2] {
+		t.Fatalf("after the lock is free: page %#v err %v, want notes 2 and 3", page, err)
+	}
+}
+
+// The first page has no floor. A foreign writer may store any seq, the lowest
+// integer and the ones below zero included, and the first page still begins
+// at the task's first row and the walk still reaches every note once.
+func TestNotesPageFirstPageReadsSeqZeroAndNegativeSeq(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.db")
+	store := planOpen(t, path)
+	defer store.Close()
+	ids := seedThree(t, store)
+	rawExec(t, path, `UPDATE notes SET seq = ? WHERE id = ?`, int64(math.MinInt64), ids[0])
+	rawExec(t, path, `UPDATE notes SET seq = -1 WHERE id = ?`, ids[1])
+	rawExec(t, path, `UPDATE notes SET seq = 0 WHERE id = ?`, ids[2])
+
+	page, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: "a", Limit: 5})
+	if err != nil || page.More {
+		t.Fatalf("first page: more %v err %v", page.More, err)
+	}
+	var got []string
+	for _, note := range page.Notes {
+		got = append(got, note.ID)
+	}
+	if !sameIDs(got, ids) {
+		t.Fatalf("first page read %v, want %v", got, ids)
+	}
+	if walked := walkNotePages(t, store, NotePageAsk{TaskID: "a", Limit: 1}); !sameIDs(walked, ids) {
+		t.Fatalf("a walk one note at a time read %v, want %v", walked, ids)
+	}
+}
+
+// A root id is stored as given and validID trims a "t-" before it measures, so
+// a live root can be longer than any note field. Its notes are read, not
+// answered not-found and not refused as an oversized task id.
+func TestNotesPageReadsALegalRootLongerThanAnIdField(t *testing.T) {
+	root := "t-" + strings.Repeat("r", 64)
+	if len(root) <= NotePageFixedMax || !validID(root) {
+		t.Fatalf("the fixture root %q must be legal and longer than %d bytes", root, NotePageFixedMax)
+	}
+	store, err := Open(filepath.Join(t.TempDir(), "plan.db"), "plan-test", root, "The run", "drive the plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	note, err := store.AddNote(root, "w", "on the root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: root, Limit: 5})
+	if err != nil || len(page.Notes) != 1 || page.Notes[0].ID != note.ID || page.Notes[0].TaskID != root || page.More {
+		t.Fatalf("root %d bytes: page %#v err %v, want its one note", len(root), page, err)
+	}
+}
+
+// An id that names two rows is its own error, whichever tasks own the rows, and
+// it still matches ErrNoteCursor. A foreign cursor that names one row stays
+// ErrNoteCursor and is not called a duplicate.
+func TestNotesPageDuplicateCursorIdIsItsOwnError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.db")
+	store := planOpen(t, path)
+	defer store.Close()
+	ids := seedThree(t, store)
+	planAdd(t, store, planSpec("b", "Beta"))
+	foreign, err := store.AddNote("b", "w", "b-0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const copyRow = `INSERT INTO notes (seq, id, task_id, agent, body, at, project, chat, "from", client_id)
+		SELECT ?, id, ?, agent, body, at, project, chat, "from", client_id FROM notes WHERE id = ?`
+	rawExec(t, path, copyRow, 100, "a", ids[1])
+	rawExec(t, path, copyRow, 101, "b", ids[2])
+
+	for name, after := range map[string]string{"same task": ids[1], "other task": ids[2]} {
+		page, err := store.NotesPage(context.Background(), NotePageAsk{TaskID: "a", After: after, Limit: 5})
+		if !errors.Is(err, ErrDuplicateNoteID) || !errors.Is(err, ErrNoteCursor) || len(page.Notes) != 0 || page.More {
+			t.Fatalf("%s duplicate: page %#v err %v, want ErrDuplicateNoteID and no page", name, page, err)
+		}
+	}
+	_, err = store.NotesPage(context.Background(), NotePageAsk{TaskID: "a", After: foreign.ID, Limit: 5})
+	if !errors.Is(err, ErrNoteCursor) || errors.Is(err, ErrDuplicateNoteID) {
+		t.Fatalf("a foreign cursor: err %v, want ErrNoteCursor and not a duplicate", err)
+	}
+}
+
+// NotePageRowMax is the sum of the ceilings of the columns a page reads, held
+// here because a constant cannot add up the array. task_id is not read.
+func TestNotePageRowMaxIsTheSumOfTheColumnCeilings(t *testing.T) {
+	sum := 0
+	for _, col := range noteCols {
+		switch col.max {
+		case NotePageBodyMax, NotePageMetaMax, NotePageFixedMax:
+		default:
+			t.Fatalf("column %s has ceiling %d, which is not one of the named constants", col.name, col.max)
+		}
+		if col.name == "task_id" {
+			t.Fatal("task_id is read back; the query's own match already proves it")
+		}
+		sum += col.max
+	}
+	if sum != NotePageRowMax {
+		t.Fatalf("NotePageRowMax = %d, the column ceilings sum to %d", NotePageRowMax, sum)
 	}
 }
