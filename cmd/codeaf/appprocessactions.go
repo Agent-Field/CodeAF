@@ -270,7 +270,8 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		return nil, err
 	}
 	agent := ask.Agent
-	if _, err := b.find(agent); err != nil {
+	a, err := b.find(agent)
+	if err != nil {
 		return nil, err
 	}
 	admitted := false
@@ -286,10 +287,10 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		return nil, appwire.Errorf(appwire.CodeBusy, "this agent's processes are already being stopped")
 	}
 	defer b.locked(func() { delete(b.stoppingAll, agent) })
-	_, live, err := b.heldLive(agent)
-	if err != nil {
-		return nil, err
-	}
+	// A stop never opens an agent to manufacture an empty registry. A missing
+	// held owner cannot prove its saved jobs ended; local kept services still
+	// have their own supervisor and are stopped independently below.
+	live := b.liveOf(a)
 	res := &appwire.ProcessStopAllResult{
 		Agent: agent, Scope: appwire.ProcessScopeAgent,
 		NotStopped: []string{}, ServicesNotStopped: []string{}, Unsupported: []string{},
@@ -304,16 +305,19 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		jobsErr  error
 		services appStopServices
 	)
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		actor, can := live.conn.Conv.(appProcessActor)
-		if !can {
-			jobsErr = remote.ErrProcessActionsUnserved
-			return
-		}
-		jobs, jobsErr = actor.StopConversationProcesses(ctx)
-	}()
+	if live != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			actor, can := live.conn.Conv.(appProcessActor)
+			if !can {
+				jobsErr = remote.ErrProcessActionsUnserved
+				return
+			}
+			jobs, jobsErr = actor.StopConversationProcesses(ctx)
+		}()
+	}
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		services = b.stopOwnedServices(ctx, agent)
@@ -321,6 +325,8 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 	wg.Wait()
 
 	switch {
+	case live == nil:
+		res.RemainingUnknown = true
 	case errors.Is(jobsErr, remote.ErrProcessActionsUnserved):
 		res.Unsupported = append(res.Unsupported, appwire.ProcessStopAllJobs)
 	case jobsErr != nil:

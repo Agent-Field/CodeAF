@@ -368,3 +368,31 @@ func TestOldEngineStopDoesNotFallBackToAnUnverifiableCancel(t *testing.T) {
 		t.Fatalf("unverifiable old Cancel was called: %q", old.cancels)
 	}
 }
+
+func TestStopAllOnANotHeldConversationNeverOpensItOrInventsAnEmptyJobSnapshot(t *testing.T) {
+	engine := &actorEngine{fakeConversation: &fakeConversation{}}
+	backend, agent := actorBackend(t, engine)
+	a, err := backend.find(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	letGo(t, backend, agent.ID, a.transcript)
+	if backend.liveOf(a) != nil {
+		t.Fatal("fixture still held")
+	}
+	result, err := backend.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backend.liveOf(a) != nil {
+		t.Fatal("stop all reopened a conversation to invent a fresh registry")
+	}
+	if !result.RemainingUnknown || !result.Partial {
+		t.Fatalf("unheld jobs became a complete empty snapshot: %+v", result)
+	}
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	if engine.returned {
+		t.Fatal("unheld owner was asked for a job snapshot")
+	}
+}
