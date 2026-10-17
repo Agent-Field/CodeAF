@@ -1231,14 +1231,13 @@ type Welcome struct {
 	// says nothing about where the message came from, rather than showing a
 	// fact the record will not hold.
 	QueuedMarks bool `json:"queuedMarks,omitempty"`
-	// AppTaskReceipt says this engine answers [MethodAppTaskAction] asked with
-	// its receipt flag by a TYPED note outcome, so an error it still sends on
-	// that call was raised before the engine's door and is a refusal. A panic inside the
-	// door is answered as a typed unknown, never as an error ([appTaskReceiptGuarded]).
-	//
-	// ABSENCE IS false, AND false MAKES EVERY ANSWER UNKNOWN. An engine that
-	// predates it flattened a failure after delivery into the same text as a
-	// refusal, and a surface that handed those words back would send them twice.
+	// AppTaskReceipt advertises typed outcomes on [MethodAppTaskAction] when
+	// its receipt flag is set. It does not attribute any particular error:
+	// every untyped error remains unknown regardless of this flag. Only an
+	// explicit typed refused receipt establishes refusal. A panic inside the
+	// door is a typed unknown ([appTaskReceiptGuarded]).
+	// An older engine may flatten a failure after delivery into error text;
+	// that text must never invite sending the same words again.
 	AppTaskReceipt bool `json:"appTaskReceipt,omitempty"`
 
 	// SteerOwner says this engine CHECKS THE CONVERSATION A SEND WAS WRITTEN FOR
