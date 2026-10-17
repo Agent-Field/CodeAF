@@ -1317,7 +1317,8 @@ func (s *Store) AddPersonNote(taskID, body string) (Note, error) {
 // stored with its key, and never a note whose key is still to be written. The
 // store keeps the key verbatim and never reads meaning into it, matches by it
 // or refuses a repeat of it — two notes with one key are two notes. The caller
-// bounds what a key may be.
+// bounds what a key may be (the app caps it at 256); the store refuses one over
+// [NotePageMetaMax].
 func (s *Store) AddPersonNoteKeyed(taskID, body, clientID string) (Note, error) {
 	return s.addNote(taskID, "", body, NoteFromPerson, clientID)
 }
@@ -1325,6 +1326,24 @@ func (s *Store) AddPersonNoteKeyed(taskID, body, clientID string) (Note, error) 
 // addNote is the one road both note writers take: validate, mint an id, and
 // stamp the change on the task the note hangs on.
 func (s *Store) addNote(taskID, agent, body, from, clientID string) (Note, error) {
+	// PER-NOTE PARITY WITH THE PAGE, AND NO MORE THAN THAT. [Store.NotesPage]
+	// and [Store.NoteEnvelopesPage] refuse a note whose agent or client key is
+	// over its meta ceiling and the readers hold every later note behind it;
+	// nothing in the product removes or edits one note. So those two are
+	// REFUSED here, before any transaction, never truncated (a cut name or key
+	// is a different one). The agent is measured as stored, trimmed; the body
+	// check below already equals the page's. THIS DOES NOT BOUND project OR
+	// chat, which a note copies from its task and which [Open] takes unbounded:
+	// a plan named over the ceiling makes the full page refuse every note on
+	// it. The inbox readers use the envelope page, which does not read those
+	// two columns, so they are not held; the hydrated readers and
+	// [Store.NotesPage] still carry the tags.
+	if len(strings.TrimSpace(agent)) > NotePageMetaMax {
+		return Note{}, fmt.Errorf("note author exceeds %d bytes", NotePageMetaMax)
+	}
+	if len(clientID) > NotePageMetaMax {
+		return Note{}, fmt.Errorf("note client key exceeds %d bytes", NotePageMetaMax)
+	}
 	// One transaction, like every writer: the database's write lock, a fresh
 	// load, the change, the commit. See AddMany for why.
 	s.mu.Lock()
@@ -1362,6 +1381,11 @@ func (s *Store) addNote(taskID, agent, body, from, clientID string) (Note, error
 
 // Notes answers one task's notes, newest last, with a bound so a task that
 // accumulated a transcript's worth cannot become one.
+//
+// IT IS NOT A WAY TO DELIVER NOTES. It answers the OLDEST page (50 by default,
+// 200 at most) of a hydrated snapshot and a failed refresh answers stale memory
+// without saying so, so a caller that has already read those never sees the
+// next note. Anything that must reach every note uses [Store.NotesPage].
 func (s *Store) Notes(taskID string, limit int) []Note {
 	s.mu.Lock()
 	defer s.mu.Unlock()

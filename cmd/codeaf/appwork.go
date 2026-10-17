@@ -270,6 +270,13 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 	}
 	task.Models = appNoticeModels(notice, task.Proposed)
 	task.Source, task.Dismissed = appSourceOf(notice.Source), notice.Dismissed
+	// THE ROW'S OWN FACTS, as session.appRunFacts reads them for a cold list:
+	// a row with its stopped flag set is "stopped" (the flag does not say who
+	// stopped it), otherwise the typed ending, and nothing is derived.
+	task.Program, task.Ending, task.Branch = strings.TrimSpace(notice.Program), string(notice.Ending), strings.TrimSpace(notice.Branch)
+	if notice.Stopped {
+		task.Ending = string(session.TaskEndingStopped)
+	}
 	return task, true
 }
 
@@ -322,6 +329,7 @@ func appTaskOfView(agent string, view session.AppTaskView) appwire.Task {
 	task.Models = appModelsChip(view.RoutingState, view.Crew, view.TaskPins, view.Model)
 	task.Model, task.StartedBy = view.Model, view.Origin
 	task.Source, task.Dismissed = appSourceOf(view.Source), view.Dismissed
+	task.Program, task.Ending, task.Branch = view.RunProgram, view.Ending, view.Branch
 	if !view.FinishedAt.IsZero() && (task.State == appwire.TaskDone || task.State == appwire.TaskFailed) {
 		ended := view.FinishedAt
 		task.FinishedAt = &ended
@@ -382,6 +390,10 @@ func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNo
 		}
 		if task.Group == "" {
 			task.Group = before.Group
+		}
+		// A PROGRAM IS A FACT OF THE ROW'S WHOLE LIFE: an update that leaves it out has not changed it.
+		if task.Program == "" {
+			task.Program = before.Program
 		}
 		// THE GROUP'S LABEL IS ITS RUN'S OWN ROW'S TITLE: the row with the run's
 		// id and no parent is the run itself.

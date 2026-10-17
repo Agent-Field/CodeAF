@@ -221,7 +221,28 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		stages = CopyStages(recipe.For(kind))
 	}
 	started := startedStages(it)
+	// Edits through this shared door cannot change a landed job, even when
+	// its recipe omitted or switched off proof. No new work may bypass the
+	// person about to publish an already-landed job.
+	if it.State == StateLanded {
+		return it, nil, errors.New("the job has landed, so the steps can no longer be edited")
+	}
+	// ONCE PROOF HAS STARTED THE STAGES ARE FROZEN through this door. The sheet
+	// was written for the stages as they stood; a stage added, switched on or
+	// reworded afterwards would be approved by a sheet that never saw it, and a
+	// landed job would wait on the person with that stage still pending.
+	if proofStarted(it, stages) {
+		return it, nil, errors.New(ProofFrozenRefusal)
+	}
 	fixed := func(i int) bool { return StageFixed(stages, i, recipe, kind) }
+	// workAfterProof says whether stage i is work the proof sheet cannot have
+	// seen: a stage past proof that is not a person's approve step, which is a
+	// hold and does no work. Skipping such a stage is always fine; nothing in
+	// the edit may start or reshape one.
+	workAfterProof := func(i int) bool {
+		p := firstProof(stages)
+		return p >= 0 && i > p && !IsApprove(stages[i])
+	}
 	why := oneLine(e.Why)
 	var errs []error
 	refuse := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
@@ -254,6 +275,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			errs = append(errs, FixedRefusal(stages[i].Name))
 		case started[stages[i].Name]:
 			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && ask != stages[i].Ask:
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
 		case ask == "":
 			refuse("a stage needs an ask; %s has none", stages[i].Name)
 		case askCells(ask) > AskMost:
@@ -277,6 +300,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			errs = append(errs, FixedRefusal(stages[i].Name))
 		case started[stages[i].Name]:
 			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && word != stages[i].Effort:
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
 		case word != stages[i].Effort:
 			stages[i].Effort = word
 			mark(i, "")
@@ -313,6 +338,10 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		}
 		next := PlaceStage(stages, st, when)
 		at := StageIndex(next, st.Name)
+		if p := firstProof(next); p >= 0 && at > p && !IsApprove(st) {
+			refuse("%s may not add %s after proof; proof has to see it", who, st.Name)
+			continue
+		}
 		blocked := false
 		for _, later := range next[at+1:] {
 			if started[later.Name] {
@@ -338,6 +367,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		case i < 0:
 		case started[stages[i].Name]:
 			refuse("%s may not switch %s, which has already run", who, stages[i].Name)
+		case !stages[i].On && workAfterProof(i):
+			refuse("%s may not switch on %s, which comes after proof", who, stages[i].Name)
 		case !stages[i].On:
 			stages[i].On = true
 			mark(i, "")
@@ -353,7 +384,7 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		switch {
 		case fixed(i):
 			errs = append(errs, FixedRefusal(st.Name))
-		case st.Name == "proof":
+		case IsProofStage(st):
 			refuse("%s may not skip proof", who)
 		case policyNames(recipe.Policy, st.Name):
 			refuse("%s may not skip %s; the policy names it", who, st.Name)
@@ -394,6 +425,57 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 	it.Adapted = append(append([]string(nil), it.Adapted...), lines...)
 	return it, lines, nil
 }
+
+// ProofName is the stage whose sheet vouches for the work before it.
+const ProofName = "proof"
+
+// IsProofStage says whether a stage is a proof conversation: the one named
+// proof, a send-back's prove*, or any stage that runs until proven, whatever
+// it is called. Checks and posts are NOT proof here, though their claims reach
+// the sheet: they can precede legitimate work, so they never freeze an edit.
+// The run loop's sheet maker asks this same question so the two cannot drift.
+func IsProofStage(st Stage) bool {
+	name := strings.ToLower(strings.TrimSpace(st.Name))
+	return name == ProofName || strings.HasPrefix(name, "prove") ||
+		strings.TrimSpace(st.Until) == UntilProven
+}
+
+// firstProof is the index of the earliest proof stage, or -1.
+func firstProof(stages []Stage) int {
+	for i, st := range stages {
+		if IsProofStage(st) {
+			return i
+		}
+	}
+	return -1
+}
+
+// proofStarted says whether any proof phase has begun. A phase counts when its
+// own name reads as proof, or when it names a configured stage that is proof,
+// so a renamed until-proven stage and a historical phase both freeze the edit.
+func proofStarted(it Item, stages []Stage) bool {
+	if it.Stream == nil {
+		return false
+	}
+	for _, ph := range it.Stream.Phases {
+		if (ph.State == "" || ph.State == PhasePending) && ph.Round == 0 {
+			continue
+		}
+		if IsProofStage(Stage{Name: ph.Name}) {
+			return true
+		}
+		for _, st := range stages {
+			if strings.EqualFold(strings.TrimSpace(st.Name), strings.TrimSpace(ph.Name)) && IsProofStage(st) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ProofFrozenRefusal is the sentence Edit says to an edit of the stages
+// once proof has started.
+const ProofFrozenRefusal = "proof has started, so the steps can no longer be edited"
 
 // FixedRefusal is the one sentence every road says when it is asked to change
 // a stage the recipe file fixes ([Stage.Fixed]), whoever asked:
