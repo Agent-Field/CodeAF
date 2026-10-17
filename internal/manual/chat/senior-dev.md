@@ -268,8 +268,9 @@ task's notes could not be checked (a message there is too large to read: …)`. 
 way to edit or delete a single note**, so nothing in it clears the hold: it lasts until the
 task is removed or the store is changed by hand. codeaf refuses a single note whose author
 or client key is over 4096 bytes or whose body is over 32768 (the app caps a client key at
-256). **That does not cover a plan whose name is over 4096 bytes**, such as a very long first
-task title: every note on that plan can be held, and today nothing prevents or warns of it.
+256). **A long plan name does not hold anything**: a very long first task title makes a plan
+name over 4096 bytes, and the workers' note reading does not look at a note's plan name or
+conversation, so the notes on that plan are delivered like any other.
 
 **The step-by-step workers hold the same way, and say nothing.** A worker that is not a
 listening program is handed a task's new notes between its steps; behind a note too large to

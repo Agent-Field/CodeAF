@@ -680,7 +680,7 @@ func newBashNotes(pages notePager, taskID string, read map[string]bool) *bashNot
 // waiting for the race.
 func (n *bashNotes) boundary(ctx context.Context, command string, deliver bool, steer func(string) error) []string {
 	var had []string
-	skip := func(note plandb.Note) bool {
+	skip := func(note plandb.NoteEnvelope) bool {
 		if n.read[note.ID] {
 			return true
 		}
@@ -739,7 +739,7 @@ func (n *bashNotes) boundary(ctx context.Context, command string, deliver bool, 
 // matching it against the commands before would make a colleague's later note
 // that repeats words the worker once typed read as the worker's own, and hide
 // it. A repeat costs a sentence; a hidden note is a lost one.
-func isOwnNote(note plandb.Note, command string) bool {
+func isOwnNote(note plandb.NoteEnvelope, command string) bool {
 	body := strings.TrimSpace(note.Body)
 	if strings.TrimSpace(command) == "" || note.From == plandb.NoteFromPerson || body == "" {
 		return false
@@ -756,7 +756,7 @@ func isOwnNote(note plandb.Note, command string) bool {
 // quietly stop building the thing that was asked for. So the sentence says
 // plainly that the work order has not moved, and names the shape a real
 // direction arrives in.
-func planNoteSpoken(notes []plandb.Note) string {
+func planNoteSpoken(notes []plandb.NoteEnvelope) string {
 	var b strings.Builder
 	if len(notes) == 1 {
 		b.WriteString("a note was left on your task:\n")
@@ -774,7 +774,7 @@ func planNoteSpoken(notes []plandb.Note) string {
 // itself keeps ([plandb.NoteFromPerson]): the person steering the run, or
 // another worker on it. A worker's agent name is said when the store has one,
 // because which sibling found the thing is half of what the note is worth.
-func noteAuthorWord(note plandb.Note) string {
+func noteAuthorWord(note plandb.NoteEnvelope) string {
 	if note.From == plandb.NoteFromPerson {
 		return "the person"
 	}

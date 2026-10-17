@@ -1327,14 +1327,17 @@ func (s *Store) AddPersonNoteKeyed(taskID, body, clientID string) (Note, error) 
 // stamp the change on the task the note hangs on.
 func (s *Store) addNote(taskID, agent, body, from, clientID string) (Note, error) {
 	// PER-NOTE PARITY WITH THE PAGE, AND NO MORE THAN THAT. [Store.NotesPage]
-	// refuses a note whose agent or client key is over its meta ceiling and the
-	// readers hold every later note behind it; nothing in the product removes
-	// or edits one note. So those two are REFUSED here, before any transaction,
-	// never truncated (a cut name or key is a different one). The agent is
-	// measured as stored, trimmed; the body check below already equals the
-	// page's. THIS DOES NOT BOUND project OR chat, which a note copies from its
-	// task and which [Open] takes unbounded: a plan named over the ceiling still
-	// makes every note on it unreadable by a page. That is an open gap.
+	// and [Store.NoteEnvelopesPage] refuse a note whose agent or client key is
+	// over its meta ceiling and the readers hold every later note behind it;
+	// nothing in the product removes or edits one note. So those two are
+	// REFUSED here, before any transaction, never truncated (a cut name or key
+	// is a different one). The agent is measured as stored, trimmed; the body
+	// check below already equals the page's. THIS DOES NOT BOUND project OR
+	// chat, which a note copies from its task and which [Open] takes unbounded:
+	// a plan named over the ceiling makes the full page refuse every note on
+	// it. The inbox readers use the envelope page, which does not read those
+	// two columns, so they are not held; the hydrated readers and
+	// [Store.NotesPage] still carry the tags.
 	if len(strings.TrimSpace(agent)) > NotePageMetaMax {
 		return Note{}, fmt.Errorf("note author exceeds %d bytes", NotePageMetaMax)
 	}

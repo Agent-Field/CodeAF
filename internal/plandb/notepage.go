@@ -44,6 +44,12 @@ const (
 	// room for one row, which is what lets a page make progress without
 	// exempting any row from the budget.
 	NotePageRowMax = NotePageBodyMax + 4*NotePageMetaMax + 3*NotePageFixedMax
+	// NoteEnvelopeRowMax is the same figure for the envelope projection of
+	// [Store.NoteEnvelopesPage]: the body, two meta fields (agent, client key)
+	// and two fixed ones (id, sender). The project, chat and timestamp columns
+	// are not read, so they weigh nothing and cannot refuse a row. A test holds
+	// this to the sum of envelopeCols.
+	NoteEnvelopeRowMax = NotePageBodyMax + 2*NotePageMetaMax + 2*NotePageFixedMax
 	// NotePageBytesMax is the most note text one page may carry.
 	NotePageBytesMax = 256 << 10
 	// NotePageScanMax is the most rows one call may EXAMINE when a Skip
@@ -187,28 +193,58 @@ type noteCol struct {
 	max  int
 }
 
-// The columns, in the order the query returns them. The indexes below name
-// the ones assembled into a Note. task_id IS NOT READ: the query's own
-// task_id = ? proves the stored value is the caller's TaskID byte for byte, so
-// the note carries the caller's string. That is also why a legal root id longer
-// than NotePageFixedMax (the root is stored as given, see validID) is not
-// refused as an oversized field.
-var noteCols = [...]noteCol{
-	{"id", NotePageFixedMax}, {"agent", NotePageMetaMax},
-	{"body", NotePageBodyMax}, {"at", NotePageFixedMax}, {"project", NotePageMetaMax},
-	{"chat", NotePageMetaMax}, {`"from"`, NotePageFixedMax}, {"client_id", NotePageMetaMax},
+// The columns a page can read, each with the ceiling on its stored length.
+// task_id IS NOT READ: the query's own task_id = ? proves the stored value is
+// the caller's TaskID byte for byte, so the note carries the caller's string.
+// That is also why a legal root id longer than NotePageFixedMax (the root is
+// stored as given, see validID) is not refused as an oversized field.
+var (
+	idCol      = noteCol{"id", NotePageFixedMax}
+	agentCol   = noteCol{"agent", NotePageMetaMax}
+	bodyCol    = noteCol{"body", NotePageBodyMax}
+	atCol      = noteCol{"at", NotePageFixedMax}
+	projectCol = noteCol{"project", NotePageMetaMax}
+	chatCol    = noteCol{"chat", NotePageMetaMax}
+	fromCol    = noteCol{`"from"`, NotePageFixedMax}
+	clientCol  = noteCol{"client_id", NotePageMetaMax}
+)
+
+// noteCols is every column of the full [Note], in the order its query returns
+// them. envelopeCols is the subset an inbox reads: the note's identity, who
+// left it and in which direction, its words and the sender's own key. THE
+// OMITTED THREE ARE NEVER SELECTED, MEASURED OR DECODED, so nothing about them
+// can refuse a row: the tags say which project or conversation LISTS a note, a
+// question a worker reading one task's notes by task_id never asks, and nothing
+// reads a note's time.
+var (
+	noteCols     = [...]noteCol{idCol, agentCol, bodyCol, atCol, projectCol, chatCol, fromCol, clientCol}
+	envelopeCols = [...]noteCol{idCol, agentCol, bodyCol, fromCol, clientCol}
+)
+
+// noteShape is which columns one page reads and the largest row they can sum
+// to, which is the floor of its byte budgets. The page, the cursor and the
+// lock are the same for every shape; only the select list and the assembled
+// fields differ.
+type noteShape struct {
+	cols   []noteCol
+	rowMax int
 }
 
-const (
-	colID = iota
-	colAgent
-	colBody
-	colAt
-	colProject
-	colChat
-	colFrom
-	colClient
+var (
+	fullShape     = noteShape{noteCols[:], NotePageRowMax}
+	envelopeShape = noteShape{envelopeCols[:], NoteEnvelopeRowMax}
 )
+
+// index is where a column sits in the shape's select list, or -1 when the
+// shape does not read it.
+func (sh noteShape) index(col noteCol) int {
+	for i, c := range sh.cols {
+		if c == col {
+			return i
+		}
+	}
+	return -1
+}
 
 // noteRow is a note and what it cost against a byte budget.
 type noteRow struct {
@@ -229,13 +265,13 @@ type noteRow struct {
 // driver pin without octet_length fails the query loudly, never silently.
 // A store written before client_id has no such column; a read-only reader never
 // migrates, so it is selected as the empty key, as loadNotes does.
-func noteSelect(keyed bool) string {
+func noteSelect(cols []noteCol, keyed bool) string {
 	var b strings.Builder
-	for i, col := range noteCols {
+	for i, col := range cols {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		if i == colClient && !keyed {
+		if col == clientCol && !keyed {
 			b.WriteString("0, ''")
 			continue
 		}
@@ -282,6 +318,14 @@ func noteSelect(keyed bool) string {
 // come back first, with More true and the cursor before it; the call that
 // starts at it fails. Every failure returns an error and no page.
 func (s *Store) NotesPage(ctx context.Context, ask NotePageAsk) (NotePage, error) {
+	return s.pageNotes(ctx, fullShape, ask)
+}
+
+// pageNotes is the page itself, for whichever columns the shape reads. NotesPage
+// and [Store.NoteEnvelopesPage] are both this, so the task check, the cursor,
+// the lock, the bounds, the Skip order and the refusal rules cannot drift
+// between them.
+func (s *Store) pageNotes(ctx context.Context, sh noteShape, ask NotePageAsk) (NotePage, error) {
 	// The hard cap comes first, before validID reads the id and before any
 	// bind copies it. Within the cap, an id the length of any id goes to the
 	// database as it is; a longer one goes only if validID admits it, because
@@ -301,7 +345,7 @@ func (s *Store) NotesPage(ctx context.Context, ask NotePageAsk) (NotePage, error
 	if ask.Limit < 1 || ask.Limit > NotePageMax {
 		return NotePage{}, fmt.Errorf("note page limit %d is outside 1..%d", ask.Limit, NotePageMax)
 	}
-	maxBytes, err := notePageBound("MaxBytes", ask.MaxBytes, NotePageRowMax, NotePageBytesMax)
+	maxBytes, err := notePageBound("MaxBytes", ask.MaxBytes, sh.rowMax, NotePageBytesMax)
 	if err != nil {
 		return NotePage{}, err
 	}
@@ -309,7 +353,7 @@ func (s *Store) NotesPage(ctx context.Context, ask NotePageAsk) (NotePage, error
 	if err != nil {
 		return NotePage{}, err
 	}
-	scanBytes, err := notePageBound("ScanBytes", ask.ScanBytes, NotePageRowMax, NotePageScanBytesMax)
+	scanBytes, err := notePageBound("ScanBytes", ask.ScanBytes, sh.rowMax, NotePageScanBytesMax)
 	if err != nil {
 		return NotePage{}, err
 	}
@@ -322,7 +366,7 @@ func (s *Store) NotesPage(ctx context.Context, ask NotePageAsk) (NotePage, error
 	if ask.Skip != nil {
 		rowCap = scanMax
 	}
-	rows, more, refused, err := s.readNoteRows(ctx, ask, rowCap, scanBytes)
+	rows, more, refused, err := s.readNoteRows(ctx, sh, ask, rowCap, scanBytes)
 	if err != nil {
 		return NotePage{}, err
 	}
@@ -368,7 +412,7 @@ func notePageBound(name string, value, floor, ceiling int) (int, error) {
 
 // readNoteRows is the page's one database read, in a single deferred
 // transaction on the read handle, under the store's lock.
-func (s *Store) readNoteRows(ctx context.Context, ask NotePageAsk, rowCap, byteCap int) ([]noteRow, bool, error, error) {
+func (s *Store) readNoteRows(ctx context.Context, sh noteShape, ask NotePageAsk, rowCap, byteCap int) ([]noteRow, bool, error, error) {
 	// TryLock, once, on purpose: see THE LOCK on NotesPage.
 	if !s.mu.TryLock() {
 		return nil, false, nil, ErrNoteBusy
@@ -382,7 +426,7 @@ func (s *Store) readNoteRows(ctx context.Context, ask NotePageAsk, rowCap, byteC
 		return nil, false, nil, err
 	}
 	defer tx.Rollback()
-	return readNoteWindow(ctx, tx, ask, rowCap, byteCap)
+	return readNoteWindow(ctx, tx, sh, ask, rowCap, byteCap)
 }
 
 // readNoteWindow is the read itself, on a transaction the caller owns: the task
@@ -391,7 +435,7 @@ func (s *Store) readNoteRows(ctx context.Context, ask NotePageAsk, rowCap, byteC
 // snapshot and commit from another handle between them. The returned refused is
 // the error of a note the read stopped at, set only beside rows that precede
 // it (or none); err is a failure of the read itself.
-func readNoteWindow(ctx context.Context, tx *sql.Tx, ask NotePageAsk, rowCap, byteCap int) (rows []noteRow, more bool, refused, err error) {
+func readNoteWindow(ctx context.Context, tx *sql.Tx, sh noteShape, ask NotePageAsk, rowCap, byteCap int) (rows []noteRow, more bool, refused, err error) {
 	var live int
 	switch err := tx.QueryRowContext(ctx, `SELECT 1 FROM tasks WHERE id = ?`, ask.TaskID).Scan(&live); {
 	case errors.Is(err, sql.ErrNoRows):
@@ -403,7 +447,7 @@ func readNoteWindow(ctx context.Context, tx *sql.Tx, ask NotePageAsk, rowCap, by
 	if err != nil {
 		return nil, false, nil, err
 	}
-	return queryNoteRows(ctx, tx, ask.TaskID, floor, after, rowCap, byteCap)
+	return queryNoteShape(ctx, tx, sh, ask.TaskID, floor, after, rowCap, byteCap)
 }
 
 // queryNoteRows reads up to rowCap notes of one task, after a table position
@@ -411,6 +455,12 @@ func readNoteWindow(ctx context.Context, tx *sql.Tx, ask NotePageAsk, rowCap, by
 // early at the byte cap or at a note over a field ceiling. A note read is
 // complete; a note refused is never partly read.
 func queryNoteRows(ctx context.Context, tx *sql.Tx, taskID string, floor int64, after bool, rowCap, byteCap int) (rows []noteRow, more bool, refused, err error) {
+	return queryNoteShape(ctx, tx, fullShape, taskID, floor, after, rowCap, byteCap)
+}
+
+// queryNoteShape is queryNoteRows for the columns of one shape. A field the
+// shape does not read stays the zero value of its type.
+func queryNoteShape(ctx context.Context, tx *sql.Tx, sh noteShape, taskID string, floor int64, after bool, rowCap, byteCap int) (rows []noteRow, more bool, refused, err error) {
 	keyed, err := hasColumn(tx, "notes", "client_id")
 	if err != nil {
 		return nil, false, nil, err
@@ -423,19 +473,27 @@ func queryNoteRows(ctx context.Context, tx *sql.Tx, taskID string, floor int64, 
 	if after {
 		where, args = where+` AND seq > ?`, append(args, floor)
 	}
-	rs, err := tx.QueryContext(ctx, `SELECT `+noteSelect(keyed)+` FROM notes WHERE `+where+` ORDER BY seq LIMIT ?`,
+	rs, err := tx.QueryContext(ctx, `SELECT `+noteSelect(sh.cols, keyed)+` FROM notes WHERE `+where+` ORDER BY seq LIMIT ?`,
 		append(args, rowCap+1)...)
 	if err != nil {
 		return nil, false, nil, err
 	}
 	defer rs.Close()
 	var (
-		sizes  [len(noteCols)]sql.NullInt64
-		values [len(noteCols)]sql.NullString
-		dest   = make([]any, 0, 2*len(noteCols))
+		sizes  = make([]sql.NullInt64, len(sh.cols))
+		values = make([]sql.NullString, len(sh.cols))
+		dest   = make([]any, 0, 2*len(sh.cols))
 		bytes  int
+		at     = sh.index(atCol)
 	)
-	for i := range noteCols {
+	// text is a column's value, or "" for one this shape does not read.
+	text := func(col noteCol) string {
+		if i := sh.index(col); i >= 0 {
+			return values[i].String
+		}
+		return ""
+	}
+	for i := range sh.cols {
 		dest = append(dest, &sizes[i], &values[i])
 	}
 	for rs.Next() {
@@ -446,11 +504,11 @@ func queryNoteRows(ctx context.Context, tx *sql.Tx, taskID string, floor int64, 
 			return nil, false, nil, err
 		}
 		weight := 0
-		for i, col := range noteCols {
+		for i, col := range sh.cols {
 			if sizes[i].Int64 > int64(col.max) {
 				refusal := &NoteTooLargeError{Field: strings.Trim(col.name, `"`), Size: sizes[i].Int64}
-				if sizes[colID].Int64 <= NotePageFixedMax {
-					refusal.NoteID = values[colID].String
+				if id := sh.index(idCol); sizes[id].Int64 <= NotePageFixedMax {
+					refusal.NoteID = values[id].String
 				}
 				return rows, true, refusal, rs.Err()
 			}
@@ -460,12 +518,13 @@ func queryNoteRows(ctx context.Context, tx *sql.Tx, taskID string, floor int64, 
 			return rows, true, nil, rs.Err()
 		}
 		note := Note{
-			ID: values[colID].String, TaskID: taskID, Agent: values[colAgent].String,
-			Body: values[colBody].String, Project: values[colProject].String, Chat: values[colChat].String,
-			From: values[colFrom].String, ClientID: values[colClient].String,
+			ID: text(idCol), TaskID: taskID, Agent: text(agentCol), Body: text(bodyCol),
+			Project: text(projectCol), Chat: text(chatCol), From: text(fromCol), ClientID: text(clientCol),
 		}
-		if note.At, err = parseTime(values[colAt].String); err != nil {
-			return nil, false, nil, err
+		if at >= 0 {
+			if note.At, err = parseTime(values[at].String); err != nil {
+				return nil, false, nil, err
+			}
 		}
 		if note.From == "" {
 			note.From = NoteFromWorker
@@ -517,4 +576,81 @@ func resolveNoteCursor(ctx context.Context, tx *sql.Tx, taskID, after string) (f
 		return 0, false, ErrNoteCursor
 	}
 	return seq, true, nil
+}
+
+// NoteEnvelope is the part of a note an inbox reads: who and what it is, who
+// left it, which way it points and what it says. IT HAS NO PROJECT, CHAT OR
+// TIME, so a caller cannot filter on a value the page never read. TaskID is the
+// caller's own, proven by the page's task_id = ? and never read back. ClientID
+// is the sender's own opaque key for the note and is empty when unknown; ID is
+// the store's id for it, and the two are different names for different jobs.
+type NoteEnvelope struct {
+	ID       string
+	TaskID   string
+	Agent    string
+	From     string
+	Body     string
+	ClientID string
+}
+
+// NoteEnvelopeAsk is [NotePageAsk] for [Store.NoteEnvelopesPage]: every field
+// means what it means there, with the byte floors at [NoteEnvelopeRowMax] and a
+// Skip that is handed the envelope.
+type NoteEnvelopeAsk struct {
+	TaskID    string
+	After     string
+	Limit     int
+	MaxBytes  int
+	Skip      func(NoteEnvelope) bool
+	ScanMax   int
+	ScanBytes int
+}
+
+// NoteEnvelopePage is [NotePage] for envelopes.
+type NoteEnvelopePage struct {
+	Notes  []NoteEnvelope
+	Cursor string
+	More   bool
+}
+
+// NoteEnvelopesPage is [Store.NotesPage] for a reader that only needs the
+// envelope: the same snapshot, cursor, lock, context and bounds, the same
+// refusal of a note over a ceiling, and none of the cost of the columns it
+// does not need. A note whose project, chat or time is damaged or enormous is
+// delivered like any other, because those columns are not selected. A note
+// whose id, author, body, direction or client key is over its ceiling is
+// refused exactly as NotesPage refuses it: the notes before it come back
+// first, then every call from the cursor answers [ErrNoteTooLarge], and
+// nothing is truncated, skipped or stepped over.
+//
+// NOT CLAIMED: bounded I/O for the unread columns. In the stored row they sit
+// before the direction and client key, so SQLite may walk an oversized value's
+// overflow pages to reach the later columns. This page never copies one into
+// memory or refuses a row for one; it does not bound that work.
+func (s *Store) NoteEnvelopesPage(ctx context.Context, ask NoteEnvelopeAsk) (NoteEnvelopePage, error) {
+	asked := NotePageAsk{
+		TaskID: ask.TaskID, After: ask.After, Limit: ask.Limit, MaxBytes: ask.MaxBytes,
+		ScanMax: ask.ScanMax, ScanBytes: ask.ScanBytes,
+	}
+	if ask.Skip != nil {
+		asked.Skip = func(note Note) bool { return ask.Skip(envelopeOf(note)) }
+	}
+	page, err := s.pageNotes(ctx, envelopeShape, asked)
+	if err != nil {
+		return NoteEnvelopePage{}, err
+	}
+	out := NoteEnvelopePage{Cursor: page.Cursor, More: page.More}
+	if len(page.Notes) > 0 {
+		out.Notes = make([]NoteEnvelope, len(page.Notes))
+		for i, note := range page.Notes {
+			out.Notes[i] = envelopeOf(note)
+		}
+	}
+	return out, nil
+}
+
+// envelopeOf is the envelope of a note read with [envelopeShape]. Any other
+// field of the note is the zero value there and is dropped.
+func envelopeOf(note Note) NoteEnvelope {
+	return NoteEnvelope{ID: note.ID, TaskID: note.TaskID, Agent: note.Agent, From: note.From, Body: note.Body, ClientID: note.ClientID}
 }
