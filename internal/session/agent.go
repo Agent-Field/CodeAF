@@ -1715,7 +1715,7 @@ const (
 	steerAgainWord = "already on the task's record from the same message — nothing was sent a second time"
 	// RunNotePickupWord is WHEN a note on a run's task is read, and it is ONE
 	// SENTENCE IN TWO PLACES: the receipt a note typed at a run's own row
-	// answers in the chat (stoprun.go's [Agent.sayToRunRow]), and the line the
+	// answers in the chat (stoprun.go's [Agent.sayToRunRowFrom]), and the line the
 	// task room writes under the note once the store has it (internal/tui3's
 	// taskPlanPickupWord takes it from here). A run's task has no worker to
 	// splice a line into; a worker is a separate loop, so the words wait in the

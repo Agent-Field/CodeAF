@@ -361,7 +361,9 @@ func (a *Agent) AppTask(id string) (AppTaskView, bool, error) {
 						if note.Person {
 							from = AppNoteFromPerson
 						}
-						row.Notes = append(row.Notes, AppTaskNote{Text: note.Body, From: from})
+						// The key is the one the store committed with the note;
+						// nothing here stamps one ([plandb.Note.ClientID]).
+						row.Notes = append(row.Notes, AppTaskNote{Text: note.Body, From: from, ClientID: note.ClientID})
 					}
 				}
 				if len(row.Steps) == 0 {
@@ -391,29 +393,40 @@ func appExpect(intent AppTaskIntent, state string, version uint64) error {
 
 // AppTaskAction keeps admission and landing separate: a proposal answers a wait;
 // a finished task uses the existing continuation, check and acceptance doors.
+//
+// Its errors are exactly what they always were. A caller that has to tell a
+// note that was HELD, REFUSED or of UNKNOWN fate apart asks
+// [Agent.AppTaskActionReceipt], which takes the same dispatch.
 func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
+	_, err := a.appTaskAct(intent)
+	return err
+}
+
+// appTaskAct is the one dispatch both doors take. The receipt is the node's or
+// the store's own answer for a note or a brief, and empty for every other verb.
+func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 	// DISMISS AND RESTORE ARE ONE GENERIC FACT FOR EVERY ROAD, so they are settled
 	// before the road is chosen (task_dismiss.go).
 	if intent.Action == AppActionDismiss || intent.Action == AppActionRestore {
-		return a.appDismissAction(intent)
+		return SteerReceipt{}, a.appDismissAction(intent)
 	}
 	id, numeric := strconv.ParseUint(intent.ID, 10, 64)
-	if handled, err := a.appBeforeTheList(id, numeric, intent); handled {
-		return err
+	if handled, said, err := a.appBeforeTheList(id, numeric, intent); handled {
+		return said, err
 	}
 	if intent.Action == AppActionProposalModel {
 		// Past its proposal a task's model is RetargetTask's promise, not this card's.
-		return errors.New("that task must be a proposed task to change its model")
+		return SteerReceipt{}, errors.New("that task must be a proposed task to change its model")
 	}
 	row, found, err := a.AppTask(intent.ID)
 	if err != nil {
-		return err
+		return SteerReceipt{}, err
 	}
 	if !found {
-		return errors.New("no such task")
+		return SteerReceipt{}, errors.New("no such task")
 	}
 	if err := appExpect(intent, row.State, row.Version); err != nil {
-		return err
+		return SteerReceipt{}, err
 	}
 	node := a.taskNode(id)
 	if numeric == nil && node == nil {
@@ -422,10 +435,17 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 		}
 	}
 	if numeric != nil || node == nil {
-		return a.appPlanAction(intent)
+		return SteerReceipt{}, a.appPlanAction(intent)
 	}
-	return a.appGraphAction(node, intent, row)
+	if appWordAction(intent.Action) {
+		return a.appTaskNote(node, intent)
+	}
+	return SteerReceipt{}, a.appGraphAction(node, intent, row)
 }
+
+// appWordAction is whether an action carries the person's words to the task:
+// the two verbs that have a receipt ([Agent.AppTaskActionReceipt]).
+func appWordAction(action string) bool { return action == "note" || action == "brief" }
 
 // appBeforeTheList answers the numeric roads that are not on the page list: a
 // proposal waiting for its answer, and a note to a quick task.
@@ -433,20 +453,21 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 // A QUICK TASK IS NOT ON THE PAGE LIST BUT IS A NODE THAT CAN BE TOLD
 // SOMETHING, so a note to one takes the node's door before the list is asked.
 // Every other action on a quick id falls through to the list's own refusal.
-func (a *Agent) appBeforeTheList(id uint64, numeric error, intent AppTaskIntent) (bool, error) {
+func (a *Agent) appBeforeTheList(id uint64, numeric error, intent AppTaskIntent) (bool, SteerReceipt, error) {
 	if numeric != nil {
-		return false, nil
+		return false, SteerReceipt{}, nil
 	}
 	if handled, err := a.appProposalAction(id, intent); handled {
-		return true, err
+		return true, SteerReceipt{}, err
 	}
 	if intent.Action != "note" {
-		return false, nil
+		return false, SteerReceipt{}, nil
 	}
 	if node := a.taskNode(id); node != nil && node.spec.quick != nil {
-		return true, a.appQuickNote(node, intent)
+		said, err := a.appQuickNote(node, intent)
+		return true, said, err
 	}
-	return false, nil
+	return false, SteerReceipt{}, nil
 }
 
 // A proposal's clock and model are edited under the same lock as its answer.
@@ -507,7 +528,8 @@ func (a *Agent) appProposalAction(id uint64, intent AppTaskIntent) (bool, error)
 func (a *Agent) appPlanAction(intent AppTaskIntent) error {
 	switch intent.Action {
 	case "note":
-		return a.PlanNote(intent.ID, intent.Text)
+		// The key is committed in the note's own transaction ([Agent.PlanNoteKeyed]).
+		return a.PlanNoteKeyed(intent.ID, intent.Text, AppNoteClientID(intent.ClientID))
 	case "brief":
 		return a.PlanAmend(intent.ID, intent.Text)
 	case "pause":
@@ -529,8 +551,6 @@ func (a *Agent) appGraphAction(node *TaskNode, intent AppTaskIntent, row AppTask
 	case "model":
 		_, err := a.RetargetTask(node.id, intent.Model)
 		return err
-	case "note", "brief":
-		return a.appTaskNote(node, intent)
 	case "decide":
 		return a.appTaskDecide(node.id, intent, row.State)
 	case "continue":
@@ -583,24 +603,26 @@ func (node *TaskNode) appPause(intent AppTaskIntent) error {
 	return nil
 }
 
-func (a *Agent) appTaskNote(node *TaskNode, intent AppTaskIntent) error {
+func (a *Agent) appTaskNote(node *TaskNode, intent AppTaskIntent) (SteerReceipt, error) {
 	if strings.TrimSpace(intent.Text) == "" {
-		return errors.New("words required")
+		return SteerReceipt{}, errors.New("words required")
 	}
 	// THE KEY IS WRITTEN WITH THE WORDS, IN THE ONE ADMISSION THAT PUTS THEM ON
 	// THE DISK ([admitDirection]), and nowhere after. A second write here used to
 	// carry it, which meant a delivered note could come back as an error and a
 	// restart between the two could keep the words without their key.
-	if _, err := a.sayToTask(node.id, intent.Text, fromPerson, spokenSource{clientID: AppNoteClientID(intent.ClientID)}); err != nil {
-		return err
+	said, err := a.sayToTask(node.id, intent.Text, fromPerson, spokenSource{clientID: AppNoteClientID(intent.ClientID)})
+	if err != nil {
+		return SteerReceipt{}, err
 	}
 	if intent.Action != "brief" {
 		node.graph.announce(node)
-		return nil
+		return said, nil
 	}
 	// A brief is a note AND the page's own brief. The note is delivered already,
-	// so a failure to keep the brief is not a refusal of the words.
-	err := node.graph.writeAppControl(func() (func(), error) {
+	// so a failure to keep the brief is not a refusal of the words, and the
+	// receipt the words got is still theirs.
+	err = node.graph.writeAppControl(func() (func(), error) {
 		old := cloneAppTaskRecord(node.app)
 		node.app.Brief = intent.Text
 		node.app.Version++
@@ -608,9 +630,9 @@ func (a *Agent) appTaskNote(node *TaskNode, intent AppTaskIntent) error {
 	})
 	node.graph.announce(node)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrBriefNotKept, err)
+		return said, fmt.Errorf("%w: %v", ErrBriefNotKept, err)
 	}
-	return nil
+	return said, nil
 }
 
 // ErrBriefNotKept says a brief's words WERE delivered to the task as a note and
@@ -621,12 +643,12 @@ var ErrBriefNotKept = errors.New("the words reached the task, but its brief coul
 // appQuickNote is a note to a running quick task, through the node's own door
 // with its key ([Agent.appTaskNote]). A quick task that has settled is refused
 // there in the engine's own words, and nothing here can start one.
-func (a *Agent) appQuickNote(node *TaskNode, intent AppTaskIntent) error {
+func (a *Agent) appQuickNote(node *TaskNode, intent AppTaskIntent) (SteerReceipt, error) {
 	rows, _ := a.AppQuickTasks()
 	for _, row := range rows {
 		if row.ID == intent.ID {
 			if err := appExpect(intent, row.State, row.Version); err != nil {
-				return err
+				return SteerReceipt{}, err
 			}
 		}
 	}
