@@ -33,6 +33,9 @@ const (
 	ProcessStopEnded   = "ended"
 	ProcessStopUnknown = "unknown"
 	ProcessStopTask    = "task"
+	// ProcessStopSaving is a render that has its bytes and is saving them: a
+	// stop would not stop it, so none is offered.
+	ProcessStopSaving = "saving"
 
 	ProcessRerunRunning        = "running"
 	ProcessRerunUnknown        = "unknown"
@@ -82,6 +85,7 @@ func (e *ProcessActionRefused) Error() string {
 	why := map[string]string{
 		ProcessStopUnknown:         "its ending was never seen and nothing here holds it",
 		ProcessStopTask:            "it is a task; stop the task",
+		ProcessStopSaving:          "it has finished rendering and is being saved",
 		ProcessRerunRunning:        "it is still running",
 		ProcessRerunNotCommand:     "only a command can be run again",
 		ProcessRerunNoCommand:      "its command was not kept",
@@ -163,6 +167,8 @@ func (a *Agent) actionsOf(h processHold) ProcessActions {
 	switch {
 	case running && h.n.Kind == JobKindTask:
 		out.Stop.Reason = ProcessStopTask
+	case running && h.target.saving():
+		out.Stop.Reason = ProcessStopSaving
 	case running:
 		out.Stop.Available = true
 	case h.unknown != "":
@@ -276,6 +282,9 @@ type ProcessStopOutcome struct {
 	// Unproven says the job was signalled and had not ended when ctx or the
 	// graces ran out.
 	Unproven bool `json:"unproven,omitempty"`
+	// Refused says the stop did not happen: a render committed to saving its
+	// file between the facts and the kill, and keeps running until it lands.
+	Refused bool `json:"refused,omitempty"`
 }
 
 // StopProcessAt is a person's stop of the run a stamped id names, through the
@@ -298,7 +307,7 @@ func (a *Agent) StopProcessAt(ctx context.Context, id int, startedMS int64) (Pro
 		return ProcessStopOutcome{}, &ProcessActionRefused{Verb: "stop", Reason: facts.Stop.Reason}
 	}
 	line, outcome := h.owner.stopJob(ctx, h.jobs, h.target)
-	return ProcessStopOutcome{Line: line, Ended: outcome == jobStopEnded, Unproven: outcome == jobStopUnproven}, nil
+	return ProcessStopOutcome{Line: line, Ended: outcome == jobStopEnded, Unproven: outcome == jobStopUnproven, Refused: outcome == jobStopRefused}, nil
 }
 
 // ProcessStopReceipt is what one stop-all of a conversation's jobs did.
@@ -307,7 +316,9 @@ type ProcessStopReceipt struct {
 	Eligible     int `json:"eligible"`
 	Stopped      int `json:"stopped"`
 	AlreadyEnded int `json:"already_ended"`
-	// NotStopped is each job signalled whose end was not seen in time.
+	// NotStopped is each job whose end was not seen in time, and each render
+	// whose kill refused because it was already saving ([jobStopRefused]): a
+	// stop-all that left one running never counts it stopped.
 	NotStopped []JobNotice `json:"not_stopped"`
 	// Unenumerated is the running jobs found beyond [ProcessStopAllMax], left
 	// running and not signalled.

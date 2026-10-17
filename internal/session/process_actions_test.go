@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -248,5 +249,48 @@ func TestRunningNewestStopsAtItsScanAndSaysSo(t *testing.T) {
 	running, more = r.runningNewest(5)
 	if more || len(running) != 3 {
 		t.Fatalf("whole scan: more=%v running=%d", more, len(running))
+	}
+}
+
+// A RENDER THAT HAS COMMITTED TO SAVING IS NOT STOPPED, AND NOTHING SAYS IT
+// WAS: the facts offer no stop, a stamped stop that races the commit answers
+// refused, a stop-all names it as not stopped, and the old door says the kill's
+// own sentence rather than "stopped".
+func TestACommittedRenderIsNeverReportedStopped(t *testing.T) {
+	dir := t.TempDir()
+	agent := conversationAgent(t, dir)
+	started := time.UnixMilli(1_700_000_000_000)
+	render := &job{id: 980, kind: jobKindRender, label: "video", state: jobRunning, committed: true,
+		started: started, done: make(chan struct{})}
+	t.Cleanup(func() { close(render.done) })
+	agent.jobs.mu.Lock()
+	agent.jobs.jobs = append(agent.jobs.jobs, render)
+	agent.jobs.mu.Unlock()
+
+	facts, err := agent.ProcessActions(context.Background(), 980, started.UnixMilli())
+	if err != nil || facts.Stop.Available || facts.Stop.Reason != ProcessStopSaving {
+		t.Fatalf("committed render facts: %+v %v", facts, err)
+	}
+	var refused *ProcessActionRefused
+	if _, err := agent.StopProcessAt(context.Background(), 980, started.UnixMilli()); !errors.As(err, &refused) || refused.Reason != ProcessStopSaving {
+		t.Fatalf("stamped stop of a committed render: %v", err)
+	}
+	line, outcome := agent.stopJob(context.Background(), agent.jobs, render)
+	if outcome != jobStopRefused || !strings.Contains(line, "was not stopped") {
+		t.Fatalf("raced stop: %q %v", line, outcome)
+	}
+	receipt, err := agent.StopConversationProcesses(context.Background())
+	if err != nil || receipt.Eligible != 1 || receipt.Stopped != 0 || len(receipt.NotStopped) != 1 || receipt.NotStopped[0].ID != 980 {
+		t.Fatalf("stop-all over a committed render: %+v %v", receipt, err)
+	}
+	old, err := agent.Cancel("job:980")
+	if err != nil || strings.HasPrefix(old, "stopped ") || !strings.Contains(old, "was not stopped") {
+		t.Fatalf("old door: %q %v", old, err)
+	}
+	if !render.running() {
+		t.Fatal("a committed render was ended by a stop")
+	}
+	if notesContain(agent, "job 980 was stopped") {
+		t.Fatal("the model was told a committed render was stopped")
 	}
 }

@@ -431,6 +431,14 @@ func (j *job) commitRender() bool {
 	return true
 }
 
+// saving reports whether this render has committed to saving its file, the
+// state in which a kill refuses ([job.requestKillRender]).
+func (j *job) saving() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.kind == jobKindRender && j.committed && j.state == jobRunning
+}
+
 // requestKillRender is [job.requestKill] for a render: it claims the stop unless
 // the render has already committed to saving its file, and says which. A render
 // that has committed is NOT marked killed, because the file will exist and its
@@ -1552,9 +1560,29 @@ func (r *jobRegistry) find(id int) *job {
 // four seconds this used to spend watching for an exit nobody was waiting for
 // any more.
 func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
+	line, result := r.killFor(ctx, id)
+	return line, result == killNotClaimed
+}
+
+// killResult is what one kill actually did.
+type killResult int
+
+const (
+	// killNotClaimed is no such job, or one that had already ended.
+	killNotClaimed killResult = iota
+	// killRefusedSaving is a render that had already committed to saving its
+	// file: nothing was signalled and it keeps running until the file lands.
+	killRefusedSaving
+	// killSignalled is a job this kill claimed and signalled.
+	killSignalled
+)
+
+// killFor is [jobRegistry.kill] with its actual result, for a caller that must
+// not report a stop that did not happen.
+func (r *jobRegistry) killFor(ctx context.Context, id int) (string, killResult) {
 	target := r.find(id)
 	if target == nil {
-		return fmt.Sprintf("No job %d.", id), true
+		return fmt.Sprintf("No job %d.", id), killNotClaimed
 	}
 	// A render that already has its bytes and has decided to save them is not
 	// stopped: the file will exist, and its note is still coming. Saying
@@ -1562,15 +1590,15 @@ func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 	if target.kind == jobKindRender {
 		claimed, committed := target.requestKillRender()
 		if committed {
-			return fmt.Sprintf("%s (job %d) had already finished rendering and is being saved; it was not stopped, and its note will name the file", target.label, id), false
+			return fmt.Sprintf("%s (job %d) had already finished rendering and is being saved; it was not stopped, and its note will name the file", target.label, id), killRefusedSaving
 		}
 		if !claimed {
 			info := target.info()
-			return fmt.Sprintf("Job %d already %s.", id, statusText(info)), true
+			return fmt.Sprintf("Job %d already %s.", id, statusText(info)), killNotClaimed
 		}
 	} else if !target.requestKill() {
 		info := target.info()
-		return fmt.Sprintf("Job %d already %s.", id, statusText(info)), true
+		return fmt.Sprintf("Job %d already %s.", id, statusText(info)), killNotClaimed
 	}
 	if target.explicitStop != nil {
 		target.explicitStop()
@@ -1586,13 +1614,13 @@ func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 	// A watch is stopped, not killed: there was no process of its own to end,
 	// and "stopped" is the word its list row and its notes already use.
 	if target.kind == jobKindWatch {
-		return fmt.Sprintf("watch %s (job %d) stopped", target.label, id), false
+		return fmt.Sprintf("watch %s (job %d) stopped", target.label, id), killSignalled
 	}
 	// A task is STOPPED and its branch is KEPT. The words matter: nothing the
 	// node wrote is thrown away by ending it, and the completion note that
 	// follows names the branch the work is on.
 	if target.kind == jobKindTask {
-		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), false
+		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), killSignalled
 	}
 	// A render is STOPPED HERE and nothing was saved: no file landed (the
 	// commit gate guarantees it) and no note about this job is coming. The
@@ -1601,9 +1629,9 @@ func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 	// whether it is still running or charged is unknown, and the sentence says
 	// so rather than imply a refund.
 	if target.kind == jobKindRender {
-		return fmt.Sprintf("%s (job %d) stopped; no %s was saved. Only waiting stopped here — the provider was not told to cancel, so whether it is charged is unknown", target.label, id, target.label), false
+		return fmt.Sprintf("%s (job %d) stopped; no %s was saved. Only waiting stopped here — the provider was not told to cancel, so whether it is charged is unknown", target.label, id, target.label), killSignalled
 	}
-	return fmt.Sprintf("job %d killed", id), false
+	return fmt.Sprintf("job %d killed", id), killSignalled
 }
 
 // shutdown ends every running job at Close: one SIGTERM round, ONE shared

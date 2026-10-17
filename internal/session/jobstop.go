@@ -106,6 +106,9 @@ const (
 	// jobStopUnproven is a job signalled whose end was not seen before ctx or
 	// the graces ran out. It is still this engine's to stop again.
 	jobStopUnproven
+	// jobStopRefused is a render that had already committed to saving its
+	// file: the kill refused, nothing was signalled, and it keeps running.
+	jobStopRefused
 )
 
 // stopJob is one person's stop of target, a job in this agent's registry
@@ -125,8 +128,15 @@ func (a *Agent) stopJob(ctx context.Context, jobs *jobRegistry, target *job) (st
 	// inside the kill below, while the line this stop owes the model was still
 	// unwritten, and a worker parked on the command woke to an empty queue.
 	target.markPersonStopped()
-	_, failed := jobs.kill(ctx, number)
-	if failed {
+	line, result := jobs.killFor(ctx, number)
+	if result == killRefusedSaving {
+		// A COMMITTED RENDER WAS NOT STOPPED, AND NOTHING SAYS IT WAS. Its death
+		// was never requested, so the mark above is inert (only a requested death
+		// reads it), its debt and its note are its own ending's to settle, and
+		// the line is the kill's own sentence naming the file still coming.
+		return line, jobStopRefused
+	}
+	if result == killNotClaimed {
 		// The job ended between the running check and the kill: same news as
 		// a second press on work that has already landed.
 		//
