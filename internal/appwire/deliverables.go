@@ -51,7 +51,9 @@ type DeliverableKept struct {
 type Deliverable struct {
 	ID    string `json:"id"`
 	Agent string `json:"agent"`
-	Kind  string `json:"kind" enum:"markdown,mermaid,image,audio,video,export,document"`
+	// Kind file is a shared file that is neither media nor named Markdown or
+	// Mermaid text — a PDF, an archive, anything; its type is MIME.
+	Kind  string `json:"kind" enum:"markdown,mermaid,image,audio,video,export,document,file"`
 	Title string `json:"title"`
 	// Path is the recorded canonical path, for display; the native side may
 	// open it only when Live is available or changed.
@@ -71,13 +73,19 @@ type Deliverable struct {
 	// unknown and an app must not read Draft or Kept out of Place.
 	Place string `json:"place" enum:"agent_folder,repo,elsewhere"`
 	// State is the RECORDED state; absent is unknown.
-	State  string `json:"state,omitempty" enum:"draft,kept"`
-	Origin string `json:"origin" enum:"agent,saved_by_you,unknown"`
+	State string `json:"state,omitempty" enum:"draft,kept"`
+	// Origin shared_by_agent is a file the agent handed over with
+	// share_deliverable: it says who SHARED it, never who made it, so such a
+	// row is never authored and its state stays unknown.
+	Origin string `json:"origin" enum:"agent,saved_by_you,shared_by_agent,unknown"`
 	// Turn is the authored message the work answered; Run is the producing
 	// turn's immutable id, the join to an answer's run. Either may be absent,
 	// and Turn is never guessed from Run, time or the nearest message.
-	Turn    string   `json:"turn,omitempty"`
-	Run     string   `json:"run,omitempty"`
+	Turn string `json:"turn,omitempty"`
+	Run  string `json:"run,omitempty"`
+	// Call is the provider tool call the row was recorded under, where the
+	// recording seam knew it: an attribution, never an idempotency key.
+	Call    string   `json:"call,omitempty"`
 	Task    string   `json:"task,omitempty"`
 	From    []string `json:"from,omitempty"`
 	Profile string   `json:"profile,omitempty"`
@@ -103,6 +111,10 @@ type Deliverable struct {
 	// capability this engine does not yet offer, and none is forged.
 	PreviewUnavailable string           `json:"preview_unavailable,omitempty" enum:"source_gone"`
 	Kept               *DeliverableKept `json:"kept,omitempty"`
+	// Original is the file an engine-owned copy was read from (a task's shared
+	// file, copied into the conversation's own folder). Display only: Path and
+	// Open are the copy, and Original is never opened.
+	Original string `json:"original,omitempty"`
 	// Teams and Ambiguous are present only under scope "teams". Teams is every
 	// recorded membership of the row's exact owning conversation (never one
 	// guessed assignment); Ambiguous says those memberships reach more than one

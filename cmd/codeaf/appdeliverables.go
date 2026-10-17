@@ -113,7 +113,7 @@ func (e *appDeliverEnv) wireOf(row session.DeliverableRow) (appwire.Deliverable,
 	out := appwire.Deliverable{
 		ID: row.ID, Agent: row.Artifact.Session, Kind: row.Kind, Title: row.Artifact.Title, Path: row.Artifact.Path,
 		Created: row.Artifact.Created.UTC().Format(time.RFC3339Nano), Live: appLiveWords[live.State], Origin: "unknown",
-		State: fact.State, Turn: fact.Turn, Run: fact.Run, Task: fact.Task, From: fact.From, Profile: fact.Profile,
+		State: fact.State, Turn: fact.Turn, Run: fact.Run, Call: fact.Call, Task: fact.Task, From: fact.From, Profile: fact.Profile,
 		Authored: fact.Authored, Version: session.DeliverableVersion(row), LiveVersion: live.Version,
 	}
 	if row.Recorded {
@@ -138,6 +138,9 @@ func (e *appDeliverEnv) wireOf(row session.DeliverableRow) (appwire.Deliverable,
 	}
 	if out.Live == "" {
 		out.Live = "unreadable"
+	}
+	if row.Recorded && fact.Source != nil {
+		out.Original = fact.Source.Canonical
 	}
 	if fact.Branch != "" && fact.Rel != "" {
 		out.Branch, out.Rel = fact.Branch, fact.Rel
