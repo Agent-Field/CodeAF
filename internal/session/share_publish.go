@@ -191,6 +191,13 @@ func shareDescribed(result ShareResult, claim *ShareClaim, reason string) ShareR
 func (t shareTarget) plan(ctx context.Context, claim *ShareClaim, receipt ShareReceipt) (string, bool) {
 	t.removeCopies(receipt)
 	rows, reason := t.inspect(ctx, receipt)
+	if rows == nil && ctx.Err() != nil {
+		// Running out of time, or being cancelled, says nothing about the
+		// files: the receipt stays pending, so the same operation_id can be
+		// tried again, and the copies taken so far go now.
+		t.removeCopies(receipt)
+		return shareRetryTime, false
+	}
 	if rows == nil {
 		t.refuse(claim, receipt)
 		return reason, false
@@ -295,7 +302,12 @@ func (t shareTarget) row(receipt ShareReceipt, planned SharePlannedRow, file, so
 // each appended row again. fresh says the plan was written in this very call,
 // so no append of it can exist yet and the index need not be searched first.
 func (t shareTarget) record(ctx context.Context, session string, rows []Artifact, fresh bool) ([]string, string) {
-	deadline, _ := ctx.Deadline()
+	// ONE DEADLINE FOR EVERY SEARCH. A zero one would read the index without
+	// bound, so a call that has none searches nothing and appends nothing.
+	deadline, bounded := ctx.Deadline()
+	if !bounded {
+		return nil, shareRetryCheck
+	}
 	recorded := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if ctx.Err() != nil {
