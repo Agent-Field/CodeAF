@@ -39,6 +39,13 @@ type adminFactory struct {
 	// gate, when set, holds a request at the door until it returns, so a test
 	// can change the caller's credential while a read is in flight.
 	gate func(path string)
+	// st is the factory's own store, for the tests that read what was kept.
+	st *store.Store
+	// afterStore, when set, is returned by the repository switch AFTER the list
+	// was stored, as a failed event would; noRepoSwitch leaves the factory with
+	// no way to save the list at all.
+	afterStore   error
+	noRepoSwitch bool
 }
 
 func startAdminFactory(t *testing.T) *adminFactory { return startAdminFactoryAt(t, true) }
@@ -48,7 +55,12 @@ func startAdminFactory(t *testing.T) *adminFactory { return startAdminFactoryAt(
 // factory answers as its host.
 func startAdminFactoryAt(t *testing.T, forwarded bool) *adminFactory {
 	t.Helper()
-	f := &adminFactory{clock: &factoryClock{at: time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)}, github: newFakeGitHub()}
+	return startAdminFactoryWith(t, forwarded, false)
+}
+
+func startAdminFactoryWith(t *testing.T, forwarded, noRepoSwitch bool) *adminFactory {
+	t.Helper()
+	f := &adminFactory{clock: &factoryClock{at: time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)}, github: newFakeGitHub(), noRepoSwitch: noRepoSwitch}
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +74,16 @@ func startAdminFactoryAt(t *testing.T, forwarded bool) *adminFactory {
 	if err := os.WriteFile(filepath.Join(dir, "operator.json"), []byte(claim), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	f.st = st
 	seam := factory.Seam{Load: func() (factory.Snapshot, error) { return factory.Snapshot{}, nil }}
+	if !f.noRepoSwitch {
+		seam.SetRepos = func(repos []string) error {
+			if err := st.SetRepos(repos); err != nil {
+				return err
+			}
+			return f.afterStore
+		}
+	}
 	h := serve.New(seam, serve.Config{
 		Version: "test", Name: "Acme factory", ServedBy: "factory", Address: adminFactoryAddress, AccessToken: testHostToken, Mode: api.FactoryTeam,
 		GitHubClientID: "client", GitHubHTTPClient: f.github.client(), Now: f.clock.now, Store: st, Record: rec, Root: st.Root(),

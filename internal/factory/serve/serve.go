@@ -114,6 +114,11 @@ type Handler struct {
 	accessMu    sync.Mutex
 	accessFlows map[string]accessLinkFlow
 
+	// reposMu serializes every change to the watched list: the single-repo switch
+	// reads, edits and saves it, so any other writer must queue behind it. It is
+	// never held over the event append or any network call.
+	reposMu sync.Mutex
+
 	jobsMu     sync.Mutex
 	jobsTimer  *time.Timer
 	jobsClosed bool

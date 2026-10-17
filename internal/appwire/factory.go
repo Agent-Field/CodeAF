@@ -100,7 +100,11 @@ type FactoryCapabilities struct {
 	// CopyLink: this engine can put a freshly made invitation on THIS
 	// machine's clipboard right now. False unless a trusted local launch
 	// supplied a working clipboard; no invitation is made without it.
-	CopyLink       bool `json:"copy_link"`
+	CopyLink bool `json:"copy_link"`
+	// ReposManage: factory.repo_set is served (feature factory.repos_manage).
+	// True only for an engine that implements [FactoryRepoAdmin]; whether THIS
+	// caller may use it is the operator's answer, read from factory.me.
+	ReposManage    bool `json:"repos_manage"`
 	MaxConnections int  `json:"max_connections"`
 	MaxFlows       int  `json:"max_flows"`
 }

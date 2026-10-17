@@ -781,7 +781,10 @@ func (h *Handler) setRepos(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "watched must be an array of repository names")
 		return
 	}
-	if err := h.seam.SetRepos(*body.Watched); h.failed(w, err) {
+	h.reposMu.Lock()
+	err := h.seam.SetRepos(*body.Watched)
+	h.reposMu.Unlock()
+	if h.failed(w, err) {
 		return
 	}
 	h.finish(w, h.operatorEvent(r, record.ReposChanged, "factory", strings.Join(*body.Watched, ", ")))

@@ -699,7 +699,7 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
-		Links: true, CopyLink: b.copier().Available(),
+		Links: true, CopyLink: b.copier().Available(), ReposManage: true,
 		MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }

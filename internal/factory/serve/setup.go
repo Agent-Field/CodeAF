@@ -573,7 +573,10 @@ func (h *Handler) runSetup(ctx context.Context, out setupState) {
 				selected = append(selected, repo.ID)
 			}
 		}
-		if err := h.config.Store.SetRepos(selected); err != nil {
+		h.reposMu.Lock()
+		err := h.config.Store.SetRepos(selected)
+		h.reposMu.Unlock()
+		if err != nil {
 			words := redact.Secrets(err.Error())
 			out.View.GitHub.Error = &words
 			_ = h.setupProgress(out)
