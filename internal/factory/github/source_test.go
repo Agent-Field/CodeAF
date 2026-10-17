@@ -361,8 +361,12 @@ func TestPollCreatesThenUpdatesWithoutClobbering(t *testing.T) {
 	if got.Body != "short now" {
 		t.Fatalf("the forge's new body did not land: %q", got.Body)
 	}
-	if got.Cap != 7 || got.Stages[0].On || got.Triage.Readiness != 80 || got.Triage.Size != "L" {
+	if got.Cap != 7 || got.Stages[0].On || got.Triage.Readiness != 80 {
 		t.Fatalf("the poll undid a person's edit: %+v", got)
+	}
+	// The size is the body-length guess, so a shorter body is a smaller guess.
+	if got.Triage.Size != "S" {
+		t.Fatalf("the size was not taken again from the new body: %q", got.Triage.Size)
 	}
 	if got.State != factory.StateNew {
 		t.Fatalf("a dismissed item that changed did not come back: %s", got.State)

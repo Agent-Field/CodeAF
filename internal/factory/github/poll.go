@@ -205,7 +205,8 @@ func TroubleWords(err error) string {
 //
 // A CHANGED TITLE OR BODY IS A NEW ITEM TO READ: the triage's read is taken
 // off ([factory.ClearRead]) so the worker reads it again, and the type is the
-// fresh read's (the size, a cheap guess the person may have read by, stays). A change of labels alone keeps the read and
+// fresh read's, and an issue's size, a cheap guess off how much the author
+// wrote, is taken again from the new body. A change of labels alone keeps the read and
 // takes the type again from the labels. Either is `changed on github` in the
 // item's activity; a new comment, file or check is not, because the row's own
 // words did not move.
@@ -245,6 +246,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 					factory.ClearRead(&it.Triage)
 					if in.Triage.Type != "" {
 						it.Triage.Type = in.Triage.Type
+					}
+					if in.Kind != factory.KindPR && in.Triage.Size != "" {
+						it.Triage.Size = in.Triage.Size
 					}
 				case labels && in.Triage.Type != "":
 					it.Triage.Type = in.Triage.Type
