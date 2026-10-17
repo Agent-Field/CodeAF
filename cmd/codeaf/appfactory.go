@@ -749,15 +749,14 @@ func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
 
 // ── reads ──────────────────────────────────────────────────────────────────
 
-func (b *appBackend) FactoryMe(ctx context.Context, id string) (api.Me, error) {
+func (b *appBackend) FactoryMe(ctx context.Context, id string) (appwire.FactoryMe, error) {
 	var me api.Me
 	if err := b.factoryHub().read(ctx, id, "/v1/me", appFactorySmall, &me); err != nil {
-		return api.Me{}, err
+		return appwire.FactoryMe{}, err
 	}
-	// The session's id is the factory's handle on a credential. The app has no
-	// use for it, so it does not leave.
-	me.SessionID = ""
-	return me, nil
+	// The session's id is the factory's handle on a credential, so it never
+	// leaves; NewFactoryMe keeps only whether one existed.
+	return appwire.NewFactoryMe(me), nil
 }
 
 func (b *appBackend) FactoryQueue(ctx context.Context, id string) (api.Queue, error) {

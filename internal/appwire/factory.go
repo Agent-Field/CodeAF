@@ -235,6 +235,39 @@ type FactorySignInState struct {
 	Me       *api.Me `json:"me,omitempty"`
 }
 
+// FactoryMe is the public view of factory.me: who this caller is, and nothing
+// the factory keeps about the machine behind it. It is NOT api.Me, which also
+// carries runners, machines, checkouts and the session's id.
+//
+// GitHubSignedIn is true ONLY when the factory reported a session for the
+// caller. A script or host access key can hold a handle and even operator
+// rights without a person having signed in through GitHub, so the handle and
+// the operator flag never stand in for it.
+type FactoryMe struct {
+	Factory       api.Factory `json:"factory"`
+	CodeafVersion string      `json:"codeaf_version"`
+	Contract      int         `json:"contract"`
+	api.Profile
+	Mode           string `json:"mode"`
+	Operator       bool   `json:"operator"`
+	Access         string `json:"access"`
+	GitHubSignedIn bool   `json:"github_signed_in"`
+}
+
+// NewFactoryMe narrows the factory's HTTP identity to the public view. It reads
+// the session id before dropping it, and always yields scopes as an array.
+func NewFactoryMe(me api.Me) FactoryMe {
+	out := FactoryMe{
+		Factory: me.Factory, CodeafVersion: me.CodeafVersion, Contract: me.Contract,
+		Profile: me.Profile, Mode: me.Mode, Operator: me.Operator, Access: me.Access,
+		GitHubSignedIn: me.SessionID != "",
+	}
+	if out.Scopes == nil {
+		out.Scopes = []string{}
+	}
+	return out
+}
+
 // Factory is the engine's half of the factory wire. An [Engine] that is not
 // one refuses factory.* as unknown_method, and does not announce
 // [FeatureFactory]. Implementations answer wire errors ([Error]) for codes the
@@ -244,7 +277,7 @@ type Factory interface {
 	FactoryList(ctx context.Context) (FactoryList, error)
 	FactoryAttach(ctx context.Context, url, token string) (FactoryConnection, error)
 	FactoryDetach(ctx context.Context, id string) error
-	FactoryMe(ctx context.Context, id string) (api.Me, error)
+	FactoryMe(ctx context.Context, id string) (FactoryMe, error)
 	FactoryQueue(ctx context.Context, id string) (api.Queue, error)
 	FactoryJob(ctx context.Context, id string, job int) (api.Job, error)
 	FactoryRepos(ctx context.Context, id string) (FactoryRepos, error)
@@ -414,7 +447,7 @@ var factoryMethods = map[string]method{
 		defer cancel()
 		return done(f.FactoryDetach(ctx, id))
 	}),
-	"factory.me": factoryRead("factory.me", func(f Factory, ctx context.Context, id string) (api.Me, error) {
+	"factory.me": factoryRead("factory.me", func(f Factory, ctx context.Context, id string) (FactoryMe, error) {
 		return f.FactoryMe(ctx, id)
 	}),
 	"factory.queue": factoryRead("factory.queue", func(f Factory, ctx context.Context, id string) (api.Queue, error) {

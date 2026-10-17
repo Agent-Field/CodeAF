@@ -34,7 +34,10 @@ func (f *factoryEngine) FactoryDetach(_ context.Context, id string) error {
 	f.note("detach " + id)
 	return nil
 }
-func (f *factoryEngine) FactoryMe(_ context.Context, id string) (api.Me, error) { return api.Me{}, nil }
+func (f *factoryEngine) FactoryMe(_ context.Context, id string) (FactoryMe, error) {
+	f.note("me " + id)
+	return FactoryMe{Profile: api.Profile{Scopes: []string{}}}, nil
+}
 func (f *factoryEngine) FactoryQueue(_ context.Context, id string) (api.Queue, error) {
 	return api.Queue{}, nil
 }
@@ -312,5 +315,70 @@ func TestFactorySetupSchemaCarriesServerStates(t *testing.T) {
 	want := []string{"github", "repos", "reading", "checkouts", "done"}
 	if !reflect.DeepEqual(state["enum"], want) {
 		t.Fatalf("setup states in schema: got %v, want %v", state["enum"], want)
+	}
+}
+
+// A SCRIPT OR OPERATOR KEY HAS A HANDLE AND NO SESSION: it must not be
+// reported as a person signed in through GitHub.
+func TestFactoryMeSignedInComesOnlyFromTheSession(t *testing.T) {
+	key := NewFactoryMe(api.Me{Profile: api.Profile{Handle: "ops-key"}, Operator: true, Access: "host"})
+	if key.GitHubSignedIn || key.Handle != "ops-key" || !key.Operator {
+		t.Fatalf("an access key read as signed in: %+v", key)
+	}
+	person := NewFactoryMe(api.Me{Profile: api.Profile{Handle: "alice", Scopes: []string{"read:user"}}, SessionID: "session-secret-1"})
+	if !person.GitHubSignedIn || len(person.Scopes) != 1 {
+		t.Fatalf("a verified session read as not signed in: %+v", person)
+	}
+}
+
+// THE REPLY CARRIES NONE OF THE MACHINE, RUNNER OR SESSION FIELDS, AND SCOPES
+// IS ALWAYS AN ARRAY.
+func TestFactoryMeReplyHasNoPrivateFields(t *testing.T) {
+	me := api.Me{
+		Factory: api.Factory{Name: "acme"}, Contract: api.Contract, Mode: api.FactoryTeam,
+		Profile:   api.Profile{Handle: "alice"},
+		SessionID: "session-secret-1",
+		Runners:   []api.Runner{{}}, Machines: []api.Machine{{}},
+		TakesUnassigned: map[string]bool{"checkout-/home/alice/src": true},
+		PollingEvery:    "30s", ServedBy: "runner-host-9",
+	}
+	raw, err := json.Marshal(NewFactoryMe(me))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"factory", "codeaf_version", "contract", "handle", "name", "avatar_url", "scopes", "mode", "operator", "access", "github_signed_in"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("reply lacks %q: %s", key, raw)
+		}
+	}
+	if len(got) != 11 {
+		t.Errorf("reply has %d keys, want 11: %s", len(got), raw)
+	}
+	if string(got["scopes"]) != "[]" {
+		t.Errorf("scopes = %s, want []", got["scopes"])
+	}
+	for _, leak := range []string{"session", "runner", "machine", "takes_unassigned", "served_by", "polling", "/home/", "secret"} {
+		if strings.Contains(string(raw), leak) {
+			t.Errorf("reply leaks %q: %s", leak, raw)
+		}
+	}
+}
+
+// factory.me READS ONCE AND WRITES NOTHING.
+func TestFactoryMeRouteReadsOnce(t *testing.T) {
+	e := &factoryEngine{}
+	out, err := methods["factory.me"].call(e, json.RawMessage(factoryGood["factory.me"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := out.(*FactoryMe); !ok {
+		t.Fatalf("factory.me answered %T", out)
+	}
+	if !reflect.DeepEqual(e.calls, []string{"me f"}) {
+		t.Fatalf("calls = %v", e.calls)
 	}
 }
