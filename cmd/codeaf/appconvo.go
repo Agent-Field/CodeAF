@@ -78,8 +78,6 @@ type appAttach struct {
 // appNotePending is a note to a task not yet read.
 type appNotePending struct {
 	entry appwire.Entry
-	text  string
-	index int
 }
 
 // ── steering ────────────────────────────────────────────────────────────────
@@ -1453,8 +1451,16 @@ func (b *appBackend) RetryTask(id string) error {
 	return nil
 }
 
-// NoteTask sends a note to a task and answers its entry; the note is marked
-// read when the task's next step carries it.
+// NoteTask sends a note to a task and answers its entry; a KEYED note is marked
+// read when the task's page shows its client id read at a step.
+//
+// WHAT HAPPENED TO THE NOTE IS THE ENGINE'S TYPED ANSWER, never a reading of its
+// error ([session.AppTaskReceipt]). Delivered or held waits for its read. A
+// refusal goes back with its code, and only a refusal that the task is not on
+// the engine's list may try the handed-over door, because nothing was done. An
+// unknown outcome is answered `uncertain` with the note's entry and is NEVER
+// sent again by any door: a note has no retry identity, so a second send is a
+// second note.
 func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) {
 	agent, local, ok := appSplitID(id)
 	if !ok {
@@ -1463,10 +1469,6 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 	_, live, err := b.heldLive(agent)
 	if err != nil {
 		return appwire.Entry{}, err
-	}
-	before := 0
-	if view, found, err := live.conn.Conv.AppTask(local); err == nil && found {
-		before = len(view.Notes)
 	}
 	// The same key the engine will keep, so the receipt, the event and the page
 	// never disagree about it.
@@ -1478,21 +1480,55 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 		entry.ToolFacts.Task = id
 	})
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: entry})
-	handed := false
-	if err := b.actOnTask(id, "note", "", text, clientID); err != nil {
-		// A TASK HANDED OVER FROM INSIDE THE WORK runs as a crew of its own and
-		// is not on the engine's task list, so its note goes through the door the
-		// task's own room speaks through. Nothing there says at which step the
-		// note was read, so it stays waiting.
-		if err := b.steerHandedTask(live, local, text, err); err != nil {
-			return appwire.Entry{}, err
+	receipt := b.noteOnTask(live, id, local, text, clientID)
+	switch receipt.Outcome {
+	case session.AppTaskUnknown:
+		b.watchKeyedNote(live, id, local, entry)
+		return appwire.Entry{}, appNoteUncertain(entry, receipt.Reason)
+	case session.AppTaskRefused:
+		// A TASK HANDED OVER FROM INSIDE THE WORK runs as a crew of its own and an
+		// engine that predates the note's own branch does not list it, so its note
+		// goes through the door the task's own room speaks through. That door
+		// keeps no key, so the note's read stays unknown and it is not watched.
+		if err := b.steerHandedTask(live, local, text, appTaskError(errors.New(receipt.Reason))); err != nil {
+			return appwire.Entry{}, appNoteWithEntry(err, entry)
 		}
-		handed = true
+	default:
+		b.watchKeyedNote(live, id, local, entry)
 	}
 	entry.State = appwire.NoteWaiting
 	live.box.Event(appwire.EventNoteChanged, appwire.NoteChanged{Task: id, ID: entry.ID, State: appwire.NoteWaiting, ClientID: clientID})
-	if handed {
-		return entry, nil
+	return entry, nil
+}
+
+// noteOnTask asks the engine for a note's typed outcome, waiting a few seconds
+// for a task the app has already seen start, for [appBackend.actOnTask]'s
+// reason. ONLY A REFUSAL IS ASKED AGAIN: nothing was done, so the second ask is
+// the first note, never a second one.
+func (b *appBackend) noteOnTask(live *appLive, id, local, text, clientID string) session.AppTaskReceipt {
+	intent := session.AppTaskIntent{ID: local, Action: "note", Text: strings.TrimSpace(text), ClientID: clientID}
+	known := false
+	b.locked(func() { _, known = live.tasks[id] })
+	deadline := b.now().Add(appTaskSettleWait)
+	for {
+		receipt := live.conn.Conv.AppTaskActionReceipt(intent)
+		if receipt.Outcome != session.AppTaskRefused || !known || !strings.Contains(receipt.Reason, "no such task") || b.now().After(deadline) {
+			return receipt
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+// watchKeyedNote puts a sent note on its task's read watch, and only a KEYED
+// note on a task with a page: the page's client id is the one fact a read can
+// be joined on, and a note without one is never matched by its position or its
+// words. A task with no page (a quick task) has nothing to watch.
+func (b *appBackend) watchKeyedNote(live *appLive, id, local string, entry appwire.Entry) {
+	if entry.ClientID == "" {
+		return
+	}
+	if _, found, err := live.conn.Conv.AppTask(local); err != nil || !found {
+		return
 	}
 	start := false
 	b.locked(func() {
@@ -1500,12 +1536,31 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 			live.notes = map[string][]appNotePending{}
 		}
 		start = len(live.notes[id]) == 0
-		live.notes[id] = append(live.notes[id], appNotePending{entry: entry, text: text, index: before})
+		live.notes[id] = append(live.notes[id], appNotePending{entry: entry})
 	})
 	if start {
 		guard.Go("app/note-read", func() { b.watchNotes(live, id, local) })
 	}
-	return entry, nil
+}
+
+// appNoteUncertain is the answer for a note whose fate the engine could not
+// type. Its Detail is the note's entry, so the app keeps it under the same
+// client id and looks at the page before doing anything with the words.
+func appNoteUncertain(entry appwire.Entry, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		reason = "it is not known whether that note reached the task"
+	}
+	return &appwire.Error{Code: appwire.CodeUncertain, Message: redact.Secrets(plainWords(reason)), Detail: entry}
+}
+
+// appNoteWithEntry gives an uncertain answer the note's entry as its Detail;
+// every other answer is returned as it is.
+func appNoteWithEntry(err error, entry appwire.Entry) error {
+	var wire *appwire.Error
+	if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain && wire.Detail == nil {
+		return &appwire.Error{Code: wire.Code, Message: wire.Message, Changed: wire.Changed, Detail: entry}
+	}
+	return err
 }
 
 // appTaskSteerer is the door a task's own room sends words through.
@@ -1555,7 +1610,7 @@ func (b *appBackend) watchNotes(live *appLive, id, local string) {
 		var read []appwire.NoteChanged
 		var left []appNotePending
 		for _, note := range pending {
-			if at := appPendingNoteAt(view.Notes, note); at >= 0 && view.Notes[at].ReadAtStep != nil {
+			if at := appKeyedNoteAt(view.Notes, note.entry.ClientID); at >= 0 && view.Notes[at].ReadAtStep != nil {
 				step := *view.Notes[at].ReadAtStep
 				read = append(read, appwire.NoteChanged{Task: id, ID: note.entry.ID, State: appwire.NoteRead, ReadAtStep: &step, ClientID: note.entry.ClientID})
 				continue
@@ -1573,18 +1628,18 @@ func (b *appBackend) watchNotes(live *appLive, id, local string) {
 	}
 }
 
-// appPendingNoteAt is where a sent note sits on the page, or -1 while unknown.
-// A note with a client id is found by that key and only when exactly one note
-// has it: the page also lists the person's steers that were not sent through the
-// app, so a position counted before the send can name a different note. A note
-// with no key remains unknown; position is not evidence of which note was read.
-func appPendingNoteAt(notes []session.AppTaskNote, note appNotePending) int {
-	if note.entry.ClientID == "" {
+// appKeyedNoteAt is where a sent note sits on the page, or -1 while unknown. It
+// is found by its client id and only when exactly one note has it: the page
+// also lists the person's steers that were not sent through the app, so no
+// position counted before the send can name it. A note with no key is never
+// found here; its read stays unknown.
+func appKeyedNoteAt(notes []session.AppTaskNote, clientID string) int {
+	if clientID == "" {
 		return -1
 	}
 	at := -1
 	for i, n := range notes {
-		if n.ClientID != note.entry.ClientID {
+		if n.ClientID != clientID {
 			continue
 		}
 		if at >= 0 {

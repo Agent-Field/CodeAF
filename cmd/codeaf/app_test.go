@@ -161,9 +161,16 @@ type fakeConversation struct {
 	cost         float64
 	// The task, quick task and process doors' scripted answers, and what was
 	// asked of them.
-	appTasks    []session.AppTaskView
-	quickTasks  []session.AppQuickTaskView
-	intents     []session.AppTaskIntent
+	appTasks   []session.AppTaskView
+	quickTasks []session.AppQuickTaskView
+	intents    []session.AppTaskIntent
+	// receipts is what the next note sends answer, in order; with none left a
+	// note is delivered under the key it was sent with.
+	receipts []session.AppTaskReceipt
+	// handed is the words the task's own room door was asked to carry, and
+	// handErr what it answers.
+	handed      []string
+	handErr     error
 	undoChanged []string
 	jobs        []session.JobNotice
 	cancels     []string
@@ -285,6 +292,10 @@ func (f *fakeConversation) AppTask(id string) (session.AppTaskView, bool, error)
 	defer f.mu.Unlock()
 	for _, view := range f.appTasks {
 		if view.ID == id {
+			// The notes are copied under the lock, as a real engine's page is a
+			// fresh read: a test moving a note's read step must not race the
+			// watcher reading the page it was handed.
+			view.Notes = append([]session.AppTaskNote(nil), view.Notes...)
 			return view, true, nil
 		}
 	}
@@ -295,6 +306,23 @@ func (f *fakeConversation) AppTaskAction(intent session.AppTaskIntent) error {
 	defer f.mu.Unlock()
 	f.intents = append(f.intents, intent)
 	return nil
+}
+func (f *fakeConversation) SteerTask(id uint64, text string) (session.SteerReceipt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.handed = append(f.handed, text)
+	return session.SteerReceipt{}, f.handErr
+}
+func (f *fakeConversation) AppTaskActionReceipt(intent session.AppTaskIntent) session.AppTaskReceipt {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.intents = append(f.intents, intent)
+	if len(f.receipts) > 0 {
+		receipt := f.receipts[0]
+		f.receipts = f.receipts[1:]
+		return receipt
+	}
+	return session.AppTaskReceipt{Outcome: session.AppTaskDelivered, ClientID: session.AppNoteClientID(intent.ClientID)}
 }
 func (f *fakeConversation) TaskRouting(id string, changes int) (session.TaskRoutingView, error) {
 	f.mu.Lock()
