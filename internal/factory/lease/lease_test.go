@@ -520,3 +520,42 @@ func TestPriorityMarksDoNotReorderExecution(t *testing.T) {
 		t.Fatalf("priority is a view mark, oldest job must run first: got %+v, %v; want %d", held, err, first.ID)
 	}
 }
+
+// A forge-assigned item with no execution owner is never "unassigned": the
+// EveryRepo and per-repo consent, and a co-assignee, all get ErrNoJob until an
+// explicit Assign gives it a person.
+func TestForgeAssignedItemWithoutAPersonIsNotUnassignedWork(t *testing.T) {
+	f := setup(t)
+	it := f.add(t, factory.Item{Author: "reporter", SourceAssignees: []string{"ann", "sam"}})
+	for _, optIn := range []map[string]bool{{it.Repo: true}, {lease.EveryRepo: true}} {
+		w := worker("laptop", "sam") // a co-assignee
+		w.TakesUnassigned = optIn
+		if _, err := f.desk.Pull(w); !errors.Is(err, lease.ErrNoJob) {
+			t.Fatalf("opt-in %v: %v", optIn, err)
+		}
+	}
+	if err := f.desk.Assign(it.ID, "sam"); err != nil {
+		t.Fatal(err)
+	}
+	if held, err := f.desk.Pull(worker("laptop", "sam")); err != nil || held.Job != it.ID {
+		t.Fatalf("after explicit assign: %+v, %v", held, err)
+	}
+}
+
+func TestKnownNoneAssigneesKeepUnassignedConsent(t *testing.T) {
+	f := setup(t)
+	it := f.add(t, factory.Item{Author: "reporter", SourceAssignees: []string{}})
+	w := worker("laptop", "sam")
+	w.TakesUnassigned = map[string]bool{lease.EveryRepo: true}
+	if held, err := f.desk.Pull(w); err != nil || held.Job != it.ID {
+		t.Fatalf("known none: %+v, %v", held, err)
+	}
+}
+
+func TestSourceAssigneesDoNotBlockAnExplicitOwner(t *testing.T) {
+	f := setup(t)
+	it := f.add(t, factory.Item{Taker: "sam", SourceAssignees: []string{"ann", "bob"}})
+	if held, err := f.desk.Pull(worker("laptop", "sam")); err != nil || held.Job != it.ID {
+		t.Fatalf("explicit taker: %+v, %v", held, err)
+	}
+}

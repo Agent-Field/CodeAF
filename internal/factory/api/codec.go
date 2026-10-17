@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -271,7 +272,8 @@ func ToItem(j Job) factory.Item {
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
 		Assignee: d.Assignee, Starter: d.Starter, Taker: d.Taker,
-		Tier: factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), Synced: d.Synced, Changed: d.ChangedAt,
+		SourceAssignees: slices.Clone(d.Assignees),
+		Tier:            factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), Synced: d.Synced, Changed: d.ChangedAt,
 		Triage: toTriage(d.Triage), Cap: d.Cap,
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
 		PlannedFiles: append([]string(nil), j.PlannedFiles...),
@@ -540,7 +542,8 @@ func fromDesk(it factory.Item) *JobDesk {
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
-		Tier: string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
+		Assignees: slices.Clone(it.SourceAssignees),
+		Tier:      string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
 		Triage: fromTriage(it.Triage), Cap: it.Cap, Policy: mapList(it.Policy, fromClaim),
 		Marked: it.Marked, Labels: it.Labels, Checks: it.Checks, Diff: it.Diff,
 		Adapted: it.Adapted, Notes: it.Notes, Talk: it.Talk, Thread: it.Thread, Heard: it.Heard,

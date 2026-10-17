@@ -22,6 +22,7 @@ package factory
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 )
@@ -419,6 +420,13 @@ type Item struct {
 	Assignee string `json:",omitempty"`
 	Starter  string `json:",omitempty"`
 	Taker    string `json:",omitempty"`
+	// SourceAssignees is the set of logins the forge listed as assignees at
+	// the last read: a FACT about the forge, never the execution owner. nil
+	// means never read (or the forge did not say); non-nil and empty means the
+	// forge said nobody is assigned, and that survives a round trip through
+	// the store. Sorted, lowercase, without duplicates ([NormalizeSourceAssignees]).
+	// Nothing derives Person() from it: two assignees are not one owner.
+	SourceAssignees []string `json:",omitzero"`
 	// OldGate is the item's `ask me at` from before approve steps, read
 	// into its stages when the item is ([Item.UnmarshalJSON]) and never
 	// written: "" on every item in memory.
@@ -535,6 +543,49 @@ func (it Item) Person() string {
 // without treating display prefixes or case as a different person.
 func NormalizeHandle(handle string) string {
 	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(handle), "@"))
+}
+
+// NormalizeSourceAssignees makes a forge's assignee list comparable: handles
+// normalized, duplicates dropped, sorted; a blank entry makes the whole list
+// unknown. nil stays nil (unknown) and a non-nil list stays non-nil even when
+// empty (known none); the input is never modified.
+func NormalizeSourceAssignees(logins []string) []string {
+	if logins == nil {
+		return nil
+	}
+	out := make([]string, 0, len(logins))
+	for _, l := range logins {
+		// A LOGIN-LESS ENTRY MAKES THE WHOLE LIST UNKNOWN: dropping it would
+		// turn a response this reader does not understand into a proven
+		// none, or a partial list into a sole owner.
+		if l = NormalizeHandle(l); l == "" {
+			return nil
+		}
+		if !slices.Contains(out, l) {
+			out = append(out, l)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// SoleSourceAssignee is the one login a forge's assignee list names, and ""
+// for none, for several and for unknown. Several assignees are not one owner,
+// so no member is ever picked on their behalf.
+func SoleSourceAssignee(logins []string) string {
+	if n := NormalizeSourceAssignees(logins); len(n) == 1 {
+		return n[0]
+	}
+	return ""
+}
+
+// SameSourceAssignees compares two lists as presence plus set: unknown equals
+// only unknown, and known-empty differs from unknown.
+func SameSourceAssignees(a, b []string) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return slices.Equal(NormalizeSourceAssignees(a), NormalizeSourceAssignees(b))
 }
 
 // Comment is one thing said on an item, by its author's login.
