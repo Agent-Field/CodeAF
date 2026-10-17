@@ -216,13 +216,14 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 // teams.Update, so finding and making are one read-modify-write.
 func itemTeamIn(f *teams.File, name string, now time.Time) string {
 	parent := factoryParentTeam(f, now)
-	for _, t := range f.Teams {
+	for i, t := range f.Teams {
 		if t.Parent == parent && t.Name == name && !t.Closed() {
+			f.Teams[i].FactoryManaged = true
 			return t.ID
 		}
 	}
 	id := teams.NewID()
-	f.Teams = append(f.Teams, teams.Team{ID: id, Name: name, Parent: parent, Made: now})
+	f.Teams = append(f.Teams, teams.Team{ID: id, Name: name, Parent: parent, Made: now, FactoryManaged: true})
 	return id
 }
 
@@ -230,20 +231,32 @@ func itemTeamIn(f *teams.File, name string, now time.Time) string {
 // under, found in f or made in it now. It is called inside a teams.Update, so
 // finding and making are one read-modify-write of the teams file.
 func factoryParentTeam(f *teams.File, now time.Time) string {
+	// A NAME IS NEVER ORIGIN. The parent is the open team the factory already
+	// stamped; failing that, an unstamped one of the name that holds a team the
+	// factory stamped under it (the legacy Stream.Room record); failing both, a
+	// new dedicated team, even beside an ordinary crew with the same name.
+	root, hasRoot := f.Root()
+	topLevel := func(t teams.Team) bool {
+		return t.Name == factoryTeamName && !t.Closed() && ((t.Parent == "" && !t.Root) || (hasRoot && t.Parent == root.ID))
+	}
 	for _, t := range f.Teams {
-		if t.Name == factoryTeamName && t.Parent == "" && !t.Closed() && !t.Root {
+		if t.FactoryManaged && topLevel(t) {
 			return t.ID
 		}
 	}
-	if root, ok := f.Root(); ok {
-		for _, t := range f.Teams {
-			if t.Name == factoryTeamName && t.Parent == root.ID && !t.Closed() {
+	for i, t := range f.Teams {
+		if !topLevel(t) {
+			continue
+		}
+		for _, c := range f.Teams {
+			if c.Parent == t.ID && c.FactoryManaged {
+				f.Teams[i].FactoryManaged = true
 				return t.ID
 			}
 		}
 	}
 	parent := teams.NewID()
-	f.Teams = append(f.Teams, teams.Team{ID: parent, Name: factoryTeamName, Made: now})
+	f.Teams = append(f.Teams, teams.Team{ID: parent, Name: factoryTeamName, Made: now, FactoryManaged: true})
 	return parent
 }
 

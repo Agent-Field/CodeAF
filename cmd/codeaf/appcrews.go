@@ -201,6 +201,9 @@ type appCrewRead struct {
 
 func (b *appBackend) crewRead() (appCrewRead, error) {
 	profile := b.crewProfile()
+	// ONCE PER PROCESS, BEFORE THE FIRST READ: a team the factory made before
+	// the stamp was kept is marked from its item's recorded Room, never a name.
+	b.factoryRooms.Do(func() { factoryStampStoredRooms(profile, v3FactoryRoot()) })
 	file, err := teamstore.Load(profile)
 	if err != nil {
 		return appCrewRead{}, err
@@ -324,7 +327,7 @@ func appMembershipMoved(before, after map[string][]string) []string {
 func (b *appBackend) crewView(read appCrewRead, t teamstore.Team) appwire.Crew {
 	f := read.file
 	view := appwire.Crew{
-		ID: t.ID, Name: t.Name, Parent: t.Parent, Root: t.Root, Hue: t.Hue, Tier: t.Tier, Tint: appTintOf(t),
+		ID: t.ID, Name: t.Name, Parent: t.Parent, Root: t.Root, FactoryManaged: t.FactoryManaged, Hue: t.Hue, Tier: t.Tier, Tint: appTintOf(t),
 		ClosedWith: t.ClosedWith, Report: t.Report, Members: []appwire.CrewMember{},
 		Settings: appwire.CrewSettings{QuestionsUp: t.Settings.QuestionsUp, CapUSDDay: t.Settings.CapUSDDay, DepthLimit: t.Settings.DepthLimit, SubShare: t.Settings.SubShare, Wake: t.Settings.Wake},
 	}

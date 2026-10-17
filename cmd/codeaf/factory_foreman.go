@@ -180,25 +180,7 @@ func foremanJoinTeam(profileDir, transcript, where string) error {
 	key = filepath.Clean(key)
 	now := time.Now()
 	return teams.Update(profileDir, func(f *teams.File) error {
-		id := ""
-		for _, t := range f.Teams {
-			if t.Name == factoryTeamName && t.Parent == "" && !t.Closed() && !t.Root {
-				id = t.ID
-				break
-			}
-		}
-		if root, ok := f.Root(); ok && id == "" {
-			for _, t := range f.Teams {
-				if t.Name == factoryTeamName && t.Parent == root.ID && !t.Closed() {
-					id = t.ID
-					break
-				}
-			}
-		}
-		if id == "" {
-			id = teams.NewID()
-			f.Teams = append(f.Teams, teams.Team{ID: id, Name: factoryTeamName, Made: now})
-		}
+		id := factoryParentTeam(f, now)
 		return f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: foremanName, Handle: foremanName, JoinedAt: now})
 	})
 }

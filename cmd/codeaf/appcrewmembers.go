@@ -810,6 +810,13 @@ func (b *appBackend) MemberBrief(crew, agent string) (appwire.MemberBrief, error
 
 func (b *appBackend) memberBrief(t teamstore.Team, m teamstore.Member) (appwire.MemberBrief, error) {
 	var out appwire.MemberBrief
+	// A FACTORY STAGE'S BRIEF IS THE ONE THE FACTORY RECORDED when it started
+	// the stage: no manager started it, and nobody revised it.
+	if m.FactoryStage {
+		out.FactoryStage = true
+		out.Text = redact.Secrets(strings.TrimSpace(m.FactoryBrief))
+		return out, nil
+	}
 	e, ok, err := teamstore.StartFor(b.crewProfile(), t, m)
 	if err != nil {
 		return appwire.MemberBrief{}, appEngineError(err)
@@ -862,6 +869,10 @@ func (b *appBackend) MemberBriefSet(crew, agent, text string, base *string) (app
 	t, _, err := b.crewTeam(crew)
 	if err != nil {
 		return appwire.MemberBrief{}, err
+	}
+	// REFUSED BEFORE ANYTHING ELSE, closed team or not: the job owns the brief.
+	if m, ok := b.crewMemberOf(t, agent); ok && m.FactoryStage {
+		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeBadParams, "%s is a factory stage; its brief belongs to the job and cannot be changed here", m.Handle)
 	}
 	if t.Closed() {
 		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeClosed, "%s is closed; its briefs are read-only", t.Name)
