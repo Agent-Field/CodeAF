@@ -147,6 +147,13 @@ func validateSharePlannedRow(r ShareReceipt, planned SharePlannedRow) error {
 // else. In place, the row IS that file. A snapshot names that file as its
 // original, and sits in a folder of its own named for the planned id, under the
 // same file name — so a plan for b.png can never record /elsewhere/b2.png.
+//
+// WHAT THIS DOES NOT CHECK: which folder the copies live under. The receipt
+// does not record the copies root, so a hand-forged receipt could name a copy
+// under some other <root>/<id>/<name>. The producer never builds one — every
+// copy is made under the owner's artifacts/shared ([shareTarget.snapshot]) and
+// opened only under the owner's roots by the existing source authority — and a
+// writer of ~/.codeaf is outside what a receipt defends against.
 func shareRowBindsPath(row *Artifact, planned SharePlannedRow) bool {
 	name := filepath.Base(planned.Path)
 	if row.Title != name || filepath.Base(row.Path) != name {

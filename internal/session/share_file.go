@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -14,6 +15,14 @@ import (
 )
 
 const shareFileBytes = int64(64 << 20)
+
+// The two byte limits a read can meet, each its own refusal so a person is
+// told which one: a file over the per-file cap, or files that together spend
+// the operation's budget. Both are still ErrShareOpInvalid.
+var (
+	errShareFileLarge   = fmt.Errorf("%w: the file is over the share size limit", ErrShareOpInvalid)
+	errShareBudgetSpent = fmt.Errorf("%w: the files together are over the share size limit", ErrShareOpInvalid)
+)
 
 // shareKindFile is the kind of a shared file that is neither media nor named
 // Markdown or Mermaid text: a PDF, an archive, a spreadsheet, anything. Its type
@@ -63,8 +72,13 @@ func readSharedSource(ctx context.Context, roots []string, path string, remainin
 	if err != nil {
 		return sharedRead{}, err
 	}
-	if before.Size() < 0 || before.Size() > shareFileBytes || before.Size() > *remaining {
+	switch {
+	case before.Size() < 0:
 		return sharedRead{}, ErrShareOpInvalid
+	case before.Size() > shareFileBytes:
+		return sharedRead{}, errShareFileLarge
+	case before.Size() > *remaining:
+		return sharedRead{}, errShareBudgetSpent
 	}
 	// Failed attempts consume their advertised bytes too; changing files cannot
 	// multiply a call's read budget by repeatedly failing final verification.
