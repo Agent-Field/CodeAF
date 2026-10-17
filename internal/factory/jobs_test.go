@@ -102,3 +102,17 @@ func TestDismissalAndOverlapAreDerived(t *testing.T) {
 		t.Fatal("canvas timing changed")
 	}
 }
+
+func TestJobSizeAcceptsBothSpellingsAndTakesTheLargest(t *testing.T) {
+	for _, tc := range []struct {
+		labels []string
+		want   string
+	}{
+		{[]string{"size/m"}, "M"}, {[]string{"Size: XS"}, "XS"}, {[]string{"size:s", "size/L"}, "L"},
+		{[]string{"size:xl", "size:m"}, "XL"}, {[]string{"size:huge", "size:s"}, "S"}, {[]string{"size"}, ""},
+	} {
+		if got := JobSize(Item{Labels: tc.labels}); got != tc.want {
+			t.Errorf("%v => %q, want %q", tc.labels, got, tc.want)
+		}
+	}
+}

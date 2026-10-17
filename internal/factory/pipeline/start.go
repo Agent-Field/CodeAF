@@ -203,27 +203,10 @@ func prLetter(lines int, bounds [2]int) string {
 	}
 }
 
+// labelSize is the explicit size label, resolved by the one resolver intake
+// and the wire use, so a size label means the same thing everywhere.
 func labelSize(labels []string) (string, bool) {
-	best := 0
-	got := ""
-	for _, label := range labels {
-		rest, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(label)), "size:")
-		if !ok {
-			rest, ok = strings.CutPrefix(strings.ToLower(strings.TrimSpace(label)), "size/")
-		}
-		if !ok {
-			continue
-		}
-		letter, good := normSize(rest)
-		if !good {
-			continue
-		}
-		rank := sizeRank(letter)
-		if rank > best {
-			best = rank
-			got = letter
-		}
-	}
+	got := factory.JobSize(factory.Item{Labels: labels})
 	return got, got != ""
 }
 

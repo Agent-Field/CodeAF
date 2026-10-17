@@ -56,3 +56,27 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 	}
 	return Decision{Start: true}
 }
+
+// DryItems is the settings sentence for the backlog, decided by [File.DecideJob]
+// itself: the same explicit labels and budget ceiling real intake applies, never
+// the triage guess. pathsOf supplies the paths intake would hand DecideJob, so a
+// preview and a start read the same facts. It reads and writes nothing.
+func (f File) DryItems(items []factory.Item, pathsOf func(factory.Item) []string) DryRun {
+	d := DryRun{WouldStart: []int{}, WouldAsk: []int{}, WouldWait: []Wait{}, Why: map[int][]string{}}
+	for _, it := range items {
+		var paths []string
+		if pathsOf != nil {
+			paths = pathsOf(it)
+		}
+		switch dec := f.DecideJob(it, paths); {
+		case dec.Start:
+			d.WouldStart = append(d.WouldStart, it.ID)
+		case dec.Ask:
+			d.WouldAsk = append(d.WouldAsk, it.ID)
+			d.Why[it.ID] = append([]string(nil), dec.Reasons...)
+		default:
+			d.WouldWait = append(d.WouldWait, Wait{ID: it.ID, Reason: waitReason(f.Start.Labels)})
+		}
+	}
+	return d
+}
