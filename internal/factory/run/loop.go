@@ -666,15 +666,7 @@ func (lp *floorLoop) back(c *loopCtl, i, prev int, words string) bool {
 	now := lp.r.now()
 	name := ""
 	err := lp.write(c, func(it *factory.Item) error {
-		for _, k := range []int{prev, i} {
-			setPhaseState(&it.Stream.Phases[k], factory.PhasePending, now)
-			it.Stream.Phases[k].Left = 0
-		}
-		ph := &it.Stream.Phases[prev]
-		name = ph.Name
-		ph.Round = max(ph.Round, 1) + 1
-		it.Stream.Cur = prev
-		loopSay(it, now, "said", backLine(name, words))
+		name = rewindToStep(it, i, prev, words, now)
 		return nil
 	})
 	if err != nil {
@@ -684,6 +676,22 @@ func (lp *floorLoop) back(c *loopCtl, i, prev int, words string) bool {
 	lp.emit(c.id, name, EventRound, backLine(name, words))
 	lp.tell(c.id, backLine(name, words))
 	return true
+}
+
+// rewindToStep is the stored half of back, shared with the door that answers a
+// no when no runner holds the job (person.go): step prev and the approve step
+// at i wait again, prev in a new round, and the run's current step is prev.
+// It answers prev's name.
+func rewindToStep(it *factory.Item, i, prev int, words string, now time.Time) string {
+	for _, k := range []int{prev, i} {
+		setPhaseState(&it.Stream.Phases[k], factory.PhasePending, now)
+		it.Stream.Phases[k].Left = 0
+	}
+	ph := &it.Stream.Phases[prev]
+	ph.Round = max(ph.Round, 1) + 1
+	it.Stream.Cur = prev
+	loopSay(it, now, "said", backLine(ph.Name, words))
+	return ph.Name
 }
 
 // backLine is `sent back to plan: use the other file`, or `sent back to plan`.
