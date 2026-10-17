@@ -141,6 +141,11 @@ func TestUndoWithdrawsAPressedMerge(t *testing.T) {
 	f, it := mergeFixture(t, nil)
 	path := fmt.Sprintf("/v1/jobs/%d", it.ID)
 	f.request(t, "POST", path+"/merge", "operator-secret", nil, 200, nil)
+	var pressed api.Job
+	f.request(t, "GET", path, "operator-secret", nil, 200, &pressed)
+	if !pressed.Can.Undo {
+		t.Fatal("can.undo is false inside a pressed merge's window")
+	}
 	f.request(t, "POST", path+"/undo", "operator-secret", nil, 200, nil)
 	f.now = f.now.Add(time.Minute)
 	f.request(t, "GET", path, "operator-secret", nil, 200, nil)
