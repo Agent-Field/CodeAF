@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -84,5 +85,21 @@ func TestAnOlderHostIsRefusedBeforeAMarkedMessageCrossesTheWire(t *testing.T) {
 	}
 	if !messageMarksKnown(&markedAgent{fakeAgent: &fakeAgent{}}) || messageMarksKnown(&fakeAgent{}) {
 		t.Fatal("the welcome does not distinguish engines that keep a mark")
+	}
+}
+
+// THE CREATION TEAM CROSSES THE WIRE ON THE SUBMIT CALL, and an engine given
+// none is handed none.
+func TestTheCreationTeamCrossesTheWireOnSubmit(t *testing.T) {
+	marked := &markedAgent{fakeAgent: &fakeAgent{model: "m"}}
+	s := &server{out: io.Discard, session: NewSession(&Engine{Agent: marked}, false)}
+	if _, err := s.invoke(Frame{Kind: "call", ID: 1, Method: MethodSubmit, Payload: mustJSON(argsOf(session.Submission{Text: "hi", CreationTeam: "aaaaaaaaaaaa"}))}); err != nil {
+		t.Fatal(err)
+	}
+	if got := marked.submissions; len(got) != 1 || got[0].CreationTeam != "aaaaaaaaaaaa" {
+		t.Fatalf("the door was handed %+v", got)
+	}
+	if raw := mustJSON(argsOf(session.Submission{Text: "hi"})); strings.Contains(string(raw), "creationTeam") {
+		t.Fatalf("an unstamped call carried the field: %s", raw)
 	}
 }

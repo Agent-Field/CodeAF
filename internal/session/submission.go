@@ -93,6 +93,11 @@ type Submission struct {
 	// makes the message a composed one ([Agent.SubmitComposed]).
 	Media      []SubmissionMedia
 	Annotation *Annotation
+	// CreationTeam is the exact team id a crew-message door stamped on this
+	// accepted turn, or empty for an ordinary conversation. It is never
+	// inferred from membership. The automation create path records it on
+	// [automation.Origin.Team]; the model is sent nothing of it.
+	CreationTeam string
 }
 
 // ── what the door read to write the message ─────────────────────────────────
@@ -212,7 +217,7 @@ func (a *Agent) SubmitMessage(ctx context.Context, message Submission) (<-chan E
 	if err != nil {
 		return nil, err
 	}
-	return a.submitText(ctx, message.Text, mark)
+	return a.submitText(ctx, message.Text, mark, strings.TrimSpace(message.CreationTeam))
 }
 
 // mark is the submission's presentation mark, checked and copied, and nil when

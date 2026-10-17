@@ -2684,7 +2684,10 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if hasMark && !marked {
 			return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
 		}
-		if hasMark {
+		// A creation-team stamp alone is no mark a door must keep, but a door that
+		// can take it is handed it; one that cannot runs the words, and the team
+		// stays unknown there.
+		if hasMark || (marked && args.CreationTeam != "") {
 			events, err = door.SubmitMessage(context.Background(), args.submission())
 		} else {
 			events, err = agent.Submit(context.Background(), args.Text)

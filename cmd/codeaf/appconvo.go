@@ -308,7 +308,7 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	// A QUEUED MARK IS ONE THE HOST WILL KEEP, or nothing is queued: the
 	// refusal comes now, with the draft still the person's, and never as a
 	// message that failed when the turn ended.
-	if shown != nil && !appKeepsQueuedMarks(live.conn.Conv) {
+	if shown != nil && !shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads; send it when the turn ends")
 	}
 	var queued []appwire.Queued
@@ -1052,11 +1052,14 @@ func appSubmission(text string, shown *appSending) session.Submission {
 		return session.Submission{Text: text}
 	}
 	said := shown.text
-	submission := session.Submission{Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads, Queued: shown.queued}
+	submission := session.Submission{
+		Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads,
+		Queued: shown.queued, CreationTeam: strings.TrimSpace(shown.creationTeam),
+	}
 	if shown.composed != nil {
 		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
 	}
-	if shown.queued && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
+	if (shown.queued || shown.creationTeam != "") && shown.text == text && len(shown.described) == 0 && len(shown.reads) == 0 && shown.composed == nil {
 		submission.Said = nil
 	}
 	return submission
@@ -1243,6 +1246,12 @@ func (b *appBackend) SendMessage(agent string, message appwire.AgentMessage) (ui
 	return turn, err
 }
 
+// sendMessageForTeam is [appBackend.sendMessage] with the exact team id a
+// CrewMessage acceptance stamps on the turn. Ordinary sends leave it empty.
+func (b *appBackend) sendMessageForTeam(agent string, message appwire.AgentMessage, creationTeam string) (uint64, *appSending, error) {
+	return b.sendMessageFor(agent, message, creationTeam)
+}
+
 // sendMessage is [appBackend.SendMessage], answering what the person's entry
 // shows, nil when that is the words sent.
 //
@@ -1259,6 +1268,12 @@ func (b *appBackend) SendMessage(agent string, message appwire.AgentMessage) (ui
 // drop, so two sends cannot both carry one chip into two turns, and each turn
 // carries exactly the snapshot it read.
 func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (uint64, *appSending, error) {
+	return b.sendMessageFor(agent, message, "")
+}
+
+// sendMessageFor is [appBackend.sendMessage] carrying creationTeam, the exact
+// id CrewMessage stamped, on the submission it builds. It is never inferred.
+func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, creationTeam string) (uint64, *appSending, error) {
 	ids := message.Attachments
 	if err := appwire.CheckAttachIDs(ids); err != nil {
 		return 0, nil, err
@@ -1316,6 +1331,12 @@ func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (ui
 		}
 		shown.composed = composed
 	}
+	if creationTeam != "" {
+		if shown == nil {
+			shown = &appSending{text: said, reads: reads}
+		}
+		shown.creationTeam = creationTeam
+	}
 	attempted := b.referenceAttempt(kept)
 	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
 	if err != nil {
@@ -1352,6 +1373,18 @@ type appSending struct {
 	// answered once it kept it (appsubmission.go); nil on a message of words.
 	composed *appComposed
 	queued   bool
+	// creationTeam is the exact team id CrewMessage stamped on this accepted
+	// turn. Empty for ordinary sends. Forwarded on [session.Submission]; never
+	// inferred from membership when reopening or flushing the queue.
+	creationTeam string
+}
+
+// marksNothing is whether the only thing this sending carries beyond its words
+// is the creation-team stamp. A host that cannot keep a message's marks can
+// still be sent such a message: it drops the stamp and records the team as
+// unknown, which is true.
+func (s *appSending) marksNothing(text string) bool {
+	return s != nil && s.text == text && !s.queued && len(s.described) == 0 && len(s.reads) == 0 && s.composed == nil && len(s.attachments) == 0
 }
 
 // ── tasks as conversations ──────────────────────────────────────────────────
