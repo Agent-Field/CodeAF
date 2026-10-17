@@ -951,6 +951,8 @@ Answering anywhere (dock, task, crew, Inbox) resolves it everywhere within 1 s.
 then the task's title when the ask is a task's. The crew it works in is one it is an ordinary
 member of before one it manages, and the root team last. Any other agent is named by its title.
 
+A worker may report an optional logical `room` id for its job crew. The factory records the first valid id; the same id is idempotent and a replacement is refused. Workers send this metadata separately so an older server rejecting the unknown field cannot discard step, log, or cost reports. A worker on another computer can create a local crew with the same logical id; an unrelated local id collision is never adopted. Legacy jobs missing a room can recover it only from a unique team holding the recorded stage transcripts and manager conversation, with that conversation actually leading the team. Ambiguous or incomplete evidence remains unknown.
+
 Factory-owned crews carry additive `factory_managed: true` when the factory has recorded their origin. A crew's name alone establishes no origin. Older engines omit the flag.
 
 A factory-stage membership carries additive `factory_stage: true` in `members.brief`. When recorded, `text` is its actual opening brief, with secrets redacted; a resume's carry-on note does not replace it. No manager, edit date, revision, or role precedence is inferred. Real brief edits retained from before stage ownership was tracked remain visible with their recorded history. The brief belongs to the job: `members.brief.set` refuses with `bad_params` before writing, including after the crew closes. An empty stage brief remains read-only. Ordinary member briefs retain their existing behavior.
