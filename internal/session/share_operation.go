@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,15 +37,17 @@ import (
 )
 
 const (
-	shareOpVersion  = 1
-	shareOpIDMin    = 1
-	shareOpIDMax    = 128
-	shareOpPathsMax = 8
-	shareOpPathMax  = 4096
-	shareOpSlotCap  = 4
-	shareOpLockName = "lock"
-	shareOpReceipt  = "receipt"
-	shareOpDirName  = "share-ops"
+	shareOpVersion    = 1
+	shareOpIDMin      = 1
+	shareOpIDMax      = 128
+	shareOpPathsMax   = 8
+	shareOpPathMax    = 4096
+	shareOpSlotCap    = 4
+	shareOpReceiptMax = 128 << 10
+	shareOpTimeout    = 10 * time.Second
+	shareOpLockName   = "lock"
+	shareOpReceipt    = "receipt"
+	shareOpDirName    = "share-ops"
 )
 
 // Share operation settlement words. Pending is durable before any index append.
@@ -117,6 +120,7 @@ type ShareClaim struct {
 	lock        *os.File
 	releaseSlot func()
 	once        sync.Once
+	deadline    time.Time
 }
 
 // ValidateShareOperationID checks the opaque intent key: 1..128 bytes, exact
@@ -173,17 +177,18 @@ func NormalizeSharePayload(paths []string) (normalised []string, digest string, 
 // and answers a claim whose Outcome is admitted, replay, conflict, busy, or
 // invalid. On admitted/replay the lock stays held until Release or Settle.
 func AdmitShareOperation(root, session, operationID string, paths []string, prov ShareProvenance, deadline time.Time) (*ShareClaim, error) {
-	if strings.TrimSpace(root) == "" || strings.TrimSpace(session) == "" {
+	if strings.TrimSpace(root) == "" || ValidateShareOperationID(session) != nil {
 		return &ShareClaim{Outcome: ShareClaimInvalid}, ErrShareOpInvalid
 	}
 	if err := ValidateShareOperationID(operationID); err != nil {
 		return &ShareClaim{Outcome: ShareClaimInvalid}, err
 	}
+	deadline = boundedShareDeadline(deadline)
 	normalised, digest, err := NormalizeSharePayload(paths)
 	if err != nil {
 		return &ShareClaim{Outcome: ShareClaimInvalid}, err
 	}
-	if !deadline.IsZero() && time.Now().After(deadline) {
+	if time.Now().After(deadline) {
 		return &ShareClaim{Outcome: ShareClaimBusy}, ErrShareOpBusy
 	}
 	select {
@@ -204,7 +209,15 @@ func AdmitShareOperation(root, session, operationID string, paths []string, prov
 		releaseSlot()
 		return &ShareClaim{Outcome: ShareClaimBusy}, err
 	}
-	lock, err := os.OpenFile(filepath.Join(dir, shareOpLockName), os.O_CREATE|os.O_RDWR, 0o600)
+	if err := syncShareOpDir(filepath.Dir(dir)); err != nil {
+		releaseSlot()
+		return &ShareClaim{Outcome: ShareClaimBusy}, err
+	}
+	if err := syncShareOpDir(root); err != nil {
+		releaseSlot()
+		return &ShareClaim{Outcome: ShareClaimBusy}, err
+	}
+	lock, err := openShareLock(filepath.Join(dir, shareOpLockName))
 	if err != nil {
 		releaseSlot()
 		return &ShareClaim{Outcome: ShareClaimBusy}, err
@@ -217,7 +230,7 @@ func AdmitShareOperation(root, session, operationID string, paths []string, prov
 		}
 		return &ShareClaim{Outcome: ShareClaimBusy}, err
 	}
-	if !deadline.IsZero() && time.Now().After(deadline) {
+	if time.Now().After(deadline) {
 		_ = filelock.Unlock(lock)
 		_ = lock.Close()
 		releaseSlot()
@@ -225,9 +238,12 @@ func AdmitShareOperation(root, session, operationID string, paths []string, prov
 	}
 
 	existing, readErr := readShareReceipt(dir)
+	if readErr == nil && (existing.Session != session || existing.OperationID != operationID) {
+		readErr = ErrShareOpInvalid
+	}
 	switch {
 	case readErr == nil:
-		claim := &ShareClaim{dir: dir, lock: lock, releaseSlot: releaseSlot, Receipt: existing}
+		claim := &ShareClaim{dir: dir, lock: lock, releaseSlot: releaseSlot, Receipt: existing, deadline: deadline}
 		if existing.PayloadDigest != digest {
 			claim.Outcome = ShareClaimConflict
 			claim.Release()
@@ -273,6 +289,7 @@ func AdmitShareOperation(root, session, operationID string, paths []string, prov
 		dir:         dir,
 		lock:        lock,
 		releaseSlot: releaseSlot,
+		deadline:    deadline,
 	}, nil
 }
 
@@ -288,9 +305,13 @@ func (c *ShareClaim) Settle(status string, recordedIDs []string) error {
 		return fmt.Errorf("%w: unknown share status %q", ErrShareOpInvalid, status)
 	}
 	receipt := c.Receipt
-	if c.Outcome == ShareClaimReplay && receipt.Status != ShareOpPending {
+	if c.Outcome == ShareClaimReplay && (receipt.Status == ShareOpAccepted || receipt.Status == ShareOpRefused) {
 		c.Release()
 		return nil
+	}
+	if time.Now().After(c.deadline) {
+		c.Release()
+		return ErrShareOpBusy
 	}
 	receipt.Status = status
 	if recordedIDs != nil {
@@ -331,10 +352,14 @@ func LoadShareReceipt(root, session, operationID string) (ShareReceipt, error) {
 	if err := ValidateShareOperationID(operationID); err != nil {
 		return ShareReceipt{}, err
 	}
-	if strings.TrimSpace(root) == "" || strings.TrimSpace(session) == "" {
+	if strings.TrimSpace(root) == "" || ValidateShareOperationID(session) != nil {
 		return ShareReceipt{}, ErrShareOpInvalid
 	}
-	return readShareReceipt(shareOpDir(root, session, operationID))
+	receipt, err := readShareReceipt(shareOpDir(root, session, operationID))
+	if err == nil && (receipt.Session != session || receipt.OperationID != operationID) {
+		return ShareReceipt{}, ErrShareOpInvalid
+	}
+	return receipt, err
 }
 
 // ShareOpPaths returns the engine-owned lock and receipt paths. They are
@@ -354,19 +379,34 @@ func shareOpDir(root, session, operationID string) string {
 }
 
 func readShareReceipt(dir string) (ShareReceipt, error) {
-	raw, err := os.ReadFile(filepath.Join(dir, shareOpReceipt))
+	file, err := openRegularNoFollow(filepath.Join(dir, shareOpReceipt))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ShareReceipt{}, ErrShareOpMissing
 		}
 		return ShareReceipt{}, err
 	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return ShareReceipt{}, err
+	}
+	if info.Size() > shareOpReceiptMax {
+		return ShareReceipt{}, ErrShareOpInvalid
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, shareOpReceiptMax+1))
+	if err != nil {
+		return ShareReceipt{}, err
+	}
+	if len(raw) > shareOpReceiptMax {
+		return ShareReceipt{}, ErrShareOpInvalid
+	}
 	var receipt ShareReceipt
 	if err := json.Unmarshal(raw, &receipt); err != nil {
 		return ShareReceipt{}, err
 	}
-	if receipt.OperationID == "" || receipt.PayloadDigest == "" || len(receipt.Planned) == 0 {
-		return ShareReceipt{}, fmt.Errorf("%w: receipt is incomplete", ErrShareOpInvalid)
+	if err := validateShareReceipt(receipt); err != nil {
+		return ShareReceipt{}, err
 	}
 	return receipt, nil
 }
@@ -374,9 +414,15 @@ func readShareReceipt(dir string) (ShareReceipt, error) {
 // writeShareReceipt atomically replaces the receipt under dir. The lock file in
 // the same directory is never this write's target.
 func writeShareReceipt(dir string, receipt ShareReceipt) error {
+	if err := validateShareReceipt(receipt); err != nil {
+		return err
+	}
 	raw, err := json.Marshal(receipt)
 	if err != nil {
 		return err
+	}
+	if len(raw) > shareOpReceiptMax {
+		return ErrShareOpInvalid
 	}
 	tmp, err := os.CreateTemp(dir, ".receipt-*")
 	if err != nil {
@@ -410,4 +456,14 @@ func syncShareOpDir(dir string) error {
 		return err
 	}
 	return nil
+}
+
+// Create-exclusive refuses a link at a new lock path. Existing locks are
+// opened regular/no-follow/nonblocking; flock does not require writing them.
+func openShareLock(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return openRegularNoFollow(path)
+	}
+	return file, err
 }
