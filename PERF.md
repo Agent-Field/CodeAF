@@ -2982,3 +2982,20 @@ copy; context-canceled waiters release only their reservation. A holder retains
 its reservation until copying, recording and any rollback have actually settled.
 The per-key gate is removed when its last reservation ends; no historical keys
 are retained. `deliverable_keep_gate_test.go` pins these bounds and cancellation.
+
+## Process actions and stop-all
+
+`processes.actions`, `processes.stop_all` and `processes.log_target`
+(`internal/appwire/processactions.go`) are bounded by these constants.
+A change to any of them changes this section in the same commit.
+
+| Constant | Value | What it bounds |
+| --- | --- | --- |
+| `appwire.ProcessStopAllCeiling` | 10 s | The ONE deadline of a `processes.stop_all`, from the moment it is asked. Jobs and services run at once beneath it, and both are joined before the answer. |
+| `session.ProcessStopAllWait` | 5 s (2 × 2 s grace + 1 s) | The shared deadline of every job a stop-all signals. They are stopped concurrently, never 4 s each in turn. |
+| `session.ProcessStopAllMax` | 256 | Running jobs one stop-all signals. More are counted in `unenumerated` and left running. |
+| `session.ProcessStopAllScan` | 4096 | Registry entries and live marks one stop-all examines. A scan cut short answers `remaining_unknown`. |
+| `appwire.ProcessStopAllIDs` | 256 | Each id list in a receipt. A cut list answers `remaining_unknown` and keeps its counts whole. |
+| `service.LogCapBytes` | 2 MiB | A service's live log, cut back only while a codeaf runs. It is stated as `cap_bytes`. |
+
+The services of a stop-all are the agent's own (`StopOwnerWait`). They are bounded by the supervisor's 64-service store, and they wait out each service's 5 s stop grace under the 10 s ceiling. `processes.actions` and `processes.log_target` share `processes.page`'s 4-read admission and its 2 s deadline.

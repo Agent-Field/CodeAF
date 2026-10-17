@@ -207,6 +207,10 @@ func syncDir(dir string) error {
 	return nil
 }
 
+// LogCapBytes is the size a service's live log is cut back to while a codeaf
+// runs ([rotateLog]); a reader states it rather than promising more.
+const LogCapBytes = logChunk
+
 func (s *Supervisor) logPath(id string) string {
 	return filepath.Join(s.dir, logsDir, id+".log")
 }

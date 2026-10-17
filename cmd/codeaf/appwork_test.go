@@ -256,9 +256,10 @@ func TestAppProcessesOutputFollowStopAndSleep(t *testing.T) {
 	if err := backend.StopProcess(id); err != nil {
 		t.Fatal(err)
 	}
-	rerun, err := backend.RerunProcess(id)
-	if err != nil || !strings.HasPrefix(rerun.ID, agent.ID+":p103") || rerun.State != appwire.ProcessRunning {
-		t.Fatalf("rerun = %+v, %v", rerun, err)
+	// AN ENGINE WITHOUT THE STAMPED DOOR IS NEVER ASKED TO RUN ANYTHING AGAIN
+	// (appprocessactions.go): it cannot check the run's ending or folder.
+	if _, err := backend.RerunProcess(id); !isCode(err, appwire.CodeUnknownMethod) {
+		t.Fatalf("rerun on an engine without the stamped door = %v", err)
 	}
 
 	if err := backend.Sleep(); err != nil {

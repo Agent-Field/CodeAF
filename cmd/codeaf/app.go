@@ -344,6 +344,9 @@ type appBackend struct {
 	orderStore appOrderStore
 	// stopPhases puts the engine's phase news back the way it was.
 	stopPhases func()
+	// stoppingAll is the agents a processes.stop_all is in flight for; a
+	// second for the same agent is answered busy (appprocessactions.go).
+	stoppingAll map[string]bool
 	// profileDir is the profile whose teams are the crews, and the process's
 	// own when empty; layer is the crews' app layer and crewRun the watch over
 	// them, started by the first crew call.

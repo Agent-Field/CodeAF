@@ -1380,6 +1380,12 @@ func (b *appBackend) StopProcess(id string) error {
 	if err != nil {
 		return err
 	}
+	// THE STAMPED DOOR FIRST: the engine finds the run again by number AND
+	// start and says what the stop proved. Only an engine too old to have it
+	// is stopped by number, after this app checked the start itself.
+	if served, err := b.stampedStop(live, id, job); served {
+		return err
+	}
 	if _, err := live.conn.Conv.Cancel("job:" + strconv.Itoa(job)); err != nil {
 		return appEngineError(err)
 	}
@@ -1400,11 +1406,9 @@ func (b *appBackend) RerunProcess(id string) (appwire.Process, error) {
 	if err != nil {
 		return appwire.Process{}, err
 	}
-	again, err := live.conn.Conv.RerunProcess(job)
-	if err != nil {
-		return appwire.Process{}, appEngineError(err)
-	}
-	return appProcessOf(agent, again), nil
+	// ONLY THE STAMPED DOOR RUNS ANYTHING AGAIN. An engine too old to check
+	// the run's ending, folder and starter is refused, never asked by number.
+	return b.stampedRerun(agent, live, id, job)
 }
 
 // ── running long ────────────────────────────────────────────────────────────
