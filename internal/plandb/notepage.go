@@ -20,16 +20,21 @@ const (
 	// have kept to it, so the read enforces it again.
 	NotePageBodyMax = 32 << 10
 	// NotePageMetaMax is the largest agent, project, chat or client key a page
-	// will read. NotePageFixedMax is the largest id, task id, timestamp or
-	// sender: all of them are short by construction.
+	// will read. NotePageFixedMax is the largest note id, timestamp or sender:
+	// all of them are short by construction. It is also the length up to which
+	// a task id or cursor is taken to the database without a second look.
 	NotePageMetaMax  = 4 << 10
 	NotePageFixedMax = 64
-	// NotePageRowMax is the largest row a page can admit, the sum of every
-	// field's own ceiling. A row within its field ceilings is therefore always
-	// within this, and a byte budget of at least this much always has room for
-	// one row, which is what lets a page make progress without exempting any
-	// row from the budget.
-	NotePageRowMax = NotePageBodyMax + 4*NotePageMetaMax + 5*NotePageFixedMax
+	// NotePageRowMax is the largest row a page can admit, the sum of the
+	// ceilings of the eight columns in noteCols: the body, four meta fields
+	// (agent, project, chat, client key) and three fixed ones (id, timestamp,
+	// sender). The task id is not among them because it is never read back (see
+	// noteCols). A test holds this figure to that sum, because a constant
+	// cannot add up an array. A row within its field ceilings is therefore
+	// always within this, and a byte budget of at least this much always has
+	// room for one row, which is what lets a page make progress without
+	// exempting any row from the budget.
+	NotePageRowMax = NotePageBodyMax + 4*NotePageMetaMax + 3*NotePageFixedMax
 	// NotePageBytesMax is the most note text one page may carry.
 	NotePageBytesMax = 256 << 10
 	// NotePageScanMax is the most rows one call may EXAMINE when a Skip
@@ -41,11 +46,36 @@ const (
 )
 
 // ErrNoteCursor is what a cursor that cannot be honoured answers: no such note,
-// a note of another task, an id that names more than one row, or one longer
-// than any id can be. IT IS NEVER AN EMPTY PAGE. A cursor that silently read
+// a note of another task, or one longer than any id can be (an id that names
+// more than one row is [ErrDuplicateNoteID], which matches this too). IT IS
+// NEVER AN EMPTY PAGE. A cursor that silently read
 // as "nothing after it" would end a delivery loop as though the inbox were
 // empty, which is the failure this whole primitive exists to remove.
 var ErrNoteCursor = errors.New("note cursor is not a note of this task")
+
+// ErrDuplicateNoteID is what a cursor answers when its id names more than one
+// row, whichever tasks they belong to. The notes table does not make ids
+// unique and the writer mints each one once, so this is a damaged store, and
+// it says so rather than claiming the note is another task's. A page may END on
+// such an id, because a page hands out rows by position; the call that starts
+// from it then answers this every time until the store is repaired. IT CANNOT
+// BE STEPPED OVER and is never a skip or an empty page. It matches
+// ErrNoteCursor under errors.Is, so a caller that only tells good cursors from
+// bad ones needs nothing new.
+var ErrDuplicateNoteID error = duplicateNoteID{}
+
+type duplicateNoteID struct{}
+
+func (duplicateNoteID) Error() string { return "note cursor names more than one note" }
+func (duplicateNoteID) Is(target error) bool { return target == ErrNoteCursor }
+
+// ErrNoteBusy is what a page answers when the store's lock is held by anything
+// else in this process at the moment of asking: a writer, another reader, or
+// Close. IT IS NOT AN EMPTY PAGE AND IT DOES NOT WAIT: no page comes back, so
+// the caller's cursor has not moved, and the caller asks again from the same
+// After on its own schedule. A blocking wait here would sit behind a writer's
+// whole load and save of the store, which no context can interrupt.
+var ErrNoteBusy = errors.New("plan store is in use; ask for the note page again")
 
 // ErrTaskNotFound is what a page of a task the database does not hold answers.
 // It is read from the same snapshot as the notes, so a task deleted a moment
@@ -79,6 +109,8 @@ func (e *NoteTooLargeError) Is(target error) bool { return target == ErrNoteTooL
 
 // NotePageAsk is one bounded read of one task's notes, oldest first.
 type NotePageAsk struct {
+	// TaskID names the task exactly as the store keeps it, the way Notes
+	// matches it: no "t-" is stripped and nothing is trimmed.
 	TaskID string
 	// After is the exclusive cursor: the id of a note of this task, as a
 	// previous page returned it in Cursor. "" reads from the first note. THE
@@ -90,7 +122,8 @@ type NotePageAsk struct {
 	// above the ceiling is an error, not a default.
 	Limit int
 	// MaxBytes is the byte budget of the page, counted as the stored length of
-	// every field of every note: 0 for NotePageBytesMax, otherwise
+	// every field the page reads from the database for every note (the task id
+	// is the caller's own and is not counted): 0 for NotePageBytesMax, otherwise
 	// NotePageRowMax..NotePageBytesMax. A note is added only if the page stays
 	// within it.
 	MaxBytes int
@@ -99,7 +132,9 @@ type NotePageAsk struct {
 	// batch without a list of ids in the SQL. It runs AFTER the database read
 	// has finished and the store's lock is released, on rows already in
 	// memory, so it may call the store. A skipped note still moves Cursor. It
-	// runs at most ScanMax times per call. ITS OWN COST IS THE CALLER'S: the
+	// runs at most ScanMax times per call, and it may run on the one row after
+	// a full page: false offers that row again next call, true moves the cursor
+	// past it, which is right because a skipped row is never delivered. ITS OWN COST IS THE CALLER'S: the
 	// page bounds how often it runs, not how long it takes, and the caller's
 	// context is checked after it.
 	Skip func(Note) bool
@@ -133,16 +168,19 @@ type noteCol struct {
 }
 
 // The columns, in the order the query returns them. The indexes below name
-// the ones assembled into a Note.
+// the ones assembled into a Note. task_id IS NOT READ: the query's own
+// task_id = ? proves the stored value is the caller's TaskID byte for byte, so
+// the note carries the caller's string. That is also why a legal root id longer
+// than NotePageFixedMax (the root is stored as given, see validID) is not
+// refused as an oversized field.
 var noteCols = [...]noteCol{
-	{"id", NotePageFixedMax}, {"task_id", NotePageFixedMax}, {"agent", NotePageMetaMax},
+	{"id", NotePageFixedMax}, {"agent", NotePageMetaMax},
 	{"body", NotePageBodyMax}, {"at", NotePageFixedMax}, {"project", NotePageMetaMax},
 	{"chat", NotePageMetaMax}, {`"from"`, NotePageFixedMax}, {"client_id", NotePageMetaMax},
 }
 
 const (
 	colID = iota
-	colTask
 	colAgent
 	colBody
 	colAt
@@ -160,9 +198,12 @@ type noteRow struct {
 
 // noteSelect is the select list: for every column its stored length in bytes
 // and then its value ONLY IF that length is within the column's ceiling. THE
-// LENGTH IS MEASURED IN THE QUERY, BEFORE THE DRIVER COPIES ANYTHING: a value
-// over its ceiling comes back as NULL, so the Go side never allocates it. The
-// length is of the value cast to a blob so it counts bytes, not characters.
+// LENGTH IS MEASURED IN THE QUERY, BEFORE ANYTHING IS LOADED OR COPIED: a value
+// over its ceiling comes back as NULL, so the Go side never allocates it.
+// octet_length counts bytes, not characters, and on a bare column SQLite
+// (3.43 and later; the pinned driver bundles 3.45.1) takes it from the record
+// header without reading the value's overflow pages, so an oversized body is
+// not read by the engine either. The CASE reads the value only when it fits.
 // A store written before client_id has no such column; a read-only reader never
 // migrates, so it is selected as the empty key, as loadNotes does.
 func noteSelect(keyed bool) string {
@@ -175,7 +216,7 @@ func noteSelect(keyed bool) string {
 			b.WriteString("0, ''")
 			continue
 		}
-		fmt.Fprintf(&b, "length(CAST(%[1]s AS BLOB)), CASE WHEN length(CAST(%[1]s AS BLOB)) <= %[2]d THEN %[1]s END", col.name, col.max)
+		fmt.Fprintf(&b, "octet_length(%[1]s), CASE WHEN octet_length(%[1]s) <= %[2]d THEN %[1]s END", col.name, col.max)
 	}
 	return b.String()
 }
@@ -190,28 +231,38 @@ func noteSelect(keyed bool) string {
 // touches neither the handle's memory nor loadState.
 //
 // WHAT IS BOUNDED, and what is not. Bounded: the rows returned, the rows and
-// bytes buffered, the bytes the Go driver copies out of any one field (a field
-// over its ceiling is measured in SQL and never copied), the size of every
-// error, and the cursor's length. NOT bounded: the work SQLite does inside the
-// read. `notes` has no index, so resolving a cursor and walking one task's
-// rows scan the table, and SQLite may read an oversized field's pages to
-// measure it. That work is limited by the caller's context deadline and
-// nothing else; this is not a bounded-CPU walk. A (task_id, seq) index would
-// shorten it and is separate engineering: it is a schema write, not made here.
+// bytes buffered, the bytes copied out of any one field (a field over its
+// ceiling is measured from its record header and never loaded or copied), the
+// size of every error, and the cursor's length. NOT bounded: the rest of the
+// work SQLite does inside the read. `notes` has no index, so resolving a
+// cursor and walking one task's rows scan the table. That work is limited only
+// by what the driver does with the caller's context; this is not a bounded-CPU
+// walk. A (task_id, seq) index would shorten it and is separate engineering:
+// it is a schema write, not made here.
 //
-// THE LOCK. The store's mutex is held only while the database is read, which
-// is what orders it against Close: a closed store answers ErrClosed, and Close
-// cannot release the handle under a read. The mutex is not context-aware, so a
-// writer holding it delays this call by up to the busy window (5 s); the
-// context is checked before and after, and the database read honours it. There
-// is no goroutine, timeout or pool in here: THE CALLER'S CONTEXT IS THE ONE
-// DEADLINE.
+// THE LOCK IS NEVER WAITED FOR. The store's mutex is held only while the
+// database is read, which is what orders the read against Close: a closed
+// store answers ErrClosed, and Close cannot release the handle under a read.
+// The mutex is not context-aware, and whoever holds it may be a writer in the
+// middle of loading and saving the whole store, so this call TRIES it once and
+// answers ErrNoteBusy if anything holds it, with no page and the cursor where
+// the caller left it. The price is stated: under steady traffic in this
+// process a page can answer ErrNoteBusy where a blocking lock would have
+// waited and succeeded. There is no retry, poll, timer, goroutine or pool in
+// here. The context is checked before the lock is tried (a cancelled context
+// answers its own error, never ErrNoteBusy), is handed to the read unchanged,
+// and is checked again after Skip.
 //
 // A note over a field ceiling is ErrNoteTooLarge: delivered notes before it
 // come back first, with More true and the cursor before it; the call that
 // starts at it fails. Every failure returns an error and no page.
 func (s *Store) NotesPage(ctx context.Context, ask NotePageAsk) (NotePage, error) {
-	if ask.TaskID == "" || len(ask.TaskID) > NotePageFixedMax {
+	// An id the length of any id goes to the database as it is. A longer one
+	// goes only if validID admits it, because the root id is stored as given
+	// and validID trims a "t-" and spaces before it measures: such a root is
+	// live and must not be answered not-found. Every stored task id passed
+	// validID when it was written, so nothing else can be found.
+	if ask.TaskID == "" || (len(ask.TaskID) > NotePageFixedMax && !validID(ask.TaskID)) {
 		return NotePage{}, ErrTaskNotFound
 	}
 	if len(ask.After) > NotePageFixedMax {
@@ -288,7 +339,10 @@ func notePageBound(name string, value, floor, ceiling int) (int, error) {
 // readNoteRows is the page's one database read, in a single deferred
 // transaction on the read handle, under the store's lock.
 func (s *Store) readNoteRows(ctx context.Context, ask NotePageAsk, rowCap, byteCap int) ([]noteRow, bool, error, error) {
-	s.mu.Lock()
+	// TryLock, once, on purpose: see THE LOCK on NotesPage.
+	if !s.mu.TryLock() {
+		return nil, false, nil, ErrNoteBusy
+	}
 	defer s.mu.Unlock()
 	if s.closed || s.rdb == nil {
 		return nil, false, nil, ErrClosed
@@ -315,24 +369,32 @@ func readNoteWindow(ctx context.Context, tx *sql.Tx, ask NotePageAsk, rowCap, by
 	case err != nil:
 		return nil, false, nil, err
 	}
-	floor, err := resolveNoteCursor(ctx, tx, ask.TaskID, ask.After)
+	floor, after, err := resolveNoteCursor(ctx, tx, ask.TaskID, ask.After)
 	if err != nil {
 		return nil, false, nil, err
 	}
-	return queryNoteRows(ctx, tx, ask.TaskID, floor, rowCap, byteCap)
+	return queryNoteRows(ctx, tx, ask.TaskID, floor, after, rowCap, byteCap)
 }
 
-// queryNoteRows reads up to rowCap notes of one task after a table position,
-// stopping early at the byte cap or at a note over a field ceiling. A note read
-// is complete; a note refused is never partly read.
-func queryNoteRows(ctx context.Context, tx *sql.Tx, taskID string, floor int64, rowCap, byteCap int) (rows []noteRow, more bool, refused, err error) {
+// queryNoteRows reads up to rowCap notes of one task, after a table position
+// when after is true and from the task's first row when it is not, stopping
+// early at the byte cap or at a note over a field ceiling. A note read is
+// complete; a note refused is never partly read.
+func queryNoteRows(ctx context.Context, tx *sql.Tx, taskID string, floor int64, after bool, rowCap, byteCap int) (rows []noteRow, more bool, refused, err error) {
 	keyed, err := hasColumn(tx, "notes", "client_id")
 	if err != nil {
 		return nil, false, nil, err
 	}
-	// One row past the cap is asked for only to learn whether more remain.
-	rs, err := tx.QueryContext(ctx, `SELECT `+noteSelect(keyed)+` FROM notes WHERE task_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
-		taskID, floor, rowCap+1)
+	// The first page has NO position predicate rather than a floor below the
+	// first row: seq is any integer a writer stored, and a guessed floor would
+	// hide whatever sits under it. One row past the cap is asked for only to
+	// learn whether more remain.
+	where, args := `task_id = ?`, []any{taskID}
+	if after {
+		where, args = where+` AND seq > ?`, append(args, floor)
+	}
+	rs, err := tx.QueryContext(ctx, `SELECT `+noteSelect(keyed)+` FROM notes WHERE `+where+` ORDER BY seq LIMIT ?`,
+		append(args, rowCap+1)...)
 	if err != nil {
 		return nil, false, nil, err
 	}
@@ -368,7 +430,7 @@ func queryNoteRows(ctx context.Context, tx *sql.Tx, taskID string, floor int64, 
 			return rows, true, nil, rs.Err()
 		}
 		note := Note{
-			ID: values[colID].String, TaskID: values[colTask].String, Agent: values[colAgent].String,
+			ID: values[colID].String, TaskID: taskID, Agent: values[colAgent].String,
 			Body: values[colBody].String, Project: values[colProject].String, Chat: values[colChat].String,
 			From: values[colFrom].String, ClientID: values[colClient].String,
 		}
@@ -388,38 +450,41 @@ func queryNoteRows(ctx context.Context, tx *sql.Tx, taskID string, floor int64, 
 }
 
 // resolveNoteCursor turns an opaque note id into the table position after
-// which to read, inside the caller's snapshot. "" is the start. An id that is
-// absent, belongs to another task, or names two rows is ErrNoteCursor: the
-// position is only meaningful in the snapshot it was read in, and it is never
-// returned to the caller. The owner is compared in SQL so that no stored task
-// id, of whatever length, is copied out to be compared.
-func resolveNoteCursor(ctx context.Context, tx *sql.Tx, taskID, after string) (int64, error) {
+// which to read, inside the caller's snapshot, and reports whether there is
+// one: "" is the start, with no position at all. An id that is absent or
+// belongs to another task is ErrNoteCursor, and one that names two rows is
+// ErrDuplicateNoteID whoever owns them. The position is only meaningful in the
+// snapshot it was read in, and it is never returned to the caller. The owner
+// is compared in SQL so that no stored task id, of whatever length, is copied
+// out to be compared.
+func resolveNoteCursor(ctx context.Context, tx *sql.Tx, taskID, after string) (floor int64, bounded bool, err error) {
 	if after == "" {
-		// saveState numbers notes from zero; the initial exclusive floor is before it.
-		return -1, nil
+		return 0, false, nil
 	}
 	rs, err := tx.QueryContext(ctx, `SELECT seq, task_id = ? FROM notes WHERE id = ? ORDER BY seq LIMIT 2`, taskID, after)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	defer rs.Close()
-	var seq int64
-	found := 0
+	var (
+		seq   int64
+		mine  bool
+		found int
+	)
 	for rs.Next() {
-		var mine bool
 		if err := rs.Scan(&seq, &mine); err != nil {
-			return 0, err
-		}
-		if !mine {
-			return 0, ErrNoteCursor
+			return 0, false, err
 		}
 		found++
 	}
 	if err := rs.Err(); err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	if found != 1 {
-		return 0, ErrNoteCursor
+	switch {
+	case found > 1:
+		return 0, false, ErrDuplicateNoteID
+	case found == 0 || !mine:
+		return 0, false, ErrNoteCursor
 	}
-	return seq, nil
+	return seq, true, nil
 }
