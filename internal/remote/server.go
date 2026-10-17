@@ -2174,7 +2174,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
 	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodProcessRerun, MethodRenderCancel, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppRename,
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppRename,
 		MethodAppTaskRoutingAct:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2182,7 +2182,8 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}
 
 	switch call.Method {
-	case MethodProcessList, MethodProcessRerun, MethodProcessPage, MethodProcessRecord:
+	case MethodProcessList, MethodProcessRerun, MethodProcessPage, MethodProcessRecord,
+		MethodProcessActions, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll:
 		return serveAppProcesses(agent, call)
 	case MethodRenderList, MethodRenderGet, MethodRenderCancel:
 		return dispatchRender(agent, call)

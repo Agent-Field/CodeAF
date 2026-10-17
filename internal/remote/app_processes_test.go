@@ -176,3 +176,84 @@ func TestAppProcessRecordDoorAcceptsTheContextShape(t *testing.T) {
 		t.Fatalf("relayed record: %s %v", raw, err)
 	}
 }
+
+type processActFake struct {
+	*fakeAgent
+	asked ProcessActArgs
+}
+
+func (f *processActFake) ProcessActions(_ context.Context, id int, ms int64) (session.ProcessActions, error) {
+	f.asked = ProcessActArgs{ID: id, StartedMS: ms}
+	if id == 404 {
+		return session.ProcessActions{}, session.ErrNoSuchProcess
+	}
+	return session.ProcessActions{Record: session.JobNotice{ID: id}, Rerun: session.ProcessAction{Reason: session.ProcessRerunUnknown}}, nil
+}
+func (f *processActFake) RerunProcessAt(_ context.Context, id int, ms int64) (session.JobNotice, error) {
+	f.asked = ProcessActArgs{ID: id, StartedMS: ms}
+	return session.JobNotice{}, &session.ProcessActionRefused{Verb: "rerun", Reason: session.ProcessRerunUnknown}
+}
+func (f *processActFake) StopProcessAt(_ context.Context, id int, ms int64) (session.ProcessStopOutcome, error) {
+	f.asked = ProcessActArgs{ID: id, StartedMS: ms}
+	return session.ProcessStopOutcome{Line: "stopped", Unproven: true}, nil
+}
+func (f *processActFake) StopConversationProcesses(ctx context.Context) (session.ProcessStopReceipt, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return session.ProcessStopReceipt{}, errors.New("no deadline travelled to the engine's stop")
+	}
+	return session.ProcessStopReceipt{Eligible: 2, Stopped: 1, NotStopped: []session.JobNotice{{ID: 3}}}, nil
+}
+
+// THE STAMPED DOORS CARRY THE START, AND A REFUSAL CROSSES AS ITS WORD.
+func TestProcessActWireCarriesStampsAndRefusalWords(t *testing.T) {
+	f := &processActFake{fakeAgent: &fakeAgent{}}
+	sess := newsSession(t, f)
+	pipe, engine := Pipe()
+	go func() {
+		_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return sess, nil }})
+		_ = engine.Close()
+	}()
+	client, err := Dial(pipe, "app", Hello{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	ctx := context.Background()
+	facts, err := client.Agent().ProcessActions(ctx, 7, 1234)
+	if err != nil || facts.Record.ID != 7 || facts.Rerun.Reason != session.ProcessRerunUnknown || f.asked.StartedMS != 1234 {
+		t.Fatalf("actions: %+v %v %+v", facts, err, f.asked)
+	}
+	if _, err := client.Agent().ProcessActions(ctx, 404, 1); !errors.Is(err, session.ErrNoSuchProcess) {
+		t.Fatalf("not found: %v", err)
+	}
+	var refused *session.ProcessActionRefused
+	if _, err := client.Agent().RerunProcessAt(ctx, 7, 99); !errors.As(err, &refused) || refused.Reason != session.ProcessRerunUnknown || f.asked.StartedMS != 99 {
+		t.Fatalf("refused rerun: %v", err)
+	}
+	stop, err := client.Agent().StopProcessAt(ctx, 7, 5)
+	if err != nil || !stop.Unproven {
+		t.Fatalf("stop: %+v %v", stop, err)
+	}
+	receipt, err := client.Agent().StopConversationProcesses(ctx)
+	if err != nil || receipt.Eligible != 2 || len(receipt.NotStopped) != 1 {
+		t.Fatalf("stop all: %+v %v", receipt, err)
+	}
+}
+
+// AN ENGINE WITHOUT THE DOORS IS UNSERVED, never a refusal or an empty answer.
+func TestProcessActWireOnAnEngineWithoutTheDoors(t *testing.T) {
+	sess := newsSession(t, &fakeAgent{})
+	pipe, engine := Pipe()
+	go func() {
+		_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return sess, nil }})
+		_ = engine.Close()
+	}()
+	client, err := Dial(pipe, "app", Hello{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if _, err := client.Agent().StopConversationProcesses(context.Background()); !errors.Is(err, ErrProcessActionsUnserved) {
+		t.Fatalf("absent doors: %v", err)
+	}
+}

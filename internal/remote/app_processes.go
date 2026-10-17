@@ -96,8 +96,165 @@ func (a *Agent) RerunProcess(id int) (session.JobNotice, error) {
 	err = json.Unmarshal(raw, &row)
 	return row, err
 }
+
+// ── the stamped process actions ────────────────────────────────────────────
+
+// Process.Actions answers what the engine holding a conversation will do with
+// one run now; Process.RerunAt and Process.StopAt act on that run only after
+// asking the same question again; Process.StopAll stops every job the engine
+// runs for the conversation under one shared deadline. Each names its run by
+// number AND start, so a window's id never reaches another run of the number.
+const (
+	MethodProcessActions = "Process.Actions"
+	MethodProcessRerunAt = "Process.RerunAt"
+	MethodProcessStopAt  = "Process.StopAt"
+	MethodProcessStopAll = "Process.StopAll"
+)
+
+// ProcessActArgs names one run: its number and its start in Unix
+// milliseconds, zero for a record with no start.
+type ProcessActArgs struct {
+	ID        int   `json:"id"`
+	StartedMS int64 `json:"started_ms"`
+}
+
+// processActReply carries a refusal as a FACT rather than an error, so its
+// reason crosses the wire as the word it is and not as a sentence to parse.
+type processActReply struct {
+	NotFound bool                        `json:"not_found,omitempty"`
+	Refused  string                      `json:"refused,omitempty"`
+	Verb     string                      `json:"verb,omitempty"`
+	Actions  *session.ProcessActions     `json:"actions,omitempty"`
+	Record   *session.JobNotice          `json:"record,omitempty"`
+	Stop     *session.ProcessStopOutcome `json:"stop,omitempty"`
+	Receipt  *session.ProcessStopReceipt `json:"receipt,omitempty"`
+}
+
+// ErrProcessActionsUnserved is an engine too old to answer the stamped doors.
+var ErrProcessActionsUnserved = errors.New("this engine cannot check a process's actions")
+
+// processActor is the stamped doors, served by an engine's own agent and by a
+// remote agent served onward alike.
+type processActor interface {
+	ProcessActions(ctx context.Context, id int, startedMS int64) (session.ProcessActions, error)
+	RerunProcessAt(ctx context.Context, id int, startedMS int64) (session.JobNotice, error)
+	StopProcessAt(ctx context.Context, id int, startedMS int64) (session.ProcessStopOutcome, error)
+	StopConversationProcesses(ctx context.Context) (session.ProcessStopReceipt, error)
+}
+
+func (a *Agent) processAct(ctx context.Context, method string, args any) (processActReply, error) {
+	raw, err := a.c.call(ctx, method, args)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such method") || strings.Contains(err.Error(), "no such process action") {
+			return processActReply{}, ErrProcessActionsUnserved
+		}
+		return processActReply{}, err
+	}
+	var reply processActReply
+	if err := json.Unmarshal(raw, &reply); err != nil {
+		return processActReply{}, err
+	}
+	switch {
+	case reply.NotFound:
+		return processActReply{}, session.ErrNoSuchProcess
+	case reply.Refused != "":
+		return processActReply{}, &session.ProcessActionRefused{Verb: reply.Verb, Reason: reply.Refused}
+	}
+	return reply, nil
+}
+
+func (a *Agent) ProcessActions(ctx context.Context, id int, startedMS int64) (session.ProcessActions, error) {
+	reply, err := a.processAct(ctx, MethodProcessActions, ProcessActArgs{ID: id, StartedMS: startedMS})
+	if err != nil || reply.Actions == nil {
+		return session.ProcessActions{}, orMissing(err)
+	}
+	return *reply.Actions, nil
+}
+
+func (a *Agent) RerunProcessAt(ctx context.Context, id int, startedMS int64) (session.JobNotice, error) {
+	reply, err := a.processAct(ctx, MethodProcessRerunAt, ProcessActArgs{ID: id, StartedMS: startedMS})
+	if err != nil || reply.Record == nil {
+		return session.JobNotice{}, orMissing(err)
+	}
+	return *reply.Record, nil
+}
+
+func (a *Agent) StopProcessAt(ctx context.Context, id int, startedMS int64) (session.ProcessStopOutcome, error) {
+	reply, err := a.processAct(ctx, MethodProcessStopAt, ProcessActArgs{ID: id, StartedMS: startedMS})
+	if err != nil || reply.Stop == nil {
+		return session.ProcessStopOutcome{}, orMissing(err)
+	}
+	return *reply.Stop, nil
+}
+
+func (a *Agent) StopConversationProcesses(ctx context.Context) (session.ProcessStopReceipt, error) {
+	reply, err := a.processAct(ctx, MethodProcessStopAll, nil)
+	if err != nil || reply.Receipt == nil {
+		return session.ProcessStopReceipt{}, orMissing(err)
+	}
+	return *reply.Receipt, nil
+}
+
+// orMissing is err, or the error of an answer that carried nothing.
+func orMissing(err error) error {
+	if err != nil {
+		return err
+	}
+	return errors.New("the engine answered without the process's facts")
+}
+
+// processActDeadline bounds the engine's own work on one stamped door: a
+// stop's two graces and a second to see them land, which is the stop-all's
+// one shared deadline too.
+const processActDeadline = session.ProcessStopAllWait
+
+func serveProcessAct(agent WrappedAgent, call Frame) ([]byte, error) {
+	door, ok := agent.(processActor)
+	if !ok {
+		return nil, errors.New("no such process action")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), processActDeadline)
+	defer cancel()
+	var reply processActReply
+	var err error
+	if call.Method == MethodProcessStopAll {
+		receipt, serr := door.StopConversationProcesses(ctx)
+		reply.Receipt, err = &receipt, serr
+	} else {
+		args, aerr := arg[ProcessActArgs](call)
+		if aerr != nil {
+			return nil, aerr
+		}
+		switch call.Method {
+		case MethodProcessActions:
+			facts, serr := door.ProcessActions(ctx, args.ID, args.StartedMS)
+			reply.Actions, err = &facts, serr
+		case MethodProcessRerunAt:
+			record, serr := door.RerunProcessAt(ctx, args.ID, args.StartedMS)
+			reply.Record, err = &record, serr
+		case MethodProcessStopAt:
+			stop, serr := door.StopProcessAt(ctx, args.ID, args.StartedMS)
+			reply.Stop, err = &stop, serr
+		default:
+			return nil, errors.New("no such process action")
+		}
+	}
+	var refused *session.ProcessActionRefused
+	switch {
+	case errors.Is(err, session.ErrNoSuchProcess):
+		reply = processActReply{NotFound: true}
+	case errors.As(err, &refused):
+		reply = processActReply{Refused: refused.Reason, Verb: refused.Verb}
+	case err != nil:
+		return nil, err
+	}
+	return json.Marshal(reply)
+}
+
 func serveAppProcesses(agent WrappedAgent, call Frame) ([]byte, error) {
 	switch call.Method {
+	case MethodProcessActions, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll:
+		return serveProcessAct(agent, call)
 	case MethodProcessList:
 		door, ok := agent.(interface {
 			JobNotices() ([]session.JobNotice, error)
