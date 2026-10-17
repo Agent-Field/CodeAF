@@ -601,11 +601,26 @@ func (s *Source) issueItem(ctx context.Context, owner, name string, is forge.Iss
 		Tier:   s.tier(ctx, owner, name, is.User),
 		Origin: factory.OriginForge, Synced: true,
 		Created: is.Created, Changed: is.Updated,
-		State:  factory.StateNew,
-		Labels: is.Labels,
-		URL:    is.URL,
-		Triage: factory.Triage{Type: issueType(is), Size: issueSize(is.Body)},
+		State:           factory.StateNew,
+		Labels:          is.Labels,
+		URL:             is.URL,
+		Triage:          factory.Triage{Type: issueType(is), Size: issueSize(is.Body)},
+		SourceAssignees: sourceAssignees(is.Assignees),
+		// A NEW item only: the sole assignee is its owner, several are nobody's.
+		Assignee: factory.SoleSourceAssignee(sourceAssignees(is.Assignees)),
 	}
+}
+
+// sourceAssignees is the forge's assignee list as the fact the item keeps.
+// An entry with no login means the response is not one this reader
+// understands, so the whole list is unknown (nil) rather than a false none.
+func sourceAssignees(logins []string) []string {
+	for _, l := range logins {
+		if factory.NormalizeHandle(l) == "" {
+			return nil
+		}
+	}
+	return factory.NormalizeSourceAssignees(logins)
 }
 
 // issueType is the kind word the floor draws for an issue: the first label that
@@ -636,6 +651,8 @@ func (s *Source) pullItem(ctx context.Context, owner, name string, p forge.Pull,
 		Diff:   DiffWords(p.Additions, p.Deletions),
 		Triage: factory.Triage{Type: "review", Size: pullSize(p.Additions + p.Deletions)},
 		Draft:  p.Draft, Base: p.Base, Head: pullHead(owner, name, p), HeadSHA: p.HeadSHA,
+		SourceAssignees: sourceAssignees(p.Assignees),
+		Assignee:        factory.SoleSourceAssignee(sourceAssignees(p.Assignees)),
 	}
 }
 

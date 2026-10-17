@@ -664,9 +664,12 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 			User    struct {
 				Login string `json:"login"`
 			} `json:"user"`
-			Assignee *struct {
+			// The assignees array, never the deprecated singular assignee,
+			// which is only its first entry. A pointer keeps an absent array
+			// (unknown) apart from an empty one (nobody).
+			Assignees *[]struct {
 				Login string `json:"login"`
-			} `json:"assignee"`
+			} `json:"assignees"`
 			Labels []struct {
 				Name string `json:"name"`
 			} `json:"labels"`
@@ -696,8 +699,12 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 				labels = append(labels, label.Name)
 			}
 			item := factory.Item{Repo: repo.ID, Num: row.Number, Title: row.Title, Body: row.Body, URL: row.URL, Created: row.Created, Kind: factory.KindIssue, Origin: factory.OriginForge, Author: row.User.Login, Labels: labels, SetupHeld: true}
-			if row.Assignee != nil {
-				item.Assignee = factory.NormalizeHandle(row.Assignee.Login)
+			if row.Assignees != nil {
+				item.SourceAssignees = []string{}
+				for _, a := range *row.Assignees {
+					item.SourceAssignees = append(item.SourceAssignees, a.Login)
+				}
+				item.Assignee = factory.SoleSourceAssignee(item.SourceAssignees)
 			}
 			items = append(items, item)
 			count++

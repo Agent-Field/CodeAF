@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -230,6 +231,7 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 	}
 	var errs []error
 	for _, in := range items {
+		in.SourceAssignees = factory.NormalizeSourceAssignees(in.SourceAssignees)
 		if old, ok := index[itemKey(in)]; ok {
 			if !forgeChanged(old, in) {
 				continue
@@ -278,6 +280,12 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				if in.Tier != "" {
 					it.Tier = in.Tier
 				}
+				// The forge's assignee set is a fact, refreshed whenever it was
+				// read. It never touches Assignee, Taker, Starter, a lease or
+				// the state: who runs the work is decided elsewhere.
+				if in.SourceAssignees != nil {
+					it.SourceAssignees = slices.Clone(in.SourceAssignees)
+				}
 				it.DismissedBy = nil
 				if it.State == factory.StateDismissed && it.DoneHow != "dropped" {
 					it.State = factory.StateNew
@@ -325,6 +333,9 @@ func forgeChanged(old, in factory.Item) bool {
 		return true
 	}
 	if in.URL != "" && old.URL != in.URL {
+		return true
+	}
+	if in.SourceAssignees != nil && !factory.SameSourceAssignees(old.SourceAssignees, in.SourceAssignees) {
 		return true
 	}
 	if in.Comments != nil && !reflect.DeepEqual(old.Comments, in.Comments) {

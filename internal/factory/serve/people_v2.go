@@ -224,12 +224,12 @@ func (h *Handler) revokePerson(r *http.Request, handle string) error {
 // soloJob removes the team assignment field from a solo response.
 func (h *Handler) soloJob(job *api.Job) {
 	it := api.ToItem(*job)
-	it.Assignee, it.Taker, it.Starter = "", "", ""
+	it.Assignee, it.Taker, it.Starter, it.SourceAssignees = "", "", "", nil
 	job.Can = api.CanFor(it, "", h.clock())
 	job.AssignedTo = ""
 	job.Assignee, job.WaitingFor = "", ""
 	job.Can.AssignToMe = false
 	if job.Desk != nil {
-		job.Desk.Assignee, job.Desk.Starter, job.Desk.Taker = "", "", ""
+		job.Desk.Assignee, job.Desk.Starter, job.Desk.Taker, job.Desk.Assignees = "", "", "", nil
 	}
 }

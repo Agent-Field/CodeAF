@@ -331,6 +331,12 @@ func eligible(it factory.Item, worker Worker) bool {
 	if owner := it.Person(); owner != "" {
 		return owner == worker.Handle
 	}
+	// THE FORGE NAMED SOMEONE, so this is not unassigned work: several
+	// assignees leave no single owner, and consent to unassigned work is not
+	// consent to theirs. Only an explicit Assign or start gives it a person.
+	if len(it.SourceAssignees) > 0 {
+		return false
+	}
 	return !worker.Team && (worker.TakesUnassigned[it.Repo] || worker.TakesUnassigned[EveryRepo])
 }
 

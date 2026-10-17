@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -63,7 +64,7 @@ func setupGitHub(t *testing.T, f *peopleV2Fixture, fail *bool) {
 			if *fail {
 				status, body = 503, `{}`
 			} else {
-				body = `[{"number":1,"title":"First","body":"body","html_url":"https://github.com/acme/api/issues/1","assignee":{"login":"sam"},"labels":[{"name":"ready"}]},{"number":2,"title":"Second"},{"number":3,"title":"Pull","pull_request":{"url":"pr"}}]`
+				body = `[{"number":1,"title":"First","body":"body","html_url":"https://github.com/acme/api/issues/1","assignee":{"login":"sam"},"assignees":[{"login":"sam"},{"login":"Ann"}],"labels":[{"name":"ready"}]},{"number":2,"title":"Second","assignees":[{"login":"Bob"}]},{"number":4,"title":"Old","assignee":{"login":"zed"}},{"number":5,"title":"Nobody","assignees":[]},{"number":6,"title":"Blank","assignees":[{"login":""},{"login":"Bob"}]},{"number":3,"title":"Pull","pull_request":{"url":"pr"}}]`
 			}
 		default:
 			t.Errorf("unexpected GitHub path %s", r.URL.Path)
@@ -100,23 +101,37 @@ func TestFactorySetupIngestRetryCheckoutAndRestart(t *testing.T) {
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "retry_read", RepoID: "acme/api"}, 200, nil)
 	waitSetup(t, f.h)
 	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &setup)
-	if setup.State != "checkouts" || setup.Repos[0].ReadCount != 2 || setup.Repos[0].OpenIssues != 2 {
+	if setup.State != "checkouts" || setup.Repos[0].ReadCount != 5 || setup.Repos[0].OpenIssues != 5 {
 		t.Fatalf("ingestion: %+v", setup)
 	}
 	items, err := f.st.List()
-	if err != nil || len(items) != 2 || !items[0].SetupHeld || items[0].State != factory.StateNew {
+	if err != nil || len(items) != 5 || !items[0].SetupHeld || items[0].State != factory.StateNew {
 		t.Fatalf("jobs: %+v %v", items, err)
 	}
 	for _, item := range items {
-		if item.Num == 1 && item.Assignee != "sam" {
-			t.Fatal("assignee lost")
+		// The set is read whole as a fact; the deprecated singular field is
+		// not read and no execution owner is picked from it.
+		if item.Num == 1 && (!reflect.DeepEqual(item.SourceAssignees, []string{"ann", "sam"}) || item.Assignee != "") {
+			t.Fatalf("assignees: %+v", item)
+		}
+		if item.Num == 2 && (!reflect.DeepEqual(item.SourceAssignees, []string{"bob"}) || item.Assignee != "bob") {
+			t.Fatalf("a sole assignee is not the owner: %+v", item)
+		}
+		if item.Num == 4 && (item.SourceAssignees != nil || item.Assignee != "") {
+			t.Fatalf("an old singular-only row fabricated a fact or owner: %+v", item)
+		}
+		if item.Num == 5 && (item.SourceAssignees == nil || len(item.SourceAssignees) != 0 || item.Assignee != "") {
+			t.Fatalf("known none was lost: %+v", item)
+		}
+		if item.Num == 6 && (item.SourceAssignees != nil || item.Assignee != "") {
+			t.Fatalf("a login-less entry became a fact or an owner: %#v %q", item.SourceAssignees, item.Assignee)
 		}
 	}
 	// A repeat read uses the same merge identity and cannot create another copy of either issue.
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "back"}, 200, nil)
 	waitSetup(t, f.h)
 	items, _ = f.st.List()
-	if len(items) != 2 {
+	if len(items) != 5 {
 		t.Fatal("duplicate imports")
 	}
 	dir := t.TempDir()

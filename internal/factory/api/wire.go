@@ -427,9 +427,12 @@ type JobDesk struct {
 	Author          string    `json:"author,omitempty"`
 	// The routing facts stay separate so a round trip cannot turn a local
 	// Take into a forge assignment or forget who started the work.
-	Assignee  string    `json:"assignee,omitempty"`
-	Starter   string    `json:"starter,omitempty"`
-	Taker     string    `json:"taker,omitempty"`
+	Assignee string `json:"assignee,omitempty"`
+	Starter  string `json:"starter,omitempty"`
+	Taker    string `json:"taker,omitempty"`
+	// Assignees is the forge's assignee set, a fact apart from the routing
+	// facts above: absent means unknown, [] means the forge said nobody.
+	Assignees []string  `json:"assignees,omitzero"`
 	Tier      string    `json:"tier,omitempty"`
 	Origin    string    `json:"origin,omitempty"`
 	Synced    bool      `json:"synced,omitempty"`
