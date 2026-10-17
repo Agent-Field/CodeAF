@@ -4,22 +4,25 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
 
-// richSharePlanRowForTest is a planned row with every nested pointer and slice a
-// caller could keep hold of: Deliver, File, Source, From, Media, References.
+// richSharePlanRowForTest is a planned row with every nested pointer a caller
+// could keep hold of — Deliver, File, Source, Media — shaped as the owned copy
+// of the planned file: its own folder named for the id, the original named.
 func richSharePlanRowForTest(r ShareReceipt, planned SharePlannedRow) Artifact {
 	row := sharePlanRowForTest(r, planned)
-	row.Kind = "image"
-	row.Deliver.From = []string{"input-a", "input-b"}
-	row.Deliver.Source = &DeliverableFile{Canonical: "/origin/" + row.Title, Bytes: row.Deliver.File.Bytes, SHA256: row.Deliver.File.SHA256}
+	copyPath := filepath.Join("/copies", planned.ID, filepath.Base(planned.Path))
+	row.Kind, row.Path = "image", copyPath
+	row.Deliver.File.Canonical, row.Deliver.File.MIME = copyPath, "image/png"
+	row.Deliver.Source = &DeliverableFile{Canonical: planned.Path, Bytes: row.Deliver.File.Bytes, SHA256: row.Deliver.File.SHA256, MIME: "image/png"}
 	row.Media = &MediaFact{
-		ID: NewMediaID(), Origin: MediaPublished, Canonical: row.Path, SHA256: row.Deliver.File.SHA256, Bytes: row.Deliver.File.Bytes,
-		Run: r.Provenance.Run, Message: r.Provenance.Turn, Tool: r.Provenance.Call, References: []string{"/ref/one.png"}, Change: ShellUnknown,
+		ID: NewMediaID(), Origin: MediaShared, Canonical: copyPath, MIME: "image/png", SHA256: row.Deliver.File.SHA256, Bytes: row.Deliver.File.Bytes,
+		Width: 4, Height: 3, Run: r.Provenance.Run, Message: r.Provenance.Turn, Tool: r.Provenance.Call,
 	}
 	return row
 }
@@ -41,9 +44,8 @@ func mutateSharePlanRowForTest(row *Artifact) {
 	row.Deliver.Version, row.Deliver.Authored, row.Deliver.State = "sha256:"+strings.Repeat("cd", 32), true, DeliverKept
 	row.Deliver.File.SHA256, row.Deliver.File.Bytes, row.Deliver.File.Canonical = strings.Repeat("ef", 32), 999, "/elsewhere/x.png"
 	row.Deliver.Source.Canonical, row.Deliver.Source.SHA256 = "/evil/source", "00"
-	row.Deliver.From[0] = "mutated-input"
 	row.Media.ID, row.Media.Run, row.Media.Tool, row.Media.Message = NewMediaID(), "run-later", "call-later", "s#9"
-	row.Media.References[0] = "/ref/mutated.png"
+	row.Media.Width, row.Media.Bytes = 9999, 9999
 }
 
 // TestSharePlanIsDetachedFromEveryCallerAlias is the causal proof: every field
@@ -53,7 +55,7 @@ func mutateSharePlanRowForTest(row *Artifact) {
 func TestSharePlanIsDetachedFromEveryCallerAlias(t *testing.T) {
 	root := t.TempDir()
 	prov := ShareProvenance{Run: "run-1", Turn: "s#1", Call: "call-1"}
-	claim, err := AdmitShareOperation(root, "s", "op", []string{"a.png", "b.png"}, prov, time.Time{})
+	claim, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png", "/w/b.png"}, prov, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +116,7 @@ func TestSharePlanIsDetachedFromEveryCallerAlias(t *testing.T) {
 // receipt cannot become the planned ids, provenance or status on disk.
 func TestShareSettleWritesTheDurableReceiptNotTheView(t *testing.T) {
 	root := t.TempDir()
-	claim, err := AdmitShareOperation(root, "s", "op", []string{"a.md"}, ShareProvenance{Call: "call-1"}, time.Time{})
+	claim, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.md"}, ShareProvenance{Call: "call-1"}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +140,7 @@ func TestShareSettleWritesTheDurableReceiptNotTheView(t *testing.T) {
 	// from pending, and a provenance that is merely different is well-formed,
 	// so no validation could catch it: only settling from the durable bytes
 	// keeps the original caller on the receipt.
-	other, err := AdmitShareOperation(root, "s", "op-refuse", []string{"a.md"}, ShareProvenance{Run: "run-1", Turn: "s#1", Call: "call-1"}, time.Time{})
+	other, err := AdmitShareOperation(root, "s", "op-refuse", []string{"/w/a.md"}, ShareProvenance{Run: "run-1", Turn: "s#1", Call: "call-1"}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +176,7 @@ func TestSharePlanRefusesARowAttributedToAnyoneButTheOriginalCaller(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			prov := ShareProvenance{Run: "run-1", Turn: "s#1", Call: "call-1"}
-			claim, err := AdmitShareOperation(root, "s", "op", []string{"a.png"}, prov, time.Time{})
+			claim, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png"}, prov, time.Time{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -222,7 +224,7 @@ func TestShareReceiptOnDiskRefusesAMisattributedPlan(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			prov := ShareProvenance{Run: "run-1", Turn: "s#1", Call: "call-1"}
-			claim, err := AdmitShareOperation(root, "s", "op", []string{"a.png"}, prov, time.Time{})
+			claim, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png"}, prov, time.Time{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -243,7 +245,7 @@ func TestShareReceiptOnDiskRefusesAMisattributedPlan(t *testing.T) {
 			if _, err := LoadShareReceipt(root, "s", "op"); err == nil {
 				t.Fatal("a misattributed plan on disk was trusted")
 			}
-			if got, err := AdmitShareOperation(root, "s", "op", []string{"a.png"}, prov, time.Time{}); err == nil {
+			if got, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png"}, prov, time.Time{}); err == nil {
 				got.Release()
 				t.Fatal("a misattributed plan on disk replayed")
 			}

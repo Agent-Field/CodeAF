@@ -11,7 +11,7 @@ import (
 
 func TestShareReceiptRejectsOversizedAndLinkedFiles(t *testing.T) {
 	root := t.TempDir()
-	claim, err := AdmitShareOperation(root, "session", "operation", []string{"a.png"}, ShareProvenance{}, time.Time{})
+	claim, err := AdmitShareOperation(root, "session", "operation", []string{"/w/a.png"}, ShareProvenance{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestShareReceiptRejectsCorruptIdentityAndSchema(t *testing.T) {
 	for _, mutation := range []string{"session", "operation", "version", "status", "digest", "path", "duplicate", "recorded", "provenance"} {
 		t.Run(mutation, func(t *testing.T) {
 			root := t.TempDir()
-			c, err := AdmitShareOperation(root, "s", "op", []string{"a.png", "b.png"}, ShareProvenance{}, time.Time{})
+			c, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png", "/w/b.png"}, ShareProvenance{}, time.Time{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -74,7 +74,7 @@ func TestShareReceiptRejectsCorruptIdentityAndSchema(t *testing.T) {
 			if _, err := LoadShareReceipt(root, "s", "op"); err == nil {
 				t.Fatal("corrupt receipt trusted")
 			}
-			if got, err := AdmitShareOperation(root, "s", "op", []string{"a.png", "b.png"}, ShareProvenance{}, time.Time{}); err == nil {
+			if got, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png", "/w/b.png"}, ShareProvenance{}, time.Time{}); err == nil {
 				got.Release()
 				t.Fatal("corrupt receipt replayed")
 			}
@@ -84,7 +84,7 @@ func TestShareReceiptRejectsCorruptIdentityAndSchema(t *testing.T) {
 
 func TestShareReceiptUnknownCanReconcileWithoutNewIDs(t *testing.T) {
 	root := t.TempDir()
-	c, err := AdmitShareOperation(root, "s", "op", []string{"a.png"}, ShareProvenance{Call: "original"}, time.Time{})
+	c, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png"}, ShareProvenance{Call: "original"}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestShareReceiptUnknownCanReconcileWithoutNewIDs(t *testing.T) {
 	if err := c.Settle(ShareOpUnknown, nil); err != nil {
 		t.Fatal(err)
 	}
-	replay, err := AdmitShareOperation(root, "s", "op", []string{"a.png"}, ShareProvenance{Call: "later"}, time.Time{})
+	replay, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png"}, ShareProvenance{Call: "later"}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestShareReceiptDeadlineCannotBeRemoved(t *testing.T) {
 
 func TestShareReceiptRefusesALinkedLock(t *testing.T) {
 	root := t.TempDir()
-	c, err := AdmitShareOperation(root, "s", "op", []string{"a.png"}, ShareProvenance{}, time.Time{})
+	c, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png"}, ShareProvenance{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestShareReceiptRefusesALinkedLock(t *testing.T) {
 	if err := os.Symlink(target, lock); err != nil {
 		t.Skip(err)
 	}
-	if c, err := AdmitShareOperation(root, "s", "op", []string{"a.png"}, ShareProvenance{}, time.Time{}); err == nil {
+	if c, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png"}, ShareProvenance{}, time.Time{}); err == nil {
 		c.Release()
 		t.Fatal("linked lock admitted")
 	}

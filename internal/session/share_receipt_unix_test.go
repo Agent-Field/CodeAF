@@ -11,7 +11,7 @@ import (
 
 func TestShareReceiptNeverWaitsForAFIFOWriter(t *testing.T) {
 	root := t.TempDir()
-	c, err := AdmitShareOperation(root, "s", "op", []string{"a.png"}, ShareProvenance{}, time.Time{})
+	c, err := AdmitShareOperation(root, "s", "op", []string{"/w/a.png"}, ShareProvenance{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

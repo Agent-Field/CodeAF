@@ -217,7 +217,19 @@ func validShareAdmission(root, session, operationID string, paths []string) ([]s
 	if err := ValidateShareOperationID(operationID); err != nil {
 		return nil, "", err
 	}
-	return NormalizeSharePayload(paths)
+	normalised, digest, err := NormalizeSharePayload(paths)
+	if err != nil {
+		return nil, "", err
+	}
+	// A RECEIPT NAMES FILES, never spellings relative to a folder it does not
+	// record: the caller resolves a relative path from its own captured base
+	// before admission, so a plan row can be bound to exactly the path it is for.
+	for _, path := range normalised {
+		if !shareAbsolute(path) {
+			return nil, "", fmt.Errorf("%w: a path must be absolute by the time it is admitted", ErrShareOpInvalid)
+		}
+	}
+	return normalised, digest, nil
 }
 
 // holdShareOperation takes one process slot and the operation's stable lock,

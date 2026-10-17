@@ -13,7 +13,7 @@ import (
 func TestShareOperationAdmitWritesPendingReceiptWithPlannedIDs(t *testing.T) {
 	root := t.TempDir()
 	prov := ShareProvenance{Run: "run-a", Turn: "turn-a", Call: "call-a"}
-	claim, err := AdmitShareOperation(root, "sess-1", "op-fresh-1", []string{"report.md", "chart.png"}, prov, time.Now().Add(time.Second))
+	claim, err := AdmitShareOperation(root, "sess-1", "op-fresh-1", []string{"/w/report.md", "/w/chart.png"}, prov, time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatalf("admit: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestShareOperationAdmitWritesPendingReceiptWithPlannedIDs(t *testing.T) {
 
 func TestShareOperationCrashLeavesPendingAndSamePayloadReplaysOriginal(t *testing.T) {
 	root := t.TempDir()
-	first, err := AdmitShareOperation(root, "sess-1", "op-crash", []string{"a.md"}, ShareProvenance{Run: "run-1", Call: "call-1"}, time.Now().Add(time.Second))
+	first, err := AdmitShareOperation(root, "sess-1", "op-crash", []string{"/w/a.md"}, ShareProvenance{Run: "run-1", Call: "call-1"}, time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatalf("first admit: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestShareOperationCrashLeavesPendingAndSamePayloadReplaysOriginal(t *testin
 
 	// A later caller with a different provider call id must still see the
 	// ORIGINAL provenance and planned ids — never re-attribute.
-	second, err := AdmitShareOperation(root, "sess-1", "op-crash", []string{"a.md"}, ShareProvenance{Run: "run-2", Call: "call-2"}, time.Now().Add(time.Second))
+	second, err := AdmitShareOperation(root, "sess-1", "op-crash", []string{"/w/a.md"}, ShareProvenance{Run: "run-2", Call: "call-2"}, time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatalf("replay admit: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestShareOperationCrashLeavesPendingAndSamePayloadReplaysOriginal(t *testin
 
 func TestShareOperationChangedPayloadConflictsWithoutRewrite(t *testing.T) {
 	root := t.TempDir()
-	first, err := AdmitShareOperation(root, "sess-1", "op-conflict", []string{"a.md"}, ShareProvenance{Call: "call-1"}, time.Now().Add(time.Second))
+	first, err := AdmitShareOperation(root, "sess-1", "op-conflict", []string{"/w/a.md"}, ShareProvenance{Call: "call-1"}, time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatalf("first admit: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestShareOperationChangedPayloadConflictsWithoutRewrite(t *testing.T) {
 		t.Fatalf("settle: %v", err)
 	}
 
-	second, err := AdmitShareOperation(root, "sess-1", "op-conflict", []string{"b.md"}, ShareProvenance{Call: "call-2"}, time.Now().Add(time.Second))
+	second, err := AdmitShareOperation(root, "sess-1", "op-conflict", []string{"/w/b.md"}, ShareProvenance{Call: "call-2"}, time.Now().Add(time.Second))
 	if !errors.Is(err, ErrShareOpConflict) {
 		t.Fatalf("err=%v, want conflict", err)
 	}
@@ -110,7 +110,7 @@ func TestShareOperationChangedPayloadConflictsWithoutRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if loaded.Status != ShareOpAccepted || loaded.Planned[0].ID != plannedID || loaded.Planned[0].Path != "a.md" {
+	if loaded.Status != ShareOpAccepted || loaded.Planned[0].ID != plannedID || loaded.Planned[0].Path != "/w/a.md" {
 		t.Fatalf("conflict rewrote the original receipt: %+v", loaded)
 	}
 	if loaded.Provenance.Call != "call-1" {
@@ -120,13 +120,13 @@ func TestShareOperationChangedPayloadConflictsWithoutRewrite(t *testing.T) {
 
 func TestShareOperationHeldLockReportsBusy(t *testing.T) {
 	root := t.TempDir()
-	first, err := AdmitShareOperation(root, "sess-1", "op-busy", []string{"a.md"}, ShareProvenance{}, time.Now().Add(time.Second))
+	first, err := AdmitShareOperation(root, "sess-1", "op-busy", []string{"/w/a.md"}, ShareProvenance{}, time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatalf("first admit: %v", err)
 	}
 	defer first.Release()
 
-	second, err := AdmitShareOperation(root, "sess-1", "op-busy", []string{"a.md"}, ShareProvenance{}, time.Now().Add(time.Second))
+	second, err := AdmitShareOperation(root, "sess-1", "op-busy", []string{"/w/a.md"}, ShareProvenance{}, time.Now().Add(time.Second))
 	if !errors.Is(err, ErrShareOpBusy) {
 		t.Fatalf("err=%v, want busy", err)
 	}
@@ -140,7 +140,7 @@ func TestShareOperationProcessSlotsRefuseWithoutQueue(t *testing.T) {
 	held := make([]*ShareClaim, 0, shareOpSlotCap)
 	for i := 0; i < shareOpSlotCap; i++ {
 		op := "op-slot-" + string(rune('a'+i))
-		claim, err := AdmitShareOperation(root, "sess-1", op, []string{"f.md"}, ShareProvenance{}, time.Now().Add(time.Second))
+		claim, err := AdmitShareOperation(root, "sess-1", op, []string{"/w/f.md"}, ShareProvenance{}, time.Now().Add(time.Second))
 		if err != nil {
 			t.Fatalf("admit %d: %v", i, err)
 		}
@@ -152,7 +152,7 @@ func TestShareOperationProcessSlotsRefuseWithoutQueue(t *testing.T) {
 		}
 	}()
 
-	extra, err := AdmitShareOperation(root, "sess-1", "op-slot-extra", []string{"f.md"}, ShareProvenance{}, time.Now().Add(time.Second))
+	extra, err := AdmitShareOperation(root, "sess-1", "op-slot-extra", []string{"/w/f.md"}, ShareProvenance{}, time.Now().Add(time.Second))
 	if !errors.Is(err, ErrShareOpBusy) {
 		t.Fatalf("err=%v, want busy (no queue)", err)
 	}
@@ -171,7 +171,7 @@ func TestShareOperationLockFileIsSeparateFromReceipt(t *testing.T) {
 	if filepath.Base(lockPath) != shareOpLockName || filepath.Base(receiptPath) != shareOpReceipt {
 		t.Fatalf("unexpected names: lock=%q receipt=%q", lockPath, receiptPath)
 	}
-	claim, err := AdmitShareOperation(root, "sess-1", op, []string{"a.md"}, ShareProvenance{}, time.Now().Add(time.Second))
+	claim, err := AdmitShareOperation(root, "sess-1", op, []string{"/w/a.md"}, ShareProvenance{}, time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatalf("admit: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestShareOperationInvalidOperationID(t *testing.T) {
 
 func TestShareOperationSettleAcceptedPreservesPlannedIDs(t *testing.T) {
 	root := t.TempDir()
-	claim, err := AdmitShareOperation(root, "sess-1", "op-settle", []string{"a.md", "b.md"}, ShareProvenance{Call: "c1"}, time.Now().Add(time.Second))
+	claim, err := AdmitShareOperation(root, "sess-1", "op-settle", []string{"/w/a.md", "/w/b.md"}, ShareProvenance{Call: "c1"}, time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatalf("admit: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestShareOperationSettleAcceptedPreservesPlannedIDs(t *testing.T) {
 		t.Fatalf("recorded ids=%v", loaded.RecordedIDs)
 	}
 
-	replay, err := AdmitShareOperation(root, "sess-1", "op-settle", []string{"a.md", "b.md"}, ShareProvenance{Call: "later"}, time.Now().Add(time.Second))
+	replay, err := AdmitShareOperation(root, "sess-1", "op-settle", []string{"/w/a.md", "/w/b.md"}, ShareProvenance{Call: "later"}, time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatalf("replay: %v", err)
 	}

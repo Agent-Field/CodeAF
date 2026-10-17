@@ -1268,6 +1268,31 @@ cannot be unloaded, and loading it again changes nothing. Reopening restores gro
 from the `load_capability` calls in the saved transcript. If those calls have been
 compacted away, codeaf loads the group again when needed.
 
+## Can you hand me a file as a result — share a deliverable, send me the chart, report or PDF you made
+
+**Yes, with `share_deliverable`.** When a file is something you should get back — a
+chart a script rendered, a report, a PDF, a recording, a spreadsheet, an archive — the
+agent shares it, and it joins this conversation's deliverables marked **shared by** the
+agent. A file made with `write` or by a generator is recorded already and needs no share.
+
+- **Up to 8 files and 64 MiB in all per call**, any regular file kind. A picture, a sound
+  or a video is also a media source you can preview; every other file keeps the type its
+  first bytes say (`application/pdf`, a plain file) and is not a preview.
+- **The file must be inside this conversation's folders** — the project, or the
+  conversation's own work and artifacts folders. A file outside them, a folder, or a file
+  reached through a link is refused and nothing is recorded.
+- **A task's file is copied** into the conversation's own artifacts folder when it lives
+  only in the task's tree, so it can still be opened after that tree is gone. The original
+  is never changed or moved, and the record names it as the original.
+- **It is recorded as it was at that moment**: its size and content hash are read once,
+  within ten seconds. A file that changes while it is being read is refused.
+- **Sharing is not making.** A shared file is never called made, created, a draft or kept
+  by the share, and nothing is charged for it.
+- **A retry never records twice.** Each share carries an `operation_id`; the same id
+  answers the same receipt again — `accepted`, `refused`, or `unknown`/`pending`/`busy`
+  when it should be retried with that same id. At most four shares run at once; a fifth
+  is told `busy` rather than queued.
+
 ## What codeaf cannot do
 
 Plainly, so you do not have to find out the hard way.
