@@ -24,7 +24,8 @@ import (
 // stored: each order is encoded exactly as the wire will encode it — with HTML
 // escaping on, so a "<" counts the six bytes it becomes — and the page ends
 // BEFORE the order that would take it past [appwire.OrdersMadeBytesMax]. The
-// store is asked never to copy out a document larger than that budget at all.
+// store projects only the fields an order's view reads and copies out at most
+// that budget of projections, so a watch's large memo never reaches here.
 // The page then continues from the last row it covered and counts unknown only
 // up to there; an order that cannot fit even alone is refused by name, and the
 // walk never moves past it.
@@ -46,12 +47,12 @@ func (b *appBackend) PageOrdersMadeIn(ctx context.Context, ask appwire.OrdersMad
 	}
 	now := b.now()
 	res := &appwire.OrdersMadeResult{Orders: []appwire.Order{}}
-	used, last, stop := 0, "", page.Stop
+	used, last, cut, stopID := 0, "", page.Stopped, page.StopID
 	for _, entry := range page.Entries {
 		// AN ENTRY IS COVERED ONLY WHEN A CURSOR CAN CONTINUE AFTER IT, so an id
 		// too long for one ends the page before it rather than being passed over.
 		if _, err := page.CursorAt(entry.ID); err != nil {
-			stop = entry.ID
+			cut, stopID = true, ""
 			break
 		}
 		if entry.Row != nil {
@@ -62,7 +63,7 @@ func (b *appBackend) PageOrdersMadeIn(ctx context.Context, ask appwire.OrdersMad
 			}
 			// One byte more for the comma between this order and the last.
 			if used+len(encoded)+1 > appwire.OrdersMadeBytesMax {
-				stop = entry.ID
+				cut, stopID = true, entry.ID
 				break
 			}
 			used += len(encoded) + 1
@@ -73,12 +74,18 @@ func (b *appBackend) PageOrdersMadeIn(ctx context.Context, ask appwire.OrdersMad
 		}
 		last = entry.ID
 	}
-	if last == "" && stop != "" {
-		return nil, appwire.Errorf(appwire.CodeTooLarge, "order %s is too large to read here", stop)
+	if last == "" && cut {
+		// The store refuses a page that covers nothing, so this is the app's own
+		// cut: the first order alone encodes past the budget. Its id was read
+		// within the store's bound, so it may be named.
+		if stopID == "" {
+			return nil, appwire.Errorf(appwire.CodeTooLarge, "the next order is too large to read here")
+		}
+		return nil, appwire.Errorf(appwire.CodeTooLarge, "order %s is too large to read here", stopID)
 	}
 	// NEXT IS ABSENT ONLY AT THE STORE'S END WITH EVERY ENTRY COVERED: a page
 	// this method cut short is never the end, whatever follows it.
-	if !page.End || stop != "" || last != lastEntry(page) {
+	if !page.End || cut || last != lastEntry(page) {
 		if last == "" {
 			// The store answers no page that is neither the end nor covers a row;
 			// one that did would hand out a cursor going nowhere.
@@ -100,8 +107,10 @@ func lastEntry(page automation.MadeInPage) string {
 }
 
 // ordersMadeError is the wire's word for a store refusal: a walk that must
-// start again, an order too large to carry, a cursor no page gave; any other
-// error is the engine's, and the method says it plainly.
+// start again, an order too large to carry, a cursor no page of this crew's
+// walk gave, a store that cannot be read honestly; any other error is the
+// engine's, and the method says it plainly. Every message the store writes
+// names an id only when it is short enough to read.
 func ordersMadeError(err error) error {
 	switch {
 	case errors.Is(err, automation.ErrMadeInStale):
@@ -109,7 +118,9 @@ func ordersMadeError(err error) error {
 	case errors.Is(err, automation.ErrMadeInTooLarge):
 		return appwire.Errorf(appwire.CodeTooLarge, "%s", err.Error())
 	case errors.Is(err, automation.ErrMadeInCursor):
-		return appwire.Errorf(appwire.CodeBadParams, "orders.made_in cursor is not one this method gave")
+		return appwire.Errorf(appwire.CodeBadParams, "orders.made_in cursor is not one this crew's walk gave")
+	case errors.Is(err, automation.ErrMadeInDamaged):
+		return appwire.Errorf(appwire.CodeEngine, "%s", err.Error())
 	}
 	return err
 }

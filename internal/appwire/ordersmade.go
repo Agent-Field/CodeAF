@@ -54,8 +54,14 @@ type OrdersMadeAsk struct {
 // write (a run, a status, a wake time, an edit that keeps the team). A cursor
 // from another revision is refused as [CodeStaleCursor]: the surface starts
 // again from the first page, so a walk can never end complete while missing an
-// order created behind it or counting one deleted. A row too large to carry is
-// [CodeTooLarge], naming it, and the cursor never moves past it.
+// order created behind it or counting one deleted. A cursor is ONE CREW'S
+// walk: another crew's is bad_params, never read as this one's. A row too
+// large to carry is [CodeTooLarge] and the cursor never moves past it — an id
+// too long to read (named by where it is, never echoed), a match whose view
+// is past the page's budget, or a stored document of ANY crew past the 2 MiB
+// scan, which stops every crew's walk at it until it shrinks: the honest cost
+// of a bounded read. A store that cannot be read honestly (a missing walk
+// revision, a match whose status or wake time is damaged) is engine.
 //
 // UNKNOWN IS HOW MANY ORDERS IN THE STRETCH OF THE STORE THIS PAGE COVERED
 // CANNOT BE PLACED IN ANY CREW OR IN NONE: saved before creation teams were

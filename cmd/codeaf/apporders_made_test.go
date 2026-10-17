@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/automation"
@@ -313,5 +315,96 @@ func TestOrdersMadeBoundsMatchTheStore(t *testing.T) {
 	}
 	if appwire.OrdersMadeBytesMax > automation.MadeInScanBytesMax {
 		t.Fatalf("the response budget %d is over the scan budget %d", appwire.OrdersMadeBytesMax, automation.MadeInScanBytesMax)
+	}
+}
+
+// THE PROJECTION IS EXACTLY WHAT AN ORDER'S VIEW READS: an order, a reminder
+// and a watch with every field the view shows set read back through
+// orders.made_in exactly as the full row reads through Get, apart from the
+// per-row reads a page never makes. A field the view gains and the projection
+// lacks fails here.
+func TestOrdersMadeInProjectionMatchesOrderView(t *testing.T) {
+	backend, store, crew := madeInCrewStore(t)
+	team := &automation.OriginTeam{Known: true, ID: crew}
+	for _, a := range []automation.Automation{
+		{Title: "order", Crew: "belongs1", Schedule: automation.Schedule{Every: "1h", Zone: "UTC"},
+			Action: automation.Action{Do: "do <it>"}, Wont: "push", AnswersIn: automation.ScopeCrew,
+			Limits: automation.Limits{Time: 90 * time.Second, USD: 0.5}},
+		{Title: "reminder", Schedule: automation.Schedule{Every: "24h", Zone: "Europe/Paris"}, Action: automation.Action{Say: "say it"}},
+		{Title: "watch", Schedule: automation.Schedule{Every: "15m", Zone: "UTC"}, Action: automation.Action{Say: "it changed"},
+			Look: &automation.Look{Command: "ls", Condition: "a new file"}},
+	} {
+		a.Workspace = t.TempDir()
+		a.Origin = automation.Origin{SessionID: "s", Transcript: "/state/v3/places/p/abc123/transcript.jsonl", Team: team}
+		if _, err := store.Create(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew})
+	if err != nil || len(res.Orders) != 3 || res.Next != "" {
+		t.Fatalf("page = %+v, %v", res, err)
+	}
+	now := backend.now()
+	for _, got := range res.Orders {
+		full, err := store.Get(got.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := orderView(nil, full, now)
+		want.LastRun, want.Asking = nil, nil
+		wantJSON, _ := json.Marshal(want)
+		gotJSON, _ := json.Marshal(got)
+		if string(wantJSON) != string(gotJSON) {
+			t.Fatalf("the projected order differs from the full one:\n got %s\nwant %s", gotJSON, wantJSON)
+		}
+	}
+}
+
+// A CURSOR FROM ANOTHER CREW'S WALK IS BAD_PARAMS on the wire, never read as
+// this crew's walk.
+func TestOrdersMadeInWrongCrewCursorIsBadParams(t *testing.T) {
+	backend, store, crew := madeInCrewStore(t)
+	for _, title := range []string{"a", "b"} {
+		madeOrder(t, store, title, "", &automation.OriginTeam{Known: true, ID: crew})
+	}
+	first, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew, Limit: 1})
+	if err != nil || first.Next == "" {
+		t.Fatalf("first page = %+v, %v", first, err)
+	}
+	other := teamstore.NewID()
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: other, Name: "other", Made: backend.now()})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: other, Cursor: first.Next}); wireCode(err) != appwire.CodeBadParams {
+		t.Fatalf("another crew's cursor = %+v, %v", res, err)
+	}
+}
+
+// A STORE THAT CANNOT BE READ HONESTLY IS AN ENGINE ERROR on the wire: a
+// missing walk revision, and an order made in the crew whose status cannot be
+// read. Neither is an empty page.
+func TestOrdersMadeInDamagedRowIsEngine(t *testing.T) {
+	backend, store, crew := madeInCrewStore(t)
+	made := madeOrder(t, store, "a", "", &automation.OriginTeam{Known: true, ID: crew})
+	root := store.Root()
+	raw, err := sql.Open("sqlite", filepath.Join(root, automation.DatabaseName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = raw.Close() })
+	if _, err := raw.Exec(`UPDATE automations SET status = 'sideways' WHERE id = ?`, made.ID); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew}); wireCode(err) != appwire.CodeEngine || !strings.Contains(err.Error(), made.ID) {
+		t.Fatalf("a damaged order = %+v, %v", res, err)
+	}
+	if _, err := raw.Exec(`DELETE FROM origin_revision`); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := backend.PageOrdersMadeIn(context.Background(), appwire.OrdersMadeAsk{Crew: crew}); wireCode(err) != appwire.CodeEngine {
+		t.Fatalf("a missing walk revision = %+v, %v", res, err)
 	}
 }

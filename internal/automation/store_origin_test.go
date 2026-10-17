@@ -16,8 +16,9 @@ func madeIn(title string, team *OriginTeam) Automation {
 	return a
 }
 
-// madeInDocMax is the decode budget the tests read with unless they test it.
-const madeInDocMax = 256 << 10
+// madeInProjMax is the projection budget the tests read with unless they test
+// it: the wire's.
+const madeInProjMax = 256 << 10
 
 // continueAfter is the cursor that continues after every entry page covered,
 // or "" when the page reached the end.
@@ -44,7 +45,7 @@ func walkMadeIn(t *testing.T, s *Store, teamID string, limit int) ([]string, int
 	seen := map[string]bool{}
 	unknown, pages, cursor, last := 0, 0, "", ""
 	for {
-		page, err := s.MadeInTeam(context.Background(), teamID, cursor, limit, madeInDocMax)
+		page, err := s.MadeInTeam(context.Background(), teamID, cursor, limit, madeInProjMax)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -138,13 +139,13 @@ func TestMadeInTeamReadsTheRecordedTeamAndCountsUnknownOncePerWalk(t *testing.T)
 		t.Fatalf("an unused team read %v with unknown %d", titles, unknown)
 	}
 	for _, bad := range []int{0, MadeInTeamMax + 1} {
-		if _, err := s.MadeInTeam(context.Background(), "teamA", "", bad, madeInDocMax); err == nil {
+		if _, err := s.MadeInTeam(context.Background(), "teamA", "", bad, madeInProjMax); err == nil {
 			t.Fatalf("limit %d was served", bad)
 		}
 	}
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := s.MadeInTeam(cancelled, "teamA", "", 5, madeInDocMax); err == nil {
+	if _, err := s.MadeInTeam(cancelled, "teamA", "", 5, madeInProjMax); err == nil {
 		t.Fatal("a cancelled read answered")
 	}
 }
@@ -169,7 +170,7 @@ func TestMadeInTeamReadsABoundedWindowOfTheStore(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	first, err := s.MadeInTeam(context.Background(), "teamA", "", MadeInTeamMax, madeInDocMax)
+	first, err := s.MadeInTeam(context.Background(), "teamA", "", MadeInTeamMax, madeInProjMax)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,12 +195,12 @@ func TestMadeInTeamRefusesAMatchingRowItCannotRead(t *testing.T) {
 	if _, err := s.db.Exec(`INSERT INTO automations (id, doc, status) VALUES ('x1', '{"title":5,"origin":{"team":{"known":true,"id":"teamC"}}}', 'active')`); err != nil {
 		t.Fatal(err)
 	}
-	if page, err := s.MadeInTeam(context.Background(), "teamC", "", 10, madeInDocMax); err == nil {
+	if page, err := s.MadeInTeam(context.Background(), "teamC", "", 10, madeInProjMax); err == nil {
 		t.Fatalf("an unreadable row of the team was answered as %+v", page)
 	}
 	// For another team the row is a recorded team that is not this one: covered,
 	// not unknown, never decoded.
-	if page, err := s.MadeInTeam(context.Background(), "teamA", "", 10, madeInDocMax); err != nil || len(page.Entries) != 1 || page.Entries[0].Unknown || page.Entries[0].Row != nil || !page.End {
+	if page, err := s.MadeInTeam(context.Background(), "teamA", "", 10, madeInProjMax); err != nil || len(page.Entries) != 1 || page.Entries[0].Unknown || page.Entries[0].Row != nil || !page.End {
 		t.Fatalf("another team's read = %+v, %v; want the row covered and the end reached", page, err)
 	}
 }
@@ -219,7 +220,7 @@ func madeInStore(t *testing.T) *Store {
 // firstOfTwo reads the first page with limit 1 and answers its cursor.
 func firstOfTwo(t *testing.T, s *Store) string {
 	t.Helper()
-	page, err := s.MadeInTeam(context.Background(), "teamA", "", 1, madeInDocMax)
+	page, err := s.MadeInTeam(context.Background(), "teamA", "", 1, madeInProjMax)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +233,7 @@ func firstOfTwo(t *testing.T, s *Store) string {
 
 func wantStale(t *testing.T, s *Store, cursor, what string) {
 	t.Helper()
-	if page, err := s.MadeInTeam(context.Background(), "teamA", cursor, 1, madeInDocMax); !errors.Is(err, ErrMadeInStale) {
+	if page, err := s.MadeInTeam(context.Background(), "teamA", cursor, 1, madeInProjMax); !errors.Is(err, ErrMadeInStale) {
 		t.Fatalf("after %s the walk went on: %+v, %v", what, page, err)
 	}
 }
@@ -298,7 +299,7 @@ func TestMadeInRunAndStatusWritesDoNotStale(t *testing.T) {
 	if _, err := s.db.Exec(`UPDATE automations SET doc = json_set(doc, '$.title', 'retitled') WHERE id = 'm-a4'`); err != nil {
 		t.Fatal(err)
 	}
-	page, err := s.MadeInTeam(context.Background(), "teamA", cursor, MadeInTeamMax, madeInDocMax)
+	page, err := s.MadeInTeam(context.Background(), "teamA", cursor, MadeInTeamMax, madeInProjMax)
 	if err != nil || len(page.Entries) != 3 || !page.End {
 		t.Fatalf("after ordinary writes the walk = %+v, %v; want the three rows after the cursor and the end", page, err)
 	}
@@ -334,69 +335,74 @@ func TestStoreUpdateKeepsTheCreationTeam(t *testing.T) {
 	}
 }
 
-// bigDoc is a JSON document of about n bytes recording team.
+// bigDoc is a JSON document of about n bytes recording team, padded in a
+// field no order's view reads, so its projection is small.
 func bigDoc(n int, team string) string {
 	return `{"title":"big","pad":"` + strings.Repeat("x", n) + `","origin":{"team":{"known":true,"id":"` + team + `"}}}`
 }
 
-// A ROW LARGER THAN THE SCAN BUDGET IS NEVER SKIPPED AND NEVER THE END: a page
-// that would start at it is refused naming it, and the cursor does not move.
-func TestMadeInOversizedFirstRowRefusesWithoutAdvancing(t *testing.T) {
+// briefDoc is a document recording team whose brief is n bytes: a field the
+// order's view reads, so its projection is large.
+func briefDoc(n int, team string) string {
+	return `{"title":"brief","action":{"do":"` + strings.Repeat("d", n) + `"},"origin":{"team":{"known":true,"id":"` + team + `"}}}`
+}
+
+func rawRow(t *testing.T, s *Store, id, doc string) {
+	t.Helper()
+	if _, err := s.db.Exec(`INSERT INTO automations (id, doc, status) VALUES (?, ?, 'active')`, id, doc); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A DOCUMENT LARGER THAN THE SCAN BUDGET — ANOTHER TEAM'S INCLUDED — IS NEVER
+// SKIPPED AND NEVER THE END: the page before it ends there, and a page that
+// would start at it is refused naming it, every time, with the cursor unmoved.
+// This test claims nothing about the walk being complete: it cannot be, and
+// the read says so rather than pretending.
+func TestMadeInForeignOversizedDocRefusesAtItsPosition(t *testing.T) {
 	s, _ := openStore(t)
-	if _, err := s.db.Exec(`INSERT INTO automations (id, doc, status) VALUES ('m-a0', '{"title":"small"}', 'active')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.db.Exec(`INSERT INTO automations (id, doc, status) VALUES ('m-b0', ?, 'active')`, bigDoc(MadeInScanBytesMax, "teamB")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.db.Exec(`INSERT INTO automations (id, doc, status) VALUES ('m-c0', '{"title":"after"}', 'active')`); err != nil {
-		t.Fatal(err)
-	}
-	first, err := s.MadeInTeam(context.Background(), "teamA", "", MadeInTeamMax, madeInDocMax)
-	if err != nil || len(first.Entries) != 1 || first.Entries[0].ID != "m-a0" || first.Stop != "m-b0" || first.End {
+	rawRow(t, s, "m-a0", `{"title":"small","origin":{"team":{"known":true,"id":"teamA"}}}`)
+	rawRow(t, s, "m-b0", bigDoc(MadeInScanBytesMax, "teamB"))
+	rawRow(t, s, "m-c0", `{"title":"after","origin":{"team":{"known":true,"id":"teamA"}}}`)
+	first, err := s.MadeInTeam(context.Background(), "teamA", "", MadeInTeamMax, madeInProjMax)
+	if err != nil || len(first.Entries) != 1 || first.Entries[0].ID != "m-a0" || !first.Stopped || first.StopID != "m-b0" || first.End {
 		t.Fatalf("the page before the big row = %+v, %v; want m-a0 alone, stopped at m-b0", first, err)
 	}
 	cursor := continueAfter(t, first)
 	for range 2 {
-		if page, err := s.MadeInTeam(context.Background(), "teamA", cursor, MadeInTeamMax, madeInDocMax); !errors.Is(err, ErrMadeInTooLarge) || !strings.Contains(err.Error(), "m-b0") {
+		if page, err := s.MadeInTeam(context.Background(), "teamA", cursor, MadeInTeamMax, madeInProjMax); !errors.Is(err, ErrMadeInTooLarge) || !strings.Contains(err.Error(), "m-b0") || page.End {
 			t.Fatalf("the page starting at the big row = %+v, %v; want it refused by name", page, err)
 		}
 	}
 }
 
-// A MATCH LARGER THAN THE CALLER'S DECODE BUDGET IS NEVER COPIED OUT: the page
-// ends before it, and a page that would start at it is refused.
-func TestMadeInMatchOverTheDecodeBudgetRefuses(t *testing.T) {
+// A MATCH WHOSE PROJECTION IS LARGER THAN THE BUDGET IS NEVER COPIED OUT: a
+// page that would start at it is refused, and another team's read covers the
+// row without projecting it.
+func TestMadeInProjectionOverBudgetRefuses(t *testing.T) {
 	s, _ := openStore(t)
-	if _, err := s.db.Exec(`INSERT INTO automations (id, doc, status) VALUES ('m-a0', ?, 'active')`, bigDoc(4096, "teamA")); err != nil {
-		t.Fatal(err)
+	rawRow(t, s, "m-a0", briefDoc(300<<10, "teamA"))
+	if page, err := s.MadeInTeam(context.Background(), "teamA", "", 10, madeInProjMax); !errors.Is(err, ErrMadeInTooLarge) || !strings.Contains(err.Error(), "m-a0") {
+		t.Fatalf("a match over the projection budget = %+v, %v", page, err)
 	}
-	if page, err := s.MadeInTeam(context.Background(), "teamA", "", 10, 1024); !errors.Is(err, ErrMadeInTooLarge) {
-		t.Fatalf("a match over the decode budget = %+v, %v", page, err)
-	}
-	// Another team's read covers it without decoding it.
-	if page, err := s.MadeInTeam(context.Background(), "teamB", "", 10, 1024); err != nil || len(page.Entries) != 1 || page.Entries[0].Row != nil || !page.End {
+	if page, err := s.MadeInTeam(context.Background(), "teamB", "", 10, madeInProjMax); err != nil || len(page.Entries) != 1 || page.Entries[0].Row != nil || !page.End {
 		t.Fatalf("another team's read = %+v, %v", page, err)
 	}
 }
 
 // THE SCAN BUDGET ENDS THE WINDOW BEFORE THE ROW THAT WOULD PASS IT, and the
 // unknown rows past it are not counted on this page; the walk covers each once.
+// The 819 KiB match is padded in a field no view reads, so it is carried within
+// the wire's projection budget, and the stop is the scan budget's alone.
 func TestMadeInScanBytesEndTheWindowBeforeTheRow(t *testing.T) {
 	s, _ := openStore(t)
 	third := MadeInScanBytesMax * 2 / 5
-	for id, doc := range map[string]string{
-		"m-a0": bigDoc(third, "teamA"),
-		"m-a1": `{"title":"legacy","pad":"` + strings.Repeat("y", third) + `"}`,
-		"m-a2": `{"title":"legacy too","pad":"` + strings.Repeat("z", third) + `"}`,
-	} {
-		if _, err := s.db.Exec(`INSERT INTO automations (id, doc, status) VALUES (?, ?, 'active')`, id, doc); err != nil {
-			t.Fatal(err)
-		}
-	}
-	first, err := s.MadeInTeam(context.Background(), "teamA", "", MadeInTeamMax, MadeInScanBytesMax)
-	if err != nil || len(first.Entries) != 2 || first.Stop != "m-a2" || first.End {
-		t.Fatalf("first page = %+v, %v; want two entries, stopped at m-a2", first.Stop, err)
+	rawRow(t, s, "m-a0", bigDoc(third, "teamA"))
+	rawRow(t, s, "m-a1", `{"title":"legacy","pad":"`+strings.Repeat("y", third)+`"}`)
+	rawRow(t, s, "m-a2", `{"title":"legacy too","pad":"`+strings.Repeat("z", third)+`"}`)
+	first, err := s.MadeInTeam(context.Background(), "teamA", "", MadeInTeamMax, madeInProjMax)
+	if err != nil || len(first.Entries) != 2 || !first.Stopped || first.StopID != "m-a2" || first.End {
+		t.Fatalf("first page = %+v, %v; want two entries, stopped at m-a2", first, err)
 	}
 	if first.Entries[0].Row == nil || first.Entries[0].Unknown || first.Entries[1].Row != nil || !first.Entries[1].Unknown {
 		t.Fatalf("first page entries = %+v", first.Entries)
@@ -404,6 +410,141 @@ func TestMadeInScanBytesEndTheWindowBeforeTheRow(t *testing.T) {
 	_, unknown, pages := walkMadeIn(t, s, "teamA", MadeInTeamMax)
 	if unknown != 2 || pages != 2 {
 		t.Fatalf("the walk counted %d unknown over %d pages, want 2 over 2", unknown, pages)
+	}
+}
+
+// AN ORDINARY LARGE MEMO NEVER BLOCKS A SMALL ORDER: a watch's 300 KiB memo in
+// its column, and the copy of it a status change leaves in its document, are
+// neither read out nor counted against the projection budget.
+func TestMadeInHugeWatchMemoDoesNotBlockATinyOrder(t *testing.T) {
+	s, _ := openStore(t)
+	made, err := s.Create(madeIn("watch", &OriginTeam{Known: true, ID: "teamA"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSeen(made.ID, made.Revision, "yes", strings.Repeat("path\tsize:0123456789abcdef\n", (300<<10)/27)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetStatus(made.ID, StatusPaused); err != nil {
+		t.Fatal(err)
+	}
+	var docBytes int64
+	if err := s.db.QueryRow(`SELECT octet_length(doc) FROM automations WHERE id = ?`, made.ID).Scan(&docBytes); err != nil || docBytes < 300<<10 {
+		t.Fatalf("the memo was not copied into the document (%d bytes, %v); the test proves nothing", docBytes, err)
+	}
+	page, err := s.MadeInTeam(context.Background(), "teamA", "", 10, madeInProjMax)
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].Row == nil || !page.End {
+		t.Fatalf("a small order with a large memo = %+v, %v", page, err)
+	}
+	if row := page.Entries[0].Row; row.Memo != "" || row.Seen != "" || row.Title != "watch" || row.Status != StatusPaused {
+		t.Fatalf("the row read out %d memo bytes, seen %q, title %q, status %q", len(row.Memo), row.Seen, row.Title, row.Status)
+	}
+}
+
+// AN ID TOO LONG FOR A CURSOR IS NEVER COPIED OUT, ENCODED OR ECHOED: the page
+// ends before its row, and a page that would start at it is refused by where
+// the row is, not by its id.
+func TestMadeInOversizedIDStopsBeforeItAndNeverCopiesIt(t *testing.T) {
+	for _, n := range []int{MadeInIDMax + 1, 64 << 10} {
+		s, _ := openStore(t)
+		long := "m-b" + strings.Repeat("q", n-3)
+		rawRow(t, s, "m-a0", `{"title":"small","origin":{"team":{"known":true,"id":"teamA"}}}`)
+		rawRow(t, s, long, `{"title":"long","origin":{"team":{"known":true,"id":"teamA"}}}`)
+		first, err := s.MadeInTeam(context.Background(), "teamA", "", MadeInTeamMax, madeInProjMax)
+		if err != nil || len(first.Entries) != 1 || !first.Stopped || first.StopID != "" || first.End {
+			t.Fatalf("%d-byte id: first page = %+v, %v", n, first, err)
+		}
+		cursor := continueAfter(t, first)
+		for range 2 {
+			_, err := s.MadeInTeam(context.Background(), "teamA", cursor, MadeInTeamMax, madeInProjMax)
+			if !errors.Is(err, ErrMadeInTooLarge) || strings.Contains(err.Error(), "qqqq") || !strings.Contains(err.Error(), "m-a0") {
+				t.Fatalf("%d-byte id: the page at it = %v; want a refusal naming its position only", n, err)
+			}
+		}
+	}
+}
+
+// A MATCH WHOSE STATUS OR WAKE TIME CANNOT BE READ REFUSES ITS TEAM'S PAGE,
+// bounded: a megabyte of status is never read out. Another team's walk covers
+// the same rows, because it never reads those columns.
+func TestMadeInDamagedStatusOrNextRefusesOnlyItsCrew(t *testing.T) {
+	for name, damage := range map[string]string{
+		"status": `UPDATE automations SET status = ? WHERE id = 'm-a0'`,
+		"next":   `UPDATE automations SET next_ms = 'soon' WHERE id = 'm-a0' AND ? != ''`,
+	} {
+		s, _ := openStore(t)
+		rawRow(t, s, "m-a0", `{"title":"small","origin":{"team":{"known":true,"id":"teamA"}}}`)
+		if _, err := s.db.Exec(damage, strings.Repeat("s", 1<<20)); err != nil {
+			t.Fatal(err)
+		}
+		_, err := s.MadeInTeam(context.Background(), "teamA", "", 10, madeInProjMax)
+		if !errors.Is(err, ErrMadeInDamaged) || len(err.Error()) > 512 {
+			t.Fatalf("%s: a damaged match = %v", name, err)
+		}
+		if page, err := s.MadeInTeam(context.Background(), "teamB", "", 10, madeInProjMax); err != nil || len(page.Entries) != 1 || !page.End {
+			t.Fatalf("%s: another team's walk = %+v, %v", name, page, err)
+		}
+	}
+}
+
+// A MISSING OR DAMAGED WALK REVISION IS AN ERROR ON EVERY PAGE, never an empty
+// page and never the end; a store opened again puts the row back, and a cursor
+// from before is then stale.
+func TestMadeInMissingRevisionRowIsAnError(t *testing.T) {
+	for name, damage := range map[string]string{
+		"missing": `DELETE FROM origin_revision`,
+		"text":    `UPDATE origin_revision SET rev = 'x'`,
+	} {
+		s := madeInStore(t)
+		cursor := firstOfTwo(t, s)
+		if _, err := s.db.Exec(damage); err != nil {
+			t.Fatal(err)
+		}
+		for _, at := range []string{"", cursor} {
+			if page, err := s.MadeInTeam(context.Background(), "teamA", at, 1, madeInProjMax); !errors.Is(err, ErrMadeInDamaged) || page.End {
+				t.Fatalf("%s revision, cursor %q: %+v, %v", name, at, page, err)
+			}
+		}
+		if name != "missing" {
+			continue
+		}
+		root := s.Root()
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		again, err := Open(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = again.Close() })
+		if _, err := again.MadeInTeam(context.Background(), "teamA", cursor, 1, madeInProjMax); !errors.Is(err, ErrMadeInStale) {
+			t.Fatalf("a cursor from before the revision was put back = %v", err)
+		}
+	}
+}
+
+// A CURSOR IS ONE TEAM'S WALK: another team's is refused, never read as this
+// one's, and so is the unreleased m1 shape.
+func TestMadeInCursorIsBoundToItsCrew(t *testing.T) {
+	s := madeInStore(t)
+	cursor := firstOfTwo(t, s)
+	if _, err := s.MadeInTeam(context.Background(), "teamB", cursor, 1, madeInProjMax); !errors.Is(err, ErrMadeInCursor) {
+		t.Fatalf("teamA's cursor on teamB = %v", err)
+	}
+	if MadeInIDMax != (MadeInCursorMax-len("m2.")-19-1-MadeInTeamIDMax-1)*3/4 || MadeInIDMax < 16 {
+		t.Fatalf("MadeInIDMax = %d", MadeInIDMax)
+	}
+}
+
+// AFTER THE LIMIT-TH MATCH NOTHING MORE IS PROJECTED: a later match too large
+// to carry does not stop or refuse the page that ended before it.
+func TestMadeInLimitStopsProjectingLaterHits(t *testing.T) {
+	s, _ := openStore(t)
+	rawRow(t, s, "m-a0", `{"title":"small","origin":{"team":{"known":true,"id":"teamA"}}}`)
+	rawRow(t, s, "m-a1", briefDoc(300<<10, "teamA"))
+	page, err := s.MadeInTeam(context.Background(), "teamA", "", 1, madeInProjMax)
+	if err != nil || len(page.Entries) != 1 || page.Stopped || page.End {
+		t.Fatalf("a page at its limit = %+v, %v", page, err)
 	}
 }
 
@@ -419,7 +560,7 @@ func TestMadeInUnknownCountsOnlyTheCoveredPrefix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, err := s.MadeInTeam(context.Background(), "teamA", "", 1, madeInDocMax)
+	page, err := s.MadeInTeam(context.Background(), "teamA", "", 1, madeInProjMax)
 	if err != nil || len(page.Entries) != 1 || page.Entries[0].Unknown || page.End {
 		t.Fatalf("a page cut at its limit = %+v, %v", page, err)
 	}
@@ -431,12 +572,16 @@ func TestMadeInUnknownCountsOnlyTheCoveredPrefix(t *testing.T) {
 // A CURSOR NO PAGE GAVE IS REFUSED, and so is one past the bound.
 func TestMadeInRefusesACursorItDidNotGive(t *testing.T) {
 	s := madeInStore(t)
-	for _, cursor := range []string{"m-a1", "m1.x.bS1hMQ", "m1.0.", "m1.-1.bS1hMQ", "m2.0.bS1hMQ", "m1.0.bS1hMQ." + strings.Repeat("a", MadeInCursorMax)} {
-		if _, err := s.MadeInTeam(context.Background(), "teamA", cursor, 1, madeInDocMax); !errors.Is(err, ErrMadeInCursor) {
+	for _, cursor := range []string{
+		"m-a1", "m1.0.bS1hMQ", "m1.0.teamA.bS1hMQ", "m2.x.teamA.bS1hMQ", "m2.0.teamA.", "m2.-1.teamA.bS1hMQ",
+		"m2.00000000000000000000.teamA.bS1hMQ", "m2.0.teamA.bS1hMQ." + strings.Repeat("a", MadeInCursorMax),
+		"m2.0.teamA." + strings.Repeat("cXFx", 11),
+	} {
+		if _, err := s.MadeInTeam(context.Background(), "teamA", cursor, 1, madeInProjMax); !errors.Is(err, ErrMadeInCursor) {
 			t.Fatalf("cursor %q was served: %v", cursor, err)
 		}
 	}
-	if _, err := (MadeInPage{Revision: 1}).CursorAt(strings.Repeat("i", MadeInCursorMax)); !errors.Is(err, ErrMadeInTooLarge) {
+	if _, err := (MadeInPage{Team: "teamA", Revision: 1}).CursorAt(strings.Repeat("i", MadeInIDMax+1)); !errors.Is(err, ErrMadeInTooLarge) {
 		t.Fatalf("an id too long for a cursor was answered: %v", err)
 	}
 }
