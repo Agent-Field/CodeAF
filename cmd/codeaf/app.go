@@ -1679,10 +1679,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if shown != nil && shown.queued {
 		var again appSending
 		b.locked(func() { again = *shown })
-		again.queued = false
-		if shown = &again; again.creationTeam == "" && len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
-			shown = nil
-		}
+		shown = appRetryShown(again, text)
 	}
 	turn, err := b.send(id, text, clientID, shown)
 	if appSendUnsure(err) {
@@ -1696,6 +1693,18 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 		return 0, appwire.Errorf(appwire.CodeUncertain, "%s", appUnsureWords)
 	}
 	return turn, err
+}
+
+// appRetryShown is a failed queued message made the person's own send again:
+// no longer queued, and nothing at all when what is left is only its words. A
+// creation-team stamp is a mark that keeps it: a retried crew message is still
+// the message that crew accepted.
+func appRetryShown(again appSending, text string) *appSending {
+	again.queued = false
+	if again.creationTeam == "" && len(again.described) == 0 && len(again.reads) == 0 && again.composed == nil && again.text == text {
+		return nil
+	}
+	return &again
 }
 
 // startLocked starts one turn on a held conversation. The caller holds a.gate.
