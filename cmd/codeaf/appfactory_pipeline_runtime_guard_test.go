@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,10 +21,11 @@ import (
 // /v1/me, the edit-source read and the open-pr write. body is the edit-source
 // answer and can be swapped between calls.
 type guardRemote struct {
-	srv  *httptest.Server
-	mu   sync.Mutex
-	log  []string
-	body string
+	srv   *httptest.Server
+	mu    sync.Mutex
+	log   []string
+	posts []string
+	body  string
 }
 
 func newGuardRemote(t *testing.T) *guardRemote {
@@ -32,6 +34,11 @@ func newGuardRemote(t *testing.T) *guardRemote {
 	g.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.mu.Lock()
 		g.log = append(g.log, r.Method+" "+r.URL.EscapedPath())
+		if r.Method == http.MethodPost {
+			b, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(b))
+			g.posts = append(g.posts, string(b))
+		}
 		body := g.body
 		g.mu.Unlock()
 		switch {
@@ -69,7 +76,19 @@ func (g *guardRemote) count(prefix string) int {
 	return n
 }
 
-func (g *guardRemote) reset() { g.mu.Lock(); g.log = nil; g.mu.Unlock() }
+func (g *guardRemote) reset() { g.mu.Lock(); g.log, g.posts = nil, nil; g.mu.Unlock() }
+
+// postContains is true when any POSTed body holds s.
+func (g *guardRemote) postContains(s string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, p := range g.posts {
+		if strings.Contains(p, s) {
+			return true
+		}
+	}
+	return false
+}
 
 type guardWire struct {
 	*editWire

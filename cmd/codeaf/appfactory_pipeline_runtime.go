@@ -106,9 +106,11 @@ func (h *appFactoryHub) runtimeAttestedText(id, origin, token, repo, base, text 
 
 const pipelineRuntimeReread = "This factory has not confirmed that it runs kind, when, effort or fanout for this exact file. Read the file again; if this repeats, update the factory."
 
-func pipelineRuntimeRefusal(p appwire.FactoryPipelinePreviewParams) error {
+// pipelineRuntimeRefusal names the edit that needed the claim by op, or no edit
+// (nil) when the base itself spells the runtime words.
+func pipelineRuntimeRefusal(p appwire.FactoryPipelinePreviewParams, op *int) error {
 	err := appwire.Errorf(appwire.CodeBadParams, "%s Nothing was written.", pipelineRuntimeReread)
-	err.Detail = appwire.FactoryPipelineEditRefusal{Factory: p.Factory, Repo: p.Repo, Code: pipeline.EditBadOp}
+	err.Detail = appwire.FactoryPipelineEditRefusal{Factory: p.Factory, Repo: p.Repo, Code: pipeline.EditBadOp, Op: op}
 	return err
 }
 

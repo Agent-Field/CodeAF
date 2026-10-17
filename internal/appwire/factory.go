@@ -117,9 +117,12 @@ type FactoryCapabilities struct {
 	// PipelineEdit: factory.pipeline_source and factory.pipeline_preview are
 	// served (feature factory.pipeline_edit). True only for an engine that
 	// implements [FactoryPipelineEditor]. Neither writes anything.
-	PipelineEdit   bool `json:"pipeline_edit"`
-	MaxConnections int  `json:"max_connections"`
-	MaxFlows       int  `json:"max_flows"`
+	PipelineEdit bool `json:"pipeline_edit"`
+	// PipelineEditRuntime: this engine previews when, effort and fanout edits,
+	// and only for a file the factory attested in the same sign-in. Never kind.
+	PipelineEditRuntime bool `json:"pipeline_edit_runtime"`
+	MaxConnections      int  `json:"max_connections"`
+	MaxFlows            int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,

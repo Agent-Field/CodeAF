@@ -265,8 +265,13 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 	// app, which may be stale or hand-built; the engine's parser reading the
 	// words proves nothing about the runner that will read the merged file.
 	baseAttested := h.runtimeAttestedText(p.Factory, who.row.URL, who.token, p.Repo, p.BaseSHA, p.BaseText)
+	// An edit that names when, effort or fanout (even to clear it) is a runtime
+	// edit and needs the same say-so, whatever the base spells.
+	if i := firstRuntimeEdit(p.Edits); !baseAttested && i >= 0 {
+		return appwire.FactoryPipelinePreview{}, pipelineRuntimeRefusal(p, &i)
+	}
 	if !baseAttested && pipeline.RuntimeKeysIn(p.BaseText) {
-		return appwire.FactoryPipelinePreview{}, pipelineRuntimeRefusal(p)
+		return appwire.FactoryPipelinePreview{}, pipelineRuntimeRefusal(p, nil)
 	}
 	ed, err := pipeline.ApplyEdits(p.BaseText, appwire.PipelineEditOps(p.Edits))
 	// The caller is the connection's to the end: a preview made for one who has
@@ -282,24 +287,46 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 		return appwire.FactoryPipelinePreview{}, pipelineEditRefusal(p, bad)
 	}
 	// The same bar for the RESULT: an edit that writes a runtime key into a
-	// legacy file (none does yet) is not previewed for a factory that did not say
+	// legacy file is not previewed for a factory that did not say
 	// it runs them.
 	if !baseAttested && ed.Changed && pipeline.RuntimeKeysIn(ed.Text) {
-		return appwire.FactoryPipelinePreview{}, pipelineRuntimeRefusal(p)
+		return appwire.FactoryPipelinePreview{}, pipelineRuntimeRefusal(p, nil)
 	}
 	h.touch(p.Factory)
 	out := appwire.FactoryPipelinePreview{Factory: p.Factory, Repo: p.Repo, BaseSHA: p.BaseSHA, Path: factory.PipelineFile,
 		Text: ed.Text, Changed: ed.Changed, FormatRewritten: ed.FormatRewritten, CommentsDropped: ed.CommentsDropped,
 		Steps: []appwire.FactoryPipelineStepChange{}}
 	for _, c := range ed.Steps {
+		// THE WIRE NEVER CARRIES A KIND EDIT. If a change ever lists one it is not
+		// shown as a normal preview.
+		for _, f := range c.Fields {
+			if f == "kind" {
+				return appwire.FactoryPipelinePreview{}, appwire.Errorf(appwire.CodeEngine, "the edit could not be previewed")
+			}
+		}
 		out.Steps = append(out.Steps, appwire.FactoryPipelineStepChange{Name: c.Name, Fields: c.Fields,
-			Before: appwire.FactoryPipelineStepValues{Prompt: c.Before.Prompt, Until: c.Before.Until, Max: c.Before.Max},
-			After:  appwire.FactoryPipelineStepValues{Prompt: c.After.Prompt, Until: c.After.Until, Max: c.After.Max}})
+			Before: pipelineStepValues(c.Before), After: pipelineStepValues(c.After)})
 	}
 	if ed.Budget != nil {
 		out.Budget = &appwire.FactoryPipelineBudgetChange{Before: ed.Budget.Before, After: ed.Budget.After}
 	}
 	return out, nil
+}
+
+func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
+	return appwire.FactoryPipelineStepValues{Prompt: v.Prompt, Until: v.Until, Max: v.Max, When: v.When, Effort: v.Effort, Fanout: v.Fanout}
+}
+
+// firstRuntimeEdit is the position of the first edit that names when, effort or
+// fanout, or -1. An explicit empty value counts: clearing a word is a runtime
+// edit too.
+func firstRuntimeEdit(edits []appwire.FactoryPipelineEdit) int {
+	for i, e := range edits {
+		if e.When != nil || e.Effort != nil || e.Fanout != nil {
+			return i
+		}
+	}
+	return -1
 }
 
 // pipelineEditRefusal is the wire error for an edit the file cannot take. The

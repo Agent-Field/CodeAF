@@ -24,8 +24,9 @@ import (
 //     and refuses editing; defaults are never offered as though they were the file.
 //   - factory.pipeline_preview applies STRUCTURED edits to that base and answers
 //     the exact canonical text the pull request would commit. The edits are
-//     set_step {name, prompt?, until?, max?} and set_budget {value}, nothing
-//     else; they are the only edits the file format can hold today. A caller
+//     set_step {name, prompt?, until?, max?, when?, effort?, fanout?} and
+//     set_budget {value}, nothing else (never kind: a step becomes a check, gate
+//     or post only in the file itself); they are the only edits the file format can hold today. A caller
 //     never builds YAML, and the preview is computed by the same parser and
 //     encoder the pull request route uses, so what is shown is what is committed.
 //
@@ -40,6 +41,12 @@ import (
 // FeatureFactoryPipelineEdit is announced in hello when the engine serves
 // factory.pipeline_source and factory.pipeline_preview.
 const FeatureFactoryPipelineEdit = "factory.pipeline_edit"
+
+// FeatureFactoryPipelineEditRuntime is announced beside FeatureFactoryPipelineEdit
+// when this engine decodes when, effort and fanout in a preview AND refuses to
+// preview them for a factory that did not attest them. It says nothing about any
+// remote: that is the source's runtime_fields, read per file.
+const FeatureFactoryPipelineEditRuntime = "factory.pipeline_edit_runtime"
 
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
@@ -100,15 +107,20 @@ type FactoryPipelineSource struct {
 }
 
 // FactoryPipelineEdit is one structured edit. set_step names a step and at
-// least one of prompt, until and max; set_budget names only value. A field the
-// verb does not take is bad_params. An omitted field is not sent: until "" is a
-// request to clear it, which the file format may refuse.
+// least one of prompt, until, max, when, effort and fanout; set_budget names
+// only value. A field the verb does not take is bad_params, and there is no kind
+// field at all: it is rejected as unknown. An omitted field is not sent: until ""
+// is a request to clear it, which the file format may refuse, and when, effort or
+// fanout "" clears that word back to the default.
 type FactoryPipelineEdit struct {
 	Op     string   `json:"op" enum:"set_step,set_budget"`
 	Name   string   `json:"name,omitempty"`
 	Prompt *string  `json:"prompt,omitempty"`
 	Until  *string  `json:"until,omitempty"`
 	Max    *int     `json:"max,omitempty"`
+	When   *string  `json:"when,omitempty"`
+	Effort *string  `json:"effort,omitempty"`
+	Fanout *string  `json:"fanout,omitempty"`
 	Value  *float64 `json:"value,omitempty"`
 }
 
@@ -123,15 +135,20 @@ type FactoryPipelinePreviewParams struct {
 	Edits    []FactoryPipelineEdit `json:"edits"`
 }
 
-// FactoryPipelineStepValues are the three things a step says.
+// FactoryPipelineStepValues are what a step says. When, effort and fanout are
+// omitted when empty, so a preview of a legacy file is byte for byte what it was
+// before they existed.
 type FactoryPipelineStepValues struct {
 	Prompt string `json:"prompt"`
 	Until  string `json:"until"`
 	Max    int    `json:"max"`
+	When   string `json:"when,omitempty"`
+	Effort string `json:"effort,omitempty"`
+	Fanout string `json:"fanout,omitempty"`
 }
 
 // FactoryPipelineStepChange is one step an edit really changed; Fields says
-// which of prompt, until and max differ.
+// which of prompt, until, max, when, effort and fanout differ, never kind.
 type FactoryPipelineStepChange struct {
 	Name   string                    `json:"name"`
 	Fields []string                  `json:"fields"`
@@ -187,21 +204,34 @@ type FactoryPipelineEditor interface {
 	FactoryPipelinePreview(ctx context.Context, p FactoryPipelinePreviewParams) (FactoryPipelinePreview, error)
 }
 
+// FactoryPipelineRuntimeGuard is implemented ONLY by an editor that decodes when,
+// effort and fanout AND refuses to preview them for a file its factory did not
+// attest. The method set of [FactoryPipelineEditor] cannot say that, so an
+// editor that lacks this marker never announces the runtime feature.
+type FactoryPipelineRuntimeGuard interface {
+	PipelineRuntimeGuarded()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
 	}
 	if _, ok := e.(FactoryPipelineEditor); ok {
 		hello = withFeature(hello, FeatureFactoryPipelineEdit)
+		if _, guarded := e.(FactoryPipelineRuntimeGuard); guarded {
+			hello = withFeature(hello, FeatureFactoryPipelineEditRuntime)
+		}
 	}
 	return hello
 }
 
 // PipelineEditOps converts wire edits to the pipeline package's, unchanged.
+// Kind is left nil on purpose: a step's kind is a permission change that no
+// preview shows, so the wire has no way to send one.
 func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 	ops := make([]pipeline.EditOp, len(edits))
 	for i, e := range edits {
-		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Prompt: e.Prompt, Until: e.Until, Max: e.Max, Value: e.Value}
+		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Prompt: e.Prompt, Until: e.Until, Max: e.Max, When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value}
 	}
 	return ops
 }
