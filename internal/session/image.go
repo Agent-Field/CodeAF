@@ -146,6 +146,7 @@ func (a *Agent) admitImageMessage(ctx context.Context, user userMessage) (events
 		// the loop lands it at the next step boundary, where a user message is a
 		// legal shape. The references travel with it because the journal write
 		// happens then, not now.
+		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
 		events := a.hub.subscribe()
 		a.mu.Unlock()

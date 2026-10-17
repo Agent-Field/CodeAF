@@ -359,3 +359,16 @@ func TestAppAttachedCrewMessageStatesTheCrew(t *testing.T) {
 		t.Fatalf("attached crew message stated %q, want [%s]", got, crew)
 	}
 }
+
+// THE FIRST WORDS OF agents.create ARE THE PERSON'S OWN, AND STATE AN EXPLICIT
+// NONE.
+func TestAppCreateFirstWordsStateNone(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
+	backend, _, _ := workBackend(t, conv)
+	if _, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir(), Text: "look at the build"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := waitCreations(t, conv, 1); got[0] != "none" {
+		t.Fatalf("the first words stated %q, want none", got)
+	}
+}

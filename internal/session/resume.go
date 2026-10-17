@@ -140,12 +140,14 @@ func (a *Agent) ResumeStoppedTurn(ctx context.Context) (<-chan Event, bool) {
 		return nil, false
 	}
 	// AND IT IS ASKED IN THE SAME CREW IT WAS SENT IN: the creation context its
-	// door stated is on the line's own mark, read back with the journal, so an
-	// automation made in the resumed turn records what the first one would
-	// have. A line with no such mark resumes unknown.
+	// door stated is on the line's own mark, read back with the journal, and
+	// proven again by THIS engine exactly as a new message is
+	// ([Agent.provenCreation]): a line written by another profile, or a mark
+	// damaged on disk, resumes unknown rather than as a crew this engine cannot
+	// vouch for. A line with no such mark resumes unknown. It never upgrades.
 	resumed := userMessage{message: last, resumed: true}
 	if mark := a.presentation.of(last); mark != nil {
-		resumed.creation = mark.Creation.clone()
+		resumed.creation = a.provenCreation(mark.Creation)
 	}
 	events := a.startTurnLocked(ctx, resumed, nil)
 	a.mu.Unlock()

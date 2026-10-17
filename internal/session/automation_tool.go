@@ -600,8 +600,8 @@ func (a *Agent) automationChanged(stored automation.Automation, parsed automatio
 // THE ID WAS CHECKED WHEN THE MESSAGE WAS ACCEPTED ([Agent.provenCreation]) and
 // is not checked against the teams file again here: a crew that closed, lost
 // its manager or changed hands since keeps what was made in it. Only the shape
-// is checked once more, so a context that never passed acceptance cannot write
-// a malformed id.
+// is checked once more: a malformed id (one that never passed acceptance) is
+// recorded unknown, and never refuses the automation.
 func (a *Agent) automationOrigin(ctx context.Context) (automation.Origin, string) {
 	a.mu.Lock()
 	id := a.sessionID()
@@ -615,7 +615,7 @@ func (a *Agent) automationOrigin(ctx context.Context) (automation.Origin, string
 		return origin, ""
 	}
 	if teamID != "" && !creationTeamIDOK(teamID) {
-		return automation.Origin{}, "Invalid arguments: creation team is not a team id"
+		return origin, ""
 	}
 	origin.Team = &automation.OriginTeam{Known: true, ID: teamID}
 	return origin, ""

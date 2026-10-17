@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -360,5 +361,114 @@ func TestCreationTeamFollowUpKeepsItsContext(t *testing.T) {
 	saveCreated(t, agent, queued)
 	if got := onlyAutomation(t, store).Origin.Team; got == nil || got.ID != creationTeamID {
 		t.Fatalf("the follow-up's automation recorded %+v, want %s", got, creationTeamID)
+	}
+}
+
+// A PERSON'S MESSAGE SPLICED INTO A RUNNING TURN WITH ANOTHER CONTEXT MAKES THE
+// TURN UNKNOWN: a crew message answered inside an ordinary turn must not be
+// recorded as none, and an ordinary one inside a crew turn not as the crew. A
+// message stating the turn's own context changes nothing.
+func TestCreationTeamSplicedMessageWithAnotherContextMakesTheTurnUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		opener, other *CreationContext
+		want          string
+	}{
+		{"crew into none", &CreationContext{}, inCrew(), "unknown"},
+		{"none into crew", inCrew(), &CreationContext{}, "unknown"},
+		{"nothing into crew", inCrew(), nil, "unknown"},
+		{"same crew", inCrew(), inCrew(), creationTeamID},
+	} {
+		store := automationStoreFor(t)
+		spliced := make(chan struct{})
+		afterTheSplice := func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			select {
+			case <-spliced:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return createCall()(ctx, messages)
+		}
+		agent, _ := creationAgent(t, store, afterTheSplice, finalText("noted"))
+		events, err := agent.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: tc.opener})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := agent.SubmitMessage(context.Background(), Submission{Text: "and one more thing", Creation: tc.other}); err != nil {
+			t.Fatal(err)
+		}
+		close(spliced)
+		saveCreated(t, agent, events)
+		got := "unknown"
+		if team := onlyAutomation(t, store).Origin.Team; team != nil {
+			got = team.ID
+			if got == "" {
+				got = "none"
+			}
+		}
+		if got != tc.want {
+			t.Fatalf("%s: recorded %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A TAKEOVER RESUME PROVES THE JOURNALED CONTEXT AGAIN: an engine whose teams
+// file does not hold the crew resumes the turn, and records unknown.
+func TestCreationTeamResumeOnAnotherProfileIsUnknown(t *testing.T) {
+	store := automationStoreFor(t)
+	profile, journal := creationProfile(t)
+	streaming := make(chan struct{})
+	first := automationAgent(t, &scriptedCompleter{steps: []step{thinkingStep(streaming)}}, store, func(c *Config) {
+		c.ProfileDir, c.SessionFile = profile, journal
+	})
+	events, err := first.SubmitMessage(context.Background(), Submission{Text: createWords, Creation: inCrew()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-streaming:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first turn never streamed")
+	}
+	first.InterruptFor(StopByTakeover)
+	collect(t, events)
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := t.TempDir()
+	second := automationAgent(t, &scriptedCompleter{steps: []step{createCall(), finalText("done")}}, store, func(c *Config) {
+		c.ProfileDir, c.SessionFile = elsewhere, journal
+	})
+	resumed, ok := second.ResumeStoppedTurn(context.Background())
+	if !ok {
+		t.Fatal("the taken-over turn was not asked again")
+	}
+	saveCreated(t, second, resumed)
+	if got := onlyAutomation(t, store).Origin.Team; got != nil {
+		t.Fatalf("a resume on a profile without the crew recorded %+v, want unknown", got)
+	}
+}
+
+// A JOURNAL THAT DOES NOT EXIST YET UNDER A LINKED FOLDER IS KNOWN BY ITS
+// FOLDER RESOLVED AND ITS NAME — the spelling a crew start writes for its
+// manager — so its first message's crew is proven.
+func TestCreationKeysIncludeTheResolvedFolderSpelling(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "places")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	journal := filepath.Join(link, "transcript.jsonl")
+	want := filepath.Join(real, "transcript.jsonl")
+	if resolved, err := filepath.EvalSymlinks(real); err == nil {
+		want = filepath.Join(resolved, "transcript.jsonl")
+	}
+	keys := creationKeys(journal)
+	found := false
+	for _, key := range keys {
+		found = found || key == want
+	}
+	if !found || keys[0] != journal {
+		t.Fatalf("keys %q lack %q", keys, want)
 	}
 }
