@@ -4150,3 +4150,18 @@ func TestAppProviderQuestionsReachTheirSection(t *testing.T) {
 		}
 	}
 }
+
+func TestFactoryRecipeHeldWriteQuestionReachesFactory(t *testing.T) {
+	for _, asked := range []string{"factory_recipe bank it refused held folder", "factory recipe cannot write while a program holds the folder"} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, "from chat to the factory") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the factory recipe write instructions", asked)
+		}
+	}
+}
