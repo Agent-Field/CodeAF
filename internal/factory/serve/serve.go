@@ -393,7 +393,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	q.Mode = h.mode()
 	if q.Mode == api.FactorySolo {
 		for i := range q.Jobs {
-			h.soloJob(&q.Jobs[i])
+			h.soloJob(&q.Jobs[i], handle)
 		}
 	}
 	q.Reason = reason
@@ -451,7 +451,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	jobs[0].Can = api.CanFor(it, handle, h.clock())
 	api.ForViewer(&jobs[0], it, handle)
 	if h.mode() == api.FactorySolo {
-		h.soloJob(&jobs[0])
+		h.soloJob(&jobs[0], handle)
 	}
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
