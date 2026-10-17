@@ -94,6 +94,7 @@ func (h *Handler) stepEditsReply(w http.ResponseWriter, r *http.Request, it fact
 		return
 	}
 	h.redactMachines(r, &jobs[0])
+	withholdChats(&jobs[0])
 	j := jobs[0]
 	if lines == nil {
 		lines = []string{}
