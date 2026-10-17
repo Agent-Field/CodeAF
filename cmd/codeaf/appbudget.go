@@ -143,6 +143,9 @@ func (b *appBackend) SetAgentBudget(set appwire.AgentBudgetSet) (appwire.AgentBu
 	// bind with the figure it read before the write.
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	if err := b.lentFence(a, "budget"); err != nil {
+		return appwire.AgentBudget{}, err
+	}
 	id, scope := set.ID, "agent:"+set.ID
 	var oldRail *float64
 	if live := b.liveOf(a); live != nil {
@@ -178,7 +181,7 @@ func (b *appBackend) SetAgentBudget(set appwire.AgentBudgetSet) (appwire.AgentBu
 	}
 	live := b.liveOf(a)
 	if live != nil {
-		if err := b.bindBudget(id, live.conn.Conv); err != nil {
+		if err := b.bindBudgetConn(id, live.conn); err != nil {
 			// The record goes back to what the engine still holds, and the
 			// old figure is bound again in case the refusal came after it
 			// was taken.
@@ -192,7 +195,7 @@ func (b *appBackend) SetAgentBudget(set appwire.AgentBudgetSet) (appwire.AgentBu
 				if _, set := b.agentBudget(id, b.now()); !set {
 					return appwire.AgentBudget{}, appwire.Errorf(appwire.CodeEngine, "the saved budget was restored but the conversation's prior limit could not be confirmed; read this agent's budget again")
 				}
-				restore = b.bindBudget(id, live.conn.Conv)
+				restore = b.bindBudgetConn(id, live.conn)
 			}
 			if restore != nil {
 				return appwire.AgentBudget{}, appwire.Errorf(appwire.CodeEngine, "the saved budget was restored but its live limit could not be confirmed: %s; read this agent's budget again", appEngineError(restore).Error())

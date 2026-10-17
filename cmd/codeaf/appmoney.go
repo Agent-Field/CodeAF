@@ -359,6 +359,9 @@ func (b *appBackend) RaiseCap(raise appwire.CapRaise) error {
 		if err != nil {
 			return err
 		}
+		if err := b.lentFence(a, "budget"); err != nil {
+			return err
+		}
 		err = b.state.write(func(f *appStateFile) error {
 			if f.Budgets == nil {
 				f.Budgets = map[string]float64{}
@@ -390,7 +393,7 @@ func (b *appBackend) RaiseCap(raise appwire.CapRaise) error {
 			return appEngineError(err)
 		}
 		if live := b.liveOf(a); live != nil {
-			if err := b.bindBudget(raise.ID, live.conn.Conv); err != nil {
+			if err := b.bindBudgetConn(raise.ID, live.conn); err != nil {
 				return appEngineError(err)
 			}
 		}
