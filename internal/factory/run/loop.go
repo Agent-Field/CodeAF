@@ -545,6 +545,13 @@ func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkin
 			ph := &it.Stream.Phases[i]
 			name = ph.Name
 			setPhaseState(ph, state, now)
+			if qkind == factory.QKindApprove {
+				// The question belongs to the approve step itself, so the report
+				// the worker sends names the gate and not the step before it.
+				// A worker still cannot pass the gate: only the person's door does.
+				it.Stream.Cur = i
+				dropSettledPlanApproval(it)
+			}
 			if note != "" {
 				ph.Note = note
 				loopSay(it, now, "fail", note)

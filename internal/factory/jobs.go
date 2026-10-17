@@ -221,7 +221,10 @@ func JobApproval(it Item) *Approval {
 	case "approval_proof":
 		kind = "proof"
 	}
-	if it.Approval != nil && (kind == "" || it.Approval.Kind == kind) {
+	// A plan approval that settled before the question now asked is the old
+	// consent for an old question; the new ask needs its own approval.
+	settledBefore := kind == "plan" && it.Approval != nil && it.Approval.Kind == "plan" && it.Approval.State == "approved" && it.Asking != nil && it.Asking.At.After(it.Approval.At)
+	if it.Approval != nil && !settledBefore && (kind == "" || it.Approval.Kind == kind) {
 		a := *it.Approval
 		return &a
 	}
