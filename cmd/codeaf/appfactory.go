@@ -117,6 +117,11 @@ type appFactoryLink struct {
 	busy    bool
 }
 
+type appFactoryCheckCap struct {
+	post    bool
+	expires time.Time
+}
+
 type appFactoryHub struct {
 	dir    func() string
 	client *http.Client
@@ -133,7 +138,11 @@ type appFactoryHub struct {
 	sessions map[string]appFactorySession
 	signIns  map[string]*appFactorySignIn
 	links    map[string]*appFactoryLink
-	seen     map[string]time.Time
+	// checkCaps remembers, per origin, whether a factory advertised
+	// access_check_post. It holds no secret, expires with a flow's life and is
+	// bounded by appwire.MaxFactoryFlows.
+	checkCaps map[string]appFactoryCheckCap
+	seen      map[string]time.Time
 	// adminBusy marks a connection whose sign-out or revoke-all is in flight
 	// (appfactory_admin.go), so one press is one request.
 	adminBusy map[string]bool
@@ -1022,6 +1031,61 @@ func (h *appFactoryHub) prune() {
 			delete(h.signIns, key)
 		}
 	}
+	for origin, c := range h.checkCaps {
+		if !now.Before(c.expires) {
+			delete(h.checkCaps, origin)
+		}
+	}
+}
+
+// checkByPost says how to check a link at origin without a guess. A factory
+// that advertises access_check_post is asked with POST {link, verb:"check"}, so
+// the secret never rides in a URL. ONLY a valid /v1/about that does not
+// advertise it is legacy GET: a probe that fails, is refused or is malformed
+// is an error, never a reason to put the link in a query string. The probe
+// carries no link.
+func (h *appFactoryHub) checkByPost(ctx context.Context, origin, token string) (bool, error) {
+	if post, ok := h.cachedCheckCap(origin); ok {
+		return post, nil
+	}
+	r, err := h.send(ctx, origin, token, http.MethodGet, "/v1/about", nil, appFactorySmall, nil)
+	if err != nil {
+		return false, err
+	}
+	var about struct {
+		Contract int             `json:"contract"`
+		Post     json.RawMessage `json:"access_check_post"`
+	}
+	if r.status < 200 || r.status >= 300 || json.Unmarshal(r.body, &about) != nil || about.Contract < 1 {
+		return false, appwire.Errorf(appwire.CodeEngine, "the factory did not say how to check a link safely")
+	}
+	post := false
+	if len(about.Post) > 0 && string(about.Post) != "null" {
+		if json.Unmarshal(about.Post, &post) != nil {
+			return false, appwire.Errorf(appwire.CodeEngine, "the factory did not say how to check a link safely")
+		}
+	}
+	h.rememberCheckCap(origin, post)
+	return post, nil
+}
+
+func (h *appFactoryHub) cachedCheckCap(origin string) (post, ok bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	c, ok := h.checkCaps[origin]
+	return c.post, ok && h.now().Before(c.expires)
+}
+
+// rememberCheckCap keeps the answer for one flow life; a full table keeps what it has.
+func (h *appFactoryHub) rememberCheckCap(origin string, post bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.checkCaps == nil {
+		h.checkCaps = map[string]appFactoryCheckCap{}
+	}
+	if _, ok := h.checkCaps[origin]; ok || len(h.checkCaps) < appwire.MaxFactoryFlows {
+		h.checkCaps[origin] = appFactoryCheckCap{post: post, expires: h.now().Add(appFactoryFlowLife)}
+	}
 }
 
 func (b *appBackend) FactoryAccessCheck(ctx context.Context, caller, link string) (appwire.FactoryAccess, error) {
@@ -1051,14 +1115,28 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 
 	var in any
 	method, path := http.MethodGet, "/v1/factory-access?link="+url.QueryEscape(link)
-	if verb != "" {
-		method, path, in = http.MethodPost, "/v1/factory-access", api.FactoryAccessRequest{Link: link, Verb: verb}
-	}
-	r, err := h.send(ctx, origin, token, method, path, in, appFactorySmall, func(req *http.Request) {
-		if cookie != nil {
-			req.AddCookie(cookie)
+	wire := verb
+	var r appFactoryReply
+	if verb == "" {
+		// A check is a read; it must not leave a secret in a URL on a factory
+		// that can take it in a body. A failed probe ends the check here: it
+		// never degrades to the GET.
+		post, perr := h.checkByPost(ctx, origin, token)
+		err = perr
+		if perr == nil && post {
+			wire = "check"
 		}
-	})
+	}
+	if wire != "" {
+		method, path, in = http.MethodPost, "/v1/factory-access", api.FactoryAccessRequest{Link: link, Verb: wire}
+	}
+	if err == nil {
+		r, err = h.send(ctx, origin, token, method, path, in, appFactorySmall, func(req *http.Request) {
+			if cookie != nil {
+				req.AddCookie(cookie)
+			}
+		})
+	}
 	var out api.FactoryAccess
 	switch {
 	case err != nil:

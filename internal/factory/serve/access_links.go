@@ -115,7 +115,8 @@ func (h *Handler) createAccessLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := linkWire(tok, now)
-	// The fragment is consumed by the app; it is never sent as a URL query to the server.
+	// The app consumes the fragment. Current clients check it in a POST body;
+	// legacy clients still include the full link in a GET query.
 	out.URL = accessLinkURL(h.factory.Address, tok)
 	h.write(w, http.StatusCreated, struct {
 		Factory api.Factory    `json:"factory"`

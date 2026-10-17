@@ -682,8 +682,11 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		Access        string      `json:"access"`
 		PollingEvery  string      `json:"polling_every,omitempty"`
 		ServedBy      string      `json:"served_by"`
+		// AccessCheckPost is optional and public: POST /v1/factory-access takes
+		// verb "check", so a client need not put a link's secret in a URL.
+		AccessCheckPost bool `json:"access_check_post"`
 	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
-		h.accessMode(), h.pollingEvery(), h.servedBy()})
+		h.accessMode(), h.pollingEvery(), h.servedBy(), true})
 }
 
 func (h *Handler) accessMode() string {
