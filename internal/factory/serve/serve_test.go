@@ -49,6 +49,9 @@ func TestFixtureReadsOverHTTP(t *testing.T) {
 		if f := expected.Jobs[i].Failure; f != nil {
 			f.Runner, f.Machine = "", ""
 		}
+		// The fixture's plan can be sent back, but this factory has no store
+		// and so no reject_plan route: the server, not the codec, says so.
+		expected.Jobs[i].Can.RejectPlan = false
 	}
 	if !reflect.DeepEqual(q, expected) || len(q.Jobs) != 10 {
 		t.Fatalf("queue did not carry the fixture: got %+v", q)

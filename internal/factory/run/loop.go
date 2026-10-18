@@ -618,13 +618,7 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 		return false
 	}
 	ph := it.Stream.Phases
-	prev := -1
-	for k := i - 1; k >= 0; k-- {
-		if ph[k].Kind != factory.StageGate && ph[k].State == factory.PhaseDone {
-			prev = k
-			break
-		}
-	}
+	prev := factory.PreviousWork(ph, i)
 	last := true
 	for _, p := range ph[i+1:] {
 		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
@@ -888,7 +882,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				if getErr != nil || cur.Stream == nil {
 					return false
 				}
-				if prev := previousWork(cur.Stream.Phases, i); prev >= 0 {
+				if prev := factory.PreviousWork(cur.Stream.Phases, i); prev >= 0 {
 					return lp.back(c, i, prev, factory.SendBackReason(a.words))
 				}
 				lp.stop(c)
@@ -1129,17 +1123,6 @@ func NoteContinue(it *factory.Item, now time.Time) bool {
 	}
 	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
 	return true
-}
-
-// previousWork is the last finished step before i that is not an approve
-// step, or -1 when there is nowhere to send the work back to.
-func previousWork(ph []factory.Phase, i int) int {
-	for k := i - 1; k >= 0; k-- {
-		if ph[k].Kind != factory.StageGate && ph[k].State == factory.PhaseDone {
-			return k
-		}
-	}
-	return -1
 }
 
 // failStop records a step that errored and stops the job. The failure is not
