@@ -324,3 +324,55 @@ func TestShapeCheapReadsTheShownSize(t *testing.T) {
 		}
 	}
 }
+
+// THE BRIEF'S THINKING IS PER STEP, ONLY OVER THE STEPS THAT RUN: the same
+// scalar for every running step, each step's own when they differ, nothing when
+// nobody set any, and never the thinking of a step that is switched off as the
+// job's.
+func TestTheManagersBriefSaysThinkingPerStepAndNeverOneForAMixedJob(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	for _, c := range []struct {
+		name  string
+		think map[string]string
+		off   map[string]bool
+		want  string // the whole facts line; "" = no thinking anywhere on it
+		stage string // a stages: line that must still say the step's own
+	}{
+		{"mixed", map[string]string{"plan": "cheap", "write": "strong", "test": "strong", "review": "strong", "proof": "strong"}, nil,
+			"budget $5 · thinking plan cheap, write strong, test strong, review strong, proof strong", "effort cheap"},
+		{"mixed with usual", map[string]string{"plan": "cheap", "write": "strong"}, nil,
+			"budget $5 · thinking plan cheap, write strong, test usual, review usual, proof usual", ""},
+		{"uniform", map[string]string{"plan": "strong", "write": "strong", "test": "strong", "review": "strong", "proof": "strong"}, nil,
+			"budget $5 · thinking strong", ""},
+		{"all usual", nil, nil, "budget $5", ""},
+		// A STEP THAT IS OFF IS NOT THE JOB'S THINKING: the others are all usual.
+		{"only an off step", map[string]string{"security": "cheap"}, nil, "budget $5", "effort cheap · off"},
+		// AND AN OFF STEP DOES NOT BREAK A UNIFORM: the running ones agree.
+		{"uniform beside an off step", map[string]string{"plan": "strong", "write": "strong", "test": "strong", "review": "strong", "proof": "strong", "security": "cheap"}, nil,
+			"budget $5 · thinking strong", "effort cheap · off"},
+	} {
+		it := factory.Item{ID: 12, Repo: "acme/web", Title: "fix the ledger", Cap: 5, Stages: factory.CopyStages(recipe.For(factory.KindIssue))}
+		for i, st := range it.Stages {
+			it.Stages[i].Effort = c.think[st.Name]
+		}
+		brief := talkBrief(it, recipe)
+		var facts string
+		for _, line := range strings.Split(brief, "\n") {
+			if strings.HasPrefix(line, "budget") {
+				facts = line
+			}
+			if c.want == "" && strings.HasPrefix(line, "thinking") {
+				t.Errorf("%s: a thinking line with nothing set: %q", c.name, line)
+			}
+		}
+		if facts != c.want {
+			t.Errorf("%s: facts line = %q, want %q", c.name, facts, c.want)
+		}
+		if c.stage != "" && !strings.Contains(brief, c.stage) {
+			t.Errorf("%s: the stages block lost %q:\n%s", c.name, c.stage, brief)
+		}
+		if strings.Contains(brief, "thinking cheap") && c.name != "mixed" {
+			t.Errorf("%s: the brief says the job thinks cheap:\n%s", c.name, brief)
+		}
+	}
+}

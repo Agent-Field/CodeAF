@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -233,7 +234,7 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · write · test · review · proof"}},
 		{"cap up", ItemChange{Cap: 12.5}, "", "#1 · raise the budget to $12.50?", []string{"budget  $5 → $12.50"}},
 		{"cap down", ItemChange{Cap: 3}, "", "#1 · lower the budget to $3?", []string{"budget  $5 → $3"}},
-		{"effort", ItemChange{Effort: "strong"}, "", "#1 · think strong?", []string{"thinking  — → strong"}},
+		{"effort", ItemChange{Effort: "strong"}, "", "#1 · think strong?", []string{"thinking  plan — → strong · write — → strong · test — → strong · review — → strong · proof — → strong · security(off) — → strong"}},
 		{"note", ItemChange{Note: "the fixture in testdata is flaky"}, "", "#1 · add a note for the stages?",
 			[]string{"note: the fixture in testdata is flaky"}},
 		{"several", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Cap: 8, Note: "keep it small"}, "small change", "#1 · change the plan?",
@@ -278,12 +279,18 @@ func TestFactoryItemChangeAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	if strings.Join(next.Notes, "|") != "first|second" {
 		t.Errorf("notes = %v", next.Notes)
 	}
-	if ItemEffort(next) != "strong" {
-		t.Errorf("ItemEffort = %q", ItemEffort(next))
+	// THE SAVED VALUES ARE EACH STEP'S OWN, never one scalar for the job.
+	if got := ItemFactsOf(next).Thinking; got["write"] != "strong" || got["plan"] != "" || got["security"] != "strong" {
+		t.Errorf("saved thinking = %v", got)
 	}
 	back, err := ApplyItemChange(next, ItemChange{Effort: "default"}, recipe)
-	if err != nil || ItemEffort(back) != "" {
-		t.Errorf("default effort = %q, %v", ItemEffort(back), err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range ItemFactsOf(back).Thinking {
+		if got != "" {
+			t.Errorf("default left %s at %q", name, got)
+		}
 	}
 
 	recipe.Adapt = map[factory.Kind]factory.AdaptMode{factory.KindIssue: factory.AdaptFixed}
@@ -558,5 +565,505 @@ func TestFactoryItemCardUsesTheFloorsWords(t *testing.T) {
 		if !strings.Contains(schema, `\"`+word+`\"`) {
 			t.Errorf("the schema does not tell the model the person's word %q", word)
 		}
+	}
+}
+
+// itemWithPhases is a default-recipe item whose stream holds exactly the phases given.
+func itemWithPhases(phases ...factory.Phase) factory.Item {
+	return factory.Item{ID: 1, Kind: factory.KindIssue, Cap: 5, Notes: []string{"first"}, Stream: &factory.Stream{Phases: phases}}
+}
+
+// THINKING IS THE SHARED EDIT'S, SO ITS REFUSALS HOLD: a refused change comes
+// back as it went in, the cap and the note included.
+func TestItemThinkingRefusalLeavesTheItemAsItWas(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	landed := itemWithPhases()
+	landed.State = factory.StateLanded
+	proofRan := itemWithPhases(
+		factory.Phase{Name: "plan", State: factory.PhaseDone},
+		factory.Phase{Name: "write", State: factory.PhaseDone},
+		factory.Phase{Name: "test", State: factory.PhaseDone},
+		factory.Phase{Name: "review", State: factory.PhaseDone},
+		factory.Phase{Name: "proof", State: factory.PhaseDone})
+	for _, c := range []struct {
+		name string
+		it   factory.Item
+		want string
+	}{
+		{"landed", landed, "has landed"},
+		{"proof started", proofRan, factory.ProofFrozenRefusal},
+	} {
+		staged := ItemStaged(c.it, recipe)
+		got, err := ApplyItemChange(c.it, ItemChange{Effort: "strong", Cap: 9, Note: "ignored"}, recipe)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want %q", c.name, err, c.want)
+		}
+		if !reflect.DeepEqual(got, staged) {
+			t.Errorf("%s: a refused change moved the item:\n%+v\nwas\n%+v", c.name, got, staged)
+		}
+	}
+}
+
+// A change that moves no thinking stays a no-op even on a landed job.
+func TestItemThinkingNoOpStaysANoOpWhenLanded(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	it := itemWithPhases()
+	it.State = factory.StateLanded
+	got, err := ApplyItemChange(it, ItemChange{Effort: "default"}, recipe)
+	if err != nil {
+		t.Fatalf("a no-op thinking change was refused: %v", err)
+	}
+	if !reflect.DeepEqual(got.Stages, ItemStaged(it, recipe).Stages) {
+		t.Error("a no-op thinking change moved a stage")
+	}
+}
+
+// A fixed stage keeps its own thinking; the rest of the card goes through.
+func TestItemThinkingLeavesAFixedStageAlone(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	it := ItemStaged(itemWithPhases(), recipe)
+	it.Stages = factory.CopyStages(it.Stages)
+	i := factory.StageIndex(it.Stages, "review")
+	it.Stages[i].Fixed = true
+	it.Stages[i].Effort = "cheap"
+	next, err := ApplyItemChange(it, ItemChange{Effort: "strong"}, recipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range next.Stages {
+		switch {
+		case st.Name == "review" && st.Effort != "cheap":
+			t.Errorf("fixed review now thinks %q", st.Effort)
+		case st.Name == "write" && st.Effort != "strong":
+			t.Errorf("write thinks %q, want strong", st.Effort)
+		}
+	}
+}
+
+// A phase a rerun rewound to pending has still begun, as the shared Edit counts it.
+func TestItemThinkingSkipsAPendingPhaseWithARound(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	it := itemWithPhases(factory.Phase{Name: "plan", State: factory.PhaseDone},
+		factory.Phase{Name: "write", State: factory.PhasePending, Round: 1})
+	next, err := ApplyItemChange(it, ItemChange{Effort: "strong"}, recipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range next.Stages {
+		if st.Name == "write" && st.Effort != "" {
+			t.Errorf("a stage with a round behind it was changed to %q", st.Effort)
+		}
+	}
+	got := ItemFactsOf(next).Thinking
+	if got["write"] != "" || got["test"] != "strong" || got["review"] != "strong" {
+		t.Errorf("saved thinking = %v, want write untouched and the rest strong", got)
+	}
+}
+
+// A bad level is refused before the edit, the cap or the note is looked at.
+func TestItemThinkingBadLevelRefusesWholeChange(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	it := itemWithPhases()
+	got, err := ApplyItemChange(it, ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Effort: "wild", Cap: 9, Note: "x"}, recipe)
+	if err == nil || !strings.Contains(err.Error(), "not a thinking level") {
+		t.Fatalf("err = %v", err)
+	}
+	if !reflect.DeepEqual(got, ItemStaged(it, recipe)) {
+		t.Error("a bad level moved the item")
+	}
+}
+
+// fixedPlanDoor is a door whose plan is FIXED at cheap, the first stage the
+// old scalar read, so a card that says the job thinks cheap is the lie.
+func fixedPlanDoor() *fakeItemDoor {
+	door := newFakeItemDoor()
+	door.item = ItemStaged(door.item, door.recipe)
+	door.item.Stages = factory.CopyStages(door.item.Stages)
+	plan := factory.StageIndex(door.item.Stages, "plan")
+	door.item.Stages[plan].Fixed = true
+	door.item.Stages[plan].Effort = "cheap"
+	return door
+}
+
+// yesItem raises the card for args against door, answers yes, and returns what
+// the model is told.
+func yesItem(t *testing.T, door *fakeItemDoor, args string) string {
+	t.Helper()
+	agent := newItemAgent(t, door, 0)
+	questions, stopQ := agent.WatchQuestions()
+	t.Cleanup(stopQ)
+	results := runFactoryItem(t, agent, context.Background(), args)
+	q := awaitItemQuestion(t, questions)
+	if err := agent.ResolveQuestion(Answer{Kind: QuestionItem, Ref: q.Ref, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	return awaitResult(t, results)
+}
+
+// savedThinking is each conversation step's own thinking as the door holds it.
+func savedThinking(door *fakeItemDoor) map[string]string {
+	door.mu.Lock()
+	defer door.mu.Unlock()
+	return ItemFactsOf(door.item).Thinking
+}
+
+// A FIXED FIRST STAGE MUST NOT HIDE THE REST, AND MUST NOT SPEAK FOR THE JOB:
+// with plan fixed at cheap, "think strong" moves the eligible stages, the card
+// names them, and the yes receipt the model relays says the same, with the
+// fixed step left as it was and no "thinking cheap" for the job.
+func TestFactoryItemFixedFirstStageStillRaisesTheThinkingCard(t *testing.T) {
+	door := fixedPlanDoor()
+	agent := newItemAgent(t, door, 0)
+	questions, stopQ := agent.WatchQuestions()
+	t.Cleanup(stopQ)
+	results := runFactoryItem(t, agent, context.Background(), `{"item":1,"effort":"strong"}`)
+	q := awaitItemQuestion(t, questions)
+	if q.Head != "#1"+DecisionSep+"think strong?" {
+		t.Errorf("head = %q", q.Head)
+	}
+	if !strings.Contains(q.Reason, "write — → strong") || strings.Contains(q.Reason, "plan") {
+		t.Errorf("rows do not name the steps that change: %q", q.Reason)
+	}
+	if err := agent.ResolveQuestion(Answer{Kind: QuestionItem, Ref: q.Ref, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	out := awaitResult(t, results)
+	for _, want := range []string{"thinking write strong", "security(off) strong", "left as they were: plan cheap"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the receipt lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "thinking cheap") || strings.Contains(out, "thinking strong") {
+		t.Errorf("the receipt says one thinking for a job whose steps differ:\n%s", out)
+	}
+	want := map[string]string{"plan": "cheap", "write": "strong", "test": "strong", "review": "strong", "proof": "strong", "security": "strong"}
+	if got := savedThinking(door); !reflect.DeepEqual(got, want) {
+		t.Errorf("saved = %v, want %v", got, want)
+	}
+	if st := door.item.Stages[factory.StageIndex(door.item.Stages, "security")]; st.On {
+		t.Error("the yes switched security on")
+	}
+}
+
+// THE RECEIPT IS THE SAVED ITEM'S, NOT THE PREVIEW'S: a step that began between
+// the card and the yes keeps its thinking, the yes does not claim it moved, and
+// the receipt says it was left.
+func TestFactoryItemReceiptIsWhatWasSavedNotWhatWasPreviewed(t *testing.T) {
+	door := newFakeItemDoor()
+	agent := newItemAgent(t, door, 0)
+	questions, stopQ := agent.WatchQuestions()
+	t.Cleanup(stopQ)
+	results := runFactoryItem(t, agent, context.Background(), `{"item":1,"effort":"strong"}`)
+	q := awaitItemQuestion(t, questions)
+	if !strings.Contains(q.Reason, "write — → strong") {
+		t.Fatalf("the card does not offer write: %q", q.Reason)
+	}
+	door.mu.Lock()
+	door.item.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}, {Name: "write", State: factory.PhaseRunning}}}
+	door.mu.Unlock()
+	if err := agent.ResolveQuestion(Answer{Kind: QuestionItem, Ref: q.Ref, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	out := awaitResult(t, results)
+	if !strings.Contains(out, "left as they were: plan usual, write usual") {
+		t.Errorf("the receipt does not name the steps that began:\n%s", out)
+	}
+	if strings.Contains(out, "write strong") || !strings.Contains(out, "test strong") {
+		t.Errorf("the receipt claims what the preview offered rather than what was saved:\n%s", out)
+	}
+	if got := savedThinking(door); got["write"] != "" || got["test"] != "strong" {
+		t.Errorf("saved = %v", got)
+	}
+}
+
+// A BUDGET OR A NOTE IS NOT A THINKING CHANGE: the yes receipt of a card that
+// asked for neither says nothing about thinking, however the steps think.
+func TestFactoryItemCapOrNoteOnlyReceiptNeverSpeaksOfThinking(t *testing.T) {
+	for _, c := range []struct{ name, args string }{
+		{"cap", `{"item":1,"cap":9}`},
+		{"note", `{"item":1,"note":"the fixture is flaky"}`},
+		{"skip", `{"item":1,"skip":["review"]}`},
+	} {
+		door := fixedPlanDoor()
+		for i := range door.item.Stages {
+			if itemChatStage(door.item.Stages[i]) && door.item.Stages[i].Name != "plan" {
+				door.item.Stages[i].Effort = "strong"
+			}
+		}
+		out := yesItem(t, door, c.args)
+		if strings.Contains(out, "thinking") || strings.Contains(out, "left as they were") {
+			t.Errorf("%s: a change that asked for no thinking speaks of it:\n%s", c.name, out)
+		}
+	}
+}
+
+// A stage after proof refuses the whole card through the shared edit; the item
+// keeps its cap and note.
+func TestItemThinkingAConversationStageAfterProofRefusesTheWholeCard(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	it := ItemStaged(itemWithPhases(), recipe)
+	it.Stages = append(factory.CopyStages(it.Stages), factory.ParseStage("announce"))
+	got, err := ApplyItemChange(it, ItemChange{Effort: "strong", Cap: 9, Note: "x"}, recipe)
+	if err == nil {
+		t.Fatal("a thinking change reaching a stage after proof was not refused")
+	}
+	if got.Cap != it.Cap || len(got.Notes) != len(it.Notes) {
+		t.Error("a refused card moved the cap or the note")
+	}
+}
+
+// offSecurityDoor is a door whose item thinks strong on every stage except an
+// OFF security stage at cheap: the one place "think strong" has something to do.
+func offSecurityDoor(t *testing.T) *fakeItemDoor {
+	t.Helper()
+	door := newFakeItemDoor()
+	door.item = ItemStaged(door.item, door.recipe)
+	door.item.Stages = factory.CopyStages(door.item.Stages)
+	for i := range door.item.Stages {
+		if st := &door.item.Stages[i]; itemChatStage(*st) {
+			st.Effort = "strong"
+			if st.Name == "security" {
+				st.Effort = "cheap"
+			}
+		}
+	}
+	return door
+}
+
+func offSecurityCard(t *testing.T, door *fakeItemDoor, change ItemChange) *ItemNotice {
+	t.Helper()
+	before, after, err := door.Preview(context.Background(), 1, change)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &ItemNotice{Item: 1, Ref: before.Ref(), Before: ItemFactsOf(before), After: ItemFactsOf(after)}
+}
+
+// A CHANGE THAT MOVES ONLY A STAGE THAT IS OFF IS STILL A CHANGE: the card
+// names it, marked off, a yes saves it while it stays off, and the receipt
+// says so without calling the job strong.
+func TestFactoryItemOffStageThinkingRaisesTheCardAndStaysOff(t *testing.T) {
+	door := offSecurityDoor(t)
+	n := offSecurityCard(t, door, ItemChange{Effort: "strong"})
+	rows := strings.Join(ItemRows(*n), "\n")
+	if rows != "thinking  security(off) cheap → strong" {
+		t.Errorf("rows = %q", rows)
+	}
+	if head := ItemHead(*n); head != "#1"+DecisionSep+"think strong?" {
+		t.Errorf("head = %q", head)
+	}
+	out := yesItem(t, door, `{"item":1,"effort":"strong"}`)
+	if strings.Contains(out, itemAlready) {
+		t.Errorf("an off-stage change was called a no-op: %q", out)
+	}
+	if !strings.Contains(out, "thinking security(off) strong") || strings.Contains(out, "left as they were") {
+		t.Errorf("the receipt = %q", out)
+	}
+	st := door.item.Stages[factory.StageIndex(door.item.Stages, "security")]
+	if st.Effort != "strong" || st.On {
+		t.Errorf("security = effort %q on %v, want strong and off", st.Effort, st.On)
+	}
+	for name, got := range savedThinking(door) {
+		if got != "strong" {
+			t.Errorf("%s = %q, want strong", name, got)
+		}
+	}
+}
+
+// An unrelated cap does not hide the off stage: the card says both, and so does
+// the receipt.
+func TestFactoryItemCapAndEffortPreviewNamesTheOffStage(t *testing.T) {
+	door := offSecurityDoor(t)
+	n := offSecurityCard(t, door, ItemChange{Effort: "strong", Cap: 9})
+	rows := strings.Join(ItemRows(*n), "\n")
+	if !strings.Contains(rows, "budget  $5 → $9") || !strings.Contains(rows, "security(off) cheap → strong") {
+		t.Errorf("rows = %q", rows)
+	}
+	if head := ItemHead(*n); head != "#1"+DecisionSep+"change the plan?" {
+		t.Errorf("head = %q", head)
+	}
+	out := yesItem(t, door, `{"item":1,"effort":"strong","cap":9}`)
+	if !strings.Contains(out, "budget $9") || !strings.Contains(out, "thinking security(off) strong") {
+		t.Errorf("receipt = %q", out)
+	}
+}
+
+// Default resets the off stage too, and the receipt says "usual" in words where
+// the card draws its dash; a change nothing moves stays a no-op.
+func TestFactoryItemOffStageDefaultResetAndNoOp(t *testing.T) {
+	door := offSecurityDoor(t)
+	n := offSecurityCard(t, door, ItemChange{Effort: "default"})
+	if rows := strings.Join(ItemRows(*n), "\n"); rows != "thinking  plan strong → — · write strong → — · test strong → — · review strong → — · proof strong → — · security(off) cheap → —" {
+		t.Errorf("default reset rows = %q", rows)
+	}
+	if head := ItemHead(*n); head != "#1"+DecisionSep+"think the usual amount?" {
+		t.Errorf("head = %q", head)
+	}
+	out := yesItem(t, door, `{"item":1,"effort":"default"}`)
+	if !strings.Contains(out, "thinking plan usual, write usual, test usual, review usual, proof usual, security(off) usual") || strings.Contains(out, "—") {
+		t.Errorf("default receipt = %q", out)
+	}
+	for name, got := range savedThinking(door) {
+		if got != "" {
+			t.Errorf("%s = %q after default", name, got)
+		}
+	}
+
+	door = offSecurityDoor(t)
+	door.item.Stages[factory.StageIndex(door.item.Stages, "security")].Effort = "strong"
+	n = offSecurityCard(t, door, ItemChange{Effort: "strong"})
+	if itemEffortMoved(*n) || len(ItemRows(*n)) != 0 {
+		t.Errorf("a change nothing moves was seen as moving: %v", ItemRows(*n))
+	}
+	agent := newItemAgent(t, door, 0)
+	if out := awaitResult(t, runFactoryItem(t, agent, context.Background(), `{"item":1,"effort":"strong"}`)); out != itemAlready {
+		t.Errorf("no-op = %q", out)
+	}
+}
+
+// ONLY OFF STEPS CHANGE UNDER A CAP: a cap-and-off-only card ends with the cap
+// and the off step, nothing about the steps that stayed.
+func TestFactoryItemUsualResetOfAlreadyUsualIsANoOp(t *testing.T) {
+	door := newFakeItemDoor()
+	agent := newItemAgent(t, door, 0)
+	if out := awaitResult(t, runFactoryItem(t, agent, context.Background(), `{"item":1,"effort":"default"}`)); out != itemAlready {
+		t.Errorf("resetting a job that already thinks the usual amount = %q", out)
+	}
+}
+
+// ONE TABLE PINS HEAD, ROWS AND RECEIPT IN LOCKSTEP for every shape a thinking
+// change takes, so a fourth surface cannot drift from the first three.
+func TestFactoryItemHeadRowsAndReceiptAgreeOnEveryShape(t *testing.T) {
+	// withoutSecurity is the recipe's issue stages with no off stage, the one
+	// shape where every conversation step is on and a change can be uniform.
+	withoutSecurity := func(d *fakeItemDoor) {
+		var keep []factory.Stage
+		for _, st := range d.item.Stages {
+			if st.Name != "security" {
+				keep = append(keep, st)
+			}
+		}
+		d.item.Stages = keep
+	}
+	allStrong := func(d *fakeItemDoor) {
+		for i := range d.item.Stages {
+			if itemChatStage(d.item.Stages[i]) {
+				d.item.Stages[i].Effort = "strong"
+			}
+		}
+	}
+	for _, c := range []struct {
+		name    string
+		seed    func(*fakeItemDoor)
+		args    string
+		head    string
+		rows    string
+		receipt string // the thinking part of the first line, exactly
+	}{
+		{"uniform", withoutSecurity, `{"item":1,"effort":"strong"}`,
+			"think strong?", "thinking  — → strong", "thinking strong"},
+		{"uniform reset", func(d *fakeItemDoor) { withoutSecurity(d); allStrong(d) }, `{"item":1,"effort":"default"}`,
+			"think the usual amount?", "thinking  strong → —", "thinking usual"},
+		{"fixed plan", func(d *fakeItemDoor) {
+			d.item.Stages[factory.StageIndex(d.item.Stages, "plan")].Fixed = true
+			d.item.Stages[factory.StageIndex(d.item.Stages, "plan")].Effort = "cheap"
+		}, `{"item":1,"effort":"strong"}`,
+			"think strong?", "thinking  write — → strong · test — → strong · review — → strong · proof — → strong · security(off) — → strong",
+			"thinking write strong, test strong, review strong, proof strong, security(off) strong · left as they were: plan cheap"},
+		{"began", func(d *fakeItemDoor) {
+			d.item.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}, {Name: "write", State: factory.PhasePending, Round: 1}}}
+		}, `{"item":1,"effort":"strong"}`,
+			"think strong?", "thinking  test — → strong · review — → strong · proof — → strong · security(off) — → strong",
+			"thinking test strong, review strong, proof strong, security(off) strong · left as they were: plan usual, write usual"},
+		{"off only", func(d *fakeItemDoor) {
+			allStrong(d)
+			d.item.Stages[factory.StageIndex(d.item.Stages, "security")].Effort = "cheap"
+		}, `{"item":1,"effort":"strong"}`,
+			"think strong?", "thinking  security(off) cheap → strong", "thinking security(off) strong"},
+		{"mixed targets", func(d *fakeItemDoor) {
+			d.item.Stages[factory.StageIndex(d.item.Stages, "write")].Effort = "cheap"
+			d.item.Stages[factory.StageIndex(d.item.Stages, "test")].Effort = "strong"
+		}, `{"item":1,"effort":"strong"}`,
+			"think strong?", "thinking  plan — → strong · write cheap → strong · review — → strong · proof — → strong · security(off) — → strong",
+			"thinking plan strong, write strong, review strong, proof strong, security(off) strong"},
+	} {
+		door := newFakeItemDoor()
+		door.item = ItemStaged(door.item, door.recipe)
+		door.item.Stages = factory.CopyStages(door.item.Stages)
+		c.seed(door)
+		var args struct{ Effort string }
+		_ = json.Unmarshal([]byte(c.args), &args)
+		n := offSecurityCard(t, door, ItemChange{Effort: args.Effort})
+		n.Effort = args.Effort
+		if got := ItemHead(*n); got != "#1"+DecisionSep+c.head {
+			t.Errorf("%s: head = %q, want %q", c.name, got, c.head)
+		}
+		if got := strings.Join(ItemRows(*n), "\n"); got != c.rows {
+			t.Errorf("%s: rows = %q, want %q", c.name, got, c.rows)
+		}
+		first, _, _ := strings.Cut(yesItem(t, door, c.args), "\n")
+		if !strings.HasSuffix(first, " · "+c.receipt) {
+			t.Errorf("%s: receipt = %q, want it to end %q", c.name, first, c.receipt)
+		}
+	}
+}
+
+// A NOTICE PERSISTED OR REPLAYED THROUGH JSON DRAWS THE SAME CARD AND RECEIPT:
+// the per-step facts survive the trip, and a notice from before them (no map)
+// keeps its scalar words and carries no new key.
+func TestFactoryItemNoticeJSONReplayKeepsHeadRowsAndReceipt(t *testing.T) {
+	door := fixedPlanDoor()
+	n := offSecurityCard(t, door, ItemChange{Effort: "strong"})
+	n.Effort = "strong"
+	raw, err := json.Marshal(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back ItemNotice
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if ItemHead(back) != ItemHead(*n) || strings.Join(ItemRows(back), "|") != strings.Join(ItemRows(*n), "|") || itemNow(back) != itemNow(*n) {
+		t.Errorf("a replayed notice draws differently:\n%s\n%s", itemNow(back), itemNow(*n))
+	}
+	if !strings.Contains(string(raw), `"Thinking"`) || back.After.Effort != "cheap" {
+		t.Errorf("the new notice lost its per-step facts or its legacy scalar: %s", raw)
+	}
+
+	legacy := ItemNotice{Item: 1, Effort: "strong", Before: ItemFacts{Stages: []string{"plan"}, Cap: 5}, After: ItemFacts{Stages: []string{"plan"}, Cap: 5, Effort: "strong"}}
+	raw, err = json.Marshal(legacy)
+	if err != nil || strings.Contains(string(raw), "Thinking") {
+		t.Fatalf("a notice without per-step facts grew a key: %s, %v", raw, err)
+	}
+	back = ItemNotice{}
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if got := ItemHead(back); got != "#1"+DecisionSep+"think strong?" {
+		t.Errorf("legacy head = %q", got)
+	}
+	if got := strings.Join(ItemRows(back), "|"); got != "thinking  — → strong" {
+		t.Errorf("legacy rows = %q", got)
+	}
+	if got := itemNow(back); !strings.Contains(got, " · thinking strong\n") {
+		t.Errorf("legacy receipt = %q", got)
+	}
+	legacy.Effort = ""
+	if got := itemNow(legacy); strings.Contains(got, "thinking") {
+		t.Errorf("a legacy receipt of a change that asked for no thinking says %q", got)
+	}
+}
+
+// THE SCHEMA AND THE DESCRIPTIONS PROMISE ONLY WHAT THE WRITER DOES: not every
+// step, and not a fixed or begun one.
+func TestFactoryItemEffortWordsDoNotPromiseEveryStep(t *testing.T) {
+	schema := factoryItemSchemaJSON()
+	for _, want := range []string{"have not begun", "fixed", "after proof"} {
+		if !strings.Contains(schema, want) {
+			t.Errorf("the effort description omits %q:\n%s", want, schema)
+		}
+	}
+	if strings.Contains(schema, "How hard the stages that have not run yet think") {
+		t.Error("the effort description still says the stages that have not run, with no limit")
 	}
 }
