@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -16,19 +17,33 @@ import (
 //
 // An editor never writes YAML. It names an edit, and this file turns the file
 // that was really read plus that edit into the exact bytes the pull request
-// route will commit. The only edits are the two the file format can hold today:
-// a step's prompt, kind, when, effort, fanout, until and max, and the default budget. Everything else in
-// the file (start, size, fixed, rules, the pipelines and their order, every
-// other step) rides through the same parser and the same encoder the route
-// uses, so what is previewed is what is committed.
+// route will commit. The edits are the ones the file format can hold today: a
+// step's prompt, kind, when, effort, fanout, until and max, the default budget,
+// and a chat step added to, removed from or moved within one pipeline's list
+// (edit_structure.go). Everything else in the file (start, size, fixed, rules,
+// every other pipeline and every other step) rides through the same parser and
+// the same encoder the route uses, so what is previewed is what is committed.
+//
+// THE COMMITTED FILE IS THE CANONICAL ENCODING, AND ITS COMMENTS ARE GONE. The
+// preview encodes the edited file with [Encode], and the pull request route
+// parses and encodes whatever text it is sent again, so a YAML comment or a
+// layout of the base cannot survive either door. Edited.CommentsDropped and
+// Edited.FormatRewritten say so on every changed preview. Keeping them needs a
+// patch of the YAML nodes AND a route that commits validated text verbatim;
+// until both exist, a structural edit is no exception. A key the parser does not
+// know is never stripped to make an edit fit: it is a problem, and a base with
+// any problem is base_invalid.
 //
 // THE PREVIEW NEVER WRITES. It is a pure function of the base text and the
 // edits: no file, no network, no clock.
 
 // The edit verbs.
 const (
-	OpSetStep   = "set_step"
-	OpSetBudget = "set_budget"
+	OpSetStep    = "set_step"
+	OpSetBudget  = "set_budget"
+	OpAddStep    = "add_step"
+	OpRemoveStep = "remove_step"
+	OpMoveStep   = "move_step"
 )
 
 // The bounds of an edit. They are this preview's own: the file format has no
@@ -74,17 +89,22 @@ func refuseEdit(code string, op int, format string, args ...any) *EditError {
 // effort, fanout, until and max; an empty kind, when, effort or fanout is the
 // default, written as the key left out. Kind may only be chat (or empty), and
 // only a chat step is edited at all ([lockedStep]); set_budget names only Value.
+// Pipeline and After belong to the three structural verbs alone: Pipeline is the
+// kind whose list changes, and After is the step the named one goes after, ""
+// for first ([checkStructure]).
 type EditOp struct {
-	Op     string
-	Name   string
-	Prompt *string
-	Kind   *string
-	When   *string
-	Effort *string
-	Fanout *string
-	Until  *string
-	Max    *int
-	Value  *float64
+	Op       string
+	Name     string
+	Pipeline string
+	After    *string
+	Prompt   *string
+	Kind     *string
+	When     *string
+	Effort   *string
+	Fanout   *string
+	Until    *string
+	Max      *int
+	Value    *float64
 }
 
 // StepView is one step as the file reads. Gate is a step that is a person
@@ -147,6 +167,13 @@ type BudgetChange struct {
 // bytes differ from the base beyond the edit (the encoder's own layout, keys the
 // file left out written in), and CommentsDropped says a YAML comment in the base
 // is not in the committed file. Both are false for an unchanged preview.
+//
+// Structural is true when any edit was add_step, remove_step or move_step, and
+// only then are Order, Added, Counts and Gates set (non-nil, empty when nothing
+// moved): a preview of field edits alone answers exactly what it always did.
+// Order is every pipeline whose list changed, Added every step definition the
+// edits wrote that the file did not hold, Counts every pipeline's length after
+// the edit, and Gates every person whose unattended run-up changed.
 type Edited struct {
 	Text            string
 	Changed         bool
@@ -154,6 +181,12 @@ type Edited struct {
 	CommentsDropped bool
 	Steps           []StepChange
 	Budget          *BudgetChange
+
+	Structural bool
+	Order      []OrderChange
+	Added      []string
+	Counts     []KindCount
+	Gates      []GateChange
 }
 
 // Inspect reads a repository file for editing. ok is false, with the reasons,
@@ -267,26 +300,8 @@ func stepView(f File, name string) StepView {
 
 func describe(f File) Source {
 	src := Source{Budget: f.DefaultBudget, BudgetInFile: f.set.defaultBudget, Fixed: append([]string{}, f.Fixed...)}
-	kinds := make([]string, 0, len(f.Pipeline))
-	for kind := range f.Pipeline {
-		kinds = append(kinds, string(kind))
-	}
-	// The three kinds the factory knows come first, in its order; any other
-	// kind a file names follows alphabetically.
-	rank := map[string]int{string(factory.KindIssue): 0, string(factory.KindPR): 1, string(factory.KindCI): 2}
-	sort.Slice(kinds, func(i, j int) bool {
-		ri, iok := rank[kinds[i]]
-		rj, jok := rank[kinds[j]]
-		switch {
-		case iok && jok:
-			return ri < rj
-		case iok != jok:
-			return iok
-		}
-		return kinds[i] < kinds[j]
-	})
 	seen := map[string]bool{}
-	for _, kind := range kinds {
+	for _, kind := range sortedKinds(f) {
 		names := append([]string{}, f.Pipeline[factory.Kind(kind)]...)
 		src.Kinds = append(src.Kinds, KindView{Kind: kind, Steps: names, InFile: f.set.pipeline[factory.Kind(kind)]})
 		for _, name := range names {
@@ -303,6 +318,29 @@ func describe(f File) Source {
 		src.Steps = []StepView{}
 	}
 	return src
+}
+
+// sortedKinds is the file's kinds in the order a person reads them: the three
+// kinds the factory knows first, in its order, then any other kind the file
+// names, alphabetically.
+func sortedKinds(f File) []string {
+	kinds := make([]string, 0, len(f.Pipeline))
+	for kind := range f.Pipeline {
+		kinds = append(kinds, string(kind))
+	}
+	rank := map[string]int{string(factory.KindIssue): 0, string(factory.KindPR): 1, string(factory.KindCI): 2}
+	sort.Slice(kinds, func(i, j int) bool {
+		ri, iok := rank[kinds[i]]
+		rj, jok := rank[kinds[j]]
+		switch {
+		case iok && jok:
+			return ri < rj
+		case iok != jok:
+			return iok
+		}
+		return kinds[i] < kinds[j]
+	})
+	return kinds
 }
 
 // ApplyEdits applies edits to the base file the way a person would have, and
@@ -328,13 +366,6 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 	if err != nil {
 		return Edited{}, refuseEdit(EditBaseInvalid, -1, "the file could not be read back")
 	}
-	inPipeline := map[string]bool{}
-	for _, names := range f.Pipeline {
-		for _, name := range names {
-			inPipeline[name] = true
-		}
-	}
-
 	// Every edit is checked on its own before any is applied.
 	checked := make([]EditOp, len(ops))
 	for i, op := range ops {
@@ -344,62 +375,127 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 		}
 		checked[i] = c
 	}
-
-	before := describe(f)
-	out := f
-	out.Steps = make(map[string]Step, len(f.Steps))
-	for name, s := range f.Steps {
-		out.Steps[name] = s
-	}
-	named := map[string]bool{}
-	budgetSeen := false
+	st := newEditState(f)
 	for i, op := range checked {
-		if op.Op == OpSetBudget {
-			if budgetSeen {
-				return Edited{}, refuseEdit(EditBadOp, i, "the budget is set once")
-			}
-			budgetSeen = true
-			out.DefaultBudget = *op.Value
-			continue
+		if bad := st.apply(i, op); bad != nil {
+			return Edited{}, bad
 		}
-		if named[op.Name] {
-			return Edited{}, refuseEdit(EditBadOp, i, "a step is edited once")
-		}
-		named[op.Name] = true
-		if !inPipeline[op.Name] {
-			return Edited{}, refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
-		}
-		if k := f.Steps[op.Name].Kind; k != "" && !factory.ApproveWord(op.Name) {
-			return Edited{}, refuseEdit(EditLocked, i, "%s is a %s step and is changed only in the file itself", op.Name, k)
-		}
-		if lockedStep(f, op.Name) {
-			return Edited{}, refuseEdit(EditLocked, i, "%s is locked and cannot be edited", op.Name)
-		}
-		s := out.Steps[op.Name]
-		if op.Prompt != nil {
-			s.Prompt, s.wrotePrompt = *op.Prompt, true
-		}
-		if op.Kind != nil {
-			s.Kind = *op.Kind
-		}
-		if op.When != nil {
-			s.When = *op.When
-		}
-		if op.Effort != nil {
-			s.Effort = *op.Effort
-		}
-		if op.Fanout != nil {
-			s.Fanout = *op.Fanout
-		}
-		if op.Until != nil {
-			s.Until, s.wroteUntil = *op.Until, *op.Until != ""
-		}
-		if op.Max != nil {
-			s.Max, s.wroteMax = *op.Max, true
-		}
-		out.Steps[op.Name] = s
 	}
+	if bad := st.chatAfterProof(); bad != nil {
+		return Edited{}, bad
+	}
+	return st.result(base, canonical)
+}
 
+// editState is one preview while its edits apply: the base as read, the file
+// being edited (its own copies of the step map and every pipeline list), and
+// what the edits have already named, so a second edit of the same thing is
+// refused rather than silently winning.
+type editState struct {
+	base       File
+	out        File
+	inPipeline map[string]bool
+	// named is every step a set_step edited, added every step an add_step
+	// listed, and placed every pipeline row a structural edit touched.
+	named  map[string]bool
+	added  map[string]bool
+	placed map[string]bool
+	// placedAt is the edit that added or moved each pipeline row, setAt the
+	// set_step that edited each step, and firstOp each pipeline's first
+	// structural edit: what a refusal after the last edit names as its cause.
+	placedAt   map[string]int
+	setAt      map[string]int
+	firstOp    map[factory.Kind]int
+	newSteps   []string
+	budgetSeen bool
+	structural bool
+}
+
+func newEditState(f File) *editState {
+	st := &editState{base: f, out: f, inPipeline: map[string]bool{}, named: map[string]bool{}, added: map[string]bool{}, placed: map[string]bool{},
+		placedAt: map[string]int{}, setAt: map[string]int{}, firstOp: map[factory.Kind]int{}}
+	st.out.Steps = make(map[string]Step, len(f.Steps))
+	for name, s := range f.Steps {
+		st.out.Steps[name] = s
+	}
+	st.out.Pipeline = make(map[factory.Kind][]string, len(f.Pipeline))
+	for kind, names := range f.Pipeline {
+		st.out.Pipeline[kind] = append([]string{}, names...)
+		for _, name := range names {
+			st.inPipeline[name] = true
+		}
+	}
+	return st
+}
+
+func (st *editState) apply(i int, op EditOp) *EditError {
+	switch op.Op {
+	case OpSetBudget:
+		if st.budgetSeen {
+			return refuseEdit(EditBadOp, i, "the budget is set once")
+		}
+		st.budgetSeen = true
+		st.out.DefaultBudget = *op.Value
+		return nil
+	case OpSetStep:
+		return st.setStep(i, op)
+	}
+	return st.structure(i, op)
+}
+
+func (st *editState) setStep(i int, op EditOp) *EditError {
+	if st.named[op.Name] {
+		return refuseEdit(EditBadOp, i, "a step is edited once")
+	}
+	st.named[op.Name] = true
+	st.setAt[op.Name] = i
+	if st.added[op.Name] {
+		return refuseEdit(EditBadOp, i, "%s is added by this edit; its fields go on the add_step", op.Name)
+	}
+	if !st.inPipeline[op.Name] {
+		return refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
+	}
+	if k := st.base.Steps[op.Name].Kind; k != "" && !factory.ApproveWord(op.Name) {
+		return refuseEdit(EditLocked, i, "%s is a %s step and is changed only in the file itself", op.Name, k)
+	}
+	if lockedStep(st.base, op.Name) {
+		return refuseEdit(EditLocked, i, "%s is locked and cannot be edited", op.Name)
+	}
+	s := st.out.Steps[op.Name]
+	if op.Prompt != nil {
+		s.Prompt, s.wrotePrompt = *op.Prompt, true
+	}
+	if op.Kind != nil {
+		s.Kind = *op.Kind
+	}
+	setStepWords(&s, op)
+	st.out.Steps[op.Name] = s
+	return nil
+}
+
+// setStepWords writes the when, effort, fanout, until and max an edit names.
+func setStepWords(s *Step, op EditOp) {
+	if op.When != nil {
+		s.When = *op.When
+	}
+	if op.Effort != nil {
+		s.Effort = *op.Effort
+	}
+	if op.Fanout != nil {
+		s.Fanout = *op.Fanout
+	}
+	if op.Until != nil {
+		s.Until, s.wroteUntil = *op.Until, *op.Until != ""
+	}
+	if op.Max != nil {
+		s.Max, s.wroteMax = *op.Max, true
+	}
+}
+
+// result encodes the edited file and answers what changed. An unchanged file
+// answers the base byte for byte.
+func (st *editState) result(base string, canonical []byte) (Edited, error) {
+	out := st.out
 	text, err := Encode(out)
 	if err != nil {
 		return Edited{}, refuseEdit(EditNotRepresentable, -1, "the file could not be written")
@@ -408,48 +504,53 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 		return Edited{}, refuseEdit(EditTooLarge, -1, "the file would be larger than %d bytes", EditTextMax)
 	}
 	res := Edited{Text: base}
+	if st.structural {
+		st.structureFacts(&res)
+	}
 	if bytes.Equal(text, canonical) {
 		return res, nil
 	}
 	if why := notRoundTrip(text, out); why != "" {
 		return Edited{}, refuseEdit(EditNotRepresentable, -1, "%s", why)
 	}
-	after := describe(out)
+	// A STEP THE RUNNER WOULD SKIP IS NEVER PREVIEWED. The edits refuse such a
+	// name on their own; this is the same check the base passed, run again.
+	if drops := runtimeDrops(out); len(drops) > 0 {
+		return Edited{}, refuseEdit(EditNotRepresentable, -1, "%s", drops[0])
+	}
 	res.Text, res.Changed = string(text), true
 	res.FormatRewritten = base != string(canonical)
 	res.CommentsDropped = hasComments(base)
+	res.Steps = stepChanges(describe(st.base), out)
+	if before, after := st.base.DefaultBudget, out.DefaultBudget; before != after {
+		res.Budget = &BudgetChange{Before: before, After: after}
+	}
+	return res, nil
+}
+
+// stepChanges is every step of the base whose words an edit changed, in the
+// base's order, with the fields that differ.
+func stepChanges(before Source, out File) []StepChange {
+	var changes []StepChange
 	for _, b := range before.Steps {
 		a := stepView(out, b.Name)
 		var fields []string
-		if a.Prompt != b.Prompt {
-			fields = append(fields, "prompt")
-		}
-		if a.Kind != b.Kind {
-			fields = append(fields, "kind")
-		}
-		if a.When != b.When {
-			fields = append(fields, "when")
-		}
-		if a.Effort != b.Effort {
-			fields = append(fields, "effort")
-		}
-		if a.Fanout != b.Fanout {
-			fields = append(fields, "fanout")
-		}
-		if a.Until != b.Until {
-			fields = append(fields, "until")
-		}
-		if a.Max != b.Max {
-			fields = append(fields, "max")
+		for _, c := range []struct {
+			name string
+			diff bool
+		}{
+			{"prompt", a.Prompt != b.Prompt}, {"kind", a.Kind != b.Kind}, {"when", a.When != b.When},
+			{"effort", a.Effort != b.Effort}, {"fanout", a.Fanout != b.Fanout}, {"until", a.Until != b.Until}, {"max", a.Max != b.Max},
+		} {
+			if c.diff {
+				fields = append(fields, c.name)
+			}
 		}
 		if len(fields) > 0 {
-			res.Steps = append(res.Steps, StepChange{Name: b.Name, Fields: fields, Before: b, After: a})
+			changes = append(changes, StepChange{Name: b.Name, Fields: fields, Before: b, After: a})
 		}
 	}
-	if before.Budget != after.Budget {
-		res.Budget = &BudgetChange{Before: before.Budget, After: after.Budget}
-	}
-	return res, nil
+	return changes
 }
 
 // CheckEdit refuses an edit that is wrong whatever the file holds: an unknown
@@ -459,77 +560,104 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 // [ApplyEdits]'s to say. i is the edit's position, for the refusal.
 func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 	switch op.Op {
-	case OpSetBudget:
-		if op.Name != "" || op.Prompt != nil || op.Until != nil || op.Max != nil || op.Kind != nil || op.When != nil || op.Effort != nil || op.Fanout != nil {
-			return op, refuseEdit(EditBadOp, i, "set_budget takes only a value")
-		}
-		if op.Value == nil {
-			return op, refuseEdit(EditBadValue, i, "set_budget needs a value")
-		}
-		v := *op.Value
-		if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > EditBudgetMax {
-			return op, refuseEdit(EditBadValue, i, "the budget is a number of dollars above zero and at most %g", EditBudgetMax)
-		}
-	case OpSetStep:
-		if op.Value != nil {
-			return op, refuseEdit(EditBadOp, i, "set_step does not take a value")
-		}
-		if op.Prompt == nil && op.Until == nil && op.Max == nil && op.Kind == nil && op.When == nil && op.Effort == nil && op.Fanout == nil {
-			return op, refuseEdit(EditBadOp, i, "set_step needs a prompt, kind, when, effort, fanout, until or max")
-		}
-		if op.Name == "" || op.Name != stepToken(op.Name) || !validStepName(op.Name) {
-			return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
-		}
-		if op.Prompt != nil {
-			p, why := cleanPrompt(*op.Prompt)
-			if why != "" {
-				return op, refuseEdit(EditBadValue, i, "%s", why)
-			}
-			op.Prompt = &p
-		}
-		if op.Kind != nil {
-			// A KIND IS ONLY EVER SET TO CHAT HERE. A chat made a check would
-			// run its prompt in a shell, made a post would act on the forge, and
-			// made a gate would stop the run; none of that shows in a preview yet.
-			k, ok := kindWord(*op.Kind)
-			if !ok {
-				return op, refuseEdit(EditBadValue, i, "kind is chat, check, gate or post")
-			}
-			if k != "" {
-				return op, refuseEdit(EditBadValue, i, "a step becomes a %s only in the file itself; here a step's kind is chat", k)
-			}
-			op.Kind = &k
-		}
-		for _, w := range []struct {
-			got   **string
-			words []string
-			what  string
-		}{
-			{&op.When, factory.WhenWords, "when is one of " + strings.Join(factory.WhenWords, ", ")},
-			{&op.Effort, factory.EffortWords, "effort is cheap or strong, or empty for the default"},
-			{&op.Fanout, StepFanouts, "fanout is one, per-file, per-finding or per-claim"},
-		} {
-			if *w.got == nil {
-				continue
-			}
-			word, ok := stepWord(**w.got, w.words)
-			if !ok {
-				return op, refuseEdit(EditBadValue, i, "%s", w.what)
-			}
-			*w.got = &word
-		}
-		if op.Until != nil {
-			u, why := cleanUntil(*op.Until)
-			if why != "" {
-				return op, refuseEdit(EditBadValue, i, "%s", why)
-			}
-			op.Until = &u
-		}
-		if op.Max != nil && (*op.Max < 1 || *op.Max > EditRoundsMax) {
-			return op, refuseEdit(EditBadValue, i, "max is a number of rounds from 1 to %d", EditRoundsMax)
+	case OpAddStep, OpRemoveStep, OpMoveStep:
+		return checkStructure(i, op)
+	case OpSetBudget, OpSetStep:
+		if op.Pipeline != "" || op.After != nil {
+			return op, refuseEdit(EditBadOp, i, "%s takes no pipeline and no position", op.Op)
 		}
 	default:
-		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step and set_budget")
+		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step and move_step")
+	}
+	if op.Op == OpSetBudget {
+		return checkSetBudget(i, op)
+	}
+	return checkSetStep(i, op)
+}
+
+func checkSetStep(i int, op EditOp) (EditOp, *EditError) {
+	if op.Value != nil {
+		return op, refuseEdit(EditBadOp, i, "set_step does not take a value")
+	}
+	if op.Kind == nil && !stepFieldsNamed(op) {
+		return op, refuseEdit(EditBadOp, i, "set_step needs a prompt, kind, when, effort, fanout, until or max")
+	}
+	if !stepNamed(op.Name) {
+		return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
+	}
+	if op.Kind != nil {
+		// A KIND IS ONLY EVER SET TO CHAT HERE. A chat made a check would
+		// run its prompt in a shell, made a post would act on the forge, and
+		// made a gate would stop the run; none of that shows in a preview yet.
+		k, ok := kindWord(*op.Kind)
+		if !ok {
+			return op, refuseEdit(EditBadValue, i, "kind is chat, check, gate or post")
+		}
+		if k != "" {
+			return op, refuseEdit(EditBadValue, i, "a step becomes a %s only in the file itself; here a step's kind is chat", k)
+		}
+		op.Kind = &k
+	}
+	return checkStepFields(i, op)
+}
+
+func checkSetBudget(i int, op EditOp) (EditOp, *EditError) {
+	if op.Name != "" || op.Kind != nil || stepFieldsNamed(op) {
+		return op, refuseEdit(EditBadOp, i, "set_budget takes only a value")
+	}
+	if op.Value == nil {
+		return op, refuseEdit(EditBadValue, i, "set_budget needs a value")
+	}
+	v := *op.Value
+	if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > EditBudgetMax {
+		return op, refuseEdit(EditBadValue, i, "the budget is a number of dollars above zero and at most %g", EditBudgetMax)
+	}
+	return op, nil
+}
+
+// stepNamed says whether a name is spelled as the file spells a step: exactly,
+// lowercase, 2 to 32 letters, digits and inner hyphens.
+func stepNamed(name string) bool {
+	return name != "" && name == stepToken(name) && validStepName(name)
+}
+
+// checkStepFields bounds and trims the prompt, when, effort, fanout, until and
+// max an edit names; it is shared by set_step and add_step.
+func checkStepFields(i int, op EditOp) (EditOp, *EditError) {
+	if op.Prompt != nil {
+		p, why := cleanPrompt(*op.Prompt)
+		if why != "" {
+			return op, refuseEdit(EditBadValue, i, "%s", why)
+		}
+		op.Prompt = &p
+	}
+	for _, w := range []struct {
+		got   **string
+		words []string
+		what  string
+	}{
+		{&op.When, factory.WhenWords, "when is one of " + strings.Join(factory.WhenWords, ", ")},
+		{&op.Effort, factory.EffortWords, "effort is cheap or strong, or empty for the default"},
+		{&op.Fanout, StepFanouts, "fanout is one, per-file, per-finding or per-claim"},
+	} {
+		if *w.got == nil {
+			continue
+		}
+		word, ok := stepWord(**w.got, w.words)
+		if !ok {
+			return op, refuseEdit(EditBadValue, i, "%s", w.what)
+		}
+		*w.got = &word
+	}
+	if op.Until != nil {
+		u, why := cleanUntil(*op.Until)
+		if why != "" {
+			return op, refuseEdit(EditBadValue, i, "%s", why)
+		}
+		op.Until = &u
+	}
+	if op.Max != nil && (*op.Max < 1 || *op.Max > EditRoundsMax) {
+		return op, refuseEdit(EditBadValue, i, "max is a number of rounds from 1 to %d", EditRoundsMax)
 	}
 	return op, nil
 }
@@ -549,6 +677,14 @@ func notRoundTrip(text []byte, want File) string {
 	if back.DefaultBudget != want.DefaultBudget {
 		return "the budget does not survive the file format"
 	}
+	if why := pipelinesDiffer(back, want); why != "" {
+		return why
+	}
+	return stepsDiffer(back, want)
+}
+
+// stepsDiffer is why a step did not read back with the words it was given, or "".
+func stepsDiffer(back, want File) string {
 	for name, s := range want.Steps {
 		if factory.ApproveWord(name) {
 			continue
@@ -557,6 +693,21 @@ func notRoundTrip(text []byte, want File) string {
 		if got.Prompt != s.Prompt || got.Kind != s.Kind || got.When != s.When || got.Effort != s.Effort ||
 			got.Fanout != s.Fanout || got.Until != s.Until || got.Max != s.Max {
 			return fmt.Sprintf("the file format cannot hold that change to %s", name)
+		}
+	}
+	return ""
+}
+
+// pipelinesDiffer is why the pipelines did not read back as the same lists in
+// the same order, or "": a kind gained, lost or reordered on the way is not the
+// edit that was previewed.
+func pipelinesDiffer(back, want File) string {
+	if len(back.Pipeline) != len(want.Pipeline) {
+		return "the pipelines do not survive the file format"
+	}
+	for kind, names := range want.Pipeline {
+		if got, ok := back.Pipeline[kind]; !ok || !slices.Equal(got, names) {
+			return fmt.Sprintf("the file format cannot hold that order of the %s pipeline", kind)
 		}
 	}
 	return ""

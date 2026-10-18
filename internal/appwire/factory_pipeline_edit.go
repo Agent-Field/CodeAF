@@ -24,11 +24,15 @@ import (
 //     and refuses editing; defaults are never offered as though they were the file.
 //   - factory.pipeline_preview applies STRUCTURED edits to that base and answers
 //     the exact canonical text the pull request would commit. The edits are
-//     set_step {name, prompt?, until?, max?, when?, effort?, fanout?} and
-//     set_budget {value}, nothing else (never kind: a step becomes a check, gate
-//     or post only in the file itself); they are the only edits the file format can hold today. A caller
-//     never builds YAML, and the preview is computed by the same parser and
-//     encoder the pull request route uses, so what is shown is what is committed.
+//     set_step {name, prompt?, until?, max?, when?, effort?, fanout?},
+//     set_budget {value} and, behind feature factory.pipeline_edit_structure,
+//     add_step {pipeline, name, after, prompt, until?, max?, when?, effort?,
+//     fanout?}, remove_step {pipeline, name} and move_step {pipeline, name,
+//     after}; nothing else (never kind: a step becomes a check, gate or post only
+//     in the file itself). They are the only edits the file format can hold
+//     today. A caller never builds YAML, and the preview is computed by the same
+//     parser and encoder the pull request route uses, so what is shown is what is
+//     committed, comments dropped and layout rewritten as that encoder does.
 //
 // NEITHER METHOD OPENS A PULL REQUEST, CREATES A BRANCH OR WRITES A FILE. The
 // next step is factory.pipeline_pr with the preview's text and the source's
@@ -47,6 +51,14 @@ const FeatureFactoryPipelineEdit = "factory.pipeline_edit"
 // preview them for a factory that did not attest them. It says nothing about any
 // remote: that is the source's runtime_fields, read per file.
 const FeatureFactoryPipelineEditRuntime = "factory.pipeline_edit_runtime"
+
+// FeatureFactoryPipelineEditStructure is announced beside FeatureFactoryPipelineEdit
+// when this engine previews add_step, remove_step and move_step. It says nothing
+// about any remote: the three edits write only pipeline lists and step
+// definitions, keys every YAML-reading factory already parses. An editor that
+// does not announce it refuses the three verbs as bad_params, as before they
+// existed.
+const FeatureFactoryPipelineEditStructure = "factory.pipeline_edit_structure"
 
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
@@ -67,8 +79,11 @@ const (
 	PipelineSourceInvalid  = api.PipelineEditInvalid
 	PipelineSourceTooLarge = api.PipelineEditTooLarge
 
-	PipelineEditSetStep   = pipeline.OpSetStep
-	PipelineEditSetBudget = pipeline.OpSetBudget
+	PipelineEditSetStep    = pipeline.OpSetStep
+	PipelineEditSetBudget  = pipeline.OpSetBudget
+	PipelineEditAddStep    = pipeline.OpAddStep
+	PipelineEditRemoveStep = pipeline.OpRemoveStep
+	PipelineEditMoveStep   = pipeline.OpMoveStep
 )
 
 // FactoryPipelineSourceParams names the repository whose file is read.
@@ -112,16 +127,25 @@ type FactoryPipelineSource struct {
 // field at all: it is rejected as unknown. An omitted field is not sent: until ""
 // is a request to clear it, which the file format may refuse, and when, effort or
 // fanout "" clears that word back to the default.
+//
+// Pipeline and After belong to add_step, remove_step and move_step alone, and
+// are bad_params on the other two. Pipeline is the kind whose list changes
+// (issue, pr, ci or another kind the file lists). After is the step the named
+// one goes after in that list, "" for first; add_step and move_step require it,
+// so a position is always said and never assumed. add_step also requires a
+// prompt; there is no kind on it either, so an added step is a chat.
 type FactoryPipelineEdit struct {
-	Op     string   `json:"op" enum:"set_step,set_budget"`
-	Name   string   `json:"name,omitempty"`
-	Prompt *string  `json:"prompt,omitempty"`
-	Until  *string  `json:"until,omitempty"`
-	Max    *int     `json:"max,omitempty"`
-	When   *string  `json:"when,omitempty"`
-	Effort *string  `json:"effort,omitempty"`
-	Fanout *string  `json:"fanout,omitempty"`
-	Value  *float64 `json:"value,omitempty"`
+	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step"`
+	Name     string   `json:"name,omitempty"`
+	Pipeline string   `json:"pipeline,omitempty"`
+	After    *string  `json:"after,omitempty"`
+	Prompt   *string  `json:"prompt,omitempty"`
+	Until    *string  `json:"until,omitempty"`
+	Max      *int     `json:"max,omitempty"`
+	When     *string  `json:"when,omitempty"`
+	Effort   *string  `json:"effort,omitempty"`
+	Fanout   *string  `json:"fanout,omitempty"`
+	Value    *float64 `json:"value,omitempty"`
 }
 
 // FactoryPipelinePreviewParams is the file as factory.pipeline_source gave it
@@ -162,6 +186,45 @@ type FactoryPipelineBudgetChange struct {
 	After  float64 `json:"after"`
 }
 
+// FactoryPipelineOrderChange is one pipeline whose list changed: every step it
+// listed before the edit and every step it lists after, in order.
+type FactoryPipelineOrderChange struct {
+	Pipeline string   `json:"pipeline"`
+	Before   []string `json:"before"`
+	After    []string `json:"after"`
+}
+
+// FactoryPipelineCount is how many steps one pipeline lists after the edit.
+type FactoryPipelineCount struct {
+	Pipeline string `json:"pipeline"`
+	Steps    int    `json:"steps"`
+}
+
+// FactoryPipelineGateChange is one person (approve, or a step whose kind is
+// gate) whose run-up the edit changed: Before and After are the steps that run
+// before that person answers, gates excluded, in order. It is reported whenever
+// that SET of steps changes, which is what runs unattended before the person;
+// the edit is not refused for it.
+type FactoryPipelineGateChange struct {
+	Pipeline string   `json:"pipeline"`
+	Gate     string   `json:"gate"`
+	Before   []string `json:"before"`
+	After    []string `json:"after"`
+}
+
+// FactoryPipelineStructure is the structural half of a preview, present only
+// when an edit was add_step, remove_step or move_step. Order is every pipeline
+// whose list changed, Added every step definition the file did not hold before,
+// Counts every pipeline's length after the edit, Gates every person whose
+// run-up changed. All four are always arrays, empty when nothing applies. There
+// is no loop count: the file has no loop.
+type FactoryPipelineStructure struct {
+	Order  []FactoryPipelineOrderChange `json:"order"`
+	Added  []string                     `json:"added"`
+	Counts []FactoryPipelineCount       `json:"counts"`
+	Gates  []FactoryPipelineGateChange  `json:"gates"`
+}
+
 // FactoryPipelinePreview is the exact outcome of an edit, without writing it.
 //
 // Changed compares the edit with the base as the parser reads it, so a file that
@@ -170,7 +233,9 @@ type FactoryPipelineBudgetChange struct {
 // the canonical file the pull request commits. FormatRewritten says those bytes
 // differ from the base beyond the edit (the factory's own layout, keys the file
 // left out written in); CommentsDropped says the base holds a YAML comment that
-// the committed file does not. Both are false when not Changed.
+// the committed file does not. Both are false when not Changed. Structure is
+// absent unless an edit was structural, so a preview of field edits is byte for
+// byte what it was before the structural edits existed.
 type FactoryPipelinePreview struct {
 	Factory         string                       `json:"factory"`
 	Repo            string                       `json:"repo"`
@@ -182,6 +247,7 @@ type FactoryPipelinePreview struct {
 	CommentsDropped bool                         `json:"comments_dropped"`
 	Steps           []FactoryPipelineStepChange  `json:"steps"`
 	Budget          *FactoryPipelineBudgetChange `json:"budget,omitempty"`
+	Structure       *FactoryPipelineStructure    `json:"structure,omitempty"`
 }
 
 // FactoryPipelineEditRefusal is the Detail of a preview refused as bad_params.
@@ -212,6 +278,13 @@ type FactoryPipelineRuntimeGuard interface {
 	PipelineRuntimeGuarded()
 }
 
+// FactoryPipelineStructureEditor is implemented ONLY by an editor whose preview
+// applies add_step, remove_step and move_step. Without it the three verbs are
+// refused before the engine is asked, and the feature is not announced.
+type FactoryPipelineStructureEditor interface {
+	PipelineStructureEdits()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
@@ -220,6 +293,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureFactoryPipelineEdit)
 		if _, guarded := e.(FactoryPipelineRuntimeGuard); guarded {
 			hello = withFeature(hello, FeatureFactoryPipelineEditRuntime)
+		}
+		if _, structural := e.(FactoryPipelineStructureEditor); structural {
+			hello = withFeature(hello, FeatureFactoryPipelineEditStructure)
 		}
 	}
 	return hello
@@ -231,7 +307,8 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 	ops := make([]pipeline.EditOp, len(edits))
 	for i, e := range edits {
-		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Prompt: e.Prompt, Until: e.Until, Max: e.Max, When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value}
+		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
+			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value}
 	}
 	return ops
 }
@@ -348,6 +425,9 @@ func pipelinePreviewMethod(name string) method {
 		if p, err = CheckPipelinePreview(p); err != nil {
 			return nil, err
 		}
+		if err := checkStructureServed(e, p.Edits); err != nil {
+			return nil, err
+		}
 		ctx, cancel := factoryCall()
 		defer cancel()
 		out, err := ed.FactoryPipelinePreview(ctx, p)
@@ -359,6 +439,21 @@ func pipelinePreviewMethod(name string) method {
 		}
 		return &out, nil
 	})
+}
+
+// checkStructureServed refuses a structural edit to an editor that has not said
+// it previews one, the same bad_params an unknown verb always was.
+func checkStructureServed(e Engine, edits []FactoryPipelineEdit) error {
+	if _, ok := e.(FactoryPipelineStructureEditor); ok {
+		return nil
+	}
+	for i, edit := range edits {
+		switch edit.Op {
+		case PipelineEditAddStep, PipelineEditRemoveStep, PipelineEditMoveStep:
+			return Errorf(CodeBadParams, "edit %d: this engine does not add, remove or move a step", i)
+		}
+	}
+	return nil
 }
 
 // factoryPipelineEditMethods is the table of the two methods, for the tests
