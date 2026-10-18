@@ -57,3 +57,42 @@ func TestNoReaderIsHandedARunnersConversationPath(t *testing.T) {
 		t.Fatalf("stored phase chat changed: %+v, %v", stored.Stream, err)
 	}
 }
+
+// The manager conversation's session path (Desk.Talk) is as runner-local as a
+// step's chat: no reader, the owner included, is handed it, while the thread
+// and the other desk facts stay, and the worker's own pull keeps it.
+const deskTalkPath = "/home/raj-secret/.codeaf/sessions/manager-3.jsonl"
+
+func TestNoReaderIsHandedARunnersManagerTalkPath(t *testing.T) {
+	c := capacitySetup(t)
+	raj := c.attach(t, c.raj, "raj", "mbp", 0)
+	job, err := c.st.Create(factory.Item{Title: "talk it through", Repo: "acme/api", State: factory.StateQueued, Assignee: "raj",
+		Talk:   deskTalkPath,
+		Thread: []factory.Message{{From: "manager", Text: "see /repo/internal/x.go for the fix"}},
+		Stream: &factory.Stream{Cur: 0, Phases: []factory.Phase{{Name: "code", State: factory.PhaseRunning}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strconv.Itoa(job.ID)
+	for _, who := range []struct{ name, token string }{{"priya", c.priya}, {"raj", c.raj}, {"operator", "operator-secret"}} {
+		for _, path := range []string{"/v1/jobs/" + id, "/v1/queue"} {
+			var out map[string]any
+			body := c.request(t, "GET", path, who.token, nil, 200, &out)
+			if strings.Contains(body, "manager-3.jsonl") || strings.Contains(body, `"talk"`) {
+				t.Fatalf("%s reads the manager session path from %s: %s", who.name, path, body)
+			}
+			if path == "/v1/jobs/"+id && !strings.Contains(body, "see /repo/internal/x.go for the fix") {
+				t.Fatalf("%s lost the thread with the path: %s", who.name, body)
+			}
+		}
+	}
+	var pull api.RunnerPull
+	c.request(t, "GET", "/v1/runners/pull", raj.Credential, nil, 200, &pull)
+	if pull.Job.Desk == nil || pull.Job.Desk.Talk != deskTalkPath {
+		t.Fatalf("the worker lost its manager session: %+v", pull.Job.Desk)
+	}
+	stored, err := c.st.Get(job.ID)
+	if err != nil || stored.Talk != deskTalkPath {
+		t.Fatalf("stored talk changed: %q, %v", stored.Talk, err)
+	}
+}
