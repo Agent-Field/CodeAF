@@ -21,7 +21,7 @@ func TestRepositoryIdentityContractAndViewerFiltering(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			job, err := st.Create(factory.Item{Repo: "api", Places: []string{"api"}, Title: "existing job", State: factory.StateQueued, PlannedFiles: []string{"main.go"}})
+			job, err := st.Create(factory.Item{Repo: "api", Places: []string{"api"}, Title: "existing job", State: factory.StateQueued, Stream: plannedStream("main.go")})
 			if err != nil {
 				t.Fatal(err)
 			}

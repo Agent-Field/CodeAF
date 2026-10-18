@@ -13,7 +13,7 @@ import (
 var personHandle = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,38}(\[bot\])?$`)
 
 func itemFiles(it factory.Item) []string {
-	files := append([]string(nil), it.PlannedFiles...)
+	files := factory.PlanFilesOf(it)
 	for _, file := range it.Files {
 		files = append(files, file.Path)
 	}

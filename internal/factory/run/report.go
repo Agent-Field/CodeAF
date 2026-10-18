@@ -349,12 +349,14 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	if !factory.Met(st, res) && res.Done {
 		ph.Note = shortfall(res)
 	}
-	// THE PLAN'S FILE LIST IS THE BRIEF'S. A later plan that names files
-	// replaces the list; one that names none leaves the previous list.
-	if strings.EqualFold(strings.TrimSpace(st.Name), "plan") {
-		if files := planFiles(res); len(files) > 0 {
-			it.PlannedFiles = files
-		}
+	// THE PLAN'S DECLARED FILE LIST IS THE BRIEF'S, and only a finished plan
+	// round speaks for it. A completed plan that declares none CLEARS the
+	// cached list (unknown is not the previous plan's files); a partial report
+	// leaves what is known. Readers derive from the saved result
+	// ([factory.PlanFilesOf]); the cache remains for older builds reading the
+	// same persisted item.
+	if res.Done && strings.EqualFold(strings.TrimSpace(st.Name), "plan") {
+		it.PlannedFiles = factory.ParsePlanFiles(res.Output)
 	}
 }
 
