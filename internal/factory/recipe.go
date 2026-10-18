@@ -86,6 +86,23 @@ func StageIndex(stages []Stage, name string) int {
 	return -1
 }
 
+// stageMatches is every stage an edit's NAME LOOKUP reads as that name: the
+// name trimmed and compared without case, both sides. It is the lookup of
+// [Edit] alone. STORED IDENTITY STAYS BYTE-EXACT ([StageIndex]): the runner binds
+// a phase to the stage's stored bytes, so nothing here renames a stage, and a
+// legacy `Tidy` is answered as `Tidy` however it was asked for. More than one
+// match is ambiguous, and an edit that selects it is refused whole.
+func stageMatches(stages []Stage, name string) []int {
+	key := strings.ToLower(strings.TrimSpace(name))
+	var out []int
+	for i, s := range stages {
+		if strings.ToLower(strings.TrimSpace(s.Name)) == key {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
 // stagePlacement reads the placement clause a stage sentence may start with
 // and answers it normalised along with the words left after it. The clauses
 // are `after <stage>`, `before <stage>`, `first,` and `last,`; first and last

@@ -18,6 +18,12 @@ func TestTheFactoryQuestionsReachTheirSections(t *testing.T) {
 		says     []string
 	}{
 		{
+			question: "why can't I change a step when two steps have the same name",
+			page:     "factory",
+			title:    "two steps with the same name",
+			says:     []string{"more than one stage is named", "no command that renames a step"},
+		},
+		{
 			question: "how do I run a team factory on my own server and what port does codeaf factory serve listen on",
 			page:     "factory",
 			title:    "codeaf factory serve",
@@ -69,6 +75,46 @@ func TestTheFactoryQuestionsReachTheirSections(t *testing.T) {
 		}
 		if !reached {
 			t.Errorf("%q did not reach %s › %s", ask.question, ask.page, ask.title)
+		}
+	}
+}
+
+// THE THINKING SECTION IS REACHED BY THE ASKER'S WORDS and says the three
+// things a person cannot see from the card alone: what the model is told when
+// a step is left alone, what a bad level is refused with, and that a later
+// turn's opening note lists thinking per step when steps differ.
+func TestTheFactoryThinkingQuestionsReachTheirSection(t *testing.T) {
+	for _, ask := range []string{
+		"I said think strong but the plan step is still cheap, why did one step not change",
+		"the job has mixed thinking, how does the factory item chat tell me which steps think what",
+		"what does the receipt say after I say yes to think strong and a step was fixed",
+		"what happens if I ask factory_item for an effort that is not cheap strong or default",
+		"does think the usual amount reset every step including the ones switched off",
+	} {
+		reached := false
+		for _, section := range Chat().Search(ask, DefaultResults) {
+			if section.Page != "factory" || !strings.Contains(section.Title, "change one job's thinking") {
+				continue
+			}
+			reached = true
+			for _, needle := range []string{
+				"Invalid arguments: effort is one of cheap, strong, default, or left out.",
+				"left as they were",
+				"opening note",
+				"(off)",
+			} {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached the thinking section but its body omits %q", ask, needle)
+				}
+			}
+		}
+		if !reached {
+			t.Errorf("%q did not reach the thinking section", ask)
+		}
+	}
+	for _, section := range Chat().Search("think strong", DefaultResults) {
+		if strings.Contains(section.Body, "not a thinking level") {
+			t.Errorf("%s › %s quotes a refusal the chat never sees", section.Page, section.Title)
 		}
 	}
 }
