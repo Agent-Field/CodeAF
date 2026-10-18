@@ -1067,3 +1067,138 @@ func TestFactoryItemEffortWordsDoNotPromiseEveryStep(t *testing.T) {
 		t.Error("the effort description still says the stages that have not run, with no limit")
 	}
 }
+
+// legacyNamedItem is an item document as an older build could have stored it,
+// read back through the same decoder the store uses: the first conversation
+// stages keep the names given, byte for byte.
+func legacyNamedItem(t *testing.T, names ...string) factory.Item {
+	t.Helper()
+	base := factory.Item{ID: 1, Kind: factory.KindIssue, Cap: 5, Notes: []string{"first"}}
+	for i := range names {
+		base.Stages = append(base.Stages, factory.Stage{Name: "s" + string(rune('a'+i)), Kind: factory.StageChat, Ask: "do it", On: true, Until: factory.UntilDone})
+	}
+	raw, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, n := range names {
+		raw = []byte(strings.Replace(string(raw), `"Name":"s`+string(rune('a'+i))+`"`, `"Name":"`+n+`"`, 1))
+	}
+	var it factory.Item
+	if err := json.Unmarshal(raw, &it); err != nil {
+		t.Fatal(err)
+	}
+	return it
+}
+
+// A LEGACY `Tidy` SURVIVES THE STORE AND TAKES THE PERSON'S THINKING, under its
+// own spelling: the name lookup is without case, the stored bytes are not touched.
+func TestItemThinkingReachesALegacyCasedStage(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	it := legacyNamedItem(t, "plan", "Tidy")
+	if it.Stages[1].Name != "Tidy" {
+		t.Fatalf("the store renamed the stage: %+v", it.Stages)
+	}
+	next, err := ApplyItemChange(it, ItemChange{Effort: "strong", Cap: 9, Note: "sweep"}, recipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Stages[0].Effort != "strong" || next.Stages[1].Effort != "strong" || next.Stages[1].Name != "Tidy" {
+		t.Fatalf("stages = %+v", next.Stages)
+	}
+	if next.Cap != 9 || len(next.Notes) != 2 {
+		t.Fatalf("cap %v notes %v", next.Cap, next.Notes)
+	}
+	if got := ItemFactsOf(next).Thinking["Tidy"]; got != "strong" {
+		t.Fatalf("the card reads Tidy as %q", got)
+	}
+}
+
+// TWO STAGES OF ONE NAME REFUSE THE WHOLE CARD, cap and note included, for every
+// mix of efforts and spellings, rather than setting one and saying all.
+func TestItemThinkingRefusesAnAmbiguousStageNameWholly(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	for _, names := range [][]string{{"tidy", "tidy"}, {"Tidy", "tidy"}} {
+		for _, efforts := range [][2]string{{"", ""}, {"cheap", "strong"}, {"strong", "strong"}} {
+			it := legacyNamedItem(t, append([]string{"plan"}, names...)...)
+			it.Stages[1].Effort, it.Stages[2].Effort = efforts[0], efforts[1]
+			staged := ItemStaged(it, recipe)
+			got, err := ApplyItemChange(it, ItemChange{Effort: "strong", Cap: 9, Note: "ignored"}, recipe)
+			if efforts == [2]string{"strong", "strong"} && err == nil {
+				// Only plan moves, and neither tidy is asked for.
+				if got.Stages[0].Effort != "strong" {
+					t.Fatalf("%v %v: plan = %+v", names, efforts, got.Stages[0])
+				}
+				continue
+			}
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), "more than one stage is named tidy") {
+				t.Fatalf("%v %v: err = %v", names, efforts, err)
+			}
+			if !reflect.DeepEqual(got, staged) {
+				t.Fatalf("%v %v: a refused card moved the item:\n%+v\nwas\n%+v", names, efforts, got, staged)
+			}
+		}
+	}
+}
+
+// The shared edit's own verbs refuse the same ambiguity, and a legacy name keeps
+// every bound the lowercase name has.
+func TestItemThinkingKeepsEveryBoundOnALegacyName(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	dup := legacyNamedItem(t, "plan", "Tidy", "tidy")
+	for kind, edit := range map[string]factory.PlanEdit{
+		"skip": {Skip: []string{"tidy"}}, "on": {On: []string{"Tidy"}},
+	} {
+		if _, err := ApplyItemChange(dup, ItemChange{Edit: edit}, recipe); err == nil || !strings.Contains(err.Error(), "more than one stage is named") {
+			t.Errorf("%s of an ambiguous name = %v", kind, err)
+		}
+	}
+	for kind, mutate := range map[string]func(*factory.Item){
+		"landed": func(it *factory.Item) { it.State = factory.StateLanded },
+		"begun": func(it *factory.Item) {
+			it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "Tidy", State: factory.PhasePending, Round: 1}}}
+		},
+	} {
+		it := legacyNamedItem(t, "plan", "Tidy")
+		mutate(&it)
+		next, err := ApplyItemChange(it, ItemChange{Effort: "strong"}, recipe)
+		if kind == "landed" {
+			if err == nil || !strings.Contains(err.Error(), "has landed") {
+				t.Errorf("landed legacy job = %v", err)
+			}
+			continue
+		}
+		// A begun Tidy keeps its thinking; the stage that has not begun takes it.
+		if err != nil || next.Stages[1].Effort != "" || next.Stages[0].Effort != "strong" {
+			t.Errorf("begun legacy stage: %v, %+v", err, next.Stages)
+		}
+	}
+	proof := legacyNamedItem(t, "Tidy", "proof")
+	proof.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "proof", State: factory.PhaseDone}}}
+	if _, err := ApplyItemChange(proof, ItemChange{Effort: "strong"}, recipe); err == nil || !strings.Contains(err.Error(), factory.ProofFrozenRefusal) {
+		t.Errorf("proof-started legacy job = %v", err)
+	}
+}
+
+// THE CARD HONOURS A RECIPE-FIXED STAGE UNDER A LEGACY SPELLING: "think strong"
+// leaves a fixed `Review` at its own thinking and moves the rest, and the shared
+// edit's verbs refuse it with the fixed sentence.
+func TestItemThinkingKeepsARecipeFixedStageUnderALegacyName(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	for i := range recipe.Stages {
+		if recipe.Stages[i].Name == "review" {
+			recipe.Stages[i].Fixed = true
+		}
+	}
+	it := legacyNamedItem(t, "plan", "Review")
+	next, err := ApplyItemChange(it, ItemChange{Effort: "strong"}, recipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Stages[0].Effort != "strong" || next.Stages[1].Effort != "" || next.Stages[1].Name != "Review" {
+		t.Fatalf("stages = %+v", next.Stages)
+	}
+	if _, err := ApplyItemChange(it, ItemChange{Edit: factory.PlanEdit{Skip: []string{"REVIEW"}}}, recipe); err == nil || !strings.Contains(err.Error(), "is fixed by the recipe") {
+		t.Errorf("skip of a fixed legacy stage = %v", err)
+	}
+}

@@ -18,6 +18,12 @@ func TestTheFactoryQuestionsReachTheirSections(t *testing.T) {
 		says     []string
 	}{
 		{
+			question: "why can't I change a step when two steps have the same name",
+			page:     "factory",
+			title:    "two steps with the same name",
+			says:     []string{"more than one stage is named", "no command that renames a step"},
+		},
+		{
 			question: "how do I run a team factory on my own server and what port does codeaf factory serve listen on",
 			page:     "factory",
 			title:    "codeaf factory serve",
