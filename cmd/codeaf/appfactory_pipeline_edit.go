@@ -310,7 +310,29 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 	if ed.Budget != nil {
 		out.Budget = &appwire.FactoryPipelineBudgetChange{Before: ed.Budget.Before, After: ed.Budget.After}
 	}
+	out.Structure = pipelineStructure(ed)
 	return out, nil
+}
+
+// pipelineStructure is the structural half of a preview on the wire, every
+// list an array however empty, and nil for a preview with no structural edit:
+// a field edit's answer is byte for byte what it always was.
+func pipelineStructure(ed pipeline.Edited) *appwire.FactoryPipelineStructure {
+	if !ed.Structural {
+		return nil
+	}
+	s := &appwire.FactoryPipelineStructure{Order: []appwire.FactoryPipelineOrderChange{}, Added: append([]string{}, ed.Added...),
+		Counts: []appwire.FactoryPipelineCount{}, Gates: []appwire.FactoryPipelineGateChange{}}
+	for _, o := range ed.Order {
+		s.Order = append(s.Order, appwire.FactoryPipelineOrderChange{Pipeline: o.Pipeline, Before: append([]string{}, o.Before...), After: append([]string{}, o.After...)})
+	}
+	for _, c := range ed.Counts {
+		s.Counts = append(s.Counts, appwire.FactoryPipelineCount{Pipeline: c.Pipeline, Steps: c.Steps})
+	}
+	for _, g := range ed.Gates {
+		s.Gates = append(s.Gates, appwire.FactoryPipelineGateChange{Pipeline: g.Pipeline, Gate: g.Gate, Before: append([]string{}, g.Before...), After: append([]string{}, g.After...)})
+	}
+	return s
 }
 
 func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
@@ -319,7 +341,7 @@ func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
 
 // firstRuntimeEdit is the position of the first edit that names when, effort or
 // fanout, or -1. An explicit empty value counts: clearing a word is a runtime
-// edit too.
+// edit too, and so does an add_step that spells one for the step it adds.
 func firstRuntimeEdit(edits []appwire.FactoryPipelineEdit) int {
 	for i, e := range edits {
 		if e.When != nil || e.Effort != nil || e.Fanout != nil {
