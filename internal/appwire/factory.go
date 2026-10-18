@@ -121,8 +121,12 @@ type FactoryCapabilities struct {
 	// PipelineEditRuntime: this engine previews when, effort and fanout edits,
 	// and only for a file the factory attested in the same sign-in. Never kind.
 	PipelineEditRuntime bool `json:"pipeline_edit_runtime"`
-	MaxConnections      int  `json:"max_connections"`
-	MaxFlows            int  `json:"max_flows"`
+	// PipelineEditStructure: this engine previews add_step, remove_step and
+	// move_step (feature factory.pipeline_edit_structure). True only for an
+	// engine that implements [FactoryPipelineStructureEditor].
+	PipelineEditStructure bool `json:"pipeline_edit_structure"`
+	MaxConnections        int  `json:"max_connections"`
+	MaxFlows              int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,

@@ -67,12 +67,21 @@ func TestFactoryPipelineEditAbsentWithoutTheInterface(t *testing.T) {
 		t.Fatalf("an unguarded editor announced %v", got.Features)
 	}
 	got := withFactoryPipelineEditFeature(Hello{}, &pipelineEditEngine{})
-	if len(got.Features) != 2 || got.Features[0] != "factory.pipeline_edit" || got.Features[1] != "factory.pipeline_edit_runtime" {
+	if len(got.Features) != 3 || got.Features[0] != "factory.pipeline_edit" || got.Features[1] != "factory.pipeline_edit_runtime" || got.Features[2] != "factory.pipeline_edit_structure" {
 		t.Fatalf("an editing engine announced %v", got.Features)
+	}
+	// An editor from before the structural edits announces what it did then.
+	if got := withFactoryPipelineEditFeature(Hello{}, &runtimeOnlyEditEngine{}); len(got.Features) != 2 || got.Features[1] != "factory.pipeline_edit_runtime" {
+		t.Fatalf("a runtime-only editor announced %v", got.Features)
 	}
 	e := &pipelineEditEngine{}
 	if h := withFactoryPipelinePRFeature(withFactoryReposManageFeature(withFactoryLinksFeature(withFactoryAdminFeature(Hello{}, e), e), e), e); len(h.Features) != 0 {
 		t.Fatalf("editing implied another feature: %v", h.Features)
+	}
+	for _, other := range []string{FeatureFactoryAdmin, FeatureFactoryLinks, FeatureFactoryReposManage, FeatureFactoryPipelinePR, FeatureFactoryPipelineEdit, FeatureFactoryPipelineEditRuntime} {
+		if FeatureFactoryPipelineEditStructure == other {
+			t.Fatal("the structure feature is not distinct")
+		}
 	}
 	for _, other := range []string{FeatureFactoryAdmin, FeatureFactoryLinks, FeatureFactoryReposManage, FeatureFactoryPipelinePR, FeatureFactoryPipelineEdit} {
 		if FeatureFactoryPipelineEditRuntime == other {
@@ -258,12 +267,16 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 		reflect.TypeFor[FactoryPipelineSourceParams](): {"factory", "repo"},
 		reflect.TypeFor[FactoryPipelineSource](): {"factory", "repo", "path", "default_branch", "base_sha", "can_push", "archived", "runtime_fields", "state", "editable", "text", "problems",
 			"default_budget", "budget_in_file", "pipelines", "steps", "fixed"},
-		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "prompt", "until", "max", "when", "effort", "fanout", "value"},
+		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "pipeline", "after", "prompt", "until", "max", "when", "effort", "fanout", "value"},
 		reflect.TypeFor[FactoryPipelinePreviewParams](): {"factory", "repo", "base_sha", "base_text", "edits"},
 		reflect.TypeFor[FactoryPipelineStepValues]():    {"prompt", "until", "max", "when", "effort", "fanout"},
 		reflect.TypeFor[FactoryPipelineStepChange]():    {"name", "fields", "before", "after"},
 		reflect.TypeFor[FactoryPipelineBudgetChange]():  {"before", "after"},
-		reflect.TypeFor[FactoryPipelinePreview]():       {"factory", "repo", "base_sha", "path", "text", "changed", "format_rewritten", "comments_dropped", "steps", "budget"},
+		reflect.TypeFor[FactoryPipelinePreview]():       {"factory", "repo", "base_sha", "path", "text", "changed", "format_rewritten", "comments_dropped", "steps", "budget", "structure"},
+		reflect.TypeFor[FactoryPipelineStructure]():     {"order", "added", "counts", "gates"},
+		reflect.TypeFor[FactoryPipelineOrderChange]():   {"pipeline", "before", "after"},
+		reflect.TypeFor[FactoryPipelineCount]():         {"pipeline", "steps"},
+		reflect.TypeFor[FactoryPipelineGateChange]():    {"pipeline", "gate", "before", "after"},
 		reflect.TypeFor[FactoryPipelineEditRefusal]():   {"factory", "repo", "code", "op"},
 	} {
 		if got := fieldNames(ty); !reflect.DeepEqual(got, want) {
@@ -285,14 +298,22 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 	if caps["pipeline_edit"] == nil {
 		t.Fatal("capabilities do not carry pipeline_edit")
 	}
-	// No reorder/add/remove verb exists to be spelled.
+	if caps["pipeline_edit_structure"] == nil {
+		t.Fatal("capabilities do not carry pipeline_edit_structure")
+	}
+	// The five verbs, and no loop, reorder or kind verb.
 	def, ok := defs["in.FactoryPipelineEdit"].(map[string]any)
 	if !ok {
 		t.Fatalf("schema has no definition of an edit: %v", defs)
 	}
 	edit := def["properties"].(map[string]any)
 	op, _ := json.Marshal(edit["op"])
-	if !strings.Contains(string(op), "set_step") || !strings.Contains(string(op), "set_budget") || strings.Contains(string(op), "move") || strings.Contains(string(op), "add") || strings.Contains(string(op), "remove") {
+	for _, verb := range []string{"set_step", "set_budget", "add_step", "remove_step", "move_step"} {
+		if !strings.Contains(string(op), `"`+verb+`"`) {
+			t.Fatalf("op = %s lacks %s", op, verb)
+		}
+	}
+	if strings.Contains(string(op), "loop") || strings.Contains(string(op), "reorder") || strings.Contains(string(op), "kind") || strings.Count(string(op), "_step") != 4 {
 		t.Fatalf("op = %s", op)
 	}
 }
@@ -385,6 +406,18 @@ func TestStepValuesOmitEmptyRuntimeWords(t *testing.T) {
 
 // PipelineRuntimeGuarded makes the test engine a guarded editor, like appBackend.
 func (e *pipelineEditEngine) PipelineRuntimeGuarded() {}
+
+// PipelineStructureEdits makes the test engine a structural editor, like appBackend.
+func (e *pipelineEditEngine) PipelineStructureEdits() {}
+
+// runtimeOnlyEditEngine is an editor from before the structural edits: it
+// guards the runtime words and has no structure marker.
+type runtimeOnlyEditEngine struct {
+	factoryEngine
+	FactoryPipelineEditor
+}
+
+func (*runtimeOnlyEditEngine) PipelineRuntimeGuarded() {}
 
 // unguardedEditEngine has every method of an editor and no guard marker.
 type unguardedEditEngine struct {
