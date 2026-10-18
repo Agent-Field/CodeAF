@@ -55,8 +55,8 @@ func TestPeopleCardAndQueueUseFakeForgeAndVisibleJobs(t *testing.T) {
 	}, func() time.Time { return *clock })
 	h.config.PersonProfile, h.config.CodeOwners = loader.Profile, loader.Owners
 	snapshot := factory.Snapshot{Repos: []factory.Repo{{Name: "acme/api"}, {Name: "acme/web"}}, Items: []factory.Item{
-		{ID: 1, Repo: "acme/api", Author: "outside", Assignee: "priya", State: factory.StateNeedsYou, QKind: factory.QKindApprove, Question: factory.ApproveQuestion("plan"), PlannedFiles: []string{"api/a.go"}, Change: &factory.Change{Files: []factory.ChangedFile{{Path: "README.md"}}}},
-		{ID: 2, Repo: "acme/web", Author: "hidden-author", Assignee: "priya", State: factory.StateNeedsYou, Question: "hidden-question", PlannedFiles: []string{"secret/a.go"}},
+		{ID: 1, Repo: "acme/api", Author: "outside", Assignee: "priya", State: factory.StateNeedsYou, QKind: factory.QKindApprove, Question: factory.ApproveQuestion("plan"), Stream: plannedStream("api/a.go"), Change: &factory.Change{Files: []factory.ChangedFile{{Path: "README.md"}}}},
+		{ID: 2, Repo: "acme/web", Author: "hidden-author", Assignee: "priya", State: factory.StateNeedsYou, Question: "hidden-question", Stream: plannedStream("secret/a.go")},
 		{ID: 3, Repo: "acme/api", Assignee: "priya", State: factory.StateNeedsYou, Question: "which version?", PullRequest: &factory.PullRequest{Reviews: []factory.PRReview{{By: "approver", State: "approved"}}}},
 		{ID: 4, Repo: "acme/api", Assignee: "priya", State: factory.StateShipped},
 	}}
@@ -167,4 +167,9 @@ func TestPersonOwnsWatchedRepositoryWithNoJobs(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &p) != nil || len(p.Owns) != 1 || p.Owns[0].Repo != "acme/api" || p.AssignedNow != 0 {
 		t.Fatalf("no-job ownership = %d %s", w.Code, w.Body)
 	}
+}
+
+// plannedStream is a saved stream whose finished plan declared one file.
+func plannedStream(path string) *factory.Stream {
+	return &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone, Result: &factory.StageResult{Output: "files: " + path}}}}
 }
