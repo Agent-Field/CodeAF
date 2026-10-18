@@ -288,8 +288,10 @@ type Job struct {
 	Step             *StepAt    `json:"step,omitempty"`
 	Steps            []Step     `json:"steps"`
 	Claims           []Claim    `json:"claims,omitempty"`
-	// PlannedFiles are the paths the plan step named, so the brief can say
-	// how many it planned against how many the change touched.
+	// PlannedFiles are the paths the current plan's explicit Files declaration
+	// named, so the brief can say how many it planned against how many the
+	// change touched. Unknown is omitted: no declaration, an ambiguous one, or
+	// a plan not finished.
 	PlannedFiles  []string       `json:"planned_files,omitempty"`
 	Questions     []Question     `json:"questions,omitempty"`
 	NeedsYou      *NeedsYou      `json:"needs_you,omitempty"`

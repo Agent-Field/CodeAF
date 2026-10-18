@@ -93,6 +93,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
 	"Snapshot.People":   "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
+	"Item.PlannedFiles": "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
 	"Item.OldGate":      "read into approve steps on load and never in memory",
 	"Stage.OldGate":     "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen": "read into approve steps on load and never in memory",
@@ -118,7 +119,7 @@ func FromItem(it factory.Item) Job {
 		AskedFirstReason: it.AskedFirstReason,
 		Steps:            steps(it),
 		Claims:           mapList(it.Proof, fromClaim),
-		PlannedFiles:     append([]string(nil), it.PlannedFiles...),
+		PlannedFiles:     factory.PlanFilesOf(it),
 		Questions:        questions(it),
 		CreatedAt:        it.Created,
 		Desk:             fromDesk(it),
@@ -300,8 +301,7 @@ func ToItem(j Job) factory.Item {
 		Tier:            factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), Synced: d.Synced, Changed: d.ChangedAt,
 		Triage: toTriage(d.Triage), Cap: d.Cap,
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
-		PlannedFiles: append([]string(nil), j.PlannedFiles...),
-		Marked:       d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
+		Marked: d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
 		Adapted: d.Adapted, Notes: d.Notes, Talk: d.Talk, Heard: d.Heard, Thread: d.Thread,
 		Comments: mapList(d.Comments, toComment), Files: mapList(d.Files, toFile),
 		CheckRuns: mapList(d.CheckRuns, toCheckRun), Base: d.Base, Head: d.Head, HeadSHA: d.HeadSHA,
