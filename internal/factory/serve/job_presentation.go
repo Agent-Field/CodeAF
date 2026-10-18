@@ -15,6 +15,22 @@ import (
 func (h *Handler) presentJob(r *http.Request, j *api.Job) {
 	h.presentWorkerJob(r, j)
 	withholdChats(j)
+	withholdTalk(j)
+}
+
+// withholdTalk drops the manager conversation's session FILE PATH from the
+// job's desk, for the same reason withholdChats drops a step's: it names a
+// directory on the runner's machine and means nothing on any other, the
+// owner's included. The worker pull keeps it. The desk is copied before the
+// write so the shared payload is never mutated; every other desk fact,
+// the thread among them, stays.
+func withholdTalk(j *api.Job) {
+	if j.Desk == nil || j.Desk.Talk == "" {
+		return
+	}
+	d := *j.Desk
+	d.Talk = ""
+	j.Desk = &d
 }
 
 // withholdChats drops each step's conversation id. A chat stage's id is the
