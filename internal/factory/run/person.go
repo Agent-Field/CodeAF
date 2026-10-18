@@ -125,7 +125,7 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
-	gate, prev := approveBackTarget(it.Stream)
+	gate, prev := factory.ApproveBackTarget(it.Stream)
 	if gate < 0 {
 		// A shape this does not know: the ordinary no, which asks again.
 		if err := AnswerHeld(it, false, now); err != nil {
@@ -151,25 +151,6 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 	rewindToStep(it, gate, prev, words, now)
 	it.State = factory.StateQueued
 	return nil
-}
-
-// approveBackTarget finds the approve step a no answers and the finished step
-// before it. The step waiting is the gate itself; the shape older workers
-// stored, the finished step waiting with the gate pending right after it, is
-// read the same way, on the same terms repairMisfiledGate asks. A gate of -1 is
-// a shape not recognised; a prev of -1 is no step to send back to.
-func approveBackTarget(s *factory.Stream) (gate, prev int) {
-	if s == nil || s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
-		return -1, -1
-	}
-	ph := s.Phases[s.Cur]
-	if ph.Kind == factory.StageGate {
-		return s.Cur, previousWork(s.Phases, s.Cur)
-	}
-	if ph.Result != nil && ph.Result.Done && s.Cur+1 < len(s.Phases) && s.Phases[s.Cur+1].Kind == factory.StageGate && s.Phases[s.Cur+1].State == factory.PhasePending {
-		return s.Cur + 1, s.Cur
-	}
-	return -1, -1
 }
 
 // repairMisfiledGate mends the one stored shape older workers wrote: the
@@ -229,4 +210,39 @@ func RecheckItem(it *factory.Item) error {
 	it.PublishStatus, it.Publishing = nil, false
 	it.PublishError = ""
 	return nil
+}
+
+// PlanRevisionRefusal is why a plan cannot be sent back right now. It is a
+// conflict, never a crash: the job is not, at this revision, a plan with a
+// finished step before it, and nothing was written.
+type PlanRevisionRefusal string
+
+func (e PlanRevisionRefusal) Error() string { return string(e) }
+
+// The person-facing sentences of [PlanRevision]. They are the factory's, so a
+// client shows them whole rather than guessing what a no would have done.
+const (
+	refusePlanNotWaiting PlanRevisionRefusal = "Not a plan waiting for you."
+	refusePlanFirstStep  PlanRevisionRefusal = "This plan has no finished step before it to send back to."
+	refusePlanShape      PlanRevisionRefusal = "This plan's run is not in a shape that can be sent back."
+)
+
+// PlanRevision refuses a no that would not revise a plan. A plan revision is
+// the approve question's no that sends the work back to the finished step
+// before it ([factory.PlanSendsBack]); the same no to a plan with no finished
+// step before it STOPS the job, and to a run shape nobody recognises only asks
+// again, and a no to any other question (a spending limit, an exhausted round
+// budget, a start) cancels or declines. None of those is "send the plan back",
+// so the typed door refuses all of them and leaves them to the answer route.
+func PlanRevision(it factory.Item) error {
+	if _, ok := factory.PlanSendsBack(it); ok {
+		return nil
+	}
+	if !factory.PlanWaiting(it) {
+		return refusePlanNotWaiting
+	}
+	if gate, _ := factory.ApproveBackTarget(it.Stream); gate < 0 {
+		return refusePlanShape
+	}
+	return refusePlanFirstStep
 }

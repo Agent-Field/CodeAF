@@ -321,6 +321,11 @@ type NeedsYou struct {
 	Since        time.Time      `json:"since"`
 	WhoCanAnswer string         `json:"who_can_answer,omitempty"`
 	Question     *NeedsQuestion `json:"question,omitempty"`
+	// BackTo is, on an approve_plan wait, the finished step a plan sent back
+	// runs again (factory.PlanSendsBack). It is left out when there is none,
+	// and also when an old document's step carries no name; can.reject_plan,
+	// never this field, says whether the revision is possible.
+	BackTo string `json:"back_to,omitempty"`
 }
 
 // NeedsQuestion is the ask on a needs-you kind that is a question.
@@ -391,6 +396,13 @@ type Can struct {
 	Answer       bool `json:"answer"`
 	AssignToMe   bool `json:"assign_to_me"`
 	Reply        bool `json:"reply"`
+	// RejectPlan is POST /v1/jobs/{id}/reject_plan for this caller right now:
+	// the job is a plan waiting for its person, the caller may answer it, its
+	// run has a finished step before the approve step to send the work back
+	// to (needs_you.back_to names it when the document does), and this factory
+	// serves the route. A factory from before the route never sends it, which
+	// reads as false: no plan revision is offered.
+	RejectPlan bool `json:"reject_plan"`
 }
 
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.
@@ -709,6 +721,19 @@ type Approve struct {
 	Commit string  `json:"commit"`
 	Edited bool    `json:"edited,omitempty"`
 	Expect *Expect `json:"expect,omitempty"`
+}
+
+// MaxRejectPlanWords is the most characters (runes) the words of a plan sent
+// back may carry, after trimming.
+const MaxRejectPlanWords = 4000
+
+// RejectPlan is the body of POST /v1/jobs/{id}/reject_plan: what to change in
+// the plan, required, and the page the person reviewed. Expect.Version and
+// Expect.State (needs_you) are required, because the revision is written only
+// on that exact document.
+type RejectPlan struct {
+	Words  string  `json:"words"`
+	Expect *Expect `json:"expect"`
 }
 
 // LiveEvent is the small typed JSON payload on GET /v1/events. The SSE event
