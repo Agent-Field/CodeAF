@@ -511,9 +511,11 @@ type Item struct {
 	// most twenty; nil for anything that is not a pull request, or for one
 	// whose files are not read yet (its Diff is then not read yet either).
 	Files []FileChange
-	// PlannedFiles are the paths the plan step named, in the order it named
-	// them. The brief counts them against the files the change touched. Nil
-	// until a plan reports a list.
+	// PlannedFiles is a CACHE of the paths the plan step's explicit Files
+	// declaration named, kept for older builds reading the persisted item. It is not
+	// the truth readers use: [PlanFilesOf] derives the list from the saved plan
+	// result, so an old cache cannot outlive the plan it came from. Nil is
+	// unknown, never "the previous plan's files".
 	PlannedFiles []string `json:",omitempty"`
 	// CheckRuns are the checks on a pull request's head, one per run. Checks
 	// stays the one-word summary the row draws; these are what the page lists.
