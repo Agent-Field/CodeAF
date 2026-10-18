@@ -304,7 +304,30 @@ func (st *Store) Save(it factory.Item) error {
 // window did since; a door that moves one field moves it on the document on
 // disk instead.
 func (st *Store) Update(id int, change func(*factory.Item) error) error {
-	return st.update(id, true, change)
+	return st.update(id, true, nil, change)
+}
+
+// UpdateExpected is [Store.Update] that writes only when the document on disk
+// is still the revision the caller read. The comparison is made on the
+// document read INSIDE the item's flock, the same read the change is handed,
+// so no other write can land between the check and the write: a door that
+// must not act on anything but the page a person reviewed hands that page's
+// revision here and gets [*StaleError], with nothing written and change never
+// called, when the job moved.
+func (st *Store) UpdateExpected(id, revision int, change func(*factory.Item) error) error {
+	return st.update(id, true, &revision, change)
+}
+
+// StaleError is [Store.UpdateExpected]'s refusal: the document is at Revision,
+// not the Expected one the caller read. Nothing was written.
+type StaleError struct {
+	ID       int
+	Expected int
+	Revision int
+}
+
+func (e *StaleError) Error() string {
+	return fmt.Sprintf("factory store: item %d is at revision %d, not the %d that was read", e.ID, e.Revision, e.Expected)
 }
 
 // Annotate is [Store.Update] for a write that is not a change to the work: the
@@ -314,10 +337,12 @@ func (st *Store) Update(id int, change func(*factory.Item) error) error {
 // read the factory made by itself is not the item moving: every row on a
 // freshly connected floor would otherwise say `now` the minute it was read.
 func (st *Store) Annotate(id int, change func(*factory.Item) error) error {
-	return st.update(id, false, change)
+	return st.update(id, false, nil, change)
 }
 
-func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) error {
+// update is every read-modify-write. A nil expect writes whatever revision is
+// on disk; a revision refuses any other one before change runs.
+func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.Item) error) error {
 	if err := checkID(id); err != nil {
 		return ErrNotFound
 	}
@@ -328,6 +353,9 @@ func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) er
 		current, err := st.read(st.ItemPath(id))
 		if err != nil {
 			return err
+		}
+		if expect != nil && current.Revision != *expect {
+			return &StaleError{ID: id, Expected: *expect, Revision: current.Revision}
 		}
 		it := current.Item
 		before := current.Item

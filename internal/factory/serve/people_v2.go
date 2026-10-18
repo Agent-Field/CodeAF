@@ -222,7 +222,7 @@ func (h *Handler) revokePerson(r *http.Request, handle string) error {
 }
 
 // soloJob removes the team assignment field from a solo response.
-func (h *Handler) soloJob(job *api.Job, caller string) {
+func (h *Handler) soloJob(job *api.Job, stored factory.Item, caller string) {
 	it := api.ToItem(*job)
 	it.Assignee, it.Taker, it.Starter, it.SourceAssignees = "", "", "", nil
 	job.Can = api.CanFor(it, caller, h.clock())
@@ -234,6 +234,10 @@ func (h *Handler) soloJob(job *api.Job, caller string) {
 	job.AssignedTo = ""
 	job.Assignee, job.WaitingFor = "", ""
 	job.Can.AssignToMe = false
+	// Solo's one caller answers every plan, so only the run decides. It is read
+	// off the stored item: the wire's steps do not carry the finished result
+	// that the shape older workers stored is recognised by.
+	_, job.Can.RejectPlan = factory.PlanSendsBack(stored)
 	if job.Desk != nil {
 		job.Desk.Assignee, job.Desk.Starter, job.Desk.Taker, job.Desk.Assignees = "", "", "", nil
 	}

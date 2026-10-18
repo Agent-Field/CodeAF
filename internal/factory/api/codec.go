@@ -163,6 +163,9 @@ func needsYou(it factory.Item) *NeedsYou {
 	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts || kind == factory.NeedsRunnerOffline {
 		ny.Question = needsQuestion(it)
 	}
+	if kind == factory.NeedsApprovePlan {
+		ny.BackTo, _ = factory.PlanSendsBack(it)
+	}
 	return ny
 }
 
@@ -236,7 +239,14 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)),
 		Approve: approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: a.Answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
+		RejectPlan: a.Answer && planSendsBack(it),
 	}
+}
+
+// planSendsBack is factory.PlanSendsBack without the step's name.
+func planSendsBack(it factory.Item) bool {
+	_, ok := factory.PlanSendsBack(it)
+	return ok
 }
 
 // jobAsk prefers the stored ask. A GitHub issue with no stored ask is derived

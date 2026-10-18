@@ -156,11 +156,22 @@ func (h *Handler) recordedWords(door func(int, string) error, kind string) jobAc
 // A yes through Answer is still consent at an approve step. The receipt is
 // written only after that door accepts, so a refused yes leaves no approved event.
 func (h *Handler) recordAnswer(r *http.Request, it factory.Item, yes bool, words string) error {
+	return h.recordAnswerBy(r, yes, words, func() (factory.Item, error) {
+		return it, h.seam.Answer(it.ID, yes, words)
+	})
+}
+
+// recordAnswerBy is recordAnswer through any door that answers: door makes the
+// write and hands back the job as it stood when its question was answered,
+// which the receipt and the kept answer name. A door that refuses leaves no
+// receipt and keeps no answer.
+func (h *Handler) recordAnswerBy(r *http.Request, yes bool, words string, door func() (factory.Item, error)) error {
 	handle, err := h.callerHandle(r)
 	if err != nil {
 		return err
 	}
-	if err := h.seam.Answer(it.ID, yes, words); err != nil {
+	it, err := door()
+	if err != nil {
 		return err
 	}
 	eventID := ""
