@@ -162,8 +162,10 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 //
 // The bounds held in both modes:
 //
-//   - a name is one word ([StageWord]) the item does not have yet, and an
-//     item has at most [StageMost] stages;
+//   - a name is one word ([StageWord]) the item does not have yet, in any
+//     case, and an item has at most [StageMost] stages;
+//   - a stage is found by its name without case and is kept in its stored
+//     spelling; a name two stages answer to refuses the whole edit;
 //   - an added stage is a conversation with an ask;
 //   - an ask is at most [AskMost] cells, and thinking is "", cheap or strong;
 //   - the stage named proof and a stage a policy line names are never
@@ -255,13 +257,21 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		}
 		stages[i].Why = stageWhy
 	}
-	// find is the index of a named stage, or a refusal for an edit's part.
+	// find is the index of a named stage, or a refusal for an edit's part. THE
+	// NAME IS LOOKED UP WITHOUT CASE ([stageMatches]) and the stored spelling is
+	// kept; a name that two stages answer to refuses, even when the request
+	// spells one of them exactly, because choosing one would be a guess and
+	// leaving the other would be half a change. A refusal fails the whole edit.
 	find := func(name, doing string) int {
-		i := StageIndex(stages, strings.ToLower(strings.TrimSpace(name)))
-		if i < 0 {
+		switch hits := stageMatches(stages, name); len(hits) {
+		case 0:
 			refuse("there is no stage named %s to %s", strings.TrimSpace(name), doing)
+		case 1:
+			return hits[0]
+		default:
+			refuse("more than one stage is named %s, so it cannot be changed by name until the steps have one name each", strings.TrimSpace(name))
 		}
-		return i
+		return -1
 	}
 
 	for _, name := range sortedKeys(e.Ask) {
@@ -318,17 +328,37 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			refuse("%s", bad.Error())
 			continue
 		}
+		// THE PLACE IS RESOLVED THROUGH THE SAME UNIQUE LOOKUP AS EVERY OTHER
+		// NAME, and [PlaceStage] is handed the STORED spelling: its own lookup is
+		// byte-exact, so a lowercased `tidy` would miss a legacy `Tidy` and drop
+		// the stage somewhere the person never asked for. Explicit After and the
+		// ask's own `after X` / `before X` both go through it; `first`, `last`
+		// and no place are not anchored and pass untouched.
+		anchor := ""
 		if after := strings.TrimSpace(add.After); after != "" {
-			if find(after, "add after") < 0 {
+			i := find(after, "add after")
+			if i < 0 {
 				continue
 			}
-			when = "after " + strings.ToLower(after)
+			anchor = stages[i].Name
+			when = "after " + anchor
+		} else if verb, name, ok := strings.Cut(when, " "); ok && (verb == "after" || verb == "before") {
+			// A textual anchor no stage answers to keeps [PlaceStage]'s own
+			// meaning (just before proof); one two stages answer to refuses.
+			switch hits := stageMatches(stages, name); len(hits) {
+			case 1:
+				when = verb + " " + stages[hits[0]].Name
+			case 0:
+			default:
+				refuse("more than one stage is named %s, so %s cannot be added %s it until the steps have one name each", name, st.Name, verb)
+				continue
+			}
 		}
 		if IsApprove(st) {
 			// A SECOND APPROVE IS ITS OWN STEP, never a clash of names.
 			st.Name = approveName(stages)
 		}
-		if StageIndex(stages, st.Name) >= 0 {
+		if len(stageMatches(stages, st.Name)) > 0 {
 			refuse("there is already a stage named %s; %s may switch it on instead", st.Name, who)
 			continue
 		}
@@ -355,8 +385,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		}
 		stages = next
 		mark(at, add.Stage.Why)
-		if after := strings.TrimSpace(add.After); after != "" {
-			say("added " + st.Name + " after " + strings.ToLower(after))
+		if anchor != "" {
+			say("added " + st.Name + " after " + anchor)
 		} else {
 			say("added " + st.Name)
 		}
@@ -408,8 +438,17 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 	if adapt == AdaptAsk {
 		// UNDER ASK THE PERSON RATIFIES THE CHANGE before anything after plan
 		// runs: an approve step after plan, unless one stands there already or
-		// what follows plan has begun.
-		if p := StageIndex(stages, "plan"); p >= 0 {
+		// what follows plan has begun. PLAN IS FOUND BY THE SAME UNIQUE LOOKUP
+		// AS EVERY NAME THE EDIT REACHED: a legacy `Plan` is plan here too, or
+		// an edit that reached its `Write` would land with no one to ratify it.
+		// Two stages that both answer to plan refuse the whole edit, because
+		// ratifying after one of them is a guess and skipping is no ratification.
+		hits := stageMatches(stages, "plan")
+		if len(hits) > 1 {
+			return it, nil, errors.New("more than one stage is named plan, so there is no one place to ask for approval until the steps have one name each")
+		}
+		if len(hits) == 1 {
+			p := hits[0]
 			next := p + 1
 			switch {
 			case next < len(stages) && IsApprove(stages[next]):
@@ -499,8 +538,16 @@ func StageFixed(stages []Stage, i int, recipe Recipe, kind Kind) bool {
 		kind = KindIssue
 	}
 	rs := recipe.For(kind)
-	j := StageIndex(rs, stages[i].Name)
-	return j >= 0 && rs[j].Fixed
+	// THE RECIPE'S INTENT IS READ CONSERVATIVELY: an edit now reaches a legacy
+	// `Review` by any case, so a recipe stage that is fixed protects every stage
+	// that is the same name by that fold, whichever spelling either side holds.
+	// Nothing is migrated and the exact [StageIndex] stays what the runner uses.
+	for _, r := range rs {
+		if r.Fixed && strings.EqualFold(strings.TrimSpace(r.Name), strings.TrimSpace(stages[i].Name)) {
+			return true
+		}
+	}
+	return false
 }
 
 // sortedKeys is a map's keys in order, so an edit's lines read the same on

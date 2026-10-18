@@ -220,7 +220,8 @@ type ItemChange struct {
 	Cap float64
 	// Effort is cheap, strong or default (the knee, stored as ""); "" leaves
 	// it. The person calls it `thinking`: the thinking of every conversation
-	// stage that has not run.
+	// stage that has not run, is not fixed and is not rewound; a stage that
+	// fails any of those keeps its own, and the rest still change.
 	Effort string
 	// Note is one sentence appended to the item's notes for its stages.
 	Note string
@@ -234,10 +235,18 @@ func (c ItemChange) Empty() bool {
 // ItemFacts is one item as the card compares it, before and after: the stages
 // it runs, its cap and its effort (`budget`, `thinking` on the card). EVERY FIELD IS THE FLOOR'S OWN
 // SPELLING; the card draws `—` where a field is empty.
+//
+// Thinking is every conversation stage's own, by name, on or off, "" being the
+// usual amount, and IS THE ONLY TRUTH ABOUT THINKING: the card, its receipt and
+// the item's opening note all read it. Effort is a LEGACY WIRE FIELD kept
+// filled so an older build decoding this reads something; it is ONE stage's
+// thinking (the first that has not run), and is read only when Thinking is nil,
+// as in a notice persisted before the map.
 type ItemFacts struct {
-	Stages []string
-	Cap    float64
-	Effort string
+	Stages   []string
+	Cap      float64
+	Effort   string
+	Thinking map[string]string `json:",omitempty"`
 }
 
 // ItemNotice is the item card. It is the payload of EventItemProposal (ID is
