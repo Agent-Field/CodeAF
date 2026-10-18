@@ -2,6 +2,7 @@ package lease
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -28,14 +29,29 @@ func NewDoors(desk *Desk) *Doors { return &Doors{desk: desk} }
 // update changes job id under the desk's lock: held is its live lease, nil
 // when no worker holds it. change answers whether the desk itself changed.
 func (d *Doors) update(id int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
+	return d.updateAt(id, nil, change)
+}
+
+// updateAt is update that writes only on the document revision named, when
+// one is: the store compares it inside the item's flock, which is taken
+// inside the desk's lock. The comparison and item mutation use the same
+// document; a different revision is the store's StaleError and change never
+// runs. The lease file is persisted separately after the item write.
+func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
 	return d.desk.change(func(doc *document, now time.Time) (bool, error) {
 		held := find(doc, id)
 		dirty := false
-		err := d.desk.store.Update(id, func(it *factory.Item) error {
+		write := func(it *factory.Item) error {
 			var err error
 			dirty, err = change(doc, held, it, now)
 			return err
-		})
+		}
+		var err error
+		if revision == nil {
+			err = d.desk.store.Update(id, write)
+		} else {
+			err = d.desk.store.UpdateExpected(id, *revision, write)
+		}
 		return dirty && err == nil, err
 	})
 }
@@ -156,15 +172,71 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 		return d.desk.store.Update(id, func(it *factory.Item) error { return run.DeclineAskFirst(it, words) })
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if held == nil {
-			return false, run.AnswerUnheld(it, yes, words, now)
-		}
-		if err := run.AnswerHeld(it, yes, now); err != nil {
+		return answerLocked(doc, held, id, it, yes, words, now)
+	})
+}
+
+// answerLocked is the answer's write, under the desk's lock and the item's:
+// a job no worker holds is answered on the document, and a held job has its
+// question taken down and hears the answer through its lease.
+func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool, words string, now time.Time) (bool, error) {
+	if held == nil {
+		return false, run.AnswerUnheld(it, yes, words, now)
+	}
+	if err := run.AnswerHeld(it, yes, now); err != nil {
+		return false, err
+	}
+	signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words})
+	return true, nil
+}
+
+// RejectPlan sends a plan back with the person's words: the approve
+// question's no, answered exactly as [Doors.Answer] answers it, but ONLY when
+// the job's document is still the revision the person reviewed and is, at
+// that revision, a plan with a finished step before it to go back to
+// (run.PlanRevision). may is the caller's own permission, asked of the same
+// locked document. Every check runs inside the desk's lock and the item's
+// flock, before anything changes, so a worker or another person who moves the
+// job first makes this a refusal, never a no to a question nobody reviewed.
+// A validation refusal adds no item, revision or signal change of its own;
+// normal lease expiry can still update the lease file.
+//
+// It answers the job as it stood before the no, a copy no later write can
+// reach, so the caller's receipt names the question that was answered.
+func (d *Doors) RejectPlan(id, revision int, words string, may func(factory.Item) error) (factory.Item, error) {
+	var before factory.Item
+	err := d.updateAt(id, &revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.PlanRevision(*it); err != nil {
 			return false, err
 		}
-		signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words})
-		return true, nil
+		var err error
+		if before, err = copyItem(*it); err != nil {
+			return false, err
+		}
+		if may != nil {
+			if err := may(before); err != nil {
+				return false, err
+			}
+		}
+		return answerLocked(doc, held, id, it, false, words, now)
 	})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	return before, nil
+}
+
+// copyItem is a copy of the item by its own document bytes: the change the
+// store hands a door edits the run's steps in place, and a shallow copy would
+// share them.
+func copyItem(it factory.Item) (factory.Item, error) {
+	data, err := json.Marshal(it)
+	if err != nil {
+		return factory.Item{}, err
+	}
+	var out factory.Item
+	err = json.Unmarshal(data, &out)
+	return out, err
 }
 
 // Steer hands words to the round running now, through the lease.

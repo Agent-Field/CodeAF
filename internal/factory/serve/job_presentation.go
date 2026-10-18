@@ -65,6 +65,9 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	j.Controls.RerunStep = owner && step && rerunnable && mutable && h.workers != nil && h.workers.desk != nil
 	j.Controls.EditSteps = owner && mutable && !j.Ready && h.seam.Edit != nil
 	j.Controls.ChangeAssignee = j.Can.ChangeAssignee && h.config.Store != nil
+	// The plan's target and the caller's right to answer are the job's own
+	// facts (api.CanFor); whether this factory takes the revision is its own.
+	j.Can.RejectPlan = j.Can.RejectPlan && h.servesPlanRevision()
 	local := j.Desk != nil && j.Desk.Origin != string(factory.OriginForge)
 	session, _ := h.credential(r)
 	hasToken := session.githubToken != ""

@@ -2461,7 +2461,41 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 
 **Errors.** `forbidden` and `stale` are new codes; both, and `conflict`, carry `detail` = `FactoryRefusal {reason, by, job_person, at, now_state, taker, machine, approved_by, event, commit, current_commit, head_commit, request_id}`. `stale` means read the job again and let the person decide again; nothing retries. `conflict` also covers a refusal like "already approved by @x" or "already taken". `uncertain` answers a write that may have reached the factory without an answer (dropped connection, timeout, any 5xx): read the job before doing anything. `unreachable` is only a connection that was never made. `signed_out`, `github_expired`, `not_found`, `busy` and `bad_params` map as for reads; a factory that lacks a verb answers `engine` ("this factory does not provide that action").
 
-**Not carried:** sync (it opens a GitHub issue), hand-off cards (per-job step edits are the separate `factory.job_step_edit` feature below), the pipeline pull request, answering a question, and any arbitrary job verb.
+**Not carried:** sync (it opens a GitHub issue), hand-off cards (per-job step edits are the separate `factory.job_step_edit` feature below), the pipeline pull request, answering a question other than a plan (the one answer this wire carries is a plan sent back, the separate `factory.job_reject_plan` feature below), and any arbitrary job verb. `factory.job_request_changes` is the PROOF send-back of a landed job and never acts on a plan.
+
+### Sending a plan back (`factory.job_reject_plan`)
+
+Feature `factory.job_reject_plan` is present only when the engine implements `FactoryPlanRejecter` on top of the factory interface; it is independent of `factory.job_actions`. Otherwise the method answers `unknown_method`. It is a native "Request changes" on a PLAN: the person's words go back to the finished step before the plan's approve step, which runs again in a new round and plans again with those words. It is **not** `factory.job_request_changes`, which is the proof send-back of a landed job, and it is **never** carried to the factory's `/answer` route.
+
+| method | params | factory route |
+|---|---|---|
+| `factory.job_reject_plan` | `factory`, `job`, `words` (required, trimmed, at most 4000 characters), `expect` (`version` required, 1 or more; `state` required and exactly `needs_you`) | one `POST …/jobs/{id}/reject_plan` with exactly `{"words":…,"expect":…}`, then one `GET …/jobs/{id}` for `current` |
+
+It answers `FactoryJobActed` with `action` `reject_plan`. There is never an `approval`, an `undo_until` or a commit: a plan sent back is an answer, not a decision to publish. It leaves one `answered` receipt (not an approval) and the answered question on the job, and has no Undo window; `factory.job_undo` finds nothing to withdraw.
+
+**Why a route of its own.** The factory's answer route takes a no for any question a job can wait on: a no to a spending limit or to an exhausted round budget cancels the job, a no to a start the factory asked about declines it, and a no to a plan with no finished step before it STOPS the job. A "Request changes" on a plan must reach none of those, so it has its own typed route, and `/answer` is unchanged.
+
+**The factory decides on the locked job document, not on timing.** The route's own read of the job only refuses early. The decision is made again inside the factory's lease-desk lock and the job's file lock, on the document used for the item write: the job's document must still be exactly `expect.version` (a revision compare-and-swap in the store), must be `needs_you` with the plan's approve question asked (`needs_you.kind` `approve_plan`), its run must have a finished, non-approve step before the approve step (the shape older workers stored, the finished plan step waiting with the approve step pending after it, counts), and the caller must be allowed to answer it. A worker or another person who writes the job after the person's read moves its version, and the revision is refused. A validation refusal adds no job, version, note, receipt or worker-signal change of its own; normal lease expiry can still update the lease file.
+
+The item, lease signal and answer receipt are written separately, as for `/answer`, rather than one crash transaction. An unheld job rewinds during the item write; a held job receives a signal and rewinds when its worker handles it. A crash or I/O failure after the item write can leave an applied decision without a receipt. Such an outcome is uncertain: read the job again, never resend automatically.
+
+| refusal | code | `detail` |
+|---|---|---|
+| the job moved since the person read it (including while the factory was deciding) | `stale` | `reason` `stale`, `now_state` |
+| not a plan waiting (a spending limit, an exhausted round budget, a start, a free question, a proof, a job not waiting) | `conflict` | "Not a plan waiting for you.", `reason` `conflict`, `now_state` |
+| a plan with no finished step before it | `conflict` | "This plan has no finished step before it to send back to." |
+| a run the factory cannot read a target in (no run, an unrecognised shape) | `conflict` | "This plan's run is not in a shape that can be sent back." |
+| not the job's person | `forbidden` | `reason` `not_job_person`, `job_person` |
+
+**Who may.** The answer route's rule, asked of the locked document: in a team factory only the job's person (a caller the factory cannot name is not that person, so it is `forbidden` too), a plan with no person yet by any caller (the answer route's rule, unchanged), and a solo factory by anyone. The consent lock the answer route holds applies.
+
+**What the read says.** `can.reject_plan` (on every job read, mutation reply and queue row) is true only when this caller may answer the plan, its run has that finished step to go back to, and this factory serves the route. `needs_you.back_to` names that step on an `approve_plan` wait when it can be named; it is left out when there is no target, and also when an old document's step carries no name (the revision is still possible: say "the previous step"). A client offers the control from `can.reject_plan` alone and never re-derives the target from `steps`. A factory from before the route sends no `can.reject_plan`, which reads as false.
+
+**What the run does.** If no worker holds the job, the factory itself rewinds the run to that step (a new round for it), keeps the words on the job's notes after any already there for that round's brief, and queues the job; the response's `current.state` is `queued`. If a worker holds the job, the factory takes the question down, sets the approve step back to pending, leaves the job `running` and signals the worker with the no and the words, exactly as an answer would; the worker's loop does the rewind and keeps the words when it hears the no, and until then `current` shows the job running at the approve step.
+
+**An older factory.** A factory without the route answers the `POST` as an endpoint it does not have (`not_found` or `engine`), and nothing is written. The engine never falls back to `/answer`.
+
+**Not carried:** `commit`, `choice`, `reason`, `question_id`, a yes, and answering a spending limit, an exhausted round budget, a start question or a free question.
 
 ### Per-job step edits (`factory.job_step_edit`)
 
