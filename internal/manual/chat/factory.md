@@ -41,7 +41,7 @@ A runner runs only its owner's jobs, with its owner's keys; keys are shown by na
 
 ## from chat to the factory — factory_add, factory_recipe, factory_item and the manager's tools
 
-On a machine with a factory set up, a conversation can hand work over. Every one of these shows a card and writes nothing until you say yes; none of them starts a job.
+On a machine with a factory set up, a conversation can hand work over. Every one of these raises a card and writes nothing until you say yes; none of them starts a job. The terminal chat draws the `factory_item` card (answered as described below); see the limit in that section for the other two.
 
 - `factory_add` offers one piece of work (a title, a brief, a repository) to the factory. Your `add it` writes the item, as new.
 - `factory_recipe` offers one line for a repository's recipe: a stage, a policy or a habit, saved to `.codeaf/factory.yaml` on your `bank it`.
@@ -71,6 +71,20 @@ A step is found by its name without regard to case, so `tidy`, `Tidy` and ` TIDY
 The `factory_item` card's thinking (`think strong`, `think cheap`, `default` for usual) sets how hard the job's conversation steps that have not begun will think, each step on its own. It goes through the same step edit as above, as you, so a recipe set to `fixed` does not stop a card that changes only the thinking (a card that also adds or skips a step is still refused whole there). A step that has already run, was rewound by a rerun, or is fixed by the recipe keeps its thinking, the rest still change, and the card names the steps that change rather than the first. A step that is switched off is changed too, so it thinks that way when it is switched on later; the card marks it, as `security(off) cheap → strong`. A conversation step placed after proof refuses the whole card, nothing saved. A landed job, or one whose proof has started, refuses the change with the sentences above, budget and note included. Asking for the thinking a job already has changes nothing and is never refused.
 
 After your yes, the answer names the thinking the item was saved with, step by step (`thinking write strong, test strong`; `default` resets the changed steps to usual), and the steps that did not take it: `left as they were: plan cheap`. A budget or note alone says nothing about thinking. If another field changes but no step needs the requested thinking, the answer says `thinking unchanged`. A later turn's opening note lists thinking per running step when they differ (`thinking plan cheap, write strong`), one word when they agree, and nothing when none was set. A level other than cheap, strong or default is refused before any card, as `Invalid arguments: effort is one of cheap, strong, default, or left out.`
+
+## answer the factory_item card in the terminal — yes, keep it, say what to change, esc, the card never appeared
+
+In the terminal chat a `factory_item` call puts its card above the message box: a head that asks the question (`#12 · think strong?`), one row for each thing that would change (`thinking  write — → strong`, `budget  $5 → $8`, `note:`, `why:`), and two answers.
+
+- `1` **yes** changes the item exactly as the card shows, once. Pressing it again, or pressing enter, finds the card gone and changes nothing more.
+- `2` **keep it** changes nothing.
+- Typing a sentence under `say what to change… (enter sends it)` and pressing enter is a correction, never a yes: the item stays as it was and the chat is handed your words so it can propose again.
+- `esc` puts the card off for later: nothing is answered and nothing changes, and `space` over an empty box brings it back.
+- `enter` over an empty box never answers the card, wherever the pointer stands. Only `1` or a click on the yes row does.
+
+Interrupting the turn takes the card down unanswered, and so does leaving it for 15 minutes; either way the item is untouched and the model is told so. A tool permission question for `factory_item` can come first. It is a separate question, and allowing it changes nothing on the item.
+
+What changed in the terminal chat: it used to draw no `factory_item` card, and the call sat at `running factory_item` until you interrupted. It now draws a plain question block with the same box, keys and receipt as any other card, not a special item card. The card shows only rows that would change, so a fixed or begun step is absent from it; the chat is told afterwards which steps were left as they were. A yes sent from the desktop app with text attached is read as a correction and changes nothing. The `factory_add` and `factory_recipe` cards are not drawn here, so those calls wait until the turn is interrupted or 15 minutes pass.
 
 ## how big is a job — size of a job, the size: filter, why there is no size, risky
 
