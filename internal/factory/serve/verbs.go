@@ -25,6 +25,7 @@ func (h *Handler) verbs() {
 	h.postJob("resume", s.Hold != nil, h.guarded("resume", h.holdVerb(false)))
 	h.postJob("drop", h.config.Store != nil || s.Dismiss != nil, h.onlyOwner(h.drop))
 	h.postJob("answer", s.Answer != nil, h.answer)
+	h.postJob("reject_plan", h.config.Store != nil && s.Answer != nil, h.rejectPlan)
 	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
 	h.postJob("approve", true, h.approve)
 	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.onlyOwner(h.retryPublish)))
@@ -48,7 +49,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "answer" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
+			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return

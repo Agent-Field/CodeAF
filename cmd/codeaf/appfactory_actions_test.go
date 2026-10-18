@@ -42,6 +42,20 @@ type actionFactory struct {
 	sentBack atomic.Value // the words SendBack was handed
 	mu       sync.Mutex
 	posts    []string // every POST the factory received, "path"
+	// insideDesk, when set, is asked every time the server's own lease desk
+	// reads its clock, which it does holding the desk's lock and before any
+	// job document is read under it; it is cleared the first time it answers
+	// true. A write a test lands there, from the right door, is one that
+	// arrived after every read the handler made and before the door's own.
+	insideDesk atomic.Pointer[func() bool]
+}
+
+// deskNow is the server desk's clock, with the insideDesk hook.
+func (f *actionFactory) deskNow() time.Time {
+	if hook := f.insideDesk.Load(); hook != nil && (*hook)() {
+		f.insideDesk.CompareAndSwap(hook, nil)
+	}
+	return f.clock.now()
 }
 
 func startActionFactory(t *testing.T) *actionFactory {
@@ -76,7 +90,7 @@ func startActionFactory(t *testing.T) *actionFactory {
 	h := serve.New(seam, serve.Config{
 		Version: "test", Name: "Acme factory", ServedBy: "factory", AccessToken: testHostToken, Mode: api.FactoryTeam,
 		GitHubClientID: "client", GitHubHTTPClient: f.github.client(), Now: f.clock.now, Store: f.st, Record: f.rec, Root: f.st.Root(),
-		LeaseOptions: lease.Options{Now: f.clock.now, Record: f.rec},
+		LeaseOptions: lease.Options{Now: f.deskNow, Record: f.rec},
 	})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
@@ -133,11 +147,18 @@ type person struct {
 // alice, bob, carol in the order the sign-ins start.
 func signedIn(t *testing.T, f *actionFactory, n int, handle string) *person {
 	t.Helper()
+	return signedInAt(t, f, f.URL, n, handle)
+}
+
+// signedInAt is signedIn through a front door of the test's own (a proxy that
+// can act between two requests); the factory behind it is still f.
+func signedInAt(t *testing.T, f *actionFactory, url string, n int, handle string) *person {
+	t.Helper()
 	hub := testFactoryHub(t)
 	hub.now = f.clock.now
 	w := newFactoryWire(t, hub)
 	p := &person{w: w, handle: handle}
-	w.must("factory.attach", map[string]any{"url": f.URL, "token": testHostToken}, &p.conn)
+	w.must("factory.attach", map[string]any{"url": url, "token": testHostToken}, &p.conn)
 	var flow appwire.FactorySignIn
 	w.must("factory.sign_in_start", map[string]any{"factory": p.conn.ID, "caller": "w"}, &flow)
 	f.github.grant("github-device-secret-" + string(rune('0'+n)))
