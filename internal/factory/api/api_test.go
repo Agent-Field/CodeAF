@@ -187,9 +187,8 @@ func TestStepFinishAndPlannedFiles(t *testing.T) {
 	at := time.Date(2026, 10, 11, 15, 4, 0, 0, time.UTC)
 	it := factory.Item{
 		ID: 7, State: factory.StateRunning, Title: "fix",
-		PlannedFiles: []string{"internal/a.go", "internal/b.go"},
 		Stream: &factory.Stream{Cur: 0, Started: at, Phases: []factory.Phase{
-			{Name: "plan", State: factory.PhaseDone, At: at, Result: &factory.StageResult{Output: "a plan", Spent: 0.2}},
+			{Name: "plan", State: factory.PhaseDone, At: at, Result: &factory.StageResult{Output: "a plan\n\nfiles: internal/a.go, internal/b.go", Spent: 0.2}},
 			{Name: "write", State: factory.PhaseRunning},
 		}},
 	}
@@ -200,7 +199,8 @@ func TestStepFinishAndPlannedFiles(t *testing.T) {
 	if j.Steps[1].At != nil {
 		t.Fatalf("a step still running carries %v", j.Steps[1].At)
 	}
-	if !reflect.DeepEqual(j.PlannedFiles, it.PlannedFiles) {
+	want := []string{"internal/a.go", "internal/b.go"}
+	if !reflect.DeepEqual(j.PlannedFiles, want) {
 		t.Fatalf("planned %v", j.PlannedFiles)
 	}
 	raw, err := json.Marshal(struct {
@@ -227,7 +227,7 @@ func TestStepFinishAndPlannedFiles(t *testing.T) {
 		t.Fatal("running step has at")
 	}
 	back := ToItem(j)
-	if !back.Stream.Phases[0].At.Equal(at) || !reflect.DeepEqual(back.PlannedFiles, it.PlannedFiles) {
+	if !back.Stream.Phases[0].At.Equal(at) || !reflect.DeepEqual(factory.PlanFilesOf(back), want) {
 		t.Fatalf("round trip planned %v at %v", back.PlannedFiles, back.Stream.Phases[0].At)
 	}
 	if !back.Stream.Phases[1].At.IsZero() {
@@ -509,5 +509,92 @@ func TestQuestionKindsOptionsAndCapNumbers(t *testing.T) {
 	}
 	if back := ToItem(FromItem(factory.Item{ID: 3, Question: rounds, QKind: "scope"})); back.QKind != "scope" {
 		t.Fatalf("rounds round trip stored %q", back.QKind)
+	}
+}
+
+// An item saved before planned files were declared carries a cache from the old
+// regex. The reader trusts the saved plan result instead, so the old cache
+// does not reach the wire when the current plan declared no list.
+func TestLegacyPlannedFilesCacheIsNotWireTruth(t *testing.T) {
+	it := factory.Item{
+		ID: 9, State: factory.StateRunning,
+		PlannedFiles: []string{"README.md", "ledger.go", "Entry.Amount", "read", "grep"},
+		Stream: &factory.Stream{Phases: []factory.Phase{
+			{Name: "plan", State: factory.PhaseDone, Result: &factory.StageResult{Output: "add an Amount field",
+				Claims: []factory.Claim{{Text: "Entry.Amount is in ledger.go"}}}},
+		}},
+	}
+	j := FromItem(it)
+	if j.PlannedFiles != nil {
+		t.Fatalf("legacy cache served: %v", j.PlannedFiles)
+	}
+	raw, err := json.Marshal(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := wire["planned_files"]; ok {
+		t.Fatalf("planned_files on the wire: %v", wire["planned_files"])
+	}
+}
+
+// A plan's file list rides the wire only for a plan whose CURRENT round
+// finished. The server's answer (planned_files) and the list a client derives
+// from the job it reads back must agree, or the client may only know less:
+// never a list the server left out.
+func TestPlannedFilesFollowTheCurrentRoundAcrossTheWire(t *testing.T) {
+	plan := func(state factory.PhaseState, round int, lines []int, qkind string, gate factory.PhaseState, cur int) factory.Item {
+		var rl []factory.RoundLine
+		for _, n := range lines {
+			rl = append(rl, factory.RoundLine{Round: n, Summary: "files: a.go"})
+		}
+		return factory.Item{ID: 3, State: factory.StateNeedsYou, QKind: qkind, Question: "q?", Title: "t",
+			Stream: &factory.Stream{Cur: cur, Phases: []factory.Phase{
+				{Name: "plan", Kind: factory.StageChat, State: state, Round: round, Rounds: rl, Result: &factory.StageResult{Done: true, Output: "files: a.go"}},
+				{Name: factory.ApproveName, Kind: factory.StageGate, State: gate},
+				{Name: "write", Kind: factory.StageChat, State: factory.PhasePending},
+			}}}
+	}
+	for _, c := range []struct {
+		name       string
+		it         factory.Item
+		want       []string
+		clientKnow bool
+	}{
+		{"finished plan, gate waiting", plan(factory.PhaseDone, 1, []int{1}, factory.QKindApprove, factory.PhaseWaiting, 1), []string{"a.go"}, true},
+		{"older worker's approve shape", plan(factory.PhaseWaiting, 1, []int{1}, factory.QKindApprove, factory.PhasePending, 0), []string{"a.go"}, false},
+		{"revised plan asking mid-round", plan(factory.PhaseWaiting, 2, []int{1}, "step", factory.PhaseWaiting, 0), nil, true},
+		{"older worker's approve after a send-back", plan(factory.PhaseWaiting, 2, []int{1}, factory.QKindApprove, factory.PhasePending, 0), nil, true},
+		{"out of attempts", plan(factory.PhaseWaiting, 1, []int{1}, factory.QKindOutOfAttempts, factory.PhasePending, 0), nil, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			j := FromItem(c.it)
+			if !reflect.DeepEqual(j.PlannedFiles, c.want) {
+				t.Fatalf("server sent %v, want %v", j.PlannedFiles, c.want)
+			}
+			raw, err := json.Marshal(j)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var wire map[string]any
+			if err := json.Unmarshal(raw, &wire); err != nil {
+				t.Fatal(err)
+			}
+			if _, has := wire["planned_files"]; has != (c.want != nil) {
+				t.Fatalf("planned_files on the wire: %v (%s)", has, raw)
+			}
+			back := factory.PlanFilesOf(ToItem(j))
+			switch {
+			case c.clientKnow && !reflect.DeepEqual(back, c.want):
+				t.Fatalf("client read back %v, want %v", back, c.want)
+			case !c.clientKnow && back != nil:
+				// Pinned as a decision: the legacy shape's finished flag does
+				// not cross, so the client answers unknown, never a new list.
+				t.Fatalf("client read back %v, want unknown", back)
+			}
+		})
 	}
 }

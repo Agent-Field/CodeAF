@@ -9,61 +9,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
-func TestPlanFilesReadsTheResultListOrTheClaims(t *testing.T) {
-	cases := []struct {
-		name string
-		res  factory.StageResult
-		want []string
-	}{
-		{
-			name: "headed list",
-			res:  factory.StageResult{Output: "Wrap the sender.\n\n## Files\n- internal/a.go\n- `internal/b.go`\n\nThen stop."},
-			want: []string{"internal/a.go", "internal/b.go"},
-		},
-		{
-			name: "files colon",
-			res:  factory.StageResult{Output: "files: internal/a.go, ./internal/b.go"},
-			want: []string{"internal/a.go", "internal/b.go"},
-		},
-		{
-			name: "path bullets",
-			res:  factory.StageResult{Output: "plan\n- deliver.go\n- api/retry.go\n- wrap the sender"},
-			want: []string{"deliver.go", "api/retry.go"},
-		},
-		{
-			name: "claims when the result names none",
-			res: factory.StageResult{
-				Output: "backoff in the deliverer",
-				Claims: []factory.Claim{
-					{Text: "will change api/webhooks/deliver.go"},
-					{Text: "and api/webhooks/deliver.go again", Evidence: "api/webhooks/retry.go:12"},
-					{Text: "see https://github.com/acme/api/blob/main/README.md"},
-				},
-			},
-			want: []string{"api/webhooks/deliver.go", "api/webhooks/retry.go"},
-		},
-		{
-			name: "a list wins over claims",
-			res: factory.StageResult{
-				Output: "files:\n- internal/a.go\n",
-				Claims: []factory.Claim{{Text: "also internal/b.go"}},
-			},
-			want: []string{"internal/a.go"},
-		},
-		{
-			name: "prose is not a list",
-			res:  factory.StageResult{Output: "see docs/design/factory/DESIGN.md and stop"},
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := planFiles(c.res); !reflect.DeepEqual(got, c.want) {
-				t.Fatalf("plan files %v, want %v", got, c.want)
-			}
-		})
-	}
-}
-
 func TestSetPhaseStateStampsOnlyAnEnding(t *testing.T) {
 	now := time.Date(2026, 10, 11, 15, 4, 0, 0, time.UTC)
 	later := now.Add(time.Minute)
@@ -127,29 +72,51 @@ func TestApplyReportStampsTheFinishAndKeepsThePlansFiles(t *testing.T) {
 	if !reflect.DeepEqual(it.PlannedFiles, []string{"internal/a.go", "internal/b.go"}) {
 		t.Fatalf("write replaced the plan's files: %v", it.PlannedFiles)
 	}
+	if got := factory.PlanFilesOf(it); !reflect.DeepEqual(got, []string{"internal/a.go", "internal/b.go"}) {
+		t.Fatalf("write spoke for the plan on read: %v", got)
+	}
 	if !it.Stream.Phases[1].At.Equal(at.Add(time.Minute)) {
 		t.Fatalf("write finished at %v", it.Stream.Phases[1].At)
 	}
 }
 
-func TestApplyReportReadsPlanClaimsWhenTheResultNamesNone(t *testing.T) {
+func planReport(t *testing.T, it *factory.Item, at time.Time, res factory.StageResult) {
+	t.Helper()
+	if err := ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{
+		Name: "plan", State: factory.PhaseDone, Result: &res,
+	}}}, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Claims are prose. A plan that declares no list has no planned files, however
+// many path-shaped tokens its claims hold, and a later complete plan without a
+// list does not leave the earlier plan's files behind.
+func TestApplyReportDoesNotReadPlanClaimsAndClearsAStaleList(t *testing.T) {
 	at := time.Date(2026, 10, 11, 15, 4, 0, 0, time.UTC)
 	it := factory.Item{ID: 8, State: factory.StateRunning,
 		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, On: true}},
 		Stream: &factory.Stream{Started: at, Phases: []factory.Phase{{Name: "plan", Kind: factory.StageChat, State: factory.PhaseRunning}}}}
-	err := ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{
-		Name: "plan", State: factory.PhaseDone,
-		Result: &factory.StageResult{Done: true, Output: "backoff in the deliverer", Claims: []factory.Claim{
-			{Text: "api/webhooks/deliver.go"},
-			{Text: "touch api/webhooks/retry.go"},
-		}},
-	}}}, at)
-	if err != nil {
-		t.Fatal(err)
+	claims := []factory.Claim{
+		{Text: "Entry.Amount is read in ledger.go", Evidence: "README.md:12"},
+		{Text: "read, grep and ls show 4 files"},
 	}
-	want := []string{"api/webhooks/deliver.go", "api/webhooks/retry.go"}
-	if !reflect.DeepEqual(it.PlannedFiles, want) {
-		t.Fatalf("planned %v, want %v", it.PlannedFiles, want)
+	planReport(t, &it, at, factory.StageResult{Done: true, Output: "files: a.go, b.go", Claims: claims})
+	if !reflect.DeepEqual(it.PlannedFiles, []string{"a.go", "b.go"}) {
+		t.Fatalf("declared %v", it.PlannedFiles)
+	}
+	// A partial report holds no complete plan and leaves what is known.
+	planReport(t, &it, at, factory.StageResult{Output: "thinking about c.go"})
+	if !reflect.DeepEqual(it.PlannedFiles, []string{"a.go", "b.go"}) {
+		t.Fatalf("a partial report changed %v", it.PlannedFiles)
+	}
+	// What the wire shows is the saved result, and that is now a partial one.
+	if got := factory.PlanFilesOf(it); got != nil {
+		t.Fatalf("a partial report still declared %v", got)
+	}
+	planReport(t, &it, at, factory.StageResult{Done: true, Output: "backoff in the deliverer", Claims: claims})
+	if it.PlannedFiles != nil || factory.PlanFilesOf(it) != nil {
+		t.Fatalf("stale or claim-derived files: %v / %v", it.PlannedFiles, factory.PlanFilesOf(it))
 	}
 }
 
@@ -179,5 +146,114 @@ func TestAPhaseEndStampsFinishTimeAndThePlanNamesFiles(t *testing.T) {
 	want := []string{"internal/factory/run/loop.go", "internal/factory/api/codec.go"}
 	if !reflect.DeepEqual(it.PlannedFiles, want) {
 		t.Fatalf("planned %v, want %v", it.PlannedFiles, want)
+	}
+}
+
+// sentBackRig is a job at its approve step with round 1's plan finished,
+// reached through the real report door.
+func sentBackRig(t *testing.T, at time.Time) *factory.Item {
+	t.Helper()
+	it := factory.Item{ID: 9, State: factory.StateRunning,
+		Stages: []factory.Stage{
+			{Name: "plan", Kind: factory.StageChat, On: true},
+			{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
+			{Name: "write", Kind: factory.StageChat, On: true},
+		},
+		Stream: &factory.Stream{Started: at}}
+	report := func(r factory.RunReport) {
+		t.Helper()
+		if err := ApplyReport(&it, r, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report(factory.RunReport{Stages: []factory.StageReport{{
+		Name: "plan", State: factory.PhaseDone, Round: 1,
+		Result: &factory.StageResult{Done: true, Output: "files: a.go"},
+	}}})
+	report(factory.RunReport{
+		Question:     &factory.Asked{Stage: factory.ApproveName, Question: "approve the plan?"},
+		QuestionKind: factory.QKindApprove,
+	})
+	if got := factory.PlanFilesOf(it); !reflect.DeepEqual(got, []string{"a.go"}) {
+		t.Fatalf("round 1 awaiting approval: %v", got)
+	}
+	if err := AnswerUnheld(&it, false, "use b.go", at); err != nil {
+		t.Fatal(err)
+	}
+	if p := it.Stream.Phases[0]; p.State != factory.PhasePending || p.Round != 2 || p.Result == nil {
+		t.Fatalf("send back did not leave round 1's result under round 2: %+v", p)
+	}
+	return &it
+}
+
+// The rejected plan's list must not come back when the revised plan asks the
+// person something mid-round: its result is still round 1's, and round 1 DID
+// finish, so Done cannot tell them apart. Only the round can.
+func TestARevisedPlanThatAsksDoesNotShowTheRejectedPlansFiles(t *testing.T) {
+	at := time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)
+	for _, kind := range []string{"step", factory.QKindApprove} {
+		it := sentBackRig(t, at)
+		must := func(r factory.RunReport) {
+			t.Helper()
+			if err := ApplyReport(it, r, at); err != nil {
+				t.Fatal(err)
+			}
+		}
+		it.State = factory.StateRunning
+		must(factory.RunReport{Stages: []factory.StageReport{{Name: "plan", State: factory.PhaseRunning, Round: 2}}})
+		must(factory.RunReport{Question: &factory.Asked{Stage: "plan", Question: "which file?"}, QuestionKind: kind})
+		if got := factory.PlanFilesOf(*it); got != nil {
+			t.Fatalf("%s ask showed the rejected plan's files: %v", kind, got)
+		}
+	}
+}
+
+// The revised plan finishing speaks for itself, and only then.
+func TestARevisedPlanSpeaksOnceItsOwnRoundFolds(t *testing.T) {
+	at := time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)
+	it := sentBackRig(t, at)
+	it.State = factory.StateRunning
+	if err := ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{
+		Name: "plan", State: factory.PhaseDone, Round: 2,
+		Result: &factory.StageResult{Done: true, Output: "files: b.go"},
+	}}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if got := factory.PlanFilesOf(*it); !reflect.DeepEqual(got, []string{"b.go"}) {
+		t.Fatalf("round 2: %v", got)
+	}
+}
+
+// A worker that reports a send-back plan DONE without a new result cannot
+// resurrect the old list.
+func TestADoneReportWithoutANewRoundDoesNotResurrectTheOldList(t *testing.T) {
+	at := time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)
+	it := sentBackRig(t, at)
+	it.State = factory.StateRunning
+	if err := ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{Name: "plan", State: factory.PhaseDone}}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if got := factory.PlanFilesOf(*it); got != nil {
+		t.Fatalf("stale list: %v", got)
+	}
+}
+
+// Out of attempts keeps the last draft, which is not a finished plan.
+func TestAnOutOfAttemptsPlanDoesNotShowItsDraftFiles(t *testing.T) {
+	at := time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)
+	it := factory.Item{ID: 10, State: factory.StateRunning,
+		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, On: true}},
+		Stream: &factory.Stream{Started: at}}
+	for _, r := range []factory.RunReport{
+		{Stages: []factory.StageReport{{Name: "plan", State: factory.PhaseRunning, Round: 1,
+			Result: &factory.StageResult{Output: "files: draft.go"}}}},
+		{Question: &factory.Asked{Stage: "plan", Question: "plan is not done after 1 round"}, QuestionKind: factory.QKindOutOfAttempts},
+	} {
+		if err := ApplyReport(&it, r, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := factory.PlanFilesOf(it); got != nil {
+		t.Fatalf("draft files: %v", got)
 	}
 }
