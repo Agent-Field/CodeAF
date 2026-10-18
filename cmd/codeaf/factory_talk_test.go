@@ -162,12 +162,29 @@ func TestFactoryItemDoorAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	if i := factory.StageIndex(it.Stages, "review"); i < 0 || it.Stages[i].On {
 		t.Fatalf("the saved item still runs review: %+v", it.Stages)
 	}
-	if it.Cap != 8 || session.ItemEffort(it) != "strong" ||
-		strings.Join(it.Notes, "|") != "the fixture in testdata is flaky" {
-		t.Fatalf("the saved item = cap %v effort %q notes %v", it.Cap, session.ItemEffort(it), it.Notes)
+	// THE SAVED VALUES ARE EACH STEP'S OWN: review is off and thinks strong too,
+	// the approve step is a person's and has none, and proof is the recipe's
+	// (fixed), so it keeps its own.
+	saved := session.ItemFactsOf(it).Thinking
+	for name, want := range map[string]string{"plan": "strong", "write": "strong", "test": "strong", "review": "strong", "security": "strong", "proof": ""} {
+		if saved[name] != want {
+			t.Fatalf("%s saved as %q, want %q (all: %v)", name, saved[name], want, saved)
+		}
+	}
+	if it.Cap != 8 || strings.Join(it.Notes, "|") != "the fixture in testdata is flaky" {
+		t.Fatalf("the saved item = cap %v notes %v", it.Cap, it.Notes)
 	}
 	if now.Cap != it.Cap {
 		t.Fatalf("Apply answered %+v, the store holds %+v", now, it)
+	}
+
+	// A FIXED FIRST STEP: the brief of the saved item says which steps think
+	// what, never "thinking cheap" for a job whose later steps think strong.
+	mixed := it
+	mixed.Stages = factory.CopyStages(it.Stages)
+	mixed.Stages[factory.StageIndex(mixed.Stages, "plan")].Effort = "cheap"
+	if brief := talkBrief(mixed, factory.DefaultRecipe()); !strings.Contains(brief, "budget $8 · thinking plan cheap, write strong, test strong, proof usual\n") {
+		t.Errorf("the brief of a mixed item = %q", brief)
 	}
 	if _, err := door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Skip: []string{"proof"}}}); err == nil || err.Error() != factory.FixedRefusal("proof").Error() {
 		t.Fatalf("skipping proof = %v, want Adapt's refusal", err)
@@ -227,6 +244,11 @@ func TestFactoryTalkMarker(t *testing.T) {
 		t.Errorf("a forge-numbered item = %q", got)
 	}
 	brief := talkBrief(factory.Item{ID: 3, Repo: "web", Title: "t", Notes: []string{"the fixture is flaky"}}, factory.DefaultRecipe())
+	for _, line := range strings.Split(brief, "\n") {
+		if strings.HasPrefix(line, "budget") || strings.HasPrefix(line, "thinking") {
+			t.Errorf("an item with no budget and no thinking says %q", line)
+		}
+	}
 	if !strings.HasPrefix(brief, "[factory item #3]\nYou are the manager of #3 in web.\n") || !strings.Contains(brief, "\n\n#3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
 		t.Errorf("brief = %q", brief)
 	}
