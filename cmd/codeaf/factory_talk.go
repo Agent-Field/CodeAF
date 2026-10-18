@@ -86,7 +86,7 @@ func talkBlocks(it factory.Item) []string {
 
 // talkItemDoor is the brief's one sentence about `factory_item`, which keeps
 // what is not the stages: the budget, thinking and notes.
-const talkItemDoor = "factory_item changes the budget (its field is cap), the thinking of every stage (its field is effort) and notes for the stages, behind a card the person answers. Its item field is %d; never say that number, call the item %s."
+const talkItemDoor = "factory_item changes the budget (its field is cap), the thinking of the steps that have not begun and are not fixed (its field is effort) and notes for the stages, behind a card the person answers. Its item field is %d; never say that number, call the item %s."
 
 // talkMaker is the Talk door's maker for this machine's floor: st is the store
 // the item lives in, workspace the window's own folder, and profileDir the
@@ -387,9 +387,9 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	if it.Cap > 0 {
 		add2(&set, "budget $"+strconv.FormatFloat(it.Cap, 'f', -1, 64))
 	}
-	if e := session.ItemEffort(staged); e != "" {
-		add2(&set, "thinking "+e)
-	}
+	// THE THINKING IS EACH RUNNING STEP'S OWN, never the first step's for the
+	// whole job: a fixed plan at cheap does not make the job cheap.
+	add2(&set, session.ItemThinkingLine(session.ItemFactsOf(staged)))
 	for _, label := range it.Labels {
 		add2(&labels, label)
 	}

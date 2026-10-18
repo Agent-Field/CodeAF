@@ -58,7 +58,7 @@ const factoryRunDescription = "Shape the run of the ONE factory item this conver
 	"An approve step (named approve, a second one approve2) is where the run holds until the person says continue: add one after the stage the person wants to read first, with no ask, or skip it to let the run go on; a fixed one stays. " +
 	"Before the run the change is made at once and NO CARD IS SHOWN to the person: nothing is running, and the stages on the item's page redraw. During a run it changes only the stages that have not started, and the run's next round reads them. " +
 	"The answer is the line the item's page shows (manager set review: … · added arch after review · why: …), or why it was refused, with nothing changed. " +
-	"Budget, thinking for every stage and notes for the stages stay with factory_item."
+	"Budget, thinking for the conversation steps that have not begun and are not fixed, and notes for the stages stay with factory_item."
 
 func factoryRunSchemaJSON() string {
 	quoted := make([]string, len(runThinking))

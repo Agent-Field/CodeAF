@@ -1190,6 +1190,9 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 		// key router are deleted: connect.go keeps the lane's facts and the
 		// browser flow, which is a report and not a question.
 		session.QuestionConnect,
+		// AND THE FLOOR ITEM'S CHANGE CARD, which no block ever drew: a hosted
+		// `factory_item` call waited on it until the person pressed esc.
+		session.QuestionItem,
 	} {
 		if !a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s has no other block and is not drawn here either", kind)
