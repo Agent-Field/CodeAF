@@ -716,12 +716,17 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) appwire.Fac
 // lets hello announce factory.pipeline_edit_runtime.
 func (b *appBackend) PipelineRuntimeGuarded() {}
 
+// PipelineStructureEdits marks this backend as one whose preview applies
+// add_step, remove_step and move_step, which is what lets hello announce
+// factory.pipeline_edit_structure.
+func (b *appBackend) PipelineStructureEdits() {}
+
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
 		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, PipelinePR: true, PipelineEdit: true, PipelineEditRuntime: true,
-		MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		PipelineEditStructure: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 
