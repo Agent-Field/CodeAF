@@ -281,8 +281,13 @@ func reasonFor(status int) string {
 func classify(err error) (int, string) {
 	var stepRefusal run.StepControlRefusal
 	var editRefusal factory.EditRefusal
-	if errors.As(err, &stepRefusal) || errors.As(err, &editRefusal) {
+	var planRefusal run.PlanRevisionRefusal
+	if errors.As(err, &stepRefusal) || errors.As(err, &editRefusal) || errors.As(err, &planRefusal) {
 		return http.StatusConflict, "conflict"
+	}
+	var stale *store.StaleError
+	if errors.As(err, &stale) {
+		return http.StatusConflict, "stale"
 	}
 	switch {
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, store.ErrNotFound):
