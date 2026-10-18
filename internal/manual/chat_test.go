@@ -4195,3 +4195,25 @@ func TestFactoryRecipeHeldWriteQuestionReachesFactory(t *testing.T) {
 		}
 	}
 }
+
+// A person whose `factory_item` card sat on the screen, or never appeared, must
+// reach the section that says how it is answered and what it does not do.
+func TestFactoryItemCardAnswerQuestionsReachTheAnswerSection(t *testing.T) {
+	for _, asked := range []string{
+		"how do I answer the factory_item card in the terminal",
+		"factory_item stuck running and the card never appeared",
+		"how do I say yes or keep it on the factory item card",
+		"does typing a sentence on the factory item card change the item",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, "answer the factory_item card") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the factory_item card answer section", asked)
+		}
+	}
+}

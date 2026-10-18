@@ -102,12 +102,12 @@ const itemAddedMark = "+"
 // knee, which the floor stores as nothing.
 var itemEfforts = []string{"cheap", "strong", "default"}
 
-const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\"; where the run holds for the person is an approve step: add \"after plan, approve\" or skip \"approve\", and an item with no approve step ships itself when its proof is green), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the stages think (the field is effort; the person calls it \"thinking\": cheap, strong, default), or a note the item's stages will read (\"the fixture in testdata is flaky\"). " +
+const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\"; where the run holds for the person is an approve step: add \"after plan, approve\" or skip \"approve\", and an item with no approve step ships itself when its proof is green), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the conversation steps think (the field is effort; the person calls it \"thinking\": cheap, strong, default; only steps that have not begun and are not fixed change, and the answer says which), or a note the item's stages will read (\"the fixture in testdata is flaky\"). " +
 	"This conversation is the item's hub: change it with this tool, leave notes here, and once the item runs, its stages report into this conversation. " +
 	"Use it only for the item this conversation was opened for; never for another item. The factory id goes in the item field and nowhere else: in words, name the item by its ref (#12), never by its factory id. " +
 	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has. Give only what changes. " +
 	"NOTHING CHANGES BY CALLING THIS: the person is shown a card with the item before and after, and only their `yes` changes anything. Nothing launches either; that is the person's, in the factory. " +
-	"The recipe's bounds hold whatever is asked: proof and a stage the policy names are never skipped, a stage that already ran is never touched, and a `fixed` recipe refuses every stage change; a refusal comes back with its reason before any card. " +
+	"The recipe's bounds hold whatever is asked: proof and a stage the policy names are never skipped, a stage that already ran is never touched, and a `fixed` recipe refuses every stage change (a card that changes only the thinking is not one; it skips fixed or begun stages and changes the rest, but a conversation stage after proof refuses the whole card); a refusal comes back with its reason before any card. " +
 	"If they type a change instead, nothing changes and you are told their words: propose again with them."
 
 func factoryItemSchemaJSON() string {
@@ -124,7 +124,7 @@ func factoryItemSchemaJSON() string {
 		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off for this item."},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names to switch on for this item."},` +
 		`"cap":{"type":"number","description":"The item's budget in dollars: the most it may spend; the person calls this \"budget\"."},` +
-		`"effort":{"type":"string","enum":[` + quoted(itemEfforts) + `],"description":"How hard the stages that have not run yet think; the person calls this \"thinking\"."},` +
+		`"effort":{"type":"string","enum":[` + quoted(itemEfforts) + `],"description":"How hard the conversation steps think; the person calls this \"thinking\". Only steps that have not begun and are not fixed by the recipe change, and they keep their own if not (the answer names which); a conversation step after proof, a job whose proof has started and a landed job refuse the whole card. default is the usual amount."},` +
 		`"note":{"type":"string","description":"One sentence the item's stages will read."},` +
 		`"why":{"type":"string","description":"One sentence saying why."}` +
 		`},"required":["item"],"additionalProperties":false}`
@@ -162,41 +162,64 @@ func ItemStaged(it factory.Item, recipe factory.Recipe) factory.Item {
 // pure: the door previews with it and applies with it, so the card and the
 // floor cannot disagree about what a yes does.
 //
-// THE STAGES GO THROUGH [factory.Adapt] AND ONLY THROUGH IT, which is where
-// every bound is held; a refusal there refuses the whole change. The
-// cap and effort are checked here against the floor's own words, and the note
-// is appended to [factory.Item.Notes].
+// THE STAGES GO THROUGH [factory.Adapt] AND THINKING THROUGH [factory.Edit],
+// the same door, which is where every bound is held; a refusal from either
+// refuses the whole change and the item comes back as it went in, cap and
+// note included. The thinking is the person's own ([factory.ByYou]), so a
+// recipe's adapt word does not stop it, but a landed job, a job whose proof
+// has started and a stage that has begun still do. A fixed stage is left at
+// its own thinking rather than refusing the card: "think strong" means the
+// stages the person may change. A change that moves no stage's thinking is
+// not an edit and asks nothing of those bounds. The cap is checked here
+// against the floor's own words, and the note is appended to
+// [factory.Item.Notes].
 func ApplyItemChange(it factory.Item, change ItemChange, recipe factory.Recipe) (factory.Item, error) {
 	it = ItemStaged(it, recipe)
-	next, _, err := factory.Adapt(it, change.Edit, recipe)
-	if err != nil {
-		return it, err
+	effort := strings.TrimSpace(change.Effort)
+	if effort != "" && !oneOf(effort, itemEfforts) {
+		return it, fmt.Errorf("%q is not a thinking level", effort)
 	}
 	if change.Cap < 0 {
 		return it, errors.New("a budget is never below nothing")
 	}
-	if change.Cap > 0 {
-		next.Cap = change.Cap
+	next, _, err := factory.Adapt(it, change.Edit, recipe)
+	if err != nil {
+		return it, err
 	}
-	if e := strings.TrimSpace(change.Effort); e != "" {
-		if !oneOf(e, itemEfforts) {
-			return it, fmt.Errorf("%q is not a thinking level", e)
+	if effort != "" {
+		if effort == "default" {
+			effort = ""
 		}
-		if e == "default" {
-			e = ""
-		}
-		started := itemStarted(next)
-		next.Stages = factory.CopyStages(next.Stages)
-		for i, st := range next.Stages {
-			if itemChatStage(st) && !started[st.Name] {
-				next.Stages[i].Effort = e
+		if thinking := itemThinking(next, effort, recipe); len(thinking) > 0 {
+			edit := factory.RunEdit{By: factory.ByYou, Why: change.Edit.RunEdit().Why, Thinking: thinking}
+			if next, _, err = factory.Edit(next, edit, recipe, factory.EditInRun); err != nil {
+				return it, err
 			}
 		}
+	}
+	if change.Cap > 0 {
+		next.Cap = change.Cap
 	}
 	if note := strings.Join(strings.Fields(change.Note), " "); note != "" {
 		next.Notes = append(append([]string(nil), next.Notes...), note)
 	}
 	return next, nil
+}
+
+// itemThinking is the thinking [factory.Edit] is asked for: every conversation
+// stage that has not begun, is not fixed, and does not think this way already.
+// Leaving out the last is what makes a no-op a no-op: Edit refuses a landed or
+// proof-frozen job for any edit that names a stage, even one that changes nothing.
+func itemThinking(it factory.Item, effort string, recipe factory.Recipe) map[string]string {
+	started := itemStarted(it)
+	out := map[string]string{}
+	for i, st := range it.Stages {
+		if !itemChatStage(st) || started[st.Name] || st.Effort == effort || factory.StageFixed(it.Stages, i, recipe, it.Kind) {
+			continue
+		}
+		out[st.Name] = effort
+	}
+	return out
 }
 
 // itemChatStage says whether a stage is a conversation, the only kind effort
@@ -205,24 +228,27 @@ func itemChatStage(st factory.Stage) bool {
 	return st.Kind == "" || st.Kind == factory.StageChat
 }
 
-// itemStarted is the stages the item's stream has begun, by name.
+// itemStarted is the stages the item's stream has begun, by name. A phase
+// rewound by a rerun is pending again but has a round behind it, and
+// [factory.Edit] counts that as begun, so this does too.
 func itemStarted(it factory.Item) map[string]bool {
 	out := map[string]bool{}
 	if it.Stream == nil {
 		return out
 	}
 	for _, ph := range it.Stream.Phases {
-		if ph.State != "" && ph.State != factory.PhasePending {
+		if (ph.State != "" && ph.State != factory.PhasePending) || ph.Round > 0 {
 			out[ph.Name] = true
 		}
 	}
 	return out
 }
 
-// ItemEffort is the item's effort as the card compares it: the effort of the
-// first conversation stage that is on and has not run, or of the first that
-// is on when every one has run.
-func ItemEffort(it factory.Item) string {
+// itemLegacyEffort is the effort of the first conversation stage that is on
+// and has not run, or of the first that is on when every one has run. IT
+// DESCRIBES ONE STAGE, so it is only the wire's legacy field: nothing that
+// draws a card, a receipt or a brief may read it while the per-step facts exist.
+func itemLegacyEffort(it factory.Item) string {
 	started := itemStarted(it)
 	first, found := "", false
 	for _, st := range it.Stages {
@@ -241,10 +267,19 @@ func ItemEffort(it factory.Item) string {
 
 // ItemFactsOf is the item as the card compares it.
 func ItemFactsOf(it factory.Item) ItemFacts {
-	f := ItemFacts{Cap: it.Cap, Effort: ItemEffort(it)}
+	f := ItemFacts{Cap: it.Cap, Effort: itemLegacyEffort(it)}
 	for _, st := range it.Stages {
 		if st.On {
 			f.Stages = append(f.Stages, st.Name)
+		}
+		// EVERY CONVERSATION STAGE IS RECORDED, on or off, the default as "".
+		// A change edits a stage that is off so it is right when switched on
+		// later, and the card has to be able to say so.
+		if itemChatStage(st) {
+			if f.Thinking == nil {
+				f.Thinking = map[string]string{}
+			}
+			f.Thinking[st.Name] = st.Effort
 		}
 	}
 	return f
@@ -269,7 +304,146 @@ func itemStagesMoved(n ItemNotice) bool {
 }
 func itemCapMoved(n ItemNotice) bool { return n.Before.Cap != n.After.Cap }
 func itemEffortMoved(n ItemNotice) bool {
+	if itemHasThinkingFacts(n) {
+		return len(itemThinkingDelta(n.Before, n.After).Moves) > 0
+	}
 	return n.Before.Effort != n.After.Effort
+}
+
+// itemHasThinkingFacts says the door sent each stage's own thinking. WHEN IT
+// DID, THOSE FACTS ARE THE ONLY TRUTH ABOUT THINKING: the scalar Effort reads
+// one stage and is the fallback for a notice persisted before them.
+func itemHasThinkingFacts(n ItemNotice) bool {
+	return n.Before.Thinking != nil || n.After.Thinking != nil
+}
+
+// itemUsual is how prose spells a thinking nobody set; a card's before → after
+// row draws the dash instead, being a comparison.
+const itemUsual = "usual"
+
+// itemMove is one conversation step's thinking, and where it went.
+type itemMove struct {
+	Name     string
+	Off      bool
+	From, To string
+}
+
+// label is the step's name, marked when the item does not run it: it is edited
+// all the same, so it thinks that way when switched on.
+func (m itemMove) label() string {
+	if m.Off {
+		return m.Name + "(off)"
+	}
+	return m.Name
+}
+
+// itemDelta is what a change did to the thinking, read off the per-step facts
+// and nothing else. Moves are the steps whose own thinking differs, the running
+// ones in the order they run and then any that are off, sorted. Uniform says one
+// word covers the whole job: every conversation step moved, none is off, and
+// all went from the same thinking to the same.
+type itemDelta struct {
+	Moves   []itemMove
+	Uniform bool
+}
+
+// itemChatSteps is every conversation step the facts hold, the running ones in
+// the order they run and then any that are off, sorted.
+func itemChatSteps(f ItemFacts) []itemMove {
+	var out []itemMove
+	on := map[string]bool{}
+	for _, name := range f.Stages {
+		if thinks, ok := f.Thinking[name]; ok {
+			on[name] = true
+			out = append(out, itemMove{Name: name, From: thinks, To: thinks})
+		}
+	}
+	var off []string
+	for name := range f.Thinking {
+		if !on[name] {
+			off = append(off, name)
+		}
+	}
+	sort.Strings(off)
+	for _, name := range off {
+		out = append(out, itemMove{Name: name, Off: true, From: f.Thinking[name], To: f.Thinking[name]})
+	}
+	return out
+}
+
+// itemThinkingDelta compares the facts before with the facts after.
+func itemThinkingDelta(before, after ItemFacts) itemDelta {
+	var d itemDelta
+	for _, m := range itemChatSteps(after) {
+		m.From = before.Thinking[m.Name]
+		if m.From != m.To {
+			d.Moves = append(d.Moves, m)
+		}
+	}
+	d.Uniform = len(d.Moves) > 0 && len(d.Moves) == len(after.Thinking)
+	for _, m := range d.Moves {
+		if m.Off || m.From != d.Moves[0].From || m.To != d.Moves[0].To {
+			d.Uniform = false
+		}
+	}
+	return d
+}
+
+// itemThinkingLeft is every conversation step that does not think the way the
+// change asked, as the facts after it hold them: the fixed, the begun, the
+// rewound. target is the asked thinking, "" for the usual.
+func itemThinkingLeft(after ItemFacts, target string) []itemMove {
+	var out []itemMove
+	for _, m := range itemChatSteps(after) {
+		if m.To != target {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// itemSay is a thinking in prose.
+func itemSay(thinks string) string {
+	if thinks = strings.TrimSpace(thinks); thinks != "" {
+		return thinks
+	}
+	return itemUsual
+}
+
+// itemStepsSay is steps each with its own thinking in prose: `write strong,
+// security(off) strong`.
+func itemStepsSay(steps []itemMove) string {
+	parts := make([]string, len(steps))
+	for i, m := range steps {
+		parts[i] = m.label() + " " + itemSay(m.To)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// ItemThinkingLine is the thinking of the steps that RUN, for the opening note
+// of the item's conversation: one word when they all think it, each step's own
+// when they differ, and nothing when none was set (the emptiness law). A step
+// that is switched off is not the job's thinking, so it never speaks here; the
+// stage lines still show its own.
+func ItemThinkingLine(f ItemFacts) string {
+	var running []itemMove
+	for _, m := range itemChatSteps(f) {
+		if !m.Off {
+			running = append(running, m)
+		}
+	}
+	same, set := true, false
+	for _, m := range running {
+		set = set || m.To != ""
+		same = same && m.To == running[0].To
+	}
+	switch {
+	case !set:
+		return ""
+	case same:
+		return "thinking " + running[0].To
+	}
+	return "thinking " + itemStepsSay(running)
 }
 func itemHasNote(n ItemNotice) bool { return strings.TrimSpace(n.Note) != "" }
 
@@ -306,6 +480,9 @@ func itemQuestionWords(n ItemNotice) string {
 		}
 		return "lower the budget to " + itemMoney(n.After.Cap) + "?"
 	case "effort":
+		if itemHasThinkingFacts(n) {
+			return itemThinkingQuestion(itemThinkingDelta(n.Before, n.After))
+		}
 		if n.After.Effort == "" {
 			return "think the usual amount?"
 		}
@@ -314,6 +491,21 @@ func itemQuestionWords(n ItemNotice) string {
 		return "add a note for the stages?"
 	}
 	return "change the plan?"
+}
+
+// itemThinkingQuestion asks about a thinking change in one word when every
+// step that moves moves to the same one.
+func itemThinkingQuestion(d itemDelta) string {
+	to := d.Moves[0].To
+	for _, m := range d.Moves {
+		if m.To != to {
+			return "change the thinking?"
+		}
+	}
+	if to == "" {
+		return "think the usual amount?"
+	}
+	return "think " + to + "?"
 }
 
 // itemStagesQuestion is a stages-only change as one question: what was added,
@@ -374,8 +566,21 @@ func ItemRows(n ItemNotice) []string {
 	if itemCapMoved(n) {
 		rows = append(rows, "budget  "+itemMoneyOr(n.Before.Cap)+" → "+itemMoneyOr(n.After.Cap))
 	}
-	if itemEffortMoved(n) {
-		rows = append(rows, "thinking  "+itemOr(n.Before.Effort)+" → "+itemOr(n.After.Effort))
+	switch d := itemThinkingDelta(n.Before, n.After); {
+	case !itemHasThinkingFacts(n):
+		if itemEffortMoved(n) {
+			rows = append(rows, "thinking  "+itemOr(n.Before.Effort)+" → "+itemOr(n.After.Effort))
+		}
+	case d.Uniform:
+		rows = append(rows, "thinking  "+itemOr(d.Moves[0].From)+" → "+itemOr(d.Moves[0].To))
+	case len(d.Moves) > 0:
+		// THE ROW NAMES THE STEPS THAT MOVED, never one word for them all: a
+		// fixed or begun step stays, and a step that is off is edited too.
+		parts := make([]string, len(d.Moves))
+		for i, m := range d.Moves {
+			parts[i] = m.label() + " " + itemOr(m.From) + " → " + itemOr(m.To)
+		}
+		rows = append(rows, "thinking  "+strings.Join(parts, DecisionSep))
 	}
 	if note := strings.TrimSpace(n.Note); note != "" {
 		rows = append(rows, "note: "+note)
@@ -444,15 +649,46 @@ func itemNow(n ItemNotice) string {
 	if n.After.Cap > 0 {
 		parts = append(parts, "budget "+itemMoney(n.After.Cap))
 	}
-	if e := strings.TrimSpace(n.After.Effort); e != "" {
-		parts = append(parts, "thinking "+e)
-	}
+	parts = append(parts, itemThinkingReceipt(n)...)
 	// THE SECOND LINE SAYS IT IS DONE. A model that read only the facts told
 	// the person the card was "waiting on your key" after the key had been
 	// pressed, because the tool's description says nothing changes until then.
 	out := itemRef(n) + itemNowLead + strings.Join(parts, DecisionSep) + "\n" + itemDone
 	if itemHasNote(n) {
 		out += " The note is kept on the item for its stages."
+	}
+	return out
+}
+
+// itemThinkingReceipt is what a yes says about thinking, compared with the item
+// as the store SAVED it ([ItemNotice].After), which a step that began after the
+// card was raised can make differ from the preview. NOTHING IS SAID UNLESS THE
+// CARD ASKED FOR THINKING, so a budget or a note never states one for the job.
+// Steps that moved are named with the thinking they now have, and steps that
+// do not think what was asked ("left as they were") are named too, so the model
+// cannot relay "everything thinks strong".
+func itemThinkingReceipt(n ItemNotice) []string {
+	if n.Effort == "" {
+		return nil
+	}
+	target := n.Effort
+	if target == "default" {
+		target = ""
+	}
+	if !itemHasThinkingFacts(n) {
+		return []string{"thinking " + itemSay(n.After.Effort)}
+	}
+	var out []string
+	switch d := itemThinkingDelta(n.Before, n.After); {
+	case len(d.Moves) == 0:
+		out = append(out, "thinking unchanged")
+	case d.Uniform:
+		out = append(out, "thinking "+itemSay(d.Moves[0].To))
+	default:
+		out = append(out, "thinking "+itemStepsSay(d.Moves))
+	}
+	if left := itemThinkingLeft(n.After, target); len(left) > 0 {
+		out = append(out, "left as they were: "+itemStepsSay(left))
 	}
 	return out
 }
