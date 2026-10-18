@@ -37,7 +37,7 @@ func Approve(stages []Stage) Stage {
 
 func approveName(stages []Stage) string {
 	name := ApproveName
-	for k := 2; StageIndex(stages, name) >= 0; k++ {
+	for k := 2; len(stageMatches(stages, name)) > 0; k++ {
 		name = ApproveName + strconv.Itoa(k)
 	}
 	return name

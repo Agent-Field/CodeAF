@@ -4512,6 +4512,16 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// What is left is the PAGE in the transcript, which is what is being
 		// judged, and the one line it keeps afterwards saying what became of it.
 		return true
+	case session.QuestionItem:
+		// THE FLOOR ITEM'S CHANGE CARD (`factory_item`), which no surface in
+		// this program drew at all: the engine raised the question, the tool
+		// waited on it, and a hosted terminal showed `running factory_item`
+		// until the person pressed esc. There is no older block to retire. The
+		// card's words are the engine's own ([session.ItemRows], carried as the
+		// question's reason), its two answers are [session.AnswerOptions], and a
+		// typed sentence reaches [session.Agent.ResolveItem] as a change — which
+		// changes nothing — through the same box every other card uses.
+		return true
 	case session.QuestionConnect:
 		// THE ACCOUNT OFFER, whose own three-row block, answers row, click
 		// targets and key router are deleted (connect.go). What is left there is
