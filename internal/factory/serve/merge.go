@@ -96,12 +96,8 @@ func mergeMethod(it factory.Item) string {
 // settleMerges sends every pressed Merge whose Undo window has passed, and,
 // when sweep is set, every merge the pipeline's auto-merge may make now.
 // Both run the gate again first: facts read since the press win.
-func (h *Handler) settleMerges(sweep bool) {
+func (h *Handler) settleMerges(sweep bool, items []factory.Item) {
 	if h.config.Store == nil || h.workers == nil || h.workers.desk == nil {
-		return
-	}
-	items, err := h.config.Store.List()
-	if err != nil {
 		return
 	}
 	now := h.clock().UTC()

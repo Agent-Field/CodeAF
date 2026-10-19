@@ -472,14 +472,19 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if h.config.Store == nil {
 		return
 	}
-	if len(approvalsOnly) == 0 || !approvalsOnly[0] {
-		h.pruneDropped()
-	}
-	h.settleMerges(len(approvalsOnly) == 0 || !approvalsOnly[0])
+	// One listing serves every scan for due work. Each scan only picks
+	// candidates from it and reads every candidate again under its lock
+	// before acting, so sharing it changes nothing but the number of times
+	// every document on the floor is read before each request.
 	pending, err := h.config.Store.List()
 	if err != nil {
 		return
 	}
+	sweep := len(approvalsOnly) == 0 || !approvalsOnly[0]
+	if sweep {
+		h.pruneDropped(pending)
+	}
+	h.settleMerges(sweep, pending)
 	due := false
 	for _, it := range pending {
 		if a := it.Approval; a != nil && a.State == "approving" && !h.clock().Before(a.UndoUntil) {
@@ -591,12 +596,8 @@ func (h *Handler) questionCollision(w http.ResponseWriter, r *http.Request, it f
 
 // pruneDropped uses its own per-job lock. A slow GitHub cleanup must never
 // hold the consent lock or consume another person's five-second Undo window.
-func (h *Handler) pruneDropped() {
+func (h *Handler) pruneDropped(items []factory.Item) {
 	if h.config.DeleteBranch == nil || h.config.Record == nil {
-		return
-	}
-	items, err := h.config.Store.List()
-	if err != nil {
 		return
 	}
 	for _, it := range items {

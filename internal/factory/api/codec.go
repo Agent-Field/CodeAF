@@ -17,6 +17,16 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 	}
 	people := map[string]factory.PersonSummary{}
 	jobs := make([]Job, len(s.Items))
+	// Only two running jobs can overlap ([factory.Overlaps]), so each running
+	// job is compared with the running ones alone. Comparing every job with
+	// every other was the queue's one quadratic step: 640,000 comparisons,
+	// each copying two whole items, for a floor of 800 open issues.
+	var running []int
+	for i := range s.Items {
+		if factory.JobState(s.Items[i]) == "running" {
+			running = append(running, i)
+		}
+	}
 	for i, it := range s.Items {
 		for _, handle := range factory.MentionedHandles(it) {
 			if handle = factory.NormalizeHandle(handle); handle != "" {
@@ -27,9 +37,11 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 		jobs[i].Display = DisplayFor(jobs[i], now)
 		jobs[i].Can = CanFor(it, me, now)
 		ForViewer(&jobs[i], it, me)
-		for _, other := range s.Items {
-			if factory.Overlaps(it, other) {
-				jobs[i].Overlap = append(jobs[i].Overlap, factory.JobRef(other))
+		if factory.JobState(it) == "running" {
+			for _, k := range running {
+				if factory.Overlaps(it, s.Items[k]) {
+					jobs[i].Overlap = append(jobs[i].Overlap, factory.JobRef(s.Items[k]))
+				}
 			}
 		}
 	}

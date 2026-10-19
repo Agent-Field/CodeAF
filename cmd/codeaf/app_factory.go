@@ -159,7 +159,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},
 		ChangeAssignee: factorygithub.JobWrites{Token: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }}.Assign,
-		PersonProfile:  factoryPeople().Profile, CodeOwners: factoryPeople().Owners})
+		PersonProfile:  factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners})
 	closeDiscovery, err := serveAppFactoryDiscovery(h.floor.Root(), factoryTarget{h.address, h.token})
 	if err != nil {
 		handler.Close()
