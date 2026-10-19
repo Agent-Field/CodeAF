@@ -52,7 +52,14 @@ type Config struct {
 	DeleteBranch func(context.Context, factory.Item) error
 
 	// PersonProfile reads cached public GitHub identity, including outside authors.
+	// It may wait on GitHub, so only the card about one person uses it.
 	PersonProfile func(context.Context, string) (factory.GitHubPerson, error)
+	// PersonKnown answers the identity already read for a handle without
+	// waiting on GitHub, and asks for it to be read when it is not. Every list
+	// of people (the queue's above all) reads it, so a queue naming hundreds
+	// of authors never waits on hundreds of profile reads; the next read
+	// carries what arrived. Nil falls back to PersonProfile.
+	PersonKnown func(string) (factory.GitHubPerson, bool)
 	// CodeOwners reads a watched repository's cached default-branch ownership.
 	CodeOwners func(context.Context, string) ([]factory.CodeOwner, error)
 	// Pipeline reads the same repository rules as intake, including personal limits.
@@ -390,8 +397,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Items = items
 	q := api.FromSnapshot(s, handle, h.clock())
+	retention := h.retention()
 	for i := range q.Jobs {
-		q.Jobs[i] = h.withVersion(q.Jobs[i])
+		q.Jobs[i] = h.withVersionKept(q.Jobs[i], retention)
 	}
 	q.Factory = h.factory
 	q.Mode = h.mode()
@@ -431,9 +439,10 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	for i := range q.Jobs {
 		h.presentJob(r, &q.Jobs[i])
 	}
+	summarize := h.summaries(r)
 	for _, job := range q.Jobs {
 		if job.HeldBy != nil {
-			h.addSummary(r, q.People, job.HeldBy.Handle)
+			summarize(q.People, job.HeldBy.Handle)
 		}
 	}
 	h.write(w, http.StatusOK, q)

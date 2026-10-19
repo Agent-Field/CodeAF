@@ -407,16 +407,30 @@ func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.It
 
 // Revision is how many times one item's document has been written. It is a
 // fact about the document, so it is read off the envelope and never off the
-// item.
+// item: the item is not decoded at all, which matters because a queue read
+// asks this once for every job it lists.
 func (st *Store) Revision(id int) (int, error) {
 	if err := checkID(id); err != nil {
 		return 0, ErrNotFound
 	}
-	d, err := st.read(st.ItemPath(id))
+	data, err := os.ReadFile(st.ItemPath(id))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, ErrNotFound
+		}
 		return 0, err
 	}
-	return d.Revision, nil
+	var envelope struct {
+		Schema   int `json:"schema"`
+		Revision int `json:"revision"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return 0, fmt.Errorf("factory store: cannot read %d.json: %w", id, err)
+	}
+	if envelope.Schema > Schema {
+		return 0, fmt.Errorf("%w: %d.json", ErrNewer, id)
+	}
+	return envelope.Revision, nil
 }
 
 // now is the store's clock.

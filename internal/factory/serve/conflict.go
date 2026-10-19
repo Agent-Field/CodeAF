@@ -35,10 +35,20 @@ func (h *Handler) guarded(verb string, action jobAction) jobAction {
 // withVersion stamps the store's document revision onto the job the page
 // reads. A handler with no store leaves it zero, and the field stays off the wire.
 func (h *Handler) withVersion(job api.Job) api.Job {
-	retention := api.RunningRetention
+	return h.withVersionKept(job, h.retention())
+}
+
+// retention is how long a finished job stays on the page. A response that
+// lists many jobs reads it once and hands it to [Handler.withVersionKept].
+func (h *Handler) retention() time.Duration {
 	if h.config.ServedBy == "app" {
-		retention = time.Duration(config.AppFactoryDoneDaysAt(h.config.ProfileDir)) * 24 * time.Hour
+		return time.Duration(config.AppFactoryDoneDaysAt(h.config.ProfileDir)) * 24 * time.Hour
 	}
+	return api.RunningRetention
+}
+
+// withVersionKept is [Handler.withVersion] with the retention already read.
+func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job {
 	job.Display = api.DisplayForRetention(job, h.clock(), retention)
 	if h.config.Store == nil || job.ID == 0 {
 		return job
