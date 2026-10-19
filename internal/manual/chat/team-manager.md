@@ -55,9 +55,9 @@ its tab strip and never scrolls away:
 - **Choose AI manager** on Teams assigns an existing member. To use a new conversation,
   first use Add chat, then Choose AI manager. The Chats dropdown and conversation grid
   offer no manager-assignment controls.
-- **`/helpers`**, or **`+ Make team`** in the right-hand column, in the conversation you are
-  working in: a new team is made with that conversation as its manager, and it proposes
-  helpers (see **Turn this conversation into a team**).
+- **`/helpers`**, or **`+ New from this session`** last in the Teams dropdown, in the
+  conversation you are working in: a new team is made with that conversation as its
+  manager, and it proposes helpers (see **Turn this conversation into a team**).
 
 The manager's place reads **`◆ Manager`**. Its tile in the team-agnostic grid keeps its ordinary title and position. The tab's hint names its team and title. `alt+m` goes to the
 manager from any conversation in the team.
@@ -69,32 +69,33 @@ If the handle is already taken in that team, a number is added. Another manager 
 `team_send` before its first turn. Once its title is made, the ordinary title-based
 handle choice may replace that fallback.
 
-## Turn this conversation into a team — /helpers, the + Make team button, convert a chat, bring in helpers
+## Turn this conversation into a team — /helpers, + New from this session, convert a chat, bring in helpers
 
 You are working in a conversation, the work has grown, and you want helpers with this
-conversation in charge. Type `/helpers`, or `/helpers <what you want help with>`, or press
-**`+ Make team`** beside `Tasks` at the top of the right-hand column. Two things happen:
+conversation in charge. Open the **Teams ▾** dropdown at the left of the tab strip and choose
+its last row, **`+ New from this session`**. It puts this in the message box, in place of
+what was there, and sends nothing:
+
+`/helpers Suggest two or three helpers for what we're working on here. For each, say what it would take on and the brief you'd give it. Don't start anyone until I agree, and if I say cancel, undo the team.`
+
+Edit the words into the team you want, then press enter; typing `/helpers` yourself does
+the same, and a bare `/helpers` sends exactly that default. Two things happen:
 
 1. A new top-level team is made with **this conversation as its manager** and only member,
-   in one save. It is named after the conversation's folder, or a word such as `harbor`
-   when a team already has that name, and takes the next free colour. The strip narrows to
-   it, the tab reads `◆ Manager`, and the column turns to the team's Traffic. The rules of
-   every team apply: a name no other team has, and one conversation manages one team and
-   its subteams. Rename it or change its colour in Teams, under `Settings`.
-2. Once the team is saved, the conversation is sent one message, shown as `/helpers`: it
-   proposes two or three helpers — a handle, the part of the work, and the brief — and asks
-   you to accept them, change the list, or cancel. It starts nobody until you agree.
+   in one save, named after the conversation's folder (or a word such as `harbor` when that
+   name is taken), in the next free colour. The strip narrows to it and reads `◆ Manager`.
+   Every team's rules apply; rename it in Teams, under `Settings`.
+2. Once it is saved, your words after `/helpers` are sent as your message, exactly as the
+   transcript shows them. The conversation now knows it is the team's manager.
 
 The receipt reads `made the team lab · this conversation is its manager`. Reply in your own
-words; there is no card. Yes, and it starts each helper with `team_start`, under your
-approval posture like any start. A different list, and it proposes again. Cancel, and it
-takes the team back with `team_dissolve` (see **Cancel a team nobody joined**). Nothing is
-copied: the manager keeps this conversation, its history and its tasks.
+words. Yes, and it starts each helper with `team_start`, under your approval posture; each
+opens as a tab on this team's strip, while you stay in front of the manager. A different
+list, and it proposes again. Cancel, and it takes the team back with `team_dissolve`.
 
 ## When /helpers is not offered, and what it says
 
-`+ Make team` is drawn only in a chat in no team, where it can work and where it fits; a
-narrow column drops it first. `/helpers` always answers:
+`/helpers`, and `+ New from this session`, answer with a sentence and change nothing:
 
 - On home, or any page: `/helpers makes a team of the conversation you are in · open one first`.
 - On the welcome screen of a new chat: `/helpers makes a team of a conversation you have started · say what you are working on first`.
@@ -113,7 +114,7 @@ conversation before the save finishes, the team stands and the message is not se
 Say no to the proposed helpers, or "cancel", and the manager calls `team_dissolve`. The
 team is forgotten as if it had never been made: no row under `Show closed`, nothing
 stopped, and the conversation, its history and its tasks stay. The strip goes back to all
-your chats and the column to `Tasks`, with `+ Make team` again.
+your chats and the column to `Tasks`.
 
 A manager has `team_dissolve` only while its team has never held anyone but it: no
 member, no former member, no subteam, and nothing in its Traffic. The rule is the same for

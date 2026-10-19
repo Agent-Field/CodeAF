@@ -55,16 +55,30 @@ func transcriptSays(a *app, want string) bool {
 	return false
 }
 
+// helpersMenuRow is the Teams dropdown's `+ New from this session` row, and
+// whether it is the last row.
+func helpersMenuRow(t *testing.T, a *app) (teamMenuRow, bool) {
+	t.Helper()
+	rows := a.teamMenuRows()
+	for i, r := range rows {
+		if !r.rule && r.code == wallPopHelpers {
+			return r, i == len(rows)-1
+		}
+	}
+	t.Fatalf("the dropdown has no %q row: %+v", helpersRowWord, rows)
+	return teamMenuRow{}, false
+}
+
 // /helpers MAKES A TEAM WITH THIS CONVERSATION AS ITS MANAGER, and only then
-// asks it for helpers. The team is on disk with the conversation as manager and
-// only member; the strip is narrowed to it; the column is the manager's; the
-// transcript says `/helpers …` and the model was handed the ask, naming both the
-// verb that grows the team and the one that takes it back.
-func TestHelpersMakesThisConversationTheManagerAndAsksForHelpers(t *testing.T) {
+// sends the person's words. The team is on disk with the conversation as
+// manager and only member; the strip is narrowed to it; the column is the
+// manager's; and the model is handed exactly the words the transcript shows
+// after `/helpers`, and nothing else.
+func TestHelpersMakesThisConversationTheManagerAndSendsWhatWasTyped(t *testing.T) {
 	a, fake := helpersApp(t)
 	front := a.frontTabKey()
 	before := len(fake.sent)
-	typeLine(t, a, "/helpers the flaky tests")
+	typeLine(t, a, "/helpers suggest one helper for the flaky tests")
 	teamsFlush(t, a)
 
 	disk := helpersDisk(t, a)
@@ -87,24 +101,43 @@ func TestHelpersMakesThisConversationTheManagerAndAsksForHelpers(t *testing.T) {
 	if hint := a.trafficHint(); !strings.Contains(hint, "manager of lab") {
 		t.Fatalf("the composer says %q, not that it talks to the manager", hint)
 	}
-
 	if len(fake.sent) != before+1 {
 		t.Fatalf("/helpers sent %d messages, want one", len(fake.sent)-before)
 	}
-	sent := fake.sent[before]
-	if sent != helpersAskOf("lab", "the flaky tests") {
-		t.Fatalf("the model was handed %q", sent)
+	if sent := fake.sent[before]; sent != "suggest one helper for the flaky tests" {
+		t.Fatalf("the model was handed %q, not the words that were typed", sent)
 	}
-	for _, want := range []string{"team_start", "team_dissolve", "Start nobody until I agree", "the flaky tests"} {
-		if !strings.Contains(sent, want) {
-			t.Fatalf("the ask does not say %q: %q", want, sent)
-		}
-	}
-	if shown := lastPersonLine(t, a); shown != "/helpers the flaky tests" {
+	if shown := lastPersonLine(t, a); shown != "/helpers suggest one helper for the flaky tests" {
 		t.Fatalf("the transcript says %q, not what was typed", shown)
 	}
 	if !transcriptSays(a, fmt.Sprintf(helpersMadeWord, "lab")) {
 		t.Fatal("no receipt says the team was made")
+	}
+}
+
+// A BARE /helpers SAYS ITS ASK OUT LOUD. The model is handed [helpersPrompt],
+// and the transcript shows that same sentence after the command, so nothing was
+// asked that the person cannot read. The sentence is the person's own kind of
+// words: it names no tool and none of codeaf's machinery.
+func TestABareHelpersShowsTheAskItSends(t *testing.T) {
+	a, fake := helpersApp(t)
+	typeLine(t, a, "/helpers")
+	teamsFlush(t, a)
+	if len(fake.sent) != 1 || fake.sent[0] != helpersPrompt {
+		t.Fatalf("a bare /helpers sent %q", fake.sent)
+	}
+	if shown := lastPersonLine(t, a); shown != "/helpers "+helpersPrompt {
+		t.Fatalf("the transcript says %q, not the ask that was sent", shown)
+	}
+	for _, internal := range []string{"team_", "tool", "manager", "codeaf", "handle"} {
+		if strings.Contains(strings.ToLower(helpersPrompt), internal) {
+			t.Errorf("the default ask says %q, which is codeaf's word and not the person's: %q", internal, helpersPrompt)
+		}
+	}
+	for _, want := range []string{"two or three helpers", "Don't start anyone until I agree", "cancel"} {
+		if !strings.Contains(helpersPrompt, want) {
+			t.Errorf("the default ask does not say %q: %q", want, helpersPrompt)
+		}
 	}
 }
 
@@ -227,42 +260,151 @@ func TestHelpersRefusesWhereItCannotWork(t *testing.T) {
 	}
 }
 
-// THE COLUMN'S DOOR IS /helpers PRESSED. A chat in no team has `+ Make team`
-// beside its Tasks word; pressing it makes the team and asks, as typing does;
-// and the chat, now a manager, has the Traffic word there instead.
-func TestTheColumnsMakeTeamDoorIsHelpers(t *testing.T) {
-	a, fake := helpersApp(t)
-	line, row := a.sideHeadRow(40)
-	if !strings.Contains(plain(line), helpersDoorWord) {
-		t.Fatalf("a chat in no team has no %q in its column's header: %q", helpersDoorWord, plain(line))
+// THE TEAMS DROPDOWN IS THERE WITH NO TEAMS, and its last row is `+ New from
+// this session`. With teams, that row stays last, under a rule. The dropdown
+// says nothing about its keys: no footer of up/down, enter and esc.
+func TestTheTeamsDropdownIsThereWithNoTeamsAndEndsWithNewFromThisSession(t *testing.T) {
+	a, _ := helpersApp(t)
+	if len(a.wall.teams) != 0 {
+		t.Fatalf("the fixture has teams: %+v", a.wall.teams)
 	}
-	var door *sideDoor
-	for i := range row.doors {
-		if row.doors[i].act.kind == sideActHelpers {
-			door = &row.doors[i]
+	if word := a.tabTeamWord(); !strings.Contains(word, "Teams") {
+		t.Fatalf("with no teams the strip's chip is %q", word)
+	}
+	a.openTeamMenu()
+	if !a.teamMenu.on {
+		t.Fatal("the dropdown did not open with no teams")
+	}
+	if _, last := helpersMenuRow(t, a); !last {
+		t.Fatal("+ New from this session is not the last row")
+	}
+	frame, _ := menuFrame(t, a)
+	if !strings.Contains(frame, helpersRowWord) {
+		t.Fatalf("the dropdown does not draw %q:\n%s", helpersRowWord, frame)
+	}
+	for _, hint := range []string{"up/down move", "enter choose", "esc cancel"} {
+		if strings.Contains(frame, hint) {
+			t.Errorf("the dropdown still says %q:\n%s", hint, frame)
 		}
 	}
-	if door == nil || !strings.HasPrefix(door.hint, helpersDoorHint) {
-		t.Fatalf("the header's doors are %+v", row.doors)
+
+	if _, err := a.teamMake("harbor", nil); err != nil {
+		t.Fatal(err)
 	}
-	before := len(fake.sent)
-	cmd, _ := a.sidePress(row, door.span.from)
-	spend(t, a, cmd)
+	rows := a.teamMenuRows()
+	if len(rows) != 3 || rows[0].code != wallPopTeam || !rows[1].rule || rows[2].code != wallPopHelpers {
+		t.Fatalf("with a team the rows are %+v, want the team, a rule, and the row", rows)
+	}
+}
+
+// `+ New from this session` IS /helpers ONE STEP EARLIER. Chosen by the
+// keyboard, it puts `/helpers ` and the default ask in the box in place of
+// what was there (which goes onto the drafts ring), makes nothing and sends
+// nothing; enter then does exactly what typing it would.
+func TestNewFromThisSessionPutsHelpersInTheBoxAndEnterSendsIt(t *testing.T) {
+	a, fake := helpersApp(t)
+	a.input.insert("half a thought")
+	a.openTeamMenu()
+	picks := teamMenuPicks(a.teamMenuRows())
+	for range picks {
+		drive(t, a, key("down"))
+	}
+	drive(t, a, key("enter"))
+	if a.teamMenu.on {
+		t.Fatal("the dropdown stayed up after its row was chosen")
+	}
+	if got := a.input.String(); got != "/helpers "+helpersPrompt {
+		t.Fatalf("the box holds %q", got)
+	}
+	if len(a.drafts.entries) == 0 || string(a.drafts.entries[len(a.drafts.entries)-1].text) != "half a thought" {
+		t.Fatal("what was in the box was not kept on the drafts ring")
+	}
 	teamsFlush(t, a)
-	if len(helpersDisk(t, a)) != 1 || len(fake.sent) != before+1 || lastPersonLine(t, a) != "/helpers" {
-		t.Fatal("pressing the door did not do what /helpers does")
+	if len(helpersDisk(t, a)) != 0 || len(fake.sent) != 0 {
+		t.Fatal("choosing the row made a team or sent something before enter")
 	}
-	line, _ = a.sideHeadRow(40)
-	if strings.Contains(plain(line), helpersDoorWord) || !strings.Contains(plain(line), sideTrafficWord) {
-		t.Fatalf("the manager's header is %q", plain(line))
+
+	drive(t, a, key("enter"))
+	teamsFlush(t, a)
+	if len(helpersDisk(t, a)) != 1 || len(fake.sent) != 1 || fake.sent[0] != helpersPrompt {
+		t.Fatalf("enter did not do what /helpers does: teams %d, sent %q", len(helpersDisk(t, a)), fake.sent)
+	}
+	if shown := lastPersonLine(t, a); shown != "/helpers "+helpersPrompt {
+		t.Fatalf("the transcript says %q", shown)
+	}
+}
+
+// WHERE /helpers WOULD REFUSE, THE ROW SAYS SO AND LEAVES THE BOX ALONE: in a
+// conversation that already manages a team, choosing it shows that team.
+func TestNewFromThisSessionInAManagerSaysWhichTeamAndLeavesTheBox(t *testing.T) {
+	a, _ := helpersApp(t)
+	typeLine(t, a, "/helpers")
+	teamsFlush(t, a)
+	made := helpersDisk(t, a)[0]
+	a.input.insert("keep this")
+	row, _ := helpersMenuRow(t, a)
+	spend(t, a, a.teamMenuDo(row))
+	if got := a.input.String(); got != "keep this" {
+		t.Fatalf("the row replaced the box in a manager: %q", got)
+	}
+	if !transcriptSays(a, fmt.Sprintf(helpersManagesWord, made.Name)) {
+		t.Fatal("the row did not say which team this conversation manages")
+	}
+}
+
+// THE HELPERS IT STARTS OPEN AS TABS IN THE TEAM'S OVERLAY. The manager's
+// team_start is carried out by this window behind the manager; the new
+// conversation is a member, held open, its tab on the strip, and the strip is
+// this team's even if the person had cleared the overlay meanwhile. The person
+// stays in front of the manager, with what they were typing.
+func TestHelpersStartedOpenAsTabsInTheTeamsOverlay(t *testing.T) {
+	a, _ := helpersApp(t)
+	typeLine(t, a, "/helpers")
+	teamsFlush(t, a)
+	made := helpersDisk(t, a)[0]
+	front := a.frontTabKey()
+	spend(t, a, a.teamOverlayChoose(""))
+	if _, ok := a.teamActive(); ok {
+		t.Fatal("the overlay did not clear")
+	}
+	n := 0
+	a.start = func(workspace string) (Conversation, error) {
+		n++
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: fmt.Sprintf("/tmp/lab/helper-%d.jsonl", n), Workspace: workspace}, nil
+	}
+	a.input.insert("half a reply")
+	for _, handle := range []string{"tests", "docs"} {
+		trafficAppend(t, a, made.ID, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: handle, Text: "take the " + handle})
+	}
+	trafficReadNow(t, a)
+	trafficReadNow(t, a)
+	if n != 2 {
+		t.Fatalf("two starts opened %d conversations", n)
+	}
+	if active, ok := a.teamActive(); !ok || active.ID != made.ID {
+		t.Fatal("the strip is not the team's after its helpers started")
+	}
+	if a.frontTabKey() != front || a.input.String() != "half a reply" {
+		t.Fatal("a start moved the person off the manager or out of their words")
+	}
+	a.touch()
+	row := plain(a.tabsRow(a.width))
+	for _, handle := range []string{"tests", "docs"} {
+		m, ok := mustTeam(t, a, made.ID).ByHandle(handle)
+		if !ok || a.behind[m.Key] == nil {
+			t.Fatalf("@%s is not a member held open: %+v", handle, mustTeam(t, a, made.ID).Members)
+		}
+		if !strings.Contains(row, "@"+handle) {
+			t.Fatalf("@%s has no tab on the team's strip: %q", handle, row)
+		}
 	}
 }
 
 // THE MANAGER'S NO PUTS THE CHAT BACK AS IT WAS. The manager's team_dissolve
 // writes the store from the engine (internal/teams' Dissolve); the window's
 // Traffic read finds the team gone, closes its overlay, and the column is a
-// plain chat's again, with its door. Nothing else in the window moved.
-func TestADissolvedTeamLeavesThePlainChatAndItsDoor(t *testing.T) {
+// plain chat's again. Nothing else in the window moved.
+func TestADissolvedTeamLeavesThePlainChat(t *testing.T) {
 	a, _ := helpersApp(t)
 	front := a.frontTabKey()
 	typeLine(t, a, "/helpers")
@@ -285,17 +427,7 @@ func TestADissolvedTeamLeavesThePlainChatAndItsDoor(t *testing.T) {
 	if got := len(a.tabList()); got != tabs {
 		t.Fatalf("dissolving changed the strip from %d tabs to %d", tabs, got)
 	}
-	line, _ := a.sideHeadRow(40)
-	if !strings.Contains(plain(line), helpersDoorWord) {
-		t.Fatalf("the plain chat's door did not come back: %q", plain(line))
-	}
-}
-
-// A NARROW COLUMN LOSES THE DOOR, and keeps the key that hides it.
-func TestANarrowColumnLosesTheMakeTeamDoorFirst(t *testing.T) {
-	a, _ := helpersApp(t)
-	line, _ := a.sideHeadRow(sideColsMin - 6)
-	if strings.Contains(plain(line), helpersDoorWord) {
-		t.Fatalf("the door was squeezed into %q", plain(line))
+	if _, last := helpersMenuRow(t, a); !last {
+		t.Fatal("the dropdown lost its last row")
 	}
 }

@@ -7,10 +7,11 @@ with no team overlay selected. Clearing the team's visual overlay does not end
 membership, change reporting authority, or stop background work.
 The composer has no team-recipient hint and the sidebar uses the ordinary task view.
 
-With no overlay, the strip shows **Teams ▾**. Selecting a team replaces it with a coloured
+With no overlay, the strip shows **Teams ▾**, even before you have a team. Selecting a team replaces it with a coloured
 team chip and a separate **x**. Click the name to switch teams; click x to remove the
 overlay and restore ordinary Chats. Clearing selects **All teams** in Teams without
-changing membership or background work. The dropdown lists actual teams only, with no **None** option.
+changing membership or background work. The dropdown lists actual teams, with no **None** option,
+and ends with **+ New from this session**, which makes a team of the conversation in front.
 The **▦ All** button still opens the independent conversation grid.
 
 The Teams dropdown is the only team selector in Chats; there are no membership buttons
@@ -216,14 +217,18 @@ them; Undo does not reopen them. Organization otherwise only adds memberships: i
 not rename teams or remove conversations. Nothing runs automatically. Press Organize
 again to refresh suggestions. The conversation grid has no Organize or Undo control.
 
-## The team switcher on the tab strip
+## The team switcher on the tab strip — the Teams dropdown and + New from this session
 
 The dropdown is first on the Chats tab strip. With no overlay its label is **Teams ▾**;
 with one selected it shows that team's name, colour and a separate **x** to clear it.
 The dropdown offers **All teams** when a global manager exists, then the active team hierarchy.
 All teams selects the global-manager overlay; it is separate from the team-agnostic `▦ All` grid.
 A root without a manager or with a known missing manager transcript has no All teams choice.
-The picker has no None option or management actions, and is absent when no overlay is available.
+The picker has no None option or management actions. Its last row, under a rule, is always
+**+ New from this session**: it puts `/helpers` and a default ask in the message box, replacing
+what was there (that draft is kept in `/drafts`), and nothing happens until you edit it
+and press enter (see *Turn this conversation into a team* on the team manager page). So the
+chip is there even with no teams yet; it is absent only over `--host` to an engine without teams.
 Closed teams are available through Show closed on Teams, not through this picker.
 
 Selecting a team restores its conversation and horizontal strip position. A new overlay
@@ -239,9 +244,9 @@ it does not select an overlay.
 
 A **manager** is a conversation that runs the team: you talk to it, it sends work to members
 and reports progress. Teams offers **Choose AI manager** for existing members and **+ Manager**
-when a team has none. In the conversation you are working in, **`/helpers`** (or `+ Make
-team` in the right-hand column) makes a new team with that conversation as its manager,
-which then proposes helpers for you to accept, change or cancel. Add a new member first when you need a new conversation to replace
+when a team has none. In the conversation you are working in, **`/helpers`** (or **`+ New
+from this session`**, last in the Teams dropdown) makes a new team with that conversation
+as its manager, which then proposes helpers for you to accept, change or cancel. Add a new member first when you need a new conversation to replace
 an existing manager. All teams has a dedicated Global manager card. `+ Global manager` creates its optional
 conversation. Its reports are the managers of open top-level teams; subteam managers
 report to their parent. Its card's `x` deletes the global-manager conversation with the

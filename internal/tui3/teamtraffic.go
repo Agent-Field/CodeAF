@@ -552,6 +552,16 @@ func (a *app) trafficStarted(id, handle string, conv Conversation, err error) te
 		}
 	}
 	if t.Manager != "" && t.Manager == a.frontTabKey() {
+		// THE STRIP SHOWS THE TEAM WHOSE MEMBER JUST STARTED, when the person
+		// is in front of that team's manager: the new tab is on the strip
+		// because the strip is this team's. It is the same conversation in
+		// front and the same keyboard, so nothing moves the person's focus;
+		// only the overlay is set, the way choosing the team in the
+		// dropdown sets it. On the wall or a page the person is somewhere
+		// else, and the strip is left as it is.
+		if a.wall.activeID != t.ID && !a.wall.on && !a.pageShowing() && !t.Closed() {
+			a.teamViewSet(t.ID)
+		}
 		a.feed.note(a.teamManagerMark() + " started @" + handle + " · its tab is on the strip")
 	}
 	a.touch()
