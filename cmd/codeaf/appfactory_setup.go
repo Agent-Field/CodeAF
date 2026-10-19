@@ -155,11 +155,20 @@ type appLocalFactory struct {
 // ── start and status ───────────────────────────────────────────────────────
 
 func (b *appBackend) FactoryLocalStart(ctx context.Context, _ string) (appwire.FactoryLocalStatus, error) {
+	if err := b.startLocal(ctx); err != nil {
+		return appwire.FactoryLocalStatus{}, err
+	}
+	b.ensureLocalRunner(ctx)
+	return b.localStatus(), nil
+}
+
+// startLocal serves, or joins, the machine's factory under the local lock.
+func (b *appBackend) startLocal(ctx context.Context) error {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed {
-		return appwire.FactoryLocalStatus{}, appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
+		return appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
 	if !l.running || l.host == nil {
 		if l.running {
@@ -167,17 +176,26 @@ func (b *appBackend) FactoryLocalStart(ctx context.Context, _ string) (appwire.F
 			b.factoryHub().releaseLocal(l.id)
 			l.running = false
 		}
-		if err := b.startLocalLocked(ctx, false); err != nil {
-			return appwire.FactoryLocalStatus{}, err
-		}
-	} else if err := b.joinLocalLocked(factoryTarget{l.host.address, l.host.token}, appwire.LocalAuthorityApp); err != nil {
-		// Reconnecting also restores authentication after an explicit detach.
-		return appwire.FactoryLocalStatus{}, err
+		return b.startLocalLocked(ctx, false)
 	}
-	l.mu.Unlock()
-	b.ensureLocalRunner(ctx)
+	// Reconnecting also restores authentication after an explicit detach.
+	return b.joinLocalLocked(factoryTarget{l.host.address, l.host.token}, appwire.LocalAuthorityApp)
+}
+
+// localStatus is [appBackend.localStatusLocked] under the local lock.
+func (b *appBackend) localStatus() appwire.FactoryLocalStatus {
+	l := &b.local
 	l.mu.Lock()
-	return b.localStatusLocked(), nil
+	defer l.mu.Unlock()
+	return b.localStatusLocked()
+}
+
+// localRunnerOn says whether this engine's runner is on.
+func (b *appBackend) localRunnerOn() bool {
+	l := &b.local
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.runner
 }
 
 // resumeLocal brings back the factory a person chose to serve on this machine,
@@ -225,11 +243,7 @@ func (b *appBackend) resumeLocalServe(ctx context.Context) bool {
 // just made the runner possible asks (the start, a resume, a setup step, a
 // status read). It starts no job.
 func (b *appBackend) ensureLocalRunner(ctx context.Context) {
-	l := &b.local
-	l.mu.Lock()
-	on := l.runner
-	l.mu.Unlock()
-	if on {
+	if b.localRunnerOn() {
 		return
 	}
 	_, _ = b.FactoryLocalRun(ctx, "")
@@ -299,10 +313,7 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 func (b *appBackend) FactoryLocalStatus(ctx context.Context, _ string) (appwire.FactoryLocalStatus, error) {
 	b.resumeLocal(ctx)
 	b.ensureLocalRunner(ctx)
-	l := &b.local
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return b.localStatusLocked(), nil
+	return b.localStatus(), nil
 }
 
 func (b *appBackend) localStatusLocked() appwire.FactoryLocalStatus {

@@ -303,9 +303,7 @@ func (c *stageConversation) follow(first <-chan session.Event, done chan struct{
 		case stream, open := <-c.wakes:
 			t.Stop()
 			if !open {
-				c.mu.Lock()
-				close(done)
-				c.mu.Unlock()
+				c.closeDone(done)
 				return
 			}
 			settled = false
@@ -313,6 +311,13 @@ func (c *stageConversation) follow(first <-chan session.Event, done chan struct{
 		case <-t.C:
 		}
 	}
+}
+
+// closeDone closes done under the lock [stageConversation.deliver] reads it under.
+func (c *stageConversation) closeDone(done chan struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	close(done)
 }
 
 // settle closes done when the conversation is still idle, under the lock
@@ -393,24 +398,10 @@ func (c *stageConversation) Note(_ context.Context, words string) error {
 // had already gone idle is followed again from that turn, so [Wait] answers
 // when it is idle once more rather than at once.
 func (c *stageConversation) deliver(words string) error {
-	c.mu.Lock()
-	events, err := c.agent.Steer(words)
-	if errors.Is(err, session.ErrNothingToSteer) {
-		events, err = c.agent.FollowUp(words)
-	}
+	events, done, idle, err := c.startTurn(words)
 	if err != nil {
-		c.mu.Unlock()
 		return err
 	}
-	idle := false
-	select {
-	case <-c.done:
-		idle = true
-		c.done, c.failure = make(chan struct{}), nil
-	default:
-	}
-	done := c.done
-	c.mu.Unlock()
 	if idle {
 		guard.Go("factory/stage-conversation", func() { c.follow(events, done) })
 		return nil
@@ -419,11 +410,39 @@ func (c *stageConversation) deliver(words string) error {
 	return nil
 }
 
+// startTurn steers the running turn or starts the next one, under the lock
+// [stageConversation.settle] closes done under, and answers whether the
+// conversation had gone idle (so done is a new one, to follow again).
+func (c *stageConversation) startTurn(words string) (<-chan session.Event, chan struct{}, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	events, err := c.agent.Steer(words)
+	if errors.Is(err, session.ErrNothingToSteer) {
+		events, err = c.agent.FollowUp(words)
+	}
+	if err != nil {
+		return nil, nil, false, err
+	}
+	idle := false
+	select {
+	case <-c.done:
+		idle = true
+		c.done, c.failure = make(chan struct{}), nil
+	default:
+	}
+	return events, c.done, idle, nil
+}
+
+// currentDone is the channel the conversation's current turn closes when idle.
+func (c *stageConversation) currentDone() chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.done
+}
+
 // Wait returns when the conversation is idle, or when ctx ends.
 func (c *stageConversation) Wait(ctx context.Context) error {
-	c.mu.Lock()
-	done := c.done
-	c.mu.Unlock()
+	done := c.currentDone()
 	select {
 	case <-done:
 		c.mu.Lock()
