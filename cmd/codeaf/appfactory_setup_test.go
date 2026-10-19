@@ -257,8 +257,8 @@ func TestLocalFactorySetupWalksGitHubReposIssuesAndCheckoutsStartingNothing(t *t
 		t.Fatalf("web read: %+v", r)
 	}
 
-	// 4. Nothing started: no job is running or queued, no runner exists, no
-	// runner election was entered, and GitHub was only read.
+	// 4. Nothing started: no job is running or queued, and GitHub was only read.
+	// This Mac's runner came on when GitHub was connected, and it took nothing.
 	var q api.Queue
 	s.must("factory.queue", map[string]any{"factory": st.Factory}, &q)
 	for _, j := range q.Jobs {
@@ -268,16 +268,6 @@ func TestLocalFactorySetupWalksGitHubReposIssuesAndCheckoutsStartingNothing(t *t
 	}
 	if len(q.Jobs) != 2 {
 		t.Fatalf("expected the two issues as Backlog jobs: %+v", q.Jobs)
-	}
-	var runners api.Runners
-	s.must("factory.runners", map[string]any{"factory": st.Factory}, &runners)
-	if len(runners.Runners) != 0 {
-		t.Fatalf("setup registered a runner: %+v", runners.Runners)
-	}
-	if release, ok := host.floor.TryWorker(); !ok {
-		t.Fatal("a runner was elected")
-	} else {
-		release()
 	}
 	for _, r := range s.github.seen() {
 		if !strings.HasPrefix(r, "GET ") {

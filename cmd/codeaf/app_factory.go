@@ -227,6 +227,34 @@ func (h *appFactoryHost) readLoops() {
 	})
 }
 
+// pollLoop starts the GitHub poll alone, for this Mac's own factory: issues
+// filed after setup reach Backlog, and nothing rides on the poll. No intake
+// applies start rules after it and no triage reads what it brought, so it
+// starts no job and asks no model. It shares [readLoops]' once-per-host guard,
+// and closing the host stops it.
+func (h *appFactoryHost) pollLoop() {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	if h.loopsOn || h.loopsClosed || h.ctx.Err() != nil {
+		return
+	}
+	h.loopsOn = true
+	h.loops.Add(1)
+	guard.Go("app/factory poll", func() {
+		defer h.loops.Done()
+		var source *factorygithub.Source
+		if h.pollSource != nil {
+			source = h.waitForPollSource()
+		} else {
+			token := func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, h.profile); return t }
+			source = waitForFactoryGitHub(h.ctx, h.floor, token, factoryWatchEvery)
+		}
+		if source != nil {
+			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil)
+		}
+	})
+}
+
 // intakeFor is the intake over st: the factory's own, or the test seam.
 func (h *appFactoryHost) intakeFor(st *store.Store) *intake.Intake {
 	if h.newIntake != nil {
