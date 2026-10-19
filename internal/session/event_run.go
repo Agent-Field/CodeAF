@@ -12,7 +12,7 @@ func hubRunID(h *eventHub) string {
 func foregroundRunEvent(kind EventKind) bool {
 	switch kind {
 	case EventTextDelta, EventThinking, EventReasoning, EventToolBegin,
-		EventToolEnd, EventToolFailed, EventToolOutput, EventToolAnnounced,
+		EventToolEnd, EventToolFailed, EventToolOutput, EventToolAnnounced, EventCloseContinued,
 		EventToolForming, EventToolFinished, EventTurnDone:
 		return true
 	}

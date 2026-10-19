@@ -681,7 +681,10 @@ Never in entries: the lines the engine writes to its model (wakes, landing notes
 quit, a checkpoint's question, the `[carry on]` continuations and the note after a reply was cut off at the
 output limit, none of which counts as the person's message on a reread) and a reply that is only the
 withdrawal token `[no change]`, live or reread; a quit-resumed reply is marked by the footer
-`resumed_after_quit` ("Resumed after quit"). Nor is the line saying a turn was sent back to work
+`resumed_after_quit` ("Resumed after quit"),
+`resumed_after_close` ("Resumed after the app closed") and
+`stopped_by_close` ("The app closed while this was working · send a message to carry on").
+These three notices are kept with the conversation and return in place after restart. Nor is the line saying a turn was sent back to work
 (`the ask is not finished · carrying on rather than stopping here` and the two nudges, "… · asking it to go
 on"): the turn going on is what the app already shows. The lines that end a turn ("stopping here · …",
 "carried on … times · …") stay quiet notices.
@@ -766,7 +769,7 @@ Entry kind "update"   { text }   interim mid-turn message (eyebrow "Update"), fu
 Entry kind "steer"    { text, state: "pending"|"consumed"|"fell_through", step? }
 Entry kind "note"     { task, text, from: "you"|"task", state?: "sending"|"waiting"|"read", read_at_step? }
 Entry kind "summary"  { text }   "Earlier messages summarized" (engine compaction point)
-Entry kind "footer"   { text, footer_kind: "stopped_by_you"|"retrying"|"provider_failed"|"fallback"|"process_finished"|"process_limit"|"resumed_after_quit",
+Entry kind "footer"   { text, footer_kind: "stopped_by_you"|"retrying"|"provider_failed"|"fallback"|"process_finished"|"process_limit"|"resumed_after_quit"|"resumed_after_close"|"stopped_by_close",
                         retry_in_s?, model_from?, model_to? }
 Entry kind "receipt" with `op` { op: {kind: "crew.formed", crew, name?}, text: "" } — a crew made under the entry's agent as manager; durable (the teams file's `founder`/`made`), same id `rcrew:<crew>` and `at` live and after a restart; the app words it
 Entry (user) adds     attachments?: [{kind: "file"|"link"|"paste", path?, url?, title?, lines?, add?, del?,

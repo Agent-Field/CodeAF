@@ -1552,6 +1552,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I get back to the home screen from the tasks page", "home"},
 		{"double space does not go home from the memory page", "home"},
 		{"does closing one conversation quit codeaf", "commands"},
+		{"the app crashed in the middle of a reply, does it carry on?", "running-from-the-terminal"},
 		{"how do I close just this chat", "commands"},
 		{"will ctrl+c kill my other project's tasks", "keys"},
 		{"does my approval question expire while I am in another chat", "permissions"},

@@ -105,6 +105,13 @@ func readPresenceAnyAge(dir string) (SessionPresence, bool) {
 	return presence, true
 }
 
+// ReadSessionPresenceAnyAge reads the last claim even after its writer stopped
+// refreshing it. Callers must establish staleness before acting on the claim;
+// ordinary live listings must keep using ReadSessionPresence.
+func ReadSessionPresenceAnyAge(dir string) (SessionPresence, bool) {
+	return readPresenceAnyAge(dir)
+}
+
 // Words is the holder named the way a person reads it: `pid 58673 · ttys004 ·
 // a1b2c3d4 built 2026-09-21 09:00`, each part only when it is known.
 func (h Holder) Words() string {

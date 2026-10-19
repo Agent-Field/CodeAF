@@ -717,6 +717,9 @@ const (
 	// Now is the item as the floor holds it after the change, so a surface with
 	// no floor of its own (a window over --host) still draws the live card.
 	EventItemChanged = EventItemProposal + 1
+	// EventCloseContinued carries the pending key only when a started turn
+	// consumes that close note before its model request. It is private telemetry.
+	EventCloseContinued = EventItemChanged + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its

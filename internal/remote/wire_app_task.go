@@ -22,6 +22,8 @@ const (
 	// MethodAppResumeAfterQuit carries on a reply the app was closed in the
 	// middle of ([session.Agent.ResumeAfterQuit]).
 	MethodAppResumeAfterQuit = "App.ResumeAfterQuit"
+	// MethodAppResumeAfterClose carries the unexpected-close wake to its owner.
+	MethodAppResumeAfterClose = "App.ResumeAfterClose"
 	// MethodAppRename gives the conversation the name a person typed
 	// ([session.Agent.RenameByPerson]).
 	MethodAppRename = "App.Rename"
@@ -84,6 +86,12 @@ type AppRenameArgs struct {
 
 // appQuitDoor is the conversation that can carry on after the app's quit.
 type appQuitDoor interface{ ResumeAfterQuit() bool }
+
+// appCloseDoor is deliberately separate so older engines keep their quit door.
+type appCloseDoor interface{ ResumeAfterCloseKey(string) bool }
+
+// appCloseArgs carries the private continuation identity through the engine.
+type appCloseArgs struct{ Key string }
 
 type appTaskPageResult struct {
 	Task  session.AppTaskView
@@ -166,6 +174,16 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 			return nil, errors.New("engine: this conversation cannot carry on by itself")
 		}
 		return json.Marshal(quit.ResumeAfterQuit())
+	case MethodAppResumeAfterClose:
+		closed, ok := agent.(appCloseDoor)
+		if !ok {
+			return nil, errors.New("engine: this conversation cannot carry on by itself")
+		}
+		args, err := arg[appCloseArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(closed.ResumeAfterCloseKey(args.Key))
 	case MethodAppMoveToTask:
 		return nil, door.MoveTurnToTask()
 	case MethodAppTasks:
@@ -394,6 +412,22 @@ func (a *Agent) MoveTurnToTask() error {
 // the middle of, and answers whether a turn was queued.
 func (a *Agent) ResumeAfterQuit() (bool, error) {
 	raw, err := a.c.call(nil, MethodAppResumeAfterQuit, nil)
+	if err != nil {
+		return false, err
+	}
+	var queued bool
+	err = json.Unmarshal(raw, &queued)
+	return queued, err
+}
+
+// ResumeAfterClose asks for the private wake after an unexpected app close.
+func (a *Agent) ResumeAfterClose() (bool, error) {
+	return a.ResumeAfterCloseKey("")
+}
+
+// ResumeAfterCloseKey keeps the pending key attached to its own private note.
+func (a *Agent) ResumeAfterCloseKey(key string) (bool, error) {
+	raw, err := a.c.call(nil, MethodAppResumeAfterClose, appCloseArgs{Key: key})
 	if err != nil {
 		return false, err
 	}

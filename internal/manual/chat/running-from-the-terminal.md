@@ -462,6 +462,35 @@ by quit". Automations are not touched by a quit and fire again once the app is
 open. A conversation the app joined in a terminal window is that window's, and
 quitting the app only lets go of it.
 
+## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
+
+If the desktop app closes unexpectedly during a reply, opening it again carries
+the reply and its running tasks on from where their records stand.
+"Resumed after the app closed" appears before that reply. Finished steps are
+not repeated; the agent checks the result of an unfinished step before relying
+on it. Another window still working on the conversation is left alone. An idle
+conversation without a promised reply stays idle.
+
+If the app closes again before its promised reply begins, opening it again
+tries that reply with the same notice. Newer task activity keeps that promise's
+original notice and age. Another reply starting does not cancel
+that promise. A message, correction, queued message or answer from you cancels
+that promise, including a message sent in another window while the app was
+closed. A deleted conversation never carries on.
+
+A conversation carries on automatically at most twice in a row. A reply that
+finishes normally, or a direction from you, resets that limit; the agent's own
+notes do not. Compacting or rewinding the conversation does not reset it.
+Retrying a promised reply uses an attempt too. On the third
+opening within ten minutes that finds unfinished replies, none carry on
+automatically. A reply last active more than an hour before opening is left
+for you to choose. For a promised reply that never began, the hour starts when
+that promise was first saved, even if its tasks worked again afterwards.
+
+When work is left for you, its chat says "The app closed while this was working · send a message to carry on".
+Send a message to continue. These lines, and "Resumed after quit" after a normal
+quit, stay in the conversation when you close and reopen the app.
+
 ## The desktop app's clocks — a proposed task, and a choice with a suggestion
 
 In the desktop app a proposed task waits on a clock (twelve seconds unless you
