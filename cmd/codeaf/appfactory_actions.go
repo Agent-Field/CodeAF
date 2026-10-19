@@ -317,6 +317,18 @@ func (b *appBackend) FactoryJobMerge(ctx context.Context, p appwire.FactoryJobMe
 	}{p.Commit, p.Expect})
 }
 
+func (b *appBackend) FactoryJobSetModel(ctx context.Context, p appwire.FactoryJobSetModelParams) (appwire.FactoryJobActed, error) {
+	acted, err := b.jobWrite(ctx, p.Factory, appwire.JobActSetModel, p.Job, "model", struct {
+		Model  string      `json:"model"`
+		Expect *api.Expect `json:"expect,omitempty"`
+	}{p.Model, p.Expect})
+	if err == nil {
+		// The job's agent reads the job's model too (appfactory_chats.go).
+		b.jobAgentModel(p.Factory, p.Job)
+	}
+	return acted, err
+}
+
 func (b *appBackend) FactoryJobStepStop(ctx context.Context, p appwire.FactoryJobStepParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActStepStop, p.Job, "steps/"+stepSegment(p.Step)+"/stop", guardBody{p.Expect})
 }

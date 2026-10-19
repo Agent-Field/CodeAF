@@ -111,6 +111,10 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
+	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
+	if model := strings.TrimSpace(spec.Model); model != "" {
+		cfg.Model = model
+	}
 	cfg.Stage = spec.Stage
 	cfg.Interactive = false
 	cfg.Unattended = true
@@ -438,6 +442,13 @@ func (c *stageConversation) ID() string { return c.file }
 
 // Spent is what the conversation has cost, its tasks folded in.
 func (c *stageConversation) Spent() float64 { return c.agent.Usage().CostUSD }
+
+// Model is the model the conversation is on now.
+func (c *stageConversation) Model() string { return c.agent.Model() }
+
+// SetModel switches the conversation for its next turn, as a person's pick
+// does in any chat.
+func (c *stageConversation) SetModel(model string) { c.agent.SetModel(model) }
 
 // Close interrupts a turn still in flight and lets go of the conversation;
 // its folder stays where it was made, to be opened.

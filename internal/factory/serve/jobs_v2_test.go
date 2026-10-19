@@ -394,3 +394,44 @@ func TestSoloApprovalRequiresGitHubIdentityWithoutInventingAnAssignee(t *testing
 		t.Fatalf("not actionable: %s", w.Body.String())
 	}
 }
+
+// A JOB'S MODEL: its person chooses it, the job reads it back, a model id with
+// spaces is refused, going back to the default clears it, another person may
+// not, and a worker holding the job is told.
+func TestV2AJobsModelIsItsPersonsToChoose(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, it, "model", `{"model":"  vendor/model-a  "}`, 200)
+	if j := f.read(t, it); j.Model != "vendor/model-a" {
+		t.Fatalf("model = %q", j.Model)
+	}
+	f.post(t, it, "model", `{"model":"two words"}`, 422)
+	f.post(t, it, "model", `{"model":""}`, 200)
+	if j := f.read(t, it); j.Model != "" {
+		t.Fatalf("default = %q", j.Model)
+	}
+	f.person = "mei"
+	f.post(t, it, "model", `{"model":"vendor/model-b"}`, 403)
+	f.person = "sam"
+
+	desk, err := lease.Open(f.st, f.cfg.LeaseOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.Update(it.ID, func(cur *factory.Item) error { cur.State = factory.StateQueued; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	worker := lease.Worker{ID: "worker", Machine: "laptop", Handle: "sam", Team: true, Slots: 1}
+	held, err := desk.Pull(worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.post(t, it, "model", `{"model":"vendor/model-c"}`, 200)
+	signals, err := desk.DrainLive(held.ID, held.Worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(signals) != 1 || signals[0].Verb != lease.SignalModel || signals[0].Words != "vendor/model-c" {
+		t.Fatalf("signals = %+v", signals)
+	}
+}

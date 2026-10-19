@@ -96,6 +96,7 @@ type loopCtl struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	steer   chan string
+	models  chan string
 	answers chan loopAnswer
 	// wmu holds a write and the check that the item was not stopped as one
 	// step; askMu keeps one question at a time.
@@ -196,7 +197,7 @@ func (r *Runner) Launch(id int) error {
 		return AlreadyRunning(it.Ref())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1, launch: true}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), models: make(chan string, 4), answers: make(chan loopAnswer, 1), phase: -1, launch: true}
 	lp.ctls[id] = c
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
@@ -1102,6 +1103,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		Dir:    dir,
 		dirErr: dirErr,
 		Steer:  c.steer,
+		Models: c.models,
 		Log:    func(line string) { lp.say(c, "thought", line) },
 		Spend:  lp.spender(c),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
@@ -1625,7 +1627,7 @@ func (r *Runner) revive(it factory.Item) error {
 		return AlreadyRunning(it.Ref())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), models: make(chan string, 4), answers: make(chan loopAnswer, 1), phase: -1}
 	if i := nextPhase(it.Stream.Phases); i >= 0 && it.Stream.Phases[i].State == factory.PhaseRunning {
 		c.carry = strings.TrimSpace(it.Stream.Phases[i].Chat)
 	}
@@ -1728,6 +1730,29 @@ func declineAskFirst(it *factory.Item, words string) error {
 // Steer hands words to the round running now, and to the notes every round
 // after it reads. It never waits: a round that is not listening reads them
 // in its next brief.
+// SetModel keeps model as the job's own (Item.Model, "" for the default),
+// which every step after this one opens on, and hands a named model to the
+// round running now, whose conversation switches at its next turn; going back
+// to the default reaches the next step. It is the one door: a person's pick
+// from any of the job's chats, and the worker carrying the factory's signal.
+func (r *Runner) SetModel(id int, model string) error {
+	model = strings.TrimSpace(model)
+	if err := r.opts.Store.Update(id, func(it *factory.Item) error { it.Model = model; return nil }); err != nil {
+		return err
+	}
+	if model == "" {
+		return nil
+	}
+	lp := r.loop()
+	if c := lp.ctl(id); c != nil && c.models != nil {
+		select {
+		case c.models <- model:
+		default:
+		}
+	}
+	return nil
+}
+
 func (r *Runner) Steer(id int, words string) error {
 	words = strings.TrimSpace(words)
 	if words == "" {
@@ -1871,7 +1896,7 @@ func (r *Runner) SendBack(id int, words string) error {
 		previous.wmu.Unlock()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), models: make(chan string, 4), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
@@ -1953,7 +1978,7 @@ func (r *Runner) Reverify(id int) error {
 		return r.notLanded(id)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), models: make(chan string, 4), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()

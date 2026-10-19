@@ -38,6 +38,10 @@ type Config struct {
 
 	// Mode is solo or team; an unset mode follows the host access configuration.
 	Mode string
+	// DefaultModel answers the model a job's steps run on when it names none,
+	// for the queue's `model`. Nil when this factory does not know it: a
+	// runner elsewhere decides with its own settings.
+	DefaultModel func() string
 	// ProfileDir resolves the solo factory's existing GitHub connection for setup reads.
 	ProfileDir string
 	// OperatorLogin names a solo host; team identity comes from the persisted claim.
@@ -391,6 +395,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	q.Factory = h.factory
 	q.Mode = h.mode()
+	if h.config.DefaultModel != nil {
+		q.Model = strings.TrimSpace(h.config.DefaultModel())
+	}
 	if q.Mode == api.FactorySolo {
 		for i := range q.Jobs {
 			h.soloJob(&q.Jobs[i], s.Items[i], handle)

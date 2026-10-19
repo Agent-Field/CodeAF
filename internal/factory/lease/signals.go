@@ -45,6 +45,10 @@ const (
 	// SignalStop tells the holding worker to stop. Drop sends it. Stop keeps
 	// the branch; the signal does not delete it.
 	SignalStop = "stop"
+	// SignalModel carries the model a person chose for the job (Words, ""
+	// for the default) to the worker running it, whose next step opens on it
+	// and whose running step switches at its next turn.
+	SignalModel = "model"
 )
 
 // Signal is one verb a person asked of a job, with the door's own arguments.

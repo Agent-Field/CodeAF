@@ -54,6 +54,10 @@ type Queue struct {
 	NeedsYou []NeedsYouGroup                  `json:"needs_you,omitempty"`
 	// Reason is set only for a signed-in viewer who can see no repository.
 	Reason string `json:"reason,omitempty"`
+	// Model is the model a job's steps run on when it names none: the
+	// default of the machine running them, absent when this factory does not
+	// know it (a runner elsewhere decides).
+	Model string `json:"model,omitempty"`
 }
 
 // QueueDesk is what the TUI page reads off the floor that the dashboard does
@@ -258,9 +262,13 @@ type Job struct {
 	Priority          *factory.JobPriority `json:"priority,omitempty"`
 	// Size is the size LABEL alone, the only size a start reads. ReadSize is
 	// what a surface may SHOW when there is no label; it never starts a job.
-	Size            string            `json:"size,omitempty"`
-	ReadSize        *JobReadSize      `json:"read_size,omitempty"`
-	Budget          float64           `json:"budget,omitempty"`
+	Size     string       `json:"size,omitempty"`
+	ReadSize *JobReadSize `json:"read_size,omitempty"`
+	Budget   float64      `json:"budget,omitempty"`
+	// Model is the model a person chose for this job's steps; absent, they
+	// run on the factory's default (Queue.Model). Set with POST
+	// /v1/jobs/{id}/model.
+	Model           string            `json:"model,omitempty"`
 	Reason          string            `json:"reason,omitempty"`
 	DoneHow         string            `json:"done_how,omitempty"`
 	DoneAt          time.Time         `json:"done_at"`
@@ -527,21 +535,23 @@ type StepAt struct {
 type Step struct {
 	Tests *factory.TestCounts `json:"tests,omitempty"`
 	StepDef
-	State      string      `json:"state"`
-	Round      int         `json:"round,omitempty"`
-	Result     string      `json:"result,omitempty"`
-	Rounds     []RoundLine `json:"rounds,omitempty"`
-	Failure    *Failure    `json:"failure,omitempty"`
-	Cost       float64     `json:"cost,omitempty"`
-	At         *time.Time  `json:"at,omitempty"`      // when the step ended; absent until it does
-	Note       string      `json:"note,omitempty"`    // desk
-	Tasks      int         `json:"tasks,omitempty"`   // desk
-	LeftMS     int64       `json:"left_ms,omitempty"` // desk
-	Chat       string      `json:"chat,omitempty"`    // desk
-	Handle     string      `json:"handle,omitempty"`  // desk
-	RunKind    string      `json:"run_kind,omitempty"`
-	InPipeline bool        `json:"in_pipeline"`
-	InRun      bool        `json:"in_run"`
+	State   string      `json:"state"`
+	Round   int         `json:"round,omitempty"`
+	Result  string      `json:"result,omitempty"`
+	Rounds  []RoundLine `json:"rounds,omitempty"`
+	Failure *Failure    `json:"failure,omitempty"`
+	Cost    float64     `json:"cost,omitempty"`
+	At      *time.Time  `json:"at,omitempty"`      // when the step ended; absent until it does
+	Note    string      `json:"note,omitempty"`    // desk
+	Tasks   int         `json:"tasks,omitempty"`   // desk
+	LeftMS  int64       `json:"left_ms,omitempty"` // desk
+	Chat    string      `json:"chat,omitempty"`    // desk
+	// Model is the model the step's conversation ran on, once it ran.
+	Model      string `json:"model,omitempty"`
+	Handle     string `json:"handle,omitempty"` // desk
+	RunKind    string `json:"run_kind,omitempty"`
+	InPipeline bool   `json:"in_pipeline"`
+	InRun      bool   `json:"in_run"`
 }
 
 // Claim is one row of a proof sheet.
