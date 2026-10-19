@@ -28,6 +28,64 @@ func closeConsumeTurn(t *testing.T, r *closeRig, key string, ok bool) {
 	r.b.wokenTurn(a, r.b.liveOf(a), appTurnElsewhere{events: events})
 }
 
+// H2: an ordinary successful turn must not save app state just to clear absent
+// recovery fields. A pending promise belongs to its consuming turn alone.
+func TestAppCloseOrdinaryReplyDoesNotWriteState(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ordinary reply", true: "different promise pending"}[pending], func(t *testing.T) {
+			hold := make(chan struct{})
+			b, rec, agent := workBackend(t, &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}, hold: hold})
+			t.Cleanup(func() {
+				select {
+				case <-hold:
+				default:
+					close(hold)
+				}
+			})
+			turn := appSendMessageWhenIdle(t, b, agent.ID, appwire.AgentMessage{Text: "write the report"})
+			at := time.Date(2000, 1, 1, 15, 0, 0, 0, time.UTC)
+			if err := b.state.write(func(f *appStateFile) error {
+				f.CloseResumes = map[string]int{"another-conversation": 1}
+				f.CloseResumedAt = map[string]time.Time{"another-conversation": at}
+				if pending {
+					f.ClosePending = map[string]string{agent.ID: "owed-promise"}
+					f.ClosePendingAt = map[string]time.Time{agent.ID: at}
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			path := b.state.where()
+			if err := os.Chtimes(path, at, at); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			close(hold)
+			appTurnDoneFor(t, rec, turn)
+			after, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+				t.Fatal("ordinary completion rewrote the state file")
+			}
+			if err := b.state.read(func(f *appStateFile) {
+				if f.CloseResumes["another-conversation"] != 1 || !f.CloseResumedAt["another-conversation"].Equal(at) {
+					t.Fatal("completion changed another conversation's recovery state")
+				}
+				if pending && (f.ClosePending[agent.ID] != "owed-promise" || !f.ClosePendingAt[agent.ID].Equal(at)) {
+					t.Fatal("unrelated completion acknowledged the pending promise")
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 // C3, C6, C13 (G1): accepting a note behind a refused wake does not attach it
 // to an unrelated buffered turn, even when that turn is adopted afterwards.
 func TestAppCloseUnrelatedBufferedTurnLeavesContinuationOwed(t *testing.T) {

@@ -849,6 +849,12 @@ var errAppCloseCancelled = errors.New("close continuation no longer owed")
 // A completed reply breaks the streak but cannot acknowledge a different
 // queued continuation. Only keyed consumption or a person's action clears it.
 func (b *appBackend) resetCloseAfterReply(id string) {
+	hasWork := false
+	if err := b.state.read(func(f *appStateFile) {
+		hasWork = f.CloseResumes[id] != 0 || !f.CloseResumedAt[id].IsZero()
+	}); err != nil || !hasWork {
+		return
+	}
 	_ = b.state.write(func(f *appStateFile) error {
 		delete(f.CloseResumes, id)
 		delete(f.CloseResumedAt, id)

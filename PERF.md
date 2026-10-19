@@ -57,15 +57,20 @@ rather than a machine-dependent time limit.
 
 ## Unexpected-close person activity reads
 
-`session.LatestPersonMessageAt` scans journal records backwards and stops at
-its first surviving person-authored user message. It keeps one **32 KiB** read
-block and one line, capped at the journal reader's **8 MiB** accepted line size;
-it never reconstructs or caches a display transcript. Scratch capacity is bounded
-independently of journal length, and oversized lines refuse recovery. Rewind,
-placed compaction history and display authorship rules still apply.
-`TestLatestPersonLongJournalBoundsBytesAndStopsAtPerson` checks visited records
-and retained scratch BYTES on a long journal; the authorship, rewind/compaction
-and oversized-line regressions defend correctness and refusal.
+`session.LatestPersonMessageAt` scans journal records backwards, retaining a
+candidate person timestamp until the preceding compaction marker or file start.
+The marker's `Window` excludes rewritten copies; the original message supplies
+the time. Without a marker this requires reading the whole journal, even with
+a person message at its tail. The query keeps one **32 KiB** read block and one
+line, capped at the journal reader's **8 MiB** accepted line size, plus fixed-size
+counters and a timestamp; it never reconstructs or caches a display transcript
+or a journal-sized index. Scratch capacity remains independent of journal length,
+and oversized lines refuse recovery. Rewind and display authorship rules apply.
+`TestLatestPersonLongJournalBoundsBytes` checks **4,097/4,098** visited records
+and at most **96/64 KiB** retained scratch BYTES before/after appending a person
+line to a long uncompacted journal. `TestLatestPersonCompactionUsesOriginalTime`
+uses the production compaction writer; the authorship, rewind, line-edge and
+oversized-line regressions defend correctness and refusal.
 
 ## Context recovery bounds
 

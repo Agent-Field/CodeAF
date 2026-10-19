@@ -11,7 +11,8 @@ import (
 
 // LatestPersonMessageAt reads backwards to the newest surviving person message.
 // It retains one bounded journal line and one read block, never a display record.
-// Compaction's original region remains history only when its window is recorded.
+// A candidate is accepted only after its preceding compaction or the file start:
+// the marker's window may identify it as a rewritten copy of an older message.
 func LatestPersonMessageAt(transcript string) (time.Time, bool, error) {
 	file, err := os.Open(transcript)
 	if err != nil {
@@ -35,12 +36,15 @@ type personJournalScan struct {
 	end   int64
 	block [personJournalBlockBytes]byte
 	line  []byte
+	// A region is the surviving messages between compaction markers. Counting
+	// backwards locates the candidate against Window without retaining an index.
+	dropped, messages, candidateAfter int
+	candidate                         time.Time
 	// visited and retained measure work and BYTES, including the scratch capacity.
 	visited, retained int
 }
 
 func (s *personJournalScan) latest() (time.Time, bool, error) {
-	dropped := 0
 	for s.end > 0 {
 		start := max(int64(0), s.end-personJournalBlockBytes)
 		n, err := s.file.ReadAt(s.block[:s.end-start], start)
@@ -62,16 +66,18 @@ func (s *personJournalScan) latest() (time.Time, bool, error) {
 				s.retained = max(s.retained, cap(s.line)+len(s.block))
 				continue
 			}
-			if at, done, err := s.visit(&dropped); done || err != nil {
+			if at, done, err := s.visit(); done || err != nil {
 				return at, !at.IsZero(), err
 			}
 		}
 	}
-	at, _, err := s.visit(&dropped)
-	return at, !at.IsZero(), err
+	if at, done, err := s.visit(); done || err != nil {
+		return at, !at.IsZero(), err
+	}
+	return s.result()
 }
 
-func (s *personJournalScan) visit(dropped *int) (time.Time, bool, error) {
+func (s *personJournalScan) visit() (time.Time, bool, error) {
 	for i, j := 0, len(s.line)-1; i < j; i, j = i+1, j-1 {
 		s.line[i], s.line[j] = s.line[j], s.line[i]
 	}
@@ -82,31 +88,44 @@ func (s *personJournalScan) visit(dropped *int) (time.Time, bool, error) {
 	}
 	s.visited++
 	// Content and tool payloads are deliberately absent: only a candidate person's
-	// line needs reconstruction through the session's authorship rules.
+	// line and compaction marker need reconstruction through replay's rules.
 	var mark struct {
-		Type, Role      string
-		Dropped, Window int
+		Type, Role string
+		Dropped    int
 	}
 	if json.Unmarshal(line, &mark) != nil {
 		return time.Time{}, false, nil
 	}
 	switch mark.Type {
 	case "rewind":
-		*dropped += max(0, mark.Dropped)
+		s.dropped += max(0, mark.Dropped)
 	case "compaction":
-		*dropped = 0
-		if mark.Window <= 0 {
-			return time.Time{}, true, nil
+		var entry sessionEntry
+		if json.Unmarshal(line, &entry) != nil {
+			return time.Time{}, false, nil
 		}
+		overlap := compactionOverlap(entry)
+		// Display retains the region above a placed pass and omits its copy
+		// below. Rewinds here affect only the rebuilt window, not that history.
+		// Old markers can also synthesize prefix messages; count any survivors
+		// exactly as replay does before locating the candidate against its floor.
+		prefix := max(0, len(compactionMessages(entry, false))-s.dropped)
+		if overlap < 0 || (s.candidateAfter > 0 && prefix+s.messages-s.candidateAfter >= overlap) {
+			at, _, err := s.result()
+			return at, true, err
+		}
+		s.dropped, s.messages, s.candidateAfter = 0, 0, 0
+		s.candidate = time.Time{}
 	case "message":
 		if mark.Role == "" {
 			return time.Time{}, false, nil
 		}
-		if *dropped > 0 {
-			*dropped--
+		if s.dropped > 0 {
+			s.dropped--
 			return time.Time{}, false, nil
 		}
-		if mark.Role != "user" {
+		s.messages++
+		if mark.Role != "user" || s.candidateAfter > 0 {
 			return time.Time{}, false, nil
 		}
 		var entry sessionEntry
@@ -115,12 +134,20 @@ func (s *personJournalScan) visit(dropped *int) (time.Time, bool, error) {
 		}
 		message := replayedMessage(entry, false)
 		if displayMessageRole(message, entry.Note) == "user" && entryRows(message) > 0 {
-			at := lineInstant(entry.Timestamp)
-			if at.IsZero() {
-				return time.Time{}, false, errors.New("session: person message has no readable timestamp")
-			}
-			return at, true, nil
+			s.candidate, s.candidateAfter = lineInstant(entry.Timestamp), s.messages
 		}
 	}
 	return time.Time{}, false, nil
+}
+
+// A copy's missing time is irrelevant. Only the surviving original must carry
+// a readable time before recovery can compare it with an earlier promise.
+func (s *personJournalScan) result() (time.Time, bool, error) {
+	if s.candidateAfter == 0 {
+		return time.Time{}, false, nil
+	}
+	if s.candidate.IsZero() {
+		return time.Time{}, false, errors.New("session: person message has no readable timestamp")
+	}
+	return s.candidate, true, nil
 }
