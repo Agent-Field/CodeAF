@@ -34,6 +34,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("nudge", stored, h.nudgeJob)
 	h.postJob("priority", stored, h.setPriority)
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
+	h.postJob("model", stored, h.onlyOwner(h.setModel))
 	h.postJob("undo", stored, h.undoJob)
 }
 
@@ -316,6 +317,40 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	}
 	if h.workers != nil && h.workers.desk != nil {
 		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: it.QKind == "cap"})
+	}
+	h.finish(w, err)
+}
+
+// jobModelMost is the longest model id a job keeps.
+const jobModelMost = 200
+
+// setModel keeps the model a person chose for one job's steps ("" for the
+// factory's default) and tells the worker running it, whose next step opens on
+// it and whose running step switches at its next turn. A finished job has no
+// step left to run on it.
+func (h *Handler) setModel(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	var body struct {
+		Model  string      `json:"model"`
+		Expect *api.Expect `json:"expect,omitempty"`
+	}
+	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "model", body.Expect) {
+		return
+	}
+	model := strings.TrimSpace(body.Model)
+	if len(model) > jobModelMost || strings.ContainsAny(model, " \t\r\n") {
+		h.fail(w, http.StatusUnprocessableEntity, "model is a model id of at most 200 characters, with no spaces")
+		return
+	}
+	if factory.JobState(it) == api.StateDone {
+		h.refuse(w, http.StatusConflict, "job is already Done", "conflict", "", nil, api.StateDone)
+		return
+	}
+	if err := h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Model = model; return nil }); h.failed(w, err) {
+		return
+	}
+	var err error
+	if h.workers != nil && h.workers.desk != nil {
+		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalModel, Words: model})
 	}
 	h.finish(w, err)
 }

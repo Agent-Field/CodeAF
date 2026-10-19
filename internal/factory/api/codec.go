@@ -110,7 +110,7 @@ func FromItem(it factory.Item) Job {
 		Owners:    append([]string(nil), it.Owners...),
 		ID:        it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
-		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap,
+		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, Model: it.Model,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
 		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApproval(it),
 		BranchDeleteAt: it.BranchDeleteAt, BranchDeletedAt: it.BranchDeletedAt,
@@ -363,7 +363,7 @@ func ToItem(j Job) factory.Item {
 	it := factory.Item{
 		SetupHeld: j.SetupHeld,
 		Owners:    append([]string(nil), j.Owners...),
-		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
+		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo,
@@ -844,7 +844,7 @@ func runStep(s Step, p factory.Phase) Step {
 		s.RunKind = string(p.Kind)
 	}
 	if r := p.Result; r != nil {
-		s.Result, s.Cost, s.Tests = r.Output, r.Spent, r.Tests
+		s.Result, s.Cost, s.Tests, s.Model = r.Output, r.Spent, r.Tests, r.Model
 	}
 	if !p.At.IsZero() {
 		at := p.At
@@ -899,8 +899,8 @@ func toPhase(s Step) factory.Phase {
 	}
 	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), Note: s.Note,
 		Round: s.Round, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
-	if s.Result != "" || s.Cost != 0 || s.Tests != nil {
-		p.Result = &factory.StageResult{Output: s.Result, Spent: s.Cost, Tests: s.Tests}
+	if s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
+		p.Result = &factory.StageResult{Output: s.Result, Spent: s.Cost, Tests: s.Tests, Model: s.Model}
 	}
 	if s.At != nil {
 		p.At = *s.At

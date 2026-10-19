@@ -23,7 +23,9 @@ the item's manager through `ask` and it waits for the answer, and the sentence
 `End by calling stage_result once.`
 
 Inside, it works like any conversation: it reads, changes, runs, and can hand parts that do
-not need each other to tasks. Your words while it runs reach it, and what it is doing shows in
+not need each other to tasks. It runs on your default model, or on the job's own model when one
+was chosen for the job (the desktop app's model chip on the job); a model chosen while a step
+runs is picked up at that step's next turn. Your words while it runs reach it, and what it is doing shows in
 the item's stream.
 
 It is given two tools that no other conversation has:

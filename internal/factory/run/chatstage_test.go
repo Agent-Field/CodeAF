@@ -266,6 +266,40 @@ func TestAStagesHandleIsItsName(t *testing.T) {
 	}
 }
 
+// THE JOB'S MODEL: a round opens on the job's own model, a model chosen while
+// it runs switches its conversation for the next turn, and the result says
+// which model it ended on.
+func TestAStageOpensOnTheJobsModelAndSwitchesWhenItChanges(t *testing.T) {
+	models := make(chan string, 1)
+	switched := make(chan struct{})
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		models <- "vendor/second"
+		for c.Model() != "vendor/second" {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+		close(switched)
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}
+	job := reviewJob()
+	job.Item.Model = " vendor/first "
+	job.Models = models
+	res, err := NewChatExecutor(maker).Run(context.Background(), job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-switched
+	if spec := maker.Opened()[0].Spec; spec.Model != "vendor/first" {
+		t.Fatalf("opened on %q", spec.Model)
+	}
+	if res.Model != "vendor/second" {
+		t.Fatalf("result model = %q", res.Model)
+	}
+}
+
 func slicesHas(lines []string, want string) bool {
 	for _, l := range lines {
 		if l == want {

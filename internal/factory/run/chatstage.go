@@ -72,6 +72,9 @@ type ConversationSpec struct {
 	// Brief is the conversation's opening ([stageBrief]). The maker seeds it and
 	// starts the first turn on it.
 	Brief string
+	// Model is the model the conversation opens on: the job's own
+	// (Item.Model), "" for the default the maker's launch already carries.
+	Model string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -113,6 +116,13 @@ type ConversationMaker interface {
 // spender is what a conversation may also answer: what its round cost.
 type spender interface {
 	Spent() float64
+}
+
+// modeler is what a conversation may also do: say which model it is on, and
+// switch to another for its next turn, as a person's pick does in any chat.
+type modeler interface {
+	Model() string
+	SetModel(model string)
 }
 
 // The sentences this file writes. stageNoReport is the output of a round
@@ -215,6 +225,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Handle: stageHandle(job),
 		Dir:    job.Dir,
 		Brief:  stageBrief(job),
+		Model:  strings.TrimSpace(job.Item.Model),
 		Stage:  door,
 	}
 	var conv Conversation
@@ -243,7 +254,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		job.Opened(conv.ID())
 	}
 	captions := conv.Captions(ctx)
-	steer := job.Steer
+	steer, models := job.Steer, job.Models
 	idle := make(chan error, 1)
 	go func() { idle <- conv.Wait(ctx) }()
 
@@ -307,6 +318,14 @@ loop:
 			}
 			if err := conv.Send(ctx, words); err != nil {
 				log(steerNotDelivered + oneLine(err.Error()))
+			}
+		case model, ok := <-models:
+			if !ok {
+				models = nil
+				continue
+			}
+			if m, ok := conv.(modeler); ok && strings.TrimSpace(model) != "" {
+				m.SetModel(strings.TrimSpace(model))
 			}
 		case line, ok := <-captions:
 			if !ok {
@@ -374,6 +393,9 @@ loop:
 	res.Chat = conv.ID()
 	if s, ok := conv.(spender); ok {
 		res.Spent = s.Spent()
+	}
+	if m, ok := conv.(modeler); ok {
+		res.Model = m.Model()
 	}
 	return res, nil
 }
@@ -912,7 +934,25 @@ type FakeConversation struct {
 	mu       sync.Mutex
 	sent     []string
 	noted    []string
+	model    string
 	isClosed bool
+}
+
+// Model is the model the fake is on: the spec's, then the last SetModel.
+func (c *FakeConversation) Model() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.model == "" {
+		return c.Spec.Model
+	}
+	return c.model
+}
+
+// SetModel switches the fake's model, as a person's pick does.
+func (c *FakeConversation) SetModel(model string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.model = model
 }
 
 // Send records the words and hands them to the script through Heard while

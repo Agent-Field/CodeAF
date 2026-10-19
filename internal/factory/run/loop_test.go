@@ -1140,3 +1140,44 @@ func TestRunOnAnItemNobodyPausedIsRefused(t *testing.T) {
 	close(p.release)
 	g.waitState(id, factory.StateLanded)
 }
+
+// A MODEL CHOSEN WHILE A JOB RUNS reaches the step running now, and every step
+// after it opens on it.
+func TestAModelChosenMidRunReachesTheRunningStepAndTheNext(t *testing.T) {
+	var mu sync.Mutex
+	opened := map[string]string{}
+	heard := make(chan string, 1)
+	var g *rig
+	g = newRig(t, map[factory.StageKind]Executor{
+		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			mu.Lock()
+			opened[job.Stage.Name] = job.Item.Model
+			mu.Unlock()
+			if job.Stage.Name == "write" {
+				if err := g.r.SetModel(job.Item.ID, "vendor/strong"); err != nil {
+					t.Error(err)
+				}
+				select {
+				case m := <-job.Models:
+					heard <- m
+				case <-time.After(5 * time.Second):
+					t.Error("the running step never heard the model")
+				}
+			}
+			return done(""), nil
+		}),
+	}, nil)
+	id := g.add("one", chat("write"), chat("review"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitState(id, factory.StateLanded)
+	if m := <-heard; m != "vendor/strong" {
+		t.Fatalf("the running step heard %q", m)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if opened["write"] != "" || opened["review"] != "vendor/strong" {
+		t.Fatalf("opened on %+v", opened)
+	}
+}

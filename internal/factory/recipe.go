@@ -337,6 +337,9 @@ type StageResult struct {
 	// Chat names the stage's conversation when the stage ran as one, so the
 	// phase strip can open it.
 	Chat string
+	// Model is the model the stage's conversation was on when the round
+	// ended, "" for a stage that was not a conversation.
+	Model string `json:",omitempty"`
 }
 
 // Met says whether a round's result meets the stage's until. An empty until

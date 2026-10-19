@@ -503,6 +503,11 @@ type Item struct {
 	// RUNNER LANDS, and until then nothing reads them but the item's own
 	// conversation and its page.
 	Notes []string
+	// Model is the model this job's steps run on, as a person chose it for
+	// this job; "" is the factory's default. Every step reads it when it
+	// starts, and a change reaches a step already running at its next turn
+	// (run's SetModel), as a conversation's model does.
+	Model string `json:",omitempty"`
 	// Talk is the item's own conversation, by its session file: the one `T`
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.

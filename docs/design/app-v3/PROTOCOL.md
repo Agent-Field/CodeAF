@@ -2457,6 +2457,7 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 | `factory.job_step_stop` | step | `…/steps/{step}/stop` (assignee only) |
 | `factory.job_step_rerun` | step, words? (what to do differently; kept on the job's notes) | `…/steps/{step}/rerun` (assignee only) |
 | `factory.job_merge` | commit? (the pull request's head the person saw) | `…/merge` (assignee only; the factory's merge gate decides) |
+| `factory.job_set_model` | model (a model id; empty for the factory's default) | `…/model` (assignee only; the next step opens on it and a running step switches at its next turn) |
 | `factory.job_create` | factory, repo (owner/name), title, text?, assignee?, start? (`backlog`\|`now`) | `POST /v1/jobs` |
 
 **A stuck step.** A job waiting with `needs_you.kind` `out_of_rounds` is a step that stopped short (it never reported, ran out of time, or its until did not hold); `needs_you.question.text` says so in the factory's words and `state_presentation.title` is `Stuck`. Its recovery is `factory.job_step_rerun`: on the stuck step to try again, or on `needs_you.back_to`, the finished step before it, to send the work back (left out when there is none, as for the first step); `words` are kept on the job's notes, which every step's brief carries. Stopping is `factory.job_stop`. The question's own answers are not carried.
@@ -2760,6 +2761,20 @@ Setup after a restart. Saved setup progress is not proof of a live GitHub creden
 | `memory.applies` | agent | MemoryScopeSnapshot |
 
 Available when hello includes `memory.applies`; other engines answer `unknown_method`. This reads the memory scope applicable to an existing agent.
+
+## Factory: a job's conversations (`factory.job_chats`)
+
+Feature `factory.job_chats` is present only when the engine implements `FactoryJobChatter` on top of the factory interface. Other engines answer `unknown_method`.
+
+| method | params | answers |
+|---|---|---|
+| `factory.job_chats` | `{factory, job}` | `FactoryJobChats {factory, job, agent, steps: [{step, agent}]}` |
+
+`agent` is the job's agent: the item's own conversation, which the run reports into and which reads what the person types as the brief before a run and the steer during one (and the answer while the job waits on a question). It is made when the job has none yet; that makes a conversation and its team on this machine, asks no model and starts no job. `steps` is the latest chat of each step that ran, in the run's order; a step that has not run, or whose chat cannot be opened, is left out. Each `agent` is an ordinary agent id: the engine holds it open before answering (a running step is lent, as to any window), so the app opens and messages it as it does any conversation, and a message to a step's chat goes to that step directly. The chats are read from the factory's own record of the job, never from a team's names.
+
+Only the factory this engine serves (`factory_local`) is answered; any other is `not_found` ("this factory's chats are on the machine that runs its jobs"). A job with a model of its own (`job.model`) puts its agent on that model, and `factory.job_set_model` moves the agent with the job, so every chat of one job reads one model.
+
+The factory's teams (`factory_managed`) are the job's and no longer appear in `crews.overview`'s team pages; reading one by id still answers it.
 
 ## Factory: changing a computer's slots (`factory.runner_manage`)
 

@@ -83,6 +83,7 @@ const (
 	JobActStepStop       = "step_stop"
 	JobActStepRerun      = "step_rerun"
 	JobActMerge          = "merge"
+	JobActSetModel       = "set_model"
 )
 
 // FactoryJobActionParams names the job and the read it was acted on from. It
@@ -138,6 +139,19 @@ type FactoryJobMergeParams struct {
 	Commit  string      `json:"commit,omitempty"`
 	Expect  *api.Expect `json:"expect"`
 }
+
+// FactoryJobSetModelParams chooses the model ONE job's steps run on. Model
+// is a model id; "" goes back to the factory's default. The next step opens on
+// it, and a step already running switches at its next turn.
+type FactoryJobSetModelParams struct {
+	Factory string      `json:"factory"`
+	Job     int         `json:"job"`
+	Model   string      `json:"model"`
+	Expect  *api.Expect `json:"expect"`
+}
+
+// MaxFactoryJobModel is the longest model id a job keeps.
+const MaxFactoryJobModel = 200
 
 // FactoryJobApproveParams approves ONE job. Commit is the head commit the
 // person saw (api.Job.HeadCommit): the factory refuses an approval of any
@@ -266,6 +280,7 @@ type FactoryActor interface {
 	FactoryJobStepStop(ctx context.Context, p FactoryJobStepParams) (FactoryJobActed, error)
 	FactoryJobStepRerun(ctx context.Context, p FactoryJobStepParams) (FactoryJobActed, error)
 	FactoryJobMerge(ctx context.Context, p FactoryJobMergeParams) (FactoryJobActed, error)
+	FactoryJobSetModel(ctx context.Context, p FactoryJobSetModelParams) (FactoryJobActed, error)
 }
 
 func withFactoryActorFeature(hello Hello, e Engine) Hello {
@@ -421,6 +436,17 @@ func prepMerge(p *FactoryJobMergeParams) error {
 	return nil
 }
 
+func prepSetModel(p *FactoryJobSetModelParams) error {
+	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+		return err
+	}
+	p.Model = strings.TrimSpace(p.Model)
+	if len(p.Model) > MaxFactoryJobModel || strings.ContainsFunc(p.Model, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
+		return Errorf(CodeBadParams, "model must be a model id of at most 200 characters, with no spaces")
+	}
+	return nil
+}
+
 func prepChanges(p *FactoryJobChangesParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
@@ -516,6 +542,7 @@ func init() {
 		"factory.job_step_stop":       factoryAction("factory.job_step_stop", prepStep, FactoryActor.FactoryJobStepStop),
 		"factory.job_step_rerun":      factoryAction("factory.job_step_rerun", prepStepRerun, FactoryActor.FactoryJobStepRerun),
 		"factory.job_merge":           factoryAction("factory.job_merge", prepMerge, FactoryActor.FactoryJobMerge),
+		"factory.job_set_model":       factoryAction("factory.job_set_model", prepSetModel, FactoryActor.FactoryJobSetModel),
 	} {
 		methods[name] = m
 		factoryActionMethods[name] = m

@@ -30,6 +30,8 @@ var Verbs = []Verb{
 	{"retry_publish", nil},
 	// Merge is the factory's own: its gate and the lease's merge signal.
 	{"merge", nil},
+	// A job's model is the factory's own record and the lease's model signal.
+	{"model", nil},
 	{"request_changes", []string{"SendBack"}},
 	{"recheck", []string{"Reverify"}},
 	{"shape", []string{"Shape"}},

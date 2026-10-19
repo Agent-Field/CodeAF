@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,9 @@ import (
 // appFactoryHost mounts the solo floor without opening a second listener.
 // Service election and worker election use the same files as terminal windows.
 type appFactoryHost struct {
+	// seam is the floor's door the service serves, kept for what the app asks
+	// of this machine's factory directly (a job's conversations).
+	seam                               factory.Seam
 	defaultTarget                      func() (factoryTarget, error)
 	parent                             func() session.Config
 	mu                                 sync.Mutex
@@ -146,7 +150,8 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	if h.seamHook != nil {
 		seam = h.seamHook(seam)
 	}
-	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: "This machine", Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+	h.seam = seam
+	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: "This machine", Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
@@ -509,6 +514,17 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 	// whichever parent this host was given.
 	source := &factoryParentSource{raw: raw, profile: h.profile}
 	return source, raw, true
+}
+
+// defaultModel is the model this machine's runner opens a step on when the job
+// names none: the parent every stage opens from, settled on the saved Task
+// models policy, exactly as the stage maker reads it.
+func (h *appFactoryHost) defaultModel() string {
+	source, _, ok := h.parentSource()
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(source.Config().Model)
 }
 
 // Power uses the elected runner's saved registration, so a second process

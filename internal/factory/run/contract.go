@@ -66,6 +66,10 @@ type Job struct {
 	// Steer delivers the person's words while the round runs; a chat stage
 	// hands them to its conversation, a check ignores them.
 	Steer <-chan string
+	// Models delivers a model the person chose for the job while the round
+	// runs; a chat stage switches its conversation to it for its next turn, a
+	// check ignores it. The round opened on Item.Model.
+	Models <-chan string
 	// Log appends one line to the item's stream, timestamped by the runner.
 	Log func(line string)
 	// Spend reports model cost the round incurred, in dollars, as it happens.

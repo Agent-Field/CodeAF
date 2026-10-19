@@ -509,6 +509,8 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			_ = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
 			_ = r.Steer(j.id, s.Words)
+		case lease.SignalModel:
+			_ = r.SetModel(j.id, s.Words)
 		case lease.SignalShape:
 			j.shape(ctx)
 		case lease.SignalStop:

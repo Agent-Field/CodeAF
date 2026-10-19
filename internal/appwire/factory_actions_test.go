@@ -65,6 +65,9 @@ func (a *actorEngine) FactoryJobRetryPublish(_ context.Context, p FactoryJobActi
 func (a *actorEngine) FactoryJobMerge(_ context.Context, p FactoryJobMergeParams) (FactoryJobActed, error) {
 	return a.did("merge", p)
 }
+func (a *actorEngine) FactoryJobSetModel(_ context.Context, p FactoryJobSetModelParams) (FactoryJobActed, error) {
+	return a.did("set_model", p)
+}
 func (a *actorEngine) FactoryJobCreate(_ context.Context, p FactoryJobCreateParams) (FactoryJobActed, error) {
 	return a.did("create", p)
 }
@@ -96,6 +99,7 @@ var factoryActionGood = map[string]string{
 	"factory.job_step_stop":       `{"factory":"f","job":1,"step":"build",` + guard + `}`,
 	"factory.job_step_rerun":      `{"factory":"f","job":1,"step":"build",` + guard + `}`,
 	"factory.job_merge":           `{"factory":"f","job":1,"commit":"abc1234",` + guard + `}`,
+	"factory.job_set_model":       `{"factory":"f","job":1,"model":"deepseek/deepseek-v4-flash",` + guard + `}`,
 }
 
 func TestEveryFactoryActionHasAValidRequestHere(t *testing.T) {
@@ -160,6 +164,7 @@ func TestFactoryActionsRefuseBadRequestsBeforeTheEngine(t *testing.T) {
 		{"factory.job_step_rerun", `{"factory":"f","job":1,"step":"a?b",` + guard + `}`},
 		// A stop takes no words; only a rerun says what to do differently.
 		{"factory.job_step_stop", `{"factory":"f","job":1,"step":"build","words":"why",` + guard + `}`},
+		{"factory.job_set_model", `{"factory":"f","job":1,"model":"two words",` + guard + `}`},
 		{"factory.job_create", `{"factory":"f","repo":"norepo","title":"x"}`},
 		{"factory.job_create", `{"factory":"f","repo":"o/r","title":" "}`},
 		{"factory.job_create", `{"factory":"f","repo":"o/r","title":"x","start":"queued"}`},
