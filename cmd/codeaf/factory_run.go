@@ -52,10 +52,10 @@ const factoryNoWorkerEnv = "CODEAF_FACTORY_NO_WORKER"
 // The manual quotes it (internal/manual/chat/factory.md).
 const factoryBenchesDefault = api.DefaultRunnerSlots
 
-// factoryStageWall is the most one stage conversation runs for, which is also
-// what makes it an unattended conversation that keeps going until its work is
-// done (internal/session's Budget): nobody is at its keyboard.
-const factoryStageWall = 2 * time.Hour
+// factoryStageWall is the most one stage conversation runs for: the runner's
+// own bound on a round (internal/factory/run's StageWall), handed to the
+// conversation as its budget so the tasks it hands out are bounded by it too.
+const factoryStageWall = factoryrun.StageWall
 
 // factoryProcess is what this process built for the floor once: the manager's
 // shaping door every window's page uses, and the worker loop's stop.

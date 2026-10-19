@@ -330,7 +330,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean after 2 rounds: 2 findings · try once more, send it back, or cancel the job?"
+	q := "review is not clean after 2 rounds: 2 findings · try again, or stop the job?"
 	it := g.asked(id, q)
 	if calls.Load() != 2 || it.QKind != factory.QKindOutOfAttempts {
 		t.Fatalf("calls %d, kind %q", calls.Load(), it.QKind)
@@ -341,7 +341,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, "review is not clean after 3 rounds: 2 findings · try once more, send it back, or cancel the job?")
+	g.asked(id, "review is not clean after 3 rounds: 2 findings · try again, or stop the job?")
 	if calls.Load() != 3 {
 		t.Fatalf("one more round ran %d calls", calls.Load())
 	}
@@ -351,6 +351,40 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	it = g.waitState(id, factory.StateNew)
 	if it.Question != "" || it.Failure != nil || !logHas(it, "stopped · branch kept") {
 		t.Fatalf("cancel = %+v failure %+v", it.Stream, it.Failure)
+	}
+}
+
+// ROUNDS ARE NAMED ONLY WHERE THERE WERE ROUNDS, a step that never reported
+// says so, and send it back is offered only where there is a step to go back
+// to.
+func TestAStepThatStoppedSaysWhatHappenedInPlainWords(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		stage factory.Stage
+		round int
+		res   factory.StageResult
+		note  string
+		why   string
+	}{
+		{"never reported", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: stageNoReport}, "plan stopped without reporting", ""},
+		{"turn broke", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: stageNoReport + ": the provider refused"}, "plan stopped without reporting", "the provider refused"},
+		{"walled", factory.Stage{Name: "write"}, 1, factory.StageResult{Output: stageWalled}, "write ran out of time without reporting", ""},
+		{"one try, could not", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: "the issue names a file that is gone\nmore"}, "plan did not finish", "the issue names a file that is gone"},
+		{"one try, until held back", factory.Stage{Name: "test", Until: factory.UntilProven, Max: 1}, 1, factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "a", OK: true, Evidence: "x"}, {Text: "b"}}}, "test is not proven", "1 of 2 claims shown"},
+		{"loops", factory.Stage{Name: "review", Until: factory.UntilClean, Max: 2}, 2, factory.StageResult{Done: true, Findings: 2}, "review is not clean after 2 rounds", "2 findings"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			note, why := stepShort(tc.stage.Name, tc.stage, tc.round, tc.res)
+			if note != tc.note || why != tc.why {
+				t.Fatalf("stepShort = %q, %q; want %q, %q", note, why, tc.note, tc.why)
+			}
+			if strings.Contains(note, "round") && tc.stage.Max <= 1 {
+				t.Fatalf("a one-try step named rounds: %q", note)
+			}
+		})
+	}
+	if stepShortChoices(false) != "try again, or stop the job?" || stepShortChoices(true) != "try again, send it back, or stop the job?" {
+		t.Fatal("the choices offered a step to go back to that is not there")
 	}
 }
 
@@ -369,7 +403,7 @@ func TestOutOfAttemptsSendBackRunsThePreviousStep(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean after 1 round: 1 finding · try once more, send it back, or cancel the job?"
+	q := "review is not clean: 1 finding · try again, send it back, or stop the job?"
 	g.asked(id, q)
 	if err := g.r.Answer(id, false, "send_back: use the other file"); err != nil {
 		t.Fatal(err)

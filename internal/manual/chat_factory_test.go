@@ -54,6 +54,18 @@ func TestTheFactoryQuestionsReachTheirSections(t *testing.T) {
 			says:     []string{"`factory_add`", "writes nothing until you say yes", "none of them starts a job"},
 		},
 		{
+			question: "what is this out of rounds state, my factory job stopped",
+			page:     "factory-stage-conversations",
+			title:    "a step stopped without reporting",
+			says:     []string{"`stage_result`", "asked once for the report", "Rounds are named only for a step that loops"},
+		},
+		{
+			question: "the plan step stopped without reporting, how do I try again",
+			page:     "factory-stage-conversations",
+			title:    "a step stopped without reporting",
+			says:     []string{"plan stopped without reporting · try again, or stop the job?", "never offers it"},
+		},
+		{
 			question: "what does a factory stage conversation get, stage_result and plan_edit",
 			page:     "factory-stage-conversations",
 			title:    "a stage is a conversation",

@@ -35,9 +35,13 @@ import (
 //
 //   - Stage is the round's door, so `stage_result` and `plan_edit` are on its
 //     belt (internal/session's tools_stage.go);
-//   - it is UNATTENDED, under a wall of [factoryStageWall]: nobody is at its
-//     keyboard, so it keeps going on its own until its work, and the tasks it
-//     handed out, are done;
+//   - it is UNATTENDED: nobody is at its keyboard, so a card it raises takes
+//     its default and a task's landing takes the check road's accept. It has
+//     NO GOAL OWNER, because its runner already judges what it reports
+//     (internal/session's newPrincipalFor): it works until it calls
+//     `stage_result`, and the runner asks once for a report it forgot. The
+//     budget's wall, [factoryStageWall], bounds what it hands out to tasks,
+//     and the runner bounds the round with the same figure;
 //   - it runs at the ALLOW POSTURE, what --yolo gives, behind the headless
 //     gate ([stageApprovalGate]): a stage that writes must be able to edit and
 //     run things in its checkout, and nothing it does may wait on a person who
@@ -134,7 +138,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// it as another window's) to Close or to a failed start (app_lend.go).
 	rememberStageAgent(agent)
 	if team := strings.TrimSpace(spec.Team); team != "" && !resumed {
-		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name, spec.Brief); err != nil {
+		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name, spec.Handle, spec.Brief); err != nil {
 			forgetStageAgent(agent)
 			_ = agent.Close()
 			return nil, err
@@ -157,7 +161,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	c.wakes, c.stopWakes = agent.WatchWakes()
-	guard.Go("factory/stage-conversation", func() { c.follow(events) })
+	done := c.done
+	guard.Go("factory/stage-conversation", func() { c.follow(events, done) })
 	return c, nil
 }
 
@@ -241,7 +246,7 @@ func (g stageApprovalGate) Standing() string { return g.posture }
 // IT IS THE OPENING BRIEF AND ONLY THAT: a resumed stage is never joined again
 // (Open skips this), because what a resume is given is a carry-on note
 // ([session.CarryOn]) and not the brief the stage began on.
-func stageJoinTeam(profileDir, team, transcript, where, name, brief string) error {
+func stageJoinTeam(profileDir, team, transcript, where, name, handle, brief string) error {
 	key := transcript
 	if real, err := filepath.EvalSymlinks(transcript); err == nil {
 		key = real
@@ -249,7 +254,7 @@ func stageJoinTeam(profileDir, team, transcript, where, name, brief string) erro
 	key = filepath.Clean(key)
 	now := time.Now()
 	return teams.Update(profileDir, func(f *teams.File) error {
-		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, JoinedAt: now, FactoryStage: true, FactoryBrief: redact.Secrets(brief)})
+		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: handle, JoinedAt: now, FactoryStage: true, FactoryBrief: redact.Secrets(brief)})
 	})
 }
 
@@ -275,15 +280,17 @@ type stageConversation struct {
 // follow drains the first turn, then every turn a landing wakes, into the
 // captions, and closes done when the conversation has been idle for a whole
 // [stageSettle]: its turn ended AND nothing it handed out is still running.
-func (c *stageConversation) follow(first <-chan session.Event) {
-	defer close(c.done)
+func (c *stageConversation) follow(first <-chan session.Event, done chan struct{}) {
 	c.drain(first)
 	settled := false
 	for {
 		if c.agent.StillGoing() {
 			settled = false
 		} else if settled {
-			return
+			if c.settle(done) {
+				return
+			}
+			settled = false
 		} else {
 			settled = true
 		}
@@ -292,6 +299,9 @@ func (c *stageConversation) follow(first <-chan session.Event) {
 		case stream, open := <-c.wakes:
 			t.Stop()
 			if !open {
+				c.mu.Lock()
+				close(done)
+				c.mu.Unlock()
 				return
 			}
 			settled = false
@@ -299,6 +309,20 @@ func (c *stageConversation) follow(first <-chan session.Event) {
 		case <-t.C:
 		}
 	}
+}
+
+// settle closes done when the conversation is still idle, under the lock
+// [stageConversation.deliver] starts a next turn under: a note that lands in the
+// same breath either starts its turn first, which this reads as going, or
+// finds done closed and follows its turn again.
+func (c *stageConversation) settle(done chan struct{}) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.agent.StillGoing() {
+		return false
+	}
+	close(done)
+	return true
 }
 
 // drain reads one turn's events into captions and keeps its failure.
@@ -351,12 +375,41 @@ func (c *stageConversation) say(line string) {
 // Send hands the person's words to the conversation: into the turn when one
 // is running, as the next turn when none is.
 func (c *stageConversation) Send(_ context.Context, words string) error {
+	return c.deliver(words)
+}
+
+// Note hands codeaf's own words to the conversation the same way, as a
+// carry-on note ([session.CarryOn]) so the chat never shows them as the
+// person's.
+func (c *stageConversation) Note(_ context.Context, words string) error {
+	return c.deliver(session.CarryOn(words))
+}
+
+// deliver steers the running turn, or starts the next one. A conversation that
+// had already gone idle is followed again from that turn, so [Wait] answers
+// when it is idle once more rather than at once.
+func (c *stageConversation) deliver(words string) error {
+	c.mu.Lock()
 	events, err := c.agent.Steer(words)
 	if errors.Is(err, session.ErrNothingToSteer) {
 		events, err = c.agent.FollowUp(words)
 	}
 	if err != nil {
+		c.mu.Unlock()
 		return err
+	}
+	idle := false
+	select {
+	case <-c.done:
+		idle = true
+		c.done, c.failure = make(chan struct{}), nil
+	default:
+	}
+	done := c.done
+	c.mu.Unlock()
+	if idle {
+		guard.Go("factory/stage-conversation", func() { c.follow(events, done) })
+		return nil
 	}
 	guard.Go("factory/stage-steer", func() { c.drain(events) })
 	return nil
@@ -364,8 +417,11 @@ func (c *stageConversation) Send(_ context.Context, words string) error {
 
 // Wait returns when the conversation is idle, or when ctx ends.
 func (c *stageConversation) Wait(ctx context.Context) error {
+	c.mu.Lock()
+	done := c.done
+	c.mu.Unlock()
 	select {
-	case <-c.done:
+	case <-done:
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		return c.failure

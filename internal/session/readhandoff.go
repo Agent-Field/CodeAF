@@ -47,6 +47,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
+// maySweepReads says whether the loop may hand this agent's reading off.
+// Conversations only: a task worker's own reads are its work, not a sweep, and
+// so are a factory stage's. A plan stage IS a reading, and handing it to a
+// quick task on another model left the stage waiting on a worker that answered
+// `done` to a question nobody had asked it (2026-10-18).
+func (c Config) maySweepReads() bool { return !c.InTask && !c.mayStage() }
+
 // readSweepTargets is the number of distinct read-only targets at which a turn
 // stops being a reader and starts being a sweeper. Three, because two files is
 // a comparison the chat may be holding and three is a set.

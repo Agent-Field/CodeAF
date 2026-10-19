@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -222,5 +223,40 @@ func TestTheStageVerbsHaveAFamilyAGlossAndAPageInTheManual(t *testing.T) {
 	}
 	if glossField["stage_result"] != "output" || glossField["plan_edit"] != "why" {
 		t.Fatal("the stage verbs are glossed by the wrong field")
+	}
+}
+
+// A FACTORY STAGE HAS ONE JUDGE, ITS RUNNER. Armed exactly as the factory
+// arms one (unattended, under a wall), a stage conversation has no goal owner,
+// so nothing in it can say done for a stage that never reported; and it is
+// still asked whether it is going, so its runner waits for a landing it owes
+// an answer.
+func TestAStageConversationHasNoGoalOwnerAndIsStillAskedIfItIsGoing(t *testing.T) {
+	stage, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Stage = &fakeStageDoor{}
+		c.Unattended, c.Budget = true, Budget{Wall: time.Hour}
+	})
+	if stage.steward() != nil {
+		t.Fatal("a stage conversation was given a goal owner")
+	}
+	if stage.checkpoints(context.Background(), userMessage{wake: true}) {
+		t.Fatal("a stage conversation takes stock, which only a goal owner reads")
+	}
+	stage.graph()
+	if stage.StillGoing() {
+		t.Fatal("an idle stage read as still going")
+	}
+	stage.mu.Lock()
+	stage.steering = append(stage.steering, jobNote("task 1 has landed"))
+	stage.mu.Unlock()
+	if !stage.StillGoing() {
+		t.Fatal("a stage owed an answer to a landing read as idle")
+	}
+
+	plain, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Unattended, c.Budget = true, Budget{Wall: time.Hour}
+	})
+	if plain.steward() == nil {
+		t.Fatal("an unattended run under a wall lost its goal owner")
 	}
 }

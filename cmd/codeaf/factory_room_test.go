@@ -29,7 +29,7 @@ func TestARecordedRoomIsMadeOnAMachineThatNeverSawIt(t *testing.T) {
 		if j.Item.Stream.Room != it.Stream.Room {
 			t.Fatalf("logical room changed: %q", j.Item.Stream.Room)
 		}
-		return factory.StageResult{}, stageJoinTeam(profile, j.Item.Stream.Room, chat, root, "review", "Actual opening instructions.")
+		return factory.StageResult{}, stageJoinTeam(profile, j.Item.Stream.Room, chat, root, "review", "review", "Actual opening instructions.")
 	}))
 	for round := 0; round < 2; round++ {
 		if _, err = exec.Run(context.Background(), factoryrun.Job{Item: it}); err != nil {

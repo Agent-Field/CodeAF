@@ -865,12 +865,16 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			return lp.finish(c, i, name, "")
 		}
 		if round >= limit {
-			until := strings.TrimSpace(st.Until)
-			if until == "" {
-				until = factory.UntilDone
+			back := false
+			if cur, getErr := lp.r.opts.Store.Get(c.id); getErr == nil && cur.Stream != nil {
+				back = factory.PreviousWork(cur.Stream.Phases, i) >= 0
 			}
-			note := fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round))
-			q := note + ": " + shortfall(res) + " · try once more, send it back, or cancel the job?"
+			note, why := stepShort(name, st, round, res)
+			q := note
+			if why != "" {
+				q += ": " + why
+			}
+			q += " · " + stepShortChoices(back)
 			// OUT OF ATTEMPTS IS A QUESTION, not a failed step. The phase waits.
 			a, ok := lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
 			if !ok {
@@ -903,6 +907,51 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		lp.say(c, "fail", fmt.Sprintf("%s %d/%d: %s · going again", name, round, limit, shortfall(res)))
 		round++
 	}
+}
+
+// stepShort is what the person reads about a step that ended without its
+// until holding: the note the step keeps, and why, "" when the note says it.
+//
+//   - `plan stopped without reporting` — the conversation never called
+//     `stage_result`, even when asked once (chatstage.go);
+//   - `plan did not finish: <what it said>` — a one-try step that reported it
+//     could not;
+//   - `test is not proven: 1 of 2 claims shown` — a one-try step whose until
+//     did not hold;
+//   - `review is not clean after 2 rounds: 2 findings` — a step that loops.
+//
+// ROUNDS ARE NAMED ONLY WHERE THERE WERE ROUNDS. A plan that runs once read
+// `plan is not done after 1 round` on 2026-10-18, which the person took for a
+// step that had failed over and over; it had never reported at all.
+func stepShort(name string, st factory.Stage, round int, res factory.StageResult) (note, why string) {
+	switch {
+	case res.Output == stageWalled:
+		return name + " ran out of time without reporting", ""
+	case strings.HasPrefix(res.Output, stageNoReport):
+		return name + " stopped without reporting", strings.TrimPrefix(strings.TrimPrefix(res.Output, stageNoReport), ": ")
+	}
+	until := strings.TrimSpace(st.Until)
+	if until == "" {
+		until = factory.UntilDone
+	}
+	if st.Max > 1 {
+		return fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round)), shortfall(res)
+	}
+	if until == factory.UntilDone && !res.Done {
+		return name + " did not finish", firstLine(res.Output)
+	}
+	return name + " is not " + until, shortfall(res)
+}
+
+// stepShortChoices is the end of that question: what the person may do, with
+// send it back only when there is a finished step before this one to send the
+// work back to. The answers are the same tokens either way
+// ([factory.OutOfAttemptOptions]); stopping is the job's own Stop.
+func stepShortChoices(back bool) string {
+	if back {
+		return "try again, send it back, or stop the job?"
+	}
+	return "try again, or stop the job?"
 }
 
 // roundsWord is a count of rounds as a person says it, `1 round` and `2

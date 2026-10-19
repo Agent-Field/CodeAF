@@ -147,7 +147,7 @@ func TestTheManagerHearsEveryStageInOrderInTheFloorsWords(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "test is not proven after 1 round: 1 of 2 claims shown · try once more, send it back, or cancel the job?"
+	q := "test is not proven: 1 of 2 claims shown · try again, send it back, or stop the job?"
 	g.asked(id, q)
 	m := "manager-" + strconv.Itoa(id)
 	talk.waitSaid(t, m, "asking you: "+q)
