@@ -9,9 +9,9 @@ import (
 
 // StepControl rewinds under the desk lock and revokes the old lease in the
 // same operation. A late heartbeat or report cannot restore the previous run.
-func (d *Doors) StepControl(id int, name string, rerun bool) error {
+func (d *Doors) StepControl(id int, name string, rerun bool, words string) error {
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if err := run.StepControl(it, name, rerun, now); err != nil {
+		if err := run.StepControl(it, name, rerun, words, now); err != nil {
 			return false, err
 		}
 		delete(doc.Signals, id)

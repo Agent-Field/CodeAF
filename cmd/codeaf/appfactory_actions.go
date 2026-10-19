@@ -322,7 +322,10 @@ func (b *appBackend) FactoryJobStepStop(ctx context.Context, p appwire.FactoryJo
 }
 
 func (b *appBackend) FactoryJobStepRerun(ctx context.Context, p appwire.FactoryJobStepParams) (appwire.FactoryJobActed, error) {
-	return b.jobWrite(ctx, p.Factory, appwire.JobActStepRerun, p.Job, "steps/"+stepSegment(p.Step)+"/rerun", guardBody{p.Expect})
+	return b.jobWrite(ctx, p.Factory, appwire.JobActStepRerun, p.Job, "steps/"+stepSegment(p.Step)+"/rerun", struct {
+		Expect *api.Expect `json:"expect,omitempty"`
+		Words  string      `json:"words,omitempty"`
+	}{p.Expect, p.Words})
 }
 
 // stepSegment is a step name as one path segment. The name was checked to

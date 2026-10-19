@@ -64,11 +64,16 @@ func TestJobScreensStopRerunKeepsEarlierWorkAndRevokesLease(t *testing.T) {
 	if cur.State != factory.StateQueued || cur.Stream.Phases[0].Result.Output != "keep this plan" || cur.Stream.Phases[1].Chat != "" || cur.Stream.Phases[1].Round != 0 || cur.Stream.Spent != 1.25 || cur.Failure != nil {
 		t.Fatalf("rerun: %+v", cur)
 	}
-	f.post(t, it, "steps/plan/rerun", "{}", 200)
+	f.post(t, it, "steps/plan/rerun", `{"words":"  use the other file  "}`, 200)
 	cur, _ = f.st.Get(it.ID)
 	if cur.Stream.Cur != 0 || cur.Stream.Phases[0].State != factory.PhaseRunning || cur.Stream.Spent != 1.25 {
 		t.Fatalf("first step rerun lost revival state: %+v", cur.Stream)
 	}
+	// THE WORDS ARE KEPT WHERE EVERY STEP READS THEM, and a stop takes none.
+	if len(cur.Notes) != 1 || cur.Notes[0] != "use the other file" {
+		t.Fatalf("rerun words = %q", cur.Notes)
+	}
+	f.post(t, it, "steps/plan/stop", `{"words":"why"}`, 422)
 	events, err := f.rec.Since(context.Background(), time.Time{})
 	if err != nil || len(events) < 3 || events[len(events)-1].Kind != record.StepRerun {
 		t.Fatalf("events: %+v %v", events, err)

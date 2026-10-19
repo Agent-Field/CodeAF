@@ -158,6 +158,8 @@ func TestFactoryActionsRefuseBadRequestsBeforeTheEngine(t *testing.T) {
 		{"factory.job_step_stop", `{"factory":"f","job":1,"step":"",` + guard + `}`},
 		{"factory.job_step_rerun", `{"factory":"f","job":1,"step":"a/../b",` + guard + `}`},
 		{"factory.job_step_rerun", `{"factory":"f","job":1,"step":"a?b",` + guard + `}`},
+		// A stop takes no words; only a rerun says what to do differently.
+		{"factory.job_step_stop", `{"factory":"f","job":1,"step":"build","words":"why",` + guard + `}`},
 		{"factory.job_create", `{"factory":"f","repo":"norepo","title":"x"}`},
 		{"factory.job_create", `{"factory":"f","repo":"o/r","title":" "}`},
 		{"factory.job_create", `{"factory":"f","repo":"o/r","title":"x","start":"queued"}`},
