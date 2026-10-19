@@ -3768,9 +3768,9 @@ type Agent struct {
 	// deadline, or with the turn (task.go). The ids are the GRAPH's — a proposal
 	// is a node that has not been admitted yet, not a second numbering.
 	taskAnswers map[uint64]*taskQuestion
-	// taskNow and taskTimer are the proposal clock's test seam. Production leaves
-	// them nil and takes the real clock; keeping both decisions together lets a
-	// contract test cross the old deadline without sleeping or racing a machine.
+	// taskNow and taskTimer are the task clock's test seams, shared by proposal
+	// deadlines and read hand-off waits. Production leaves them nil and takes
+	// the real clock, so tests can cross a deadline without sleeping.
 	taskNow   func() time.Time
 	taskTimer func(time.Duration) (<-chan time.Time, func())
 	// automationAnswers and automationSeq are the same wait, for automation

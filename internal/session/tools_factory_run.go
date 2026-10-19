@@ -41,7 +41,7 @@ type RunDoor interface {
 }
 
 // mayRun says whether `factory_run` belongs on this belt.
-func (c Config) mayRun() bool { return c.FactoryRun != nil }
+func (c Config) mayRun() bool { return !c.readingTask() && c.FactoryRun != nil }
 
 // The words the tool answers with.
 const (

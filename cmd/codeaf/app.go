@@ -3392,8 +3392,15 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 	}
 	var transcript string
 	var fallback time.Time
+	// A quick task is listed by AppQuickTasks, never as a task here (#1880).
+	quickIDs := map[string]bool{}
 	b.locked(func() {
 		transcript, fallback = a.transcript, a.view.UpdatedAt
+		if a.live != nil {
+			for id := range a.live.quicks {
+				quickIDs[id] = true
+			}
+		}
 	})
 	var tasks []appwire.Task
 	index := map[string]int{}
@@ -3411,6 +3418,7 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 			notice.State = session.TaskInterrupted
 		}
 		if notice.Kind == session.TaskKindQuick {
+			quickIDs[appTaskID(id, notice.ID)] = true
 			continue
 		}
 		// A TASK THE CONVERSATION LEFT RUNNING WHEN IT CLOSED is interrupted:
@@ -3437,6 +3445,10 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 	if path := session.TaskIndexPath(transcript); path != "" {
 		for _, row := range session.ReadTaskIndex(path) {
 			if row.SessionID != id {
+				continue
+			}
+			if row.Kind == session.TaskKindQuick {
+				quickIDs[appIndexTaskID(id, row.ID)] = true
 				continue
 			}
 			state := appTaskState(row.Status)
@@ -3470,6 +3482,9 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 		}
 	}
 	for taskID, task := range b.heldTaskViews(a) {
+		if quickIDs[taskID] {
+			continue
+		}
 		if i, ok := index[taskID]; ok {
 			if task.UpdatedAt.IsZero() {
 				task.UpdatedAt = tasks[i].UpdatedAt

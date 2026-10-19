@@ -52,7 +52,7 @@ type FloorDoor interface {
 
 // mayFloor says whether `factory_floor` belongs on this belt: there is a door
 // behind it.
-func (c Config) mayFloor() bool { return c.Floor != nil }
+func (c Config) mayFloor() bool { return !c.readingTask() && c.Floor != nil }
 
 // floorTools is `factory_floor`, or nothing when there is no floor behind it.
 func (a *Agent) floorTools() []bare.Tool {

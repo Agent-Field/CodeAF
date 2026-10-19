@@ -32,7 +32,7 @@ type FactoryDoor interface {
 // mayFactory says whether `factory_add` belongs on this belt: there is a door
 // behind it. It is the belt's predicate and the page's (beltfacts.go), asked of
 // one field, so the two cannot disagree.
-func (c Config) mayFactory() bool { return c.Factory != nil }
+func (c Config) mayFactory() bool { return !c.readingTask() && c.Factory != nil }
 
 // FactoryNotice is the card. It is the payload of EventFactoryProposal (ID is
 // the token a surface hands back to [Agent.ResolveFactory]) and of
@@ -125,7 +125,7 @@ type RecipeNoter interface {
 
 // mayRecipe says whether `factory_recipe` belongs on this belt: there is a door
 // behind it. It is the belt's predicate and the page's, asked of one field.
-func (c Config) mayRecipe() bool { return c.Recipe != nil }
+func (c Config) mayRecipe() bool { return !c.readingTask() && c.Recipe != nil }
 
 // RecipeNotice is the recipe card. It is the payload of EventRecipeProposal (ID
 // is the token a surface hands back to [Agent.ResolveRecipe]) and of
@@ -209,7 +209,7 @@ type ItemDoor interface {
 
 // mayItem says whether `factory_item` belongs on this belt: there is a door
 // behind it. It is the belt's predicate, asked of one field.
-func (c Config) mayItem() bool { return c.FactoryItem != nil }
+func (c Config) mayItem() bool { return !c.readingTask() && c.FactoryItem != nil }
 
 // ItemChange is what one item card changes, every field optional and the
 // zero value of each one "leave it as it is".

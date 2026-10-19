@@ -64,6 +64,9 @@ const (
 // ([TaskNode.quickItemChange]) — so every reader of either takes
 // `graph.mu` first, exactly as the row's own fields are read.
 type quickTaskSpec struct {
+	// reading is a chat-owned hand-off: its answer returns as a read result,
+	// so it may only look and never asks the person to promote it.
+	reading bool
 	// Captures keep the original bytes through repeated writes and engine restarts.
 	captures  []QuickFileCapture
 	promotion uint64
@@ -390,6 +393,8 @@ type quickAsk struct {
 	dependsOn []uint64
 	title     string
 	model     string
+	// reading is set only by the chat's read hand-off, never by a tool call.
+	reading bool
 	// inherit asks for a PROMOTION rather than a cold worker: the node opens on
 	// the caller's own transcript instead of on a sentence about it (inherit.go).
 	// It is a property of the ask rather than a second door, so both roads that
@@ -647,6 +652,7 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	} else {
 		quick = newQuickTaskSpec(line, kept, scope)
 	}
+	quick.reading = ask.reading
 	quick.waits = a.graph().quickClaimsOn(a.config.Workspace, scope)
 	for _, claim := range quick.waits {
 		dependsOn = append(dependsOn, claim.id)

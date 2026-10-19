@@ -86,7 +86,9 @@ func (c Config) conversationIndexStore() *store.Store {
 	return c.Memory
 }
 
-func (c Config) hasConversationHistory() bool { return c.conversationHistory() != nil }
+func (c Config) hasConversationHistory() bool {
+	return !c.readingTask() && c.conversationHistory() != nil
+}
 
 const (
 	// The store owns both search limits so the tool schema cannot drift from

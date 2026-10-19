@@ -5834,6 +5834,26 @@ the quick worker leaves, continuing in the same folder with its existing
 edits and the blocked action in its brief. Cancel stops the quick worker and
 keeps its edits. Promote is also available before the limit is reached.
 
+## Why did the chat hand off a reading — can that reading ask to become a task?
+
+When the chat hands a set of file reads to a quick task on its own, that worker
+can only look with `read`, `ls`, `grep` and `find`. It cannot write or edit files,
+run shell commands, create media, restore or merge a workspace, or ask you a
+question. A refused call tells it which reading tools it can use and that
+nothing ran. Ordinary quick work you or the model starts still asks before
+becoming a full task.
+
+The reading's distilled answer comes back as the first read's result. If the
+reading fails, says nothing or waits too long, the chat reads inline; moving
+the reply to a task lets its reading go. Neither a finished reading nor one
+the chat abandoned sends a separate landing message.
+
+Quick work has its own app surface, separate from the task list and task search.
+A quick task that ended without finishing says `stopped`, keeps the files it
+changed and can still be undone. It says `done` when it finished or became a
+full task. These endings survive restarting the engine; a settled quick task
+never offers a promotion it is no longer waiting for.
+
 ## A reply running long in the app, and moving it to a task
 
 In the desktop app a running reply is never moved to a task on its own: the

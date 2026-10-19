@@ -623,8 +623,12 @@ TaskProgram { name, started_at?, ended_at?, stages?: [{name, word?}], last_stage
            defaulted to the person put a worker's handoff in their mouth.
            task.steps: the count the record kept, SENT WHEN KNOWN AND OMITTED WHEN NOT — a known
            zero is sent, so "took no steps" and "nobody wrote down how many" stay different facts
-Quick    { id, agent, title, files: [{path, add, del}], state: "running"|"done"|"undone"|"grew"|"conflict",
+Quick    { id, agent, title, files: [{path, add, del}], state: "running"|"done"|"stopped"|"undone"|"grew"|"conflict",
            grew?: {files, reason}, conflict?: {changed: string[]} }
+           stopped: ended without finishing; keeps its files and may still be undone.
+           undone > promoted > settled (stopped or done) > running (grew only while awaiting promotion).
+           A quick task promoted to a full task is sent as done. conflict is derived only from done,
+           never from stopped; a state the engine adds later is sent as itself, never as done.
 Process  { id, agent, title, command, state: "running"|"ended"|"failed"|"stopped",
            started_at, ended_at?, exit_code?, last_line?, reason? }
            reason: why a stopped process stopped when a person did not stop it: "stopped by quit"

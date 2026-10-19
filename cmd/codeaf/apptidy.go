@@ -340,7 +340,11 @@ func (b *appBackend) searchTasks(query string, limit int) []appwire.Hit {
 			continue
 		}
 		seen[path] = true
-		rows = append(rows, session.ReadTaskIndex(path)...)
+		for _, entry := range session.ReadTaskIndex(path) {
+			if entry.Kind != session.TaskKindQuick {
+				rows = append(rows, entry)
+			}
+		}
 	}
 	found := session.SearchTaskIndex(rows, query, limit)
 	hits := make([]appwire.Hit, 0, len(found))
