@@ -38,51 +38,47 @@ are senior-dev alone, not a comparison.
 grades, invalid outcomes, mean F2P and P2P, OpenRouter spend, cost per task,
 mean agent seconds and model.
 
-## Versions tested
+## Tested versions and public references
 
-These are the versions used for the comparison above, checked against all 113
-saved task records per harness. Release dates come from the linked upstream
-releases; they are not installation dates. The dates and versions describe this
-campaign, not the versions available today.
+The nine competing harness versions below were checked against all 113 saved
+task records per harness. senior-dev uses its public integration and first
+stable release references, explained below. Release dates come from the linked
+upstream releases; they are not installation dates. These references describe
+the historical comparison and its public lineage.
 
-| harness | version tested | release date (UTC) |
-| --- | --- | --- |
-| senior-dev | Benchmark build `8ae964c` | Not a release tag |
-| mini-swe-agent | 2.4.6 | [2026-07-23](https://github.com/SWE-agent/mini-swe-agent/releases/tag/v2.4.6) |
-| codex (Codex CLI) | 0.154.0 | [2026-09-09](https://github.com/openai/codex/releases/tag/rust-v0.154.0) |
-| pi | 0.85.1 | [2026-09-05](https://github.com/earendil-works/pi/releases/tag/v0.85.1) |
-| omp (Oh My Pi) | 18.1.17 | [2026-09-10](https://github.com/can1357/oh-my-pi/releases/tag/v18.1.17) |
-| opencode | 1.18.30 | [2026-09-09](https://github.com/anomalyco/opencode/releases/tag/v1.18.30) |
-| kilo | 7.6.2 | [2026-09-10](https://github.com/Kilo-Org/kilocode/releases/tag/v7.6.2) |
-| claude-code | 2.1.267 | [2026-09-09](https://github.com/anthropics/claude-code/releases/tag/v2.1.267) |
-| deepseek-harness (`@deepseek-ai/dsh`) | 0.1.5-rc.1 | [2026-09-10](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.5-rc.1) |
-| muse-code | 1.1.1-R2514.1 | Not independently established |
+| harness | tested version / public reference | source revision / integration commit | release date (UTC) |
+| --- | --- | --- | --- |
+| senior-dev | First stable: codeaf [v0.5.0](https://github.com/Agent-Field/CodeAF/releases/tag/v0.5.0) | [`dd0fcc654`](https://github.com/Agent-Field/CodeAF/commit/dd0fcc654a4a77b4cbf6beae27e6af1cfe4e4c28) — [#1488](https://github.com/Agent-Field/CodeAF/pull/1488) | 2026-09-30 |
+| mini-swe-agent | 2.4.6 | `a83fcae` | [2026-07-23](https://github.com/SWE-agent/mini-swe-agent/releases/tag/v2.4.6) |
+| codex (Codex CLI) | 0.154.0 | `6b9826e` | [2026-09-09](https://github.com/openai/codex/releases/tag/rust-v0.154.0) |
+| pi | 0.85.1 | `d981de1` | [2026-09-05](https://github.com/earendil-works/pi/releases/tag/v0.85.1) |
+| omp (Oh My Pi) | 18.1.17 | `3b3a6dc` | [2026-09-10](https://github.com/can1357/oh-my-pi/releases/tag/v18.1.17) |
+| opencode | 1.18.30 | `3104c14` | [2026-09-09](https://github.com/anomalyco/opencode/releases/tag/v1.18.30) |
+| kilo | 7.6.2 | `3d04228` | [2026-09-10](https://github.com/Kilo-Org/kilocode/releases/tag/v7.6.2) |
+| claude-code | 2.1.267 | — | [2026-09-09](https://github.com/anthropics/claude-code/releases/tag/v2.1.267) |
+| deepseek-harness (`@deepseek-ai/dsh`) | 0.1.5-rc.1 | — | [2026-09-10](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.5-rc.1) |
+| muse-code | 1.1.1-R2514.1 | — | Not independently established |
 
 [`versions.csv`](versions.csv) records the same versions alongside source
-revisions where recorded, release timestamps and source URLs, the artifact
-checksums from frozen provenance records, and the first start and last finish
-in each arm's saved task metadata. Its `harness` values join to `arms.csv`.
-Those time bounds include setup and grading as recorded; they are not the mean
-agent times in `arms.csv`.
+revisions where recorded, public release timestamps and source URLs. Its
+`harness` values join to `arms.csv`; revisions are stored in full where available.
+Empty revision, release timestamp, or URL fields mean that information was not
+established for that row.
 
-The artifact kind states which bytes the checksum identifies: an executable,
-release archive, prepared Python payload, or npm package tarball. An archive
-checksum is not the checksum of its unpacked executable. The npm checksum is
-SHA-1 as recorded in its package lock; the others are SHA-256. Empty source
-revision, release timestamp, or URL fields mean that information was not
-established for that artifact. A source URL identifies its upstream release or
-package, not necessarily a download of the prepared benchmark payload.
+For senior-dev, `version` names the first stable codeaf release containing the
+agent, and `source_revision` names the public integration commit from #1488.
+That commit is contained in v0.5.0; it is distinct from the release tag's commit,
+`4949397498f775a80de16d3e6429b0f6f933f54c`. The benchmark was run before the
+integration. This row traces where the measured agent became publicly available
+in codeaf; it does not describe a new benchmark run on v0.5.0.
 
-senior-dev's build identifier names the measured agent before its integration
-into codeaf; it is not a codeaf release tag. Muse Code's frozen lock records the
-build selected from [Meta's stable channel](https://api.meta.ai/muse-code/channels/muse-stable)
-and its [versioned artifact manifest](https://lookaside.facebook.com/lookaside/muse/download/?channel=muse&version=1.1.1-R2514.1&file=manifest.json).
-Its historical publication date and whether a newer build was available at
-launch were not independently established.
+Muse Code's version comes from the frozen benchmark records. Its historical
+publication date and whether a newer build was available at launch were not
+independently established.
 
 ## Release timing and scope
 
-Most tested versions were released within a week of the campaign.
+Most competing harness versions were released within a week of the campaign.
 mini-swe-agent 2.4.6 was about seven weeks old, but was still the latest
 [published release](https://github.com/SWE-agent/mini-swe-agent/releases)
 at launch. The comparison does not establish how newer versions perform.
