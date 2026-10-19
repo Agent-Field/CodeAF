@@ -1209,6 +1209,8 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// closeKey belongs only to the pending continuation this note consumes.
+	closeKey string
 	// bash is set only by the person's SubmitBash door; model output cannot enter it.
 	bash string
 	// person is what the door that sent this message said about it beyond its
@@ -3411,7 +3413,9 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// request.
 	a.taskNotes = 0
 	includeAmbient := opening || boundaryNoteHeld(a.steering)
+	closeNotes := a.steering
 	drained := a.drainQueueLocked(hub, includeAmbient)
+	a.consumeCloseNotesLocked(hub, closeNotes)
 	if drained.heard {
 		// A LINE THE PERSON TYPED IS NOW IN FRONT OF THE MODEL, so the rest of
 		// this turn answers them — even one the session opened (memory.go's
@@ -3830,7 +3834,7 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed {
+	if a.closed || (note.closeKey != "" && a.running) {
 		return false
 	}
 	a.steering = append(a.steering, note)
@@ -5148,24 +5152,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		if entryRows(msg) == 0 {
 			continue
 		}
-		role := msg.Role
-		// A SUMMARY IS THE SESSION'S RECORD OF WHAT WENT, not something anybody
-		// typed, and it is drawn as the divider a "note" is (compact_summary.go).
-		if role == "user" && strings.HasPrefix(messageContentText(msg), summaryNotePrefix) {
-			role = "note"
-		}
-		forModel := false
-		if role == "user" && journal.isNote(msg) {
-			forModel = true
-			// A LINE THE SESSION WROTE IS NOT THE PERSON'S. It is user-role in the
-			// transcript because that is the only role the model can be told
-			// something in, and the journal is the only place that remembers the
-			// difference (sessionfile.go's [sessionEntry.Note]). Drawn as a user
-			// message it would be this build putting words in somebody's mouth —
-			// the exact thing the live surface refuses to do with the same note.
-			// It is NOT "note": that role is the compaction marker a surface draws
-			// as a rule of its own, and these two are not one shape.
-			role = "aside"
+		role := displayMessageRole(msg, journal.isNote(msg))
+		forModel := role == "aside" && msg.Role == "user"
+		if forModel {
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
 		displayText := messageContentText(msg)
@@ -5385,4 +5374,19 @@ func toolResults(messages []ai.Message) map[*ai.ToolCall]string {
 		results[call] = messageContentText(messages[index])
 	}
 	return results
+}
+
+// displayMessageRole is the shared authorship rule for shaping and bounded
+// person-activity queries. A summary or authored note is never a person's line.
+func displayMessageRole(message ai.Message, note bool) string {
+	if message.Role != "user" {
+		return message.Role
+	}
+	if strings.HasPrefix(messageContentText(message), summaryNotePrefix) {
+		return "note"
+	}
+	if note {
+		return "aside"
+	}
+	return "user"
 }

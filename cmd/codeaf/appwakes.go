@@ -130,6 +130,11 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 		}
 		return
 	}
+	if elsewhere.said != "" {
+		// A person speaking in another window breaks the same automatic-resume
+		// streak as a send through this app; a private wake never does.
+		b.resetCloseResumes(id)
+	}
 	// Within this hold the last turn's counts are known; a conversation just
 	// opened reads its answers from the transcript, and its live notices
 	// began with this hold.

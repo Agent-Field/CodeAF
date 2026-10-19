@@ -124,6 +124,9 @@ func runApp(args []string) error {
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	// Capture the previous holders before crews, quit resumes or client calls
+	// can open a journal and overwrite the evidence with this process's claim.
+	backend.snapshotCloseClaims()
 	backend.useClipboard(clipboard.NewSystem(localGUI))
 	if *turnLong > 0 {
 		backend.turnLong = *turnLong
@@ -161,6 +164,7 @@ func runApp(args []string) error {
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
+	backend.startCloseWatch()
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir(), Features: []string{"agents.create.attachments", "crews.message.attachments"}}, backend)
 	if backend.assembled.Load() {
 		// The process half every conversation shared, closed the way the pipe
@@ -413,8 +417,12 @@ type appBackend struct {
 	emit       appwire.Emitter
 	open       appOpener
 	now        func() time.Time
-	turns      atomic.Uint64
-	assembled  atomic.Bool
+	// after is the claim-expiry clock, replaceable without sleeping in tests.
+	after         func(time.Duration, func()) func()
+	closeRecovery appCloseRecovery
+	footerMu      sync.Mutex
+	turns         atomic.Uint64
+	assembled     atomic.Bool
 
 	mu               sync.Mutex
 	referenceWorkers int
@@ -603,12 +611,15 @@ type appLive struct {
 	stopTitles func()
 	titlesDone chan struct{}
 	running    bool
-	lastUse    time.Time
-	pumpDone   chan struct{}
-	lanesDone  chan struct{}
-	asksDone   chan struct{}
-	stopAsks   func()
-	tasks      map[string]appwire.Task
+	// closeWake joins acceptance with the session consuming this keyed note;
+	// either can arrive first over the loopback connection.
+	closeWake *appCloseWake
+	lastUse   time.Time
+	pumpDone  chan struct{}
+	lanesDone chan struct{}
+	asksDone  chan struct{}
+	stopAsks  func()
+	tasks     map[string]appwire.Task
 	// renders is the last record sent for each render, by id: the same news
 	// arrives on the turn's stream and on the task lane, and each change is
 	// said once (apprender.go).
@@ -722,6 +733,10 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		follows:   map[string]*appFollow{},
 		open:      open,
 		now:       time.Now,
+		after: func(d time.Duration, fn func()) func() {
+			t := time.AfterFunc(d, fn)
+			return func() { t.Stop() }
+		},
 		agents:    map[string]*appAgent{},
 		sweepStop: make(chan struct{}),
 		sweepDone: make(chan struct{}),
@@ -796,6 +811,10 @@ func appRowView(row session.SessionRow) appwire.Agent {
 // remember files what the disk said about an agent, without touching one this
 // process is holding: a held conversation's own facts are newer than the disk's.
 func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
+	b.watchCloseClaim(row.Dir)
+	// Read freshness against this backend's clock, including in deterministic
+	// tests, rather than trusting a row another reader dated earlier.
+	row.Presence, row.Live = session.ReadSessionPresence(row.Dir, b.now())
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	a := b.agentLocked(row.ID)
@@ -832,6 +851,8 @@ func (b *appBackend) find(id string) (*appAgent, error) {
 		held = a != nil && a.transcript != ""
 	})
 	if held {
+		// A cached transcript is not a lease on another window's working state.
+		b.refreshElsewhere(a)
 		return a, nil
 	}
 	row, ok := appRowOnDisk(id)
@@ -1263,6 +1284,11 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	}
 	conn, err := b.open(ask)
 	if err != nil {
+		// Loopback errors may have crossed a codec and lost their Go type.
+		// The journal lock still proves an ownership conflict in that case.
+		if errors.Is(err, session.ErrSessionLocked) || session.InUse(transcript) {
+			return appwire.Agent{}, false, appwire.Errorf(appwire.CodeConflict, "%s", err)
+		}
 		return appwire.Agent{}, false, appEngineError(err)
 	}
 	// Opening an agent that was closed or put away takes it out again.
@@ -1698,6 +1724,7 @@ func (b *appBackend) liveOf(a *appAgent) *appLive {
 // in its turn was made in no crew. Words the app writes itself go through
 // [appBackend.send] with nothing stated, and stay unknown.
 func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
+	b.resetCloseResumes(id)
 	return b.send(id, text, clientID, appStated(text, appNoTeam()))
 }
 
@@ -1730,6 +1757,7 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 
 // Retry sends the words of the agent's last failed turn again.
 func (b *appBackend) Retry(id string) (uint64, error) {
+	b.resetCloseResumes(id)
 	a, err := b.find(id)
 	if err != nil {
 		return 0, err
@@ -2049,6 +2077,8 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	titles := map[string]string{}
 	for event := range events {
 		switch event.Kind {
+		case session.EventCloseContinued:
+			b.closeWakeStarted(id, live, event.Text)
 		case session.EventTextDelta:
 			if reply.Len() == 0 {
 				replyRun = event.RunID
@@ -2233,6 +2263,9 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		entry(footer)
 	case !ok:
 		entry(appwire.Entry{ID: appErrorEntryID(n), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status})
+	}
+	if ok {
+		b.resetCloseAfterReply(id)
 	}
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
 	held := false
@@ -2548,6 +2581,7 @@ const appAnsweredMark = "app:"
 // AnswerAsk answers one open ask through the engine's own answer door, the one
 // the chat's question page uses. Its closing arrives on the question lane.
 func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
+	b.resetCloseResumes(id)
 	if handled, err := b.answerOrderAsk(askID, option); handled {
 		return err
 	}
@@ -2677,11 +2711,14 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	var page []appwire.Entry
 	var more bool
 	err = appRecords.WithRecord(transcript, func(record session.Record) error {
-		var err error
+		footers, err := b.readAppFooters(transcript)
+		if err != nil {
+			return err
+		}
 		notes := func() (*appNoticeReader, error) { return b.noticeLog().Reader(id) }
 		page, more, err = appEntryPageOf(id, record, at, marks, notes, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
 			return b.appEntryFacts(a, item)
-		}, b.crewFormedEntries(id))
+		}, b.crewFormedEntries(id), footers)
 		return err
 	})
 	if err != nil {
@@ -2731,9 +2768,12 @@ func appEntryPageWith(id string, record session.Record, at time.Time, marks map[
 // backwards from the page's cursor, so a page holds at most limit of them
 // however long the record is, and a notice's id is a cursor like any other
 // entry's.
-func appEntryPageOf(id string, record session.Record, at time.Time, marks map[int]appTurnMark, notes func() (*appNoticeReader, error), before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts, formed []appwire.Entry) ([]appwire.Entry, bool, error) {
+func appEntryPageOf(id string, record session.Record, at time.Time, marks map[int]appTurnMark, notes func() (*appNoticeReader, error), before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts, formed []appwire.Entry, kept ...[]appKeptFooter) ([]appwire.Entry, bool, error) {
 	items := appRecordItems(record)
 	all, from := appEntryShapes(id, items, at, marks)
+	if len(kept) > 0 {
+		all, from = appInsertFooters(all, from, kept[0], items)
+	}
 	if len(formed) > 0 {
 		all = appWithFormed(all, formed, at, &from)
 	}
@@ -3352,17 +3392,13 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 	}
 	var transcript string
 	var fallback time.Time
-	var heard map[string]appwire.Task
+	// A quick task is listed by AppQuickTasks, never as a task here (#1880).
 	quickIDs := map[string]bool{}
 	b.locked(func() {
 		transcript, fallback = a.transcript, a.view.UpdatedAt
 		if a.live != nil {
 			for id := range a.live.quicks {
 				quickIDs[id] = true
-			}
-			heard = make(map[string]appwire.Task, len(a.live.tasks))
-			for k, v := range a.live.tasks {
-				heard[k] = v
 			}
 		}
 	})
@@ -3375,7 +3411,12 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 		index[task.ID] = len(tasks)
 		tasks = append(tasks, task)
 	}
+	// Running is a live claim, not the checkpoint's permanent resting state.
+	presence, fresh := session.ReadSessionPresence(filepath.Dir(transcript), b.now())
 	for _, notice := range session.ReadSessionTasks(transcript) {
+		if notice.State == session.TaskRunning && appTaskWasInterrupted(presence, fresh, strconv.FormatUint(notice.ID, 10), notice.StartedAt) {
+			notice.State = session.TaskInterrupted
+		}
 		if notice.Kind == session.TaskKindQuick {
 			quickIDs[appTaskID(id, notice.ID)] = true
 			continue
@@ -3411,6 +3452,10 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 				continue
 			}
 			state := appTaskState(row.Status)
+			interrupted := state == appwire.TaskRunning && appTaskWasInterrupted(presence, fresh, row.ID, row.StartedAt)
+			if interrupted {
+				state = appwire.TaskFailed
+			}
 			if state == "" {
 				continue
 			}
@@ -3429,14 +3474,21 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 			if row.Parent != "" && row.Parent != row.ID {
 				parent = appIndexTaskID(id, row.Parent)
 			}
-			add(appwire.Task{ID: appIndexTaskID(id, row.ID), Agent: id, Parent: parent, Title: title, State: state, UpdatedAt: at, YourCall: state == appwire.TaskUnverified})
+			result := ""
+			if interrupted {
+				result = "Interrupted"
+			}
+			add(appwire.Task{Result: result, ID: appIndexTaskID(id, row.ID), Agent: id, Parent: parent, Title: title, State: state, UpdatedAt: at, YourCall: state == appwire.TaskUnverified})
 		}
 	}
-	for taskID, task := range heard {
+	for taskID, task := range b.heldTaskViews(a) {
 		if quickIDs[taskID] {
 			continue
 		}
 		if i, ok := index[taskID]; ok {
+			if task.UpdatedAt.IsZero() {
+				task.UpdatedAt = tasks[i].UpdatedAt
+			}
 			if task.Title == "" {
 				task.Title = tasks[i].Title
 			}
@@ -3445,6 +3497,9 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 			}
 			tasks[i] = task
 			continue
+		}
+		if task.UpdatedAt.IsZero() {
+			task.UpdatedAt = fallback
 		}
 		tasks = append(tasks, task)
 	}
@@ -3505,6 +3560,7 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	b.stopCloseWatch()
 	if balances != nil {
 		balances.stop()
 	}
