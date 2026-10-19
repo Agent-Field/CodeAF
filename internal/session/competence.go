@@ -43,6 +43,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/competence"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
 )
 
 // recordRunProven writes a settled run's declared-check exits as one result,
@@ -184,7 +185,7 @@ func planOneWorkModel(path string, ids []string) (string, bool) {
 	if len(ids) == 0 {
 		return "", false
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	db, err := sql.Open("sqlite", sqlitefile.URI(path, "mode=ro"))
 	if err != nil {
 		return "", false
 	}
