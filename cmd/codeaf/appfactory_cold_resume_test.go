@@ -78,8 +78,10 @@ func TestColdResumeServesAfterTheAppOpensAConversationFirst(t *testing.T) {
 
 	var status appwire.FactoryLocalStatus
 	w.must("factory.local_status", map[string]any{"caller": "w1"}, &status)
-	if status.State != appwire.LocalRunning || status.Authority != appwire.LocalAuthorityApp || status.Runner {
-		t.Fatalf("cold resume did not serve quietly as the app: %+v", status)
+	// THIS MAC'S FACTORY COMES BACK WITH ITS RUNNER: it knows whose GitHub it is,
+	// and a runner starts nothing a person did not.
+	if status.State != appwire.LocalRunning || status.Authority != appwire.LocalAuthorityApp || !status.Runner {
+		t.Fatalf("cold resume did not serve as the app with its runner: %+v", status)
 	}
 	rows, _ := w.backend.factoryHub().snapshot()
 	for _, r := range rows {
@@ -88,11 +90,11 @@ func TestColdResumeServesAfterTheAppOpensAConversationFirst(t *testing.T) {
 		}
 	}
 
-	// Only the explicit run starts a runner.
+	// Asking for the run answers the same runner.
 	var run appwire.FactoryLocalStatus
 	w.must("factory.local_run", map[string]any{"caller": "w1"}, &run)
 	if !run.Runner {
-		t.Fatalf("explicit run did not start the runner: %+v", run)
+		t.Fatalf("run lost the runner: %+v", run)
 	}
 }
 

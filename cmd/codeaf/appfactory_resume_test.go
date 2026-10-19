@@ -111,7 +111,7 @@ func TestLocalFactoryComesBackQuietlyAfterTheAppRestarts(t *testing.T) {
 	}
 	var status appwire.FactoryLocalStatus
 	w.must("factory.local_status", map[string]any{"caller": "w1"}, &status)
-	if status.State != appwire.LocalRunning || status.Authority != appwire.LocalAuthorityApp || status.Factory != appLocalID || status.Runner {
+	if status.State != appwire.LocalRunning || status.Authority != appwire.LocalAuthorityApp || status.Factory != appLocalID || !status.Runner {
 		t.Fatalf("status after restart: %+v", status)
 	}
 	host := w.backend.local.host
@@ -127,17 +127,15 @@ func TestLocalFactoryComesBackQuietlyAfterTheAppRestarts(t *testing.T) {
 		t.Fatalf("the checkout was not kept: %+v", r)
 	}
 
-	// Nothing ran: no runner, no election, no job started, and not one request
-	// to GitHub (the credential does not even exist in the new process).
-	if release, free := host.floor.TryWorker(); !free {
-		t.Fatal("a runner was elected on restart")
-	} else {
-		release()
-	}
-	var runners api.Runners
-	w.must("factory.runners", map[string]any{"factory": appLocalID}, &runners)
-	if len(runners.Runners) != 0 {
-		t.Fatalf("restart registered a runner: %+v", runners.Runners)
+	// THE RUNNER IS BACK AND NOTHING RAN: every job is still in Backlog, and not
+	// one request reached GitHub (the credential does not even exist in the new
+	// process, so the poll waits for one).
+	var held api.Queue
+	w.must("factory.queue", map[string]any{"factory": appLocalID}, &held)
+	for _, j := range held.Jobs {
+		if j.State != "backlog" {
+			t.Fatalf("restart started job %d: %q", j.ID, j.State)
+		}
 	}
 	if seen := gh.seen(); len(seen) != 0 {
 		t.Fatalf("restart made GitHub requests: %v", seen)

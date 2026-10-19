@@ -36,22 +36,20 @@ package main
 // ([config.AppCredentials]) and the profile's model settings, the same road
 // the worker has always read.
 //
-// THE RUN IS ALSO THE CONSENT TO THE REPOSITORY'S START RULES. After Run has
-// checked whose GitHub this is, it turns on [appFactoryHost.readLoops] for the
-// factory THIS engine serves, once per host: the GitHub poll, so issues filed
-// after setup reach Backlog, and triage, the cheap model read of each new
-// item. After every poll and every triage tick the intake then applies the
-// repository's own start rules (its factory.yaml): a New item whose labels,
-// size and cost fall inside them is launched with no further call to
-// factory.job_start, and this host's runner takes it and spends. An item
-// outside them waits, or asks first. So Run starts no job by itself, but from
-// then on a job may start without a person; before Run none can, and
-// factory.job_start still starts any job by hand. The model never authorizes:
-// triage only reads and proposes, the rules alone decide, and triage asks the
-// saved model strictly (a saved one-model policy it cannot meet is a refusal,
-// never another model). A second run starts nothing again; quitting stops both
-// loops with the host; a host made later in the same process starts its own. An
-// engine that joined another codeaf's service never reads for it.
+// IN THIS MAC'S OWN FACTORY THE RUNNER IS ON WHENEVER THE FACTORY IS, AND IT
+// STARTS NOTHING BY ITSELF. Once the factory this engine serves knows whose
+// GitHub it is, [appBackend.ensureLocalRunner] starts the runner and
+// [appFactoryHost.pollLoop]: the GitHub poll, so issues filed after setup
+// reach Backlog. That happens on the start, on a resume, after a setup step and
+// on a status read, so a person who set up a factory never has a second switch
+// to find. A job runs only after a person pressed Run (factory.job_start): an
+// arriving issue starts nothing, the repository's start rules launch nothing
+// here, and no model reads an item on its own (no triage), so a runner that is
+// on spends only on work a person started. factory.local_run is the same start,
+// asked for, and says when GitHub is not connected yet. Quitting stops the
+// runner and the poll with the host; a host made later in the same process
+// starts its own. An engine that joined another codeaf's service never runs or
+// reads for it.
 //
 // QUITTING ENDS THE SERVICE, NOT THE CHOICE. [appBackend.closeLocalFactory] runs
 // with the engine's Close: the runner is told to stop and waited for a bounded
@@ -66,12 +64,11 @@ package main
 // that an earlier release left, stays listed and unreachable until a start.
 // Detaching is the one removal.
 //
-// OPENING THE APP RESUMES IT, QUIETLY, ONLY THEN. [appBackend.resumeLocal] runs
-// before factory.list, factory.local_status or a read of that connection is
-// answered. It serves the same floor again on a new port, under the same id,
-// with a new bearer, and starts no runner, job, triage, model call or GitHub
-// request (not even the reading above, until an explicit run, so no start rule
-// fires either). A profile with no Resume row stays unstarted; detaching the
+// OPENING THE APP RESUMES IT. [appBackend.resumeLocal] runs before
+// factory.list, factory.local_status or a read of that connection is answered.
+// It serves the same floor again on a new port, under the same id, with a new
+// bearer, and its runner and poll come back with it; no job, triage or model
+// call starts. A profile with no Resume row stays unstarted; detaching the
 // row ends the choice; and another codeaf that holds the election is never joined or
 // duplicated by a resume. A profile whose release predates the row's Resume
 // mark keeps nothing to resume from, and starts again with factory.local_start.
@@ -175,6 +172,9 @@ func (b *appBackend) FactoryLocalStart(ctx context.Context, _ string) (appwire.F
 		// Reconnecting also restores authentication after an explicit detach.
 		return appwire.FactoryLocalStatus{}, err
 	}
+	l.mu.Unlock()
+	b.ensureLocalRunner(ctx)
+	l.mu.Lock()
 	return b.localStatusLocked(), nil
 }
 
@@ -185,35 +185,58 @@ func (b *appBackend) FactoryLocalStart(ctx context.Context, _ string) (appwire.F
 //
 // THE CHOICE IS THE SAVED ROW. A profile that never ran factory.local_start has
 // none, and nothing here starts for it; a row detached by the person is gone, so
-// it cannot come back. Resuming serves the same floor quietly (no runner, no
-// triage, no GitHub poll, no model) under the same connection id, on whatever
-// port is free. It never joins another codeaf's service: if one holds the
-// election, the row stays as saved and unreachable until the person starts
-// again, deliberately.
+// it cannot come back. Resuming serves the same floor under the same connection
+// id, on whatever port is free, with its runner and poll ([ensureLocalRunner]);
+// no job, triage or model call starts. It never joins another codeaf's
+// service: if one holds the election, the row stays as saved and unreachable
+// until the person starts again, deliberately.
 func (b *appBackend) resumeLocal(ctx context.Context) {
+	if b.resumeLocalServe(ctx) {
+		b.ensureLocalRunner(ctx)
+	}
+}
+
+// resumeLocalServe serves the saved factory again, and answers whether it did.
+func (b *appBackend) resumeLocalServe(ctx context.Context) bool {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed || l.running {
-		return
+		return false
 	}
 	rows, err := b.factoryHub().snapshot()
 	if err != nil {
-		return
+		return false
 	}
 	for _, row := range rows {
 		if row.ID == appLocalID && row.Local && row.Resume {
-			_ = b.startLocalLocked(ctx, true)
-			return
+			return b.startLocalLocked(ctx, true) == nil
 		}
 	}
+	return false
 }
 
-// FactoryLocalRun turns this engine's runner and reading on for the factory it
-// serves, and only here. It is idempotent and launches no job itself, but it
-// is the consent to the repository's existing start rules: once it has
-// returned, an item those rules allow is launched by the intake without a
-// factory.job_start, and an item they do not allow still waits for one.
+// ensureLocalRunner starts the runner of the factory this engine serves once
+// that factory knows whose GitHub it is, and does nothing otherwise: before
+// GitHub is connected, for a factory another codeaf serves, after quitting, and
+// when it is on already. It is cheap to ask again, and every road that may have
+// just made the runner possible asks (the start, a resume, a setup step, a
+// status read). It starts no job.
+func (b *appBackend) ensureLocalRunner(ctx context.Context) {
+	l := &b.local
+	l.mu.Lock()
+	on := l.runner
+	l.mu.Unlock()
+	if on {
+		return
+	}
+	_, _ = b.FactoryLocalRun(ctx, "")
+}
+
+// FactoryLocalRun starts this engine's runner and its GitHub poll for the
+// factory it serves, and only here: the same start [ensureLocalRunner] makes on
+// its own, asked for. It is idempotent and starts no job; a job runs only once
+// a person pressed Run, and the repository's start rules launch nothing.
 func (b *appBackend) FactoryLocalRun(ctx context.Context, _ string) (appwire.FactoryLocalStatus, error) {
 	id, err := b.localRunnable()
 	if err != nil {
@@ -262,9 +285,10 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 		host := l.host
 		done := make(chan struct{})
 		l.runner, l.runnerDone = true, done
-		// THE HOST SERVES THIS FACTORY (checked above), so its poll, triage and
-		// start-rule intake may start; the host starts them once.
-		host.readLoops()
+		// THE HOST SERVES THIS FACTORY (checked above), so its GitHub poll may
+		// start; the host starts it once. No intake rides on it and no triage
+		// runs beside it: nothing here starts a job or asks a model.
+		host.pollLoop()
 		guard.Go("app/factory local runner", func() { defer close(done); host.workers() })
 	}
 	return b.localStatusLocked(), nil
@@ -272,6 +296,7 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 
 func (b *appBackend) FactoryLocalStatus(ctx context.Context, _ string) (appwire.FactoryLocalStatus, error) {
 	b.resumeLocal(ctx)
+	b.ensureLocalRunner(ctx)
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -613,6 +638,9 @@ func (b *appBackend) FactorySetupAct(ctx context.Context, _ string, act appwire.
 	if jsonErr := json.Unmarshal(reply.body, &out); jsonErr != nil {
 		return appwire.FactorySetupView{}, appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
 	}
+	// A STEP MAY HAVE JUST TOLD THE FACTORY WHOSE GITHUB THIS IS, which is all
+	// its runner was waiting for.
+	b.ensureLocalRunner(ctx)
 	return b.setupView(out), nil
 }
 
