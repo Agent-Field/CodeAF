@@ -172,6 +172,109 @@ func TestARoundThatNeverReportedIsNotDone(t *testing.T) {
 	}
 }
 
+// A ROUND ENDS BY REPORTING: a conversation that stopped with nothing
+// reported is asked once, as codeaf and not as the person, and the report it
+// then makes is the round's result.
+func TestAStageThatStopsWithoutReportingIsAskedOnceAndItsReportCounts(t *testing.T) {
+	var log logRec
+	maker := &FakeMaker{
+		Script: func(ctx context.Context, c *FakeConversation) { c.Say("read the issue") },
+		FollowUp: func(ctx context.Context, c *FakeConversation, words string) {
+			_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "planned two edits"})
+		},
+	}
+	job := reviewJob()
+	job.Log = log.log
+	res, err := NewChatExecutor(maker).Run(context.Background(), job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Done || res.Output != "planned two edits" {
+		t.Fatalf("result = %+v", res)
+	}
+	conv := maker.Opened()[0]
+	if got := conv.Noted(); len(got) != 1 || got[0] != stageReminder {
+		t.Fatalf("noted = %q", got)
+	}
+	if len(conv.Sent()) != 0 {
+		t.Fatalf("the reminder went as the person's words: %q", conv.Sent())
+	}
+	if !slicesHas(log.all(), stageReminded) {
+		t.Fatalf("log = %q", log.all())
+	}
+}
+
+// AND NEVER TWICE: a second silence is the answer, and a turn that failed is
+// not a forgotten report, so it is not asked at all.
+func TestAStageIsAskedForItsReportOnlyOnce(t *testing.T) {
+	maker := &FakeMaker{}
+	res, err := NewChatExecutor(maker).Run(context.Background(), reviewJob())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Done || res.Output != stageNoReport || len(maker.Opened()[0].Noted()) != 1 {
+		t.Fatalf("result = %+v noted %q", res, maker.Opened()[0].Noted())
+	}
+	broken := &brokenMaker{}
+	if res, _ := NewChatExecutor(broken).Run(context.Background(), reviewJob()); res.Output != stageNoReport+": the provider refused" {
+		t.Fatalf("a failed turn = %+v", res)
+	}
+}
+
+// THE RUNNER OWNS THE WALL: a round that runs past it is let go of and says so.
+func TestAStagePastItsWallIsLetGoOf(t *testing.T) {
+	old := stageWall
+	stageWall = 20 * time.Millisecond
+	t.Cleanup(func() { stageWall = old })
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) { <-ctx.Done() }}
+	res, err := NewChatExecutor(maker).Run(context.Background(), reviewJob())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Done || res.Output != stageWalled || !maker.Opened()[0].Closed() {
+		t.Fatalf("result = %+v", res)
+	}
+}
+
+// A STAGE IS CALLED WHAT IT IS: its team handle is its name, with the round
+// from round 2 on, and never something its title model chose.
+func TestAStagesHandleIsItsName(t *testing.T) {
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}
+	if _, err := NewChatExecutor(maker).Run(context.Background(), reviewJob()); err != nil {
+		t.Fatal(err)
+	}
+	if h := maker.Opened()[0].Spec.Handle; h != "review" {
+		t.Fatalf("handle = %q", h)
+	}
+	for _, tc := range []struct {
+		name  string
+		round int
+		want  string
+	}{
+		{"plan", 1, "plan"},
+		{"review", 2, "review2"},
+		{"Security", 1, "security"},
+		{"documentation", 3, "documentati3"},
+		{"x", 1, ""},
+	} {
+		job := Job{Stage: factory.Stage{Name: tc.name}, Round: tc.round}
+		if got := stageHandle(job); got != tc.want {
+			t.Errorf("stageHandle(%q, %d) = %q, want %q", tc.name, tc.round, got, tc.want)
+		}
+	}
+}
+
+func slicesHas(lines []string, want string) bool {
+	for _, l := range lines {
+		if l == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestThePersonsWordsReachTheConversationAndItsCaptionsReachTheStream(t *testing.T) {
 	steer := make(chan string, 2)
 	steer <- "  also check the export  "
@@ -282,6 +385,7 @@ func (brokenMaker) Open(context.Context, ConversationSpec) (Conversation, error)
 type brokenConv struct{}
 
 func (brokenConv) Send(context.Context, string) error     { return nil }
+func (brokenConv) Note(context.Context, string) error     { return nil }
 func (brokenConv) Wait(context.Context) error             { return errors.New("the provider refused") }
 func (brokenConv) Captions(context.Context) <-chan string { return nil }
 func (brokenConv) ID() string                             { return "broken" }
@@ -372,7 +476,7 @@ func TestOnlyALoopingStageIsToldToFixFirst(t *testing.T) {
 
 func TestTheBriefSaysThereIsNoTeamPost(t *testing.T) {
 	brief := stageBrief(reviewJob())
-	if !strings.Contains(brief, "You have no team_post tool; report through stage_result only. Ignore team notices about renames.") {
+	if !strings.Contains(brief, "You have no team_post tool; report through stage_result only.") {
 		t.Fatalf("the brief does not say there is no team_post:\n%s", brief)
 	}
 	if !strings.HasSuffix(brief, briefClosing) {

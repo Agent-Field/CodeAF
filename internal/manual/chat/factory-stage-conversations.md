@@ -5,7 +5,9 @@
 In the factory, a step like plan, write or review runs as one ordinary conversation,
 made in the item's own team, where it joins as the item and the stage: `#12 · review`, or
 `#12 · review 1/2` when the stage may run more than one round (like any conversation it then
-titles itself from its work, and that title is what its tab shows). It opens with a brief: the
+titles itself from its work, and that title is what its tab shows). Its handle in the team is
+the step's own name, `@review`, or `@review2` for a second round's conversation, and it is never
+renamed. It opens with a brief: the
 stage's ask, one line saying it is that step of a run on the pull request or issue, the item's
 title and body (the first 6,000 characters), who opened it and its labels, and for a pull
 request its base and head (`into main from alice:feature`), its line counts, each check with its
@@ -34,9 +36,7 @@ It is given two tools that no other conversation has:
   call itself, and proof and your gates are never skipped.
 
 **What ends a stage** is code, not the conversation's say-so. `until clean` means it reported
-zero findings; `until done` means it reported at all. A conversation that stops without
-calling `stage_result` counts as `the stage ended without reporting`, which meets nothing,
-so the round is counted and the stage stops at its max and asks you.
+zero findings; `until done` means it reported at all (see a step stopped without reporting).
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
@@ -48,13 +48,34 @@ The last round found: … Fix those in the checkout first, run the tests, then r
 report only what remains.`, carrying what the last round said and the claims it could not show
 (the first 1,500 characters), so a round never just looks at the same unchanged checkout
 again. Nothing is added on a run until done, and a check just runs its command again. When
-the rounds run out, it asks you `try once more, send it back, or cancel the job?`.
+the rounds run out, it asks you, for instance
+`review is not clean after 2 rounds: 1 finding · try again, send it back, or stop the job?`.
+
+## a step stopped without reporting — what ends a step, out of rounds, try again
+
+A step's conversation ends its work by calling `stage_result`, and nothing else ends it:
+nothing inside it decides the step is finished, and its reads are never handed off to a quick
+task. A conversation that stops without reporting is told once, as codeaf, to report (the
+item's log says `stopped without reporting · asked once for the report`); the report it then
+makes counts. If it stops again, or a round runs for two hours, the step has not reported, and
+the job waits for you with the step and what happened in plain words:
+
+- `plan stopped without reporting · try again, or stop the job?`
+- `write ran out of time without reporting · …`
+- `plan did not finish: <what it said> · …` when it reported that it could not;
+- `test is not proven: 1 of 2 claims shown · …` for a step that runs once;
+- `review is not clean after 2 rounds: 1 finding · …` only for a step that loops.
+
+Rounds are named only for a step that loops. `send it back` is offered only when a finished
+step before this one can take the work back; plan, the first step, never offers it. Try again
+runs the step once more with the words you add; stop the job is the job's own Stop.
 
 ## where a stage's conversation opens — watch a running stage, open it afterwards
 
 A stage's conversation is made when the stage starts, in the item's own worktree (a folder
 of its own on its own branch, never your checkout), and joins the item's team (`#12 · <title>`) under the one `factory` team in the team
-menu. Nobody is at its keyboard: it runs unattended for at most two hours. It has no
+menu. Nobody is at its keyboard: it runs unattended for at most two hours, and a card it raises
+takes its default. It has no
 `factory_add`, `factory_recipe` or `factory_item`, because those wait on a card. The round is
 over when it has been idle, with no task it started still running.
 
@@ -79,8 +100,7 @@ stage that ask is refused with `needs approval but no resolver is attached: <rul
 stage ever waits on you.
 
 A stage cannot post to its team either: its brief says `You have no team_post tool; report
-through stage_result only. Ignore team notices about renames.`, so a renamed teammate does not
-send it hunting for a way to answer.
+through stage_result only.`
 
 To run stages narrower, set `CODEAF_FACTORY_POSTURE` to another posture (`ask`, `guardian`,
 `deny`, or `auto` for your own settings rows) in the environment codeaf's host starts in; under

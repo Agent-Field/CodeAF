@@ -353,7 +353,7 @@ func TestFactoryStageBriefRedactsBeforeStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	const secret = "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	if err := stageJoinTeam(profile, room, "/tmp/stage-redaction.jsonl", "/w", "review", "Review the diff. token="+secret); err != nil {
+	if err := stageJoinTeam(profile, room, "/tmp/stage-redaction.jsonl", "/w", "review", "review", "Review the diff. token="+secret); err != nil {
 		t.Fatal(err)
 	}
 	f, err := teamstore.Load(profile)

@@ -15,11 +15,15 @@ package run
 //     hands back what the conversation reported and nothing more. Whether the
 //     stage met its `until` is the loop's [factory.Met], asked of this result.
 //
-//   - A ROUND THAT NEVER REPORTED IS NOT DONE. A conversation that stops
-//     without calling `stage_result` comes back Done:false with
-//     [stageNoReport] as its output, which meets no until, so the loop counts
-//     the round and stops at its max rather than passing a stage that said
-//     nothing.
+//   - A ROUND ENDS BY REPORTING, AND ONLY BY REPORTING. Nothing in the
+//     conversation decides the stage is finished: it has no goal owner
+//     (internal/session's newPrincipalFor), so it works until it calls
+//     `stage_result` or stops talking. One that stops without reporting is
+//     asked for its report ONCE ([stageReminder]), because a model that
+//     forgot the closing call has usually done the work; one that stops again
+//     comes back Done:false with [stageNoReport] as its output, which meets no
+//     until, so the loop asks the person rather than passing a stage that said
+//     nothing. [StageWall] bounds the whole round the same way.
 //
 //   - A CANCELLED CTX IS A STOP OR A PAUSE, and the round returns no result:
 //     the conversation is closed, which interrupts a turn still in flight.
@@ -59,6 +63,10 @@ type ConversationSpec struct {
 	// Name is the conversation's name: `#12 · review`, or `#12 · review 1/2`
 	// when the stage may run more than one round.
 	Name string
+	// Handle is the conversation's address in the item's team, given once and
+	// never chosen again: the stage's own name, `review`, and `review2` for its
+	// second round's conversation ([stageHandle]). "" leaves the team to guess.
+	Handle string
 	// Dir is the repository's checkout, "" when unknown.
 	Dir string
 	// Brief is the conversation's opening ([stageBrief]). The maker seeds it and
@@ -79,6 +87,9 @@ type ConversationSpec struct {
 type Conversation interface {
 	// Send hands the person's words to the conversation while it runs.
 	Send(ctx context.Context, words string) error
+	// Note hands codeaf's own words to the conversation, as the next turn when
+	// it is idle. The chat shows them as codeaf's, never as the person's.
+	Note(ctx context.Context, words string) error
 	// Wait returns when the conversation is idle: its turn has ended AND
 	// nothing it handed out is still running, because a conversation that
 	// spread its work over tasks ends its turn and is woken by their landings.
@@ -107,11 +118,19 @@ type spender interface {
 // The sentences this file writes. stageNoReport is the output of a round
 // that ended without `stage_result`; the brief's last line is briefClosing.
 const (
-	stageNoReport     = "the stage ended without reporting"
-	briefClosing      = "End by calling stage_result once."
-	briefNoTeamPost   = "You have no team_post tool; report through stage_result only. Ignore team notices about renames."
-	briefAsk          = "A question the brief and the checkout do not settle goes to the item's manager through ask, and you wait for its answer; ask only what you cannot settle yourself."
-	stageNoMaker      = "codeaf cannot open a conversation for a stage here"
+	stageNoReport   = "the stage ended without reporting"
+	briefClosing    = "End by calling stage_result once."
+	briefNoTeamPost = "You have no team_post tool; report through stage_result only."
+	briefAsk        = "A question the brief and the checkout do not settle goes to the item's manager through ask, and you wait for its answer; ask only what you cannot settle yourself."
+	stageNoMaker    = "codeaf cannot open a conversation for a stage here"
+	// stageReminder is what a conversation that stopped without reporting is
+	// told, once; stageReminded is the line the item's log keeps of it, and
+	// stageWalled the output of a round [StageWall] ended.
+	stageReminder = "You stopped without calling stage_result, so the factory has nothing from this step yet. " +
+		"If the work is finished, call stage_result now with what you found. If it is not, carry on and call stage_result when it is, " +
+		"or with done false and why, if it cannot be finished."
+	stageReminded     = "stopped without reporting · asked once for the report"
+	stageWalled       = "the step ran for its whole allowance without reporting"
 	stageSecondReport = "this stage already reported, and its first report stands"
 	steerNotDelivered = "your words did not reach the stage: "
 	// stageCarryOn is the note a paused stage is carried on with; the maker
@@ -153,6 +172,15 @@ const briefLastMost = 1500
 // tests do not wait it out.
 var handFold = 400 * time.Millisecond
 
+// StageWall is the most one round of a chat stage runs for. The runner owns it
+// because nothing inside the conversation does: a stage has no goal owner to
+// spend a wall against. cmd/codeaf hands the same figure to the conversation as
+// its budget, so what it hands out to tasks is bounded by it too.
+const StageWall = 2 * time.Hour
+
+// stageWall is [StageWall], a variable so tests do not wait it out.
+var stageWall = StageWall
+
 // reportGrace is how long the executor waits for a turn to end after the
 // conversation reported. The tool tells the model the stage ends when it
 // stops; one that reports and keeps going is closed when this runs out, and
@@ -182,11 +210,12 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		log = func(string) {}
 	}
 	spec := ConversationSpec{
-		Team:  itemTeam(job.Item),
-		Name:  stageChatName(job),
-		Dir:   job.Dir,
-		Brief: stageBrief(job),
-		Stage: door,
+		Team:   itemTeam(job.Item),
+		Name:   stageChatName(job),
+		Handle: stageHandle(job),
+		Dir:    job.Dir,
+		Brief:  stageBrief(job),
+		Stage:  door,
 	}
 	var conv Conversation
 	var err error
@@ -260,6 +289,9 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 
 	var grace <-chan time.Time
 	var waitErr error
+	reminded, walled := false, false
+	wall := time.NewTimer(stageWall)
+	defer wall.Stop()
 loop:
 	for {
 		select {
@@ -293,7 +325,22 @@ loop:
 			grace = timer.C
 		case <-grace:
 			break loop
+		case <-wall.C:
+			walled = true
+			break loop
 		case waitErr = <-idle:
+			// ASKED ONCE, NEVER TWICE. A conversation that stopped cleanly with
+			// nothing reported is told so and waited on again; a turn that failed
+			// is not a forgotten report, and a second silence is the answer.
+			if waitErr == nil && door.empty() && !reminded && ctx.Err() == nil {
+				reminded = true
+				if err := conv.Note(ctx, stageReminder); err == nil {
+					flush()
+					log(stageReminded)
+					go func() { idle <- conv.Wait(ctx) }()
+					continue
+				}
+			}
 			break loop
 		}
 	}
@@ -318,7 +365,9 @@ loop:
 	res := door.result()
 	if !res.Done && door.empty() {
 		res.Output = stageNoReport
-		if waitErr != nil {
+		if walled {
+			res.Output = stageWalled
+		} else if waitErr != nil {
 			res.Output += ": " + oneLine(waitErr.Error())
 		}
 	}
@@ -350,6 +399,38 @@ func stageChatName(job Job) string {
 	}
 	return name
 }
+
+// stageHandle is the stage conversation's address in the item's team: the
+// stage's name, lowercase, with the round after it from round 2 on (`review2`),
+// cut to fit a handle. "" when the name cannot be one.
+//
+// A STAGE IS CALLED WHAT IT IS, FOR GOOD. A member with no given handle is
+// renamed by its title model, and the team then hears `@plan is now @dispute`
+// and so does the stage, in the middle of a plan the person reads as `plan`
+// (2026-10-18). A given handle is never chosen again (internal/teams).
+func stageHandle(job Job) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(stageLabel(job.Stage)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	name, round := b.String(), ""
+	if job.Round > 1 {
+		round = strconv.Itoa(job.Round)
+	}
+	if most := stageHandleMost - len(round); len(name) > most {
+		name = name[:max(most, 0)]
+	}
+	if len(name) < 2 {
+		return ""
+	}
+	return name + round
+}
+
+// stageHandleMost is the longest a team handle may be (internal/teams'
+// HandleMax), spelled here so this package does not import the teams store.
+const stageHandleMost = 12
 
 // stageLabel is a stage's name, or its ask's first words when it has none.
 func stageLabel(s factory.Stage) string {
@@ -765,6 +846,10 @@ func (d *stageDoor) empty() bool {
 // once without reporting.
 type FakeMaker struct {
 	Script func(ctx context.Context, c *FakeConversation)
+	// FollowUp is the turn words sent after the script's turn ended start, as
+	// a conversation starts a next turn on a message that arrives while it is
+	// idle. Nil is a turn that ends at once without reporting.
+	FollowUp func(ctx context.Context, c *FakeConversation, words string)
 	// Fail, when set, is what Open answers instead of a conversation.
 	Fail error
 
@@ -780,6 +865,7 @@ func (m *FakeMaker) Open(ctx context.Context, spec ConversationSpec) (Conversati
 	m.mu.Lock()
 	c := &FakeConversation{
 		Spec:     spec,
+		maker:    m,
 		id:       fakeID(spec, len(m.convs)+1),
 		heard:    make(chan string, 16),
 		captions: make(chan string, 64),
@@ -789,12 +875,14 @@ func (m *FakeMaker) Open(ctx context.Context, spec ConversationSpec) (Conversati
 	m.convs = append(m.convs, c)
 	m.mu.Unlock()
 	turn, cancel := context.WithCancel(ctx)
+	c.turn = turn
 	go func() {
 		<-c.closed
 		cancel()
 	}()
+	done := c.done
 	go func() {
-		defer close(c.done)
+		defer close(done)
 		if m.Script != nil {
 			m.Script(turn, c)
 		}
@@ -813,6 +901,8 @@ func (m *FakeMaker) Opened() []*FakeConversation {
 type FakeConversation struct {
 	Spec ConversationSpec
 
+	maker    *FakeMaker
+	turn     context.Context
 	id       string
 	heard    chan string
 	captions chan string
@@ -821,25 +911,61 @@ type FakeConversation struct {
 
 	mu       sync.Mutex
 	sent     []string
+	noted    []string
 	isClosed bool
 }
 
-// Send records the words and hands them to the script through Heard.
+// Send records the words and hands them to the script through Heard while
+// its turn runs, or starts the maker's FollowUp turn on them when it has ended.
 func (c *FakeConversation) Send(_ context.Context, words string) error {
+	return c.deliver(words, false)
+}
+
+// Note is Send for codeaf's own words, kept apart in Noted.
+func (c *FakeConversation) Note(_ context.Context, words string) error {
+	return c.deliver(words, true)
+}
+
+func (c *FakeConversation) deliver(words string, note bool) error {
 	c.mu.Lock()
-	c.sent = append(c.sent, words)
-	c.mu.Unlock()
+	if note {
+		c.noted = append(c.noted, words)
+	} else {
+		c.sent = append(c.sent, words)
+	}
+	idle := false
 	select {
-	case c.heard <- words:
+	case <-c.done:
+		idle = true
 	default:
 	}
+	if !idle {
+		c.mu.Unlock()
+		select {
+		case c.heard <- words:
+		default:
+		}
+		return nil
+	}
+	done := make(chan struct{})
+	c.done = done
+	c.mu.Unlock()
+	go func() {
+		defer close(done)
+		if f := c.maker.FollowUp; f != nil {
+			f(c.turn, c, words)
+		}
+	}()
 	return nil
 }
 
-// Wait returns when the script does, or when ctx ends.
+// Wait returns when the current turn does, or when ctx ends.
 func (c *FakeConversation) Wait(ctx context.Context) error {
+	c.mu.Lock()
+	done := c.done
+	c.mu.Unlock()
 	select {
-	case <-c.done:
+	case <-done:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -874,6 +1000,13 @@ func (c *FakeConversation) Sent() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]string(nil), c.sent...)
+}
+
+// Noted is every note codeaf itself sent, in order.
+func (c *FakeConversation) Noted() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.noted...)
 }
 
 // Heard is the script's side of Send.

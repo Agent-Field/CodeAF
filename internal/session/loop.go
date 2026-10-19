@@ -1378,13 +1378,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// A SWEEP THE MODEL WILL NOT HAND OFF IS HANDED OFF HERE (readhandoff.go).
 		// The prompt taught the judgement and the models recited it without acting,
 		// so the loop — the one place the reading's cost is a fact rather than an
-		// instruction — spends the hand-off itself. Conversations only: a task
-		// worker's own reads are its work, not a sweep.
+		// instruction — spends the hand-off itself, where [Config.maySweepReads]
+		// says the reading is not the agent's own work.
 		// Post-response tools receive the successful request snapshot. Early warm
 		// reads already started on their own context and deliberately stay unknown.
 		batchCtx := withMediaInputs(toolCtx, inputCapture.messages)
 		var results []toolResult
-		if !a.config.InTask && chatRunEngine != nil && sweep.due(calls) {
+		if a.config.maySweepReads() && chatRunEngine != nil && sweep.due(calls) {
 			if handed := a.handoffReadSweep(batchCtx, episode, hub, user, calls, sweep, warm); handed != nil {
 				results = handed
 			} else {

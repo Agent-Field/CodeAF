@@ -13,7 +13,7 @@ func PresentJob(j *Job) {
 			p.Title = "Step stopped"
 		}
 	case j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsOutOfAttempts:
-		p.Kind, p.Title = "out_of_rounds", "Out of rounds"
+		p.Kind, p.Title = "out_of_rounds", "Stuck"
 		if j.NeedsYou.Question != nil {
 			p.Detail = j.NeedsYou.Question.Text
 		}
