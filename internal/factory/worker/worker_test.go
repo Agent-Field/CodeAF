@@ -366,7 +366,7 @@ func TestAShapeSignalReachesTheHoldingWorker(t *testing.T) {
 	dir := t.TempDir()
 	r := run.New(run.Options{
 		Store: mirror,
-		Shape: func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+		ShapeNow: func(context.Context, factory.Item, bool) (factory.RunEdit, string, error) {
 			shapes.Add(1)
 			return factory.RunEdit{}, "", nil
 		},
@@ -409,14 +409,15 @@ func TestAShapeSignalReachesTheHoldingWorker(t *testing.T) {
 	case <-time.After(8 * time.Second):
 		t.Fatal("the worker never started the job")
 	}
-	if got := shapes.Load(); got != 1 {
+	// A LAUNCH GIVES THE MANAGER NO TURN; only the signal does.
+	if got := shapes.Load(); got != 0 {
 		t.Fatalf("launch shaped %d times", got)
 	}
 	if _, err := floor.Shape(context.Background(), id); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(8 * time.Second)
-	for shapes.Load() < 2 {
+	for shapes.Load() < 1 {
 		if time.Now().After(deadline) {
 			t.Fatalf("the holding worker never shaped; count %d", shapes.Load())
 		}

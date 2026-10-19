@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // runRig is a store, a git checkout named `api` used as the workspace, and an
@@ -182,6 +185,57 @@ func TestAnOwnerLaunchRunsACheckItemToLanded(t *testing.T) {
 	}
 	if !strings.HasPrefix(it.Proof[0].Evidence, "exit 0") {
 		t.Fatalf("the claim's evidence is %q, not the exit code", it.Proof[0].Evidence)
+	}
+}
+
+// A LAUNCH OPENS NO MANAGER TURN BEFORE THE FIRST STAGE (the owner's run of
+// 2026-10-19, where a turn asked to shape the run stopped on a card nobody
+// answered and the plan never ran). The runner is wired with this process's
+// shaping turns, whose every road fails the test if it is taken, and the item
+// still lands on its own stages; the turns stay wired for `shape steps` and
+// the inbox.
+func TestALaunchGivesTheManagerNoTurnBeforeTheFirstStage(t *testing.T) {
+	g := newRunRig(t)
+	var mu sync.Mutex
+	turns := 0
+	shape := &shapeTurns{
+		dirs: func(string) string { return g.workspace },
+		live: func(string, session.RunDoor) (managerTurn, bool) {
+			mu.Lock()
+			turns++
+			mu.Unlock()
+			return nil, false
+		},
+		open: func(context.Context, factory.Item, session.RunDoor, bool) (managerTurn, error) {
+			mu.Lock()
+			turns++
+			mu.Unlock()
+			return nil, errors.New("a launch opened the manager")
+		},
+	}
+	r := buildFactoryRunner(g.st, g.st, g.workspace, t.TempDir(), nil, shape)
+	stopAll(t, g.st, r)
+	if opts := r.Opts(); opts.ShapeNow == nil || opts.Inbox == nil {
+		t.Fatal("the shaping turns are not wired for shape steps and the inbox")
+	}
+	seam := factory.LocalSeam(g.st, time.Now(), factory.WithRunner(r))
+	id := g.checkItem(t)
+	if err := seam.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitFor(t, id, factory.StateLanded)
+	mu.Lock()
+	defer mu.Unlock()
+	if turns != 0 {
+		t.Fatalf("the launch asked the manager for %d turns, want none", turns)
+	}
+	if len(it.Proof) != 1 || !it.Proof[0].OK {
+		t.Fatalf("the first stage did not run: proof %+v", it.Proof)
+	}
+	for _, l := range it.Stream.Log {
+		if strings.Contains(l.Text, "recipe stands") || strings.Contains(l.Text, "manager did not answer") {
+			t.Fatalf("the log says a shaping line: %+v", it.Stream.Log)
+		}
 	}
 }
 

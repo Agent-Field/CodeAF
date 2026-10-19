@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -20,10 +19,8 @@ import (
 // before telling them to press ▶ run. The door is the floor's own control,
 // the one the top bar's button sends, reached from the manager's chat:
 //
-//   - an item that never ran (or was dismissed) is launched ([factory.Seam.Launch]);
-//     the manager is in the chat where the person asked, so the launch never
-//     gives it a second turn to shape: an item it had not shaped is recorded
-//     as kept ([shapeKeptRecord]) before it goes;
+//   - an item that never ran (or was dismissed) is launched ([factory.Seam.Launch])
+//     with its steps as they stand, as the button launches it;
 //   - a paused run goes on with the same step in the same chat ([factory.Seam.Hold]);
 //   - a run held at an approve step goes past it ([factory.Seam.Answer] with
 //     yes), which the tool's description reserves for the person's own clear
@@ -87,18 +84,6 @@ func startItem(st *store.Store, workspace string, it factory.Item) (string, erro
 	}
 	if seam.Launch == nil {
 		return "", errors.New("this window cannot reach the factory's runner")
-	}
-	// THE MANAGER IS HERE, IN THE CHAT WHERE THE PERSON SAID START: the
-	// launch gives it no second turn to shape what it has just talked over.
-	if !factoryrun.ShapedByManager(it) {
-		if err := st.Update(it.ID, func(x *factory.Item) error {
-			if !factoryrun.ShapedByManager(*x) {
-				x.Adapted = append(append([]string(nil), x.Adapted...), shapeKeptRecord)
-			}
-			return nil
-		}); err != nil {
-			return "", err
-		}
 	}
 	if err := seam.Launch(it.ID); err != nil {
 		return "", err

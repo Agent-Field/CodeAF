@@ -131,28 +131,30 @@ as the manager's own message and marked as the run's (a surface may draw them as
 A line is never written into the middle of the manager's own turn: while it is answering you,
 or while another codeaf has the chat open, the line waits and is written afterwards, in order.
 
-## the manager did not answer — shaping a run, manager set, the recipe stands
+## pressing run goes straight to the first step — does the manager reshape the run, manager set, the recipe stands
 
-Every run starts with the manager shaping it: one turn of the item's chat, before the first
-stage (see the manager shapes the run, on the factory page). The item's stream and the chat both
-get one line for what came of it:
+Pressing `r`, or saying `start` in the item's chat, starts the run at its first step (usually
+plan) with the steps the item has now: the repository's recipe, unless you or the manager
+changed them first. The manager is given no turn of its own before the first step, so nothing
+waits on it and no card stands between the press and the plan.
 
-- `manager set review: thorough on security, code and architecture · added arch after review ·
-  skipped neaten · why: touches the call row`: the same line the Adapted row of the item page
-  shows, one clause for each change and the reason last;
-- `the recipe stands` when the manager changed nothing;
-- `the manager did not answer · the recipe stands` when the turn failed, or did not end within a
-  minute: the recipe runs as it is, with no question about it;
-- `the manager was busy in the window · the recipe stands` when the chat open in your window was
-  answering you, and was still answering when it was asked a second time;
-- `the manager is open in another window · the recipe stands` when another codeaf has the chat
-  open, so this one cannot give it a turn;
-- `the manager's change was not applied: <why> · the recipe stands` when the bounds refused it,
-  for instance `a stage is one word · "do through" is two` or
-  `the run has nine stages already`; the stages stay as they were.
+To change the steps, tell the manager in the item's chat. Its `factory_run` changes them at
+once before a run, and only the steps not yet started during one (see change one job's steps,
+on the factory page). What it set is one line, the same one the Adapted row of the item page
+shows, one clause for each change and the reason last:
+`manager set review: thorough on security, code and architecture · added arch after review ·
+skipped neaten · why: touches the call row`. A change the bounds refuse is answered
+`nothing changed: <why>`, for instance `a stage is one word · "do through" is two` or
+`the run has nine stages already`, and the steps stay as they were.
 
-Shaping never stops the run; you read what it set at the first approve step. During a run, a change the manager makes on something you said is the same
-`manager set …` line, or `the manager's change was not applied: <why>`.
+A factory client can also ask for shape steps: one turn of the manager that reads the item and
+sets its steps without running anything. A run never asks for it. It ends in one line in the
+item's stream and the chat: the `manager set …` line, `the recipe stands` (nothing changed),
+`the manager did not answer · the recipe stands` (the turn failed, or did not end within a
+minute), `the manager was busy in the window · the recipe stands`,
+`the manager is open in another window · the recipe stands`,
+`the manager's change was not applied: <why> · the recipe stands`, or
+`the manager already shaped the steps · say what to change in its chat`.
 
 ## talk to the manager — what you type is the brief before a run and the steer during it
 

@@ -186,24 +186,25 @@ type Options struct {
 	// TalkPoll is how often a running item reads its manager conversation for
 	// a steer or an answer; 0 is two seconds.
 	TalkPoll time.Duration
-	// Shape is the manager's first act of a run (shape.go): one turn of the
-	// item's manager conversation, at launch, after the manager is made and
-	// before the first stage, that answers the edit it would make to the
-	// stages (an empty one when the recipe stands) and what it said. said is
-	// what the person typed into the conversation before this run. The runner
-	// applies the edit itself, before the run, and says the line. Nil is a run
-	// of the recipe as it stands. The shape lane added it, additively.
-	Shape func(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error)
+	// THERE IS NO TURN AT LAUNCH: a run starts with the stages the item has,
+	// which are the repository's recipe unless the person, or the manager on
+	// the person's own words through its `factory_run`, changed them first. A
+	// turn the runner gave the manager before the first stage held the plan
+	// behind a conversation nobody had asked anything of (the owner's run of
+	// 2026-10-19), so it is gone.
+	//
 	// ShapeNow is the floor's `shape steps` turn, asked while a worker holds
-	// the job: one turn now, with inRun bounding what the manager may change.
-	// Nil uses [Options.Shape] with no prior words, and the caller applies the
-	// in-run bound itself. The shape-door lane added it, additively.
+	// the job: one turn of the item's manager conversation now, with inRun
+	// bounding what the manager may change, that answers the edit it would
+	// make (an empty one when the recipe stands) and what it said. The runner
+	// applies the edit itself ([Runner.ShapeAsked]). Nil is a worker with no
+	// shaping turn, and `shape steps` then says the manager did not answer.
 	ShapeNow func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error)
 	// THERE IS NO TURN ON A STEER: words the person types into the manager's
 	// conversation during a run are already a turn of the manager there, and
 	// it reshapes the stages not yet started with its own `factory_run`.
-	// ShapeWait is how long a Shape turn may take before the run
-	// goes on without it; 0 is a minute. An Inbox turn is given the same.
+	// ShapeWait is how long a ShapeNow turn may take before it is let go; 0 is
+	// a minute. An Inbox turn is given the same.
 	ShapeWait time.Duration
 	// Inbox is the manager's turn on a question a step asked (inbox.go): one
 	// turn of the item's manager conversation that answers the question, or

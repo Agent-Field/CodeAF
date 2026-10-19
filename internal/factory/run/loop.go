@@ -104,11 +104,6 @@ type loopCtl struct {
 	askMu sync.Mutex
 	// reverify says the control runs the checks again, holding no bench.
 	reverify bool
-	// launch says the control is a run that Launch began, which the manager
-	// shapes before its first stage (shape.go), and said is what the person
-	// typed into the manager conversation before it, which that turn is told.
-	launch bool
-	said   []string
 	// hearMu keeps one reading of the manager conversation at a time
 	// (manager.go). phase, phaseAt and phaseSpent are the phase whose first
 	// round started last, when, and what the item had spent then, for its
@@ -197,7 +192,7 @@ func (r *Runner) Launch(id int) error {
 		return AlreadyRunning(it.Ref())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), models: make(chan string, 4), answers: make(chan loopAnswer, 1), phase: -1, launch: true}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), models: make(chan string, 4), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
@@ -210,12 +205,10 @@ func (r *Runner) Launch(id int) error {
 	talk, unmade := r.manage(it)
 	brief := r.brief(talk, it.Heard)
 	now := r.now()
-	var said []string
 	err = lp.move(c, "", EventQueued, "queued", func(it *factory.Item) error {
 		if err := launchable(*it); err != nil {
 			return err
 		}
-		said = nil
 		if strings.TrimSpace(it.Talk) == "" && talk != "" {
 			it.Talk = talk
 		}
@@ -225,7 +218,6 @@ func (r *Runner) Launch(id int) error {
 			}
 			if words := strings.TrimSpace(h.Words); words != "" {
 				it.Notes = append(it.Notes, words)
-				said = append(said, words)
 			}
 			it.Heard = h.At
 		}
@@ -250,7 +242,6 @@ func (r *Runner) Launch(id int) error {
 		lp.forget(c)
 		return err
 	}
-	c.said = said
 	lp.enqueue(c)
 	return nil
 }
@@ -462,11 +453,8 @@ func (lp *floorLoop) drive(c *loopCtl) {
 	}); err != nil {
 		return
 	}
-	// THE MANAGER SHAPES THE RUN FIRST, before any stage and before the
-	// conversation is watched, so its one turn is the only one it takes.
-	if c.launch && !lp.shape(c) {
-		return
-	}
+	// THE FIRST STAGE RUNS FIRST, with the item's stages as they stand. No
+	// manager turn comes before it ([Options.ShapeNow] says why).
 	if lp.r.opts.Talk != nil {
 		watching := make(chan struct{})
 		defer close(watching)

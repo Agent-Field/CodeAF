@@ -259,12 +259,12 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		Manager: managerMaker(floor, workspace, profileDir),
 		Talk:    sessionTalk{},
 	}
-	// AND THE MANAGER SHAPES THE RUN: one turn of its conversation at the
-	// launch of an item it never shaped, before the first stage
-	// (factory_shape.go). Nil shapes nothing; the recipe stands. What the
-	// person says during the run is the manager's own turn, never a second one.
+	// THE LAUNCH GIVES THE MANAGER NO TURN: the run starts at its first stage
+	// with the stages as they stand. The manager's conversation is still the
+	// door for `shape steps` and the inbox (factory_shape.go, factory_inbox.go);
+	// nil gives it neither. What the person says during the run is the
+	// manager's own turn, never a second one.
 	if shape != nil {
-		opts.Shape = shape.Shape
 		// `shape steps` while this worker holds the job is the same turn the
 		// floor's Shape door runs, bounded to the steps not yet started.
 		opts.ShapeNow = func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error) {
