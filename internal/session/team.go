@@ -669,7 +669,7 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		var lines []string
 		for _, entry := range entries {
 			cursor = entry.ID
-			if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) {
+			if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) && !a.teamOwnStart(role, entry) {
 				continue
 			}
 			if line := a.teamEntryLineLocked(profile, role, entry); line != "" {
@@ -718,6 +718,23 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 // it, because the start carries the brief, and the brief is handed to the new
 // member here, marked as the manager's, on its first request ([teamBriefLine]).
 // The person never typed it, so it must not arrive as the person's message.
+// teamOwnStart reports whether entry is the start that made this
+// conversation: a manager's start addressed to its handle in the team, inside
+// [teamStartGrace] of when this process began. It is the one line a member is
+// owed from before it joined, the line [Agent.firstTeamCursor] reaches back
+// for, and the join bound in [Agent.teamNewsLocked] must let it through.
+//
+// THE JOIN IS ALWAYS AFTER THE START. The manager writes the start, the
+// interface opens the conversation on reading it, and only then makes it a
+// member; and the engine's teams door stamps a new member's join with the time
+// it took the edit (internal/remote's teams.go). A bound that took the start
+// too handed every started member nothing, so none of them ever woke
+// (team_wake.go), and a manager reported helpers running that were idle.
+func (a *Agent) teamOwnStart(role teamRole, entry teams.Entry) bool {
+	return !role.manager && role.handle != "" && entry.Kind == teams.KindStart && entry.To == role.handle &&
+		!entry.At.Before(a.startedAt.Add(-teamStartGrace))
+}
+
 func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 	tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
 	if err != nil {

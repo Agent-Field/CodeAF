@@ -76,7 +76,7 @@ conversation in charge. With no team selected, open the **Teams ▾** dropdown a
 the tab strip and choose its last row, **`+ New from this session`**. It puts this in the message box, in place of
 what was there, and sends nothing:
 
-`/helpers Suggest two or three helpers for what we're working on here. For each, say what it would take on and the brief you'd give it. Don't start anyone until I agree, and if I say cancel, undo the team.`
+`/helpers Suggest two or three helpers for what we're working on here. For each, say what it would take on and the brief you'd give it. I'll answer yes, ask for changes, or cancel.`
 
 Edit the words into the team you want, then press enter; typing `/helpers` yourself does
 the same, and a bare `/helpers` sends exactly that default. Two things happen:

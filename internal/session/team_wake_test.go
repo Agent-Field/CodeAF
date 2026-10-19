@@ -65,6 +65,55 @@ func TestAStartedMemberWakesOnItsOwnWithTheBriefOnce(t *testing.T) {
 	}
 }
 
+// AND IT WAKES WHEN THE STORE STAMPED ITS JOIN, as every ordinary launch's
+// does. The engine's teams door gives a new member the time it joined
+// (internal/remote's teams.go), and a member a manager started always joins
+// after the start that made it was written. The join bound keeps a membership
+// from being handed lines from before it began; its own start is the one line
+// it is owed from before, and the bound must not take that away. It used to:
+// the brief was filtered out, nothing was addressed to the member, and every
+// helper a manager started sat idle until the person asked why.
+//
+// A DIRECTIVE FROM BEFORE THE JOIN IS STILL NOT HANDED OVER: the exemption is
+// the start alone.
+func TestAStartedMemberWhoseJoinWasStampedStillWakesWithItsBrief(t *testing.T) {
+	fixture := newWakingTeamFixture(t)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: "Rewrite the lexer."})
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "lexer", Text: "Also delete the parser."})
+	dir := filepath.Join(filepath.Dir(filepath.Dir(fixture.parser)), "lexer")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	transcript := filepath.Join(dir, placeTranscript)
+	if err := os.WriteFile(transcript, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("on it"), nil },
+	}}
+	teamAgent(t, fixture, transcript, completer, nil)
+	time.Sleep(10 * time.Millisecond)
+	if err := teams.Update(fixture.profile, func(file *teams.File) error {
+		return file.AddMember(fixture.teamID, teams.Member{Key: convKeyOf(t, transcript), File: transcript, Handle: "lexer", JoinedAt: time.Now()})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for completer.requests() == 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if completer.requests() == 0 {
+		t.Fatal("a started member whose join was stamped never took its first turn")
+	}
+	first := userTextIn(completer.request(0))
+	if !briefIn(first, "Rewrite the lexer.") {
+		t.Fatalf("the first request did not carry the brief:\n%s", first)
+	}
+	if strings.Contains(first, "Also delete the parser.") {
+		t.Fatalf("a directive from before the join was handed over:\n%s", first)
+	}
+}
+
 // WITH THE TEAM'S AUTO-WAKE OFF, A START OPENS THE MEMBER AND STARTS NO TURN.
 // The brief stays in the Traffic and is handed over on the first turn something
 // else starts, and the Traffic says why nothing ran.

@@ -134,7 +134,7 @@ func TestABareHelpersShowsTheAskItSends(t *testing.T) {
 			t.Errorf("the default ask says %q, which is codeaf's word and not the person's: %q", internal, helpersPrompt)
 		}
 	}
-	for _, want := range []string{"two or three helpers", "Don't start anyone until I agree", "cancel"} {
+	for _, want := range []string{"two or three helpers", "I'll answer yes", "cancel"} {
 		if !strings.Contains(helpersPrompt, want) {
 			t.Errorf("the default ask does not say %q: %q", want, helpersPrompt)
 		}

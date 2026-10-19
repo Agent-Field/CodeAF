@@ -64,10 +64,17 @@ import (
 // helpersPrompt is what a bare /helpers asks, and what the dropdown's row puts
 // in the box after `/helpers `. It is the person speaking, in words they would
 // use, because it is their message and it is on their screen: it names no tool
-// and nothing the person could not have typed. Its three asks are the three
-// things the person needs from the manager: a proposal to read, nobody started
-// before they agree, and a way to say no.
-const helpersPrompt = "Suggest two or three helpers for what we're working on here. For each, say what it would take on and the brief you'd give it. Don't start anyone until I agree, and if I say cancel, undo the team."
+// and nothing the person could not have typed. It asks for a proposal to read
+// and says what happens next — the person answers yes, a change, or cancel —
+// which is what keeps the manager from starting anyone before they agree.
+//
+// IT DESCRIBES THIS EXCHANGE AND STATES NO STANDING RULE. It used to end
+// "Don't start anyone until I agree, and if I say cancel, undo the team.", and
+// the memory that notices rules (internal/session's memory) kept that as one
+// for the whole project: a person's standing order never to start helpers
+// without asking, read by every manager after. Said as the next step of this
+// one conversation, there is nothing in it to keep.
+const helpersPrompt = "Suggest two or three helpers for what we're working on here. For each, say what it would take on and the brief you'd give it. I'll answer yes, ask for changes, or cancel."
 
 // The words this door says. Each is quoted in the manual exactly as spelled.
 const (
