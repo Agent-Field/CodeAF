@@ -17,12 +17,14 @@ import (
 // outside closes the menu without changing the view. It says none of that in a
 // footer: a list of rows under a chip is read and worked the way every list is.
 //
-// ITS LAST ROW IS ALWAYS `+ New from this session`, under a rule, which makes a
-// team of the conversation in front by putting `/helpers` in the box
-// (helpers.go). Because that row is always there, the chip is there too, with no
-// team yet: `Teams ▾` is how a person with none finds how to make one from what
-// they are doing. Over --host to an engine without the teams doors nothing here
-// can work, and the row, and with no teams the chip, are absent.
+// WITH NO TEAM SELECTED ITS LAST ROW IS `+ New from this session`, under a
+// rule, which makes a team of the conversation in front by putting `/helpers`
+// in the box (helpers.go). Because that row is there whenever no team is, the
+// chip is there too with no team yet: `Teams ▾` is how a person with none finds
+// how to make one from what they are doing. With a team selected the row is
+// gone ([app.teamMenuHelpers] says why). Over --host to an engine without the
+// teams doors nothing here can work, and the row, and with no teams the chip,
+// are absent.
 
 // teamMenu is the switcher's state: whether it is up, the row the keyboard is
 // on, the row the pointer is on, and where the last frame drew it and its rows,
@@ -66,9 +68,22 @@ func (a *app) teamMenuRows() []teamMenuRow {
 }
 
 // teamMenuHelpers reports whether the switcher carries `+ New from this
-// session`: everywhere a team can be kept. Where /helpers would refuse for the
-// conversation in front, the row is still there and says why when chosen.
-func (a *app) teamMenuHelpers() bool { return !a.teamsOff() }
+// session`: only while NO team is selected, wherever a team can be kept.
+//
+// WITH A TEAM SELECTED THE ROW IS NOT THERE AT ALL. A new team made from a
+// conversation seen through a team's overlay reads as one made inside that
+// team, and it is not: /helpers always makes a top-level team. Nesting has its
+// own doors, `+ Add subteam` on Teams and a manager's own sub-team start, with
+// their own rules, and this row must not look like a third. Where /helpers
+// would refuse for the conversation in front for another reason, the row is
+// still there and says why when chosen.
+func (a *app) teamMenuHelpers() bool {
+	if a.teamsOff() {
+		return false
+	}
+	_, selected := a.teamActive()
+	return !selected
+}
 
 // A picker with no available overlay is absent, including retained teams and
 // an optional global manager that has not been created.

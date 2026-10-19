@@ -72,8 +72,8 @@ handle choice may replace that fallback.
 ## Turn this conversation into a team — /helpers, + New from this session, convert a chat, bring in helpers
 
 You are working in a conversation, the work has grown, and you want helpers with this
-conversation in charge. Open the **Teams ▾** dropdown at the left of the tab strip and choose
-its last row, **`+ New from this session`**. It puts this in the message box, in place of
+conversation in charge. With no team selected, open the **Teams ▾** dropdown at the left of
+the tab strip and choose its last row, **`+ New from this session`**. It puts this in the message box, in place of
 what was there, and sends nothing:
 
 `/helpers Suggest two or three helpers for what we're working on here. For each, say what it would take on and the brief you'd give it. Don't start anyone until I agree, and if I say cancel, undo the team.`
@@ -100,6 +100,7 @@ list, and it proposes again. Cancel, and it takes the team back with `team_disso
 - On home, or any page: `/helpers makes a team of the conversation you are in · open one first`.
 - On the welcome screen of a new chat: `/helpers makes a team of a conversation you have started · say what you are working on first`.
 - In a conversation that already manages a team: `this conversation already manages harbor · ask it for helpers`, and the strip shows that team.
+- With a team selected on the strip: `/helpers works with no team selected · clear harbor with × first, or use + Add subteam on Teams for a team inside it`. The dropdown has no `+ New from this session` row then: the team it makes is always top-level.
 - On a connection that holds one conversation at a time: `helpers open beside this conversation, and a connection holds one conversation at a time`.
 - Over `--host` to an engine without teams: `managers are not available over --host yet`.
 - While the first one is still being saved: `the team is still being saved`.

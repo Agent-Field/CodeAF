@@ -11,7 +11,7 @@ With no overlay, the strip shows **Teams ▾**, even before you have a team. Sel
 team chip and a separate **x**. Click the name to switch teams; click x to remove the
 overlay and restore ordinary Chats. Clearing selects **All teams** in Teams without
 changing membership or background work. The dropdown lists actual teams, with no **None** option,
-and ends with **+ New from this session**, which makes a team of the conversation in front.
+and, with no team selected, ends with **+ New from this session**, which makes a team of the conversation in front.
 The **▦ All** button still opens the independent conversation grid.
 
 The Teams dropdown is the only team selector in Chats; there are no membership buttons
@@ -224,11 +224,13 @@ with one selected it shows that team's name, colour and a separate **x** to clea
 The dropdown offers **All teams** when a global manager exists, then the active team hierarchy.
 All teams selects the global-manager overlay; it is separate from the team-agnostic `▦ All` grid.
 A root without a manager or with a known missing manager transcript has no All teams choice.
-The picker has no None option or management actions. Its last row, under a rule, is always
-**+ New from this session**: it puts `/helpers` and a default ask in the message box, replacing
-what was there (that draft is kept in `/drafts`), and nothing happens until you edit it
-and press enter (see *Turn this conversation into a team* on the team manager page). So the
-chip is there even with no teams yet; it is absent only over `--host` to an engine without teams.
+The picker has no None option or management actions. With **no team selected**, its last row,
+under a rule, is **+ New from this session**: it puts `/helpers` and a default ask in the message
+box, replacing what was there (that draft is kept in `/drafts`), and nothing happens until you
+edit it and press enter (see *Turn this conversation into a team* on the team manager page). So
+the chip is there even with no teams yet; it is absent only over `--host` to an engine without
+teams. With a team selected the row is not offered: it makes a top-level team, and a team inside
+another is `+ Add subteam` on Teams.
 Closed teams are available through Show closed on Teams, not through this picker.
 
 Selecting a team restores its conversation and horizontal strip position. A new overlay

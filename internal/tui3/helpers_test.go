@@ -341,6 +341,7 @@ func TestNewFromThisSessionInAManagerSaysWhichTeamAndLeavesTheBox(t *testing.T) 
 	typeLine(t, a, "/helpers")
 	teamsFlush(t, a)
 	made := helpersDisk(t, a)[0]
+	spend(t, a, a.teamOverlayChoose(""))
 	a.input.insert("keep this")
 	row, _ := helpersMenuRow(t, a)
 	spend(t, a, a.teamMenuDo(row))
@@ -349,6 +350,46 @@ func TestNewFromThisSessionInAManagerSaysWhichTeamAndLeavesTheBox(t *testing.T) 
 	}
 	if !transcriptSays(a, fmt.Sprintf(helpersManagesWord, made.Name)) {
 		t.Fatal("the row did not say which team this conversation manages")
+	}
+}
+
+// WITH A TEAM SELECTED THERE IS NO `+ New from this session`, and /helpers
+// refuses: the team it makes is a top-level team, and made from inside another
+// team's overlay it would read as nesting. Nesting is `+ Add subteam` on Teams.
+// Nothing is made, nothing is sent, the box is untouched; clearing the
+// selection brings the row back.
+func TestWithATeamSelectedThereIsNoNewFromThisSession(t *testing.T) {
+	a, fake := helpersApp(t)
+	harbor, err := a.teamMake("harbor", a.tabList())
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamsFlush(t, a)
+	spend(t, a, a.teamActivate(harbor))
+	for _, r := range a.teamMenuRows() {
+		if r.rule || r.code == wallPopHelpers {
+			t.Fatalf("with a team selected the dropdown offers %+v", a.teamMenuRows())
+		}
+	}
+	a.openTeamMenu()
+	if frame, _ := menuFrame(t, a); strings.Contains(frame, helpersRowWord) {
+		t.Fatalf("with a team selected the dropdown draws %q:\n%s", helpersRowWord, frame)
+	}
+	a.closeTeamMenu()
+
+	a.input.insert("/helpers")
+	drive(t, a, key("enter"))
+	teamsFlush(t, a)
+	if !transcriptSays(a, fmt.Sprintf(helpersSelectedWord, "harbor")) {
+		t.Fatal("/helpers with a team selected did not say why it refused")
+	}
+	if n := len(helpersDisk(t, a)); n != 1 || len(fake.sent) != 0 {
+		t.Fatalf("/helpers with a team selected made %d teams and sent %q", n, fake.sent)
+	}
+
+	spend(t, a, a.teamOverlayChoose(""))
+	if _, last := helpersMenuRow(t, a); !last {
+		t.Fatal("clearing the selection did not bring the row back last")
 	}
 }
 

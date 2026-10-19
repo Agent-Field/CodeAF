@@ -4119,30 +4119,31 @@ func TestChangedInputQuestionReachesRetainedHistory(t *testing.T) {
 
 // /helpers: the questions a person in the middle of some work asks when they
 // want it to become a team, and the ones they ask about saying no, reach the
-// sections that answer them by name, not just the manager's page.
+// sections that answer them by name, not just the pages they are on.
 func TestHelpersQuestionsReachTheirSections(t *testing.T) {
-	for _, probe := range []struct{ question, title string }{
-		{"how do I turn this conversation into a team", "Turn this conversation into a team"},
-		{"convert this chat to a team with it as the manager", "Turn this conversation into a team"},
-		{"bring in helpers for what I am working on", "Turn this conversation into a team"},
-		{"what does + New from this session in the Teams dropdown do", "Turn this conversation into a team"},
-		{"what does /helpers send to the model", "Turn this conversation into a team"},
-		{"why is /helpers not offered here", "When /helpers is not offered"},
-		{"/helpers says open one first", "When /helpers is not offered"},
-		{"I said no to the helpers, how do I cancel the team", "Cancel a team nobody joined"},
-		{"what does team_dissolve do", "Cancel a team nobody joined"},
+	for _, probe := range []struct{ question, page, title string }{
+		{"how do I turn this conversation into a team", "team-manager", "Turn this conversation into a team"},
+		{"convert this chat to a team with it as the manager", "team-manager", "Turn this conversation into a team"},
+		{"bring in helpers for what I am working on", "team-manager", "Turn this conversation into a team"},
+		{"what does /helpers send to the model", "team-manager", "Turn this conversation into a team"},
+		{"what does + New from this session in the Teams dropdown do", "conversations-and-teams", "the Teams dropdown and + New from this session"},
+		{"why is + New from this session missing when a team is selected", "conversations-and-teams", "the Teams dropdown and + New from this session"},
+		{"why is /helpers not offered here", "team-manager", "When /helpers is not offered"},
+		{"/helpers says open one first", "team-manager", "When /helpers is not offered"},
+		{"I said no to the helpers, how do I cancel the team", "team-manager", "Cancel a team nobody joined"},
+		{"what does team_dissolve do", "team-manager", "Cancel a team nobody joined"},
 	} {
 		found := Chat().Search(probe.question, DefaultResults)
 		reached := false
 		where := make([]string, 0, len(found))
 		for _, section := range found {
 			where = append(where, section.Page+" · "+section.Title)
-			if section.Page == "team-manager" && strings.Contains(section.Title, probe.title) {
+			if section.Page == probe.page && strings.Contains(section.Title, probe.title) {
 				reached = true
 			}
 		}
 		if !reached {
-			t.Errorf("%q does not reach team-manager · %q; it reached %v", probe.question, probe.title, where)
+			t.Errorf("%q does not reach %s · %q; it reached %v", probe.question, probe.page, probe.title, where)
 		}
 	}
 }

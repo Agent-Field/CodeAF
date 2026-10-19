@@ -37,6 +37,12 @@ package tui3
 // in place of whatever was there, and sends nothing: the person reads the
 // request, changes it into the team they want, and presses enter.
 //
+// BOTH ARE FOR A CONVERSATION SEEN WITH NO TEAM SELECTED. With a team's
+// overlay on the strip the row is absent and the command refuses, because the
+// team it makes is a top-level team and making it from inside another team
+// would read as nesting; a team inside a team is `+ Add subteam` on Teams, or
+// a manager's own sub-team start.
+//
 // THE PERSON ANSWERS IN THEIR OWN WORDS. There is no card. Yes is a reply the
 // manager acts on with `team_start`, which runs under the approval posture every
 // other start does, and each helper it starts opens as a tab in this team's
@@ -76,6 +82,9 @@ const (
 	// helpersManagesWord is /helpers in a conversation that already manages a
 	// team; the strip is narrowed to that team.
 	helpersManagesWord = "this conversation already manages %s · ask it for helpers"
+	// helpersSelectedWord is /helpers with a team selected in the strip: a
+	// team made here is a top-level team, and subteams have their own door.
+	helpersSelectedWord = "/helpers works with no team selected · clear %s with × first, or use + Add subteam on Teams for a team inside it"
 	// helpersPendingWord is a second /helpers while the first is being saved.
 	helpersPendingWord = "the team is still being saved"
 	// helpersMadeWord is the receipt, once the store has the team.
@@ -138,6 +147,12 @@ func (a *app) helpersRefusal() (string, team) {
 	a.teamsEnsure()
 	if t, manages := a.teamManaged(tab.key); manages {
 		return fmt.Sprintf(helpersManagesWord, t.Name), t
+	}
+	// ONLY WITH NO TEAM SELECTED, the dropdown's row and the command alike
+	// ([app.teamMenuHelpers] says why): a team made here is a top-level team,
+	// and making it from inside another team's overlay would read as nesting.
+	if t, selected := a.teamActive(); selected {
+		return fmt.Sprintf(helpersSelectedWord, t.Name), team{}
 	}
 	return "", team{}
 }

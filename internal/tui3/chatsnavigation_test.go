@@ -194,15 +194,15 @@ func TestTeamMenuLongTreeScrollsAndTinyResizeCannotChoose(t *testing.T) {
 	if !a.teamMenu.card.holds(a.teamMenu.card.x0, a.teamMenu.card.y0) || len(a.teamMenu.hits) >= len(a.teamMenuRows()) {
 		t.Fatal("long picker was not bounded")
 	}
-	// The cursor counts the rows it can land on; the last is `+ New from this
-	// session`, under a rule that is a line and not a pick (teammenu.go).
+	// The cursor counts the rows it can land on. With harbor selected there
+	// is no `+ New from this session` (teammenu.go), so the last is a team.
 	picks := teamMenuPicks(a.teamMenuRows())
 	for range len(picks) {
 		drive(t, a, key("down"))
 		menuFrame(t, a)
 	}
 	chosen := picks[a.teamMenu.cursor]
-	if chosen.code != wallPopHelpers {
+	if chosen.code != wallPopTeam || a.teamMenu.cursor != len(picks)-1 {
 		t.Fatalf("the last row the cursor reaches is %+v", chosen)
 	}
 	hit := menuHit(t, a, chosen.code, chosen.id)

@@ -193,11 +193,16 @@ func TestTeamMenuOffersOnlyOverlayChoices(t *testing.T) {
 			t.Fatalf("management action %q remains in overlay picker", word)
 		}
 	}
-	// Its rows are the open teams and, last under a rule, `+ New from this
+	// With a team selected its rows are the open teams and nothing else.
+	if len(a.teamMenuRows()) != len(a.teamsOpenTree()) {
+		t.Fatal("picker has extra rows")
+	}
+	// With none selected they end, under a rule, with `+ New from this
 	// session`, which puts /helpers in the box and edits no team (helpers.go).
+	spend(t, a, a.teamOverlayChoose(""))
 	rows := a.teamMenuRows()
 	if len(rows) != len(a.teamsOpenTree())+2 || !rows[len(rows)-2].rule || rows[len(rows)-1].code != wallPopHelpers {
-		t.Fatalf("picker has extra rows: %+v", rows)
+		t.Fatalf("with no team selected the rows are %+v", rows)
 	}
 	for _, r := range rows[:len(rows)-2] {
 		if r.code != wallPopTeam {
