@@ -38,10 +38,6 @@ const (
 	// exact commit to merge, and the worker that pulls the job reads the pull
 	// request again, runs the same gate and merges only that commit.
 	SignalMerge = "merge"
-	// SignalShape asks the holding worker to give the job's manager one
-	// shaping turn now. Nothing is launched. A job nobody holds is not
-	// signaled: the factory runs that turn itself, where the worker lives.
-	SignalShape = "shape"
 	// SignalStop tells the holding worker to stop. Drop sends it. Stop keeps
 	// the branch; the signal does not delete it.
 	SignalStop = "stop"

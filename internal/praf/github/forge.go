@@ -69,6 +69,9 @@ type Issue struct {
 	// non-nil and empty means GitHub said nobody is assigned. The deprecated
 	// singular assignee field is never read: it is only the first of these.
 	Assignees []string
+	// State is GitHub's word, open or closed. Only [client.Issue] fills it:
+	// the lists are of open issues alone, so their rows leave it empty.
+	State string
 }
 
 // Pull is one open pull request. Additions, Deletions and Files are filled by
@@ -164,6 +167,7 @@ type issueJSON struct {
 	HTMLURL     string      `json:"html_url"`
 	PullRequest *struct{}   `json:"pull_request"`
 	Comments    int         `json:"comments"`
+	State       string      `json:"state"`
 	// Assignees is a pointer so an absent (or null) array stays distinct from
 	// an empty one.
 	Assignees *[]userJSON `json:"assignees"`

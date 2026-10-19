@@ -178,7 +178,6 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 	}
 	localSettings(&seam, st, o)
 	localRunner(&seam, o)
-	localShape(&seam, o)
 	// THE FLOOR'S OWN MARKS, kept by the store when it keeps them (marks.go).
 	localMarks(&seam, st)
 	if o.talk != nil {
@@ -241,15 +240,6 @@ func WithRepoDirs(dir func(repo string) string) LocalOption {
 	return func(o *localOptions) { o.dirs = dir }
 }
 
-// WithShape gives the local seam its [Seam.Shape] door: shape is the manager's
-// shaping turn for one item, built where the session engine is (cmd/codeaf's
-// factory_shape.go), because THIS PACKAGE IMPORTS NEITHER the engine nor the
-// runner. A seam without it has no Shape door, and opening an item page
-// shapes nothing.
-func WithShape(shape func(ctx context.Context, id int) (string, error)) LocalOption {
-	return func(o *localOptions) { o.shape = shape }
-}
-
 // WithTalk gives the local seam its [Seam.Talk] door: maker is what makes an
 // item's conversation and answers its session file. It is a func handed in
 // rather than anything this package builds, because a conversation is the
@@ -295,7 +285,6 @@ type localOptions struct {
 	dirs           func(repo string) string
 	lister         RepoLister
 	talk           func(ctx context.Context, it Item) (string, error)
-	shape          func(ctx context.Context, id int) (string, error)
 	refetch        func(ctx context.Context, it Item) error
 }
 
@@ -872,11 +861,4 @@ func localRunner(seam *Seam, o localOptions) {
 	seam.SignOff = r.SignOff
 	seam.SendBack = r.SendBack
 	seam.Reverify = r.Reverify
-}
-
-// localShape hangs the Shape door handed in, if any.
-func localShape(seam *Seam, o localOptions) {
-	if o.shape != nil {
-		seam.Shape = o.shape
-	}
 }

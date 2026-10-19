@@ -50,6 +50,7 @@ const (
 	factoryVerbStop          = "stop"
 	factoryVerbDismiss       = "dismiss"
 	factoryVerbDrop          = "drop"
+	factoryVerbRestore       = "restore"
 	factoryVerbUnassign      = "unassign"
 	factoryVerbAssignToMe    = "assign_to_me"
 	factoryVerbAssignee      = "change_assignee"
@@ -257,6 +258,12 @@ func (b *appBackend) FactoryJobDrop(ctx context.Context, p appwire.FactoryJobDro
 		Words  string      `json:"words,omitempty"`
 		Expect *api.Expect `json:"expect,omitempty"`
 	}{p.Words, p.Expect})
+}
+
+// FactoryJobRestore is Bring back. The factory refuses a job that was not
+// dropped, and only the job's person may bring it back.
+func (b *appBackend) FactoryJobRestore(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActRestore, p.Job, factoryVerbRestore, guardBody{p.Expect})
 }
 
 func (b *appBackend) FactoryJobUnassign(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {

@@ -99,6 +99,18 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 
 **Auto-merge** is off unless the repository's `.codeaf/factory.yaml` says `merge: {auto: on}` (`method: merge`, `squash` or `rebase`; omitted lets the repository's settings choose). A personal `~/.codeaf/factory.yaml` may only turn it off. The setting is fixed on a job when its proof is approved. An auto-merge also needs every claim proven and at least one passing check, and until then it waits quietly. A merge that failed is the person's to look at, says why, and is never tried again on its own.
 
+## drop a job and bring it back — Drop, Bring back, undo a drop, deleted branch
+
+**Drop** finishes a job for good: a running one is stopped, the job reads done, and nothing on GitHub brings it back by itself (a changed issue does not revive a dropped job). Only the job's assignee, or anyone while it has none, may drop it. The job's branch is kept for seven days and then deleted.
+
+**Bring back** is the one way out of a drop. Only a dropped job offers it, and only to the person who may act on the job. The job returns to Backlog as if it had never been dropped: nothing starts, the branch deletion is called off, and starting it is your own start. If the seven days had already passed and the branch is gone, the job still comes back; its next run starts on a fresh branch. A job that was not dropped is refused with `only a dropped job can be brought back`.
+
+## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
+
+The factory reads GitHub on its own about once a minute, but those reads list open issues and pull requests only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue or pull request again first, in one request. If it was closed or merged on GitHub, the job is not started: it is marked done (closed or merged) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
+
+**Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
+
 ## how big is a job — size of a job, the size: filter, why there is no size, risky
 
 A job's size comes from the first of these that exists, and nothing else is a size:

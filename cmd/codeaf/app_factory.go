@@ -159,7 +159,9 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},
 		ChangeAssignee: factorygithub.JobWrites{Token: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }}.Assign,
-		PersonProfile:  factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners})
+		// A person's start reads the one item again first (serve's endedOnGitHub).
+		Recheck:       factorygithub.Rechecker(func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }),
+		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners})
 	closeDiscovery, err := serveAppFactoryDiscovery(h.floor.Root(), factoryTarget{h.address, h.token})
 	if err != nil {
 		handler.Close()
@@ -427,13 +429,6 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns := factoryShapeTurnsFrom(h.floor, h.workspace, h.profile, current)
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
-	setFactoryProcess(func() {
-		if factoryProcess.workerShapes == nil {
-			factoryProcess.workerShapes = map[string]func(context.Context, int) (string, error){}
-		}
-		factoryProcess.workerShapes[mirror.Root()] = factoryShapeDoor(mirror, h.workspace, h.profile, turns)
-	})
-	defer setFactoryProcess(func() { delete(factoryProcess.workerShapes, mirror.Root()) })
 	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, factoryStageMakerFrom(h.floor, h.workspace, h.profile, current).withRefusal(source.Refusal), turns)
 	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
 	machine, _ := os.Hostname()

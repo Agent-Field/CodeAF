@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
@@ -27,6 +28,7 @@ func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
 	h.postJob("start_now", h.seam.Launch != nil, h.guarded("start_now", h.onlyOwner(h.startJob)))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
+	h.postJob("restore", stored, h.guarded("restore", h.onlyOwner(h.restoreJob)))
 	h.postJob("dismiss", stored, h.dismissJob)
 	h.postJob("assign_to_me", stored, h.assignToMe)
 	h.postJob("change_assignee", stored, h.changeAssignee)
@@ -43,6 +45,9 @@ func (h *Handler) startJob(w http.ResponseWriter, r *http.Request, it factory.It
 		h.refuse(w, 409, "Approval needed: start", "conflict", "", nil, factory.JobState(it))
 		return
 	}
+	if h.endedOnGitHub(w, r, it) {
+		return
+	}
 	if strings.HasSuffix(r.URL.Path, "/start_now") && h.config.Store != nil {
 		if h.failed(w, h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Marked = true; return nil })) {
 			return
@@ -54,6 +59,54 @@ func (h *Handler) startJob(w http.ResponseWriter, r *http.Request, it factory.It
 		}
 	}
 	h.finish(w, h.recordAction(r, it, record.Started, "", func() error { return h.seam.Launch(it.ID) }))
+}
+
+// recheckWait bounds the one GitHub read a person's start makes. It is short
+// because the person is waiting on the button, and a read that runs out
+// starts the job anyway.
+const recheckWait = 5 * time.Second
+
+// endedOnGitHub is the check a person's start makes on the ONE item they chose
+// (start_now, run, run_again): the poll's lists are of open items only, so a
+// job never learns from them that its issue was closed. When GitHub says the
+// issue or pull request was closed or merged, the job is finished the way a
+// pull request that ended finishes one (done, DoneHow "closed" or "merged"),
+// the factory records it, and the start is refused in one sentence.
+//
+// STARTING NEVER DEPENDS ON GITHUB BEING UP. A read that fails, times out, or
+// has no token to read with answers nothing, and the job starts on what the
+// floor already knows; the poll is still the source of every other fact.
+func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if h.config.Recheck == nil || h.config.Store == nil || it.Origin != factory.OriginForge || it.Num <= 0 {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), recheckWait)
+	how, err := h.config.Recheck(ctx, it)
+	cancel()
+	if err != nil || (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) {
+		return false
+	}
+	now := h.clock().UTC()
+	err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		cur.State = factory.StateShipped
+		cur.DoneHow = how
+		cur.DoneAt = now
+		cur.Marked = false
+		cur.Question = ""
+		cur.QKind = ""
+		cur.StopUndo = nil
+		return nil
+	})
+	if h.failed(w, err) {
+		return true
+	}
+	if h.config.Record != nil {
+		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.SourceClosed, Verb: how, Job: it.ID, Detail: "on GitHub", Cost: jobCost(it)}); h.failed(w, err) {
+			return true
+		}
+	}
+	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it wasn't started.", it.Num, how), "conflict", "", nil, api.StateDone)
+	return true
 }
 
 // ensureBudget takes the pipeline's own default, not a global task spending cap.
@@ -106,6 +159,33 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 		return
 	}
 	h.startJob(w, r, it)
+}
+
+// restoreJob is POST /v1/jobs/{id}/restore, Bring back: the one way out of a
+// drop. The job goes back to Backlog as if it had never been dropped, and
+// nothing starts; starting it again is the person's own start. A DROP IS NOT A
+// DELETE, so the branch-deletion deadline the drop set is taken off. When that
+// deadline already passed and the branch is gone, the job still comes back:
+// its next run starts from a fresh branch, which is why BranchDeletedAt is
+// cleared too, so a later drop deletes the branch that run makes.
+func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	if factory.JobDoneHow(it) != "dropped" {
+		h.refuse(w, http.StatusConflict, "only a dropped job can be brought back", "conflict", "", nil, factory.JobState(it))
+		return
+	}
+	h.finish(w, h.recordAction(r, it, record.Restored, "", func() error {
+		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+			cur.State = factory.StateNew
+			cur.DoneHow = ""
+			cur.DoneAt = time.Time{}
+			cur.BranchDeleteAt = time.Time{}
+			cur.BranchDeletedAt = time.Time{}
+			return nil
+		})
+	}))
+	// The drop's branch deadline was one of the job timers; the next one is
+	// worked out again without it.
+	h.scheduleJobTimer()
 }
 
 func (h *Handler) dismissJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
@@ -626,11 +706,19 @@ func (h *Handler) pruneBranch(id int) {
 	if err != nil {
 		return
 	}
+	// A DELETE ALREADY RECORDED FOR THIS DROP is not sent again. Only one
+	// after the job's last drop counts: a job brought back and dropped again
+	// has a new branch, and the first drop's delete says nothing about it.
 	var deleted time.Time
 	for _, e := range events {
-		if e.Job == id && e.Kind == record.BranchDeleted {
+		if e.Job != id {
+			continue
+		}
+		switch e.Kind {
+		case record.Dropped:
+			deleted = time.Time{}
+		case record.BranchDeleted:
 			deleted = e.At
-			break
 		}
 	}
 	if deleted.IsZero() {

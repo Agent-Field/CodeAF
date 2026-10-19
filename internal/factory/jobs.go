@@ -121,7 +121,7 @@ const (
 )
 
 // ShownSize is the ONE resolver every DISPLAY or FILTER of an item's size
-// reads (`size:`, `risky`, `when: large`, the shaping turn, the chat floor),
+// reads (`size:`, `risky`, `when: large`, the manager's turn, the chat floor),
 // and it answers (letter, source). A size label a person set wins; else a
 // forge's measured diff (SizeFrom "diff"); else a completed read's size
 // (SizeFrom "read" with the item triaged). Anything else, a legacy document

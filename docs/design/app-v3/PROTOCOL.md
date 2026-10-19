@@ -2445,6 +2445,7 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 | `factory.job_stop` | | `…/stop` |
 | `factory.job_dismiss` | | `…/dismiss` (personal) |
 | `factory.job_drop` | words? | `…/drop` (assignee only; the branch is kept) |
+| `factory.job_restore` | | `…/restore` (Bring back: assignee only; only a dropped job, `can.restore`; back to Backlog, nothing starts, the branch deletion is called off) |
 | `factory.job_unassign` | | `…/unassign` (assignee only) |
 | `factory.job_assign_to_me` | | `…/assign_to_me` (only an unassigned job) |
 | `factory.job_change_assignee` | assignee (login, `@` optional) | `…/change_assignee` (assignee only) |
@@ -2464,7 +2465,7 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 
 **Result.** `FactoryJobActed {factory, action, job, approval?, undo_until?, event?, current?}`. `current` is the job as the factory shows it after the action (one extra GET, never a retry); when it is absent the action still happened. The next write on the job carries `current.version`.
 
-**Guards.** `expect.version` is required on every job write (`bad_params` without it); `expect.state` and `expect.step` are passed through. The factory refuses a mismatch, and the engine does not resend. `job_approve` carries `commit`, which the factory compares with the job's head: another head is `stale` (`detail.reason` `changed_since_opened`, `detail.head_commit`). Only the job's assignee (anyone while it has none) approves, publishes, starts, drops, raises the budget and stops or reruns a step; the factory answers anyone else `forbidden`.
+**Guards.** `expect.version` is required on every job write (`bad_params` without it); `expect.state` and `expect.step` are passed through. The factory refuses a mismatch, and the engine does not resend. `job_approve` carries `commit`, which the factory compares with the job's head: another head is `stale` (`detail.reason` `changed_since_opened`, `detail.head_commit`). Only the job's assignee (anyone while it has none) approves, publishes, starts, drops, brings back a dropped job, raises the budget and stops or reruns a step; the factory answers anyone else `forbidden`.
 
 **Undo.** `job_approve` does not act at once. The factory holds the decision for 5 s (`approval.state` `approving`, `undo_until`) and acts when the window ends. `job_undo` by the same person inside the window withdraws it (or a stop, restoring the run); after the window, or by another person, it is `conflict`. Approval is per job: there is no bulk approve.
 
@@ -2773,6 +2774,18 @@ Feature `factory.rename` is present only when the engine implements `FactoryRena
 | `factory.rename` | `{factory, name}` | `{}` |
 
 `name` (at most 60 characters; inner runs of space folded) is the person's own name for the connection. It is kept on the app's record of it (`<home>/app/factories.json`), never sent to the factory, and `factory.list` answers it as the connection's `name` over the factory's own. An empty `name` goes back to the default: the factory's own name, or for the factory on this Mac `<login>'s factory` once it knows whose GitHub it is (`Your factory` before). A factory that is not listed is `not_found`.
+
+## Factory: check GitHub now (`factory.refresh`)
+
+Feature `factory.refresh` is present only when the engine implements `FactoryRefresher` on top of the factory interface. Other engines answer `unknown_method`.
+
+| method | params | answers |
+|---|---|---|
+| `factory.refresh` | `{factory}` | `{}` |
+
+One `POST /v1/github/poll` to the factory, sent once. The factory wakes its GitHub poll and answers before the read; it never waits for it. The read's outcome is on the next `factory.queue`: the `desk.sources` row named `github` carries `polling` (a read in flight), `polled` (RFC 3339, when GitHub was last read without a failure; absent until one has) and `trouble` (the last failure in a few words). The row is absent while no poll is alive on the factory's machine. A factory without the route is `engine` ("this factory does not provide that action").
+
+**Start re-checks GitHub.** `factory.job_start` (and the factory's `run` and `run_again`) on a job that came from GitHub reads that one issue or pull request first. Closed or merged there, the job is not started: it is done (`done_how` `closed` or `merged`) and the start is `conflict` with `#12 was closed on GitHub, so it wasn't started.` (`detail.now_state` `done`). GitHub unreachable starts the job anyway.
 
 ## Factory: a job's conversations (`factory.job_chats`)
 

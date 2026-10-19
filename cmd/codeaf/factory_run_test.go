@@ -191,14 +191,13 @@ func TestAnOwnerLaunchRunsACheckItemToLanded(t *testing.T) {
 // A LAUNCH OPENS NO MANAGER TURN BEFORE THE FIRST STAGE (the owner's run of
 // 2026-10-19, where a turn asked to shape the run stopped on a card nobody
 // answered and the plan never ran). The runner is wired with this process's
-// shaping turns, whose every road fails the test if it is taken, and the item
-// still lands on its own stages; the turns stay wired for `shape steps` and
-// the inbox.
+// manager turns, whose every road fails the test if it is taken, and the item
+// still lands on its own stages; the turns stay wired for the inbox.
 func TestALaunchGivesTheManagerNoTurnBeforeTheFirstStage(t *testing.T) {
 	g := newRunRig(t)
 	var mu sync.Mutex
 	turns := 0
-	shape := &shapeTurns{
+	manager := &shapeTurns{
 		dirs: func(string) string { return g.workspace },
 		live: func(string, session.RunDoor) (managerTurn, bool) {
 			mu.Lock()
@@ -213,10 +212,10 @@ func TestALaunchGivesTheManagerNoTurnBeforeTheFirstStage(t *testing.T) {
 			return nil, errors.New("a launch opened the manager")
 		},
 	}
-	r := buildFactoryRunner(g.st, g.st, g.workspace, t.TempDir(), nil, shape)
+	r := buildFactoryRunner(g.st, g.st, g.workspace, t.TempDir(), nil, manager)
 	stopAll(t, g.st, r)
-	if opts := r.Opts(); opts.ShapeNow == nil || opts.Inbox == nil {
-		t.Fatal("the shaping turns are not wired for shape steps and the inbox")
+	if opts := r.Opts(); opts.Inbox == nil {
+		t.Fatal("the manager turns are not wired for the inbox")
 	}
 	seam := factory.LocalSeam(g.st, time.Now(), factory.WithRunner(r))
 	id := g.checkItem(t)
@@ -231,11 +230,6 @@ func TestALaunchGivesTheManagerNoTurnBeforeTheFirstStage(t *testing.T) {
 	}
 	if len(it.Proof) != 1 || !it.Proof[0].OK {
 		t.Fatalf("the first stage did not run: proof %+v", it.Proof)
-	}
-	for _, l := range it.Stream.Log {
-		if strings.Contains(l.Text, "recipe stands") || strings.Contains(l.Text, "manager did not answer") {
-			t.Fatalf("the log says a shaping line: %+v", it.Stream.Log)
-		}
 	}
 }
 

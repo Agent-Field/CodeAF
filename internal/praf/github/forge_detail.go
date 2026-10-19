@@ -55,7 +55,7 @@ func (c *client) Issue(ctx context.Context, owner, repo string, number int) (Iss
 		Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 		Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
 		URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,
-		Assignees: assigneeLogins(r.Assignees),
+		Assignees: assigneeLogins(r.Assignees), State: r.State,
 	}, nil
 }
 
