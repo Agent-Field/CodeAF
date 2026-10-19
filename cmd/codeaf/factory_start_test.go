@@ -15,8 +15,8 @@ import (
 )
 
 // `factory_start` IS THE RUN BUTTON FROM THE MANAGER'S CHAT: it launches the
-// item the conversation manages (recording the steps as the manager's, so the
-// launch gives it no second turn to shape), goes past the approve step the
+// item the conversation manages with its steps as they stand (recording
+// nothing about them), goes past the approve step the
 // run holds at, and says why when nothing is left to start. Another
 // conversation starts nothing.
 func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
@@ -50,8 +50,8 @@ func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
 		t.Fatalf("start answered %q, %v", line, err)
 	}
 	held := g.waitFor(t, id, factory.StateNeedsYou)
-	if !factoryrun.ShapedByManager(held) {
-		t.Fatalf("the start left the item unshaped, so the launch would shape it again: %q", held.Adapted)
+	if len(held.Adapted) != 0 {
+		t.Fatalf("the start recorded a change to the steps nobody made: %q", held.Adapted)
 	}
 	if held.QKind != factory.QKindApprove {
 		t.Fatalf("held on %q, not the approve step", held.QKind)

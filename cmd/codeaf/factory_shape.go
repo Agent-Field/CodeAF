@@ -20,49 +20,36 @@ import (
 
 // ── THE MANAGER SHAPES THE RUN ─────────────────────────────────────────────
 //
-// The manager is the author of the run (the owner's decision of 2026-10-08).
-// Two doors make it so, and this file is both:
+// The manager is the author of the run (the owner's decision of 2026-10-08),
+// on the person's word. Two doors make it so, and this file is both:
 //
 //   - `factory_run` on the manager's own belt ([runDoor]): what the manager
 //     sets while the person talks to it is made at once through the floor's
 //     edit door ([factory.Seam.Edit]), before a run or on the stages a run has
 //     not started;
-//   - the runner's shaping turn ([shapeTurns], wired as Options.Shape): at
-//     launch of an item the manager never shaped, the runner gives the
-//     manager ONE turn of its own conversation with an ask
-//     (`Shape the run for this item now. …`), at the cheap thinking unless the
-//     item reads as large (or, when a window here holds the conversation,
-//     through that window at the person's own thinking), and collects the edit its `factory_run` call made,
-//     for the runner to apply itself.
+//   - `shape steps` ([shapeDoor], and [factoryrun.Options.ShapeNow] while a
+//     worker holds the job): the person asks, and the manager is given ONE
+//     turn of its own conversation with the ask [shapeAsk], at the cheap
+//     thinking unless the item reads as large (or, when a window here holds
+//     the conversation, through that window at the person's own thinking), and
+//     the edit its `factory_run` call made is collected, for the door to apply
+//     itself.
+//
+// A LAUNCH GIVES THE MANAGER NO TURN. ▶ run runs the item's stages as they
+// stand; a turn before the first stage held the plan behind a conversation
+// nobody had asked anything of (the owner's run of 2026-10-19).
 //
 // THE SHAPING TURN COLLECTS, IT DOES NOT WRITE. Its `factory_run` door checks
 // the edit against the item in hand ([factory.Edit]) and answers the line, so
-// the manager is told what it set, but the item is changed only by the runner,
-// under its own write, with the phases rebuilt in the same step.
+// the manager is told what it set, but the item is changed only by the door
+// that asked, under its own write, with the phases rebuilt in the same step.
 
-// The runner's asks, said once so the manual and the tests quote the same
-// words. THERE IS NO ASK ON A STEER: what the person types in the manager's
-// chat is already a turn of the manager, which reshapes with `factory_run`
-// when that is what they meant; a second turn on the same words was the
-// doubled answer of the owner's run of 2026-10-09.
-const (
-	shapeAsk     = "Shape the run for this item now."
-	shapeAskSaid = " What the person said: %s"
-)
-
-// shapeAskFor is the launch's ask, with what the person typed before the run.
-func shapeAskFor(said []string) string {
-	var words []string
-	for _, s := range said {
-		if s = strings.Join(strings.Fields(s), " "); s != "" {
-			words = append(words, s)
-		}
-	}
-	if len(words) == 0 {
-		return shapeAsk
-	}
-	return shapeAsk + fmt.Sprintf(shapeAskSaid, strings.Join(words, " · "))
-}
+// shapeAsk is `shape steps`' ask, said once so the tests quote the same words.
+// THERE IS NO ASK ON A STEER: what the person types in the manager's chat is
+// already a turn of the manager, which reshapes with `factory_run` when that
+// is what they meant; a second turn on the same words was the doubled answer
+// of the owner's run of 2026-10-09.
+const shapeAsk = "Shape the run for this item now."
 
 // managerTurn is what one shaping turn needs of an open conversation; the
 // session's *Agent answers it, and a test hands in a fake.
@@ -142,10 +129,10 @@ func factoryLiveOK(raw func() session.Config, profileDir string) func(model stri
 
 // ── THE LIVE ROAD: THE WINDOW HOLDS THE MANAGER ─────────────────────────────
 //
-// The most natural flow is the person opening the item, telling the manager
-// what they want in its window, going back to the floor and pressing `r`. The
-// window's conversation holds the journal's lock, so a second open is
-// refused. The shaping turn then runs AS A TURN OF THAT CONVERSATION: the
+// The person often has the item's manager open in a window when a turn of the
+// runner's comes for it (`shape steps`, or a step's question for the inbox).
+// The window's conversation holds the journal's lock, so a second open is
+// refused. The turn then runs AS A TURN OF THAT CONVERSATION: the
 // window shows the manager think, its `factory_run` on that one turn is the
 // collecting door (lent to the turn, [session.Agent.SubmitRunnerNoteThrough]),
 // and the runner applies the edit itself, as on the road that opens. The
@@ -174,11 +161,6 @@ func liveManagerTurnFor(transcript string, door session.RunDoor) (managerTurn, b
 		return nil, false
 	}
 	return liveManagerTurn{agent: agent, door: door}, true
-}
-
-// Shape is the runner's Options.Shape: the launch's one turn.
-func (s *shapeTurns) Shape(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error) {
-	return s.run(ctx, it, shapeAskFor(said), false)
 }
 
 // shapeCheap says whether the shaping turn thinks cheap: always, unless the
@@ -504,23 +486,23 @@ func sameFileKey(path string) string {
 // ── `shape steps`: THE MANAGER SHAPES THE STEPS WHEN THE PERSON ASKS ─────────
 //
 // The owner's journey (2026-10-09): OPENING AN ISSUE RUNS NOTHING. The steps
-// an item shows are the recipe's until somebody asks the manager to shape
-// them: ▶ run on an item never shaped (the runner's own shaping turn), words
-// in the manager's chat (its `factory_run`), or `shape steps`, which is this
-// door ([factory.Seam.Shape]). It gives the manager one turn, the launch's own
-// ([shapeTurns.run], nothing said, through the window's conversation when this
-// process holds it, so it streams where the person is looking), and applies
-// its edit as the launch applies it ([factoryrun.ApplyShape]) under the
+// an item shows are the recipe's until somebody changes them: the person on
+// the item's page, words in the manager's chat (its `factory_run`), or
+// `shape steps`, which is this door ([factory.Seam.Shape]). ▶ run is none of
+// these: it runs the steps as they stand. This door gives the manager one
+// turn ([shapeTurns.run], through the window's conversation when this process
+// holds it, so it streams where the person is looking), and applies its edit
+// as a worker holding the job applies it ([factoryrun.ApplyShape]) under the
 // store's write: to every step before a run, and to the steps not yet started
 // during one. The conversation is made when the item has none
 // ([managerMaker]); making it asks no model anything.
 //
 // THE RECIPE STANDING IS A SHAPING TOO: an edit that changes nothing on an
-// item that never ran is recorded as [shapeKeptRecord], so ▶ run afterwards
-// knows the manager read it and does not spend a second turn on it. A turn
-// that did not answer, or an edit refused, records nothing. AN ITEM THE
-// MANAGER ALREADY SHAPED IS ANSWERED WITHOUT A TURN ([sayShapedAlready]): from
-// then on its steps change where the person talks to the manager.
+// item that never ran is recorded as [shapeKeptRecord], so a second
+// `shape steps` knows the manager read it and does not spend a second turn on
+// it. A turn that did not answer, or an edit refused, records nothing. AN ITEM
+// THE MANAGER ALREADY SHAPED IS ANSWERED WITHOUT A TURN ([sayShapedAlready]):
+// from then on its steps change where the person talks to the manager.
 
 // shapeKeptRecord is [factoryrun.KeptRecipe], kept here so this file's
 // comments name the line the door writes.

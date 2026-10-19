@@ -242,7 +242,8 @@ func (a *Agent) factoryRunTool() bare.Tool {
 }
 
 // SubmitRunnerNote starts a turn on words the factory's runner wrote for the
-// item's manager (`Shape the run for this item now. …`): the same turn
+// item's manager (the ask of `shape steps`, or a step's question for the
+// inbox): the same turn
 // [Agent.Submit] starts, journaled as the session's own note rather than as
 // the person's words, so the runner never reads its own ask back as a steer
 // ([PersonLines] skips a note).
@@ -265,7 +266,7 @@ func runnerNote(text string) userMessage {
 // ── A SHAPING TURN THROUGH A CONVERSATION THE WINDOW HOLDS ──────────────────
 //
 // When the person has the item's manager open in a window of this process,
-// the runner's shaping turn cannot open the conversation a second time (the
+// a shaping turn (`shape steps`) cannot open the conversation a second time (the
 // journal's lock refuses it). It runs as a turn of THAT conversation instead,
 // so the window shows the manager thinking, and `factory_run` on that ONE turn
 // answers through the runner's collecting door rather than the floor's: the

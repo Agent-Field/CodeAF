@@ -1,26 +1,22 @@
 package run
 
-// The manager shapes the run.
+// The manager shapes the run when the person asks.
 //
-// THE MANAGER IS THE AUTHOR OF THE RUN (the owner's decision of 2026-10-08).
-// Shaping is the manager's first act of a run and not a stage: at launch,
-// after the manager is made and before the first stage, it is given ONE turn
-// ([Options.Shape]) to set the asks, add or switch the stages the item needs,
-// and the runner applies what it answered through [factory.Edit] before the
-// run, says the line on the item's log and into the conversation, and goes
-// on. Three ways in, one machinery:
+// THE MANAGER IS THE AUTHOR OF THE RUN (the owner's decision of 2026-10-08),
+// but only on the person's word. A launch runs the item's stages as they
+// stand, the repository's recipe unless somebody changed them, and gives the
+// manager no turn first: the turn the runner used to give it before the first
+// stage could stop at the chat's quick-turn limit and wait on a card, and the
+// plan never ran (the owner's run of 2026-10-19). Two ways in, one application ([ApplyShape]):
 //
-//   - the person does nothing and presses `r`: the manager shapes, the run
-//     runs;
-//   - the person says something first: the manager's own turn there applies
-//     its edit at once through `factory_run` (nothing runs yet), and the
-//     launch then skips shaping, because the item was already shaped by the
-//     manager ([shapedByManager]);
-//   - the person says something mid-run: the words are the steer, as always,
-//     and they are a turn of the manager's own conversation, whose
-//     `factory_run` may change the stages not yet started; the tail is
-//     re-read at each round ([tailPhases]). The runner gives no second turn
-//     on the same words.
+//   - the person talks to the manager, before a run or during one: the
+//     manager's own turn there applies its edit at once through `factory_run`,
+//     to every stage before a run and to the stages not yet started during
+//     one; the tail is re-read at each round ([tailPhases]). The runner gives
+//     no second turn on the same words;
+//   - the person asks for `shape steps` while a worker holds the job: the
+//     worker gives the manager ONE turn ([Runner.ShapeAsked], through
+//     [Options.ShapeNow]) and applies what it answered under the store's write.
 //
 // A TURN THAT FAILS OR TAKES TOO LONG IS NO EDIT: the recipe stands, and the
 // log says so. The bounds are [factory.Edit]'s, held in code.
@@ -47,7 +43,7 @@ const (
 )
 
 // The two reasons a shaping turn did not happen that the person is told by
-// name. Options.Shape answers them (wrapped as it likes) and the runner says
+// name. Options.ShapeNow answers them (wrapped as it likes) and the runner says
 // the matching line instead of [sayShapeNoReply]:
 //
 //   - ErrManagerBusy: the conversation is open in this process and was in the
@@ -59,8 +55,8 @@ var (
 	ErrManagerAway = errors.New("the manager is open in another window")
 )
 
-// The shaping lines the floor's Shape door says, the same words the launch
-// says ([sayShapeStands], [shapeFailLine], [sayShapeRefused]).
+// The shaping lines the floor's Shape door says, the same words a worker's
+// turn says ([sayShapeStands], [shapeFailLine], [sayShapeRefused]).
 const SayShapeStands = sayShapeStands
 
 // SayShapedAlready is `shape steps` on an item the manager already shaped.
@@ -104,108 +100,10 @@ func (lp *floorLoop) shapeWait() time.Duration {
 	return shapeWaitDefault
 }
 
-// shape is the manager's first act of a run: one turn, its edit applied
-// before the run, and its line said. It answers false when the item was
-// stopped.
-func (lp *floorLoop) shape(c *loopCtl) bool {
-	shapeFn := lp.r.opts.Shape
-	if shapeFn == nil {
-		return true
-	}
-	it, err := lp.r.opts.Store.Get(c.id)
-	if err != nil {
-		return false
-	}
-	// THE PERSON OPENED THE ITEM AND TALKED FIRST, and the manager shaped it
-	// then: that is this run's shape.
-	if shapedByManager(it) {
-		return true
-	}
-	said := append([]string(nil), c.said...)
-	edit, err := lp.turn(c, func(ctx context.Context) (factory.RunEdit, string, error) {
-		return shapeFn(ctx, it, said)
-	})
-	if c.ctx.Err() != nil {
-		return false
-	}
-	if err != nil {
-		line := shapeFailLine(err)
-		lp.say(c, "fail", line)
-		lp.tell(c.id, line)
-		return true
-	}
-	line, err := lp.applyEdit(c, edit, false)
-	if c.ctx.Err() != nil {
-		return false
-	}
-	if err != nil {
-		refused := fmt.Sprintf(sayShapeRefused, loopFirstLine(err.Error()))
-		lp.say(c, "fail", refused)
-		lp.tell(c.id, refused)
-		return true
-	}
-	if line == "" {
-		lp.say(c, "said", sayShapeStands)
-		lp.tell(c.id, sayShapeStands)
-		return true
-	}
-	// THE PERSON READS THE SHAPED STAGES AT THE FIRST APPROVE STEP: the
-	// shaping itself never stops the run.
-	lp.tell(c.id, line)
-	return true
-}
-
-// turn runs one manager turn under the item's ctx and the shaping wait. The
-// error is the turn's own, or the wait's when it did not answer in time: a
-// turn that ignores its ctx is let go, never waited on.
-func (lp *floorLoop) turn(c *loopCtl, call func(ctx context.Context) (factory.RunEdit, string, error)) (factory.RunEdit, error) {
-	ctx, cancel := context.WithTimeout(c.ctx, lp.shapeWait())
-	defer cancel()
-	type answer struct {
-		edit factory.RunEdit
-		err  error
-	}
-	got := make(chan answer, 1)
-	go func() {
-		edit, _, err := call(ctx)
-		got <- answer{edit: edit, err: err}
-	}()
-	select {
-	case a := <-got:
-		return a.edit, a.err
-	case <-ctx.Done():
-		return factory.RunEdit{}, ctx.Err()
-	}
-}
-
-// applyEdit applies the manager's edit to the item, before the run or in it,
-// and rebuilds the phases not yet started. It answers the line it said on the
-// item's log (`manager set review: … · added arch after review · why: …`),
-// "" when the edit changed nothing, or the refusal.
-func (lp *floorLoop) applyEdit(c *loopCtl, edit factory.RunEdit, inRun bool) (string, error) {
-	if edit.Empty() {
-		return "", nil
-	}
-	it, err := lp.r.opts.Store.Get(c.id)
-	if err != nil {
-		return "", err
-	}
-	recipe := lp.recipe(it.Repo)
-	now := lp.r.now()
-	line := ""
-	err = lp.write(c, func(it *factory.Item) error {
-		l, err := ApplyShape(it, edit, recipe, inRun, now)
-		line = l
-		return err
-	})
-	return line, err
-}
-
 // ApplyShape applies the manager's edit to it in place, the one application
-// of a shaping turn's edit: the runner's at launch and on a steer
-// ([floorLoop.applyEdit]), and the floor's Shape door's when the person asks
-// for `shape steps` ([factory.Seam.Shape]). The edit is the manager's whatever it
-// says; inRun bounds it to the stages not yet started. The item's run keeps
+// of a shaping turn's edit: a worker's when it holds the job ([Runner.ShapeAsked])
+// and the floor's Shape door's when it does not ([factory.Seam.Shape]), both
+// for `shape steps`. The edit is the manager's whatever it says; inRun bounds it to the stages not yet started. The item's run keeps
 // its stream, and a stream's phases not yet started are compiled again from
 // the stages; an item with no stream gets none (its launch compiles them). It
 // answers the edit's one line ([EditLine]), said on the stream when there is
@@ -264,7 +162,7 @@ func EditLine(lines []string) string {
 }
 
 // ShapedByManager is [shapedByManager] for the floor's Shape door, which
-// skips an item the manager already shaped, as the launch does.
+// skips an item the manager already shaped, as [Runner.ShapeAsked] does.
 func ShapedByManager(it factory.Item) bool { return shapedByManager(it) }
 
 // shapedByManager says whether the manager already shaped the item: a stage
@@ -375,8 +273,7 @@ func (r *Runner) ShapeAsked(ctx context.Context, id int) (string, error) {
 // its context is let go when the wait ends.
 func (r *Runner) askShape(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, error) {
 	shapeNow := r.opts.ShapeNow
-	shapeFn := r.opts.Shape
-	if shapeNow == nil && shapeFn == nil {
+	if shapeNow == nil {
 		return factory.RunEdit{}, errors.New("this worker has no shaping turn")
 	}
 	wait := r.loop().shapeWait()
@@ -388,13 +285,7 @@ func (r *Runner) askShape(ctx context.Context, it factory.Item, inRun bool) (fac
 	}
 	got := make(chan answer, 1)
 	go func() {
-		var edit factory.RunEdit
-		var err error
-		if shapeNow != nil {
-			edit, _, err = shapeNow(turnCtx, it, inRun)
-		} else {
-			edit, _, err = shapeFn(turnCtx, it, nil)
-		}
+		edit, _, err := shapeNow(turnCtx, it, inRun)
 		got <- answer{edit, err}
 	}()
 	select {
