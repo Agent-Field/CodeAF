@@ -114,8 +114,10 @@ const (
 	// appSetupRoute is the one route setup is spoken on; "local" is the id the
 	// factory keeps its own first run under.
 	appSetupRoute = "/v1/factory-setup/local"
-	// appLocalName is how the local factory is named in the list.
-	appLocalName = "This machine"
+	// appLocalName is how the local factory is named before it knows whose
+	// GitHub it is; after, the list says `<login>'s factory` (localFactoryName),
+	// and a name the person gave it wins over both.
+	appLocalName = "Your factory"
 	// appLocalHeaderWait bounds a slow client of the loopback service.
 	appLocalHeaderWait = 5 * time.Second
 	// appLocalStopWait bounds how long quitting waits for the runner's loop to
@@ -372,7 +374,10 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 		}
 		return b.joinLocalLocked(target, appwire.LocalAuthorityOther)
 	}
-	server := &http.Server{Handler: mount, ReadHeaderTimeout: appLocalHeaderWait}
+	// EVERY REQUEST LIVES UNDER THE HOST: quitting cancels the host first, so a
+	// request held open (a runner's long poll) ends at once and the graceful
+	// shutdown in [appBackend.closeLocalFactory] waits only for real work.
+	server := &http.Server{Handler: mount, ReadHeaderTimeout: appLocalHeaderWait, BaseContext: func(net.Listener) context.Context { return hostCtx }}
 	guard.Go("app/factory local", func() { _ = server.Serve(listener) })
 	l.host, l.server = host, server
 	if err := b.joinLocalLocked(factoryTarget{host.address, token}, appwire.LocalAuthorityApp); err != nil {
@@ -480,6 +485,13 @@ func (b *appBackend) closeLocalFactory() {
 		}
 	}
 	if server != nil {
+		// A REQUEST ALREADY BEING ANSWERED FINISHES BEFORE THE FLOOR IS LET GO.
+		// Close alone cuts the connections and returns while a handler may still
+		// be writing (a runner attaching records it), which is a write after
+		// close; Shutdown waits for it, as long as the runner is waited for.
+		ctx, cancel := context.WithTimeout(context.Background(), appLocalStopWait)
+		_ = server.Shutdown(ctx)
+		cancel()
 		_ = server.Close()
 	}
 	if host != nil {

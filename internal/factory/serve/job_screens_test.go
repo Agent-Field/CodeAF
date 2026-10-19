@@ -224,7 +224,7 @@ func TestJobScreensStatePresentationOnQueueAndJobReads(t *testing.T) {
 	}{
 		{"failed", string(factory.StateNew), "", "failed", "Step failed", &factory.Failure{Code: factory.CodeToolError, Step: "write", Detail: "command failed"}},
 		{"rounds", string(factory.StateNeedsYou), factory.QKindOutOfAttempts, "out_of_rounds", "Stuck", nil},
-		{"queued", string(factory.StateQueued), "", "waiting_for_runner", "Waiting for runner", nil},
+		{"queued", string(factory.StateQueued), "", "waiting_for_runner", "Waiting to start", nil},
 		{"spending", string(factory.StateNeedsYou), "cap", "spending", "Spending limit reached", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

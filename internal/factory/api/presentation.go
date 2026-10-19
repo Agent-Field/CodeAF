@@ -20,7 +20,7 @@ func PresentJob(j *Job) {
 	case j.SpendingLimit != nil:
 		p.Kind, p.Title = "spending", "Spending limit reached"
 	case j.State == StateQueued || (j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsRunnerOffline):
-		p.Kind, p.Title = "waiting_for_runner", "Waiting for runner"
+		p.Kind, p.Title = "waiting_for_runner", "Waiting to start"
 	case j.State == StateRunning:
 		p.Title = "Running"
 	case j.State == StateNeedsYou:
