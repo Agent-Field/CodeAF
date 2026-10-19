@@ -660,7 +660,12 @@ func (b *appBackend) keepCloseStopped(a *appAgent, work appCloseWork) (abandoned
 }
 
 // resetCloseAfterPerson also sees directions written while this backend was
-// absent. The session's own notes shape as aside, never as person-role user.
+// absent. Only the person's own messages stamp LastUserAt; compaction, rewind
+// and session-authored notes cannot change that witness.
+//
+// The stamp is written behind the path through offpath.Write. That is acceptable
+// here because this app's send, steer, queue and answer doors reset the guard
+// synchronously; only another window's stamp is read from meta.
 func (b *appBackend) resetCloseAfterPerson(a *appAgent) (bool, error) {
 	var id, transcript string
 	b.locked(func() { id, transcript = a.view.ID, a.transcript })
@@ -676,11 +681,16 @@ func (b *appBackend) resetCloseAfterPerson(a *appAgent) (bool, error) {
 	if last.IsZero() {
 		return false, nil
 	}
-	at, found, err := session.LatestPersonMessageAt(transcript)
+	meta, err := session.LoadMeta(filepath.Dir(transcript))
 	if err != nil {
 		return false, err
 	}
-	if found && at.After(last) {
+	// LoadMeta treats missing and malformed identity files as blank. Neither is
+	// evidence that the person has stayed silent, so automatic work must wait.
+	if meta.ID == "" {
+		return false, errors.New("conversation metadata is unavailable")
+	}
+	if meta.LastUserAt.After(last) {
 		b.resetCloseResumes(id)
 		return true, nil
 	}

@@ -313,15 +313,20 @@ func TestAppCloseDeletedConversationOwesNothing(t *testing.T) {
 // message. Cancellation compares against the original promise, not attempt time.
 func TestAppClosePersonAfterOriginalPromiseCancelsReplay(t *testing.T) {
 	r := newCloseRig(t, session.PresenceIdle, time.Minute)
-	original := r.clock.now().Add(-20 * time.Minute)
+	original := time.Now().Add(-20 * time.Minute)
+	r.clock.at = original.Add(21 * time.Minute)
 	_ = r.b.state.write(func(f *appStateFile) error {
 		f.ClosePending[r.id] = "owed"
 		f.ClosePendingAt[r.id] = original
 		f.CloseResumes[r.id] = 2
-		f.CloseResumedAt[r.id] = r.clock.now().Add(-time.Minute)
+		f.CloseResumedAt[r.id] = r.clock.now()
 		return nil
 	})
-	appendCloseMessage(t, r.file, map[string]any{"type": "message", "role": "user", "content": "different direction", "timestamp": original.Add(time.Minute)})
+	meta := closeOtherWindow(t, r, false)
+	if !meta.LastUserAt.After(original) || !meta.LastUserAt.Before(r.clock.now()) {
+		t.Fatalf("person stamp %v must be between promise %v and last attempt %v", meta.LastUserAt, original, r.clock.now())
+	}
+	r.write(t, r.p)
 	r.start()
 	r.clock.advance(t, 0)
 	f := closeDisk(t, r)

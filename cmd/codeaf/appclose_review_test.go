@@ -164,6 +164,14 @@ func TestAppClosePendingAdmission(t *testing.T) {
 			if reason == "age" {
 				at = r.clock.now().Add(-appCloseResumeWithin - time.Second)
 				writeCloseJSON(t, r.file, map[string]any{"type": "message", "role": "user", "content": "finish the work", "timestamp": at.Add(-time.Minute)})
+				meta, err := session.LoadMeta(filepath.Dir(r.file))
+				if err != nil {
+					t.Fatal(err)
+				}
+				meta.LastUserAt = at.Add(-time.Minute)
+				if err := session.SaveMeta(filepath.Dir(r.file), meta); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if err := r.b.state.write(func(f *appStateFile) error {
 				f.ClosePending = map[string]string{r.id: "owed"}
@@ -435,14 +443,16 @@ func TestAppCloseTaskUsesAuthoritativeLocalState(t *testing.T) {
 	}
 }
 
-// C6 (F7): a person's journaled direction in another window resets even while
-// this app was absent. Session-authored user-role notes never reset the streak.
+// C6 (F7, J1): a real session in another window stamps the person's direction
+// even while this app was absent. Its own resume aside never stamps activity.
 func TestAppClosePersonInAnyWindowResetsStreak(t *testing.T) {
 	for _, pending := range []bool{false, true} {
 		for _, note := range []bool{false, true} {
 			t.Run(map[bool]string{false: "claim", true: "pending"}[pending]+"/"+map[bool]string{false: "person", true: "aside"}[note], func(t *testing.T) {
 				r := newCloseRig(t, session.PresenceWorking, time.Minute)
-				last := r.clock.now().Add(-2 * time.Minute)
+				last := time.Now().Add(-time.Minute)
+				r.clock.at = last.Add(2 * time.Minute)
+				r.p.UpdatedAt = last
 				_ = r.b.state.write(func(f *appStateFile) error {
 					f.CloseResumes = map[string]int{r.id: 2}
 					f.CloseResumedAt = map[string]time.Time{r.id: last}
@@ -452,11 +462,14 @@ func TestAppClosePersonInAnyWindowResetsStreak(t *testing.T) {
 					}
 					return nil
 				})
+				meta := closeOtherWindow(t, r, note)
+				if meta.LastUserAt.After(last) == note {
+					t.Fatalf("person stamp=%v, attempt=%v, note=%v", meta.LastUserAt, last, note)
+				}
 				if pending {
 					r.p.State = session.PresenceIdle
-					r.write(t, r.p)
 				}
-				appendCloseMessage(t, r.file, map[string]any{"type": "message", "role": "user", "content": session.ResumeAfterCloseNote, "note": note, "timestamp": last.Add(time.Second)})
+				r.write(t, r.p)
 				r.start()
 				r.clock.advance(t, 0)
 				want := 0

@@ -480,7 +480,8 @@ closed. A deleted conversation never carries on.
 
 A conversation carries on automatically at most twice in a row. A reply that
 finishes normally, or a direction from you, resets that limit; the agent's own
-notes do not. Retrying a promised reply uses an attempt too. On the third
+notes do not. Compacting or rewinding the conversation does not reset it.
+Retrying a promised reply uses an attempt too. On the third
 opening within ten minutes that finds unfinished replies, none carry on
 automatically. A reply last active more than an hour before opening is left
 for you to choose. For a promised reply that never began, the hour starts when

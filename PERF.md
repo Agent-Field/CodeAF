@@ -55,23 +55,6 @@ path/theme/geometry invalidation, viewport equivalence and keyboard reveal;
 Timing is diagnostic; regression gates assert reuse and rendered geometry,
 rather than a machine-dependent time limit.
 
-## Unexpected-close person activity reads
-
-`session.LatestPersonMessageAt` scans journal records backwards, retaining a
-candidate person timestamp until the preceding compaction marker or file start.
-The marker's `Window` excludes rewritten copies; the original message supplies
-the time. Without a marker this requires reading the whole journal, even with
-a person message at its tail. The query keeps one **32 KiB** read block and one
-line, capped at the journal reader's **8 MiB** accepted line size, plus fixed-size
-counters and a timestamp; it never reconstructs or caches a display transcript
-or a journal-sized index. Scratch capacity remains independent of journal length,
-and oversized lines refuse recovery. Rewind and display authorship rules apply.
-`TestLatestPersonLongJournalBoundsBytes` checks **4,097/4,098** visited records
-and at most **96/64 KiB** retained scratch BYTES before/after appending a person
-line to a long uncompacted journal. `TestLatestPersonCompactionUsesOriginalTime`
-uses the production compaction writer; the authorship, rewind, line-edge and
-oversized-line regressions defend correctness and refusal.
-
 ## Context recovery bounds
 
 Conversation request admission sums the existing encoded messages and tool schemas;

@@ -118,7 +118,7 @@ func newCloseRig(t *testing.T, state session.PresenceState, age time.Duration) *
 	}
 	id := appAgentID(file)
 	at := time.Date(2026, 10, 19, 16, 30, 0, 0, time.UTC)
-	if err := session.SaveMeta(filepath.Dir(file), session.Meta{ID: id, Workspace: workspace, Created: at.Add(-time.Hour), LastUserAt: at.Add(-time.Minute)}); err != nil {
+	if err := session.SaveMeta(filepath.Dir(file), session.Meta{ID: id, Workspace: workspace, Created: at.Add(-time.Hour), LastUserAt: at.Add(-30 * time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
 	raw := `{"type":"session","version":1,"id":"` + id + `"}` + "\n" + `{"type":"message","role":"user","content":"finish the work","timestamp":"2026-10-19T16:00:00Z"}` + "\n"
