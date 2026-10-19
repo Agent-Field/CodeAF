@@ -248,10 +248,11 @@ func TestEveryTipIsOnTheManualPage(t *testing.T) {
 // The cut was thirty, /project made it thirty-one, and three reads of the whole
 // list by the owner took it to twenty-two, and the way home by two spaces made
 // it twenty-three on 2026-09-24. The separate conversation-budget hint makes
-// twenty-four. There is ONE set: every hint draws
+// twenty-four, and /helpers made it twenty-five on 2026-10-19, at the owner's
+// word. There is ONE set: every hint draws
 // on both boxes, a news row on neither, and a row filed under home's slot does
 // not build.
-func TestTheTableIsTwentyFourHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
+func TestTheTableIsTwentyFiveHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
 	hints := 0
 	for _, n := range notices {
 		if n.slot != slotHint {
@@ -265,8 +266,8 @@ func TestTheTableIsTwentyFourHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
 			t.Errorf("hint %q draws in the transcript", n.id)
 		}
 	}
-	if hints != 24 {
-		t.Fatalf("the table holds %d hints, want 24 — the cut is deliberate, and the manual page counts them", hints)
+	if hints != 25 {
+		t.Fatalf("the table holds %d hints, want 25 — the cut is deliberate, and the manual page counts them", hints)
 	}
 	news := notice{id: "noted", slot: slotNote, armed: ready, text: "x"}
 	if news.draws(slotHint) || news.draws(slotHome) || !news.draws(slotNote) {

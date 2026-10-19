@@ -157,10 +157,26 @@ func (a *app) helpersRefusal() (string, team) {
 	return "", team{}
 }
 
+// helpersTipArmed is the 💡 tip's rule (notice.go): a conversation that has
+// been spoken to, in front, with no team selected, not already a manager, and
+// on a window that can keep teams and open helpers beside it. It reads memory
+// only, because the table asks it at every event.
+func helpersTipArmed(a *app) bool {
+	if a.turn < 1 || a.pageShowing() || a.teamsOff() || a.shared || !a.wall.loaded {
+		return false
+	}
+	if _, selected := a.teamActive(); selected {
+		return false
+	}
+	_, manages := a.teamManaged(a.frontTabKey())
+	return !manages
+}
+
 // runHelpersCommand is /helpers: the team made, and the person's words queued
 // behind the store's answer. With no words after the command they are
 // [helpersPrompt], and the transcript shows them.
 func (a *app) runHelpersCommand(rest string) tea.Cmd {
+	a.noticeEvent(eventHelpersUsed)
 	if why, managed := a.helpersRefusal(); why != "" {
 		a.note(why)
 		if managed.ID != "" {
@@ -220,6 +236,7 @@ func (a *app) helpersAsked() tea.Cmd {
 // over it does (draftpage.go), so replacing it loses nothing. Where /helpers
 // would refuse, the row says so instead and leaves the box alone.
 func (a *app) helpersFill() tea.Cmd {
+	a.noticeEvent(eventHelpersUsed)
 	a.closeTeamMenu()
 	if a.wall.on {
 		a.closeWall()

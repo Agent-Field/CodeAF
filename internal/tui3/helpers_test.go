@@ -472,3 +472,50 @@ func TestADissolvedTeamLeavesThePlainChat(t *testing.T) {
 		t.Fatal("the dropdown lost its last row")
 	}
 }
+
+// THE 💡 TIP IS SAID WHERE /helpers WOULD ACT, AND ONLY THERE: after the first
+// exchange, with no team selected, in a conversation that manages none; never
+// before a word was said, never with a team on the strip, never in a manager.
+// Using the command retires it for good.
+func TestTheHelpersTipIsArmedWhereHelpersWouldAct(t *testing.T) {
+	var row notice
+	for _, n := range notices {
+		if n.id == "helpers-team" {
+			row = n
+		}
+	}
+	if row.id == "" || row.text != "/helpers makes this conversation the manager of a new team" || row.retire != eventHelpersUsed {
+		t.Fatalf("the /helpers tip is %+v", row)
+	}
+	a, _ := helpersApp(t)
+	a.turn = 0
+	if row.armed(a) {
+		t.Fatal("the tip is armed before the first exchange")
+	}
+	a.turn = 1
+	if !row.armed(a) {
+		t.Fatal("the tip is not armed in a spoken-to conversation with no team")
+	}
+	harbor, err := a.teamMake("harbor", a.tabList())
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamsFlush(t, a)
+	spend(t, a, a.teamActivate(harbor))
+	if row.armed(a) {
+		t.Fatal("the tip is armed with a team selected")
+	}
+	spend(t, a, a.teamOverlayChoose(""))
+	if !row.armed(a) {
+		t.Fatal("clearing the team did not arm the tip again")
+	}
+	typeLine(t, a, "/helpers")
+	teamsFlush(t, a)
+	if !a.notices.retired(row.id) {
+		t.Fatal("using /helpers did not retire its tip")
+	}
+	spend(t, a, a.teamOverlayChoose(""))
+	if row.armed(a) {
+		t.Fatal("the tip is armed in a conversation that already manages a team")
+	}
+}
