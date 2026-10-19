@@ -888,6 +888,16 @@ func (h *appFactoryHub) saveAttached(row appFactoryRow, known bool) error {
 	return h.save()
 }
 
+var _ appwire.FactoryRefresher = (*appBackend)(nil)
+
+// FactoryRefresh is "Check GitHub now": one POST to the factory's
+// /v1/github/poll, which wakes its poll and answers before the read. It is
+// sent once, like every write; the read's outcome is on the next queue.
+func (b *appBackend) FactoryRefresh(ctx context.Context, id string) error {
+	_, err := b.factoryHub().write(ctx, id, "/v1/github/poll", struct{}{})
+	return err
+}
+
 var _ appwire.FactoryRenamer = (*appBackend)(nil)
 
 // FactoryRename keeps the person's own name for one connected factory on the

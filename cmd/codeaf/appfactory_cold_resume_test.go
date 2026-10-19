@@ -35,7 +35,6 @@ func TestColdResumeServesAfterTheAppOpensAConversationFirst(t *testing.T) {
 		engineFactoryStore.store = nil
 		setFactoryProcess(func() {
 			factoryProcess.once = sync.Once{}
-			factoryProcess.shape = nil
 			factoryProcess.stop = nil
 		})
 	}

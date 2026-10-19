@@ -271,6 +271,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		RetryPublish: a.RetryPublish, Answer: a.Answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		RejectPlan: a.Answer && planSendsBack(it),
 		Merge:      owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
+		Restore:    owner && factory.JobDoneHow(it) == "dropped",
 	}
 }
 

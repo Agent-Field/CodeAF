@@ -57,17 +57,17 @@ func TestDoorsSignalTheJobsHolder(t *testing.T) {
 	}
 }
 
-// SHAPE IS A SIGNAL AND NOTHING ELSE: a held job grows one shape signal, and a
-// job nobody holds is left for the factory to shape itself.
-func TestShapeSignalsOnlyAHeldJob(t *testing.T) {
+// A SIGNAL REACHES ONLY A HELD JOB: a held job grows one signal, handed once,
+// and a job nobody holds is not signaled at all.
+func TestASignalReachesOnlyAHeldJob(t *testing.T) {
 	f := setup(t)
 	it, held := f.running(t)
-	heldNow, err := f.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalShape})
+	heldNow, err := f.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalModel, Words: "m"})
 	if err != nil || !heldNow {
 		t.Fatalf("held job was not signaled: %v, %v", heldNow, err)
 	}
 	signals, err := f.desk.Drain(held.ID, "w1")
-	want := []lease.Signal{{Verb: lease.SignalShape}}
+	want := []lease.Signal{{Verb: lease.SignalModel, Words: "m"}}
 	if err != nil || !reflect.DeepEqual(signals, want) {
 		t.Fatalf("drained %+v, %v", signals, err)
 	}
@@ -75,7 +75,7 @@ func TestShapeSignalsOnlyAHeldJob(t *testing.T) {
 		t.Fatalf("a signal was handed twice: %+v", again)
 	}
 	free := f.add(t, factory.Item{State: factory.StateNew})
-	heldNow, err = f.desk.SignalIfHeld(free.ID, lease.Signal{Verb: lease.SignalShape})
+	heldNow, err = f.desk.SignalIfHeld(free.ID, lease.Signal{Verb: lease.SignalModel, Words: "m"})
 	if err != nil || heldNow {
 		t.Fatalf("a job nobody holds was signaled: %v, %v", heldNow, err)
 	}

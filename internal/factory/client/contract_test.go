@@ -43,7 +43,6 @@ func contractVerbs() []contractVerb {
 		{"approve_plan", func(s factory.Seam) (any, error) { return nil, s.Answer(1, true, "") }},
 		{"request_changes", func(s factory.Seam) (any, error) { return nil, s.SendBack(9, "prove restart survival") }},
 		{"recheck", func(s factory.Seam) (any, error) { return id(s.Reverify, 9) }},
-		{"shape", func(s factory.Seam) (any, error) { return s.Shape(ctx, 8) }},
 		{"prioritize", func(s factory.Seam) (any, error) { return nil, s.Mark([]int{7, 8}, true) }},
 		{"reply", func(s factory.Seam) (any, error) { return nil, s.Say(ctx, 2, "keep the tests") }},
 		{"new_job", func(s factory.Seam) (any, error) { return s.New("owner/repo", "fix tests\n\nkeep the fixture") }},
@@ -234,7 +233,7 @@ func TestContractCoversEverySeamVerb(t *testing.T) {
 			// equivalent; the serve tests cover them against the real store.
 			// Merge is the factory's gate and the lease's signal, covered the
 			// same way (internal/factory/serve/merge_test.go).
-			if !strings.Contains(" take release retry_publish merge model start_now run_again dismiss assign_to_me change_assignee unassign nudge priority raise_budget undo ", " "+verb.Name+" ") {
+			if !strings.Contains(" take release retry_publish merge model start_now run_again restore dismiss assign_to_me change_assignee unassign nudge priority raise_budget undo ", " "+verb.Name+" ") {
 				t.Errorf("new server-owned verb %q needs a contract", verb.Name)
 			}
 			continue

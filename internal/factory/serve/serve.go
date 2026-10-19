@@ -63,7 +63,12 @@ type Config struct {
 	// CodeOwners reads a watched repository's cached default-branch ownership.
 	CodeOwners func(context.Context, string) ([]factory.CodeOwner, error)
 	// Pipeline reads the same repository rules as intake, including personal limits.
-	Pipeline    func(context.Context, string, string) (pipeline.File, error)
+	Pipeline func(context.Context, string, string) (pipeline.File, error)
+	// Recheck reads how one GitHub item stands right now, in one request
+	// ([factorygithub.Standing]): "" while it is open, "closed" or "merged"
+	// when it ended. A person's start asks it first, so an issue closed on
+	// GitHub is finished instead of run. Nil starts on what the floor knows.
+	Recheck     func(context.Context, factory.Item) (string, error)
 	Address     string
 	Version     string
 	AccessToken string
@@ -187,6 +192,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/github", h.github)
 	h.route("/v1/github/grant", map[string]http.HandlerFunc{http.MethodPut: h.grantGitHub})
+	h.route("/v1/github/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollGitHub})
 	h.read("/v1/about", h.about)
 	h.read("/v1/me", h.me)
 	h.route("/v1/me/takes_unassigned", map[string]http.HandlerFunc{http.MethodPut: h.setTakes})

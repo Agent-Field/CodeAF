@@ -57,25 +57,13 @@ const factoryBenchesDefault = api.DefaultRunnerSlots
 // conversation as its budget so the tasks it hands out are bounded by it too.
 const factoryStageWall = factoryrun.StageWall
 
-// factoryProcess is what this process built for the floor once: the manager's
-// shaping door every window's page uses, and the worker loop's stop.
+// factoryProcess is what this process built for the floor once: the launch's
+// conversation config the worker opens from, and the worker loop's stop.
 var factoryProcess struct {
-	once         sync.Once
-	mu           sync.Mutex
-	shape        func(ctx context.Context, id int) (string, error)
-	mirror       string
-	workerShape  func(ctx context.Context, id int) (string, error)
-	workerShapes map[string]func(context.Context, int) (string, error)
-	stop         context.CancelFunc
-	parent       session.Config
-}
-
-// factoryShapeHere is this process's Shape door, nil before
-// [startFactoryWorker] built it (a window with no conversation config).
-func factoryShapeHere() func(ctx context.Context, id int) (string, error) {
-	factoryProcess.mu.Lock()
-	defer factoryProcess.mu.Unlock()
-	return factoryProcess.shape
+	once   sync.Once
+	mu     sync.Mutex
+	stop   context.CancelFunc
+	parent session.Config
 }
 
 // factoryRunnerDoors is the seam option every window's floor hangs: the
@@ -104,11 +92,6 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 	// manager and stage conversations must not keep the first window's crew.
 	setFactoryProcess(func() { factoryProcess.parent = parent })
 	factoryProcess.once.Do(func() {
-		source := &factoryParentSource{raw: factoryWorkerParent, profile: profileDir}
-		turns := factoryShapeTurnsFrom(st, workspace, profileDir, source.Config)
-		turns.refusal = source.Refusal
-		turns.liveOK = factoryLiveOK(factoryWorkerParent, profileDir)
-		setFactoryProcess(func() { factoryProcess.shape = factoryShapeDoor(st, workspace, profileDir, turns) })
 		// IN THE APP PROCESS NO LOOP STARTS HERE, AND NO DEFAULT TARGET MAY SERVE.
 		// This worker's target is resolveFactory, which serves a factory of its
 		// own when none is live: in the app that wrote a token-less serve.json
@@ -190,7 +173,7 @@ func setFactoryProcess(change func()) {
 // `factory run` row beside them would count every dollar twice. So the money
 // is handed no ledger: what a round spent goes on the item (its spend, its
 // cap, today's rail) and nowhere else.
-func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, shape *shapeTurns) *factoryrun.Runner {
+func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns) *factoryrun.Runner {
 	dirs := factoryRepoDirs(floor, workspace)
 	recipe := func(repo string) factory.Recipe {
 		return factoryItemRecipe(dirs, factory.Item{Repo: repo})
@@ -260,19 +243,13 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		Talk:    sessionTalk{},
 	}
 	// THE LAUNCH GIVES THE MANAGER NO TURN: the run starts at its first stage
-	// with the stages as they stand. The manager's conversation is still the
-	// door for `shape steps` and the inbox (factory_shape.go, factory_inbox.go);
-	// nil gives it neither. What the person says during the run is the
-	// manager's own turn, never a second one.
-	if shape != nil {
-		// `shape steps` while this worker holds the job is the same turn the
-		// floor's Shape door runs, bounded to the steps not yet started.
-		opts.ShapeNow = func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error) {
-			return shape.run(ctx, it, shapeAsk, inRun)
-		}
-		// AND THE MANAGER IS THE INBOX: every question a step asks is given to
-		// it first, one turn of its conversation (factory_inbox.go).
-		opts.Inbox = shape.Inbox
+	// with the stages as they stand, and what the person says during the run
+	// is the manager's own turn, never a second one. The manager's
+	// conversation is the INBOX: every question a step asks is given to it
+	// first, one turn of its conversation (factory_inbox.go); nil turns give
+	// it none.
+	if turns != nil {
+		opts.Inbox = turns.Inbox
 	}
 	return factoryrun.New(opts)
 }

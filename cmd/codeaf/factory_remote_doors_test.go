@@ -38,7 +38,7 @@ func TestFactoryRemoteAttachmentHidesJobDoorsInBothLaunches(t *testing.T) {
 	for _, seam := range []factory.Seam{launch, attached} {
 		assertRemoteJobDoorsNil(t, seam)
 		assertRemoteJobDoorsNil(t, seam.Job(1))
-		if seam.Launch == nil || seam.Hold == nil || seam.Shape == nil || seam.SetRepos == nil || seam.Clone == nil {
+		if seam.Launch == nil || seam.Hold == nil || seam.SetRepos == nil || seam.Clone == nil {
 			t.Fatal("the remote guard removed a wired or repository door")
 		}
 	}

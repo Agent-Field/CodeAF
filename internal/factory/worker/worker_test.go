@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -332,96 +331,6 @@ func TestAResumedRunKeepsItsOriginalMachine(t *testing.T) {
 	}
 	if result := shipped.Stream.Phases[1].Result; result == nil || result.Exit != 0 {
 		t.Fatalf("the resumed worker could not read the first run's file: %+v", result)
-	}
-}
-
-// A window's shape steps, while this worker holds the job, arrives as a lease
-// signal and the runner gives the manager the turn. The factory itself has
-// no Shape door, so a 200 that moved the count is the signal, not a local turn.
-func TestAShapeSignalReachesTheHoldingWorker(t *testing.T) {
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	desk, err := lease.Open(st, lease.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRunner(lease.NewDoors(desk)))
-	history, err := record.Open(st, record.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler := serve.New(seam, serve.Config{Address: "http://test", Store: st, Record: history, PullWait: 50 * time.Millisecond})
-	server := httptest.NewServer(handler)
-	t.Cleanup(func() { server.Close(); handler.Close() })
-
-	mirror, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var shapes atomic.Int32
-	entered := make(chan struct{})
-	var once sync.Once
-	dir := t.TempDir()
-	r := run.New(run.Options{
-		Store: mirror,
-		ShapeNow: func(context.Context, factory.Item, bool) (factory.RunEdit, string, error) {
-			shapes.Add(1)
-			return factory.RunEdit{}, "", nil
-		},
-		Exec: map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(ctx context.Context, _ run.Job) (factory.StageResult, error) {
-			once.Do(func() { close(entered) })
-			<-ctx.Done()
-			return factory.StageResult{}, ctx.Err()
-		})},
-		RepoDir: func(string) string { return dir },
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		worker.Run(ctx, worker.Options{
-			Dial:        func(int) *client.WorkerClient { return client.Open(server.URL, "").Worker("") },
-			Attach:      api.WorkerAttach{Machine: "laptop", Name: "laptop", Handle: "me", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
-			Runner:      r,
-			Mirror:      mirror,
-			Slots:       1,
-			ReportEvery: 20 * time.Millisecond,
-			BeatEvery:   20 * time.Millisecond,
-		})
-	}()
-	t.Cleanup(func() { cancel(); <-done })
-
-	id, err := st.Add(context.Background(), factory.Item{
-		Title: "prove it builds", Repo: "api", Tier: factory.TierOwner,
-		Stages: []factory.Stage{{Name: "test", Kind: factory.StageCheck, Ask: "true", On: true}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	floor := client.Open(server.URL, "").Seam()
-	if err := floor.Launch(id); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-entered:
-	case <-time.After(8 * time.Second):
-		t.Fatal("the worker never started the job")
-	}
-	// A LAUNCH GIVES THE MANAGER NO TURN; only the signal does.
-	if got := shapes.Load(); got != 0 {
-		t.Fatalf("launch shaped %d times", got)
-	}
-	if _, err := floor.Shape(context.Background(), id); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(8 * time.Second)
-	for shapes.Load() < 1 {
-		if time.Now().After(deadline) {
-			t.Fatalf("the holding worker never shaped; count %d", shapes.Load())
-		}
-		time.Sleep(5 * time.Millisecond)
 	}
 }
 

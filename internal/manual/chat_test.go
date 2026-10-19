@@ -3300,6 +3300,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what has each model proven with checks", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
+		// A DROP IS NOT A DELETE, and a start checks the one issue on GitHub.
+		{"bring back a dropped factory job", "factory"},
+		{"the factory says my issue was closed on GitHub so it wasn't started", "factory"},
+		{"check GitHub now in the factory", "factory"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -233,9 +233,6 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 		factoryPipelineOption(), factory.WithRepoDirs(dirs),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
 		factory.WithTalk(talkMaker(st, workspace, profileDir)),
-		// THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS (factory_shape.go):
-		// the door is this process's, built with its worker loop.
-		factory.WithShape(factoryShapeHere()),
 		// THE REFRESH DOORS (`u`, `U`, `g`) read through a GitHub source built
 		// at the moment of asking over the profile's token and the watched
 		// repositories, because the poll may be running in another process

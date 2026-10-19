@@ -131,7 +131,7 @@ as the manager's own message and marked as the run's (a surface may draw them as
 A line is never written into the middle of the manager's own turn: while it is answering you,
 or while another codeaf has the chat open, the line waits and is written afterwards, in order.
 
-## pressing run goes straight to the first step — does the manager reshape the run, manager set, the recipe stands
+## pressing run goes straight to the first step — does the manager reshape the run, manager set, shape steps
 
 Pressing `r`, or saying `start` in the item's chat, starts the run at its first step (usually
 plan) with the steps the item has now: the repository's recipe, unless you or the manager
@@ -147,14 +147,9 @@ skipped neaten · why: touches the call row`. A change the bounds refuse is answ
 `nothing changed: <why>`, for instance `a stage is one word · "do through" is two` or
 `the run has nine stages already`, and the steps stay as they were.
 
-A factory client can also ask for shape steps: one turn of the manager that reads the item and
-sets its steps without running anything. A run never asks for it. It ends in one line in the
-item's stream and the chat: the `manager set …` line, `the recipe stands` (nothing changed),
-`the manager did not answer · the recipe stands` (the turn failed, or did not end within a
-minute), `the manager was busy in the window · the recipe stands`,
-`the manager is open in another window · the recipe stands`,
-`the manager's change was not applied: <why> · the recipe stands`, or
-`the manager already shaped the steps · say what to change in its chat`.
+Nothing else asks the manager to reshape the steps: there is no separate "shape steps" action,
+and a run never gives the manager a turn of its own first. The steps change only where a person
+changes them, on the job's page or in words to its manager here.
 
 ## talk to the manager — what you type is the brief before a run and the steer during it
 

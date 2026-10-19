@@ -38,19 +38,12 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 		t.Fatal(err)
 	}
 	previousParent := factoryWorkerParent()
-	previousShape := factoryShapeHere()
 	factoryProcess.once = sync.Once{}
 	t.Cleanup(func() {
 		factoryProcess.once = sync.Once{}
-		if previousShape != nil {
-			factoryProcess.once.Do(func() {})
-		}
-		setFactoryProcess(func() {
-			factoryProcess.parent, factoryProcess.shape = previousParent, previousShape
-		})
+		setFactoryProcess(func() { factoryProcess.parent = previousParent })
 	})
 	startFactoryWorker(st, workspace, profile, launch.Config)
-	shape := factoryShapeHere()
 	maker := factoryStageMakerFrom(st, workspace, profile, factoryWorkerParent)
 	launch, err = openV3Launch(proc, v3Options{Model: pinned, OneModel: true, Workspace: workspace})
 	if err != nil {
@@ -101,15 +94,13 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// This is the shaping door built by the FIRST launch, not a replacement
-	// built by the pinned launch. It must open the manager on the new pin too.
-	if _, err := shape(ctx, it.ID); err != nil {
-		t.Fatal(err)
-	}
-	it, err = st.Get(it.ID)
+	// The item's manager conversation is made as a run makes it, and a turn
+	// the worker gives it opens on the pinned launch, not the first one.
+	talk, err := managerMaker(st, workspace, profile)(ctx, it)
 	if err != nil {
 		t.Fatal(err)
 	}
+	it.Talk = talk
 	turn, err := openManagerTurn(parent, workspace, profile, it, nil, false)
 	if err != nil {
 		t.Fatal(err)

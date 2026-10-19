@@ -65,6 +65,9 @@ func (a *actorEngine) FactoryJobRetryPublish(_ context.Context, p FactoryJobActi
 func (a *actorEngine) FactoryJobMerge(_ context.Context, p FactoryJobMergeParams) (FactoryJobActed, error) {
 	return a.did("merge", p)
 }
+func (a *actorEngine) FactoryJobRestore(_ context.Context, p FactoryJobActionParams) (FactoryJobActed, error) {
+	return a.did("restore", p)
+}
 func (a *actorEngine) FactoryJobSetModel(_ context.Context, p FactoryJobSetModelParams) (FactoryJobActed, error) {
 	return a.did("set_model", p)
 }
@@ -86,6 +89,7 @@ var factoryActionGood = map[string]string{
 	"factory.job_stop":            `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_dismiss":         `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_drop":            `{"factory":"f","job":1,"words":"dup",` + guard + `}`,
+	"factory.job_restore":         `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_unassign":        `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_assign_to_me":    `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_change_assignee": `{"factory":"f","job":1,"assignee":"@bob",` + guard + `}`,
@@ -165,6 +169,9 @@ func TestFactoryActionsRefuseBadRequestsBeforeTheEngine(t *testing.T) {
 		// A stop takes no words; only a rerun says what to do differently.
 		{"factory.job_step_stop", `{"factory":"f","job":1,"step":"build","words":"why",` + guard + `}`},
 		{"factory.job_set_model", `{"factory":"f","job":1,"model":"two words",` + guard + `}`},
+		// Bring back carries the version read like every write, and no words.
+		{"factory.job_restore", `{"factory":"f","job":1}`},
+		{"factory.job_restore", `{"factory":"f","job":1,"words":"why",` + guard + `}`},
 		{"factory.job_create", `{"factory":"f","repo":"norepo","title":"x"}`},
 		{"factory.job_create", `{"factory":"f","repo":"o/r","title":" "}`},
 		{"factory.job_create", `{"factory":"f","repo":"o/r","title":"x","start":"queued"}`},

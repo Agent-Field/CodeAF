@@ -182,6 +182,169 @@ func TestV2DropIsFinalAndDeletesOnlyAfterSevenDays(t *testing.T) {
 	}
 }
 
+// BRING BACK IS THE ONE WAY OUT OF A DROP: the job is in Backlog again with
+// no drop left on it, a start works, and the poll treats it as any other item.
+func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{Num: 8, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	if f.read(t, it).Can.Restore {
+		t.Fatal("a job that was never dropped offers Bring back")
+	}
+	f.post(t, it, "restore", "", 409)
+	f.post(t, it, "drop", "", 200)
+	if j := f.read(t, it); !j.Can.Restore {
+		t.Fatalf("a dropped job does not offer Bring back: %+v", j.Can)
+	}
+	f.person = "mei"
+	if f.read(t, it).Can.Restore {
+		t.Fatal("someone else's dropped job offers them Bring back")
+	}
+	f.post(t, it, "restore", "", 403)
+	f.person = "sam"
+	f.post(t, it, "restore", "", 200)
+	j := f.read(t, it)
+	if j.State != "backlog" || j.DoneHow != "" || !j.DoneAt.IsZero() || !j.BranchDeleteAt.IsZero() || j.Can.Restore {
+		t.Fatalf("restored %+v", j)
+	}
+	f.post(t, it, "restore", "", 409)
+	fresh := it
+	fresh.Title = "changed on GitHub"
+	if err := github.Merge(f.st, "github", []factory.Item{fresh}); err != nil {
+		t.Fatal(err)
+	}
+	if j := f.read(t, it); j.State != "backlog" || j.Title != "changed on GitHub" {
+		t.Fatalf("the poll does not treat a restored job normally: %+v", j)
+	}
+	// The drop's branch deadline went with it: nothing is deleted later.
+	f.clock.Add(int64(factory.DroppedBranchRetention + time.Minute))
+	f.read(t, it)
+	if f.deletes.Load() != 0 {
+		t.Fatal("a restored job's branch was deleted")
+	}
+	f.post(t, it, "run", "", 200)
+	if f.read(t, it).State != "queued" {
+		t.Fatal("a restored job does not start")
+	}
+	events, _ := f.rec.Since(context.Background(), time.Time{})
+	var kinds []string
+	for _, e := range events {
+		kinds = append(kinds, e.Kind)
+	}
+	if strings.Join(kinds, " ") != "dropped restored started" {
+		t.Fatalf("events %v", kinds)
+	}
+}
+
+// A JOB WHOSE BRANCH WAS ALREADY DELETED STILL COMES BACK; its next run makes
+// a fresh branch, and a later drop deletes that one in its turn.
+func TestV2RestoreAfterTheBranchWasDeleted(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{Num: 9, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.post(t, it, "drop", "", 200)
+	f.clock.Add(int64(factory.DroppedBranchRetention))
+	f.read(t, it)
+	if f.deletes.Load() != 1 {
+		t.Fatal("the branch was not deleted")
+	}
+	f.post(t, it, "restore", "", 200)
+	if j := f.read(t, it); j.State != "backlog" || !j.BranchDeletedAt.IsZero() {
+		t.Fatalf("restored %+v", j)
+	}
+	f.post(t, it, "drop", "", 200)
+	f.clock.Add(int64(factory.DroppedBranchRetention))
+	f.read(t, it)
+	if f.deletes.Load() != 2 {
+		t.Fatal("a second drop does not delete the new branch")
+	}
+}
+
+// A PERSON'S START READS THE ONE ITEM AGAIN FIRST. An issue closed on GitHub
+// is finished instead of started and the person is told in one sentence; an
+// open one starts; a GitHub that cannot be reached never stops a start; and an
+// item that is not on GitHub is not read at all.
+func TestV2StartRechecksTheItemOnGitHub(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	standing, reads := map[int]string{}, map[int]int{}
+	f.cfg.Recheck = func(_ context.Context, it factory.Item) (string, error) {
+		reads[it.Num]++
+		if it.Num == 404 {
+			return "", fmt.Errorf("dial tcp: no route")
+		}
+		return standing[it.Num], nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+
+	closed := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	standing[12] = github.StandingClosed
+	w := f.post(t, closed, "start_now", "", 409)
+	var refusal struct {
+		Error    string `json:"error"`
+		NowState string `json:"now_state"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &refusal)
+	if refusal.Error != "#12 was closed on GitHub, so it wasn't started." || refusal.NowState != "done" {
+		t.Fatalf("refusal %+v", refusal)
+	}
+	if j := f.read(t, closed); j.State != "done" || j.DoneHow != "closed" || j.DoneAt.IsZero() {
+		t.Fatalf("closed job %+v", j)
+	}
+	if cur, _ := f.st.Get(closed.ID); cur.Marked {
+		t.Fatal("a job that was not started is marked to start")
+	}
+
+	merged := f.create(t, factory.Item{Num: 13, Kind: factory.KindPR, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	standing[13] = github.StandingMerged
+	f.post(t, merged, "run", "", 409)
+	if j := f.read(t, merged); j.DoneHow != "merged" {
+		t.Fatalf("merged job %+v", j)
+	}
+
+	open := f.create(t, factory.Item{Num: 14, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.post(t, open, "run", "", 200)
+	if f.read(t, open).State != "queued" {
+		t.Fatal("an open issue did not start")
+	}
+
+	away := f.create(t, factory.Item{Num: 404, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.post(t, away, "run", "", 200)
+	if f.read(t, away).State != "queued" {
+		t.Fatal("a GitHub that cannot be reached stopped a start")
+	}
+
+	typed := f.create(t, factory.Item{Origin: factory.OriginTerminal, State: factory.StateNew, Assignee: "sam"})
+	f.post(t, typed, "run", "", 200)
+	if reads[0] != 0 || reads[12] != 1 || reads[13] != 1 || reads[14] != 1 || reads[404] != 1 {
+		t.Fatalf("reads %v", reads)
+	}
+	events, _ := f.rec.Since(context.Background(), time.Time{})
+	var got []string
+	for _, e := range events {
+		if e.Kind == record.SourceClosed {
+			got = append(got, fmt.Sprintf("%d %s %s", e.Job, e.Verb, e.Actor.Kind))
+		}
+	}
+	if want := []string{fmt.Sprintf("%d closed factory", closed.ID), fmt.Sprintf("%d merged factory", merged.ID)}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("recorded %v, want %v", got, want)
+	}
+}
+
+// CHECK GITHUB NOW WAKES THE POLL AND DOES NOT WAIT FOR IT: the answer is the
+// factory alone, and the store's poll-now mark, which a waiting poll in any
+// process on this machine looks at, has moved.
+func TestV2GitHubPollNudgesThePollAndReturns(t *testing.T) {
+	f := newV2Jobs(t)
+	if !f.st.PollNudged().IsZero() {
+		t.Fatal("a new store was already nudged")
+	}
+	w := verbRequest(f.h, "POST", "/v1/github/poll", "")
+	checkJSON(t, w, 200)
+	if f.st.PollNudged().IsZero() {
+		t.Fatal("Check GitHub now did not nudge the poll")
+	}
+	checkJSON(t, verbRequest(f.h, "GET", "/v1/github/poll", ""), 405)
+}
+
 func TestV2PriorityBudgetAndAssignmentTransitions(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, factory.Item{State: factory.StateNew, Labels: []string{"bug", "size:XL"}})

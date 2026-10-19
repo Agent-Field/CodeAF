@@ -116,18 +116,30 @@ type Capacity struct {
 	Workers []Worker `json:"workers,omitempty"`
 }
 
-// Source is a connected source of jobs (desk).
+// Source is a connected source of jobs (desk). The github row is ALSO HOW A
+// CLIENT SAYS WHEN GITHUB WAS LAST READ: it is here only while a poll on the
+// factory's machine is alive (it tried within the factory's FactsFresh window,
+// internal/factory/github), and absent when nothing is polling, which reads
+// as GitHub not being checked at all.
 type Source struct {
-	Name    string    `json:"name"`
-	Writes  bool      `json:"writes,omitempty"`
-	Repos   []string  `json:"repos,omitempty"`
-	Polled  time.Time `json:"polled"`
-	Trouble string    `json:"trouble,omitempty"`
-	Polling bool      `json:"polling,omitempty"`
-	Reading string    `json:"reading,omitempty"`
-	Read    int       `json:"read,omitempty"`
-	Of      int       `json:"of,omitempty"`
-	Items   int       `json:"items,omitempty"`
+	Name   string   `json:"name"`
+	Writes bool     `json:"writes,omitempty"`
+	Repos  []string `json:"repos,omitempty"`
+	// Polled is when the poll last read this source WITHOUT A FAILURE, the
+	// time a "checked 2 min ago" says. It is absent until a read has gone
+	// well: never a zero time.
+	Polled time.Time `json:"polled,omitzero"`
+	// Trouble is the last read's failure in a few words ("token refused",
+	// "not reachable"); absent when the last read went well.
+	Trouble string `json:"trouble,omitempty"`
+	// Polling is a read in flight now: a "Check GitHub now" (factory.refresh)
+	// shows here within a second, and it ends with the read: Polled moves, or
+	// Trouble says why not.
+	Polling bool   `json:"polling,omitempty"`
+	Reading string `json:"reading,omitempty"`
+	Read    int    `json:"read,omitempty"`
+	Of      int    `json:"of,omitempty"`
+	Items   int    `json:"items,omitempty"`
 }
 
 // Repo is a watched repository and the pipeline it runs.
@@ -428,6 +440,10 @@ type Can struct {
 	RejectPlan bool `json:"reject_plan"`
 	// Merge is the merge gate passing for the caller now: Merge would go.
 	Merge bool `json:"merge"`
+	// Restore is POST /v1/jobs/{id}/restore (Bring back) for this caller now:
+	// the job was dropped and the caller may act on it. A factory from before
+	// the route never sends it, which reads as false.
+	Restore bool `json:"restore"`
 }
 
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.

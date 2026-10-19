@@ -14,7 +14,8 @@ import (
 // ── JOB ACTIONS ON AN ATTACHED FACTORY ──────────────────────────────────────
 //
 // factory.job_* are the writes a person makes on one job of a factory this
-// engine is attached to: start, stop, dismiss, drop, assign, set priority or
+// engine is attached to: start, stop, dismiss, drop, bring back a dropped job,
+// assign, set priority or
 // budget, approve, undo, ask for changes, retry publishing, make a new job,
 // stop or rerun one step. Each is ONE method with its own typed params and one
 // route behind it; there is no method that forwards a path, a verb name or a
@@ -70,6 +71,7 @@ const (
 	JobActStop           = "stop"
 	JobActDismiss        = "dismiss"
 	JobActDrop           = "drop"
+	JobActRestore        = "restore"
 	JobActUnassign       = "unassign"
 	JobActAssignToMe     = "assign_to_me"
 	JobActChangeAssignee = "change_assignee"
@@ -87,8 +89,8 @@ const (
 )
 
 // FactoryJobActionParams names the job and the read it was acted on from. It
-// is the whole request of start, stop, dismiss, unassign, assign_to_me, undo
-// and retry_publish.
+// is the whole request of start, stop, dismiss, restore, unassign,
+// assign_to_me, undo and retry_publish.
 type FactoryJobActionParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
@@ -267,6 +269,8 @@ type FactoryActor interface {
 	FactoryJobStop(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobDismiss(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobDrop(ctx context.Context, p FactoryJobDropParams) (FactoryJobActed, error)
+	// FactoryJobRestore is Bring back: a dropped job returns to Backlog.
+	FactoryJobRestore(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobUnassign(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobAssignToMe(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobChangeAssignee(ctx context.Context, p FactoryJobAssigneeParams) (FactoryJobActed, error)
@@ -529,6 +533,7 @@ func init() {
 		"factory.job_stop":            factoryAction("factory.job_stop", prepAction, FactoryActor.FactoryJobStop),
 		"factory.job_dismiss":         factoryAction("factory.job_dismiss", prepAction, FactoryActor.FactoryJobDismiss),
 		"factory.job_drop":            factoryAction("factory.job_drop", prepDrop, FactoryActor.FactoryJobDrop),
+		"factory.job_restore":         factoryAction("factory.job_restore", prepAction, FactoryActor.FactoryJobRestore),
 		"factory.job_unassign":        factoryAction("factory.job_unassign", prepAction, FactoryActor.FactoryJobUnassign),
 		"factory.job_assign_to_me":    factoryAction("factory.job_assign_to_me", prepAction, FactoryActor.FactoryJobAssignToMe),
 		"factory.job_change_assignee": factoryAction("factory.job_change_assignee", prepAssignee, FactoryActor.FactoryJobChangeAssignee),

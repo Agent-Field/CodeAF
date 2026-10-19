@@ -69,3 +69,16 @@ func TestIssueRefetchReadsAllAssignees(t *testing.T) {
 		t.Fatalf("refetch: %#v %v", issue.Assignees, err)
 	}
 }
+
+// THE ONE ISSUE READ SAYS WHETHER IT IS STILL OPEN, which the factory checks
+// right before a person's start.
+func TestIssueRefetchReadsItsState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"number":7,"state":"closed"}`))
+	}))
+	defer srv.Close()
+	issue, err := testClient(srv.URL, "tok").Issue(context.Background(), "o", "r", 7)
+	if err != nil || issue.State != "closed" {
+		t.Fatalf("refetch: %q %v", issue.State, err)
+	}
+}

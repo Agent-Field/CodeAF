@@ -288,7 +288,8 @@ func launchable(it factory.Item) error {
 // that is on and fits the item is a pending phase, and one that does not is
 // left out. The tail is re-read at each round: what has not started yet is
 // compiled again from the item's stages as they stand then ([tailPhases]), so
-// the manager's edit during a run (shape.go) reaches the stages after it.
+// the manager's edit during a run (its own `factory_run`) reaches the stages
+// after it.
 func loopPhases(it factory.Item) []factory.Phase {
 	var out []factory.Phase
 	for _, s := range it.Stages {
@@ -454,7 +455,7 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		return
 	}
 	// THE FIRST STAGE RUNS FIRST, with the item's stages as they stand. No
-	// manager turn comes before it ([Options.ShapeNow] says why).
+	// manager turn comes before it (Options says why, at ShapeWait).
 	if lp.r.opts.Talk != nil {
 		watching := make(chan struct{})
 		defer close(watching)
@@ -2037,4 +2038,69 @@ func loopUSD(f float64) string {
 		return "$" + strconv.FormatInt(int64(f), 10)
 	}
 	return "$" + strconv.FormatFloat(f, 'f', 2, 64)
+}
+
+// tailPhases is the phases with every one not yet started compiled again from
+// the item's stages as they stand now, and whether that changed anything. A
+// tail that holds a phase the stages do not (a request for changes' prove) is
+// left as it is.
+func tailPhases(it factory.Item, phases []factory.Phase) ([]factory.Phase, bool) {
+	last := -1
+	for i, p := range phases {
+		// A PHASE THAT HAS RUN A ROUND IS STARTED, pending or not: one an
+		// approve step sent back keeps its round ([floorLoop.back]).
+		if (p.State != "" && p.State != factory.PhasePending) || p.Round > 0 {
+			last = i
+		}
+	}
+	for _, p := range phases[last+1:] {
+		if factory.StageIndex(it.Stages, p.Name) < 0 {
+			return phases, false
+		}
+	}
+	var out []factory.Phase
+	if last < 0 {
+		out = loopPhases(it)
+	} else {
+		if factory.StageIndex(it.Stages, phases[last].Name) < 0 {
+			return phases, false
+		}
+		out = retail(it, phases, last)
+	}
+	if samePhases(out, phases) {
+		return phases, false
+	}
+	return out, true
+}
+
+// samePhases compares two phase lists by what a tail is compiled from.
+func samePhases(a, b []factory.Phase) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Kind != b[i].Kind || a[i].State != b[i].State || a[i].Note != b[i].Note {
+			return false
+		}
+	}
+	return true
+}
+
+// retailTail rebuilds the phases not yet started from the item's stages at a
+// round boundary, so an edit made since (the manager's, through its own
+// conversation's `factory_run`) is what runs next.
+func (lp *floorLoop) retailTail(c *loopCtl) {
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err != nil || it.Stream == nil {
+		return
+	}
+	if _, changed := tailPhases(it, it.Stream.Phases); !changed {
+		return
+	}
+	_ = lp.write(c, func(it *factory.Item) error {
+		if phases, changed := tailPhases(*it, it.Stream.Phases); changed {
+			it.Stream.Phases = phases
+		}
+		return nil
+	})
 }

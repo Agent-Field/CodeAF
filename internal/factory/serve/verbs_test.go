@@ -47,7 +47,6 @@ var verbCases = []verbCase{
 	{"approve edited", "POST", "/v1/jobs/9/approve", `{"edited":true}`, []verbCall{call("SignOff", 9, true)}, 200, true},
 	{"request_changes", "POST", "/v1/jobs/9/request_changes", `{"words":"prove restart survival"}`, []verbCall{call("SendBack", 9, "prove restart survival")}, 200, false},
 	{"recheck", "POST", "/v1/jobs/9/recheck", "", []verbCall{call("Reverify", 9)}, 200, false},
-	{"shape", "POST", "/v1/jobs/8/shape", "", []verbCall{call("Shape", 8)}, 200, false},
 	{"prioritize", "POST", "/v1/jobs/7/prioritize", `{"to":"top"}`, []verbCall{call("Mark", []int{7}, true)}, 200, false},
 	{"reply", "POST", "/v1/jobs/2/reply", `{"words":"keep the tests"}`, []verbCall{call("Say", 2, "keep the tests")}, 200, false},
 	{"new", "POST", "/v1/jobs", `{"repo":"owner/repo","title":"fix tests","text":"keep the fixture"}`, []verbCall{call("New", "owner/repo", "fix tests\n\nkeep the fixture")}, 201, false},
@@ -93,10 +92,6 @@ func spyVerbs(t *testing.T, failure error) (factory.Seam, *[]verbCall) {
 	s.SignOff = func(id int, edited bool) (bool, error) { return true, record("SignOff", id, edited) }
 	s.SendBack = func(id int, words string) error { return record("SendBack", id, words) }
 	s.Reverify = func(id int) error { return record("Reverify", id) }
-	s.Shape = func(ctx context.Context, id int) (string, error) {
-		checkContext(ctx)
-		return "the recipe stands", record("Shape", id)
-	}
 	s.Mark = func(ids []int, on bool) error { return record("Mark", ids, on) }
 	s.Say = func(ctx context.Context, id int, words string) error {
 		checkContext(ctx)

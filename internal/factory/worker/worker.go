@@ -256,7 +256,6 @@ type job struct {
 	sent  factory.Item // the mirror as last reported
 
 	mu           sync.Mutex
-	shaping      bool
 	replying     bool
 	accepted     map[string]bool
 	acknowledged map[string]bool
@@ -511,8 +510,6 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			_ = r.Steer(j.id, s.Words)
 		case lease.SignalModel:
 			_ = r.SetModel(j.id, s.Words)
-		case lease.SignalShape:
-			j.shape(ctx)
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
 			_ = r.Stop(j.id)
@@ -572,27 +569,6 @@ func (j *job) converse(ctx context.Context) {
 			}
 		}
 	}
-}
-
-// shape gives the manager one shaping turn on this job. A turn already out
-// is left to finish: the second signal asks nothing more. The turn can take
-// as long as a model call, so it does not hold the heartbeat.
-func (j *job) shape(ctx context.Context) {
-	j.mu.Lock()
-	if j.shaping {
-		j.mu.Unlock()
-		return
-	}
-	j.shaping = true
-	j.mu.Unlock()
-	go func() {
-		defer func() {
-			j.mu.Lock()
-			j.shaping = false
-			j.mu.Unlock()
-		}()
-		_, _ = j.o.Runner.ShapeAsked(ctx, j.id)
-	}()
 }
 
 // drop lets the job go here: the factory stopped it, or this process is

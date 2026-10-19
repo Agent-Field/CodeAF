@@ -254,6 +254,9 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 
 		ProfileDir:     home.Dir(),
 		ChangeAssignee: jobWrites.Assign,
+		// A read, not a write: a person's start checks the one item is still
+		// open on GitHub, so the team server keeps it too.
+		Recheck: factorygithub.Rechecker(jobWrites.Token),
 		DeleteBranch: func(ctx context.Context, it factory.Item) error {
 			if err := jobWrites.DeleteDroppedBranch(ctx, it, workdirs.DroppedBranch(it), time.Now()); err != nil {
 				return err

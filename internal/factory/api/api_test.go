@@ -598,3 +598,19 @@ func TestPlannedFilesFollowTheCurrentRoundAcrossTheWire(t *testing.T) {
 		})
 	}
 }
+
+// THE QUEUE SAYS WHEN GITHUB WAS LAST READ WELL as its github source's polled,
+// and says nothing at all before a read has gone well: never a zero time.
+func TestQueueSaysWhenGitHubWasLastReadWell(t *testing.T) {
+	at := time.Date(2026, 10, 19, 9, 30, 0, 0, time.UTC)
+	q := FromSnapshot(factory.Snapshot{Sources: []factory.SourceInfo{{Name: "github", Polled: at}}}, "", at)
+	data, _ := json.Marshal(q.Desk.Sources)
+	if string(data) != `[{"name":"github","polled":"2026-10-19T09:30:00Z"}]` {
+		t.Fatalf("read well: %s", data)
+	}
+	q = FromSnapshot(factory.Snapshot{Sources: []factory.SourceInfo{{Name: "github", Trouble: "token refused"}}}, "", at)
+	data, _ = json.Marshal(q.Desk.Sources)
+	if string(data) != `[{"name":"github","trouble":"token refused"}]` {
+		t.Fatalf("never read well: %s", data)
+	}
+}

@@ -193,18 +193,12 @@ type Options struct {
 	// behind a conversation nobody had asked anything of (the owner's run of
 	// 2026-10-19), so it is gone.
 	//
-	// ShapeNow is the floor's `shape steps` turn, asked while a worker holds
-	// the job: one turn of the item's manager conversation now, with inRun
-	// bounding what the manager may change, that answers the edit it would
-	// make (an empty one when the recipe stands) and what it said. The runner
-	// applies the edit itself ([Runner.ShapeAsked]). Nil is a worker with no
-	// shaping turn, and `shape steps` then says the manager did not answer.
-	ShapeNow func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error)
 	// THERE IS NO TURN ON A STEER: words the person types into the manager's
 	// conversation during a run are already a turn of the manager there, and
 	// it reshapes the stages not yet started with its own `factory_run`.
-	// ShapeWait is how long a ShapeNow turn may take before it is let go; 0 is
-	// a minute. An Inbox turn is given the same.
+	//
+	// ShapeWait is how long a manager turn on a step's question (Inbox) may
+	// take before it is let go; 0 is a minute.
 	ShapeWait time.Duration
 	// Inbox is the manager's turn on a question a step asked (inbox.go): one
 	// turn of the item's manager conversation that answers the question, or
@@ -258,10 +252,6 @@ type Runner struct {
 	// lanes were handed.
 	loopOnce sync.Once
 	floor    *floorLoop
-
-	// shaping is every item whose [Runner.ShapeAsked] turn is already out.
-	shapeMu sync.Mutex
-	shaping map[int]bool
 }
 
 // New makes a runner. It starts nothing until Launch.

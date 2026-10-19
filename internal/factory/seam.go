@@ -97,18 +97,6 @@ type Seam struct {
 	// refused edit changes nothing and answers why. A running item's runner
 	// reads the new stages at its next round.
 	Edit func(ctx context.Context, id int, e RunEdit) (Item, []string, error)
-	// Shape is `shape steps`: the item's manager is given its shaping turn
-	// now, because the person asked (the owner's journey, 2026-10-09: OPENING
-	// AN ISSUE RUNS NOTHING, and the manager shapes only when asked). The
-	// manager conversation is made when the item has none (no model is asked
-	// for that), given one turn, and the edit it makes is applied as the
-	// launch applies it: to every step before a run, to the steps not yet
-	// started during one. Nothing is run. The line it recorded goes into the
-	// conversation and is answered (`manager set …`, or `the recipe stands`);
-	// [ShapeAlready] while a turn for the item is already out. A turn that did
-	// not answer, an edit refused, or an item whose run is over is an error in
-	// words.
-	Shape func(ctx context.Context, id int) (line string, err error)
 
 	// THE FLOOR'S OWN SETTINGS (settings.go), each a door like every other:
 	// nil is a key the floor does not draw.
@@ -221,11 +209,6 @@ func (s Seam) Job(id int) Seam {
 	return s
 }
 
-// ShapeAlready is what [Seam.Shape] answers while a shaping turn for the item
-// is already out: the second press asks nothing, and the surface says nothing
-// for it.
-const ShapeAlready = "already shaped"
-
 // Has says whether a door exists, by the door's name: the field's name in
 // lower case (`launch`, `signoff`, `addstage`, `tick`). A name that is not a
 // door answers false, so a misspelt door draws no key rather than a key that
@@ -274,8 +257,6 @@ func (s Seam) Has(door string) bool {
 		return s.SetEffort != nil
 	case "edit":
 		return s.Edit != nil
-	case "shape":
-		return s.Shape != nil
 	case "repos":
 		return s.Repos != nil
 	case "setrepos":

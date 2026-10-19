@@ -32,9 +32,6 @@ func (h *Handler) verbs() {
 	h.postJob("merge", h.config.Store != nil, h.onlyOwner(h.mergeJob))
 	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
 	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
-	// Shape is present even when the seam has no Shape door: a worker holding
-	// the job is signaled, and only a job nobody holds needs the local turn.
-	h.postJob("shape", true, h.guarded("shape", h.shape))
 	// Take and release are the lease desk's own doors, not seam fields. The
 	// desk exists only after the worker routes open it, so the handler checks then.
 	h.postJob("take", true, h.take)
@@ -536,33 +533,6 @@ func (h *Handler) prioritize(w http.ResponseWriter, r *http.Request, it factory.
 		return
 	}
 	h.finish(w, h.seam.Mark([]int{it.ID}, true))
-}
-
-// shape is POST /v1/jobs/{id}/shape. A worker holding the job hears it as a
-// lease signal and gives the manager the turn on its own copy. A job nobody
-// holds is shaped here, which is where that job's worker lives.
-func (h *Handler) shape(w http.ResponseWriter, r *http.Request, it factory.Item) {
-	if h.workers != nil && h.workers.desk != nil {
-		held, err := h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalShape})
-		if h.failed(w, err) {
-			return
-		}
-		if held {
-			h.finish(w, nil)
-			return
-		}
-	}
-	if !h.requireVerb(w, h.seam.Shape != nil) {
-		return
-	}
-	line, err := h.seam.Shape(r.Context(), it.ID)
-	if h.failed(w, err) {
-		return
-	}
-	h.write(w, http.StatusOK, struct {
-		Factory api.Factory `json:"factory"`
-		Line    string      `json:"line,omitempty"`
-	}{h.factory, line})
 }
 
 func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item) {
