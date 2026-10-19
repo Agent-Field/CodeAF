@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/rtk"
+	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -1459,6 +1460,9 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 	if command == "" {
 		return errorf("sh needs cmd")
 	}
+	if _, err := commandshell.Bash(); err != nil {
+		return errorf("%s", err)
+	}
 	if boolArg(args, "bg") {
 		// A background job is deliberately never compressed. Its output is
 		// watched rather than read — readiness loops grep the log, the job tool
@@ -1510,6 +1514,9 @@ type shellRun struct {
 	// bounded says the body was cut as it streamed and already carries its own
 	// truncation notice naming the file the whole output went to.
 	bounded bool
+	// refused keeps discovery errors in the shared remedy's exact words, before
+	// any process has started or produced an exit status.
+	refused bool
 }
 
 // trustworthy asks whether a wrapped run may stand as the answer.
@@ -1537,6 +1544,9 @@ func (r shellRun) trustworthy(class rtk.Class) bool {
 // comes off the front. bounded rides along so the turn boundary does not cut an
 // already-cut body a second time.
 func (r shellRun) result(seconds int) Result {
+	if r.refused {
+		return Result{Content: r.err.Error(), IsError: true, shape: shapeCommand}
+	}
 	if r.timedOut {
 		out := errorf("command timed out after %ds. Partial output:\n%s", seconds, r.body)
 		out.shape, out.bounded, out.timedOut = shapeCommand, r.bounded, true
@@ -1565,6 +1575,10 @@ func (r shellRun) result(seconds int) Result {
 // resolved rtk when this is a wrapped run and empty otherwise; a rewritten line
 // calls rtk by bare name, so its shelf goes on PATH here.
 func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtkBin string) shellRun {
+	bash, err := commandshell.Bash()
+	if err != nil {
+		return shellRun{err: err, exitCode: 127, refused: true}
+	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
 	defer cancel()
 	var environment []string
@@ -1576,7 +1590,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 			environment = os.Environ()
 			environment = replaceEnv(environment, "CODEAF_SKILLS_BIN", bin)
 			environment = replaceEnv(environment, env.Legacy("CODEAF_SKILLS_BIN"), bin)
-			command = "export PATH=\"${CODEAF_SKILLS_BIN:?}:$PATH\"\n" + command
+			command = commandshell.PathExport("CODEAF_SKILLS_BIN", bin) + command
 		}
 	}
 	if rtkBin != "" {
@@ -1585,7 +1599,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 		}
 		environment = replaceEnv(environment, "CODEAF_RTK_BIN", filepath.Dir(rtkBin))
 		environment = replaceEnv(environment, env.Legacy("CODEAF_RTK_BIN"), filepath.Dir(rtkBin))
-		command = "export PATH=\"${CODEAF_RTK_BIN:?}:$PATH\"\n" + command
+		command = commandshell.PathExport("CODEAF_RTK_BIN", filepath.Dir(rtkBin)) + command
 	}
 	// A COMMAND THE MODEL RUNS MUST NOT REACH THE TMUX SERVER HOSTING CODEAF,
 	// and here the bare path used to hand the child its parent's whole
@@ -1593,7 +1607,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// names a private socket directory even in that nil case (tools.go).
 	environment = JobShellEnv(environment)
 
-	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)
+	cmd := exec.CommandContext(runCtx, bash, "-lc", command)
 	cmd.Dir = t.workspace.Root()
 	cmd.Env = environment
 	// A command that leaves a background child sharing its stdout used to hang
@@ -1629,7 +1643,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// the notice that ends up in context names a command that actually works.
 	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
 	cmd.Stdout, cmd.Stderr = collected, collected
-	err := cmd.Run()
+	err = cmd.Run()
 	run := shellRun{body: collected.String(), bounded: collected.truncated(),
 		err: err, exitCode: exitCode(cmd, err)}
 	run.timedOut = runCtx.Err() == context.DeadlineExceeded

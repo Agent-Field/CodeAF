@@ -1,6 +1,7 @@
 package manual
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
@@ -30,6 +33,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// C9: Windows shell questions must reach the self-contained Git Bash section.
+		{"why do my commands fail on Windows", "running-commands-on-windows"},
+		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
+		{"can codeaf use WSL", "running-commands-on-windows"},
+		{"Git Bash", "running-commands-on-windows"},
+		// R4 and R3 keep command routes and explicit-choice remedies reachable.
+		{"gh api says not found on Windows", "running-commands-on-windows"},
+		{"CODEAF_BASH does not exist", "running-commands-on-windows"},
 		// C12: Key troubleshooting must reach the self-contained restart section.
 		{"I changed or unset my API key in the shell but codeaf still uses the old one", "starting-codeaf"},
 		{"your key was not accepted for this model", "starting-codeaf"},
@@ -4215,6 +4226,19 @@ func TestFactoryItemCardAnswerQuestionsReachTheAnswerSection(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%q does not reach the factory_item card answer section", asked)
+		}
+	}
+}
+
+// C9 and R3 pin all shared refusals quoted by the Windows manual sections.
+func TestWindowsManualQuotesTheShellRefusal(t *testing.T) {
+	page, ok := Chat().Page("running-commands-on-windows")
+	if !ok {
+		t.Fatal("the Windows shell page is missing")
+	}
+	for _, refusal := range []string{shell.NoBash, fmt.Sprintf(shell.MissingBash, "<path>"), fmt.Sprintf(shell.WSLBash, "<path>")} {
+		if !strings.Contains(page, "\""+refusal+"\"") {
+			t.Errorf("Windows manual must quote the shared refusal exactly: %q", refusal)
 		}
 	}
 }

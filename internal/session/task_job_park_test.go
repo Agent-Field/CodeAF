@@ -510,7 +510,7 @@ func TestAStoppedCommandWakesTheWaitWithItsOwnEnding(t *testing.T) {
 		t.Fatalf("job %d is still running after the person stopped it", promoted.id)
 	}
 	waitFor(t, "the stopped process to be gone", func() bool {
-		return syscall.Kill(pid, syscall.Signal(0)) != nil
+		return testProcessSignal(pid, syscall.Signal(0)) != nil
 	})
 
 	// AND NOBODY IS STILL PARKED. A wait released by a road nothing closes is a

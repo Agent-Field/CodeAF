@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filememo"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // systemPromptSource is omp's normal-chat system prompt, adapted (Decision 2).
@@ -451,6 +452,7 @@ func workerFooter(config Config, now time.Time) string {
 	if config.inOwnSpace() {
 		out.WriteString("- There is no project here: this is the conversation's own space, and it holds only what this conversation has put there.\n")
 	}
+	out.WriteString(shell.PromptFact())
 	out.WriteString(nowLine(now))
 
 	// THE PROJECT'S OWN RULES, UNDER THIS PROFILE'S BOUND. Both numbers here are

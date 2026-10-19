@@ -105,7 +105,7 @@ func TestBashBeltEnvelopeStillRefusesANameTheBeltDoesNotCarry(t *testing.T) {
 func processGroupGone(group int) bool {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if err := syscall.Kill(-group, 0); errors.Is(err, syscall.ESRCH) {
+		if err := testProcessSignal(-group, 0); errors.Is(err, syscall.ESRCH) {
 			return true
 		}
 		if time.Now().After(deadline) {

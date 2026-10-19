@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // probeBodyLimit is how much of a health URL's answer is read before the
@@ -170,7 +171,11 @@ func (r *platformRuntime) Launch(spec Spec, logPath string, exited func(processg
 	if info, err := os.Stat(spec.Dir); err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("the folder %s is not there", spec.Dir)
 	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	program, args, shellErr := bare.StreamingShell(spec.Command)
+	if shellErr != nil {
+		return nil, shellErr
+	}
+	logFile, err := shell.OpenLog(logPath, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -185,8 +190,7 @@ func (r *platformRuntime) Launch(spec Spec, logPath string, exited func(processg
 	// The command runs whole, as the person approved it, through the same
 	// streaming shell and the same scrubbed environment as every command a
 	// conversation runs: no provider key, no way into codeaf's tmux.
-	shell, args := bare.StreamingShell(spec.Command)
-	cmd := exec.Command(gateShell, append([]string{"-c", gateScript, shell}, args...)...)
+	cmd := exec.Command(gateShell, append([]string{"-c", gateScript, program}, args...)...)
 	cmd.Dir = spec.Dir
 	cmd.Env = bare.StreamingEnv()
 	cmd.ExtraFiles = []*os.File{gateEnd}
@@ -294,7 +298,10 @@ func (r *platformRuntime) probeURL(ctx context.Context, address string) error {
 // with its whole group — through the leader, before it is reaped — and so is
 // anything a finished check left behind.
 func runCheckCommand(ctx context.Context, spec Spec) error {
-	shell, args := bare.StreamingShell(spec.Health.Cmd)
+	shell, args, shellErr := bare.StreamingShell(spec.Health.Cmd)
+	if shellErr != nil {
+		return shellErr
+	}
 	cmd := exec.Command(shell, args...)
 	cmd.Dir = spec.Dir
 	cmd.Env = bare.StreamingEnv()
